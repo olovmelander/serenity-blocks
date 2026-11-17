@@ -82,6 +82,23 @@ export const CANOPY_LEVEL = -108;
 /** The cave-cloud deck: a slab under the vault that the sunfall burns a hole through. */
 export const DECK = Object.freeze({ bottom: 40, top: 78 });
 
+/**
+ * The chain's shafts: six more blades of sun through cracks in the vault, one for each link of a
+ * combo after the first clear, in the order they open. Each stands on its own patch of canopy
+ * (`x`, `z` of its foot, `radius` of the blade in metres). The sunfall fills the free space
+ * left of the card, so five stand in a fan right of it (each clear of the others on screen: they
+ * lean toward the sun together) and one at the frame's left edge. With the sunfall itself a
+ * chain of seven stands in seven shafts.
+ */
+export const SUNFALL_SHAFTS = Object.freeze([
+    Object.freeze({ x: 180, z: -350, radius: 9 }),
+    Object.freeze({ x: -205, z: -280, radius: 7 }),
+    Object.freeze({ x: 200, z: -300, radius: 7.5 }),
+    Object.freeze({ x: 122, z: -280, radius: 6.5 }),
+    Object.freeze({ x: 255, z: -350, radius: 9.5 }),
+    Object.freeze({ x: 265, z: -450, radius: 10.5 }),
+]);
+
 export const PIECE_CODES = Object.freeze(['I', 'O', 'T', 'S', 'Z', 'J', 'L']);
 
 // Linear sRGB piece swatches matching SUNFALL_TETROMINOS.colors
@@ -117,86 +134,157 @@ const station = (index, id, name, fields) => Object.freeze({
  * it lands on is lit through. Colours are linear tints; the shaders own the intensities.
  */
 export const SUNFALL_STATIONS = Object.freeze([
+    // Morning: a rose-gold shaft into blue-violet shade.
     station(0, 'first-shaft', 'First Shaft', {
-        beamWarmth: 0.62,
+        beamWarmth: 0.66,
         cloudFloor: 0.72,
-        skyZenith: [0.50, 0.70, 1.00],
-        skyRim: [1.00, 0.93, 0.80],
-        beamCore: [1.00, 0.88, 0.68],
-        beamScatter: [1.00, 0.90, 0.74],
-        poolSun: [0.80, 0.92, 0.30],
-        bounceVault: [0.62, 0.62, 0.34],
-        caveShadow: [0.10, 0.16, 0.18],
-        mistTint: [0.36, 0.48, 0.50],
+        skyZenith: [0.46, 0.66, 1.00],
+        skyRim: [1.00, 0.86, 0.72],
+        beamCore: [1.00, 0.80, 0.56],
+        beamScatter: [1.00, 0.83, 0.60],
+        poolSun: [0.86, 0.90, 0.30],
+        bounceVault: [0.66, 0.62, 0.34],
+        caveShadow: [0.10, 0.14, 0.22],
+        mistTint: [0.34, 0.44, 0.56],
         gourBlue: [0.10, 0.40, 0.85],
     }),
+    // Noon: white-gold into teal.
     station(1, 'high-sunfall', 'High Sunfall', {
         beamWarmth: 0.42,
         cloudFloor: 0.50,
-        skyZenith: [0.46, 0.68, 1.00],
-        skyRim: [0.96, 0.98, 1.00],
-        beamCore: [1.00, 0.94, 0.80],
-        beamScatter: [0.98, 0.96, 0.84],
-        poolSun: [0.74, 0.94, 0.30],
-        bounceVault: [0.56, 0.64, 0.36],
-        caveShadow: [0.09, 0.16, 0.19],
-        mistTint: [0.34, 0.49, 0.52],
+        skyZenith: [0.40, 0.66, 1.00],
+        skyRim: [0.92, 0.97, 1.00],
+        beamCore: [1.00, 0.93, 0.76],
+        beamScatter: [1.00, 0.94, 0.80],
+        poolSun: [0.72, 0.96, 0.30],
+        bounceVault: [0.56, 0.66, 0.36],
+        caveShadow: [0.07, 0.16, 0.20],
+        mistTint: [0.28, 0.50, 0.54],
         gourBlue: [0.10, 0.44, 0.90],
     }),
+    // Early afternoon: soft white light, the greenest air.
     station(2, 'cloud-breath', 'Cloud Breath', {
         beamWarmth: 0.48,
         cloudFloor: 0.88,
-        skyZenith: [0.52, 0.70, 0.96],
+        skyZenith: [0.50, 0.70, 0.96],
         skyRim: [0.94, 0.96, 0.96],
-        beamCore: [1.00, 0.95, 0.84],
-        beamScatter: [0.96, 0.97, 0.90],
-        poolSun: [0.70, 0.92, 0.34],
-        bounceVault: [0.54, 0.64, 0.40],
-        caveShadow: [0.10, 0.17, 0.20],
-        mistTint: [0.40, 0.53, 0.55],
+        beamCore: [1.00, 0.96, 0.86],
+        beamScatter: [0.97, 0.98, 0.90],
+        poolSun: [0.68, 0.94, 0.36],
+        bounceVault: [0.52, 0.66, 0.42],
+        caveShadow: [0.08, 0.17, 0.19],
+        mistTint: [0.34, 0.54, 0.52],
         gourBlue: [0.10, 0.42, 0.86],
     }),
+    // Afternoon: silver-jade light into deep blue.
     station(3, 'rain-thread', 'Rain Thread', {
-        beamWarmth: 0.44,
+        beamWarmth: 0.40,
         cloudFloor: 0.64,
-        skyZenith: [0.48, 0.66, 0.94],
-        skyRim: [0.92, 0.95, 0.98],
-        beamCore: [0.98, 0.96, 0.88],
-        beamScatter: [0.94, 0.97, 0.94],
-        poolSun: [0.68, 0.94, 0.38],
-        bounceVault: [0.50, 0.62, 0.42],
-        caveShadow: [0.09, 0.16, 0.21],
-        mistTint: [0.38, 0.52, 0.57],
+        skyZenith: [0.44, 0.64, 0.94],
+        skyRim: [0.90, 0.95, 1.00],
+        beamCore: [0.94, 0.97, 0.92],
+        beamScatter: [0.92, 0.97, 0.96],
+        poolSun: [0.62, 0.94, 0.42],
+        bounceVault: [0.46, 0.64, 0.46],
+        caveShadow: [0.07, 0.15, 0.22],
+        mistTint: [0.30, 0.50, 0.60],
         gourBlue: [0.12, 0.46, 0.92],
     }),
+    // Late: deep amber into violet-blue shade.
     station(4, 'amber-slant', 'Amber Slant', {
-        beamWarmth: 0.80,
+        beamWarmth: 0.84,
         cloudFloor: 0.56,
-        skyZenith: [0.56, 0.68, 0.92],
-        skyRim: [1.00, 0.84, 0.62],
-        beamCore: [1.00, 0.80, 0.54],
-        beamScatter: [1.00, 0.84, 0.62],
-        poolSun: [0.86, 0.88, 0.26],
-        bounceVault: [0.66, 0.58, 0.30],
-        caveShadow: [0.11, 0.15, 0.17],
-        mistTint: [0.40, 0.46, 0.46],
+        skyZenith: [0.52, 0.62, 0.92],
+        skyRim: [1.00, 0.78, 0.52],
+        beamCore: [1.00, 0.70, 0.40],
+        beamScatter: [1.00, 0.74, 0.46],
+        poolSun: [0.94, 0.84, 0.24],
+        bounceVault: [0.74, 0.58, 0.28],
+        caveShadow: [0.11, 0.13, 0.20],
+        mistTint: [0.40, 0.42, 0.52],
         gourBlue: [0.10, 0.40, 0.82],
     }),
 ]);
 
+/**
+ * The cave's weathers, each a different air (the clock turns them, in every mode):
+ * - `mistScale`: how thick the air is (the column a blade or a pillar, the far doline crisp or lost);
+ * - `cloudOpacity`: how much of the cloud deck hangs under the vault (under 0.35: none);
+ * - `rain`: rain falling through the oculus, seen in the light;
+ * - `steam`: vapour rising off the sunlit crowns after rain;
+ * - `shafts`: how deeply the dapple combs the column (1: blades with dark lanes, 0: one body);
+ * - `cool`: the sun through thin cloud, silver instead of gold; `sun`: its strength.
+ */
 export const SUNFALL_WEATHERS = Object.freeze([
     Object.freeze({
-        id: 'clear', name: 'Clear Beam', dripScale: 0.55, mistScale: 0.80, cloudOpacity: 0.50, sprayRate: 0.35,
+        id: 'clear',
+        name: 'Clear Beam',
+        dripScale: 0.55,
+        mistScale: 0.78,
+        cloudOpacity: 0.25,
+        sprayRate: 0.35,
+        rain: 0,
+        steam: 0,
+        shafts: 1.0,
+        cool: 0,
+        sun: 1.0,
     }),
     Object.freeze({
-        id: 'mist', name: 'Chamber Mist', dripScale: 0.75, mistScale: 1.45, cloudOpacity: 0.80, sprayRate: 0.55,
+        id: 'mist',
+        name: 'Chamber Mist',
+        dripScale: 0.75,
+        mistScale: 1.7,
+        cloudOpacity: 0.55,
+        sprayRate: 0.55,
+        rain: 0,
+        steam: 0.15,
+        shafts: 0.45,
+        cool: 0.15,
+        sun: 0.92,
     }),
     Object.freeze({
-        id: 'shower', name: 'Rim Shower', dripScale: 1.45, mistScale: 1.10, cloudOpacity: 0.65, sprayRate: 1.00,
+        id: 'shower',
+        name: 'Rim Shower',
+        dripScale: 1.45,
+        mistScale: 1.15,
+        cloudOpacity: 0.72,
+        sprayRate: 1.00,
+        rain: 1.0,
+        steam: 0,
+        shafts: 0.6,
+        cool: 0.6,
+        sun: 0.78,
     }),
     Object.freeze({
-        id: 'cloud', name: 'Cave Cloud', dripScale: 0.65, mistScale: 1.30, cloudOpacity: 1.00, sprayRate: 0.45,
+        id: 'steam',
+        name: 'Steam Hour',
+        dripScale: 1.0,
+        mistScale: 1.2,
+        cloudOpacity: 0.3,
+        sprayRate: 0.6,
+        rain: 0,
+        steam: 1.0,
+        shafts: 0.8,
+        cool: 0,
+        sun: 1.05,
     }),
+    Object.freeze({
+        id: 'cloud',
+        name: 'Cave Cloud',
+        dripScale: 0.65,
+        mistScale: 1.25,
+        cloudOpacity: 1.00,
+        sprayRate: 0.45,
+        rain: 0,
+        steam: 0,
+        shafts: 0.7,
+        cool: 0.25,
+        sun: 0.95,
+    }),
+]);
+/** The numbers a weather carries (blended between two weathers as one crosses into the next). */
+export const WEATHER_FIELDS = Object.freeze([
+    'dripScale', 'mistScale', 'cloudOpacity', 'sprayRate', 'rain', 'steam', 'shafts', 'cool', 'sun',
 ]);
 
 export const SUNFALL_TIMINGS = Object.freeze({
@@ -205,7 +293,10 @@ export const SUNFALL_TIMINGS = Object.freeze({
     levelPanSeconds: 6.5,
     weatherHoldMin: 48,
     weatherHoldMax: 88,
-    weatherCrossfade: 9.0,
+    weatherCrossfade: 14.0,
+    /** A cumulus outside crosses the sun this often (seconds between passes, seeded). */
+    cloudPassMin: 64,
+    cloudPassMax: 108,
     lockFlushSeconds: 3.2,
     hardDropSnapSeconds: 1.8,
     showerSeconds: 2.8,
@@ -314,14 +405,9 @@ export function sampleWeather(weather = 'clear', nextWeather = null, mix = 0) {
     if (nextWeather == null || !(mix > 0)) return { ...a };
     const b = find(nextWeather);
     const t = smooth(0, 1, mix);
-    return {
-        id: t < 0.5 ? a.id : b.id,
-        name: t < 0.5 ? a.name : b.name,
-        dripScale: lerp(a.dripScale, b.dripScale, t),
-        mistScale: lerp(a.mistScale, b.mistScale, t),
-        cloudOpacity: lerp(a.cloudOpacity, b.cloudOpacity, t),
-        sprayRate: lerp(a.sprayRate, b.sprayRate, t),
-    };
+    const out = { id: t < 0.5 ? a.id : b.id, name: t < 0.5 ? a.name : b.name };
+    WEATHER_FIELDS.forEach((key) => { out[key] = lerp(a[key], b[key], t); });
+    return out;
 }
 
 /**

@@ -566,8 +566,49 @@ function shopInterior(u, {
             flo.assign(vec3(0.16, 0.1, 0.06).mul(L).mul(0.5).add(accent.mul(mat).mul(0.12)));
         });
 
-    const side = vec3(0.6).mul(L).mul(0.12).mul(dim);
-    const shell = back.mul(isBack).add(ceil.mul(isCeil)).add(flo.mul(isFloor))
+    // Every room has a paint of its own on its side walls (darker below the dado), and a tube of
+    // neon bent on them: a ring, a zigzag or three bars. Seen at the angle the street sees a
+    // shop, the side walls are most of the room.
+    const paintPick = h1(float(31.0), float(7.0));
+    const paint = mix(
+        mix(mix(vec3(0.78, 0.3, 0.4), vec3(0.24, 0.62, 0.7), step(0.25, paintPick)), vec3(0.82, 0.62, 0.24), step(0.5, paintPick)),
+        vec3(0.46, 0.36, 0.84),
+        step(0.75, paintPick),
+    );
+    const nc = vec2(hit.z.sub(depth.mul(0.5)), by.sub(1.72));
+    const tubeKind = h1(float(41.0), float(3.0));
+    const ring = abs(length(nc).sub(0.42));
+    const zig = abs(nc.y.sub(abs(fract(nc.x.div(0.5).add(0.5)).sub(0.5)).mul(0.6).sub(0.15))).add(step(1.0, abs(nc.x)));
+    const bars = abs(fract(nc.y.div(0.28).add(0.5)).sub(0.5)).mul(0.28).add(step(0.42, abs(nc.y))).add(step(0.7, abs(nc.x)));
+    const tubeD = select(tubeKind.lessThan(0.34), ring, select(tubeKind.lessThan(0.67), zig, bars));
+    const tube = float(1.0).sub(smoothstep(0.02, 0.045, tubeD)).mul(2.6).add(exp(tubeD.mul(-9.0)).mul(0.4));
+    // The wall is dressed: two sconces throw pools of light on it, a dado rail runs along it,
+    // and framed posters hang either side of the tube (each a disc over two bands of colour).
+    const sconce1 = vec2(hit.z.sub(depth.mul(0.2)), by.sub(2.2));
+    const sconce2 = vec2(hit.z.sub(depth.mul(0.82)), by.sub(2.2));
+    const lampD = min(sconce1.dot(sconce1), sconce2.dot(sconce2));
+    const pool = exp(sconce1.dot(sconce1).mul(-1.3)).add(exp(sconce2.dot(sconce2).mul(-1.3)));
+    const rail = smoothstep(0.035, 0.012, abs(by.sub(0.95)));
+    const cellS = floor(hit.z.div(0.86));
+    const pu = fract(hit.z.div(0.86)).sub(0.5).mul(0.86);
+    const pv = by.sub(1.58);
+    const hung = step(0.78, abs(nc.x)).mul(step(0.3, h1(cellS, float(51.0))));
+    const inPoster = step(abs(pu), 0.26).mul(step(abs(pv), 0.34)).mul(hung);
+    const inFrame = step(abs(pu), 0.29).mul(step(abs(pv), 0.37)).mul(hung);
+    const posterHue = h1(cellS, float(57.0));
+    const ink = mix(mix(vec3(1.0, 0.3, 0.5), vec3(0.2, 0.8, 1.0), step(0.33, posterHue)), vec3(1.0, 0.8, 0.2), step(0.66, posterHue));
+    const art = mix(mix(ink.mul(0.45), ink.zxy, step(pv, -0.1)), vec3(1.0, 0.95, 0.85), step(length(vec2(pu, pv.sub(0.08))), 0.12));
+    const wallLit = L.mul(pool.mul(0.34).add(0.1)).mul(dim);
+    const wall = paint.mul(mix(float(0.5), float(1.0), step(0.95, by))).add(rail.mul(0.35)).mul(wallLit);
+    const side = mix(mix(wall, vec3(0.02).mul(wallLit), inFrame), art.mul(wallLit).mul(1.5), inPoster)
+        .add(mix(L, vec3(1.0, 0.8, 0.5), 0.5).mul(smoothstep(0.012, 0.005, lampD)).mul(2.4))
+        .add(accent.mul(tube).mul(lit));
+    // The accent washes down the back wall from the ceiling line, and the floor is laid in two
+    // tones of the room's paint.
+    const cove = accent.mul(exp(max(roomH.sub(by), 0.0).mul(-7.0))).mul(lit).mul(0.45);
+    const laid = step(0.5, fract(floor(hit.x.div(0.45)).add(floor(hit.z.div(0.45))).mul(0.5)));
+    const shell = back.add(cove).mul(isBack).add(ceil.mul(isCeil))
+        .add(flo.mul(mix(vec3(1.0), paint.mul(1.7), laid.mul(0.4))).mul(isFloor))
         .add(side.mul(float(1.0).sub(isBack).sub(isY)));
     const fall = exp(t.mul(-0.2));
     const room = shell.mul(fall).toVar();
@@ -889,7 +930,18 @@ export function createGeneratedShops(u, shops, opts) {
             const lightL = tube(dr).add(tube(dl.x).mul(frames.x)).add(tube(dl.y).mul(frames.y)).add(tube(dl.z).mul(frames.z));
             signFace.addAssign(mix(tint, white, 0.4).mul(lightL).mul(inLogo).mul(tubeLive));
         }
+        // A string of bulbs under the board, on some: warm, pink and cyan, each twinkling.
+        const festoon = step(0.58, ndHash11(seed.mul(0.67).add(21.0)));
+        const bulbId = floor(uM.div(0.42));
+        const bulbD = length(vec2(fract(uM.div(0.42)).sub(0.5).mul(0.42), vM.sub(fy0.add(0.035))));
+        const bulbHue = ndHash21(vec2(bulbId, seed));
+        const bulbCol = mix(mix(vec3(1.0, 0.74, 0.38), vec3(1.0, 0.28, 0.55), step(0.4, bulbHue)), vec3(0.3, 0.9, 1.0), step(0.7, bulbHue));
+        const bulbs = bulbCol.mul(smoothstep(0.045, 0.028, bulbD).mul(2.6).add(exp(bulbD.mul(-22.0)).mul(0.35)))
+            .mul(sin(u.time.mul(bulbHue.mul(3.0).add(2.0)).add(bulbId.mul(1.7))).mul(0.2).add(0.8))
+            .mul(festoon)
+            .mul(mains);
         const fascia = mix(vec3(0.01, 0.011, 0.014).mul(ctx.glow.add(0.2)), signFace, inBoard)
+            .add(bulbs)
             .add(ctx.pulse.mul(core.add(fill).add(halo.mul(0.5)).mul(1.6)))
             .mul(ctx.after.mul(0.35).add(1.0));
         const inFascia = step(fy0, vM);
@@ -900,13 +952,26 @@ export function createGeneratedShops(u, shops, opts) {
         const tu = fract(uM.div(tileSize));
         const tv = fract(vM.div(tileSize.mul(mix(float(1.0), float(2.2), step(1.5, tileKind)))));
         const joint = float(1.0).sub(smoothstep(0.0, 0.06, min(min(tu, float(1.0).sub(tu)), min(tv, float(1.0).sub(tv)))));
-        const tileAlb = mix(vec3(0.03, 0.032, 0.04), vec3(0.045, 0.04, 0.036), ndHash21(floor(vec2(uM, vM).div(tileSize)).add(seed))).mul(float(1.0).sub(joint.mul(0.5).mul(ctx.detail)));
+        const tileId = floor(vec2(uM, vM).div(tileSize));
+        const plain = mix(vec3(0.03, 0.032, 0.04), vec3(0.045, 0.04, 0.036), ndHash21(tileId.add(seed)));
+        // Most shops are tiled in a glaze of one of their own colours; the small tiles in a
+        // chequer of it and cream.
+        const glaze = mix(accent, second, step(0.5, ndHash11(seed.mul(0.53).add(3.0)))).mul(0.1).add(0.01);
+        const chequer = step(0.5, fract(tileId.x.add(tileId.y).mul(0.5))).mul(float(1.0).sub(step(0.5, tileKind)));
+        const tileAlb = mix(plain, mix(glaze, vec3(0.1, 0.095, 0.085), chequer.mul(0.85)), step(ndHash11(seed.mul(0.37).add(6.0)), 0.7))
+            .mul(float(1.0).sub(joint.mul(0.5).mul(ctx.detail)));
         const toOpen = max(max(o0.x.sub(uM), uM.sub(o1.x)), max(o0.y.sub(vM), vM.sub(o1.y)));
+        // A tube of neon bent round the opening, on about half of them.
+        const openTubeD = abs(toOpen.sub(0.1));
+        const openTube = float(1.0).sub(smoothstep(0.012, 0.03, openTubeD)).mul(1.7).add(exp(openTubeD.mul(-20.0)).mul(0.22))
+            .mul(step(0.45, ndHash11(seed.mul(0.91).add(12.0))))
+            .mul(step(0.0, toOpen));
         const spillOut = exp(max(toOpen, 0.0).mul(-3.2)).mul(0.6);
         const sheen = pow(float(1.0).sub(ctx.ndv), 3.0).mul(u.rain).mul(0.5);
         const pier = tileAlb.mul(vec3(0.03, 0.038, 0.06).add(ctx.glow.mul(0.9)).add(ctx.sky.mul(3.0)).add(ctx.pulse.mul(3.0)))
             .add(inside.mul(spillOut).mul(0.06))
-            .add(ctx.glow.mul(0.06).add(u.hazeLow.mul(0.2)).mul(sheen));
+            .add(ctx.glow.mul(0.06).add(u.hazeLow.mul(0.2)).mul(sheen))
+            .add(second.mul(openTube).mul(buzz).mul(lit));
 
         // ── The roller shutter ──
         const openH = o1.y.sub(o0.y);
@@ -946,7 +1011,7 @@ export function createGeneratedShops(u, shops, opts) {
         const pushBar = step(abs(g.y.sub(o0.y.add(1.05))), 0.022).mul(step(abs(g.x.sub(doorC)), 0.38));
         const frameMask = clamp(kick.add(transom).add(doorJamb).add(mull).add(frameEdge)
             .add(pushBar), 0.0, 1.0);
-        const frameCol = vec3(0.03, 0.032, 0.036).mul(ctx.glow.mul(0.6).add(inside.mul(0.5)).add(0.05))
+        const frameCol = mix(vec3(0.03, 0.032, 0.036), second.mul(0.09).add(0.01), 0.7).mul(ctx.glow.mul(0.6).add(inside.mul(0.5)).add(0.05))
             .add(inside.mul(pushBar).mul(0.3));
         // A sign hung in the window away from the door.
         const signN = max(text.w, 1.0);

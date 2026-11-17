@@ -1,8 +1,9 @@
 /* eslint-disable import/no-unresolved, import/no-extraneous-dependencies */
 /**
  * Waves — water in the air: the lip's standing rain, the spray a clear or a lock throws, and
- * the spindrift (mist where the lip comes down, the plume the offshore wind tears off the
- * shoulder's crest). The white water a dolphin tears up is in waves-splash.js.
+ * the spindrift (the plume the offshore wind tears off the shoulder's crest). The white water a
+ * dolphin tears up is in waves-splash.js; the white water where the lip lands, in
+ * waves-whitewater.js.
  *
  * Everything here is slow motion, like the wave: a drop leaves the lip at the speed the water
  * was drawn over it and falls under a fraction of gravity, so it hangs, turns the low sun into
@@ -22,6 +23,7 @@ import {
     FLOW, TAU, WAVE, mulberry32, wavePoint,
 } from './waves-core.js';
 import { GRAVITY } from './waves-acts.js';
+import { LANDED_WHOLE, LANDING_ARC } from './waves-water.js';
 
 /** Gravity in the wave's slow motion (metres a second squared): waves-acts.js has the number. */
 export { GRAVITY };
@@ -44,7 +46,7 @@ export const cameraRight = () => vec3(cameraViewMatrix[0].x, cameraViewMatrix[1]
 export const cameraUp = () => vec3(cameraViewMatrix[0].y, cameraViewMatrix[1].y, cameraViewMatrix[2].y);
 
 /** A quad turned to the eye and drawn out along a velocity, as the eye sees it. */
-const streak = (centre, velocity, size, stretchPerSpeed) => {
+export const streak = (centre, velocity, size, stretchPerSpeed) => {
     const viewVel = cameraViewMatrix.mul(vec4(velocity, 0.0)).xyz;
     const speed = length(viewVel.xy);
     const along = viewVel.xy.div(max(speed, 1e-3));
@@ -58,7 +60,7 @@ const streak = (centre, velocity, size, stretchPerSpeed) => {
  * How a drop takes the hour: a little of the sky, and the sun (or the moon) when it stands
  * behind it. `light` = the hour's colours (waves-tsl.js createLight).
  */
-const dropLight = (position, sun, warm, light) => {
+export const dropLight = (position, sun, warm, light) => {
     const toDrop = normalize(position.sub(cameraPosition));
     const forward = clamp(dot(toDrop, sun), 0.0, 1.0);
     const f2 = forward.mul(forward);
@@ -69,7 +71,7 @@ const dropLight = (position, sun, warm, light) => {
         .mul(mix(vec3(1.0), vec3(1.15, 1.0, 0.82), warm));
 };
 
-const bead = () => {
+export const bead = () => {
     const p = uv().sub(0.5).mul(2.0);
     const d = length(p);
     return exp(d.mul(d).mul(-5.0)).mul(float(1.0).sub(smoothstep(0.78, 1.0, d)));
@@ -110,7 +112,10 @@ export function createLipRain({
     const age = fract(s.z.mul(7.31).add(s.x.mul(3.17)).add(U.time.div(life))).mul(life);
     const lip = shape.lipAngle(d);
     const torn = smoothstep(WAVE.lipCrest + 0.25, WAVE.lipClosed - 0.4, lip);
-    const reach = mix(float(0.12), float(1.6), torn).mul(U.tear.mul(0.9).add(1.0));
+    // (The water's own numbers: a landed lip is a whole curtain, and its rain leaves its foot.)
+    const landed = smoothstep(WAVE.lipClosed - LANDING_ARC, WAVE.lipClosed - 0.04, lip);
+    const reach = mix(float(0.12), float(1.6), torn).mul(U.tear.mul(0.9).add(1.0))
+        .mul(float(1.0).sub(landed.mul(LANDED_WHOLE)));
     const row = float(1.0).sub(s.y.mul(reach).mul(0.75).div(lip.mul(WAVE.rho)));
     const from = shape.point(row, z).position;
     const before = shape.point(row.sub(0.014), z).position;
@@ -448,9 +453,10 @@ export class SprayPool {
 // ── Spindrift ───────────────────────────────────────────────────────────────────────────────
 
 /**
- * Soft sheets of spray: the boil where the lip comes down on the trough, and the plume the
- * offshore wind tears off the shoulder's crest ahead and carries back over the wave.
- * Seeds: x where along its line, y size and height, z loop, w which of the two it is.
+ * Soft sheets of spray: the plume the offshore wind tears off the shoulder's crest ahead and
+ * carries back over the wave. (The white water where the lip comes down is waves-whitewater.js:
+ * it covers what is behind it, and light added to an evening sea does not show.)
+ * Seeds: x where along the crest, y size and height, z loop.
  */
 export function createMist({
     tier, U, shape, noise, seed = 9,
@@ -462,36 +468,24 @@ export function createMist({
         seeds[i * 4] = (i + rand()) / count;
         seeds[i * 4 + 1] = rand();
         seeds[i * 4 + 2] = rand();
-        // Two in five are the boil at the landing; the rest are the plume.
-        seeds[i * 4 + 3] = i % 5 < 2 ? 0 : 1;
+        seeds[i * 4 + 3] = rand();
     }
     const { base, geometry } = quads(count);
     geometry.setAttribute('aSeed', new THREE.InstancedBufferAttribute(seeds, 4));
 
     const s = attribute('aSeed', 'vec4');
     const material = additive('waves-spindrift');
-    const plume = s.w;
-    const life = mix(s.z.mul(2.5).add(3.5), s.z.mul(4.0).add(6.0), plume);
+    const life = s.z.mul(4.0).add(6.0);
     const phase = fract(s.z.mul(5.3).add(s.x.mul(2.7)).add(U.time.div(life)));
     const age = phase.mul(life);
-    // The boil: along the line where the lip meets the trough, rolling up and back.
-    const dBoil = shape.landing.sub(2.6).add(s.x.mul(4.4));
-    const foot = shape.point(float(1.0), dBoil.negate()).position;
-    const boil = vec3(foot.x.add(s.y.sub(0.5).mul(1.1)), max(foot.y, 0.0).add(0.3), foot.z)
-        .add(vec3(age.mul(0.16), age.mul(0.24), age.mul(FLOW.z)));
-    // The plume: off the crest ahead, carried up and back over the wave by the wind.
+    // Off the crest ahead, carried up and back over the wave by the wind.
     const dPlume = shape.crest.add(s.x.mul(s.x).mul(62.0)).sub(1.0);
     const top = shape.point(float(1.0), dPlume.negate()).position;
-    const blown = top.add(vec3(1.25, 0.34, FLOW.z * 0.5).mul(age)).add(vec3(0.0, s.y.mul(0.5), 0.0));
-    const centre = mix(boil, blown, plume);
-    const size = mix(s.y.mul(0.7).add(0.9).add(age.mul(0.2)), s.y.mul(2.2).add(2.2).add(age.mul(0.85)), plume);
+    const centre = top.add(vec3(1.25, 0.34, FLOW.z * 0.5).mul(age)).add(vec3(0.0, s.y.mul(0.5), 0.0));
+    const size = s.y.mul(2.2).add(2.2).add(age.mul(0.85));
     const fade = smoothstep(0.0, 0.18, phase).mul(float(1.0).sub(smoothstep(0.45, 1.0, phase)));
     // (The offshore wind streams the plume back harder: the sea's own state.)
-    const strength = mix(
-        float(0.026).add(U.tear.mul(0.05)).add(U.sea.z.mul(0.035)),
-        U.sea.y.mul(0.07).add(0.035),
-        plume,
-    );
+    const strength = U.sea.y.mul(0.07).add(0.035);
     // Lit like everything in the air here: mostly by the sun standing behind it.
     const toMist = normalize(centre.sub(cameraPosition));
     const forward = clamp(dot(toMist, U.sun), 0.0, 1.0);
@@ -502,7 +496,7 @@ export function createMist({
             .mul(U.light.fireTint))
         .mul(mix(vec3(1.0), vec3(1.15, 1.0, 0.82), U.warm));
     material.positionNode = centre
-        .add(cameraRight().mul(positionGeometry.x.mul(size).mul(mix(float(1.0), float(1.9), plume))))
+        .add(cameraRight().mul(positionGeometry.x.mul(size).mul(1.9)))
         .add(cameraUp().mul(positionGeometry.y.mul(size)));
     const vLook = varying(light.mul(fade).mul(strength), 'vWaveMist');
     const vSeed = varying(vec4(s.x, s.y, s.z, phase), 'vWaveMistSeed');

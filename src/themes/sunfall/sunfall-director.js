@@ -40,6 +40,7 @@ import { GameplaySurge, Swell } from '../shared/gameplay-surge.js';
 import {
     PIECE_CODES,
     PIECE_SWATCH_RGB,
+    SUNFALL_SHAFTS,
     SUNFALL_STATIONS,
     SUNFALL_TIMINGS,
     SUNFALL_WEATHERS,
@@ -68,6 +69,18 @@ const CATARACT_FRONT = 1.6;
 /** The cataract thins (its envelope × 1.6, clamped) at this rate a second. */
 const CATARACT_THIN = 1.6 / SUNFALL_TIMINGS.cataractSeconds;
 const DEFAULT_CODES = Object.freeze(['T', 'S', 'Z', 'I']);
+/** How far from the oculus's centre (in its radii) a cloud's shadow edge still shades the opening. */
+const CLOUD_REACH = 2.1;
+/** The soft width of a cloud shadow's edge (oculus radii; sunfall-tsl.js draws the same edge). */
+const CLOUD_EDGE = 0.7;
+const NO_CLOUD = Object.freeze([1, 0, -9, -10]);
+
+/**
+ * A session's serial, never shared by two directors: what the world keeps per session (the leaves
+ * and blossoms of locks, the flora, the vapour) starts afresh on any serial it has not seen.
+ */
+let sessions = 0;
+const nextSession = () => { sessions += 1; return sessions; };
 
 /** The column (0..1 of the board's width) at the centre of a piece's cells. */
 function centroidU(cells) {
@@ -102,6 +115,14 @@ export class SunfallDirector {
         this.weatherMix = 0;
         this.weatherTimer = 64;
         this.weatherLocked = null;
+
+        // A cumulus outside crosses the sun now and then: its shadow sweeps the opening, the
+        // cave turns blue, and the light floods back. Its own random stream (the weather's draws
+        // stay what they were).
+        this.cloudRng = mulberry32(this.seed ^ 0x636c6f75);
+        this.cloud = {
+            timer: 34, active: false, centre: -9, length: 3.4, speed: 0.9, dirX: 1, dirZ: 0,
+        };
 
         // Persistent session state (The Turning: +15° per Twist line)
         this.fringeAngleTarget = 0;
@@ -157,6 +178,10 @@ export class SunfallDirector {
         this.comboColumns = 1;
         this.comboShafts = 1;
         this.sevenfoldPulse = 0;
+        /** How open each of the chain's shafts stands (0..1), in the order they open. */
+        this.shaftOpen = new Float32Array(SUNFALL_SHAFTS.length);
+        /** How much of the pieces' pigments the shafts carry (a perfect clear's stained light). */
+        this.shaftPigment = 0;
         this.exhalePulse = 0;
         this.exhaleAge = 999;
 
@@ -189,6 +214,7 @@ export class SunfallDirector {
         };
         this.windClock = 0;
         this.swiftClock = 0;
+        this.steamClock = 0;
         this.poolFlush = 0;
         this.gild = 0;
         this.wet = 0;
@@ -198,11 +224,14 @@ export class SunfallDirector {
         this.nextShootCursor = 0;
 
         // Recent locks and clears, each with a serial, for the world's leaves and rows.
-        this.sessionSerial = 0;
+        this.sessionSerial = nextSession();
         this.lockSerial = 0;
         this.lockEvents = [];
         this.clearSerial = 0;
         this.clearEvents = [];
+        /** One-off moments with a serial, for what the world lets loose (sunfall-flora.js). */
+        this.beatSerial = 0;
+        this.beats = [];
         this.lastHardDrop = null;
 
         // Seed 6 initial young shoots so the garden has living botanical colour at t=0
@@ -276,6 +305,24 @@ export class SunfallDirector {
             this.nextWeatherIndex = idx;
             this.weatherMix = 0;
         }
+    }
+
+    /**
+     * A cumulus crosses the sun: its shadow enters the opening from one side, lies over it and
+     * leaves by the other (a pass already under way is left alone). `at` places it for a capture
+     * (-1 entering, 0 over the middle, 1 leaving).
+     */
+    passCloud({ length = null, speed = null, at = null } = {}) {
+        const c = this.cloud;
+        if (c.active && at === null) return;
+        const a = this.cloudRng() * Math.PI * 2;
+        c.dirX = Math.cos(a);
+        c.dirZ = Math.sin(a);
+        c.length = length ?? 2.6 + this.cloudRng() * 2.4;
+        c.speed = speed ?? 0.75 + this.cloudRng() * 0.4;
+        const start = -(CLOUD_REACH + c.length * 0.5);
+        c.centre = at === null ? start : start * -clamp(at, -1, 1);
+        c.active = true;
     }
 
     /**
@@ -414,6 +461,15 @@ export class SunfallDirector {
         return event;
     }
 
+    /** Record a one-off moment (`kind`, with its own details) for the world's life. */
+    _beat(kind, details = {}) {
+        this.beatSerial += 1;
+        this.beats.push({
+            serial: this.beatSerial, kind, time: this.time, ...details,
+        });
+        if (this.beats.length > 12) this.beats.shift();
+    }
+
     /** The pigments of the last few pieces set down (the ones a clear is made of). */
     _recentCodes() {
         const n = this.lockEvents.length;
@@ -455,6 +511,7 @@ export class SunfallDirector {
             serial: this.clearSerial,
             rows: hasRows ? rows.slice(0, 4) : [Math.round(avgRow)],
             lines: count,
+            codes: pigments.slice(0, 4),
             time: t,
         });
         if (this.clearEvents.length > 8) this.clearEvents.shift();
@@ -495,6 +552,7 @@ export class SunfallDirector {
             // 4-Line Cataract + Analytic Double Rainbow (a second quad feeds the first).
             this._pour(1);
             this._holdBow(0);
+            this._beat('quad');
             const leadCode = pigments[0] && PIECE_SWATCH_RGB[pigments[0]] ? pigments[0] : 'S';
             this.flushColor = [...PIECE_SWATCH_RGB[leadCode]];
             this.flushSwell.hit(0.6, t);
@@ -578,6 +636,7 @@ export class SunfallDirector {
                 this.exhalePulse = pulse;
                 this.exhaleAge = 0;
             }
+            this._beat('release', { peak: p });
         }
         this.comboCount = 0;
         this.comboPeak = 0;
@@ -622,6 +681,7 @@ export class SunfallDirector {
         }
         this.turningSwell.hit(1, t);
         this.turningPulse = this.turningSwell.valueAt(t);
+        this._beat('twist', { lines: Math.max(0, n) });
         this.showerSwell.hit(n > 0 ? 0.5 : 0.3, t);
         this.showerPulse = this.showerSwell.valueAt(t);
         if (n > 0) this.surge.twist(t);
@@ -649,6 +709,7 @@ export class SunfallDirector {
             });
         }
         this.surge.crown(t);
+        this._beat('perfect');
         if (this.comboCount > 0) this.releaseCombo(Math.max(this.comboPeak, this.comboCount));
     }
 
@@ -666,6 +727,9 @@ export class SunfallDirector {
             }
         }
         this.levelPanPulse = 1.0;
+        // The light walks under a passing cloud and comes back at its new angle.
+        this.passCloud({ length: 3.0, speed: 1.15 });
+        this._beat('levelUp', { level: lv });
         this.surge.levelUp(this.time);
     }
 
@@ -674,6 +738,7 @@ export class SunfallDirector {
      * Cave-cloud deck closes softly across the oculus over 2.6 s; chamber bounce remains.
      */
     onGameOver() {
+        if (!this.gameOverActive) this._beat('over');
         this.gameOverActive = true;
         this.morningPulse = 0;
     }
@@ -696,6 +761,8 @@ export class SunfallDirector {
         this.nextWeatherIndex = 1;
         this.weatherMix = 0;
         this.weatherTimer = 64;
+        this.cloudRng = mulberry32(this.seed ^ 0x636c6f75);
+        Object.assign(this.cloud, { timer: 34, active: false, centre: -9 });
         this.gameOverActive = false;
         this.overCloudClose = 0;
         this.morningPulse = 1.0;
@@ -706,6 +773,8 @@ export class SunfallDirector {
         this.comboPeak = 0;
         this.comboColumns = 1;
         this.comboShafts = 1;
+        this.shaftOpen.fill(0);
+        this.shaftPigment = 0;
         this.comboTracker.reset();
         this.b2bCount = 0;
         this.b2bLevel = 0;
@@ -717,11 +786,13 @@ export class SunfallDirector {
         this.bowStart = -Infinity;
         this.bowHold = -Infinity;
         this.cataractHold = 0;
-        this.sessionSerial += 1;
+        this.sessionSerial = nextSession();
         this.lockSerial = 0;
         this.clearSerial = 0;
         this.lockEvents = [];
         this.clearEvents = [];
+        this.beatSerial = 0;
+        this.beats = [];
         this.lastHardDrop = null;
     }
 
@@ -804,6 +875,19 @@ export class SunfallDirector {
             }
         }
 
+        // 2b. The cloud outside: a pass under way moves on; otherwise the next one draws near.
+        const { cloud } = this;
+        if (cloud.active) {
+            cloud.centre += safeDt * cloud.speed;
+            if (cloud.centre - cloud.length * 0.5 > CLOUD_REACH) {
+                cloud.active = false;
+                cloud.timer = lerp(SUNFALL_TIMINGS.cloudPassMin, SUNFALL_TIMINGS.cloudPassMax, this.cloudRng());
+            }
+        } else if (!this.gameOverActive) {
+            cloud.timer -= safeDt;
+            if (cloud.timer <= 0) this.passCloud();
+        }
+
         // 3. Twist persistent vine-fringe rotation; a fever wheels the ring of shafts slowly.
         if (!this.reducedMotion) this.fringeAngleTarget += safeDt * heat.fever * 0.1;
         if (this.reducedMotion) {
@@ -864,6 +948,18 @@ export class SunfallDirector {
             this.comboShafts = approach(this.comboShafts, this.comboColumns, 0.35, safeDt);
         }
 
+        // The chain's shafts: one more blade of sun for each link (a chain of seven stands in
+        // seven with the sunfall), each opening where it belongs; when the chain lets go they
+        // close from the last opened back. A perfect clear opens them all, in the pieces' pigments.
+        const crown = smooth(0.12, 0.5, this.zenithPulse);
+        const links = this.comboCount >= 7 ? SUNFALL_SHAFTS.length : clamp(this.comboCount - 1, 0, 5);
+        for (let k = 0; k < this.shaftOpen.length; k += 1) {
+            const target = Math.max(k < links ? 1 : 0, crown);
+            const tau = target > this.shaftOpen[k] ? 0.2 : 0.95 - k * 0.11;
+            this.shaftOpen[k] = approach(this.shaftOpen[k], target, tau, safeDt);
+        }
+        this.shaftPigment = approach(this.shaftPigment, crown, crown > this.shaftPigment ? 0.25 : 1.2, safeDt);
+
         if (this.exhalePulse > 0) {
             this.exhaleAge += safeDt;
             this.exhalePulse = decay(this.exhalePulse, SUNFALL_TIMINGS.comboExhaleSeconds);
@@ -894,6 +990,11 @@ export class SunfallDirector {
         // 9. The doline with the heat: the air and the swiftlets quicken (on their own clocks,
         // so a change of pace never jumps them), the pool flushes in fever and greens back
         // slowly, the crowns stay wet.
+        // Steam rises off the sunlit crowns while the weather steams (3.5 m a second at its height).
+        const steaming = this.weatherLocked !== null
+            ? sampleWeather(this.weatherLocked).steam
+            : sampleWeather(this.weatherIndex, this.nextWeatherIndex, this.weatherMix).steam;
+        this.steamClock += safeDt * steaming * 3.5;
         this.windClock += safeDt * (1 + (heat.level * 0.5 + heat.fever * 0.7) * motion);
         this.swiftClock += safeDt * (1 + (heat.level * 0.6 + heat.fever * 0.9) * motion);
         const flushTarget = clamp01(heat.fever * 0.75 + smooth(0.5, 0.9, heat.level) * 0.12);
@@ -929,6 +1030,14 @@ export class SunfallDirector {
             0.14,
             1.35,
         );
+        // The cloud's shadow as the shaders draw it: a band between two soft edges.
+        const { cloud } = this;
+        const lead = cloud.centre + cloud.length * 0.5;
+        const trail = cloud.centre - cloud.length * 0.5;
+        const cloudPass = cloud.active ? [cloud.dirX, cloud.dirZ, lead, trail] : NO_CLOUD;
+        const sunShade = cloud.active
+            ? smooth(trail - CLOUD_EDGE, trail + CLOUD_EDGE, 0) * (1 - smooth(lead - CLOUD_EDGE, lead + CLOUD_EDGE, 0))
+            : 0;
 
         return {
             time: this.time,
@@ -940,6 +1049,8 @@ export class SunfallDirector {
             fringeAngle: this.fringeAngle,
             fringeDegrees: this.fringeAngle / DEG2RAD,
             cloudHoleOpen,
+            cloudPass,
+            sunShade,
             flushPulse: this.flushPulse,
             flushColor: this.flushColor,
             flushWorldPos: this.flushWorldPos,
@@ -964,6 +1075,8 @@ export class SunfallDirector {
             comboColumns: this.comboColumns,
             comboShafts: this.comboShafts,
             sevenfoldPulse: this.sevenfoldPulse,
+            shaftOpen: this.shaftOpen,
+            shaftPigment: this.shaftPigment,
             exhalePulse: this.exhalePulse,
             exhaleAge: this.exhaleAge,
             b2bCount: this.b2bCount,
@@ -976,6 +1089,7 @@ export class SunfallDirector {
             overCloudClose: this.overCloudClose,
             morningPulse: this.morningPulse,
             heat,
+            steamClock: this.steamClock,
             windClock: this.windClock,
             windGain: 1 + (heat.level * 0.35 + heat.fever * 0.5) * motion,
             swiftClock: this.swiftClock,
@@ -994,6 +1108,7 @@ export class SunfallDirector {
             lockEvents: this.lockEvents,
             clearSerial: this.clearSerial,
             clearEvents: this.clearEvents,
+            beats: this.beats,
         };
     }
 }

@@ -12,12 +12,19 @@
  *                            layout rules from public/styles/main.css; the composition solver
  *                            reads its rect exactly as in game). board=0 → the centred menu shot
  *   hud=0                    board without the HUD mock
- *   event=lock|clear|quad|chain|ride|levelUp  fire a gameplay event (quad: four lines)...
+ *   event=lock|hardDrop|clear|quad|twist|b2b|salute|cascade|candles|perfect|chain|ride|levelUp|shell
+ *                            fire a gameplay event (quad: four lines; twist with lines=<n> clears
+ *                            them; cascade: waves=<n>; perfect: bare=1 without its clear;
+ *                            shell: kind=<SHELL_KINDS>)...
  *   eventAge=<s>             ...and show it <s> seconds later (lines=<n>, chain=<n> links)
  *                            chain: the coaster lifted n notches; ride: a chain of n that broke
  *   parts=sky,sea,...        draw only these parts (SYNTHWAVE_PARTS: sky sea wheel pier coaster
  *                            promenade palms gulls fireworks)
- *   dusk=<0..1>              hold the evening: 0 = the sun on the sea, 1 = afterglow (default:
+ *   hour=<0..3>              hold the evening's hour: 0 golden hour, 1 sunset, 2 afterglow,
+ *                            3 night; temper=<0..3> tonight's colours (tangerine, flamingo,
+ *                            ember, peach); weather=<0..3> (streaks, mackerel, clear, towers);
+ *                            sea=<0.5..1.4> the sea's liveliness. Each stands whatever the clock
+ *   dusk=<0..1>              hold the evening by its old measure: 0.14 the sunset, 1 afterglow (default:
  *                            the clock walks it, DUSK.rest → afterglow → DUSK.rest, a stop every
  *                            EVENING_WALK.seconds, the neon ring turning at each)
  *   level=<n>                the run is at level n: its steps along the walk on top of ?t=
@@ -102,6 +109,10 @@ export function create({
     const world = new SynthwaveWorld({ scene, quality, random: rng || Math.random }).build();
     world.bindCamera(camera);
     if (params.has('dusk')) world.setDusk(num(params, 'dusk', 0), { hold: true });
+    if (params.has('hour')) world.setHour(num(params, 'hour', 1), { hold: true });
+    if (params.has('temper')) world.temperHeld = num(params, 'temper', 0);
+    if (params.has('weather')) world.weatherHeld = num(params, 'weather', 0);
+    if (params.has('sea')) world.seaHeld = num(params, 'sea', 1);
     const partsParam = params.get('parts');
     if (partsParam) world.showOnlyParts(partsParam.split(',').map((p) => p.trim()));
 
@@ -121,21 +132,54 @@ export function create({
     const eventName = params.get('event');
     const eventAge = num(params, 'eventAge', 0.4);
     const fireEvent = () => {
+        const lines = num(params, 'lines', 2);
         if (eventName === 'lock') {
             world.onPieceLock({ type: 'T', x: 1, rotation: 0 });
+        } else if (eventName === 'hardDrop') {
+            world.onPieceLock({ type: 'Z', x: 6, rotation: 0 }, { hardDrop: true, distance: num(params, 'distance', 16) });
         } else if (eventName === 'clear') {
             world.onPieceLock({ type: 'S', x: 4, rotation: 0 });
-            world.onLineClear(num(params, 'lines', 2));
+            world.onLineClear(lines);
         } else if (eventName === 'quad') {
             world.onPieceLock({ type: 'I', x: 6, rotation: 1 });
             world.onLineClear(4);
+        } else if (eventName === 'twist') {
+            world.onPieceLock({ type: 'T', x: 4, rotation: 2 });
+            if (params.has('lines')) world.onLineClear(lines, { twist: true });
+            else world.onTwist();
+        } else if (eventName === 'b2b') {
+            world.b2bStreak = Math.max(0, num(params, 'streak', 2) - 1);
+            world.onPieceLock({ type: 'I', x: 6, rotation: 1 });
+            world.onLineClear(4, { b2b: true });
+        } else if (eventName === 'salute') {
+            // The back-to-back's own part alone (no clear under it).
+            world.b2bStreak = num(params, 'streak', 3);
+            world.salute(world.q.stars0);
+        } else if (eventName === 'cascade') {
+            world.onPieceLock({ type: 'L', x: 3, rotation: 0 });
+            const waves = num(params, 'waves', 3);
+            for (let w = 1; w <= waves; w += 1) world.onLineClear(w === 1 ? lines : 1, { cascade: w });
+        } else if (eventName === 'candles') {
+            world.onPieceLock({ type: 'L', x: 3, rotation: 0 });
+            world.candles(num(params, 'waves', 3));
+        } else if (eventName === 'perfect') {
+            world.onPieceLock({ type: 'O', x: 4, rotation: 0 });
+            if (params.get('bare') !== '1') world.onLineClear(lines);
+            world.onPerfectClear();
         } else if (eventName === 'chain') {
             world.onChain(num(params, 'chain', 4));
         } else if (eventName === 'ride') {
             world.onChain(num(params, 'chain', 5));
             world.coaster.t = world.track.marks.liftTop;
             world.onChain(0);
-        } else if (eventName === 'levelUp') world.onLevelUp();
+        } else if (eventName === 'levelUp') {
+            world.onLevelUp();
+        } else if (eventName === 'shell') {
+            // One shell of a kind (kind=<SHELL_KINDS>), to judge its figure.
+            world.fireworks.launch(world.time, {
+                kind: params.get('kind') || 'peony', scale: num(params, 'scale', 1.1), stars: world.q.stars0, x: num(params, 'x', -0.1),
+            });
+        }
     };
 
     const size = new THREE.Vector2();
@@ -219,7 +263,7 @@ export function create({
     const levelSteps = Math.max(0, Math.round(num(params, 'level', 1)) - 1);
     const reachLevel = () => {
         for (let i = 0; i < levelSteps; i += 1) world.onLevelUp({ react: false });
-        world.duskSteps = world.duskTarget;
+        world.hourSteps = world.hourTarget;
         world.neonPhase = world.neonTarget;
     };
     reachLevel();

@@ -20,10 +20,13 @@
 import * as THREE from 'three/webgpu';
 import {
     CANOPY_LEVEL,
+    PIECE_CODES,
+    PIECE_SWATCH_RGB,
     SUNFALL_CLEAR,
     SUNFALL_LAYOUT,
     SUNFALL_PARTS,
     SUNFALL_SEED,
+    SUNFALL_SHAFTS,
     footFor,
     mulberry32,
     planDoline,
@@ -52,6 +55,12 @@ const BUILD_SLICE_MS = 8;
 /** The sunfall's gold in a fever (linear): a deep late-afternoon gold, never cream. */
 const GILT_CORE = new THREE.Vector3(1.0, 0.62, 0.26);
 const GILT_SCATTER = new THREE.Vector3(1.0, 0.66, 0.3);
+/** The sun through thin cloud (linear): silver-white. */
+const SILVER_CORE = new THREE.Vector3(0.9, 0.96, 1.0);
+/** How much of its piece's pigment a shaft takes at a perfect clear (more reads as stage light). */
+const SHAFT_STAIN = 0.2;
+/** How far over the pool the bow's arch stands (metres above the canopy at the foot). */
+const BOW_LIFT = 74;
 const NO_HEAT = Object.freeze({
     punch: 0, level: 0, fever: 0, stage: 0,
 });
@@ -413,6 +422,12 @@ export class SunfallWorld {
 
         ['skyZenith', 'skyRim', 'beamCore', 'beamScatter', 'poolSun', 'bounceVault', 'caveShadow', 'mistTint',
             'gourBlue'].forEach((key) => u[key].value.set(...st[key]));
+        // The sun through thin cloud is silver, not gold (the weather's).
+        const cool = (wt.cool ?? 0) * 0.7;
+        if (cool > 0) {
+            u.beamCore.value.lerp(SILVER_CORE, cool);
+            u.beamScatter.value.lerp(SILVER_CORE, cool);
+        }
         // A fever (and the crown) gilds the sunfall: the column and its light burn gold.
         const gild = snap.gild ?? 0;
         if (gild > 0) {
@@ -425,11 +440,18 @@ export class SunfallWorld {
         u.mistScale.value = wt.mistScale;
         u.cloudOpacity.value = wt.cloudOpacity;
         u.sprayRate.value = wt.sprayRate;
+        u.rain.value = wt.rain ?? 0;
+        u.steam.value = wt.steam ?? 0;
+        u.shafts.value = wt.shafts ?? 1;
+        u.cool.value = wt.cool ?? 0;
+        const pass = snap.cloudPass;
+        if (pass) u.cloudPass.value.set(pass[0], pass[1], pass[2], pass[3]);
+        u.sunShade.value = snap.sunShade ?? 0;
 
         // The sun's strength: a closing cloud over the oculus at game over, a small lift at zenith
         // (the crown's light is the pool's colours and the bow, not a whiter column).
         const zenith = snap.zenithPulse;
-        u.sunGain.value = (1 - snap.overCloudClose * 0.82) * (1 + zenith * 0.06);
+        u.sunGain.value = (1 - snap.overCloudClose * 0.82) * (1 + zenith * 0.06) * (wt.sun ?? 1);
         u.skyGain.value = 1 - snap.overCloudClose * 0.5;
 
         u.flushPulse.value = snap.flushPulse;
@@ -440,6 +462,7 @@ export class SunfallWorld {
         u.snapU.value = snap.snapU;
         u.snapColor.value.set(...snap.snapColor);
         u.kick.value.set(snap.kickL ?? 0, snap.kickR ?? 0);
+        u.steamClock.value = snap.steamClock ?? 0;
         u.windClock.value = snap.windClock ?? snap.time;
         u.windGain.value = snap.windGain ?? 1;
         u.swiftClock.value = snap.swiftClock ?? snap.time;
@@ -455,6 +478,9 @@ export class SunfallWorld {
         u.comboLift.value = snap.comboLift;
         u.comboColumns.value = snap.comboShafts ?? snap.comboColumns;
         u.sevenfoldPulse.value = snap.sevenfoldPulse;
+        this._packShafts(snap);
+        // The cataract's spray stands while the water pours and the bow is held.
+        u.spray.value = Math.min(1, Math.max(Math.min(1, snap.cataractPulse) * 1.3, snap.rainbowStrength));
         u.exhalePulse.value = snap.exhalePulse;
         u.exhaleAge.value = snap.exhaleAge ?? 99;
         u.floodThreads.value = snap.floodThreads;
@@ -471,18 +497,45 @@ export class SunfallWorld {
         this.camera.updateMatrixWorld(true);
         this.u.eye.copy(this.camera.position);
 
-        // The one bow: always 41.3° off the direction from the eye to the cataract's spray.
-        const spray = this.life?.sprayCentre;
-        if (spray) {
-            const bowSun = solveBowSun([
-                spray.x - this.camera.position.x,
-                spray.y - this.camera.position.y,
-                spray.z - this.camera.position.z,
-            ]);
-            u.bowSun.value.set(bowSun[0], bowSun[1], bowSun[2]);
-        }
+        // The one bow: always 41.3° off the direction from the eye to the top of the cataract's
+        // spray, so its arch stands over the pool (the spray is in the air's integral).
+        const bowSun = solveBowSun([
+            foot[0] - this.camera.position.x,
+            foot[1] + BOW_LIFT - this.camera.position.y,
+            foot[2] - this.camera.position.z,
+        ]);
+        u.bowSun.value.set(bowSun[0], bowSun[1], bowSun[2]);
         this.life?.update(snap);
         this._growShoots(snap);
+    }
+
+    /**
+     * The chain's shafts for the shaders: live ones packed at the front (an idle slot costs
+     * nothing), each with its light's tint: the sun's, or its own piece's pigment at a perfect clear.
+     */
+    _packShafts(snap) {
+        const { u } = this;
+        const open = snap.shaftOpen;
+        const rows = u.shaftRows.array;
+        let live = 0;
+        if (open) {
+            const pigment = snap.shaftPigment ?? 0;
+            for (let k = 0; k < SUNFALL_SHAFTS.length; k += 1) {
+                if (!(open[k] > 0.004)) continue;
+                const shaft = SUNFALL_SHAFTS[k];
+                rows[live * 2].set(shaft.x, shaft.z, open[k], shaft.radius);
+                const swatch = PIECE_SWATCH_RGB[PIECE_CODES[(k * 3 + 1) % PIECE_CODES.length]];
+                const stain = pigment * SHAFT_STAIN;
+                rows[live * 2 + 1].set(
+                    1 + (swatch[0] * 2.2 - 1) * stain,
+                    1 + (swatch[1] * 2.2 - 1) * stain,
+                    1 + (swatch[2] * 2.2 - 1) * stain,
+                    0,
+                );
+                live += 1;
+            }
+        }
+        u.shaftCount.value = live;
     }
 
     /** Flush the crowns nearest each new shoot in its piece's colour (New Growth). */

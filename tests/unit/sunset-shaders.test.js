@@ -252,10 +252,15 @@ describe.each(TIERS)('sunset shaders at %s', (quality) => {
 
     it('has a node material to build for every part', () => {
         for (const name of SUNSET_PARTS) {
-            const { mesh } = world.parts[name];
-            expect(mesh.material.isNodeMaterial, name).toBe(true);
-            const labels = built.filter((b) => b.object === mesh).map((b) => b.label);
-            expect(labels, name).toEqual(expect.arrayContaining(['WGSL', 'GLSL']));
+            const part = world.parts[name];
+            // (islands) A part may be a group of meshes (the islands' two groups): gate each.
+            const meshes = part.mesh.isMesh ? [part.mesh] : part.mesh.getObjectsByProperty('isMesh', true);
+            expect(meshes.length, name).toBeGreaterThan(0);
+            meshes.forEach((mesh) => {
+                expect(mesh.material.isNodeMaterial, name).toBe(true);
+                const labels = built.filter((b) => b.object === mesh).map((b) => b.label);
+                expect(labels, name).toEqual(expect.arrayContaining(['WGSL', 'GLSL']));
+            });
         }
     });
 
@@ -283,6 +288,26 @@ describe.each(TIERS)('sunset shaders at %s', (quality) => {
             expect(sea.out.fragment, `chop k ${k(row)}`).toContain(k(row));
             expect(sea.out.vertex, `chop k ${k(row)}`).not.toContain(k(row));
         });
+    });
+
+    it('lights the lanterns by the hour and by a flame inside them, on both backends', () => {
+        const { mesh } = world.parts.lanterns;
+        const stages = built.filter((b) => b.object === mesh);
+        expect(stages.map((b) => b.label).sort()).toEqual(['GLSL', 'WGSL']);
+        stages.forEach(({ label, out }) => {
+            // The flame's place is worked out a vertex (it wanders with the clock) and handed down.
+            expect(out.vertex, label).toContain('vSunsetFlameAt');
+            expect(out.fragment, label).toContain('vSunsetFlameAt');
+            // The model's four numbers and the lantern's own (colour and glow; flame and paper).
+            ['color', 'aLamp', 'aFlame'].forEach((name) => expect(out.vertex, `${label} ${name}`).toContain(name));
+            // The ribs are sized by distance, never by a screen derivative: on the crest of the
+            // line a derivative is zero on one pixel and whole on the next, and the rib is dotted.
+            expect(out.fragment, label).not.toMatch(/fwidth|dpdx|dpdy|dFdx|dFdy/);
+            // One flame, one hot core: an exp a lobe, no loop.
+            expect(out.fragment, label).not.toMatch(/\bfor\s*\(|\bloop\b/);
+        });
+        // Five vertex buffers of its own and the instance matrix: under WebGPU's eight.
+        expect(Object.keys(mesh.geometry.attributes).length + 1).toBeLessThanOrEqual(8);
     });
 
     it("builds the post stack's output on both backends without a word", () => {

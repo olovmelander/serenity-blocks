@@ -6,8 +6,9 @@
  *   the shafts (the light that comes down through the water is marched along every line of
  *   sight, at reduced resolution: each step looks up along the sun's ray to the pattern the
  *   surface throws, the same pattern that lays the caustic net on the sand, so a shaft stands
- *   over its own bright patch; the large animals' shadows and the great shaft of a four-line
- *   clear are in the same march) → pressure rings (a hard drop and a four-line clear send a ring
+ *   over its own bright patch; the steps are laid where the light that reaches the eye is, close
+ *   together near it, so the curtains of light there are drawn as rays; the large animals'
+ *   shadows and the glow of a four-line clear's crown are in the same march) → pressure rings (a hard drop and a four-line clear send a ring
  *   through the water that bends the picture as it crosses) and lens fringe → calm zones (what
  *   shows through the translucent board card and HUD is soft-clipped and its bloom attenuated)
  *   → bloom → exposure and event flash → "sea filmic" tone map (hue preserving, the hottest
@@ -24,13 +25,17 @@ import {
     If,
     Loop,
     abs,
+    atan,
     clamp,
+    cos,
     dot,
     exp,
     float,
     floor,
     interleavedGradientNoise,
     length,
+    log,
+    log2,
     max,
     min,
     mix,
@@ -44,6 +49,7 @@ import {
     select,
     smoothstep,
     step,
+    texture,
     uniform,
     uv,
     vec2,
@@ -53,7 +59,7 @@ import {
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { disposeBloomNodeDeep } from '../shared/bloom-dispose.js';
 import {
-    SURFACE, ocBeam, ocBell, ocHash21, ocLightPoint, ocLightRead, ocLuma, ocMax3, ocPow4, ocShade,
+    LIGHT_TILE, SURFACE, ocBeam, ocBell, ocHash21, ocLuma, ocMax3, ocPow4, ocShade,
 } from './ocean-tsl.js';
 import { flashScale } from '../../utils/photosensitivity.js';
 
@@ -92,7 +98,9 @@ export const EXPOSURE = 1.0;
 /** Metres along a line of sight the shafts are followed. */
 export const SHAFT_RANGE = 48;
 /** How strongly the shafts stand in the water at rest. */
-export const SHAFT_GAIN = 0.2;
+export const SHAFT_GAIN = 0.5;
+/** How strongly the crown of a four-line clear stands. */
+export const CROWN_GAIN = 0.05;
 
 /** Calm rects (board cards + HUD) the output pass evaluates. */
 export const CALM_RECTS_MAX = 5;
@@ -335,6 +343,8 @@ export class OceanPost {
      */
     buildShafts(u, sceneDepth, look) {
         const steps = look.shafts;
+        /** Texels of the light pattern to a metre of water (the pattern's edge is the tier's). */
+        const texelsPerMetre = (u.lightTexels || 512) / LIGHT_TILE;
         return Fn(() => {
             const st = uv();
             const depth = sceneDepth.sample(st).r;
@@ -345,30 +355,54 @@ export class OceanPost {
             // As far as the scene, the surface or the march's range, whichever comes first.
             const toSurface = float(SURFACE).sub(this.uEye.y).div(max(direction.y, 1e-3));
             const ceiling = select(direction.y.greaterThan(1e-3), toSurface, float(SHAFT_RANGE));
-            const reach = min(min(length(ray).mul(viewZ.negate()), ceiling), SHAFT_RANGE).toVar();
-            const stride = reach.div(steps).toVar();
-            const travelled = stride.mul(interleavedGradientNoise(screenCoordinate.xy)).toVar();
+            const reach = max(min(min(length(ray).mul(viewZ.negate()), ceiling), SHAFT_RANGE), 0.05).toVar();
             // What a metre of water takes out of the shafts' own light on its way to the eye. (More
             // than the water's own share: the columns near the eye are the ones that read as shafts,
             // and the far ones would only add up to a veil.)
-            const thin = dot(u.ext, vec3(0.2, 0.45, 0.35)).mul(float(1.0).sub(u.lift.mul(0.55))).add(0.03);
+            const thin = dot(u.ext, vec3(0.2, 0.45, 0.35)).mul(float(1.0).sub(u.lift.mul(0.55))).add(0.03).toVar();
+            // The steps are laid where the light that reaches the eye is: each carries the same
+            // share of it, so they stand close together near the eye (where a curtain of light is
+            // a metre wide on screen and must be drawn) and far apart out in the blue (where it
+            // is a veil anyway). `span` is the share of the light the whole walk can see.
+            const span = float(1.0).sub(exp(reach.mul(thin).negate())).toVar();
+            const jitter = interleavedGradientNoise(screenCoordinate.xy).toVar();
+            // Metres the pattern slides under the walk per metre walked: none looking up a ray.
+            const slide = length(direction.xz.sub(u.sunDir.xz.mul(direction.y.div(max(u.sunDir.y, 0.25))))).toVar();
+            const sunDrop = u.sunDir.xz.div(max(u.sunDir.y, 0.25)).toVar();
             const glow = float(0).toVar();
-            Loop(steps, () => {
+            const crown = float(0).toVar();
+            Loop(steps, ({ i }) => {
+                const left = max(float(1.0).sub(float(i).add(jitter).div(steps).mul(span)), 1e-3).toVar();
+                const travelled = log(left).negate().div(thin).toVar();
                 const point = this.uEye.add(direction.mul(travelled)).toVar();
-                const mask = ocLightRead(u, ocLightPoint(u, point)).g;
-                const under = max(float(SURFACE).sub(point.y), 0.0);
+                // The pattern is read no finer than this step can follow: a step that strides over
+                // many threads reads their mean (a coarser level), not one of them by chance.
+                const stride = span.div(thin.mul(steps)).div(left);
+                const lod = clamp(log2(max(stride.mul(slide).mul(texelsPerMetre), 1.0)).sub(1.0), 0.0, 6.0);
+                const under = max(float(SURFACE).sub(point.y), 0.0).toVar();
+                const tex = texture(u.lightTex, point.xz.add(sunDrop.mul(under)).div(LIGHT_TILE)).level(lod);
+                const mask = tex.g;
                 // A shaft is brightest under the surface and gone by the deep.
                 const sunk = exp(under.mul(-0.085));
-                const seen = exp(travelled.mul(thin).negate());
-                const lit = mask.mul(mask).mul(sunk).add(ocBeam(u, point).mul(1.1)).toVar();
-                if (look.shade) lit.mulAssign(ocShade(u, point));
-                glow.addAssign(lit.mul(seen));
-                travelled.addAssign(stride);
+                const shade = look.shade ? ocShade(u, point) : float(1.0);
+                glow.addAssign(mask.mul(mask).mul(sunk).mul(shade));
+                // The crown a four-line clear opens is made of the net's own threads: a ring of
+                // rays, not a column of fog.
+                const net = tex.r.mul(tex.r);
+                crown.addAssign(ocBeam(u, point).mul(net.mul(net).mul(7.0).add(0.3)).mul(shade));
             });
+            const share = span.div(thin.mul(steps));
             // Light scatters forward: the shafts are strongest looking up their length.
             const sunward = clamp(dot(direction, u.sunDir), 0.0, 1.0);
             const phase = ocPow4(sunward).mul(1.7).add(0.32);
-            return vec4(u.shaft.mul(glow.mul(stride)).mul(phase).mul(SHAFT_GAIN).mul(u.breath), 1.0);
+            // A perfect clear splits the crown into its colours: a glory round the board, each
+            // ray the colour of its bearing from the board's middle.
+            const about = st.sub(vec2(0.5, 0.5)).mul(vec2(this.uAspect, 1.0));
+            const bearing = atan(about.y, about.x).div(6.2832).add(u.time.mul(0.05));
+            const spectrum = cos(vec3(0.0, 0.33, 0.67).add(bearing).mul(6.2832)).mul(0.5).add(0.5);
+            const hue = mix(u.crown, spectrum.mul(1.5).add(0.1), u.prism);
+            const light = u.shaft.mul(glow.mul(SHAFT_GAIN)).add(hue.mul(crown.mul(CROWN_GAIN)));
+            return vec4(light.mul(share).mul(phase).mul(u.breath), 1.0);
         })();
     }
 

@@ -15,7 +15,7 @@
  */
 import { TAU, mulberry32 } from './waves-core.js';
 import {
-    makeLeap, makePorpoise, makeRide, makeSkitter, makeSoar, makeWhale, troughRow,
+    LEAP_LEAD, makeLeap, makePorpoise, makeRide, makeSoar, makeWhale, troughRow,
 } from './waves-acts.js';
 
 /** Seconds between the moments a visit may begin. */
@@ -33,9 +33,9 @@ export const VISITS = Object.freeze([
     ['troughPod', 4],
     ['farPod', 2.4],
     ['loneLeap', 2.6],
-    ['skitter', 3.4],
-    ['turtle', 1.3],
-    ['manta', 1.2],
+    // (Seen closest of all, through the glass beside the rider: they come by often.)
+    ['turtle', 1.9],
+    ['manta', 1.6],
     ['whaleBlow', 1.1],
     ['whaleFluke', 0.9],
     ['whaleBreach', 0.5],
@@ -238,7 +238,7 @@ export function stageVisit(kind, rand, at, scale = 1) {
         const vy = Math.sqrt(2 * 0.46 * rise);
         acts.push(makeLeap({
             kind: spinner ? 'spinner' : 'bottlenose',
-            at: at + 1.6,
+            at: at + LEAP_LEAD,
             row: troughRow(x, d),
             d,
             vx: range(-1.0, -0.45),
@@ -249,29 +249,6 @@ export function stageVisit(kind, rand, at, scale = 1) {
             phase: rand() * TAU,
             variant: rand(),
         }));
-        break;
-    }
-    case 'skitter': {
-        // A school of flying fish off the trough, fanning away from the wave.
-        const n = count(4, 12.4);
-        const x = range(-3.6, -1.2);
-        const z = range(-9.5, -5);
-        const bearing = range(-2.3, -1.8);
-        for (let i = 0; i < n; i += 1) {
-            const a = bearing + range(-0.35, 0.35);
-            acts.push(makeSkitter({
-                at: at + 1 + i * range(0.08, 0.3),
-                x: x + range(-1.3, 1.3),
-                z: z + range(-1.6, 1.6),
-                hx: Math.cos(a),
-                hz: Math.sin(a),
-                speed: range(1.7, 2.5),
-                vy: range(0.3, 0.48),
-                hops: rand() < 0.35 ? 2 : 1,
-                seed: rand() * TAU,
-                variant: rand(),
-            }));
-        }
         break;
     }
     case 'turtle': {
@@ -296,23 +273,27 @@ export function stageVisit(kind, rand, at, scale = 1) {
         break;
     }
     case 'manta': {
-        // A manta under the trough, flying in from the open sea.
-        const [hx, hz] = unit(range(0.25, 0.5), 1);
-        acts.push(makePorpoise({
+        // A young manta in the wall, deeper than the pods swim: it flies slowly back past the
+        // rider on its wings, its whole shape turned to the glass. (Under the flat of the trough,
+        // where it used to pass, the sea mirrors the sky at the angle the rider sees it from and
+        // nothing of a manta showed.)
+        acts.push(makeRide({
             kind: 'manta',
             at,
-            life: range(18, 22),
-            x: range(-11, -8),
-            z: range(-24, -19),
-            hx,
-            hz,
-            speed: range(0.85, 1.05),
-            period: range(9, 12),
-            rise: range(0.12, 0.2),
-            sink: range(0.8, 1.05),
-            turn: range(-0.01, 0.01),
+            life: range(20, 24),
+            row: range(0.2, 0.3),
+            rowAmp: 0.03,
+            rowRate: 0.22,
+            d0: range(5.6, 6.8),
+            d1: range(-4.2, -3.2),
+            depth: range(0.95, 1.25),
+            depthAmp: 0.12,
+            fade: false,
             seed: rand() * TAU,
             variant: rand(),
+            metres: range(2.1, 2.5),
+            lean: 0.3,
+            beat: 1,
         }));
         break;
     }

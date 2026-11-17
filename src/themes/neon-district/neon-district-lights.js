@@ -340,7 +340,11 @@ export function createLanterns(u, lanterns) {
         const round = float(1.0).sub(q.x.mul(q.x).mul(0.45));
         const cap = step(0.27, abs(p.y)).mul(step(abs(p.x), 0.16)).mul(step(abs(p.y), 0.35));
         const flicker = sin(u.time.mul(vSeed.mul(2.0).add(2.3)).add(vSeed.mul(40.0))).mul(0.07).add(0.93);
-        const warm = mix(vec3(1.0, 0.3, 0.08), vec3(1.0, 0.52, 0.16), vSeed).mul(flicker).mul(u.neon.mul(0.7).add(0.3));
+        // Most are the red and orange of paper lanterns; among them a pink, a jade and a yellow.
+        const pick = fract(vSeed.mul(7.3));
+        const paper0 = mix(vec3(1.0, 0.3, 0.08), vec3(1.0, 0.52, 0.16), vSeed);
+        const festive = mix(mix(vec3(1.0, 0.22, 0.5), vec3(0.2, 0.95, 0.72), step(0.7, pick)), vec3(1.0, 0.82, 0.22), step(0.85, pick));
+        const warm = mix(paper0, festive, step(0.52, pick)).mul(flicker).mul(u.neon.mul(0.7).add(0.3));
         const paper = warm.mul(ribs).mul(round).mul(2.4).add(vLift.mul(0.8));
         const clearAir = float(1.0).sub(vFog);
         const halo = exp(p.dot(p).mul(-3.2)).mul(vFog.mul(0.6).add(0.1));

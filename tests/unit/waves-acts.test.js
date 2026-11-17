@@ -14,9 +14,9 @@
  */
 import { describe, expect, it } from 'vitest';
 import {
-    FLUKE_REACH, GLIDE_GRAVITY, GRAVITY, KINDS, LEAP_STYLES, NOSE_REACH, RIDE_CLEARANCE, SPECIES, WHALE_MODES, actAlive,
-    actPose, dolphinPose, emptyPose, makeLeap, makePorpoise, makeRide, makeSkitter, makeSoar, makeWhale, porpoiseAt,
-    surfaceTimes, troughRow,
+    FLUKE_REACH, GRAVITY, KINDS, LEAP_LEAD, LEAP_STYLES, NOSE_REACH, RIDE_CLEARANCE, RIDE_EASE, RIDE_SEEN, RIDE_SINK, SPECIES,
+    WHALE_MODES, actAlive, actPose,
+    dolphinPose, emptyPose, makeLeap, makePorpoise, makeRide, makeSoar, makeWhale, porpoiseAt, surfaceTimes, troughRow,
 } from '../../src/themes/waves/waves-acts.js';
 import {
     TAU, WAVE, axisOffset, mulberry32, wavePoint,
@@ -153,17 +153,6 @@ function troupe(rand) {
             twist: rand() < 0.5 ? -1 : 1,
         }), 0]);
     }
-    out.push(['a skitter', makeSkitter({
-        at: range(0, 400),
-        x: range(-3.6, -1.2),
-        z: range(-9.5, -5),
-        ...bearing(),
-        speed: range(1.7, 2.8),
-        vy: range(0.3, 0.5),
-        hops: rand() < 0.5 ? 2 : 1,
-        seed: range(0, TAU),
-        variant: rand(),
-    }), 0]);
     out.push(['a soaring bird', makeSoar({
         at: range(0, 400),
         life: range(21, 25),
@@ -197,8 +186,8 @@ function leapOf(options = {}) {
 }
 
 describe('waves acts: the cast', () => {
-    it('names seven animals, each with a length, a stroke and room to be drawn', () => {
-        expect(KINDS).toEqual(['bottlenose', 'spinner', 'humpback', 'manta', 'turtle', 'flyingFish', 'seabird']);
+    it('names six animals, each with a length, a stroke and room to be drawn', () => {
+        expect(KINDS).toEqual(['bottlenose', 'spinner', 'humpback', 'manta', 'turtle', 'seabird']);
         expect(Object.isFrozen(KINDS)).toBe(true);
         expect(Object.keys(SPECIES).sort()).toEqual([...KINDS].sort());
         for (const kind of KINDS) {
@@ -208,14 +197,14 @@ describe('waves acts: the cast', () => {
             expect(species.stroke, kind).toBeGreaterThan(0);
             expect(Number.isInteger(species.slots) && species.slots >= 1, kind).toBe(true);
         }
-        // The whale is the largest thing in the sea, a flying fish the smallest.
+        // The whale is the largest thing in the sea; nothing in it is smaller than a seabird
+        // or a turtle (the flying fish, half a metre of them, were taken out: too small to be
+        // anything but specks over the trough).
         const lengths = KINDS.map((kind) => SPECIES[kind].metres);
         expect(SPECIES.humpback.metres).toBe(Math.max(...lengths));
-        expect(SPECIES.flyingFish.metres).toBe(Math.min(...lengths));
-        // A flying fish is carried by its wings: it falls slower than the spray does.
+        expect(Math.min(...lengths)).toBeGreaterThanOrEqual(0.9);
+        expect(SPECIES.flyingFish).toBeUndefined();
         expect(GRAVITY).toBeGreaterThan(0);
-        expect(GLIDE_GRAVITY).toBeGreaterThan(0);
-        expect(GLIDE_GRAVITY).toBeLessThan(GRAVITY);
         expect(NOSE_REACH).toBeGreaterThan(0);
         expect(FLUKE_REACH).toBeGreaterThan(0);
         expect(RIDE_CLEARANCE).toBeGreaterThan(0);
@@ -380,9 +369,43 @@ describe('waves acts: a leap', () => {
             if (!after.every((pose, k) => k === 0 || pose.depth > after[k - 1].depth)) wrong.push(`${where}: going down`);
         }
         expect(wrong.slice(0, 8)).toEqual([]);
-        // It goes back in along the way it fell, and levels out as it slows.
+        // It goes back in along the way it fell and dives on down out of sight (it used to level
+        // out a metre under and shrink away there, in plain view). Its turn has no kink at either
+        // surface: the run-up curves into the flight, the flight into the dive.
         const arc = leapOf();
-        expect(at(arc, arc.flight + 0.05).fy).toBeLessThan(at(arc, arc.life - 0.05).fy);
+        expect(at(arc, arc.flight + 0.05).fy).toBeLessThan(0);
+        expect(at(arc, arc.life - 0.05).fy).toBeLessThan(at(arc, arc.flight + 0.05).fy);
+        expect(at(arc, arc.life - 0.05).depth).toBeGreaterThan(3.4);
+        expect(at(arc, -arc.lead + 0.05).depth).toBeGreaterThan(3.4);
+        const turn = (t) => {
+            const a = at(arc, t - 1 / 120);
+            const b = at(arc, t + 1 / 120);
+            return Math.acos(Math.min(1, a.fx * b.fx + a.fy * b.fy + a.fz * b.fz)) * 60;
+        };
+        for (const t of [0, arc.flight]) expect(Math.abs(turn(t + 0.02) - turn(t - 0.02)), `at ${t}`).toBeLessThan(0.05);
+    });
+
+    it('comes up from out of sight however little time it is given, and turns smoothly coming up', () => {
+        // The board calls a dolphin a second before it breaks the surface; the sea gives its own
+        // more. Either way the run-up starts where the water hides it (waves-fauna.js: 3.4 m), on
+        // the same path, and turns without a kink.
+        for (const lead of [0.6, 1.1, LEAP_LEAD, LEAP_LEAD + 1]) {
+            const arc = leapOf({ lead });
+            expect(arc.lead).toBeCloseTo(lead, 9);
+            expect(at(arc, -arc.lead + 0.01).depth, `lead ${lead}`).toBeGreaterThan(3.4);
+            let last = null;
+            let lastRate = null;
+            for (let t = -arc.lead + 0.02; t < 0.5; t += 1 / 60) {
+                const q = at(arc, t);
+                if (last) {
+                    const rate = Math.acos(Math.min(1, q.fx * last.fx + q.fy * last.fy + q.fz * last.fz)) * 60;
+                    expect(rate, `lead ${lead}, ${t.toFixed(2)} s`).toBeLessThan(1);
+                    if (lastRate !== null) expect(Math.abs(rate - lastRate), `lead ${lead}, ${t.toFixed(2)} s`).toBeLessThan(0.05);
+                    lastRate = rate;
+                }
+                last = { fx: q.fx, fy: q.fy, fz: q.fz };
+            }
+        }
     });
 
     it('times its flukes clear of the water, its nose back into it and its flukes after it, in that order', () => {
@@ -598,6 +621,8 @@ describe('waves acts: riding the wave', () => {
                 // Ahead is -z: an animal going down the line heads that way, one dropping back the other.
                 if (!(pose.fz * -down > 0.2)) wrong.push(`${where}: heading z ${pose.fz}, sent ${down}`);
                 // Its back toward the tube's axis, where the rider is: seen from above through the glass.
+                // (Not asked while it is down in the deep at an end, where nothing of it shows.)
+                if (pose.depth > 3.4) continue;
                 const tx = axisOffset(-pose.z) - pose.x;
                 const ty = WAVE.b - pose.y;
                 const toRider = (pose.ux * tx + pose.uy * ty) / Math.hypot(tx, ty);
@@ -620,13 +645,60 @@ describe('waves acts: riding the wave', () => {
             expect(depth(0.6)).toBeLessThan(depth(0));
             expect(depth(act.life - 0.6)).toBeLessThan(depth(act.life));
         }
-        for (const [act, open] of rides(false).slice(0, 12)) {
+        // Without it, it comes up out of the deep (or goes down into it) only at an end the eye can
+        // see: anywhere ahead of the rider. An end behind the rider it simply swims through.
+        let seenEnds = 0;
+        let hiddenEnds = 0;
+        for (const [act, open] of rides(false).slice(0, 30)) {
+            const depth = (t) => at(act, t, open).depth;
             for (let k = 0; k <= 40; k++) {
-                const { depth, metres } = at(act, (act.life * k) / 40, open);
-                expect(Math.abs(depth - act.depth)).toBeLessThanOrEqual(act.depthAmp + 1e-9);
+                const t = (act.life * k) / 40;
+                const { metres } = at(act, t, open);
                 expect(metres).toBe(act.metres);
+                if (t > RIDE_EASE && t < act.life - RIDE_EASE) {
+                    expect(Math.abs(depth(t) - act.depth)).toBeLessThanOrEqual(act.depthAmp + 1e-9);
+                }
+            }
+            for (const [end, d] of [[0, act.d0], [act.life, act.d1]]) {
+                if (d > RIDE_SEEN) {
+                    seenEnds += 1;
+                    expect(depth(end)).toBeGreaterThan(act.depth + RIDE_SINK - act.depthAmp - 1e-9);
+                } else {
+                    hiddenEnds += 1;
+                    expect(Math.abs(depth(end) - act.depth)).toBeLessThanOrEqual(act.depthAmp + 1e-9);
+                }
             }
         }
+        expect(seenEnds).toBeGreaterThan(10);
+        expect(hiddenEnds).toBeGreaterThan(10);
+        // Deep enough there that the water hides all of it (waves-fauna.js: gone by 3.4 m).
+        expect(RIDE_SINK).toBeGreaterThan(3.4 + 0.5);
+    });
+
+    it('turns smoothly all the way, the moments it rises and sinks too: no kink in its heading or its back', () => {
+        const wrong = [];
+        const angle = (a, b) => Math.acos(Math.min(1, a[0] * b[0] + a[1] * b[1] + a[2] * b[2]));
+        for (const fade of [false, true]) {
+            rides(fade).forEach(([act, open], i) => {
+                let last = null;
+                let lastRate = null;
+                for (let t = 0; t <= act.life; t += 1 / 60) {
+                    const q = at(act, t, open);
+                    const now = { f: [q.fx, q.fy, q.fz], u: [q.ux, q.uy, q.uz] };
+                    if (last) {
+                        const rate = [angle(last.f, now.f) * 60, angle(last.u, now.u) * 60];
+                        // Measured on main before this was fixed: up to 9.7 rad/s, jumps of 4.4 a frame.
+                        if (rate[0] > 1.5 || rate[1] > 1.5) wrong.push(`ride ${i}: turns at ${rate.map((r) => r.toFixed(2))} rad/s ${t.toFixed(2)} s in`);
+                        if (lastRate && Math.max(Math.abs(rate[0] - lastRate[0]), Math.abs(rate[1] - lastRate[1])) > 0.25) {
+                            wrong.push(`ride ${i}: a kink ${t.toFixed(2)} s in`);
+                        }
+                        lastRate = rate;
+                    }
+                    last = now;
+                }
+            });
+        }
+        expect(wrong.slice(0, 8)).toEqual([]);
     });
 });
 
@@ -861,79 +933,6 @@ describe('waves acts: the humpback', () => {
         expect(ends(at(fluke, slip - 1)).tail).toBeGreaterThan(0);
         expect(Math.abs(ends(at(fluke, slip)).tail)).toBeLessThan(fluke.metres * 0.1);
         expect(ends(at(fluke, slip + 1.5)).tail).toBeLessThan(-fluke.metres * 0.1);
-    });
-});
-
-describe('waves acts: flying fish', () => {
-    const fish = (extra = {}) => makeSkitter({
-        at: 12, x: -2, z: -6, hx: -0.6, hz: -0.8, speed: 2.2, vy: 0.42, ...extra,
-    });
-
-    it('bursts out of the water, glides low on spread wings and drops back in', () => {
-        for (const vy of [0.3, 0.38, 0.48]) {
-            const act = fish({ vy });
-            expect(act.hops).toBe(1);
-            expect(act.flight).toBeCloseTo((2 * vy) / GLIDE_GRAVITY, 9);
-            expect(act.events).toEqual([{ t: 0, type: 'fish-out' }, { t: act.flight, type: 'fish-in' }]);
-            const steps = 600;
-            const glide = Array.from({ length: steps + 1 }, (_, i) => at(act, (act.flight * i) / steps));
-            const apex = Math.max(...glide.map((pose) => pose.y));
-            // A glide, not a leap: as high as its launch carries it under what little of gravity
-            // its wings leave it, which is under a metre.
-            expect(apex - glide[0].y).toBeCloseTo((vy * vy) / (2 * GLIDE_GRAVITY), 4);
-            expect(apex).toBeLessThan(1);
-            expect(apex).toBeLessThan(((vy * vy) / (2 * GRAVITY)) * 3);
-            // In the air all the way, straight down its heading at its speed.
-            expect(glide.every((pose) => pose.depth < 1e-9 && pose.y > 0)).toBe(true);
-            const end = glide[steps];
-            expect(end.x - glide[0].x).toBeCloseTo(act.hx * act.speed * act.flight, 9);
-            expect(end.z - glide[0].z).toBeCloseTo(act.hz * act.speed * act.flight, 9);
-            // Under the water before and after.
-            expect(at(act, -act.lead / 2).depth).toBeGreaterThan(0);
-            expect(at(act, act.flight + 0.4).depth).toBeGreaterThan(0);
-            expect(act.life).toBeGreaterThan(act.flight);
-        }
-    });
-
-    it('spreads its wings only in the air: folded as it comes up, folded again once it is under', () => {
-        for (const hops of [1, 2]) {
-            const act = fish({ hops });
-            for (const t of [-act.lead, -act.lead / 2, 0]) expect(at(act, t).spread).toBe(0);
-            // Open within a moment of leaving the water, and all the way down its glide.
-            const open = at(act, 0.3).spread;
-            expect(open).toBe(1);
-            for (let t = 0.3; t < act.flight - 0.1; t += 0.05) expect(at(act, t).spread).toBe(1);
-            const spreading = [0.05, 0.1, 0.15, 0.2].map((t) => at(act, t).spread);
-            expect(spreading.every((spread, i) => spread > (spreading[i - 1] ?? 0) && spread < 1)).toBe(true);
-            for (const t of [act.flight + 0.2, act.life - 0.01]) expect(at(act, t).spread).toBe(0);
-            // Its tail drives it out of the water; in the glide it is all but still.
-            expect(at(act, -0.1).beat).toBeGreaterThan(0.9);
-            expect(at(act, act.first / 2).beat).toBeLessThan(0.2);
-            expect(at(act, act.life - 0.05).beat).toBeGreaterThan(0.9);
-        }
-    });
-
-    it('touches down on its tail and takes off again when it has a second hop in it', () => {
-        const once = fish();
-        const twice = fish({ hops: 2 });
-        expect(twice.first).toBe(once.flight);
-        expect(twice.flight).toBeGreaterThan(once.flight);
-        expect(twice.events.map((event) => event.type)).toEqual(['fish-out', 'fish-touch', 'fish-in']);
-        expect(twice.events.map((event) => event.t)).toEqual([0, twice.first, twice.flight]);
-        // Down to the water at the touch, its tail sculling, its wings still out...
-        const touch = at(twice, twice.first);
-        expect(touch.y).toBeLessThan(0.05);
-        expect(touch.depth).toBe(0);
-        expect(touch.spread).toBe(1);
-        expect(touch.beat).toBeGreaterThan(0.9);
-        // ...and up again, lower than the first time, before it goes in for good.
-        const top = (from, to) => Math.max(...Array.from({ length: 200 }, (_, i) => at(twice, from + ((to - from) * i) / 199).y));
-        const second = top(twice.first, twice.flight);
-        expect(second).toBeGreaterThan(touch.y + 0.05);
-        expect(second).toBeLessThan(top(0, twice.first));
-        expect(at(twice, twice.flight + 0.4).depth).toBeGreaterThan(0);
-        // The single glide is in the water by then.
-        expect(at(once, once.flight + 0.4).depth).toBeGreaterThan(0);
     });
 });
 

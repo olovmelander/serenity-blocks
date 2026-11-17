@@ -82,12 +82,13 @@ import {
     BAND_SLOTS, BAND_SPEED, BAND_START, RIBBON_VELOCITY, createWater,
 } from './waves-water.js';
 import { SprayPool, createLipRain, createMist } from './waves-spray.js';
+import { createLandingSpray, createWhiteWater } from './waves-whitewater.js';
 import { WavesLife, leapersFor } from './waves-life.js';
 import { stageVisit } from './waves-ambient.js';
-import { makeRide, makeSkitter, makeWhale } from './waves-acts.js';
+import { makeRide, makeWhale } from './waves-acts.js';
 import { loadSeaLife, seaLifeLoaded } from './waves-cast.js';
 import {
-    FoamPool, dolphinBreach, dolphinEntry, fishSplash, rollSplash, splashDensity, whaleSplash,
+    FoamPool, dolphinBreach, dolphinEntry, rollSplash, splashDensity, whaleSplash,
 } from './waves-splash.js';
 
 export { REST_RIG, fovForAspect };
@@ -109,7 +110,11 @@ const CROWN_HOLD = 1.1;
  * (seconds of the world's clock). A call is never dropped: it waits for a dolphin to come down.
  */
 const LEAP_SPACING = 0.6;
-const LEAP_LEAD = 0.3;
+/**
+ * (A second to come up: called closer to the surface, a dolphin appeared half a metre under the
+ * trough out of nothing. Its run-up starts deep however short it is: waves-acts.js makeLeap.)
+ */
+const LEAP_LEAD = 1.1;
 
 /** How far a set wave swells the tube: a level's, a back-to-back's, the clock's own, the most. */
 const LEVEL_SET_HEIGHT = 0.085;
@@ -119,6 +124,9 @@ const SET_HEIGHT_MAX = 0.13;
 
 /** Seconds after a hard drop before the next one's spout stands as tall again. */
 export const HARD_DROP_REST = 1.6;
+/** How fast the white water takes up a throw of the lip, and how slowly it lets go (per second). */
+export const HEAVE_RISE = 9;
+export const HEAVE_FALL = 1.1;
 
 /** Two bands born together are one, this bright at most. */
 const BAND_STRONGEST = 2;
@@ -287,6 +295,8 @@ export class WavesWorld {
             counts: uniform(new THREE.Vector4(0, 0, 0, 0)),
             /** 0..1: the lip is throwing (its edge tears further, its rain leaves harder). */
             tear: uniform(0),
+            /** 0..1: the same throw, eased: how hard the white water heaves where the lip lands. */
+            heave: uniform(0),
             /** Ripple strength (1 at rest). */
             ripple: uniform(1),
             /** 0..1: the water lit from inside (a clear; a chain holds it). */
@@ -375,7 +385,14 @@ export class WavesWorld {
             tier, noise: this.noise, lace: this.lace, U, shape: this.shape, rows: this.rows,
         });
         this.pod = new WavesLife({
-            tier, U, sun: this.sunDir, eye: REST_RIG.eye, seed: this.seed, ambient: this.ambient,
+            tier,
+            U,
+            sun: this.sunDir,
+            eye: REST_RIG.eye,
+            seed: this.seed,
+            ambient: this.ambient,
+            lace: this.lace,
+            noise: this.noise,
         });
         this.parts.life = this.pod;
         // The animals' bodies: handed in, already read this session, or on their way.
@@ -393,6 +410,12 @@ export class WavesWorld {
             tier, U, shape: this.shape, noise: this.noise, seed: this.seed,
         });
         this.parts.rain = createLipRain({
+            tier, U, shape: this.shape, seed: this.seed,
+        });
+        this.parts.whitewater = createWhiteWater({
+            tier, U, shape: this.shape, noise: this.noise, seed: this.seed,
+        });
+        this.parts.landing = createLandingSpray({
             tier, U, shape: this.shape, seed: this.seed,
         });
         this.spray = new SprayPool({ tier, U, seed: this.seed });
@@ -479,6 +502,7 @@ export class WavesWorld {
         s.glow = 0;
         s.radiance = 0;
         s.tear = 0;
+        this.U.heave.value = 0;
         s.flash = 0;
         s.holdAge = -1;
         s.holdLength = HOLD_SECONDS;
@@ -685,11 +709,6 @@ export class WavesWorld {
             splash.stage = event.type.slice(6);
             whaleSplash(splash);
             break;
-        case 'fish-out':
-        case 'fish-touch':
-        case 'fish-in':
-            fishSplash(splash);
-            break;
         default:
             break;
         }
@@ -843,14 +862,17 @@ export class WavesWorld {
             speed: [0.7 + lines * 0.12 + depth * 0.1, 1.5 + lines * 0.4 + depth * 0.25],
             size: 0.028 + lines * 0.003,
         });
-        // Every line startles fish out of the trough: a few for one, a school for four.
-        this.sendFish(2 + lines * 3 + depth, lines);
         if (c.twist) {
             this.spray.swirl(this.clock, open, { d: landingDistance(open) + 2.5, n: Math.round(this.spray.count / 5) });
             s.tear = 1;
             // And a spinner answers the twist with its own: thrown clear, turning on its length.
-            this.pod.leap(this.clock + 0.5, open, {
-                kind: 'spinner', style: 'spin', turns: 2 + lines, height: 1.7 + lines * 0.2, d: 8.5 + this.fxRand() * 4,
+            this.pod.leap(this.clock + LEAP_LEAD, open, {
+                kind: 'spinner',
+                style: 'spin',
+                turns: 2 + lines,
+                height: 1.7 + lines * 0.2,
+                d: 8.5 + this.fxRand() * 4,
+                lead: LEAP_LEAD,
             });
         }
         if (c.b2b === true) this.backToBack(open);
@@ -967,34 +989,6 @@ export class WavesWorld {
             });
         }
         this.state.tear = 1;
-    }
-
-    /**
-     * Fish startled out of the trough beside the card's foot: `n` of them (as many as the tier
-     * may draw), fanning away from the wave.
-     */
-    sendFish(n, lines = 1) {
-        if (!this.pod) return;
-        const rand = this.fxRand;
-        const count = Math.min(Math.round(n * (this.tier.life ?? 1)), this.pod.capacity.flyingFish);
-        const x = -1.4 - rand() * 1.6;
-        const z = -5 - rand() * 2.5;
-        const bearing = -2.25 + (rand() - 0.5) * 0.4;
-        for (let i = 0; i < count; i += 1) {
-            const a = bearing + (rand() - 0.5) * 0.8;
-            this.pod.add(makeSkitter({
-                at: this.clock + 0.15 + i * (0.05 + rand() * 0.12),
-                x: x + (rand() - 0.5) * 2,
-                z: z + (rand() - 0.5) * 2.4,
-                hx: Math.cos(a),
-                hz: Math.sin(a),
-                speed: 1.9 + rand() * 0.8 + lines * 0.1,
-                vy: 0.32 + rand() * 0.16 + lines * 0.02,
-                hops: rand() < 0.3 ? 2 : 1,
-                seed: rand() * 6.28,
-                variant: rand(),
-            }));
-        }
     }
 
     /**
@@ -1133,7 +1127,7 @@ export class WavesWorld {
             if (!this.pod.canLeap()) return;
             const at = Math.max(this.clock + LEAP_LEAD, s.nextLeap + LEAP_SPACING);
             const hero = s.heroOwed;
-            this.pod.leap(at, this.U.open.value, { hero, d: hero ? 12.5 : null });
+            this.pod.leap(at, this.U.open.value, { hero, d: hero ? 12.5 : null, lead: at - this.clock });
             s.heroOwed = false;
             s.nextLeap = at;
             s.owed -= 1;
@@ -1142,7 +1136,7 @@ export class WavesWorld {
     }
 
     /**
-     * Send one of the sea's own visits now (waves-ambient.js VISITS: 'ridePod', 'skitter',
+     * Send one of the sea's own visits now (waves-ambient.js VISITS: 'ridePod', 'turtle',
      * 'whaleBreach', ...). The sea sends them by the clock; this is for captures and the playground.
      */
     sendVisit(name, seed = 1) {
@@ -1353,6 +1347,10 @@ export class WavesWorld {
             warmth * 0.4 + fever * 0.5,
             sea.wind * 0.42,
         );
+        // The white water answers the throw a moment later and lets go of it slowly: up in a
+        // third of a second, down over two.
+        const thrown = U.tear.value;
+        U.heave.value += (thrown - U.heave.value) * approach(thrown > U.heave.value ? HEAVE_RISE : HEAVE_FALL, dt);
 
         this.pod.update(this.clock, U.open.value, this.lifeEvent);
         this.launchOwed();

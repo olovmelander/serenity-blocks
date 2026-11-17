@@ -17,8 +17,8 @@
  * pays for the standing shells only.
  *
  * A row is five vec4:
- *   A  radius, how strongly its edge outshines its face (a front: its thickness as a fraction
- *      of the radius), pattern frequency, thread sharpness
+ *   A  radius, how strongly its edge outshines its face (a front: its thickness, in star
+ *      radii), pattern frequency, thread sharpness
  *   B  colour one, gain
  *   C  colour two, coverage (the level of the coarse field above which there is gas)
  *   D  how much its outline wobbles, which two of four wobble fields it mixes, kind
@@ -27,6 +27,11 @@
  *
  * No row's outline is a circle: the radius a ray meets is nudged by a slow field read once per
  * pixel in the direction of the ray's closest approach to the star.
+ *
+ * The remnant has a FORM: the star threw its gas off round an axis (u.axis, the ring's own), so
+ * every shell of filaments is thick in a belt round its waist and in the walls of two lobes, and
+ * open at its poles. Seen leaning back, the belts are nested ovals round the star and the caps
+ * are windows onto the sky behind: an hourglass, not a ball of wool.
  */
 
 import * as THREE from 'three/webgpu';
@@ -51,7 +56,7 @@ import {
     vec4,
 } from 'three/tsl';
 import {
-    SHELL_STRIDE, snFxMaterial, snLuma, snPart, snRidge,
+    SHELL_STRIDE, snBell, snFxMaterial, snLuma, snPart, snRidge,
 } from './supernova-tsl.js';
 
 /** How much finer than the coarse read the third, finest read of a shell's gas is. */
@@ -100,7 +105,7 @@ export function createNebula(u, { detail = 2 } = {}) {
                 // nothing at the outer one. Cubed, so the front is a ring and the film across its
                 // face is next to nothing. The skin is thinner than it was asked for: a thick one
                 // swept the frame as a smooth band, a lens's ghost rather than a shock.
-                const inside = radius.mul(float(1.0).sub(A.y.mul(0.62))).toVar();
+                const inside = max(radius.sub(A.y), radius.mul(0.5)).toVar();
                 const inner2 = inside.mul(inside);
                 const outer2 = radius.mul(radius);
                 const run = sqrt(max(outer2.sub(d2), 0.0)).sub(sqrt(max(inner2.sub(d2), 0.0)))
@@ -112,8 +117,13 @@ export function createNebula(u, { detail = 2 } = {}) {
                 const strands = snRidge(swept.r);
                 const torn = strands.mul(strands).mul(strands).mul(1.7).add(0.3)
                     .mul(smoothstep(0.26, 0.56, swept.g).mul(0.75).add(0.25));
-                const ring = run.mul(run).mul(run).mul(ragged).mul(torn);
-                light.addAssign(mix(B.rgb, C.rgb, run.mul(run)).mul(ring.mul(B.w)));
+                // A hairline where the eye runs along the shock, and the faint glow of the gas
+                // it has just swept, fading inward behind it.
+                const run2 = run.mul(run).toVar();
+                const ring = run2.mul(run2).mul(run).mul(1.7).add(run2.mul(0.1))
+                    .mul(ragged)
+                    .mul(torn);
+                light.addAssign(mix(B.rgb, C.rgb, run2).mul(ring.mul(B.w)));
             }).ElseIf(h.greaterThan(0.0), () => {
                 const sq = sqrt(h).toVar();
                 // How long the ray stays in the skin, against going straight through it.
@@ -129,6 +139,14 @@ export function createNebula(u, { detail = 2 } = {}) {
                 const room = float(1.0).sub(smoothstep(0.5, 1.15, pixel.div(radius).mul(A.z).mul(FINE * 64))).toVar();
                 const crossing = (t, dim) => {
                     const onShell = ro.add(rd.mul(t)).div(radius).toVar();
+                    // The remnant's form: a belt round the waist, the walls of two lobes, open poles.
+                    const lat = dot(onShell, u.axis).toVar();
+                    const high = lat.abs().toVar();
+                    const belt = snBell(lat.mul(2.4));
+                    const lobe = snBell(high.sub(0.6).mul(2.7));
+                    const cap = float(1.0).sub(smoothstep(0.78, 0.97, high));
+                    const form = mix(float(1.0), float(0.34).add(belt.mul(1.25)).add(lobe.mul(0.7))
+                        .mul(cap.mul(0.9).add(0.1)), u.form).toVar();
                     const dir = onShell.sub(comb.mul(dot(onShell, comb).mul(0.62))).toVar();
                     const n1 = u.noise(dir.mul(A.z).add(E.xyz)).toVar();
                     // Where the gas is: a wide ramp, so a cloud swells and thins instead of being
@@ -184,21 +202,23 @@ export function createNebula(u, { detail = 2 } = {}) {
                     const lines = gas.mul(halo.mul(0.06).add(thread.mul(run.mul(0.8).add(0.2))).add(weave.mul(0.7)))
                         .add(knot.mul(1.4));
                     const clear = float(1.0).sub(dust.mul(0.9));
-                    const shown = step(0.0, t).mul(dim);
-                    const glow = body.add(lines).mul(clear).mul(shown).toVar();
+                    const shown = step(0.0, t).mul(dim).mul(form);
                     // The gas hides what lies behind it a little; the dust a lot.
                     const veilHere = gas.mul(0.18).add(lines.mul(0.4)).add(dust.mul(1.1)).mul(shown);
                     // One hue over wide patches, the shell's second in others, met over a narrow
                     // band whose chroma is lifted (gold and teal mixed straight go lime); the
                     // brightest threads and the knots burn toward white.
-                    const k = smoothstep(0.4, 0.6, n1.b);
+                    const k = smoothstep(0.4, 0.6, n1.b).toVar();
                     const blend = mix(B.rgb, C.rgb, k);
                     const grey = snLuma(blend);
                     const lift = k.mul(float(1.0).sub(k)).mul(2.4).add(1.0);
                     const hue = max(blend.sub(grey).mul(lift).add(grey), vec3(0.0));
                     const hot = thread.mul(thread).mul(run).mul(gas).mul(0.22)
                         .add(knot.mul(0.7));
-                    return vec4(hue.mul(glow).add(vec3(hot.mul(clear).mul(shown))), veilHere);
+                    return vec4(
+                        hue.mul(lines.add(body)).mul(clear).mul(shown).add(vec3(hot.mul(clear).mul(shown))),
+                        veilHere,
+                    );
                 };
                 // The far side is seen through the shell's own gas: a little dimmer.
                 const near = crossing(b.negate().sub(sq), 1.0).toVar();

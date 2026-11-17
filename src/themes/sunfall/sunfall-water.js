@@ -23,7 +23,6 @@ import {
     cameraPosition,
     clamp,
     cross,
-    dot,
     float,
     floor,
     fract,
@@ -45,19 +44,23 @@ import {
 import {
     CANOPY_LEVEL, OCULUS_CENTER, OCULUS_RX, OCULUS_RZ, mulberry32,
 } from './sunfall-core.js';
-import {
-    SUNFALL_LIGHT, dlBowNode, pieceSwatchNode, sfSunMask,
-} from './sunfall-tsl.js';
+import { SUNFALL_LIGHT, pieceSwatchNode, sfSunMask } from './sunfall-tsl.js';
 
 const FALL_TOP = OCULUS_CENTER[1] - 1.0;
 const FALL_FOOT = CANOPY_LEVEL + 6.0;
 
-/** Rim stations in oculus coordinates: the cataract's, then three threads'. */
+/**
+ * Rim stations in oculus coordinates: the cataract's, then three threads'. They hang from the
+ * rim's left: seen from the ledge the sunfall leans away from them as it comes down, so the
+ * water blazes where it leaves the rim inside the light and then falls beside the column,
+ * silver against the dark wall. (White water inside the column's own glow was white on white:
+ * the air's light is added over it, and the cataract was a few threads lost among the shafts.)
+ */
 export const SUNFALL_FALLS = Object.freeze([
-    Object.freeze({ q: [0.52, 0.78], width: 24 }),
-    Object.freeze({ q: [0.30, 0.86], width: 3.2 }),
-    Object.freeze({ q: [0.74, 0.58], width: 2.6 }),
-    Object.freeze({ q: [0.05, 0.92], width: 2.9 }),
+    Object.freeze({ q: [-0.93, 0.05], width: 30 }),
+    Object.freeze({ q: [-0.78, 0.52], width: 4.6 }),
+    Object.freeze({ q: [-0.88, -0.36], width: 3.8 }),
+    Object.freeze({ q: [-0.58, 0.76], width: 4.2 }),
 ]);
 
 export function fallStation(i) {
@@ -85,24 +88,29 @@ export function createRainMaterial(u) {
         );
         const s = fract(D.z.add(u.time.mul(D.w).div(fall)));
         const centre = top.sub(vec3(0.0, s.mul(fall), 0.0)).toVar();
-        const intensity = u.showerPulse.add(u.cataractPulse.mul(0.8)).add(u.dripScale.mul(0.04));
+        const intensity = u.showerPulse.add(u.cataractPulse.mul(0.8)).add(u.dripScale.mul(0.04))
+            .add(u.rain.mul(0.55));
         const live = smoothstep(0.02, 0.08, intensity).mul(sfSunMask(u, centre));
         const toCam = cameraPosition.sub(centre);
         const dist = length(toCam);
         const side = normalize(cross(vec3(0.0, 1.0, 0.0), toCam));
         const width = max(float(0.05), dist.mul(u.pixelAngle).mul(1.2)).mul(live);
-        const len = D.w.mul(0.12).mul(live);
+        const len = D.w.mul(0.8).mul(live);
         return centre.add(side.mul(positionGeometry.x.mul(width))).add(vec3(0.0, positionGeometry.y.mul(len), 0.0));
     })();
     const color = Fn(() => {
         const across = abs(uv().x.sub(0.5)).mul(2.0);
         const along = abs(uv().y.sub(0.5)).mul(2.0);
         const core = clamp(float(1.0).sub(across), 0.0, 1.0).mul(clamp(float(1.0).sub(along.mul(along)), 0.0, 1.0));
-        const intensity = clamp(u.showerPulse.add(u.cataractPulse.mul(0.8)).add(u.dripScale.mul(0.04)), 0.0, 1.5);
+        const intensity = clamp(
+            u.showerPulse.add(u.cataractPulse.mul(0.8)).add(u.dripScale.mul(0.04)).add(u.rain.mul(0.55)),
+            0.0,
+            1.5,
+        );
         // Sunlit drops glint in colour as play heats (each streak one piece's pigment).
         const pigment = pieceSwatchNode(floor(fract(D.z.mul(37.0)).mul(7.0))).mul(1.6);
         const light = mix(u.beamCore, pigment, u.prism.mul(0.8)).mul(core).mul(intensity)
-            .mul(SUNFALL_LIGHT.sun * 0.09)
+            .mul(SUNFALL_LIGHT.sun * 0.05)
             .mul(u.sunGain);
         return vec4(light, 0.0);
     })();
@@ -156,10 +164,16 @@ export function createFallMaterial(u, textures) {
         const streakUv = vec2(st.x.mul(mix(1.9, 5.3, isCataract)).add(0.13), P.y.div(55.0).add(u.time.mul(1.1)));
         const streak = texture(textures.fbm, streakUv).level(1).y;
         const body = smoothstep(1.0, mix(0.35, 0.55, flow), abs(across));
-        const water = body.mul(mix(0.45, 1.1, streak)).mul(amount).toVar();
-        const lit = sfSunMask(u, P);
-        const sunlit = u.beamCore.mul(SUNFALL_LIGHT.sun * 0.3).mul(u.sunGain).mul(lit);
-        const slate = vec3(0.05, 0.065, 0.08);
+        // The cataract is strands of water with gaps of air between them, not one sheet.
+        const strands = mix(float(1.0), smoothstep(0.28, 0.6, streak), isCataract.mul(0.85));
+        const water = body.mul(mix(0.45, 1.1, streak)).mul(strands).mul(amount).toVar();
+        // The water stays lit a little way past the column's edge (its own spray carries the
+        // light), so the fall does not go out half-way down.
+        const lit = max(sfSunMask(u, P), mix(0.24, 0.34, isCataract));
+        // White water outshines the air it falls through: threads of glare along the strands.
+        const glare = smoothstep(0.55, 0.85, streak).mul(3.2).add(1.0);
+        const sunlit = u.beamCore.mul(SUNFALL_LIGHT.sun * 0.8).mul(glare).mul(u.sunGain).mul(lit);
+        const slate = vec3(0.07, 0.1, 0.13).mul(u.skyGain);
         const col = mix(slate, sunlit, clamp(lit.mul(1.4), 0.0, 1.0)).add(u.mistTint.mul(0.05));
         const foam = smoothstep(0.86, 1.0, v).mul(0.6).add(1.0);
         return vec4(col.mul(foam).mul(water), water.mul(0.85));
@@ -173,39 +187,6 @@ export function createFallMaterial(u, textures) {
     material.premultipliedAlpha = true;
     material.depthWrite = false;
     material.side = THREE.DoubleSide;
-    return material;
-}
-
-/** The spray shell at the cataract's foot, and the bow in it. */
-export function createSprayMaterial(u, textures, centre) {
-    const shade = Fn(() => {
-        const st = uv();
-        const p = st.sub(0.5).mul(2.0);
-        const r = length(p);
-        const P = positionWorld;
-        const n1 = texture(textures.fbm, st.mul(1.6).add(vec2(u.time.mul(0.03), u.time.mul(-0.06)))).level(1).x;
-        const n2 = texture(textures.fbm, st.mul(4.0).add(vec2(u.time.mul(-0.05), u.time.mul(0.04)))).level(0).z;
-        // A dome: thickest low in the middle, frayed round its edge.
-        const dome = clamp(float(1.0).sub(r), 0.0, 1.0).mul(smoothstep(-1.0, -0.2, p.y.negate()).add(0.4));
-        const spray = clamp(u.cataractPulse.mul(1.5).add(u.rainbowStrength.mul(0.6)), 0.0, 1.0);
-        const dens = dome.mul(mix(0.4, 1.2, n1)).mul(mix(0.8, 1.15, n2)).mul(spray).toVar();
-        const lit = sfSunMask(u, P);
-        const V = normalize(P.sub(cameraPosition));
-        const cosA = clamp(dot(V, u.bowSun.negate()), -1.0, 1.0);
-        const bow = dlBowNode(cosA).mul(u.rainbowStrength).mul(lit.mul(0.8).add(0.2));
-        const mist = u.beamCore.mul(lit.mul(SUNFALL_LIGHT.sun * 0.03).add(0.04)).add(u.mistTint.mul(0.08));
-        const light = mist.add(bow.mul(4.5)).mul(dens);
-        return vec4(light, dens.mul(0.35));
-    });
-    const material = new THREE.MeshBasicNodeMaterial();
-    const out = shade();
-    material.colorNode = out;
-    material.outputNode = out;
-    material.transparent = true;
-    material.premultipliedAlpha = true;
-    material.depthWrite = false;
-    material.side = THREE.DoubleSide;
-    material.userData.centre = centre;
     return material;
 }
 
@@ -250,24 +231,9 @@ export function buildWater(world) {
     group.add(falls);
     disposables.push(fallGeo, fallMat);
 
-    // The spray at the cataract's foot, facing the eye.
-    const [cx, cz] = fallStation(0);
-    const sprayCentre = new THREE.Vector3(cx, FALL_FOOT + 36, cz);
-    const sprayMat = createSprayMaterial(u, textures, sprayCentre);
-    const sprayGeo = new THREE.PlaneGeometry(170, 120);
-    const spray = new THREE.Mesh(sprayGeo, sprayMat);
-    spray.position.copy(sprayCentre);
-    spray.renderOrder = 42;
-    spray.frustumCulled = false;
-    group.add(spray);
-    disposables.push(sprayGeo, sprayMat);
-
     return {
         group,
-        sprayCentre,
-        update() {
-            spray.quaternion.copy(world.camera.quaternion);
-        },
+        update() {},
         dispose() {
             disposables.forEach((d) => d.dispose());
         },
