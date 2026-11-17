@@ -48,11 +48,11 @@ import {
     vec4,
 } from 'three/tsl';
 import {
-    BAND, DUST, GALAXY, TAU,
+    BAND, DUST, GALAXY, NEBULAE, NEBULA_ARC, TAU,
 } from './starlight-core.js';
 import {
-    WOODS_TREE, mirrorShare, noiseSmooth, ridges, ringLight, sized, slGauss, slHash21, waterPoint, waterSlope,
-    woods,
+    WOODS_TREE, mirrorShare, noiseSmooth, ridges, ringLight, sized, slGauss, slHash21, slMax3, veilDensity, waterPoint,
+    waterSlope, woods,
 } from './starlight-tsl.js';
 
 const v3 = (a) => vec3(a[0], a[1], a[2]);
@@ -113,6 +113,37 @@ export function createSky({ u, noise, tier }) {
         } else {
             air.addAssign(u.airglow.mul(slGauss(up.sub(0.12).div(0.075))).mul(0.33));
         }
+
+        // ── Airglow in waves (the air's `waves`) ──
+        // Oxygen glowing ninety kilometres up: long bands of green light rippling across the
+        // sky, a red fringe above them. The layer is flat and seen from below, so its bands crowd
+        // toward the horizon, where it is seen edge-on and glows brightest. ONE train of crests,
+        // bent by a slow broad warp and shown in patches (two trains at two angles cross into a
+        // plaid the eye locks onto: gotcha #1400). Every pixel takes the same side of the branch.
+        If(u.air.x.greaterThan(0.002), () => {
+            const deck = d.xz.div(up.add(0.09)).toVar();
+            const bend = texture(noise, deck.mul(0.035).add(vec2(u.time.mul(0.0007), 0.31))).level(2).g;
+            // Fine ripples (bold, widely spaced bands read as an aurora's curtains, not airglow).
+            const phase = dot(deck, vec2(0.62, 0.78)).mul(19.0).add(bend.mul(14.0)).sub(u.time.mul(0.22));
+            const crest = sin(phase).mul(0.5).add(0.5).toVar();
+            const patches = smoothstep(
+                0.3,
+                0.72,
+                texture(noise, deck.mul(0.022).add(vec2(0.53, u.time.mul(-0.0005)))).level(2).r,
+            ).toVar();
+            // Brightest seen edge-on, low; the crests fade into an even glow where they would
+            // crowd below a few pixels apart.
+            const edgeOn = exp(up.div(-0.32)).mul(0.75).add(0.25);
+            const resolved = smoothstep(0.05, 0.2, up);
+            // A broad sheen in patches, the ripples a modest swing on it: a glow with a grain of
+            // waves in it, green-gold low, a dull red high up.
+            const sheen = patches.mul(0.7).add(0.3);
+            const bands = crest.mul(crest).mul(patches).mul(resolved);
+            const green = vec3(0.09, 0.3, 0.1).mul(bands.mul(0.75).add(sheen.mul(0.45)))
+                .mul(edgeOn);
+            const red = vec3(0.24, 0.05, 0.05).mul(smoothstep(0.15, 0.6, up)).mul(sheen).mul(0.45);
+            air.addAssign(green.add(red).mul(u.air.x).mul(0.1));
+        });
 
         // ── The Milky Way ──
         // The direction in the sky's frame (the pole is z), turned back by the sky's angle…
@@ -237,7 +268,68 @@ export function createSky({ u, noise, tier }) {
         light.mulAssign(exp(vec3(1.0, 1.2, 1.45).mul(tau).negate()));
 
         if (tier.nebulae) {
-            // Emission clouds: a few small knots along the plane, at the lanes' edges, wisped by a
+            // The great nebulae (starlight-core.js NEBULAE): rose hydrogen clouds round the core
+            // and along the arms, a blue reflection cloud and a golden glow above the core, a faint
+            // arc of hydrogen bowing out below the band. Each is a soft body; two reads shared by
+            // all of them cut it into filaments and a mottled cloud, read only where one is near
+            // (every one of them lies inside |b| < 0.3 and |l| < 0.85: tests/unit/starlight-living).
+            If(abs(b).lessThan(0.3).and(abs(l).lessThan(0.95)), () => {
+                const rose = float(0.0).toVar();
+                const blue = float(0.0).toVar();
+                const gold = float(0.0).toVar();
+                const heart = float(0.0).toVar();
+                NEBULAE.forEach(([nl, nb, size, kind, power]) => {
+                    const dl = l.sub(nl).div(size);
+                    const db = b.sub(nb).div(size * 0.8);
+                    const r2 = dl.mul(dl).add(db.mul(db));
+                    const body = exp(r2.negate()).mul(power);
+                    if (kind === 0) {
+                        rose.addAssign(body);
+                        heart.addAssign(exp(r2.mul(-5.0)).mul(power));
+                    } else if (kind === 1) blue.addAssign(body);
+                    else gold.addAssign(body);
+                });
+                const [arcL, arcB, arcR, arcW, arcSpan] = NEBULA_ARC;
+                const ax = l.sub(arcL);
+                const ay = b.sub(arcB);
+                const round = atan(ax, ay.negate());
+                rose.addAssign(slGauss(vec2(ax, ay).length().sub(arcR).div(arcW))
+                    .mul(smoothstep(arcSpan, arcSpan * 0.5, abs(round))).mul(0.14));
+                If(rose.add(blue).add(gold).greaterThan(0.004), () => {
+                    // Both reads are of SMOOTH fields at mip 2 (a texel at least a pixel at the
+                    // widest lens; the fine octaves of a level-0 or level-1 read stipple the cloud
+                    // like fabric): the body, and the filaments warped by it.
+                    const body = noiseSmooth(noise, vec2(lu.mul(24.0).add(0.13), b.mul(7.0).add(0.71)), 2).g.toVar();
+                    const fine = noiseSmooth(noise, vec2(lu.mul(64.0).add(body.mul(0.3)), b.mul(19.0).add(0.4)), 2).r;
+                    // Filaments: the ridge of a smooth field, sharpened in the shader; dark
+                    // globules where the body read is lowest inside a cloud.
+                    const ridge = abs(fine.mul(2.0).sub(1.0)).oneMinus().toVar();
+                    const strands = ridge.mul(ridge).mul(ridge).mul(ridge);
+                    const cloud = smoothstep(0.18, 0.82, body).toVar();
+                    const globule = smoothstep(0.3, 0.14, body).mul(0.7).oneMinus();
+                    // The cloud read draws each outline: a body reaches out where it is high and
+                    // falls short where it is low, so no nebula is a round blob.
+                    const shape = cloud.mul(1.3).add(0.3);
+                    rose.assign(smoothstep(0.0, 1.0, rose.mul(shape)));
+                    blue.assign(smoothstep(0.0, 1.0, blue.mul(shape)));
+                    gold.assign(smoothstep(0.0, 1.0, gold.mul(shape)));
+                    const shine = cloud.mul(0.5).add(strands.mul(0.95)).add(0.18).mul(globule);
+                    // Part of the dust lies in front of them.
+                    const veiled = exp(tau.mul(-0.45));
+                    const hot = clamp(heart.mul(cloud.add(0.2)), 0.0, 1.0);
+                    // Hydrogen is a deep rose; only the hottest heart pales toward white.
+                    const hydrogen = mix(u.nebula, vec3(1.0, 0.12, 0.3), 0.35);
+                    const roseLight = mix(hydrogen, vec3(1.0, 0.72, 0.82), hot.mul(hot).mul(0.6))
+                        .mul(rose.mul(shine).add(heart.mul(cloud).mul(1.2)));
+                    const blueLight = vec3(0.22, 0.42, 1.0).mul(blue).mul(cloud.mul(0.75).add(0.3));
+                    const goldLight = vec3(1.0, 0.5, 0.16).mul(gold).mul(cloud.mul(0.5).add(0.45));
+                    // A rose cloud outshines the band's grey behind it a little, so it reads as
+                    // colour, not as pink paint over beige.
+                    light.mulAssign(rose.mul(0.3).add(gold.mul(0.15)).oneMinus().max(0.55));
+                    light.addAssign(roseLight.mul(1.75).add(blueLight.mul(1.5)).add(goldLight.mul(1.2)).mul(veiled));
+                });
+            });
+            // Emission knots: a few small ones along the plane, at the lanes' edges, wisped by a
             // finer read (Medium and up) so each is a cloud with a bright heart, not a smudge.
             If(abs(b).lessThan(0.2), () => {
                 const nm = noiseSmooth(noise, vec2(lu.mul(14.0).add(0.27), b.mul(3.6).add(0.63)), 1).b.toVar();
@@ -280,6 +372,62 @@ export function createSky({ u, noise, tier }) {
         // The far shore's town: a faint warm dome of light over its lamps, behind the hills.
         sky.addAssign(LAMP_COLOUR.mul(slGauss(az.sub(TOWN_AZ).div(0.2)).mul(exp(up.div(-0.07)))).mul(TOWN_GLOW));
 
+        // ── The high veil (the air's `veil`) ──
+        // Cirrus drifting over (veilDensity: two layers of fibres at two speeds, so it forms and
+        // melts as it goes). Lit from below by the hour's glow and, over the right-hand shore, by
+        // the town: darker than the band it hides, paler than the dark sky round it. The stars
+        // read the same density (starlight-stars.js), so they hide in it and shine in its gaps.
+        If(u.air.y.greaterThan(0.002), () => {
+            const dense = veilDensity(u, noise, d);
+            const town = slGauss(az.sub(TOWN_AZ).div(0.35)).mul(exp(up.div(-0.2)));
+            const under = u.mid.mul(4.2).add(u.horizon.mul(exp(up.div(-0.3))).mul(0.95))
+                .add(LAMP_COLOUR.mul(town).mul(0.035));
+            sky.assign(mix(sky, under, dense.mul(0.86)));
+        });
+
+        // ── Noctilucent cloud (the air's `shine`) ──
+        // Silver-blue fibres low over the horizon, lit by a sun far below it. ONE read stretched
+        // about ten to one along the horizon (long fibres, no two alike), its domain bent by a
+        // slow warp, billows of one train only inside patches, and the sky MIXED toward the silver
+        // (added to a rose afterglow it turns the pink white: gotcha #1400).
+        If(u.shine.greaterThan(0.002).and(up.lessThan(0.3)), () => {
+            // Its own deck, eighty kilometres up: seen from below its fibres lie along the horizon
+            // and crowd toward it. The fibres are the RIDGES of a smooth field read about ten to
+            // one along the horizon (thin bright threads, not blotches), bent by a slow warp.
+            const deck = d.xz.div(up.add(0.02)).toVar();
+            const warp = texture(noise, deck.mul(vec2(0.012, 0.04)).add(vec2(u.time.mul(0.0005), 0.27)))
+                .level(2).b.toVar();
+            const field = texture(noise, vec2(
+                deck.x.mul(0.035).add(warp.mul(0.25)).sub(u.time.mul(0.0012)),
+                deck.y.mul(0.34).add(warp.mul(0.9)).add(0.6),
+            )).level(1).g;
+            const ridge = abs(field.mul(2.0).sub(1.0)).oneMinus();
+            const threads = ridge.mul(ridge).mul(ridge);
+            // Where the layer is thick, and billows of one train across the threads in patches.
+            const layer = texture(noise, deck.mul(vec2(0.02, 0.09)).add(vec2(0.4, 0.8))).level(2).r;
+            const dense = smoothstep(0.38, 0.7, layer);
+            const billows = sin(deck.x.mul(2.6).add(deck.y.mul(0.8)).add(warp.mul(6.0))).mul(0.5).add(0.5);
+            const body = threads.mul(dense).mul(billows.mul(0.5).add(0.6)).add(dense.mul(0.12));
+            const band = smoothstep(0.014, 0.045, up).mul(smoothstep(0.26, 0.09, up)).mul(slGauss(az.div(0.95)));
+            const silver = vec3(0.52, 0.78, 1.0).mul(u.dusk.mul(0.17).add(0.055));
+            sky.assign(mix(sky, silver, clamp(body.mul(band).mul(u.shine).mul(1.1), 0.0, 0.88)));
+        });
+
+        // ── A level-up's front ──
+        // The next hour's light rolls up the sky as a front of airglow: green at its head, red
+        // where it has passed, rippled like a curtain, a glow left behind it that fades with it.
+        If(u.front.z.greaterThan(0.002), () => {
+            const x = up.sub(u.front.x).div(u.front.y);
+            const head = exp(x.mul(x).negate());
+            const passed = smoothstep(0.6, -2.5, x).mul(0.22);
+            const ripple = sin(az.mul(22.0).add(up.mul(70.0)).sub(u.time.mul(1.4))).mul(0.3).add(0.7);
+            // In the colour of the hour it brings (its glow and airglow, at one brightness), so
+            // every level's front is its own: teal, green, gold, rose, violet, cobalt.
+            const hue = u.horizon.mul(0.6).add(u.airglow.mul(1.4));
+            const tone = hue.div(max(slMax3(hue), 0.001)).mul(mix(1.0, 0.7, smoothstep(-0.4, -2.2, x)));
+            sky.addAssign(tone.mul(head.mul(ripple).add(passed)).mul(u.front.z).mul(0.075));
+        });
+
         // The far shore's lamps: a few warm points at the waterline, and the paths they lay on the
         // water (read along the view ray, below).
         const lamps = float(0.0).toVar();
@@ -293,9 +441,10 @@ export function createSky({ u, noise, tier }) {
         // Everything that stands on the horizon or lies on the water is low: the hills, the woods
         // and the mist are read only there.
         If(d.y.lessThan(HORIZON_BAND), () => {
-            // ── The far hills: two crests, darker than the low sky behind them ──
+            // ── The horizon at three depths: a distant range, the far hills, the near crest ──
             const crest = ridges(noise, d).toVar();
             const fuzz = u.texel.mul(1.5);
+            const range = smoothstep(crest.z.add(fuzz), crest.z.sub(fuzz), d.y).toVar();
             const farHill = smoothstep(crest.y.add(fuzz), crest.y.sub(fuzz), d.y);
             const nearHill = smoothstep(crest.x.add(fuzz), crest.x.sub(fuzz), d.y).toVar();
             // Woods along the near crest: a serrated edge of spruce, in stretches.
@@ -304,6 +453,12 @@ export function createSky({ u, noise, tier }) {
             });
             // A fireball lights their faces for the moment it is up.
             const lightning = u.bolide.mul(u.flash.w.add(u.flashB.w)).mul(0.006);
+            // The range is the palest (the most air in front of it), and fades into the glow at
+            // its foot. (A lit band along its tops reads as a neon outline: no snow line.)
+            const foot = smoothstep(0.0, 0.03, d.y);
+            const distant = u.horizon.mul(foot.mul(-0.12).add(0.4)).add(u.mid.mul(0.6)).add(u.ridge.mul(0.8))
+                .add(lightning.mul(2.2));
+            sky.assign(mix(sky, distant, range.mul(0.92)));
             const haze = u.horizon.mul(0.2).add(u.ridge).add(lightning.mul(1.6));
             sky.assign(mix(sky, haze, farHill));
             sky.assign(mix(sky, u.ridge.add(lightning), nearHill));
@@ -315,7 +470,10 @@ export function createSky({ u, noise, tier }) {
             const ua = az.div(TAU);
             const bank = noiseSmooth(noise, vec2(ua.mul(7.0).add(u.time.mul(0.0008)), 0.83), 1).g.toVar();
             const low = max(d.y, 0.0).toVar();
-            const veil = exp(low.div(bank.mul(bank).mul(0.03).add(0.004)).negate())
+            // The air's mist lifts the bank higher and thickens it.
+            const rise = u.air.z.mul(3.4).add(1.0);
+            const veil = exp(low.div(bank.mul(bank).mul(0.03).mul(rise).add(u.air.z.mul(0.005))
+                .add(0.004)).negate())
                 .mul(bank.mul(0.75).add(0.25)).toVar();
             if (tier.airglow) {
                 // Its own slow curls, drifting the other way.
@@ -325,11 +483,12 @@ export function createSky({ u, noise, tier }) {
             }
             const halo = float(0.0).toVar();
             LAMPS.forEach(([lampAz, lampPower]) => {
-                halo.addAssign(slGauss(az.sub(lampAz).div(0.03)).mul(lampPower));
+                halo.addAssign(slGauss(az.sub(lampAz).div(u.air.z.mul(0.03).add(0.03))).mul(lampPower));
             });
-            const mistLight = u.horizon.mul(0.85).add(u.mid)
-                .add(LAMP_COLOUR.mul(halo).mul(exp(low.div(-0.012))).mul(0.05));
-            sky.assign(mix(sky, mistLight, clamp(veil.mul(MIST), 0.0, 0.8)));
+            const lampGlow = exp(low.div(u.air.z.mul(-0.02).sub(0.012))).mul(u.air.z.mul(0.04).add(0.05));
+            const mistLight = u.horizon.mul(0.85).add(u.mid).add(LAMP_COLOUR.mul(halo).mul(lampGlow));
+            const thickness = clamp(veil.mul(MIST).mul(u.air.z.mul(0.35).add(1.0)), 0.0, u.air.z.mul(0.12).add(0.8));
+            sky.assign(mix(sky, mistLight, thickness));
         });
 
         const lampHeight = slGauss(d.y.sub(0.0024).div(0.0017));
@@ -339,8 +498,9 @@ export function createSky({ u, noise, tier }) {
         // ── The water ──
         const share = mirrorShare(view);
         const lake = sky.mul(share).add(u.water.mul(share.oneMinus().mul(2.4).add(0.25)));
-        // The rings: each crest carries a line of its piece's colour.
-        const rings = vec3(ringLight(u, spot).mul(0.16)).toVar();
+        // The rings: each crest carries a faint line of its piece's colour (the bend it gives
+        // the mirror does most of the drawing; a bright crest reads as a hoop laid on the water).
+        const rings = vec3(ringLight(u, spot).mul(0.042)).toVar();
         // Each lamp lays a broken path of light toward the lens: bright where the water tilts
         // its way, gone where it tilts off.
         const tilt = clamp(along.mul(420.0).add(0.55), 0.0, 1.0);
@@ -348,7 +508,12 @@ export function createSky({ u, noise, tier }) {
         rings.addAssign(LAMP_COLOUR.mul(path).mul(0.42));
         // The far shore's mist: the mirror fades into the horizon's glow in its last sliver.
         const shore = exp(abs(view.y).div(-0.006));
-        const water = mix(lake.add(rings), u.horizon.mul(0.55).add(u.ridge), shore.mul(0.6));
+        const water = mix(lake.add(rings), u.horizon.mul(0.55).add(u.ridge), shore.mul(0.6)).toVar();
+        // The air's mist breathes over the water too, thickest far out.
+        If(u.air.z.greaterThan(0.002), () => {
+            const breath = exp(abs(view.y).div(-0.05)).mul(u.air.z).mul(0.42);
+            water.assign(mix(water, u.horizon.mul(0.7).add(u.mid.mul(1.2)), breath));
+        });
 
         return vec4(select(wet, water, sky), 1.0);
     })();

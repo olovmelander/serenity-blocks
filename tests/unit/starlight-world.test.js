@@ -13,7 +13,7 @@ import {
 } from '../../src/themes/starlight/starlight-world.js';
 import {
     DEG, EXPOSURE_MAX, FIGURES, FIGURES_KEPT, HOUR_SECONDS, HOUR_SWING, LINES_PER_ROW, PALETTES, SKY_RATE,
-    SKY_START, TAU, TWIST_SWING,
+    SKY_START, STREAK, TAU, TWIST_SWING,
 } from '../../src/themes/starlight/starlight-core.js';
 import { RINGS, STREAKS } from '../../src/themes/starlight/starlight-tsl.js';
 import { cardUnion, fallbackLayout } from '../../src/themes/starlight/starlight-composition.js';
@@ -189,9 +189,10 @@ describe('StarlightWorld: the sky turns', () => {
                 worst = Math.max(worst, Math.abs(world.skyAngle - last));
                 last = world.skyAngle;
             }
-            // The sky has whirled far, but never more than a few degrees in one frame, and no
-            // further in an old session than in a new one.
-            expect(world.skyAngle - a0).toBeGreaterThan(TWIST_SWING * 6);
+            // The sky has whirled far (each twist turns it a little now: its spiral is the
+            // answer), but never more than a few degrees in one frame, and no further in an old
+            // session than in a new one.
+            expect(world.skyAngle - a0).toBeGreaterThan(TWIST_SWING * 4);
             expect(worst).toBeLessThan(4 * DEG);
         });
     });
@@ -353,14 +354,34 @@ describe('StarlightWorld: a clear draws the figure', () => {
         }
     });
 
-    it('sends a shooting star across the sky for every row', () => {
+    it('sends a shooting star across the sky for every row of one or two', () => {
         const { world, camera } = makeWorld();
-        world.onClear({ rows: [19, 18, 17], lines: 3 });
+        world.onClear({ rows: [19, 18], lines: 2 });
         step(world, camera, START + 0.1, START + 0.55);
-        expect(world.getState().streaks).toBe(3);
+        expect(world.getState().streaks).toBe(2);
         // They are gone again a moment later.
         step(world, camera, START + 0.55, START + 3);
         expect(world.getState().streaks).toBe(0);
+    });
+
+    it('sends an earthgrazer for three lines: one long slow meteor low over the hills, and its train', () => {
+        const { world, camera } = makeWorld();
+        world.onClear({ rows: [19, 18, 17], lines: 3 });
+        step(world, camera, START + 0.1, START + 0.3);
+        const rows = world.u.tables.streaks;
+        const live = [];
+        for (let i = 0; i < world.streakEnds.length; i += 1) {
+            if (world.streakEnds[i] > world.time) live.push(i);
+        }
+        expect(live).toHaveLength(2);
+        const kinds = live.map((i) => rows[i * 4 + 3].x).sort();
+        expect(kinds).toEqual([STREAK.meteor, STREAK.train]);
+        live.forEach((i) => {
+            // Low: it starts and ends under twelve degrees, and it is slow.
+            expect(Math.asin(rows[i * 4].y)).toBeLessThan(12 * DEG);
+            expect(Math.asin(rows[i * 4 + 1].y)).toBeLessThan(12 * DEG);
+            expect(rows[i * 4 + 1].w).toBeGreaterThan(2);
+        });
     });
 
     it('finishes the figure on four lines, flares it and keeps it in the sky', () => {
@@ -405,7 +426,8 @@ describe('StarlightWorld: a clear draws the figure', () => {
         quad.world.onClear({ rows: [19, 18, 17, 16], lines: 4 });
         const perfect = makeWorld();
         perfect.world.onClear({ rows: [19, 18, 17, 16], lines: 4, perfect: true });
-        expect(perfect.world.scheduled.length).toBeGreaterThan(quad.world.scheduled.length + 5);
+        // The storm is written at once, its meteors' starts spread over a few seconds.
+        expect(perfect.world.getState().streaks).toBeGreaterThan(quad.world.getState().streaks + 20);
     });
 
     it('never keeps more figures than the sky has room for, and lets the oldest go', () => {
@@ -599,14 +621,14 @@ describe('StarlightWorld: play builds the night instead of popping', () => {
         quad(world);
         step(world, camera, START + 0.1, START + 0.46);
         const begun = world.figureCount;
-        const waiting = world.scheduled.length;
+        const flying = world.getState().streaks;
         const ball = world.fireball;
         const power = world.ballPower(ball, world.time);
         world.onCrown();
         expect(world.figureCount).toBe(begun);
         expect(world.current).toBeNull();
-        // A storm from the radiant and every figure flaring are on their way.
-        expect(world.scheduled.length).toBeGreaterThanOrEqual(waiting + 9);
+        // A storm from its radiant is on its way.
+        expect(world.getState().streaks).toBeGreaterThanOrEqual(flying + 20);
         step(world, camera, START + 0.46, START + 1.1);
         expect(world.fireballs.filter((b) => b.on)).toHaveLength(1);
         expect(world.ballPower(ball, world.time)).toBeGreaterThan(power);

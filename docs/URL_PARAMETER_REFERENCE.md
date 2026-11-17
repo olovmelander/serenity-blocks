@@ -89,7 +89,10 @@ The Starlight rebuild retired the controls of the seven removed `starlight-*` pl
 (`aurora`, `cpu`, `dustOnly`, `period`, `sign` and their own readings of `dust`, `post` and
 `stars`), and added the capture flags `starlightTime`, `starlightFixedDt`, `starlightParts` and
 `starlightFalseColor` (`starlightForceWebGL` was already read) plus the `starlight` playground
-effect (it reads 26 parameters; `clears` is the only name of its own).
+effect (it reads 26 parameters; `clears` is the only name of its own). Its third pass (2026-11-17)
+added `air` (hold the night's air: clear, waves, veil, mist, breeze, shine) and `visitors=0` (no
+satellites or fish), and the event names `b2b`, `cascade`, `gameOver`, `satellite`, `station`,
+`fish` and `comet` for its `event=`.
 The Stellar Velocity rebuild retired that theme's eleven old readers (`stellarVelNoPost`,
 `stellarVelNoMRT`, `stellarVelNoCompute`, `stellarVelBaseline`, `stellarVelSeed`,
 `stellarVelPlayback`, `stellarVelPlaybackLoops`, `stellarVelNoDrs`, `stellarVelNoEnhancements`,

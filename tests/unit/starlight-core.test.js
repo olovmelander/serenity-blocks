@@ -301,8 +301,23 @@ describe('Starlight core: the hours', () => {
                 expect(p[key], `${p.name}.${key}`).toHaveLength(3);
                 p[key].forEach((v) => expect(v).toBeGreaterThanOrEqual(0));
             });
-            PALETTE_SCALARS.forEach((key) => expect(p[key], `${p.name}.${key}`).toBeGreaterThan(0));
+            // Every scalar is there; all but dusk are positive in every hour (the dark hours
+            // hold no twilight at all).
+            PALETTE_SCALARS.forEach((key) => {
+                if (key === 'dusk') expect(p[key], `${p.name}.${key}`).toBeGreaterThanOrEqual(0);
+                else expect(p[key], `${p.name}.${key}`).toBeGreaterThan(0);
+            });
         });
+    });
+
+    it('holds twilight in the dawn and dusk hours and none in the dark ones', () => {
+        const dusk = Object.fromEntries(PALETTES.map((p) => [p.name, p.dusk]));
+        expect(dusk['deep night']).toBe(0);
+        expect(dusk.airglow).toBe(0);
+        expect(dusk['first light']).toBeGreaterThan(0.8);
+        expect(dusk.afterglow).toBeGreaterThan(0.6);
+        expect(dusk['blue hour']).toBeGreaterThan(0.6);
+        expect(dusk.zodiacal).toBeLessThan(0.5);
     });
 
     it('gives the zodiacal light to its own hour above all the others', () => {

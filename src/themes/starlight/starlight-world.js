@@ -40,6 +40,14 @@
  *          from the radiant in those colours; a fireball burns as a green bolide, not a white
  *          blot. When the hands rest it all breathes back over a few seconds.
  *
+ * The living night (2026-11-17): the AIR turns on its own clock (starlight-night.js: clear,
+ * airglow waves, a cirrus veil, mist, a breeze, noctilucent shine; writeAir), a level-up rolls
+ * the next hour up the sky as a front, satellites and fish come by themselves (setVisitors), the
+ * great comet visits on the clock or when a perfect clear calls it (writeComet, summonComet), a
+ * twist sends a spiral (spiral), three lines an earthgrazer, a fireball bursts as it lands
+ * (burst), a perfect clear's storm runs out of one radiant (storm), and a run's end lets its
+ * constellations fall (onGameOver).
+ *
  * Everything is a function of the night's clock and the events' start times, so a seek() that
  * replays the same events gives the same frame.
  */
@@ -81,11 +89,16 @@ import {
     worldToSky,
 } from './starlight-core.js';
 import { tierFor } from './starlight-quality.js';
+import {
+    AIRS, airAt, airUniforms, heldAir,
+} from './starlight-night.js';
 import { sessionBakes } from './starlight-bakes.js';
 import {
     RINGS, STREAKS, createNoiseTexture, createUniforms,
 } from './starlight-tsl.js';
 import { createSky } from './starlight-sky.js';
+import { createComet } from './starlight-comet.js';
+import { SPIRALS, SPIRAL_LIFE, createSpirals } from './starlight-spiral.js';
 import { createStars } from './starlight-stars.js';
 import { TRAIN_LIFE, createFx } from './starlight-fx.js';
 import {
@@ -108,7 +121,7 @@ export function fovForAspect(aspect) {
     return Math.min(76, (Math.atan(Math.max(wide, need)) * 360) / Math.PI);
 }
 
-const PARTS = ['sky', 'stars', 'figures', 'streaks'];
+const PARTS = ['sky', 'stars', 'figures', 'streaks', 'comet', 'spirals'];
 
 /** The frame height every pixel size in the scene is authored for. */
 export const DESIGN_LINES = 1080;
@@ -140,6 +153,43 @@ const TWIN_RGB = Object.freeze([1.0, 0.62, 0.2]);
 const TWIN_GAP = 0.014;
 /** Each cascade wave past the first whirls the sky this much further than the last. */
 const CASCADE_SWING = 3 * DEG;
+/** Seconds between satellites drifting over (least, most), and the share that are the bright station. */
+const SATELLITE_GAP = Object.freeze([14, 32]);
+const STATION_SHARE = 0.16;
+/** Seconds between fish rising beside the card (least, most). */
+const FISH_GAP = Object.freeze([7, 19]);
+/** A perfect clear's storm: meteors, and how long they keep coming (s). */
+const STORM_METEORS = 30;
+const STORM_SPAN = 2.6;
+/** The constellations that fall at a game over: stars at most, and the seconds between two. */
+const FALL_STARS = 36;
+const FALL_GAP = 0.07;
+/** A ring with no light of its own: a fish rising only bends the mirror. */
+const DARK = Object.freeze([0, 0, 0]);
+/**
+ * The great comet's visits by the clock: the first, how often it comes back, how long it stays
+ * and how long it takes to brighten and to fade (s); a visit a perfect clear calls; the tail's
+ * length (radians); the sun's altitude far below the northern horizon (its tails point away).
+ */
+export const COMET = Object.freeze({
+    first: 150,
+    every: 560,
+    stay: 230,
+    ease: 30,
+    called: 100,
+    calledEase: 3.5,
+    tail: 0.3,
+    sunAlt: -0.32,
+    /** Where the middle of a visit finds it: a share of the free space left of the card, and its altitude. */
+    screenX: 0.5,
+    alt: 0.15,
+});
+/**
+ * A level-up's front of airglow: seconds it takes to roll from the horizon to the top of the
+ * frame and on, and how long its glow stays behind it.
+ */
+const FRONT_RISE = 3.4;
+const FRONT_LIFE = 5.2;
 
 export class StarlightWorld {
     /**
@@ -224,6 +274,21 @@ export class StarlightWorld {
         this._spark = [0, 0, 0];
         this._lineRgb = [0, 0, 0];
         this._landing = { x: 0.5, y: 0.5, front: true };
+        /** The night's air (starlight-night.js) and what it gives the shader; a held air pins it. */
+        this._air = {};
+        this._airU = {};
+        this.airHold = null;
+        /** Satellites and fish come by themselves (the tests and clean captures hold them off). */
+        this.visitors = true;
+        /** The great comet: where it stands in the sky (ρ, θ), the visit it is on, its outburst. */
+        this.comet = {
+            visit: -1, rho: 0, theta: 0, light: 0, calledAt: -1000,
+        };
+        this.cometOut = new Swell({
+            release: 6, ceiling: 1, knee: 0.6, headroom: 1.3,
+        });
+        this._head = [0, 0, 0];
+        this._sun = [0, 0, 0];
         this.resetState(0);
     }
 
@@ -272,7 +337,19 @@ export class StarlightWorld {
             ball.landed = false;
         });
         this.playedCount = 0;
+        this.frontAt = -1000;
         this.nextMeteor = time + 9;
+        this.nextSatellite = time + 11;
+        this.spiralCursor = 0;
+        this.spiralEnds = [-1000, -1000];
+        if (this.comet) {
+            this.comet.visit = -1;
+            this.comet.light = 0;
+            this.comet.calledAt = -1000;
+            this.cometOut.reset();
+        }
+        this.nextFish = time + 5;
+        this.overAt = -1000;
         this.scheduled = [];
         this.order = figureOrder(20261011);
         this.orderCursor = 0;
@@ -303,6 +380,7 @@ export class StarlightWorld {
         u.tables.streaks.forEach((row, i) => row.set(0, i % 4 < 2 ? 1 : 0, 0, i % 4 === 0 ? -1000 : 0));
         u.tables.rings.forEach((row) => row.set(0, 0, 0, 0));
         u.tables.figures.forEach((row) => row.set(0, 0, 0, 0));
+        u.tables.spirals.forEach((row) => row.set(0, 1, 0, 0));
         // The last row is the catalogue's own glints: always lit, never flared.
         u.tables.figures[FIGURES_KEPT].set(1, 0, 0, 0);
         u.flash.value.set(0, 1, 0, 0);
@@ -321,10 +399,14 @@ export class StarlightWorld {
             u, noise: this.noise, tier, catalog: this.catalog,
         });
         this.fx = createFx({ u, noise: this.noise, tier });
+        this.cometPart = createComet({ u, noise: this.noise, tier });
+        this.spiralPart = createSpirals({ u, noise: this.noise, tier });
         this.addPart('sky', this.sky.object);
         this.addPart('stars', this.stars.stars);
         this.addPart('figures', this.stars.figures);
         this.addPart('streaks', this.fx.streaks);
+        this.addPart('comet', this.cometPart.object);
+        this.addPart('spirals', this.spiralPart.object);
         this.scene.add(this.root);
         this.compose();
         this.applyPalette();
@@ -707,7 +789,9 @@ export class StarlightWorld {
         const flown = clamp01(age / ball.duration);
         const landed = Math.max(0, age - ball.duration);
         const rise = Math.sin(Math.min(1, flown * 1.4) * Math.PI * 0.5);
-        return rise * Math.exp(-landed / 0.5) * this.ballPower(ball, time);
+        // It flares as it ends.
+        const end = (age - ball.duration) / 0.09;
+        return (rise * Math.exp(-landed / 0.5) + 1.3 * Math.exp(-end * end)) * this.ballPower(ball, time);
     }
 
     /**
@@ -788,7 +872,7 @@ export class StarlightWorld {
             });
         }
         this.streak(from, to, {
-            kind: 3, duration, rgb: colour, power: 1.1 * power, tail: 1, width: 5.5, life: TRAIN_LIFE,
+            kind: STREAK.train, duration, rgb: colour, power: 1.1 * power, tail: 1, width: 5.5, life: TRAIN_LIFE,
         });
         ball.on = true;
         for (let k = 0; k < 3; k += 1) {
@@ -1085,11 +1169,21 @@ export class StarlightWorld {
             this.kindle(figure, index, arrival, rgb, gain);
         }
 
-        // A ring on the lake under the piece's column, out where the water meets the card's
-        // foot: it opens behind the card and its arcs run out on both sides of it.
-        const az = this.azimuthOf(c.screen ? sx : at.x);
-        const footX = this._pos.x + Math.sin(az) * RING_RANGE;
-        const footZ = this._pos.z - Math.cos(az) * RING_RANGE;
+        // A ring on the open lake beside the card, on the side the mote flies to: under the
+        // card it would never be seen (gotcha #144). The piece's column picks the place across
+        // that side's water (left on the board, left on the lake), its row the depth (the floor
+        // nearest the lens, lowest on screen).
+        const toLeft = sx <= (card.x0 + card.x1) * 0.5;
+        const lane = toLeft ? card.x0 : 1 - card.x1;
+        const across = clamp01(c.u ?? 0.5);
+        const depth = clamp01(row / rows.length / 19);
+        let ringX = toLeft
+            ? card.x0 - lane * (0.16 + 0.62 * (1 - across))
+            : card.x1 + lane * (0.16 + 0.62 * across);
+        if (c.screen) ringX = sx;
+        const site = this.screenToWater(ringX, 0.765 + 0.11 * depth, RING_RANGE * 3, this._point);
+        const footX = site.x;
+        const footZ = site.z;
         const ring = 1 + 0.6 * pace;
         this.ring(footX, footZ, rgb, hard
             ? {
@@ -1124,11 +1218,16 @@ export class StarlightWorld {
         } else {
             // A shooting star for every row, and one more for every wave past the first: each
             // wave's brighter and quicker than the last.
-            const count = Math.min(6, lines + depth);
+            // Three lines send an earthgrazer instead: one long slow meteor skimming the
+            // hills from one side of the frame to the other, doubled by the lake.
+            const grazer = lines === 3;
+            const count = Math.min(6, (grazer ? 0 : lines) + depth);
             const power = 1 + 0.22 * depth;
             const pace = 1 + 0.15 * depth;
             const gap = 0.15 / (1 + 0.25 * depth);
-            for (let i = 0; i < count; i += 1) this.schedule(at + 0.08 + i * gap, () => this.meteor(power, { pace }));
+            if (grazer) this.schedule(at + 0.08, () => this.earthgrazer(power));
+            const first = at + 0.08 + (grazer ? 0.4 : 0);
+            for (let i = 0; i < count; i += 1) this.schedule(first + i * gap, () => this.meteor(power, { pace }));
             this.surgeSwell.hit(0.08 * lines + 0.05 * depth, at);
         }
         if (depth > 0) {
@@ -1138,7 +1237,11 @@ export class StarlightWorld {
             this.waveRing(c, depth);
         }
         if (c.b2b) this.twin(at);
-        if (c.twist) this.turnDebt += TWIST_SWING;
+        if (c.twist) {
+            // The twist's own shape: a spiral unfurls in free sky; the sky turns a little with it.
+            this.spiral(at, { size: 0.15 + 0.015 * lines });
+            this.turnDebt += TWIST_SWING * 0.45;
+        }
         this.kick = Math.max(this.kick, 0.25 + lines * 0.14 + 0.06 * depth);
     }
 
@@ -1179,9 +1282,8 @@ export class StarlightWorld {
      * none is up.
      */
     crown(at, { fireball = true } = {}) {
-        for (let i = 0; i < 9; i += 1) {
-            this.schedule(at + 0.3 + i * 0.16, () => this.meteor(1.15, { rgb: this.playedColour(i) }));
-        }
+        this.storm(at + 0.25);
+        this.summonComet(at);
         this.figures.forEach((kept) => {
             if (!kept.on) return;
             const { serial } = kept;
@@ -1194,6 +1296,320 @@ export class StarlightWorld {
         this.kick = Math.max(this.kick, 0.6);
     }
 
+    /**
+     * A storm of meteors from one RADIANT in free sky: every one starts a little way out from the
+     * same point and runs straight away from it, in the colours played, so the point they all
+     * come from shows itself. Written at once with start times spread over STORM_SPAN.
+     */
+    storm(at) {
+        const layout = this.layoutNow();
+        const card = cardUnion(layout) || { x0: 0.4, x1: 0.6 };
+        const right = Math.max(card.x1, layout.hud?.x1 ?? 0);
+        const sx = 1 - right > card.x0 * 0.8 ? (right + 1) * 0.5 : card.x0 * 0.5;
+        const r = this.screenRay(sx, 0.2, this._ray);
+        const R = [r.x, r.y, r.z];
+        // Two unit vectors across the radiant.
+        let e1x = -R[2];
+        let e1z = R[0];
+        const n1 = Math.hypot(e1x, e1z) || 1;
+        e1x /= n1;
+        e1z /= n1;
+        const e2 = [-e1z * R[1], e1z * R[0] - e1x * R[2], e1x * R[1]];
+        const toward = (angle, reach, out) => {
+            const c = Math.cos(reach);
+            const s = Math.sin(reach);
+            const ca = Math.cos(angle);
+            const sa = Math.sin(angle);
+            out[0] = R[0] * c + (e1x * ca + e2[0] * sa) * s;
+            out[1] = R[1] * c + e2[1] * sa * s;
+            out[2] = R[2] * c + (e1z * ca + e2[2] * sa) * s;
+            return out;
+        };
+        for (let i = 0; i < STORM_METEORS; i += 1) {
+            const angle = this.rand() * Math.PI * 2;
+            const near = 0.02 + this.rand() * 0.05;
+            const far = near + 0.1 + this.rand() * 0.2;
+            const from = toward(angle, near, [0, 0, 0]);
+            const to = toward(angle, far, [0, 0, 0]);
+            if (to[1] < 0.08) continue;
+            this.streak(from, to, {
+                kind: STREAK.meteor,
+                start: at + (i / STORM_METEORS) * STORM_SPAN + this.rand() * 0.06,
+                duration: 0.32 + this.rand() * 0.3,
+                rgb: this.playedColour(i).slice(),
+                power: 1.15 + this.rand() * 0.5,
+                tail: 0.55,
+                width: 2.8 + this.rand() * 1.2,
+                life: 0.3,
+            });
+        }
+    }
+
+    /**
+     * Three lines: an earthgrazer, one long slow meteor skimming the hills from one side of the
+     * frame to the other, its train left glowing behind it; the lake doubles it.
+     */
+    earthgrazer(power = 1) {
+        const leftward = this.rand() < 0.5;
+        const a = this.screenRay(leftward ? 1.03 : -0.03, 0.55 + this.rand() * 0.03, this._ray);
+        const from = [a.x, Math.max(a.y, 0.06), a.z];
+        const b = this.screenRay(leftward ? -0.03 : 1.03, 0.57 + this.rand() * 0.03, this._ray);
+        const to = [b.x, Math.max(b.y, 0.06), b.z];
+        [from, to].forEach((v) => {
+            const n = Math.hypot(v[0], v[1], v[2]);
+            v[0] /= n;
+            v[1] /= n;
+            v[2] /= n;
+        });
+        const rgb = (this._palette.meteor || DEFAULT_SPARK).slice();
+        const duration = 2.6;
+        // A short tail on a long path (a share of a 100° path is a long one: a laser), a slight
+        // arc, and a faint train.
+        this.streak(from, to, {
+            kind: STREAK.meteor, duration, rgb, power: 2.0 * power, tail: 0.1, width: 5.0, bow: 0.035, life: 0.3,
+        });
+        this.streak(from, to, {
+            kind: STREAK.train, duration, rgb, power: 0.38 * power, tail: 1, width: 3.2, bow: 0.035, life: TRAIN_LIFE,
+        });
+    }
+
+    /** A fireball's end: it flares, and its pieces burst on along its path, fanning and falling. */
+    burst(ball) {
+        const { to } = ball;
+        // The way it was flying where it ended, across the sky.
+        let fx = to[0] - ball.from[0];
+        let fy = to[1] - ball.from[1];
+        let fz = to[2] - ball.from[2];
+        const along = fx * to[0] + fy * to[1] + fz * to[2];
+        fx -= to[0] * along;
+        fy -= to[1] * along;
+        fz -= to[2] * along;
+        const fn = Math.hypot(fx, fy, fz) || 1;
+        fx /= fn;
+        fy /= fn;
+        fz /= fn;
+        // Across it: to × forward.
+        const sx = to[1] * fz - to[2] * fy;
+        const sy = to[2] * fx - to[0] * fz;
+        const sz = to[0] * fy - to[1] * fx;
+        const rgb = this._bolide.slice();
+        // Four pieces fly ON along its path, each from a little way back along it and a little
+        // apart, dropping as they go. (A fan from one point reads as a bunch of arrows.)
+        for (let i = 0; i < 4; i += 1) {
+            const back = 0.004 + i * 0.006;
+            const apart = (i / 3 - 0.5) * 0.012;
+            const start = [
+                to[0] - fx * back + sx * apart, to[1] - fy * back + sy * apart, to[2] - fz * back + sz * apart,
+            ];
+            const sn = Math.hypot(start[0], start[1], start[2]);
+            const fan = (i / 3 - 0.5) * 0.55 + (this.rand() - 0.5) * 0.12;
+            const reach = 0.06 + this.rand() * 0.05;
+            const c = Math.cos(fan) * reach;
+            const s = Math.sin(fan) * reach;
+            const end = [to[0] + fx * c + sx * s, to[1] + fy * c + sy * s - reach * 0.3, to[2] + fz * c + sz * s];
+            const n = Math.hypot(end[0], end[1], end[2]);
+            if (end[1] / n < 0.03) continue;
+            this.streak([start[0] / sn, start[1] / sn, start[2] / sn], [end[0] / n, end[1] / n, end[2] / n], {
+                kind: STREAK.meteor,
+                duration: 0.5 + this.rand() * 0.35,
+                rgb,
+                power: 1.3,
+                tail: 0.3,
+                width: 2.4,
+                life: 0.3,
+            });
+        }
+    }
+
+    /** A satellite drifting across the frame (or the bright station): a crossing square to the view. */
+    satellite(station = false) {
+        const leftward = this.rand() < 0.5;
+        const sy0 = 0.07 + this.rand() * 0.34;
+        const sy1 = clamp(sy0 + (this.rand() - 0.5) * 0.3, 0.05, 0.48);
+        const a = this.screenRay(leftward ? 1.06 : -0.06, sy0, this._ray);
+        const from = [a.x, Math.max(a.y, 0.12), a.z];
+        const b = this.screenRay(leftward ? -0.06 : 1.06, sy1, this._ray);
+        const to = [b.x, Math.max(b.y, 0.12), b.z];
+        [from, to].forEach((v) => {
+            const n = Math.hypot(v[0], v[1], v[2]);
+            v[0] /= n;
+            v[1] /= n;
+            v[2] /= n;
+        });
+        const path = Math.acos(clamp(from[0] * to[0] + from[1] * to[1] + from[2] * to[2], -1, 1));
+        const width = station ? 3.3 : 2.3;
+        // Its strip is a few widths long: a round point, not a dash.
+        const tail = clamp((width * 2.4 * this.u.design.value) / Math.max(path, 1e-3), 0.0004, 0.05);
+        this.streak(from, to, {
+            kind: STREAK.satellite,
+            duration: station ? 40 + this.rand() * 8 : 22 + this.rand() * 18,
+            rgb: station ? [1.0, 0.95, 0.86] : [0.9, 0.94, 1.0],
+            power: station ? 2.6 : 0.55 + this.rand() * 0.4,
+            tail,
+            width,
+            bow: !station && this.rand() < 0.25 ? 0.3 + this.rand() * 0.4 : 0,
+            life: 0,
+        });
+    }
+
+    /** A fish rising in the open water beside the card: a ring with no light, a bend in the mirror. */
+    fish() {
+        const layout = this.layoutNow();
+        const card = cardUnion(layout) || { x0: 0.4, x1: 0.6 };
+        const left = this.rand() < 0.55;
+        const sx = left ? card.x0 * (0.12 + this.rand() * 0.72) : card.x1 + (1 - card.x1) * (0.2 + this.rand() * 0.7);
+        const site = this.screenToWater(sx, 0.77 + this.rand() * 0.15, RING_RANGE * 3, this._point);
+        this.ring(site.x, site.z, DARK, {
+            speed: 0.8 + this.rand() * 0.5, life: 5, strength: 0.34, width: 0.16,
+        });
+    }
+
+    /**
+     * The run is over: the constellations it drew fall. Every lit star of every figure in the sky
+     * drops toward the hills as a slow shooting star in its own colour, one after another, and the
+     * figures fade behind them. The falls are written at once (a later resetSession() cannot cut
+     * them off) and the night carries on by itself.
+     */
+    onGameOver() {
+        const t = this.time;
+        let k = 0;
+        this.overAt = t;
+        this.figures.forEach((figure) => {
+            if (!figure.on) return;
+            figure.stars.forEach((star) => {
+                if (star.at === Infinity || star.at > t || k >= FALL_STARS) return;
+                const from = this.skyNow(star.rho, star.theta, [0, 0, 0]);
+                if (from[1] < 0.06) return;
+                const drop = Math.min(0.1 + this.rand() * 0.08, from[1] - 0.04);
+                const to = [from[0] * (1 - drop * 0.2), from[1] - drop, from[2] * (1 - drop * 0.2)];
+                const n = Math.hypot(to[0], to[1], to[2]);
+                this.streak(from, [to[0] / n, to[1] / n, to[2] / n], {
+                    kind: STREAK.meteor,
+                    start: t + 0.15 + k * FALL_GAP,
+                    duration: 0.9 + this.rand() * 0.4,
+                    rgb: star.rgb.slice(),
+                    power: 1.25,
+                    tail: 0.6,
+                    width: 3.2,
+                    life: 0.35,
+                });
+                k += 1;
+            });
+            if (figure.leaving < 0) figure.leaving = t + 0.3;
+        });
+        this.current = null;
+        this.surgeSwell.hit(0.15, t);
+    }
+
+    /**
+     * The comet's visit at `time` (a called one first, else the clock's): its id, start, length
+     * and ease, or null while it is away.
+     */
+    cometVisit(time) {
+        const called = time - this.comet.calledAt;
+        if (called >= 0 && called < COMET.called) {
+            return {
+                id: -2 - Math.round(this.comet.calledAt * 10),
+                t0: this.comet.calledAt,
+                stay: COMET.called,
+                ease: COMET.calledEase,
+            };
+        }
+        if (time < COMET.first) return null;
+        const k = Math.floor((time - COMET.first) / COMET.every);
+        const t0 = COMET.first + k * COMET.every;
+        if (time - t0 >= COMET.stay) return null;
+        return {
+            id: k, t0, stay: COMET.stay, ease: COMET.ease,
+        };
+    }
+
+    /**
+     * Where the comet stands this frame, its tails and its light, to the uniforms. A visit places
+     * it in the sky's own frame (it turns with the stars) so that the middle of the visit finds it
+     * low over the hills in the free space left of the card.
+     */
+    writeComet(time) {
+        const { u, comet } = this;
+        const visit = this.cometVisit(time);
+        if (!visit) {
+            comet.visit = -1;
+            comet.light = 0;
+            u.comet.value.w = 0;
+            this.cometPart?.setVisible(false);
+            return;
+        }
+        const local = time - visit.t0;
+        if (comet.visit !== visit.id) {
+            comet.visit = visit.id;
+            const card = cardUnion(this.layoutNow());
+            const sx = clamp((card ? card.x0 : 0.3) * COMET.screenX, 0.08, 0.3);
+            const want = horizontal(this.azimuthOf(sx), COMET.alt, [0, 0, 0]);
+            worldToSky(this.frame, want, this._sky);
+            comet.rho = this._sky[0];
+            // As the sky stands at the visit's middle (it has been and will be turning).
+            comet.theta = this._sky[1] - this.skyAngle - SKY_RATE * (visit.stay * 0.5 - local);
+        }
+        const head = this.skyNow(comet.rho, comet.theta, this._head);
+        // The tails point away from the sun, far below the northern horizon.
+        const sun = horizontal(this.poleAz + 0.25, COMET.sunAlt, this._sun);
+        const along = head[0] * sun[0] + head[1] * sun[1] + head[2] * sun[2];
+        let ax = head[0] * along - sun[0];
+        let ay = head[1] * along - sun[1];
+        let az = head[2] * along - sun[2];
+        const an = Math.hypot(ax, ay, az) || 1;
+        ax /= an;
+        ay /= an;
+        az /= an;
+        // The dust bends to the side away from the frame's middle.
+        let sx = head[1] * az - head[2] * ay;
+        let sy = head[2] * ax - head[0] * az;
+        let sz = head[0] * ay - head[1] * ax;
+        if (sx > 0) {
+            sx = -sx;
+            sy = -sy;
+            sz = -sz;
+        }
+        comet.light = smooth01(local / visit.ease) * smooth01((visit.stay - local) / visit.ease);
+        u.comet.value.set(head[0], head[1], head[2], comet.light);
+        u.cometTail.value.set(ax, ay, az, COMET.tail);
+        u.cometSide.value.set(sx, sy, sz, Math.min(1.3, this.cometOut.valueAt(time)));
+        this.cometPart?.setVisible(comet.light > 0.001);
+    }
+
+    /** Call the comet (a perfect clear): it bursts out if it is in the sky, else it comes at once. */
+    summonComet(at = this.time) {
+        if (!this.cometVisit(at)) this.comet.calledAt = at;
+        this.cometOut.hit(1, at);
+    }
+
+    /**
+     * A twist's spiral in free sky (beside the card, over the HUD's height, never over a figure
+     * being drawn): the slot that ends first, its place, turning sense and size.
+     */
+    spiral(at, { size = 0.12, power = 1 } = {}) {
+        let slot = 0;
+        for (let i = 1; i < SPIRALS; i += 1) {
+            if (this.spiralEnds[i] < this.spiralEnds[slot]) slot = i;
+        }
+        const layout = this.layoutNow();
+        const card = cardUnion(layout) || { x0: 0.4, x1: 0.6 };
+        const right = Math.max(card.x1, layout.hud?.x1 ?? 0);
+        const roomRight = 1 - right;
+        const roomLeft = card.x0;
+        // The side with more room, alternating when both have plenty; never the comet's side
+        // while it is up (it stands low left of the card).
+        let useRight = roomRight > roomLeft * 0.8 ? (this.spiralCursor % 2 === 0 || roomLeft < 0.2) : false;
+        if (this.comet.light > 0.05 && roomRight > 0.12) useRight = true;
+        this.spiralCursor += 1;
+        const sx = useRight ? right + roomRight * 0.5 : roomLeft * 0.5;
+        const d = this.screenRay(sx, 0.2 + this.rand() * 0.1, this._ray);
+        const rows = this.u.tables.spirals;
+        rows[slot * 2].set(d.x, Math.max(d.y, 0.1), d.z, at);
+        rows[slot * 2 + 1].set(this.rand() < 0.5 ? 1 : -1, size, power, 0);
+        this.spiralEnds[slot] = at + SPIRAL_LIFE;
+    }
+
     /** The late perfect clear (alone in its frame): the crown on the clear still playing. */
     onCrown() {
         this.gameplay.crown(this.time);
@@ -1203,7 +1619,8 @@ export class StarlightWorld {
     /** A twist that cleared nothing: the sky gives a small turn and the figure twinkles. */
     onSpin() {
         this.gameplay.spin(this.time);
-        this.turnDebt += TWIST_SWING * 0.4;
+        this.spiral(this.time, { size: 0.08, power: 0.75 });
+        this.turnDebt += TWIST_SWING * 0.25;
         if (this.current) this.current.flare = Math.max(this.current.flare, 0.35);
         this.kick = Math.max(this.kick, 0.18);
     }
@@ -1227,6 +1644,8 @@ export class StarlightWorld {
         }
         this.level = next;
         this.turnDebt += HOUR_SWING;
+        // The next hour's light rolls up the sky as a front of airglow.
+        this.frontAt = this.time;
         this.schedule(this.time + 0.1, () => this.meteor(1.3));
         this.surgeSwell.hit(0.45, this.time);
         this.gameplay.levelUp(this.time);
@@ -1377,6 +1796,20 @@ export class StarlightWorld {
             this.nextMeteor = time + Math.max(0.35 - 0.22 * storm, -Math.log(1 - this.rand() * 0.999) / rate);
         }
 
+        // Visitors: a satellite drifting over now and then (sometimes the bright station), and
+        // a fish rising beside the card.
+        if (!this.visitors) {
+            this.nextSatellite = Math.max(this.nextSatellite, time);
+            this.nextFish = Math.max(this.nextFish, time);
+        } else if (time >= this.nextSatellite) {
+            this.satellite(this.rand() < STATION_SHARE);
+            this.nextSatellite = time + SATELLITE_GAP[0] + this.rand() * (SATELLITE_GAP[1] - SATELLITE_GAP[0]);
+        }
+        if (this.visitors && time >= this.nextFish) {
+            this.fish();
+            this.nextFish = time + FISH_GAP[0] + this.rand() * (FISH_GAP[1] - FISH_GAP[0]);
+        }
+
         // The fireball's colour: the hour's meteor, a deeper green the hotter play runs.
         const meteorRgb = this._palette.meteor || DEFAULT_SPARK;
         const grey = meteorRgb[0] * 0.2126 + meteorRgb[1] * 0.7152 + meteorRgb[2] * 0.0722;
@@ -1410,6 +1843,7 @@ export class StarlightWorld {
             if (landed > 0 && !ball.landed) {
                 ball.landed = true;
                 this.shake = Math.max(this.shake, 0.006);
+                this.burst(ball);
             }
             const at = this.screenOf(ball.to, this._landing);
             if (landed > 0 && landed < 2.2 && at.front) {
@@ -1432,6 +1866,9 @@ export class StarlightWorld {
         post.ripple.strength = first ? Math.min(1.6, ripple) : 0;
 
         this.applyPalette();
+        this.writeAir(time);
+        this.writeComet(time);
+        this.spiralPart?.setVisible(this.spiralEnds[0] > time || this.spiralEnds[1] > time);
         this.writeTables();
         if (camera) this.sky?.update(camera);
 
@@ -1441,6 +1878,38 @@ export class StarlightWorld {
         post.bloomBoost = this.surge * 0.3 * (1 - 0.5 * fever) + open * 0.15;
         // The iris closes a little as play heats, so the colours stay saturated and the night dark.
         post.exposure = 1 - 0.18 * clamp01(this.lensFlash) - 0.05 * level - 0.14 * fever;
+    }
+
+    /**
+     * Pin the air to one state (`name` in AIRS) or give it back to the clock (null): the
+     * playground's `air=` and the tests, which hold it still.
+     */
+    setAirHold(name) {
+        this.airHold = AIRS.includes(name) ? name : null;
+    }
+
+    /** Let satellites and fish come by themselves (true) or hold them off (the tests' still night). */
+    setVisitors(on) {
+        this.visitors = on !== false;
+    }
+
+    /** The air of the night and a level-up's front, to the uniforms. */
+    writeAir(time) {
+        const { u } = this;
+        const air = this.airHold ? heldAir(this.airHold, this._air) : airAt(time, this._air);
+        const au = airUniforms(air, this._palette.dusk ?? 0, this._airU);
+        u.air.value.set(au.waves, au.veil, au.mist, au.breeze);
+        u.shine.value = au.shine;
+        const age = time - this.frontAt;
+        if (age >= 0 && age < FRONT_LIFE) {
+            const k = age / FRONT_RISE;
+            // It rises fast off the horizon and slows as it climbs (the sine of the altitude).
+            const height = -0.04 + 1.15 * (1 - (1 - Math.min(1, k)) ** 1.6) + 0.1 * Math.max(0, k - 1);
+            const strength = smooth01(age / 0.3) * (1 - smooth01((age - 2.4) / (FRONT_LIFE - 2.4)));
+            u.front.value.set(height, 0.075, strength, 0);
+        } else {
+            u.front.value.set(-1, 0.075, 0, 0);
+        }
     }
 
     getPostState() {
@@ -1490,6 +1959,10 @@ export class StarlightWorld {
             stage: this.heat.stage,
             open: this.open,
             fireballs: this.fireballs.filter((ball) => ball.on).length,
+            comet: this.comet.light,
+            air: this._air.name ?? 'clear',
+            airNext: this._air.next ?? 'clear',
+            airTurn: this._air.turn ?? 0,
         };
     }
 
@@ -1498,12 +1971,16 @@ export class StarlightWorld {
         this.sky?.dispose();
         this.stars?.dispose();
         this.fx?.dispose();
+        this.cometPart?.dispose();
+        this.spiralPart?.dispose();
         this.noise?.dispose();
         this.root.clear();
         this.parts.clear();
         this.sky = null;
         this.stars = null;
         this.fx = null;
+        this.cometPart = null;
+        this.spiralPart = null;
         this.noise = null;
         this.catalog = null;
     }
