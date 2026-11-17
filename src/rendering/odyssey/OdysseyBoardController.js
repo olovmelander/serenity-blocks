@@ -1387,9 +1387,6 @@ export class OdysseyBoardController {
                     // THE SEA OF CLOUDS under chapter 5's evening (world/odyssey-cloud-sea.js).
                     // BISECT LEVER: ?odysseyNoCloudSea=1.
                     cloudSea: !readBooleanUrlFlag('odysseyNoCloudSea'),
-                    // AUTUMN ON THE MOUNTAIN, chapter 4's palette (world/odyssey-autumn.js).
-                    // A/B LEVER: ?odysseyNoAutumn=1.
-                    autumn: !readBooleanUrlFlag('odysseyNoAutumn'),
                     // `?odysseyForestGreens=` (odyssey-forest-greens.js): the broadleaf palette.
                     forestGreens: readUrlValue('odysseyForestGreens') || '',
                     cloudFieldCount: Number.parseInt(readUrlValue('odysseyWorldCloudFieldCount'), 10) || 0,

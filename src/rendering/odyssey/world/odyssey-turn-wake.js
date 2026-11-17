@@ -128,6 +128,15 @@ export function inTurnWakeReach(x, z, cfg = ODYSSEY_TURN_WAKE) {
     return x >= cfg.reach.x[0] && x <= cfg.reach.x[1] && z >= cfg.reach.z[0] && z <= cfg.reach.z[1];
 }
 
+/**
+ * Whether a species lets leaves go in the wake: the shore's broadleaf (S1-) and the blossom (S7-).
+ * The pines, firs and cypresses keep their needles.
+ * @param {string} speciesId
+ */
+export function turnWakeSheds(speciesId) {
+    return typeof speciesId === 'string' && (speciesId.startsWith('S1-') || speciesId.startsWith('S7-'));
+}
+
 /** Where a leaf is `age` seconds after it let go (the vertex stage's twin). */
 export function turnWakeLeafAt(leaf, age, cfg = ODYSSEY_TURN_WAKE) {
     const L = cfg.leaves;

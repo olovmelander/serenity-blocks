@@ -139,27 +139,25 @@ filmed on the merged build before the next merge.
 - **On the clock:** cloud over the sun dims and lifts the column, the sea state runs calm to
   choppy, a plankton bloom wanders, shafts sweep, kelp sways.
 
-### 5.3 Chapters 3 and 4: morning by the sea, autumn on the mountain
+### 5.3 Chapters 3 and 4: morning by the sea, a golden afternoon on the mountain
 
-- **Chapter 3 keeps its fresh morning.** From its shore the mountain's upper forest shows as a
-  far band of gold.
-- **Chapter 4 has its own palette and hour.** Autumn (`world/odyssey-autumn.js`): broadleaf
-  crowns in gold, amber and russet with a few deep reds, tawny grass and heath, conifers left
-  green. It is done in the materials (a tree's kind rides in its existing snow instance lane),
-  so the scatter, the golden hashes and the forest mask are untouched. `?odysseyNoAutumn=1`
-  turns it off. The light is a golden afternoon that deepens through the chapter into chapter
-  5's golden hour with no step (`hour` in the colour script; the afternoon keyframes wear the
-  evening's recipe).
+- **Chapter 3 keeps its fresh morning.**
+- **Chapter 4 has its own hour.** A golden afternoon that deepens through the chapter into
+  chapter 5's golden hour with no step (`hour` in the colour script; the afternoon keyframes
+  wear the evening's recipe).
+- **Autumn on the mountain was built and taken out** (2026-11-17, the owner: "remove the switch
+  to autumn while going towards and up the mountain"). The mountain's forest stays green; the
+  island's own gold birches and red maples are unchanged.
 - **The seam 3 → 4 is the day turning.** A cloud's shadow comes up the valley and climbs the
-  massif (`world/odyssey-day-turn.js`); ahead of it the land is green morning, behind it gold
-  autumn. As its edge passes the rail, leaves let go of the nearest crowns and birds lift and
+  massif (`world/odyssey-day-turn.js`); ahead of it the land is in the morning's light, behind it
+  the afternoon's. As its edge passes the rail, leaves let go of the nearest crowns and birds lift and
   settle downwind (`world/odyssey-turn-wake.js`). It is paced so a glide shows the whole turn.
 - **Weather on a clock** (`world/odyssey-weather-clock.js`): cloud cover, wind, mist and the
   clearness of the light, each two sines out of step; gusts come in spells; cloud shadows lie
   on the sea as well as the land; mist pools in the hollows of the upper meadow
   (`world/odyssey-hollow-mist.js`, High tier).
 
-![Chapter 3's morning, chapter 4's autumn afternoon, and the handover into chapter 5 (merged build)](images/odyssey-journey-masterpiece-2026-11/island-to-evening.jpg)
+![Chapter 3's morning, chapter 4's afternoon (still with the autumn that was later taken out), and the handover into chapter 5 (merged build)](images/odyssey-journey-masterpiece-2026-11/island-to-evening.jpg)
 
 ### 5.4 Chapter 5: the day ending over a sea of clouds
 
@@ -337,8 +335,7 @@ On the final merged build:
 
 These are choices made without the owner in the room, most of them one constant to change.
 
-- **Autumn on the mountain** was the lead's call, to give chapter 4 a palette of its own.
-  `?odysseyNoAutumn=1` shows the journey without it.
+- **Autumn on the mountain** was the lead's call; the owner had it taken out (see §5.3).
 - **The hole grows on screen** from orb 42 to 48, relaxing the 2026-10-20 "one size in the
   world". `OMEN_SPINE_ANCHOR.approachGain: 0` restores it.
 - **The sunset on the Earth's limb moved earlier** (p 0.722 to 0.732, was 0.735), because the

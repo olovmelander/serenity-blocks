@@ -68,11 +68,9 @@ import {
 } from './odyssey-day-turn.js';
 import { odysseyWeatherDrive } from './odyssey-weather-clock.js';
 import { createOdysseyHollowMist } from './odyssey-hollow-mist.js';
-import { ODYSSEY_TURN_WAKE, createOdysseyTurnWake, inTurnWakeReach } from './odyssey-turn-wake.js';
 import {
-    AUTUMN_KIND, ODYSSEY_AUTUMN, autumnCrown, autumnGrass, autumnKindNode, autumnKindOf, autumnSnowNode,
-    autumnWeight, packSnowKind,
-} from './odyssey-autumn.js';
+    ODYSSEY_TURN_WAKE, createOdysseyTurnWake, inTurnWakeReach, turnWakeSheds,
+} from './odyssey-turn-wake.js';
 import { prefersReducedMotion } from '../../../themes/shared/reduced-motion.js';
 import {
     ODYSSEY_BOULDERS, boulderMatrix, buildBoulderGeometry, buildBoulderSites,
@@ -1292,9 +1290,6 @@ export function createOdysseyWorld({
     // board hands in the wall clock, so a session does not open on the same weather as the last;
     // left at 0 (the playgrounds, the tests) a pinned time repeats.
     weatherPhase = 0,
-    // AUTUMN ON THE MOUNTAIN (odyssey-autumn.js): chapter 4's palette. Ships ON;
-    // `?odysseyNoAutumn=1` on the board builds none of it (ADR-0015).
-    autumn = true,
 } = {}) {
     const weatherEpoch = Number.isFinite(weatherPhase) ? weatherPhase : 0;
     const weatherNow = {};
@@ -1572,12 +1567,6 @@ export function createOdysseyWorld({
         billow: (uvN) => texture(detailTex, uvN).level(0).b,
         scallop: (uvN) => clamp(texture(detailTex, uvN).level(0).a.sub(0.42).mul(3.57), 0, 1),
     });
-    // AUTUMN (odyssey-autumn.js): how far the season has turned ahead of the shade and behind it
-    // (0 on the island, 1 on the mountains; both the same outside the turn).
-    const uAutumn = uniform(new THREE.Vector2(0, 0));
-    const autumnOf = (y, turn) => autumnWeight(y, mix(uAutumn.x, uAutumn.y, turn.y));
-    // The palette's shade colours, by the forest's own shade law.
-    const AUTUMN_SHADES = ODYSSEY_AUTUMN.crowns.map((stop) => shadeColourFor(stop.colour, stop.role));
     const landSunOf = (turn) => mix(uLandSunA, uLandSunB, turn.y);
     const landHourOf = (turn) => mix(uLandHourA, uLandHourB, turn.y);
     // THE ANTISOLAR SKY (odyssey-sky-optics.js): the bow's and the shower veil's strengths.
@@ -2629,24 +2618,7 @@ export function createOdysseyWorld({
         // THE DAY'S TURN at this point of the land (odyssey-day-turn.js), read once: how deep it
         // stands in the turning shade, and whether its light is already the afternoon's.
         const gTurn = dayTurnOf(positionWorld.xz).toVar();
-        // AUTUMN (odyssey-autumn.js): the grass goes tawny, with heath in patches, where the high
-        // band or the day's turn has reached. The patch noise is paid only where there is autumn.
-        const gAutumn = autumn ? autumnOf(height, gTurn).toVar() : null;
-        const grassGreen = mix(poles('grass').mul(meadowTint), vec3(...NORTH_BEACH_PAINT.grass), nbBelt.mul(nbDune));
-        const grassPole = autumn
-            ? Fn(() => {
-                const turnedGrass = grassGreen.toVar();
-                If(gAutumn.greaterThan(0.002), () => {
-                    turnedGrass.assign(autumnGrass({
-                        grass: grassGreen,
-                        weight: gAutumn,
-                        patch: noise2(positionWorld.xz.div(float(ODYSSEY_AUTUMN.grass.patch)).add(vec2(7.7, 3.1))),
-                        moist,
-                    }));
-                });
-                return turnedGrass;
-            })()
-            : grassGreen;
+        const grassPole = mix(poles('grass').mul(meadowTint), vec3(...NORTH_BEACH_PAINT.grass), nbBelt.mul(nbDune));
         const sandPole = mix(
             poles('sand'),
             vec3(...NORTH_BEACH_PAINT.pale).mul(mix(float(1), float(0.86), dryness.oneMinus())),
@@ -2735,11 +2707,7 @@ export function createOdysseyWorld({
         const canopyMean = vec3(forestShade.b, forestShade.a, forestShade.a.mul(0.42))
             .div(max(forestShade.g, 0.02))
             .mul(FOREST_SHADE_PLATE.colourScale * FOREST_FAR_TONE);
-        // (In autumn the painted canopy turns with the trees it stands for.)
-        const canopyNow = autumn
-            ? mix(canopyMean, vec3(...ODYSSEY_AUTUMN.canopy), gAutumn.mul(ODYSSEY_AUTUMN.canopyShare))
-            : canopyMean;
-        albedo = mix(albedo, canopyNow, clamp(farForest.mul(1.6), 0, 1));
+        albedo = mix(albedo, canopyMean, clamp(farForest.mul(1.6), 0, 1));
 
         const SHORE_TOP = ODYSSEY_SEA_LEVEL + 1.2;
         const albedoInland = albedo;
@@ -6352,26 +6320,12 @@ export function createOdysseyWorld({
         const fvIsCrown = cards ? min(fvVert.z, 1) : fvVert.z;
         const fvH01 = fvVert.w;
         const fvPhase = fvShadePhase.w;
-        // The crown's fourth lane is the tree's snow and, with autumn on, its kind (packSnowKind).
-        const fvKind = autumn ? autumnKindNode(fvCrownSnow.w) : null;
-        const fvSnow = autumn ? autumnSnowNode(fvCrownSnow.w, fvKind) : fvCrownSnow.w;
+        const fvSnow = fvCrownSnow.w;
         // THE DAY'S TURN (odyssey-day-turn.js): the trees stand in the turning shade with the ground
-        // under them, and take the afternoon's light, and the autumn, as it reaches them.
+        // under them, and take the afternoon's light as it reaches them.
         const fvTurn = dayTurnOf(positionWorld.xz).toVar();
-        // AUTUMN (odyssey-autumn.js): a crown that turns takes its own autumn colour and shade,
-        // weighed at the tree's foot so it turns whole.
-        const fvAutumn = autumn
-            ? autumnCrown({
-                crown: fvCrownSnow.xyz,
-                shade: fvShadePhase.xyz,
-                weight: autumnOf(positionWorld.y.sub(fvVert.w.mul(ODYSSEY_AUTUMN.crownReach)), fvTurn),
-                kind: fvKind,
-                phase: fvPhase,
-                shades: AUTUMN_SHADES,
-            })
-            : null;
-        const fvCrown = autumn ? fvAutumn.crown : fvCrownSnow.xyz;
-        const fvShade = autumn ? fvAutumn.shade : fvShadePhase.xyz;
+        const fvCrown = fvCrownSnow.xyz;
+        const fvShade = fvShadePhase.xyz;
         // LEAF CARDS (odyssey-forest-cards.js). The vertex stage turns each card to the eye and
         // shakes its leaves; the fragment stage draws a clump from the leaf atlas: its coverage, a
         // normal from the crown's centre with the clump's own dome, the sun's path through the
@@ -6820,14 +6774,8 @@ export function createOdysseyWorld({
                 const greens = forestGreensCrown(t, greensPalette);
                 const crown = greens ?? t.crown;
                 const shade = greens ? shadeColourFor(greens, getForestSpecies(t.speciesId).role) : t.shade;
-                // (The fourth lane: the tree's snow, and its kind in autumn. See packSnowKind.)
-                aCrownSnow.setXYZW(
-                    i,
-                    crown[0],
-                    crown[1],
-                    crown[2],
-                    autumn ? packSnowKind(t.snow, autumnKindOf(t.speciesId)) : t.snow,
-                );
+                // (The fourth lane: the tree's snow.)
+                aCrownSnow.setXYZW(i, crown[0], crown[1], crown[2], t.snow);
                 aShadePhase.setXYZW(i, shade[0], shade[1], shade[2], t.rot * 3.7);
                 aTrunk.setXYZW(
                     i,
@@ -6846,7 +6794,7 @@ export function createOdysseyWorld({
                         y: t.y,
                         z: t.z,
                         top: t.y + (src.userData.forest.totalH * t.scaleY * FOREST_V2_SCALE),
-                        broad: autumnKindOf(t.speciesId) !== AUTUMN_KIND.evergreen,
+                        broad: turnWakeSheds(t.speciesId),
                     });
                 }
             });
@@ -6886,11 +6834,8 @@ export function createOdysseyWorld({
             heightAt: relief.sample,
             time: uTime,
             leaves: q.cloudShadows ? ODYSSEY_TURN_WAKE.leaves.count : Math.round(ODYSSEY_TURN_WAKE.leaves.count * 0.4),
-            // The autumn palette's own crowns, a little brighter (a leaf in the air is lit through);
-            // the summer's greens where the season is switched off.
-            tints: autumn
-                ? ODYSSEY_AUTUMN.crowns.slice(1).map((stop) => stop.colour.map((c) => c * 1.25))
-                : [[0.36, 0.46, 0.12], [0.50, 0.54, 0.15], [0.30, 0.40, 0.10], [0.58, 0.56, 0.18]],
+            // The summer's greens (a leaf in the air is lit through).
+            tints: [[0.36, 0.46, 0.12], [0.50, 0.54, 0.15], [0.30, 0.40, 0.10], [0.58, 0.56, 0.18]],
             lightAt: (xz) => {
                 const turn = dayTurnOf(xz).toVar();
                 return {
@@ -7388,10 +7333,6 @@ export function createOdysseyWorld({
             uHourSky.value.set(HL.warmAir * hourLow, HL.cloudSun * hourHeld, HL.antiRose * hourLow, 0);
             uMist.value.set((1 + (HL.mist * hourHeld)) * weather.mist, 1 + (HL.mistVeil * hourHeld));
             uGust.value = weather.gust;
-            // AUTUMN rides the day's turn: none ahead of the shade and all of it behind while the
-            // shade crosses, the turn's own share when nothing travels.
-            if (sweeping) uAutumn.value.set(0, 1);
-            else uAutumn.value.set(turn.t, turn.t);
             uAerialK.value = cs.fogDensity;
             // (The water's depth plates are written below with the depth arc, by the eye's depth.)
             uExposure.value = cs.exposure;
