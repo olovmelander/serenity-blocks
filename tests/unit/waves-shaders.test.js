@@ -232,6 +232,27 @@ describe.each(TIERS)('waves shaders at %s', (quality) => {
         expect(under.transparent).toBe(true);
     });
 
+    it('paints the animals behind the water from the sea\'s own textures: a turtle\'s plates, the net of light', () => {
+        // The foam-cell field and the noise reach the sea life (waves-world.js hands them on):
+        // without them a turtle is one flat olive and no light moves over a back.
+        expect(world.pod.maps.lace).toBe(world.lace);
+        expect(world.pod.maps.noise).toBe(world.noise);
+        expect(find(/^waves-life-under$/).out.fragment).toMatch(/textureSample/);
+        expect(find(/^waves-life-under$/, 'GLSL').out.fragment).toMatch(/\btexture\(/);
+        // The half in the air is painted by the same plates (one albedo for both).
+        expect(find(/^waves-life$/).out.fragment).toMatch(/textureSample/);
+    });
+
+    it('builds the white water where the lip lands: drawn over what is behind it, on both backends', () => {
+        for (const label of ['WGSL', 'GLSL']) expect(find(/^waves-whitewater$/, label), label).toBeTruthy();
+        const { material } = world.parts.whitewater;
+        expect(material.blending).toBe(THREE.NormalBlending);
+        expect(material.premultipliedAlpha).toBe(true);
+        expect(material.depthWrite).toBe(false);
+        // Torn by the water's noise: a heap, not a disc.
+        expect(find(/^waves-whitewater$/).out.fragment).toMatch(/textureSample/);
+    });
+
     it('cuts the lip\'s torn edge by coverage, from an alpha the water writes (no screen-space dither)', () => {
         const water = world.parts.water.material;
         expect(water.alphaToCoverage).toBe(true);
