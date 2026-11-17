@@ -157,6 +157,10 @@ export const BLACKOUT_HOLD = 0.2;
 export const OVERDRIVE_COOL = 2.6;
 /** Back-to-back quads (and the crown on a perfect clear) stack the overdrive up to here. */
 export const OVERDRIVE_CAP = 1.8;
+/** How much the combo hologram grows on a new link (its shader's punch), and the share of the free
+ * zone's width it may take at its largest. */
+const COUNTER_PUNCH = 0.28;
+const COUNTER_FIT = 0.82;
 /** How bright a dragon may burn once quads and crowns have fed it in flight. */
 const DRAGON_STRENGTH_CAP = 1.7;
 /** The least share of the frame's width a free zone beside the cards must have to be a lane. */
@@ -1678,8 +1682,12 @@ export class NeonDistrictWorld {
         const sx = useRight ? zones.rightEdge + room * 0.5 : room * 0.5;
         this._ray.set(sx * 2 - 1, 1 - 0.27 * 2, 0.5).unproject(camera).sub(camera.position).normalize();
         const reach = 15;
-        // Three figures fit the zone: the card is 2.6 heights wide.
-        const height = Math.max(1.5, Math.min(3.3, room * 9.4));
+        // The card is 2.6 heights wide (three figures), grows by COUNTER_PUNCH on a new link, and
+        // is drawn at viewport.y · 0.9 / depth pixels a metre: size it so that, punched, it still
+        // fits inside the free zone with a margin, never past the HUD or the frame's edge.
+        const depth = Math.max(1, reach * this._ray.dot(camera.getWorldDirection(this._look)));
+        const fit = (COUNTER_FIT * room * depth * this.aspect) / (2.6 * (1 + COUNTER_PUNCH) * 0.9);
+        const height = Math.max(0.8, Math.min(3.3, fit));
         counter.uniforms.place.value.set(
             camera.position.x + this._ray.x * reach,
             camera.position.y + this._ray.y * reach,
