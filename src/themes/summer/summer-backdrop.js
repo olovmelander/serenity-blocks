@@ -18,13 +18,15 @@ import { summerGroundHeight, summerShores } from './summer-terrain.js';
 const BIRCH_RAMP = [0x12300b, 0x2c6414, 0x5c9a22, 0x9cc440];
 const SPRUCE_RAMP = [0x06120a, 0x0f2810, 0x1f4016, 0x3f5c1c];
 // Where sprite trees stand: a sampling box, the land that counts, and the band's share.
+// The far shore and the headland are woods, not a slope with trees on it: their bands carry
+// most of the sprites, close enough together that crown stands against crown.
 const SPRITE_BANDS = [
-    { box: [-380, 380, -466, -296], on: (s) => s.far > 3, share: 0.5 },
-    { box: [-256, -34, -164, -98], on: (s) => s.headland > 4, share: 0.17 },
-    { box: [58, 210, -230, -30], on: (s) => s.right > 9, share: 0.2 },
-    { box: [42, 110, -44, -4], on: (s) => s.homestead > 6, share: 0.06 },
-    { box: [-330, -66, -90, 34], on: (s) => s.near > 14, share: 0.04 },
-    { box: [62, 320, -8, 40], on: (s) => s.near > 12, share: 0.03 },
+    { box: [-400, 400, -500, -296], on: (s) => s.far > 3, share: 0.5 },
+    { box: [-262, -34, -168, -98], on: (s) => s.headland > 3, share: 0.24 },
+    { box: [58, 220, -240, -30], on: (s) => s.right > 9, share: 0.18 },
+    { box: [42, 110, -44, -4], on: (s) => s.homestead > 6, share: 0.04 },
+    { box: [-330, -66, -90, 34], on: (s) => s.near > 14, share: 0.02 },
+    { box: [62, 320, -8, 40], on: (s) => s.near > 12, share: 0.02 },
 ];
 // z, base crest height, how rolling, haze strength, seed.
 const RIDGES = [
@@ -77,7 +79,8 @@ export class SummerBackdrop {
         const spruces = tiles.filter((tile) => tile.species !== 'birch');
         const eye = summerEye(SUMMER_VIEWS.landscape);
         SPRITE_BANDS.forEach((band) => {
-            const wanted = Math.round(this.tier.farTrees * band.share);
+            // (Never more than the tier allows in all: the shares are rounded band by band.)
+            const wanted = Math.min(Math.round(this.tier.farTrees * band.share), this.tier.farTrees - cards.length);
             let made = 0;
             for (let attempt = 0; made < wanted && attempt < wanted * 12; attempt += 1) {
                 const x = band.box[0] + (band.box[1] - band.box[0]) * rng();

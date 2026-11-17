@@ -20,6 +20,7 @@ import {
 import { widthPcfShadowFilter } from '../shared/width-pcf-shadow-filter.js';
 import { redrawStaticShadow } from '../shared/static-shadow-draws.js';
 import { SummerRings } from './summer-rings.js';
+import { createSummerWeatherState, summerWeatherAt, summerWeatherPhase } from './summer-weather.js';
 
 /** Where the evening sun stands (degrees); the other hours' suns are in summer-hours.js. */
 export const SUMMER_SUN_AZIMUTH_DEGREES = SUMMER_HOURS[0].sunAzimuth;
@@ -37,6 +38,18 @@ export const SUMMER_SPECIES_SLOTS = 8;
 export const SUMMER_BREEZE = 0.3;
 /** How wide a front of wind is across the meadow, metres. */
 const FRONT_WIDTH = 20;
+/** Cloud shadows on the land: tiles of the noise texture a metre, and metres a second at drift 1. */
+const CLOUD_SHADOW_SCALE = 0.0034;
+const CLOUD_SHADOW_SPEED = 5.5;
+/** The sky's clouds: how far they travel a second at drift 1 (the sky's own units). */
+const CLOUD_DRIFT = 0.0012;
+/**
+ * A fresh breeze sends fronts of its own through the grass: one sets out every so many seconds,
+ * takes this long to cross, and crosses a view this many metres to either side of the middle.
+ */
+const BREEZE_FRONT_PERIOD = 8.5;
+const BREEZE_FRONT_SECONDS = 2.6;
+const BREEZE_FRONT_REACH = 33;
 
 /**
  * Unit vector from the scene toward the evening sun, which the resting camera sees in the
@@ -86,6 +99,12 @@ export class SummerLight {
         this.tier = tier;
         this.uTime = uniform(0);
         this.uSunDir = uniform(SUMMER_SUN_DIRECTION.clone());
+        // Where the sun stands as the sky lays itself out: azimuth from straight ahead (radians)
+        // and the tangent of its elevation (setHour keeps it).
+        this.uSunSky = uniform(new THREE.Vector2(
+            THREE.MathUtils.degToRad(SUMMER_SUN_AZIMUTH_DEGREES),
+            Math.tan(THREE.MathUtils.degToRad(SUMMER_SUN_ELEVATION_DEGREES)),
+        ));
         // Every colour of the light starts at the evening hour and follows the night from
         // there: setHour() copies an hour of summer-hours.js into these uniforms.
         const evening = SUMMER_HOURS[0];
@@ -119,6 +138,25 @@ export class SummerLight {
         this.uShaftCool = tone('shaftCool');
         this.uShaftWarm = tone('shaftWarm');
         this.uLamps = uniform(evening.lamps);
+        // The weather (summer-weather.js), on its own clock beside the hours: the sky's clouds
+        // (low cumulus cover and height, the row above it, the high deck), the mackerel field, the
+        // cirrus, the fan of rays about the sun and how far into the white night the hour stands;
+        // then the air: mist, rain, how deep a cloud's shadow is on the land, how veiled the sun.
+        this.weather = summerWeatherAt(0, createSummerWeatherState());
+        /** A playground knob: a phase here holds the weather (0 fair ... 5 still). */
+        this.weatherPin = null;
+        this.uSky = uniform(new THREE.Vector4(this.weather.low, this.weather.tall, this.weather.mid,
+            this.weather.deck));
+        this.uSky2 = uniform(new THREE.Vector4(this.weather.mackerel, this.weather.cirrus, this.weather.rays, 0));
+        this.uAir = uniform(new THREE.Vector4(this.weather.mist, this.weather.rain, this.weather.shade,
+            this.weather.veil));
+        this.uRuffle = uniform(this.weather.ruffle);
+        // Where the clouds have got to: the sky's drift (its own units, summed with the weather's
+        // pace) and the shadows' offset over the land (tiles of the noise texture, wrapped).
+        this.uCloudDrift = uniform(0);
+        this.uCloudOffset = uniform(new THREE.Vector2(0, 0));
+        /** The sun answering the game (a quad, a back-to-back, a perfect clear): rays across the sky. */
+        this.uSunburst = uniform(0);
         this.hourUniforms = {
             sun: this.uSunColor,
             skyLight: this.uSkyLight,
@@ -256,13 +294,34 @@ export class SummerLight {
         this.uLamps.value = hour.lamps;
         const [x, y, z] = summerSunDirection(hour.sunAzimuth, hour.sunElevation, this.sunScratch);
         this.uSunDir.value.set(x, y, z);
+        this.uSunSky.value.set(
+            THREE.MathUtils.degToRad(hour.sunAzimuth),
+            Math.tan(THREE.MathUtils.degToRad(hour.sunElevation)),
+        );
         this.aimSun();
         return hour;
     }
 
-    /** 1 where the sun reaches the fragment, 0 in shadow. */
-    sunlight() {
-        return float(this.shadowNode);
+    /**
+     * How much of the sun a place on the land gets under the drifting clouds (TSL): 1 in the open,
+     * less under a cloud's shadow, and a little less everywhere when the weather veils the sun.
+     * `xz` is the place in world metres; a material with many small pieces (a blade of grass, a
+     * leaf) reads it once at its root and hands the result to sunlight() as a varying.
+     */
+    cloudLight(xz = positionWorld.xz) {
+        const field = this.noise(xz.mul(CLOUD_SHADOW_SCALE).sub(this.uCloudOffset));
+        const cloud = smoothstep(0.46, 0.66, field.r.mul(0.62).add(field.g.mul(0.38)));
+        return float(1).sub(cloud.mul(this.uAir.z)).mul(float(1).sub(this.uAir.w.mul(0.45)));
+    }
+
+    /**
+     * 1 where the sun reaches the fragment, 0 in shadow: the shadow map (what stands between the
+     * place and the sun) times the clouds drifting over it. `cloud` hands in a cloudLight() read
+     * somewhere cheaper than the fragment; `false` leaves the clouds out.
+     */
+    sunlight({ cloud = null } = {}) {
+        if (cloud === false) return float(this.shadowNode);
+        return float(this.shadowNode).mul(cloud ?? this.cloudLight());
     }
 
     noise(coordinate) {
@@ -294,7 +353,33 @@ export class SummerLight {
         const sunward = saturate(dot(direction, this.uSunDir));
         const air = this.uHazeCool.add(this.uHazeWarm.mul(pow(sunward, 3).mul(this.uHazeSun)
             .add(this.uWarmth.mul(0.05))));
-        return mix(colour, air, saturate(amount.mul(strength)));
+        // Mist lies on the water and in the hollows: it takes what stands low and far, and leaves
+        // the crowns of the trees above it. Where the sun is behind it, it glows.
+        const lying = exp(max(world.y.sub(this.uGroundLevel), 0).mul(-0.26));
+        const mist = this.uAir.x.mul(exp(range.mul(-0.016)).oneMinus()).mul(lying).mul(0.9);
+        const lit = this.uHazeCool.mul(1.25).add(this.uHazeWarm.mul(pow(sunward, 2).mul(0.9).add(0.12)));
+        return mix(mix(colour, air, saturate(amount.mul(strength))), lit, saturate(mist.mul(strength)));
+    }
+
+    /**
+     * Wear the weather the theme's own clock has reached (summer-weather.js). Called after
+     * setHour(): the hour's own colours stay as the table has them, and the weather thickens or
+     * thins the air on top.
+     */
+    setWeather(time) {
+        const phase = Number.isFinite(this.weatherPin) ? this.weatherPin : summerWeatherPhase(time);
+        const weather = summerWeatherAt(phase, this.weather);
+        this.uSky.value.set(weather.low, weather.tall, weather.mid, weather.deck);
+        // How far into the white night the hour stands: its lamps burn brightest then.
+        const night = THREE.MathUtils.clamp((this.hour.lamps - 1.3) / 0.9, 0, 1);
+        this.uSky2.value.set(weather.mackerel, weather.cirrus, weather.rays, night);
+        // (Dusk at the end of a session lays its own mist on the water: update() keeps `dusk`.)
+        const dusk = this.dusk || 0;
+        this.uAir.value.set(Math.max(weather.mist, dusk * 0.6), weather.rain, weather.shade,
+            Math.max(weather.veil, dusk * 0.5));
+        this.uRuffle.value = weather.ruffle * (1 - 0.6 * dusk);
+        if (!Number.isFinite(this.hazeOverride)) this.uHaze.value *= weather.haze;
+        return weather;
     }
 
     /** Hemisphere ambient: blue sky from above, the green of the meadow from below. */
@@ -395,6 +480,8 @@ export class SummerLight {
     update(time, frame = {}, worn = null, fronts = null) {
         this.uTime.value = Number.isFinite(time) ? Math.max(0, time) : this.uTime.value;
         this.setHour(Number.isFinite(frame.hour) ? frame.hour : 0);
+        this.dusk = worn && Number.isFinite(worn.dusk) ? THREE.MathUtils.clamp(worn.dusk, 0, 1) : 0;
+        const weather = this.setWeather(this.uTime.value);
         const clamp01 = (value) => (Number.isFinite(value) ? THREE.MathUtils.clamp(value, 0, 1) : 0);
         const motion = worn && Number.isFinite(worn.motion) ? clamp01(worn.motion) : 1;
         const level = clamp01(worn?.level);
@@ -404,7 +491,10 @@ export class SummerLight {
         this.uGlow.value = clamp01(worn ? worn.glow : frame.glow);
         // The breeze off the lake freshens with play: a quick hand stirs the meadow, a fever
         // keeps the birches and the maypole's ribbons streaming.
-        this.uWind.value = SUMMER_BREEZE + (level * 0.18 + fever * 0.22) * motion;
+        // (The weather sets the breeze at rest: a still lake, or cat's-paws racing over it.)
+        this.uWind.value = weather.wind * (1 - 0.7 * this.dusk) + (level * 0.18 + fever * 0.22) * motion;
+        // The sun's answer to a quad, a back-to-back and a perfect clear: rays across the sky.
+        this.uSunburst.value = clamp01(worn ? worn.sunburst : frame.sunburst);
         // The evening deepens toward gold as play runs hot: the low sun burns richer, the sky
         // and the clouds toward it glow rose-gold, and the freshening wind clears the air so the
         // far shore stands out instead of milking over. Heat reads as richer colour, not paler.
@@ -420,6 +510,15 @@ export class SummerLight {
         const third = at(2);
         this.uFront.value.set(first ? first.x : 0, push(first), FRONT_WIDTH, 0);
         this.uFront2.value.set(second ? second.x : 0, push(second), third ? third.x : 0, push(third));
+        // When the weather blows fresh the breeze sends fronts of its own through the meadow and
+        // the woods, in whatever slot the game has left free: a closed form of the clock, so a
+        // seek shows the same front in the same place.
+        const blowing = clamp01((weather.wind - 0.42) / 0.18) * (1 - this.dusk);
+        const crossing = (this.uTime.value % BREEZE_FRONT_PERIOD) / BREEZE_FRONT_SECONDS;
+        if (blowing > 0 && crossing < 1 && !third) {
+            this.uFront2.value.z = (crossing * 2.8 - 1.4) * BREEZE_FRONT_REACH;
+            this.uFront2.value.w = 0.42 * blowing * Math.sin(Math.PI * Math.min(1, crossing * 1.15)) * 2 * motion;
+        }
         // In a fever every flower in the meadow is lit a little, as if the whole field answered.
         const bloom = clamp01(worn?.bloom);
         const species = Array.isArray(frame.species) || ArrayBuffer.isView(frame.species) ? frame.species : null;
@@ -459,9 +558,18 @@ export class SummerLight {
         this.uHaze.value *= 1 - 0.22 * d;
     }
 
-    /** Age the gusts in the meadow. */
+    /** Age the gusts in the meadow, and carry the clouds and their shadows on with the weather's wind. */
     step(dt) {
         this.waves.update(dt);
+        const step = Number.isFinite(dt) && dt > 0 ? Math.min(dt, 0.25) : 0;
+        if (!(step > 0)) return;
+        const pace = this.weather.drift * step;
+        this.uCloudDrift.value += pace * CLOUD_DRIFT;
+        const offset = this.uCloudOffset.value;
+        const direction = this.uWindDir.value;
+        // Wrapped to one tile of the noise: the same picture, and no precision lost in a long session.
+        offset.x = (offset.x + direction.x * pace * CLOUD_SHADOW_SPEED * CLOUD_SHADOW_SCALE) % 1;
+        offset.y = (offset.y + direction.z * pace * CLOUD_SHADOW_SPEED * CLOUD_SHADOW_SCALE) % 1;
     }
 
     reset() {

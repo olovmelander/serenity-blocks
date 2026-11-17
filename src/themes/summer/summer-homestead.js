@@ -32,11 +32,16 @@ const BOUQUET_KINDS = 7;
 // The roundpole fence: a line across the meadow down to the shore, left of the maypole.
 const FENCE_LINE = [[-27, 1.6], [-17.5, -2.4], [-10.6, -5.2], [-9.2, -8.2]];
 const FENCE_SECTION = 3;
-// Ribbons: where on the maypole, how long, and which colour (0 blue, 1 yellow).
+// Ribbons: where on the maypole, how long, and which colour (0 blue, 1 yellow): three from the
+// end of each arm, four from the top of the pole.
 const RIBBONS = [
-    ['armLeft', 2.5, 0], ['armLeft', 2.1, 1], ['armRight', 2.5, 1], ['armRight', 2.1, 0], ['top', 3, 0],
-    ['top', 2.6, 1],
+    ['armLeft', 2.6, 0], ['armLeft', 2.2, 1], ['armLeft', 1.8, 0],
+    ['armRight', 2.6, 1], ['armRight', 2.2, 0], ['armRight', 1.8, 1],
+    ['top', 3.3, 0], ['top', 2.9, 1], ['top', 2.5, 0], ['top', 2.1, 1],
 ];
+/** How wide a maypole ribbon is, metres. */
+const RIBBON_WIDTH = 0.1;
+const TAU = Math.PI * 2;
 const RIBBON_STEPS = 14;
 
 const is = (code, material) => step(0.5, code.sub(material).abs()).oneMinus();
@@ -63,6 +68,12 @@ export class SummerHomestead {
          * glow a little brighter as play warms). A slow travelling wave, never a flash.
          */
         this.uFestival = uniform(0);
+        /**
+         * The maypole dancing (a twist): how far its ribbons have flown out, and where the wheel
+         * of them has turned to. The turn is summed here, so the wheel never jumps.
+         */
+        this.uWhirl = uniform(0);
+        this.uWhirlTurn = uniform(0);
         this.places = {};
     }
 
@@ -299,7 +310,7 @@ export class SummerHomestead {
             return {
                 anchor: anchor.clone().add(new THREE.Vector3(0, -0.1, 0)),
                 length,
-                width: 0.075,
+                width: RIBBON_WIDTH,
                 hue,
                 fly: 0.12,
                 taper: 0,
@@ -371,9 +382,15 @@ export class SummerHomestead {
         const t = light.uTime;
         const front = saturate(this.light.frontStrength());
         const force = light.uWind.add(light.uGust.mul(1.4)).add(front).add(light.uGlow.mul(0.4));
+        // The maypole's ribbons (not the pennant) dance on a twist: each flies out from the pole
+        // on its own bearing and the whole wheel of them turns.
+        const whirl = this.uWhirl.mul(step(cloth.x, 1.5));
+        const bearing = this.uWhirlTurn.add(cloth.z.mul(1.37));
         // Still air: it hangs. Wind: it streams, and the stronger the wind the flatter it flies.
-        const lift = saturate(force.mul(0.85).add(cloth.y)).mul(1.38);
-        const wind = normalize(vec3(light.uWindDir.x, 0, light.uWindDir.z));
+        const lift = saturate(force.mul(0.85).add(cloth.y).add(whirl.mul(0.62))).mul(1.38);
+        const breeze = vec3(light.uWindDir.x, 0, light.uWindDir.z);
+        // (Never a zero vector: where the wheel points dead against the breeze the two cancel.)
+        const wind = normalize(mix(breeze, vec3(cos(bearing), 0, sin(bearing)), whirl).add(vec3(0.0007, 0, 0.0011)));
         const sideways = normalize(cross(wind, vec3(0, 1, 0)));
         const along = wind.mul(sin(lift)).add(vec3(0, -1, 0).mul(cos(lift)));
         const ripple = sin(t.mul(5.4).sub(st.y.mul(4.2)).add(cloth.z)).mul(0.5)
@@ -521,6 +538,11 @@ export class SummerHomestead {
         const flare = Math.max(unit(frame.bouquetFlash), unit(worn ? worn.sunburst : frame.sunburst) * 0.6);
         this.uFlash.value = flashScale() * flare;
         this.uFestival.value = worn ? unit(worn.fever * 0.9 + worn.level * 0.15) : 0;
+        // The dance: the ribbons fly out, and the wheel turns faster the further out they are.
+        const whirl = unit(frame.whirl) * (worn && Number.isFinite(worn.motion) ? unit(worn.motion) : 1);
+        this.uWhirl.value = whirl;
+        const step = Number.isFinite(dt) && dt > 0 ? Math.min(dt, 0.25) : 0;
+        this.uWhirlTurn.value = (this.uWhirlTurn.value + step * whirl * (2.4 + 3.4 * whirl)) % TAU;
         const { boat } = this;
         if (!boat || !Number.isFinite(time)) return null;
         boat.position.y = Math.sin(time * 0.9) * 0.018;

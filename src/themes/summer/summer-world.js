@@ -72,6 +72,7 @@ export class SummerWorld {
             fever: 0,
             punch: 0,
             motion: 1,
+            dusk: 0,
         };
     }
 
@@ -215,6 +216,7 @@ export class SummerWorld {
         this.life?.reset();
         Object.assign(this.worn, {
             gust: 0, gustSpeed: 0, flock: 0, flockSpeed: 0, flutter: 0, flutterSpeed: 0, warmth: 0, sunburst: 0,
+            dusk: 0,
         });
     }
 
@@ -282,6 +284,9 @@ export class SummerWorld {
         worn.shimmer = lift(unit(frame.shimmer), level * 0.3 + fever * 0.45);
         // Every flower in the meadow glows a little in a fever, as if the whole field answered.
         worn.bloom = fever * 0.32;
+        // The session is over: dusk comes down over a few seconds (mist off the water, the light
+        // lower and cooler), and lifts again when the next one starts.
+        ease('dusk', frame.settled === true ? 1 : 0, frame.settled === true ? 0.55 : 1.6);
         return worn;
     }
 
@@ -303,6 +308,7 @@ export class SummerWorld {
     /** The theme is built hidden behind the one playing: the combo ribbons draw (unseen) meanwhile. */
     setWarming(on) {
         if (this.garlands) this.garlands.warming = on === true;
+        if (this.atmosphere) this.atmosphere.warming = on === true;
     }
 
     update(rawTime, rawStep, frame = {}) {
@@ -314,9 +320,10 @@ export class SummerWorld {
         const worn = this.wear(frame || {}, dt);
         const env = this.director.apply(frame, dt, {
             x: direction.x, z: direction.z, strength: light.uWind.value,
-        }, worn);
+        }, worn, light.uSunDir.value);
         light.update(time, { ...frame, front: env.front }, worn, env.fronts);
         light.step(dt);
+        this.atmosphere.update();
         this.petals.update(dt, env);
         this.life.update(frame, dt, worn);
         this.garlands.update(frame, worn);

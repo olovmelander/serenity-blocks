@@ -1,18 +1,20 @@
 /**
  * Summer — drawing what is in the air.
  *
- * Two instanced draws read SummerPetalSim's typed arrays. Petals are small cupped kites of
- * real geometry in the colour of their flower, lit like the flowers they came from, so a
- * handful thrown across the sun lights up like stained glass. Dandelion seed and pollen
- * are soft additive tufts that the sun picks out. Both are part of the scene, so the lake
- * mirrors every one of them.
+ * Two instanced draws read SummerPetalSim's typed arrays. Petals are real geometry in the
+ * colour of their flower: a narrow claw that widens into a rounded blade, folded along its
+ * midrib and cupped, paler at the claw, lit like the flowers they came from, so a handful
+ * thrown across the sun lights up like stained glass. Dandelion seed and pollen are soft
+ * additive tufts that the sun picks out, and the heart of a flower that opens in the sky is a
+ * soft light in that flower's colour. All are part of the scene, so the lake mirrors them.
  */
 import * as THREE from 'three/webgpu';
 import {
     atan, cameraPosition, cos, cross, dot, exp, float, instancedBufferAttribute, instancedDynamicBufferAttribute,
-    length, mix, normalGeometry, normalize, positionGeometry, positionWorld, pow, saturate, sin, step, uniformArray,
-    uv, varying, vec3,
+    length, mix, normalGeometry, normalize, positionGeometry, positionWorld, pow, saturate, sin, smoothstep, step,
+    uniformArray, uv, varying, vec3,
 } from 'three/tsl';
+import { flashScale } from '../../utils/photosensitivity.js';
 import { SUMMER_FLOWERS } from './summer-flowers.js';
 import { SummerPetalSim } from './summer-petal-sim.js';
 
@@ -28,13 +30,33 @@ export function summerPetalPalette() {
     return colours;
 }
 
-/** A petal: a kite folded along its midrib and cupped a little. */
-function createPetalGeometry() {
+/**
+ * A petal: a narrow claw at the foot, widest two thirds of the way up, closed by a blunt tip;
+ * folded along its midrib and cupped. (It was a four-cornered kite, which read as confetti.)
+ * `uv` runs 0..1 across and from the claw to the tip.
+ */
+export function createSummerPetalGeometry() {
+    // Half-width and cup of the blade at each station along the midrib.
+    const stations = [[-0.5, 0, 0], [-0.2, 0.17, 0.05], [0.14, 0.34, 0.13], [0.38, 0.27, 0.12], [0.5, 0, 0.05]];
+    const positions = [];
+    const uvs = [];
+    const indices = [];
+    stations.forEach(([y, half, cup], row) => {
+        // Left edge, midrib, right edge: the midrib lies a little under the edges (the fold).
+        [[-half, cup], [0, cup * 0.2], [half, cup]].forEach(([x, z]) => {
+            positions.push(x, y, z);
+            uvs.push(x + 0.5, y + 0.5);
+        });
+        if (row > 0) {
+            const a = (row - 1) * 3;
+            const b = row * 3;
+            indices.push(a, a + 1, b, a + 1, b + 1, b, a + 1, a + 2, b + 1, a + 2, b + 2, b + 1);
+        }
+    });
     const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute('position', new THREE.Float32BufferAttribute([
-        0, -0.5, 0, 0.36, 0.06, 0.15, 0, 0.5, 0.04, -0.36, 0.06, 0.15,
-    ], 3));
-    geometry.setIndex([0, 1, 2, 0, 2, 3]);
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+    geometry.setIndex(indices);
     geometry.computeVertexNormals();
     return geometry;
 }
@@ -75,7 +97,7 @@ export class SummerPetals {
             place, look, seed, palette, light, count,
         });
         this.buildDown({
-            place, look, light, count,
+            place, look, palette, light, count,
         });
         return this;
     }
@@ -93,7 +115,12 @@ export class SummerPetals {
             .add(axis.mul(dot(axis, vector)).mul(cos(look.z).oneMinus()));
         material.positionNode = place.xyz.add(turn(positionGeometry.mul(place.w.mul(petal))));
         const normal = normalize(varying(turn(normalGeometry), 'summerPetalNormal'));
-        const tone = varying(palette.element(look.x.toInt()), 'summerPetalTone');
+        // Paler toward the claw, a shade darker along the midrib: a petal, not a chip of paper.
+        const st = uv();
+        const blade = smoothstep(0.0, 0.55, st.y).mul(0.3).add(0.78)
+            .mul(smoothstep(0.0, 0.16, st.x.sub(0.5).abs()).mul(0.12).add(0.9));
+        const tone = varying(palette.element(look.x.toInt()), 'summerPetalTone')
+            .mul(blade).add(vec3(0.16, 0.15, 0.1).mul(float(1).sub(smoothstep(0.0, 0.3, st.y))));
         const heat = varying(look.w, 'summerPetalHeat');
         const world = positionWorld;
         const view = normalize(cameraPosition.sub(world));
@@ -108,7 +135,7 @@ export class SummerPetals {
             // cranesbill) read against the lake; a long combo warms the crown further.
             .add(tone.mul(saturate(heat.sub(0.85)).mul(1.1).add(0.22)));
         material.colorNode = light.haze(lit, { world });
-        const mesh = new THREE.InstancedMesh(createPetalGeometry(), material, count);
+        const mesh = new THREE.InstancedMesh(createSummerPetalGeometry(), material, count);
         mesh.name = 'SummerPetals';
         mesh.frustumCulled = false;
         mesh.matrixAutoUpdate = false;
@@ -119,7 +146,7 @@ export class SummerPetals {
     }
 
     buildDown({
-        place, look, light, count,
+        place, look, palette, light, count,
     }) {
         const material = new THREE.MeshBasicNodeMaterial({
             transparent: true, depthWrite: false, fog: false, blending: THREE.AdditiveBlending,
@@ -127,10 +154,12 @@ export class SummerPetals {
         material.name = 'SummerDown';
         const down = step(0.5, look.y);
         const pollen = step(1.5, look.y);
+        // The heart of a flower opening in the sky: a soft light, metres across.
+        const heart = step(2.5, look.y);
         const toEye = normalize(cameraPosition.sub(place.xyz));
         const right = normalize(cross(vec3(0, 1, 0), toEye));
         const up = cross(toEye, right);
-        const size = place.w.mul(down).mul(mix(float(1.25), float(0.6), pollen));
+        const size = place.w.mul(down).mul(mix(mix(float(1.25), float(0.6), pollen), float(1), heart));
         material.positionNode = place.xyz
             .add(right.mul(positionGeometry.x.mul(size)))
             .add(up.mul(positionGeometry.y.mul(size)));
@@ -142,11 +171,22 @@ export class SummerPetals {
             .mul(saturate(float(1).sub(radius))).mul(pollen.oneMinus());
         const halo = exp(radius.mul(-3.6)).mul(saturate(float(1).sub(radius)));
         const kind = varying(pollen, 'summerDownKind');
+        const glowing = varying(heart, 'summerDownHeart');
         const bright = varying(look.w, 'summerDownLight');
         // Seed down is white and only shows where the sun finds it; pollen is a mote of gold.
-        const lit = light.sunlight().mul(0.85).add(0.15);
-        material.colorNode = mix(vec3(1.0, 0.96, 0.86), vec3(1.0, 0.72, 0.22), kind).mul(light.uSunColor).mul(0.3);
-        material.opacityNode = core.add(spokes.mul(0.3)).add(halo.mul(0.3)).mul(bright).mul(lit);
+        const lit = light.sunlight({ cloud: false }).mul(0.85).add(0.15);
+        // A flower's heart is its own light, in its own colour, shaped like a six-petalled
+        // bloom: brightest at the middle, reaching out along each petal.
+        const bloom = pow(cos(atan(centred.y, centred.x).mul(3).add(look.z)).abs(), 1.4).mul(0.45).add(0.55);
+        const corolla = pow(saturate(float(1).sub(radius.div(bloom))), 1.7);
+        const flower = varying(palette.element(look.x.toInt()), 'summerDownFlower');
+        const tufted = mix(vec3(1.0, 0.96, 0.86), vec3(1.0, 0.72, 0.22), kind).mul(light.uSunColor).mul(0.3);
+        material.colorNode = mix(tufted, flower.mul(1.1).add(vec3(0.5, 0.42, 0.26)), glowing);
+        material.opacityNode = mix(
+            core.add(spokes.mul(0.3)).add(halo.mul(0.3)).mul(lit),
+            corolla.mul(0.62).add(pow(saturate(float(1).sub(radius)), 6).mul(0.5)),
+            glowing,
+        ).mul(bright);
         const mesh = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1), material, count);
         mesh.name = 'SummerDown';
         mesh.frustumCulled = false;
@@ -171,6 +211,7 @@ export class SummerPetals {
 
     update(dt, env) {
         if (!this.sim) return;
+        if (env) Object.assign(env, { flash: flashScale() });
         this.sim.step(dt, env);
         this.markDirty();
     }

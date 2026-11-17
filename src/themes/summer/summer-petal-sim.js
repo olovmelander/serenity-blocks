@@ -17,8 +17,15 @@ const MAX_TOUCHES = 1;
 const TOUCH_COOLDOWN = 0.22;
 const FLOWER_KINDS = 7;
 
-/** What a particle is: it decides how it falls and how it is drawn. */
-export const SUMMER_PARTICLES = Object.freeze({ petal: 0, seed: 1, pollen: 2 });
+/**
+ * What a particle is: it decides how it falls and how it is drawn. A glow is the heart of a
+ * flower opening in the sky: it stays where it was lit, swells and is gone.
+ */
+export const SUMMER_PARTICLES = Object.freeze({
+    petal: 0, seed: 1, pollen: 2, glow: 3,
+});
+/** A glow reaches its size in this share of its life. */
+const GLOW_SWELL = 0.22;
 
 const clamp = (value, low, high) => Math.max(low, Math.min(high, value));
 
@@ -45,6 +52,10 @@ export class SummerPetalSim {
         this.size = new Float32Array(n);
         this.spin = new Float32Array(n);
         this.seed = new Float32Array(n);
+        // A petal of a flower drawn in the air: seconds it still hangs where it was thrown before
+        // it falls like any other, and how much light of its own it keeps while it is in the air.
+        this.hang = new Float32Array(n);
+        this.shine = new Float32Array(n);
         this.home = new Float32Array(this.ambient * 3);
         // Instance buffers read by the renderer: place (xyz, size) and look (flower kind,
         // particle kind, spin in radians, brightness).
@@ -83,6 +94,8 @@ export class SummerPetalSim {
         this.life.fill(0);
         this.span.fill(1);
         this.spin.fill(0);
+        this.hang.fill(0);
+        this.shine.fill(0);
         this.kind.fill(SUMMER_PARTICLES.petal);
         for (let i = 0; i < this.ambient; i += 1) this.kind[i] = SUMMER_PARTICLES.seed;
         this.outLook.fill(0);
@@ -95,7 +108,7 @@ export class SummerPetalSim {
      * `flower` outside 0..6 picks one of the seven at random.
      */
     spawn(x, y, z, vx, vy, vz, {
-        life = 2.6, kind = SUMMER_PARTICLES.petal, flower = -1, size = 0.06,
+        life = 2.6, kind = SUMMER_PARTICLES.petal, flower = -1, size = 0.06, hang = 0, shine = 0,
     } = {}) {
         if (![x, y, z, vx, vy, vz].every(Number.isFinite)) return -1;
         let selected = -1;
@@ -123,13 +136,18 @@ export class SummerPetalSim {
         const lifetime = Number.isFinite(life) ? Math.max(0.2, life) : 2.6;
         this.life[selected] = lifetime;
         this.span[selected] = lifetime;
-        this.kind[selected] = kind === SUMMER_PARTICLES.seed || kind === SUMMER_PARTICLES.pollen
+        const glow = kind === SUMMER_PARTICLES.glow;
+        this.kind[selected] = kind === SUMMER_PARTICLES.seed || kind === SUMMER_PARTICLES.pollen || glow
             ? kind : SUMMER_PARTICLES.petal;
-        const chosen = Number.isInteger(flower) && flower >= 0 && flower < FLOWER_KINDS
+        // (A glow may also take the eighth colour, the pale light of seed down.)
+        const chosen = Number.isInteger(flower) && flower >= 0 && flower < FLOWER_KINDS + (glow ? 1 : 0)
             ? flower : Math.floor(this.seed[selected] * FLOWER_KINDS * 0.9999);
         this.flower[selected] = chosen;
-        this.size[selected] = Number.isFinite(size) ? clamp(size, 0.01, 0.4) : 0.06;
+        // (A glow is metres across; everything else is a petal's size.)
+        this.size[selected] = Number.isFinite(size) ? clamp(size, 0.01, glow ? 16 : 0.4) : 0.06;
         this.spin[selected] = this.seed[selected] * TAU;
+        this.hang[selected] = Number.isFinite(hang) ? clamp(hang, 0, 6) : 0;
+        this.shine[selected] = Number.isFinite(shine) ? clamp(shine, 0, 1) : 0;
         return selected;
     }
 
@@ -220,6 +238,11 @@ export class SummerPetalSim {
                 if (this.life[i] <= 0) continue;
                 const phase = this.seed[i] * 40;
                 const kind = this.kind[i];
+                if (kind === SUMMER_PARTICLES.glow) {
+                    // A light, not a thing: nothing carries it.
+                    this.life[i] -= step;
+                    continue;
+                }
                 this.force(fields, i, this.x[i], this.y[i], this.z[i], 1, pull);
                 let drag = 1.7;
                 let weight = settled ? -2.6 : -1.5;
@@ -235,6 +258,17 @@ export class SummerPetalSim {
                     weight = settled ? -0.6 : 0.45;
                     carried = 0.8 + gust * 2;
                     wander = 1.1;
+                }
+                if (this.hang[i] > 0) {
+                    // Still part of the flower it was thrown as: the air holds it up a moment, and
+                    // nothing else in the air (a crown's turning, a jet, a burst) takes it yet.
+                    this.hang[i] -= step * (settled ? 3 : 1);
+                    weight *= 0.06;
+                    wander *= 0.14;
+                    carried *= 0.25;
+                    pull[0] = 0;
+                    pull[1] = 0;
+                    pull[2] = 0;
                 }
                 // A petal falls like a leaf: it side-slips one way, stalls, then the other.
                 const slip = Math.sin(phase + t * 2.6 + this.y[i] * 1.3);
@@ -276,11 +310,13 @@ export class SummerPetalSim {
         this.write(
             clamp(Number.isFinite(env.glow) ? env.glow : 0, 0, 1),
             clamp(Number.isFinite(env.heat) ? env.heat : 0, 0, 1),
+            // Reduce flashing holds the glows back (ADR-0021): the petals still fly.
+            clamp(Number.isFinite(env.flash) ? env.flash : 1, 0, 1),
         );
     }
 
     /** Fill the instance buffers from the current state. */
-    write(glow, heat) {
+    write(glow, heat, flash = 1) {
         const t = this.time;
         const { outPlace, outLook } = this;
         for (let i = 0; i < this.ambient; i += 1) {
@@ -312,12 +348,23 @@ export class SummerPetalSim {
             outPlace[o + 1] = this.y[i];
             outPlace[o + 2] = this.z[i];
             // A petal shrinks away at the end of its life rather than fading: it is not glass.
+            if (this.kind[i] === SUMMER_PARTICLES.glow) {
+                // The heart of a sky flower: it swells quickly, then dims as its petals fly.
+                const lived = age / this.span[i];
+                const swell = Math.min(1, lived / GLOW_SWELL);
+                outPlace[o + 3] = this.size[i] * (0.25 + 0.75 * (1 - (1 - swell) * (1 - swell)));
+                outLook[o] = this.flower[i];
+                outLook[o + 1] = SUMMER_PARTICLES.glow;
+                outLook[o + 2] = this.spin[i];
+                outLook[o + 3] = swell * (1 - lived) * (1 - lived) * flash;
+                continue;
+            }
             const fade = Math.min(1, age / 0.08) * Math.min(1, (life / this.span[i]) / 0.18);
             outPlace[o + 3] = this.size[i] * (this.kind[i] === SUMMER_PARTICLES.petal ? fade : 1);
             outLook[o] = this.flower[i];
             outLook[o + 1] = this.kind[i];
             outLook[o + 2] = this.spin[i];
-            outLook[o + 3] = fade * (0.85 + heat * 0.5 + glow * 0.25);
+            outLook[o + 3] = fade * (0.85 + heat * 0.5 + glow * 0.25 + this.shine[i]);
         }
     }
 

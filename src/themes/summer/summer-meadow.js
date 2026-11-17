@@ -202,7 +202,8 @@ export class SummerMeadow {
         // blade seen against the light is dark and the light comes through it instead.
         const normal = normalize(plant.normal);
         const seen = normal.mul(step(0, dot(normal, view)).mul(2).sub(1));
-        const sun = light.sunlight();
+        // The clouds' shadow is read once at the root: a clump is far smaller than a cloud.
+        const sun = light.sunlight({ cloud: varying(light.cloudLight(root.xz), 'summerGrassCloud') });
         const toSun = dot(seen, light.uSunDir);
         const facing = saturate(toSun).mul(1.05).add(0.12);
         // Looking up the light, every blade is a sliver of stained glass: brightest where the
@@ -295,7 +296,7 @@ export class SummerMeadow {
         const normal = normalize(plant.normal);
         const petal = smoothstep(0.55, 0.9, paint.y);
         const tone = albedo.mul(turn.w.mul(0.26).add(0.87));
-        const sun = light.sunlight();
+        const sun = light.sunlight({ cloud: varying(light.cloudLight(plant.root.xz), 'summerFlowerCloud') });
         // As the grass: the face the eye sees is sunlit only where it is turned to the sun.
         const seen = normal.mul(step(0, dot(normal, view)).mul(2).sub(1));
         const toSun = dot(seen, light.uSunDir);

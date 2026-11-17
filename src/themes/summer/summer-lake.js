@@ -93,7 +93,9 @@ export class SummerLake {
         const paws = smoothstep(0.42, 0.7, light.noise(world.xz.mul(0.004).sub(drift.mul(0.12))).g.mul(0.7)
             .add(swell.b.mul(0.3)));
         const lee = smoothstep(0.02, 0.5, map.g);
-        const ruffle = paws.mul(0.75).add(0.14).mul(lee.mul(0.8).add(0.2)).add(light.uGust.mul(0.3));
+        // The weather lays the water flat as glass or sets the whole lake sparkling.
+        const ruffle = paws.mul(0.75).add(0.14).mul(lee.mul(0.8).add(0.2)).mul(light.uRuffle)
+            .add(light.uGust.mul(0.3));
         const waves = swell.rg.sub(0.5).mul(0.05)
             .add(chop.gb.sub(0.5).mul(0.11))
             .add(ripple.ba.sub(0.5).mul(0.16))
@@ -113,6 +115,22 @@ export class SummerLake {
             const phase = front.mul(RING_WAVE_NUMBER);
             ringSlope = ringSlope.add(offset.div(distance).mul(sin(phase).mul(amplitude).mul(0.44)));
             ringLight = ringLight.add(amplitude.mul(cos(phase).mul(0.5).add(0.5)));
+        }
+        // -- rain ----------------------------------------------------------------------
+        // A sun shower dimples the water: a lattice of cells on the lake, each carrying one small
+        // ring that opens and fades about once a second, out of step with its neighbours.
+        if ((this.tier.sky ?? 2) >= 1) {
+            const lattice = world.xz.mul(1.35).add(4096);
+            const cell = floor(lattice);
+            const dice = fract(sin(dot(cell, vec2(127.1, 311.7))).mul(43758.5453));
+            const dice2 = fract(dice.mul(7.31).add(0.13));
+            const away = fract(lattice).sub(vec2(dice, dice2).mul(0.5).add(0.25));
+            const reach = length(away).add(0.0001);
+            const age = fract(t.mul(dice2.mul(0.35).add(0.75)).add(dice.mul(7)));
+            const crest = exp(reach.sub(age.mul(0.4)).mul(22).pow2().negate()).mul(age.oneMinus())
+                .mul(light.uAir.y).mul(smoothstep(75, 10, range));
+            ringSlope = ringSlope.add(away.div(reach).mul(crest.mul(0.5)));
+            ringLight = ringLight.add(crest.mul(0.55));
         }
         const slope = waves.add(ringSlope);
         const normal = normalize(vec3(slope.x.negate(), 1, slope.y.negate()));

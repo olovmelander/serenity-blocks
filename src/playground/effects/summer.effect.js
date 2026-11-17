@@ -110,6 +110,9 @@ export function create({
         }
         // Tuning knobs: ?exposure= ?haze= ?rays= (shaft density) ?raymax=.
         if (knob('haze') !== null) world.light.hazeOverride = knob('haze');
+        // ?weather=0..6 holds the weather at one phase (0 fair, 1 breeze, 2 towers, 3 sun shower,
+        // 4 mist, 5 mackerel sky); without it the weather turns by the clock.
+        if (knob('weather') !== null) world.light.weatherPin = knob('weather');
         if (post) {
             if (knob('exposure') !== null) post.exposure = knob('exposure');
             if (post.godraysNode) {
@@ -140,7 +143,7 @@ export function create({
         world?.update(time, dt, frame);
         post?.update(frame);
     };
-    // ?event=lock|drop|clear|double|triple|quad|combo|streak|spin|perfect|level|over|bouquet,
+    // ?event=lock|drop|clear|double|triple|quad|combo|streak|spin|b2b|perfect|level|over|bouquet,
     // placed with ?col=0..9 and ?row=0..19 (0 is the top visible row); ?piece=I|O|T|S|Z|J|L.
     let locks = 0;
     const fire = (event) => {
@@ -172,6 +175,7 @@ export function create({
             // Lock one of each kind: the seventh completes the bouquet.
             BAG.forEach((shapeKey) => reactions.onPieceLock({ piece: pieceOf(shapeKey) }));
         } else if (event === 'spin') reactions.onTwist({ piece });
+        else if (event === 'b2b') reactions.onBackToBack();
         else if (event === 'perfect') reactions.onPerfectClear();
         else if (event === 'level') reactions.onLevelUp();
         else if (event === 'over') reactions.onGameOver();
