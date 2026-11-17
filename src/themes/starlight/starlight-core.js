@@ -424,6 +424,31 @@ export function dustTau(noise, l, b, detail = true) {
     return tau * gauss(b / DUST.reach);
 }
 
+/**
+ * The band's bright nebulae, in galactic (l, b): `[l, b, size, kind, power]`, size in radians.
+ * Kinds: 0 a rose hydrogen cloud (the hour's nebula colour, a paler heart), 1 a blue reflection
+ * cloud (starlight on dust), 2 a golden glow (dust round a red giant). They crowd round the core,
+ * which the frame always holds near the pole, with a few along the two arms; a faint arc of
+ * hydrogen (NEBULA_ARC) bows out below the band. The shader (starlight-sky.js) unrolls the table.
+ */
+export const NEBULAE = Object.freeze([
+    // Two rose clouds side by side under the core, the larger with a bright heart.
+    Object.freeze([-0.1, -0.042, 0.05, 0, 1.0]),
+    Object.freeze([-0.165, -0.016, 0.03, 0, 0.75]),
+    // The colourful region above the core: blue round a bright star, gold round a giant, a rose
+    // patch beside them.
+    Object.freeze([0.125, 0.135, 0.042, 1, 0.9]),
+    Object.freeze([0.07, 0.092, 0.058, 2, 0.75]),
+    Object.freeze([0.175, 0.17, 0.026, 0, 0.6]),
+    // Along the arms: a pair on arm A, a great rose cloud on arm B and one beyond it.
+    Object.freeze([0.31, -0.022, 0.034, 0, 0.75]),
+    Object.freeze([0.27, -0.055, 0.024, 0, 0.55]),
+    Object.freeze([0.72, 0.018, 0.068, 0, 0.85]),
+    Object.freeze([-0.6, -0.024, 0.06, 0, 0.85]),
+]);
+/** The faint hydrogen arc: centre (l, b), radius, thickness, the arc's half-span in radians round it. */
+export const NEBULA_ARC = Object.freeze([0.42, -0.07, 0.16, 0.022, 1.1]);
+
 /** The dust in front of the band at (l, b): the share of its light taken, 0 = clear … 1 = a dark lane. */
 export function dustAt(noise, l, b, detail = true) {
     return 1 - Math.exp(-dustTau(noise, l, b, detail));
@@ -546,11 +571,13 @@ export function generateCatalog(count, noise, seed = 20261011) {
  * glowHeight             how high the horizon's glow reaches (radians of altitude)
  * zodiac                 the zodiacal light: a faint leaning cone of light off the right-hand
  *                        horizon, faint in every dark hour and the hero of its own
+ * dusk                   how much twilight the hour holds (0 the dark hours, 1 first light):
+ *                        noctilucent cloud shines in it, airglow drowns in it
  */
 export const PALETTE_KEYS = Object.freeze([
     'zenith', 'mid', 'horizon', 'airglow', 'band', 'core', 'nebula', 'water', 'ridge', 'line', 'meteor',
 ]);
-export const PALETTE_SCALARS = Object.freeze(['bandPower', 'starPower', 'glowHeight', 'zodiac']);
+export const PALETTE_SCALARS = Object.freeze(['bandPower', 'starPower', 'glowHeight', 'zodiac', 'dusk']);
 
 export const PALETTES = Object.freeze([
     Object.freeze({
@@ -570,6 +597,7 @@ export const PALETTES = Object.freeze([
         starPower: 1.0,
         glowHeight: 0.11,
         zodiac: 0.18,
+        dusk: 0,
     }),
     Object.freeze({
         name: 'airglow',
@@ -588,6 +616,7 @@ export const PALETTES = Object.freeze([
         starPower: 1.0,
         glowHeight: 0.14,
         zodiac: 0.12,
+        dusk: 0,
     }),
     Object.freeze({
         name: 'first light',
@@ -606,6 +635,7 @@ export const PALETTES = Object.freeze([
         starPower: 0.86,
         glowHeight: 0.085,
         zodiac: 0.06,
+        dusk: 1,
     }),
     Object.freeze({
         name: 'afterglow',
@@ -624,6 +654,7 @@ export const PALETTES = Object.freeze([
         starPower: 0.88,
         glowHeight: 0.09,
         zodiac: 0.3,
+        dusk: 0.9,
     }),
     Object.freeze({
         name: 'zodiacal',
@@ -642,6 +673,7 @@ export const PALETTES = Object.freeze([
         starPower: 1.0,
         glowHeight: 0.13,
         zodiac: 1.0,
+        dusk: 0.25,
     }),
     Object.freeze({
         name: 'blue hour',
@@ -660,6 +692,7 @@ export const PALETTES = Object.freeze([
         starPower: 0.9,
         glowHeight: 0.12,
         zodiac: 0.1,
+        dusk: 0.85,
     }),
 ]);
 
@@ -852,8 +885,13 @@ export function figureOrder(seed = 1) {
 
 // ── Shooting stars ───────────────────────────────────────────────────────────────
 
-/** Streak kinds (the table's fourth row, x). */
-export const STREAK = Object.freeze({ meteor: 0, fireball: 1, mote: 2 });
+/**
+ * Streak kinds (the table's fourth row, x): a satellite is a steady point that drifts across in
+ * half a minute; its `bow` is where along its path it flares (0: it never does).
+ */
+export const STREAK = Object.freeze({
+    meteor: 0, fireball: 1, mote: 2, train: 3, satellite: 4,
+});
 
 /** A unit world direction for azimuth (east of north) and altitude. */
 export function horizontal(az, alt, out = [0, 0, 0]) {

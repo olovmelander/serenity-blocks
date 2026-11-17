@@ -288,6 +288,129 @@ Not done: nothing on a real phone; no perf-lane reading; no full session played 
 
 ![In the real game: the start, hard drops, a four-line clear's shooting stars, a chain with the fireball](starlight-captures/atmosphere-ingame.jpg)
 
+## Third pass (2026-11-17): the living night
+
+Done on `feature/starlight-living` at the owner's request: audit everything, make Starlight one of
+the most visually stunning themes, keep what works, let it change over time, give every event its
+own effect with the biggest the most spectacular, and keep play smooth and readable.
+
+**The audit.** What worked and stays: the mirror lake, the dust as optical depth, the sky turning
+round the pole star, locks kindling constellations, a chain opening the shutter into star trails,
+the fever's coloured arcs, the six hours on the clock. What was weak: the band's "pink nebula
+patches" were small magenta smudges and its core a beige wash; the horizon was two low rounded
+crests; between events nothing happened in the sky but an occasional meteor (the hours' tint and
+the slow turn were all the change there was); the twist, the chain and a level-up all read as
+star trails, a four-line clear and a perfect clear as the same fireball; a lock's ring on the lake
+always lay behind the card (gotcha #144); a three-line clear was three single meteors; the run's
+end had no moment; the bright stars only pulsed; `starlight-composition.js` still described a
+tornado.
+
+**The band.** Nine nebulae (`NEBULAE` in starlight-core.js) round the core and along the arms:
+rose hydrogen clouds with filaments and dark globules and paler hearts, a blue reflection cloud and
+a golden glow above the core (the colourful region of a real sky), and a faint arc of hydrogen
+below the band. Two reads of smooth fields at mip 2 shared by all of them, read only inside
+`|b| < 0.3, |l| < 0.95` and only where one is near (gotcha #1419).
+
+**The horizon.** A third, distant range behind the two crests: peaks from a fold of the noise less
+a base, in stretches, the palest silhouette (the most air in front of it). The stars, the comet and
+the lake's reflection all set behind it (gotcha #1607).
+
+**The air** (`starlight-night.js`): the weather of the sky on its own clock (118 s a state, 24 % of
+it a melt), which drifts against the hours' 100 s so an hour comes back under another sky. A pure
+function of the night's clock; a seek lands on the same air; `air=` holds one in the playground.
+
+| Air | The sky |
+| --- | --- |
+| clear | the dark sky (one state in three: the dark night stays the theme's own) |
+| waves | airglow: a patchy green-gold sheen low over the horizon with fine rippling crests, a dull red high up (gotcha #1417: bold bands read as an aurora) |
+| veil | high cirrus in streets fanning from a point on the horizon, two fibre layers at two speeds and a slow clump read, so it forms and melts; lit from below by the hour and the town; the stars hide in it and shine in its gaps (gotcha #1418) |
+| mist | the lake's mist rises and thickens over the far shore, wider haloes round the lamps, a breath of it over the near water |
+| breeze | the swell lifts and the cat's paws spread: the mirror shivers |
+| shine | noctilucent cloud: silver-blue threads low over the horizon (ridges of a smooth field on its own deck), bright in the twilight hours, faint in the dark ones |
+
+**Visitors.** Satellites drift across the frame every 14-32 s (steady points, in and out of the
+earth's shadow at their ends, now and then flaring; one in six is the bright station). Fish rise in
+the open water beside the card: rings with no light of their own, only a bend in the mirror. The
+**great comet** comes back on the clock (first at 150 s, then every 560 s, for 230 s): it stands low
+left of the card in the sky's own frame (it turns with the stars and sets behind the hills), its
+green-cyan coma and white nucleus, a curved striated golden dust tail and a straight blue ion tail
+with streamers running outward, the tails pointing away from a sun below the northern horizon, all
+mirrored in the lake (gotcha #1420).
+
+**Events, each its own shape** (the first pass's table above still holds where this one does not
+replace it):
+
+| Play | The sky |
+| --- | --- |
+| Lock, hard drop | as before, but the ring now opens on the open lake beside the card on the side the mote flies to (the column picks the place across that side's water, the row its depth), its crest a faint line of the piece's colour |
+| One or two lines | a shooting star a row (as before) |
+| Three lines | an **earthgrazer**: one long slow meteor skimming the hills from one side of the frame to the other, a slight arc and a faint train, doubled by the lake |
+| Four lines | the fireball, which now **flares and bursts** as it lands: its light spikes and four pieces fly on along its path (gotcha #1740) |
+| Twist | a **spiral** unfurls in free sky: one open arm winding a turn and a half out of a bright eye, a blue funnel hanging below it, turning, thinning away over five seconds; the sky turns only a little with it. A twist that cleared nothing sends a smaller one. Never on the comet's side (gotcha #1741) |
+| Back-to-back, cascade | as before (the amber pair; the whirl and the widening ring) |
+| Perfect clear | the biggest: a **storm** of thirty meteors in the colours played running out of ONE radiant in free sky over 2.6 s, every figure flaring, the fireball, the band's swell, and the **comet called**: it comes at once if it is away (a 100 s visit) and bursts out if it is up |
+| Level up | the next hour's light **rolls up the sky as a front**, in that hour's own colour (teal, green, gold, rose, violet, cobalt), rippled, a glow left behind it, as well as the swing and the meteor |
+| Chain, fever | as before: the long exposure, the coloured arcs |
+| Game over | **the constellations fall**: every lit star of every figure drops toward the hills as a slow shooting star in its own colour, one after another, while the figures fade. The theme ends a run in the #1716 order (flush the director, reset the run without wiping the world, then the fall), and the falls are written into the table at once so the menu's reset cannot cut them off |
+
+**The stars.** The catalogue's bright glints scintillate in colour low in the sky (three slow beats
+a channel, so they shimmer red, white and blue instead of strobing; the kindled stars keep their
+piece's colour).
+
+**Cost.** Everything new in the dome sits behind a branch the whole frame takes the same way (a
+weather's weight, a front's strength) or behind where it can be (the nebulae's region, the
+horizon band); the comet and the spirals are meshes hidden while away. The stars' hills test now
+skips its noise reads above the highest crest (`HILLS_TOP`), which pays for the third range. Cool
+A/B (playground GPU timestamps at 30 fps, 1920 × 1080, RTX laptop, the untouched main on a second
+private server, interleaved, two rounds): High at rest 0.41 → 0.44 ms, with the veil 0.40 → 0.46 ms,
+with the comet 0.40 → 0.44 ms, Low 0.23 → 0.27 ms, Minimal with the veil 0.22 → 0.26 ms. By part,
+the stars cost the same as before; the extra is the dome (+0.05 ms High). Capped timings swing
+±0.05 ms between runs, so read these as "a few hundredths of a millisecond on this GPU", not as
+exact ratios. The integrated GPU was not measured (it needs an uncapped run).
+
+**Verified.**
+
+- Playground, WebGPU, High: rest, every air, the comet, the station, a fish, every event (lock,
+  drop, one to four lines, the burst, twist, back-to-back, cascade, perfect, level-up, a chain of
+  seven, a fever, game over) and a twist while the comet is up. WebGL2 backend and Minimal with the
+  veil, the waves, the mist with the comet, a breeze with a drop; a 390 × 844 portrait with the
+  comet and a twist, and with the veil. Console clean in every shot.
+- The real game in a private headless Chrome on real WebGPU, capped at 30 fps: Starlight starts,
+  seven real hard drops kindle the hunter, three lines send the earthgrazer, a twist its spiral,
+  four lines the fireball and its burst, a perfect clear the storm and the comet, a level-up the
+  front, and the game over drops the figures' stars (28 falls) behind the result screen. Console
+  clean (the two SteamCloud warnings a browser always shows aside).
+- `tests/unit/starlight-living.test.js` (19 tests: the air sums to one, melts without a step, comes
+  round to every weather and never twice in a row; the front climbs and fades; the comet's place,
+  tails, turning, fade and call; satellites cross the frame; fish and lock rings land beside the
+  card; the spiral's place, size and life; the storm runs out of one radiant in several colours;
+  the burst and the flare; the falls survive a reset) and the other five Starlight suites, 185
+  tests; the shader gate now builds the comet and the spirals too (hidden meshes are gated).
+  Typecheck, ESLint on the theme and its tests, the theme lifecycle audit, the boundary check, the
+  registry/tripwire/URL/camera-breath/reduce-flashing gates and the skill's audit and contract tests.
+
+Not done: nothing on a real phone or the integrated GPU; no person has played it in motion for a
+full session, so the pace of the visitors and the air is a reading of the numbers, not of a
+player's eye; multiplayer, Infinity and the meditation mode layouts were not captured (the visitors
+use the same card/HUD reads as the events); Blender was not used (the scene is a sky, a mirror and
+a skyline; every new thing is light, and a model would have added nothing a shader does not).
+
+Open calls for the owner: whether the waves read as airglow to you (if they ever read as an aurora,
+they can go quieter still); the veil's density; how often the comet comes (every 9 min 20 s, for 3
+min 50 s); the earthgrazer's place (it crosses behind the HUD); the storm's busyness on top of a
+fever; the colour scintillation of low bright stars; the theme icon still shows the first pass's
+frame.
+
+![Before and after: rest, a twist, a perfect clear](starlight-captures/living-before-after.jpg)
+
+![The air: rest with a figure, waves, veil, mist, breeze, shine at first light and in the afterglow, the comet, the station](starlight-captures/living-air.jpg)
+
+![Every event: lock, drop, one, two and three lines, four lines and the burst, twist, back-to-back, cascade, perfect, level-up, chain, fever, game over, a twist with the comet up, a fish, rest](starlight-captures/living-events.jpg)
+
+![WebGL2 backend (veil; comet and twist; perfect at first light) and Minimal (waves; mist and comet; breeze and a drop)](starlight-captures/living-tiers.jpg)
+
+![In the real game: hard drops kindling the hunter, a twist, a perfect clear, a level-up, after, the game over behind the result screen](starlight-captures/living-ingame.jpg)
+
 ## Captured previews
 
 The first pass's frames (2026-10-11), before the second pass's air:
