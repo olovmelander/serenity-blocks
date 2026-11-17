@@ -26,6 +26,7 @@ import {
     ORBIT_EARTH_SCHEDULE,
     createOrbitEarth,
     orbitAuroraOvalReach,
+    orbitAuroraSheetAt,
     orbitAuroraSheetPath,
     orbitEarthAt,
 } from '../../src/rendering/odyssey/composition/odyssey-orbit-earth.js';
@@ -210,6 +211,27 @@ describe('the aurora\'s march when a step is long beside the sheet (THE STAIRS)'
             expect(path / analytic, `${widths} widths`).toBeGreaterThan(0.97);
             expect(path / analytic, `${widths} widths`).toBeLessThan(1.03);
         });
+    });
+
+    it('lights a step at the middle of its own light, without a jump from crossing to running along', () => {
+        // A clean crossing: at the crossing (the sheet's profile is symmetric round it).
+        expect(orbitAuroraSheetAt(-30 * w, 90 * w)).toBeCloseTo(0.25, 2);
+        expect(orbitAuroraSheetAt(90 * w, -30 * w)).toBeCloseTo(0.75, 2);
+        // Running along the sheet: the step's middle, whichever end is a hair nearer (choosing the
+        // nearer end flipped from one pixel row to the next: fine fringes over the far curtains).
+        expect(orbitAuroraSheetAt(0.3 * w, 0.3 * w)).toBeCloseTo(0.5, 9);
+        expect(orbitAuroraSheetAt(0.3 * w, 0.31 * w)).toBeCloseTo(0.5, 2);
+        expect(orbitAuroraSheetAt(0.31 * w, 0.3 * w)).toBeCloseTo(0.5, 2);
+        // ...and everything between moves without a step, inside the step.
+        let prev = orbitAuroraSheetAt(-2 * w, -2 * w);
+        for (let k = 1; k <= 400; k += 1) {
+            const fb = (-2 + (k / 50)) * w;
+            const at = orbitAuroraSheetAt(-2 * w, fb);
+            expect(at).toBeGreaterThanOrEqual(0);
+            expect(at).toBeLessThanOrEqual(1);
+            expect(Math.abs(at - prev), `fb ${(fb / w).toFixed(2)} w`).toBeLessThan(0.03);
+            prev = at;
+        }
     });
 
     it('still lights nothing for a step that stays far on one side', () => {

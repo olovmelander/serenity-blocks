@@ -179,8 +179,10 @@ export const ORBIT_EARTH_AURORA = Object.freeze({
      *     the curtain was lit by came in 32 values, one per step: the stairs;
      *   - the same clamp stood in for the true span in the path's length, so a crossing's light
      *     grew with the step's length instead of being the sheet's own.
-     * The crossing is now placed by the true distances and then set right once against the sheet
-     * itself (the fold bends between two steps), and the path is the exact one whatever the step.
+     * The light is now placed at the centroid of the sheet's profile along the step, by the true
+     * distances (the crossing where the ray crosses, the step's middle where it runs along the
+     * sheet, and everything between without a jump), and the path is the exact one whatever the
+     * step.
      * The shell the march walks also reaches a little under the foot, so the soft lower border
      * ends inside it and not on its boundary.
      *   - `lower`: the bright lower border's softness below and above the foot (radii);
@@ -489,12 +491,6 @@ const TWO_PI = Math.PI * 2;
 const SHEETS = [['x', 1], ['y', 0.6], ['z', 0.35]];
 /** The rays' three trains: waves round the whole oval, and each one's share of the modulation. */
 const RAY_TRAINS = Object.freeze([[397, 0.45], [1049, 0.33], [1693, 0.22]]);
-/** Each sheet's own offset from the oval's folded centre line (see the march's `f`). */
-const SHEET_OFFSET = {
-    x: () => float(0),
-    y: (o) => o.own2.add(ORBIT_EARTH_AURORA.width * 2.6),
-    z: (o) => o.own3.add(ORBIT_EARTH_AURORA.width * 5.4),
-};
 
 /** The upper glow's violet, mixed into the crimson (oxygen's red over nitrogen's blue-violet). */
 const AURORA_VIOLET = [0.42, 0.10, 0.78];
@@ -729,13 +725,43 @@ function ovalAt(n, grain = null) {
     };
 }
 
+const ERF_K = 2 / Math.sqrt(Math.PI);
+const ERF_C = 11 / 123;
+
+/**
+ * The CPU twin of where in a march step a sheet's light sits (the shader's `sAt`): 0 at the
+ * step's start, 1 at its end. The centroid of the sheet's Gaussian profile along the step, for
+ * the same straight run of distance from `fa` to `fb` (radians) as orbitAuroraSheetPath.
+ * @param {number} fa
+ * @param {number} fb
+ * @param {number} [width]
+ * @returns {number}
+ */
+export function orbitAuroraSheetAt(fa, fb, width = ORBIT_EARTH_AURORA.width) {
+    const za = Math.min(Math.max(fa / width, -6), 6);
+    const zb = Math.min(Math.max(fb / width, -6), 6);
+    const zm = (za + zb) / 2;
+    const dz = (fb - fa) / width;
+    const ea = Math.exp(-za * za);
+    const eb = Math.exp(-zb * zb);
+    const em = Math.exp(-zm * zm);
+    // Short beside the sheet: the profile's ends and middle weighed (Simpson's three reads).
+    const short = ((2 * em) + eb) / (ea + (4 * em) + eb + 1e-12);
+    const far = Math.abs(dz);
+    if (!(far > 1.5)) return short;
+    // Long: the exact centroid of exp(-z^2) along a straight run from za to zb.
+    const erf = (x) => Math.tanh(Math.min(Math.max((x + (x * x * x * ERF_C)) * ERF_K, -9), 9));
+    const mean = Math.max(((erf(zb) - erf(za)) / dz) * (Math.sqrt(Math.PI) / 2), 1e-6);
+    const long = Math.min(Math.max(((ea - eb) / (2 * dz * dz * mean)) - ((fa / width) / dz), 0), 1);
+    const t = Math.min(1, Math.max(0, (far - 2) / 2));
+    return short + ((long - short) * t * t * (3 - (2 * t)));
+}
+
 /**
  * erf(x) within ~0.0004 (the tanh form 2/sqrt(pi) (x + 11x^3/123), whose slope at 0 is erf's own,
  * so the step that switches to the plain profile where the span is tiny meets it without a jump).
  * Its argument is kept small enough that tanh never overflows.
  */
-const ERF_K = 2 / Math.sqrt(Math.PI);
-const ERF_C = 11 / 123;
 function erfApprox(x) {
     return clamp(x.add(x.mul(x).mul(x).mul(ERF_C)).mul(ERF_K), -9, 9).tanh();
 }
@@ -1206,37 +1232,52 @@ export function createOrbitEarth({
                                     exp(zm.mul(zm).negate()),
                                 );
                                 const inside = dt.mul(max(mean, 0)).toVar();
-                                // Lit where the ray is nearest the sheet in this step: where the
-                                // true distances cross zero, or the nearer end.
-                                const away = prevF[c].sub(f[c]).add(select(dz.greaterThanEqual(0), -1e-9, 1e-9));
-                                const sAt = clamp(prevF[c].div(away), 0, 1);
-                                const tLin = prevT.add(dt.mul(sAt)).toVar();
+                                // Lit at the light's own middle in this step: the centroid of
+                                // the sheet's profile along it, exact for the same straight run
+                                // of distance the path is (see THE STAIRS, and orbitAuroraSheetAt).
+                                // It is the crossing where the ray crosses, the step's middle
+                                // where it runs along the sheet, and moves between the two without
+                                // a jump: choosing the nearer END of a step flipped from one pixel
+                                // row to the next wherever a ray ran along a curtain, and drew the
+                                // far curtains in fine horizontal fringes.
+                                // (Where the step is short beside the sheet, three reads of
+                                // the profile weigh its ends and its middle: the exact form
+                                // subtracts two large numbers there. Where it is long, the exact
+                                // form: the peak may lie between any three reads.)
+                                const ea = exp(za.mul(za).negate());
+                                const eb = exp(zb.mul(zb).negate());
+                                const em = exp(zm.mul(zm).negate());
+                                const sShort = em.mul(2).add(eb).div(ea.add(em.mul(4)).add(eb).add(1e-12));
+                                const long = abs(dz).greaterThan(1.5);
+                                const safe = select(long, dz, float(2));
+                                const sLong = clamp(
+                                    ea.sub(eb).div(safe.mul(safe).mul(2).mul(max(mean, 1e-6)))
+                                        .sub(prevF[c].div(A.width).div(safe)),
+                                    0,
+                                    1,
+                                );
+                                const sAt = mix(sShort, sLong, smoothstep(2, 4, abs(dz)));
+                                const tAt = prevT.add(dt.mul(sAt)).toVar();
                                 // The oval angle one pixel covers on the sheet there: its step
                                 // across the ray, drawn out along the curtain where the ray runs
                                 // along it (the sheet stands on the oval, its normal toward the pole).
-                                const Xn = normalize(along(tLin)).toVar();
+                                const X = along(tAt).toVar();
+                                const Xn = normalize(X).toVar();
                                 const toPole = normalize(uPole.sub(Xn.mul(dot(Xn, uPole)))).toVar();
                                 const alongOval = cross(toPole, Xn);
-                                const slant = dot(alongOval, dir).div(max(abs(dot(toPole, dir)), 0.02));
-                                const grain = pixelAngle.mul(tLin).mul(sqrt(slant.mul(slant).add(1)))
+                                const run = dot(alongOval, dir).toVar();
+                                const slant = run.div(max(abs(dot(toPole, dir)), 0.02));
+                                // ...and the oval angle the STEP's own stretch inside the sheet
+                                // covers: a ray that runs along a curtain passes many rays in one
+                                // step, and reading them at one point beat against the steps (fine
+                                // ripples all over the far curtains). Edge-on, the rays blur into
+                                // the curtain's own light, as they do.
+                                const inSheet = min(float(1), float(2).div(max(abs(dz), 1e-3)));
+                                const grain = pixelAngle.mul(tAt).mul(sqrt(slant.mul(slant).add(1)))
+                                    .add(dt.mul(abs(run)).mul(inSheet))
                                     .div(Math.sin(A.radius));
                                 const oc = ovalAt(Xn, grain);
-                                // ...set right once against the sheet itself (the fold bends
-                                // between the step's ends): the sheet's true distance there splits
-                                // the step in two, and the crossing lies in the half whose ends
-                                // differ in sign, placed between them as before. Never outside
-                                // the step, so a strongly bent fold cannot throw it.
-                                const left = oc.ang.sub(oc.centre).add(SHEET_OFFSET[c](oc)).toVar();
-                                const crossed = prevF[c].mul(f[c]).lessThan(0);
-                                const early = prevF[c].mul(left).lessThan(0);
-                                const spanA = prevF[c].sub(left);
-                                const spanB = left.sub(f[c]);
-                                const safeA = select(abs(spanA).greaterThan(1e-9), spanA, float(1));
-                                const safeB = select(abs(spanB).greaterThan(1e-9), spanB, float(1));
-                                const tA = prevT.add(tLin.sub(prevT).mul(clamp(prevF[c].div(safeA), 0, 1)));
-                                const tB = tLin.add(tt.sub(tLin).mul(clamp(left.div(safeB), 0, 1)));
-                                const tAt = select(crossed, select(early, tA, tB), tLin).toVar();
-                                const alt = length(along(tAt)).sub(1).toVar();
+                                const alt = length(X).sub(1).toVar();
                                 const lower = smoothstep(A.foot - LK.lower[0], A.foot + LK.lower[1], alt);
                                 // A curtain is a row of rays of different heights: the tall ones
                                 // carry the green higher and wear the red crown.

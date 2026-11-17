@@ -351,7 +351,8 @@ export function earthTownLights(c, people) {
     const block = read(0.45, 58, [0.47, 0.05]).toVar();
     const metro = smoothstep(0.6, 0.97, region.r).toVar();
     const quarter = smoothstep(0.55, 0.95, district.r).toVar();
-    const lamps = exp(block.g.mul(block.g).mul(-70)).toVar();
+    // (not every cell holds a lamp, and no two are alike: the drift channel's finest grain says)
+    const lamps = exp(block.g.mul(block.g).mul(-70)).mul(smoothstep(0.36, 0.72, block.a)).mul(1.8).toVar();
     const streets = float(1).sub(smoothstep(0.0, 0.06, block.b));
     // The roads: the lanes between the districts' cells near a city, the highways between cities.
     const road = float(1).sub(smoothstep(0.0, 0.03, district.b)).mul(metro.mul(0.85).add(0.1));
