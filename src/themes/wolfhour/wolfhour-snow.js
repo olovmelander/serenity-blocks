@@ -38,6 +38,9 @@ const DEVIL_MOTES = Object.freeze({
 export const SNOW_DEVIL = Object.freeze({
     life: 3.4, height: 330, width: 78, turns: 2.4,
 });
+/** A feed swells the devil over this long (seconds); a devil handed over fades out over this. */
+const DEVIL_FEED = 0.35;
+const DEVIL_HANDOVER = 0.25;
 const SNOW_LIGHT = vec3(0.3, 0.37, 0.52);
 const CRYSTAL_LIGHT = vec3(1.2, 1.35, 1.7);
 
@@ -201,32 +204,81 @@ export function createWolfhourSnow({ quality = 'High', nightLight = createWolfho
     group.add(devil);
     owned.push(moteGeometry, moteMaterial, devil);
 
-    const state = { devilAt: -Infinity, devilStrength: 0 };
+    // The devil's strength eases from `from` to `to` over `over` seconds from `at` (a feed swells
+    // it, a hand-over fades it out); a twist that comes while it is fading waits in `next`.
+    const state = {
+        devilAt: -Infinity,
+        strength: {
+            from: 0, to: 0, at: -Infinity, over: 1,
+        },
+        /** @type {{ at: number, x: number, y: number, s: number } | null} */
+        next: null,
+    };
+    const strengthAt = (t) => {
+        const eased = state.strength;
+        const c = Math.min(1, Math.max(0, (t - eased.at) / eased.over));
+        return eased.from + (eased.to - eased.from) * c * c * (3 - 2 * c);
+    };
+    const ease = (t, to, over) => {
+        state.strength.from = strengthAt(t);
+        state.strength.to = to;
+        state.strength.at = t;
+        state.strength.over = over;
+    };
+    const rise = (at, x, y, s) => {
+        state.devilAt = at;
+        state.strength.from = s;
+        state.strength.to = s;
+        state.strength.at = at;
+        uDevil.value.set(x, y, at, s);
+    };
     return {
         group,
         flakes,
         crystals,
         devil,
+        /**
+         * How strongly the snow devil shows at `time` (0: none): its strength under the column's
+         * own rise and thinning (the motes' envelope). It eases; it never steps.
+         */
+        devilStrength(time) {
+            const a = (time - state.devilAt) / SNOW_DEVIL.life;
+            if (!Number.isFinite(time) || !(a >= 0 && a <= 1)) return 0;
+            const step = (from, to, x) => {
+                const c = Math.min(1, Math.max(0, (x - from) / (to - from)));
+                return c * c * (3 - 2 * c);
+            };
+            return strengthAt(time) * step(0, 0.12, a) * (1 - step(0.55, 1, a));
+        },
         /** How long the snow devil still stands at `time` (seconds; 0: gone). */
         devilLeft(time) {
             return Math.max(0, SNOW_DEVIL.life - (time - state.devilAt));
         },
         /**
          * A twist: the snow devil rises at world (x, y). While one still stands in its first half
-         * it is fed instead (stronger, where it is); `strength` 0..1.
+         * it is fed instead (it swells stronger where it is); in its second half it fades out
+         * over DEVIL_HANDOVER and the new one rises as it goes (never cut off). `strength` 0..1.
          */
         whirl(time, x, y, strength = 1) {
             if (!Number.isFinite(time) || !Number.isFinite(x) || !Number.isFinite(y)) return;
             const s = Math.min(1, Math.max(0.3, strength));
-            const age = time - state.devilAt;
-            if (age >= 0 && age < SNOW_DEVIL.life * 0.5) {
-                state.devilStrength = Math.min(1.25, state.devilStrength + s * 0.4);
-                uDevil.value.w = state.devilStrength;
+            if (state.next) {
+                state.next.s = Math.max(state.next.s, s);
                 return;
             }
-            state.devilAt = time;
-            state.devilStrength = s;
-            uDevil.value.set(x, y, time, s);
+            const age = time - state.devilAt;
+            if (age >= 0 && age < SNOW_DEVIL.life * 0.5) {
+                ease(time, Math.min(1.25, state.strength.to + s * 0.4), DEVIL_FEED);
+                return;
+            }
+            if (age >= 0 && age < SNOW_DEVIL.life && strengthAt(time) > 0.01) {
+                ease(time, 0, DEVIL_HANDOVER);
+                state.next = {
+                    at: time + DEVIL_HANDOVER, x, y, s,
+                };
+                return;
+            }
+            rise(time, x, y, s);
         },
         applyParallax(camera) {
             const cameraX = Number.isFinite(camera?.position?.x) ? camera.position.x : 0;
@@ -247,8 +299,15 @@ export function createWolfhourSnow({ quality = 'High', nightLight = createWolfho
             uWind.value.set(-22 - blow * 70, -46 - blow * 10);
             flakes.visible = uFall.value > 0.004;
             crystals.visible = uDust.value > 0.004;
+            // A twist waiting for the last devil to fade rises once it has.
+            const { next } = state;
+            if (next && t >= next.at) {
+                state.next = null;
+                rise(next.at, next.x, next.y, next.s);
+            }
+            uDevil.value.w = strengthAt(t);
             const age = t - state.devilAt;
-            devil.visible = age >= 0 && age < SNOW_DEVIL.life;
+            devil.visible = age >= 0 && age < SNOW_DEVIL.life && uDevil.value.w > 0;
         },
         dispose() {
             group.removeFromParent();

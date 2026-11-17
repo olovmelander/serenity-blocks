@@ -117,14 +117,22 @@ export function swingOf(stride, leg) {
 
 /**
  * The loops walkers stroll: straight out from `s0` to `s1` on one lane, round, straight back on
- * the other. `long` starts inside the first pavilion (its walls hide the turn there) and passes
- * through the other two as through arcades; `far` keeps to the open stretch beyond them; `near`
- * steps out of the first pavilion to the rail beside it and back in.
+ * the other, through the pavilions by their end doors as through arcades. Each turns where the
+ * game's view cannot see it: past the right edge at the land end, behind the HUD, behind the
+ * board, or inside the first pavilion (pier metres seen in the 16:9 view: 0–88 left of the board,
+ * 120–125 between the board and the HUD, 133–140 beside the first pavilion, 151–158 at the edge).
+ *  - `full`: the whole dock, the land end to the pier head and back.
+ *  - `gate`: the near stretch, the land end to behind the HUD: seen half the time, nearest of all.
+ *  - `mid`: the land end to behind the board.
+ *  - `far`: the open stretch out to the pier head.
+ *  - `door`: out of the first pavilion to the rail beside it and back in.
  */
 export const STROLL_ROUTES = Object.freeze({
-    long: Object.freeze({ s0: 144, s1: 13.5 }),
+    full: Object.freeze({ s0: 160, s1: 13.5 }),
+    gate: Object.freeze({ s0: 160, s1: 128 }),
+    mid: Object.freeze({ s0: 160, s1: 104 }),
     far: Object.freeze({ s0: 84, s1: 14 }),
-    near: Object.freeze({ s0: 145, s1: 136.5 }),
+    door: Object.freeze({ s0: 145, s1: 136.5 }),
 });
 
 /** What a stop or a stander faces: the beach side's rail, the sunset side's, the sea off the end. */
@@ -143,24 +151,82 @@ function facingHeading(plane, face) {
  * of the party's line, the hand they hold with). Standers: spot {s, c}, face, pose (lean | stand).
  */
 export const STROLLER_PARTIES = Object.freeze([
+    // The whole dock, hand in hand, pausing to look at the sunset.
     {
         name: 'couple',
-        route: 'long',
+        route: 'full',
         lanes: [1.9, -1.4],
         speed: 0.92,
-        start: 0.13,
-        stops: [{ at: 0.3, hold: 16, face: 'sun' }],
+        start: 0.06,
+        stops: [{
+            s: 60, leg: 'out', hold: 14, face: 'sun',
+        }],
         members: [{ figure: 'sundress', offset: 0.29, hand: 'R' }, { figure: 'chinos', offset: -0.29, hand: 'L' }],
+    },
+    // Up and down the near stretch, past the right edge and back from behind the HUD.
+    {
+        name: 'capped',
+        route: 'gate',
+        lanes: [2.8, 0.2],
+        speed: 1.12,
+        start: 0.0,
+        stops: [],
+        members: [{ figure: 'shorts', offset: 0 }],
     },
     // Beside the first pavilion, right of the HUD: the nearest anyone stands in the game's view.
     {
         name: 'bay-rail', spot: { s: 137, c: 3.97 }, face: 'bay', pose: 'lean', members: [{ figure: 'boater' }],
     },
+    {
+        name: 'far-walker',
+        route: 'far',
+        lanes: [-1.7, 1.0],
+        speed: 1.02,
+        start: 0.08,
+        stops: [{
+            s: 32, leg: 'back', hold: 13, face: 'bay',
+        }],
+        members: [{ figure: 'chinos', offset: 0 }],
+    },
+    // A mother and her daughter on the near stretch, half a lap behind the walker in the cap.
+    {
+        name: 'family',
+        route: 'gate',
+        lanes: [-1.2, 1.8],
+        speed: 0.86,
+        start: 0.5,
+        stops: [{
+            s: 135.5, leg: 'out', hold: 9, face: 'bay',
+        }],
+        members: [{ figure: 'slacks', offset: -0.24, hand: 'L' }, { figure: 'girl', offset: 0.24, hand: 'R' }],
+    },
+    {
+        name: 'mid',
+        route: 'mid',
+        lanes: [-2.2, 0.8],
+        speed: 1.0,
+        start: 0.3,
+        stops: [],
+        members: [{ figure: 'midi', offset: 0 }],
+    },
+    {
+        name: 'sun-rail', spot: { s: 44, c: -3.97 }, face: 'sun', pose: 'lean', members: [{ figure: 'midi' }],
+    },
+    // The near stretch the other way round.
+    {
+        name: 'strolling',
+        route: 'gate',
+        lanes: [-0.6, 3.0],
+        speed: 1.04,
+        start: 0.27,
+        stops: [],
+        members: [{ figure: 'sundress', offset: 0 }],
+    },
     // Out of the pavilion's door to the rail beside it for a while, and back inside (where they
     // linger, out of sight, before they come out again).
     {
-        name: 'near',
-        route: 'near',
+        name: 'door',
+        route: 'door',
         lanes: [3.55, 1.5],
         speed: 0.85,
         start: 0.2,
@@ -170,25 +236,13 @@ export const STROLLER_PARTIES = Object.freeze([
         members: [{ figure: 'midi', offset: 0.3 }, { figure: 'chinos', offset: -0.3 }],
     },
     {
-        name: 'capped',
+        name: 'pair',
         route: 'far',
-        lanes: [2.3, -0.9],
-        speed: 1.18,
-        start: 0.55,
+        lanes: [0.9, -2.3],
+        speed: 0.98,
+        start: 0.36,
         stops: [],
-        members: [{ figure: 'shorts', offset: 0 }],
-    },
-    {
-        name: 'family',
-        route: 'long',
-        lanes: [1.2, -2.2],
-        speed: 0.86,
-        start: 0.62,
-        stops: [{ at: 0.7, hold: 11, face: 'bay' }],
-        members: [{ figure: 'slacks', offset: -0.24, hand: 'L' }, { figure: 'girl', offset: 0.24, hand: 'R' }],
-    },
-    {
-        name: 'sun-rail', spot: { s: 44, c: -3.97 }, face: 'sun', pose: 'lean', members: [{ figure: 'midi' }],
+        members: [{ figure: 'shorts', offset: 0.3 }, { figure: 'boy', offset: -0.3 }],
     },
     {
         name: 'end',
@@ -198,34 +252,7 @@ export const STROLLER_PARTIES = Object.freeze([
         members: [{ figure: 'chinos', offset: 0.32 }, { figure: 'sundress', offset: -0.32 }],
     },
     {
-        name: 'pauser',
-        route: 'far',
-        lanes: [-1.7, 1.0],
-        speed: 1.02,
-        start: 0.08,
-        stops: [{ at: 0.62, hold: 13, face: 'bay' }],
-        members: [{ figure: 'slacks', offset: 0 }],
-    },
-    {
-        name: 'boater',
-        route: 'long',
-        lanes: [2.4, -0.8],
-        speed: 1.08,
-        start: 0.86,
-        stops: [{ at: 0.03, hold: 9, face: 'sun' }],
-        members: [{ figure: 'boater', offset: 0 }],
-    },
-    {
         name: 'far-rail', spot: { s: 66, c: 3.97 }, face: 'bay', pose: 'lean', members: [{ figure: 'midi' }],
-    },
-    {
-        name: 'pair',
-        route: 'far',
-        lanes: [0.9, -2.3],
-        speed: 0.98,
-        start: 0.36,
-        stops: [],
-        members: [{ figure: 'shorts', offset: 0.3 }, { figure: 'boy', offset: -0.3 }],
     },
 ]);
 
@@ -395,7 +422,13 @@ export function strollTimeline(party) {
     const loop = strollLoop(party);
     const v = party.speed;
     const L = loop.length;
-    const stops = (party.stops ?? []).map((st) => ({ ...st, u: st.at * L })).sort((a, b) => a.u - b.u);
+    // A stop is placed by its share of the loop (`at`), or by where on the pier it is (`s`) on
+    // the way out or back (`leg`).
+    const uOf = (st) => {
+        if (st.s === undefined) return st.at * L;
+        return st.leg === 'back' ? loop.D + loop.arc + Math.abs(st.s - loop.s1) : Math.abs(st.s - loop.s0);
+    };
+    const stops = (party.stops ?? []).map((st) => ({ ...st, u: uOf(st) })).sort((a, b) => a.u - b.u);
     const legs = [];
     let t = 0;
     if (!stops.length) {

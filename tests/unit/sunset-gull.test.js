@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest';
 import * as THREE from 'three/webgpu';
 import { SUNSET_GULL } from '../../src/themes/sunset/sunset-gull-model.js';
 import {
-    FLAP_ROWS, GULL_SCALE, createFlock, gullModel, gullPose, gullVertex,
+    FLAP_ROWS, FLOCK_RANGE, FLOCK_SPEED, GULL_SCALE, createFlock, gullModel, gullPose, gullVertex,
 } from '../../src/themes/sunset/sunset-birds.js';
 import { SunsetWorld } from '../../src/themes/sunset/sunset-world.js';
 
@@ -171,9 +171,71 @@ describe('sunset gull: the flock draws it', () => {
         flock.update(4.5);
         const moved = new THREE.Vector3(...flock.placeOf(0).slice(0, 3)).sub(place);
         expect(ahead.normalize().dot(moved.normalize())).toBeGreaterThan(0.8);
+        // (The wingtip held out flat is 0.68 m from the body.)
         expect(world0(SUNSET_GULL.checks[0].vertex).distanceTo(new THREE.Vector3(...flock.placeOf(0).slice(0, 3))))
-            .toBeLessThan(0.65 * GULL_SCALE);
+            .toBeLessThan(0.7 * GULL_SCALE);
         flock.dispose();
+        world.dispose();
+    });
+
+    it('brings a chain in as whole skeins: no bird appears, vanishes, grows or races in sight', () => {
+        // Latecomers used to show up 14 m behind the skein and race to close up: some birds, a
+        // gap, then the last ones catching up. Now the calls of a quick chain fill one skein while
+        // it is still out of sight, and a later call sets out a skein of its own.
+        const world = new SunsetWorld({ scene: new THREE.Scene(), quality: 'Low' }).build();
+        const DEG = Math.PI / 180;
+        const rate = FLOCK_SPEED / FLOCK_RANGE / DEG;
+        const toward = new THREE.Vector3(Math.sin(-28 * DEG), 0.05, -Math.cos(-28 * DEG)).normalize();
+        [[40, 0.3], [40, 0.9], [21.8, 0.5]].forEach(([half, r]) => {
+            const flock = createFlock({ count: 23, U: world.U, seed: 7 });
+            const calls = [[0, 5], [2, 9], [4, 13], [12, 17]];
+            const faults = [];
+            const flights = new Set();
+            let next = 0;
+            let prev = new Map();
+            for (let f = 0; f <= 60 * 30; f += 1) {
+                const t = f / 30;
+                while (next < calls.length && calls[next][0] <= t) {
+                    flock.send(t, calls[next][1], toward, r, half);
+                    next += 1;
+                }
+                flock.update(t, half);
+                if (t === 6) {
+                    // The first three calls are one skein, still to come in.
+                    expect(flock.airborne(t)).toBe(13);
+                    expect(flights.size).toBe(1);
+                }
+                const now = new Map();
+                for (let i = 0; i < flock.mesh.geometry.instanceCount; i += 1) {
+                    const [x, , z, size] = flock.placeOf(i);
+                    const { flight, bird } = flock.whoIs(i);
+                    const b = Math.atan2(x, -z) / DEG;
+                    const key = `${flight}:${bird}`;
+                    now.set(key, b);
+                    flights.add(flight);
+                    const p = prev.get(key);
+                    const inSight = Math.abs(b) < half - 2;
+                    const where = `${b.toFixed(1)} deg, ${t} s`;
+                    if (inSight && Math.abs(size - GULL_SCALE) > 1e-6) faults.push(`${key} at size ${size}, ${where}`);
+                    if (inSight && p === undefined && f > 0) faults.push(`${key} appeared at ${where}`);
+                    if (inSight && p !== undefined) {
+                        const speed = Math.abs(b - p) * 30;
+                        const racing = Math.abs(speed - rate) > rate * 0.1;
+                        if (racing) faults.push(`${key} at ${speed.toFixed(2)} deg/s, ${where}`);
+                    }
+                }
+                prev.forEach((b, key) => {
+                    const gone = !now.has(key) && Math.abs(b) < half - 2;
+                    if (gone) faults.push(`${key} vanished at ${b.toFixed(1)} deg, ${t} s`);
+                });
+                prev = now;
+            }
+            expect(faults.slice(0, 5)).toEqual([]);
+            // The call once the skein was in sight set out a second one, and all have flown out.
+            expect(flights.size).toBe(2);
+            expect(flock.airborne(60)).toBe(0);
+            flock.dispose();
+        });
         world.dispose();
     });
 });
