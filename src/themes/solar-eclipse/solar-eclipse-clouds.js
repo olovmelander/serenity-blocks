@@ -59,7 +59,7 @@ export const CLOUD_LAYER_TOP = Math.max(TOWERS.top, CLOUDS.rows.reduce((m, row) 
 export function drawClouds(env, c) {
     const { u, noise, tier } = env;
     const {
-        d, alt, az, side, plane, sky,
+        d, alt, az, side, plane, sky, day,
     } = c;
     const clock = u.cloudClock;
     // Shared by every layer, so pinned before their branches.
@@ -238,7 +238,7 @@ export function drawClouds(env, c) {
                         // Thin cloud lets the light behind it through: a lining.
                         colour.assign(mix(colour, airBehind.mul(1.25), thick.oneMinus().mul(0.5)));
                         colour.assign(mix(colour, airBehind, row.aerial));
-                        colour.addAssign(u.haze.mul(u.daylight.mul(0.8)));
+                        colour.addAssign(u.haze.mul(day.mul(0.8)));
                         sky.assign(mix(sky, colour, cloud));
                     });
                 });

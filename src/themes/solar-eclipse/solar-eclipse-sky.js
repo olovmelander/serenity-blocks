@@ -56,7 +56,7 @@ import {
     BRIGHT_POINTS, DEG, RANGES, RIDGE_SPAN, UMBRA,
 } from './solar-eclipse-core.js';
 import {
-    crestU, noiseAt, seGauss, seHash21, sized, sunPlane,
+    crestU, noiseAt, seGauss, seHash21, seLuma, sized, sunPlane,
 } from './solar-eclipse-tsl.js';
 import { drawSun } from './solar-eclipse-sun.js';
 import { drawClouds } from './solar-eclipse-clouds.js';
@@ -128,18 +128,37 @@ export function createSky({
         const sky = mix(u.mid, u.zenith, smoothstep(0.02, 0.3, up)).toVar();
         const bandH = u.bandHeight.mul(tall).toVar();
         const glowH = u.glowHeight.mul(tall).toVar();
+        // The daylight here: the diamond's (all the sky at once), and the light a sweeping shadow
+        // still holds ahead of its front (a perfect clear, the run's end coming back): the moon's
+        // shadow rushes in from the west (left), so the right of the sky stays lit a moment
+        // longer, and its edge is a darker curtain on the air. (u.sweep: front's bearing, its
+        // softness, the daylight ahead of it, the curtain's depth.)
+        const ahead = smoothstep(u.sweep.x.sub(u.sweep.y), u.sweep.x.add(u.sweep.y), az);
+        const day = max(u.daylight, u.sweep.z.mul(ahead)).toVar();
+        const curtain = seGauss(az.sub(u.sweep.x).add(u.sweep.y).div(u.sweep.y.mul(1.4))).mul(u.sweep.w).toVar();
+        // A level-up's pulse of light running round the horizon from the shadow's bright side
+        // (u.pulse: start, strength, the bearing it leaves from).
+        const pAge = u.time.sub(u.pulse.x);
+        const pulse = float(0.0).toVar();
+        If(u.pulse.y.greaterThan(0.001).and(pAge.greaterThan(0.0)).and(pAge.lessThan(4.5)), () => {
+            const front = u.pulse.z.sub(pAge.mul(0.75));
+            const across = az.sub(front).div(pAge.mul(0.12).add(0.16));
+            pulse.assign(seGauss(across).mul(smoothstep(0.0, 0.3, pAge)).mul(exp(pAge.div(-1.7))).mul(u.pulse.y));
+        });
         // The band all round; toward the shadow's near edge its rim burns yellow (the sunlight
         // just beyond it), away from it a deeper red.
-        sky.addAssign(u.horizon.mul(exp(up.div(bandH).negate())).mul(bright));
+        const lift = bright.mul(pulse.mul(1.6).add(1.0)).toVar();
+        sky.addAssign(u.horizon.mul(exp(up.div(bandH.mul(pulse.mul(0.6).add(1.0))).negate())).mul(lift));
         const sunward = smoothstep(0.15, 1.0, side);
         const tint = mix(vec3(1.0, 0.8, 0.7), vec3(1.0, 1.22, 1.55), sunward);
-        sky.addAssign(u.glow.mul(tint).mul(exp(up.div(glowH).negate())).mul(bright));
+        sky.addAssign(u.glow.mul(tint).mul(exp(up.div(glowH).negate())).mul(lift));
         // The belt of paler light where the band gives way to the dark.
         // It stands above where the band has faded, so the two never overlap into grey.
         const belt = up.sub(bandH.mul(1.6)).div(bandH.mul(1.1));
         sky.addAssign(u.belt.mul(seGauss(belt)).mul(bright.mul(0.6).add(0.4)));
         // The moment the diamond burns, daylight floods back into the air.
-        sky.addAssign(mix(u.horizon.mul(1.6), vec3(0.09, 0.13, 0.22), smoothstep(0.0, 0.3, up)).mul(u.daylight));
+        sky.addAssign(mix(u.horizon.mul(1.6), vec3(0.09, 0.13, 0.22), smoothstep(0.0, 0.3, up)).mul(day));
+        sky.mulAssign(float(1.0).sub(curtain.mul(0.45)));
 
         const plane = sunPlane(u, d).toVar();
 
@@ -153,7 +172,7 @@ export function createSky({
             const shine = exp(dd.dot(dd).negate()).mul(power).mul(twinkle);
             pointLight.addAssign(pointColour(temp).mul(shine));
         });
-        const night = float(1.0).sub(u.daylight);
+        const night = float(1.0).sub(day).toVar();
         sky.addAssign(pointLight.mul(u.starPower).mul(u.exposure.mul(0.5).add(0.55)).mul(0.6).mul(night));
 
         // ── The faint stars a long exposure brings out ──
@@ -169,7 +188,7 @@ export function createSky({
                 const h = seHash21(id.add(41.3));
                 const lit = step(seHash21(id.add(77.7)), u.exposure.mul(0.42));
                 const shine = exp(away.dot(away).div(rad.mul(rad)).negate()).mul(h.mul(h).mul(0.7).add(0.06)).mul(lit);
-                sky.addAssign(vec3(0.86, 0.92, 1.0).mul(shine).mul(u.starPower).mul(float(1.0).sub(u.daylight)));
+                sky.addAssign(vec3(0.86, 0.92, 1.0).mul(shine).mul(u.starPower).mul(night));
             });
         }
 
@@ -190,7 +209,7 @@ export function createSky({
         // ── The clouds (solar-eclipse-clouds.js): the weather's towers beyond the shadow, the
         // altocumulus deck, the rows of bars low over the far shore and the cap on the volcano ──
         drawClouds(env, {
-            d, alt, az, side, plane, sky,
+            d, alt, az, side, plane, sky, day,
         });
 
         // ── The ranges, farthest first ──
@@ -206,7 +225,7 @@ export function createSky({
             // turn a flat brown.
             const farAir = mix(u.haze.mul(0.55).add(u.horizon.mul(0.9)), u.belt.mul(1.4), 0.3).add(u.glow.mul(0.12))
                 .toVar();
-            const daylit = u.daylight.mul(0.6);
+            const daylit = day.mul(0.6);
             for (let k = 0; k < RANGES.length; k += 1) {
                 const below = crests[k].sub(alt);
                 const inside = smoothstep(fuzz.negate(), fuzz, below);
@@ -231,7 +250,10 @@ export function createSky({
                 // Bounded before it is masked: far above the crest the exponent would overflow, and
                 // mix(sky, Inf, 0) is NaN.
                 const rim = exp(max(below, 0.0).div(rimWidth).negate());
-                body.addAssign(u.alpen.mul(u.alpenPower).mul(rim).mul(RIM[k] * 0.32));
+                // Only against bright sky: a near range standing in front of the volcano has no
+                // light behind its crest there.
+                const backlit = smoothstep(0.012, 0.09, seLuma(sky));
+                body.addAssign(u.alpen.mul(u.alpenPower).mul(rim).mul(backlit).mul(RIM[k] * 0.32));
                 if (k === 0) {
                     // The sunlit range: its snow catches the light outside the shadow, brightest
                     // on the faces that turn toward it, cut by couloirs.
@@ -273,8 +295,10 @@ export function createSky({
                         // The snow, its line ragged and lingering down the gullies.
                         const line = float(0.72).sub(gully.sub(0.5).mul(0.3));
                         const snow = smoothstep(line, line.add(0.05), hf).mul(onCone).toVar();
-                        const snowShade = u.mid.mul(2.6).add(u.belt.mul(0.9)).add(u.horizon.mul(0.18))
-                            .mul(ridge.mul(0.35).add(0.65));
+                        // Snow in the shadow takes the twilight's cool light, greyed: never the deep
+                        // sky's own saturated blue.
+                        const cool = u.mid.mul(1.8).add(u.belt.mul(0.6)).add(u.horizon.mul(0.3));
+                        const snowShade = mix(vec3(seLuma(cool)), cool, 0.5).mul(ridge.mul(0.35).add(0.65));
                         // The sunlight on the summit, creeping down as the shadow draws back; the
                         // flank toward the sun (left) takes it first.
                         const litLine = float(1.0).sub(u.summitLit.mul(0.42));
@@ -304,11 +328,14 @@ export function createSky({
                 .add(u.horizon.mul(0.42))
                 .add(u.belt.mul(0.3))
                 .add(u.glow.mul(0.025))
-                .add(u.haze.mul(u.daylight.mul(1.4)))
+                .add(u.haze.mul(day.mul(1.4)))
                 .mul(banded);
             const film = ambient.mul(float(1.0).sub(mirror)).mul(0.22);
             sky.assign(sky.mul(mirror).add(film));
             sky.assign(mix(sky, ambient.mul(0.95), salt));
+            // Shadow bands ripple over the whole flat, film and salt alike: soft bars of light
+            // and dark racing across it (a factor about 1, so they are a breath, never a strobe).
+            sky.mulAssign(mix(float(1.0), banded, 0.55));
             sky.addAssign(vec3(1.0, 0.93, 0.8).mul(glint).mul(float(1.0).sub(salt)));
             // A breath of mist lies on the far water, lit by the band of light all round.
             const lying = exp(view.y.div(0.011)).mul(0.55).add(exp(view.y.div(0.003)).mul(0.45));

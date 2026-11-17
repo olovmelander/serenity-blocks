@@ -169,6 +169,20 @@ export function createUniforms() {
         cme2: uniform(new THREE.Vector4(0, -100, 0, 0.6)),
         /** Daylight returning for the moment the diamond burns, 0..1. */
         daylight: uniform(0),
+        /**
+         * The moon's shadow sweeping back across the sky (a perfect clear, the run's end coming
+         * back): (the front's bearing, its softness in radians, the daylight still held ahead of
+         * it, the depth of the curtain at its edge).
+         */
+        sweep: uniform(new THREE.Vector4(-3, 0.12, 0, 0)),
+        /** A level-up's pulse of light round the horizon: (start, strength, the bearing it leaves from, −). */
+        pulse: uniform(new THREE.Vector4(-100, 0, 0.8, 0)),
+        /** Up to two waves of light running out through the corona: (start, strength) twice. */
+        coronaWave: uniform(new THREE.Vector4(-100, 0, -100, 0)),
+        /** The comet, now and then: (position angle, the head's distance in solar radii, power, curl). */
+        comet: uniform(new THREE.Vector4(2.4, 3, 0, 1)),
+        /** A back-to-back's halo CME: (start, power, −, −). */
+        halo: uniform(new THREE.Vector4(-100, 0, 0, 0)),
         /** The bearing the moon's shadow ends nearest (core.js umbraAzAt), radians east of north. */
         umbraAz: uniform(0.5),
         /** How far the shadow reaches on average (km, core.js shadowReachAt): it breathes. */

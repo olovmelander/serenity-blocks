@@ -17,10 +17,14 @@
  *                            level's own)
  *   locks=<n>                before anything else, play n locks (the prominences they raise)
  *   clears=<n>               ...and n single-line clears among them (eruptions)
- *   event=lock|drop|clear|quad|twist|perfect|levelUp   fire a gameplay event...
+ *   event=lock|drop|clear|quad|twist|perfect|levelUp|b2b|gameOver|return   fire a gameplay
+ *                            event (clear takes lines=1..3: 2 sends shadow bands, 3 a wave
+ *                            through the corona; b2b a halo CME; gameOver is third contact;
+ *                            return a run's end and the next run 3.5 s later)...
  *   eventAge=<s>             ...and show it <s> seconds later (lines=<n>, row=<r>, u=<0..1>,
  *                            color=<hex>)
  *   weather=banks|towers|clear|deck|storm   hold one weather (else the clock turns them)
+ *   comet=<s>                show the first comet <s> seconds into its life (it stands 80 s)
  *   demo=1                   live only: play a looping gameplay script
  *   parts=sky,motes          draw only these parts (SOLAR_ECLIPSE_PARTS)
  *   falseColor=1             post debug view: band the pre-tone-map max channel
@@ -128,6 +132,7 @@ export function create({
     world.bindCamera(camera);
     world.setReducedMotion(params.get('reduce') === '1');
     if (params.get('weather')) world.pinWeather(params.get('weather'));
+    if (params.has('comet')) world.cometPin = num(params, 'comet', 30);
     const partsParam = params.get('parts');
     if (partsParam) world.showOnlyParts(partsParam.split(',').map((p) => p.trim()));
 
@@ -213,6 +218,13 @@ export function create({
         else if (eventName === 'twist') world.onClear({ rows: bottom(2), lines: 2, twist: true });
         else if (eventName === 'perfect') world.onClear({ rows: bottom(4), lines: 4, perfect: true });
         else if (eventName === 'levelUp') world.levelUp(num(params, 'eventLevel', level + 1));
+        else if (eventName === 'b2b') world.onClear({ rows: bottom(lines), lines, b2b: true });
+        else if (eventName === 'gameOver') world.onGameOver();
+        else if (eventName === 'return') {
+            // A run ends, and the next starts 3.5 s later: the shadow sweeps back in.
+            world.onGameOver();
+            world.schedule(world.time + 3.5, () => world.onSessionStart());
+        }
     };
 
     let lastSeek = null;

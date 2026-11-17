@@ -728,6 +728,47 @@ export function moonWander(t, out = [0, 0]) {
     return out;
 }
 
+// ── The comet ────────────────────────────────────────────────────────────────────
+
+/**
+ * Now and then a sungrazing comet stands in the corona, as comets have at real eclipses: a bright
+ * head a few solar radii off the limb, a straight blue ion tail and a broader, curved dust tail
+ * streaming away from the sun. It comes every `period` seconds (the first `offset` seconds in),
+ * brightens over `rise`, stands, and fades over `rise` again, `life` seconds in all. Each one
+ * takes the next of `places`: (position angle in degrees, screen-aligned, the head's distance in
+ * solar radii, which side its dust tail curls to).
+ */
+export const COMET = Object.freeze({
+    period: 290,
+    offset: 70,
+    life: 80,
+    rise: 10,
+    places: Object.freeze([
+        Object.freeze([142, 2.35, 1]),
+        Object.freeze([204, 2.25, -1]),
+        Object.freeze([118, 2.55, -1]),
+        Object.freeze([166, 2.15, 1]),
+    ]),
+});
+
+/**
+ * The comet at time `t`: `power` 0..1 (0 when none stands), its position angle (radians), the
+ * head's distance (solar radii) and its tail's curl, into `out`.
+ */
+export function cometAt(t, out = {}) {
+    const k = Math.floor((t - COMET.offset) / COMET.period);
+    const age = t - COMET.offset - k * COMET.period;
+    const place = COMET.places[((k % COMET.places.length) + COMET.places.length) % COMET.places.length];
+    out.index = k;
+    out.angle = place[0] * DEG;
+    out.distance = place[1];
+    out.curl = place[2];
+    out.power = t < COMET.offset || age > COMET.life
+        ? 0
+        : smooth01(age / COMET.rise) * (1 - smooth01((age - (COMET.life - COMET.rise)) / COMET.rise));
+    return out;
+}
+
 // ── The sky's bright points ──────────────────────────────────────────────────────
 
 /**
