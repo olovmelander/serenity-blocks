@@ -55,6 +55,8 @@ export class SummerWorld {
         this.disposed = false;
         this.built = false;
         this.boardCentre = new THREE.Vector3();
+        /** How many level-up flourishes the reactions had counted at the last frame (null: none read yet). */
+        this.flightsSeen = null;
         /** Reduce motion's share (setMotion), and the envelopes as worn (wear()). */
         this.motion = 1;
         this.worn = {
@@ -348,6 +350,11 @@ export class SummerWorld {
         this.atmosphere.update();
         this.petals.update(dt, env);
         this.life.update(frame, dt, worn);
+        // Every level-up that asked for its flourish sends a skein of swans up over the lake.
+        if (Number.isFinite(frame?.flights)) {
+            if (this.flightsSeen !== null && frame.flights > this.flightsSeen) this.swans.takeWing();
+            this.flightsSeen = frame.flights;
+        }
         const wake = this.swans.update(time, dt, frame, worn);
         if (wake) this.lake.ripples.add(wake.x, wake.z, wake.strength);
         this.garlands.update(frame, worn);
