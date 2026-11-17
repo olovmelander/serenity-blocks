@@ -9,7 +9,7 @@ biggest moments the most spectacular, and the game kept smooth and readable. The
 on is [VESPER_CHRYSALIS_VISUAL_OVERHAUL_2026-10.md](VESPER_CHRYSALIS_VISUAL_OVERHAUL_2026-10.md);
 everything there still holds unless this page says otherwise.
 
-![The evening at rest, in play](vesper-chrysalis-masterpiece/game-rest.jpg)
+![In play: the chrysalis and its wings beside the board, a chain of five](vesper-chrysalis-masterpiece/game-rest.jpg)
 
 ## What the audit found
 
@@ -54,13 +54,18 @@ stars run over it as it turns (`-glints.js`).
 
 ![The chrysalis close, at rest and charged](vesper-chrysalis-masterpiece/chrysalis.jpg)
 
-**It hangs where it can be seen.** With a board on screen it glides into the open water beside the
-card (`perchFor`, `-composition.js`): left of the card in a solo game (the HUD stands to the
-right), between the boards in a match, and on an upright phone, where the card fills the width, up
-into the strip of sky above the card. The silk follows it; the wings stay rooted behind the board,
-so at the height of a chain the board has wings and the chrysalis glows on the left one. The
-shafts come from the chrysalis where it hangs; the prism ring of a big clear still starts behind
-the board.
+**It hangs where it can be seen, with its wings.** With a board on screen it glides into the open
+water beside the card (`perchFor`, `-composition.js`): into the middle of the water left of the
+card in a solo game (the HUD stands to the right), between the boards in a match, and on an
+upright phone or tablet, where the water beside the card is too narrow, up into the strip of sky
+above the card. The wings grow out of it and go where it goes: they hang from its heart (swinging
+with it on its thread) and are sized to the room it has there, a wing reaching most of the way to
+the frame's edge on one side and to the card on the other (`u.wingMount`, `WING_REACH`; about
+0.4 of their full span at 16:9, 0.47 above a phone's card, full size with no board or between
+two boards). The silk, the shafts and the prism ring of a big clear all start from it.
+
+*Added 2026-11-17, after the owner played it:* at first the wings stayed rooted behind the board
+while the chrysalis hung beside it, two halves of one creature apart; they are now one.
 
 ## The crystal stands
 
@@ -201,10 +206,11 @@ ADR-0016 reading.
 
 ## Open calls for the owner
 
-- **Where the chrysalis hangs.** In a solo game it now hangs in the open water left of the card,
-  not in the middle of the frame behind it (where play hid it). The side, its size there and how
-  far it keeps from the card are one function (`perchScreenX`, `PERCH_BAND`); the wings stay
-  rooted behind the board, so at the height of a chain the light is split between the two.
+- **Where the chrysalis hangs.** In a solo game it hangs, wings and all, in the middle of the
+  open water left of the card, not in the middle of the frame behind it (where play hid it). The
+  butterfly is smaller there than over an empty lake (the room beside the card sets the wings'
+  scale: `perchPlace`, `perchFor`); with a long chain it is the whole butterfly that shows, not
+  wings spread behind the board. Its forewings cross the ringed world in the upper left.
 - **How busy the evening is.** One happening every eight seconds (`HAPPEN_SLOT`) and the moths'
   numbers by the hour (`LIFE_HOURS`) were judged in captures, not in a long play session.
 - **GPU time.** Not measured (above). An uncapped timestamp run on the RTX is the owner's call.
