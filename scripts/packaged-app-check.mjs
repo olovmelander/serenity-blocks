@@ -100,7 +100,7 @@ function baseName(rel) {
  *   the folder that holds app.asar (default: `resources` in it)
  * @returns {string[]} the problems found; empty when the package is as it should be
  */
-export function checkPackagedApp({ appOutDir, resourcesDir = path.join(appOutDir, 'resources') }) {
+export function checkPackagedApp({ appOutDir, resourcesDir = path.join(appOutDir, 'resources'), platform }) {
     const problems = [];
     const resourcesLabel = path.relative(appOutDir, resourcesDir).split(path.sep).join('/') || '.';
 
@@ -118,6 +118,15 @@ export function checkPackagedApp({ appOutDir, resourcesDir = path.join(appOutDir
         problems.push(`${resourcesLabel}/native_modules/@koromix holds no koffi binary (online play would be refused).`);
     }
 
+    if (platform === 'win32' || platform === 'linux') {
+        const win = platform === 'win32';
+        const dir = win ? 'win64' : 'linux64';
+        const addon = win ? 'steamworksjs.win32-x64-msvc.node' : 'steamworksjs.linux-x64-gnu.node';
+        for (const name of ['index.js', 'dist/' + dir + '/' + addon, 'dist/' + dir + '/' + (win ? 'steam_api64.dll' : 'libsteam_api.so')]) {
+            if (missingOrEmpty(path.join(resourcesDir, 'native_modules', 'steamworks.js', name))) problems.push('Missing Steam native module: ' + name);
+        }
+        if (!relayBinaries.some((name) => name.startsWith('koffi-' + platform + '-x64/'))) problems.push('Missing ' + platform + ' x64 koffi binary');
+    }
     for (const rel of filesUnder(appOutDir)) {
         const kind = forbiddenKind(baseName(rel));
         if (kind) problems.push(`${kind} is in the package: ${rel}`);

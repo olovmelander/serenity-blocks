@@ -1,3 +1,4 @@
+import { localOrbBest } from '../../core/progression/record-book.js';
 /**
  * @fileoverview Odyssey level-complete results sheet.
  *
@@ -51,6 +52,8 @@ function createFact(label, value, className = 'sb-ody-fact') {
  * @param {string|number} deps.levelId current level id (Steam level-time board)
  * @param {number} deps.totalStars total stars earned (Steam total-stars board)
  * @param {function(number):string} deps.formatTime ms → mm:ss
+ * @param {any} [deps.records] local record database
+ * @param {string|null} [deps.runId] durable finish id
  * @param {boolean} [deps.includeLegacyResults=true] show the unversioned Steam result view
  * @returns {HTMLElement} the modal root element (caller mounts it)
  */
@@ -61,7 +64,7 @@ export function createResultsModal({
     levelId,
     totalStars,
     formatTime,
-    includeLegacyResults = true,
+    includeLegacyResults = true, records = null, runId = null,
 }) {
     let leaderboardPanel = null;
     const { modal, panel } = createKeystoneSheet({
@@ -114,7 +117,22 @@ export function createResultsModal({
     }
     statsContainer.appendChild(createFact('Score', results.score.toLocaleString()));
     statsContainer.appendChild(createFact('Lines', results.lines));
-    statsContainer.appendChild(createFact('Time', formatTime(results.time * 1000)));
+    const timeMs = Math.round(results.time * 1000);
+    const ranksTime = includeLegacyResults && hasOdysseyTimeBoard(levelConfig) && isOdysseyTimeBoardRun(levelConfig, results) && timeMs > 0;
+    statsContainer.appendChild(createFact('Time', ranksTime ? formatMilliseconds(timeMs) : formatTime(timeMs)));
+    if (includeLegacyResults && hasOdysseyTimeBoard(levelConfig) && records) {
+        records.getStatistics().then((snapshot) => {
+            const previous = localOrbBest(snapshot.recordBook, levelId, runId);
+            if (previous !== null) {
+                statsContainer.appendChild(createFact('Previous unassisted best', formatMilliseconds(previous)));
+                if (ranksTime) {
+                    statsContainer.appendChild(createFact('This run', timeMs === previous ? 'Tied'
+                        : formatMilliseconds(Math.abs(timeMs - previous)) + (timeMs < previous ? ' faster' : ' slower')));
+                }
+            } else if (ranksTime) statsContainer.appendChild(createFact('Local record', 'First unassisted clear'));
+        }).catch(() => {});
+    }
+    if (results.recordPending) statsContainer.appendChild(createFact('Local record', 'Save pending'));
     main.appendChild(statsContainer);
 
     // A fact, not a warning: the charms this clear used, each charm's live icon ahead of the
@@ -157,7 +175,7 @@ export function createResultsModal({
         side.appendChild(leaderboardHost);
 
         const levelBoard = `${STEAM_LEADERBOARDS.ODYSSEY_LEVEL_TIME_PREFIX}${levelId}`;
-        const levelTimeMs = Math.max(1, Math.round((results.time || 0) * 1000));
+        const levelTimeMs = timeMs > 0 ? timeMs : null;
         // A charmed run is not uploaded to the orb's time board (OdysseyMode._syncSteamStats), so
         // it is not placed among its times either; a survival orb has no fastest-first board at all.
         const timeRanked = isOdysseyTimeBoardRun(levelConfig, results);
@@ -186,7 +204,7 @@ export function createResultsModal({
                 },
             ],
             defaultBoardId: showsTimeBoard ? 'level-time' : 'total-stars',
-            pageSize: 8,
+            pageSize: 10,
         });
 
         leaderboardPanel.mount(leaderboardHost);

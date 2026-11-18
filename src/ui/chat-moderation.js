@@ -320,7 +320,15 @@ export function createChatMessageElement(msg, { localPlayerId = null, colorOf, d
     el.appendChild(dot);
     // This player's own lines read "You", redrawn from history as when first sent.
     el.appendChild(part('author', own ? 'You' : entry.name));
-    el.appendChild(part('text', entry.text));
+    const filter = globalThis.window?.electronAPI;
+    const body = part('text', entry.text);
+    el.appendChild(body);
+    if (!own && /^\d{1,20}$/.test(entry.steamId) && filter?.invoke) {
+        body.textContent = '…';
+        Promise.resolve(filter.invoke('steam:filterChat', entry.steamId, entry.text)).then((text) => {
+            body.textContent = typeof text === 'string' ? text : 'Message unavailable';
+        }).catch(() => { body.textContent = 'Message unavailable'; });
+    }
     if (entry.steamId && !own) {
         const button = doc.createElement('button');
         button.type = 'button';
@@ -370,7 +378,9 @@ export function createSteamProfileButton(steamId, name, {
     button.innerHTML = chatIcon('human', size);
     button.addEventListener('click', (event) => {
         event.stopPropagation();
-        steamService.activateOverlayToUser(id);
+        Promise.resolve(steamService.activateOverlayToUser(id)).then((opened) => {
+            if (opened === false) { button.title = 'Steam overlay unavailable. Open this profile from Steam Friends.'; button.textContent = 'Overlay unavailable'; }
+        });
     });
     return button;
 }

@@ -61,7 +61,10 @@ export function readSolvedStillfall() {
 
 function writeSolved(ids) {
     try {
-        localStorage.setItem(SOLVED_KEY, JSON.stringify(ids));
+        const next = JSON.stringify(ids);
+        if (localStorage.getItem(SOLVED_KEY) === next) return;
+        localStorage.setItem(SOLVED_KEY, next);
+        eventBus.emit('stillfall:solved');
     } catch { /* storage blocked: the solve still counts for this session */ }
 }
 

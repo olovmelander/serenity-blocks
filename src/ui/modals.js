@@ -5,11 +5,12 @@
  * (public/styles/keystone-modals.css; docs/MENU_UI_OVERHAUL_2026-10.md).
  */
 
+import { asGuestStatistics, runIdFor } from '../core/progression/record-book.js';
 import { LEVEL_SPEEDS } from '../core/constants.js';
 import { STEAM_LEADERBOARDS } from '../core/steam/steam-config.js';
 import steamService from '../core/steam/steam-service.js';
 import {
-    SteamLeaderboardPanel,
+    SteamLeaderboardPanel, modeBoards, steamLeaderboardsAvailable,
     formatNumber,
     formatSeconds,
 } from './components/steam-leaderboard-panel.js';
@@ -403,14 +404,27 @@ export async function showGameOverModal(
         // Rank and career against this mode's own games: an Infinity run is not a
         // Single Player record, and the other way round.
         const rank = await highScoreManager.getRank(score, { mode });
-        const stats = statisticsForMode(await highScoreManager.getStatistics(), mode);
+        const snapshot = await highScoreManager.getStatistics();
+        const stats = statisticsForMode(snapshot, mode);
+        const id = runIdFor(gameState);
+        const previous = snapshot.recordBook ? Object.entries(snapshot.recordBook.runs).reduce((best, [key, run]) => (
+            key !== id && run.mode === mode ? Math.max(best, run.score || 0) : best
+        ), statisticsForMode(snapshot.recordBook.base, mode).highestScore || 0) : null;
 
         if (!shouldPresent()) {
             return false;
         }
 
+        let previousBestRow = '';
+        if (previous !== null) {
+            const difference = Math.abs(score - previous).toLocaleString();
+            const direction = score > previous ? 'higher' : 'lower';
+            const delta = score === previous ? 'Tied' : `${difference} ${direction}`;
+            previousBestRow = `<p class="run-previous-best">Previous best ${previous.toLocaleString()} · ${delta}</p>`;
+        }
         document.getElementById('final-stats').innerHTML = `
             ${resultsHero(score, unsavedChip || rankChips(rank, score))}
+            ${previousBestRow}
             <div class="stats-grid">
                 ${performanceCard(gameState, figures)}
                 ${paceCard(figures)}
@@ -424,7 +438,7 @@ export async function showGameOverModal(
         // available. In a non-Steam/browser build it would render an "unavailable"
         // shell (~260px) that adds nothing but forces the modal to scroll.
         const leaderboardHost = document.getElementById('steam-leaderboard-host');
-        if (leaderboardHost && steamService.capabilities?.leaderboards && shouldPresent()) {
+        if (leaderboardHost && steamLeaderboardsAvailable() && shouldPresent()) {
             const isInfinity = !!gameState?.isInfinityMode;
             const sessionStart = gameState?.infinityStats?.sessionStartTime || gameState.startTime || Date.now();
             const durationSeconds = Math.max(1, Math.round((Date.now() - sessionStart) / 1000));
@@ -691,6 +705,7 @@ let recordsMode = null;
 /** What the open Records sheet renders with, set each time it opens. */
 let recordsContext = null;
 let recordsRender = 0;
+let recordsBoard = null;
 
 /**
  * Records opens on the asked mode, else the one on the main menu's stage (hovered, focused
@@ -719,6 +734,8 @@ async function renderRecordsTab(mode) {
     const list = document.getElementById('high-scores-list');
     const statistics = document.getElementById('statistics-section');
     const render = ++recordsRender;
+    recordsBoard?.destroy();
+    recordsBoard = null;
     recordsMode = mode;
     syncRecordsTabs(mode);
     try {
@@ -736,7 +753,71 @@ async function renderRecordsTab(mode) {
         // A newer tab is on its way.
         if (render !== recordsRender) return;
         statistics.innerHTML = view.facts;
-        list.innerHTML = view.list;
+        const hasSteamRecords = steamLeaderboardsAvailable();
+        list.classList?.toggle('has-steam-records', hasSteamRecords);
+        list.innerHTML = hasSteamRecords ? `<section class="hs-local-records" aria-label="Local records">${view.list}</section>` : view.list;
+        if (hasSteamRecords) {
+            const host = document.createElement('section');
+            host.className = 'hs-steam-records';
+            list.appendChild(host);
+            recordsBoard = new SteamLeaderboardPanel({ boards: modeBoards(mode), title: 'Steam records' });
+            recordsBoard.mount(host);
+            if (window.electronAPI?.isPackaged || steamService.records?.owner) {
+                const button = document.createElement('button');
+                button.type = 'button'; button.textContent = 'Import local records';
+                button.addEventListener('click', async () => {
+                    button.disabled = true;
+                    try {
+                        const data = await window.electronAPI.invoke('desktop:import-local-records');
+                        if (!data) { button.textContent = 'No separate local profile'; return; }
+                        await highScoreManager.importHighScores(data.scores || []);
+                        if (data.stats) await highScoreManager.importStatistics(asGuestStatistics(data.stats));
+                        if (data.odyssey) window.cloudSyncManager?._applyOdyssey(JSON.parse(data.odyssey));
+                        if (data.solved) await window.cloudSyncManager?._applyCloudData('stillfall.json', { version: 1, solved: JSON.parse(data.solved) });
+                        for (const file of ['stats.json', 'highscores.json', 'odyssey.json', 'stillfall.json']) window.cloudSyncManager?.queueUpload(file);
+                        await renderRecordsTab(mode);
+                    } catch { button.disabled = false; button.textContent = 'Retry local import'; }
+                });
+                host.appendChild(button);
+            }
+        }
+        const cloud = globalThis.window?.cloudSyncManager;
+        const pending = cloud?.pendingUploads?.size > 0 || cloud?.uploadingEntries?.size > 0;
+        const recovery = cloud?.cloudIssue || (pending ? 'Steam Cloud sync pending.' : null);
+        if (recovery && /cloud|recovery|newer game|quota/i.test(recovery)) {
+            const message = document.createElement('p');
+            message.setAttribute('role', 'status');
+            message.textContent = `Your local progress is saved. ${recovery}`;
+            statistics.appendChild(message);
+            const retry = document.createElement('button');
+            retry.type = 'button';
+            retry.textContent = 'Retry Steam Cloud';
+            retry.onclick = async () => {
+                retry.disabled = true;
+                await window.cloudSyncManager?.syncFromCloud();
+                if (render === recordsRender) await renderRecordsTab(mode);
+            };
+            const backup = document.createElement('button');
+            backup.type = 'button';
+            backup.textContent = 'Save local recovery copy';
+            backup.onclick = async () => {
+                const raw = Object.fromEntries(Object.keys(localStorage).filter((key) => key.startsWith('steam-recovery/'))
+                    .map((key) => [key, localStorage.getItem(key)]));
+                const copy = {
+                    version: 1,
+                    stats: await highScoreManager.getStatistics(),
+                    highScores: await highScoreManager.exportHighScores(100),
+                    odyssey: localStorage.getItem('serenityBlocks_odysseyProgress'),
+                    damagedFiles: raw,
+                };
+                const link = document.createElement('a');
+                link.href = URL.createObjectURL(new Blob([JSON.stringify(copy)], { type: 'application/json' }));
+                link.download = 'serenity-record-recovery.json';
+                link.click();
+                setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+            };
+            statistics.append(retry, backup);
+        }
         const allModes = document.getElementById('hs-all-modes');
         if (allModes) allModes.textContent = allModesLine(stats);
 

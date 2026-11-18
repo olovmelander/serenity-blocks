@@ -1,3 +1,4 @@
+import { SCORE_DETAIL_FLAGS } from '../steam/leaderboard-score-details.js';
 /**
  * @fileoverview OdysseyMode - Odyssey Mode game mode implementation
  *
@@ -110,7 +111,7 @@ import {
     configureOdysseyBoardPresentation, prepareOdysseyOpponentPresentation, resetOdysseyRoundPresentation,
 } from '../../rendering/phaser/odyssey-board-presentation.js';
 import steamService from '../steam/steam-service.js';
-import { STEAM_LEADERBOARDS } from '../steam/steam-config.js';
+import { recordOwner, runIdFor } from '../progression/record-book.js';
 import {
     showCinematicLoadingOverlay,
     dismissCinematicLoadingOverlay,
@@ -3649,52 +3650,19 @@ export class OdysseyMode extends BaseGameMode {
         ) {
             return;
         }
-        const { levelId } = session;
-
-        const totalStars = this.odysseyState.getTotalStars();
-        const durationSeconds = Math.max(1, Math.round(results.time || 0));
-        const durationMinutes = Math.max(1, Math.round(durationSeconds / 60));
-        const levelTimeMs = Math.max(1, Math.round((results.time || 0) * 1000));
-        const levelBoard = `${STEAM_LEADERBOARDS.ODYSSEY_LEVEL_TIME_PREFIX}${levelId}`;
-
-        const baseDetails = {
-            score: results.score,
-            duration: durationSeconds,
-            linesCleared: results.lines,
-            highestLevel: levelId,
-            stars: results.stars,
-            totalStars,
+        const time = Number(results.time);
+        await this.deps.highScoreManager?.saveCompletion(runIdFor(session), {
             mode: 'odyssey',
-            charms: results.charms || [],
-            version: '1.0.0',
-        };
-
-        // Charmed runs and survival orbs stay off the fastest-first time board (odyssey-time-board.js).
-        const timeBoardEligible = isOdysseyTimeBoardRun(session.levelConfig, results);
-        await Promise.all([
-            steamService.uploadScore(
-                STEAM_LEADERBOARDS.ODYSSEY_TOTAL_STARS,
-                totalStars,
-                {
-                    ...baseDetails,
-                    extraValue: totalStars,
-                    leaderboard: 'odyssey_total_stars',
-                },
-            ),
-            timeBoardEligible && steamService.uploadScore(
-                levelBoard,
-                levelTimeMs,
-                {
-                    ...baseDetails,
-                    timeMs: levelTimeMs,
-                    extraValue: levelTimeMs,
-                    leaderboard: 'odyssey_level_time',
-                },
-            ),
-            steamService.setStat('odyssey_stars', totalStars),
-            steamService.incrementStat('total_lines_cleared', results.lines),
-            steamService.incrementStat('playtime_minutes', durationMinutes),
-        ]);
+            owner: recordOwner(steamService),
+            flags: steamService.isOnline === false ? SCORE_DETAIL_FLAGS.OFFLINE_SUBMISSION : 0,
+            level: Number(session.levelId),
+            lines: results.lines || 0,
+            score: results.score || 0,
+            duration: Math.max(0, Math.round(time || 0)),
+            stars: this.odysseyState.getTotalStars(),
+            timeMs: Math.max(0, Math.round((time || 0) * 1000)),
+            assisted: !isOdysseyTimeBoardRun(session.levelConfig, results),
+        });
     }
 
     /**
@@ -3706,6 +3674,8 @@ export class OdysseyMode extends BaseGameMode {
         // mode state it needs; caller contract (returns the modal element) is unchanged.
         return createResultsModal({
             results,
+            records: this.deps?.highScoreManager,
+            runId: session ? runIdFor(session) : null,
             onClose,
             levelConfig: session?.levelConfig || this.currentLevelConfig,
             levelId: session?.levelId || this.currentLevelId,

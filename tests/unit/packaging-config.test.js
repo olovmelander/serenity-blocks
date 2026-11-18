@@ -104,12 +104,19 @@ describe('electron-builder packaging config', () => {
         expect(manifest.build.afterPack).toBe('scripts/afterPack.cjs');
     });
 
+    it('includes native Steam and relay addons when signing a Windows build', () => {
+        expect(manifest.build.win.signExts).toContain('.node');
+    });
+
     it('pins the engine versions exactly, in package.json and in the lockfile', () => {
         const lock = JSON.parse(readFileSync(new URL('package-lock.json', root), 'utf8'));
         for (const name of ['phaser', 'three', 'steamworks.js', 'koffi']) {
-            expect(manifest.dependencies[name], name).toMatch(/^\d+\.\d+\.\d+$/);
+            const spec = manifest.dependencies[name];
+            const version = name === 'steamworks.js' ? spec.replace(/^npm:@pipelab\/steamworks\.js@/, '') : spec;
+            expect(version, name).toMatch(/^\d+\.\d+\.\d+$/);
+            if (name === 'steamworks.js') expect(lock.packages['node_modules/steamworks.js'].name).toBe('@pipelab/steamworks.js');
             expect(lock.packages[''].dependencies[name], name).toBe(manifest.dependencies[name]);
-            expect(lock.packages[`node_modules/${name}`].version, name).toBe(manifest.dependencies[name]);
+            expect(lock.packages[`node_modules/${name}`].version, name).toBe(version);
         }
         // The notices list the code inside these exact versions; an upgrade means reading them again.
         const notices = readFileSync(new URL('THIRD_PARTY_NOTICES.md', root), 'utf8');

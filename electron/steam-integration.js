@@ -14,14 +14,17 @@
 
 import { app, BrowserWindow, ipcMain } from 'electron';
 import { dirname, join, resolve } from 'path';
-import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
+import { appendFileSync, mkdirSync, writeFileSync } from 'fs';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { createRequire } from 'module';
 import net from 'net';
+import { loadDesktopSteamClient, CALLBACK } from './steam-native-client.js';
+import { createLobbyIntents, parseLobbyLaunch } from './steam-launch-intents.js';
+import { ACHIEVEMENTS, STAT_NAMES, isScoreInt } from '../src/core/steam/steam-catalogue.js';
 import { performance } from 'perf_hooks';
 import { decodeP2PPacketBody, encodeP2PPacketBody, resolveP2PSendType } from './p2p-packet-codec.js';
 import { lobbyMemberChange } from './steam-peer-events.js';
-import { isStoreBuild, resolveSteamAppId as resolveSteamAppIdFor } from './steam-app-id.js';
+import { desktopSteamAppId, isStoreBuild } from './steam-app-id.js';
 import { createP2PSessionGate } from './p2p-session-gate.js';
 import { steamLobbyType } from './steam-lobby-type.js';
 import { steamProfileUrl } from './steam-profile.js';
@@ -44,6 +47,7 @@ let currentLobbyId = null;
 // data/owner/members/leave are only reachable via the Lobby OBJECT returned by
 // createLobby()/joinLobby(). Hold onto it for the lobby we're currently in.
 let currentLobby = null;
+let electedLobbyOwner = null;
 // Who the game opens P2P sessions with: lobby members only, and for everyone but the host,
 // the host alone (electron/p2p-session-gate.js).
 let p2pSessionGate = null;
@@ -73,7 +77,21 @@ let steamStatusPending = false;
 const MAX_P2P_PACKET_BYTES = 64 * 1024;
 let steamAppId = null;
 
-const leaderboardHandles = new Map();
+const launchIntents = createLobbyIntents();
+let relaunchRequested = false;
+export function deliverSteamLaunch(argv, source = 'launch') {
+    const id = parseLobbyLaunch(argv);
+    if (id) offerLobby(id, null, source);
+}
+function offerLobby(id, friend, source) {
+    const intent = launchIntents.offer(id, friend, source);
+    if (intent) sendToRenderer('steam:lobbyJoinRequested', intent);
+}
+export function desktopSteamProfile() {
+    return { steamId: steamSteamId, appId: steamAppId, relaunchRequested };
+}
+export function attachSteamWindow(win) { mainWindow = win; rendererReady = Boolean(win); }
+
 
 // Reference set by initSteam()
 let mainWindow = null;
@@ -112,20 +130,6 @@ function steamLog(message) {
 // ---------------------------------------------------------------------------
 
 /** electron/steam-app-id.js decides; a packaged build reads no file or variable. */
-function resolveSteamAppId() {
-    return resolveSteamAppIdFor({
-        isPackaged: app.isPackaged,
-        env: process.env,
-        readAppIdFile: () => {
-            for (const dir of [process.cwd(), app.getAppPath()]) {
-                const appIdPath = join(dir, 'steam_appid.txt');
-                if (existsSync(appIdPath)) return readFileSync(appIdPath, 'utf8');
-            }
-            return null;
-        },
-    });
-}
-
 /** Whether a SteamID belongs to a member of the lobby we are in right now. */
 function isCurrentLobbyMember(steamId) {
     if (!currentLobby || !steamId) return false;
@@ -134,6 +138,21 @@ function isCurrentLobbyMember(steamId) {
     } catch {
         return false;
     }
+}
+
+function advertisedLobbyHost() {
+    if (!currentLobby) return null;
+    const advertised = currentLobby.getData('game_host');
+    return advertised && isCurrentLobbyMember(advertised) ? advertised : currentLobby.getOwner()?.steamId64?.toString() || null;
+}
+
+function publishLobbyOwner() {
+    if (!electedLobbyOwner || !isCurrentLobbyMember(electedLobbyOwner)
+        || String(currentLobby?.getOwner()?.steamId64) !== steamSteamId) return false;
+    if (!currentLobby.setData('game_host', electedLobbyOwner)) return false;
+    if (electedLobbyOwner !== steamSteamId && !currentLobby.setOwner?.(electedLobbyOwner)) return false;
+    electedLobbyOwner = null;
+    return true;
 }
 
 function hasUsableSteamClient() {
@@ -326,14 +345,16 @@ function registerSteamCallbacks() {
         (payload) => {
             const lobbyId = payload?.lobby_steam_id?.toString?.() || payload?.lobby_steam_id;
             const friendSteamId = payload?.friend_steam_id?.toString?.() || payload?.friend_steam_id;
-            if (lobbyId && mainWindow && !mainWindow.isDestroyed() && rendererReady) {
-                mainWindow.webContents.send('steam:lobbyJoinRequested', {
-                    lobbyId, friendSteamId, source: 'callback', receivedAt: Date.now(),
-                });
-            }
+            if (lobbyId) offerLobby(lobbyId, friendSteamId, 'callback');
         },
     );
 
+    if (steamworksClient.launchArgs) {
+        steamCallbackHandles.push(steamworksClient.callback.register(CALLBACK.GameRichPresenceJoinRequested, (payload) => {
+            offerLobby(parseLobbyLaunch(payload.connect), payload.friend_steam_id, 'friends');
+        }), steamworksClient.callback.register(CALLBACK.NewUrlLaunchParameters, () => deliverSteamLaunch(steamworksClient.launchArgs())));
+        deliverSteamLaunch(steamworksClient.launchArgs());
+    }
     const connectedHandle = steamworksClient.callback.register(
         steamworksModule.SteamCallback.SteamServersConnected,
         (p) => setSteamServerConnection(true, 'SteamServersConnected', p),
@@ -402,6 +423,7 @@ function registerSteamCallbacks() {
             const change = lobbyMemberChange(payload?.member_state_change);
             if (!change) return;
             p2pSessionGate?.onMembersChanged();
+            publishLobbyOwner();
             sendToRenderer('steam:lobbyMember', {
                 lobbyId: payload?.lobby?.toString?.() ?? null,
                 steamId: payload?.user_changed?.toString?.() ?? null,
@@ -411,6 +433,7 @@ function registerSteamCallbacks() {
     );
 
     steamCallbackHandles.push(
+        steamworksClient.callback.register(738, () => sendToRenderer('steam:keyboardDismissed', {})),
         lobbyJoinHandle, connectedHandle, disconnectedHandle, failureHandle,
         p2pSessionRequestHandle, p2pSessionFailHandle, lobbyMemberHandle,
     );
@@ -488,13 +511,13 @@ function otherLobbyMembers() {
     }
 }
 
-async function initSteamworks(retries = 3) {
+async function initSteamworks(retries = 3, restartChecked = false) {
     if (steamInitialized && steamworksClient) {
         steamLog('initSteamworks: already initialized');
         return true;
     }
 
-    const resolvedAppId = resolveSteamAppId();
+    const resolvedAppId = desktopSteamAppId(app.isPackaged, app.getAppPath());
     if (!resolvedAppId.appId) {
         steamLog(`Steam off: ${resolvedAppId.reason}`);
         retries = 0;
@@ -537,12 +560,19 @@ async function initSteamworks(retries = 3) {
             steamLog(`Resolved Steam App ID: ${steamAppId} (${resolvedAppId.source})`);
             // A shipped build started outside the Steam client hands itself to Steam, which
             // launches it again as the game (Steamworks' DRM/launch contract).
-            if (app.isPackaged && steamworks.restartAppIfNecessary?.(steamAppId)) {
+            if (app.isPackaged && !restartChecked && steamworks.restartAppIfNecessary(steamAppId)) {
+                relaunchRequested = true;
+                app.releaseSingleInstanceLock();
                 steamLog('Started outside Steam — relaunching through the Steam client');
                 app.quit();
                 return false;
             }
-            steamworksClient = steamworks.init(steamAppId);
+            if (steamworksDir && ['win32', 'linux'].includes(process.platform)) {
+                steamworksClient = loadDesktopSteamClient(steamworksDir, loadKoffi(), steamAppId, steamLog);
+                steamworksModule = { ...steamworks, SteamCallback: CALLBACK };
+            } else {
+                steamworksClient = steamworks.init(steamAppId);
+            }
 
             if (steamworksClient) {
                 steamInitialized = true;
@@ -551,7 +581,7 @@ async function initSteamworks(retries = 3) {
                 steamPlayerName = steamworksClient.localplayer.getName();
                 steamLog(`Steam initialized: player="${steamPlayerName}" steamId=${steamSteamId}`);
                 // Before any callback can accept a session: online play goes through the relays.
-                startNetworkTransport(steamworksDir);
+                startNetworkTransport(!app.isPackaged && steamworksClient.qaDisableRelay ? null : steamworksDir || steamworks.qaNativeDirectory);
                 registerSteamCallbacks();
                 return true;
             }
@@ -595,6 +625,13 @@ async function resolveInitialSteamConnection(source = 'steam-init') {
         return false;
     }
 
+    if (steamworksClient.loggedOn) {
+        const connected = steamworksClient.loggedOn();
+        setSteamServerConnection(connected, 'Steam login');
+        steamStatusPending = false;
+        emitSteamStatus(source);
+        return connected;
+    }
     for (let attempt = 1; attempt <= 3; attempt++) {
         if (steamServerConnected === true || steamServerConnected === false) {
             steamStatusPending = false;
@@ -629,26 +666,16 @@ async function resolveInitialSteamConnection(source = 'steam-init') {
 // Leaderboard helpers
 // ---------------------------------------------------------------------------
 
-function getLeaderboardsApi() {
-    const candidates = [
-        steamworksClient?.leaderboards,
-        steamworksClient?.userStats?.leaderboards,
-        steamworksClient?.userstats?.leaderboards,
-        steamworksClient?.userStats,
-        steamworksClient?.userstats,
-    ].filter(Boolean);
-    for (const api of candidates) {
-        if (typeof api.findOrCreateLeaderboard === 'function'
-            || typeof api.findLeaderboard === 'function'
-            || typeof api.uploadScore === 'function'
-            || typeof api.uploadLeaderboardScore === 'function') {
-            return api;
-        }
-    }
-    return null;
+function getLeaderboardsApi() { return steamworksClient?.boards || null; }
+
+function sameSteamAccount() {
+    try { return Boolean(steamSteamId) && String(steamworksClient.localplayer.getSteamId().steamId64) === steamSteamId; }
+    catch { return false; }
 }
 
 function getRemoteStorageApi() {
+    if (!sameSteamAccount()) return null;
+    if (steamworksClient?.cloud?.isEnabledForAccount?.() === false || steamworksClient?.cloud?.isEnabledForApp?.() === false) return null;
     return steamworksClient?.cloud
         || steamworksClient?.remoteStorage
         || steamworksClient?.remote_storage
@@ -657,53 +684,9 @@ function getRemoteStorageApi() {
         || null;
 }
 
-function getAchievementsApi() {
-    return steamworksClient?.achievements
-        || steamworksClient?.userStats?.achievements
-        || steamworksClient?.userstats?.achievements
-        || null;
-}
-
+function getAchievementsApi() { return steamworksClient?.achievement || null; }
 function getPersonaName(steamId) {
-    if (!steamworksClient?.friends || !steamId) return null;
-    try { return steamworksClient.friends.getFriendPersonaName(BigInt(steamId)); } catch { return null; }
-}
-
-function normalizeEntries(entries = [], start = 0) {
-    return entries.filter(Boolean).map((entry, idx) => ({
-        rank: entry.rank ?? entry.globalRank ?? (start + idx + 1),
-        steamId: normalizeSteamId(entry.steamId ?? entry.steamId64 ?? entry.userId),
-        score: entry.score ?? entry.scoreValue ?? entry.value ?? 0,
-        details: entry.details ?? entry.scoreDetails ?? null,
-        name: entry.name ?? entry.personaName ?? getPersonaName(normalizeSteamId(entry.steamId ?? entry.steamId64)),
-    }));
-}
-
-async function resolveLeaderboardHandle(name) {
-    if (!name) return null;
-    if (leaderboardHandles.has(name)) return leaderboardHandles.get(name);
-    const api = getLeaderboardsApi();
-    if (!api) return null;
-    const findOrCreate = api.findOrCreateLeaderboard || api.findOrCreate;
-    const find = api.findLeaderboard || api.find;
-    if (typeof findOrCreate === 'function') {
-        // Steam KeepBest uses the board's sort order; lower completion times win.
-        // Include historical campaigns so replaying an offline queue stays correct.
-        const isOdysseyTime = /^OdysseyLevelTime_v[1-9]\d*_[1-9]\d*$/.test(name);
-        const sortMethod = isOdysseyTime
-            ? (api.SortMethod?.Ascending ?? 1)
-            : (api.SortMethod?.Descending ?? 2);
-        const displayType = api.DisplayType?.Numeric ?? 1;
-        const handle = await findOrCreate(name, sortMethod, displayType);
-        leaderboardHandles.set(name, handle);
-        return handle;
-    }
-    if (typeof find === 'function') {
-        const handle = await find(name);
-        leaderboardHandles.set(name, handle);
-        return handle;
-    }
-    return null;
+    try { return steamworksClient?.friends?.getFriendName(BigInt(steamId)); } catch { return null; }
 }
 
 // ---------------------------------------------------------------------------
@@ -715,12 +698,12 @@ async function resolveLeaderboardHandle(name) {
  * @param {BrowserWindow} win - The main window
  * @param {Function} emitFn - emitRuntimeEvent function from main.js
  */
-export async function initSteam(win, emitFn) {
+export async function initSteam(win, emitFn, { restartChecked = false } = {}) {
     mainWindow = win;
     rendererReady = true;
     emitRuntimeEventFn = emitFn || (() => {});
 
-    if (process.env.SERENITY_DISABLE_STEAM_BOOTSTRAP === '1') {
+    if (!isStoreBuild({ isPackaged: app.isPackaged }) && process.env.SERENITY_DISABLE_STEAM_BOOTSTRAP === '1') {
         steamLog('Steam init skipped (SERENITY_DISABLE_STEAM_BOOTSTRAP)');
         emitSteamStatus('disabled');
         return false;
@@ -735,7 +718,7 @@ export async function initSteam(win, emitFn) {
     steamStatusPending = true;
     emitSteamStatus('steam-init:start');
 
-    const steamReady = await initSteamworks();
+    const steamReady = await initSteamworks(3, restartChecked);
     if (!steamReady) {
         steamStatusPending = false;
         emitSteamStatus('steam-init:offline');
@@ -764,7 +747,9 @@ export function registerSteamIPC() {
         'steam:uploadScore', 'steam:getLeaderboard', 'steam:getLeaderboardEntry',
         'steam:cloudWrite', 'steam:cloudRead', 'steam:cloudDelete',
         'steam:cloudExists', 'steam:cloudGetQuota', 'steam:cloudGetTimestamp',
-        'steam:getFriends', 'steam:getPersonaState',
+        'steam:commitStats', 'steam:cloudList', 'steam:pendingInvites', 'steam:ackInvite',
+    'steam:showKeyboard', 'steam:filterChat', 'steam:setLobbyOwner',
+    'steam:getFriends', 'steam:getPersonaState',
         'steam:inviteToLobby', 'steam:openLobbyInviteDialog',
         'steam:activateOverlay', 'steam:activateOverlayToUser',
         'steam:createLobby', 'steam:joinLobby', 'steam:leaveLobby',
@@ -812,6 +797,7 @@ export function registerSteamIPC() {
 
     ipcMain.handle('steam:checkConnection', async () => {
         if (!steamworksClient || !steamInitialized) return false;
+        if (steamworksClient.loggedOn) return steamworksClient.loggedOn();
         if (steamServerConnected === true) return true;
         if (steamServerConnected === false) return false;
         try {
@@ -834,8 +820,7 @@ export function registerSteamIPC() {
         } catch { return null; }
     });
 
-    // Rich presence lives under `localplayer` in steamworks.js 0.4.0 (there is no
-    // `friends` namespace). This is what powers "Join Game" on a friend's profile.
+    // Steam's connect value enables Join Game from a friend's profile.
     ipcMain.handle('steam:setRichPresence', (_event, key, value) => {
         if (!steamworksClient) return false;
         try { steamworksClient.localplayer.setRichPresence(key, value); return true; } catch { return false; }
@@ -843,9 +828,9 @@ export function registerSteamIPC() {
 
     ipcMain.handle('steam:clearRichPresence', () => {
         if (!steamworksClient) return false;
-        // 0.4.0 has no clear-all; clear known keys by setting them with no value.
+        if (steamworksClient.clearPresence) { steamworksClient.clearPresence(); return true; }
         try {
-            ['status', 'connect', 'steam_display'].forEach((k) => {
+            ['status', 'connect', 'steam_display', 'steam_player_group', 'steam_player_group_size'].forEach((k) => {
                 try { steamworksClient.localplayer.setRichPresence(k); } catch {}
             });
             return true;
@@ -862,6 +847,7 @@ export function registerSteamIPC() {
     });
 
     ipcMain.handle('steam:setStat', (_event, nameOrPayload, value) => {
+        if (isStoreBuild({ isPackaged: app.isPackaged })) return false;
         if (!steamworksClient?.stats) return false;
         try {
             const { name, value: v } = normalizeStatArgs(nameOrPayload, value);
@@ -872,6 +858,7 @@ export function registerSteamIPC() {
     });
 
     ipcMain.handle('steam:setStatMax', (_event, nameOrPayload, value) => {
+        if (isStoreBuild({ isPackaged: app.isPackaged })) return false;
         if (!steamworksClient?.stats) return false;
         try {
             const { name, value: v } = normalizeStatArgs(nameOrPayload, value);
@@ -887,6 +874,7 @@ export function registerSteamIPC() {
     });
 
     ipcMain.handle('steam:incrementStat', (_event, nameOrPayload, amount) => {
+        if (isStoreBuild({ isPackaged: app.isPackaged })) return false;
         if (!steamworksClient?.stats) return false;
         try {
             const { name, amount: a } = normalizeStatArgs(nameOrPayload, amount);
@@ -899,6 +887,7 @@ export function registerSteamIPC() {
     });
 
     ipcMain.handle('steam:storeStats', () => {
+        if (isStoreBuild({ isPackaged: app.isPackaged })) return false;
         if (!steamworksClient?.stats) return false;
         try { return steamworksClient.stats.store(); } catch { return false; }
     });
@@ -907,64 +896,53 @@ export function registerSteamIPC() {
         if (!steamworksClient?.stats) return {};
         try {
             const result = {};
-            (Array.isArray(names) ? names : []).forEach((n) => { result[n] = steamworksClient.stats.getInt(n) ?? 0; });
+            (Array.isArray(names) ? names : []).forEach((n) => { result[n] = steamworksClient.stats.getInt(n) ?? null; });
             return result;
         } catch { return {}; }
     });
 
     // --- Leaderboards ---
-    ipcMain.handle('steam:uploadScore', async (_event, payload) => {
-        if (!steamworksClient) return { success: false, error: 'Steam not initialized' };
+    ipcMain.handle('steam:uploadScore', async (_event, p) => {
         try {
-            const { leaderboardName, score, scoreDetails } = payload || {};
-            if (!leaderboardName || !Number.isFinite(score)) {
-                return { success: false, error: 'Invalid payload' };
-            }
-            const handle = await resolveLeaderboardHandle(leaderboardName);
-            if (!handle) return { success: false, error: 'Leaderboard not found' };
-            const api = getLeaderboardsApi();
-            const upload = api.uploadLeaderboardScore || api.uploadScore;
-            if (typeof upload !== 'function') return { success: false, error: 'Upload not supported' };
-            const method = api.UploadScoreMethod?.KeepBest ?? api.LeaderboardUploadScoreMethod?.KeepBest ?? 1;
-            await upload.call(api, handle, method, Math.floor(score), scoreDetails ? [scoreDetails] : []);
-            return { success: true };
-        } catch (err) {
-            return { success: false, error: err.message };
+            if (!sameSteamAccount() || p?.owner !== String(steamAppId) + '/' + steamSteamId) throw new Error('Steam account changed');
+            return await getLeaderboardsApi().upload(p.leaderboardName, p.score, p.scoreDetailsPacked);
         }
+        catch (error) { return { success: false, error: error.message }; }
     });
-
-    ipcMain.handle('steam:getLeaderboard', async (_event, payload) => {
-        if (!steamworksClient) return { supported: false, entries: [], total: 0 };
-        try {
-            const { leaderboardName, start = 0, end = 9, type = 'global' } = payload || {};
-            const handle = await resolveLeaderboardHandle(leaderboardName);
-            if (!handle) return { supported: false, entries: [], total: 0 };
-            const api = getLeaderboardsApi();
-            const download = api.downloadLeaderboardEntries || api.downloadEntries;
-            if (typeof download !== 'function') return { supported: false, entries: [], total: 0 };
-            const dataRequest = type === 'friends'
-                ? (api.DataRequest?.Friends ?? 2)
-                : (api.DataRequest?.Global ?? 0);
-            const entries = await download.call(api, handle, dataRequest, start, end);
-            return { supported: true, entries: normalizeEntries(entries, start), total: entries?.length ?? 0 };
-        } catch { return { supported: false, entries: [], total: 0 }; }
+    ipcMain.handle('steam:getLeaderboard', async (_event, p) => {
+        try { return await getLeaderboardsApi().page(p.leaderboardName, p.type, p.start, p.end - p.start + 1); }
+        catch (error) { return { supported: false, entries: [], error: error.message }; }
     });
-
-    ipcMain.handle('steam:getLeaderboardEntry', async (_event, payload) => {
-        if (!steamworksClient) return null;
-        try {
-            const { leaderboardName } = payload || {};
-            const handle = await resolveLeaderboardHandle(leaderboardName);
-            if (!handle) return null;
-            const api = getLeaderboardsApi();
-            const download = api.downloadLeaderboardEntriesForUsers || api.downloadEntriesForUsers;
-            if (typeof download !== 'function') return null;
-            const entries = await download.call(api, handle, [BigInt(steamSteamId)]);
-            const normalized = normalizeEntries(entries);
-            return normalized[0] || null;
-        } catch { return null; }
+    ipcMain.handle('steam:getLeaderboardEntry', async (_event, p) => {
+        if (!getLeaderboardsApi()) throw new Error('Steam boards unavailable');
+        return getLeaderboardsApi().self(p.leaderboardName);
     });
-
+    ipcMain.handle('steam:commitStats', async (_e, { appId, steamId, values, awards }) => {
+        if (!sameSteamAccount() || appId !== steamAppId || steamId !== steamSteamId || !values || !Array.isArray(awards)
+            || Object.entries(values).some(([key, value]) => !STAT_NAMES.includes(key) || !isScoreInt(value))
+            || awards.some((name) => !ACHIEVEMENTS.includes(name))) return false;
+        return steamworksClient?.commitStats?.(values, awards) ?? false;
+    });
+    ipcMain.handle('steam:pendingInvites', () => launchIntents.list());
+    ipcMain.handle('steam:ackInvite', (_e, id) => launchIntents.ack(id));
+    ipcMain.handle('steam:cloudList', () => {
+        const cloud = getRemoteStorageApi();
+        if (!cloud) throw new Error('Steam Cloud unavailable');
+        return cloud.listFiles().map(({ name, size }) => ({ name, size: Number(size) }));
+    });
+    ipcMain.handle('steam:showKeyboard', (_e, rect) => {
+        if (!steamworksClient?.utils || !rect || ![rect.x, rect.y, rect.width, rect.height].every(Number.isFinite)) return false;
+        return steamworksClient.showKeyboard?.(...[rect.x, rect.y, rect.width, rect.height].map(Math.round)) ?? false;
+    });
+    ipcMain.handle('steam:filterChat', (_e, sender, value) => {
+        if (typeof value !== 'string' || value.length > 2048 || !/^\d{1,20}$/.test(String(sender))) return '';
+        return steamworksClient?.filterChat ? steamworksClient.filterChat(sender, value) : value;
+    });
+    ipcMain.handle('steam:setLobbyOwner', (_e, owner) => {
+        if (!isCurrentLobbyMember(owner)) return false;
+        electedLobbyOwner = String(owner);
+        return publishLobbyOwner();
+    });
     // --- Cloud Storage ---
     ipcMain.handle('steam:cloudWrite', async (_event, filename, data) => {
         const api = getRemoteStorageApi();
@@ -1031,11 +1009,11 @@ export function registerSteamIPC() {
 
     ipcMain.handle('steam:cloudGetQuota', async () => {
         const api = getRemoteStorageApi();
-        if (!api) return { total: 0, available: 0 };
+        if (!api) return null;
         try {
             const quota = api.getQuota?.();
-            return quota || { total: 0, available: 0 };
-        } catch { return { total: 0, available: 0 }; }
+            return quota || null;
+        } catch { return null; }
     });
 
     ipcMain.handle('steam:cloudGetTimestamp', async (_event, filename) => {
@@ -1050,19 +1028,10 @@ export function registerSteamIPC() {
     ipcMain.handle('steam:getFriends', async () => {
         if (!steamworksClient) return [];
         try {
-            const count = steamworksClient.friends.getFriendCount(0x04);
-            const friends = [];
-            for (let i = 0; i < count; i++) {
-                const fid = steamworksClient.friends.getFriendByIndex(i, 0x04);
-                const name = steamworksClient.friends.getFriendPersonaName(fid);
-                const state = steamworksClient.friends.getFriendPersonaState(fid);
-                const gameInfo = steamworksClient.friends.getFriendGamePlayed(fid);
-                friends.push({
-                    steamId: fid.steamId64.toString(), name, personaState: state,
-                    isOnline: state !== 0, inGame: !!gameInfo,
-                    gameId: gameInfo?.gameId?.toString() || null,
-                });
-            }
+            const friends = steamworksClient.friends.getFriends(4).map((friend) => ({
+                steamId: String(friend.steamId), name: friend.name, personaState: friend.state, isOnline: friend.state !== 0,
+                inGame: Boolean(friend.gamePlayed), gameId: friend.gamePlayed ? String(friend.gamePlayed.gameId) : null,
+            }));
             friends.sort((a, b) => (a.isOnline !== b.isOnline ? (b.isOnline ? 1 : -1) : a.name.localeCompare(b.name)));
             return friends;
         } catch { return []; }
@@ -1070,14 +1039,14 @@ export function registerSteamIPC() {
 
     ipcMain.handle('steam:getPersonaState', (_event, steamId) => {
         if (!steamworksClient) return 0;
-        try { return steamworksClient.friends.getFriendPersonaState(BigInt(steamId)); } catch { return 0; }
+        try { return steamworksClient.friends.getFriends(4).find((f) => String(f.steamId) === String(steamId))?.state || 0; } catch { return 0; }
     });
 
-    // steamworks.js 0.4.0 has no "invite a specific user to lobby" API; the only
-    // path is the Steam overlay invite dialog (the user picks the friend there).
     ipcMain.handle('steam:inviteToLobby', (_event, friendSteamId, lobbyId) => {
-        if (!steamworksClient) return false;
+        if (!steamworksClient || !currentLobbyId || (lobbyId && String(lobbyId) !== currentLobbyId)) return false;
         try {
+            if (friendSteamId && steamworksClient.inviteFriend) return steamworksClient.inviteFriend(currentLobbyId, friendSteamId);
+            if (steamworksClient.overlayEnabled?.() === false) return false;
             if (currentLobby?.openInviteDialog) { currentLobby.openInviteDialog(); return true; }
             const target = lobbyId || currentLobbyId;
             if (!target) return false;
@@ -1087,7 +1056,7 @@ export function registerSteamIPC() {
     });
 
     ipcMain.handle('steam:openLobbyInviteDialog', (_event, lobbyId) => {
-        if (!steamworksClient) return false;
+        if (!steamworksClient || steamworksClient.overlayEnabled?.() === false) return false;
         try {
             if (currentLobby?.openInviteDialog) { currentLobby.openInviteDialog(); return true; }
             const target = lobbyId || currentLobbyId;
@@ -1104,7 +1073,7 @@ export function registerSteamIPC() {
         friends: 0, community: 1, players: 2, settings: 3, officialgamegroup: 4, stats: 5, achievements: 6,
     };
     ipcMain.handle('steam:activateOverlay', (_event, type) => {
-        if (!steamworksClient) return false;
+        if (!steamworksClient || steamworksClient.overlayEnabled?.() === false) return false;
         try {
             const dialog = OVERLAY_DIALOG[String(type || 'friends').toLowerCase()] ?? 0;
             steamworksClient.overlay.activateDialog(dialog);
@@ -1116,7 +1085,7 @@ export function registerSteamIPC() {
     // activateDialogToUser has no profile dialog, so the overlay's browser opens their profile
     // page (electron/steam-profile.js); the other names are its own dialogs for that user.
     ipcMain.handle('steam:activateOverlayToUser', (_event, type, steamId) => {
-        if (!steamworksClient) return false;
+        if (!steamworksClient || steamworksClient.overlayEnabled?.() === false) return false;
         try {
             const kind = String(type || 'steamid').toLowerCase();
             if (kind === 'steamid') {
@@ -1147,6 +1116,7 @@ export function registerSteamIPC() {
         const lobby = await steamworksClient.matchmaking.createLobby(steamLobbyType(lobbyType), maxPlayers);
         relaySessions.closeAll();
         p2pSessionGate?.clear();
+        electedLobbyOwner = null;
         currentLobby = lobby;
         currentLobbyId = lobby.id.toString();
         // We host: every member talks to us.
@@ -1162,13 +1132,14 @@ export function registerSteamIPC() {
         const lobby = await steamworksClient.matchmaking.joinLobby(BigInt(lobbyId));
         relaySessions.closeAll();
         p2pSessionGate?.clear();
+        electedLobbyOwner = null;
         currentLobby = lobby || null;
         currentLobbyId = lobby?.id ? lobby.id.toString() : String(lobbyId);
         // We joined: we talk to the host alone, the lobby's owner until the game says who
         // its host is (steam:setP2PPeerPolicy). Setting it also takes the requests of peers
         // who asked while we were joining and are allowed now.
         let ownerId = null;
-        try { ownerId = currentLobby?.getOwner?.()?.steamId64?.toString() ?? null; } catch {}
+        try { ownerId = advertisedLobbyHost(); } catch {}
         p2pSessionGate?.setPolicy({ isHost: false, hostSteamId: ownerId });
         return true;
     });
@@ -1179,11 +1150,12 @@ export function registerSteamIPC() {
         if (!currentLobby) { currentLobbyId = null; return; }
         try { currentLobby.leave(); } catch {}
         currentLobby = null;
+        electedLobbyOwner = null;
         currentLobbyId = null;
     });
 
     ipcMain.handle('steam:getLobbies', async () => {
-        if (!steamworksClient) return [];
+        if (!steamworksClient) throw new Error('Steam matchmaking unavailable');
         try {
             const lobbies = await steamworksClient.matchmaking.getLobbies();
             return lobbies
@@ -1202,7 +1174,7 @@ export function registerSteamIPC() {
                     // (older/un-stamped lobbies) → browser derives status from capacity.
                     status: l.getData('status') || undefined,
                 }));
-        } catch { return []; }
+        } catch (error) { throw new Error('Could not refresh Steam lobbies: ' + error.message); }
     });
 
     // All per-lobby reads/writes go through the live Lobby object (currentLobby),
@@ -1231,7 +1203,12 @@ export function registerSteamIPC() {
 
     ipcMain.handle('steam:getLobbyOwner', (_event, lobbyId) => {
         if (!currentLobby) return null;
-        try { return currentLobby.getOwner()?.steamId64?.toString() || null; } catch { return null; }
+        try {
+            // Only Steam's current owner can write lobby data. A new member may follow an
+            // advertised game host only while that peer is still a member of this lobby.
+            publishLobbyOwner();
+            return advertisedLobbyHost();
+        } catch { return null; }
     });
 
     // --- P2P Networking ---
@@ -1336,6 +1313,7 @@ export function registerSteamIPC() {
     // is no role to keep.
     ipcMain.handle('steam:setP2PPeerPolicy', (_event, policy) => {
         if (!currentLobby || !p2pSessionGate) return false;
+        publishLobbyOwner();
         p2pSessionGate.setPolicy(policy && typeof policy === 'object' ? policy : {});
         return true;
     });
@@ -1364,6 +1342,7 @@ export function cleanupSteam() {
         } catch {}
         relaySessions.closeAll();
         try { currentLobby?.leave?.(); } catch {}
+        steamworksClient.retire?.();
         steamworksClient = null;
     }
     relayTransport?.dispose();

@@ -62,7 +62,7 @@ const CONDITIONS = {
 export const LOBBY_TYPE_HELP = {
     public: `Anyone can find it in the list and join. ${HOST_IP_NOTE}`,
     friends: 'Only your Steam friends can join.',
-    private: 'Hidden from the list — players join by invite or lobby ID.',
+    private: 'Invite only. Invite friends from the Steam overlay.',
 };
 
 const ATTACK_HELP = {
