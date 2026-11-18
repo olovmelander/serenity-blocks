@@ -263,8 +263,9 @@ describe.each(TIERS)('Sakura shaders at %s', (quality) => {
         const all = reads(dome, /\btextureSample(?:Level)?\s*\(/g);
         const levelled = reads(dome, /\btextureSampleLevel\s*\(/g);
         expect(all).toBeLessThanOrEqual(12);
-        // The moon's four are the ones with a level of their own.
-        expect(levelled).toBe(4);
+        // The moon's five are the ones with a level of their own (a broad one that pulls the seas'
+        // place about, so they do not break along the noise's grid; two for the seas; two for craters).
+        expect(levelled).toBe(5);
         let depth = 0;
         let outside = 0;
         for (const line of dome.split('\n')) {
