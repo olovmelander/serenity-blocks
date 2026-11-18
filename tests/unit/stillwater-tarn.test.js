@@ -25,7 +25,7 @@ import {
     FLIGHT, PILLAR, PILLARS, duckAt,
 } from '../../src/themes/stillwater/stillwater-air.js';
 import {
-    MOOSE, MOOSE_BEATS, MOOSE_SPAN, mooseAt,
+    MOOSE, MOOSE_BEATS, MOOSE_SPAN, createMoose, mooseAt,
 } from '../../src/themes/stillwater/stillwater-moose.js';
 import { BIRDS, birdGeometry, foldWing } from '../../src/themes/stillwater/stillwater-birds.js';
 import { PLACES } from '../../src/themes/stillwater/stillwater-life.js';
@@ -268,6 +268,87 @@ describe('stillwater tarn: who comes by', () => {
         expect(drinking.heading).toBeCloseTo(MOOSE.broadside, 6);
         // The night keeps a slot as long as his visit for him (a second never cuts him short).
         expect(MOOSE_SPAN).toBeLessThanOrEqual(VISITOR_SPAN.elk);
+    });
+
+    it('turns the moose by walking round, never on the spot, and gathers and slackens his pace smoothly', () => {
+        const wrapped = (a) => Math.abs(Math.atan2(Math.sin(a), Math.cos(a)));
+        let before = mooseAt(0);
+        let spin = 0;
+        let jolt = 0;
+        for (let a = 0.05; a <= MOOSE_SPAN; a += 0.05) {
+            const p = mooseAt(a);
+            // However he turns, he turns no faster than his way bends under him (the turn for home is
+            // the tightest of it).
+            const moved = Math.hypot(p.x - before.x, p.z - before.z);
+            spin = Math.max(spin, wrapped(p.heading - before.heading) - moved / (MOOSE.turnRadius * 0.95));
+            jolt = Math.max(jolt, Math.abs(p.walking - before.walking));
+            before = p;
+        }
+        expect(spin).toBeLessThan(1e-6);
+        expect(jolt).toBeLessThan(0.03);
+        // He comes to his stand broadside and stands there still until he sets off home.
+        for (let a = MOOSE_BEATS.arrive; a < MOOSE_BEATS.turn; a += 0.25) {
+            expect(mooseAt(a).heading).toBe(MOOSE.broadside);
+            expect(mooseAt(a).walking).toBe(0);
+        }
+        // He has his pace again partway round the turn for home, and a few strides on he faces the mist.
+        expect(mooseAt(MOOSE_BEATS.leave).walking).toBe(1);
+        expect(wrapped(mooseAt(MOOSE_BEATS.leave).heading - MOOSE.broadside)).toBeGreaterThan(0.8);
+        const round = mooseAt(MOOSE_BEATS.leave + 2.5);
+        const home = Math.atan2(MOOSE.away[0] - round.x, MOOSE.away[1] - round.z);
+        expect(wrapped(round.heading - home)).toBeLessThan(0.02);
+    });
+
+    it('plants the moose\'s hooves, steps them in a moose\'s order, and moves every joint smoothly', async () => {
+        const moose = createMoose({});
+        await expect(moose.load()).resolves.toBe(true);
+        const { bones } = moose.mesh.children[0].skeleton;
+        const fps = 60;
+        const downAt = [null, null, null, null];
+        const order = [];
+        const slip = [0, 0, 0, 0];
+        let hindMiss = 0;
+        let snap = 0;
+        let before = null;
+        for (let i = 0; i <= Math.round((MOOSE_SPAN - 0.1) * fps); i++) {
+            const age = i / fps;
+            moose.update(age, 1);
+            const hooves = moose.hooves();
+            for (let k = 0; k < hooves.length; k++) {
+                const h = hooves[k];
+                if (h.swing > 0) downAt[k] = null;
+                else if (!downAt[k]) {
+                    downAt[k] = h.at.clone();
+                    if (i > 0 && age < MOOSE_BEATS.arrive - 4) order.push(k);
+                } else {
+                    // On the ground a hoof stays where it went down (a hind leg reaches it exactly; a
+                    // fore leg is a column swung from the shoulder, and keeps to it within a few
+                    // centimetres, under the water).
+                    slip[k] = Math.max(slip[k], Math.hypot(h.at.x - downAt[k].x, h.at.z - downAt[k].z));
+                    if (k % 2 === 0) hindMiss = Math.max(hindMiss, h.at.distanceTo(h.target));
+                }
+            }
+            // No bone jumps from one frame to the next.
+            const now = bones.map((b) => b.quaternion.clone());
+            for (let j = 0; before && j < now.length; j++) snap = Math.max(snap, now[j].angleTo(before[j]));
+            before = now;
+        }
+        expect(slip[0]).toBeLessThan(0.01);
+        expect(slip[2]).toBeLessThan(0.01);
+        expect(slip[1]).toBeLessThan(0.08);
+        expect(slip[3]).toBeLessThan(0.08);
+        expect(hindMiss).toBeLessThan(0.01);
+        expect(snap).toBeLessThan(0.2);
+        // A lateral walk: left hind, left fore, right hind, right fore.
+        expect(order.length).toBeGreaterThan(20);
+        order.forEach((k, j) => {
+            if (j > 0) expect(k, `step ${j}`).toBe((order[j - 1] + 1) % 4);
+        });
+        // At his stand, his legs are as they rest, his hooves square under him.
+        moose.update((MOOSE_BEATS.squared + MOOSE_BEATS.lower) / 2, 1);
+        bones.filter((b) => /^(arm|fore|can|thigh|shin|hind)/.test(b.name))
+            .forEach((b) => expect(b.quaternion.angleTo(new THREE.Quaternion()), b.name).toBeLessThan(1e-4));
+        moose.dispose();
     });
 
     it('sends wings across the sky for the owl, and a flight out of the far wood as the hour turns', () => {

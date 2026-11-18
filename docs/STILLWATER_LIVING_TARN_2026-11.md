@@ -147,6 +147,24 @@ The owner played the merged pass in Serenity mode and sent back five things. All
   head and drinks (rings from his muzzle), lifts it, turns his head to the spirit's light a long
   moment, and turns and walks back into the mist. His hooves ring the water; he keeps to where it
   is at his knees. Both figures watch him come and watch him drink.
+- **The moose walks and turns like one.** He used to spin on the spot to come broadside and to
+  turn for home (the whole body rotating about its middle while the legs paddled fore and aft),
+  his hooves skated half a metre a step (the stride covered 1.75 m of ground, the legs swept
+  0.67 m), his legs snapped from still to mid-stride as he set off, and his steps fell in a
+  diagonal order. Now his body keeps to a way laid down in metres: a curve in that bears round to
+  broadside as he slows, and a walked turn to his left (1.8 m radius) that runs into a straight
+  line into the mist. He faces along it and bends his forequarters into its turns. His pace
+  slackens and gathers on smoothsteps, and his steps keep a slow rhythm as he stands, so his last
+  steps finish and his first ones are short. Each hoof is planted where his body will stand over
+  it halfway through its stance, and it stays there. The hind legs reach their hooves exactly (two
+  bones solved, the reach easing short of straight). A fore leg is a column swung from the
+  shoulder at its hoof, its knee folding as it comes through: the rig's fore leg rests at 99% of
+  its reach, and a two-bone solve there snapped. The steps fall in a lateral walk (left hind, left
+  fore, right hind, right fore). His body dips and rolls a little with them, his head nods, he
+  looks about in glances and holds, and he turns his head into his turns. Tests: on the ground a
+  hind hoof stays within 1 cm and a fore hoof within 8 cm of where it went down; no bone turns
+  more than 0.2 rad in a 60 fps frame; he never turns faster than his way bends; he stands
+  broadside, his legs at rest, from his arrival until he sets off.
 
 Checked: the real game's Serenity mode (combo, back-to-back, level-up) with the far shore
 enlarged three times; the playground on WebGPU and on the WebGL2 backend, at Minimal, Low, High and
