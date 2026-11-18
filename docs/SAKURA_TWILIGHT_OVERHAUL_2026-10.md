@@ -9,6 +9,10 @@ The atmosphere pass of 2026-10-21 (night grass and fallen blossom, finer petals,
 snow in the gullies, foxfire as will-o'-wisps) is recorded in
 [SAKURA_TWILIGHT_ATMOSPHERE_2026-10.md](SAKURA_TWILIGHT_ATMOSPHERE_2026-10.md).
 
+The living-night pass of 2026-11-18 (weather beside the hours, the rewritten sky, the mountain's
+cloud, and an instrument of its own for every event: several rows of the table below changed) is
+recorded in [SAKURA_TWILIGHT_LIVING_NIGHT_2026-11.md](SAKURA_TWILIGHT_LIVING_NIGHT_2026-11.md).
+
 | Before | After (High, native WebGPU) |
 | --- | --- |
 | ![before](sakura-twilight-overhaul/before.jpg) | ![after](sakura-twilight-overhaul/idle.jpg) |
