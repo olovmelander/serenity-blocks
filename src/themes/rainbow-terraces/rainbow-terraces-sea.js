@@ -23,7 +23,7 @@ import {
     positionWorld, pow, smoothstep, texture, vec2, vec3, vec4,
 } from 'three/tsl';
 import {
-    TUNE, antiRays, casterShadow, cloudLight, deepColour, horizonHaze, optics, scWrap, skyBase, tollLight, tollRings,
+    TUNE, antiRays, casterShadow, cloudLight, cloudShadeAt, deepColour, horizonHaze, optics, scWrap, skyBase, tollLight, tollRings,
     windOffset,
 } from './rainbow-terraces-tsl.js';
 
@@ -183,6 +183,8 @@ export function createSea({ tier, U, tex }) {
         // lies in the Earth's shadow, blue under the pink belt, the near domes still lit.
         const farShade = smoothstep(5000.0, 26000.0, r).mul(0.85);
         const lit = cloudLight(U, pow(key, 1.4), float(0.0), farShade, { shade, gain: 0.48 }).mul(occl).toVar();
+        // The shadows of the clouds behind the eye lie on the sea in broad drifting patches.
+        lit.mulAssign(float(1.0).sub(cloudShadeAt(P.xz, U, tex).mul(0.62).mul(float(1.0).sub(smoothstep(9000.0, 24000.0, r)))));
         // Sky light from above, and the crown of each head a touch brighter.
         lit.addAssign(skyBase(vec3(0.0, 1.0, 0.0), U).mul(N.y.mul(0.1)));
         // Each head's limb, turned from the eye, falls a little into shade: the domes stand apart.

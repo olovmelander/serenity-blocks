@@ -54,6 +54,7 @@ const row = (...values) => Object.freeze(values);
  *   gain     × the key's strength
  *   haze     how far the horizon's colours lean into the mist's (−: washed clear, +: a rising mist)
  *   deepen   how far the zenith darkens toward the storm's slate (showers) or deepens (crystal)
+ *   shade    how deep the drifting shadows of the clouds behind the eye lie on the isles and the sea
  *   veil     × the stratus veils lying under the horizon (the mist lifts and thickens them)
  *   polar    × the polarised band's depth overhead (clear air shows it, wet air drowns it)
  *   expose   × the lens
@@ -74,6 +75,7 @@ export const AIR_SCALARS = Object.freeze({
     gain: row(1.0, 1.08, 0.8, 1.08, 0.9),
     haze: row(0, 0.15, 0.25, -0.5, 1.0),
     deepen: row(0, 0, 1.0, -0.8, 0.1),
+    shade: row(0.34, 0.5, 0.46, 0.14, 0.18),
     veil: row(1.0, 0.9, 1.3, 0.3, 2.1),
     polar: row(1.0, 1.0, 0.5, 1.5, 0.4),
     expose: row(1.0, 1.03, 0.92, 1.0, 1.05),

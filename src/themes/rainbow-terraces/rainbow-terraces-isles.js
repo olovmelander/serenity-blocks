@@ -32,7 +32,7 @@ import {
 import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 import { mulberry32, smooth } from './rainbow-terraces-core.js';
 import {
-    airColour, earthShadowAt, horizonHaze, scHash21, scWrap, scWrapPi, seaTone, skyBase,
+    airColour, cloudShadeAt, earthShadowAt, horizonHaze, scHash21, scWrap, scWrapPi, seaTone, skyBase,
 } from './rainbow-terraces-tsl.js';
 import { drainSteps, stepClock } from '../shared/build-steps.js';
 
@@ -2419,7 +2419,7 @@ export function createStoneMaterial({
                 vec3(0.6, 0.11, 0.07),
                 smoothstep(0.56, 0.68, which),
             );
-            turf.assign(mix(turf, petal, drift.mul(0.42)));
+            turf.assign(mix(turf, petal, drift.mul(0.5)));
         }
         turf.mulAssign(grain.sub(0.5).mul(0.3).add(1.0).mul(mix(float(0.62), float(1.0), smoothstep(0.35, 0.85, ao))));
         if (path && path.length > 1) {
@@ -2505,6 +2505,9 @@ export function createStoneMaterial({
         // last light: the alpenglow.)
         const sunlit = earthShadowAt(P, U).toVar();
         sun.mulAssign(sunlit.mul(sunlit.mul(U.term).mul(0.4).add(1.0)));
+        // The shadows of the clouds behind the eye drift over the near isles: now in the sun, now
+        // in shade (the overlook has its own dapple; the far field lies in its air).
+        if (!far && shadeBelow === null) sun.mulAssign(float(1.0).sub(cloudShadeAt(P.xz, U, tex)));
         const diffuse = scWrap(ndl, float(0.08)).mul(ao).mul(sun).toVar();
         const skyUp = skyBase(normalize(N.add(vec3(0.0, 0.6, 0.0))), U);
         const fill = mix(light.shadow, skyUp, N.y.mul(0.25).add(0.3)).mul(ao.mul(0.75).add(0.25)).mul(0.4).toVar();

@@ -22,12 +22,25 @@
  *               into a full circle; the secondary follows; the bows breathe, then sing
  *   four lines  the hush (the falls thin, the spray hangs, the gliders stop dead), then the glory
  *               opens at the tip of our own shadow, one ring per line, and the great pour
- *   perfect     the same, eight rings, and the Far Gate's spillway runs for the only time
- *   twist      the falls are wrung, two gliders rise in a double helix, the colours turn
- *   B2B         the pools stay brimming; the long-wing keeps station on the bow
- *   level up    the bell tolls the hour: every pool rings, a flight of gliders sails out, and the
- *               light turns one place round the wheel
+ *   perfect     the full circle: eight rings, the Far Gate's spillway (for the only time) and its
+ *               arch filled with light, both bows drawn whole, the seven colours down every fall,
+ *               the rays deep in the air, the bell's rings across the whole sea
+ *   twist       the falls are wrung and a helix of light-water winds up the Mother Fall in the
+ *               colour of the piece that turned; two gliders rise in a double helix, the colours turn
+ *   B2B         the bow gets its twin (the light draws the secondary round, and it holds while
+ *               back-to-backs follow); the pools stay brimming; the long-wing keeps station
+ *   level up    the bell tolls the hour: rings open in the air round it, every pool rings, a flight
+ *               of gliders sails out, and the light turns one place round the wheel
+ *   game over   the dusk falls and stands (the light sinks, the falls thin to threads, the first
+ *               stars come out, the birds go home, one low toll); the next run is its dawn
  * and the clock turns the same wheel by itself (HOUR_SECONDS per hour), in every mode.
+ *
+ * Beside the hours the AIR turns on a wheel of its own (rainbow-terraces-weather.js: fair, beams,
+ * showers, crystal, mist), so an hour is never seen in the same weather twice running; the shadows
+ * of the clouds behind the eye drift over the isles and the sea; and about every half minute
+ * something happens by itself (a skein of the paper birds crosses the far sky, the rays surge,
+ * the plume heaves, a veil of rain brings the bow out, the storm flickers, shooting stars cross
+ * the night), and the bell tells each hour as the light walks into it.
  *
  * Fast play BUILDS (src/themes/shared/gameplay-surge.js): nothing an event starts is restarted
  * by the next. A quad while the glory stands feeds it (more rings, a longer hold, a deeper
@@ -481,6 +494,8 @@ function createUniforms() {
         seaSwell: uniform(1),
         /** The stratus veils under the horizon as the air has them (a rising mist lifts and thickens them). */
         veilAmt: uniform(1),
+        /** How deep the drifting shadows of the clouds behind the eye lie on the world (tsl.js cloudShadeAt). */
+        cloudShadow: uniform(0.35),
     };
     SCALAR_UNIFORMS.forEach((name) => { U[name] = uniform(0); });
     return U;
@@ -2759,6 +2774,8 @@ export class RainbowTerracesWorld {
         U.polar.value *= air.polar;
         U.seaSwell.value = air.swell;
         U.veilAmt.value = air.veil;
+        // (The clouds behind the eye cast less as the night comes: the moon's shadows are faint.)
+        U.cloudShadow.value = air.shade * (1 - 0.6 * (h.scalar.stars ?? 0));
         // The light the forms are shaded in: the key from behind the eye turned by the hour (its
         // azimuth swung, its elevation nudged), so each hour models the stone its own way; the bows
         // and the wedges keep the true antisolar geometry (U.key).
@@ -2793,9 +2810,17 @@ export class RainbowTerracesWorld {
      * a flash: it falls over DUSK.fall seconds and lifts over DUSK.rise.
      */
     wearDusk() {
+        const { U } = this;
+        // (The full circle burns in full colour whatever the hour: even the moonbow's pale night
+        // turns to the spectrum while both bows stand, and gives it back as they fade.)
+        const full = this.time - this.fullAt;
+        if (full >= 0 && full < 12) {
+            const env = smooth(0.4, 2.4, full) * (1 - smooth(8, 12, full));
+            U.bowSat.value += (Math.max(U.bowSat.value, 0.9) - U.bowSat.value) * env;
+            U.bowGain.value *= 1 + 0.3 * env;
+        }
         const d = this.dusk;
         if (!(d > 1e-4)) return;
-        const { U } = this;
         U.keyGain.value *= 1 - (1 - DUSK.key) * d;
         U.cloudGain.value *= 1 - 0.25 * d;
         U.bowGain.value *= 1 - 0.7 * d;
