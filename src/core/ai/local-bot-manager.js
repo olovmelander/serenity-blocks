@@ -1,8 +1,12 @@
-import { GravityBotController } from './gravity-bot-controller.js';
+import { GravityBotController, gravityPlanningRate } from './gravity-bot-controller.js';
 import { seededRandom } from '../../utils/helpers.js';
 
-function isBotSlot(slot) {
+export function isBotSlot(slot) {
     return slot?.kind === 'bot' || slot?.type === 'bot' || slot?.isBot === true;
+}
+
+export function localBotRoundSeed(seed, round) {
+    return (seed + Math.imul(round - 1, 0x9e3779b9)) >>> 0;
 }
 
 export class LocalBotManager {
@@ -26,19 +30,26 @@ export class LocalBotManager {
             const actions = this.actionFactory?.(index);
             if (!playerState || !actions) continue;
 
-            const input = (name, action, value) => () => this.tickInput
-                ? this.tickInput.emit({ tick: this.tickInput.tick, subframe: 9, source: 'edge', edgeSequence: null, action, value })
-                : actions[name]?.();
+            const input = (name, action, value) => () => (this.tickInput
+                ? this.tickInput.emit({
+                    tick: this.tickInput.tick, subframe: 9, source: 'edge', edgeSequence: null, action, value,
+                })
+                : actions[name]?.());
             this.controllers.set(index, new GravityBotController({
-                actions: { moveLeft: input('moveLeft', 'move', -1), moveRight: input('moveRight', 'move', 1),
-                    rotateLeft: input('rotateLeft', 'rotate', 'left'), rotateRight: input('rotateRight', 'rotate', 'right'),
-                    rotateFlip: input('rotateFlip', 'rotate', 'flip'), softDrop: input('softDrop', 'softDrop', null),
-                    hardDrop: input('hardDrop', 'hardDrop', null) },
+                actions: {
+                    moveLeft: input('moveLeft', 'move', -1),
+                    moveRight: input('moveRight', 'move', 1),
+                    rotateLeft: input('rotateLeft', 'rotate', 'left'),
+                    rotateRight: input('rotateRight', 'rotate', 'right'),
+                    rotateFlip: input('rotateFlip', 'rotate', 'flip'),
+                    softDrop: input('softDrop', 'softDrop', null),
+                    hardDrop: input('hardDrop', 'hardDrop', null),
+                },
                 difficulty: slot.difficulty ?? slot.botDifficulty ?? 10,
                 playerIndex: index,
                 playerState,
                 pendingRows: () => this.multiplayerState.getGarbageQueue?.(index)?.getTotalLines() || 0,
-                planUnitsPerMs: 1.8 / Math.max(1, botCount),
+                planUnitsPerMs: gravityPlanningRate(botCount),
                 rng: seededRandom((seed ^ Math.imul(index + 1, 0x85ebca6b)) >>> 0),
                 timingRng: seededRandom((seed ^ Math.imul(index + 1, 0xc2b2ae35)) >>> 0),
             }));
@@ -49,8 +60,7 @@ export class LocalBotManager {
         const controller = this.controllers.get(index);
         if (!controller) return;
         this.tickInput = context;
-        try { controller.update(context.tickMs, context.tick * context.tickMs); }
-        finally { this.tickInput = null; }
+        try { controller.update(context.tickMs, context.tick * context.tickMs); } finally { this.tickInput = null; }
     }
 
     update(deltaMs, nowMs) {

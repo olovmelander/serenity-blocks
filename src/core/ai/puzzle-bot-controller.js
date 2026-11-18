@@ -245,6 +245,10 @@ export class PuzzleBotController {
             else if (nowMs >= this.readyAtMs) this.adoptPlan(this.plan());
         }
 
+        this.advanceInput(deltaMs, nowMs);
+    }
+
+    advanceInput(deltaMs, _nowMs) {
         this.scheduler.update(deltaMs);
     }
 

@@ -9,6 +9,8 @@ import {
     softDrop as coreSoftDrop,
 } from '../game.js';
 import { decrementBlindTimers } from '../blind.js';
+import { isBotSlot } from '../ai/local-bot-manager.js';
+import { retireFixedCascade } from '../physics.js';
 import { checkInfinityGameOver } from '../infinity-grid.js';
 import {
     applyFixedHardDropHitStop,
@@ -123,8 +125,7 @@ export function configureLocalMultiplayerSimulationClock(mode) {
     stopLocalMultiplayerFixedTickRuntime(loopState.fixedRuntime);
     resetLocalMultiplayerFixedMatchClock(loopState.fixedRuntime);
 
-    const includesBot = mode.matchConfig?.playerSlots?.some(slot =>
-        slot?.kind === 'bot' || slot?.type === 'bot' || slot?.isBot === true);
+    const includesBot = mode.matchConfig?.playerSlots?.some(isBotSlot);
     const requested = readFlag('fixedTick', Boolean(includesBot));
     const unsupportedReasons = requested ? getUnsupportedFixedConfigReasons(mode) : [];
     loopState.fixedTickEnabled = requested && unsupportedReasons.length === 0;
@@ -145,6 +146,7 @@ export function configureLocalMultiplayerSimulationClock(mode) {
     const players = mode.multiplayerState?.players || [];
     players.forEach((gameState) => {
         gameState.simulationClock = loopState.simulationClock;
+        gameState.useFixedCascade = Boolean(includesBot && loopState.fixedTickEnabled);
         if (!loopState.fixedTickEnabled) return;
         updateInputHandlingConfig(gameState.playerInput, settings);
         gameState.hitStopEnabled = !prefersReducedMotion(settings);
@@ -160,6 +162,7 @@ function fallbackLocalMultiplayerSimulationClock(mode, reason) {
     loopState.lastClockWarp = null;
     (mode.multiplayerState?.players || []).forEach((gameState) => {
         gameState.simulationClock = DEMO_LEGACY_SIMULATION_CLOCK;
+        gameState.useFixedCascade = false;
     });
     console.warn(`[LocalMultiplayer] fixedTick startup fell back to legacy clock: ${reason}`);
 }
@@ -690,6 +693,7 @@ export function retireLocalMultiplayerRound(mode) {
     stopLocalMultiplayerModeLoop(mode);
     if (multiplayerState) multiplayerState.isPaused = true;
     players.forEach((player) => { player.isStopped = true; });
+    players.forEach(retireFixedCascade);
     return Object.freeze({
         clock,
         generation: ensureLoopState(mode).transitionGeneration,

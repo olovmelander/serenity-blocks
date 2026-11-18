@@ -202,7 +202,10 @@ describe('Odyssey beat-the-bot match', () => {
             human.currentPiece.x = 4 - occupiedColumn;
             const callbacks = match.wrapHumanCallbacks(session.hybridEngine.buildPhysicsCallbacks({}));
             hardDrop(human, null, callbacks);
-            await vi.runAllTimersAsync();
+            for (let tick = 1; tick <= 90 && human.isProcessingPhysics; tick++) {
+                match.update(tick * (1000 / 60), 1000 / 60, callbacks);
+            }
+            expect(human.isProcessingPhysics).toBe(false);
             await human.latestPhysicsPromise;
             expect(session.hybridEngine.getMetrics().lines).toBe(4);
             expect(session.hybridEngine.getMetrics().quads).toBe(1);

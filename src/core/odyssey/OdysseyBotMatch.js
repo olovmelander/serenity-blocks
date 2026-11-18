@@ -2,8 +2,9 @@ import {
     GameState, applyGarbage, fillBag, hardDrop, move, rotate, softDrop, spawnPiece, updateGame,
 } from '../game.js';
 import { MultiPlayerState } from '../multi-player-state.js';
+import { advanceFixedCascade, retireFixedCascade } from '../physics.js';
 import { PuzzleBotController } from '../ai/puzzle-bot-controller.js';
-import { GravityBotController } from '../ai/gravity-bot-controller.js';
+import { GravityBotController, gravityPlanningRate } from '../ai/gravity-bot-controller.js';
 import { bindLegacySessionRng } from '../session-rng.js';
 import { seededRandom } from '../../utils/helpers.js';
 import { fenceOdysseyPhysicsCallbacks } from './odyssey-level-session.js';
@@ -13,6 +14,7 @@ export class OdysseyBotMatch {
     constructor(session, {
         seed, isActive, onRoundStart = () => {}, onPieceSpawn = () => {}, onAttack = () => {},
         frozenRival = false, rivalTier = session.levelConfig.mechanics.versus.botDifficulty,
+        judgment = session.levelConfig.mechanics.versus.botJudgment,
     }) {
         this.session = session;
         this.isActive = isActive;
@@ -59,12 +61,12 @@ export class OdysseyBotMatch {
             playerIndex: 1,
             playerState: bot,
             difficulty: this.difficulty,
+            judgment,
             // The rival's pace caps (level design audit 2026-11, R8): smarter each chapter, never faster
             // than a strong person.
             configOverrides: session.levelConfig.mechanics.versus.botOverrides || null,
-            // Spread each plan over game time (2.5 placements a ms: a 341-placement tier-8 plan
-            // takes 136 ms, inside the 160 ms head start), not one 20-28 ms frame per piece.
-            planUnitsPerMs: frozenRival ? 2.5 : 1.8,
+            // Both players share the duel clock. Budget the live rival in deterministic search units.
+            planUnitsPerMs: frozenRival ? 2.5 : gravityPlanningRate(),
             pendingRows: () => this.multiplayer.getGarbageQueue(1).getTotalLines(),
             rng: seededRandom((seed ^ 0x85ebca6b) >>> 0),
             timingRng: seededRandom((seed ^ 0xc2b2ae35) >>> 0),
@@ -87,6 +89,7 @@ export class OdysseyBotMatch {
     _configurePlayer(state, index, seed) {
         const { speed } = this.session.levelConfig.mechanics;
         state.disableGarbage = false;
+        state.useFixedCascade = !this.frozenRival;
         state.disableLevelProgression = true;
         state.level = speed.startLevel || 1;
         state.dropInterval = speed.fixedDropInterval || 1000;
@@ -214,6 +217,9 @@ export class OdysseyBotMatch {
 
     stepBoards(time, delta, humanCallbacks, playDropCallback) {
         this.botTimeMs += delta;
+        if (!this.frozenRival) {
+            this.players.forEach((state) => advanceFixedCascade(state, delta));
+        }
         updateGame(time, this.players[0], { physicsCallbacks: humanCallbacks, playDropCallback });
         updateGame(time, this.players[1], { physicsCallbacks: this.botCallbacks });
         this.bot.update(delta, this.botTimeMs);
@@ -222,6 +228,7 @@ export class OdysseyBotMatch {
     _beginRoundBarrier() {
         if (this.transition) return;
         this.players.forEach((state) => { state.isPaused = true; });
+        this.players.forEach(retireFixedCascade);
         const promises = this.players.map((state) => state.latestPhysicsPromise);
         this.transition = Promise.allSettled(promises).then((results) => {
             if (this.stopped || !this.isActive()) return;
@@ -332,5 +339,6 @@ export class OdysseyBotMatch {
         this.roundGeneration++;
         this.bot.reset();
         this.players.forEach((state) => { state.isStopped = true; });
+        this.players.forEach(retireFixedCascade);
     }
 }

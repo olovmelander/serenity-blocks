@@ -166,9 +166,10 @@ function load(lockedPieces, boardHeight) {
  * @param {number} boardHeight
  * @param {number} [firstPlayableRow]
  * @param {number[]} [waveLines]
+ * @param {boolean} [keepLooks]
  * @returns {{ cascadeCount: number, linesClearedThisTurn: number }}
  */
-function settle(boardHeight, firstPlayableRow = HIDDEN_ROWS, waveLines) {
+function settle(boardHeight, firstPlayableRow = HIDDEN_ROWS, waveLines = undefined, keepLooks = true) {
     const total = boardHeight * COLS;
     let cascadeCount = 0;
     let linesClearedThisTurn = 0;
@@ -235,10 +236,12 @@ function settle(boardHeight, firstPlayableRow = HIDDEN_ROWS, waveLines) {
                     stack[depth++] = cell + 1;
                 }
             }
-            const look = LOOKS[lookOf[start]];
-            const type = look.type || look.color;
             fragId[fragment] = id;
-            fragLook[fragment] = lookIndex(look.color || COLORS[type] || '#808080', type);
+            if (keepLooks) {
+                const look = LOOKS[lookOf[start]];
+                const type = look.type || look.color;
+                fragLook[fragment] = lookIndex(look.color || COLORS[type] || '#808080', type);
+            }
             fragStart[fragment] = first;
             fragCount[fragment] = used - first;
             fragTop[fragment] = top;
@@ -288,7 +291,7 @@ function settle(boardHeight, firstPlayableRow = HIDDEN_ROWS, waveLines) {
             const look = fragLook[fragment];
             for (let c = start; c < end; c += 1) {
                 ids[cells[c] + shift] = id;
-                lookOf[cells[c] + shift] = look;
+                if (keepLooks) lookOf[cells[c] + shift] = look;
             }
         }
     }
@@ -306,9 +309,8 @@ function settle(boardHeight, firstPlayableRow = HIDDEN_ROWS, waveLines) {
 export function settleLabelledBoard(board, firstPlayableRow) {
     ensure(board.length);
     ids.set(board);
-    lookOf.fill(lookIndex('bot', 'bot'), 0, board.length);
     const waveLines = [];
-    settle(board.length / COLS, firstPlayableRow, waveLines);
+    settle(board.length / COLS, firstPlayableRow, waveLines, false);
     board.set(ids.subarray(0, board.length));
     return waveLines;
 }

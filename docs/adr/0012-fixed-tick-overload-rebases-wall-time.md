@@ -189,3 +189,24 @@ configuration, loop, round-reset, and delayed continuation generations across st
 `single-player-fixed-tick.test.js` additionally pins `afterTick`
 ordering, stale/stop/replacement fencing, and throw/debt semantics;
 `infinity-simulation-maintenance.test.js` pins the renderer-free Infinity truth seam.
+
+### 18 November 2026 amendment for seeded bot matches
+
+Standard local matches with a bot default to the shared fixed clock. Their seeded
+slot controllers enqueue the same input commands as other seats at each board's
+turn in the barrier. The match seed determines each round and each slot's
+judgment and movement timing. An explicit clock override and the existing
+fallback for special rules or unavailable clock ownership still apply.
+The seeded two-seat test in `local-multiplayer-fixed-mode.test.js` exercises
+normal mode startup, both bot schedulers and a catch-up frame at 60 and 165 Hz.
+
+Live Odyssey rival matches keep the existing duel owner and gameplay callbacks.
+It advances both wells together in 60 Hz steps. The historical campaign
+instrument uses its pinned duel implementation and original rival tiers.
+
+In these matches the board clock also advances each clear hold, gravity row and
+settle delay. The generator in `physics.js` is shared with resolved animation
+replay. It commits scores, level changes and callbacks at the existing wave
+boundaries. Round retirement drains both boards before reset. The replay test
+compares input dispositions, ordered waves, routed garbage, board connectivity
+and score across cadences, including a catch-up during play.
