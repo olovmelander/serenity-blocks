@@ -46,6 +46,8 @@ import { GameplaySurge, Swell } from '../shared/gameplay-surge.js';
 import { flashScale } from '../../utils/photosensitivity.js';
 import {
     DEG,
+    BEAMS,
+    BOW,
     CURL,
     FLOOR,
     GROVE_SURGE,
@@ -55,7 +57,11 @@ import {
     LIGHT_WHEEL,
     lightWheelAt,
     GAP,
+    HAPPENINGS,
     HELIX,
+    SPARKS,
+    happeningAt,
+    wheelValue,
     floorEnvelope,
     RAIN,
     HERO_TRUNKS,
@@ -427,6 +433,8 @@ export class RainbarkWorld {
          * perfect clear flares the canopy (`crownLight`); a back-to-back clear bursts the Sunshower
          * (`shower`). Each accumulates: a beat adds to what is still lit, never restarts it.
          */
+        /** Capture overrides (the playground's tuning parameters): a key left out is the world's own. */
+        this.tune = {};
         this.surge = new GameplaySurge();
         this.heat = {
             punch: 0, level: 0, fever: 0, stage: 0,
@@ -440,6 +448,22 @@ export class RainbarkWorld {
         this.shower = new Swell({
             attack: GROVE_SURGE.shower.rise, release: GROVE_SURGE.shower.release, ceiling: 1, knee: 0.7,
         });
+        /**
+         * The big moments' light (a Great Moult, a perfect clear, a new level): the beam field
+         * swells and falls away slowly. Accumulates like every other reaction.
+         */
+        this.beamSwell = new Swell({
+            attack: 0.5, release: 4, ceiling: 1.6, knee: 1.1,
+        });
+        /** The grove's happening (happeningAt), and the slot whose gust has shed its leaves. */
+        this._happen = {
+            kind: -1, slot: -1, age: 0, k: 0,
+        };
+        this._gustSlot = -1;
+        /** Reused records the sparks are aimed with. */
+        this._sparkAt = {};
+        this._sparkLook = {};
+        this._tint = [0, 0, 0];
         this._gold = hexToLinear(GROVE_SURGE.goldColor);
         this._sunRgb = [0, 0, 0];
         this.resetState(0);
@@ -506,6 +530,11 @@ export class RainbarkWorld {
         this.kick.reset();
         this.crownLight.reset();
         this.shower.reset();
+        this.beamSwell.reset();
+        this._gustSlot = -1;
+        /** The Sunshower's bow as shown (eased). */
+        this.bowK = 0;
+        this.parts.fx?.sparks?.reset();
         this.heat.punch = 0;
         this.heat.level = 0;
         this.heat.fever = 0;
@@ -959,9 +988,11 @@ export class RainbarkWorld {
                 c.hard = L.hardDrop;
                 curls.spawnLock(t, c);
             }
+            this.sparkLock(t, peel, L.code);
             if (L.hardDrop) {
                 const strength = 0.4 + 0.6 * Math.min(1, L.distance / KNOCK.reach);
                 this.events.knock(t, peel.code, peel.yBot, strength);
+                this.sparkKnock(t, peel, strength);
                 if (curls) {
                     this._flakes.theta = peel.theta;
                     this._flakes.y0 = peel.yBot;
@@ -1083,7 +1114,15 @@ export class RainbarkWorld {
             this.shower.hit(S.amount * (1 + S.perStep * Math.min(3, this.b2b)), t);
         }
         // A perfect clear in its own clear's frame: the Floor opens over the clear.
-        if (C.perfect) this.openFloor(t);
+        if (C.perfect) {
+            this.openFloor(t);
+            this.beamSwell.hit(1.2, t);
+            this.sparkFloor(t);
+        }
+        // The big moments' light: the beam field swells (a back-to-back four most of all).
+        if (lines >= 4) this.beamSwell.hit(C.b2b ? 1.3 : 1, t + MOULT.creak);
+        else if (lines === 3) this.beamSwell.hit(0.4, t);
+        else if (C.twist) this.beamSwell.hit(0.3 + 0.1 * lines, t);
         if (lines >= 4) this.moultStart(t);
         else if (C.twist) this.unwind(t, C);
         else this.shed(t, C);
@@ -1100,6 +1139,8 @@ export class RainbarkWorld {
         this.surge.crown(t);
         this.crownLight.hit(1, t);
         this.kick.hit(0.5, t);
+        this.beamSwell.hit(1.2, t);
+        this.sparkFloor(t);
     }
 
     /**
@@ -1178,6 +1219,7 @@ export class RainbarkWorld {
             s.kind = 6;
             curls.spawnLock(at, s);
         }
+        this.sparkTwist(t, h, offset);
         return made;
     }
 
@@ -1296,6 +1338,7 @@ export class RainbarkWorld {
                 g.span = arc[1];
                 g.strength = strength;
                 this.events.girdle(at, g);
+                if (code <= 2) this.sparkShed(at, slot, g, C.lines);
                 // Its bark falls away in pieces round the arc (the near pair only).
                 if (code <= 2) this.shedSheets(at, slot, g, code === 1 ? sheets : Math.min(SHED.sisterSheets, sheets));
             }
@@ -1354,6 +1397,7 @@ export class RainbarkWorld {
             this.moultAt = t;
         }
         const { curls } = this.parts;
+        this.sparkMoult(t, MOULT_SHEETS[kind] ?? 1);
         if (!curls || !this._emitters.length) return;
         // (A second Moult feeds the first: fewer sheets, so the first's still falling stay.)
         const share = MOULT_SHEETS[kind] ?? 1;
@@ -1499,6 +1543,7 @@ export class RainbarkWorld {
         if (!st?.ok) return;
         const count = Math.round(GAP.leaves * (this.tier.curlsEvent >= 96 ? 1 : 0.6));
         this.parts.curls?.spawnLeaves(at, st.x, st.y, st.z, count);
+        this.sparkGap(at, st);
     }
 
     /**
@@ -1599,6 +1644,255 @@ export class RainbarkWorld {
             return;
         }
         this.beginClimb(lv, t, Math.max(t, this.lastClear.at + CLIMB_DELAY));
+        // The new storey's light: the beams swell as the walkway rises, through a veil of specks.
+        this.beamSwell.hit(0.6, this.climb.start);
+        this.sparkClimb(this.climb.start);
+    }
+
+    // ── The sparks: what each beat throws into the light (SPARKS) ───────────────
+
+    /** How many specks a beat spends on this tier (and under reduced motion: fewer). */
+    sparkCount(n) {
+        const sparks = this.parts.fx?.sparks;
+        if (!sparks) return 0;
+        return Math.max(1, Math.round(n * (sparks.count / 420) * (this.reducedMotion ? 0.5 : 1)));
+    }
+
+    /** A spark look (reused): the beat's own numbers and its colours. */
+    sparkLook(S, color, colorB = null, mix = 0.5) {
+        const look = this._sparkLook;
+        look.speed = S.speed;
+        look.life = S.life;
+        look.px = S.px;
+        look.color = color;
+        look.colorB = colorB;
+        look.mix = mix;
+        look.gain = 1;
+        look.up = 0;
+        look.over = 0;
+        look.sweep = 0;
+        look.gravity = undefined;
+        look.turn = 0;
+        look.rise = 0;
+        look.vx = 0;
+        look.vy = 0;
+        look.vz = 0;
+        return look;
+    }
+
+    /** A piece's own bark colour as a light (its age's row of the palette, raised). */
+    pieceLight(code) {
+        const row = this.u.tables.palette[PALETTE_ROWS.pieceAge + Math.max(0, Math.min(7, code))];
+        const k = 7 / Math.max(0.15, row.x, row.y, row.z);
+        this._tint[0] = row.x * k;
+        this._tint[1] = row.y * k;
+        this._tint[2] = row.z * k;
+        return this._tint;
+    }
+
+    /** A lock: a pinch of dust where the strip lets go, gold and the piece's own colour. */
+    sparkLock(t, peel, code) {
+        const sparks = this.parts.fx?.sparks;
+        if (!sparks) return;
+        const at = this._sparkAt;
+        const ox = Math.cos(peel.theta);
+        const oz = Math.sin(peel.theta);
+        at.x = peel.axisX + ox * (peel.radius + 0.06);
+        at.y = (peel.yTop + peel.yBot) / 2;
+        at.z = peel.axisZ + oz * (peel.radius + 0.06);
+        at.nx = ox;
+        at.ny = 0.25;
+        at.nz = oz;
+        at.spread = 0.5;
+        at.jitter = 0.25;
+        at.tall = Math.abs(peel.yTop - peel.yBot) * 0.8;
+        const look = this.sparkLook(SPARKS.lock, SPARKS.gold, this.pieceLight(code), 0.5);
+        look.over = PEEL.unzip;
+        look.gravity = 0.7;
+        sparks.puff(t + PEEL.delay, this.sparkCount(SPARKS.lock.n), at, look);
+    }
+
+    /** The Knock: dust shaken off the struck side of the trunk, thrown up it. */
+    sparkKnock(t, peel, strength) {
+        const sparks = this.parts.fx?.sparks;
+        if (!sparks) return;
+        const K = SPARKS.knock;
+        const at = this._sparkAt;
+        at.axisX = peel.axisX;
+        at.axisZ = peel.axisZ;
+        at.radius = peel.radius;
+        at.y = peel.yBot;
+        at.theta = peel.theta;
+        at.spread = K.spread / Math.max(peel.radius, 0.6);
+        at.span = undefined;
+        at.halfH = 0.25;
+        const look = this.sparkLook(K, SPARKS.gold, SPARKS.cream, 0.35);
+        look.up = K.up * (0.6 + 0.4 * strength);
+        look.over = 0.1;
+        look.gravity = 1.6;
+        sparks.ring(t, this.sparkCount(K.n[0] + (K.n[1] - K.n[0]) * strength), at, look);
+    }
+
+    /** The Shed: sap beads and dust along a split ring, running round it with the split. */
+    sparkShed(t, slot, g, lines) {
+        const sparks = this.parts.fx?.sparks;
+        const near = this.parts.trunks?.near;
+        if (!sparks || !near) return;
+        const ax = recordAxis(near.data, g.yC, this._axis, slot * TRUNK_STRIDE);
+        const at = this._sparkAt;
+        at.axisX = ax[0];
+        at.axisZ = ax[1];
+        at.radius = ax[2];
+        at.y = g.yC;
+        at.thetaL = g.thetaL;
+        at.span = g.span;
+        at.halfH = g.halfH;
+        const look = this.sparkLook(SPARKS.shed, SPARKS.sap, SPARKS.gold, 0.5);
+        look.over = 0.1;
+        look.sweep = SHED.bare;
+        look.up = 0.5;
+        look.gravity = 1.1;
+        // (Sister One's arc is a third of the Elder's: fewer on it; more a ring for a triple.)
+        const share = (slot === 0 ? 1 : 0.5) * (lines >= 3 ? 1.35 : 1);
+        sparks.ring(t + SHED.split, this.sparkCount(SPARKS.shed.n * share), at, look);
+    }
+
+    /**
+     * The Great Moult: a storm of dust and sap down both lanes with the front, top to bottom.
+     * `share` of a fresh Moult's (a fed one throws less).
+     */
+    sparkMoult(t, share = 1) {
+        const sparks = this.parts.fx?.sparks;
+        const near = this.parts.trunks?.near;
+        if (!sparks || !near) return;
+        const M = SPARKS.moult;
+        const { lanes, placements } = this.band;
+        const lens = restLens(this.aspect, this._lens);
+        const eyeY = this.heightAt(t);
+        const n = Math.round(sparks.count * M.n * share * (this.reducedMotion ? 0.5 : 1));
+        const gold = SPARKS.gold;
+        const sap = SPARKS.sap;
+        sparks.emit(t, n, (i, rng, out) => {
+            const useSister = i % 3 === 2 && placements[1].show;
+            const lane = useSister ? lanes[1] : lanes[0];
+            const slot = lane.code - 1;
+            if (!near.live(slot)) return false;
+            const offset = slot * TRUNK_STRIDE;
+            const f = rng();
+            const theta = lane.theta0 + (lane.theta1 - lane.theta0) * rng();
+            const y = trunkHeightAt(near.data, lens, 0.02 + 0.96 * f, theta, eyeY, offset, this._onTrunk)[0];
+            const r = this._onTrunk[1];
+            recordAxis(near.data, y, this._axis, offset);
+            const ox = Math.cos(theta);
+            const oz = Math.sin(theta);
+            const speed = M.speed[0] + (M.speed[1] - M.speed[0]) * rng();
+            out[0] = this._axis[0] + ox * (r + 0.06);
+            out[1] = y;
+            out[2] = this._axis[1] + oz * (r + 0.06);
+            // (With the front: the top of the frame first.)
+            out[3] = t + MOULT.creak + MOULT.front * f + rng() * 0.25;
+            out[4] = ox * speed;
+            out[5] = (rng() - 0.3) * speed * 0.6;
+            out[6] = oz * speed;
+            out[7] = M.life[0] + (M.life[1] - M.life[0]) * rng();
+            const c = rng() < 0.55 ? sap : gold;
+            const k = 0.7 + 0.6 * rng();
+            out[8] = c[0] * k;
+            out[9] = c[1] * k;
+            out[10] = c[2] * k;
+            out[11] = M.px[0] + (M.px[1] - M.px[0]) * rng();
+            out[15] = 0.5;
+            return true;
+        });
+    }
+
+    /** The Unwinding: a helix of specks winding up round the trunk the strip unwinds from. */
+    sparkTwist(t, h, offset) {
+        const sparks = this.parts.fx?.sparks;
+        const near = this.parts.trunks?.near;
+        if (!sparks || !near) return;
+        const T = SPARKS.twist;
+        const yBot = h.yTop - h.turns * h.pitch;
+        const ax = recordAxis(near.data, (h.yTop + yBot) / 2, this._axis, offset);
+        const at = this._sparkAt;
+        at.axisX = ax[0];
+        at.axisZ = ax[1];
+        at.radius = ax[2];
+        at.yTop = h.yTop;
+        at.yBot = yBot;
+        at.theta = h.theta;
+        at.turns = h.turns;
+        at.sense = 1;
+        const look = this.sparkLook(T, SPARKS.gold, this.pieceLight(1), 0.5);
+        look.turn = T.turn / Math.max(ax[2], 0.8);
+        look.rise = T.rise;
+        look.over = this.reducedMotion ? HELIX.reduced : HELIX.unwind;
+        look.gravity = 0.12;
+        sparks.helix(t + HELIX.start, this.sparkCount(T.n * Math.max(1, h.turns)), at, look);
+    }
+
+    /** A gap opening: pollen drifting down the new beam, along the sun's ray. */
+    sparkGap(t, st) {
+        const sparks = this.parts.fx?.sparks;
+        if (!sparks) return;
+        const G = SPARKS.gap;
+        const L = this._sun;
+        const at = this._sparkAt;
+        at.x = st.x;
+        at.y = st.y - 1.5;
+        at.z = st.z;
+        at.nx = -L[0];
+        at.ny = -L[1];
+        at.nz = -L[2];
+        at.spread = 0.25;
+        at.jitter = 1.6;
+        at.tall = 3;
+        const look = this.sparkLook(G, SPARKS.gold, SPARKS.cream, 0.3);
+        look.speed = [G.fall * 0.6, G.fall * 1.4];
+        look.over = 1.2;
+        look.gravity = 0.25;
+        sparks.puff(t, this.sparkCount(G.n), at, look);
+    }
+
+    /** The eye's lens as a veil's volume (reused). */
+    veilAt(near, far, lo, hi, lift = 0) {
+        const at = this._sparkAt;
+        const tanV = Math.tan((fovForAspect(this.aspect) * DEG) / 2);
+        at.eyeX = 0;
+        at.eyeY = this.heightAt(this.time);
+        at.eyeZ = 0;
+        at.tanX = tanV * this.aspect;
+        at.near = near;
+        at.far = far;
+        at.lo = lo;
+        at.hi = hi;
+        at.lift = lift;
+        return at;
+    }
+
+    /** The Floor: slow lights rising out of the drained mist. */
+    sparkFloor(t) {
+        const sparks = this.parts.fx?.sparks;
+        if (!sparks) return;
+        const F = SPARKS.floor;
+        const at = this.veilAt(7, 60, -0.5, -0.12);
+        const look = this.sparkLook(F, SPARKS.gold, SPARKS.cream, 0.25);
+        look.over = F.over;
+        look.gravity = -F.rise * 0.5;
+        look.vy = F.rise;
+        sparks.veil(t + FLOOR.drain * 0.5, Math.round(sparks.count * F.n * (this.reducedMotion ? 0.5 : 1)), at, look);
+    }
+
+    /** The Climb: a veil of specks hanging in the air the walkway rises through. */
+    sparkClimb(t) {
+        const sparks = this.parts.fx?.sparks;
+        if (!sparks || this.reducedMotion) return;
+        const C = SPARKS.climb;
+        const at = this.veilAt(5, 42, -0.1, 0.5, 3);
+        const look = this.sparkLook(C, SPARKS.gold, SPARKS.cream, 0.4);
+        look.over = C.over;
+        look.gravity = 0.05;
+        sparks.veil(t, Math.round(sparks.count * C.n), at, look);
     }
 
     /** Prime the session state a capture asks for: minutes since it began, curls shed so far. */
@@ -1665,7 +1959,15 @@ export class RainbarkWorld {
         const fall = this.mistfallAt(t);
         const clockA = tideClock(t, za, this._tideA);
         const clockB = tideClock(t, zb, this._tideB);
-        const tideBase = lerp(clockA.tide, clockB.tide, k);
+        // The light wheel's mood and the grove's happening (both the clock's alone; a capture may
+        // hold either: tune.mood, tune.happen).
+        const wheel = this.wheelAt(t);
+        const happen = this.happenAt(t);
+        const HK = HAPPENINGS.kinds;
+        const sunbreak = happen.kind === 0 ? happen.k : 0;
+        const gust = happen.kind === 1 ? happen.k : 0;
+        const mistbank = happen.kind === 2 ? happen.k : 0;
+        const tideBase = lerp(clockA.tide, clockB.tide, k) + HK[2].tide * mistbank * (1 - fall);
         // (The Floor drains the mist far below the walkway, then lets it back.)
         const floorK = floorEnvelope(t - this.floorAt);
         const tide = lerp(lerp(tideBase, FLOOR.tide, floorK), camY + MISTFALL.tideLift, fall);
@@ -1693,7 +1995,7 @@ export class RainbarkWorld {
         u.billowK.value = billowContrast(k, grainA, grainB);
         // The tide clock (the same in every zone): the haze thickens toward high water on rays at
         // and above the horizon, the vapour begins higher over the tide, the sheets and wisps follow.
-        u.airGain.value = clockA.air;
+        u.airGain.value = clockA.air * (1 + HK[2].air * mistbank);
         u.mistOnset.value = mistOnset(clockA.onset, tide, camY);
         u.tideHigh.value = clockA.high;
         u.tideRise.value = clockA.rise;
@@ -1702,11 +2004,31 @@ export class RainbarkWorld {
         u.sunDir.value.set(sun[0], sun[1], sun[2]);
         // The canopy opens with play: more of the sun comes through (the flecks, the pools, the
         // beams, the motes and the drops all read it), more again as a perfect clear flares it.
-        const pour = 1 + G.fleck[0] * level + G.fleck[1] * fever + G.crown.fleck * flare;
-        this.writeFlecks(t + this.windLead, camY, k, clockA.fleckGain * (1 - fall) * pour, sun[1]);
+        const pour = (1 + G.fleck[0] * level + G.fleck[1] * fever + G.crown.fleck * flare)
+            * wheelValue(wheel, 'flecks') * (1 + HK[0].flecks * sunbreak);
+        // (A gust takes the canopy: the flecks slide far, fast, and ease back.)
+        const gustLead = HK[1].wind * gust * moves;
+        this.writeFlecks(t + this.windLead, camY, k, clockA.fleckGain * (1 - fall) * pour, sun[1], gustLead);
+        this.shedGust(t, happen);
+        // The beam field: its light (the mood's, the tide's, more in a pearly zone, a sunbreak's,
+        // a gust's flicker, the heat of play, the big moments), and the shade the crowns lay on
+        // the sunlit air between the beams.
+        const beamsOn = Boolean(this.parts.fx?.beams);
+        const pearlNow = lerp(za.pearl, zb.pearl, k);
+        const swell = this.beamSwell.valueAt(t) * flashScale();
+        const flicker = 1 + HK[1].flicker * gust * Math.sin(t * 5.3) * Math.sin(t * 2.1 + 1.3);
+        const beamLight = wheelValue(wheel, 'beams') * lerp(BEAMS.tide[0], BEAMS.tide[1], clockA.high)
+            * (1 + BEAMS.pearl * pearlNow) * (1 + HK[0].beams * sunbreak) * flicker
+            * (1 + BEAMS.surge[0] * level + BEAMS.surge[1] * fever) * (1 + BEAMS.swell * swell);
+        u.beamGain.value = this.tune.beamGain ?? beamLight;
+        u.airShade.value = this.tune.airShade ?? (beamsOn ? BEAMS.gapShade : 0);
+        u.night.value = wheelValue(wheel, 'night') * (1 - fall);
+        // The Sunshower's bow: with the run (BOW.gain by its level), and with every burst.
+        const bowTo = Math.max(BOW.gain[Math.max(0, Math.min(3, this.b2b))], burst * BOW.gain[3]) * (1 - fall);
+        this.bowK += (bowTo - this.bowK) * approach(1 / (bowTo > this.bowK ? BOW.rise : BOW.fall), dt);
+        u.bow.value = this.tune.bow ?? this.bowK * (1 - 0.6 * u.night.value);
         const drift = mistDrift(t, this._drift);
         u.mistDrift.value.set(drift[0], drift[1], drift[2]);
-        lightWheelAt(t, this._wheel);
         this.writePalette(zm, fall);
         this.writeBark(clockA);
         // (The bark gleams with play, and with every beat.)
@@ -1737,6 +2059,7 @@ export class RainbarkWorld {
             this.pourLeaves(t, dt, fever * (1 - fall));
             curls.commit();
         }
+        this.parts.fx?.sparks?.commit();
 
         // What follows the camera: its own frame for the backdrop.
         if (camera) {
@@ -1753,8 +2076,7 @@ export class RainbarkWorld {
         const post = this._post;
         post.exposure = lerp(lerp(za.exposure, zb.exposure, k), MISTFALL.exposure, fall);
         // (The light wheel's mood: a touch brighter at noon, a touch lower in the gold.)
-        const W = this._wheel;
-        post.exposure *= lerp(1, lerp(LIGHT_WHEEL.moods[W.a].exposure, LIGHT_WHEEL.moods[W.b].exposure, W.mix), 1 - fall);
+        post.exposure *= lerp(1, wheelValue(wheel, 'exposure'), 1 - fall);
         // The Great Moult's naked First Skin is held under the shoulder by the iris (MOULT.iris
         // stops at most; it rises with the bared skin and decays as the colour climbs back). A
         // second front closes it again, eased (never a jump of the whole frame).
@@ -1767,10 +2089,52 @@ export class RainbarkWorld {
         // (The Floor lifts the frame a little, slowly: FLOOR.lift stops at most.)
         post.exposure *= 2 ** (FLOOR.lift * floorEnvelope(t - this.floorAt));
         u.exposure.value = post.exposure * post.iris;
-        const deepen = (G.sat[0] * level + G.sat[1] * fever) * (1 - fall);
+        // (The colours deepen with the heat of play, and with the big moments' light.)
+        const deepen = (G.sat[0] * level + G.sat[1] * fever + 0.08 * swell) * (1 - fall);
         post.sat = lerp(lerp(za.sat, zb.sat, k), MISTFALL.sat, fall) * (1 + deepen);
         post.bloomBoost = 0;
         u.iris.value = 1 / post.iris;
+    }
+
+    /** Where the light wheel stands (lightWheelAt), or the mood a capture holds (tune.mood). */
+    wheelAt(t) {
+        const W = lightWheelAt(t, this._wheel);
+        const held = this.tune.mood;
+        if (Number.isInteger(held) && held >= 0 && held < LIGHT_WHEEL.moods.length) {
+            W.a = held;
+            W.b = held;
+            W.mix = 0;
+        }
+        return W;
+    }
+
+    /** The grove's happening (happeningAt), or the one a capture holds (tune.happen, tune.happenAge). */
+    happenAt(t) {
+        const H = this._happen;
+        const held = this.tune.happen;
+        if (!(Number.isInteger(held) && held >= 0 && held < HAPPENINGS.kinds.length)) return happeningAt(t, H);
+        const K = HAPPENINGS.kinds[held];
+        const age = Math.max(0, Math.min(K.length, this.tune.happenAge ?? K.rise + 1));
+        H.kind = held;
+        H.slot = 1e6;
+        H.age = age;
+        H.k = smoother(age / K.rise) * (1 - smoother((age - (K.length - K.fall)) / K.fall));
+        return H;
+    }
+
+    /** A gust shakes leaves down across the lanes, once a gust (when it comes over the grove). */
+    shedGust(t, happen) {
+        if (happen.kind !== 1 || happen.slot === this._gustSlot) return;
+        this._gustSlot = happen.slot;
+        const { curls } = this.parts;
+        if (!curls) return;
+        const stations = this._stations;
+        const share = (this.tier.curlsEvent >= 96 ? 1 : 0.6) * (this.reducedMotion ? 0.5 : 1);
+        const each = Math.max(2, Math.round((HAPPENINGS.kinds[1].leaves * share) / stations.length));
+        for (let i = 0; i < stations.length; i++) {
+            const st = stations[i];
+            if (st.ok) curls.spawnLeaves(t + i * 0.35, st.x, st.y, st.z, each);
+        }
     }
 
     /**
@@ -1831,10 +2195,11 @@ export class RainbarkWorld {
      * the flecks' light (the tide clock's gain, none under Mistfall) and the eye's level of the
      * mask (what Low and Minimal read everywhere).
      */
-    writeFlecks(t, camY, k, light, sunY) {
+    writeFlecks(t, camY, k, light, sunY, lead = 0) {
         const { u, climb } = this;
         const wind = canopyWind(t, this._wind, windScaleAt(camY, sunY) * this.windBoost);
-        u.wind.value.set(wind[0], wind[1]);
+        // (A gust's lead: along the wind's own heading, so the flecks slide and come back.)
+        u.wind.value.set(wind[0] + lead * 0.8, wind[1] + lead * 0.45);
         const a = fleckFor(storeyOf(climb ? climb.from : camY));
         const b = fleckFor(storeyOf(climb ? climb.to : camY));
         u.fleckThr.value = lerp(a.thr, b.thr, k);

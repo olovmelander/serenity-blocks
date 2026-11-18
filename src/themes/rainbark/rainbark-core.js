@@ -1496,6 +1496,83 @@ export const SHAFT_LIGHT = Object.freeze({
     card: Object.freeze([0.0, 0.04]),
 });
 
+/**
+ * The beam field (rainbark-beams.js): the sun through the canopy as a grove of soft beams standing
+ * in the haze, at every depth from `depth`[0] to [1] metres, so the trunks stand dark in front of
+ * some and veiled behind others. Each beam crosses the eye's storey at a place across the lens
+ * (`across`: −1 the frame's left edge … 1 its right, whatever the frame's shape, `sunSide` of them right
+ * of the middle, where the gold air is), `rise` metres over or under the eye, and is `width` of its
+ * depth across. It is lit from `top` metres over the eye down to `bottom` over the mist (soft ends,
+ * `soften`), the sun forward-scattered toward the eye (g = `g`), times `k`, never under `floor` of
+ * its scatter (so the beams in the blue shade still read, cooler and fainter: `shade`).
+ *
+ * No two frames hold the same beams: each breathes on its own clock (two sines `period` seconds
+ * long, a share `rest` of the time dark), as the crowns over it part and close. Inside, a beam is a
+ * bundle of rays (`rays` across it, sharper toward its core) with the vapour drifting through it
+ * (`vapour`: its grain in metres, its drift in m/s, its depth of shade). A beam fades out over
+ * `card` (screen fractions) toward the card, and every tier draws the first `count` of one field.
+ * Between the beams the crowns shade the sunlit air by `gapShade` (u.airShade): the gold side is
+ * beams of light in a deeper gold, never one even wash. The field's light (u.beamGain) follows the
+ * mist (`tide`: from low water to high), stands stronger in a pearly zone (`pearl` more: the Fog
+ * Line's god-rays), with the heat of play (`surge`: level, fever) and with the big moments (`swell`
+ * more at a Great Moult's or a perfect clear's height).
+ */
+export const BEAMS = Object.freeze({
+    depth: Object.freeze([20, 150]),
+    across: Object.freeze([-0.72, 1.12]),
+    sunSide: 0.68,
+    width: Object.freeze([0.05, 0.11]),
+    rise: Object.freeze([-8, 12]),
+    top: 46,
+    bottom: 2,
+    soften: 18,
+    g: 0.6,
+    k: 1.9,
+    floor: 0.16,
+    shade: Object.freeze([0.55, 0.78, 1.0]),
+    period: Object.freeze([24, 61]),
+    rest: 0.3,
+    rays: Object.freeze({ across: 2.6, depth: 0.62 }),
+    vapour: Object.freeze({ grain: 9, drift: 0.35, depth: 0.42 }),
+    card: Object.freeze([0.0, 0.06]),
+    gapShade: 0.5,
+    tide: Object.freeze([0.85, 1.2]),
+    pearl: 1.1,
+    surge: Object.freeze([0.2, 0.45]),
+    swell: 1.3,
+    seed: 0xbea3,
+});
+
+/**
+ * The beam field's records: `count` beams, the same first n on every tier (a lower tier draws a
+ * prefix). Each { across, depth, width (of its depth), rise, salt, period, phase }. Stratified in
+ * depth and across the lens, so a prefix of any length is spread over both.
+ */
+export function beamField(count, seed = BEAMS.seed) {
+    const n = Math.max(0, Math.round(count) || 0);
+    const rng = mulberry32(seed);
+    const B = BEAMS;
+    const out = [];
+    for (let i = 0; i < n; i++) {
+        // (Golden-ratio strata: every prefix covers the depths and the lens.)
+        const a = (i * 0.6180339887 + 0.13) % 1;
+        const d = (i * 0.7548776662 + 0.41) % 1;
+        const sunny = ((i * 0.5698402910 + 0.2) % 1) < B.sunSide;
+        const across = sunny ? lerp(0.12, B.across[1], a) : lerp(B.across[0], 0.1, a);
+        const depth = lerp(B.depth[0], B.depth[1], d * d * 0.75 + d * 0.25);
+        out.push(Object.freeze({
+            across,
+            depth,
+            width: lerp(B.width[0], B.width[1], rng()),
+            rise: lerp(B.rise[0], B.rise[1], rng()),
+            salt: rng(),
+            period: lerp(B.period[0], B.period[1], rng()),
+            phase: rng() * TAU,
+        }));
+    }
+    return out;
+}
+
 // ── The trunks ──────────────────────────────────────────────────────────────────
 
 /**
@@ -3109,16 +3186,27 @@ export const HELIX = Object.freeze({
  *   morning  the zones as authored: cream sun, blue air
  *   noon     a whiter, higher-key sun; cooler shade
  *   gold     an amber sun, rose-gold air on the sunny side, warm mist, violet shade
- *   pearl    a soft, pale light: lilac air, a rose-white sun, a silvery mist
+ *   ember    the last of the sun: a low red-gold light in long beams, rose mist, plum shade
+ *   dusk     the blue hour: the sun is gone, the air deep blue, the mist pale under the sky's last
+ *            light, the flecks a faint silver, and the fireflies come out (`night`)
+ *   pearl    first light: a soft, pale light, lilac air, a rose-white sun, a silvery mist
+ * Beside its tints a mood sets how strongly the beam field stands in the air (`beams`), how much
+ * of the canopy's light the flecks keep (`flecks`), and how far the night has come (`night`: the
+ * fireflies' share, 0 by day).
  */
 export const LIGHT_WHEEL = Object.freeze({
     step: 100,
     rest: 0.15,
     moods: Object.freeze([
-        Object.freeze({ name: 'morning', exposure: 1, tint: Object.freeze({}) }),
+        Object.freeze({
+            name: 'morning', exposure: 1, beams: 1, flecks: 1, night: 0, tint: Object.freeze({}),
+        }),
         Object.freeze({
             name: 'noon',
             exposure: 1.04,
+            beams: 0.8,
+            flecks: 1,
+            night: 0,
             tint: Object.freeze({
                 fleck: [1.0, 1.06, 1.22],
                 hazeSun: [0.97, 1.0, 1.08],
@@ -3132,6 +3220,9 @@ export const LIGHT_WHEEL = Object.freeze({
         Object.freeze({
             name: 'gold',
             exposure: 1.0,
+            beams: 1.25,
+            flecks: 1,
+            night: 0,
             tint: Object.freeze({
                 // (Its sun a little stronger than whole: the gold turns the light's hue, never dims
                 // the flecks. Never by the exposure: it would burn the gold air out.)
@@ -3147,8 +3238,52 @@ export const LIGHT_WHEEL = Object.freeze({
             }),
         }),
         Object.freeze({
+            name: 'ember',
+            exposure: 0.98,
+            beams: 1.45,
+            flecks: 0.9,
+            night: 0,
+            tint: Object.freeze({
+                // (A red-gold sun: its green and blue fall, its red holds, so a fleck on the slate
+                // lands ember and the beams stand rose-gold in a plum shade.)
+                fleck: [1.5, 0.92, 0.52],
+                hazeSun: [1.2, 0.8, 0.62],
+                hazeShade: [1.0, 0.82, 1.02],
+                sky: [1.08, 0.88, 0.9],
+                zenith: [1.0, 0.9, 1.0],
+                mistTop: [1.16, 0.88, 0.78],
+                underglow: [1.26, 0.84, 0.66],
+                gradeLight: [1.12, 0.93, 0.8],
+                gradeShadow: [1.08, 0.86, 1.14],
+            }),
+        }),
+        Object.freeze({
+            name: 'dusk',
+            exposure: 0.96,
+            beams: 0.5,
+            flecks: 0.42,
+            night: 1,
+            tint: Object.freeze({
+                // (The blue hour, never black: the bark keeps its colours under a cool sky light,
+                // the mist is the brightest thing, the flecks a faint silver from the last sky.)
+                fleck: [0.5, 0.66, 1.0],
+                hazeSun: [0.4, 0.5, 0.86],
+                hazeShade: [0.52, 0.62, 1.0],
+                sky: [0.6, 0.72, 1.12],
+                zenith: [0.42, 0.52, 0.95],
+                mistTop: [0.6, 0.72, 1.02],
+                underglow: [0.5, 0.62, 0.98],
+                crown: [0.6, 0.72, 0.9],
+                gradeLight: [0.86, 0.94, 1.12],
+                gradeShadow: [0.78, 0.86, 1.25],
+            }),
+        }),
+        Object.freeze({
             name: 'pearl',
             exposure: 1.02,
+            beams: 0.9,
+            flecks: 1,
+            night: 0,
             tint: Object.freeze({
                 fleck: [1.04, 0.94, 0.98],
                 hazeSun: [1.02, 0.96, 1.06],
@@ -3180,6 +3315,169 @@ export function lightWheelAt(t, out = {
     out.place = place;
     return out;
 }
+
+/** A mood's number (`beams`, `flecks`, `night`, `exposure`) where the wheel stands (lightWheelAt). */
+export function wheelValue(wheel, key) {
+    const { moods } = LIGHT_WHEEL;
+    return lerp(moods[wheel.a][key], moods[wheel.b][key], wheel.mix);
+}
+
+/**
+ * The grove's happenings: beside the wheel's slow light, something comes over the grove every
+ * `every` seconds (± `jitter`), from `first` seconds on (the reference frames before it are still):
+ *   sunbreak  the crowns part somewhere over the grove: the beams stand `beams` stronger, the
+ *             flecks pour `flecks` more, for a quarter of a minute
+ *   gust      a gust takes the canopy: the flecks slide `wind` tiles of the gap mask and ease back,
+ *             `leaves` leaves come down across the lanes, the beams flicker (`flicker`)
+ *   mistbank  a bank of mist rolls through: the tide lifts `tide` metres and the air thickens by
+ *             `air`, the far grove sinks into it and comes back
+ * Which one a slot holds is hashed from the slot (weights `weight`; a slot may hold none: `hush`),
+ * so the clock alone decides (seek-safe). Each rises over `rise` seconds and falls over `fall`.
+ */
+export const HAPPENINGS = Object.freeze({
+    first: 80,
+    every: 43,
+    jitter: 10,
+    hush: 1,
+    kinds: Object.freeze([
+        Object.freeze({
+            name: 'sunbreak', weight: 3, length: 16, rise: 3.5, fall: 7, beams: 0.9, flecks: 0.22,
+        }),
+        Object.freeze({
+            name: 'gust', weight: 3, length: 11, rise: 1.4, fall: 7, wind: 0.5, leaves: 30, flicker: 0.35,
+        }),
+        Object.freeze({
+            name: 'mistbank', weight: 2, length: 28, rise: 9, fall: 12, tide: 5, air: 0.4,
+        }),
+    ]),
+});
+
+/**
+ * The happening at time t: { kind (index into HAPPENINGS.kinds, −1 none), slot, age (seconds into
+ * it), k (its envelope, 0 … 1) }. Closed form in the clock.
+ */
+export function happeningAt(t, out = {
+    kind: -1, slot: -1, age: 0, k: 0,
+}) {
+    const H = HAPPENINGS;
+    out.kind = -1;
+    out.slot = -1;
+    out.age = 0;
+    out.k = 0;
+    const since = (Number(t) || 0) - H.first;
+    if (!(since >= 0)) return out;
+    const slot = Math.floor(since / H.every);
+    const rng = mulberry32((slot * 2654435761 + 0x68a9) >>> 0);
+    const start = H.first + slot * H.every + rng() * H.jitter;
+    let total = H.hush;
+    for (let i = 0; i < H.kinds.length; i++) total += H.kinds[i].weight;
+    let pick = rng() * total;
+    let kind = -1;
+    for (let i = 0; i < H.kinds.length && kind < 0; i++) {
+        pick -= H.kinds[i].weight;
+        if (pick < 0) kind = i;
+    }
+    out.slot = slot;
+    if (kind < 0) return out;
+    const K = H.kinds[kind];
+    const age = t - start;
+    if (!(age >= 0) || age >= K.length) return out;
+    out.kind = kind;
+    out.age = age;
+    out.k = smoother(age / K.rise) * (1 - smoother((age - (K.length - K.fall)) / K.fall));
+    return out;
+}
+
+/**
+ * The sparks (rainbark-sparks.js): what a beat throws into the light. A speck leaves its origin at
+ * its velocity, slowed by the air (`drag` a second), fades in over `fadeIn` seconds and out from
+ * `fadeOut` of its life, tumbling in and out of the light (`flash` of it, at `twinkle` radians a
+ * second), never smaller than `least` of a buffer pixel, gone within `card` (screen fraction) of
+ * the card. Its light (scene-linear, through the iris): `gold` bark dust and pollen, `cream` the
+ * cambium's, `sap` First Skin's beads, `ember` old bark's. Then what each beat spends (specks `n`,
+ * metres a second `speed`, seconds `life`, pixels across on a 1080-line frame `px`).
+ */
+export const SPARKS = Object.freeze({
+    drag: 1.5,
+    fadeIn: 0.1,
+    fadeOut: 0.45,
+    twinkle: Object.freeze([5, 13]),
+    flash: 0.7,
+    least: 1.4,
+    card: 0.03,
+    gold: Object.freeze([8.5, 5.8, 1.9]),
+    cream: Object.freeze([7.5, 6.8, 4.8]),
+    sap: Object.freeze([3.2, 7.4, 1.4]),
+    ember: Object.freeze([9.5, 3.4, 1.1]),
+    lock: Object.freeze({
+        n: 7, speed: Object.freeze([0.5, 1.8]), life: Object.freeze([1.0, 2.0]), px: Object.freeze([3, 5.5]),
+    }),
+    knock: Object.freeze({
+        n: Object.freeze([16, 38]),
+        speed: Object.freeze([1.2, 4.2]),
+        up: 3.6,
+        life: Object.freeze([1.3, 2.8]),
+        px: Object.freeze([3, 6.5]),
+        spread: 1.9,
+    }),
+    shed: Object.freeze({
+        n: 14, speed: Object.freeze([0.4, 1.9]), life: Object.freeze([1.4, 3.0]), px: Object.freeze([3, 6]),
+    }),
+    moult: Object.freeze({
+        n: 0.62, speed: Object.freeze([0.6, 2.6]), life: Object.freeze([2.4, 5.0]), px: Object.freeze([3, 7]),
+    }),
+    twist: Object.freeze({
+        n: 26, turn: 5.2, rise: 1.5, life: Object.freeze([1.8, 3.2]), px: Object.freeze([3, 6.5]),
+    }),
+    gap: Object.freeze({
+        n: 12, fall: 1.6, life: Object.freeze([2.6, 4.6]), px: Object.freeze([2.6, 5.2]),
+    }),
+    floor: Object.freeze({
+        n: 0.34, rise: 0.5, life: Object.freeze([4.5, 8]), px: Object.freeze([3.4, 7.5]), over: 4,
+    }),
+    climb: Object.freeze({
+        n: 0.26, life: Object.freeze([3.2, 5]), px: Object.freeze([2.6, 5.5]), over: 2.2,
+    }),
+});
+
+/**
+ * The fireflies (the motes' other life): as the wheel turns to dusk (`night`, a mood's own) a
+ * `share` of the motes light up, each on its own slow beat (`rate` Hz, lit `duty` of it, rising
+ * fast and fading slowly), yellow-green (`color`, scene-linear) and `grow` times larger while lit;
+ * the lower ones (`low`: the share of the band's height they keep to), as fireflies hang over the
+ * mist.
+ */
+export const FIREFLY = Object.freeze({
+    share: 0.5,
+    rate: Object.freeze([0.28, 0.62]),
+    duty: 0.42,
+    color: Object.freeze([3.0, 4.2, 0.6]),
+    low: 0.75,
+    grow: 1.6,
+});
+
+/**
+ * The Sunshower's bow (as built): while a back-to-back run lives, a rainbow stands in the rain on
+ * the shade side of the grove, crossing the Elder's painted wall. A circle `radius` degrees round
+ * a centre `azimuth` degrees off the view axis (negative: left) and `drop` degrees under the
+ * horizon, `width` degrees wide, red outside; a second, fainter and reversed, at `second` degrees
+ * (`secondGain`), and the air inside the first a little brighter (`inner`). `gain` its light
+ * (scene-linear, through the iris) at each back-to-back level, eased in over `rise` seconds and
+ * out over `fall`. It keeps out of the card (`card`, screen fractions).
+ */
+export const BOW = Object.freeze({
+    azimuth: -48,
+    drop: 30,
+    radius: 42,
+    width: 2.3,
+    second: 51,
+    secondGain: 0.26,
+    inner: 0.04,
+    gain: Object.freeze([0, 0.2, 0.28, 0.36]),
+    rise: 2.5,
+    fall: 6,
+    card: Object.freeze([0.0, 0.05]),
+});
 
 /** Meditation's clicks (§6.13): at most `rate` peels a second, each band ±`half` metres tall. */
 export const MEDITATION = Object.freeze({ rate: 4, half: 0.55 });

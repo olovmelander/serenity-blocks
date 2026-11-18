@@ -409,6 +409,17 @@ export function createRainbarkUniforms(textures = null) {
         tideRise: uniform(0),
         /** The post's iris, inverted: event lights are raised by it so they read at any exposure. */
         iris: uniform(1),
+        /** The beam field's light (the world's: the mood, the tide, a sunbreak, the big moments). */
+        beamGain: uniform(1),
+        /**
+         * How much the crowns shade the sunlit air between the beams (0 … 1; BEAMS.gapShade on a
+         * tier that draws the beam field, none on one that does not: its air keeps all its light).
+         */
+        airShade: uniform(0),
+        /** How far the night has come (the light wheel's dusk: 0 by day … 1): the fireflies' share. */
+        night: uniform(0),
+        /** The Sunshower's bow: how much of it shows (0 … 1 times its gain: BOW). */
+        bow: uniform(0),
         /** The zone's exposure (the post's): what a light must stand under to land where it means. */
         exposure: uniform(zone.exposure),
         /**
@@ -752,7 +763,10 @@ export function rbInscatter(u, dir) {
     const kept = float(1.0).sub(rbBreakout(u).mul(MIST_BREAKOUT.glow)).toVar();
     const share = min(max(risen, G.floor).mul(G.mix), G.most).mul(down).mul(kept);
     const lowAir = mix(haze.mul(float(1.0).sub(up)), glow, share);
-    const air = lowAir.add(u.col.underglow.mul(max(risen, G.floor).mul(down).mul(G.add).mul(kept)));
+    // (Between the beams the crowns shade the sunlit air: the beam field brings its light back as
+    // beams, so the gold side has depth instead of one even wash. u.airShade; none without beams.)
+    const shaded = float(1.0).sub(u.airShade.mul(side));
+    const air = lowAir.mul(shaded).add(u.col.underglow.mul(max(risen, G.floor).mul(down).mul(G.add).mul(kept)));
     // Rolled off under HAZE_PEAK (hue preserving, on the brightest channel), raised round the core.
     return rbRollOff(air, { knee: HAZE_PEAK.knee, peak: mix(float(HAZE_PEAK.peak), float(HAZE_CORE.peak), core) });
 }
@@ -2192,6 +2206,16 @@ export const BARK_LIGHT = Object.freeze({
  * Gold's hue at its own lightness (1 − its chroma of that), in every zone: warm on cool, never a
  * grey-white paper patch on the slate.
  */
+/**
+ * A ring's blaze (the Shed, the Unwinding) is wet First Skin glistening, never a flat fill: along
+ * the grain (the noise from `grain`[0] to [1]) its light runs from `deep` of First Skin's between
+ * the streaks to `bright` of it in them, turned `gold` of the way to the flecks' gold there (sap
+ * catching the sun), and it stands at `edge` of itself at its torn edges, whole `heart` metres in.
+ */
+export const BLAZE_SAP = Object.freeze({
+    grain: Object.freeze([0.3, 0.72]), deep: 0.38, bright: 1.5, gold: 0.35, edge: 0.45, heart: 0.09,
+});
+
 export const FLECK_SHOULDER = Object.freeze({
     knee: 0.75, peak: 1.3, pearl: 0.6, gold: 0.28,
 });
@@ -2553,6 +2577,7 @@ export function rbBarkEvents(u, {
                 hard.assign(0.0);
                 flushK.assign(0.0);
                 blaze.assign(smoothstep(SHED.bare - 0.04, SHED.bare + 0.03, tb).mul(float(1.0).sub(rip)).mul(I.x));
+                inside.assign(edge.negate());
                 // (An older ring's or band's rim and cream stay under the newer ring: never a chain
                 // of beads along the seam.)
                 rim.mulAssign(float(1.0).sub(cover));
@@ -2603,6 +2628,7 @@ export function rbBarkEvents(u, {
                 hard.assign(0.0);
                 flushK.assign(0.0);
                 blaze.assign(float(1.0).sub(smoothstep(0.2, HELIX.blaze, t.sub(HELIX.start).sub(s.mul(HELIX.unwind).div(max(Hx.z, 1.0))))));
+                inside.assign(edge.negate());
             });
             const outside = smoothstep(0.0, aaY, edge).mul(float(1.0).sub(smoothstep(PEEL.rim * 0.35, PEEL.rim, edge)));
             rim.assign(max(rim, outside.mul(along).mul(keep)));
@@ -3273,8 +3299,15 @@ export function rbBark(u, at, {
         const lift = exp(ev.since.div(-PEEL.liftTau)).mul(PEEL.lift).mul(ev.k);
         lit.mulAssign(lift.add(ev.knock.mul(KNOCK.lift)).add(1.0));
         lit.addAssign(u.ramp(clamp(ev.age, 0.0, 1.0)).mul(flush).mul(u.iris));
-        // (A ring just bared blazes First Skin, its light capped through the iris: SHED.)
-        lit.addAssign(u.ramp(float(0.0)).mul(ev.blaze.mul(ev.k).mul(SHED.blazeLight * 0.55)).mul(u.iris));
+        // (A ring just bared blazes First Skin, its light capped through the iris: SHED. Wet skin
+        // glistening along the grain, sap bright in its streaks and deep between them, fuller
+        // toward its heart than at its torn edges: never a flat band of light.)
+        const sapN = fineN ? fineN.b.mul(0.6).add(coarseN.g.mul(0.4)) : coarseN.g;
+        const sap = smoothstep(BLAZE_SAP.grain[0], BLAZE_SAP.grain[1], sapN).toVar();
+        const heart = smoothstep(0.0, BLAZE_SAP.heart, ev.inside).mul(1.0 - BLAZE_SAP.edge).add(BLAZE_SAP.edge);
+        const blazeCol = mix(u.ramp(float(0.0)).mul(BLAZE_SAP.deep), mix(u.ramp(float(0.0)), vec3(...FLECK_GOLD), BLAZE_SAP.gold)
+            .mul(BLAZE_SAP.bright), sap);
+        lit.addAssign(blazeCol.mul(heart).mul(ev.blaze.mul(ev.k).mul(SHED.blazeLight * 0.55)).mul(u.iris));
         lit.addAssign(vec3(...FLECK_GOLD).mul(ev.split.mul(1.6)).mul(u.iris));
         lit.addAssign(albedo.mul(u.sunCol).mul(ev.knock.mul(KNOCK.light)).mul(max(ndl, 0.2)).mul(u.iris));
     }

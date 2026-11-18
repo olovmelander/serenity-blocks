@@ -21,6 +21,8 @@
  * motes          seeds and pollen adrift in the air, glinting in the canopy's light (MOTES)
  * vapour         vapour threads off lit bark, and `beads` the amber resin beads
  * shaftsAmbient  ambient shaft slabs, and `shaftsCombo` the canopy-gap shafts of a chain
+ * beams          the beam field: the sun through the canopy as beams standing in the haze (BEAMS)
+ * sparks         speck slots: what a beat throws into the light (SPARKS)
  * lorikeets      birds crossing a gap (0 = none)
  */
 export const QUALITY = Object.freeze({
@@ -45,6 +47,8 @@ export const QUALITY = Object.freeze({
         beads: 0,
         shaftsAmbient: 0,
         shaftsCombo: 0,
+        beams: 0,
+        sparks: 96,
         lorikeets: 0,
     }),
     Low: Object.freeze({
@@ -68,6 +72,8 @@ export const QUALITY = Object.freeze({
         beads: 18,
         shaftsAmbient: 0,
         shaftsCombo: 7,
+        beams: 5,
+        sparks: 160,
         lorikeets: 0,
     }),
     Medium: Object.freeze({
@@ -91,6 +97,8 @@ export const QUALITY = Object.freeze({
         beads: 36,
         shaftsAmbient: 3,
         shaftsCombo: 7,
+        beams: 9,
+        sparks: 280,
         lorikeets: 2,
     }),
     High: Object.freeze({
@@ -114,6 +122,8 @@ export const QUALITY = Object.freeze({
         beads: 54,
         shaftsAmbient: 3,
         shaftsCombo: 7,
+        beams: 14,
+        sparks: 420,
         lorikeets: 5,
     }),
     Ultra: Object.freeze({
@@ -137,6 +147,8 @@ export const QUALITY = Object.freeze({
         beads: 72,
         shaftsAmbient: 3,
         shaftsCombo: 7,
+        beams: 18,
+        sparks: 560,
         lorikeets: 5,
     }),
     Extreme: Object.freeze({
@@ -160,6 +172,8 @@ export const QUALITY = Object.freeze({
         beads: 84,
         shaftsAmbient: 3,
         shaftsCombo: 7,
+        beams: 22,
+        sparks: 700,
         lorikeets: 5,
     }),
 });
