@@ -149,9 +149,12 @@ export function landingRuns(shape) {
     return runs;
 }
 
+const shadowTopAlpha = (pulse) => 0.12 + 0.04 * pulse;
+const shadowBottomAlpha = (pulse) => 0.34 + 0.08 * pulse;
+
 /** The shadow's alpha at its top edge and where it rests, for a pulse of 0..1. */
 export function landingShadowAlphas(pulse = 0.5) {
-    return { top: 0.12 + 0.04 * pulse, bottom: 0.34 + 0.08 * pulse };
+    return { top: shadowTopAlpha(pulse), bottom: shadowBottomAlpha(pulse) };
 }
 
 /**
@@ -201,6 +204,73 @@ export function landingShadowRects(shape, { landingY = 0, firstVisibleRow = -Inf
 }
 
 /**
+ * landingShadowRects' rects for the rows from `clipRow` down, without their alphas: where each
+ * edge lies between the shape's top (t 0) and base (t 1), or `spill` for the light under it, so
+ * drawLandingShadow works the alphas out with the same operations, bit for bit.
+ */
+function shadowLayout(shape, clipRow) {
+    const layout = [];
+    let minY = -1;
+    let maxY = -1;
+    for (let y = clipRow; y < shape.length; y++) {
+        const row = shape[y];
+        if (!row) continue;
+        for (let x = 0; x < row.length; x++) {
+            if (!row[x]) continue;
+            const start = x;
+            while (x + 1 < row.length && row[x + 1]) x++;
+            layout.push({
+                x: start, y, w: x - start + 1, h: 1, spill: false, t0: 0, t1: 0,
+            });
+            if (minY < 0) minY = y;
+            maxY = y + 1;
+        }
+    }
+    for (const rect of layout) {
+        rect.t0 = (rect.y - minY) / (maxY - minY);
+        rect.t1 = (rect.y + 1 - minY) / (maxY - minY);
+    }
+    for (const run of landingRuns(shape)) {
+        if (run.bottom < clipRow) continue;
+        layout.push({
+            x: run.x0, y: run.bottom + 1, w: run.x1 - run.x0 + 1, h: 0.35, spill: true, t0: 0, t1: 0,
+        });
+    }
+    return layout;
+}
+
+/**
+ * Each shape's shadow layouts, by clip row: every board draws the shadow every frame, and the
+ * layout depends only on the shape's cells and the rows hidden above the board. Cascades edit
+ * a locked shape in place, so a snapshot of its cells is compared without allocating, and the
+ * layouts are rebuilt when it changed (as base-board-scene.js _getPieceGeometry does).
+ */
+const shadowLayouts = new WeakMap();
+
+function cachedShadowLayout(shape, clipRow) {
+    let cached = shadowLayouts.get(shape);
+    let unchanged = cached !== undefined && cached.rows.length === shape.length;
+    for (let y = 0; unchanged && y < shape.length; y++) {
+        const row = shape[y];
+        const previous = cached.rows[y];
+        unchanged = row?.length === previous?.length;
+        for (let x = 0; unchanged && x < (row?.length || 0); x++) {
+            if (row[x] !== previous[x]) unchanged = false;
+        }
+    }
+    if (!unchanged) {
+        cached = { rows: Array.from(shape, (row) => row?.slice()), byClipRow: [] };
+        shadowLayouts.set(shape, cached);
+    }
+    let layout = cached.byClipRow[clipRow];
+    if (!layout) {
+        layout = shadowLayout(shape, clipRow);
+        cached.byClipRow[clipRow] = layout;
+    }
+    return layout;
+}
+
+/**
  * The landing shadow on a Phaser Graphics: the piece's whole shape where it will land, a smooth
  * shadow in its own colour (landingShadowRects). Plain gradient rects, no lines.
  * @param {object} graphics a Phaser Graphics (fillGradientStyle, fillRect)
@@ -214,11 +284,20 @@ export function landingShadowRects(shape, { landingY = 0, firstVisibleRow = -Inf
  * @param {number} [options.firstVisibleRow] rows above this are not drawn (hidden rows)
  */
 export function drawLandingShadow(graphics, {
-    shape, originX, landingY, blockSize, colorInt, pulse, firstVisibleRow = -Infinity,
+    shape, originX, landingY, blockSize, colorInt, pulse = 0.5, firstVisibleRow = -Infinity,
 }) {
     const color = mixColor(colorInt, 0xffffff, 0.2);
-    for (const rect of landingShadowRects(shape, { landingY, firstVisibleRow, pulse })) {
-        graphics.fillGradientStyle(color, color, color, color, rect.top, rect.top, rect.bottom, rect.bottom);
+    // The shape's first row on the visible board: the rows above it are not drawn.
+    let clipRow = 0;
+    while (clipRow < shape.length && landingY + clipRow < firstVisibleRow) clipRow++;
+    const rects = cachedShadowLayout(shape, clipRow);
+    const top = shadowTopAlpha(pulse);
+    const bottom = shadowBottomAlpha(pulse);
+    for (let i = 0; i < rects.length; i++) {
+        const rect = rects[i];
+        const upper = rect.spill ? bottom * 0.55 : top + (bottom - top) * rect.t0;
+        const lower = rect.spill ? 0 : top + (bottom - top) * rect.t1;
+        graphics.fillGradientStyle(color, color, color, color, upper, upper, lower, lower);
         graphics.fillRect(
             (originX + rect.x) * blockSize,
             (landingY + rect.y) * blockSize,
