@@ -207,16 +207,6 @@ export const GAME_MODES = {
 };
 
 /**
- * Garbage calculation rules (1:1 pattern)
- */
-export const GARBAGE_RULES = {
-    1: 1, // Single - 1 line of garbage
-    2: 2, // Double - 2 lines
-    3: 3, // Triple - 3 lines
-    4: 4, // Quad - 4 lines
-};
-
-/**
  * Default settings configuration
  */
 export const DEFAULT_SETTINGS = {
