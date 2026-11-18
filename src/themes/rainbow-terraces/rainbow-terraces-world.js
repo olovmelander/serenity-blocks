@@ -1215,8 +1215,12 @@ export class RainbowTerracesWorld {
             const index = geometry.index ? geometry.index.array : null;
             const tris = index ? index.length / 3 : pos.count / 3;
             const m = mesh.matrixWorld.elements;
+            // (The ivy's leaves are thousands of small triangles lying on the stone that already
+            // draws the edge: they are passed over.)
+            const kind = geometry.attributes.aMat ? geometry.attributes.aMat.array : null;
             for (let k = 0; k < tris * 3; k++) {
                 const i0 = index ? index[k] : k;
+                if (kind && kind[i0] > 4.5) continue;
                 const i1 = index ? index[k - (k % 3) + ((k + 1) % 3)] : k - (k % 3) + ((k + 1) % 3);
                 if (!toScreen(m, pos, i0, a).front || !toScreen(m, pos, i1, b).front) continue;
                 const c0 = Math.max(0, Math.ceil(Math.min(a.x, b.x) * FALL_EDGE_BINS));

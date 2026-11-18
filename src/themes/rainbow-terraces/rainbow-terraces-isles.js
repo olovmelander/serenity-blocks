@@ -2359,7 +2359,11 @@ export function createStoneMaterial({
         }
         crownRock.assign(mix(crownRock, turf, max(mossK, smoothstep(0.5, 0.78, N.y).mul(smoothstep(0.25, 0.55, nA.add(0.2))))));
         // Leaf: dark green crowns, warmer where the sun catches them.
-        const leaf = mix(vec3(0.02, 0.05, 0.025), vec3(0.06, 0.1, 0.03), s2.r);
+        // (Read from the fine grain, never the stone's strata, which would band a crown; what
+        // faces the sky is the sunlit, yellower green, the undersides the deep one.)
+        const leafGrain = texture(tex.noise, vec2(lp.x.add(lp.y.mul(0.37)), lp.z.sub(lp.y.mul(0.23))).mul(0.19)).a;
+        const leafTop = smoothstep(-0.4, 0.8, N.y);
+        const leaf = mix(vec3(0.02, 0.05, 0.026), vec3(0.092, 0.135, 0.04), leafGrain.mul(0.35).add(leafTop.mul(0.65)));
         const albedo = trav.toVar();
         albedo.assign(mix(albedo, mix(rock, crownRock, crownK), is(1)));
         albedo.assign(mix(albedo, bronze, is(2)));
