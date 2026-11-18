@@ -26,9 +26,8 @@ import { createP2PSessionGate } from './p2p-session-gate.js';
 import { steamLobbyType } from './steam-lobby-type.js';
 import { steamProfileUrl } from './steam-profile.js';
 import { allowsDirectP2P } from './debug-flags.js';
-import {
-    RESULT_OK, SESSION_STATE, openRelayTransport, relayPumpDue, steamApiLibraryPath,
-} from './steam-relay-transport.js';
+import { RESULT_OK, openRelayTransport, steamApiLibraryPath } from './steam-relay-transport.js';
+import { createRelaySessionPump } from './relay-session-pump.js';
 import { RELAY_UNAVAILABLE_MESSAGE, describeNetworkTransport, lobbyAllowed } from './steam-network-transport.js';
 
 // ---------------------------------------------------------------------------
@@ -54,15 +53,19 @@ let p2pSessionGate = null;
 let relayTransport = null;
 let networkMode = 'none';
 let networkReason = 'Steam is not running';
-// Players the relay transport has exchanged packets with in this lobby, and the state each
-// session was last seen in (sessions are closed when we leave; a broken one is reported).
-const relayPeers = new Map();
-// When the session pump last accepted and checked, on the monotonic clock: a wall clock set
-// back would stall both until it caught up.
-let relayAcceptedAt = 0;
-let relayCheckedAt = 0;
-const RELAY_ACCEPT_EVERY_MS = 200;
-const RELAY_CHECK_EVERY_MS = 1000;
+// The relayed sessions: the players the relay transport has exchanged packets with in this
+// lobby, accepted for the members the gate allows, checked now and then, closed when we leave
+// (electron/relay-session-pump.js).
+const relaySessions = createRelaySessionPump({
+    transport: () => relayTransport,
+    gate: () => p2pSessionGate,
+    inLobby: () => Boolean(currentLobby),
+    members: otherLobbyMembers,
+    // Monotonic: a wall clock set back would stall the accepts and checks until it caught up.
+    now: () => performance.now(),
+    report: (failure) => sendToRenderer('steam:p2pSessionFailed', failure),
+    log: steamLog,
+});
 let steamOverlayEnabled = false;
 let steamCallbackHandles = [];
 let steamStatusPending = false;
@@ -438,7 +441,7 @@ function loadKoffi() {
 function startNetworkTransport(steamworksDir) {
     relayTransport?.dispose();
     relayTransport = null;
-    relayPeers.clear();
+    relaySessions.forgetAll();
     let koffi = null;
     let reason = null;
     try {
@@ -483,60 +486,6 @@ function otherLobbyMembers() {
     } catch {
         return [];
     }
-}
-
-/**
- * Keep the relay sessions right, called as packets are read: accept the pending session of
- * every lobby member the gate allows (steamworks.js cannot pass the request callback on), and
- * now and then look at each session: report one that broke, and close one that is not relayed
- * (which, with ICE off, should never happen).
- */
-function pumpRelaySessions() {
-    if (!relayTransport || !currentLobby) return;
-    const now = performance.now();
-    if (relayPumpDue(now, relayAcceptedAt, RELAY_ACCEPT_EVERY_MS)) {
-        relayAcceptedAt = now;
-        for (const steamId of otherLobbyMembers()) {
-            const accepted = p2pSessionGate?.allowsSession(steamId) && relayTransport.acceptFrom(steamId);
-            if (accepted && !relayPeers.has(steamId)) {
-                relayPeers.set(steamId, SESSION_STATE.none);
-                steamLog(`Accepted a relayed session from lobby member ${steamId}`);
-            }
-        }
-    }
-    if (!relayPumpDue(now, relayCheckedAt, RELAY_CHECK_EVERY_MS)) return;
-    relayCheckedAt = now;
-    for (const [steamId, before] of relayPeers) {
-        const session = relayTransport.session(steamId);
-        if (session.state === before) continue;
-        relayPeers.set(steamId, session.state);
-        if (session.state === SESSION_STATE.connected) {
-            steamLog(`Session with ${steamId}: connected, relayed=${session.relayed}, `
-                + `peer address known=${session.addressKnown}`);
-            if (session.layoutOk && !session.relayed) {
-                steamLog(`WARN: session with ${steamId} is not relayed; closing it`);
-                relayTransport.close(steamId);
-                relayPeers.delete(steamId);
-                sendToRenderer('steam:p2pSessionFailed', { steamId, error: 'not-relayed' });
-            }
-        } else if (session.state === SESSION_STATE.closedByPeer || session.state === SESSION_STATE.problem) {
-            steamLog(`WARN: relayed session with ${steamId} ended (state ${session.state})`);
-            sendToRenderer('steam:p2pSessionFailed', { steamId, error: session.state });
-        }
-    }
-}
-
-/** We left the lobby (or Steam is going): close every relayed session. */
-function closeRelaySessions() {
-    if (!relayTransport) return;
-    for (const steamId of relayPeers.keys()) {
-        try {
-            relayTransport.close(steamId);
-        } catch (error) {
-            steamLog(`WARN: closing the relayed session with ${steamId} failed: ${error?.message || error}`);
-        }
-    }
-    relayPeers.clear();
 }
 
 async function initSteamworks(retries = 3) {
@@ -1196,7 +1145,7 @@ export function registerSteamIPC() {
         const { maxPlayers = 8, lobbyType = 'friends' } = options || {};
         // public -> 2, friends -> 1, private -> 0 (electron/steam-lobby-type.js).
         const lobby = await steamworksClient.matchmaking.createLobby(steamLobbyType(lobbyType), maxPlayers);
-        closeRelaySessions();
+        relaySessions.closeAll();
         p2pSessionGate?.clear();
         currentLobby = lobby;
         currentLobbyId = lobby.id.toString();
@@ -1211,7 +1160,7 @@ export function registerSteamIPC() {
         // joinLobby() RESOLVES to the Lobby object — keep it; it's the only handle
         // to the lobby's owner/members/data in steamworks.js 0.4.0.
         const lobby = await steamworksClient.matchmaking.joinLobby(BigInt(lobbyId));
-        closeRelaySessions();
+        relaySessions.closeAll();
         p2pSessionGate?.clear();
         currentLobby = lobby || null;
         currentLobbyId = lobby?.id ? lobby.id.toString() : String(lobbyId);
@@ -1225,7 +1174,7 @@ export function registerSteamIPC() {
     });
 
     ipcMain.handle('steam:leaveLobby', () => {
-        closeRelaySessions();
+        relaySessions.closeAll();
         p2pSessionGate?.clear();
         if (!currentLobby) { currentLobbyId = null; return; }
         try { currentLobby.leave(); } catch {}
@@ -1314,7 +1263,7 @@ export function registerSteamIPC() {
             const type = resolveP2PSendType(sendType, buffer.byteLength); // default: Reliable
             if (relayTransport) {
                 const id = String(steamId);
-                if (!relayPeers.has(id)) relayPeers.set(id, SESSION_STATE.none);
+                relaySessions.notePeer(id);
                 const result = relayTransport.send(id, buffer, type);
                 if (result !== RESULT_OK) steamLog(`WARN: relayed send to ${id} failed (EResult ${result})`);
                 return { sent: result === RESULT_OK, wireBytes: buffer.byteLength };
@@ -1331,12 +1280,12 @@ export function registerSteamIPC() {
         if (!steamworksClient) return null;
         if (relayTransport) {
             try {
-                pumpRelaySessions();
+                relaySessions.pump();
                 const message = relayTransport.next();
                 if (!message) return null;
                 // Only lobby members the gate allows have a session; anyone else's packet
                 // could not have arrived. Kept for the session bookkeeping.
-                if (!relayPeers.has(message.steamId)) relayPeers.set(message.steamId, SESSION_STATE.none);
+                relaySessions.notePeer(message.steamId);
                 return {
                     steamId: message.steamId,
                     data: decodeP2PPacketBody(message.data),
@@ -1378,13 +1327,7 @@ export function registerSteamIPC() {
     ipcMain.handle('steam:closeP2PSession', (_event, steamId) => {
         // The relay transport closes the session at once. steamworks.js 0.4.0 has no
         // closeP2PSession for the legacy calls: their sessions time out on their own.
-        if (!relayTransport || steamId == null) return;
-        try {
-            relayTransport.close(String(steamId));
-        } catch (error) {
-            steamLog(`WARN: closing the relayed session with ${steamId} failed: ${error?.message || error}`);
-        }
-        relayPeers.delete(String(steamId));
+        relaySessions.close(steamId);
     });
 
     // The game's role in its match: whether it hosts, who its host is, and whether that host
@@ -1419,7 +1362,7 @@ export function cleanupSteam() {
             steamworksClient.localplayer?.setRichPresence?.('status');
             steamworksClient.localplayer?.setRichPresence?.('connect');
         } catch {}
-        closeRelaySessions();
+        relaySessions.closeAll();
         try { currentLobby?.leave?.(); } catch {}
         steamworksClient = null;
     }

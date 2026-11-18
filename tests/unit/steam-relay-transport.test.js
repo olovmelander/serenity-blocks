@@ -120,6 +120,14 @@ const open = (steam, options = {}) => openRelayTransport({
     ...options,
 });
 
+const readElectron = (file) => readFileSync(join(process.cwd(), 'electron', file), 'utf8');
+/** Where electron/steam-integration.js hands the session pump (electron/relay-session-pump.js) its parts. */
+const relayPumpWiring = (source) => {
+    const start = source.indexOf('= createRelaySessionPump({');
+    expect(start).toBeGreaterThan(-1);
+    return source.slice(start, source.indexOf('\n});', start));
+};
+
 describe('the relay transport (electron/steam-relay-transport.js)', () => {
     it('turns direct connections off for the whole process before anything else, then opens', () => {
         const steam = fakeSteam();
@@ -295,8 +303,40 @@ describe('online play goes through the relays or not at all', () => {
         expect(source).toContain("if (!lobbyAllowed(networkMode)) return { sent: false, wireBytes: 0, refused: 'no-relay' };");
         // the direct fallback is decided by the store-build check
         expect(source).toContain('storeBuild: isStoreBuild({ isPackaged: app.isPackaged }),');
-        // sessions are accepted only for members the gate allows
-        expect(source).toContain('p2pSessionGate?.allowsSession(steamId) && relayTransport.acceptFrom(steamId)');
+        // sessions are accepted only for members the gate allows: the session pump's rule
+        // (tests/unit/relay-session-pump.test.js), handed this gate and this transport
+        expect(readElectron('relay-session-pump.js'))
+            .toContain('gate()?.allowsSession(steamId) && relay.acceptFrom(steamId)');
+        expect(relayPumpWiring(source)).toContain('transport: () => relayTransport,');
+        expect(relayPumpWiring(source)).toContain('gate: () => p2pSessionGate,');
+    });
+
+    it('is wired so: every relayed read pumps the sessions, and every way out of a lobby closes them', () => {
+        const source = readElectron('steam-integration.js');
+        const handler = (channel) => {
+            const start = source.indexOf(`ipcMain.handle('${channel}'`);
+            expect(start, channel).toBeGreaterThan(-1);
+            return source.slice(start, source.indexOf('ipcMain.handle(', start + 1));
+        };
+        const read = handler('steam:readP2PPacket');
+        expect(read.indexOf('relaySessions.pump();')).toBeGreaterThan(-1);
+        expect(read.indexOf('relaySessions.pump();')).toBeLessThan(read.indexOf('relayTransport.next()'));
+        expect(read).toContain('relaySessions.notePeer(message.steamId);');
+        expect(handler('steam:sendP2PPacket')).toContain('relaySessions.notePeer(id);');
+        expect(handler('steam:closeP2PSession')).toContain('relaySessions.close(steamId);');
+        for (const channel of ['steam:createLobby', 'steam:joinLobby', 'steam:leaveLobby']) {
+            expect(handler(channel), channel).toContain('relaySessions.closeAll();');
+        }
+        const cleanup = source.slice(source.indexOf('export function cleanupSteam()'));
+        const closeAll = cleanup.indexOf('relaySessions.closeAll();');
+        expect(closeAll).toBeGreaterThan(-1);
+        expect(closeAll).toBeLessThan(cleanup.indexOf('relayTransport?.dispose();'));
+        const wiring = relayPumpWiring(source);
+        expect(wiring).toContain('inLobby: () => Boolean(currentLobby),');
+        expect(wiring).toContain('members: otherLobbyMembers,');
+        expect(wiring).toContain("report: (failure) => sendToRenderer('steam:p2pSessionFailed', failure),");
+        // a new transport starts with no sessions to watch
+        expect(source).toMatch(/relayTransport = null;\s*relaySessions\.forgetAll\(\);/);
     });
 });
 
@@ -310,13 +350,14 @@ describe('the relay session pump\'s clock', () => {
     });
 
     it('is wired to the monotonic clock, not the wall clock', () => {
-        const source = readFileSync(join(process.cwd(), 'electron', 'steam-integration.js'), 'utf8');
-        const start = source.indexOf('function pumpRelaySessions()');
-        const pump = source.slice(start, source.indexOf('\n}\n', start));
+        const source = readElectron('steam-integration.js');
+        const wiring = relayPumpWiring(source);
+        const pump = readElectron('relay-session-pump.js');
         expect(source).toMatch(/import \{ performance \} from '(node:)?perf_hooks';/);
-        expect(pump).toContain('const now = performance.now();');
+        expect(wiring).toContain('now: () => performance.now(),');
+        expect(wiring).not.toContain('Date.now()');
         expect(pump).not.toContain('Date.now()');
-        expect(pump).toContain('relayPumpDue(now, relayAcceptedAt, RELAY_ACCEPT_EVERY_MS)');
-        expect(pump).toContain('relayPumpDue(now, relayCheckedAt, RELAY_CHECK_EVERY_MS)');
+        expect(pump).toContain('relayPumpDue(at, acceptedAt, RELAY_ACCEPT_EVERY_MS)');
+        expect(pump).toContain('relayPumpDue(at, checkedAt, RELAY_CHECK_EVERY_MS)');
     });
 });

@@ -22,6 +22,7 @@ address, but steamworks.js does not expose it. The Steam API library it loads
 |---|---|
 | `electron/steam-relay-transport.js` | Loads the same Steam API library through koffi, turns ICE off for the whole process (`P2P_Transport_ICE_Enable` = 0), warms up the relay network, and sends, reads, accepts and closes sessions through ISteamNetworkingMessages. Pure apart from koffi and the library path. |
 | `electron/steam-integration.js` | Opens the transport as soon as Steam starts, before any callback can accept a session. The `steam:sendP2PPacket` / `readP2PPacket` / `isP2PPacketAvailable` / `closeP2PSession` handlers use it. The renderer's networking is unchanged. |
+| `electron/relay-session-pump.js` | The sessions' upkeep (below): accepts, checks, closes and reports them, and logs what it does. Pure: `steam-integration.js` hands it the transport, the gate, the lobby and the page. |
 | `electron/steam-network-transport.js` | The mode the page is told (`steam:getNetworkTransport`): `relay`, `unavailable`, `direct` (development only) or `none`. |
 | `electron/p2p-session-gate.js` | Unchanged rules: lobby members only, and everyone but the host talks to the host alone. `allowsSession` exposes the rule to the relay transport. |
 | `src/core/steam/steam-networking.js` | Before creating or joining a lobby, asks for the transport and stops with a readable message when it is `unavailable`. |
@@ -35,7 +36,9 @@ request too. A peer the gate does not allow is never accepted, and its messages 
 **Watching the sessions.** Every second, each session's state is read. On reaching Connected the
 log notes `relayed=… peer address known=…`. A session that ends is reported to the page as
 `steam:p2pSessionFailed`, like the legacy connect-fail callback. A session that is connected but
-not relayed is closed and reported (with ICE off this should never happen).
+not relayed is closed and reported (with ICE off this should never happen). The gate still allows
+that player, so if they keep sending, their session is accepted again, then closed and reported
+again at the next check.
 
 **Send types.** The packet codec's legacy types map to the new flags: Unreliable → 0,
 UnreliableNoDelay → 5, Reliable → ReliableNoNagle (9), ReliableWithBuffering → Reliable (8). Every
@@ -87,7 +90,11 @@ old way (which would connect directly) is never accepted.
   - accept and close for the named peer only;
   - session reading, and the layout guard;
   - the wiring: the transport opens before callbacks, legacy requests are ignored, no lobby and no
-    packet without the relay.
+    packet without the relay, every read pumps the sessions, every way out of a lobby closes them.
+- Unit tests (`tests/unit/relay-session-pump.test.js`, with a fake transport) of the sessions' upkeep:
+  only members the gate allows are accepted, at most every 200 ms; sessions are checked at most every
+  second, and at once after the clock went back; a session connected but not relayed is closed and
+  reported once, an ended one reported once; leaving closes every session; the log lines below.
 - Also tested: the store-build rule for the direct fallback, the gate's `allowsSession`, and the
   package checks.
 - The real `steam_api64.dll` from steamworks.js 0.4.0, loaded through the real koffi 3.3.5 on
