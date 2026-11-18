@@ -3219,6 +3219,10 @@ export class GamepadController {
                 else callbacks.closeHub?.();
                 if (callbacks.isHubOpen?.() !== true) {
                     this.hubToggledAt = performance.now();
+                    // A handoff, not a rapid toggle: inside the debounce of the Start that opened
+                    // Settings (before View swapped it for the Hub), the Hub closed and Settings
+                    // never opened, leaving the game paused with nothing on screen.
+                    this._toggleCooldown = false;
                     this.toggleSettings(slot);
                 }
             }
