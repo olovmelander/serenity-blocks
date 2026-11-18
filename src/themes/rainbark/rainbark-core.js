@@ -3466,7 +3466,7 @@ export const SPARKS = Object.freeze({
         n: 12, fall: 1.6, life: Object.freeze([2.6, 4.6]), px: Object.freeze([2.6, 5.2]),
     }),
     floor: Object.freeze({
-        n: 0.34, rise: 0.5, life: Object.freeze([4.5, 8]), px: Object.freeze([3.4, 7.5]), over: 4,
+        n: 0.66, rise: 0.55, life: Object.freeze([5, 9.5]), px: Object.freeze([3.6, 9]), over: 5.5,
     }),
     climb: Object.freeze({
         n: 0.26, life: Object.freeze([3.2, 5]), px: Object.freeze([2.6, 5.5]), over: 2.2,

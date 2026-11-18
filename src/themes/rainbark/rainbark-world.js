@@ -1917,12 +1917,15 @@ export class RainbarkWorld {
         return at;
     }
 
-    /** The Floor: slow lights rising out of the drained mist. */
+    /**
+     * The Floor: slow lights rising out of the drained mist through the whole grove, from under the
+     * frame's foot to over the eye: the quietest of the big moments, and the one that fills the air.
+     */
     sparkFloor(t) {
         const sparks = this.parts.fx?.sparks;
         if (!sparks) return;
         const F = SPARKS.floor;
-        const at = this.veilAt(7, 60, -0.5, -0.12);
+        const at = this.veilAt(6, 70, -0.5, 0.22);
         const look = this.sparkLook(F, SPARKS.gold, SPARKS.cream, 0.25);
         look.over = F.over;
         look.gravity = -F.rise * 0.5;

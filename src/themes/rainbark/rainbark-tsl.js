@@ -2217,9 +2217,10 @@ export const BARK_LIGHT = Object.freeze({
  * the grain (the noise from `grain`[0] to [1]) its light runs from `deep` of First Skin's between
  * the streaks to `bright` of it in them, turned `gold` of the way to the flecks' gold there (sap
  * catching the sun), and it stands at `edge` of itself at its torn edges, whole `heart` metres in.
+ * A twist's helix blazes `twist` of the way to gold instead of lime: its own light.
  */
 export const BLAZE_SAP = Object.freeze({
-    grain: Object.freeze([0.3, 0.72]), deep: 0.38, bright: 1.5, gold: 0.35, edge: 0.45, heart: 0.09,
+    grain: Object.freeze([0.3, 0.72]), deep: 0.38, bright: 1.5, gold: 0.35, edge: 0.45, heart: 0.09, twist: 0.85,
 });
 
 export const FLECK_SHOULDER = Object.freeze({
@@ -2436,6 +2437,8 @@ export function rbBarkEvents(u, {
     const blaze = float(0.0).toVar();
     const flushK = float(0.0).toVar();
     const inside = float(1.0).toVar();
+    /** 1 where the mark on top is a twist's helix (its blaze is gold, a ring's First Skin lime). */
+    const spun = float(0.0).toVar();
     const aaY = max(fwY, 1e-4).toVar();
     const tear = rag.sub(0.5).mul(2.0 * PEEL.tear).toVar();
     Loop({
@@ -2495,6 +2498,7 @@ export function rbBarkEvents(u, {
                 hard.assign(C.z);
                 flushK.assign(exp(t.div(-PEEL.flushTau)).mul(PEEL.flush));
                 blaze.assign(0.0);
+                spun.assign(0.0);
                 inside.assign(edge.negate());
                 // (An older band's rim and cream stay under the newer band: never its outline.)
                 rim.mulAssign(float(1.0).sub(cover));
@@ -2583,6 +2587,7 @@ export function rbBarkEvents(u, {
                 hard.assign(0.0);
                 flushK.assign(0.0);
                 blaze.assign(smoothstep(SHED.bare - 0.04, SHED.bare + 0.03, tb).mul(float(1.0).sub(rip)).mul(I.x));
+                spun.assign(0.0);
                 inside.assign(edge.negate());
                 // (An older ring's or band's rim and cream stay under the newer ring: never a chain
                 // of beads along the seam.)
@@ -2634,6 +2639,7 @@ export function rbBarkEvents(u, {
                 hard.assign(0.0);
                 flushK.assign(0.0);
                 blaze.assign(float(1.0).sub(smoothstep(0.2, HELIX.blaze, t.sub(HELIX.start).sub(s.mul(HELIX.unwind).div(max(Hx.z, 1.0))))));
+                spun.assign(1.0);
                 inside.assign(edge.negate());
             });
             const outside = smoothstep(0.0, aaY, edge).mul(float(1.0).sub(smoothstep(PEEL.rim * 0.35, PEEL.rim, edge)));
@@ -2662,7 +2668,7 @@ export function rbBarkEvents(u, {
         });
     });
     return {
-        k, age, since, hard, rim, cream, split, lifting, knock, blaze, flushK, inside,
+        k, age, since, hard, rim, cream, split, lifting, knock, blaze, flushK, inside, spun,
     };
 }
 
@@ -3311,7 +3317,10 @@ export function rbBark(u, at, {
         const sapN = fineN ? fineN.b.mul(0.6).add(coarseN.g.mul(0.4)) : coarseN.g;
         const sap = smoothstep(BLAZE_SAP.grain[0], BLAZE_SAP.grain[1], sapN).toVar();
         const heart = smoothstep(0.0, BLAZE_SAP.heart, ev.inside).mul(1.0 - BLAZE_SAP.edge).add(BLAZE_SAP.edge);
-        const blazeCol = mix(u.ramp(float(0.0)).mul(BLAZE_SAP.deep), mix(u.ramp(float(0.0)), vec3(...FLECK_GOLD), BLAZE_SAP.gold)
+        // (A twist's helix blazes gold, the sun caught in the strip as it unwinds: its own light,
+        // never the lime of a cleared row's ring.)
+        const skin = mix(u.ramp(float(0.0)), vec3(...FLECK_GOLD), ev.spun.mul(BLAZE_SAP.twist)).toVar();
+        const blazeCol = mix(skin.mul(BLAZE_SAP.deep), mix(skin, vec3(...FLECK_GOLD), BLAZE_SAP.gold)
             .mul(BLAZE_SAP.bright), sap);
         lit.addAssign(blazeCol.mul(heart).mul(ev.blaze.mul(ev.k).mul(SHED.blazeLight * 0.55)).mul(u.iris));
         lit.addAssign(vec3(...FLECK_GOLD).mul(ev.split.mul(1.6)).mul(u.iris));
