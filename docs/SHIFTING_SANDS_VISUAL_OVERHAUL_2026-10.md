@@ -437,7 +437,7 @@ frame rate, the integrated GPU, a phone.
   GLSL at High and Minimal. Typecheck, the lint and TypeScript ratchets, architecture fitness,
   dependency boundaries, the theme lifecycle audit, the palette gate and the IP-string gate pass.
 - Gotchas #1518 (a cloud deck in rows is a sunburst), #1608 (a moonlit desert as a snowfield),
-  #1742 (crest fire as a band) and #1743 (a dust devil as a glass ribbon).
+  #1743 (crest fire as a band) and #1744 (a dust devil as a glass ribbon).
 
 ### Open
 
