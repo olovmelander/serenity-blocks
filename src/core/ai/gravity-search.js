@@ -208,7 +208,7 @@ function value(board, weights, pending, virtual, probe) {
             tested++;
             probe.set(board.cells);
             for (let x = 0; x < COLS; x++) if (missing & (1 << x)) probe[y * COLS + x] = probe.length + x + 8;
-            const waves = settleLabelledBoard(probe, board.first);
+            const waves = settleLabelledBoard(probe, board.first, board.top);
             const lines = waves.reduce((sum, n) => sum + n, 0);
             const capacity = waves.length * weights.virtualWaves + lines * weights.virtualLines;
             best = Math.max(best, capacity - gaps * weights.virtualGap);
@@ -331,7 +331,7 @@ function* triggerSteps(board, known, weights, allowUnknown, probe, sliced) {
                 if (!reachable.get(key).some((p) => p.x === x && p.y === py && p.rotation === form.rotation)) continue;
             }
             stamp(board, form, x, py, board.cells.length + 1, probe);
-            const waves = settleLabelledBoard(probe, board.first);
+            const waves = settleLabelledBoard(probe, board.first, Math.max(0, Math.min(board.top, py + form.top)));
             const lines = waves.reduce((sum, n) => sum + n, 0);
             best = Math.max(best, discount * (waves.length ** 2 * weights.triggerWaves + lines * weights.triggerLines));
         }
@@ -441,7 +441,8 @@ export function* searchGravity(state, config, pending, weights = GRAVITY_WEIGHTS
                 const source = parent.board;
                 const label = start.cells.length + 8 + ply;
                 const cells = stamp(source, form, x, y, label, scratch.cells);
-                const waves = completes(source, form, x, y) ? settleLabelledBoard(cells, source.first) : [];
+                const waves = completes(source, form, x, y)
+                    ? settleLabelledBoard(cells, source.first, Math.max(0, Math.min(source.top, y + form.top))) : [];
                 const board = waves.length ? describe(cells, source.first)
                     : afterQuietLock(source, cells, form, x, y, scratch);
                 const paid = waves.length ? gravityReward(waves, !board.stock, parent.context) : quiet;
@@ -514,7 +515,9 @@ export function* searchGravity(state, config, pending, weights = GRAVITY_WEIGHTS
                 parent, form, label, move,
             } = node;
             const cells = stamp(parent.board, form, move.x, move.y, label);
-            if (move.waves.length) settleLabelledBoard(cells, start.first);
+            if (move.waves.length) {
+                settleLabelledBoard(cells, start.first, Math.max(0, Math.min(parent.board.top, move.y + form.top)));
+            }
             node.board = describe(cells, start.first);
             if (config.trigger) {
                 const trigger = triggerSteps(node.board, known, weights, true, scratch.probe, config.sliceRoofProbes);

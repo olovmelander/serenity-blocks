@@ -74,6 +74,8 @@ let fragLeft = new Int32Array(0);
 let fragRight = new Int32Array(0);
 let fragFall = new Int32Array(0);
 let order = new Int32Array(0);
+let edgeCursor = new Int32Array(0);
+let grounded = new Int32Array(0);
 let fragments = 0;
 let stamp = 0;
 /** The board loadCascadeBase loaded, and its height (0: none). */
@@ -100,6 +102,8 @@ function ensure(/** @type {number} */ count) {
     fragRight = new Int32Array(count);
     fragFall = new Int32Array(count);
     order = new Int32Array(count);
+    edgeCursor = new Int32Array(count / COLS);
+    grounded = new Int32Array(count);
     stamp = 0;
 }
 
@@ -167,17 +171,26 @@ function load(lockedPieces, boardHeight) {
  * @param {number} [firstPlayableRow]
  * @param {number[]} [waveLines]
  * @param {boolean} [keepLooks]
+ * @param {number} [firstOccupied] Rows above this bound were empty before the lock settled.
  * @returns {{ cascadeCount: number, linesClearedThisTurn: number }}
  */
-function settle(boardHeight, firstPlayableRow = HIDDEN_ROWS, waveLines = undefined, keepLooks = true) {
+function settle(
+    boardHeight,
+    firstPlayableRow = HIDDEN_ROWS,
+    waveLines = undefined,
+    keepLooks = true,
+    firstOccupied = 0,
+) {
     const total = boardHeight * COLS;
+    const firstCell = firstOccupied * COLS;
+    const firstClearable = Math.max(firstPlayableRow, firstOccupied);
     let cascadeCount = 0;
     let linesClearedThisTurn = 0;
     fragments = 0;
     for (;;) {
         // detectFullLines: bottom-up, never the hidden rows.
         let cleared = 0;
-        for (let y = boardHeight - 1; y >= firstPlayableRow; y -= 1) {
+        for (let y = boardHeight - 1; y >= firstClearable; y -= 1) {
             const base = y * COLS;
             let full = true;
             for (let x = 0; x < COLS && full; x += 1) full = ids[base + x] !== 0;
@@ -192,11 +205,16 @@ function settle(boardHeight, firstPlayableRow = HIDDEN_ROWS, waveLines = undefin
 
         // findConnectedComponents: same-id groups in reading order, each with its first cell's
         // look made the component's own (its type, else its colour; its colour, else the type's).
-        stamp += 1;
+        if (++stamp > 0x7fffffff) {
+            seen.fill(0);
+            grounded.fill(0);
+            stamp = 1;
+        }
         fragments = 0;
         let used = 0;
-        owner.fill(0, 0, total);
-        for (let start = 0; start < total; start += 1) {
+        owner.fill(0, firstCell, total);
+        edgeCursor.fill(0, 0, boardHeight);
+        for (let start = firstCell; start < total; start += 1) {
             const id = ids[start];
             if (id === 0 || seen[start] === stamp) continue;
             seen[start] = stamp;
@@ -246,6 +264,7 @@ function settle(boardHeight, firstPlayableRow = HIDDEN_ROWS, waveLines = undefin
             fragCount[fragment] = used - first;
             fragTop[fragment] = top;
             fragBottom[fragment] = bottom;
+            edgeCursor[bottom]++;
             fragLeft[fragment] = left;
             fragRight[fragment] = right;
             fragFall[fragment] = 0;
@@ -255,15 +274,19 @@ function settle(boardHeight, firstPlayableRow = HIDDEN_ROWS, waveLines = undefin
         // (the resolver's sort is stable), here a counting sort.
         let placed = 0;
         for (let edge = boardHeight - 1; edge >= 0; edge -= 1) {
-            for (let fragment = 0; fragment < fragments; fragment += 1) {
-                if (fragBottom[fragment] === edge) order[placed++] = fragment;
-            }
+            const count = edgeCursor[edge];
+            edgeCursor[edge] = placed;
+            placed += count;
+        }
+        for (let fragment = 0; fragment < fragments; fragment++) {
+            order[edgeCursor[fragBottom[fragment]]++] = fragment;
         }
         let falling = true;
         while (falling) {
             falling = false;
             for (let k = 0; k < fragments; k += 1) {
                 const fragment = order[k];
+                if (grounded[fragment] === stamp) continue;
                 const start = fragStart[fragment];
                 const end = start + fragCount[fragment];
                 const shift = fragFall[fragment] * COLS;
@@ -271,7 +294,17 @@ function settle(boardHeight, firstPlayableRow = HIDDEN_ROWS, waveLines = undefin
                 let canFall = true;
                 for (let c = start; c < end && canFall; c += 1) {
                     const below = cells[c] + shift + COLS;
-                    if (below >= total || (owner[below] !== 0 && owner[below] !== self)) canFall = false;
+                    if (below >= total) {
+                        grounded[fragment] = stamp;
+                        canFall = false;
+                    } else {
+                        const support = owner[below];
+                        if (support && support !== self) {
+                            // A floor-supported chain stays still for the rest of this wave.
+                            if (grounded[support - 1] === stamp) grounded[fragment] = stamp;
+                            canFall = false;
+                        }
+                    }
                 }
                 if (!canFall) continue;
                 for (let c = start; c < end; c += 1) owner[cells[c] + shift] = 0;
@@ -282,7 +315,7 @@ function settle(boardHeight, firstPlayableRow = HIDDEN_ROWS, waveLines = undefin
         }
 
         // The board the next wave reads: each fragment's cells where it came to rest.
-        ids.fill(0, 0, total);
+        ids.fill(0, firstCell, total);
         for (let fragment = 0; fragment < fragments; fragment += 1) {
             const start = fragStart[fragment];
             const end = start + fragCount[fragment];
@@ -304,13 +337,14 @@ function settle(boardHeight, firstPlayableRow = HIDDEN_ROWS, waveLines = undefin
  * buffers, so different players can interleave searches between locks.
  * @param {Int32Array} board
  * @param {number} firstPlayableRow
+ * @param {number} [firstOccupied] Earliest possible occupied row, including the new piece.
  * @returns {number[]} cleared lines in each wave
  */
-export function settleLabelledBoard(board, firstPlayableRow) {
+export function settleLabelledBoard(board, firstPlayableRow, firstOccupied = 0) {
     ensure(board.length);
     ids.set(board);
     const waveLines = [];
-    settle(board.length / COLS, firstPlayableRow, waveLines, false);
+    settle(board.length / COLS, firstPlayableRow, waveLines, false, firstOccupied);
     board.set(ids.subarray(0, board.length));
     return waveLines;
 }

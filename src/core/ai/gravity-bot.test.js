@@ -149,7 +149,11 @@ describe('live gravity policy', () => {
         expect(gravityBoardKey(readGravityBoard(grid).cells)).not.toBe(key);
         const board = readGravityBoard(grid);
         const ref = resolveCascade(findConnectedComponents(grid), { disableLevelProgression: true });
-        expect(settleLabelledBoard(board.cells, HIDDEN_ROWS)).toEqual(ref.waves.map((w) => w.fullLines.length));
+        const allRows = board.cells.slice();
+        const waves = settleLabelledBoard(board.cells, HIDDEN_ROWS, board.top);
+        expect(waves).toEqual(settleLabelledBoard(allRows, HIDDEN_ROWS));
+        expect(board.cells).toEqual(allRows);
+        expect(waves).toEqual(ref.waves.map((w) => w.fullLines.length));
         expect(gravityBoardKey(board.cells)).toBe(gravityBoardKey(readGravityBoard(ref.boardAfter).cells));
         expect(gravityReward([1, 2, 1], false, { level: 1, disableLevelProgression: true }).attack).toBe(3);
         state.reset();
