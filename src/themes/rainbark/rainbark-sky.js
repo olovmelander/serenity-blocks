@@ -44,9 +44,10 @@
  * Both planes and every rank are reached with the same closed-form air (rbAir), so the frame is
  * continuous at the horizon: a ray that grazes a plane has crossed so much air it shows only haze.
  *  - The Floor (a perfect clear, u.drain): with the mist drained the rays down meet the forest
- *    floor at y = 0 (FLOOR): warm gravel mottled and pebbled, a braided stream whose channels
- *    glint where the flecks reach them, the session's shed curls as a carpet of bark colours,
- *    broad pools of sun; the impostor feet stop at it. Read only while it shows.
+ *    floor at y = 0 (FLOOR): moss and fern broken by drifts of litter and wet earth, a river
+ *    winding through it that mirrors the gold air and glitters where the flecks reach it, the
+ *    session's shed curls as a carpet of bark colours, broad pools of sun; the impostor feet
+ *    stop at it. Read only while it shows.
  *
  * One far-plane triangle (vertexNode at z = w), drawn after the solids with the depth test on, so
  * it is shaded only where it shows.
@@ -102,54 +103,79 @@ import {
     rbViewRay,
 } from './rainbark-tsl.js';
 
-/** The floor's gravel and its stream's glint (linear). */
-const GRAVEL = hexToLinear(FLOOR.gravel);
+/** The floor's colours (linear): moss, sunlit fern, leaf litter, wet earth, the river's glint. */
+const MOSS = hexToLinear(FLOOR.moss);
+const FERN = hexToLinear(FLOOR.fern);
+const LITTER = hexToLinear(FLOOR.litter);
+const EARTH = hexToLinear(FLOOR.earth);
 const GLINT = hexToLinear(FLOOR.glint);
 
 /**
- * The forest floor along a ray down (the Floor): gravel, the braided stream, the carpet of curls,
- * lit by the canopy's flecks (broad pools from this far below) and the sky, through the air.
+ * The forest floor along a ray down (the Floor): a rainforest's floor seen from the walkway, so
+ * what reads is its large shapes. A carpet of moss and fern (deep green, lime where the canopy's
+ * light pools on it) broken by drifts of leaf litter and bare wet earth; one river winding through
+ * it with a tributary, wide enough to read as water, mirroring the gold air toward the sun and the
+ * blue away from it, glittering where a fleck lands on it, its banks dark and wet, a breath of
+ * mist lying along it; the session's shed bark as a carpet of colour where the eye is near enough
+ * to resolve it; all of it through the thinned air. Nothing here is finer than a pixel: every
+ * pattern melts into its mean as its footprint grows.
  */
 function rbFloor(u, dir) {
     const t = u.camPos.y.div(max(dir.y.negate(), 1e-3));
     const F = u.camPos.add(dir.mul(t)).toVar();
-    const n = u.fbm(F.xz.div(7.0)).toVar();
-    const big = u.fbm(F.xz.div(55.0).add(vec2(0.31, 0.77))).toVar();
-    // Gravel: warm, mottled, pebbled.
-    const near = float(1.0).sub(smoothstep(0.02, 0.06, t.mul(u.pixelAngle).div(max(dir.y.negate(), 0.05))));
-    const pebble = smoothstep(0.55, 0.8, n.a).mul(0.25).mul(near);
-    const gravel = vec3(...GRAVEL).mul(n.g.sub(0.5).mul(0.5).add(0.8)).mul(pebble.add(0.85)).toVar();
-    // The braided stream: two channel fields, where each crosses its middle.
-    const ch = float(1.0).sub(smoothstep(0.02, 0.05, abs(big.r.sub(0.5))));
-    // The carpet of shed curls: long strips of bark colour lying every way (two grids of thin cells,
-    // across and along), where a hash falls under the density; muted by the floor's shade.
+    // (Metres of floor a pixel covers along the ray, as a share of a pattern's size.)
+    const foot = t.mul(u.pixelAngle).div(max(dir.y.negate(), 0.05)).toVar();
+    const fine = u.fbm(F.xz.div(9.0)).toVar();
+    const broad = u.fbm(F.xz.div(64.0).add(vec2(0.31, 0.77))).toVar();
+    // The ground: moss and fern, drifts of litter, bare earth; mottled where it resolves.
+    const mottle = mix(float(1.0), fine.g.mul(0.7).add(0.65), float(1.0).sub(smoothstep(0.4, 2.2, foot)));
+    const litterK = smoothstep(0.56, 0.72, broad.g).mul(0.7);
+    const earthK = smoothstep(0.64, 0.76, broad.b).mul(0.6);
+    const green = mix(vec3(...MOSS), vec3(...FERN), smoothstep(0.35, 0.75, broad.a));
+    const ground = mix(mix(green, vec3(...LITTER), litterK), vec3(...EARTH), earthK).mul(mottle).toVar();
+    // The river: one water running away through the grove on the sun's side, swinging from side to
+    // side as it goes (two waves along its course), its width swelling and narrowing; the distance
+    // to its middle is measured square to its course. Never a contour drawn on the floor: a river
+    // has one course and no rings.
+    const R = FLOOR.river;
+    const { z } = F;
+    const a1 = z.div(R.wave[0]).add(1.0);
+    const a2 = z.div(R.wave[1]).add(2.3);
+    const course = sin(a1).mul(R.swing[0]).add(sin(a2).mul(R.swing[1])).add(R.offset);
+    const slope = cos(a1).mul(R.swing[0] / R.wave[0]).add(cos(a2).mul(R.swing[1] / R.wave[1]));
+    const off = abs(F.x.sub(course)).div(sqrt(slope.mul(slope).add(1.0))).toVar();
+    const half = mix(float(R.width[0]), float(R.width[1]), broad.r).toVar();
+    const aa = max(foot.mul(R.aa), 0.3);
+    const water = float(1.0).sub(smoothstep(half, half.add(aa), off)).toVar();
+    // (Its banks wet and dark a little way out from the water: a river lies in the floor.)
+    const bank = float(1.0).sub(smoothstep(half, half.mul(R.bank), off)).toVar();
+    // The carpet of shed curls, where a strip resolves; its mean tint beyond.
     const cellA = floor(F.xz.mul(vec2(1.4, 5.5)));
     const cellB = floor(F.xz.mul(vec2(5.5, 1.4)).add(vec2(0.5, 0.5)));
     const h = min(rbHash21(cellA), rbHash21(cellB.add(vec2(41.0, 7.0))));
     const h2 = rbHash21(cellA.add(vec2(17.1, 3.3)));
-    // (Where a strip is narrower than a few pixels the carpet is its mean tint: no confetti.)
-    const foot = t.mul(u.pixelAngle).div(max(dir.y.negate(), 0.05)).toVar();
     const resolve = float(1.0).sub(smoothstep(0.05, 0.16, foot));
-    const curl = step(h, u.carpet.mul(0.32)).mul(float(1.0).sub(ch)).mul(resolve)
-        .add(u.carpet.mul(0.32 * 0.6).mul(float(1.0).sub(resolve)));
+    const curl = step(h, u.carpet.mul(0.32)).mul(resolve).add(u.carpet.mul(0.32 * 0.6).mul(float(1.0).sub(resolve)));
     const bark = mix(vec3(rbLuma(u.ramp(h2.mul(0.97)))), u.ramp(h2.mul(0.97)), 0.7).mul(0.5);
     const meanBark = vec3(0.32, 0.2, 0.14).mul(0.6);
-    // (Its banks wet and dark a little way out from the water: a channel lies in the gravel,
-    // never a line painted on it.)
-    const bank = float(1.0).sub(smoothstep(0.04, 0.13, abs(big.r.sub(0.5))));
-    const albedo = mix(mix(gravel, mix(meanBark, bark, resolve), curl), gravel.mul(0.35), ch.mul(0.85))
-        .mul(float(1.0).sub(bank.mul(0.35)))
+    const albedo = mix(ground, mix(meanBark, bark, resolve), curl.mul(float(1.0).sub(water)))
+        .mul(float(1.0).sub(bank.mul(R.wet)))
         .toVar();
-    // Light: the flecks (from this far down, broad soft pools), the sky through the canopy.
+    // Light: the canopy's flecks (from this far down, broad soft pools), the sky through the crowns.
     const fl = rbFleck(u, F, { lod: 'fixed', foot }).mul(u.fleckLight).toVar();
-    const sun = u.sunCol.mul(max(fl, u.fleckMean.mul(u.fleckLight).mul(0.7))).mul(u.sunDir.y);
-    const sky = u.col.sky.mul(0.32);
-    // The water mirrors the gold air toward the sun and glints where a fleck lands on it.
+    const sun = u.sunCol.mul(max(fl, u.fleckMean.mul(u.fleckLight).mul(0.7))).mul(u.sunDir.y).mul(FLOOR.sun);
+    const sky = u.col.sky.mul(0.3);
+    // The water mirrors the gold air toward the sun and the blue away from it (a mirror of the
+    // sky, so darker than the lit air itself), and glitters where a fleck lands on it (broad
+    // glitter: its ripples are far finer than a pixel).
     const sunward = dot(normalize(vec3(dir.x, 0.0, dir.z)), normalize(vec3(u.sunDir.x, 0.0, u.sunDir.z)));
-    const water = mix(u.col.sky.mul(0.3), u.col.hazeSun.mul(0.55), smoothstep(-0.2, 0.8, sunward))
-        .add(vec3(...GLINT).mul(min(fl, 1.2).mul(0.9)))
-        .mul(ch);
-    const lit = albedo.mul(sun.add(sky)).add(water.mul(u.iris));
+    const mirror = mix(u.col.sky.mul(R.mirror[0]), u.col.hazeSun.mul(R.mirror[1]), smoothstep(-0.3, 0.8, sunward));
+    const glitter = vec3(...GLINT).mul(min(fl, 1.4).mul(smoothstep(0.45, 0.8, fine.a)).mul(R.glitter));
+    const wet = mirror.add(glitter).mul(u.iris);
+    // (A breath of mist along the river: what is left of the drained floor's vapour.)
+    const breath = smoothstep(0.35, 0.8, broad.r.mul(0.5).add(fine.r.mul(0.5))).mul(bank).mul(R.breath);
+    const lit = mix(albedo.mul(sun.add(sky)), wet, water).toVar();
+    lit.assign(mix(lit, u.col.mistTop.mul(0.8), breath));
     return rbAir(u, lit, F, null, { billows: 0 });
 }
 

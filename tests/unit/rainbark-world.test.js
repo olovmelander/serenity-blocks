@@ -14,6 +14,7 @@ import {
 import {
     HERO_TRUNKS, MISTFALL, PALETTE_ROWS, STOREY, TIDE_PERIOD, TRUNK_STRIDE, TWIN_TRUNKS, ZONES, climbHeight, groupMean,
     mistDrift, mistOnset, recordAxis, sunDirection, tideClock,
+    lightWheelAt, wheelSun,
 } from '../../src/themes/rainbark/rainbark-core.js';
 import { EVENT_ROWS, SUN_BOLE } from '../../src/themes/rainbark/rainbark-tsl.js';
 import { QUALITY, QUALITY_NAMES } from '../../src/themes/rainbark/rainbark-quality.js';
@@ -249,8 +250,9 @@ describe('Rainbark world: the camera rig', () => {
         expect(world.u.tanHalf.value.y).toBeCloseTo(Math.tan((camera.fov * DEG) / 2), 9);
         const sun = world.u.sunDir.value;
         expect(sun.length()).toBeCloseTo(1, 9);
-        const bole = sunDirection(ZONES[1].sunElevation);
-        // The azimuth drifts a few degrees over the tide; the elevation is the zone's.
+        // The azimuth drifts a few degrees over the tide; the elevation is the zone's, turned by
+        // the light wheel's mood (each mood has its own sun).
+        const bole = sunDirection(ZONES[1].sunElevation + wheelSun(lightWheelAt(world.time), 0));
         expect(sun.y).toBeCloseTo(bole[1], 9);
         expect(sun.x).toBeGreaterThan(0);
         world.dispose();

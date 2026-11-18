@@ -911,6 +911,61 @@ export const PLAYGROUND_URL_PARAMETERS = [
         ],
     },
     {
+        name: 'mood',
+        category: 'Playground',
+        scope: 'playground.html — rainbark',
+        description: 'Hold a mood of the grove’s light wheel, whatever the clock says.',
+        values: 'morning, noon, gold, ember, dusk (the blue hour: the fireflies come out) or pearl.',
+        defaultValue: 'Unset (the clock turns one mood every 100 s).',
+        example: 'mood=dusk',
+        notes: 'Use on playground.html with effect=rainbark.',
+        sources: [
+            'src/playground/effects/rainbark.effect.js',
+        ],
+    },
+    {
+        name: 'happen',
+        category: 'Playground',
+        scope: 'playground.html — rainbark',
+        description: 'Hold one of the grove’s happenings instead of the clock’s own (one comes over the grove '
+            + 'about every 43 s from t = 80 on).',
+        values: 'sunbreak (the beams and flecks swell), gust (the leaves toss, leaves come down) or mistbank '
+            + '(the mist lifts and the air thickens).',
+        defaultValue: 'Unset (the clock decides).',
+        example: 'happen=sunbreak',
+        notes: 'Use on playground.html with effect=rainbark; happenAge sets how far into it the frame stands.',
+        sources: [
+            'src/playground/effects/rainbark.effect.js',
+        ],
+    },
+    {
+        name: 'happenAge',
+        category: 'Playground',
+        scope: 'playground.html — rainbark',
+        description: 'How many seconds into the held happening (happen=) the frame stands.',
+        values: 'Seconds ≥ 0.',
+        defaultValue: 'Just past the happening’s rise.',
+        example: 'happenAge=6',
+        notes: 'Use on playground.html with effect=rainbark&happen=<kind>.',
+        sources: [
+            'src/playground/effects/rainbark.effect.js',
+        ],
+    },
+    {
+        name: 'tune',
+        category: 'Playground',
+        scope: 'playground.html — rainbark',
+        description: 'Override a value the Rainbark world writes each frame, to bisect a look by eye.',
+        values: 'Comma-separated key:number pairs. Keys: beamGain (the beam field’s light), airShade (the '
+            + 'crowns’ shade on the sunlit air between the beams), bow (the Sunshower’s rainbow).',
+        defaultValue: 'The world’s own values.',
+        example: 'tune=beamGain:2,airShade:0.3',
+        notes: 'Use on playground.html with effect=rainbark.',
+        sources: [
+            'src/playground/effects/rainbark.effect.js',
+        ],
+    },
+    {
         name: 'scout',
         category: 'Playground',
         scope: 'playground.html — kaleidosonic',

@@ -63,6 +63,7 @@ import {
     AMBIENT_SHAFTS,
     EVENT_ROWS,
     EVENT_SLOTS,
+    FIREFLY,
     GAP_MASK,
     MOTES,
     RAIN,
@@ -76,6 +77,9 @@ import {
     rbHgMix,
     rbPart,
 } from './rainbark-tsl.js';
+import { createBeams } from './rainbark-beams.js';
+import { createSparks } from './rainbark-sparks.js';
+import { createBow } from './rainbark-bow.js';
 
 /** The drops draw after the shafts. */
 const DROP_ORDER = 73;
@@ -205,7 +209,16 @@ function createMotes(u, count) {
         const sun = u.sunCol.mul(fl.mul(toward.mul(M.backlit).add(1.0)).mul(tumble).mul(M.glint));
         // (In the shade only a trace of the sky's: lit by the bright air round it, every mote would
         // show at once, a snowfall. In a pearly zone the sun is veiled: MOTES.pearl.)
-        const light = sun.add(u.col.sky.mul(M.shade)).mul(float(1.0).sub(u.pearl.mul(M.pearl)));
+        const day = sun.add(u.col.sky.mul(M.shade)).mul(float(1.0).sub(u.pearl.mul(M.pearl)));
+        // The fireflies (FIREFLY): at dusk a share of the motes light up, each on its own slow
+        // beat (up fast, down slowly), the lower ones in the band, as fireflies hang over the mist.
+        const F = FIREFLY;
+        const isFly = step(h3, F.share).mul(step(fy, F.low));
+        const beat = fract(t.mul(mix(float(F.rate[0]), float(F.rate[1]), h2)).add(h1.mul(7.0)));
+        const pulse = smoothstep(0.0, F.duty * 0.25, beat).mul(float(1.0).sub(smoothstep(F.duty * 0.25, F.duty, beat)));
+        const flyLit = pulse.mul(isFly).mul(u.night).toVar();
+        const fly = vec3(...F.color).mul(flyLit).mul(u.iris);
+        const light = day.add(fly);
         const clear = float(1.0).sub(rbDrown(u, P.y));
         vLight.assign(light.mul(rbAirTransmittance(u, P)).mul(clear).mul(keep));
         vAt.assign(positionGeometry.xy);
@@ -213,7 +226,7 @@ function createMotes(u, count) {
         // the quad twice that, for its soft fall.
         const dist = length(cameraPosition.sub(P));
         const angle = max(u.tanHalf.y.mul(2 / 1080).mul(mix(float(M.px[0]), float(M.px[1]), h4)), u.pixelAngle.mul(M.least));
-        const half = dist.mul(angle).mul(step(0.001, keep));
+        const half = dist.mul(angle).mul(step(0.001, keep)).mul(flyLit.mul(F.grow - 1).add(1.0));
         return P.add(u.camRight.mul(positionGeometry.x.mul(half))).add(u.camUp.mul(positionGeometry.y.mul(half)));
     })();
     material.colorNode = Fn(() => {
@@ -339,7 +352,10 @@ function createShafts(u, records) {
             vAt.x.add(u.time.mul(SHAFT_LIGHT.drift)).mul(0.08),
             u.time.mul(0.05).add(salt.mul(5.0)),
         );
-        const streaks = clamp(u.noise3(at).x.sub(0.5).mul(1.4).add(0.8), 0.0, 2.0);
+        const motes = clamp(u.noise3(at).x.sub(0.5).mul(1.4).add(0.8), 0.0, 2.0);
+        // (A bundle of rays across it, as the beam field's: never one even slab of light.)
+        const ray = u.noise3(vec3(x.mul(2.4).add(salt.mul(29.0)), salt.mul(11.0), u.time.mul(0.027).add(salt.mul(3.0)))).y;
+        const streaks = motes.mul(mix(float(0.5), float(1.3), smoothstep(0.25, 0.75, ray)));
         // (Never across the card: a beam fades out over the last of the way to it, as the rain does.)
         const r = u.cardRect;
         const away = max(max(r.x.sub(screenUV.x), screenUV.x.sub(r.z)), max(r.y.sub(screenUV.y), screenUV.y.sub(r.w)));
@@ -363,21 +379,31 @@ export function createFx(u, tier = {}) {
     const shafts = records.ambient + records.combo > 0 ? createShafts(u, records) : null;
     const drops = (tier.drops || 0) > 0 ? createDrops(u, tier.drops) : null;
     const motes = (tier.motes || 0) > 0 ? createMotes(u, tier.motes) : null;
-    if (!shafts && !drops && !motes) return null;
+    const beams = (tier.beams || 0) > 0 ? createBeams(u, tier.beams) : null;
+    const sparks = (tier.sparks || 0) > 0 ? createSparks(u, tier.sparks) : null;
+    // (The Sunshower's bow stands in the rain: a tier with the drops has it.)
+    const bow = drops ? createBow(u) : null;
+    if (!shafts && !drops && !motes && !beams && !sparks) return null;
     const group = new THREE.Group();
     group.name = 'RainbarkFx';
+    if (beams) group.add(beams.mesh);
     if (shafts) group.add(shafts.mesh);
     if (drops) group.add(drops.mesh);
     if (motes) group.add(motes.mesh);
+    if (sparks) group.add(sparks.mesh);
+    if (bow) group.add(bow.mesh);
     return {
         mesh: group,
         material: null,
         geometry: null,
+        beams,
         shafts,
         drops,
         motes,
+        sparks,
+        bow,
         dispose() {
-            [shafts, drops, motes].forEach((p) => {
+            [beams, shafts, drops, motes, sparks, bow].forEach((p) => {
                 p?.geometry.dispose();
                 p?.material.dispose();
             });
