@@ -20,6 +20,7 @@ export class LocalBotManager {
     configure(playerSlots = []) {
         this.destroy();
         const botCount = playerSlots.filter(isBotSlot).length;
+        const sharedSearch = botCount > 1 ? new Map() : null;
         const seed = this.multiplayerState.sharedPieceSeed ?? this.multiplayerState.rngDescriptor?.seed
             ?? (this.rng ? Math.floor(this.rng() * 0x100000000) : 0);
         for (let index = 0; index < this.multiplayerState.numPlayers; index++) {
@@ -49,6 +50,7 @@ export class LocalBotManager {
                 playerIndex: index,
                 playerState,
                 pendingRows: () => this.multiplayerState.getGarbageQueue?.(index)?.getTotalLines() || 0,
+                sharedSearch,
                 planUnitsPerMs: gravityPlanningRate(botCount),
                 rng: seededRandom((seed ^ Math.imul(index + 1, 0x85ebca6b)) >>> 0),
                 timingRng: seededRandom((seed ^ Math.imul(index + 1, 0xc2b2ae35)) >>> 0),

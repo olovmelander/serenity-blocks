@@ -57,6 +57,71 @@ function rewardContextKey(state) {
         state.comboMultiplierEnabled ? state.comboMultiplier || 1 : 1].join('/');
 }
 
+function* searchWithinBudget(state, config, pending, weights, root, allowance) {
+    let ready = null;
+    const search = searchGravity(state, config, pending, weights, (result) => { ready = result; }, root);
+    for (let unit = 1; ; unit++) {
+        const step = search.next();
+        if (step.done) { ready = step.value; break; }
+        if (unit >= allowance && ready) { search.return(); break; }
+        yield;
+    }
+    if (!ready) return null;
+    const moves = ready.route.map((node) => node.move);
+    const proof = moves.length > 1 && moves.at(-1).waves.length >= 2 ? ready.route.slice(1).map((node) => ({
+        move: node.move,
+        before: gravityBoardKey(node.parent.board.cells),
+        rewardContext: rewardContextKey(node.parent.context),
+    })) : [];
+    return { moves, proof, alternatives: ready.alternatives.map((node) => node.move) };
+}
+
+// Seats can reach the same public position on the shared deal. Advance one copy
+// of that deterministic search, while each seat consumes its own allotted ticks.
+function* sharedSearch(cache, state, config, pending, weights, root, allowance) {
+    const {
+        x, y, rotation, shapeKey, shape,
+    } = state.currentPiece;
+    const nextPieces = (state.nextPieces || []).slice(0, config.previews)
+        .map((p) => (typeof p === 'string' ? p : p?.shapeKey || p?.type || null));
+    const key = gravityBoardKey(root.cells) + JSON.stringify([root.first, x, y, rotation, shapeKey, shape,
+        nextPieces, pending, state.lines, rewardContextKey(state), config, weights, allowance]);
+    let entry = cache.get(key);
+    if (!entry) {
+        // The first step enumerates the live root. Later steps use labelled copies
+        // and this reward snapshot, even if the originating seat cancels its plan.
+        const snapshot = {
+            boardGrid: state.boardGrid || state.board,
+            currentPiece: {
+                x, y, rotation, shapeKey, shape,
+            },
+            nextPieces,
+            lines: state.lines,
+            level: state.level,
+            linesUntilNextLevel: state.linesUntilNextLevel,
+            disableLevelProgression: state.disableLevelProgression,
+            comboMultiplierEnabled: state.comboMultiplierEnabled,
+            comboCount: state.comboCount,
+            comboMultiplier: state.comboMultiplier,
+        };
+        entry = {
+            job: searchWithinBudget(snapshot, config, pending, weights, root, allowance),
+            units: 0,
+            result: null,
+        };
+        if (cache.size >= 32) cache.delete(cache.keys().next().value);
+        cache.set(key, entry);
+    }
+    for (let cursor = 0; ; cursor++) {
+        if (cursor === entry.units && entry.job) {
+            const step = entry.job.next();
+            if (step.done) { entry.result = step.value; entry.job = null; } else entry.units++;
+        }
+        if (!entry.job && cursor === entry.units) return entry.result;
+        yield;
+    }
+}
+
 /** Standard matches use public previews and actual body connectivity. Infinity keeps
  * its camera/roof-aware movement and scoring policy in the shared base controller. */
 export class GravityBotController extends PuzzleBotController {
@@ -66,6 +131,7 @@ export class GravityBotController extends PuzzleBotController {
         this.opponentRoom = options.opponentRoom;
         this.judgment = options.judgment;
         const i = this.config.tier - 1;
+        this.sharedSearch = i === 9 ? options.sharedSearch : null;
         this.searchConfig = {
             previews: PREVIEWS[i],
             width: WIDTH[i],
@@ -117,7 +183,7 @@ export class GravityBotController extends PuzzleBotController {
     }
 
     nextShapeKeys(state) {
-        return super.nextShapeKeys(state).slice(0, 3);
+        return super.nextShapeKeys({ nextPieces: state.nextPieces?.slice(0, 3) });
     }
 
     reachablePlacements(state) {
@@ -250,7 +316,6 @@ export class GravityBotController extends PuzzleBotController {
         // The simulation clock grants the same number of batches at every display
         // rate. Keep the last completed ply if the next one cannot fit. A pressure
         // change forces a new observation and can invalidate a previously ready move.
-        let ready = null;
         const workRate = this.planUnitsPerMs || gravityPlanningRate();
         const rate = sliceRate(workRate, root, tier, false);
         const ideal = this.config.reactionMs[0] * rate;
@@ -274,31 +339,22 @@ export class GravityBotController extends PuzzleBotController {
                 Math.max(4, Math.round(allowance / 15)),
             ),
         };
-        const search = searchGravity(state, config, pending, this.weights, (result) => { ready = result; }, root);
-        for (let unit = 0; ; unit++) {
-            const step = search.next();
-            if (step.done) { ready = step.value; break; }
-            if (unit + 1 >= allowance && ready) { search.return(); break; }
-            yield;
-        }
-        const result = ready;
+        const args = [state, config, pending, this.weights, root, allowance];
+        const search = this.sharedSearch ? sharedSearch(this.sharedSearch, ...args) : searchWithinBudget(...args);
+        const result = yield* search;
         if (!result) return null;
-        let nodes = result.route;
+        let { moves, proof: forecast } = result;
         if (this.config.mistakeChance && this.rng() < this.config.mistakeChance) {
-            const preferred = nodes[0].move;
-            const nearby = result.alternatives.filter(({ move }) => Math.abs(move.x - preferred.x) <= 1
+            const preferred = moves[0];
+            const nearby = result.alternatives.filter((move) => Math.abs(move.x - preferred.x) <= 1
                 && (move.x !== preferred.x || move.rotation !== preferred.rotation)).slice(0, 4);
-            if (nearby.length) nodes = [nearby[Math.floor(this.rng() * nearby.length)]];
+            if (nearby.length) {
+                moves = [nearby[Math.floor(this.rng() * nearby.length)]];
+                forecast = [];
+            }
         }
-        const moves = nodes.map((node) => node.move);
-        if (moves.length > 1 && moves.at(-1).waves.length >= 2) {
-            this.proof = nodes.slice(1).map((node) => ({
-                move: node.move,
-                before: gravityBoardKey(node.parent.board.cells),
-                pending,
-                pressing,
-                rewardContext: rewardContextKey(node.parent.context),
-            }));
+        if (forecast.length) {
+            this.proof = forecast.map((step) => ({ ...step, pending, pressing }));
             this.machinePlan = { steps: this.proof.map((step) => step.move) };
         }
         return asPlan(moves, moves[0].actions, tactics);

@@ -50,6 +50,7 @@ describe('live gravity policy', () => {
         const second = controller(b).plan();
         expect(first.actions).toEqual(second.actions);
         expect(first.candidate.futurePlan).toEqual(second.candidate.futurePlan);
+        expect(controller(a).nextShapeKeys({ nextPieces: ['I', null, 'T', 'O'] })).toEqual(['I', 'T']);
         a.reset(); b.reset();
     });
 
@@ -162,6 +163,51 @@ describe('live gravity policy', () => {
     it('shares a bounded aggregate amount of planning among local slots', () => {
         expect(gravityPlanningRate(4) * 4).toBeLessThanOrEqual(gravityPlanningRate(1));
         expect(gravityPlanningRate(3) * 3).toBeCloseTo(gravityPlanningRate(4) * 4);
+    });
+
+    it('copies identical search work between seats without advancing either decision tick', () => {
+        const cache = new Map();
+        const states = Array.from({ length: 4 }, () => deal(1006));
+        const make = (state, shared) => new GravityBotController({
+            playerState: state,
+            difficulty: 10,
+            actions: {},
+            rng: seededRandom(71),
+            sharedSearch: shared,
+            planUnitsPerMs: gravityPlanningRate(3),
+        });
+        const original = make(states[0], cache).planSteps();
+        original.next();
+        // The first seat leaves after its first batch. A second identical seat can
+        // finish its job from the captured pieces and original scoring context.
+        states[0].level = 12;
+        states[0].nextPieces.splice(0, 3, 'O', 'O', 'O');
+        original.return();
+        const second = make(states[1], cache).planSteps();
+        const separate = make(states[2], null).planSteps();
+        let expected;
+        do {
+            expected = separate.next();
+            expect(second.next()).toEqual(expected);
+        } while (!expected.done);
+        expect(cache.size).toBe(1);
+        const hit = make(states[1], cache).planSteps();
+        const uncached = make(states[2], null).planSteps();
+        do {
+            expected = uncached.next();
+            expect(hit.next()).toEqual(expected);
+        } while (!expected.done);
+        states[3].level = 3;
+        make(states[3], cache).plan();
+        expect(cache.size).toBe(2);
+        const bottom = states[3].boardGrid.at(-1);
+        bottom[0] = { id: 7, type: 'I' };
+        bottom[1] = { id: 7, type: 'I' };
+        make(states[3], cache).plan();
+        bottom[1] = { id: 8, type: 'I' };
+        make(states[3], cache).plan();
+        expect(cache.size).toBe(4);
+        states.forEach((state) => state.reset());
     });
 
     it('has a legal escape before the reaction deadline on a clean, high stack', async () => {

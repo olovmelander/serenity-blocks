@@ -4,9 +4,14 @@ import { appendFileSync, writeFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { MultiPlayerState } from '../../src/core/multi-player-state.js';
 import { LocalBotManager } from '../../src/core/ai/local-bot-manager.js';
+import { PuzzleBotController } from '../../src/core/ai/puzzle-bot-controller.js';
 import { applyGarbage, fillBag, processAutoDrop } from '../../src/core/game.js';
 import { bindLegacySessionRng } from '../../src/core/session-rng.js';
-import { applyFixedLineImpactHitStop } from '../../src/core/fixed-hit-stop-policy.js';
+import { applyFixedLineImpactHitStop, applyFixedPerfectClearHitStop } from '../../src/core/fixed-hit-stop-policy.js';
+import { retireFixedCascade } from '../../src/core/physics.js';
+import { createLocalMultiplayerFixedTickRuntime, startLocalMultiplayerFixedTickRuntime,
+    runLocalMultiplayerFixedTicks } from '../../src/core/game-modes/local-multiplayer-fixed-tick.js';
+import { applyLocalMultiplayerFixedCommand } from '../../src/core/game-modes/local-multiplayer-loop.js';
 import { seededRandom } from '../../src/utils/helpers.js';
 import { createVirtualClock } from '../../scripts/odyssey-benchmark/virtual-clock.mjs';
 import { controls, spawn } from './solo.mjs';
@@ -14,9 +19,9 @@ import { controls, spawn } from './solo.mjs';
 export async function duel(low, seed, swap, seconds = 150, options = {}) {
     if (!Number.isInteger(low) || low < 1 || low > 9) throw new RangeError('Expected the lower tier 1 through 9');
     const clock = createVirtualClock().install();
-    const mp = new MultiPlayerState(2);
+    const tiers = options.tiers ?? (swap ? [low + 1, low] : [low, low + 1]);
+    const mp = new MultiPlayerState(tiers.length);
     if (options.live) mp.sharedPieceSeed = seed;
-    const tiers = swap ? [low + 1, low] : [low, low + 1];
     const frame = 1000 / 60;
     // For a pressure decision, count the queue when the planner runs.
     const stats = tiers.map(() => ({ locks: 0, plans: 0, queuedPlans: 0, queueSeen: 0, dangerQueued: 0,
@@ -28,6 +33,7 @@ export async function duel(low, seed, swap, seconds = 150, options = {}) {
         const callbacks = mp.players.map((state, i) => {
             let beforeLock;
             state.disableLevelProgression = true;
+            state.useFixedCascade = Boolean(options.fixed);
             bindLegacySessionRng(state, seed);
             fillBag(state.nextPieces, state.randomGenerator);
             spawn(state);
@@ -35,6 +41,7 @@ export async function duel(low, seed, swap, seconds = 150, options = {}) {
                 onHardDrop: () => { state.hitStopRemaining = Math.max(state.hitStopRemaining || 0, 30); },
                 // The normal-motion local presentation applies the same 70 ms on a four-row wave.
                 onLineClearImpact: lines => applyFixedLineImpactHitStop(state, lines),
+                onPerfectClear: options.fixed ? () => applyFixedPerfectClearHitStop(state) : undefined,
                 onPieceLock: () => { stats[i].locks++; beforeLock = garbageCells(state); },
                 onGarbageReady: (summary) => mp.handleGarbageSummary(i, summary),
                 spawnPiece: () => {
@@ -57,9 +64,19 @@ export async function duel(low, seed, swap, seconds = 150, options = {}) {
             };
         });
         mp.onAttack = (from, _to, lines) => { stats[from].sent += lines; };
+        const oldRng = seededRandom((seed ^ 0x85ebca6b) >>> 0);
         manager = new LocalBotManager({ multiplayerState: mp,
-            actionFactory: i => controls(mp.players[i], callbacks[i]), rng: seededRandom((seed ^ 0x85ebca6b) >>> 0) });
-        manager.configure(tiers.map(difficulty => ({ kind: 'bot', difficulty })));
+            actionFactory: i => controls(mp.players[i], callbacks[i]), rng: oldRng });
+        manager.configure(tiers.map((tier, i) => ({ kind: 'bot', difficulty: options.slotTier?.(tier, i) ?? tier })));
+        if (!options.live) {
+            for (const [i, bot] of manager.controllers) {
+                // The original audit shared one decision stream. The fixed-clock
+                // comparison pairs both policies on the live slot's own seed.
+                manager.controllers.set(i, new PuzzleBotController({ actions: bot.actions, difficulty: tiers[i],
+                    playerState: mp.players[i], playerIndex: i,
+                    rng: options.fixed ? seededRandom((seed ^ Math.imul(i + 1, 0x85ebca6b)) >>> 0) : oldRng }));
+            }
+        }
         for (const [i, bot] of manager.controllers) {
             if (options.configure) options.configure(bot, tiers[i]);
             if (options.live) {
@@ -92,10 +109,23 @@ export async function duel(low, seed, swap, seconds = 150, options = {}) {
             };
         }
         const rounds = Math.round(seconds * 60);
-        for (let tick = 0; tick < rounds && !mp.players.some((s) => s.isGameOver); tick++) {
+        const runtime = options.fixed ? createLocalMultiplayerFixedTickRuntime() : null;
+        const tickOptions = runtime && {
+            ownership: startLocalMultiplayerFixedTickRuntime(runtime, mp),
+            advanceInput: (i, context) => manager.advanceFixedInput(i, context),
+            getPhysicsCallbacks: i => callbacks[i],
+            applyInput: (i, command) => applyLocalMultiplayerFixedCommand(command, {
+                gameState: mp.players[i], isEnabled: () => true, physicsCallbacks: callbacks[i] }),
+        };
+        let ticksPlayed = 0;
+        for (; ticksPlayed < rounds && !mp.players.some((s) => s.isGameOver); ticksPlayed++) {
             await clock.advance(frame);
+            if (runtime) {
+                runLocalMultiplayerFixedTicks(runtime, frame, tickOptions);
+                continue;
+            }
             manager.update(frame, clock.now);
-            for (let i = 0; i < 2; i++) {
+            for (let i = 0; i < mp.numPlayers; i++) {
                 const state = mp.players[i];
                 state.simTimeMs = (state.simTimeMs || 0) + frame;
                 if (state.hitStopRemaining > 0) state.hitStopRemaining = Math.max(0, state.hitStopRemaining - frame);
@@ -106,13 +136,16 @@ export async function duel(low, seed, swap, seconds = 150, options = {}) {
             await clock.flush();
         }
         const lost = mp.players.map(s => s.isGameOver);
-        const winner = lost[0] === lost[1] ? null : tiers[lost[0] ? 1 : 0];
+        const survivors = tiers.filter((_, i) => !lost[i]);
+        const winner = survivors.length === 1 ? survivors[0] : null;
         mp.players.forEach((s, i) => { stats[i].pendingOnLoss = s.isGameOver ? mp.getGarbageQueue(i).getTotalLines() : 0; });
-        return { low, seed, swap, tiers, winner, simultaneous: lost.every(Boolean), seconds: Math.round(clock.now / 1000), stats };
+        return { low, seed, swap, tiers, winner, simultaneous: lost.every(Boolean),
+            attackers: [...mp.lastAttackerIds], lost, ticksPlayed, seconds: Math.round(clock.now / 1000), stats };
     } finally {
         manager?.destroy();
         // Retire the players before draining any opponent animation still in progress.
         for (const state of mp.players) state.isStopped = true;
+        mp.players.forEach(retireFixedCascade);
         await clock.settle(Promise.allSettled(mp.players.map(s => s.latestPhysicsPromise)));
         mp.players.forEach(s => s.reset());
         clock.restore();
