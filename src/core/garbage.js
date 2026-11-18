@@ -5,6 +5,7 @@
 
 import { COLS, ROWS, HIDDEN_ROWS } from './constants.js';
 import { rebuildBoardGridFromPieces, isPartOfPiece, findCompleteLines } from './board.js';
+import { removeClearedLines, findConnectedComponents } from './cascade-helpers.js';
 
 export const ATTACK_TYPES = {
     LINES: 'lines',
@@ -552,6 +553,78 @@ function settleFloatingBlocksAfterGarbage(lockedPieces, totalRows) {
     return totalSteps;
 }
 
+/** Mark the cells of every full row on the board. */
+function markFullRowCells(board) {
+    const marks = board.map((row) => row.map(() => false));
+    findCompleteLines(board, 0).forEach((y) => marks[y].fill(true));
+    return marks;
+}
+
+/** Carry each cell's mark down with the piece the settle moved (only piece.y changes). */
+function followSettledPieces(marks, lockedPieces, startY) {
+    const moved = marks.map((row) => row.map(() => false));
+    for (const piece of lockedPieces) {
+        const fromY = startY.get(piece) ?? piece.y;
+        piece.shape.forEach((row, localY) => {
+            row.forEach((cell, localX) => {
+                if (cell <= 0) return;
+                const x = piece.x + localX;
+                const toRow = moved[Math.floor(piece.y + localY)];
+                if (toRow && x >= 0 && x < COLS) {
+                    toRow[x] = marks[Math.floor(fromY + localY)]?.[x] ?? false;
+                }
+            });
+        });
+    }
+    return moved;
+}
+
+/**
+ * Settle the stack over fresh garbage, then clear every row that settle completed and settle
+ * again, until a settle completes nothing (owner decision 2026-11-18). A body dropping into the
+ * holes of incoming garbage is something done to the player, so the rows it closes go at once
+ * and award nothing: no lines, score, level, combo, line-clear count or attack. Left on the
+ * board, the player's next lock would clear them as its own clear.
+ *
+ * A row that was already full before the settle (solid garbage) is not the settle's doing and
+ * stays for the next lock, as it always has. Its cells keep that mark as they fall, so it is
+ * still told apart if the settle drops it onto a row the settle completed.
+ *
+ * Removing rows and splitting what is left use the lock cascade's own helpers; lock-time
+ * cascades themselves are untouched.
+ *
+ * @param {Array<Object>} lockedPieces - Current locked pieces (contents replaced in place)
+ * @param {number} totalRows - Current playfield height
+ * @param {number} firstPlayableRow - First row a line clear may take
+ * @returns {{settledSteps: number, clearedRows: number[]}}
+ */
+function settleAndClearCompletedRows(lockedPieces, totalRows, firstPlayableRow) {
+    // Cells that sat in a full row before the first settle; the marks travel with their pieces.
+    let alreadyFull = markFullRowCells(generateGarbageBoard(lockedPieces, totalRows));
+    let settledSteps = 0;
+    const clearedRows = [];
+
+    for (;;) {
+        const startY = new Map(lockedPieces.map((piece) => [piece, piece.y]));
+        settledSteps += settleFloatingBlocksAfterGarbage(lockedPieces, totalRows);
+        const carried = followSettledPieces(alreadyFull, lockedPieces, startY);
+        alreadyFull = carried;
+
+        const board = generateGarbageBoard(lockedPieces, totalRows);
+        const completed = findCompleteLines(board, firstPlayableRow)
+            .filter((y) => carried[y].some((marked) => !marked));
+        if (completed.length === 0) break;
+
+        clearedRows.push(...completed);
+        const survivors = removeClearedLines(lockedPieces, completed);
+        const fragments = findConnectedComponents(generateGarbageBoard(survivors, totalRows));
+        // Callers hold lockedPieces by alias: replace the contents, never the array.
+        lockedPieces.splice(0, lockedPieces.length, ...fragments);
+    }
+
+    return { settledSteps, clearedRows };
+}
+
 /**
  * Insert garbage entries into the playfield with animation support
  *
@@ -563,7 +636,9 @@ function settleFloatingBlocksAfterGarbage(lockedPieces, totalRows) {
  * @param {Array<Object>} lockedPieces - Array of locked pieces (modified)
  * @param {Array<Object>} entries - Garbage entries to insert
  * @param {Object} options - Optional animation settings
- * @returns {Object} Result with success, topOut flags, and animation data
+ * @returns {Object} Result with success, topOut flags, and animation data. linesAfterInsertion
+ *   lists the full rows left on the board; settleClearedRows lists the rows the settle
+ *   completed and that were cleared, without credit, before returning.
  */
 export function insertGarbageEntries(lockedPieces, entries, options = {}) {
     const { boardGrid, isInfinityMode = false, debug = false } = options;
@@ -577,6 +652,7 @@ export function insertGarbageEntries(lockedPieces, entries, options = {}) {
             garbagePieces: [],
             settledSteps: 0,
             linesAfterInsertion: [],
+            settleClearedRows: [],
         };
     }
 
@@ -602,6 +678,7 @@ export function insertGarbageEntries(lockedPieces, entries, options = {}) {
             garbagePieces: [],
             settledSteps: 0,
             linesAfterInsertion: [],
+            settleClearedRows: [],
         };
     }
 
@@ -670,18 +747,28 @@ export function insertGarbageEntries(lockedPieces, entries, options = {}) {
         garbagePieces.push(garbagePiece);
     });
 
+    const firstPlayableRow = isInfinityMode ? 0 : HIDDEN_ROWS;
     let settledSteps = 0;
+    let settleClearedRows = [];
     if (options.settleFloatingBlocks !== false) {
-        settledSteps = settleFloatingBlocksAfterGarbage(lockedPieces, totalRows);
+        ({ settledSteps, clearedRows: settleClearedRows } = settleAndClearCompletedRows(
+            lockedPieces,
+            totalRows,
+            firstPlayableRow,
+        ));
         if (settledSteps > 0) {
             log(
                 `[insertGarbageEntries] Settled floating blocks with ${settledSteps} fall step(s)`,
             );
         }
+        if (settleClearedRows.length > 0) {
+            log(
+                `[insertGarbageEntries] Cleared ${settleClearedRows.length} settle-completed row(s), no credit`,
+            );
+        }
     }
 
     const postBoard = generateGarbageBoard(lockedPieces, totalRows);
-    const firstPlayableRow = isInfinityMode ? 0 : HIDDEN_ROWS;
     const linesAfterInsertion = findCompleteLines(postBoard, firstPlayableRow);
 
     log('[insertGarbageEntries] ========================================');
@@ -691,6 +778,7 @@ export function insertGarbageEntries(lockedPieces, entries, options = {}) {
         garbagePieces,
         settledSteps,
         linesAfterInsertion,
+        settleClearedRows,
     };
 }
 

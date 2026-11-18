@@ -498,11 +498,15 @@ export function restoreBoardState(gameState, snapshot = {}, policy = {}) {
  * a possibly-stale boardGrid; afterwards boardGrid is rebuilt and the cache
  * invalidated in ONE place. Callers must not touch the arrays.
  *
+ * Rows the garbage settle completes are cleared here, on every caller, and
+ * award nothing (settleClearedRows reports them; owner decision 2026-11-18).
+ *
  * @param {Object} gameState
  * @param {Array<Object>} entries - Garbage entries (see garbage.js)
  * @param {{debug?: boolean, settleFloatingBlocks?: boolean}} [options]
  * @returns {{success: boolean, topOut: boolean, garbagePieces: Array,
- *   settledSteps: number, linesAfterInsertion: number[], rowsAdded: number} | null}
+ *   settledSteps: number, linesAfterInsertion: number[], settleClearedRows: number[],
+ *   rowsAdded: number} | null}
  */
 export function applyGarbage(gameState, entries, options = {}) {
     if (!gameState || !Array.isArray(gameState.lockedPieces)) return null;
