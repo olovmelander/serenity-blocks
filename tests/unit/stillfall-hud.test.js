@@ -3,9 +3,11 @@
  * the running game; these are the parts it is built from. What the puzzle atlas says about
  * the tiers is in stillfall-atlas-model.test.js.
  */
-import { describe, expect, it } from 'vitest';
 import {
-    failureTitle, goalText, outcomeHtml, supplyStripHtml,
+    afterEach, describe, expect, it, vi,
+} from 'vitest';
+import {
+    failureTitle, goalText, installStillfallHud, outcomeHtml, supplyStripHtml,
 } from '../../src/ui/stillfall/stillfall-hud.js';
 import { NEXT_QUEUE_SLOTS } from '../../src/ui/next-queue-ui.js';
 import { PIECE_ROWS, pieceGlyphHtml, shapeOutline } from '../../src/ui/stillfall/stillfall-piece-glyphs.js';
@@ -127,5 +129,48 @@ describe('Stillfall panel', () => {
             expect(html.match(/<polygon /g), key).toHaveLength(1);
             expect(html).not.toContain('<i');
         }
+    });
+});
+
+describe('Stillfall on a controller', () => {
+    afterEach(() => {
+        vi.unstubAllGlobals();
+        vi.restoreAllMocks();
+    });
+
+    // Chromium reports pads to a window in the background (audit 2026-11-18, A18-UI-5).
+    it('takes no press while the window is in the background, and none still held as it returns', () => {
+        let focused = false;
+        vi.stubGlobal('document', {
+            addEventListener() {},
+            querySelector: () => null,
+            body: { classList: { contains: () => false } },
+            hidden: false,
+            hasFocus: () => focused,
+        });
+        vi.stubGlobal('window', {});
+        const pad = { index: 0, buttons: Array.from({ length: 17 }, () => ({ pressed: false, value: 0 })) };
+        vi.stubGlobal('navigator', { getGamepads: () => [pad] });
+        const hud = installStillfallHud();
+        const send = vi.spyOn(hud, 'send').mockImplementation(() => {});
+        hud.state = {
+            active: true, outcome: 'open', canUndo: true, hintOffered: false, puzzle: { id: 'p' },
+        };
+        const LB = 4;
+
+        hud.pollPad();
+        pad.buttons[LB].pressed = true;
+        hud.pollPad();
+        expect(send).not.toHaveBeenCalled();
+
+        focused = true; // back, LB still held from the other app
+        hud.pollPad();
+        expect(send).not.toHaveBeenCalled();
+
+        pad.buttons[LB].pressed = false;
+        hud.pollPad();
+        pad.buttons[LB].pressed = true;
+        hud.pollPad();
+        expect(send.mock.calls).toEqual([['undo']]);
     });
 });

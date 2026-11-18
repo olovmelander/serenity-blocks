@@ -595,7 +595,11 @@ class StillfallHud {
         } catch {
             return;
         }
-        const covered = this.covered();
+        // Chromium reports pads to a window in the background, so presses made in another app
+        // undid and restarted here. They are still recorded, so one held as the window
+        // returns waits for its release (the gamepad controller's poll does the same).
+        const away = document.hidden || document.hasFocus?.() === false;
+        const covered = away || this.covered();
         // A shoulder or trigger the player bound to a game control plays that control only.
         const bound = new Set(Object.values(window.settingsManager?.get?.()?.gamepadBindings || {}));
         for (const gamepad of pads || []) {
