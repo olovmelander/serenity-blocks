@@ -203,6 +203,127 @@ describe('Stillwater figure assets', () => {
         }
     });
 
+    // The troll is five shells in the one mesh (scripts/blender/stillwater/troll_shape.py SHELLS):
+    // his body, the hair of his head, the mantle over his back, and each arm with the moss on its
+    // shoulder. As one surface, the fist that rests by his hip was grown into his loincloth and
+    // bone heat gave the cloth beside it to his hand: lifted, his arm drew a web of cloth and skin
+    // up after it (it looked caught in his cloth), and his mantle did the same from his thighs.
+    it.each(TROLL_LODS)('$file binds each arm to its own three bones, and joins it to nothing else of him', (entry) => {
+        const glb = readGlb(entry.file);
+        const primitive = primitiveOf(glb.json);
+        const names = glb.json.scenes[0].extras.bones.map((b) => b.name);
+        const joints = accessorOf(glb, primitive.attributes.JOINTS_0);
+        const weights = accessorOf(glb, primitive.attributes.WEIGHTS_0);
+        const { count } = joints.accessor;
+        const ARM = /^(upper|fore|hand)([LR])$/;
+        /** '' for a vertex no arm moves, else the arm that does. */
+        const owner = new Array(count);
+        const shared = [];
+        const arms = { L: 0, R: 0 };
+        for (let i = 0; i < count; i++) {
+            const sides = new Set();
+            let other = 0;
+            for (let k = 0; k < 4; k++) {
+                if (weights.get(i, k) === 0) continue;
+                const m = ARM.exec(names[joints.get(i, k)]);
+                if (m) sides.add(m[2]);
+                else other += 1;
+            }
+            owner[i] = sides.size ? [...sides][0] : '';
+            if (sides.size) arms[owner[i]] += 1;
+            if (sides.size > 1 || (sides.size && other)) shared.push(i);
+        }
+        // A vertex that carries any of an arm's weight carries that arm's alone...
+        expect(shared).toEqual([]);
+        // ...and both arms are there to be bound.
+        expect(arms.L).toBeGreaterThan(count * 0.03);
+        expect(arms.R).toBeGreaterThan(count * 0.03);
+        // No triangle joins a vertex of an arm to one that is not of it.
+        const index = accessorOf(glb, primitive.indices);
+        let bridges = 0;
+        for (let t = 0; t < index.accessor.count; t += 3) {
+            const a = owner[index.get(t)];
+            if (owner[index.get(t + 1)] !== a || owner[index.get(t + 2)] !== a) bridges += 1;
+        }
+        expect(bridges).toBe(0);
+    });
+
+    it.each(TROLL_LODS)('$file hangs his moss from no leg, and none of his skin or cloth from an arm', (entry) => {
+        const glb = readGlb(entry.file);
+        const primitive = primitiveOf(glb.json);
+        const names = glb.json.scenes[0].extras.bones.map((b) => b.name);
+        const joints = accessorOf(glb, primitive.attributes.JOINTS_0);
+        const weights = accessorOf(glb, primitive.attributes.WEIGHTS_0);
+        const colour = accessorOf(glb, primitive.attributes.COLOR_0);
+        const { count } = joints.accessor;
+        const LEG = /^(thigh|shin|foot|toe)[LR]$/;
+        const ARM = /^(upper|fore|hand)[LR]$/;
+        let mossOnLegs = 0;
+        let moss = 0;
+        let clothOnArms = 0;
+        let cloth = 0;
+        for (let i = 0; i < count; i++) {
+            // (b: the moss share; r and a both nothing: leather, and at his hips that is his cloth.)
+            const isMoss = colour.get(i, 2) > 200;
+            const isLeather = colour.get(i, 0) < 20 && colour.get(i, 2) < 20 && colour.get(i, 3) < 20;
+            let leg = 0;
+            let arm = 0;
+            let hips = 0;
+            for (let k = 0; k < 4; k++) {
+                const w = weights.get(i, k);
+                const name = names[joints.get(i, k)];
+                if (LEG.test(name)) leg += w;
+                if (ARM.test(name)) arm += w;
+                if (name === 'hips') hips += w;
+            }
+            if (isMoss) {
+                moss += 1;
+                // (The shoulder's moss rides on its arm; no moss on a leg.)
+                if (leg > 0) mossOnLegs += 1;
+            }
+            if (isLeather && hips + leg > 128) {
+                cloth += 1;
+                if (arm > 0) clothOnArms += 1;
+            }
+        }
+        expect(moss).toBeGreaterThan(count * 0.2);
+        expect(cloth).toBeGreaterThan(count * 0.02);
+        expect(mossOnLegs).toBe(0);
+        expect(clothOnArms).toBe(0);
+    });
+
+    it.each(LODS)('$file gives every vertex a normal', (entry) => {
+        // (A lock's tip cut down to a flap of two faces back to back has none of its own, and a
+        // vertex without one shades as nothing.)
+        const glb = readGlb(entry.file);
+        const normal = accessorOf(glb, primitiveOf(glb.json).attributes.NORMAL);
+        const none = [];
+        for (let i = 0; i < normal.accessor.count; i++) {
+            if (Math.hypot(normal.get(i, 0), normal.get(i, 1), normal.get(i, 2)) < 100 && none.length < 5) none.push(i);
+        }
+        expect(none).toEqual([]);
+    });
+
+    it.each(TROLL_LODS)('$file names the masses his arms keep out of, each on a bone of his', (entry) => {
+        const { extras } = readGlb(entry.file).json.scenes[0];
+        const names = extras.bones.map((b) => b.name);
+        const { flesh } = extras;
+        expect(Array.isArray(flesh?.masses)).toBe(true);
+        expect(flesh.masses.length).toBeGreaterThanOrEqual(8);
+        for (const mass of flesh.masses) {
+            expect(names, mass.name).toContain(mass.bone);
+            expect(['ell', 'wrap', 'cone'], mass.name).toContain(mass.kind);
+            // Where it is at rest: by the bone that carries it, inside his unit frame.
+            const at = mass.c || mass.a || [0, mass.top, mass.z0];
+            expect(at.every(Number.isFinite), mass.name).toBe(true);
+            expect(Math.max(...at.map(Math.abs)), mass.name).toBeLessThan(0.6);
+        }
+        expect(flesh.masses.map((m) => m.name)).toEqual(expect.arrayContaining(['belly', 'cloth', 'thighL', 'thighR']));
+        for (const key of ['fore', 'hand', 'fist']) {
+            expect(Array.isArray(flesh[key]) && flesh[key].length > 0, key).toBe(true);
+        }
+    });
+
     it('gives every mesh of a figure the same skeleton', () => {
         for (const lods of [TROLL_LODS, SPIRIT_LODS]) {
             const [first, ...rest] = lods.map(({ file }) => readGlb(file).json.scenes[0].extras.bones);

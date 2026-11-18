@@ -65,6 +65,7 @@ import {
     STAFF, TrollBody, parentsFromSpec, restFromSpec, tailsFromSpec,
 } from './stillwater-troll-body.js';
 import { Spring3 } from './stillwater-motion.js';
+import { fleshFromSpec } from './stillwater-troll-flesh.js';
 
 const TROLL_URLS = [trollLod0Url, trollLod1Url, trollLod2Url, trollLod3Url];
 
@@ -666,6 +667,7 @@ export function createTroll(u, opts = {}) {
                 ground,
                 parents: parentsFromSpec(built.extras),
                 tails: tailsFromSpec(built.extras),
+                flesh: fleshFromSpec(built.extras),
             });
             part.body.reset(pending.x, pending.z, pending.heading, pending.opts);
             part.ready = true;

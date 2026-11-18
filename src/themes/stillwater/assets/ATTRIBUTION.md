@@ -37,15 +37,21 @@ an image or 3D generative model (`CREDITS.md` says the same).
 `troll.py`, from numbers alone): the reconstruction's pelt was a soup of thin sheets that read as
 torn, messy paper however it was rebuilt, so the troll is now drawn clean in the picture's character
 (a stocky old troll, his head carried low and forward, a long drooping nose, long ears, big hands
-and feet, a cloak of matted hair to his knees). He is one signed distance field: smooth masses
+and feet, a cloak of matted hair to his knees). He is signed distance fields: smooth masses
 blended into each other along the 21-bone skeleton's rest pose, eye sockets and nostrils taken out,
 heavy lids, a loincloth wrapped round his hips with a rope belt, then a mane of matted moss locks
 draped under gravity over his body (a mantle from a yoke round his neck, the crown over it, a moss
-beard, bushy brows) and a few small mushrooms in his moss. The field is meshed once (OpenVDB, voxel
-0.003 of his height), only its outer shell kept, decimated to four LODs, weighted (bone heat for the
-body; the beard and brows on his head, the crown's locks from his head down his torso, the mantle by
-height down his torso and partly on his collarbones) and given baked ambient occlusion (Cycles,
-CPU). COLOR_0 = skin (1 his ruddy face, 0.65 his hide, 0.2 an eye), ambient occlusion, moss, kind
+beard, bushy brows) and a few small mushrooms in his moss. Since 2026-11-18 he is five shells in
+the one mesh, each a field meshed on its own (OpenVDB, voxel 0.003 of his height) and no face
+joining one to another: his body (skin and cloth), the hair of his head, the mantle over his back,
+and each arm from the ball of its shoulder down with the moss on that shoulder. (As one field his
+fist was grown into his loincloth, and his arm drew cloth and skin up after it: the note at the top
+of `troll_shape.py`.) Each is decimated to four LODs and weighted: his body's skin by bone heat to
+a skeleton without his arms; the beard and brows on his head, the crown's locks from his head down
+his torso, the mantle by height down his torso and partly on his collarbones; each arm to its own
+three bones alone. Ambient occlusion is baked (Cycles, CPU), his body, hair and mantle shading one
+another and each arm alone. The files' extras also name the masses he is built of (`flesh`), which
+the runtime keeps his arms out of. COLOR_0 = skin (1 his ruddy face, 0.65 his hide, 0.2 an eye), ambient occlusion, moss, kind
 (the moss lock's own shade 0..0.6, 0.7 an eye, 1 a mushroom); all but the occlusion zero = leather.
 Project-owned.
 
