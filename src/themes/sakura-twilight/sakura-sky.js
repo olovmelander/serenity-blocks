@@ -178,13 +178,23 @@ export class SakuraSky {
             // disc is drawn larger than the noise, so its first level is the right one.)
             If(radius.lessThan(1.02).and(facing.greaterThan(0.5)), () => {
                 const read = (coordinate) => light.noise(coordinate).level(0);
+                // (The noise is a square lattice: read straight, the seas broke along its grid, a
+                // straight edge down the middle of the disc. Each read is turned its own way and
+                // the seas' place is pulled about by a broad read first.)
+                const turned = (point, angle) => vec2(
+                    point.x.mul(Math.cos(angle)).sub(point.y.mul(Math.sin(angle))),
+                    point.x.mul(Math.sin(angle)).add(point.y.mul(Math.cos(angle))),
+                );
+                const pull = read(turned(disc, 0.6).mul(0.19).add(vec2(0.27, 0.71))).rg.sub(0.5);
+                const place = disc.add(pull.mul(0.36)).toVar();
                 // Seas and highlands from two octaves of the shared noise, pocked by craters. The
                 // disc is kept below the tone curve's shoulder so its seas still read; the glow is
                 // the halo's.
-                const seas = read(disc.mul(0.21).add(vec2(0.37, 0.61))).r.mul(0.62)
-                    .add(read(disc.mul(0.53).add(vec2(0.11, 0.83))).g.mul(0.38));
-                const craters = read(disc.mul(1.7)).b.mul(0.6).add(read(disc.mul(3.9).add(0.3)).a.mul(0.4));
-                const surface = mix(float(0.36), float(1.0), smoothstep(0.38, 0.6, seas))
+                const seas = read(turned(place, 1.1).mul(0.27).add(vec2(0.37, 0.61))).g.mul(0.62)
+                    .add(read(turned(place, 2.3).mul(0.5).add(vec2(0.11, 0.83))).b.mul(0.38));
+                const craters = read(turned(disc, 0.4).mul(1.7)).b.mul(0.6)
+                    .add(read(turned(disc, 1.9).mul(3.9).add(0.3)).a.mul(0.4));
+                const surface = mix(float(0.5), float(1.0), smoothstep(0.4, 0.6, seas))
                     .mul(craters.mul(0.3).add(0.85));
                 const limb = pow(saturate(float(1).sub(radius.mul(radius))), 0.28);
                 // A low moon is warm at its lower limb, where it looks through more air.
