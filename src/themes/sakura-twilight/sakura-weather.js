@@ -48,7 +48,8 @@ export const SAKURA_WEATHER_HOLD = 0.4;
  *   sea       the sea of cloud at its foot (0..1)
  *   banner    the snow banner streaming off its summit (0..1)
  *   shafts    the moon's shafts in the air, against their resting density
- *   fireflies how many of them are out (0..1 of the tier's) and how brightly they pulse
+ *   fireflies how many of them are out: from 1.12 every one of the tier's, as the garden was built; under
+ *             that the shyest stay in the grass
  */
 export const SAKURA_WEATHER_SCALARS = Object.freeze([
     'cloud', 'wisps', 'mackerel', 'veil', 'drift', 'stars', 'galaxy', 'wind', 'fall', 'stream', 'calm', 'mist', 'banks',
@@ -77,7 +78,7 @@ export const SAKURA_WEATHERS = Object.freeze([
         sea: 0.2,
         banner: 0.12,
         shafts: 1,
-        fireflies: 0.75,
+        fireflies: 1.12,
     }),
     air('wind', 'Petal wind', {
         cloud: 0.58,
@@ -97,7 +98,7 @@ export const SAKURA_WEATHERS = Object.freeze([
         sea: 0.1,
         banner: 1,
         shafts: 0.8,
-        fireflies: 0.25,
+        fireflies: 0.3,
     }),
     air('mackerel', 'Mackerel sky', {
         cloud: 0.22,
@@ -117,7 +118,7 @@ export const SAKURA_WEATHERS = Object.freeze([
         sea: 0.35,
         banner: 0.2,
         shafts: 1.1,
-        fireflies: 0.6,
+        fireflies: 0.7,
     }),
     air('haze', 'Hazy moon', {
         cloud: 0.26,
@@ -137,7 +138,7 @@ export const SAKURA_WEATHERS = Object.freeze([
         sea: 0.6,
         banner: 0,
         shafts: 1.35,
-        fireflies: 0.8,
+        fireflies: 0.9,
     }),
     air('mist', 'Mist on the lake', {
         cloud: 0.12,
@@ -157,7 +158,7 @@ export const SAKURA_WEATHERS = Object.freeze([
         sea: 1,
         banner: 0,
         shafts: 1.9,
-        fireflies: 0.9,
+        fireflies: 1,
     }),
     air('mirror', 'Mirror calm', {
         cloud: 0.06,
@@ -177,7 +178,7 @@ export const SAKURA_WEATHERS = Object.freeze([
         sea: 0.4,
         banner: 0,
         shafts: 0.9,
-        fireflies: 1,
+        fireflies: 1.12,
     }),
 ]);
 
