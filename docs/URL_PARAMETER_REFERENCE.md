@@ -204,7 +204,10 @@ Pyrestorm (2026-10-13), rebuilt from its classic GLSL scene, adds the capture fl
 `combo` (the storm's charge), `peak` (the chain a release breaks), `b2b` and `locks`. The
 classic scene read nothing from the URL, so no reader was retired. Use
 `effect=pyrestorm&t=10&watch=<place>` for a deterministic playground capture; the part names
-are `land`, `sky`, `anvil`, `ash`, `bolts`, `jets`, `bombs` and `motes`.
+are `land`, `snags`, `sky`, `anvil`, `ash`, `bolts`, `jets`, `fans`, `whirls`, `bombs` and
+`motes`. Its living pass (2026-11-18) adds five rows to the effect: `phase` (hold the eruption on
+its own wheel of phases, as `watch` holds the night), `event=happen` with `kind` (one of the
+mountain's own happenings) and `ha`, `hb`, `hc` (the three numbers that shape it).
 
 Kaleidosonic (2026-10-13), a new theme in Singing Bowl's place, adds the capture flags
 `kaleidosonicForceWebGL`, `kaleidosonicTime`, `kaleidosonicFixedDt`, `kaleidosonicParts` and
