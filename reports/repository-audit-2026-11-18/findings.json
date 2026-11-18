@@ -12,7 +12,7 @@
   "findings": [
     {
       "id": "A18-UI-1",
-      "status": "verified",
+      "status": "fixed",
       "title": "After the first game, the main menu's controller handler is never re-armed; once Settings or Records is opened and closed on that menu, D-pad, A and B stop working",
       "area": "ui-input",
       "file": "src/ui/gamepad-controller.js",
@@ -31,11 +31,12 @@
         "severityAdjust": "keep",
         "needsOwnerDecision": false,
         "summary": "jsdom with the real index.html, GamepadController, ModalManager, setupModalUI, showHighScoresModal (verify/ui/p1-menu-rearm.test.mjs). First visit after Settings: routes {selection:3}, A clicked the card. Second visit after Start+B on Settings: flags {sel:false, nav:false}, routes {gameplay:9}, card clicks [], A/B/Down → rotate/hardDrop/softDrop. Records + B: same. Nothing in src re-sets the flags. Fix: ModalManager.show('start') enables game-mode selection; hide('start') disables it."
-      }
+      },
+      "resolution": "fixed (73e57df)"
     },
     {
       "id": "A18-UI-2",
-      "status": "verified",
+      "status": "fixed",
       "title": "The pad press that finishes a binding capture also acts on Settings: View closes Settings and opens the Hub; Start/LB/RB/D-pad can close Settings, switch tab or move focus",
       "area": "ui-input",
       "file": "src/ui/gamepad-controller.js",
@@ -55,11 +56,12 @@
         "needsOwnerDecision": false,
         "summary": "verify/ui/c2-capture-press.test.mjs with real handleGamepadBinding/GamepadController/ModalManager: Pause←View: bound, Settings closed, Hub toggled once; Pause←Start (interval first): Settings closed; RB: tab general→display. Binding always saved correctly; side effect only → P3. Fix: in processMenuNavigation treat listening OR data-capture-ended < 300 ms as capture-owned and latch hub/start too."
       },
-      "severityOriginal": "P2"
+      "severityOriginal": "P2",
+      "resolution": "fixed (d9f2204)"
     },
     {
       "id": "A18-UI-3",
-      "status": "verified",
+      "status": "fixed",
       "title": "The controller's 100 ms first-focus pass runs on every main-menu show, even with no pad connected, and moves focus to the first mode card, so the menu forgets the remembered mode",
       "area": "ui-input",
       "file": "src/ui/gamepad-controller.js",
@@ -78,11 +80,12 @@
         "severityAdjust": "keep",
         "needsOwnerDecision": false,
         "summary": "verify/ui/c3-first-focus.test.mjs, real main-menu.js (lastMode odyssey), no pad: current odyssey at 90 ms → single at 120 ms; keyboard user same. Fix: in the timer return when getMenuSheet() is null (main-menu.js places its own focus). Related: processGameModeSelection's unfocused branch focuses gameModeCards[selectedGameModeIndex||0], not the .is-current card."
-      }
+      },
+      "resolution": "fixed (5d3695d)"
     },
     {
       "id": "A18-UI-4",
-      "status": "verified",
+      "status": "fixed",
       "title": "Start from the Hub within 500 ms of opening Settings closes the Hub but Settings never opens: game stays paused with nothing on screen",
       "area": "ui-input",
       "file": "src/ui/gamepad-controller.js",
@@ -101,11 +104,12 @@
         "severityAdjust": "keep",
         "needsOwnerDecision": false,
         "summary": "verify/ui/c4-hub-start-cooldown.test.mjs: second Start at ~350 ms → hub closed, settings not visible, paused; at ~650 ms opens. Soft lock (another Start/Escape recovers). Fix: clear _toggleCooldown before toggleSettings in the Hub branch."
-      }
+      },
+      "resolution": "fixed (1ab229b)"
     },
     {
       "id": "A18-UI-5",
-      "status": "verified",
+      "status": "fixed",
       "title": "Stillfall's own pad loop ignores window focus: with 'Pause when the game loses focus' off, presses made in another app undo, restart or advance the puzzle",
       "area": "ui-input",
       "file": "src/ui/stillfall/stillfall-hud.js",
@@ -124,11 +128,12 @@
         "severityAdjust": "keep",
         "needsOwnerDecision": false,
         "summary": "verify/ui/c5-stillfall-unfocused.test.mjs, real installStillfallHud with hasFocus false: sent ['undo','restart','next']; main controller 0 calls. Needs non-default setting + visible unfocused window. Fix: skip actions when document.hidden or !hasFocus (keep updating padPrev)."
-      }
+      },
+      "resolution": "fixed (8529028)"
     },
     {
       "id": "A18-UI-6",
-      "status": "verified",
+      "status": "fixed",
       "title": "LB/RB (and Q/E) in Settings opened over Records also switch the Records tab hidden beneath",
       "area": "ui-input",
       "file": "src/ui/gamepad-controller.js",
@@ -147,11 +152,12 @@
         "severityAdjust": "keep",
         "needsOwnerDecision": false,
         "summary": "verify/ui/c6-tabs-under-settings.test.mjs: pad RB {single,general}→{infinity,display}; keyboard E → {odyssey,audio}. Fix: return after Settings branch in switchMainTab; Records Q/E listener returns when #settings-modal visible."
-      }
+      },
+      "resolution": "fixed (eb7388a)"
     },
     {
       "id": "A18-PERS-1",
-      "status": "verified",
+      "status": "fixed",
       "title": "Steam Cloud: a first device with no Odyssey save keeps an Odyssey upload stuck forever, blocking every later Odyssey download to it",
       "area": "persistence",
       "file": "src/core/steam/steam-cloud-sync.js",
@@ -170,11 +176,12 @@
         "severityAdjust": "keep",
         "needsOwnerDecision": false,
         "summary": "verify/gameplay/p1-cloud-odyssey-stuck.test.js (real SteamCloudSyncManager + OdysseyStateManager, in-memory cloud): A pending ['odyssey.json'] forever, local save null, completedLevels 0 after B uploads 2; fresh device control downloads both. Precondition near-universal for a new player's first device. Fix: Odyssey branch with local null: apply remote via _applyOdyssey if it parses (then drop/ack), drop if both absent; keep throw when the remote read itself fails (lifetime tests rely on it). No data loss; heals on A's first Odyssey save."
-      }
+      },
+      "resolution": "fixed (f164137)"
     },
     {
       "id": "A18-PERS-2",
-      "status": "verified",
+      "status": "fixed",
       "title": "An imported replay older than every stored replay is deleted by the retention prune of its own save, while the sheet says 'Replay imported.'",
       "area": "persistence",
       "file": "src/core/demo/DemoManager.js",
@@ -194,11 +201,12 @@
         "needsOwnerDecision": false,
         "summary": "verify/gameplay/p2-import-pruned.test.js: import id 201, loadDemo(201) undefined, rows 200. Fix: prune in save order via store.openCursor() over autoIncrement ids (no schema change); replay-storage-transaction.test.js harness needs store.openCursor. Downgraded: niche, only at the 200 cap, source file untouched."
       },
-      "severityOriginal": "P2"
+      "severityOriginal": "P2",
+      "resolution": "fixed (4cf6450)"
     },
     {
       "id": "A18-PERS-3",
-      "status": "verified",
+      "status": "fixed",
       "title": "Replay results rank and career stats mix Infinity runs into Single Player (getRank/getStatistics without a mode)",
       "area": "persistence",
       "file": "src/ui/modals.js",
@@ -218,11 +226,12 @@
         "needsOwnerDecision": false,
         "summary": "verify/gameplay/p3-demo-rank-mode.test.js: getRank called with no mode → 'Rank #61'; career mixes 90,059 Infinity best. Fix: mode as in showGameOverModal; getRank(score,{mode}); statisticsForMode. Display only → P3."
       },
-      "severityOriginal": "P2"
+      "severityOriginal": "P2",
+      "resolution": "fixed (beed964)"
     },
     {
       "id": "A18-CORE-1",
-      "status": "verified",
+      "status": "fixed",
       "title": "Replay: resuming while a line clear is still animating starts a second frame loop; recorded inputs are applied twice and the next one skipped",
       "area": "core",
       "file": "src/core/demo/DemoPlayer.js",
@@ -241,11 +250,12 @@
         "severityAdjust": "keep",
         "needsOwnerDecision": false,
         "summary": "verify/gameplay/c1-demo-double-loop.test.js (real DemoPlayer/GameState/hardDrop/pacer, fake timers): same-frame inputs → move:1 applied twice, rotate:left never; digest 39520102 vs 9763456b. Any concurrent loop also rewrites the replay clock (first spawn after clear at sim 159.7 vs 303 ms; score 381 vs 386). Regression from b58561c. Fix must be token-scoped (a plain boolean can stall after seek()/startPlayback retire a loop): _runningLoopToken set in _loop, cleared in finally only if equal and before its own reschedule; _scheduleLoop returns while _runningLoopToken === seekToken. Separate older issue: a pause lasting until the cascade ends lets _advanceTo count same-frame inputs as applied while isPaused rejects them."
-      }
+      },
+      "resolution": "fixed (8b0adfc)"
     },
     {
       "id": "A18-CORE-2",
-      "status": "verified",
+      "status": "deferred",
       "title": "Garbage settling can complete a row that nothing clears; the victim's next lock clears it and is credited for it",
       "area": "core",
       "file": "src/core/garbage.js",
@@ -264,11 +274,12 @@
         "severityAdjust": "keep",
         "needsOwnerDecision": true,
         "summary": "verify/gameplay/c2-garbage-settle-full-row.test.js: 1x2 body + hole at col 3 → fullRowsOnBoard [23]; next unrelated drop → lines 0→1, score 0→325, attack sent. Well case: 4 full rows → credited 4-line clear. Also affects online FFA host and peer (ffa-p2p-game-state.js:1642, :3374). Either fix is a rules change (clear without credit, deterministic on host and peer; or stop settle into garbage holes) and breaks garbage-boundary holeMask-0 cases."
-      }
+      },
+      "resolution": "deferred: owner decision"
     },
     {
       "id": "A18-CORE-3",
-      "status": "verified",
+      "status": "fixed",
       "title": "Resuming Single Player during a replay drops one gravity tick and un-pauses a replay the viewer had paused",
       "area": "core",
       "file": "src/core/game-modes/SinglePlayerMode.js",
@@ -287,11 +298,12 @@
         "severityAdjust": "keep",
         "needsOwnerDecision": false,
         "summary": "verify/gameplay/c3b-trace.test.js: after resume lastTime = wall clock, a frame's gravity lost; c3-resume-gravity-tick.test.js: 1 of 91 move timings gives a different board and score. At 2x/4x the delta becomes a clamped 50 ms burst instead. (b) playback resumes after the viewer paused it; the icon catches up within 100 ms (claim about the icon was wrong). Fix: in SinglePlayerMode.onResume keep the replay clock when isPlayingDemo; resume the demo only if the mode paused it."
-      }
+      },
+      "resolution": "fixed (e8fb2b5)"
     },
     {
       "id": "A18-CORE-4",
-      "status": "verified",
+      "status": "fixed",
       "title": "A saved 0-star Odyssey clear counts as cleared for progress but never grants its orb's theme or the chapter 1/4 reward themes",
       "area": "core",
       "file": "src/core/progression/theme-collection-model.js",
@@ -310,11 +322,12 @@
         "severityAdjust": "keep",
         "needsOwnerDecision": false,
         "summary": "verify/gameplay/c4-zero-star-collection.test.js: v5 save with orbs 1-5 at stars 0 → owned [forest], orb1 status 'Complete Odyssey orb 1'; at stars 1 owns 6 themes + thermal-bloom. Fix: getValidCompletedLevels uses normalizeOdysseyCompletion(completion,{minStars:0}). Cloud merge (1-3 both sides) erases the 0-star clear itself on first merge — a related, recorded-as-deliberate sibling."
-      }
+      },
+      "resolution": "fixed (b4dcf64)"
     },
     {
       "id": "A18-CORE-5",
-      "status": "verified",
+      "status": "deferred",
       "title": "Replay: a pause that lasts until a line clear ends makes the replay skip that frame's recorded inputs while counting them as applied",
       "area": "core",
       "file": "src/core/demo/DemoPlayer.js",
@@ -333,11 +346,12 @@
         "severityAdjust": "keep",
         "needsOwnerDecision": false,
         "summary": "Reproduced by the verifier on the real DemoPlayer/GameState/pacer under fake timers (digest a71ae2eb vs 9763456b). Not independently re-verified by a second agent; deferred to keep the CORE-1 fix to one concern."
-      }
+      },
+      "resolution": "deferred: separate concern from A18-CORE-1"
     },
     {
       "id": "A18-MP-1",
-      "status": "verified",
+      "status": "deferred",
       "title": "Relay network unreachable is never surfaced: lobbies are created/joined and fail as 'host did not answer', contrary to ADR-0023",
       "area": "mp-steam-electron",
       "file": "src/core/steam/steam-networking.js",
@@ -357,11 +371,12 @@
         "needsOwnerDecision": true,
         "summary": "relayNetwork is computed and returned but nothing acts on it (verify/mp/describe-relay-status.mjs: every relay status → message null, lobbyAllowed true). Negative availability states are not terminal (a query or connection attempt triggers a retry), so hard-refusing on a stale 'failed'/'cannot-try' could block a recovered player. ADR-0023 Consequences promise a clear message; ONLINE_RELAY_TRANSPORT limits 'unavailable' to the transport failing to open — docs disagree. Safer fixes: force a retry and poll before refusing, or never block and swap in the relay message when a join ends host_unreachable while relayNetwork is negative. Correction: InitRelayNetworkAccess returns void (nothing to check). Privacy unaffected."
       },
-      "severityOriginal": "P2"
+      "severityOriginal": "P2",
+      "resolution": "deferred: owner decision"
     },
     {
       "id": "A18-MP-2",
-      "status": "verified",
+      "status": "fixed",
       "title": "Relay session pump throttled on Date.now(): a backward clock step stops accepting and checking sessions until the clock catches up",
       "area": "mp-steam-electron",
       "file": "electron/steam-integration.js",
@@ -380,11 +395,12 @@
         "severityAdjust": "keep",
         "needsOwnerDecision": false,
         "summary": "vm harness slicing the real pumpRelaySessions (verify/mp/pump-clock.mjs): after a 60 s backward step, 0 accepts in 10 s; new member first accepted after 60.03 s; broken session reported after 60 s. Timestamps only written in the pump, never reset. Fix: performance.now() for both throttles (one file, negligible risk)."
-      }
+      },
+      "resolution": "fixed (4d8847b)"
     },
     {
       "id": "A18-MP-3",
-      "status": "verified",
+      "status": "deferred",
       "title": "ADR-0023 session enforcement (pumpRelaySessions / closeRelaySessions / relay read-send branches) has no behavioural test, only source regexes",
       "area": "mp-steam-electron",
       "file": "electron/steam-integration.js",
@@ -403,11 +419,12 @@
         "severityAdjust": "keep",
         "needsOwnerDecision": false,
         "summary": "No test imports steam-integration.js or drives its handlers; all touching tests are readFileSync + regex. Extract pump + relayPeers into a pure module with injected transport/gate/members/now/report/log, keep log lines for the two-account test. Note for the test: a closed not-relayed peer that keeps sending is re-accepted within 200 ms and re-closed/reported every second."
-      }
+      },
+      "resolution": "deferred: extraction (M) of code never run against real Steam"
     },
     {
       "id": "A18-LIFE-1",
-      "status": "verified",
+      "status": "fixed",
       "title": "Portal gate: dispose() during an in-flight off-thread run tears it down twice; the second teardown resizes the transferred canvas (InvalidStateError; the return transition's play() then never resolves)",
       "area": "lifecycle",
       "file": "src/rendering/transitions/JourneyEntryTransition.js",
@@ -426,11 +443,12 @@
         "severityAdjust": "keep",
         "needsOwnerDecision": false,
         "summary": "Headless Chromium 157 with real classes, real Worker and real transferControlToOffscreen: entry dispose → uncaught InvalidStateError from the timer; return dispose → unhandled rejection, play() pending (with 0-3 awaits before dispose in onDeactivate). Fix: never size a handed-over canvas (handedOver flag / drop the canvas ref) and make teardown idempotent; Return.finish teardown in try/finally so resolve always fires."
-      }
+      },
+      "resolution": "fixed (d8b89ba)"
     },
     {
       "id": "A18-PERF-1",
-      "status": "verified",
+      "status": "fixed",
       "title": "The new landing shadow allocates ~5.6 KB of garbage per frame per board (regression from ~1.6 KB for the old ghost)",
       "area": "cpu-perf",
       "file": "src/rendering/board-look.js",
@@ -450,11 +468,12 @@
         "needsOwnerDecision": false,
         "summary": "Hot every frame on every board. Node 22 reproduces 5.6 KB/call, but in headless Chromium 157 (Electron 44's engine range) drawLandingShadow is 1.77 KB → 0.05 KB patched, and whole update() HEAD 5,694 B vs old ghost 5,058 B vs patched 3,913 B: regression ≈ +0.64 KB/frame (+13%). Patch (rect topology cached per shape+clip with _getPieceGeometry's snapshot check; inline alpha) bit-identical over 13,105 configurations and 240-frame streams for T/I/S. Scripts verify/perf/landing-shadow-bench.mjs, browser-scene-bench.cjs."
       },
-      "severityOriginal": "P2"
+      "severityOriginal": "P2",
+      "resolution": "fixed (2ee5096)"
     },
     {
       "id": "A18-PERF-2",
-      "status": "verified",
+      "status": "deferred",
       "title": "pieceGraphics.clear() every frame discards the command buffer backing store → ~4 KB regrowth garbage per board per frame",
       "area": "cpu-perf",
       "file": "src/rendering/phaser/base-board-scene.js",
@@ -474,11 +493,12 @@
         "needsOwnerDecision": false,
         "summary": "~3.4 KB/frame per board in Node and Chromium. A naive retained writer changed the command streams (drawCurrentPiece slices commandBuffer mid-frame); a correct one needs Phaser internals and a cursor for every reader (M). Poor cost/benefit without a measured GC pause: report only."
       },
-      "severityOriginal": "P3"
+      "severityOriginal": "P3",
+      "resolution": "deferred: not worth a Phaser-internal writer without a measured GC pause"
     },
     {
       "id": "A18-PERF-3",
-      "status": "verified",
+      "status": "fixed",
       "title": "Boot loads ~55 KB (min) of Odyssey return-transition code because the map input imports a 4-line predicate",
       "area": "cpu-perf",
       "file": "src/ui/odyssey/odyssey-map-input.js",
@@ -497,11 +517,12 @@
         "severityAdjust": "keep",
         "needsOwnerDecision": false,
         "summary": "es-module-lexer closure: 214 → 202 modules without the edge; 12 modules 144,488 B source / 54,320 B minified; strings present in the built main chunk. ~1.6 ms compile+evaluate in Node (CPU lower bound). Fix: dependency-free leaf for the two predicates, re-exported; validate with build, boot closure and an Electron smoke (TDZ warning in vite.config.js). check-boot-closure can't see it (chunk names only): add a static-graph unit test."
-      }
+      },
+      "resolution": "fixed (1b6c4cf)"
     },
     {
       "id": "A18-PERF-4",
-      "status": "verified",
+      "status": "fixed",
       "title": "Local versus showAttack interleaves layout reads and DOM writes per target → forced synchronous layouts in 3-4 player attacks",
       "area": "cpu-perf",
       "file": "src/ui/local-versus-hud.js",
@@ -520,11 +541,12 @@
         "severityAdjust": "keep",
         "needsOwnerDecision": false,
         "summary": "Chromium 157 with real index.html + stylesheets: 2 forced style+layout passes per 3-target attack (~1.3 ms); showAttack median 1.6-2.1 ms vs 0.2-0.3 ms read-first; cssText identical. Fix in local-versus-hud.js only."
-      }
+      },
+      "resolution": "fixed (185d253)"
     },
     {
       "id": "A18-THM-1",
-      "status": "verified",
+      "status": "deferred",
       "title": "Solar Eclipse flamingos: writeBirds allocates ~117 KB every frame and re-plans both flights from scratch every frame",
       "area": "themes-odyssey",
       "file": "src/themes/solar-eclipse/solar-eclipse-flamingo-flight.js",
@@ -544,11 +566,12 @@
         "severityAdjust": "keep",
         "needsOwnerDecision": false,
         "summary": "Chromium 157: 117.4 KB/frame, 118 µs airborne (78 KB quiet); at every tier (Minimal 8/6 … Extreme 20/12). Patched (rotate index reads, allocation-free replica of V8 Math.hypot, lowestToe scratch, plans cached on values) 27.5 KB / 79 µs; report=null 23 KB. Bone tables bit-identical over 45,000 frames incl. slot boundaries, pinned flight, aspect change. Math.sqrt is not bit-equal to Math.hypot (use the replica for strict identity)."
-      }
+      },
+      "resolution": "deferred: theme file, needs the GPU screenshot loop"
     },
     {
       "id": "A18-THM-2",
-      "status": "verified",
+      "status": "deferred",
       "title": "Synthwave strollers and shared fox rig: per-frame posing allocates via array destructuring in qRotate and cycleCurve (41 KB/frame on the pier); STATIC_STARTUP_AUDIT's 'solve allocates nothing' does not hold",
       "area": "themes-odyssey",
       "file": "src/themes/shared/fox-rig.js",
@@ -568,11 +591,12 @@
         "severityAdjust": "keep",
         "needsOwnerDecision": false,
         "summary": "Chromium 157: StrollerLife.write ×16 41.2 KB → 7.5 KB with qRotate index reads + closure-free cycleCurve + LIMBS index reads; pose table bit-identical over 18,000 frames. Arctic fox 3,591 → 2,086 B/call bit-identical. Swapping Math.hypot for Math.sqrt is NOT bit-identical (0.88% of float32 posture values differ): leave hypot or use an exact replica."
-      }
+      },
+      "resolution": "deferred: theme files, needs the GPU screenshot loop"
     },
     {
       "id": "A18-DEAD-1",
-      "status": "verified",
+      "status": "fixed",
       "title": "Retired boot-warp scene (924 lines) survives only through tests and a playground harness; boot tests mock the live overlay with the retired -31 px offset (live code uses -36)",
       "area": "dead-code-tests",
       "file": "src/ui/boot-warp-transition-scene.js",
@@ -600,11 +624,12 @@
         "needsOwnerDecision": false,
         "summary": "Scene (787) and intro-noise-lib (137) dead; playground effect logo-warp-transition dev-only harness. boot-warp-handoff copy with the mock at the real -36 → 3 fallback-layout tests fail (expected 369, got 364): the suite pins the retired constant. Safe order: tests read the real constant; drop warpFovAt block; delete effect + playground-parameters entries in the same commit (url-parameter-catalog test checks paths); update scripts/playground-phase-capture.mjs default; delete scene + noise lib; fix comments. P3: the real offset drives only the resize fallback."
       },
-      "severityOriginal": "P2"
+      "severityOriginal": "P2",
+      "resolution": "fixed (bf6f737)"
     },
     {
       "id": "A18-DEAD-2",
-      "status": "verified",
+      "status": "fixed",
       "title": "JourneyReturnTransition is a drifted copy of JourneyEntryTransition missing the entry's 2026-10-23 fixes: a hidden window during the return hold still aborts with blackout-timeout",
       "area": "dead-code-tests",
       "file": "src/rendering/transitions/JourneyReturnTransition.js",
@@ -629,11 +654,12 @@
         "needsOwnerDecision": false,
         "summary": "Drift real (7 clone blocks, 231 lines; no pause-gap rule, no hold budget, no abort hold/fade). Reproduced on the real class: 10 s frame gap with prep pending → 'blackout-timeout' on first frame back; entry control does not abort. Mechanism narrower: waitForAnimationFrames has a 120 ms timer fallback, default return keeps the board resident; abort needs prep still pending (rebuild return, double-rAF warm-ups) in a hidden web-build tab. Electron runs rAF at full rate even minimised (backgroundThrottling:false). Fix: port the HOLD_PAUSE_GAP_MS rule into Return.tick (better: shared helper)."
       },
-      "severityOriginal": "P2"
+      "severityOriginal": "P2",
+      "resolution": "fixed (ec77cc5)"
     },
     {
       "id": "A18-DEAD-3",
-      "status": "verified",
+      "status": "deferred",
       "title": "ADR-0022 leftovers: the chapter 3/4 aurora curtain builder and the Ch2→Ch3 water membrane outlived the retired scenes",
       "area": "dead-code-tests",
       "file": "src/rendering/odyssey/chapter-environments/shared/mountain-aurora.js",
@@ -657,11 +683,12 @@
         "severityAdjust": "keep",
         "needsOwnerDecision": false,
         "summary": "All listed items dead; MOUNTAIN_AURORA_CURTAIN_CONFIGS read only by the DEV-only layout editor. Six live comments cite the water-surface file. Safe now; extend the 'old scenes stay gone' test. No visible change."
-      }
+      },
+      "resolution": "deferred: Odyssey files (report-only here)"
     },
     {
       "id": "A18-DEAD-4",
-      "status": "verified",
+      "status": "fixed",
       "title": "Garbage rules that do nothing: GARBAGE_RULES contradicts the live attack formula, and the crowd handicap is computed and serialised but never applied",
       "area": "dead-code-tests",
       "file": "src/core/garbage.js",
@@ -685,11 +712,12 @@
         "severityAdjust": "keep",
         "needsOwnerDecision": true,
         "summary": "GARBAGE_RULES, HANDICAP_LEVELS, applyCrowdHandicap: zero references (safe now). handicapCrowd always 0 (≤4 players; online FFA never uses MultiPlayerState) but carried in the ADR-0014 resync sidecar and demo snapshots: removing it or wiring it for online FFA is an owner decision."
-      }
+      },
+      "resolution": "partly fixed (77c0681): dead constants and applyCrowdHandicap removed; the crowd half needs a decision"
     },
     {
       "id": "A18-DEAD-5",
-      "status": "verified",
+      "status": "fixed",
       "title": "Retired classic-loop and Odyssey-data helpers in core/ui/rendering with zero callers, tests included (~230 lines); levels.js lookups have drifted from LevelRegistry",
       "area": "dead-code-tests",
       "file": "src/core/game.js",
@@ -723,11 +751,12 @@
         "severityAdjust": "keep",
         "needsOwnerDecision": false,
         "summary": "All dead except getAvailableSongs (asserted by sound-manager-track-initialization.test.js:30/77: test-only). Drift confirmed (getChapterStartLevel fallback; getPreviousLevel(1) undefined vs null). Also InfinityMode.js:1508-1512 boardScene.showScorePopup guard is dead (no scene defines it). Re-run knip after deleting (private helpers may orphan)."
-      }
+      },
+      "resolution": "fixed (113541f)"
     },
     {
       "id": "A18-DEAD-6",
-      "status": "verified",
+      "status": "deferred",
       "title": "themes/shared/composer-dispose.js is kept alive only by its own test; its one possible consumer (Wolfhour's legacy EffectComposer path) is unreachable",
       "area": "dead-code-tests",
       "file": "src/themes/shared/composer-dispose.js",
@@ -750,7 +779,9 @@
         "severityAdjust": "keep",
         "needsOwnerDecision": false,
         "summary": "Only importer is its test; Wolfhour always uses WebGPURenderer; BaseTheme.disposeComposer already does the same loop. Not in ADR-0018's contract-test list. Safe to delete with its test; THREE_UPGRADE_RESEARCH 'helper still required' is stale."
-      }
+      },
+      "resolution": "deferred: theme files (report-only here)"
     }
-  ]
+  ],
+  "reviewFollowUp": "4aa9245: capture-settle window ignores a clock set back; one debounce timer; latch loop deduplicated (review of A18-UI-1/UI-2/UI-4/MP-2)"
 }
