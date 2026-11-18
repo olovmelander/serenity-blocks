@@ -14,6 +14,8 @@
 
 import {
     If,
+    Loop,
+    abs,
     atan,
     clamp,
     cos,
@@ -22,8 +24,10 @@ import {
     float,
     floor,
     fract,
+    int,
     length,
     log,
+    log2,
     max,
     min,
     pow,
@@ -33,8 +37,20 @@ import {
     vec3,
 } from 'three/tsl';
 import {
-    DEG, FAR_LAMP, GALAXY, cnHash23,
+    DEG, FAR_LAMP, GALAXY, PULSAR, cnBeam, cnHash23,
 } from './cosmic-noir-tsl.js';
+
+/**
+ * The cloud: a deck this far over the eye, one tile of its shapes this many scene units across,
+ * its detail on a tile this share of that, dissolving into the horizon's haze over this reach.
+ */
+export const CLOUD = Object.freeze({
+    height: 34, tile: 230, fine: 0.29, fade: 520,
+});
+/** How far the cloud's two fields run a second (tiles of each, along x and z): they slide through each other, so its shapes change. */
+export const CLOUD_RATES = Object.freeze([-0.0056, -0.0041, -0.019, -0.031]);
+/** A fork of lightning: how high it starts (the sine of its altitude) and how far off its own bearing it is still drawn. */
+const BOLT = Object.freeze({ top: 0.5, wide: 0.42 });
 
 /** The share of a lattice cell a far star spans on a desktop frame. */
 const STAR_SPREAD = 0.22;
@@ -117,8 +133,11 @@ const deepField = (dir, scale) => {
  * @param {number} options.layers   lattices of far stars
  * @param {boolean} options.detail  the galaxy's fine dust and knots, and the deep field
  * @param {boolean} options.stars   false = the air's own light only (what the sea's mist takes)
+ * @param {boolean} options.weather the cloud, the lightning in it and a fork of lightning
  */
-export function cnSky(u, ray, { layers = 3, detail = true, stars = true } = {}) {
+export function cnSky(u, ray, {
+    layers = 3, detail = true, stars = true, weather = stars,
+} = {}) {
     // The dark itself, and a faint band where the sea's mist meets it.
     const band = exp(ray.y.abs().mul(-11.0));
     const sky = float(0.0009).add(band.mul(0.0052)).toVar();
@@ -129,9 +148,9 @@ export function cnSky(u, ray, { layers = 3, detail = true, stars = true } = {}) 
             const want = u.pixelAngle.mul(scale * 1.25);
             const spread = min(want, 0.4);
             const thin = min(float(STAR_SPREAD).div(want), 1.0);
-            sky.addAssign(starLayer(ray, scale, vec3(13.3 * (i + 1), 5.1 * (i + 2), 9.7 * (i + 3)), spread).mul(thin.mul(thin)));
+            sky.addAssign(starLayer(ray, scale, vec3(13.3 * (i + 1), 5.1 * (i + 2), 9.7 * (i + 3)), spread).mul(thin.mul(thin)).mul(u.stars));
         }
-        if (detail) sky.addAssign(deepField(ray, 31.0));
+        if (detail) sky.addAssign(deepField(ray, 31.0).mul(u.stars));
     }
 
     // ── The next light, far out on the horizon: a point, its glow, and the mist round it ──
@@ -202,5 +221,101 @@ export function cnSky(u, ray, { layers = 3, detail = true, stars = true } = {}) 
         light.addAssign(exp(rb.mul(-2.4)).mul(0.035));
         sky.addAssign(light.mul(GALAXY.gain).mul(u.galaxy).mul(clamp(toward.sub(0.5).mul(8.0), 0.0, 1.0)));
     });
+
+    if (weather) {
+        // ── Meteors: each a streak from its tail's end to its head, brightest at the head ──
+        Loop({
+            start: int(0), end: u.meteorCount, type: 'int', condition: '<', name: 'm',
+        }, ({ m }) => {
+            const head = u.meteors.element(m.mul(2));
+            const tail = u.meteors.element(m.mul(2).add(1));
+            const pa = ray.sub(tail.xyz).toVar();
+            const ba = head.xyz.sub(tail.xyz).toVar();
+            const along = clamp(dot(pa, ba).div(max(dot(ba, ba), 1e-6)), 0.0, 1.0).toVar();
+            const off = length(pa.sub(ba.mul(along)));
+            const wide = max(tail.w, u.pixelAngle.mul(1.2));
+            const x = off.div(wide);
+            const toHead = length(ray.sub(head.xyz)).div(wide.mul(1.25));
+            sky.addAssign(head.w.mul(
+                exp(x.mul(x).negate()).mul(along.mul(along).mul(0.8).add(along.mul(0.2)))
+                    .add(exp(toHead.mul(toHead).negate()).mul(0.9)),
+            ));
+        });
+
+        // ── The cloud: a deck over the sea, seen from under ──
+        // Dark against the galaxy and the stars (it is a shape before it is a light), silvered
+        // where it is thin near the galaxy, modelled by which way each fold faces it, lit from
+        // inside by lightning, and found by the beam that searches the sky.
+        If(u.cloud.greaterThan(0.01).and(ray.y.greaterThan(0.004)), () => {
+            const up = max(ray.y, 0.02).toVar();
+            const reach = float(CLOUD.height).div(up).toVar();
+            const at = ray.xz.mul(reach).toVar();
+            // (A pixel spans a long reach of the deck where it looks along it.)
+            const foot = reach.mul(u.pixelAngle).div(up).toVar();
+            const a = u.sea(
+                at.div(CLOUD.tile).add(u.cloudDrift.xy),
+                max(log2(foot.mul(u.seaSize / CLOUD.tile)), 0.0),
+            ).toVar();
+            const b = u.sea(
+                at.div(CLOUD.tile * CLOUD.fine).add(u.cloudDrift.zw),
+                max(log2(foot.mul(u.seaSize / (CLOUD.tile * CLOUD.fine))), 0.0),
+            ).toVar();
+            const field = a.r.mul(0.6).add(b.r.mul(0.3)).add(a.a.sub(0.5).mul(0.8)).toVar();
+            const edge = float(0.66).sub(u.cloud.mul(1.42));
+            const body = smoothstep(edge, edge.add(0.46), field).toVar();
+            const thick = body.mul(exp(reach.div(-CLOUD.fade))).toVar();
+            const through = exp(thick.mul(-3.4)).toVar();
+            // Which way this fold of it faces the galaxy (the field's own slope, along the galaxy's bearing).
+            const gFlat = Math.hypot(frame.dir[0], frame.dir[2]) || 1;
+            const relief = clamp(
+                a.g.mul(frame.dir[0] / gFlat).add(a.b.mul(frame.dir[2] / gFlat)).mul(-0.11).add(0.5)
+                    .add(b.g.mul(frame.dir[0] / gFlat).add(b.b.mul(frame.dir[2] / gFlat)).mul(-0.03)),
+                0.0,
+                1.0,
+            );
+            const nearGalaxy = exp(toward.sub(1.0).mul(7.0));
+            const lining = body.mul(float(1.0).sub(body)).mul(4.0);
+            const offFlash = ray.sub(u.flashDir);
+            const inside = exp(dot(offFlash, offFlash).mul(-5.0)).mul(1.2).add(0.07);
+            // Where the beam that searches the sky finds its base.
+            const base = vec3(at.x, CLOUD.height, at.y).sub(u.pulsar).toVar();
+            const away = max(length(base), 1.0);
+            const found = cnBeam(base.div(away), u.beam).mul(u.beamGain)
+                .div(away.mul(away).div(PULSAR.beamReach * PULSAR.beamReach).add(1.0));
+            const lit = u.skyGlow.mul(relief.mul(0.42).add(0.1))
+                .add(u.galaxy.mul(nearGalaxy).mul(lining.mul(0.045).add(relief.mul(0.012))))
+                .add(u.flash.mul(inside).mul(relief.mul(0.7).add(0.5)))
+                .add(found.mul(0.02));
+            sky.assign(sky.mul(through).add(lit.mul(float(1.0).sub(through))));
+        });
+
+        // ── A fork of lightning, from the cloud to the sea ──
+        If(u.bolt.y.greaterThan(0.002).and(ray.y.lessThan(BOLT.top)), () => {
+            const bearing = atan(ray.x, ray.z.negate());
+            const off = bearing.sub(u.bolt.w).toVar();
+            If(abs(off).lessThan(BOLT.wide), () => {
+                const tri = (x) => fract(x).sub(0.5).abs().mul(4.0)
+                    .sub(1.0);
+                const fall = float(BOLT.top).sub(ray.y).toVar(); // 0 at its head, growing down to the sea
+                const s = fall.mul(9.0).add(u.bolt.z.mul(37.0)).toVar();
+                // Its channel: a walk of three scales, wider the further it has fallen.
+                const walk = tri(s).mul(0.034)
+                    .add(tri(s.mul(2.63).add(1.3)).mul(0.016))
+                    .add(tri(s.mul(7.1).add(0.5)).mul(0.006))
+                    .mul(fall.mul(1.6).add(0.35));
+                const lean = fall.mul(u.bolt.z.sub(0.5).mul(0.3));
+                const wide = u.pixelAngle.mul(1.5);
+                const dMain = abs(off.sub(walk).sub(lean)).toVar();
+                // A fork leaves it part-way down and dies before the sea.
+                const from = fall.sub(0.17).toVar();
+                const forked = from.mul(u.bolt.z.sub(0.5).sign().mul(0.55).add(tri(s.mul(1.9).add(4.1)).mul(0.06)));
+                const dFork = abs(off.sub(walk).sub(lean).sub(forked)).toVar();
+                const alive = smoothstep(0.0, 0.02, from).mul(float(1.0).sub(smoothstep(0.12, 0.26, from)));
+                const line = (d) => exp(d.mul(d).div(wide.mul(wide)).negate()).mul(5.0)
+                    .add(float(0.003).div(d.add(0.004)));
+                sky.addAssign(u.bolt.y.mul(line(dMain).add(line(dFork).mul(alive).mul(0.55))));
+            });
+        });
+    }
     return sky;
 }

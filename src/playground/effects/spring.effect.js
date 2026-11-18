@@ -15,6 +15,9 @@
  *                            alone, one station every 100 s of `t`, never resting)
  *   hour=<place>             hold the light at a wheel place (0 morning, 1 afternoon, 2 golden
  *                            evening, 3 sunset, 4 light night, 5 dawn mist; fractions mix)
+ *   weather=<place>          hold the weather at a wheel place (0 fair, 1 mackerel sky, 2 building
+ *                            heaps, 3 after the shower, 4 veiled sun, 5 clear and windy; fractions
+ *                            mix; it also turns with the clock alone, one every 130 s of `t`)
  *   parts=land,river         draw only these parts (land, river, rocks, trees, woods, meadow, fx, sky)
  *   falseColor=1             post debug view: band the pre-tone-map max channel
  *   noPost=1                 raw scene (no bloom/grade)
@@ -50,6 +53,9 @@ import { SPRING_TETROMINOS } from '../../themes/spring/spring-tetrominos.js';
 /** The game's piece colours, and a ten-cell row of codes for synthetic clears. */
 const PIECE_COLORS = Object.values(SPRING_TETROMINOS.colors).slice(0, 7);
 const ROW_CODES = (k) => Array.from({ length: 10 }, (_, c) => (k * 3 + c * 2 + (c > 5 ? 1 : 0)) % 7);
+
+/** The pieces the warm-up locks play, in turn (in the order of PIECE_COLORS). */
+const WARM_SHAPES = ['I', 'T', 'Z', 'L', 'S', 'J', 'O'];
 
 /** A looping script for the live demo (seconds into the loop). */
 const DEMO_LOOP = 40;
@@ -153,6 +159,7 @@ export function create({
     const pointer = { x: num(params, 'px'), y: num(params, 'py') };
     const level = Math.max(1, Math.round(num(params, 'level', 1)));
     const hourHold = params.has('hour') ? num(params, 'hour', 0) : null;
+    const weatherHold = params.has('weather') ? num(params, 'weather', 0) : null;
     const eventName = params.get('event');
     const eventAge = num(params, 'eventAge', 0.6);
     const holdCombo = Math.max(0, Math.round(num(params, 'combo', 0)));
@@ -279,6 +286,8 @@ export function create({
                 rows: [19 - (i % 9)],
                 u: ((i * 0.37) % 1) * 0.9 + 0.05,
                 color: PIECE_COLORS[i % PIECE_COLORS.length],
+                // (The pieces in turn, as play deals them: a lock with no shape blooms anemones.)
+                shape: WARM_SHAPES[i % WARM_SHAPES.length],
                 hardDrop: i % 4 === 3,
                 distance: 12,
             });
@@ -306,7 +315,11 @@ export function create({
             const [, verb, detail] = DEMO_SCRIPT[demoCursor];
             if (verb === 'lock') {
                 demoPiece += 1;
-                world.onLock({ color: PIECE_COLORS[demoPiece % PIECE_COLORS.length], ...detail });
+                world.onLock({
+                    color: PIECE_COLORS[demoPiece % PIECE_COLORS.length],
+                    shape: WARM_SHAPES[demoPiece % WARM_SHAPES.length],
+                    ...detail,
+                });
             } else {
                 const base = demoPiece;
                 const rowCodes = Array.from({ length: detail.lines }, (_, k) => ROW_CODES(k + base)).flat();
@@ -335,6 +348,7 @@ export function create({
         world.bindCamera(camera);
         world.setReducedMotion(params.get('reduce') === '1');
         if (hourHold !== null) world.setCaptureOverrides({ hour: hourHold });
+        if (weatherHold !== null) world.setCaptureOverrides({ weather: weatherHold });
         const partsParam = params.get('parts');
         if (partsParam) world.showOnlyParts(partsParam.split(',').map((p) => p.trim()));
         if (!noPost) {
