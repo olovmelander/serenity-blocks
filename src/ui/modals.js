@@ -621,8 +621,11 @@ export async function showDemoCompleteModal(
 
     if (highScoreManager) {
         try {
-            rank = await highScoreManager.getRank(score);
-            stats = await highScoreManager.getStatistics();
+            // As on the game-over sheet: a replay is measured against its own mode's
+            // games, never Infinity runs mixed into a Single Player record.
+            const mode = gameState?.isInfinityMode ? 'infinity' : 'single';
+            rank = await highScoreManager.getRank(score, { mode });
+            stats = statisticsForMode(await highScoreManager.getStatistics(), mode);
         } catch (e) {
             console.warn('[Modal] Failed to load stats', e);
         }
