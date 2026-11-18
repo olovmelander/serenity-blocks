@@ -1698,6 +1698,35 @@ describe('Sakura reaction director: each event\'s own instrument', () => {
                 .toEqual(new Set([...EVENT_KINDS, 'festival']));
         });
 
+        // FAULT: sakura-reactions.js emit() (lines 316-337) gives up "the one with the least of its
+        // work left", and an emitter the garden has not yet seen counts only its strength there: a
+        // faint one that has never been played is given up before a jet, a shower or a lift the
+        // garden has been playing for a frame and still has most of its work to do. For an emitter
+        // that acts once (the gate's ring, a single line's lantern, a set-down lock) that is the
+        // whole event lost. The header's "none is reclaimed before the garden has played it" holds
+        // for an empty pool only. Reproduce at Minimal or Low (22 slots): onLineClear(4),
+        // onPerfectClear(), onLevelUp(), update(1 / 60), then every handler in one frame: two of
+        // that frame's own twenty emitters are gone, and the old clear x 2, shower and rise stay.
+        it.fails('gives up what the garden has already seen before anything it has not', () => {
+            for (const quality of ['Minimal', 'Low']) {
+                const reactions = create(quality);
+                reactions.onLineClear(4, { clearedRows: [20, 21, 22, 23] });
+                reactions.onPerfectClear();
+                reactions.onLevelUp();
+                const playing = reactions.update(1 / 60).emitters.map((emitter) => emitter.serial);
+                const first = reactions.serial;
+                everything(reactions);
+                const alive = new Set(reactions.getFrame().emitters.map((emitter) => emitter.serial));
+                const unseenLost = [];
+                for (let serial = first; serial < reactions.serial; serial += 1) {
+                    if (!alive.has(serial)) unseenLost.push(serial);
+                }
+                // Room has to be made (thirty-two asked for, twenty-two slots): by the old ones.
+                expect(playing.filter((serial) => alive.has(serial)).length).toBeLessThan(playing.length);
+                expect(unseenLost, quality).toEqual([]);
+            }
+        });
+
         it('gives up the faintest of what the garden has not yet seen when even that is not room enough', () => {
             const reactions = create('Minimal');
             everything(reactions);

@@ -2092,3 +2092,314 @@ describe('Sakura petal director: each event\'s own instrument', () => {
         });
     });
 });
+
+/**
+ * Ten minutes of play at 60 frames a second through the real reactions and the real director,
+ * with the garden's hooks replaced by counters: random locks and hard drops, clears of every
+ * size, cascades, twists, back-to-backs, perfect clears, level-ups, pile-ups in which every
+ * handler fires in one frame, games that end and begin again, Reduce motion switched on and off.
+ * Every number of every frame and everything handed to the garden is checked on the way.
+ */
+describe('Sakura reactions and petal director: ten minutes of play', () => {
+    const KINDS = ['lock', 'clear', 'floats', 'star', 'shower', 'combo', 'lanterns', 'spin', 'rise', 'splash', 'swarm',
+        'gate', 'spirit', 'festival'];
+    const UNIT = ['gust', 'glow', 'lanterns', 'moon', 'vortex', 'heat', 'spirit', 'constellation', 'figures', 'hush',
+        'blizzard', 'sway', 'punch', 'level', 'fever', 'motion'];
+    const HOOKS = ['ring', 'flash', 'star', 'floatLantern', 'skyLantern', 'splash', 'helix', 'gate', 'spirit', 'spawn'];
+    const EVENTS = ['locks', 'drops', 'clears', 'lines', 'twists', 'b2b', 'perfect', 'levels', 'over', 'pileUps'];
+    const sessions = new Map();
+
+    /** Every number anywhere in a value that is not finite, as readable paths. */
+    function nonFinite(value, path, found = []) {
+        if (typeof value === 'number') {
+            if (!Number.isFinite(value)) found.push(`${path} = ${value}`);
+        } else if (Array.isArray(value)) value.forEach((entry, index) => nonFinite(entry, `${path}[${index}]`, found));
+        else if (value && typeof value === 'object') {
+            Object.entries(value).forEach(([key, entry]) => nonFinite(entry, `${path}.${key}`, found));
+        }
+        return found;
+    }
+
+    /** Every way a frame can leave its documented ranges. */
+    function frameProblems(frame, capacity) {
+        const problems = nonFinite(frame, 'frame');
+        const within = (key, low, high) => {
+            if (!(frame[key] >= low && frame[key] <= high)) problems.push(`${key} = ${frame[key]}`);
+        };
+        for (const key of UNIT) within(key, 0, 1);
+        within('foxfire', 0, 14);
+        within('crown', 0, 1.3);
+        within('corona', 0, 1.6);
+        if (![0, 1, 2, 3].includes(frame.stage)) problems.push(`stage = ${frame.stage}`);
+        if (!Number.isInteger(frame.streak) || frame.streak < 0) problems.push(`streak = ${frame.streak}`);
+        if (!Number.isInteger(frame.leap) || frame.leap < 0) problems.push(`leap = ${frame.leap}`);
+        if (frame.fronts.length > 3) problems.push(`${frame.fronts.length} fronts`);
+        for (const front of [...frame.fronts, ...(frame.front ? [frame.front] : [])]) {
+            const ok = Math.abs(front.position) <= 1.4 + 1e-9 && front.direction === 1
+                && front.strength >= 0 && front.strength <= 1;
+            if (!ok) problems.push(`front ${JSON.stringify(front)}`);
+        }
+        if (frame.emitters.length > capacity) problems.push(`${frame.emitters.length} emitters`);
+        for (const live of frame.emitters) {
+            const ok = KINDS.includes(live.kind) && live.strength > 0 && live.strength <= 1
+                && live.age >= 0 && live.age < live.duration && live.progress >= 0 && live.progress < 1
+                && (live.side === 1 || live.side === -1) && live.column >= 0 && live.column <= 1
+                && live.row >= 0 && live.row <= 1 && Number.isInteger(live.lines) && live.lines >= 0
+                && live.seed >= 0 && live.seed < 1;
+            if (!ok) problems.push(`emitter ${JSON.stringify(live)}`);
+        }
+        return problems;
+    }
+
+    /** Play the session once a tier (the tests below each read a part of what happened). */
+    function session(quality) {
+        if (sessions.has(quality)) return sessions.get(quality);
+        const tier = SAKURA_TIERS[quality];
+        const reactions = new SakuraReactions({ quality, rng: seededRandom(41) });
+        // What was asked for, by serial: an emitter the garden never saw is one that was lost.
+        const emitted = new Map();
+        const emit = reactions.emit.bind(reactions);
+        reactions.emit = (kind, options) => {
+            const slot = emit(kind, options);
+            emitted.set(slot.serial, { kind, lines: slot.lines, strength: slot.strength });
+            return slot;
+        };
+        const camera = frameCamera(LANDSCAPE);
+        const stage = new SakuraStage(camera);
+        const problems = [];
+        const note = (message) => { if (problems.length < 20) problems.push(message); };
+        const counts = Object.fromEntries(HOOKS.map((key) => [key, 0]));
+        const finite = (hook, args) => {
+            counts[hook] += 1;
+            if (!args.every(Number.isFinite)) note(`${hook}(${args.join(', ')})`);
+        };
+        const peaks = { ring: 0, swarm: 0, blizzard: 0 };
+        const effects = {
+            ring: (x, z, strength) => {
+                finite('ring', [x, z, strength]);
+                peaks.ring = Math.max(peaks.ring, strength);
+                if (!(strength > 0 && strength < 1.6)) note(`ring strength ${strength}`);
+                if (!(sakuraLand(x, z) < 0)) note(`ring on land at ${x}, ${z}`);
+            },
+            flash: (x, y, z, strength) => {
+                finite('flash', [x, y, z, strength]);
+                if (!(strength > 0) || !(y > sakuraSurfaceHeight(x, z))) note(`flash ${x}, ${y}, ${z}, ${strength}`);
+            },
+            star: (strength) => {
+                finite('star', [strength]);
+                if (!(strength > 0 && strength <= 1)) note(`star ${strength}`);
+            },
+            floatLantern: (x, z, vx, vz, power) => finite('floatLantern', [x, z, vx, vz, power]),
+            skyLantern: (x, y, z, delay) => {
+                finite('skyLantern', [x, y, z, delay]);
+                if (!(y > sakuraSurfaceHeight(x, z)) || !(delay >= 0)) note(`sky lantern ${x}, ${y}, ${z}, ${delay}`);
+            },
+            splash: (x, z, strength) => {
+                finite('splash', [x, z, strength]);
+                if (!(sakuraSurfaceHeight(x, z) <= SAKURA_WATER_LEVEL + 0.001)) note(`splash on land at ${x}, ${z}`);
+                if (!(strength >= 0.12 && strength <= 1)) note(`splash strength ${strength}`);
+                const seen = ndc(new THREE.Vector3(x, 0, z), camera).x * 0.5 + 0.5;
+                if (seen > stage.board.x0 && seen < stage.board.x1) note(`splash behind the card at ${seen}`);
+            },
+            helix: (x, y, z, side, strength, height) => {
+                finite('helix', [x, y, z, side, strength, height]);
+                if (Math.abs(side) !== 1 || !(strength > 0 && strength <= 1 + 1e-9) || !(height >= 3.2)) {
+                    note(`helix ${side}, ${strength}, ${height}`);
+                }
+            },
+            gate: (strength) => {
+                finite('gate', [strength]);
+                if (!(strength >= 0.4 && strength <= 1)) note(`gate ${strength}`);
+            },
+            spirit: (strength) => {
+                finite('spirit', [strength]);
+                if (strength !== 1) note(`spirit ${strength}`);
+            },
+        };
+        const sim = { spawn: (...args) => { finite('spawn', args); return 0; } };
+        const director = new SakuraPetalDirector({
+            stage, sim, tier, rng: seededRandom(77), surface: sakuraSurfaceHeight, effects,
+        });
+        const wind = { x: 0.96, z: 0.28, strength: 0.24 };
+        const random = seededRandom(20261118);
+        const pick = (low, high) => low + random() * (high - low);
+        const piece = () => ({ x: Math.floor(pick(0, 10)), y: Math.floor(pick(6, 23)), shape: [[1, 1], [1, 1]] });
+        const sent = Object.fromEntries(EVENTS.map((key) => [key, 0]));
+        const count = (...keys) => keys.forEach((key) => { sent[key] += 1; });
+        const everything = () => {
+            const dropped = piece();
+            reactions.onHardDrop({ piece: dropped, distance: 18 });
+            reactions.onPieceLock({ piece: dropped });
+            reactions.onLineClear(4, { clearedRows: [20, 21, 22, 23] });
+            reactions.onCombo(9);
+            reactions.onTwist({ piece: dropped });
+            reactions.onBackToBack();
+            reactions.onPerfectClear();
+            reactions.onLevelUp();
+            count('pileUps', 'locks', 'drops', 'clears', 'twists', 'b2b', 'perfect', 'levels');
+            sent.lines += 4;
+        };
+        const seen = new Set();
+        const seenKinds = new Set();
+        let nextLock = 0.5;
+        let nextPileUp = 20;
+        let over = false;
+        let resumeAt = 0;
+        let leaps = 0;
+        for (let frame = 0; frame < 60 * 600; frame += 1) {
+            const t = frame * STEP;
+            const at = `t ${t.toFixed(2)}`;
+            // A game ends every couple of minutes, rests five seconds and begins again.
+            if (!over && frame > 0 && frame % (60 * 113) === 0) {
+                reactions.onGameOver();
+                count('over');
+                over = true;
+                resumeAt = t + 5;
+            }
+            if (over && t >= resumeAt) over = false;
+            // Reduce motion for the third and the eighth minute.
+            if (frame % (60 * 60) === 0) reactions.setMotion([2, 7].includes(frame / 3600) ? 0.35 : 1);
+            if (!over && t >= nextPileUp) {
+                nextPileUp = t + pick(15, 30);
+                everything();
+            } else if (!over && t >= nextLock) {
+                // A steady hand: a lock every 0.5 to 1.1 s, most of them dropped, four in ten clearing.
+                nextLock = t + pick(0.5, 1.1);
+                const locked = piece();
+                if (random() < 0.7) {
+                    reactions.onHardDrop({ piece: locked, distance: pick(0, 20) });
+                    count('drops');
+                }
+                reactions.onPieceLock({ piece: locked });
+                count('locks');
+                if (random() < 0.4) {
+                    const lines = 1 + Math.floor(random() ** 1.6 * 4);
+                    reactions.onLineClear(lines, { clearedRows: [23 - Math.floor(pick(0, 6))], cascadeCount: 1 });
+                    count('clears');
+                    sent.lines += lines;
+                    if (random() < 0.2) {
+                        reactions.onCombo(2 + Math.floor(pick(0, 5)));
+                        reactions.onLineClear(1, { clearedRows: [23], cascadeCount: 2 });
+                        count('clears', 'lines');
+                    }
+                    if (lines === 4 && random() < 0.5 && reactions.onBackToBack()) count('b2b');
+                    if (random() < 0.1 && reactions.onTwist({ piece: locked, lineCount: lines })) count('twists');
+                    if (random() < 0.03 && reactions.onPerfectClear()) count('perfect');
+                    if (random() < 0.05 && reactions.onLevelUp()) count('levels');
+                } else if (random() < 0.05 && reactions.onTwist({ piece: locked, lineCount: 0 })) count('twists');
+            }
+            const state = reactions.update(STEP);
+            frameProblems(state, reactions.maxEmitters).forEach((found) => note(`${at}: ${found}`));
+            if (state.leap < leaps) note(`leap fell from ${leaps} to ${state.leap}`);
+            leaps = state.leap;
+            state.emitters.forEach((live) => { seen.add(live.serial); seenKinds.add(live.kind); });
+            peaks.blizzard = Math.max(peaks.blizzard, state.blizzard);
+            const env = director.apply(state, STEP, wind);
+            nonFinite(env, 'env').forEach((found) => note(`${at}: ${found}`));
+            if (!(env.swarm >= 0 && env.swarm <= 1)) note(`${at}: swarm ${env.swarm}`);
+            const windy = env.breeze >= 0 && env.gust >= 0 && env.gust <= 4.5;
+            if (!windy) note(`${at}: wind ${env.breeze}, ${env.gust}`);
+            if (!(director.ringLoad >= 0 && Number.isFinite(director.ringLoad))) note(`ringLoad ${director.ringLoad}`);
+            if (env.fronts.length > 3) note(`${env.fronts.length} fronts in the garden`);
+            peaks.swarm = Math.max(peaks.swarm, env.swarm);
+        }
+        // Hands at rest for three minutes (the fever's last stars and lanterns are still played).
+        let rest = null;
+        for (let frame = 0; frame < 60 * 180; frame += 1) {
+            rest = reactions.update(STEP);
+            rest.emitters.forEach((live) => seen.add(live.serial));
+            director.apply(rest, STEP, wind);
+        }
+        const result = {
+            reactions, director, problems, counts, peaks, sent, emitted, seen, seenKinds, rest,
+        };
+        sessions.set(quality, result);
+        return result;
+    }
+
+    it.each([['Minimal'], ['High'], ['Extreme']])('keeps every number finite and in range at %s', (quality) => {
+        const {
+            problems, sent, seenKinds, peaks, reactions, emitted,
+        } = session(quality);
+        expect(problems).toEqual([]);
+        // The session really happened: every kind of emitter, every instrument at its height.
+        expect(sent.locks).toBeGreaterThan(600);
+        expect(sent.pileUps).toBeGreaterThan(15);
+        expect(sent.over).toBe(5);
+        expect(sent.perfect).toBeGreaterThan(15);
+        expect([...seenKinds].sort()).toEqual([...KINDS].sort());
+        expect(peaks.swarm).toBeCloseTo(1, 2);
+        expect(peaks.blizzard).toBeGreaterThan(0.95);
+        expect(peaks.ring).toBeGreaterThan(0.9);
+        expect(emitted.size).toBe(reactions.serial);
+    }, 120000);
+
+    it.each([['Minimal'], ['High'], ['Extreme']])('plays every emitter the garden saw, once each, at %s', (quality) => {
+        const {
+            counts, sent, emitted, seen,
+        } = session(quality);
+        const asked = (kind) => [...emitted.values()].filter((entry) => entry.kind === kind);
+        const played = (kind) => [...emitted].filter(([serial, entry]) => entry.kind === kind && seen.has(serial))
+            .map(([, entry]) => entry);
+        // What the game sent is what the reactions asked the garden for.
+        expect(asked('lock')).toHaveLength(sent.locks);
+        expect(asked('gate')).toHaveLength(sent.b2b);
+        expect(asked('spirit')).toHaveLength(sent.perfect);
+        expect(asked('spin')).toHaveLength(sent.twists);
+        expect(asked('floats').reduce((sum, entry) => sum + entry.lines, 0)).toBe(sent.lines);
+        expect(asked('splash').length).toBeGreaterThan(sent.drops * 0.7);
+        expect(asked('splash').length).toBeLessThanOrEqual(sent.drops);
+        // And what the garden saw, it played: once each.
+        expect(counts.gate).toBe(played('gate').length);
+        expect(counts.spirit).toBe(played('spirit').length);
+        expect(counts.helix).toBe(played('spin').length);
+        expect(counts.star).toBe(played('star').length);
+        // A crown of spray for every hard drop that fell far enough, each on open water.
+        expect(counts.splash).toBe(played('splash').length);
+        // A lantern afloat for every cleared line.
+        expect(counts.floatLantern).toBe(played('floats').reduce((sum, entry) => sum + Math.max(1, entry.lines), 0));
+        // A ring for every lock and one for every clear (never one for the spray), and a burst of
+        // light for every lock and on both sides of every clear.
+        expect(counts.ring).toBe(played('lock').length + played('clear').length / 2);
+        expect(counts.flash).toBe(played('lock').length + played('clear').length);
+        expect(counts.skyLantern).toBeGreaterThan(sent.levels * 3);
+        expect(counts.spawn).toBeGreaterThan(sent.locks * 10);
+    }, 120000);
+
+    it.each([['Minimal'], ['High'], ['Extreme']])('comes back to rest when the hands do, exactly, at %s', (quality) => {
+        const { rest, reactions, director } = session(quality);
+        expect(frameProblems(rest, reactions.maxEmitters)).toEqual([]);
+        expect(rest.emitters).toEqual([]);
+        for (const key of ['gust', 'glow', 'lanterns', 'moon', 'vortex', 'heat', 'constellation', 'figures', 'foxfire',
+            'blizzard', 'sway', 'punch', 'level', 'fever', 'stage', 'crown', 'corona', 'hush']) {
+            expect(rest[key], key).toBe(0);
+        }
+        expect(director.swarm).toBe(0);
+        expect(director.fields).toEqual([]);
+        expect(director.ringLoad).toBeLessThan(1e-9);
+    }, 120000);
+
+    it.each([['High'], ['Extreme']])('loses nothing the game asked for before the garden saw it, at %s', (quality) => {
+        const { emitted, seen } = session(quality);
+        const lost = [...emitted.keys()].filter((serial) => !seen.has(serial));
+        expect(lost.map((serial) => emitted.get(serial).kind)).toEqual([]);
+    }, 120000);
+
+    // FAULT: sakura-reactions.js emit() (lines 316-337). When a frame asks for more emitters than
+    // the pool has free and spent slots, it gives up "the one with the least of its work left" —
+    // and an emitter the garden has not yet seen counts only its strength, so a faint one that
+    // has never been played (a back-to-back's gate at 0.4-0.6, a single line's lanterns at 0.25,
+    // a set-down lock at 0.26) is given up before a jet or a shower the garden has been playing
+    // for a frame and still has most of its work to do. A one-shot emitter lost unseen is the
+    // whole event lost (here: the ring from the gate's feet). The header's "no tier's pool is
+    // smaller, so none is reclaimed before the garden has played it" holds only for an empty
+    // pool: with 22 slots (Minimal and Low) this session's every-handler frames, arriving in
+    // steady play, lose two gates in ten minutes. Short reproduction, Minimal: onLineClear(4),
+    // onPerfectClear(), onLevelUp(), update(1 / 60), then every handler in one frame: the frame's
+    // own gate emitter is gone before any frame holds it.
+    it.fails('loses nothing the game asked for before the garden saw it, at Minimal', () => {
+        const { emitted, seen } = session('Minimal');
+        const lost = [...emitted.keys()].filter((serial) => !seen.has(serial));
+        expect(lost.map((serial) => emitted.get(serial).kind)).toEqual([]);
+    }, 120000);
+});
