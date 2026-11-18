@@ -171,6 +171,22 @@ describe('Thermal Bloom, the chapter 1 collection bonus', () => {
         expect(JSON.parse(storage.getItem(THEME_COLLECTION_STORAGE_KEY)).grants[THEME].source).toBe('chapter');
     });
 
+    // Audit 2026-11-18 A18-CORE-4: older builds could save a clear without a star.
+    it('is granted, with each orb\'s theme, to a save that cleared chapter 1 without a star', () => {
+        const save = odysseySave([1, 2, 3, 4, 5]);
+        Object.values(save.completedLevels).forEach((completion) => { completion.stars = 0; });
+        storage.setItem(ODYSSEY_PROGRESS_STORAGE_KEY, JSON.stringify(save));
+        // The Odyssey keeps these clears: the map shows chapter 1 done.
+        const state = new OdysseyStateManager({ levelRegistry: registry });
+        state.load();
+        expect([1, 2, 3, 4, 5].every((levelId) => state.isLevelCompleted(levelId))).toBe(true);
+
+        const collection = createCollection();
+        const orbThemes = registry.getLevelsInChapter(1).map((level) => level.theme.primary);
+        expect([...collection.getOwnedThemeIds()].sort()).toEqual(['forest', ...orbThemes, THEME].sort());
+        orbThemes.forEach((themeId) => expect(collection.getThemeStatus(themeId).owned).toBe(true));
+    });
+
     it('is not granted on reconcile while one orb of chapter 1 is unfinished', () => {
         storage.setItem(ODYSSEY_PROGRESS_STORAGE_KEY, JSON.stringify(odysseySave([1, 2, 3, 4, 6])));
         const collection = createCollection();
