@@ -21,12 +21,29 @@
  *    little at a time, to arrive on today's frame at the far end (`foldFrameAt`).
  *  - The rail's tube (`railSamplePlan`): more rings in the stretch, so its segments are as long in
  *    the world as anywhere else.
+ *
+ * THE CITY'S LONGER RAIL (2026-11-18; the schedule: transitions/odyssey-city-stretch.js). From
+ * just after the 7 -> 8 seam to the journey's end the rail is today's CARRIED ON down the
+ * boulevard: a point there is today's plus the stretch's extra world so far along the city's stage
+ * forward, the axis the city is built on (`cityOffsetAt`, 0 at the stretch's start, closed form).
+ * Its sway across the lane and its height over the street are today's; only its run down the
+ * boulevard is longer (today's sway is spread over that length, so the rail runs straighter).
+ * Carrying it along its own direction instead would multiply that sway by the rate. Its direction
+ * there is today's tilted toward the axis (`getTangentAt`), and its frames are today's turned
+ * square to it (`_cityFrame`); in the city the camera rides the stage's fixed basis anyway, and its
+ * table adds the same offset to today's positions.
  */
 import * as THREE from 'three/webgpu';
 import {
     foldStretchArea,
     foldStretchRange,
 } from './transitions/odyssey-fold-stretch.js';
+import {
+    cityStretchArea,
+    cityStretchRange,
+    cityStretchRate,
+} from './transitions/odyssey-city-stretch.js';
+import { computeStageBasis } from './composition/odyssey-stage-frame.js';
 
 export const FOLD_SPIRAL = Object.freeze({
     /** Straight lead-in (world units) along today's rail where the section leaves it. */
@@ -270,13 +287,18 @@ export class OdysseyFoldStretchedCurve extends THREE.CatmullRomCurve3 {
      * @param {string} curveType
      * @param {number} tension
      * @param {number[]} chapterPositions the layout's chapter boundaries
+     * @param {{ fold?: boolean, city?: boolean }} [stretches] which longer rails to lay (both)
      */
-    constructor(points, curveType, tension, chapterPositions) {
+    constructor(points, curveType, tension, chapterPositions, stretches = {}) {
         super(points, false, curveType, tension);
         this.isOdysseyFoldStretched = true;
+        this.isOdysseyRailStretched = true;
         this.chapterPositions = Array.isArray(chapterPositions) ? chapterPositions.slice() : null;
-        this.range = foldStretchRange(this.chapterPositions);
+        this.range = stretches.fold === false ? null : foldStretchRange(this.chapterPositions);
+        /** The city's stretch (chapter 8 after its seam, to the journey's end), or null. */
+        this.cityRange = stretches.city === false ? null : cityStretchRange(this.chapterPositions);
         this._section = null;
+        this._carry = null;
         /** Today's rail, as a plain curve over the same points (the camera builds its path table
          * on it, and today's frames come from it: three carries them along `getTangentAt`). */
         this.baseCurve = new THREE.CatmullRomCurve3(points.map((v) => v.clone()), false, curveType, tension);
@@ -288,6 +310,44 @@ export class OdysseyFoldStretchedCurve extends THREE.CatmullRomCurve3 {
     /** Whether progress `u` is strictly inside the stretch (today's rail at its ends). */
     inFoldStretch(u) {
         return !!this.range && u > this.range.a && u < this.range.b;
+    }
+
+    /** Whether progress `u` is on the city's carried rail (today's rail up to its start). */
+    inCityStretch(u) {
+        return !!this.cityRange && u > this.cityRange.a && u <= this.cityRange.b;
+    }
+
+    /** The extra world (units of the journey's length) the laid stretches put before `u`. */
+    _extraArea(u) {
+        return (this.range ? foldStretchArea(u, this.chapterPositions) : 0)
+            + (this.cityRange ? cityStretchArea(u, this.chapterPositions) : 0);
+    }
+
+    /**
+     * The axis the city's rail is carried along, built on first use: the city's stage forward
+     * (composition/odyssey-stage-frame.js computeStageBasis over chapter 8 on today's rail), the
+     * boulevard's own axis, which the city, its camera and its Retrosun are authored on.
+     * @returns {THREE.Vector3|null}
+     */
+    carryAxis() {
+        if (this._carry || !this.cityRange) return this._carry;
+        const from = this.chapterPositions?.[7];
+        const basis = computeStageBasis(this.baseCurve, from, this.cityRange.b);
+        this._carry = basis ? basis.forward.clone().normalize() : null;
+        return this._carry;
+    }
+
+    /**
+     * How far the city's carried rail is from today's at progress `u` (zero up to the stretch):
+     * along the boulevard's axis, the stretch's extra world so far.
+     * @param {number} u progress
+     * @param {THREE.Vector3} [target]
+     * @returns {THREE.Vector3}
+     */
+    cityOffsetAt(u, target = new THREE.Vector3()) {
+        if (!this.inCityStretch(u) || !this.carryAxis()) return target.set(0, 0, 0);
+        return target.copy(this._carry)
+            .multiplyScalar(this.getLength() * cityStretchArea(u, this.chapterPositions));
     }
 
     /** The section, built on first use (its spiral's radius is solved against its length). */
@@ -325,11 +385,20 @@ export class OdysseyFoldStretchedCurve extends THREE.CatmullRomCurve3 {
     }
 
     getPointAt(u, target = new THREE.Vector3()) {
+        if (this.inCityStretch(u) && this.carryAxis()) {
+            super.getPointAt(u, target);
+            return target.add(this.cityOffsetAt(u, this._w));
+        }
         if (!this.inFoldStretch(u) || !this.section()) return super.getPointAt(u, target);
         return this._lerpRow(this._section.positions, this._sectionIndex(u), target);
     }
 
     getTangentAt(u, target = new THREE.Vector3()) {
+        if (this.inCityStretch(u) && this.carryAxis()) {
+            // d/du (today's + axis x length x area) = length x (today's direction + axis x (rate - 1)).
+            super.getTangentAt(u, target);
+            return target.addScaledVector(this._carry, cityStretchRate(u, this.chapterPositions) - 1).normalize();
+        }
         if (!this.inFoldStretch(u) || !this.section()) return super.getTangentAt(u, target);
         return this._lerpRow(this._section.tangents, this._sectionIndex(u), target).normalize();
     }
@@ -387,7 +456,7 @@ export class OdysseyFoldStretchedCurve extends THREE.CatmullRomCurve3 {
      */
     computeFrenetFrames(segments, closed) {
         const frames = this.baseCurve.computeFrenetFrames(segments, closed);
-        if (!this.range || !this.section()) return frames;
+        if ((!this.range || !this.section()) && !this.cityRange) return frames;
         const plan = this._planFrames(Array.from({ length: segments + 1 }, (_, i) => i / segments), frames, segments);
         return plan;
     }
@@ -399,9 +468,10 @@ export class OdysseyFoldStretchedCurve extends THREE.CatmullRomCurve3 {
      * @returns {{ us: number[], tangents: THREE.Vector3[], normals: THREE.Vector3[], binormals: THREE.Vector3[] }|null}
      */
     railSamplePlan(segments) {
-        if (!this.range || !this.section()) return null;
+        const fold = !!this.range && !!this.section();
+        if (!fold && !this.cityRange) return null;
         const base = this.baseCurve.computeFrenetFrames(segments, false);
-        const { a, b } = this.range;
+        const ranges = [fold ? this.range : null, this.cityRange].filter(Boolean);
         const us = [];
         const length = this.getLength();
         const ringWorld = length / segments;
@@ -409,12 +479,9 @@ export class OdysseyFoldStretchedCurve extends THREE.CatmullRomCurve3 {
             const u = i / segments;
             us.push(u);
             const next = (i + 1) / segments;
-            if (i < segments && next > a && u < b) {
-                // Rings between u and next, by the world the stretch puts between them.
-                const lo = Math.max(u, a);
-                const hi = Math.min(next, b);
-                const world = length * ((hi - lo) + (foldStretchArea(hi, this.chapterPositions)
-                    - foldStretchArea(lo, this.chapterPositions)));
+            if (i < segments && ranges.some((r) => next > r.a && u < r.b)) {
+                // Rings between u and next, by the world the stretches put between them.
+                const world = length * ((next - u) + (this._extraArea(next) - this._extraArea(u)));
                 const extra = Math.max(0, Math.ceil(world / ringWorld) - 1);
                 for (let k = 1; k <= extra; k += 1) us.push(u + (((next - u) * k) / (extra + 1)));
             }
@@ -423,13 +490,24 @@ export class OdysseyFoldStretchedCurve extends THREE.CatmullRomCurve3 {
         return { us, ...frames };
     }
 
-    /** Frames at progress values `us`: today's where `u` is one of today's rings outside the stretch. */
+    /**
+     * The frame on the city's carried rail at `u`: its direction, and today's normal there (between
+     * today's rings, eased from one to the next) turned square to it.
+     */
+    _cityFrame(u, base, segments, outTangent, outNormal) {
+        this.getTangentAt(u, outTangent);
+        const x = Math.min(segments, Math.max(0, u * segments));
+        const i0 = Math.min(segments - 1, Math.floor(x));
+        outNormal.copy(base.normals[i0]).lerp(base.normals[i0 + 1], x - i0);
+        outNormal.addScaledVector(outTangent, -outNormal.dot(outTangent)).normalize();
+    }
+
+    /** Frames at progress values `us`: today's where `u` is one of today's rings outside both
+     * stretches; the fold's carried and twisted, the city's today's turned square to its rail. */
     _planFrames(us, base, segments) {
-        const { a, b } = this.range;
-        const iA = Math.floor(a * segments);
-        const iB = Math.ceil(b * segments);
-        const nA = base.normals[iA];
-        const nB = base.normals[Math.min(segments, iB)];
+        const fold = this.range && this.section() ? this.range : null;
+        const nA = fold ? base.normals[Math.floor(fold.a * segments)] : null;
+        const nB = fold ? base.normals[Math.min(segments, Math.ceil(fold.b * segments))] : null;
         const tangents = [];
         const normals = [];
         const binormals = [];
@@ -437,6 +515,15 @@ export class OdysseyFoldStretchedCurve extends THREE.CatmullRomCurve3 {
         us.forEach((u) => {
             const ring = u * segments;
             const index = Math.round(ring);
+            if (this.inCityStretch(u) && this.carryAxis()) {
+                const t = new THREE.Vector3();
+                const n = new THREE.Vector3();
+                this._cityFrame(u, base, segments, t, n);
+                tangents.push(t);
+                normals.push(n);
+                binormals.push(new THREE.Vector3().crossVectors(t, n).normalize());
+                return;
+            }
             if (!this.inFoldStretch(u) && Math.abs(ring - index) < 1e-9) {
                 tangents.push(base.tangents[index].clone());
                 normals.push(base.normals[index].clone());
@@ -445,7 +532,7 @@ export class OdysseyFoldStretchedCurve extends THREE.CatmullRomCurve3 {
             }
             const t = new THREE.Vector3();
             const n = new THREE.Vector3();
-            if (!this.foldFrameAt(u, nA, nB, pos, t, n, null)) {
+            if (!fold || !this.foldFrameAt(u, nA, nB, pos, t, n, null)) {
                 this.getTangentAt(u, t);
                 n.copy(base.normals[Math.min(segments, Math.max(0, index))]);
                 n.addScaledVector(t, -n.dot(t)).normalize();
@@ -459,19 +546,23 @@ export class OdysseyFoldStretchedCurve extends THREE.CatmullRomCurve3 {
 }
 
 /**
- * The journey's curve with the fold's stretch (or plain today's curve without a chapter 7).
+ * The journey's curve with the fold's and the city's stretches (or plain today's curve without
+ * them).
  * @param {THREE.Vector3[]} points
  * @param {string} curveType
  * @param {number} tension
  * @param {number[]} chapterPositions
+ * @param {{ fold?: boolean, city?: boolean }} [stretches] which longer rails to lay (both)
  * @returns {THREE.CatmullRomCurve3}
  */
-export function createOdysseyPathCurve(points, curveType, tension, chapterPositions) {
-    if (!foldStretchRange(chapterPositions)) {
+export function createOdysseyPathCurve(points, curveType, tension, chapterPositions, stretches = {}) {
+    const fold = stretches.fold !== false && !!foldStretchRange(chapterPositions);
+    const city = stretches.city !== false && !!cityStretchRange(chapterPositions);
+    if (!fold && !city) {
         const curve = new THREE.CatmullRomCurve3(points);
         curve.curveType = curveType;
         curve.tension = tension;
         return curve;
     }
-    return new OdysseyFoldStretchedCurve(points, curveType, tension, chapterPositions);
+    return new OdysseyFoldStretchedCurve(points, curveType, tension, chapterPositions, { fold, city });
 }

@@ -12,7 +12,7 @@ import {
     odysseyWorldMacro,
     odysseyWorldRelief,
 } from './odyssey-world-height.js';
-import { getOdysseyPathPointAt } from '../path-utils.js';
+import { getOdysseyPathPointAt, getOdysseyWorldRailPointAt } from '../path-utils.js';
 
 /**
  * THE RAIL VISIBILITY CULL — and the one way it can hurt you.
@@ -33,7 +33,7 @@ import { getOdysseyPathPointAt } from '../path-utils.js';
 
 const heightAt = (x, z) => odysseyWorldMacro(x, z)
     + (odysseyWorldRelief(x, z) * odysseyWorldDetailWeight(x, z));
-const RAIL = Array.from({ length: 48 }, (_, i) => getOdysseyPathPointAt(i / 47));
+const RAIL = Array.from({ length: 48 }, (_, i) => getOdysseyWorldRailPointAt(i / 47));
 // The forest the mask was measured on: the treeline's krummholz (2026-10-25) stands mostly on
 // flanks the rail never sees, so it would move every ratio below without the mask changing.
 const CULLED = scatterZonedForest(heightAt, { rail: RAIL, krummholz: false });

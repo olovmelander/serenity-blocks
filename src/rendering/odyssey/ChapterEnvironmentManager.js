@@ -415,9 +415,10 @@ export class ChapterEnvironmentManager {
         this.chapterLodEnabled = options.chapterLOD === true;
         // Velocity threshold (camera-progress Δ per updateVisibility call, ~per frame) above which
         // the journey drops to the cheap LOD tier — a fast scroll can't show per-chapter detail
-        // anyway. Set BELOW the 0.26 maxScrollVelocity cap (~0.0043/frame at 60fps) so it still
-        // fires within the (now lower 0.15) cap range. Tunable.
-        this._lodFastThreshold = Number.isFinite(options.lodFastThreshold) ? options.lodFastThreshold : 0.0015;
+        // anyway. Set BELOW the maxScrollVelocity cap (0.10 since 2026-11-18, ~0.0017/frame at
+        // 60fps; was 0.26, then 0.15 with this at 0.0015) so it still fires within the cap's range,
+        // at the same share of it as before. Tunable.
+        this._lodFastThreshold = Number.isFinite(options.lodFastThreshold) ? options.lodFastThreshold : 0.001;
         // ONE WORLD (ADR-0022): the chapters the continuous Act II world draws have no scene of
         // their own, and are never created, shown or faded here.
         this.suppressedChapters = new Set(ONE_WORLD_CHAPTERS);

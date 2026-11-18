@@ -8,9 +8,11 @@
  *    rail rings to the bit everywhere outside the stretch, joined on smoothly at both ends;
  *  - the orbs: 50-55 stand at even world distances between orb 49's park and orb 56, each with a
  *    park of its own; orbs 49, 56 and 57 and the chapter boundaries do not move;
- *  - the time: a ride between two orbs of the fold takes ~2.5-4 s and the wheel and the drift
+ *  - the time: a ride between two orbs of the fold takes ~3-4.5 s and the wheel and the drift
  *    slow in step with the world, while the dive (48 -> 49) and the way out (56 -> 57) keep
  *    exactly their own time.
+ * LONGER AGAIN (2026-11-18; the owner: "increasing it even more so that we have a longer distance
+ * between the orbs in the black hole"): the rate went 8.8 -> 15, the orbs ~69 u -> ~108 u apart.
  */
 import * as THREE from 'three/webgpu';
 import { describe, expect, it } from 'vitest';
@@ -90,10 +92,13 @@ describe("the stretch's schedule", () => {
         expect(foldStretchRate(range.b + 1e-6, cp)).toBe(1);
         expect(foldStretchRate(0.5, cp)).toBe(1);
         expect(foldStretchRate((range.a + range.b) / 2, cp)).toBeCloseTo(CH7_FOLD_STRETCH.rate, 12);
+        // (whatever the rate, never steeper than a smoothstep over the whole shoulder: its
+        // steepest is 1.5 times its mean)
+        const steepest = ((CH7_FOLD_STRETCH.rate - 1) * 1.5 * 1e-6) / CH7_FOLD_STRETCH.shoulder;
         let prev = foldStretchRate(range.a - 0.001, cp);
         for (let p = range.a - 0.001; p <= range.b + 0.001; p += 1e-6) {
             const r = foldStretchRate(p, cp);
-            expect(Math.abs(r - prev)).toBeLessThan(0.006);
+            expect(Math.abs(r - prev)).toBeLessThan(steepest * 1.01);
             prev = r;
         }
     });
@@ -137,9 +142,10 @@ describe("the stretch's schedule", () => {
 
 describe('the longer rail', () => {
     it('is today\'s curve to the bit outside the stretch', () => {
+        // (and outside the city's, tests/unit/odyssey-city-longer.test.js)
         for (let i = 0; i <= 3000; i += 1) {
             const p = i / 3000;
-            if (curve.inFoldStretch(p)) continue;
+            if (curve.inFoldStretch(p) || curve.inCityStretch(p)) continue;
             expect(curve.getPointAt(p).toArray()).toEqual(plain.getPointAt(p).toArray());
             expect(curve.getTangentAt(p).toArray()).toEqual(plain.getTangentAt(p).toArray());
         }
@@ -156,7 +162,7 @@ describe('the longer rail', () => {
         });
         for (let i = 0; i <= 2000; i += 1) {
             const p = i / 2000;
-            if (curve.inFoldStretch(p)) continue;
+            if (curve.inFoldStretch(p) || curve.inCityStretch(p)) continue;
             const a = rig.controller.getPathDataAt(p);
             const b = today.getPathDataAt(p);
             ['position', 'tangent', 'normal', 'right'].forEach((k) => {
@@ -172,13 +178,13 @@ describe('the longer rail', () => {
         let outside = 0;
         plan.us.forEach((u, i) => {
             const ring = u * segments;
-            if (curve.inFoldStretch(u) || Math.abs(ring - Math.round(ring)) > 1e-9) return;
+            if (curve.inFoldStretch(u) || curve.inCityStretch(u) || Math.abs(ring - Math.round(ring)) > 1e-9) return;
             const k = Math.round(ring);
             expect(plan.normals[i].toArray()).toEqual(today.normals[k].toArray());
             expect(plan.tangents[i].toArray()).toEqual(today.tangents[k].toArray());
             outside += 1;
         });
-        expect(outside).toBeGreaterThan(segments * 0.97);
+        expect(outside).toBeGreaterThan(segments * 0.95);
         // Inside: rings about as far apart in the world as everywhere else.
         const ringWorld = curve.getLength() / segments;
         for (let i = 1; i < plan.us.length; i += 1) {
@@ -238,12 +244,13 @@ describe('the orbs inside the hole', () => {
         const gaps = parks.slice(1).map((p, i) => railLength(curve, parks[i], p, 6000));
         const mean = gaps.reduce((s, g) => s + g, 0) / gaps.length;
         gaps.forEach((g) => {
-            expect(g).toBeGreaterThan(55);
+            expect(g).toBeGreaterThan(95);
             expect(Math.abs(g - mean) / mean).toBeLessThan(0.2);
         });
-        // The whole walk from orb 49 to orb 56 is three and a half times today's (~485 u, was ~139).
+        // The whole walk from orb 49 to orb 56 is five and a half times the short rail's (~758 u,
+        // was ~139 before 2026-11-17 and ~485 after it).
         expect(railLength(curve, parks[0], parks[parks.length - 1])).toBeGreaterThan(
-            railLength(plain, parks[0], parks[parks.length - 1]) * 3.2,
+            railLength(plain, parks[0], parks[parks.length - 1]) * 5,
         );
     });
 
@@ -257,20 +264,21 @@ describe('the orbs inside the hole', () => {
 });
 
 describe('the time inside', () => {
-    it('makes every ride between two orbs of the fold a ride of 2.5 to 4 seconds', () => {
+    it('makes every ride between two orbs of the fold a ride of 3 to 4.5 seconds', () => {
         let total = 0;
         for (let i = 1; i < FOLD_ORBS.length; i += 1) {
             const [a, b] = [FOLD_ORBS[i - 1], FOLD_ORBS[i]];
             expect(foldRideBetween(rig.parkOf(a), rig.parkOf(b), cp)).toBe(true);
             const there = tripMs(a, b);
             const back = tripMs(b, a);
-            expect(there).toBeGreaterThan(2500);
-            expect(there).toBeLessThan(4000);
+            expect(there).toBeGreaterThan(3000);
+            expect(there).toBeLessThan(4500);
             expect(back).toBeCloseTo(there, 6);
             total += there;
         }
-        // Seven rides, some twenty seconds (they were a jump and a swing of ~0.9 s each).
-        expect(total).toBeGreaterThan(18000);
+        // Seven rides, some twenty-seven seconds (a jump and a swing of ~0.9 s each before
+        // 2026-11-17, ~24 s with the first longer fold).
+        expect(total).toBeGreaterThan(25000);
     });
 
     it('leaves the dive and the way out their own time', () => {

@@ -255,7 +255,10 @@ export class OdysseyCorridorField {
      * Build one chapter's corridor content, oriented along the local path tangent.
      * @private
      */
-    _buildChapter(chapterId, curve) {
+    _buildChapter(chapterId, journeyCurve) {
+        // Placed on today's rail like the chapters' set pieces (path-utils getChapterPathRange):
+        // the longer rails (odyssey-path-stretch.js) do not move a chapter's backdrop.
+        const curve = journeyCurve?.baseCurve ?? journeyCurve;
         const profile = getChapterProfile(chapterId);
         const range = getChapterPathRange(chapterId);
         const bounds = this._chapterBounds[chapterId - 1];

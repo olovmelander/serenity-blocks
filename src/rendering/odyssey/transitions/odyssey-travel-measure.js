@@ -20,12 +20,13 @@
  * The same holds going down (orb 11 back to 10 is a dive in).
  *
  * The camera controller eases its trips in `journeyTravelMeasure` (the plunge's measure plus the
- * breach's), and the board adds `journeyTravelExtraMs`. Pure.
+ * breach's, plus the city's longer rail), and the board adds `journeyTravelExtraMs`. Pure.
  */
 import { ODYSSEY_BREACH_P } from '../world/odyssey-world-height.js';
 import {
     plungeTravelExtraMs, plungeTravelMeasure, plungeTravelTouches,
 } from './odyssey-black-hole-fall.js';
+import { cityStretchArea, cityStretchRange } from './odyssey-city-stretch.js';
 
 export const BREACH_TRAVEL = Object.freeze({
     /** How much more a unit of progress near the surface weighs than open path. */
@@ -90,14 +91,17 @@ export function breachTravelArea(p, at = ODYSSEY_BREACH_P) {
 
 /**
  * The journey's travel measure at progress `p`: progress plus the plunge's and the breach's extra
- * weight up to it (monotone, so it inverts). A trip eased in this measure slows at both.
+ * weight up to it, and the city's longer rail's extra world (odyssey-city-stretch.js: a trip along
+ * it eases in the world, as one through the fold does) (monotone, so it inverts). A trip eased in
+ * this measure slows at all of them.
  * @param {number} p path progress
  * @param {number[]} chapterPositions live chapter boundaries
  * @returns {number}
  */
 export function journeyTravelMeasure(p, chapterPositions) {
     if (!Number.isFinite(p)) return p;
-    return plungeTravelMeasure(p, chapterPositions) + breachTravelArea(p);
+    return plungeTravelMeasure(p, chapterPositions) + breachTravelArea(p)
+        + cityStretchArea(p, chapterPositions);
 }
 
 /**
@@ -129,9 +133,60 @@ export function breachTravelTouches(p0, p1) {
     return Math.max(p0, p1) > t.lo && Math.min(p0, p1) < t.hi;
 }
 
-/** Whether a trip passes through any weighted stretch (the plunge's or the breach's). */
+/** Whether a trip passes through the city's longer rail. */
+export function cityTravelTouches(p0, p1, chapterPositions) {
+    const r = cityStretchRange(chapterPositions);
+    if (!r || !Number.isFinite(p0) || !Number.isFinite(p1)) return false;
+    return Math.max(p0, p1) > r.a && Math.min(p0, p1) < r.b;
+}
+
+/** Whether a trip passes through any weighted stretch (the plunge's, the breach's or the city's). */
 export function journeyTravelTouches(p0, p1, chapterPositions) {
-    return plungeTravelTouches(p0, p1, chapterPositions) || breachTravelTouches(p0, p1);
+    return plungeTravelTouches(p0, p1, chapterPositions) || breachTravelTouches(p0, p1)
+        || cityTravelTouches(p0, p1, chapterPositions);
+}
+
+/**
+ * A RIDE THROUGH THE CITY (2026-11-18). The city's rail is longer in the world than its share of
+ * progress (odyssey-city-stretch.js) and its orbs farther apart, so a trip between two of them
+ * rides the rail instead of a progress jump and an 800 ms swing (the board: `cityRideBetween`),
+ * as one through the fold does (odyssey-black-hole-fall.js CH7_FOLD_TRAVEL), at the fold's world
+ * pace: `perMeasureMs` for each unit of the world measure it covers, on top of its own time. Both
+ * ends must lie past `from` (chapter 8's local progress: the end of the 7 -> 8 seam, so the way
+ * out of the hole into the city keeps its own time).
+ */
+export const CH8_CITY_TRAVEL = Object.freeze({
+    from: 0.41,
+    perMeasureMs: 70000,
+    /** No more than this for one trip, however far. */
+    maxMs: 4200,
+});
+
+/**
+ * Whether a trip between two orbs is a ride through the city: both ends past the 7 -> 8 seam.
+ * @returns {boolean}
+ */
+export function cityRideBetween(p0, p1, chapterPositions) {
+    const ch8 = chapterPositions?.[7];
+    const end = chapterPositions?.[8] ?? 1;
+    if (!Number.isFinite(ch8) || !(end > ch8) || !Number.isFinite(p0) || !Number.isFinite(p1)
+        || Math.abs(p1 - p0) < 1e-6) return false;
+    const from = ch8 + ((end - ch8) * CH8_CITY_TRAVEL.from);
+    const inside = (p) => p >= from && p <= end;
+    return inside(p0) && inside(p1);
+}
+
+/**
+ * The time a ride between two orbs of the city is given on top of its own (ms): 0 for any other
+ * trip.
+ * @returns {number}
+ */
+export function cityTravelExtraMs(p0, p1, chapterPositions) {
+    if (!cityRideBetween(p0, p1, chapterPositions)) return 0;
+    const lo = Math.min(p0, p1);
+    const hi = Math.max(p0, p1);
+    const world = (hi + cityStretchArea(hi, chapterPositions)) - (lo + cityStretchArea(lo, chapterPositions));
+    return Math.min(CH8_CITY_TRAVEL.maxMs, world * CH8_CITY_TRAVEL.perMeasureMs);
 }
 
 /**
@@ -153,5 +208,6 @@ export function breachTravelExtraMs(p0, p1) {
 
 /** The time a trip is given on top of its own for every weighted stretch it crosses (ms). */
 export function journeyTravelExtraMs(p0, p1, chapterPositions) {
-    return plungeTravelExtraMs(p0, p1, chapterPositions) + breachTravelExtraMs(p0, p1);
+    return plungeTravelExtraMs(p0, p1, chapterPositions) + breachTravelExtraMs(p0, p1)
+        + cityTravelExtraMs(p0, p1, chapterPositions);
 }

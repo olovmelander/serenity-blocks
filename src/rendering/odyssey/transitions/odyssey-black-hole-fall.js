@@ -540,7 +540,8 @@ export function plungeTravelExtraMs(p0, p1, chapterPositions) {
  * apart, and a trip between two of them rides the rail (the board: `foldRideBetween`). It is given
  * `perMeasureMs` for each unit of the world measure it covers inside the fold, from where the fold
  * is whole (`from`, chapter 7's local progress) to where the way out's own time begins (`to`):
- * about two seconds on top of its own for the ~75 u between two orbs.
+ * about three seconds on top of its own for the ~108 u between two orbs (2026-11-18; two for
+ * ~75 u before the fold grew again).
  */
 export const CH7_FOLD_TRAVEL = Object.freeze({
     from: 0.25,

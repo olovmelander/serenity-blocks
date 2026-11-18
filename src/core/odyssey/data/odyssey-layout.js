@@ -150,19 +150,39 @@ const AUTHORED_LEVEL_POSITIONS_BY_ID = Object.freeze({
  * with a park and a room of its own. They are placed by that schedule, not by progress: a test
  * holds them to it (tests/unit/odyssey-fold-longer.test.js). Orb 49 and orb 57 (the chapter's
  * boundaries) do not move.
+ *
+ * LONGER AGAIN (2026-11-18). The owner: "continue by increasing it even more so that we have a
+ * longer distance between the orbs in the black hole". The stretch's rate went 8.8 -> 15, and
+ * the same even world steps are now ~108 u (758 u from orb 49's park to orb 56).
  */
 const FOLD_LEVEL_POSITIONS_BY_ID = Object.freeze({
-    50: 0.921355,
-    51: 0.926134,
-    52: 0.929231,
-    53: 0.932328,
-    54: 0.935425,
-    55: 0.938522,
+    50: 0.924153,
+    51: 0.927009,
+    52: 0.929859,
+    53: 0.932709,
+    54: 0.93556,
+    55: 0.93841,
+});
+
+/**
+ * THROUGH THE CITY THE ORBS ARE FAR APART (2026-11-18). The owner: "lengthen the urban dreams
+ * encore so we have a bit longer between the orbs in that chapter and travel a bit longer into that
+ * chapter". Chapter 8's rail after its seam is longer in the world than its share of progress
+ * (src/rendering/odyssey/transitions/odyssey-city-stretch.js: today's rail carried on down the
+ * boulevard, 2.5 times the world from just past orb 57's park), and orbs 58 and 59 stand on it at
+ * even WORLD distances (~45 u) between orb 57's park (0.9781) and orb 60 (the journey's end, kept).
+ * Orb 58 used to sit inside the 7 -> 8 seam (0.9742) and share orb 57's park; it has its own now.
+ * Placed by that schedule (tests/unit/odyssey-city-longer.test.js holds them to it).
+ */
+const CITY_LEVEL_POSITIONS_BY_ID = Object.freeze({
+    58: 0.985902,
+    59: 0.992951,
 });
 
 const DEFAULT_LEVEL_POSITIONS_BY_ID = Object.freeze({
     ...remapAuthoredOdysseyPositions(AUTHORED_LEVEL_POSITIONS_BY_ID),
     ...FOLD_LEVEL_POSITIONS_BY_ID,
+    ...CITY_LEVEL_POSITIONS_BY_ID,
 });
 
 export const ODYSSEY_LAYOUT_DATA = Object.freeze({

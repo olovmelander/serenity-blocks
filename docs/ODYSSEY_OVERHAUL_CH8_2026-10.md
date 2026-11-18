@@ -109,6 +109,17 @@ skybridges. The Retrosun's reflection in the street rises after the hand-over (l
 since the disc itself switches over on one frame and its reflection has no twin in chapter 7.
 Sheet lightning (one flash per 26 s window, closed form in the clock) is off at the capture time.
 
+## The city is longer (2026-11-18)
+
+The rail after the 7 → 8 seam is longer in the world than its share of progress: today's rail
+carried on down the boulevard's stage axis, 2.5 times the world from just past orb 57's park
+(`transitions/odyssey-city-stretch.js`, `odyssey-path-stretch.js` `cityOffsetAt`). The city, its
+Retrosun, its corridor orientation and the camera's stage frame stay anchored on today's rail
+(`getChapterPathRange` reads `baseCurve`), so the seam and the arrival are unchanged; the journey
+ends ~123 u down the boulevard (was ~45 u). Orbs 58 and 59 stand ~43 u apart with parks of their
+own, and a trip between two orbs of the city rides the rail (~2.15 s). The record, the numbers
+and the traps: [ODYSSEY_CH7_FOLD_2026-10.md §9](ODYSSEY_CH7_FOLD_2026-10.md).
+
 ## Open items
 
 - **Tower windows over the tunnel** (pre-existing, not changed here): the nearest towers' lit

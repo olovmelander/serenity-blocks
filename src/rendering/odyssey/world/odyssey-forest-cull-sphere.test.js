@@ -12,7 +12,7 @@
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three/webgpu';
 import { createOdysseyWorld, forestCullRadius } from './odyssey-world-renderer.js';
-import { getOdysseyPathPointAt } from '../path-utils.js';
+import { getOdysseyWorldRailPointAt } from '../path-utils.js';
 
 /** Room every trunk must have inside its chunk's sphere: the crown allowance. */
 const CROWN_ROOM = 40;
@@ -28,7 +28,7 @@ describe('forest chunk culling spheres', () => {
 
     // Building the shipped forest takes a second or two; under a full-suite load it can pass 5 s.
     it('leaves every trunk of the shipped forest a crown inside its own sphere', { timeout: 30000 }, () => {
-        const railSamples = Array.from({ length: 48 }, (_, i) => getOdysseyPathPointAt(i / 47));
+        const railSamples = Array.from({ length: 48 }, (_, i) => getOdysseyWorldRailPointAt(i / 47));
         const world = createOdysseyWorld({ quality: 'high', railSamples });
         const m = new THREE.Matrix4();
         const p = new THREE.Vector3();
