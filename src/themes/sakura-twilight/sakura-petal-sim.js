@@ -72,6 +72,8 @@ export class SakuraPetalSim {
         this.time = 0;
         this.airborne = 0;
         this.cursor = this.ambient;
+        /** The share of the crowns' own petals the air keeps falling (env.fall: a still night has few). */
+        this.fall = 1;
         this.reset();
     }
 
@@ -206,6 +208,8 @@ export class SakuraPetalSim {
      * env.gust    number   extra wind speed (m/s) pulsing across the garden
      * env.front {x, strength, width, direction} | null   a gust front crossing along world x
      * env.fields [{kind:'burst'|'jet'|'vortex'|'lift', ...}]   gameplay force fields
+     * env.fall    number   the share (0..1) of the crowns' own petals that keep falling: the rest,
+     *                      as each comes down, wait in the crowns until the air freshens
      */
     step(dt, env = {}) {
         if (!Number.isFinite(dt) || dt <= 0) return;
@@ -217,6 +221,8 @@ export class SakuraPetalSim {
         const breeze = env.breeze ?? 0;
         const gust = env.gust ?? 0;
         const { front } = env;
+        this.fall = Number.isFinite(env.fall) ? clamp(env.fall, 0, 1) : 1;
+        const falling = this.ambient * this.fall;
         const fields = env.fields || [];
         const { bounds } = this;
         const swellTime = time * 0.85;
@@ -375,6 +381,9 @@ export class SakuraPetalSim {
                     this.scale[i] = clamp(1 - this.timer[i] / FADE_SECONDS, 0, 1);
                     if (this.timer[i] >= FADE_SECONDS) this.retire(i);
                 }
+            } else if (i < falling) {
+                // One of the crowns' own that waited out a still air: it lets go again.
+                this.release(i);
             }
         }
         this.airborne = airborne;
@@ -383,7 +392,7 @@ export class SakuraPetalSim {
 
     /** Ambient petals start a new fall; event petals return to the hidden reserve. */
     retire(index) {
-        if (index < this.ambient) this.release(index);
+        if (index < this.ambient * this.fall) this.release(index);
         else {
             this.state[index] = PETAL_IDLE;
             this.scale[index] = 0;

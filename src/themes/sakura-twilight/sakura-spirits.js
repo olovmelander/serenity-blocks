@@ -10,7 +10,8 @@
  * A lantern is never snuffed out mid-flight to make room for a new one: a launch takes a slot
  * whose lantern has burnt out. When the lake is full, the oldest lantern afloat is let burn down
  * over a few seconds instead (and the launch waits for the next clear); when the sky is full, a
- * new sky lantern is simply not lit. As play heats the fireflies wake and rise (`uWake`).
+ * new sky lantern is simply not lit. As play heats the fireflies wake and rise (`uWake`); three
+ * lines raise every one of them at once in a slow bright cloud (`uSwarm`).
  */
 import * as THREE from 'three/webgpu';
 import {
@@ -56,6 +57,7 @@ export class SakuraSpirits {
         this.uSpirit = uniform(0);
         this.uScatter = uniform(0);
         this.uWake = uniform(0);
+        this.uSwarm = uniform(0);
         this.waterCursor = 0;
         this.skyCursor = 0;
         this.waterAmbient = 0;
@@ -108,7 +110,10 @@ export class SakuraSpirits {
             const colour = light.sky(normalize(vec3(view.x, 0.06, view.z))).mul(1.2)
                 .add(light.uMoonColor.mul(pow(moonward, 6).mul(0.12)));
             material.colorNode = colour;
-            material.opacityNode = smoothstep(0.34, 0.8, wisps).mul(profile).mul(0.3 - index * 0.025);
+            // (How thick the banks stand is the air's: thin in a wind, deep when mist comes in.)
+            material.opacityNode = smoothstep(0.34, 0.8, wisps).mul(profile).mul(0.3 - index * 0.025)
+                .mul(light.uBanks)
+                .min(0.86);
             const bank = new THREE.Mesh(geometry, material);
             bank.name = material.name;
             bank.position.set(0, 5.5, z);
@@ -151,11 +156,23 @@ export class SakuraSpirits {
         const startle = vec3(sin(seed.mul(91)), 1.2, cos(seed.mul(57))).mul(this.uScatter.mul(1.8));
         // As play heats they wake: they rise off the grass and glow brighter.
         const woken = vec3(0, this.uWake.mul(seed.mul(0.9).add(0.35)), 0);
-        const centre = home.xyz.add(roam).add(startle).add(woken);
-        // Each insect glows in slow pulses of its own.
-        const pulse = smoothstep(0.25, 0.95, sin(t.mul(seed.mul(0.9).add(1.1)).add(seed.mul(41))))
-            .mul(this.uScatter.mul(0.8).add(1).add(this.uWake.mul(0.9)));
-        material.positionNode = billboard(centre, pulse.mul(0.12).add(0.1));
+        // Three lines: all of them go up together, each on a slow turn of its own, and sink back.
+        const turn = t.mul(seed.mul(0.5).add(0.6)).add(seed.mul(TAU));
+        const risen = vec3(
+            sin(turn).mul(seed.mul(0.9).add(0.5)),
+            fract(seed.mul(5.77)).mul(3.2).add(1.3),
+            cos(turn).mul(seed.mul(0.9).add(0.5)),
+        ).mul(this.uSwarm);
+        const centre = home.xyz.add(roam).add(startle).add(woken).add(risen);
+        // Each insect glows in slow pulses of its own. How many are out is the air's: few in a
+        // wind, all of them over a still lake (and hot play wakes the rest).
+        const out = saturate(light.uFireflies.add(this.uWake.mul(0.5)).add(this.uSwarm.mul(1.2))
+            .sub(fract(seed.mul(7.31)).mul(0.92)).mul(5));
+        // (In the cloud each one burns steadily: its pulse lifts toward full.)
+        const beat = smoothstep(0.25, 0.95, sin(t.mul(seed.mul(0.9).add(1.1)).add(seed.mul(41))));
+        const pulse = mix(beat, beat.mul(0.35).add(0.65), this.uSwarm)
+            .mul(this.uScatter.mul(0.8).add(1).add(this.uWake.mul(0.9)).add(this.uSwarm.mul(0.9))).mul(out);
+        material.positionNode = billboard(centre, pulse.mul(0.12).add(out.mul(0.1)));
         const reach = length(uv().sub(0.5)).mul(2);
         const spark = exp(reach.mul(reach).mul(-22)).add(exp(reach.mul(-4.5)).mul(0.14))
             .mul(saturate(float(1).sub(reach)));
@@ -503,6 +520,7 @@ export class SakuraSpirits {
         this.uFoxfire.value = 0;
         this.uScatter.value = 0;
         this.uWake.value = 0;
+        this.uSwarm.value = 0;
         this.waterCursor = 0;
         this.skyCursor = 0;
         this.flashCursor = 0;
@@ -520,7 +538,8 @@ export class SakuraSpirits {
         }
     }
 
-    update(time, frame = {}) {
+    /** `swarm` (0..1) is how far three lines have raised the fireflies (SakuraPetalDirector). */
+    update(time, frame = {}, swarm = 0) {
         const clamp01 = (value) => (Number.isFinite(value) ? THREE.MathUtils.clamp(value, 0, 1) : 0);
         this.uFoxfire.value = Number.isFinite(frame.foxfire) ? Math.max(0, frame.foxfire) : 0;
         this.uSpirit.value = clamp01(frame.spirit);
@@ -528,6 +547,7 @@ export class SakuraSpirits {
         // The fireflies wake as play warms (Reduce motion keeps them low; they still brighten).
         const motion = Number.isFinite(frame.motion) ? clamp01(frame.motion) : 1;
         this.uWake.value = (0.55 * clamp01(frame.level) + 0.45 * clamp01(frame.fever)) * (0.4 + 0.6 * motion);
+        this.uSwarm.value = clamp01(swarm) * (0.4 + 0.6 * motion);
         // Ambient lanterns that have burnt out set off again from the bank.
         if (this.waterSlots) {
             for (let i = 0; i < this.waterAmbient; i += 1) {

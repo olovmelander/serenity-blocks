@@ -15,6 +15,7 @@ import {
     texture, uniform, uniformArray, vec2, vec3, vec4,
 } from 'three/tsl';
 import { sakuraHourAt } from './sakura-hours.js';
+import { sakuraWeatherAt } from './sakura-weather.js';
 import { widthPcfShadowFilter } from '../shared/width-pcf-shadow-filter.js';
 import { redrawStaticShadow } from '../shared/static-shadow-draws.js';
 
@@ -109,6 +110,30 @@ export class SakuraLight {
         // setHour() turns them. The lanterns' burn and the lens's iris follow it too.
         this.hour = sakuraHourAt(0);
         this.hourPhase = 0;
+        // The air (sakura-weather.js): the first air is the garden as it was built, and
+        // setWeather() turns it. The cloud travels on a clock of its own (`uCloudClock`, seconds
+        // of drift at the resting pace), so a change of pace never jumps the sky.
+        this.weather = sakuraWeatherAt(0);
+        this.weatherPhase = 0;
+        this.uCloud = uniform(this.weather.cloud);
+        this.uWisps = uniform(this.weather.wisps);
+        this.uMackerel = uniform(this.weather.mackerel);
+        this.uVeil = uniform(this.weather.veil);
+        this.uGalaxy = uniform(0);
+        this.uCalm = uniform(this.weather.calm);
+        this.uBanks = uniform(this.weather.banks);
+        this.uCap = uniform(this.weather.cap);
+        this.uSea = uniform(this.weather.sea);
+        this.uBanner = uniform(this.weather.banner);
+        this.uFireflies = uniform(this.weather.fireflies);
+        this.uCloudClock = uniform(0);
+        this.cloudTime = Number.NaN;
+        // Where the moon stands as (azimuth right of -Z, sine of its elevation): the sky's cloud
+        // is drawn in those two, and is lit from there.
+        this.uMoonAzEl = uniform(new THREE.Vector2(
+            Math.atan2(this.moonDirection.x, -this.moonDirection.z),
+            this.moonDirection.y,
+        ));
         this.lampCount = Math.min(tier.lamps, lamps.length);
         this.lampList = lamps.slice(0, this.lampCount);
         this.lampData = this.lampList.map((lamp) => new THREE.Vector4(lamp.x, lamp.y, lamp.z, lamp.power ?? 1));
@@ -141,12 +166,18 @@ export class SakuraLight {
         this.shadowBox = {
             centre: new THREE.Vector3(0, 7, -24), halfWidth: 78, halfHeight: 34, depth: 320,
         };
+        // The first hour and the first air, in full: the haze, the mist, the stars, the river.
+        this.paintAir();
     }
 
     /** Stand the moon somewhere else (each framing has its own) and redraw the shadows. */
     setMoon(azimuth, elevation) {
         sakuraMoonDirection(azimuth, elevation, this.moonDirection);
         this.uMoonDir.value.copy(this.moonDirection);
+        this.uMoonAzEl.value.set(
+            Math.atan2(this.moonDirection.x, -this.moonDirection.z),
+            this.moonDirection.y,
+        );
         this.frameShadows();
     }
 
@@ -374,10 +405,48 @@ export class SakuraLight {
         paint(this.uLampColor, hour.lampColor);
         paint(this.uCloudShade, hour.cloudShade);
         paint(this.uCloudLit, hour.cloudLit);
-        this.uHaze.value = hour.haze;
-        this.uMist.value = hour.mist;
-        this.uStars.value = hour.stars;
+        this.paintAir();
         return hour;
+    }
+
+    /**
+     * The air, `phase` airs in (sakura-weather.js): the cloud and its kinds, the veil, how the
+     * lake lies, the mist, what the mountain wears. The hour and the air share the haze, the mist
+     * and the stars (paintAir()).
+     */
+    setWeather(phase) {
+        const p = Number.isFinite(phase) ? phase : this.weatherPhase;
+        this.weatherPhase = p;
+        const weather = sakuraWeatherAt(p, this.weather);
+        this.uCloud.value = weather.cloud;
+        this.uWisps.value = weather.wisps;
+        this.uMackerel.value = weather.mackerel;
+        this.uVeil.value = weather.veil;
+        this.uCalm.value = weather.calm;
+        this.uBanks.value = weather.banks;
+        this.uCap.value = weather.cap;
+        this.uSea.value = weather.sea;
+        this.uBanner.value = weather.banner;
+        this.uFireflies.value = weather.fireflies;
+        this.paintAir();
+        return weather;
+    }
+
+    /** What the hour and the air set together: the haze, the mist, the stars, the river of heaven. */
+    paintAir() {
+        const { hour, weather } = this;
+        // (A veil thickens the far air a little; the mist on the water is the air's own to raise.)
+        this.uHaze.value = hour.haze * (1 + 0.3 * weather.veil);
+        /** The mist on the water at rest; when the game ends it closes in (update()). */
+        this.mistAtRest = hour.mist * weather.mist;
+        this.uMist.value = this.mistAtRest;
+        this.uStars.value = hour.stars * weather.stars;
+        this.uGalaxy.value = Math.min(1, hour.galaxy * weather.galaxy);
+    }
+
+    /** How dense the moon's shafts stand in the air (SakuraPost multiplies its beams by it). */
+    get shafts() {
+        return this.hour.beams * this.weather.shafts;
     }
 
     /** How the hour sets the lens's iris (SakuraPost multiplies its exposure by it). */
@@ -402,9 +471,22 @@ export class SakuraLight {
         const fever = clamp01(frame.fever);
         const motion = Number.isFinite(frame.motion) ? clamp01(frame.motion) : 1;
         const hush = clamp01(frame.hush);
+        // The cloud's own clock: seconds of travel at the air's pace. A clock that stood still,
+        // went back or jumped (a seek, a pause) lands where the resting pace would have brought it.
+        const now = this.uTime.value;
+        const step = now - this.cloudTime;
+        this.cloudTime = now;
+        if (step > 0 && step <= 0.5) this.uCloudClock.value += step * this.weather.drift;
+        else if (!(step === 0)) this.uCloudClock.value = now;
         this.uGust.value = clamp01(Number.isFinite(frame.sway) ? frame.sway : frame.gust) * 1.6;
-        this.uWind.value = SAKURA_BREEZE + (0.07 * level + 0.06 * fever) * motion * (1 - hush);
+        // (The air sets the breeze at rest; Reduce motion holds a fresh wind to the garden's own.)
+        const breeze = SAKURA_BREEZE * (1 + (this.weather.wind - 1) * (this.weather.wind > 1 ? motion : 1));
+        this.uWind.value = breeze * (1 - hush * 0.6) + (0.07 * level + 0.06 * fever) * motion * (1 - hush);
         this.uGlow.value = clamp01(Math.max(clamp01(frame.glow), 0.3 * level + 0.35 * fever));
+        // The game is over: the mist closes in over the lake and the fireflies settle.
+        if (Number.isFinite(this.mistAtRest)) this.uMist.value = this.mistAtRest * (1 + 1.5 * hush);
+        this.uBanks.value = this.weather.banks * (1 + 0.9 * hush);
+        this.uFireflies.value = this.weather.fireflies * (1 - 0.6 * hush);
         this.uSpirit.value = clamp01(frame.spirit);
         // (The hour sets how the lanterns burn at rest: brightest in the lantern night, low at dawn.)
         this.uLampGain.value = (1 + clamp01(frame.lanterns) * 0.7 * (1 - 0.35 * level)

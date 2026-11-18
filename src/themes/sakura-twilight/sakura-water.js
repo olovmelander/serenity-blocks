@@ -80,13 +80,16 @@ export class SakuraWater {
             const toEye = eye.sub(positionWorld).toVar();
             const view = normalize(toEye).toVar();
             const t = light.uTime;
-            // Wind works the water in patches: glassy lanes between ruffled ones.
-            const ruffle = smoothstep(0.34, 0.72, light.noise(point.mul(0.0043).add(t.mul(0.0012))).b)
-                .mul(light.uGust.mul(0.5).add(1)).toVar();
+            // Wind works the water in lanes drawn out along the breeze: glassy between ruffled
+            // ones. How much of the lake they take is the air's (`uCalm`: in a mirror calm none).
+            const calm = light.uCalm;
+            const lanes = light.noise(vec2(point.x.mul(0.0019).add(t.mul(0.0012)), point.y.mul(0.0086)));
+            const ruffle = smoothstep(calm.mul(0.2).add(0.36), calm.mul(0.08).add(0.74), lanes.b.mul(0.72).add(lanes.g.mul(0.28)))
+                .mul(calm.mul(0.92).oneMinus()).mul(light.uGust.mul(0.5).add(1)).toVar();
             const fine = light.noise(point.mul(0.21).add(vec2(t.mul(0.023), t.mul(0.014))));
             const chop = light.noise(point.mul(0.052).add(vec2(t.mul(-0.009), t.mul(0.012))));
             const slope = fine.rg.sub(0.5).mul(0.55).add(chop.rg.sub(0.5))
-                .mul(ruffle.mul(0.8).add(0.2))
+                .mul(ruffle.mul(0.8).add(calm.oneMinus().mul(0.15).add(0.035)))
                 .toVar();
             const ring = light.rings(point);
             slope.addAssign(ring.push.mul(0.9));
@@ -117,11 +120,14 @@ export class SakuraWater {
             const body = mix(color(0x04070f), color(0x101b22), exp(depth.mul(-1.1)))
                 .add(light.uSkyLight.mul(0.05));
             const water = mix(body, mirror, fresnel).toVar();
-            // The moon's road: facets that happen to face the moon flash.
+            // The moon's road: facets that happen to face the moon flash, and round them the
+            // ruffled water carries a soft band of its light toward the eye.
             const facet = normalize(vec3(slope.x.mul(-0.22), 1, slope.y.mul(-0.22)));
             const half = normalize(view.add(light.uMoonDir));
-            const spark = pow(saturate(dot(facet, half)), 420).mul(fine.b.mul(1.4).add(0.3));
-            water.addAssign(light.uMoonColor.mul(spark).mul(1.6));
+            const toMoon = saturate(dot(facet, half)).toVar();
+            const spark = pow(toMoon, 420).mul(fine.b.mul(1.4).add(0.3));
+            const road = pow(toMoon, 90).mul(ruffle.mul(0.7).add(0.3)).mul(chop.b.mul(0.8).add(0.6));
+            water.addAssign(light.uMoonColor.mul(spark.mul(1.6).add(road.mul(0.11))));
             // A ring from the board catches the light as it passes.
             water.addAssign(vec3(1.0, 0.62, 0.78).mul(ring.band.mul(ring.band)).mul(fresnel).mul(0.55));
 
