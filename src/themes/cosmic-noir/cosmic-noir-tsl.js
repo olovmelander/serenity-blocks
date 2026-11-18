@@ -6,8 +6,9 @@
  *    real shader function; laid-out helpers are pure (no captured uniforms or textures), and their
  *    input names avoid WGSL's reserved words;
  *  - no `mx_noise_*` anywhere (a DXC compile pathology on this project's Windows machines): the
- *    smoke in the air is ONE tileable 3D byte texture and the sea of smoke ONE tileable half-float
- *    field (height and slope), both baked on the CPU when the world is built;
+ *    smoke in the air is ONE tileable 3D byte texture, the sea ONE tileable half-float field
+ *    (height and slope), the foam's lace one byte field of cell walls and the rock one half-float
+ *    volume of distances, all baked on the CPU when the world is built;
  *  - nothing is lit by scene lights: every part writes its own light, scene-linear and grey; the
  *    post stack owns the tone curve and the film stock's toning;
  *  - the light in the air is painted into a reduced-resolution target once a frame
@@ -47,13 +48,14 @@ import {
 } from 'three/tsl';
 
 import {
-    CAGE, DEG, ECHO_SLOTS, PULSAR, PUFF_SLOTS, ROCK, ROLLERS, ROLLER_MEAN, SEA, SMOKE, SPLASH_SLOTS, SURGE_SET,
-    TAU,
+    CAGE, DEG, ECHO_SLOTS, METEOR_SLOTS, PULSAR, PUFF_SLOTS, ROCK, ROLLERS, ROLLER_MEAN, SEA, SMOKE, SPLASH_SLOTS,
+    SURGE_SET, TAU,
 } from './cosmic-noir-core.js';
 
 export * from './cosmic-noir-core.js';
+export { ROCK_SEED, bakeRockField } from './cosmic-noir-rock.js';
 export {
-    SEA_SEED, SMOKE_SEED, bakeSeaField, bakeSmokeNoise,
+    LACE_SEED, LACE_SIZE, SEA_SEED, SMOKE_SEED, bakeFoamLace, bakeSeaField, bakeSmokeNoise,
 } from './cosmic-noir-bake.js';
 
 // ── Hashes (GPU) ────────────────────────────────────────────────────────────────
@@ -209,6 +211,40 @@ export function createSeaTexture(levels, size, name = 'cosmic-noir-sea') {
     return tex;
 }
 
+/** The foam's lace as a tileable byte texture, with mips (it is read far out over the sea). */
+export function createLaceTexture(data, size, name = 'cosmic-noir-lace') {
+    const tex = new THREE.DataTexture(data, size, size, THREE.RGBAFormat, THREE.UnsignedByteType);
+    tex.wrapS = THREE.RepeatWrapping;
+    tex.wrapT = THREE.RepeatWrapping;
+    tex.magFilter = THREE.LinearFilter;
+    tex.minFilter = THREE.LinearMipmapLinearFilter;
+    tex.generateMipmaps = true;
+    tex.colorSpace = THREE.NoColorSpace;
+    tex.name = name;
+    tex.needsUpdate = true;
+    return tex;
+}
+
+/** The rock's distance field as a volume of half floats (filterable on both backends), clamped at its box. */
+export function createRockTexture({
+    data, nx, ny, nz,
+}, name = 'cosmic-noir-rock') {
+    const tex = new THREE.Data3DTexture(data, nx, ny, nz);
+    tex.format = THREE.RedFormat;
+    tex.type = THREE.HalfFloatType;
+    tex.minFilter = THREE.LinearFilter;
+    tex.magFilter = THREE.LinearFilter;
+    tex.wrapS = THREE.ClampToEdgeWrapping;
+    tex.wrapT = THREE.ClampToEdgeWrapping;
+    tex.wrapR = THREE.ClampToEdgeWrapping;
+    tex.generateMipmaps = false;
+    tex.colorSpace = THREE.NoColorSpace;
+    tex.unpackAlignment = 1;
+    tex.name = name;
+    tex.needsUpdate = true;
+    return tex;
+}
+
 // ── Shared uniforms ─────────────────────────────────────────────────────────────
 
 const rows = (count, fill = [0, 0, 0, 0]) => Array.from(
@@ -229,6 +265,7 @@ export function createNoirUniforms(textures) {
         echoes: rows(ECHO_SLOTS, [0, 1, 0, 0]),
         puffs: rows(PUFF_SLOTS * 2, [0, 0, -100, 0.01]),
         splashes: rows(SPLASH_SLOTS, [100, 0, 0, 0]),
+        meteors: rows(METEOR_SLOTS * 2, [0, 1, 0, 0]),
     };
     const u = {
         time: uniform(0),
@@ -269,12 +306,33 @@ export function createNoirUniforms(textures) {
          * sets; a crest's height now; how churned the sea round the rock is, 0..1).
          */
         seaRoll: uniform(new THREE.Vector4(0, 0, ROLLERS.height, 0)),
-        /** How high the tallest plume standing now may reach (scene units over the sea): its walk's ceiling. */
-        splashTop: uniform(1),
+
         /** The sea's surge (0..1): the great moments lift every roller toward a set's tallest. */
         seaSurge: uniform(0),
         /** The faint light everything shows by everywhere (starlight). */
         ambient: uniform(0.0075),
+        /** The night sky's own glow as the sea mirrors it (the weather and a lightning flash raise it). */
+        skyGlow: uniform(0.02),
+        /** How broken the sea's surface is below what a pixel resolves (wind and rain roughen it). */
+        seaRough: uniform(1),
+        /** How much of the sky the cloud covers, and how far its two fields have run (tiles: big x, z, fine x, z). */
+        cloud: uniform(0),
+        cloudDrift: uniform(new THREE.Vector4(0, 0, 0, 0)),
+        /** The stars' light (the weather veils them). */
+        stars: uniform(1),
+        /** Lightning in the cloud: how bright now, and where in the sky it stands (unit). */
+        flash: uniform(0),
+        flashDir: uniform(new THREE.Vector3(0.3, 0.2, -0.93)),
+        /** A fork of lightning: (_, how bright now, a seed, its bearing right of the lighthouse in radians). */
+        bolt: uniform(new THREE.Vector4(0, 0, 0, 0)),
+        /** Rain: how hard (0..1), how it slants before the wind, and its clock (seconds, wrapped). */
+        rain: uniform(0),
+        rainSlant: uniform(0.2),
+        rainClock: uniform(0),
+        /** The mist lying on the sea, as a share of SEA.mist (the weather thickens it into a fog bank). */
+        mist: uniform(0.3),
+        /** The loose smoke on the sea's swells, as a share of its fullest. */
+        fringe: uniform(0.45),
         /** The far lighthouse on the horizon: how bright it shows now. */
         farLamp: uniform(0),
         /** The galaxy's own light, on the sky and as the sea's and the tower's rim. */
@@ -302,10 +360,15 @@ export function createNoirUniforms(textures) {
         puffCount: uniform(0, 'int'),
         /** Waves breaking on the rock: (seconds since it met the shore, how hard, a seed, _). */
         splashes: uniformArray(tables.splashes, 'vec4'),
+        /** Meteors, two rows each: (its head's direction, its light) and (its tail's end, its width in radians). */
+        meteors: uniformArray(tables.meteors, 'vec4'),
+        meteorCount: uniform(0, 'int'),
         smokeTex: textures.smoke,
         smokeFarTex: textures.smokeFar,
         seaTex: textures.sea,
         seaSize: textures.seaSize || 256,
+        laceTex: textures.lace,
+        rockTex: textures.rock,
         targetTex: texture(textures.target),
     };
     /** The smoke's four fields at a point of the volume (one unit = one tile). */
@@ -314,6 +377,10 @@ export function createNoirUniforms(textures) {
     u.smokeFar = (p3) => texture3D(u.smokeFarTex, p3).level(0);
     /** The sea's field at a place of its tile and a mip: (height, ∂u, ∂v, calm). */
     u.sea = (uv2, lod) => texture(u.seaTex, uv2).level(lod);
+    /** The foam's lace at a place of its tile and a mip: (large walls, small walls, a number per cell, bubbles). */
+    u.lace = (uv2, lod) => texture(u.laceTex, uv2).level(lod);
+    /** The rock's distance at a place of its box (0..1 along each side). */
+    u.rock = (p3) => texture3D(u.rockTex, p3).level(0).r;
     /**
      * The air's target at a screen UV: (light, how much of what is behind it shows through).
      * Where the target is 8-bit it holds the square root of the light over SMOKE_CODE_PEAK.

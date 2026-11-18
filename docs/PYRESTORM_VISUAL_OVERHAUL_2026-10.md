@@ -462,7 +462,7 @@ play, and never shake the ridge.
 Lightning now keeps clear of the board and the HUD (`boltBehindBoard`): a crawler or a stroke is
 tried a few times and the first that runs clear of both all its way is taken (above a card by
 twelve hundredths of the screen, where the next pieces are shown). A thin bright line behind the
-interface read as a crack in it (SKILL #1751).
+interface read as a crack in it (SKILL #1753).
 
 ### An independent critique, and what it changed
 
@@ -474,7 +474,7 @@ sheets and asked for a blunt review. Its eight worst points and what was done:
 | Cloud lightning sits behind the HUD and reads as cracks in the UI | `boltBehindBoard`, above |
 | The level-up is invisible | Fans of fire on the vent, a wider stream, vents moved into the gaps between the cone's own streams |
 | The lock burst under fast play rivals the four-line blast | Lock bursts trimmed, the blast's fountain raised |
-| The event smoke is cartoon discs | A puff thins toward its edge all the way in from its middle (#1752) |
+| The event smoke is cartoon discs | A puff thins toward its edge all the way in from its middle (#1754) |
 | The perfect clear has no signature (a three-line clear with more bolts) | The storm's light on the whole land; the wave's fountains uneven, never a comb's teeth |
 | Four lines read as a firework | Thin arcs of every thickness and length; the column swells with the thermal |
 | The fissure is three cloned cones on a ruler-straight bar | Four vents of different place, width and strength, swelling out of step; the line's own glow patchy |
@@ -489,19 +489,19 @@ plain (let go under a pixel), game over kept its rivers bright (they crust over)
 
 - **A firework.** The blast's ring of bombs left one point in one frame at every bearing, each with
   a height drawn apart from its range. Thrown steeply out of the whole crater over most of a second
-  it reads as an eruption (SKILL #1747).
+  it reads as an eruption (SKILL #1749).
 - **A rope.** The first fire whirl was two sine helices of one pitch round a solid body. A thin
-  core with three broken wisps at different pitches reads as flame (#1748).
+  core with three broken wisps at different pitches reads as flame (#1750).
 - **An invisible vent.** The level-up's stream ran beside a stream that was already there; a zoom
-  showed it, the game's frame did not. Features an event adds go in the gaps (#1749).
+  showed it, the game's frame did not. Features an event adds go in the gaps (#1751).
 - **A neon outline.** Blue fire as a smooth band along the banks read as an outline round each
-  river. Tongues, and beads on the far threads (#1750).
+  river. Tongues, and beads on the far threads (#1752).
 - **Lozenges on the plain.** The gilding lit the cooled lobes beside the rivers; anything that means
-  "lava runs here" is gated by the field's heat (#1609).
+  "lava runs here" is gated by the field's heat (#1610).
 - **Trees inside out.** The snags drew pale all over: the export flipped the winding for an axis
   change that is a rotation (#703).
 - **A sky of grey cloud.** The Milky Way's noise was read in bearing and elevation; it is a band in
-  its own frame now (#1426).
+  its own frame now (#1427).
 - **Twenty per cent dearer.** The pass first cost a fifth more GPU time on every tier. Two changes
   paid for it without moving a pixel that can be seen: the lava's crust is worked out only under a
   channel (a per-pixel branch whose texture reads take explicit gradients differentiated outside
