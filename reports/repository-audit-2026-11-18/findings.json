@@ -12,7 +12,7 @@
   "findings": [
     {
       "id": "A18-UI-1",
-      "status": "candidate",
+      "status": "verified",
       "title": "After the first game, the main menu's controller handler is never re-armed; once Settings or Records is opened and closed on that menu, D-pad, A and B stop working",
       "area": "ui-input",
       "file": "src/ui/gamepad-controller.js",
@@ -25,11 +25,17 @@
       "fixSize": "S",
       "fixSketch": "Tie game-mode-selection to the start modal: enable on ModalManager.show('start'), disable on hide('start') (or derive in poll); don't disableMenuNavigation on sheet hide while the start modal is visible.",
       "testIdea": "ModalManager+GamepadController with stub DOM: boot show start, mode start, return, show/hide settings, D-pad down → processGameModeSelection called (current: processGamepadInput).",
-      "knownCheck": "Not recorded (INPUT-03 is a different edge-state wipe; CONTROLLER_UX §2 check covered the first visit only)."
+      "knownCheck": "Not recorded (INPUT-03 is a different edge-state wipe; CONTROLLER_UX §2 check covered the first visit only).",
+      "verification": {
+        "verdict": "confirmed",
+        "severityAdjust": "keep",
+        "needsOwnerDecision": false,
+        "summary": "jsdom with the real index.html, GamepadController, ModalManager, setupModalUI, showHighScoresModal (verify/ui/p1-menu-rearm.test.mjs). First visit after Settings: routes {selection:3}, A clicked the card. Second visit after Start+B on Settings: flags {sel:false, nav:false}, routes {gameplay:9}, card clicks [], A/B/Down → rotate/hardDrop/softDrop. Records + B: same. Nothing in src re-sets the flags. Fix: ModalManager.show('start') enables game-mode selection; hide('start') disables it."
+      }
     },
     {
       "id": "A18-UI-2",
-      "status": "candidate",
+      "status": "verified",
       "title": "The pad press that finishes a binding capture also acts on Settings: View closes Settings and opens the Hub; Start/LB/RB/D-pad can close Settings, switch tab or move focus",
       "area": "ui-input",
       "file": "src/ui/gamepad-controller.js",
@@ -37,16 +43,23 @@
       "category": "bug",
       "scenario": "Settings › Controls › Controller › Pause, A to listen, press View → binding saved, then the same held press closes Settings and opens the Serenity Hub (mid-run: resume then pause again). Start to bind Pause closes Settings ~1 in 6 times; LB/RB can switch tab; D-pad can move focus.",
       "evidence": "settings.js:940 capture interval 50 ms; cancel() (:919) removes .listening; noteCaptureEnded (:346) stamps data-capture-ended; processMenuNavigation latches only while .listening (gamepad-controller.js:1633), never latching serenityToggleHub; processMenuHubButton (:1021) not called during capture → held View is a fresh edge (:1029-1034). Only B checks data-capture-ended (:2005); A covered by captureJustEnded (settings.js:2401). Scratch tests: View → ['close-settings','hub']; Start → ['close-settings'].",
-      "severity": "P2",
+      "severity": "P3",
       "confidence": "high",
       "fixSize": "S",
       "fixSketch": "Treat a recent data-capture-ended (~300 ms) like .listening (latch all held buttons incl. hub/start/shoulders), or keep .listening until the answering button is released.",
       "testIdea": "Poll with .listening and View held, remove .listening, poll again with View held → close-settings not clicked, toggleHub not called.",
-      "knownCheck": "INPUT_HOLD_UP_2026-10:44 fixed input while listening, not the press that ends capture; not recorded."
+      "knownCheck": "INPUT_HOLD_UP_2026-10:44 fixed input while listening, not the press that ends capture; not recorded.",
+      "verification": {
+        "verdict": "confirmed",
+        "severityAdjust": "P3",
+        "needsOwnerDecision": false,
+        "summary": "verify/ui/c2-capture-press.test.mjs with real handleGamepadBinding/GamepadController/ModalManager: Pause←View: bound, Settings closed, Hub toggled once; Pause←Start (interval first): Settings closed; RB: tab general→display. Binding always saved correctly; side effect only → P3. Fix: in processMenuNavigation treat listening OR data-capture-ended < 300 ms as capture-owned and latch hub/start too."
+      },
+      "severityOriginal": "P2"
     },
     {
       "id": "A18-UI-3",
-      "status": "candidate",
+      "status": "verified",
       "title": "The controller's 100 ms first-focus pass runs on every main-menu show, even with no pad connected, and moves focus to the first mode card, so the menu forgets the remembered mode",
       "area": "ui-input",
       "file": "src/ui/gamepad-controller.js",
@@ -59,11 +72,17 @@
       "fixSize": "S",
       "fixSketch": "In the timer, skip when the shown modal is the start modal or focus is already inside the open sheet/modal; only when a pad is connected or input mode is gamepad.",
       "testIdea": "Stub doc with 3 cards, focus third, no pad; enableMenuNavigation; advance 120 ms → focus unchanged.",
-      "knownCheck": "Not recorded."
+      "knownCheck": "Not recorded.",
+      "verification": {
+        "verdict": "confirmed",
+        "severityAdjust": "keep",
+        "needsOwnerDecision": false,
+        "summary": "verify/ui/c3-first-focus.test.mjs, real main-menu.js (lastMode odyssey), no pad: current odyssey at 90 ms → single at 120 ms; keyboard user same. Fix: in the timer return when getMenuSheet() is null (main-menu.js places its own focus). Related: processGameModeSelection's unfocused branch focuses gameModeCards[selectedGameModeIndex||0], not the .is-current card."
+      }
     },
     {
       "id": "A18-UI-4",
-      "status": "candidate",
+      "status": "verified",
       "title": "Start from the Hub within 500 ms of opening Settings closes the Hub but Settings never opens: game stays paused with nothing on screen",
       "area": "ui-input",
       "file": "src/ui/gamepad-controller.js",
@@ -76,11 +95,17 @@
       "fixSize": "S",
       "fixSketch": "Hub→Settings handoff bypasses the debounce, or clear the cooldown when Settings closes.",
       "testIdea": "Start, View over settings, Start with Hub open ~350 ms after first Start → settings button clicked.",
-      "knownCheck": "CONTROLLER_UX_2026-11 records the handoff without the cooldown interaction; not recorded."
+      "knownCheck": "CONTROLLER_UX_2026-11 records the handoff without the cooldown interaction; not recorded.",
+      "verification": {
+        "verdict": "confirmed",
+        "severityAdjust": "keep",
+        "needsOwnerDecision": false,
+        "summary": "verify/ui/c4-hub-start-cooldown.test.mjs: second Start at ~350 ms → hub closed, settings not visible, paused; at ~650 ms opens. Soft lock (another Start/Escape recovers). Fix: clear _toggleCooldown before toggleSettings in the Hub branch."
+      }
     },
     {
       "id": "A18-UI-5",
-      "status": "candidate",
+      "status": "verified",
       "title": "Stillfall's own pad loop ignores window focus: with 'Pause when the game loses focus' off, presses made in another app undo, restart or advance the puzzle",
       "area": "ui-input",
       "file": "src/ui/stillfall/stillfall-hud.js",
@@ -93,11 +118,17 @@
       "fixSize": "S",
       "fixSketch": "In pollPad keep updating padPrev but take no action while document.hidden or !document.hasFocus(); latch buttons held on refocus.",
       "testIdea": "Stub getGamepads LB pressed, hasFocus false, active puzzle; pollPad twice with an edge → send('undo') not called.",
-      "knownCheck": "Main poll's background fix recorded; this second loop not."
+      "knownCheck": "Main poll's background fix recorded; this second loop not.",
+      "verification": {
+        "verdict": "confirmed",
+        "severityAdjust": "keep",
+        "needsOwnerDecision": false,
+        "summary": "verify/ui/c5-stillfall-unfocused.test.mjs, real installStillfallHud with hasFocus false: sent ['undo','restart','next']; main controller 0 calls. Needs non-default setting + visible unfocused window. Fix: skip actions when document.hidden or !hasFocus (keep updating padPrev)."
+      }
     },
     {
       "id": "A18-UI-6",
-      "status": "candidate",
+      "status": "verified",
       "title": "LB/RB (and Q/E) in Settings opened over Records also switch the Records tab hidden beneath",
       "area": "ui-input",
       "file": "src/ui/gamepad-controller.js",
@@ -110,11 +141,17 @@
       "fixSize": "S",
       "fixSketch": "switchMainTab acts only on the top sheet and returns; Records Q/E listener returns when defaultPrevented or #settings-modal visible.",
       "testIdea": "Both modals visible; switchMainTab(1) → only Settings tab clicked.",
-      "knownCheck": "Not recorded."
+      "knownCheck": "Not recorded.",
+      "verification": {
+        "verdict": "confirmed",
+        "severityAdjust": "keep",
+        "needsOwnerDecision": false,
+        "summary": "verify/ui/c6-tabs-under-settings.test.mjs: pad RB {single,general}→{infinity,display}; keyboard E → {odyssey,audio}. Fix: return after Settings branch in switchMainTab; Records Q/E listener returns when #settings-modal visible."
+      }
     },
     {
       "id": "A18-PERS-1",
-      "status": "candidate",
+      "status": "verified",
       "title": "Steam Cloud: a first device with no Odyssey save keeps an Odyssey upload stuck forever, blocking every later Odyssey download to it",
       "area": "persistence",
       "file": "src/core/steam/steam-cloud-sync.js",
@@ -127,11 +164,17 @@
       "fixSize": "S",
       "fixSketch": "Odyssey upload branch with local null: if remote has data apply it (_applyOdyssey merges against {version}) then upload union; if both absent drop pending entry. Skip queueing files whose local payload is null in _pushAllLocal.",
       "testIdea": "A syncs to empty cloud without Odyssey save; B completes two orbs and uploads; A restarts and syncs. Expect 2 completions and no pending odyssey.json.",
-      "knownCheck": "Searched 11-06 (persistence, passes 2-4, remaining 1 and 8), pass-02/03 deferred JSONs, 10-13 SCORE-01/04/11/12, 10-22, 10-03, plan: no record."
+      "knownCheck": "Searched 11-06 (persistence, passes 2-4, remaining 1 and 8), pass-02/03 deferred JSONs, 10-13 SCORE-01/04/11/12, 10-22, 10-03, plan: no record.",
+      "verification": {
+        "verdict": "confirmed",
+        "severityAdjust": "keep",
+        "needsOwnerDecision": false,
+        "summary": "verify/gameplay/p1-cloud-odyssey-stuck.test.js (real SteamCloudSyncManager + OdysseyStateManager, in-memory cloud): A pending ['odyssey.json'] forever, local save null, completedLevels 0 after B uploads 2; fresh device control downloads both. Precondition near-universal for a new player's first device. Fix: Odyssey branch with local null: apply remote via _applyOdyssey if it parses (then drop/ack), drop if both absent; keep throw when the remote read itself fails (lifetime tests rely on it). No data loss; heals on A's first Odyssey save."
+      }
     },
     {
       "id": "A18-PERS-2",
-      "status": "candidate",
+      "status": "verified",
       "title": "An imported replay older than every stored replay is deleted by the retention prune of its own save, while the sheet says 'Replay imported.'",
       "area": "persistence",
       "file": "src/core/demo/DemoManager.js",
@@ -139,16 +182,23 @@
       "category": "bug",
       "scenario": "At MAX_STORED_DEMOS=200 (every Single Player game auto-saves a replay), importing a replay file keeps its original timestamp; saveDemo adds row 201, _pruneOldDemos walks index('timestamp') oldest-first and deletes the just-imported row. demo-browser reports 'Replay imported.' but it's gone. Exporting a PB replay to keep it and re-importing later is exactly the failing case.",
       "evidence": "DemoManager.saveDemo 52-79, _pruneOldDemos 85-109, importFromJSON 199-213 (keeps timestamp, drops id), demo-browser.js handleFileImport 355-369. Throwaway vitest with in-memory IDB stand-in: row 201 gone after save.",
-      "severity": "P2",
+      "severity": "P3",
       "confidence": "high",
       "fixSize": "S",
       "fixSketch": "Prune in save order (store.openCursor() on autoIncrement keys), or at minimum never delete the id this save just added.",
       "testIdea": "Fill store with 200 recent replays, save an imported one dated a month ago; loadDemo(returnedId) must return it.",
-      "knownCheck": "SCORE-13 (PB replays pruned after 200 games), UI-08, 11-06 fix #10 (prune durability) don't cover an import pruned by its own save."
+      "knownCheck": "SCORE-13 (PB replays pruned after 200 games), UI-08, 11-06 fix #10 (prune durability) don't cover an import pruned by its own save.",
+      "verification": {
+        "verdict": "confirmed",
+        "severityAdjust": "P3",
+        "needsOwnerDecision": false,
+        "summary": "verify/gameplay/p2-import-pruned.test.js: import id 201, loadDemo(201) undefined, rows 200. Fix: prune in save order via store.openCursor() over autoIncrement ids (no schema change); replay-storage-transaction.test.js harness needs store.openCursor. Downgraded: niche, only at the 200 cap, source file untouched."
+      },
+      "severityOriginal": "P2"
     },
     {
       "id": "A18-PERS-3",
-      "status": "candidate",
+      "status": "verified",
       "title": "Replay results rank and career stats mix Infinity runs into Single Player (getRank/getStatistics without a mode)",
       "area": "persistence",
       "file": "src/ui/modals.js",
@@ -156,16 +206,23 @@
       "category": "bug",
       "scenario": "showDemoCompleteModal (Single Player replays only) calls highScoreManager.getRank(score) with no mode → counts all modes; Career/session cards use lifetime totals across modes. A player with 60 Infinity runs ≥90k watching their 50k Single Player best replay sees 'Rank #61' instead of 'New record', and Infinity-mixed career figures. The game-over modal ranks per mode (modals.js:405-406).",
       "evidence": "modals.js showGameOverModal 354-420 (per-mode at 405-406), showDemoCompleteModal 581-640 (getRank(score) 615, getStatistics() 616); high-scores.js getRank 338-351 counts index('score') across modes; DemoRecorder only records from SinglePlayerMode.",
-      "severity": "P2",
+      "severity": "P3",
       "confidence": "high",
       "fixSize": "S",
       "fixSketch": "Choose mode like showGameOverModal; getRank(score,{mode}) and statisticsForMode(await getStatistics(), mode).",
       "testIdea": "Fake highScoreManager: getRank → 61 without mode, 1 with {mode:'single'}; expect 'New record' and single-mode career figures.",
-      "knownCheck": "SCORE-06/UI-07 (10-13) fixed game-over/Records/menu per mode; replay results path missed; no separate record."
+      "knownCheck": "SCORE-06/UI-07 (10-13) fixed game-over/Records/menu per mode; replay results path missed; no separate record.",
+      "verification": {
+        "verdict": "confirmed",
+        "severityAdjust": "P3",
+        "needsOwnerDecision": false,
+        "summary": "verify/gameplay/p3-demo-rank-mode.test.js: getRank called with no mode → 'Rank #61'; career mixes 90,059 Infinity best. Fix: mode as in showGameOverModal; getRank(score,{mode}); statisticsForMode. Display only → P3."
+      },
+      "severityOriginal": "P2"
     },
     {
       "id": "A18-CORE-1",
-      "status": "candidate",
+      "status": "verified",
       "title": "Replay: resuming while a line clear is still animating starts a second frame loop; recorded inputs are applied twice and the next one skipped",
       "area": "core",
       "file": "src/core/demo/DemoPlayer.js",
@@ -178,11 +235,17 @@
       "fixSize": "S",
       "fixSketch": "Track a running loop (_loopRunning set at _loop entry, cleared in finally before rescheduling); _scheduleLoop no-ops while set.",
       "testIdea": "Stub RAF and a pending latestPhysicsPromise; _loop(), pause, resume, run queued frame, resolve, flush; each input applied exactly once in order.",
-      "knownCheck": "11-06 independent-review row (d741361/b58561c) only records Play restarting the loop after a paused seek; not recorded elsewhere. Regression from b58561c."
+      "knownCheck": "11-06 independent-review row (d741361/b58561c) only records Play restarting the loop after a paused seek; not recorded elsewhere. Regression from b58561c.",
+      "verification": {
+        "verdict": "confirmed",
+        "severityAdjust": "keep",
+        "needsOwnerDecision": false,
+        "summary": "verify/gameplay/c1-demo-double-loop.test.js (real DemoPlayer/GameState/hardDrop/pacer, fake timers): same-frame inputs → move:1 applied twice, rotate:left never; digest 39520102 vs 9763456b. Any concurrent loop also rewrites the replay clock (first spawn after clear at sim 159.7 vs 303 ms; score 381 vs 386). Regression from b58561c. Fix must be token-scoped (a plain boolean can stall after seek()/startPlayback retire a loop): _runningLoopToken set in _loop, cleared in finally only if equal and before its own reschedule; _scheduleLoop returns while _runningLoopToken === seekToken. Separate older issue: a pause lasting until the cascade ends lets _advanceTo count same-frame inputs as applied while isPaused rejects them."
+      }
     },
     {
       "id": "A18-CORE-2",
-      "status": "candidate",
+      "status": "verified",
       "title": "Garbage settling can complete a row that nothing clears; the victim's next lock clears it and is credited for it",
       "area": "core",
       "file": "src/core/garbage.js",
@@ -195,11 +258,17 @@
       "fixSize": "M",
       "fixSketch": "Owner rules decision: clear+settle inside applyGarbage without credit, or prevent the settle from completing a garbage row.",
       "testIdea": "garbage-boundary.test.js: body at col 3, applyGarbage hole col 3 → no full row; next non-clearing lock leaves gs.lines unchanged.",
-      "knownCheck": "Not recorded; ADR-0011 governs cascade waves after a lock, not garbage insertion."
+      "knownCheck": "Not recorded; ADR-0011 governs cascade waves after a lock, not garbage insertion.",
+      "verification": {
+        "verdict": "confirmed",
+        "severityAdjust": "keep",
+        "needsOwnerDecision": true,
+        "summary": "verify/gameplay/c2-garbage-settle-full-row.test.js: 1x2 body + hole at col 3 → fullRowsOnBoard [23]; next unrelated drop → lines 0→1, score 0→325, attack sent. Well case: 4 full rows → credited 4-line clear. Also affects online FFA host and peer (ffa-p2p-game-state.js:1642, :3374). Either fix is a rules change (clear without credit, deterministic on host and peer; or stop settle into garbage holes) and breaks garbage-boundary holeMask-0 cases."
+      }
     },
     {
       "id": "A18-CORE-3",
-      "status": "candidate",
+      "status": "verified",
       "title": "Resuming Single Player during a replay drops one gravity tick and un-pauses a replay the viewer had paused",
       "area": "core",
       "file": "src/core/game-modes/SinglePlayerMode.js",
@@ -212,11 +281,17 @@
       "fixSize": "S",
       "fixSketch": "onResume with isPlayingDemo: lastTime = simTimeMs; onPause records whether the mode paused the demo; resume only then.",
       "testIdea": "Same demo with/without mid onPause/onResume → equal dropCounter and board digest; paused-by-controls stays paused after sheet close.",
-      "knownCheck": "CORE-01 (live play deltas) and CORE-17 (pacer ignores pause) differ; 11-06 replay fixes concern seek/frame ownership. Not recorded."
+      "knownCheck": "CORE-01 (live play deltas) and CORE-17 (pacer ignores pause) differ; 11-06 replay fixes concern seek/frame ownership. Not recorded.",
+      "verification": {
+        "verdict": "confirmed",
+        "severityAdjust": "keep",
+        "needsOwnerDecision": false,
+        "summary": "verify/gameplay/c3b-trace.test.js: after resume lastTime = wall clock, a frame's gravity lost; c3-resume-gravity-tick.test.js: 1 of 91 move timings gives a different board and score. At 2x/4x the delta becomes a clamped 50 ms burst instead. (b) playback resumes after the viewer paused it; the icon catches up within 100 ms (claim about the icon was wrong). Fix: in SinglePlayerMode.onResume keep the replay clock when isPlayingDemo; resume the demo only if the mode paused it."
+      }
     },
     {
       "id": "A18-CORE-4",
-      "status": "candidate",
+      "status": "verified",
       "title": "A saved 0-star Odyssey clear counts as cleared for progress but never grants its orb's theme or the chapter 1/4 reward themes",
       "area": "core",
       "file": "src/core/progression/theme-collection-model.js",
@@ -229,7 +304,13 @@
       "fixSize": "S",
       "fixSketch": "Accept 0-3 stars in getValidCompletedLevels (or reuse normalizeOdysseyCompletion with minStars 0).",
       "testIdea": "Every chapter-1 orb completed with stars 0 → themes and thermal-bloom granted; no 'Complete orb' status for cleared orbs.",
-      "knownCheck": "11-06 records 0-star local load (dd7e3b0) and cloud merge drop (line 178); nothing on the collection's star filter."
+      "knownCheck": "11-06 records 0-star local load (dd7e3b0) and cloud merge drop (line 178); nothing on the collection's star filter.",
+      "verification": {
+        "verdict": "confirmed",
+        "severityAdjust": "keep",
+        "needsOwnerDecision": false,
+        "summary": "verify/gameplay/c4-zero-star-collection.test.js: v5 save with orbs 1-5 at stars 0 → owned [forest], orb1 status 'Complete Odyssey orb 1'; at stars 1 owns 6 themes + thermal-bloom. Fix: getValidCompletedLevels uses normalizeOdysseyCompletion(completion,{minStars:0}). Cloud merge (1-3 both sides) erases the 0-star clear itself on first merge — a related, recorded-as-deliberate sibling."
+      }
     },
     {
       "id": "A18-MP-1",
@@ -303,7 +384,7 @@
     },
     {
       "id": "A18-LIFE-1",
-      "status": "candidate",
+      "status": "verified",
       "title": "Portal gate: dispose() during an in-flight off-thread run tears it down twice; the second teardown resizes the transferred canvas (InvalidStateError; the return transition's play() then never resolves)",
       "area": "lifecycle",
       "file": "src/rendering/transitions/JourneyEntryTransition.js",
@@ -316,11 +397,17 @@
       "fixSize": "S",
       "fixSketch": "Make teardown idempotent per run (run.tornDown flag) and never resize a transferred canvas (run.handedOver flag); apply to both transition classes.",
       "testIdea": "Stub Worker/OffscreenCanvas; canvas width setter throws after transferControlToOffscreen; play() then dispose() mid-run; flush timers. Expect no throw, one 'stop', and return play() resolving {aborted:true, reason:'dispose'}.",
-      "knownCheck": "Grepped 11-06, 10-22, 10-13 audits, THEME_AND_RENDERING_AUDIT, THEME_AUDIT_HANDOVER, remediation plan for transferControlToOffscreen/portal-gate/JourneyEntryTransition/JourneyReturnTransition: only ODY-11 (unrelated). Off-thread gate landed 2026-11-04, after those audits."
+      "knownCheck": "Grepped 11-06, 10-22, 10-13 audits, THEME_AND_RENDERING_AUDIT, THEME_AUDIT_HANDOVER, remediation plan for transferControlToOffscreen/portal-gate/JourneyEntryTransition/JourneyReturnTransition: only ODY-11 (unrelated). Off-thread gate landed 2026-11-04, after those audits.",
+      "verification": {
+        "verdict": "confirmed",
+        "severityAdjust": "keep",
+        "needsOwnerDecision": false,
+        "summary": "Headless Chromium 157 with real classes, real Worker and real transferControlToOffscreen: entry dispose → uncaught InvalidStateError from the timer; return dispose → unhandled rejection, play() pending (with 0-3 awaits before dispose in onDeactivate). Fix: never size a handed-over canvas (handedOver flag / drop the canvas ref) and make teardown idempotent; Return.finish teardown in try/finally so resolve always fires."
+      }
     },
     {
       "id": "A18-PERF-1",
-      "status": "candidate",
+      "status": "verified",
       "title": "The new landing shadow allocates ~5.6 KB of garbage per frame per board (regression from ~1.6 KB for the old ghost)",
       "area": "cpu-perf",
       "file": "src/rendering/board-look.js",
@@ -328,16 +415,23 @@
       "category": "perf",
       "scenario": "Every presented frame of every Phaser board while a piece falls (single player, Odyssey, Infinity, local versus 2-4 boards). landingShadowRects rebuilds rects from scratch each frame though they depend only on shape and hidden-row clip. Board update() went ~5.4 KB → ~9.9 KB garbage/frame (+83%): ~306 KB/s at 60 Hz per board, ~1.2 MB/s with 4 boards. CPU time ~unchanged (~2-3 µs); cost is GC pressure; any hitch suspected, not measured.",
       "evidence": "Call chain BaseBoardScene.update (base-board-scene.js:198) → renderGameState (:854) → drawGhostPiece (:1299) → drawLandingShadow (:1324) → board-look.js drawLandingShadow (:216) → landingShadowRects (:167-205). Node 22 heapUsed delta, 5000 calls, median of 7: landingShadowRects 5,639 B/call; cached per shape 0 B. Whole-scene harness: HEAD update() 9,934 B vs baseline 5,407 B; drawGhostPiece 6,761 B vs 1,601 B. Introduced by 7ab9f9f (2026-11-08) and a96a297.",
-      "severity": "P2",
+      "severity": "P3",
       "confidence": "medium",
       "fixSize": "S",
       "fixSketch": "Cache rect topology per shape (WeakMap or _getPieceGeometry variant) with normalised t; draw with indexed loop and inline alpha; avoid per-call option objects.",
       "testIdea": "Count rect builds over 120 pulsing frames (once per shape) while command buffers equal reference; Node bench drawGhostPiece ≤ ~1.7 KB/frame.",
-      "knownCheck": "No record (board-look.js postdates every audit)."
+      "knownCheck": "No record (board-look.js postdates every audit).",
+      "verification": {
+        "verdict": "confirmed",
+        "severityAdjust": "P3",
+        "needsOwnerDecision": false,
+        "summary": "Hot every frame on every board. Node 22 reproduces 5.6 KB/call, but in headless Chromium 157 (Electron 44's engine range) drawLandingShadow is 1.77 KB → 0.05 KB patched, and whole update() HEAD 5,694 B vs old ghost 5,058 B vs patched 3,913 B: regression ≈ +0.64 KB/frame (+13%). Patch (rect topology cached per shape+clip with _getPieceGeometry's snapshot check; inline alpha) bit-identical over 13,105 configurations and 240-frame streams for T/I/S. Scripts verify/perf/landing-shadow-bench.mjs, browser-scene-bench.cjs."
+      },
+      "severityOriginal": "P2"
     },
     {
       "id": "A18-PERF-2",
-      "status": "candidate",
+      "status": "verified",
       "title": "pieceGraphics.clear() every frame discards the command buffer backing store → ~4 KB regrowth garbage per board per frame",
       "area": "cpu-perf",
       "file": "src/rendering/phaser/base-board-scene.js",
@@ -350,11 +444,18 @@
       "fixSize": "M",
       "fixSketch": "Extend retained presentation to the whole piece layer: skip clear() when structure matches and overwrite alpha slots by index; or index-writing command writer + final length set.",
       "testIdea": "commandBuffer keeps identity/capacity over 120 pulsing frames and equals the reference stream.",
-      "knownCheck": "No record; PASS3 covers command count not backing-store regrowth."
+      "knownCheck": "No record; PASS3 covers command count not backing-store regrowth.",
+      "verification": {
+        "verdict": "confirmed",
+        "severityAdjust": "P3",
+        "needsOwnerDecision": false,
+        "summary": "~3.4 KB/frame per board in Node and Chromium. A naive retained writer changed the command streams (drawCurrentPiece slices commandBuffer mid-frame); a correct one needs Phaser internals and a cursor for every reader (M). Poor cost/benefit without a measured GC pause: report only."
+      },
+      "severityOriginal": "P3"
     },
     {
       "id": "A18-PERF-3",
-      "status": "candidate",
+      "status": "verified",
       "title": "Boot loads ~55 KB (min) of Odyssey return-transition code because the map input imports a 4-line predicate",
       "area": "cpu-perf",
       "file": "src/ui/odyssey/odyssey-map-input.js",
@@ -367,11 +468,17 @@
       "fixSize": "S",
       "fixSketch": "Move isOdysseyScenicJourney/isOdysseyWorldInterlude into a leaf module; import it from odyssey-map-input.js; re-export from odyssey-world-return.js; guard the boot closure.",
       "testIdea": "check-boot-closure --print before/after; unit test asserting portal-gate*/JourneyReturnTransition absent from main's static closure.",
-      "knownCheck": "No record; BOOT-07/item 17 don't name this chain; portal-gate-matter/odyssey-journey-ending landed 2026-11-17."
+      "knownCheck": "No record; BOOT-07/item 17 don't name this chain; portal-gate-matter/odyssey-journey-ending landed 2026-11-17.",
+      "verification": {
+        "verdict": "confirmed",
+        "severityAdjust": "keep",
+        "needsOwnerDecision": false,
+        "summary": "es-module-lexer closure: 214 → 202 modules without the edge; 12 modules 144,488 B source / 54,320 B minified; strings present in the built main chunk. ~1.6 ms compile+evaluate in Node (CPU lower bound). Fix: dependency-free leaf for the two predicates, re-exported; validate with build, boot closure and an Electron smoke (TDZ warning in vite.config.js). check-boot-closure can't see it (chunk names only): add a static-graph unit test."
+      }
     },
     {
       "id": "A18-PERF-4",
-      "status": "candidate",
+      "status": "verified",
       "title": "Local versus showAttack interleaves layout reads and DOM writes per target → forced synchronous layouts in 3-4 player attacks",
       "area": "cpu-perf",
       "file": "src/ui/local-versus-hud.js",
@@ -384,11 +491,17 @@
       "fixSize": "S",
       "fixSketch": "Read all rects first, then write (DocumentFragment), then animate.",
       "testIdea": "DOM stub logging reads/writes: no read after a write within one showAttack with 3 targets.",
-      "knownCheck": "No perf record for showAttack/local-versus-hud."
+      "knownCheck": "No perf record for showAttack/local-versus-hud.",
+      "verification": {
+        "verdict": "confirmed",
+        "severityAdjust": "keep",
+        "needsOwnerDecision": false,
+        "summary": "Chromium 157 with real index.html + stylesheets: 2 forced style+layout passes per 3-target attack (~1.3 ms); showAttack median 1.6-2.1 ms vs 0.2-0.3 ms read-first; cssText identical. Fix in local-versus-hud.js only."
+      }
     },
     {
       "id": "A18-THM-1",
-      "status": "candidate",
+      "status": "verified",
       "title": "Solar Eclipse flamingos: writeBirds allocates ~117 KB every frame and re-plans both flights from scratch every frame",
       "area": "themes-odyssey",
       "file": "src/themes/solar-eclipse/solar-eclipse-flamingo-flight.js",
@@ -402,11 +515,17 @@
       "fixSketch": "Index reads in rotate; Math.sqrt instead of Math.hypot; cache plans per slot keyed on k and view numbers (not the per-frame restView object); module-level lowestToe pairs with scratch quaternion; pass report=null in the game.",
       "testIdea": "Bone table with report null and cached plans equals fresh-plan table across a slot boundary, a pinned flight and an aspect change.",
       "knownCheck": "No CPU/allocation record in theme docs or audits (SOLAR_ECLIPSE record has GPU cost only).",
-      "visualRisk": "none"
+      "visualRisk": "none",
+      "verification": {
+        "verdict": "confirmed",
+        "severityAdjust": "keep",
+        "needsOwnerDecision": false,
+        "summary": "Chromium 157: 117.4 KB/frame, 118 µs airborne (78 KB quiet); at every tier (Minimal 8/6 … Extreme 20/12). Patched (rotate index reads, allocation-free replica of V8 Math.hypot, lowestToe scratch, plans cached on values) 27.5 KB / 79 µs; report=null 23 KB. Bone tables bit-identical over 45,000 frames incl. slot boundaries, pinned flight, aspect change. Math.sqrt is not bit-equal to Math.hypot (use the replica for strict identity)."
+      }
     },
     {
       "id": "A18-THM-2",
-      "status": "candidate",
+      "status": "verified",
       "title": "Synthwave strollers and shared fox rig: per-frame posing allocates via array destructuring in qRotate and cycleCurve (41 KB/frame on the pier); STATIC_STARTUP_AUDIT's 'solve allocates nothing' does not hold",
       "area": "themes-odyssey",
       "file": "src/themes/shared/fox-rig.js",
@@ -420,11 +539,17 @@
       "fixSketch": "Index reads in qRotate; Math.sqrt sum of squares in qBetween/qSlerp; cycleCurve without closure/arrays; LIMBS index reads; same one-line change in the copies; correct STATIC_STARTUP_AUDIT_2026-10.md:980.",
       "testIdea": "Existing strollers/fox/bear rig tests pin poses; optional ESLint ArrayPattern guard in per-frame helpers.",
       "knownCheck": "SYNTHWAVE record has CPU time only; STATIC_STARTUP_AUDIT:980 claims solve allocates nothing; THM-157 left scalar replacement PLAUSIBLE.",
-      "visualRisk": "none"
+      "visualRisk": "none",
+      "verification": {
+        "verdict": "confirmed",
+        "severityAdjust": "keep",
+        "needsOwnerDecision": false,
+        "summary": "Chromium 157: StrollerLife.write ×16 41.2 KB → 7.5 KB with qRotate index reads + closure-free cycleCurve + LIMBS index reads; pose table bit-identical over 18,000 frames. Arctic fox 3,591 → 2,086 B/call bit-identical. Swapping Math.hypot for Math.sqrt is NOT bit-identical (0.88% of float32 posture values differ): leave hypot or use an exact replica."
+      }
     },
     {
       "id": "A18-DEAD-1",
-      "status": "candidate",
+      "status": "verified",
       "title": "Retired boot-warp scene (924 lines) survives only through tests and a playground harness; boot tests mock the live overlay with the retired -31 px offset (live code uses -36)",
       "area": "dead-code-tests",
       "file": "src/ui/boot-warp-transition-scene.js",
@@ -432,7 +557,7 @@
       "category": "test",
       "scenario": "Boot overlay is boot-aurora-scene.js since 2026-10-15; the old warp scene and intro-noise-lib.js are reached only by the logo-warp-transition playground effect and tests. boot-warp-handoff.test.js:1415-1450 tests warpFovAt (never called by boot); fallback layout it.each (:599, :614) checks against retired DEFAULT_MARK_OFFSET_Y_PX (-31); boot-warp-handoff.test.js:140-144 and startup-animation-reliability.test.js:128-140 mock boot-aurora-scene.js with AURORA_LOGO_OFFSET_Y -31 while the real module says -36 → the suite pins a value the game doesn't use and cannot catch a regression of the real offset/FOV. startup-ident-hold.js:20-21 REPLICA_GLOW copied from the retired scene; playground-parameters documents logo-warp-transition params.",
       "evidence": "knip --production on shipped graph: both files unreachable; grep importers: logo-warp-transition.effect.js:24 and boot-warp-handoff.test.js:599,1420; intro-noise-lib only by the scene; INTRO_FIRST_LIGHT_OVERHAUL_2026-10.md:181. Only mocked numeric constant disagreeing with its real module.",
-      "severity": "P2",
+      "severity": "P3",
       "confidence": "high",
       "fixSize": "M",
       "fixSketch": "Boot tests read AURORA_LOGO_OFFSET_Y from the real module (vi.importActual / spread actual); replace warpFovAt tests with auroraFovAt; then delete the retired scene, intro-noise-lib, the playground effect and its catalogue entries; update REPLICA_GLOW.",
@@ -445,11 +570,18 @@
         "tests/unit/boot-warp-handoff.test.js",
         "tests/unit/startup-animation-reliability.test.js",
         "src/ui/startup-ident-hold.js:21"
-      ]
+      ],
+      "verification": {
+        "verdict": "confirmed",
+        "severityAdjust": "P3",
+        "needsOwnerDecision": false,
+        "summary": "Scene (787) and intro-noise-lib (137) dead; playground effect logo-warp-transition dev-only harness. boot-warp-handoff copy with the mock at the real -36 → 3 fallback-layout tests fail (expected 369, got 364): the suite pins the retired constant. Safe order: tests read the real constant; drop warpFovAt block; delete effect + playground-parameters entries in the same commit (url-parameter-catalog test checks paths); update scripts/playground-phase-capture.mjs default; delete scene + noise lib; fix comments. P3: the real offset drives only the resize fallback."
+      },
+      "severityOriginal": "P2"
     },
     {
       "id": "A18-DEAD-2",
-      "status": "candidate",
+      "status": "verified",
       "title": "JourneyReturnTransition is a drifted copy of JourneyEntryTransition missing the entry's 2026-10-23 fixes: a hidden window during the return hold still aborts with blackout-timeout",
       "area": "dead-code-tests",
       "file": "src/rendering/transitions/JourneyReturnTransition.js",
@@ -457,7 +589,7 @@
       "category": "bug",
       "scenario": "~230 identical lines (7 jscpd clone blocks). Entry's frameAt moves blackoutTriggeredAt forward by frame gaps >1 s (HOLD_PAUSE_GAP_MS; fixed alt-tab 'orb took too long' 2026-10-23, pinned by journey-entry-transition.test.js:179). Return's tick (:320-330) lacks it; updateReadiness (:372-385) aborts 'blackout-timeout' after maxBlackoutHoldMs 7200. onBlackoutReached awaits a board rebuild (~3.5-4.2 s) then waitForAnimationFrames(2), which can't finish while rAF is stopped → hide/minimise during a return (web: tab switch) → abort → _fallbackToBoardAfterReturnAbort ends the journey. Also lacks remaining-hold budget, holdWhileAborting, fadeOutAndTeardown (abort freezes then cuts).",
       "evidence": "Diff of the two files; grep HOLD_PAUSE_GAP_MS/holdWhileAborting/fadeOutAndTeardown/remainingMs in Return: none; no visibility compensation in callers; journey-return-transition.test.js has no frame-gap case; Electron backgroundThrottling:false (electron/main.js:638) so desktop impact mostly minimise.",
-      "severity": "P2",
+      "severity": "P3",
       "confidence": "high",
       "fixSize": "S",
       "fixSketch": "Port frameAt pause-gap rule (and remaining hold, abort hold/fade) into Return; better, share one helper.",
@@ -467,11 +599,18 @@
         "src/rendering/transitions/JourneyEntryTransition.js:316",
         "src/rendering/transitions/JourneyReturnTransition.js:320",
         "src/ui/odyssey/odyssey-world-return.js:127"
-      ]
+      ],
+      "verification": {
+        "verdict": "partly",
+        "severityAdjust": "P3",
+        "needsOwnerDecision": false,
+        "summary": "Drift real (7 clone blocks, 231 lines; no pause-gap rule, no hold budget, no abort hold/fade). Reproduced on the real class: 10 s frame gap with prep pending → 'blackout-timeout' on first frame back; entry control does not abort. Mechanism narrower: waitForAnimationFrames has a 120 ms timer fallback, default return keeps the board resident; abort needs prep still pending (rebuild return, double-rAF warm-ups) in a hidden web-build tab. Electron runs rAF at full rate even minimised (backgroundThrottling:false). Fix: port the HOLD_PAUSE_GAP_MS rule into Return.tick (better: shared helper)."
+      },
+      "severityOriginal": "P2"
     },
     {
       "id": "A18-DEAD-3",
-      "status": "candidate",
+      "status": "verified",
       "title": "ADR-0022 leftovers: the chapter 3/4 aurora curtain builder and the Ch2→Ch3 water membrane outlived the retired scenes",
       "area": "dead-code-tests",
       "file": "src/rendering/odyssey/chapter-environments/shared/mountain-aurora.js",
@@ -489,11 +628,17 @@
         "src/rendering/odyssey/chapter-environments/shared/mountain-aurora.js:31-197",
         "src/rendering/odyssey/chapter-environments/shared/odyssey-water-surface.tsl.js",
         "src/playground/effects/odyssey-unified-water.effect.js"
-      ]
+      ],
+      "verification": {
+        "verdict": "confirmed",
+        "severityAdjust": "keep",
+        "needsOwnerDecision": false,
+        "summary": "All listed items dead; MOUNTAIN_AURORA_CURTAIN_CONFIGS read only by the DEV-only layout editor. Six live comments cite the water-surface file. Safe now; extend the 'old scenes stay gone' test. No visible change."
+      }
     },
     {
       "id": "A18-DEAD-4",
-      "status": "candidate",
+      "status": "verified",
       "title": "Garbage rules that do nothing: GARBAGE_RULES contradicts the live attack formula, and the crowd handicap is computed and serialised but never applied",
       "area": "dead-code-tests",
       "file": "src/core/garbage.js",
@@ -511,11 +656,17 @@
         "src/core/constants.js:212 GARBAGE_RULES",
         "src/core/garbage.js:18 HANDICAP_LEVELS",
         "src/core/garbage.js:366 applyCrowdHandicap"
-      ]
+      ],
+      "verification": {
+        "verdict": "confirmed",
+        "severityAdjust": "keep",
+        "needsOwnerDecision": true,
+        "summary": "GARBAGE_RULES, HANDICAP_LEVELS, applyCrowdHandicap: zero references (safe now). handicapCrowd always 0 (≤4 players; online FFA never uses MultiPlayerState) but carried in the ADR-0014 resync sidecar and demo snapshots: removing it or wiring it for online FFA is an owner decision."
+      }
     },
     {
       "id": "A18-DEAD-5",
-      "status": "candidate",
+      "status": "verified",
       "title": "Retired classic-loop and Odyssey-data helpers in core/ui/rendering with zero callers, tests included (~230 lines); levels.js lookups have drifted from LevelRegistry",
       "area": "dead-code-tests",
       "file": "src/core/game.js",
@@ -543,11 +694,17 @@
         "src/audio/music-loader.js getAvailableSongs",
         "src/core/network/message-types.js serializeMessage/deserializeMessage",
         "src/core/network/binary-encoding.js calculateSnapshotSize"
-      ]
+      ],
+      "verification": {
+        "verdict": "partly",
+        "severityAdjust": "keep",
+        "needsOwnerDecision": false,
+        "summary": "All dead except getAvailableSongs (asserted by sound-manager-track-initialization.test.js:30/77: test-only). Drift confirmed (getChapterStartLevel fallback; getPreviousLevel(1) undefined vs null). Also InfinityMode.js:1508-1512 boardScene.showScorePopup guard is dead (no scene defines it). Re-run knip after deleting (private helpers may orphan)."
+      }
     },
     {
       "id": "A18-DEAD-6",
-      "status": "candidate",
+      "status": "verified",
       "title": "themes/shared/composer-dispose.js is kept alive only by its own test; its one possible consumer (Wolfhour's legacy EffectComposer path) is unreachable",
       "area": "dead-code-tests",
       "file": "src/themes/shared/composer-dispose.js",
@@ -564,7 +721,13 @@
       "items": [
         "src/themes/shared/composer-dispose.js",
         "tests/unit/composer-dispose.test.js"
-      ]
+      ],
+      "verification": {
+        "verdict": "confirmed",
+        "severityAdjust": "keep",
+        "needsOwnerDecision": false,
+        "summary": "Only importer is its test; Wolfhour always uses WebGPURenderer; BaseTheme.disposeComposer already does the same loop. Not in ADR-0018's contract-test list. Safe to delete with its test; THREE_UPGRADE_RESEARCH 'helper still required' is stale."
+      }
     }
   ]
 }
