@@ -58,6 +58,14 @@ export const CIRRUS_BASE = 7600;
  * (metres), and the distances along the view ray over which they give way to their mean.
  */
 export const ALTO = Object.freeze({ row: 560, cell: 940, far: Object.freeze([30000, 80000]) });
+/**
+ * The cumulus deck's heaps: how far the lumps at two sizes cut into the field's outline, the
+ * outline's edge (the field's values it runs between), and how much darker a heap's thick middle
+ * (its base, seen from under) is than its edges.
+ */
+export const DECK = Object.freeze({
+    lumps: 0.6, fine: 0.22, edge: Object.freeze([0.32, 0.5]), base: 0.42,
+});
 /** How far a great clear's crown flushes the clouds with the hour's glow (at a full crown). */
 export const CROWN_FLUSH = 0.34;
 /** The halo's radius round the sun (degrees), and how bright it stands in a full veil. */
@@ -71,11 +79,12 @@ export const STARS = Object.freeze({
 });
 /**
  * The night-shining clouds: the heights (sines) they stand between, how far round from the sun's
- * hidden place they reach (the cosine of the bearing between), how bright, and how close their
- * billows' ranks lie (waves per unit of the ray's slope).
+ * hidden place they reach (the cosine of the bearing between), how bright, how close their
+ * billows' ranks lie (waves per unit of the ray's slope), and how much a great clear's crown
+ * flares them.
  */
 export const NIGHT_SHINE = Object.freeze({
-    low: 0.05, high: 0.4, reach: 0.2, gain: 0.46, ranks: 46,
+    low: 0.05, high: 0.4, reach: 0.2, gain: 0.5, ranks: 46, crown: 1.1,
 });
 
 /** A cumulus field's density at a deck point (metres). */
@@ -138,15 +147,23 @@ export function createSky(u, t, tier) {
             const q = dir.xz.div(dir.y.add(0.12)).add(vec2(u.time.mul(0.0035), u.time.mul(-0.0012))).toVar();
             const field = texture(t.noise, q.mul(0.045).add(vec2(0.2, 0.7))).toVar();
             // Where the veil lies, and the billows that run through it in close ranks, bent by it.
-            const veilAt = smoothstep(0.42, 0.6, field.r.mul(0.6).add(field.g.mul(0.4)));
-            const ranks = sin(q.y.mul(NIGHT_SHINE.ranks).add(q.x.mul(5.3)).add(field.b.mul(15.0))).mul(0.5).add(0.5);
+            // (A finer field breaks the veil into drifts and bends each drift's ranks a little, so
+            // they knot and part instead of ruling the sky like a page. Bent, never re-spaced:
+            // setting each drift's ranks closer or wider wound them into the rings of a contour map.)
+            const drift = texture(t.noise, q.mul(0.17).add(vec2(0.53, 0.07))).toVar();
+            const veilAt = smoothstep(0.42, 0.6, field.r.mul(0.6).add(field.g.mul(0.4)))
+                .mul(smoothstep(0.36, 0.62, drift.r));
+            const ranks = sin(q.y.mul(NIGHT_SHINE.ranks).add(q.x.mul(5.3))
+                .add(field.b.mul(15.0))
+                .add(drift.g.mul(5.0))).mul(0.5).add(0.5);
             // (A second, slower set crossing them: the ranks knot and part instead of ruling the sky.)
             const cross = sin(q.x.mul(NIGHT_SHINE.ranks * 0.37).sub(q.y.mul(8.0)).add(field.a.mul(9.0)))
                 .mul(0.5).add(0.5);
             const fine = smoothstep(0.3, 0.95, ranks).mul(cross.mul(0.6).add(0.4));
             const body = veilAt.mul(fine.mul(0.82).add(0.18));
             const colour = mix(vec3(0.1, 0.38, 1.0), vec3(0.5, 0.8, 1.0), fine.mul(veilAt));
-            sky.addAssign(colour.mul(body.mul(band).mul(night).mul(crown.mul(1.6).add(1.0)).mul(NIGHT_SHINE.gain)));
+            sky.addAssign(colour.mul(body.mul(band).mul(night).mul(crown.mul(NIGHT_SHINE.crown).add(1.0))
+                .mul(NIGHT_SHINE.gain)));
         });
 
         // ── The veil: a milky sky, and a halo round the sun ──
@@ -222,14 +239,22 @@ export function createSky(u, t, tier) {
             If(dir.y.greaterThan(0.004), () => {
                 const tDeck = float(CLOUD_BASE).sub(u.eye.y).div(dir.y);
                 const p = u.eye.xz.add(dir.xz.mul(tDeck)).add(u.wind).toVar();
-                const dens = deckDensity(u, t.noise, p).toVar();
-                const fine = texture(t.noise, p.div(2600.0).add(vec2(0.13, 0.71)).add(u.wind.div(41000.0))).b;
-                dens.assign(clamp(dens.mul(1.15).sub(fine.mul(0.32).mul(float(1.0).sub(dens))), 0.0, 1.0));
+                // Where the cumulus stands (the land's cloud shadows read the same field), and its
+                // outline: the field cut again through lumps at two sizes that drift at their own
+                // pace, so each cloud is a heap with a cauliflower edge that forms and melts, not a
+                // soft smear.
+                const soft = deckDensity(u, t.noise, p).toVar();
+                const lumps = texture(t.noise, p.div(1500.0).add(vec2(0.47, 0.19)).add(u.wind.div(27000.0))).g;
+                const fine = texture(t.noise, p.div(620.0).add(vec2(0.13, 0.71)).add(u.wind.div(9000.0))).b;
+                const field = soft.add(lumps.sub(0.5).mul(DECK.lumps)).add(fine.sub(0.5).mul(DECK.fine));
+                const dens = smoothstep(DECK.edge[0], DECK.edge[1], field).toVar();
                 const toward = normalize(u.sunDir.xz.add(vec2(1e-4, 0.0)));
                 const d1 = deckDensity(u, t.noise, p.add(toward.mul(420.0)));
                 const d2 = deckDensity(u, t.noise, p.add(toward.mul(1100.0)));
                 const shade = clamp(d1.mul(0.55).add(d2.mul(0.45)).sub(dens.mul(0.25)), 0.0, 1.0);
-                const lit = float(1.0).sub(shade.mul(float(0.86).sub(u.cloudCover.mul(0.4))));
+                // (Seen from under, a heap's thick middle is its grey base; its edges are in the light.)
+                const lit = float(1.0).sub(shade.mul(float(0.86).sub(u.cloudCover.mul(0.4))))
+                    .mul(float(1.0).sub(smoothstep(0.35, 1.0, soft).mul(DECK.base)));
                 const base = mix(u.cloudShade, u.cloudLit, lit);
                 const rim = sunward.mul(float(1.0).sub(dens).mul(dens).mul(4.0)).mul(u.glow).mul(0.9);
                 const col = base.add(rim).add(u.glow.mul(crown.mul(CROWN_FLUSH).mul(lit)));

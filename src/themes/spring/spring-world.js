@@ -174,6 +174,10 @@ export const STREAMER = Object.freeze({
     sway: 0.75,
     size: 0.085,
 });
+/** The ring of motes a burst's size of 1 is tuned to (the High tier's). */
+export const MOTES_REFERENCE = 1664;
+/** A run's end: how many petals let go over the knoll, and over how long they start to fall (s). */
+export const LAST_FALL = Object.freeze({ petals: 110, span: 4.5 });
 /** A clock's visit this long past (s) has flown its route out: a seek does not put it back. */
 export const VISIT_CATCH = 70;
 /** Four lines: how many floes the ice going out sends down the river. */
@@ -631,7 +635,7 @@ export class SpringWorld {
         this.air = new SpringAir(this.u, tier.air);
         // Bursts are sized to the tier's ring of motes (gently: a burst must still read on Minimal),
         // so a busy moment does not eat its own start.
-        this.burstScale = clamp(Math.sqrt(tier.motes / 1280), 0.55, 1.35);
+        this.burstScale = clamp(Math.sqrt(tier.motes / MOTES_REFERENCE), 0.55, 1.35);
         this.mist = new Mist(this.u, this.textures, tier.mist);
         this.floes = new Floes(this.u, tier.floes);
         // Three flights at once: a perfect clear's swans, a level-up's cranes and a fever's.
@@ -880,14 +884,26 @@ export class SpringWorld {
             ? rgb : this.u.tables.palette[PALETTE_ROWS.colour + slot].toArray().slice(0, 3);
         this.lastRgb = tone;
         this.lastLockU = clamp(Number(context.u ?? 0.5), 0, 1);
-        this.pollenBurst(x, z, tone, hard, radius);
+        // (The petals first: when the air is full they are the part of a lock that must show.)
         this.petalPuff(x, z, tone, hard, radius);
+        this.pollenBurst(x, z, tone, hard, radius);
         // Its kind's share of the knoll (the heat opens the kinds played), a push on the breeze,
         // and the heat of play.
         this.kindBloom[slot]?.hit(power * HEAT.kindHit, this.time);
         this.gustKick.hit(hard ? 0.14 : 0.07, this.time);
         this.playSurge.lock(context, this.time);
         if (context.twist) this.onSpin();
+    }
+
+    /**
+     * How many of the `wanted` motes of a burst the ring has room for: as many as are free (never
+     * in the air, or faded out), so a burst in a busy moment comes thinner instead of cutting short
+     * what is still flying. Fast play wants twice the ring; taking the oldest slots then blinked
+     * petals out mid-air all over the frame.
+     */
+    grant(wanted) {
+        if (!this.motes || !(wanted > 0)) return 0;
+        return Math.min(wanted, this.motes.free());
     }
 
     /** True when gameplay may throw motes into the air (not under reduced motion). */
@@ -912,7 +928,7 @@ export class SpringWorld {
         if (!this.canBurst()) return;
         const r = this.random;
         const y = this.floorAt(x, z) + 0.25;
-        const count = Math.round((hard ? 72 : 44) * this.burstScale);
+        const count = this.grant(Math.round((hard ? 72 : 44) * this.burstScale));
         for (let i = 0; i < count; i++) {
             const a = r() * TAU;
             const at = Math.sqrt(r()) * radius * 0.55;
@@ -935,7 +951,7 @@ export class SpringWorld {
                 gravity: -0.25,
             });
         }
-        const glints = Math.round(10 * this.burstScale);
+        const glints = this.grant(Math.round(10 * this.burstScale));
         for (let i = 0; i < glints; i++) {
             const a = r() * TAU;
             const at = Math.sqrt(r()) * radius * 0.8;
@@ -952,7 +968,7 @@ export class SpringWorld {
             });
         }
         if (!hard) return;
-        const ring = Math.round(14 * this.burstScale);
+        const ring = this.grant(Math.round(14 * this.burstScale));
         for (let i = 0; i < ring; i++) {
             const a = (i / ring) * TAU + r() * 0.3;
             this.motes.spawn({
@@ -983,7 +999,7 @@ export class SpringWorld {
         const r = this.random;
         const y = this.floorAt(x, z) + 0.3;
         const tone = petalTone(rgb);
-        const count = Math.round((hard ? 30 : 16) * this.burstScale);
+        const count = this.grant(Math.round((hard ? 30 : 16) * this.burstScale));
         for (let i = 0; i < count; i++) {
             const a = r() * TAU;
             const at = Math.sqrt(r()) * radius * 0.4;
@@ -1023,7 +1039,7 @@ export class SpringWorld {
         const dz = (b.z - a.z) / length;
         const y0 = this.floorAt(a.x, a.z) + way.height;
         const tone = petalTone(rgb);
-        const count = Math.round((STREAMER.petals + STREAMER.perPower * power) * this.burstScale);
+        const count = this.grant(Math.round((STREAMER.petals + STREAMER.perPower * power) * this.burstScale));
         const waves = 1.4 + r() * 1.4;
         const phase = r() * TAU;
         for (let i = 0; i < count; i++) {
@@ -1116,7 +1132,7 @@ export class SpringWorld {
             }
             return n ? sum.map((v) => v / n) : [...this.lastRgb];
         };
-        const perPuff = Math.round((7 + 4 * lines) * this.burstScale);
+        const perPuff = Math.floor(this.grant(Math.round((7 + 4 * lines) * this.burstScale) * 6) / 6);
         for (const side of [-1, 1]) {
             const rgb = sideColour(side < 0);
             for (let k = 0; k < 3; k++) {
@@ -1157,7 +1173,7 @@ export class SpringWorld {
         const g = this.gyres[side < 0 ? 0 : 1];
         const turnWay = AIR.gyre.turn[side < 0 ? 0 : 1];
         const y = this.floorAt(g.x, g.z) + 0.15;
-        const count = Math.round(Math.min(240, 44 + 22 * strength) * this.burstScale);
+        const count = this.grant(Math.round(Math.min(240, 44 + 22 * strength) * this.burstScale));
         const radius = Math.min(1.7, 0.55 + 0.12 * strength);
         const climb = Math.min(1.8, 0.65 + 0.1 * strength);
         const turn = Math.min(5, 2.4 + 0.25 * strength) * turnWay;
@@ -1208,7 +1224,7 @@ export class SpringWorld {
     exhale(peak) {
         if (!this.canBurst()) return;
         const r = this.random;
-        const count = Math.round(Math.min(190, 22 * peak) * this.burstScale);
+        const count = this.grant(Math.round(Math.min(190, 22 * peak) * this.burstScale));
         for (let i = 0; i < count; i++) {
             const p = pointAt(-48 + r() * 92, 4 + r() * 11);
             this.motes.spawn({
@@ -1241,7 +1257,7 @@ export class SpringWorld {
             if (site?.water) hits.push({ ...site });
         }
         if (!hits.length) return;
-        const count = Math.round(Math.min(90, 22 * level) * this.burstScale);
+        const count = this.grant(Math.round(Math.min(90, 22 * level) * this.burstScale));
         for (let i = 0; i < count; i++) {
             const h = hits[Math.floor(r() * hits.length)];
             const spread = 1.5 + h.distance * 0.12;
@@ -1263,7 +1279,7 @@ export class SpringWorld {
     downDrift() {
         if (!this.canBurst()) return;
         const r = this.random;
-        const count = Math.round(110 * this.burstScale);
+        const count = this.grant(Math.round(110 * this.burstScale));
         for (let i = 0; i < count; i++) {
             const p = pointAt(-52 + r() * 34, 10 + r() * 12);
             this.motes.spawn({
@@ -1289,7 +1305,7 @@ export class SpringWorld {
     goldShower() {
         if (!this.canBurst()) return;
         const r = this.random;
-        const count = Math.round(200 * this.burstScale);
+        const count = this.grant(Math.round(200 * this.burstScale));
         for (let i = 0; i < count; i++) {
             const p = pointAt(-46 + r() * 90, 6 + r() * 20);
             const down = r() < 0.25;
@@ -1350,7 +1366,7 @@ export class SpringWorld {
         if (!this.motes) return;
         const r = this.random;
         const scale = clamp(site.distance / 14, 0.7, 3);
-        const count = Math.round(18 + 30 * power);
+        const count = this.grant(Math.round(18 + 30 * power));
         for (let i = 0; i < count; i++) {
             const a = r() * TAU;
             const out = (0.6 + r() * 1.8) * power;
@@ -1449,7 +1465,6 @@ export class SpringWorld {
         this.breathe(Math.min(1.25, AIR_MOTION.wave + AIR_MOTION.wavePerLine * lines) + deeper * 0.1);
         if (deeper > 0) this.floodKick.hit(HEAT.wave * deeper, this.time);
         this.gustKick.hit(0.1 + 0.05 * lines, this.time);
-        this.clearDrift(lines + deeper * 0.5, context.rowCodes);
         // A gust carries a streamer of petals across the knoll for each line that went, in that
         // row's own colours, each on the next lane (so fast play fills the air instead of
         // redrawing one ribbon).
@@ -1457,6 +1472,7 @@ export class SpringWorld {
             this.streamer(this.streamLane, this.rowColour(context.rowCodes, k), 1 + deeper * 0.5, k * 0.28);
             this.streamLane = (this.streamLane + 1) % STREAMER.lanes.length;
         }
+        this.clearDrift(lines + deeper * 0.5, context.rowCodes);
         if (lines === 4) this.onQuad();
         if (context.twist) this.onTwist(context);
         if (context.b2b) this.onB2BClear();
@@ -1519,7 +1535,8 @@ export class SpringWorld {
         const r = this.random;
         const c = WHIRL_CENTRE_AT;
         const level = levelAt(S_POOL + WHIRL.at) + this.flood;
-        for (let i = 0; i < count; i++) {
+        const granted = this.grant(count);
+        for (let i = 0; i < granted; i++) {
             const a = r() * TAU;
             const rim = WHIRL.radius * (0.35 + r() * 0.5);
             // Tangential (the whirl turns anticlockwise seen from above), a little outward and up.
@@ -1608,6 +1625,37 @@ export class SpringWorld {
         this.duskFrom = this.dusk;
         this.duskTarget = 1;
         this.duskAt = this.time;
+        this.lastFall();
+    }
+
+    /**
+     * A run's end: the last petals let go, falling slowly over the knoll through the dusk as the
+     * light goes (pale ones, and a few of the last piece's own).
+     */
+    lastFall() {
+        if (!this.canBurst()) return;
+        const r = this.random;
+        const own = petalTone(this.lastRgb, 0.5);
+        const count = this.grant(Math.round(LAST_FALL.petals * this.burstScale));
+        for (let i = 0; i < count; i++) {
+            const p = pointAt(-44 + r() * 86, 4 + r() * 16);
+            this.motes.spawn({
+                x: p.x,
+                y: EYE.y + 1 + r() * 5.5,
+                z: p.z,
+                vx: AIR.breeze[0] * 0.25 * r(),
+                vy: -0.1 * r(),
+                vz: AIR.breeze[1] * 0.25 * r(),
+                born: this.time + r() * LAST_FALL.span,
+                life: 7 + r() * 4,
+                size: STREAMER.size * (0.7 + r() * 0.5),
+                rgb: r() < 0.25 ? own : PETAL_WHITE,
+                kind: MOTE_KIND.petal,
+                seed: r(),
+                drift: 0.35,
+                gravity: -0.16,
+            });
+        }
     }
 
     onSessionStart() {

@@ -62,6 +62,11 @@ export const MIST_BOW = 0.36;
  * (`forward`), how far a puff's dense body shades itself when the sun stands behind it (`core`),
  * and the share of its skylight that is the horizon's and the haze's rather than the zenith's (`sky`).
  */
+/**
+ * The flood in the spray: how much its white water and its rise swell each puff (kept low: a long
+ * chain in a fever buried the fall it rises from in its own cloud).
+ */
+export const MIST_FLOOD = Object.freeze({ foam: 0.3, rise: 0.16 });
 /** Four lines' thunder in the spray: how much it swells each puff, and how much higher it throws them. */
 export const MIST_THUNDER = Object.freeze({ swell: 0.14, rise: 0.75 });
 export const MIST_LIGHT = Object.freeze({
@@ -227,7 +232,8 @@ export class Mist {
             const ease = t.mul(float(2.0).sub(t));
             // The flood swells the mist and lifts it with the water.
             // (Not so much that a long chain's cloud hides the fall it rises from.)
-            const swell = u.foamBoost.mul(0.5).add(u.flood.mul(0.25)).add(u.thunder.mul(MIST_THUNDER.swell)).add(1.0);
+            const swell = u.foamBoost.mul(MIST_FLOOD.foam).add(u.flood.mul(MIST_FLOOD.rise))
+                .add(u.thunder.mul(MIST_THUNDER.swell)).add(1.0);
             // (The thundering fall throws its spray up in a tower over the brink.)
             const tower = u.thunder.mul(MIST_THUNDER.rise).add(1.0);
             const centre = aBase.xyz.add(vec3(aMove.x, 0.0, aMove.y).mul(ease))

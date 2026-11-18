@@ -54,6 +54,9 @@ import { SPRING_TETROMINOS } from '../../themes/spring/spring-tetrominos.js';
 const PIECE_COLORS = Object.values(SPRING_TETROMINOS.colors).slice(0, 7);
 const ROW_CODES = (k) => Array.from({ length: 10 }, (_, c) => (k * 3 + c * 2 + (c > 5 ? 1 : 0)) % 7);
 
+/** The pieces the warm-up locks play, in turn (in the order of PIECE_COLORS). */
+const WARM_SHAPES = ['I', 'T', 'Z', 'L', 'S', 'J', 'O'];
+
 /** A looping script for the live demo (seconds into the loop). */
 const DEMO_LOOP = 40;
 const DEMO_SCRIPT = [
@@ -283,6 +286,8 @@ export function create({
                 rows: [19 - (i % 9)],
                 u: ((i * 0.37) % 1) * 0.9 + 0.05,
                 color: PIECE_COLORS[i % PIECE_COLORS.length],
+                // (The pieces in turn, as play deals them: a lock with no shape blooms anemones.)
+                shape: WARM_SHAPES[i % WARM_SHAPES.length],
                 hardDrop: i % 4 === 3,
                 distance: 12,
             });
@@ -310,7 +315,11 @@ export function create({
             const [, verb, detail] = DEMO_SCRIPT[demoCursor];
             if (verb === 'lock') {
                 demoPiece += 1;
-                world.onLock({ color: PIECE_COLORS[demoPiece % PIECE_COLORS.length], ...detail });
+                world.onLock({
+                    color: PIECE_COLORS[demoPiece % PIECE_COLORS.length],
+                    shape: WARM_SHAPES[demoPiece % WARM_SHAPES.length],
+                    ...detail,
+                });
             } else {
                 const base = demoPiece;
                 const rowCodes = Array.from({ length: detail.lines }, (_, k) => ROW_CODES(k + base)).flat();

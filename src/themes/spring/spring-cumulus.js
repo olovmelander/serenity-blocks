@@ -46,9 +46,10 @@ const SOFT = 0.018;
 /**
  * The heaps drift round the horizon on the wind (`u.bankTurn`, radians): a bank that has drifted
  * `wrap` / 2 degrees round from the view axis comes back in from the other side, far out of any
- * lens. `boil` is how fast their outlines billow (lattice cells a second).
+ * lens. `boil` is how fast their outlines billow (lattice cells a second), `rake` how far a low sun
+ * moves each billow's line between light and shade toward its sunward side.
  */
-export const BANK_LIFE = Object.freeze({ wrap: 210, boil: 0.03 });
+export const BANK_LIFE = Object.freeze({ wrap: 210, boil: 0.03, rake: 0.34 });
 
 /** The banks: bearing (degrees right of the view axis), distance, base height, width, height. */
 export function cumulusBanks(count = 9, seed = 0x5c0b) {
@@ -243,7 +244,14 @@ export function createCumulus(u, t, tier, count = 9) {
         const lit = u.cloudLit.mul(lambert).mul(u.day.mul(0.85).add(0.15));
         // The crowns catch the most light (they stand in the sun above the others' shadow).
         const crown = smoothstep(0.35, 1.0, height).mul(0.35).add(0.8);
-        const body = mix(shade, lit.mul(crown), smoothstep(0.18, 0.92, lambert)).toVar();
+        // (Under a low sun the light rakes the heaps: more of each billow stands in its own shade,
+        // so a bank keeps its form instead of glowing as one pink disc.)
+        const raked = u.sky2.w.mul(BANK_LIFE.rake);
+        const body = mix(
+            shade,
+            lit.mul(crown).mul(float(1.0).sub(raked.mul(0.4))),
+            smoothstep(raked.add(0.18), 0.92, lambert),
+        ).toVar();
         // Silver lining: thin edges glow when the sun stands behind the bank.
         const behind = clamp(sunCard.z.negate(), 0.0, 1.0);
         const thin = exp(top.mul(-28.0));

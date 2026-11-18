@@ -60,6 +60,11 @@ const BREEZE_PULL = 0.09;
  * a second, before the pollen and down still drifting).
  */
 export const MOTE_PROBE = 16;
+/**
+ * The share of its life after which a mote is spent: faded to an eighth of its light or less, so
+ * its slot can be taken without anything being seen to go.
+ */
+export const MOTE_SPENT = 0.9;
 
 /**
  * One instanced quad per mote. Attributes (written once at spawn):
@@ -220,11 +225,38 @@ export class Motes {
         return material;
     }
 
-    /** The ring's next slot: its turn, or (when that mote is still in the air) the one near it with the least life left. */
+    /** True when slot i holds nothing still to be seen at `now`: never used, or faded out. */
+    spent(i, now) {
+        const born = this.start[i * 4 + 3];
+        return born < -1e5 || now - born >= this.move[i * 4 + 3] * MOTE_SPENT;
+    }
+
+    /**
+     * How many slots are free at the theme clock: the room a burst has without cutting short a
+     * mote still in the air (the world sizes its bursts by it, SpringWorld.grant).
+     */
+    free(now = this.now) {
+        if (!Number.isFinite(now)) return this.count;
+        let n = 0;
+        for (let i = 0; i < this.count; i++) if (this.spent(i, now)) n += 1;
+        return n;
+    }
+
+    /**
+     * The ring's next slot: the first free one from its turn on; with none free (a spawn the world
+     * did not size by `free`), the one near its turn with the least life left.
+     */
     nextSlot() {
         let i = this.cursor;
         const { now, start, move } = this;
         if (Number.isFinite(now)) {
+            for (let k = 0; k < this.count; k++) {
+                const j = (this.cursor + k) % this.count;
+                if (this.spent(j, now)) {
+                    this.cursor = (j + 1) % this.count;
+                    return j;
+                }
+            }
             let left = start[i * 4 + 3] + move[i * 4 + 3] - now;
             for (let k = 1; k <= MOTE_PROBE && left > 0; k++) {
                 const j = (this.cursor + k) % this.count;
