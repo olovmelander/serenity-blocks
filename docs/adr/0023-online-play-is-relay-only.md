@@ -36,7 +36,12 @@ ICE off for the whole process before any session exists.
 - The privacy promise depends on koffi and its platform binary being in the package:
   `scripts/packaged-app-check.mjs` fails a package without them.
 - A player whose Steam cannot reach the relay network cannot play online. Steam's relays serve
-  P2P for every Steam game, so this is expected to be rare. It shows as a clear message.
+  P2P for every Steam game, so this is expected to be rare. It shows as a clear message, not a
+  refusal (2026-11-18): Steam tries an unreachable relay network again when it is next asked, so
+  its status can be stale, and lobbies are still created and joined. When Steam, asked afresh,
+  reports the relay network out of reach, a join the host never answers, or a session with the
+  host that fails outside a match, says the relay network cannot be reached, and a host is told
+  once for each lobby that players may not be able to join (`src/core/steam/relay-network.js`).
 - Relays add some latency compared with a direct route. Players are not offered a direct option.
 - Changing the transport, or adding a direct-connection option, is a change to this ADR and to
   the privacy page, not a networking tweak.
