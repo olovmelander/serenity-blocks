@@ -25,7 +25,7 @@
  * A pick made while a guess is loading waits for it to land, then pushes it out: started side by
  * side, whichever load finished last kept the room.
  */
-import { isOdysseyWorldInterlude } from './odyssey-world-return.js';
+import { isOdysseyWorldInterlude } from './odyssey-world-interlude.js';
 
 /** How often a waiting guess looks at the map again. */
 const POLL_MS = 250;

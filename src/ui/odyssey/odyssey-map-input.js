@@ -8,7 +8,7 @@
  * arrival does.
  */
 import { getOpenSheet } from '../sheet-input.js';
-import { isOdysseyWorldInterlude } from './odyssey-world-return.js';
+import { isOdysseyWorldInterlude } from './odyssey-world-interlude.js';
 
 const KEY_MOVES = Object.freeze({
     ArrowRight: 'next',

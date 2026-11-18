@@ -3,20 +3,9 @@ import { JourneyReturnTransition } from '../../rendering/transitions/JourneyRetu
 import { prefersOdysseyReducedMotion } from '../../core/game-modes/odyssey-physics-callbacks.js';
 import { waitForAnimationFrames } from './odyssey-cover-paint.js';
 import { presentOdysseyJourneyEnding } from './odyssey-journey-ending.js';
+import { isOdysseyScenicJourney } from './odyssey-world-interlude.js';
 
-/** The retained world is scenery only while its exact campaign operation owns it. */
-export function isOdysseyScenicJourney(mode) {
-    const operation = mode._scenicJourneyOperation;
-    return Boolean(operation && operation === mode._journeyFlowOperation
-        && !operation.cancelled && !operation.mapRequested);
-}
-
-/** Shared UI ownership; chapter pauses keep their separate music and camera policy. */
-export function isOdysseyWorldInterlude(mode) {
-    const operation = mode._journeyFlowOperation;
-    return isOdysseyScenicJourney(mode) || Boolean(mode._chapterFlowActive
-        && operation && !operation.cancelled && !operation.mapRequested);
-}
+export { isOdysseyScenicJourney, isOdysseyWorldInterlude } from './odyssey-world-interlude.js';
 
 /** Return presentation stays in UI; the mode retains simulation/session ownership. */
 export async function returnToOdysseyWorld(mode, returnOptions = {}) {

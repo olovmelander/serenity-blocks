@@ -4,7 +4,7 @@
  * the second press erases. The mode owns the actual reset; this module owns the DOM.
  */
 
-import { isOdysseyWorldInterlude } from './odyssey-world-return.js';
+import { isOdysseyWorldInterlude } from './odyssey-world-interlude.js';
 
 /**
  * Erase the campaign save and begin again at Orb 1. Earned themes stay in the collection,
