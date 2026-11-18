@@ -13,9 +13,13 @@ import {
     sakuraLampList, sakuraPlacements, sakuraViewFor,
 } from '../../src/themes/sakura-twilight/sakura-composition.js';
 import { SakuraForest, sakuraLanternReach } from '../../src/themes/sakura-twilight/sakura-forest.js';
-import { SAKURA_HOURS, SAKURA_HOUR_SECONDS } from '../../src/themes/sakura-twilight/sakura-hours.js';
+import {
+    SAKURA_HOURS, SAKURA_HOUR_SECONDS, sakuraHourDrift,
+} from '../../src/themes/sakura-twilight/sakura-hours.js';
 import { SAKURA_FOX_FUR } from '../../src/themes/sakura-twilight/sakura-foxes.js';
-import { SAKURA_RING_SLOTS, sakuraMoonDirection } from '../../src/themes/sakura-twilight/sakura-light.js';
+import {
+    SAKURA_RING_SLOTS, SakuraLight, sakuraMoonDirection,
+} from '../../src/themes/sakura-twilight/sakura-light.js';
 import {
     PETAL_AIR, PETAL_FLOAT, PETAL_IDLE, PETAL_REST,
 } from '../../src/themes/sakura-twilight/sakura-petal-sim.js';
@@ -24,13 +28,19 @@ import { SAKURA_TIERS, sakuraTier } from '../../src/themes/sakura-twilight/sakur
 import {
     SAKURA_MAX_FOXFIRE, SAKURA_REACTION_LIMITS, SakuraReactions,
 } from '../../src/themes/sakura-twilight/sakura-reactions.js';
-import { SAKURA_CONSTELLATIONS } from '../../src/themes/sakura-twilight/sakura-sky.js';
+import {
+    SAKURA_SPIRIT_FLIGHT, SakuraShowpieces, sakuraGatePlace,
+} from '../../src/themes/sakura-twilight/sakura-showpieces.js';
+import { SAKURA_CONSTELLATIONS, SakuraSky } from '../../src/themes/sakura-twilight/sakura-sky.js';
 import { SAKURA_DEFAULT_BOARD, SAKURA_STAGE_DEPTH } from '../../src/themes/sakura-twilight/sakura-stage.js';
 import {
     SAKURA_PATH_SETBACK, SAKURA_SURFACE_CEILING, SAKURA_TERRAIN_BOUNDS, SAKURA_WATER_LEVEL, createSakuraBedTexture,
     sakuraLand, sakuraPathDistance, sakuraPathZ, sakuraShore, sakuraSurfaceHeight, sakuraTerrainHeight,
 } from '../../src/themes/sakura-twilight/sakura-terrain.js';
 import { SAKURA_UNMIRRORED_LAYER } from '../../src/themes/sakura-twilight/sakura-water.js';
+import {
+    SAKURA_WEATHERS, SAKURA_WEATHER_SECONDS, sakuraWeatherDrift, sakuraWeatherName,
+} from '../../src/themes/sakura-twilight/sakura-weather.js';
 import { SakuraWorld } from '../../src/themes/sakura-twilight/sakura-world.js';
 
 const assetDirectory = new URL('../../src/themes/sakura-twilight/assets/', import.meta.url);
@@ -40,7 +50,8 @@ const TIER_ORDER = ['Extreme', 'Ultra', 'High', 'Medium', 'Low', 'Minimal'];
 const LANDSCAPE = 16 / 9;
 const PORTRAIT = 9 / 19.5;
 const STEP = 1 / 60;
-const WORLD_PARTS = ['terrain', 'sky', 'backdrop', 'forest', 'garden', 'foxes', 'water', 'spirits', 'petals'];
+const WORLD_PARTS = ['terrain', 'sky', 'backdrop', 'forest', 'garden', 'foxes', 'water', 'spirits', 'petals',
+    'showpieces', 'cranes'];
 /** What a fox's skinned mesh is called (the loader numbers the name its model shares with its scene). */
 const FOX_SKIN = /^SakuraFox(_\d+)?$/;
 /**
@@ -1033,6 +1044,11 @@ describe('Sakura world scene contracts', () => {
             level: 1,
             hour: SAKURA_HOURS[0].name,
             hourPhase: 0,
+            // The air a session opens in is the first: the garden as it was built.
+            weather: SAKURA_WEATHERS[0].name,
+            weatherPhase: 0,
+            // The cranes say for themselves how many fly and when (tests/unit/sakura-cranes.test.js).
+            cranes: world.cranes.getDiagnostics(),
         });
         expect(sum(Object.values(world.getDiagnostics().petals))).toBe(tier.petals);
 
@@ -1612,7 +1628,8 @@ describe('Sakura world in play', () => {
         }
         // The session really happened: every kind of emitter and force field was played.
         expect([...seen.kinds].sort())
-            .toEqual(['clear', 'combo', 'floats', 'lanterns', 'lock', 'rise', 'shower', 'spin', 'star']);
+            .toEqual(['clear', 'combo', 'floats', 'gate', 'lanterns', 'lock', 'rise', 'shower', 'spin', 'spirit',
+                'splash', 'star', 'swarm']);
         expect([...seen.fields].sort()).toEqual(['burst', 'jet', 'lift', 'vortex']);
         expect(seen.front).toBe(true);
         expect(seen.finite).toBe(true);
@@ -2718,7 +2735,14 @@ describe('Sakura world ownership', () => {
         expect(() => world.build()).toThrow('[Sakura] SakuraWorld needs its loaded assets before it can build.');
         expect(scene.children).toHaveLength(0);
         expect(world.built).toBe(false);
-        const openingHour = { level: 1, hour: SAKURA_HOURS[0].name, hourPhase: 0 };
+        const openingHour = {
+            level: 1,
+            hour: SAKURA_HOURS[0].name,
+            hourPhase: 0,
+            weather: SAKURA_WEATHERS[0].name,
+            weatherPhase: 0,
+            cranes: null,
+        };
         // Nothing was half-made: update and diagnostics are still safe.
         expect(() => world.update(0, STEP, { emitters: [] })).not.toThrow();
         expect(world.getDiagnostics()).toEqual({
@@ -3185,5 +3209,726 @@ describe('Sakura Twilight mirror samples', () => {
         // Without it (a single-sampled pass, or no option at all) the mirror stays single-sampled.
         const plain = (await buildWorld('High')).world;
         expect(plain.water.reflection.reflector.samples).toBe(0);
+    });
+});
+
+/**
+ * The night changes (2026-11): the air turns by a clock of its own beside the hours, the garden
+ * builds one more part (the showpieces: each event's own instrument), and the sky sends a star
+ * down by itself now and then.
+ */
+describe('Sakura world: the air', () => {
+    let shared;
+
+    beforeAll(async () => {
+        shared = await buildWorld('Minimal', { track: false });
+    }, 60000);
+
+    afterAll(() => {
+        shared.world.dispose();
+        disposeSakuraAssets(shared.assets);
+    });
+
+    afterEach(() => {
+        shared.world.pinWeather(null);
+        shared.world.pinHour(null);
+        shared.world.setLevel(1, { silent: true });
+    });
+
+    it('turns the weather by the clock alone, beside the hours, and says which air it is', () => {
+        const { world } = shared;
+        expect(world.weatherPin).toBeNull();
+        expect(world.hourPin).toBeNull();
+        for (const time of [0, 10, 60, 84, 100, 250.5, 503, 504, 5000]) {
+            expect(world.weatherPhase(time), `t ${time}`).toBe(sakuraWeatherDrift(time));
+            world.update(time, 0, {});
+            expect(world.light.weatherPhase, `t ${time}`).toBe(sakuraWeatherDrift(time));
+            expect(world.light.hourPhase, `t ${time}`).toBeCloseTo(sakuraHourDrift(time), 9);
+            const diagnostics = world.getDiagnostics();
+            expect(diagnostics.weatherPhase).toBe(sakuraWeatherDrift(time));
+            expect(diagnostics.weather).toBe(sakuraWeatherName(sakuraWeatherDrift(time)));
+            expect(SAKURA_WEATHERS.map((air) => air.name)).toContain(diagnostics.weather);
+        }
+        // One air after another, each for its 84 s, and round again.
+        const names = [];
+        for (let air = 0; air < SAKURA_WEATHERS.length + 1; air += 1) {
+            world.update(air * SAKURA_WEATHER_SECONDS + 5, 0, {});
+            names.push(world.getDiagnostics().weather);
+        }
+        expect(names).toEqual([...SAKURA_WEATHERS.map((air) => air.name), SAKURA_WEATHERS[0].name]);
+        // With no time given it reads the garden's own clock.
+        world.update(190, 0, {});
+        expect(world.weatherPhase()).toBe(sakuraWeatherDrift(190));
+    });
+
+    it('turns them whatever the settings: an empty frame, Reduce motion, a game that is over, effects reset', () => {
+        const { world } = shared;
+        const frames = [undefined, {}, { motion: 0 }, { hush: 1 }, { emitters: [] }, new SakuraReactions().getFrame()];
+        frames.forEach((frame, index) => {
+            const time = 300 + index * 97;
+            world.resetEffects();
+            world.update(time, STEP, frame);
+            expect(world.light.weatherPhase, `frame ${index}`).toBe(sakuraWeatherDrift(time));
+            expect(world.getDiagnostics().hourPhase, `frame ${index}`).toBeCloseTo(sakuraHourDrift(time), 6);
+        });
+        // A clock that is nonsense holds the garden's own; the air does not jump.
+        world.update(420, STEP, {});
+        const here = world.light.weatherPhase;
+        for (const time of [NaN, Infinity, undefined, null, 'later']) {
+            world.update(time, STEP, {});
+            expect(world.light.weatherPhase, String(time)).toBe(here);
+            expect(world.light.uTime.value).toBe(420);
+        }
+        // A negative clock is the opening.
+        world.update(-50, STEP, {});
+        expect(world.light.weatherPhase).toBe(0);
+        expect(world.getDiagnostics().weather).toBe(SAKURA_WEATHERS[0].name);
+    });
+
+    it('holds one air still when it is pinned, by id or number, and hands it back to the clock', () => {
+        const { world } = shared;
+        SAKURA_WEATHERS.forEach((air, index) => {
+            expect(world.pinWeather(air.id)).toBe(index);
+            expect(world.weatherPin).toBe(index);
+            for (const time of [0, 50, 333, 9999]) {
+                expect(world.weatherPhase(time)).toBe(index);
+                world.update(time, STEP, {});
+                expect(world.light.weatherPhase).toBe(index);
+                expect(world.getDiagnostics()).toMatchObject({ weather: air.name, weatherPhase: index });
+            }
+            // The rig wears it whole.
+            expect(world.light.uCloud.value).toBe(air.cloud);
+            expect(world.light.uVeil.value).toBe(air.veil);
+            expect(world.light.uCalm.value).toBe(air.calm);
+            expect(world.pinWeather(index)).toBe(index);
+            expect(world.pinWeather(String(index))).toBe(index);
+            expect(world.pinWeather(index + SAKURA_WEATHERS.length)).toBe(index);
+        });
+        for (const nothing of [null, undefined, '', 'typhoon', NaN, {}]) {
+            world.pinWeather('mist');
+            expect(world.pinWeather(nothing), String(nothing)).toBeNull();
+            expect(world.weatherPin).toBeNull();
+            expect(world.weatherPhase(200)).toBe(sakuraWeatherDrift(200));
+        }
+        // The hours go on turning under a pinned air.
+        world.pinWeather('mirror');
+        world.update(150, STEP, {});
+        expect(world.light.hourPhase).toBeCloseTo(sakuraHourDrift(150), 6);
+    });
+
+    it('holds one hour still when it is pinned, whatever the clock and the level say', () => {
+        const { world } = shared;
+        SAKURA_HOURS.forEach((hour, index) => {
+            expect(world.pinHour(index)).toBe(index);
+            expect(world.pinHour(String(index))).toBe(index);
+            expect(world.pinHour(index + SAKURA_HOURS.length * 2)).toBe(index);
+            expect(world.pinHour(index - SAKURA_HOURS.length)).toBe(index);
+            expect(world.pinHour(index + 0.3)).toBe(index);
+            world.setLevel(3, { silent: true });
+            for (const time of [0, 77, 400, 12345]) {
+                expect(world.hourPhase(time)).toBe(index);
+                world.update(time, STEP, {});
+                expect(world.getDiagnostics()).toMatchObject({ hour: hour.name, hourPhase: index, level: 3 });
+            }
+            expect(world.light.uMoonColor.value.toArray()).toEqual([...hour.moon]);
+        });
+        for (const nothing of [null, undefined, '', 'noon', NaN, Infinity, {}]) {
+            world.pinHour(2);
+            expect(world.pinHour(nothing), String(nothing)).toBeNull();
+            expect(world.hourPin).toBeNull();
+        }
+        // Handed back, the level's step and the clock's turn are the hour again.
+        world.setLevel(1, { silent: true });
+        world.update(0, STEP, {});
+        expect(world.getDiagnostics()).toMatchObject({ hour: SAKURA_HOURS[0].name, hourPhase: 0 });
+        // The air goes on turning under a pinned hour.
+        world.pinHour(3);
+        world.update(260, STEP, {});
+        expect(world.light.weatherPhase).toBe(sakuraWeatherDrift(260));
+    });
+
+    // Was a fault (fixed 2026-11-18): sakura-world.js pinHour() (lines 78-83): Number(' ') and Number([]) are 0 and
+    // Number(true) is 1, so blank text, an empty list and a boolean hold an hour still instead of
+    // handing it back to the clock (`?hour=%20` pins the afterglow). pinWeather() has the same
+    // through sakuraWeatherIndex(). The contract: null for anything that is not an hour's number.
+    it('hands the hour and the air back to the clock for blank text, a list and a boolean', () => {
+        const { world } = shared;
+        const pinned = [];
+        for (const value of [' ', '\t', [], true, false]) {
+            if (world.pinHour(value) !== null) pinned.push(['hour', value]);
+            if (world.pinWeather(value) !== null) pinned.push(['weather', value]);
+        }
+        expect(pinned).toEqual([]);
+    });
+
+    it('lets the air set how many of the crowns\' petals fall, and how much of the blizzard blows by itself', () => {
+        const { world } = shared;
+        const mirror = SAKURA_WEATHERS.find((air) => air.id === 'mirror');
+        const wind = SAKURA_WEATHERS.find((air) => air.id === 'wind');
+        world.resetEffects();
+        world.pinWeather('mirror');
+        // (The petals feel the air the frame before set: one frame behind.)
+        world.update(10, STEP, {});
+        world.update(10 + STEP, STEP, {});
+        expect(world.petals.sim.fall).toBe(mirror.fall);
+        expect(world.director.env.fall).toBe(mirror.fall);
+        expect(world.showpieces.uBlizzard.value).toBe(0);
+        world.pinWeather('wind');
+        world.update(10 + 2 * STEP, STEP, {});
+        world.update(10 + 3 * STEP, STEP, {});
+        expect(world.petals.sim.fall).toBe(wind.fall);
+        // The petal wind keeps half a blizzard going with no help from the game...
+        expect(world.showpieces.uBlizzard.value).toBeCloseTo(wind.stream, 12);
+        // ...less of it under Reduce motion, and all of one when four lines add theirs.
+        world.update(10 + 4 * STEP, STEP, { motion: 0.35 });
+        expect(world.showpieces.uBlizzard.value).toBeCloseTo(wind.stream * (0.45 + 0.55 * 0.35), 12);
+        world.update(10 + 5 * STEP, STEP, { blizzard: 1 });
+        expect(world.showpieces.uBlizzard.value).toBe(1);
+        // A still air thins the crowns over time and a fresh one fills them again.
+        world.pinWeather('mirror');
+        const { sim } = world.petals;
+        let time = 11;
+        for (let frame = 0; frame < 60 * 60; frame += 1) {
+            time += STEP;
+            world.update(time, STEP, {});
+        }
+        const waiting = sim.counts().idle - sim.reserve;
+        expect(waiting).toBeGreaterThan(sim.ambient * 0.4);
+        expect(waiting).toBeLessThanOrEqual(sim.ambient - Math.floor(sim.ambient * mirror.fall));
+        world.pinWeather('clear');
+        for (let frame = 0; frame < 3; frame += 1) {
+            time += STEP;
+            world.update(time, STEP, {});
+        }
+        expect(sim.counts().idle).toBe(sim.reserve);
+        expect(allFinite(sim.outPosition) && allFinite(sim.outRotation)).toBe(true);
+    }, 60000);
+
+    it('stays finite and names an air and an hour after days of clock, and when the clock comes back', () => {
+        const { world } = shared;
+        world.resetEffects();
+        for (const time of [1e6, 1e6 + STEP, 86400 * 30, 1e9, 12, 0, 4000, 3999.5]) {
+            expect(() => world.update(time, STEP, new SakuraReactions().getFrame())).not.toThrow();
+            const diagnostics = world.getDiagnostics();
+            expect(Number.isFinite(diagnostics.weatherPhase), `t ${time}`).toBe(true);
+            expect(Number.isFinite(diagnostics.hourPhase), `t ${time}`).toBe(true);
+            expect(SAKURA_WEATHERS.map((air) => air.name)).toContain(diagnostics.weather);
+            expect(SAKURA_HOURS.map((hour) => hour.name)).toContain(diagnostics.hour);
+            const { light, showpieces, spirits } = world;
+            for (const node of [light.uCloud, light.uWisps, light.uMackerel, light.uVeil, light.uGalaxy, light.uCalm,
+                light.uBanks, light.uCap, light.uSea, light.uBanner, light.uFireflies, light.uCloudClock, light.uMist,
+                light.uStars, light.uHaze, light.uWind, showpieces.uBlizzard, showpieces.uGate, showpieces.uCarried,
+                spirits.uSwarm]) {
+                expect(Number.isFinite(node.value) && node.value >= 0, `t ${time}`).toBe(true);
+            }
+            // (Every one of those was a seek: the cloud's clock lands on the garden's.)
+            expect(light.uTime.value).toBe(time);
+            if (time !== 1e6 + STEP) expect(light.uCloudClock.value).toBe(time);
+            expect(allFinite(world.petals.sim.outPosition)).toBe(true);
+        }
+    });
+});
+
+describe('Sakura world: the showpieces', () => {
+    it('builds them after the petals, before the cranes, on chances of their own', async () => {
+        const assets = await loadBundle();
+        const draws = { count: 0 };
+        const random = seededRandom(187);
+        const rng = () => { draws.count += 1; return random(); };
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(50, LANDSCAPE, 0.3, 4000);
+        const world = new SakuraWorld({
+            scene, camera, quality: 'Minimal', rng, assets,
+        });
+        owned.push(world);
+        const steps = [];
+        const drawn = {};
+        const during = {};
+        for (const step of world.buildSteps()) {
+            steps.push(step);
+            drawn[step] = draws.count;
+            during[step] = {
+                made: Boolean(world.showpieces),
+                meshes: world.showpieces?.group.children.length ?? 0,
+                director: Boolean(world.director),
+            };
+        }
+        expect(steps).toEqual(['light', 'terrain', 'sky', 'backdrop', 'forest', 'garden', 'foxes', 'water', 'spirits',
+            'petals', 'showpieces', 'cranes']);
+        // (Nor did the cranes, built last.)
+        expect(drawn.cranes).toBe(drawn.petals);
+        // (They are made, unbuilt, with the garden: the torii glows by their gate light.)
+        expect(during.forest.made).toBe(false);
+        expect(during.garden).toEqual({ made: true, meshes: 0, director: false });
+        expect(during.petals).toEqual({ made: true, meshes: 0, director: false });
+        expect(during.showpieces.meshes).toBe(6);
+        expect(world.garden.gateEmber).toBe(world.showpieces.uGate);
+        // Building them drew nothing from the garden's sequence.
+        expect(drawn.showpieces).toBe(drawn.petals);
+        expect(world.showpieces.rng).not.toBe(rng);
+        expect(drawn.petals).toBeGreaterThan(1000);
+        // The world plays only once the last step has run.
+        expect(world.director).toBeTruthy();
+        expect(world.showpieces.group.parent).toBe(world.group);
+        expect(typeof world.showpieces.onArrive).toBe('function');
+    }, 60000);
+
+    it('leaves the garden built after them exactly as it would be without them', async () => {
+        const assets = await loadBundle();
+        const withThem = createWorld('Minimal', assets, { seed: 55 });
+        withThem.world.build();
+        const build = vi.spyOn(SakuraShowpieces.prototype, 'build')
+            .mockImplementation(function skip() { return this; });
+        const without = createWorld('Minimal', assets, { seed: 55 });
+        without.world.build();
+        build.mockRestore();
+        expect(without.world.showpieces.group.children).toHaveLength(0);
+        expect(withThem.world.showpieces.group.children).toHaveLength(6);
+        const { petals, ...rest } = withThem.world.getDiagnostics();
+        const { petals: otherPetals, ...otherRest } = without.world.getDiagnostics();
+        expect(otherRest).toEqual(rest);
+        expect(otherPetals).toEqual(petals);
+        expect(without.world.placements).toEqual(withThem.world.placements);
+        expect(without.world.lanterns).toEqual(withThem.world.lanterns);
+        const petalsOf = ({ world }) => Array.from(world.petals.sim.outPosition);
+        expect(petalsOf(without)).toEqual(petalsOf(withThem));
+        const names = (world) => drawables(world.group).map((mesh) => mesh.name)
+            .filter((name) => !/^Sakura(Splash|Helix|PetalBlizzard|GateLight|GateGlow|StarFox)$/.test(name));
+        expect(names(without.world)).toEqual(names(withThem.world));
+        // And the garden's chances go on from the same place: the same play throws the same petals.
+        for (const { world } of [withThem, without]) {
+            const reactions = new SakuraReactions({ quality: 'Minimal', rng: seededRandom(5) });
+            reactions.onHardDrop({ distance: 16 });
+            reactions.onPieceLock({ piece: cell(1, 20) });
+            reactions.onLineClear(3, { clearedRows: [21, 22, 23] });
+            reactions.onTwist({ piece: cell(8, 12) });
+            for (let frame = 0; frame < 90; frame += 1) world.update(reactions.time, STEP, reactions.update(STEP));
+        }
+        expect(petalsOf(without)).toEqual(petalsOf(withThem));
+    }, 60000);
+
+    it('draws them, the mountain\'s cloud and the sky dome where the contract says', async () => {
+        const { world, tier, camera } = await buildWorld('Medium');
+        const meshes = drawables(world.group);
+        const one = (name) => {
+            const found = meshes.filter((mesh) => mesh.name === name);
+            expect(found, name).toHaveLength(1);
+            return found[0];
+        };
+        // The showpieces: six draws, the blizzard as many petals as the tier streams.
+        for (const name of ['SakuraSplash', 'SakuraHelix', 'SakuraPetalBlizzard', 'SakuraGateLight', 'SakuraGateGlow',
+            'SakuraStarFox']) {
+            expect(one(name).parent, name).toBe(world.showpieces.group);
+            expect(one(name).visible, name).toBe(true);
+        }
+        expect(one('SakuraPetalBlizzard').count).toBe(tier.blizzard);
+        expect(one('SakuraPetalBlizzard').geometry).toBe(world.assets.blossoms.meshes.petal_far);
+        // What the mountain wears: one draw of two cards in the backdrop, over the mountain.
+        const cloud = one('SakuraMountainCloud');
+        expect(cloud.parent).toBe(world.backdrop.group);
+        expect(cloud.material.transparent).toBe(true);
+        expect(cloud.material.depthWrite).toBe(false);
+        expect(cloud.material.side).toBe(THREE.DoubleSide);
+        expect(cloud.frustumCulled).toBe(false);
+        expect(cloud.geometry.attributes.position.count).toBe(8);
+        expect(cloud.geometry.index.count).toBe(12);
+        const cards = cloud.geometry.attributes.sakuraCloud;
+        expect(cards.itemSize).toBe(3);
+        expect(new Set(Array.from({ length: 8 }, (_, index) => cards.getZ(index)))).toEqual(new Set([0, 1]));
+        const place = cloud.geometry.attributes.position;
+        for (let index = 0; index < 8; index += 1) {
+            // Both cards stand in front of the eye, far off, on the mountain's side of the lake.
+            const seen = onScreen(camera, place.getX(index), place.getY(index), place.getZ(index));
+            expect(seen.ahead, `corner ${index}`).toBe(true);
+            expect(place.getZ(index)).toBeLessThan(-300);
+            // The summit's card stands nearer than the summit, so the cap can hide its top.
+            if (cards.getZ(index) === 1) expect(place.getZ(index)).toBeGreaterThan(SAKURA_FUJI.z);
+        }
+        expect(cloud.renderOrder).toBeGreaterThan(one('SakuraMountain').renderOrder);
+        // The far shore no longer has a wave of its own to run.
+        expect(world.backdrop.update).toBeUndefined();
+        expect(world.backdrop.uShore).toBeUndefined();
+        // The sky dome is drawn last among the solid things: it only tests depth, so the sky behind
+        // the trees, the mountain and the lake is never shaded.
+        const dome = one('SakuraSkyDome');
+        expect(dome.renderOrder).toBe(50);
+        expect(dome.material.depthWrite).toBe(false);
+        expect(dome.material.transparent).toBe(false);
+        expect(dome.material.side).toBe(THREE.BackSide);
+        const solid = meshes.filter((mesh) => mesh !== dome && !mesh.material.transparent);
+        expect(solid.length).toBeGreaterThan(20);
+        for (const mesh of solid) expect(mesh.renderOrder, mesh.name).toBeLessThan(dome.renderOrder);
+        // Everything solid that could hide sky writes depth for the dome to test against.
+        for (const name of ['SakuraMountain', 'SakuraHills', 'SakuraGround', 'SakuraPetalBlizzard']) {
+            expect(one(name).material.depthWrite, name).toBe(true);
+        }
+        // The lake's second view spares the near, small showpieces and keeps the tall lights.
+        const unmirrored = new THREE.Layers();
+        unmirrored.set(SAKURA_UNMIRRORED_LAYER);
+        for (const name of ['SakuraSplash', 'SakuraHelix', 'SakuraPetalBlizzard']) {
+            expect(one(name).layers.mask, name).toBe(unmirrored.mask);
+        }
+        for (const name of ['SakuraGateLight', 'SakuraGateGlow', 'SakuraStarFox', 'SakuraMountainCloud',
+            'SakuraSkyDome']) {
+            expect(one(name).layers.mask, name).not.toBe(unmirrored.mask);
+        }
+        for (const mesh of meshes) expect(camera.layers.test(mesh.layers), mesh.name).toBe(true);
+    }, 60000);
+
+    it('plays each event on its own instrument, through the real garden', async () => {
+        const { world } = await buildWorld('Minimal');
+        const { showpieces, light, spirits } = world;
+        const splash = vi.spyOn(showpieces, 'splash');
+        const helix = vi.spyOn(showpieces, 'helix');
+        const spirit = vi.spyOn(showpieces, 'spirit');
+        const ring = vi.spyOn(light, 'ring');
+        const flash = vi.spyOn(spirits, 'flash');
+        const reactions = new SakuraReactions({ quality: 'Minimal', rng: seededRandom(5) });
+        const gate = sakuraGatePlace();
+        const peaks = {
+            blizzard: 0, gate: 0, swarm: 0,
+        };
+        const play = (seconds) => {
+            for (let frame = 0; frame < seconds * 60; frame += 1) {
+                world.update(reactions.time, STEP, reactions.update(STEP));
+                peaks.blizzard = Math.max(peaks.blizzard, showpieces.uBlizzard.value);
+                peaks.gate = Math.max(peaks.gate, showpieces.uGate.value);
+                peaks.swarm = Math.max(peaks.swarm, spirits.uSwarm.value);
+                expect(showpieces.uGate.value >= 0 && showpieces.uGate.value <= 1.6).toBe(true);
+                expect(showpieces.uBlizzard.value >= 0 && showpieces.uBlizzard.value <= 1).toBe(true);
+                expect(spirits.uSwarm.value >= 0 && spirits.uSwarm.value <= 1).toBe(true);
+            }
+        };
+        play(0.5);
+        expect(splash).not.toHaveBeenCalled();
+
+        // A hard drop: one crown of spray on open water, on the piece's side, and one ring (the lock's).
+        reactions.onHardDrop({ distance: 16 });
+        reactions.onPieceLock({ piece: cell(1, 20) });
+        play(0.3);
+        expect(splash).toHaveBeenCalledOnce();
+        expect(splash.mock.results[0].value).toBe(true);
+        const [x, z, strength] = splash.mock.calls[0];
+        expect(sakuraLand(x, z)).toBeLessThan(0);
+        expect(x).toBeLessThan(world.stage.centre().x);
+        expect(strength).toBeCloseTo(0.8, 9);
+        expect(ring).toHaveBeenCalledOnce();
+        expect(showpieces.splashData.filter((slot) => slot.w > 0)).toHaveLength(1);
+        // A piece set down raises none.
+        reactions.onPieceLock({ piece: cell(8, 20) });
+        play(0.3);
+        expect(splash).toHaveBeenCalledOnce();
+
+        // A twist: one helix beside the board where the piece turned.
+        reactions.onTwist({ piece: cell(8, 12), lineCount: 2 });
+        play(0.3);
+        expect(helix).toHaveBeenCalledOnce();
+        expect(helix.mock.results[0].value).toBe(true);
+        const turned = helix.mock.calls[0];
+        expect(turned.every(Number.isFinite)).toBe(true);
+        expect(turned[0]).toBeGreaterThan(world.stage.centre().x);
+        expect(turned[3]).toBe(1);
+        expect(turned[5]).toBeGreaterThanOrEqual(3.2);
+
+        // Three lines: every firefly rises, and sinks back; no blizzard yet.
+        reactions.onLineClear(3, { clearedRows: [21, 22, 23] });
+        play(1.7);
+        expect(peaks.swarm).toBeGreaterThan(0.7);
+        expect(peaks.blizzard).toBe(0);
+        play(2);
+        expect(spirits.uSwarm.value).toBe(0);
+
+        // A back-to-back: the gate wakes, and a ring leaves its feet.
+        ring.mockClear();
+        reactions.onBackToBack();
+        play(1);
+        expect(ring).toHaveBeenCalledOnce();
+        expect(ring.mock.calls[0].slice(0, 2)).toEqual([gate.x, gate.z]);
+        expect(ring.mock.calls[0][2]).toBeGreaterThanOrEqual(0.5 + 0.6 * 0.4 - 1e-9);
+        expect(ring.mock.calls[0][2]).toBeLessThanOrEqual(1.1 + 1e-9);
+        expect(peaks.gate).toBeGreaterThan(0.4);
+        expect(peaks.gate).toBeLessThan(1.2);
+
+        // Four lines: the blizzard streams.
+        reactions.onLineClear(4, { clearedRows: [20, 21, 22, 23] });
+        play(2);
+        expect(peaks.blizzard).toBeGreaterThan(0.9);
+
+        // A perfect clear: the star fox sets out once, and goes through the gate 2.9 s later with
+        // a great ring from its feet and a flare at its beam. Exactly once.
+        play(6);
+        ring.mockClear();
+        flash.mockClear();
+        reactions.onPerfectClear();
+        play(1);
+        expect(spirit).toHaveBeenCalledOnce();
+        expect(spirit.mock.results[0].value).toBe(true);
+        const atGate = () => ring.mock.calls.filter(([rx, rz]) => rx === gate.x && rz === gate.z);
+        const flares = () => flash.mock.calls
+            .filter(([fx, fy, fz]) => fx === gate.x && fy === gate.top && fz === gate.z);
+        expect(atGate()).toHaveLength(0);
+        expect(flares()).toHaveLength(0);
+        play(SAKURA_SPIRIT_FLIGHT - 1 + 0.1);
+        expect(atGate()).toHaveLength(1);
+        expect(atGate()[0][2]).toBeCloseTo(1.6, 9);
+        expect(flares()).toHaveLength(1);
+        expect(flares()[0][3]).toBeCloseTo(1.8, 9);
+        expect(showpieces.arrived).toBe(true);
+        play(0.5);
+        expect(peaks.gate).toBeGreaterThan(1.5);
+        play(8);
+        expect(atGate()).toHaveLength(1);
+        expect(flares()).toHaveLength(1);
+        expect(spirit).toHaveBeenCalledOnce();
+        // Its light has gone from the gate (all that is left is the last of the back-to-back's corona).
+        expect(showpieces.uGate.value).toBeLessThan(0.01);
+    }, 60000);
+
+    it('forgets them with the rest of the effects, and is inert once disposed', async () => {
+        const { world } = await buildWorld('Minimal');
+        const { showpieces, spirits } = world;
+        const reactions = new SakuraReactions({ quality: 'Minimal', rng: seededRandom(5) });
+        reactions.onHardDrop({ distance: 18 });
+        reactions.onPieceLock({ piece: cell(1, 20) });
+        reactions.onLineClear(4, { clearedRows: [20, 21, 22, 23] });
+        reactions.onTwist({ piece: cell(8, 12) });
+        reactions.onBackToBack();
+        reactions.onPerfectClear();
+        for (let frame = 0; frame < 90; frame += 1) world.update(reactions.time, STEP, reactions.update(STEP));
+        expect(showpieces.uBlizzard.value).toBeGreaterThan(0.5);
+        expect(showpieces.uGate.value).toBeGreaterThan(0.3);
+        expect(spirits.uSwarm.value).toBeGreaterThan(0.5);
+        expect(showpieces.arrived).toBe(false);
+        expect(world.director.ringLoad).toBeGreaterThan(0);
+        const arrive = vi.spyOn(showpieces, 'onArrive');
+        reactions.reset();
+        world.resetEffects();
+        const now = world.light.uTime.value;
+        expect(showpieces.splashData.every((slot) => now - slot.z > 100 && slot.w === 0)).toBe(true);
+        expect(showpieces.helixData.every((slot) => now - slot.w > 100)).toBe(true);
+        expect(showpieces.uSpirit.value.toArray()).toEqual([-1000, 0]);
+        expect(showpieces.uGate.value).toBe(0);
+        expect(showpieces.uBlizzard.value).toBe(0);
+        expect(showpieces.arrived).toBe(true);
+        expect(spirits.uSwarm.value).toBe(0);
+        expect(world.director.ringLoad).toBe(0);
+        // The star fox that was in the sky never arrives, and the garden rests.
+        for (let frame = 0; frame < 60 * 5; frame += 1) world.update(now + frame * STEP, STEP, reactions.update(STEP));
+        expect(arrive).not.toHaveBeenCalled();
+        expect(showpieces.uGate.value).toBe(0);
+        expect(showpieces.uBlizzard.value).toBe(0);
+        // Disposed with the world.
+        const disposal = vi.spyOn(showpieces, 'dispose');
+        world.dispose();
+        expect(disposal).toHaveBeenCalledOnce();
+        expect(world.showpieces).toBeNull();
+        expect(showpieces.group.parent).toBeNull();
+        expect(() => world.update(now + 10, STEP, reactions.getFrame())).not.toThrow();
+        expect(() => world.resetEffects()).not.toThrow();
+        // (The director's hooks reach for parts that are gone: nothing happens, nothing throws.)
+        expect(() => showpieces.onArrive(0, 0, 1)).not.toThrow();
+    }, 60000);
+
+    it('raises the fireflies by the swarm it is given, less under Reduce motion, and never by nonsense', async () => {
+        const { world } = await buildWorld('Minimal');
+        const { spirits } = world;
+        expect(spirits.uSwarm.value).toBe(0);
+        for (const [swarm, motion, expected] of [[0.8, undefined, 0.8], [1, 1, 1], [1, 0, 0.4], [0.5, 0.35, 0.5 * 0.61],
+            [7, 1, 1], [-2, 1, 0], [NaN, 1, 0], [undefined, 1, 0], [null, 1, 0], ['0.5', 1, 0], [Infinity, 1, 0],
+            [0.6, NaN, 0.6], [0.6, 9, 0.6], [0.6, -9, 0.24]]) {
+            spirits.update(3, { motion }, swarm);
+            expect(spirits.uSwarm.value, `${String(swarm)} / ${String(motion)}`).toBeCloseTo(expected, 12);
+        }
+        // Left out, there is none.
+        spirits.update(3, {});
+        expect(spirits.uSwarm.value).toBe(0);
+        spirits.update(3, {}, 1);
+        spirits.reset();
+        expect(spirits.uSwarm.value).toBe(0);
+    }, 60000);
+});
+
+describe('Sakura sky: the night\'s own falling stars', () => {
+    /** A rig and a sky by themselves (no garden): `chances` counts what the sky draws from the shared sequence. */
+    function nightSky({ seed = 3 } = {}) {
+        const light = new SakuraLight({ tier: sakuraTier('Minimal'), rng: seededRandom(1) });
+        const shared = { draws: 0 };
+        const random = seededRandom(seed);
+        const sky = new SakuraSky({
+            light,
+            tier: sakuraTier('Minimal'),
+            rng: () => { shared.draws += 1; return random(); },
+        });
+        const stars = [];
+        const shoot = sky.shoot.bind(sky);
+        sky.shoot = (strength) => {
+            stars.push({ at: light.uTime.value, strength });
+            return shoot(strength);
+        };
+        owned.push(sky, light);
+        /** Run the night from `from` to `to` at 60 fps under one hour and one air. */
+        const run = (from, to, { hour = 0, weather = 0, frame = {} } = {}) => {
+            for (let step = 0; step <= Math.round((to - from) * 60); step += 1) {
+                light.setHour(hour);
+                light.setWeather(weather);
+                light.update(from + step * STEP, frame);
+                sky.update(frame);
+            }
+        };
+        return {
+            light, sky, stars, shared, run,
+        };
+    }
+
+    it('sends the first after nine seconds and then one every quarter minute or so', () => {
+        const { stars, run } = nightSky();
+        run(0, 8.9);
+        expect(stars).toEqual([]);
+        run(8.9, 9.1);
+        expect(stars).toHaveLength(1);
+        expect(stars[0].at).toBeGreaterThanOrEqual(9);
+        expect(stars[0].at).toBeLessThan(9 + 2 * STEP);
+        run(9.1, 1200);
+        // Twenty minutes of a clear evening: a star every 13 to 39 s, never two together.
+        expect(stars.length).toBeGreaterThan(1200 / 39 - 1);
+        expect(stars.length).toBeLessThan(1200 / 13 + 2);
+        const gaps = stars.slice(1).map((star, index) => star.at - stars[index].at);
+        for (const gap of gaps) {
+            expect(gap).toBeGreaterThanOrEqual(13 - 1e-9);
+            expect(gap).toBeLessThan(39 + 2 * STEP);
+        }
+        // Not a metronome: the waits differ.
+        expect(Math.max(...gaps) - Math.min(...gaps)).toBeGreaterThan(8);
+        // Faint ones: under what a clear or a combo sends.
+        for (const star of stars) {
+            expect(star.strength).toBeGreaterThanOrEqual(0.4);
+            expect(star.strength).toBeLessThan(0.75);
+        }
+        expect(new Set(stars.map((star) => star.strength)).size).toBeGreaterThan(stars.length / 2);
+    });
+
+    it('is the same night from the same start: when and how bright is the sky\'s own, reseeded by reset', () => {
+        const first = nightSky({ seed: 3 });
+        const second = nightSky({ seed: 99 });
+        first.run(0, 300);
+        second.run(0, 300);
+        // (The two gardens' shared sequences differ; the sky's own does not.)
+        expect(second.stars).toEqual(first.stars);
+        expect(first.stars.length).toBeGreaterThan(5);
+        const fresh = nightSky();
+        const opening = [fresh.sky.chance(), fresh.sky.chance(), fresh.sky.chance()];
+        for (const value of opening) expect(value >= 0 && value < 1).toBe(true);
+        expect(new Set(opening).size).toBe(3);
+        fresh.sky.reset();
+        expect([fresh.sky.chance(), fresh.sky.chance(), fresh.sky.chance()]).toEqual(opening);
+        first.sky.reset();
+        expect([first.sky.chance(), first.sky.chance(), first.sky.chance()]).toEqual(opening);
+    });
+
+    it('falls only in a sky clear enough to show one, and while the garden is awake', () => {
+        const openAirs = SAKURA_WEATHERS.filter((air) => air.cloud < 0.45 && air.veil < 0.5);
+        expect(openAirs.map((air) => air.id)).toEqual(['clear', 'mackerel', 'mist', 'mirror']);
+        for (let hour = 0; hour < SAKURA_HOURS.length; hour += 1) {
+            for (let weather = 0; weather < SAKURA_WEATHERS.length; weather += 1) {
+                const { stars, run, light } = nightSky();
+                run(0, 70, { hour, weather });
+                const air = SAKURA_WEATHERS[weather];
+                const open = SAKURA_HOURS[hour].stars * air.stars > 0.55 && air.cloud < 0.45 && air.veil < 0.5;
+                const label = `${SAKURA_HOURS[hour].name} / ${air.id}`;
+                const shown = light.uStars.value > 0.55 && light.uCloud.value < 0.45 && light.uVeil.value < 0.5;
+                expect(shown, label).toBe(open);
+                if (open) expect(stars.length, label).toBeGreaterThanOrEqual(2);
+                else expect(stars, label).toEqual([]);
+            }
+        }
+        // The game is over: none while the hush is deep, and they come back with play.
+        const hushed = nightSky();
+        hushed.run(0, 200, { frame: { hush: 1 } });
+        expect(hushed.stars).toEqual([]);
+        hushed.run(200, 300, { frame: { hush: 0.5 } });
+        expect(hushed.stars.length).toBeGreaterThanOrEqual(2);
+        const half = nightSky();
+        half.run(0, 100, { frame: { hush: 0.51 } });
+        expect(half.stars).toEqual([]);
+        // A hush that is not a number is no hush.
+        for (const hush of [NaN, undefined, null, 'deep', {}]) {
+            const junk = nightSky();
+            junk.run(0, 10, { frame: { hush } });
+            expect(junk.stars, String(hush)).toHaveLength(1);
+        }
+    });
+
+    it('keeps waiting through a closed sky: when it opens there is one star at its time, not a shower', () => {
+        const { stars, run } = nightSky();
+        const haze = SAKURA_WEATHERS.findIndex((air) => air.id === 'haze');
+        run(0, 600, { weather: haze });
+        expect(stars).toEqual([]);
+        // (Ten minutes of veil: some twenty stars did not fall. They are not owed.)
+        run(600, 600 + 39.1);
+        expect(stars.length).toBeGreaterThanOrEqual(1);
+        expect(stars.length).toBeLessThanOrEqual(3);
+        expect(stars[0].at).toBeGreaterThan(600 - 1e-9);
+    });
+
+    it('starts its wait again when the clock comes back by more than a minute, and keeps it for less', () => {
+        const { stars, run, sky } = nightSky();
+        run(0, 500);
+        const before = stars.length;
+        expect(sky.ambientAt).toBeGreaterThan(500);
+        // A new run: the clock is back at the start. Nine seconds, then a star.
+        run(100, 108.9);
+        expect(stars).toHaveLength(before);
+        expect(sky.ambientAt).toBeCloseTo(109, 6);
+        run(108.9, 109.1);
+        expect(stars).toHaveLength(before + 1);
+        // A small step back (a seek within the minute) keeps the star that was due.
+        const due = sky.ambientAt;
+        run(due - 30, due - 29);
+        expect(sky.ambientAt).toBe(due);
+        // A leap forward is one star, not one for every wait it skipped.
+        const leapt = stars.length;
+        run(5000, 5001);
+        expect(stars.length).toBe(leapt + 1);
+        // After days of clock it still falls on time.
+        const late = nightSky();
+        late.run(1e6, 1e6 + 60);
+        expect(late.stars.length).toBeGreaterThanOrEqual(2);
+        for (const star of late.stars) expect(Number.isFinite(star.at) && Number.isFinite(star.strength)).toBe(true);
+        expect(late.sky.shotData.every((shot) => shot.toArray().every(Number.isFinite))).toBe(true);
+    });
+
+    // Was a fault (fixed 2026-11-18): sakura-sky.js update() (the falling star, `this.shoot(0.4 + this.chance() * 0.35)`):
+    // when and how bright a star falls comes from the sky's own generator, but shoot() itself
+    // (lines ~515-520) places the star with three draws of `this.rng` — the garden's shared
+    // sequence, which the comment at the constructor says is left alone. Every falling star moves
+    // the sequence the petal director and the page's petal simulation draw from three places on,
+    // so the same play throws different petals depending on whether a star happened to fall.
+    // Reproduce: a SakuraSky with a counting rng, light.update(9, {}), sky.update({}): 3 draws.
+    it('leaves the garden\'s shared sequence alone when a star falls by itself', () => {
+        const { stars, shared, run } = nightSky();
+        run(0, 120);
+        expect(stars.length).toBeGreaterThan(2);
+        expect(shared.draws).toBe(0);
+    });
+
+    // Was a fault (fixed 2026-11-18): sakura-sky.js reset() and the constructor set `ambientAt = 9` — nine seconds on the
+    // garden's clock, not nine seconds from now. A sky reset late in a session (Settings: effects
+    // off calls SakuraWorld.resetEffects()) or built late (a rebuild that carries the clock: a
+    // quality change) finds its star long overdue and sends it on the very next frame.
+    // Reproduce: light.update(500, {}); sky.reset(); sky.update({}): a star falls at once.
+    it('waits nine seconds after a reset or a rebuild late in the night, as it does at the start', () => {
+        const {
+            stars, run, sky, light,
+        } = nightSky();
+        run(0, 500);
+        const before = stars.length;
+        sky.reset();
+        run(500, 508);
+        expect(stars).toHaveLength(before);
+        const late = new SakuraSky({ light, tier: sakuraTier('Minimal'), rng: seededRandom(4) });
+        owned.push(late);
+        const shoot = vi.spyOn(late, 'shoot');
+        late.update({});
+        expect(shoot).not.toHaveBeenCalled();
     });
 });

@@ -115,6 +115,53 @@ describe('Sakura petals stepped in a worker', () => {
         expect(WorkerDouble.last.terminated).toBe(true);
     });
 
+    // The air's share of falling petals (sakura-weather.js) crosses to the worker with the wind:
+    // a still night thins the crowns there as it would on the page.
+    it('carries the air\'s share of falling petals across to the worker', async () => {
+        const page = make(seeded(11));
+        const reference = make(seeded(11));
+        const remote = new SakuraPetalSimRemote(page, () => new WorkerDouble(), 0x5aa7);
+        reference.rng = seeded(0x5aa7);
+        await settle();
+        const posted = [];
+        const post = WorkerDouble.last.postMessage.bind(WorkerDouble.last);
+        WorkerDouble.last.postMessage = (data, transfer) => {
+            if (data.type === 'step') posted.push(data.env.fall);
+            return post(data, transfer);
+        };
+        const calm = {
+            ...ENV, gust: 0, front: null, fields: [],
+        };
+        const idleCrowns = (sim) => sim.state.slice(0, sim.ambient).filter((state) => state === 0).length;
+        for (let frame = 0; frame < 1500; frame += 1) {
+            // A still air for a while, then a share that rises again.
+            const fall = frame < 1200 ? 0.25 : 0.25 + 0.75 * ((frame - 1199) / 300);
+            remote.step(1 / 30, { ...calm, fall });
+            reference.step(1 / 30, { ...calm, fall });
+            await settle(); // eslint-disable-line no-await-in-loop
+            if (frame % 100 === 99 || frame === 1199) {
+                expect(Array.from(remote.outPosition), `frame ${frame}`).toEqual(Array.from(reference.outPosition));
+                expect(remote.counts(), `frame ${frame}`).toEqual(reference.counts());
+            }
+            if (frame === 1199) {
+                // Most of the crowns' petals are waiting: hidden on the page as in the worker.
+                expect(idleCrowns(reference)).toBeGreaterThan(reference.ambient * 0.5);
+                expect(remote.counts().idle).toBe(reference.reserve + idleCrowns(reference));
+            }
+        }
+        expect(idleCrowns(reference)).toBe(0);
+        expect(posted).toHaveLength(1500);
+        expect(posted[0]).toBe(0.25);
+        expect(posted.at(-1)).toBe(1);
+        // A share that is not a number is not sent: the worker's simulation reads none as all.
+        for (const fall of [NaN, undefined, null, 'most', Infinity]) {
+            remote.step(1 / 30, { ...calm, fall });
+            await settle(); // eslint-disable-line no-await-in-loop
+            expect(posted.at(-1), String(fall)).toBeUndefined();
+        }
+        remote.dispose();
+    });
+
     it('carries the time of frames the worker was still busy with into the next request', async () => {
         const remote = new SakuraPetalSimRemote(make(seeded(3)), () => new WorkerDouble());
         await settle();
