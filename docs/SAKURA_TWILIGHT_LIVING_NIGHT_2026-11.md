@@ -13,6 +13,8 @@ an effect of its own, the biggest moments the most spectacular; smooth and reada
 
 ![The six airs](sakura-twilight-overhaul/living-airs.jpg)
 
+![The moonlit night before, and now with mist on the lake](sakura-twilight-overhaul/living-before-after.jpg)
+
 ## The audit
 
 Captured before any change: the five hours at rest, every event, Low, portrait, on WebGPU
