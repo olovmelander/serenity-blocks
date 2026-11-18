@@ -44,7 +44,7 @@ afterEach(() => {
 
 const game = {
     score: 200, lines: 4, level: 3, speedMultiplier: 1.5,
-    theme: 'calm', musicTrack: 'Moon', demoId: 7,
+    theme: 'calm', musicTrack: 'Moon', demoId: 7, runId: 'local-first',
 };
 
 describe('atomic local score saves', () => {
@@ -57,10 +57,11 @@ describe('atomic local score saves', () => {
             ['highScores', 'statistics', 'gameHistory'], 'readwrite',
         );
         const record = { ...game, mode: 'single', timestamp: 1234 };
-        expect(h.scores.add).toHaveBeenCalledExactlyOnceWith(record);
-        expect(h.history.add).toHaveBeenCalledExactlyOnceWith(record);
+        expect(h.scores.add).not.toHaveBeenCalled();
         expect(h.statistics.get).toHaveBeenCalledExactlyOnceWith('stats');
         h.statsRequest.onsuccess();
+        expect(h.scores.add).toHaveBeenCalledExactlyOnceWith(record);
+        expect(h.history.add).toHaveBeenCalledExactlyOnceWith(record);
         await Promise.resolve();
         expect(settled).toBe(false);
         expect(h.emitted).not.toHaveBeenCalled();
@@ -71,12 +72,27 @@ describe('atomic local score saves', () => {
         });
     });
 
+    it('does not reinsert a finish or signal a new result after replaying its receipt', async () => {
+        const h = harness({ stats: { recordBook: { runs: { [game.runId]: { mode: 'single' } } } } });
+        const pending = h.manager.saveScore(game);
+        h.statsRequest.onsuccess();
+        h.transaction.oncomplete();
+        await pending;
+        expect(h.scores.add).not.toHaveBeenCalled();
+        expect(h.history.add).not.toHaveBeenCalled();
+        expect(h.statistics.put).not.toHaveBeenCalled();
+        expect(h.emitted).not.toHaveBeenCalled();
+    });
+
     it('initializes statistics and updates every original aggregate field', async () => {
         const h = harness();
         const pending = h.manager.saveScore(game);
         h.statsRequest.onsuccess();
         expect(h.statistics.put).toHaveBeenCalledExactlyOnceWith({
             id: 'stats', totalGames: 1, totalScore: 200, totalLines: 4,
+            recordBook: expect.objectContaining({
+                version: 1, runs: { 'local-first': { mode: 'single', owner: null, score: 200, lines: 4, level: 3, cascade: 0, duration: 0 } },
+            }),
             highestScore: 200, highestLevel: 3, bestScorePerLevel: { 3: 200 },
             byMode: {
                 single: {
@@ -99,6 +115,10 @@ describe('atomic local score saves', () => {
         h.statsRequest.onsuccess();
         expect(h.statistics.put).toHaveBeenCalledExactlyOnceWith({
             id: 'stats', totalGames: 6, totalScore: 5200, totalLines: 94,
+            recordBook: expect.objectContaining({
+                base: expect.objectContaining({ totalGames: 5, totalScore: 5000, totalLines: 90 }),
+                runs: { [game.runId]: expect.objectContaining({ score: 200, lines: 4 }) },
+            }),
             highestScore: 1000, highestLevel: 9, bestScorePerLevel: { 2: 700, 3: 600 },
             // The stored record predates per-mode counters: its history counts as Single Player.
             byMode: {
@@ -114,6 +134,7 @@ describe('atomic local score saves', () => {
     it('skips retained index entries and deletes overflow by primary key without reading values', async () => {
         const h = harness();
         const pending = h.manager.saveScore(game);
+        h.statsRequest.onsuccess();
         for (const [request, store, limit] of [
             [h.scoreCursor, h.scores, 100], [h.historyCursor, h.history, 50],
         ]) {
@@ -127,14 +148,15 @@ describe('atomic local score saves', () => {
             expect(cursor.continue).toHaveBeenCalledOnce();
             request.onsuccess({ target: { result: null } });
         }
-        h.statsRequest.onsuccess();
         h.transaction.oncomplete();
         await pending;
     });
 
     it('aborts all changes and suppresses notification after a synchronous add failure', async () => {
         const h = harness({ failAdd: new DOMException('Uncloneable', 'DataCloneError') });
-        await expect(h.manager.saveScore(game)).rejects.toMatchObject({ name: 'DataCloneError' });
+        const pending = h.manager.saveScore(game);
+        h.statsRequest.onsuccess();
+        await expect(pending).rejects.toMatchObject({ name: 'DataCloneError' });
         expect(h.transaction.abort).toHaveBeenCalledOnce();
         expect(h.history.add).not.toHaveBeenCalled();
         expect(h.emitted).not.toHaveBeenCalled();

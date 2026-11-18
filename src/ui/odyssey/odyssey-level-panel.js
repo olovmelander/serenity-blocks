@@ -8,6 +8,11 @@
  * Shell: BoardInfoOverlay.js; look: public/styles/odyssey-map.css.
  */
 import { formatOdysseyMapObjective, formatOdysseyStarCondition } from './objective-copy.js';
+import {
+    SteamLeaderboardPanel, friendComparison, formatMilliseconds, modeBoards, steamLeaderboardsAvailable,
+} from '../components/steam-leaderboard-panel.js';
+import steamService from '../../core/steam/steam-service.js';
+import { localOrbBest } from '../../core/progression/record-book.js';
 import { getOdysseyLevelBriefing } from './odyssey-level-briefing.js';
 import { odysseyCharmHelps } from '../../core/odyssey/odyssey-charm-bag.js';
 import { describeOdysseyPanelCharms } from './odyssey-charm-copy.js';
@@ -190,6 +195,7 @@ export function renderOdysseyPanelCharms(doc, level, charms) {
  *   read-only line naming the charms held that help here
  * @param {Document} [doc]
  */
+let orbRecords = null;
 export function renderOdysseyLevelPanel({
     level, previousLevel = null, completion = null, unlocked = false, chapterName = '', charms = null,
 }, doc = globalThis.document) {
@@ -220,6 +226,49 @@ export function renderOdysseyLevelPanel({
     setText(doc, 'level-panel-chapter', `Chapter ${level.chapter}${chapterName ? `: ${chapterName}` : ''}`);
     const description = level.description || level.metadata?.description || 'Clear the goal to move on.';
     setText(doc, 'level-panel-description', description);
+    const host = doc.getElementById('level-panel-records');
+    orbRecords?.destroy();
+    orbRecords = null;
+    if (host?.replaceChildren) {
+        host.replaceChildren();
+        const board = modeBoards('odyssey').find((entry) => entry.orb === Number(level.id));
+        if (board) {
+            const note = doc.createElement('p');
+            const clock = 'The clock runs until you bank the clear, including a victory lap.';
+            const describeBest = (best) => (best ? `Unassisted best · ${formatMilliseconds(best)}. ` : '') + clock;
+            const { records } = steamService;
+            note.textContent = describeBest(records?.bests?.[board.name]?.score);
+            host.appendChild(note);
+            records?.manager?.getStatistics().then((snapshot) => {
+                if (host.contains(note)) note.textContent = describeBest(localOrbBest(snapshot.recordBook, level.id));
+            }).catch(() => {});
+            if (steamLeaderboardsAvailable()) {
+                const compare = doc.createElement('details');
+                const toggle = doc.createElement('summary');
+                toggle.textContent = 'Compare on Steam';
+                const panelHost = doc.createElement('div');
+                compare.append(toggle, panelHost);
+                host.appendChild(compare);
+                compare.addEventListener('toggle', () => {
+                    if (!compare.open || !host.contains(compare) || orbRecords?.container === panelHost) return;
+                    orbRecords?.destroy();
+                    orbRecords = new SteamLeaderboardPanel({ title: 'Orb records', boards: [board] });
+                    orbRecords.mount(panelHost);
+                });
+                friendComparison(board).then((result) => {
+                    if (!result || !host.contains(compare)) return;
+                    const parts = [];
+                    if (result.self?.rank) parts.push(`My rank #${result.self.rank}`);
+                    if (result.friend) parts.push(`${result.friend.name} · ${formatMilliseconds(result.friend.score)}`);
+                    if (result.friend && result.self) {
+                        const delta = result.self.score - result.friend.score;
+                        parts.push(delta === 0 ? 'Tied' : formatMilliseconds(Math.abs(delta)) + (delta < 0 ? ' ahead' : ' behind'));
+                    }
+                    if (parts.length) toggle.textContent = `${parts.join(' · ')} · Compare`;
+                });
+            }
+        }
+    }
 
     const starsNode = doc.getElementById('level-panel-stars');
     if (starsNode) {

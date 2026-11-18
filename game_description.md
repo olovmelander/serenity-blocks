@@ -31,7 +31,8 @@ Clean canvas when the well stands empty.
   choose, then the cascade runs.
 - **Local Versus.** Up to four players on one screen, with keyboards, controllers or bots. Clear
   rows to send garbage across, play alone or in teams, and set the rules yourself.
-- **Online Versus.** Free-for-all matches for two to eight players, through Steam.
+- **Online Versus.** Free-for-all matches for two to eight players through Steam lobbies and Valve’s relays.
+- **Records.** Keep personal bests offline. Choose to share Single Player and Infinity records and unassisted Odyssey times on Steam, then compare with friends or the global top ten.
 
 ## A place to breathe
 

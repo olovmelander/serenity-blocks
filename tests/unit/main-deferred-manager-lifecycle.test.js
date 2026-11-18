@@ -35,7 +35,8 @@ function fixture() {
         releaseImport = () => resolve({ default: CloudManager });
     }));
     const deps = {
-        HighScoreManager: class {},
+        steamService: { records: {} },
+        HighScoreManager: class { async recoverPendingRuns() {} },
         DemoManager: class {},
         SettingsManager: class { load() {} get() { return settings; } },
         DisplayManager: class {},

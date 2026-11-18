@@ -34,7 +34,7 @@ module.exports = async function afterPack(context) {
     const contentsModule = path.join(__dirname, 'packaged-app-check.mjs');
     const { checkPackagedApp } = await import(pathToFileURL(contentsModule).href);
     for (const resourcesDir of packaged) {
-        const problems = checkPackagedApp({ appOutDir: context.appOutDir, resourcesDir });
+        const problems = checkPackagedApp({ appOutDir: context.appOutDir, resourcesDir, platform: context.electronPlatformName });
         if (problems.length > 0) {
             throw new Error(
                 `[afterPack] Packaging blocker: ${problems.length} problem(s) with what the package holds `
@@ -55,6 +55,9 @@ module.exports = async function afterPack(context) {
         console.log(`[afterPack] IP-string gate: ${fileCount} packaged files, no disallowed names.`);
     }
 
+    const { evaluatePrivacyPolicy } = await import(pathToFileURL(path.join(__dirname, 'release-gate-policy.mjs')).href);
+    const privacy = evaluatePrivacyPolicy({ root: path.join(__dirname, '..'), isReleaseBuild: process.env.SERENITY_RELEASE === '1' });
+    if (privacy.failed) throw new Error(privacy.diagnostics.map((item) => item.message).join('\n'));
     if (process.env.SERENITY_RELEASE === '1') {
         const appIdModule = path.join(__dirname, '..', 'electron', 'steam-app-id.js');
         const { RELEASE_STEAM_APP_ID, isReleaseSteamAppId } = await import(pathToFileURL(appIdModule).href);

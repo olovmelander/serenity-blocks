@@ -15,7 +15,7 @@ const allowedInvokeChannels = new Set([
     'desktop:get-debug-tools-status', 'desktop:open-devtools',
     'desktop:open-renderer-debugger', 'desktop:get-log-paths',
     'desktop:apply-runtime-profile', 'desktop:store-performance-report',
-    'desktop:startup-mark', 'desktop:quit',
+    'desktop:startup-mark', 'desktop:quit', 'desktop:import-local-records',
     'steam:isInitialized', 'steam:getSteamId', 'steam:getPlayerName',
     'steam:getAppId', 'steam:getConnectionStatus', 'steam:getCapabilities',
     'steam:isSteamRunning', 'steam:checkConnection', 'steam:getAvatar',
@@ -25,6 +25,8 @@ const allowedInvokeChannels = new Set([
     'steam:uploadScore', 'steam:getLeaderboard', 'steam:getLeaderboardEntry',
     'steam:cloudWrite', 'steam:cloudRead', 'steam:cloudDelete',
     'steam:cloudExists', 'steam:cloudGetQuota', 'steam:cloudGetTimestamp',
+    'steam:commitStats', 'steam:cloudList', 'steam:pendingInvites', 'steam:ackInvite',
+    'steam:showKeyboard', 'steam:filterChat', 'steam:setLobbyOwner',
     'steam:getFriends', 'steam:getPersonaState',
     'steam:inviteToLobby', 'steam:openLobbyInviteDialog',
     'steam:activateOverlay', 'steam:activateOverlayToUser',
@@ -38,7 +40,7 @@ const allowedInvokeChannels = new Set([
 
 const allowedEventChannels = new Set([
     'steam:lobbyJoinRequested',
-    'steam:lobbyMember',
+    'steam:lobbyMember', 'steam:keyboardDismissed',
     'steam:p2pSessionFailed',
     'steam:serverConnection',
     'steam:status',

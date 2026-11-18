@@ -245,6 +245,7 @@ describe('SteamService offline queue from an older build', () => {
         vi.spyOn(console, 'log').mockImplementation(() => {});
         const { SteamService } = await vi.importActual('../../src/core/steam/steam-service.js');
         const service = new SteamService();
-        expect(service.offlineQueue.map((entry) => entry.action)).toEqual(['uploadScore']);
+        expect(service.offlineQueue).toEqual([]);
+        expect(JSON.parse(values.get('steamLegacyPendingArchive'))[1].action).toBe('uploadScore');
     });
 });

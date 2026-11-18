@@ -4,7 +4,7 @@ import {
 
 import { SteamLeaderboardPanel } from '../../src/ui/components/steam-leaderboard-panel.js';
 
-const steam = vi.hoisted(() => ({ steamId: 'local-player' }));
+const steam = vi.hoisted(() => ({ steamId: 'local-player', records: { isPending: () => true } }));
 
 vi.mock('../../src/core/steam/steam-service.js', () => ({ default: steam }));
 
@@ -106,7 +106,7 @@ describe('Steam leaderboard: this run where it ranks', () => {
         expect(render(board, times, { pageSize: 8 }).at(-1)).toBe('*— You (pending)');
     });
 
-    it('shows the run alone over an empty board, and not at all once Steam lists the player', () => {
+    it('shows a pending improvement beside the older confirmed rank until Steam returns the same PB', () => {
         const board = {
             id: 'time', name: 'time', currentScore: 112000, sortOrder: 'asc',
         };
@@ -114,6 +114,8 @@ describe('Steam leaderboard: this run where it ranks', () => {
         const listed = [...times, {
             rank: 4, steamId: 'local-player', name: 'Me', score: 120000,
         }];
+        expect(render(board, listed).some((row) => row.startsWith('*'))).toBe(true);
+        listed.at(-1).score = board.currentScore;
         expect(render(board, listed).some((row) => row.startsWith('*'))).toBe(false);
         expect(render({ ...board, currentScore: null }, times).some((row) => row.startsWith('*'))).toBe(false);
     });
