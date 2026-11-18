@@ -15,6 +15,9 @@
  *                            alone, one station every 100 s of `t`, never resting)
  *   hour=<place>             hold the light at a wheel place (0 morning, 1 afternoon, 2 golden
  *                            evening, 3 sunset, 4 light night, 5 dawn mist; fractions mix)
+ *   weather=<place>          hold the weather at a wheel place (0 fair, 1 mackerel sky, 2 building
+ *                            heaps, 3 after the shower, 4 veiled sun, 5 clear and windy; fractions
+ *                            mix; it also turns with the clock alone, one every 130 s of `t`)
  *   parts=land,river         draw only these parts (land, river, rocks, trees, woods, meadow, fx, sky)
  *   falseColor=1             post debug view: band the pre-tone-map max channel
  *   noPost=1                 raw scene (no bloom/grade)
@@ -153,6 +156,7 @@ export function create({
     const pointer = { x: num(params, 'px'), y: num(params, 'py') };
     const level = Math.max(1, Math.round(num(params, 'level', 1)));
     const hourHold = params.has('hour') ? num(params, 'hour', 0) : null;
+    const weatherHold = params.has('weather') ? num(params, 'weather', 0) : null;
     const eventName = params.get('event');
     const eventAge = num(params, 'eventAge', 0.6);
     const holdCombo = Math.max(0, Math.round(num(params, 'combo', 0)));
@@ -335,6 +339,7 @@ export function create({
         world.bindCamera(camera);
         world.setReducedMotion(params.get('reduce') === '1');
         if (hourHold !== null) world.setCaptureOverrides({ hour: hourHold });
+        if (weatherHold !== null) world.setCaptureOverrides({ weather: weatherHold });
         const partsParam = params.get('parts');
         if (partsParam) world.showOnlyParts(partsParam.split(',').map((p) => p.trim()));
         if (!noPost) {

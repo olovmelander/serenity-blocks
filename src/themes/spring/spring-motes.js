@@ -10,6 +10,9 @@
  *   glint   a brief sparkle on a cup a bloom front opens, or on the river's ripples
  *   down    willow seed down: soft white tufts that float, ride the breeze and blaze against the sun
  *   whirl   pollen and down caught in a little whirlwind: they circle a centre as they climb
+ *   petal   a petal on the wind: a small bright blade that tumbles as it flies, flashing as it
+ *           turns its face to the light (a clear's streamers, a lock's puff, a perfect clear's
+ *           shower); `petalWhirl` is a petal caught in a whirlwind
  */
 import * as THREE from 'three/webgpu';
 import {
@@ -29,6 +32,7 @@ import {
     sin,
     smoothstep,
     varying,
+    vec2,
     vec3,
     vec4,
 } from 'three/tsl';
@@ -37,7 +41,15 @@ import { airClarity } from './spring-light.js';
 import { AIR } from './spring-air.js';
 
 export const MOTE_KIND = Object.freeze({
-    pollen: 0, dew: 1, glint: 2, down: 3, whirl: 4,
+    pollen: 0, dew: 1, glint: 2, down: 3, whirl: 4, petal: 5, petalWhirl: 6,
+});
+/**
+ * A petal: how much narrower it is than long, the least of its face it shows edge-on, how fast it
+ * spins in its own plane and flips over (rad/s, slowest … fastest), and its light (times the
+ * hour's, `flash` more when it faces the eye).
+ */
+export const PETAL = Object.freeze({
+    narrow: 0.56, edge: 0.22, spin: Object.freeze([1.6, 4.2]), flip: Object.freeze([2.6, 6.4]), light: 0.62, flash: 0.5,
 });
 
 /** How fast the breeze carries what floats off downwind (m/s², the drift grows with age²). */
@@ -110,6 +122,8 @@ export class Motes {
         const isKind = (k) => float(1.0).sub(smoothstep(0.2, 0.45, kind.x.sub(k).abs()));
         // The mote's light (rgb) and whether it is down (w), worked out once a corner.
         const vGlow = varying(vec4(0.0), 'spMoteGlow');
+        // Whether it is a petal (a crisp blade, not a soft speck).
+        const vPetal = varying(float(0.0), 'spMotePetal');
         material.vertexNode = Fn(() => {
             const age = u.time.sub(start.w);
             const life = move.w;
@@ -118,7 +132,8 @@ export class Motes {
             const dew = isKind(MOTE_KIND.dew);
             const glint = isKind(MOTE_KIND.glint);
             const down = isKind(MOTE_KIND.down);
-            const whirl = isKind(MOTE_KIND.whirl);
+            const petal = isKind(MOTE_KIND.petal).add(isKind(MOTE_KIND.petalWhirl)).toVar();
+            const whirl = isKind(MOTE_KIND.whirl).add(isKind(MOTE_KIND.petalWhirl));
             const floats = float(1.0).sub(dew).sub(glint);
             // Thrown: a line, an arc under gravity, a slow curl.
             const fall = vec3(0.0, kind.w.mul(a).mul(a).mul(0.5), 0.0);
@@ -140,7 +155,19 @@ export class Motes {
             const depth = max(view.z.negate(), 0.01);
             const drawn = max(look.w, depth.mul(u.pixelAngle).mul(1.6));
             const cover = look.w.div(drawn).pow(2.0);
-            const lifted = view.add(vec4(positionGeometry.xy.mul(drawn), 0.0, 0.0));
+            // A petal tumbles: it spins in its own plane and flips over, showing its face and its
+            // edge by turns.
+            const spinRate = mix(float(PETAL.spin[0]), float(PETAL.spin[1]), kind.y);
+            const flipRate = mix(float(PETAL.flip[1]), float(PETAL.flip[0]), kind.y);
+            const spin = kind.y.mul(TAU * 3.0).add(a.mul(spinRate));
+            const face = cos(a.mul(flipRate).add(kind.y.mul(17.0))).abs().toVar();
+            const narrow = face.mul(1.0 - PETAL.edge).add(PETAL.edge).mul(PETAL.narrow);
+            const blade = vec2(positionGeometry.x, positionGeometry.y.mul(narrow));
+            const cs = cos(spin);
+            const sn = sin(spin);
+            const turned = vec2(blade.x.mul(cs).sub(blade.y.mul(sn)), blade.x.mul(sn).add(blade.y.mul(cs)));
+            const corner = mix(positionGeometry.xy, turned, petal);
+            const lifted = view.add(vec4(corner.mul(drawn), 0.0, 0.0));
 
             const t = clamp(a.div(life), 0.0, 1.0);
             const fadeIn = smoothstep(0.0, mix(mix(float(0.12), float(0.04), dew), float(0.2), down), t);
@@ -159,9 +186,14 @@ export class Motes {
             const sparkle = mix(
                 float(1.0),
                 sin(a.mul(mix(6.0, 13.0, kind.y)).add(kind.y.mul(50.0))).mul(0.4).add(0.6),
-                floats.sub(down).max(0.0),
+                floats.sub(down).sub(petal).max(0.0),
             );
-            const power = mix(mix(mix(float(1.3), float(1.0), dew), float(2.4), glint), float(0.8), down);
+            // (A petal is a lit blade, not a glowing speck: the hour's light, brighter face-on.)
+            const power = mix(
+                mix(mix(mix(float(1.3), float(1.0), dew), float(2.4), glint), float(0.8), down),
+                face.mul(PETAL.flash).add(PETAL.light),
+                petal,
+            );
             // A piece's pollen glows in its colour: lifted toward white, so a dark blue still reads.
             const pigment = floats.sub(down).max(0.0);
             const tone = mix(look.xyz, look.xyz.mul(1.3).add(0.12), pigment);
@@ -170,6 +202,7 @@ export class Motes {
                 .mul(cover.mul(0.6).add(0.4))
                 .mul(airClarity(u, c).mul(0.7).add(0.3));
             vGlow.assign(vec4(rgb, down));
+            vPetal.assign(petal);
             return alive.select(cameraProjectionMatrix.mul(lifted), vec4(0.0, 0.0, -2.0, 1.0));
         })();
         material.colorNode = vec4(0.0, 0.0, 0.0, 1.0);
@@ -180,7 +213,9 @@ export class Motes {
             const round = clamp(float(1.0).sub(r2), 0.0, 1.0);
             const speck = exp(r2.mul(-9.0)).mul(0.9).add(exp(r2.mul(-2.6)).sub(0.08).max(0.0).mul(0.2));
             const tuft = exp(r2.mul(-2.0)).mul(0.75).add(exp(r2.mul(-8.0)).mul(0.5));
-            return vec4(vGlow.xyz.mul(mix(speck, tuft, vGlow.w)).mul(round.mul(round)), 0.0);
+            // (A petal's blade is cut crisp; the vertex stage has already shaped its quad.)
+            const cut = smoothstep(1.0, 0.7, r2);
+            return vec4(vGlow.xyz.mul(mix(mix(speck, tuft, vGlow.w).mul(round.mul(round)), cut, vPetal)), 0.0);
         })();
         return material;
     }

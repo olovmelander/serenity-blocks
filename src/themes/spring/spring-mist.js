@@ -57,6 +57,16 @@ export const PUFF = Object.freeze({
 
 /** How bright the spray bow is in the spray (times the sun's light). */
 export const MIST_BOW = 0.36;
+/**
+ * The spray's share of the sun's light: from any side (`base`), more with the sun behind it
+ * (`forward`), how far a puff's dense body shades itself when the sun stands behind it (`core`),
+ * and the share of its skylight that is the horizon's and the haze's rather than the zenith's (`sky`).
+ */
+/** Four lines' thunder in the spray: how much it swells each puff, and how much higher it throws them. */
+export const MIST_THUNDER = Object.freeze({ swell: 0.14, rise: 0.75 });
+export const MIST_LIGHT = Object.freeze({
+    base: 0.3, forward: 0.3, core: 0.55, sky: 0.55,
+});
 
 /** One of `rows` picked by weight (its `power`). */
 function pickBy(rows, random) {
@@ -203,7 +213,8 @@ export class Mist {
         // What is the same over a whole puff (its forward scatter, the air between it and the eye,
         // its height over the pool) is worked out once a corner, not once a pixel: the puffs
         // overlap many deep where the tongues land.
-        const vLight = varying(vec3(0.0), 'spMistLight'); // forward scatter, clarity, height's lift
+        // (w: how squarely the sun stands behind the puff, 0..1.)
+        const vLight = varying(vec4(0.0), 'spMistLight'); // forward scatter, clarity, height's lift, backlight
         // How far (degrees) this corner stands from the point opposite the sun, for the spray bow:
         // worked out a corner (the bow's ring is smooth enough across a puff to interpolate).
         const vTheta = varying(float(0.0), 'spMistTheta');
@@ -216,9 +227,11 @@ export class Mist {
             const ease = t.mul(float(2.0).sub(t));
             // The flood swells the mist and lifts it with the water.
             // (Not so much that a long chain's cloud hides the fall it rises from.)
-            const swell = u.foamBoost.mul(0.5).add(u.flood.mul(0.25)).add(1.0);
+            const swell = u.foamBoost.mul(0.5).add(u.flood.mul(0.25)).add(u.thunder.mul(MIST_THUNDER.swell)).add(1.0);
+            // (The thundering fall throws its spray up in a tower over the brink.)
+            const tower = u.thunder.mul(MIST_THUNDER.rise).add(1.0);
             const centre = aBase.xyz.add(vec3(aMove.x, 0.0, aMove.y).mul(ease))
-                .add(vec3(0.0, aMove.z.mul(pow(t, 0.7)).mul(swell).add(u.flood), 0.0)).toVar();
+                .add(vec3(0.0, aMove.z.mul(pow(t, 0.7)).mul(swell).mul(tower).add(u.flood), 0.0)).toVar();
             // A slow curl so neighbouring puffs never move in step.
             const curl = vec3(sin(t.mul(5.0).add(aLook.x.mul(31.0))), 0.0, cos(t.mul(4.0).add(aLook.x.mul(17.0))))
                 .mul(0.6);
@@ -245,10 +258,11 @@ export class Mist {
             const fwd = clamp(dot(V, u.sunDir), 0.0, 1.0);
             const f2 = fwd.mul(fwd);
             const f8 = f2.mul(f2).mul(f2).mul(f2);
-            vLight.assign(vec3(
-                f8.mul(0.48).add(0.36),
+            vLight.assign(vec4(
+                f8.mul(MIST_LIGHT.forward).add(MIST_LIGHT.base),
                 airClarity(u, centre),
                 smoothstep(0.0, 14.0, centre.y.sub(FALL.pool)).mul(0.35),
+                f2,
             ));
             const anti = normalize(cameraViewMatrix.mul(vec4(u.sunDir.negate(), 0.0)).xyz);
             vTheta.assign(acos(clamp(dot(normalize(lifted.xyz), anti), -1.0, 1.0)).mul(180 / Math.PI));
@@ -286,8 +300,14 @@ export class Mist {
             // stood the white boil out against it as a bar.)
             const under = smoothstep(-0.9, 0.5, corner.y.add(swirl.sub(0.5).mul(0.8)));
             const shade = mix(float(0.78), float(1.0), max(under, max(vSoft.z, smoothstep(2.5, 0.5, over))));
-            const lit = u.fill.mul(mix(float(1.35), float(1.9), shade)).add(u.sun.mul(u.sunUp).mul(vLight.x).mul(top))
-                .mul(shade);
+            // Against the sun a cloud of spray blazes only where it is thin: its body stands in
+            // its own shade, so the fall behind it keeps its form instead of burning out.
+            const body = smoothstep(0.2, 0.85, shape).mul(vLight.w);
+            const sunLit = u.sun.mul(u.sunUp).mul(vLight.x).mul(top).mul(float(1.0).sub(body.mul(MIST_LIGHT.core)));
+            // Out of the sun the spray takes the whole sky's light, not only the blue overhead: the
+            // horizon's and the haze's share keep it from glowing violet in the evening's shade.
+            const skyLight = mix(u.fill.mul(1.9), u.haze.mul(1.1).add(u.horizon.mul(0.25)).mul(0.82), MIST_LIGHT.sky);
+            const lit = skyLight.mul(mix(float(0.71), float(1.0), shade)).add(sunLit).mul(shade);
             // The spray bow: where the spray stands about 42° from the point opposite the sun
             // (with the sun high behind the eye, the bow arcs through the spray at the fall's foot).
             // Back-to-back and the heat of play brighten it (u.bow, 1 at rest).
