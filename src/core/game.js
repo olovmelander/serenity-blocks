@@ -18,7 +18,9 @@ import {
     generateBoard, createBoardGrid, rebuildBoardGridFromPieces, markBoardDirty, invalidateGhostCache,
 } from './board.js';
 import { insertGarbageEntries } from './garbage.js';
-import { cancelFixedCascade, processPhysics, startFixedCascade, tryProcessNoClearSync } from './physics.js';
+import {
+    cancelFixedCascade, processPhysics, startFixedCascade, tryProcessNoClearSync,
+} from './physics.js';
 import { piecePool } from '../utils/object-pool.js';
 import { performanceMonitor } from '../utils/performance-monitor.js';
 import { createInfinityGrid, expandGridIfNeeded } from './infinity-grid.js';
@@ -1374,7 +1376,9 @@ export function lockPiece(gameState, playDropCallback, physicsCallbacks, timing 
         const recover = (error) => {
             console.error('[Game] Physics processing failed:', error);
             markBoardDirty(gameState);
-            completePhysicsAndSpawn(gameState, physicsCallbacks, null, '[Game] Recovery spawn failed after physics error:');
+            completePhysicsAndSpawn(
+                gameState, physicsCallbacks, null, '[Game] Recovery spawn failed after physics error:',
+            );
         };
         if (gameState.useFixedCascade) {
             try { startFixedCascade(gameState, physicsCallbacks, complete, recover); } catch (error) { recover(error); }
@@ -1421,8 +1425,9 @@ export const MAX_SIMULATION_DELTA_MS = 50;
  * @param {number} time - Current timestamp
  * @param {GameState} gameState - Current game state
  * @param {Object} callbacks - Callbacks for draw, stats, sound, physics
+ * @param {number} [tickDeltaMs] - Elapsed game time when the caller owns a fixed tick
  */
-export function updateGame(time, gameState, callbacks = {}) {
+export function updateGame(time, gameState, callbacks = {}, tickDeltaMs) {
     const {
         drawCallback, updateStatsCallback, playDropCallback, physicsCallbacks,
     } = callbacks || {};
@@ -1443,7 +1448,7 @@ export function updateGame(time, gameState, callbacks = {}) {
     // PERFORMANCE FIX: Process game logic only when not paused
     if (!gameState.isPaused) {
         const previousTime = Number.isFinite(gameState.lastTime) ? gameState.lastTime : safeTime;
-        const delta = Math.max(0, safeTime - previousTime);
+        const delta = tickDeltaMs ?? Math.max(0, safeTime - previousTime);
         // Raw `delta` stays the wall-clock quantity (sim clock, hit-stop expiry).
         // Player-visible motion runs on the clamped one so a GPU stall cannot be
         // replayed as a burst of moves — see MAX_SIMULATION_DELTA_MS.

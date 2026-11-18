@@ -6,6 +6,7 @@ import { findConnectedComponents } from '../cascade-helpers.js';
 import { settleLabelledBoard } from '../stillfall/stillfall-cascade.js';
 import { seededRandom } from '../../utils/helpers.js';
 import { GravityBotController, gravityPlanningRate } from './gravity-bot-controller.js';
+import { findReachablePlacements } from './reachability-pathfinder.js';
 import { gravityBoardKey, gravityReward, readGravityBoard } from './gravity-search.js';
 import { deal, replay, spawn } from '../../../reports/bot-ai-audit-2026-11/solo.mjs';
 
@@ -99,5 +100,41 @@ describe('live gravity policy', () => {
     it('shares a bounded aggregate amount of planning among local slots', () => {
         expect(gravityPlanningRate(4) * 4).toBeLessThanOrEqual(gravityPlanningRate(1));
         expect(gravityPlanningRate(3) * 3).toBeCloseTo(gravityPlanningRate(4) * 4);
+    });
+
+    it('has a legal escape before the reaction deadline on a clean, high stack', async () => {
+        const state = deal(1006);
+        for (let y = HIDDEN_ROWS + 2; y < state.boardGrid.length; y++) {
+            state.boardGrid[y][1] = { id: 'left', type: 'I' };
+        }
+        state.lockedPieces = findConnectedComponents(state.boardGrid);
+        const bot = controller(state);
+        const tick = 1000 / 60;
+        let elapsed = 0;
+        while (!bot.lastPlan && elapsed < 400) {
+            elapsed += tick;
+            bot.update(tick, elapsed);
+        }
+        expect(elapsed).toBeLessThanOrEqual(bot.readyAtMs + tick);
+        expect(bot.lastPlan.tactics.protectSpawn).toBe(true);
+        const plan = bot.lastPlan;
+        const waves = [];
+        await replay(state, plan.actions, { spawnPiece: () => spawn(state), onLineClear: (n) => waves.push(n) });
+        expect(waves).toEqual(plan.candidate.waves);
+        expect(state.isGameOver).toBe(false);
+        state.reset();
+    });
+
+    it('preserves reachable poses and input paths on an expanded Infinity well', () => {
+        const state = deal(1006);
+        state.isInfinityMode = true;
+        state.boardGrid = Array.from({ length: 112 }, () => Array(COLS).fill(null));
+        state.currentPiece.y = 89;
+        for (let y = 104; y < 112; y++) state.boardGrid[y][2] = { id: 7, type: 'I' };
+        const poses = (list) => list.map(({
+            x, y, rotation, actions,
+        }) => [x, y, rotation, actions]);
+        expect(poses(controller(state).reachablePlacements(state))).toEqual(poses(findReachablePlacements(state)));
+        state.reset();
     });
 });

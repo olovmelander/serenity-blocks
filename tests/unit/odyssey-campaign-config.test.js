@@ -9,11 +9,12 @@ import { ODYSSEY_DUEL_GRAVITY_BY_CHAPTER, ODYSSEY_DUEL_KNOCKOUTS } from '../../s
 
 const DUEL_IDS = [5, 10, 18, 26, 34, 48, 56, 60];
 const DUEL_NAMES = ['Cinder', 'Coral', 'Willow', 'Frost', 'Zephyr', 'Nova', 'Prism', 'Neon'];
-// Level design audit 2026-11 (R8, D8): each rival is at least as smart as the last and faster, but never faster
-// than a strong person. Prism (56) plays at tier 6 like Nova: tier 7's two-piece lookahead made it as hard as the
-// last rival for a person.
-const RIVAL_TIERS = [1, 2, 3, 4, 5, 6, 6, 8];
-const RIVAL_CAPS = [null, null, null, null,
+// The gravity-bot remap preserves the D8 windows and the regular and strong human-pace panels.
+const RIVAL_TIERS = [1, 2, 2, 4, 4, 5, 5, 6];
+const RIVAL_JUDGMENT = { 48: { previewChance: 0.54 }, 56: { previewChance: 0.775 }, 60: { twoPreviewChance: 0.36 } };
+const RIVAL_CAPS = [
+    { maxApm: 90, reactionMs: [500, 900] }, { maxApm: 120, reactionMs: [420, 760] },
+    { maxApm: 165, reactionMs: [320, 620] }, { maxApm: 230, reactionMs: [240, 480] },
     { maxApm: 270, reactionMs: [200, 380] }, { maxApm: 300, reactionMs: [180, 340] },
     { maxApm: 330, reactionMs: [160, 320] }, { maxApm: 340, reactionMs: [150, 300] }];
 
@@ -45,6 +46,7 @@ describe('Odyssey campaign objectives', () => {
                 botName: DUEL_NAMES[index],
                 fragsToWin: ODYSSEY_DUEL_KNOCKOUTS,
                 ...(RIVAL_CAPS[index] ? { botOverrides: RIVAL_CAPS[index] } : {}),
+                ...(RIVAL_JUDGMENT[duel.id] ? { botJudgment: RIVAL_JUDGMENT[duel.id] } : {}),
             });
             expect(duel.metadata.subtitle).toBe(`Rival · ${DUEL_NAMES[index]} · Tier ${RIVAL_TIERS[index]}`);
             expect(duel.metadata.description).toContain(DUEL_NAMES[index]);

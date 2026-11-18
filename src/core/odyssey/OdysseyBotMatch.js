@@ -3,6 +3,7 @@ import {
 } from '../game.js';
 import { MultiPlayerState } from '../multi-player-state.js';
 import { advanceFixedCascade, retireFixedCascade } from '../physics.js';
+import { HIDDEN_ROWS } from '../constants.js';
 import { PuzzleBotController } from '../ai/puzzle-bot-controller.js';
 import { GravityBotController, gravityPlanningRate } from '../ai/gravity-bot-controller.js';
 import { bindLegacySessionRng } from '../session-rng.js';
@@ -66,8 +67,13 @@ export class OdysseyBotMatch {
             // than a strong person.
             configOverrides: session.levelConfig.mechanics.versus.botOverrides || null,
             // Both players share the duel clock. Budget the live rival in deterministic search units.
-            planUnitsPerMs: frozenRival ? 2.5 : gravityPlanningRate(),
+            planUnitsPerMs: frozenRival ? 2.5 : gravityPlanningRate(2),
             pendingRows: () => this.multiplayer.getGarbageQueue(1).getTotalLines(),
+            opponentRoom: () => {
+                const grid = this.players[0].boardGrid;
+                const roof = grid.findIndex((row) => row.some(Boolean));
+                return (roof < 0 ? grid.length : roof) - HIDDEN_ROWS;
+            },
             rng: seededRandom((seed ^ 0x85ebca6b) >>> 0),
             timingRng: seededRandom((seed ^ 0xc2b2ae35) >>> 0),
             actions: {
@@ -220,8 +226,11 @@ export class OdysseyBotMatch {
         if (!this.frozenRival) {
             this.players.forEach((state) => advanceFixedCascade(state, delta));
         }
-        updateGame(time, this.players[0], { physicsCallbacks: humanCallbacks, playDropCallback });
-        updateGame(time, this.players[1], { physicsCallbacks: this.botCallbacks });
+        // Display timestamps still service the input devices. Use the exact
+        // duel tick for gravity and elapsed lock bonuses on both boards.
+        const tickDelta = this.frozenRival ? undefined : delta;
+        updateGame(time, this.players[0], { physicsCallbacks: humanCallbacks, playDropCallback }, tickDelta);
+        updateGame(time, this.players[1], { physicsCallbacks: this.botCallbacks }, tickDelta);
         this.bot.update(delta, this.botTimeMs);
     }
 

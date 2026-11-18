@@ -201,7 +201,9 @@ The seeded two-seat test in `local-multiplayer-fixed-mode.test.js` exercises
 normal mode startup, both bot schedulers and a catch-up frame at 60 and 165 Hz.
 
 Live Odyssey rival matches keep the existing duel owner and gameplay callbacks.
-It advances both wells together in 60 Hz steps. The historical campaign
+It advances both wells together in 60 Hz steps and passes that exact elapsed time
+to gravity and lock scoring. The display timestamp continues to sample gamepads.
+The historical campaign
 instrument uses its pinned duel implementation and original rival tiers.
 
 In these matches the board clock also advances each clear hold, gravity row and

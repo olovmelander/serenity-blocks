@@ -70,6 +70,34 @@ describe('Odyssey beat-the-bot match', () => {
     });
     afterEach(() => { vi.restoreAllMocks(); });
 
+    it('replays the rival score and drops across display rates and different wall-clock origins', () => {
+        const play = (hz, origin) => {
+            const { match } = createMatch(getLevelById(60));
+            match.setPaused(false, origin);
+            const result = [];
+            const update = match.bot.update.bind(match.bot);
+            let tick = 0;
+            match.bot.update = (delta, time) => {
+                update(delta, time);
+                tick++;
+                if (tick % 60 === 0) result.push(match.players.map((p) => [
+                    p.score, p.piecesPlaced, p.lines, p.currentPiece?.x, p.currentPiece?.y, p.dropCounter,
+                    p.boardGrid.map((row) => row.map((c) => c?.type || '.').join('')).join('/'),
+                ]));
+            };
+            let elapsed = 0;
+            for (let frame = 0; elapsed < 30000 - 1e-6; frame++) {
+                const delta = Math.min(30000 - elapsed, frame === 71 ? 50 : 1000 / hz);
+                elapsed += delta;
+                match.update(origin + elapsed, delta, {});
+            }
+            match.stop();
+            expect(tick).toBe(1800);
+            return result;
+        };
+        expect(play(165, 83454.789)).toEqual(play(60, 1234.567));
+    });
+
     it('drives the canonical bot effects through actual accepted movement, rotation and lock physics', async () => {
         const { match } = createMatch();
         const bot = match.players[1];

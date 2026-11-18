@@ -10,6 +10,8 @@ const revision = '8dc68d825db61bc04e1cfb4e4c5a1f580ea3e138';
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const dir = mkdtempSync(join(tmpdir(), 'serenity-frozen-campaign-'));
 const args = process.argv.slice(2);
+const inline = args.findIndex(arg => arg.startsWith('--output='));
+if (inline >= 0) args.splice(inline, 1, '--output', args[inline].slice('--output='.length));
 const out = args.indexOf('--output');
 if (out >= 0 && args[out + 1]) args[out + 1] = resolve(args[out + 1]);
 else args.push('--output', resolve('artifacts', 'frozen-campaign'));

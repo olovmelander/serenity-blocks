@@ -1276,7 +1276,13 @@ export function startFixedCascade(gameState, callbacks, onComplete, onError) {
     const result = resolveCascade(gameState.lockedPieces, createResolverContext(gameState));
     let settlePromise;
     const promise = new Promise((resolve) => { settlePromise = resolve; });
-    const job = { steps: resolvedWaveSteps(gameState, callbacks, result), remaining: 0, onComplete, onError, settlePromise };
+    const job = {
+        steps: resolvedWaveSteps(gameState, callbacks, result),
+        remaining: 0,
+        onComplete,
+        onError,
+        settlePromise,
+    };
     fixedCascades.set(gameState, job);
     gameState.latestPhysicsPromise = promise;
     advanceFixedCascade(gameState, 0);

@@ -1,5 +1,6 @@
 import { PuzzleBotController } from './puzzle-bot-controller.js';
 import { canPlaceCandidate } from './reachability-pathfinder.js';
+import { evaluateCandidate } from './board-evaluator.js';
 import {
     gravityBoardKey, gravityLandings, gravityReward, GRAVITY_WEIGHTS, readGravityBoard, searchGravity,
 } from './gravity-search.js';
@@ -13,7 +14,7 @@ const FIRE_WAVES = [2, 2, 2, 2, 3, 3, 3, 4, 4, 4];
 const SURVIVAL_MARGIN = [0, 0, 0, 11, 8, 0, 8, 0, 0, 0];
 
 export function gravityPlanningRate(count = 1) {
-    return (count >= 3 ? 1 : 1.4) / Math.max(1, count);
+    return (count >= 3 ? 0.65 : 1.4) / Math.max(1, count);
 }
 
 function candidate(move) {
@@ -42,6 +43,13 @@ function actionsTo(state, target) {
         .find((p) => p.x === target.x && p.y === target.y && p.rotation === target.rotation)?.actions;
 }
 
+function sliceRate(rate, board, tier, infinity) {
+    if (infinity) return Math.min(rate, 0.3);
+    const nearRoof = board.top - board.first <= 3;
+    if ((tier >= 8 && nearRoof) || (tier <= 3 && (nearRoof || board.garbage))) return Math.min(rate, 0.35);
+    return rate;
+}
+
 function rewardContextKey(state) {
     return [state.level ?? 1, state.linesUntilNextLevel ?? 15, Boolean(state.disableLevelProgression),
         Boolean(state.comboMultiplierEnabled), state.comboMultiplierEnabled ? state.comboMultiplier || 1 : 1].join('/');
@@ -53,6 +61,7 @@ export class GravityBotController extends PuzzleBotController {
     constructor(options) {
         super(options);
         this.pendingRows = options.pendingRows;
+        this.opponentRoom = options.opponentRoom;
         this.judgment = options.judgment;
         const i = this.config.tier - 1;
         this.searchConfig = {
@@ -87,7 +96,8 @@ export class GravityBotController extends PuzzleBotController {
             const state = this.playerState;
             const p = state.currentPiece;
             const target = this.lastPlan?.candidate;
-            if (!p || !target || p.x !== target.x || (p.rotation ?? 0) !== target.rotation || p.y > target.y) return false;
+            if (!p || !target || p.x !== target.x || p.y > target.y) return false;
+            if ((p.rotation ?? 0) !== target.rotation) return false;
             const grid = state.boardGrid || state.board;
             // Garbage or gravity may have changed the landing during a tuck.
             for (let y = Math.floor(p.y) + 1; y <= target.y; y++) {
@@ -110,15 +120,41 @@ export class GravityBotController extends PuzzleBotController {
 
     reachablePlacements(state) {
         const grid = state.boardGrid || state.board;
-        // The compact BFS uses 16-bit stamps on standard boards.
-        if (grid.length >= 64 || state.isInfinityMode) return super.reachablePlacements(state);
         const piece = state.currentPiece;
         return gravityLandings(grid, piece).map((p) => ({
             ...p,
             shapeKey: piece.shapeKey,
             type: piece.type || piece.shapeKey,
             color: piece.color || piece.shapeKey,
+            simulationId: `bot:${piece.shapeKey}:${p.x}:${p.y}:${p.rotation}`,
         }));
+    }
+
+    * applyLookaheadSteps(ranked) {
+        if (!this.boundedRanking) return yield* super.applyLookaheadSteps(ranked);
+        // Keep the fully evaluated legal roof-aware ranking if the remaining
+        // reaction time cannot cover the whole next ply.
+        const rate = Math.min(this.planUnitsPerMs || gravityPlanningRate(), 0.3);
+        const rootWork = ranked.length + Math.floor(ranked.length / 4);
+        const allowance = Math.max(0, Math.floor(this.config.reactionMs[0] * rate) - rootWork);
+        const future = super.applyLookaheadSteps(ranked);
+        for (let work = 0; work < allowance; work++) {
+            const step = future.next();
+            if (step.done) return step.value;
+            yield;
+        }
+        future.return();
+        return ranked;
+    }
+
+    * rankSteps(candidates, config) {
+        if (!this.boundedRanking) return yield* super.rankSteps(candidates, config);
+        const ranked = [];
+        for (const c of candidates) {
+            ranked.push({ ...c, evaluation: evaluateCandidate(c, config, this.rng) });
+            if (ranked.length % 4 === 0) yield;
+        }
+        return ranked.sort((a, b) => b.evaluation.score - a.evaluation.score);
     }
 
     * evaluatePlacementsSteps(state, placements, preparation) {
@@ -145,32 +181,35 @@ export class GravityBotController extends PuzzleBotController {
         this.queueAtPlan = null;
         this.recognizedSpawn = null;
         this.waitingToExecute = false;
+        this.replanInterrupted = false;
+        this.retryAllowance = null;
     }
 
-    * planSteps() {
+    * planSteps(observed) {
         const state = this.playerState;
         const pending = this.getPendingGarbage();
         const { tier } = this.config;
+        const root = state.isInfinityMode ? null : observed || readGravityBoard(state.boardGrid || state.board);
         if (this.recognizedSpawn !== state.piecesPlaced) {
             this.recognizedSpawn = state.piecesPlaced;
             if (tier <= 3) {
                 this.config.lookaheadDepth = this.rng() < [0.12, 0.67, 0.87][tier - 1] ? 1 : 0;
                 this.config.lookaheadWeight = 0.45;
             }
-            if (tier === 4 && this.judgment?.threeWaveChance) {
-                this.searchConfig.fireWaves = this.rng() < this.judgment.threeWaveChance ? 3 : 2;
-            }
             if (tier === 5 && this.judgment?.previewChance !== undefined) {
-                this.searchConfig.previews = this.rng() < this.judgment.previewChance ? 1 : 0;
+                const inGarbage = pending > 0 || root?.garbage > 0;
+                const chance = inGarbage ? this.judgment.digPreviewChance ?? this.judgment.previewChance
+                    : this.judgment.previewChance;
+                this.searchConfig.previews = this.rng() < chance ? 1 : 0;
             }
             if (tier === 6) this.searchConfig.previews = this.rng() < (this.judgment?.twoPreviewChance ?? 0.55) ? 2 : 1;
         }
-        const root = state.isInfinityMode ? null : readGravityBoard(state.boardGrid || state.board);
         this.urgentSurvival = tier === 3 && root && !root.garbage && !pending && root.top - root.first < 9;
         if (tier === 3 && root && root.top - root.first < 12) this.config.lookaheadDepth = this.urgentSurvival ? 2 : 1;
-        const survivalMargin = this.judgment?.survivalMargin ?? SURVIVAL_MARGIN[tier - 1];
+        const survivalMargin = SURVIVAL_MARGIN[tier - 1];
         const useSurvival = root && tier <= 7 && !root.garbage && root.top - root.first < survivalMargin;
-        if (state.isInfinityMode || tier <= 3 || useSurvival) {
+        this.boundedRanking = state.isInfinityMode;
+        if (state.isInfinityMode || (!this.urgentSurvival && (tier <= 3 || useSurvival))) {
             // With zero or one preview the established survival judgement protects
             // novices from cavities they cannot plan their way out of.
             const plan = yield* super.planSteps();
@@ -184,9 +223,11 @@ export class GravityBotController extends PuzzleBotController {
             return plan;
         }
         const tactics = { pending, danger: root.top - root.first - pending < 6 };
+        const pressing = this.judgment?.pressAtRows !== undefined && this.opponentRoom?.() <= this.judgment.pressAtRows;
         const first = this.proof[0];
         const visible = [state.currentPiece.shapeKey, ...this.nextShapeKeys(state)];
-        if (first && first.pending === pending && first.rewardContext === rewardContextKey(state)
+        if (first && first.pending === pending && first.pressing === pressing
+            && first.rewardContext === rewardContextKey(state)
             && this.proof.every((step, i) => step.move.shapeKey === visible[i])
             && first.before === gravityBoardKey(root.cells)) {
             const actions = actionsTo(state, first.move);
@@ -203,9 +244,23 @@ export class GravityBotController extends PuzzleBotController {
         // rate. Keep the last completed ply if the next one cannot fit. A pressure
         // change forces a new observation and can invalidate a previously ready move.
         let ready = null;
-        const allowance = Math.max(1, Math.floor(this.config.reactionMs[0] * (this.planUnitsPerMs || gravityPlanningRate())));
+        const rate = sliceRate(this.planUnitsPerMs || gravityPlanningRate(), root, tier, false);
+        const ideal = this.config.reactionMs[0] * rate;
+        const allowance = Math.max(1, Math.floor(Math.min(ideal, this.retryAllowance ?? Infinity)));
+        // Shorter previews need two extra rows to clear the centre before a spawn is blocked.
+        const retreatRows = this.searchConfig.previews < 3 ? 10 : 8;
+        const protectSpawn = this.urgentSurvival || (tier >= 8 && this.planUnitsPerMs >= 0.35 && !root.garbage
+            && root.top - root.first <= retreatRows);
+        tactics.protectSpawn = protectSpawn;
         const config = {
             ...this.searchConfig,
+            ...(pressing && {
+                attackStock: 4, sustainedStock: 4, minAttack: 1, sustainedAttack: 1,
+            }),
+            protectSpawn,
+            virtual: this.searchConfig.virtual && !protectSpawn,
+            trigger: this.searchConfig.trigger && !protectSpawn,
+            sliceRoofProbes: tier >= 8 && root.garbage > 0 && this.planUnitsPerMs >= 0.35,
             width: Math.min(
                 this.searchConfig.width,
                 Math.max(4, Math.round(allowance / 15)),
@@ -221,7 +276,7 @@ export class GravityBotController extends PuzzleBotController {
         const result = ready;
         if (!result) return null;
         let nodes = result.route;
-        if (this.config.mistakeChance && this.rng() < this.config.mistakeChance) {
+        if (!this.urgentSurvival && this.config.mistakeChance && this.rng() < this.config.mistakeChance) {
             const preferred = nodes[0].move;
             const nearby = result.alternatives.filter(({ move }) => Math.abs(move.x - preferred.x) <= 1
                 && (move.x !== preferred.x || move.rotation !== preferred.rotation)).slice(0, 4);
@@ -230,7 +285,10 @@ export class GravityBotController extends PuzzleBotController {
         const moves = nodes.map((node) => node.move);
         if (moves.length > 1 && moves.at(-1).waves.length >= 2) {
             this.proof = nodes.slice(1).map((node) => ({
-                move: node.move, before: gravityBoardKey(node.parent.board.cells), pending,
+                move: node.move,
+                before: gravityBoardKey(node.parent.board.cells),
+                pending,
+                pressing,
                 rewardContext: rewardContextKey(node.parent.context),
             }));
             this.machinePlan = { steps: this.proof.map((step) => step.move) };
@@ -241,6 +299,7 @@ export class GravityBotController extends PuzzleBotController {
     update(delta, time) {
         const pending = this.getPendingGarbage();
         if (this.scheduler.rejected || pending !== this.queueAtPlan) {
+            this.replanInterrupted = this.queueAtPlan !== null && this.currentSpawnToken != null;
             this.scheduler.rejected = false;
             this.queueAtPlan = pending;
             this.proof = [];
@@ -256,15 +315,19 @@ export class GravityBotController extends PuzzleBotController {
 
     stepSlicedPlan(delta, now) {
         const state = this.playerState;
-        if (state.isInfinityMode) { super.stepSlicedPlan(delta, now); return; }
         if (!this.planJob && this.pendingPlan === undefined) {
-            this.planBoardKey = gravityBoardKey(readGravityBoard(state.boardGrid || state.board).cells);
+            const board = readGravityBoard(state.boardGrid || state.board, state.isInfinityMode ? 0 : undefined);
+            this.planBoardKey = gravityBoardKey(board.cells);
+            this.sliceRate = sliceRate(this.planUnitsPerMs, board, this.config.tier, state.isInfinityMode);
             this.planStartPose = [state.currentPiece.x, state.currentPiece.y, state.currentPiece.rotation];
             this.planUnitCredit = 0;
-            this.planJob = this.planSteps();
+            this.retryAllowance = this.replanInterrupted && this.planUnitsPerMs <= gravityPlanningRate(3)
+                ? Math.max(delta, this.readyAtMs - now) * this.planUnitsPerMs : null;
+            this.replanInterrupted = false;
+            this.planJob = this.planSteps(board);
         }
         if (this.planJob) {
-            this.planUnitCredit += Math.max(0, delta) * this.planUnitsPerMs;
+            this.planUnitCredit += Math.max(0, delta) * this.sliceRate;
             while (this.planUnitCredit >= 1) {
                 this.planUnitCredit--;
                 const step = this.planJob.next();

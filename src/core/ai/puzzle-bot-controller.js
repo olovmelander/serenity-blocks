@@ -248,7 +248,7 @@ export class PuzzleBotController {
         this.advanceInput(deltaMs, nowMs);
     }
 
-    advanceInput(deltaMs, _nowMs) {
+    advanceInput(deltaMs) {
         this.scheduler.update(deltaMs);
     }
 
@@ -304,6 +304,12 @@ export class PuzzleBotController {
 
     reachablePlacements(state) { return findReachablePlacements(state); }
 
+    // The historical cadence counts ranking as one operation. Tall live wells split it.
+    // eslint-disable-next-line require-yield
+    * rankSteps(candidates, config) {
+        return rankCandidates(candidates, config, this.rng);
+    }
+
     /**
      * One planning stage as steps, deferring to a subclass's synchronous override of it: the
      * benchmark's bots override evaluatePlacements and evaluateFuture, and the step generators
@@ -332,7 +338,7 @@ export class PuzzleBotController {
             placements,
             preparationBefore,
         );
-        const rankedFull = rankCandidates(candidates, this.config, this.rng);
+        const rankedFull = yield* this.rankSteps(candidates, this.config);
         let ranked = yield* this.planningStep('applyLookahead', rankedFull);
 
         // Tactical layer: persistent plan commitment, build-vs-fire, danger gate.
@@ -646,7 +652,7 @@ export class PuzzleBotController {
         }
 
         const evaluated = yield* this.planningStep('evaluatePlacements', searchState, placements);
-        const ranked = rankCandidates(evaluated, config, this.rng);
+        const ranked = yield* this.rankSteps(evaluated, config);
         const futureDivisor = depth >= 3 ? 4 : 6;
         const breadth = Math.min(
             ranked.length,

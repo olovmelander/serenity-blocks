@@ -27,6 +27,8 @@ export const GRAVITY_WEIGHTS = Object.freeze({
     effort: 0.1054,
 });
 const FULL = (1 << COLS) - 1;
+// The four central columns cover the spawn footprint of every standard piece.
+const SPAWN_LEFT = Math.floor(COLS / 2) - 2;
 const bits = new Uint8Array(FULL + 1);
 for (let i = 1; i <= FULL; i++) bits[i] = bits[i >> 1] + (i & 1);
 
@@ -208,7 +210,8 @@ function value(board, weights, pending, virtual, probe) {
             for (let x = 0; x < COLS; x++) if (missing & (1 << x)) probe[y * COLS + x] = probe.length + x + 8;
             const waves = settleLabelledBoard(probe, board.first);
             const lines = waves.reduce((sum, n) => sum + n, 0);
-            best = Math.max(best, waves.length * weights.virtualWaves + lines * weights.virtualLines - gaps * weights.virtualGap);
+            const capacity = waves.length * weights.virtualWaves + lines * weights.virtualLines;
+            best = Math.max(best, capacity - gaps * weights.virtualGap);
         }
     }
     return best + board.minimum * weights.balance + board.density * weights.density + board.stock * weights.material
@@ -265,9 +268,11 @@ function actualLandings(grid, piece) {
 
 function futureLandings(board, key) {
     if (board.top > board.first + 3) return skylineLandings(board, key);
-    const grid = Array.from({ length: board.height }, (_, y) => Array.from(board.cells.subarray(y * COLS, (y + 1) * COLS), (id) => id || null));
+    board.movementGrid ??= Array.from({ length: board.height }, (_, y) => (
+        Array.from(board.cells.subarray(y * COLS, (y + 1) * COLS), (id) => id || null)
+    ));
     const shape = SHAPES[key];
-    return actualLandings(grid, {
+    return actualLandings(board.movementGrid, {
         shape,
         shapeKey: key,
         rotation: 0,
@@ -291,7 +296,11 @@ function triggerAlignments(missing) {
                 if (x < -form.left || x >= COLS - form.right) continue;
                 const dy = form.dy[i];
                 const mask = x < 0 ? form.masks[dy] >>> -x : form.masks[dy] << x;
-                if ((mask & missing) === missing) result.push({ key, form, x, dy });
+                if ((mask & missing) === missing) {
+                    result.push({
+                        key, form, x, dy,
+                    });
+                }
             }
         }
     }
@@ -299,21 +308,26 @@ function triggerAlignments(missing) {
     return result;
 }
 
-export function reachableTrigger(board, known, weights = GRAVITY_WEIGHTS, allowUnknown = true, probe = new Int32Array(board.cells.length)) {
+function* triggerSteps(board, known, weights, allowUnknown, probe, sliced) {
     let best = 0;
     const high = board.top <= board.first + 3;
     const reachable = new Map();
     for (let y = Math.max(board.top, board.first); y < board.height; y++) {
         const missing = FULL ^ board.rows[y];
         if (!missing || bits[missing] > 4) continue;
-        for (const { key, form, x, dy } of triggerAlignments(missing)) {
+        for (const {
+            key, form, x, dy,
+        } of triggerAlignments(missing)) {
             const py = y - dy;
             if (py + form.top < board.first - 2 || dropY(board, form, x) !== py) continue;
             let discount = 1;
             if (!known.includes(key)) discount = allowUnknown ? weights.unseen : 0;
             if (!discount) continue;
             if (high) {
-                if (!reachable.has(key)) reachable.set(key, futureLandings(board, key));
+                if (!reachable.has(key)) {
+                    reachable.set(key, futureLandings(board, key));
+                    if (sliced) yield;
+                }
                 if (!reachable.get(key).some((p) => p.x === x && p.y === py && p.rotation === form.rotation)) continue;
             }
             stamp(board, form, x, py, board.cells.length + 1, probe);
@@ -323,6 +337,16 @@ export function reachableTrigger(board, known, weights = GRAVITY_WEIGHTS, allowU
         }
     }
     return best;
+}
+
+export function reachableTrigger(
+    board,
+    known,
+    weights = GRAVITY_WEIGHTS,
+    allowUnknown = true,
+    probe = new Int32Array(board.cells.length),
+) {
+    return triggerSteps(board, known, weights, allowUnknown, probe, false).next().value;
 }
 
 export function gravityReward(waves, perfect, context) {
@@ -379,7 +403,13 @@ export function* searchGravity(state, config, pending, weights = GRAVITY_WEIGHTS
     const fireFloor = danger ? 1 : safeFloor;
     const sustained = state.lines >= 8;
     const result = (best) => {
-        const minAttack = (sustained ? config.sustainedAttack : undefined) ?? config.minAttack ?? (pending || state.lines >= 4 ? 2 : 3);
+        if (config.protectSpawn && best?.move) {
+            return {
+                route: route(best), start, danger, pending, alternatives,
+            };
+        }
+        const ordinaryAttack = config.minAttack ?? (pending || state.lines >= 4 ? 2 : 3);
+        const minAttack = sustained ? config.sustainedAttack ?? ordinaryAttack : ordinaryAttack;
         const stock = config.attackStock && (sustained ? config.sustainedStock ?? 24 : config.attackStock);
         const attack = stock && start.stock >= stock && attackFire?.move.attack >= minAttack
             ? attackFire : null;
@@ -402,7 +432,8 @@ export function* searchGravity(state, config, pending, weights = GRAVITY_WEIGHTS
                 const label = start.cells.length + 8 + ply;
                 const cells = stamp(source, form, x, y, label, scratch.cells);
                 const waves = completes(source, form, x, y) ? settleLabelledBoard(cells, source.first) : [];
-                const board = waves.length ? describe(cells, source.first) : afterQuietLock(source, cells, form, x, y, scratch);
+                const board = waves.length ? describe(cells, source.first)
+                    : afterQuietLock(source, cells, form, x, y, scratch);
                 const paid = gravityReward(waves, !board.stock, parent.context);
                 const context = {
                     disableLevelProgression: state.disableLevelProgression,
@@ -419,6 +450,21 @@ export function* searchGravity(state, config, pending, weights = GRAVITY_WEIGHTS
                 };
                 // Retain full boards only for roots that survive the immediate cut.
                 // Every child can reconstruct its exact labelled lock from its parent.
+                let quality;
+                if (config.protectSpawn) {
+                    const { tops } = board;
+                    const lowestCeiling = Math.min(
+                        tops[SPAWN_LEFT],
+                        tops[SPAWN_LEFT + 1],
+                        tops[SPAWN_LEFT + 2],
+                        tops[SPAWN_LEFT + 3],
+                    );
+                    const room = lowestCeiling - (board.first - 2);
+                    quality = Math.min(8, room) * weights.virtualWaves - board.holes * weights.holes
+                        - (board.height - board.top) * weights.danger + reward;
+                } else {
+                    quality = value(board, weights, pending, config.virtual, scratch.probe) + reward;
+                }
                 const node = {
                     parent,
                     context,
@@ -427,12 +473,13 @@ export function* searchGravity(state, config, pending, weights = GRAVITY_WEIGHTS
                     form,
                     label,
                     garbage: board.garbage,
-                    quality: value(board, weights, pending, config.virtual, scratch.probe)
-                    + reward - (landing.pathCost || 0) * weights.effort,
+                    quality: quality - (landing.pathCost || 0) * weights.effort,
                 };
                 siblings.push(node);
                 if (paid.attack && (!attackFire || paid.attack > attackFire.move.attack
-                    || (paid.attack === attackFire.move.attack && paid.score > attackFire.move.score))) attackFire = node;
+                    || (paid.attack === attackFire.move.attack && paid.score > attackFire.move.score))) {
+                    attackFire = node;
+                }
                 if (board.garbage < start.garbage && (!dig || board.garbage < dig.garbage
                     || (board.garbage === dig.garbage && node.quality > dig.quality))) dig = node;
                 if (waves.length && (!fire || waves.length > fire.move.waves.length
@@ -440,7 +487,12 @@ export function* searchGravity(state, config, pending, weights = GRAVITY_WEIGHTS
                 if (++count % 8 === 0) yield;
             }
             siblings.sort(descending);
-            if (ply === 0) { alternatives = siblings; checkpoint?.(result(siblings[0])); } else if (fire || dig || attackFire) checkpoint?.(result(beam[0]));
+            if (ply === 0) {
+                alternatives = siblings;
+                checkpoint?.(result(siblings[0]));
+            } else if (fire || dig || attackFire) {
+                checkpoint?.(result(beam[0]));
+            }
             next.push(...siblings.slice(0, Math.max(6, Math.ceil(config.width / 2))));
         }
         if (!next.length) break;
@@ -455,7 +507,8 @@ export function* searchGravity(state, config, pending, weights = GRAVITY_WEIGHTS
             if (move.waves.length) settleLabelledBoard(cells, start.first);
             node.board = describe(cells, start.first);
             if (config.trigger) {
-                node.quality += reachableTrigger(node.board, known, weights, true, scratch.probe);
+                const trigger = triggerSteps(node.board, known, weights, true, scratch.probe, config.sliceRoofProbes);
+                node.quality += yield* trigger;
                 yield;
             }
         }
