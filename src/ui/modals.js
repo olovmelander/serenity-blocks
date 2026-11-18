@@ -808,6 +808,8 @@ function installRecordsTabs() {
     // Q and E switch modes from anywhere in the sheet, as in Settings.
     document.addEventListener('keydown', (event) => {
         if (!document.getElementById('high-scores-modal')?.classList.contains('visible')) return;
+        // Settings opened over Records takes Q and E for its own tabs.
+        if (document.getElementById('settings-modal')?.classList.contains('visible')) return;
         if (event.ctrlKey || event.metaKey || event.altKey || event.repeat) return;
         if (event.target?.closest?.('input, textarea, select, [contenteditable="true"]')) return;
         const key = event.key?.toLowerCase();

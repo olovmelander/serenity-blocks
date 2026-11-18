@@ -1885,6 +1885,8 @@ export class GamepadController {
                     tabs[nextIndex].focus({ preventScroll: true });
                 }
             }
+            // Settings is the top sheet: what lies beneath it (Records, a navigator) stays put.
+            return;
         }
 
         // The Odyssey navigator: LB and RB climb down and up the chapters.
