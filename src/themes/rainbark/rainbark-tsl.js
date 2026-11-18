@@ -420,6 +420,8 @@ export function createRainbarkUniforms(textures = null) {
         night: uniform(0),
         /** The Sunshower's bow: how much of it shows (0 … 1 times its gain: BOW). */
         bow: uniform(0),
+        /** How hard the wind blows through the leaves (0 calm … 1 a gust): the foliage's swing. */
+        gust: uniform(0),
         /** The zone's exposure (the post's): what a light must stand under to land where it means. */
         exposure: uniform(zone.exposure),
         /**

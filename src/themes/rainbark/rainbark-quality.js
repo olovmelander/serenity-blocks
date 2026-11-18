@@ -24,6 +24,7 @@
  * beams          the beam field: the sun through the canopy as beams standing in the haze (BEAMS)
  * sparks         speck slots: what a beat throws into the light (SPARKS)
  * lorikeets      birds crossing a gap (0 = none)
+ * sprays         eucalyptus sprays hanging into the top of the frame, and `boughs` the crowns' own under the canopy (FOLIAGE)
  */
 export const QUALITY = Object.freeze({
     Minimal: Object.freeze({
@@ -50,6 +51,8 @@ export const QUALITY = Object.freeze({
         beams: 0,
         sparks: 96,
         lorikeets: 0,
+        sprays: 8,
+        boughs: 0,
     }),
     Low: Object.freeze({
         trunks: 16,
@@ -75,6 +78,8 @@ export const QUALITY = Object.freeze({
         beams: 5,
         sparks: 160,
         lorikeets: 0,
+        sprays: 12,
+        boughs: 110,
     }),
     Medium: Object.freeze({
         trunks: 24,
@@ -100,6 +105,8 @@ export const QUALITY = Object.freeze({
         beams: 9,
         sparks: 280,
         lorikeets: 2,
+        sprays: 16,
+        boughs: 240,
     }),
     High: Object.freeze({
         trunks: 32,
@@ -125,6 +132,8 @@ export const QUALITY = Object.freeze({
         beams: 14,
         sparks: 420,
         lorikeets: 5,
+        sprays: 22,
+        boughs: 420,
     }),
     Ultra: Object.freeze({
         trunks: 42,
@@ -150,6 +159,8 @@ export const QUALITY = Object.freeze({
         beams: 18,
         sparks: 560,
         lorikeets: 5,
+        sprays: 26,
+        boughs: 560,
     }),
     Extreme: Object.freeze({
         trunks: 54,
@@ -175,6 +186,8 @@ export const QUALITY = Object.freeze({
         beams: 22,
         sparks: 700,
         lorikeets: 5,
+        sprays: 30,
+        boughs: 720,
     }),
 });
 

@@ -212,12 +212,12 @@ export function createSparks(u, count) {
      */
     const rec = new Float32Array(SPARK_STRIDE);
     part.emit = (t, n, place) => {
-        const count = Math.max(0, Math.min(slots, Math.round(n) || 0));
+        const thrown = Math.max(0, Math.min(slots, Math.round(n) || 0));
         spawned += 1;
-        for (let i = 0; i < count; i++) {
+        for (let i = 0; i < thrown; i++) {
             const rng = mulberry32(((spawned * 2654435761) + i * 2246822519) >>> 0);
             rec.fill(0);
-            if (place(i, rng, rec, count) === false) continue;
+            if (place(i, rng, rec, thrown) === false) continue;
             if (!(rec[7] > 0)) continue;
             const slot = take(t);
             data.set(rec, slot * SPARK_STRIDE);
@@ -283,9 +283,9 @@ export function createSparks(u, count) {
      * A ring round a trunk: specks off its surface across an arc (from `thetaL` over `span` radians,
      * or `spread` either side of `theta`), within `halfH` of the height y, thrown outward.
      */
-    const placeRing = (i, rng, out, count) => {
+    const placeRing = (i, rng, out, thrown) => {
         const { at, look } = job;
-        const f = count > 1 ? (i + rng() * 0.8 - 0.4) / (count - 1) : 0.5;
+        const f = thrown > 1 ? (i + rng() * 0.8 - 0.4) / (thrown - 1) : 0.5;
         const theta = at.span !== undefined
             ? at.thetaL + at.span * Math.max(0.03, Math.min(0.97, f))
             : at.theta + (f - 0.5) * 2 * at.spread;
@@ -316,9 +316,9 @@ export function createSparks(u, count) {
      * unwinds (over `over` seconds, top first), winding round the axis at `turn` radians a second
      * and rising.
      */
-    const placeHelix = (i, rng, out, count) => {
+    const placeHelix = (i, rng, out, thrown) => {
         const { at, look } = job;
-        const f = count > 1 ? i / (count - 1) : 0;
+        const f = thrown > 1 ? i / (thrown - 1) : 0;
         const theta = at.theta + f * at.turns * Math.PI * 2 + (rng() - 0.5) * 0.5;
         const r = at.radius + 0.1 + 0.25 * rng();
         out[0] = at.axisX + Math.cos(theta) * r;

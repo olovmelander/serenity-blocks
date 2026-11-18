@@ -460,6 +460,13 @@ export class RainbarkWorld {
             kind: -1, slot: -1, age: 0, k: 0,
         };
         this._gustSlot = -1;
+        /** The standing trunks the boughs are stood on (standCrowns), and their axis at a height. */
+        this._crowns = [];
+        this._crownList = [];
+        this._crownAxis = (i, y, out) => {
+            const { e } = this._crownList[i];
+            return recordAxis(e.draw.data, y, out, e.offset);
+        };
         /** Reused records the sparks are aimed with. */
         this._sparkAt = {};
         this._sparkLook = {};
@@ -653,6 +660,33 @@ export class RainbarkWorld {
         this.u.laneB.value.set(laneB.theta0, laneB.theta1, laneB.code, band.placements[1].show ? 1 : 0);
         this.hangLiana(y);
         this.collectEmitters();
+        this.standCrowns();
+    }
+
+    /**
+     * The boughs: every standing trunk gets its shoots and its crown (the foliage's stand). Written
+     * when the grove is stood (a new layout, a new frame shape) and as the walkway climbs (a shoot
+     * follows its trunk's lean and wraps to the eye's height), never at rest.
+     */
+    standCrowns() {
+        const foliage = this.parts.life?.foliage;
+        if (!foliage || !foliage.crown) return;
+        const list = this._crownList;
+        list.length = 0;
+        let n = 0;
+        for (let i = 0; i < this._emitterPool.length; i++) {
+            const e = this._emitterPool[i];
+            if (!e.draw.live(e.slot)) continue;
+            const axis = recordAxis(e.draw.data, this._pivot, this._emitAxis, e.offset);
+            const rec = this._crowns[n] || (this._crowns[n] = { depth: 0, hero: false, e: null });
+            rec.depth = Math.max(1, -axis[1]);
+            // (The Elder and Sister One: the near draw's first two slots.)
+            rec.hero = e.draw === this.parts.trunks.near && e.slot < 2;
+            rec.e = e;
+            list.push(rec);
+            n += 1;
+        }
+        foliage.stand(list, this._pivot, this._crownAxis);
     }
 
     /**
@@ -1770,8 +1804,8 @@ export class RainbarkWorld {
         const lens = restLens(this.aspect, this._lens);
         const eyeY = this.heightAt(t);
         const n = Math.round(sparks.count * M.n * share * (this.reducedMotion ? 0.5 : 1));
-        const gold = SPARKS.gold;
-        const sap = SPARKS.sap;
+        const { gold } = SPARKS;
+        const { sap } = SPARKS;
         sparks.emit(t, n, (i, rng, out) => {
             const useSister = i % 3 === 2 && placements[1].show;
             const lane = useSister ? lanes[1] : lanes[0];
@@ -2023,6 +2057,8 @@ export class RainbarkWorld {
         u.beamGain.value = this.tune.beamGain ?? beamLight;
         u.airShade.value = this.tune.airShade ?? (beamsOn ? BEAMS.gapShade : 0);
         u.night.value = wheelValue(wheel, 'night') * (1 - fall);
+        // (The leaves swing harder in a gust, and as play heats the canopy.)
+        u.gust.value = Math.min(1, gust + 0.35 * level + 0.3 * fever) * moves;
         // The Sunshower's bow: with the run (BOW.gain by its level), and with every burst.
         const bowTo = Math.max(BOW.gain[Math.max(0, Math.min(3, this.b2b))], burst * BOW.gain[3]) * (1 - fall);
         this.bowK += (bowTo - this.bowK) * approach(1 / (bowTo > this.bowK ? BOW.rise : BOW.fall), dt);

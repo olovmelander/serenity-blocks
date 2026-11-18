@@ -90,7 +90,9 @@ export function createBow(u) {
         const clear = smoothstep(BOW.card[0], BOW.card[1], away);
         // (It stands in the lit air, never down in the mist's glare nor up in the crowns' shade.)
         const air = smoothstep(-0.42, -0.12, dir.y).mul(float(1.0).sub(smoothstep(0.3, 0.5, dir.y)));
-        const light = first.add(second).add(vec3(inside)).mul(u.bow).mul(u.iris).mul(clear).mul(air);
+        const light = first.add(second).add(vec3(inside)).mul(u.bow).mul(u.iris)
+            .mul(clear)
+            .mul(air);
         return vec4(max(light, vec3(0.0)), 0.0);
     })();
     return rbPart('RainbarkBow', geometry, material, BOW_ORDER);

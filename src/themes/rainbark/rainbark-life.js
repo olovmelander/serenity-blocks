@@ -57,6 +57,7 @@ import {
     rbHash21,
     rbPart,
 } from './rainbark-tsl.js';
+import { createFoliage } from './rainbark-foliage.js';
 
 /** The liana is a solid among the trunks; the birds fly in the air among the curls. */
 const LIANA_ORDER = 20;
@@ -233,9 +234,11 @@ export function createLife(u, tier = {}) {
     };
     const liana = createLiana(u, ends);
     const birds = (tier.lorikeets || 0) > 0 ? createBirds(u, tier.lorikeets) : null;
+    const foliage = (tier.sprays || 0) + (tier.boughs || 0) > 0 ? createFoliage(u, tier) : null;
     const group = new THREE.Group();
     group.name = 'RainbarkLife';
     group.add(liana.mesh);
+    if (foliage) group.add(foliage.mesh);
     if (birds) group.add(birds.mesh);
     return {
         mesh: group,
@@ -243,9 +246,10 @@ export function createLife(u, tier = {}) {
         geometry: null,
         liana,
         birds,
+        foliage,
         ends,
         dispose() {
-            [liana, birds].forEach((p) => {
+            [liana, birds, foliage].forEach((p) => {
                 p?.geometry.dispose();
                 p?.material.dispose();
             });

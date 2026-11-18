@@ -3479,6 +3479,92 @@ export const BOW = Object.freeze({
     card: Object.freeze([0.0, 0.05]),
 });
 
+/**
+ * The foliage (rainbark-foliage.js): eucalyptus sprays as geometry.
+ *
+ * `spray`: one spray in metres: a twig `length` long and `thick` wide arching out and drooping
+ * (`droop`), side twigs off it (`branch`: the chance at each of its `twigSteps` steps), `leaves`
+ * leaves along it, each `leaf` metres long and `leafWidth` wide (larger than life: a leaf must
+ * read from metres off), its outline `leafProfile` (half-width at each section, base to tip),
+ * turning down under its own weight (`hang`) with a sickle's bend (`sickle`).
+ * `near`: the sprays hanging into the top of the frame: a clump in either top corner (`corner`:
+ * |across| of the lens's half-width, gathered toward its middle) and now and then one over the
+ * card (within `edge`), `depth` metres off, hung from `rise` of their depth over the eye (the
+ * frame's top edge is at about 0.6: they hang from just above it; `riseEdge` for those over the
+ * card, of which only the tips show), `scale` times the spray, the twig coming down into the frame
+ * (`tilt` radians under level). The last `high` of them hang only where the walkway has climbed
+ * into the crowns (growing in from `highFrom`[0] to [1] metres): up there leaves are all round.
+ * A blade is shaded as a blade (`blade`: darker toward its stalk by `base`, its two halves either
+ * side of the midrib `fold` apart in tone, a satin streak of the sky's light `sheen` beside it).
+ * `crown`: the tufts round every standing trunk's top: from `under` metres below the canopy's
+ * plane (more of them the higher), `out` metres from the bole, `scale` times the spray, drooping
+ * `tilt`. `shoots` of a tier's boughs are shoots on the boles instead (`shoot`): a shoot keeps
+ * its place in its trunk's `period` (at least [0] metres, [1] of the trunk's depth plus [2]:
+ * taller than the lens sees there, so its wrap to the eye's height is never seen), `out` metres
+ * off the bark, `scale` times the spray and larger far off (×(1 + depth/`far`[0]), at most
+ * `far`[1]), within `arc` radians of the side of the bole that faces the eye.
+ * A leaf swings from its stalk (`swing`: radians a second, its amplitude as a share of its length,
+ * `gust` times more in a gust), the whole spray sways (`sway`). Its light (`light`): the canopy's
+ * gobo at the leaf (`dapple` of the way from the flecks' mean to the fleck itself), `front` of the sun on a
+ * lit face and `through` of it through a backlit blade (tinted `through`), `sky` of the sky's on
+ * what faces up and `glow` of the mist's on what faces down. Old leaves are `albedo` times the
+ * zone's crown colour, young ones `young`, a few `bronze`; the midrib `rib` darker; twigs `twig`.
+ */
+export const FOLIAGE = Object.freeze({
+    seed: 0x1eaf,
+    young: '#93BC3A',
+    bronze: '#A0683E',
+    through: '#C4E255',
+    twig: '#5A4632',
+    albedo: 2.3,
+    rib: 0.3,
+    spray: Object.freeze({
+        length: 1.15,
+        leaves: 16,
+        thick: 0.022,
+        droop: 0.55,
+        branch: 0.45,
+        twigSteps: 7,
+        leaf: Object.freeze([0.2, 0.34]),
+        leafWidth: Object.freeze([0.045, 0.075]),
+        leafProfile: Object.freeze([0.22, 0.8, 1.0, 0.72, 0.36, 0.0]),
+        hang: 1.6,
+        sickle: 0.25,
+    }),
+    near: Object.freeze({
+        corner: Object.freeze([0.6, 1.14]),
+        edge: 0.3,
+        depth: Object.freeze([4.5, 13]),
+        rise: Object.freeze([0.6, 0.72]),
+        riseEdge: 0.76,
+        scale: Object.freeze([0.85, 1.5]),
+        tilt: Object.freeze([0.25, 0.9]),
+        high: 0.4,
+        highFrom: Object.freeze([92, 116]),
+    }),
+    crown: Object.freeze({
+        under: Object.freeze([1, 30]),
+        out: Object.freeze([0.2, 3.5]),
+        scale: Object.freeze([2.2, 3.6]),
+        tilt: Object.freeze([0.1, 0.8]),
+    }),
+    shoots: 0.6,
+    shoot: Object.freeze({
+        period: Object.freeze([34, 1.05, 10]),
+        out: Object.freeze([0.0, 0.25]),
+        scale: Object.freeze([1.1, 2.0]),
+        far: Object.freeze([70, 2.2]),
+        tilt: Object.freeze([0.15, 1.0]),
+        arc: 1.9,
+    }),
+    swing: Object.freeze({ rate: Object.freeze([1.1, 2.6]), amp: 0.1, gust: 2.5 }),
+    sway: Object.freeze({ rate: 0.45, amp: 0.035, gust: 2 }),
+    light: Object.freeze({
+        dapple: 0.8, front: 0.5, through: 0.34, sky: 0.5, glow: 0.3,
+    }),
+    blade: Object.freeze({ base: 0.3, fold: 0.16, sheen: 0.22 }),
+});
+
 /** Meditation's clicks (§6.13): at most `rate` peels a second, each band ±`half` metres tall. */
 export const MEDITATION = Object.freeze({ rate: 4, half: 0.55 });
 
