@@ -11,6 +11,8 @@
  * petals                  petals in the air (ambient plus the hidden event reserve)
  * blizzard                petals of the far blizzard a four-line clear and a petal wind stream
  *                         through the garden (stateless: no simulation)
+ * cranes                  the most birds in a flight of cranes crossing the sky (a skein has five
+ *                         to nine; a tier with fewer flies that many)
  * lamps                   lanterns that light the ground and bark in the shader
  * paperLanterns           paper lanterns hung in the trees
  * fireflies, foxfire      fireflies over the grass; spirit flames a combo can kindle
@@ -32,10 +34,14 @@ const ROWS = {
     Low: [9, 50, 0.36, false, [1024, 512], 3200, 2000, 6, 16, 50, 8, 12, 18, 2, 0, 0, 0, 0, false, 500],
     Minimal: [6, 36, 0.26, false, [1024, 512], 1600, 1100, 4, 10, 28, 6, 8, 12, 2, 0, 0, 0, 0, false, 280],
 };
+// One more column, in a row of its own (the table's rows are as long as a line may be): `cranes`.
+const CRANES = {
+    Extreme: 9, Ultra: 9, High: 8, Medium: 7, Low: 5, Minimal: 4,
+};
 
 export const SAKURA_TIERS = Object.freeze(Object.fromEntries(Object.entries(ROWS).map(([name, row]) => [
     name,
-    Object.freeze(Object.fromEntries(COLUMNS.map((key, index) => [key, row[index]]))),
+    Object.freeze({ ...Object.fromEntries(COLUMNS.map((key, index) => [key, row[index]])), cranes: CRANES[name] }),
 ])));
 
 export function sakuraTier(quality) {

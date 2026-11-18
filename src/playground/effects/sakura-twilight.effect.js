@@ -125,12 +125,51 @@ export function create({
         camera.updateProjectionMatrix();
         camera.updateMatrixWorld();
     };
+    // ?cranes=fly sends a flight of cranes out ?craneAge seconds before the frame (12 by default) on
+    // route ?craneRoute=<n> (0 by default; the routes are sakura-crane-routes.js's, best first), the
+    // other way with ?craneBack=1, of ?craneCount birds (the tier's most by default). With a fixed
+    // ?t= that stages any moment of any route; without one the flight sets out as the page opens.
+    // ?craneCam=<metres> is a lens that far from the skein's leader (or bird ?craneBird=<n>), round
+    // it from its heading by ?craneCamYaw=<deg> and above it by ?craneCamPitch=<deg>, ?craneCamFov=<deg>.
+    const stageCranes = () => {
+        if (params.get('cranes') !== 'fly' || !world?.cranes) return false;
+        return world.cranes.fly({
+            route: number('craneRoute', 0),
+            age: number('craneAge', 12),
+            reversed: params.get('craneBack') === '1',
+            count: number('craneCount', undefined),
+        });
+    };
+    // (Without a fixed ?t= the staged flight sets out on the first frame the garden is there.)
+    let cranesOut = params.has('t');
+    const craneCam = number('craneCam', 0);
+    const craneLook = new THREE.Vector3();
+    const frameCrane = () => {
+        const cranes = world?.cranes;
+        if (!(craneCam > 0) || !cranes?.flying) return;
+        const o = Math.min(cranes.flying - 1, Math.max(0, Math.round(number('craneBird', 0)))) * 12;
+        const { data } = cranes;
+        craneLook.set(data[o], data[o + 1], data[o + 2]);
+        const around = Math.atan2(data[o + 4], data[o + 6]) + number('craneCamYaw', 60) * (Math.PI / 180);
+        const pitch = number('craneCamPitch', -12) * (Math.PI / 180);
+        camera.position.set(
+            craneLook.x + Math.sin(around) * Math.cos(pitch) * craneCam,
+            craneLook.y + Math.sin(pitch) * craneCam,
+            craneLook.z + Math.cos(around) * Math.cos(pitch) * craneCam,
+        );
+        camera.fov = number('craneCamFov', 30);
+        camera.up.set(0, 1, 0);
+        camera.lookAt(craneLook);
+        camera.updateProjectionMatrix();
+        camera.updateMatrixWorld();
+    };
     const update = (time, dt) => {
         reactions.update(dt);
         const frame = reactions.getFrame();
         world?.update(time, dt, frame);
         post?.update(frame);
         frameFox();
+        frameCrane();
     };
     // ?event=lock|drop|clear|double|triple|quad|combo|streak|spin|b2b|perfect|level|over|fever,
     // placed with ?col=0..9 and ?row=0..19 (0 is the top visible row). `b2b` is ?combo back-to-backs
@@ -218,6 +257,8 @@ export function create({
             if (!turned && i * dt >= turnTime) turned = world.foxes.mind.turnHere(world.foxes.time);
             update(i * dt, dt);
         }
+        // (The staged flight is laid at the frame's own time, and its birds written once more.)
+        if (stageCranes()) update(target, 0);
         sought = time;
     };
     return {
@@ -225,10 +266,16 @@ export function create({
         camera() {},
         seek,
         update(time, dt) {
-            if (!params.has('t')) update(time, Math.max(0, Math.min(0.05, dt)));
+            if (params.has('t')) return;
+            if (!cranesOut && world) {
+                cranesOut = true;
+                stageCranes();
+            }
+            update(time, Math.max(0, Math.min(0.05, dt)));
         },
         render() {
             frameFox();
+            frameCrane();
             if (post) post.render();
         },
         async renderAsync() {
@@ -244,6 +291,7 @@ export function create({
             post?.setSize(width, height);
             frameIcon();
             frameFox();
+            frameCrane();
         },
         getDiagnostics() {
             return {
