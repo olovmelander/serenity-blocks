@@ -264,7 +264,7 @@ export function createBirds(u, count) {
             positionGeometry.x,
             mix(positionGeometry.y, wingY, isWing).add(bob),
             mix(positionGeometry.z, wingZ, isWing),
-        ).mul(L.size);
+        ).mul(mix(float(L.size), float(L.size * C.size), rising));
         const world = centre.add(fwd.mul(local.x)).add(upv.mul(local.y)).add(right.mul(local.z)).toVar();
         // The wing's own normal as it beats (its outer panel's), the body's as lofted.
         const wingN = vec3(0.0, cos(hand), sin(hand).mul(side).negate());

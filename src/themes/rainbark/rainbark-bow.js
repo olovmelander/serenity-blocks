@@ -2,12 +2,11 @@
  * Rainbark — the Sunshower's bow.
  *
  * Rain in sunlight makes a rainbow, and a back-to-back run is rain in sunlight. While it lives a
- * bow stands in the rain on the shade side of the grove (BOW in the core): a long arc from the
- * foot of the frame up across the Elder's painted wall, red outside and violet inside, a second
- * fainter one beyond it with its colours turned round, the air inside the first a little brighter
- * than outside it. It stands in the drops between the eye and the bark, so it crosses the Elder (a
- * hose's spray makes its bow in front of a wall the same way): additive, never depth-tested, out
- * of the card's band, its light through the iris.
+ * bow stands in the grove (BOW in the core): an arch from the frame's left edge up over the card
+ * and down into the gold air on its right, red outside and violet inside, a second fainter one
+ * beyond it with its colours turned round, the air inside the first a little brighter than
+ * outside it. It stands in the far rain, so the grove's trunks are dark in front of it (drawn at
+ * the far plane, depth-tested): additive, out of the card's band, its light through the iris.
  *
  * One full-screen triangle that is not drawn at all while no bow shows (its vertices collapse:
  * a zero uniform alone would still shade every pixel of the frame).
@@ -65,10 +64,12 @@ const spectrum = (h) => {
 export function createBow(u) {
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.Float32BufferAttribute([-1, -1, 0, 3, -1, 0, -1, 3, 0], 3));
-    const material = rbFxMaterial('RainbarkBow', { depthTest: false });
+    // (At the far plane, depth-tested: the grove's trunks stand in front of it.)
+    const material = rbFxMaterial('RainbarkBow', { depthTest: true });
+    material.depthFunc = THREE.LessEqualDepth;
     const C = bowCentre();
     // (No bow: no triangle. The frame pays for it only while it shows.)
-    material.vertexNode = vec4(positionGeometry.xy.mul(step(0.002, u.bow)), 0.5, 1.0);
+    material.vertexNode = vec4(positionGeometry.xy.mul(step(0.002, u.bow)), 1.0, 1.0);
     material.colorNode = Fn(() => {
         const dir = rbViewRay(u, screenUV).toVar();
         const angle = acos(clamp(dot(dir, vec3(...C)), -1.0, 1.0)).mul(180 / Math.PI).toVar();
@@ -89,7 +90,7 @@ export function createBow(u) {
         const away = max(max(r.x.sub(screenUV.x), screenUV.x.sub(r.z)), max(r.y.sub(screenUV.y), screenUV.y.sub(r.w)));
         const clear = smoothstep(BOW.card[0], BOW.card[1], away);
         // (It stands in the lit air, never down in the mist's glare nor up in the crowns' shade.)
-        const air = smoothstep(-0.42, -0.12, dir.y).mul(float(1.0).sub(smoothstep(0.3, 0.5, dir.y)));
+        const air = smoothstep(-0.36, -0.14, dir.y).mul(float(1.0).sub(smoothstep(0.3, 0.5, dir.y)));
         const light = first.add(second).add(vec3(inside)).mul(u.bow).mul(u.iris)
             .mul(clear)
             .mul(air);

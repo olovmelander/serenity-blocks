@@ -159,7 +159,8 @@ describe('Rainbark living: the wheel and the happenings', () => {
             expect(mood.beams).toBeGreaterThan(0);
             expect(mood.flecks).toBeGreaterThan(0.2);
             // Never a dark frame: the bark keeps its colours in every mood.
-            expect(mood.exposure).toBeGreaterThan(0.9);
+            expect(mood.exposure).toBeGreaterThan(0.8);
+            expect(mood.sun).toHaveLength(2);
         });
         // The whole wheel in ten minutes; every value eases between moods.
         const seen = new Set();

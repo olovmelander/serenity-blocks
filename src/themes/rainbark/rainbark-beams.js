@@ -162,7 +162,8 @@ export function createBeams(u, count) {
         const across = x.mul(B.rays.across).add(vSalt.mul(31.0));
         const rayA = u.noise3(vec3(across, vSalt.mul(7.0), u.time.mul(0.021).add(vSalt.mul(3.0)))).x;
         const rayB = u.noise3(vec3(across.mul(2.7).add(11.3), vSalt.mul(13.0), u.time.mul(0.034))).y;
-        const rays = smoothstep(0.22, 0.78, rayA.mul(0.65).add(rayB.mul(0.35)));
+        // (Soft: a beam is lit haze with rays in it, never a searchlight's hard bars.)
+        const rays = smoothstep(0.1, 0.9, rayA.mul(0.65).add(rayB.mul(0.35)));
         const bundle = mix(float(1.0 - B.rays.depth), float(1.0 + B.rays.depth * 0.5), rays);
         // The vapour drifting through it (world-fixed, so the beam is a volume, never a decal).
         const V = B.vapour;

@@ -169,7 +169,7 @@ function rbFloor(u, dir) {
     // sky, so darker than the lit air itself), and glitters where a fleck lands on it (broad
     // glitter: its ripples are far finer than a pixel).
     const sunward = dot(normalize(vec3(dir.x, 0.0, dir.z)), normalize(vec3(u.sunDir.x, 0.0, u.sunDir.z)));
-    const mirror = mix(u.col.sky.mul(0.34), u.col.hazeSun.mul(0.5), smoothstep(-0.3, 0.8, sunward));
+    const mirror = mix(u.col.sky.mul(R.mirror[0]), u.col.hazeSun.mul(R.mirror[1]), smoothstep(-0.3, 0.8, sunward));
     const glitter = vec3(...GLINT).mul(min(fl, 1.4).mul(smoothstep(0.45, 0.8, fine.a)).mul(R.glitter));
     const wet = mirror.add(glitter).mul(u.iris);
     // (A breath of mist along the river: what is left of the drained floor's vapour.)

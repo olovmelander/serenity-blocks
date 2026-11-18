@@ -247,10 +247,10 @@ part and is nearly untouched. What the audit found weak:
 |---|---|---|
 | **The beam field** | The sun through the canopy as beams standing in the haze at every depth (20–150 m), so trunks stand dark in front of some and veiled behind others. One instanced draw of strips along the sun's ray (geometry, never a screen-space god ray), a bundle of rays across each with the vapour drifting through it. Each beam breathes on its own clock (dark 30 % of the time), so the set in the frame keeps changing. Between the beams the crowns shade the sunlit air (`u.airShade`), so the gold side is beams in a deeper gold. Down in the mist (the Fog Line) the beams come on down to the eye: god-rays in the pearl. | `BEAMS`, `beamField` (core), `rainbark-beams.js`, `rbInscatter` |
 | **Leaves as leaves** | One instanced draw of one eucalyptus spray built on the CPU (an arching twig, side twigs, sickle leaves hanging from it; a blade of five sections, folded along its rib). Three uses: *sprays* hanging into the top corners of the frame (a storey's own, hung by the lens so every frame shape sees the same, handed up a storey only while out of view); *shoots* sprouting from the boles of every trunk but the Elder and Sister One, at every height; *tufts* round every trunk's top under the canopy. Lit as leaves: the canopy's gobo at the leaf, the sun THROUGH a blade that stands between the eye and it. Each leaf swings from its stalk, harder in a gust. | `FOLIAGE`, `sprayPlace`, `lensEdges` (core), `rainbark-foliage.js`, `standCrowns` (world) |
-| **Six moods** | The wheel gains *ember* (the last of the sun: red-gold beams, plum shade) and *dusk* (the blue hour: a share of the motes light up as fireflies, each on its own slow beat). Each mood also sets the beams' strength and the flecks' share. Ten minutes a turn. | `LIGHT_WHEEL`, `wheelValue`, `FIREFLY` |
+| **Six moods** | The wheel gains *ember* (the last of the sun: red-gold beams, plum shade) and *dusk* (the blue hour: a share of the motes light up as fireflies, each on its own slow beat). Each mood also sets the beams' strength, the flecks' share and its own sun (elevation and azimuth), so the light's angle turns with the hour. Ten minutes a turn. | `LIGHT_WHEEL`, `wheelValue`, `wheelSun`, `FIREFLY` |
 | **Happenings** | Every ~43 s from t = 80 the clock sends one over the grove (or none): a *sunbreak* (beams and flecks swell), a *gust* (leaves toss, leaves come down across the lanes, the flecks slide and ease back), a *mist bank* (the tide lifts, the air thickens). Closed form in the clock. And a leaf lets go of the corner sprays every 1.6 s. | `HAPPENINGS`, `happeningAt`, `LEAF.every` |
 | **Sparks** | What a beat throws into the light: one instanced draw of soft specks, a slot each for its whole flight (closed form: drag, gravity, an optional winding round a trunk's axis). A later beat takes spent slots, never a speck in flight. | `SPARKS`, `rainbark-sparks.js`, `spark*` (world) |
-| **The Sunshower's bow** | A rainbow in the rain on the shade side, crossing the Elder's wall, a fainter second beyond it; rising with the back-to-back run and with each burst. A full-screen triangle that is not drawn at all while no bow shows. | `BOW`, `rainbark-bow.js` |
+| **The Sunshower's bow** | A rainbow standing in the grove behind the trunks: an arch from the left edge up over the card and down into the gold air, a fainter second beyond it; rising with the back-to-back run and with each burst, the sunlit air deepening as the grove wets. A full-screen triangle at the far plane (depth-tested) that is not drawn at all while no bow shows. | `BOW`, `rainbark-bow.js` |
 | **The forest floor** | Moss and fern, drifts of litter, wet earth, and ONE river running away through the grove (its course two sines along its run, distance measured square to it), mirroring the gold air, a breath of mist along it. | `FLOOR`, `rbFloor` (sky) |
 | **The lorikeets** | A lofted body, beak, long tail and two-panel wings hinged at shoulder and wrist (the hand lags the arm); red and yellow under the wing. On a new level the whole flock goes up the open lanes either side of the card with the walkway. | `LORIKEET`, `rainbark-birds.js` |
 | **The ring's blaze** | Wet First Skin glistening along the grain (sap bright in its streaks, deep between them, fuller toward its heart), never a flat fill. | `BLAZE_SAP`, `rbBark` |
@@ -263,15 +263,15 @@ The bigger the beat, the more of the grove answers.
 | Event | Bark (as before) | New this pass |
 |---|---|---|
 | lock | the Peel | a pinch of gold dust and the piece's own colour where the strip lets go |
-| hard drop | the Knock | a ring of dust shaken off the struck side, thrown up the trunk |
+| hard drop | the Knock | a ring of dust shaken off the struck side, thrown up the trunk; the leaves of the sprays shiver |
 | clear ×1–3 | the Shed | sap beads and dust running round each ring with the split; the ring glistens; a triple swells the beams a little |
 | four lines | the Great Moult | a storm of sparks down both lanes with the front; the whole beam field swells (most for a back-to-back four) and the colours deepen; then it all falls away over seconds |
 | combo | gaps and beams | each new gap drops pollen down its beam; the beams are bundles of rays |
 | T-spin | the Unwinding | its strip blazes gold (never a ring's lime); a helix of sparks winding up round the trunk it unwinds from |
-| back-to-back | the Sunshower | the rainbow |
+| back-to-back | the Sunshower | the rainbow behind the trunks; half again as much rain, against a deeper air |
 | perfect clear | the Floor | the new floor; two thirds of the sparks as slow lights rising through the whole grove, from under the frame's foot to over the eye (the quietest of the big moments, and the one that fills the air); the beams reach the floor |
 | level | the Climb | the lorikeets go up with the walkway through a veil of specks; the sprays slide down past the eye; the beams swell |
-| game over | Mistfall | (as before; the sprays stand as silhouettes in the fog) |
+| game over | Mistfall | a blue dusk fog, the sprays silhouettes in it, the fireflies drifting |
 
 Reduced motion halves the sparks and stills the Climb's veil; Reduce flashing scales the beam
 swell (`flashScale()`), as it does the crown's flare.
@@ -318,6 +318,28 @@ gold, never a darker air with nothing in it.
   other files timed out in a run beside 84 other node processes and pass alone); `npm run build`
   with the boot closure OK; IP strings OK; perf budgets and release gates pass.
 
+### The critic's round
+
+An independent critic (an agent that saw only the captures: 31 frames of the pass as it stood,
+and the old ones beside them) scored it **environment 6.5, events 5.5**, and was right about most
+of it. What it found, and what was done the same day:
+
+| It said | Done |
+|---|---|
+| The rarest moments are weaker than four lines: the Sunshower is sparse dashes in full sun with a faint bow pasted on the nearest trunk; the Floor only "turns the bottom darker" | The bow is an arch behind the trunks (drawn at the far plane, depth-tested), twice as bright; half again as many drops; the sunlit air deepens as the grove wets (`BOW.wetShade`). The floor is lit (`FLOOR.sun` 0.55 to 0.9, lighter moss and fern, a brighter river) and two thirds of the sparks rise through the whole grove |
+| A single, a triple and a twist are one effect: a neon lime band | The ring's blaze is shorter and dimmer and the row's own colours come in at once (`SHED.ripen` 0.6 to 0.46 s, `blazeLight` 1.1 to 0.78); a twist's helix blazes gold (`BLAZE_SAP.twist`) |
+| The rays are hard-edged searchlights, brightest beside the card | Softer bundle (`BEAMS.rays.depth` 0.62 to 0.34, a wider smoothstep), broader beams, dimmer (`k` 1.9 to 1.5), kept twice as far from the card (`BEAMS.card`) |
+| Noon, gold and pearl are nearly one frame | Each mood has its own sun (`LIGHT_WHEEL.moods[i].sun`: degrees on the zone's elevation and the azimuth), so the beams' slant and the flecks' stretch turn with the hour (steep at noon, long and low in the ember), and stronger hues; dusk is darker |
+| The Fog Line's frame is game over's frame: blank grey-white | Mistfall is a blue dusk with the fireflies drifting in it (`MISTFALL.colors`, `MISTFALL.night`); the beams in the mist are stronger (`BEAMS.pearl`, `sink`) |
+| Level 1, the first impression, is the dullest frame | Buttress Deep takes warm light (its sunlit haze, mist and underglow warmer, flecks 0.06 to 0.12, saturation 0.85 to 0.97, its beams at 0.85) |
+| The same leaf spray in the same corners on every level; a spray slides down behind the card on a level-up | Every storey hangs its sprays its own way (`FOLIAGE.near.vary`, hashed from the storey); none hangs over the card |
+| A lock and a hard drop are the same curl with a few sparks | A knock shivers the leaves of the corner sprays (`shiver`, by how far the piece fell) and throws more dust |
+| The Climb's birds are tiny paper darts | Nearer and a third larger up the Climb's lanes |
+
+Left as it found them (see Open): the canopy's pads, the far trunks as bare poles, the hero
+trunk's lime under dusk, a triple's curtain against the Set's, the bright core between the card
+and the stats panel (the picture's light source since the first pass).
+
 ### Traps met
 
 - **A beam added to bright air is invisible.** The gold air stood near its roll-off; a beam's
@@ -337,7 +359,11 @@ gold, never a darker air with nothing in it.
 ### Open
 
 - The painted canopy's pads at the Limb Storey and Crown Light are still a picture on a plane
-  (the shoots and tufts break it up; they do not replace it).
+  (the shoots and tufts break it up; they do not replace it): the critic's second-worst finding.
+- The far grove's trunks are still slim poles of one girth; the hero trunk's lime patch stays
+  luminous under dusk; a triple's curtain of quills and the Set's are the same tangle; the
+  brightest air stands between the card and the stats panel.
+- The bow is hidden behind the card at its top: what shows is its two feet.
 - The river reads as a pale band from Buttress Deep; it has no reflections of the trunks.
 - Blender was not used: its MCP did not answer during the pass (the application was running and
   was left alone). The spray and the bird are built in code.

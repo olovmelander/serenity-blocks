@@ -65,6 +65,7 @@ import {
     SPARKS,
     happeningAt,
     lensEdges,
+    wheelSun,
     wheelValue,
     floorEnvelope,
     RAIN,
@@ -459,6 +460,10 @@ export class RainbarkWorld {
         this.beamSwell = new Swell({
             attack: 0.5, release: 4, ceiling: 1.6, knee: 1.1,
         });
+        /** A knock shivers the leaves: every hard drop (by how far it fell), a Great Moult most. */
+        this.shiver = new Swell({
+            attack: 0.05, release: 0.5, ceiling: 1, knee: 0.7,
+        });
         /** The grove's happening (happeningAt), and the slot whose gust has shed its leaves. */
         this._happen = {
             kind: -1, slot: -1, age: 0, k: 0,
@@ -542,6 +547,7 @@ export class RainbarkWorld {
         this.crownLight.reset();
         this.shower.reset();
         this.beamSwell.reset();
+        this.shiver.reset();
         this._gustSlot = -1;
         /** The tick whose leaf has let go (dropLeaf). */
         this._leafTick = -1;
@@ -1038,6 +1044,7 @@ export class RainbarkWorld {
                 const strength = 0.4 + 0.6 * Math.min(1, L.distance / KNOCK.reach);
                 this.events.knock(t, peel.code, peel.yBot, strength);
                 this.sparkKnock(t, peel, strength);
+                this.shiver.hit(0.3 + 0.45 * strength, t);
                 if (curls) {
                     this._flakes.theta = peel.theta;
                     this._flakes.y0 = peel.yBot;
@@ -1165,8 +1172,10 @@ export class RainbarkWorld {
             this.sparkFloor(t);
         }
         // The big moments' light: the beam field swells (a back-to-back four most of all).
-        if (lines >= 4) this.beamSwell.hit(C.b2b ? 1.3 : 1, t + MOULT.creak);
-        else if (lines === 3) this.beamSwell.hit(0.4, t);
+        if (lines >= 4) {
+            this.beamSwell.hit(C.b2b ? 1.3 : 1, t + MOULT.creak);
+            this.shiver.hit(1, t + MOULT.creak);
+        } else if (lines === 3) this.beamSwell.hit(0.4, t);
         else if (C.twist) this.beamSwell.hit(0.3 + 0.1 * lines, t);
         if (lines >= 4) this.moultStart(t);
         else if (C.twist) this.unwind(t, C);
@@ -2050,7 +2059,12 @@ export class RainbarkWorld {
         u.tideHigh.value = clockA.high;
         u.tideRise.value = clockA.rise;
         const sway = SUN_DRIFT * -Math.cos((TAU * t) / TIDE_PERIOD);
-        const sun = sunDirection(lerp(za.sunElevation, zb.sunElevation, k), SUN_AZIMUTH + sway, this._sun);
+        // (Each mood of the wheel has its own sun: steep at noon, long and low in the ember.)
+        const sun = sunDirection(
+            lerp(za.sunElevation, zb.sunElevation, k) + wheelSun(wheel, 0) * (1 - fall),
+            SUN_AZIMUTH + sway + wheelSun(wheel, 1) * (1 - fall),
+            this._sun,
+        );
         u.sunDir.value.set(sun[0], sun[1], sun[2]);
         // The canopy opens with play: more of the sun comes through (the flecks, the pools, the
         // beams, the motes and the drops all read it), more again as a perfect clear flares it.
@@ -2076,11 +2090,14 @@ export class RainbarkWorld {
             // (The Floor's thinned haze stands less in front of the beams: they are held back.)
             * (1 - (1 - FLOOR.beams) * floorK);
         u.beamGain.value = this.tune.beamGain ?? beamLight;
-        u.airShade.value = this.tune.airShade ?? (beamsOn ? BEAMS.gapShade : 0);
-        u.night.value = wheelValue(wheel, 'night') * (1 - fall);
+        // (Under the Sunshower the sunlit air deepens as the grove wets: the bow and the drops
+        // stand against it.)
+        u.airShade.value = this.tune.airShade ?? (beamsOn ? Math.min(0.8, BEAMS.gapShade + BOW.wetShade * this.wet) : 0);
+        // (The night comes with the wheel's dusk, and with Mistfall: the fireflies drift in its fog.)
+        u.night.value = Math.max(wheelValue(wheel, 'night') * (1 - fall), MISTFALL.night * fall);
         u.flock.value = this.flockAt;
         // (The leaves swing harder in a gust, and as play heats the canopy.)
-        u.gust.value = Math.min(1, gust + 0.35 * level + 0.3 * fever) * moves;
+        u.gust.value = Math.min(1, gust + 0.35 * level + 0.3 * fever + this.shiver.valueAt(t)) * moves;
         // The Sunshower's bow: with the run (BOW.gain by its level), and with every burst.
         const bowTo = Math.max(BOW.gain[Math.max(0, Math.min(3, this.b2b))], burst * BOW.gain[3]) * (1 - fall);
         this.bowK += (bowTo - this.bowK) * approach(1 / (bowTo > this.bowK ? BOW.rise : BOW.fall), dt);

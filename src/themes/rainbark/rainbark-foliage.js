@@ -45,6 +45,7 @@ import {
     smoothstep,
     step,
     varying,
+    vec2,
     vec3,
     vec4,
 } from 'three/tsl';
@@ -58,6 +59,7 @@ import {
     mulberry32,
     rbAir,
     rbFleck,
+    rbHash21,
     rbPart,
 } from './rainbark-tsl.js';
 
@@ -185,9 +187,9 @@ export function sprayRecords(near, crown, seed = FOLIAGE.seed) {
     const rng = mulberry32((seed * 31 + 7) >>> 0);
     const N = FOLIAGE.near;
     for (let i = 0; i < n; i++) {
-        // Two clumps, one in either top corner (every prefix frames the view), and now and then
-        // one over the card, hung so high that only its tips show.
-        const corner = i % 5 !== 4;
+        // Two clumps, one in either top corner (every prefix frames the view); none over the card
+        // (a spray sliding down behind it as the walkway climbs would cross the board).
+        const corner = true;
         const leftSide = i % 2 === 0;
         // (Gathered toward a clump's heart: a bough's sprays, never an even fringe.)
         const f = (rng() + rng()) / 2;
@@ -345,18 +347,6 @@ export function createFoliage(u, tier = {}) {
         const sway = sin(u.time.mul(F.sway.rate).add(aB.z)).mul(F.sway.amp).mul(u.gust.mul(F.sway.gust).add(1.0));
         local.z.addAssign(sway.mul(local.x.mul(local.x)));
         local.y.addAssign(sway.mul(0.4).mul(local.x.abs()));
-        // Tilted (about its own z: the twig lifted or dropped), then turned about the vertical.
-        const ct = cos(aB.y);
-        const st = sin(aB.y);
-        const cy = cos(aB.x);
-        const sy = sin(aB.x);
-        const turn = (v) => {
-            const tx = v.x.mul(ct).sub(v.y.mul(st));
-            const ty = v.x.mul(st).add(v.y.mul(ct));
-            return vec3(tx.mul(cy).add(v.z.mul(sy)), ty, v.z.mul(cy).sub(tx.mul(sy)));
-        };
-        // Where it hangs: a storey's own spray across the lens (wrapped a storey at a time), or a
-        // bough's place under the canopy.
         // A storey's spray is hung by the lens (u.lens: the frame's top and foot edges as slopes):
         // from the same share of the frame's height on any frame, and at a depth where the frame
         // is no taller than on the reference lens, so an upright phone's taller view never sees
@@ -369,8 +359,31 @@ export function createFoliage(u, tier = {}) {
         // it hangs under the frame's foot, and by then its next place is still over the frame's
         // top: FOLIAGE.near.wrap. It never jumps in view.)
         const wrapAt = clamp(rise.add(u.lens.y).mul(depth).add(aA.w.mul(W.hang)), W.range[0], W.range[1]);
-        const storey = floor(u.camY.sub(CLIMB_BASE).sub(wrapAt).div(STOREY)).add(1.0).mul(STOREY).add(CLIMB_BASE);
-        const nearAt = vec3(aA.x.mul(depth).mul(u.tanHalf.x), storey.add(rise.mul(depth)), depth.negate());
+        const storeyN = floor(u.camY.sub(CLIMB_BASE).sub(wrapAt).div(STOREY)).add(1.0).toVar();
+        const storey = storeyN.mul(STOREY).add(CLIMB_BASE);
+        // Every storey hangs them its own way (hashed from the storey and the spray: FOLIAGE.near.vary).
+        const { vary } = F.near;
+        const sprayId = floor(aB.z.mul(1000.0));
+        const h1 = rbHash21(vec2(sprayId, storeyN.add(64.0)));
+        const h2 = rbHash21(vec2(sprayId.add(37.0), storeyN.add(64.0)));
+        const own = float(1.0).sub(crown);
+        const side = aA.x.sign();
+        const across = side.mul(clamp(aA.x.abs().add(h1.sub(0.5).mul(vary.across)), F.near.corner[0], F.near.corner[1] + 0.06));
+        const yaw = aB.x.add(h2.sub(0.5).mul(vary.yaw).mul(own));
+        const tilt = aB.y.add(h1.sub(0.5).mul(vary.tilt).mul(own));
+        // Tilted (about its own z: the twig lifted or dropped), then turned about the vertical.
+        const ct = cos(tilt);
+        const st = sin(tilt);
+        const cy = cos(yaw);
+        const sy = sin(yaw);
+        const turn = (v) => {
+            const tx = v.x.mul(ct).sub(v.y.mul(st));
+            const ty = v.x.mul(st).add(v.y.mul(ct));
+            return vec3(tx.mul(cy).add(v.z.mul(sy)), ty, v.z.mul(cy).sub(tx.mul(sy)));
+        };
+        // Where it hangs: a storey's own spray across the lens (wrapped a storey at a time), or a
+        // bough's place under the canopy.
+        const nearAt = vec3(across.mul(depth).mul(u.tanHalf.x), storey.add(rise.mul(depth)), depth.negate());
         const crownAt = vec3(aA.x, aA.y, aA.z.negate());
         const origin = mix(nearAt, crownAt, crown).toVar();
         const P = origin.add(turn(local).mul(scale)).toVar();
