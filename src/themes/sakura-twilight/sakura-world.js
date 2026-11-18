@@ -76,9 +76,11 @@ export class SakuraWorld {
 
     /** Hold one hour still (its number; null hands it back to the clock and the level). */
     pinHour(value) {
-        const hour = Number(value);
-        this.hourPin = value === null || value === undefined || value === '' || !Number.isFinite(hour)
-            ? null : ((Math.round(hour) % SAKURA_HOURS.length) + SAKURA_HOURS.length) % SAKURA_HOURS.length;
+        // (Only a number names an hour: blank text, a list or a boolean hands it back.)
+        const named = typeof value === 'number' || (typeof value === 'string' && value.trim() !== '');
+        const hour = named ? Number(value) : Number.NaN;
+        this.hourPin = Number.isFinite(hour)
+            ? ((Math.round(hour) % SAKURA_HOURS.length) + SAKURA_HOURS.length) % SAKURA_HOURS.length : null;
         return this.hourPin;
     }
 
@@ -310,6 +312,8 @@ export class SakuraWorld {
         }
         if (!this.stage) this.stage = new SakuraStage(camera);
         else this.stage.refresh();
+        // (The star fox flies through the open sky of whichever framing this is.)
+        this.showpieces?.setView(view, camera.aspect);
         this.placeFoxfire();
         // (The foxes turn to face whoever is watching, from wherever that is.)
         this.foxes?.setViewer(view.position[0], view.position[2]);

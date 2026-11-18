@@ -166,6 +166,8 @@ export class SakuraLight {
         this.shadowBox = {
             centre: new THREE.Vector3(0, 7, -24), halfWidth: 78, halfHeight: 34, depth: 320,
         };
+        // The first hour and the first air, in full: the haze, the mist, the stars, the river.
+        this.paintAir();
     }
 
     /** Stand the moon somewhere else (each framing has its own) and redraw the shadows. */

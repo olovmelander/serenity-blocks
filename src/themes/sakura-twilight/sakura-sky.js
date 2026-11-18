@@ -122,7 +122,8 @@ export class SakuraSky {
         // The night's own falling stars: when the next is due, on chances of their own (the
         // garden's shared sequence is left alone).
         this.ownChance = 0x51a7;
-        this.ambientAt = 9;
+        this.ambientAt = null;
+        this.ownStar = false;
     }
 
     /** A chance of the sky's own (a small seeded generator: the same night from the same start). */
@@ -492,10 +493,12 @@ export class SakuraSky {
 
     /**
      * Send one shooting star across the upper sky. It takes a slot whose star has burnt out, else
-     * the one with the least light left, so a second star never cuts the first mid-fall.
+     * the one with the least light left, so a second star never cuts the first mid-fall. A star the
+     * game sent is placed by the garden's chances; one the night sends by itself (`ownStar`) by the
+     * sky's own, so the garden's sequence does not depend on whether a star happened to fall.
      */
     shoot(strength = 1) {
-        const { rng } = this;
+        const rng = this.ownStar ? () => this.chance() : this.rng;
         const now = this.light.uTime.value;
         let slot = 0;
         let least = Infinity;
@@ -535,10 +538,18 @@ export class SakuraSky {
         // one and the garden is awake. (A clock that went back, a seek, starts the wait again.)
         const { light } = this;
         const now = light.uTime.value;
-        if (now < this.ambientAt - 60) this.ambientAt = now + 9;
+        // (The first is due nine seconds after the sky is made, reset or finds its clock put back.)
+        if (this.ambientAt === null || now < this.ambientAt - 60) this.ambientAt = now + 9;
         if (now >= this.ambientAt) {
             const open = light.uStars.value > 0.55 && light.uCloud.value < 0.45 && light.uVeil.value < 0.5;
-            if (open && !(frame.hush > 0.5)) this.shoot(0.4 + this.chance() * 0.35);
+            if (open && !(frame.hush > 0.5)) {
+                this.ownStar = true;
+                try {
+                    this.shoot(0.4 + this.chance() * 0.35);
+                } finally {
+                    this.ownStar = false;
+                }
+            }
             this.ambientAt = now + 13 + this.chance() * 26;
         }
     }
@@ -546,7 +557,7 @@ export class SakuraSky {
     reset() {
         this.shotData.forEach((shot) => shot.set(0, 0, -100, 0));
         this.ownChance = 0x51a7;
-        this.ambientAt = 9;
+        this.ambientAt = null;
         this.lastShot = 0;
         this.uDraw.value = 0;
         this.uFigures.value = 0;

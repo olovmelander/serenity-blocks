@@ -3340,11 +3340,11 @@ describe('Sakura world: the air', () => {
         expect(world.light.weatherPhase).toBe(sakuraWeatherDrift(260));
     });
 
-    // FAULT: sakura-world.js pinHour() (lines 78-83): Number(' ') and Number([]) are 0 and
+    // Was a fault (fixed 2026-11-18): sakura-world.js pinHour() (lines 78-83): Number(' ') and Number([]) are 0 and
     // Number(true) is 1, so blank text, an empty list and a boolean hold an hour still instead of
     // handing it back to the clock (`?hour=%20` pins the afterglow). pinWeather() has the same
     // through sakuraWeatherIndex(). The contract: null for anything that is not an hour's number.
-    it.fails('hands the hour and the air back to the clock for blank text, a list and a boolean', () => {
+    it('hands the hour and the air back to the clock for blank text, a list and a boolean', () => {
         const { world } = shared;
         const pinned = [];
         for (const value of [' ', '\t', [], true, false]) {
@@ -3888,26 +3888,26 @@ describe('Sakura sky: the night\'s own falling stars', () => {
         expect(late.sky.shotData.every((shot) => shot.toArray().every(Number.isFinite))).toBe(true);
     });
 
-    // FAULT: sakura-sky.js update() (the falling star, `this.shoot(0.4 + this.chance() * 0.35)`):
+    // Was a fault (fixed 2026-11-18): sakura-sky.js update() (the falling star, `this.shoot(0.4 + this.chance() * 0.35)`):
     // when and how bright a star falls comes from the sky's own generator, but shoot() itself
     // (lines ~515-520) places the star with three draws of `this.rng` — the garden's shared
     // sequence, which the comment at the constructor says is left alone. Every falling star moves
     // the sequence the petal director and the page's petal simulation draw from three places on,
     // so the same play throws different petals depending on whether a star happened to fall.
     // Reproduce: a SakuraSky with a counting rng, light.update(9, {}), sky.update({}): 3 draws.
-    it.fails('leaves the garden\'s shared sequence alone when a star falls by itself', () => {
+    it('leaves the garden\'s shared sequence alone when a star falls by itself', () => {
         const { stars, shared, run } = nightSky();
         run(0, 120);
         expect(stars.length).toBeGreaterThan(2);
         expect(shared.draws).toBe(0);
     });
 
-    // FAULT: sakura-sky.js reset() and the constructor set `ambientAt = 9` — nine seconds on the
+    // Was a fault (fixed 2026-11-18): sakura-sky.js reset() and the constructor set `ambientAt = 9` — nine seconds on the
     // garden's clock, not nine seconds from now. A sky reset late in a session (Settings: effects
     // off calls SakuraWorld.resetEffects()) or built late (a rebuild that carries the clock: a
     // quality change) finds its star long overdue and sends it on the very next frame.
     // Reproduce: light.update(500, {}); sky.reset(); sky.update({}): a star falls at once.
-    it.fails('waits nine seconds after a reset or a rebuild late in the night, as it does at the start', () => {
+    it('waits nine seconds after a reset or a rebuild late in the night, as it does at the start', () => {
         const {
             stars, run, sky, light,
         } = nightSky();

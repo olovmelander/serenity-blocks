@@ -414,7 +414,10 @@ export class SakuraPetalDirector {
             const emitter = emitters[i];
             if (emitter.kind !== 'swarm') continue;
             const run = Math.max(0, Math.min(1, emitter.age / emitter.duration));
-            swarm = Math.max(swarm, emitter.strength * Math.sin(Math.PI * run) ** 0.7);
+            const strength = Math.max(0, Math.min(1, emitter.strength));
+            const risen = strength * Math.sin(Math.PI * run) ** 0.7;
+            // (A frame made by hand may carry anything: only a real share counts.)
+            if (Number.isFinite(risen)) swarm = Math.max(swarm, risen);
         }
         this.swarm = swarm;
         this.env.swarm = swarm;

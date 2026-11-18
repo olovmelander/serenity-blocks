@@ -234,10 +234,13 @@ export function sakuraWeatherName(phase) {
  * @param {string | number | null | undefined} value
  */
 export function sakuraWeatherIndex(value) {
-    if (value === null || value === undefined || value === '') return null;
-    const byId = SAKURA_WEATHERS.findIndex((weather) => weather.id === String(value).toLowerCase());
+    // (Only a name or a number names an air: blank text, a list or a boolean hands it back.)
+    if (typeof value !== 'number' && typeof value !== 'string') return null;
+    const text = String(value);
+    if (text.trim() === '') return null;
+    const byId = SAKURA_WEATHERS.findIndex((weather) => weather.id === text.toLowerCase());
     if (byId >= 0) return byId;
-    const number = Number(value);
+    const number = Number(text);
     if (!Number.isFinite(number)) return null;
     const n = SAKURA_WEATHERS.length;
     return ((Math.round(number) % n) + n) % n;

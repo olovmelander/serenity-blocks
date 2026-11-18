@@ -55,8 +55,8 @@ import { ComboTracker } from '../../core/combo-tracker.js';
 import { GameplaySurge, SURGE_WEIGHTS, Swell } from '../shared/gameplay-surge.js';
 
 // Every handler firing in one frame (a hard-dropped lock, four lines, a combo, a twist, a
-// back-to-back, a perfect clear and a level-up) asks for twenty-one emitters; no tier's pool is
-// smaller, so none is reclaimed before the garden has played it.
+// back-to-back, a perfect clear and a level-up) asks for twenty emitters, and a fever's star and
+// festival lantern for two more; no tier's pool is smaller, so an empty pool loses none of them.
 export const SAKURA_REACTION_LIMITS = Object.freeze({
     Minimal: 22,
     Low: 22,
@@ -100,8 +100,10 @@ const BOARD_VISIBLE_ROWS = 20;
 const BOARD_HIDDEN_ROWS = 4;
 /** Emitters do their work early in their lives (the petal director spawns within these). */
 const WORK_SECONDS = Object.freeze({
-    lock: 0.28, clear: 0.75, shower: 1.6, spin: 1.1, rise: 1.3,
+    lock: 0.28, clear: 0.75, shower: 1.6, spin: 1.1, rise: 1.3, swarm: 3.4,
 });
+/** An emitter the garden has not yet seen is the last to be given up (emit()). */
+const UNSEEN = 2;
 /** What Reduce motion leaves of the garden's movement (the wind, the fronts, the stream). */
 export const SAKURA_CALM_MOTION = 0.35;
 
@@ -308,7 +310,8 @@ export class SakuraReactions {
      * Claim a free slot, else the one with the least of its work left (an emitter does its work
      * early: a jet that has thrown its petals only lingers; a star or a flight acts once, on the
      * first frame the garden sees it), the furthest through its life on a tie. An emitter the
-     * garden has not yet seen keeps its whole work.
+     * garden has not yet seen keeps its whole work and is the last to be given up, however faint:
+     * what the game asked for this frame is played before anything already playing is spared.
      */
     emit(kind, {
         side = 0, column = 0.5, row = 0.3, strength = 0.5, lines = 0, duration = 1,
@@ -323,7 +326,7 @@ export class SakuraReactions {
                 selected = index;
                 break;
             }
-            let left = emitter.strength;
+            let left = UNSEEN + emitter.strength;
             if (emitter.age > 0) {
                 const window = WORK_SECONDS[emitter.kind] ?? 0;
                 left = window > 0 ? clamp(1 - emitter.age / window, 0, 1) * emitter.strength : 0;
@@ -435,14 +438,14 @@ export class SakuraReactions {
         });
         let side = 0;
         if (place) side = place.column < 0.5 ? -1 : 1;
-        this.emit('lock', {
+        const puff = this.emit('lock', {
             side, column: place?.column ?? 0.5, row: place?.row ?? 0.12, strength, duration: 1.2,
         });
         // A hard drop goes through the card into the lake: spray stands up beside the board on
         // the piece's side (a piece set down from a row or two up makes none).
         if (drop >= 0.12) {
             this.emit('splash', {
-                side, column: place?.column ?? 0.5, strength: drop, duration: 0.5,
+                side: puff.side, column: place?.column ?? 0.5, strength: drop, duration: 0.5,
             });
         }
         return true;
@@ -697,6 +700,11 @@ export class SakuraReactions {
             const c2 = this.swaySpeed + SWAY_OMEGA * c1;
             this.sway = target + (c1 + c2 * dt) * decay;
             this.swaySpeed = (c2 - SWAY_OMEGA * (c1 + c2 * dt)) * decay;
+            // (A step so long that the spring's terms overflow has long since come to rest.)
+            if (!Number.isFinite(this.sway) || !Number.isFinite(this.swaySpeed)) {
+                this.sway = target;
+                this.swaySpeed = 0;
+            }
             if (Math.abs(this.sway) < 1e-5 && Math.abs(this.swaySpeed) < 1e-4) {
                 this.sway = 0;
                 this.swaySpeed = 0;

@@ -6,7 +6,7 @@
  * a GPU: who gets which slot, what a launch writes, what a frame makes of the reactions' frame,
  * when the star fox arrives and where its path runs on the screen. Their shaders are built in
  * sakura-shaders.test.js. Where the source does not do what its contract says the test is kept
- * as `it.fails` under a `// FAULT:` comment, so it turns red the day the source is put right.
+ * as `it.fails` under a `// Was a fault (fixed 2026-11-18):` comment, so it turns red the day the source is put right.
  */
 import {
     afterEach, describe, expect, it, vi,
@@ -372,13 +372,13 @@ describe('Sakura showpieces: the crown of spray', () => {
         expect(edge.show.splashData[3].x).toBe(50);
     });
 
-    // FAULT: sakura-showpieces.js splash() (lines 236-243) weighs what is left of a crown by its
+    // Was a fault (fixed 2026-11-18): sakura-showpieces.js splash() (lines 236-243) weighs what is left of a crown by its
     // strength (`w * (1 - age / SECONDS)`), so with every slot standing a weak crown a twentieth
     // of a second old is the one cut, not the strong one that has all but fallen back. The header
     // and the contract say "the one with the least of its life left" (helix() does exactly that).
     // Reproduce: five splash(x, z, 1) at t = 10, at t = 11 one splash(x, z, 0.15), at t = 11.05 a
     // seventh: the 0.15 crown born 0.05 s ago is overwritten; the five have 0.2 s left.
-    it.fails('gives up the crown with the least time left, however strong it was', () => {
+    it('gives up the crown with the least time left, however strong it was', () => {
         const { show, at } = create();
         at(10);
         for (let index = 0; index < 5; index += 1) show.splash(index, 0, 1);
@@ -432,12 +432,12 @@ describe('Sakura showpieces: the double helix', () => {
         expect(show.helix()).toBe(false);
     });
 
-    // FAULT: sakura-showpieces.js helix() (line 318 checks only x, y, z; line 331 `Math.max(2,
+    // Was a fault (fixed 2026-11-18): sakura-showpieces.js helix() (line 318 checks only x, y, z; line 331 `Math.max(2,
     // height)`) accepts a height that is not a number: Math.max(2, NaN) is NaN, and the slot's
     // height goes to the shader as NaN (every petal of that helix is placed at NaN) or as Infinity.
     // Reproduce: light.update(1, {}); show.helix(0, 0, 0, 1, 1, NaN) returns true and
     // show.helixLook[0].z is NaN. The contract: non-finite arguments are refused, no slot written.
-    it.fails('refuses a height that is not a number', () => {
+    it('refuses a height that is not a number', () => {
         const { show, at } = create();
         at(5);
         const before = [rows(show.helixData), rows(show.helixLook)];
@@ -511,13 +511,13 @@ describe('Sakura showpieces: the star fox', () => {
         }
     });
 
-    // FAULT: sakura-showpieces.js spirit() (line 523, `Math.min(1.3, Math.max(0.4, power))`) takes a
+    // Was a fault (fixed 2026-11-18): sakura-showpieces.js spirit() (line 523, `Math.min(1.3, Math.max(0.4, power))`) takes a
     // power that is not a number: the slot's power is NaN, and from the moment the star fox nears
     // the gate update() writes NaN into `uGate` — the gate's shaft, its glow and the torii's own
     // ember (the garden's prop material) all shade NaN. Reproduce: light.update(1, {});
     // show.spirit(NaN) returns true; light.update(1 + 2.9, {}); show.update(0, 0, {}, 0);
     // show.uGate.value is NaN. The contract: non-finite arguments are refused, no slot written.
-    it.fails('refuses a power that is not a number, and never lets one reach the gate', () => {
+    it('refuses a power that is not a number, and never lets one reach the gate', () => {
         for (const power of [NaN, 'bright', {}]) {
             const { show, at } = create();
             at(1);
@@ -707,13 +707,13 @@ describe('Sakura showpieces: the gate\'s light', () => {
         expect(steepest).toBeLessThan(0.2);
     });
 
-    // FAULT: sakura-showpieces.js spirit() (line 522) refuses a second star fox only while the
+    // Was a fault (fixed 2026-11-18): sakura-showpieces.js spirit() (line 522) refuses a second star fox only while the
     // first is in the sky (2.9 s); its light then stands in the gate until SAKURA_SPIRIT_SECONDS
     // (7.5 s). A perfect clear in that time relaunches the one slot: update() reads afterglow(0)
     // and the gate goes from a blaze to dark in a single frame, 2.75 s before it lights again.
     // Reproduce: light.update(0, {}); show.spirit(1); step to t = 3.1 (uGate 1.55); show.spirit(1)
     // returns true; next show.update(): uGate 0. Nothing in flight should be cut short.
-    it.fails('keeps the gate burning when a second star fox sets out under the first one\'s light', () => {
+    it('keeps the gate burning when a second star fox sets out under the first one\'s light', () => {
         const garden = create();
         garden.at(0);
         garden.show.spirit(1);
@@ -1059,16 +1059,18 @@ describe('Sakura showpieces: the gate and the star fox\'s way down', () => {
         }
     });
 
-    // FAULT: sakura-showpieces.js sakuraSpiritPath() (line 103, the swing ten degrees left of the
+    // Was a fault (fixed 2026-11-18): sakura-showpieces.js sakuraSpiritPath() (line 103, the swing ten degrees left of the
     // Fox) takes the star fox off the left edge of the screen in a narrow landscape window: the
     // landscape framing is used from an aspect of 0.85 up, and from there to about 1.1 the curve
     // is outside the frame for most of the flight (at 0.86: 6 % of it on screen; at 1.0: 48 %;
     // a window snapped to half a 16:9 monitor is 0.89). Reproduce: frame a camera with
     // sakuraViewFor(0.89) at that aspect, project the bezier of sakuraSpiritPath(): x < 0.
-    it.fails('is seen for most of its flight in the narrowest landscape windows too', () => {
-        const path = sakuraSpiritPath();
+    it('is seen for most of its flight in the narrowest landscape windows too', () => {
         const shares = [0.86, 0.89, 1].map((aspect) => {
             const camera = frameCamera(aspect);
+            // (The world lays the flight through the framing it is seen in: SakuraShowpieces.setView.)
+            const view = sakuraViewFor(aspect);
+            const path = sakuraSpiritPath(view.position, { view, aspect });
             let inFrame = 0;
             for (let step = 0; step <= 200; step += 1) {
                 const seen = onScreen(camera, onPath(path, step / 200));

@@ -30,7 +30,7 @@ import {
     positionGeometry, positionLocal, positionWorld, pow, saturate, sin, smoothstep, uniform, uniformArray, uv, vec2,
     vec3, vec4,
 } from 'three/tsl';
-import { SAKURA_TORII } from './sakura-composition.js';
+import { SAKURA_TORII, SAKURA_VIEWS } from './sakura-composition.js';
 import { SAKURA_CONSTELLATIONS } from './sakura-sky.js';
 import { SAKURA_WATER_LEVEL, sakuraTerrainHeight } from './sakura-terrain.js';
 
@@ -88,20 +88,65 @@ export function sakuraGatePlace() {
     };
 }
 
+/** How far round from the Fox the star fox may swing on its way down (degrees), in order of choice. */
+const SPIRIT_SWINGS = Object.freeze([-10, -6, -2, 2, 6, 10, 14]);
+const UP = new THREE.Vector3(0, 1, 0);
+
+/** The share (0..1) of a curve that falls inside a framing ({ view, aspect }), a little in from its edges. */
+function shareSeen(from, over, to, frame) {
+    const { view } = frame;
+    const eye = new THREE.Vector3(view.position[0], view.position[1], view.position[2]);
+    const forward = new THREE.Vector3(view.target[0], view.target[1], view.target[2]).sub(eye).normalize();
+    const right = new THREE.Vector3().crossVectors(forward, UP).normalize();
+    const up = new THREE.Vector3().crossVectors(right, forward);
+    const tanV = Math.tan(THREE.MathUtils.degToRad(view.fov * 0.5));
+    const tanH = tanV * frame.aspect;
+    const point = new THREE.Vector3();
+    const samples = 40;
+    let seen = 0;
+    for (let step = 0; step <= samples; step += 1) {
+        const t = step / samples;
+        const one = 1 - t;
+        point.copy(from).multiplyScalar(one * one).addScaledVector(over, 2 * one * t).addScaledVector(to, t * t)
+            .sub(eye);
+        const depth = point.dot(forward);
+        if (depth > 1 && Math.abs(point.dot(right)) < depth * tanH * 0.94
+            && Math.abs(point.dot(up)) < depth * tanV * 0.96) seen += 1;
+    }
+    return seen / (samples + 1);
+}
+
 /**
  * The star fox's way down, as the three points of a curve: out of the Fox among the stars, over
- * the mountain's shoulder, and into the gate. `eye` is where the garden is seen from.
+ * the mountain's shoulder, and into the gate. `eye` is where the garden is seen from. Given a
+ * framing (`{ view, aspect }`: a narrow window, the portrait view) it swings the way that keeps
+ * the flight inside that frame; without one, the way the wide landscape framing shows it best.
  */
-export function sakuraSpiritPath(eye = [0, 4.3, 16]) {
+export function sakuraSpiritPath(eye = SAKURA_VIEWS.landscape.position, frame = null) {
     const fox = SAKURA_CONSTELLATIONS.find((figure) => figure.name === 'The Fox') || SAKURA_CONSTELLATIONS[0];
-    const from = skyDirection(fox.at[0], fox.at[1]).multiplyScalar(620).add(new THREE.Vector3(eye[0], eye[1], eye[2]));
+    const origin = new THREE.Vector3(eye[0], eye[1], eye[2]);
+    const from = skyDirection(fox.at[0], fox.at[1]).multiplyScalar(620).add(origin);
     const gate = sakuraGatePlace();
     const to = new THREE.Vector3(gate.x, gate.foot + (gate.top - gate.foot) * 0.55, gate.z);
     // It swings out over the mountain's left flank before it stoops on the gate: the Fox, the
     // summit and the gate stand almost in one line from the eye, and a straight fall would run
     // down the board's edge behind the foxfire.
-    const over = skyDirection(fox.at[0] - 10, fox.at[1] - 8).multiplyScalar(300)
-        .add(new THREE.Vector3(eye[0], eye[1], eye[2]));
+    const swing = (degrees) => skyDirection(fox.at[0] + degrees, fox.at[1] - 8).multiplyScalar(300).add(origin);
+    let over = swing(SPIRIT_SWINGS[0]);
+    const framed = frame?.view && Number.isFinite(frame.aspect) && frame.aspect > 0;
+    if (framed) {
+        // A narrow window has no sky that far left: the first swing that keeps the flight in the
+        // frame, else the one that shows the most of it.
+        let best = -1;
+        for (let index = 0; index < SPIRIT_SWINGS.length && best < 0.95; index += 1) {
+            const candidate = swing(SPIRIT_SWINGS[index]);
+            const share = shareSeen(from, candidate, to, frame);
+            if (share > best + 1e-9) {
+                best = share;
+                over = candidate;
+            }
+        }
+    }
     return { from, over, to };
 }
 
@@ -138,7 +183,13 @@ export class SakuraShowpieces {
         // The gate's light (0 dark .. 1.6) and the star fox (birth, power).
         this.uGate = uniform(0);
         this.uSpirit = uniform(new THREE.Vector2(-1000, 0));
+        /** The star fox before this one (when it set out, its power): its light at the gate burns on. */
+        this.embers = new THREE.Vector2(-1000, 0);
         this.path = sakuraSpiritPath();
+        // (The curve is three uniforms: each framing has its own: setView().)
+        this.uPath = {
+            from: uniform(this.path.from.clone()), over: uniform(this.path.over.clone()), to: uniform(this.path.to.clone()),
+        };
         this.gate = sakuraGatePlace();
         this.arrived = true;
         /** Called once as the star fox goes through the gate: (x, z, power). */
@@ -148,6 +199,22 @@ export class SakuraShowpieces {
     own(resource) {
         this.owned.push(resource);
         return resource;
+    }
+
+    /**
+     * The framing the garden is seen through (a view of sakura-composition.js and the window's
+     * aspect): the star fox's flight is laid through that frame's open sky. A fox already in the
+     * air keeps its course.
+     */
+    setView(view, aspect) {
+        if (!view || !Number.isFinite(aspect) || !(aspect > 0)) return;
+        const now = this.light.uTime.value;
+        const age = now - this.uSpirit.value.x;
+        if (age >= 0 && age < SAKURA_SPIRIT_FLIGHT + 1.2) return;
+        this.path = sakuraSpiritPath(view.position, { view, aspect });
+        this.uPath.from.value.copy(this.path.from);
+        this.uPath.over.value.copy(this.path.over);
+        this.uPath.to.value.copy(this.path.to);
     }
 
     build() {
@@ -226,16 +293,18 @@ export class SakuraShowpieces {
         this.group.add(mesh);
     }
 
-    /** A crown of spray at world (x, z) on the lake; `strength` 0..1 is how far the piece fell. */
+    /**
+     * A crown of spray at world (x, z) on the lake; `strength` 0..1 is how far the piece fell. It
+     * takes a slot whose crown has fallen back, else the one with the least time left.
+     */
     splash(x, z, strength = 0.6) {
-        if (!(strength > 0) || !Number.isFinite(x) || !Number.isFinite(z)) return false;
+        if (!(strength > 0) || ![x, z, strength].every(Number.isFinite)) return false;
         const now = this.light.uTime.value;
         let chosen = 0;
         let least = Infinity;
         for (let index = 0; index < SAKURA_SPLASH_SLOTS; index += 1) {
             const age = now - this.splashData[index].z;
-            const left = age >= SAKURA_SPLASH_SECONDS || age < 0 ? 0
-                : this.splashData[index].w * (1 - age / SAKURA_SPLASH_SECONDS);
+            const left = age >= SAKURA_SPLASH_SECONDS || age < 0 ? 0 : 1 - age / SAKURA_SPLASH_SECONDS;
             if (left < least) {
                 least = left;
                 chosen = index;
@@ -315,7 +384,7 @@ export class SakuraShowpieces {
      * board the twist was on), `height` how tall it stands.
      */
     helix(x, y, z, side = 1, strength = 1, height = 5) {
-        if (!(strength > 0) || ![x, y, z].every(Number.isFinite)) return false;
+        if (!(strength > 0) || ![x, y, z, strength, height].every(Number.isFinite)) return false;
         const now = this.light.uTime.value;
         let chosen = 0;
         let oldest = -Infinity;
@@ -328,7 +397,12 @@ export class SakuraShowpieces {
             }
         }
         this.helixData[chosen].set(x, y, z, now);
-        this.helixLook[chosen].set(Math.min(1.3, Math.max(0.3, strength)), side < 0 ? -1 : 1, Math.max(2, height), 0);
+        this.helixLook[chosen].set(
+            Math.min(1.3, Math.max(0.3, strength)),
+            side < 0 ? -1 : 1,
+            Math.max(2, height),
+            0,
+        );
         return true;
     }
 
@@ -458,7 +532,7 @@ export class SakuraShowpieces {
 
     /** The star fox: a head of cold fire and the sparks it trails, on its way down to the gate. */
     buildSpirit() {
-        const { light, path } = this;
+        const { light } = this;
         const data = new Float32Array(SPIRIT_SPARKS * 2); // how far behind the head (0 the head), a chance
         for (let i = 0; i < SPIRIT_SPARKS; i += 1) data.set([i / (SPIRIT_SPARKS - 1), this.rng()], i * 2);
         const part = instancedBufferAttribute(new THREE.InstancedBufferAttribute(data, 2));
@@ -473,9 +547,9 @@ export class SakuraShowpieces {
         const behind = part.x;
         // Each spark is where the head was a little earlier; the trail shortens as it arrives.
         const at = saturate(head.sub(behind.mul(0.42).mul(float(1).sub(head.mul(0.55)))));
-        const a = vec3(path.from.x, path.from.y, path.from.z);
-        const b = vec3(path.over.x, path.over.y, path.over.z);
-        const c = vec3(path.to.x, path.to.y, path.to.z);
+        const a = this.uPath.from;
+        const b = this.uPath.over;
+        const c = this.uPath.to;
         const one = at.oneMinus();
         const point = a.mul(one.mul(one)).add(b.mul(one.mul(at).mul(2))).add(c.mul(at.mul(at)));
         const far = length(point.sub(cameraPosition));
@@ -515,12 +589,20 @@ export class SakuraShowpieces {
         this.group.add(mesh);
     }
 
-    /** Send the star fox down through the gate. One at a time: a second waits out the first. */
+    /**
+     * Send the star fox down through the gate. One at a time: a second during the flight is
+     * refused. One that sets out while the gate still burns from the last leaves that light to
+     * burn down by itself (`embers`).
+     */
     spirit(power = 1) {
+        // (A power that is no number at all is refused; any other is held to what can be seen.)
+        const asked = Number(power);
+        if (Number.isNaN(asked)) return false;
         const now = this.light.uTime.value;
         const age = now - this.uSpirit.value.x;
         if (age >= 0 && age < SAKURA_SPIRIT_FLIGHT) return false;
-        this.uSpirit.value.set(now, Math.min(1.3, Math.max(0.4, power)));
+        this.embers.copy(this.uSpirit.value);
+        this.uSpirit.value.set(now, Math.min(1.3, Math.max(0.4, asked)));
         this.arrived = false;
         return true;
     }
@@ -538,9 +620,11 @@ export class SakuraShowpieces {
         this.splashData.forEach((slot) => slot.set(0, 0, -1000, 0));
         this.helixData.forEach((slot) => slot.set(0, 0, 0, -1000));
         this.uSpirit.value.set(-1000, 0);
+        this.embers.set(-1000, 0);
         this.uGate.value = 0;
         this.uBlizzard.value = 0;
         this.arrived = true;
+        this.carriedAt = Number.NaN;
     }
 
     /**
@@ -564,7 +648,10 @@ export class SakuraShowpieces {
             * (0.45 + 0.55 * motion);
         // The gate: back-to-backs light it, and the star fox leaves it blazing.
         const spiritAge = now - this.uSpirit.value.x;
-        const blaze = SakuraShowpieces.afterglow(spiritAge) * this.uSpirit.value.y;
+        const blaze = Math.max(
+            SakuraShowpieces.afterglow(spiritAge) * this.uSpirit.value.y,
+            SakuraShowpieces.afterglow(now - this.embers.x) * this.embers.y,
+        );
         this.uGate.value = Math.min(1.6, Math.max(clamp(frame.corona, 1.6) * 0.72, blaze * 1.6));
         if (!this.arrived && spiritAge >= SAKURA_SPIRIT_FLIGHT) {
             this.arrived = true;

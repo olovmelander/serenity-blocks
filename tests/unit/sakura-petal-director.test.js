@@ -2032,7 +2032,7 @@ describe('Sakura petal director: each event\'s own instrument', () => {
     });
 
     describe('what it is handed', () => {
-        // FAULT: sakura-petal-director.js apply() (the swarm loop, `Math.max(swarm, strength *
+        // Was a fault (fixed 2026-11-18): sakura-petal-director.js apply() (the swarm loop, `Math.max(swarm, strength *
         // Math.sin(Math.PI * run) ** 0.7)`) lets a swarm emitter with a strength or a duration that
         // is not a number make `director.swarm` and `env.swarm` NaN (Math.max of NaN is NaN), and
         // one stronger than 1 take it past 1. SakuraReactions never emits either, and SakuraSpirits
@@ -2040,7 +2040,7 @@ describe('Sakura petal director: each event\'s own instrument', () => {
         // (env.swarm in 0..1) does not hold for such a frame. Reproduce: director.apply({ emitters:
         // [{ id: 0, serial: 0, kind: 'swarm', strength: NaN, age: 1, duration: 3.4 }] }, 1 / 60).swarm
         // is NaN.
-        it.fails('keeps the swarm a share whatever an emitter carries', () => {
+        it('keeps the swarm a share whatever an emitter carries', () => {
             const { director } = createDirector();
             const junk = [NaN, Infinity, -Infinity, undefined, null, 'x', -1, 0, 7];
             for (const strength of junk) {
@@ -2385,7 +2385,7 @@ describe('Sakura reactions and petal director: ten minutes of play', () => {
         expect(lost.map((serial) => emitted.get(serial).kind)).toEqual([]);
     }, 120000);
 
-    // FAULT: sakura-reactions.js emit() (lines 316-337). When a frame asks for more emitters than
+    // Was a fault (fixed 2026-11-18): sakura-reactions.js emit() (lines 316-337). When a frame asks for more emitters than
     // the pool has free and spent slots, it gives up "the one with the least of its work left" —
     // and an emitter the garden has not yet seen counts only its strength, so a faint one that
     // has never been played (a back-to-back's gate at 0.4-0.6, a single line's lanterns at 0.25,
@@ -2397,7 +2397,7 @@ describe('Sakura reactions and petal director: ten minutes of play', () => {
     // steady play, lose two gates in ten minutes. Short reproduction, Minimal: onLineClear(4),
     // onPerfectClear(), onLevelUp(), update(1 / 60), then every handler in one frame: the frame's
     // own gate emitter is gone before any frame holds it.
-    it.fails('loses nothing the game asked for before the garden saw it, at Minimal', () => {
+    it('loses nothing the game asked for before the garden saw it, at Minimal', () => {
         const { emitted, seen } = session('Minimal');
         const lost = [...emitted.keys()].filter((serial) => !seen.has(serial));
         expect(lost.map((serial) => emitted.get(serial).kind)).toEqual([]);

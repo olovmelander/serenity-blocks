@@ -1698,7 +1698,7 @@ describe('Sakura reaction director: each event\'s own instrument', () => {
                 .toEqual(new Set([...EVENT_KINDS, 'festival']));
         });
 
-        // FAULT: sakura-reactions.js emit() (lines 316-337) gives up "the one with the least of its
+        // Was a fault (fixed 2026-11-18): sakura-reactions.js emit() (lines 316-337) gives up "the one with the least of its
         // work left", and an emitter the garden has not yet seen counts only its strength there: a
         // faint one that has never been played is given up before a jet, a shower or a lift the
         // garden has been playing for a frame and still has most of its work to do. For an emitter
@@ -1707,7 +1707,7 @@ describe('Sakura reaction director: each event\'s own instrument', () => {
         // for an empty pool only. Reproduce at Minimal or Low (22 slots): onLineClear(4),
         // onPerfectClear(), onLevelUp(), update(1 / 60), then every handler in one frame: two of
         // that frame's own twenty emitters are gone, and the old clear x 2, shower and rise stay.
-        it.fails('gives up what the garden has already seen before anything it has not', () => {
+        it('gives up what the garden has already seen before anything it has not', () => {
             for (const quality of ['Minimal', 'Low']) {
                 const reactions = create(quality);
                 reactions.onLineClear(4, { clearedRows: [20, 21, 22, 23] });
@@ -1809,13 +1809,13 @@ describe('Sakura reaction director: each event\'s own instrument', () => {
             expect(emittersOf(later, 'lock').length).toBeGreaterThan(0);
         });
 
-        // FAULT: sakura-reactions.js onPieceLock() (lines 436-446) hands the lock and its splash
+        // Was a fault (fixed 2026-11-18): sakura-reactions.js onPieceLock() (lines 436-446) hands the lock and its splash
         // the same `side` of 0 when the lock cannot be placed (a payload with no piece and no
         // viewport origin), and emit() then picks a side from the serial's parity (line 342): the
         // two emitters have consecutive serials, so the crown of spray stands on the opposite side
         // of the board from the lock's puff of petals. Reproduce: reactions.onHardDrop({ distance:
         // 16 }); reactions.onPieceLock(); the frame's lock has side -1 and its splash side 1.
-        it.fails('stands on the side the lock\'s puff took when the lock could not be placed', () => {
+        it('stands on the side the lock\'s puff took when the lock could not be placed', () => {
             for (let locks = 0; locks < 4; locks += 1) {
                 const reactions = create();
                 for (let before = 0; before < locks; before += 1) reactions.onPieceLock();
@@ -1872,7 +1872,7 @@ describe('Sakura reaction director: each event\'s own instrument', () => {
             expect(frames / 60).toBeLessThan(3.4 + 2 / 60);
         });
 
-        // FAULT: sakura-reactions.js WORK_SECONDS (line 102) has no entry for 'swarm', so emit()
+        // Was a fault (fixed 2026-11-18): sakura-reactions.js WORK_SECONDS (line 102) has no entry for 'swarm', so emit()
         // (lines 326-330) counts a swarm that has been seen for one frame as having no work left —
         // but its work is its whole 3.4 s (the petal director reads the fireflies' height from its
         // age every frame). With the pool full it is given up before emitters that really are
@@ -1881,7 +1881,7 @@ describe('Sakura reaction director: each event\'s own instrument', () => {
         // sessions of fast play (a lock every 0.4-0.7 s, half of them clearing) this cut 40 of 545
         // swarms at Minimal, 19 at High and 3 at Extreme; steady play never fills the pool.
         // Reproduce: below — three lines, 1.7 s, then locks until the pool is full of spent ones.
-        it.fails('is not given up at its height while emitters that have done their work are there to take', () => {
+        it('is not given up at its height while emitters that have done their work are there to take', () => {
             const reactions = create('Minimal');
             reactions.onLineClear(3, { clearedRows: [23] });
             const [{ serial }] = emittersOf(reactions.frame, 'swarm');
@@ -2263,7 +2263,7 @@ describe('Sakura reaction director: each event\'s own instrument', () => {
         // underflowed to 0, and Infinity x 0 is NaN: `frame.sway` is NaN from then on (only reset()
         // clears it). The theme clamps a frame to 0.05 s, so play never reaches it. Reproduce:
         // reactions.onLineClear(4); reactions.update(1 / 60); reactions.update(1e308).sway is NaN.
-        it.fails('keeps the boughs\' sway a number after the longest step there is', () => {
+        it('keeps the boughs\' sway a number after the longest step there is', () => {
             const reactions = create();
             reactions.onLineClear(4);
             reactions.update(1 / 60);

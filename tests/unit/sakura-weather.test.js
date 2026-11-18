@@ -3,7 +3,7 @@
  * them (sakura-light.js): six airs on a clock of their own beside the five hours.
  *
  * Plain numbers, no GPU. Where the source does not do what its contract says the test is kept
- * as `it.fails` under a `// FAULT:` comment, so it turns red the day the source is put right.
+ * as `it.fails` under a `// Was a fault (fixed 2026-11-18):` comment, so it turns red the day the source is put right.
  */
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three/webgpu';
@@ -342,11 +342,11 @@ describe('Sakura Twilight weather by name or number', () => {
         }
     });
 
-    // FAULT: sakura-weather.js sakuraWeatherIndex() — Number(' ') and Number([]) are 0 and
+    // Was a fault (fixed 2026-11-18): sakura-weather.js sakuraWeatherIndex() — Number(' ') and Number([]) are 0 and
     // Number(true) is 1, so blank text, an empty list and a boolean pin an air instead of handing
     // the weather back to the clock (`?weather=%20` holds the clear evening still). The contract:
     // null for null, '' and garbage.
-    it.fails('is null for blank text, a list and a boolean too', () => {
+    it('is null for blank text, a list and a boolean too', () => {
         const pinned = [' ', '\t', [], true, false].filter((value) => sakuraWeatherIndex(value) !== null);
         expect(pinned).toEqual([]);
     });
@@ -384,12 +384,12 @@ describe('Sakura Twilight light rig weather', () => {
         light.dispose();
     });
 
-    // FAULT: sakura-light.js constructor (`this.uGalaxy = uniform(0)`, line 122) never calls
+    // Was a fault (fixed 2026-11-18): sakura-light.js constructor (`this.uGalaxy = uniform(0)`, line 122) never calls
     // paintAir(): a rig that has not yet been given an hour or an air shows no river of heaven
     // (uGalaxy 0, not hour.galaxy x weather.galaxy = 0.22) and has no `mistAtRest`, so update()
     // cannot close the mist in at game over. SakuraWorld sets both every frame before the first
     // draw, so the game never shows it; a rig used by itself (a probe, a capture, these tests) does.
-    it.fails('opens with the river of heaven and the mist the first hour and air give it', () => {
+    it('opens with the river of heaven and the mist the first hour and air give it', () => {
         const light = rig();
         expect(light.uGalaxy.value).toBeCloseTo(SAKURA_HOURS[0].galaxy * SAKURA_WEATHERS[0].galaxy, 12);
         light.update(0, { hush: 1 });
