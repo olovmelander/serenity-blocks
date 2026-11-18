@@ -14,8 +14,8 @@
  *                 the water beside the board, taller the further it fell
  *   line clear    twin jets of petals blown out of both sides at the cleared rows, lanterns
  *                 set afloat, the blossom lit from within; from two lines a gust front
- *                 crosses the garden and the lanterns flare as it passes; three lines run a
- *                 wave of lantern light along the far shore
+ *                 crosses the garden and the lanterns flare as it passes; at three lines every
+ *                 firefly in the garden rises at once in a slow bright cloud
  *   four lines    hanafubuki — a blizzard of petals streams through the whole garden on the
  *                 wind — under a flaring moon and shooting stars; the fox leaps for the moon
  *   combo/streak  a stream of petals winds around the board and climbs; foxfire lights
@@ -492,8 +492,8 @@ export class SakuraReactions {
         if (lines >= 2 || deep > 0) this.sweep(0.3 + lines * 0.17 + deep * 0.08);
         if (lines >= 3) {
             this.emit('star', { strength: 0.7, duration: 1.4 });
-            // Three lines and more: a wave of lantern light runs along the far shore.
-            this.emit('shore', { strength: four ? 1 : 0.7, lines, duration: 2.6 });
+            // Three lines and more: every firefly in the garden rises at once, and sinks back.
+            this.emit('swarm', { strength: four ? 1 : 0.8, lines, duration: 3.4 });
         }
         if (four) {
             this.blizzard.hit(1, this.time);
@@ -790,8 +790,9 @@ export class SakuraReactions {
             stage: this.heat.stage,
             crown: clamp(this.crown.valueAt(this.time), 0, 1.3),
             corona: clamp(this.corona.valueAt(this.time), 0, 1.6),
-            // The four-line storm still in the air (calmed under Reduce motion where it is drawn).
-            blizzard: clamp(this.blizzard.valueAt(this.time), 0, 1) * (1 - this.hushTarget),
+            // The four-line storm still in the air (calmed under Reduce motion where it is drawn). When
+            // the game ends it thins out with the wind rather than vanishing.
+            blizzard: clamp(this.blizzard.valueAt(this.time), 0, 1) * (1 - this.hush),
             // Four-line clears so far: the fox leaps once for each.
             leap: this.leaps,
             motion: this.motion,

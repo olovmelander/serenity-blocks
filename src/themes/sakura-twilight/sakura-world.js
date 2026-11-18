@@ -338,8 +338,7 @@ export class SakuraWorld {
         light.update(time, { ...frame, front: env.front, fronts: env.fronts });
         this.petals.update(dt, env, frame.heat);
         this.sky.update(frame);
-        this.spirits.update(time, frame);
-        this.backdrop.update(env.shore);
+        this.spirits.update(time, frame, env.swarm);
         this.showpieces.update(time, dt, frame, light.weather.stream);
     }
 
