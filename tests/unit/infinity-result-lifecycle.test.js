@@ -339,19 +339,21 @@ describe('Infinity captured-session lifecycle and result compatibility', () => {
         session.gameState.infinityStats.maxComboComplexity = 5;
 
         await mode._handleGameOver(session.generation);
-        await vi.waitFor(() => expect(moduleMocks.uploadScore).toHaveBeenCalledTimes(3));
+        expect(moduleMocks.uploadScore).not.toHaveBeenCalled();
 
         const stoppedSession = mode._stoppedSession;
-        expect(highScoreManager.addScore).toHaveBeenCalledWith({
+        expect(highScoreManager.addScore).toHaveBeenCalledWith(expect.objectContaining({
             score: 4321,
             lines: 17,
             level: 4,
             mode: 'infinity',
             cascade: 5,
             duration: expect.any(Number),
-        });
-        expect(moduleMocks.incrementStat).toHaveBeenCalledTimes(3);
-        expect(moduleMocks.setStatMax).toHaveBeenCalledTimes(2);
+            runId: expect.any(String),
+            receipt: expect.objectContaining({ mode: 'infinity' }),
+        }));
+        expect(moduleMocks.incrementStat).not.toHaveBeenCalled();
+        expect(moduleMocks.setStatMax).not.toHaveBeenCalled();
         expect(moduleMocks.showGameOverModal).toHaveBeenCalledWith(
             mode.deps.modalManager,
             stoppedSession.gameState,
@@ -394,7 +396,7 @@ describe('Infinity captured-session lifecycle and result compatibility', () => {
         );
         expect(window.dispatchEvent).toHaveBeenCalledOnce();
 
-        await mode._syncSteamStats(mode._stoppedSession);
+        expect(mode._buildSteamReceipt(mode._stoppedSession)).toBeUndefined();
         expect(moduleMocks.uploadScore).not.toHaveBeenCalled();
         expect(moduleMocks.incrementStat).not.toHaveBeenCalled();
         expect(moduleMocks.setStatMax).not.toHaveBeenCalled();
@@ -410,14 +412,16 @@ describe('Infinity captured-session lifecycle and result compatibility', () => {
         highScoreManager.addScore.mockImplementation(() => addScore.promise);
 
         const gameOver = mode._handleGameOver(firstSession.generation);
-        await vi.waitFor(() => expect(highScoreManager.addScore).toHaveBeenCalledWith({
+        await vi.waitFor(() => expect(highScoreManager.addScore).toHaveBeenCalledWith(expect.objectContaining({
             score: 2468,
             lines: 12,
             level: 3,
             mode: 'infinity',
             cascade: 0,
             duration: expect.any(Number),
-        }));
+            runId: expect.any(String),
+            receipt: expect.objectContaining({ mode: 'infinity' }),
+        })));
 
         await mode.onStart();
         const replacementSession = mode._activeSession;
@@ -425,13 +429,9 @@ describe('Infinity captured-session lifecycle and result compatibility', () => {
 
         addScore.resolve();
         await gameOver;
-        await vi.waitFor(() => expect(moduleMocks.uploadScore).toHaveBeenCalledTimes(3));
+        expect(moduleMocks.uploadScore).not.toHaveBeenCalled();
 
-        expect(moduleMocks.uploadScore).toHaveBeenCalledWith(
-            expect.any(String),
-            2468,
-            expect.objectContaining({ score: 2468 }),
-        );
+        expect(highScoreManager.addScore.mock.calls[0][0].receipt.score).toBe(2468);
         expect(moduleMocks.showGameOverModal).not.toHaveBeenCalled();
         expect(window.dispatchEvent).not.toHaveBeenCalled();
         expect(mode.gameState).toBe(replacementSession.gameState);
@@ -682,7 +682,7 @@ describe('Infinity captured-session lifecycle and result compatibility', () => {
             expect(highScoreManager.addScore).toHaveBeenCalledWith(expect.objectContaining({
                 score: 4321, lines: 17, level: 4, mode: 'infinity',
             }));
-            await vi.waitFor(() => expect(moduleMocks.uploadScore).toHaveBeenCalledTimes(3));
+            expect(moduleMocks.uploadScore).not.toHaveBeenCalled();
             expect(moduleMocks.showGameOverModal).not.toHaveBeenCalled();
         });
 
@@ -755,7 +755,7 @@ describe('Infinity captured-session lifecycle and result compatibility', () => {
             await stop;
 
             expect(highScoreManager.addScore).toHaveBeenCalledOnce();
-            await vi.waitFor(() => expect(moduleMocks.uploadScore).toHaveBeenCalledTimes(3));
+            expect(moduleMocks.uploadScore).not.toHaveBeenCalled();
         });
 
         it('keeps the first run and the second apart across a restart', async () => {
@@ -821,7 +821,7 @@ describe('Infinity captured-session lifecycle and result compatibility', () => {
             clock.advance(600 * MINUTE);
             await mode.onStop();
 
-            await vi.waitFor(() => expect(moduleMocks.setStatMax).toHaveBeenCalledWith('infinity_best_time', 60));
+            expect(mode.deps.highScoreManager.addScore.mock.calls[0][0].receipt.duration).toBe(60);
         });
 
         it('counts layered pauses once', async () => {
@@ -882,12 +882,7 @@ describe('Infinity captured-session lifecycle and result compatibility', () => {
 
             await mode.onStop();
 
-            await vi.waitFor(() => expect(moduleMocks.setStatMax).toHaveBeenCalledWith('best_cascade', 3));
-            expect(moduleMocks.uploadScore).toHaveBeenCalledWith(
-                STEAM_LEADERBOARDS.INFINITY_BEST_CASCADE,
-                3,
-                expect.objectContaining({ bestCascade: 3 }),
-            );
+            expect(mode.deps.highScoreManager.addScore.mock.calls[0][0].receipt.cascade).toBe(3);
         });
 
         it('is the same chain on the results sheet\'s leaderboard', () => {

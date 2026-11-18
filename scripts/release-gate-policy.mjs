@@ -30,7 +30,9 @@ export function evaluatePrivacyPolicy({
             failed: true,
         };
     }
-    if (!PRIVACY_CONTACT_PLACEHOLDER.test(text)) return { diagnostics: [], failed: false };
+    if (!PRIVACY_CONTACT_PLACEHOLDER.test(text) && /\bContact:[ \t]*(?:\[|<)?[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i.test(text)) {
+        return { diagnostics: [], failed: false };
+    }
     const appIdSet = isReleaseSteamAppId(releaseAppId);
     const blocking = isReleaseBuild || appIdSet;
     const message = appIdSet && !isReleaseBuild

@@ -1314,7 +1314,7 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ## 34. steamworks.js
 
-- **Upstream:** https://github.com/ceifa/steamworks.js (version 0.4.0)
+- **Upstream:** https://github.com/CynToolkit/steamworks.js (@pipelab/steamworks.js 0.12.2, revision 05eaed23), derived from https://github.com/ceifa/steamworks.js
 - **Used in the game:** the desktop app's Steam integration, such as lobbies and online play.
 - **Licence:** MIT
 
@@ -1322,6 +1322,7 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 MIT License
 
 Copyright (c) 2022 Gabriel Francisco Dos Santos
+Copyright (c) 2026-present Quentin GOINAUD
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -1344,8 +1345,7 @@ SOFTWARE.
 
 ## 35. Rust crates compiled into the steamworks.js module
 
-steamworks.js ships a compiled Node module (`steamworksjs.win32-x64-msvc.node`, built with
-Rust 1.80.0) that statically links the Rust crates below. Crates that offer a choice of
+steamworks.js ships a compiled Node module (including `steamworksjs.win32-x64-msvc.node`) that statically links the Rust crates below. Crates that offer a choice of
 licences ("MIT OR Apache-2.0", "Unlicense OR MIT", or MIT and NCSA) are used here under the
 MIT License. Where a crate's licence file has no copyright line, the authors named in its
 `Cargo.toml` are given instead. "Possibly linked" marks crates in the dependency graph that
@@ -1353,34 +1353,34 @@ link-time optimisation may have removed.
 
 Used under the MIT License:
 
-- steamworks and steamworks-sys 0.11.0 (https://github.com/Noxime/steamworks-rs, revision
-  fbb79635): Copyright (c) 2018 Matthew Collins
-- napi 2.16.8 (https://github.com/napi-rs/napi-rs): Copyright (c) 2020-present LongYinan;
+- steamworks 0.12.1 and steamworks-sys 0.12.0 (https://github.com/Noxime/steamworks-rs, revision
+  40a457a6): Copyright (c) 2018 Matthew Collins
+- napi 2.16.17 (https://github.com/napi-rs/napi-rs): Copyright (c) 2020-present LongYinan;
   Copyright (c) 2018 GitHub
 - napi-sys 2.4.0 (https://github.com/napi-rs/napi-rs): Copyright (c) 2020-present LongYinan;
   Copyright (c) 2015 David Herman
-- tokio 1.39.2 (https://github.com/tokio-rs/tokio): Copyright (c) Tokio Contributors
-- serde 1.0.204 (https://github.com/serde-rs/serde): no copyright line; authors Erick
+- tokio 1.47.1 (https://github.com/tokio-rs/tokio): Copyright (c) Tokio Contributors
+- serde 1.0.219 (https://github.com/serde-rs/serde): no copyright line; authors Erick
   Tryzelaar and David Tolnay
-- serde_json 1.0.122 (https://github.com/serde-rs/json): no copyright line; authors Erick
+- serde_json 1.0.143 (https://github.com/serde-rs/json): no copyright line; authors Erick
   Tryzelaar and David Tolnay. Its number-parsing module (possibly linked) states "copyright
   Alexander Huszagh".
-- once_cell 1.19.0 (https://github.com/matklad/once_cell): no copyright line; author Aleksey
+- once_cell 1.21.3 (https://github.com/matklad/once_cell): no copyright line; author Aleksey
   Kladov
 - lazy_static 1.5.0 (https://github.com/rust-lang-nursery/lazy-static.rs): Copyright (c) 2010
   The Rust Project Developers
-- bitflags 2.6.0 and 1.3.2 (https://github.com/bitflags/bitflags): Copyright (c) 2014 The Rust
+- bitflags 2.9.4 (https://github.com/bitflags/bitflags): Copyright (c) 2014 The Rust
   Project Developers
-- thiserror 1.0.63 (https://github.com/dtolnay/thiserror): no copyright line; author David Tolnay
-- pin-project-lite 0.2.14 (https://github.com/taiki-e/pin-project-lite): no copyright line and
+- thiserror 2.0.16 (https://github.com/dtolnay/thiserror): no copyright line; author David Tolnay
+- pin-project-lite 0.2.16 (https://github.com/taiki-e/pin-project-lite): no copyright line and
   no authors listed; see its repository
-- windows-targets 0.52.6 and windows_x86_64_msvc 0.52.6 (https://github.com/microsoft/windows-rs):
+- windows-targets 0.52.6 / 0.53.3 and windows_x86_64_msvc 0.52.6 / 0.53.0 (https://github.com/microsoft/windows-rs):
   Copyright (c) Microsoft Corporation.
-- itoa 1.0.11, possibly linked (https://github.com/dtolnay/itoa): no copyright line; author
+- itoa 1.0.15, possibly linked (https://github.com/dtolnay/itoa): no copyright line; author
   David Tolnay
-- memchr 2.7.4, possibly linked (https://github.com/BurntSushi/memchr): Copyright (c) 2015
+- memchr 2.7.5, possibly linked (https://github.com/BurntSushi/memchr): Copyright (c) 2015
   Andrew Gallant
-- The Rust standard library of Rust 1.80.0 (std, core, alloc and panic_unwind;
+- The Rust standard library of Rust 1.96.0 (std, core, alloc and panic_unwind;
   https://github.com/rust-lang/rust). Its licence file has no copyright line. Its COPYRIGHT
   file states "Copyrights in the Rust project are retained by their contributors.", and its
   REUSE metadata names "The Rust Project Developers (see https://thanks.rust-lang.org)".
@@ -1388,13 +1388,13 @@ Used under the MIT License:
   and its bundled backtrace code (https://github.com/rust-lang/backtrace-rs) "Copyright (c)
   2014 Alex Crichton".
 - Crates compiled into the Rust standard library:
-  - hashbrown 0.14.5 (https://github.com/rust-lang/hashbrown): Copyright (c) 2016 Amanieu d'Antras
-  - rustc-demangle 0.1.24 (https://github.com/rust-lang/rustc-demangle): Copyright (c) 2014 Alex
+  - hashbrown 0.16.1 (https://github.com/rust-lang/hashbrown): Copyright (c) 2016 Amanieu d'Antras
+  - rustc-demangle 0.1.27 (https://github.com/rust-lang/rustc-demangle): Copyright (c) 2014 Alex
     Crichton
-  - cfg-if 1.0.0 (https://github.com/alexcrichton/cfg-if): Copyright (c) 2014 Alex Crichton
+  - cfg-if 1.0.4 (https://github.com/alexcrichton/cfg-if): Copyright (c) 2014 Alex Crichton
   - std_detect, possibly linked (https://github.com/rust-lang/stdarch): Copyright (c) 2017 The
     Rust Project Developers
-  - compiler_builtins 0.1.109, possibly linked (https://github.com/rust-lang/compiler-builtins):
+  - compiler_builtins 0.1.160, possibly linked (https://github.com/rust-lang/compiler-builtins):
     Copyright (c) 2009-2015 by the contributors listed in CREDITS.TXT
 
 The MIT License text, as distributed with these crates:
@@ -1443,7 +1443,7 @@ THIS SOFTWARE.
 ```
 
 Possibly linked, used under the Boost Software License 1.0 (chosen from "Apache-2.0 OR
-BSL-1.0"), which asks for no notice in machine-code form: ryu 1.0.18
+BSL-1.0"), which asks for no notice in machine-code form: ryu 1.0.20
 (https://github.com/dtolnay/ryu), whose source credits "Copyright 2018 Ulf Adams".
 
 Possibly linked: the Unicode data tables in the Rust core library

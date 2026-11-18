@@ -8,6 +8,7 @@ import {
     LEGACY_SCORE_MODE, SCORES_PER_MODE, addGameToModeStatistics, keepTopScoresPerMode,
     mergeStatisticsSnapshots, modeStatisticsOf,
 } from '../core/progression/score-statistics.js';
+import { validRun } from '../core/progression/record-book.js';
 import { openDatabaseOnce } from '../utils/indexed-db-open.js';
 
 /** What a run records besides its score (Infinity): its deepest cascade and its seconds. */
@@ -117,6 +118,30 @@ export class HighScoreManager {
         });
     }
 
+    // One localStorage key per in-flight result survives a process exit or an IndexedDB
+    // transaction abort. Deleting it happens only after the corresponding IDB commit.
+    async recoverPendingRuns() {
+        try {
+            const prefix = 'serenity.pendingRun/';
+            const keys = Object.keys(localStorage).filter((key) => key.startsWith(prefix));
+            for (const key of keys) {
+                const item = JSON.parse(localStorage.getItem(key));
+                if (!validRun(item?.runId, item?.receipt)) continue;
+                if (item.scoreData) await this.saveScore({ ...item.scoreData, runId: item.runId, receipt: item.receipt });
+                else await this.saveCompletion(item.runId, item.receipt);
+            }
+        } catch (error) { console.warn('[Records] Local result recovery pending:', error.message); }
+    }
+
+    async _journalRun(id, receipt, scoreData, commit) {
+        if (!validRun(id, receipt)) return commit();
+        const key = 'serenity.pendingRun/' + id;
+        try { localStorage.setItem(key, JSON.stringify({ runId: id, receipt, scoreData })); } catch { /* IDB is independently durable. */ }
+        const result = await commit();
+        try { localStorage.removeItem(key); } catch { /* The receipt makes another replay idempotent. */ }
+        return result;
+    }
+
     /**
      * Adds a score (alias for saveScore for backward compatibility)
      * @param {Object} scoreData - Score data to save
@@ -154,6 +179,11 @@ export class HighScoreManager {
      * @returns {Promise<Object>} The saved game record
      */
     async saveScore(scoreData) {
+        const data = { ...scoreData, timestamp: scoreData.timestamp ?? Date.now() };
+        return this._journalRun(data.runId, data.receipt, data, () => this._storeScore(data));
+    }
+
+    async _storeScore(scoreData) {
         if (!this.db) await this.init();
 
         const mode = typeof scoreData.mode === 'string' && scoreData.mode ? scoreData.mode : LEGACY_SCORE_MODE;
@@ -166,7 +196,8 @@ export class HighScoreManager {
             theme: scoreData.theme,
             musicTrack: scoreData.musicTrack,
             mode,
-            timestamp: Date.now(),
+            timestamp: scoreData.timestamp,
+            ...(scoreData.runId ? { runId: scoreData.runId } : {}),
         };
 
         // Include demoId if provided (links to saved demo for replay)
@@ -196,34 +227,21 @@ export class HighScoreManager {
                 const scores = transaction.objectStore(this.STORES.HIGH_SCORES);
                 const history = transaction.objectStore(this.STORES.GAME_HISTORY);
                 const statistics = transaction.objectStore(this.STORES.STATISTICS);
-                scores.add(gameRecord);
-                history.add(gameRecord);
-                this._trimStore(scores, 'mode_score', SCORES_PER_MODE, modeScores(mode));
-                this._trimStore(history, 'timestamp', 50);
                 const request = statistics.get('stats');
                 request.onsuccess = () => {
                     try {
-                        const stats = request.result || {
-                            id: 'stats',
-                            totalGames: 0,
-                            totalScore: 0,
-                            totalLines: 0,
-                            highestScore: 0,
-                            highestLevel: 0,
-                            bestScorePerLevel: {},
-                        };
-                        // Read before the lifetime counters change: a record from before the
-                        // split counts its history as Single Player.
-                        stats.byMode = addGameToModeStatistics(modeStatisticsOf(stats), mode, gameRecord);
-                        stats.totalGames++;
-                        stats.totalScore += gameRecord.score;
-                        stats.totalLines += gameRecord.lines;
-                        stats.highestScore = Math.max(stats.highestScore, gameRecord.score);
-                        stats.highestLevel = Math.max(stats.highestLevel, gameRecord.level);
-                        if (!stats.bestScorePerLevel[gameRecord.level]
-                            || gameRecord.score > stats.bestScorePerLevel[gameRecord.level]) {
-                            stats.bestScorePerLevel[gameRecord.level] = gameRecord.score;
-                        }
+                        const existing = request.result;
+                        const id = scoreData.runId || crypto.randomUUID();
+                        if (existing?.recordBook?.runs?.[id]) return;
+                        const receipt = scoreData.receipt || { mode, score: gameRecord.score, lines: gameRecord.lines,
+                            level: gameRecord.level, duration: gameRecord.duration || 0, cascade: gameRecord.cascade || 0, owner: null };
+                        if (!validRun(id, receipt)) throw new Error('Invalid finished run');
+                        gameRecord.runId = id;
+                        scores.add(gameRecord);
+                        history.add(gameRecord);
+                        this._trimStore(scores, 'mode_score', SCORES_PER_MODE, modeScores(mode));
+                        this._trimStore(history, 'timestamp', 50);
+                        const stats = mergeStatisticsSnapshots(existing, { recordBook: { runs: { [id]: receipt } } });
                         statistics.put(stats);
                     } catch (error) {
                         abort(error);
@@ -395,8 +413,15 @@ export class HighScoreManager {
         return scores.map((entry) => {
             const clone = { ...entry };
             delete clone.id;
+            delete clone.demoId;
             return clone;
         });
+    }
+
+    async saveCompletion(id, receipt) {
+        if (!validRun(id, receipt)) throw new Error('Invalid finished run');
+        await this._journalRun(id, receipt, null, () => this.importStatistics({ recordBook: { runs: { [id]: receipt } } }));
+        eventBus.emit(EVENTS.HIGH_SCORE_SAVED, { source: 'local', record: { runId: id, mode: receipt.mode } });
     }
 
     async exportStatistics() {
@@ -430,7 +455,7 @@ export class HighScoreManager {
                         const deduped = [];
                         const seen = new Set();
                         for (const entry of [...existing, ...incoming]) {
-                            const key = [
+                            const key = entry.runId || [
                                 entry.mode || LEGACY_SCORE_MODE,
                                 entry.score ?? 0,
                                 entry.lines ?? 0,

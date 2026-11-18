@@ -1,7 +1,7 @@
 // @ts-check
 
 import steamService from '../steam/steam-service.js';
-import { STEAM_LEADERBOARDS } from '../steam/steam-config.js';
+import { recordOwner } from '../progression/record-book.js';
 
 /** The most lines, minutes and points one online match can add to lifetime stats. */
 export const MAX_MATCH_LINES = 5000;
@@ -37,9 +37,9 @@ export function matchStatsForSteam(reported, {
  * Add an online match to this player's Steam stats and leaderboards (best effort; the
  * caller does not wait).
  * @param {{ finalStats?: Array<Record<string, any>>, duration?: number }} detail the match result
- * @param {{ localSteamId?: string|null, rounds?: number, localLines?: number }} local
+ * @param {{ localSteamId?: string|null, rounds?: number, localLines?: number, records?: any, matchId?: string }} local
  */
-export async function syncFfaSteamStats(detail, { localSteamId, rounds = 1, localLines } = {}) {
+export async function syncFfaSteamStats(detail, { localSteamId, rounds = 1, localLines, records, matchId } = {}) {
     if (!detail?.finalStats || !localSteamId) return;
     const localStats = detail.finalStats.find((entry) => `${entry.steamId}` === `${localSteamId}`);
     if (!localStats) return;
@@ -47,46 +47,9 @@ export async function syncFfaSteamStats(detail, { localSteamId, rounds = 1, loca
     const counted = matchStatsForSteam(localStats, {
         players: detail.finalStats.length, rounds, localLines, durationMs: detail.duration,
     });
-    const { kills, isWinner } = counted;
-
-    const matchesBefore = steamService.getCachedStat('ffa_matches', 0);
-    const winsBefore = steamService.getCachedStat('ffa_wins', 0);
-    const killsBefore = steamService.getCachedStat('ffa_kills', 0);
-
-    await Promise.all([
-        steamService.incrementStat('ffa_matches', 1),
-        steamService.incrementStat('ffa_kills', kills),
-        steamService.incrementStat('total_lines_cleared', counted.lines),
-        steamService.incrementStat('playtime_minutes', counted.minutes),
-        isWinner ? steamService.incrementStat('ffa_wins', 1) : Promise.resolve(true),
-    ]);
-
-    const matches = steamService.getCachedStat('ffa_matches', matchesBefore + 1);
-    const wins = steamService.getCachedStat('ffa_wins', winsBefore + (isWinner ? 1 : 0));
-    const totalKills = steamService.getCachedStat('ffa_kills', killsBefore + kills);
-    const winRateScore = matches > 0 ? Math.round((wins / matches) * 10000) : 0;
-
-    const scoreDetails = {
-        score: counted.score,
-        duration: counted.minutes * 60,
-        linesCleared: counted.lines,
-        highestLevel: counted.level,
-        kills,
-        wins,
-        matches,
-        placement: localStats.placement,
-        mode: 'ffa',
-        version: '1.0.0',
-    };
-
-    await Promise.all([
-        steamService.uploadScore(STEAM_LEADERBOARDS.FFA_TOTAL_KILLS, totalKills, {
-            ...scoreDetails,
-            extraValue: totalKills,
-        }),
-        steamService.uploadScore(STEAM_LEADERBOARDS.FFA_WIN_RATE, winRateScore, {
-            ...scoreDetails,
-            extraValue: totalKills,
-        }),
-    ]);
+    if (!matchId || !records) return;
+    await records.saveCompletion('ffa:' + matchId + ':' + localSteamId, {
+        mode: 'ffa', owner: recordOwner(steamService), lines: counted.lines, kills: counted.kills,
+        duration: counted.minutes * 60, win: counted.isWinner,
+    });
 }

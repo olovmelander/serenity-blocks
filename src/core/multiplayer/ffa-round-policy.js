@@ -146,6 +146,7 @@ export function handleFfaMatchEnd(game, msg) {
         emitMultiplayerEvent(MULTIPLAYER_EVENTS.GAME_OVER, {
             winner: game.winner,
             winnerName,
+            recordId: data.recordId,
             finalStats: data.finalStats || [],
             endCondition: data.endCondition,
             endConditionValue: data.endConditionValue,
@@ -156,6 +157,7 @@ export function handleFfaMatchEnd(game, msg) {
     } else {
         emitMultiplayerEvent(MULTIPLAYER_EVENTS.ROUND_OVER, {
             winner: game.winner,
+            recordId: data.recordId,
             finalStats: data.finalStats || [],
         });
     }

@@ -96,7 +96,7 @@ describe('the create sheet (src/ui/match-config-modal.js)', () => {
             public: 'Anyone can find it in the list and join. '
                 + 'Players who join see your Steam name, never your IP address.',
             friends: 'Only your Steam friends can join.',
-            private: 'Hidden from the list — players join by invite or lobby ID.',
+            private: 'Invite only. Invite friends from the Steam overlay.',
         });
     });
 

@@ -41,10 +41,14 @@ describe('Steam AppID resolution (electron/steam-app-id.js)', () => {
     });
 
     it('accepts only positive integers other than the test app as a release id', () => {
-        for (const bad of [null, undefined, 0, -5, 1.5, '123', DEV_TEST_STEAM_APP_ID]) {
+        for (const bad of [null, undefined, 0, -5, 1.5, 0x100000000, '123', DEV_TEST_STEAM_APP_ID]) {
             expect(isReleaseSteamAppId(bad)).toBe(false);
         }
         expect(isReleaseSteamAppId(2_345_670)).toBe(true);
+        expect(isReleaseSteamAppId(0xffffffff)).toBe(true);
+        for (const bad of ['0', '4294967296']) {
+            expect(resolveSteamAppId({ isPackaged: false, releaseAppId: null, env: { STEAM_APP_ID: bad }, readAppIdFile: () => bad }).appId).toBe(480);
+        }
     });
 
     it('holds a valid release id or none at all', () => {

@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 const source = readFileSync(new URL('../../electron/steam-integration.js', import.meta.url), 'utf8');
 
-function createStatsHarness() {
+function createStatsHarness(storeBuild = false) {
     const handlers = new Map();
     const stats = {
         getInt: vi.fn(() => 10),
@@ -20,6 +20,7 @@ function createStatsHarness() {
         source.slice(handlersStart, handlersEnd),
     ].join('\n'), {
         steamworksClient: { stats },
+        app: { isPackaged: storeBuild }, isStoreBuild: () => storeBuild,
         ipcMain: { handle: (channel, handler) => handlers.set(channel, handler) },
     });
     return { stats, invoke: (channel, ...args) => handlers.get(channel)({}, ...args) };
@@ -47,6 +48,15 @@ describe('native Steam stat write results', () => {
         expect(stats.store).toHaveBeenCalledOnce();
         stats.store.mockReturnValue(false);
         expect(invoke(channel, payload)).toBe(false);
+    });
+
+    it('reserves stores and cumulative counters for the receipt publisher in a store build', () => {
+        const { stats, invoke } = createStatsHarness(true);
+        for (const channel of ['steam:setStat', 'steam:setStatMax', 'steam:incrementStat', 'steam:storeStats']) {
+            expect(invoke(channel, 'total_games_played', 1)).toBe(false);
+        }
+        expect(stats.setInt).not.toHaveBeenCalled();
+        expect(stats.store).not.toHaveBeenCalled();
     });
 
     it('keeps an existing maximum without writing a lower value', () => {

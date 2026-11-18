@@ -23,6 +23,7 @@ import {
     STEAM_STATS,
     STEAM_IPC,
 } from './steam-config.js';
+import { RecordPublisher } from './record-publisher.js';
 import { normalizeScoreDetails, SCORE_DETAIL_FLAGS } from './leaderboard-score-details.js';
 
 const OFFLINE_QUEUE_BACKOFF = {
@@ -99,6 +100,7 @@ class SteamService {
         // Pending resolution poll (handles race between main-process bootstrap
         // completion and renderer IPC listener registration)
         this._pendingPollTimer = null;
+        this.records = new RecordPublisher(this, ipcRenderer?.invoke, typeof localStorage === 'undefined' ? null : localStorage);
 
         this._setupIpcListeners();
     }
@@ -211,10 +213,12 @@ class SteamService {
             this._startConnectionMonitoring();
         }
 
+        if (!nextConnected && this.records) this.records.cloudOwner = null;
         if (nextConnected) {
+            await this.refreshCapabilities();
             await this._flushOfflineQueue();
             await this.refreshStatsCache();
-            await this.refreshCapabilities();
+            this.records.flush();
         } else if (!nextPending) {
             await this.refreshCapabilities();
         }
@@ -357,7 +361,7 @@ class SteamService {
             }
         });
 
-        ipcRenderer.on('steam:lobbyJoinRequested', (event, payload) => {
+        const acceptInvite = (payload) => {
             const invite = {
                 lobbyId: payload?.lobbyId ? String(payload.lobbyId) : null,
                 friendSteamId: payload?.friendSteamId ? String(payload.friendSteamId) : null,
@@ -369,11 +373,20 @@ class SteamService {
                 return;
             }
 
-            this.pendingInvites.push(invite);
-            this.emit(STEAM_EVENTS.INVITE_RECEIVED, invite);
-        });
+            if (!this.pendingInvites.some((existing) => existing.lobbyId === invite.lobbyId && existing.receivedAt === invite.receivedAt)) {
+                this.pendingInvites.push(invite);
+                this.emit(STEAM_EVENTS.INVITE_RECEIVED, invite);
+            }
+            Promise.resolve(ipcRenderer.invoke('steam:ackInvite', invite.lobbyId)).catch(() => {});
+        };
+        ipcRenderer.on('steam:lobbyJoinRequested', (_event, payload) => acceptInvite(payload));
+        const pullInvites = () => Promise.resolve(ipcRenderer.invoke('steam:pendingInvites')).then((pending) => {
+            if (Array.isArray(pending)) pending.forEach(acceptInvite);
+        }).catch(() => {});
 
+        pullInvites();
         ipcRenderer.on('steam:status', async (event, payload) => {
+            if (payload?.initialized) pullInvites();
             const shouldEmitInitFailed = this.initPending
                 && !payload?.pending
                 && !payload?.initialized;
@@ -413,6 +426,7 @@ class SteamService {
         const cached = this._loadCachedPlayerData();
         if (cached) {
             this.steamId = cached.steamId;
+            this.appId = cached.appId || null;
             this.playerName = cached.playerName;
             console.log(`[SteamService] Using cached player: ${this.playerName}`);
         } else {
@@ -436,6 +450,7 @@ class SteamService {
             localStorage.setItem(STEAM_STORAGE_KEYS.CACHED_PLAYER, JSON.stringify({
                 steamId: this.steamId,
                 playerName: this.playerName,
+                appId: this.appId,
                 timestamp: Date.now(),
             }));
         } catch (err) {
@@ -469,6 +484,7 @@ class SteamService {
 
         this.connectionCheckInterval = setInterval(async () => {
             await this._checkConnection();
+            if (this.isOnline) this.records.flush();
         }, STEAM_CONNECTION.CHECK_INTERVAL_MS);
 
         console.log(`[SteamService] Connection monitoring started (every ${STEAM_CONNECTION.CHECK_INTERVAL_MS / 1000}s)`);
@@ -1034,6 +1050,10 @@ class SteamService {
         try {
             const stored = localStorage.getItem(STEAM_STORAGE_KEYS.OFFLINE_QUEUE);
             const parsed = stored ? JSON.parse(stored) : [];
+            // Preserve unowned pre-release work for inspection. It carries neither consent
+            // nor a stable run identity, so it cannot safely update a real account.
+            const legacy = Array.isArray(parsed) && parsed.filter((item) => ['uploadScore', 'incrementStat', 'setStat', 'setStatMax', 'unlockAchievement'].includes(item?.action));
+            if (legacy?.length && !localStorage.getItem('steamLegacyPendingArchive')) localStorage.setItem('steamLegacyPendingArchive', stored);
             const ttlMs = 7 * 24 * 60 * 60 * 1000;
             const now = Date.now();
             if (!Array.isArray(parsed)) return [];
@@ -1042,7 +1062,7 @@ class SteamService {
             // another device saved with this device's document (steam-cloud-sync.js).
             return parsed
                 .map((item) => this._normalizeQueueEntry(item))
-                .filter((item) => item && item.action !== 'cloudWrite' && now - (item.timestamp || now) <= ttlMs);
+                .filter((item) => item && !['cloudWrite', 'uploadScore', 'incrementStat', 'setStat', 'setStatMax', 'unlockAchievement'].includes(item.action) && now - (item.timestamp || now) <= ttlMs);
         } catch (err) {
             return [];
         }
@@ -1490,11 +1510,12 @@ class SteamService {
 
         try {
             // The keys first, so the line never names a token whose values are missing.
-            await Promise.all(Object.entries(params).map(
+            const results = await Promise.all(Object.entries(params).map(
                 ([key, value]) => ipcRenderer.invoke('steam:setRichPresence', key, value),
             ));
-            if (token) await ipcRenderer.invoke('steam:setRichPresence', 'steam_display', token);
-            await ipcRenderer.invoke('steam:setRichPresence', 'status', status);
+            if (token) results.push(await ipcRenderer.invoke('steam:setRichPresence', 'steam_display', token));
+            results.push(await ipcRenderer.invoke('steam:setRichPresence', 'status', status));
+            if (results.some((ok) => ok === false || ok === null)) return false;
             console.log(`[SteamService] Rich Presence: ${status}`);
             return true;
         } catch (err) {
@@ -1692,6 +1713,8 @@ class SteamService {
         }
     }
 
+    cloudList() { return ipcRenderer?.invoke('steam:cloudList'); }
+
     async getLeaderboard(name, type = 'global', start = 0, count = 10) {
         if (!ipcRenderer || !this.isOnline) {
             return { supported: false, entries: [] };
@@ -1713,10 +1736,10 @@ class SteamService {
         }
 
         try {
-            return await ipcRenderer.invoke(STEAM_IPC.GET_LEADERBOARD_ENTRY, { name, steamId });
+            return await ipcRenderer.invoke(STEAM_IPC.GET_LEADERBOARD_ENTRY, { leaderboardName: name, steamId });
         } catch (err) {
             console.warn('[SteamService] Failed to get leaderboard entry:', err.message);
-            return { supported: false, entry: null, error: err.message };
+            throw err;
         }
     }
 

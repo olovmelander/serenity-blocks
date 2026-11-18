@@ -1,4 +1,7 @@
 import steamService from './steam-service.js';
+import { legacyAwards, validRun } from '../progression/record-book.js';
+import { CloudRecordGenerations, protectedFile } from './cloud-record-generations.js';
+import { stillfallProgress } from '../stillfall/stillfall-progress.js';
 import { STEAM_EVENTS, STEAM_STORAGE_KEYS } from './steam-config.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { migrateOdysseyProgressData } from '../odyssey/OdysseyStateManager.js';
@@ -17,6 +20,7 @@ const CLOUD_FILES = {
     KEYBINDS: 'keybinds.json',
     HIGHSCORES: 'highscores.json',
     STATS: 'stats.json',
+    STILLFALL: 'stillfall.json',
 };
 
 const ODYSSEY_STORAGE_KEY = 'serenityBlocks_odysseyProgress';
@@ -50,6 +54,7 @@ const CLOUD_SETTINGS_KEYS = [
 const CLOUD_KEYBIND_KEYS = [
     'keyBindings',
     'player2KeyBindings',
+    'gamepadBindings', 'player2GamepadBindings', 'player3GamepadBindings', 'player4GamepadBindings',
     'serenityKeyBindings',
     'serenityGamepadBindings',
     // Which pad layout serenityGamepadBindings is in (core/controller-layout.js).
@@ -87,7 +92,7 @@ const safeParse = (raw) => {
 };
 
 const isRecord = (value) => value && typeof value === 'object' && !Array.isArray(value);
-const scoreKey = (entry) => [
+const scoreKey = (entry) => entry.runId || [
     entry.mode || LEGACY_SCORE_MODE,
     entry.score ?? 0,
     entry.lines ?? 0,
@@ -143,6 +148,18 @@ export class SteamCloudSyncManager {
 
         this.deviceId = this._loadDeviceId();
         this.manifest = this._loadManifest();
+        this.generations = new CloudRecordGenerations({ service: steamService, device: this.deviceId,
+            hash: (json) => this._computeHash(json), apply: async (name, data) => {
+                if ([CLOUD_FILES.HIGHSCORES, CLOUD_FILES.STATS].includes(name)) this._validated(name, JSON.stringify(data));
+                const applied = await this._applyCloudData(name, data);
+                if (applied !== false) this._confirmBaseline(name, data);
+                return applied;
+            },
+            quarantine: (name, raw) => this._quarantine(name, raw),
+            newer: (name, data) => this._newerCloudData(name, data) });
+        this.recovered = false;
+        this.cloudIssue = null;
+        this.recoveryReadDone = false;
         this.pendingUploads = new Map();
         this.flushTimer = null;
         this.debounceMs = 1500;
@@ -167,6 +184,10 @@ export class SteamCloudSyncManager {
         this.cloudManifestSeen = null;
         this.reconciledFiles = new Set();
         this._loadPending();
+        if (steamService.records) {
+            steamService.records.manager = this.highScoreManager;
+            steamService.records.onBaseline = () => this.queueUpload(CLOUD_FILES.STATS, { flush: true });
+        }
     }
 
     initialize() {
@@ -201,8 +222,10 @@ export class SteamCloudSyncManager {
             this.queueUpload(CLOUD_FILES.ODYSSEY);
         }));
 
+        this.localSubscriptions.push(eventBus.on('stillfall:solved', () => this.queueUpload(CLOUD_FILES.STILLFALL)));
         this.localSubscriptions.push(eventBus.on(EVENTS.HIGH_SCORE_SAVED, () => {
             if (this.disposed || this.suppressLocalEvents) return;
+            steamService.records?.flush();
             this.queueUpload(CLOUD_FILES.HIGHSCORES);
             this.queueUpload(CLOUD_FILES.STATS);
         }));
@@ -348,7 +371,8 @@ export class SteamCloudSyncManager {
                     if (remote.data) {
                         const data = safeParse(remote.data);
                         if (!data || !this.themeCollection.applyCloudData(data)) {
-                            throw new Error('Collection cloud document could not be preserved');
+                            this._quarantine(fileName, remote.data);
+                            if (this._newerCloudData(fileName, data) || !this.generations.restoredFiles.has(fileName)) throw new Error('Collection cloud document could not be preserved');
                         }
                     }
                     // A retry must export the current union, never the cached
@@ -365,7 +389,15 @@ export class SteamCloudSyncManager {
                         throw new Error('Odyssey cloud read unavailable');
                     }
                     const local = this._exportOdyssey();
-                    const incoming = remote.data ? safeParse(remote.data) : local;
+                    let incoming = remote.data ? safeParse(remote.data) : local;
+                    if (remote.data && !incoming && this.generations.restoredFiles.has(fileName)) {
+                        this._quarantine(fileName, remote.data);
+                        incoming = local;
+                    }
+                    if (remote.data && incoming) {
+                        migrateOdysseyProgressData(incoming);
+                        if (Number(incoming.version) === ODYSSEY_SAVE_VERSION) await this._recoverAwards(fileName, incoming);
+                    }
                     // A device that has never opened the Odyssey has nothing to send;
                     // retrying would block every later download of another device's journey.
                     if (!local && !remote.data) continue;
@@ -373,6 +405,14 @@ export class SteamCloudSyncManager {
                     // and the upload below sends that merged result back.
                     if (!incoming || !this._applyOdyssey(incoming)) {
                         throw new Error('Odyssey cloud document could not be preserved');
+                    }
+                    payload = null;
+                }
+                if (fileName === CLOUD_FILES.STILLFALL) {
+                    const remote = await steamService.cloudRead(fileName);
+                    if (!remote?.supported || remote.success === false) throw new Error('Puzzle progress unavailable');
+                    if (remote.data != null && !await this._applyCloudData(fileName, safeParse(remote.data))) {
+                        this._quarantine(fileName, remote.data); throw new Error('Puzzle progress needs recovery');
                     }
                     payload = null;
                 }
@@ -388,13 +428,20 @@ export class SteamCloudSyncManager {
                     includeUpdatedAt: true, updatedAt: entry.queuedAt,
                 });
                 if (!payload) continue;
+                if (this._usesGenerations() && protectedFile(fileName)) {
+                    await this.generations.write(fileName, payload.json);
+                    this._confirmBaseline(fileName, JSON.parse(payload.json));
+                }
                 const result = await steamService.cloudWrite(fileName, payload.json, NO_OFFLINE_QUEUE);
                 if (result?.supported && result.success !== false && !result.queued) {
                     this._updateManifestEntry(fileName, payload);
                     this._forgetLocalEdits(fileName, editsSent);
+                    if (fileName === CLOUD_FILES.STATS && this.recovered) this._recordsReady();
                     continue;
                 }
+                throw new Error(result?.error || 'Steam did not confirm the Cloud write');
             } catch (error) {
+                this.cloudIssue = 'Steam Cloud save pending for ' + fileName + '. ' + error.message;
                 console.warn('[SteamCloud] Upload deferred:', fileName, error.message);
             } finally {
                 this.uploadingEntries.delete(fileName);
@@ -406,6 +453,7 @@ export class SteamCloudSyncManager {
             }
         }
         this._savePending();
+        if (!this.pendingUploads.size && this.cloudIssue?.startsWith('Steam Cloud save pending')) this.cloudIssue = null;
         await this._uploadManifest();
     }
 
@@ -419,17 +467,52 @@ export class SteamCloudSyncManager {
             const capabilities = steamService.getCapabilities ? steamService.getCapabilities() : {};
             if (capabilities.cloud === false) return;
 
+            if (this._usesGenerations()) {
+                this.recoveryReadDone = false;
+                this.recovered = await this.generations.restore();
+                if (!this.recovered) {
+                    this.cloudIssue = 'Cloud recovery needs an intact copy or a newer game.';
+                    return;
+                }
+            }
             const manifestResponse = await steamService.cloudRead(CLOUD_FILES.MANIFEST);
             if (this.backgroundSyncStopped || !manifestResponse?.supported || manifestResponse.success === false) {
                 return;
             }
 
-            const cloudManifest = safeParse(manifestResponse.data);
+            let cloudManifest = null;
+            const remoteNames = (manifestResponse.data == null && this._usesGenerations()) ? (await steamService.cloudList()).map((f) => f.name) : [];
+            if (manifestResponse.data != null || remoteNames.some((name) => Object.values(CLOUD_FILES).includes(name))) {
+                try { cloudManifest = this._validated(CLOUD_FILES.MANIFEST, manifestResponse.data); }
+                catch {
+                    // Even a damaged legacy index can have healthy payloads. Read them individually
+                    // before authorizing any write, including settings and controller bindings.
+                    const original = safeParse(manifestResponse.data);
+                    if (!this._usesGenerations() || original?.schemaVersion > 1 || original?.version > 1) return;
+                    cloudManifest = { files: {} };
+                    for (const name of Object.values(CLOUD_FILES).filter((n) => n !== CLOUD_FILES.MANIFEST)) {
+                        const raw = await steamService.cloudRead(name);
+                        if (!raw?.supported || raw.success === false) return;
+                        if (raw.data != null) {
+                            const parsed = safeParse(raw.data);
+                            if (!parsed) {
+                                this._quarantine(name, raw.data);
+                                if (this.generations.restoredFiles.has(name)) continue;
+                                return;
+                            }
+                            cloudManifest.files[name] = { hash: await this._computeHash(raw.data), updatedAt: parsed.updatedAt || 0 };
+                        }
+                    }
+                }
+            }
+            this.recoveryReadDone = true;
+            if (this.cloudIssue?.startsWith('Cloud recovery pending') || this.cloudIssue?.startsWith('Cloud recovery needs')) this.cloudIssue = null;
             if (!cloudManifest || !cloudManifest.files) {
                 // No other device has written anything this device could overwrite.
                 this.cloudManifestSeen = { files: {} };
                 WHOLE_DOCUMENTS.forEach((fileName) => this.reconciledFiles.add(fileName));
                 await this._pushAllLocal();
+                if (this.recovered) this._recordsReady();
                 return;
             }
             this.cloudManifestSeen = cloudManifest;
@@ -444,6 +527,10 @@ export class SteamCloudSyncManager {
             }
 
             await this._uploadManifest();
+            if (this.recovered) this._recordsReady();
+        } catch (error) {
+            this.cloudIssue = 'Cloud recovery pending: ' + error.message;
+            console.warn('[SteamCloud] Recovery pending:', error.message);
         } finally {
             this.syncInProgress = false;
         }
@@ -561,6 +648,7 @@ export class SteamCloudSyncManager {
     }
 
     _mayUpload(fileName) {
+        if (this._usesGenerations() && (!this.recovered || !this.recoveryReadDone)) return false;
         return !WHOLE_DOCUMENTS.has(fileName) || this.reconciledFiles.has(fileName);
     }
 
@@ -620,14 +708,100 @@ export class SteamCloudSyncManager {
      * merges are idempotent: scores are a deduplicated union, stats keep the
      * larger snapshot.
      */
+    _usesGenerations() {
+        return Boolean(steamService.records?.owner && steamService.cloudList);
+    }
+
+    _confirmBaseline(name, data) {
+        const base = data?.stats?.recordBook?.steamBase;
+        if (name === CLOUD_FILES.STATS && base && steamService.records) steamService.records.baselineConfirmed = JSON.stringify(base);
+    }
+
+    _recordsReady() {
+        if (!steamService.records) return;
+        steamService.records.cloudOwner = steamService.records.owner;
+        steamService.records.flush();
+    }
+
+    _quarantine(fileName, raw) {
+        try { localStorage.setItem('steam-recovery/' + fileName + '/' + fallbackHash(String(raw)), String(raw)); } catch {}
+        this.cloudIssue = 'Cloud recovery needed for ' + fileName;
+    }
+
+    _newerCloudData(name, data) {
+        if (!data) return false;
+        const version = name === CLOUD_FILES.ODYSSEY ? ODYSSEY_SAVE_VERSION : 1;
+        return Number(data.version) > version || Number(data.schemaVersion) > 1
+            || Number((data.stats ?? data).recordBook?.version) > 1;
+    }
+
+    async _readOrRecover(fileName, raw) {
+        try {
+            if ([CLOUD_FILES.HIGHSCORES, CLOUD_FILES.STATS].includes(fileName)) return this._validated(fileName, raw);
+            const data = safeParse(raw);
+            if (!data || this._newerCloudData(fileName, data)) throw new Error('Incompatible Cloud file');
+            return data;
+        } catch (error) {
+            this._quarantine(fileName, raw);
+            if (this.generations.restoredFiles.has(fileName) && !this._newerCloudData(fileName, safeParse(raw))) {
+                await this.queueUpload(fileName, { flush: true });
+            }
+            return null;
+        }
+    }
+
+    _validated(fileName, raw) {
+        if (raw == null) throw new Error('Missing Cloud file');
+        const doc = safeParse(raw);
+        let valid = isRecord(doc) && (!doc.version || doc.version === 1);
+        if (fileName === CLOUD_FILES.MANIFEST) valid = valid && (!doc.schemaVersion || doc.schemaVersion === 1) && isRecord(doc.files);
+        if (fileName === CLOUD_FILES.HIGHSCORES) {
+            const scores = doc?.highScores ?? doc?.scores;
+            valid = valid && Array.isArray(scores) && scores.every((r) => isRecord(r) && Number.isFinite(r.score) && r.score >= 0);
+        }
+        if (fileName === CLOUD_FILES.STATS) {
+            const stats = doc?.stats ?? doc;
+            const book = stats?.recordBook;
+            const counters = ['totalGames', 'totalLines', 'totalScore', 'highestScore', 'highestLevel'];
+            valid = valid && isRecord(stats) && counters.some((key) => Number.isSafeInteger(stats[key]))
+                && counters.every((key) => stats[key] == null || (Number.isSafeInteger(stats[key]) && stats[key] >= 0))
+                && (!book || (book.version === 1 && isRecord(book.runs) && Object.entries(book.runs).every(([id, r]) => validRun(id, r))));
+        }
+        if (!valid) {
+            this._quarantine(fileName, raw);
+            throw new Error('Steam Cloud recovery needed for ' + fileName);
+        }
+        return doc;
+    }
+
+    async _recoverAwards(fileName, incoming) {
+        const owner = steamService.records?.owner;
+        if (!owner || !this.highScoreManager) return;
+        const ids = legacyAwards(fileName, incoming);
+        if (!ids.length) return;
+        const stats = await this.highScoreManager.getStatistics();
+        if (ids.every((id) => stats.recordBook?.earned?.[owner]?.includes(id))) return;
+        await this.highScoreManager.importStatistics({ recordBook: { runs: {}, earned: { [owner]: ids } } });
+        this.queueUpload(CLOUD_FILES.STATS);
+    }
+
     async _mergeRemoteRecords(fileName) {
         const remote = await steamService.cloudRead(fileName);
         if (!remote?.supported || remote.success === false) {
             throw new Error('Cloud read unavailable');
         }
         // Absent or unreadable: there is nothing left to preserve.
-        const incoming = safeParse(remote.data);
-        if (!incoming) return;
+        if (remote.data == null) return;
+        let incoming;
+        try { incoming = this._validated(fileName, remote.data); }
+        catch (error) {
+            // The version we restored is the recovery source for a damaged legacy mirror.
+            // A newer schema is always left intact for the version that understands it.
+            const doc = safeParse(remote.data);
+            if (!this._newerCloudData(fileName, doc) && this.generations.restoredFiles.has(fileName)) return;
+            throw error;
+        }
+        await this._recoverAwards(fileName, incoming);
         if (fileName === CLOUD_FILES.STATS) {
             await this._applyStats(incoming, { merge: true });
             return;
@@ -677,7 +851,7 @@ export class SteamCloudSyncManager {
         if (this.backgroundSyncStopped) return;
         if (!response?.supported || response.success === false || !response.data) return;
 
-        const parsed = safeParse(response.data);
+        const parsed = await this._readOrRecover(fileName, response.data);
         if (!parsed) return;
         // Finish hashing before the final guard. A newer acknowledged local
         // upload during this await invalidates the incoming data and manifest.
@@ -686,12 +860,13 @@ export class SteamCloudSyncManager {
         this._flushLiveSettingsBeforeCloudApply(fileName);
         if (this._hasLocalChangesSinceRead(fileName, localSnapshot)) return;
 
+        await this._recoverAwards(fileName, parsed);
         const application = this._applyCloudData(fileName, parsed);
         const appliedSnapshot = this._captureLocalReadState(fileName);
         const applied = await application;
         if (this.backgroundSyncStopped || applied === false) return;
         if (this._hasLocalChangesSinceRead(fileName, appliedSnapshot)) return;
-        if (fileName === CLOUD_FILES.ODYSSEY) {
+        if ([CLOUD_FILES.ODYSSEY, CLOUD_FILES.HIGHSCORES, CLOUD_FILES.STATS].includes(fileName)) {
             // The disk now holds a union, which can differ from the download.
             // Only a successful upload may acknowledge that union's manifest.
             await this.queueUpload(fileName, { flush: true });
@@ -707,7 +882,7 @@ export class SteamCloudSyncManager {
         const response = await steamService.cloudRead(fileName);
         if (this.backgroundSyncStopped) return;
         if (!response?.supported || response.success === false || !response.data) return;
-        const cloudData = safeParse(response.data);
+        const cloudData = await this._readOrRecover(fileName, response.data);
         if (!cloudData) return;
         this._flushLiveSettingsBeforeCloudApply(fileName);
         if (this._hasLocalChangesSinceRead(fileName, localSnapshot)) return;
@@ -719,6 +894,7 @@ export class SteamCloudSyncManager {
         this._flushLiveSettingsBeforeCloudApply(fileName);
         if (this._hasLocalChangesSinceRead(fileName, localSnapshot)) return;
 
+        await this._recoverAwards(fileName, cloudData);
         const merged = this._mergeData(fileName, localData, cloudData);
         if (!merged) return;
 
@@ -744,6 +920,13 @@ export class SteamCloudSyncManager {
     async _applyCloudData(fileName, data) {
         // These imports do not emit local-save events. Suppressing across their
         // asynchronous transactions would discard real settings/mode saves, including quit saves.
+        if (fileName === CLOUD_FILES.STILLFALL) {
+            if (data?.version !== 1 || !Array.isArray(data.solved)) return false;
+            const ids = [...new Set([...this._solved(), ...data.solved.filter((id) => typeof id === 'string' && id.length < 100)])];
+            localStorage.setItem('serenity.stillfall.solved', JSON.stringify(ids));
+            stillfallProgress.restore(ids);
+            return true;
+        }
         if (fileName === CLOUD_FILES.HIGHSCORES) return this._applyHighScores(data);
         if (fileName === CLOUD_FILES.STATS) return this._applyStats(data);
         this.suppressLocalEvents = true;
@@ -756,7 +939,7 @@ export class SteamCloudSyncManager {
             } else if (fileName === CLOUD_FILES.ODYSSEY) {
                 return this._applyOdyssey(data);
             } else if (fileName === CLOUD_FILES.UNLOCKS) {
-                this.themeCollection?.applyCloudData(data);
+                return this.themeCollection?.applyCloudData(data);
             }
         } finally {
             this.suppressLocalEvents = false;
@@ -807,6 +990,9 @@ export class SteamCloudSyncManager {
             },
             controllerLayoutVersion: CONTROLLER_LAYOUT_VERSION,
         };
+        for (const key of ['gamepadBindings', 'player2GamepadBindings', 'player3GamepadBindings', 'player4GamepadBindings']) {
+            if (isRecord(keybinds[key])) merged[key] = { ...current[key], ...keybinds[key] };
+        }
         this.settingsManager.update(merged, true);
         this.settingsManager.save({ emitEvent: false });
     }
@@ -893,6 +1079,9 @@ export class SteamCloudSyncManager {
                     ...migrateSerenityPadLayout(localKeys.serenityGamepadBindings, localKeys.controllerLayoutVersion),
                     ...migrateSerenityPadLayout(cloudKeys.serenityGamepadBindings, cloudKeys.controllerLayoutVersion),
                 },
+                ...Object.fromEntries(['gamepadBindings', 'player2GamepadBindings', 'player3GamepadBindings', 'player4GamepadBindings']
+                    .filter((key) => localKeys[key] || cloudKeys[key])
+                    .map((key) => [key, { ...localKeys[key], ...cloudKeys[key] }])),
                 controllerLayoutVersion: CONTROLLER_LAYOUT_VERSION,
             };
         }
@@ -1064,6 +1253,10 @@ export class SteamCloudSyncManager {
         return Object.values(completedLevels || {}).reduce((sum, entry) => sum + (entry?.stars || 0), 0);
     }
 
+    _solved() {
+        return safeParse(localStorage.getItem('serenity.stillfall.solved') || localStorage.getItem('serenity.faultLines.solved')) || [];
+    }
+
     async _buildLocalPayload(fileName, { includeUpdatedAt = true, updatedAt: queuedAt } = {}) {
         let payload = null;
 
@@ -1073,10 +1266,14 @@ export class SteamCloudSyncManager {
             payload = this._exportKeybinds({ includeUpdatedAt });
         } else if (fileName === CLOUD_FILES.ODYSSEY) {
             payload = this._exportOdyssey();
+            if (payload) payload.recordSchema = 1;
         } else if (fileName === CLOUD_FILES.HIGHSCORES) {
             payload = await this._exportHighScores({ includeUpdatedAt });
         } else if (fileName === CLOUD_FILES.STATS) {
             payload = await this._exportStats({ includeUpdatedAt });
+        } else if (fileName === CLOUD_FILES.STILLFALL) {
+            const solved = this._solved();
+            if (solved.length) payload = { version: 1, solved };
         } else if (fileName === CLOUD_FILES.UNLOCKS) {
             payload = this.themeCollection?.exportData() || null;
         } else {
@@ -1149,6 +1346,7 @@ export class SteamCloudSyncManager {
         const scores = await this.highScoreManager.exportHighScores(100);
         const payload = {
             version: 1,
+            recordSchema: 1,
             highScores: scores,
         };
         if (includeUpdatedAt) {
@@ -1227,7 +1425,7 @@ export class SteamCloudSyncManager {
     async _uploadManifest() {
         // Before this session has read the cloud's manifest, this device's would replace
         // the entries other devices wrote. Entries this device has not adopted yet stay.
-        if (!this.cloudManifestSeen) return;
+        if (!this.cloudManifestSeen || (this._usesGenerations() && !this.recoveryReadDone)) return;
         const files = { ...(this.cloudManifestSeen.files || {}), ...(this.manifest.files || {}) };
         await steamService.cloudWrite(
             CLOUD_FILES.MANIFEST,

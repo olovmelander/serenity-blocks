@@ -294,8 +294,10 @@ describe('online play goes through the relays or not at all', () => {
     it('is wired so: the relay opens first, legacy requests are ignored, lobbies wait for it', () => {
         const source = readFileSync(join(process.cwd(), 'electron', 'steam-integration.js'), 'utf8');
         // the relay opens as soon as Steam is up, before any callback could accept a session
-        expect(source.indexOf('startNetworkTransport(steamworksDir);'))
-            .toBeLessThan(source.indexOf('registerSteamCallbacks();\n                return true;'));
+        const boot = source.slice(source.indexOf('async function initSteamworks'));
+        const open = boot.indexOf('startNetworkTransport(');
+        expect(open).toBeGreaterThanOrEqual(0);
+        expect(open).toBeLessThan(boot.indexOf('registerSteamCallbacks();'));
         // a legacy (direct) session request is accepted only in direct mode
         expect(source).toMatch(/if \(networkMode !== 'direct'\) \{[\s\S]{0,400}return;\s*\}\s*p2pSessionGate\?\.onRequest\(remote\);/);
         // no lobby, and no packet, without the relay (or a development run's permission)

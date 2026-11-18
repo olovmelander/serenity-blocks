@@ -36,7 +36,7 @@ import { DemoManager } from '../demo/DemoManager.js';
 import { PlaybackControls } from '../../ui/playback-controls.js';
 import { bindLegacySessionRng, generateSessionSeed } from '../session-rng.js';
 import steamService from '../steam/steam-service.js';
-import { STEAM_LEADERBOARDS } from '../steam/steam-config.js';
+import { recordOwner, runIdFor } from '../progression/record-book.js';
 import { buildReplayProof } from '../anti-cheat/replay-proof.js';
 import { SCORE_DETAIL_FLAGS } from '../steam/leaderboard-score-details.js';
 import { readFlag } from '../flags.js';
@@ -263,6 +263,7 @@ export class SinglePlayerMode extends BaseGameMode {
         this._sessionSimulationClock = this._fixedTickEnabled
             ? DEMO_FIXED_SIMULATION_CLOCK
             : DEMO_LEGACY_SIMULATION_CLOCK;
+        runIdFor(this.gameState);
         const sessionGeneration = ++this._sessionGeneration;
         this._activeSession = Object.freeze({
             generation: sessionGeneration,
@@ -1466,12 +1467,10 @@ export class SinglePlayerMode extends BaseGameMode {
                 lines: gameState.lines,
                 level: gameState.level,
                 demoId,
+                runId: runIdFor(gameState),
+                receipt: await this._buildSteamReceipt(stoppedSession),
             }, '[SinglePlayer]');
 
-            // Sync Steam stats/leaderboards in the background (best-effort)
-            this._syncSteamStats(stoppedSession).catch((err) => {
-                console.warn('[SinglePlayer] Steam stats sync failed:', err.message);
-            });
         } else {
             console.info(
                 '[SinglePlayer] Experimental simulation clock; legacy score/stat writes skipped:',
@@ -1546,7 +1545,7 @@ export class SinglePlayerMode extends BaseGameMode {
      *   demoId: number|null
      * }>|null} stoppedSession
      */
-    async _syncSteamStats(stoppedSession) {
+    async _buildSteamReceipt(stoppedSession) {
         const gameState = stoppedSession?.gameState;
         const simulationClock = stoppedSession?.simulationClock;
         if (
@@ -1558,13 +1557,11 @@ export class SinglePlayerMode extends BaseGameMode {
 
         const {
             demo: recordedDemo,
-            demoId: replayId,
         } = stoppedSession;
         const durationMs = Number.isFinite(gameState.simTimeMs)
             ? gameState.simTimeMs
             : Date.now() - (gameState.startTime || Date.now());
         const durationSeconds = Math.max(1, Math.round(durationMs / 1000));
-        const durationMinutes = Math.max(1, Math.round(durationMs / 60000));
 
         const replayProof = await buildReplayProof({
             demo: recordedDemo,
@@ -1572,41 +1569,21 @@ export class SinglePlayerMode extends BaseGameMode {
             expectedLines: gameState.lines,
             expectedLevel: gameState.level,
             expectedDurationMs: durationMs,
-        });
+        }).catch(() => ({ verified: false, checksum32: 0, issues: ['Replay proof unavailable'] }));
 
-        let flags = SCORE_DETAIL_FLAGS.NONE;
+        let flags = steamService.isOnline === false ? SCORE_DETAIL_FLAGS.OFFLINE_SUBMISSION : SCORE_DETAIL_FLAGS.NONE;
         if (recordedDemo?.inputs?.length) {
             flags |= SCORE_DETAIL_FLAGS.REPLAY_PRESENT;
         }
         if (replayProof.verified) {
             flags |= SCORE_DETAIL_FLAGS.REPLAY_VERIFIED;
-        } else if (replayProof.issues?.length) {
+        } else if (recordedDemo && replayProof.issues?.length) {
             flags |= SCORE_DETAIL_FLAGS.REPLAY_MISMATCH;
         }
 
-        const scoreDetails = {
-            score: gameState.score,
-            duration: durationSeconds,
-            linesCleared: gameState.lines,
-            highestLevel: gameState.level,
-            checksum32: replayProof.checksum32,
-            replayHash: replayProof.hash,
-            replayVerified: replayProof.verified,
-            replayIssues: replayProof.issues,
-            replayInputCount: replayProof.inputCount,
-            replayDurationMs: replayProof.durationMs,
-            replayId,
-            flags,
-            version: '1.0.0',
-        };
-
-        await Promise.all([
-            steamService.uploadScore(STEAM_LEADERBOARDS.SINGLE_PLAYER_HIGH_SCORE, gameState.score, scoreDetails),
-            steamService.uploadScore(STEAM_LEADERBOARDS.SINGLE_PLAYER_LINES, gameState.lines, scoreDetails),
-            steamService.incrementStat('total_games_played', 1),
-            steamService.incrementStat('total_lines_cleared', gameState.lines),
-            steamService.incrementStat('playtime_minutes', durationMinutes),
-        ]);
+        return { mode: 'single', owner: recordOwner(steamService), score: gameState.score,
+            lines: gameState.lines, level: gameState.level, duration: durationSeconds, flags,
+            checksum: replayProof.checksum32 || 0 };
     }
 
     /**

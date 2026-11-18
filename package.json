@@ -28,6 +28,8 @@
     "check:palette": "node scripts/palette-guideline-check.mjs",
     "check:pages-artifact": "node scripts/pages-artifact-check.mjs",
     "check:release-gates": "node scripts/release-gate-check.mjs",
+    "steam:qa": "node scripts/steam-release-qa.mjs",
+    "steam:qa-renderer": "node scripts/run-electron.mjs scripts/steam-records-renderer-smoke.cjs",
     "validate:windows:devtools": "node scripts/run-electron.mjs scripts/windows-devtools-smoke.mjs",
     "validate:wolfhour:phase6": "node scripts/run-electron.mjs scripts/wolfhour-phase6-validation.mjs",
     "validate:windows:parity": "node scripts/run-electron.mjs scripts/windows-electron-parity-validation.mjs",
@@ -63,6 +65,7 @@
     "files": [
       "dist/**/*",
       "electron/**/*",
+      "src/core/steam/steam-catalogue.js",
       "package.json",
       "!**/node_modules/**/*",
       "!**/steam_appid.txt"
@@ -92,6 +95,7 @@
     ],
     "win": {
       "target": "nsis",
+      "signExts": [".node"],
       "icon": "build/icon.ico",
       "extraResources": [
         {
@@ -193,7 +197,7 @@
   "dependencies": {
     "koffi": "3.3.5",
     "phaser": "4.2.1",
-    "steamworks.js": "0.4.0",
+    "steamworks.js": "npm:@pipelab/steamworks.js@0.12.2",
     "three": "0.187.0"
   },
   "devDependencies": {

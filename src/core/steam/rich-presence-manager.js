@@ -144,6 +144,11 @@ class RichPresenceManager {
             }),
         );
 
+        this.unsubscribers.push(steamService.on('steam:reconnected', () => {
+            this.lastPresenceString = null;
+            this._scheduleUpdate(true);
+        }));
+
         // Set initial presence
         this.setMode('menu');
 

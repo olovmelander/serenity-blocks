@@ -26,7 +26,7 @@ export const packScoreDetails = (details = {}) => {
         0,
     );
     const flags = toInt32(details.flags ?? 0, 0);
-    const checksum = toInt32(details.checksum32 ?? 0, 0);
+    const checksum = Number.isInteger(details.checksum32) ? details.checksum32 | 0 : 0;
     const version = toInt32(details.detailVersion ?? 1, 1);
 
     return [version, duration, lines, level, extraValue, flags, checksum];
