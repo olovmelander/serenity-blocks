@@ -3,7 +3,7 @@ import { dirname, join, resolve } from 'node:path';
 import fs from 'node:fs';
 import { createHash } from 'node:crypto';
 import { CloudRecordGenerations } from '../src/core/steam/cloud-record-generations.js';
-import { steamApiLibraryPath } from '../electron/steam-relay-transport.js';
+import { RELAY_FUNCTIONS, steamApiLibraryPath } from '../electron/steam-relay-transport.js';
 import { BOARDS, ACHIEVEMENTS, ACHIEVEMENT_DEFINITIONS, STAT_NAMES } from '../src/core/steam/steam-catalogue.js';
 import { isReleaseSteamAppId } from '../electron/steam-app-id.js';
 import { CLIENT_FUNCTIONS, loadDesktopSteamClient } from '../electron/steam-native-client.js';
@@ -24,9 +24,9 @@ if (action === 'manifest') {
     const win = process.platform === 'win32';
     const addon = require(join(directory, 'dist', win ? 'win64/steamworksjs.win32-x64-msvc.node' : 'linux64/steamworksjs.linux-x64-gnu.node'));
     const lib = k.load(steamApiLibraryPath(directory, process.platform, join));
-    for (const signature of Object.values(CLIENT_FUNCTIONS)) lib.func(signature);
+    for (const signature of [...Object.values(CLIENT_FUNCTIONS), ...Object.values(RELAY_FUNCTIONS)]) lib.func(signature);
     if (typeof addon.init !== 'function') throw new Error('Native Steam addon unavailable');
-    console.log(process.platform, process.arch, Object.keys(CLIENT_FUNCTIONS).length, 'Steam ABI symbols resolved, addon loaded');
+    console.log(process.platform, process.arch, Object.keys(CLIENT_FUNCTIONS).length, 'client and', Object.keys(RELAY_FUNCTIONS).length, 'relay symbols resolved, addon loaded');
 } else if (action === 'size') {
     const count = Number(args[0] || 100000);
     if (!Number.isInteger(count) || count < 10 || count > 300000) throw new Error('size accepts 10 to 300000 runs');

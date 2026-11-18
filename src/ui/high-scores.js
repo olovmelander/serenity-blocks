@@ -211,6 +211,7 @@ export class HighScoreManager {
 
         // Store, trim and aggregate in the same transaction. Concurrent saves
         // serialize their statistics reads and no partial game survives failure.
+        let inserted = false;
         await new Promise((resolve, reject) => {
             const transaction = this.db.transaction(Object.values(this.STORES), 'readwrite');
             let failure = null;
@@ -243,6 +244,7 @@ export class HighScoreManager {
                         this._trimStore(history, 'timestamp', 50);
                         const stats = mergeStatisticsSnapshots(existing, { recordBook: { runs: { [id]: receipt } } });
                         statistics.put(stats);
+                        inserted = true;
                     } catch (error) {
                         abort(error);
                     }
@@ -252,7 +254,7 @@ export class HighScoreManager {
             }
         });
 
-        eventBus.emit(EVENTS.HIGH_SCORE_SAVED, {
+        if (inserted) eventBus.emit(EVENTS.HIGH_SCORE_SAVED, {
             record: gameRecord,
             source: 'local',
         });
