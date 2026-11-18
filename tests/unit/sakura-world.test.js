@@ -51,7 +51,7 @@ const LANDSCAPE = 16 / 9;
 const PORTRAIT = 9 / 19.5;
 const STEP = 1 / 60;
 const WORLD_PARTS = ['terrain', 'sky', 'backdrop', 'forest', 'garden', 'foxes', 'water', 'spirits', 'petals',
-    'showpieces'];
+    'showpieces', 'cranes'];
 /** What a fox's skinned mesh is called (the loader numbers the name its model shares with its scene). */
 const FOX_SKIN = /^SakuraFox(_\d+)?$/;
 /**
@@ -1047,6 +1047,8 @@ describe('Sakura world scene contracts', () => {
             // The air a session opens in is the first: the garden as it was built.
             weather: SAKURA_WEATHERS[0].name,
             weatherPhase: 0,
+            // The cranes say for themselves how many fly and when (tests/unit/sakura-cranes.test.js).
+            cranes: world.cranes.getDiagnostics(),
         });
         expect(sum(Object.values(world.getDiagnostics().petals))).toBe(tier.petals);
 
@@ -2734,7 +2736,12 @@ describe('Sakura world ownership', () => {
         expect(scene.children).toHaveLength(0);
         expect(world.built).toBe(false);
         const openingHour = {
-            level: 1, hour: SAKURA_HOURS[0].name, hourPhase: 0, weather: SAKURA_WEATHERS[0].name, weatherPhase: 0,
+            level: 1,
+            hour: SAKURA_HOURS[0].name,
+            hourPhase: 0,
+            weather: SAKURA_WEATHERS[0].name,
+            weatherPhase: 0,
+            cranes: null,
         };
         // Nothing was half-made: update and diagnostics are still safe.
         expect(() => world.update(0, STEP, { emitters: [] })).not.toThrow();
@@ -3423,7 +3430,7 @@ describe('Sakura world: the air', () => {
 });
 
 describe('Sakura world: the showpieces', () => {
-    it('builds them as its last step, after the petals, on chances of their own', async () => {
+    it('builds them after the petals, before the cranes, on chances of their own', async () => {
         const assets = await loadBundle();
         const draws = { count: 0 };
         const random = seededRandom(187);
@@ -3447,7 +3454,9 @@ describe('Sakura world: the showpieces', () => {
             };
         }
         expect(steps).toEqual(['light', 'terrain', 'sky', 'backdrop', 'forest', 'garden', 'foxes', 'water', 'spirits',
-            'petals', 'showpieces']);
+            'petals', 'showpieces', 'cranes']);
+        // (Nor did the cranes, built last.)
+        expect(drawn.cranes).toBe(drawn.petals);
         // (They are made, unbuilt, with the garden: the torii glows by their gate light.)
         expect(during.forest.made).toBe(false);
         expect(during.garden).toEqual({ made: true, meshes: 0, director: false });
