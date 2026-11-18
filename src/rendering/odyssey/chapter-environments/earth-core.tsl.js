@@ -101,7 +101,7 @@ const LAKE_LIT_AIR = /* @__PURE__ */ vec3(0.30, 0.095, 0.03);
  */
 function viewFresnel(k = 3.0, nView = normalView) {
     // Clamped: a dot of unit vectors can round past 1, and pow of a negative base is NaN, which
-    // bloom spreads into a black block (as the water surface's caustics, odyssey-water-surface.tsl.js).
+    // bloom spreads into a black block (as it once did on the old water surface's caustics).
     return pow(clamp(oneMinus(abs(dot(normalize(nView), positionViewDirection))), 0.0, 1.0), k);
 }
 

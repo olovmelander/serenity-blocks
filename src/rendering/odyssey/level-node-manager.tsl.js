@@ -568,7 +568,7 @@ export function createFluidInnerTSL(
             uTime,
         });
         // Clamped: a dot of unit vectors can round past 1, and pow of a negative base is NaN, which
-        // bloom spreads into a black block (as the water surface's caustics, odyssey-water-surface.tsl.js).
+        // bloom spreads into a black block (as it once did on the old water surface's caustics).
         const rim = pow(clamp(oneMinus(abs(dot(normalize(vViewNormal), vec3(0.0, 0.0, 1.0)))), 0.0, 1.0), 2.2);
         color.addAssign(rim.mul(0.08));
         return color;

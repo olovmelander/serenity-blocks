@@ -109,7 +109,7 @@ function createWhaleMaterial(uWater, uFade) {
     const belly = clamp(nW.y.negate(), 0.0, 1.0);
     const towardSurface = clamp(nW.y, 0.0, 1.0);
     // Clamped: a dot of unit vectors can round past 1, and pow of a negative base is NaN, which
-    // bloom spreads into a black block (as the water surface's caustics, odyssey-water-surface.tsl.js).
+    // bloom spreads into a black block (as it once did on the old water surface's caustics).
     const fres = pow(clamp(oneMinus(abs(dot(normalize(normalView), vec3(0, 0, 1)))), 0.0, 1.0), 2.5);
     // The humpback's own marks, baked per vertex in Blender (COLOR_0): r the fins' white (the long
     // flippers, the flukes' underside), g the belly's, b how open the skin is to the light (ao).

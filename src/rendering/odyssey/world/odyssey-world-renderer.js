@@ -2966,7 +2966,7 @@ export function createOdysseyWorld({
         // The rim reads the FORM's normal: on the flutes' tilted one it lit every flute edge,
         // and the cone turned to brushed chrome.
         // Clamped: a dot of unit vectors can round past 1, and pow of a negative base is NaN, which
-        // bloom spreads into a black block (as the water surface's caustics, odyssey-water-surface.tsl.js).
+        // bloom spreads into a black block (as it once did on the old water surface's caustics).
         const rim = clamp(float(1).sub(abs(dot(normal, viewDir))), 0.0, 1.0).pow(4)
             .mul(kSnow)
             .mul(0.14);

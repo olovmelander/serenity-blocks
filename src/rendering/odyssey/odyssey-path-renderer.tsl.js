@@ -856,7 +856,7 @@ export function createPathOuterTSL(uTime = uniform(0), opts = {}) {
 
         // The world's air at the silhouette — the ribbon's edge melts into its atmosphere.
         // Clamped: a dot of unit vectors can round past 1, and pow of a negative base is NaN, which
-        // bloom spreads into a black block (as the water surface's caustics, odyssey-water-surface.tsl.js).
+        // bloom spreads into a black block (as it once did on the old water surface's caustics).
         const rim = pow(clamp(float(1.0).sub(ndv), 0.0, 1.0), 2.0);
         let color = body.add(emissive).add(R.haze.rgb.mul(rim).mul(R.haze.w).mul(3.0));
         color = color.mul(uEmission);
