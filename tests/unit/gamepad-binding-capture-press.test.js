@@ -142,6 +142,24 @@ describe('the press that answers a binding capture', () => {
         expect(close.click).not.toHaveBeenCalled();
     });
 
+    it('gives the pad back to Settings when the clock is set back after a capture', () => {
+        const { tile, nextTab, endCapture } = openSettings();
+        const controller = new GamepadController();
+        const gamepad = pad();
+
+        tile.classList.add('listening');
+        controller.processMenuNavigation(gamepad, 0);
+        endCapture(); // nothing held: the capture answered from a key
+        vi.setSystemTime(Date.now() - 60 * 60 * 1000); // the computer's clock corrected back an hour
+        later(400);
+        controller.processMenuNavigation(gamepad, 0);
+        hold(gamepad, BUTTON.RB);
+        later(16);
+        controller.processMenuNavigation(gamepad, 0);
+
+        expect(nextTab.click).toHaveBeenCalledTimes(1);
+    });
+
     it('does not also switch the Settings tab (RB taken first by the capture)', () => {
         const { tile, nextTab, endCapture } = openSettings();
         const controller = new GamepadController();
