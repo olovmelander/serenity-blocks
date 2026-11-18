@@ -43,7 +43,7 @@ crosses the air (Medium and up).
 each storey's own colours — morning (as authored), noon (whiter, cooler shade), gold (an amber
 sun, rose-gold air, its sun's hue turned without dimming the key light), pearl (a soft lilac
 light) — 100 s a mood, held only 15 % at either end, so the light is on its way most of the time. The level adds the Climb on top: a new storey, a new
-zone.
+zone. (Six moods since the living pass, 2026-11-18: ember and dusk stand between gold and pearl.)
 
 ## Event language
 
@@ -353,7 +353,7 @@ Playground (`npm run dev:playground`, then `playground.html?effect=rainbark&…`
 | a T-spin | `t=55&level=4&board=1&event=twist&lines=2&u=0.2&row=13&eventAge=2.0` |
 | back-to-back | `t=55&level=4&board=1&b2b=2` |
 | perfect clear | `t=55&level=4&board=1&event=perfect&eventAge=5&sheds=700` |
-| the light wheel | `t=10&level=4` (morning) … `t=110` (noon), `t=210` (gold), `t=310` (pearl) |
+| the light wheel | `t=10&level=4` (morning) … `t=110` (noon), `t=210` (gold), `t=310` (ember), `t=410` (dusk), `t=510` (pearl); or hold one: `mood=dusk` |
 | the icon | `t=55&level=4&icon=1&iconFov=30&iconYaw=24&iconPitch=8&event=lock&piece=I&u=0.2&row=8&eventAge=0.45` (square) |
 | the motes alone (third pass) | `t=55&level=4&parts=sky,fx&noPost=1` |
 | a mood (living pass) | `t=55&level=4&board=1&mood=ember` (or `dusk`, `gold`, `noon`, `pearl`) |
