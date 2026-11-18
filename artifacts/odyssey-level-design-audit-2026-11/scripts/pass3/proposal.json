@@ -1286,7 +1286,7 @@
     }
   },
   "41": {
-    "reason": "Bank the space rest at 24,000 points between the cascade race and the dig. Silver rewards a 100-second finish. Gold takes five Quads within 85 seconds.",
+    "reason": "Bank the space rest at 24,000 points between the cascade race and the dig. Silver rewards a 100-second finish. Gold rewards four Quads within 85 seconds. The shorter score goal can finish a deliberate build before the fifth Quad.",
     "override": {
       "mechanics": {
         "speed": {
@@ -1303,7 +1303,7 @@
         "bonuses": [
           {
             "type": "quad-count",
-            "target": 5
+            "target": 4
           }
         ]
       },

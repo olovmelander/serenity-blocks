@@ -512,12 +512,13 @@ export const ODYSSEY_LEVEL_DESIGN_2026_11 = deepFreeze({
         modifiers: { active: ['gravity-cascade', 'time-attack'] },
     },
     // Bank the space rest at 24,000 points between the cascade race and the dig. Silver rewards a 100-second
-    // finish. Gold takes five Quads within 85 seconds.
+    // finish. Gold rewards four Quads within 85 seconds. The shorter score goal can finish a deliberate build
+    // before the fifth Quad.
     41: {
         mechanics: { speed: { startLevel: 8, fixedDropInterval: 200, levelProgression: true } },
         victory: {
             primary: { type: 'score', target: 24000 },
-            bonuses: [{ type: 'quad-count', target: 5, description: 'Clear 5 Quads' }],
+            bonuses: [{ type: 'quad-count', target: 4, description: 'Clear 4 Quads' }],
         },
         stars: {
             one: { score: 24000 },
