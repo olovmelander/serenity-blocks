@@ -130,8 +130,9 @@ export class SakuraTerrain {
         const lit = albedo.mul(light.uMoonColor).mul(moonFacing).mul(light.moonlight())
             .add(albedo.mul(light.ambient(normal)).mul(1.2))
             .add(albedo.mul(light.lamps(world.add(vec3(0, 0.25, 0)), normal)))
-            // The ring from a locked piece crosses the grass as a breath of pink light.
-            .add(mix(albedo, vec3(1.0, 0.6, 0.74), 0.5).mul(ring.band).mul(0.55));
+            // The ring from a locked piece crosses the grass as a breath of pink light (its crest
+            // only: see the grass in sakura-garden.js).
+            .add(mix(albedo, vec3(1.0, 0.6, 0.74), 0.5).mul(ring.band.mul(ring.band).mul(1.6)).mul(0.55));
         material.colorNode = vec4(light.haze(lit, { world }), 1);
         return material;
     }

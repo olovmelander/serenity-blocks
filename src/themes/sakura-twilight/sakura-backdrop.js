@@ -168,7 +168,10 @@ export class SakuraBackdrop {
             const lens = (cx, cy, rx, ry) => {
                 const dx = across.sub(cx).div(rx);
                 const dy = height.sub(cy).add(dx.mul(dx).mul(ry * 0.5)).div(ry);
-                return smoothstep(0.3, 1.0, dx.mul(dx).add(dy.mul(dy)).add(broad.sub(0.5).mul(0.5))).oneMinus();
+                // (Its edge is torn by the finer field, and its lee end trails thinner than its windward.)
+                return smoothstep(0.12, 1.0, dx.mul(dx).mul(dx.mul(0.22).add(1)).add(dy.mul(dy))
+                    .add(broad.sub(0.5).mul(0.45))
+                    .add(fine.sub(0.5).mul(0.75))).oneMinus();
             };
             // (The lower one sits on the summit like a hat; the upper rides just clear of it.)
             const lower = lens(peak[0] + 0.012, peak[1] + 0.03, 0.2, 0.105);

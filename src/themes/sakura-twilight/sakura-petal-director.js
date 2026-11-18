@@ -10,7 +10,9 @@
  *
  * As play runs hot (`frame.level`) each lock's and clear's ring and glint is a little gentler:
  * they come thick and fast then and interfere across the water and the grass instead of
- * stacking into one pale veil over the garden.
+ * stacking into one pale veil over the garden. Rings also make room for one another whatever the
+ * heat: each is as strong as the light the last few have left lets it be (`ripple`), so a quick
+ * hand sends a train of fine rings over the lake, not a sheet of light over the grass.
  */
 import * as THREE from 'three/webgpu';
 import { SAKURA_STAGE_DEPTH } from './sakura-stage.js';
@@ -73,6 +75,19 @@ export class SakuraPetalDirector {
         this.env = {
             windX: 1, windZ: 0, breeze: 0, gust: 0, front: null, fronts: [], fields: this.fields, fall: 1, shore: this.shore,
         };
+        /** The light the last rings left on the lake (it falls away over a second or so). */
+        this.ringLoad = 0;
+    }
+
+    /**
+     * Send a ring out over the lake from (x, z). A ring that follows hard on others is fainter:
+     * the first of a run is whole, a lock every half second settles near two fifths.
+     */
+    ripple(x, z, strength) {
+        if (!(strength > 0)) return;
+        const sent = strength / (1 + 1.3 * this.ringLoad);
+        this.ringLoad += sent;
+        this.effects.ring?.(x, z, sent);
     }
 
     reset() {
@@ -80,6 +95,7 @@ export class SakuraPetalDirector {
         this.emitted.clear();
         this.fields.length = 0;
         this.vortexFeed = 0;
+        this.ringLoad = 0;
     }
 
     random() {
@@ -129,7 +145,7 @@ export class SakuraPetalDirector {
             );
             // The piece seems to fall through the card into the lake behind it.
             const drop = stage.lake(emitter.column, 24 + 10 * this.random(), this.foot);
-            this.effects.ring?.(drop.x, drop.z, (0.45 + strength * 0.9) * this.calm);
+            this.ripple(drop.x, drop.z, (0.45 + strength * 0.9) * this.calm);
         }
         if (emitter.age < 0.28) {
             this.fields.push({
@@ -149,7 +165,9 @@ export class SakuraPetalDirector {
 
     /**
      * The crown of spray where a hard-dropped piece went into the lake: on the water just past
-     * the card's edge on the piece's side, where it can be seen, with a ring of its own.
+     * the card's edge on the piece's side, where it can be seen. (It sends no ring of its own: the
+     * lock's ring is already crossing the lake, and two to a piece under fast play lay a pale
+     * veil over the grass.)
      */
     splash(emitter) {
         const { stage } = this;
@@ -160,7 +178,6 @@ export class SakuraPetalDirector {
             // (Only on open water: the banks reach in under the card's corners.)
             if (this.surface(water.x, water.z) <= 0.001) {
                 this.effects.splash?.(water.x, water.z, strength);
-                this.effects.ring?.(water.x, water.z, (0.3 + strength * 0.55) * this.calm);
                 return true;
             }
         }
@@ -202,7 +219,7 @@ export class SakuraPetalDirector {
         if (fresh && side < 0) {
             // One ring for the whole clear, wide and bright, from the middle of the lake.
             const drop = stage.lake(0.5, 30, this.foot);
-            this.effects.ring?.(drop.x, drop.z, (0.7 + lines * 0.22) * this.calm);
+            this.ripple(drop.x, drop.z, (0.7 + lines * 0.22) * this.calm);
         }
     }
 
@@ -364,6 +381,7 @@ export class SakuraPetalDirector {
     apply(frame = {}, dt = 0, wind = { x: 1, z: 0, strength: 0.3 }) {
         const { fields, stage } = this;
         fields.length = 0;
+        if (Number.isFinite(dt) && dt > 0) this.ringLoad *= Math.exp(-dt / 1.2);
         const level = Number.isFinite(frame.level) ? Math.max(0, Math.min(1, frame.level)) : 0;
         this.calm = 1 - 0.45 * level;
         this.glow = 1 - 0.35 * level;

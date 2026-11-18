@@ -134,13 +134,14 @@ export function create({
     };
     // ?event=lock|drop|clear|double|triple|quad|combo|streak|spin|b2b|perfect|level|over|fever,
     // placed with ?col=0..9 and ?row=0..19 (0 is the top visible row). `b2b` is ?combo back-to-backs
-    // in a row (one by default); `fever` is hot play kept up from the event to the frame.
+    // in a row (one by default); `fever` is hot play kept up from the event to the frame, and
+    // `drops` a quick hand: a hard drop every 0.42 s from the event to the frame, column by column.
     const levelUp = () => {
         reactions.onLevelUp();
         world.setLevel(world.level + 1);
     };
-    const fire = (event) => {
-        const column = Number(params.get('col') ?? 1);
+    const fire = (event, at = null) => {
+        const column = at ?? Number(params.get('col') ?? 1);
         const row = Number(params.get('row') ?? 12) + 4;
         const piece = {
             shapeKey: 'T', x: column, y: row, shape: [[0, 1, 0], [1, 1, 1], [0, 0, 0]],
@@ -191,11 +192,18 @@ export function create({
         let turned = false;
         // (`fever`: a double every 0.45 s from the event to the frame, as a hot hand plays.)
         const hot = params.get('event') === 'fever';
+        const quick = params.get('event') === 'drops';
         let nextClear = eventTime;
+        let dropped = 0;
         for (let i = 1; i <= steps; i += 1) {
             if (hot && i * dt >= nextClear) {
                 nextClear += 0.45;
                 fire('double');
+            }
+            if (quick && i * dt >= nextClear) {
+                nextClear += 0.42;
+                dropped += 1;
+                fire('drop', (dropped * 3) % 9);
             }
             if (!fired && i * dt >= eventTime) {
                 fired = true;

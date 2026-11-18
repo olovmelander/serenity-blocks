@@ -17,7 +17,8 @@
  * Over the vault lie the constellations: a few figures of bright stars whose lines draw
  * themselves in as a combo builds, and the shooting stars a four-line clear sets off — up to
  * three at once, each finishing its fall (a fever makes them a meteor shower). A back-to-back
- * opens the hazy moon's rainbow corona; a perfect clear and a fever brighten its aureole.
+ * opens the hazy moon's rainbow corona; a perfect clear and a fever brighten its aureole. On a
+ * clear night a star falls by itself now and then, whether anyone is playing or not.
  */
 import * as THREE from 'three/webgpu';
 import {
@@ -118,6 +119,16 @@ export class SakuraSky {
         this.uShotDirs = uniformArray(this.shotDirData, 'vec4');
         this.lastShot = 0;
         this.shootCount = 0;
+        // The night's own falling stars: when the next is due, on chances of their own (the
+        // garden's shared sequence is left alone).
+        this.ownChance = 0x51a7;
+        this.ambientAt = 9;
+    }
+
+    /** A chance of the sky's own (a small seeded generator: the same night from the same start). */
+    chance() {
+        this.ownChance = (Math.imul(this.ownChance, 1664525) + 1013904223) >>> 0;
+        return this.ownChance / 4294967296;
     }
 
     /** The most recent shooting star's slot (start x, start y, birth, strength). */
@@ -194,7 +205,7 @@ export class SakuraSky {
             // A back-to-back opens the corona: its three rings burn several times as bright. A veil
             // of cloud opens it too, wide and soft, for as long as the air is hazy.
             const around = light.uMoonColor.mul(aureole).mul(0.62)
-                .add(corona.mul(this.uCorona.mul(3.4).add(veil.mul(1.8)).add(0.45)));
+                .add(corona.mul(this.uCorona.mul(2.7).add(veil.mul(1.6)).add(0.45)));
             return body.mul(inside).add(around.mul(inside.oneMinus()).mul(glow).mul(step(0.2, facing)));
         });
     }
@@ -520,10 +531,22 @@ export class SakuraSky {
         this.uMoonGlow.value = Math.min(1.6, Math.max(clamp01(frame.moon), 0.35 * clamp01(frame.fever))
             + 0.55 * ranged(frame.crown, 1.3));
         this.uCorona.value = ranged(frame.corona, 1.6);
+        // A star falls by itself every quarter minute or so, when the sky is clear enough to show
+        // one and the garden is awake. (A clock that went back, a seek, starts the wait again.)
+        const { light } = this;
+        const now = light.uTime.value;
+        if (now < this.ambientAt - 60) this.ambientAt = now + 9;
+        if (now >= this.ambientAt) {
+            const open = light.uStars.value > 0.55 && light.uCloud.value < 0.45 && light.uVeil.value < 0.5;
+            if (open && !(frame.hush > 0.5)) this.shoot(0.4 + this.chance() * 0.35);
+            this.ambientAt = now + 13 + this.chance() * 26;
+        }
     }
 
     reset() {
         this.shotData.forEach((shot) => shot.set(0, 0, -100, 0));
+        this.ownChance = 0x51a7;
+        this.ambientAt = 9;
         this.lastShot = 0;
         this.uDraw.value = 0;
         this.uFigures.value = 0;
