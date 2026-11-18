@@ -1,10 +1,18 @@
 /**
  * Sakura Twilight — the sky.
  *
- * One dome draws the whole vault: the afterglow gradient from the light rig, two sizes of
- * twinkling stars, drifting cirrus lit silver by the moon and rose from below, and the
- * moon itself — a mottled disc with a soft corona and the wide ring a thin veil of ice
- * gives it. `moon(direction)` is exported as a node so the lake can mirror the same disc.
+ * One dome draws the whole vault: the afterglow gradient from the light rig, three sizes of
+ * twinkling stars in their own colours, the river of heaven the dark hours show, and the moon
+ * itself — a mottled disc with a soft corona and the wide ring a thin veil gives it.
+ * `moon(direction)` is exported as a node so the lake can mirror the same disc.
+ *
+ * The cloud is the air's (sakura-weather.js), drawn from the side in the sky's own coordinates
+ * (azimuth, height): a level eye looking out over a lake sees only the lowest part of the sky,
+ * where a deck seen from below is squeezed into streaks. Banks form and melt as two layers of
+ * one field slide through each other, their moonward edges silver and their hearts in shade;
+ * high wisps trail on the slant; a mackerel field lies in small scales; a veil thins the stars
+ * and opens the moon's ring. The dome is drawn last among the solid things, so only the sky that
+ * shows is shaded.
  *
  * Over the vault lie the constellations: a few figures of bright stars whose lines draw
  * themselves in as a combo builds, and the shooting stars a four-line clear sets off — up to
@@ -13,9 +21,9 @@
  */
 import * as THREE from 'three/webgpu';
 import {
-    cameraPosition, cross, dot, exp, float, floor, fract, instancedBufferAttribute, length, max, mix,
+    Fn, If, atan, cameraPosition, cross, dot, exp, float, floor, fract, instancedBufferAttribute, length, max, mix,
     normalize, positionGeometry, positionWorld, pow, saturate, sin, smoothstep, step, uniform, uniformArray, uv, vec2,
-    vec3,
+    vec3, vec4,
 } from 'three/tsl';
 
 const TAU = Math.PI * 2;
@@ -64,6 +72,24 @@ function skyDirection(azimuth, elevation, target = new THREE.Vector3()) {
     const e = THREE.MathUtils.degToRad(elevation);
     return target.set(Math.sin(a) * Math.cos(e), Math.sin(e), -Math.cos(a) * Math.cos(e));
 }
+
+/**
+ * The river of heaven: a great circle that rises from behind the mountain's left shoulder and
+ * climbs to the right over the top of the sky, through the open sky of both framings.
+ * [azimuth right of -Z, elevation] in degrees for the two points that set it.
+ */
+export const SAKURA_GALAXY = Object.freeze({ from: [-40, 5], to: [2, 42] });
+const GALAXY_FROM = skyDirection(SAKURA_GALAXY.from[0], SAKURA_GALAXY.from[1]);
+const GALAXY_TO = skyDirection(SAKURA_GALAXY.to[0], SAKURA_GALAXY.to[1]);
+const GALAXY_NORMAL = new THREE.Vector3().crossVectors(GALAXY_FROM, GALAXY_TO).normalize();
+const GALAXY_MIDDLE = GALAXY_FROM.clone().add(GALAXY_TO).normalize();
+// Along the band from its middle (the sine of the angle: a cosine stands still there, and draws
+// the band's clouds out into rays).
+const GALAXY_ALONG = new THREE.Vector3().crossVectors(GALAXY_NORMAL, GALAXY_MIDDLE).normalize();
+/** The cloud field's scale in (azimuth, height): banks some sixteen degrees long and six tall. */
+const CLOUD_SCALE = Object.freeze([0.9, 2.3]);
+/** One read of the shared noise as four octaves (its channels hold 4, 8, 16 and 32 cells). */
+const OCTAVES = [0.4, 0.3, 0.2, 0.1];
 
 /** A cheap 3D -> 1 hash for star cells. */
 function hash3(cell) {
@@ -117,46 +143,69 @@ export class SakuraSky {
 
     /** The moon's disc, corona and ring seen along a unit direction. */
     moon(direction) {
-        const { light } = this;
-        const axis = light.uMoonDir;
-        const right = normalize(cross(vec3(0, 1, 0), axis));
-        const up = cross(axis, right);
-        const offset = direction.sub(axis.mul(dot(direction, axis)));
-        const disc = vec2(dot(offset, right), dot(offset, up)).div(SAKURA_MOON_RADIUS);
-        const radius = length(disc);
-        const facing = saturate(dot(direction, axis));
-        const inside = smoothstep(0.97, 1.0, radius).oneMinus().mul(smoothstep(0.5, 0.9, facing));
-        // Seas and highlands from two octaves of the shared noise, pocked by craters. The disc
-        // is kept below the tone curve's shoulder so its seas still read; the glow is the halo's.
-        const seas = light.noise(disc.mul(0.21).add(vec2(0.37, 0.61))).r.mul(0.62)
-            .add(light.noise(disc.mul(0.53).add(vec2(0.11, 0.83))).g.mul(0.38));
-        const craters = light.noise(disc.mul(1.7)).b.mul(0.6).add(light.noise(disc.mul(3.9).add(0.3)).a.mul(0.4));
-        const surface = mix(0.4, 1.0, smoothstep(0.38, 0.6, seas)).mul(craters.mul(0.26).add(0.87));
-        const limb = pow(saturate(float(1).sub(radius.mul(radius))), 0.28);
-        // A low moon is warm at its lower limb, where it looks through more air.
-        const tint = mix(vec3(1.0, 0.86, 0.78), vec3(0.92, 0.97, 1.08), saturate(disc.y.mul(0.5).add(0.62)));
-        const body = tint.mul(surface).mul(limb.mul(0.45).add(0.55)).mul(1.5);
-        const angle = radius.mul(SAKURA_MOON_RADIUS);
-        // Oborozuki, the hazy moon of spring: a bright aureole in the thin cloud round the disc
-        // and the faint rings of its corona, red-brown, then blue-green, then rose.
-        const out = radius.sub(1).max(0);
-        const aureole = exp(out.mul(-2.4)).mul(0.55)
-            .add(exp(angle.mul(-26)).mul(0.3))
-            .add(exp(angle.mul(-7)).mul(0.07));
-        const band = (at, width) => exp(radius.sub(at).div(width).pow2().negate());
-        const corona = vec3(1.0, 0.55, 0.42).mul(band(2.5, 0.42)).mul(0.055)
-            .add(vec3(0.42, 0.78, 1.0).mul(band(3.35, 0.4)).mul(0.034))
-            .add(vec3(1.0, 0.5, 0.75).mul(band(4.15, 0.45)).mul(0.02));
-        const glow = this.uMoonGlow.mul(0.9).add(1);
-        // A back-to-back opens the corona: its three rings burn several times as bright.
-        const around = light.uMoonColor.mul(aureole).mul(0.62).add(corona.mul(this.uCorona.mul(3.4).add(1)));
-        return body.mul(inside).add(around.mul(inside.oneMinus()).mul(glow).mul(step(0.2, facing)));
+        if (!this.moonFn) this.moonFn = this.createMoon();
+        return this.moonFn(direction);
     }
 
-    /** Stars seen along a unit direction: two sizes and a dust of faint ones, each twinkling. */
-    stars(direction) {
+    createMoon() {
         const { light } = this;
-        let total = float(0);
+        return Fn(([direction]) => {
+            const axis = light.uMoonDir;
+            const right = normalize(cross(vec3(0, 1, 0), axis));
+            const up = cross(axis, right);
+            const offset = direction.sub(axis.mul(dot(direction, axis)));
+            const disc = vec2(dot(offset, right), dot(offset, up)).div(SAKURA_MOON_RADIUS).toVar();
+            const radius = length(disc).toVar();
+            const facing = saturate(dot(direction, axis)).toVar();
+            const inside = smoothstep(0.97, 1.0, radius).oneMinus().mul(smoothstep(0.5, 0.9, facing)).toVar();
+            // (A veil of cloud softens the disc: its seas sink into the glow.)
+            const veil = light.uVeil;
+            const body = vec3(0).toVar();
+            // The disc is a small part of the sky: its seas are read only there. (A branch that
+            // differs from pixel to pixel may hold no texture read that picks its own level; the
+            // disc is drawn larger than the noise, so its first level is the right one.)
+            If(radius.lessThan(1.02).and(facing.greaterThan(0.5)), () => {
+                const read = (coordinate) => light.noise(coordinate).level(0);
+                // Seas and highlands from two octaves of the shared noise, pocked by craters. The
+                // disc is kept below the tone curve's shoulder so its seas still read; the glow is
+                // the halo's.
+                const seas = read(disc.mul(0.21).add(vec2(0.37, 0.61))).r.mul(0.62)
+                    .add(read(disc.mul(0.53).add(vec2(0.11, 0.83))).g.mul(0.38));
+                const craters = read(disc.mul(1.7)).b.mul(0.6).add(read(disc.mul(3.9).add(0.3)).a.mul(0.4));
+                const surface = mix(float(0.36), float(1.0), smoothstep(0.38, 0.6, seas))
+                    .mul(craters.mul(0.3).add(0.85));
+                const limb = pow(saturate(float(1).sub(radius.mul(radius))), 0.28);
+                // A low moon is warm at its lower limb, where it looks through more air.
+                const tint = mix(vec3(1.0, 0.86, 0.78), vec3(0.92, 0.97, 1.08), saturate(disc.y.mul(0.5).add(0.62)));
+                body.assign(tint.mul(mix(surface, float(0.82), veil.mul(0.6))).mul(limb.mul(0.45).add(0.55)).mul(1.42));
+            });
+            const angle = radius.mul(SAKURA_MOON_RADIUS);
+            // Oborozuki, the hazy moon of spring: a bright aureole in the thin cloud round the
+            // disc and the faint rings of its corona, red-brown, then blue-green, then rose.
+            const out = radius.sub(1).max(0);
+            const aureole = exp(out.mul(-2.4)).mul(veil.mul(0.5).add(0.5))
+                .add(exp(angle.mul(-26)).mul(0.3))
+                .add(exp(angle.mul(-7)).mul(veil.mul(0.2).add(0.07)));
+            const band = (at, width) => exp(radius.sub(at).div(width).pow2().negate());
+            const corona = vec3(1.0, 0.55, 0.42).mul(band(2.5, 0.42)).mul(0.055)
+                .add(vec3(0.42, 0.78, 1.0).mul(band(3.35, 0.4)).mul(0.034))
+                .add(vec3(1.0, 0.5, 0.75).mul(band(4.15, 0.45)).mul(0.02));
+            const glow = this.uMoonGlow.mul(0.9).add(1);
+            // A back-to-back opens the corona: its three rings burn several times as bright. A veil
+            // of cloud opens it too, wide and soft, for as long as the air is hazy.
+            const around = light.uMoonColor.mul(aureole).mul(0.62)
+                .add(corona.mul(this.uCorona.mul(3.4).add(veil.mul(1.8)).add(0.45)));
+            return body.mul(inside).add(around.mul(inside.oneMinus()).mul(glow).mul(step(0.2, facing)));
+        });
+    }
+
+    /**
+     * Stars seen along a unit direction (their light, in their own colours): two sizes and a dust
+     * of faint ones, each twinkling. `dust` (0..1) thickens the faint ones: the river of heaven.
+     */
+    stars(direction, dust = float(0)) {
+        const { light } = this;
+        let total = vec3(0);
         const layers = [[150, 0.07, 1.0, 9], [70, 0.045, 2.6, 9], [260, 0.15, 0.42, 3.5]];
         layers.forEach(([scale, size, gain, rarity], layer) => {
             const cellPoint = direction.mul(scale);
@@ -167,8 +216,16 @@ export class SakuraSky {
             const magnitude = pow(fract(seed.mul(7.13)), rarity);
             const twinkle = sin(light.uTime.mul(fract(seed.mul(3.7)).mul(2.6).add(0.9)).add(seed.mul(TAU)))
                 .mul(0.3).add(0.7);
-            total = total.add(smoothstep(0, size, distance).oneMinus().mul(magnitude).mul(twinkle)
-                .mul(gain));
+            // Most are blue-white; one in a few burns gold, a rare one rose.
+            const warmth = fract(seed.mul(19.19));
+            const tint = mix(
+                mix(vec3(0.78, 0.88, 1.28), vec3(1.3, 1.02, 0.78), smoothstep(0.62, 0.8, warmth)),
+                vec3(1.3, 0.8, 0.92),
+                smoothstep(0.93, 0.97, warmth),
+            );
+            const amount = layer === 2 ? dust.mul(4).add(1).mul(gain) : float(gain);
+            total = total.add(tint.mul(smoothstep(0, size, distance).oneMinus().mul(magnitude).mul(twinkle)
+                .mul(amount)));
         });
         return total;
     }
@@ -179,49 +236,141 @@ export class SakuraSky {
             side: THREE.BackSide, fog: false, depthWrite: false,
         }));
         material.name = 'SakuraSkyDome';
-        const direction = normalize(positionWorld.sub(cameraPosition));
-        const sky = light.sky(direction);
-        const moonward = saturate(dot(direction, light.uMoonDir));
-        // High cirrus: silver toward the moon, rose where the afterglow still reaches it.
-        const plane = vec2(direction.x.mul(0.6), direction.z).div(direction.y.add(0.2));
-        const drift = light.uTime.mul(0.0022);
-        const streaks = light.noise(plane.mul(vec2(0.11, 0.3)).add(vec2(drift, 0.1))).g.mul(0.58)
-            .add(light.noise(plane.mul(vec2(0.29, 0.83)).sub(vec2(drift.mul(1.6), 0.3))).b.mul(0.42));
-        const cover = smoothstep(0.5, 0.8, streaks).mul(smoothstep(0.015, 0.2, direction.y));
-        const flat = normalize(vec2(direction.x, direction.z).add(vec2(0.0001, 0)));
-        const toward = dot(flat, light.uGlowDir).mul(0.5).add(0.5);
-        const lowness = pow(saturate(direction.y).oneMinus(), 3);
-        const cloud = mix(light.uCloudShade, light.uCloudLit, streaks)
-            .add(light.uAfterglow.mul(pow(toward, 2).mul(lowness).mul(0.5)))
-            .add(light.uMoonColor.mul(pow(moonward, 5).mul(0.2).add(pow(moonward, 40).mul(0.5))));
-        const clear = cover.mul(0.72).oneMinus();
-        // (How many show is the hour's: few in the afterglow and at dawn, the most in deep night.)
-        const starlight = this.stars(direction).mul(light.uStars).mul(smoothstep(0.02, 0.3, direction.y)).mul(clear)
-            .mul(pow(moonward, 12).mul(0.85).oneMinus())
-            .mul(pow(toward, 3).mul(lowness).oneMinus());
-        const starColour = mix(vec3(0.8, 0.88, 1.25), vec3(1.25, 1.0, 0.85), fract(direction.x.mul(91.7).add(direction.z.mul(47.3))));
-        // Shooting stars: each a short bright streak sliding along a line on the sky plane.
-        let streak = float(0);
-        for (let index = 0; index < SAKURA_SHOOTING_STARS; index += 1) {
-            const shot = this.uShots.element(index);
-            const way = this.uShotDirs.element(index).xy;
-            const shootAge = light.uTime.sub(shot.z);
-            const head = shot.xy.add(way.mul(shootAge.mul(2.6)));
-            const along = dot(plane.sub(head), way);
-            const across = length(plane.sub(head).sub(way.mul(along)));
-            streak = streak.add(smoothstep(0, 0.012, across).oneMinus().mul(smoothstep(-0.9, 0, along))
-                .mul(step(along, 0))
-                .mul(saturate(shootAge.mul(6)))
-                .mul(exp(shootAge.mul(-1.5)))
-                .mul(shot.w));
-        }
-        material.colorNode = mix(sky, cloud, cover.mul(0.5))
-            .add(starColour.mul(starlight).mul(1.5))
-            .add(this.moon(direction).mul(cover.mul(0.5).oneMinus()))
-            .add(vec3(1.5, 1.6, 2.2).mul(streak).mul(smoothstep(0.02, 0.2, direction.y)));
+        const octaves = vec4(...OCTAVES);
+        const scale = vec2(...CLOUD_SCALE);
+        material.colorNode = Fn(() => {
+            const direction = normalize(positionWorld.sub(cameraPosition)).toVar();
+            const up = direction.y.toVar();
+            const azimuth = atan(direction.x, direction.z.negate()).toVar();
+            const sky = light.sky(direction).toVar();
+            const moonward = saturate(dot(direction, light.uMoonDir)).toVar();
+            const flat = normalize(vec2(direction.x, direction.z).add(vec2(0.0001, 0)));
+            const toward = dot(flat, light.uGlowDir).mul(0.5).add(0.5).toVar();
+            const lowness = pow(saturate(up).oneMinus(), 3).toVar();
+            const clock = light.uCloudClock;
+            const veil = light.uVeil;
+
+            // -- The banks: one field read twice, the second finer and quicker, so a bank changes
+            // shape as it travels; the finer read also pulls the broad one about, so no bank is
+            // a round puff. They mass toward the horizon, where the eye looks along the sky.
+            const place = vec2(azimuth, up).mul(scale).toVar();
+            const travel = vec2(clock.mul(-0.0024), clock.mul(0.0003)).toVar();
+            const second = light.noise(place.mul(2.3).add(vec2(clock.mul(-0.0074), clock.mul(-0.0008)))
+                .add(vec2(0.37, 0.61))).toVar();
+            const torn = place.add(travel).add(second.rg.sub(0.5).mul(vec2(0.055, 0.028))).toVar();
+            const first = light.noise(torn).toVar();
+            const body = dot(first, octaves).toVar();
+            const field = body.mul(0.66).add(dot(second, octaves).mul(0.34))
+                .add(smoothstep(0.08, 0.55, up).oneMinus().mul(0.05)).toVar();
+            const edge = mix(float(0.7), float(0.41), light.uCloud).toVar();
+            // (A sky with hardly any cloud has none in banks: a lone bank is a blot.)
+            const bank = smoothstep(edge, edge.add(0.085), field).mul(smoothstep(0.0, 0.06, up))
+                .mul(smoothstep(0.1, 0.3, light.uCloud)).toVar();
+            // The same field a step toward the moon says which side of a bank is lit.
+            const moonSide = normalize(light.uMoonAzEl.sub(vec2(azimuth, up)).mul(scale).add(vec2(0.0001, 0)));
+            const lee = dot(light.noise(torn.add(moonSide.mul(0.028))), octaves).toVar();
+            const silver = saturate(body.sub(lee).mul(6)).toVar();
+            const heart = smoothstep(0.4, 1.0, bank).mul(saturate(lee.sub(body).mul(4.5).add(0.6))).toVar();
+
+            // -- High wisps on the slant, as the garden always had.
+            const strand = light.noise(vec2(
+                azimuth.mul(0.3).add(up.mul(0.8)).add(clock.mul(-0.0009)),
+                up.mul(3.2).sub(azimuth.mul(0.42)).add(0.2),
+            ));
+            const wisp = smoothstep(0.5, 0.8, strand.g.mul(0.58).add(strand.b.mul(0.42)))
+                .mul(smoothstep(0.03, 0.22, up)).mul(light.uWisps).toVar();
+
+            // -- The mackerel field: small scales in the middle sky, where the banks leave room.
+            const scales = float(0).toVar();
+            If(light.uMackerel.greaterThan(0.01), () => {
+                const ripple = light.noise(vec2(
+                    azimuth.mul(2.4).add(clock.mul(-0.0022)),
+                    up.mul(4.4).add(azimuth.mul(0.7)),
+                ));
+                const cells = smoothstep(0.4, 0.68, ripple.b.mul(0.56).add(ripple.a.mul(0.44)));
+                const region = smoothstep(0.4, 0.62, first.r.mul(0.55).add(second.g.mul(0.45)))
+                    .mul(smoothstep(0.09, 0.22, up)).mul(smoothstep(0.7, 0.95, up).oneMinus());
+                scales.assign(cells.mul(region).mul(light.uMackerel));
+            });
+
+            const thin = wisp.mul(0.45).add(scales.mul(0.7)).toVar();
+            const cover = saturate(bank.mul(0.92).add(thin)).toVar();
+            // A bank's heart is in shade and its moonward edge silver; thin cloud is lit through,
+            // and all of it near the moon stands in its glow.
+            const tone = saturate(silver.mul(0.6).add(0.42).sub(heart.mul(0.46)).add(thin.mul(0.45))
+                .add(second.a.sub(0.5).mul(0.16)));
+            const near = pow(moonward, 5).mul(0.16).add(pow(moonward, 40).mul(0.4));
+            const cloud = mix(light.uCloudShade, light.uCloudLit, tone)
+                .add(light.uAfterglow.mul(pow(toward, 2).mul(lowness).mul(0.5)))
+                .add(light.uMoonColor.mul(silver.mul(bank).mul(heart.oneMinus()).mul(0.07)
+                    .add(heart.oneMinus().mul(0.018))
+                    .add(near.mul(heart.mul(0.6).oneMinus()))))
+                .toVar();
+            // Low on the sky a cloud stands in the same air as the far shore.
+            cloud.assign(mix(cloud, sky, pow(saturate(up).oneMinus(), 9).mul(0.7)));
+
+            // -- The river of heaven, where the hour is dark and the air clear enough to show it.
+            const river = vec3(0).toVar();
+            const dust = float(0).toVar();
+            If(light.uGalaxy.greaterThan(0.01), () => {
+                const off = dot(direction, vec3(GALAXY_NORMAL.x, GALAXY_NORMAL.y, GALAXY_NORMAL.z)).toVar();
+                const along = dot(direction, vec3(GALAXY_ALONG.x, GALAXY_ALONG.y, GALAXY_ALONG.z));
+                const band = vec2(along, off).toVar();
+                // Its star clouds, mottled at every size from five degrees down to under one.
+                const mottle = dot(light.noise(band.mul(3.1).add(vec2(0.21, 0.43))), vec4(0.34, 0.3, 0.22, 0.14)).toVar();
+                const lie = light.noise(band.mul(1.5).add(vec2(0.7, 0.13))).toVar();
+                const core = exp(off.div(0.15).pow2().negate()).toVar();
+                const wide = exp(off.div(0.34).pow2().negate());
+                // The dark rift wanders along the middle of the band in patches: here broad, there
+                // pinched shut.
+                const rift = exp(off.sub(0.01).add(lie.r.sub(0.5).mul(0.12))
+                    .div(lie.g.mul(0.07).add(0.022)).pow2()
+                    .negate())
+                    .mul(smoothstep(0.34, 0.6, lie.b.mul(0.6).add(mottle.mul(0.4)))).toVar();
+                const seen = light.uGalaxy.mul(smoothstep(0.03, 0.3, up))
+                    .mul(pow(moonward, 6).mul(0.9).oneMinus()).toVar();
+                const knots = smoothstep(0.38, 0.7, mottle).toVar();
+                const glow = core.mul(knots.mul(1.5).add(0.2)).add(wide.mul(0.16)).mul(rift.mul(0.88).oneMinus());
+                river.assign(mix(vec3(0.5, 0.58, 1.0), vec3(1.0, 0.84, 0.74), core.mul(knots))
+                    .mul(glow).mul(seen).mul(0.066));
+                dust.assign(core.mul(seen).mul(rift.oneMinus()).mul(knots.add(0.35)));
+            });
+
+            // (How many stars show is the hour's and the air's: few in the afterglow and at dawn
+            // and under a veil, the most in a clear deep night.)
+            const clear = cover.mul(0.85).oneMinus().mul(veil.mul(0.3).oneMinus()).toVar();
+            const starlight = this.stars(direction, dust).mul(light.uStars).mul(smoothstep(0.02, 0.3, up))
+                .mul(pow(moonward, 12).mul(0.85).oneMinus())
+                .mul(pow(toward, 3).mul(lowness).oneMinus());
+            // Shooting stars: each a short bright streak sliding along a line on the sky plane.
+            const plane = vec2(direction.x.mul(0.6), direction.z).div(up.add(0.2)).toVar();
+            const streak = float(0).toVar();
+            for (let index = 0; index < SAKURA_SHOOTING_STARS; index += 1) {
+                const shot = this.uShots.element(index);
+                const way = this.uShotDirs.element(index).xy;
+                const shootAge = light.uTime.sub(shot.z);
+                const head = shot.xy.add(way.mul(shootAge.mul(2.6)));
+                const along = dot(plane.sub(head), way);
+                const across = length(plane.sub(head).sub(way.mul(along)));
+                streak.addAssign(smoothstep(0, 0.012, across).oneMinus().mul(smoothstep(-0.9, 0, along))
+                    .mul(step(along, 0))
+                    .mul(saturate(shootAge.mul(6)))
+                    .mul(exp(shootAge.mul(-1.5)))
+                    .mul(shot.w));
+            }
+            // A veil is a thin lit sheet over the vault, brightest round the moon.
+            const sheet = light.uCloudLit.mul(veil).mul(pow(moonward, 3).mul(1.3).add(0.3));
+            const beyond = sky.add(sheet)
+                .add(starlight.mul(1.5).add(river).mul(clear))
+                .add(this.moon(direction).mul(cover.mul(0.6).oneMinus()));
+            return mix(beyond, cloud, saturate(bank.mul(0.9).add(thin.mul(0.62))))
+                .add(vec3(1.5, 1.6, 2.2).mul(streak).mul(smoothstep(0.02, 0.2, up)));
+        })();
         const dome = new THREE.Mesh(this.own(new THREE.SphereGeometry(DOME_RADIUS, 48, 24)), material);
         dome.name = 'SakuraSkyDome';
-        dome.renderOrder = -100;
+        // Last among the solid things (they write depth, the dome only tests it): the sky behind
+        // the trees, the mountain and the lake is never shaded.
+        dome.renderOrder = 50;
         dome.frustumCulled = false;
         dome.matrixAutoUpdate = false;
         this.dome = dome;

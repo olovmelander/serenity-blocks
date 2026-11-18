@@ -39,8 +39,10 @@ export class SakuraGarden {
      * flower pack (its `flower` falls into the grass; without it the grass has none).
      */
     constructor({
-        light, props, blossoms = null, tier, paperLanterns = [], rng = Math.random,
+        light, props, blossoms = null, tier, paperLanterns = [], rng = Math.random, gateEmber = null,
     }) {
+        /** A float node: how much the gate itself glows (the showpieces' gate light), or null. */
+        this.gateEmber = gateEmber;
         this.light = light;
         this.props = props;
         this.blossoms = blossoms;
@@ -131,6 +133,8 @@ export class SakuraGarden {
             .forEach(([name, place, lift]) => {
                 const mesh = new THREE.Mesh(this.mesh(name), this.createPropMaterial(`SakuraGarden ${name}`, {
                     glow: name === 'pagoda' ? 0.5 : 1,
+                    // (The gate glows from within when it wakes: sakura-showpieces.js.)
+                    ember: name === 'torii' ? this.gateEmber : null,
                 }));
                 mesh.name = `SakuraGarden ${name}`;
                 mesh.position.set(place.x, Math.max(0, sakuraTerrainHeight(place.x, place.z)) + lift, place.z);

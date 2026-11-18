@@ -7,27 +7,33 @@
  * strong). SakuraWorld turns emitters into petals, rings on the lake and lanterns; nothing
  * here touches the scene, so the same director runs in tests, the playground and the game.
  *
- * The language:
+ * The language (each event has an instrument no other has: sakura-showpieces.js):
  *   lock          a puff of lit petals from the board edge beside the piece and a ring
- *                 across the lake from under it; the lanterns breathe (harder after a long
- *                 hard drop)
+ *                 across the lake from under it; the lanterns breathe
+ *   hard drop     the piece goes through the card into the lake: a crown of spray stands up on
+ *                 the water beside the board, taller the further it fell
  *   line clear    twin jets of petals blown out of both sides at the cleared rows, lanterns
  *                 set afloat, the blossom lit from within; from two lines a gust front
- *                 crosses the garden
- *   four lines    hanafubuki — the crowns let go a blizzard of petals — under a flaring
- *                 moon and shooting stars; the fox leaps for the moon
+ *                 crosses the garden and the lanterns flare as it passes; three lines run a
+ *                 wave of lantern light along the far shore
+ *   four lines    hanafubuki — a blizzard of petals streams through the whole garden on the
+ *                 wind — under a flaring moon and shooting stars; the fox leaps for the moon
  *   combo/streak  a stream of petals winds around the board and climbs; foxfire lights
  *                 one flame at a time around it, and the constellations draw themselves in
  *   cascade       each wave of one lock answers more fully than the last: another flame,
  *                 more of the sky drawn, a wider ring of petals, another front of wind
- *   twist        a spiral flourish beside the board and a shooting star (a smaller spiral
- *                 and a fainter star when it cleared nothing)
- *   back-to-back  the hazy moon's rainbow corona opens, brighter for every one in a row
- *   level up      sky lanterns rise from the shore
- *   perfect clear the crown on the clear still playing: the fallen petals rise, every sky
- *                 lantern lifts, the whole sky is drawn and the moon blooms (the quad's own
- *                 blizzard is not thrown a second time)
- *   game over     the wind dies and the lanterns burn low
+ *   twist        a double helix of lit petals winds itself up beside the board and lets go,
+ *                 and a shooting star (a smaller helix and a fainter star when it cleared
+ *                 nothing)
+ *   back-to-back  the gate wakes: light stands in the torii and in the lake under it, and the
+ *                 hazy moon's rainbow corona opens, taller and brighter for every one in a row
+ *   level up      sky lanterns rise from the lake either side of the board, and the night
+ *                 turns an hour on
+ *   perfect clear the star fox comes down: a spirit light leaves the Fox among the stars,
+ *                 crosses the sky over the mountain and goes through the gate, which blazes;
+ *                 the fallen petals rise, every sky lantern lifts, the whole sky is drawn and
+ *                 the moon blooms (the quad's own blizzard is not thrown a second time)
+ *   game over     the wind dies, the lanterns burn low and the mist closes in
  *
  * It BUILDS rather than pops (src/themes/shared/gameplay-surge.js). Every envelope is a Swell:
  * a new event adds to what is still lit and never restarts it, so a lock after a quad can only
@@ -48,16 +54,16 @@
 import { ComboTracker } from '../../core/combo-tracker.js';
 import { GameplaySurge, SURGE_WEIGHTS, Swell } from '../shared/gameplay-surge.js';
 
-// Every handler firing in one frame (a hard-dropped lock, four lines, a combo, a twist,
-// a perfect clear and a level-up) asks for seventeen emitters; no tier's pool is smaller,
-// so none is reclaimed before the garden has played it.
+// Every handler firing in one frame (a hard-dropped lock, four lines, a combo, a twist, a
+// back-to-back, a perfect clear and a level-up) asks for twenty-one emitters; no tier's pool is
+// smaller, so none is reclaimed before the garden has played it.
 export const SAKURA_REACTION_LIMITS = Object.freeze({
-    Minimal: 18,
-    Low: 18,
-    Medium: 20,
-    High: 20,
-    Ultra: 22,
-    Extreme: 24,
+    Minimal: 22,
+    Low: 22,
+    Medium: 24,
+    High: 24,
+    Ultra: 26,
+    Extreme: 28,
 });
 
 const DECAY_RATES = Object.freeze({
@@ -199,6 +205,10 @@ export class SakuraReactions {
         this.corona = new Swell({
             attack: 0.25, release: 2.6, ceiling: 1.6, knee: 1.1,
         });
+        /** The four-line storm: how much of the blizzard is in the air (a second adds to the first). */
+        this.blizzard = new Swell({
+            attack: 0.45, release: 4.2, ceiling: 1, knee: 0.9,
+        });
         /** The true combo: consecutive clearing locks (src/core/combo-tracker.js). */
         this.tracker = new ComboTracker();
         /** How hot play runs, on this director's clock (sampled once per update). */
@@ -247,6 +257,7 @@ export class SakuraReactions {
         }
         this.crown.reset();
         this.corona.reset();
+        this.blizzard.reset();
         this.surge.reset();
         Object.assign(this.heat, {
             punch: 0, level: 0, fever: 0, stage: 0,
@@ -427,6 +438,13 @@ export class SakuraReactions {
         this.emit('lock', {
             side, column: place?.column ?? 0.5, row: place?.row ?? 0.12, strength, duration: 1.2,
         });
+        // A hard drop goes through the card into the lake: spray stands up beside the board on
+        // the piece's side (a piece set down from a row or two up makes none).
+        if (drop >= 0.12) {
+            this.emit('splash', {
+                side, column: place?.column ?? 0.5, strength: drop, duration: 0.5,
+            });
+        }
         return true;
     }
 
@@ -472,8 +490,13 @@ export class SakuraReactions {
         });
         // From two lines a front of wind crosses the garden; a cascade sends one on every wave.
         if (lines >= 2 || deep > 0) this.sweep(0.3 + lines * 0.17 + deep * 0.08);
-        if (lines >= 3) this.emit('star', { strength: 0.7, duration: 1.4 });
+        if (lines >= 3) {
+            this.emit('star', { strength: 0.7, duration: 1.4 });
+            // Three lines and more: a wave of lantern light runs along the far shore.
+            this.emit('shore', { strength: four ? 1 : 0.7, lines, duration: 2.6 });
+        }
         if (four) {
+            this.blizzard.hit(1, this.time);
             this.emit('shower', {
                 row: 1, strength: 1, lines, duration: 2.8,
             });
@@ -550,6 +573,8 @@ export class SakuraReactions {
         this.surge.b2b(this.time);
         this.corona.hit(1, this.time);
         this.excite({ glow: 0.5, lanterns: 0.8, moon: 0.5 });
+        // The gate wakes (its light is the corona's swell); a ring leaves its feet.
+        this.emit('gate', { strength: clamp(this.corona.valueAt(this.time + 0.25) / 1.6, 0.4, 1), duration: 1.2 });
         this.raiseVortex(Math.max(this.vortexTarget, 0.55));
         this.traceSky(Math.max(this.constellationTarget, 0.4));
         return true;
@@ -564,6 +589,9 @@ export class SakuraReactions {
         if (this.disposed) return false;
         this.surge.crown(this.time);
         this.crown.hit(1, this.time);
+        this.blizzard.hit(0.7, this.time);
+        // The star fox comes down through the gate.
+        this.emit('spirit', { strength: 1, duration: 2.6 });
         this.excite({
             gust: 1, glow: 1, lanterns: 1, moon: 1,
         });
@@ -579,8 +607,9 @@ export class SakuraReactions {
         this.emit('star', { strength: 1, duration: 1.6 });
         this.sweep(1);
         this.raiseVortex(0.85);
+        // (The whole sky is drawn, the Fox with it: the spirit leaves from there. The foxfire
+        // beside the board stays the combo's own gauge.)
         this.traceSky(1);
-        this.kindle(MAX_FOXFIRE);
         return true;
     }
 
@@ -761,6 +790,8 @@ export class SakuraReactions {
             stage: this.heat.stage,
             crown: clamp(this.crown.valueAt(this.time), 0, 1.3),
             corona: clamp(this.corona.valueAt(this.time), 0, 1.6),
+            // The four-line storm still in the air (calmed under Reduce motion where it is drawn).
+            blizzard: clamp(this.blizzard.valueAt(this.time), 0, 1) * (1 - this.hushTarget),
             // Four-line clears so far: the fox leaps once for each.
             leap: this.leaps,
             motion: this.motion,

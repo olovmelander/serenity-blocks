@@ -41,10 +41,14 @@ export function create({
     // ?level=<n> stands the night <n - 1> hours on from the clock's (every level is an hour on);
     // ?event=level steps it one more, eased, as a level-up in play does.
     const startLevel = Math.max(1, Math.round(Number(params.get('level')) || 1));
+    // ?weather=clear|wind|mackerel|haze|mist|mirror (or 0..5) holds one air still, and ?hour=0..4
+    // one hour; without them the two clocks run as they do in play.
     const standLevel = () => {
         if (!world) return;
         world.hourStep = 0;
         world.setLevel(startLevel, { silent: true });
+        world.pinWeather(params.get('weather'));
+        world.pinHour(params.get('hour'));
     };
     const reactions = new SakuraReactions({
         quality,
@@ -82,6 +86,8 @@ export function create({
             scene, camera, quality, rng, assets, samples,
         }).build();
         standLevel();
+        // ?expose=1 hands the world to a probe (window.__SAKURA_WORLD__) for as long as it lives.
+        if (params.get('expose') === '1') window.__SAKURA_WORLD__ = world;
         post = new SakuraPost({
             renderer, scene, camera, quality, light: world.light, samples, prime: () => world.primeShadows(renderer),
         });
@@ -126,8 +132,9 @@ export function create({
         post?.update(frame);
         frameFox();
     };
-    // ?event=lock|drop|clear|double|triple|quad|combo|streak|spin|perfect|level|over,
-    // placed with ?col=0..9 and ?row=0..19 (0 is the top visible row).
+    // ?event=lock|drop|clear|double|triple|quad|combo|streak|spin|b2b|perfect|level|over|fever,
+    // placed with ?col=0..9 and ?row=0..19 (0 is the top visible row). `b2b` is ?combo back-to-backs
+    // in a row (one by default); `fever` is hot play kept up from the event to the frame.
     const levelUp = () => {
         reactions.onLevelUp();
         world.setLevel(world.level + 1);
@@ -155,7 +162,9 @@ export function create({
                 reactions.onLineClear(1, { clearedRows: [row + 1] });
             }
         } else if (event === 'spin') reactions.onTwist({ piece });
-        else if (event === 'perfect') reactions.onPerfectClear();
+        else if (event === 'b2b') {
+            for (let i = 0; i < Math.max(1, Number(params.get('combo') || 1)); i += 1) reactions.onBackToBack();
+        } else if (event === 'perfect') reactions.onPerfectClear();
         else if (event === 'level') levelUp();
         else if (event === 'over') reactions.onGameOver();
     };
@@ -180,7 +189,14 @@ export function create({
         let fired = false;
         let acted = false;
         let turned = false;
+        // (`fever`: a double every 0.45 s from the event to the frame, as a hot hand plays.)
+        const hot = params.get('event') === 'fever';
+        let nextClear = eventTime;
         for (let i = 1; i <= steps; i += 1) {
+            if (hot && i * dt >= nextClear) {
+                nextClear += 0.45;
+                fire('double');
+            }
             if (!fired && i * dt >= eventTime) {
                 fired = true;
                 fire(params.get('event'));
@@ -241,6 +257,7 @@ export function create({
         },
         dispose() {
             disposed = true;
+            if (window.__SAKURA_WORLD__ === world) delete window.__SAKURA_WORLD__;
             overlay?.remove();
             post?.dispose();
             reactions.dispose();

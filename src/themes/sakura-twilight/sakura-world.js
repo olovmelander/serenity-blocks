@@ -20,14 +20,17 @@ import { SakuraPetals } from './sakura-petals.js';
 import { sakuraTier } from './sakura-quality.js';
 import { SakuraSky } from './sakura-sky.js';
 import { SakuraSpirits } from './sakura-spirits.js';
+import { SakuraShowpieces } from './sakura-showpieces.js';
 import { SAKURA_STAGE_DEPTH, SakuraStage } from './sakura-stage.js';
 import { SakuraTerrain, sakuraLand, sakuraSurfaceHeight } from './sakura-terrain.js';
 import { SAKURA_UNMIRRORED_LAYER, SakuraWater } from './sakura-water.js';
 import { drainSteps } from '../shared/build-steps.js';
 import { easeStep, nearestStep } from '../shared/mood-clock.js';
 import { SAKURA_HOURS, sakuraHourDrift, sakuraHourName } from './sakura-hours.js';
+import { sakuraWeatherDrift, sakuraWeatherIndex, sakuraWeatherName } from './sakura-weather.js';
 
-const UNMIRRORED = /^Sakura(SpringGrass|FallenBlossom|Fireflies|Foxfire|PetalFlashes|MistBank|PetalsInTheAir)/;
+const UNMIRRORED = new RegExp(`^Sakura(${['SpringGrass', 'FallenBlossom', 'Fireflies', 'Foxfire', 'PetalFlashes',
+    'MistBank', 'PetalsInTheAir', 'Splash', 'Helix', 'PetalBlizzard'].join('|')})`);
 // Open water whatever the shape of the banks: straight out from the cove.
 const LAKE_HEART_Z = -22;
 /** How quickly the night takes a level's step, per second: most of the way in four seconds. */
@@ -59,6 +62,29 @@ export class SakuraWorld {
         // hour on. `hourStep` is the levels' share, eased toward `level - 1` the short way round.
         this.level = 1;
         this.hourStep = 0;
+        // The air (sakura-weather.js) turns by its own clock. A capture may hold one air or one
+        // hour still (`pinWeather`, `pinHour`): null lets the clocks run.
+        this.weatherPin = null;
+        this.hourPin = null;
+    }
+
+    /** Hold one air still (its id or number; null hands it back to the clock). */
+    pinWeather(value) {
+        this.weatherPin = sakuraWeatherIndex(value);
+        return this.weatherPin;
+    }
+
+    /** Hold one hour still (its number; null hands it back to the clock and the level). */
+    pinHour(value) {
+        const hour = Number(value);
+        this.hourPin = value === null || value === undefined || value === '' || !Number.isFinite(hour)
+            ? null : ((Math.round(hour) % SAKURA_HOURS.length) + SAKURA_HOURS.length) % SAKURA_HOURS.length;
+        return this.hourPin;
+    }
+
+    /** How many airs into the night it is at `time`. */
+    weatherPhase(time = this.light?.uTime.value ?? 0) {
+        return this.weatherPin ?? sakuraWeatherDrift(time);
     }
 
     build() {
@@ -108,8 +134,16 @@ export class SakuraWorld {
         this.group.add(this.forest.group);
         this.forest.build();
         yield 'forest';
+        // (The showpieces first, unbuilt: the gate in the garden glows by their gate light.)
+        this.showpieces = new SakuraShowpieces({ light, tier, blossoms: assets.blossoms });
         this.garden = new SakuraGarden({
-            light, props: assets.props, blossoms: assets.blossoms, tier, paperLanterns: this.paperLanterns, rng,
+            light,
+            props: assets.props,
+            blossoms: assets.blossoms,
+            tier,
+            paperLanterns: this.paperLanterns,
+            rng,
+            gateEmber: this.showpieces.uGate,
         });
         this.group.add(this.garden.group);
         this.garden.build();
@@ -137,6 +171,14 @@ export class SakuraWorld {
         this.group.add(this.petals.group);
         this.petals.build();
         yield 'petals';
+        this.group.add(this.showpieces.group);
+        this.showpieces.build();
+        // The star fox goes through the gate: a great ring leaves its feet and it flares.
+        this.showpieces.onArrive = (x, z, power) => {
+            this.light?.ring(x, z, 1.6 * power);
+            this.spirits?.flash(x, this.showpieces.gate.top, z, 1.8 * power);
+        };
+        yield 'showpieces';
         this.excludeFromMirror();
         this.prepareCamera(this.camera.aspect);
         this.director = new SakuraPetalDirector({
@@ -152,6 +194,14 @@ export class SakuraWorld {
                 star: (strength) => this.sky?.shoot(strength),
                 floatLantern: (x, z, vx, vz, power) => this.floatLantern(x, z, vx, vz, power),
                 skyLantern: (x, y, z, delay) => this.spirits?.releaseSky(x, y, z, delay),
+                splash: (x, z, strength) => this.showpieces?.splash(x, z, strength),
+                helix: (x, y, z, side, strength, height) => this.showpieces?.helix(x, y, z, side, strength, height),
+                // A back-to-back: a ring leaves the gate's feet (its light is the frame's corona).
+                gate: (strength) => {
+                    const gate = this.showpieces?.gate;
+                    if (gate) this.light?.ring(gate.x, gate.z, 0.5 + 0.6 * strength);
+                },
+                spirit: (strength) => this.showpieces?.spirit(strength),
             },
         });
     }
@@ -209,7 +259,7 @@ export class SakuraWorld {
 
     /** How many hours into the night it is at `time`: the level's step and the clock's turn. */
     hourPhase(time = this.light?.uTime.value ?? 0) {
-        return this.hourStep + sakuraHourDrift(time);
+        return this.hourPin ?? this.hourStep + sakuraHourDrift(time);
     }
 
     /** The measured board card in screen fractions (y down), or null for the default. */
@@ -239,6 +289,7 @@ export class SakuraWorld {
         this.petals?.reset();
         this.spirits?.reset();
         this.foxes?.reset();
+        this.showpieces?.reset();
         this.light?.resetRings();
         this.sky?.reset();
     }
@@ -272,17 +323,24 @@ export class SakuraWorld {
         this.foxes.update(dt, frame);
         const env = this.director.apply(frame, dt, { x: direction.x, z: direction.z, strength: light.uWind.value });
         this.foxes.kicks.forEach((kick) => env.fields.push(kick));
+        // (A still air keeps most of the crowns' petals on the bough: sakura-weather.js.)
+        env.fall = light.weather.fall;
         // The hour: the clock turns it by itself (a function of the time alone, so a seek and a
         // night lived through agree); a level's step eases in on top, the short way round. A slow
         // change of colour is not motion: neither reduced motion nor the effects setting holds it.
         const step = Number.isFinite(dt) ? Math.max(0, dt) : 0;
         const follow = 1 - Math.exp(-step * HOUR_FOLLOW);
         this.hourStep = easeStep(this.hourStep, this.level - 1, follow, SAKURA_HOURS.length);
-        light.setHour(this.hourPhase(Number.isFinite(time) ? Math.max(0, time) : light.uTime.value));
+        const clock = Number.isFinite(time) ? Math.max(0, time) : light.uTime.value;
+        light.setHour(this.hourPhase(clock));
+        // The air turns by its own clock beside the hours: like them a slow change, never gated.
+        light.setWeather(this.weatherPhase(clock));
         light.update(time, { ...frame, front: env.front, fronts: env.fronts });
         this.petals.update(dt, env, frame.heat);
         this.sky.update(frame);
         this.spirits.update(time, frame);
+        this.backdrop.update(env.shore);
+        this.showpieces.update(time, dt, frame, light.weather.stream);
     }
 
     getDiagnostics() {
@@ -299,6 +357,9 @@ export class SakuraWorld {
             // The hour the night is nearest, and how far round it is.
             hour: sakuraHourName(this.light?.hourPhase ?? 0),
             hourPhase: this.light?.hourPhase ?? 0,
+            // And the air it is nearest.
+            weather: sakuraWeatherName(this.light?.weatherPhase ?? 0),
+            weatherPhase: this.light?.weatherPhase ?? 0,
         };
     }
 
@@ -306,6 +367,8 @@ export class SakuraWorld {
         if (this.disposed) return;
         this.disposed = true;
         this.petals?.dispose();
+        this.showpieces?.dispose();
+        this.showpieces = null;
         this.spirits?.dispose();
         this.water?.dispose();
         this.foxes?.dispose();

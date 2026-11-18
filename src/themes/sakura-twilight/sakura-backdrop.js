@@ -8,11 +8,13 @@
  */
 import * as THREE from 'three/webgpu';
 import {
-    Fn, atan, attribute, color, dot, instancedBufferAttribute, mix, normalWorld, normalize, positionLocal,
-    positionWorld, pow, saturate, sin, smoothstep, texture, uv, vec2, vec3, vec4,
+    Fn, atan, attribute, cameraPosition, color, dot, exp, float, instancedBufferAttribute, max, mix, normalWorld, normalize,
+    positionLocal, positionWorld, pow, saturate, sin, smoothstep, texture, uniform, uv, varying, vec2, vec3, vec4,
 } from 'three/tsl';
 import { SAKURA_FUJI, SAKURA_VIEWS } from './sakura-composition.js';
 import { sakuraLand, sakuraTerrainHeight } from './sakura-terrain.js';
+
+const cameraPositionNode = () => cameraPosition;
 
 export class SakuraBackdrop {
     constructor({
@@ -27,6 +29,15 @@ export class SakuraBackdrop {
         this.group.name = 'SakuraFarShore';
         this.owned = [];
         this.count = 0;
+        // The wave of lantern light three lines run along the far shore: world x, strength.
+        this.uShore = uniform(new THREE.Vector2(0, 0));
+    }
+
+    /** `shore` is { position: -1..1 across the far shore, strength: 0..1 } (or nothing). */
+    update(shore = null) {
+        const strength = Number.isFinite(shore?.strength) ? Math.max(0, Math.min(1, shore.strength)) : 0;
+        const position = Number.isFinite(shore?.position) ? shore.position : 0;
+        this.uShore.value.set(position * 330, strength);
     }
 
     own(resource) {
@@ -35,7 +46,10 @@ export class SakuraBackdrop {
     }
 
     build() {
-        if (this.fuji?.geometry) this.buildMountain();
+        if (this.fuji?.geometry) {
+            this.buildMountain();
+            this.buildMountainCloud();
+        }
         this.buildHills();
         if (this.impostors?.texture && this.impostors.tiles?.length) this.buildShoreTrees();
         return this;
@@ -77,6 +91,121 @@ export class SakuraBackdrop {
         mesh.updateMatrix();
         mesh.matrixAutoUpdate = false;
         mesh.frustumCulled = false;
+        this.group.add(mesh);
+    }
+
+    /**
+     * What the mountain wears, as the air decides (sakura-weather.js): a sea of cloud lying at its
+     * waist, a cap of cloud standing over the summit (kasagumo) and the banner of snow a wind
+     * streams off it. Two cards in one draw, shaded in their own frames: `sakuraCloud` is where a
+     * fragment is on its card (0..1 across, 0..1 up) and which card it is (0 the sea, 1 the summit).
+     */
+    buildMountainCloud() {
+        const { light } = this;
+        const top = SAKURA_FUJI.y + SAKURA_FUJI.height;
+        const summit = { width: 330, height: 88, z: SAKURA_FUJI.z + 34 };
+        // The summit's card stands a little nearer than the summit, so the cap can hide its top:
+        // where the eye sees the summit through that card is where the cap is hung.
+        const eye = SAKURA_VIEWS.landscape.position;
+        const near = (summit.z - eye[2]) / (SAKURA_FUJI.z - eye[2]);
+        const seen = [eye[0] + (SAKURA_FUJI.x - eye[0]) * near, eye[1] + (top - eye[1]) * near];
+        const cards = [
+            // centre x, centre y, z, width, height, card
+            [SAKURA_FUJI.x + 70, 55, SAKURA_FUJI.z + 124, 840, 52, 0],
+            [seen[0] + 26, seen[1] + 2, summit.z, summit.width, summit.height, 1],
+        ];
+        // Where the summit stands on its card.
+        const peak = [0.5 - 26 / summit.width, 0.5 - 2 / summit.height];
+        const positions = [];
+        const frames = [];
+        const indices = [];
+        cards.forEach(([x, y, z, width, height, card], index) => {
+            [[-1, -1], [1, -1], [-1, 1], [1, 1]].forEach(([sx, sy]) => {
+                positions.push(x + sx * width * 0.5, y + sy * height * 0.5, z);
+                frames.push(sx * 0.5 + 0.5, sy * 0.5 + 0.5, card);
+            });
+            const base = index * 4;
+            indices.push(base, base + 1, base + 2, base + 1, base + 3, base + 2);
+        });
+        const geometry = this.own(new THREE.BufferGeometry());
+        geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+        geometry.setAttribute('sakuraCloud', new THREE.Float32BufferAttribute(frames, 3));
+        geometry.setIndex(indices);
+        const material = this.own(new THREE.MeshBasicNodeMaterial({
+            transparent: true, depthWrite: false, fog: false, side: THREE.DoubleSide,
+        }));
+        material.name = 'SakuraMountainCloud';
+        const octaves = vec4(0.4, 0.3, 0.2, 0.1);
+        material.colorNode = Fn(() => {
+            const frame = attribute('sakuraCloud', 'vec3');
+            const across = frame.x.toVar();
+            const height = frame.y.toVar();
+            const card = frame.z.toVar();
+            const clock = light.uCloudClock;
+            // (A branch that differs from pixel to pixel may hold no texture read: both cards
+            // read the same two, each at its own place.)
+            const broad = dot(light.noise(mix(
+                vec2(across.mul(2.2).add(clock.mul(0.0011)), height.mul(0.5).add(0.13)),
+                vec2(across.mul(1.5).sub(clock.mul(0.0036)), height.mul(1.1).add(0.57)),
+                card,
+            )), octaves).toVar();
+            const fine = dot(light.noise(mix(
+                vec2(across.mul(5.3).add(clock.mul(0.002)), height.mul(1.3).add(0.71)),
+                vec2(across.mul(4.4).sub(clock.mul(0.02)), height.mul(3.2).add(0.2)),
+                card,
+            )), octaves).toVar();
+
+            // -- The sea of cloud: a rolling top, lit where the moon rakes it, thin at its ends.
+            const crest = broad.mul(0.62).add(fine.mul(0.2)).add(0.14).toVar();
+            const sea = smoothstep(crest.sub(0.2), crest, height).oneMinus()
+                .mul(smoothstep(0.0, 0.14, height))
+                .mul(smoothstep(0.0, 0.16, across))
+                .mul(smoothstep(0.84, 1.0, across).oneMinus())
+                .mul(light.uSea);
+            const seaLit = smoothstep(crest.sub(0.34), crest.sub(0.05), height);
+
+            // -- The cap: two lenses stacked over the summit, their ends drooping round it.
+            const lens = (cx, cy, rx, ry) => {
+                const dx = across.sub(cx).div(rx);
+                const dy = height.sub(cy).add(dx.mul(dx).mul(ry * 0.5)).div(ry);
+                return smoothstep(0.3, 1.0, dx.mul(dx).add(dy.mul(dy)).add(broad.sub(0.5).mul(0.5))).oneMinus();
+            };
+            // (The lower one sits on the summit like a hat; the upper rides just clear of it.)
+            const lower = lens(peak[0] + 0.012, peak[1] + 0.03, 0.2, 0.105);
+            const upper = lens(peak[0] + 0.03, peak[1] + 0.2, 0.105, 0.045);
+            const cap = max(lower, upper.mul(0.8)).mul(fine.mul(0.5).add(0.72)).mul(light.uCap);
+            // Its crown takes the moon; its underside, round the summit, is in its own shade.
+            const capLit = saturate(height.sub(peak[1] - 0.05).mul(5.5)).mul(0.75).add(0.25);
+
+            // -- The banner: snow torn off the summit, streaming down the wind and fraying.
+            const run = across.sub(peak[0] + 0.012).toVar();
+            const line = height.sub(run.mul(0.22).add(peak[1] + 0.005));
+            const spread = run.max(0).mul(0.46).add(0.028);
+            const banner = exp(line.div(spread).pow2().negate())
+                .mul(smoothstep(0.0, 0.02, run)).mul(smoothstep(0.12, 0.56, run).oneMinus())
+                .mul(smoothstep(0.26, 0.6, fine.mul(0.7).add(broad.mul(0.3))).mul(0.7).add(0.3))
+                .mul(light.uBanner)
+                .toVar();
+
+            const summitCloud = saturate(cap.add(banner));
+            const amount = mix(sea, summitCloud, card).toVar();
+            const lit = mix(seaLit, mix(capLit, float(0.9), saturate(banner.sub(cap))), card);
+            const world = positionWorld;
+            const view = normalize(world.sub(cameraPositionNode()));
+            const moonward = saturate(dot(view, light.uMoonDir));
+            // (The banner is snow in the moon's light, not cloud: it is the brightest thing up there.)
+            const colour = mix(light.uCloudShade, light.uCloudLit, lit).mul(1.7)
+                .add(light.uMoonColor.mul(lit.mul(0.085).add(pow(moonward, 4).mul(0.05))
+                    .add(banner.mul(card).mul(0.2))))
+                // The mountain stands where the sun went down: its cloud keeps the last of the rose.
+                .add(light.uAfterglow.mul(lit.oneMinus().mul(0.12).add(0.05)));
+            return vec4(light.haze(colour, { world, strength: 0.75 }), amount.mul(0.92));
+        })();
+        const mesh = new THREE.Mesh(geometry, material);
+        mesh.name = 'SakuraMountainCloud';
+        mesh.frustumCulled = false;
+        mesh.matrixAutoUpdate = false;
+        mesh.renderOrder = 1;
         this.group.add(mesh);
     }
 
@@ -178,7 +307,11 @@ export class SakuraBackdrop {
         const petal = mix(color(0xffe9ef), color(0xf28fb0), tone);
         const albedo = mix(color(0x120c0e), petal, data.g).mul(data.r.mul(0.85).add(0.15));
         // Festival lanterns under some of the far trees warm their lower boughs.
-        const underlit = light.uLampColor.mul(tile.w).mul(smoothstep(0.05, 0.75, st.y).oneMinus())
+        // Three lines run a wave of lantern light along the shore: every tree it passes is lit
+        // from beneath for a moment, the ones with lanterns of their own the most.
+        const wave = varying(exp(positionWorld.x.sub(this.uShore.x).div(52).pow2().negate()).mul(this.uShore.y));
+        const underlit = light.uLampColor.mul(tile.w.add(wave.mul(tile.w.mul(1.6).add(1.3))))
+            .mul(smoothstep(0.05, 0.75, st.y).oneMinus())
             .mul(light.uLampGain).mul(0.16);
         const lit = albedo.mul(light.uMoonColor).mul(light.moonlight()).mul(0.42)
             .add(albedo.mul(light.ambient(vec3(0, 0.6, 0.8))).mul(2.3))

@@ -25,7 +25,9 @@ export class SakuraPetalDirector {
     /**
      * `effects` are the garden's one-shot hooks, each optional:
      *   ring(x, z, strength), flash(x, y, z, strength), star(strength),
-     *   floatLantern(x, z, vx, vz, power), skyLantern(x, y, z, delay)
+     *   floatLantern(x, z, vx, vz, power), skyLantern(x, y, z, delay),
+     *   splash(x, z, strength), helix(x, y, z, side, strength, height), gate(strength),
+     *   spirit(strength)
      */
     constructor({
         stage, sim, tier, rng = Math.random, crownPoints = null, surface = () => 0, effects = {},
@@ -66,8 +68,10 @@ export class SakuraPetalDirector {
          * air, so the storm reads as petals and not as one pink glow.
          */
         this.glow = 1;
+        /** The wave of lantern light running along the far shore: where (-1..1) and how bright. */
+        this.shore = { position: 0, strength: 0 };
         this.env = {
-            windX: 1, windZ: 0, breeze: 0, gust: 0, front: null, fronts: [], fields: this.fields,
+            windX: 1, windZ: 0, breeze: 0, gust: 0, front: null, fronts: [], fields: this.fields, fall: 1, shore: this.shore,
         };
     }
 
@@ -141,6 +145,26 @@ export class SakuraPetalDirector {
                 kind: 'burst', x, y: this.surface(x, z) - 0.3, z, radius: 3.6, power: 12 * strength + 4, up: 9,
             });
         }
+    }
+
+    /**
+     * The crown of spray where a hard-dropped piece went into the lake: on the water just past
+     * the card's edge on the piece's side, where it can be seen, with a ring of its own.
+     */
+    splash(emitter) {
+        const { stage } = this;
+        const { side, strength } = emitter;
+        for (let attempt = 0; attempt < 5; attempt += 1) {
+            const column = side < 0 ? -0.16 - this.random() * 0.55 : 1.16 + this.random() * 0.55;
+            const water = stage.lake(column, 21 + attempt * 5 + this.random() * 6, this.foot);
+            // (Only on open water: the banks reach in under the card's corners.)
+            if (this.surface(water.x, water.z) <= 0.001) {
+                this.effects.splash?.(water.x, water.z, strength);
+                this.effects.ring?.(water.x, water.z, (0.3 + strength * 0.55) * this.calm);
+                return true;
+            }
+        }
+        return false;
     }
 
     clear(emitter, fresh) {
@@ -235,7 +259,12 @@ export class SakuraPetalDirector {
         const edge = stage.edge(side, emitter.row, SAKURA_STAGE_DEPTH, this.point, 0.01);
         const x = edge.x + side * 2;
         if (fresh) {
-            const count = Math.round(70 * this.scale);
+            // The twist's own: a double helix of lit petals winds up from the grass beside the
+            // board to above where the piece turned.
+            const foot = this.surface(x, edge.z) + 0.15;
+            this.effects.helix?.(x, foot, edge.z, side, emitter.strength / 0.8, Math.max(3.2, edge.y + 2.4 - foot));
+            // (A few real petals are caught up in it; the helix itself is light.)
+            const count = Math.round(34 * this.scale);
             for (let i = 0; i < count; i += 1) {
                 const angle = i * 0.7;
                 const speed = 3 + 0.06 * i;
@@ -305,14 +334,25 @@ export class SakuraPetalDirector {
         }
     }
 
-    /** A flight of sky lanterns from the banks and the far shore, staggered over a few seconds. */
+    /**
+     * A flight of sky lanterns, staggered over a few seconds: most lift off the lake where it
+     * shows either side of the board, near to far, so the flight is seen whole and stands in the
+     * water under it; the rest rise from the banks and the far shore behind them.
+     */
     lanterns(emitter) {
         const share = Math.max(3, Math.round(this.tier.skyLanterns * (0.25 + 0.75 * emitter.strength)));
         for (let i = 0; i < share; i += 1) {
-            const near = this.random() < 0.45;
-            const side = this.random() < 0.5 ? -1 : 1;
-            const x = near ? side * (7 + this.random() * 20) : (this.random() * 2 - 1) * 110;
-            const z = near ? -4 - this.random() * 34 : -60 - this.random() * 100;
+            const side = (i + emitter.serial) % 2 === 0 ? -1 : 1;
+            let x;
+            let z;
+            if (this.random() < 0.68) {
+                const column = side < 0 ? -1.5 + this.random() * 1.35 : 1.15 + this.random() * 1.35;
+                ({ x, z } = this.stage.lake(column, 17 + this.random() ** 1.5 * 70, this.foot));
+            } else {
+                const near = this.random() < 0.45;
+                x = near ? side * (7 + this.random() * 20) : (this.random() * 2 - 1) * 110;
+                z = near ? -4 - this.random() * 34 : -60 - this.random() * 100;
+            }
             this.effects.skyLantern?.(x, Math.max(0, this.surface(x, z)) + 0.6 + this.random() * 0.8, z, this.random() * 4.5);
         }
     }
@@ -336,6 +376,9 @@ export class SakuraPetalDirector {
                 this.emitted.set(emitter.id, 0);
             }
             if (emitter.kind === 'lock') this.lock(emitter, fresh);
+            else if (emitter.kind === 'splash' && fresh) this.splash(emitter);
+            else if (emitter.kind === 'gate' && fresh) this.effects.gate?.(emitter.strength);
+            else if (emitter.kind === 'spirit' && fresh) this.effects.spirit?.(emitter.strength);
             else if (emitter.kind === 'clear') this.clear(emitter, fresh);
             else if (emitter.kind === 'shower') this.shower(emitter);
             else if (emitter.kind === 'spin') this.spin(emitter, fresh);
@@ -346,6 +389,18 @@ export class SakuraPetalDirector {
             else if (emitter.kind === 'floats' && fresh) this.floats(emitter);
             else if (emitter.kind === 'lanterns' && fresh) this.lanterns(emitter);
             else if (emitter.kind === 'festival' && fresh) this.festival(emitter);
+        }
+        // The wave along the far shore: the brightest of those still running, where it has got to.
+        this.shore.strength = 0;
+        for (let i = 0; i < emitters.length; i += 1) {
+            const emitter = emitters[i];
+            if (emitter.kind !== 'shore') continue;
+            const run = Math.max(0, Math.min(1, emitter.age / emitter.duration));
+            const strength = emitter.strength * Math.sin(Math.PI * Math.min(1, run * 1.08));
+            if (strength > this.shore.strength) {
+                this.shore.strength = strength;
+                this.shore.position = run * 2.4 - 1.2;
+            }
         }
         const vortex = Number.isFinite(frame.vortex) ? Math.max(0, Math.min(1, frame.vortex)) : 0;
         // Reduce motion: the stream turns slower (frame.motion, SakuraReactions.setMotion).

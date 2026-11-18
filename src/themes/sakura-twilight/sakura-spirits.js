@@ -108,7 +108,10 @@ export class SakuraSpirits {
             const colour = light.sky(normalize(vec3(view.x, 0.06, view.z))).mul(1.2)
                 .add(light.uMoonColor.mul(pow(moonward, 6).mul(0.12)));
             material.colorNode = colour;
-            material.opacityNode = smoothstep(0.34, 0.8, wisps).mul(profile).mul(0.3 - index * 0.025);
+            // (How thick the banks stand is the air's: thin in a wind, deep when mist comes in.)
+            material.opacityNode = smoothstep(0.34, 0.8, wisps).mul(profile).mul(0.3 - index * 0.025)
+                .mul(light.uBanks)
+                .min(0.86);
             const bank = new THREE.Mesh(geometry, material);
             bank.name = material.name;
             bank.position.set(0, 5.5, z);
@@ -152,10 +155,12 @@ export class SakuraSpirits {
         // As play heats they wake: they rise off the grass and glow brighter.
         const woken = vec3(0, this.uWake.mul(seed.mul(0.9).add(0.35)), 0);
         const centre = home.xyz.add(roam).add(startle).add(woken);
-        // Each insect glows in slow pulses of its own.
+        // Each insect glows in slow pulses of its own. How many are out is the air's: few in a
+        // wind, all of them over a still lake (and hot play wakes the rest).
+        const out = saturate(light.uFireflies.add(this.uWake.mul(0.5)).sub(fract(seed.mul(7.31)).mul(0.92)).mul(5));
         const pulse = smoothstep(0.25, 0.95, sin(t.mul(seed.mul(0.9).add(1.1)).add(seed.mul(41))))
-            .mul(this.uScatter.mul(0.8).add(1).add(this.uWake.mul(0.9)));
-        material.positionNode = billboard(centre, pulse.mul(0.12).add(0.1));
+            .mul(this.uScatter.mul(0.8).add(1).add(this.uWake.mul(0.9))).mul(out);
+        material.positionNode = billboard(centre, pulse.mul(0.12).add(out.mul(0.1)));
         const reach = length(uv().sub(0.5)).mul(2);
         const spark = exp(reach.mul(reach).mul(-22)).add(exp(reach.mul(-4.5)).mul(0.14))
             .mul(saturate(float(1).sub(reach)));
