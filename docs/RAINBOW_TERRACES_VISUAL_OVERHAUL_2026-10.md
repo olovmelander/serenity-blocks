@@ -65,6 +65,10 @@ primary of smaller, matched drops (its supernumeraries).
 | Level up | The bell tolls the hour: a gold pulse at the bell, rings of light sweeping out across the cloud sea from under the Spring Isle, every pool ringing, a flight of gliders launching; the light turns one hour round the wheel over 3.6 s. |
 | The clock | The light walks round the wheel by itself (110 s an hour, resting 15 % at each end), in every mode. |
 
+> **The living pass (2026-11-18)** gave the twist, the back-to-back, the perfect clear, the new level and
+> the game over shapes of their own, and an air that turns by itself beside the hours:
+> [see below](#the-living-pass-2026-11-18).
+
 ![A lock's light in flight](rainbow-terraces-overhaul/03-lock.webp)
 ![Landed: the pool holds the colour](rainbow-terraces-overhaul/04-landed.webp)
 ![A hard drop](rainbow-terraces-overhaul/05-drop.webp)
@@ -416,12 +420,130 @@ Ultra 137.3 k, Extreme 172.2 k (the far isles' finer roots), all within their bu
 tower and the card), the tower keeps its place behind the Spring Isle's grove in play, and the Spring
 Isle's root keeps its silhouette.
 
+## The living pass (2026-11-18)
+
+The owner asked for an audit of everything the theme is made of and for it to be raised to one of
+the game's most beautiful: varied over time, a distinct effect for every event with the biggest
+moments the most spectacular, smooth, and easy to read. Worked on the branch
+`feature/rainbow-terraces-masterpiece`, judged on captures on the RTX 5080 Laptop (WebGPU through a
+private headless Chrome, 30 frames a second) against a baseline of the same queries.
+
+**What the audit found**, largest first:
+
+- Nothing changed by itself but the wheel of hours: the same hour always came with the same storm,
+  the same deck, the same sea, and nothing ever happened between a player's own events.
+- Four events had no shape of their own. A perfect clear was a four-line clear with more rings (its
+  one own thing, the Far Gate's spillway, is a thread thirteen kilometres off); a back-to-back was a
+  two-line clear with a taller plume; a twist's two rising gliders and the wring were hard to find;
+  a new level's rings on the sea were faint and its gold pulse a dot. A game over showed nothing.
+- The overlook's balustrade, the nearest thing to the eye, was a blockout: boxes and eight-sided
+  balusters, one flat dark value in the shade.
+- The grove was faceted stacks of spheres; the meadow one plain green; the cloud sea only slid
+  past, and the tower never moved.
+
+### The air, and what happens in it
+
+`rainbow-terraces-weather.js` (three-free, numbers only). Beside the hours the **air** turns on a
+wheel of its own: five airs of 96 s, resting on each and crossing between as the hours do. Five
+hours of 110 s against five airs of 96 s do not come back in phase for 110 minutes, so an hour is
+never seen in the same weather twice running. An air is a row of numbers on the hour's own, and a
+lean of a few of the hour's colours toward others, so it never rebuilds a shader:
+
+| Air | What it is |
+|---|---|
+| fair | The high country as it was first painted. |
+| beams | The clouds behind the eye open: the anticrepuscular rays stand deep in the air and lie as lanes on the sea, the deck thickens, the isles' wedges and the drifting cloud shadows darken. |
+| showers | The storm wall grows and walks in behind the Spring Isle, the zenith greys toward its slate, the bow comes out in the rain by itself, the sea heaves, the wind freshens. |
+| crystal | Washed air: a deep sky, long mares' tails, the storm a rag on the horizon, the veils thin, hardly a cloud shadow. |
+| mist | The Deep's mist rises: a milky horizon, the stratus veils lifted and thick, the fogbow at its brightest, a flat still sea. |
+
+The **shadows of the clouds behind the eye** (the same clouds whose shadows are the rays) drift over
+the near isles, the falls and the cloud sea on the sky's one wind (`cloudShadeAt` in the shared
+TSL): each isle stands now in the sun, now in shade. The **cloud sea's heads form and melt** (a
+second read of the baked field, larger and carried faster, the two crossed by a slow weight), the
+**tower boils** (every head swells and sinks at its own pace), and the wind of the air sets how
+fast every layer drifts.
+
+About every half minute **something happens by itself** (`happeningAt`, a pure function of the
+clock: one slot in five rests, and the hour and the air decide what a slot may hold):
+
+| Happening | What is seen |
+|---|---|
+| flight | A skein of the paper birds crosses the far sky in a V, edge to edge at one pace (never born or lost in view), each a wing catching the light. |
+| beams | The rays surge for a quarter of a minute. |
+| plume | The Mother Fall's plume heaves up, a bow standing in it. |
+| veil | A veil of rain passes behind the leg: the bow comes out by itself, and goes. |
+| flicker | The storm flickers from within: two or three soft pulses of sheet lightning (governed; none under reduced motion or Reduce flashing). |
+| meteors | Shooting stars, by night only. |
+
+And **the bell tells the hour**: a soft toll, its rings on the sea and in the air, as the light walks
+into each new hour by the clock. Play is the world's first voice: nothing of the air's own starts
+while a set piece stands or a run has ended.
+
+### The events
+
+| Gameplay | What it gained |
+|---|---|
+| Twist | A **helix of light-water** wound up the Mother Fall, foot to lip, in the colour of the piece that turned (two strands; three with more lines; a twist that clears nothing a single short one): a ring thrown out at its foot, a crown of drops where it tops out, dimmer where a strand passes behind the water. Two at once, so a second never cuts the first. |
+| Back-to-back | **The bow gets its twin**: the light kindles at the secondary's foot and draws it round as it draws the primary at a four-line clear (a white thread opening into its colours, a comet on each front, glitter), Alexander's band deep between the two; it holds while back-to-backs follow and fades to what the chain had painted. |
+| Perfect clear | **The full circle**, the theme's greatest moment: both bows drawn whole with the band of light running round them, the seven colours down every fall one after another, the Far Gate's arch filled with light with rays standing out of it, the rays deep in the air, the bell's rings out across the whole sea, a flight from the crown; in full colour at every hour (the moonbow's night too). A second one while it stands feeds it. |
+| Four lines | The rays stand deep in the air with the pour. |
+| Level up | **The toll is seen**: three rings of the hour's gold open in the air round the bell, one after another, each wider and fainter. |
+| Game over | **The dusk falls** over 2.8 s and stands: the light sinks and cools, the falls thin to threads, the bows let go, the first stars come out, the birds go home, one low toll; under it the day runs on through its night to the next morning. |
+| New run | **The dawn**: the dusk lifts off that morning, the bell rings it in, the falls come back in one surge, a flight sails out. Leaving the mode lifts the dusk quietly. |
+
+### The scene
+
+- **The overlook's balustrade and the grove are modelled** (designed in headless Blender,
+  `scripts/blender/rainbow_terraces_models.py`, and shipped as numbers: quantised positions, indices
+  and baked per-vertex occlusion in `rainbow-terraces-models.js`, assembled by
+  `rainbow-terraces-model-build.js`; nothing is loaded at run time). The balustrade: flagstone paving
+  with a worn, chipped lip on a ledge faced in ashlar, a plinth course, fifteen turned vase balusters
+  under a moulded handrail, a panelled newel pier with a ball finial, ivy with real leaves over the
+  newel and the rail. The grove: two Italian cypresses, two stone pines and a shrub, each at three
+  levels of detail (the leanest on the far isles), smooth and occluded where they were faceted stacks
+  of spheres. Their leaves are lit from a fine grain, the tops a sunlit yellower green. Scene triangles
+  now: Minimal 52.2 k, Low 63.8 k, Medium 83.6 k, High 115.1 k, Ultra 145.5 k, Extreme 181.2 k (budgets
+  60 / 80 / 100 / 140 / 180 / 230 k); the same 15 draws.
+- **The Far Gate is laid in colossal courses** (58 m, a few pixels tall from the overlook), so its
+  faces carry the scale of its builders instead of one flat tone.
+- **Fireflies** drift over the Spring Isle's meadow once the stars are out (the night, and the dusk
+  of a run's end): a dozen at most, each breathing over seconds.
+
+- **The overlook stands in dappled sun**: the leaves of whatever grows behind the eye let the low sun
+  through in patches that wander over the rail, the balusters and the paving alike (read across the
+  light's own direction), and its masonry is coursed.
+- **The meadow blooms**: drifts of wildflowers (poppy on the dry knolls, lavender in the hollows,
+  buttercup between) as washes of colour in the grass.
+
+### Verified, and not
+
+**Verified:** playground captures before and after on WebGPU (every air at several hours, every
+happening, every event at several ages), on the WebGL2 backend, at Minimal and Extreme, in a phone
+frame and with two boards: consoles clean. The real game on WebGPU at High through a run of hard
+drops, a twist, a back-to-back four-line clear, a level, a perfect clear, a game over and a new run:
+no dropped events, the dusk at the game over and the dawn at the new run, console clean but for the
+two known cloud-save warnings. Tests: `rainbow-terraces-weather.test.js` (the wheel, the leans, the
+slots) and `rainbow-terraces-living.test.js` (the airs on the world, the skein edge to edge at one
+pace, the one-shots at any frame rate, the helix, the twin, the full circle, the rings, the dusk and
+the dawn never stepping, a busy stretch replayed alike at 30 and 60 frames a second).
+
+**Cost:** read capped at 30 frames a second only (the playground's profiler, 1080p, interleaved with
+the main checkout on a second server): Low the same within the noise, High within the noise of the
+readings (the GPU clocks down between capped frames, so single readings swing by a millisecond).
+The sea reads its field twice and the noise twice more, the stone and the falls one read more, the
+overlook two; the dome is untouched. No uncapped reading, no integrated GPU.
+
+**Not done:** the phone and multi-board frames are still the aerial survey (composition-1); the Far
+Gate keeps its plain silhouette; the storm wall's heads are still discs; the floating rocks do not
+bob; the theme icon and the record's images above show the theme before this pass.
+
 ## Tiers
 
 Every tier keeps the whole picture and every event. Scene triangles as built (the world test's
-census, instances at capacity, after the atmosphere pass): Minimal 50.4 k, Low 63.2 k, Medium
-80.4 k, High 107.4 k, Ultra 137.3 k, Extreme 172.2 k, all inside their budgets (60 / 80 / 100 /
-140 / 180 / 230 k); the same 15 draws on every tier. The sky dome's fragment stage is under its
+census, instances at capacity, after the living pass's modelled balustrade and grove): Minimal
+52.2 k, Low 63.8 k, Medium 83.6 k, High 115.1 k, Ultra 145.5 k, Extreme 181.2 k, all inside their
+budgets (60 / 80 / 100 / 140 / 180 / 230 k); the same 15 draws on every tier. The sky dome's fragment stage is under its
 64 KB gate (60.5 KB of WGSL at High after the atmosphere pass); the shaders test enforces it.
 
 ## Verification
@@ -490,7 +612,9 @@ Playground: `npm run dev:playground`, then `/playground.html?effect=rainbow-terr
 plus `event=lock|drop|clear|twist|b2b|quad|perfect|levelUp|newRun|gameOver|break`, `eventAge=<s>`,
 `lines=`, `row=`, `u=`, `color=<hex>`, `shape=`, `combo=<n>`, `held=<n>`, `hour=<place>` (0 Jade
 Morning … 4 Pearl Dawn), `players=2|4`, `parts=sky,isles,...`, `noPost=1`, `values=1`, `hud=0`,
-`icon=1` (+ `iconFov`, `iconYaw`, `iconPitch`), `P.<name>=<value>` for the look's numbers (the
+`icon=1` (+ `iconFov`, `iconYaw`, `iconPitch`), `air=<place>` (0 fair, 1 beams, 2 showers, 3 crystal,
+4 mist), `happenings=0`, `happen=flight|beams|plume|veil|flicker|meteors` (begun `eventAge` s before the
+frame), the events `spin`, `crown` and `dawn` (`dawnAge`), `P.<name>=<value>` for the look's numbers (the
 full list, with `falseColor=1`, `seed`, `reduce`, `bloom`, `statsHud`, `level`, `locks`, `links`,
 `trueBow`, `ripple`, `linkAge` and `px`/`py`, is the header of `src/playground/effects/rainbow-terraces.effect.js`;
 `hour` takes fractions). Theme

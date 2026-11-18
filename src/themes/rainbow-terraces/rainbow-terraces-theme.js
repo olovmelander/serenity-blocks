@@ -49,7 +49,9 @@
  * rebuild that would retire the renderer the manager watches) and a restored WebGL2 context.
  * Any other stop() forgets them. A rebuilt scene comes back in the light it had. The tier is read
  * once the renderer is ready, and again after the build, so one chosen meanwhile is not lost.
- * The end of a run is the world's to mark first (onGameOver), then the session is reset.
+ * The end of a run is the world's to mark first (onGameOver: its dusk falls and stands), then the
+ * session is reset; the next run's start is its dawn (onSessionStart), and leaving the mode lifts
+ * the dusk quietly (onSessionStop).
  *
  * Warm: none (getWarmupRoots() is empty, usesMrtScenePass() is false). That holds while the world
  * parks nothing at visible = false for an event to reveal (its pools are drawn from the first
@@ -666,9 +668,17 @@ export default class RainbowTerracesTheme extends BaseTheme {
         this.modeManager = manager;
         const relayout = () => this.scheduleLayoutReads();
         this.eventUnsubscribers.push(
-            manager.on('modeStarted', relayout),
+            // A run that follows a game over is the world's dawn (the dusk lifts, the bell rings it in).
+            manager.on('modeStarted', () => {
+                relayout();
+                this.world?.onSessionStart?.();
+            }),
             manager.on('modeActivated', relayout),
-            manager.on('modeStopped', () => this.resetSession()),
+            // Leaving the mode with the dusk still standing lifts it quietly (the menu is no dusk).
+            manager.on('modeStopped', () => {
+                this.world?.onSessionStop?.();
+                this.resetSession();
+            }),
         );
     }
 

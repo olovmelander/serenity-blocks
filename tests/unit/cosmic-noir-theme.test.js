@@ -33,7 +33,7 @@ const QUALITY_NAMES = ['Minimal', 'Low', 'Medium', 'High', 'Ultra', 'Extreme'];
 const WORLD_METHODS = [
     'build', 'bindCamera', 'showOnlyParts', 'setViewport', 'setLayout', 'setReducedMotion', 'seek', 'resetSession',
     'restCamera', 'updateCamera', 'onLock', 'onClear', 'onCombo', 'levelUp', 'getCarry', 'takeCarry', 'update',
-    'getPostState', 'getState', 'dispose',
+    'getPostState', 'getState', 'dispose', 'onGameOver', 'onSessionStart',
 ];
 const POST_METHODS = ['update', 'setCalmRects', 'setSize', 'render', 'dispose'];
 
@@ -195,6 +195,14 @@ vi.mock('../../src/themes/cosmic-noir/cosmic-noir-world.js', () => {
         onCombo(combo) {
             mocks.log.push('onCombo');
             this.combo = combo;
+        }
+
+        onGameOver() {
+            mocks.log.push('onGameOver');
+        }
+
+        onSessionStart() {
+            mocks.log.push('onSessionStart');
         }
 
         levelUp(level, options) {
@@ -905,12 +913,14 @@ describe('Cosmic Noir theme: one node renderer on both backends', () => {
             theme.stepFrame(16 * (i + 1));
         }
         expect(theme.world.combo).toBe(3);
-        // A lock staged on the run's last tick must not land in the next run.
+        // A lock staged on the run's last tick lands in this run, never in the next.
         eventBus.emit(EVENTS.PIECE_LOCK, { piece: T });
         mocks.log.length = 0;
         listeners.get('gameOver')();
-        // The chain is let go first (the world hears the break), then the session is reset.
-        expect(mocks.log).toEqual(['onCombo']);
+        // What was staged lands first (its chain is let go: the world hears the break), the
+        // session is reset, and only then is the world told the run is over: its iris closes on a
+        // world that reset has not wiped it from.
+        expect(mocks.log).toEqual(['onLock', 'onCombo', 'onGameOver']);
         expect(theme.world.sessions).toBe(1);
         expect(theme.world.combo).toBe(0);
         expect(theme.combos.size).toBe(0);
@@ -1204,6 +1214,11 @@ describe('Cosmic Noir theme: one node renderer on both backends', () => {
         // No polling: the build's first read, then this trigger's three (0 s, +0.5 s, +1.5 s), which
         // replaced the two the build still had pending.
         expect(layout).toHaveBeenCalledTimes(4);
+
+        // A new run opens the iris the last run's end closed.
+        mocks.log.length = 0;
+        manager.handlers.get('modeStarted')();
+        expect(mocks.log).toContain('onSessionStart');
 
         // The mode ends: the run is forgotten, the board is gone, the calm zones fade on the last rects.
         page.cards = [];
