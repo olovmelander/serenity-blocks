@@ -210,8 +210,9 @@ describe.each(TIERS)('Sakura shaders at %s', (quality) => {
         world = new SakuraWorld({
             scene, camera, quality, rng: seededRandom(187), assets,
         }).build();
-        // A frame in play, in an air that shows every kind of cloud at once.
-        world.pinWeather(2.5);
+        // A frame in play, under a mackerel sky (what a uniform holds does not change the shader;
+        // this is only so the garden that is built is one that has run).
+        world.pinWeather('mackerel');
         world.update(14, 1 / 60, { blizzard: 1, corona: 1 });
         const targets = new Map();
         world.group.traverse((object) => {
@@ -276,6 +277,31 @@ describe.each(TIERS)('Sakura shaders at %s', (quality) => {
         const glsl = built.find((entry) => entry.name === 'SakuraSkyDome' && entry.label === 'GLSL').out.fragment;
         expect(Math.abs(glsl.length - dome.length)).toBeLessThan(dome.length * 0.2);
         expect(reads(glsl, /\btexture(?:Lod)?\s*\(/g)).toBe(all);
+        // The moon's corona: a back-to-back opens it 2.7 times over (it was 3.4, and pinned the sky
+        // pale), a veil of cloud 1.6 times, over a rest of 0.45.
+        const corona = /nodeUniform\d+ \* 2\.7 \) \+ \( (?:object\.)?nodeUniform\d+ \* 1\.6 \) \) \+ 0\.45/;
+        expect(dome).toMatch(corona);
+        expect(glsl).toMatch(corona);
+        expect(dome).not.toMatch(/\* 3\.4 \)/);
+    });
+
+    it('crosses the ground and the grass with the ring\'s crest, not its skirts', () => {
+        // Both read the moon's shadow map, so neither is a whole shader here (each says so, and
+        // nothing else); their text is still written, and what they make of a ring is in it: the
+        // band squared, times 1.6. The band itself laid a pale veil over the grass under fast play.
+        const crest = /\( \( (nodeVar(?:ying)?\d+(?:\.x)?) \* \1 \) \* 1\.6 \)/;
+        for (const name of ['SakuraGround', 'SakuraSpringGrass']) {
+            let mesh = null;
+            world.group.traverse((object) => { if (object.name === name) mesh = object; });
+            expect(mesh, name).toBeTruthy();
+            for (const [label, Builder] of BACKENDS) {
+                const out = build(Builder, mesh);
+                expect(out.thrown, `${name}, ${label}`).toBeUndefined();
+                expect(out.heard.length, `${name}, ${label}`).toBeGreaterThan(0);
+                for (const said of out.heard) expect(said, `${name}, ${label}`).toMatch(/expected a "float"/);
+                expect(out.fragment, `${name}, ${label}`).toMatch(crest);
+            }
+        }
     });
 
     it('reads the mountain\'s cloud twice for both of its cards, with no branch between them', () => {
