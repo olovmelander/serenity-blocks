@@ -15,7 +15,7 @@
 /** What a frame's wind and fields carry across (numbers and kinds only). */
 function plainEnv(env = {}) {
     const plain = {};
-    ['windX', 'windZ', 'breeze', 'gust'].forEach((key) => {
+    ['windX', 'windZ', 'breeze', 'gust', 'fall'].forEach((key) => {
         if (Number.isFinite(env[key])) plain[key] = env[key];
     });
     const flat = (object) => {
