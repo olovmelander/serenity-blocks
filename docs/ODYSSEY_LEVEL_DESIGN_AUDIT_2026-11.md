@@ -2062,3 +2062,7 @@ For a short first sitting, watch **two tide warnings on 24, one chain attempt on
 | Regular or strong · **57 → 58 → 59 → 60** | Judge the recovery after Prism if arriving from 56. On 58, decide whether three minutes of tide is worth chasing. On 59, say when scoring required a different move from simply surviving. After one match with Neon, ask which moment felt like the finale and whether a loss invites a rematch. |
 
 For the rest proposals, compare short consecutive stretches on **21–23**, **31–33** and **40–42**. Record time to the first star separately from voluntary lap time. During an early playthrough, ask which earlier move paid off at crowns **4, 9, 17 and 25**, and whether the following chapter opener felt like a rest. On 48, record the first chance to counterattack. On 60, compare that opening with the first round against Neon. Record why the player wanted to stop or continue.
+
+### 9.8 Implementation and remeasurement
+
+The implementation handover records the feature-branch results for D14–D18 and D20, the live HUD checks, and the two decisions that depend on owner playtesting. Fresh runs on the shorter score rest led to D22, which awards orb 41’s gold for four Quads within 85 seconds. The tables above preserve the baseline used to choose the changes. [Pass 3 handover and D22 evidence](ODYSSEY_LEVEL_DESIGN_PASS3_2026-11.md)

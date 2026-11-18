@@ -204,6 +204,11 @@ describe('Odyssey orb-level objective presentation', () => {
         expect(hud.timeLimit).toBeNull();
 
         hud.setLevel(1);
+        expect(hud.levelRules.children.map((item) => item.textContent))
+            .toEqual(['Pieces fall faster after every 15 lines you clear.']);
+        expect(hud.levelRules.hidden).toBe(false);
+
+        hud.setLevel(11);
         expect(hud.levelRules.children).toEqual([]);
         expect(hud.levelRules.hidden).toBe(true);
     });
