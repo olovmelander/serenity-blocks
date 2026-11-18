@@ -17,7 +17,8 @@
 const KIND_KEY = 'serenity.identHoldThemeKinds';
 const ARMING_CLASS = 'sb-warp-arming';
 const PAUSED_CLASS = 'sb-lit--paused';
-// What the warp's GPU replica draws (boot-warp-transition-scene.js GLOW_OPACITY / GLOW_SCALE).
+// The glow's parked value, as main.css pins it under .sb-warp-arming: eased to from wherever its
+// loop was, so the class lands without a jump.
 const REPLICA_GLOW = { opacity: '0.87', transform: 'scale(1.04)' };
 
 /** @typedef {Navigator & { gpu?: { requestAdapter?: () => Promise<unknown> } }} WebGPUNavigator */

@@ -753,19 +753,6 @@ export const PLAYGROUND_URL_PARAMETERS = [
         ],
     },
     {
-        name: 'count',
-        category: 'Playground',
-        scope: 'playground.html — logo-warp-transition',
-        description: 'Set the Logo Warp particle count.',
-        values: 'Positive integer.',
-        defaultValue: '60000.',
-        example: 'count=30000',
-        notes: 'Use on playground.html with effect=<the matching effect ID>.',
-        sources: [
-            'src/playground/effects/logo-warp-transition.effect.js',
-        ],
-    },
-    {
         name: 'cover',
         category: 'Playground',
         scope: 'playground.html — verdant-hills',
@@ -1000,19 +987,6 @@ export const PLAYGROUND_URL_PARAMETERS = [
         sources: [
             'src/playground/effects/aurora.effect.js',
             'src/playground/effects/black-hole.effect.js',
-        ],
-    },
-    {
-        name: 'dur',
-        category: 'Playground',
-        scope: 'playground.html — logo-warp-transition',
-        description: 'Set the Logo Warp transition duration.',
-        values: 'Positive seconds.',
-        defaultValue: '6.5.',
-        example: 'dur=6.5',
-        notes: 'Use on playground.html with effect=<the matching effect ID>.',
-        sources: [
-            'src/playground/effects/logo-warp-transition.effect.js',
         ],
     },
     {
@@ -1839,32 +1813,6 @@ export const PLAYGROUND_URL_PARAMETERS = [
         ],
     },
     {
-        name: 'gemX',
-        category: 'Playground',
-        scope: 'playground.html — logo-warp-transition',
-        description: 'Set Logo Warp gem center X in pixels.',
-        values: 'Finite number; gemY must also be supplied.',
-        defaultValue: 'Half the viewport width.',
-        example: 'gemX=640',
-        notes: 'Use on playground.html with effect=<the matching effect ID>. Supply both gemX and gemY together.',
-        sources: [
-            'src/playground/effects/logo-warp-transition.effect.js',
-        ],
-    },
-    {
-        name: 'gemY',
-        category: 'Playground',
-        scope: 'playground.html — logo-warp-transition',
-        description: 'Set Logo Warp gem center Y in pixels.',
-        values: 'Finite number; gemX must also be supplied.',
-        defaultValue: 'Half the viewport height minus 31.',
-        example: 'gemY=329',
-        notes: 'Use on playground.html with effect=<the matching effect ID>. Supply both gemX and gemY together.',
-        sources: [
-            'src/playground/effects/logo-warp-transition.effect.js',
-        ],
-    },
-    {
         name: 'grain',
         category: 'Playground',
         scope: 'playground.html — cosmic-noir',
@@ -2554,19 +2502,6 @@ export const PLAYGROUND_URL_PARAMETERS = [
             + 'captures: pair with t=<capture seconds>.',
         sources: [
             'src/playground/effects/verdant-hills.effect.js',
-        ],
-    },
-    {
-        name: 'layers',
-        category: 'Playground',
-        scope: 'playground.html — logo-warp-transition',
-        description: 'Isolate one layer of the Logo Warp preview.',
-        values: 'stage or particles; omit for both.',
-        defaultValue: 'Both layers.',
-        example: 'layers=particles',
-        notes: 'Use on playground.html with effect=<the matching effect ID>.',
-        sources: [
-            'src/playground/effects/logo-warp-transition.effect.js',
         ],
     },
     {
@@ -4769,7 +4704,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
         defaultValue: 'Harness: 1470239127; Blood Moon 724461, Golden Forest 271, Koi Pond '
             + '7411 (its school of koi), Luminous Tides 31 (its world), Moonlit Greenhouse 1861 (the '
             + 'garden\'s seed), Rainbow Terraces 33 (its world), Summer 624, Verdant Hills 1107, Wolfhour '
-            + '73013, Logo Warp 98643728.',
+            + '73013.',
         example: 'seed=12345',
         notes: 'Use on playground.html. Also read by the listed game themes while active.',
         sources: [
@@ -4777,7 +4712,6 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/forest.effect.js',
             'src/playground/effects/golden-forest.effect.js',
             'src/playground/effects/koi-pond.effect.js',
-            'src/playground/effects/logo-warp-transition.effect.js',
             'src/playground/effects/luminous-tides.effect.js',
             'src/playground/effects/moonlit-greenhouse.effect.js',
             'src/playground/effects/rainbow-terraces.effect.js',

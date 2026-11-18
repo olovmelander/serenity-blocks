@@ -125,7 +125,9 @@ vi.mock('three/webgpu', () => {
     };
 });
 
-vi.mock('../../src/ui/boot-aurora-scene.js', () => ({
+// The real module under the mocks, so its constants are the ones the game ships.
+vi.mock('../../src/ui/boot-aurora-scene.js', async (importOriginal) => ({
+    ...(await importOriginal()),
     createBootAurora: () => ({
         computeNode: { id: 'compute-node' },
         mesh: { id: 'mesh' },
@@ -137,7 +139,6 @@ vi.mock('../../src/ui/boot-aurora-scene.js', () => ({
         setGemCenterPx() {},
         dispose: rendererMocks.warpDispose,
     }),
-    AURORA_LOGO_OFFSET_Y: -31,
     auroraFovAt: () => 45,
 }));
 
