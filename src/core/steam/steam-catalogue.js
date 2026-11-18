@@ -6,7 +6,7 @@ export const STEAM_LEADERBOARDS = Object.freeze({
     INFINITY_SURVIVAL_TIME: 'InfinitySurvivalTime_v1',
     INFINITY_BEST_CASCADE: 'InfinityBestCascade_v1',
     ODYSSEY_TOTAL_STARS: 'OdysseyTotalStars_v3',
-    ODYSSEY_LEVEL_TIME_PREFIX: 'OdysseyLevelTime_v6_',
+    ODYSSEY_LEVEL_TIME_PREFIX: 'OdysseyLevelTime_v7_',
 });
 
 export const STAT_NAMES = Object.freeze(['total_games_played', 'total_lines_cleared', 'playtime_minutes',

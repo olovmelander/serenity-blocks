@@ -29,8 +29,8 @@ export const ODYSSEY_ORB_COPY = Object.freeze({
         name: 'Crystal Cascade',
         description: 'Crystals glow along a hall of rock above a still pool. '
             + 'This is where you learn to make the blocks cascade.',
-        tip: 'A block hangs over a gap. Fill the open column: when the line clears, the block drops in '
-            + 'and clears again.',
+        tip: 'Fill the gap under the hanging block for wave one. Each time blocks fall and clear again from that '
+            + 'piece, add a wave.',
     },
     geode: {
         name: 'Geode Heart',
@@ -42,8 +42,8 @@ export const ODYSSEY_ORB_COPY = Object.freeze({
         name: 'The Living Grotto',
         description: 'Mushrooms glow around a still pool in a cave that makes its own light. '
             + 'Clear lines and let cascades help.',
-        tip: 'Turn the starting rows into cascades. For every star, build in layers so one clear can set off a long '
-            + 'chain.',
+        tip: 'Clear lines to win. For gold, make 7 cascades and a 3-wave chain, with either 11 cascades in all '
+            + 'or a 4-wave chain.',
     },
     pyrestorm: {
         name: 'Molten Flow',
@@ -97,8 +97,8 @@ export const ODYSSEY_ORB_COPY = Object.freeze({
         name: 'Spring Flood',
         description: 'A northern river runs high with the spring melt, past meadows white with anemones. '
             + 'Clear your first Quads.',
-        tip: 'Leave one column open like a channel through the rapids, then drop a long I piece in to clear '
-            + 'four lines.',
+        tip: 'Drop the I into the open column, then rebuild four rows beside it for the next Quad. '
+            + 'If it gets covered, open an edge.',
     },
     'golden-forest': {
         name: 'Golden Reflection',
@@ -378,7 +378,8 @@ export const ODYSSEY_ORB_COPY = Object.freeze({
         name: 'Indra\'s Net',
         description: 'A temple of folded light folds deeper with every cascade you make. '
             + 'Reach the goal, then play on for stars.',
-        tip: 'Use the full height of the well. The taller the structure, the longer the cascade.',
+        tip: 'Stagger shelves in the rubble and clear on consecutive pieces to score. After the goal, '
+            + 'stay for a deeper chain.',
     },
     'chromatic-impasto': {
         name: 'Chromatic Impasto',

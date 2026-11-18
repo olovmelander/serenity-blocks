@@ -134,7 +134,7 @@ describe('Spring took the Moonlit Forest orb: what a player already has now mean
         expect(orb.name).toBe('Spring Flood');
         expect(orb.theme.transitionIn).toBe('crossfade');
         expect(orb.metadata.description).toMatch(/^A northern river runs high with the spring melt/);
-        expect(orb.metadata.tip).toMatch(/rapids/);
+        expect(orb.metadata.tip).toContain('rebuild four rows beside it for the next Quad');
         // Chapter 3's theme list follows the orb order, so the chapter names the new theme at its place.
         expect(CHAPTER_CONFIGS.find((chapter) => chapter.id === 3).themes.primary[1]).toBe('spring');
         expect(LEVEL_CONFIGS.some((level) => level.theme?.primary === OLD_THEME)).toBe(false);

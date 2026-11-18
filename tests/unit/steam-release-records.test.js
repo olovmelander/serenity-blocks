@@ -8,10 +8,10 @@ describe('published Steam catalogue', () => {
     it('matches the assembled campaign and refuses invalid or assisted times', () => {
         expect(Object.keys(BOARDS)).toHaveLength(64);
         for (const level of Object.values(LEVEL_CONFIGS)) {
-            const name = 'OdysseyLevelTime_v6_' + level.id;
+            const name = 'OdysseyLevelTime_v7_' + level.id;
             expect(Boolean(BOARDS[name])).toBe(hasOdysseyTimeBoard(level));
         }
-        const board = 'OdysseyLevelTime_v6_1';
+        const board = 'OdysseyLevelTime_v7_1';
         expect(isEligibleScore(board, 1234, [1, 1, 0, 1, 1234, 0, 0])).toBe(true);
         expect(isEligibleScore(board, 0, [1, 0, 0, 1, 0, 0, 0])).toBe(false);
         expect(isEligibleScore(board, 1234, [1, 1, 0, 9, 1234, 0, 0])).toBe(false);

@@ -24,7 +24,7 @@ function fixture(platform = 'win32') {
     const client = createDesktopSteamClient({ native, fn, dispatch, platform, appId: 1234 });
     return { boards: client.boards, fn, dispatch, setSelf: () => { entryId = 101n; }, keep: () => { changed = false; } };
 }
-const name = 'OdysseyLevelTime_v6_7', details = [1, 12, 3, 7, 12345, 0, -123];
+const name = 'OdysseyLevelTime_v7_7', details = [1, 12, 3, 7, 12345, 0, -123];
 describe.each(['linux', 'win32'])('native score and rank ABI on %s', (platform) => {
     it('finds only a published board with its actual sort and display, preserves an unchanged KeepBest and both ranks', async () => {
         const f = fixture(platform);
@@ -46,7 +46,7 @@ describe.each(['linux', 'win32'])('native score and rank ABI on %s', (platform) 
         expect(await f.boards.self(name)).toBeNull();
         f.setSelf(); expect((await f.boards.self(name)).rank).toBe(147);
     });
-    it.each(['OdysseyLevelTime_v2_7','OdysseyLevelTime_v6_39','OdysseyLevelTime_v0_1','Random','__proto__'])(
+    it.each(['OdysseyLevelTime_v2_7', 'OdysseyLevelTime_v6_7', 'OdysseyLevelTime_v7_39', 'OdysseyLevelTime_v0_1', 'Random', '__proto__'])(
         'preserves retired and malformed names locally and never creates %s on Steam', async (key) => {
             const f = fixture(platform);
             await expect(f.boards.page(key, 'global', 0, 10)).rejects.toThrow();

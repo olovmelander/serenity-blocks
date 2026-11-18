@@ -1,0 +1,841 @@
+orb,chapter,name,profile,cadence,attempts,clears,at_least_2_stars,three_stars,primary_censored,lap_censored,median_seconds_to_goal_on_clears,median_pieces_to_goal_on_clears,clears_12001,at_least_2_12001,three_stars_12001,clears_13001,at_least_2_13001,three_stars_13001,clears_16001,at_least_2_16001,three_stars_16001
+1,1,Ashen Dawn,stacker,deliberate,15,14,14,0,0,0,51.8,54.0,5,5,0,5,5,0,4,4,0
+1,1,Ashen Dawn,stacker,native,15,14,14,0,0,0,43.4,54.0,5,5,0,5,5,0,4,4,0
+1,1,Ashen Dawn,cascade,steady,15,15,15,0,0,0,37.0,64,5,5,0,5,5,0,5,5,0
+1,1,Ashen Dawn,expert,native,15,15,15,0,0,0,20.2,56,5,5,0,5,5,0,5,5,0
+1,1,Ashen Dawn,quad,native,15,13,13,10,0,0,30.4,59,4,4,3,4,4,4,5,5,3
+1,1,Ashen Dawn,stacker,human-casual,15,14,7,0,0,0,85.1,53.0,5,2,0,5,2,0,4,3,0
+1,1,Ashen Dawn,stacker,human-regular,15,14,14,0,0,0,51.9,54.0,5,5,0,5,5,0,4,4,0
+1,1,Ashen Dawn,stacker,human-strong,15,14,14,0,0,0,35.7,54.0,5,5,0,5,5,0,4,4,0
+1,1,Ashen Dawn,cascade,human-casual,15,15,0,0,0,0,102.8,64,5,0,0,5,0,0,5,0,0
+1,1,Ashen Dawn,cascade,human-regular,15,15,15,0,0,0,64.4,62,5,5,0,5,5,0,5,5,0
+1,1,Ashen Dawn,cascade,human-strong,15,15,15,0,0,0,44.2,66,5,5,0,5,5,0,5,5,0
+1,1,Ashen Dawn,quad,human-casual,15,12,2,0,0,0,96.9,61.5,5,0,0,4,1,0,3,1,0
+1,1,Ashen Dawn,quad,human-regular,15,14,14,10,0,0,55.4,60.5,4,4,2,5,5,5,5,5,3
+1,1,Ashen Dawn,quad,human-strong,15,14,14,10,0,0,37.9,61.0,4,4,3,5,5,4,5,5,3
+2,1,Crystal Cascade,stacker,deliberate,15,15,4,0,0,0,89.9,89,5,1,0,5,3,0,5,0,0
+2,1,Crystal Cascade,stacker,native,15,15,4,0,0,0,74.8,89,5,1,0,5,3,0,5,0,0
+2,1,Crystal Cascade,cascade,steady,15,15,15,10,0,0,19.2,31,5,5,4,5,5,2,5,5,4
+2,1,Crystal Cascade,expert,native,15,15,15,4,0,0,8.1,23,5,5,1,5,5,1,5,5,2
+2,1,Crystal Cascade,quad,native,15,15,6,0,0,0,25.5,49,5,2,0,5,2,0,5,2,0
+2,1,Crystal Cascade,stacker,human-casual,15,15,2,0,0,0,110.6,68,5,1,0,5,1,0,5,0,0
+2,1,Crystal Cascade,stacker,human-regular,15,15,4,0,0,0,89.8,89,5,1,0,5,3,0,5,0,0
+2,1,Crystal Cascade,stacker,human-strong,15,15,6,0,0,0,59.9,85,5,2,0,5,2,0,5,2,0
+2,1,Crystal Cascade,cascade,human-casual,15,15,15,9,0,0,48.7,30,5,5,2,5,5,3,5,5,4
+2,1,Crystal Cascade,cascade,human-regular,15,15,15,9,0,0,33.0,31,5,5,4,5,5,2,5,5,3
+2,1,Crystal Cascade,cascade,human-strong,15,15,15,10,0,0,22.6,31,5,5,4,5,5,2,5,5,4
+2,1,Crystal Cascade,quad,human-casual,15,13,12,1,0,0,54.3,35,4,3,1,5,5,0,4,4,0
+2,1,Crystal Cascade,quad,human-regular,15,15,9,1,0,0,46.1,50,5,2,1,5,3,0,5,4,0
+2,1,Crystal Cascade,quad,human-strong,15,14,7,1,0,0,32.7,52.0,4,2,1,5,3,0,5,2,0
+3,1,Geode Heart,stacker,deliberate,15,14,5,0,0,0,144.4,149.0,5,2,0,5,3,0,4,0,0
+3,1,Geode Heart,stacker,native,15,14,5,0,0,0,120.4,149.0,5,2,0,5,3,0,4,0,0
+3,1,Geode Heart,cascade,steady,15,15,15,6,0,0,19.6,34,5,5,1,5,5,1,5,5,4
+3,1,Geode Heart,expert,native,15,15,15,10,0,0,12.5,34,5,5,4,5,5,3,5,5,3
+3,1,Geode Heart,quad,native,15,13,3,0,0,0,50.0,94,4,0,0,5,2,0,4,1,0
+3,1,Geode Heart,stacker,human-casual,15,15,4,0,0,0,253.3,158,5,1,0,5,2,0,5,1,0
+3,1,Geode Heart,stacker,human-regular,15,14,5,0,0,0,144.3,149.0,5,2,0,5,3,0,4,0,0
+3,1,Geode Heart,stacker,human-strong,15,13,3,0,0,0,103.5,158,4,0,0,5,2,0,4,1,0
+3,1,Geode Heart,cascade,human-casual,15,15,15,3,0,0,63.9,40,5,5,1,5,5,1,5,5,1
+3,1,Geode Heart,cascade,human-regular,15,15,15,5,0,0,35.7,37,5,5,1,5,5,1,5,5,3
+3,1,Geode Heart,cascade,human-strong,15,15,15,6,0,0,23.1,34,5,5,1,5,5,1,5,5,4
+3,1,Geode Heart,quad,human-casual,15,13,2,0,0,0,187.3,120,4,0,0,5,1,0,4,1,0
+3,1,Geode Heart,quad,human-regular,15,13,3,0,0,0,87.0,94,4,0,0,5,2,0,4,1,0
+3,1,Geode Heart,quad,human-strong,15,13,2,0,0,0,68.1,107,4,0,0,5,1,0,4,1,0
+4,1,The Living Grotto,stacker,deliberate,15,15,2,0,0,0,72.2,76,5,0,0,5,1,0,5,1,0
+4,1,The Living Grotto,stacker,native,15,15,2,0,0,0,60.3,76,5,0,0,5,1,0,5,1,0
+4,1,The Living Grotto,cascade,steady,15,15,15,12,0,0,52.0,88,5,5,3,5,5,4,5,5,5
+4,1,The Living Grotto,expert,native,15,15,15,5,0,0,28.4,76,5,5,2,5,5,1,5,5,2
+4,1,The Living Grotto,quad,native,15,13,0,0,0,0,42.0,79,5,0,0,4,0,0,4,0,0
+4,1,The Living Grotto,stacker,human-casual,15,15,2,0,0,0,121.8,75,5,0,0,5,1,0,5,1,0
+4,1,The Living Grotto,stacker,human-regular,15,15,2,0,0,0,72.3,76,5,0,0,5,1,0,5,1,0
+4,1,The Living Grotto,stacker,human-strong,15,15,1,0,0,0,49.8,76,5,0,0,5,1,0,5,0,0
+4,1,The Living Grotto,cascade,human-casual,15,15,15,10,0,0,140.6,86,5,5,3,5,5,3,5,5,4
+4,1,The Living Grotto,cascade,human-regular,15,15,15,11,0,0,86.2,85,5,5,4,5,5,4,5,5,3
+4,1,The Living Grotto,cascade,human-strong,15,15,15,12,0,0,59.8,87,5,5,3,5,5,5,5,5,4
+4,1,The Living Grotto,quad,human-casual,15,11,2,0,0,0,126.0,79,2,1,0,4,0,0,5,1,0
+4,1,The Living Grotto,quad,human-regular,15,12,1,0,0,0,74.6,80.0,4,1,0,4,0,0,4,0,0
+4,1,The Living Grotto,quad,human-strong,15,13,0,0,0,0,50.9,80,4,0,0,4,0,0,5,0,0
+5,1,Molten Flow,stacker,deliberate,15,15,14,14,0,0,349.9,359,5,5,5,5,5,5,5,4,4
+5,1,Molten Flow,stacker,native,15,15,15,14,0,0,298.9,372,5,5,5,5,5,5,5,5,4
+5,1,Molten Flow,cascade,steady,15,15,15,15,0,0,131.6,225,5,5,5,5,5,5,5,5,5
+5,1,Molten Flow,expert,native,15,15,15,15,0,0,90.8,239,5,5,5,5,5,5,5,5,5
+5,1,Molten Flow,quad,native,15,15,15,12,0,0,113.2,217,5,5,3,5,5,4,5,5,5
+5,1,Molten Flow,stacker,human-casual,15,15,15,13,0,0,418.4,255,5,5,5,5,5,3,5,5,5
+5,1,Molten Flow,stacker,human-regular,15,15,15,14,0,0,333.9,333,5,5,5,5,5,5,5,5,4
+5,1,Molten Flow,stacker,human-strong,15,15,15,14,0,0,269.8,400,5,5,5,5,5,5,5,5,4
+5,1,Molten Flow,cascade,human-casual,15,15,15,13,0,0,300.7,182,5,5,5,5,5,4,5,5,4
+5,1,Molten Flow,cascade,human-regular,15,15,15,15,0,0,204.6,205,5,5,5,5,5,5,5,5,5
+5,1,Molten Flow,cascade,human-strong,15,15,15,15,0,0,146.3,212,5,5,5,5,5,5,5,5,5
+5,1,Molten Flow,quad,human-casual,15,13,12,7,0,0,287.7,183,4,3,1,4,4,3,5,5,3
+5,1,Molten Flow,quad,human-regular,15,15,15,14,0,0,177.6,193,5,5,5,5,5,5,5,5,4
+5,1,Molten Flow,quad,human-strong,15,15,14,13,0,0,124.3,199,5,5,5,5,5,5,5,4,3
+6,2,Ocean Descent,stacker,deliberate,15,15,11,0,0,0,43.4,44,5,3,0,5,4,0,5,4,0
+6,2,Ocean Descent,stacker,native,15,15,11,0,0,0,36.3,44,5,3,0,5,4,0,5,4,0
+6,2,Ocean Descent,cascade,steady,15,15,3,0,0,0,31.2,51,5,1,0,5,0,0,5,2,0
+6,2,Ocean Descent,expert,native,15,15,9,0,0,0,17.3,45,5,3,0,5,3,0,5,3,0
+6,2,Ocean Descent,quad,native,15,14,13,9,0,0,31.3,57.5,5,5,4,4,4,3,5,4,2
+6,2,Ocean Descent,stacker,human-casual,15,14,8,0,0,0,73.7,45.0,5,3,0,4,2,0,5,3,0
+6,2,Ocean Descent,stacker,human-regular,15,15,11,0,0,0,43.3,44,5,3,0,5,4,0,5,4,0
+6,2,Ocean Descent,stacker,human-strong,15,15,10,0,0,0,30.1,44,5,3,0,5,3,0,5,4,0
+6,2,Ocean Descent,cascade,human-casual,15,15,2,0,0,0,89.6,52,5,0,0,5,0,0,5,2,0
+6,2,Ocean Descent,cascade,human-regular,15,15,2,0,0,0,53.0,51,5,1,0,5,0,0,5,1,0
+6,2,Ocean Descent,cascade,human-strong,15,15,3,0,0,0,36.8,51,5,1,0,5,0,0,5,2,0
+6,2,Ocean Descent,quad,human-casual,15,7,5,0,0,0,96.6,61,2,2,0,3,2,0,2,1,0
+6,2,Ocean Descent,quad,human-regular,15,9,8,2,0,0,57.3,58,4,4,1,2,2,1,3,2,0
+6,2,Ocean Descent,quad,human-strong,15,14,12,8,0,0,37.9,59.0,5,5,3,4,4,3,5,3,2
+7,2,Night Surf,stacker,deliberate,15,15,8,2,0,0,209.1,210,5,3,1,5,3,0,5,2,1
+7,2,Night Surf,stacker,native,15,15,8,2,0,0,174.4,210,5,3,1,5,3,0,5,2,1
+7,2,Night Surf,cascade,steady,15,15,14,9,0,0,27.6,43,5,5,3,5,5,4,5,4,2
+7,2,Night Surf,expert,native,15,15,13,4,0,0,16.3,42,5,4,1,5,4,1,5,5,2
+7,2,Night Surf,quad,native,15,5,4,0,0,0,88.6,168,2,1,0,1,1,0,2,2,0
+7,2,Night Surf,stacker,human-casual,15,12,8,2,0,0,279.2,173.0,4,3,1,4,2,1,4,3,0
+7,2,Night Surf,stacker,human-regular,15,15,8,2,0,0,208.6,210,5,3,1,5,3,0,5,2,1
+7,2,Night Surf,stacker,human-strong,15,14,6,1,0,0,149.2,221.0,5,2,1,4,2,0,5,2,0
+7,2,Night Surf,cascade,human-casual,15,15,12,7,0,0,81.3,49,5,3,1,5,4,4,5,5,2
+7,2,Night Surf,cascade,human-regular,15,15,14,8,0,0,47.4,48,5,5,3,5,5,3,5,4,2
+7,2,Night Surf,cascade,human-strong,15,15,14,9,0,0,32.3,43,5,5,3,5,5,4,5,4,2
+7,2,Night Surf,quad,human-casual,15,1,1,0,0,0,244.2,155,0,0,0,0,0,0,1,1,0
+7,2,Night Surf,quad,human-regular,15,6,4,0,0,0,151.6,161.5,3,1,0,1,1,0,2,2,0
+7,2,Night Surf,quad,human-strong,15,7,6,2,0,0,100.2,152,2,2,0,3,2,1,2,2,1
+8,2,Koi Sanctuary,stacker,deliberate,15,15,11,5,0,0,28.0,28,5,3,1,5,4,1,5,4,3
+8,2,Koi Sanctuary,stacker,native,15,15,11,9,0,0,23.5,28,5,3,3,5,4,2,5,4,4
+8,2,Koi Sanctuary,cascade,steady,15,15,11,6,0,0,40.3,69,5,4,2,5,4,3,5,3,1
+8,2,Koi Sanctuary,expert,native,15,15,13,10,0,0,14.7,36,5,5,3,5,5,5,5,3,2
+8,2,Koi Sanctuary,quad,native,15,0,0,0,0,0,,,0,0,0,0,0,0,0,0,0
+8,2,Koi Sanctuary,stacker,human-casual,15,15,5,2,0,0,66.8,41,5,1,0,5,2,0,5,2,2
+8,2,Koi Sanctuary,stacker,human-regular,15,15,11,5,0,0,27.9,28,5,3,1,5,4,1,5,4,3
+8,2,Koi Sanctuary,stacker,human-strong,15,15,13,8,0,0,20.8,31,5,4,3,5,4,1,5,5,4
+8,2,Koi Sanctuary,cascade,human-casual,15,14,3,0,0,0,70.2,42.5,5,0,0,5,2,0,4,1,0
+8,2,Koi Sanctuary,cascade,human-regular,15,14,8,2,0,0,31.4,31.5,5,2,1,5,4,1,4,2,0
+8,2,Koi Sanctuary,cascade,human-strong,15,15,10,6,0,0,39.3,57,5,4,2,5,4,3,5,2,1
+8,2,Koi Sanctuary,quad,human-casual,15,0,0,0,0,0,,,0,0,0,0,0,0,0,0,0
+8,2,Koi Sanctuary,quad,human-regular,15,0,0,0,0,0,,,0,0,0,0,0,0,0,0,0
+8,2,Koi Sanctuary,quad,human-strong,15,0,0,0,0,0,,,0,0,0,0,0,0,0,0,0
+9,2,Tarn of Wisps,stacker,deliberate,15,13,10,3,0,0,239.6,246,5,4,0,3,1,0,5,5,3
+9,2,Tarn of Wisps,stacker,native,15,13,10,3,0,0,200.0,246,5,4,0,3,1,0,5,5,3
+9,2,Tarn of Wisps,cascade,steady,15,15,14,7,0,0,31.2,54,5,5,3,5,5,1,5,4,3
+9,2,Tarn of Wisps,expert,native,15,15,14,7,0,0,20.4,52,5,5,4,5,4,1,5,5,2
+9,2,Tarn of Wisps,quad,native,15,3,2,1,0,0,80.7,146,3,2,1,0,0,0,0,0,0
+9,2,Tarn of Wisps,stacker,human-casual,15,13,9,0,0,0,370.4,227,5,3,0,4,3,0,4,3,0
+9,2,Tarn of Wisps,stacker,human-regular,15,13,10,3,0,0,239.5,246,5,4,0,3,1,0,5,5,3
+9,2,Tarn of Wisps,stacker,human-strong,15,15,10,2,0,0,140.8,214,5,4,1,5,3,0,5,3,1
+9,2,Tarn of Wisps,cascade,human-casual,15,15,13,7,0,0,84.2,52,5,5,3,5,4,2,5,4,2
+9,2,Tarn of Wisps,cascade,human-regular,15,15,14,7,0,0,52.8,54,5,5,3,5,5,2,5,4,2
+9,2,Tarn of Wisps,cascade,human-strong,15,15,14,7,0,0,36.5,54,5,5,3,5,5,1,5,4,3
+9,2,Tarn of Wisps,quad,human-casual,15,0,0,0,0,0,,,0,0,0,0,0,0,0,0,0
+9,2,Tarn of Wisps,quad,human-regular,15,0,0,0,0,0,,,0,0,0,0,0,0,0,0,0
+9,2,Tarn of Wisps,quad,human-strong,15,1,0,0,0,0,95.4,146,1,0,0,0,0,0,0,0,0
+10,2,Wave Runner,stacker,deliberate,15,15,15,13,0,0,317.3,329,5,5,4,5,5,5,5,5,4
+10,2,Wave Runner,stacker,native,15,15,15,13,0,0,295.1,360,5,5,5,5,5,4,5,5,4
+10,2,Wave Runner,cascade,steady,15,15,15,15,0,0,143.3,240,5,5,5,5,5,5,5,5,5
+10,2,Wave Runner,expert,native,15,15,15,15,0,0,90.3,233,5,5,5,5,5,5,5,5,5
+10,2,Wave Runner,quad,native,15,15,13,11,0,0,115.8,219,5,3,3,5,5,4,5,5,4
+10,2,Wave Runner,stacker,human-casual,15,15,15,13,0,0,444.5,275,5,5,5,5,5,4,5,5,4
+10,2,Wave Runner,stacker,human-regular,15,15,14,13,0,0,333.9,336,5,4,4,5,5,5,5,5,4
+10,2,Wave Runner,stacker,human-strong,15,15,15,14,0,0,271.8,408,5,5,5,5,5,5,5,5,4
+10,2,Wave Runner,cascade,human-casual,15,15,14,14,0,0,285.7,171,5,5,5,5,4,4,5,5,5
+10,2,Wave Runner,cascade,human-regular,15,15,14,13,0,0,223.9,215,5,5,4,5,4,4,5,5,5
+10,2,Wave Runner,cascade,human-strong,15,15,15,13,0,0,165.8,245,5,5,4,5,5,5,5,5,4
+10,2,Wave Runner,quad,human-casual,15,13,10,5,0,0,337.6,218,4,3,3,4,3,1,5,4,1
+10,2,Wave Runner,quad,human-regular,15,14,12,5,0,0,236.0,258.0,5,4,2,5,4,2,4,4,1
+10,2,Wave Runner,quad,human-strong,15,15,13,11,0,0,141.8,228,5,3,3,5,5,4,5,5,4
+11,3,Grainfields,stacker,deliberate,15,14,14,0,0,0,65.8,69.0,5,5,0,5,5,0,4,4,0
+11,3,Grainfields,stacker,native,15,14,14,0,0,0,54.9,69.0,5,5,0,5,5,0,4,4,0
+11,3,Grainfields,cascade,steady,15,15,15,0,0,0,46.4,76,5,5,0,5,5,0,5,5,0
+11,3,Grainfields,expert,native,15,15,15,0,0,0,26.8,70,5,5,0,5,5,0,5,5,0
+11,3,Grainfields,quad,native,15,14,14,9,0,0,38.7,76.0,4,4,3,5,5,3,5,5,3
+11,3,Grainfields,stacker,human-casual,15,14,0,0,0,0,112.2,69.5,5,0,0,5,0,0,4,0,0
+11,3,Grainfields,stacker,human-regular,15,14,14,0,0,0,65.9,69.0,5,5,0,5,5,0,4,4,0
+11,3,Grainfields,stacker,human-strong,15,14,14,0,0,0,45.7,69.0,5,5,0,5,5,0,4,4,0
+11,3,Grainfields,cascade,human-casual,15,15,0,0,0,0,124.1,76,5,0,0,5,0,0,5,0,0
+11,3,Grainfields,cascade,human-regular,15,15,15,0,0,0,83.1,82,5,5,0,5,5,0,5,5,0
+11,3,Grainfields,cascade,human-strong,15,15,15,0,0,0,54.4,79,5,5,0,5,5,0,5,5,0
+11,3,Grainfields,quad,human-casual,15,11,0,0,0,0,120.7,77,4,0,0,3,0,0,4,0,0
+11,3,Grainfields,quad,human-regular,15,15,15,8,0,0,70.1,76,5,5,1,5,5,5,5,5,2
+11,3,Grainfields,quad,human-strong,15,14,14,9,0,0,44.9,74.5,4,4,3,5,5,3,5,5,3
+12,3,Spring Flood,stacker,deliberate,15,10,0,0,1,0,407.6,422.5,4,0,0,3,0,0,3,0,0
+12,3,Spring Flood,stacker,native,15,11,0,0,0,0,400.8,503,4,0,0,3,0,0,4,0,0
+12,3,Spring Flood,cascade,steady,15,4,0,0,1,0,917.5,1559.0,1,0,0,1,0,0,2,0,0
+12,3,Spring Flood,expert,native,15,15,0,0,0,0,122.4,322,5,0,0,5,0,0,5,0,0
+12,3,Spring Flood,quad,native,15,13,11,9,0,0,19.4,38,3,2,2,5,5,5,5,4,2
+12,3,Spring Flood,stacker,human-casual,15,8,0,0,4,0,908.1,561.5,1,0,0,4,0,0,3,0,0
+12,3,Spring Flood,stacker,human-regular,15,10,0,0,1,0,407.5,422.5,4,0,0,3,0,0,3,0,0
+12,3,Spring Flood,stacker,human-strong,15,11,0,0,0,0,580.7,884,4,0,0,3,0,0,4,0,0
+12,3,Spring Flood,cascade,human-casual,15,2,0,0,3,0,742.3,446.0,0,0,0,2,0,0,0,0,0
+12,3,Spring Flood,cascade,human-regular,15,7,0,0,2,0,845.5,845,2,0,0,4,0,0,1,0,0
+12,3,Spring Flood,cascade,human-strong,15,6,0,0,3,0,965.1,1391.0,1,0,0,3,0,0,2,0,0
+12,3,Spring Flood,quad,human-casual,15,12,11,10,0,0,54.9,35.5,4,3,2,4,4,4,4,4,4
+12,3,Spring Flood,quad,human-regular,15,11,10,10,0,0,27.4,32,4,3,3,4,4,4,3,3,3
+12,3,Spring Flood,quad,human-strong,15,12,11,9,0,0,22.5,36.5,2,2,2,5,5,5,5,4,2
+13,3,Golden Reflection,stacker,deliberate,15,14,0,0,0,0,88.0,92.5,5,0,0,5,0,0,4,0,0
+13,3,Golden Reflection,stacker,native,15,14,0,0,0,0,72.1,90.0,5,0,0,5,0,0,4,0,0
+13,3,Golden Reflection,cascade,steady,15,15,0,0,0,0,40.0,70,5,0,0,5,0,0,5,0,0
+13,3,Golden Reflection,expert,native,15,15,0,0,0,0,24.5,66,5,0,0,5,0,0,5,0,0
+13,3,Golden Reflection,quad,native,15,15,13,9,0,0,36.4,69,5,4,3,5,5,4,5,4,2
+13,3,Golden Reflection,stacker,human-casual,15,14,0,0,0,0,160.8,99.0,5,0,0,5,0,0,4,0,0
+13,3,Golden Reflection,stacker,human-regular,15,14,0,0,0,0,87.9,92.5,5,0,0,5,0,0,4,0,0
+13,3,Golden Reflection,stacker,human-strong,15,14,0,0,0,0,56.2,86.0,5,0,0,5,0,0,4,0,0
+13,3,Golden Reflection,cascade,human-casual,15,15,0,0,0,0,125.8,76,5,0,0,5,0,0,5,0,0
+13,3,Golden Reflection,cascade,human-regular,15,15,0,0,0,0,70.3,69,5,0,0,5,0,0,5,0,0
+13,3,Golden Reflection,cascade,human-strong,15,15,0,0,0,0,48.9,72,5,0,0,5,0,0,5,0,0
+13,3,Golden Reflection,quad,human-casual,15,11,11,5,0,0,122.1,77,4,4,0,4,4,3,3,3,2
+13,3,Golden Reflection,quad,human-regular,15,14,13,6,0,0,65.4,71.5,5,4,1,5,5,3,4,4,2
+13,3,Golden Reflection,quad,human-strong,15,15,13,9,0,0,43.5,72,5,4,3,5,5,4,5,4,2
+14,3,Glasshouse Reverie,stacker,deliberate,15,14,2,1,1,0,305.8,309.0,5,0,0,5,1,1,4,1,0
+14,3,Glasshouse Reverie,stacker,native,15,14,2,1,1,0,255.0,309.0,5,0,0,5,1,1,4,1,0
+14,3,Glasshouse Reverie,cascade,steady,15,15,15,8,0,0,15.8,27,5,5,2,5,5,4,5,5,2
+14,3,Glasshouse Reverie,expert,native,15,15,15,9,0,0,8.6,23,5,5,2,5,5,4,5,5,3
+14,3,Glasshouse Reverie,quad,native,15,13,10,3,0,0,29.3,51,4,3,1,5,5,1,4,2,1
+14,3,Glasshouse Reverie,stacker,human-casual,15,13,3,1,1,0,284.0,178,4,0,0,5,2,1,4,1,0
+14,3,Glasshouse Reverie,stacker,human-regular,15,14,2,1,1,0,305.2,309.0,5,0,0,5,1,1,4,1,0
+14,3,Glasshouse Reverie,stacker,human-strong,15,14,2,1,0,0,501.7,759.0,5,0,0,4,1,1,5,1,0
+14,3,Glasshouse Reverie,cascade,human-casual,15,15,15,6,0,0,61.9,38,5,5,1,5,5,4,5,5,1
+14,3,Glasshouse Reverie,cascade,human-regular,15,15,15,9,0,0,25.3,26,5,5,2,5,5,4,5,5,3
+14,3,Glasshouse Reverie,cascade,human-strong,15,15,15,8,0,0,18.6,27,5,5,2,5,5,4,5,5,2
+14,3,Glasshouse Reverie,quad,human-casual,15,7,5,3,0,0,50.6,32,1,1,1,4,2,0,2,2,2
+14,3,Glasshouse Reverie,quad,human-regular,15,11,8,4,0,0,61.9,68,4,3,1,4,3,1,3,2,2
+14,3,Glasshouse Reverie,quad,human-strong,15,13,11,3,0,0,34.0,51,4,4,1,5,5,1,4,2,1
+15,3,Gathering Storm,stacker,deliberate,15,14,14,0,0,0,105.4,109.0,5,5,0,5,5,0,4,4,0
+15,3,Gathering Storm,stacker,native,15,14,14,14,0,0,87.8,109.5,5,5,5,5,5,5,4,4,4
+15,3,Gathering Storm,cascade,steady,15,14,14,14,0,0,69.9,121.5,5,5,5,5,5,5,4,4,4
+15,3,Gathering Storm,expert,native,15,15,15,15,0,0,41.7,111,5,5,5,5,5,5,5,5,5
+15,3,Gathering Storm,quad,native,15,15,15,15,0,0,57.3,109,5,5,5,5,5,5,5,5,5
+15,3,Gathering Storm,stacker,human-casual,15,14,0,0,0,0,178.4,111.0,5,0,0,5,0,0,4,0,0
+15,3,Gathering Storm,stacker,human-regular,15,14,14,0,0,0,105.6,109.0,5,5,0,5,5,0,4,4,0
+15,3,Gathering Storm,stacker,human-strong,15,14,14,14,0,0,72.1,109.0,5,5,5,5,5,5,4,4,4
+15,3,Gathering Storm,cascade,human-casual,15,14,0,0,0,0,199.7,121.0,5,0,0,4,0,0,5,0,0
+15,3,Gathering Storm,cascade,human-regular,15,14,14,0,0,0,120.0,121.5,5,5,0,4,4,0,5,5,0
+15,3,Gathering Storm,cascade,human-strong,15,14,14,14,0,0,82.5,121.0,5,5,5,5,5,5,4,4,4
+15,3,Gathering Storm,quad,human-casual,15,10,0,0,0,0,174.4,110.5,4,0,0,3,0,0,3,0,0
+15,3,Gathering Storm,quad,human-regular,15,14,14,3,0,0,106.1,116.0,4,4,0,5,5,2,5,5,1
+15,3,Gathering Storm,quad,human-strong,15,13,13,13,0,0,69.6,111,5,5,5,4,4,4,4,4,4
+16,3,Amber Grove,stacker,deliberate,15,14,0,0,0,0,76.0,79.5,5,0,0,5,0,0,4,0,0
+16,3,Amber Grove,stacker,native,15,14,0,0,0,0,63.3,79.5,5,0,0,5,0,0,4,0,0
+16,3,Amber Grove,cascade,steady,15,15,0,0,0,0,53.0,91,5,0,0,5,0,0,5,0,0
+16,3,Amber Grove,expert,native,15,15,0,0,0,0,29.3,80,5,0,0,5,0,0,5,0,0
+16,3,Amber Grove,quad,native,15,15,12,11,0,0,43.2,84,5,4,4,5,5,5,5,3,2
+16,3,Amber Grove,stacker,human-casual,15,14,0,0,0,0,129.2,79.5,5,0,0,5,0,0,4,0,0
+16,3,Amber Grove,stacker,human-regular,15,14,0,0,0,0,76.2,79.5,5,0,0,5,0,0,4,0,0
+16,3,Amber Grove,stacker,human-strong,15,14,0,0,0,0,51.9,79.0,5,0,0,5,0,0,4,0,0
+16,3,Amber Grove,cascade,human-casual,15,15,0,0,0,0,147.7,88,5,0,0,5,0,0,5,0,0
+16,3,Amber Grove,cascade,human-regular,15,15,0,0,0,0,95.9,97,5,0,0,5,0,0,5,0,0
+16,3,Amber Grove,cascade,human-strong,15,15,0,0,0,0,62.9,91,5,0,0,5,0,0,5,0,0
+16,3,Amber Grove,quad,human-casual,15,11,6,5,0,0,130.1,82,4,2,1,3,1,1,4,3,3
+16,3,Amber Grove,quad,human-regular,15,15,13,11,0,0,78.4,85,5,5,4,5,5,5,5,3,2
+16,3,Amber Grove,quad,human-strong,15,15,12,10,0,0,53.0,85,5,4,3,5,5,5,5,3,2
+17,3,Halcyon Ascension,stacker,deliberate,15,15,15,0,0,0,129.5,136,5,5,0,5,5,0,5,5,0
+17,3,Halcyon Ascension,stacker,native,15,15,15,0,0,0,106.0,134,5,5,0,5,5,0,5,5,0
+17,3,Halcyon Ascension,cascade,steady,15,15,15,11,0,0,63.5,108,5,5,2,5,5,4,5,5,5
+17,3,Halcyon Ascension,expert,native,15,15,15,7,0,0,37.4,99,5,5,3,5,5,3,5,5,1
+17,3,Halcyon Ascension,quad,native,15,12,12,2,0,0,61.5,116.0,4,4,0,4,4,1,4,4,1
+17,3,Halcyon Ascension,stacker,human-casual,15,15,0,0,0,0,231.4,146,5,0,0,5,0,0,5,0,0
+17,3,Halcyon Ascension,stacker,human-regular,15,15,15,0,0,0,134.4,137,5,5,0,5,5,0,5,5,0
+17,3,Halcyon Ascension,stacker,human-strong,15,15,15,0,0,0,90.3,136,5,5,0,5,5,0,5,5,0
+17,3,Halcyon Ascension,cascade,human-casual,15,15,3,0,0,0,200.5,122,5,1,0,5,0,0,5,2,0
+17,3,Halcyon Ascension,cascade,human-regular,15,15,15,9,0,0,111.4,112,5,5,2,5,5,4,5,5,3
+17,3,Halcyon Ascension,cascade,human-strong,15,15,15,12,0,0,75.4,109,5,5,3,5,5,4,5,5,5
+17,3,Halcyon Ascension,quad,human-casual,15,8,4,0,0,0,179.1,113.5,3,1,0,2,1,0,3,2,0
+17,3,Halcyon Ascension,quad,human-regular,15,9,9,1,0,0,107.9,115,4,4,0,3,3,1,2,2,0
+17,3,Halcyon Ascension,quad,human-strong,15,11,11,2,0,0,73.0,117,4,4,0,3,3,1,4,4,1
+18,3,Summer Glow,stacker,deliberate,15,15,15,15,0,0,391.5,400,5,5,5,5,5,5,5,5,5
+18,3,Summer Glow,stacker,native,15,15,13,8,0,0,448.1,545,5,4,1,5,5,4,5,4,3
+18,3,Summer Glow,cascade,steady,15,15,15,12,0,0,155.9,260,5,5,5,5,5,4,5,5,3
+18,3,Summer Glow,expert,native,15,15,15,15,0,0,93.0,250,5,5,5,5,5,5,5,5,5
+18,3,Summer Glow,quad,native,15,14,13,9,0,0,130.2,244.5,5,4,3,4,4,3,5,5,3
+18,3,Summer Glow,stacker,human-casual,15,13,9,5,0,0,649.5,398,4,3,3,4,2,1,5,4,1
+18,3,Summer Glow,stacker,human-regular,15,15,13,13,0,0,388.5,399,5,4,4,5,4,4,5,5,5
+18,3,Summer Glow,stacker,human-strong,15,15,15,12,0,0,318.7,478,5,5,4,5,5,5,5,5,3
+18,3,Summer Glow,cascade,human-casual,15,11,7,3,0,0,374.1,220,4,3,1,4,2,1,3,2,1
+18,3,Summer Glow,cascade,human-regular,15,15,12,8,0,0,243.5,249,5,5,2,5,4,3,5,3,3
+18,3,Summer Glow,cascade,human-strong,15,14,14,9,0,0,186.8,270.0,5,5,3,4,4,2,5,5,4
+18,3,Summer Glow,quad,human-casual,15,6,1,0,0,0,412.2,263.5,1,0,0,3,1,0,2,0,0
+18,3,Summer Glow,quad,human-regular,15,12,9,5,0,0,232.7,255.5,4,4,2,5,2,1,3,3,2
+18,3,Summer Glow,quad,human-strong,15,13,12,7,0,0,167.4,261,4,4,2,5,5,5,4,3,0
+19,4,Blossom Foothills,stacker,deliberate,15,15,5,0,0,0,97.4,103,5,1,0,5,1,0,5,3,0
+19,4,Blossom Foothills,stacker,native,15,15,4,0,0,0,79.8,102,5,1,0,5,1,0,5,2,0
+19,4,Blossom Foothills,cascade,steady,15,15,15,13,0,0,47.8,83,5,5,4,5,5,4,5,5,5
+19,4,Blossom Foothills,expert,native,15,15,15,14,0,0,28.8,77,5,5,4,5,5,5,5,5,5
+19,4,Blossom Foothills,quad,native,15,13,4,0,0,0,45.8,88,5,2,0,5,1,0,3,1,0
+19,4,Blossom Foothills,stacker,human-casual,15,14,6,0,0,0,179.6,111.0,5,2,0,5,1,0,4,3,0
+19,4,Blossom Foothills,stacker,human-regular,15,15,4,0,0,0,97.6,103,5,1,0,5,1,0,5,2,0
+19,4,Blossom Foothills,stacker,human-strong,15,15,4,0,0,0,65.4,98,5,0,0,5,3,0,5,1,0
+19,4,Blossom Foothills,cascade,human-casual,15,15,15,11,0,0,143.8,89,5,5,2,5,5,5,5,5,4
+19,4,Blossom Foothills,cascade,human-regular,15,15,15,13,0,0,86.7,86,5,5,4,5,5,4,5,5,5
+19,4,Blossom Foothills,cascade,human-strong,15,15,15,13,0,0,57.0,86,5,5,4,5,5,4,5,5,5
+19,4,Blossom Foothills,quad,human-casual,15,10,4,0,0,0,136.2,86.5,4,1,0,4,1,0,2,2,0
+19,4,Blossom Foothills,quad,human-regular,15,12,6,0,0,0,83.1,89.0,5,3,0,5,2,0,2,1,0
+19,4,Blossom Foothills,quad,human-strong,15,12,5,0,0,0,50.9,82.5,5,2,0,5,2,0,2,1,0
+20,4,Verdant Rise,stacker,deliberate,15,15,12,2,0,0,242.2,253,5,5,2,5,3,0,5,4,0
+20,4,Verdant Rise,stacker,native,15,15,12,2,0,0,202.0,253,5,5,2,5,3,0,5,4,0
+20,4,Verdant Rise,cascade,steady,15,15,11,4,0,0,35.2,61,5,4,1,5,2,2,5,5,1
+20,4,Verdant Rise,expert,native,15,15,13,5,0,0,20.3,53,5,5,2,5,4,3,5,4,0
+20,4,Verdant Rise,quad,native,15,2,2,0,0,0,185.8,356.0,1,1,0,0,0,0,1,1,0
+20,4,Verdant Rise,stacker,human-casual,15,15,8,3,0,0,467.6,290,5,2,2,5,2,0,5,4,1
+20,4,Verdant Rise,stacker,human-regular,15,15,12,2,0,0,242.1,253,5,5,2,5,3,0,5,4,0
+20,4,Verdant Rise,stacker,human-strong,15,14,10,2,0,0,185.6,279.5,5,5,2,5,3,0,4,2,0
+20,4,Verdant Rise,cascade,human-casual,15,15,14,3,0,0,112.5,67,5,5,2,5,4,1,5,5,0
+20,4,Verdant Rise,cascade,human-regular,15,15,13,4,0,0,62.1,62,5,4,1,5,4,2,5,5,1
+20,4,Verdant Rise,cascade,human-strong,15,15,11,4,0,0,41.2,60,5,4,1,5,2,2,5,5,1
+20,4,Verdant Rise,quad,human-casual,15,1,1,1,0,0,602.7,381,0,0,0,0,0,0,1,1,1
+20,4,Verdant Rise,quad,human-regular,15,2,2,1,0,0,219.3,234.0,0,0,0,0,0,0,2,2,1
+20,4,Verdant Rise,quad,human-strong,15,2,2,1,0,0,207.2,331.0,0,0,0,1,1,1,1,1,0
+21,4,Ice Temple,stacker,deliberate,15,15,5,1,0,0,76.6,79,5,3,1,5,2,0,5,0,0
+21,4,Ice Temple,stacker,native,15,15,7,4,0,0,64.0,79,5,4,3,5,2,1,5,1,0
+21,4,Ice Temple,cascade,steady,15,14,11,7,0,0,33.1,56.0,5,4,2,5,5,3,4,2,2
+21,4,Ice Temple,expert,native,15,15,15,13,0,0,14.1,37,5,5,5,5,5,4,5,5,4
+21,4,Ice Temple,quad,native,15,1,0,0,0,0,221.2,401,0,0,0,1,0,0,0,0,0
+21,4,Ice Temple,stacker,human-casual,15,12,2,0,0,0,92.4,56.0,5,1,0,4,0,0,3,1,0
+21,4,Ice Temple,stacker,human-regular,15,15,5,1,0,0,76.7,79,5,3,1,5,2,0,5,0,0
+21,4,Ice Temple,stacker,human-strong,15,14,9,5,0,0,39.6,58.5,5,4,3,4,2,2,5,3,0
+21,4,Ice Temple,cascade,human-casual,15,14,2,1,0,0,104.3,63.0,4,0,0,5,2,1,5,0,0
+21,4,Ice Temple,cascade,human-regular,15,14,5,3,0,0,77.5,79.5,5,2,1,4,2,2,5,1,0
+21,4,Ice Temple,cascade,human-strong,15,13,10,6,0,0,37.6,54,5,4,2,5,4,2,3,2,2
+21,4,Ice Temple,quad,human-casual,15,0,0,0,0,0,,,0,0,0,0,0,0,0,0,0
+21,4,Ice Temple,quad,human-regular,15,1,0,0,0,0,474.2,497,0,0,0,1,0,0,0,0,0
+21,4,Ice Temple,quad,human-strong,15,0,0,0,0,0,,,0,0,0,0,0,0,0,0,0
+22,4,Alpine Night,stacker,deliberate,15,14,7,1,0,0,261.9,265.0,5,1,1,5,2,0,4,4,0
+22,4,Alpine Night,stacker,native,15,14,7,2,0,0,233.7,287.5,5,1,1,5,2,0,4,4,1
+22,4,Alpine Night,cascade,steady,15,15,13,10,0,0,31.6,54,5,4,2,5,5,4,5,4,4
+22,4,Alpine Night,expert,native,15,15,13,12,0,0,18.5,48,5,5,5,5,3,2,5,5,5
+22,4,Alpine Night,quad,native,15,3,0,0,0,0,93.0,178,1,0,0,1,0,0,1,0,0
+22,4,Alpine Night,stacker,human-casual,15,11,7,2,0,0,446.8,276,4,4,2,4,0,0,3,3,0
+22,4,Alpine Night,stacker,human-regular,15,14,7,2,0,0,280.8,287.5,5,1,1,5,2,0,4,4,1
+22,4,Alpine Night,stacker,human-strong,15,14,4,1,0,0,159.5,244.0,5,2,1,5,0,0,4,2,0
+22,4,Alpine Night,cascade,human-casual,15,15,14,10,0,0,91.3,55,5,5,4,5,5,2,5,4,4
+22,4,Alpine Night,cascade,human-regular,15,15,13,9,0,0,54.6,54,5,4,2,5,5,3,5,4,4
+22,4,Alpine Night,cascade,human-strong,15,15,13,9,0,0,37.6,54,5,4,2,5,5,3,5,4,4
+22,4,Alpine Night,quad,human-casual,15,2,0,0,0,0,305.0,193.5,1,0,0,0,0,0,1,0,0
+22,4,Alpine Night,quad,human-regular,15,5,4,2,0,0,160.3,168,1,1,0,1,1,1,3,2,1
+22,4,Alpine Night,quad,human-strong,15,4,1,1,0,0,133.1,214.0,0,0,0,2,1,1,2,0,0
+23,4,Everest Ascent,stacker,deliberate,15,14,14,0,0,0,85.8,89.5,5,5,0,5,5,0,4,4,0
+23,4,Everest Ascent,stacker,native,15,14,14,10,0,0,71.5,89.5,5,5,4,5,5,2,4,4,4
+23,4,Everest Ascent,cascade,steady,15,14,14,14,0,0,58.2,98.5,5,5,5,5,5,5,4,4,4
+23,4,Everest Ascent,expert,native,15,15,15,15,0,0,33.9,90,5,5,5,5,5,5,5,5,5
+23,4,Everest Ascent,quad,native,15,15,15,15,0,0,47.4,90,5,5,5,5,5,5,5,5,5
+23,4,Everest Ascent,stacker,human-casual,15,14,0,0,0,0,147.1,91.0,5,0,0,5,0,0,4,0,0
+23,4,Everest Ascent,stacker,human-regular,15,14,14,0,0,0,85.9,89.5,5,5,0,5,5,0,4,4,0
+23,4,Everest Ascent,stacker,human-strong,15,14,14,14,0,0,59.3,89.0,5,5,5,5,5,5,4,4,4
+23,4,Everest Ascent,cascade,human-casual,15,14,0,0,0,0,163.7,99.0,5,0,0,4,0,0,5,0,0
+23,4,Everest Ascent,cascade,human-regular,15,15,11,0,0,0,107.3,105,5,4,0,5,4,0,5,3,0
+23,4,Everest Ascent,cascade,human-strong,15,14,14,11,0,0,69.3,100.5,5,5,4,5,5,5,4,4,2
+23,4,Everest Ascent,quad,human-casual,15,10,0,0,0,0,142.7,90.5,4,0,0,3,0,0,3,0,0
+23,4,Everest Ascent,quad,human-regular,15,14,14,0,0,0,84.2,92.0,5,5,0,5,5,0,4,4,0
+23,4,Everest Ascent,quad,human-strong,15,14,14,14,0,0,56.7,92.0,5,5,5,5,5,5,4,4,4
+24,4,The High Coast,stacker,deliberate,15,15,15,0,0,0,60.1,61,5,5,0,5,5,0,5,5,0
+24,4,The High Coast,stacker,native,15,14,14,8,0,0,49.5,62.0,5,5,3,5,5,2,4,4,3
+24,4,The High Coast,cascade,steady,15,15,15,15,0,0,43.4,76,5,5,5,5,5,5,5,5,5
+24,4,The High Coast,expert,native,15,15,15,15,0,0,23.8,64,5,5,5,5,5,5,5,5,5
+24,4,The High Coast,quad,native,15,14,14,14,0,0,34.4,64.0,5,5,5,5,5,5,4,4,4
+24,4,The High Coast,stacker,human-casual,15,13,0,0,0,0,90.5,56,5,0,0,3,0,0,5,0,0
+24,4,The High Coast,stacker,human-regular,15,15,15,0,0,0,60.2,61,5,5,0,5,5,0,5,5,0
+24,4,The High Coast,stacker,human-strong,15,14,14,14,0,0,42.4,62.5,5,5,5,5,5,5,4,4,4
+24,4,The High Coast,cascade,human-casual,15,11,0,0,0,0,111.2,66,4,0,0,5,0,0,2,0,0
+24,4,The High Coast,cascade,human-regular,15,14,13,0,0,0,67.3,66.5,4,3,0,5,5,0,5,5,0
+24,4,The High Coast,cascade,human-strong,15,14,14,11,0,0,46.8,67.5,4,4,4,5,5,3,5,5,4
+24,4,The High Coast,quad,human-casual,15,6,0,0,0,0,102.7,65.5,2,0,0,1,0,0,3,0,0
+24,4,The High Coast,quad,human-regular,15,13,12,0,0,0,61.3,64,5,5,0,5,5,0,3,2,0
+24,4,The High Coast,quad,human-strong,15,14,14,13,0,0,40.2,64.0,5,5,5,5,5,5,4,4,3
+25,4,Garden Under Stone,stacker,deliberate,15,15,13,3,0,0,502.4,515,5,5,2,5,4,0,5,4,1
+25,4,Garden Under Stone,stacker,native,15,15,13,3,0,0,419.1,515,5,5,2,5,4,0,5,4,1
+25,4,Garden Under Stone,cascade,steady,15,15,15,9,0,0,67.5,115,5,5,3,5,5,3,5,5,3
+25,4,Garden Under Stone,expert,native,15,15,15,11,0,0,40.7,111,5,5,4,5,5,4,5,5,3
+25,4,Garden Under Stone,quad,native,15,0,0,0,0,0,,,0,0,0,0,0,0,0,0,0
+25,4,Garden Under Stone,stacker,human-casual,15,14,12,4,0,0,896.9,556.0,5,4,2,4,4,1,5,4,1
+25,4,Garden Under Stone,stacker,human-regular,15,15,13,3,0,0,501.9,515,5,5,2,5,4,0,5,4,1
+25,4,Garden Under Stone,stacker,human-strong,15,14,8,3,0,0,382.3,579.0,4,3,1,5,3,1,5,2,1
+25,4,Garden Under Stone,cascade,human-casual,15,15,14,8,0,0,184.6,112,5,5,4,5,5,2,5,4,2
+25,4,Garden Under Stone,cascade,human-regular,15,15,15,8,0,0,114.5,115,5,5,3,5,5,2,5,5,3
+25,4,Garden Under Stone,cascade,human-strong,15,15,15,8,0,0,79.6,115,5,5,3,5,5,3,5,5,2
+25,4,Garden Under Stone,quad,human-casual,15,0,0,0,0,0,,,0,0,0,0,0,0,0,0,0
+25,4,Garden Under Stone,quad,human-regular,15,0,0,0,0,0,,,0,0,0,0,0,0,0,0,0
+25,4,Garden Under Stone,quad,human-strong,15,1,1,0,0,0,260.4,395,0,0,0,1,1,0,0,0,0
+26,4,Winter Trial,stacker,deliberate,15,13,12,5,0,0,481.1,484,4,4,1,4,4,2,5,4,2
+26,4,Winter Trial,stacker,native,15,15,14,9,0,0,347.7,432,5,5,4,5,5,3,5,4,2
+26,4,Winter Trial,cascade,steady,15,15,13,10,0,0,174.6,295,5,4,2,5,5,4,5,4,4
+26,4,Winter Trial,expert,native,15,15,15,15,0,0,101.8,271,5,5,5,5,5,5,5,5,5
+26,4,Winter Trial,quad,native,15,14,11,5,0,0,146.6,282.5,4,4,2,5,3,1,5,4,2
+26,4,Winter Trial,stacker,human-casual,15,7,5,3,0,0,501.0,304,4,3,1,1,1,1,2,1,1
+26,4,Winter Trial,stacker,human-regular,15,13,12,8,0,0,421.4,427,4,4,2,4,3,3,5,5,3
+26,4,Winter Trial,stacker,human-strong,15,14,12,5,0,0,424.9,623.5,4,3,1,5,5,3,5,4,1
+26,4,Winter Trial,cascade,human-casual,15,8,5,2,0,0,382.6,234.5,4,2,1,2,1,0,2,2,1
+26,4,Winter Trial,cascade,human-regular,15,12,8,2,0,0,336.3,336.0,4,2,0,4,4,1,4,2,1
+26,4,Winter Trial,cascade,human-strong,15,14,13,7,0,0,212.8,308.0,5,4,1,5,5,2,4,4,4
+26,4,Winter Trial,quad,human-casual,15,1,1,1,0,0,218.6,134,0,0,0,1,1,1,0,0,0
+26,4,Winter Trial,quad,human-regular,15,5,4,1,0,0,246.8,273,1,1,1,2,2,0,2,1,0
+26,4,Winter Trial,quad,human-strong,15,12,8,7,0,0,167.9,264.0,4,3,2,4,3,3,4,2,2
+27,5,Lantern Sky,stacker,deliberate,15,15,3,0,0,0,132.4,137,5,0,0,5,1,0,5,2,0
+27,5,Lantern Sky,stacker,native,15,15,3,0,0,0,109.6,137,5,0,0,5,1,0,5,2,0
+27,5,Lantern Sky,cascade,steady,15,15,15,13,0,0,67.5,112,5,5,4,5,5,5,5,5,4
+27,5,Lantern Sky,expert,native,15,15,15,6,0,0,38.1,102,5,5,2,5,5,2,5,5,2
+27,5,Lantern Sky,quad,native,15,13,0,0,0,0,54.1,105,4,0,0,5,0,0,4,0,0
+27,5,Lantern Sky,stacker,human-casual,15,13,4,0,0,0,233.9,145,5,0,0,4,1,0,4,3,0
+27,5,Lantern Sky,stacker,human-regular,15,15,3,0,0,0,132.7,138,5,0,0,5,1,0,5,2,0
+27,5,Lantern Sky,stacker,human-strong,15,15,3,0,0,0,89.2,136,5,1,0,5,0,0,5,2,0
+27,5,Lantern Sky,cascade,human-casual,15,14,13,10,0,0,194.1,118.5,5,4,3,4,4,4,5,5,3
+27,5,Lantern Sky,cascade,human-regular,15,15,15,14,0,0,109.7,111,5,5,5,5,5,5,5,5,4
+27,5,Lantern Sky,cascade,human-strong,15,15,15,13,0,0,78.5,111,5,5,4,5,5,5,5,5,4
+27,5,Lantern Sky,quad,human-casual,15,7,0,0,0,0,190.3,121,3,0,0,3,0,0,1,0,0
+27,5,Lantern Sky,quad,human-regular,15,9,0,0,0,0,109.4,118,3,0,0,3,0,0,3,0,0
+27,5,Lantern Sky,quad,human-strong,15,13,0,0,0,0,72.6,116,4,0,0,5,0,0,4,0,0
+28,5,Mirror of Stars,stacker,deliberate,15,14,14,0,0,0,82.0,86.5,5,5,0,5,5,0,4,4,0
+28,5,Mirror of Stars,stacker,native,15,14,14,0,0,0,68.2,86.5,5,5,0,5,5,0,4,4,0
+28,5,Mirror of Stars,cascade,steady,15,14,14,0,0,0,55.4,91.5,5,5,0,5,5,0,4,4,0
+28,5,Mirror of Stars,expert,native,15,15,15,0,0,0,31.8,86,5,5,0,5,5,0,5,5,0
+28,5,Mirror of Stars,quad,native,15,15,15,8,0,0,46.8,88,5,5,3,5,5,2,5,5,3
+28,5,Mirror of Stars,stacker,human-casual,15,14,0,0,0,0,137.6,85.0,5,0,0,5,0,0,4,0,0
+28,5,Mirror of Stars,stacker,human-regular,15,14,14,0,0,0,82.0,86.5,5,5,0,5,5,0,4,4,0
+28,5,Mirror of Stars,stacker,human-strong,15,14,14,0,0,0,55.4,84.5,5,5,0,5,5,0,4,4,0
+28,5,Mirror of Stars,cascade,human-casual,15,15,0,0,0,0,152.9,92,5,0,0,5,0,0,5,0,0
+28,5,Mirror of Stars,cascade,human-regular,15,14,4,0,0,0,100.7,100.5,4,1,0,5,1,0,5,2,0
+28,5,Mirror of Stars,cascade,human-strong,15,14,14,0,0,0,65.9,93.5,5,5,0,5,5,0,4,4,0
+28,5,Mirror of Stars,quad,human-casual,15,10,0,0,0,0,141.2,90.0,3,0,0,4,0,0,3,0,0
+28,5,Mirror of Stars,quad,human-regular,15,15,14,0,0,0,83.6,91,5,4,0,5,5,0,5,5,0
+28,5,Mirror of Stars,quad,human-strong,15,14,14,7,0,0,54.3,87.5,5,5,2,5,5,2,4,4,3
+29,5,Aurora Passage,stacker,deliberate,15,6,0,0,4,0,1243.0,1287.0,3,0,0,2,0,0,1,0,0
+29,5,Aurora Passage,stacker,native,15,7,0,0,2,0,1445.3,1811,1,0,0,4,0,0,2,0,0
+29,5,Aurora Passage,cascade,steady,15,2,0,0,3,0,620.5,1060.0,1,0,0,1,0,0,0,0,0
+29,5,Aurora Passage,expert,native,15,14,0,0,1,0,472.4,1255.0,4,0,0,5,0,0,5,0,0
+29,5,Aurora Passage,quad,native,15,12,8,8,0,0,46.2,89.5,4,2,2,4,4,4,4,2,2
+29,5,Aurora Passage,stacker,human-casual,15,2,0,0,5,0,1102.0,683.0,0,0,0,1,0,0,1,0,0
+29,5,Aurora Passage,stacker,human-regular,15,5,0,0,4,0,1256.9,1307,3,0,0,1,0,0,1,0,0
+29,5,Aurora Passage,stacker,human-strong,15,9,0,0,2,0,895.8,1350,4,0,0,3,0,0,2,0,0
+29,5,Aurora Passage,cascade,human-casual,15,0,0,0,1,0,,,0,0,0,0,0,0,0,0,0
+29,5,Aurora Passage,cascade,human-regular,15,0,0,0,4,0,,,0,0,0,0,0,0,0,0,0
+29,5,Aurora Passage,cascade,human-strong,15,2,0,0,3,0,1103.7,1596.0,1,0,0,1,0,0,0,0,0
+29,5,Aurora Passage,quad,human-casual,15,9,7,1,0,0,121.3,78,2,1,0,3,3,0,4,3,1
+29,5,Aurora Passage,quad,human-regular,15,12,10,10,0,0,68.5,77.0,5,4,4,3,3,3,4,3,3
+29,5,Aurora Passage,quad,human-strong,15,11,9,9,0,0,48.1,80,4,3,3,4,4,4,3,2,2
+30,5,Nimbus Veil,stacker,deliberate,15,15,9,1,0,0,414.6,436,5,3,1,5,3,0,5,3,0
+30,5,Nimbus Veil,stacker,native,15,15,9,1,0,0,345.7,436,5,3,1,5,3,0,5,3,0
+30,5,Nimbus Veil,cascade,steady,15,15,13,5,0,0,46.6,73,5,4,2,5,5,3,5,4,0
+30,5,Nimbus Veil,expert,native,15,15,15,11,0,0,24.8,66,5,5,4,5,5,4,5,5,3
+30,5,Nimbus Veil,quad,native,15,1,1,0,0,0,223.3,415,0,0,0,0,0,0,1,1,0
+30,5,Nimbus Veil,stacker,human-casual,15,14,7,2,0,0,643.7,396.0,5,2,1,4,2,0,5,3,1
+30,5,Nimbus Veil,stacker,human-regular,15,15,9,1,0,0,415.2,436,5,3,1,5,3,0,5,3,0
+30,5,Nimbus Veil,stacker,human-strong,15,15,7,2,0,0,266.6,397,5,2,1,5,2,0,5,3,1
+30,5,Nimbus Veil,cascade,human-casual,15,15,14,11,0,0,124.8,75,5,5,3,5,4,4,5,5,4
+30,5,Nimbus Veil,cascade,human-regular,15,15,13,9,0,0,81.7,80,5,4,2,5,5,4,5,4,3
+30,5,Nimbus Veil,cascade,human-strong,15,15,13,5,0,0,55.0,73,5,4,2,5,5,3,5,4,0
+30,5,Nimbus Veil,quad,human-casual,15,0,0,0,0,0,,,0,0,0,0,0,0,0,0,0
+30,5,Nimbus Veil,quad,human-regular,15,1,0,0,0,0,447.8,488,0,0,0,0,0,0,1,0,0
+30,5,Nimbus Veil,quad,human-strong,15,1,1,1,0,0,241.7,386,0,0,0,1,1,1,0,0,0
+31,5,The Turning Suns,stacker,deliberate,15,0,0,0,0,0,,,0,0,0,0,0,0,0,0,0
+31,5,The Turning Suns,stacker,native,15,0,0,0,0,0,,,0,0,0,0,0,0,0,0,0
+31,5,The Turning Suns,cascade,steady,15,0,0,0,0,0,,,0,0,0,0,0,0,0,0,0
+31,5,The Turning Suns,expert,native,15,2,0,0,0,0,124.8,342.5,0,0,0,1,0,0,1,0,0
+31,5,The Turning Suns,quad,native,15,12,12,9,0,0,30.4,60.5,4,4,3,4,4,4,4,4,2
+31,5,The Turning Suns,stacker,human-casual,15,0,0,0,0,0,,,0,0,0,0,0,0,0,0,0
+31,5,The Turning Suns,stacker,human-regular,15,0,0,0,0,0,,,0,0,0,0,0,0,0,0,0
+31,5,The Turning Suns,stacker,human-strong,15,0,0,0,0,0,,,0,0,0,0,0,0,0,0,0
+31,5,The Turning Suns,cascade,human-casual,15,0,0,0,0,0,,,0,0,0,0,0,0,0,0,0
+31,5,The Turning Suns,cascade,human-regular,15,0,0,0,0,0,,,0,0,0,0,0,0,0,0,0
+31,5,The Turning Suns,cascade,human-strong,15,0,0,0,0,0,,,0,0,0,0,0,0,0,0,0
+31,5,The Turning Suns,quad,human-casual,15,6,0,0,0,0,93.2,59.5,1,0,0,3,0,0,2,0,0
+31,5,The Turning Suns,quad,human-regular,15,11,8,4,0,0,53.1,61,5,3,1,4,3,1,2,2,2
+31,5,The Turning Suns,quad,human-strong,15,12,11,9,0,0,36.2,60.5,4,4,3,4,4,4,4,3,2
+32,5,Ice Halo,stacker,deliberate,15,13,9,3,0,5,302.0,306,4,4,1,4,3,1,5,2,1
+32,5,Ice Halo,stacker,native,15,13,10,4,0,4,194.4,246,4,4,1,4,4,2,5,2,1
+32,5,Ice Halo,cascade,steady,15,15,15,15,0,0,34.0,58,5,5,5,5,5,5,5,5,5
+32,5,Ice Halo,expert,native,15,15,15,15,0,0,21.1,55,5,5,5,5,5,5,5,5,5
+32,5,Ice Halo,quad,native,15,3,0,0,0,0,118.8,224,1,0,0,1,0,0,1,0,0
+32,5,Ice Halo,stacker,human-casual,15,15,12,4,0,7,412.5,254,5,4,1,5,5,2,5,3,1
+32,5,Ice Halo,stacker,human-regular,15,13,9,3,0,5,301.4,306,4,4,1,4,3,1,5,2,1
+32,5,Ice Halo,stacker,human-strong,15,14,13,5,0,5,178.0,267.0,4,4,1,5,4,2,5,5,2
+32,5,Ice Halo,cascade,human-casual,15,15,15,15,0,0,102.4,62,5,5,5,5,5,5,5,5,5
+32,5,Ice Halo,cascade,human-regular,15,15,15,15,0,0,61.6,63,5,5,5,5,5,5,5,5,5
+32,5,Ice Halo,cascade,human-strong,15,15,15,15,0,0,39.9,58,5,5,5,5,5,5,5,5,5
+32,5,Ice Halo,quad,human-casual,15,1,0,0,0,0,397.2,253,1,0,0,0,0,0,0,0,0
+32,5,Ice Halo,quad,human-regular,15,1,0,0,0,0,280.6,300,1,0,0,0,0,0,0,0,0
+32,5,Ice Halo,quad,human-strong,15,1,0,0,0,0,196.7,318,0,0,0,1,0,0,0,0,0
+33,5,Atmosphere's End,stacker,deliberate,15,14,14,0,0,0,154.6,161.5,5,5,0,5,5,0,4,4,0
+33,5,Atmosphere's End,stacker,native,15,14,14,0,0,0,128.0,159.0,5,5,0,5,5,0,4,4,0
+33,5,Atmosphere's End,cascade,steady,15,15,15,14,0,0,72.4,123,5,5,4,5,5,5,5,5,5
+33,5,Atmosphere's End,expert,native,15,15,15,14,0,0,46.4,122,5,5,5,5,5,5,5,5,4
+33,5,Atmosphere's End,quad,native,15,8,8,0,0,0,74.3,141.0,4,4,0,1,1,0,3,3,0
+33,5,Atmosphere's End,stacker,human-casual,15,0,0,0,0,0,,,0,0,0,0,0,0,0,0,0
+33,5,Atmosphere's End,stacker,human-regular,15,14,14,0,0,0,154.8,161.5,5,5,0,5,5,0,4,4,0
+33,5,Atmosphere's End,stacker,human-strong,15,15,15,0,0,0,105.7,161,5,5,0,5,5,0,5,5,0
+33,5,Atmosphere's End,cascade,human-casual,15,3,0,0,0,0,215.4,132,0,0,0,1,0,0,2,0,0
+33,5,Atmosphere's End,cascade,human-regular,15,14,13,11,0,0,130.7,133.5,5,4,4,4,4,4,5,5,3
+33,5,Atmosphere's End,cascade,human-strong,15,15,15,14,0,0,91.4,134,5,5,4,5,5,5,5,5,5
+33,5,Atmosphere's End,quad,human-casual,15,0,0,0,0,0,,,0,0,0,0,0,0,0,0,0
+33,5,Atmosphere's End,quad,human-regular,15,7,7,0,0,0,128.5,138,2,2,0,0,0,0,5,5,0
+33,5,Atmosphere's End,quad,human-strong,15,7,7,0,0,0,85.8,137,3,3,0,1,1,0,3,3,0
+34,5,Where Color Falls,stacker,deliberate,15,11,8,3,0,0,574.2,580,4,4,1,4,3,1,3,1,1
+34,5,Where Color Falls,stacker,native,15,15,14,7,0,0,403.5,481,5,4,2,5,5,3,5,5,2
+34,5,Where Color Falls,cascade,steady,15,14,11,6,0,0,183.2,308.5,4,3,0,5,4,3,5,4,3
+34,5,Where Color Falls,expert,native,15,15,15,12,0,0,96.3,259,5,5,5,5,5,2,5,5,5
+34,5,Where Color Falls,quad,native,15,11,8,3,0,0,151.4,289,4,3,1,4,3,2,3,2,0
+34,5,Where Color Falls,stacker,human-casual,15,2,2,1,0,0,461.4,277.5,1,1,0,1,1,1,0,0,0
+34,5,Where Color Falls,stacker,human-regular,15,12,8,5,0,0,477.6,485.0,4,2,1,4,4,4,4,2,0
+34,5,Where Color Falls,stacker,human-strong,15,13,13,6,0,0,392.0,570,5,5,1,4,4,3,4,4,2
+34,5,Where Color Falls,cascade,human-casual,15,5,3,0,0,0,408.7,246,2,1,0,1,1,0,2,1,0
+34,5,Where Color Falls,cascade,human-regular,15,10,5,2,0,0,339.4,340.0,2,0,0,3,2,1,5,3,1
+34,5,Where Color Falls,cascade,human-strong,15,13,12,3,0,0,242.2,354,4,4,1,4,4,1,5,4,1
+34,5,Where Color Falls,quad,human-casual,15,1,0,0,0,0,429.7,272,0,0,0,1,0,0,0,0,0
+34,5,Where Color Falls,quad,human-regular,15,5,3,1,0,0,267.1,293,1,1,0,2,1,0,2,1,1
+34,5,Where Color Falls,quad,human-strong,15,6,4,1,0,0,213.1,333.5,2,1,1,2,2,0,2,1,0
+35,6,Galaxy Core,stacker,deliberate,15,14,0,0,0,0,134.6,140.0,5,0,0,5,0,0,4,0,0
+35,6,Galaxy Core,stacker,native,15,14,0,0,0,0,107.9,136.0,5,0,0,5,0,0,4,0,0
+35,6,Galaxy Core,cascade,steady,15,12,0,0,0,0,57.3,99.0,5,0,0,5,0,0,2,0,0
+35,6,Galaxy Core,expert,native,15,15,0,0,0,0,36.9,99,5,0,0,5,0,0,5,0,0
+35,6,Galaxy Core,quad,native,15,14,14,10,0,0,55.6,107.0,5,5,3,4,4,4,5,5,3
+35,6,Galaxy Core,stacker,human-casual,15,13,0,0,0,0,233.6,145,5,0,0,4,0,0,4,0,0
+35,6,Galaxy Core,stacker,human-regular,15,14,0,0,0,0,134.6,140.0,5,0,0,5,0,0,4,0,0
+35,6,Galaxy Core,stacker,human-strong,15,14,0,0,0,0,86.3,131.5,5,0,0,5,0,0,4,0,0
+35,6,Galaxy Core,cascade,human-casual,15,12,0,0,0,0,186.6,116.0,4,0,0,4,0,0,4,0,0
+35,6,Galaxy Core,cascade,human-regular,15,13,0,0,0,0,105.6,105,5,0,0,4,0,0,4,0,0
+35,6,Galaxy Core,cascade,human-strong,15,13,0,0,0,0,68.3,97,5,0,0,5,0,0,3,0,0
+35,6,Galaxy Core,quad,human-casual,15,9,9,7,0,0,177.0,113,2,2,1,4,4,4,3,3,2
+35,6,Galaxy Core,quad,human-regular,15,10,10,7,0,0,99.1,106.0,3,3,2,4,4,3,3,3,2
+35,6,Galaxy Core,quad,human-strong,15,13,12,10,0,0,66.0,107,4,4,3,5,4,4,4,4,3
+36,6,Cosmic Nocturne,stacker,deliberate,15,15,9,1,0,0,482.7,498,5,3,1,5,3,0,5,3,0
+36,6,Cosmic Nocturne,stacker,native,15,15,9,1,0,0,402.4,498,5,3,1,5,3,0,5,3,0
+36,6,Cosmic Nocturne,cascade,steady,15,15,14,4,0,0,53.5,88,5,4,2,5,5,2,5,5,0
+36,6,Cosmic Nocturne,expert,native,15,15,14,6,0,0,32.3,82,5,4,1,5,5,2,5,5,3
+36,6,Cosmic Nocturne,quad,native,15,0,0,0,0,0,,,0,0,0,0,0,0,0,0,0
+36,6,Cosmic Nocturne,stacker,human-casual,15,14,9,2,0,0,744.2,460.0,5,3,1,4,2,0,5,4,1
+36,6,Cosmic Nocturne,stacker,human-regular,15,15,9,1,0,0,482.6,498,5,3,1,5,3,0,5,3,0
+36,6,Cosmic Nocturne,stacker,human-strong,15,15,9,2,0,0,323.0,490,5,3,1,5,2,0,5,4,1
+36,6,Cosmic Nocturne,cascade,human-casual,15,15,15,8,0,0,142.6,87,5,5,1,5,5,4,5,5,3
+36,6,Cosmic Nocturne,cascade,human-regular,15,15,14,6,0,0,91.2,92,5,4,2,5,5,3,5,5,1
+36,6,Cosmic Nocturne,cascade,human-strong,15,15,14,4,0,0,63.3,88,5,4,2,5,5,2,5,5,0
+36,6,Cosmic Nocturne,quad,human-casual,15,0,0,0,0,0,,,0,0,0,0,0,0,0,0,0
+36,6,Cosmic Nocturne,quad,human-regular,15,0,0,0,0,0,,,0,0,0,0,0,0,0,0,0
+36,6,Cosmic Nocturne,quad,human-strong,15,0,0,0,0,0,,,0,0,0,0,0,0,0,0,0
+37,6,Stellar Flare,stacker,deliberate,15,15,13,0,0,0,82.5,84,5,4,0,5,5,0,5,4,0
+37,6,Stellar Flare,stacker,native,15,15,15,0,0,0,68.7,84,5,5,0,5,5,0,5,5,0
+37,6,Stellar Flare,cascade,steady,15,15,15,13,0,0,55.8,92,5,5,5,5,5,5,5,5,3
+37,6,Stellar Flare,expert,native,15,15,15,15,0,0,31.0,83,5,5,5,5,5,5,5,5,5
+37,6,Stellar Flare,quad,native,15,11,11,10,0,0,52.6,95,3,3,2,4,4,4,4,4,4
+37,6,Stellar Flare,stacker,human-casual,15,13,0,0,0,0,137.7,84,4,0,0,4,0,0,5,0,0
+37,6,Stellar Flare,stacker,human-regular,15,15,13,0,0,0,82.6,84,5,4,0,5,5,0,5,4,0
+37,6,Stellar Flare,stacker,human-strong,15,15,15,15,0,0,56.1,82,5,5,5,5,5,5,5,5,5
+37,6,Stellar Flare,cascade,human-casual,15,12,0,0,0,0,151.0,91.5,5,0,0,3,0,0,4,0,0
+37,6,Stellar Flare,cascade,human-regular,15,15,2,0,0,0,96.4,94,5,0,0,5,1,0,5,1,0
+37,6,Stellar Flare,cascade,human-strong,15,15,15,2,0,0,67.6,99,5,5,0,5,5,1,5,5,1
+37,6,Stellar Flare,quad,human-casual,15,0,0,0,0,0,,,0,0,0,0,0,0,0,0,0
+37,6,Stellar Flare,quad,human-regular,15,8,2,0,0,0,100.4,105.5,3,1,0,3,0,0,2,1,0
+37,6,Stellar Flare,quad,human-strong,15,8,8,2,0,0,61.9,94.5,2,2,1,2,2,0,4,4,1
+38,6,Blood Moon,stacker,deliberate,15,12,9,0,0,0,72.9,76.5,4,4,0,5,3,0,3,2,0
+38,6,Blood Moon,stacker,native,15,13,13,1,0,0,65.9,81,5,5,1,3,3,0,5,5,0
+38,6,Blood Moon,cascade,steady,15,13,13,11,0,0,55.8,95,4,4,3,5,5,5,4,4,3
+38,6,Blood Moon,expert,native,15,15,15,15,0,0,32.7,87,5,5,5,5,5,5,5,5,5
+38,6,Blood Moon,quad,native,15,10,10,10,0,0,50.6,94.0,4,4,4,3,3,3,3,3,3
+38,6,Blood Moon,stacker,human-casual,15,5,0,0,0,0,114.2,70,1,0,0,2,0,0,2,0,0
+38,6,Blood Moon,stacker,human-regular,15,12,9,0,0,0,73.0,76.5,4,4,0,5,3,0,3,2,0
+38,6,Blood Moon,stacker,human-strong,15,14,14,10,0,0,55.3,83.0,5,5,4,4,4,3,5,5,3
+38,6,Blood Moon,cascade,human-casual,15,0,0,0,0,0,,,0,0,0,0,0,0,0,0,0
+38,6,Blood Moon,cascade,human-regular,15,5,1,0,0,0,81.2,81,2,0,0,1,0,0,2,1,0
+38,6,Blood Moon,cascade,human-strong,15,12,12,5,0,0,62.5,90.0,3,3,2,5,5,2,4,4,1
+38,6,Blood Moon,quad,human-casual,15,0,0,0,0,0,,,0,0,0,0,0,0,0,0,0
+38,6,Blood Moon,quad,human-regular,15,2,2,0,0,0,73.1,78.5,1,1,0,0,0,0,1,1,0
+38,6,Blood Moon,quad,human-strong,15,8,8,4,0,0,60.8,94.0,3,3,2,3,3,2,2,2,0
+39,6,Dying Ember,stacker,deliberate,15,14,14,13,0,0,90.0,95.0,5,5,5,5,5,5,4,4,3
+39,6,Dying Ember,stacker,native,15,14,14,13,0,0,90.0,112.5,5,5,5,5,5,5,4,4,3
+39,6,Dying Ember,cascade,steady,15,13,13,10,0,0,90.0,156,5,5,3,5,5,4,3,3,3
+39,6,Dying Ember,expert,native,15,15,15,15,0,0,90.0,241,5,5,5,5,5,5,5,5,5
+39,6,Dying Ember,quad,native,15,10,2,1,0,0,90.0,172.0,2,1,0,4,0,0,4,1,1
+39,6,Dying Ember,stacker,human-casual,15,14,12,3,0,0,90.0,56.0,5,4,2,5,4,0,4,4,1
+39,6,Dying Ember,stacker,human-regular,15,14,14,13,0,0,90.0,95.0,5,5,5,5,5,5,4,4,3
+39,6,Dying Ember,stacker,human-strong,15,14,13,10,0,0,90.0,137.0,5,5,3,5,4,3,4,4,4
+39,6,Dying Ember,cascade,human-casual,15,13,1,0,0,0,90.0,54,5,0,0,3,1,0,5,0,0
+39,6,Dying Ember,cascade,human-regular,15,15,14,9,0,0,90.0,92,5,4,3,5,5,2,5,5,4
+39,6,Dying Ember,cascade,human-strong,15,14,12,8,0,0,90.0,131.5,5,5,3,5,4,2,4,3,3
+39,6,Dying Ember,quad,human-casual,15,9,2,0,0,0,90.0,58,3,1,0,4,1,0,2,0,0
+39,6,Dying Ember,quad,human-regular,15,14,4,2,0,0,90.0,100.0,5,2,1,5,0,0,4,2,1
+39,6,Dying Ember,quad,human-strong,15,10,1,0,0,0,90.0,144.5,3,0,0,3,0,0,4,1,0
+40,6,Aether Surge,stacker,deliberate,15,15,6,0,0,0,90.5,95,5,2,0,5,1,0,5,3,0
+40,6,Aether Surge,stacker,native,15,15,15,0,0,0,75.3,93,5,5,0,5,5,0,5,5,0
+40,6,Aether Surge,cascade,steady,15,15,15,13,0,0,61.7,105,5,5,4,5,5,4,5,5,5
+40,6,Aether Surge,expert,native,15,15,15,15,0,0,35.4,94,5,5,5,5,5,5,5,5,5
+40,6,Aether Surge,quad,native,15,12,12,9,0,0,59.5,108.5,4,4,3,5,5,3,3,3,3
+40,6,Aether Surge,stacker,human-casual,15,14,0,0,0,0,153.5,93.5,4,0,0,5,0,0,5,0,0
+40,6,Aether Surge,stacker,human-regular,15,15,7,0,0,0,90.3,95,5,3,0,5,1,0,5,3,0
+40,6,Aether Surge,stacker,human-strong,15,15,15,13,0,0,61.7,92,5,5,5,5,5,4,5,5,4
+40,6,Aether Surge,cascade,human-casual,15,8,0,0,0,0,164.0,100.0,3,0,0,1,0,0,4,0,0
+40,6,Aether Surge,cascade,human-regular,15,15,0,0,0,0,104.1,104,5,0,0,5,0,0,5,0,0
+40,6,Aether Surge,cascade,human-strong,15,15,15,0,0,0,72.5,105,5,5,0,5,5,0,5,5,0
+40,6,Aether Surge,quad,human-casual,15,4,0,0,0,0,169.7,105.5,0,0,0,3,0,0,1,0,0
+40,6,Aether Surge,quad,human-regular,15,8,1,0,0,0,95.6,104.5,3,0,0,2,0,0,3,1,0
+40,6,Aether Surge,quad,human-strong,15,9,8,2,0,0,67.3,109,2,2,1,5,4,0,2,2,1
+41,6,Loom of Heaven,stacker,deliberate,15,14,11,0,0,0,97.2,101.5,5,4,0,5,3,0,4,4,0
+41,6,Loom of Heaven,stacker,native,15,14,14,0,0,0,79.5,100.0,5,5,0,5,5,0,4,4,0
+41,6,Loom of Heaven,cascade,steady,15,15,15,0,0,0,42.1,75,5,5,0,5,5,0,5,5,0
+41,6,Loom of Heaven,expert,native,15,15,15,0,0,0,27.6,76,5,5,0,5,5,0,5,5,0
+41,6,Loom of Heaven,quad,native,15,15,15,10,0,0,40.3,77,5,5,3,5,5,4,5,5,3
+41,6,Loom of Heaven,stacker,human-casual,15,13,0,0,0,0,167.0,103,5,0,0,4,0,0,4,0,0
+41,6,Loom of Heaven,stacker,human-regular,15,14,11,0,0,0,96.9,101.5,5,4,0,5,3,0,4,4,0
+41,6,Loom of Heaven,stacker,human-strong,15,14,14,0,0,0,63.3,96.5,5,5,0,5,5,0,4,4,0
+41,6,Loom of Heaven,cascade,human-casual,15,12,2,0,0,0,137.0,84.0,5,1,0,3,1,0,4,0,0
+41,6,Loom of Heaven,cascade,human-regular,15,15,10,0,0,0,77.9,77,5,4,0,5,4,0,5,2,0
+41,6,Loom of Heaven,cascade,human-strong,15,15,15,0,0,0,52.1,79,5,5,0,5,5,0,5,5,0
+41,6,Loom of Heaven,quad,human-casual,15,9,0,0,0,0,134.3,85,4,0,0,3,0,0,2,0,0
+41,6,Loom of Heaven,quad,human-regular,15,13,13,7,0,0,74.6,80,4,4,2,5,5,3,4,4,2
+41,6,Loom of Heaven,quad,human-strong,15,15,15,10,0,0,48.0,77,5,5,3,5,5,4,5,5,3
+42,6,Twin-Sun Dunes,stacker,deliberate,15,15,4,4,0,0,115.9,118,5,2,2,5,2,2,5,0,0
+42,6,Twin-Sun Dunes,stacker,native,15,15,10,5,0,0,78.7,99,5,4,2,5,2,2,5,4,1
+42,6,Twin-Sun Dunes,cascade,steady,15,15,12,9,0,0,57.8,99,5,5,4,5,3,2,5,4,3
+42,6,Twin-Sun Dunes,expert,native,15,15,15,15,0,0,18.4,47,5,5,5,5,5,5,5,5,5
+42,6,Twin-Sun Dunes,quad,native,15,0,0,0,0,0,,,0,0,0,0,0,0,0,0,0
+42,6,Twin-Sun Dunes,stacker,human-casual,15,12,3,1,0,0,153.6,95.0,4,1,1,5,2,0,3,0,0
+42,6,Twin-Sun Dunes,stacker,human-regular,15,15,4,4,0,0,115.9,118,5,2,2,5,2,2,5,0,0
+42,6,Twin-Sun Dunes,stacker,human-strong,15,15,10,6,0,0,79.2,117,5,4,2,5,2,2,5,4,2
+42,6,Twin-Sun Dunes,cascade,human-casual,15,10,2,0,0,0,100.7,60.5,4,0,0,2,1,0,4,1,0
+42,6,Twin-Sun Dunes,cascade,human-regular,15,15,5,3,0,0,105.2,104,5,3,3,5,0,0,5,2,0
+42,6,Twin-Sun Dunes,cascade,human-strong,15,15,11,6,0,0,73.9,103,5,5,4,5,2,0,5,4,2
+42,6,Twin-Sun Dunes,quad,human-casual,15,0,0,0,0,0,,,0,0,0,0,0,0,0,0,0
+42,6,Twin-Sun Dunes,quad,human-regular,15,0,0,0,0,0,,,0,0,0,0,0,0,0,0,0
+42,6,Twin-Sun Dunes,quad,human-strong,15,0,0,0,0,0,,,0,0,0,0,0,0,0,0,0
+43,6,Celestial Chrysalis,stacker,deliberate,15,3,3,2,0,0,25.8,26,1,1,1,1,1,0,1,1,1
+43,6,Celestial Chrysalis,stacker,native,15,2,2,2,0,0,14.1,16.5,1,1,1,0,0,0,1,1,1
+43,6,Celestial Chrysalis,cascade,steady,15,14,7,6,0,0,47.0,79.0,5,2,2,4,3,3,5,2,1
+43,6,Celestial Chrysalis,expert,native,15,15,5,3,0,0,28.3,76,5,1,1,5,2,0,5,2,2
+43,6,Celestial Chrysalis,quad,native,15,4,3,2,0,0,19.2,34.5,1,0,0,3,3,2,0,0,0
+43,6,Celestial Chrysalis,stacker,human-casual,15,1,1,1,0,0,12.1,7,1,1,1,0,0,0,0,0,0
+43,6,Celestial Chrysalis,stacker,human-regular,15,3,3,2,0,0,25.8,26,1,1,1,1,1,0,1,1,1
+43,6,Celestial Chrysalis,stacker,human-strong,15,1,1,1,0,0,5.6,7,1,1,1,0,0,0,0,0,0
+43,6,Celestial Chrysalis,cascade,human-casual,15,6,5,3,0,0,62.4,36.5,3,2,1,1,1,1,2,2,1
+43,6,Celestial Chrysalis,cascade,human-regular,15,10,7,5,0,0,37.7,36.0,4,2,2,3,3,2,3,2,1
+43,6,Celestial Chrysalis,cascade,human-strong,15,12,7,6,0,0,26.8,36.0,4,2,2,4,3,3,4,2,1
+43,6,Celestial Chrysalis,quad,human-casual,15,2,1,1,0,0,59.8,37.5,2,1,1,0,0,0,0,0,0
+43,6,Celestial Chrysalis,quad,human-regular,15,5,2,2,0,0,57.5,61,2,1,1,2,1,1,1,0,0
+43,6,Celestial Chrysalis,quad,human-strong,15,4,2,2,0,0,41.0,63.0,0,0,0,2,2,2,2,0,0
+44,6,Silent Drift,stacker,deliberate,15,5,0,0,5,0,1498.6,1560,2,0,0,1,0,0,2,0,0
+44,6,Silent Drift,stacker,native,15,6,0,0,4,0,1392.6,1738.5,2,0,0,2,0,0,2,0,0
+44,6,Silent Drift,cascade,steady,15,2,0,0,2,0,986.0,1685.5,1,0,0,1,0,0,0,0,0
+44,6,Silent Drift,expert,native,15,14,0,0,1,0,667.1,1785.0,5,0,0,5,0,0,4,0,0
+44,6,Silent Drift,quad,native,15,10,7,7,0,0,43.4,85.0,3,2,2,3,3,3,4,2,2
+44,6,Silent Drift,stacker,human-casual,15,2,0,0,7,0,1362.4,847.0,0,0,0,0,0,0,2,0,0
+44,6,Silent Drift,stacker,human-regular,15,4,0,0,7,0,1241.0,1294.0,2,0,0,1,0,0,1,0,0
+44,6,Silent Drift,stacker,human-strong,15,7,0,0,3,0,1118.1,1682,4,0,0,2,0,0,1,0,0
+44,6,Silent Drift,cascade,human-casual,15,0,0,0,1,0,,,0,0,0,0,0,0,0,0,0
+44,6,Silent Drift,cascade,human-regular,15,1,0,0,3,0,1640.0,1626,0,0,0,1,0,0,0,0,0
+44,6,Silent Drift,cascade,human-strong,15,2,0,0,1,0,1243.0,1799.5,1,0,0,1,0,0,0,0,0
+44,6,Silent Drift,quad,human-casual,15,7,7,0,0,0,126.8,82,1,1,0,3,3,0,3,3,0
+44,6,Silent Drift,quad,human-regular,15,10,7,6,0,0,85.0,92.5,4,2,1,2,2,2,4,3,3
+44,6,Silent Drift,quad,human-strong,15,9,8,8,0,0,50.4,83,4,3,3,3,3,3,2,2,2
+45,6,Eclipse Horizon,stacker,deliberate,15,14,12,0,0,0,173.2,177.0,5,5,0,4,2,0,5,5,0
+45,6,Eclipse Horizon,stacker,native,15,14,14,0,0,0,140.6,175.5,5,5,0,4,4,0,5,5,0
+45,6,Eclipse Horizon,cascade,steady,15,15,15,14,0,0,86.9,146,5,5,5,5,5,4,5,5,5
+45,6,Eclipse Horizon,expert,native,15,15,15,11,0,0,49.0,131,5,5,4,5,5,3,5,5,4
+45,6,Eclipse Horizon,quad,native,15,5,5,0,0,0,78.1,147,2,2,0,2,2,0,1,1,0
+45,6,Eclipse Horizon,stacker,human-casual,15,1,0,0,0,0,221.7,136,0,0,0,1,0,0,0,0,0
+45,6,Eclipse Horizon,stacker,human-regular,15,14,12,0,0,0,173.0,177.0,5,5,0,4,2,0,5,5,0
+45,6,Eclipse Horizon,stacker,human-strong,15,15,15,0,0,0,119.6,179,5,5,0,5,5,0,5,5,0
+45,6,Eclipse Horizon,cascade,human-casual,15,2,1,0,0,0,196.9,121.0,0,0,0,1,0,0,1,1,0
+45,6,Eclipse Horizon,cascade,human-regular,15,15,15,5,0,0,153.1,151,5,5,1,5,5,1,5,5,3
+45,6,Eclipse Horizon,cascade,human-strong,15,15,15,14,0,0,97.2,144,5,5,5,5,5,4,5,5,5
+45,6,Eclipse Horizon,quad,human-casual,15,0,0,0,0,0,,,0,0,0,0,0,0,0,0,0
+45,6,Eclipse Horizon,quad,human-regular,15,5,5,0,0,0,145.4,158,2,2,0,0,0,0,3,3,0
+45,6,Eclipse Horizon,quad,human-strong,15,6,6,0,0,0,99.9,156.0,4,4,0,1,1,0,1,1,0
+46,6,The Painted Giants,stacker,deliberate,15,14,11,0,0,0,82.0,86.5,5,4,0,5,4,0,4,3,0
+46,6,The Painted Giants,stacker,native,15,14,14,0,0,0,68.2,86.5,5,5,0,5,5,0,4,4,0
+46,6,The Painted Giants,cascade,steady,15,14,14,0,0,0,54.1,89.0,5,5,0,5,5,0,4,4,0
+46,6,The Painted Giants,expert,native,15,15,15,0,0,0,31.9,85,5,5,0,5,5,0,5,5,0
+46,6,The Painted Giants,quad,native,15,15,15,8,0,0,46.8,88,5,5,3,5,5,2,5,5,3
+46,6,The Painted Giants,stacker,human-casual,15,14,0,0,0,0,137.5,85.0,5,0,0,5,0,0,4,0,0
+46,6,The Painted Giants,stacker,human-regular,15,14,11,0,0,0,82.0,86.5,5,4,0,5,4,0,4,3,0
+46,6,The Painted Giants,stacker,human-strong,15,14,14,0,0,0,55.4,84.5,5,5,0,5,5,0,4,4,0
+46,6,The Painted Giants,cascade,human-casual,15,15,0,0,0,0,153.9,95,5,0,0,5,0,0,5,0,0
+46,6,The Painted Giants,cascade,human-regular,15,15,1,0,0,0,102.1,101,5,0,0,5,0,0,5,1,0
+46,6,The Painted Giants,cascade,human-strong,15,14,14,0,0,0,64.6,92.5,5,5,0,5,5,0,4,4,0
+46,6,The Painted Giants,quad,human-casual,15,8,0,0,0,0,138.0,87.5,3,0,0,3,0,0,2,0,0
+46,6,The Painted Giants,quad,human-regular,15,15,10,0,0,0,83.6,92,5,4,0,5,5,0,5,1,0
+46,6,The Painted Giants,quad,human-strong,15,14,14,7,0,0,54.3,87.5,5,5,2,5,5,2,4,4,3
+47,6,The Singularity,stacker,deliberate,15,11,6,2,0,9,647.5,659,4,3,2,2,0,0,5,3,0
+47,6,The Singularity,stacker,native,15,11,5,2,0,6,553.2,679,4,1,1,2,1,1,5,3,0
+47,6,The Singularity,cascade,steady,15,15,15,15,0,0,80.9,135,5,5,5,5,5,5,5,5,5
+47,6,The Singularity,expert,native,15,15,15,14,0,0,50.0,134,5,5,5,5,5,5,5,5,4
+47,6,The Singularity,quad,native,15,0,0,0,0,0,,,0,0,0,0,0,0,0,0,0
+47,6,The Singularity,stacker,human-casual,15,13,4,0,0,10,1028.8,641,5,1,0,5,2,0,3,1,0
+47,6,The Singularity,stacker,human-regular,15,12,6,4,0,7,681.5,701.0,4,2,2,3,2,2,5,2,0
+47,6,The Singularity,stacker,human-strong,15,13,7,1,0,10,467.5,712,4,3,1,4,0,0,5,4,0
+47,6,The Singularity,cascade,human-casual,15,15,15,13,0,2,231.0,140,5,5,5,5,5,4,5,5,4
+47,6,The Singularity,cascade,human-regular,15,15,15,14,0,0,140.2,140,5,5,5,5,5,5,5,5,4
+47,6,The Singularity,cascade,human-strong,15,15,15,13,0,0,93.0,131,5,5,4,5,5,4,5,5,5
+47,6,The Singularity,quad,human-casual,15,0,0,0,0,0,,,0,0,0,0,0,0,0,0,0
+47,6,The Singularity,quad,human-regular,15,0,0,0,0,0,,,0,0,0,0,0,0,0,0,0
+47,6,The Singularity,quad,human-strong,15,0,0,0,0,0,,,0,0,0,0,0,0,0,0,0
+48,6,Comet Chase,stacker,deliberate,15,7,4,2,0,0,499.5,511,2,2,1,3,1,1,2,1,0
+48,6,Comet Chase,stacker,native,15,11,11,4,0,0,386.8,481,3,3,1,3,3,2,5,5,1
+48,6,Comet Chase,cascade,steady,15,15,14,11,0,0,177.6,307,5,5,4,5,4,4,5,5,3
+48,6,Comet Chase,expert,native,15,15,15,14,0,0,102.5,270,5,5,5,5,5,4,5,5,5
+48,6,Comet Chase,quad,native,15,7,6,4,0,0,156.9,296,2,2,2,3,3,2,2,1,0
+48,6,Comet Chase,stacker,human-casual,15,3,1,0,0,0,616.9,376,0,0,0,1,1,0,2,0,0
+48,6,Comet Chase,stacker,human-regular,15,7,3,1,0,0,518.6,523,3,2,0,2,1,1,2,0,0
+48,6,Comet Chase,stacker,human-strong,15,12,10,5,0,0,340.3,509.5,4,4,3,3,3,1,5,3,1
+48,6,Comet Chase,cascade,human-casual,15,3,1,0,0,0,408.8,246,1,0,0,1,1,0,1,0,0
+48,6,Comet Chase,cascade,human-regular,15,7,6,4,0,0,268.0,264,3,2,1,2,2,2,2,2,1
+48,6,Comet Chase,cascade,human-strong,15,13,11,5,0,0,216.9,312,5,4,2,4,4,1,4,3,2
+48,6,Comet Chase,quad,human-casual,15,0,0,0,0,0,,,0,0,0,0,0,0,0,0,0
+48,6,Comet Chase,quad,human-regular,15,2,2,0,0,0,245.3,259.0,1,1,0,1,1,0,0,0,0
+48,6,Comet Chase,quad,human-strong,15,5,4,1,0,0,181.3,294,3,2,0,0,0,0,2,2,1
+49,7,Fluid Dreams,stacker,deliberate,15,14,0,0,0,0,142.1,146.5,5,0,0,5,0,0,4,0,0
+49,7,Fluid Dreams,stacker,native,15,14,0,0,0,0,116.2,145.0,5,0,0,5,0,0,4,0,0
+49,7,Fluid Dreams,cascade,steady,15,14,0,0,0,0,64.8,108.0,5,0,0,5,0,0,4,0,0
+49,7,Fluid Dreams,expert,native,15,15,0,0,0,0,42.1,110,5,0,0,5,0,0,5,0,0
+49,7,Fluid Dreams,quad,native,15,12,10,8,0,0,59.8,113.5,4,4,2,3,3,3,5,3,3
+49,7,Fluid Dreams,stacker,human-casual,15,13,0,0,0,0,246.7,153,5,0,0,4,0,0,4,0,0
+49,7,Fluid Dreams,stacker,human-regular,15,14,0,0,0,0,142.1,147.0,5,0,0,5,0,0,4,0,0
+49,7,Fluid Dreams,stacker,human-strong,15,14,0,0,0,0,95.0,144.0,5,0,0,5,0,0,4,0,0
+49,7,Fluid Dreams,cascade,human-casual,15,9,0,0,0,0,195.4,118,3,0,0,3,0,0,3,0,0
+49,7,Fluid Dreams,cascade,human-regular,15,12,0,0,0,0,118.1,118.5,5,0,0,4,0,0,3,0,0
+49,7,Fluid Dreams,cascade,human-strong,15,15,0,0,0,0,76.2,109,5,0,0,5,0,0,5,0,0
+49,7,Fluid Dreams,quad,human-casual,15,8,8,5,0,0,188.1,119.5,2,2,1,4,4,2,2,2,2
+49,7,Fluid Dreams,quad,human-regular,15,11,10,6,0,0,109.1,117,4,4,2,4,4,2,3,2,2
+49,7,Fluid Dreams,quad,human-strong,15,12,9,8,0,0,70.2,112.0,3,3,2,4,3,3,5,3,3
+50,7,Star Cradle,stacker,deliberate,15,14,6,0,0,0,125.4,131.0,5,2,0,5,1,0,4,3,0
+50,7,Star Cradle,stacker,native,15,14,14,0,0,0,104.6,131.0,5,5,0,5,5,0,4,4,0
+50,7,Star Cradle,cascade,steady,15,14,14,14,0,0,84.9,140.0,5,5,5,5,5,5,4,4,4
+50,7,Star Cradle,expert,native,15,15,15,15,0,0,49.5,133,5,5,5,5,5,5,5,5,5
+50,7,Star Cradle,quad,native,15,12,12,12,0,0,68.9,131.0,4,4,4,4,4,4,4,4,4
+50,7,Star Cradle,stacker,human-casual,15,0,0,0,0,0,,,0,0,0,0,0,0,0,0,0
+50,7,Star Cradle,stacker,human-regular,15,14,6,0,0,0,125.6,131.0,5,2,0,5,1,0,4,3,0
+50,7,Star Cradle,stacker,human-strong,15,14,14,12,0,0,86.0,131.0,5,5,5,5,5,3,4,4,4
+50,7,Star Cradle,cascade,human-casual,15,0,0,0,0,0,,,0,0,0,0,0,0,0,0,0
+50,7,Star Cradle,cascade,human-regular,15,14,0,0,0,0,137.8,140.0,5,0,0,5,0,0,4,0,0
+50,7,Star Cradle,cascade,human-strong,15,15,15,1,0,0,97.2,142,5,5,0,5,5,1,5,5,0
+50,7,Star Cradle,quad,human-casual,15,0,0,0,0,0,,,0,0,0,0,0,0,0,0,0
+50,7,Star Cradle,quad,human-regular,15,7,3,0,0,0,134.4,146,2,1,0,4,1,0,1,1,0
+50,7,Star Cradle,quad,human-strong,15,10,10,9,0,0,81.8,131.0,4,4,4,3,3,2,3,3,3
+51,7,Golden Convergence,stacker,deliberate,15,14,12,0,0,0,76.0,79.5,5,4,0,5,5,0,4,3,0
+51,7,Golden Convergence,stacker,native,15,14,14,0,0,0,63.3,79.5,5,5,0,5,5,0,4,4,0
+51,7,Golden Convergence,cascade,steady,15,15,15,10,0,0,52.6,88,5,5,4,5,5,5,5,5,1
+51,7,Golden Convergence,expert,native,15,15,15,15,0,0,29.3,80,5,5,5,5,5,5,5,5,5
+51,7,Golden Convergence,quad,native,15,15,15,15,0,0,41.7,79,5,5,5,5,5,5,5,5,5
+51,7,Golden Convergence,stacker,human-casual,15,14,0,0,0,0,129.2,79.5,5,0,0,5,0,0,4,0,0
+51,7,Golden Convergence,stacker,human-regular,15,14,12,0,0,0,76.2,79.5,5,4,0,5,5,0,4,3,0
+51,7,Golden Convergence,stacker,human-strong,15,14,14,13,0,0,51.9,79.0,5,5,4,5,5,5,4,4,4
+51,7,Golden Convergence,cascade,human-casual,15,14,0,0,0,0,149.4,91.5,5,0,0,4,0,0,5,0,0
+51,7,Golden Convergence,cascade,human-regular,15,15,0,0,0,0,97.8,97,5,0,0,5,0,0,5,0,0
+51,7,Golden Convergence,cascade,human-strong,15,14,14,0,0,0,62.4,91.0,5,5,0,5,5,0,4,4,0
+51,7,Golden Convergence,quad,human-casual,15,12,0,0,0,0,125.7,80.0,5,0,0,3,0,0,4,0,0
+51,7,Golden Convergence,quad,human-regular,15,14,12,0,0,0,74.7,80.5,5,4,0,5,5,0,4,3,0
+51,7,Golden Convergence,quad,human-strong,15,15,15,12,0,0,50.2,80,5,5,4,5,5,5,5,5,3
+52,7,Voltage Storm,stacker,deliberate,15,1,0,0,0,0,170.3,167,0,0,0,0,0,0,1,0,0
+52,7,Voltage Storm,stacker,native,15,2,0,0,0,0,175.3,210.5,1,0,0,0,0,0,1,0,0
+52,7,Voltage Storm,cascade,steady,15,14,8,6,0,0,67.5,118.0,5,5,5,5,1,1,4,2,0
+52,7,Voltage Storm,expert,native,15,15,9,6,0,0,40.6,110,5,4,3,5,3,2,5,2,1
+52,7,Voltage Storm,quad,native,15,0,0,0,0,0,,,0,0,0,0,0,0,0,0,0
+52,7,Voltage Storm,stacker,human-casual,15,0,0,0,0,0,,,0,0,0,0,0,0,0,0,0
+52,7,Voltage Storm,stacker,human-regular,15,1,0,0,0,0,169.4,167,0,0,0,0,0,0,1,0,0
+52,7,Voltage Storm,stacker,human-strong,15,2,0,0,0,0,164.9,250.5,1,0,0,1,0,0,0,0,0
+52,7,Voltage Storm,cascade,human-casual,15,8,8,7,0,0,100.7,60.5,4,4,4,3,3,3,1,1,0
+52,7,Voltage Storm,cascade,human-regular,15,14,8,6,0,0,138.0,131.5,5,4,3,4,3,2,5,1,1
+52,7,Voltage Storm,cascade,human-strong,15,13,9,5,0,0,87.8,128,5,5,4,4,3,1,4,1,0
+52,7,Voltage Storm,quad,human-casual,15,1,1,0,0,0,188.3,119,0,0,0,0,0,0,1,1,0
+52,7,Voltage Storm,quad,human-regular,15,0,0,0,0,0,,,0,0,0,0,0,0,0,0,0
+52,7,Voltage Storm,quad,human-strong,15,1,0,0,0,0,128.8,209,1,0,0,0,0,0,0,0,0
+53,7,Murmuration,stacker,deliberate,15,15,4,0,0,0,56.9,58,5,2,0,5,1,0,5,1,0
+53,7,Murmuration,stacker,native,15,15,15,0,0,0,47.8,58,5,5,0,5,5,0,5,5,0
+53,7,Murmuration,cascade,steady,15,15,15,6,0,0,42.6,71,5,5,2,5,5,2,5,5,2
+53,7,Murmuration,expert,native,15,15,15,15,0,0,22.6,61,5,5,5,5,5,5,5,5,5
+53,7,Murmuration,quad,native,15,14,14,13,0,0,33.0,61.5,4,4,4,5,5,4,5,5,5
+53,7,Murmuration,stacker,human-casual,15,15,0,0,0,0,93.2,57,5,0,0,5,0,0,5,0,0
+53,7,Murmuration,stacker,human-regular,15,15,4,0,0,0,56.9,58,5,2,0,5,1,0,5,1,0
+53,7,Murmuration,stacker,human-strong,15,15,15,8,0,0,39.9,60,5,5,3,5,5,2,5,5,3
+53,7,Murmuration,cascade,human-casual,15,15,0,0,0,0,108.3,63,5,0,0,5,0,0,5,0,0
+53,7,Murmuration,cascade,human-regular,15,15,0,0,0,0,71.8,68,5,0,0,5,0,0,5,0,0
+53,7,Murmuration,cascade,human-strong,15,15,14,1,0,0,49.6,68,5,5,0,5,5,1,5,4,0
+53,7,Murmuration,quad,human-casual,15,6,0,0,0,0,97.9,62.0,3,0,0,1,0,0,2,0,0
+53,7,Murmuration,quad,human-regular,15,12,3,0,0,0,61.3,66.0,4,1,0,3,0,0,5,2,0
+53,7,Murmuration,quad,human-strong,15,14,13,7,0,0,41.0,63.5,4,4,3,5,4,1,5,5,3
+54,7,Serenity Passage,stacker,deliberate,15,14,12,3,0,0,277.4,284.5,5,5,1,4,3,1,5,4,1
+54,7,Serenity Passage,stacker,native,15,14,10,2,0,0,229.8,284.5,5,4,1,4,2,0,5,4,1
+54,7,Serenity Passage,cascade,steady,15,15,14,7,0,0,39.7,69,5,5,2,5,5,3,5,4,2
+54,7,Serenity Passage,expert,native,15,15,15,5,0,0,22.9,57,5,5,1,5,5,1,5,5,3
+54,7,Serenity Passage,quad,native,15,1,1,0,0,0,212.9,399,0,0,0,0,0,0,1,1,0
+54,7,Serenity Passage,stacker,human-casual,15,12,8,1,0,0,422.3,260.0,4,4,1,3,2,0,5,2,0
+54,7,Serenity Passage,stacker,human-regular,15,14,11,3,0,0,275.7,284.5,5,4,1,4,3,1,5,4,1
+54,7,Serenity Passage,stacker,human-strong,15,14,10,2,0,0,169.5,257.5,5,4,1,4,2,0,5,4,1
+54,7,Serenity Passage,cascade,human-casual,15,15,14,7,0,0,123.8,75,5,4,2,5,5,2,5,5,3
+54,7,Serenity Passage,cascade,human-regular,15,15,14,7,0,0,65.8,68,5,5,2,5,5,3,5,4,2
+54,7,Serenity Passage,cascade,human-strong,15,15,14,7,0,0,46.5,68,5,5,2,5,5,3,5,4,2
+54,7,Serenity Passage,quad,human-casual,15,1,1,0,0,0,671.5,430,1,1,0,0,0,0,0,0,0
+54,7,Serenity Passage,quad,human-regular,15,1,1,0,0,0,299.9,327,1,1,0,0,0,0,0,0,0
+54,7,Serenity Passage,quad,human-strong,15,2,0,0,0,0,317.8,507.0,0,0,0,1,0,0,1,0,0
+55,7,Indra's Net,stacker,deliberate,15,15,13,0,0,0,392.0,408,5,5,0,5,5,0,5,3,0
+55,7,Indra's Net,stacker,native,15,15,15,5,0,0,320.8,397,5,5,2,5,5,1,5,5,2
+55,7,Indra's Net,cascade,steady,15,15,15,12,0,0,188.8,312,5,5,5,5,5,3,5,5,4
+55,7,Indra's Net,expert,native,15,15,15,15,0,0,111.5,290,5,5,5,5,5,5,5,5,5
+55,7,Indra's Net,quad,native,15,3,0,0,0,0,224.8,429,1,0,0,1,0,0,1,0,0
+55,7,Indra's Net,stacker,human-casual,15,1,0,0,0,0,303.3,185,1,0,0,0,0,0,0,0,0
+55,7,Indra's Net,stacker,human-regular,15,15,12,0,0,0,383.9,396,5,4,0,5,5,0,5,3,0
+55,7,Indra's Net,stacker,human-strong,15,14,13,2,0,0,278.9,414.0,5,4,1,5,5,0,4,4,1
+55,7,Indra's Net,cascade,human-casual,15,13,1,0,0,0,521.1,315,4,0,0,4,0,0,5,1,0
+55,7,Indra's Net,cascade,human-regular,15,15,15,8,0,0,323.5,320,5,5,2,5,5,2,5,5,4
+55,7,Indra's Net,cascade,human-strong,15,15,15,13,0,0,219.2,311,5,5,4,5,5,5,5,5,4
+55,7,Indra's Net,quad,human-casual,15,0,0,0,0,0,,,0,0,0,0,0,0,0,0,0
+55,7,Indra's Net,quad,human-regular,15,1,0,0,0,0,527.1,566,1,0,0,0,0,0,0,0,0
+55,7,Indra's Net,quad,human-strong,15,2,0,0,0,0,265.5,424.5,0,0,0,0,0,0,2,0,0
+56,7,Chromatic Impasto,stacker,deliberate,15,9,4,0,0,0,499.8,502,3,2,0,4,1,0,2,1,0
+56,7,Chromatic Impasto,stacker,native,15,13,8,4,0,0,475.2,561,5,3,0,4,3,2,4,2,2
+56,7,Chromatic Impasto,cascade,steady,15,14,10,5,0,0,181.4,298.5,5,4,2,5,3,2,4,3,1
+56,7,Chromatic Impasto,expert,native,15,15,15,14,0,0,104.9,275,5,5,4,5,5,5,5,5,5
+56,7,Chromatic Impasto,quad,native,15,8,5,3,0,0,159.2,301.0,2,2,1,3,2,2,3,1,0
+56,7,Chromatic Impasto,stacker,human-casual,15,0,0,0,0,0,,,0,0,0,0,0,0,0,0,0
+56,7,Chromatic Impasto,stacker,human-regular,15,8,4,2,0,0,475.9,478.0,3,0,0,1,1,0,4,3,2
+56,7,Chromatic Impasto,stacker,human-strong,15,12,8,4,0,0,439.2,643.0,3,2,1,5,3,2,4,3,1
+56,7,Chromatic Impasto,cascade,human-casual,15,0,0,0,0,0,,,0,0,0,0,0,0,0,0,0
+56,7,Chromatic Impasto,cascade,human-regular,15,9,8,3,0,0,229.1,230,2,2,0,4,3,0,3,3,3
+56,7,Chromatic Impasto,cascade,human-strong,15,13,6,4,0,0,250.3,367,5,1,0,5,3,3,3,2,1
+56,7,Chromatic Impasto,quad,human-casual,15,0,0,0,0,0,,,0,0,0,0,0,0,0,0,0
+56,7,Chromatic Impasto,quad,human-regular,15,3,0,0,0,0,306.4,328,1,0,0,1,0,0,1,0,0
+56,7,Chromatic Impasto,quad,human-strong,15,4,1,0,0,0,229.5,361.5,2,1,0,1,0,0,1,0,0
+57,8,Chromadelic Gateway,stacker,deliberate,15,14,3,0,0,0,76.0,79.5,5,0,0,5,2,0,4,1,0
+57,8,Chromadelic Gateway,stacker,native,15,14,14,0,0,0,63.3,79.0,5,5,0,5,5,0,4,4,0
+57,8,Chromadelic Gateway,cascade,steady,15,15,15,0,0,0,52.5,88,5,5,0,5,5,0,5,5,0
+57,8,Chromadelic Gateway,expert,native,15,15,15,0,0,0,29.3,80,5,5,0,5,5,0,5,5,0
+57,8,Chromadelic Gateway,quad,native,15,15,15,9,0,0,41.7,79,5,5,3,5,5,4,5,5,2
+57,8,Chromadelic Gateway,stacker,human-casual,15,14,0,0,0,0,129.2,79.5,5,0,0,5,0,0,4,0,0
+57,8,Chromadelic Gateway,stacker,human-regular,15,14,3,0,0,0,76.2,79.0,5,0,0,5,2,0,4,1,0
+57,8,Chromadelic Gateway,stacker,human-strong,15,14,14,0,0,0,51.9,79.0,5,5,0,5,5,0,4,4,0
+57,8,Chromadelic Gateway,cascade,human-casual,15,13,0,0,0,0,149.4,90,4,0,0,4,0,0,5,0,0
+57,8,Chromadelic Gateway,cascade,human-regular,15,15,0,0,0,0,95.0,97,5,0,0,5,0,0,5,0,0
+57,8,Chromadelic Gateway,cascade,human-strong,15,15,15,0,0,0,62.5,91,5,5,0,5,5,0,5,5,0
+57,8,Chromadelic Gateway,quad,human-casual,15,11,0,0,0,0,123.9,80,4,0,0,3,0,0,4,0,0
+57,8,Chromadelic Gateway,quad,human-regular,15,15,7,0,0,0,75.2,81,5,1,0,5,4,0,5,2,0
+57,8,Chromadelic Gateway,quad,human-strong,15,14,14,9,0,0,49.9,80.0,5,5,3,5,5,4,4,4,2
+58,8,Neon Dusk,stacker,deliberate,15,15,10,3,0,0,60.0,63,5,2,0,5,4,2,5,4,1
+58,8,Neon Dusk,stacker,native,15,15,11,4,0,0,60.0,75,5,3,0,5,4,2,5,4,2
+58,8,Neon Dusk,cascade,steady,15,15,9,2,0,0,60.0,103,5,2,1,5,4,0,5,3,1
+58,8,Neon Dusk,expert,native,15,15,14,13,0,0,60.0,160,5,4,3,5,5,5,5,5,5
+58,8,Neon Dusk,quad,native,15,4,2,0,0,0,60.0,114.0,2,1,0,1,0,0,1,1,0
+58,8,Neon Dusk,stacker,human-casual,15,13,2,0,0,0,60.0,37,4,1,0,4,0,0,5,1,0
+58,8,Neon Dusk,stacker,human-regular,15,15,10,2,0,0,60.0,63,5,2,0,5,4,2,5,4,0
+58,8,Neon Dusk,stacker,human-strong,15,15,8,6,0,0,60.0,90,5,2,1,5,4,3,5,2,2
+58,8,Neon Dusk,cascade,human-casual,15,7,0,0,0,0,60.0,37,2,0,0,3,0,0,2,0,0
+58,8,Neon Dusk,cascade,human-regular,15,14,4,0,0,0,60.0,60.5,5,2,0,5,1,0,4,1,0
+58,8,Neon Dusk,cascade,human-strong,15,15,8,2,0,0,60.0,88,5,0,0,5,4,1,5,4,1
+58,8,Neon Dusk,quad,human-casual,15,2,0,0,0,0,60.0,37.5,0,0,0,1,0,0,1,0,0
+58,8,Neon Dusk,quad,human-regular,15,7,0,0,0,0,60.0,64,3,0,0,3,0,0,1,0,0
+58,8,Neon Dusk,quad,human-strong,15,6,2,0,0,0,60.0,96.5,2,1,0,2,0,0,2,1,0
+59,8,Rainlit Streets,stacker,deliberate,15,13,7,0,0,0,173.3,179,5,3,0,5,2,0,3,2,0
+59,8,Rainlit Streets,stacker,native,15,13,9,1,0,0,145.5,180,4,2,0,5,4,1,4,3,0
+59,8,Rainlit Streets,cascade,steady,15,15,14,8,0,0,94.6,162,5,4,3,5,5,1,5,5,4
+59,8,Rainlit Streets,expert,native,15,15,15,15,0,0,54.1,145,5,5,5,5,5,5,5,5,5
+59,8,Rainlit Streets,quad,native,15,2,0,0,0,0,74.2,139.0,1,0,0,0,0,0,1,0,0
+59,8,Rainlit Streets,stacker,human-casual,15,2,0,0,0,0,210.1,128.0,0,0,0,1,0,0,1,0,0
+59,8,Rainlit Streets,stacker,human-regular,15,13,7,0,0,0,173.4,179,5,3,0,5,1,0,3,3,0
+59,8,Rainlit Streets,stacker,human-strong,15,15,14,2,0,0,126.3,186,5,4,1,5,5,0,5,5,1
+59,8,Rainlit Streets,cascade,human-casual,15,0,0,0,0,0,,,0,0,0,0,0,0,0,0,0
+59,8,Rainlit Streets,cascade,human-regular,15,13,8,2,0,0,142.5,143,4,3,0,5,3,0,4,2,2
+59,8,Rainlit Streets,cascade,human-strong,15,15,14,4,0,0,102.0,148,5,5,2,5,5,0,5,4,2
+59,8,Rainlit Streets,quad,human-casual,15,0,0,0,0,0,,,0,0,0,0,0,0,0,0,0
+59,8,Rainlit Streets,quad,human-regular,15,0,0,0,0,0,,,0,0,0,0,0,0,0,0,0
+59,8,Rainlit Streets,quad,human-strong,15,4,0,0,0,0,107.9,170.0,1,0,0,0,0,0,3,0,0
+60,8,Last Light,stacker,deliberate,15,2,0,0,0,0,563.8,567.0,1,0,0,1,0,0,0,0,0
+60,8,Last Light,stacker,native,15,5,2,0,0,0,400.9,487,0,0,0,3,2,0,2,0,0
+60,8,Last Light,cascade,steady,15,11,7,2,0,0,215.0,374,4,3,1,4,2,1,3,2,0
+60,8,Last Light,expert,native,15,15,15,12,0,0,115.9,292,5,5,4,5,5,3,5,5,5
+60,8,Last Light,quad,native,15,9,4,3,0,0,169.2,324,4,1,1,4,3,2,1,0,0
+60,8,Last Light,stacker,human-casual,15,0,0,0,0,0,,,0,0,0,0,0,0,0,0,0
+60,8,Last Light,stacker,human-regular,15,0,0,0,0,0,,,0,0,0,0,0,0,0,0,0
+60,8,Last Light,stacker,human-strong,15,9,5,2,0,0,451.4,675,4,1,0,2,1,0,3,3,2
+60,8,Last Light,cascade,human-casual,15,0,0,0,0,0,,,0,0,0,0,0,0,0,0,0
+60,8,Last Light,cascade,human-regular,15,5,4,1,0,0,270.8,261,4,3,1,1,1,0,0,0,0
+60,8,Last Light,cascade,human-strong,15,7,5,2,0,0,236.1,341,1,1,0,3,2,1,3,2,1
+60,8,Last Light,quad,human-casual,15,0,0,0,0,0,,,0,0,0,0,0,0,0,0,0
+60,8,Last Light,quad,human-regular,15,1,1,0,0,0,289.5,295,0,0,0,0,0,0,1,1,0
+60,8,Last Light,quad,human-strong,15,6,1,1,0,0,206.9,323.5,1,1,1,3,0,0,2,0,0

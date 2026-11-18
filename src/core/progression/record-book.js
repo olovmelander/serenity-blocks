@@ -20,10 +20,16 @@ export function validRun(id, run) {
         && (!run.flags || (isScoreInt(run.flags) && !(run.flags & ~15)))
         && (!run.checksum || Number.isInteger(run.checksum));
 }
+// Older completions keep their stars and history. Only the recorded board can claim a time.
+function isCurrentOrbTime(run) {
+    return run.assisted === false && run.timeBoard === N.ODYSSEY_LEVEL_TIME_PREFIX + run.level
+        && Boolean(BOARDS[run.timeBoard]);
+}
+
 export function localOrbBest(book, levelId, excludeId = null) {
     let best = null;
     for (const [id, run] of Object.entries(book?.runs || {})) {
-        if (id === excludeId || run.mode !== 'odyssey' || run.level !== Number(levelId) || run.assisted !== false
+        if (id === excludeId || run.mode !== 'odyssey' || run.level !== Number(levelId) || !isCurrentOrbTime(run)
             || !Number.isSafeInteger(run.timeMs) || run.timeMs <= 0) continue;
         best = best === null ? run.timeMs : Math.min(best, run.timeMs);
     }
@@ -100,9 +106,9 @@ export function assessRecords(book = {}, owner = null) {
             values.odyssey_stars = Math.max(values.odyssey_stars, r.stars || 0);
             details[4] = r.stars || 0;
             best(N.ODYSSEY_TOTAL_STARS, r.stars || 0, [...details], id);
-            if (r.assisted === false && BOARDS[N.ODYSSEY_LEVEL_TIME_PREFIX + r.level]) {
+            if (isCurrentOrbTime(r)) {
                 details[4] = r.timeMs;
-                best(N.ODYSSEY_LEVEL_TIME_PREFIX + r.level, r.timeMs, details, id);
+                best(r.timeBoard, r.timeMs, details, id);
             }
             continue;
         }

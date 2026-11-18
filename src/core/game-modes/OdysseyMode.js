@@ -111,6 +111,7 @@ import {
     configureOdysseyBoardPresentation, prepareOdysseyOpponentPresentation, resetOdysseyRoundPresentation,
 } from '../../rendering/phaser/odyssey-board-presentation.js';
 import steamService from '../steam/steam-service.js';
+import { STEAM_LEADERBOARDS } from '../steam/steam-catalogue.js';
 import { recordOwner, runIdFor } from '../progression/record-book.js';
 import {
     showCinematicLoadingOverlay,
@@ -3651,6 +3652,7 @@ export class OdysseyMode extends BaseGameMode {
             return;
         }
         const time = Number(results.time);
+        const ranksTime = isOdysseyTimeBoardRun(session.levelConfig, results);
         await this.deps.highScoreManager?.saveCompletion(runIdFor(session), {
             mode: 'odyssey',
             owner: recordOwner(steamService),
@@ -3661,7 +3663,8 @@ export class OdysseyMode extends BaseGameMode {
             duration: Math.max(0, Math.round(time || 0)),
             stars: this.odysseyState.getTotalStars(),
             timeMs: Math.max(0, Math.round((time || 0) * 1000)),
-            assisted: !isOdysseyTimeBoardRun(session.levelConfig, results),
+            timeBoard: ranksTime ? STEAM_LEADERBOARDS.ODYSSEY_LEVEL_TIME_PREFIX + session.levelId : null,
+            assisted: !ranksTime,
         });
     }
 
