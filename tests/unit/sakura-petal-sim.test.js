@@ -1075,3 +1075,233 @@ describe('Sakura petal simulation', () => {
         });
     });
 });
+
+/**
+ * The air's share (sakura-weather.js `fall`): on a still night most of the crowns' own petals stay
+ * on the bough. `env.fall` (0..1) is the share of the AMBIENT petals kept falling; the ones above
+ * it go idle as each comes to the end of its fall, and let go again when the share rises.
+ */
+describe('Sakura petal simulation: the air\'s share of falling petals', () => {
+    const CROWNS = new Float32Array([-14, 11, -6, 0.2, 12, 10, -18, 0.6, 2, 12, 6, 0.9]);
+    const WIND = Object.freeze({
+        windX: 0.96, windZ: 0.28, breeze: 0.9, gust: 0,
+    });
+    /** A garden's worth: crowns to fall from, a bank and a lake, ambient petals and a reserve. */
+    const garden = (overrides = {}) => createSim({
+        count: 420,
+        reserve: 120,
+        crownPoints: CROWNS,
+        surface: (x, z) => (z < -10 ? 0 : 0.6),
+        waterLevel: 0,
+        seed: 23,
+        ...overrides,
+    });
+    const ambientStates = (sim) => Array.from(sim.state.slice(0, sim.ambient));
+    const idleAmbient = (sim) => ambientStates(sim).filter((state) => state === PETAL_IDLE).length;
+    const inBounds = (sim, index) => {
+        const { bounds } = sim;
+        const o = index * 3;
+        return sim.position[o] >= bounds.minX - 0.5 && sim.position[o] <= bounds.maxX + 0.5
+            && sim.position[o + 2] >= bounds.minZ - 0.5 && sim.position[o + 2] <= bounds.maxZ + 0.5
+            && sim.position[o + 1] <= bounds.maxY + 0.5;
+    };
+
+    it('steps exactly as it always did when the air gives no share, or all of it', () => {
+        const events = (sim, step) => {
+            if (step % 45 === 10) sim.spawn(1, 4, -8, 2, 3, -1, 0.9);
+        };
+        const reference = garden();
+        const twins = [{ fall: 1 }, { fall: undefined }, { fall: NaN }, { fall: null }, { fall: 'most' },
+            { fall: Infinity }, { fall: 7 }].map((extra) => ({ extra, sim: garden() }));
+        for (let step = 0; step < 60 * 40; step += 1) {
+            const env = {
+                ...WIND, gust: step % 400 < 60 ? 3 : 0, fields: step % 300 < 20 ? [WHIRL] : [],
+            };
+            events(reference, step);
+            reference.step(STEP, env);
+            for (const { extra, sim } of twins) {
+                events(sim, step);
+                sim.step(STEP, { ...env, ...extra });
+            }
+            if (step % 600 === 599) {
+                for (const { extra, sim } of twins) {
+                    expect(snapshot(sim), `fall ${String(extra.fall)} at step ${step}`).toEqual(snapshot(reference));
+                }
+            }
+        }
+        // No petal of the crowns ever waited: with all of them falling, none is ever hidden.
+        expect(idleAmbient(reference)).toBe(0);
+        for (const { sim } of twins) expect(sim.fall).toBe(1);
+        expectHealthy(reference);
+    });
+
+    it('keeps the share falling and lets the rest wait in the crowns, each at the end of its own fall', () => {
+        const sim = garden();
+        const { ambient } = sim;
+        const share = 0.4;
+        const falling = ambient * share;
+        expect(idleAmbient(sim)).toBe(0);
+        let previous = ambientStates(sim);
+        const hiddenFrom = { fade: 0, air: 0, other: 0 };
+        const waiting = [];
+        for (let step = 0; step < 60 * 90; step += 1) {
+            const wasInBounds = previous.map((_, index) => inBounds(sim, index));
+            sim.step(STEP, { ...WIND, fall: share });
+            const now = ambientStates(sim);
+            for (let index = 0; index < ambient; index += 1) {
+                if (now[index] === PETAL_IDLE && previous[index] !== PETAL_IDLE) {
+                    // Only a petal above the share ever waits...
+                    expect(index).toBeGreaterThanOrEqual(falling);
+                    // ...and only once its fall is over: faded out where it lay, or blown out of the
+                    // garden. None is taken out of the air in view, none off the grass at full size.
+                    if (previous[index] === PETAL_FADE) hiddenFrom.fade += 1;
+                    else if (previous[index] === PETAL_AIR && !wasInBounds[index]) hiddenFrom.air += 1;
+                    else hiddenFrom.other += 1;
+                }
+                // One that waits stays waiting while the share stays where it is.
+                if (previous[index] === PETAL_IDLE) expect(now[index]).toBe(PETAL_IDLE);
+            }
+            previous = now;
+            if (step % 60 === 59) waiting.push(idleAmbient(sim));
+        }
+        expect(hiddenFrom.other).toBe(0);
+        expect(hiddenFrom.fade).toBeGreaterThan(100);
+        // The crowns thin out a petal at a time (never a cliff), and end at the share exactly.
+        for (let second = 1; second < waiting.length; second += 1) {
+            expect(waiting[second]).toBeGreaterThanOrEqual(waiting[second - 1]);
+            expect(waiting[second] - waiting[second - 1]).toBeLessThan(ambient * 0.2);
+        }
+        expect(waiting[0]).toBeLessThan(ambient * 0.1);
+        expect(waiting.at(-1)).toBe(ambient - Math.ceil(falling));
+        const states = ambientStates(sim);
+        states.forEach((state, index) => {
+            if (index < falling) expect(state, `petal ${index}`).not.toBe(PETAL_IDLE);
+            else expect(state, `petal ${index}`).toBe(PETAL_IDLE);
+        });
+        // A waiting petal is not drawn; the reserve is as it was.
+        for (let index = Math.ceil(falling); index < ambient; index += 1) {
+            expect(sim.outPosition[index * 4 + 3]).toBe(0);
+        }
+        expect(sim.counts().idle).toBe(sim.reserve + ambient - Math.ceil(falling));
+        expect(sim.fall).toBe(share);
+        expectHealthy(sim);
+    });
+
+    it('lets them go again from the crowns when the air freshens, a few at a time as it turns', () => {
+        const sim = garden();
+        const { ambient } = sim;
+        run(sim, 90, { ...WIND, fall: 0.3 });
+        const waited = idleAmbient(sim);
+        expect(waited).toBe(ambient - Math.ceil(ambient * 0.3));
+        // The air turns over twenty seconds, as one air melts into the next.
+        let mostAtOnce = 0;
+        let last = waited;
+        for (let step = 0; step < 60 * 20; step += 1) {
+            const fall = 0.3 + 0.7 * ((step + 1) / (60 * 20));
+            const before = ambientStates(sim);
+            sim.step(STEP, { ...WIND, fall });
+            const now = ambientStates(sim);
+            for (let index = 0; index < ambient; index += 1) {
+                if (before[index] === PETAL_IDLE && now[index] !== PETAL_IDLE) {
+                    // It lets go into the air, from a crown, whole.
+                    expect(now[index]).toBe(PETAL_AIR);
+                    const entry = petal(sim, index);
+                    const crown = [0, 4, 8].some((o) => (
+                        Math.abs(entry.x - CROWNS[o]) < 0.8 && Math.abs(entry.z - CROWNS[o + 2]) < 0.8
+                        && entry.y <= CROWNS[o + 1] + 1e-6 && entry.y > CROWNS[o + 1] - 0.8));
+                    expect(crown, `petal ${index} at ${entry.x}, ${entry.y}, ${entry.z}`).toBe(true);
+                    expect(entry.drawn).toBeGreaterThan(0);
+                    expect(index).toBeLessThan(ambient * fall);
+                }
+            }
+            const waiting = idleAmbient(sim);
+            mostAtOnce = Math.max(mostAtOnce, last - waiting);
+            expect(waiting).toBeLessThanOrEqual(last);
+            last = waiting;
+        }
+        expect(last).toBe(0);
+        // (Three hundred petals over twelve hundred frames: never a curtain of them in one.)
+        expect(mostAtOnce).toBeLessThanOrEqual(2);
+        // Freshening all at once (a capture that pins another air) releases them all in one step.
+        const pinned = garden();
+        run(pinned, 90, { ...WIND, fall: 0 });
+        expect(idleAmbient(pinned)).toBe(ambient);
+        expect(pinned.counts().air).toBe(0);
+        pinned.step(STEP, { ...WIND, fall: 1 });
+        expect(idleAmbient(pinned)).toBe(0);
+        expect(pinned.counts().air).toBe(ambient);
+        expectHealthy(pinned);
+    });
+
+    it('holds a share outside 0..1 to it, and leaves the game\'s own petals alone whatever the air', () => {
+        const still = garden();
+        const below = garden();
+        for (let step = 0; step < 60 * 60; step += 1) {
+            still.step(STEP, { ...WIND, fall: 0 });
+            below.step(STEP, { ...WIND, fall: -5 });
+        }
+        expect(snapshot(below)).toEqual(snapshot(still));
+        expect(below.fall).toBe(0);
+        // Not a petal of the crowns' own is in the air or on the ground...
+        expect(idleAmbient(still)).toBe(still.ambient);
+        expect(still.counts()).toEqual({
+            idle: still.count, air: 0, rest: 0, afloat: 0, fade: 0,
+        });
+        // ...and an event still throws its petals, which fall, lie and go back to the reserve.
+        const thrown = [];
+        for (let index = 0; index < 40; index += 1) thrown.push(still.spawn(index * 0.2 - 4, 5, -4, 1, 2, 0, 0.9));
+        expect(thrown.every((index) => index >= still.ambient)).toBe(true);
+        still.step(STEP, { ...WIND, fall: 0 });
+        expect(still.counts().air).toBe(40);
+        run(still, 30, { ...WIND, fall: 0 });
+        expect(still.counts()).toEqual({
+            idle: still.count, air: 0, rest: 0, afloat: 0, fade: 0,
+        });
+        expect(idleAmbient(still)).toBe(still.ambient);
+        expectHealthy(still);
+    });
+
+    it('is the same night twice for the same air, and stays healthy when the share is nonsense', () => {
+        const air = (t) => 0.5 + 0.5 * Math.sin(t * 0.35);
+        const first = garden();
+        const second = garden();
+        run(first, 50, (t) => ({ ...WIND, fall: air(t) }));
+        run(second, 50, (t) => ({ ...WIND, fall: air(t) }));
+        expect(snapshot(second)).toEqual(snapshot(first));
+        expect(idleAmbient(first)).toBeGreaterThan(0);
+        // A share that jumps about, and is sometimes not a number at all.
+        const wild = garden({ seed: 31 });
+        const dice = seededRandom(77);
+        const shares = [NaN, Infinity, -Infinity, undefined, null, 'half', {}, [], -3, 9];
+        for (let step = 0; step < 60 * 60; step += 1) {
+            const roll = dice();
+            const fall = roll < 0.1 ? shares[Math.floor(dice() * shares.length)] : dice();
+            if (step % 50 === 0) wild.spawn(0, 5, -3, dice() - 0.5, 2, dice() - 0.5, 0.8);
+            wild.step(STEP, { ...WIND, gust: roll > 0.97 ? 3 : 0, fall });
+            expect(wild.fall >= 0 && wild.fall <= 1).toBe(true);
+        }
+        expectHealthy(wild);
+        const counts = wild.counts();
+        expect(counts.idle + counts.air + counts.rest + counts.afloat + counts.fade).toBe(wild.count);
+    });
+
+    it('carries no memory of the air across a snapshot: a twin that adopts one goes on the same', () => {
+        const sim = garden();
+        run(sim, 40, { ...WIND, fall: 0.5 });
+        const twin = garden();
+        twin.adopt(sim.snapshot());
+        sim.rng = seededRandom(5);
+        twin.rng = seededRandom(5);
+        for (let step = 0; step < 60 * 20; step += 1) {
+            const fall = step < 600 ? 0.5 : 0.9;
+            sim.step(STEP, { ...WIND, fall });
+            twin.step(STEP, { ...WIND, fall });
+        }
+        expect(snapshot(twin)).toEqual(snapshot(sim));
+        // A reset opens the garden as ever (the opening picture is not thinned by the last air).
+        sim.reset();
+        expect(idleAmbient(sim)).toBe(0);
+        expect(sim.counts().idle).toBe(sim.reserve);
+        expectHealthy(sim);
+    });
+});
