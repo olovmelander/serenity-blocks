@@ -349,3 +349,102 @@ console, WebGPU validation, WGSL or TSL message in any capture. New gate:
 WGSL and GLSL node builders at High and Minimal (size, NaN/Infinity literals, stringified nodes,
 equal smoothstep edges, MaterialX noise, unassigned WGSL vars) and pins the pass's three fixes: the
 ember's own colour, no fwidth in the crest's turn, the cap's inside chosen from its flag.
+
+## 12. Living pass (2026-11-18)
+
+`feature/shifting-sands-living`. An audit of the whole theme, then a pass on everything the audit
+found weak. The composition, the dune field, the drum and the worm director of §3–§5 stand; this
+section replaces what §4–§7 say about the sky's one axis, the lathe formations, the worm's body,
+the event table and the tiers where they differ.
+
+### What the audit found
+
+- **The worm**, the hero, was a plain dark tube with a flat grille for a mouth.
+- **The formations** read as lathe work: a fluted drum with pleats like a curtain.
+- **Time** had one axis (golden hour ↔ deep dusk); nothing else changed by itself but the worm.
+- **Events** were the same two shapes at different counts: a ring (lock, twist, back-to-back) and a
+  dust column (one, two, three lines, a perfect clear). A game over had no answer at all.
+- The geysers were soft blobs, the worm's sand was flakes, the crests' spindrift was barely there,
+  the near sand's glitter was a field of sparks, and three of the seven piece colours were warm
+  golds and corals a few degrees of hue apart.
+
+### What changed
+
+| Part | Now | Where |
+|---|---|---|
+| **Hours** | The dusk is a walk through four stations, there and back in ten minutes: golden hour; the ember's sunset (it sinks onto the Rampart, only the crests still catch it); the second sunset (the white sun alone on the horizon, gold as it sets in its turn, a crimson afterglow where the ember went, first stars); the night (two moons light the erg in silver from over the Sentinel, with cast shadows of their own). A level is still a step along it. What a sun does to the land (`sunLight*`) and to the air (`glow*`) are told apart, so the afterglow outlasts the sunset | `shifting-sands-hours.js`; a second horizon tangent baked toward the greater moon (`aMoon`) in `shifting-sands-terrain.js` |
+| **Night sky** | A star field with its own colours, the star river (a band of unresolved light with bright clouds and a dark rift) standing over the bearing the suns set on, falling stars, moons that brighten | `shifting-sands-sky.js` |
+| **Weather** | Six weathers on a wheel of their own (76 s each against the hours' 100 s, so the same hour never comes round under the same sky): clear, cirrus streets, a cloud ceiling open along the horizon and lit from below, hanging dust (the suns as discs the eye can rest on), wind (the crests smoke, gust fronts cross the erg), and a wall of dust that travels the far horizon with lightning in its body | `shifting-sands-weather.js`, spent in `applyAir` / `applyStorm` |
+| **Happenings** | By the clock, whatever the hands do: a dust devil walks the far erg every 47 s, a falling star every 13 s once the stars are out, a gust front every 9.5 s when it blows; the idle worm as before | `runHappenings` in `shifting-sands-world.js` |
+| **The worm** | Armour plates with lips that overlap like scales (no two alike, every fourth a greater ring), nine keels that boss each plate, a slow swallow down its length and a screw's turn as it drives; a pointed bud of a head whose five petals open into a crown ringed with fangs; a throat that glows hotter the deeper the eye looks. Normals from the surface itself (finite differences in the vertex stage), a smooth one for the silhouette's rim | `createWorm`, `WORM_TIERS` in `shifting-sands-worm.js` |
+| **Formations** | Sculpted by script in Blender: the Sentinel (a jointed butte on a talus apron strewn with fallen blocks, a finger of rock off one end), a totem spire, a mitten, a natural arch, hoodoo knobs, a hogback fin, a tilted slab; baked occlusion and exposure per vertex; two levels of the same solids; shadow cylinders measured from the meshes | `scripts/blender/shifting_sands_rocks.py` → `shifting-sands-rock-models.js` (generated, 1.8 MB), stood by `shifting-sands-rocks.js` |
+| **Sand in the air** | Geysers are a fed jet of bright grains in a mushroom of dust; the worm's sand is fine streaks; every billow has a lit side (`puffShade`); the spindrift is nearly twice as many veils and pours when it blows; the near glitter is a few slow glints | `shifting-sands-fx.js`, `shifting-sands-terrain.js` |
+| **Pieces** | Seven colours that stand apart: the white sun's gold, the ember's coral and the afterglow's rose are now far apart in hue and lightness | `shifting-sands-tetrominos.js` |
+
+### Events: an effect of its own for each
+
+| Event | Answer |
+|---|---|
+| Piece lock | The drum's ring (as before; louder on a hard drop and along a chain) |
+| One line | **A gust front**: a line of driven sand crosses the erg downwind, from behind the eye to the far dunes |
+| Two, three lines | **Geysers** of sand, one a line, in the side zones (three also burst the suns) |
+| Quad | **The worm** is summoned (as before, in its new body) |
+| Twist | **A dust devil** rises beside the board and walks off over the dunes (a smaller one for a twist that cleared nothing) |
+| Back-to-back | **Crest fire**: on every ridge a cold spark runs outward along the brink, the crest glowing gold behind it; the drum answers twice |
+| Combo, cascade | The gold glows and the wind rises (as before) |
+| Perfect clear | **The chorus**: three giants rise one after another out by the horizon, each in its own stretch of it, sand thrown where each breaks the surface and where it strikes; the drum's greatest ring, crest fire, the suns' lingering flare |
+| Level up | **The front passes**: the wall of dust runs the whole horizon in seven seconds, taller than it ever stands, lightning in its body, and the hour has moved on behind it |
+| Fever | The sandstorm, and the worm comes for the drummer (as before) |
+| Game over | **The hush**: the wind dies, the gold dust hangs, one last slow ring rolls out, and the evening moves on (the ember sinks, the stars come nearer). A new run brings the day back with a front of sand |
+
+Everything is still a uniform write into a pooled slot (unit-tested: the scene graph is the same
+before and after a burst of every event), and nothing moves in a jump when events overlap (a
+60 Hz walk through a perfect clear, a twist and a level at once).
+
+### Playground
+
+`playground.html?effect=shifting-sands` gained: `dusk=0|0.3334|0.6667|1` (the four stations),
+`weather=clear|streets|deck|haze|wind|front` (or a phase), `wallAz=<deg>`, and
+`event=hard|single|double|triple|twist|spin|b2b|perfect|over` beside the old ones.
+
+### Tiers and cost
+
+| | Minimal | Low | Medium | High | Ultra | Extreme |
+|---|---|---|---|---|---|---|
+| Worm tube (rings × segments) | 128×30 | 192×40 | 256×50 | 384×60 | 448×70 | 512×80 |
+| Formations | light level | light level | light level | full | full | full |
+| Night's own sky (faint stars, star river, falling stars) | – | – | ✓ | ✓ | ✓ | ✓ |
+| Cloud deck's fine tatters | – | – | – | ✓ | ✓ | ✓ |
+| Worm sand / spindrift / geyser per slot | 0 / 0 / 60 | 600 / 36 / 110 | 1100 / 80 / 170 | 1800 / 130 / 240 | 2400 / 170 / 300 | 3000 / 210 / 360 |
+
+GPU time a frame, playground live at 30 fps with timestamps, this machine's RTX, 1920×1080, ten seconds a
+case, main and branch interleaved (`profile=1&trackTimestamp=1&maxFps=30`): High at rest
+0.46 → 0.55 ms (two rounds: 0.466 / 0.462 against 0.550 / 0.563); with the cloud deck 0.60, at
+night 0.49, with the front standing 0.62. Low 0.30 → 0.43 ms with the deck up (measured before the
+deck's fine read was dropped on the lighter tiers; not re-measured). **Not measured:** an uncapped
+frame rate, the integrated GPU, a phone.
+
+### Verified
+
+- Playground on WebGPU and `forceWebGL=1`: every hour, every weather, every event, the worm from
+  the game lens and a tight one, Low and Minimal, a 390×844 portrait frame; no console, WebGPU
+  validation, WGSL or TSL message in any capture.
+- The real game (single player, High, WebGPU, headless Chrome): real hard drops, then every event
+  through the game's own bus and a game over; the world's readings confirmed each reached it; the
+  only console lines were the browser's autoplay notices.
+- Unit tests: `tests/unit/shifting-sands-living.test.js` (25) beside the theme's other five files
+  (100 in all), the shader gate building every material (the dust devils included) to WGSL and
+  GLSL at High and Minimal. Typecheck, the lint and TypeScript ratchets, architecture fitness,
+  dependency boundaries, the theme lifecycle audit, the palette gate and the IP-string gate pass.
+- Gotchas #1518 (a cloud deck in rows is a sunburst), #1608 (a moonlit desert as a snowfield),
+  #1742 (crest fire as a band) and #1743 (a dust devil as a glass ribbon).
+
+### Open
+
+- The theme icon and `docs/theme-screenshots/shifting-sands.png` still show the old worm and rocks.
+- The Sentinel's cliff still has a few large square slabs that read a little built; its talus is plain.
+- A level's front crosses behind the board: in a solo layout the side zones see it enter and leave.
+- The far worms of a chorus may cross one another, and one may pass behind the Sentinel.
+- Local multiplayer and Infinity layouts were not captured; the devils and worms take the open
+  stretches from the same layout rects, which the unit tests cover for the solo layout only.
+- §8's frame-cost lane has not been re-run for this pass.

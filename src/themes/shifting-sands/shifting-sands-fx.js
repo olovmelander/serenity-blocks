@@ -65,19 +65,19 @@ export const FX_TIERS = Object.freeze({
         wormSand: 0, motes: 300, spindrift: 0, blowPerSlot: 60,
     },
     Low: {
-        wormSand: 520, motes: 600, spindrift: 24, blowPerSlot: 110,
+        wormSand: 600, motes: 600, spindrift: 36, blowPerSlot: 110,
     },
     Medium: {
-        wormSand: 960, motes: 1000, spindrift: 48, blowPerSlot: 160,
+        wormSand: 1100, motes: 1000, spindrift: 80, blowPerSlot: 170,
     },
     High: {
-        wormSand: 1500, motes: 1500, spindrift: 72, blowPerSlot: 220,
+        wormSand: 1800, motes: 1500, spindrift: 130, blowPerSlot: 240,
     },
     Ultra: {
-        wormSand: 2000, motes: 2200, spindrift: 96, blowPerSlot: 280,
+        wormSand: 2400, motes: 2200, spindrift: 170, blowPerSlot: 300,
     },
     Extreme: {
-        wormSand: 2600, motes: 3000, spindrift: 120, blowPerSlot: 340,
+        wormSand: 3000, motes: 3000, spindrift: 210, blowPerSlot: 360,
     },
 });
 
@@ -102,7 +102,7 @@ function quadGeometry(count, seed, extra = null) {
     return geometry;
 }
 
-function fxMaterial(name) {
+export function fxMaterial(name) {
     const m = new THREE.MeshBasicNodeMaterial({
         transparent: true,
         depthWrite: false,
@@ -130,15 +130,43 @@ function billboardClip(center, offset) {
  * `diffuse` is the share of sunlight a thick cloud scatters back whatever the angle: without it
  * dust only shows against the suns.
  */
-function dustRadiance(shared, albedo, worldPos, forward = 1.0, diffuse = 0.0) {
+export function dustRadiance(shared, albedo, worldPos, forward = 1.0, diffuse = 0.0) {
     const {
-        uSunA, uSunB, uSunLightA, uSunLightB, uUpper, uZenith,
+        uSunA, uSunB, uSunLightA, uSunLightB, uUpper, uZenith, uMoonDir, uMoonLight, uGlowA,
     } = shared;
     const vdir = normalize(worldPos.sub(cameraPosition));
-    const pA = ssPhaseHG(dot(vdir, uSunA), float(0.62)).mul(forward).add(float(0.07).add(diffuse));
+    const fwdA = ssPhaseHG(dot(vdir, uSunA), float(0.62)).mul(forward);
+    const pA = fwdA.add(float(0.07).add(diffuse));
     const pB = ssPhaseHG(dot(vdir, uSunB), float(0.66)).mul(forward).add(float(0.05).add(float(diffuse).mul(0.6)));
+    // By night the moons light it (silver, from over the Sentinel), and dust between the eye and
+    // the place a sun went down still catches the afterglow.
+    const pM = ssPhaseHG(dot(vdir, uMoonDir), float(0.55)).mul(forward).add(float(0.1).add(float(diffuse).mul(0.8)));
     const fill = uUpper.mul(0.55).add(uZenith.mul(0.4));
-    return albedo.mul(uSunLightA.mul(pA).add(uSunLightB.mul(pB)).add(fill));
+    return albedo.mul(uSunLightA.mul(pA).add(uSunLightB.mul(pB)).add(uGlowA.mul(fwdA.mul(0.22))).add(fill))
+        .add(vec3(0.62, 0.66, 0.74).mul(uMoonLight).mul(pM));
+}
+
+/**
+ * How a round puff of dust takes the light: the quad is read as the near side of a ball, and it
+ * is brighter on the side the brightest light stands (the ember, the white sun once the ember has
+ * set, the moons by night), with a wide wrap so a heap of puffs has one form and no puff shows
+ * its own terminator. `st` is the quad's own coordinate (−0.5..0.5). Returns a factor round 1.
+ */
+function puffShade(shared, st) {
+    const {
+        uSunA, uSunB, uSunLightA, uSunLightB, uMoonDir, uMoonLight,
+    } = shared;
+    const r2 = clamp(dot(st, st).mul(4.0), 0.0, 1.0);
+    const n = vec3(st.x.mul(2.0), st.y.mul(2.0), sqrt(float(1.0).sub(r2)));
+    const wA = uSunLightA.r;
+    const wB = uSunLightB.r.mul(0.8);
+    const wM = uMoonLight.b.mul(1.6);
+    const towards = cameraViewMatrix.mul(vec4(
+        uSunA.mul(wA).add(uSunB.mul(wB)).add(uMoonDir.mul(wM)).add(vec3(0.0, 0.02, 0.0)),
+        0.0,
+    )).xyz;
+    const L = towards.div(max(length(towards), 1e-3));
+    return dot(n, L).mul(0.42).add(0.86);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -278,7 +306,7 @@ export function createWormSand(shared, worm, perWorm) {
     const fadeC = smoothstep(0.0, 0.3, ageC).mul(float(1.0).sub(smoothstep(lifeC.mul(0.6), lifeC, ageC)));
     // Fine grains with a few clods among them (the cube keeps the clods rare).
     const clod = seed2.w.mul(seed2.w).mul(seed2.w);
-    const sizeC = R.mul(clod.mul(0.1).add(0.04)).add(ageC.mul(0.5));
+    const sizeC = R.mul(clod.mul(0.07).add(0.022)).add(ageC.mul(0.35));
 
     // ── 1 · Spray, 2 · Burst: ballistic sand from a foot (a crown: the wide grains fly low) ──
     const lifeE = mix(seed.y.mul(1.8).add(2.4), seed.y.mul(2.6).add(3.4), isBurst);
@@ -301,7 +329,7 @@ export function createWormSand(shared, worm, perWorm) {
     const groundE = foot.y.add(dot(posE.xz.sub(foot.xz), slope));
     const aliveE = liveE.mul(smoothstep(groundE.sub(2.0), groundE.add(5.0), posE.y));
     const fadeE = smoothstep(0.0, 0.12, ageE).mul(float(1.0).sub(smoothstep(lifeE.mul(0.6), lifeE, ageE)));
-    const sizeE = R.mul(clod.mul(0.13).add(0.04)).add(ageE.mul(0.4));
+    const sizeE = R.mul(clod.mul(0.09).add(0.022)).add(ageE.mul(0.3));
 
     // ── 3 · Churn: dust boiling up around the foot while the body runs through it ──
     const lifeH = seed.y.mul(2.6).add(3.6);
@@ -365,8 +393,8 @@ export function createWormSand(shared, worm, perWorm) {
     const vel = velC.mul(isCascade).add(velE.mul(isEjecta));
     const dir2 = normalize(cameraViewMatrix.mul(vec4(vel, 0.0)).xy.add(vec2(1e-4, 0.0)));
     const q = positionGeometry.xy;
-    const stretch = mix(float(2.2), float(7.0), clamp(length(vel).div(70.0), 0.0, 1.0));
-    const streak = dir2.mul(q.x.mul(stretch)).add(vec2(dir2.y.negate(), dir2.x).mul(q.y));
+    const stretch = mix(float(3.0), float(11.0), clamp(length(vel).div(70.0), 0.0, 1.0));
+    const streak = dir2.mul(q.x.mul(stretch)).add(vec2(dir2.y.negate(), dir2.x).mul(q.y.mul(0.8)));
     material.vertexNode = billboardClip(center, mix(streak, q, isDust).mul(size).mul(step(0.001, alpha)));
 
     material.colorNode = Fn(() => {
@@ -390,13 +418,14 @@ export function createWormSand(shared, worm, perWorm) {
         // Airborne sand is paler than the erg: the fines are what hang in the light.
         const albedo = mix(vec3(0.6, 0.42, 0.27), vec3(0.56, 0.45, 0.36), vDust);
         // Thin dust lets the suns through: the fringes of a billow burn brighter than its heart.
+        // (grains are fines the light comes through; a billow is a ball of dust with a lit side)
         const lit = dustRadiance(
             shared,
             albedo,
             vC,
-            mix(float(1.0), float(0.6), vDust),
-            mix(float(0.26), float(0.17), vDust),
-        ).mul(mix(float(1.0), mix(float(1.3), float(0.8), dens).mul(st.y.mul(0.3).add(1.0)), vDust));
+            mix(float(1.5), float(0.6), vDust),
+            mix(float(0.34), float(0.17), vDust),
+        ).mul(mix(float(1.0), mix(float(1.3), float(0.8), dens).mul(puffShade(shared, st)), vDust));
         const col = atmosphere.applyAerial(lit, vC, 0.6);
         const a2 = clamp(shape.mul(vA), 0.0, 1.0);
         return vec4(col.mul(a2), a2);
@@ -449,7 +478,7 @@ export function createGoldMotes(shared, count) {
     const geometry = quadGeometry(n, 9001);
     const material = fxMaterial('shifting-sands-gold-motes');
     const {
-        uTime, uSunA, uGoldGlow, uWindDir, uPxScale, uDusk,
+        uTime, uSunA, uSunB, uGoldGlow, uWindDir, uPxScale, uNight, uSunLightA, uSunLightB, uMoonDir, uMoonLight,
     } = shared;
     const seed = attribute('aSeed', 'vec4');
 
@@ -483,14 +512,21 @@ export function createGoldMotes(shared, count) {
         const vSeed = vertexStage(seed);
         const vEdge = vertexStage(edge);
         const vdir = normalize(vC.sub(cameraPosition));
-        const glint = pow(clamp(dot(vdir, uSunA), 0.0, 1.0), 10.0).mul(5.0);
+        // A mote glints where it stands between the eye and a light: gold toward a sun that is
+        // up, silver toward the moons by night. With no light to catch, it is a faint ember.
+        const upA = clamp(uSunLightA.r.mul(0.6), 0.0, 1.0);
+        const upB = clamp(uSunLightB.r.mul(0.9), 0.0, 1.0);
+        const glintA = pow(clamp(dot(vdir, uSunA), 0.0, 1.0), 10.0).mul(5.0).mul(upA);
+        const glintB = pow(clamp(dot(vdir, uSunB), 0.0, 1.0), 14.0).mul(3.0).mul(upB);
+        const glintM = pow(clamp(dot(vdir, uMoonDir), 0.0, 1.0), 5.0).mul(uMoonLight.b.mul(1.4));
         const tw = sin(uTime.mul(vSeed.w.mul(5.0).add(2.0)).add(vSeed.x.mul(TAU))).mul(0.5).add(0.5);
         const core = exp(r.mul(r).mul(-6.0));
-        const blue = smoothstep(0.82, 1.0, vSeed.y).mul(uDusk.mul(0.6).add(uGoldGlow.mul(0.25)));
-        const hue = mix(vec3(1.0, 0.52, 0.16), vec3(0.35, 0.62, 1.0), clamp(blue, 0.0, 1.0));
-        const intensity = float(0.16).add(glint).mul(tw.mul(0.7).add(0.3)).mul(float(1.0).add(uGoldGlow.mul(1.6)))
-            .mul(vEdge);
-        return vec4(hue.mul(core).mul(intensity), 0.0);
+        const blue = smoothstep(0.82, 1.0, vSeed.y).mul(uNight.mul(0.5).add(uGoldGlow.mul(0.25)));
+        const gold = mix(vec3(1.0, 0.52, 0.16), vec3(0.35, 0.62, 1.0), clamp(blue, 0.0, 1.0));
+        const light = gold.mul(float(0.16).mul(max(upA, 0.35)).add(glintA).add(glintB))
+            .add(vec3(0.62, 0.74, 1.0).mul(glintM));
+        const intensity = tw.mul(0.7).add(0.3).mul(float(1.0).add(uGoldGlow.mul(1.6))).mul(vEdge);
+        return vec4(light.mul(core).mul(intensity), 0.0);
     })();
 
     const mesh = new THREE.Mesh(geometry, material);
@@ -567,8 +603,8 @@ export function createSpindrift(shared, field, count) {
     const W = normalize(vec3(uWindDir.x, -0.08, uWindDir.y));
     const C = crest.xyz.add(vec3(0.0, 0.6, 0.0));
     // A storm tears longer veils off the crests: the crests smoke.
-    const len = seed.x.mul(70.0).add(40.0).mul(crest.w.div(30.0).add(0.4)).mul(uHeat.z.mul(0.6).add(1.0));
-    const hgt = seed.y.mul(7.0).add(4.0).mul(crest.w.div(30.0).add(0.5));
+    const len = seed.x.mul(80.0).add(46.0).mul(crest.w.div(30.0).add(0.4)).mul(uHeat.z.mul(1.1).add(1.0));
+    const hgt = seed.y.mul(8.0).add(4.5).mul(crest.w.div(30.0).add(0.5)).mul(uHeat.z.mul(0.5).add(1.0));
     const toCam = normalize(cameraPosition.sub(C));
     // Axial billboard: long axis along the wind, the sheet turned to face the camera.
     const side = normalize(cross(W, toCam));
@@ -594,13 +630,15 @@ export function createSpindrift(shared, field, count) {
             st.x.mul(vLen.mul(0.15)).sub(flow.mul(3.1)),
             st.y.mul(11.0).add(vSeed.w.mul(30.0)),
         ));
-        const streaks = smoothstep(0.42, 0.85, n1.x.mul(0.6).add(n2.y.mul(0.4)));
+        // (when it blows the veils fill out: more of each is sand)
+        const thin = uHeat.z.mul(-0.16).add(0.42);
+        const streaks = smoothstep(thin, thin.add(0.43), n1.x.mul(0.6).add(n2.y.mul(0.4)));
         const root = smoothstep(0.0, 0.12, st.x).mul(float(1.0).sub(smoothstep(0.45, 1.0, st.x)));
         const vert = float(1.0).sub(smoothstep(0.0, 1.0, st.y)).mul(smoothstep(0.0, 0.08, st.y).mul(0.5).add(0.5));
         const gust = sin(uTime.mul(0.37).add(vSeed.x.mul(TAU))).mul(0.5).add(0.5);
-        const strength = clamp(uWind.mul(0.7).add(uGust.mul(1.2)).mul(gust.mul(0.6).add(0.4)), 0.0, 1.3);
-        const a = clamp(streaks.mul(root).mul(vert).mul(strength.add(0.25)).mul(0.9), 0.0, 1.0);
-        const col = atmosphere.applyAerial(dustRadiance(shared, vec3(0.78, 0.48, 0.25), vP, 1.25), vP, 0.9);
+        const strength = clamp(uWind.mul(0.7).add(uGust.mul(1.2)).mul(gust.mul(0.6).add(0.4)), 0.0, 1.5);
+        const a = clamp(streaks.mul(root).mul(vert).mul(strength.add(0.25)).mul(0.95), 0.0, 1.0);
+        const col = atmosphere.applyAerial(dustRadiance(shared, vec3(0.78, 0.48, 0.25), vP, 1.7, 0.05), vP, 0.9);
         return vec4(col.mul(a), a);
     })();
 
@@ -622,58 +660,96 @@ export function createSpindrift(shared, field, count) {
 // Dust geysers (line clears)
 // ─────────────────────────────────────────────────────────────────────────────
 
+/** Share of a geyser's pool that is sand in flight (bright streaks); the rest is its dust. */
+const GEYSER_GRAINS = 0.56;
+/** Seconds a geyser goes on throwing: its column is fed, not one puff. */
+const GEYSER_FEED = 0.6;
+
 export function createDustGeysers(shared, perSlot) {
     const n = Math.max(1, (perSlot | 0) * BLOW_SLOTS);
     const geometry = quadGeometry(n, 3131);
     const material = fxMaterial('shifting-sands-dust-geysers');
     const {
-        uTime, uWindDir, atmosphere, noiseTex,
+        uTime, uWindDir, atmosphere, noiseTex, uPxScale,
     } = shared;
     const uBlows = uniformArray(Array.from({ length: BLOW_SLOTS }, () => new THREE.Vector4(0, -1000, 0, -100)), 'vec4');
     const uBlowPow = uniformArray(Array.from({ length: BLOW_SLOTS }, () => new THREE.Vector4(0, 0, 0, 0)), 'vec4');
     const seed = attribute('aSeed', 'vec4');
 
-    // Slot from the seed (uniform pick; stable per instance).
-    const slot = floor(seed.w.mul(BLOW_SLOTS));
+    // Slot from the seed (uniform pick; stable per instance); what is left of the seed says
+    // whether this one is a grain or a billow.
+    const pickAt = seed.w.mul(BLOW_SLOTS);
+    const slot = floor(pickAt);
+    const isDust = step(GEYSER_GRAINS, fract(pickAt));
     const S0 = uBlows.element(slot.toInt());
     const S1 = uBlowPow.element(slot.toInt());
     const origin = S0.xyz;
-    const age = uTime.sub(S0.w);
     const strength = S1.x;
-    const life = seed.y.mul(2.6).add(3.2);
+    // Each leaves the ground at its own moment while the geyser feeds (the first ones highest).
+    const late = seed.z.mul(seed.z).mul(GEYSER_FEED);
+    const age = uTime.sub(S0.w).sub(late);
+    const life = mix(seed.y.mul(1.6).add(2.2), seed.y.mul(2.8).add(3.6), isDust);
     const live = step(0.0, age).mul(step(age, life)).mul(step(0.01, strength));
-    // Geyser: a fast column with a crown of falling dust, drag-damped.
+    // A hard jet that mushrooms: a narrow fast column of sand, its dust slower and wider,
+    // drag-damped, falling back in a crown.
     const ang = seed.x.mul(TAU);
     const spread = pow(seed.z, 1.6);
-    const lateral = spread.mul(60.0).add(5.0);
-    const lift = seed.y.mul(150.0).add(80.0).mul(float(1.0).sub(spread.mul(0.6)));
+    const lateral = mix(spread.mul(34.0).add(3.0), spread.mul(52.0).add(8.0), isDust);
+    const lift = mix(seed.y.mul(190.0).add(120.0), seed.y.mul(110.0).add(55.0), isDust)
+        .mul(float(1.0).sub(spread.mul(0.55))).mul(float(1.0).sub(late.div(GEYSER_FEED).mul(0.35)));
     const v0 = vec3(cos(ang).mul(lateral), lift, sin(ang).mul(lateral))
         .mul(strength.mul(0.35).add(0.65));
-    const kd = float(0.9);
-    const e = float(1.0).sub(exp(age.mul(kd).negate())).div(kd);
+    const kd = mix(float(0.75), float(1.05), isDust);
+    const damp = exp(max(age, 0.0).mul(kd).negate());
+    const e = float(1.0).sub(damp).div(kd);
     const gk = float(30.0).div(kd);
     const W = vec3(uWindDir.x, 0.0, uWindDir.y);
-    const ballistic = vec3(v0.x.mul(e), v0.y.add(gk).mul(e).sub(gk.mul(age)), v0.z.mul(e));
-    const pos = origin.add(ballistic).add(W.mul(age.mul(age).mul(3.0)));
+    const tAge = max(age, 0.0);
+    const ballistic = vec3(v0.x.mul(e), v0.y.add(gk).mul(e).sub(gk.mul(tAge)), v0.z.mul(e));
+    const pos = origin.add(ballistic).add(W.mul(tAge.mul(tAge).mul(mix(float(1.2), float(3.4), isDust))));
     const center = vec3(pos.x, max(pos.y, origin.y.add(1.0)), pos.z);
-    const size = float(5.0).add(age.mul(14.0)).mul(seed.z.mul(0.8).add(0.6)).mul(live);
-    material.vertexNode = billboardClip(center, positionGeometry.xy.mul(size));
+    const vel = vec3(v0.x.mul(damp), v0.y.add(gk).mul(damp).sub(gk), v0.z.mul(damp));
+    // Grains: fine streaks along their flight, never under a pixel and a half. Billows: they swell.
+    const eyeDepth = max(cameraViewMatrix.mul(vec4(center, 1.0)).z.negate(), 1.0);
+    const grainSize = max(seed.x.mul(1.3).add(0.7), eyeDepth.div(uPxScale).mul(1.5));
+    const dustSize = float(5.0).add(tAge.mul(15.0)).mul(seed.z.mul(0.8).add(0.6))
+        .mul(max(strength, 1.0).mul(0.45).add(0.55));
+    const size = mix(grainSize, dustSize, isDust).mul(live);
+    const dir2 = normalize(cameraViewMatrix.mul(vec4(vel, 0.0)).xy.add(vec2(1e-4, 0.0)));
+    const q = positionGeometry.xy;
+    const stretch = mix(float(2.5), float(9.0), clamp(length(vel).div(120.0), 0.0, 1.0));
+    const streak = dir2.mul(q.x.mul(stretch)).add(vec2(dir2.y.negate(), dir2.x).mul(q.y.mul(0.8)));
+    material.vertexNode = billboardClip(center, mix(streak, q, isDust).mul(size));
 
     material.colorNode = Fn(() => {
         const st = uv().sub(0.5);
         const r = length(st).mul(2.0);
-        const vAge = vertexStage(age);
+        const vAge = vertexStage(tAge);
         const vLife = vertexStage(life);
         const vC = vertexStage(center);
         const vSeed = vertexStage(seed);
-        const nz = ssTexNoise(noiseTex, st.mul(2.5).add(vSeed.xy.mul(41.0)));
-        const shape = float(1.0).sub(smoothstep(0.15, 1.0, r)).mul(nz.x.mul(0.9).add(0.3));
+        const vDust = vertexStage(isDust);
+        const nz = ssTexNoise(noiseTex, st.mul(2.5).add(vSeed.xy.mul(41.0)).add(vec2(0.0, vAge.mul(-0.5))));
+        // A billow is lumpy and tears as it ages; a grain is a soft dash.
+        const tear = mix(float(-0.1), float(0.45), vAge.div(vLife));
+        const billow = float(1.0).sub(smoothstep(0.15, 1.0, r.mul(nz.z.mul(0.45).add(0.8))))
+            .mul(smoothstep(tear, tear.add(0.5), nz.x.mul(0.75).add(0.25)));
+        const grain = float(1.0).sub(smoothstep(0.1, 1.0, r));
+        const shape = mix(grain, billow, vDust);
         const fade = smoothstep(0.0, 0.08, vAge).mul(float(1.0).sub(smoothstep(vLife.mul(0.4), vLife, vAge)));
-        const a = clamp(shape.mul(fade).mul(0.3), 0.0, 1.0);
-        const dust = atmosphere.applyAerial(dustRadiance(shared, vec3(0.7, 0.4, 0.2), vC, 1.0), vC, 0.7);
-        // Hot gold-dust glow in the first moments, cooling to ember.
-        const heat = exp(vAge.mul(-2.6)).mul(1.1);
-        const glow = mix(vec3(1.0, 0.42, 0.1), vec3(1.0, 0.7, 0.35), exp(vAge.mul(-4.0)))
+        const a = clamp(shape.mul(fade).mul(mix(float(0.62), float(0.34), vDust)), 0.0, 1.0);
+        const lit = dustRadiance(
+            shared,
+            mix(vec3(0.74, 0.46, 0.24), vec3(0.66, 0.42, 0.24), vDust),
+            vC,
+            mix(float(1.6), float(1.0), vDust),
+            mix(float(0.3), float(0.12), vDust),
+        ).mul(mix(float(1.0), puffShade(shared, st), vDust));
+        const dust = atmosphere.applyAerial(lit, vC, 0.7);
+        // Hot gold in the first moments (the sand comes up out of the dark still warm with the
+        // day), cooling to ember: in the grains most of all.
+        const heat = exp(vAge.mul(-2.4)).mul(mix(float(1.5), float(1.0), vDust));
+        const glow = mix(vec3(1.0, 0.42, 0.1), vec3(1.0, 0.72, 0.36), exp(vAge.mul(-4.0)))
             .mul(heat).mul(shape.mul(fade));
         return vec4(dust.mul(a).add(glow.mul(0.6)), a);
     })();

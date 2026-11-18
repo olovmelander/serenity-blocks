@@ -73,9 +73,12 @@ export function windDirXZ() {
     return { x: Math.sin(az), z: -Math.cos(az) };
 }
 
-/** The Sentinel: the hero butte in the right zone. */
+/**
+ * The Sentinel: the hero butte in the right zone (its model: shifting-sands-rocks.js). `radius`
+ * is about the half-width of its standing cliff; its talus apron reaches some 2.5 times as far.
+ */
 export const SENTINEL = Object.freeze({
-    az: 30.5, dist: 2350, height: 430, radius: 165,
+    az: 30.5, dist: 2350, height: 470, radius: 165,
 });
 
 /**
