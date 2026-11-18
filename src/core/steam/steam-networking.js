@@ -418,15 +418,35 @@ export class SteamNetworking {
      * that does not know the channel answers null, which passes.
      */
     async _requireRelayTransport() {
-        let transport = null;
-        try {
-            transport = await ipcRenderer.invoke('steam:getNetworkTransport');
-        } catch {
-            transport = null;
-        }
+        const transport = await this.getNetworkTransport();
         if (transport?.mode === 'unavailable') {
             throw new Error(transport.message || 'Online play is not available right now.');
         }
+    }
+
+    /**
+     * How online play reaches other players (electron/steam-network-transport.js), asked afresh,
+     * or null when the main process cannot say.
+     */
+    async getNetworkTransport() {
+        if (!ipcRenderer) return null;
+        try {
+            return await ipcRenderer.invoke('steam:getNetworkTransport');
+        } catch {
+            return null;
+        }
+    }
+
+    /**
+     * Steam's relay network status (core/steam/relay-network.js), asked afresh: after a failure,
+     * asking is what makes Steam try again, so an earlier answer may be stale. Null in a test
+     * lobby, or when the main process cannot say.
+     * @returns {Promise<string | null>}
+     */
+    async relayNetworkStatus() {
+        if (this.mockMode) return null;
+        const transport = await this.getNetworkTransport();
+        return typeof transport?.relayNetwork === 'string' ? transport.relayNetwork : null;
     }
 
     /**

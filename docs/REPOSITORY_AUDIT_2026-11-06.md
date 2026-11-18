@@ -177,6 +177,8 @@ Reviewed and left as they are (all minor):
 
 The persistence reviewer also noted that main's cloud merge already drops 0-star clears; that remains unchanged.
 
+> **2026-11-18, owner decision:** a saved `stars: 0` completion counts as a clear everywhere, Steam Cloud included. The cloud merge now keeps it on both sides (it still adds no stars), and the save migrations and retired-orb evidence count it too. See audit 2026-11-18, A18-STARS-0.
+
 ## Integration verification
 
 The [initial evidence ledger](../reports/repository-audit-2026-11-06/validation.json), [pass 2 ledger](../reports/repository-audit-2026-11-06/pass-02-validation.json), [pass 3 ledger](../reports/repository-audit-2026-11-06/pass-03-validation.json) and [pass 4 ledger](../reports/repository-audit-2026-11-06/pass-04-validation.json) record tested commits, environment, exact results and limits.

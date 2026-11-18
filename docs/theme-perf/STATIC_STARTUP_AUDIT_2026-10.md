@@ -978,6 +978,7 @@ WebGPURenderer, own rAF loop, forest post stack (`src/themes/sakura-twilight/sak
   - Three buffers × 6000 re-uploaded whole every frame (~240 KB) (`petals.js:109-119`) [c].
   - `getFrame` twice (`sakura-twilight-theme.js:477-478`), spread and closure (`world.js:223-224`) [c].
   - The fox engine is cheap: `solve` allocates nothing (`src/themes/shared/fox-rig.js:704-855`); `sakura-fox-mind.js:349` filters every frame [c].
+    - *2026-11-18: `solve` does allocate. The repository audit measured allocation in `qRotate`'s array destructuring and in `Math.hypot` (A18-THM-2): ~3.6 KB per arctic-fox `solve`, and 41 KB/frame for the Synthwave strollers, in Chromium 157.*
 - **Frame GPU:**
   - Mirror at 0.4 [c].
   - Lake: 3 reflection samples + 10-lamp loop + 6-ring loop + ~9 noise reads (`water.js:80-136`) [c].

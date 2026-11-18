@@ -45,6 +45,22 @@ describe('Act II is the One World', () => {
         });
     });
 
+    it('their leftovers stay gone too', () => {
+        // The Ch2→Ch3 water membrane and the ch3/4 aurora curtains outlived the scenes that built
+        // them, unreachable. Only the curtain placements stay, for the DEV layout editor.
+        [
+            'src/rendering/odyssey/chapter-environments/shared/odyssey-water-surface.tsl.js',
+            'src/playground/effects/odyssey-unified-water.effect.js',
+        ].forEach((file) => {
+            expect(existsSync(path.join(ROOT, file)), `${file} is back`).toBe(false);
+        });
+        const aurora = readFileSync(
+            path.join(ROOT, 'src/rendering/odyssey/chapter-environments/shared/mountain-aurora.js'),
+            'utf8',
+        );
+        expect(aurora).not.toMatch(/createMountainAuroraBackdrop/);
+    });
+
     it('builds the world inside a try/catch, and gives it up loudly', () => {
         // A throw in world construction must not take the whole board down. The journey plays
         // on without the world, and the player is told why it looks the way it does.

@@ -143,6 +143,17 @@ describe('restorable replay checkpoints are kept', () => {
         expect(player.isSeeking).toBe(false);
     });
 
+    it('restores a checkpoint saved with the removed crowd handicap and drops the field', async () => {
+        const saved = checkpoint();
+        saved.state.handicapCrowd = 3; // replays recorded before 2026-11-18 carry it
+        const player = seekingPlayer(recording({ checkpoints: [saved] }));
+        await player.seek(500);
+        expect(player.gameState.score).toBe(999);
+        expect(player.isSeeking).toBe(false);
+        expect(player.gameState).not.toHaveProperty('handicapCrowd');
+        expect(captureGameStateSnapshot(player.gameState)).not.toHaveProperty('handicapCrowd');
+    });
+
     it('accepts a terminal checkpoint without a current piece', () => {
         const saved = checkpoint();
         saved.state.currentPiece = null;

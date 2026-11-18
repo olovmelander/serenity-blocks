@@ -101,8 +101,8 @@ export class SerenityModeUi {
             themeManager,
             settingsManager,
             onPreview: () => this.refresh({ announce: true }),
-            onSettled: (_theme, ok) => {
-                if (!ok) showSerenityNotice('That theme could not open');
+            onSettled: (_theme, ok, { superseded = false } = {}) => {
+                if (!ok && !superseded) showSerenityNotice('That theme could not open');
                 // A theme seen for the first time can take a few seconds to build: say it arrived.
                 this.refresh({ announce: true });
             },

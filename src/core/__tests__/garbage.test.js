@@ -185,7 +185,7 @@ describe('Garbage Logic', () => {
 
     describe('Handicap pipeline', () => {
         const mkState = (handicap) => ({
-            handicap, handicaps: {}, handicapCrowd: 0, isAlive: true,
+            handicap, handicaps: {}, isAlive: true,
         });
 
         it('equal handicaps accumulate no stamps and never reduce attacks', () => {
@@ -193,7 +193,7 @@ describe('Garbage Logic', () => {
             const opponent = mkState(2);
 
             for (let i = 0; i < 20; i++) {
-                accumulateHandicapStamps(sender, { 1: opponent }, 2);
+                accumulateHandicapStamps(sender, { 1: opponent });
             }
 
             expect(sender.handicaps[1] || 0).toBe(0);
@@ -205,7 +205,7 @@ describe('Garbage Logic', () => {
             const opponent = mkState(1); // Apprentice
             // diff = 3 → max 9 stamps; 1 stamp accrues per placement
             for (let i = 0; i < 9; i++) {
-                accumulateHandicapStamps(sender, { 1: opponent }, 2);
+                accumulateHandicapStamps(sender, { 1: opponent });
             }
             expect(sender.handicaps[1]).toBe(9);
 
@@ -219,7 +219,7 @@ describe('Garbage Logic', () => {
             const sender = mkState(3);
             const opponent = mkState(2); // diff = 1 → max 3 stamps
             for (let i = 0; i < 10; i++) {
-                accumulateHandicapStamps(sender, { 1: opponent }, 2);
+                accumulateHandicapStamps(sender, { 1: opponent });
             }
             expect(sender.handicaps[1]).toBe(3);
         });

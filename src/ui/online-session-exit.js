@@ -1,5 +1,6 @@
 // The toast region listens for the `serenity:toast` events dispatched below.
 import './components/toast.js';
+import { RELAY_UNREACHABLE_MESSAGE, relayNetworkUnreachableNow } from '../core/steam/relay-network.js';
 
 const EXIT_MESSAGES = Object.freeze({
     update_required: 'Update Serenity Blocks to join this match.',
@@ -16,6 +17,19 @@ const EXIT_MESSAGES = Object.freeze({
     host_left: 'The host left, so the lobby closed.',
 });
 
+/** Why a host can be gone that this computer's relay network would explain (core/network/host-migration.js). */
+const RELAY_EXPLAINS_HOST_GONE = new Set(['p2p_failed', 'timeout']);
+
+/**
+ * Exits a relay network this computer cannot reach explains better than their own words: the
+ * host never answered the join, or the session with it failed or fell silent outside a match.
+ * A host who left on purpose is not one.
+ */
+function relayMayExplain(reason, detail) {
+    return reason === 'host_unreachable'
+        || (reason === 'host_left' && RELAY_EXPLAINS_HOST_GONE.has(detail.hostGone));
+}
+
 /**
  * Terminal join failures arrive redundantly as WELCOME(false) and
  * JOIN_REJECTED. Teardown and notification are deliberately one-shot.
@@ -26,13 +40,18 @@ export async function handleOnlineSessionExit(mode, detail = {}) {
     const reason = typeof detail.reason === 'string' ? detail.reason : 'protocol_mismatch';
     if (mode._handledSessionExit) return;
     mode._handledSessionExit = reason;
+    // Asked now, before the teardown lets the networking go, and never from an earlier answer:
+    // asking is what makes Steam try a failed relay network again (core/steam/relay-network.js).
+    const relayUnreachable = relayMayExplain(reason, detail)
+        ? relayNetworkUnreachableNow(mode.steamNetworking)
+        : false;
     try { await mode._handleExitToMenu(); } catch (error) { /* best-effort teardown */ }
+    const message = (await relayUnreachable)
+        ? RELAY_UNREACHABLE_MESSAGE
+        : (EXIT_MESSAGES[reason] ?? 'Unable to join this match.');
     try {
         window.dispatchEvent(new CustomEvent('serenity:toast', {
-            detail: {
-                message: EXIT_MESSAGES[reason] ?? 'Unable to join this match.',
-                type: 'warning',
-            },
+            detail: { message, type: 'warning' },
         }));
     } catch (error) { /* no-op outside the browser */ }
 }

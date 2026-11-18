@@ -106,6 +106,42 @@ describe('theme keys', () => {
         expect(themeManager.switchTheme).toHaveBeenLastCalledWith(FIRST);
     });
 
+    it('does not say a step failed when a newer theme request won (the Random timer mid-step)', async () => {
+        const { app, themeManager, press } = setup();
+        themeManager.themeIntentGeneration = 0;
+        let finishSwitch;
+        themeManager.switchTheme.mockImplementation((id) => {
+            themeManager.themeIntentGeneration += 1;
+            return new Promise((resolve) => { finishSwitch = () => resolve(id); });
+        });
+
+        press('n');
+        await vi.advanceTimersByTimeAsync(DELAY_MS);
+        showSerenityNotice.mockClear();
+        // Another source asks for a theme while the step's switch runs; the queue ends on it.
+        themeManager.themeIntentGeneration += 1;
+        themeManager.activeThemeName = THIRD;
+        finishSwitch();
+        await vi.advanceTimersByTimeAsync(0);
+
+        expect(showSerenityNotice).not.toHaveBeenCalledWith('That theme could not open');
+        expect(app.settingsManager.update).not.toHaveBeenCalled();
+    });
+
+    it('still says so when the step\'s theme did not open', async () => {
+        const { themeManager, press } = setup();
+        themeManager.themeIntentGeneration = 0;
+        themeManager.switchTheme.mockImplementation(async () => {
+            themeManager.themeIntentGeneration += 1;
+            return FIRST; // the manager stayed on the theme it had
+        });
+
+        press('n');
+        await vi.advanceTimersByTimeAsync(DELAY_MS);
+
+        expect(showSerenityNotice).toHaveBeenCalledWith('That theme could not open');
+    });
+
     it('builds only the theme a run of presses stops on', async () => {
         const { themeManager, press } = setup();
 

@@ -188,7 +188,6 @@ function configureNonDefaultState(player) {
     gameState.garbageAttackSequence = 13;
     gameState.handicap = 3;
     gameState.handicaps = { A: 2, B: 3 };
-    gameState.handicapCrowd = 4;
     gameState.goalComplete = true;
     gameState.victoryLapActive = true;
     gameState.victoryLapStartTime = 999;
@@ -472,6 +471,39 @@ describe('FFA versioned resync sidecar', () => {
 
         expect(targetPlayer.garbageQueue.serialize()).toEqual([entry]);
         expect(targetPlayer.garbageQueue.entries[0].attackerId).not.toMatch(/^unknown_/);
+    });
+
+    it('no longer captures the crowd handicap, which was removed unused', () => {
+        const sourcePlayer = makePlayer('A');
+        configureNonDefaultState(sourcePlayer);
+        const source = makeGame([sourcePlayer]);
+        const sidecar = captureFfaResyncSidecar(source, makeSyncpoint(source));
+
+        expect(sidecar.players[0].gameState).not.toHaveProperty('handicapCrowd');
+        expect(sidecar.players[0].gameState.handicaps).toEqual({ A: 2, B: 3 });
+    });
+
+    it('accepts and ignores the crowd handicap a host on an older build still sends', () => {
+        const sourcePlayer = makePlayer('A', 17);
+        configureNonDefaultState(sourcePlayer);
+        const source = makeGame([sourcePlayer]);
+        const current = captureFfaResyncSidecar(source, makeSyncpoint(source));
+        const older = JSON.parse(JSON.stringify(current));
+        older.players[0].gameState.handicapCrowd = 4;
+
+        const validated = validateFfaResyncSidecar(older, makeEnvelope(older));
+        const targetPlayer = makePlayer('A', 999);
+        const target = makeGame([targetPlayer]);
+        applyFfaResyncSidecar(target, validated, { restorePlayerInput: true });
+
+        expect(targetPlayer.gameState).not.toHaveProperty('handicapCrowd');
+        expect(targetPlayer.gameState.handicaps).toEqual({ A: 2, B: 3 });
+        expect(captureFfaResyncSidecar(target, makeSyncpoint(target))).toEqual(validateCaptured(current));
+
+        // A present legacy value is still checked, never trusted blindly.
+        const malformed = JSON.parse(JSON.stringify(older));
+        malformed.players[0].gameState.handicapCrowd = -1;
+        expect(() => validateFfaResyncSidecar(malformed, makeEnvelope(malformed))).toThrow(/handicapCrowd/);
     });
 
     it('rejects malformed, unsafe, mismatched, and non-exact-roster payloads before apply', () => {

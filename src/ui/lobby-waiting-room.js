@@ -18,6 +18,7 @@ import {
     closeLayer, conditionLabel, confirmSheet, describeGoal, mpIcon, openLayer,
 } from './components/mp-sheet.js';
 import { describeMatchLevelRule } from '../core/multiplayer/match-level-rule.js';
+import { warnHostIfRelayUnreachable } from '../core/steam/relay-network.js';
 import {
     appendChatMessage, chatIcon, chatModerationNote, createSteamProfileButton, isChatOn, isMuted,
     onChatModerationChange, renderChatLog, setPlayerMuted,
@@ -35,6 +36,7 @@ export class LobbyWaitingRoom {
         this.initialUpdateTimeout = null;
         this.isVisible = false;
         this.leaving = false;
+        this.relayCheckedLobbyId = null; // the lobby whose host was checked for an unreachable relay network
 
         this.createUI();
     }
@@ -308,6 +310,7 @@ export class LobbyWaitingRoom {
         console.log('📋 Showing waiting room...');
         this.container.classList.remove('hidden');
         openLayer(this.container, () => this.leaveLobby(), { fieldsFirst: true });
+        this.warnHostIfRelayUnreachable();
 
         // Update UI after a brief delay to ensure DOM is ready
         this.initialUpdateTimeout = setTimeout(() => {
@@ -349,6 +352,25 @@ export class LobbyWaitingRoom {
         });
 
         console.log('✅ Waiting room visible');
+    }
+
+    /**
+     * A host whose computer cannot reach Steam's relay network is listed, but no join can
+     * arrive, so the room would just stay empty. Say so, once for each lobby, and go on hosting
+     * (core/steam/relay-network.js, ADR-0023).
+     */
+    warnHostIfRelayUnreachable() {
+        const network = this.gameState?.network;
+        const lobbyId = network?.currentLobbyId;
+        if (!this.gameState?.isHost || !lobbyId || this.relayCheckedLobbyId === lobbyId) return;
+        this.relayCheckedLobbyId = lobbyId;
+        warnHostIfRelayUnreachable(network, {
+            hosting: () => this.isVisible && this.gameState?.isHost === true
+                && this.gameState.network?.currentLobbyId === lobbyId,
+            notify: (message) => window.dispatchEvent(new CustomEvent('serenity:toast', {
+                detail: { message, type: 'warning' },
+            })),
+        }).catch(() => {});
     }
 
     /**

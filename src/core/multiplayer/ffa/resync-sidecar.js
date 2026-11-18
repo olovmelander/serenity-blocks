@@ -37,9 +37,14 @@ const GAME_STATE_SNAPSHOT_FIELDS = [
     'isAlive', 'hitStopEnabled', 'hitStopRemaining', 'hitStopTicks',
     'lastMoveWasRotation', 'b2bActive', 'inputQueue', 'playerInput', 'isInfinityMode',
     'currentTopRow', 'cameraRow', 'lastPlacedPieceX', 'comboState', 'blindTimers',
-    'garbageAttackSequence', 'handicap', 'handicaps', 'handicapCrowd', 'goalComplete',
+    'garbageAttackSequence', 'handicap', 'handicaps', 'goalComplete',
     'victoryLapActive', 'victoryLapStartTime', 'rngState',
 ];
+// Compatibility (2026-11-18): the crowd handicap was removed unused, and version 1 no longer
+// captures handicapCrowd. A host on an older build still sends it (always a counter, always 0
+// in play); it is checked when present, never required, and dropped before apply. An older
+// receiver requires it, so it rejects a newer host's sidecar through the normal failure path.
+const LEGACY_GAME_STATE_SNAPSHOT_FIELDS = ['handicapCrowd'];
 export const FFA_RESYNC_SIDECAR_MAX_JSON_CHARS = 1024 * 1024;
 
 /** @param {unknown} value */
@@ -389,7 +394,9 @@ function canonicalizeBlindTimerSnapshot(timers, simTickMs) {
 function validateGameStateSnapshot(gameState, steamId) {
     const label = `player ${steamId} GameState`;
     validatePlainTree(gameState, label, { remaining: MAX_PLAIN_NODES });
-    assertExactKeys(gameState, GAME_STATE_SNAPSHOT_FIELDS, label);
+    const legacyFields = LEGACY_GAME_STATE_SNAPSHOT_FIELDS.filter((field) => Object.hasOwn(gameState, field));
+    assertExactKeys(gameState, [...GAME_STATE_SNAPSHOT_FIELDS, ...legacyFields], label);
+    legacyFields.forEach((field) => assertCounter(gameState[field], `${label}.${field}`));
     invariant(
         Array.isArray(gameState.lockedPieces)
         && gameState.lockedPieces.length <= MAX_LOCKED_PIECES,
@@ -444,7 +451,7 @@ function validateGameStateSnapshot(gameState, steamId) {
         'lockTimer', 'lockTimerTicks', 'lockResetCount', 'score', 'lines', 'level',
         'linesUntilNextLevel', 'pieceIdCounter', 'boardVersion', 'hitStopRemaining',
         'hitStopTicks', 'currentTopRow', 'cameraRow', 'garbageAttackSequence', 'handicap',
-        'handicapCrowd', 'victoryLapStartTime',
+        'victoryLapStartTime',
     ];
     numericFields.forEach((field) => {
         if (gameState[field] !== undefined && gameState[field] !== null) {
@@ -456,7 +463,6 @@ function validateGameStateSnapshot(gameState, steamId) {
         'lockResetCount', 'score', 'lines', 'level', 'linesUntilNextLevel',
         'pieceIdCounter', 'boardVersion',
         'hitStopTicks', 'currentTopRow', 'cameraRow', 'garbageAttackSequence',
-        'handicapCrowd',
     ].forEach((field) => assertCounter(gameState[field], `${label}.${field}`));
     [
         'simTickMs', 'simTimeMs', 'lastTime', 'dropInterval', 'dropCounter',
@@ -909,6 +915,7 @@ export function validateFfaResyncSidecar(sidecar, { header, packedSnapshot }) {
 
     const validated = /** @type {Record<string | symbol, any>} */ (clonePlain(candidate));
     validated.players.forEach((player, index) => {
+        LEGACY_GAME_STATE_SNAPSHOT_FIELDS.forEach((field) => { delete player.gameState[field]; });
         const descriptor = canonicalRngDescriptors[index];
         player.rng.seed = descriptor.seed;
         if (player.rng.algorithm !== 'sfc32-v1') return;

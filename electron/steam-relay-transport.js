@@ -72,9 +72,9 @@ export const SEND_FLAGS_BY_LEGACY_TYPE = Object.freeze([0, 5, 9, 8]);
 export const SEND_AUTO_RESTART = 32;
 
 /**
- * Whether a throttled step of electron/steam-integration.js's session pump is due. Callers pass a
- * monotonic clock (performance.now()), never the wall clock, which can be set back. `now < last`
- * counting as due is only a guard, should a caller ever get that wrong.
+ * Whether a throttled step of the session pump (electron/relay-session-pump.js) is due. Callers
+ * pass a monotonic clock (performance.now()), never the wall clock, which can be set back.
+ * `now < last` counting as due is only a guard, should a caller ever get that wrong.
  * @param {number} now
  * @param {number} last  when the step last ran
  * @param {number} everyMs

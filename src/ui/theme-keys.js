@@ -70,7 +70,11 @@ export function installThemeKeys(app, { doc = document } = {}) {
             themeManager: app.themeManager,
             settingsManager: app.settingsManager,
             onPreview: (id, { index, total }) => showSerenityNotice(`${themeName(id)} · ${index + 1} of ${total}`),
-            onSettled: (_id, ok) => { if (!ok) showSerenityNotice('That theme could not open'); },
+            // A newer theme request (the Random timer, a Hub pick) that won the queue is not a
+            // theme that failed to open.
+            onSettled: (_id, ok, outcome) => {
+                if (!ok && !outcome?.superseded) showSerenityNotice('That theme could not open');
+            },
             onAlone: () => showSerenityNotice('Your only theme so far · the Odyssey brings more home'),
         });
         return stepper;

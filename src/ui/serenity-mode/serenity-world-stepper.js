@@ -42,7 +42,8 @@ export class SerenityWorldStepper {
      * @param {any} options.themeManager
      * @param {any} [options.settingsManager]
      * @param {(themeId: string, position: {index: number, total: number}) => void} [options.onPreview]
-     * @param {(themeId: string|null, ok: boolean) => void} [options.onSettled]
+     * @param {(themeId: string|null, ok: boolean, outcome: {superseded: boolean}) => void} [options.onSettled]
+     *   superseded: a newer theme request replaced the step's; nothing failed
      * @param {(themeId: string|null) => void} [options.onAlone] there is no other theme to step to
      * @param {(callback: () => void, ms: number) => any} [options.schedule]
      * @param {(handle: any) => void} [options.cancel]
@@ -100,16 +101,23 @@ export class SerenityWorldStepper {
         this.token += 1;
         const { token } = this;
         let applied = null;
+        let intent;
         try {
-            applied = await this.themeManager.switchTheme(target);
+            const switching = this.themeManager.switchTheme(target);
+            // The manager counts each request it accepts as it is made. A later count when this
+            // settles means a newer request (Random, Drift, a Hub pick) won the queue, not that
+            // this theme failed to open.
+            intent = this.themeManager.themeIntentGeneration;
+            applied = await switching;
         } catch (error) {
             console.warn('[Serenity] Theme step failed:', error);
         }
         if (token !== this.token) return false;
         this.target = null;
         const ok = applied === target && this.themeManager.activeThemeName === target;
+        const superseded = !ok && intent !== undefined && this.themeManager.themeIntentGeneration !== intent;
         if (ok) saveThemeChoice(this.settingsManager, target);
-        this.onSettled(this.themeManager.activeThemeName || null, ok);
+        this.onSettled(this.themeManager.activeThemeName || null, ok, { superseded });
         return ok;
     }
 

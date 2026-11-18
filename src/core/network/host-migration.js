@@ -123,7 +123,7 @@ export class HostMigration {
         if (game.isHost || game._disposed || this.isElectionInProgress) return;
         game._recordNetEvent?.('host_lost', { hostId: this.network.hostSteamId, reason, phase: game.gamePhase });
         if (!this.matchInProgress()) {
-            this._leave();
+            this._leave(reason);
             return;
         }
         console.warn(`⚠️ Host gone (${reason}): electing a successor`);
@@ -168,10 +168,14 @@ export class HostMigration {
         if (waited > (candidates.length + 1) * ELECTION_STEP_MS) this._leave();
     }
 
-    _leave() {
+    /**
+     * @param {string|null} [hostGone] why the host is gone: a session that failed or fell silent
+     *   may be this computer's relay network instead (ui/online-session-exit.js)
+     */
+    _leave(hostGone = null) {
         this.isElectionInProgress = false;
         this.stopMonitoring();
-        emitMultiplayerEvent(MULTIPLAYER_EVENTS.KICKED, { reason: 'host_left' });
+        emitMultiplayerEvent(MULTIPLAYER_EVENTS.KICKED, { reason: 'host_left', hostGone });
     }
 
     /**

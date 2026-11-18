@@ -95,8 +95,10 @@ const scoreKey = (entry) => [
     entry.timestamp ?? 0,
 ].join('|');
 const journeyStampOf = (data) => (typeof data?.journeyStartedAt === 'string' ? data.journeyStartedAt : '');
+// A clear an older build saved without a star is still a clear, here as on the map (owner
+// decision 2026-11-18): dropping it erased it on this device and in the upload that followed.
 const completionEntries = (records) => Object.entries(isRecord(records) ? records : {})
-    .map(([id, entry]) => [id, normalizeOdysseyCompletion(entry)]).filter(([, entry]) => entry);
+    .map(([id, entry]) => [id, normalizeOdysseyCompletion(entry, { minStars: 0 })]).filter(([, entry]) => entry);
 const odysseyCounters = (statistics) => Object.fromEntries(Object.entries(isRecord(statistics) ? statistics : {})
     .map(([key, value]) => [key, Number.isFinite(value) && value >= 0 ? value : 0]));
 

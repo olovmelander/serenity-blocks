@@ -52,13 +52,15 @@ const V2_LEVEL_THEME_IDS = Object.freeze([
 const isThemeId = (value) => typeof value === 'string' && /^[a-z0-9][a-z0-9-]{0,79}$/.test(value);
 const isRecord = (value) => value && typeof value === 'object' && !Array.isArray(value);
 
+/** A saved clear: 0 to 3 stars, since older builds could record a clear without a star. */
 export const isOdysseyCompletion = (value) => isRecord(value)
-    && Number.isInteger(value.stars) && value.stars >= 1 && value.stars <= 3;
+    && Number.isInteger(value.stars) && value.stars >= 0 && value.stars <= 3;
 
 /**
  * Keep an earned clear while discarding damaged optional record values.
- * Local saves pass `minStars: 0`: older builds could record a clear without a
- * star, and dropping it on load would erase that progress for good.
+ * Every reader of saved progress (load, the collection, the cloud merge) passes
+ * `minStars: 0`: older builds could record a clear without a star, and dropping
+ * it would erase that progress for good (owner decision 2026-11-18).
  */
 export function normalizeOdysseyCompletion(value, { minStars = 1 } = {}) {
     if (!isRecord(value) || !Number.isInteger(value.stars) || value.stars < minStars || value.stars > 3) {

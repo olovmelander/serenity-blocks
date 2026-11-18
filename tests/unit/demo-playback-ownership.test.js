@@ -152,10 +152,17 @@ describe('pausing and resuming while a cascade is still settling', () => {
         const state = new GameState();
         let settleCascade;
         const applied = [];
+        const refused = [];
         player.startPlayback({
             spawnPiece: () => spawnPiece(state),
             applyCommand: (command) => {
-                applied.push(command.d === undefined ? command.a : `${command.a}:${command.d}`);
+                const name = command.d === undefined ? command.a : `${command.a}:${command.d}`;
+                // As in SinglePlayerMode, a paused board refuses commands.
+                if (state.isPaused) {
+                    refused.push(name);
+                    return false;
+                }
+                applied.push(name);
                 if (command.a === 'hardDrop' && !settleCascade) {
                     // The clear's waves keep physics pending while the frame loop waits on them.
                     state.isProcessingPhysics = true;
@@ -169,6 +176,7 @@ describe('pausing and resuming while a cascade is still settling', () => {
             state,
             frames,
             applied,
+            refused,
             advance: (ms) => { clock += ms; },
             settle: () => settleCascade(),
         };
@@ -224,6 +232,28 @@ describe('pausing and resuming while a cascade is still settling', () => {
         const loop = vi.spyOn(replay.player, '_loop');
         replay.frames.shift()();
         expect(loop).toHaveBeenCalledOnce();
+        replay.player.stopPlayback({ notify: false });
+    });
+
+    // Audit 2026-11-18 A18-CORE-5: the viewer stays paused until the clear is over.
+    it('replays the frame\'s inputs after a pause that outlasts the cascade', async () => {
+        const replay = cascadePlayback();
+        await flush();
+        replay.advance(100);
+        replay.frames.shift()();
+        await flush();
+        expect(replay.applied).toEqual(['hardDrop']);
+
+        replay.player.pausePlayback();
+        replay.settle();
+        await flush();
+        replay.player.resumePlayback();
+        while (replay.frames.length) replay.frames.shift()();
+        await flush();
+
+        expect(replay.refused).toEqual([]);
+        expect(replay.applied).toEqual(['hardDrop', 'move:-1', 'move:1', 'rotate:left']);
+        expect(replay.player.currentInputIndex).toBe(4);
         replay.player.stopPlayback({ notify: false });
     });
 });

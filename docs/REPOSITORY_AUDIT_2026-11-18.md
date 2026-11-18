@@ -73,7 +73,7 @@ in the details.
 | 2 | A18-PERS-1 | P2 | A Steam account's first device never received Odyssey progress made on another device | fixed `f164137` |
 | 3 | A18-CORE-1 | P2 | Pausing and resuming a replay during a line clear applied an input twice and skipped the next: the replay showed a different game | fixed `8b0adfc` |
 | 4 | A18-UI-3 | P2 | Every return to the main menu jumped to Single Player, forgetting the mode just played | fixed `5d3695d` |
-| 5 | A18-CORE-2 | P2 | Versus/duel/tide: garbage settling could complete a row nobody cleared; the victim's next lock was credited for it (lines, score, an attack) | **owner decision** |
+| 5 | A18-CORE-2 | P2 | Versus/duel/tide: garbage settling could complete a row nobody cleared; the victim's next lock was credited for it (lines, score, an attack) | fixed `133001a` (owner decision 1A) |
 | 6 | A18-THM-1 | P2 | Solar Eclipse: the flamingos made ~117 KB of garbage every frame at every tier | deferred (theme; patch proven output-identical) |
 | 7 | A18-CORE-3 | P3 | Closing the pause sheet during a replay lost a gravity tick (replay could diverge) and resumed a replay paused from the bar | fixed `e8fb2b5` |
 | 8 | A18-UI-2 | P3 | The controller press that set a binding also closed Settings and opened the Hub | fixed `d9f2204` |
@@ -86,19 +86,19 @@ in the details.
 | 15 | A18-UI-5 | P3 | Stillfall: controller presses in another app undid or restarted the puzzle | fixed `8529028` |
 | 16 | A18-UI-6 | P3 | LB/RB and Q/E in Settings over Records also switched the Records tab beneath | fixed `eb7388a` |
 | 17 | A18-MP-2 | P3 | Online: a computer clock set back left joiners unanswered by the host | fixed `4d8847b` |
-| 18 | A18-MP-1 | P3 | Online: with Steam's relays unreachable, every join failed as "the host did not answer" | **owner decision** |
+| 18 | A18-MP-1 | P3 | Online: with Steam's relays unreachable, every join failed as "the host did not answer" | fixed `37b5f0e` (owner decision 2A) |
 | 19 | A18-PERF-4 | P3 | Local versus: each 3-4 player attack forced two synchronous layouts (~1.3 ms) | fixed `185d253` |
 | 20 | A18-PERF-1 | P3 | The landing shadow rebuilt its layout every frame on every board | fixed `2ee5096` |
 | 21 | A18-PERF-3 | P3 | Boot parsed ~51 KB of Odyssey return-portal code because of a 4-line import | fixed `1b6c4cf` |
 | 22 | A18-THM-2 | P3 | Synthwave strollers (41 KB/frame), Winter's bear and fox, other rigs: garbage from array destructuring | deferred (theme; patch proven output-identical) |
-| 23 | A18-CORE-5 | P3 | A pause that lasts until a replay's line clear ends skips that frame's inputs | deferred |
-| 24 | A18-MP-3 | P3 | ADR-0023's relay session enforcement has no behavioural test | deferred (extraction) |
+| 23 | A18-CORE-5 | P3 | A pause that lasts until a replay's line clear ends skips that frame's inputs | fixed `a2b359c` (second pass) |
+| 24 | A18-MP-3 | P3 | ADR-0023's relay session enforcement has no behavioural test | fixed `938f13c` (second pass) |
 | 25 | A18-PERF-2 | P3 | Phaser's clear() regrows each board's command buffer every frame (~3.4 KB) | deferred (not worth it) |
 | 26 | A18-DEAD-1 | P3 | Boot tests pinned a retired logo offset (-31 vs the shipped -36); 924 dead lines | fixed `bf6f737` |
 | 27 | A18-DEAD-5 | P3 | ~230 lines of retired helpers with no callers; drifted level lookups | fixed `113541f` |
-| 28 | A18-DEAD-4 | P3 | GARBAGE_RULES contradicted the real attack rule; the crowd handicap never applies | partly fixed `77c0681`; **owner decision** for the rest |
-| 29 | A18-DEAD-3 | P3 | ADR-0022 leftovers (aurora builder, water membrane) | deferred (Odyssey files) |
-| 30 | A18-DEAD-6 | P3 | composer-dispose.js kept alive only by its test | deferred (theme files) |
+| 28 | A18-DEAD-4 | P3 | GARBAGE_RULES contradicted the real attack rule; the crowd handicap never applies | fixed `77c0681`, `457d876` (owner decision 3A) |
+| 29 | A18-DEAD-3 | P3 | ADR-0022 leftovers (aurora builder, water membrane) | fixed `38e8491` (second pass; build byte-identical) |
+| 30 | A18-DEAD-6 | P3 | composer-dispose.js kept alive only by its test | fixed `93712ff` (second pass; build byte-identical) |
 
 Review follow-ups `4aa9245`: the independent review of the whole branch found no bug in the
 fixes' intent but three real edges in them, fixed with tests that fail on the previous code (a
@@ -132,6 +132,63 @@ handoff; a duplicated latch loop), plus one constant moved to a single home.
    for any theme change. Run them on a GPU machine. Swapping `Math.hypot` for `Math.sqrt` is *not*
    bit-identical (0.88 % of float32 fox posture values differ): keep `hypot`, or use an
    allocation-free replica of V8's algorithm.
+
+## Second pass, same day: what could be done without a GPU
+
+After the first merge (`1c72801`), everything left that needed no GPU, controller, Steam session or
+owner decision:
+
+- **A18-CORE-5** (`a2b359c`): a replay paused until a line clear ends keeps that frame's inputs
+  queued for the resumed loop instead of counting refused ones as played (a 72-case pause sweep:
+  2 diverged boards before, 0 after).
+- **A18-MP-3** (`938f13c`): the relay session pump is its own pure module,
+  `electron/relay-session-pump.js`, with behavioural tests; `steam-integration.js` only wires it.
+  Each of 18 deliberate breaks of the logic and 7 of the wiring fails a test, and a differential
+  run of the old and new code over 500 random scenarios matched on every one of 655,510 events.
+- **A18-DEAD-3 and A18-DEAD-6** (`38e8491`, `93712ff`): the ADR-0022 leftovers and the unused
+  composer helper are gone; the production build is byte-identical before and after (1,078 files,
+  every SHA-256 equal), so the shipped game cannot change.
+- **The journey transitions' frame-gap rule** is one helper (`23296c7`), so it cannot drift again.
+- **False "That theme could not open" notices** (`5799010`, `b80cee7`): a theme step that Random,
+  Drift, a Hub pick or the Random timer superseded is no longer reported as a failure, in Serenity
+  or on the theme keys (N / Shift+N, LB/RB) in other modes.
+- Two stale claims corrected in older records (`7c57edd`, and the three upgrade research note in
+  `93712ff`); the architecture-fitness baselines locked in where they shrank.
+
+Still open after this pass: the three owner decisions (A18-CORE-2, A18-MP-1, the crowd half of
+A18-DEAD-4) and the question of what `stars: 0` means; the theme fixes A18-THM-1 and A18-THM-2,
+which need the screenshot loop on a GPU machine; A18-PERF-2 (not worth it yet).
+
+## The owner's decisions, implemented the same day
+
+The owner chose the recommended option for all four (1A, 2A, 3A, 4A):
+
+- **1A, garbage that completes a row** (`133001a`): rows that settling incoming garbage completes
+  are cleared at once with no credit (no lines, score, level, combo, Odyssey metrics or attack),
+  then the board settles again until nothing more completes. One rule in the shared garbage path,
+  so local versus, Odyssey duels, the tide and online host and peer all agree; a row that was
+  already full (a solid garbage row) stays. There is no rules generation to bump (the registry in
+  the 2026-10-13 owner-decision research was never built), and nothing checks that online peers
+  run the same build (NET-04), so mixed builds rely on the existing resync. The rows vanish
+  without a line-clear flash.
+- **2A, relays unreachable** (`37b5f0e`, `cd3a51e`): when a join ends unanswered, or the session
+  with the host fails in the waiting room, and Steam reports its relay network out of reach (any
+  negative availability, asked afresh), the player reads that the relay network cannot be reached
+  instead of "the host did not answer"; a host gets one non-blocking notice per lobby. Play is
+  never refused on that status. ADR-0023 and the transport record say so. Not seen against a
+  really blocked relay.
+- **3A, the crowd handicap** (`457d876`): removed from the game state, replays and the ADR-0014
+  resync sidecar. Old replays and an older host's sidecar that still carry the field are accepted
+  and ignore it; the sidecar's validator had required it and now only accepts it. An older build
+  would still reject a newer host's sidecar through ADR-0014's fail-closed path, as with any
+  mixed-version match.
+- **4A, `stars: 0`** (`8a17961`): a well-formed clear without a star is a clear everywhere: the
+  Steam Cloud merge, the save migrations and the retired-orb record now agree with the map, the
+  collection and Records. Star totals, Steam's star stat and leaderboard are unchanged. The
+  2026-11-06 record carries a dated note.
+
+Still open after this: A18-THM-1 and A18-THM-2 (theme files; the screenshot loop on a GPU machine)
+and A18-PERF-2 (not worth it yet).
 
 ## Owner-reported after the pass: rapid theme changes (fixed `bfde129`)
 

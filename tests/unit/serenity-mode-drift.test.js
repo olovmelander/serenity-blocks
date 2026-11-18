@@ -196,6 +196,56 @@ describe('the theme arrows', () => {
         expect(settingsManager.update).not.toHaveBeenCalled();
     });
 
+    // Like ThemeManager: every accepted request counts a new intent, and each pending switch
+    // settles on the theme the latest-wins queue ends on.
+    function latestWins(themeManager) {
+        const pending = [];
+        let requested = null;
+        themeManager.themeIntentGeneration = 0;
+        themeManager.switchTheme.mockImplementation((id) => {
+            themeManager.themeIntentGeneration += 1;
+            requested = id;
+            return new Promise((resolve) => { pending.push(resolve); });
+        });
+        return (opened = requested) => {
+            themeManager.activeThemeName = opened;
+            pending.splice(0).forEach((resolve) => resolve(opened));
+        };
+    }
+
+    // Whether the step's outcome is one the player is told about ("That theme could not open").
+    const reportOutcomes = (stepper) => {
+        const outcomes = [];
+        stepper.onSettled = (id, ok, outcome) => outcomes.push({ id, ok, failed: !ok && outcome?.superseded !== true });
+        return outcomes;
+    };
+
+    it('do not call a step a failure when a newer theme request replaced it', async () => {
+        const { stepper, themeManager, settingsManager } = makeStepper(order[0]);
+        const settle = latestWins(themeManager);
+        const outcomes = reportOutcomes(stepper);
+        stepper.step(1);
+        await vi.advanceTimersByTimeAsync(DELAY_MS);
+        // Random, Drift or a Hub pick asks for another theme while the step's switch runs.
+        themeManager.switchTheme(order[2]);
+        settle();
+        await vi.advanceTimersByTimeAsync(0);
+        expect(outcomes).toEqual([{ id: order[2], ok: false, failed: false }]);
+        expect(settingsManager.update).not.toHaveBeenCalled();
+    });
+
+    it('still report a step whose theme did not open', async () => {
+        const { stepper, themeManager, settingsManager } = makeStepper(order[0]);
+        const settle = latestWins(themeManager);
+        const outcomes = reportOutcomes(stepper);
+        stepper.step(1);
+        await vi.advanceTimersByTimeAsync(DELAY_MS);
+        settle(order[0]); // the build failed and the manager stayed where it was
+        await vi.advanceTimersByTimeAsync(0);
+        expect(outcomes).toEqual([{ id: order[0], ok: false, failed: true }]);
+        expect(settingsManager.update).not.toHaveBeenCalled();
+    });
+
     it('say so when you have only one theme', () => {
         const { stepper, alone, previews } = makeStepper('forest');
         stepper.themeManager.canSelectTheme = (id) => id === 'forest';
