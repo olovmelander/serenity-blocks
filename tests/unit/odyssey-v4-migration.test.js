@@ -88,6 +88,26 @@ describe('Odyssey v4 challenge identity migration', () => {
         expect(migrateOdysseyProgressData(prior).unlockedLevels).toContain(newId);
     });
 
+    // Owner decision 2026-11-18 (audit A18-STARS-0): a clear an older build saved without a star
+    // is a clear, in a migration as on the map.
+    it.each([[43, 43], [54, 54]])('opens inserted orb after a starless clear of old orb %i', (oldId, newId) => {
+        const migrated = migrateOdysseyProgressData({
+            version: 3,
+            currentLevel: oldId,
+            unlockedLevels: [oldId],
+            completedLevels: { [oldId]: completed('cinder-drift', 0) },
+        });
+        expect(migrated.unlockedLevels).toContain(newId);
+    });
+
+    it('counts a chapter with a starless clear in it as complete, and the clear as no stars', () => {
+        const completedLevels = Object.fromEntries([1, 2, 3, 4, 5].map((id) => [id, completed('cinder-drift')]));
+        completedLevels[3].stars = 0;
+        const migrated = migrateOdysseyProgressData({ version: 4, completedLevels, statistics: {} });
+        expect(migrated.completedLevels[3].stars).toBe(0);
+        expect(migrated.statistics).toMatchObject({ chaptersCompleted: 1, totalStars: 12 });
+    });
+
     it('moves a player at the removed reef to Stillwater without inventing a clear', () => {
         const migrated = migrateOdysseyProgressData({ version: 3, currentLevel: 10, unlockedLevels: [9, 10] });
         expect(migrated.currentLevel).toBe(10);
@@ -199,12 +219,21 @@ describe('Odyssey v4 challenge identity migration', () => {
 
     it.each([
         { 'future:10': completed('misty-lake') },
-        { 'v3:10': completed('misty-lake', 0) },
         { 'v3:10': { stars: 1, themeIds: [null, {}, 'bad id'] } },
     ])('does not recover unrecognized or malformed retired evidence: %j', (retiredCompletions) => {
         storage.setItem(ODYSSEY_PROGRESS_STORAGE_KEY, JSON.stringify({
             version: ODYSSEY_SAVE_VERSION, retiredCompletions,
         }));
         expect(collection().getOwnedThemeIds()).toEqual(['forest']);
+    });
+
+    // Owner decision 2026-11-18 (audit A18-STARS-0): the retired orb's starless clear is a clear.
+    it('recovers the played theme of a retired orb cleared without a star', () => {
+        storage.setItem(ODYSSEY_PROGRESS_STORAGE_KEY, JSON.stringify({
+            version: ODYSSEY_SAVE_VERSION, retiredCompletions: { 'v3:10': completed('misty-lake', 0) },
+        }));
+        const owned = collection();
+        expect(owned.isUnlocked('misty-lake')).toBe(true);
+        expect(owned.exportData().grants.grainfields.levelId).toBeUndefined();
     });
 });

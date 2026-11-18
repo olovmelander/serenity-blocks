@@ -374,6 +374,68 @@ describe('New Journey with Steam Cloud on', () => {
     });
 });
 
+describe('an Odyssey clear saved without a star', () => {
+    // Owner decision 2026-11-18 (audit A18-STARS-0): older builds saved stars: 0 when an orb's
+    // one-star tier asked for more than clearing it. The map counts that as a clear, so the
+    // cloud must too: dropping it on a merge erased the clear here and uploaded the erasure.
+    const STARLESS = {
+        stars: 0, bestScore: 450, attempts: 2, themeId: 'cinder-drift', themeIds: ['cinder-drift'],
+    };
+    const clearedFirstOrb = () => odysseyDoc({
+        completedLevels: { 1: STARLESS }, unlockedLevels: [1, 2], currentLevel: 2,
+    });
+    /** Another device's copy, written after anything on this one. */
+    function putInCloud(doc) {
+        steam.cloud.set(ODYSSEY, JSON.stringify(doc));
+        steam.cloud.set('cloud_manifest.json', JSON.stringify({
+            files: { [ODYSSEY]: { hash: 'other-device', updatedAt: Date.parse('2030-01-01T00:00:00.000Z') } },
+        }));
+    }
+
+    it('stays cleared through a sync with a cloud copy that lacks it, and is uploaded', async () => {
+        const values = new Map([['serenityBlocks_odysseyProgress', JSON.stringify(clearedFirstOrb())]]);
+        const { state, sync, saved } = device({ values });
+        state.load();
+        expect(state.isLevelCompleted(1)).toBe(true);
+        putInCloud(odysseyDoc({ onboarding: { arrivalSeen: true } }));
+
+        await sync.syncFromCloud();
+
+        expect(state.isLevelCompleted(1)).toBe(true);
+        expect(state.getTotalStars()).toBe(0);
+        expect(saved().completedLevels[1]).toMatchObject({ stars: 0, bestScore: 450 });
+        expect(cloudDoc().completedLevels[1]).toMatchObject({ stars: 0, bestScore: 450 });
+        expect(cloudDoc().statistics.totalStars).toBe(0);
+    });
+
+    it('arrives from the cloud on a device that has not cleared that orb', async () => {
+        const { state, sync, saved } = device();
+        state.save();
+        putInCloud(clearedFirstOrb());
+
+        await sync.syncFromCloud();
+
+        expect(state.isLevelCompleted(1)).toBe(true);
+        expect(state.isLevelUnlocked(2)).toBe(true);
+        expect(state.getLevelStars(1)).toBe(0);
+        expect(saved().completedLevels[1]).toMatchObject({ stars: 0, bestScore: 450 });
+    });
+
+    it.each([false, true])('merges with a two-star clear of the same orb into two stars (reverse=%s)', (reverse) => {
+        const { sync } = device();
+        const sides = [
+            odysseyDoc({ completedLevels: { 1: { stars: 0, bestScore: 900, attempts: 5 } } }),
+            odysseyDoc({ completedLevels: { 1: { stars: 2, bestScore: 400, attempts: 1 } } }),
+        ];
+        if (reverse) sides.reverse();
+
+        const merged = sync._mergeOdyssey(...sides);
+
+        expect(merged.completedLevels[1]).toMatchObject({ stars: 2, bestScore: 900, attempts: 5 });
+        expect(merged.statistics.totalStars).toBe(2);
+    });
+});
+
 describe('the score merge across two devices', () => {
     it('downloads a matching run in another mode and keeps the local replay link', async () => {
         const run = { score: 1000, lines: 10, level: 2, timestamp: 1000 };

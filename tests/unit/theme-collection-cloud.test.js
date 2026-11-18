@@ -360,7 +360,9 @@ describe('Steam Cloud collection reconciliation', () => {
         expect(steam.cloudWrite).not.toHaveBeenCalled();
     });
 
-    it('keeps repeated Odyssey unions idempotent and excludes failed completion theme history', () => {
+    // A stars: 0 record is a clear an older build saved without a star (owner decision 2026-11-18),
+    // so its played theme is collected; it still never lowers the stars already earned.
+    it('keeps repeated Odyssey unions idempotent and collects a starless clear\'s theme history', () => {
         const { manager, collection } = setup();
         const local = {
             version: ODYSSEY_SAVE_VERSION,
@@ -381,9 +383,10 @@ describe('Steam Cloud collection reconciliation', () => {
         expect(twice.statistics).toMatchObject({
             totalPlayTime: 100, totalLinesCleared: 50, totalScore: 900, totalAttempts: 8,
         });
+        expect(twice.completedLevels[21].stars).toBe(3);
         manager._applyOdyssey(twice);
         expect(collection.isUnlocked('aurora')).toBe(true);
-        expect(collection.isUnlocked('ice-temple')).toBe(false);
+        expect(collection.isUnlocked('ice-temple')).toBe(true);
     });
 
     it('reads collection and Odyssey documents before applying a cloud theme preference', async () => {
