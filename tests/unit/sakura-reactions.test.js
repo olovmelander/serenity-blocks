@@ -7,12 +7,11 @@ const ENVELOPES = ['gust', 'glow', 'lanterns', 'moon'];
 const UNIT_STATES = ['vortex', 'heat', 'spirit', 'constellation', 'figures', 'hush', 'blizzard'];
 /**
  * What gameplay events emit; the fever's own festival of sky lanterns comes on a cadence. The last
- * four are the showpieces' own (sakura-showpieces.js): a hard drop's crown of spray, the wave of
- * lantern light three and four lines run along the far shore, the back-to-back's gate and the
- * perfect clear's star fox.
+ * four are each event's own instrument: a hard drop's crown of spray, the cloud of fireflies three
+ * and four lines raise, the back-to-back's gate and the perfect clear's star fox.
  */
 const EVENT_KINDS = ['lock', 'clear', 'floats', 'star', 'shower', 'combo', 'lanterns', 'spin', 'rise', 'splash',
-    'shore', 'gate', 'spirit'];
+    'swarm', 'gate', 'spirit'];
 const EMITTER_KINDS = [...EVENT_KINDS, 'festival'];
 const EMITTER_KEYS = ['active', 'age', 'column', 'duration', 'id', 'kind', 'lines', 'progress', 'row', 'seed',
     'serial', 'side', 'strength'];

@@ -1954,8 +1954,8 @@ describe('Sakura with its real artwork', () => {
         eventBus.emit(EVENTS.LEVEL_UP, { level: 2 });
         play(33);
         expect([...seen].sort())
-            .toEqual(['clear', 'combo', 'floats', 'gate', 'lanterns', 'lock', 'rise', 'shore', 'shower', 'spin',
-                'spirit', 'splash', 'star']);
+            .toEqual(['clear', 'combo', 'floats', 'gate', 'lanterns', 'lock', 'rise', 'shower', 'spin', 'spirit',
+                'splash', 'star', 'swarm']);
         expect(draw).toHaveBeenCalledTimes(frames);
         expect(theme.time).toBeCloseTo(frames / 60, 9);
         expect(reactions.time).toBeCloseTo(frames / 60, 9);
