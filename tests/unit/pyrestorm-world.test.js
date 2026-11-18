@@ -65,8 +65,14 @@ function stepTo(world, camera, to, dt = 1 / 30) {
     }
 }
 
+/**
+ * A world as these tests want it: the eruption held on its first phase (the strombolian
+ * mountain) and its own happenings kept off, so a test reads what play alone does. The phases and
+ * the happenings have their own tests (pyrestorm-living.test.js); pass `living: true` for a world
+ * left to itself.
+ */
 function makeWorld({
-    quality = 'Minimal', width = 1600, height = 900, start = START,
+    quality = 'Minimal', width = 1600, height = 900, start = START, living = false,
 } = {}) {
     const scene = new THREE.Scene();
     const aspect = width / height;
@@ -75,6 +81,7 @@ function makeWorld({
         scene, quality, capture: true, prepared: prepared[quality],
     }).build();
     worlds.push(world);
+    if (!living) world.setCaptureOverrides({ phase: 0, happenings: false });
     world.bindCamera(camera);
     world.setViewport(width, height, aspect);
     world.seek(start);
@@ -456,17 +463,21 @@ describe('PyrestormWorld clears', () => {
         const rows = Array.from({ length: lines }, (_, k) => 19 - k);
         const before = world.counts.bolts;
         world.onClear({ lines, rows, combo: 1 });
-        // Four lines: three ground strokes, then the blast's discharge is the fourth, brightest beat.
+        // Four lines: three ground strokes, then the blast's discharge is the fourth, brightest beat,
+        // and the storm round the column answers it with two strokes onto the cone's shoulders.
         const ground = lines === 4 ? 3 : lines;
-        expect(groundBolts(world)).toBe(ground);
+        const answer = lines === 4 ? 2 : 0;
+        expect(groundBolts(world)).toBe(ground + answer);
         expect(world.counts).toMatchObject({ clears: 1, lines });
         const due = world.queue.filter((q) => q.at < Infinity && q.kind === 'bolt' && q.a === BOLT.ground)
             .map((q) => q.at).sort((a, b) => a - b);
-        for (let k = 1; k < due.length; k++) expect(due[k] - due[k - 1]).toBeCloseTo(TIMING.boltStagger, 9);
+        for (let k = 1; k < ground; k++) expect(due[k] - due[k - 1]).toBeCloseTo(TIMING.boltStagger, 9);
+        // The answer comes after the discharge (1.25 s in), never among the clear's own strokes.
+        for (let k = ground; k < due.length; k++) expect(due[k] - due[0]).toBeGreaterThan(1.25);
         stepTo(world, camera, world.time + TIMING.boltStagger * lines + 1.5);
         expect(groundBolts(world)).toBe(0);
         // Four lines add the blast's discharge from the cloud.
-        expect(world.counts.bolts - before).toBe(ground + (lines === 4 ? 1 : 0));
+        expect(world.counts.bolts - before).toBe(ground + answer + (lines === 4 ? 1 : 0));
         expect(world.counts.quads).toBe(lines === 4 ? 1 : 0);
     });
 

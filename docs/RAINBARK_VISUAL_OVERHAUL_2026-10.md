@@ -353,7 +353,7 @@ and the stats panel (the picture's light source since the first pass).
   corners; hang them from above the frame with the twig coming down into it.
 - **A storey-wrapped thing pops when the lens sees more than a storey at its depth.** An upright
   phone sees 1.29 × depth of height against 0.94 at 16:9. Hang by the lens (`sprayPlace`) and hand
-  it up only while it is under the frame's foot (gotcha #703).
+  it up only while it is under the frame's foot (gotcha #704).
 - **Crown boughs scattered in the air under the canopy float.** Leaves need wood: stand them on
   the trunks.
 
