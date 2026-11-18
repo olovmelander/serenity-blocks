@@ -27,6 +27,7 @@ to orb 60. It builds on [ODYSSEY_GAMEPLAY_AUDIT_2026-10.md](ODYSSEY_GAMEPLAY_AUD
 6. [Decisions for the owner](#6-decisions-for-the-owner)
 7. [Reproduce](#7-reproduce)
 8. [Pass 2: variety and level (2026-11-03)](#8-pass-2-variety-and-level-2026-11-03)
+9. [Pass 3 on the 60-orb campaign (2026-11-18)](#9-pass-3-on-the-60-orb-campaign-2026-11-18)
 
 ---
 
@@ -1730,3 +1731,334 @@ confirmed by the game's own rules in a fresh run of both orbs, not only by the o
 Two seeded demonstrations moved to seeds that show what they prove (the cascade player's final drain on orb 49,
 seed 40; the expert's empty-board chain, seed 1004). Over the seeds scanned the expert still builds a chain of
 depth 3 or 4 from an empty board on 13 of 40, and most orb 49 runs end on a multi-wave drain.
+
+## 9. Pass 3 on the 60-orb campaign (2026-11-18)
+
+Across **12,600 attempts**, the shipped campaign passes **9/9 balance gates** over 15 seeds. All seven chapter transitions give a lower-index opener after the rival. The largest opportunities for the first playthrough are smaller in scope. Orb 6 rewards a technique before its prepared lesson, the required portions of 22, 32 and 41 run long for their positions, and the closing duel asks much more of a regular player than the preceding crown.
+
+The proposal gives orb 6 an alternate silver route and lets players bank three recovery orbs earlier. Six changes to briefing or tip text cover the first speed increase, wave counting, the two mastery routes on 4, recovery after a Quad, the elapsed-time ramp and the final endurance crown. The owner decisions in §9.6 also address the finale and an early duel that often pays all three stars. This is the baseline audit and plan. Implementation starts after approval.
+
+### 9.1 Reading the measurements
+
+The benchmark played the 60 assembled public orb IDs at commit `8dc68d825` with the §8.10 weights and existing star routes. It used full showcase laps, the baseline scenario, three visible previews and no charms. This revision includes the November 18 garbage-settling rule. When incoming rubble causes a block to fall into a hole and complete a row, that row clears immediately without awarding points, lines or an outgoing attack. Duels and tide orbs share that rule. The runs used an isolated checkout. Main advanced to `3e70826ce` during measurement with changes confined to Rainbow Terraces and its supporting files.
+
+| Measurement | Policies and timing | Attempts |
+|---|---|---:|
+| Nine gates and the difficulty index | Stacker at deliberate and native pace, cascade at steady pace, expert and Quad at native pace | 60 × 5 × 15 = 4,500 |
+| Human-paced clears and stars | Stacker, cascade and Quad, each at casual, regular and strong pace | 60 × 3 × 3 × 15 = 8,100 |
+
+All cells use **12001–12005, 13001–13005 and 16001–16005**. One result moves a five-seed rate by 20 percentage points and the combined rate by 6.7. The same seeds across policies enable paired comparisons. The simulated human paces aim for 0.6, 1.0 and 1.6 pieces/s and include misplacements. A different cadence can lead to a different board, so nearby bands can trade places on a small sample. The bots model execution with perfect attention. Only the player can say whether a warning was noticed, a reversal was tiring or a crown was worth replaying.
+
+The tables give **clear / at least two stars / three stars**, as counts out of all attempts. For example, **15/9/3** out of 15 means **100% / 60% / 20%**. Losses and attempts stopped by the simulation limits remain in the denominator. Goal times are medians among clears, measured at the first star. Showcase stars come from the end of the lap. Duel stars come from the match.
+
+For each solo orb the three human columns follow one policy chosen from its primary goal before examining the rates. The Quad builder plays Quad goals, the cascade builder plays cascade and chain goals, and the stacker plays the others. At each rival the human columns pool the stacker and cascade styles, **30 matches on 15 seeds** per pace as in the earlier rival audit. The gate columns always have 15 attempts per cell. When discussing a star's reach, “best style” means the best single style across all 15 seeds at that pace. The matched-policy table shows the player who attempts the taught skill, while the CSV also shows the cost of choosing a different strategy.
+
+The index uses the §1.2 formula and the five gate proxies. Standard and hybrid speed ranges show opening → interval at the median goal line count. For 39 the speed column uses the actual time ramp, **170 → 112 ms** at 90 s. The historical index uses its 170 ms opening. That preserves the previous gate calculation. The gravity term is small above about 350 ms and zero from 450 ms upward. A player can feel the difference between 500 and 820 ms. Slow gravity, tide pressure, mirrored inputs and chain construction belong in the human checks in §9.7. The measured curve uses gameplay and benchmark results independently of the authored chapter difficulty metadata.
+
+**Reproduction.** Run `node scripts/odyssey-benchmark.mjs --levels all --profiles stacker --cadences deliberate,native --samples 5 --seed-start 12001 --workers 2 --wall-ms 600000 --output <fresh-dir>`. Repeat for the other two seed starts and the gate policy/cadence pairs above. For each human policy select `human-casual,human-regular,human-strong` explicitly. Use the default 1,800 simulated seconds and 3,000 pieces. On the long human-paced jobs, run 47 and 55 separately from the other 58 orbs. Each attempt key includes the public ID, profile, cadence, scenario and seed.
+
+The local raw runs, resolved levels, gate results and fixed-run milestone observations are under `artifacts/odyssey-level-design-audit-2026-11/pass3-20261118-8dc68d8/`. For the historical gate calculation, use copies of `static.py`, `final.py`, `restar.py` and `pass2/gates_p2.py` with the current `quads` and `quad-count` metric names, then regenerate the static rows from the resolved levels. Each run's `config.json` preserves the full tide schedule. Winning duel rows carry the legacy reason string `seven-frags`, with three actual player knockouts in the metrics and a target of three in the resolved rules. [Download the 840 policy/cadence cells, with denominators, stars, censoring, goal medians and all three five-seed splits](benchmarks/odyssey-pass3-2026-11.csv).
+
+The three block columns below use five seeds each. Counts in the final column use 15.
+
+| Gate | 12001–5 | 13001–5 | 16001–5 | All 15 |
+|---|---|---|---|---|
+| Novice clears ≥80%, crowns ≥60%, D9 exceptions | Pass · ordinary 4, crowns 4 | **Miss** · ordinary 4, crowns 2 | **Miss** · ordinary 3, crowns 3 | Pass · ordinary 12, crowns 11 |
+| Quad builder clears ≥60% on Quad goals | Pass · min 3 | Pass · min 3 | Pass · min 4 | Pass · min 10 |
+| Skilled cascade clears ≥80% on other solos | Pass · min 4 | Pass · min 4 | **Miss** · min 2 | Pass · min 12 |
+| Best gate policy earns 3★ on ≥30% of attempts per solo | Pass · min 40% | **Miss** · min 20% | **Miss** · min 20% | Pass · min 33% |
+| Free-three-star replay gate | Pass · 0 flagged | Pass · 0 flagged | Pass · 0 flagged | Pass · 0 flagged |
+| Largest within-chapter rise into a solo ≤3 | Pass · +2.9 at 25 | **Miss** · +4.0 at 47 | Pass · +2.7 at 15 | Pass · +2.8 at 47 |
+| Every solo index <8 | Pass · max 5.0 | Pass · max 5.8 | Pass · max 5.6 | Pass · max 5.3 |
+| Neon clears, skilled ≥60% and regular ≥20% | **Miss** · 4/0 | Pass · 4/3 | Pass · 3/2 | Pass · 11/5 |
+| Rivals 34, 48 and 56 each ≥40% regular clears | Pass · 5/3/5 | Pass · 5/3/4 | Pass · 5/5/4 | Pass · 15/11/13 |
+| **Total** | 8/9 | 6/9 | 6/9 | 9/9 |
+
+On the first block Neon stopped all five regular stackers. On the second, orb 47 caused both the novice and step misses and 9 supplied the low gold rate. On the third, 38 missed the novice threshold, 35 and 39 missed the skilled threshold, and 20 and 52 supplied the low gold rates. The 15-seed replay reproduced all **3,450 gradeable ordinary-orb star results**. The free-star gate flags an ordinary orb when at least 14/15 novice runs would earn three stars at one piece per second. Duel and showcase stars need their actual match or lap. Across the full matrix, **82 attempts** reached a primary simulation limit (74 simulation budget, 8 piece budget). **70 laps** reached a quality limit (70 simulation budget). Primary stops count as non-clears. A truncated winning lap counts the stars earned by that point. All jobs completed without a wall-clock timeout or simulation error. The existing campaign-design, balance and briefing suites passed **33/33 tests**.
+
+### 9.2 Where the campaign peaks and recovers
+
+![Measured difficulty index and casual and regular non-clear rates for all 60 orbs, with chapter boundaries, solo crowns, rivals and designated rests](images/odyssey-level-design-2026-11/difficulty-curve-pass3.png)
+
+The mean solo index by chapter is **1.18, 1.05, 1.20, 1.84, 2.53, 2.75, 2.37, 3.00**. The second panel shows which orbs actually stopped a player at the simulated input paces. A low index can describe three very different experiences here, including an open board, a reversed input and a four-wave chain.
+
+| Chapter | Crown · index | Hardest other solo | Regular time to crown goal | Closing rival · index | Next orb · index |
+|---|---|---|---:|---|---|
+| 1 · Earth core | 4 · 1.4 | 3 · 1.7 | 1:12 | 5 · 0.9 | 6 · 0.0 |
+| 2 · Ocean | 9 · 2.4 | 7 · 1.8 | 0:53 | 10 · 1.8 | 11 · 0.9 |
+| 3 · Surface | 17 · 2.5 | 15 · 2.3 | 2:14 | 18 · 2.7 | 19 · 1.5 |
+| 4 · Mountains | 25 · 2.9 | 23 · 2.9 | 1:54 | 26 · 3.7 | 27 · 2.1 |
+| 5 · Sky | 33 · 4.6 | 32 · 3.3 | 2:35 | 34 · 4.8 | 35 · 3.0 |
+| 6 · Space | 47 · 4.8 | 45 · 5.1 | 2:20 | 48 · 6.2 | 49 · 2.9 |
+| 7 · Transcendence | 55 · 3.3 | 50 · 5.3 | 6:24 | 56 · 6.0 | 57 · 3.1 |
+| 8 · Encore | 59 · 3.5 | 57 · 3.1 | 2:53 | 60 · 9.0 | Campaign complete |
+
+Every solo crown leads straight into its chapter's rival under the approved order. Chapters 1 and 2 ease slightly at the duel. From chapter 3 onward the rival raises the index again. The practical rest after these two-part endings is the next chapter's first orb. During play, time the whole crown-and-duel stretch before judging the length of that rest.
+
+Seven crowns are within the V6 allowance of 0.5 points of their chapter's hardest solo. Orb 4 is 0.3 below 3, 25 ties 23, and 47 is 0.3 below 45. Orb 55 is the exception. Its index of **3.3** sits **2.0** below 50's **5.3**. The regular times to the two goals and the choice to stay on 55's lap give the owner a way to judge whether endurance delivers the chapter's climax. Each of the seven following chapter openers is below both the preceding crown and its rival. On 27, 35 and 49 that relief takes the form of removing the clock or duel pressure. The player still has a substantial score or cascade goal.
+
+| Neighbouring orbs | Measured shape | Judgment |
+|---|---|---|
+| 7 → 8 → 9 | 1.8 → 0.0 → 2.4 | A short six-row dig separates two cascade builds. Ask a newcomer whether solving the dig feels like a break. |
+| 20 → 21 → 22 → 23 | 2.1 → 0.9 → 2.5 → 2.9 | The designated rest on 22 climbs again. Its repeated nine-cascade ask and the time taken by a plain stacker justify a shorter clear. |
+| 23 → 24 → 25 | 2.9 → 0.1 → 2.9 | The first tide trades the sprint's clock for a readable warning. The index misses the dynamic rubble. Test the warning before adjusting 25. |
+| 31 → 32 → 33 | 2.5 → 3.3 → 4.6 | A Quad race leads into a lengthy compulsory cascade build, then a clocked score crown. Banking 32 sooner creates a choice to rest or continue. |
+| 38 → 39 → 40 → 41 → 42 | 2.5 → 2.4 → 2.9 → 2.8 → 2.1 | The small steps hide a change from tide to elapsed-time gravity and a 40,000-point rest. Teach the handoff and reduce the mandatory time on 41. |
+| 42 → 43 → 44 → 45 → 46 → 47 | 2.1 → 1.1 → 2.3 → 5.1 → 2.0 → 4.8 | A dig, a four-wave deadline and six untimed Quads lead into a score race. A clear channel on 44 determines whether it offers any recovery. The short line release on 46 is the intended break before the black hole. |
+| 48 → 49 → 50 → 51 → 52 → 53 | 6.2 → 2.9 → 5.3 → 1.7 → 1.0 → 0.0 | The sprint makes a distinct peak after the arrival. The first mirror, a chain test and the second mirror all read low on the index. Ask whether the reversals and the chain setup allow the two intended changes of pace. |
+| 53 → 54 → 55 → 56 → 57 | 0.0 → 2.4 → 3.3 → 6.0 → 3.1 | Normal controls return on 54 for a cascade rehearsal. The endurance crown and Prism make a two-part close. The encore opens on 30 plain lines. |
+| 58 → 59 → 60 | 2.4 → 3.5 → 9.0 | The tide changes from surviving to scoring, then gives way to a three-knockout duel. The **+5.5** rises into a rival, outside the formal step gate. It is the largest adjacent rise in the campaign. |
+
+**Skill bands.** On the eight solos in chapters 1–2, the casual goal-matched player cleared **118/120** attempts. The novice gate stacker cleared **116/120**. Across all 52 solos, the matched style cleared at least 12/15 on 41 orbs at casual pace, 48 at regular and 50 at strong. At regular human pace **all 46 non-technique solos cleared on at least 12/15**. The low points were the tide on 38 at 12/15 and the encore crown on 59 at 13/15. Later crowns and sprints still make casual players practise. On 33 and 50 the casual stacker cleared 0/15, while the regular stacker cleared 14/15 on each. D13 explicitly accepts this pressure. For late duels the regular human tally was **22/30, 14/30, 17/30 and 5/30** on 34, 48, 56 and 60. Nova is close to half and Neon is well below it.
+
+At 15 seeds the old V7 target of at most 90% regular clears translates to at most 13/15. Chapters 5, 6 and 8 have a solo meeting it. In chapter 7 the lowest goal-matched clear rate was **14/15**, on 49, 50, 51 and 52. The first three top-outs shared seed 16002. The fourth was a deadline on 13003. Using §8’s best single style per orb, the chapter minima are **11/15, 10/15, 14/15, 13/15** for chapters 5–8. Players can still lose there, and the size of this sample gives little basis for tightening a clock. At least one strong-paced strategy earned gold on each of the **52 solos**. The expert gate bot earned gold on 15/15 each at 50, 55 and 59. The ordinary regular stacker earned 0/15 gold on all three. Their mastery tiers have room above the clear. Across chapters 5–8, the full list where a single regular-paced style earned gold on at least 12/15 runs is **27, 32, 39, 47**. For the regular plain stacker the list is **39**.
+
+### 9.3 All 60 orbs in play order
+
+Read the pace columns as **clear / at least two stars / three stars**. Each solo cell has 15 attempts and each rival cell has 30. The index runs from 0 to 10. Speed is milliseconds per row of gravity, so a lower number means a faster fall. The well entry gives its height in rows. All wells resolve cascades. **GC** marks the authored gravity-cascade modifier, **lap** means the player can continue after winning, and **T / APM** give a rival's tier and maximum actions per minute. The collapsible table after chapter 8 gives every star condition and the five gate policy results.
+
+The last column gives the recommended action for each orb. Read adjacent index values for the curve, the clear and star columns for skill and reward, and the neighbouring goals and rules for variety. Section 9.4 traces where each rule is taught, practised and tested, including the five pairs with a repeated goal.
+
+#### Chapter 1 · Earth core
+
+| Orb and role | Goal | ms/row | Well and rules | Index | Casual | Regular | Strong | Design assessment |
+|---|---|---:|---|---:|---:|---:|---:|---|
+| **1** Ashen Dawn · arrival | 20 lines | 720→461 | standard 20 | 0.2 | 14/7/0 | 14/14/0 | 14/14/0 | **Revise cue.** Opening pace is forgiving. Explain the first line-based speed increase. |
+| **2** Crystal Cascade · teach | 3 cascades | 820 | tall 24, 3 prepared, GC | 1.4 | 15/15/9 | 15/15/9 | 15/15/10 | **Revise cue.** The prepared gap teaches a second wave. Name how the optional third wave is counted. |
+| **3** Geode Heart · reinforce | 4 cascades | 810 | tall 25, 1 rubble, GC | 1.7 | 15/15/3 | 15/15/5 | 15/15/6 | **Keep.** Repeat the cascade without the prepared solution. One rubble row introduces uneven ground. |
+| **4** The Living Grotto · boss | 30 lines | 420→246 | hybrid 26, 2 rubble, GC | 1.4 | 15/2/0 | 15/2/0 | 15/1/0 | **Revise cue.** The crown combines lines and cascades. Its tip overlooks the alternate mastery route from §8.10. |
+| **5** Molten Flow · rival | Cinder · 3 KOs | 1000 | duel T1, 90 APM | 0.9 | 30/30/26 | 30/30/29 | 30/30/29 | **Playtest.** First duel. Doubles now send pressure and a top-out resets both wells. Time the first knockout with a novice. |
+
+#### Chapter 2 · Ocean
+
+| Orb and role | Goal | ms/row | Well and rules | Index | Casual | Regular | Strong | Design assessment |
+|---|---|---:|---|---:|---:|---:|---:|---|
+| **6** Ocean Descent · teach | 20 lines | 800→636 | standard 20, 5 rubble | 0.0 | 14/0/0 | 15/0/0 | 15/0/0 | **Retune.** An easy return to solo play. The Quad tip precedes the prepared lesson on 12. |
+| **7** Night Surf · reinforce | 7 cascades | 800 | tall 28, 8 rubble, GC | 1.8 | 15/12/7 | 15/14/8 | 15/14/9 | **Keep.** Recover a cascade from deeper rubble. The fourth wave is a replay target. |
+| **8** Koi Sanctuary · twist | Dig 6 rows | 450 | standard 20, 6 rubble | 0.0 | 15/5/2 | 15/11/5 | 15/13/8 | **Playtest.** A short dig between two cascade goals. A successful excavation can feel harder than its index. |
+| **9** Tarn of Wisps · boss | 8 cascades | 710 | tall 27, 8 rubble, GC | 2.4 | 15/13/7 | 15/14/7 | 15/14/7 | **Keep.** The ocean crown turns the eight-row rubble practice into eight cascades. |
+| **10** Wave Runner · rival | Coral · 3 KOs | 950 | duel T2, 120 APM | 1.8 | 30/29/27 | 30/28/26 | 30/30/27 | **Keep.** Second duel rehearses receiving and answering rows before rival speed increases. |
+
+#### Chapter 3 · Surface
+
+| Orb and role | Goal | ms/row | Well and rules | Index | Casual | Regular | Strong | Design assessment |
+|---|---|---:|---|---:|---:|---:|---:|---|
+| **11** Grainfields · arrival | 26 lines | 450→331 | standard 20 | 0.9 | 14/0/0 | 14/14/0 | 14/14/0 | **Keep.** A flat-board reset after Coral. The tip explicitly connects line clears to speed. |
+| **12** Spring Flood · teach | 3 Quads | 600 | standard 20, 4 prepared | 0.4 | 12/11/10 | 11/10/10 | 12/11/9 | **Revise cue.** The prepared I channel teaches the first Quad. The next two must be built. |
+| **13** Golden Reflection · teach | 16,500 points | 450→263 | standard 20, multiplier | 1.4 | 14/0/0 | 14/0/0 | 14/0/0 | **Keep.** The multiplier rewards clearing on successive pieces. Quads from 12 return as optional stars. |
+| **14** Glasshouse Reverie · teach | 3-wave chain | 800 | tall 25, 2 rubble, GC | 0.0 | 15/15/6 | 15/15/9 | 15/15/8 | **Playtest.** First required three-wave chain. Keep the two starting rubble rows and the shelf tip. |
+| **15** Gathering Storm · test | 42 lines in 270 s | 330→216 | standard 20 | 2.3 | 14/0/0 | 14/14/0 | 14/14/14 | **Keep.** First deadline. This sets the pace for a line sprint with time-only mastery. |
+| **16** Amber Grove · release | 30 lines | 700→330 | standard 20 | 0.9 | 14/0/0 | 14/0/0 | 14/0/0 | **Keep.** An untimed breather after 15. The third star has two clean-stacking routes. |
+| **17** Halcyon Ascension · boss | 30,000 points in 300 s | 350→195 | hybrid 27, 4 rubble, GC, multiplier | 2.5 | 15/0/0 | 15/15/0 | 15/15/0 | **Keep.** The crown brings the multiplier and clock together. A four-wave chain distinguishes mastery. |
+| **18** Summer Glow · rival | Willow · 3 KOs | 900 | duel T3, 165 APM | 2.7 | 24/16/8 | 30/25/21 | 29/29/21 | **Keep.** Third duel. Its one-star race and flawless replay use the same knockout rules taught on 5. |
+
+#### Chapter 4 · Mountains
+
+| Orb and role | Goal | ms/row | Well and rules | Index | Casual | Regular | Strong | Design assessment |
+|---|---|---:|---|---:|---:|---:|---:|---|
+| **19** Blossom Foothills · arrival | 22,000 points | 330→231 | hybrid 24, 2 rubble, multiplier | 1.5 | 14/6/0 | 15/4/0 | 15/4/0 | **Keep.** An untimed score arrival with rubble. A cascade specialist has a clear route to the replay stars. |
+| **20** Verdant Rise · teach | 9 cascades | 700 | tall 36, 8 rubble, GC | 2.1 | 15/14/3 | 15/13/4 | 15/11/4 | **Keep.** A taller well leaves room to practise shelves before the mountain crown. |
+| **21** Ice Temple · reinforce | Dig 8 rows | 300 | standard 20, 10 rubble | 0.9 | 12/2/0 | 15/5/1 | 14/9/5 | **Keep.** Dig practice advances from six rows to eight. Compare the actual dig time with the rest on 22. |
+| **22** Alpine Night · release | 9 cascades | 680 | tall 26, 5 rubble, GC | 2.5 | 15/15/11 | 15/15/14 | 15/15/14 | **Retune.** A second nine-cascade ask after 20. Check whether it feels like the designated rest. |
+| **23** Everest Ascent · test | 34 lines in 200 s | 250→184 | standard 20 | 2.9 | 14/0/0 | 14/14/0 | 14/14/14 | **Keep.** An open-board sprint revisits 15 before introducing an entirely different pressure on 24. |
+| **24** The High Coast · twist | 24 lines | 500 | standard 20, tide | 0.1 | 13/0/0 | 15/15/0 | 14/14/14 | **Playtest.** Gentle first tide. Observe whether the player reads the countdown and finds the first gap. |
+| **25** Garden Under Stone · boss | 16 cascades | 600 | tall 29, 6 rubble, GC | 2.9 | 15/14/8 | 15/15/8 | 15/15/8 | **Keep.** The mountain crown extends the cascade build to sixteen. The fourth wave pays the top star. |
+| **26** Winter Trial · rival | Frost · 3 KOs | 850 | duel T4, 230 APM | 3.7 | 15/10/5 | 25/20/10 | 28/25/12 | **Keep.** Last uncapped rival. A familiar duel closes the chapter after its longest cascade goal. |
+
+#### Chapter 5 · Sky
+
+| Orb and role | Goal | ms/row | Well and rules | Index | Casual | Regular | Strong | Design assessment |
+|---|---|---:|---|---:|---:|---:|---:|---|
+| **27** Lantern Sky · arrival | 34,000 points | 260→180 | hybrid 26, 1 rubble, GC, multiplier | 2.1 | 13/4/0 | 15/3/0 | 15/3/0 | **Keep.** Clock-free landing after Frost. Twelve cascades reward a player who chooses to build for them. |
+| **28** Mirror of Stars · release | 32 lines | 600→283 | standard 20 | 1.3 | 14/0/0 | 14/14/0 | 14/14/0 | **Keep.** A short clean-lines rest before the precision arc. The no-singles star gives a replay target. |
+| **29** Aurora Passage · teach | 5 Quads | 280 | standard 20 | 1.7 | 9/7/1 | 12/10/10 | 11/9/9 | **Playtest.** Untimed five-Quad lesson. Watch recovery from one misplaced piece before changing the well. |
+| **30** Nimbus Veil · reinforce | 10 cascades | 670 | tall 27, 3 rubble, GC | 2.2 | 15/14/11 | 15/13/9 | 15/13/5 | **Keep.** Layers practise a three-wave chain. Keep both §8.10 mastery routes. |
+| **31** The Turning Suns · test | 4 Quads in 150 s | 240 | standard 20 | 2.5 | 6/0/0 | 11/8/4 | 12/11/9 | **Keep.** Four Quads under a clock. Compare a Quad builder with a stacker before judging the clear rate. |
+| **32** Ice Halo · reinforce | 14 cascades | 580 | tall 30, 6 rubble, GC, lap | 3.3 | 15/15/15 | 15/15/15 | 15/15/15 | **Retune.** The first optional lap follows the Quad race. A player can bank the goal before chasing chains. |
+| **33** Atmosphere's End · boss | 55,000 points in 250 s | 150→122 | hybrid 31, 7 rubble, GC, multiplier | 4.6 | 0/0/0 | 14/14/0 | 15/15/0 | **Playtest.** First late clocked score crown. Judge the D13 casual-pace wall with a retry and a charm. |
+| **34** Where Color Falls · rival | Zephyr · 3 KOs | 800 | duel T5, 270 APM | 4.8 | 7/5/1 | 22/13/7 | 26/25/9 | **Keep.** First capped rival. Zephyr tests sustained attacks after the score crown. |
+
+#### Chapter 6 · Space
+
+| Orb and role | Goal | ms/row | Well and rules | Index | Casual | Regular | Strong | Design assessment |
+|---|---|---:|---|---:|---:|---:|---:|---|
+| **35** Galaxy Core · arrival | 28,000 points | 240→134 | standard 20, multiplier | 3.0 | 13/0/0 | 14/0/0 | 14/0/0 | **Keep.** Back to solo play with an empty well. Stars reward deliberate Quads while score opens the route. |
+| **36** Cosmic Nocturne · reinforce | 12 cascades | 670 | tall 27, 3 rubble, GC | 2.4 | 15/15/8 | 15/14/6 | 15/14/4 | **Keep.** Untimed shelves revisit the cascade route from 30 ahead of the pressure tests. |
+| **37** Stellar Flare · reinforce | 36 lines | 220→162 | standard 20, 6 rubble | 2.4 | 13/0/0 | 15/13/0 | 15/15/15 | **Keep.** A line-based speed increase with fixed starting rubble prepares the player to dig on 38. |
+| **38** Blood Moon · test | 36 lines | 190 | standard 20, tide | 2.5 | 5/0/0 | 12/9/0 | 14/14/10 | **Playtest.** First tide test. Compare the first six seconds with the warning on 24. |
+| **39** Dying Ember · twist | Survive 90 s | 170→112 | standard 20, timed ramp, lap | 2.4 | 14/12/3 | 14/14/13 | 14/13/10 | **Revise cue.** The sole elapsed-time gravity ramp. The handoff from 38 can hide the new speed rule. |
+| **40** Aether Surge · test | 40 lines in 180 s | 190 | hybrid 30, 6 rubble, GC | 2.9 | 14/0/0 | 15/7/0 | 15/15/13 | **Keep.** A clocked cascade well combines earlier skills. Its duration sets the comparison for the following rest. |
+| **41** Loom of Heaven · release | 40,000 points | 200→148 | standard 20, multiplier | 2.8 | 13/0/0 | 14/10/0 | 14/14/0 | **Retune.** The designated rest asks for 40,000 points and six Quads on the top tier. Compare its length with 40 and 42. |
+| **42** Twin-Sun Dunes · test | Dig 11 rows | 180 | hybrid 24, 12 rubble | 2.1 | 12/3/1 | 15/4/4 | 15/10/6 | **Keep.** The last dig test leaves one of twelve starting rows optional. Its time tiers reward clean excavation. |
+| **43** Celestial Chrysalis · reinforce | 4-wave chain in 150 s | 600 | tall 32, 10 rubble, GC | 1.1 | 6/5/3 | 10/7/5 | 12/7/6 | **Playtest.** The first mandatory four-wave chain comes with ten rubble rows. Look for a deliberate setup within 150 s. |
+| **44** Silent Drift · reinforce | 6 Quads | 260 | standard 20 | 2.3 | 7/7/0 | 10/7/6 | 9/8/8 | **Playtest.** Six untimed Quads. Observe whether a player can salvage a damaged channel before the clock returns on 45. |
+| **45** Eclipse Horizon · test | 68,000 points in 240 s | 145→115 | hybrid 32, 8 rubble, GC, multiplier | 5.1 | 1/0/0 | 14/12/0 | 15/15/0 | **Keep.** A sharper score race before a release. A hard midchapter peak is intentional here. |
+| **46** The Painted Giants · release | 32 lines | 260→207 | standard 20 | 2.0 | 14/0/0 | 14/11/0 | 14/14/0 | **Keep.** A short line goal restores breathing room between the race and the black hole. |
+| **47** The Singularity · boss | 20 cascades | 340 | tall 32, 10 rubble, GC, lap | 4.8 | 15/15/13 | 15/15/14 | 15/15/13 | **Playtest.** The crown banks twenty cascades before its chain lap. A person must judge the five-wave star. |
+| **48** Comet Chase · rival | Nova · 3 KOs | 750 | duel T6, 300 APM | 6.2 | 6/2/0 | 14/9/5 | 25/21/10 | **Playtest.** Nova closes the two-part space chapter. Compare the release on 49 with the final duel round. |
+
+#### Chapter 7 · Transcendence
+
+| Orb and role | Goal | ms/row | Well and rules | Index | Casual | Regular | Strong | Design assessment |
+|---|---|---:|---|---:|---:|---:|---:|---|
+| **49** Fluid Dreams · arrival | 36,000 points | 200→138 | standard 20, multiplier | 2.9 | 13/0/0 | 14/0/0 | 14/0/0 | **Keep.** Clock-free arrival between Nova and the fastest sprint. Its Quad stars can wait until a replay. |
+| **50** Star Cradle · test | 50 lines in 180 s | 120→105 | standard 20 | 5.3 | 0/0/0 | 14/6/0 | 14/14/12 | **Playtest.** The campaign speed peak has a clock and an immediate switch of skill on 51. |
+| **51** Golden Convergence · twist | 30 lines | 240 | standard 20, mirror | 1.7 | 14/0/0 | 14/12/0 | 14/14/13 | **Playtest.** First mirror. A steady drop and no deadline make room to learn the reversed inputs. |
+| **52** Voltage Storm · test | 4-wave chain in 240 s | 550 | tall 27, 1 rubble, GC | 1.0 | 8/8/7 | 14/8/6 | 13/9/5 | **Playtest.** Four waves from one rubble row. A shallow floor changes how much setup the player must build. |
+| **53** Murmuration · release | 24 lines | 500 | standard 20, 3 rubble, GC, mirror | 0.0 | 15/0/0 | 15/4/0 | 15/15/8 | **Playtest.** The mirror returns on a shorter, slower rubble board. Check whether the reversal still allows a rest. |
+| **54** Serenity Passage · reinforce | 10 cascades | 600 | tall 36, 10 rubble, GC | 2.4 | 15/14/7 | 15/14/7 | 15/14/7 | **Keep.** Untimed cascade practice restores normal movement and leads into the 100-row crown. |
+| **55** Indra's Net · boss | 160,000 points in 600 s | 340 | tall 100, 30 rubble, GC, multiplier, lap | 3.3 | 1/0/0 | 15/12/0 | 14/13/2 | **Revise cue.** Endurance and an optional mastery lap carry the main capstone. Compare it directly with 50 and 52. |
+| **56** Chromatic Impasto · rival | Prism · 3 KOs | 700 | duel T6, 330 APM | 6.0 | 0/0/0 | 17/12/5 | 25/14/8 | **Playtest.** Prism retains D8's tier 6 and faster cap. The next chapter opens on thirty plain lines. |
+
+#### Chapter 8 · Encore
+
+| Orb and role | Goal | ms/row | Well and rules | Index | Casual | Regular | Strong | Design assessment |
+|---|---|---:|---|---:|---:|---:|---:|---|
+| **57** Chromadelic Gateway · arrival | 30 lines | 180→126 | standard 20 | 3.1 | 14/0/0 | 14/3/0 | 14/14/0 | **Keep.** A compact encore arrival. Simple line clears give the player a break before the tide returns. |
+| **58** Neon Dusk · twist | Survive 60 s | 160 | standard 20, tide, lap | 2.4 | 13/2/0 | 15/10/2 | 15/8/6 | **Playtest.** Survive one minute, then choose whether to chase two and three. Check the three-minute reward on the tide. |
+| **59** Rainlit Streets · boss | 70,000 points | 150→117 | hybrid 30, 5 rubble, GC, multiplier, tide, lap | 3.5 | 2/0/0 | 13/7/0 | 15/14/2 | **Playtest.** The encore crown combines rising rubble, multiplier scoring and chains on the lap. |
+| **60** Last Light · rival | Neon · 3 KOs | 650 | duel T8, 340 APM | 9.0 | 0/0/0 | 5/4/1 | 16/10/4 | **Playtest.** Final three-knockout duel. Judge Neon against Prism and whether beating it feels like an ending. |
+
+<details>
+<summary>Star conditions and all five benchmark skill bands, by orb</summary>
+
+Each cell counts clear / at least two stars / three stars out of 15. Star conditions are in addition to the one-star goal above. A wave counts from the first clear of the piece.
+
+| Orb | Two-star / three-star conditions beyond the clear | Novice stacker | Regular stacker | Skilled cascade | Expert | Quad |
+|---:|---|---:|---:|---:|---:|---:|
+| 1 | ≤85 s / ≤65 s + no singles | 14/14/0 | 14/14/0 | 15/15/0 | 15/15/0 | 13/13/10 |
+| 2 | (3-wave chain or ≤40 pieces) / 3-wave chain + ≤40 pieces | 15/4/0 | 15/4/0 | 15/15/10 | 15/15/4 | 15/6/0 |
+| 3 | (3-wave chain or ≤45 pieces) / 3-wave chain + ≤45 pieces | 14/5/0 | 14/5/0 | 15/15/6 | 15/15/10 | 13/3/0 |
+| 4 | 4 cascades / 7 cascades + 3-wave chain + (11 cascades or 4-wave chain) | 15/2/0 | 15/2/0 | 15/15/12 | 15/15/5 | 13/0/0 |
+| 5 | ≤1 top-out / flawless | 15/14/14 | 15/15/14 | 15/15/15 | 15/15/15 | 15/15/12 |
+| 6 | 1 Quad / 2 Quads + ≤55 s | 15/0/0 | 15/0/0 | 15/2/0 | 15/1/0 | 14/13/9 |
+| 7 | 3-wave chain / 4-wave chain | 15/8/2 | 15/8/2 | 15/14/9 | 15/13/4 | 5/4/0 |
+| 8 | ≤50 s / ≤25 s | 15/11/5 | 15/11/9 | 15/11/6 | 15/13/10 | 0/0/0 |
+| 9 | 3-wave chain / 4-wave chain | 13/10/3 | 13/10/3 | 15/14/7 | 15/14/7 | 3/2/1 |
+| 10 | ≤1 top-out / flawless | 15/15/13 | 15/15/13 | 15/15/15 | 15/15/15 | 15/13/11 |
+| 11 | ≤100 s / ≤75 s + no singles | 14/14/0 | 14/14/0 | 15/15/0 | 15/15/0 | 14/14/9 |
+| 12 | (no singles or ≤60 pieces) / no singles + ≤60 pieces | 10/0/0 | 11/0/0 | 4/0/0 | 15/0/0 | 13/11/9 |
+| 13 | 2 Quads / 4 Quads | 14/0/0 | 14/0/0 | 15/0/0 | 15/0/0 | 15/13/9 |
+| 14 | ≤100 pieces / ≤30 pieces | 14/2/1 | 14/2/1 | 15/15/8 | 15/15/9 | 13/10/3 |
+| 15 | ≤160 s / ≤100 s | 14/14/0 | 14/14/14 | 14/14/14 | 15/15/15 | 15/15/15 |
+| 16 | 3 Quads / 3 Quads + (4 Quads or no singles) | 14/0/0 | 14/0/0 | 15/0/0 | 15/0/0 | 15/12/11 |
+| 17 | ≤180 s / ≤140 s + 4-wave chain | 15/15/0 | 15/15/0 | 15/15/11 | 15/15/7 | 12/12/2 |
+| 18 | ≤1 top-out / flawless | 15/15/15 | 15/13/8 | 15/15/12 | 15/15/15 | 14/13/9 |
+| 19 | 3 cascades / 8 cascades | 15/5/0 | 15/4/0 | 15/15/13 | 15/15/14 | 13/4/0 |
+| 20 | 3-wave chain / 4-wave chain | 15/12/2 | 15/12/2 | 15/11/4 | 15/13/5 | 2/2/0 |
+| 21 | ≤50 s / ≤35 s | 15/5/1 | 15/7/4 | 14/11/7 | 15/15/13 | 1/0/0 |
+| 22 | 3-wave chain / 3-wave chain + (4-wave chain or ≤70 pieces) | 13/6/1 | 13/6/2 | 15/15/14 | 15/13/12 | 2/1/1 |
+| 23 | ≤110 s / ≤75 s | 14/14/0 | 14/14/10 | 14/14/14 | 15/15/15 | 15/15/15 |
+| 24 | ≤80 s / ≤50 s | 15/15/0 | 14/14/8 | 15/15/15 | 15/15/15 | 14/14/14 |
+| 25 | 3-wave chain / 4-wave chain | 15/13/3 | 15/13/3 | 15/15/9 | 15/15/11 | 0/0/0 |
+| 26 | ≤1 top-out / flawless | 13/12/5 | 15/14/9 | 15/13/10 | 15/15/15 | 14/11/5 |
+| 27 | 5 cascades / 12 cascades | 15/3/0 | 15/3/0 | 15/15/13 | 15/15/6 | 13/0/0 |
+| 28 | ≤95 s / ≤75 s + no singles | 14/14/0 | 14/14/0 | 14/14/0 | 15/15/0 | 15/15/8 |
+| 29 | ≤105 pieces / ≤105 pieces + ≤95 s | 6/0/0 | 7/0/0 | 2/0/0 | 14/0/0 | 12/8/8 |
+| 30 | 3-wave chain / 3-wave chain + (4-wave chain or ≤70 pieces) | 15/9/1 | 15/9/1 | 15/13/5 | 15/15/11 | 1/1/0 |
+| 31 | ≤70 s / ≤50 s | 0/0/0 | 0/0/0 | 0/0/0 | 2/0/0 | 12/12/9 |
+| 32 | 18 cascades / 22 cascades + 4-wave chain | 12/9/3 | 12/10/4 | 15/15/15 | 15/15/15 | 0/0/0 |
+| 33 | ≤180 s / ≤145 s + 12 cascades | 14/14/0 | 14/14/0 | 15/15/14 | 15/15/14 | 8/8/0 |
+| 34 | ≤1 top-out / flawless | 11/8/3 | 15/14/7 | 14/11/6 | 15/15/12 | 11/8/3 |
+| 35 | 3 Quads / 5 Quads | 14/0/0 | 14/0/0 | 12/0/0 | 15/0/0 | 14/14/10 |
+| 36 | 3-wave chain / 4-wave chain | 15/9/1 | 15/9/1 | 15/14/4 | 15/14/6 | 0/0/0 |
+| 37 | ≤85 s / ≤60 s | 15/13/0 | 15/15/0 | 15/15/13 | 15/15/15 | 11/11/10 |
+| 38 | ≤80 s / ≤60 s | 12/9/0 | 13/13/1 | 13/13/11 | 15/15/15 | 10/10/10 |
+| 39 | last 180 s / last 300 s | 14/14/13 | 14/14/13 | 13/13/10 | 15/15/15 | 10/2/1 |
+| 40 | ≤90 s / ≤65 s | 15/6/0 | 15/15/0 | 15/15/13 | 15/15/15 | 12/12/9 |
+| 41 | ≤155 s / ≤130 s + 6 Quads | 14/9/0 | 14/14/0 | 14/14/0 | 15/15/0 | 12/12/9 |
+| 42 | ≤90 s / ≤65 s | 15/4/4 | 15/10/5 | 15/12/9 | 15/15/15 | 0/0/0 |
+| 43 | ≤60 pieces / ≤40 pieces | 3/3/2 | 2/2/2 | 14/7/6 | 15/5/3 | 4/3/2 |
+| 44 | ≤120 pieces / ≤120 pieces + ≤100 s | 5/0/0 | 6/0/0 | 2/0/0 | 14/0/0 | 10/7/7 |
+| 45 | ≤180 s / ≤150 s + 15 cascades | 14/12/0 | 14/14/0 | 15/15/14 | 15/15/11 | 5/5/0 |
+| 46 | ≤85 s / ≤70 s + no singles | 14/11/0 | 14/14/0 | 14/14/0 | 15/15/0 | 15/15/8 |
+| 47 | 26 cascades + 4-wave chain / 32 cascades + 5-wave chain | 11/6/2 | 11/5/2 | 15/15/15 | 15/15/14 | 0/0/0 |
+| 48 | ≤1 top-out / flawless | 7/4/2 | 11/11/4 | 15/14/11 | 15/15/14 | 7/6/4 |
+| 49 | 4 Quads / 6 Quads | 14/0/0 | 14/0/0 | 14/0/0 | 15/0/0 | 12/10/8 |
+| 50 | ≤125 s / ≤90 s | 14/6/0 | 14/14/0 | 14/14/14 | 15/15/15 | 12/12/12 |
+| 51 | ≤80 s / ≤55 s | 14/12/0 | 14/14/0 | 15/15/10 | 15/15/15 | 15/15/15 |
+| 52 | ≤140 pieces / ≤100 pieces | 1/0/0 | 2/0/0 | 14/8/6 | 15/9/6 | 0/0/0 |
+| 53 | ≤55 s / ≤40 s | 15/4/0 | 15/15/0 | 15/15/6 | 15/15/15 | 14/14/13 |
+| 54 | 3-wave chain / 4-wave chain | 14/12/3 | 14/10/2 | 15/14/7 | 15/15/5 | 1/1/0 |
+| 55 | 210,000 points + 20 cascades / 270,000 points + 26 cascades + 5-wave chain | 15/13/0 | 15/15/5 | 15/15/12 | 15/15/15 | 3/0/0 |
+| 56 | ≤1 top-out / flawless | 9/4/0 | 13/8/4 | 14/10/5 | 15/15/14 | 8/5/3 |
+| 57 | ≤75 s / ≤65 s + 4 Quads | 14/3/0 | 14/14/0 | 15/15/0 | 15/15/0 | 15/15/9 |
+| 58 | last 120 s / last 180 s | 15/10/3 | 15/11/4 | 15/9/2 | 15/14/13 | 4/2/0 |
+| 59 | 115,000 points + 14 cascades / 140,000 points + 18 cascades + 5-wave chain | 13/7/0 | 13/9/1 | 15/14/8 | 15/15/15 | 2/0/0 |
+| 60 | ≤1 top-out / flawless | 2/0/0 | 5/2/0 | 11/7/2 | 15/15/12 | 9/4/3 |
+
+</details>
+
+### 9.4 What the player has been taught
+
+| Skill | First action | Practice | Test and later combination | Teaching judgment |
+|---|---|---|---|---|
+| Cascades | 2 has a suspended block and a prepared gap. | 3 removes the solution, 7 adds deep rubble. | 9 and 25 require repeated cascades. On 47, the player can bank the clear or stay for a chain. | The opening teaches the cause of the second clear. Its optional three-wave star needs one more sentence about counting waves. |
+| Quads | 5 names a Quad as an attack. On 6 the tip defines four lines with one piece, and 12 supplies the open I channel. | 13 and 16 pay for Quads. 29 asks for five without a clock. | 31 adds a deadline and 44 asks for six without one. On 49 and 57, Quads earn stars on a different primary goal. | Orb 6 currently gates both replay tiers on a skill the player will first build on a prepared board six orbs later. At 12, observe the first independently rebuilt channel. |
+| Chains | On 2 and 3 a third wave is optional. On 14 one piece must produce three waves to clear. | Stars on 17, 20, 25 and 30 reward deeper shelves. | 43 asks for four waves from deep rubble in 150 s. 52 gives one rubble row and 240 s. On 47, 55 and 59 a deep chain pays on the lap. | Keep 14's two rubble rows. Earlier prepared three-wave boards buried a gap and penalised the player who missed the solution. |
+| Rubble and digging | 3 and 4 expose a few rows. 6 gives space to practise, 8 makes digging the win condition. | 21 asks for 8 of 10 rows. | 42 asks for 11 of 12. The tide puts gaps into moving rubble on 38 and the encore. | Distinguish clearing ordinary lines from removing a row with rubble left in it. Watch this on 8. |
+| Rising tide | 24 gives 15 s to see the well before the first row. The interval tightens from 12 to 6 s over 240 s. | Several rises within 24 let the player read the next gap. | 38 starts at 6 s and tightens from 6 to 3 s over 150 s. On 58 it is a survival clock. On 59 it competes with score and chain building. | The regular stacker saw a median **4, 13, 10 and 24** incoming rows by the clear on 24, 38, 58 and 59. Ask when the player first acts on the warning, then whether they can recover on 38. These are the four D11 exposures. |
+| Mirror | 51 states that left and right reverse, with a fixed drop and an untimed clear. | The early placements on 51 give room to practise. | 53 repeats the reversal on a slower, shorter board with rubble. Its time stars test fluency. | The regular stacker cleared 14/15 on 51 and 15/15 on 53. D10 puts the combination and optional test on the second orb. Only a person can tell whether reversing direction a second time delivers relief. |
+| Speed ramps | 1 first speeds up at 15 lines. 6 and 11 practise line-driven gravity. | 15 and 23 combine the line ramp with a clock, then 50 reaches the 105 ms floor. | Elapsed-time gravity appears only on 39, which combines it with survival. The 90, 180 and 300 s marks offer three stages within that run. | The briefing on 1 has no rule text. On 39 the full guide names the new ramp, while the two transition cues describe survival and the outgoing tide. Check whether players can distinguish the two speed rules. |
+| Rivals | 5 explains sending rows and resets both wells after a top-out. Its first round teaches the attack before the three-knockout finish. | 10, 18 and 26 repeat the race as attacks arrive faster. | 34 and 48 require a counterattack. 56 and 60 combine pressure management, attacks and a flawless replay target. | Ask the player to explain what credited the first knockout. A long first duel can teach the attack or simply occupy time. |
+| Multiplier and clock | 13 teaches consecutive clearing pieces. 15 introduces the first deadline. | 19 revisits the multiplier and 23 repeats the sprint. | 17, 33 and 45 combine score and time, 55 adds endurance, and 59 scores under the tide. | On the 59 lap, ask which decision the multiplier changed while the rubble was rising. |
+
+The 52 solo orbs use 22 goal/pressure/well combinations. The eight rival duels are a further formula. The solo goal-type counts in chapter order are **2, 3, 4, 4, 4, 7, 4, 3**. V1 passes with its existing cascade and arrival/rest exceptions. V2 passes even across rival boundaries when counting solo goals. The adjacent pairs that repeat a goal are 2–3, 15–16, 23–24, 37–38 and 50–51. Only 2–3 repeat the same formula, to practise the lesson without the prepared board. V4 passes in each of chapters 3–7.
+
+### 9.5 Ranked problems
+
+| Rank | Where the design falls short | Evidence and player consequence |
+|---:|---|---|
+| 1 | **59 and 60 · Finishing the encore depends heavily on the kind of player.** | On 59 the regular stacker banked the crown on **13/15**, with zero gold. Neon won **25 of 30** regular matches. The regular player won **4, 1 and 0 of 10** by block. The stacker won 0/15 and the cascade player 5/15. In **13** regular defeats the player got no knockout. The native gate result of 5/15 regular and 11/15 skilled wins leaves the gate green. Neon is the one intentional wall on the historical index. Ask whether learning to attack produces a better second match. |
+| 2 | **6 and 12 · The Quad lesson teaches the first placement better than the second.** | At casual pace the Quad builder made the prepared first Quad on 15/15 runs in a median 6 s, rebuilt a second on 14/15 in 39 s, and cleared all three on 12/15 in 55 s. The plain casual stacker reached the first on 13/15, the second on 11/15 in 13:23, and all three on 8/15 in 15:08. Each median is time from the start among the runs reaching that milestone. A player who misses the rebuilding lesson can spend a whole session here. Six orbs earlier both silver and gold already require Quads. |
+| 3 | **41 · The space rest demands more time than the tests around it.** | The regular stacker needed **2:31** to bank 41, compared with **1:30** for the clocked cascades on 40 and **1:56** for the dig on 42 (goal-matched styles). The 40,000-point requirement keeps the player scoring after they have demonstrated the move. Even 32,000 points took 124 s. At 24,000, the median fell to 97 s and the player could still deliberately build five Quads for mastery. |
+| 4 | **22 and 32 · The compulsory part of a recovery orb can last longer than its neighbours.** | At regular pace the plain stacker spent **5:10** on 22, between **1:17** on 21 and **1:26** on 23. The cascade builder banked 22 in **1:07**. Orb 32 took the regular builder **1:47** and the plain stacker **9:23** just to reach the optional lap. Both can give the builder a genuine break by banking the first star earlier. On 32 the full mastery lap is already optional, so the starting point of that choice is a precise design lever. |
+| 5 | **1, 2, 4 and 39 · Some cues arrive after the rule matters.** | The first card has a 20-line goal and empty rule list before its 15-line speed change. Orb 2 explains the second clear, while its star card already asks for a third wave. Orb 4's tip directs the player toward a long chain “for every star” although lines alone win and repeated cascades can finish the top tier. On 38→39, the short briefing shows survival and the departing tide. The elapsed-time ramp appears in the full guide. These are outputs of the shipped briefing helper and orb copy. |
+| 6 | **50, 52 and 55 · Chapter 7 has two kinds of peak.** | The regular stacker reached 50 in **2:06** and 55 in **6:24**. The regular cascade builder cleared 52 on 14/15, while the ordinary stacker cleared it on 1/15. The casual stacker cleared 55 on 1/15 and the casual cascade builder on 13/15. The current capstone tip equates extra height with a longer cascade. The player still needs gaps and aligned shelves. Make the scoring and lap strategy clearer, then ask which encounter actually feels like the chapter's exam. |
+| 7 | **Early duels and late laps · Some top stars arrive routinely for a particular style.** | Cinder paid gold on **26/30 casual** and **29/30 regular** matches. On 32 a regular cascade builder earned all three on **15/15** and a plain stacker on **3/15**. On 47 those counts were 14/15 and 4/15. The regular stacker took the five-minute survival star on 39 on **13/15**. The historical free-star gate does not cover these matches or laps. A casual Cinder win took a median **5:37**. A newcomer can complete a long match and still miss which move earned the star. A player capable of planning deep chains can earn stars at a slow input pace. A paced bot also handles the lock delay on 39 unusually well. Compare these with the plain stacker and ask a person to call their intended winning move before making the star harder. |
+
+**Replay rewards** come from 180 stars, with an orb clear opening the route. The result sheet identifies the next star. A replay clear can restock one charm, or two for three stars, while the bag has room. The bag holds three of each type. The next uncleared orb determines which drops can help. Every third consecutive fall on the same orb supplies its pity charm when the bag holds fewer than two of that type. A spent charm preserves the star award and takes that attempt out of fastest-time competition. A player can return to 6 after learning Quads on 12, chase gold and refill the bag before a clocked boss. [Charm drops](../src/core/odyssey/odyssey-charm-bag.js) · [Time-board eligibility](../src/core/odyssey/odyssey-time-board.js) · [Next-star feedback](../src/ui/odyssey/odyssey-star-notes.js).
+
+### 9.6 Proposed changes and approval decisions
+
+The numbers below are estimates on **unchanged play**. On 12, 22, 32, 41 and 44, read-only replays recorded the first settled board to reach each candidate milestone while the original orb kept playing. The clears, times and stars of 630 distinct trajectories matched independent benchmark runs. A second observation of 285 of those trajectories on 32 and 41 compared shorter clears. On ordinary orbs the proposed stars can then be scored at that board. On 32, moving the point at which the optional lap opens can change a player's choice to continue. A full candidate run belongs to implementation.
+
+| Decision | Orb | Proposed change | Problem and expected effect |
+|---|---|---|---|
+| D14 | **1** | Add one opening cue explaining that clearing 15 lines speeds up the fall. | The first briefing currently returns no rule. The first increase is 720→461 ms. Bot results should match exactly. Ask whether a newcomer can identify the trigger. |
+| D14 | **2** | Keep the hanging-block example and explain that the first clear is wave one and each further clear from that piece adds a wave. | The board demonstrates two waves and an optional star already asks for three. Expect identical rates and a player who can explain the third wave before orb 14. |
+| D14 | **4** | Replace the tip's “for every star” instruction. Direct the player to clear lines first, then explain that either repeated cascades or a fourth wave can complete the mastery route. | The first star requires lines. The two top-star routes approved in §8.10 deserve accurate signposting. Both routes and all measured rates carry over. |
+| D14 | **12** | Extend the tip beyond the prepared Quad. After the first I, rebuild four rows beside the open column. Reopen an edge if the channel is covered. | The measured bottleneck is the independently built Quad. The prepared opening and three-Quad goal give the coach a way to see whether the instruction worked. The target for the playtest is a deliberate second Quad. |
+| D14 | **39** | Put the existing “pieces fall twice as fast every 2:30” cue alongside the survival goal on the transition from 38. | The current two cues spend the second slot on the departing tide. Bot rates and the 90/180/300 s survival ladder stay comparable. Ask what made the pieces speed up before revealing the guide. |
+| D14 | **55** | Replace the advice to build higher with a move the player can plan. Set staggered shelves in the starting rubble, score with consecutive clears, then decide whether to stay for a deeper chain. | Height alone gives no guarantee of another wave. The briefing can make the 100-row capstone's scoring and lap distinct from 50's sprint. No change to simulated outcomes is expected. |
+| D15 | **6** | For two stars, offer **one Quad or the 20-line clear in at most 45 pieces**. Three stars still require two Quads and at most 55 s. | Efficient line clears over the opening rubble give a first-time player a middle reward. Returning after 12 gives the player a Quad mastery target. The casual stacker’s silver rises **0→8/15**, and regular silver **0→11/15** (3, 4 and 4 gains by block). The best gate policy earns gold on 9/15 under both sets of star rules. Both have index 0.0. |
+| D16 | **22** | Shorten the release from **nine to seven cascades**. Carry seven through the star predicates. Keep the three-wave silver. For gold, add a fourth wave or finish in **55 pieces** after a three-wave chain. | A second nine-cascade job lands two places after 20. At regular cascade pace, time to one star falls **67→55 s**, with paired median savings of 13, 10 and 14 s. Scaling 70 pieces over nine cascades to 55 over seven preserves the efficiency of the alternate gold route. Regular clear / silver / gold changes **15/15/14 → 15/13/9** and the index **2.5→2.0**. The 70-piece route would give gold on 14/15 casual-builder runs at the shorter goal. At 55 pieces it gives 10/15 across both routes. |
+| D17 | **32** | Open the showcase lap at **eight cascades** and mark this slot as a release in the chapter beats. Keep the optional 18-cascade silver and 22-cascade/four-wave gold. | The Quad race on 31 currently leads directly into another long compulsory build before 33. Regular cascade time to bank the orb falls **107→62 s**. Paired median savings are 40, 42 and 39 s in the three blocks. Eleven cascades still took 87 s. Eight gives the player an earlier choice to bank a first star or stay for mastery. The index moves **3.3→2.4**, just below 31’s 2.5. Native plain-stacker clears rise 12→13/15. A regular cascade builder who plays out the same lap still gets 15/15 gold. The grade a person takes away depends on choosing to stay. |
+| D18 | **41** | Keep the empty multiplier board. Set the clear to **24,000 points**, silver to **100 s**, and gold to **85 s with five Quads**. | The regular stacker can bank the rest in **97 s**, down from **151 s**. Paired median savings are 61, 53 and 53 s in the three blocks. The tuning block needs a median 100 pieces at the new goal, giving 100/85 s on the chapter 6 ladder. Regular stacker clear / silver / gold moves **14/10/0 → 14/11/0**. Regular Quad gold holds at 7/15 (2, 3 and 2 by block), with 0/15 casual Quad gold and 9/15 strong Quad gold at the new mark. The projected index is **2.8→2.6**. |
+
+**Projected gates for D15–D18 together are 9/9** on the same 15 seeds. These estimates cover the proposed goals and stars, including the existing full lap on 32. D19's opponent experiment would produce different play and needs a new run.
+
+**D19 · The chapter 7 crown and the final duel.** Play 50 as the speed peak, 55 as the endurance crown, and 59 followed by Neon as the encore's two-part ending. For the brief’s regular-majority target, approve an **orb-60-only reaction-window experiment after playtest** if regular players repeatedly fail to mount an attack. The measured win rates were 0/30 casual, 5/30 regular and 16/30 strong. Start with a wider pause for Neon to react to a piece, from 150–300 to **200–380 ms**, while preserving tier 8, the 340 APM action cap and three knockouts. The expected direction is more time for a counterattack. A new opponent run is necessary to quantify the gain. Look for **at least 16/30 regular wins**, a higher strong win rate and 9/9 gates. If Neon is intended as an explicit exception to regular-majority completion, retain the current opponent and judge whether a rematch improves after learning to attack. For 48, 14/30 regular wins split 6, 4 and 4 across blocks. Observe one counterattack there before moving its cap. Prism already permits 17/30 regular wins.
+
+The index also understates the sequence on 42–45. At regular pace the Quad builder reached four Quads on 13/15, five on 12/15 and six on 10/15 on orb 44. Cutting the target to five would repeat 29, add two regular clears and add one casual clear. Retain the six-Quad practice if players can name a recovery after a covered channel. Use §9.7 to judge the mirror pair, the two chain tests, the black hole's five-wave mark and the two survival laps.
+
+**D20 · Existing records.** If a shorter one-star finish on 22, 32 or 41 ships, carry D5 and D12 forward with the next all-orb fastest-time namespace, `OdysseyLevelTime_v7_`. Apply the same decision if an opponent change on 60 ships, since it changes competitive finish times. Existing earned stars and progress follow D6. A selection limited to tips and replay stars can use v6.
+
+**D21 · Cinder's replay star.** The default is to keep the uniform duel ladder through the newcomer playtest. If new players repeatedly collect a flawless star before they can explain an attack, approve a separate trial of a **five-minute flawless star on 5**, shown on its star card and results. This would be an explicit exception to the duel rule in §1.3. On the recorded matches, casual gold falls from 26 to 7/30, regular gold from 29 to 17/30 and strong gold from 29 to 26/30. The regular counts by seed block become 6, 6 and 5 out of 10. All three paces retain 30/30 clears and 30/30 silvers.
+
+**After approval**, use a feature worktree from the then-current main. Start with a no-change generator pass and compare the resolved 60-orb configurations with main. The archived pass-2 proposal predates both §8.10 alternate star routes, and its emitter still spells the old Quad keys. Restore the two approved routes and current key names in the generator inputs before layering any approved changes. Apply the retune through the generator, update the affected five-seed measured rows, chapter beats and pinned tests, then rerun all nine gates and the matched human paces. Compare each affected orb with its neighbours and the baseline CSV. In a private 30 fps headless Chrome session, start a fresh journey for 1 and enter each other changed orb from its predecessor. Verify its HUD goal, briefing, star lines and clean console. Check the goal-to-lap transition on 32. Record the results in the handover. Merge requires the owner's separate “sync with main and merge” instruction.
+
+### 9.7 Owner playtest
+
+For a short first sitting, watch **two tide warnings on 24, one chain attempt on 43 and one round against Neon**. Each exposes something a bot can execute without understanding how it felt. Use chapter select for the other checks below and split them across players or sittings. Begin unaided. Record **clear and stars, elapsed time, why the run ended, and felt difficulty from 1–7**. After a peak, ask which orb felt harder and whether the next gave enough breathing room. One retry can show whether the player has a plan. A specialist can take the longer mastery laps.
+
+| Who / orbs | What to do and what to notice |
+|---|---|
+| New player · **1–2, 5–6, 12** | At 15 lines on 1, ask what changed. On 2, ask which placement caused the second wave, what would count as a third, and whether 820 ms leaves thinking time or feels like waiting. In Cinder's first round, ask what sent rows and earned the knockout. On 6, distinguish the rubble clear from the optional Quad. On 12, watch the first independently rebuilt channel. |
+| Casual · **24 → 38**, then **39** | Call out the first tide warning before a row arrives. Leave a partly blocked gap and try to recover on 38. On 39, ask what drives the speed change. Record control at 90 s. A regular and strong player can continue to 180 and 300 s for the two survival stars. |
+| Casual or regular · **29 → 33** | On 29, continue after one natural misplacement in the Quad channel. Compare with 44 if recovery failed. On 33, name the change for a second attempt. If Long Breath is already in the bag, use it on the retry. Record whether the player would train and return, and whether an earlier orb's extra star or charm drop makes replay worthwhile. |
+| Player who has earned chain stars · **14 → 43 → 47** | On 14, explain the shelf before placing it. On 43, try to call a four-wave chain within 150 s. Count an accidental chain separately. On 47, mark the time when the first star is secure and stay on the same run for a deliberate five-wave chain. Record whether a miss suggests a new setup worth trying. |
+| Regular · **50 → 51 → 52 → 53 → 55** | Play the sprint, aim left and right on the two mirror boards and try one four-wave chain on 52. At 53, ask whether the repeated reversal is welcome. Take 55 to its score goal and choose whether to play on. Rank 50, 52 and 55 from memory and give the reason for the peak. |
+| Regular or strong · **57 → 58 → 59 → 60** | Judge the recovery after Prism if arriving from 56. On 58, decide whether three minutes of tide is worth chasing. On 59, say when scoring required a different move from simply surviving. After one match with Neon, ask which moment felt like the finale and whether a loss invites a rematch. |
+
+For the rest proposals, compare short consecutive stretches on **21–23**, **31–33** and **40–42**. Record time to the first star separately from voluntary lap time. During an early playthrough, ask which earlier move paid off at crowns **4, 9, 17 and 25**, and whether the following chapter opener felt like a rest. On 48, record the first chance to counterattack. On 60, compare that opening with the first round against Neon. Record why the player wanted to stop or continue.
