@@ -267,9 +267,9 @@ The bigger the beat, the more of the grove answers.
 | clear ×1–3 | the Shed | sap beads and dust running round each ring with the split; the ring glistens; a triple swells the beams a little |
 | four lines | the Great Moult | a storm of sparks down both lanes with the front; the whole beam field swells (most for a back-to-back four) and the colours deepen; then it all falls away over seconds |
 | combo | gaps and beams | each new gap drops pollen down its beam; the beams are bundles of rays |
-| T-spin | the Unwinding | a helix of sparks winding up round the trunk the strip unwinds from |
+| T-spin | the Unwinding | its strip blazes gold (never a ring's lime); a helix of sparks winding up round the trunk it unwinds from |
 | back-to-back | the Sunshower | the rainbow |
-| perfect clear | the Floor | the new floor; slow lights rising out of it; the beams reach it |
+| perfect clear | the Floor | the new floor; two thirds of the sparks as slow lights rising through the whole grove, from under the frame's foot to over the eye (the quietest of the big moments, and the one that fills the air); the beams reach the floor |
 | level | the Climb | the lorikeets go up with the walkway through a veil of specks; the sprays slide down past the eye; the beams swell |
 | game over | Mistfall | (as before; the sprays stand as silhouettes in the fog) |
 
@@ -310,6 +310,13 @@ gold, never a darker air with nothing in it.
   spray goes up a storey in view on any frame shape from a phone to 21:9; no shoot stands on a
   painted face; the scene never changes after it is built). The shader gate builds the new
   materials to WGSL and GLSL at Minimal and Ultra.
+- **Gates** (on the branch): typecheck clean; lint ratchet at baseline (432, none in
+  `src/themes/rainbark/`); TS ratchet and architecture fitness at baseline; boundaries clean;
+  theme lifecycle audit passed; the 15 Rainbark test files (342 tests) pass; the full unit suite
+  (26,799 tests) passes but for `tts-recorder-e2e`, `records-view` and
+  `game-over-modal-result-compatibility`, which fail on this machine on `main` as well (seven
+  other files timed out in a run beside 84 other node processes and pass alone); `npm run build`
+  with the boot closure OK; IP strings OK; perf budgets and release gates pass.
 
 ### Traps met
 
