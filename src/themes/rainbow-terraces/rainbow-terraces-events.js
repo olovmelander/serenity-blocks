@@ -127,8 +127,8 @@ export class EventEffects {
         this.sheets = makeRing(sheets, () => ({
             at: -1e4, from: v3(), dir: v3(), colour: [1, 1, 1], length: 10, speed: 30, size: 1, leap: 10,
         }));
-        /** A twist's helix up the Mother Fall (two at once, so a second never cuts the first). */
-        this.twisters = makeRing(2, () => ({
+        /** A twist's helix up the Mother Fall (three at once: a quick run of twists never cuts one climbing). */
+        this.twisters = makeRing(3, () => ({
             at: -1e4, axis: new Float32Array(TWISTER.axis * 3), radius: 10, right: v3(), ahead: v3(), colour: [1, 1, 1], strength: 1,
         }));
         /** The bell's rings in the air (a new level; three at once). */
@@ -287,12 +287,10 @@ export class EventEffects {
     twister(at, {
         axis, radius = 10, right, ahead, colour, strength = 1,
     }) {
-        // One still climbing keeps its slot: the new one takes the other.
-        const ring = this.twisters;
-        const first = ring.items[ring.next];
-        const r = at - first.at < TWISTER.life && ring.items.length > 1
-            ? ring.items[(ring.next + 1) % ring.items.length] : first;
-        ring.next = (ring.items.indexOf(r) + 1) % ring.items.length;
+        // The slot whose helix is furthest gone (spent, or failing that nearest its end): one
+        // still climbing is never cut by the next.
+        let r = this.twisters.items[0];
+        for (const item of this.twisters.items) if (item.at < r.at) r = item;
         r.at = at;
         for (let i = 0; i < TWISTER.axis * 3; i++) r.axis[i] = axis[i];
         r.radius = radius;
