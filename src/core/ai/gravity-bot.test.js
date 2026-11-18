@@ -65,6 +65,25 @@ describe('live gravity policy', () => {
         b.reset();
     });
 
+    it.each([1, 2, 3, 5, 6, 10])('preserves tier %i judgment draws with synchronous and sliced input', (tier) => {
+        const states = [deal(1011), deal(1011)];
+        const decisions = states.map((state, index) => {
+            const bot = new GravityBotController({
+                playerState: state,
+                difficulty: tier,
+                actions: {},
+                rng: seededRandom(71),
+                planUnitsPerMs: index ? gravityPlanningRate() : 0,
+            });
+            const tick = 1000 / 60;
+            for (let n = 1; n <= 120 && !bot.lastPlan; n++) bot.update(tick, n * tick);
+            expect(bot.lastPlan).toBeTruthy();
+            return [bot.lastPlan.actions, bot.lastPlan.candidate.futurePlan, bot.readyAtMs];
+        });
+        states.forEach((state) => state.reset());
+        expect(decisions[0]).toEqual(decisions[1]);
+    });
+
     it('invalidates a proved route as soon as a real incoming burst changes', () => {
         const state = deal(1001);
         let pending = 0;
@@ -75,6 +94,45 @@ describe('live gravity policy', () => {
         bot.update(1, 2);
         expect(bot.proof).toEqual([]);
         expect(bot.getPendingGarbage()).toBe(6);
+        state.reset();
+    });
+
+    it('pays a proved fire before the incoming rows enter at the next spawn', async () => {
+        const state = deal(1011);
+        let incoming = 0;
+        const bot = new GravityBotController({
+            playerState: state,
+            actions: {},
+            difficulty: 10,
+            rng: seededRandom((1011 ^ 0x85ebca6b) >>> 0),
+            pendingRows: () => incoming,
+        });
+        for (let i = 0; i < 12; i++) {
+            // eslint-disable-next-line no-await-in-loop
+            await replay(state, bot.plan().actions, { spawnPiece: () => spawn(state) });
+        }
+        expect(bot.proof[0].move.waves).toEqual([1, 1, 1, 1]);
+        incoming = 6;
+        const shot = bot.plan();
+        expect(shot.tactics.fireBeforeGarbage).toBe(true);
+        const actual = [];
+        await replay(state, shot.actions, { spawnPiece: () => spawn(state), onLineClear: (n) => actual.push(n) });
+        expect(actual).toEqual([1, 1, 1, 1]);
+        expect(bot.proof).toEqual([]);
+        state.reset();
+    });
+
+    it('revalidates a restored grid even if its version number is reused', () => {
+        const state = deal(1006);
+        state.useFixedCascade = true;
+        state.boardVersion = 7;
+        const bot = controller(state);
+        const tick = 1000 / 60;
+        for (let i = 1; i <= 60 && !bot.lastPlan; i++) bot.update(tick, i * tick);
+        expect(bot.refreshRoute(bot.lastPlan)).toBe(true);
+        state.boardGrid = state.boardGrid.map((row) => row.slice());
+        state.boardGrid.at(-1)[2] = { id: 7, type: 'T' };
+        expect(bot.refreshRoute(bot.lastPlan)).toBe(false);
         state.reset();
     });
 
@@ -108,6 +166,9 @@ describe('live gravity policy', () => {
             state.boardGrid[y][1] = { id: 'left', type: 'I' };
         }
         state.lockedPieces = findConnectedComponents(state.boardGrid);
+        const immediate = new GravityBotController({
+            playerState: state, difficulty: 10, actions: {}, rng: seededRandom(71), planUnitsPerMs: 0,
+        }).plan();
         const bot = controller(state);
         const tick = 1000 / 60;
         let elapsed = 0;
@@ -118,6 +179,8 @@ describe('live gravity policy', () => {
         expect(elapsed).toBeLessThanOrEqual(bot.readyAtMs + tick);
         expect(bot.lastPlan.tactics.protectSpawn).toBe(true);
         const plan = bot.lastPlan;
+        expect(plan.actions).toEqual(immediate.actions);
+        expect(immediate.tactics.protectSpawn).toBe(true);
         const waves = [];
         await replay(state, plan.actions, { spawnPiece: () => spawn(state), onLineClear: (n) => waves.push(n) });
         expect(waves).toEqual(plan.candidate.waves);

@@ -8,7 +8,7 @@ import {
 const PREVIEWS = [0, 1, 1, 1, 1, 2, 2, 2, 3, 3];
 const WIDTH = [1, 1, 2, 3, 3, 4, 5, 8, 10, 16];
 const REACTION = [[520, 850], [460, 730], [360, 620], [310, 530], [270, 450],
-    [240, 380], [215, 330], [200, 305], [185, 275], [170, 250]];
+    [240, 380], [215, 330], [200, 335], [185, 319], [170, 250]];
 const ACTION_RATE = [95, 120, 133, 210, 265, 300, 325, 480, 570, 850];
 const FIRE_WAVES = [2, 2, 2, 2, 3, 3, 3, 4, 4, 4];
 const SURVIVAL_MARGIN = [0, 0, 0, 11, 8, 0, 8, 0, 0, 0];
@@ -46,13 +46,15 @@ function actionsTo(state, target) {
 function sliceRate(rate, board, tier, infinity) {
     if (infinity) return Math.min(rate, 0.3);
     const nearRoof = board.top - board.first <= 3;
+    if (tier === 3 && nearRoof && !board.garbage) return Math.min(rate, 1.05);
     if ((tier >= 8 && nearRoof) || (tier <= 3 && (nearRoof || board.garbage))) return Math.min(rate, 0.35);
     return rate;
 }
 
 function rewardContextKey(state) {
     return [state.level ?? 1, state.linesUntilNextLevel ?? 15, Boolean(state.disableLevelProgression),
-        Boolean(state.comboMultiplierEnabled), state.comboMultiplierEnabled ? state.comboMultiplier || 1 : 1].join('/');
+        Boolean(state.comboMultiplierEnabled), state.comboMultiplierEnabled ? state.comboCount || 0 : 0,
+        state.comboMultiplierEnabled ? state.comboMultiplier || 1 : 1].join('/');
 }
 
 /** Standard matches use public previews and actual body connectivity. Infinity keeps
@@ -209,7 +211,7 @@ export class GravityBotController extends PuzzleBotController {
         const survivalMargin = SURVIVAL_MARGIN[tier - 1];
         const useSurvival = root && tier <= 7 && !root.garbage && root.top - root.first < survivalMargin;
         this.boundedRanking = state.isInfinityMode;
-        if (state.isInfinityMode || (!this.urgentSurvival && (tier <= 3 || useSurvival))) {
+        if (state.isInfinityMode || tier <= 3 || useSurvival) {
             // With zero or one preview the established survival judgement protects
             // novices from cavities they cannot plan their way out of.
             const plan = yield* super.planSteps();
@@ -226,14 +228,19 @@ export class GravityBotController extends PuzzleBotController {
         const pressing = this.judgment?.pressAtRows !== undefined && this.opponentRoom?.() <= this.judgment.pressAtRows;
         const first = this.proof[0];
         const visible = [state.currentPiece.shapeKey, ...this.nextShapeKeys(state)];
-        if (first && first.pending === pending && first.pressing === pressing
+        // A burst enters after this piece locks. A previously proved discharge
+        // can still fire on this board. Later steps cross the insertion boundary.
+        const fireBeforeGarbage = tier >= 8 && first && pending > first.pending && first.move.waves.length >= 2;
+        const proof = fireBeforeGarbage ? [first] : this.proof;
+        if (first && (fireBeforeGarbage || (first.pending === pending && first.pressing === pressing))
             && first.rewardContext === rewardContextKey(state)
-            && this.proof.every((step, i) => step.move.shapeKey === visible[i])
+            && proof.every((step, i) => step.move.shapeKey === visible[i])
             && first.before === gravityBoardKey(root.cells)) {
             const actions = actionsTo(state, first.move);
             if (actions) {
-                const plan = asPlan(this.proof.map((step) => step.move), actions, tactics);
-                this.proof.shift();
+                tactics.fireBeforeGarbage = Boolean(fireBeforeGarbage);
+                const plan = asPlan(proof.map((step) => step.move), actions, tactics);
+                this.proof = proof.slice(1);
                 this.machinePlan = this.proof.length ? { steps: this.proof.map((step) => step.move) } : null;
                 return plan;
             }
@@ -244,13 +251,14 @@ export class GravityBotController extends PuzzleBotController {
         // rate. Keep the last completed ply if the next one cannot fit. A pressure
         // change forces a new observation and can invalidate a previously ready move.
         let ready = null;
-        const rate = sliceRate(this.planUnitsPerMs || gravityPlanningRate(), root, tier, false);
+        const workRate = this.planUnitsPerMs || gravityPlanningRate();
+        const rate = sliceRate(workRate, root, tier, false);
         const ideal = this.config.reactionMs[0] * rate;
         const allowance = Math.max(1, Math.floor(Math.min(ideal, this.retryAllowance ?? Infinity)));
         // Shorter previews need two extra rows to clear the centre before a spawn is blocked.
         const retreatRows = this.searchConfig.previews < 3 ? 10 : 8;
-        const protectSpawn = this.urgentSurvival || (tier >= 8 && this.planUnitsPerMs >= 0.35 && !root.garbage
-            && root.top - root.first <= retreatRows);
+        const protectSpawn = tier >= 8 && workRate >= 0.35 && !root.garbage
+            && root.top - root.first <= retreatRows;
         tactics.protectSpawn = protectSpawn;
         const config = {
             ...this.searchConfig,
@@ -260,7 +268,7 @@ export class GravityBotController extends PuzzleBotController {
             protectSpawn,
             virtual: this.searchConfig.virtual && !protectSpawn,
             trigger: this.searchConfig.trigger && !protectSpawn,
-            sliceRoofProbes: tier >= 8 && root.garbage > 0 && this.planUnitsPerMs >= 0.35,
+            sliceRoofProbes: tier >= 8 && root.garbage > 0 && workRate >= 0.35,
             width: Math.min(
                 this.searchConfig.width,
                 Math.max(4, Math.round(allowance / 15)),
@@ -276,7 +284,7 @@ export class GravityBotController extends PuzzleBotController {
         const result = ready;
         if (!result) return null;
         let nodes = result.route;
-        if (!this.urgentSurvival && this.config.mistakeChance && this.rng() < this.config.mistakeChance) {
+        if (this.config.mistakeChance && this.rng() < this.config.mistakeChance) {
             const preferred = nodes[0].move;
             const nearby = result.alternatives.filter(({ move }) => Math.abs(move.x - preferred.x) <= 1
                 && (move.x !== preferred.x || move.rotation !== preferred.rotation)).slice(0, 4);
@@ -300,9 +308,12 @@ export class GravityBotController extends PuzzleBotController {
         const pending = this.getPendingGarbage();
         if (this.scheduler.rejected || pending !== this.queueAtPlan) {
             this.replanInterrupted = this.queueAtPlan !== null && this.currentSpawnToken != null;
+            const rising = this.config.tier >= 8 && !this.scheduler.rejected
+                && this.queueAtPlan !== null && pending > this.queueAtPlan;
+            const shot = this.proof[0];
             this.scheduler.rejected = false;
             this.queueAtPlan = pending;
-            this.proof = [];
+            this.proof = rising && shot?.move.waves?.length >= 2 ? [shot] : [];
             this.machinePlan = null;
             this.planJob = null;
             this.pendingPlan = undefined;
@@ -318,6 +329,8 @@ export class GravityBotController extends PuzzleBotController {
         if (!this.planJob && this.pendingPlan === undefined) {
             const board = readGravityBoard(state.boardGrid || state.board, state.isInfinityMode ? 0 : undefined);
             this.planBoardKey = gravityBoardKey(board.cells);
+            this.planGrid = state.boardGrid || state.board;
+            this.planBoardVersion = state.boardVersion;
             this.sliceRate = sliceRate(this.planUnitsPerMs, board, this.config.tier, state.isInfinityMode);
             this.planStartPose = [state.currentPiece.x, state.currentPiece.y, state.currentPiece.rotation];
             this.planUnitCredit = 0;
@@ -348,7 +361,12 @@ export class GravityBotController extends PuzzleBotController {
 
     refreshRoute(plan) {
         const state = this.playerState;
-        if (this.planBoardKey !== gravityBoardKey(readGravityBoard(state.boardGrid || state.board).cells)) return false;
+        const grid = state.boardGrid || state.board;
+        // Live boards mark in-place edits and replace the grid on restore. An
+        // unversioned fixture or changed grid still gets a full connectivity check.
+        const unchanged = state.useFixedCascade && this.planBoardVersion !== undefined
+            && grid === this.planGrid && this.planBoardVersion === state.boardVersion;
+        if (!unchanged && this.planBoardKey !== gravityBoardKey(readGravityBoard(grid).cells)) return false;
         const piece = state.currentPiece;
         if (this.planStartPose.some((v, i) => v !== [piece.x, piece.y, piece.rotation][i])) {
             const actions = actionsTo(state, plan.candidate);

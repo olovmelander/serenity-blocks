@@ -425,6 +425,16 @@ export function* searchGravity(state, config, pending, weights = GRAVITY_WEIGHTS
             const landings = ply ? futureLandings(parent.board, key) : actualLandings(grid, state.currentPiece);
             yield;
             const siblings = [];
+            // All non-clearing siblings have identical reward and reset the combo.
+            const quiet = gravityReward([], false, parent.context);
+            const quietContext = {
+                disableLevelProgression: state.disableLevelProgression,
+                comboMultiplierEnabled: state.comboMultiplierEnabled,
+                level: quiet.levelAfter,
+                linesUntilNextLevel: quiet.remainingAfter,
+                comboCount: 0,
+                comboMultiplier: 1,
+            };
             let count = 0;
             for (const landing of landings) {
                 const { form, x, y } = landing;
@@ -434,15 +444,15 @@ export function* searchGravity(state, config, pending, weights = GRAVITY_WEIGHTS
                 const waves = completes(source, form, x, y) ? settleLabelledBoard(cells, source.first) : [];
                 const board = waves.length ? describe(cells, source.first)
                     : afterQuietLock(source, cells, form, x, y, scratch);
-                const paid = gravityReward(waves, !board.stock, parent.context);
-                const context = {
-                    disableLevelProgression: state.disableLevelProgression,
-                    comboMultiplierEnabled: state.comboMultiplierEnabled,
+                const paid = waves.length ? gravityReward(waves, !board.stock, parent.context) : quiet;
+                const comboCount = (parent.context.comboCount || 0) + 1;
+                const context = waves.length ? {
+                    ...quietContext,
                     level: paid.levelAfter,
                     linesUntilNextLevel: paid.remainingAfter,
-                    comboCount: waves.length ? (parent.context.comboCount || 0) + 1 : 0,
-                };
-                context.comboMultiplier = 1 + context.comboCount * 0.5;
+                    comboCount,
+                    comboMultiplier: 1 + comboCount * 0.5,
+                } : quietContext;
                 const reward = parent.reward + paid.score * weights.score + paid.attack * weights.attack
                     + waves.length ** 2 * weights.waves;
                 const move = {

@@ -10,6 +10,7 @@
     "dev:playground": "vite --open /playground.html",
     "test": "vitest run",
     "benchmark:odyssey": "node scripts/odyssey-benchmark.mjs",
+    "benchmark:odyssey:frozen": "node scripts/odyssey-benchmark/frozen-campaign.mjs",
     "typecheck": "tsc --noEmit",
     "build": "vite build && node scripts/check-boot-closure.mjs",
     "check:boot-closure": "node scripts/check-boot-closure.mjs --print",

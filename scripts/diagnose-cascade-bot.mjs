@@ -1,48 +1,43 @@
-// Empirical diagnosis: run the real engine and track board QUALITY per piece
-// (holes, bumpiness, height) to find why the bot's stacking gets messy.
-import { COLS, HIDDEN_ROWS } from '../src/core/constants.js';
+// Compare the shape of a stack with the gravity clears it releases on the same deal.
 import {
     GameState, spawnPiece, move, rotate, softDrop, hardDrop, fillBag,
 } from '../src/core/game.js';
 import { measureBoard } from '../src/core/ai/board-evaluator.js';
 import { PuzzleBotController } from '../src/core/ai/puzzle-bot-controller.js';
+import { GravityBotController } from '../src/core/ai/gravity-bot-controller.js';
+import { bindLegacySessionRng } from '../src/core/session-rng.js';
+import { seededRandom } from '../src/utils/helpers.js';
 
-const PIECES = Number.parseInt(process.argv[2] || '180', 10);
-const DIFFICULTY = Number.parseInt(process.argv[3] || '10', 10);
-const SEEDS = (process.argv[4] || '42,7,1337,2024,55').split(',').map(Number);
+const args = process.argv.slice(2).filter((arg) => arg !== '--legacy');
+const PIECES = Number.parseInt(args[0] || '180', 10);
+const DIFFICULTY = Number.parseInt(args[1] || '10', 10);
+const SEEDS = (args[2] || '42,7,1337,2024,55').split(',').map(Number);
 
-function mulberry32(seed) {
-    let a = seed >>> 0;
-    return function rng() {
-        a |= 0; a = (a + 0x6D2B79F5) | 0;
-        let t = Math.imul(a ^ (a >>> 15), 1 | a);
-        t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-    };
-}
+const Controller = process.argv.includes('--legacy') ? PuzzleBotController : GravityBotController;
 
 function mean(a) { return a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0; }
 
 async function runGame(seed) {
-    const rng = mulberry32(seed);
-    const gs = new GameState();
+    const gs = new GameState({ disableLevelProgression: true, hitStopEnabled: false, lockBonusPolicy: 'legacy-max' });
     gs.isSeeking = true;
-    gs.randomGenerator = rng;
-    fillBag(gs.nextPieces, rng);
+    bindLegacySessionRng(gs, seed);
+    fillBag(gs.nextPieces, gs.randomGenerator);
 
+    let waves = 0, maxWaves = 0, laterLines = 0, lines = 0;
     const physicsCb = {
         spawnPiece: () => spawnPiece(gs, null, () => { gs.isGameOver = true; }),
-        onGarbageReady: () => {}, onPerfectClear: () => {}, onPieceLock: () => {},
+        onLineClear: (count) => { if (waves++) laterLines += count; lines += count; },
     };
     const perform = (a) => {
         if (a.type === 'move') return a.dir < 0 ? move(gs, -1) : move(gs, 1);
         if (a.type === 'rotate') return rotate(gs, a.dir);
-        if (a.type === 'softDrop') return softDrop(gs, null, null);
+        if (a.type === 'softDrop') return softDrop(gs, null, physicsCb);
         if (a.type === 'hardDrop') return hardDrop(gs, null, physicsCb);
         return false;
     };
-    const bot = new PuzzleBotController({
-        actions: {}, difficulty: DIFFICULTY, playerIndex: 0, playerState: gs, rng,
+    const bot = new Controller({
+        actions: {}, difficulty: DIFFICULTY, playerIndex: 0, playerState: gs,
+        rng: seededRandom((seed ^ 0x85ebca6b) >>> 0),
     });
     spawnPiece(gs, null, () => { gs.isGameOver = true; });
 
@@ -53,9 +48,12 @@ async function runGame(seed) {
     for (let i = 0; i < PIECES && gs.currentPiece && !gs.isGameOver; i++) {
         const plan = bot.plan();
         if (!plan) break;
-        for (const a of plan.actions) perform(a);
-        if (gs.currentPiece && !gs.isProcessingPhysics) hardDrop(gs, null, physicsCb);
+        waves = 0;
+        const before = gs.piecesPlaced;
+        for (const a of plan.actions) if (!perform(a)) throw Error('Rejected input ' + JSON.stringify(a));
         if (gs.latestPhysicsPromise) await gs.latestPhysicsPromise;
+        if (!gs.isGameOver && gs.piecesPlaced !== before + 1) throw Error('Expected one lock per plan');
+        maxWaves = Math.max(maxWaves, waves);
 
         const m = measureBoard(gs.boardGrid);
         samples.holes.push(m.holes);
@@ -75,6 +73,7 @@ async function runGame(seed) {
         avgAggregate: +mean(samples.aggregate).toFixed(1),
         holeMakingTurns: holeIncreaseTurns,
         pieces: samples.holes.length,
+        maxWaves, laterLines, lines, toppedOut: gs.isGameOver,
     };
 }
 
@@ -88,6 +87,8 @@ async function main() {
         console.log(`${String(r.seed).padEnd(6)} |   ${String(r.avgHoles).padStart(5)}  |    ${String(r.maxHoles).padStart(3)}   |     ${String(r.avgBumpiness).padStart(5)}    |  ${String(r.avgMaxHeight).padStart(5)}  |  ${String(r.avgAggregate).padStart(5)} |   ${r.holeMakingTurns}/${r.pieces}`);
     }
     const agg = (k) => +mean(rows.map((r) => r[k])).toFixed(2);
+    console.table(rows.map(({ seed, maxWaves, laterLines, lines, toppedOut }) =>
+        ({ seed, maxWaves, laterLines, lines, toppedOut })));
     console.log('\nMEANS: avgHoles=' + agg('avgHoles') + ' avgBumpiness=' + agg('avgBumpiness') +
         ' avgMaxHeight=' + agg('avgMaxHeight') + ' avgAggregate=' + agg('avgAggregate'));
 }
