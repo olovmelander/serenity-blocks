@@ -1046,6 +1046,7 @@ export class ThemeManager {
         try {
             this.clearAdjacentThemePreloadQueue();
             this.pendingAdjacentThemePreload = false;
+            this._retireFadingTheme(themeName);
 
             const outgoingTheme = this.activeTheme || this.pendingThemeInstance;
             const outgoingThemeName = this.activeTheme ? this.activeThemeName : this.pendingThemeName;
@@ -1437,8 +1438,14 @@ export class ThemeManager {
                 return themeName;
             }
             console.error(`[ThemeManager] Theme "${themeName}" failed to start:`, error);
-            // An in-play switch keeps the outgoing theme playing: only the incoming build is lost.
-            if (behind) this._behindBuild = null;
+            // An in-play switch keeps the outgoing theme playing: only the incoming build is lost,
+            // and its async-pipeline session with it (left open, it kept the patch installed and
+            // could claim a later instance of this theme in the same container).
+            if (behind) {
+                this._behindBuild = null;
+                behindSession?.end();
+                themeInstance._prewarmHidden = false;
+            }
             this.disposeThemeInstance(themeInstance, themeName, {
                 removeFromCache: true,
             });
@@ -1577,6 +1584,22 @@ export class ThemeManager {
             setTimeout(tick, 250);
         };
         setTimeout(tick, 250);
+    }
+
+    /**
+     * A theme switched back to while it is still fading out from the last switch: dispose the fading
+     * instance now, before a fresh one is built. Both use the theme's one container, and the old
+     * instance's delayed disposal stopped that container (hid it) under the new one, which then ran
+     * behind a blank background until the next switch.
+     * @param {string} themeName
+     */
+    _retireFadingTheme(themeName) {
+        for (const fade of this._fadingThemes) {
+            if (fade.themeName !== themeName) continue;
+            clearTimeout(fade.timer);
+            this._fadingThemes.delete(fade);
+            this.disposeThemeInstance(fade.theme, fade.themeName);
+        }
     }
 
     /**

@@ -5,15 +5,15 @@
  * sessions' tabs and never depend on a window being in the foreground.
  *
  *   node scripts/run-electron.mjs scripts/playground-phase-capture.mjs \
- *     --effect logo-warp-transition --params "count=48000" --times 0,0.39,0.85 \
- *     --out reports/playground/warp
+ *     --effect aurora-opening --params "phase=hold" --times 0,0.4,1.2 \
+ *     --out reports/playground/opening
  *
  *   --params "a=1&b=2"  extra playground URL params (effect, orbit=0 and hud=0 are set for you)
  *   --ident-split 1     overlay the real CSS studio ident (index.html markup + main.css) clipped to
  *                       the left half, so a match-cut can be judged side by side; also returns the
  *                       mark's measured centre in the log.
  *   --ident-compare 1   also write <out>-gpu.png / <out>-css.png: the first time full-frame, GPU only
- *                       and with the real ident on top (the logo-warp-transition match-cut check).
+ *                       and with the real ident on top (the aurora-opening match-cut check).
  *   --port (5173)  --width/--height (1280x720)  --show 0 (hidden window)
  * Values may be given inline (--key=value); use that form for anything URL-like.
  *
@@ -90,7 +90,7 @@ async function run() {
         webPreferences: { backgroundThrottling: false, contextIsolation: true, nodeIntegration: false },
     });
     const params = new URLSearchParams(args.params || '');
-    params.set('effect', args.effect || 'logo-warp-transition');
+    params.set('effect', args.effect || 'aurora-opening');
     params.set('orbit', params.get('orbit') || '0');
     params.set('hud', '0');
     params.set('t', String(TIMES[0] ?? 0));

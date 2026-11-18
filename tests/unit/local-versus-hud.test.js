@@ -366,3 +366,147 @@ describe('local versus HUD', () => {
         vi.useRealTimers();
     });
 });
+
+// Audit 2026-11-18 A18-PERF-4: a layout read after a DOM write forces a synchronous style and
+// layout pass. An attack on three boards must read every rect before it draws the first streak.
+function attackDom(targets) {
+    const log = [];
+    const rect = (left, top, width, height) => ({
+        left, top, width, height, right: left + width, bottom: top + height,
+    });
+    const nodes = {
+        'multiplayer-container': { appendChild: (child) => log.push(`append ${child.label}`) },
+    };
+    const section = {
+        animate: () => {},
+        getBoundingClientRect: () => {
+            log.push('read origin');
+            return rect(40, 60, 280, 560);
+        },
+    };
+    nodes['p1-phaser-container'] = { closest: (selector) => (selector === '.player-board-section' ? section : null) };
+    targets.forEach((target, i) => {
+        const n = target + 1;
+        const classes = new Set();
+        nodes[`p${n}-garbage-bar`] = {
+            parentElement: { appendChild: (label) => log.push(`hit p${n} ${label.textContent}`) },
+            classList: { add: (c) => classes.add(c), remove: (c) => classes.delete(c), contains: (c) => classes.has(c) },
+            getBoundingClientRect: () => {
+                log.push(`read p${n}`);
+                return rect(400 + 380 * i, 90 + 7 * i, 18, 520 - 150 * i);
+            },
+        };
+    });
+    const created = [];
+    const createElement = () => {
+        const label = `node${created.length + 1}`;
+        const animations = [];
+        const part = (name) => ({
+            animate: (keyframes, options) => {
+                log.push(`animate ${label} ${name}`);
+                animations.push({ part: name, keyframes, options });
+            },
+        });
+        const parts = { '.lv-attack__orb': part('orb'), '.lv-attack__trail': part('trail') };
+        let cssText = '';
+        let html = '';
+        const el = {
+            label,
+            className: '',
+            textContent: '',
+            animations,
+            style: {
+                get cssText() { return cssText; },
+                set cssText(value) {
+                    log.push(`style ${label}`);
+                    cssText = value;
+                },
+                setProperty: () => {},
+            },
+            get innerHTML() { return html; },
+            set innerHTML(value) {
+                log.push(`html ${label}`);
+                html = value;
+            },
+            querySelector: (selector) => parts[selector] || null,
+            remove: () => log.push(`remove ${label}`),
+        };
+        created.push(el);
+        return el;
+    };
+    return {
+        log,
+        streaks: () => created.filter((el) => el.className === 'lv-attack'),
+        doc: { getElementById: (id) => nodes[id] || null, querySelectorAll: () => [], createElement },
+    };
+}
+
+describe('local versus HUD: an attack on several boards', () => {
+    afterEach(() => {
+        vi.unstubAllGlobals();
+        vi.useRealTimers();
+    });
+
+    const hudFor = (doc) => new LocalVersusHud({
+        config: { numPlayers: 4 },
+        numPlayers: 4,
+        colorFor: () => ({ primary: '#ff7a59' }),
+        doc,
+    });
+    const isRead = (step) => step.startsWith('read ');
+
+    it('reads every board\'s position before it draws the first streak (no forced layout per target)', () => {
+        vi.useFakeTimers();
+        const { log, doc } = attackDom([1, 2, 3]);
+        hudFor(doc).showAttack(0, [1, 2, 3], 4);
+        const firstWrite = log.findIndex((step) => !isRead(step));
+        expect(firstWrite).toBeGreaterThan(0);
+        expect(log.slice(firstWrite).filter(isRead)).toEqual([]);
+        expect(log.filter(isRead)).toEqual(['read origin', 'read p2', 'read p3', 'read p4']);
+    });
+
+    it('draws the same streaks, and each target is hit in turn as its streak lands', () => {
+        vi.useFakeTimers();
+        const { log, doc, streaks } = attackDom([1, 2, 3]);
+        hudFor(doc).showAttack(0, [1, 2, 3], 4);
+        const drawn = streaks().map((s) => ({ css: s.style.cssText, html: s.innerHTML, animations: s.animations }));
+        // The streaks as the interleaved version drew them, value for value.
+        const orb = (dx, dy) => ({
+            part: 'orb',
+            keyframes: [{ transform: 'translate(-50%, -50%) scale(0.6)' },
+                { transform: `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px)) scale(1.15)` }],
+            options: { duration: 440, easing: 'cubic-bezier(0.55, 0, 0.8, 0.4)', fill: 'forwards' },
+        });
+        const trail = (angle) => ({
+            part: 'trail',
+            keyframes: [{ transform: `rotate(${angle}) scaleX(0)`, opacity: 0.9 },
+                { transform: `rotate(${angle}) scaleX(1)`, opacity: 0.6, offset: 0.85 },
+                { transform: `rotate(${angle}) scaleX(1)`, opacity: 0 }],
+            options: { duration: 600, easing: 'ease-in', fill: 'forwards' },
+        });
+        const html = '<span class="lv-attack__trail"></span><span class="lv-attack__orb"></span>';
+        const css = (len) => `left:180px;top:295.2px;--attack-color:#ff7a59;--attack-len:${len}px`;
+        expect(drawn).toEqual([
+            { css: css('342.5843545756286'), html, animations: [orb(229, 254.8), trail('0.8387rad')] },
+            { css: css('619.1770667587746'), html, animations: [orb(609, 111.80000000000001), trail('0.1816rad')] },
+            { css: css('989.3469765456405'), html, animations: [orb(989, -26.19999999999999), trail('-0.0265rad')] },
+        ]);
+
+        log.length = 0;
+        vi.advanceTimersByTime(440);
+        expect(log).toEqual([
+            'remove node1', 'hit p2 +4',
+            'remove node2', 'hit p3 +4',
+            'remove node3', 'hit p4 +4',
+        ]);
+    });
+
+    it('with reduced motion, lands every hit at once and reads no layout', () => {
+        vi.useFakeTimers();
+        vi.stubGlobal('window', { settingsManager: { get: () => ({ reducedMotion: true }) } });
+        const { log, doc, streaks } = attackDom([1, 2, 3]);
+        hudFor(doc).showAttack(0, [1, 2, 3], 4);
+        expect(streaks()).toEqual([]);
+        expect(log).toEqual(['hit p2 +4', 'hit p3 +4', 'hit p4 +4']);
+    });
+});

@@ -34,8 +34,8 @@ const CLEAR = {
 
 let syncs;
 
-function device({ highScoreManager } = {}) {
-    const values = new Map();
+/** Pass a device's `values` back in to restart it over the same storage. */
+function device({ highScoreManager, values = new Map() } = {}) {
     vi.stubGlobal('localStorage', {
         getItem: (key) => values.get(key) ?? null,
         setItem: (key, value) => values.set(key, String(value)),
@@ -44,7 +44,9 @@ function device({ highScoreManager } = {}) {
     const state = new OdysseyStateManager();
     const sync = new SteamCloudSyncManager({ getOdysseyState: () => state, highScoreManager });
     syncs.push(sync);
-    return { state, sync, saved: () => JSON.parse(values.get('serenityBlocks_odysseyProgress')) };
+    return {
+        state, sync, values, saved: () => JSON.parse(values.get('serenityBlocks_odysseyProgress')),
+    };
 }
 
 const upload = (sync, file = ODYSSEY) => sync.queueUpload(file, { flush: true });
@@ -222,6 +224,38 @@ describe('Odyssey charms through a cloud upload', () => {
 
         expect(sync._mergeOdyssey(old, current).charms.found).toBe(2);
         expect(sync._mergeOdyssey(current, old).charms.found).toBe(2);
+    });
+});
+
+describe('Odyssey progress reaching a device that has never opened the Odyssey', () => {
+    // Audit 2026-11-18 A18-PERS-1: the first device queued an Odyssey upload it had nothing for,
+    // and that entry, retried and never cleared, kept every later download from reaching it.
+    it('arrives after that device first synced against an empty cloud', async () => {
+        const first = device();
+        await first.sync.syncFromCloud();
+
+        const other = device();
+        other.state.completeLevel(1, CLEAR);
+        other.state.completeLevel(2, CLEAR);
+        await other.sync.syncFromCloud();
+        await upload(other.sync);
+        expect(Object.keys(cloudDoc().completedLevels).sort()).toEqual(['1', '2']);
+
+        const restarted = device({ values: first.values });
+        restarted.state.load();
+        await restarted.sync.syncFromCloud();
+
+        expect(restarted.state.completedLevels.size).toBe(2);
+        expect(restarted.sync.pendingUploads.has(ODYSSEY)).toBe(false);
+    });
+
+    it('leaves nothing queued when neither side has a journey', async () => {
+        const { sync } = device();
+
+        await sync.syncFromCloud();
+
+        expect(sync.pendingUploads.has(ODYSSEY)).toBe(false);
+        expect(steam.cloud.has(ODYSSEY)).toBe(false);
     });
 });
 

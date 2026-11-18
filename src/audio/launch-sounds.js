@@ -4,10 +4,10 @@
  * sweeps (the owner disliked the old warp's rushing swoosh, 2026-11-07), no hits or strikes (a
  * richer pass with a struck bowl, a thump and pitch glides was "a bit too much"), no bright chimes.
  *
- *   warp   the boot warp (src/ui/boot-warp-startup.js starts it at the reveal; the scene's flare
- *          peaks 0.4 s later, src/ui/boot-warp-transition-scene.js). A drone of fifths over a felt
- *          sub swells in to crest on the flare, its upper tones opening with the light, then
- *          darkens and thins through the flight and fades into the room's tail. About 6 s.
+ *   warp   the boot warp (src/ui/boot-warp-startup.js starts it at the reveal). A drone of fifths
+ *          over a felt sub swells in to crest 0.4 s later (where the retired warp scene's flare
+ *          peaked), its upper tones opening with the light, then darkens and thins through the
+ *          flight and fades into the room's tail. About 6 s.
  *   begin  the title screen's confirm, as the title rises to the menu: the same drone blooms
  *          quickly and gently, opening upward, and fades into the room. About 3.2 s.
  *
@@ -223,7 +223,7 @@ function finish(channels, peakTarget) {
     return channels;
 }
 
-// The scene's flare, after the reveal the warp starts on.
+// The crest, after the reveal the warp starts on (the retired warp scene's flare).
 const FLARE = 0.4;
 
 function renderWarp(sampleRate) {

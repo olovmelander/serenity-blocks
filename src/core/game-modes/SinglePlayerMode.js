@@ -87,6 +87,7 @@ export class SinglePlayerMode extends BaseGameMode {
         this.playbackControls = new PlaybackControls(this.demoPlayer);
         this.isRecording = false;
         this.isPlayingDemo = false;
+        this._pauseStoppedDemo = false;
         this.lastRecordedDemo = null;
 
         // Input overrides
@@ -469,11 +470,15 @@ export class SinglePlayerMode extends BaseGameMode {
     }
 
     onPause() {
+        const wasPaused = this.isPaused;
         super.onPause();
 
         this._fixedTickInputBinding?.clear();
 
         if (this.isPlayingDemo) {
+            // Closing the sheet plays on only a replay this pause stopped: one the
+            // viewer paused from the playback bar stays paused.
+            if (!wasPaused) this._pauseStoppedDemo = !this.demoPlayer.isPaused;
             this.demoPlayer.pausePlayback();
         }
     }
@@ -485,21 +490,31 @@ export class SinglePlayerMode extends BaseGameMode {
         super.onResume();
 
         if (
-            this._fixedTickEnabled
-            && this.gameState
-            && ownsSinglePlayerFixedTickRuntime(
-                this._fixedTickRuntime,
-                this._fixedTickOwnership,
-            )
+            this.gameState
+            && (this.isPlayingDemo || (
+                this._fixedTickEnabled
+                && ownsSinglePlayerFixedTickRuntime(
+                    this._fixedTickRuntime,
+                    this._fixedTickOwnership,
+                )
+            ))
         ) {
             // BaseGameMode reanchors variable-delta loops to wall time. The
-            // canonical clock keeps lastTime on its simulation-time domain.
+            // canonical clock and a replay keep lastTime on their simulation-time
+            // domain; a wall-clock lastTime makes the next replay step's delta 0
+            // and drops that tick's gravity.
             this.gameState.lastTime = this.gameState.simTimeMs;
         }
 
         if (this.isPlayingDemo) {
-            this.demoPlayer.resumePlayback();
+            if (this._pauseStoppedDemo) {
+                this.demoPlayer.resumePlayback();
+            } else if (this.demoPlayer.isPaused && !this.demoPlayer.isSeeking && this.gameState) {
+                // The board stays paused with the replay, as pausePlayback() left it.
+                this.gameState.isPaused = true;
+            }
         }
+        this._pauseStoppedDemo = false;
     }
 
     /**

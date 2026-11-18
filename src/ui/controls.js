@@ -985,23 +985,3 @@ export function setupClickControls(inputController, startGame, initSound) {
 
     console.log('[Click] Click controls initialized');
 }
-
-/**
- * Initializes all input controls (keyboard, click)
- * This is the main entry point for setting up DOM-based input handling
- *
- * @param {Object} settings - Game settings (must include keyBindings, controlScheme)
- * @param {Object} gameActions - Game action callbacks (move, rotate, hardDrop, etc.)
- * @returns {InputController} Input controller instance
- */
-export function initializeControls(settings, gameActions) {
-    console.log('[Input] Initializing all input controls...');
-
-    const inputController = new InputController();
-
-    setupKeyboardControls(inputController, settings, gameActions);
-    setupClickControls(inputController, gameActions.startGame, gameActions.initSound);
-
-    console.log('[Input] ✅ All input controls initialized successfully');
-    return inputController;
-}

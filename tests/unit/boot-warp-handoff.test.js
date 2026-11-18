@@ -14,7 +14,7 @@ import {
 //   - the warp's compute pipeline compiles on Dawn's async workers, launched before
 //     compileAsync, and a compute timeout / failure falls back instead of presenting;
 //   - playBootWarpHandoff wires the hold to the shell dismissal;
-//   - the camera FOV curve keeps the match frame at the base 45° the gem size is solved for;
+//   - play() drives the camera FOV from the scene's curve (auroraFovAt) each frame;
 //   - play() follows a window resize (buffer, viewport, re-measured gem anchor, aspect,
 //     viewProj) on that frame, and does no per-frame work while the size is unchanged;
 //   - ?themeWarmAsync=0 rolls the render prime back off compileAsync (compute stays native async);
@@ -48,9 +48,8 @@ const startupMocks = vi.hoisted(() => ({
     markStartup: vi.fn(),
 }));
 
-// The real three/webgpu is spread under the overrides so that vi.importActual of the real
-// scene module (below) still gets a working three/tsl — three.tsl.js reads `TSL` from
-// 'three/webgpu', which would otherwise resolve to this mock and have no TSL namespace.
+// The real three/webgpu is spread under the overrides so that the real boot-aurora-scene.js
+// (spread into its own mock below) loads against a complete three.
 vi.mock('three/webgpu', async (importOriginal) => {
     const actual = await importOriginal();
 
@@ -137,9 +136,10 @@ vi.mock('three/webgpu', async (importOriginal) => {
     };
 });
 
-vi.mock('../../src/ui/boot-aurora-scene.js', () => ({
+// The real module under the mocks: the gem's fallback anchor must use the offset the game ships.
+vi.mock('../../src/ui/boot-aurora-scene.js', async (importOriginal) => ({
+    ...(await importOriginal()),
     createBootAurora: sceneMocks.createWarpParticles,
-    AURORA_LOGO_OFFSET_Y: -31,
     auroraFovAt: sceneMocks.warpFovAt,
 }));
 
@@ -596,7 +596,6 @@ describe('BootWarpTransition.play viewport sync', () => {
         }],
         ['the mark query throws', { queryThrows: true }],
     ])('falls back to the ident layout default for the gem when %s', async (_label, domOptions) => {
-        const { DEFAULT_MARK_OFFSET_Y_PX } = await import('../../src/ui/boot-warp-transition-scene.js');
         const {
             win, document, clock, raf, transition, warp, setSize,
         } = await primedForResize(1280, 720, domOptions);
@@ -611,7 +610,8 @@ describe('BootWarpTransition.play viewport sync', () => {
         expect(warp.setViewport).toHaveBeenCalledWith(1000, 800);
         expect(document.querySelector).toHaveBeenCalledWith(MARK_SELECTOR);
         expect(warp.setGemCenterPx).toHaveBeenCalledTimes(1);
-        expect(warp.setGemCenterPx).toHaveBeenCalledWith(500, 400 + DEFAULT_MARK_OFFSET_Y_PX);
+        // The window's centre, 36 px up: where the ident's mark sits (AURORA_LOGO_OFFSET_Y).
+        expect(warp.setGemCenterPx).toHaveBeenCalledWith(500, 800 / 2 - 36);
         expect(transition.camera.aspect).toBe(1000 / 800);
         expect(warp.setAspect).toHaveBeenCalledWith(1000 / 800);
         expect(warp.setViewProj).toHaveBeenCalledTimes(1);
@@ -1409,44 +1409,5 @@ describe('playBootWarpHandoff ident arming class', () => {
 
         expect(warpTransition.play).toHaveBeenCalledTimes(1);
         expect(result).toMatchObject({ status: 'stalled', shellDismissed: false });
-    });
-});
-
-describe('warpFovAt (real boot-warp-transition-scene module)', () => {
-    let warpFovAt;
-    let holdProgress;
-
-    beforeEach(async () => {
-        ({ warpFovAt } = await vi.importActual('../../src/ui/boot-warp-transition-scene.js'));
-        ({ BOOT_WARP_HOLD_PROGRESS: holdProgress } = await import('../../src/ui/boot-warp-startup.js'));
-    });
-
-    it('rests at the base 45 degree FOV at both ends of the shot', () => {
-        expect(warpFovAt(0)).toBe(45);
-        expect(warpFovAt(1)).toBe(45);
-    });
-
-    it('pushes wider on the jump and pulls tighter on the drop-out', () => {
-        expect(warpFovAt(0.3)).toBeGreaterThan(45);
-        expect(warpFovAt(0.66)).toBeLessThan(45);
-    });
-
-    it('holds exactly 45 through the match frame the gem size is solved for', () => {
-        // GEM_TARGET_PX / setGemCenterPx assume the fixed 45 degree camera; any FOV drift
-        // before the ignition would visibly resize the gem on the handoff frame.
-        for (let p = 0; p <= Math.max(0.2, holdProgress); p += 0.005) {
-            expect(warpFovAt(p)).toBe(45);
-        }
-    });
-
-    it('is a bounded, continuous function of progress', () => {
-        let previous = warpFovAt(0);
-        for (let i = 1; i <= 1000; i += 1) {
-            const fov = warpFovAt(i / 1000);
-            expect(fov).toBeGreaterThanOrEqual(40);
-            expect(fov).toBeLessThanOrEqual(55);
-            expect(Math.abs(fov - previous)).toBeLessThan(0.5);
-            previous = fov;
-        }
     });
 });

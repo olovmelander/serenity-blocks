@@ -126,6 +126,108 @@ describe('scrubbing a paused replay', () => {
     });
 });
 
+// Audit 2026-11-18 A18-CORE-1: Play pressed while a line clear still animates.
+describe('pausing and resuming while a cascade is still settling', () => {
+    function cascadePlayback() {
+        let clock = 1000;
+        vi.spyOn(performance, 'now').mockImplementation(() => clock);
+        const frames = [];
+        vi.stubGlobal('requestAnimationFrame', vi.fn((callback) => {
+            frames.push(callback);
+            return frames.length;
+        }));
+        vi.stubGlobal('cancelAnimationFrame', vi.fn());
+
+        const player = new DemoPlayer({});
+        expect(player.loadDemo({
+            ...recording(),
+            // Same-frame commands queued behind a clearing drop, as a fast player leaves them.
+            inputs: [
+                { f: 5, a: 'hardDrop' },
+                { f: 5, a: 'move', d: -1 },
+                { f: 5, a: 'move', d: 1 },
+                { f: 5, a: 'rotate', d: 'left' },
+            ],
+        })).toBe(true);
+        const state = new GameState();
+        let settleCascade;
+        const applied = [];
+        player.startPlayback({
+            spawnPiece: () => spawnPiece(state),
+            applyCommand: (command) => {
+                applied.push(command.d === undefined ? command.a : `${command.a}:${command.d}`);
+                if (command.a === 'hardDrop' && !settleCascade) {
+                    // The clear's waves keep physics pending while the frame loop waits on them.
+                    state.isProcessingPhysics = true;
+                    state.latestPhysicsPromise = new Promise((resolve) => { settleCascade = resolve; });
+                }
+                return true;
+            },
+        }, state);
+        return {
+            player,
+            state,
+            frames,
+            applied,
+            advance: (ms) => { clock += ms; },
+            settle: () => settleCascade(),
+        };
+    }
+
+    const flush = () => new Promise((resolve) => { setTimeout(resolve, 0); });
+
+    it('applies each recorded input once, in order, and keeps one frame loop', async () => {
+        const replay = cascadePlayback();
+        await flush();
+        expect(replay.frames).toHaveLength(1);
+
+        replay.advance(100);
+        replay.frames.shift()();
+        await flush();
+        // The loop is parked on the clear, with no frame queued.
+        expect(replay.applied).toEqual(['hardDrop']);
+        expect(replay.player.animationId).toBeNull();
+
+        replay.player.pausePlayback();
+        replay.player.resumePlayback();
+        const framesRequestedByResume = requestAnimationFrame.mock.calls.length - 1;
+        // Whatever was queued runs before the cascade settles.
+        while (replay.frames.length) replay.frames.shift()();
+        await flush();
+
+        replay.settle();
+        await flush();
+
+        expect(replay.applied).toEqual(['hardDrop', 'move:-1', 'move:1', 'rotate:left']);
+        expect(replay.player.currentInputIndex).toBe(4);
+        expect(framesRequestedByResume).toBe(0);
+        // The parked loop schedules the next frame itself once the clear is done.
+        expect(replay.frames).toHaveLength(1);
+        replay.player.stopPlayback({ notify: false });
+    });
+
+    it('still hands the replay to a seek made while the cascade settles', async () => {
+        const replay = cascadePlayback();
+        await flush();
+        replay.advance(100);
+        replay.frames.shift()();
+        await flush();
+
+        const seek = replay.player.seek(500);
+        replay.settle();
+        await seek;
+        await flush();
+
+        expect(replay.player.isSeeking).toBe(false);
+        expect(replay.player.currentInputIndex).toBe(4);
+        expect(replay.frames).toHaveLength(1);
+        const loop = vi.spyOn(replay.player, '_loop');
+        replay.frames.shift()();
+        expect(loop).toHaveBeenCalledOnce();
+        replay.player.stopPlayback({ notify: false });
+    });
+});
+
 describe('invalid optional replay checkpoints', () => {
     it.each([-1, 0.5, 3])('replays from valid state when a checkpoint input index is %s', async (inputIndex) => {
         const expected = seekingPlayer(recording());

@@ -95,6 +95,8 @@ export class DemoPlayer {
         this.lastSimulatedTime = 0;
         this.gameState = null;
         this.animationId = null;
+        // seekToken of the frame loop still awaiting its inputs and cascades, if any.
+        this._runningLoopToken = null;
         this.onPlaybackEnd = null;
         this.callbacks = null;
         this.tickMs = DEMO_TICK_MS;
@@ -378,32 +380,40 @@ export class DemoPlayer {
             callbacks: this.callbacks,
         };
 
-        if (!this.isPaused) {
-            this._syncPlayhead();
-            const targetTime = clamp(this.playheadMs, 0, this.getDuration());
-            const fastForward = this.playbackSpeed > 1.01;
+        // A resume while this frame waits on a line clear must not start a second
+        // loop: both would read the same next input. seek()/startPlayback() retire
+        // this loop by bumping seekToken, so the mark only holds for its own token.
+        this._runningLoopToken = token;
+        try {
+            if (!this.isPaused) {
+                this._syncPlayhead();
+                const targetTime = clamp(this.playheadMs, 0, this.getDuration());
+                const fastForward = this.playbackSpeed > 1.01;
 
-            if (this.gameState) {
-                this.gameState.isSeeking = fastForward;
+                if (this.gameState) {
+                    this.gameState.isSeeking = fastForward;
+                }
+
+                await this._advanceTo(targetTime, {
+                    muted: fastForward,
+                    seeking: fastForward,
+                    token,
+                });
+
+                if (!this._ownsReplay(owner) || !this.isPlaying) return;
+
+                if (this.gameState) {
+                    this.gameState.isSeeking = false;
+                }
+
+                if (this._hasReachedReplayEnd()) {
+                    this.playheadMs = Math.min(this.playheadMs, this.getDuration());
+                    this.stopPlayback();
+                    return;
+                }
             }
-
-            await this._advanceTo(targetTime, {
-                muted: fastForward,
-                seeking: fastForward,
-                token,
-            });
-
-            if (!this._ownsReplay(owner) || !this.isPlaying) return;
-
-            if (this.gameState) {
-                this.gameState.isSeeking = false;
-            }
-
-            if (this._hasReachedReplayEnd()) {
-                this.playheadMs = Math.min(this.playheadMs, this.getDuration());
-                this.stopPlayback();
-                return;
-            }
+        } finally {
+            if (this._runningLoopToken === token) this._runningLoopToken = null;
         }
 
         this._scheduleLoop();
@@ -417,6 +427,8 @@ export class DemoPlayer {
 
     _scheduleLoop() {
         if (!this.isPlaying || this.animationId !== null) return;
+        // The loop in flight schedules its own next frame when it settles.
+        if (this._runningLoopToken === this.seekToken) return;
         const token = this.seekToken;
         this.animationId = requestNextFrame(() => {
             if (token !== this.seekToken) return;

@@ -16,6 +16,7 @@ import { developerSurfacesEnabled } from './developer-surfaces.js';
 import { findBoundAction, isBindableKey, normalizeBindingKey } from './binding-keys.js';
 import { armTwoPressQuit, canQuitDesktop } from './desktop-quit.js';
 import { mutedPlayers, onChatModerationChange, unmutePlayer } from './chat-moderation.js';
+import { captureEndedRecently } from './binding-capture-settle.js';
 
 /** Saved game modes the game has since renamed: Fault Lines became Stillfall (2026-10-18). */
 const RENAMED_GAME_MODES = Object.freeze({ 'fault-lines': GAME_MODES.STILLFALL });
@@ -341,7 +342,6 @@ const captureSessions = new WeakMap();
 // The tile whose capture just ended, so the press that finished it (a controller's
 // A, read by menu navigation a frame later) cannot start a new capture at once.
 let lastCapture = { element: null, at: 0 };
-const CAPTURE_SETTLE_MS = 300;
 
 function noteCaptureEnded(element) {
     const now = Date.now();
@@ -351,7 +351,7 @@ function noteCaptureEnded(element) {
 }
 
 function captureJustEnded(element) {
-    return lastCapture.element === element && Date.now() - lastCapture.at < CAPTURE_SETTLE_MS;
+    return lastCapture.element === element && captureEndedRecently(lastCapture.at);
 }
 
 const KEY_NAMES = {

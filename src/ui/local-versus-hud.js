@@ -550,18 +550,25 @@ export class LocalVersusHud {
         if (!stage || !origin || !lines) return;
         const color = this._color(from);
         const motion = !reducedMotion() && typeof origin.animate === 'function';
-        targets.forEach((target) => {
+        const meters = [];
+        for (const target of targets) {
             const meter = this._el(`p${target + 1}-garbage-bar`);
-            if (!meter) return;
+            if (meter) meters.push(meter);
+        }
+        if (!motion) {
+            meters.forEach((meter) => this._hit(meter, lines, color));
+            return;
+        }
+        if (!meters.length) return;
+        // Every rect is read before the first streak goes in: a read after a DOM write
+        // forces a style and layout pass, one per extra target in a 3-4 player attack.
+        const a = origin.getBoundingClientRect();
+        const ends = meters.map((meter) => meter.getBoundingClientRect());
+        const x0 = a.left + a.width / 2;
+        const y0 = a.top + a.height * 0.42;
+        meters.forEach((meter, i) => {
             const land = () => this._hit(meter, lines, color);
-            if (!motion) {
-                land();
-                return;
-            }
-            const a = origin.getBoundingClientRect();
-            const b = meter.getBoundingClientRect();
-            const x0 = a.left + a.width / 2;
-            const y0 = a.top + a.height * 0.42;
+            const b = ends[i];
             const x1 = b.left + b.width / 2;
             const y1 = b.bottom - Math.min(b.height * 0.25, 60);
             const dx = x1 - x0;

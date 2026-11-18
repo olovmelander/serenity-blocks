@@ -4,9 +4,11 @@ import { describe, expect, it } from 'vitest';
 import {
     CLEAN_GARBAGE_MIN_LUMINANCE, FALLBACK_GARBAGE_MATERIAL, GARBAGE_MAX_LUMINANCE, GARBAGE_MAX_SATURATION,
     GARBAGE_MIN_LUMINANCE, drawLandingShadow, garbageMaterialColor, garbageRowShade, landingRuns,
-    landingShadowAlphas, landingShadowRects, relativeLuminance,
+    landingShadowAlphas, landingShadowRects, mixColor, relativeLuminance,
 } from '../../src/rendering/board-look.js';
 import { TetrominoStyleManager } from '../../src/rendering/tetromino-style-manager.js';
+import { SHAPES } from '../../src/core/constants.js';
+import { rotateShape } from '../../src/core/pieces.js';
 
 const T_UP = [[0, 1, 0], [1, 1, 1]];
 const T_DOWN = [[1, 1, 1], [0, 1, 0]];
@@ -100,6 +102,120 @@ describe('the landing shadow', () => {
         expect(hidden.calls).toEqual([]);
         const partly = landingShadowRects(T_UP, { landingY: 3, firstVisibleRow: 4 });
         expect(partly.filter((rect) => rect.h === 1).map(({ y }) => y)).toEqual([1]);
+    });
+});
+
+// Audit 2026-11-18 A18-PERF-1: every board draws the landing shadow every frame, so its layout
+// is kept per shape instead of rebuilt; what it draws must not change by a single bit.
+describe('the landing shadow, drawn every frame', () => {
+    /** The shadow drawn straight from landingShadowRects, as every frame drew it before. */
+    function drawFromRects(graphics, {
+        shape, originX, landingY, blockSize, colorInt, pulse, firstVisibleRow = -Infinity,
+    }) {
+        const color = mixColor(colorInt, 0xffffff, 0.2);
+        for (const rect of landingShadowRects(shape, { landingY, firstVisibleRow, pulse })) {
+            graphics.fillGradientStyle(color, color, color, color, rect.top, rect.top, rect.bottom, rect.bottom);
+            graphics.fillRect(
+                (originX + rect.x) * blockSize,
+                (landingY + rect.y) * blockSize,
+                rect.w * blockSize,
+                rect.h * blockSize,
+            );
+        }
+    }
+
+    const drawn = (draw, options) => {
+        const graphics = recorder();
+        draw(graphics, options);
+        return graphics.calls;
+    };
+
+    /** Every piece in every rotation, and the shapes a cascade leaves (gaps, holes, no row). */
+    const everyShape = () => [
+        ...Object.values(SHAPES).flatMap((shape) => {
+            const turns = [shape.map((row) => row.slice())];
+            for (let turn = 1; turn < 4; turn++) turns.push(rotateShape(turns[turn - 1]));
+            return turns;
+        }),
+        [[1, 0, 1], [1, 1, 1]],
+        [[1, 1, 1], [0, 0, 0], [1, 0, 1]],
+        [[0, 1], null, [1, 1]],
+        [[1], [1, 0, 1, 1]],
+        [[0, 0], [0, 0]],
+    ];
+
+    it('draws exactly what the rects describe, for every piece, rotation, landing row, clip and pulse', () => {
+        let compared = 0;
+        for (const shape of everyShape()) {
+            for (let landingY = -3; landingY < 23; landingY++) {
+                for (const firstVisibleRow of [-Infinity, 0, 2, 4]) {
+                    for (const pulse of [0, 0.123456789, 0.5, 0.77, 1, Math.sin(2.5) ** 2, undefined]) {
+                        const options = {
+                            shape, originX: 3, landingY, blockSize: 31, colorInt: 0x33aaff, pulse, firstVisibleRow,
+                        };
+                        expect(drawn(drawLandingShadow, options)).toEqual(drawn(drawFromRects, options));
+                        compared += 1;
+                    }
+                }
+            }
+        }
+        expect(compared).toBeGreaterThan(20000);
+    });
+
+    it('follows a shape a cascade edits in place', () => {
+        const shape = [[1, 1, 1], [0, 1, 0]];
+        const options = {
+            shape, originX: 2, landingY: 10, blockSize: 30, colorInt: 0xff0000, pulse: 0.3, firstVisibleRow: 2,
+        };
+        expect(drawn(drawLandingShadow, options)).toEqual(drawn(drawFromRects, options));
+        shape[1][0] = 1;
+        shape[0][2] = 0;
+        expect(drawn(drawLandingShadow, options)).toEqual(drawn(drawFromRects, options));
+        shape[1].push(1);
+        expect(drawn(drawLandingShadow, options)).toEqual(drawn(drawFromRects, options));
+        shape[0] = null;
+        expect(drawn(drawLandingShadow, options)).toEqual(drawn(drawFromRects, options));
+        shape.push([1, 1]);
+        expect(drawn(drawLandingShadow, options)).toEqual(drawn(drawFromRects, options));
+    });
+
+    it('lays a shape\'s shadow out once, not every frame, while the pulse breathes and the piece moves', () => {
+        // Laying the shadow out walks the whole shape (landingRuns reads it with Array.from); a
+        // frame that reuses the layout only compares the shape's cells, by index.
+        let walks = 0;
+        const shape = SHAPES.T.map((row) => row.slice());
+        Object.defineProperty(shape, Symbol.iterator, {
+            value: function* walk() {
+                walks += 1;
+                yield* Array.prototype.values.call(this);
+            },
+        });
+        const plain = SHAPES.T.map((row) => row.slice());
+        const frame = (i, cells = shape, reference = plain) => {
+            const options = {
+                originX: 3 + (i % 4),
+                landingY: 12 + (i % 7),
+                blockSize: 31,
+                colorInt: 0x33aaff,
+                pulse: 0.5 + 0.5 * Math.sin(i / 9),
+                firstVisibleRow: 2,
+            };
+            const commands = drawn(drawLandingShadow, { ...options, shape: cells });
+            expect(commands).toEqual(drawn(drawFromRects, { ...options, shape: reference }));
+        };
+        frame(0);
+        const laidOut = walks;
+        for (let i = 1; i < 120; i++) frame(i);
+        expect(walks).toBe(laidOut);
+
+        // A cascade edits the shape in place: the next frame lays it out again, then reuses that.
+        shape[2][0] = 1;
+        plain[2][0] = 1;
+        frame(120);
+        const relaid = walks;
+        expect(relaid).toBeGreaterThan(laidOut);
+        for (let i = 121; i < 240; i++) frame(i);
+        expect(walks).toBe(relaid);
     });
 });
 

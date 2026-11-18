@@ -18,6 +18,7 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } fr
 import { fileURLToPath, pathToFileURL } from 'url';
 import { createRequire } from 'module';
 import net from 'net';
+import { performance } from 'perf_hooks';
 import { decodeP2PPacketBody, encodeP2PPacketBody, resolveP2PSendType } from './p2p-packet-codec.js';
 import { lobbyMemberChange } from './steam-peer-events.js';
 import { isStoreBuild, resolveSteamAppId as resolveSteamAppIdFor } from './steam-app-id.js';
@@ -26,7 +27,7 @@ import { steamLobbyType } from './steam-lobby-type.js';
 import { steamProfileUrl } from './steam-profile.js';
 import { allowsDirectP2P } from './debug-flags.js';
 import {
-    RESULT_OK, SESSION_STATE, openRelayTransport, steamApiLibraryPath,
+    RESULT_OK, SESSION_STATE, openRelayTransport, relayPumpDue, steamApiLibraryPath,
 } from './steam-relay-transport.js';
 import { RELAY_UNAVAILABLE_MESSAGE, describeNetworkTransport, lobbyAllowed } from './steam-network-transport.js';
 
@@ -56,6 +57,8 @@ let networkReason = 'Steam is not running';
 // Players the relay transport has exchanged packets with in this lobby, and the state each
 // session was last seen in (sessions are closed when we leave; a broken one is reported).
 const relayPeers = new Map();
+// When the session pump last accepted and checked, on the monotonic clock: a wall clock set
+// back would stall both until it caught up.
 let relayAcceptedAt = 0;
 let relayCheckedAt = 0;
 const RELAY_ACCEPT_EVERY_MS = 200;
@@ -490,8 +493,8 @@ function otherLobbyMembers() {
  */
 function pumpRelaySessions() {
     if (!relayTransport || !currentLobby) return;
-    const now = Date.now();
-    if (now - relayAcceptedAt >= RELAY_ACCEPT_EVERY_MS) {
+    const now = performance.now();
+    if (relayPumpDue(now, relayAcceptedAt, RELAY_ACCEPT_EVERY_MS)) {
         relayAcceptedAt = now;
         for (const steamId of otherLobbyMembers()) {
             const accepted = p2pSessionGate?.allowsSession(steamId) && relayTransport.acceptFrom(steamId);
@@ -501,7 +504,7 @@ function pumpRelaySessions() {
             }
         }
     }
-    if (now - relayCheckedAt < RELAY_CHECK_EVERY_MS) return;
+    if (!relayPumpDue(now, relayCheckedAt, RELAY_CHECK_EVERY_MS)) return;
     relayCheckedAt = now;
     for (const [steamId, before] of relayPeers) {
         const session = relayTransport.session(steamId);

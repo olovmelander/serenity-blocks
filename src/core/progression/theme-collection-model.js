@@ -1,4 +1,6 @@
 /** Versioned, monotonic cosmetic ownership. Catalog and platform are injected. */
+import { normalizeOdysseyCompletion } from '../odyssey/odyssey-progress-schema.js';
+
 export const THEME_COLLECTION_VERSION = 1;
 export const THEME_COLLECTION_STORAGE_KEY = 'serenityBlocks_themeCollection';
 export const THEME_COLLECTION_RECOVERY_STORAGE_KEY = 'serenityBlocks_themeCollection_recoveryBackup';
@@ -60,14 +62,18 @@ export function sameThemeCollection(left, right) {
     return JSON.stringify(left) === JSON.stringify(right);
 }
 
-/** Reject malformed completion values; never infer completion from unlocked levels. */
+/**
+ * Reject malformed completion values; never infer completion from unlocked levels.
+ * A local clear counts as OdysseyStateManager counts it, a starless one from an
+ * older build included: the map shows it cleared, so its rewards are earned.
+ */
 export function getValidCompletedLevels(progress, levels) {
     const entries = progress?.completedLevels instanceof Map
         ? [...progress.completedLevels] : Object.entries(progress?.completedLevels || {});
     const validIds = new Set(levels.map((level) => level.id));
     return new Map(entries.filter(([rawId, completion]) => {
         const id = Number(rawId);
-        return Number.isSafeInteger(id) && validIds.has(id) && isRecord(completion)
-            && Number.isInteger(completion.stars) && completion.stars >= 1 && completion.stars <= 3;
+        return Number.isSafeInteger(id) && validIds.has(id)
+            && normalizeOdysseyCompletion(completion, { minStars: 0 }) !== null;
     }).map(([id, completion]) => [Number(id), completion]));
 }

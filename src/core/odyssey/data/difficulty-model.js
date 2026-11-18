@@ -389,18 +389,3 @@ export function deriveOdysseyLevelTuning(levelId, tags = {}, baseLevel = null) {
         },
     };
 }
-
-export function getOdysseyDifficultySummary(levelIds, tagsById) {
-    return levelIds.map((levelId) => {
-        const tags = tagsById[levelId] || {};
-        const difficulty = computeOdysseyDifficulty(levelId, tags);
-        return {
-            id: levelId,
-            difficulty,
-            band: getOdysseyDifficultyBand(difficulty),
-            role: tags.role,
-            mechanicFocus: tags.mechanicFocus,
-            emotionalBeat: tags.emotionalBeat,
-        };
-    });
-}

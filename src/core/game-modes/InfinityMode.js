@@ -1503,14 +1503,6 @@ export class InfinityMode extends BaseGameMode {
             },
             // Parity with local MP: no background pulse. Key kept for shape.
             triggerBackgroundPulse: () => {},
-            // Score addition animation
-            onScoreAdd: (points) => {
-                if (!ownsCallbackSession()) return;
-                const boardScene = this._getBoardScene();
-                if (boardScene && boardScene.showScorePopup) {
-                    boardScene.showScorePopup(points);
-                }
-            },
             // Background update (keep level-based themes disabled for infinity mode)
             updateBackground: () => {
                 // Infinity mode doesn't change backgrounds by level

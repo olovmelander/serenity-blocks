@@ -14,15 +14,6 @@ export const ATTACK_TYPES = {
     POTATO: 'potato',
 };
 
-// Handicap levels
-export const HANDICAP_LEVELS = {
-    BEGINNER: 0, // "-" - Easiest
-    APPRENTICE: 1, // "A"
-    INTERMEDIATE: 2, // Default
-    MASTER: 3, // "M"
-    GRANDMASTER: 4, // "+" - Hardest
-};
-
 // Handicap / clean-garbage tuning constants
 export const STAMP_PER_HANDICAP = 3; // Stamps needed to reduce 1 garbage line
 export const CROWD_THRESHOLD = 4; // Players before crowd handicap kicks in
@@ -351,34 +342,6 @@ export function applyHandicap(rows, senderState, opponentId, isClean = false) {
     if (stampsUsed > 0) {
         senderState.handicaps[opponentId] = stamps - stampsUsed;
     }
-
-    return adjustedRows;
-}
-
-/**
- * Apply crowd handicap (for games with 5+ players)
- * @param {number} rows - Base number of garbage rows
- * @param {Object} senderState - Sender's game state
- * @param {number} aliveCount - Number of alive players
- * @param {boolean} isClean - Whether this is a clean attack
- * @returns {number} Adjusted number of rows after crowd handicap
- */
-export function applyCrowdHandicap(rows, senderState, aliveCount, isClean = false) {
-    if (isClean || !senderState || rows <= 0 || aliveCount <= CROWD_THRESHOLD) {
-        return rows;
-    }
-
-    let adjustedRows = rows;
-    let crowdStamps = senderState.handicapCrowd || 0;
-
-    // Consume crowd stamps
-    while (adjustedRows > 0 && crowdStamps >= STAMP_PER_HANDICAP) {
-        adjustedRows--;
-        crowdStamps -= STAMP_PER_HANDICAP;
-    }
-
-    // Update crowd stamps
-    senderState.handicapCrowd = crowdStamps;
 
     return adjustedRows;
 }

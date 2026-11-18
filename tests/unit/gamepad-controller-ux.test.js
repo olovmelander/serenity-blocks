@@ -202,6 +202,58 @@ describe('the open Hub', () => {
         expect(toggleSettings).toHaveBeenCalledWith(0);
     });
 
+    it('gives way to Settings even a moment after Settings gave way to it (Settings never opened)', () => {
+        vi.stubGlobal('window', {});
+        const gear = { click: vi.fn() };
+        stubDocument({ elements: { 'settings-btn-global': gear } });
+        const controller = new GamepadController();
+        let open = false;
+        controller.enableSerenityMode({
+            isHubOpen: () => open,
+            closeHub: vi.fn(() => { open = false; }),
+            closeForSettings: vi.fn(() => { open = false; }),
+        });
+        const gamepad = pad();
+
+        controller.toggleSettings(0); // Start: Settings opens
+        open = true; // View: the Hub takes Settings' place
+        now += 350; // Start again, inside Settings' 500 ms toggle debounce
+        hold(gamepad, BUTTON.START);
+        controller.processGamepadInput(gamepad, 0);
+
+        expect(open).toBe(false);
+        expect(gear.click).toHaveBeenCalledTimes(2);
+    });
+
+    it('keeps Settings\' toggle debounce whole after that handoff', () => {
+        vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+        try {
+            vi.stubGlobal('window', {});
+            const gear = { click: vi.fn() };
+            stubDocument({ elements: { 'settings-btn-global': gear } });
+            const controller = new GamepadController();
+            let open = false;
+            controller.enableSerenityMode({
+                isHubOpen: () => open,
+                closeHub: vi.fn(() => { open = false; }),
+                closeForSettings: vi.fn(() => { open = false; }),
+            });
+            const gamepad = pad();
+
+            controller.toggleSettings(0); // Start: Settings opens, its debounce runs to 500 ms
+            vi.advanceTimersByTime(200);
+            open = true; // View: the Hub takes Settings' place
+            hold(gamepad, BUTTON.START);
+            controller.processGamepadInput(gamepad, 0); // Start in the Hub: Settings, a new debounce to 700 ms
+            vi.advanceTimersByTime(350); // 550 ms: the first debounce's timer would have run out
+            controller.toggleSettings(0); // a rapid second Start, inside the new debounce
+
+            expect(gear.click).toHaveBeenCalledTimes(2);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
     it('repeats a held direction, as the menus do', () => {
         const { controller, callbacks } = openHub();
         const gamepad = pad();

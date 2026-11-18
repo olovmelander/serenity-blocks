@@ -12,7 +12,7 @@ function harness() {
         add: vi.fn(() => request),
         delete: vi.fn(() => request),
         count: vi.fn(() => countRequest),
-        index: vi.fn(() => ({ openCursor: vi.fn(() => cursorRequest) })),
+        openCursor: vi.fn(() => cursorRequest),
     };
     const transaction = { objectStore: () => store, error: null };
     const manager = new DemoManager();
@@ -100,5 +100,104 @@ describe('replay storage durability', () => {
         h.transaction.error = new Error('Prune rolled back');
         h.transaction.onabort();
         await expect(pending).rejects.toThrow('Prune rolled back');
+    });
+});
+
+/**
+ * An in-memory replay database: one autoIncrement store keyed on `id`, its
+ * timestamp index, and transactions that complete once their requests settle.
+ */
+function memoryReplayDb() {
+    const rows = new Map();
+    let nextId = 1;
+    const put = (demo) => {
+        const id = nextId;
+        nextId += 1;
+        rows.set(id, { ...structuredClone(demo), id });
+        return id;
+    };
+    const transaction = () => {
+        const tx = { error: null, oncomplete: null, onabort: null };
+        let pending = 0;
+        const settle = () => setTimeout(() => {
+            if (pending > 0 || !tx.oncomplete) return;
+            const complete = tx.oncomplete;
+            tx.oncomplete = null;
+            complete();
+        }, 0);
+        const request = (work) => {
+            const req = { result: undefined, onsuccess: null, onerror: null };
+            pending += 1;
+            setTimeout(() => {
+                req.result = work();
+                req.onsuccess?.({ target: req });
+                pending -= 1;
+                settle();
+            }, 0);
+            return req;
+        };
+        const cursorOver = (keys) => {
+            const req = { result: null, onsuccess: null, onerror: null };
+            let position = 0;
+            const step = () => {
+                pending += 1;
+                setTimeout(() => {
+                    const key = keys[position];
+                    position += 1;
+                    req.result = key === undefined ? null : {
+                        primaryKey: key,
+                        value: rows.get(key),
+                        delete: () => rows.delete(key),
+                        continue: step,
+                    };
+                    req.onsuccess?.({ target: req });
+                    pending -= 1;
+                    settle();
+                }, 0);
+            };
+            step();
+            return req;
+        };
+        const keysBy = (field) => [...rows.keys()].sort((a, b) => (
+            (field ? rows.get(a)[field] - rows.get(b)[field] : 0) || a - b
+        ));
+        tx.objectStore = () => ({
+            add: (demo) => request(() => put(demo)),
+            get: (id) => request(() => rows.get(id)),
+            count: () => request(() => rows.size),
+            openCursor: () => cursorOver(keysBy(null)),
+            index: (field) => ({ openCursor: () => cursorOver(keysBy(field)) }),
+        });
+        return tx;
+    };
+    return { rows, put, transaction };
+}
+
+// Audit 2026-11-18 A18-PERS-2: re-importing a replay exported long ago.
+describe('replay retention', () => {
+    it('keeps an imported replay older than every stored one after the save that brought it in', async () => {
+        const manager = new DemoManager();
+        const db = memoryReplayDb();
+        manager.db = db;
+        const now = Date.parse('2026-11-18T12:00:00.000Z');
+        for (let i = 0; i < MAX_STORED_DEMOS; i += 1) {
+            db.put({
+                version: '2.0', inputs: [], timestamp: now - (MAX_STORED_DEMOS - i) * 60_000, metadata: { finalScore: i },
+            });
+        }
+        const exported = manager.exportToJSON({
+            id: 7,
+            version: '2.0',
+            inputs: [{ f: 1, a: 'hardDrop' }],
+            timestamp: now - 30 * 86_400_000,
+            metadata: { finalScore: 99999 },
+        });
+
+        const id = await manager.saveDemo(manager.importFromJSON(exported));
+
+        await expect(manager.loadDemo(id)).resolves.toMatchObject({ metadata: { finalScore: 99999 } });
+        expect(db.rows.size).toBe(MAX_STORED_DEMOS);
+        // The replay saved first makes room instead.
+        expect(db.rows.has(1)).toBe(false);
     });
 });

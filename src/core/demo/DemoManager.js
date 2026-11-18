@@ -79,7 +79,7 @@ export class DemoManager {
     }
 
     /**
-     * Delete the oldest demos beyond MAX_STORED_DEMOS (by timestamp index).
+     * Delete the earliest-saved demos beyond MAX_STORED_DEMOS.
      * @private
      */
     async _pruneOldDemos() {
@@ -94,8 +94,10 @@ export class DemoManager {
             countRequest.onsuccess = () => {
                 let excess = countRequest.result - MAX_STORED_DEMOS;
                 if (excess <= 0) return;
-                // Walk the timestamp index ascending (oldest first), deleting.
-                const cursorRequest = store.index('timestamp').openCursor();
+                // Walk the autoIncrement ids ascending (earliest saved first). Not the
+                // timestamp index: an imported replay keeps its original date and
+                // would be pruned by the very save that brought it in.
+                const cursorRequest = store.openCursor();
                 cursorRequest.onerror = () => reject(cursorRequest.error);
                 cursorRequest.onsuccess = () => {
                     const cursor = cursorRequest.result;

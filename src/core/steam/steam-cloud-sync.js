@@ -364,7 +364,12 @@ export class SteamCloudSyncManager {
                     }
                     const local = this._exportOdyssey();
                     const incoming = remote.data ? safeParse(remote.data) : local;
-                    if (!local || !incoming || !this._applyOdyssey(incoming)) {
+                    // A device that has never opened the Odyssey has nothing to send;
+                    // retrying would block every later download of another device's journey.
+                    if (!local && !remote.data) continue;
+                    // With no local save, applying the cloud copy merges it into a fresh one,
+                    // and the upload below sends that merged result back.
+                    if (!incoming || !this._applyOdyssey(incoming)) {
                         throw new Error('Odyssey cloud document could not be preserved');
                     }
                     payload = null;

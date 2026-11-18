@@ -27,6 +27,7 @@ import { createOdysseyMapPadControls } from './odyssey/odyssey-map-input.js';
 import { createOdysseyCharmPadControls } from './odyssey/odyssey-charm-input.js';
 import { isGameOverArmed } from './game-over-arm.js';
 import { canOpenSerenityHub, openSerenityHub } from './serenity-hub/hub-launcher.js';
+import { captureEndedRecently } from './binding-capture-settle.js';
 
 const INSTANT_DAS_REPEAT_LIMIT = COLS;
 const INSTANT_SOFT_DROP_REPEAT_LIMIT = ROWS;
@@ -761,10 +762,7 @@ export class GamepadController {
         }
         if (this.windowUnfocused) {
             this.windowUnfocused = false;
-            for (let slot = 0; slot < this.gamepads.length; slot++) {
-                const fresh = this.connected[slot] && this.gamepads[slot] ? gamepads[this.gamepads[slot].index] : null;
-                if (fresh) this.latchAllHeld(fresh, slot);
-            }
+            this.latchHeldOnConnectedPads(gamepads);
             return;
         }
 
@@ -1167,6 +1165,18 @@ export class GamepadController {
     }
 
     /**
+     * latchAllHeld for every connected pad.
+     * @param {ArrayLike<Gamepad|null>|null} [pads] this poll's navigator.getGamepads(), else read fresh
+     */
+    latchHeldOnConnectedPads(pads = typeof navigator !== 'undefined' ? navigator.getGamepads?.() : null) {
+        if (!pads) return;
+        for (let slot = 0; slot < this.gamepads.length; slot++) {
+            const fresh = this.connected[slot] && this.gamepads[slot] ? pads[this.gamepads[slot].index] : null;
+            if (fresh) this.latchAllHeld(fresh, slot);
+        }
+    }
+
+    /**
      * Everything held now waits for its release: the menu buttons, the game's, Start and
      * the main menu's. For a press that changes what owns the pad (a restart, the window
      * coming back to the front), whichever owner comes next.
@@ -1345,6 +1355,9 @@ export class GamepadController {
         for (let i = 0; i < this.menuRepeat.length; i++) {
             this.menuRepeat[i] = {};
         }
+        // Buttons still held as the menu takes the pad (the A or B that left a results
+        // screen) wait for their release, as they do for every other menu owner (INPUT-03).
+        this.latchHeldOnConnectedPads();
 
         // Focus the first card or the previously selected one
         if (this.isAnyGamepadConnected() && this.gameModeCards.length > 0) {
@@ -1464,7 +1477,8 @@ export class GamepadController {
         if (!inMenu(current)) {
             // If any direction or Select is pressed, focus the selected/default card
             if ((leftPressed || rightPressed || upPressed || downPressed || aPressed) && this.gameModeCards.length > 0) {
-                const index = this.selectedGameModeIndex >= 0 ? this.selectedGameModeIndex : 0;
+                // The mode the stage shows (a pointer may have moved it since the pad last did).
+                const index = Math.max(0, this.gameModeCards.findIndex((c) => c.classList.contains('is-current')));
                 let candidate = this.gameModeCards[index];
                 if (this.isGameModeCardDisabled(candidate)) {
                     candidate = this.gameModeCards.find((card) => !this.isGameModeCardDisabled(card)) || null;
@@ -1586,6 +1600,10 @@ export class GamepadController {
                 console.log('[Gamepad] Menu navigation disabled before focus, skipping');
                 return;
             }
+            // Only a sheet takes first focus here. The main menu places its own (the mode it
+            // remembers, main-menu.js focusCurrentForKeys): the page's first control was its
+            // first mode card, so every return to the menu, pad or not, forgot the mode.
+            if (!this.getMenuSheet()) return;
 
             const firstFocusable = this.getFirstFocusableElement();
             if (firstFocusable) {
@@ -1628,10 +1646,14 @@ export class GamepadController {
         const prevState = this.previousStates[slot];
         const inputSheet = blockGlobalShortcuts ? this.getMenuSheet()?.element : null;
 
-        // A binding tile is listening: the press is its answer (settings.js), not a move,
-        // a tab change or the Hub. Held buttons stay latched until released.
-        if (document.querySelector?.('#settings-modal .key-input.listening')) {
-            this.latchMenuButtons(gamepad, slot);
+        // A binding tile is listening, or took its answer a moment ago: the press is its answer
+        // (settings.js), not a move, a tab change, Start or the Hub. The capture reads the pads
+        // on its own timer and can end before this poll sees the press, which then looked new.
+        // Everything held stays latched until released.
+        const captureEndedAt = document.getElementById?.('settings-modal')?.getAttribute?.('data-capture-ended');
+        if (document.querySelector?.('#settings-modal .key-input.listening') || captureEndedRecently(captureEndedAt)) {
+            this.latchAllHeld(gamepad, slot);
+            prevState.serenityToggleHub = Boolean(gamepad.buttons[this.getMenuHubButton()]?.pressed);
             return;
         }
 
@@ -1862,6 +1884,8 @@ export class GamepadController {
                     tabs[nextIndex].focus({ preventScroll: true });
                 }
             }
+            // Settings is the top sheet: what lies beneath it (Records, a navigator) stays put.
+            return;
         }
 
         // The Odyssey navigator: LB and RB climb down and up the chapters.
@@ -2002,8 +2026,8 @@ export class GamepadController {
             // B while a binding listens is the answer to the capture, not a way out — and
             // so is the B that a capture took a moment ago.
             const settingsModal = sheet.element;
-            const endedAt = Number(settingsModal.getAttribute?.('data-capture-ended')) || 0;
-            if (settingsModal.querySelector?.('.listening') || Date.now() - endedAt < 300) return;
+            const endedAt = settingsModal.getAttribute?.('data-capture-ended');
+            if (settingsModal.querySelector?.('.listening') || captureEndedRecently(endedAt)) return;
             document.getElementById('close-settings')?.click();
             return;
         }
@@ -2060,7 +2084,10 @@ export class GamepadController {
                 return;
             }
             this._toggleCooldown = true;
-            setTimeout(() => { this._toggleCooldown = false; }, 500);
+            // One timer per debounce: an earlier one (cut short by the Hub's handoff to Settings)
+            // must not end this one early.
+            clearTimeout(this._toggleCooldownTimer);
+            this._toggleCooldownTimer = setTimeout(() => { this._toggleCooldown = false; }, 500);
 
             // Try clicking the settings button first
             const settingsBtn = document.getElementById('settings-btn-global');
@@ -3196,6 +3223,10 @@ export class GamepadController {
                 else callbacks.closeHub?.();
                 if (callbacks.isHubOpen?.() !== true) {
                     this.hubToggledAt = performance.now();
+                    // A handoff, not a rapid toggle: inside the debounce of the Start that opened
+                    // Settings (before View swapped it for the Hub), the Hub closed and Settings
+                    // never opened, leaving the game paused with nothing on screen.
+                    this._toggleCooldown = false;
                     this.toggleSettings(slot);
                 }
             }

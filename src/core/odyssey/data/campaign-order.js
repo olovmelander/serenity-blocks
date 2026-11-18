@@ -110,12 +110,6 @@ export function rotateDuelsToChapterEnd(levels) {
     return rotated.sort((left, right) => left.id - right.id);
 }
 
-/** Public id of the challenge that occupied a v4 slot, after the chapter-end rotation. */
-export function mapV4SlotToRotatedId(levels, v4Id) {
-    const level = levels.find((entry) => entry.v4Id === v4Id);
-    return level ? level.id : null;
-}
-
 /**
  * One crown per chapter (audit 2026-10-18). The authored role:'boss' tags moved with their
  * challenges in the rotation above, so the crown sat on the orb before the rival in chapters

@@ -7,7 +7,8 @@
  */
 import { TRANSITION_LAYERS } from './transition-layer-constants.js';
 import {
-    GATE_MAX_FRAME_STEP_MS, advancePortalTravel, createPortalGate, drawPortalGate, portalEase, portalReach,
+    GATE_MAX_FRAME_STEP_MS, HOLD_PAUSE_GAP_MS, advancePortalTravel, createPortalGate, drawPortalGate, portalEase,
+    portalReach,
 } from './portal-gate.js';
 import { startPortalGateOffThread } from './portal-gate-remote.js';
 import { flashScale } from '../../utils/photosensitivity.js';
@@ -201,6 +202,11 @@ export class JourneyReturnTransition {
             // Made in mount(), on the page, only when the worker does not draw the gate.
             gate: null,
             remote: null,
+            // Once handed to the worker the canvas is never the page's to size again, not even
+            // after the run lets go of `remote` (the browser throws InvalidStateError).
+            handedOver: false,
+            // dispose() tears a run down at once, and its finish does so again later.
+            tornDown: false,
             // What of the arrival's light the player allows (Reduce flashing).
             flash: flashScale(),
             travelState: { travel: 0, lastTravelAt: null },
@@ -257,6 +263,7 @@ export class JourneyReturnTransition {
             flash: run.flash,
             ...this.measureCanvas(),
         }, this.window);
+        run.handedOver = run.remote !== null;
         if (!run.remote) {
             try {
                 run.dom.ctx = canvas.getContext('2d');
@@ -306,7 +313,7 @@ export class JourneyReturnTransition {
             // A canvas handed to the gate's worker is sized there.
             if (run.remote) {
                 run.remote.resize(width, height, dpr);
-            } else {
+            } else if (!run.handedOver) {
                 canvas.width = Math.max(1, Math.floor(width * dpr));
                 canvas.height = Math.max(1, Math.floor(height * dpr));
             }
@@ -326,6 +333,12 @@ export class JourneyReturnTransition {
         const { clock } = run;
         if (clock.last === null) clock.last = run.reducedMotion ? run.startedAt : now;
         const step = Math.max(0, now - clock.last);
+        // Frames stopped for a while (the window hidden, rAF paused): the readiness hold does not
+        // count that stretch, as on the way in (JourneyEntryTransition.frameAt). Back from a hidden
+        // tab mid-rebuild, the return used to time out and drop the journey (audit 2026-11-18).
+        if (step > HOLD_PAUSE_GAP_MS && run.readyTriggered && !run.readySettled) {
+            run.blackoutTriggeredAt = (run.blackoutTriggeredAt ?? now) + step;
+        }
         clock.t += run.reducedMotion ? step : Math.min(GATE_MAX_FRAME_STEP_MS, step);
         clock.last = now;
         const elapsed = clock.t;
@@ -631,12 +644,18 @@ export class JourneyReturnTransition {
                 if (run === this.activeRun) {
                     this.activeRun = null;
                 }
-                this.teardown(run);
-                run.resolve?.(finalResult);
+                // The caller waits on play(): a failed teardown must not leave it waiting forever.
+                try {
+                    this.teardown(run);
+                } finally {
+                    run.resolve?.(finalResult);
+                }
             });
     }
 
     teardown(run = this.activeRun) {
+        if (run?.tornDown) return;
+        if (run) run.tornDown = true;
         // A replaced run can finish its async abort after its successor mounts.
         // It owns its DOM, but must not detach the successor's resize listener.
         if (!this.activeRun || this.activeRun === run) {
@@ -656,7 +675,7 @@ export class JourneyReturnTransition {
             return;
         }
         const canvas = run?.dom?.canvas;
-        if (canvas) {
+        if (canvas && !run.handedOver) {
             canvas.width = 0;
             canvas.height = 0;
         }

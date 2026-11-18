@@ -82,6 +82,9 @@ export class SerenityWorldStepper {
             return null;
         }
         const next = stepThemeId(list, from, direction);
+        // A press supersedes a switch still running for an earlier press: when that one settles it
+        // must not take this target with it (the press was swallowed and the bar jumped back).
+        this.token += 1;
         this.target = next;
         this.onPreview(next, { index: list.indexOf(next), total: list.length });
         this._clear();

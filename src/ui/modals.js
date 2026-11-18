@@ -155,6 +155,11 @@ export class ModalManager {
             if (this.gamepadController && modalName !== 'gameOver') {
                 this.gamepadController.enableMenuNavigation();
             }
+            // The main menu's own pad handler (the mode list, its stage and dock) follows the
+            // menu. It used to be armed once at boot, so every later visit ran on the generic
+            // handler, and closing a sheet there handed the pad to gameplay: D-pad, A and B did
+            // nothing on the menu (audit 2026-11-18, A18-UI-1).
+            if (modalName === 'start') this.gamepadController?.enableGameModeSelection?.();
         }
     }
 
@@ -165,6 +170,7 @@ export class ModalManager {
     hide(modalName) {
         const modal = this.modals[modalName];
         if (modal) {
+            const menuWasUp = modalName === 'start' && modal.classList.contains('visible');
             modal.classList.remove('visible');
             if (modalName === 'gameOver') this.gameOverLeaderboardPanel?.hide();
             if (modalName === 'start') {
@@ -187,6 +193,9 @@ export class ModalManager {
             if (this.gamepadController && modalName !== 'start' && modalName !== 'gameOver') {
                 this.gamepadController.disableMenuNavigation();
             }
+            // Only a menu that was up gives the pad back: hideAll() also runs mid-game (resume),
+            // where dropping held input would cut a held direction.
+            if (menuWasUp) this.gamepadController?.disableGameModeSelection?.();
         }
     }
 
@@ -212,15 +221,6 @@ export class ModalManager {
         this.gameOverLeaderboardPanel = null;
         this.menuCoverage.destroy();
     }
-}
-
-/**
- * Shows the start modal
- * @param {ModalManager} modalManager - Modal manager instance
- */
-export function showStartModal(modalManager) {
-    modalManager.show('start');
-    // Menu navigation is enabled in show() method
 }
 
 /* ---- Results (game over, replay complete) -------------------------------------
@@ -612,8 +612,11 @@ export async function showDemoCompleteModal(
 
     if (highScoreManager) {
         try {
-            rank = await highScoreManager.getRank(score);
-            stats = await highScoreManager.getStatistics();
+            // As on the game-over sheet: a replay is measured against its own mode's
+            // games, never Infinity runs mixed into a Single Player record.
+            const mode = gameState?.isInfinityMode ? 'infinity' : 'single';
+            rank = await highScoreManager.getRank(score, { mode });
+            stats = statisticsForMode(await highScoreManager.getStatistics(), mode);
         } catch (e) {
             console.warn('[Modal] Failed to load stats', e);
         }
@@ -799,6 +802,8 @@ function installRecordsTabs() {
     // Q and E switch modes from anywhere in the sheet, as in Settings.
     document.addEventListener('keydown', (event) => {
         if (!document.getElementById('high-scores-modal')?.classList.contains('visible')) return;
+        // Settings opened over Records takes Q and E for its own tabs.
+        if (document.getElementById('settings-modal')?.classList.contains('visible')) return;
         if (event.ctrlKey || event.metaKey || event.altKey || event.repeat) return;
         if (event.target?.closest?.('input, textarea, select, [contenteditable="true"]')) return;
         const key = event.key?.toLowerCase();
