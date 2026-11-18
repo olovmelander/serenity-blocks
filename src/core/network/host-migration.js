@@ -211,6 +211,7 @@ export class HostMigration {
         if (previousHostId === newHostId) return;
         console.log(`🗳️ Following the new host ${newHostId}`);
         this.network.hostSteamId = newHostId;
+        this.network.reconcileLobbyOwner?.(newHostId);
         game.onHostAuthorityChanged?.({ previousHostId, newHostId, source });
         if (game.localPlayerId !== newHostId) {
             game.isHost = false;

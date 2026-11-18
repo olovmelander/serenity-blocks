@@ -1,3 +1,4 @@
+import { SCORE_DETAIL_FLAGS } from '../steam/leaderboard-score-details.js';
 import { BaseGameMode } from './BaseGameMode.js';
 import { BoardJuice } from '../../rendering/phaser/board-juice.js';
 import { ComboTracker } from '../combo-tracker.js';
@@ -38,7 +39,7 @@ import {
     emitHardDrop,
 } from '../../events/gameplay-events.js';
 import steamService from '../steam/steam-service.js';
-import { STEAM_LEADERBOARDS } from '../steam/steam-config.js';
+import { recordOwner, runIdFor } from '../progression/record-book.js';
 import {
     DEMO_FIXED_SIMULATION_CLOCK,
     DEMO_LEGACY_SIMULATION_CLOCK,
@@ -262,6 +263,7 @@ export class InfinityMode extends BaseGameMode {
                 options.seed === undefined ? generateSessionSeed() : options.seed,
             )
             : null;
+        runIdFor(this.gameState);
         const sessionGeneration = ++this._sessionGeneration;
         this._activeSession = Object.freeze({
             generation: sessionGeneration,
@@ -1773,15 +1775,13 @@ export class InfinityMode extends BaseGameMode {
             score: gameState.score,
             lines: gameState.lines,
             level: gameState.level,
-            mode: 'infinity', // Tag as infinity mode
+            mode: 'infinity',
+            runId: runIdFor(gameState),
+            receipt: this._buildSteamReceipt(stoppedSession),
             cascade: gameState.infinityStats?.maxComboComplexity || 0,
             duration: Math.max(1, Math.round(this._runLengthMs(gameState) / 1000)),
         }, '[Infinity]');
 
-        // Sync Steam stats/leaderboards in the background (best-effort).
-        this._syncSteamStats(stoppedSession).catch((err) => {
-            console.warn('[Infinity] Steam stats sync failed:', err.message);
-        });
         return scoreSaved;
     }
 
@@ -1838,38 +1838,18 @@ export class InfinityMode extends BaseGameMode {
      *   simulationClock: unknown
      * }>|null} stoppedSession
      */
-    async _syncSteamStats(stoppedSession) {
-        const gameState = stoppedSession?.gameState;
-        const simulationClock = stoppedSession?.simulationClock;
-        if (!gameState || !canWriteLegacySimulationResults(simulationClock)) {
-            return;
-        }
-
-        const durationMs = this._runLengthMs(gameState);
-        const durationSeconds = Math.max(1, Math.round(durationMs / 1000));
-        const durationMinutes = Math.max(1, Math.round(durationMs / 60000));
-
-        const bestCascade = gameState.infinityStats?.maxComboComplexity || 0;
-
-        const scoreDetails = {
+    _buildSteamReceipt({ gameState, simulationClock }) {
+        if (!canWriteLegacySimulationResults(simulationClock)) return undefined;
+        return {
+            mode: 'infinity',
+            owner: recordOwner(steamService),
+            flags: steamService.isOnline === false ? SCORE_DETAIL_FLAGS.OFFLINE_SUBMISSION : 0,
             score: gameState.score,
-            duration: durationSeconds,
-            linesCleared: gameState.lines,
-            highestLevel: gameState.level,
-            bestCascade,
-            version: '1.0.0',
+            lines: gameState.lines,
+            level: gameState.level,
+            cascade: gameState.infinityStats?.maxComboComplexity || 0,
+            duration: Math.max(1, Math.round(this._runLengthMs(gameState) / 1000)),
         };
-
-        await Promise.all([
-            steamService.uploadScore(STEAM_LEADERBOARDS.INFINITY_HIGH_SCORE, gameState.score, scoreDetails),
-            steamService.uploadScore(STEAM_LEADERBOARDS.INFINITY_SURVIVAL_TIME, durationSeconds, scoreDetails),
-            steamService.uploadScore(STEAM_LEADERBOARDS.INFINITY_BEST_CASCADE, bestCascade, scoreDetails),
-            steamService.incrementStat('total_games_played', 1),
-            steamService.incrementStat('total_lines_cleared', gameState.lines),
-            steamService.incrementStat('playtime_minutes', durationMinutes),
-            steamService.setStatMax('best_cascade', bestCascade),
-            steamService.setStatMax('infinity_best_time', durationSeconds),
-        ]);
     }
 
     /**

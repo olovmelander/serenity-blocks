@@ -56,9 +56,9 @@ describe('Records, Single Player and Infinity', () => {
             stats,
             now: NOW,
         });
-        expect(facts).toContain('48,210');
-        expect(facts).not.toContain('987,654');
-        expect(facts).toContain('28,840'); // the average: 115,360 / 4
+        expect(facts).toContain((48210).toLocaleString());
+        expect(facts).not.toContain((987654).toLocaleString());
+        expect(facts).toContain((28840).toLocaleString()); // the average: 115,360 / 4
     });
 
     it('offers to play an empty mode only from the main menu', () => {

@@ -1,3 +1,4 @@
+import { runInNewContext } from 'node:vm';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -88,9 +89,23 @@ describe('electron/main.js desktop helper wiring', () => {
         expect(steamSource).toMatch(/if \(size > MAX_P2P_PACKET_BYTES\) \{/);
     });
 
-    it('opens no window in a second instance, which only hands focus over and quits', () => {
-        expect(mainSource).toMatch(/const gotLock = app\.requestSingleInstanceLock\(\);\s*if \(!gotLock\) \{\s*app\.quit\(\);/);
-        expect(mainSource).toMatch(/app\.whenReady\(\)\.then\(\(\) => \{\s*if \(!gotLock\) return;\s*installContentSecurityPolicy\(\);\s*installPermissionPolicy\(\);\s*createWindow\(\);/);
+    it('relaunches through Steam before taking the instance lock and creating a window', () => {
+        const startup = mainSource.slice(mainSource.indexOf('let requestedSteamRestart'), mainSource.indexOf('let mainWindow'));
+        const launch = (storeBuild, restart, lock) => {
+            const calls = [];
+            runInNewContext(startup, { storeBuild, join, process: { resourcesPath: 'test' }, RELEASE_STEAM_APP_ID: 123456,
+                createRequire: () => () => ({ restartAppIfNecessary(id) { calls.push('restart:' + id); return restart; } }),
+                app: { requestSingleInstanceLock() { calls.push('lock'); return lock; }, quit() { calls.push('quit'); } },
+            });
+            return calls;
+        };
+        expect(launch(true, true, true)).toEqual(['restart:123456', 'quit']);
+        expect(launch(true, false, false)).toEqual(['restart:123456', 'lock', 'quit']);
+        expect(launch(true, false, true)).toEqual(['restart:123456', 'lock']);
+        expect(launch(false, false, true)).toEqual(['lock']);
+        const ready = mainSource.slice(mainSource.indexOf('app.whenReady().then'));
+        expect(ready.indexOf('if (!gotLock) return;')).toBeLessThan(ready.indexOf('createWindow();'));
+        expect(ready.indexOf('desktopSteamProfile()')).toBeLessThan(ready.indexOf('createWindow();'));
         expect(mainSource).toMatch(/app\.on\('activate', \(\) => \{\s*if \(gotLock && BrowserWindow\.getAllWindows\(\)\.length === 0\)/);
     });
 

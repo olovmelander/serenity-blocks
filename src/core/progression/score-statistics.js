@@ -3,19 +3,17 @@
 /**
  * Lifetime score statistics, and how two copies of them combine.
  *
- * Each device's record is a cumulative snapshot. Once a device has synced with
- * Steam Cloud, its record already includes the history it downloaded. Merging
- * two snapshots therefore keeps the larger value of every counter. Adding them
- * counted the shared history again on every sync, so totals grew without any
- * play (audit SCORE-04).
- *
- * max() can still miss games that two devices both played between syncs.
- * Per-device counters would count those too, and remain the long-term fix.
+ * Pre-migration aggregate snapshots share an unknown amount of history. Their
+ * per-field maximum is the baseline. Each new finish contributes once by run ID,
+ * including separate finishes played offline from the same starting point.
  *
  * The lifetime counters cover every mode that saves a score (Single Player and
  * Infinity), as Records shows them. `byMode` keeps the same counters for each
  * mode, so the main menu's Single Player stage shows Single Player alone.
  */
+
+import { ACHIEVEMENTS, STAT_NAMES, isScoreInt } from '../steam/steam-catalogue.js';
+import { validRun } from './record-book.js';
 
 /**
  * @typedef {object} ModeStatistics
@@ -30,6 +28,7 @@
 
 /**
  * @typedef {object} ScoreStatistics
+ * @property {any} [recordBook] Portable immutable completions and pre-migration baseline.
  * @property {'stats'} id
  * @property {number} totalGames
  * @property {number} totalScore
@@ -177,7 +176,7 @@ export function createEmptyStatistics() {
  * @param {Partial<ScoreStatistics> | null | undefined} incoming
  * @returns {ScoreStatistics}
  */
-export function mergeStatisticsSnapshots(local, incoming) {
+function mergeLegacyStatistics(local, incoming) {
     const a = local || {};
     const b = incoming || {};
     /** @param {'totalGames' | 'totalScore' | 'totalLines' | 'highestScore' | 'highestLevel'} key */
@@ -210,4 +209,52 @@ export function mergeStatisticsSnapshots(local, incoming) {
         bestScorePerLevel,
         byMode,
     };
+}
+
+// Two installations may capture Steam's pre-migration baseline on opposite sides
+// of the first store. For totals the earliest observation avoids counting a finish
+// twice. A personal-best baseline always keeps the greatest observed value.
+function mergeSteamBaseline(a, b) {
+    const valid = [a, b].filter((base) => base && STAT_NAMES.every((name) => isScoreInt(base[name])));
+    if (!valid.length) return null;
+    const maxima = ['best_cascade', 'infinity_best_time', 'odyssey_stars'];
+    return Object.fromEntries(STAT_NAMES.map((name) => [name,
+        (maxima.includes(name) ? Math.max : Math.min)(...valid.map((base) => base[name]))]));
+}
+
+/** Legacy snapshots share a baseline. Every later finish is uniquely attributable. */
+export function mergeStatisticsSnapshots(local, incoming) {
+    if (!local?.recordBook && !incoming?.recordBook) return mergeLegacyStatistics(local, incoming);
+    const a = local?.recordBook;
+    const b = incoming?.recordBook;
+    const base = mergeLegacyStatistics(a ? a.base : local, b ? b.base : incoming);
+    const result = mergeLegacyStatistics(null, base);
+    const runs = Object.create(null);
+    for (const source of [a, b]) {
+        for (const [id, run] of Object.entries(source?.runs || {})) {
+            if (!runs[id] && validRun(id, run)) runs[id] = run;
+        }
+    }
+    for (const r of Object.values(runs)) {
+        if (r.mode !== 'single' && r.mode !== 'infinity') continue;
+        result.byMode = addGameToModeStatistics(result.byMode, r.mode, r);
+        result.totalGames++;
+        result.totalLines += r.lines || 0;
+        result.totalScore += r.score || 0;
+        result.highestScore = Math.max(result.highestScore, r.score || 0);
+        result.highestLevel = Math.max(result.highestLevel, r.level || 0);
+        result.bestScorePerLevel[r.level] = Math.max(result.bestScorePerLevel[r.level] || 0, r.score || 0);
+    }
+    const earned = {};
+    for (const source of [a?.earned, b?.earned]) {
+        for (const [owner, ids] of Object.entries(source || {})) {
+            if (!/^\d+\/\d{1,20}$/.test(owner) || !Array.isArray(ids)) continue;
+            earned[owner] = [...new Set([...(earned[owner] || []), ...ids.filter((id) => ACHIEVEMENTS.includes(id))])].sort();
+        }
+    }
+    const steamBase = mergeSteamBaseline(a?.steamBase, b?.steamBase);
+    result.recordBook = {
+        version: 1, base, runs, ...(Object.keys(earned).length ? { earned } : {}), ...(steamBase ? { steamBase } : {}),
+    };
+    return result;
 }

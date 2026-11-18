@@ -839,6 +839,22 @@ export class GamepadController {
             // The Odyssey map: D-pad and stick step the path, A plays; Start still falls through.
             this.odysseyMapControls?.process(freshGamepad, slot);
 
+            if (slot === 0 && !this.menuNavigationEnabled) {
+                const chat = document.getElementById('chat-input');
+                if (chat?.getClientRects?.().length && !chat.disabled) {
+                    const pressed = Boolean(freshGamepad.buttons[BUTTON_MAP.L_STICK]?.pressed);
+                    if (pressed && !this.chatStickHeld && !this.isGameplayButton(slot, BUTTON_MAP.L_STICK)) {
+                        chat.focus();
+                        this.openTextKeyboard(chat);
+                    }
+                    this.chatStickHeld = pressed;
+                    if (document.activeElement === chat) {
+                        if (freshGamepad.buttons[BUTTON_MAP.B]?.pressed) chat.blur();
+                        this.clearDasTimers(slot);
+                        continue;
+                    }
+                }
+            }
             // Check for game over modal - any button press restarts (only for player 1)
             if (slot === 0) {
                 const gameOverModal = document.getElementById('game-over-modal');
@@ -1973,6 +1989,23 @@ export class GamepadController {
     /**
      * Activate the currently focused menu item
      */
+    openTextKeyboard(field) {
+        const bounds = field.getBoundingClientRect();
+        const rect = {
+            x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height,
+        };
+        const desktop = globalThis.window?.electronAPI;
+        this.dismissTextKeyboard?.();
+        const remove = desktop?.on?.('steam:keyboardDismissed', () => {
+            if (document.activeElement === field && field.id === 'chat-input') field.blur();
+            remove?.();
+        });
+        this.dismissTextKeyboard = remove;
+        Promise.resolve(desktop?.invoke?.('steam:showKeyboard', rect)).then((opened) => {
+            if (!opened) remove?.();
+        }).catch(() => remove?.());
+    }
+
     activateMenuItem() {
         let current = document.activeElement;
         const sheet = this.getMenuSheet();
@@ -1993,6 +2026,11 @@ export class GamepadController {
             current?.focus({ preventScroll: !sheet.sheet.odyssey });
         }
         if (current && current !== document.body) {
+            if (current.matches('input[type="text"], input:not([type]), input[type="search"], textarea')) {
+                current.focus();
+                this.openTextKeyboard(current);
+                return;
+            }
             if (current.matches('input[type="range"]')) {
                 // Range sliders respond to directional adjustments instead of click
                 return;

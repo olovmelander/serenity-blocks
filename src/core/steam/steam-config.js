@@ -13,6 +13,12 @@ export const STEAM_RETRY = {
     BASE_DELAY_MS: 500, // Exponential backoff: 500ms, 1000ms, 2000ms
 };
 
+/** Exponential delay with a small spread so reconnecting clients retry at different times. */
+export function steamRetryDelayMs(attempts, { BASE_MS, MAX_MS, JITTER_MS }) {
+    const backoff = Math.min(MAX_MS, BASE_MS * 2 ** Math.max(0, attempts - 1));
+    return backoff + Math.floor(Math.random() * JITTER_MS);
+}
+
 // Connection monitoring
 export const STEAM_CONNECTION = {
     CHECK_INTERVAL_MS: 30000, // Check every 30 seconds
@@ -153,35 +159,4 @@ export const STEAM_DEFAULTS = {
     AVATAR: null, // Will use default avatar component
 };
 
-// Leaderboard names (versioned to avoid schema/ruleset drift)
-export const STEAM_LEADERBOARDS = {
-    SINGLE_PLAYER_HIGH_SCORE: 'SinglePlayerHighScore_v1',
-    SINGLE_PLAYER_LINES: 'SinglePlayerLines_v1',
-    // Campaign v5 ends every chapter on its rival duel, so slot ids name different
-    // challenges than v4 did. Keep stars and times separate from the earlier campaigns;
-    // queued scores retain their original names. The level design retune (2026-11) changed goals, clocks and
-    // speeds, so orb times started fresh boards (v5), and pass 2 of the audit changed 16 more orbs (v6, D12);
-    // earned stars keep their board.
-    ODYSSEY_TOTAL_STARS: 'OdysseyTotalStars_v3',
-    ODYSSEY_LEVEL_TIME_PREFIX: 'OdysseyLevelTime_v6_', // Append level id
-    INFINITY_HIGH_SCORE: 'InfinityHighScore_v1',
-    INFINITY_SURVIVAL_TIME: 'InfinitySurvivalTime_v1',
-    INFINITY_BEST_CASCADE: 'InfinityBestCascade_v1',
-    FFA_WIN_RATE: 'FFAWinRate_v1',
-    FFA_TOTAL_KILLS: 'FFATotalKills_v1',
-};
-
-// Steam stats we track (must match Steamworks config)
-export const STEAM_STATS = [
-    'total_games_played',
-    'total_lines_cleared',
-    'total_twists',
-    'total_perfect_clears',
-    'best_cascade',
-    'odyssey_stars',
-    'ffa_wins',
-    'ffa_kills',
-    'ffa_matches',
-    'playtime_minutes',
-    'infinity_best_time',
-];
+export { STEAM_LEADERBOARDS, STAT_NAMES as STEAM_STATS } from './steam-catalogue.js';

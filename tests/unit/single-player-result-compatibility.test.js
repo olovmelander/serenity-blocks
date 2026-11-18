@@ -161,17 +161,19 @@ describe('single-player result compatibility', () => {
         );
 
         await mode._handleGameOver();
-        await vi.waitFor(() => expect(moduleMocks.uploadScore).toHaveBeenCalledTimes(2));
+        expect(moduleMocks.uploadScore).not.toHaveBeenCalled();
 
         expect(mode.demoRecorder.stopRecording).toHaveBeenCalledOnce();
         expect(mode._autoSaveDemo).toHaveBeenCalledWith(demo);
-        expect(highScoreManager.addScore).toHaveBeenCalledWith({
+        expect(highScoreManager.addScore).toHaveBeenCalledWith(expect.objectContaining({
             score: 4321,
             lines: 17,
             level: 4,
             demoId: 73,
-        });
-        expect(moduleMocks.incrementStat).toHaveBeenCalledTimes(3);
+            runId: expect.any(String),
+            receipt: expect.objectContaining({ mode: 'single' }),
+        }));
+        expect(moduleMocks.incrementStat).not.toHaveBeenCalled();
         expect(moduleMocks.showGameOverModal).toHaveBeenCalledWith(
             mode.deps.modalManager,
             mode._stoppedSession.gameState,
@@ -217,13 +219,13 @@ describe('single-player result compatibility', () => {
     it('defends the Steam sink when called directly for a fixed session', async () => {
         const { mode } = createGameOverHarness(DEMO_FIXED_SIMULATION_CLOCK);
 
-        await mode._syncSteamStats(Object.freeze({
+        expect(await mode._buildSteamReceipt(Object.freeze({
             demo: null,
             demoId: null,
             gameState: mode.gameState,
             generation: 1,
             simulationClock: DEMO_FIXED_SIMULATION_CLOCK,
-        }));
+        }))).toBeUndefined();
 
         expect(moduleMocks.buildReplayProof).not.toHaveBeenCalled();
         expect(moduleMocks.uploadScore).not.toHaveBeenCalled();
@@ -303,12 +305,14 @@ describe('single-player result compatibility', () => {
         prepareStartHarness(mode);
 
         const gameOver = mode._handleGameOver();
-        await vi.waitFor(() => expect(highScoreManager.addScore).toHaveBeenCalledWith({
+        await vi.waitFor(() => expect(highScoreManager.addScore).toHaveBeenCalledWith(expect.objectContaining({
             score: 4321,
             lines: 17,
             level: 4,
             demoId: 73,
-        }));
+            runId: expect.any(String),
+            receipt: expect.objectContaining({ mode: 'single' }),
+        })));
 
         await mode.onStart();
         const replacementState = mode.gameState;
@@ -316,7 +320,7 @@ describe('single-player result compatibility', () => {
 
         addScore.resolve();
         await gameOver;
-        await vi.waitFor(() => expect(moduleMocks.uploadScore).toHaveBeenCalledTimes(2));
+        expect(moduleMocks.uploadScore).not.toHaveBeenCalled();
 
         expect(moduleMocks.buildReplayProof).toHaveBeenCalledWith(expect.objectContaining({
             demo,
@@ -324,11 +328,7 @@ describe('single-player result compatibility', () => {
             expectedLines: 17,
             expectedLevel: 4,
         }));
-        expect(moduleMocks.uploadScore).toHaveBeenCalledWith(
-            expect.any(String),
-            4321,
-            expect.objectContaining({ replayId: 73, score: 4321 }),
-        );
+        expect(highScoreManager.addScore.mock.calls[0][0].receipt.score).toBe(4321);
         expect(moduleMocks.showGameOverModal).not.toHaveBeenCalled();
         expect(window.dispatchEvent).not.toHaveBeenCalled();
         expect(mode.gameState).toBe(replacementState);
@@ -364,7 +364,7 @@ describe('single-player result compatibility', () => {
         highScoreManager.addScore.mockRejectedValue(new DOMException('Disk full', 'QuotaExceededError'));
 
         await expect(mode._handleGameOver()).resolves.not.toThrow();
-        await vi.waitFor(() => expect(moduleMocks.uploadScore).toHaveBeenCalledTimes(2));
+        expect(moduleMocks.uploadScore).not.toHaveBeenCalled();
 
         expect(moduleMocks.showGameOverModal).toHaveBeenCalledWith(
             mode.deps.modalManager,

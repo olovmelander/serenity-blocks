@@ -289,7 +289,10 @@ export class LobbyBrowser {
                 const label = this.lobbies.length === 1 ? 'match listed' : 'matches listed';
                 if (labelEl && labelEl.textContent !== label) labelEl.textContent = label;
             })
-            .catch((err) => console.error('Failed to refresh lobbies:', err))
+            .catch((err) => {
+                if (this.isVisible && !this.destroyed) this.showError('Could not refresh Steam matches. Check Steam and refresh to try again.');
+                console.error('Failed to refresh lobbies:', err);
+            })
             .finally(() => { this.refreshPromise = null; });
         return this.refreshPromise;
     }

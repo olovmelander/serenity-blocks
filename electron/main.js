@@ -21,7 +21,7 @@ import {
 } from 'electron';
 import { join, dirname, resolve } from 'path';
 import { fileURLToPath } from 'url';
-import { appendFileSync, mkdirSync, readFileSync } from 'fs';
+import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import inspector from 'node:inspector';
 import {
     createContentSecurityPolicy,
@@ -46,7 +46,9 @@ import { guardIpcHandlers, isGameSender } from './ipc-sender-guard.js';
 import { isPermissionAllowed } from './permission-policy.js';
 import { decideRendererRecovery, isFatalLoadFailure } from './renderer-recovery.js';
 import { requestRendererQuitFlush } from './quit-flush.js';
-import { isStoreBuild } from './steam-app-id.js';
+import { desktopSteamAppId, isStoreBuild, isReleaseSteamAppId, RELEASE_STEAM_APP_ID } from './steam-app-id.js';
+import { createRequire } from 'node:module';
+import { readLegacyRecords } from './legacy-record-import.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const isPackaged = app.isPackaged;
@@ -54,6 +56,8 @@ const isWindows = process.platform === 'win32';
 // DevTools, remote debugging, the inspector and the CSP bypass: development and packaged test
 // builds only. A store build ignores the variables that switch them on (electron/debug-flags.js).
 const storeBuild = isStoreBuild({ isPackaged });
+const profileAppId = desktopSteamAppId(isPackaged, app.getAppPath()).appId;
+const accountProfile = isReleaseSteamAppId(profileAppId);
 const debugFlags = resolveDebugFlags({ env: process.env, argv: process.argv, storeBuild });
 
 // Keep minidumps of main, renderer and GPU crashes on this machine only (audit ELEC-09).
@@ -76,7 +80,16 @@ app.commandLine.appendSwitch('enable-webgl');
 // A second launch hands focus to the first instance ('second-instance' below)
 // and quits. app.quit() is asynchronous, so the lifecycle handlers below must not
 // open a window in this process meanwhile.
-const gotLock = app.requestSingleInstanceLock();
+let requestedSteamRestart = false;
+if (storeBuild) {
+    try {
+        const entry = join(process.resourcesPath, 'native_modules', 'steamworks.js', 'index.js');
+        requestedSteamRestart = createRequire(entry)(entry).restartAppIfNecessary(RELEASE_STEAM_APP_ID);
+    } catch (error) {
+        console.error('[Steam] Could not check launch origin:', error.message);
+    }
+}
+const gotLock = !requestedSteamRestart && app.requestSingleInstanceLock();
 if (!gotLock) {
     app.quit();
 }
@@ -388,6 +401,8 @@ const steamStubChannels = [
     'steam:uploadScore', 'steam:getLeaderboard', 'steam:getLeaderboardEntry',
     'steam:cloudWrite', 'steam:cloudRead', 'steam:cloudDelete',
     'steam:cloudExists', 'steam:cloudGetQuota', 'steam:cloudGetTimestamp',
+    'steam:commitStats', 'steam:cloudList', 'steam:pendingInvites', 'steam:ackInvite',
+    'steam:showKeyboard', 'steam:filterChat', 'steam:setLobbyOwner',
     'steam:getFriends', 'steam:getPersonaState',
     'steam:inviteToLobby', 'steam:openLobbyInviteDialog',
     'steam:activateOverlay', 'steam:activateOverlayToUser',
@@ -584,7 +599,7 @@ function installContentSecurityPolicy() {
         inlineScriptHashes: isPackaged ? computeInlineScriptHashes() : [],
     });
 
-    session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+    (playerPartition ? session.fromPartition(playerPartition) : session.defaultSession).webRequest.onHeadersReceived((details, callback) => {
         callback({
             responseHeaders: {
                 ...details.responseHeaders,
@@ -609,10 +624,10 @@ function installPermissionPolicy() {
         }
         return allowed;
     };
-    session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback, details) => {
+    (playerPartition ? session.fromPartition(playerPartition) : session.defaultSession).setPermissionRequestHandler((_webContents, permission, callback, details) => {
         callback(decide('request', permission, details?.requestingUrl));
     });
-    session.defaultSession.setPermissionCheckHandler((_webContents, permission, requestingOrigin, details) => (
+    (playerPartition ? session.fromPartition(playerPartition) : session.defaultSession).setPermissionCheckHandler((_webContents, permission, requestingOrigin, details) => (
         decide('check', permission, details?.requestingUrl || requestingOrigin)
     ));
 }
@@ -621,6 +636,11 @@ function installPermissionPolicy() {
 // Window creation
 // ---------------------------------------------------------------------------
 
+let playerPartition;
+ipcMain.handle('desktop:import-local-records', async (event) => {
+    if (!playerPartition || event.sender !== mainWindow?.webContents) return null;
+    return readLegacyRecords(BrowserWindow, mainWindow.webContents.getURL());
+});
 function createWindow() {
     const { width, height } = screen.getPrimaryDisplay().workArea;
 
@@ -631,6 +651,7 @@ function createWindow() {
         backgroundColor: '#000000',
         show: true,
         webPreferences: {
+            partition: playerPartition,
             preload: join(__dirname, 'preload.cjs'),
             contextIsolation: true,
             nodeIntegration: false,
@@ -866,10 +887,11 @@ async function bootstrapSteam() {
 
         // Register real IPC handlers (replaces the stubs above)
         steamModule.registerSteamIPC();
+        for (const argv of launchRequests.splice(0)) steamModule.deliverSteamLaunch(argv);
         console.log('[Electron] bootstrapSteam: IPC handlers registered');
 
         // Initialize Steam client
-        const result = await steamModule.initSteam(mainWindow, emitRuntimeEvent);
+        const result = await steamModule.initSteam(mainWindow, emitRuntimeEvent, { restartChecked: storeBuild });
         console.log('[Electron] Steam integration loaded, initialized:', result);
     } catch (err) {
         console.error('[Electron] Steam integration unavailable:', err.message);
@@ -906,18 +928,35 @@ app.on('child-process-gone', (_event, details) => {
     });
 });
 
-app.on('second-instance', () => {
+const launchRequests = [process.argv];
+app.on('second-instance', (_event, argv) => {
+    if (steamModule) steamModule.deliverSteamLaunch(argv, 'second-instance');
+    else launchRequests.push(argv);
     if (mainWindow) {
         if (mainWindow.isMinimized()) mainWindow.restore();
         mainWindow.focus();
     }
 });
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
     if (!gotLock) return;
+    if (accountProfile) {
+        await bootstrapSteam();
+        const profile = steamModule?.desktopSteamProfile();
+        if (profile?.relaunchRequested) return;
+        const profileFile = join(app.getPath('userData'), 'steam-last-profile-' + profileAppId + '.json');
+        let player = profile?.steamId;
+        if (player) {
+            try { writeFileSync(profileFile, JSON.stringify({ player }), { mode: 0o600 }); } catch {}
+        } else {
+            try { player = JSON.parse(readFileSync(profileFile, 'utf8')).player; } catch {}
+        }
+        if (/^\d{1,20}$/.test(player || '')) playerPartition = 'persist:steam-' + profileAppId + '-' + player;
+    }
     installContentSecurityPolicy();
     installPermissionPolicy();
     createWindow();
+    if (accountProfile) steamModule?.attachSteamWindow(mainWindow);
 
     // Power monitor → renderer
     powerMonitor.on('suspend', () => emitRuntimeEvent('power-suspend'));
@@ -930,7 +969,7 @@ app.whenReady().then(() => {
 
     // Load Steam AFTER window is visible — no startup delay
     mainWindow.webContents.once('did-finish-load', () => {
-        bootstrapSteam();
+        if (!accountProfile) bootstrapSteam();
     });
 }).catch((error) => {
     // Startup itself failed: say so instead of leaving a process with no window.

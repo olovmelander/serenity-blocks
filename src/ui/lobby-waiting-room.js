@@ -72,6 +72,7 @@ export class LobbyWaitingRoom {
 
         <div class="match-info-panel wr-scroll">
             <p class="lobby-objective sb-mp-note" id="lobby-objective"></p>
+            <p class="sb-mp-help">A disconnect forfeits a duel. In a continuing match, rejoin within 10 seconds to reclaim your seat. Leaving as host closes this waiting room.</p>
             <h3 class="sb-mp-label">Match</h3>
             <dl class="match-info-grid wr-facts">
               <div class="info-item">

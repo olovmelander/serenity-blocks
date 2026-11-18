@@ -41,10 +41,23 @@ connection to Steam's servers itself; it sends nothing over it.
   controller bindings and your sound, theme, effect and control settings, with a random ID for
   each computer so that the copies can be merged. The files are `cloud_manifest.json`,
   `unlocks.json`, `odyssey.json`, `settings.json`, `keybinds.json`, `highscores.json` and
-  `stats.json`. You can turn Steam Cloud off in Steam.
+  `stats.json` and `stillfall.json`. Recovery copies named `records_v1_…` preserve redundant copies and a previous generation
+  of each computer's records, journey, solves and unlocks. They include run identifiers and the
+  Steam account associated with eligible runs. You can turn Steam Cloud off in Steam.
 - **Statistics**: when a game ends, the game adds to your Steam statistics: games played, lines
   cleared, minutes played, your longest Infinity run and best cascade, your Odyssey stars, and
   your online matches, wins and frags.
+- **Achievements.** A qualifying orb, chapter, 100-line Single Player run or Infinity cascade
+  can unlock a Steam achievement. Steam stores the unlock on your account.
+- **Score sharing is optional.** In Records or on an eligible results sheet you can choose
+  to publish your attributable personal bests, including earlier runs on this Steam account.
+  Other Steam players can see your SteamID, display name, global rank, score or time, and a
+  few run figures (duration, lines, level or orb, a mode-specific result and consistency flags
+  and checksum). Friends and nearby-rank views use the same public boards. Recent rows,
+  including friends' names, are cached in your account's local profile. Replays stay local.
+  Turning sharing off stops future uploads. Existing Steam entries survive a local save deletion
+  or disabling Cloud. To request removal, turn sharing off and contact the developer above
+  with the board and your Steam profile so ownership can be checked.
 - **Your status**: your Steam friends can see that you are playing, and what: the mode, a level
   or chapter where there is one, and how many players are in your online lobby or match. In a
   match open to anyone or to friends, they can also join you from there.
@@ -82,7 +95,8 @@ cookies and has no online play.
   saves, Steam Cloud, your status, online matches and chat. That is also its legal ground: those
   features cannot work without it.
 - **Who receives it**: Valve, in the USA, under the Steam Privacy Policy; the other players in
-  your lobby; and GitHub, for the web version. The developer receives none of it.
+  your lobby, other Steam players for scores you choose to publish, and GitHub for the web version.
+  The developer can view published board entries in Steamworks and process removal requests.
 - **How long**: what is on your computer stays until you delete it. The Steam connection log is
   replaced at each start, and chat is gone when the session ends. What Steam holds stays with
   your Steam account, as the Steam Privacy Policy says.
