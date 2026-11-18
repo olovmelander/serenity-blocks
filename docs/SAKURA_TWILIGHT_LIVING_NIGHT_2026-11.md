@@ -40,6 +40,10 @@ board's readability (the card is dark and the garden never crosses it).
 **Missing:** weather; anything on the mountain; a use for the torii, which stands in the best
 open spot of the frame and did nothing; life in the sky.
 
+Found later, by a helper looking at the unobstructed portrait moon: the moon's seas broke along a
+straight vertical edge (the noise's square grid). Each read is now turned its own way and the
+seas' place is pulled about first.
+
 ## What changed
 
 ### The night changes: six airs beside the five hours
@@ -82,6 +86,32 @@ left shoulder across the open sky of both framings, with a dark rift that widens
 The moon's seas are read only inside its disc. A star falls by itself every quarter minute or
 so when the sky is clear enough to show one. The dome is now drawn last among the opaque things,
 so the sky behind the trees, the mountain and the lake is never shaded.
+
+### Cranes (`sakura-cranes.js`, `sakura-crane-routes.js`, `sakura-crane-model.js`)
+
+Every 80 to 150 seconds a skein of red-crowned cranes (nine at the top tiers, four at Minimal)
+crosses the sky: over the summit, or level across the snow. The bird is the theme's own,
+modelled headless in Blender (`scripts/blender/sakura_crane.py`, 452 triangles, written as a
+generated, byte-reproducible module): white, with the black neck and the black trailing half of
+the wing that mark the species, and the red crown. No skeleton: each vertex carries how much the
+shoulder and the wrist move it, and the vertex stage folds the wings. One instanced draw, lit by
+the garden's own rig (the moon's colour on the side turned to it, the hour's sky from above,
+then the air), never additive.
+
+The rules the owner set on earlier bird passes hold, and a probe
+(`node scripts/sakura-crane-probe.mjs`) and a test check them: a flight goes from out of sight
+to out of sight at one pace, as one flock, evenly spaced; no bird is scaled or faded in within
+the frame. Routes were chosen by scoring candidates through both rest cameras; routes toward
+the eye scored longest and looked worst (a crane head-on is a thin V), so both kept routes are
+side-on crossings, each flown either way.
+
+Three things to know: the birds are drawn 2.2 times life (a 2.4 m crane 100 m off is 18 pixels
+of span at 1280 wide and read as a squiggle; they fly 95 to 135 m from the eye); in landscape
+about a third of a flight is in open sky, the rest behind the card and the two cherries (in
+portrait all of it shows); and though the mesh is in the lake's mirror pass, no reflection could
+be found in a capture.
+
+![Cranes](sakura-twilight-overhaul/living-cranes.jpg)
 
 ### The mountain's weather (`sakura-backdrop.js`)
 
@@ -132,19 +162,48 @@ its first appearance in play compiles nothing.
 
 ## Cost
 
-Measured in the playground at 1920 x 1080 with the GPU timestamp profiler, capped at 30 fps
-(the owner's standing rule for light GPU work), ten seconds a case, two interleaved rounds,
-this branch against the untouched `main` checkout on a second server:
+Measured in the playground at 1920 x 1080 with the GPU timestamp profiler, ten seconds a case,
+two interleaved rounds, this branch against the untouched `main` checkout on a second server.
+First capped at 30 fps; then, once the owner said full speed could be used, uncapped (vsync and
+the frame-rate limit off), where the GPU does not clock down between frames and the readings are
+steadier. Medians of each round, GPU ms a frame:
 
-| Case | GPU ms a frame, before | after |
+| Case | Before | After |
 | --- | --- | --- |
-| High, at rest | 1.05, 1.08 | 1.02, 1.03 (clear) · 1.05, 1.01 (petal wind) · 1.04, 1.02 (mackerel) |
-| Low | 0.48, 0.47 | 0.42, 0.42 (petal wind) |
+| High at rest, capped | 1.05, 1.08 | 1.02, 1.03 (clear) · 1.05, 1.01 (petal wind) · 1.04, 1.02 (mackerel) |
+| Low, capped | 0.48, 0.47 | 0.42, 0.42 (petal wind) |
+| High at rest, uncapped | 1.45, 1.48 | 1.36, 1.42 (clear) · 1.21, 1.32 (petal wind) · 1.33, 1.32 (mirror calm) |
+| Low, uncapped | 0.93, 0.73 | 0.64, 0.63 (petal wind) |
 
-That is "no dearer", not a frame rate: capped readings on an RTX laptop say nothing about an
-integrated GPU, and no uncapped run and no integrated-GPU run was made. Drawing the dome last is
-what pays for the richer sky. The page's own time per frame was within the noise (medians
-4.6 to 6.3 ms either side).
+That is "no dearer" on this RTX laptop (the uncapped runs were made before the cranes and the
+moon's fifth read went in: one small instanced draw and one texture read inside the disc). It
+says nothing about an integrated GPU, where no run was made. Drawing the dome last is what pays
+for the richer sky. The page's own time per frame was within the noise (medians 2.8 to 3.9 ms
+either side, uncapped).
+
+## Tests, and the faults they found
+
+A second helper wrote tests against a written contract of the new behaviour, with no access to
+change the source and told to pin a fault rather than bend a test. The theme's suites went from
+539 tests to 763 (`tests/unit/sakura-*.test.js`: new suites for the weather, the showpieces, the
+cranes and a WGSL/GLSL shader gate; the reactions, director, simulation, hours and world suites
+extended, with a ten-minute scripted session of play). It pinned sixteen faults in the new code,
+all fixed in the same pass. The ones a player could have met:
+
+- Under fast play the fireflies' cloud could vanish in one frame: its emitter counted as "spent"
+  after its first frame and was the first to be reclaimed.
+- An emitter the garden had not yet seen could be given up before ones already playing, so a
+  faint one-shot (the gate's ring) was sometimes lost in a pile-up at the lowest tiers.
+- A second star fox setting out while the gate still burned from the first snuffed that light.
+- In a narrow landscape window (aspect 0.86 to about 1.1) the star fox flew off the left edge:
+  its path is now laid through the framing it is seen in.
+- Each of the night's own falling stars drew three values from the garden's shared random
+  sequence, so the petals thrown afterwards depended on whether a star had fallen.
+- After a reset late in a session the first falling star came at once instead of nine seconds on.
+- A hard drop that could not be placed put its spray on the opposite side from its puff.
+
+The rest were junk-input guards (a non-number power or height reaching a uniform as NaN, blank
+text pinning an air) and two places where the code did not do what its own comment said.
 
 ## Verification
 
@@ -157,8 +216,12 @@ what pays for the richer sky. The page's own time per frame was within the noise
 
   ![In the game](sakura-twilight-overhaul/living-in-game.jpg)
 
+- **Gates**: `npm run typecheck`, the theme's suites (763 tests), the cross-theme gates
+  (registry lifecycle, dual-state tripwire, URL parameter catalog, camera breath, reduce
+  flashing), `npm run audit:theme-lifecycle`, `npm run check:boundaries`,
+  `npm run check:ip-strings`; no ESLint errors in the theme.
 - **Portrait** has its own framing; the moon is clear of the trees there, so the hazy moon's
-  ring and the mackerel sky show best in it.
+  ring, the mackerel sky and the cranes show best in it.
 
   ![Portrait](sakura-twilight-overhaul/living-portrait.jpg)
 
@@ -167,8 +230,10 @@ what pays for the richer sky. The page's own time per frame was within the noise
 - The cap cloud is a painted card: from the lake it reads as a lenticular cloud, not as a volume.
 - The mist's air (`mist`) hides the far shore almost entirely at dawn; that is intended, and it
   lasts under a minute.
-- The star fox's flight is staged for the landscape framing; in portrait it comes in from the
-  left edge and is short.
+- The star fox's flight is laid through each framing's sky, but in a nearly square window the
+  open sky left of the card is small and part of the flight passes behind it.
+- The piece colours were left as the owner set them on 2026-11-03. Two pairs are close (the S and
+  L pinks, the Z and J purples); that is a readability question for the owner, not changed here.
 - Low and Minimal have no bloom: the gate's light and the helix are flatter there.
 - The theme icon was not re-baked: the garden's resting look is unchanged.
 - No uncapped frame-rate run and no integrated-GPU run was made.
