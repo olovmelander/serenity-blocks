@@ -1634,3 +1634,621 @@ describe('Sakura reaction director', () => {
         });
     });
 });
+
+/**
+ * The second pass over the garden's answers (2026-11): each event has an instrument no other has
+ * (sakura-showpieces.js), so the director emits four more kinds — a hard drop's `splash`, three
+ * and four lines' `swarm`, the back-to-back's `gate`, the perfect clear's `spirit` — and keeps one
+ * more swell, the four-line `blizzard`.
+ */
+describe('Sakura reaction director: each event\'s own instrument', () => {
+    /** Every handler in one frame, as the bus can deliver them. */
+    function everything(reactions) {
+        const piece = cell(1, 20);
+        reactions.onHardDrop({ piece, distance: 18 });
+        reactions.onPieceLock({ piece });
+        reactions.onLineClear(4, { clearedRows: [20, 21, 22, 23] });
+        reactions.onCombo(9);
+        reactions.onTwist({ piece });
+        reactions.onBackToBack();
+        reactions.onPerfectClear();
+        reactions.onLevelUp();
+    }
+
+    /** Every number anywhere in a frame that is not finite, as readable paths. */
+    function nonFinite(value, path = 'frame', found = []) {
+        if (typeof value === 'number') {
+            if (!Number.isFinite(value)) found.push(`${path} = ${value}`);
+        } else if (Array.isArray(value)) value.forEach((entry, index) => nonFinite(entry, `${path}[${index}]`, found));
+        else if (value && typeof value === 'object') {
+            Object.entries(value).forEach(([key, entry]) => nonFinite(entry, `${path}.${key}`, found));
+        }
+        return found;
+    }
+
+    describe('the emitter pool', () => {
+        it('is as large as the contract says at every tier', () => {
+            expect(SAKURA_REACTION_LIMITS).toEqual({
+                Minimal: 22, Low: 22, Medium: 24, High: 24, Ultra: 26, Extreme: 28,
+            });
+        });
+
+        it.each(TIER_ORDER)('holds every handler\'s emitters and the fever\'s cadence in one frame at %s', (tier) => {
+            const reactions = create(tier);
+            everything(reactions);
+            // Twenty emitters are asked for when everything happens at once...
+            expect(reactions.serial).toBe(20);
+            expect(kindsOf(reactions.frame)).toEqual(['clear', 'clear', 'combo', 'floats', 'gate', 'lanterns',
+                'lanterns', 'lanterns', 'lock', 'rise', 'shower', 'spin', 'spirit', 'splash', 'star', 'star', 'star',
+                'star', 'star', 'swarm']);
+            // ...and a fever can add a falling star and a festival flight in the same update.
+            reactions.emit('star', { strength: 0.6, duration: 1.2 });
+            reactions.emit('festival', { strength: 0.8, lines: 2, duration: 1.2 });
+            const { frame } = reactions;
+            expect(frame.emitters).toHaveLength(22);
+            const serials = frame.emitters.map((emitter) => emitter.serial).sort((a, b) => a - b);
+            expect(serials).toEqual([...Array(22).keys()]);
+            expect(frame.emitters.every((emitter) => emitter.age === 0)).toBe(true);
+            expect(reactions.maxEmitters).toBeGreaterThanOrEqual(22);
+            expectBounded(frame, reactions.maxEmitters);
+            // The garden sees every one of them on the next frame, and goes on seeing them.
+            const seen = reactions.update(1 / 60);
+            expect(seen.emitters).toHaveLength(22);
+            expect(new Set(seen.emitters.map((emitter) => emitter.kind)))
+                .toEqual(new Set([...EVENT_KINDS, 'festival']));
+        });
+
+        it('gives up the faintest of what the garden has not yet seen when even that is not room enough', () => {
+            const reactions = create('Minimal');
+            everything(reactions);
+            reactions.emit('star', { strength: 0.6, duration: 1.2 });
+            reactions.emit('festival', { strength: 0.8, lines: 2, duration: 1.2 });
+            const before = reactions.getFrame().emitters;
+            expect(before).toHaveLength(reactions.maxEmitters);
+            const faintest = Math.min(...before.map((emitter) => emitter.strength));
+            // A twenty-third in the same frame: something unseen has to go, and it is the least of them.
+            const extra = reactions.emit('star', { strength: 0.9, duration: 1.2 });
+            const after = reactions.getFrame().emitters;
+            const kept = new Set(after.map((emitter) => emitter.serial));
+            const lost = before.filter((emitter) => !kept.has(emitter.serial));
+            expect(lost).toHaveLength(1);
+            expect(lost[0].strength).toBe(faintest);
+            expect(after.find((emitter) => emitter.serial === extra.serial)).toBeTruthy();
+            // The full-strength instruments of the frame are all still there.
+            for (const kind of ['spirit', 'swarm', 'shower', 'rise', 'spin']) {
+                expect(emittersOf({ emitters: after }, kind).length, kind).toBeGreaterThan(0);
+            }
+        });
+    });
+
+    describe('a hard drop\'s crown of spray', () => {
+        const dropLock = (distance, piece = cell(2, 22)) => {
+            const reactions = create();
+            if (distance !== undefined) reactions.onHardDrop({ distance });
+            reactions.onPieceLock(piece === null ? undefined : { piece });
+            return reactions;
+        };
+
+        it('rises for a piece that fell some way, and not for one set down', () => {
+            for (const distance of [undefined, 0, 1, 2, 2.3]) {
+                expect(kindsOf(dropLock(distance).frame), String(distance)).toEqual(['lock']);
+            }
+            for (const distance of [2.5, 3, 8, 16, 20, 400]) {
+                expect(kindsOf(dropLock(distance).frame), String(distance)).toEqual(['lock', 'splash']);
+            }
+            // A soft drop, a lock delay, a piece that simply landed: no hard drop, no spray.
+            const soft = create();
+            for (let lock = 0; lock < 6; lock += 1) soft.onPieceLock({ piece: cell(lock, 22) });
+            expect(emittersOf(soft.frame, 'splash')).toEqual([]);
+        });
+
+        it('is as tall as the piece fell far, beside the board where the piece is', () => {
+            for (const [distance, strength] of [[3, 0.15], [10, 0.5], [16, 0.8], [20, 1], [400, 1]]) {
+                for (const [piece, side, column] of [[cell(1, 22), -1, 0.15], [cell(8, 10), 1, 0.85]]) {
+                    const { frame } = dropLock(distance, piece);
+                    const [lock] = emittersOf(frame, 'lock');
+                    const [splash] = emittersOf(frame, 'splash');
+                    expect(splash.strength).toBeCloseTo(strength, 12);
+                    expect(splash.side).toBe(side);
+                    expect(splash.side).toBe(lock.side);
+                    expect(splash.column).toBeCloseTo(column, 12);
+                    expect(splash.column).toBe(lock.column);
+                    expect(splash).toMatchObject({
+                        age: 0, duration: 0.5, lines: 0, serial: lock.serial + 1,
+                    });
+                }
+            }
+            // A longer fall is a taller crown.
+            const strengths = [3, 6, 12, 18]
+                .map((distance) => emittersOf(dropLock(distance).frame, 'splash')[0].strength);
+            expect([...strengths].sort((a, b) => a - b)).toEqual(strengths);
+            expect(new Set(strengths).size).toBe(4);
+        });
+
+        it('is spent with its drop: the next piece raises none unless it was dropped too', () => {
+            const reactions = create();
+            reactions.onHardDrop({ distance: 15 });
+            reactions.onPieceLock({ piece: cell(1, 22) });
+            reactions.onPieceLock({ piece: cell(5, 22) });
+            reactions.onHardDrop({ distance: 15 });
+            reactions.onPieceLock({ piece: cell(8, 22) });
+            expect(kindsOf(reactions.frame)).toEqual(['lock', 'lock', 'lock', 'splash', 'splash']);
+            expect(emittersOf(reactions.frame, 'splash').map((emitter) => emitter.side)).toEqual([-1, 1]);
+            // It is over in half a second; the lock's puff outlives it.
+            const later = advance(reactions, 0.6);
+            expect(emittersOf(later, 'splash')).toEqual([]);
+            expect(emittersOf(later, 'lock').length).toBeGreaterThan(0);
+        });
+
+        // FAULT: sakura-reactions.js onPieceLock() (lines 436-446) hands the lock and its splash
+        // the same `side` of 0 when the lock cannot be placed (a payload with no piece and no
+        // viewport origin), and emit() then picks a side from the serial's parity (line 342): the
+        // two emitters have consecutive serials, so the crown of spray stands on the opposite side
+        // of the board from the lock's puff of petals. Reproduce: reactions.onHardDrop({ distance:
+        // 16 }); reactions.onPieceLock(); the frame's lock has side -1 and its splash side 1.
+        it.fails('stands on the side the lock\'s puff took when the lock could not be placed', () => {
+            for (let locks = 0; locks < 4; locks += 1) {
+                const reactions = create();
+                for (let before = 0; before < locks; before += 1) reactions.onPieceLock();
+                reactions.onHardDrop({ distance: 16 });
+                reactions.onPieceLock();
+                const lock = emittersOf(reactions.frame, 'lock').at(-1);
+                const [splash] = emittersOf(reactions.frame, 'splash');
+                expect(splash.side, `after ${locks} locks`).toBe(lock.side);
+            }
+        });
+    });
+
+    describe('the fireflies\' swarm', () => {
+        it('rises for three lines and for four, whole for four, and not for fewer', () => {
+            const cleared = (lines, detail = { clearedRows: [23] }) => {
+                const reactions = create();
+                reactions.onLineClear(lines, detail);
+                return emittersOf(reactions.frame, 'swarm');
+            };
+            expect(cleared(1)).toEqual([]);
+            expect(cleared(2)).toEqual([]);
+            expect(cleared(3)).toHaveLength(1);
+            expect(cleared(3)[0]).toMatchObject({
+                strength: 0.8, lines: 3, duration: 3.4, age: 0,
+            });
+            expect(cleared(4)).toHaveLength(1);
+            expect(cleared(4)[0]).toMatchObject({
+                strength: 1, lines: 4, duration: 3.4, age: 0,
+            });
+            // A later wave of a cascade is one line: a wave, not a swarm.
+            expect(cleared(1, { clearedRows: [23], cascadeCount: 3 })).toEqual([]);
+            expect(cleared(3, { clearedRows: [23], cascadeCount: 3 })).toHaveLength(1);
+            // The far-shore wave it replaced is gone.
+            const reactions = create();
+            reactions.onLineClear(4);
+            expect(emittersOf(reactions.frame, 'shore')).toEqual([]);
+        });
+
+        it('plays its whole life when nothing presses on the pool', () => {
+            const reactions = create('Minimal');
+            reactions.onLineClear(3, { clearedRows: [23] });
+            const [{ serial }] = emittersOf(reactions.frame, 'swarm');
+            let frames = 0;
+            let last = 0;
+            for (;;) {
+                const frame = reactions.update(1 / 60);
+                const live = frame.emitters.find((emitter) => emitter.serial === serial);
+                if (!live) break;
+                expect(live.age).toBeGreaterThan(last);
+                last = live.age;
+                frames += 1;
+            }
+            expect(frames / 60).toBeGreaterThan(3.4 - 2 / 60);
+            expect(frames / 60).toBeLessThan(3.4 + 2 / 60);
+        });
+
+        // FAULT: sakura-reactions.js WORK_SECONDS (line 102) has no entry for 'swarm', so emit()
+        // (lines 326-330) counts a swarm that has been seen for one frame as having no work left —
+        // but its work is its whole 3.4 s (the petal director reads the fireflies' height from its
+        // age every frame). With the pool full it is given up before emitters that really are
+        // spent (a lock 0.3 s old only lingers), and `env.swarm` falls from its height to nothing
+        // in one frame: the cloud of fireflies snaps back onto the grass. In ten-minute scripted
+        // sessions of fast play (a lock every 0.4-0.7 s, half of them clearing) this cut 40 of 545
+        // swarms at Minimal, 19 at High and 3 at Extreme; steady play never fills the pool.
+        // Reproduce: below — three lines, 1.7 s, then locks until the pool is full of spent ones.
+        it.fails('is not given up at its height while emitters that have done their work are there to take', () => {
+            const reactions = create('Minimal');
+            reactions.onLineClear(3, { clearedRows: [23] });
+            const [{ serial }] = emittersOf(reactions.frame, 'swarm');
+            advance(reactions, 1.7);
+            // The cloud is at its height; the clear's own emitters are all but over.
+            for (let lock = 0; lock < 19; lock += 1) reactions.onPieceLock({ piece: cell(lock % 10, 22) });
+            advance(reactions, 0.3);
+            for (let lock = 0; lock < 2; lock += 1) reactions.onPieceLock({ piece: cell(lock, 22) });
+            expect(reactions.getFrame().emitters).toHaveLength(reactions.maxEmitters);
+            // Nineteen of them are locks that threw their petals 0.3 s ago (their window is 0.28 s).
+            reactions.onPieceLock({ piece: cell(4, 22) });
+            const live = reactions.getFrame().emitters.find((emitter) => emitter.serial === serial);
+            expect(live, 'the swarm, 2 s into its 3.4 s').toBeTruthy();
+        });
+    });
+
+    describe('the gate', () => {
+        it('wakes once for a back-to-back, taller for every one in a row', () => {
+            const reactions = create();
+            reactions.onBackToBack();
+            const [first] = emittersOf(reactions.frame, 'gate');
+            expect(first).toMatchObject({ duration: 1.2, age: 0, lines: 0 });
+            expect(first.strength).toBeGreaterThanOrEqual(0.4);
+            expect(first.strength).toBeLessThanOrEqual(1);
+            const strengths = [first.strength];
+            for (let row = 0; row < 5; row += 1) {
+                advance(reactions, 0.9);
+                reactions.onBackToBack();
+                strengths.push(emittersOf(reactions.frame, 'gate').at(-1).strength);
+            }
+            // Taller for each until the gate stands whole (there the swell rides its ceiling: the
+            // odd one is a hair under the last).
+            for (let index = 1; index < strengths.length; index += 1) {
+                expect(strengths[index]).toBeGreaterThanOrEqual(strengths[index - 1] - 1e-3);
+            }
+            expect(strengths[1]).toBeGreaterThan(strengths[0] + 0.1);
+            expect(strengths.at(-1)).toBeGreaterThan(0.95);
+            expect(strengths.at(-1)).toBeLessThanOrEqual(1);
+            expectBounded(reactions.frame, reactions.maxEmitters);
+        });
+
+        it('is as strong as the corona will stand a quarter second on', () => {
+            const reactions = create();
+            reactions.onBackToBack();
+            advance(reactions, 1.5);
+            reactions.onBackToBack();
+            const gate = emittersOf(reactions.frame, 'gate').at(-1);
+            const soon = advance(reactions, 0.25).corona;
+            expect(gate.strength).toBeCloseTo(Math.max(0.4, Math.min(1, soon / 1.6)), 6);
+        });
+
+        it('looks ahead without disturbing the present: the corona still rises from where it was', () => {
+            const reactions = create();
+            expect(reactions.frame.corona).toBe(0);
+            reactions.onBackToBack();
+            // The light has not happened yet on the frame of the event.
+            expect(reactions.frame.corona).toBe(0);
+            let last = 0;
+            let steepest = 0;
+            let peak = 0;
+            for (let frame = 0; frame < 60 * 12; frame += 1) {
+                const { corona } = reactions.update(1 / 60);
+                expect(corona).toBeGreaterThanOrEqual(0);
+                expect(corona).toBeLessThanOrEqual(1.6);
+                steepest = Math.max(steepest, Math.abs(corona - last));
+                peak = Math.max(peak, corona);
+                last = corona;
+            }
+            expect(peak).toBeGreaterThan(0.9);
+            // (It opens in a quarter second: a tenth of the way a frame at its quickest.)
+            expect(steepest).toBeLessThan(0.1);
+            // Many in one frame (a capture's `combo=5`) are one tall gate, not a broken swell.
+            const many = create();
+            for (let row = 0; row < 5; row += 1) many.onBackToBack();
+            const gates = emittersOf(many.frame, 'gate');
+            expect(gates).toHaveLength(5);
+            expect(gates.at(-1).strength).toBeGreaterThanOrEqual(gates[0].strength);
+            const frames = [];
+            for (let frame = 0; frame < 120; frame += 1) frames.push(many.update(1 / 60).corona);
+            expect(Math.max(...frames)).toBeGreaterThan(1.2);
+            expect(Math.max(...frames)).toBeLessThanOrEqual(1.6);
+            // It opens from nothing (five at once open it five times as fast, under the same ceiling)
+            // and closes once: one rise, one fall.
+            expect(frames[0]).toBeLessThan(0.3);
+            const widest = frames.indexOf(Math.max(...frames));
+            for (let index = 1; index < frames.length; index += 1) {
+                if (index <= widest) expect(frames[index]).toBeGreaterThanOrEqual(frames[index - 1]);
+                else expect(frames[index]).toBeLessThanOrEqual(frames[index - 1]);
+            }
+        });
+    });
+
+    describe('the star fox', () => {
+        it('comes down once for every perfect clear, and is the first thing the crown asks for', () => {
+            const reactions = create();
+            reactions.onPerfectClear();
+            const [spirit] = emittersOf(reactions.frame, 'spirit');
+            expect(emittersOf(reactions.frame, 'spirit')).toHaveLength(1);
+            expect(spirit).toMatchObject({
+                strength: 1, duration: 2.6, age: 0, serial: 0,
+            });
+            advance(reactions, 3);
+            reactions.onPerfectClear();
+            expect(emittersOf(reactions.frame, 'spirit')).toHaveLength(1);
+            expect(emittersOf(reactions.frame, 'spirit')[0].serial).toBeGreaterThan(spirit.serial);
+            // Two in one frame are two emitters (the garden flies one at a time: sakura-showpieces.js).
+            const twice = create();
+            twice.onPerfectClear();
+            twice.onPerfectClear();
+            expect(emittersOf(twice.frame, 'spirit')).toHaveLength(2);
+        });
+
+        it('draws the whole sky and leaves the foxfire to the combo', () => {
+            const reactions = create();
+            reactions.onPerfectClear();
+            // The whole sky, the Fox with it: that is where the spirit leaves from.
+            expect(reactions.constellationTarget).toBe(1);
+            expect(reactions.foxfireTarget).toBe(0);
+            // A combo's flames are neither put out nor topped up by the crown.
+            const combo = create();
+            combo.onCombo(6);
+            const lit = combo.foxfireTarget;
+            expect(lit).toBe(5);
+            combo.onPerfectClear();
+            expect(combo.foxfireTarget).toBe(lit);
+            const flames = advance(combo, 1.5).foxfire;
+            expect(flames).toBeGreaterThan(4);
+            expect(flames).toBeLessThan(SAKURA_MAX_FOXFIRE - 2);
+            // Alone, the crown's own heat kindles a few flames at most.
+            const peak = { foxfire: 0 };
+            for (let frame = 0; frame < 60 * 8; frame += 1) {
+                peak.foxfire = Math.max(peak.foxfire, reactions.update(1 / 60).foxfire);
+            }
+            expect(peak.foxfire).toBeLessThan(SAKURA_MAX_FOXFIRE / 2);
+            expect(advance(reactions, 0).constellation).toBeGreaterThan(0.5);
+        });
+    });
+
+    describe('the blizzard', () => {
+        const trace = (reactions, seconds) => {
+            const values = [];
+            for (let frame = 0; frame < seconds * 60; frame += 1) values.push(reactions.update(1 / 60).blizzard);
+            return values;
+        };
+        const steepest = (values, from = 0) => values.reduce((most, value, index) => (
+            Math.max(most, Math.abs(value - (index ? values[index - 1] : from)))), 0);
+
+        it('is none at rest and for anything less than four lines', () => {
+            const reactions = create();
+            expect(reactions.frame.blizzard).toBe(0);
+            reactions.onHardDrop({ distance: 18 });
+            reactions.onPieceLock({ piece: cell(1, 20) });
+            for (const lines of [1, 2, 3]) reactions.onLineClear(lines, { clearedRows: [23] });
+            reactions.onCombo(12);
+            reactions.onTwist({ piece: cell(1, 20) });
+            reactions.onBackToBack();
+            reactions.onLevelUp();
+            expect(Math.max(...trace(reactions, 6))).toBe(0);
+        });
+
+        it('builds over half a second after four lines, never past whole, and is gone in half a minute', () => {
+            const reactions = create();
+            reactions.onLineClear(4, { clearedRows: [20, 21, 22, 23] });
+            // Not there on the frame of the clear: it gathers.
+            expect(reactions.frame.blizzard).toBe(0);
+            const values = trace(reactions, 60);
+            const peak = Math.max(...values);
+            const peakAt = values.indexOf(peak) / 60;
+            expect(peak).toBeGreaterThan(0.9);
+            expect(peak).toBeLessThanOrEqual(1);
+            expect(peakAt).toBeGreaterThan(0.5);
+            expect(peakAt).toBeLessThan(2.5);
+            // One rise and one long fall, a little a frame.
+            for (let index = 1; index < values.length; index += 1) {
+                if (index / 60 < peakAt) expect(values[index]).toBeGreaterThanOrEqual(values[index - 1]);
+                else if (index / 60 > peakAt + 1 / 60) expect(values[index]).toBeLessThanOrEqual(values[index - 1]);
+            }
+            expect(steepest(values)).toBeLessThan(0.06);
+            // Still most of a storm when the shower's own petals have stopped; gone, exactly, later.
+            expect(values[4 * 60]).toBeGreaterThan(0.4);
+            expect(values[30 * 60]).toBeLessThan(0.01);
+            expect(values.at(-1)).toBe(0);
+        });
+
+        it('answers a perfect clear with most of a storm, and adds a second quad to the first, never overfull', () => {
+            const perfect = create();
+            perfect.onPerfectClear();
+            const crown = Math.max(...trace(perfect, 10));
+            expect(crown).toBeGreaterThan(0.55);
+            expect(crown).toBeLessThan(0.8);
+            const single = create();
+            single.onLineClear(4);
+            const one = trace(single, 12);
+            const double = create();
+            double.onLineClear(4);
+            const first = trace(double, 3);
+            double.onLineClear(4);
+            const second = trace(double, 9);
+            const two = [...first, ...second];
+            for (let index = 0; index < two.length; index += 1) {
+                expect(two[index]).toBeGreaterThanOrEqual(one[index] - 1e-12);
+                expect(two[index]).toBeLessThanOrEqual(1);
+            }
+            // The second arrives on top of what is left of the first: no dip, no step.
+            expect(steepest(two)).toBeLessThan(0.06);
+            expect(two[6 * 60]).toBeGreaterThan(one[6 * 60] + 0.1);
+            // Everything at once is still at most a whole storm.
+            const all = create();
+            everything(all);
+            everything(all);
+            for (const value of trace(all, 10)) expect(value >= 0 && value <= 1).toBe(true);
+        });
+
+        it('thins out with the wind when the game ends instead of vanishing, and is gone once the hush settles', () => {
+            const reactions = create();
+            const twin = create();
+            for (const each of [reactions, twin]) {
+                each.onLineClear(4);
+                advance(each, 1.5);
+            }
+            const before = reactions.getFrame().blizzard;
+            expect(before).toBeGreaterThan(0.9);
+            reactions.onGameOver();
+            // The frame of the event itself reads what the frame before it read.
+            expect(reactions.getFrame().blizzard).toBe(before);
+            let last = before;
+            const values = [];
+            for (let frame = 0; frame < 60 * 8; frame += 1) {
+                const over = reactions.update(1 / 60);
+                const playing = twin.update(1 / 60);
+                // No step: a few percent a frame at the most, and always down.
+                expect(last - over.blizzard, `frame ${frame}`).toBeLessThan(0.03);
+                expect(over.blizzard).toBeLessThanOrEqual(last + 1e-12);
+                // It is the storm that would have been, under the hush that eases in.
+                expect(over.blizzard).toBeCloseTo(playing.blizzard * (1 - over.hush), 12);
+                expect(over.blizzard).toBeGreaterThanOrEqual(0);
+                values.push(over.blizzard);
+                last = over.blizzard;
+            }
+            // It takes a second or two to thin (half of it is still in the air after half a second)...
+            expect(values[30]).toBeGreaterThan(before * 0.5);
+            expect(values[3 * 60]).toBeLessThan(before * 0.12);
+            // ...and once the hush has settled there is next to none, while the storm itself, had the
+            // game gone on, would still be blowing.
+            expect(values.at(-1)).toBeLessThan(0.002);
+            expect(twin.getFrame().blizzard).toBeGreaterThan(0.15);
+        });
+
+        it('comes back without a step when play resumes under a storm still blowing', () => {
+            const reactions = create();
+            reactions.onLineClear(4);
+            advance(reactions, 1);
+            reactions.onGameOver();
+            advance(reactions, 3);
+            const hushed = reactions.getFrame().blizzard;
+            expect(hushed).toBeLessThan(0.1);
+            reactions.onPieceLock({ piece: cell(4, 22) });
+            expect(reactions.getFrame().blizzard).toBe(hushed);
+            const values = trace(reactions, 3);
+            expect(steepest(values, hushed)).toBeLessThan(0.06);
+            expect(Math.max(...values)).toBeGreaterThan(hushed + 0.15);
+        });
+
+        it('is not motion to calm here, and is forgotten by a reset', () => {
+            const full = create();
+            const calm = create();
+            calm.setMotion(0.35);
+            for (const each of [full, calm]) {
+                each.onLineClear(4);
+                advance(each, 1.2);
+            }
+            // (Reduce motion thins it where it is drawn: sakura-showpieces.js.)
+            expect(calm.frame.blizzard).toBe(full.frame.blizzard);
+            full.reset();
+            expect(full.frame.blizzard).toBe(0);
+            expect(advance(full, 2).blizzard).toBe(0);
+            full.onLineClear(4);
+            full.dispose();
+            expect(full.frame.blizzard).toBe(0);
+        });
+    });
+
+    describe('whatever it is handed', () => {
+        const JUNK = [
+            // Not a payload at all.
+            undefined, null, '', 'x', 0, 7, -7, 0.5, NaN, Infinity, -Infinity, 1e308, -1e308, Number.MAX_SAFE_INTEGER,
+            [], [1, 2], [[1]], {}, true, false, () => 4, 4n,
+            // An envelope with nothing, or nonsense, in it.
+            { detail: null }, { detail: 'x' }, { detail: { detail: {} } },
+            // Pieces.
+            { piece: 'x' }, { piece: [] }, { piece: { x: NaN, y: Infinity } },
+            { piece: { x: 1e308, y: 1e308, shape: [[1, 1], [1, 1]] } },
+            { piece: { x: -1e308, y: -1e308, shape: [[1]] } },
+            { piece: { x: 1, y: 2, shape: [[NaN, 'a', null, {}, [], 4n, Infinity, -1]] } },
+            { piece: { x: 1, y: 2, shape: { length: 3 } } },
+            { viewportOrigin: { x: 1e308, y: -1e308 } }, { viewportOrigin: [0.5, 0.5] },
+            // Drops.
+            { distance: 1e308 }, { distance: -1e308 }, { distance: '16' }, { distance: [] },
+            { startY: [], endY: [18] }, { startY: '3', endY: '19' }, { startY: -1e308, endY: 1e308 },
+            // Clears and combos.
+            { clearedRows: [1e308, 1e308] }, { clearedRows: [NaN, Infinity, -Infinity] },
+            { clearedRows: { 0: 5, length: 1 } }, { cascadeCount: 1e308 }, { cascadeCount: -3 },
+            { cascadeCount: 'deep' }, { lineCount: 1e308 }, { lineCount: [] }, { comboCount: 1e308 },
+            { count: Infinity }, { level: NaN },
+            {
+                lineCount: 4, clearedRows: 'all', piece: 7, viewportOrigin: 9,
+            },
+        ];
+        const HANDLERS = ['onHardDrop', 'onPieceLock', 'onLineClear', 'onCombo', 'onTwist', 'onBackToBack',
+            'onPerfectClear', 'onLevelUp', 'onGameOver'];
+
+        it.each(HANDLERS)('%s takes nonsense without throwing, and the frame stays finite and in range', (handler) => {
+            const problems = [];
+            JUNK.forEach((value, index) => {
+                const reactions = create('Minimal', 3);
+                const label = `${handler}(junk #${index})`;
+                try {
+                    reactions[handler](value);
+                    reactions[handler](value, value);
+                    reactions[handler](4, value);
+                    reactions[handler]({ detail: value });
+                    // The lock that follows a hard drop of nonsense, and the frames after.
+                    reactions.onPieceLock(value);
+                    for (const frame of [reactions.getFrame(), reactions.update(1 / 60), advance(reactions, 0.5)]) {
+                        [...nonFinite(frame), ...frameProblems(frame, reactions.maxEmitters)]
+                            .forEach((found) => problems.push(`${label}: ${found}`));
+                    }
+                } catch (error) {
+                    problems.push(`${label} threw ${error?.message}`);
+                }
+            });
+            expect(problems).toEqual([]);
+        });
+
+        it('takes all of it at once, again and again, and comes back to rest', () => {
+            const reactions = create('Low', 9);
+            const problems = [];
+            for (let round = 0; round < 3; round += 1) {
+                for (const value of JUNK) {
+                    for (const handler of HANDLERS) {
+                        if (handler !== 'onGameOver') reactions[handler](value, value);
+                    }
+                    reactions.setMotion(value);
+                    const frame = reactions.update(1 / 60);
+                    nonFinite(frame).forEach((found) => problems.push(found));
+                    frameProblems(frame, reactions.maxEmitters).forEach((found) => problems.push(found));
+                }
+            }
+            expect(problems).toEqual([]);
+            reactions.setMotion(1);
+            const rest = advance(reactions, 200);
+            expect(nonFinite(rest)).toEqual([]);
+            expect(rest.emitters).toEqual([]);
+            for (const key of [...ENVELOPES, 'vortex', 'heat', 'constellation', 'figures', 'foxfire', 'hush',
+                'blizzard', 'crown', 'corona', 'sway', 'punch', 'level', 'fever', 'stage']) {
+                expect(rest[key], key).toBe(0);
+            }
+        });
+
+        it('takes a step of any length: a long frame is taken whole and leaves every number finite', () => {
+            for (const dt of [1e-9, 0.5, 30, 3600, 1e6, 1e12, 1e100]) {
+                const reactions = create('Minimal', 5);
+                everything(reactions);
+                reactions.update(1 / 60);
+                everything(reactions);
+                const frame = reactions.update(dt);
+                expect(nonFinite(frame), `dt ${dt}`).toEqual([]);
+                expect(frameProblems(frame, reactions.maxEmitters), `dt ${dt}`).toEqual([]);
+                expect(Number.isFinite(reactions.time)).toBe(true);
+                // And play goes on from there.
+                everything(reactions);
+                expect(nonFinite(advance(reactions, 1)), `after dt ${dt}`).toEqual([]);
+            }
+        });
+
+        // FAULT (it was there before this rework): sakura-reactions.js update(), the boughs' spring
+        // (`this.sway = target + (c1 + c2 * dt) * decay`, about line 698). For a step near the
+        // largest number a double holds, `c2 * dt` overflows to Infinity while `decay` has
+        // underflowed to 0, and Infinity x 0 is NaN: `frame.sway` is NaN from then on (only reset()
+        // clears it). The theme clamps a frame to 0.05 s, so play never reaches it. Reproduce:
+        // reactions.onLineClear(4); reactions.update(1 / 60); reactions.update(1e308).sway is NaN.
+        it.fails('keeps the boughs\' sway a number after the longest step there is', () => {
+            const reactions = create();
+            reactions.onLineClear(4);
+            reactions.update(1 / 60);
+            expect(nonFinite(reactions.update(1e308))).toEqual([]);
+            expect(nonFinite(reactions.update(Number.MAX_VALUE))).toEqual([]);
+        });
+
+        it('reads Reduce motion as all of it, or the share it is given, never as nonsense', () => {
+            const reactions = create();
+            for (const [scale, motion] of [[0.35, 0.35], [0, 0], [1, 1], [7, 1], [-2, 0], [NaN, 1], [undefined, 1],
+                [null, 1], ['0.5', 1], [Infinity, 1], [{}, 1]]) {
+                reactions.setMotion(scale);
+                expect(reactions.frame.motion, String(scale)).toBe(motion);
+            }
+        });
+    });
+});
