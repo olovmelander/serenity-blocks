@@ -9,7 +9,7 @@
 import * as THREE from 'three/webgpu';
 import {
     Fn, atan, attribute, cameraPosition, color, dot, exp, float, instancedBufferAttribute, max, mix, normalWorld, normalize,
-    positionLocal, positionWorld, pow, saturate, sin, smoothstep, texture, uniform, uv, varying, vec2, vec3, vec4,
+    positionLocal, positionWorld, pow, saturate, sin, smoothstep, texture, uv, vec2, vec3, vec4,
 } from 'three/tsl';
 import { SAKURA_FUJI, SAKURA_VIEWS } from './sakura-composition.js';
 import { sakuraLand, sakuraTerrainHeight } from './sakura-terrain.js';
@@ -29,15 +29,6 @@ export class SakuraBackdrop {
         this.group.name = 'SakuraFarShore';
         this.owned = [];
         this.count = 0;
-        // The wave of lantern light three lines run along the far shore: world x, strength.
-        this.uShore = uniform(new THREE.Vector2(0, 0));
-    }
-
-    /** `shore` is { position: -1..1 across the far shore, strength: 0..1 } (or nothing). */
-    update(shore = null) {
-        const strength = Number.isFinite(shore?.strength) ? Math.max(0, Math.min(1, shore.strength)) : 0;
-        const position = Number.isFinite(shore?.position) ? shore.position : 0;
-        this.uShore.value.set(position * 330, strength);
     }
 
     own(resource) {
@@ -310,11 +301,7 @@ export class SakuraBackdrop {
         const petal = mix(color(0xffe9ef), color(0xf28fb0), tone);
         const albedo = mix(color(0x120c0e), petal, data.g).mul(data.r.mul(0.85).add(0.15));
         // Festival lanterns under some of the far trees warm their lower boughs.
-        // Three lines run a wave of lantern light along the shore: every tree it passes is lit
-        // from beneath for a moment, the ones with lanterns of their own the most.
-        const wave = varying(exp(positionWorld.x.sub(this.uShore.x).div(52).pow2().negate()).mul(this.uShore.y));
-        const underlit = light.uLampColor.mul(tile.w.add(wave.mul(tile.w.mul(1.6).add(1.3))))
-            .mul(smoothstep(0.05, 0.75, st.y).oneMinus())
+        const underlit = light.uLampColor.mul(tile.w).mul(smoothstep(0.05, 0.75, st.y).oneMinus())
             .mul(light.uLampGain).mul(0.16);
         const lit = albedo.mul(light.uMoonColor).mul(light.moonlight()).mul(0.42)
             .add(albedo.mul(light.ambient(vec3(0, 0.6, 0.8))).mul(2.3))

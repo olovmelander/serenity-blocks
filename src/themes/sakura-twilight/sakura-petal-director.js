@@ -70,10 +70,10 @@ export class SakuraPetalDirector {
          * air, so the storm reads as petals and not as one pink glow.
          */
         this.glow = 1;
-        /** The wave of lantern light running along the far shore: where (-1..1) and how bright. */
-        this.shore = { position: 0, strength: 0 };
+        /** How far the fireflies have risen for three lines (0 on the grass .. 1). */
+        this.swarm = 0;
         this.env = {
-            windX: 1, windZ: 0, breeze: 0, gust: 0, front: null, fronts: [], fields: this.fields, fall: 1, shore: this.shore,
+            windX: 1, windZ: 0, breeze: 0, gust: 0, front: null, fronts: [], fields: this.fields, fall: 1, swarm: 0,
         };
         /** The light the last rings left on the lake (it falls away over a second or so). */
         this.ringLoad = 0;
@@ -408,18 +408,16 @@ export class SakuraPetalDirector {
             else if (emitter.kind === 'lanterns' && fresh) this.lanterns(emitter);
             else if (emitter.kind === 'festival' && fresh) this.festival(emitter);
         }
-        // The wave along the far shore: the brightest of those still running, where it has got to.
-        this.shore.strength = 0;
+        // The fireflies' rise: the highest of those still playing (each eases up and sinks back).
+        let swarm = 0;
         for (let i = 0; i < emitters.length; i += 1) {
             const emitter = emitters[i];
-            if (emitter.kind !== 'shore') continue;
+            if (emitter.kind !== 'swarm') continue;
             const run = Math.max(0, Math.min(1, emitter.age / emitter.duration));
-            const strength = emitter.strength * Math.sin(Math.PI * Math.min(1, run * 1.08));
-            if (strength > this.shore.strength) {
-                this.shore.strength = strength;
-                this.shore.position = run * 2.4 - 1.2;
-            }
+            swarm = Math.max(swarm, emitter.strength * Math.sin(Math.PI * run) ** 0.7);
         }
+        this.swarm = swarm;
+        this.env.swarm = swarm;
         const vortex = Number.isFinite(frame.vortex) ? Math.max(0, Math.min(1, frame.vortex)) : 0;
         // Reduce motion: the stream turns slower (frame.motion, SakuraReactions.setMotion).
         const motion = Number.isFinite(frame.motion) ? Math.max(0, Math.min(1, frame.motion)) : 1;
