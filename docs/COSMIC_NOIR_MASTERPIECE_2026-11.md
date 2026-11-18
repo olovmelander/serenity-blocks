@@ -166,14 +166,14 @@ fleet bench, an integrated GPU, a phone.
 
 ### Traps found (also in the skill's gotcha files)
 
-- **Dots along every crest** once the sea was a mirror: the walk extrapolated near-misses. #1314.
-- **A floating rock**: the sea was never walked in front of a pixel the rock covers. #1315.
-- **No white water from a low eye**: foam on the sea at the shore is two pixels tall. #1316.
-- **A lock that does not read** on mirror water: draw rings of light, finer than their swell. #1317.
+- **Dots along every crest** once the sea was a mirror: the walk extrapolated near-misses. #1315.
+- **A floating rock**: the sea was never walked in front of a pixel the rock covers. #1316.
+- **No white water from a low eye**: foam on the sea at the shore is two pixels tall. #1317.
+- **A lock that does not read** on mirror water: draw rings of light, finer than their swell. #1318.
 - **A rock as drapery, then as brickwork**: shape it on the CPU with real noise and bake it. #1609.
-- **A burst as fingers, a cumulus, popcorn**: two kinds of billow in one quad. #1745.
-- **Weather that snaps in**, and a seek that no longer matches: brew slowly, keep clocks free of it. #1746.
-- **Lightning that must not strobe.** #1424.
+- **A burst as fingers, a cumulus, popcorn**: two kinds of billow in one quad. #1747.
+- **Weather that snaps in**, and a seek that no longer matches: brew slowly, keep clocks free of it. #1748.
+- **Lightning that must not strobe.** #1426.
 
 ## 8. Files and evidence
 

@@ -14,6 +14,7 @@ import {
     Fn,
     attribute,
     cos,
+    mod,
     positionWorld,
     sin,
     clamp,
@@ -28,6 +29,7 @@ import {
     smoothstep,
     sqrt,
     uniformArray,
+    varying,
     vec2,
     vec3,
     vec4,
@@ -41,6 +43,13 @@ import { skyColour } from './spring-light.js';
 const BILLOWS = 26;
 /** The soft union's width (in bank widths): billows flow into each other instead of creasing. */
 const SOFT = 0.018;
+/**
+ * The heaps drift round the horizon on the wind (`u.bankTurn`, radians): a bank that has drifted
+ * `wrap` / 2 degrees round from the view axis comes back in from the other side, far out of any
+ * lens. `boil` is how fast their outlines billow (lattice cells a second), `rake` how far a low sun
+ * moves each billow's line between light and shade toward its sunward side.
+ */
+export const BANK_LIFE = Object.freeze({ wrap: 210, boil: 0.03, rake: 0.34 });
 
 /** The banks: bearing (degrees right of the view axis), distance, base height, width, height. */
 export function cumulusBanks(count = 9, seed = 0x5c0b) {
@@ -106,6 +115,8 @@ export function createCumulus(u, t, tier, count = 9) {
     const positions = [];
     const uvs = [];
     const cards = [];
+    const homes = [];
+    const corner = [];
     const index = [];
     banks.forEach((bank, b) => {
         const a = bank.bearing * DEG;
@@ -124,6 +135,8 @@ export function createCumulus(u, t, tier, count = 9) {
             positions.push(cx + rx * w * sx, bank.base + h * sy, cz + rz * w * sx);
             uvs.push(sx + 0.5, sy);
             cards.push(b, w, h, bank.seed);
+            homes.push(a, bank.distance, bank.base);
+            corner.push(sx, sy);
         }
         index.push(base, base + 2, base + 1, base, base + 3, base + 2);
     });
@@ -131,6 +144,8 @@ export function createCumulus(u, t, tier, count = 9) {
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
     geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
     geometry.setAttribute('aCard', new THREE.Float32BufferAttribute(cards, 4));
+    geometry.setAttribute('aHome', new THREE.Float32BufferAttribute(homes, 3));
+    geometry.setAttribute('aCorner', new THREE.Float32BufferAttribute(corner, 2));
     geometry.setIndex(index);
     geometry.computeBoundingSphere();
 
@@ -143,6 +158,24 @@ export function createCumulus(u, t, tier, count = 9) {
     material.fog = false;
     const card = attribute('aCard', 'vec4');
     const st = attribute('uv', 'vec2');
+    // Where the bank stands now: its home bearing drifted round the horizon, wrapped far outside
+    // the lens; its card faces the eye there, and stands as tall as the weather builds it.
+    const vBearing = varying(float(0.0), 'spBankBearing');
+    material.positionNode = Fn(() => {
+        const home = attribute('aHome', 'vec3');
+        const at = attribute('aCorner', 'vec2');
+        const wrap = BANK_LIFE.wrap * DEG;
+        const bearing = mod(home.x.add(u.bankTurn).add(wrap / 2), wrap).sub(wrap / 2).toVar();
+        vBearing.assign(bearing);
+        const sb = sin(bearing);
+        const cb = cos(bearing);
+        const across = card.y.mul(at.x);
+        return vec3(
+            sb.mul(home.y).add(cb.mul(across)).add(EYE.x),
+            home.z.add(card.z.mul(at.y).mul(u.sky.w)),
+            sb.mul(across).sub(cb.mul(home.y)).add(EYE.z),
+        );
+    })();
     material.colorNode = Fn(() => {
         const id = int(floor(card.x.add(0.5)));
         const w = card.y;
@@ -174,7 +207,7 @@ export function createCumulus(u, t, tier, count = 9) {
         // Flat base: the heap is cut a little above its row's centres.
         const floorCut = smoothstep(0.035, 0.07, p.y);
         // Edges eroded by three octaves of the lattice (billowing, drifting slowly).
-        const q = vec3(p.mul(16.0), card.w.mul(37.0).add(u.time.mul(0.012)));
+        const q = vec3(p.mul(16.0), card.w.mul(37.0).add(u.time.mul(BANK_LIFE.boil)));
         const n = noise3(t.lattice, q);
         const n2 = noise3(t.lattice, q.mul(2.7).add(5.3));
         const n3 = noise3(t.lattice, q.mul(7.1).add(11.9));
@@ -194,7 +227,7 @@ export function createCumulus(u, t, tier, count = 9) {
         const ny2 = noise3(t.lattice, q.mul(2.7).add(vec3(5.3, 5.6, 5.3))).y.sub(n2.y);
         nrm.assign(normalize(nrm.add(vec3(nx, ny, 0.0).mul(-1.5)).add(vec3(nx2, ny2, 0.0).mul(-0.9))));
         // Lighting in the bank's frame: right, up, and out toward the eye.
-        const bearing = billows.element(id.mul(BILLOWS)).w;
+        const bearing = vBearing;
         const right = vec3(cos(bearing), 0.0, sin(bearing));
         const out = vec3(sin(bearing).negate(), 0.0, cos(bearing));
         const sunCard = vec3(dot(u.sunDir, right), u.sunDir.y, dot(u.sunDir, out));
@@ -211,11 +244,20 @@ export function createCumulus(u, t, tier, count = 9) {
         const lit = u.cloudLit.mul(lambert).mul(u.day.mul(0.85).add(0.15));
         // The crowns catch the most light (they stand in the sun above the others' shadow).
         const crown = smoothstep(0.35, 1.0, height).mul(0.35).add(0.8);
-        const body = mix(shade, lit.mul(crown), smoothstep(0.18, 0.92, lambert)).toVar();
+        // (Under a low sun the light rakes the heaps: more of each billow stands in its own shade,
+        // so a bank keeps its form instead of glowing as one pink disc.)
+        const raked = u.sky2.w.mul(BANK_LIFE.rake);
+        const body = mix(
+            shade,
+            lit.mul(crown).mul(float(1.0).sub(raked.mul(0.4))),
+            smoothstep(raked.add(0.18), 0.92, lambert),
+        ).toVar();
         // Silver lining: thin edges glow when the sun stands behind the bank.
         const behind = clamp(sunCard.z.negate(), 0.0, 1.0);
         const thin = exp(top.mul(-28.0));
         body.addAssign(u.glow.mul(thin).mul(behind).mul(1.6));
+        // A great clear's crown flushes the heaps with the hour's glow, their crowns the most.
+        body.addAssign(u.glow.mul(u.sky2.y.mul(crown.sub(0.5)).mul(0.5)));
         // The air: tens of kilometres of it, taking the sky's own colour along this line.
         const along = normalize(positionWorld.sub(u.eye));
         const air = skyColour(u, along, { withSun: false });
