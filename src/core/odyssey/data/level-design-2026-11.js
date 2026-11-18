@@ -628,7 +628,15 @@ export const ODYSSEY_LEVEL_DESIGN_2026_11 = deepFreeze({
         mechanics: {
             versus: {
                 botDifficulty: 5,
-                botJudgment: { previewChance: 0.54 },
+                botJudgment: {
+                    previewChance: 0.60,
+                    digPreviewChance: 0.79,
+                    pressAtRows: 8,
+                    variation: {
+                        chance: 0.2,
+                        judgment: { previewChance: 0.70, digPreviewChance: 0.84, pressAtRows: 14 },
+                    },
+                },
                 botOverrides: { maxApm: 300, reactionMs: [180, 340] },
             },
         },
@@ -734,7 +742,11 @@ export const ODYSSEY_LEVEL_DESIGN_2026_11 = deepFreeze({
         mechanics: {
             versus: {
                 botDifficulty: 5,
-                botJudgment: { previewChance: 0.775 },
+                botJudgment: {
+                    previewChance: 0.76,
+                    digPreviewChance: 1,
+                    variation: { chance: 0.35, judgment: { pressAtRows: 2 } },
+                },
                 botOverrides: { maxApm: 330, reactionMs: [160, 320] },
             },
         },
@@ -807,7 +819,7 @@ export const ODYSSEY_LEVEL_DESIGN_2026_11 = deepFreeze({
         mechanics: {
             versus: {
                 botDifficulty: 6,
-                botJudgment: { twoPreviewChance: 0.36 },
+                botJudgment: { twoPreviewChance: 0.52 },
                 botOverrides: { maxApm: 340, reactionMs: [150, 300] },
             },
         },

@@ -15,7 +15,7 @@ function deferred() {
     return { promise, resolve, reject };
 }
 
-function createMatch(authoredLevel = null) {
+function createMatch(authoredLevel = null, seed = 1234) {
     const levelConfig = authoredLevel ?? {
         id: 4,
         name: 'Chapter challenger',
@@ -37,7 +37,7 @@ function createMatch(authoredLevel = null) {
     hybridEngine.configure(levelConfig);
     const session = { levelConfig, hybridEngine, gameState: hybridEngine.createGameState() };
     const onRoundStart = vi.fn();
-    const match = new OdysseyBotMatch(session, { seed: 1234, isActive: () => !session.retired, onRoundStart });
+    const match = new OdysseyBotMatch(session, { seed, isActive: () => !session.retired, onRoundStart });
     session.duel = match;
     fillBag(session.gameState.nextPieces, session.gameState.randomGenerator);
     spawnPiece(session.gameState);
@@ -70,6 +70,21 @@ describe('Odyssey beat-the-bot match', () => {
     });
     afterEach(() => { vi.restoreAllMocks(); });
 
+    it.each([[15001, 2], [1001, undefined]])(
+        'keeps Prism’s seeded pressure judgment across rounds on %i',
+        async (seed, threshold) => {
+            const { match } = createMatch(getLevelById(56), seed);
+            const style = match.bot.judgment;
+            expect(style.pressAtRows).toBe(threshold);
+            expect(style.digPreviewChance).toBe(1);
+            await resolveDeath(match, 1, 0);
+            nextRound(match);
+            expect(match.round).toBe(2);
+            expect(match.bot.judgment).toEqual(style);
+            match.stop();
+        },
+    );
+
     it('replays the rival score and drops across display rates and different wall-clock origins', () => {
         const play = (hz, origin) => {
             const { match } = createMatch(getLevelById(60));
@@ -80,10 +95,12 @@ describe('Odyssey beat-the-bot match', () => {
             match.bot.update = (delta, time) => {
                 update(delta, time);
                 tick++;
-                if (tick % 60 === 0) result.push(match.players.map((p) => [
-                    p.score, p.piecesPlaced, p.lines, p.currentPiece?.x, p.currentPiece?.y, p.dropCounter,
-                    p.boardGrid.map((row) => row.map((c) => c?.type || '.').join('')).join('/'),
-                ]));
+                if (tick % 60 === 0) {
+                    result.push(match.players.map((p) => [
+                        p.score, p.piecesPlaced, p.lines, p.currentPiece?.x, p.currentPiece?.y, p.dropCounter,
+                        p.boardGrid.map((row) => row.map((c) => c?.type || '.').join('')).join('/'),
+                    ]));
+                }
             };
             let elapsed = 0;
             for (let frame = 0; elapsed < 30000 - 1e-6; frame++) {

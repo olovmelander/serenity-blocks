@@ -10,6 +10,13 @@ import { bindLegacySessionRng } from '../session-rng.js';
 import { seededRandom } from '../../utils/helpers.js';
 import { fenceOdysseyPhysicsCallbacks } from './odyssey-level-session.js';
 
+function rivalJudgment(config, seed) {
+    if (!config?.variation) return config;
+    const { variation, ...ordinary } = config;
+    const draw = seededRandom((seed ^ 0x27d4eb2d) >>> 0)();
+    return draw < variation.chance ? { ...ordinary, ...variation.judgment } : ordinary;
+}
+
 /** A two-board match driven by Odyssey's existing FrameRateController. No DOM or timer ownership. */
 export class OdysseyBotMatch {
     constructor(session, {
@@ -62,7 +69,8 @@ export class OdysseyBotMatch {
             playerIndex: 1,
             playerState: bot,
             difficulty: this.difficulty,
-            judgment,
+            // A rival can keep one playing style for the entire frag race.
+            judgment: rivalJudgment(judgment, seed),
             // The rival's pace caps (level design audit 2026-11, R8): smarter each chapter, never faster
             // than a strong person.
             configOverrides: session.levelConfig.mechanics.versus.botOverrides || null,

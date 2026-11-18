@@ -11,7 +11,16 @@ const DUEL_IDS = [5, 10, 18, 26, 34, 48, 56, 60];
 const DUEL_NAMES = ['Cinder', 'Coral', 'Willow', 'Frost', 'Zephyr', 'Nova', 'Prism', 'Neon'];
 // The gravity-bot remap preserves the D8 windows and the regular and strong human-pace panels.
 const RIVAL_TIERS = [1, 2, 2, 4, 4, 5, 5, 6];
-const RIVAL_JUDGMENT = { 48: { previewChance: 0.54 }, 56: { previewChance: 0.775 }, 60: { twoPreviewChance: 0.36 } };
+const RIVAL_JUDGMENT = {
+    48: {
+        previewChance: 0.60,
+        digPreviewChance: 0.79,
+        pressAtRows: 8,
+        variation: { chance: 0.2, judgment: { previewChance: 0.70, digPreviewChance: 0.84, pressAtRows: 14 } },
+    },
+    56: { previewChance: 0.76, digPreviewChance: 1, variation: { chance: 0.35, judgment: { pressAtRows: 2 } } },
+    60: { twoPreviewChance: 0.52 },
+};
 const RIVAL_CAPS = [
     { maxApm: 90, reactionMs: [500, 900] }, { maxApm: 120, reactionMs: [420, 760] },
     { maxApm: 165, reactionMs: [320, 620] }, { maxApm: 230, reactionMs: [240, 480] },
