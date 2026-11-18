@@ -2607,10 +2607,10 @@ export function createStoneMaterial({
 
 /** A material for the far isles (the archipelago, the Far Gate): stone shading, more air. */
 export function createFarStoneMaterial({
-    U, tex, reach = 4200, grounded = false,
+    U, tex, reach = 4200, grounded = false, course = 0,
 }) {
     return createStoneMaterial({
-        U, tex, reach, far: true, grounded,
+        U, tex, reach, far: true, grounded, course,
     });
 }
 
@@ -2969,8 +2969,9 @@ export function* createIslesSteps({
     });
     const farMaterial = createFarStoneMaterial({ U, tex, reach: 5200 });
     // The Far Gate is all but the air itself: a colossus a few shades off the sky behind it.
+    // (Laid in colossal courses, a few pixels tall from here: the scale of its builders.)
     const gateMaterial = createFarStoneMaterial({
-        U, tex, reach: 4800, grounded: true,
+        U, tex, reach: 4800, grounded: true, course: 58,
     });
     yield* slice('materials');
     const cornerL = buildParapet(true);

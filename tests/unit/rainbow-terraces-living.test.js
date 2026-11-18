@@ -516,6 +516,18 @@ describe('Rainbow Terraces living: the dusk of a run\'s end, and the next run\'s
         expect(world.dusk).toBeCloseTo(1, 5);
     });
 
+    it('takes the first piece of an unannounced run as its dawn: no run is ever played in the dusk', () => {
+        const { world, camera } = makeWorld('Low', { happenings: false });
+        world.onGameOver();
+        world.resetSession();
+        run(world, camera, DUSK.fall + 2);
+        expect(world.dusk).toBeCloseTo(1, 5);
+        lock(world);
+        expect(world.ended).toBe(false);
+        run(world, camera, DUSK.rise + 1);
+        expect(world.dusk).toBe(0);
+    });
+
     it('a second game over while the dusk stands does not toll again', () => {
         const { world, camera } = makeWorld('Low', { happenings: false });
         world.onGameOver();

@@ -1871,6 +1871,9 @@ export class RainbowTerracesWorld {
 
     onLock(c) {
         if (!c) return;
+        // A piece locking while the dusk stands means a run is on that no one announced (a restart
+        // that starts no mode): it is that run's dawn.
+        if (this.ended) this.onSessionStart();
         const rgb = pieceLight(c.color || '#ffffff', 0.35, [0, 0, 0]);
         this.lastLock.set(c.player ?? 0, { rgb: rgb.slice(), shape: c.shape ?? null });
         this.surge.lock(c, this.time);
@@ -2787,7 +2790,8 @@ export class RainbowTerracesWorld {
             const level = Math.hypot(A[0], A[2]) || 1;
             U.termLine.value.set(A[0] / level, A[2] / level, h.scalar.termRise ?? 0, (h.scalar.termY ?? 0) * 1000);
         }
-        this.showerHour = (h.scalar.shower ?? 0.85) * air.shower * (1 + 0.25 * veil);
+        // (Never more storm than the shaders were tuned for: the heat of play adds to this.)
+        this.showerHour = Math.min(1.25, (h.scalar.shower ?? 0.85) * air.shower * (1 + 0.25 * veil));
         U.showerAmt.value = this.showerHour * (this.showerScale ?? 1);
         // The storm wall walks along the horizon with the air (its crown, the tower, keeps its place:
         // a few degrees of the wall's dark heart come out from behind it and go in again).
@@ -3811,7 +3815,7 @@ export class RainbowTerracesWorld {
         U.bowSat.value *= 1 + 0.05 * warm + 0.1 * fever;
         U.bowRest.value = Math.min(0.92, U.bowRest.value + 0.08 * warm + 0.12 * hot + 0.3 * fever);
         U.fogbow.value += 0.01 * hot + 0.02 * fever;
-        U.showerAmt.value *= 1 + 0.15 * hot + 0.3 * fever;
+        U.showerAmt.value = Math.min(1.45, U.showerAmt.value * (1 + 0.15 * hot + 0.3 * fever));
         // Storm light: the sun on the stone, the cloud and the white water dims a little as the
         // heat rises, so the light the play makes (the bow, the dye, the jewels) burns against it.
         U.keyGain.value *= 1 - 0.06 * hot - 0.1 * fever;
