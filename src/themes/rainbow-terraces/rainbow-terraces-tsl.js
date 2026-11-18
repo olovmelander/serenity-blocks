@@ -322,6 +322,22 @@ export function windOffset(U, share) {
     return vec2(WIND[0], WIND[1]).mul(U.mistClock.mul(TUNE.wind * share)).negate();
 }
 
+/** Metres one tile of the cloud shadows' field spans, and their share of the wind (they cross an isle in half a minute). */
+export const CLOUD_SHADE = Object.freeze({ tile: 5600, share: 1.5 });
+
+/**
+ * The shadows of the clouds behind the eye, lying on the world ahead (the same clouds whose
+ * shadows stand in the air as the anticrepuscular rays): broad soft patches a kilometre or so
+ * across, carried on the sky's one wind over the isles, the falls and the cloud sea, so each
+ * stands now in the sun and now in shade. 0..1 at a world point's xz, scaled by the air's
+ * `cloudShadow` (a clear air casts almost none, the beams and the showers the most).
+ */
+export function cloudShadeAt(xz, U, tex) {
+    const at = xz.mul(1 / CLOUD_SHADE.tile).add(windOffset(U, CLOUD_SHADE.share).mul(1 / CLOUD_SHADE.tile)).add(vec2(0.23, 0.61));
+    const field = texture(tex.noise, at).r.mul(0.72).add(texture(tex.noise, at.mul(2.3).add(0.41)).b.mul(0.28));
+    return smoothstep(0.5, 0.66, field).mul(U.cloudShadow);
+}
+
 /** A ray's metres on a layer into the wind's frame: x along the wind, y across it. */
 function windFrame(P) {
     return vec2(dot(P, vec2(WIND[0], WIND[1])), dot(P, vec2(-WIND[1], WIND[0])));

@@ -20,7 +20,7 @@
  */
 import * as THREE from 'three/webgpu';
 import {
-    Fn, atan, attribute, cameraPosition, cameraProjectionMatrix, cameraViewMatrix, dot, exp, float, fract, length, max, mix,
+    Fn, atan, attribute, cameraPosition, cameraProjectionMatrix, cameraViewMatrix, cos, dot, exp, float, fract, length, max, min, mix,
     normalize, positionGeometry, pow, sin, smoothstep, sqrt, texture, varying, vec2, vec3, vec4,
 } from 'three/tsl';
 import { DEG, mulberry32 } from './rainbow-terraces-core.js';
@@ -287,12 +287,21 @@ export function createCumulus({ tier, U, tex }) {
         // A veil's heads drift slowly to and fro along the wind (never away: the frame is composed).
         const veil = smoothstep(2.5, 3.5, cloud.z);
         const sway = sin(U.mistClock.mul(0.004).add(tone.y)).mul(cloud.y.mul(0.9)).mul(veil);
-        const centre = puff.xyz.add(vec3(sway, 0.0, sway.mul(0.3)));
+        // The tower boils: every head swells and sinks back at its own slow pace and leans a little
+        // on the air, so the cloud is never the same shape for long (a head's turn takes about a
+        // minute; nothing travels, the frame stays composed). A veil rises and thickens with the mist.
+        const turn = U.mistClock.mul(tone.y.mul(0.0013).add(0.085)).add(tone.y.mul(6.283));
+        const heave = float(1.0).sub(veil);
+        const boil = sin(turn).mul(0.5).add(sin(turn.mul(0.37).add(1.7)).mul(0.5));
+        const lift = U.veilAmt.sub(1.0).mul(cloud.y).mul(0.45).mul(veil);
+        const centre = puff.xyz.add(vec3(sway, lift, sway.mul(0.3)))
+            .add(vec3(cos(turn.mul(0.61)).mul(0.05), boil.mul(0.07), 0.0).mul(puff.w).mul(heave));
+        const radius = puff.w.mul(boil.mul(0.085).mul(heave).add(1.0)).mul(U.veilAmt.sub(1.0).mul(0.22).mul(veil).add(1.0));
         const view = cameraViewMatrix.mul(vec4(centre, 1.0));
         const g = positionGeometry.xy;
         vLocal.assign(g);
         // (A veil's heads are long and low: drawn `stretch` times as wide as they are tall.)
-        const span = vec2(puff.w.mul(max(cloud.w, 1.0)), puff.w);
+        const span = vec2(radius.mul(max(cloud.w, 1.0)), radius);
         const at = view.xyz.add(vec3(g.mul(span), 0.0));
         // The point's world position (the billboard turned back into the world).
         const world = centre.add(cameraViewMatrix.transpose().mul(vec4(g.mul(span), 0.0, 0.0)).xyz).toVar();
@@ -388,7 +397,7 @@ export function createCumulus({ tier, U, tex }) {
         const body = float(1.0).sub(smoothstep(soft, 0.92, edge));
         const drift = texture(tex.noise, vWorld.xz.mul(1 / 1400).add(vec2(0.37, U.mistClock.mul(0.00002)))).r;
         const gaps = smoothstep(0.36, 0.7, drift.add(n.sub(0.5).mul(0.3)));
-        const thin = mix(float(0.97), smoothstep(-1.0, 0.5, local.y).mul(gaps).mul(0.4), veil);
+        const thin = mix(float(0.97), smoothstep(-1.0, 0.5, local.y).mul(gaps).mul(min(U.veilAmt.mul(0.4), 0.8)), veil);
         col.assign(mix(col, col.add(light.mistLit.mul(0.08)), veil.mul(float(1.0).sub(smoothstep(-0.6, 0.3, local.y)))));
         const alpha = body.mul(flat).mul(thin);
         return vec4(col.mul(alpha), alpha);

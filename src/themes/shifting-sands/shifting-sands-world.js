@@ -14,9 +14,18 @@
  * dusk as it always was. Warm: the wind rises and the sand sheets stream thicker. Hot: the drum
  * beats louder, the crests burn, the motes thicken toward their blue fringe and the dust banks
  * start to drive across the far erg. Fever: the storm breaks — the crests smoke, the ember sun
- * swells and pours its shafts, the ground trembles and the worm comes for the drummer. A perfect
- * clear crowns it (geysers all round the erg, a sun flare that lingers); when the hands rest the
- * sand settles back to the still dusk over a few seconds.
+ * swells and pours its shafts, the ground trembles and the worm comes for the drummer. When the
+ * hands rest the sand settles back to the still dusk over a few seconds.
+ *
+ * Every event has an effect of its own: the drum's ring (a lock), a gust front crossing the erg
+ * (one line), geysers of sand (two and three), the worm (a Quad), a dust devil (a twist), fire
+ * running along the crests (a back-to-back), far worms rising along the horizon (a perfect clear),
+ * a wall of dust crossing the whole horizon (a level), and the hush when a run ends.
+ *
+ * And the erg never stands in one light for long: the hours of the evening walk from golden hour
+ * through two sunsets to a night under the moons and back (shifting-sands-hours.js), the weather
+ * turns on a clock of its own (shifting-sands-weather.js), and dust devils, falling stars and
+ * gust fronts come by the clock whatever the hands do.
  */
 
 import * as THREE from 'three/webgpu';
@@ -27,16 +36,27 @@ import { ComboTracker } from '../../core/combo-tracker.js';
 import {
     MOONS, REST_RIG, SUNS, dirFromAzEl, windDirXZ,
 } from './shifting-sands-composition.js';
+import { createAtmosphere, createNoiseTexture } from './shifting-sands-tsl.js';
 import {
-    ATMOSPHERE_LOOK, createAtmosphere, createNoiseTexture,
-} from './shifting-sands-tsl.js';
-import { DuneField, createTerrainSteps, GROUND_PULSE_SLOTS } from './shifting-sands-terrain.js';
+    HOUR_COLOURS, HOUR_STOPS, hourLook, makeHourLook,
+} from './shifting-sands-hours.js';
+import {
+    CREST_FIRE, DuneField, FIRE_SLOTS, FRONT_SLOTS, GROUND_PULSE_SLOTS, GUST_FRONT, createTerrainSteps,
+} from './shifting-sands-terrain.js';
+import { DEVIL, DEVIL_SLOTS, createDustDevils } from './shifting-sands-devils.js';
 import { createSky } from './shifting-sands-sky.js';
 import { createFormationsSteps } from './shifting-sands-rocks.js';
-import { WORM_SLOTS, WormDirector, createWorm } from './shifting-sands-worm.js';
+import {
+    WORM_SLOTS, WORM_TIERS, WormDirector, createWorm,
+} from './shifting-sands-worm.js';
 import {
     BLOW_SLOTS, FX_TIERS, createDustGeysers, createGoldMotes, createSpindrift, createWormSand,
 } from './shifting-sands-fx.js';
+import {
+    DEVIL_WALKS, GUST_FRONTS, METEORS, WALL, WEATHERS, WEATHER_HOLD, WEATHER_SECONDS, happeningIndex,
+    happeningStart, hash01, makeWeather, meteorPath, wallLightning, weatherAt, weatherAtPhase, weatherIndex,
+} from './shifting-sands-weather.js';
+import { flashScale } from '../../utils/photosensitivity.js';
 import { drainSteps } from '../shared/build-steps.js';
 import {
     MOOD_HOLD, MOOD_SECONDS, moodDrift, pingPong,
@@ -46,25 +66,29 @@ const DEG = Math.PI / 180;
 
 /** Content budgets per quality tier. */
 export const WORLD_TIERS = Object.freeze({
-    Minimal: { clouds: false, stars: false, rockDetail: 0.5 },
-    Low: { clouds: true, stars: false, rockDetail: 0.65 },
-    Medium: { clouds: true, stars: true, rockDetail: 0.8 },
+    Minimal: {
+        clouds: false, stars: false, rockDetail: 0.5, fineClouds: false,
+    },
+    Low: {
+        clouds: true, stars: false, rockDetail: 0.65, fineClouds: false,
+    },
+    Medium: {
+        clouds: true, stars: true, rockDetail: 0.8, fineClouds: false,
+    },
     High: { clouds: true, stars: true },
     Ultra: { clouds: true, stars: true },
     Extreme: { clouds: true, stars: true },
 });
 
-/** Degrees each sun sinks by full dusk. */
-const DUSK_SINK = Object.freeze({ a: 2.2, b: 4.0 });
-
 /**
- * The dusk walks by the clock in every mode (shared/mood-clock.js), there and back: golden hour,
- * the sinking gold halfway, deep dusk, halfway again, golden hour. Each of those stops rests for
+ * The dusk walks by the clock in every mode (shared/mood-clock.js), there and back through the
+ * hours of the evening (shifting-sands-hours.js): golden hour, the ember's sunset, the second
+ * sunset, the night under the moons, and home again the same way. Each of those stops rests for
  * `hold` of its `seconds` and then melts into the next, so a whole walk there and back takes
- * 2 · stops · seconds (about seven minutes). `stops` is the stops a leg has (golden → deep dusk).
+ * 2 · stops · seconds (ten minutes). `stops` is the stops a leg has (golden hour → night).
  */
-export const DUSK_WALK = Object.freeze({ seconds: MOOD_SECONDS, hold: MOOD_HOLD, stops: 2 });
-/** A level is a step along the same walk: level 15 has walked a whole leg on (as it always deepened it). */
+export const DUSK_WALK = Object.freeze({ seconds: MOOD_SECONDS, hold: MOOD_HOLD, stops: HOUR_STOPS });
+/** A level is a step along the same walk: level 15 has walked a whole leg on, into the night. */
 export const DUSK_LEVEL_STEP = 1 / 14;
 
 /**
@@ -86,6 +110,17 @@ const BLOW_SITES = Object.freeze([
     { az: -30, dist: 1900 },
     { az: 37, dist: 1700 },
 ]);
+
+/** A level calls the front across the whole horizon: seconds it takes, and how tall it stands then. */
+export const FRONT_RUN = Object.freeze({
+    seconds: 7.5, height: 1.45, from: 64, to: -66,
+});
+
+const clamp01 = (x) => Math.min(1, Math.max(0, x));
+const smooth01 = (a, b, x) => {
+    const k = clamp01((x - a) / (b - a));
+    return k * k * (3 - 2 * k);
+};
 
 /** Frame-rate independent exponential approach: fraction of the gap closed in `dt`. */
 export const approach = (rate, dt) => 1 - Math.exp(-rate * dt);
@@ -117,10 +152,23 @@ const PULSE_FADE = 1.15;
 const BLOW_LIFE = 6;
 /** Local boards that keep a combo of their own (the bus carries `player`). */
 const TRACKED_PLAYERS = 4;
-
-function setLook(color, [hex, k]) {
-    return color.setHex(hex, THREE.SRGBColorSpace).multiplyScalar(k);
-}
+/**
+ * A twist's dust devil: how tall it stands, how wide its foot, how long it lives and how fast it
+ * walks (a twist that cleared, and one that cleared nothing). The clock's own walks far off.
+ */
+export const DEVILS = Object.freeze({
+    twist: Object.freeze({
+        height: 210, radius: 8.5, life: 9.5, speed: 30, dist: [900, 1250],
+    }),
+    spin: Object.freeze({
+        height: 130, radius: 6, life: 6.5, speed: 24, dist: [800, 1050],
+    }),
+    walk: Object.freeze({
+        height: 330, radius: 14, life: DEVIL_WALKS.life, speed: 38, dist: [1700, 2700],
+    }),
+});
+/** The run is over: seconds the hush takes to fall, and to lift when a new run begins. */
+export const HUSH = Object.freeze({ fall: 3.2, lift: 2.4, dusk: 0.42 });
 
 export class ShiftingSandsWorld {
     /**
@@ -137,7 +185,9 @@ export class ShiftingSandsWorld {
         this.group = new THREE.Group();
         this.group.name = 'shifting-sands-world';
         this.time = 0;
-        this.dusk = 0; // 0 golden hour → 1 deep dusk: the clock's walk plus the level's steps
+        this.dusk = 0; // 0 golden hour → 1 night: the clock's walk plus the level's steps
+        /** The look of the hour the dusk stands at (shifting-sands-hours.js), rewritten in place. */
+        this.hour = makeHourLook();
         /** The level's steps along the walk (in legs), eased toward duskTarget. */
         this.duskSteps = 0;
         this.duskTarget = 0;
@@ -145,6 +195,29 @@ export class ShiftingSandsWorld {
         this.duskBase = 0;
         /** A dusk held still (the playground's ?dusk=); null lets the clock walk it. */
         this.duskHold = null;
+        /** The weather of the air this frame (shifting-sands-weather.js), rewritten in place. */
+        this.weather = makeWeather();
+        /** A weather held still (a phase round the wheel: the playground's ?weather=); null lets the clock turn it. */
+        this.weatherHold = null;
+        /** The front held at an azimuth (degrees: the playground's ?wallAz=). */
+        this.wallHold = null;
+        /** When a level last called the front across the horizon. */
+        this.frontRunAt = -Infinity;
+        this._bolt = { glow: 0, at: 0 };
+        this.meteorSeen = -2;
+        /** The dust devils standing (each walks a line over the dunes; see updateDevils). */
+        this.devilList = Array.from({ length: DEVIL_SLOTS }, () => ({
+            t0: -Infinity, life: 0, x0: 0, z0: 0, dx: 0, dz: 0, speed: 0, height: 0, radius: 0, strength: 0, seed: 0,
+        }));
+        this.devilSeen = -2;
+        this.devilTurn = 0;
+        this.gustSeen = -2;
+        /** The hush after a run: when it ended, when the next began, and how deep it was then. */
+        this.hush = {
+            ended: -Infinity, woke: -Infinity, from: 0, level: 0,
+        };
+        /** How bright each falling star's slot is at its best (the stars' own light gates it). */
+        this.meteorBright = [];
         this.restPosition = new THREE.Vector3();
         this.restPitch = REST_RIG.pitchDeg * DEG;
         this.pointer = { x: 0, y: 0 };
@@ -216,20 +289,37 @@ export class ShiftingSandsWorld {
         this.sunDirA = sunA;
         this.sunDirB = sunB;
 
-        const look = ATMOSPHERE_LOOK.day;
         this.noiseTex = createNoiseTexture();
+        const moon = dirFromAzEl(MOONS.a.az, MOONS.a.el);
+        this.moonDir = moon;
         const s = {
             uTime: uniform(0),
             uSunA: uniform(sunA.clone()),
             uSunB: uniform(sunB.clone()),
-            uSunLightA: uniform(setLook(new THREE.Color(), look.sunLightA)),
-            uSunLightB: uniform(setLook(new THREE.Color(), look.sunLightB)),
-            uZenith: uniform(setLook(new THREE.Color(), look.zenith)),
-            uUpper: uniform(setLook(new THREE.Color(), look.upper)),
-            uHorizonWarm: uniform(setLook(new THREE.Color(), look.horizonWarm)),
-            uHorizonCool: uniform(setLook(new THREE.Color(), look.horizonCool)),
+            // What each sun does to the land...
+            uSunLightA: uniform(new THREE.Color()),
+            uSunLightB: uniform(new THREE.Color()),
+            // ...and to the air (the aureole, the rays, the clouds' undersides: it outlasts the sunset).
+            uGlowA: uniform(new THREE.Color()),
+            uGlowB: uniform(new THREE.Color()),
+            uZenith: uniform(new THREE.Color()),
+            uUpper: uniform(new THREE.Color()),
+            uHorizonWarm: uniform(new THREE.Color()),
+            uHorizonCool: uniform(new THREE.Color()),
+            // The moons' light on the land (from the greater moon, over the Sentinel).
+            uMoonDir: uniform(moon.clone()),
+            uMoonLight: uniform(new THREE.Color()),
             uFog: uniform(new THREE.Vector4(...FOG)),
+            // How much of a red ember the primary has become (0 golden hour → 1 from its sunset on).
             uDusk: uniform(0),
+            // How far the stars have come out, and how bright the moons' discs stand.
+            uNight: uniform(0),
+            uMoonGain: uniform(1),
+            // The weather: x cirrus, y streets, z the ribbed deck, w the haze.
+            uWeather: uniform(new THREE.Vector4(WEATHERS[0].cirrus, 0, 0, 0)),
+            // The wall of dust on the horizon: x how tall it stands (0 none), y its azimuth
+            // (radians), z the lightning in its body, w where along it (-1..1).
+            uWall: uniform(new THREE.Vector4()),
             uSunFlare: uniform(0),
             uWind: uniform(0.5),
             uGust: uniform(0),
@@ -247,12 +337,9 @@ export class ShiftingSandsWorld {
         };
         s.atmosphere = createAtmosphere(s);
         this.shared = s;
-        // Day/dusk endpoints of every atmosphere colour; applyDusk() lerps between them.
-        this.lookPairs = ['sunLightA', 'sunLightB', 'zenith', 'upper', 'horizonWarm', 'horizonCool'].map((key) => ({
-            target: s[`u${key[0].toUpperCase()}${key.slice(1)}`].value,
-            day: setLook(new THREE.Color(), ATMOSPHERE_LOOK.day[key]),
-            dusk: setLook(new THREE.Color(), ATMOSPHERE_LOOK.dusk[key]),
-        }));
+        // Every colour of the hour, in HOUR_COLOURS order; applyDusk() writes the melted look into them.
+        this.hourTargets = HOUR_COLOURS.map((key) => s[`u${key[0].toUpperCase()}${key.slice(1)}`].value);
+        this.hourExposure = 1;
         this.appliedDusk = -1;
         this.applyDusk(0);
         yield 'atmosphere';
@@ -266,7 +353,7 @@ export class ShiftingSandsWorld {
         yield 'formations';
         const mid = sunA.clone().add(sunB).multiplyScalar(0.5).normalize();
         this.terrain = yield* createTerrainSteps({
-            field: this.field, shared: s, tierName: this.quality, shadowDir: mid,
+            field: this.field, shared: s, tierName: this.quality, shadowDir: mid, moonDir: moon,
         });
         this.group.add(this.terrain.mesh);
         yield 'terrain';
@@ -275,6 +362,7 @@ export class ShiftingSandsWorld {
         this.sky = createSky(s, {
             clouds: this.tier.clouds,
             stars: this.tier.stars,
+            fineClouds: this.tier.fineClouds !== false,
             uMoonA: uniform(dirFromAzEl(MOONS.a.az, MOONS.a.el)),
             uMoonB: uniform(dirFromAzEl(MOONS.b.az, MOONS.b.el)),
             moonRadA: MOONS.a.radiusDeg * DEG,
@@ -285,7 +373,7 @@ export class ShiftingSandsWorld {
         this.group.add(this.sky.mesh);
 
         // ── The worm ──
-        this.worm = createWorm(s, this.tier.worm || {});
+        this.worm = createWorm(s, WORM_TIERS[this.quality] || WORM_TIERS.High);
         this.group.add(this.worm.mesh);
         // Captures replay the reference sequence of sites; in play every session draws its own.
         this.director = new WormDirector((x, z) => this.field.sample(x, z, this._groundScratch).h, {
@@ -304,9 +392,10 @@ export class ShiftingSandsWorld {
         this.motes = createGoldMotes(s, fx.motes);
         this.spindrift = createSpindrift(s, this.field, fx.spindrift);
         this.blows = createDustGeysers(s, fx.blowPerSlot);
+        this.devils = createDustDevils(s);
         this.wormSand.mesh.visible = fx.wormSand > 0;
         this.spindrift.mesh.visible = this.spindrift.count > 0;
-        this.group.add(this.wormSand.mesh, this.motes.mesh, this.spindrift.mesh, this.blows.mesh);
+        this.group.add(this.wormSand.mesh, this.motes.mesh, this.spindrift.mesh, this.blows.mesh, this.devils.mesh);
 
         // ── Rest camera: stand on the sand with the authored clearance ──
         let ground = -Infinity;
@@ -332,11 +421,11 @@ export class ShiftingSandsWorld {
         show(this.sky?.mesh, 'sky');
         show(this.rocks?.mesh, 'rocks');
         show(this.worm?.mesh, 'worm');
-        ['wormSand', 'motes', 'spindrift', 'blows'].forEach((k) => show(this[k]?.mesh, 'fx'));
+        ['wormSand', 'motes', 'spindrift', 'blows', 'devils'].forEach((k) => show(this[k]?.mesh, 'fx'));
     }
 
     /**
-     * Where the dusk stands at `time` (0 golden hour → 1 deep dusk): the clock's walk there and
+     * Where the dusk stands at `time` (0 golden hour → 1 night): the clock's walk there and
      * back plus the level's steps along it, folded, so it never comes to rest at either end.
      * @param {number} time
      */
@@ -345,22 +434,31 @@ export class ShiftingSandsWorld {
     }
 
     /**
-     * The deepening dusk: every atmosphere colour slides toward its dusk value and both suns
-     * sink (the bake stores horizon TANGENTS, so lower suns cast longer shadows for free).
+     * The hour the dusk stands at: every colour of the air and the light melts between the two
+     * stations it is walking between, and both suns sink (the bake stores horizon TANGENTS, so
+     * lower suns cast longer shadows for free, and a sun that has set lights nothing).
      */
     applyDusk(d) {
         const k = Math.min(1, Math.max(0, d));
-        if (Math.abs(k - this.appliedDusk) < 1e-4) return;
+        if (Math.abs(k - this.appliedDusk) < 1e-5) return;
         this.appliedDusk = k;
-        for (let i = 0; i < this.lookPairs.length; i++) {
-            const p = this.lookPairs[i];
-            p.target.copy(p.day).lerp(p.dusk, k);
+        const L = hourLook(k, this.hour);
+        for (let i = 0; i < HOUR_COLOURS.length; i++) {
+            const rgb = L[HOUR_COLOURS[i]];
+            const target = this.hourTargets[i];
+            target.r = rgb[0];
+            target.g = rgb[1];
+            target.b = rgb[2];
         }
-        dirFromAzEl(SUNS.a.az, SUNS.a.el - DUSK_SINK.a * k, this.sunDirA);
-        dirFromAzEl(SUNS.b.az, SUNS.b.el - DUSK_SINK.b * k, this.sunDirB);
-        this.shared.uSunA.value.copy(this.sunDirA);
-        this.shared.uSunB.value.copy(this.sunDirB);
-        this.shared.uDusk.value = k;
+        dirFromAzEl(SUNS.a.az, L.elA, this.sunDirA);
+        dirFromAzEl(SUNS.b.az, L.elB, this.sunDirB);
+        const s = this.shared;
+        s.uSunA.value.copy(this.sunDirA);
+        s.uSunB.value.copy(this.sunDirB);
+        s.uDusk.value = L.ember;
+        s.uNight.value = L.stars;
+        s.uMoonGain.value = L.moonGain;
+        this.hourExposure = L.exposure;
     }
 
     // ── Camera rig ────────────────────────────────────────────────────────────────
@@ -414,6 +512,15 @@ export class ShiftingSandsWorld {
         this.drum.at = -Infinity;
         this.feverWormAt = -Infinity;
         this.lastStage = 0;
+        this.frontRunAt = -Infinity;
+        this.meteorSeen = -2;
+        this.devilSeen = -2;
+        this.gustSeen = -2;
+        for (let i = 0; i < this.devilList.length; i++) this.devilList[i].t0 = -Infinity;
+        this.hush.ended = -Infinity;
+        this.hush.woke = -Infinity;
+        this.hush.from = 0;
+        this.hush.level = 0;
     }
 
     /** Reduced motion: the rig holds still (no breathing, no tremor); events stay. */
@@ -533,8 +640,14 @@ export class ShiftingSandsWorld {
                 for (let i = 0; i < 3; i++) this.spawnGeyser(t + i * 0.22, 1.3);
             }
             this.glowSwell.hit(1.2, t);
+        } else if (n === 1) {
+            // One line: the wind answers. A front of driven sand crosses the erg from behind the
+            // eye to the far dunes.
+            this.pushGustFront(1 + deep * 0.15, t);
         } else {
+            // Two and three: geysers of sand, one a line, in the side zones (three also burst the suns).
             for (let i = 0; i < n; i++) this.spawnGeyser(t + i * 0.22, 0.8 + n * 0.12 + deep * 0.1);
+            if (n === 3) this.flareSwell.hit(0.22, t);
         }
     }
 
@@ -556,13 +669,10 @@ export class ShiftingSandsWorld {
             this.surge.spin(t);
         }
         this.spinTurn = (this.spinTurn + 1) % 6;
-        const beats = cleared ? 3 : 1;
-        for (let i = 0; i < beats; i++) {
-            const a = (i / 3 + this.spinTurn / 6) * Math.PI * 2;
-            const x = DRUM.x + Math.cos(a) * 110;
-            const z = DRUM.z + Math.sin(a) * 110;
-            this.pushGroundPulse(x, z, cleared ? 1.4 : 0.8, t + i * 0.11);
-        }
+        // The twist of the piece is a twist of the air: a dust devil rises beside the board and
+        // walks off over the dunes, a ring of sand thrown from its foot.
+        const devil = this.raiseDevil(cleared ? DEVILS.twist : DEVILS.spin, t, this.spinTurn);
+        this.pushGroundPulse(devil.x0, devil.z0, cleared ? 1.4 : 0.8, t + 0.15);
         this.gustSwell.hit(cleared ? 0.35 : 0.18, t);
         this.glowSwell.hit(cleared ? 0.35 : 0.15, t);
     }
@@ -580,6 +690,8 @@ export class ShiftingSandsWorld {
         this.surge.level.hit(W.heat.b2b, t);
         this.drumBeat(1.8, t);
         this.pushGroundPulse(DRUM.x, DRUM.z, 1.6, t + 0.32);
+        // ...and the crests take fire: a cold light leaps from ridge to ridge out to the horizon.
+        this.pushCrestFire(1, t + 0.1);
         this.glowSwell.hit(0.6, t);
         this.flareSwell.hit(0.2, t);
     }
@@ -597,12 +709,156 @@ export class ShiftingSandsWorld {
         this.crownSwell.hit(1, t);
         this.glowSwell.hit(0.8, t);
         this.pushGroundPulse(DRUM.x, DRUM.z, DRUM_MAX, t);
-        for (let i = 0; i < BLOW_SITES.length; i++) {
-            const site = BLOW_SITES[i];
-            const az = site.az * DEG;
-            // Every other column rings the sand (the pool keeps the drum's own ring alive).
-            this.spawnGeyserAt(Math.sin(az) * site.dist, -Math.cos(az) * site.dist, t + i * 0.12, 1.25, i % 2 === 0);
+        // The deep erg answers: far worms rise along the horizon one after another, a geyser of
+        // sand where each breaks the surface and where it strikes, and the crests take fire.
+        const chorus = this.director.summonChorus(t);
+        for (let i = 0; i < chorus.length; i++) {
+            const br = chorus[i];
+            this.spawnGeyserAt(br.up.x, br.up.z, br.t0 - 0.3, 3.4, false);
         }
+        this.chorusStrikes = chorus.map((br) => ({ at: br.t0 + br.tDown - 0.2, x: br.down.x, z: br.down.z }));
+        this.pushCrestFire(1.3, t + 0.2);
+    }
+
+    /** A gust front into the slot with the least of its run left. */
+    pushGustFront(strength, t0 = this.time) {
+        const rows = this.terrain.uniforms.uFronts.array;
+        let slot = 0;
+        let weakest = Infinity;
+        for (let i = 0; i < FRONT_SLOTS; i++) {
+            const age = this.time - rows[i].y;
+            const left = age < 0 ? rows[i].z + 10 : rows[i].z * Math.max(0, 1 - age / GUST_FRONT.life);
+            if (left < weakest) {
+                weakest = left;
+                slot = i;
+            }
+        }
+        rows[slot].set(GUST_FRONT.from, t0, strength, GUST_FRONT.speed * (0.92 + 0.12 * Math.min(2, strength)));
+        return slot;
+    }
+
+    /** Crest fire from the drum, into the slot with the least of its run left. */
+    pushCrestFire(strength, t0 = this.time) {
+        const rows = this.terrain.uniforms.uFires.array;
+        let slot = 0;
+        let weakest = Infinity;
+        for (let i = 0; i < FIRE_SLOTS; i++) {
+            const age = this.time - rows[i].z;
+            const left = age < 0 ? rows[i].w + 10 : rows[i].w * Math.max(0, 1 - age / CREST_FIRE.life);
+            if (left < weakest) {
+                weakest = left;
+                slot = i;
+            }
+        }
+        rows[slot].set(DRUM.x, DRUM.z, t0, strength);
+        return slot;
+    }
+
+    /**
+     * Raise a dust devil of a kind (DEVILS) into the slot with the least life left. It stands in
+     * a stretch of view the boards and the HUD leave open (`turn` picks which, and where in it),
+     * and walks off across the wind.
+     * @returns the devil's record (where it starts)
+     */
+    raiseDevil(kind, t0 = this.time, turn = this.devilTurn) {
+        this.devilTurn = turn + 1;
+        let slot = 0;
+        let weakest = Infinity;
+        for (let i = 0; i < this.devilList.length; i++) {
+            const d = this.devilList[i];
+            const left = Math.max(0, d.t0 + d.life - this.time);
+            if (left < weakest) {
+                weakest = left;
+                slot = i;
+            }
+        }
+        const zones = this.director.freeZones();
+        const zone = zones[turn % zones.length];
+        const u = 0.3 + 0.4 * hash01(turn * 3.3 + 1.7);
+        let azDeg = zone[0] + (zone[1] - zone[0]) * u;
+        // Never in front of a sun: its streaks cross-hatch a bright disc. It steps aside, to
+        // whichever side of the suns' bearing its zone has more room on.
+        if (azDeg > SUNS.a.az - 5 && azDeg < SUNS.b.az + 3.5) {
+            const left = SUNS.a.az - 5 - zone[0];
+            const right = zone[1] - (SUNS.b.az + 3.5);
+            azDeg = right >= left
+                ? SUNS.b.az + 3.5 + Math.max(0, right) * 0.45
+                : SUNS.a.az - 5 - Math.max(0, left) * 0.45;
+        }
+        const az = azDeg * DEG;
+        const dist = kind.dist[0] + (kind.dist[1] - kind.dist[0]) * hash01(turn * 5.9 + 0.2);
+        // It walks across the wind, away from the middle of the view.
+        const wind = this.shared.uWindDir.value;
+        const out = Math.sin(az) >= 0 ? 1 : -1;
+        const d = this.devilList[slot];
+        d.t0 = t0;
+        d.life = kind.life;
+        d.x0 = Math.sin(az) * dist;
+        d.z0 = -Math.cos(az) * dist;
+        d.dx = -wind.y * out * 0.9 + wind.x * 0.43;
+        d.dz = wind.x * out * 0.9 + wind.y * 0.43;
+        d.speed = kind.speed;
+        d.height = kind.height;
+        d.radius = kind.radius;
+        d.strength = 1;
+        d.seed = hash01(turn * 7.1 + 3.9);
+        return d;
+    }
+
+    /** Seat every standing devil on the sand it has walked to, and write it. */
+    updateDevils(t) {
+        let live = false;
+        const rows = this.devils.uDevils.array;
+        const shapes = this.devils.uDevilShape.array;
+        for (let i = 0; i < this.devilList.length; i++) {
+            const d = this.devilList[i];
+            const age = t - d.t0;
+            if (!(age > 0 && age < d.life)) {
+                rows[i].set(0, -1000, 0, 0);
+                continue;
+            }
+            live = true;
+            const x = d.x0 + d.dx * d.speed * age;
+            const z = d.z0 + d.dz * d.speed * age;
+            const y = this.field.sample(x, z, this._groundScratch).h;
+            const amount = smooth01(0, 0.7, age) * (1 - smooth01(d.life - DEVIL.fade, d.life, age)) * d.strength;
+            // It rises from its foot, and thins away from the top at its end.
+            const risen = smooth01(0, DEVIL.rise, age) * (1 - 0.35 * smooth01(d.life - DEVIL.fade, d.life, age));
+            rows[i].set(x, y - 2, z, amount);
+            shapes[i].set(d.height, d.radius, risen, d.seed);
+        }
+        this.devils.setActive(live);
+    }
+
+    /**
+     * The run is over: the wind dies, the dust hangs, the light sinks a little and the stars come
+     * nearer; one last slow ring rolls out from the drum. (The theme calls this on game over.)
+     */
+    endRun() {
+        const h = this.hush;
+        if (h.ended > h.woke) return;
+        h.from = h.level;
+        h.ended = this.time;
+        this.pushGroundPulse(DRUM.x, DRUM.z, 2.2, this.time + 0.2);
+    }
+
+    /** A new run begins: the hush lifts and the wind comes back with a front of sand. */
+    onSessionStart() {
+        const h = this.hush;
+        if (h.woke >= h.ended) return;
+        h.from = h.level;
+        h.woke = this.time;
+        if (h.from > 0.3) {
+            this.gustSwell.hit(0.5, this.time);
+            this.pushGustFront(0.9, this.time + 0.3);
+        }
+    }
+
+    /** How deep the hush is at `t` (0 none … 1 the run is over and the erg has gone still). */
+    hushAt(t) {
+        const h = this.hush;
+        if (h.ended > h.woke) return h.from + (1 - h.from) * smooth01(0, HUSH.fall, t - h.ended);
+        return h.from * (1 - smooth01(0, HUSH.lift, t - h.woke));
     }
 
     /** The geyser that heralds a summoned worm, where it will break the surface. */
@@ -691,6 +947,10 @@ export class ShiftingSandsWorld {
         if (!react) return;
         this.surge.levelUp(this.time);
         this.flareSwell.hit(0.25, this.time);
+        // The front crosses the whole horizon, lightning in its body, and the hour has moved on
+        // behind it.
+        this.frontRunAt = this.time;
+        this.gustSwell.hit(0.4, this.time);
     }
 
     /** Where play stands this frame (sampled once a frame, on the world clock). */
@@ -718,34 +978,147 @@ export class ShiftingSandsWorld {
             level, fever, storm, crown,
         } = heat;
         const motion = this.reducedMotion ? 0.4 : 1;
-        // ── Wind: the idle breath, raised by the storm, with the gusts on top ──
-        const windExtra = storm * 0.6;
+        const air = this.weather;
+        // What drives the sand and the dust: the storm play raises, or the weather's own wind.
+        const blow = 1 - (1 - storm) * (1 - air.wind * 0.55);
+        // ── Wind: the idle breath, raised by the storm and the weather, with the gusts on top ──
+        const windExtra = storm * 0.6 + air.wind * 0.45;
         const gust = this.gustSwell.valueAt(t);
-        s.uWind.value = idleWind(t) + windExtra;
+        // After a run the erg goes still: the wind dies back and the light sinks a little.
+        const hush = this.hushAt(t);
+        this.hush.level = hush;
+        s.uWind.value = (idleWind(t) + windExtra) * (1 - 0.6 * hush);
         s.uGust.value = gust;
         const F = SAND_FLOW;
         const fx = this.flowExtra;
         fx.sheets += dt * (windExtra * F.sheets.wind + gust * F.sheets.gust) * motion;
         fx.spindrift += dt * (windExtra * F.spindrift.wind + gust * F.spindrift.gust) * motion;
-        fx.banks += dt * BANK_DRIFT * BANK_STORM * storm * motion;
+        fx.banks += dt * BANK_DRIFT * BANK_STORM * blow * motion;
         const w = idleWindPhase(t);
         s.uFlow.value.set(
             w * F.sheets.wind + t * F.sheets.base + fx.sheets,
             w * F.spindrift.wind + t * F.spindrift.base + fx.spindrift,
         );
         s.uBankDrift.value = t * BANK_DRIFT + fx.banks;
-        // ── The air thickens: the far erg veils in drifting dust ──
-        s.uFog.value.set(FOG[0] * (1 + storm * 0.3), FOG[1] * (1 + storm * 0.7), FOG[2], FOG[3]);
+        // ── The air thickens: the far erg veils in drifting dust (a storm, or the weather's haze) ──
+        s.uFog.value.set(
+            FOG[0] * (1 + storm * 0.3 + air.haze * 1.1),
+            FOG[1] * (1 + storm * 0.7 + air.haze * 1.3 + air.wind * 0.35),
+            FOG[2],
+            Math.min(0.95, FOG[3] + air.haze * 0.05),
+        );
         // ── Light: gold dust, both suns, the burning crests ──
-        s.uGoldGlow.value = Math.min(1.8, this.glowSwell.valueAt(t) + level * 0.3 + fever * 0.45 + crown * 0.6);
+        // (in the hush the gold dust hangs in the still air and glows, and the stars come nearer)
+        const gold = this.glowSwell.valueAt(t) + level * 0.3 + fever * 0.45 + crown * 0.6 + hush * 0.4;
+        s.uGoldGlow.value = Math.min(1.8, gold);
+        s.uNight.value = Math.min(1, this.hour.stars + hush * 0.3);
         const flare = this.flareSwell.valueAt(t) + level * 0.05 + fever * 0.12 + crown * 0.45;
         s.uSunFlare.value = flare;
-        s.uHeat.value.set(level, fever, storm, Math.min(1, level * 0.35 + fever * 0.5 + crown * 0.4));
+        // (the rays lengthen with the heat of play, and a little in hanging dust)
+        s.uHeat.value.set(level, fever, blow, Math.min(1, level * 0.35 + fever * 0.5 + crown * 0.4 + air.haze * 0.18));
         // ── Post: the warm lift, the bloom's swell, and an iris that closes a little as the heat
         // adds light, so the dusk keeps its darks and its colour ──
         this.flash = this.flashSwell.valueAt(t) + crown * 0.12;
         this.bloomBoost = flare * 0.5 + level * 0.2 + fever * 0.5;
-        this.exposure = 1 - Math.max(0, level - 0.2) * 0.08 - fever * 0.03;
+        this.exposure = this.hourExposure * (1 - Math.max(0, level - 0.2) * 0.08 - fever * 0.03) * (1 - 0.15 * hush);
+    }
+
+    /**
+     * What comes by the clock whatever the hands do: a dust devil walking the far erg, a gust front
+     * when it blows; and what a perfect clear's far worms still owe (the sand where each strikes).
+     */
+    runHappenings(t) {
+        const walk = happeningIndex(DEVIL_WALKS, t);
+        if (walk !== this.devilSeen) {
+            const first = this.devilSeen === -2;
+            this.devilSeen = walk;
+            // (a seek lands between walks: only one that begins now is raised)
+            if (walk >= 0 && !first) this.raiseDevil(DEVILS.walk, happeningStart(DEVIL_WALKS, walk), 100 + walk);
+            else if (walk >= 0 && t - happeningStart(DEVIL_WALKS, walk) < DEVIL_WALKS.life) {
+                this.raiseDevil(DEVILS.walk, happeningStart(DEVIL_WALKS, walk), 100 + walk);
+            }
+        }
+        const gusts = happeningIndex(GUST_FRONTS, t);
+        if (gusts !== this.gustSeen) {
+            const first = this.gustSeen === -2;
+            this.gustSeen = gusts;
+            if (gusts >= 0 && !first && this.weather.wind >= GUST_FRONTS.minWind) {
+                this.pushGustFront(0.5 + 0.4 * this.weather.wind, t);
+                this.gustSwell.hit(0.22 * this.weather.wind, t);
+            }
+        }
+        const strikes = this.chorusStrikes;
+        if (strikes) {
+            for (let i = strikes.length - 1; i >= 0; i--) {
+                if (t >= strikes[i].at - 1) {
+                    this.spawnGeyserAt(strikes[i].x, strikes[i].z, strikes[i].at, 3.0, false);
+                    strikes.splice(i, 1);
+                }
+            }
+        }
+    }
+
+    /**
+     * The weather of this frame and what stands in the sky because of it: the cloud, the haze,
+     * the front on the horizon with its lightning, the falling stars.
+     */
+    applyAir(t) {
+        const s = this.shared;
+        const held = Number.isFinite(this.weatherHold);
+        const w = held ? weatherAtPhase(this.weatherHold, this.weather) : weatherAt(t, this.weather);
+        s.uWeather.value.set(w.cirrus, w.streets, w.deck, w.haze);
+
+        // ── The front: it comes in from the right while the weather before it melts away, and
+        // travels the horizon toward the suns' bearing until its own has melted in turn ──
+        const front = weatherIndex('front');
+        const cycle = WEATHERS.length * WEATHER_SECONDS;
+        const begins = (front - 1 + WEATHER_HOLD) * WEATHER_SECONDS;
+        const ends = (front + 1) * WEATHER_SECONDS;
+        const local = t - Math.floor(t / cycle) * cycle;
+        const through = held ? 0.5 : clamp01((local - begins) / (ends - begins));
+        let az = Number.isFinite(this.wallHold) ? this.wallHold : WALL.from + WALL.travel * through;
+        let tall = w.wall;
+        let quick = 1;
+        // A level calls it across the whole horizon in a few seconds, taller than it ever stands.
+        const run = (t - this.frontRunAt) / FRONT_RUN.seconds;
+        if (run > 0 && run < 1) {
+            const up = smooth01(0, 0.16, run) * (1 - smooth01(0.74, 1, run));
+            const azRun = FRONT_RUN.from + (FRONT_RUN.to - FRONT_RUN.from) * smooth01(0.02, 0.98, run);
+            // (it takes the wall from wherever the weather has it, by how much taller it stands;
+            // with no wall of the weather's own, the run's place is its place from the first)
+            const mine = FRONT_RUN.height * up;
+            az += (azRun - az) * (mine / (mine + w.wall + 1e-6));
+            tall = Math.max(tall, mine);
+            quick = 1 + 1.6 * up;
+        }
+        const bolt = wallLightning(t * quick, this._bolt);
+        s.uWall.value.set(tall, az * DEG, bolt.glow * Math.min(1, tall * 1.4) * flashScale(), bolt.at);
+
+        // ── Falling stars, once the stars are out ──
+        const n = happeningIndex(METEORS, t);
+        if (n !== this.meteorSeen && this.sky?.uMeteorFrom) {
+            this.meteorSeen = n;
+            const slots = this.sky.uMeteorFrom.array.length;
+            if (n >= 0) {
+                const path = meteorPath(n);
+                const from = dirFromAzEl(path.az, path.el, this._tmpV);
+                const slot = n % slots;
+                const at = happeningStart(METEORS, n) + hash01(n * 9.7 + 0.4) * (METEORS.every - METEORS.life - 1);
+                this.sky.uMeteorFrom.array[slot].set(from.x, from.y, from.z, at);
+                const slant = path.slant * DEG;
+                const elTo = Math.max(1.5, path.el - path.run * Math.cos(slant));
+                const azTo = path.az + (path.run * Math.sin(slant)) / Math.cos(path.el * DEG);
+                const to = dirFromAzEl(azTo, elTo, this._tmpV);
+                this.sky.uMeteorTo.array[slot].set(to.x, to.y, to.z, 0);
+                this.meteorBright[slot] = path.bright;
+            }
+        }
+        // (their light follows the stars': none by golden hour, however the slots stand)
+        if (this.sky?.uMeteorTo) {
+            const out = smooth01(METEORS.minStars - 0.15, METEORS.minStars + 0.2, this.hour.stars);
+            const rows = this.sky.uMeteorTo.array;
+            for (let i = 0; i < rows.length; i++) rows[i].w = (this.meteorBright[i] || 0) * out;
+        }
     }
 
     /**
@@ -761,8 +1134,11 @@ export class ShiftingSandsWorld {
         this.duskSteps += (this.duskTarget - this.duskSteps) * approach(0.6, dt);
         if (Math.abs(this.duskTarget - this.duskSteps) < 1e-4) this.duskSteps = this.duskTarget;
         this.dusk = Number.isFinite(this.duskHold) ? this.duskHold : this.duskAt(t);
-        this.applyDusk(this.dusk);
+        // Over a finished run the evening moves on (nearly half of what is left of it), and comes
+        // back when the next begins.
+        this.applyDusk(this.dusk + (1 - this.dusk) * HUSH.dusk * this.hushAt(t));
         const heat = this.sampleHeat(t);
+        this.applyAir(t);
         // The storm breaks: the worm comes for the drummer (once a fever, never over a summons).
         if (heat.stage === 3 && this.lastStage !== 3 && t - this.feverWormAt > 45) {
             this.feverWormAt = t;
@@ -770,8 +1146,10 @@ export class ShiftingSandsWorld {
         }
         this.lastStage = heat.stage;
         // ── Worms: each slot writes its body, its sand and its marks on the erg ──
+        this.runHappenings(t);
         const ws = this.director.update(t);
-        this.worm.apply(ws.slots);
+        this.worm.apply(ws.slots, ws.far);
+        this.updateDevils(t);
         this.wormSand.apply(ws.slots);
         const tu = this.terrain.uniforms;
         for (let i = 0; i < WORM_SLOTS; i++) {
@@ -810,7 +1188,9 @@ export class ShiftingSandsWorld {
         this._sunScreen.y = 0.5 - v.y * 0.5;
         const edgeFade = (c) => Math.max(0, 1 - Math.max(0, Math.abs(c) - 1) * 4);
         const onScreen = edgeFade(v.x) * edgeFade(v.y);
-        this._sunScreen.visible = inFront * onScreen;
+        // A sun that has set pours no shafts and throws no flare.
+        const up = Math.min(1, Math.max(0, (this.sunDirA.y + 0.012) / 0.03));
+        this._sunScreen.visible = inFront * onScreen * up * up * (3 - 2 * up);
         // Far horizon line in screen UV (for the heat haze band).
         const h = this._tmpV.set(0, camera.position.y - 6, -12000).project(camera);
         this._sunScreen.horizonY = 0.5 - h.y * 0.5;
@@ -856,7 +1236,7 @@ export class ShiftingSandsWorld {
         this.rocks = null;
         this.worm?.dispose();
         this.worm = null;
-        ['wormSand', 'motes', 'spindrift', 'blows'].forEach((k) => { this[k]?.dispose(); this[k] = null; });
+        ['wormSand', 'motes', 'spindrift', 'blows', 'devils'].forEach((k) => { this[k]?.dispose(); this[k] = null; });
         this.noiseTex?.dispose();
         this.terrain = null;
         this.sky = null;

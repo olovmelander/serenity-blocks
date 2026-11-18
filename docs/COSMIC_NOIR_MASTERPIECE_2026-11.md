@@ -170,10 +170,10 @@ fleet bench, an integrated GPU, a phone.
 - **A floating rock**: the sea was never walked in front of a pixel the rock covers. #1315.
 - **No white water from a low eye**: foam on the sea at the shore is two pixels tall. #1316.
 - **A lock that does not read** on mirror water: draw rings of light, finer than their swell. #1317.
-- **A rock as drapery, then as brickwork**: shape it on the CPU with real noise and bake it. #1608.
-- **A burst as fingers, a cumulus, popcorn**: two kinds of billow in one quad. #1742.
-- **Weather that snaps in**, and a seek that no longer matches: brew slowly, keep clocks free of it. #1743.
-- **Lightning that must not strobe.** #1423.
+- **A rock as drapery, then as brickwork**: shape it on the CPU with real noise and bake it. #1609.
+- **A burst as fingers, a cumulus, popcorn**: two kinds of billow in one quad. #1745.
+- **Weather that snaps in**, and a seek that no longer matches: brew slowly, keep clocks free of it. #1746.
+- **Lightning that must not strobe.** #1424.
 
 ## 8. Files and evidence
 
