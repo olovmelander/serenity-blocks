@@ -153,7 +153,23 @@ handoff; a duplicated latch loop), plus one constant moved to a single home.
 
 ## Gates after the fixes
 
-The full gate list is running on the final branch (`1b6c4cf`); its results follow in the next commit.
+Same gate list on the final branch (`1b6c4cf`, all fixes and review follow-ups integrated), compared
+with the baseline:
+
+| Gate | Baseline `2550976` | Final `1b6c4cf` |
+|---|---|---|
+| typecheck, ts-ratchet, architecture fitness, theme lifecycle, boundaries | pass | pass |
+| `lint:ci` | 432 errors (at ratchet), 2,385 warnings | 432 errors (at ratchet), 2,385 warnings |
+| `npm test` | 1,473 files, 26,663 passed, 3 skipped | 1,479 files, 26,696 passed, 3 skipped |
+| `perf:budgets:gate`, `check:release-gates` | pass | pass |
+| `npm run build` (6 GB heap) + boot closure | pass; main static closure 1,337 KB | pass; main static closure **1,288 KB** |
+| `check:ip-strings`, `check:pages-artifact` | pass | pass |
+
+Every fix was also checked on its own: its regression test failed on the original code and
+passed after, and the focused tests of every touched module passed before integration. A headless
+Chromium boot of the built game (no GPU) showed the menu with no console or page errors before and
+after the boot-path change, and every lazily loaded Odyssey chunk still evaluated. Not run: a
+packaged Electron smoke, the GPU validation lanes, and anything needing Steam or a physical pad.
 
 ## Findings in detail
 
