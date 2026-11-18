@@ -7,8 +7,12 @@
  * suns burn along their crests, and the worm breaches there, a black arch against the light.
  * On the right the Sentinel, a monumental sandstone butte, takes the low sun on its flank under
  * two pale moons. The board is the drum: every lock sends a ring of lifted sand across the
- * erg, clears throw up geysers of dust, and a Quad calls the worm. Play builds: a quick hand
- * raises a sandstorm, a fever breaks it (shifting-sands-world.js, shared/gameplay-surge.js).
+ * erg, and every other event has an answer of its own (a gust front, geysers of sand, the worm
+ * for a Quad, a dust devil for a twist, fire along the crests, far worms on the horizon for a
+ * perfect clear, a wall of dust for a level, a hush when the run ends). Play builds: a quick
+ * hand raises a sandstorm, a fever breaks it (shifting-sands-world.js, shared/gameplay-surge.js).
+ * The evening walks through its hours to a night under the moons and back, and the weather
+ * turns on a clock of its own, so the erg never stands in one light for long.
  *
  * Content lives in ShiftingSandsWorld (shifting-sands-world.js), shared with the playground
  * effect src/playground/effects/shifting-sands.effect.js, so what is iterated there ships. This
@@ -372,6 +376,8 @@ export default class ShiftingSandsTheme extends BaseTheme {
         this.registerEventListener(window, 'settingsChanged', (p) => this.handleSettingsChanged(p));
         this.registerEventListener(window, 'gameOver', () => {
             this.world?.resetSession();
+            // The erg goes still (not a reaction to play: it falls whatever the effects setting).
+            this.world?.endRun();
             this.scheduleLayoutReads();
         });
 
@@ -496,7 +502,10 @@ export default class ShiftingSandsTheme extends BaseTheme {
         this.modeManager = manager;
         const relayout = () => this.scheduleLayoutReads();
         this.eventUnsubscribers.push(
-            manager.on('modeStarted', relayout),
+            manager.on('modeStarted', () => {
+                this.world?.onSessionStart();
+                relayout();
+            }),
             manager.on('modeActivated', relayout),
             manager.on('modeStopped', () => {
                 this.world?.resetSession();

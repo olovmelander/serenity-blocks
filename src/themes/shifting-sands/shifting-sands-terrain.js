@@ -51,6 +51,7 @@ import {
     pow,
     reflect,
     select,
+    sin,
     smoothstep,
     uniformArray,
     vec2,
@@ -251,6 +252,8 @@ const nowMs = () => (typeof performance !== 'undefined' ? performance.now() : 0)
  * @param {object} opts
  * @param {object} opts.tier          TERRAIN_TIERS entry
  * @param {{x:number,y:number,z:number}} opts.shadowDir  unit vector toward the (mean) sun
+ * @param {{x:number,y:number,z:number}} [opts.moonDir]  unit vector toward the greater moon: its
+ *        own horizon is marched too (the night's shadows fall the other way)
  * @returns {{ geometry: THREE.BufferGeometry, stats: object }}
  */
 export function bakeTerrainGeometry(field, options) {
@@ -262,7 +265,7 @@ export function bakeTerrainGeometry(field, options) {
  * the same grid in the same order, each yielding between its rows every TERRAIN_SLICE_MS.
  * `stats.bakeMs` counts the bake's own time, not the breaths.
  */
-export function* bakeTerrainGeometrySteps(field, { tier, shadowDir }) {
+export function* bakeTerrainGeometrySteps(field, { tier, shadowDir, moonDir = null }) {
     const clock = stepClock(TERRAIN_SLICE_MS);
     let bakeMs = 0;
     let resumed = nowMs();
@@ -280,6 +283,7 @@ export function* bakeTerrainGeometrySteps(field, { tier, shadowDir }) {
     const pos = new Float32Array(n * 3);
     const dune = new Float32Array(n * 4);
     const shade = new Float32Array(n * 4);
+    const night = new Float32Array(n);
     const baseH = new Float32Array(n);
     const uArr = new Float64Array(n);
 
@@ -336,53 +340,60 @@ export function* bakeTerrainGeometrySteps(field, { tier, shadowDir }) {
         yield* slice('terrain gradients');
     }
 
-    // Horizon tangent toward the suns: one geometric march per sub-grid vertex.
+    // Horizon tangent toward a light: one geometric march per sub-grid vertex, bilinearly filled.
+    // Once toward the suns, once toward the greater moon (the night's shadows fall the other way).
     const stride = Math.max(1, tier.shadowStride | 0);
     const steps = tier.shadowSteps;
-    const hl = Math.hypot(shadowDir.x, shadowDir.z) || 1;
-    const sx = shadowDir.x / hl;
-    const sz = shadowDir.z / hl;
     const subRows = Math.ceil((rows - 1) / stride) + 1;
     const subCols = Math.ceil((cols - 1) / stride) + 1;
     const sub = new Float32Array(subRows * subCols);
-    for (let si = 0; si < subRows; si++) {
-        const i = Math.min(rows - 1, si * stride);
-        for (let sj = 0; sj < subCols; sj++) {
-            const j = Math.min(cols - 1, sj * stride);
-            const k = i * cols + j;
-            const x0 = pos[k * 3];
-            const h0 = pos[k * 3 + 1] + 0.6;
-            const z0 = pos[k * 3 + 2];
-            let maxTan = -0.2;
-            if (Math.hypot(x0, z0) < 9000) {
-                let t = 4;
-                for (let st = 0; st < steps; st++) {
-                    const hx = field.height(x0 + sx * t, z0 + sz * t, true);
-                    const tn = (hx - h0) / t;
-                    if (tn > maxTan) maxTan = tn;
-                    t *= 1.42;
+    /** March toward `dir` and write the tangent into `target[k * step + at]`. */
+    function* horizonToward(dir, target, step, at, label) {
+        const hl = Math.hypot(dir.x, dir.z) || 1;
+        const sx = dir.x / hl;
+        const sz = dir.z / hl;
+        for (let si = 0; si < subRows; si++) {
+            const i = Math.min(rows - 1, si * stride);
+            for (let sj = 0; sj < subCols; sj++) {
+                const j = Math.min(cols - 1, sj * stride);
+                const k = i * cols + j;
+                const x0 = pos[k * 3];
+                const h0 = pos[k * 3 + 1] + 0.6;
+                const z0 = pos[k * 3 + 2];
+                let maxTan = -0.2;
+                if (Math.hypot(x0, z0) < 9000) {
+                    let t = 4;
+                    for (let st = 0; st < steps; st++) {
+                        const hx = field.height(x0 + sx * t, z0 + sz * t, true);
+                        const tn = (hx - h0) / t;
+                        if (tn > maxTan) maxTan = tn;
+                        t *= 1.42;
+                    }
                 }
+                sub[si * subCols + sj] = maxTan;
             }
-            sub[si * subCols + sj] = maxTan;
+            yield* slice(`terrain ${label} horizons`);
         }
-        yield* slice('terrain horizons');
-    }
-    for (let i = 0; i < rows; i++) {
-        const fi = i / stride;
-        const si = Math.min(subRows - 2, Math.floor(fi));
-        const ti = Math.min(1, fi - si);
-        for (let j = 0; j < cols; j++) {
-            const fj = j / stride;
-            const sj = Math.min(subCols - 2, Math.floor(fj));
-            const tj = Math.min(1, fj - sj);
-            const a = sub[si * subCols + sj];
-            const b = sub[si * subCols + sj + 1];
-            const c = sub[(si + 1) * subCols + sj];
-            const d = sub[(si + 1) * subCols + sj + 1];
-            shade[(i * cols + j) * 4 + 2] = (a * (1 - tj) + b * tj) * (1 - ti) + (c * (1 - tj) + d * tj) * ti;
+        for (let i = 0; i < rows; i++) {
+            const fi = i / stride;
+            const si = Math.min(subRows - 2, Math.floor(fi));
+            const ti = Math.min(1, fi - si);
+            for (let j = 0; j < cols; j++) {
+                const fj = j / stride;
+                const sj = Math.min(subCols - 2, Math.floor(fj));
+                const tj = Math.min(1, fj - sj);
+                const a = sub[si * subCols + sj];
+                const b = sub[si * subCols + sj + 1];
+                const c = sub[(si + 1) * subCols + sj];
+                const d = sub[(si + 1) * subCols + sj + 1];
+                target[(i * cols + j) * step + at] = (a * (1 - tj) + b * tj) * (1 - ti) + (c * (1 - tj) + d * tj) * ti;
+            }
+            yield* slice(`terrain ${label} shade`);
         }
-        yield* slice('terrain shade');
     }
+    yield* horizonToward(shadowDir, shade, 4, 2, 'sun');
+    if (moonDir) yield* horizonToward(moonDir, night, 1, 0, 'moon');
+    else night.fill(-0.2);
 
     const quads = (rows - 1) * (cols - 1);
     const index = new Uint32Array(quads * 6);
@@ -405,6 +416,7 @@ export function* bakeTerrainGeometrySteps(field, { tier, shadowDir }) {
     geometry.setAttribute('position', new THREE.BufferAttribute(pos, 3));
     geometry.setAttribute('aDune', new THREE.BufferAttribute(dune, 4));
     geometry.setAttribute('aShade', new THREE.BufferAttribute(shade, 4));
+    geometry.setAttribute('aMoon', new THREE.BufferAttribute(night, 1));
     geometry.computeBoundingSphere();
     bakeMs += nowMs() - resumed;
     return {
@@ -427,6 +439,19 @@ export const GROUND_PULSE_SLOTS = 6;
 export const WORM_GROUND_SLOTS = 2;
 /** Wells: where each worm comes up and where it goes down. */
 export const WELL_SLOTS = WORM_GROUND_SLOTS * 2;
+/**
+ * Gust fronts: a line of driven sand that crosses the erg downwind, from behind the eye to the
+ * far dunes (a single line's answer, and the wind's own when it blows). Slots of (where along the
+ * wind it starts, t0, strength, speed).
+ */
+export const FRONT_SLOTS = 2;
+export const GUST_FRONT = Object.freeze({ from: -260, speed: 430, life: 9 });
+/**
+ * Crest fire: a cold light that runs along every crest line, both ways out from the drum's place
+ * (a back-to-back's answer). Slots of (x, z, t0, strength).
+ */
+export const FIRE_SLOTS = 2;
+export const CREST_FIRE = Object.freeze({ speed: 340, life: 8 });
 
 /**
  * @param {object} shared   the world's shared uniform nodes + atmosphere helpers
@@ -437,7 +462,7 @@ export const WELL_SLOTS = WORM_GROUND_SLOTS * 2;
 export function createSandMaterial(shared, { glitter = true, ripples = true } = {}) {
     const {
         uTime, uSunA, uSunB, uSunLightA, uSunLightB, uUpper, uZenith, uHorizonCool, atmosphere, noiseTex,
-        uWindDir, uWind, uGust, uPxScale, uFlow, uHeat,
+        uWindDir, uWind, uGust, uPxScale, uFlow, uHeat, uMoonDir, uMoonLight,
     } = shared;
     const C = DUNE.crest;
     const EW = DUNE.expWindward;
@@ -451,6 +476,8 @@ export function createSandMaterial(shared, { glitter = true, ripples = true } = 
     const uSignDirs = uniformArray(vec4s(WORM_GROUND_SLOTS, 1, 0, 0, 0), 'vec4'); // heading.xz
     const uWells = uniformArray(vec4s(WELL_SLOTS, 0, 0, 40, 20), 'vec4'); // x, z, rim radius, rim width
     const uWellH = uniformArray(vec4s(WELL_SLOTS, 0, 0, 0, 0), 'vec4'); // rim, bulge, crater (heights), scar
+    const uFronts = uniformArray(vec4s(FRONT_SLOTS, 0, -100, 0, 400), 'vec4'); // start along the wind, t0, strength, speed
+    const uFires = uniformArray(vec4s(FIRE_SLOTS, 0, 0, -100, 0), 'vec4'); // x, z, t0, strength
 
     /** The parts of well i at a ground point: shared by the displaced grid and the per-pixel slope. */
     const wellShape = (xz, i) => {
@@ -481,6 +508,7 @@ export function createSandMaterial(shared, { glitter = true, ripples = true } = 
 
     const aDune = attribute('aDune', 'vec4');
     const aShade = attribute('aShade', 'vec4');
+    const aMoon = attribute('aMoon', 'float');
 
     // ── Vertex: ground pulses (drum rings), the worm signs and the wells ──
     const disp = Fn(() => {
@@ -624,6 +652,12 @@ export function createSandMaterial(shared, { glitter = true, ripples = true } = 
         // Sand: a lifted, compressed Lambert (Journey) so grazing faces still read as lit.
         const dA = clamp(nlA.mul(2.6), 0.0, 1.0).mul(visA);
         const dB = clamp(nlB.mul(2.4), 0.0, 1.0).mul(visB);
+        // The moons: their own horizon (baked toward the greater moon), so the night has cast
+        // shadows of its own, and they fall the other way.
+        const tanM = uMoonDir.y.div(length(uMoonDir.xz));
+        const visM = smoothstep(-0.05, 0.04, tanM.sub(aMoon));
+        const nlM = dot(N, uMoonDir);
+        const dM = clamp(nlM.mul(2.2).add(0.06), 0.0, 1.0).mul(visM);
 
         // ── Albedo ──
         const sand = vec3(0.8, 0.42, 0.19).mul(mix(0.88, 1.1, nz.w)).toVar();
@@ -647,6 +681,11 @@ export function createSandMaterial(shared, { glitter = true, ripples = true } = 
         const horizonFill = uSunLightA.mul(0.085).mul(sunward);
         const direct = uSunLightA.mul(dA).add(uSunLightB.mul(dB));
         const col = sand.mul(direct.add(skyFill.add(bounce).add(horizonFill).mul(ao))).toVar();
+        // By moonlight the eye has lost most of its colour: the sand goes to silver.
+        const sandGrey = dot(sand, vec3(0.3, 0.5, 0.2));
+        const silver = mix(sand, vec3(0.84, 0.94, 1.14).mul(sandGrey), 0.6);
+        // (a little of the moons' light comes down from the whole sky: the night's shade is navy, not black)
+        col.addAssign(silver.mul(uMoonLight).mul(dM.mul(mix(0.7, 1.0, ao)).add(ao.mul(0.07))));
 
         // Backlit forward-scatter sheen: grazing sand toward the suns glows (the Journey look).
         const fresnel = pow(float(1.0).sub(clamp(dot(N, V), 0.0, 1.0)), 4.0);
@@ -656,6 +695,8 @@ export function createSandMaterial(shared, { glitter = true, ripples = true } = 
         const fwd = pow(clamp(dot(V.negate(), uSunA), 0.0, 1.0), 6.0).mul(fresnel).mul(max(visA, visB.mul(0.6)));
         col.addAssign(uSunLightA.mul(specA.mul(fresnel.mul(0.75).add(0.05)).add(fwd.mul(0.13))));
         col.addAssign(uSunLightB.mul(specB.mul(fresnel.mul(0.7).add(0.05))));
+        const specM = pow(clamp(dot(R, uMoonDir), 0.0, 1.0), 22.0).mul(visM).mul(smoothstep(-0.05, 0.12, nlM));
+        col.addAssign(uMoonLight.mul(specM.mul(fresnel.mul(1.1).add(0.07))));
         // Contre-jour crest glow: the brink of every ridge between the camera and the suns burns.
         // Far off, the grid is too coarse to hold a razor crest (see crestT): there the glow
         // reaches a little way down the windward approach, which the eye always sees, so it
@@ -669,6 +710,37 @@ export function createSandMaterial(shared, { glitter = true, ripples = true } = 
         // The heat of play makes them burn hotter (uHeat.w: 0 at rest).
         const burnCrest = uHeat.w.mul(0.6).add(1.0).mul(0.55);
         col.addAssign(uSunLightA.mul(brink.mul(backlit).mul(max(visA, visB.mul(0.5))).mul(burnCrest)));
+        // Once the ember has set the white sun draws the same line alone, and after it the moons
+        // draw theirs in silver on the crests that stand between the eye and them.
+        const backlitB = pow(clamp(dot(V.negate(), uSunB).mul(0.5).add(0.5), 0.0, 1.0), 5.0);
+        const backlitM = pow(clamp(dot(V.negate(), uMoonDir).mul(0.5).add(0.5), 0.0, 1.0), 4.0);
+        col.addAssign(uSunLightB.mul(brink.mul(backlitB).mul(visB).mul(0.34))
+            .add(uMoonLight.mul(brink.mul(backlitM).mul(visM).mul(0.8))));
+        // ── Crest fire: a cold light running along the crest lines, both ways out from the drum ──
+        // On every ridge a spark runs outward along the brink, blue-white at its head with the
+        // crest glowing gold behind it; on the far ridges it has further to run, so the erg
+        // lights from the near crests outward.
+        const fire = float(0.0).toVar();
+        const fireHead = float(0.0).toVar();
+        for (let i = 0; i < FIRE_SLOTS; i++) {
+            const P = uFires.element(i);
+            const age = uTime.sub(P.z);
+            const run = abs(dot(wp.xz.sub(P.xy), vec2(uWindDir.y.negate(), uWindDir.x)));
+            const x = run.sub(age.mul(CREST_FIRE.speed)).div(age.mul(22.0).add(46.0));
+            const live = smoothstep(0.0, 0.06, age).mul(exp(age.mul(-0.3))).mul(P.w);
+            // (a long tail behind the head: the crest goes on glowing after the wave has passed)
+            const tail = exp(min(x, 0.0).mul(0.3)).mul(float(1.0).sub(smoothstep(0.0, 1.2, x)));
+            fire.addAssign(tail.mul(live));
+            fireHead.addAssign(exp(x.mul(x).negate()).mul(live));
+        }
+        // (on the near and middle crests, which stand apart as lines: far off they are too many
+        // to part, and a band of light there is no longer fire on a crest)
+        // (a hairline on the brink itself: spread over the approach it is a smear of blue in the shade)
+        const fireReach = float(1.0).sub(smoothstep(1200.0, 3000.0, dist));
+        const hair = exp(pow2(dpC.div(w.mul(1.1).add(0.007))).negate()).mul(clamp(aDune.w.div(24.0), 0.0, 1.3))
+            .mul(detail.mul(0.7).add(0.3));
+        col.addAssign(mix(vec3(1.0, 0.5, 0.16), vec3(0.55, 0.78, 1.0), clamp(fireHead.div(max(fire, 1e-3)), 0.0, 1.0))
+            .mul(hair.mul(fire).mul(fireReach).mul(7.0)));
 
         // ── Grain glitter: a sub-pixel dot per world cell with a random facet ──
         if (glitter) {
@@ -681,11 +753,13 @@ export function createSandMaterial(shared, { glitter = true, ripples = true } = 
             const facet = normalize(N.add(vec3(h2.x.sub(0.5), 0.15, h2.y.sub(0.5)).mul(1.4)));
             const H = normalize(V.add(uSunA));
             const g = pow(clamp(dot(facet, H), 0.0, 1.0), 420.0);
-            const pick = smoothstep(0.55, 0.6, ssHash21(cell.add(17.3)));
+            // (few, and each breathing slowly: a field of sparks is grain, not glitter)
+            const gh = ssHash21(cell.add(17.3));
+            const pick = smoothstep(0.84, 0.88, gh).mul(sin(uTime.mul(0.7).add(gh.mul(80.0))).mul(0.35).add(0.65));
             const near = float(1.0).sub(smoothstep(40.0, 320.0, dist)).mul(float(1.0).sub(scar));
             const tint = mix(vec3(1.0, 0.86, 0.62), vec3(1.0, 0.55, 0.2), rust);
             col.addAssign(tint.mul(uSunLightA).mul(g.mul(dotM).mul(pick).mul(near).mul(visA)
-                .mul(9.0)));
+                .mul(7.0)));
         }
 
         // ── Drum rings: each lock sends a ring of lifted sand across the erg ──
@@ -701,7 +775,9 @@ export function createSandMaterial(shared, { glitter = true, ripples = true } = 
             ringSum.addAssign(exp(x.mul(x).negate()).sub(exp(x.add(1.8).mul(x.add(1.8)).negate()).mul(0.12)).mul(fade));
         }
         // Lifted grains catch the low sun: a golden crest, brightest where the suns can reach.
-        const ringLight = uSunLightA.mul(max(visA, 0.45)).mul(0.22).add(vec3(0.12, 0.07, 0.03));
+        const ringLight = uSunLightA.mul(max(visA, 0.45)).mul(0.22).add(uSunLightB.mul(visB.mul(0.12)))
+            .add(uMoonLight.mul(0.4))
+            .add(vec3(0.12, 0.07, 0.03));
         col.addAssign(mix(vec3(1.0, 0.78, 0.48), vec3(1.0, 0.55, 0.22), rust).mul(ringLight).mul(ringSum));
 
         // ── Blowing sand: sheets of saltating grains streaming downwind over the surface ──
@@ -716,8 +792,28 @@ export function createSandMaterial(shared, { glitter = true, ripples = true } = 
             .mul(smoothstep(0.1, 0.6, p).mul(float(1.0).sub(crestT.mul(0.6))))
             .mul(min(uWind.mul(0.6).add(uGust.mul(1.2)), 1.4));
         const sheetCol = uSunLightA.mul(max(visA, 0.2)).mul(0.08).add(uSunLightA.mul(fwd.mul(0.18)))
+            .add(uSunLightB.mul(visB.mul(0.035)))
+            .add(uMoonLight.mul(visM.mul(0.1).add(0.03)))
             .mul(storm.mul(0.7).add(1.0));
         col.addAssign(sheetCol.mul(sheetMask));
+        // ── Gust fronts: a line of driven sand crossing the erg downwind ──
+        // The same sand as the sheets, lifted along a line that bends with the ground it crosses;
+        // behind the line the sand goes on streaming for a moment.
+        const gustBand = float(0.0).toVar();
+        for (let i = 0; i < FRONT_SLOTS; i++) {
+            const G = uFronts.element(i);
+            const age = uTime.sub(G.y);
+            const at = G.x.add(age.mul(G.w));
+            const x = along.add(nz.x.sub(0.5).mul(150.0)).add(nz.y.sub(0.5).mul(60.0)).sub(at)
+                .div(age.mul(26.0).add(70.0));
+            const spent = smoothstep(GUST_FRONT.life * 0.55, GUST_FRONT.life, age);
+            const live = smoothstep(0.0, 0.3, age).mul(float(1.0).sub(spent))
+                .mul(G.z);
+            gustBand.addAssign(exp(min(x, 0.0).mul(0.6)).mul(float(1.0).sub(smoothstep(0.0, 1.0, x))).mul(live));
+        }
+        const gustSand = smoothstep(0.2, 0.75, sheet.z.mul(0.55).add(sheet.w.mul(0.45)))
+            .mul(float(1.0).sub(smoothstep(1700.0, 4200.0, dist))).mul(float(1.0).sub(crestT.mul(0.5)));
+        col.addAssign(sheetCol.mul(gustBand.mul(gustSand).mul(3.4)));
 
         // ── Aerial perspective ──
         return vec4(atmosphere.applyAerial(col, wp), 1.0);
@@ -726,7 +822,7 @@ export function createSandMaterial(shared, { glitter = true, ripples = true } = 
     return {
         material,
         uniforms: {
-            uPulses, uSigns, uSignDirs, uWells, uWellH,
+            uPulses, uSigns, uSignDirs, uWells, uWellH, uFronts, uFires,
         },
     };
 }
@@ -740,10 +836,10 @@ export function createTerrain(options) {
 
 /** `createTerrain` as steps: the bake in slices (bakeTerrainGeometrySteps), then the material and mesh. */
 export function* createTerrainSteps({
-    field, shared, tierName = 'High', shadowDir,
+    field, shared, tierName = 'High', shadowDir, moonDir = null,
 }) {
     const tier = TERRAIN_TIERS[tierName] || TERRAIN_TIERS.High;
-    const { geometry, stats } = yield* bakeTerrainGeometrySteps(field, { tier, shadowDir });
+    const { geometry, stats } = yield* bakeTerrainGeometrySteps(field, { tier, shadowDir, moonDir });
     const { material, uniforms } = createSandMaterial(shared, {
         glitter: tierName !== 'Minimal',
         ripples: tierName !== 'Minimal',

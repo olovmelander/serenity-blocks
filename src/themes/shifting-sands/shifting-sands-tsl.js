@@ -19,6 +19,7 @@ import * as THREE from 'three/webgpu';
 import {
     Fn,
     abs,
+    atan,
     cameraPosition,
     clamp,
     dot,
@@ -140,28 +141,9 @@ export const ssMax3 = (c) => max(c.x, max(c.y, c.z));
 
 // ── The atmosphere ──────────────────────────────────────────────────────────────
 
-/**
- * Scene-linear values of the shared atmosphere (radiance, pre tone map). The grade lives in the
- * post; level progression (the deepening dusk) lerps between DAY and DUSK in the world.
- */
-export const ATMOSPHERE_LOOK = Object.freeze({
-    day: Object.freeze({
-        sunLightA: [0xffa65a, 2.7],
-        sunLightB: [0xffe4c8, 1.2],
-        zenith: [0x26407e, 0.3],
-        upper: [0x6a6ea8, 0.4],
-        horizonWarm: [0xffa865, 0.78],
-        horizonCool: [0xc48d8c, 0.5],
-    }),
-    dusk: Object.freeze({
-        sunLightA: [0xff7a3a, 2.2],
-        sunLightB: [0xffc9a0, 1.0],
-        zenith: [0x141d44, 0.22],
-        upper: [0x4e3f78, 0.32],
-        horizonWarm: [0xff8a4a, 0.95],
-        horizonCool: [0x9a6276, 0.42],
-    }),
-});
+// The scene-linear values of the shared atmosphere (radiance, pre tone map) are the hours of the
+// evening, shifting-sands-hours.js: the world melts from one station to the next. The grade lives
+// in the post.
 
 /**
  * Dust banks: world units per noise cell and the height-haze multiplier range. Their drift (noise
@@ -169,12 +151,16 @@ export const ATMOSPHERE_LOOK = Object.freeze({
  * the banks faster across the erg without ever jumping them.
  */
 const DUST_BANK_SCALE = 850;
+/** Half the length of the wall of dust along the horizon (radians: shifting-sands-weather.js WALL.half). */
+const WALL_HALF = (30 * Math.PI) / 180;
 const DUST_BANK_RANGE = Object.freeze([0.3, 2.7]);
 
 /**
  * Build the atmosphere graph helpers from the shared uniform nodes:
- *   u = { uSunA, uSunB, uSunLightA, uSunLightB, uZenith, uUpper, uHorizonWarm, uHorizonCool,
+ *   u = { uSunA, uSunB, uGlowA, uGlowB (what each sun does to the AIR: it outlasts the sunset),
+ *         uMoonDir, uMoonLight, uZenith, uUpper, uHorizonWarm, uHorizonCool,
  *         uFog (x: distance density, y: height density, z: height falloff, w: max amount),
+ *         uWeather (x: cirrus, y: streets, z: the ribbed deck, w: the haze),
  *         uBankDrift, uWindDir, noiseTex (the drifting dust banks) }
  * All helpers are plain JS graph builders: each material evaluates them once.
  */
@@ -196,7 +182,9 @@ export function createAtmosphere(u) {
         // curve's shoulder: only the disc itself reaches it.
         const a = ssPhaseHG(cA, float(0.9)).mul(0.018).add(ssPhaseHG(cA, float(0.6)).mul(0.032));
         const b = ssPhaseHG(cB, float(0.92)).mul(0.025).add(ssPhaseHG(cB, float(0.65)).mul(0.025));
-        return u.uSunLightA.mul(a).add(u.uSunLightB.mul(b)).mul(strength);
+        // The moons' own veil of silver in the air round them (nothing until the night).
+        const m = ssPhaseHG(dot(dir, u.uMoonDir), float(0.72)).mul(0.05);
+        return u.uGlowA.mul(a).add(u.uGlowB.mul(b)).add(u.uMoonLight.mul(m)).mul(strength);
     };
 
     /** Sky radiance without discs/clouds. */
@@ -204,10 +192,13 @@ export function createAtmosphere(u) {
         const el = dir.y;
         const hz = horizonColor(dir);
         const t = clamp(el, 0.0, 1.0);
-        // The hot horizon band is thicker toward the suns.
-        const band = mix(0.08, 0.22, pow(towardSunA(dir), 1.5));
-        const lowSky = mix(hz, u.uUpper, smoothstep(0.0, band, t));
-        const sky = mix(lowSky, u.uZenith, smoothstep(band.mul(0.7), 0.8, pow(t, 0.85)));
+        // The hot horizon band is thicker toward the suns, and thicker everywhere when the dust
+        // hangs (uWeather.w: the haze), which also lays its own colour over the upper sky.
+        const haze = u.uWeather.w;
+        const band = mix(0.08, 0.22, pow(towardSunA(dir), 1.5)).add(haze.mul(0.16));
+        const upper = mix(u.uUpper, hz.mul(0.8), haze.mul(0.4));
+        const lowSky = mix(hz, upper, smoothstep(0.0, band, t));
+        const sky = mix(lowSky, mix(u.uZenith, upper, haze.mul(0.45)), smoothstep(band.mul(0.7), 0.8, pow(t, 0.85)));
         // Below the horizon: the dust layer, a little darker.
         const below = hz.mul(mix(1.0, 0.8, clamp(el.negate().mul(6.0), 0.0, 1.0)));
         const base = mix(below, sky, smoothstep(-0.002, 0.004, el));
@@ -247,10 +238,22 @@ export function createAtmosphere(u) {
         return min(float(1.0).sub(exp(heightOD.add(distOD).negate())), u.uFog.w);
     };
 
+    /**
+     * The wall of dust on the horizon stands beyond the land, so the land in front of it must
+     * melt into ITS dark, not into the bright air it hides: the haze the far erg fades to is
+     * shaded where the wall stands (uWall: x how tall, y its azimuth).
+     */
+    const wallShade = (dir, dist) => {
+        const a = atan(dir.x, dir.z.negate()).sub(u.uWall.y).div(WALL_HALF);
+        const reach = smoothstep(-1.0, -0.62, a).mul(float(1.0).sub(smoothstep(0.1, 1.0, a)));
+        return float(1.0).sub(reach.mul(clamp(u.uWall.x, 0.0, 1.0)).mul(smoothstep(2200.0, 7000.0, dist)).mul(0.62));
+    };
+
     const applyAerial = (color, worldPos, fogScale = 1.0) => {
         const v = worldPos.sub(cameraPosition);
-        const dir = v.div(max(length(v), 1e-3));
-        return mix(color, hazeColor(dir), fogAmount(worldPos).mul(fogScale));
+        const dist = max(length(v), 1e-3);
+        const dir = v.div(dist);
+        return mix(color, hazeColor(dir).mul(wallShade(dir, dist)), fogAmount(worldPos).mul(fogScale));
     };
 
     return {
