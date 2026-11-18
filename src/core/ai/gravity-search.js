@@ -49,9 +49,12 @@ for (const [key, matrix] of Object.entries(SHAPES)) {
         const left = Math.min(...dx);
         const top = Math.min(...dy);
         const footprint = offsets.map((v) => v - top * COLS - left).join(',');
+        const columnAdds = new Uint8Array(shape[0].length);
+        for (const column of dx) columnAdds[column]++;
         rotations.push({
             shape,
             rotation,
+            columnAdds,
             dx,
             dy,
             offsets,
@@ -234,11 +237,22 @@ function value(board, weights, pending, virtual, probe) {
             const gaps = bits[missing];
             if (!gaps || gaps > 3) continue;
             tested++;
-            probe.set(board.cells);
-            for (let x = 0; x < COLS; x++) if (missing & (1 << x)) probe[y * COLS + x] = probe.length + x + 8;
-            const waves = settleLabelledBoard(probe, board.first, board.top);
-            const lines = waves.reduce((sum, n) => sum + n, 0);
-            const capacity = waves.length * weights.virtualWaves + lines * weights.virtualLines;
+            // Gravity preserves columns. Every cleared line consumes one cell
+            // from each. Filling these gaps guarantees the first line.
+            let maxLines = board.minimum + 1;
+            for (let x = 0; x < COLS; x++) {
+                if (board.counts[x] === board.minimum && !(missing & (1 << x))) { maxLines--; break; }
+            }
+            const maximum = maxLines * (Math.max(0, weights.virtualWaves) + Math.max(0, weights.virtualLines));
+            if (best >= maximum - gaps * weights.virtualGap) continue;
+            let capacity = weights.virtualWaves + weights.virtualLines;
+            if (maxLines > 1) {
+                probe.set(board.cells);
+                for (let x = 0; x < COLS; x++) if (missing & (1 << x)) probe[y * COLS + x] = probe.length + x + 8;
+                const waves = settleLabelledBoard(probe, board.first, board.top);
+                const lines = waves.reduce((sum, n) => sum + n, 0);
+                capacity = waves.length * weights.virtualWaves + lines * weights.virtualLines;
+            }
             best = Math.max(best, capacity - gaps * weights.virtualGap);
         }
     }
@@ -357,6 +371,20 @@ function* triggerSteps(board, known, weights, allowUnknown, probe, sliced) {
                     if (sliced) yield;
                 }
                 if (!reachable.get(key).some((p) => p.x === x && p.y === py && p.rotation === form.rotation)) continue;
+            }
+            // This reachable placement completes at least one row. A sparse
+            // column can prove its exact payout or exclude it from the maximum.
+            let maxLines = board.minimum + 4;
+            for (let col = 0; col < COLS && maxLines > board.minimum; col++) {
+                const count = board.counts[col];
+                if (count >= maxLines) continue;
+                maxLines = Math.min(maxLines, count + (form.columnAdds[col - x] || 0));
+            }
+            const maximum = maxLines ** 2 * Math.max(0, weights.triggerWaves) + maxLines * Math.max(0, weights.triggerLines);
+            if (discount > 0 && best >= discount * maximum) continue;
+            if (maxLines === 1) {
+                best = Math.max(best, discount * (weights.triggerWaves + weights.triggerLines));
+                continue;
             }
             stamp(board, form, x, py, board.cells.length + 1, probe);
             const waves = settleLabelledBoard(probe, board.first, Math.max(0, Math.min(board.top, py + form.top)));

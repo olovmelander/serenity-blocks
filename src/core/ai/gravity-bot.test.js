@@ -7,7 +7,9 @@ import { settleLabelledBoard } from '../stillfall/stillfall-cascade.js';
 import { seededRandom } from '../../utils/helpers.js';
 import { GravityBotController, gravityPlanningRate } from './gravity-bot-controller.js';
 import { findReachablePlacements } from './reachability-pathfinder.js';
-import { gravityBoardKey, gravityReward, readGravityBoard } from './gravity-search.js';
+import {
+    gravityBoardKey, gravityReward, reachableTrigger, readGravityBoard,
+} from './gravity-search.js';
 import { deal, replay, spawn } from '../../../reports/bot-ai-audit-2026-11/solo.mjs';
 
 function controller(state, rows = () => 0) {
@@ -17,6 +19,18 @@ function controller(state, rows = () => 0) {
 }
 
 describe('live gravity policy', () => {
+    it('respects every cell a vertical trigger adds to the sparsest column', () => {
+        const state = deal(1001);
+        const weights = { triggerWaves: 1, triggerLines: 10, unseen: 0 };
+        const rows = state.boardGrid.slice(-4).reverse();
+        for (const [index, row] of rows.entries()) {
+            for (let x = 0; x < COLS - 1; x++) row[x] = { id: x + 1, type: 'I' };
+            const strength = reachableTrigger(readGravityBoard(state.boardGrid), ['I'], weights, false);
+            expect(strength).toBe(1 + 10 * (index + 1));
+        }
+        state.reset();
+    });
+
     it('replays the predicted waves, gross attack and per-wave score through the controls', async () => {
         const state = deal(1003);
         const bot = controller(state);
