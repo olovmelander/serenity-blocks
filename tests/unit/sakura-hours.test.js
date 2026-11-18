@@ -7,6 +7,7 @@ import {
 import { SakuraLight } from '../../src/themes/sakura-twilight/sakura-light.js';
 import { SakuraPost } from '../../src/themes/sakura-twilight/sakura-post.js';
 import { sakuraTier } from '../../src/themes/sakura-twilight/sakura-quality.js';
+import { SAKURA_WEATHERS } from '../../src/themes/sakura-twilight/sakura-weather.js';
 
 const N = SAKURA_HOURS.length;
 const P = SAKURA_HOUR_SECONDS;
@@ -80,6 +81,64 @@ describe('Sakura Twilight hours of the night', () => {
         }
     });
 
+    it('opens exactly as the garden always has: the first hour\'s colours are the afterglow\'s', () => {
+        // The opening look, colour for colour (the other four hours may be retuned; this one is the
+        // picture every session starts in, and the first air scales none of it).
+        const [first] = SAKURA_HOURS;
+        expect(first).toMatchObject({
+            name: 'afterglow',
+            moon: [0.5, 0.66, 1.0],
+            zenith: [0.004, 0.006, 0.03],
+            vault: [0.028, 0.017, 0.085],
+            horizon: [0.07, 0.038, 0.13],
+            afterglow: [0.46, 0.12, 0.17],
+            ember: [0.85, 0.34, 0.2],
+            skyLight: [0.2, 0.11, 0.24],
+            bounce: [0.06, 0.035, 0.07],
+            lampColor: [2.9, 1.28, 0.4],
+            haze: 0.0018,
+            mist: 0.003,
+            lampGain: 1,
+            stars: 1,
+            exposure: 1,
+            beams: 1,
+        });
+        // The cirrus was written as two sRGB hexes: the same two, in the linear working space.
+        const linear = (hex) => new THREE.Color(hex).toArray();
+        first.cloudShade.forEach((c, i) => expect(c).toBeCloseTo(linear(0x241a3c)[i], 6));
+        first.cloudLit.forEach((c, i) => expect(c).toBeCloseTo(linear(0x4a3a6e)[i], 6));
+        expect(Object.isFrozen(first) && Object.isFrozen(first.moon)).toBe(true);
+    });
+
+    it('knows how much of the river of heaven each hour is dark enough for, and how dense its shafts stand', () => {
+        expect([...SAKURA_HOUR_SCALARS]).toEqual(['haze', 'mist', 'lampGain', 'stars', 'exposure', 'galaxy', 'beams']);
+        const by = (name) => SAKURA_HOURS.find((hour) => hour.name === name);
+        for (const hour of SAKURA_HOURS) {
+            // The river is a share of itself (the air scales it too, and the rig caps the two at one).
+            expect(hour.galaxy, hour.name).toBeGreaterThan(0);
+            expect(hour.galaxy, hour.name).toBeLessThanOrEqual(1);
+            expect(hour.beams, hour.name).toBeGreaterThan(0.3);
+            expect(hour.beams, hour.name).toBeLessThan(2.5);
+        }
+        // All of it in the lantern night, when the sky has gone to ink; next to none at dawn and
+        // little in the afterglow and the blue hour.
+        expect(by('lantern night').galaxy).toBe(Math.max(...SAKURA_HOURS.map((hour) => hour.galaxy)));
+        expect(by('plum dawn').galaxy).toBe(Math.min(...SAKURA_HOURS.map((hour) => hour.galaxy)));
+        expect(by('afterglow').galaxy).toBeLessThan(by('moonlit night').galaxy);
+        // The shafts are the moon's: the most when it has the garden, the fewest when it is veiled.
+        expect(by('moonlit night').beams).toBe(Math.max(...SAKURA_HOURS.map((hour) => hour.beams)));
+        expect(by('lantern night').beams).toBe(Math.min(...SAKURA_HOURS.map((hour) => hour.beams)));
+        // Between two hours the numbers cross in a straight line, like the rest.
+        for (let i = 0; i < N; i += 1) {
+            const a = SAKURA_HOURS[i];
+            const b = SAKURA_HOURS[(i + 1) % N];
+            const half = sakuraHourAt(i + 0.5);
+            for (const key of SAKURA_HOUR_SCALARS) {
+                expect(half[key], `${a.name} ${key}`).toBeCloseTo((a[key] + b[key]) / 2, 12);
+            }
+        }
+    });
+
     it('melts through colour, never through grey', () => {
         // Halfway from violet afterglow to the blue hour the vault stays as saturated as either end.
         const saturation = ([r, g, b]) => (Math.max(r, g, b) - Math.min(r, g, b)) / Math.max(r, g, b);
@@ -129,6 +188,31 @@ describe('Sakura Twilight light rig hours', () => {
         // Nonsense keeps the hour it had.
         rig.setHour(NaN);
         expect(rig.hourPhase).toBe(lantern);
+        rig.dispose();
+    });
+
+    it('shows the river of heaven and stands the shafts as the hour says, in the air it opens in', () => {
+        const rig = light();
+        const [clear] = SAKURA_WEATHERS;
+        SAKURA_HOURS.forEach((hour, index) => {
+            expect(rig.setHour(index)).toBe(rig.hour);
+            expect(rig.hour.galaxy).toBe(hour.galaxy);
+            expect(rig.hour.beams).toBe(hour.beams);
+            expect(rig.uGalaxy.value, hour.name).toBeCloseTo(Math.min(1, hour.galaxy * clear.galaxy), 12);
+            expect(rig.shafts, hour.name).toBeCloseTo(hour.beams * clear.shafts, 12);
+            expect(rig.uStars.value, hour.name).toBeCloseTo(hour.stars * clear.stars, 12);
+            expect(rig.uMist.value, hour.name).toBeCloseTo(hour.mist * clear.mist, 12);
+        });
+        // The darkest hour under the clearest air shows all of the river, and never more than all.
+        const dark = SAKURA_HOURS.findIndex((hour) => hour.galaxy === 1);
+        const mirror = SAKURA_WEATHERS.findIndex((air) => air.galaxy === 1);
+        rig.setHour(dark);
+        rig.setWeather(mirror);
+        expect(rig.uGalaxy.value).toBe(1);
+        // Half way between two hours the shafts are half way between theirs.
+        rig.setWeather(0);
+        rig.setHour(2.5);
+        expect(rig.shafts).toBeCloseTo((SAKURA_HOURS[2].beams + SAKURA_HOURS[3].beams) / 2, 12);
         rig.dispose();
     });
 

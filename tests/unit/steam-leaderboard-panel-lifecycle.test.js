@@ -4,6 +4,8 @@ import {
 
 const steam = vi.hoisted(() => ({
     getLeaderboard: vi.fn(),
+    appId: 123456,
+    records: { isPending: () => true },
     initComplete: true,
     isAvailable: vi.fn(),
     steamId: 'local-player',
@@ -162,8 +164,8 @@ describe('Steam leaderboard request ownership', () => {
             ['score-board', 'global', 0, 10],
             ['score-board', 'friends', 0, 10],
         ]);
-        expect(cache.data.get('score-board|global|0|10').data.entries[0].name).toBe('old global');
-        expect(cache.data.get('score-board|friends|0|10').data.entries[0].name).toBe('friend');
+        expect(cache.data.get(JSON.stringify([steam.appId, steam.steamId, 'score-board', 'global', 10])).data.entries[0].name).toBe('old global');
+        expect(cache.data.get(JSON.stringify([steam.appId, steam.steamId, 'score-board', 'friends', 10])).data.entries[0].name).toBe('friend');
         expect(panel.listEl.children[0]).toBe(currentRows);
         expect(textContent(panel.listEl)).toContain('friend');
         expect(textContent(panel.listEl)).not.toContain('old global');
@@ -171,7 +173,7 @@ describe('Steam leaderboard request ownership', () => {
         expect(panel.updatedEl.textContent).toBe(currentUpdated);
     });
 
-    it('takes itself off the sheet for a board Steam does not have, also when an old board completes', async () => {
+    it('shows a missing board and keeps a late result under its own cache key', async () => {
         const score = deferred();
         const lines = deferred();
         steam.getLeaderboard.mockImplementation((board) => (
@@ -186,12 +188,11 @@ describe('Steam leaderboard request ownership', () => {
         score.resolve(response('old score'));
         await settle();
 
-        // Nothing is said about a board that is not there: the panel is hidden.
-        expect(panel.container.hidden).toBe(true);
-        expect(panel.statusEl.textContent).toBe('');
-        expect(panel.listEl.children).toHaveLength(0);
-        expect(cache.data.get('lines-board|global|0|10').data.notice).toBe('Missing lines API');
-        expect(cache.data.get('score-board|global|0|10').data.entries[0].name).toBe('old score');
+        expect(panel.container.hidden).not.toBe(true);
+        expect(panel.statusEl.textContent).toContain('Missing lines API');
+        expect(panel.statusEl.textContent).toContain('Try again');
+        expect(cache.data.has(JSON.stringify([steam.appId, steam.steamId, 'lines-board', 'global', 10]))).toBe(false);
+        expect(cache.data.get(JSON.stringify([steam.appId, steam.steamId, 'score-board', 'global', 10])).data.entries[0].name).toBe('old score');
     });
 
     it('retires old board and view loads while Steam initialization is pending', async () => {
@@ -210,7 +211,7 @@ describe('Steam leaderboard request ownership', () => {
 
         expect(steam.getLeaderboard).toHaveBeenCalledExactlyOnceWith('lines-board', 'around_user', 0, 10);
         expect(cache.set).toHaveBeenCalledOnce();
-        expect(cache.set.mock.calls[0][0]).toBe('lines-board|around_user|0|10');
+        expect(cache.set.mock.calls[0][0]).toBe(JSON.stringify([steam.appId, steam.steamId, 'lines-board', 'around_user', 10]));
         expect(textContent(panel.listEl)).toContain('current');
     });
 

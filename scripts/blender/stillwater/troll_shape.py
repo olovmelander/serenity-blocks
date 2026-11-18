@@ -1,4 +1,4 @@
-"""The troll's shape, built from numbers: one signed distance field, meshed once.
+"""The troll's shape, built from numbers: signed distance fields, meshed once each.
 
 He is drawn as smooth masses blended into each other (an old, heavy body; a big head carried low
 and forward; a long drooping nose under a heavy brow; long ears; big hands and feet) under a mane
@@ -9,6 +9,15 @@ rigs.TROLL, in its rest pose, so the runtime's body (stillwater-troll-body.js) p
 Every primitive belongs to a part (skin, hide, pelt, leather, eye, cap), so each vertex of the
 mesh can be told what it is from the nearest part. The locks are draped: each falls from its root
 under gravity and is pushed out of the body (and the locks before it), so the mane lies on him.
+
+He is five shells (SHELLS), each a closed surface of its own, because what moves against its
+neighbour must not be grown into it: his body (skin and cloth); the hair of his head (scalp, crown,
+brows, ear tufts, beard); the mantle of locks over his back; and each arm from the ball of its
+shoulder to its nails, with the moss grown over that shoulder. Whatever small thing grows in or is
+caught in one of them (a twig, a patch of lichen, a mushroom) is of that shell. Meshed as one
+field, the fist that rests by his hip grew into his loincloth, his arm into his flank, his mantle
+into his thighs and his crown into his mantle, and that skin then stretched between them whenever
+one moved (it looked as if his arm were caught in his cloth).
 
 Frame: Blender's (Z up, he faces -Y, +X is his LEFT), one unit tall, soles at -0.5.
 """
@@ -91,6 +100,8 @@ class Prim:
         self.op = op
         self.tag = tag or {}
         self.p = params
+        #: The shell it is meshed in (SHELLS): his body, or one of his arms.
+        self.shell = 'body'
 
     def sdf(self, P):
         p = self.p
@@ -161,6 +172,70 @@ def J(name, end='head'):
 #: The parts a vertex can be.
 PARTS = ('skin', 'hide', 'pelt', 'leather', 'eye', 'cap')
 
+#: The shells he is meshed as, each a closed surface of its own (see the note at the top): his
+#: body, the hair of his head, the mantle over his back, and each arm with its shoulder's moss.
+SHELLS = ('body', 'hair', 'cloak', 'armL', 'armR')
+#: The shell each group of the mane is of (the moss on a shoulder goes by its side; a stray, a twig
+#: and a patch of lichen by what they grow on).
+GROUP_SHELL = {'crown': 'hair', 'fringe': 'hair', 'tuft': 'hair', 'beard': 'hair', 'cloak': 'cloak'}
+
+
+def shell_prims(prims, shell):
+    """The primitives of one shell, in the order the field is built."""
+    return [pr for pr in prims if pr.shell == shell]
+
+
+def host_of(hosts, p):
+    """Whatever of `hosts` stands nearest the point `p`: what a small thing set there grows on (or None)."""
+    best, host = 1e9, None
+    for pr in hosts:
+        if pr.op != 'add':
+            continue
+        lo, hi = pr.aabb()
+        if np.any(p < lo - 0.03) or np.any(p > hi + 0.03):
+            continue
+        d = abs(float(pr.sdf(p[None])[0]))
+        if d < best:
+            best, host = d, pr
+    return host
+
+
+def settle(pieces, host):
+    """Put small things on what they grow on: of its shell, and hung by its rule (tag `rule`)."""
+    if host is None:
+        return
+    rule = host.tag.get('rule') or host.tag.get('group')
+    for pr in pieces:
+        pr.shell = host.shell
+        if rule:
+            pr.tag['rule'] = rule
+
+
+#: The masses of his trunk (centre, radii): his pelvis, his belly carried forward, his chest, a
+#: shoulder and a breast (on his left) and his neck (from its root to under his jaw, the radii
+#: there); of his head: his skull and his jaw, his nose (from its bridge to the middle of its tip, the radii
+#: there) and an ear (its root and its tip, on his left). And his thighs (the root's offset from the
+#: hip joint on his left, the radii at hip and knee), his shins (the radii at knee and ankle), his
+#: forearms (the radii at elbow and wrist, and of the swell below the elbow) and his palms (how far
+#: down the hand its middle is; half its length, thickness and width). `body_prims` builds him of
+#: them and `masses` hands them to the runtime, which keeps his arms out of them.
+PELVIS = (V(0, 0.015, -0.2), V(0.172, 0.15, 0.1))
+BELLY = (V(0, -0.05, -0.105), V(0.183, 0.188, 0.15))
+CHEST = (V(0, 0.005, 0.03), V(0.178, 0.148, 0.12))
+SHOULDER = (V(0.158, -0.045, 0.092), V(0.08, 0.072, 0.066))
+PEC = (V(0.075, -0.128, 0.055), V(0.064, 0.036, 0.048))
+NECK = (V(0, -0.03, 0.11), V(0, -0.12, 0.215), 0.088, 0.072)
+SKULL = (V(0, -0.15, 0.335), V(0.112, 0.112, 0.118))
+JAW = (V(0, -0.195, 0.255), V(0.118, 0.1, 0.082))
+NOSE = (V(0, -0.268, 0.318), V(0, -0.348, 0.226), 0.027, 0.046)
+EAR = (V(0.1, -0.152, 0.322), V(0.268, -0.108, 0.278))
+THIGH = (V(-0.01, 0, 0.02), 0.09, 0.064)
+SHIN = (0.062, 0.046)
+FOREARM = (0.05, 0.043, 0.066, 0.054)
+PALM = (0.062, V(0.064, 0.031, 0.054))
+#: His loincloth: an elliptic band from its belt down to a hem cut in tabs (see _sd_wrap).
+WRAP = dict(y0=-0.03, ax=(0.198, 0.222), ay=(0.2, 0.192), top=-0.165, hem=-0.305, tabs=7, tab=0.028,
+            thick=0.0105, belt=0.0155)
 
 #: Where the staff runs through his left fist, in the hand's own frame (model units from the
 #: wrist): along the hand, and off the palm on its inside (the runtime's FIST,
@@ -231,7 +306,9 @@ def grip_cut():
     width = frame(h, V(1, 0, 0))[2]
     lead = width * math.copysign(1.0, float(width @ V(0, -1, 0)))
     C = W + h * FIST_ALONG - out * FIST_OFF
-    return [Prim('cone', 'hide', 0.004, op='sub', a=C - lead * 0.09, b=C + lead * 0.09, r1=STAFF_R, r2=STAFF_R)]
+    cut = Prim('cone', 'hide', 0.004, op='sub', a=C - lead * 0.09, b=C + lead * 0.09, r1=STAFF_R, r2=STAFF_R)
+    cut.shell = 'armL'
+    return [cut]
 
 
 def _limb_hand(prims, side, curl, rng):
@@ -245,8 +322,8 @@ def _limb_hand(prims, side, curl, rng):
     across = V(s, 0, 0)
     R = frame(h, across)  # rows: along the hand, toward the back of the hand (out), and its width
     out, width = R[1], R[2]
-    palm_c = W + h * 0.062
-    prims.append(Prim('ell', 'hide', 0.02, c=palm_c, r=V(0.064, 0.031, 0.054), R=R))
+    palm_c = W + h * PALM[0]
+    prims.append(Prim('ell', 'hide', 0.02, c=palm_c, r=PALM[1], R=R))
     prims.append(Prim('cone', 'hide', 0.02, a=W - h * 0.012, b=palm_c, r1=0.044, r2=0.044))
     # A fleshy heel of the hand under the thumb.
     prims.append(Prim('ell', 'hide', 0.016, c=W + h * 0.04 - out * 0.016, r=V(0.034, 0.02, 0.03), R=R))
@@ -323,16 +400,16 @@ def body_prims(rng):
     """His body: torso, head, face, ears, arms, hands, legs, feet (no hair yet)."""
     P = []
     # Torso: a heavy pelvis, a round belly carried forward, a deep chest, a hunched upper back.
-    P.append(Prim('ell', 'hide', 0.0, c=V(0, 0.015, -0.2), r=V(0.172, 0.15, 0.1), R=IDENTITY))
-    P.append(Prim('ell', 'hide', 0.05, c=V(0, -0.05, -0.105), r=V(0.183, 0.188, 0.15), R=IDENTITY))
-    P.append(Prim('ell', 'hide', 0.05, c=V(0, 0.005, 0.03), r=V(0.178, 0.148, 0.12), R=IDENTITY))
+    P.append(Prim('ell', 'hide', 0.0, c=PELVIS[0], r=PELVIS[1], R=IDENTITY))
+    P.append(Prim('ell', 'hide', 0.05, c=BELLY[0], r=BELLY[1], R=IDENTITY))
+    P.append(Prim('ell', 'hide', 0.05, c=CHEST[0], r=CHEST[1], R=IDENTITY))
     P.append(Prim('ell', 'hide', 0.06, c=V(0, 0.07, 0.07), r=V(0.155, 0.13, 0.115), R=IDENTITY))
     for s in (1, -1):
-        P.append(Prim('ell', 'hide', 0.045, c=V(0.158 * s, -0.045, 0.092), r=V(0.08, 0.072, 0.066), R=IDENTITY))
-    P.append(Prim('cone', 'hide', 0.05, a=V(0, -0.03, 0.11), b=V(0, -0.12, 0.215), r1=0.088, r2=0.072))
+        P.append(Prim('ell', 'hide', 0.045, c=SHOULDER[0] * V(s, 1, 1), r=SHOULDER[1], R=IDENTITY))
+    P.append(Prim('cone', 'hide', 0.05, a=NECK[0], b=NECK[1], r1=NECK[2], r2=NECK[3]))
     # An old man's chest, sagging over his belly, and a navel in it.
     for s in (1, -1):
-        P.append(Prim('ell', 'hide', 0.04, c=V(0.075 * s, -0.128, 0.055), r=V(0.064, 0.036, 0.048), R=IDENTITY))
+        P.append(Prim('ell', 'hide', 0.04, c=PEC[0] * V(s, 1, 1), r=PEC[1], R=IDENTITY))
     P.append(Prim('ell', 'hide', 0.008, op='sub', c=V(0.0, -0.238, -0.092), r=V(0.011, 0.012, 0.014), R=IDENTITY))
     # A hump of old muscle over his shoulders and the top of his back (his head hangs before it).
     P.append(Prim('ell', 'hide', 0.06, c=V(0, 0.06, 0.15), r=V(0.15, 0.09, 0.07),
@@ -341,15 +418,15 @@ def body_prims(rng):
         # The slope from his neck to each shoulder (the trapezius), heavy.
         P.append(Prim('cone', 'hide', 0.04, a=V(0.03 * s, -0.02, 0.17), b=V(0.15 * s, -0.06, 0.12), r1=0.06, r2=0.05))
     # The head: carried low and forward; the brow heavy, the jowls wide, the nose long and drooping.
-    P.append(Prim('ell', 'skin', 0.04, c=V(0, -0.15, 0.335), r=V(0.112, 0.112, 0.118), R=IDENTITY))
-    P.append(Prim('ell', 'skin', 0.04, c=V(0, -0.195, 0.255), r=V(0.118, 0.1, 0.082), R=IDENTITY))
+    P.append(Prim('ell', 'skin', 0.04, c=SKULL[0], r=SKULL[1], R=IDENTITY))
+    P.append(Prim('ell', 'skin', 0.04, c=JAW[0], r=JAW[1], R=IDENTITY))
     P.append(Prim('cone', 'skin', 0.03, a=V(-0.07, -0.252, 0.332), b=V(0.07, -0.252, 0.332), r1=0.03, r2=0.03))
     # Cheeks under the eyes.
     for s in (1, -1):
         P.append(Prim('ell', 'skin', 0.025, c=V(0.06 * s, -0.255, 0.268), r=V(0.042, 0.032, 0.035), R=IDENTITY))
     # The nose: a bridge from the brow, swelling to a big drooping tip.
-    P.append(Prim('cone', 'skin', 0.02, a=V(0, -0.268, 0.318), b=V(0, -0.33, 0.255), r1=0.027, r2=0.036))
-    P.append(Prim('ell', 'skin', 0.02, c=V(0, -0.348, 0.226), r=V(0.044, 0.042, 0.05),
+    P.append(Prim('cone', 'skin', 0.02, a=NOSE[0], b=V(0, -0.33, 0.255), r1=NOSE[2], r2=0.036))
+    P.append(Prim('ell', 'skin', 0.02, c=NOSE[1], r=V(0.044, 0.042, 0.05),
                   R=frame(V(0, -0.35, -0.94), V(1, 0, 0))))
     for s in (1, -1):  # the wings of the nose
         P.append(Prim('ell', 'skin', 0.012, c=V(0.03 * s, -0.33, 0.205), r=V(0.02, 0.022, 0.018), R=IDENTITY))
@@ -361,8 +438,8 @@ def body_prims(rng):
     # Warts: on his nose, by it, on a cheek, on his brow (set on his skin: see warts()).
     # Ears: long, pointed, held out to the sides and drooping a little.
     for s in (1, -1):
-        root = V(0.1 * s, -0.152, 0.322)
-        tip = V(0.268 * s, -0.108, 0.278)
+        root = EAR[0] * V(s, 1, 1)
+        tip = EAR[1] * V(s, 1, 1)
         axis = tip - root
         R = frame(axis, V(0, 0, 1))
         for t in (0.08, 0.28, 0.5, 0.7, 0.9):
@@ -375,6 +452,7 @@ def body_prims(rng):
     # swells toward the elbow (a troll's are bigger than his upper arms) and a thick wrist.
     for side, s in (('L', 1), ('R', -1)):
         S, E, W = J('upper' + side), J('fore' + side), J('hand' + side)
+        first = len(P)
         up = (E - S) / np.linalg.norm(E - S)
         fore = (W - E) / np.linalg.norm(W - E)
         P.append(Prim('ell', 'hide', 0.04, c=S + V(0.012 * s, 0, 0.012) + up * 0.02, r=V(0.072, 0.07, 0.066),
@@ -386,14 +464,17 @@ def body_prims(rng):
         back = np.cross(up, V(s, 0, 0))
         back = back * math.copysign(1.0, float(back @ V(0, 1, 0)))
         P.append(Prim('ell', 'hide', 0.014, c=E + back * 0.028, r=V(0.03, 0.026, 0.03), R=IDENTITY))
-        P.append(Prim('cone', 'hide', 0.02, a=E, b=W, r1=0.05, r2=0.043))
-        P.append(Prim('cone', 'hide', 0.03, a=E + fore * 0.03, b=E + (W - E) * 0.6, r1=0.066, r2=0.054))
+        P.append(Prim('cone', 'hide', 0.02, a=E, b=W, r1=FOREARM[0], r2=FOREARM[1]))
+        P.append(Prim('cone', 'hide', 0.03, a=E + fore * 0.03, b=E + (W - E) * 0.6, r1=FOREARM[2], r2=FOREARM[3]))
         _limb_hand(P, side, None if side == 'L' else 0.3, rng)
+        # (The arm is a shell of its own, from the ball of the shoulder down: see SHELLS.)
+        for pr in P[first:]:
+            pr.shell = 'arm' + side
     # Legs: short and heavy.
     for side, s in (('L', 1), ('R', -1)):
         H, K, A = J('thigh' + side), J('shin' + side), J('foot' + side)
-        P.append(Prim('cone', 'hide', 0.045, a=H + V(-0.01 * s, 0, 0.02), b=K, r1=0.09, r2=0.064))
-        P.append(Prim('cone', 'hide', 0.02, a=K, b=A, r1=0.062, r2=0.046))
+        P.append(Prim('cone', 'hide', 0.045, a=H + THIGH[0] * V(s, 1, 1), b=K, r1=THIGH[1], r2=THIGH[2]))
+        P.append(Prim('cone', 'hide', 0.02, a=K, b=A, r1=SHIN[0], r2=SHIN[1]))
         P.append(Prim('ell', 'hide', 0.03, c=K + (A - K) * 0.32 + V(0, 0.022, 0), r=V(0.052, 0.056, 0.058), R=IDENTITY))
         # A knobbed kneecap.
         P.append(Prim('ell', 'hide', 0.016, c=K + V(0.004 * s, -0.052, 0.008), r=V(0.034, 0.024, 0.036), R=IDENTITY))
@@ -449,8 +530,62 @@ def sole_cut():
 
 def wrap_prims():
     """A loincloth of bark-cloth wrapped round his hips, hem in soft tabs, with a rope belt."""
-    return [Prim('wrap', 'leather', 0.006, y0=-0.03, ax=(0.198, 0.222), ay=(0.2, 0.192), top=-0.165, hem=-0.305,
-                 tabs=7, tab=0.028, thick=0.0105, belt=0.0155)]
+    return [Prim('wrap', 'leather', 0.006, **WRAP)]
+
+
+def masses():
+    """What his arms must keep out of, and how thick they are, for the runtime's body
+    (stillwater-troll-body.js): the masses above in the file's own axes (glTF: y up, +z his front,
+    x his left), each with the bone that carries it.
+
+    `masses`: an ellipsoid {c, r}; his cloth, an elliptic band {top, hem, z0, rx, rz, thick} (its
+    half-widths at the top and at the hem; the hem taken at the middle of its tabs); a limb, his
+    nose or an ear, a round cone {a, b, r1, r2} (an ear is a blade, far thinner than it is tall: it
+    is given a girth between the two). `fore`: [share of the forearm from the elbow, radius] down
+    it; `hand`: [distance down his open right hand from the wrist, half its thickness] to his
+    fingers' ends (a hand lies flat on what it is laid on); `fist`: the same for his left hand,
+    closed on his staff."""
+    def at(v):
+        return [round(float(c), 4) for c in (v[0], v[2], -v[1])]
+
+    def radii(v):
+        return [round(float(c), 4) for c in (v[0], v[2], v[1])]
+
+    out = [{'name': name, 'bone': bone, 'kind': 'ell', 'c': at(c), 'r': radii(r)}
+           for name, bone, (c, r) in (('pelvis', 'hips', PELVIS), ('belly', 'spine', BELLY), ('chest', 'chest', CHEST),
+                                      ('skull', 'head', SKULL), ('jaw', 'head', JAW))]
+    out.append({'name': 'nose', 'bone': 'head', 'kind': 'cone', 'a': at(NOSE[0]), 'b': at(NOSE[1]),
+                'r1': NOSE[2], 'r2': NOSE[3]})
+    out.append({'name': 'neck', 'bone': 'neck', 'kind': 'cone', 'a': at(NECK[0]), 'b': at(NECK[1]),
+                'r1': NECK[2], 'r2': NECK[3]})
+    for side, s in (('L', 1), ('R', -1)):
+        out.append({'name': 'shoulder' + side, 'bone': 'clav' + side, 'kind': 'ell',
+                    'c': at(SHOULDER[0] * V(s, 1, 1)), 'r': radii(SHOULDER[1])})
+        out.append({'name': 'breast' + side, 'bone': 'chest', 'kind': 'ell', 'c': at(PEC[0] * V(s, 1, 1)),
+                    'r': radii(PEC[1])})
+    out.append({'name': 'cloth', 'bone': 'hips', 'kind': 'wrap', 'top': WRAP['top'],
+                'hem': round(WRAP['hem'] + WRAP['tab'] * 0.5, 4), 'z0': -WRAP['y0'], 'rx': list(WRAP['ax']),
+                'rz': list(WRAP['ay']), 'thick': WRAP['thick']})
+    for side, s in (('L', 1), ('R', -1)):
+        out.append({'name': 'thigh' + side, 'bone': 'thigh' + side, 'kind': 'cone',
+                    'a': at(J('thigh' + side) + THIGH[0] * V(s, 1, 1)), 'b': at(J('shin' + side)),
+                    'r1': THIGH[1], 'r2': THIGH[2]})
+        out.append({'name': 'shin' + side, 'bone': 'shin' + side, 'kind': 'cone', 'a': at(J('shin' + side)),
+                    'b': at(J('foot' + side)), 'r1': SHIN[0], 'r2': SHIN[1]})
+        out.append({'name': 'ear' + side, 'bone': 'head', 'kind': 'cone', 'a': at(EAR[0] * V(s, 1, 1)),
+                    'b': at(EAR[1] * V(s, 1, 1)), 'r1': 0.03, 'r2': 0.012})
+    e, w, e2, m2 = FOREARM
+    palm, half = PALM[0], float(PALM[1][1])
+    return {
+        'masses': out,
+        'fore': [[0.0, e], [0.15, e2], [0.6, m2], [1.0, w]],
+        # (His fingers begin 0.104 down his hand and are about 0.09 long, a little curled.)
+        'hand': [[round(palm, 4), round(half, 4)], [0.112, 0.026], [0.15, 0.022], [0.185, 0.018]],
+        # (His fist: its heel down the hand, and the round of it about the staff where it runs
+        # through, which the runtime knows the place of.)
+        'fist': [[round(FIST_ALONG * 0.5, 4), 0.04]],
+        'grip': round(STAFF_R + 0.042, 4),
+    }
 
 
 # ── The mane ──
@@ -559,8 +694,7 @@ def lock_prims(lines, part='pelt', k=0.008, tag=None):
     return P
 
 
-HEAD_C = V(0, -0.15, 0.335)
-HEAD_R = V(0.112, 0.112, 0.118)
+HEAD_C, HEAD_R = SKULL
 
 
 def _on_head(alpha, beta, lift=0.0):
@@ -588,7 +722,10 @@ def mane_prims(body, rng, log=print):
             lid[0] += 1
             t = float(np.clip(base_tone + 0.18 * rng.standard_normal(), 0.0, 0.62))
             tone[lid[0]] = t
+            first = len(out)
             out.extend(lock_prims([line], part=part, k=k, tag={'lock': lid[0], 'tone': t, 'group': group}))
+            for pr in out[first:]:
+                pr.shell = GROUP_SHELL.get(group, 'body')
 
     def flare_from(cy, amount=0.18):
         def f(p):
@@ -604,6 +741,7 @@ def mane_prims(body, rng, log=print):
     hair_n /= np.linalg.norm(hair_n)
     scalp = [Prim('cap', 'pelt', 0.018, c=HEAD_C + V(0, 0.004, 0.004), r=HEAD_R + V(0.007, 0.009, 0.008),
                   o=V(0, -0.15, 0.372), n=hair_n, tag={'lock': 0, 'tone': 0.3, 'group': 'crown'})]
+    scalp[0].shell = 'hair'
     out.extend(scalp)
     under = list(body) + scalp
 
@@ -678,6 +816,7 @@ def mane_prims(body, rng, log=print):
             rr = rng.uniform(0.042, 0.056)
             pads.append(Prim('ell', 'pelt', 0.024, c=q - n * 0.002, r=V(0.013, rr, rr * 0.9), R=frame(n, V(0, 0, 1)),
                              tag={'lock': -3, 'tone': float(rng.uniform(0.2, 0.45)), 'group': 'shoulder'}))
+            pads[-1].shell = 'arm' + side
         for _ in range(20):
             d = V(s * rng.uniform(0.2, 1.0), rng.uniform(-0.8, 0.6), rng.uniform(0.0, 0.9))
             d = d / np.linalg.norm(d)
@@ -689,8 +828,14 @@ def mane_prims(body, rng, log=print):
     under = under + pads
     lines = drape(under, np.array(roots), np.array(dirs), np.array(lens), np.array(r0s), np.array(r0s) * 0.2, rng,
                   flare=flare_from(0.0, 0.1), wave=0.004, rest=0.5, hug=0.75)
+    shoulder_start = len(out)
     add(lines, 'shoulder', 0.012, 0.3)
+    # (The moss on a shoulder rides on that arm: it is of the arm's shell, pads and locks.)
+    for pr in out[shoulder_start:]:
+        pr.shell = 'armL' if pr.p['a'][0] > 0 else 'armR'
+    on_shoulder = range(len(cloak_lines), len(cloak_lines) + len(lines))
     cloak_lines = cloak_lines + lines
+    of_cloak = range(0, len(cloak_lines))
 
     # ── The crown: many thin locks from his head, fused into combed-back hair lying flat to it and
     # falling over its back and sides (his face and ears free) ──
@@ -714,12 +859,14 @@ def mane_prims(body, rng, log=print):
 
     # ── Strays: short tufts standing out of the mane, so his outline is shaggy, not smooth ──
     strays = []
+    stray_host = []
     pool = cloak_lines + crown_lines
     picks = rng.choice(len(pool), size=min(34, len(pool)), replace=False)
     for k in picks:
         line, radii = pool[k]
         if len(line) < 6:
             continue
+        stray_host.append('shoulder' if k in on_shoulder else 'cloak' if k in of_cloak else 'crown')
         i = int(rng.uniform(0.3, 0.85) * (len(line) - 1))
         p = line[i]
         o = p - V(0, 0.0, p[2] * 0.3)
@@ -733,7 +880,21 @@ def mane_prims(body, rng, log=print):
         pts = np.array([p + d * length * (j / (n - 1)) + V(0, 0, -0.25 * length * (j / (n - 1)) ** 2) for j in range(n)])
         r0 = radii[i] * rng.uniform(0.55, 0.75)
         strays.append((pts, r0 * (1.0 - 0.85 * np.linspace(0, 1, n) ** 1.2)))
+    stray_first = lid[0]
+    stray_start = len(out)
     add(strays, 'stray', 0.004, 0.36)
+    # (A tuft goes with the lock it stands out of: of the moss on a shoulder, of the mantle, or of
+    # his crown.)
+    for pr in out[stray_start:]:
+        host = stray_host[pr.tag['lock'] - stray_first - 1]
+        if host == 'shoulder':
+            pr.tag['group'] = 'shoulder'
+            pr.shell = 'armL' if pr.p['a'][0] > 0 else 'armR'
+        elif host == 'cloak':
+            pr.tag['rule'] = 'cloak'
+            pr.shell = 'cloak'
+        else:
+            pr.shell = 'hair'
 
     # ── Twigs caught in his mane (bark: dark), each with a fork ──
     twigs = []
@@ -753,7 +914,14 @@ def mane_prims(body, rng, log=print):
         mid = q + d * 0.06
         fork = mid + (d * 0.6 + side * 0.8) * 0.05
         twigs.append((np.array([mid, fork]), np.array([0.0045, 0.002])))
+    twig_first = lid[0]
+    twig_start = len(out)
+    hosts = list(under) + out[:twig_start]
+    twig_host = [host_of(hosts, line[0]) for line, _ in twigs[0::2]]
     add(twigs, 'twig', 0.003, 0.0, part='leather')
+    # (A twig and its fork go with what the twig is caught in.)
+    for pr in out[twig_start:]:
+        settle([pr], twig_host[(pr.tag['lock'] - twig_first - 1) // 2])
 
     # ── Lichen grown on him: pale patches on the tops of his shoulders and his back ──
     lichen = []
@@ -764,8 +932,11 @@ def mane_prims(body, rng, log=print):
             c = q + V(*rng.uniform(-0.025, 0.025, 3))
             c = _onto(under, c, c - n * 0.2) + n * 0.003
             r = rng.uniform(0.016, 0.026)
-            out.append(Prim('ell', 'pelt', 0.006, c=c, r=V(r * 0.35, r, r * 0.9), R=frame(n, V(0, 0, 1)),
-                            tag={'lock': -1, 'tone': 0.5, 'group': 'lichen'}))
+            patch = Prim('ell', 'pelt', 0.006, c=c, r=V(r * 0.35, r, r * 0.9), R=frame(n, V(0, 0, 1)),
+                         tag={'lock': -1, 'tone': 0.5, 'group': 'lichen'})
+            # (A patch goes with what it is grown on.)
+            settle([patch], host_of(list(under) + [pr for pr in out if pr.tag.get('group') != 'lichen'], c - n * 0.003))
+            out.append(patch)
 
     # ── Bushy brows over his eyes, swept out and up at their ends ──
     lines = []
@@ -799,6 +970,8 @@ def mane_prims(body, rng, log=print):
         Prim('ell', 'pelt', 0.035, c=V(0, -0.262, 0.07), r=V(0.066, 0.046, 0.085), R=IDENTITY, tag=dict(beard_tag)),
         Prim('ell', 'pelt', 0.03, c=V(0, -0.254, -0.03), r=V(0.042, 0.04, 0.07), R=IDENTITY, tag=dict(beard_tag)),
     ]
+    for pr in beard_core:
+        pr.shell = 'hair'
     out.extend(beard_core)
     rest = list(body) + beard_core
     # Tresses: a few roots strewn over his jaw and chin, each with a sibling or two beside it (beard-
@@ -877,6 +1050,8 @@ def mushrooms(prims, rng):
             stem_top = q + up * size * 1.4
             P.append(Prim('cone', 'cap', 0.004, a=q - up * 0.004, b=stem_top, r1=size * 0.32, r2=size * 0.28))
             P.append(Prim('ell', 'cap', 0.003, c=stem_top, r=V(size * 0.55, size, size), R=frame(up, V(1, 0, 0))))
+            # (A cap goes with the moss it grows in.)
+            settle(P[-2:], host_of(prims, q))
     return P
 
 
@@ -925,14 +1100,19 @@ class Grid:
         self.d[sl] = cur.astype(np.float32)
 
 
-def surface(prims, voxel=0.003, log=print):
-    """Mesh the field: (vertices (n, 3), quads (m, 4)) in the unit frame."""
+def surface(prims, voxel=0.003, log=print, name='troll'):
+    """Mesh the field of `prims` (one shell): (vertices (n, 3), quads (m, 4)) in the unit frame."""
     import openvdb as vdb
     lo, hi = V(-0.4, -0.46, -0.52), V(0.4, 0.44, 0.56)
+    # (Only the box its masses fill, on the same lattice as the whole: an arm needs a fraction of it.)
+    boxes = [pr.aabb() for pr in prims if pr.op == 'add']
+    pad = 0.03
+    lo = lo + np.floor(np.maximum(np.min([b[0] for b in boxes], 0) - pad - lo, 0.0) / voxel) * voxel
+    hi = np.minimum(hi, np.max([b[1] for b in boxes], 0) + pad)
     grid = Grid(lo, hi, voxel)
     for pr in prims:
         grid.apply(pr)
-    log(f'troll field: {grid.n.tolist()} voxels of {voxel}')
+    log(f'{name} field: {grid.n.tolist()} voxels of {voxel}')
     g = vdb.FloatGrid(0.2)
     g.copyFromArray(grid.d)
     pts, quads = g.convertToQuads(isovalue=0.0)
@@ -947,13 +1127,15 @@ HANG_FLOW = np.array([0.0, 0.0, -1.0])
 
 
 def parts_at(prims, P, soft=0.006):
-    """What each point is: soft shares of each part (n, len(PARTS)), the nearest lock's tone, group
-    and direction (the way its strands run: root to tip; unit vectors)."""
+    """What each point is: soft shares of each part (n, len(PARTS)), the nearest lock's tone, group,
+    the group whose rule it hangs by (its own, or that of what it grows on) and direction (the way
+    its strands run: root to tip; unit vectors)."""
     n = len(P)
     best = {name: np.full(n, 1e3) for name in PARTS}
     lock_d = np.full(n, 1e3)
     lock_tone = np.zeros(n)
     lock_group = np.full(n, '', dtype=object)
+    lock_rule = np.full(n, '', dtype=object)
     lock_dir = np.tile(HANG_FLOW, (n, 1))
     for pr in prims:
         if pr.op != 'add':
@@ -974,6 +1156,7 @@ def parts_at(prims, P, soft=0.006):
             lock_d[idx] = d[closer]
             lock_tone[idx] = pr.tag.get('tone', 0.3)
             lock_group[idx] = pr.tag.get('group', '')
+            lock_rule[idx] = pr.tag.get('rule') or pr.tag.get('group', '')
             if pr.kind == 'cone':
                 d = pr.p['b'] - pr.p['a']
                 lock_dir[idx] = d / max(np.linalg.norm(d), 1e-9)
@@ -985,4 +1168,4 @@ def parts_at(prims, P, soft=0.006):
     dmin = D.min(1, keepdims=True)
     W = np.exp(-(D - dmin) / soft)
     W /= W.sum(1, keepdims=True)
-    return W, lock_tone, lock_group, lock_dir
+    return W, lock_tone, lock_group, lock_rule, lock_dir

@@ -35,14 +35,20 @@ import {
     varying,
 } from 'three/tsl';
 import {
-    CRATER, clamp01, smooth,
+    CRATER, clamp01, landHeight, smooth,
 } from './pyrestorm-core.js';
 import {
     BILLOW, aerial, lightningAt, noise3, pyBlackbody, wideGlowAt,
 } from './pyrestorm-tsl.js';
 
-/** Puff kinds: a twist's vortex ring, the blast's surge, a lock's burst of ash out of the crater. */
-export const PUFF = Object.freeze({ ring: 2, surge: 3, burst: 4 });
+/**
+ * Puff kinds: a twist's vortex ring, the blast's surge, a lock's burst of ash out of the crater,
+ * and a flow: glowing ash that runs down the cone hugging the ground (its height each frame is
+ * the land's under it, so it pours down gullies and over shoulders instead of flying a line).
+ */
+export const PUFF = Object.freeze({
+    ring: 2, surge: 3, burst: 4, flow: 5,
+});
 
 /**
  * A puff's life by kind: its drag time (s), the shares of its life it fades in over and fades out
@@ -58,6 +64,9 @@ const PUFF_LIFE = Object.freeze({
     }),
     [PUFF.burst]: Object.freeze({
         drag: 2.6, fadeIn: 0.03, fadeOut: 0.35, opacity: 0.85, cools: 0.4,
+    }),
+    [PUFF.flow]: Object.freeze({
+        drag: 6.5, fadeIn: 0.06, fadeOut: 0.45, opacity: 0.8, cools: 0.85,
     }),
 });
 
@@ -158,8 +167,11 @@ export class Smoke {
             // is ever a clean disc.
             const er = noise3(t.lattice, vec3(rc.mul(3.4).add(vec2(look.y.mul(3.7), variant.mul(1.9))), u.time.mul(0.035).add(variant.mul(0.53))));
             const er2 = noise3(t.lattice, vec3(rc.mul(9.0).add(vec2(variant.mul(2.3), look.y.mul(1.7))), u.time.mul(0.06).add(look.y)));
-            const lumpy = smoothstep(0.02, 0.3, s.w.add(er.x.sub(0.5).mul(0.42)).add(er2.x.sub(0.5).mul(0.22)));
-            const alpha = s.x.mul(smoothstep(0.0, 0.4, s.w)).mul(lumpy).mul(look.z).toVar();
+            const lumpy = smoothstep(0.02, 0.5, s.w.add(er.x.sub(0.5).mul(0.42)).add(er2.x.sub(0.5).mul(0.22)));
+            // Thin toward its edge all the way in from its middle (a heap opaque to its rim is a
+            // disc; a string of them is a string of discs).
+            const soft = smoothstep(0.0, 0.95, s.w.add(er.x.sub(0.5).mul(0.3)));
+            const alpha = s.x.mul(soft).mul(lumpy).mul(look.z).toVar();
             // The heap's normal in its own frame, turned back into the view's, then into the world.
             const nb = s.yz.mul(2.0).sub(1.0);
             const nr = vec2(nb.x.mul(cr).add(nb.y.mul(sr)), nb.y.mul(cr).sub(nb.x.mul(sr)));
@@ -311,6 +323,8 @@ export class Smoke {
             st[o + 1] = ev[e + 1] + ev[e + 5] * k;
             st[o + 2] = ev[e + 2] + ev[e + 6] * k;
             st[o + 3] = ev[e + 8] + ev[e + 9] * k;
+            // A flow rides the ground: half its own radius over the land under it.
+            if (kind === PUFF.flow) st[o + 1] = landHeight(st[o], st[o + 2]) + st[o + 3] * 0.45;
             const f = age / life;
             st[o + 4] = Math.floor(ev[e + 11]);
             st[o + 5] = ev[e + 11] * 7.1 + age * 0.05;

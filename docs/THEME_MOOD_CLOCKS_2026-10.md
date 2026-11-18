@@ -87,7 +87,7 @@ the short way round the colour wheel; a straight mix of violet and amber is grey
 | Waves | 6 hours | 100, 600 |
 | Winter | 5 hours of the polar day | 96, 480 |
 
-Rainbark's light also turns by the clock (4 moods, 100 s each), so it is seen in every light; its
+Rainbark's light also turns by the clock (6 moods since 2026-11-18, 100 s each: ember and a firefly dusk joined), so it is seen in every light; its
 Climb (the walkway rising a storey into a new zone) still comes only with a level. That moves the
 camera and the grove, so it was left as it is (see Open).
 

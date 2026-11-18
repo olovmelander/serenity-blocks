@@ -1381,3 +1381,25 @@ body.sb-input-gamepad #demo-browser-modal .demo-action:focus .demo-action__label
         transition: none !important;
     }
 }
+
+/* The same two lists remain in reading order on narrow displays and Deck. */
+#high-scores-list.has-steam-records {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 19rem), 1fr));
+    align-items: start;
+    gap: 1rem;
+}
+
+.hs-local-records, .hs-steam-records { min-width: 0; }
+.steam-score-sharing { margin-block: .75rem; }
+.steam-score-sharing p { margin-block: 0 .5rem; }
+.steam-score-sharing button, .steam-leaderboard-panel select, #level-panel-records summary {
+    min-height: 2rem;
+    font: inherit;
+}
+.steam-score-sharing button + button { margin-inline-start: .5rem; }
+#level-panel-records summary { cursor: pointer; }
+#level-panel-records summary:focus-visible, .steam-leaderboard-panel :focus-visible {
+    outline: 2px solid currentColor;
+    outline-offset: 2px;
+}

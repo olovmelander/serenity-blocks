@@ -93,6 +93,9 @@ const HARD_GRADE = 4;
 const DUST_SHARE = 0.0016;
 /** The vignette's depth at rest. */
 const VIGNETTE = 0.55;
+/** The iris closed on the lamp: its radius (frame heights), and how dark it is outside it. */
+const IRIS_CLOSED = 0.2;
+const IRIS_DARK = 0.93;
 
 /** Calm rects (board cards + HUD) the output pass evaluates. */
 export const CALM_RECTS_MAX = 5;
@@ -148,6 +151,9 @@ export class CosmicNoirPost {
         this.uBlackPoint = uniform(BLACK_POINT); // the paper's grade (hot play prints harder)
         this.uVignette = uniform(VIGNETTE);
         this.uDustCut = uniform(1 - DUST_SHARE); // a cell holds a speck above this
+        this.uIris = uniform(0); // the iris closing on the lamp when a run ends, 0 open .. 1 closed
+        this.uIrisAt = uniform(new THREE.Vector2(0.2, 0.27)); // the lamp on screen (UV, y down)
+        this.uRoll = uniform(-1); // the reel change's gate roll: 0..1 as the frame line crosses, else under 0
         this.uCue = uniform(0); // the reel change's cue mark, 0..1
         this.uCuePos = uniform(new THREE.Vector2(0.9, 0.16));
         this.uBloomBoost = uniform(0);
@@ -237,6 +243,12 @@ export class CosmicNoirPost {
             const cv = fromCentre.mul(vec2(this.uAspect.div(1.778), 1.0));
             const vig = smoothstep(0.3, 1.05, length(cv.mul(1.45)));
             toned.mulAssign(float(1.0).sub(vig.mul(this.uVignette)));
+            // ── The iris: when a run ends it closes on the lamp, as a silent picture ends ──
+            // (Wide open it lies beyond every corner of the frame.)
+            const fromLamp = length(st.sub(this.uIrisAt).mul(vec2(this.uAspect, 1.0)));
+            const eased = this.uIris.mul(this.uIris).mul(float(3.0).sub(this.uIris.mul(2.0)));
+            const open = mix(float(2.7), float(IRIS_CLOSED), eased);
+            toned.mulAssign(float(1.0).sub(smoothstep(open.mul(0.82), open, fromLamp).mul(IRIS_DARK)));
 
             // ── Encode, then finish in display space ──
             const D = vec3(renderOutput(vec4(clamp(toned, 0.0, 1.0), 1.0), THREE.NoToneMapping).rgb).toVar();
@@ -251,6 +263,11 @@ export class CosmicNoirPost {
             const cue = this.uCue.mul(float(1.0).sub(calm));
             D.assign(mix(D, vec3(0.93, 0.91, 0.86), disc.mul(cue)));
             D.assign(mix(D, vec3(0.02), ring.mul(cue).mul(0.85)));
+
+            // ── The gate rolls once on a reel change: the frame line crosses the picture ──
+            const line = st.y.sub(this.uRoll.mul(1.24).sub(0.12)).div(0.022);
+            const rolling = exp(line.mul(line).negate()).mul(step(0.0, this.uRoll)).mul(float(1.0).sub(calm));
+            D.mulAssign(float(1.0).sub(rolling.mul(0.72)));
 
             // ── Grain: animated at 24 frames a second, strongest in the mid-tones ──
             const pxi = floor(screenCoordinate);
@@ -305,8 +322,11 @@ export class CosmicNoirPost {
      * flash and the flashbulb's flip) keep flashScale() of their strength under Reduce flashing.
      */
     update({
-        flash, negative, solar, cue, bloomBoost, exposure, time, stock, cuePos, contrast, vignette, dust,
+        flash, negative, solar, cue, bloomBoost, exposure, time, stock, cuePos, contrast, vignette, dust, iris, irisAt, roll,
     } = {}) {
+        if (iris !== undefined) this.uIris.value = Math.max(0, Math.min(1, iris));
+        if (irisAt) this.uIrisAt.value.set(irisAt.x, irisAt.y);
+        if (roll !== undefined) this.uRoll.value = roll;
         if (flash !== undefined) this.uFlash.value = flash * flashScale();
         if (negative !== undefined) this.uNegative.value = negative * flashScale();
         if (solar !== undefined) this.uSolar.value = Math.max(0, Math.min(1, solar));

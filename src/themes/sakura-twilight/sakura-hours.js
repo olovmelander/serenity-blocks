@@ -31,8 +31,12 @@ export const SAKURA_HOUR_COLOURS = Object.freeze([
     'moon', 'zenith', 'vault', 'horizon', 'afterglow', 'ember', 'skyLight', 'bounce', 'lampColor',
     'cloudShade', 'cloudLit',
 ]);
-/** And the numbers: how thick the air and the lake's mist are, how the lanterns burn, how many stars show, the iris. */
-export const SAKURA_HOUR_SCALARS = Object.freeze(['haze', 'mist', 'lampGain', 'stars', 'exposure']);
+/**
+ * And the numbers: how thick the air and the lake's mist are, how the lanterns burn, how many stars
+ * show, the iris, how much of the river of heaven the sky is dark enough to show, and how dense the
+ * moon's shafts stand in the air.
+ */
+export const SAKURA_HOUR_SCALARS = Object.freeze(['haze', 'mist', 'lampGain', 'stars', 'exposure', 'galaxy', 'beams']);
 
 /**
  * The five hours, in the order the night takes them. `moon` is the moonlight; `zenith`, `vault`,
@@ -60,6 +64,8 @@ export const SAKURA_HOURS = Object.freeze([
         lampGain: 1,
         stars: 1,
         exposure: 1,
+        galaxy: 0.4,
+        beams: 1,
     },
     {
         // The rose drains to sapphire: a pale line of the day low in the west, a clear cool moon,
@@ -68,8 +74,8 @@ export const SAKURA_HOURS = Object.freeze([
         moon: [0.48, 0.72, 1.06],
         zenith: [0.003, 0.009, 0.04],
         vault: [0.012, 0.03, 0.098],
-        horizon: [0.032, 0.066, 0.146],
-        afterglow: [0.13, 0.2, 0.34],
+        horizon: [0.028, 0.08, 0.158],
+        afterglow: [0.1, 0.235, 0.36],
         ember: [0.42, 0.3, 0.17],
         skyLight: [0.09, 0.15, 0.27],
         bounce: [0.03, 0.045, 0.072],
@@ -81,33 +87,37 @@ export const SAKURA_HOURS = Object.freeze([
         lampGain: 1.12,
         stars: 0.6,
         exposure: 1,
+        galaxy: 0.3,
+        beams: 0.9,
     },
     {
         // Yozakura: the sky has gone to ink, the moon is veiled, and the lanterns carry the blossom.
         name: 'lantern night',
-        moon: [0.3, 0.4, 0.68],
+        moon: [0.24, 0.32, 0.56],
         zenith: [0.0015, 0.0025, 0.015],
         vault: [0.01, 0.008, 0.04],
         horizon: [0.028, 0.018, 0.06],
         afterglow: [0.09, 0.035, 0.07],
         ember: [0.14, 0.05, 0.03],
-        skyLight: [0.11, 0.07, 0.15],
-        bounce: [0.04, 0.026, 0.045],
+        skyLight: [0.088, 0.056, 0.126],
+        bounce: [0.036, 0.023, 0.04],
         lampColor: [3.2, 1.32, 0.36],
         cloudShade: [0.008, 0.006, 0.02],
         cloudLit: [0.025, 0.02, 0.055],
         haze: 0.0016,
         mist: 0.0026,
-        lampGain: 1.5,
-        stars: 1.25,
-        exposure: 1.06,
+        lampGain: 1.7,
+        stars: 1.35,
+        exposure: 1.08,
+        galaxy: 1,
+        beams: 0.6,
     },
     {
         // The moon has the garden: silver light and blue shade, a thin mist on the lake, the sky
         // deep and full of stars.
         name: 'moonlit night',
-        moon: [0.66, 0.78, 1.08],
-        zenith: [0.002, 0.005, 0.024],
+        moon: [0.82, 0.95, 1.3],
+        zenith: [0.002, 0.006, 0.028],
         vault: [0.01, 0.02, 0.062],
         horizon: [0.035, 0.05, 0.1],
         afterglow: [0.07, 0.085, 0.15],
@@ -119,20 +129,22 @@ export const SAKURA_HOURS = Object.freeze([
         cloudLit: [0.05, 0.065, 0.11],
         haze: 0.0016,
         mist: 0.0042,
-        lampGain: 0.85,
-        stars: 1.3,
+        lampGain: 0.75,
+        stars: 1.1,
         exposure: 1,
+        galaxy: 0.6,
+        beams: 1.7,
     },
     {
         // Akatsuki: the small hours turn plum, the far rim pales to apricot, the moon to lavender;
         // the lanterns burn low and a mist rises off the lake.
         name: 'plum dawn',
         moon: [0.6, 0.56, 0.8],
-        zenith: [0.008, 0.01, 0.04],
-        vault: [0.045, 0.03, 0.1],
-        horizon: [0.17, 0.1, 0.16],
-        afterglow: [0.6, 0.3, 0.2],
-        ember: [0.95, 0.58, 0.3],
+        zenith: [0.012, 0.014, 0.05],
+        vault: [0.06, 0.04, 0.12],
+        horizon: [0.22, 0.13, 0.18],
+        afterglow: [0.72, 0.36, 0.22],
+        ember: [1.1, 0.66, 0.32],
         skyLight: [0.21, 0.14, 0.22],
         bounce: [0.065, 0.042, 0.06],
         lampColor: [2.6, 1.25, 0.5],
@@ -143,6 +155,8 @@ export const SAKURA_HOURS = Object.freeze([
         lampGain: 0.65,
         stars: 0.3,
         exposure: 0.98,
+        galaxy: 0.05,
+        beams: 1.25,
     },
 ].map((hour) => Object.freeze(Object.fromEntries(Object.entries(hour).map(([key, value]) => (
     [key, Array.isArray(value) ? Object.freeze(value) : value]))))));

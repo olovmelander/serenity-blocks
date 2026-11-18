@@ -26,6 +26,17 @@ def write_figure(obj, bones, colour, path, generator, extras, flow=None):
     n = len(me.vertices)
     pos = np.array([to_gltf(v.co) for v in me.vertices], dtype=np.float64)
     nor = np.array([to_gltf(v.normal) for v in me.vertices], dtype=np.float64)
+    # (A lock's tip decimated to a flap of two faces back to back has no normal of its own, and a
+    # vertex without one shades as nothing: it takes a face's.)
+    flat = np.linalg.norm(nor, axis=1) < 0.5
+    if flat.any():
+        of_face = {}
+        for t in me.loop_triangles:
+            for vi in t.vertices:
+                if flat[vi] and vi not in of_face:
+                    of_face[vi] = to_gltf(t.normal)
+        for vi in np.nonzero(flat)[0]:
+            nor[vi] = of_face.get(int(vi), (0.0, 1.0, 0.0))
     col = np.array([colour(i) for i in range(n)], dtype=np.float64)
     gidx = {g.index: order.index(g.name) for g in obj.vertex_groups if g.name in order}
     joints = np.zeros((n, 4), dtype=np.uint8)

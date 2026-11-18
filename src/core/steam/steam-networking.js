@@ -284,6 +284,11 @@ export class SteamNetworking {
         this._syncP2PPeerPolicy();
     }
 
+    reconcileLobbyOwner(id) {
+        if (this.mockMode === false && ipcRenderer && id) return ipcRenderer.invoke('steam:setLobbyOwner', id).catch(() => false);
+        return false;
+    }
+
     /**
      * Whether the host looks gone to this player mid-match (network/host-migration.js). Only
      * then may another member of the lobby, the player taking over as host, reach this one.
@@ -1446,7 +1451,7 @@ export class SteamNetworking {
             }));
         } catch (err) {
             console.error('❌ Failed to get lobbies:', err);
-            return [];
+            throw err;
         }
     }
 

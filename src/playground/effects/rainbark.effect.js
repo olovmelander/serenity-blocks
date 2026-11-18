@@ -37,6 +37,9 @@
  *   bloom=0|1                override the tier's bloom
  *   px=-1..1&py=-1..1        hold a pointer-parallax offset
  *   reduce=1                 reduced motion
+ *   tune=key:value,...       override a value the world writes (beamGain, airShade, bow)
+ *   mood=morning|noon|gold|ember|dusk|pearl   hold a mood of the light wheel (else the clock's)
+ *   happen=sunbreak|gust|mistbank             hold a happening, happenAge=<s> seconds into it
  *   icon=1                   the theme-icon framing: a narrow lens on the Elder's painted face
  *                            (iconFov=30; iconYaw=24 and iconPitch=8, both in degrees, turn it)
  *                            (compose for a small circle: capture a square frame)
@@ -47,7 +50,7 @@ import { RainbarkPost, POST_LOOK } from '../../themes/rainbark/rainbark-post.js'
 import { readLayoutRects, BOARD_GRID } from '../../themes/rainbark/rainbark-composition.js';
 import { RainbarkDirector } from '../../themes/rainbark/rainbark-director.js';
 import {
-    HUD_ROW, HUD_ROW_WIDTH, SHAPES, SHAPE_KEYS,
+    HAPPENINGS, HUD_ROW, HUD_ROW_WIDTH, LIGHT_WHEEL, SHAPES, SHAPE_KEYS,
 } from '../../themes/rainbark/rainbark-core.js';
 import { RAINBARK_TETROMINOS } from '../../themes/rainbark/rainbark-tetrominos.js';
 
@@ -183,6 +186,19 @@ export function create({
     const world = new RainbarkWorld({ scene, quality, capture: true }).build();
     world.bindCamera(camera);
     world.setReducedMotion(params.get('reduce') === '1');
+    // Tuning overrides (a look bisected by eye): tune=beamGain:2,airShade:0.3
+    (params.get('tune') || '').split(',').forEach((pair) => {
+        const [key, value] = pair.split(':');
+        if (key && Number.isFinite(Number.parseFloat(value))) world.tune[key] = Number.parseFloat(value);
+    });
+    // A held mood of the light wheel and a held happening (else the clock's own).
+    const moodAt = LIGHT_WHEEL.moods.findIndex((mood) => mood.name === params.get('mood'));
+    if (moodAt >= 0) world.tune.mood = moodAt;
+    const happenAt = HAPPENINGS.kinds.findIndex((kind) => kind.name === params.get('happen'));
+    if (happenAt >= 0) {
+        world.tune.happen = happenAt;
+        if (params.has('happenAge')) world.tune.happenAge = num(params, 'happenAge', 6);
+    }
     const partsParam = params.get('parts');
     if (partsParam) world.showOnlyParts(partsParam.split(',').map((p) => p.trim()));
 

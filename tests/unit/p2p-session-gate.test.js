@@ -171,7 +171,7 @@ describe('P2P session gate wiring (electron/steam-integration.js)', () => {
         expect(create.indexOf('p2pSessionGate?.setPolicy({ isHost: true, hostSteamId: steamSteamId });'))
             .toBeGreaterThan(create.indexOf('p2pSessionGate?.clear();'));
         const join = handler('steam:joinLobby');
-        expect(join).toContain('ownerId = currentLobby?.getOwner?.()?.steamId64?.toString() ?? null;');
+        expect(join).toContain('ownerId = advertisedLobbyHost();');
         expect(join.indexOf('p2pSessionGate?.setPolicy({ isHost: false, hostSteamId: ownerId });'))
             .toBeGreaterThan(join.indexOf('p2pSessionGate?.clear();'));
         expect(join.indexOf('p2pSessionGate?.clear();')).toBeGreaterThan(-1);
@@ -187,7 +187,7 @@ describe('P2P session gate wiring (electron/steam-integration.js)', () => {
 
     it('the game\'s page can tell its role, in a lobby only, through every preload', () => {
         expect(handler('steam:setP2PPeerPolicy')).toMatch(
-            /if \(!currentLobby \|\| !p2pSessionGate\) return false;\s*p2pSessionGate\.setPolicy\(/,
+            /if \(!currentLobby \|\| !p2pSessionGate\) return false;\s*publishLobbyOwner\(\);\s*p2pSessionGate\.setPolicy\(/,
         );
         for (const file of ['preload.cjs', 'preload.mjs', 'main.js']) {
             expect(read(file), file).toContain("'steam:setP2PPeerPolicy'");

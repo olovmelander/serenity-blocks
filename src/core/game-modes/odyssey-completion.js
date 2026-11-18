@@ -47,7 +47,7 @@ export function deferFinishPastCascade(mode, session) {
  * on their way out keeps the clear as well.
  * @returns {Object} the results the sheet shows
  */
-function saveOdysseyClear(mode, session, results) {
+async function saveOdysseyClear(mode, session, results) {
     const { gameState, hybridEngine, levelId } = session;
     const writesLegacyResults = canWriteLegacySimulationResults(session.simulationClock);
 
@@ -125,8 +125,9 @@ function saveOdysseyClear(mode, session, results) {
         }
         finalResults.campaignCompleted = !wasComplete
             && getOdysseyCampaignSummary(mode.levelRegistry, mode.odysseyState).complete;
-        mode._syncSteamStats(finalResults, session).catch((err) => {
-            console.warn('[Odyssey] Steam stats sync failed:', err.message);
+        await mode._syncSteamStats(finalResults, session).catch((err) => {
+            finalResults.recordPending = true;
+            console.warn('[Odyssey] Local finish receipt pending:', err.message);
         });
     }
 
@@ -147,7 +148,7 @@ export async function drainAndBankOdysseyLap(mode, session) {
         if (session.simulationClock === DEMO_LEGACY_SIMULATION_CLOCK && mode.levelStartTime) {
             session.hybridEngine.updateTime(mode._elapsedLevelMs() / 1000);
         }
-        saveOdysseyClear(mode, session, {});
+        await saveOdysseyClear(mode, session, {});
     } catch (error) {
         console.error('[Odyssey] Could not save the clear on the way out:', error);
     }
@@ -173,7 +174,7 @@ export async function completeOdysseyLevel(mode, results) {
     await mode._drainLevelSession(session);
     if (!mode._isLevelSessionCurrent(session, retirementGeneration)) return;
 
-    const finalResults = saveOdysseyClear(mode, session, results);
+    const finalResults = await saveOdysseyClear(mode, session, results);
     // The world answers this clear when its gate opens back onto it (odyssey-world-return.js).
     mode._orbJustCleared = Number(session.levelId);
 

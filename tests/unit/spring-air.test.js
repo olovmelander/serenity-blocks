@@ -182,8 +182,11 @@ describe('spring air: what gameplay does to it', () => {
         const all = live(world);
         const thrown = all.filter((m) => m.kind === MOTE_KIND.pollen);
         expect(thrown.length).toBeGreaterThan(20);
-        // The rest are glints on the opening cups.
-        expect(all.filter((m) => m.kind !== MOTE_KIND.pollen).every((m) => m.kind === MOTE_KIND.glint)).toBe(true);
+        // The rest are glints on the opening cups, and the puff of its petals thrown up over it.
+        const rest = all.filter((m) => m.kind !== MOTE_KIND.pollen);
+        expect(rest.every((m) => m.kind === MOTE_KIND.glint || m.kind === MOTE_KIND.petal)).toBe(true);
+        expect(rest.some((m) => m.kind === MOTE_KIND.glint)).toBe(true);
+        expect(rest.some((m) => m.kind === MOTE_KIND.petal)).toBe(true);
         expect(all.length).toBeGreaterThan(thrown.length);
         // Most in the piece's colour (a few gold).
         const blue = thrown.filter((m) => m.rgb[2] > m.rgb[0] * 3);
@@ -240,12 +243,14 @@ describe('spring air: what gameplay does to it', () => {
         world.motes.clear();
         world.onCombo(1);
         expect(live(world)).toEqual([]);
+        // (What a whirlwind lifts: pollen and down, and mostly petals.)
+        const whirled = (m) => m.kind === MOTE_KIND.whirl || m.kind === MOTE_KIND.petalWhirl;
         world.onCombo(2);
-        const first = live(world).filter((m) => m.kind === MOTE_KIND.whirl);
+        const first = live(world).filter(whirled);
         expect(first.length).toBeGreaterThan(10);
         world.motes.clear();
         world.onCombo(3);
-        const second = live(world).filter((m) => m.kind === MOTE_KIND.whirl);
+        const second = live(world).filter(whirled);
         expect(second.length).toBeGreaterThan(first.length);
         // Opposite sides of the card.
         expect(Math.sign(first[0].at[0])).toBe(-Math.sign(second[0].at[0]));

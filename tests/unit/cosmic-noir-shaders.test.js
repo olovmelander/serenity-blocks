@@ -221,6 +221,7 @@ describe.each(TIERS)('cosmic noir shaders at %s', (quality) => {
         const targets = [
             ['backdrop', world.smoke.mesh, world.smoke.mesh.material],
             ['air', world.smoke.pass.quad, world.smoke.pass.material],
+            ['burst', world.burst.mesh, world.burst.material],
             ['spray', world.spray.mesh, world.spray.material],
         ];
         targets.forEach(([name, object, material]) => {
@@ -236,7 +237,7 @@ describe.each(TIERS)('cosmic noir shaders at %s', (quality) => {
     afterAll(() => world?.dispose());
 
     it('builds the backdrop, the air and the spray on both backends without a warning, an undeclared binding or an unassigned read', () => {
-        expect(built).toHaveLength(6);
+        expect(built).toHaveLength(8);
         if (process.env.CN_SHADER_SIZES) {
             // eslint-disable-next-line no-console
             console.log(quality, built.map((b) => `${b.name} ${b.label} ${(Buffer.byteLength(b.out.fragment || '') / 1024).toFixed(1)} KiB`).join(', '));

@@ -547,6 +547,7 @@ export class OnlineMultiplayerMode extends BaseGameMode {
                 () => this._setLobbyRichPresence(),
             );
             this.cleanupHandlers.push(this.playerListRichPresenceUnsub);
+            this.cleanupHandlers.push(steamService.on('steam:reconnected', () => this._setLobbyRichPresence()));
         }
 
         // Listen for MATCH_PREPARING - set up UI before countdown starts
@@ -724,13 +725,19 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         this._activateMatch();
     }
 
-    /**
-     * Handle match results (game over)
-     */
     _handleMatchResults(detail) {
         if (!detail || detail.isGameOver !== true) {
             return;
         }
+
+        syncFfaSteamStats(detail, {
+            records: this.deps?.highScoreManager,
+            localSteamId: this.steamNetworking?.steamId,
+            rounds: this.roundNumber,
+            localLines: this.ffaGameState?.getLocalPlayer?.()?.gameState?.lines,
+        }).catch((err) => {
+            console.warn('[OnlineMultiplayer] Steam stats sync failed:', err.message);
+        });
 
         if ((this.matchResultsModal && this.matchResultsModal.isVisible) || this._victoryBeatTimer) {
             return;
@@ -791,14 +798,6 @@ export class OnlineMultiplayerMode extends BaseGameMode {
                 this._handleReturnToLobby();
             }, AUTO_RETURN_MS);
         }
-
-        syncFfaSteamStats(detail, {
-            localSteamId: this.steamNetworking?.steamId,
-            rounds: this.roundNumber,
-            localLines: this.ffaGameState?.getLocalPlayer?.()?.gameState?.lines,
-        }).catch((err) => {
-            console.warn('[OnlineMultiplayer] Steam stats sync failed:', err.message);
-        });
     }
 
     /** Cancel the results-screen host-idle auto-advance timer (host only sets it). */

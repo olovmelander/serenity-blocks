@@ -569,3 +569,225 @@ playground at Minimal, before the fix, which leaves WebGPU alone). Not done: a p
 next start of the theme on the owner's phone is the check.
 
 ![before on WebGL2, after on WebGL2, WebGPU](spring-captures/woods-webgl2-mips-ab.webp)
+
+## Fourth pass: the living valley (2026-11-18)
+
+The owner asked for the whole theme to be audited and raised until it is one of the game's most
+stunning: every part reviewed, what works kept and built on, the theme "varied over time, shifting
+and evolving as you play so it never looks the same for long", every event with its own distinct
+effect and the biggest moments the most spectacular, smooth and easy to read throughout.
+
+To look at it: `/playground.html?effect=spring&t=10&hour=0.3&weather=1&board=1` (`weather` 0 fair,
+1 mackerel sky, 2 building heaps, 3 after the shower, 4 veiled sun, 5 clear and windy; fractions
+mix; it also turns with the clock alone, one every 130 s of `t`), with the events and their
+`eventAge` as before.
+
+### The audit
+
+Every hour and every event was captured from `main` first (the playground, 1600 × 900, High).
+
+| Part | What was found |
+|---|---|
+| The golden evening | The fall, its spray and the whole pool burned out into one cream sheet. The post's false-colour view showed the river over 2.5 after exposure: the sun's glitter on the water was a lobe so wide (cos³² of the mirror angle) that it covered the pool, and the foam was lit as if seen from the sun's side. |
+| The sky | A few cirrus dashes and four heaps on the horizon, the same at every hour of every day. Sunset and the light night were flat gradients with nothing in them. The cumulus deck overhead read as soft smears. |
+| The spray | A violet-blue glowing blob at sunset and through the night (lit by the zenith's blue alone). |
+| The meadow | In a fever or a flush the anemones' white swallowed every other colour on the knoll. Through sunset and the night the lower half of the frame was nearly black. |
+| The air | Round dots: dust, not petals. |
+| The events | Nearly every one was "more flowers and a few specks". Four lines, a perfect clear and a level-up were hard to tell from a single line; the birds were 15-pixel chevrons a quarter of a kilometre off, and a level-up's cranes took twelve seconds to reach the frame. |
+| Over time | Six stations of light and nothing else: no weather, nothing that came by on its own. |
+| Under quick hands | A probe (below) found that 76–87 % of the motes a hot session spawned overwrote one still in the air. |
+
+The fall's plan, the river, the knoll, the woods and the fells are the picture, and stay.
+
+### The weather (`spring-weather.js`)
+
+A second wheel beside the day's, on its own clock: each weather holds and crosses to the next in
+130 s (the crossing takes 46), so a round of six takes 780 s against the day's 600, and the same
+hour does not meet the same sky two days running. A session opens on the fair day, the day the
+hours author. Each weather is a row of numbers the world spends on what it already draws:
+
+| Weather | What it does |
+|---|---|
+| Fair | The hours' own day. |
+| Mackerel sky | Rippled altocumulus over the whole sky; under a low sun it burns from below. |
+| Building heaps | The cumulus stands taller and fuller, its shadows sweep the valley, a fresher breeze. |
+| After the shower | Washed, clear air under broken cloud, a little mist on the water, and a rainbow where the sun allows one. |
+| Veiled sun | A milky veil of cirrostratus, a 22° halo round the sun, soft light, still air. |
+| Clear and windy | A deep clean sky, the fells sharp, the clouds, the plants and the air's motes hurried by a stiff breeze. |
+
+The wind is integrated (`windX`, `windZ`, `bankTurn`), so a weather that blows harder never jumps
+the clouds, and `windTravel(time)` gives a seek the same travel stepping would.
+
+| A mackerel sky in the morning | The same sky at sunset |
+|---|---|
+| ![mackerel morning](spring-captures/living-mackerel-morning.webp) | ![mackerel sunset](spring-captures/living-mackerel-sunset.webp) |
+| **After the shower, the afternoon: the bow over the fells** | **Building heaps** |
+| ![afternoon bow](spring-captures/living-bow-afternoon.webp) | ![heaps](spring-captures/living-heaps.webp) |
+| **Veiled sun, the golden evening** | **The light night, clear: the night-shining clouds** |
+| ![veiled](spring-captures/living-veiled-golden.webp) | ![night shine](spring-captures/living-night-shine.webp) |
+
+### The sky (`spring-sky.js`, `spring-cumulus.js`, `spring-bow.js`)
+
+From the top down, each layer a plane the view ray meets, drifting at its own pace so the layers
+slide past each other and the clouds form and melt; what an hour or a weather does not show is
+branched out, not multiplied by nothing.
+
+- **Stars**: a few of the brightest, high up, in the light night only.
+- **Night-shining clouds**: silver-blue ranks of billows low over the north where the sun hides,
+  in the heart of the light night. Licence: at 65.5° N at the end of May the sun is 2.7° under the
+  horizon at midnight, and noctilucent clouds are seen from about 6°; they are the north's own
+  night sky a few weeks later.
+- **The veil and the halo**: the ring 22.4° from the sun, sharp and red on its inner edge.
+- **Cirrus**, as before, thickened by the weather and lit from below by a low sun.
+- **Altocumulus**: pillows built from two waves (rows across the wind, broken along their
+  length), bent by a noise, not cut from one; white-edged and grey-middled by day, lit from below
+  by a low sun, gold toward it and rose and mauve round from it.
+- **The cumulus deck**: its field cut again through lumps at two sizes, so each cloud is a heap
+  with a cauliflower edge and a grey base seen from under.
+- **The heaps on the horizon** drift round it on the wind (0.02° a second at a breeze of 1, coming
+  back in far outside any lens), billow faster, and stand as tall as the weather builds them.
+- **The twilight**: under a low sun the horizon's fire stands where the sun is, and round from it
+  the band cools to rose and the blue of the earth's shadow.
+- **The rainbow**: a ring of quads at the bow's true angles from the point opposite the sun, a
+  kilometre and a half out, so the near trees hide it and the far fells stand behind it, and it
+  joins the bow in the fall's spray. It stands where a rainbow would and nowhere else: over the
+  fall's side in the morning, low over the fells in the afternoon, and not at all with the sun
+  ahead of the eye or more than 42° up (`bowLight`).
+
+### The light
+
+- **The golden evening**: the sun's road on the water is a tight core and a faint skirt, the
+  mirrored sky is held back toward the sun, foam seen against the sun shows its shaded side, and a
+  cloud of spray shades its own body, blazing only where it is thin. The pool is molten gold with
+  its rocks and ripples in it, and the fall keeps its strands.
+- **The spray out of the sun** takes the horizon's and the haze's light with the zenith's, so it
+  no longer glows violet in the evening's shade.
+- **Sunset and the light night**: more of the sky's light on the land (`fill`, `bounce`), so the
+  meadow's flowers show through the dusk.
+- **The meadow**: a flush or the heat of play opens the flowers half as far as a lock's own patch
+  does, and a pale petal takes less of the game's extra light, so the knoll keeps its colours.
+
+| The golden evening: before, after | The light night: before, after |
+|---|---|
+| ![golden before](spring-captures/living-golden-before.webp) | ![night before](spring-captures/living-night-before.webp) |
+| ![golden after](spring-captures/living-golden-after.webp) | ![night after](spring-captures/living-night-after.webp) |
+
+### What gameplay does now
+
+Each event has a sight of its own; this table replaces the one above.
+
+| Event | What happens |
+|---|---|
+| Lock | A patch of the piece's own flower bursts into bloom where it landed, its light rolling out through the meadow, **and a puff of its petals is thrown up over it**, tumbling as they fall back; its pollen drifts off on the breeze. A hard drop throws more, higher and wider, and knocks a ring of down off the plants. |
+| Clear | **More water comes over the fall**: a pulse of thick white water leaves the brink and falls with the fall at its own speed, and the surge it becomes leaves the pool as it lands. The knoll flushes into bloom, and **a gust carries a streamer of petals across the knoll for each line that went**, in that row's own colours, each on the next of four lanes. |
+| Chain | The spring flood rises with each link (the river, the spray, the bow in it), a whirlwind of petals turns beside the card on alternate sides, the air stirs; a broken chain lets its down go. |
+| Four lines | **The fall thunders**: it runs full and white from brink to pool, its spray towers over the brink, the bow blazes across it, the last of the winter's ice goes out on the great surge, and the sky answers with half its crown. |
+| T-spin | The pool turns in a whirl, and a tall whirlwind of petals turns beside the card on the lock's side. |
+| Back-to-back | **A sheet of light runs down the river** from the pool to the far bend, stronger each step of the run (a soft band the ripples break, never sparks); the river glitters while the run lasts. |
+| Perfect clear | **The sky's crown**, and what it shows follows the hour: every cloud flushed with the hour's glow; a rainbow with the sun behind the eye; the sun's shafts fanned out with the sun ahead; the night-shining clouds flared in the light night. **Whooper swans come over the fall's brink, drop to the river and fly low along it past the knoll.** The air stills and turns gold, gold petals shower, and the whole knoll stands in flower. |
+| Level up | The day steps a station forward; **a skein of cranes crosses the valley** from the left edge to the right; willow down drifts over. |
+| Fever | The flood at its height, the knoll in flower in the colours played, cranes over the gorge's rim. |
+| Game over | The light falls to dusk and **the last petals let go**, falling slowly over the knoll. |
+
+| A hard drop | Three lines: the streamers |
+|---|---|
+| ![lock](spring-captures/living-lock.webp) | ![clear](spring-captures/living-clear.webp) |
+| **Four lines: before** | **Four lines: the fall thunders** |
+| ![quad before](spring-captures/living-quad-before.webp) | ![quad](spring-captures/living-quad.webp) |
+| **The thundering fall, close** | **A T-spin** |
+| ![quad close](spring-captures/living-quad-fall.webp) | ![twist](spring-captures/living-twist.webp) |
+| **A perfect clear: the swans along the river** | **A perfect clear in the light night** |
+| ![swans](spring-captures/living-perfect-swans.webp) | ![perfect night](spring-captures/living-perfect-night.webp) |
+| **A level-up's cranes (a long lens)** | **A run's end** |
+| ![cranes](spring-captures/living-cranes.webp) | ![over](spring-captures/living-over.webp) |
+
+Everything rejoins as before: the thunder and the crown are `Rejoin` envelopes (a second quad
+takes the thunder up where it stands), a clear soon after another feeds the pulse still at the lip
+and a later one takes the other of two slots, and the streamers step through the lanes.
+
+### Birds (`spring-flights.js`)
+
+Remade. Each bird is a body, a neck and head, and wings of an arm and a hand hinged at the wrist
+(168 triangles a swan, 184 a crane): the vertex stage beats them, the hand a little behind the arm, the body
+rising on the downstroke. Swans are white with the yellow-and-black bill; cranes grey with dark
+flight feathers, a dark neck and trailing legs. A flight flies a curve through waypoints by arc
+length, every bird at its place behind and beside the leader from the first frame, banked into the
+route's turns; it starts just out of sight (behind the fall's brink, or a few seconds' flight
+beyond the widest lens's left edge) and leaves through the right edge, so no bird is grown, shrunk
+or raced in. Three routes: `river` (over the brink, down to the water, low past the knoll against
+the dark river, up and away), `high` and `rim`.
+
+Birds also come **by the clock**, about every two minutes: a pair of swans along the river, a few
+cranes high up, three of either over the rim (`VISITS`, dealt by the visit's number, so a seek
+puts a visit under way back on its route).
+
+### The pop under quick hands
+
+A CPU probe (a real world in Node, a scripted 42 s of hot play at 60 fps: a hard drop every 0.6 s,
+a clear every other lock in a rising chain, quads and a perfect clear among them) counted the motes
+written over a slot whose mote was still within four fifths of its life:
+
+| Tier (ring before → after) | `main` | This pass |
+|---|---:|---:|
+| Minimal (384 → 512) | 7,023 of 8,826 (80 %) | 0 of 4,050 |
+| Low (640 → 832) | 9,652 of 11,255 (86 %) | 0 of 6,554 |
+| Medium (896 → 1,152) | 11,682 of 13,408 (87 %) | 0 of 8,964 |
+| High (1,280 → 1,664) | 13,975 of 16,038 (87 %) | 0 of 12,749 |
+| Extreme (2,304 → 2,944) | 16,374 of 21,470 (76 %) | 0 of 21,645 |
+
+Hot play asks for about twice the ring, and each spawn took the slot whose turn it was. Every burst
+is now sized by the room the ring has (`SpringWorld.grant`, `Motes.free`: slots never used or past
+nine tenths of their life), free slots are handed out first, an event's petals are spawned before
+its pollen, and the rings are a third larger. Calm play spawns what it did. Screenshots cannot show
+this; the probe's counts are the evidence, and `tests/unit/spring-living.test.js` pins the zero.
+
+### Verification
+
+- **Playground**, a private headless Chrome on the RTX 5080 Laptop from a private dev server,
+  capped at 30 fps: every hour against several weathers with the board, every event at several
+  ages, the fall close up, the birds through a long lens, a live strip of the looping demo;
+  WebGL2 at Low and Minimal (`forceWebGL=1`), Minimal on WebGPU, Medium, reduced motion, a
+  420 × 900 portrait. No WebGPU validation error, shader error or console warning in any.
+- **The real game** (`/?skipIntro=1&unlockAll=1`, the frame rate capped at 30): Spring picked from
+  the menu, a single-player run started, 33 real hard drops over 26 s, a game over and the next
+  run's morning, then four lines and a perfect clear sent to the theme's world. WebGPU, High,
+  0 dropped events; the console held only the two Steam Cloud notices a browser always has and one
+  mode notice from the script's own late call.
+- **Cost**: the playground's GPU timer at 1920 × 1080, High, capped at 30 fps, fourteen seconds a
+  case, `main` and this pass served side by side, three rounds, medians:
+  the morning 2.2–2.5 ms a frame on `main` and 2.1 ms here under a mackerel sky; the light night
+  2.0–2.1 ms on `main` and 2.3–2.4 ms here under building heaps (the stars and the night-shining
+  clouds are its own); the looping demo 2.1–2.4 ms on `main` and 2.2–2.4 ms here. One round on
+  `main` read 6.5 ms (the GPU clocked down between capped frames): capped readings scatter by a
+  few tenths of a millisecond, so this says the pass costs at most a few tenths, not what the
+  frame rate is. An uncapped frame-rate reading was not taken.
+- **Tests**: `tests/unit/spring-living.test.js` (37: the weather wheel, the sun's gates for the bow,
+  the night-shining clouds and the under-light, the wind's travel, the sky, the rainbow, the heaps
+  and the birds built to WGSL and GLSL with no var read before it is set, the routes' starts and
+  ends against the widest lens, a flight flown whole at one pace, the clock's visits and a seek
+  into one, each event's own sight, the session state through a rebuild, the motes never cut
+  short); three older tests updated for the petals and the birds' new mesh. The Spring files:
+  14 test files, 295 tests, lint and typecheck clean.
+
+| Minimal on WebGL2: a perfect clear at sunset under a mackerel sky |
+|---|
+| ![minimal webgl2](spring-captures/living-minimal-webgl2.webp) |
+
+### Open calls
+
+These are doubts of mine, not the owner's words.
+
+- **The night-shining clouds are a licence** (above). They are the light night's only sight of its
+  own; without them it has the rose band and the mist.
+- **The rainbow is rare by the clock.** It needs the "after the shower" weather to meet the
+  morning or the afternoon; four lines and a perfect clear raise it whenever the sun allows. In the
+  morning its foot stands at the frame's left edge; the afternoon's low arc over the fells is the
+  one that reads.
+- **The birds are drawn larger than life** (swans 1.15, cranes 1.35), and a level-up's cranes are
+  hidden for a few seconds as they pass behind the hill's trees in the middle of the frame.
+- **The fall's rock was not re-cut.** Its lip is still a level line between two square shoulders;
+  the thunder, the pulse and the spray's tower give it life, but its outline is the old one.
+- **A clear's surge now leaves the pool 1.2 s after the clear** (as its pulse lands), where it left
+  at once before.
+- **Not done**: a physical phone, an uncapped frame-rate reading, the song (still the Moonlit
+  Forest recording, retitled), the theme's icon (the view it shows is unchanged).
