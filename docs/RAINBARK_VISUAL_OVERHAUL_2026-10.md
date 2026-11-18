@@ -221,6 +221,122 @@ and, where a storey shows, three more and its air; the trunks pay the storeys on
 storey's plane. The near bark's larger fragment also lengthens the WebGL2 backend's first compile
 on Medium and up (Low and Minimal are untouched).
 
+## Living pass (2026-11-18): light in beams, leaves as leaves, a grove that never stands still
+
+The fourth pass, from an audit of every part of the theme against fresh captures of `main`
+(rest at five storeys, four moods, every event at one or two moments). The bark was the strong
+part and is nearly untouched. What the audit found weak:
+
+| Found | Why it read weak |
+|---|---|
+| The gold air | One even wash of yellow on the sun's side: light through leaves is never even. The three ambient shafts stood far right and did not read against it. |
+| The grove behind the card | Ranks of bare grey poles: a eucalyptus forest without one eucalyptus leaf between the eye and the painted canopy. |
+| The canopy | A picture on a plane; from the Limb Storey up, flat green pads. |
+| The Fog Line's first storeys | A blank white frame (three of twelve levels start there). |
+| Time | Four moods of one daylight and the tide. Nothing ever happened by itself except a flock every minute. |
+| The Shed's and the Unwinding's fresh ring | A flat lime band: hi-vis tape on the trunk. |
+| The chain's beams | Even white slabs. |
+| A hard drop, a twist, a level | Next to nothing beyond the bark's own mark. |
+| Four lines | The trunks turned lime, and that was all: the biggest ordinary beat was not the most spectacular. |
+| A perfect clear's floor | Tan gravel with white squiggles (an isoline of noise: contour doodles). |
+| The lorikeets | Three quads a bird. |
+
+### What it added
+
+| What | How | Where |
+|---|---|---|
+| **The beam field** | The sun through the canopy as beams standing in the haze at every depth (20–150 m), so trunks stand dark in front of some and veiled behind others. One instanced draw of strips along the sun's ray (geometry, never a screen-space god ray), a bundle of rays across each with the vapour drifting through it. Each beam breathes on its own clock (dark 30 % of the time), so the set in the frame keeps changing. Between the beams the crowns shade the sunlit air (`u.airShade`), so the gold side is beams in a deeper gold. Down in the mist (the Fog Line) the beams come on down to the eye: god-rays in the pearl. | `BEAMS`, `beamField` (core), `rainbark-beams.js`, `rbInscatter` |
+| **Leaves as leaves** | One instanced draw of one eucalyptus spray built on the CPU (an arching twig, side twigs, sickle leaves hanging from it; a blade of five sections, folded along its rib). Three uses: *sprays* hanging into the top corners of the frame (a storey's own, hung by the lens so every frame shape sees the same, handed up a storey only while out of view); *shoots* sprouting from the boles of every trunk but the Elder and Sister One, at every height; *tufts* round every trunk's top under the canopy. Lit as leaves: the canopy's gobo at the leaf, the sun THROUGH a blade that stands between the eye and it. Each leaf swings from its stalk, harder in a gust. | `FOLIAGE`, `sprayPlace`, `lensEdges` (core), `rainbark-foliage.js`, `standCrowns` (world) |
+| **Six moods** | The wheel gains *ember* (the last of the sun: red-gold beams, plum shade) and *dusk* (the blue hour: a share of the motes light up as fireflies, each on its own slow beat). Each mood also sets the beams' strength and the flecks' share. Ten minutes a turn. | `LIGHT_WHEEL`, `wheelValue`, `FIREFLY` |
+| **Happenings** | Every ~43 s from t = 80 the clock sends one over the grove (or none): a *sunbreak* (beams and flecks swell), a *gust* (leaves toss, leaves come down across the lanes, the flecks slide and ease back), a *mist bank* (the tide lifts, the air thickens). Closed form in the clock. And a leaf lets go of the corner sprays every 1.6 s. | `HAPPENINGS`, `happeningAt`, `LEAF.every` |
+| **Sparks** | What a beat throws into the light: one instanced draw of soft specks, a slot each for its whole flight (closed form: drag, gravity, an optional winding round a trunk's axis). A later beat takes spent slots, never a speck in flight. | `SPARKS`, `rainbark-sparks.js`, `spark*` (world) |
+| **The Sunshower's bow** | A rainbow in the rain on the shade side, crossing the Elder's wall, a fainter second beyond it; rising with the back-to-back run and with each burst. A full-screen triangle that is not drawn at all while no bow shows. | `BOW`, `rainbark-bow.js` |
+| **The forest floor** | Moss and fern, drifts of litter, wet earth, and ONE river running away through the grove (its course two sines along its run, distance measured square to it), mirroring the gold air, a breath of mist along it. | `FLOOR`, `rbFloor` (sky) |
+| **The lorikeets** | A lofted body, beak, long tail and two-panel wings hinged at shoulder and wrist (the hand lags the arm); red and yellow under the wing. On a new level the whole flock goes up the open lanes either side of the card with the walkway. | `LORIKEET`, `rainbark-birds.js` |
+| **The ring's blaze** | Wet First Skin glistening along the grain (sap bright in its streaks, deep between them, fuller toward its heart), never a flat fill. | `BLAZE_SAP`, `rbBark` |
+
+### The event language now
+
+Every beat keeps its mark on the bark (the table above) and gains what it throws into the light.
+The bigger the beat, the more of the grove answers.
+
+| Event | Bark (as before) | New this pass |
+|---|---|---|
+| lock | the Peel | a pinch of gold dust and the piece's own colour where the strip lets go |
+| hard drop | the Knock | a ring of dust shaken off the struck side, thrown up the trunk |
+| clear ×1–3 | the Shed | sap beads and dust running round each ring with the split; the ring glistens; a triple swells the beams a little |
+| four lines | the Great Moult | a storm of sparks down both lanes with the front; the whole beam field swells (most for a back-to-back four) and the colours deepen; then it all falls away over seconds |
+| combo | gaps and beams | each new gap drops pollen down its beam; the beams are bundles of rays |
+| T-spin | the Unwinding | a helix of sparks winding up round the trunk the strip unwinds from |
+| back-to-back | the Sunshower | the rainbow |
+| perfect clear | the Floor | the new floor; slow lights rising out of it; the beams reach it |
+| level | the Climb | the lorikeets go up with the walkway through a veil of specks; the sprays slide down past the eye; the beams swell |
+| game over | Mistfall | (as before; the sprays stand as silhouettes in the fog) |
+
+Reduced motion halves the sparks and stills the Climb's veil; Reduce flashing scales the beam
+swell (`flashScale()`), as it does the crown's flare.
+
+### Tiers
+
+| Key | Minimal | Low | Medium | High | Ultra | Extreme |
+|---|---|---|---|---|---|---|
+| `beams` | 0 | 5 | 9 | 14 | 18 | 22 |
+| `sparks` | 96 | 160 | 280 | 420 | 560 | 700 |
+| `sprays` / `boughs` | 8 / 0 | 12 / 110 | 16 / 240 | 22 / 420 | 26 / 560 | 30 / 720 |
+| `lorikeets` | 0 | 0 | 3 | 6 | 7 | 8 |
+
+Minimal draws no beam field and therefore keeps its air unshaded (`u.airShade` 0): the old even
+gold, never a darker air with nothing in it.
+
+### Verified
+
+- **Captures** (private headless Chrome on the RTX 5080 Laptop, 30 fps cap): rest at L1, L4, L6,
+  L7, L8, L9, L10, L12; all six moods; the three happenings; every event at one or two moments;
+  WebGPU and the WebGL2 backend at High and Low; Minimal and Medium; 390 × 844; 21:9. Every
+  console clean.
+- **The real game** (headless Chrome, real key presses, 30 fps): Rainbark on WebGPU at High, 54
+  hard drops over 34 s, two game overs and two mornings, sparks in flight, console clean (one
+  game-mode warning from the harness's own re-switch).
+- **Cost** (playground, 1920 × 1080, RTX 5080 Laptop, capped at 30 fps, so a relative reading):
+  High 0.93 → 0.97 ms of GPU a frame at L4 (two interleaved pairs), 0.93 → 0.99 at L12; Low
+  unchanged (0.57). Not measured uncapped or on an integrated GPU.
+- **Cold start** (fresh Chrome profile, time to ready): the WebGL2 backend at Low 16.2 / 17.8 s on
+  `main` against 14.6 / 16.4 s here, at Medium 21.0 against 22.4 s; WebGPU at High 7.0 against
+  4.9 s. No measurable change.
+- **Tests**: `tests/unit/rainbark-living.test.js` (19: the field is a prefix on every tier; a
+  beam's breath never steps; happenings are the clock's alone and ease in from nothing; each beat
+  spends sparks and the bigger beats spend more; a later beat never moves a speck in flight; the
+  beam swell orders single < triple < four < back-to-back four and falls away; the bow eases; no
+  spray goes up a storey in view on any frame shape from a phone to 21:9; no shoot stands on a
+  painted face; the scene never changes after it is built). The shader gate builds the new
+  materials to WGSL and GLSL at Minimal and Ultra.
+
+### Traps met
+
+- **A beam added to bright air is invisible.** The gold air stood near its roll-off; a beam's
+  light on top of it vanished in the shoulder. Shade the air between the beams and let the beams
+  bring the light back (`u.airShade`; gotcha #804).
+- **A river drawn as an isoline of noise has rings.** `|noise − 0.5| < w` draws contours: closed
+  loops and doodles. A river has one course: measure the distance to an analytic curve (gotcha
+  #1314).
+- **A fringe of sprays across the whole top edge is a pelmet.** Gather them in clumps in the
+  corners; hang them from above the frame with the twig coming down into it.
+- **A storey-wrapped thing pops when the lens sees more than a storey at its depth.** An upright
+  phone sees 1.29 × depth of height against 0.94 at 16:9. Hang by the lens (`sprayPlace`) and hand
+  it up only while it is under the frame's foot (gotcha #703).
+- **Crown boughs scattered in the air under the canopy float.** Leaves need wood: stand them on
+  the trunks.
+
+### Open
+
+- The painted canopy's pads at the Limb Storey and Crown Light are still a picture on a plane
+  (the shoots and tufts break it up; they do not replace it).
+- The river reads as a pale band from Buttress Deep; it has no reflections of the trunks.
+- Blender was not used: its MCP did not answer during the pass (the application was running and
+  was left alone). The spray and the bird are built in code.
+- The theme icon and `docs/theme-screenshots` were not re-baked.
+- Cost was not measured uncapped nor on an integrated GPU.
+
 ## Reproduce
 
 Playground (`npm run dev:playground`, then `playground.html?effect=rainbark&…`):
@@ -240,6 +356,11 @@ Playground (`npm run dev:playground`, then `playground.html?effect=rainbark&…`
 | the light wheel | `t=10&level=4` (morning) … `t=110` (noon), `t=210` (gold), `t=310` (pearl) |
 | the icon | `t=55&level=4&icon=1&iconFov=30&iconYaw=24&iconPitch=8&event=lock&piece=I&u=0.2&row=8&eventAge=0.45` (square) |
 | the motes alone (third pass) | `t=55&level=4&parts=sky,fx&noPost=1` |
+| a mood (living pass) | `t=55&level=4&board=1&mood=ember` (or `dusk`, `gold`, `noon`, `pearl`) |
+| a happening | `t=55&level=4&board=1&happen=sunbreak&happenAge=6` (or `gust`, `mistbank`) |
+| the bow | `t=55&level=4&board=1&b2b=3` |
+| the Climb's flock | `t=55&level=4&board=1&event=levelUp&eventAge=1.2` |
+| the beams bisected | `t=55&level=4&tune=beamGain:2,airShade:0.3` |
 
 Real game: `?skipIntro=1&unlockAll=1`, then pick Rainbark; capture flags `rainbarkTime`,
 `rainbarkFixedDt`, `rainbarkParts=sky,trunks,mist,curls,fx,life`, `rainbarkFalseColor`,

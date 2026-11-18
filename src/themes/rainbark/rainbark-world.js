@@ -2062,11 +2062,13 @@ export class RainbarkWorld {
         // the sunlit air between the beams.
         const beamsOn = Boolean(this.parts.fx?.beams);
         const pearlNow = lerp(za.pearl, zb.pearl, k);
+        // (Down in Buttress Deep, the first zone, little of the sun reaches the air: BEAMS.deep.)
+        const deepNow = lerp(zm.a === 0 ? BEAMS.deep : 1, zm.b === 0 ? BEAMS.deep : 1, k);
         const swell = this.beamSwell.valueAt(t) * flashScale();
         // (A slow flicker: the crowns tossing over the beams, never a strobe.)
         const flicker = 1 + HK[1].flicker * gust * Math.sin(t * 3.1) * Math.sin(t * 1.3 + 1.3);
         const beamLight = wheelValue(wheel, 'beams') * lerp(BEAMS.tide[0], BEAMS.tide[1], clockA.high)
-            * (1 + BEAMS.pearl * pearlNow) * (1 + HK[0].beams * sunbreak) * flicker
+            * (1 + BEAMS.pearl * pearlNow) * deepNow * (1 + HK[0].beams * sunbreak) * flicker
             * (1 + BEAMS.surge[0] * level + BEAMS.surge[1] * fever) * (1 + BEAMS.swell * swell)
             // (The Floor's thinned haze stands less in front of the beams: they are held back.)
             * (1 - (1 - FLOOR.beams) * floorK);

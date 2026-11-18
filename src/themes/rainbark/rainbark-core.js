@@ -1515,7 +1515,8 @@ export const SHAFT_LIGHT = Object.freeze({
  * Between the beams the crowns shade the sunlit air by `gapShade` (u.airShade): the gold side is
  * beams of light in a deeper gold, never one even wash. The field's light (u.beamGain) follows the
  * mist (`tide`: from low water to high), stands stronger in a pearly zone (`pearl` more: the Fog
- * Line's god-rays), with the heat of play (`surge`: level, fever) and with the big moments (`swell`
+ * Line's god-rays) and at `deep` of itself down in Buttress Deep (little sun reaches the cool
+ * storey over the mist: its beams are thin and silver), with the heat of play (`surge`: level, fever) and with the big moments (`swell`
  * more at a Great Moult's or a perfect clear's height).
  */
 export const BEAMS = Object.freeze({
@@ -1535,12 +1536,13 @@ export const BEAMS = Object.freeze({
     shade: Object.freeze([0.55, 0.78, 1.0]),
     period: Object.freeze([24, 61]),
     rest: 0.3,
-    rays: Object.freeze({ across: 2.6, depth: 0.62 }),
+    rays: Object.freeze({ across: 2.6, depth: 0.5 }),
     vapour: Object.freeze({ grain: 9, drift: 0.35, depth: 0.42 }),
     card: Object.freeze([0.0, 0.06]),
     gapShade: 0.5,
     tide: Object.freeze([0.85, 1.2]),
     pearl: 1.1,
+    deep: 0.5,
     surge: Object.freeze([0.2, 0.45]),
     swell: 1.3,
     seed: 0xbea3,
