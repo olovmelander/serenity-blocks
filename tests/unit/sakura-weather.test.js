@@ -23,9 +23,13 @@ const P = SAKURA_WEATHER_SECONDS;
 const HOLD_END = P * SAKURA_WEATHER_HOLD;
 const IDS = ['clear', 'wind', 'mackerel', 'haze', 'mist', 'mirror'];
 /** The scalars that are a share of something (0..1); the rest scale the garden's own value. */
-const SHARES = ['cloud', 'wisps', 'mackerel', 'veil', 'galaxy', 'fall', 'stream', 'calm', 'cap', 'sea', 'banner',
-    'fireflies'];
+const SHARES = ['cloud', 'wisps', 'mackerel', 'veil', 'galaxy', 'fall', 'stream', 'calm', 'cap', 'sea', 'banner'];
 const SCALES = ['drift', 'stars', 'wind', 'mist', 'banks', 'shafts'];
+/**
+ * The fireflies are out by a threshold of their own (sakura-spirits.js: each has a shyness of up
+ * to 0.92 and is fully out a fifth past it), so every one of the tier's is out from 1.12.
+ */
+const EVERY_FIREFLY = 0.92 + 1 / 5;
 const STEP = 1 / 60;
 
 function seeded(seed = 7) {
@@ -67,7 +71,7 @@ describe('Sakura Twilight airs of the night', () => {
         expect(new Set(SAKURA_WEATHERS.map((air) => air.name)).size).toBe(N);
         expect(Object.isFrozen(SAKURA_WEATHERS)).toBe(true);
         expect(Object.isFrozen(SAKURA_WEATHER_SCALARS)).toBe(true);
-        expect([...SAKURA_WEATHER_SCALARS].sort()).toEqual([...SHARES, ...SCALES].sort());
+        expect([...SAKURA_WEATHER_SCALARS].sort()).toEqual([...SHARES, ...SCALES, 'fireflies'].sort());
         for (const air of SAKURA_WEATHERS) {
             expect(Object.isFrozen(air), air.id).toBe(true);
             expect(typeof air.name).toBe('string');
@@ -76,6 +80,9 @@ describe('Sakura Twilight airs of the night', () => {
                 expect(Number.isFinite(air[key]) && air[key] >= 0, `${air.id}.${key} = ${air[key]}`).toBe(true);
             }
             for (const key of SHARES) expect(air[key], `${air.id}.${key}`).toBeLessThanOrEqual(1);
+            // Some fireflies are out in every air, and never more than all of them.
+            expect(air.fireflies, air.id).toBeGreaterThan(0.2);
+            expect(air.fireflies, air.id).toBeLessThanOrEqual(EVERY_FIREFLY + 1e-12);
             // Nothing an air scales runs away: the wind at most doubles or so, the mist a few times.
             for (const key of SCALES) expect(air[key], `${air.id}.${key}`).toBeLessThanOrEqual(4);
             // The cloud always travels (a sky that stood still would read as a painted one).
@@ -91,6 +98,8 @@ describe('Sakura Twilight airs of the night', () => {
         expect(clear).toMatchObject({
             fall: 1, stream: 0, veil: 0, mackerel: 0, wisps: 1, cap: 0,
         });
+        // And every firefly the garden was built with is out.
+        expect(clear.fireflies).toBeGreaterThanOrEqual(EVERY_FIREFLY - 1e-12);
         // And at time zero the clock stands on it.
         expect(sakuraWeatherDrift(0)).toBe(0);
         expect(sakuraWeatherName(sakuraWeatherDrift(0))).toBe(clear.name);
@@ -104,10 +113,15 @@ describe('Sakura Twilight airs of the night', () => {
             expect(moved.length, `${a.id} -> ${b.id}: ${moved}`).toBeGreaterThanOrEqual(4);
         }
         // Each of the things an air can show is shown, whole, by at least one air.
-        for (const key of ['mackerel', 'veil', 'cap', 'sea', 'banner', 'calm', 'galaxy', 'fireflies']) {
+        for (const key of ['mackerel', 'veil', 'cap', 'sea', 'banner', 'calm', 'galaxy']) {
             expect(Math.max(...SAKURA_WEATHERS.map((air) => air[key])), key).toBe(1);
         }
         expect(Math.max(...SAKURA_WEATHERS.map((air) => air.stream))).toBeGreaterThan(0.3);
+        // The fireflies: all of them over a still lake, the fewest in a wind.
+        const by = (id) => SAKURA_WEATHERS.find((air) => air.id === id);
+        expect(by('mirror').fireflies).toBeGreaterThanOrEqual(EVERY_FIREFLY - 1e-12);
+        expect(by('wind').fireflies).toBe(Math.min(...SAKURA_WEATHERS.map((air) => air.fireflies)));
+        expect(by('wind').fireflies).toBeLessThan(by('clear').fireflies / 2);
     });
 
     it('hands out a place for an air with every number at zero', () => {
