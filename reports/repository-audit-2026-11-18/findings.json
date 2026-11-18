@@ -313,6 +313,29 @@
       }
     },
     {
+      "id": "A18-CORE-5",
+      "status": "verified",
+      "title": "Replay: a pause that lasts until a line clear ends makes the replay skip that frame's recorded inputs while counting them as applied",
+      "area": "core",
+      "file": "src/core/demo/DemoPlayer.js",
+      "line": 466,
+      "category": "bug",
+      "scenario": "Single Player replay at 0.5x or 1x: a hard drop clears a line and the viewer pauses (bar, pad, Escape or focus loss) until the cascade has finished. The in-flight _advanceTo resumes with gameState.isPaused true; its same-frame recorded inputs are refused (core move/rotate and SinglePlayerMode._applyCommand reject while paused) but currentInputIndex still advances, so they are skipped for good and the replay diverges from the recorded game.",
+      "evidence": "Found by the A18-CORE-1 verifier's pause sweep (scratchpad verify/gameplay/c1-demo-double-loop.test.js): all three inputs recorded in the drop's frame skipped, board digest a71ae2eb vs 9763456b. _advanceTo never checks isPaused. Predates b58561c (not the CORE-1 regression).",
+      "severity": "P3",
+      "confidence": "high",
+      "fixSize": "S",
+      "fixSketch": "In _advanceTo, stop before applying an input while the player is paused (leave currentInputIndex where it is) and let the resumed loop continue from there.",
+      "testIdea": "Pending physics promise, pause, resolve, flush, resume: every recorded input applied exactly once in order.",
+      "knownCheck": "Not in any audit record; discovered during verification, not by a discovery auditor.",
+      "verification": {
+        "verdict": "confirmed",
+        "severityAdjust": "keep",
+        "needsOwnerDecision": false,
+        "summary": "Reproduced by the verifier on the real DemoPlayer/GameState/pacer under fake timers (digest a71ae2eb vs 9763456b). Not independently re-verified by a second agent; deferred to keep the CORE-1 fix to one concern."
+      }
+    },
+    {
       "id": "A18-MP-1",
       "status": "verified",
       "title": "Relay network unreachable is never surfaced: lobbies are created/joined and fail as 'host did not answer', contrary to ADR-0023",
