@@ -8,7 +8,8 @@
  */
 import { TRANSITION_LAYERS } from './transition-layer-constants.js';
 import {
-    GATE_MAX_FRAME_STEP_MS, advancePortalTravel, createPortalGate, drawPortalGate, portalEase, portalReach,
+    GATE_MAX_FRAME_STEP_MS, HOLD_PAUSE_GAP_MS, advancePortalTravel, createPortalGate, drawPortalGate, portalEase,
+    portalReach,
 } from './portal-gate.js';
 import { startPortalGateOffThread } from './portal-gate-remote.js';
 import { flashScale } from '../../utils/photosensitivity.js';
@@ -23,8 +24,6 @@ const DEFAULT_TIMINGS = Object.freeze({
 });
 
 const BLACKOUT_READY_THRESHOLD = 0.96;
-/** A gap between frames this long means frames were stopped, not slow (see frameAt). */
-const HOLD_PAUSE_GAP_MS = 1000;
 const ABORT_FADE_MS = 240;
 const WHEEL_LOCK_ATTRIBUTE = 'data-odyssey-wheel-lock';
 /** The share of the opening by which the gate covers the whole frame (readiness waits for it). */

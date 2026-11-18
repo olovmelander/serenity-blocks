@@ -59,6 +59,8 @@ export const PORTAL_GATE_COUNTS = Object.freeze({
  * real-game capture lost the whole gathering to one 300 ms stall). Hold timeouts keep real time.
  */
 export const GATE_MAX_FRAME_STEP_MS = 50;
+/** A gap between frames this long means frames were stopped, not slow: a readiness hold skips it. */
+export const HOLD_PAUSE_GAP_MS = 1000;
 
 const REQUIRED_CONTEXT = [
     'beginPath', 'arc', 'stroke', 'fill', 'rect', 'clip', 'save', 'restore', 'setTransform',
