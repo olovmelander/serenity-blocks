@@ -1617,8 +1617,8 @@ describe('Sakura world in play', () => {
         }
         // The session really happened: every kind of emitter and force field was played.
         expect([...seen.kinds].sort())
-            .toEqual(['clear', 'combo', 'floats', 'gate', 'lanterns', 'lock', 'rise', 'shore', 'shower', 'spin', 'spirit',
-                'splash', 'star']);
+            .toEqual(['clear', 'combo', 'floats', 'gate', 'lanterns', 'lock', 'rise', 'shore', 'shower', 'spin',
+                'spirit', 'splash', 'star']);
         expect([...seen.fields].sort()).toEqual(['burst', 'jet', 'lift', 'vortex']);
         expect(seen.front).toBe(true);
         expect(seen.finite).toBe(true);

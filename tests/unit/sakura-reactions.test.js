@@ -11,8 +11,8 @@ const UNIT_STATES = ['vortex', 'heat', 'spirit', 'constellation', 'figures', 'hu
  * lantern light three and four lines run along the far shore, the back-to-back's gate and the
  * perfect clear's star fox.
  */
-const EVENT_KINDS = ['lock', 'clear', 'floats', 'star', 'shower', 'combo', 'lanterns', 'spin', 'rise', 'splash', 'shore',
-    'gate', 'spirit'];
+const EVENT_KINDS = ['lock', 'clear', 'floats', 'star', 'shower', 'combo', 'lanterns', 'spin', 'rise', 'splash',
+    'shore', 'gate', 'spirit'];
 const EMITTER_KINDS = [...EVENT_KINDS, 'festival'];
 const EMITTER_KEYS = ['active', 'age', 'column', 'duration', 'id', 'kind', 'lines', 'progress', 'row', 'seed',
     'serial', 'side', 'strength'];
