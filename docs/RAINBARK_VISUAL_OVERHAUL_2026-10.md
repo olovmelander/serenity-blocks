@@ -345,7 +345,7 @@ and the stats panel (the picture's light source since the first pass).
 
 - **A beam added to bright air is invisible.** The gold air stood near its roll-off; a beam's
   light on top of it vanished in the shoulder. Shade the air between the beams and let the beams
-  bring the light back (`u.airShade`; gotcha #804).
+  bring the light back (`u.airShade`; gotcha #805).
 - **A river drawn as an isoline of noise has rings.** `|noise − 0.5| < w` draws contours: closed
   loops and doodles. A river has one course: measure the distance to an analytic curve (gotcha
   #1314).

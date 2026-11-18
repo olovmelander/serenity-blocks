@@ -34,7 +34,7 @@ import {
 } from 'three/tsl';
 import { FALL_SWAY, G, WATER_WRAP } from './rainbow-terraces-core.js';
 import {
-    bowStrokes, earthShadowAt, horizonHaze, luma, optics, scHash21, scMax3, skyBase,
+    bowStrokes, cloudShadeAt, earthShadowAt, horizonHaze, luma, optics, scHash21, scMax3, skyBase,
 } from './rainbow-terraces-tsl.js';
 import { flatVarying } from '../shared/flat-varying.js';
 
@@ -377,8 +377,10 @@ export function createFalls({ tier, U, tex }) {
         // (The falls are the frame's brightest whites: their key runs into the bloom's knee; below
         // the Earth's shadow's terminator at the rose and pearl hours they fall into the blue.)
         const wrapL = clamp(dot(N, U.shadeKey).mul(0.6).add(0.4), 0.0, 1.0);
+        // (Under a passing cloud's shadow the white water dims with the stone it falls from.)
         const keyLight = mix(vec3(luma(light.key)), light.key, 0.5).mul(U.keyGain).mul(0.9)
-            .mul(mix(float(1.0), earthShadowAt(P, U), 0.35));
+            .mul(mix(float(1.0), earthShadowAt(P, U), 0.35))
+            .mul(float(1.0).sub(cloudShadeAt(P.xz, U, tex).mul(0.6)));
         const shade = mix(vSkyR, light.mistLit, 0.3).mul(0.8);
         const lit = keyLight.mul(wrapL).mul(ropes.mul(0.75).add(0.55));
         const dark = shade.mul(float(1.0).sub(wrapL).mul(0.85).add(0.15)).mul(ropes.mul(0.25).add(0.75));
