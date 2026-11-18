@@ -327,7 +327,7 @@
     },
     {
       "id": "A18-CORE-5",
-      "status": "deferred",
+      "status": "fixed",
       "title": "Replay: a pause that lasts until a line clear ends makes the replay skip that frame's recorded inputs while counting them as applied",
       "area": "core",
       "file": "src/core/demo/DemoPlayer.js",
@@ -347,7 +347,7 @@
         "needsOwnerDecision": false,
         "summary": "Reproduced by the verifier on the real DemoPlayer/GameState/pacer under fake timers (digest a71ae2eb vs 9763456b). Not independently re-verified by a second agent; deferred to keep the CORE-1 fix to one concern."
       },
-      "resolution": "deferred: separate concern from A18-CORE-1"
+      "resolution": "fixed (a2b359c)"
     },
     {
       "id": "A18-MP-1",
@@ -400,7 +400,7 @@
     },
     {
       "id": "A18-MP-3",
-      "status": "deferred",
+      "status": "fixed",
       "title": "ADR-0023 session enforcement (pumpRelaySessions / closeRelaySessions / relay read-send branches) has no behavioural test, only source regexes",
       "area": "mp-steam-electron",
       "file": "electron/steam-integration.js",
@@ -420,7 +420,7 @@
         "needsOwnerDecision": false,
         "summary": "No test imports steam-integration.js or drives its handlers; all touching tests are readFileSync + regex. Extract pump + relayPeers into a pure module with injected transport/gate/members/now/report/log, keep log lines for the two-account test. Note for the test: a closed not-relayed peer that keeps sending is re-accepted within 200 ms and re-closed/reported every second."
       },
-      "resolution": "deferred: extraction (M) of code never run against real Steam"
+      "resolution": "fixed (938f13c): pump extracted to electron/relay-session-pump.js with behavioural tests"
     },
     {
       "id": "A18-LIFE-1",
@@ -592,7 +592,7 @@
         "needsOwnerDecision": false,
         "summary": "Chromium 157: StrollerLife.write ×16 41.2 KB → 7.5 KB with qRotate index reads + closure-free cycleCurve + LIMBS index reads; pose table bit-identical over 18,000 frames. Arctic fox 3,591 → 2,086 B/call bit-identical. Swapping Math.hypot for Math.sqrt is NOT bit-identical (0.88% of float32 posture values differ): leave hypot or use an exact replica."
       },
-      "resolution": "deferred: theme files, needs the GPU screenshot loop"
+      "resolution": "deferred: theme files, needs the GPU screenshot loop; the static startup audit's claim corrected (7c57edd)"
     },
     {
       "id": "A18-DEAD-1",
@@ -655,11 +655,11 @@
         "summary": "Drift real (7 clone blocks, 231 lines; no pause-gap rule, no hold budget, no abort hold/fade). Reproduced on the real class: 10 s frame gap with prep pending → 'blackout-timeout' on first frame back; entry control does not abort. Mechanism narrower: waitForAnimationFrames has a 120 ms timer fallback, default return keeps the board resident; abort needs prep still pending (rebuild return, double-rAF warm-ups) in a hidden web-build tab. Electron runs rAF at full rate even minimised (backgroundThrottling:false). Fix: port the HOLD_PAUSE_GAP_MS rule into Return.tick (better: shared helper)."
       },
       "severityOriginal": "P2",
-      "resolution": "fixed (ec77cc5)"
+      "resolution": "fixed (ec77cc5); the gap rule is one shared helper since 23296c7"
     },
     {
       "id": "A18-DEAD-3",
-      "status": "deferred",
+      "status": "fixed",
       "title": "ADR-0022 leftovers: the chapter 3/4 aurora curtain builder and the Ch2→Ch3 water membrane outlived the retired scenes",
       "area": "dead-code-tests",
       "file": "src/rendering/odyssey/chapter-environments/shared/mountain-aurora.js",
@@ -684,7 +684,7 @@
         "needsOwnerDecision": false,
         "summary": "All listed items dead; MOUNTAIN_AURORA_CURTAIN_CONFIGS read only by the DEV-only layout editor. Six live comments cite the water-surface file. Safe now; extend the 'old scenes stay gone' test. No visible change."
       },
-      "resolution": "deferred: Odyssey files (report-only here)"
+      "resolution": "fixed (38e8491); production build byte-identical before and after"
     },
     {
       "id": "A18-DEAD-4",
@@ -756,7 +756,7 @@
     },
     {
       "id": "A18-DEAD-6",
-      "status": "deferred",
+      "status": "fixed",
       "title": "themes/shared/composer-dispose.js is kept alive only by its own test; its one possible consumer (Wolfhour's legacy EffectComposer path) is unreachable",
       "area": "dead-code-tests",
       "file": "src/themes/shared/composer-dispose.js",
@@ -780,8 +780,9 @@
         "needsOwnerDecision": false,
         "summary": "Only importer is its test; Wolfhour always uses WebGPURenderer; BaseTheme.disposeComposer already does the same loop. Not in ADR-0018's contract-test list. Safe to delete with its test; THREE_UPGRADE_RESEARCH 'helper still required' is stale."
       },
-      "resolution": "deferred: theme files (report-only here)"
+      "resolution": "fixed (93712ff); production build byte-identical before and after"
     }
   ],
-  "reviewFollowUp": "4aa9245: capture-settle window ignores a clock set back; one debounce timer; latch loop deduplicated (review of A18-UI-1/UI-2/UI-4/MP-2)"
+  "reviewFollowUp": "4aa9245: capture-settle window ignores a clock set back; one debounce timer; latch loop deduplicated (review of A18-UI-1/UI-2/UI-4/MP-2)",
+  "secondPass": "2026-11-18 (same day, no GPU): A18-CORE-5, A18-MP-3, A18-DEAD-3, A18-DEAD-6 fixed; shared journey gap helper; false 'That theme could not open' notices fixed in Serenity (5799010) and the theme keys (b80cee7); architecture-fitness baselines locked in"
 }
