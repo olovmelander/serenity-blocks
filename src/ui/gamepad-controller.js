@@ -1477,7 +1477,8 @@ export class GamepadController {
         if (!inMenu(current)) {
             // If any direction or Select is pressed, focus the selected/default card
             if ((leftPressed || rightPressed || upPressed || downPressed || aPressed) && this.gameModeCards.length > 0) {
-                const index = this.selectedGameModeIndex >= 0 ? this.selectedGameModeIndex : 0;
+                // The mode the stage shows (a pointer may have moved it since the pad last did).
+                const index = Math.max(0, this.gameModeCards.findIndex((c) => c.classList.contains('is-current')));
                 let candidate = this.gameModeCards[index];
                 if (this.isGameModeCardDisabled(candidate)) {
                     candidate = this.gameModeCards.find((card) => !this.isGameModeCardDisabled(card)) || null;
@@ -1599,6 +1600,10 @@ export class GamepadController {
                 console.log('[Gamepad] Menu navigation disabled before focus, skipping');
                 return;
             }
+            // Only a sheet takes first focus here. The main menu places its own (the mode it
+            // remembers, main-menu.js focusCurrentForKeys): the page's first control was its
+            // first mode card, so every return to the menu, pad or not, forgot the mode.
+            if (!this.getMenuSheet()) return;
 
             const firstFocusable = this.getFirstFocusableElement();
             if (firstFocusable) {
