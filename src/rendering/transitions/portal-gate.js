@@ -62,6 +62,22 @@ export const GATE_MAX_FRAME_STEP_MS = 50;
 /** A gap between frames this long means frames were stopped, not slow: a readiness hold skips it. */
 export const HOLD_PAUSE_GAP_MS = 1000;
 
+/**
+ * A readiness hold does not count a stretch with no frames (the window hidden, rAF paused): while
+ * a run waits on its preparation, a frame step over HOLD_PAUSE_GAP_MS moves the hold's start on
+ * by that step. One rule for the way in and the way back, which drifted apart once: alt-tabbing
+ * during an entry's hold came back to "That orb took too long to open" (audit 2026-10-23), and
+ * the return, a copy without the rule, dropped the journey the same way (audit 2026-11-18).
+ * @param {{readyTriggered: boolean, readySettled: boolean, blackoutTriggeredAt?: number}} run
+ * @param {number} step real ms since the last frame (before GATE_MAX_FRAME_STEP_MS caps the gate's clock)
+ * @param {number} now this frame's time: the hold's start if it has none yet
+ */
+export function skipStoppedFrames(run, step, now) {
+    if (step > HOLD_PAUSE_GAP_MS && run.readyTriggered && !run.readySettled) {
+        run.blackoutTriggeredAt = (run.blackoutTriggeredAt ?? now) + step;
+    }
+}
+
 const REQUIRED_CONTEXT = [
     'beginPath', 'arc', 'stroke', 'fill', 'rect', 'clip', 'save', 'restore', 'setTransform',
     'drawImage', 'fillRect', 'createRadialGradient',

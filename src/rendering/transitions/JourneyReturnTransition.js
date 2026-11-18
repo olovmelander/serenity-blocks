@@ -7,8 +7,8 @@
  */
 import { TRANSITION_LAYERS } from './transition-layer-constants.js';
 import {
-    GATE_MAX_FRAME_STEP_MS, HOLD_PAUSE_GAP_MS, advancePortalTravel, createPortalGate, drawPortalGate, portalEase,
-    portalReach,
+    GATE_MAX_FRAME_STEP_MS, advancePortalTravel, createPortalGate, drawPortalGate, portalEase, portalReach,
+    skipStoppedFrames,
 } from './portal-gate.js';
 import { startPortalGateOffThread } from './portal-gate-remote.js';
 import { flashScale } from '../../utils/photosensitivity.js';
@@ -333,12 +333,7 @@ export class JourneyReturnTransition {
         const { clock } = run;
         if (clock.last === null) clock.last = run.reducedMotion ? run.startedAt : now;
         const step = Math.max(0, now - clock.last);
-        // Frames stopped for a while (the window hidden, rAF paused): the readiness hold does not
-        // count that stretch, as on the way in (JourneyEntryTransition.frameAt). Back from a hidden
-        // tab mid-rebuild, the return used to time out and drop the journey (audit 2026-11-18).
-        if (step > HOLD_PAUSE_GAP_MS && run.readyTriggered && !run.readySettled) {
-            run.blackoutTriggeredAt = (run.blackoutTriggeredAt ?? now) + step;
-        }
+        skipStoppedFrames(run, step, now);
         clock.t += run.reducedMotion ? step : Math.min(GATE_MAX_FRAME_STEP_MS, step);
         clock.last = now;
         const elapsed = clock.t;

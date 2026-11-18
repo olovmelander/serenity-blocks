@@ -1,15 +1,17 @@
 /**
  * The Odyssey portal gate (src/rendering/transitions/portal-gate.js) and the promises the two
  * journeys make with it: the passage's look, what each kind of frame draws, readiness only once
- * the gate covers the frame, a clock that a dropped frame slows instead of skipping, the gate
- * following the orb while it is on it, and the once-per-page warm-up.
+ * the gate covers the frame, a clock that a dropped frame slows instead of skipping, a readiness
+ * hold that a stretch with no frames does not use up, the gate following the orb while it is on
+ * it, and the once-per-page warm-up.
  */
 import {
     afterEach, describe, expect, it, vi,
 } from 'vitest';
 import {
-    GATE_MAX_FRAME_STEP_MS, PORTAL_GATE_COUNTS, bakeNebulaRing, canDrawPortalGate, createPortalGate,
-    deepen, drawPortalGate, parseColor, portalReach, scheduleWarmPortalGate, warmPortalGate,
+    GATE_MAX_FRAME_STEP_MS, HOLD_PAUSE_GAP_MS, PORTAL_GATE_COUNTS, bakeNebulaRing, canDrawPortalGate,
+    createPortalGate, deepen, drawPortalGate, parseColor, portalReach, scheduleWarmPortalGate, skipStoppedFrames,
+    warmPortalGate,
 } from '../../src/rendering/transitions/portal-gate.js';
 import { ENTRY_GATE_COVERED_AT, JourneyEntryTransition } from '../../src/rendering/transitions/JourneyEntryTransition.js';
 import { JourneyReturnTransition, RETURN_GATE_SHUT_AT } from '../../src/rendering/transitions/JourneyReturnTransition.js';
@@ -398,5 +400,43 @@ describe('the journeys through the gate', () => {
         expect(arriving.region.kind).toBe('hole');
         expect(arriving.region.x).toBeCloseTo(0.7 * 1600);
         expect(arriving.region.y).toBeCloseTo(0.3 * 900);
+    });
+});
+
+// Both journeys skip stopped frames through this one rule; the return once had no copy of it
+// (audit 2026-11-18 A18-DEAD-2). Their own tests play the hidden window end to end.
+describe('the readiness hold through a stretch with no frames', () => {
+    const waiting = () => ({ readyTriggered: true, readySettled: false, blackoutTriggeredAt: 1000 });
+
+    it('moves the hold\'s start on by a gap longer than HOLD_PAUSE_GAP_MS while preparation is pending', () => {
+        const run = waiting();
+        skipStoppedFrames(run, 10_000, 12_000); // the window was hidden for 10 s
+        expect(run.blackoutTriggeredAt).toBe(11_000);
+        skipStoppedFrames(run, HOLD_PAUSE_GAP_MS + 1, 13_001);
+        expect(run.blackoutTriggeredAt).toBe(11_000 + HOLD_PAUSE_GAP_MS + 1);
+    });
+
+    it('counts a slow frame, up to the threshold itself, as hold time', () => {
+        [16, 400, HOLD_PAUSE_GAP_MS].forEach((step) => {
+            const run = waiting();
+            skipStoppedFrames(run, step, 1000 + step);
+            expect(run.blackoutTriggeredAt).toBe(1000);
+        });
+    });
+
+    it('leaves the hold alone before readiness and once preparation has answered', () => {
+        const before = { readyTriggered: false, readySettled: false };
+        skipStoppedFrames(before, 10_000, 12_000);
+        expect(before.blackoutTriggeredAt).toBeUndefined();
+
+        const answered = { ...waiting(), readySettled: true };
+        skipStoppedFrames(answered, 10_000, 12_000);
+        expect(answered.blackoutTriggeredAt).toBe(1000);
+    });
+
+    it('starts a hold with no start yet from this frame', () => {
+        const run = { readyTriggered: true, readySettled: false };
+        skipStoppedFrames(run, 10_000, 12_000);
+        expect(run.blackoutTriggeredAt).toBe(22_000);
     });
 });
