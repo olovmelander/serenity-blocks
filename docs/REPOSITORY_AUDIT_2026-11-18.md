@@ -133,6 +133,36 @@ handoff; a duplicated latch loop), plus one constant moved to a single home.
    bit-identical (0.88 % of float32 fox posture values differ): keep `hypot`, or use an
    allocation-free replica of V8's algorithm.
 
+## Owner-reported after the pass: rapid theme changes (fixed `bfde129`)
+
+*Report:* pressing the theme keys quickly (Serenity's arrows, Random) left a theme that "hangs and
+does not start properly". Investigated two ways: the real ThemeManager with fake themes, and the
+real built game in headed Chromium under Xvfb with WebGPU on SwiftShader. No switch stays stuck:
+the latest-wins queue always drains. Two bugs, both reproduced in the real game:
+
+- **A blank background after switching back.** An in-play switch crossfades and disposes the
+  outgoing instance `THEME_CROSSFADE_MS` (2.5 s) later. Switching back to that theme inside the
+  window built a fresh instance in the same container; the old instance's delayed disposal ran
+  `BaseTheme.stop()`, which removed `.active` from that container under the new theme. The manager
+  reported a healthy running theme while the screen showed nothing until the next switch.
+  `performThemeSwitch` now disposes a fading instance of its target before building the new one
+  (`_retireFadingTheme`).
+- **A swallowed arrow press.** `SerenityWorldStepper` advanced its token only when a switch began,
+  so a switch still running for an earlier press, settling within the new press's 420 ms delay,
+  cleared the newer target: the bar named a theme that never started. Each press now advances the
+  token.
+- Also: a theme built behind the playing one that failed to start left its async-pipeline session
+  open; it is ended now.
+
+*Evidence:* `tests/unit/theme-switch-rapid.test.js` (four cases, each failing on the previous code).
+In the real game, before the fix a held-completion run lost the second press and a Forest → Halcyon
+→ Forest bounce ended black with `.theme-container.active` empty; after it, the second press
+switched to its theme and the bounce ended on Forest, visible and rendering. Caveat: the fade case
+was forced in that environment by stretching the fade-out timer to 25 s, because every build there
+took longer than 2.5 s; on real hardware switching back is the fast case. Not changed: a switch
+already running is never cancelled, so on a slow GPU the latest pick waits for that theme's start
+(bounded by its 10 or 20 s timeout).
+
 ## Proposals (not executed)
 
 - **One shared helper for the two journey transitions.** `JourneyEntryTransition` and
