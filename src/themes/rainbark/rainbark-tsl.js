@@ -1716,6 +1716,16 @@ const STOREY_SALTS = Object.freeze([[71.9, 53.3], [83.1, 97.3]]);
 const STOREY_THIN = 7;
 
 /**
+ * A storey's leaves (rbStoreys, the tiers with the canopy's relief): inside a mass, boughs `tile`/4
+ * metres across (a band of the fBm, from `hollow`[0] to [1]) stand beside hollows `shade` darker,
+ * a leaf-scale speckle of ±`fine`/2 on both, and where another band passes `sun` the sun comes
+ * through a bough (`lit` of the way to the backlit leaf, more toward the sun).
+ */
+export const STOREY_LEAVES = Object.freeze({
+    tile: 22, hollow: Object.freeze([0.4, 0.6]), shade: 0.46, fine: 0.5, sun: Object.freeze([0.56, 0.8]), lit: 0.6,
+});
+
+/**
  * The storeys of leaf clusters under the canopy plane along a view ray (STOREYS: CANOPY_MID, then
  * CANOPY_UNDER, the nearer laid last), each nearer, sparser and darker than the one above it, its
  * own pattern (scaled, shifted), rimmed with light toward the sun and domed by its relief
@@ -1808,6 +1818,19 @@ export function rbStoreys(u, dir, pre, base, { relief = true, solid = null, beyo
                 const litK = mix(float(RL.lit[0]), float(RL.lit[1]), forward);
                 c.assign(mix(c, backlit.mul(glow), max(tiltU, 0.0).mul(bevelU).mul(litK)));
                 c.mulAssign(float(1.0).sub(max(tiltU.negate(), 0.0).mul(bevelU).mul(RL.shade[0])));
+            }
+            if (relief) {
+                // (Inside a storey's mass, its leaves: boughs a few metres across standing lit beside
+                // the dark hollows between them, a finer speckle of leaf on both, sunlit where the
+                // light comes through: STOREY_LEAVES. A mass is foliage, never one flat slab of green.
+                // Read at an explicit level: the backdrop is branched.)
+                const SL = STOREY_LEAVES;
+                const lodL = clamp(log2(footU.div(scale).div(SL.tile / 256)), 0.0, 8.0);
+                const lf = u.fbmLod(atU.xz.div(SL.tile).add(vec2(s0.mul(0.13), s1.mul(0.29))), lodL).toVar();
+                const bough = smoothstep(SL.hollow[0], SL.hollow[1], lf.g);
+                c.mulAssign(mix(float(1.0 - SL.shade), float(1.0), bough).mul(lf.a.sub(0.5).mul(SL.fine).add(1.0)));
+                c.assign(mix(c, backlit.mul(glow), smoothstep(SL.sun[0], SL.sun[1], lf.r).mul(bough).mul(SL.lit)
+                    .mul(forward.mul(0.6).add(0.4))));
             }
             let cover = smoothstep(wU.negate(), wU, dU).mul(shows);
             if (beyondY) {

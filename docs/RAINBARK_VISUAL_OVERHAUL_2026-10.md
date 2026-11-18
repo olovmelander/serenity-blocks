@@ -335,8 +335,9 @@ of it. What it found, and what was done the same day:
 | The same leaf spray in the same corners on every level; a spray slides down behind the card on a level-up | Every storey hangs its sprays its own way (`FOLIAGE.near.vary`, hashed from the storey); none hangs over the card |
 | A lock and a hard drop are the same curl with a few sparks | A knock shivers the leaves of the corner sprays (`shiver`, by how far the piece fell) and throws more dust |
 | The Climb's birds are tiny paper darts | Nearer and a third larger up the Climb's lanes |
+| The canopy from the Limb Storey up is flat green slabs | Inside a storey's mass, its leaves: lit boughs beside dark hollows, a leaf-scale speckle, the sun through a bough (`STOREY_LEAVES`, one fBm read at an explicit level in `rbStoreys`). The slabs' outlines are as they were |
 
-Left as it found them (see Open): the canopy's pads, the far trunks as bare poles, the hero
+Left as it found them (see Open): the canopy's scalloped outlines, the far trunks as bare poles, the hero
 trunk's lime under dusk, a triple's curtain against the Set's, the bright core between the card
 and the stats panel (the picture's light source since the first pass).
 
@@ -358,8 +359,9 @@ and the stats panel (the picture's light source since the first pass).
 
 ### Open
 
-- The painted canopy's pads at the Limb Storey and Crown Light are still a picture on a plane
-  (the shoots and tufts break it up; they do not replace it): the critic's second-worst finding.
+- The painted canopy at the Limb Storey and Crown Light is still a picture on planes: its masses
+  now carry leaves (`STOREY_LEAVES`) and the shoots and tufts break it up, but its scalloped
+  outlines are the old ones (the critic's second-worst finding).
 - The far grove's trunks are still slim poles of one girth; the hero trunk's lime patch stays
   luminous under dusk; a triple's curtain of quills and the Set's are the same tangle; the
   brightest air stands between the card and the stats panel.
