@@ -316,7 +316,6 @@ export class MultiPlayerState {
             const level = Number.isFinite(levels?.[index]) ? levels[index] : 2;
             player.handicap = Math.min(4, Math.max(0, level));
             player.handicaps = {};
-            player.handicapCrowd = 0;
         });
     }
 
@@ -331,15 +330,13 @@ export class MultiPlayerState {
         if (!player) return;
 
         const opponents = {};
-        let aliveCount = 0;
         this.players.forEach((other, index) => {
-            if (other?.isAlive) aliveCount++;
             if (index !== playerIndex && other) {
                 opponents[index] = other;
             }
         });
 
-        accumulateHandicapStamps(player, opponents, aliveCount);
+        accumulateHandicapStamps(player, opponents);
     }
 
     /**

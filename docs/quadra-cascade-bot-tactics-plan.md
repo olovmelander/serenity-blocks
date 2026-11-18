@@ -359,8 +359,9 @@ evaluator (most relevant at tiers ≥5, gated by `comboAggression`/`survivalInst
   queue; an outgoing clear subtracts from pending *before* net rows are added. Time a cascade to land
   just before insertion to **cancel** an incoming wave — often higher‑EV than pure offense under
   pressure. Keep one tucked completable line as a "counter trigger" while building.
-- **Clean route under handicap (T6).** Clean attacks bypass the stamp handicap and crowd handicap, so
-  when you out‑rank opponents or there are 5+ alive players, weight the board‑clear finish much higher.
+- **Clean route under handicap (T6).** Clean attacks bypass the stamp handicap, so when you out‑rank
+  opponents, weight the board‑clear finish much higher. (2026-11-18: the crowd handicap for 5+ alive
+  players was removed; it never applied, since local versus seats at most four.)
 - **FFA target focus.** Frag credit goes to the top attacker on a dying opponent, and attack points
   decay as the receiver places pieces. **Concentrate** a surge/big cascade on one already‑pressured
   target rather than spreading chip damage.

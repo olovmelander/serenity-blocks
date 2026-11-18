@@ -89,6 +89,17 @@ function makePlayer(demo = makeDemo()) {
     return { player, state, log };
 }
 
+// The baseline was recorded while snapshots still carried the crowd handicap (always 0), removed
+// on 2026-11-18. Put it back at its old place so the recorded hash keeps pinning every other field.
+function baselineHash(snapshot) {
+    const recordedShape = {};
+    for (const [key, value] of Object.entries(snapshot)) {
+        recordedShape[key] = value;
+        if (key === 'handicaps') recordedShape.handicapCrowd = 0;
+    }
+    return createHash('sha256').update(JSON.stringify(recordedShape)).digest('hex');
+}
+
 function deferred() {
     let resolve;
     const promise = new Promise(done => { resolve = done; });
@@ -105,7 +116,7 @@ describe('DemoPlayer explicit seek responsiveness and ownership', () => {
         const checkpoints = vi.spyOn(player, '_captureRuntimeCheckpoint');
         await player.seek(5000);
 
-        const hash = createHash('sha256').update(JSON.stringify(captureGameStateSnapshot(state))).digest('hex');
+        const hash = baselineHash(captureGameStateSnapshot(state));
         expect(hash).toBe(baseline.canonicalHash);
         expect(log).toEqual(baseline.log);
         expect(state.randomGenerator.getState()).toBe(baseline.rngState);
@@ -422,7 +433,7 @@ describe('DemoPlayer explicit seek responsiveness and ownership', () => {
 
         const snapshot = captureGameStateSnapshot(state);
         snapshot.isPaused = false;
-        const hash = createHash('sha256').update(JSON.stringify(snapshot)).digest('hex');
+        const hash = baselineHash(snapshot);
         expect(hash).toBe(golden.scenarios.find(scenario => scenario.kind === 'plain').canonicalHash);
         expect(state.simFrame).toBe(300);
         expect(player.isPaused).toBe(action === 'pause');

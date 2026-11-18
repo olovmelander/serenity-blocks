@@ -17,7 +17,6 @@ export const ATTACK_TYPES = {
 
 // Handicap / clean-garbage tuning constants
 export const STAMP_PER_HANDICAP = 3; // Stamps needed to reduce 1 garbage line
-export const CROWD_THRESHOLD = 4; // Players before crowd handicap kicks in
 export const DEFAULT_POTATO_DURATION_MS = 12000;
 export const DEFAULT_POTATO_PENALTY_LINES = 6;
 
@@ -351,9 +350,8 @@ export function applyHandicap(rows, senderState, opponentId, isClean = false) {
  * Accumulate handicap stamps (called after each piece placement)
  * @param {Object} playerState - Player's game state
  * @param {Object} opponents - Map of opponent IDs to their game states
- * @param {number} aliveCount - Number of alive players
  */
-export function accumulateHandicapStamps(playerState, opponents, aliveCount) {
+export function accumulateHandicapStamps(playerState, opponents) {
     if (!playerState) return;
 
     // Accumulate per-opponent stamps
@@ -370,15 +368,6 @@ export function accumulateHandicapStamps(playerState, opponents, aliveCount) {
         if (playerState.handicaps[opponentId] < maxStamps) {
             playerState.handicaps[opponentId]++;
         }
-    }
-
-    // Accumulate crowd handicap stamps
-    const maxCrowdStamps = Math.max(0, aliveCount - CROWD_THRESHOLD) * STAMP_PER_HANDICAP;
-
-    if (playerState.handicapCrowd < maxCrowdStamps) {
-        playerState.handicapCrowd++;
-    } else {
-        playerState.handicapCrowd = maxCrowdStamps;
     }
 }
 

@@ -188,7 +188,6 @@ export function captureGameStateSnapshot(gameState) {
         garbageAttackSequence: gameState.garbageAttackSequence,
         handicap: gameState.handicap,
         handicaps: clonePlain(gameState.handicaps),
-        handicapCrowd: gameState.handicapCrowd,
 
         goalComplete: gameState.goalComplete,
         victoryLapActive: gameState.victoryLapActive,
@@ -356,7 +355,6 @@ export function restoreGameStateSnapshot(gameState, snapshot, options = {}) {
     gameState.garbageAttackSequence = snapshot.garbageAttackSequence || 0;
     gameState.handicap = snapshot.handicap ?? 2;
     gameState.handicaps = clonePlain(snapshot.handicaps) || {};
-    gameState.handicapCrowd = snapshot.handicapCrowd || 0;
 
     gameState.goalComplete = Boolean(snapshot.goalComplete);
     gameState.victoryLapActive = Boolean(snapshot.victoryLapActive);

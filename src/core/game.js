@@ -747,7 +747,6 @@ export class GameState {
         // Handicap system
         this.handicap = 2; // 0=Beginner, 1=Apprentice, 2=Intermediate, 3=Master, 4=Grandmaster
         this.handicaps = {}; // Stamps per opponent: { opponentId: stampCount }
-        this.handicapCrowd = 0; // Crowd handicap stamps (for 5+ players)
     }
 
     /**
@@ -819,7 +818,6 @@ export class GameState {
         this.garbageAttackSequence = 0;
         this.handicap = 2;
         this.handicaps = {};
-        this.handicapCrowd = 0;
     }
 
     /**
