@@ -616,23 +616,6 @@ export function triggerBackgroundPulse(lineCount = 1) {
 }
 
 /**
- * Shows a score popup notification
- * @param {number} points - Points to display
- */
-export function showScorePopup(points) {
-    const el = document.createElement('div');
-    el.className = 'score-popup';
-    el.textContent = `+${points}`;
-    el.style.left = '50%';
-    el.style.top = '50%';
-
-    const container = document.getElementById('score-popups');
-    container.appendChild(el);
-
-    setTimeout(() => container.removeChild(el), 1000);
-}
-
-/**
  * Shows a floating combo notification for cascade clears
  * @param {number} comboCount - Current combo count (2+)
  * @param {HTMLElement} customContainer - Optional custom container element (for multiplayer)
@@ -662,56 +645,6 @@ export function showComboPopup(comboCount, customContainer = null) {
         },
         { once: true },
     );
-}
-
-/**
- * Shows a level up notification
- * @param {number} level - New level number
- */
-export function showLevelUpNotification(level) {
-    const notification = document.createElement('div');
-    notification.style.cssText = `
-        position: absolute;
-        top: 30%;
-        left: 50%;
-        transform: translate(-50%, -50%);
-        font-family: 'Orbitron', sans-serif;
-        font-size: 32px;
-        font-weight: 900;
-        color: #fbbf24;
-        text-shadow: 0 0 20px rgba(251, 191, 36, 0.8);
-        animation: levelUp 1.5s ease-out forwards;
-        pointer-events: none;
-        z-index: 100;
-    `;
-    notification.textContent = `LEVEL ${level}!`;
-
-    const style = document.createElement('style');
-    style.textContent = `
-        @keyframes levelUp {
-            0% {
-                transform: translate(-50%, -50%) scale(0.5);
-                opacity: 0;
-            }
-            50% {
-                transform: translate(-50%, -50%) scale(1.2);
-                opacity: 1;
-            }
-            100% {
-                transform: translate(-50%, -200%) scale(1);
-                opacity: 0;
-            }
-        }
-    `;
-
-    document.head.appendChild(style);
-    const container = document.getElementById('score-popups');
-    container.appendChild(notification);
-
-    setTimeout(() => {
-        container.removeChild(notification);
-        document.head.removeChild(style);
-    }, 1500);
 }
 
 /**

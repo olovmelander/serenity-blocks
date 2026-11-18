@@ -223,15 +223,6 @@ export class ModalManager {
     }
 }
 
-/**
- * Shows the start modal
- * @param {ModalManager} modalManager - Modal manager instance
- */
-export function showStartModal(modalManager) {
-    modalManager.show('start');
-    // Menu navigation is enabled in show() method
-}
-
 /* ---- Results (game over, replay complete) -------------------------------------
  * Both sheets share one layout: a score hero with rank chips, then four fact tiles
  * (keystone-modals.css). Copy and class names that tests pin are kept: final-stats,

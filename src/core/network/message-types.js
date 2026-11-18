@@ -238,26 +238,3 @@ Object.entries(PROTOCOL_CATALOG).forEach(([messageType, entry]) => {
     }
 });
 export const MESSAGE_ROLE_POLICIES = Object.freeze(singleRoutePolicies);
-
-/**
- * Serialize a message for network transmission
- */
-export function serializeMessage(type, data) {
-    return JSON.stringify({
-        type,
-        data,
-        timestamp: Date.now(),
-    });
-}
-
-/**
- * Deserialize a message from network
- */
-export function deserializeMessage(message) {
-    try {
-        return JSON.parse(message);
-    } catch (err) {
-        console.error('Failed to deserialize message:', err);
-        return null;
-    }
-}

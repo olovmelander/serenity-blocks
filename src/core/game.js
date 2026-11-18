@@ -1566,48 +1566,6 @@ export function gameLoop(
 }
 
 /**
- * Starts a new game
- * @param {GameState} gameState - Game state to reset
- * @param {Object} callbacks - Object containing callback functions:
- *   - onStart: Called when game starts
- *   - updateStats: Updates stats display
- *   - spawnPiece: Spawns first piece
- *   - setBackground: Sets initial background
- *   - startRandomThemeChanger: Starts random theme changes (if enabled)
- * @param {Object} settings - Game settings
- */
-export function startGame(gameState, callbacks, settings) {
-    // Reset game state
-    gameState.reset();
-    gameState.lastTime = performance.now();
-
-    // Cancel existing animation frame
-    if (gameState.animationId) {
-        cancelAnimationFrame(gameState.animationId);
-    }
-    activeLoopCount = 0;
-
-    // Initialize bag and spawn first piece
-    const rng = typeof gameState.randomGenerator === 'function' ? gameState.randomGenerator : Math.random;
-    fillBag(gameState.nextPieces, rng);
-    if (callbacks.updateStats) callbacks.updateStats();
-    if (callbacks.spawnPiece) callbacks.spawnPiece();
-
-    // Set background
-    if (settings && settings.backgroundMode === 'Specific' && settings.backgroundTheme) {
-        if (callbacks.setBackground) callbacks.setBackground(settings.backgroundTheme);
-    } else if (callbacks.setBackground) callbacks.setBackground('forest');
-
-    // Start random theme changer if enabled
-    if (settings && settings.backgroundMode === 'Random' && callbacks.startRandomThemeChanger) {
-        callbacks.startRandomThemeChanger();
-    }
-
-    // Start game loop
-    if (callbacks.onStart) callbacks.onStart();
-}
-
-/**
  * Pauses the game
  * @param {GameState} gameState - Current game state
  */
@@ -1631,26 +1589,5 @@ export function resumeGame(gameState) {
     // Phase 3: Clear stale input repeat accumulators to prevent burst moves
     if (typeof window !== 'undefined' && window.inputController) {
         window.inputController.clearTimers();
-    }
-}
-
-/**
- * Handles game over state
- * @param {GameState} gameState - Current game state
- * @param {Object} callbacks - Callbacks for game over handling
- */
-export async function gameOver(gameState, callbacks) {
-    gameState.isGameOver = true;
-
-    if (callbacks.stopRandomThemeChanger) {
-        callbacks.stopRandomThemeChanger();
-    }
-
-    if (callbacks.playGameOver) {
-        callbacks.playGameOver();
-    }
-
-    if (callbacks.onGameOver) {
-        await callbacks.onGameOver(gameState);
     }
 }

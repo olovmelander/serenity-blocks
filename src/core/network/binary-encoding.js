@@ -1572,15 +1572,6 @@ export function getBinaryDecoder() {
 }
 
 /**
- * Utility: Calculate snapshot size in bytes
- */
-export function calculateSnapshotSize(snapshot) {
-    const encoder = getBinaryEncoder();
-    const buffer = encoder.encodeSnapshot(snapshot);
-    return buffer.byteLength;
-}
-
-/**
  * Utility: Compare JSON vs Binary size
  */
 export function compareEncodingSizes(snapshot) {

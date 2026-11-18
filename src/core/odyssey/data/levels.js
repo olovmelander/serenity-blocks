@@ -4879,54 +4879,9 @@ export const LEVEL_CONFIGS = applyOdysseyOrbCopy(
     applyOdysseyLevelDesign(assembleOdysseyCampaign(AUTHORED_LEVEL_CONFIGS)),
 );
 
-/** The rival of each chapter, keyed by the public id of the duel orb (the chapter's last slot). */
-export const ODYSSEY_BOT_CHALLENGES = Object.freeze(Object.fromEntries(
-    LEVEL_CONFIGS.filter((level) => level.mechanics.versus).map((level) => [
-        level.id,
-        Object.freeze({
-            botDifficulty: level.mechanics.versus.botDifficulty,
-            botName: level.mechanics.versus.botName,
-        }),
-    ]),
-));
-
-// Helper functions for level access
+// Chapter, neighbour and count lookups belong to LevelRegistry (it also covers the fallbacks).
 export function getLevelById(id) {
     return LEVEL_CONFIGS.find((level) => level.id === id);
-}
-
-export function getLevelsByChapter(chapterId) {
-    return LEVEL_CONFIGS.filter((level) => level.chapter === chapterId);
-}
-
-export function getChapterStartLevel(chapterId) {
-    return LEVEL_CONFIGS.find((level) => level.chapter === chapterId && level.isChapterStart);
-}
-
-export function getChapterEndLevel(chapterId) {
-    return LEVEL_CONFIGS.find((level) => level.chapter === chapterId && level.isChapterEnd);
-}
-
-export function getNextLevel(currentId) {
-    const nextId = currentId + 1;
-    return LEVEL_CONFIGS.find((level) => level.id === nextId);
-}
-
-export function getPreviousLevel(currentId) {
-    const prevId = currentId - 1;
-    return LEVEL_CONFIGS.find((level) => level.id === prevId);
-}
-
-export function getTotalLevelCount() {
-    return LEVEL_CONFIGS.length;
-}
-
-export function getLevelDifficultyRange() {
-    const difficulties = LEVEL_CONFIGS.map((l) => l.metadata.difficulty);
-    return {
-        min: Math.min(...difficulties),
-        max: Math.max(...difficulties),
-    };
 }
 
 export default LEVEL_CONFIGS;
