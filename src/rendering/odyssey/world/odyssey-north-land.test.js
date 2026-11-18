@@ -16,7 +16,7 @@ import {
 import {
     FOREST_PINE_GROVES, forestPineGroveValue, scatterZonedForest, siteOnNorthBeach,
 } from './odyssey-forest-scatter.js';
-import { getOdysseyPathPointAt } from '../path-utils.js';
+import { getOdysseyWorldRailPointAt } from '../path-utils.js';
 
 // The land behind the mountain (2026-11-02): the north beach and the plain's swells and groves.
 
@@ -115,7 +115,7 @@ describe('the north beach', () => {
                 expect(siteOnNorthBeach(...bayPoint(un, s))).toBe(true);
             }
         }
-        const rail = Array.from({ length: 48 }, (_, i) => getOdysseyPathPointAt(i / 47));
+        const rail = Array.from({ length: 48 }, (_, i) => getOdysseyWorldRailPointAt(i / 47));
         const { placements } = scatterZonedForest(odysseyWorldHeight, { rail, visibilityCull: false });
         const onBeach = placements.filter((p) => siteOnNorthBeach(p.x, p.z));
         expect(onBeach).toEqual([]);
@@ -158,7 +158,7 @@ describe('the plain behind the mountain', () => {
     });
 
     it('stands dark groves of conifer among the autumn trees, on the plain and far from the rail', () => {
-        const rail = Array.from({ length: 48 }, (_, i) => getOdysseyPathPointAt(i / 47));
+        const rail = Array.from({ length: 48 }, (_, i) => getOdysseyWorldRailPointAt(i / 47));
         const { placements } = scatterZonedForest(odysseyWorldHeight, { rail, visibilityCull: false });
         const grove = placements.filter((p) => p.pineGrove);
         expect(grove.length).toBeGreaterThan(200);

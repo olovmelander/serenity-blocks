@@ -17,6 +17,7 @@ import {
     BREACH_TRAVEL, breachTravelArea, breachTravelExtraMs, breachTravelTouches, journeyTravelExtraMs,
     journeyTravelMeasure, journeyTravelProgress, journeyTravelTouches,
 } from '../../src/rendering/odyssey/transitions/odyssey-travel-measure.js';
+import { cityStretchArea } from '../../src/rendering/odyssey/transitions/odyssey-city-stretch.js';
 import {
     BREACH_BURST, breachBurstLife, breachLight, crownDropAt, surfaceCrossing,
 } from '../../src/rendering/odyssey/composition/odyssey-breach-burst.js';
@@ -45,8 +46,10 @@ describe('the travel measure weighs the surface of the sea', () => {
         });
         const whole = breachTravelArea(1);
         expect(whole).toBeGreaterThan(0.05);
+        // (and, past chapter 8's seam, the city's longer rail: tests/unit/odyssey-city-longer.test.js)
         [0.16, 0.3, 0.6, 0.86, 0.9, 1].forEach((p) => {
-            expect(journeyTravelMeasure(p, cp)).toBeCloseTo(plungeTravelMeasure(p, cp) + whole, 12);
+            expect(journeyTravelMeasure(p, cp)).toBeCloseTo(plungeTravelMeasure(p, cp) + whole
+                + cityStretchArea(p, cp), 12);
         });
     });
 

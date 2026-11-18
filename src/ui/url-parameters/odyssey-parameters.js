@@ -304,8 +304,8 @@ export const ODYSSEY_URL_PARAMETERS = Object.freeze([
         'odysseyMaxScroll',
         'Caps manual map travel velocity in journey progress per second.',
         'Finite number; 0 or invalid input uses the default',
+        '0.10',
         '0.15',
-        '0.1',
         {
             sources: [BOARD, 'src/rendering/odyssey/OdysseyCameraController.js'],
         },
@@ -382,6 +382,20 @@ export const ODYSSEY_URL_PARAMETERS = Object.freeze([
             sources: ['src/rendering/odyssey/path-utils.js'],
             notes: 'The orbs keep their places, so with it disabled they bunch up inside the hole. '
                 + 'Rails and orbs outside chapter 7 are the same either way.',
+        },
+    ),
+    parameter(
+        'odysseyCityStretch',
+        'Keeps the longer rail through the city (chapter 8 after its seam); disabling lays the shorter '
+            + 'rail there too, for before-and-after comparisons.',
+        OFF,
+        'On',
+        '0',
+        {
+            sources: ['src/rendering/odyssey/path-utils.js'],
+            notes: 'The city, its sun and the orbs keep their places, so with it disabled the journey '
+                + 'ends nearer the city centre and orbs 58-60 bunch up. Rails and orbs before chapter 8 '
+                + 'are the same either way.',
         },
     ),
     toggle('odysseyDomeCullOff', 'Keeps the global atmosphere dome visible even when a chapter sky covers it.'),

@@ -579,3 +579,118 @@ hours: the same ring (before the fix, at 2 hours, the pink moiré).
 
 While at it: the cradle's gold seams (value-noise ridges) drew rounded squares across the glow
 under some moods; they are read in a frame turned off the lattice's axes now.
+
+## §9. Longer again, and the city too (2026-11-18)
+
+**Why.** The owner, the morning after §7: *"continue by increasing it even more so that we have a
+longer distance between the orbs in the black hole so that experience will be a bit longer. I also
+want to lengthen the urban dreams encore so we have a bit longer between the orbs in that chapter
+and travel a bit longer into that chapter. And can we also reduce the max speed when scrolling with
+the mouse to travel along the path journey."*
+
+### The fold, longer again
+
+- `CH7_FOLD_STRETCH.rate` 8.8 → **15** (same ends, same shoulder). The spiral section is solved
+  to 671 u where today's line is 50 u (was 396 u); its radius comes out at 130 u (bulge 49 u),
+  turning gentler than before.
+- Orbs 50–55 re-placed by the same recipe (`FOLD_LEVEL_POSITIONS_BY_ID`: even steps of the world
+  measure from orb 49's park to orb 56): **~108 u apart** (was 69 u), 758 u from orb 49's park to
+  orb 56 (was 485 u; 139 u before §7). Orbs 49, 56, 57 and the chapter boundaries stay.
+- The rides between them follow from `CH7_FOLD_TRAVEL` unchanged (70 000 ms a unit of world
+  measure, under its 4.2 s cap): **~3.9 s each** (was ~3.4 s), the seven 27.4 s (was 23.8 s). The
+  dive (48 → 49, 4942 ms) and the way out (56 → 57, 3777 ms) keep their time to the millisecond.
+- The idle drift from the inside point (0.8808) to the city takes ~230 s (was ~156 s), simulated
+  on the controller's own drift without beats.
+
+### The city is longer (chapter 8)
+
+The same idea (`transitions/odyssey-city-stretch.js`, `CH8_CITY_STRETCH`): from chapter 8's local
+0.44 (p 0.978104, just past orb 57's park at 0.9781, which is just past the 7 → 8 seam's end at
+0.9771) to the journey's end, a unit of progress covers **2.5 times** the world, eased in over a
+0.0025 shoulder. There is no far end to rejoin, so the rail is not a detour:
+
+- **The carried rail** (`odyssey-path-stretch.js`, `cityOffsetAt`): today's point plus the
+  stretch's extra world so far, along the city's **stage forward** (the boulevard's own axis,
+  `computeStageBasis` over chapter 8 on today's rail). Its sway across the lane and its height
+  over the street are today's to the bit; only its run down the boulevard is longer. The
+  journey now ends ~123 u down the boulevard from the city's centre (was ~45 u), still ~580 u short
+  of the Retrosun and inside the lane. (Carrying it along its own direction instead was tried
+  first: it multiplied today's ±4 u sway by the rate, to 15 u across and 15 u up.) Its direction
+  is today's tilted toward the axis; its frames are today's turned square to it.
+- **The city stays where it was authored.** `getChapterPathRange` reads a chapter's ends on
+  today's rail (`baseCurve`; the same for every chapter but 8's end), so the city's anchor, its
+  corridor orientation (`computeCorridorOrientation` walks today's rail), the Retrosun the hole's
+  sun is carried onto (`resolveRetrosunStage`), the camera's stage frame (`_getStageFrame`, on
+  `baseCurve` and the table's own rail) and the corridor field's backdrops are exactly as before.
+  The 7 → 8 seam and the arrival at orb 57 see today's rail.
+- **The orbs.** 58 and 59 stand at even steps of the world measure between orb 57's park and orb 60
+  (`CITY_LEVEL_POSITIONS_BY_ID` in `odyssey-layout.js`: 0.985902, 0.992951): **~43 u apart on the
+  rail** (the schedule says 44.6 u; today's sway is a little off the axis). They were 0, 22 and
+  33 u: orb 58 sat inside the 7 → 8 seam (0.9742) and shared orb 57's park; it has its own now.
+  Orbs 57 and 60 and the chapter boundaries stay.
+- **Rides.** A trip between two orbs of the city rides the rail (`cityRideBetween`,
+  `CH8_CITY_TRAVEL`, both ends past the seam) at the fold's world pace: **~2.15 s each** (was a
+  progress jump and an 800 ms swing). The trip eases in the journey's travel measure, which now
+  carries the city's extra world (`journeyTravelMeasure`), so the eye moves evenly in the world.
+- **The wheel, the drift and the look-ahead** read both stretches (`odyssey-rail-stretch.js`:
+  `railStretchRate`, `railStretchReach`): the same world speed, `rate` times the progress-time. The
+  idle drift from orb 57's park to the journey's end takes ~36 s (was ~16 s); all of chapter 8,
+  ~56 s (was ~35 s).
+- `?odysseyCityStretch=0` lays today's rail through the city (catalogued), as
+  `?odysseyFoldStretch=0` does inside the hole.
+
+### The wheel's speed cap
+
+`maxScrollVelocity` 0.15 → **0.10** of the journey a second (`OdysseyCameraController`; the board's
+`?odysseyMaxScroll=` still overrides it). It bounds a hard flick, not an ordinary swipe
+(`scrollSpeed`, 0.09, is the sensitivity), and it is still paced by `odysseyScrollPace`, so through
+the stretches it is that much slower in progress. The chapter LOD's fast-scroll threshold (only
+with `?odysseyChapterLOD=1`) went 0.0015 → 0.001 a frame, keeping its share of the cap.
+
+### Traps met
+
+- **The One World samples the whole rail.** Its 48 rail samples (forest LOD tiers, cloud LOD,
+  ocean seating) span the journey, and the bigger spiral reached over the island's far ground
+  (sample 44 at z −1290): ~100 far trees became hero trees the visibility mask then culled (the
+  forest tests caught it: hero 656 against 666). The world reads today's rail now
+  (`getOdysseyWorldRailPointAt`, the board's `readWorldBuildOptions`, the two Act II
+  playgrounds and the world tests), as its visibility stamp already did; its numbers are HEAD's
+  (hero 557 = 557, mid 2555 of 2805).
+- **Today's rail is unevenly spaced near the journey's end.** three's arc-length table (200
+  divisions) leaves the eye's world speed per unit of progress swinging ~0.86× to ~1.21× there
+  (it always has: scrolling the city shows it). The carried rail adds an even 1.5× on top, so its
+  ride is evener than today's rail, never rougher; the test pins exactly that.
+- **A finite difference is not the tangent there** for the same reason (a few tenths of a
+  degree); the carried rail's tangent is the smooth formula, which the frames want.
+
+### Seen
+
+Filmed headless in Chromium on SwiftShader (no GPU on the machine this ran on). Its WebGPU
+device ran out of memory on the full game and on the fold's playground (`createBuffer` failing
+even for 32 bytes, then device lost), so these are the **WebGL2 backend** of the same scenes:
+nothing here changed a shader, only the rail, the orbs and the timing. **Not seen on WebGPU or on
+real hardware**: a look on the dev machine is still owed.
+
+- The city, game at Low (`forceWebGL=1`, stations p 0.97, 0.9781, 0.9859, 0.993, 0.9995, HEAD
+  against this branch, the same clocks): at the seam and orb 57's park the city, the Retrosun and
+  the framing are the same (orb 58 no longer stands in the seam, it is down the boulevard); from
+  orb 58's park on, the eye is farther down the boulevard and the spire looms larger; the rail
+  runs down the middle of the lane and nothing clips. Console: no errors.
+  ![The city, before and after](images/odyssey-longer-2026-11-18/city-before-after.jpg)
+- The fold, playground `effect=ch7-fall&p=<park>` (Medium tier): every orb keeps its place (the
+  cradle at 50, the flock at 53, the jewel at 55), the nave opens during the ride from 51 to 52,
+  and the rail ahead bends wider. Console: no errors.
+  ![The fold, before and after](images/odyssey-longer-2026-11-18/fold-before-after.jpg)
+  ![The fold at the new parks](images/odyssey-longer-2026-11-18/fold-after-parks.jpg)
+
+### Tests
+
+`tests/unit/odyssey-city-longer.test.js` (new: the schedule and the journey measure across both
+stretches, today's rail to the bit up to the stretch, today's sway and height with the longer run,
+length and smoothness, the rail tube's rings, the camera's place and frame, the city's anchor,
+stage frame and Retrosun unchanged, the orbs' even world spacing and parks, rides of ~2 s, the way
+out's time untouched, the wheel's pace). Re-pinned: `odyssey-fold-longer.test.js` (gaps over
+95 u, rides 3–4.5 s and over 25 s in all, the rate's ease bounded by its shoulder, outside both
+stretches), `odyssey-scroll-pace.test.js` (the cap is 0.10; the pace read in the world through
+both stretches), `odyssey-breach.test.js` (the journey measure carries the city's extra),
+`odyssey-camera-controller.test.js` (chapter 8's free-look yaw measured against its own start).

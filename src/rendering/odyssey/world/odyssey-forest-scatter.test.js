@@ -19,7 +19,7 @@ import {
     odysseyWorldMacro,
     odysseyWorldRelief,
 } from './odyssey-world-height.js';
-import { getOdysseyPathPointAt } from '../path-utils.js';
+import { getOdysseyPathPointAt, getOdysseyWorldRailPointAt } from '../path-utils.js';
 
 /**
  * FOREST PLAN, WAVE 2 — the zoned scatter's gates.
@@ -40,7 +40,7 @@ import { getOdysseyPathPointAt } from '../path-utils.js';
 const heightAt = (x, z) => odysseyWorldMacro(x, z)
     + (odysseyWorldRelief(x, z) * odysseyWorldDetailWeight(x, z));
 
-const RAIL = Array.from({ length: 48 }, (_, i) => getOdysseyPathPointAt(i / 47));
+const RAIL = Array.from({ length: 48 }, (_, i) => getOdysseyWorldRailPointAt(i / 47));
 
 const run = (opts = {}) => scatterZonedForest(heightAt, { rail: RAIL, ...opts });
 

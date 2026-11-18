@@ -12,7 +12,7 @@ import {
 } from './odyssey-world-height.js';
 import { bakeSculptPlateData } from './odyssey-world-bake-data.js';
 import { scatterZonedForest } from './odyssey-forest-scatter.js';
-import { getOdysseyPathPointAt } from '../path-utils.js';
+import { getOdysseyPathPointAt, getOdysseyWorldRailPointAt } from '../path-utils.js';
 
 /**
  * THE TARN (Act II pass, step 6): the pond in the chapter-3 basin's meadow. Its water is a flat
@@ -78,7 +78,7 @@ describe('the tarn in the meadow', () => {
     });
 
     it('keeps its meadow open: no tree stands in the water or its clearing', () => {
-        const rail = Array.from({ length: 48 }, (_, i) => getOdysseyPathPointAt(i / 47));
+        const rail = Array.from({ length: 48 }, (_, i) => getOdysseyWorldRailPointAt(i / 47));
         const forest = scatterZonedForest(odysseyWorldHeight, { rail, visibilityCull: false });
         forest.placements.forEach((p) => {
             expect(odysseyTarnRn(p.x, p.z), `${p.speciesId} at (${p.x.toFixed(0)}, ${p.z.toFixed(0)})`)

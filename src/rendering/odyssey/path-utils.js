@@ -67,10 +67,13 @@ export function getActiveOdysseyChapterPositions() {
     return frozenChapterPositions;
 }
 
-/** `?odysseyFoldStretch=0`: the shorter rail through chapter 7 too (A/B captures; odyssey-path-stretch.js). */
-function readFoldStretchFlag() {
+/**
+ * `?odysseyFoldStretch=0`: the shorter rail through chapter 7 too; `?odysseyCityStretch=0`: the
+ * shorter rail through chapter 8 too (A/B captures; odyssey-path-stretch.js).
+ */
+function readStretchFlag(name) {
     if (typeof window === 'undefined' || !window.location?.search) return true;
-    const value = new URLSearchParams(window.location.search).get('odysseyFoldStretch')?.toLowerCase();
+    const value = new URLSearchParams(window.location.search).get(name)?.toLowerCase();
     return !(value === '0' || value === 'false' || value === 'off');
 }
 
@@ -81,8 +84,8 @@ export function buildOdysseyPathCurve(pathData = ODYSSEY_PATH_DATA) {
     const points = sourcePoints.map(
         (point) => new THREE.Vector3(point.x, point.y, point.z),
     );
-    // Chapter 7's middle is longer in the world than its share of progress (the fold's stretch):
-    // the same curve everywhere else (odyssey-path-stretch.js).
+    // Chapter 7's middle (the fold) and chapter 8 after its seam (the city) are longer in the
+    // world than their share of progress: the same curve everywhere else (odyssey-path-stretch.js).
     const chapterPositions = pathData === ODYSSEY_PATH_DATA
         ? activeChapterPositions
         : pathData.chapterPositions;
@@ -90,7 +93,8 @@ export function buildOdysseyPathCurve(pathData = ODYSSEY_PATH_DATA) {
         points,
         ODYSSEY_PATH_CURVE_TYPE,
         ODYSSEY_PATH_TENSION,
-        readFoldStretchFlag() ? chapterPositions : null,
+        chapterPositions,
+        { fold: readStretchFlag('odysseyFoldStretch'), city: readStretchFlag('odysseyCityStretch') },
     );
 }
 
@@ -112,13 +116,37 @@ export function getOdysseyPathPointAt(position) {
     return curve.getPointAt(t);
 }
 
+/**
+ * A point on TODAY'S rail (the curve's `baseCurve`): what the One World (Act II's island, its
+ * forest, clouds, sea and rocks) was baked and measured against. Its rail samples span the whole
+ * journey, and the longer rails inside the black hole and through the city (odyssey-path-stretch.js)
+ * swing out over the island's far ground (the fold's spiral reaches z -1290) where they would
+ * promote far trees to the hero tier for chapters that never show the island. The forest's
+ * visibility stamp reads the same rail (odyssey-forest-visibility-stamp.js).
+ * @param {number} position progress 0..1
+ * @returns {THREE.Vector3}
+ */
+export function getOdysseyWorldRailPointAt(position) {
+    const curve = getOdysseyPathCurve();
+    const t = THREE.MathUtils.clamp(position ?? 0, 0, 1);
+    return (curve.baseCurve ?? curve).getPointAt(t);
+}
+
+/**
+ * A chapter's ends and centre, where its set piece is anchored. Read on TODAY'S rail (the curve's
+ * `baseCurve`): the longer rails (odyssey-path-stretch.js) leave every chapter boundary where it
+ * was but the journey's end, which the city's carried rail moves on down the boulevard; the city,
+ * its Retrosun and the camera's stage frame stay where they were authored.
+ */
 export function getChapterPathRange(chapterId) {
     const startPosition = activeChapterPositions[chapterId - 1];
     if (startPosition === undefined) return null;
 
     const endPosition = activeChapterPositions[chapterId] ?? 1;
-    const start = getOdysseyPathPointAt(startPosition);
-    const end = getOdysseyPathPointAt(endPosition);
+    const curve = getOdysseyPathCurve();
+    const rail = curve.baseCurve ?? curve;
+    const start = rail.getPointAt(THREE.MathUtils.clamp(startPosition, 0, 1));
+    const end = rail.getPointAt(THREE.MathUtils.clamp(endPosition, 0, 1));
     const center = start.clone().add(end).multiplyScalar(0.5);
 
     return { start, end, center };

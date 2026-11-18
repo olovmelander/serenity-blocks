@@ -10,7 +10,7 @@ import { orbitEarthAt } from './composition/odyssey-orbit-earth.js';
 import { applyArrivalMove } from './odyssey-arrival-move.js';
 import { applyGlideLife } from './odyssey-glide-life.js';
 import { odysseyScrollPace } from './odyssey-scroll-pace.js';
-import { foldStretchRate, foldStretchReach } from './transitions/odyssey-fold-stretch.js';
+import { railStretchRate, railStretchReach } from './transitions/odyssey-rail-stretch.js';
 import { ODYSSEY_PATH_HORIZON, resolveOdysseyPathReveal } from './odyssey-path-horizon.js';
 import { ODYSSEY_PATH_DATA } from './path-data.js';
 import {
@@ -1156,7 +1156,9 @@ export class OdysseyCameraController {
             // 0.4 -> 0.15 to tame super-fast mousepad scrolling; tunable via the board controller
             // (?odysseyMaxScroll=). NOTE: normal swipes rarely reach this cap — scrollSpeed above is
             // the primary "how fast does the mousepad scroll" lever; this only bounds hard flicks.
-            maxScrollVelocity: Number.isFinite(options.maxScrollVelocity) ? options.maxScrollVelocity : 0.15,
+            // Lowered 0.15 -> 0.10 (2026-11-18; the owner: "can we also reduce the max speed when
+            // scrolling with the mouse to travel along the path journey").
+            maxScrollVelocity: Number.isFinite(options.maxScrollVelocity) ? options.maxScrollVelocity : 0.10,
             focusDistance: 10,
             minPosition: 0, // Allow scrolling all the way to Level 1
             maxPosition: 1, // Allow scrolling all the way to the end
@@ -1347,11 +1349,12 @@ export class OdysseyCameraController {
      * @param {THREE.Vector3} [optionalTargetTangent]
      * @returns {{position: THREE.Vector3, tangent: THREE.Vector3}}
      */
-    getPathDataAt(t, optionalTargetPos, optionalTargetTangent, optionalTargetNormal, optionalTargetRight) {
+    getPathDataAt(t, optionalTargetPos, optionalTargetTangent, optionalTargetNormal, optionalTargetRight, today = false) {
         const clampedT = THREE.MathUtils.clamp(t, 0, 1);
         // THE FOLD'S LONGER RAIL (odyssey-path-stretch.js): exact from the curve, its frame turned
-        // to meet the table's at both ends.
-        if (this.pathCurve?.inFoldStretch?.(clampedT)) {
+        // to meet the table's at both ends. (`today`: the table's own rail, where the set pieces
+        // were authored: the city's stage frame is read there.)
+        if (!today && this.pathCurve?.inFoldStretch?.(clampedT)) {
             const ends = this._getFoldEndNormals();
             const pos = optionalTargetPos || new THREE.Vector3();
             const tan = optionalTargetTangent || new THREE.Vector3();
@@ -1400,6 +1403,17 @@ export class OdysseyCameraController {
             THREE.MathUtils.lerp(this.pathLut.rights[idx0 + 1], this.pathLut.rights[idx1 + 1], lerp),
             THREE.MathUtils.lerp(this.pathLut.rights[idx0 + 2], this.pathLut.rights[idx1 + 2], lerp),
         ).normalize();
+
+        // THE CITY'S LONGER RAIL (odyssey-path-stretch.js): today's rail carried on down the
+        // boulevard's axis (0 at its start): the place moves by that, the direction tilts toward
+        // the axis and the table's frame is turned square to it. (In the city the eye rides the
+        // stage's fixed basis anyway.)
+        if (!today && this.pathCurve?.inCityStretch?.(clampedT)) {
+            pos.add(this.pathCurve.cityOffsetAt(clampedT, this._cityOffset || (this._cityOffset = new THREE.Vector3())));
+            this.pathCurve.getTangentAt(clampedT, tan).normalize();
+            right.crossVectors(tan, normal).normalize();
+            normal.crossVectors(right, tan).normalize();
+        }
 
         return {
             position: pos,
@@ -2513,11 +2527,14 @@ export class OdysseyCameraController {
         const chapterId = STAGE_FRAME_CHAPTERS[0];
         const tStart = this.chapterPositions[chapterId - 1];
         const tEnd = this.chapterPositions[chapterId] ?? 1;
-        this._stageFrame = computeStageBasis(this.pathCurve, tStart, tEnd) || null;
+        // On today's rail, as the city reads it (urban-dreams.js computeCorridorOrientation).
+        this._stageFrame = computeStageBasis(this.pathCurve?.baseCurve ?? this.pathCurve, tStart, tEnd) || null;
         if (this._stageFrame) {
-            // The set piece is anchored at the chapter's path-range centre (env convention).
-            const a = this.getPathDataAt(tStart).position;
-            const b = this.getPathDataAt(tEnd).position;
+            // The set piece is anchored at the chapter's path-range centre (env convention), on
+            // today's rail like the city (path-utils getChapterPathRange): the city's longer rail
+            // carries the journey's end on down the boulevard, the city stays where it stood.
+            const a = this.getPathDataAt(tStart, undefined, undefined, undefined, undefined, true).position;
+            const b = this.getPathDataAt(tEnd, undefined, undefined, undefined, undefined, true).position;
             this._stageFrame.center = a.add(b).multiplyScalar(0.5);
         }
         return this._stageFrame;
@@ -2845,12 +2862,13 @@ export class OdysseyCameraController {
         const beatSurge = this.directorCamera.beatPulse * this.config.beatDriftScale;
         const energyLift = this.directorCamera.energy * 0.28;
         // Reduced motion: no idle drift; the camera moves only when the player moves it.
-        // (On the fold's longer rail the same world speed takes more progress: foldStretchRate.)
+        // (On the fold's and the city's longer rails the same world speed takes more progress:
+        // railStretchRate.)
         const autoVelocity = this.prefersReducedMotion() ? 0 : (worldSpeed / this.travelModel.pathLength)
             * this.config.autoDriftScale
             * (1 + beatSurge + energyLift)
             * seamSlowdown
-            * (1 / foldStretchRate(this.currentPosition, this.chapterPositions));
+            * (1 / railStretchRate(this.currentPosition, this.chapterPositions));
 
         const targetVelocity = autoVelocity + this.travelModel.inputVelocity;
         const lerp = 1 - Math.exp(-dt * 2.8);
@@ -3215,10 +3233,10 @@ export class OdysseyCameraController {
         const rawLookAheadT = clampedPosition
             + (lookAheadDistance * seamStretch * this.directorCamera.drift)
             + vistaWeight * 0.006;
-        // As far ahead in the world on the fold's longer rail as anywhere else (the same value
-        // wherever the look-ahead does not reach it).
+        // As far ahead in the world on the fold's and the city's longer rails as anywhere else
+        // (the same value wherever the look-ahead does not reach them).
         const lookAheadT = THREE.MathUtils.clamp(
-            foldStretchReach(clampedPosition, rawLookAheadT, this.chapterPositions),
+            railStretchReach(clampedPosition, rawLookAheadT, this.chapterPositions),
             0,
             1,
         );

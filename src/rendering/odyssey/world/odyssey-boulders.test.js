@@ -5,7 +5,7 @@ import {
 } from './odyssey-boulders.js';
 import { ODYSSEY_TARN, odysseyTarnRn, odysseyWorldHeight } from './odyssey-world-height.js';
 import { scatterZonedForest } from './odyssey-forest-scatter.js';
-import { getOdysseyPathPointAt } from '../path-utils.js';
+import { getOdysseyPathPointAt, getOdysseyWorldRailPointAt } from '../path-utils.js';
 import { ODYSSEY_DEER } from '../composition/odyssey-deer-herd.js';
 
 /**
@@ -13,7 +13,7 @@ import { ODYSSEY_DEER } from '../composition/odyssey-deer-herd.js';
  * the siting rules, the seating on the drawn ground, and the cost.
  */
 describe('the boulders and outcrops', () => {
-    const rail = Array.from({ length: 48 }, (_, i) => getOdysseyPathPointAt(i / 47));
+    const rail = Array.from({ length: 48 }, (_, i) => getOdysseyWorldRailPointAt(i / 47));
     const forest = scatterZonedForest(odysseyWorldHeight, { rail, visibilityCull: true });
     const rocks = buildBoulderSites(odysseyWorldHeight, { trees: forest.placements });
 

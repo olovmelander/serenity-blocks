@@ -89,7 +89,9 @@ import { getChapterProfile } from './chapter-environments/shared/chapter-profile
 import { pickByQualityTier } from './chapter-environments/shared/odyssey-quality-tier.js';
 import { applyOdysseyChapterMusic, releaseOdysseyBoardMusic } from '../../core/game-modes/odyssey-audio-policy.js';
 import { setOdysseyGltfRenderer } from './chapter-environments/shared/odyssey-gltf-loader.js';
-import { getOdysseyPathPointAt, resetOdysseyPathLayout, setOdysseyPathLayout } from './path-utils.js';
+import {
+    getOdysseyPathPointAt, getOdysseyWorldRailPointAt, resetOdysseyPathLayout, setOdysseyPathLayout,
+} from './path-utils.js';
 import { createStartupTrace } from './odyssey-startup-trace.js';
 import {
     buildChapterWarmSamples,
@@ -102,7 +104,7 @@ import { computeTravelFrontier, isHeldAtFrontier } from './odyssey-travel-fronti
 import { resolveOdysseyPathHorizon } from './odyssey-path-horizon.js';
 import { resolveOdysseyPathInflowWeight } from './odyssey-path-inflow.js';
 import { foldRideBetween, plungeTravelExtraMs, resolveBlackHoleFall } from './transitions/odyssey-black-hole-fall.js';
-import { breachTravelExtraMs } from './transitions/odyssey-travel-measure.js';
+import { breachTravelExtraMs, cityRideBetween, cityTravelExtraMs } from './transitions/odyssey-travel-measure.js';
 import { createFoldHypercubes } from './chapter-environments/odyssey-fold-hypercubes.js';
 import { prefersReducedMotion } from '../../themes/shared/reduced-motion.js';
 import { foldHypercubeCages } from './transitions/odyssey-fold-rooms.js';
@@ -342,7 +344,7 @@ function readWorldBuildOptions(qualityName) {
     const cloudField = !readBooleanUrlFlag('odysseyWorldNoCloudField');
     const cloudFieldCount = Number.parseInt(readUrlValue('odysseyWorldCloudFieldCount'), 10) || 0;
     const railSamples = Array.from({ length: 48 }, (_, i) => {
-        const pt = getOdysseyPathPointAt(i / 47);
+        const pt = getOdysseyWorldRailPointAt(i / 47);
         return { x: pt.x, y: pt.y, z: pt.z }; // plain points: structured-clone friendly
     });
     // `?odysseyCloudLook=today|light|banks` (odyssey-cloud-looks.js). The look's layout decides
@@ -1074,8 +1076,8 @@ export class OdysseyBoardController {
             chapterPositions: this.presentationLayout.chapterPositions,
             chapterLOD: this.chapterLodEnabled,
             // Tune the fast-scroll velocity threshold in-game: ?odysseyLodFastSpeed=0.004 (higher =
-            // only VERY fast scrolls drop detail; lower = medium scrolls do too). Default 0.0015
-            // (must stay below the ~0.0025/frame reachable at the 0.15 maxScrollVelocity cap).
+            // only VERY fast scrolls drop detail; lower = medium scrolls do too). Default 0.001
+            // (must stay below the ~0.0017/frame reachable at the 0.10 maxScrollVelocity cap).
             lodFastThreshold: Number.parseFloat(readUrlValue('odysseyLodFastSpeed')) || undefined,
         });
         this.environmentManager.configureChapterBuilds(this._chapterBuildGate());
@@ -1399,7 +1401,7 @@ export class OdysseyBoardController {
                     // promotion and the main thread's seating agree.
                     railSamples: this._worldBakeOptions?.railSamples ?? Array.from(
                         { length: 48 },
-                        (_, i) => getOdysseyPathPointAt(i / 47),
+                        (_, i) => getOdysseyWorldRailPointAt(i / 47),
                     ),
                 });
                 this.scene.add(this.oneWorld.group);
@@ -1428,7 +1430,7 @@ export class OdysseyBoardController {
                 getReducedMotion: this.getReducedMotion,
                 // Tune scroll FEEL in-game. scrollSpeed = sensitivity (the primary mousepad "too
                 // fast" lever): ?odysseyScrollSpeed=0.05 (slower) .. 0.15 (old). Default 0.09.
-                // maxScrollVelocity = the hard-flick cap: ?odysseyMaxScroll=0.1 .. 0.4. Default 0.15.
+                // maxScrollVelocity = the hard-flick cap: ?odysseyMaxScroll=0.05 .. 0.4. Default 0.10.
                 scrollSpeed: Number.parseFloat(readUrlValue('odysseyScrollSpeed')) || undefined,
                 maxScrollVelocity: Number.parseFloat(readUrlValue('odysseyMaxScroll')) || undefined,
             },
@@ -4838,9 +4840,11 @@ export class OdysseyBoardController {
         const reducedMotion = this.cameraController.prefersReducedMotion?.() === true;
         const currentChapter = currentBlendState?.activeChapter ?? targetChapter;
         const traveled = currentChapter !== targetChapter;
-        // Inside the black hole a trip between orbs rides the rail (the fold is longer than its
-        // share of progress, and its orbs far apart): odyssey-black-hole-fall.js foldRideBetween.
-        const foldRide = !traveled && foldRideBetween(currentProgress, targetProgress, chapterPositions);
+        // Inside the black hole and through the city a trip between orbs rides the rail (both are
+        // longer than their share of progress, and their orbs far apart):
+        // odyssey-black-hole-fall.js foldRideBetween, odyssey-travel-measure.js cityRideBetween.
+        const foldRide = !traveled && (foldRideBetween(currentProgress, targetProgress, chapterPositions)
+            || cityRideBetween(currentProgress, targetProgress, chapterPositions));
 
         if (traveled || foldRide || options.chapterArrival === true || options.pathTravel === true) {
             await this._requestGlideChapters(currentChapter, targetChapter);
@@ -6062,8 +6066,10 @@ export class OdysseyBoardController {
         // A short trip through the black hole's plunge is given the time to show it (the camera
         // controller slows the trip there: CH7_PLUNGE_TRAVEL).
         const plunge = plungeTravelExtraMs(fromPosition, toPosition, this.presentationLayout?.chapterPositions);
-        // ...and a short trip through the sea's surface the time to make the breach a moment.
-        return Math.round(900 + (distance * 2600) + plunge + breachTravelExtraMs(fromPosition, toPosition));
+        // ...and a short trip through the sea's surface the time to make the breach a moment, and
+        // a ride between two orbs of the city the time to ride its longer rail.
+        const city = cityTravelExtraMs(fromPosition, toPosition, this.presentationLayout?.chapterPositions);
+        return Math.round(900 + (distance * 2600) + plunge + city + breachTravelExtraMs(fromPosition, toPosition));
     }
 
     /**
