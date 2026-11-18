@@ -2959,9 +2959,15 @@ export const RAIN = Object.freeze({
 /**
  * The Floor (§6.10, as built): a perfect clear drains the mist (the tide to `tide` metres over
  * `drain` seconds, the haze thinned to `clear` of itself) and for the first time the forest floor
- * shows, far below: warm gravel, a braided stream glinting in the flecks, the session's shed curls
- * as a carpet (density 1 − exp(−sheds/`carpet`)), broad pools of sun; the frame's exposure up by
- * `lift` stops. It holds until `hold` seconds, then the mist and the haze return by `back`.
+ * shows, far below: `moss` and sunlit `fern`, drifts of `litter` and wet `earth` under `sun` of
+ * the canopy's light, a river running away through it (`river`: its course `offset` metres to the
+ * sun's side, swinging `swing` metres over `wave` metres of its run (two waves), its half-width in
+ * metres, its edge softened over `aa` pixel footprints, its banks wet out to `bank` half-widths
+ * and `wet` darker, glittering `glitter` of `glint` in the flecks, a `breath` of mist along it;
+ * with the haze thinned the beam field stands at `beams` of its light, never a white-out), the
+ * session's shed curls as a carpet (density 1 − exp(−sheds/`carpet`)), broad pools of sun; the
+ * frame's exposure up by `lift` stops. It holds until `hold` seconds, then the mist and the haze
+ * return by `back`.
  */
 export const FLOOR = Object.freeze({
     tide: -40,
@@ -2971,8 +2977,24 @@ export const FLOOR = Object.freeze({
     lift: 0.2,
     hold: 9,
     back: 15,
-    gravel: '#B79A62',
+    moss: '#35602A',
+    fern: '#79AE3A',
+    litter: '#8C5B33',
+    earth: '#4B3B2B',
     glint: '#FFF6DA',
+    sun: 0.55,
+    river: Object.freeze({
+        offset: 62,
+        swing: Object.freeze([34, 13]),
+        wave: Object.freeze([96, 41]),
+        width: Object.freeze([4, 8]),
+        aa: 1.5,
+        bank: 2.4,
+        wet: 0.5,
+        glitter: 0.7,
+        breath: 0.3,
+    }),
+    beams: 0.5,
 });
 
 /** The Floor's envelope at s seconds after a perfect clear (0 … 1 … 0). */
@@ -3045,8 +3067,14 @@ export const GROVE_SURGE = Object.freeze({
     kick: 0.06,
 });
 
-/** Leaf bits (kind 3 curls): eucalyptus leaves shaken from the crowns. */
+/**
+ * Leaf bits (kind 3 curls): eucalyptus leaves shaken from the crowns. Beside what a gap, a gust or
+ * a fever shakes down, a leaf lets go of the sprays in the frame's top corners every `every`
+ * seconds (`calm` times as often while a run is being played): the air is never empty of them.
+ */
 export const LEAF = Object.freeze({
+    every: 1.6,
+    calm: 0.5,
     fall: 0.85,
     fallTau: 1.2,
     out: 0.3,
@@ -3581,7 +3609,14 @@ export const LIANA = Object.freeze({
  * Rainbow lorikeets (§4.9, as built): a flock crosses the air every `every` seconds (plus up to
  * `jitter`), `time` seconds a crossing, on an arc `span` metres long at `depth` metres (shifted
  * `right` of its depth to the right, `above` of its depth over the eye, rising `rise`), each bird
- * `size` metres long, its wings beating at `flap` Hz.
+ * `size` metres a unit of its model, its wings beating at `flap` Hz: the arm ±`arm` radians about
+ * the shoulder (`shoulder`: its height and distance from the spine), the hand ±`hand` more about
+ * the wrist (`wrist` of a unit out along a wing `span2` long), `lag` radians behind the arm; the
+ * body rides the beat by `bob`. Birds keep `flock` metres of each other (x, y, z). When the
+ * walkway climbs the whole flock goes up with it (`climb`: each over `time` seconds, `stagger`
+ * seconds after the one before, up the open `lanes` either side of the card (shares of the lens's
+ * half-width, weaving `sway`) at `depth` metres, from `rise`[0] to [1] of that depth about the
+ * eye, `away` metres deeper as it goes, the flock drawn `tight`).
  */
 export const LORIKEET = Object.freeze({
     every: 55,
@@ -3593,5 +3628,23 @@ export const LORIKEET = Object.freeze({
     above: 0.12,
     rise: 2.5,
     size: 1.6,
-    flap: 9,
+    flap: 7.5,
+    wrist: 0.2,
+    span2: 0.46,
+    arm: 0.95,
+    hand: 0.6,
+    lag: 1.0,
+    shoulder: Object.freeze([0.03, 0.045]),
+    bob: 0.012,
+    flock: Object.freeze([1.8, 1.1, 2.2]),
+    climb: Object.freeze({
+        time: 3.6,
+        lanes: Object.freeze([-0.37, 0.42]),
+        depth: Object.freeze([14, 20]),
+        rise: Object.freeze([-0.5, 0.8]),
+        away: 9,
+        sway: 0.03,
+        stagger: 0.16,
+        tight: 0.45,
+    }),
 });

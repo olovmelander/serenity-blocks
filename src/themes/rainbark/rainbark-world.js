@@ -49,6 +49,9 @@ import {
     BEAMS,
     BOW,
     CURL,
+    FOLIAGE,
+    LEAF,
+    mulberry32,
     FLOOR,
     GROVE_SURGE,
     smootherInverse,
@@ -539,6 +542,10 @@ export class RainbarkWorld {
         this.shower.reset();
         this.beamSwell.reset();
         this._gustSlot = -1;
+        /** The tick whose leaf has let go (dropLeaf). */
+        this._leafTick = -1;
+        /** When the Climb's flock of lorikeets went up. */
+        this.flockAt = -1e6;
         /** The Sunshower's bow as shown (eased). */
         this.bowK = 0;
         this.parts.fx?.sparks?.reset();
@@ -1681,6 +1688,8 @@ export class RainbarkWorld {
         // The new storey's light: the beams swell as the walkway rises, through a veil of specks.
         this.beamSwell.hit(0.6, this.climb.start);
         this.sparkClimb(this.climb.start);
+        // (And the lorikeets go up with the walkway.)
+        this.flockAt = this.climb.start;
     }
 
     // ── The sparks: what each beat throws into the light (SPARKS) ───────────────
@@ -2053,10 +2062,13 @@ export class RainbarkWorld {
         const flicker = 1 + HK[1].flicker * gust * Math.sin(t * 5.3) * Math.sin(t * 2.1 + 1.3);
         const beamLight = wheelValue(wheel, 'beams') * lerp(BEAMS.tide[0], BEAMS.tide[1], clockA.high)
             * (1 + BEAMS.pearl * pearlNow) * (1 + HK[0].beams * sunbreak) * flicker
-            * (1 + BEAMS.surge[0] * level + BEAMS.surge[1] * fever) * (1 + BEAMS.swell * swell);
+            * (1 + BEAMS.surge[0] * level + BEAMS.surge[1] * fever) * (1 + BEAMS.swell * swell)
+            // (The Floor's thinned haze stands less in front of the beams: they are held back.)
+            * (1 - (1 - FLOOR.beams) * floorK);
         u.beamGain.value = this.tune.beamGain ?? beamLight;
         u.airShade.value = this.tune.airShade ?? (beamsOn ? BEAMS.gapShade : 0);
         u.night.value = wheelValue(wheel, 'night') * (1 - fall);
+        u.flock.value = this.flockAt;
         // (The leaves swing harder in a gust, and as play heats the canopy.)
         u.gust.value = Math.min(1, gust + 0.35 * level + 0.3 * fever) * moves;
         // The Sunshower's bow: with the run (BOW.gain by its level), and with every burst.
@@ -2093,6 +2105,7 @@ export class RainbarkWorld {
             restLens(this.aspect, this._lens);
             curls.updateAmbient(t, S);
             this.pourLeaves(t, dt, fever * (1 - fall));
+            this.dropLeaf(t, playing, fall);
             curls.commit();
         }
         this.parts.fx?.sparks?.commit();
@@ -2156,6 +2169,26 @@ export class RainbarkWorld {
         H.age = age;
         H.k = smoother(age / K.rise) * (1 - smoother((age - (K.length - K.fall)) / K.fall));
         return H;
+    }
+
+    /**
+     * A leaf lets go of the sprays in the frame's top corners (LEAF.every; the clock decides which
+     * tick and where, so a replay drops the same leaves): the air is never empty of them.
+     */
+    dropLeaf(t, playing, fall) {
+        const { curls } = this.parts;
+        if (!curls || !this.parts.life?.foliage) return;
+        const tick = Math.floor(t / (LEAF.every / (playing ? LEAF.calm : 1)));
+        if (tick === this._leafTick) return;
+        const first = this._leafTick < 0;
+        this._leafTick = tick;
+        if (first || fall > 0.5) return;
+        const rng = mulberry32((tick * 2654435761 + 0x1eaf) >>> 0);
+        const N = FOLIAGE.near;
+        const depth = N.depth[0] + (N.depth[1] - N.depth[0]) * rng();
+        const across = (rng() < 0.5 ? -1 : 1) * (N.corner[0] + (N.corner[1] - N.corner[0]) * rng());
+        const tanX = Math.tan((fovForAspect(this.aspect) * DEG) / 2) * this.aspect;
+        curls.spawnLeaves(t, across * depth * tanX, this.heightAt(t) + depth * (N.rise[0] - 0.08), -depth, 1);
     }
 
     /** A gust shakes leaves down across the lanes, once a gust (when it comes over the grove). */

@@ -422,6 +422,8 @@ export function createRainbarkUniforms(textures = null) {
         bow: uniform(0),
         /** How hard the wind blows through the leaves (0 calm … 1 a gust): the foliage's swing. */
         gust: uniform(0),
+        /** When the Climb's flock of lorikeets went up (seconds on the world's clock; long ago: none). */
+        flock: uniform(-1e6),
         /** The zone's exposure (the post's): what a light must stand under to land where it means. */
         exposure: uniform(zone.exposure),
         /**
