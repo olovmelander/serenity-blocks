@@ -160,10 +160,9 @@ export const STEAM_LEADERBOARDS = {
     // Campaign v5 ends every chapter on its rival duel, so slot ids name different
     // challenges than v4 did. Keep stars and times separate from the earlier campaigns;
     // queued scores retain their original names. The level design retune (2026-11) changed goals, clocks and
-    // speeds, so orb times started fresh boards (v5), and pass 2 of the audit changed 16 more orbs (v6, D12);
-    // earned stars keep their board.
+    // speeds (v5). Pass 2 changed 16 more orbs (v6). Pass 3 shortened three finishes (v7, D20).
     ODYSSEY_TOTAL_STARS: 'OdysseyTotalStars_v3',
-    ODYSSEY_LEVEL_TIME_PREFIX: 'OdysseyLevelTime_v6_', // Append level id
+    ODYSSEY_LEVEL_TIME_PREFIX: 'OdysseyLevelTime_v7_', // Append level id
     INFINITY_HIGH_SCORE: 'InfinityHighScore_v1',
     INFINITY_SURVIVAL_TIME: 'InfinitySurvivalTime_v1',
     INFINITY_BEST_CASCADE: 'InfinityBestCascade_v1',
