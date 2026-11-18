@@ -40,17 +40,30 @@ import {
 import {
     CRATER, EYE, FISSURE, TAU, mulberry32,
 } from './pyrestorm-core.js';
-import { pyBlackbody, pyHash21 } from './pyrestorm-tsl.js';
+import {
+    BLUE_FIRE, noise3, pyBlackbody, pyHash21,
+} from './pyrestorm-tsl.js';
 
 const G = 9.81;
 /** The crater fountain's ordinary height (m) and the fissure's. */
 export const FOUNTAIN_HEIGHT = 640;
-export const FISSURE_HEIGHT = 165;
+export const FISSURE_HEIGHT = 190;
 /**
  * The fountains' time-lapsed gravity (m/s²): under the real one a 640 m fountain takes 23 s to
  * rise and fall and its spatter crawls a few pixels a second at fifteen kilometres.
  */
 export const JET_G = 52;
+
+/**
+ * The fissure's vents along its line (0..1): four of them, no two alike in place, width or
+ * strength, over a low curtain that runs the whole line. Static: a particle's time aloft follows it.
+ */
+const fissureVents = (x) => {
+    const at = (centre, wide, gain) => exp(x.sub(centre).div(wide).mul(x.sub(centre).div(wide)).negate()).mul(gain);
+    return max(max(at(0.2, 0.06, 0.78), at(0.52, 0.1, 1.0)), max(at(0.84, 0.05, 0.6), at(0.36, 0.035, 0.42))).mul(0.84).add(0.16);
+};
+/** A slow swell running along the fissure, so its vents rise and sink out of step (it scales the rise only). */
+const fissureSwell = (u, x) => sin(u.time.mul(0.83).add(x.mul(9.0))).mul(0.17).add(0.86);
 
 /**
  * A streak's clip position: a quad from `p` back along the screen motion of `v` (m/s) over the
@@ -112,7 +125,7 @@ function quad() {
 
 // ── The jets ──────────────────────────────────────────────────────────────────────
 
-export function createJets(u, tier) {
+export function createJets(u, tier, t) {
     const crater = tier.jets;
     const fissure = tier.fissureJets;
     const count = crater + fissure;
@@ -146,8 +159,7 @@ export function createJets(u, tier) {
         // height only (constant per particle), so a taller fountain never jumps a phase.
         // The fissure's line feeds three vents (taller), tapering to nothing at its ends.
         const along0 = jet.z;
-        const ventAt = (c, w) => exp(along0.sub(c).div(w).mul(along0.sub(c).div(w)).negate());
-        const vents = max(ventAt(0.22, 0.07), max(ventAt(0.55, 0.09), ventAt(0.81, 0.06))).mul(0.8).add(0.2)
+        const vents = fissureVents(along0)
             .mul(smoothstep(0.0, 0.1, along0))
             .mul(float(1.0).sub(smoothstep(0.9, 1.0, along0)));
         const isArc = jet.w.lessThan(0.0).select(float(1.0), float(0.0));
@@ -177,14 +189,13 @@ export function createJets(u, tier) {
         const vh = vy0.mul(spread);
         const v0 = vec3(cos(a).mul(vh), vy0, sin(a).mul(vh));
         // The fountain uniform scales the arc's rise; activity shrinks everything at game over.
-        const lift = mix(u.fountain, u.fountain.mul(0.5).add(0.5), isF).mul(u.activity.mul(0.6).add(0.4));
-        const t = age;
+        const lift = mix(u.fountain, u.fissure.mul(fissureSwell(u, along0)), isF).mul(u.activity.mul(0.6).add(0.4));
         const p = vec3(
-            vent.x.add(v0.x.mul(t)),
-            vent.y.add(v0.y.mul(t).sub(t.mul(t).mul(0.5 * JET_G)).mul(lift)),
-            vent.z.add(v0.z.mul(t)),
+            vent.x.add(v0.x.mul(age)),
+            vent.y.add(v0.y.mul(age).sub(age.mul(age).mul(0.5 * JET_G)).mul(lift)),
+            vent.z.add(v0.z.mul(age)),
         );
-        const v = vec3(v0.x, v0.y.sub(t.mul(JET_G)).mul(lift), v0.z);
+        const v = vec3(v0.x, v0.y.sub(age.mul(JET_G)).mul(lift), v0.z);
         const life = age.div(period);
         return {
             p, v, life, isF, isArc,
@@ -213,7 +224,7 @@ export function createJets(u, tier) {
     mesh.name = 'PyrestormJets';
     mesh.frustumCulled = false;
     mesh.renderOrder = 28;
-    const glow = createFireGlow(u);
+    const glow = createFireGlow(u, t);
     return {
         mesh,
         meshes: [mesh, ...glow.meshes],
@@ -227,36 +238,70 @@ export function createJets(u, tier) {
 }
 
 /**
- * The fire's own glow: the fountain's hot body over the vent (a soft billboard as tall as the
- * fountain stands) and the fissure's curtain (a strip along the line, bright at its foot and
- * flickering ragged at its top), so both read as fire, not as a sprinkle of sparks.
+ * The fire's own body: the fountain over the vent (a camera-facing quad as tall as the fountain
+ * stands) and the fissure's curtain (a strip along its line). Both are drawn as fire, not as a
+ * soft blob: a jet that fans out as it climbs, torn into tongues by noise carried up it faster
+ * than anything else in the frame moves, white-yellow in its throat and cooling through orange to
+ * a ragged red crown where it breaks into the spatter the particles draw.
  */
-function createFireGlow(u) {
+function createFireGlow(u, t) {
     // The vent: one camera-facing quad.
     const ventGeo = quad();
     const vent = additive('PyrestormVentGlow');
+    /** The fountain's height now (m), and the quad's half-size round its centre. */
+    const fountainH = () => u.fountain.mul(u.activity.mul(0.6).add(0.4)).add(u.burst.mul(0.25)).mul(FOUNTAIN_HEIGHT);
+    const halfOf = (h) => vec2(h.mul(0.5).add(110.0), h.mul(0.7).add(140.0));
     vent.vertexNode = Fn(() => {
-        const h = u.fountain.mul(u.activity.mul(0.6).add(0.4)).add(u.burst.mul(0.25)).mul(FOUNTAIN_HEIGHT);
-        const centre = vec3(CRATER.x, CRATER.y, CRATER.z).add(vec3(0.0, h.mul(0.42), 0.0));
+        const h = fountainH();
+        const centre = vec3(CRATER.x, CRATER.y, CRATER.z).add(vec3(0.0, h.mul(0.5), 0.0));
         const view = cameraViewMatrix.mul(vec4(centre, 1.0));
-        const size = vec2(h.mul(0.32).add(90.0), h.mul(0.62).add(130.0));
-        return cameraProjectionMatrix.mul(view.add(vec4(positionGeometry.xy.mul(size).mul(2.0), 0.0, 0.0)));
+        return cameraProjectionMatrix.mul(view.add(vec4(positionGeometry.xy.mul(halfOf(h)).mul(2.0), 0.0, 0.0)));
     })();
     vent.outputNode = Fn(() => {
-        const c = varying(positionGeometry.xy, 'vPyVent').mul(2.0);
-        // A column of glow, hottest low and on its axis.
-        // A narrow column, hottest low on its axis, narrowing as it climbs.
-        const narrow = float(1.0).add(c.y.add(1.0).mul(0.6));
-        const core = exp(c.x.mul(c.x).mul(narrow).mul(-14.0).add(c.y.add(0.45).mul(c.y.add(0.45)).mul(-2.4)));
+        const c = varying(positionGeometry.xy, 'vPyVent').mul(2.0).toVar();
+        const h = fountainH().toVar();
+        const half = halfOf(h);
+        // In fountain heights: 0 at the vent, 1 where the jet tops out; across from its axis.
+        const yn = c.y.mul(half.y).add(h.mul(0.5)).div(h).toVar();
+        const xn = c.x.mul(half.x).div(h).toVar();
+        // The jet fans out as it climbs.
+        const w = clamp(yn, 0.0, 1.3).mul(0.17).add(0.05);
+        const ax = xn.div(w).toVar();
+        // Tongues: noise carried up the jet (two octaves), finer toward the crown.
+        const q = vec3(ax.mul(0.85), yn.mul(3.0).sub(u.time.mul(2.1)), u.time.mul(0.21));
+        const n1 = noise3(t.lattice, q);
+        const n2 = noise3(t.lattice, q.mul(vec3(2.4, 2.1, 1.0)).add(vec3(4.7, 1.3, 2.9)));
+        const rag = n1.x.mul(0.62).add(n2.y.mul(0.38)).toVar();
+        // Whole at the throat, torn at the crown and the sides.
+        const reach = float(1.0).sub(smoothstep(0.45, 1.0, yn.add(rag.sub(0.5).mul(0.7))));
+        const side = exp(ax.mul(ax).mul(-1.25).mul(rag.mul(0.8).add(0.6)));
+        const foot = smoothstep(-0.05, 0.03, yn);
+        const body = side.mul(reach).mul(foot).mul(rag.mul(1.0).add(0.5)).toVar();
+        // Bright filaments riding up inside it.
+        const fil = smoothstep(0.52, 0.86, n2.x.mul(0.6).add(n1.y.mul(0.4)));
         // Faded to nothing at the quad's border (no box shows when the fountain is boosted).
-        const win = float(1.0).sub(c.x.mul(c.x)).max(0.0).mul(float(1.0).sub(c.y.mul(c.y)).max(0.0));
-        const halo = exp(c.dot(c).mul(-2.6)).mul(0.25).mul(win.mul(win));
-        const heat = u.fountain.mul(u.activity);
-        const T = float(0.56).add(core.mul(0.22)).add(heat.sub(1.0).mul(0.04)).min(0.84);
+        const win = float(1.0).sub(c.x.mul(c.x)).max(0.0).mul(float(1.0).sub(c.y.mul(c.y)).max(0.0))
+            .toVar();
+        const heat = u.fountain.mul(u.activity).toVar();
+        const T = float(0.9).sub(yn.max(0.0).mul(0.3)).sub(ax.abs().min(2.0).mul(0.07)).add(fil.mul(0.07))
+            .add(heat.sub(1.0).mul(0.03))
+            .clamp(0.3, 0.95);
+        const halo = exp(c.dot(c).mul(-2.6)).mul(0.2).mul(win.mul(win));
         // A burst swells the glow round the mouth (orange), not its white heart.
         const swell = u.burst.mul(0.5);
-        const body = core.mul(win).mul(0.26).add(halo.mul(float(0.7).add(swell)));
-        return vec4(pyBlackbody(T).mul(body).mul(heat.mul(0.6).add(0.2)), 0.0);
+        const fire = pyBlackbody(T).mul(body).mul(fil.mul(0.5).add(0.5)).mul(win.sqrt())
+            .mul(0.5);
+        const air = pyBlackbody(float(0.6)).mul(halo.mul(float(0.7).add(swell)));
+        // A back-to-back run: sulphur burns blue round the crater's mouth, low and wide.
+        const qb = vec3(xn.mul(7.0), yn.mul(9.0).sub(u.time.mul(2.4)), u.time.mul(0.31).add(4.0));
+        const nb = noise3(t.lattice, qb);
+        const blueTop = nb.x.mul(0.2).add(0.06);
+        const blueBody = float(1.0).sub(smoothstep(blueTop.mul(0.3), blueTop, yn)).mul(smoothstep(-0.06, 0.0, yn))
+            .mul(exp(xn.mul(xn).mul(-3.2)))
+            .mul(nb.y.mul(0.8).add(0.3));
+        const blue = vec3(BLUE_FIRE[0], BLUE_FIRE[1], BLUE_FIRE[2]).mul(blueBody).mul(win.sqrt()).mul(u.blue)
+            .mul(1.1);
+        return vec4(fire.add(air).mul(heat.mul(0.55).add(0.25)).add(blue), 0.0);
     })();
     const ventMesh = new THREE.Mesh(ventGeo, vent);
     ventMesh.name = 'PyrestormVentGlow';
@@ -269,30 +314,40 @@ function createFireGlow(u) {
     curtainGeo.deleteAttribute('uv');
     const curtain = additive('PyrestormCurtain');
     curtain.vertexNode = Fn(() => {
-        const t = positionGeometry.x.add(0.5);
+        const along = positionGeometry.x.add(0.5);
         const up = positionGeometry.y.add(0.5);
-        const base = vec3(FISSURE.a[0], 58.0, FISSURE.a[1]).add(vec3(FISSURE.b[0] - FISSURE.a[0], 0.0, FISSURE.b[1] - FISSURE.a[1]).mul(t));
-        const h = u.fountain.mul(0.5).add(0.5).mul(u.activity.mul(0.6).add(0.4)).mul(FISSURE_HEIGHT * 1.15);
+        const base = vec3(FISSURE.a[0], 58.0, FISSURE.a[1]).add(vec3(FISSURE.b[0] - FISSURE.a[0], 0.0, FISSURE.b[1] - FISSURE.a[1]).mul(along));
+        const h = u.fissure.mul(u.activity.mul(0.6).add(0.4)).mul(FISSURE_HEIGHT * 1.35);
         return cameraProjectionMatrix.mul(cameraViewMatrix.mul(vec4(base.add(vec3(0.0, up.mul(h), 0.0)), 1.0)));
     })();
     curtain.outputNode = Fn(() => {
         const g = varying(positionGeometry.xy, 'vPyCurtain');
-        const x = g.x.add(0.5);
-        const y = g.y.add(0.5);
-        // Ragged top: the jets' heights flicker along the line.
-        const f1 = sin(x.mul(83.0).add(u.time.mul(3.1))).mul(0.5).add(0.5);
-        const f2 = sin(x.mul(211.0).sub(u.time.mul(5.3)).add(1.7)).mul(0.5).add(0.5);
-        const f3 = sin(x.mul(29.0).add(u.time.mul(0.7)).add(sin(x.mul(7.0)).mul(2.0))).mul(0.5).add(0.5);
-        const bump = (c, w) => exp(x.sub(c).div(w).mul(x.sub(c).div(w)).negate());
-        const vents = max(bump(0.22, 0.07), max(bump(0.55, 0.09), bump(0.81, 0.06))).mul(0.85).add(0.15);
-        const top = f1.mul(0.3).add(f2.mul(0.2)).add(f3.mul(0.4)).add(0.1)
-            .mul(vents);
-        const body = float(1.0).sub(smoothstep(top.mul(0.3), top, y)).mul(f2.mul(0.5).add(0.5));
-        const foot = exp(y.mul(-7.0));
+        const x = g.x.add(0.5).toVar();
+        const y = g.y.add(0.5).toVar();
+        // Three vents stand out of the line, each a fan of fire; between them the curtain is low.
+        const vents = fissureVents(x).mul(fissureSwell(u, x)).toVar();
+        // Tongues climbing the curtain: noise carried up it, a strand per few metres of the line.
+        const q = vec3(x.mul(34.0), y.mul(2.6).sub(u.time.mul(1.7)), u.time.mul(0.19));
+        const n1 = noise3(t.lattice, q);
+        const n2 = noise3(t.lattice, q.mul(vec3(2.6, 2.2, 1.0)).add(vec3(1.9, 6.3, 0.7)));
+        const rag = n1.x.mul(0.6).add(n2.y.mul(0.4)).toVar();
+        const top = vents.mul(rag.mul(0.75).add(0.4));
+        const body = float(1.0).sub(smoothstep(top.mul(0.35), top, y)).mul(rag.mul(0.8).add(0.45)).toVar();
+        // (The line's own glow is patchy: lava wells up here and has crusted there.)
+        const foot = exp(y.mul(-9.0)).mul(n1.y.mul(1.1).add(0.2));
         const ends = smoothstep(0.0, 0.06, x).mul(float(1.0).sub(smoothstep(0.94, 1.0, x)));
-        const T = float(0.72).add(foot.mul(0.25)).sub(y.mul(0.25));
-        return vec4(pyBlackbody(T).mul(body.mul(0.22).add(foot.mul(0.42))).mul(ends).mul(vents.mul(0.6).add(0.4))
-            .mul(u.activity.mul(0.7).add(0.3)), 0.0);
+        const fil = smoothstep(0.55, 0.85, n2.x);
+        const T = float(0.86).sub(y.div(top.max(0.05)).min(1.5).mul(0.26)).add(fil.mul(0.06)).clamp(0.3, 0.93);
+        // A back-to-back run: low blue flames all along the line, between the vents too.
+        const qb = vec3(x.mul(58.0), y.mul(5.0).sub(u.time.mul(2.2)), u.time.mul(0.27).add(3.0));
+        const nb = noise3(t.lattice, qb);
+        const blueTop = nb.x.mul(0.26).add(0.1);
+        const blueBody = float(1.0).sub(smoothstep(blueTop.mul(0.3), blueTop, y)).mul(nb.y.mul(0.8).add(0.35));
+        const blue = vec3(BLUE_FIRE[0], BLUE_FIRE[1], BLUE_FIRE[2]).mul(blueBody).mul(ends).mul(u.blue)
+            .mul(0.75);
+        return vec4(pyBlackbody(T).mul(body.mul(0.3).add(foot.mul(0.3))).mul(ends).mul(vents.mul(0.5).add(0.5))
+            .mul(u.activity.mul(0.7).add(0.3))
+            .add(blue), 0.0);
     })();
     const curtainMesh = new THREE.Mesh(curtainGeo, curtain);
     curtainMesh.name = 'PyrestormCurtain';
@@ -314,10 +369,11 @@ function createFireGlow(u) {
 /**
  * kinds: a bomb (a clot of lava on a ballistic arc, drawn as its whole glowing trail), a spark
  * (fast, dragged, short-lived), a splash (spatter where a bomb lands), an ember (a landed bomb
- * cooling where it lies on the cone).
+ * cooling where it lies on the cone), a wisp (a lick of coloured flame that is not incandescence:
+ * it burns in its own tint, as sulphur burns blue).
  */
 export const BOMB = Object.freeze({
-    bomb: 0, spark: 1, splash: 2, ember: 3,
+    bomb: 0, spark: 1, splash: 2, ember: 3, wisp: 4,
 });
 
 /**
@@ -431,7 +487,9 @@ export class Bombs {
             const ribbon = cameraProjectionMatrix.mul(viewP.add(vec4(side, 0.0, 0.0)));
             // ── Everything else: a short streak along its motion ──
             const now = flight(age.max(0.0));
-            const exposure = kind.equal(1.0).select(float(0.14), float(0.07));
+            // (A wisp is drawn out along its climb: a lick of flame, not a speck.)
+            const exposure = float(0.07).add(kind.equal(1.0).select(float(0.07), float(0.0)))
+                .add(kind.equal(4.0).select(float(0.55), float(0.0)));
             const streak = streakVertex(u, now.p, now.v, px, exposure, kind.equal(3.0).select(float(1.0), float(0.0)));
             vAlong.assign(s);
             const flying = isBomb.select(age.sub(trail).lessThan(life), age.lessThan(life));
@@ -453,6 +511,7 @@ export class Bombs {
             const isBomb = kind.equal(0.0).select(float(1.0), float(0.0));
             const isEmber = kind.equal(3.0).select(float(1.0), float(0.0));
             const isSplash = kind.equal(2.0).select(float(1.0), float(0.0));
+            const isWisp = kind.equal(4.0).select(float(1.0), float(0.0));
             const tailFade = smoothstep(0.0, 0.85, s).mul(s.mul(0.6).add(0.4));
             const clot = exp(float(1.0).sub(s).mul(float(1.0).sub(s)).mul(-90.0));
             const landed = smoothstep(0.0, 0.04, age.sub(move.w));
@@ -470,9 +529,13 @@ export class Bombs {
             const T = mix(mix(sparkT, emberT, isEmber), bombT, isBomb).toVar();
             // A still ember is a round spot, not a streak (its quad is square: the streak's ends drew it as one).
             const round = exp(c.y.mul(c.y).mul(-9.0));
-            const gain = mix(mix(sparkGain.mul(streakAlong), emberGain.mul(round), isEmber), bombGain, isBomb).toVar();
-            // A piece's colour tints the fire (look.rgb is the fire tint, ~1 = plain lava).
-            const rgb = pyBlackbody(T).mul(gain).mul(across).mul(look.xyz);
+            // A wisp swells in, burns and thins out, soft at both ends.
+            const wispGain = float(1.0).sub(smoothstep(0.4, 1.0, f)).mul(smoothstep(0.0, 0.14, f)).mul(0.8);
+            const lit = mix(sparkGain, wispGain, isWisp).mul(streakAlong);
+            const gain = mix(mix(lit, emberGain.mul(round), isEmber), bombGain, isBomb).toVar();
+            // A piece's colour tints the fire (look.rgb is the fire tint, ~1 = plain lava); a wisp
+            // burns in its tint alone.
+            const rgb = mix(pyBlackbody(T).mul(look.xyz), look.xyz, isWisp).mul(gain).mul(across);
             return vec4(rgb, 0.0);
         })();
         return material;
@@ -535,7 +598,7 @@ export class Bombs {
             }
             let score;
             if (held[i] > now) score = 1e3 + left;
-            else score = kinds[i] === BOMB.spark || kinds[i] === BOMB.splash ? left * 0.3 : left * 0.5;
+            else score = kinds[i] === BOMB.spark || kinds[i] === BOMB.splash || kinds[i] === BOMB.wisp ? left * 0.3 : left * 0.5;
             if (score < bestScore) {
                 bestScore = score;
                 best = i;
@@ -628,8 +691,10 @@ export function createMotes(u, count) {
         data[i * 4] = random();
         data[i * 4 + 1] = random();
         data[i * 4 + 2] = random();
-        // A few are embers (rising off the rivers where they reach the near corners), the rest ash.
-        data[i * 4 + 3] = random() < 0.035 ? 1 : 0;
+        // A few are embers (rising off the rivers where they reach the near corners), the rest
+        // ash: a mote is an ember while its own number is under the phase's share (u.embers), so
+        // a paroxysm fills the air with them and a lull leaves a handful.
+        data[i * 4 + 3] = random();
     }
     const geometry = quad();
     geometry.setAttribute('aMote', new THREE.InstancedBufferAttribute(data, 4));
@@ -648,7 +713,7 @@ export function createMotes(u, count) {
     const cornerL = new THREE.Vector3(-760, 40, -1250);
     const cornerR = new THREE.Vector3(820, 40, -1230);
     const state = () => {
-        const ember = mote.w;
+        const ember = float(1.0).sub(smoothstep(0.03, 0.036, mote.w.div(u.embers.max(0.05))));
         // Ash falls slowly past the eye; embers climb fast off the lava.
         const speed = mix(float(-1.6), float(26.0), ember);
         const span = mix(float(box.y), float(320.0), ember);

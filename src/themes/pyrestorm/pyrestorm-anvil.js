@@ -30,19 +30,32 @@ import {
     vec4,
 } from 'three/tsl';
 import { ANVIL, CRATER, columnPoint } from './pyrestorm-core.js';
-import { fireLightAt, lightningAt, wideGlowAt } from './pyrestorm-tsl.js';
+import {
+    fireLightAt, lightningAt, noise3, wideGlowAt,
+} from './pyrestorm-tsl.js';
 import { skyColour } from './pyrestorm-sky.js';
 
-/** The anvil's underside height field at a point (metres up from the base), and its lumps. */
-function underside(t, xz, detail) {
-    const a = texture(t.noise, xz.div(16000.0)).r;
-    const b = texture(t.noise, xz.div(5200.0).add(vec2(0.31, 0.77))).g;
-    let h = a.mul(520.0).add(b.mul(260.0));
+/** How fast the anvil streams downwind (m/s; time-lapsed, as the column climbs). */
+const STREAM = 46;
+
+/**
+ * The anvil's underside height field at a point (metres up from the base), and its lumps. The
+ * cloud streams away downwind (`slide`: metres along its run so far) and turns over as it goes:
+ * its pouches are a slice of 3D noise that moves through the noise with the clock, so no lump
+ * keeps its shape for long.
+ */
+function underside(u, t, xz, slide, detail) {
+    const at = xz.sub(slide);
+    const a = texture(t.noise, at.div(16000.0)).r;
+    const b = texture(t.noise, at.div(5200.0).add(vec2(0.31, 0.77))).g;
+    let h = a.mul(560.0).add(b.mul(300.0));
     if (detail > 1) {
-        // Mammatus: pouches hanging under the base (sharpened mid-scale noise, inverted).
-        const m = texture(t.noise, xz.div(1500.0).add(vec2(0.53, 0.11))).b;
-        const pouch = smoothstep(0.45, 0.8, m);
-        h = h.sub(pouch.mul(pouch).mul(330.0));
+        // Mammatus: rounded pouches hanging under the base, in ranks drawn out along the wind.
+        const q = vec3(at.div(vec2(2300.0, 2300.0)), u.time.mul(0.011));
+        const m = noise3(t.lattice, q);
+        const pouch = smoothstep(0.38, 0.86, m.x.mul(0.7).add(b.mul(0.3)));
+        const fine = smoothstep(0.3, 0.9, m.y);
+        h = h.sub(pouch.mul(pouch).mul(360.0)).sub(fine.mul(70.0));
     }
     return h;
 }
@@ -78,6 +91,7 @@ export function createAnvil(u, t, tier) {
     // The head: where the column flattens into the anvil.
     const top = columnPoint(0.95);
     const head = new THREE.Vector2(top[0], top[2]);
+    const wind = new THREE.Vector2(Math.cos(ANVIL.heading), Math.sin(ANVIL.heading));
     material.outputNode = Fn(() => {
         const P0 = positionWorld;
         const rel = P0.xz.sub(vec2(ANVIL.x, ANVIL.z));
@@ -87,20 +101,27 @@ export function createAnvil(u, t, tier) {
         // Outline: an ellipse widening downwind, eroded.
         const widen = float(1.25).add(al.mul(0.2)).max(0.8);
         const r = sqrt(al.mul(al).add(ac.div(widen).mul(ac.div(widen))));
-        const e1 = texture(t.noise, P0.xz.div(9000.0).add(vec2(0.2, 0.6))).r;
-        const e2 = texture(t.noise, P0.xz.div(2600.0).add(vec2(0.7, 0.1))).b;
-        const edge = r.add(e1.sub(0.5).mul(0.42)).add(e2.sub(0.5).mul(0.16));
-        const body = float(1.0).sub(smoothstep(0.72, 1.02, edge)).toVar();
+        // The cloud streams downwind: every field of it slides along the run.
+        const slide = vec2(wind.x, wind.y).mul(u.time.mul(STREAM)).toVar();
+        const e1 = texture(t.noise, P0.xz.sub(slide).div(9000.0).add(vec2(0.2, 0.6))).r;
+        const e2 = texture(t.noise, P0.xz.sub(slide).div(2600.0).add(vec2(0.7, 0.1))).b;
+        const edge = r.add(e1.sub(0.5).mul(0.42)).add(e2.sub(0.5).mul(0.16)).sub(u.cover.sub(1.0).max(0.0).mul(0.3));
+        // The eruption's phase: a thin anvil breaks into patches (the stars show between them),
+        // a thick one roofs the sky. Nearest the column's head it holds together longest.
+        const headD0 = length(P0.xz.sub(vec2(head.x, head.y))).div(9000.0);
+        const hole = float(1.0).sub(u.cover).max(0.0).mul(1.3)
+            .sub(0.3);
+        const patch = smoothstep(hole, hole.add(0.3), e1.mul(0.62).add(e2.mul(0.38)).add(exp(headD0.mul(headD0).negate()).mul(0.3)));
+        const body = float(1.0).sub(smoothstep(0.72, 1.02, edge)).mul(patch).toVar();
         // Thin near the edge, thick at the head over the column.
-        const headD = length(P0.xz.sub(vec2(head.x, head.y))).div(9000.0);
-        const thick = clamp(body.mul(0.6).add(exp(headD.mul(headD).negate()).mul(0.6)), 0.0, 1.0);
+        const thick = clamp(body.mul(0.6).add(exp(headD0.mul(headD0).negate()).mul(0.6)).add(u.cover.sub(1.0).mul(0.5)), 0.0, 1.0);
 
         // The underside's relief, as a normal (pointing down, bent by the lumps).
         const { xz } = P0;
-        const h0 = underside(t, xz, tier.anvilDetail);
-        const e = 260.0;
-        const hx = underside(t, xz.add(vec2(e, 0.0)), tier.anvilDetail);
-        const hz = underside(t, xz.add(vec2(0.0, e)), tier.anvilDetail);
+        const h0 = underside(u, t, xz, slide, tier.anvilDetail);
+        const e = 320.0;
+        const hx = underside(u, t, xz.add(vec2(e, 0.0)), slide, tier.anvilDetail);
+        const hz = underside(u, t, xz.add(vec2(0.0, e)), slide, tier.anvilDetail);
         // The relief's slopes, exaggerated: at this range a true slope barely turns the normal, and
         // the lumps would light as one flat sheet.
         const N = normalize(vec3(hx.sub(h0).div(e).mul(1.9), float(-1.0), hz.sub(h0).div(e).mul(1.9))).toVar();
@@ -114,9 +135,16 @@ export function createAnvil(u, t, tier) {
         // Each lump lit by its slope toward the column's burning foot: faces turned to it glow,
         // the folds between them go dark.
         const toFoot = normalize(vec3(CRATER.x, CRATER.y + 1600.0, CRATER.z).sub(P));
-        const relief = clamp(N.dot(toFoot).mul(1.1).add(0.55), 0.32, 1.25);
-        const glowUnder = u.fireColour.mul(exp(fromHead.div(-9000.0)).mul(2.2).add(exp(fromHead.div(-26000.0)).mul(0.42)))
+        const relief = clamp(N.dot(toFoot).mul(1.25).add(0.5), 0.16, 1.35);
+        // Hot orange near the column, sinking through red to nothing downwind: the far reaches
+        // are lit by the lava under them and by the storm, not by the fountain.
+        const nearGlow = exp(fromHead.div(-8000.0));
+        const farGlow = exp(fromHead.div(-24000.0));
+        const glowUnder = u.fireColour.mul(mix(vec3(1.0, 0.5, 0.32), vec3(1.0, 1.0, 1.0), nearGlow))
+            .mul(nearGlow.mul(2.6).add(farGlow.mul(0.4)))
             .mul(u.fountain.add(u.burst.mul(0.6)).mul(u.activity)).mul(relief);
+        // The moon on the cloud's thin upwind edge: a cool rim where it thins out to the sky.
+        const moonRim = u.moon.mul(float(1.0).sub(thick)).mul(float(1.0).sub(thick)).mul(0.22);
         const lava = u.fireColour.mul(wideGlowAt(t, P.xz).mul(0.13).add(0.012)).mul(u.activity);
         const bolts = lightningAt(u, P, N, 1);
         // A perfect clear: sheet lightning sweeps the anvil from the head downwind.
@@ -133,6 +161,7 @@ export function createAnvil(u, t, tier) {
         const sky = u.ambient.mul(float(1.5).sub(thick));
         const light = fire.add(glowUnder).add(lava).add(bolts).add(sheet)
             .add(sky)
+            .add(moonRim)
             .add(vec3(0.45, 0.45, 0.5).mul(shock))
             .toVar();
         // Pouches facing the fire take its light; their shadowed tops stay dark.
@@ -145,7 +174,9 @@ export function createAnvil(u, t, tier) {
         const dir = toP.div(dist);
         const far = smoothstep(24000.0, 60000.0, dist);
         col.assign(mix(col, skyColour(u, t, dir), far.mul(0.75)));
-        const alpha = body.mul(mix(float(0.9), float(0.99), thick)).mul(float(1.0).sub(far.mul(0.15)));
+        // Whole inside its outline (a star through the cloud's body reads as painted on it); thin
+        // only at its edge.
+        const alpha = body.mul(1.35).min(1.0).mul(mix(float(0.97), float(1.0), thick));
         return vec4(col.mul(alpha), alpha);
     })();
     const mesh = new THREE.Mesh(geometry, material);
