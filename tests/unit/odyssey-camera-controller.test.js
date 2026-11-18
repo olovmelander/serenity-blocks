@@ -337,12 +337,16 @@ describe('OdysseyCameraController path travel', () => {
         const forward = () => new THREE.Vector3(0, 0, -1).applyQuaternion(controller.camera.quaternion);
         const right = () => new THREE.Vector3(1, 0, 0).applyQuaternion(controller.camera.quaternion);
         const pitchBefore = forward().dot(sceneUp);
+        // (the pose it starts from carries a few thousandths of tilt that vary along the rail, from
+        // the follow pose, not the yaw: measured against itself, as the world-up case above is)
+        const rollBefore = right().dot(sceneUp);
+        expect(Math.abs(rollBefore)).toBeLessThan(0.01);
         for (let index = 0; index < 120; index += 1) controller.rotateFreeCamera(0.05, 0);
 
         // Level in the CITY's frame: the pitch against its up holds and its horizon never rolls
         // (to float drift: 120 turns about an off-axis vector, ~0.01 degrees).
         expect(Math.abs(forward().dot(sceneUp) - pitchBefore)).toBeLessThan(1e-3);
-        expect(Math.abs(right().dot(sceneUp))).toBeLessThan(1e-3);
+        expect(Math.abs(right().dot(sceneUp) - rollBefore)).toBeLessThan(1e-3);
     });
 
     it('keeps the starting level in frame when the board first opens', () => {

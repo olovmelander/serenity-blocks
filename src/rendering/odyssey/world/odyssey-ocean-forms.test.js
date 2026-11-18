@@ -3,13 +3,13 @@ import {
     OCEAN_FORMS, buildKelpGeometry, buildSpireGeometry, planOceanForms,
 } from './odyssey-ocean-forms.js';
 import { ODYSSEY_SEA_LEVEL, odysseyWorldHeight } from './odyssey-world-height.js';
-import { getOdysseyPathPointAt } from '../path-utils.js';
+import { getOdysseyPathPointAt, getOdysseyWorldRailPointAt } from '../path-utils.js';
 
 /** The open-water rail the world renderer seeds life from: under the surface, above the bed. */
 function openWaterRail() {
     const rail = [];
     for (let i = 0; i < 47; i += 1) {
-        const a = getOdysseyPathPointAt(i / 47);
+        const a = getOdysseyWorldRailPointAt(i / 47);
         const b = getOdysseyPathPointAt((i + 1) / 47);
         for (let k = 0; k < 8; k += 1) {
             const t = k / 8;

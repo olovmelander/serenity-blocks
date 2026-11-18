@@ -43,6 +43,7 @@ import { OdysseyTslPipeline } from '../../rendering/odyssey/odyssey-post/odyssey
 import {
     getActiveOdysseyChapterPositions,
     getOdysseyPathPointAt,
+    getOdysseyWorldRailPointAt,
 } from '../../rendering/odyssey/path-utils.js';
 
 export const meta = {
@@ -87,7 +88,7 @@ export function create({
     const postEnabled = params?.get?.('post') !== '0';
     const gradeChapter = Math.round(readNumber(params, 'chapter', chapterAt(p)));
 
-    const railSamples = Array.from({ length: 48 }, (_, i) => getOdysseyPathPointAt(i / 47));
+    const railSamples = Array.from({ length: 48 }, (_, i) => getOdysseyWorldRailPointAt(i / 47));
     // THE GAME'S OPTIONS, from the shared contract module. Change them there, not here.
     const world = createOdysseyWorld({
         quality: params?.get?.('worldQuality') === 'low' ? 'low' : 'high',

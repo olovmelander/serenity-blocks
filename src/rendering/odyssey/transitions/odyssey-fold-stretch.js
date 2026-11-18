@@ -28,7 +28,7 @@ export const CH7_FOLD_STRETCH = Object.freeze({
     from: 0.5678,
     to: 0.7900,
     /** World covered per unit of progress in the stretch's middle, against the rest of the rail. */
-    rate: 8.8,
+    rate: 15,
     /** Progress over which the rate eases up from 1 at each end. */
     shoulder: 0.0025,
 });

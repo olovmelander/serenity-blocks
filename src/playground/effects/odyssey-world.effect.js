@@ -21,6 +21,7 @@ import { ODYSSEY_EYE_RAIL_OFFSET_Y } from '../../rendering/odyssey/world/odyssey
 import {
     getActiveOdysseyChapterPositions,
     getOdysseyPathPointAt,
+    getOdysseyWorldRailPointAt,
 } from '../../rendering/odyssey/path-utils.js';
 
 export const meta = {
@@ -43,7 +44,7 @@ export function create({ scene, camera, params }) {
     const quality = params?.get?.('worldQuality') === 'low' ? 'low' : 'high';
     // The world does not know the rail; the caller samples it. 48 points across the journey
     // seat the underwater god-ray shafts along the real submerged stretch.
-    const railSamples = Array.from({ length: 48 }, (_, i) => getOdysseyPathPointAt(i / 47));
+    const railSamples = Array.from({ length: 48 }, (_, i) => getOdysseyWorldRailPointAt(i / 47));
     // `?worldNoVisCull=1` builds the full COMPOSITION set (no rail-visibility cull) — pair it
     // with `?worldAerial=1` to review authoring decisions that ship few or no visible trees
     // (seam and north-slope carving lives almost entirely in the culled set).

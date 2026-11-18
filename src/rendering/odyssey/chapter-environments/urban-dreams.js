@@ -319,6 +319,10 @@ function computeCorridorOrientation() {
     let curve;
     try {
         curve = getOdysseyPathCurve();
+        // On today's rail, where the city was authored: the city's longer rail carries it on in
+        // the same directions (odyssey-path-stretch.js), and its ends are read there too
+        // (getChapterPathRange), so the y search below must walk the same rail.
+        curve = curve?.baseCurve ?? curve;
     } catch {
         curve = null;
     }
