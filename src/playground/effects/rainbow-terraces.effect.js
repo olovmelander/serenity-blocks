@@ -15,13 +15,20 @@
  *   players=2|4              with board=1: a row of mock cards (local multiplayer)
  *   hour=<place>             hold the light at a place on the wheel: 0 jade morning, 1 gilded
  *                            afternoon, 2 rose hour, 3 moonbow night, 4 pearl dawn (fractions blend)
+ *   air=<place>              hold the air at a place on its wheel: 0 fair, 1 beams, 2 showers,
+ *                            3 crystal, 4 mist (fractions blend); happenings=0 stills what the air
+ *                            does by itself (the default for a pinned ?t= capture is on)
+ *   happen=flight|beams|plume|veil|flicker|meteors   play one of the air's happenings, begun
+ *                            eventAge seconds before the frame (with no event=)
  *   level=<n>                rest on level n (each level is one hour further round the wheel)
  *   combo=<n>                hold a chain of n (0..13): the bow painted stroke by stroke
  *   links=<letters>          the pieces whose locks made links 1..n (e.g. SJITZLO); trueBow=1
  *   linkAge=<s>              the last link of the chain was made <s> seconds before the frame
  *   held=<n>                 n pools holding colour before the event
  *   locks=<n>                n warm-up locks 0.45 s apart (every fourth a hard drop)
- *   event=lock|drop|clear|twist|b2b|quad|perfect|levelUp|newRun|gameOver|break
+ *   event=lock|drop|clear|twist|spin|b2b|quad|perfect|crown|levelUp|newRun|gameOver|dawn|break
+ *                            (spin: a twist that clears nothing; crown: the perfect clear settled
+ *                            after a clear; dawn: a game over dawnAge seconds before, then the new run)
  *   eventAge=<s>             …shown <s> seconds later (lines=<n>, row=<r>, u=<0..1>, color=<hex>,
  *                            shape=I..L, dropRows=<n>)
  *   parts=sky,isles,...      draw only these parts (sky, sea, cumulus, isles, falls, spray, pools, gliders, fx)
@@ -120,6 +127,8 @@ export function create({
         capture: true,
         seed: Math.round(num(params, 'seed', 33)),
         hour: params.has('hour') ? num(params, 'hour', 0) : null,
+        air: params.has('air') ? num(params, 'air', 0) : null,
+        happenings: params.get('happenings') !== '0',
         tune: tuneFrom(params),
     }).build();
     world.bindCamera(camera);
@@ -233,8 +242,19 @@ export function create({
                 rows: bottom(4), lines: 4, perfect: true, combo,
             });
         } else if (eventName === 'levelUp') world.levelUp(num(params, 'eventLevel', level + 1));
-        else if (eventName === 'newRun') world.resetSession();
-        else if (eventName === 'gameOver') world.onGameOver();
+        else if (eventName === 'spin') {
+            world.onClear({
+                rows: bottom(1), lines: 0, twist: true, combo,
+            });
+        } else if (eventName === 'crown') {
+            world.onClear({
+                rows: [], lines: 0, crown: true, perfect: true, combo,
+            });
+        } else if (eventName === 'newRun') world.resetSession();
+        else if (eventName === 'gameOver') {
+            world.onGameOver();
+            world.resetSession();
+        } else if (eventName === 'dawn') world.onSessionStart();
         else if (eventName === 'break') world.onCombo(0);
     };
 
@@ -245,7 +265,8 @@ export function create({
         // The playground seeks every frame while ?t= is pinned: replay once, then hold.
         if (sought === time) return;
         sought = time;
-        const lead = (eventName ? eventAge : 0) + LEAD + warmLocks * 0.45 + held * 0.2 + (holdCombo ? holdCombo * 1.1 + 2 : 0);
+        const lead = (eventName || params.get('happen') ? eventAge : 0) + (eventName === 'dawn' ? num(params, 'dawnAge', 6) : 0)
+            + LEAD + warmLocks * 0.45 + held * 0.2 + (holdCombo ? holdCombo * 1.1 + 2 : 0);
         const start = Math.max(0, time - lead);
         world.seek(start);
         if (level > 1) world.levelUp(level, { silent: true });
@@ -274,7 +295,16 @@ export function create({
         for (let i = 0; i < warmLocks; i++) {
             actions.push([warmEnd - (warmLocks - 1 - i) * 0.45, () => world.onLock(lockOf(i))]);
         }
+        if (eventName === 'dawn') {
+            // The run ended a while before its dawn.
+            actions.push([time - eventAge - num(params, 'dawnAge', 6), () => {
+                world.onGameOver();
+                world.resetSession();
+            }]);
+        }
         if (eventName) actions.push([time - eventAge, fireEvent]);
+        const happen = params.get('happen');
+        if (happen) actions.push([time - eventAge, () => world.stageHappening(happen, time - eventAge, num(params, 'happenSeed', 7))]);
         actions.sort((a, b) => a[0] - b[0]);
         actions.forEach(([at, act]) => {
             if (at > cursor) {

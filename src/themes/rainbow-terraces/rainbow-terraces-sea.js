@@ -20,7 +20,7 @@
 import * as THREE from 'three/webgpu';
 import {
     Discard, Fn, acos, cameraPosition, clamp, dot, exp, float, fwidth, length, max, min, mix, normalize, positionLocal,
-    positionWorld, pow, smoothstep, texture, vec2, vec3,
+    positionWorld, pow, smoothstep, texture, vec2, vec3, vec4,
 } from 'three/tsl';
 import {
     TUNE, antiRays, casterShadow, cloudLight, deepColour, horizonHaze, optics, scWrap, skyBase, tollLight, tollRings,
@@ -34,8 +34,10 @@ export const SEA = Object.freeze({
         return TUNE.shelves[0];
     },
     /** The domes' relief, and the metres one tile of the baked field spans. */
-    amplitude: 420,
+    amplitude: 430,
     tile: 9000,
+    /** The second read's tile, in the first's (seaField: the heads form and melt between the two). */
+    second: 1.37,
     /** The broad swell (sea-level variation) and its tile. */
     swell: 220,
     swellTile: 30000,
@@ -89,12 +91,22 @@ export function buildSeaGeometry(rings, segments) {
  * The baked relief at a sea point (metres, xz): the texel (height, slope u, slope v, crease), and
  * the broad swell (0..1). `lod` reads the base level (the vertex stage has no derivatives).
  */
-function seaField(xz, tex, drift, lod) {
+function seaField(xz, tex, drift, lod, U) {
+    const read = (t, at) => (lod ? texture(t, at).level(0) : texture(t, at));
     const at = xz.mul(1 / SEA.tile).add(drift);
-    const relief = lod ? texture(tex.sea, at).level(0) : texture(tex.sea, at);
+    const first = read(tex.sea, at);
+    // A second read of the same field, a little larger and carried faster and a touch across the
+    // wind: where a slow weight (itself drifting) leans from one to the other, heads swell up out
+    // of the deck and others sink back into it. The sea is weather, not a carpet sliding past.
+    const at2 = xz.mul(1 / (SEA.tile * SEA.second)).add(drift.mul(1.7 / SEA.second)).add(vec2(0.37, 0.61))
+        .add(vec2(U.mistClock.mul(-0.0000035), U.mistClock.mul(0.0000021)));
+    const second = read(tex.sea, at2).mul(vec4(1.0, 1 / SEA.second, 1 / SEA.second, 1.0));
     const swellAt = xz.mul(1 / SEA.swellTile).add(vec2(0.53, 0.19)).add(drift.mul(0.25));
-    const swell = (lod ? texture(tex.noise, swellAt).level(0) : texture(tex.noise, swellAt)).r;
-    return { relief, swell };
+    const broad = read(tex.noise, swellAt);
+    const lean = read(tex.noise, xz.mul(1.9 / SEA.swellTile).add(vec2(0.11, 0.83)).add(drift.mul(-0.6))
+        .add(vec2(U.mistClock.mul(0.0000052), 0.0))).g;
+    const relief = mix(first, second, smoothstep(0.3, 0.7, lean));
+    return { relief, swell: broad.r };
 }
 
 /** How much of the relief stands at distance `r` (it settles toward the haze). */
@@ -123,8 +135,8 @@ export function createSea({ tier, U, tex }) {
     material.positionNode = Fn(() => {
         const p = positionLocal;
         const r = length(p.xz);
-        const f = seaField(p.xz, tex, drift, true);
-        return vec3(p.x, seaHeight(f, r), p.z);
+        const f = seaField(p.xz, tex, drift, true, U);
+        return vec3(p.x, seaHeight(f, r).mul(U.seaSwell), p.z);
     })();
 
     material.colorNode = Fn(() => {
@@ -134,7 +146,7 @@ export function createSea({ tier, U, tex }) {
         const dist = length(rel).toVar();
         const V = rel.div(dist).toVar();
         const r = length(P.xz).toVar();
-        const f = seaField(P.xz, tex, drift, false);
+        const f = seaField(P.xz, tex, drift, false, U);
         const relief = f.relief.toVar();
         // How many of the field's texels a pixel spans: where it spans more than one or two, the
         // creases and the fine relief would only alias (contour hatching, crawling dots), so they
@@ -152,7 +164,7 @@ export function createSea({ tier, U, tex }) {
         Discard(cover.lessThan(SEA.hole));
         // The baked slope (height per tile) in metres per metre, relaxed toward up far away (and
         // softened where a pixel spans many texels).
-        const k = settleAt(r).mul(SEA.amplitude / SEA.tile).mul(detail.mul(0.6).add(0.4));
+        const k = settleAt(r).mul(SEA.amplitude / SEA.tile).mul(detail.mul(0.6).add(0.4)).mul(U.seaSwell);
         const n0 = normalize(vec3(relief.y.mul(k).negate(), 1.0, relief.z.mul(k).negate()));
         const N = normalize(mix(n0, vec3(0.0, 1.0, 0.0), smoothstep(6000.0, 24000.0, r))).toVar();
 

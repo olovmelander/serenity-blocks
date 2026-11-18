@@ -26,8 +26,8 @@
  */
 import * as THREE from 'three/webgpu';
 import {
-    Fn, abs, atan, attribute, cameraPosition, clamp, dot, exp, float, floor, fract, fwidth, length, max, min, mix,
-    modelPosition, normalWorld, normalize, positionLocal, positionWorld, pow, smoothstep, sqrt, texture, vec2, vec3, vec4,
+    Fn, abs, atan, attribute, cameraPosition, clamp, cos, cross, dot, exp, float, floor, fract, fwidth, length, max, min, mix,
+    modelPosition, normalWorld, normalize, positionLocal, positionWorld, pow, sin, smoothstep, sqrt, texture, vec2, vec3, vec4,
 } from 'three/tsl';
 import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 import { mulberry32, smooth } from './rainbow-terraces-core.js';
@@ -2266,13 +2266,15 @@ export function groveSpots(p, count, seed = 77, build = {}, avoid = []) {
  * @param {number} [p.shadeBelow]  if set, everything under this local height lies in the
  *                                 overlook's cast shadow (the foreground crags): only the fill
  *                                 reaches it, and a warm line of sun along its top edge
+ * @param {boolean} [p.dapple]     with shadeBelow: dappled sun wandering over the shade (the overlook)
+ * @param {boolean} [p.flowers]    the meadow blooms: drifts of wildflowers over the turf (a near isle)
  * @param {boolean} [p.grounded]   far pieces only: the Deep's mist is measured down from the piece's
  *                                 own ground (its origin, the gate's mesa crown), not from the eye's
  *                                 level, so the plinth it stands on reads and only its cliff melts
  */
 export function createStoneMaterial({
     U, tex, reach = 6000, lamps = 0, lipY = 0, shadeBelow = null, far = false, path = null, course = 0, wet = null,
-    grounded = false, flow = null,
+    grounded = false, flow = null, dapple = false, flowers = false,
 }) {
     const material = new THREE.MeshBasicNodeMaterial({ fog: false });
     material.colorNode = Fn(() => {
@@ -2375,7 +2377,8 @@ export function createStoneMaterial({
             const joint = max(float(1.0).sub(smoothstep(0.035, wy.add(0.035), jy)), float(1.0).sub(smoothstep(0.035, wx.add(0.035), jx)))
                 .mul(seen);
             const blockTint = scHash21(vec2(row, floor(along)));
-            masonry.mulAssign(blockTint.sub(0.5).mul(0.16).add(1.0).mul(float(1.0).sub(joint.mul(0.45))));
+            // (Close to the eye a joint is a fine shadow line, not a band of mortar.)
+            masonry.mulAssign(blockTint.sub(0.5).mul(0.16).add(1.0).mul(float(1.0).sub(joint.mul(dapple ? 0.24 : 0.45))));
         }
         // Rain has run down under every ledge; moss holds on the tops.
         masonry.assign(mix(masonry, masonry.mul(0.72), smoothstep(0.55, 0.85, drip).mul(float(1.0).sub(an.y)).mul(0.6)));
@@ -2401,6 +2404,23 @@ export function createStoneMaterial({
         const grain = texture(tex.noise, lp.xz.mul(0.23).add(vec2(0.53, 0.11))).a;
         const dry = smoothstep(0.42, 0.8, drifts.add(N.y.sub(0.93).mul(1.2))).mul(0.45);
         turf.assign(mix(turf, vec3(0.24, 0.22, 0.09), dry));
+        if (flowers) {
+            // The meadow blooms: drifts of wildflowers a few strides across, read from the overlook
+            // as washes of colour in the grass (a flower is far under a pixel from here): poppy
+            // red on the dry knolls, lavender in the hollows, buttercup between, each drift ragged
+            // at its edge and broken by the tussocks.
+            const bloomAt = lp.xz.mul(0.026).add(vec2(0.67, 0.21));
+            const bloom = texture(tex.noise, bloomAt).toVar();
+            const which = texture(tex.noise, lp.xz.mul(0.011).add(vec2(0.13, 0.59))).b;
+            const drift = smoothstep(0.47, 0.72, bloom.r.mul(0.7).add(bloom.b.mul(0.3)).add(grain.sub(0.5).mul(0.3)))
+                .mul(smoothstep(0.7, 0.9, N.y));
+            const petal = mix(
+                mix(vec3(0.36, 0.24, 0.52), vec3(0.62, 0.5, 0.1), smoothstep(0.38, 0.5, which)),
+                vec3(0.6, 0.11, 0.07),
+                smoothstep(0.56, 0.68, which),
+            );
+            turf.assign(mix(turf, petal, drift.mul(0.42)));
+        }
         turf.mulAssign(grain.sub(0.5).mul(0.3).add(1.0).mul(mix(float(0.62), float(1.0), smoothstep(0.35, 0.85, ao))));
         if (path && path.length > 1) {
             // The worn path: pale earth and stone, its line wandering a little, its edges frayed.
@@ -2460,7 +2480,25 @@ export function createStoneMaterial({
             // up to the sky (the cap, the handrail, the rock's mossy top) and the grazing edges.
             const grazing = smoothstep(0.6, 0.92, float(1.0).sub(nv)).mul(smoothstep(0.15, 0.5, N.y))
                 .mul(smoothstep(shadeBelow - 3.0, shadeBelow, lp.y));
-            sun.assign(max(grazing, smoothstep(0.5, 0.85, N.y).mul(0.85)));
+            const tops = smoothstep(0.5, 0.85, N.y).mul(0.85);
+            sun.assign(max(grazing, tops));
+            if (dapple) {
+                // Dappled sun: whatever grows behind the eye lets the low sun through in patches,
+                // and they wander over the stone as the leaves stir (read across the light's own
+                // direction, so a patch lies the same on the rail, the balusters and the paving).
+                const du = normalize(cross(L, vec3(0.0, 1.0, 0.0)));
+                const dv = cross(L, du);
+                const stir = vec2(sin(U.mistClock.mul(0.31)).mul(0.012), cos(U.mistClock.mul(0.23)).mul(0.01))
+                    .add(vec2(U.mistClock.mul(0.0007), 0.0));
+                const flat = vec2(dot(P, du), dot(P, dv)).mul(0.11).toVar();
+                // (Warped by a slow read of the same field: ragged patches, never round spots.)
+                const warp = texture(tex.noise, flat.mul(0.6).add(vec2(0.71, 0.19))).ba.sub(0.5).mul(0.09);
+                const at = flat.add(warp).add(stir);
+                const leaves = texture(tex.noise, at).r.mul(0.6).add(texture(tex.noise, at.mul(3.1).add(0.37)).b.mul(0.4));
+                const through = smoothstep(0.45, 0.66, leaves);
+                // What faces the sky is in the same broken shade as the rest: sun through the leaves.
+                sun.assign(max(max(grazing, tops.mul(through.mul(0.62).add(0.38))), through.mul(0.92)));
+            }
         }
         // (At the rose and pearl hours the Earth's shadow climbs the stone: only what stands above
         // its terminator, the crowns and the gate's attic, still takes the key, and burns with the
@@ -2921,9 +2959,10 @@ export function* createIslesSteps({
         course: 1.6,
         wet: [0.62, 0.16],
         flow: cascades.spring.flow,
+        flowers: true,
     });
     const twinMaterial = createStoneMaterial({
-        U, tex, lipY: plan.twin.lip, reach: 3200, course: 2.8, flow: cascades.twin.flow,
+        U, tex, lipY: plan.twin.lip, reach: 3200, course: 2.8, flow: cascades.twin.flow, flowers: true,
     });
     const farMaterial = createFarStoneMaterial({ U, tex, reach: 5200 });
     // The Far Gate is all but the air itself: a colossus a few shades off the sky behind it.
@@ -2939,7 +2978,7 @@ export function* createIslesSteps({
     // The crags lie in the overlook's shadow; only a line along their tops stands in the sun. No
     // mineral drips (lipY far above them).
     const cornerMaterial = createStoneMaterial({
-        U, tex, reach: 6000, lipY: 1e4, shadeBelow: 1.0, course: 0,
+        U, tex, reach: 6000, lipY: 1e4, shadeBelow: 1.0, course: 0.3, dapple: true,
     });
     const materials = [material, twinMaterial, farMaterial, gateMaterial, cornerMaterial];
     const meshes = [];

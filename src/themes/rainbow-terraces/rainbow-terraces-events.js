@@ -44,6 +44,17 @@ const catmull = (p0, p1, p2, p3, u) => 0.5 * ((2 * p1) + (p2 - p0) * u + (2 * p0
     + (3 * p1 - p0 - 3 * p2 + p3) * u * u * u);
 export const CROWN_LIFE = 0.6;
 export const SHEET_LIFE = 2.4;
+/**
+ * A twist's helix: points down its axis (foot to lip), seconds its head takes to climb it, its
+ * whole life, turns it winds on the way up, and how fast the whole helix turns (rad/s).
+ */
+export const TWISTER = Object.freeze({
+    axis: 6, climb: 1.2, life: 2.4, turns: 2.5, spin: 2.4,
+});
+/** The bell's rings in the air: how many, seconds apart, each one's life, how far it opens (sizes). */
+export const BELL = Object.freeze({
+    rings: 3, gap: 0.32, life: 2.2, reach: 15,
+});
 /** The pour's gravity (m/s²), quicker than true gravity so it reads as falling from here. */
 const SHEET_G = 26;
 const G = 9.81;
@@ -116,6 +127,14 @@ export class EventEffects {
         this.sheets = makeRing(sheets, () => ({
             at: -1e4, from: v3(), dir: v3(), colour: [1, 1, 1], length: 10, speed: 30, size: 1, leap: 10,
         }));
+        /** A twist's helix up the Mother Fall (two at once, so a second never cuts the first). */
+        this.twisters = makeRing(2, () => ({
+            at: -1e4, axis: new Float32Array(TWISTER.axis * 3), radius: 10, right: v3(), ahead: v3(), colour: [1, 1, 1], strength: 1,
+        }));
+        /** The bell's rings in the air (a new level; three at once). */
+        this.bells = makeRing(3, () => ({
+            at: -1e4, pos: v3(), size: 5, colour: [1, 1, 1], strength: 1,
+        }));
         this.landings = [];
         /** Threads displaced from the ring while still in flight: they land at once (their pool
          * still takes the colour). Preallocated, reused. */
@@ -127,7 +146,7 @@ export class EventEffects {
 
     reset() {
         this.forced.forEach((f) => { f.used = false; });
-        [this.locks, this.crowns, this.sheets].forEach((ring) => ring.items.forEach((r) => { r.at = -1e4; }));
+        [this.locks, this.crowns, this.sheets, this.twisters, this.bells].forEach((ring) => ring.items.forEach((r) => { r.at = -1e4; }));
         this.locks.items.forEach((r) => { r.landed = true; });
     }
 
@@ -257,6 +276,42 @@ export class EventEffects {
         r.size = size;
         r.speed = speed;
         r.flash = flash;
+    }
+
+    /**
+     * A twist: a helix of light-water wound up a fall. `axis` TWISTER.axis world points from its
+     * foot to its lip (xyz each), `radius` metres at the foot, `right` and `ahead` the camera's
+     * unit axes (the helix is wound in their plane, flattened along the view), `strength` about 1
+     * (two strands; from 1.3 three; under 0.9 a single short one: a twist that clears nothing).
+     */
+    twister(at, {
+        axis, radius = 10, right, ahead, colour, strength = 1,
+    }) {
+        // One still climbing keeps its slot: the new one takes the other.
+        const ring = this.twisters;
+        const first = ring.items[ring.next];
+        const r = at - first.at < TWISTER.life && ring.items.length > 1
+            ? ring.items[(ring.next + 1) % ring.items.length] : first;
+        ring.next = (ring.items.indexOf(r) + 1) % ring.items.length;
+        r.at = at;
+        for (let i = 0; i < TWISTER.axis * 3; i++) r.axis[i] = axis[i];
+        r.radius = radius;
+        r.strength = strength;
+        // Wound on the ground plane across the view and along it.
+        const al = Math.hypot(ahead[0], ahead[2]) || 1;
+        r.ahead[0] = ahead[0] / al; r.ahead[1] = 0; r.ahead[2] = ahead[2] / al;
+        const rl = Math.hypot(right[0], right[2]) || 1;
+        r.right[0] = right[0] / rl; r.right[1] = 0; r.right[2] = right[2] / rl;
+        for (let i = 0; i < 3; i++) r.colour[i] = colour[i];
+    }
+
+    /** The bell's rings: `pos` the bell (world), `size` metres (a ring opens to BELL.reach of it). */
+    bell(at, pos, size, colour, strength = 1) {
+        const r = take(this.bells);
+        r.at = at;
+        r.size = size;
+        r.strength = strength;
+        for (let i = 0; i < 3; i++) { r.pos[i] = pos[i]; r.colour[i] = colour[i]; }
     }
 
     /**
@@ -591,6 +646,145 @@ export class EventEffects {
                 px = x; py = y; pz = z;
             }
         }
+        // ── Twisters: a helix of light-water wound up the fall, each strand a head and the beads
+        //    behind it streaked one to the next (one line, as the thread is), dimmer where it
+        //    passes behind the water; a ring thrown out at its foot, a crown where it tops out ──
+        for (const r of this.twisters.items) {
+            const age = time - r.at;
+            if (age < 0 || age > TWISTER.life) continue;
+            const [cr, cg, cb] = r.colour;
+            const small = r.strength < 0.9;
+            let strands = r.strength >= 1.3 ? 3 : 2;
+            if (small) strands = 1;
+            const top = small ? 0.55 : 1;
+            const gain = Math.min(1.4, 0.55 + 0.6 * r.strength);
+            const out = 1 - smooth(TWISTER.life * 0.62, TWISTER.life, age);
+            const head = age / TWISTER.climb;
+            const beads = this.droplets + 8;
+            const gap = 0.6 / beads;
+            const grow = smooth(0, 0.3, age);
+            // The foot's ring: the fall is struck, and the turn starts there.
+            if (age < 0.7) {
+                const k = age / 0.7;
+                const rb = (1 - k) ** 2 * 1.6 * gain;
+                push(
+                    r.axis[0],
+                    r.axis[1],
+                    r.axis[2],
+                    r.radius * (0.6 + 2.2 * (1 - (1 - k) ** 3)),
+                    (cr * 0.6 + 0.4) * rb,
+                    (cg * 0.6 + 0.4) * rb,
+                    (cb * 0.6 + 0.4) * rb,
+                    RING,
+                );
+            }
+            for (let s = 0; s < strands; s++) {
+                let qx = 0;
+                let qy = 0;
+                let qz = 0;
+                let have = false;
+                // From the tail up to the head, so each bead streaks toward the one before it.
+                for (let k = beads - 1; k >= 0; k--) {
+                    const u = head - k * gap;
+                    if (u < 0 || u > 1) {
+                        have = false;
+                        continue;
+                    }
+                    const h = u * top;
+                    this.twistAt(r, h, s / strands, age, grow, p);
+                    const behind = p[3];
+                    const k01 = k / beads;
+                    const taper = (1 - k01) ** 1.3;
+                    const b = gain * out * taper * (behind ? 0.4 : 1) * (0.55 + 0.45 * smooth(0, 0.12, u));
+                    const size = r.radius * 0.13 * (0.45 + 0.55 * taper);
+                    if (have) {
+                        const mx = qx - p[0];
+                        const my = qy - p[1];
+                        const mz = qz - p[2];
+                        const reach = Math.hypot(mx, my, mz);
+                        const stretch = (reach / (2 * size)) * 2.2 + 1;
+                        push(p[0], p[1], p[2], size, (cr * 0.55 + 0.45) * 4.2 * b, (cg * 0.55 + 0.45) * 4.2 * b, (cb * 0.55 + 0.45) * 4.2 * b, STREAK, mx, my, mz, stretch);
+                        if (k % 2 === 0) push(p[0], p[1], p[2], Math.max(size * 3.4, reach * 1.8), cr * 0.75 * b, cg * 0.75 * b, cb * 0.75 * b, SOFT);
+                    }
+                    if (k === 0) {
+                        // The head: a hot drop and its glint.
+                        push(p[0], p[1], p[2], size * 2.6, (cr * 0.4 + 0.6) * 4.2 * b, (cg * 0.4 + 0.6) * 4.2 * b, (cb * 0.4 + 0.6) * 4.2 * b, 0);
+                        push(p[0], p[1], p[2], size * 5, (cr * 0.3 + 0.7) * 2.2 * b, (cg * 0.3 + 0.7) * 2.2 * b, (cb * 0.3 + 0.7) * 2.2 * b, GLINT);
+                    }
+                    qx = p[0]; qy = p[1]; qz = p[2];
+                    have = true;
+                }
+            }
+            // Where it tops out: a crown of drops flung off the turn.
+            const done = age - TWISTER.climb;
+            if (done >= 0 && done < 0.8) {
+                // (Round the axis itself, not a strand.)
+                this.twistAxis(r, top, q);
+                const cx = q[0];
+                const cy = q[1];
+                const cz = q[2];
+                const kd = done / 0.8;
+                const fb = (1 - kd) ** 1.6 * 3 * gain;
+                const n = small ? 6 : 12;
+                for (let j = 0; j < n; j++) {
+                    const a = (j / n) * Math.PI * 2 + r.at * 5.1 + done * TWISTER.spin;
+                    const v = r.radius * (1.6 + 0.9 * ((j * 0.618) % 1));
+                    const go = v * (1 - Math.exp(-done * 4)) * 0.5;
+                    const x = cx + (r.right[0] * Math.cos(a) + r.ahead[0] * Math.sin(a) * 0.45) * go;
+                    const z = cz + (r.right[2] * Math.cos(a) + r.ahead[2] * Math.sin(a) * 0.45) * go;
+                    const y = cy + r.radius * 0.9 * done - 0.5 * G * 2.2 * done * done;
+                    if (j % 2) push(x, y, z, r.radius * 0.07, (cr * 0.7 + 0.3) * fb, (cg * 0.7 + 0.3) * fb, (cb * 0.7 + 0.3) * fb, 0);
+                    else push(x, y, z, r.radius * 0.12, (cr * 0.3 + 0.7) * fb, (cg * 0.3 + 0.7) * fb, (cb * 0.3 + 0.7) * fb, GLINT);
+                }
+            }
+        }
+        // ── The bell's rings: thin rings of the hour's gold opening in the air round the arch,
+        //    one after another, each slower and fainter as it opens (the toll, seen) ──
+        for (const r of this.bells.items) {
+            const age = time - r.at;
+            if (age < 0 || age > BELL.life + BELL.gap * (BELL.rings - 1)) continue;
+            for (let j = 0; j < BELL.rings; j++) {
+                const a = age - j * BELL.gap;
+                if (a < 0 || a > BELL.life) continue;
+                const k = a / BELL.life;
+                const open = 1 - (1 - k) ** 2.4;
+                const b = (1 - k) ** 2 * smooth(0, 0.06, a) * 1.5 * r.strength * (1 - 0.22 * j);
+                push(r.pos[0], r.pos[1], r.pos[2], r.size * (1 + (BELL.reach - 1) * open), r.colour[0] * b, r.colour[1] * b, r.colour[2] * b, RING);
+            }
+        }
+    }
+
+    /** A twister's axis at height `h` (0 its foot, the axis' first point; 1 the lip, its last). */
+    twistAxis(r, h, out) {
+        const ax = (TWISTER.axis - 1) * clamp01(h);
+        const i0 = Math.min(TWISTER.axis - 2, Math.floor(ax));
+        const fr = ax - i0;
+        const A = r.axis;
+        out[0] = A[i0 * 3] * (1 - fr) + A[i0 * 3 + 3] * fr;
+        out[1] = A[i0 * 3 + 1] * (1 - fr) + A[i0 * 3 + 4] * fr;
+        out[2] = A[i0 * 3 + 2] * (1 - fr) + A[i0 * 3 + 5] * fr;
+        return out;
+    }
+
+    /**
+     * A point of a twister's strand at height `h` (0 its foot, 1 the lip), into out[0..2]; out[3] is
+     * 1 where the strand passes behind the fall there. `phase` the strand (0..1 of a turn), `grow`
+     * 0..1 how far the helix has opened.
+     */
+    twistAt(r, h, phase, age, grow, out) {
+        this.twistAxis(r, h, out);
+        const x = out[0];
+        const y = out[1];
+        const z = out[2];
+        const ang = (TWISTER.turns * h + phase) * Math.PI * 2 + age * TWISTER.spin;
+        const R = r.radius * (1.15 - 0.5 * h) * (0.35 + 0.65 * grow);
+        const c = Math.cos(ang) * R;
+        const s = Math.sin(ang) * R * 0.45;
+        out[0] = x + r.right[0] * c + r.ahead[0] * s;
+        out[1] = y;
+        out[2] = z + r.right[2] * c + r.ahead[2] * s;
+        out[3] = Math.sin(ang) > 0.15 ? 1 : 0;
+        return out;
     }
 
     /** A point of a lock's thread at s (0..1): on its screen arc when it has one, else in the world. */
