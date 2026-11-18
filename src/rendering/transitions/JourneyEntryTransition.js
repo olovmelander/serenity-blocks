@@ -192,6 +192,11 @@ export class JourneyEntryTransition {
             // Made in mount(), on the page, only when the worker does not draw the gate.
             gate: null,
             remote: null,
+            // Once handed to the worker the canvas is never the page's to size again, not even
+            // after the run lets go of `remote` (the browser throws InvalidStateError).
+            handedOver: false,
+            // dispose() tears a run down at once, and its finish does so again later.
+            tornDown: false,
             // What of the arrival's light the player allows (Reduce flashing).
             flash: flashScale(),
             travelState: { travel: 0, lastTravelAt: null },
@@ -244,6 +249,7 @@ export class JourneyEntryTransition {
             flash: run.flash,
             ...this.measureCanvas(),
         }, this.window);
+        run.handedOver = run.remote !== null;
         if (!run.remote) {
             try {
                 run.dom.ctx = canvas.getContext('2d');
@@ -280,7 +286,7 @@ export class JourneyEntryTransition {
             // A canvas handed to the gate's worker is sized there.
             if (run.remote) {
                 run.remote.resize(width, height, dpr);
-            } else {
+            } else if (!run.handedOver) {
                 canvas.width = Math.max(1, Math.floor(width * dpr));
                 canvas.height = Math.max(1, Math.floor(height * dpr));
             }
@@ -719,6 +725,8 @@ export class JourneyEntryTransition {
     }
 
     teardown(run = this.activeRun) {
+        if (run?.tornDown) return;
+        if (run) run.tornDown = true;
         // A replaced run can finish its async abort after its successor mounts.
         // It owns its DOM, but must not detach the successor's resize listener.
         if (!this.activeRun || this.activeRun === run) {
@@ -737,7 +745,7 @@ export class JourneyEntryTransition {
             return;
         }
         const canvas = run?.dom?.canvas;
-        if (canvas) {
+        if (canvas && !run.handedOver) {
             canvas.width = 0;
             canvas.height = 0;
         }

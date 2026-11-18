@@ -4,6 +4,7 @@ import {
 import { createPortalGateWorkerCore, GATE_WORKER_STALL_MS } from '../../src/rendering/transitions/portal-gate-worker-core.js';
 import { resetPortalGateWorkerForTests } from '../../src/rendering/transitions/portal-gate-remote.js';
 import { JourneyEntryTransition } from '../../src/rendering/transitions/JourneyEntryTransition.js';
+import { JourneyReturnTransition } from '../../src/rendering/transitions/JourneyReturnTransition.js';
 
 /** A 2D context where every call succeeds and is counted (gradients come back gradient-shaped). */
 function contextStub() {
@@ -186,5 +187,130 @@ describe('an orb entry with the gate in a worker', () => {
         expect(pageContextAsked).toBe(false);
         expect(pageCanvas.width).toBeUndefined();
         expect(posted.at(-1).message).toMatchObject({ type: 'stop', id: start.message.id });
+    });
+});
+
+/**
+ * A transition whose gate is in a worker, on a page canvas that refuses to be sized once handed
+ * over (as a browser's does), with its frames, timers and worker messages in the test's hands.
+ */
+function handedOverGate(Transition) {
+    const posted = [];
+    function FakeWorker() {
+        return { postMessage: (message) => { posted.push(message); }, terminate() {} };
+    }
+    vi.stubGlobal('OffscreenCanvas', () => {});
+    vi.stubGlobal('Worker', FakeWorker);
+    let now = 0;
+    let frames = [];
+    const timers = [];
+    let transferred = false;
+    const canvas = {
+        tagName: 'CANVAS',
+        style: {},
+        transferControlToOffscreen: () => { transferred = true; return { offscreen: true }; },
+        getContext: () => null,
+    };
+    ['width', 'height'].forEach((side) => {
+        let value;
+        Object.defineProperty(canvas, side, {
+            get: () => value,
+            set: (next) => {
+                if (transferred) throw new DOMException('Cannot resize a transferred canvas', 'InvalidStateError');
+                value = next;
+            },
+        });
+    });
+    const element = (tag) => (tag === 'canvas' ? canvas : {
+        tagName: tag.toUpperCase(),
+        style: {},
+        setAttribute() {},
+        removeAttribute() {},
+        appendChild(child) { child.parentNode = this; return child; },
+    });
+    const body = {
+        appendChild: (child) => { child.parentNode = body; },
+        removeChild: (child) => { child.parentNode = null; },
+    };
+    const transition = new Transition({
+        documentRef: { body, createElement: element },
+        windowRef: {
+            innerWidth: 1280,
+            innerHeight: 720,
+            devicePixelRatio: 1,
+            addEventListener() {},
+            removeEventListener() {},
+            setTimeout: (callback) => timers.push(callback),
+        },
+        performanceRef: { now: () => now },
+        requestAnimationFrameRef: (callback) => { frames.push(callback); return frames.length; },
+        cancelAnimationFrameRef: () => {},
+    });
+    return {
+        transition,
+        posted,
+        frame() {
+            now += 16;
+            const due = frames;
+            frames = [];
+            due.forEach((callback) => callback(now));
+        },
+        runTimers: () => timers.splice(0).forEach((callback) => callback()),
+    };
+}
+
+async function settle() {
+    for (let i = 0; i < 20; i += 1) {
+        // eslint-disable-next-line no-await-in-loop
+        await Promise.resolve();
+    }
+}
+
+// Audit 2026-11-18 A18-LIFE-1: dispose() tore a run down at once and its finish tore it down
+// again, sizing the canvas the worker already owned (InvalidStateError).
+describe('a portal disposed mid-passage with the gate in a worker', () => {
+    afterEach(() => {
+        vi.unstubAllGlobals();
+        resetPortalGateWorkerForTests();
+    });
+
+    const PENDING = new Promise(() => {});
+
+    it('ends an orb entry without sizing the handed-over canvas, stopping the worker\'s run once', async () => {
+        const gate = handedOverGate(JourneyEntryTransition);
+        const done = gate.transition.play({
+            anchor: { x: 0.4, y: 0.4, radius: 0.1 },
+            callbacks: { onBlackoutReached: () => PENDING },
+        });
+        for (let i = 0; i < 6; i += 1) gate.frame();
+        expect(gate.transition.activeRun.remote).not.toBeNull();
+
+        gate.transition.dispose();
+        await settle();
+        expect(() => gate.runTimers()).not.toThrow();
+        await settle();
+
+        await expect(done).resolves.toMatchObject({ aborted: true, reason: 'dispose' });
+        expect(gate.posted.filter((message) => message.type === 'stop')).toHaveLength(1);
+    });
+
+    it('ends a return to the world the same way, and its play() resolves', async () => {
+        const gate = handedOverGate(JourneyReturnTransition);
+        let result = null;
+        gate.transition.play({
+            departureAnchor: { x: 0.5, y: 0.5, radius: 0.2 },
+            arrivalAnchor: { x: 0.4, y: 0.4, radius: 0.1 },
+            callbacks: { onBlackoutReached: () => PENDING },
+        }).then((value) => { result = value; });
+        for (let i = 0; i < 6; i += 1) gate.frame();
+        expect(gate.transition.activeRun.remote).not.toBeNull();
+
+        gate.transition.dispose();
+        await settle();
+        expect(() => gate.runTimers()).not.toThrow();
+        await settle();
+
+        expect(result).toMatchObject({ aborted: true, reason: 'dispose' });
+        expect(gate.posted.filter((message) => message.type === 'stop')).toHaveLength(1);
     });
 });
