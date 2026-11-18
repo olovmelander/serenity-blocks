@@ -164,9 +164,11 @@ function load(lockedPieces, boardHeight) {
  * Plays the cascade on the scratch board: `ids` then holds the board after it, the fragment
  * arrays the last split's fragments (when it cleared anything).
  * @param {number} boardHeight
+ * @param {number} [firstPlayableRow]
+ * @param {number[]} [waveLines]
  * @returns {{ cascadeCount: number, linesClearedThisTurn: number }}
  */
-function settle(boardHeight) {
+function settle(boardHeight, firstPlayableRow = HIDDEN_ROWS, waveLines) {
     const total = boardHeight * COLS;
     let cascadeCount = 0;
     let linesClearedThisTurn = 0;
@@ -174,7 +176,7 @@ function settle(boardHeight) {
     for (;;) {
         // detectFullLines: bottom-up, never the hidden rows.
         let cleared = 0;
-        for (let y = boardHeight - 1; y >= HIDDEN_ROWS; y -= 1) {
+        for (let y = boardHeight - 1; y >= firstPlayableRow; y -= 1) {
             const base = y * COLS;
             let full = true;
             for (let x = 0; x < COLS && full; x += 1) full = ids[base + x] !== 0;
@@ -183,6 +185,7 @@ function settle(boardHeight) {
             ids.fill(0, base, base + COLS); // removeClearedLines: the survivors keep their cells
         }
         if (cleared === 0) break;
+        waveLines?.push(cleared);
         cascadeCount += 1;
         linesClearedThisTurn += cleared;
 
@@ -290,6 +293,24 @@ function settle(boardHeight) {
         }
     }
     return { cascadeCount, linesClearedThisTurn };
+}
+
+/**
+ * Settle a body-labelled board into a caller-owned array. Negative labels are valid
+ * bodies (the bot uses them for garbage). The result never aliases the solver scratch
+ * buffers, so different players can interleave searches between locks.
+ * @param {Int32Array} board
+ * @param {number} firstPlayableRow
+ * @returns {number[]} cleared lines in each wave
+ */
+export function settleLabelledBoard(board, firstPlayableRow) {
+    ensure(board.length);
+    ids.set(board);
+    lookOf.fill(lookIndex('bot', 'bot'), 0, board.length);
+    const waveLines = [];
+    settle(board.length / COLS, firstPlayableRow, waveLines);
+    board.set(ids.subarray(0, board.length));
+    return waveLines;
 }
 
 /**

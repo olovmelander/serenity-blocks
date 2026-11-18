@@ -14,6 +14,8 @@ import {
     retireOdysseyLevelSession,
 } from '../../src/core/odyssey/odyssey-level-session.js';
 import { createBenchmarkBot } from './profiles.mjs';
+import { GravityBotController } from '../../src/core/ai/gravity-bot-controller.js';
+import { seededRandom } from '../../src/utils/helpers.js';
 import { resolveScenario } from './scenarios.mjs';
 import { createVirtualClock } from './virtual-clock.mjs';
 
@@ -98,7 +100,7 @@ export function summarizeFeel(samples) {
 export async function runAttempt({
     levelId, seed, profile = 'stacker', maxSimSeconds = 900, maxPieces = 1200,
     wallBudgetMs = 20000, trace = false, scenarioId = 'baseline', cadenceId = 'native',
-    lapWindowSeconds = null,
+    lapWindowSeconds = null, liveRival = false, gravityGoalPolicy = null, rivalTier,
 }) {
     const startedAt = wallNow();
     const profileId = typeof profile === 'string' ? profile : profile?.id || profile?.profileId;
@@ -451,7 +453,7 @@ export async function runAttempt({
         });
         if (levelConfig.mechanics.versus) {
             session.duel = new OdysseyBotMatch(session, {
-                seed, isActive, onRoundStart: () => { startRound(); humanBot?.reset(); },
+                seed, isActive, frozenRival: !liveRival, rivalTier, onRoundStart: () => { startRound(); humanBot?.reset(); },
             });
             initialPhysicsPolicy.initialIntervalMs = session.gameState.dropInterval;
             initialPhysicsPolicy.levelProgression = !session.gameState.disableLevelProgression;
@@ -478,6 +480,14 @@ export async function runAttempt({
             getMetrics: () => hybridEngine.getMetrics(),
             getPendingGarbage: () => session.duel?.multiplayer.garbageQueues[0].getTotalLines() || 0,
         });
+        if (gravityGoalPolicy) {
+            const pace = humanBot.config;
+            humanBot = new GravityBotController({ playerState: gameState, playerIndex: 0, difficulty: 10, actions,
+                rng: seededRandom((seed ^ 0x9e3779b9) >>> 0), configOverrides: { reactionMs: pace.reactionMs,
+                    maxApm: 60000 / pace.actionIntervalMs }, planUnitsPerMs: 1.8,
+                pendingRows: () => session.duel?.multiplayer.garbageQueues[0].getTotalLines() || 0,
+                searchConfig: { goal: gravityGoalPolicy === 'objective' ? levelConfig.victory?.primary : null } });
+        }
         fillBag(gameState.nextPieces, gameState.randomGenerator);
         spawnPiece(gameState, null, topOut);
         session.duel?.prepareBot();

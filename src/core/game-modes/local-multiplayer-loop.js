@@ -103,9 +103,6 @@ function getUnsupportedFixedConfigReasons(mode) {
     if (config.isInfinityLMS) reasons.push('Infinity LMS fixed-tick rules are not yet supported');
     if (config.hotPotato || config.attackStyle === 'hot_potato') reasons.push('Hot Potato uses wall time');
     if (config.endCondition === 'time') reasons.push('time-limit matches use wall time');
-    if (config.playerSlots?.some((slot) => (
-        slot?.kind === 'bot' || slot?.type === 'bot' || slot?.isBot === true
-    ))) reasons.push('bots use wall time and unseeded randomness');
     if (
         players.length < 2
         || players.some((player) => !player?.playerInput?.pendingEdges)
@@ -126,7 +123,9 @@ export function configureLocalMultiplayerSimulationClock(mode) {
     stopLocalMultiplayerFixedTickRuntime(loopState.fixedRuntime);
     resetLocalMultiplayerFixedMatchClock(loopState.fixedRuntime);
 
-    const requested = readFlag('fixedTick', false);
+    const includesBot = mode.matchConfig?.playerSlots?.some(slot =>
+        slot?.kind === 'bot' || slot?.type === 'bot' || slot?.isBot === true);
+    const requested = readFlag('fixedTick', Boolean(includesBot));
     const unsupportedReasons = requested ? getUnsupportedFixedConfigReasons(mode) : [];
     loopState.fixedTickEnabled = requested && unsupportedReasons.length === 0;
     loopState.simulationClock = loopState.fixedTickEnabled
@@ -390,7 +389,10 @@ function startFixedLoop(mode) {
             try {
                 runLocalMultiplayerFixedTicks(loopState.fixedRuntime, delta, {
                     ownership,
-                    advanceInput: inputBinding.advanceInput,
+                    advanceInput: (index, context) => {
+                        if (mode.botManager?.isBotPlayer(index)) mode.botManager.advanceFixedInput(index, context);
+                        else inputBinding.advanceInput(index, context);
+                    },
                     applyInput: (playerIndex, command) => applyLocalMultiplayerFixedCommand(command, {
                         gameState: ownership.players[playerIndex],
                         isEnabled: () => (

@@ -1351,7 +1351,6 @@ export class LocalMultiplayerMode extends BaseGameMode {
             this.botManager = new LocalBotManager({
                 actionFactory: (playerIndex) => this._createBotActions(playerIndex),
                 multiplayerState: this.multiplayerState,
-                rng: Math.random,
             });
         } else {
             this.botManager.destroy();

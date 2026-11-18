@@ -294,6 +294,12 @@ export class PuzzleBotController {
         return drain(this.planSteps());
     }
 
+    nextShapeKeys(state) {
+        return getNextShapeKeys(state);
+    }
+
+    reachablePlacements(state) { return findReachablePlacements(state); }
+
     /**
      * One planning stage as steps, deferring to a subclass's synchronous override of it: the
      * benchmark's bots override evaluatePlacements and evaluateFuture, and the step generators
@@ -308,11 +314,11 @@ export class PuzzleBotController {
 
     /** The plan as steps: one yield per placement simulated (here and in the lookahead). */
     * planSteps() {
-        const placements = findReachablePlacements(this.playerState);
+        const placements = this.reachablePlacements(this.playerState);
         if (placements.length === 0) return null;
 
         const boardGrid = this.playerState.boardGrid || this.playerState.board;
-        const nextShapeKeys = getNextShapeKeys(this.playerState);
+        const nextShapeKeys = this.nextShapeKeys(this.playerState);
         const boardOptions = { hiddenRows: this.playerState.isInfinityMode ? 0 : HIDDEN_ROWS };
         const preparationBefore = analyzeCascadePreparation(boardGrid, nextShapeKeys, boardOptions);
 
@@ -420,7 +426,7 @@ export class PuzzleBotController {
         // side-lane — so treat it as "loaded" and don't fritter it on a small clear.
         let machineLoaded = !!loadedLane;
         if (!danger && this.config.latentChainEval !== false) {
-            const nextShapeKeys = getNextShapeKeys(this.playerState);
+            const nextShapeKeys = this.nextShapeKeys(this.playerState);
             const latent = estimateLatentDischarge(boardGrid, preparationBefore.sideLanes, nextShapeKeys, boardOptions);
             if (latent.latentDepth >= (this.config.triggerDepthTarget || 4)) machineLoaded = true;
         }
@@ -516,7 +522,7 @@ export class PuzzleBotController {
         if (!searchState) return candidates;
 
         const boardGrid = searchState.boardGrid || searchState.board;
-        const nextShapeKeys = getNextShapeKeys(searchState);
+        const nextShapeKeys = this.nextShapeKeys(searchState);
         const boardOptions = { hiddenRows: searchState.isInfinityMode ? 0 : HIDDEN_ROWS };
         const preparationBefore = sharedPreparationBefore
             || analyzeCascadePreparation(boardGrid, nextShapeKeys, boardOptions);
@@ -546,7 +552,7 @@ export class PuzzleBotController {
     }
 
     * applyLookaheadSteps(rankedCandidates) {
-        const nextShapeKeys = getNextShapeKeys(this.playerState)
+        const nextShapeKeys = this.nextShapeKeys(this.playerState)
             .slice(0, Math.max(0, this.config.lookaheadDepth || 0));
         if (
             this.config.lookaheadDepth <= 0
@@ -624,7 +630,7 @@ export class PuzzleBotController {
             this.playerState,
             remainingShapeKeys,
         );
-        const placements = searchState ? findReachablePlacements(searchState) : [];
+        const placements = searchState ? this.reachablePlacements(searchState) : [];
         if (placements.length === 0) {
             const result = {
                 candidate: null,

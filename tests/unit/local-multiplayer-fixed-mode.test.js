@@ -5,6 +5,8 @@ import {
     fillBag, spawnPiece,
 } from '../../src/core/game.js';
 import { MultiPlayerState } from '../../src/core/multi-player-state.js';
+import { LocalBotManager } from '../../src/core/ai/local-bot-manager.js';
+import { bindLegacySessionRng } from '../../src/core/session-rng.js';
 import { enqueueInputEdge } from '../../src/core/player-input-state.js';
 import { INPUT_DISPOSITIONS } from '../../src/core/simulation-tick.js';
 import {
@@ -301,8 +303,46 @@ describe('Local Multiplayer fixed mode integration', () => {
         expect(mode.deps.gamepadController.fixedTickInputAdapter.acceptSource(context)).toBe(true);
     });
 
+    it('replays an actual seeded opponent at 60 and 165 Hz across a catch-up frame', () => {
+        window.location.search = '';
+        const run = (hz) => {
+            const slots = [{ kind: 'human' }, { kind: 'bot', difficulty: 7 }];
+            const mode = createMode({ playerSlots: slots });
+            const mp = mode.multiplayerState;
+            mp.sharedPieceSeed = 1021;
+            const bot = mp.players[1];
+            bindLegacySessionRng(bot, mp.sharedPieceSeed);
+            fillBag(bot.nextPieces, bot.randomGenerator);
+            spawnPiece(bot);
+            mode.deps.getMultiplayerPhysicsCallbacks = () => ({ spawnPiece: () => spawnPiece(bot) });
+            mode.botManager = new LocalBotManager({ multiplayerState: mp, actionFactory: () => ({}) });
+            mode.botManager.configure(slots);
+            mode._isBotPlayer = i => i === 1;
+            const controller = mode.botManager.controllers.get(1);
+            const trace = [], adopt = controller.adoptPlan.bind(controller);
+            controller.adoptPlan = p => { trace.push([bot.simFrame, p.actions]); adopt(p); };
+            expect(configureLocalMultiplayerSimulationClock(mode)).toBe(DEMO_FIXED_SIMULATION_CLOCK);
+            startLocalMultiplayerModeLoop(mode);
+            const logic = mode.deps.frameRateController.updateCallback;
+            logic(50, 50);
+            let elapsed = 50;
+            while (elapsed < 4000 - 1e-6) {
+                const dt = Math.min(1000 / hz, 4000 - elapsed);
+                elapsed += dt; logic(elapsed, dt);
+            }
+            const result = { trace, board: bot.boardGrid.map(row => row.map(cell => cell?.type ?? null)),
+                score: bot.score, locks: bot.piecesPlaced, frames: bot.simFrame };
+            stopLocalMultiplayerModeLoop(mode);
+            mode.botManager.destroy();
+            return result;
+        };
+        const regular = run(60);
+        expect(regular.trace.length).toBeGreaterThan(2);
+        expect(regular.locks).toBeGreaterThan(1);
+        expect(run(165)).toEqual(regular);
+    });
+
     it.each([
-        ['bot', { playerSlots: [{ kind: 'human' }, { kind: 'bot' }] }],
         ['Infinity LMS', { isInfinityLMS: true }],
         ['Hot Potato', { attackStyle: 'hot_potato', hotPotato: true }],
         ['time limit', { endCondition: 'time' }],
