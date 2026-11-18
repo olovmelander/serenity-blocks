@@ -474,9 +474,14 @@ export class DemoPlayer {
         const epsilon = 0.0001;
         let operations = 0;
         let sliceStart = cooperativeSeek ? nowMs() : 0;
+        // A pause can begin while this frame waits on a line clear and outlast it.
+        // The paused board refuses commands and ticks, so they stay queued for the
+        // resumed loop instead of counting as replayed. A seek simulates an
+        // unpaused board and runs on.
+        const boardPaused = () => !this.isSeeking && Boolean(this.gameState?.isPaused);
 
         while (this.isPlaying && this._ownsReplay(owner) && this.lastSimulatedTime + epsilon < targetTime) {
-            if (this.gameState?.isGameOver) break;
+            if (this.gameState?.isGameOver || boardPaused()) break;
 
             const nextInput = this.demo.inputs[this.currentInputIndex];
             const nextInputTime = nextInput ? nextInput.t : Infinity;
@@ -525,7 +530,7 @@ export class DemoPlayer {
             && this.demo.inputs[this.currentInputIndex].t <= targetTime + epsilon
         ) {
             const input = this.demo.inputs[this.currentInputIndex];
-            if (input.t > this.lastSimulatedTime + epsilon) break;
+            if (input.t > this.lastSimulatedTime + epsilon || boardPaused()) break;
             await this._applyInput(input, callbacks, { muted: muted || seeking });
             if (!this._ownsReplay(owner)) return;
             this.currentInputIndex++;
