@@ -75,6 +75,13 @@ export const PATCH = Object.freeze({ speed: 3.5, hold: 18, close: 6 });
 export const PATCH_LIGHT = Object.freeze({
     ring: 0.3, ringGain: 1.1, glow: 1.8, glowGain: 1.4, band: 1.6, breathGain: 0.9, heatGain: 0.4,
 });
+/**
+ * How far a clear's flush and the heat of play open the flowers over the whole knoll, as a share
+ * of how far a lock's own patch opens its kind; and how much of the game's extra light a white
+ * petal goes without (a dark one takes it all).
+ */
+export const WASH_OPEN = 0.5;
+export const PALE_HOLD = 0.7;
 /** The breeze's direction across the knoll (unit x, z): down the valley, toward the right. */
 const BREEZE = Object.freeze([0.86, -0.51]);
 
@@ -411,8 +418,11 @@ export class SpringMeadow {
         const albedo = attribute('color', 'vec3');
         // How far the game has opened this plant: a lock's patch of its kind, a clear's flush, the
         // heat of play over the kinds the player has been playing.
-        const opened = this.patches(attribute('aRoot', 'vec4').xyz, head.w).max(u.flush.mul(0.8))
-            .max(this.heatOpen(head.w));
+        // (A lock's own patch opens its flowers widest; a flush or the heat over the whole knoll
+        // opens them less far, or the anemones' white swallowed every other colour on it.)
+        const patched = this.patches(attribute('aRoot', 'vec4').xyz, head.w);
+        const washed = u.flush.mul(0.8).max(this.heatOpen(head.w)).mul(WASH_OPEN);
+        const opened = patched.max(washed);
         // A head opens with the day, and wide when the game opens it.
         const plant = this.stand(0.45, () => {
             const open = u.open.mul(0.42).add(0.58).add(opened.mul(0.7));
@@ -440,10 +450,14 @@ export class SpringMeadow {
             const lit = tone.mul(facing).add(lantern).mul(sun).mul(0.36)
                 .add(tone.mul(sky).mul(1.35))
                 .mul(shade)
-                // Opened by the game, its petals spread to the light: a little brighter, fresher.
-                .add(tone.mul(petal).mul(shine.mul(0.9)).mul(u.fill.mul(1.6).add(u.sun.mul(u.sunUp).mul(0.14))))
-                // The game's light: petals lit from within, the stem and leaves a little.
-                .add(played.mul(petal.mul(0.8).add(0.2)).mul(1.6));
+                // Opened by the game, its petals spread to the light: a little brighter, fresher
+                // (the pale kinds less: they are bright already).
+                .add(tone.mul(petal).mul(shine.mul(0.9)).mul(float(1.0).sub(dot(tone, vec3(0.33)).mul(PALE_HOLD)))
+                    .mul(u.fill.mul(1.6).add(u.sun.mul(u.sunUp).mul(0.14))))
+                // The game's light: petals lit from within, the stem and leaves a little (a pale
+                // petal takes less of it: under quick hands the anemones' glow paled the whole knoll).
+                .add(played.mul(petal.mul(0.8).add(0.2)).mul(1.6)
+                    .mul(float(1.0).sub(dot(tone, vec3(0.33)).mul(petal).mul(PALE_HOLD * 0.6))));
             return vec4(aerial(u, P, lit), 1.0);
         })();
         return material;
