@@ -9,6 +9,11 @@ those parts.
 
 Evidence: [reports/cosmic-noir-lighthouse/](../reports/cosmic-noir-lighthouse/) (listed in §7).
 
+> **2026-11-18:** merged to main on 2026-11-12 as `9aa08dda`. The sea, the rock, the breaking waves
+> and most of the event language below were replaced by the living-night pass:
+> [COSMIC_NOIR_MASTERPIECE_2026-11.md](COSMIC_NOIR_MASTERPIECE_2026-11.md). The stage, the lighthouse,
+> the light in the air and the film described here still stand.
+
 ## 1. The ask and what changed
 
 Olov, 2026-11-12: "visually make the theme Cosmic Noir the most impressive and visually stunning

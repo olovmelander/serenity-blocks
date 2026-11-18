@@ -2,14 +2,14 @@
  * Cosmic Noir — constants and CPU maths shared by the choreography and the shaders.
  * Three-free: the director, the layout and their tests import only this.
  *
- * "The last lighthouse." A black-and-white film of deep space: a lighthouse stands on a shard of
- * rock in a sea of interstellar smoke, at the edge of the dark, with the home galaxy rising over
- * the sea's horizon. A captive pulsar turns in its lantern room behind a ring of shutter slats:
- * two beams sweep round, one raking the sea of smoke (every swell throws a long shadow), one
- * searching the sky, and the lamp's own light leaves between the slats as a fan of shafts whose
- * shadows wheel over the sea like spokes. The picture is graded as a print on one film stock at a
- * time — silver, selenium, sepia, platinum, cyanotype — that drifts by itself and changes reel on a
- * level-up.
+ * "The last lighthouse." A black-and-white film: a lighthouse stands on a low, wet skerry in a
+ * dark sea, at the edge of the dark, with the home galaxy rising over the sea's horizon. A captive
+ * pulsar turns in its lantern room behind a ring of shutter slats: two beams sweep round, one
+ * raking the sea, one searching the sky, and the lamp's own light leaves between the slats as a
+ * fan of shafts. Rollers break on the rock. The night goes round five acts of weather
+ * (cosmic-noir-night.js) and the picture is graded as a black-and-white print whose paper tone
+ * (silver, selenium, sepia, platinum, cyanotype: a breath of each) drifts by itself and changes
+ * reel on a level-up.
  *
  * Units: scene units, y up. The camera stands near the origin; the lighthouse's axis is the
  * vertical through (0, ·, −PULSAR.depth), its lamp PULSAR.height above the eye, and the sea of
@@ -87,8 +87,8 @@ export const TOWER = Object.freeze({
     neckDrop: 3.3,
     neckRadius: 0.98,
     footRadius: 1.72,
-    /** The foot's height above the sea of smoke. */
-    footLift: 1.5,
+    /** The foot's height above the sea. */
+    footLift: 2.3,
     /** The roof: its eave's radius, the dome's rise above the slats, the ball and the rod. */
     eaveRadius: 1.45,
     domeRise: 1.2,
@@ -174,17 +174,22 @@ export const rollerSet = (upstream, setTurn) => ROLLERS.least + (1 - ROLLERS.lea
 export const SHORE_TURN = ROCK.shore / ROLLERS.length;
 
 /**
- * The breaking: a roller that meets the rock throws its smoke up the rock's face. Two live at
- * once (the one breaking and the last one, still hanging).
+ * The breaking: a roller that meets the rock throws its water up the rock's face. Two rollers live
+ * at once (the one breaking and the last one, still hanging), and a third row is kept for the
+ * wave a great moment calls up out of turn.
  */
-export const SPLASH_SLOTS = 2;
+export const ROLLER_SLOTS = 2;
+export const SPLASH_SLOTS = ROLLER_SLOTS + 1;
+/** How hard the wave a great moment calls up breaks (a full roller is 1): it goes over the gallery. */
+export const CALLED_WAVE = 1.9;
 export const SPLASH = Object.freeze({
-    /** How high a full wave throws its smoke (scene units over the sea). */
+    /** How high a full wave throws its spray (scene units over the sea). */
     height: 6.6,
-    /** Seconds it climbs, hangs and tears before it is gone. */
-    rise: 1.15,
-    hang: 2.4,
-    life: 7.5,
+    /**
+     * Seconds before all of it is gone. Under the gale of a fever the waves come 3.3 s apart and a
+     * wave's row is taken again by the wave after next, so no burst may outlive two of those.
+     */
+    life: 6.2,
     /** A full wave under a surge (four lines, a fever) throws this many times as much. */
     surge: 0.6,
 });
@@ -261,6 +266,13 @@ export const ECHO_SEA_MAX = 120;
  */
 export const PUFF_SLOTS = 8;
 export const PUFF_LIFE = 4.5;
+/**
+ * Meteors: a streak of light across the sky. Three lines send one over the board, a perfect clear
+ * a shower of them out of the galaxy, and now and then one falls by itself.
+ */
+export const METEOR_SLOTS = 14;
+/** One moment in every this many seconds may hold a meteor that falls by itself. */
+export const METEOR_GAP = 37;
 /** The flashbulb (four lines): the print flips to its negative for a moment. */
 export const NEGATIVE_HOLD = 0.06;
 export const NEGATIVE_FADE = 0.2;
@@ -283,20 +295,36 @@ export const CUE_SPAN = 0.35 + CUE_GAP + CUE_SHOW;
  * the base the darkest blacks sit on, `grain` the stock's grain. Walked as a LINE, there and back
  * (cyanotype – silver – selenium – sepia – platinum – sepia – …): neighbours are close tones.
  */
+/**
+ * This is a black-and-white picture: a stock's tone is the breath of colour a paper has (a cold
+ * print, a warm one), never a colour of its own. Each recipe below is the toner at full strength;
+ * the print takes this share of it.
+ */
+export const STOCK_TONE = 0.3;
+const toned = (tone) => Object.freeze(tone.map((v) => 1 + (v - 1) * STOCK_TONE));
+const papered = (paper) => {
+    const mean = (paper[0] + paper[1] + paper[2]) / 3;
+    return Object.freeze(paper.map((v) => mean + (v - mean) * STOCK_TONE));
+};
+const stock = ({
+    name, shadow, high, paper, grain,
+}) => Object.freeze({
+    name, shadow: toned(shadow), high: toned(high), paper: papered(paper), grain,
+});
 export const FILM_STOCKS = Object.freeze([
-    Object.freeze({
+    stock({
         name: 'cyanotype', shadow: [0.57, 1.04, 1.84], high: [0.9, 1.0, 1.12], paper: [0.0008, 0.0018, 0.004], grain: 1.0,
     }),
-    Object.freeze({
+    stock({
         name: 'silver', shadow: [0.93, 0.98, 1.1], high: [1.0, 1.0, 1.0], paper: [0.0011, 0.0013, 0.0017], grain: 1.0,
     }),
-    Object.freeze({
+    stock({
         name: 'selenium', shadow: [1.18, 0.93, 1.2], high: [1.02, 0.99, 0.98], paper: [0.0017, 0.0009, 0.0017], grain: 0.9,
     }),
-    Object.freeze({
+    stock({
         name: 'sepia', shadow: [1.32, 0.95, 0.62], high: [1.08, 1.0, 0.85], paper: [0.0024, 0.0014, 0.0008], grain: 1.15,
     }),
-    Object.freeze({
+    stock({
         name: 'platinum', shadow: [1.14, 1.0, 0.84], high: [1.04, 1.02, 0.94], paper: [0.002, 0.0018, 0.0014], grain: 0.85,
     }),
 ]);
@@ -306,9 +334,9 @@ export const FILM_STOCKS = Object.freeze([
  * multiplier keeps luminance about 1, so the toning colours the print without lifting it.
  */
 export const HEAT_TONE = Object.freeze({
-    shadow: Object.freeze([0.6, 0.96, 1.7]),
-    high: Object.freeze([1.24, 1.0, 0.56]),
-    paper: Object.freeze([0.0005, 0.0013, 0.0034]),
+    shadow: toned([0.6, 0.96, 1.7]),
+    high: toned([1.24, 1.0, 0.56]),
+    paper: papered([0.0005, 0.0013, 0.0034]),
 });
 /**
  * The next light: another lighthouse far out on the horizon, under the galaxy. A bearing right of

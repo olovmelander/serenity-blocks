@@ -6,9 +6,10 @@
  */
 import { describe, expect, it } from 'vitest';
 import {
-    CAGE, CUE_GAP, CUE_SHOW, DEG, ECHO_MAX, ECHO_SEA_MAX, ECHO_SPEED, FAR_LAMP, FILM_STOCKS, NEGATIVE_FADE,
-    NEGATIVE_HOLD, PULSAR, ROCK, ROLLERS, ROLLER_MEAN, ROLLER_RATE, ROLLER_SET_RATE, SEA, SEA_FLOOR, SEA_TOP,
-    SHORE_TURN, SPLASH, SPLASH_LEAST, STOCK_HOME, STOCK_REST, STOCK_STEP, SURGE_SET, TAU, TOWER,
+    CAGE, CALLED_WAVE, CUE_GAP, CUE_SHOW, DEG, ECHO_MAX, ECHO_SEA_MAX, ECHO_SPEED, FAR_LAMP, FILM_STOCKS, HEAT_TONE,
+    NEGATIVE_FADE, NEGATIVE_HOLD, PULSAR, ROCK, ROLLERS, ROLLER_MEAN, ROLLER_RATE, ROLLER_SET_RATE, ROLLER_SLOTS, SEA,
+    SEA_FLOOR, SEA_TOP, SHORE_TURN, SPLASH, SPLASH_LEAST, SPLASH_SLOTS, STOCK_HOME, STOCK_REST, STOCK_STEP,
+    STOCK_TONE, SURGE_SET, TAU, TOWER,
     beamDirection, beamLight, cageTransmit, cueAt, echoRadius, echoSeaRadius, farLampAt, lampPose, negativeAt,
     pulsarAnchor, rollerProfile, rollerSet, spinBasis, splashStrength, stockAt, stockName, stockPhase, stockPlace,
 } from '../../src/themes/cosmic-noir/cosmic-noir-core.js';
@@ -77,6 +78,21 @@ describe('cosmic noir core: the film stocks', () => {
             prev = next;
         }
         expect(worst).toBeLessThan(0.02);
+    });
+});
+
+describe('cosmic noir core: a black-and-white picture', () => {
+    it('gives a stock the breath of a tone a paper has, never a colour of its own', () => {
+        expect(STOCK_TONE).toBeLessThanOrEqual(0.35);
+        const widest = (tone) => Math.max(...tone) - Math.min(...tone);
+        [...FILM_STOCKS, HEAT_TONE].forEach((stock) => {
+            // No channel of a print's shadows or highlights stands far from the others.
+            expect(widest(stock.shadow), `${stock.name ?? 'heat'} shadow`).toBeLessThan(0.4);
+            expect(widest(stock.high), `${stock.name ?? 'heat'} high`).toBeLessThan(0.25);
+            // And the toning still keeps the print as bright as it was.
+            expect(luma(stock.shadow)).toBeCloseTo(1, 1);
+            expect(luma(stock.high)).toBeCloseTo(1, 1);
+        });
     });
 });
 
@@ -259,9 +275,12 @@ describe('cosmic noir core: the events\' timing', () => {
         expect(splashStrength(1, 0.5)).toBeCloseTo(1 + SPLASH.surge * 0.5, 6);
         expect(splashStrength(1, 1)).toBeGreaterThan(splashStrength(1, 0.5));
         expect(splashStrength(1, 5)).toBeLessThanOrEqual(1.5);
-        // The plume climbs fast, hangs longer, and is gone before the wave after next.
-        expect(SPLASH.rise).toBeLessThan(SPLASH.hang);
-        expect(SPLASH.life).toBeLessThan(2 / ROLLER_RATE);
+        // A burst is gone before the wave after next takes its row, even when the gale of a fever
+        // brings the rollers in at nearly twice their pace.
+        expect(SPLASH.life).toBeLessThan(2 / (ROLLER_RATE * 1.9));
+        // Two rows for the rollers, and one more for the wave a great moment calls up out of turn.
+        expect(SPLASH_SLOTS).toBe(ROLLER_SLOTS + 1);
+        expect(CALLED_WAVE).toBeGreaterThan(1.5);
     });
 
     it('turns the camera so the lamp hangs exactly at its anchor, over a level horizon below it', () => {

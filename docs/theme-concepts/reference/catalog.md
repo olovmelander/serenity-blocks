@@ -1256,30 +1256,33 @@ Tech split in this slice:
 
 ### 44. cosmic-noir ("Cosmic Noir")
 
-- **Files.** Doc `docs/COSMIC_NOIR_VISUAL_OVERHAUL_2026-10.md` (rebuilt 2026-10-20; the legacy theme is in `docs/COSMIC_NOIR_PERF_AUDIT_2026-06-30.md`). Captures in `reports/cosmic-noir-overhaul/`.
-- **Icon.** A slatted cylindrical lantern lit from within, a star point at its heart, shafts of light fanning above and below it, grey smoke in black.
-- **Look.** "Smoke in the searchlight." A black-and-white film of deep space.
-  - A pulsar turns in the derelict shutter cage of a lantern left of the card (above it on an upright phone).
-  - Its two beams sweep like a lighthouse's through drifting, layered smoke; the slats cut each beam into a fan of shafts (light through blinds).
-  - Most of the frame is black: the smoke shows only where a beam, the core's glow or an event lights it.
-  - Lens: star-filter spikes and a halo round the core, a glare when a beam looks at us.
+- **Files.** Docs `docs/COSMIC_NOIR_MASTERPIECE_2026-11.md` (the living night, 2026-11-18), `docs/COSMIC_NOIR_LIGHTHOUSE_2026-11.md` (the lighthouse, 2026-11-12), `docs/COSMIC_NOIR_VISUAL_OVERHAUL_2026-10.md` (the film; the legacy theme is in `docs/COSMIC_NOIR_PERF_AUDIT_2026-06-30.md`). Captures in `reports/cosmic-noir-masterpiece/`.
+- **Icon.** A banded lighthouse on a wet rock, its slatted lantern blazing with a star filter's spikes, one beam raking out, stars; black and white, in a disc.
+- **Look.** "The last lighthouse", a black-and-white film.
+  - A lighthouse stands on a low, wet skerry of bedded rock in a dark sea, left of the card (above it on an upright phone); a spiral galaxy rises tipped over the horizon to the right, and another light flashes far out under it.
+  - A lamp turns behind a ring of shutter slats: one beam rakes the sea, its opposite searches the sky, and the lamp's own light leaves between the slats as a fan of shafts.
+  - The sea is black mirror water: it shows the night's glow on every wave's far face, the galaxy as a road toward the eye, white water on crests and round the rock, and smoke lying on it in drifts.
+  - Rollers come in sets and break on the rock every six seconds: a burst of torn water, mist and streaking drops, and white water running off the stone.
+  - The night's weather goes round five acts (clear, scud, squall, clearing, fog), one every 110 s and one a level: torn cloud across the galaxy, rain in the beam, sheet lightning, a fog bank.
 - **Palette.**
-  - Luminance only, graded as a print: a soft black point, a filmic curve, grain at 24 fps, dust.
-  - Five toning stocks on a line walked there and back: cyanotype, silver (home), selenium, sepia, platinum. A stock every 100 s by the clock, one per level-up.
-  - Pieces (`cosmic-noir-tetrominos.js`, unchanged): greys from I `#f8f8ff` to L `#3c4049`, GARBAGE `#16181d`.
-- **Motion.** The beams turn every 14 s (faster with a chain, integrated); the cage turns slowly the other way; the smoke drifts on a slow wind and curls; a slow camera dolly.
-- **Gameplay FX** (doc §4).
+  - Luminance only, graded as a print: a soft black point, a filmic curve, grain at 24 fps, dust. Black and white: a stock's tone is a third of its toner (cyanotype, silver (home), selenium, sepia, platinum), a paper's breath, never a colour.
+  - Pieces (`cosmic-noir-tetrominos.js`): silver prints from paper white to a mid grey, by turns a breath cold and warm: I `#f6f6fa`, O `#dcdad4`, T `#c2c7d0`, S `#aaa7a1`, Z `#939aa6`, J `#807d79`, L `#6c727d`, GARBAGE `#2b2d33`.
+- **Motion.** The beams turn every 14 s (faster with a chain, integrated); rollers run in and break; the cloud's two fields slide through each other; rain falls where there is light; a slow camera dolly.
+- **Gameplay FX** (`docs/COSMIC_NOIR_MASTERPIECE_2026-11.md` §5).
 
   | Event | Response |
   | --- | --- |
-  | Lock | Smoke puffs out of the card's nearer edge, lit from within by a dying ember. |
+  | Lock | Two rings of light run out over the dark water beside the card, over an ember under the sea. |
+  | Clear | The lamp flares; a light echo per line runs over the sea to the horizon. Three lines: a meteor over the board. |
+  | Four lines | The flashbulb (the print turns to its own negative for a moment), and a great wave breaks over the rock at once; the far light answers. |
+  | T-spin | The beam whips once round the sea; the slats spin. |
+  | Back-to-back | A fork of lightning falls to the sea beside the board. |
   | Combo | The lighthouse spins up and the blinds open. |
-  | Clear | The pulsar flares; a light echo per line rings out through the smoke. |
-  | Four lines | The flashbulb: the print turns to its own negative for a moment; four echoes; the slats spin. |
-  | T-spin | The cage spins. |
-  | Level up | A reel change: two cue marks top right, and the print turns to the next stock. |
-- **Tech.** A reduced-resolution smoke march with the beams' cores and the echo shells integrated in closed form, a full-resolution backdrop (stars, lantern and its inside in closed form, lens), a baked four-channel 3D noise (worker bake), a luminance-only film post with calm zones; one node renderer on both backends, no compute, no MRT.
-- **Avoid reusing.** Searchlights or lighthouse beams through smoke, slatted or venetian-blind light, film-stock toning and negative flashes, reel-change cue marks, a monochrome noir grade.
+  | Perfect clear | The galaxy blazes and lets a shower of meteors go; a great wave. |
+  | Level up | A reel change: two cue marks, the film's gate rolls once, and the night turns one act on. |
+  | Game over | The iris closes on the lamp. |
+- **Tech.** One full-screen backdrop at the screen's resolution (a heightfield walk to the sea from a baked height-and-slope field, a distance field for the tower plus a CPU-baked half-float volume for the rock, the sky with a cloud deck read from the sea's own field), the light in the air in closed form in a reduced-resolution target, two instanced quads flown in the vertex stage for the burst and the drops, a luminance-only film post with calm zones, an iris and a gate roll. Four worker bakes (smoke, sea, foam lace, rock). One node renderer on both backends; no compute, no MRT.
+- **Avoid reusing.** A lighthouse on a rock with waves bursting on it; searchlight beams through smoke or rain; slatted or venetian-blind light; a weather wheel of squall, lightning and fog in black and white; film-stock toning, negative flashes, reel-change cue marks, a gate roll and an iris-out; a monochrome noir grade.
 
 <a id="chiral-gold"></a>
 

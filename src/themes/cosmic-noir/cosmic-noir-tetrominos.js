@@ -1,22 +1,24 @@
 /**
  * Cosmic Noir Theme - Tetromino Visual Configuration
  *
- * Monochrome palette inspired by noir sci-fi: ink blacks, gunmetal grays,
- * and starlit whites, with a sharp glow to stand out against the void.
+ * A black-and-white picture: the pieces are silver prints, from paper white down to a mid grey.
+ * None goes darker than that (the board they fall on is nearly black, and a piece must read at a
+ * glance), and neighbours on the scale lean by turns a breath cold and a breath warm, as two
+ * papers do, so two greys side by side in the stack are still two pieces.
  */
 
 export const COSMIC_NOIR_TETROMINOS = {
-    version: 1,
+    version: 2,
 
     colors: {
-        I: '#f8f8ff', // Stark white beam
-        O: '#cfd2d6', // Polished steel
-        T: '#b0b5c0', // Dim moonlight lavender-gray
-        S: '#9aa0aa', // Smoke gray
-        Z: '#7f8691', // Gunmetal
-        J: '#5b616c', // Slate shadow
-        L: '#3c4049', // Charcoal edge
-        GARBAGE: '#16181d', // Deep void
+        I: '#f6f6fa', // Paper white: the beam
+        O: '#dcdad4', // Warm white: the lamp's glass
+        T: '#c2c7d0', // Cold silver: moonlit steel
+        S: '#aaa7a1', // Warm grey: wet stone
+        Z: '#939aa6', // Cold grey: the sea under the galaxy
+        J: '#807d79', // Warm mid grey: the tower's dark band
+        L: '#6c727d', // Cold mid grey: slate
+        GARBAGE: '#2b2d33', // Soot
     },
 
     renderMode: 'glow',

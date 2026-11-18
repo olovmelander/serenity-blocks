@@ -20,11 +20,12 @@
  *     ragged by one read of the baked smoke.
  *   - Smoke drifting past the lens is walked in a few long steps (it is large and soft).
  *
- * THE BACKDROP is one full-screen triangle at the screen's own resolution: the sky
- * (cosmic-noir-sky.js), the sea of smoke (cosmic-noir-sea.js), the lighthouse on its rock
+ * THE BACKDROP is one full-screen triangle at the screen's own resolution: the sky and its
+ * weather (cosmic-noir-sky.js), the dark sea (cosmic-noir-sea.js), the lighthouse on its rock
  * (cosmic-noir-lighthouse.js), the glow inside the lantern, then the air's target over them
- * through a small tent, and the lens: the lamp's halo, the star filter's spikes, and the glare when
- * a beam looks at us.
+ * through a small tent, the rain (which shows only where the air is lit), and the lens: the
+ * lamp's halo, the star filter's spikes, and the glare when a beam looks at us. What a breaking
+ * wave throws up is drawn over it by two instanced quads (cosmic-noir-spray.js).
  */
 
 import * as THREE from 'three/webgpu';
@@ -39,6 +40,7 @@ import {
     exp,
     float,
     floor,
+    fract,
     int,
     length,
     max,
@@ -70,6 +72,7 @@ import {
     cnBeam,
     cnBeamSkirt,
     cnCage,
+    cnHash21,
     cnPart,
     cnPassMaterial,
     cnPhase,
@@ -79,9 +82,10 @@ import {
     cnViewRay,
 } from './cosmic-noir-tsl.js';
 import { cnSky } from './cosmic-noir-sky.js';
-import { cnSeaFringe, cnSeaLight, cnSeaMarch } from './cosmic-noir-sea.js';
+import {
+    cnSeaFringe, cnSeaLight, cnSeaMarch, cnSeaTop,
+} from './cosmic-noir-sea.js';
 import { TOWER_BOUNDS, cnLighthouse } from './cosmic-noir-lighthouse.js';
-import { cnSplash } from './cosmic-noir-splash.js';
 
 /** How much a unit of full smoke over a unit of length puts out (thin smoke: noir is mostly dark). */
 const EXTINCTION = 0.36;
@@ -114,6 +118,16 @@ const WISP_NEAR = 1.6;
 const WISP_FAR = 16;
 const WISP_SMOKE = 0.3;
 
+/** Rain: how much of the air's light a streak shows, and of the sky's (lightning). */
+const RAIN_AIR = 1.15;
+const RAIN_SKY = 0.42;
+/** Its sheets, near to far: (columns across a frame's height, rows down it, its pace, its light). */
+const RAIN_SHEETS = Object.freeze([
+    [64, 4.2, 6.6, 1.0],
+    [108, 6.8, 4.9, 0.62],
+    [176, 11.0, 3.6, 0.36],
+]);
+
 /** The lighthouse and its rock, as the air sees them: an upright cylinder and a ball. */
 const PROXY = Object.freeze({
     radius: CAGE.radius + 0.1,
@@ -128,7 +142,7 @@ const PROXY = Object.freeze({
  * @param {object} options  the tier (cosmic-noir-quality.js)
  */
 export function createSmoke(u, {
-    march = 52, shadow = 8, fine = true, tower = 64, air = 14, wisps = 6, splash = 16, detail = true, skyLayers = 3,
+    march = 52, shadow = 8, fine = true, tower = 64, air = 14, wisps = 6, detail = true, skyLayers = 3,
 } = {}) {
     const texel = uniform(new THREE.Vector2(1 / 960, 1 / 540));
     const squash = vec3(1 / (SMOKE.tile * SMOKE.stretch), 1 / SMOKE.tile, 1 / (SMOKE.tile * 1.4));
@@ -292,7 +306,7 @@ export function createSmoke(u, {
         // ── The mist on the sea: an exponential layer, lit by the lamp where the ray comes down ──
         If(reachesSea, () => {
             const fall = ray.y.negate();
-            const depth = float(SEA.mist * SEA.mistHeight).mul(u.haze.div(SMOKE.haze)).div(fall)
+            const depth = float(SEA.mist * SEA.mistHeight).mul(u.mist).mul(u.haze.div(SMOKE.haze)).div(fall)
                 .mul(float(1.0).sub(exp(o.y.sub(SEA.level).div(-SEA.mistHeight))));
             const veil = float(1.0).sub(exp(depth.negate())).toVar();
             const at = o.add(ray.mul(tSea)).add(vec3(0.0, SEA.mistHeight * 0.6, 0.0)).toVar();
@@ -409,8 +423,10 @@ export function createSmoke(u, {
         // ── The sea of smoke ──
         const seaT = float(-1.0).toVar();
         const scene = float(0.0).toVar();
-        // A pixel the lighthouse covers whole needs no sea behind it.
-        If(houseCover.lessThan(0.999).or(houseT.lessThan(0.0)).and(showSea.greaterThan(0.5)), () => {
+        // A pixel the lighthouse covers whole needs no sea behind it; but where the ray met the
+        // rock below the sea's highest reach, the sea may stand in front of it.
+        const awash = o.y.add(ray.y.mul(houseT)).lessThan(cnSeaTop(u));
+        If(houseCover.lessThan(0.999).or(houseT.lessThan(0.0)).or(awash).and(showSea.greaterThan(0.5)), () => {
             const walk = cnSeaMarch(u, o, ray, { march });
             seaT.assign(walk.t);
             If(seaT.greaterThan(0.0), () => {
@@ -428,21 +444,10 @@ export function createSmoke(u, {
             scene.assign(cnSky(u, ray, { layers: skyLayers, detail }));
         });
 
-        // The lighthouse over it, unless the sea stands in front (the smoke laps softly round the rock).
-        const lap = seaT.greaterThan(0.0).select(smoothstep(0.0, 0.5, seaT.sub(houseT)), 1.0);
+        // The lighthouse over it, unless the sea stands in front (it laps softly round the rock).
+        const lap = seaT.greaterThan(0.0).select(smoothstep(0.0, 0.22, seaT.sub(houseT)), 1.0);
         const shown = houseCover.mul(houseT.greaterThan(0.0).select(lap, 0.0)).toVar();
         scene.assign(mix(scene, house.light, shown));
-
-        // ── Waves breaking on the rock: the smoke they throw up, in front of whatever the ray ends on ──
-        const tStop = float(1e4).toVar();
-        If(shown.greaterThan(0.5), () => {
-            tStop.assign(houseT);
-        }).ElseIf(seaT.greaterThan(0.0), () => {
-            tStop.assign(seaT);
-        });
-        const spray = cnSplash(u, o, ray, tStop, { steps: splash });
-        // (No sea, no breaking: the `parts` switch takes the plume with it.)
-        scene.assign(scene.mul(mix(float(1.0), spray.through, showSea)).add(spray.light.mul(showSea)));
 
         // ── Inside the lantern, through the gaps: the smoke round the lens, glowing ──
         // The lens's light over the ray's chord of the room, exactly: ∫ R² / (R² + d² + (t − tc)²) dt.
@@ -463,6 +468,33 @@ export function createSmoke(u, {
         const misted = float(1.0).sub(shown);
         const out = scene.mul(float(1.0).sub(smoke.b.mul(misted))).mul(smoke.a).add(smoke.r).add(smoke.g.mul(misted))
             .toVar();
+
+        // ── Rain: it shows only where there is light to show it ──
+        // Three sheets of it at three ranges, slanted before the wind, each streak a short line
+        // falling at its own pace; lit by the light in the air where it falls (the beam, the
+        // lantern's glow) and by the sky when lightning opens it.
+        If(u.rain.greaterThan(0.01), () => {
+            const lit = smoke.r.mul(RAIN_AIR).add(u.skyGlow.mul(RAIN_SKY)).toVar();
+            const wide = st.x.mul(u.viewport.x.div(u.viewport.y)).add(st.y.mul(u.rainSlant)).toVar();
+            const fall = float(0.0).toVar();
+            RAIN_SHEETS.forEach(([columns, rows, pace, gain], sheet) => {
+                const x = wide.mul(columns).toVar();
+                const column = floor(x).toVar();
+                const own = cnHash21(vec2(column, sheet * 17.0 + 3.0)).toVar();
+                const fallen = u.rainClock.mul(pace).mul(own.mul(0.5).add(0.75));
+                const y = st.y.mul(rows).sub(fallen).add(own.mul(31.0)).toVar();
+                const drop = cnHash21(vec2(column, floor(y)).add(sheet * 7.0)).toVar();
+                const across = fract(x).sub(0.5).sub(drop.sub(0.5).mul(0.5));
+                const along = fract(y);
+                const line = exp(across.mul(across).mul(-90.0))
+                    .mul(smoothstep(0.0, 0.12, along))
+                    .mul(float(1.0).sub(smoothstep(drop.mul(0.35).add(0.3), drop.mul(0.45).add(0.5), along)));
+                // (How many of a sheet's places hold a streak follows how hard it rains.)
+                const least = float(1.0).sub(u.rain.mul(0.6));
+                fall.addAssign(line.mul(gain).mul(smoothstep(least, least.add(0.02), drop)));
+            });
+            out.addAssign(fall.mul(lit).mul(u.breath));
+        });
 
         // ── The lens: halo, star-filter spikes and the glare of a beam looking at us ──
         // (attenuated by the air between us and the lamp, read at the lamp's place).

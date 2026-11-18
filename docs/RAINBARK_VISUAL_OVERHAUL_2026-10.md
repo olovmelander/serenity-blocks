@@ -348,7 +348,7 @@ and the stats panel (the picture's light source since the first pass).
   bring the light back (`u.airShade`; gotcha #805).
 - **A river drawn as an isoline of noise has rings.** `|noise − 0.5| < w` draws contours: closed
   loops and doodles. A river has one course: measure the distance to an analytic curve (gotcha
-  #1315).
+  #1319).
 - **A fringe of sprays across the whole top edge is a pelmet.** Gather them in clumps in the
   corners; hang them from above the frame with the twig coming down into it.
 - **A storey-wrapped thing pops when the lens sees more than a storey at its depth.** An upright

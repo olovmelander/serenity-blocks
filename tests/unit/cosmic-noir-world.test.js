@@ -14,8 +14,8 @@ import {
     COSMIC_NOIR_PARTS, CosmicNoirWorld, REST_RIG, SPIN_REST, fovForAspect,
 } from '../../src/themes/cosmic-noir/cosmic-noir-world.js';
 import {
-    CAGE, ECHO_LIFE, ECHO_SLOTS, NEGATIVE_GAP, PUFF_LIFE, PUFF_SLOTS, ROLLER_RATE, SEA, SPLASH, STOCK_STEP, TAU,
-    farLampAt, stockPlace,
+    CAGE, ECHO_LIFE, ECHO_SLOTS, NEGATIVE_GAP, PUFF_LIFE, PUFF_SLOTS, ROLLER_RATE, ROLLER_SLOTS, SEA, SPLASH,
+    STOCK_STEP, TAU, farLampAt, stockPlace,
 } from '../../src/themes/cosmic-noir/cosmic-noir-core.js';
 import { fallbackLayout } from '../../src/themes/cosmic-noir/cosmic-noir-composition.js';
 import { BLACK_POINT, CosmicNoirPost } from '../../src/themes/cosmic-noir/cosmic-noir-post.js';
@@ -340,20 +340,25 @@ describe('cosmic noir world: gameplay', () => {
         expect(world.counts.waves).toBe(0);
         expect(world.getState().waves.every((wave) => wave.strength === 0)).toBe(true);
         const period = 1 / ROLLER_RATE;
-        // (To a little after the third crest has met the shore: the second still hangs.)
+        // (To a little after the third crest has met the shore.)
         run(world, camera, period * 2.93, 1200);
         expect(world.counts.waves).toBe(3);
         const { waves } = world.getState();
         expect(waves[0].age).toBeGreaterThan(0);
         expect(waves[0].age).toBeLessThan(period);
         expect(waves[1].age).toBeCloseTo(waves[0].age + period, 1);
-        waves.forEach((wave) => {
-            expect(wave.strength).toBeGreaterThan(0.1);
-            expect(wave.strength).toBeLessThanOrEqual(1.5);
-        });
-        // The shaders read the same rows, and the sea round the rock is churned while a plume is young.
-        expect(world.u.tables.splashes[0].x).toBeCloseTo(waves[0].age, 6);
-        expect(world.u.tables.splashes[0].y).toBeCloseTo(waves[0].strength, 6);
+        expect(waves[0].strength).toBeGreaterThan(0.1);
+        expect(waves[0].strength).toBeLessThanOrEqual(1.5);
+        // On a sea at rest the wave before it has gone by now: a burst lasts SPLASH.life, and two
+        // hang at once only when the gale of hot play brings the rollers in faster.
+        expect(waves[1].strength).toBe(0);
+        // (The third row is kept for a wave a great moment calls up: empty by itself.)
+        expect(waves[ROLLER_SLOTS].strength).toBe(0);
+        // A wave keeps its row for as long as it lives (crest k takes row k mod ROLLER_SLOTS), so
+        // the spray in the air never changes hands: the third crest is in row 1, the second in row 0.
+        expect(world.u.tables.splashes[3 % ROLLER_SLOTS].x).toBeCloseTo(waves[0].age, 6);
+        expect(world.u.tables.splashes[3 % ROLLER_SLOTS].y).toBeCloseTo(waves[0].strength, 6);
+        expect(world.u.tables.splashes[2 % ROLLER_SLOTS].x).toBeCloseTo(waves[1].age, 6);
         settle(world, camera, period * 4 - (3.4 / 20) * period + 1.2);
         expect(world.getState().waves[0].age).toBeCloseTo(1.2, 3);
         expect(world.u.seaRoll.value.w).toBeGreaterThan(0.05);
