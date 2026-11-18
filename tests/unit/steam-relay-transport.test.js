@@ -9,7 +9,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
     CONFIG_ICE_ENABLE, FLAG_RELAYED, ICE_DISABLE, IDENTITY_BYTES, INFO_LAYOUT, RELAY_CHANNEL, RELAY_FUNCTIONS,
-    SESSION_STATE, decodeSteamIdentity, encodeSteamIdentity, openRelayTransport, steamApiLibraryPath,
+    SESSION_STATE, decodeSteamIdentity, encodeSteamIdentity, openRelayTransport, relayPumpDue, steamApiLibraryPath,
 } from '../../electron/steam-relay-transport.js';
 import {
     RELAY_UNAVAILABLE_MESSAGE, describeNetworkTransport, lobbyAllowed,
@@ -297,5 +297,26 @@ describe('online play goes through the relays or not at all', () => {
         expect(source).toContain('storeBuild: isStoreBuild({ isPackaged: app.isPackaged }),');
         // sessions are accepted only for members the gate allows
         expect(source).toContain('p2pSessionGate?.allowsSession(steamId) && relayTransport.acceptFrom(steamId)');
+    });
+});
+
+// Audit 2026-11-18 A18-MP-2: on the wall clock, a clock set back stopped every session accept
+// and check until it caught up, so a joiner's session went unanswered.
+describe('the relay session pump\'s clock', () => {
+    it('is due once its interval has passed, and again whenever the clock went back', () => {
+        expect(relayPumpDue(1199, 1000, 200)).toBe(false);
+        expect(relayPumpDue(1200, 1000, 200)).toBe(true);
+        expect(relayPumpDue(40000, 100000, 200)).toBe(true);
+    });
+
+    it('is wired to the monotonic clock, not the wall clock', () => {
+        const source = readFileSync(join(process.cwd(), 'electron', 'steam-integration.js'), 'utf8');
+        const start = source.indexOf('function pumpRelaySessions()');
+        const pump = source.slice(start, source.indexOf('\n}\n', start));
+        expect(source).toMatch(/import \{ performance \} from '(node:)?perf_hooks';/);
+        expect(pump).toContain('const now = performance.now();');
+        expect(pump).not.toContain('Date.now()');
+        expect(pump).toContain('relayPumpDue(now, relayAcceptedAt, RELAY_ACCEPT_EVERY_MS)');
+        expect(pump).toContain('relayPumpDue(now, relayCheckedAt, RELAY_CHECK_EVERY_MS)');
     });
 });

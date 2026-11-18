@@ -71,6 +71,18 @@ const AVAILABILITY = new Map([
 export const SEND_FLAGS_BY_LEGACY_TYPE = Object.freeze([0, 5, 9, 8]);
 export const SEND_AUTO_RESTART = 32;
 
+/**
+ * Whether a throttled step of electron/steam-integration.js's session pump is due. `now` and
+ * `last` come from a monotonic clock; a clock that went back still counts as due, so a stall can
+ * never outlast one interval.
+ * @param {number} now
+ * @param {number} last  when the step last ran
+ * @param {number} everyMs
+ */
+export function relayPumpDue(now, last, everyMs) {
+    return now < last || now - last >= everyMs;
+}
+
 /** The most messages read from Steam in one call. */
 export const MAX_MESSAGES_PER_READ = 32;
 /** Peers whose encoded identity is kept (a lobby holds 8; spectators add a few). */
