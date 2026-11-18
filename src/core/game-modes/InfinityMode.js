@@ -1840,10 +1840,16 @@ export class InfinityMode extends BaseGameMode {
      */
     _buildSteamReceipt({ gameState, simulationClock }) {
         if (!canWriteLegacySimulationResults(simulationClock)) return undefined;
-        return { mode: 'infinity', owner: recordOwner(steamService),
-            flags: steamService.isOnline === false ? SCORE_DETAIL_FLAGS.OFFLINE_SUBMISSION : 0, score: gameState.score, lines: gameState.lines,
-            level: gameState.level, cascade: gameState.infinityStats?.maxComboComplexity || 0,
-            duration: Math.max(1, Math.round(this._runLengthMs(gameState) / 1000)) };
+        return {
+            mode: 'infinity',
+            owner: recordOwner(steamService),
+            flags: steamService.isOnline === false ? SCORE_DETAIL_FLAGS.OFFLINE_SUBMISSION : 0,
+            score: gameState.score,
+            lines: gameState.lines,
+            level: gameState.level,
+            cascade: gameState.infinityStats?.maxComboComplexity || 0,
+            duration: Math.max(1, Math.round(this._runLengthMs(gameState) / 1000)),
+        };
     }
 
     /**

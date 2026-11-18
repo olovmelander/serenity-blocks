@@ -8,7 +8,9 @@
  * Shell: BoardInfoOverlay.js; look: public/styles/odyssey-map.css.
  */
 import { formatOdysseyMapObjective, formatOdysseyStarCondition } from './objective-copy.js';
-import { SteamLeaderboardPanel, friendComparison, formatMilliseconds, modeBoards, steamLeaderboardsAvailable } from '../components/steam-leaderboard-panel.js';
+import {
+    SteamLeaderboardPanel, friendComparison, formatMilliseconds, modeBoards, steamLeaderboardsAvailable,
+} from '../components/steam-leaderboard-panel.js';
 import steamService from '../../core/steam/steam-service.js';
 import { localOrbBest } from '../../core/progression/record-book.js';
 import { getOdysseyLevelBriefing } from './odyssey-level-briefing.js';
@@ -233,8 +235,8 @@ export function renderOdysseyLevelPanel({
         if (board) {
             const note = doc.createElement('p');
             const clock = 'The clock runs until you bank the clear, including a victory lap.';
-            const describeBest = (best) => (best ? 'Unassisted best · ' + formatMilliseconds(best) + '. ' : '') + clock;
-            const records = steamService.records;
+            const describeBest = (best) => (best ? `Unassisted best · ${formatMilliseconds(best)}. ` : '') + clock;
+            const { records } = steamService;
             note.textContent = describeBest(records?.bests?.[board.name]?.score);
             host.appendChild(note);
             records?.manager?.getStatistics().then((snapshot) => {
@@ -256,13 +258,13 @@ export function renderOdysseyLevelPanel({
                 friendComparison(board).then((result) => {
                     if (!result || !host.contains(compare)) return;
                     const parts = [];
-                    if (result.self?.rank) parts.push('My rank #' + result.self.rank);
-                    if (result.friend) parts.push(result.friend.name + ' · ' + formatMilliseconds(result.friend.score));
+                    if (result.self?.rank) parts.push(`My rank #${result.self.rank}`);
+                    if (result.friend) parts.push(`${result.friend.name} · ${formatMilliseconds(result.friend.score)}`);
                     if (result.friend && result.self) {
                         const delta = result.self.score - result.friend.score;
                         parts.push(delta === 0 ? 'Tied' : formatMilliseconds(Math.abs(delta)) + (delta < 0 ? ' ahead' : ' behind'));
                     }
-                    if (parts.length) toggle.textContent = parts.join(' · ') + ' · Compare';
+                    if (parts.length) toggle.textContent = `${parts.join(' · ')} · Compare`;
                 });
             }
         }

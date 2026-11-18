@@ -52,10 +52,13 @@ async function exercise(phase) {
         await manager.addScore(data);
         const store = manager._storeScore.bind(manager);
         manager._storeScore = async () => { throw new Error('test transaction interruption'); };
+        localStorage.setItem('serenity.pendingRun/damaged', '{');
         await manager.addScore({ ...data, runId: 'interrupted' }).catch(() => {});
         manager._storeScore = store;
         await manager.recoverPendingRuns();
-        check((await manager.getStatistics()).totalGames === 2, 'two distinct durable runs');
+        check((await manager.getStatistics()).totalGames === 2, 'a damaged journal entry cannot block the intact finish');
+        check(localStorage.getItem('serenity.pendingRun/damaged') === '{', 'damaged journal retained');
+        check(localStorage.getItem('serenity.pendingRun/interrupted') === null, 'intact journal committed');
         await steam.records.flush();
         check(!uploads.length, 'no public writes before consent');
         steam.getLeaderboard = async (_name, view) => ({ supported: true, entries: [

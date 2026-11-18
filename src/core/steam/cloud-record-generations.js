@@ -2,7 +2,7 @@
 // uploading its old shared snapshot. Read back the new slot before the old one is reused.
 const PREFIX = 'records_v1_';
 const FILE = /^records_v1_([a-z0-9-]+)_(highscores|stats|odyssey|unlocks|stillfall)_([012])\.json$/;
-const kinds = new Set(['highscores','stats','odyssey','unlocks','stillfall']);
+const kinds = new Set(['highscores', 'stats', 'odyssey', 'unlocks', 'stillfall']);
 // Steam Remote Storage's text binding needs a text envelope. Compress larger snapshots
 // before base64 encoding. Small files are kept readable for recovery.
 async function encodePayload(text) {
@@ -23,6 +23,7 @@ async function decodePayload(envelope) {
     let size = 0;
     try {
         for (;;) {
+            // eslint-disable-next-line no-await-in-loop -- Enforce the decompression limit before reading the next chunk.
             const { done, value } = await reader.read();
             if (done) break;
             size += value.byteLength;
@@ -34,11 +35,16 @@ async function decodePayload(envelope) {
 }
 export function protectedFile(file) { return kinds.has(file.replace(/\.json$/, '')); }
 export class CloudRecordGenerations {
-    constructor({ service, device, hash, apply, quarantine, newer }) {
-        Object.assign(this, { service, device, hash, apply, quarantine, newer });
+    constructor({
+        service, device, hash, apply, quarantine, newer,
+    }) {
+        Object.assign(this, {
+            service, device, hash, apply, quarantine, newer,
+        });
         this.loaded = new Map();
         this.restoredFiles = new Set();
     }
+
     async inspect(name) {
         const remote = await this.service.cloudRead(name);
         if (!remote?.supported || remote.success === false) throw new Error('Recovery file unavailable');
@@ -49,7 +55,7 @@ export class CloudRecordGenerations {
             if (envelope.version !== 1 || !Number.isSafeInteger(envelope.generation) || envelope.generation < 1 || typeof envelope.payload !== 'string') throw new Error('Invalid generation');
             const payload = await decodePayload(envelope);
             if (await this.hash(payload) !== envelope.digest) throw new Error('Cloud checksum mismatch');
-            if (this.newer?.(FILE.exec(name)?.[2] + '.json', JSON.parse(payload))) {
+            if (this.newer?.(`${FILE.exec(name)?.[2]}.json`, JSON.parse(payload))) {
                 this.quarantine(name, remote.data);
                 return { future: true };
             }
@@ -59,6 +65,7 @@ export class CloudRecordGenerations {
             return { damaged: true };
         }
     }
+
     async restore() {
         const files = await this.service.cloudList();
         if (!Array.isArray(files)) throw new Error('Could not enumerate Cloud recovery records');
@@ -67,11 +74,12 @@ export class CloudRecordGenerations {
         for (const { name } of files) {
             const match = FILE.exec(name);
             if (!match) continue;
-            const group = match[1] + '_' + match[2];
+            const group = `${match[1]}_${match[2]}`;
             if (!groups.has(group)) groups.set(group, []);
+            // eslint-disable-next-line no-await-in-loop -- Check one potentially large snapshot at a time and stop on a future schema.
             const envelope = await this.inspect(name);
             if (envelope?.future) return false;
-            if (envelope && !envelope.damaged) groups.get(group).push({ ...envelope, name, file: match[2] + '.json' });
+            if (envelope && !envelope.damaged) groups.get(group).push({ ...envelope, name, file: `${match[2]}.json` });
         }
         let healthy = true;
         for (const versions of groups.values()) {
@@ -79,6 +87,7 @@ export class CloudRecordGenerations {
             for (const v of versions.sort((a, b) => b.generation - a.generation)) {
                 try {
                     if (this.loaded.get(v.name) !== v.digest) {
+                        // eslint-disable-next-line no-await-in-loop -- Try the next older generation only if applying this one failed.
                         if (await this.apply(v.file, JSON.parse(v.payload)) === false) throw new Error('Incompatible recovery document');
                         this.loaded.set(v.name, v.digest);
                     }
@@ -91,11 +100,12 @@ export class CloudRecordGenerations {
         }
         return healthy;
     }
+
     async write(file, payload) {
         const kind = file.replace(/\.json$/, '');
         if (!kinds.has(kind) || !/^[a-z0-9-]{1,80}$/.test(this.device)) throw new Error('Invalid Cloud writer');
-        const prefix = PREFIX + this.device + '_' + kind + '_';
-        const names = [0, 1, 2].map((slot) => prefix + slot + '.json');
+        const prefix = `${PREFIX}${this.device}_${kind}_`;
+        const names = [0, 1, 2].map((slot) => `${prefix}${slot}.json`);
         const slots = await Promise.all(names.map((name) => this.inspect(name)));
         if (slots.some((s) => s?.future)) throw new Error('This save requires a newer game');
         if (slots.every((s) => s?.damaged)) throw new Error('Cloud recovery slots need repair');
@@ -106,7 +116,9 @@ export class CloudRecordGenerations {
         if (same >= 2) return;
         const generation = previous?.digest === digest ? previous.generation : (previous?.generation || 0) + 1;
         const encoded = await encodePayload(payload);
-        const json = JSON.stringify({ version: 1, generation, digest, ...encoded });
+        const json = JSON.stringify({
+            version: 1, generation, digest, ...encoded,
+        });
         const store = async (slot) => {
             const result = await this.service.cloudWrite(names[slot], json, { queueIfOffline: false });
             if (!result?.success || result.queued) throw new Error('Recovery write pending');
@@ -118,6 +130,7 @@ export class CloudRecordGenerations {
         // mirror write leaves at least one current copy and at least one previous copy.
         for (const slot of order.reverse()) {
             if (slots[slot]?.generation === generation && slots[slot]?.digest === digest) continue;
+            // eslint-disable-next-line no-await-in-loop -- Read back each new copy before reusing the next slot.
             await store(slot);
             if (++copies >= 2) break;
         }

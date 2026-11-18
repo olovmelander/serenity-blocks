@@ -3651,11 +3651,16 @@ export class OdysseyMode extends BaseGameMode {
             return;
         }
         const time = Number(results.time);
-        return this.deps.highScoreManager?.saveCompletion(runIdFor(session), {
-            mode: 'odyssey', owner: recordOwner(steamService),
-            flags: steamService.isOnline === false ? SCORE_DETAIL_FLAGS.OFFLINE_SUBMISSION : 0, level: Number(session.levelId),
-            lines: results.lines || 0, score: results.score || 0, duration: Math.max(0, Math.round(time || 0)),
-            stars: this.odysseyState.getTotalStars(), timeMs: Math.max(0, Math.round((time || 0) * 1000)),
+        await this.deps.highScoreManager?.saveCompletion(runIdFor(session), {
+            mode: 'odyssey',
+            owner: recordOwner(steamService),
+            flags: steamService.isOnline === false ? SCORE_DETAIL_FLAGS.OFFLINE_SUBMISSION : 0,
+            level: Number(session.levelId),
+            lines: results.lines || 0,
+            score: results.score || 0,
+            duration: Math.max(0, Math.round(time || 0)),
+            stars: this.odysseyState.getTotalStars(),
+            timeMs: Math.max(0, Math.round((time || 0) * 1000)),
             assisted: !isOdysseyTimeBoardRun(session.levelConfig, results),
         });
     }
@@ -3669,7 +3674,8 @@ export class OdysseyMode extends BaseGameMode {
         // mode state it needs; caller contract (returns the modal element) is unchanged.
         return createResultsModal({
             results,
-            records: this.deps?.highScoreManager, runId: session ? runIdFor(session) : null,
+            records: this.deps?.highScoreManager,
+            runId: session ? runIdFor(session) : null,
             onClose,
             levelConfig: session?.levelConfig || this.currentLevelConfig,
             levelId: session?.levelId || this.currentLevelId,

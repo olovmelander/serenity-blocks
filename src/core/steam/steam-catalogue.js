@@ -23,8 +23,15 @@ const names = STEAM_LEADERBOARDS;
 const boards = Object.create(null);
 function define(name, label, mode, unit = 'Numeric', orb = 0) {
     // Valve ELeaderboardSortMethod and ELeaderboardDisplayType values for the flat SDK.
-    boards[name] = Object.freeze({ name, label, mode, unit, orb, sort: orb ? 1 : 2,
-        display: { Numeric: 1, TimeSeconds: 2, TimeMilliSeconds: 3 }[unit] });
+    boards[name] = Object.freeze({
+        name,
+        label,
+        mode,
+        unit,
+        orb,
+        sort: orb ? 1 : 2,
+        display: { Numeric: 1, TimeSeconds: 2, TimeMilliSeconds: 3 }[unit],
+    });
 }
 define(names.SINGLE_PLAYER_HIGH_SCORE, 'Score', 'single');
 define(names.SINGLE_PLAYER_LINES, 'Lines', 'single');
@@ -33,7 +40,7 @@ define(names.INFINITY_SURVIVAL_TIME, 'Survival', 'infinity', 'TimeSeconds');
 define(names.INFINITY_BEST_CASCADE, 'Cascade', 'infinity');
 define(names.ODYSSEY_TOTAL_STARS, 'Campaign stars', 'odyssey');
 for (let orb = 1; orb <= 60; orb++) {
-    if (orb !== 39 && orb !== 58) define(names.ODYSSEY_LEVEL_TIME_PREFIX + orb, 'Orb ' + orb, 'odyssey', 'TimeMilliSeconds', orb);
+    if (orb !== 39 && orb !== 58) define(names.ODYSSEY_LEVEL_TIME_PREFIX + orb, `Orb ${orb}`, 'odyssey', 'TimeMilliSeconds', orb);
 }
 export const BOARDS = Object.freeze(boards);
 export const betterScore = (name, value, previous) => previous == null
@@ -46,8 +53,10 @@ export function isEligibleScore(name, score, details) {
     const [version, seconds, lines, level, metric, flags, checksum] = details;
     if (version !== 1 || ![seconds, lines, level, metric, flags].every(isScoreInt)
         || !Number.isInteger(checksum) || (checksum | 0) !== checksum || (flags & ~15) || (flags & 4)) return false;
-    if (board.orb) return score > 0 && level === board.orb && score === metric
+    if (board.orb) {
+        return score > 0 && level === board.orb && score === metric
         && Math.abs(seconds - score / 1000) <= 1;
+    }
     if (name === names.ODYSSEY_TOTAL_STARS) return score === metric && score <= 180;
     if (name === names.SINGLE_PLAYER_LINES) return score === lines;
     if (name === names.INFINITY_SURVIVAL_TIME) return score > 0 && score === seconds;

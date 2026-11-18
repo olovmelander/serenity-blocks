@@ -225,7 +225,8 @@ function mergeSteamBaseline(a, b) {
 /** Legacy snapshots share a baseline. Every later finish is uniquely attributable. */
 export function mergeStatisticsSnapshots(local, incoming) {
     if (!local?.recordBook && !incoming?.recordBook) return mergeLegacyStatistics(local, incoming);
-    const a = local?.recordBook, b = incoming?.recordBook;
+    const a = local?.recordBook;
+    const b = incoming?.recordBook;
     const base = mergeLegacyStatistics(a ? a.base : local, b ? b.base : incoming);
     const result = mergeLegacyStatistics(null, base);
     const runs = Object.create(null);
@@ -252,6 +253,8 @@ export function mergeStatisticsSnapshots(local, incoming) {
         }
     }
     const steamBase = mergeSteamBaseline(a?.steamBase, b?.steamBase);
-    result.recordBook = { version: 1, base, runs, ...(Object.keys(earned).length ? { earned } : {}), ...(steamBase ? { steamBase } : {}) };
+    result.recordBook = {
+        version: 1, base, runs, ...(Object.keys(earned).length ? { earned } : {}), ...(steamBase ? { steamBase } : {}),
+    };
     return result;
 }

@@ -34,22 +34,26 @@ export function matchStatsForSteam(reported, {
 }
 
 /**
- * Add an online match to this player's Steam stats and leaderboards (best effort; the
- * caller does not wait).
- * @param {{ finalStats?: Array<Record<string, any>>, duration?: number }} detail the match result
- * @param {{ localSteamId?: string|null, rounds?: number, localLines?: number, records?: any, matchId?: string }} local
+ * Persist one personal match contribution using the host's stable finish ID.
+ * @param {{ finalStats?: Array<Record<string, any>>, duration?: number, recordId?: string }} detail the match result
+ * @param {{ localSteamId?: string|null, rounds?: number, localLines?: number, records?: any }} local
  */
-export async function syncFfaSteamStats(detail, { localSteamId, rounds = 1, localLines, records, matchId } = {}) {
-    if (!detail?.finalStats || !localSteamId) return;
+export async function syncFfaSteamStats(detail, {
+    localSteamId, rounds = 1, localLines, records,
+} = {}) {
+    if (!detail?.recordId || !detail.finalStats || !localSteamId || !records) return;
     const localStats = detail.finalStats.find((entry) => `${entry.steamId}` === `${localSteamId}`);
     if (!localStats) return;
 
     const counted = matchStatsForSteam(localStats, {
         players: detail.finalStats.length, rounds, localLines, durationMs: detail.duration,
     });
-    if (!matchId || !records) return;
-    await records.saveCompletion('ffa:' + matchId + ':' + localSteamId, {
-        mode: 'ffa', owner: recordOwner(steamService), lines: counted.lines, kills: counted.kills,
-        duration: counted.minutes * 60, win: counted.isWinner,
+    await records.saveCompletion(`ffa:${detail.recordId}:${localSteamId}`, {
+        mode: 'ffa',
+        owner: recordOwner(steamService),
+        lines: counted.lines,
+        kills: counted.kills,
+        duration: counted.minutes * 60,
+        win: counted.isWinner,
     });
 }

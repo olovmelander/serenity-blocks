@@ -121,12 +121,14 @@ export function createResultsModal({
     const ranksTime = includeLegacyResults && hasOdysseyTimeBoard(levelConfig) && isOdysseyTimeBoardRun(levelConfig, results) && timeMs > 0;
     statsContainer.appendChild(createFact('Time', ranksTime ? formatMilliseconds(timeMs) : formatTime(timeMs)));
     if (includeLegacyResults && hasOdysseyTimeBoard(levelConfig) && records) {
-        void records.getStatistics().then((snapshot) => {
+        records.getStatistics().then((snapshot) => {
             const previous = localOrbBest(snapshot.recordBook, levelId, runId);
             if (previous !== null) {
                 statsContainer.appendChild(createFact('Previous unassisted best', formatMilliseconds(previous)));
-                if (ranksTime) statsContainer.appendChild(createFact('This run', timeMs === previous ? 'Tied' :
-                    formatMilliseconds(Math.abs(timeMs - previous)) + (timeMs < previous ? ' faster' : ' slower')));
+                if (ranksTime) {
+                    statsContainer.appendChild(createFact('This run', timeMs === previous ? 'Tied'
+                        : formatMilliseconds(Math.abs(timeMs - previous)) + (timeMs < previous ? ' faster' : ' slower')));
+                }
             } else if (ranksTime) statsContainer.appendChild(createFact('Local record', 'First unassisted clear'));
         }).catch(() => {});
     }

@@ -1470,7 +1470,6 @@ export class SinglePlayerMode extends BaseGameMode {
                 runId: runIdFor(gameState),
                 receipt: await this._buildSteamReceipt(stoppedSession),
             }, '[SinglePlayer]');
-
         } else {
             console.info(
                 '[SinglePlayer] Experimental simulation clock; legacy score/stat writes skipped:',
@@ -1552,7 +1551,7 @@ export class SinglePlayerMode extends BaseGameMode {
             !gameState
             || !canWriteLegacySinglePlayerResults(simulationClock)
         ) {
-            return;
+            return undefined;
         }
 
         const {
@@ -1581,9 +1580,16 @@ export class SinglePlayerMode extends BaseGameMode {
             flags |= SCORE_DETAIL_FLAGS.REPLAY_MISMATCH;
         }
 
-        return { mode: 'single', owner: recordOwner(steamService), score: gameState.score,
-            lines: gameState.lines, level: gameState.level, duration: durationSeconds, flags,
-            checksum: replayProof.checksum32 || 0 };
+        return {
+            mode: 'single',
+            owner: recordOwner(steamService),
+            score: gameState.score,
+            lines: gameState.lines,
+            level: gameState.level,
+            duration: durationSeconds,
+            flags,
+            checksum: replayProof.checksum32 || 0,
+        };
     }
 
     /**

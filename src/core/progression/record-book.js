@@ -1,4 +1,6 @@
-import { ACHIEVEMENTS, BOARDS, STEAM_LEADERBOARDS as N, STAT_NAMES, isScoreInt, betterScore, isEligibleScore } from '../steam/steam-catalogue.js';
+import {
+    ACHIEVEMENTS, BOARDS, STEAM_LEADERBOARDS as N, STAT_NAMES, isScoreInt, betterScore, isEligibleScore,
+} from '../steam/steam-catalogue.js';
 import { packScoreDetails } from '../steam/leaderboard-score-details.js';
 
 const runIds = new WeakMap();
@@ -7,13 +9,13 @@ export function runIdFor(session) {
     return runIds.get(session);
 }
 export function recordOwner(service) {
-    return service.steamId && service.appId ? String(service.appId) + '/' + service.steamId : null;
+    return service.steamId && service.appId ? `${String(service.appId)}/${service.steamId}` : null;
 }
 const modes = new Set(['single', 'infinity', 'odyssey', 'ffa']);
 export function validRun(id, run) {
-    return typeof id === 'string' && /^[a-zA-Z0-9:_-]{1,150}$/.test(id) && !['constructor','prototype','__proto__'].includes(id)
+    return typeof id === 'string' && /^[a-zA-Z0-9:_-]{1,150}$/.test(id) && !['constructor', 'prototype', '__proto__'].includes(id)
         && run && modes.has(run.mode) && (run.owner == null || /^\d+\/\d{1,20}$/.test(run.owner))
-        && ['score','lines','level','duration','cascade','timeMs','stars','kills'].every((key) => run[key] == null || (Number.isSafeInteger(run[key]) && run[key] >= 0))
+        && ['score', 'lines', 'level', 'duration', 'cascade', 'timeMs', 'stars', 'kills'].every((key) => run[key] == null || (Number.isSafeInteger(run[key]) && run[key] >= 0))
         && (run.mode !== 'odyssey' || (run.level >= 1 && run.level <= 60 && run.stars <= 180))
         && (!run.flags || (isScoreInt(run.flags) && !(run.flags & ~15)))
         && (!run.checksum || Number.isInteger(run.checksum));
@@ -31,9 +33,16 @@ export function localOrbBest(book, levelId, excludeId = null) {
 export function asGuestStatistics(stats) {
     if (!stats?.recordBook) return stats;
     const { base, runs } = stats.recordBook;
-    return { ...stats, recordBook: { version: 1, base, runs: Object.fromEntries(
-        Object.entries(runs || {}).filter(([id, run]) => validRun(id, run)).map(([id, run]) => [id, { ...run, owner: null }]),
-    ) } };
+    return {
+        ...stats,
+        recordBook: {
+            version: 1,
+            base,
+            runs: Object.fromEntries(
+                Object.entries(runs || {}).filter(([id, run]) => validRun(id, run)).map(([id, run]) => [id, { ...run, owner: null }]),
+            ),
+        },
+    };
 }
 
 // Only the old, account-owned Cloud payload is eligible for milestone backfill.
@@ -59,7 +68,9 @@ export function legacyAwards(file, data) {
 
 export function assessRecords(book = {}, owner = null) {
     const values = Object.fromEntries(STAT_NAMES.map((name) => [name, Number(book.steamBase?.[name]) || 0]));
-    const bests = Object.create(null), earned = new Set((book.earned?.[owner] || []).filter((id) => ACHIEVEMENTS.includes(id))), orbs = new Set();
+    const bests = Object.create(null);
+    const earned = new Set((book.earned?.[owner] || []).filter((id) => ACHIEVEMENTS.includes(id)));
+    const orbs = new Set();
     const best = (name, score, details, id) => {
         if (isEligibleScore(name, score, details) && betterScore(name, score, bests[name]?.score)) {
             bests[name] = { score, details, id };
@@ -67,7 +78,8 @@ export function assessRecords(book = {}, owner = null) {
     };
     for (const [id, r] of Object.entries(book.runs || {})) {
         if (!validRun(id, r) || r.owner !== owner) continue;
-        const lines = r.lines || 0, duration = r.duration || 0;
+        const lines = r.lines || 0;
+        const duration = r.duration || 0;
         values.playtime_minutes += Math.max(1, Math.round(duration / 60));
         values.total_lines_cleared += lines;
         if (r.mode === 'ffa') {
@@ -79,7 +91,9 @@ export function assessRecords(book = {}, owner = null) {
         // Local records can exceed Steam's signed int32 format. Do not let packing
         // silently clamp a detail and turn it into a different public result.
         const compatible = [duration, lines, r.level ?? 0, r.cascade ?? 0].every(isScoreInt);
-        const details = compatible ? packScoreDetails({ duration, lines, level: r.level, flags: r.flags, checksum32: r.checksum }) : [];
+        const details = compatible ? packScoreDetails({
+            duration, lines, level: r.level, flags: r.flags, checksum32: r.checksum,
+        }) : [];
         if (r.mode === 'odyssey') {
             orbs.add(r.level);
             earned.add('ACH_ODYSSEY_FIRST_ORB');

@@ -2057,15 +2057,12 @@ class SerenityBlocks {
         });
     }
 
-    /**
-     * Initialize all manager systems
-     */
     async initializeManagers() {
         // High score and demo managers lazily initialize their IndexedDB handles on first use.
         // Do not block desktop startup on storage availability.
         this.highScoreManager = new HighScoreManager();
         steamService.records.manager = this.highScoreManager;
-        void this.highScoreManager.recoverPendingRuns();
+        this.highScoreManager.recoverPendingRuns();
         this.demoManager = new DemoManager();
 
         // Settings

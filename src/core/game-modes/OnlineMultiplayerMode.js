@@ -725,16 +725,12 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         this._activateMatch();
     }
 
-    /**
-     * Handle match results (game over)
-     */
     _handleMatchResults(detail) {
         if (!detail || detail.isGameOver !== true) {
             return;
         }
 
         syncFfaSteamStats(detail, {
-            matchId: detail.recordId,
             records: this.deps?.highScoreManager,
             localSteamId: this.steamNetworking?.steamId,
             rounds: this.roundNumber,
@@ -802,8 +798,6 @@ export class OnlineMultiplayerMode extends BaseGameMode {
                 this._handleReturnToLobby();
             }, AUTO_RETURN_MS);
         }
-
-
     }
 
     /** Cancel the results-screen host-idle auto-advance timer (host only sets it). */

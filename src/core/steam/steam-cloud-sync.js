@@ -148,15 +148,19 @@ export class SteamCloudSyncManager {
 
         this.deviceId = this._loadDeviceId();
         this.manifest = this._loadManifest();
-        this.generations = new CloudRecordGenerations({ service: steamService, device: this.deviceId,
-            hash: (json) => this._computeHash(json), apply: async (name, data) => {
+        this.generations = new CloudRecordGenerations({
+            service: steamService,
+            device: this.deviceId,
+            hash: (json) => this._computeHash(json),
+            apply: async (name, data) => {
                 if ([CLOUD_FILES.HIGHSCORES, CLOUD_FILES.STATS].includes(name)) this._validated(name, JSON.stringify(data));
                 const applied = await this._applyCloudData(name, data);
                 if (applied !== false) this._confirmBaseline(name, data);
                 return applied;
             },
             quarantine: (name, raw) => this._quarantine(name, raw),
-            newer: (name, data) => this._newerCloudData(name, data) });
+            newer: (name, data) => this._newerCloudData(name, data),
+        });
         this.recovered = false;
         this.cloudIssue = null;
         this.recoveryReadDone = false;
@@ -349,6 +353,7 @@ export class SteamCloudSyncManager {
         // waiting behind the active upload when another save rewrites the ledger.
         entries.forEach(([fileName, entry]) => this.uploadingEntries.set(fileName, entry));
         entries.forEach(([fileName]) => this.pendingUploads.delete(fileName));
+        /* eslint-disable no-await-in-loop -- Each ledger entry reconciles and verifies its own write before the next starts. */
         for (const [fileName, entry] of entries) {
             const { payload: cachedPayload } = entry;
             let payload = cachedPayload;
@@ -363,7 +368,6 @@ export class SteamCloudSyncManager {
                     // after another device earned a reward. Read and union at
                     // the write boundary too; otherwise this upload would erase
                     // the only remote copy before reconciliation could read it.
-                    // eslint-disable-next-line no-await-in-loop -- Union must precede this document's upload.
                     const remote = await steamService.cloudRead(fileName);
                     if (!remote?.supported || remote.success === false) {
                         throw new Error('Collection cloud read unavailable');
@@ -383,7 +387,6 @@ export class SteamCloudSyncManager {
                     // Played-theme history can be the only recovery evidence
                     // after a collection write fails. Preserve remote history
                     // before every upload, including a newer local clock.
-                    // eslint-disable-next-line no-await-in-loop -- Union must precede the Odyssey upload.
                     const remote = await steamService.cloudRead(fileName);
                     if (!remote?.supported || remote.success === false) {
                         throw new Error('Odyssey cloud read unavailable');
@@ -420,7 +423,6 @@ export class SteamCloudSyncManager {
                     && this.highScoreManager) {
                     // Another device's games may not be here yet: first launch,
                     // offline play, or a save queued before the initial sync.
-                    // eslint-disable-next-line no-await-in-loop -- The merge must precede this document's upload.
                     await this._mergeRemoteRecords(fileName);
                     payload = null;
                 }
@@ -441,7 +443,7 @@ export class SteamCloudSyncManager {
                 }
                 throw new Error(result?.error || 'Steam did not confirm the Cloud write');
             } catch (error) {
-                this.cloudIssue = 'Steam Cloud save pending for ' + fileName + '. ' + error.message;
+                this.cloudIssue = `Steam Cloud save pending for ${fileName}. ${error.message}`;
                 console.warn('[SteamCloud] Upload deferred:', fileName, error.message);
             } finally {
                 this.uploadingEntries.delete(fileName);
@@ -452,6 +454,7 @@ export class SteamCloudSyncManager {
                 this.pendingUploads.set(fileName, { ...entry, payload, editRevisions: editsSent });
             }
         }
+        /* eslint-enable no-await-in-loop */
         this._savePending();
         if (!this.pendingUploads.size && this.cloudIssue?.startsWith('Steam Cloud save pending')) this.cloudIssue = null;
         await this._uploadManifest();
@@ -483,13 +486,13 @@ export class SteamCloudSyncManager {
             let cloudManifest = null;
             const remoteNames = (manifestResponse.data == null && this._usesGenerations()) ? (await steamService.cloudList()).map((f) => f.name) : [];
             if (manifestResponse.data != null || remoteNames.some((name) => Object.values(CLOUD_FILES).includes(name))) {
-                try { cloudManifest = this._validated(CLOUD_FILES.MANIFEST, manifestResponse.data); }
-                catch {
+                try { cloudManifest = this._validated(CLOUD_FILES.MANIFEST, manifestResponse.data); } catch {
                     // Even a damaged legacy index can have healthy payloads. Read them individually
                     // before authorizing any write, including settings and controller bindings.
                     const original = safeParse(manifestResponse.data);
                     if (!this._usesGenerations() || original?.schemaVersion > 1 || original?.version > 1) return;
                     cloudManifest = { files: {} };
+                    /* eslint-disable no-await-in-loop -- Inspect and hash one save at a time; abort on the first unrecoverable file. */
                     for (const name of Object.values(CLOUD_FILES).filter((n) => n !== CLOUD_FILES.MANIFEST)) {
                         const raw = await steamService.cloudRead(name);
                         if (!raw?.supported || raw.success === false) return;
@@ -503,6 +506,7 @@ export class SteamCloudSyncManager {
                             cloudManifest.files[name] = { hash: await this._computeHash(raw.data), updatedAt: parsed.updatedAt || 0 };
                         }
                     }
+                    /* eslint-enable no-await-in-loop */
                 }
             }
             this.recoveryReadDone = true;
@@ -529,7 +533,7 @@ export class SteamCloudSyncManager {
             await this._uploadManifest();
             if (this.recovered) this._recordsReady();
         } catch (error) {
-            this.cloudIssue = 'Cloud recovery pending: ' + error.message;
+            this.cloudIssue = `Cloud recovery pending: ${error.message}`;
             console.warn('[SteamCloud] Recovery pending:', error.message);
         } finally {
             this.syncInProgress = false;
@@ -724,8 +728,12 @@ export class SteamCloudSyncManager {
     }
 
     _quarantine(fileName, raw) {
-        try { localStorage.setItem('steam-recovery/' + fileName + '/' + fallbackHash(String(raw)), String(raw)); } catch {}
-        this.cloudIssue = 'Cloud recovery needed for ' + fileName;
+        try {
+            localStorage.setItem(`steam-recovery/${fileName}/${fallbackHash(String(raw))}`, String(raw));
+        } catch {
+            // The original Cloud file is still available if local storage is full.
+        }
+        this.cloudIssue = `Cloud recovery needed for ${fileName}`;
     }
 
     _newerCloudData(name, data) {
@@ -769,7 +777,7 @@ export class SteamCloudSyncManager {
         }
         if (!valid) {
             this._quarantine(fileName, raw);
-            throw new Error('Steam Cloud recovery needed for ' + fileName);
+            throw new Error(`Steam Cloud recovery needed for ${fileName}`);
         }
         return doc;
     }
@@ -793,8 +801,7 @@ export class SteamCloudSyncManager {
         // Absent or unreadable: there is nothing left to preserve.
         if (remote.data == null) return;
         let incoming;
-        try { incoming = this._validated(fileName, remote.data); }
-        catch (error) {
+        try { incoming = this._validated(fileName, remote.data); } catch (error) {
             // The version we restored is the recovery source for a damaged legacy mirror.
             // A newer schema is always left intact for the version that understands it.
             const doc = safeParse(remote.data);

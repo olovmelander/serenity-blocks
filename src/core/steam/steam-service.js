@@ -14,6 +14,7 @@ import {
     STEAM_APP_ID,
     STEAM_EVENTS,
     STEAM_RETRY,
+    steamRetryDelayMs,
     STEAM_CONNECTION,
     STEAM_STORAGE_KEYS,
     STEAM_DEFAULTS,
@@ -823,11 +824,7 @@ class SteamService {
     }
 
     _getQueueBackoffMs(attempts) {
-        const exponent = Math.max(0, attempts - 1);
-        const base = OFFLINE_QUEUE_BACKOFF.BASE_MS * (2 ** exponent);
-        const capped = Math.min(base, OFFLINE_QUEUE_BACKOFF.MAX_MS);
-        const jitter = Math.floor(Math.random() * OFFLINE_QUEUE_BACKOFF.JITTER_MS);
-        return capped + jitter;
+        return steamRetryDelayMs(attempts, OFFLINE_QUEUE_BACKOFF);
     }
 
     _normalizeQueueEntry(entry) {

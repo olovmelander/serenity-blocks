@@ -13,6 +13,12 @@ export const STEAM_RETRY = {
     BASE_DELAY_MS: 500, // Exponential backoff: 500ms, 1000ms, 2000ms
 };
 
+/** Exponential delay with a small spread so reconnecting clients retry at different times. */
+export function steamRetryDelayMs(attempts, { BASE_MS, MAX_MS, JITTER_MS }) {
+    const backoff = Math.min(MAX_MS, BASE_MS * 2 ** Math.max(0, attempts - 1));
+    return backoff + Math.floor(Math.random() * JITTER_MS);
+}
+
 // Connection monitoring
 export const STEAM_CONNECTION = {
     CHECK_INTERVAL_MS: 30000, // Check every 30 seconds

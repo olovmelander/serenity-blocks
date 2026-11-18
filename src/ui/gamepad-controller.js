@@ -1991,7 +1991,9 @@ export class GamepadController {
      */
     openTextKeyboard(field) {
         const bounds = field.getBoundingClientRect();
-        const rect = { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height };
+        const rect = {
+            x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height,
+        };
         const desktop = globalThis.window?.electronAPI;
         this.dismissTextKeyboard?.();
         const remove = desktop?.on?.('steam:keyboardDismissed', () => {

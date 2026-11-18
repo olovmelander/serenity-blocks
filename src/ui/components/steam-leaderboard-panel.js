@@ -87,7 +87,9 @@ export async function friendComparison(board) {
     let data = cached?.data;
     if (steamService.isAvailable() && (!data || cached.stale)) {
         try {
-            const response = await requestLeaderboard({ board, view: 'friends', start: 0, pageSize: 10, cache: defaultCache, cacheKey, owner });
+            const response = await requestLeaderboard({
+                board, view: 'friends', start: 0, pageSize: 10, cache: defaultCache, cacheKey, owner,
+            });
             if (response.supported) data = response;
         } catch { /* Keep the last successful comparison. */ }
     }
@@ -122,10 +124,14 @@ export const formatMilliseconds = (value) => {
     return `${minutes}:${seconds.toString().padStart(2, '0')}.${String(millis).padStart(3, '0')}`;
 };
 
+const boardFormatters = { TimeMilliSeconds: formatMilliseconds, TimeSeconds: formatSeconds };
+
 export function modeBoards(mode) {
     return Object.values(BOARDS).filter((board) => board.mode === mode).map((board) => ({
-        ...board, id: board.name, sortOrder: board.orb ? 'asc' : 'desc',
-        formatScore: board.orb ? formatMilliseconds : board.unit === 'TimeSeconds' ? formatSeconds : formatNumber,
+        ...board,
+        id: board.name,
+        sortOrder: board.orb ? 'asc' : 'desc',
+        formatScore: boardFormatters[board.unit] ?? formatNumber,
     }));
 }
 
@@ -205,13 +211,13 @@ export class SteamLeaderboardPanel {
     }
 
     async _showSharing() {
-        const records = steamService.records;
+        const { records } = steamService;
         const host = this.container;
         if (!host || !records?.owner || !records.manager) return;
-        const owner = records.owner;
+        const { owner } = records;
         const stats = await records.manager.getStatistics().catch(() => null);
         if (this.container !== host || records.owner !== owner || !stats) return;
-        const bests = assessRecords(stats.recordBook, owner).bests;
+        const { bests } = assessRecords(stats.recordBook, owner);
         records.bests = bests;
         const consent = document.createElement('div');
         consent.className = 'steam-score-sharing';
@@ -220,8 +226,13 @@ export class SteamLeaderboardPanel {
             const share = records.sharing();
             const msg = document.createElement('p');
             const hasRun = Object.keys(bests).length > 0;
-            msg.textContent = share === true ? 'Sharing eligible personal bests on Steam. Stopping sharing keeps existing entries. Contact support from Privacy to remove them.'
-                : hasRun ? 'Share your best scores on Steam? Other players can see your Steam name, rank, score or time, and a few run statistics. Replays stay on this device.' : 'Steam score sharing is off.';
+            if (share) {
+                msg.textContent = 'Sharing eligible personal bests on Steam. Stopping sharing keeps existing entries. Contact support from Privacy to remove them.';
+            } else if (hasRun) {
+                msg.textContent = 'Share your best scores on Steam? Other players can see your Steam name, rank, score or time, and a few run statistics. Replays stay on this device.';
+            } else {
+                msg.textContent = 'Steam score sharing is off.';
+            }
             consent.appendChild(msg);
             const action = (label, value) => {
                 const button = document.createElement('button');
@@ -455,7 +466,7 @@ export class SteamLeaderboardPanel {
 
             if (!response.supported) {
                 const saved = request.cache.get(request.cacheKey);
-                this._setStatus(saved?.data?.supported ? 'Could not refresh. Showing saved scores.' : (response.notice || 'Steam leaderboard unavailable.') + ' Try again when Steam is online.');
+                this._setStatus(saved?.data?.supported ? 'Could not refresh. Showing saved scores.' : `${response.notice || 'Steam leaderboard unavailable.'} Try again when Steam is online.`);
                 return;
             }
 
@@ -549,7 +560,7 @@ export class SteamLeaderboardPanel {
         if (this.self !== undefined) {
             const own = document.createElement('div');
             own.className = 'steam-leaderboard-notice';
-            own.textContent = this.self ? 'My rank · #' + this.self.rank : 'My rank · No entry yet';
+            own.textContent = this.self ? `My rank · #${this.self.rank}` : 'My rank · No entry yet';
             list.appendChild(own);
         }
         if (notice) {

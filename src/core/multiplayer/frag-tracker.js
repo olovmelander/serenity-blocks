@@ -262,7 +262,7 @@ export class FragTracker {
         const finalStats = this.buildFinalStats(duration, winner?.steamId || null);
 
         // Carried to every client and stable across results re-delivery and host migration.
-        const recordId = String(this.gameState.network.matchId) + ':' + String(this.gameState.network.matchNonce || this.gameState.matchStartTime);
+        const recordId = `${String(this.gameState.network.matchId)}:${String(this.gameState.network.matchNonce || this.gameState.matchStartTime)}`;
         // Broadcast match end
         this.gameState.network.broadcastToAll(MessageTypes.GAME_MATCH_END, {
             winner: winner?.steamId || null,
@@ -306,7 +306,7 @@ export class FragTracker {
                 emitMultiplayerEvent(MULTIPLAYER_EVENTS.ROUND_OVER, {
                     winner,
                     finalStats,
-                recordId,
+                    recordId,
                 });
 
                 scheduleFfaRoundRestart(this.gameState);

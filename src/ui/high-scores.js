@@ -125,17 +125,24 @@ export class HighScoreManager {
             const prefix = 'serenity.pendingRun/';
             const keys = Object.keys(localStorage).filter((key) => key.startsWith(prefix));
             for (const key of keys) {
-                const item = JSON.parse(localStorage.getItem(key));
-                if (!validRun(item?.runId, item?.receipt)) continue;
-                if (item.scoreData) await this.saveScore({ ...item.scoreData, runId: item.runId, receipt: item.receipt });
-                else await this.saveCompletion(item.runId, item.receipt);
+                try {
+                    const item = JSON.parse(localStorage.getItem(key));
+                    if (!validRun(item?.runId, item?.receipt)) continue;
+                    const commit = item.scoreData
+                        ? this.saveScore({ ...item.scoreData, runId: item.runId, receipt: item.receipt })
+                        : this.saveCompletion(item.runId, item.receipt);
+                    // eslint-disable-next-line no-await-in-loop -- Replay each journal entry in order through its own transaction.
+                    await commit;
+                } catch (error) {
+                    console.warn('[Records] Pending finish retained for recovery:', key, error.message);
+                }
             }
         } catch (error) { console.warn('[Records] Local result recovery pending:', error.message); }
     }
 
     async _journalRun(id, receipt, scoreData, commit) {
         if (!validRun(id, receipt)) return commit();
-        const key = 'serenity.pendingRun/' + id;
+        const key = `serenity.pendingRun/${id}`;
         try { localStorage.setItem(key, JSON.stringify({ runId: id, receipt, scoreData })); } catch { /* IDB is independently durable. */ }
         const result = await commit();
         try { localStorage.removeItem(key); } catch { /* The receipt makes another replay idempotent. */ }
@@ -234,8 +241,15 @@ export class HighScoreManager {
                         const existing = request.result;
                         const id = scoreData.runId || crypto.randomUUID();
                         if (existing?.recordBook?.runs?.[id]) return;
-                        const receipt = scoreData.receipt || { mode, score: gameRecord.score, lines: gameRecord.lines,
-                            level: gameRecord.level, duration: gameRecord.duration || 0, cascade: gameRecord.cascade || 0, owner: null };
+                        const receipt = scoreData.receipt || {
+                            mode,
+                            score: gameRecord.score,
+                            lines: gameRecord.lines,
+                            level: gameRecord.level,
+                            duration: gameRecord.duration || 0,
+                            cascade: gameRecord.cascade || 0,
+                            owner: null,
+                        };
                         if (!validRun(id, receipt)) throw new Error('Invalid finished run');
                         gameRecord.runId = id;
                         scores.add(gameRecord);
@@ -254,10 +268,12 @@ export class HighScoreManager {
             }
         });
 
-        if (inserted) eventBus.emit(EVENTS.HIGH_SCORE_SAVED, {
+        if (inserted) {
+            eventBus.emit(EVENTS.HIGH_SCORE_SAVED, {
             record: gameRecord,
             source: 'local',
-        });
+            });
+        }
 
         return gameRecord;
     }

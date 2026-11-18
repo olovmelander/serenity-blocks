@@ -1,4 +1,3 @@
-import { asGuestStatistics } from '../core/progression/record-book.js';
 /**
  * @fileoverview Modal Management for Serenity Blocks
  * Handles start modal, game-over modal, settings modal, and high scores modal.
@@ -6,7 +5,7 @@ import { asGuestStatistics } from '../core/progression/record-book.js';
  * (public/styles/keystone-modals.css; docs/MENU_UI_OVERHAUL_2026-10.md).
  */
 
-import { runIdFor } from '../core/progression/record-book.js';
+import { asGuestStatistics, runIdFor } from '../core/progression/record-book.js';
 import { LEVEL_SPEEDS } from '../core/constants.js';
 import { STEAM_LEADERBOARDS } from '../core/steam/steam-config.js';
 import steamService from '../core/steam/steam-service.js';
@@ -416,9 +415,16 @@ export async function showGameOverModal(
             return false;
         }
 
+        let previousBestRow = '';
+        if (previous !== null) {
+            const difference = Math.abs(score - previous).toLocaleString();
+            const direction = score > previous ? 'higher' : 'lower';
+            const delta = score === previous ? 'Tied' : `${difference} ${direction}`;
+            previousBestRow = `<p class="run-previous-best">Previous best ${previous.toLocaleString()} · ${delta}</p>`;
+        }
         document.getElementById('final-stats').innerHTML = `
             ${resultsHero(score, unsavedChip || rankChips(rank, score))}
-            ${previous === null ? '' : '<p class="run-previous-best">Previous best ' + previous.toLocaleString() + (score === previous ? ' · Tied' : ' · ' + Math.abs(score - previous).toLocaleString() + (score > previous ? ' higher' : ' lower')) + '</p>'}
+            ${previousBestRow}
             <div class="stats-grid">
                 ${performanceCard(gameState, figures)}
                 ${paceCard(figures)}
@@ -749,7 +755,7 @@ async function renderRecordsTab(mode) {
         statistics.innerHTML = view.facts;
         const hasSteamRecords = steamLeaderboardsAvailable();
         list.classList?.toggle('has-steam-records', hasSteamRecords);
-        list.innerHTML = hasSteamRecords ? '<section class="hs-local-records" aria-label="Local records">' + view.list + '</section>' : view.list;
+        list.innerHTML = hasSteamRecords ? `<section class="hs-local-records" aria-label="Local records">${view.list}</section>` : view.list;
         if (hasSteamRecords) {
             const host = document.createElement('section');
             host.className = 'hs-steam-records';
@@ -781,7 +787,7 @@ async function renderRecordsTab(mode) {
         if (recovery && /cloud|recovery|newer game|quota/i.test(recovery)) {
             const message = document.createElement('p');
             message.setAttribute('role', 'status');
-            message.textContent = 'Your local progress is saved. ' + recovery;
+            message.textContent = `Your local progress is saved. ${recovery}`;
             statistics.appendChild(message);
             const retry = document.createElement('button');
             retry.type = 'button';
@@ -797,8 +803,13 @@ async function renderRecordsTab(mode) {
             backup.onclick = async () => {
                 const raw = Object.fromEntries(Object.keys(localStorage).filter((key) => key.startsWith('steam-recovery/'))
                     .map((key) => [key, localStorage.getItem(key)]));
-                const copy = { version: 1, stats: await highScoreManager.getStatistics(), highScores: await highScoreManager.exportHighScores(100),
-                    odyssey: localStorage.getItem('serenityBlocks_odysseyProgress'), damagedFiles: raw };
+                const copy = {
+                    version: 1,
+                    stats: await highScoreManager.getStatistics(),
+                    highScores: await highScoreManager.exportHighScores(100),
+                    odyssey: localStorage.getItem('serenityBlocks_odysseyProgress'),
+                    damagedFiles: raw,
+                };
                 const link = document.createElement('a');
                 link.href = URL.createObjectURL(new Blob([JSON.stringify(copy)], { type: 'application/json' }));
                 link.download = 'serenity-record-recovery.json';
