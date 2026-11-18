@@ -5,8 +5,7 @@
 
 import { eventBus, EVENTS } from '../events/event-bus.js';
 import {
-    LEGACY_SCORE_MODE, SCORES_PER_MODE, addGameToModeStatistics, keepTopScoresPerMode,
-    mergeStatisticsSnapshots, modeStatisticsOf,
+    LEGACY_SCORE_MODE, SCORES_PER_MODE, keepTopScoresPerMode, mergeStatisticsSnapshots,
 } from '../core/progression/score-statistics.js';
 import { validRun } from '../core/progression/record-book.js';
 import { openDatabaseOnce } from '../utils/indexed-db-open.js';
@@ -270,8 +269,8 @@ export class HighScoreManager {
 
         if (inserted) {
             eventBus.emit(EVENTS.HIGH_SCORE_SAVED, {
-            record: gameRecord,
-            source: 'local',
+                record: gameRecord,
+                source: 'local',
             });
         }
 
