@@ -74,7 +74,7 @@ function fresh() {
         mistakeEnabled: 0, unforecastForced: 0, topOut: false };
 }
 
-function canMatchWaves(board, piece, depth) {
+export function canMatchWaves(board, piece, depth) {
     const bodies = findConnectedComponents(board);
     return reachableLandings(board, piece).some(p =>
         resolveCascade([...bodies, { ...p, shapeKey: piece.shapeKey, pieceId: 'alternative' }]).cascadeCount >= depth);
@@ -166,4 +166,3 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
         appendFileSync(output, JSON.stringify(result) + '\n');
     }
 }
-

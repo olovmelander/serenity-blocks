@@ -28,6 +28,11 @@ function boardCheck(state, pending) {
     }).join('')).join('/');
     return [state.score, state.piecesPlaced, types, bodies, pending];
 }
+function overBudgetFrame(frame, round, tick, cost, active, calls, peak, peakStart, bot) {
+    return { frame, round, tick, planningMs: cost, activeMs: active, calls, longestCallMs: peak, callStartMs: peakStart,
+        tier: bot?.config.tier, slot: bot?.playerIndex, locks: bot?.playerState.piecesPlaced,
+        pendingRows: bot?.getPendingGarbage() };
+}
 async function sample() {
     const sleep = ms => new Promise(r => setTimeout(r, ms));
     const until = async (predicate, label) => {
@@ -63,6 +68,8 @@ async function sample() {
         byTick.get(key).push(item[3]);
     }
     let bucket = 0, updateCost = 0, didPlan = false, actions = 0, frames = 0, prior = 0;
+    const overBudget = [], nearTwoFrames = [];
+    let calls = 0, peak = 0, peakStart = 0, slowest;
     let maxExecutionUpdate = 0, executionOverFrame = 0;
     const observedManagers = new WeakSet();
     const setup = mode._setupLocalBots.bind(mode);
@@ -92,7 +99,11 @@ async function sample() {
             bot.stepSlicedPlan = (...args) => {
                 didPlan = true;
                 const start = performance.now(); try { return stepPlan(...args); }
-                finally { bucket += performance.now() - start; }
+                finally {
+                    const ms = performance.now() - start;
+                    bucket += ms; calls++;
+                    if (ms > peak) { peak = ms; peakStart = start; slowest = bot; }
+                }
             };
             const update = bot.update.bind(bot);
             let tickTime = 0, adoptedSpawn = null, replanAt = null;
@@ -122,19 +133,24 @@ async function sample() {
             if (prior) intervals.push(now - prior);
             if (prior && now - prior > 2000 / targetHz + 0.25) {
                 stalls.push([frames, round, mode.multiplayerState.players[0].simFrame, now - prior, bucket, updateCost]);
+            } else if (prior && now - prior >= 2000 / targetHz - 0.25) {
+                nearTwoFrames.push([frames, round, mode.multiplayerState.players[0].simFrame, now - prior, bucket, updateCost]);
             }
             if (didPlan) { times.push(bucket); activeUpdates.push(updateCost); }
             else {
                 maxExecutionUpdate = Math.max(maxExecutionUpdate, updateCost);
                 executionOverFrame += Number(updateCost > 1000 / targetHz);
             }
+            if (bucket > 1000 / targetHz) overBudget.push(overBudgetFrame(
+                frames, round, mode.multiplayerState.players[0].simFrame, bucket, updateCost, calls, peak, peakStart, slowest));
+            calls = 0; peak = 0; slowest = null;
             bucket = 0; updateCost = 0; didPlan = false; prior = now; frames++;
             if (now - start < duration * 1000) requestAnimationFrame(frame); else resolveSample();
         }
         requestAnimationFrame(frame);
     });
     return { frames, actions, times, activeUpdates, lateness, recoveries, intervals, inputs, checks, stalls, replay: Boolean(replayTape),
-        elapsed: performance.now() - start, rounds: round, maxExecutionUpdate, executionOverFrame,
+        elapsed: performance.now() - start, rounds: round, maxExecutionUpdate, executionOverFrame, overBudget, nearTwoFrames,
         clock: mode._localSimulationLoop?.simulationClock, boards: mode.multiplayerState?.numPlayers,
         canvases: document.querySelectorAll('canvas').length, requestedHz: targetHz };
 }
@@ -161,6 +177,8 @@ async function sampleOdyssey() {
         commands.get(key).push(command);
     }
     let count = 0, round = 0, bucket = 0, full = 0, planned = false, actions = 0, tickTime = 0;
+    const overBudget = [], nearTwoFrames = [];
+    let calls = 0, peak = 0, peakStart = 0;
     let maxExecutionUpdate = 0, executionOverFrame = 0;
     function observeDuel(current) {
         duel = current;
@@ -173,7 +191,12 @@ async function sampleOdyssey() {
         const step = bot.stepSlicedPlan.bind(bot), update = bot.update.bind(bot), adopt = bot.adoptPlan.bind(bot);
         bot.stepSlicedPlan = (...args) => {
             planned = true;
-            const at = performance.now(); try { return step(...args); } finally { bucket += performance.now() - at; }
+            const at = performance.now(); try { return step(...args); }
+            finally {
+                const ms = performance.now() - at;
+                bucket += ms; calls++;
+                if (ms > peak) { peak = ms; peakStart = at; }
+            }
         };
         let adoptedSpawn = null, replanAt = null;
         bot.adoptPlan = p => {
@@ -216,25 +239,30 @@ async function sampleOdyssey() {
             if (prior) intervals.push(now - prior);
             if (prior && now - prior > 2000 / targetHz + 0.25) {
                 stalls.push([frames, round, count, now - prior, bucket, full]);
+            } else if (prior && now - prior >= 2000 / targetHz - 0.25) {
+                nearTwoFrames.push([frames, round, count, now - prior, bucket, full]);
             }
             if (planned) { times.push(bucket); activeUpdates.push(full); }
             else {
                 maxExecutionUpdate = Math.max(maxExecutionUpdate, full);
                 executionOverFrame += Number(full > 1000 / targetHz);
             }
-            prior = now; frames++; bucket = 0; full = 0; planned = false;
+            if (bucket > 1000 / targetHz) overBudget.push(overBudgetFrame(frames, round, count, bucket, full, calls, peak, peakStart, duel.bot));
+            prior = now; frames++; bucket = 0; full = 0; planned = false; calls = 0; peak = 0;
             if (now - start < duration * 1000) requestAnimationFrame(frame); else finish();
         }
         requestAnimationFrame(frame);
     });
     return { frames, actions, times, activeUpdates, lateness, recoveries, intervals, inputs, checks, stalls, replay: Boolean(replayTape),
-        elapsed: performance.now() - start, rounds: roundsPlayed, attempts, activeTicks, rivalTier: duel.difficulty, maxExecutionUpdate, executionOverFrame,
+        elapsed: performance.now() - start, rounds: roundsPlayed, attempts, activeTicks, rivalTier: duel.difficulty,
+        maxExecutionUpdate, executionOverFrame, overBudget, nearTwoFrames,
         clock: 'odyssey-rival-60', boards: duel.players.length, canvases: document.querySelectorAll('canvas').length, requestedHz: targetHz };
 }
 
 app.whenReady().then(async () => {
     const win = new BrowserWindow({ show: false, width: 1280, height: 720,
         webPreferences: { offscreen: { useSharedTexture: true }, backgroundThrottling: false } });
+    win.webContents.setAudioMuted(true);
     win.webContents.setFrameRate(hz);
     let textures = 0;
     win.webContents.on('paint', event => {
@@ -274,11 +302,29 @@ app.whenReady().then(async () => {
     const code = 'const botCount=' + count + ', duration=' + seconds + ', targetHz=' + hz
         + ', labelledChecks=' + labelled + ', replayTape=' + JSON.stringify(tape)
         + ', rivalConfig=' + JSON.stringify(rival) + ', localTiers=' + JSON.stringify(localTiers) + ', repeatRivals=' + repeatRivals
-        + ';' + boardCheck.toString() + ';(' + scenario.toString() + ')()';
+        + ';' + boardCheck.toString() + ';' + overBudgetFrame.toString() + ';(' + scenario.toString() + ')()';
+    // The CPU sampler changes timing. Use it in a separate diagnostic pass.
+    const profilePath = process.env.SERENITY_BOT_CPU_PROFILE;
+    let navigationStart;
+    if (profilePath) {
+        if (!win.webContents.debugger.isAttached()) win.webContents.debugger.attach('1.3');
+        const send = (name, args) => win.webContents.debugger.sendCommand(name, args);
+        await send('Performance.enable');
+        const metrics = await send('Performance.getMetrics');
+        navigationStart = metrics.metrics.find(metric => metric.name === 'NavigationStart').value;
+        await send('Profiler.enable');
+        await send('Profiler.setSamplingInterval', { interval: 400 });
+        await send('Profiler.start');
+    }
     const data = await win.webContents.executeJavaScript(code);
+    if (profilePath) {
+        const { profile } = await win.webContents.debugger.sendCommand('Profiler.stop');
+        writeFileSync(profilePath, JSON.stringify({ navigationStart, profile }), { flag: 'wx' });
+    }
     data.checkFormat = labelled ? 'body-v1' : 'type-v1';
     if (localTiers) data.localTiers = localTiers;
     data.sharedTexturePaints = textures;
+    data.outputMuted = win.webContents.isAudioMuted();
     const graphics = await app.getGPUInfo('complete');
     data.gpu = graphics.gpuDevice;
     data.runtime = { electron: process.versions.electron, chromium: process.versions.chrome,

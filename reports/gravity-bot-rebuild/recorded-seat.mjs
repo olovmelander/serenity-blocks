@@ -1,0 +1,55 @@
+import { applyGarbage, processAutoDrop } from '../../src/core/game.js';
+import { advanceTick } from '../../src/core/simulation-tick.js';
+import { MultiPlayerState } from '../../src/core/multi-player-state.js';
+import { LocalBotManager } from '../../src/core/ai/local-bot-manager.js';
+import { PuzzleBotController } from '../../src/core/ai/puzzle-bot-controller.js';
+import { seededRandom } from '../../src/utils/helpers.js';
+import { applyFixedHardDropHitStop, applyFixedLineImpactHitStop, applyFixedPerfectClearHitStop } from '../../src/core/fixed-hit-stop-policy.js';
+import { applyLocalMultiplayerFixedCommand } from '../../src/core/game-modes/local-multiplayer-loop.js';
+import { retireFixedCascade } from '../../src/core/physics.js';
+import { deal, spawn } from '../bot-ai-audit-2026-11/solo.mjs';
+
+export function recordedSeat(tier, seed, onPieceLock, observers = {}) {
+    const state = deal(seed);
+    state.isSeeking = false;
+    state.lockBonusPolicy = 'elapsed';
+    state.useFixedCascade = true;
+    state.hitStopEnabled = true;
+    const match = new MultiPlayerState(2);
+    match.players[0] = state;
+    match.sharedPieceSeed = seed;
+    const queue = match.getGarbageQueue(0);
+    const manager = new LocalBotManager({ multiplayerState: match,
+        useLocalStyles: observers.useLocalStyles, actionFactory: () => ({}) });
+    manager.configure([{ kind: 'bot', difficulty: tier }, { kind: 'human' }]);
+    if (observers.control) {
+        const { actions } = manager.controllers.get(0);
+        manager.controllers.set(0, new PuzzleBotController({ actions, playerIndex: 0,
+            playerState: state, difficulty: tier, rng: seededRandom((seed ^ 0x85ebca6b) >>> 0) }));
+    }
+    const callbacks = {
+        onPieceLock, onHardDrop: () => applyFixedHardDropHitStop(state),
+        onLineClearImpact: lines => applyFixedLineImpactHitStop(state, lines),
+        onLineClear: observers.onLineClear,
+        onGarbageReady: summary => {
+            match.handleGarbageSummary(0, summary);
+            observers.onGarbageReady?.(summary);
+        },
+        onPerfectClear: () => applyFixedPerfectClearHitStop(state),
+        spawnPiece: () => {
+            const rows = [];
+            for (let burst = queue.dequeueLineBurst(); burst.length; burst = queue.dequeueLineBurst()) rows.push(...burst);
+            if (rows.length && applyGarbage(state, rows).topOut) { state.isGameOver = true; return; }
+            spawn(state);
+        },
+    };
+    return { state, bot: manager.controllers.get(0), queue,
+        step: () => advanceTick(state, {
+            advanceInput: context => manager.advanceFixedInput(0, context),
+            applyInput: cmd => applyLocalMultiplayerFixedCommand(cmd, {
+                gameState: state, isEnabled: () => true, physicsCallbacks: callbacks,
+            }),
+            advancePhysics: dt => processAutoDrop(state, dt, null, callbacks, { fixedTick: true }),
+        }),
+        close: () => { state.isStopped = true; retireFixedCascade(state); manager.destroy(); state.reset(); } };
+}
