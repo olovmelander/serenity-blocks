@@ -165,6 +165,36 @@ describe('live gravity policy', () => {
         expect(gravityPlanningRate(3) * 3).toBeCloseTo(gravityPlanningRate(4) * 4);
     });
 
+    it.each([[true, 2.5], [false, 2.5], [true, 0.5]])(
+        'matches level, perfect-clear and combo rewards with level progression disabled %s and multiplier %s',
+        (disableLevelProgression, comboMultiplier) => {
+            const state = deal(42);
+            const grid = state.boardGrid;
+            const floor = grid.length - 1;
+            for (let x = 0; x < COLS; x++) {
+                grid[floor][x] = { id: x + 1, type: 'I' };
+                grid[floor - 2 - (x % 2)][x] = { id: x + 11, type: 'O' };
+            }
+            const context = {
+                level: 4,
+                linesUntilNextLevel: 1,
+                comboMultiplierEnabled: true,
+                disableLevelProgression,
+                comboMultiplier,
+            };
+            const actual = resolveCascade(findConnectedComponents(grid), context);
+            const waves = actual.waves.map((wave) => wave.fullLines.length);
+            expect(waves).toEqual([1, 1]);
+            expect(actual.perfectClear).toBeTruthy();
+            const reward = gravityReward(waves, true, context);
+            expect(reward.score).toBe(actual.scoreDelta);
+            expect(reward.attack).toBe(calculateGarbage(actual.garbageSummary).getTotalLines());
+            expect(reward.levelAfter).toBe(actual.levelAfter);
+            expect(reward.remainingAfter).toBe(actual.linesUntilNextLevelAfter);
+            state.reset();
+        },
+    );
+
     it('copies identical search work between seats without advancing either decision tick', () => {
         const cache = new Map();
         const states = Array.from({ length: 4 }, () => deal(1006));

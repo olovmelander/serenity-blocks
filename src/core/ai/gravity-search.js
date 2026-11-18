@@ -97,6 +97,12 @@ export function gravityBoardKey(cells) {
     return key;
 }
 
+function minimumColumnCount(counts) {
+    let smallest = counts[0];
+    for (let x = 1; x < COLS; x++) smallest = Math.min(smallest, counts[x]);
+    return smallest;
+}
+
 function describe(cells, first) {
     const height = cells.length / COLS;
     const tops = new Int16Array(COLS).fill(height);
@@ -121,7 +127,18 @@ function describe(cells, first) {
     }
     for (let x = 0; x < COLS; x++) holes += height - tops[x] - counts[x];
     return {
-        cells, first, height, tops, counts, rows, top, stock, garbage, density, holes, minimum: Math.min(...counts),
+        cells,
+        first,
+        height,
+        tops,
+        counts,
+        rows,
+        top,
+        stock,
+        garbage,
+        density,
+        holes,
+        minimum: minimumColumnCount(counts),
     };
 }
 
@@ -146,7 +163,18 @@ function afterQuietLock(board, cells, form, x, y, scratch) {
         top = Math.min(top, row);
     }
     return {
-        ...board, cells, tops, counts, rows, stock, top, density, holes, minimum: Math.min(...counts),
+        cells,
+        first: board.first,
+        height: board.height,
+        tops,
+        counts,
+        rows,
+        top,
+        stock,
+        garbage: board.garbage,
+        density,
+        holes,
+        minimum: minimumColumnCount(counts),
     };
 }
 
@@ -354,7 +382,7 @@ export function gravityReward(waves, perfect, context) {
     let remaining = context.linesUntilNextLevel ?? 15;
     let score = 0;
     let lines = 0;
-    const multiplier = context.comboMultiplierEnabled ? (context.comboMultiplier || 1) : 1;
+    const multiplier = context.comboMultiplierEnabled && context.comboMultiplier > 1 ? context.comboMultiplier : 1;
     for (let i = 0; i < waves.length; i++) {
         const rows = waves[i];
         remaining -= rows; lines += rows;
