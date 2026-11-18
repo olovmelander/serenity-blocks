@@ -27,6 +27,10 @@
  *            his head goes into a turn before his body.
  *   hands    the left fist on the staff; the right hand's wrist follows its forearm a beat behind
  *            (it trails a swing and catches up), and seated it rests on his knee, palm down.
+ *   flesh    he is stout, and his arms are thick: an arm solved for its wrist alone goes through
+ *            his belly to lay a hand on his heart. Where a forearm or a hand would stand in his own
+ *            body (the masses his file names: stillwater-troll-flesh.js) the wrist is moved and
+ *            the elbow swung out of it, and the staff goes with the hand that holds it.
  *
  * Frames: the "walk frame" is the stage in true metres (stage x times the squeeze), y up, the
  * water at 0; the model frame is the sculpt's unit frame (x his left, y up, z his front), scaled
@@ -41,6 +45,7 @@ import {
 import {
     GestureSlots, TROLL_GESTURES, emptyPose, slotWeight,
 } from './stillwater-gestures.js';
+import { FLESH, massDepth } from './stillwater-troll-flesh.js';
 
 const UP = new THREE.Vector3(0, 1, 0);
 
@@ -98,6 +103,20 @@ export const FIST_HOLD = Object.freeze({
 /** The share of the hand's turn about the forearm that the forearm takes (the rest is the wrist's). */
 const FOREARM_TWIST = 0.5;
 /**
+ * The fastest his hand slides along the staff (metres a second) and turns about it (radians a
+ * second): it moves on the staff, it never jumps. (Which way his hand lies about the staff follows
+ * his elbow, and his elbow follows his hand: left to itself that pair can flip between two answers
+ * from one frame to the next.)
+ */
+export const FIST_SLIDE_SPEED = 0.9;
+export const FIST_TURN_SPEED = 4.5;
+/**
+ * Setting the staff down after carrying it: how soon it comes to where it is planted (s, the
+ * half-life of its way there) at first, how soon once it stands, and over how long (s, from..to
+ * after it was last carried) the one becomes the other. It is set down, not dropped.
+ */
+export const STAFF_PLANT = Object.freeze({ setDown: 0.2, stood: 0.06, over: Object.freeze([0.35, 1.1]) });
+/**
  * The right hand's wrist: how long it takes to catch up its forearm's turns (s), and how far it may
  * trail (rad).
  */
@@ -130,12 +149,14 @@ export class TrollBody {
      * @param {number} opts.height     metres per model unit
      * @param {(x: number, z: number) => number} opts.ground   ground height in the walk frame
      * @param {Record<string, THREE.Vector3>} [opts.tails]  each bone's tail (the hands' own length)
+     * @param {object|null} [opts.flesh]  his own masses, which his arms keep out of (fleshFromSpec)
      */
     constructor(rest, {
-        sole = -0.503, height = 2.9, ground = () => 0, parents = {}, tails = null,
+        sole = -0.503, height = 2.9, ground = () => 0, parents = {}, tails = null, flesh = null,
     } = {}) {
         this.rest = rest;
         this.parents = parents;
+        this.flesh = flesh && flesh.masses.every((m) => rest[m.bone]) ? flesh : null;
         this.sole = sole;
         this.H = height;
         this.ground = ground;
@@ -183,6 +204,28 @@ export class TrollBody {
         this._pole = new THREE.Vector3();
         this._e = new THREE.Euler();
         this._m = new THREE.Matrix4();
+        /** Scratch for the arms' way out of his flesh. */
+        this._flesh = {
+            q: new THREE.Vector3(),
+            n: new THREE.Vector3(),
+            sum: new THREE.Vector3(),
+            p: new THREE.Vector3(),
+            inv: new THREE.Quaternion(),
+            way: [0, 0, 1],
+            t: new THREE.Vector3(),
+            pole: new THREE.Vector3(),
+            base: new THREE.Vector3(),
+            pT: new THREE.Vector3(),
+            pE: new THREE.Vector3(),
+            dir: new THREE.Vector3(),
+            total: new THREE.Vector3(),
+            shift: new THREE.Vector3(),
+        };
+        /** The frame he is posed for (counted up as his trunk, head and legs are posed), and the one his masses were last placed for. */
+        this.frame = 0;
+        this._fleshAt = -1;
+        /** His right hand laid flat on his own body (on his heart, on his belly): how much, along what, its back toward what. */
+        this.lay = { share: 0, h: new THREE.Vector3(0, -1, 0), up: new THREE.Vector3(0, 0, 1) };
         this.events = [];
         this.reset(0, 0, 0);
     }
@@ -274,6 +317,8 @@ export class TrollBody {
         if (!this.gestures) this.gestures = new GestureSlots();
         this.gestures.reset();
         this.lean = spring();
+        /** How much his staff is carried up at his shoulder (0..1, eased): it limits his look that way. */
+        this.carried = spring();
         this.actS = { dy: spring(seated ? -0.25 : 0), dz: spring(seated ? -0.4 : 0), lean: spring(seated ? 0.06 : 0) };
         this.bodyY = spring(this.root.y);
         this.sway = new Spring3();
@@ -288,6 +333,13 @@ export class TrollBody {
         this._vz = 0;
         this._hv = 0;
         this.armR = new Spring3();
+        /** (His right hand is where it should be from the first frame: it does not come out of his chest.) */
+        this.armRSet = false;
+        /** How far each arm is moved out of his own flesh (the wrist, model units; the elbow's pole), settling. */
+        this.clear = {
+            L: { shift: new Spring3(), pole: new Spring3(), begun: false },
+            R: { shift: new Spring3(), pole: new Spring3(), begun: false },
+        };
         /** A footfall's give (m: his body sent down and coming back), and his head's nod after it. */
         this.impact = spring();
         this.nod = spring();
@@ -307,6 +359,14 @@ export class TrollBody {
             mode: 'planted',
             /** Metres from the staff's foot to his hand: STAFF.plant planted, STAFF.grip carried (eased between). */
             along: STAFF.plant,
+            /** How far his hand is up the staff from its planned grip (model units), last frame and this. */
+            slideWas: NaN,
+            slideNow: NaN,
+            /** The way his hand lies about the staff (its length, model frame), last frame and this. */
+            lieWas: null,
+            lieNow: null,
+            /** Seconds since it was last carried. */
+            planted: 10,
         };
         /** The lantern on its cord (metres): long enough to hang below his face, and to swing slow. */
         this.lantern = new Pendulum(0.55, 1.2);
@@ -755,9 +815,12 @@ export class TrollBody {
 
         // ── The staff, then the left hand on it ──
         this.updateStaff(dt, want, act, gp);
-        this.solveStaffHand();
+        // (His trunk, head and legs are posed: his masses are where they will be this frame.)
+        this.frame += 1;
+        this.solveStaffHand(dt);
         // ── The right hand: swinging, on the knee, held out, or busy with a gesture ──
-        this.solveArm('R', this.rightHand(dt, want, act, gp), this._poleR);
+        const wrist = this.rightHand(dt, want, act, gp);
+        this.solveArmClear('R', wrist, this._poleR, dt, this._kneeHand?.h || null, this.onKnee);
         this.poseRightHand(dt);
         this.forward();
         this.updateLantern(dt, want);
@@ -943,6 +1006,238 @@ export class TrollBody {
         if (this.local[hand]) this.local[hand].identity();
     }
 
+    // ── Out of his own flesh ────────────────────────────────────────────────────
+
+    /**
+     * How deep a ball (its middle `p`, model frame; its `radius`) stands in his own flesh as he is
+     * posed, less the little he gives (`give`). Writes the way out into `out` (a unit vector,
+     * model frame): through each mass it is in, the deeper the more. 0 when it is clear of him.
+     */
+    fleshDepth(p, radius, out, give = FLESH.give) {
+        const { masses } = this.flesh;
+        const s = this._flesh;
+        const posed = this.fleshPosed();
+        // (Seated or on his haunches his thighs come out from under his cloth, and it lies on them.)
+        const cloth = 1 - Math.max(this.sitK || 0, this.crouchK || 0);
+        let total = 0;
+        s.sum.set(0, 0, 0);
+        for (let i = 0; i < masses.length; i++) {
+            const mass = masses[i];
+            const at = posed[i];
+            // (Far from the whole of it: nothing to measure.)
+            const far = at.reach + radius + FLESH.lap + FLESH.soft;
+            if (p.distanceToSquared(at.mid) > far * far) continue;
+            const g = this.global[mass.bone];
+            s.q.copy(p).sub(this.globalPos[mass.bone]).applyQuaternion(at.inv).add(this.rest[mass.bone]);
+            let d = massDepth(mass, s.q.x, s.q.y, s.q.z, s.way) + radius - give;
+            if (mass.lap) d += FLESH.lap * (1 - cloth);
+            // (It yields a little before it touches, so a touch does not begin with a jolt.)
+            if (d > -FLESH.soft && d < FLESH.soft) d = ((d + FLESH.soft) * (d + FLESH.soft)) / (4 * FLESH.soft);
+            if (mass.kind === 'wrap') d *= cloth;
+            if (d > 0) {
+                s.sum.addScaledVector(s.n.set(s.way[0], s.way[1], s.way[2]).applyQuaternion(g), d * d);
+                total += d;
+            }
+        }
+        if (total <= 0) return 0;
+        const depth = s.sum.length() / total;
+        if (depth < 1e-7) return 0;
+        out.copy(s.sum).multiplyScalar(1 / (depth * total));
+        return depth;
+    }
+
+    /**
+     * His masses as he is posed this frame: for each, the turn back into its own frame and where
+     * its middle is (model frame). Worked out once a frame: his arms move against his trunk, his
+     * head and his legs, and those are posed before his arms.
+     */
+    fleshPosed() {
+        const { masses } = this.flesh;
+        const posed = this._fleshPosed || (this._fleshPosed = masses.map((m) => ({
+            inv: new THREE.Quaternion(), mid: new THREE.Vector3(), reach: m.reach,
+        })));
+        if (this._fleshAt === this.frame) return posed;
+        this._fleshAt = this.frame;
+        for (let i = 0; i < masses.length; i++) {
+            const mass = masses[i];
+            const g = this.global[mass.bone];
+            posed[i].inv.copy(g).invert();
+            posed[i].mid.set(mass.mid[0], mass.mid[1], mass.mid[2]).sub(this.rest[mass.bone]).applyQuaternion(g)
+                .add(this.globalPos[mass.bone]);
+        }
+        return posed;
+    }
+
+    /**
+     * An arm as it was last solved (its elbow in `_mid`, its wrist in `_end`), its hand lying
+     * along `dir`: how far its wrist (`outT`) and its elbow (`outE`) should move for its forearm
+     * and its hand to come out of his flesh (model frame). `hand`: the balls down its hand (his
+     * open right hand, or his left fist); `grip`: where the staff runs through his fist, the fist
+     * round about it. False when it is clear of him.
+     */
+    armPush(dir, outT, outE, hand = this.flesh.hand, grip = null) {
+        const fl = this.flesh;
+        const s = this._flesh;
+        const elbow = this._mid;
+        const wrist = this._end;
+        let sumT = 0;
+        let sumE = 0;
+        outT.set(0, 0, 0);
+        outE.set(0, 0, 0);
+        for (let i = 0; i < fl.fore.length; i++) {
+            const [share, radius] = fl.fore[i];
+            const d = this.fleshDepth(s.p.lerpVectors(elbow, wrist, share), radius, s.n, FLESH.pass);
+            if (d > 0) {
+                // (The nearer the wrist, the more it is the wrist that moves.)
+                outT.addScaledVector(s.n, d * share * d * share);
+                sumT += d * share;
+                outE.addScaledVector(s.n, d * (1 - share) * d * (1 - share));
+                sumE += d * (1 - share);
+            }
+        }
+        for (let i = 0; i < hand.length; i++) {
+            const [along, radius] = hand[i];
+            const d = this.fleshDepth(s.p.copy(wrist).addScaledVector(dir, along), radius, s.n);
+            if (d > 0) {
+                outT.addScaledVector(s.n, d * d);
+                sumT += d;
+            }
+        }
+        if (grip) {
+            const d = this.fleshDepth(grip, fl.grip, s.n);
+            if (d > 0) {
+                outT.addScaledVector(s.n, d * d);
+                sumT += d;
+            }
+        }
+        if (sumT > 0) outT.multiplyScalar(1 / sumT);
+        if (sumE > 0) outE.multiplyScalar(1 / sumE);
+        return sumT > 0 || sumE > 0;
+    }
+
+    /** Swing an arm's pole (`pole`, the chest's frame) so its elbow moves by `push` (model frame). */
+    swingPole(side, pole, push) {
+        if (push.lengthSq() < 1e-12) return;
+        const s = this._flesh;
+        const a = this.globalPos[this.arms[side].names[0]];
+        // How far the elbow stands off the line from his shoulder to his wrist.
+        const u = s.q.copy(this._end).sub(a).normalize();
+        const off = s.n.copy(this._mid).sub(a);
+        const h = Math.max(0.03, off.addScaledVector(u, -off.dot(u)).length());
+        s.n.copy(push).applyQuaternion(s.inv.copy(this.global.chest).invert());
+        pole.normalize().multiplyScalar(h).addScaledVector(s.n, 1.5).normalize();
+    }
+
+    /**
+     * Solve an arm for its wrist at `target` (model frame), its elbow toward `poleIn` (the chest's
+     * frame), and keep it out of his own body: where its forearm or its hand would stand in his
+     * flesh, its wrist is moved and its elbow swung out of it, and it is solved again; the move
+     * settles over a moment, so nothing pops. `ownDir` (model frame) is the way the hand lies where
+     * it does not follow its forearm, by `ownShare`.
+     */
+    solveArmClear(side, target, poleIn, dt, ownDir = null, ownShare = 0) {
+        if (!this.flesh || !target) {
+            this.solveArm(side, target, poleIn);
+            return;
+        }
+        const s = this._flesh;
+        const c = this.clear[side];
+        s.base.set(SIDES[side] * 0.55, -0.25, -1);
+        if (poleIn) s.base.copy(poleIn);
+        s.base.normalize();
+        s.t.copy(target);
+        s.pole.copy(s.base);
+        let moved = false;
+        for (let pass = 0; pass < FLESH.passes; pass++) {
+            this.solveArm(side, s.t, s.pole);
+            this.handLie(s.dir, ownDir, ownShare);
+            if (!this.armPush(s.dir, s.pT, s.pE)) break;
+            moved = true;
+            s.t.add(s.pT);
+            this.swingPole(side, s.pole, s.pE);
+        }
+        // (At once on his first frame, and on a frame with no time in it.)
+        const still = !(dt > 0) || !c.begun;
+        c.begun = true;
+        const settle = (sp, x, y, z) => (still ? sp.set(x, y, z) : sp.step(x, y, z, FLESH.halfLife, dt));
+        settle(c.shift, s.t.x - target.x, s.t.y - target.y, s.t.z - target.z);
+        settle(c.pole, s.pole.x - s.base.x, s.pole.y - s.base.y, s.pole.z - s.base.z);
+        const any = Math.abs(c.shift.x[0]) + Math.abs(c.shift.x[1]) + Math.abs(c.shift.x[2])
+            + Math.abs(c.pole.x[0]) + Math.abs(c.pole.x[1]) + Math.abs(c.pole.x[2]) > 1e-6;
+        if (!moved && !any) return;
+        s.t.set(target.x + c.shift.x[0], target.y + c.shift.x[1], target.z + c.shift.x[2]);
+        s.pole.set(s.base.x + c.pole.x[0], s.base.y + c.pole.x[1], s.base.z + c.pole.x[2]);
+        this.solveArm(side, s.t, s.pole);
+        this.handLie(s.dir, ownDir, ownShare);
+    }
+
+    /**
+     * The way his right hand lies, as its arm was last solved (into `out`, model frame): on from
+     * its forearm; where it has a way of its own (`ownDir`: on his knee), that, by `ownShare`; and
+     * where it comes to his own body pointing INTO it (a hand on his heart, on his belly), flat on
+     * him: what of it points in is taken out, and its back turns away from him (`this.lay`, which
+     * poseRightHand turns the hand by).
+     */
+    handLie(out, ownDir = null, ownShare = 0) {
+        const s = this._flesh;
+        const { lay } = this;
+        lay.share = 0;
+        out.copy(this._end).sub(this._mid).normalize();
+        const own = Math.min(1, Math.max(0, ownShare));
+        if (ownDir && own > 0) out.lerp(ownDir, own).normalize();
+        if (!this.flesh || own >= 1) return out;
+        const [along, half] = this.flesh.hand[0];
+        const near = this.fleshDepth(s.p.copy(this._end).addScaledVector(out, along), half + FLESH.near, s.n);
+        if (near <= 0) return out;
+        const into = -out.dot(s.n);
+        const share = smoothstep(0, FLESH.near, near) * smoothstep(0, FLESH.into, into) * (1 - own);
+        if (share <= 0) return out;
+        lay.up.copy(s.n);
+        lay.h.copy(out).addScaledVector(s.n, into);
+        if (lay.h.lengthSq() < 1e-6) lay.h.set(0, -1, 0).addScaledVector(s.n, s.n.y);
+        lay.h.normalize();
+        lay.share = share;
+        return out.lerp(lay.h, share).normalize();
+    }
+
+    /**
+     * His left hand on the staff, kept out of his own body: where his arm would stand in his flesh
+     * to hold it, the staff goes with his hand (lifted, the whole of it; planted, it leans the
+     * other way about its foot), and its lantern with it.
+     */
+    solveStaffHand(dt = 0) {
+        this.solveStaffGrip(null);
+        if (!this.flesh || !this.staffWrist) return;
+        const s = this._flesh;
+        const c = this.clear.L;
+        const { fist } = this;
+        s.base.set(SIDES.L * 0.55, -0.25, -1).normalize();
+        s.pole.copy(s.base);
+        s.total.set(0, 0, 0);
+        let moved = false;
+        for (let pass = 0; pass < FLESH.passes; pass++) {
+            s.dir.copy(this._fistScratch?.h || fist.h);
+            if (!this.armPush(s.dir, s.pT, s.pE, this.flesh.fist, this._fistScratch?.at || null)) break;
+            moved = true;
+            s.total.add(s.pT);
+            this.swingPole('L', s.pole, s.pE);
+            this.staffEnds(s.total);
+            this.solveStaffGrip(s.pole);
+        }
+        const still = !(dt > 0) || !c.begun;
+        c.begun = true;
+        const settle = (sp, x, y, z) => (still ? sp.set(x, y, z) : sp.step(x, y, z, FLESH.halfLife, dt));
+        settle(c.shift, s.total.x, s.total.y, s.total.z);
+        settle(c.pole, s.pole.x - s.base.x, s.pole.y - s.base.y, s.pole.z - s.base.z);
+        const any = Math.abs(c.shift.x[0]) + Math.abs(c.shift.x[1]) + Math.abs(c.shift.x[2])
+            + Math.abs(c.pole.x[0]) + Math.abs(c.pole.x[1]) + Math.abs(c.pole.x[2]) > 1e-6;
+        if (!moved && !any) return;
+        s.total.set(c.shift.x[0], c.shift.x[1], c.shift.x[2]);
+        s.pole.set(s.base.x + c.pole.x[0], s.base.y + c.pole.x[1], s.base.z + c.pole.x[2]);
+        this.staffEnds(s.total);
+        this.solveStaffGrip(s.pole);
+    }
+
     /**
      * His left hand closes on the staff. The staff runs across his palm inside his curled fingers,
      * his thumb toward its top; the hand points on from his elbow through the staff (its length
@@ -950,13 +1245,14 @@ export class TrollBody {
      * his elbow is comfortably bent, sliding up or down it from the planned grip as far as FIST_HOLD
      * allows: an arm held straight or folded shut is what pinched. The
      * staff itself, and the lantern on it, stay where they are. The forearm takes a share of the
-     * hand's turn about it, so the wrist does not wring.
+     * hand's turn about it, so the wrist does not wring. `pole`: where his elbow bends to (the
+     * chest's frame), when it is swung out of his body.
      */
-    solveStaffHand() {
+    solveStaffGrip(pole = null) {
         const st = this.staff;
         const { fist } = this;
         const guess = this.staffGripModel();
-        this.solveArm('L', guess);
+        this.solveArm('L', guess, pole);
         this.staffWrist = null;
         this.staffSlide = 0;
         if (!fist || !guess) return;
@@ -984,7 +1280,11 @@ export class TrollBody {
         const [lo, hi] = fist.band[hold];
         const slideMin = FIST_HOLD[hold].slide[0] / this.H;
         const slideMax = FIST_HOLD[hold].slide[1] / this.H;
-        let slide = 0;
+        // (No further in a frame than a hand slides: from where it was on the staff the frame before.)
+        const dt = this.frameDt || 0;
+        const step = dt > 0 && Number.isFinite(st.slideWas) ? (FIST_SLIDE_SPEED * dt) / this.H : Infinity;
+        const turn = dt > 0 && st.lieWas ? FIST_TURN_SPEED * dt : Infinity;
+        let slide = Number.isFinite(st.slideWas) ? st.slideWas : 0;
         const elbow = this._mid;
         for (let pass = 0; pass < 4; pass++) {
             at.copy(grip).addScaledVector(axis, slide);
@@ -993,20 +1293,46 @@ export class TrollBody {
             h.addScaledVector(axis, -h.dot(axis));
             if (h.lengthSq() < 1e-8) h.set(0, 0, 1).addScaledVector(axis, -axis.z);
             h.normalize();
-            out.crossVectors(width, h);
-            wrist.copy(at).addScaledVector(h, -FIST.along).addScaledVector(out, FIST.off);
-            // How far the wrist stands from the shoulder: too far, the arm is straight; too near, folded.
-            reach.copy(wrist).sub(shoulder);
-            const d = reach.length();
-            const want = Math.min(hi, Math.max(lo, d));
-            const along = reach.dot(axis) / Math.max(d, 1e-6);
-            if (want !== d && Math.abs(along) > 0.15) {
-                slide = Math.min(slideMax, Math.max(slideMin, slide + (want - d) / along));
-                at.copy(grip).addScaledVector(axis, slide);
-                wrist.copy(at).addScaledVector(h, -FIST.along).addScaledVector(out, FIST.off);
+            if (Number.isFinite(turn)) {
+                // (No further round the staff in a frame than a hand turns on it.)
+                const was = reach.copy(st.lieWas).addScaledVector(axis, -st.lieWas.dot(axis));
+                if (was.lengthSq() > 1e-8) {
+                    was.normalize();
+                    const angle = Math.acos(Math.min(1, Math.max(-1, was.dot(h))));
+                    if (angle > turn) {
+                        // Turned about the staff by as much as it may, the nearer way round.
+                        const side = out.crossVectors(was, h).dot(axis) < 0 ? -1 : 1;
+                        h.copy(was).applyAxisAngle(axis, side * turn);
+                    }
+                }
             }
-            this.solveArm('L', wrist);
+            out.crossVectors(width, h);
+            // The wrist stands off the staff by the hand's own length and thickness. Wherever his
+            // hand is on the staff (s along it from the planned grip) his wrist is then
+            // |r + axis s| from his shoulder: (s + a)^2 + p^2, the staff's line passing p from it.
+            reach.copy(grip).addScaledVector(h, -FIST.along).addScaledVector(out, FIST.off).sub(shoulder);
+            const a = reach.dot(axis);
+            const p2 = Math.max(0, reach.lengthSq() - a * a);
+            const d0 = Math.sqrt(p2 + a * a);
+            // Too far, the arm is straight: toward where the staff passes nearest, until it is
+            // within reach. Too near, folded: away from there (the nearer way), until it is not.
+            let want = 0;
+            if (d0 > hi) {
+                const t = Math.sqrt(Math.max(0, hi * hi - p2));
+                want = Math.abs(-a + t) < Math.abs(-a - t) ? -a + t : -a - t;
+            } else if (d0 < lo) {
+                const t = Math.sqrt(Math.max(0, lo * lo - p2));
+                want = Math.abs(-a + t) < Math.abs(-a - t) ? -a + t : -a - t;
+            }
+            want = Math.min(slideMax, Math.max(slideMin, want));
+            const from = Number.isFinite(st.slideWas) ? st.slideWas : want;
+            slide = Math.min(from + step, Math.max(from - step, want));
+            at.copy(grip).addScaledVector(axis, slide);
+            wrist.copy(at).addScaledVector(h, -FIST.along).addScaledVector(out, FIST.off);
+            this.solveArm('L', wrist, pole);
         }
+        st.slideNow = slide;
+        st.lieNow = (st.lieNow || new THREE.Vector3()).copy(h);
         // The hand's turn from its rest frame onto this one.
         m.makeBasis(h, out, width).multiply(k.restT);
         g.setFromRotationMatrix(m);
@@ -1041,8 +1367,11 @@ export class TrollBody {
             yaw = wrapAngle(Math.atan2(dx, dz) - this.heading);
             pitch = -Math.atan2(dy, Math.hypot(dx, dz));
         }
-        // (A gesture that ducks his head, a bow, lets the look go for its while.)
-        yaw = clamp(yaw, -1.7, 1.7) * keep;
+        // (A gesture that ducks his head, a bow, lets the look go for its while. Carrying his staff
+        // up at his left shoulder he does not turn his face round into his own fist: he looks back
+        // over it as far as it lets him. The limit comes and goes over a moment, with the staff.)
+        springTo(this.carried, this.staff.wantMode === 'high' ? 1 : 0, 0.35, dt);
+        yaw = clamp(yaw, -1.7, 1.7 - 0.8 * clamp(this.carried.x, 0, 1)) * keep;
         pitch = clamp(pitch, -0.6, 0.5) * keep;
         const S = TROLL_LOOK;
         followTo(this.look.yaw, yaw * S.head.share, S.head.halfLife, dt, S.head.speed);
@@ -1083,6 +1412,10 @@ export class TrollBody {
         let wantMode = gp?.staff || want.staff || 'walk';
         if (act.crouch > 0.3 && (wantMode === 'dip' || st.wantMode === 'dip')) wantMode = 'dip';
         st.wantMode = wantMode;
+        // (Where his hand was on the staff, and how it lay about it: this frame it moves on from there.)
+        st.slideWas = st.slideNow;
+        if (st.lieNow) st.lieWas = (st.lieWas || new THREE.Vector3()).copy(st.lieNow);
+        this.frameDt = dt;
         // (Seated he keeps it planted, except to draw the lantern in to trim it.)
         const lifted = wantMode !== 'walk' && (act.sit < 0.5 || wantMode === 'tend');
         // (His hand moves along the staff as he takes it up or plants it: never a jump.)
@@ -1105,15 +1438,19 @@ export class TrollBody {
                 dir = fwd.clone().multiplyScalar(0.18).add(UP).normalize();
             } else if (wantMode === 'high') {
                 // Walking home he carries it up, over his shoulder: seen from anywhere, it lights her way.
-                grip = chest.clone().addScaledVector(left, 0.72).addScaledVector(fwd, 0.36);
-                grip.y += 0.42;
+                // (Out from his head: he looks back at her over that shoulder, and his face must not
+                // come round into his own fist.)
+                grip = chest.clone().addScaledVector(left, 0.98).addScaledVector(fwd, 0.58);
+                grip.y += 0.34;
                 dir = fwd.clone().multiplyScalar(0.12).addScaledVector(left, 0.12).add(UP)
                     .normalize();
             } else if (wantMode === 'tend') {
                 // Trimming it: the staff drawn in and tipped over so the lantern hangs before his face.
-                grip = chest.clone().addScaledVector(left, 0.5).addScaledVector(fwd, 0.35);
-                grip.y -= 0.55;
-                dir = left.clone().multiplyScalar(-0.45).addScaledVector(fwd, 0.4).add(this._mid.set(0, 1.68, 0))
+                // (Before the end of his long nose, and under it: tipped less far forward, the
+                // lantern hung IN his face, and the hand at its door with it.)
+                grip = chest.clone().addScaledVector(left, 0.5).addScaledVector(fwd, 0.42);
+                grip.y -= 0.7;
+                dir = left.clone().multiplyScalar(-0.45).addScaledVector(fwd, 0.8).add(this._mid.set(0, 1.68, 0))
                     .normalize();
             } else if (wantMode === 'thump') {
                 // Knocked on the water before him: its foot lifted and brought down twice (the
@@ -1126,7 +1463,8 @@ export class TrollBody {
                 };
                 const tip = this.root.clone().addScaledVector(fwd, 0.95).addScaledVector(left, 0.45);
                 tip.y = this.ground(tip.x, tip.z) + 0.32 * (knock(0.22, 0.46) + knock(0.55, 0.8));
-                const hand = chest.clone().addScaledVector(left, 0.6).addScaledVector(fwd, 0.45);
+                // (Out past his belly: at 0.6 his arm came down through the side of it.)
+                const hand = chest.clone().addScaledVector(left, 0.78).addScaledVector(fwd, 0.5);
                 hand.y -= 0.3;
                 dir = hand.clone().sub(tip).normalize();
                 grip = tip.clone().addScaledVector(dir, st.along);
@@ -1201,21 +1539,46 @@ export class TrollBody {
             d.y = Math.max(d.y, 0.3);
             d.normalize();
             const g = st.tip.clone().addScaledVector(d, st.along);
-            const k = st.wasPlanted === false ? 0.25 : 0.06;
+            // (Set down, not dropped: slowly while it comes down from where he carried it, firm once it stands.)
+            st.planted = st.wasPlanted === false ? 0 : (st.planted ?? 10) + dt;
+            const k = STAFF_PLANT.setDown
+                + (STAFF_PLANT.stood - STAFF_PLANT.setDown) * smoothstep(STAFF_PLANT.over[0], STAFF_PLANT.over[1], st.planted);
             st.grip.step(g.x, g.y, g.z, k, dt);
             st.dir.step(d.x, d.y, d.z, k, dt);
             st.wasPlanted = true;
         }
+        this.staffEnds(null);
+    }
+
+    /**
+     * Where the staff is, from its grip and its lean as they have settled: its hand's place on it,
+     * its foot, its top and the crook's end. `move` (model frame, model units) is how far his hand
+     * takes it out of his own body's way: lifted, the whole of it goes; planted, its foot stays
+     * where it stands and it leans the other way.
+     */
+    staffEnds(move = null) {
+        const st = this.staff;
         const dl = Math.hypot(st.dir.x[0], st.dir.x[1], st.dir.x[2]) || 1;
-        st.dirN = new THREE.Vector3(st.dir.x[0] / dl, st.dir.x[1] / dl, st.dir.x[2] / dl);
-        st.gripAt = new THREE.Vector3(st.grip.x[0], st.grip.x[1], st.grip.x[2]);
-        st.foot = st.gripAt.clone().addScaledVector(st.dirN, -st.along);
-        st.top = st.gripAt.clone().addScaledVector(st.dirN, STAFF.length - st.along);
+        st.dirN = (st.dirN || new THREE.Vector3()).set(st.dir.x[0] / dl, st.dir.x[1] / dl, st.dir.x[2] / dl);
+        st.gripAt = (st.gripAt || new THREE.Vector3()).set(st.grip.x[0], st.grip.x[1], st.grip.x[2]);
+        st.foot = (st.foot || new THREE.Vector3()).copy(st.gripAt).addScaledVector(st.dirN, -st.along);
+        if (move && move.lengthSq() > 1e-12) {
+            const by = this._flesh.shift.copy(move).applyAxisAngle(UP, this.heading).multiplyScalar(this.H);
+            st.gripAt.add(by);
+            if (st.mode === 'planted') {
+                st.dirN.copy(st.gripAt).sub(st.foot).normalize();
+                st.gripAt.copy(st.foot).addScaledVector(st.dirN, st.along);
+            } else st.foot.add(by);
+        }
+        st.top = (st.top || new THREE.Vector3()).copy(st.gripAt).addScaledVector(st.dirN, STAFF.length - st.along);
         // The crook bends forward off the top; the lantern's bail hangs from its end.
         // (Out to his left and forward: the lantern lights his face from the side, it does not hide it.)
-        const way = this._v2.copy(fwd).multiplyScalar(0.9).addScaledVector(left, 0.38);
+        const fwd = this._v3.set(Math.sin(this.heading), 0, Math.cos(this.heading));
+        const way = this._v2.copy(fwd).multiplyScalar(0.9);
+        way.x += Math.cos(this.heading) * 0.38;
+        way.z += -Math.sin(this.heading) * 0.38;
         const out = this._v.copy(way).addScaledVector(st.dirN, -way.dot(st.dirN));
-        if (out.lengthSq() < 1e-6) out.copy(left);
+        if (out.lengthSq() < 1e-6) out.set(Math.cos(this.heading), 0, -Math.sin(this.heading));
         out.normalize();
         this.hookAt.copy(st.top).addScaledVector(out, STAFF.hook).addScaledVector(st.dirN, -0.1);
     }
@@ -1288,6 +1651,10 @@ export class TrollBody {
             busy = Math.max(busy, w);
         }
         // (Quicker to follow a gesture than to swing: a throw is a throw.)
+        if (!this.armRSet) {
+            this.armRSet = true;
+            this.armR.set(x, y, z);
+        }
         this.armR.step(x, y, z, 0.16 - 0.12 * busy, dt);
         this.onKnee = knee ? act.sit * (1 - busy) : 0;
         return new THREE.Vector3(this.armR.x[0], this.armR.x[1], this.armR.x[2]);
@@ -1306,13 +1673,19 @@ export class TrollBody {
         out.up = out.up || new THREE.Vector3();
         out.wrist = out.wrist || new THREE.Vector3();
         const d = this._v3.copy(knee).sub(hip).normalize();
-        const up = out.up.set(0, 1, 0).addScaledVector(d, -d.y);
-        if (up.lengthSq() < 1e-6) up.set(0, 0, 1);
-        up.normalize();
-        const h = out.h.copy(d).addScaledVector(up, -0.55).add(this._v2.set(0.2, 0, 0)).normalize();
-        up.addScaledVector(h, -up.dot(h)).normalize();
-        // (The palm on the top of the knee: the leg's half-thickness and the palm's above its joint.)
-        out.wrist.copy(knee).addScaledVector(up, 0.085).addScaledVector(h, -0.07);
+        const top = this._v.set(0, 1, 0).addScaledVector(d, -d.y);
+        if (top.lengthSq() < 1e-6) top.set(0, 0, 1);
+        top.normalize();
+        // Seated, his belly lies over his lap as far as the tops of his knees: his hand rests on the
+        // OUTSIDE of his knee, where it shows, its fingers down over the front of it and its back
+        // up and out. (Laid on top of the knee it lay inside his own lap.)
+        const side = this._v2.set(SIDES.R, 0, 0);
+        const h = out.h.copy(d).multiplyScalar(0.55).addScaledVector(top, -0.8).addScaledVector(side, -0.12)
+            .normalize();
+        out.up.copy(top).addScaledVector(side, 0.9);
+        out.up.addScaledVector(h, -out.up.dot(h)).normalize();
+        // (The leg's half-thickness and the palm's out from its joint.)
+        out.wrist.copy(knee).addScaledVector(side, 0.085).addScaledVector(top, 0.045).addScaledVector(d, -0.02);
         return out;
     }
 
@@ -1330,6 +1703,14 @@ export class TrollBody {
             const width = this._v.copy(k.h).cross(k.up);
             this._m.makeBasis(k.h, k.up, width).multiply(this.palmR);
             want.slerp(this._q2.setFromRotationMatrix(this._m), this.onKnee);
+        }
+        // (Laid on his own body, it lies flat on it, its back away from him.)
+        const { lay } = this;
+        if (lay.share > 0) {
+            const up = this._v2.copy(lay.up).addScaledVector(lay.h, -lay.up.dot(lay.h)).normalize();
+            const width = this._v.copy(lay.h).cross(up);
+            this._m.makeBasis(lay.h, up, width).multiply(this.palmR);
+            want.slerp(this._q2.setFromRotationMatrix(this._m), lay.share);
         }
         if (!this.wristR) this.wristR = want.clone();
         else if (dt > 0) {

@@ -74,8 +74,10 @@ export const TROLL_GESTURES = Object.freeze({
     wave(k, t, len, o) {
         const e = envelope(k, 0.2, 0.22);
         const sway = Math.sin(t * Math.PI * 2 * 0.85) * e;
-        const at = [-0.22 + sway * 0.09, 0.37 + Math.abs(sway) * 0.015, 0.25 - sway * 0.03];
-        o.R = hand('chest', at, e, [-1, -0.35, 0.1]);
+        // (Out beside his head with his elbow under his hand, so his hand stands up: with the
+        // elbow out to the side his forearm lay across his brow on the way.)
+        const at = [-0.27 + sway * 0.09, 0.37 + Math.abs(sway) * 0.015, 0.25 - sway * 0.03];
+        o.R = hand('chest', at, e, [-0.5, -1, 0.15]);
         o.head[2] = 0.06 * e;
         o.chest[2] = -0.04 * e;
         o.clav = 0.04 * e;
@@ -185,7 +187,8 @@ export const TROLL_GESTURES = Object.freeze({
         const e = envelope(k, 0.25, 0.25);
         o.staff = 'tend';
         const fiddle = Math.sin(t * Math.PI * 2 * 1.6) * sstep(0.3, 0.4, k) * (1 - sstep(0.7, 0.8, k));
-        const at = [-0.05 + fiddle * 0.01, -0.02 + fiddle * 0.008, -0.04];
+        // (At the lantern's side, his right of it: between it and his face there is no room for a hand.)
+        const at = [-0.085 + fiddle * 0.01, -0.01 + fiddle * 0.008, 0.0];
         o.R = hand('lantern', at, e * sstep(0.2, 0.4, k), [-1, -0.6, 0]);
         o.head[0] = 0.05 * e;
         o.chest[0] = 0.04 * e;
