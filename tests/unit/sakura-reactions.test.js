@@ -4,9 +4,15 @@ import {
 } from '../../src/themes/sakura-twilight/sakura-reactions.js';
 
 const ENVELOPES = ['gust', 'glow', 'lanterns', 'moon'];
-const UNIT_STATES = ['vortex', 'heat', 'spirit', 'constellation', 'figures', 'hush'];
-/** What gameplay events emit; the fever's own festival of sky lanterns comes on a cadence. */
-const EVENT_KINDS = ['lock', 'clear', 'floats', 'star', 'shower', 'combo', 'lanterns', 'spin', 'rise'];
+const UNIT_STATES = ['vortex', 'heat', 'spirit', 'constellation', 'figures', 'hush', 'blizzard'];
+/**
+ * What gameplay events emit; the fever's own festival of sky lanterns comes on a cadence. The last
+ * four are the showpieces' own (sakura-showpieces.js): a hard drop's crown of spray, the wave of
+ * lantern light three and four lines run along the far shore, the back-to-back's gate and the
+ * perfect clear's star fox.
+ */
+const EVENT_KINDS = ['lock', 'clear', 'floats', 'star', 'shower', 'combo', 'lanterns', 'spin', 'rise', 'splash', 'shore',
+    'gate', 'spirit'];
 const EMITTER_KINDS = [...EVENT_KINDS, 'festival'];
 const EMITTER_KEYS = ['active', 'age', 'column', 'duration', 'id', 'kind', 'lines', 'progress', 'row', 'seed',
     'serial', 'side', 'strength'];
@@ -33,6 +39,8 @@ const REST_FRAME = Object.freeze({
     stage: 0,
     crown: 0,
     corona: 0,
+    // The four-line storm still in the air.
+    blizzard: 0,
     leap: 0,
     motion: 1,
     emitters: [],
@@ -421,9 +429,13 @@ describe('Sakura reaction director', () => {
                 kind: 'lock', side: soft.side, column: soft.column, row: soft.row,
             });
             for (const key of ENVELOPES) expect(dropped.frame[key], key).toBeGreaterThan(plain.frame[key]);
-            // The next piece is placed gently: the charge has been spent.
+            // (The piece went through the card into the lake: the drop also raised its crown of spray.)
+            expect(kindsOf(dropped.frame)).toEqual(['lock', 'splash']);
+            expect(kindsOf(plain.frame)).toEqual(['lock']);
+            // The next piece is placed gently: the charge has been spent, and it makes no spray.
             dropped.onPieceLock({ piece });
-            expect(dropped.frame.emitters[1].strength).toBe(soft.strength);
+            expect(emittersOf(dropped.frame, 'lock')[1].strength).toBe(soft.strength);
+            expect(emittersOf(dropped.frame, 'splash')).toHaveLength(1);
             expectBounded(dropped.frame, dropped.maxEmitters);
         });
 
@@ -1007,7 +1019,8 @@ describe('Sakura reaction director', () => {
             const reactions = create();
             expect(reactions.onBackToBack()).toBe(true);
             const { frame } = reactions;
-            expect(frame.emitters).toEqual([]);
+            // (Its one emitter is the gate's: light, and a ring from its feet. No petals.)
+            expect(kindsOf(frame)).toEqual(['gate']);
             expect(frame.front).toBeNull();
             for (const key of ['glow', 'lanterns', 'moon']) expect(frame[key], key).toBeGreaterThan(0);
             const later = advance(reactions, 1.5);
@@ -1026,7 +1039,7 @@ describe('Sakura reaction director', () => {
             const reactions = create();
             expect(reactions.onPerfectClear()).toBe(true);
             const { frame } = reactions;
-            expect(kindsOf(frame)).toEqual(['lanterns', 'rise', 'shower', 'star']);
+            expect(kindsOf(frame)).toEqual(['lanterns', 'rise', 'shower', 'spirit', 'star']);
             expect(frame.front).not.toBeNull();
             for (const key of ENVELOPES) expect(frame[key], key).toBeGreaterThan(0.5);
             for (const emitter of frame.emitters) expect(emitter.strength).toBeGreaterThan(0.5);
@@ -1035,8 +1048,10 @@ describe('Sakura reaction director', () => {
             expect(later.heat).toBeGreaterThan(0);
             expect(later.constellation).toBeGreaterThan(0.5);
             expect(later.figures).toBe(1);
-            // Every flame of the ring is lit.
-            expect(Math.round(later.foxfire)).toBe(SAKURA_MAX_FOXFIRE);
+            // The foxfire stays the combo's own gauge: the crown no longer lights the whole ring (only
+            // the flame or two the heat of play kindles by itself).
+            expect(reactions.foxfireTarget).toBe(0);
+            expect(later.foxfire).toBeLessThan(SAKURA_MAX_FOXFIRE / 2);
             // Nothing outdoes it.
             const four = create();
             four.onLineClear(4);

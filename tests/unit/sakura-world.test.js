@@ -31,6 +31,7 @@ import {
     sakuraLand, sakuraPathDistance, sakuraPathZ, sakuraShore, sakuraSurfaceHeight, sakuraTerrainHeight,
 } from '../../src/themes/sakura-twilight/sakura-terrain.js';
 import { SAKURA_UNMIRRORED_LAYER } from '../../src/themes/sakura-twilight/sakura-water.js';
+import { SAKURA_WEATHERS } from '../../src/themes/sakura-twilight/sakura-weather.js';
 import { SakuraWorld } from '../../src/themes/sakura-twilight/sakura-world.js';
 
 const assetDirectory = new URL('../../src/themes/sakura-twilight/assets/', import.meta.url);
@@ -40,7 +41,8 @@ const TIER_ORDER = ['Extreme', 'Ultra', 'High', 'Medium', 'Low', 'Minimal'];
 const LANDSCAPE = 16 / 9;
 const PORTRAIT = 9 / 19.5;
 const STEP = 1 / 60;
-const WORLD_PARTS = ['terrain', 'sky', 'backdrop', 'forest', 'garden', 'foxes', 'water', 'spirits', 'petals'];
+const WORLD_PARTS = ['terrain', 'sky', 'backdrop', 'forest', 'garden', 'foxes', 'water', 'spirits', 'petals',
+    'showpieces'];
 /** What a fox's skinned mesh is called (the loader numbers the name its model shares with its scene). */
 const FOX_SKIN = /^SakuraFox(_\d+)?$/;
 /**
@@ -1033,6 +1035,9 @@ describe('Sakura world scene contracts', () => {
             level: 1,
             hour: SAKURA_HOURS[0].name,
             hourPhase: 0,
+            // The air a session opens in is the first: the garden as it was built.
+            weather: SAKURA_WEATHERS[0].name,
+            weatherPhase: 0,
         });
         expect(sum(Object.values(world.getDiagnostics().petals))).toBe(tier.petals);
 
@@ -1612,7 +1617,8 @@ describe('Sakura world in play', () => {
         }
         // The session really happened: every kind of emitter and force field was played.
         expect([...seen.kinds].sort())
-            .toEqual(['clear', 'combo', 'floats', 'lanterns', 'lock', 'rise', 'shower', 'spin', 'star']);
+            .toEqual(['clear', 'combo', 'floats', 'gate', 'lanterns', 'lock', 'rise', 'shore', 'shower', 'spin', 'spirit',
+                'splash', 'star']);
         expect([...seen.fields].sort()).toEqual(['burst', 'jet', 'lift', 'vortex']);
         expect(seen.front).toBe(true);
         expect(seen.finite).toBe(true);
@@ -2718,7 +2724,9 @@ describe('Sakura world ownership', () => {
         expect(() => world.build()).toThrow('[Sakura] SakuraWorld needs its loaded assets before it can build.');
         expect(scene.children).toHaveLength(0);
         expect(world.built).toBe(false);
-        const openingHour = { level: 1, hour: SAKURA_HOURS[0].name, hourPhase: 0 };
+        const openingHour = {
+            level: 1, hour: SAKURA_HOURS[0].name, hourPhase: 0, weather: SAKURA_WEATHERS[0].name, weatherPhase: 0,
+        };
         // Nothing was half-made: update and diagnostics are still safe.
         expect(() => world.update(0, STEP, { emitters: [] })).not.toThrow();
         expect(world.getDiagnostics()).toEqual({
