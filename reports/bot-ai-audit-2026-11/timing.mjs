@@ -15,13 +15,16 @@ export function batch(fixtures, tier, units, hz, count, Controller = PuzzleBotCo
     const frame = 1000 / hz;
     for (const fixture of fixtures) {
         const bots = Array.from({ length: count }, (_, i) => {
-            const bot = new Controller({ playerState: fixture.state, playerIndex: i, difficulty: tier, actions: {},
+            const accepted = () => true;
+            const bot = new Controller({ playerState: fixture.state, playerIndex: i, difficulty: tier, actions: {
+                moveLeft: accepted, moveRight: accepted, rotateLeft: accepted, rotateRight: accepted,
+                rotateFlip: accepted, softDrop: accepted, hardDrop: accepted },
                 configOverrides: tier === 8 ? { maxApm: 340, reactionMs: [150, 300] } : undefined,
                 rng: seededRandom((fixture.seed ^ 0x85ebca6b ^ i) >>> 0), planUnitsPerMs: units });
             const steps = bot.planSteps.bind(bot);
             bot.visits = 0;
-            bot.planSteps = function* countedSteps() {
-                const gen = steps();
+            bot.planSteps = function* countedSteps(...args) {
+                const gen = steps(...args);
                 for (;;) {
                     const step = gen.next();
                     this.visits++;
@@ -37,7 +40,7 @@ export function batch(fixtures, tier, units, hz, count, Controller = PuzzleBotCo
             const at = tick * frame;
             const before = bots.reduce((sum, b) => sum + b.visits, 0);
             const t0 = performance.now();
-            for (const bot of bots) bot.update(frame, at);
+            for (const bot of bots) if (!adopted.has(bot)) bot.update(frame, at);
             const ms = performance.now() - t0;
             if (before < bots.reduce((sum, b) => sum + b.visits, 0)) { times.push(ms); ticks++; }
             for (const bot of bots) {
@@ -48,7 +51,10 @@ export function batch(fixtures, tier, units, hz, count, Controller = PuzzleBotCo
             }
             if (adopted.size === bots.length) break;
         }
-        if (adopted.size !== bots.length) throw Error('Incomplete timing fixture');
+        if (adopted.size !== bots.length) throw Error('Incomplete timing fixture ' + JSON.stringify({
+            seed: fixture.seed, kind: fixture.kind, tier, hz, count, active: !!fixture.state.currentPiece,
+            alive: fixture.state.isAlive, over: fixture.state.isGameOver, visits: bots.map(b => b.visits),
+        }));
         work.push(bots.map(b => b.visits - 1));
         tickCounts.push(ticks);
         choices.push(bots.map(b => signature(b.lastPlan)));

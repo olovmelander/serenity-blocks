@@ -1,9 +1,10 @@
 // Run with the repository's Electron binary. Output one JSON record per lane per repeat.
 const { app, BrowserWindow } = require('electron');
 const { buildSync } = require('esbuild');
-const { writeFileSync, mkdtempSync } = require('node:fs');
+const { readFileSync, writeFileSync, mkdtempSync } = require('node:fs');
 const { tmpdir } = require('node:os');
-const { join } = require('node:path');
+const { join, resolve } = require('node:path');
+const { pathToFileURL } = require('node:url');
 
 app.setPath('userData', mkdtempSync(join(tmpdir(), 'serenity-audit-renderer-')));
 
@@ -25,7 +26,13 @@ async function run() {
         }
         s.reset();
     }
-    const bundle = buildSync({ entryPoints: [process.argv[3] || join(__dirname, 'timing.mjs')], bundle: true, format: 'iife',
+    if (process.argv[4]) {
+        const { variants } = await import(pathToFileURL(resolve(process.argv[4])));
+        const added = await variants(fixtures);
+        fixtures.splice(0, fixtures.length, ...added);
+    }
+    const entry = process.argv[3] || join(__dirname, 'timing.mjs');
+    const bundle = entry.endsWith('.iife.js') ? readFileSync(entry, 'utf8') : buildSync({ entryPoints: [entry], bundle: true, format: 'iife',
         globalName: 'AuditTiming', platform: 'browser', write: false,
         define: { 'import.meta.env': '{}' }, logLevel: 'silent' }).outputFiles[0].text;
     const window = new BrowserWindow({ show: false, webPreferences: { backgroundThrottling: false } });
@@ -33,7 +40,9 @@ async function run() {
     await window.webContents.executeJavaScript(bundle);
     const rows = [];
     for (let repeat = 0; repeat < 2; repeat++) {
-        const lanes = await window.webContents.executeJavaScript('AuditTiming.sample(' + JSON.stringify(fixtures) + ',' + repeat + ')');
+        const lanes = await window.webContents.executeJavaScript('(() => { try { return AuditTiming.sample('
+            + JSON.stringify(fixtures) + ',' + repeat + '); } catch (error) { return { error: error.stack }; } })()');
+        if (lanes.error) throw Error(lanes.error);
         for (const lane of lanes) rows.push({ repeat, ...lane });
     }
     writeFileSync(process.argv[2], JSON.stringify({ chromium: process.versions.chrome, electron: process.versions.electron,

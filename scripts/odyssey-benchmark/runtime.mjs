@@ -100,7 +100,7 @@ export function summarizeFeel(samples) {
 export async function runAttempt({
     levelId, seed, profile = 'stacker', maxSimSeconds = 900, maxPieces = 1200,
     wallBudgetMs = 20000, trace = false, scenarioId = 'baseline', cadenceId = 'native',
-    lapWindowSeconds = null, liveRival = false, rivalTier, judgment,
+    lapWindowSeconds = null, liveRival = false, rivalTier, judgment, configureRival,
 }) {
     const startedAt = wallNow();
     const profileId = typeof profile === 'string' ? profile : profile?.id || profile?.profileId;
@@ -457,6 +457,7 @@ export async function runAttempt({
                 rivalTier: rivalTier ?? (liveRival ? undefined : FROZEN_RIVAL_TIERS[levelId]),
                 judgment, onRoundStart: () => { startRound(); humanBot?.reset(); },
             });
+            configureRival?.(session.duel);
             initialPhysicsPolicy.initialIntervalMs = session.gameState.dropInterval;
             initialPhysicsPolicy.levelProgression = !session.gameState.disableLevelProgression;
             observeDuel();
