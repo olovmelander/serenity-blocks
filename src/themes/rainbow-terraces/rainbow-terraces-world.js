@@ -2649,6 +2649,32 @@ export class RainbowTerracesWorld {
                 }
             }
         }
+        // Fireflies over the Spring Isle's meadow once the stars are out (the night, and the dusk of
+        // a run's end): a dozen small green lights drifting at their own slow pace above the turf,
+        // each breathing over seconds (few, slow and soft: never a field of sparks).
+        const fireflies = clamp01((this.U.stars.value - 0.22) * 1.7);
+        if (fireflies > 0.02 && this.placement.spring) {
+            const count = Math.min(14, Math.max(5, Math.round(this.tier.sleepers / 8)));
+            const R = PLAN.spring.radius;
+            const fly = this.scratch.fly || (this.scratch.fly = [0, 0, 0]);
+            for (let k = 0; k < count; k++) {
+                const h0 = hash(k * 3.7 + 1.1);
+                const h1 = hash(k * 5.3 + 2.9);
+                const h2 = hash(k * 7.1 + 4.3);
+                const a = h0 * Math.PI * 2 + t * (0.02 + 0.03 * h1) * (k % 2 ? 1 : -1);
+                const rho = R * (0.18 + 0.5 * h1) + Math.sin(t * 0.21 + k * 1.7) * 2.5;
+                const lx = Math.cos(a) * rho;
+                // (The crown's near half: what the eye sees of the meadow.)
+                const lz = Math.abs(Math.sin(a)) * rho * 0.85;
+                const ground = PLAN.spring.top * 0.85 * (1 - (Math.hypot(lx, lz) / R) ** 2);
+                const ly = ground + 2.5 + 7 * h2 + Math.sin(t * (0.35 + 0.25 * h0) + k * 2.1) * 1.6;
+                const w = this.isleToWorld('spring', lx, ly, lz, fly);
+                const breath = this.reduced ? 0.7 : 0.5 + 0.5 * Math.sin(t * (0.9 + 0.9 * h2) + k * 4.7);
+                const b = fireflies * breath * breath * 1.5;
+                if (b < 0.02) continue;
+                push(w[0], w[1], w[2], Math.hypot(w[0], w[1], w[2]) * 0.0015, 0.62 * b, 1.0 * b, 0.3 * b, GLOW.glow);
+            }
+        }
         // The full circle: the Far Gate's arch fills with the light behind the eye, rays standing
         // out of it and slowly turning (far, soft: thirteen kilometres of air lie between).
         const full = t - this.fullAt;

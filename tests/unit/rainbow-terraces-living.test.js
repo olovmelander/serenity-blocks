@@ -257,6 +257,26 @@ describe('Rainbow Terraces living: what happens by itself', () => {
         expect(world.effects.bells.items.some((b) => world.time - b.at < BELL.life + 1)).toBe(true);
     });
 
+    it('lets the fireflies out over the meadow only once the stars are out: a few, near the Spring Isle', () => {
+        const fireflies = (hour) => {
+            const { world, camera } = makeWorld('High', { hour, happenings: false });
+            let most = 0;
+            let near = true;
+            run(world, camera, 6, 1 / 10, (w) => {
+                const green = glows(w).filter((g) => g[5] > g[4] * 1.3 && g[5] > g[6] * 2 && g[5] > 0.02);
+                most = Math.max(most, green.length);
+                const isle = w.placement.spring.pos;
+                green.forEach((g) => { if (Math.hypot(g[0] - isle[0], g[2] - isle[2]) > 110) near = false; });
+            });
+            return { most, near };
+        };
+        expect(fireflies(0).most).toBe(0);
+        const night = fireflies(3);
+        expect(night.most).toBeGreaterThanOrEqual(3);
+        expect(night.most).toBeLessThanOrEqual(14);
+        expect(night.near).toBe(true);
+    });
+
     it('keeps play the first voice: nothing of the air\'s own starts while a run has ended', () => {
         const { world, camera } = makeWorld('Low', { hour: 3 });
         world.onGameOver();
