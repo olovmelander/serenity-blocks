@@ -205,15 +205,15 @@ function createAshFall(u, t) {
         const x = vLocal.x.mul(2.0);
         const seed = aTop.w;
         // Streaks of falling ash, drawn out down the curtain, falling; ragged where it thins out.
-        const q = vec3(x.mul(5.5).add(seed.mul(23.0)), down.mul(1.6).sub(u.time.mul(0.035)), seed.mul(7.0));
+        const q = vec3(x.mul(3.1).add(seed.mul(23.0)), down.mul(1.3).sub(u.time.mul(0.035)), seed.mul(7.0));
         const n1 = noise3(t.lattice, q);
         const n2 = noise3(t.lattice, q.mul(vec3(2.6, 1.4, 1.0)).add(vec3(1.3, 4.1, 0.0)));
         const streak = n1.x.mul(0.6).add(n2.y.mul(0.4));
         const edge = x.abs().add(n1.y.sub(0.5).mul(0.5));
-        const profile = float(1.0).sub(smoothstep(0.35, 0.95, edge))
-            .mul(smoothstep(0.0, 0.08, down))
+        const profile = float(1.0).sub(smoothstep(0.2, 0.9, edge))
+            .mul(smoothstep(0.0, 0.2, down))
             .mul(float(1.0).sub(smoothstep(0.35, 1.0, down.add(n2.x.sub(0.5).mul(0.3)))));
-        const density = smoothstep(0.38, 0.72, streak).mul(profile).toVar();
+        const density = smoothstep(0.3, 0.8, streak).mul(profile).toVar();
         const P = vWorld;
         // Lit at its top by the anvil's own glow (the eruption under it, fading downwind), from
         // inside by the lightning, and a little by the night.
@@ -223,7 +223,8 @@ function createAshFall(u, t) {
             .mul(u.fountain.mul(u.activity));
         const bolts = lightningAt(u, P, vec3(0.0, 1.0, 0.0), 1).mul(0.35);
         const col = u.ash.mul(0.8).mul(glow.add(bolts).add(u.ambient.mul(1.2))).toVar();
-        const alpha = clamp(density.mul(0.5), 0.0, 1.0).toVar();
+        // The eruption's phase: thick curtains under an ash storm, none in a lull.
+        const alpha = clamp(density.mul(0.3).mul(u.ashFall.mul(2.5).min(2.2)), 0.0, 0.8).toVar();
         const seen = aerial(u, t, P, col);
         return vec4(seen.mul(alpha), alpha);
     })();

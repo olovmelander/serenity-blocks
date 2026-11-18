@@ -381,3 +381,164 @@ not subtle.
   noise reads on the CPU.
 - **Not measured:** a physical phone, local multiplayer (four boards' hard drops ride up under the
   soft ceilings), and how it feels over an hour of play (the `RIDGE` table holds every amount).
+
+## Fourth pass (2026-11-18): the living pass
+
+Olov's brief: audit everything that makes up the theme, raise it to one of the most stunning in the
+game, make it vary over time so it never looks the same for long, give every event an effect of its
+own with the biggest moments the most spectacular, and keep the game smooth and easy to read.
+Blender was offered for assets.
+([before and after](pyrestorm-captures/living-before-after.jpg),
+[in the game](pyrestorm-captures/living-ingame.jpg))
+
+### The audit (what main looked like)
+
+| Part | Finding |
+|---|---|
+| Land | A black silhouette: lit only where it burned, so the cone, the plain and the eye's own slope had no shape, and the bottom fifth of the frame was empty |
+| Lava | One flat orange from bank to bank, the same from the vent to the eye |
+| Fountain, fissure | The fountain a sprinkle of sparks in a soft blob; the fissure three small sparklers |
+| Sky | Stars of one size and a faint smudge of Milky Way; nothing else in the clear half |
+| Anvil | Read as a rippled texture; stars showed through its body |
+| Over time | Only the night's tint changed (the watches) |
+| Events | A lock and a level-up could hardly be seen; a back-to-back run's corona not at all; four lines burst like a firework's shell; a twist's ring was twenty pixels wide; three lines, four lines, a perfect clear and a chain's end all read as "violet bolts at the summit" |
+
+### What changed in the picture
+
+| Part | Now |
+|---|---|
+| The night's key light | Every watch has one (`moon` in `pyrestorm-hours.js`): the afterglow's crimson at dusk, then the moon's, amber as it rises and cool blue-white high up. It rakes the land from the moon's side (`u.rake`), so slopes that turn to it show and the country has a shape where nothing burns |
+| The moon | A fat crescent with earthshine on its dark limb and a halo in the ash haze; under the horizon at dusk, it climbs the clear side of the sky through the night (`moonEl`, `moonAz`). Its own light is added to the sky's, so its dark limb is never darker than the sky round it |
+| Sky | The Milky Way as a band in its own frame with one rift of dust (`milky` by the watch), a few bright stars among the many, and a dome of lit haze round the summit that swells with the fountain |
+| Land | Ribs and gullies down the cone (noise read round the volcano's axis), lumps and hollows on the eye's own slope (a height from the noise, near the eye only), both as a turn of the normal the key light finds |
+| Lava | A river wide on screen has a cross-section: an open core running toward yellow between crusted banks, the core's width wandering along the river, slugs of hotter lava riding down it, streaks drawn out along the flow. Threads keep their even look |
+| Fountain, fissure | The fountain's body is fire: a jet that widens as it climbs, torn into tongues by noise carried up it, white-yellow in its throat, a ragged red crown. The fissure's curtain is drawn the same way and has four vents, no two alike, rising and sinking out of step |
+| Column | The fire's light reaches further up it the taller the fountain stands, a dull red of it carries on under the bend, and the lobes that face the moon take its cool rim |
+| Anvil | It streams downwind and turns over (its pouches are a slice of 3D noise that moves with the clock); hot orange near the column sinking to red downwind; whole inside its outline, so no star shows through it |
+| The snags | Six charred trees built by script in Blender (`scripts/blender/pyrestorm_snags.py` → `pyrestorm-snag-models.js`), nineteen of them placed in knots on the eye's own slope, left of the card and right of the HUD: black shapes against the rivers' glow with the fire's rim on their far edges, their broken ends still smouldering (`pyrestorm-snags.js`, one mesh, one draw) |
+
+### Varied over time
+
+**The eruption's phases** (`pyrestorm-phases.js`). Beside the watches the mountain keeps a wheel of
+its own, a phase every 86 s with a rest at each end, a level-up one phase on (the same eased offset
+as the watches', so a level turns the night and the eruption together). Five phases at 86 s against
+eight watch steps at 100 s meet in the same pairing only after hours.
+([sheet](pyrestorm-captures/living-phases.jpg))
+
+| Phase | The mountain |
+|---|---|
+| strombolian | As it always was (every number of this phase is 1: the look before this pass) |
+| paroxysm | The fountain stands over two thousand metres, the rivers run fast and bright, embers fill the air |
+| ash storm | The column goes dense and dark, the anvil thickens, ash falls in veils, and the storm strikes by itself |
+| effusive | The column thins to pale gas; the rivers swell over their banks and the fissure's curtain stands tall |
+| the glow | A lull: the fountain sinks into the crater, a thin plume of steam stands over it lit by the lava lake's breathing, the anvil breaks into patches and the stars show |
+
+**The mountain's own happenings.** One every 23 s or so, picked by the clock alone (a hash of its
+slot, weighted by the phase it falls in, never the same twice running), so a seek replays them: a
+lone bomb thrown far out onto the plain, a glowing rockfall down a gully, a shooting star, a gust
+of embers off the near rivers, a vent of the fissure jetting, a stroke of the storm, the lava lake
+turning over, a pour of fresh lava. They are softer than any gameplay event, are not counted as
+play, and never shake the ridge.
+
+### The event language now
+
+([locks, clears, four lines](pyrestorm-captures/living-events-1.jpg),
+[twist, back-to-back, perfect, level-up](pyrestorm-captures/living-events-2.jpg),
+[chain, game over, happenings](pyrestorm-captures/living-events-3.jpg))
+
+| Event | What is new |
+|---|---|
+| Lock | As before, a little smaller (a hard drop throws 3.6 to 5.8 bombs a cell, not 5 to 8), so an ordinary burst never rivals the blast |
+| Hard drop | Spatter leaps off the near rivers where they pass the ridge, off both for a long fall |
+| Three lines | The fissure answers: its vents jet together |
+| Four lines | The bombs leave the whole crater's width, steeply, over most of a second, each drawing its parabola in deep orange (an eruption, not a shell); a thermal of glowing ash climbs the column, which swells where it passes; flows of ash pour down the cone hugging its ground; after the discharge the storm strikes the cone's shoulders twice |
+| Twist | The vortex ring is 1.7 times the size, and the hot air over the near lava winds up into a whirl of fire on the side the piece turned in on (`pyrestorm-whirl.js`); on both rivers for a twist of two lines |
+| Back-to-back | Sulphur catches: wisps of blue fire rise off the near rivers, the fissure and the crater's rim for as long as the run lasts, more with every step of it, with blue tongues along the lava's banks and round the crater's mouth |
+| Perfect clear | The whole storm lights at once and the land stands in its light for a breath (`u.stormLight`: one swell, never a strobe); a wave of fire runs down both rivers from their sources to the eye and the lava is gilded behind it |
+| Level up | A flank vent tears open on the cone's face in a gap between its own streams: three fans of fire along its head (`pyrestorm-fans.js`) and a fresh stream down the fall line that then cools; the eruption moves a phase on with the night |
+| Chain | The column's upper reaches glow with the charge |
+| Game over | A last breath of ash, the column thins, the rivers crust over to a dull red, the ash comes down; the next run wakes it with a burst |
+
+Lightning now keeps clear of the board and the HUD (`boltBehindBoard`): a crawler or a stroke is
+tried a few times and the first that runs clear of both all its way is taken (above a card by
+twelve hundredths of the screen, where the next pieces are shown). A thin bright line behind the
+interface read as a crack in it (SKILL #1749).
+
+### An independent critique, and what it changed
+
+After the first build of this pass an agent with no knowledge of the work was given the capture
+sheets and asked for a blunt review. Its eight worst points and what was done:
+
+| It said | Done |
+|---|---|
+| Cloud lightning sits behind the HUD and reads as cracks in the UI | `boltBehindBoard`, above |
+| The level-up is invisible | Fans of fire on the vent, a wider stream, vents moved into the gaps between the cone's own streams |
+| The lock burst under fast play rivals the four-line blast | Lock bursts trimmed, the blast's fountain raised |
+| The event smoke is cartoon discs | A puff thins toward its edge all the way in from its middle (#1750) |
+| The perfect clear has no signature (a three-line clear with more bolts) | The storm's light on the whole land; the wave's fountains uneven, never a comb's teeth |
+| Four lines read as a firework | Thin arcs of every thickness and length; the column swells with the thermal |
+| The fissure is three cloned cones on a ruler-straight bar | Four vents of different place, width and strength, swelling out of step; the line's own glow patchy |
+| Back-to-back and the happenings are too faint | Wisps of blue fire; the happenings left soft on purpose |
+
+Also from it: the moon's dark limb was darker than the sky (now additive), stars showed through
+the anvil (now whole), the bottom of the frame was an empty grey plain (the slope's relief, the
+key light held back near the eye, the snags in knots), breakouts' toes drew as red dashes on the
+plain (let go under a pixel), game over kept its rivers bright (they crust over).
+
+### Traps met
+
+- **A firework.** The blast's ring of bombs left one point in one frame at every bearing, each with
+  a height drawn apart from its range. Thrown steeply out of the whole crater over most of a second
+  it reads as an eruption (SKILL #1745).
+- **A rope.** The first fire whirl was two sine helices of one pitch round a solid body. A thin
+  core with three broken wisps at different pitches reads as flame (#1746).
+- **An invisible vent.** The level-up's stream ran beside a stream that was already there; a zoom
+  showed it, the game's frame did not. Features an event adds go in the gaps (#1747).
+- **A neon outline.** Blue fire as a smooth band along the banks read as an outline round each
+  river. Tongues, and beads on the far threads (#1748).
+- **Lozenges on the plain.** The gilding lit the cooled lobes beside the rivers; anything that means
+  "lava runs here" is gated by the field's heat (#1609).
+- **Trees inside out.** The snags drew pale all over: the export flipped the winding for an axis
+  change that is a rotation (#703).
+- **A sky of grey cloud.** The Milky Way's noise was read in bearing and elevation; it is a band in
+  its own frame now (#1424).
+- **Twenty per cent dearer.** The pass first cost a fifth more GPU time on every tier. Two changes
+  paid for it without moving a pixel that can be seen: the lava's crust is worked out only under a
+  channel (a per-pixel branch whose texture reads take explicit gradients differentiated outside
+  it), and the column's proxy tube went back to its width (it had been widened 15 % in area for a
+  fatter ash-storm column, and every pixel of the tube is marched) (#1104).
+
+### Verification
+
+- **Unit tests:** ten files, 362 tests (`tests/unit/pyrestorm-*.test.js`), 46 of them new in
+  `pyrestorm-living.test.js`: the phase wheel (the first phase is all ones, rests, plain mixes, no
+  jump over two hundred seconds of frames), the happenings (the clock's alone, never twice running,
+  suited to their phase, uncounted as play, no shake, none replayed by a seek), the moon by the
+  watch, each event's own effect, the snags (wound outward, rooted on the land, clear of the card
+  and the HUD at three sizes), lightning clear of the board and the HUD, the storm light as one
+  swell held back by Reduce flashing. Every material, the new ones included, builds for WGSL and
+  GLSL at High and Minimal.
+- **Gates:** typecheck, the TS and lint ratchets at their baselines (no lint errors in these
+  files), architecture fitness, import boundaries, the theme lifecycle audit, the palette check,
+  IP strings, perf budgets, release gates and the production build with its boot closure: all pass.
+- **Pictures:** every phase, watch and event on WebGPU, and rest, events, the lowest tier and a
+  phone frame on the WebGL2 backend, with clean consoles
+  ([backends and tiers](pyrestorm-captures/living-backends-tiers.jpg)). Captured in a private
+  headless Chrome on the RTX 5080 Laptop.
+- **Real game** (headless Chrome, a private dev server, Single Player, WebGPU High, 1600 × 900,
+  real key presses): the theme starts, twenty-five hard drops play with their bursts and spatter,
+  the run ends and the menu returns, with no console error.
+- **GPU time** (the playground live at 1920 × 1080, uncapped, GPU timestamps, median of three
+  rounds interleaved with main): High 1.21 → 1.10 ms, Low 0.76 → 0.80 ms, Minimal 0.67 → 0.69 ms.
+  Before the two cost fixes it was 1.45, 0.91 and 0.82.
+- **Not measured:** an integrated GPU, a physical phone, the fleet bench, local multiplayer and
+  Infinity layouts, and how the phases and happenings feel over an hour of play.
+
+### Open calls (mine to raise, not decisions made)
+
+- The theme's icon and `docs/theme-screenshots` still show the old picture.
+- Four lines still end in a rain of arcs: to a still frame it can look like a willow firework.
+- The snags are a new thing in the picture; `parts=` can leave them out to compare.
+- The glow phase is a deliberate lull; a player who meets it first sees the quietest picture.
+- Chromatically the theme is still orange on violet; the blue fire and the storm light are its only
+  other colours.

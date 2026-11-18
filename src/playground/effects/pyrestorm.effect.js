@@ -16,7 +16,9 @@
  *                            on the level's own watch)
  *   watch=<place>            hold the night at a wheel place (0 ember dusk, 1 magenta night,
  *                            2 violet night, 3 indigo deep night, 4 steel dawn; fractions mix)
- *   parts=land,sky           draw only these parts (land, sky, anvil, ash, bolts, jets, bombs, motes)
+ *   phase=<place>            hold the eruption at a place on its own wheel (0 strombolian,
+ *                            1 paroxysm, 2 ash storm, 3 effusive, 4 the glow; fractions mix)
+ *   parts=land,sky           draw only these parts (land, snags, sky, anvil, ash, bolts, jets, fans, whirls, bombs, motes)
  *   falseColor=1             post debug view: band the pre-tone-map max channel
  *   noPost=1                 raw scene (no bloom/grade)
  *   bloom=0|1                override the tier's bloom
@@ -24,7 +26,9 @@
  *   reduce=1                 reduced motion
  *   shake=0                  the ridge never shakes (everything else as usual: A/B captures)
  *   look=x,y,z,fov           inspection lens: from the eye, look at a world point with this fov
- *   event=lock|drop|clear|quad|twist|perfect|levelUp|release|over   fire a gameplay event...
+ *   event=lock|drop|clear|quad|twist|perfect|levelUp|release|over|happen   fire a gameplay event
+ *                            (happen: one of the mountain's own, kind=bomb|rockfall|meteor|embers|
+ *                            jet|stroke|lake|pour, shaped by ha, hb, hc in 0..1)...
  *   eventAge=<s>             ...and show it <s> seconds later (u=<0..1> column, row=<0..19>,
  *                            lines=<1..4>, color=<hex>, peak=<n> for release)
  *   eventAt=<s>              ...or pin it on the clock: a seek to t shows it t - eventAt seconds
@@ -143,6 +147,7 @@ export function create({
     const pointer = { x: num(params, 'px'), y: num(params, 'py') };
     const level = Math.max(1, Math.round(num(params, 'level', 1)));
     const watchHold = params.has('watch') ? num(params, 'watch', 0) : null;
+    const phaseHold = params.has('phase') ? num(params, 'phase', 0) : null;
     const eventName = params.get('event');
     const eventAge = num(params, 'eventAge', 0.6);
     const eventAt = params.has('eventAt') ? num(params, 'eventAt', 0) : null;
@@ -221,6 +226,11 @@ export function create({
             for (let n = 1; n <= peak; n++) world.onCombo(n);
             world.onCombo(0);
         } else if (eventName === 'over') world.onGameOver();
+        else if (eventName === 'happen') {
+            world.happen({
+                kind: params.get('kind') || 'bomb', at: world.time, a: num(params, 'ha', 0.5), b: num(params, 'hb', 0.5), c: num(params, 'hc', 0.5),
+            });
+        }
     };
     const stepTo = (from, to, dt) => {
         const steps = Math.max(1, Math.round((to - from) / dt));
@@ -300,6 +310,7 @@ export function create({
         world.setReducedMotion(params.get('reduce') === '1');
         if (params.get('shake') === '0') world.ridge.setEnabled(false);
         if (watchHold !== null) world.setCaptureOverrides({ watch: watchHold });
+        if (phaseHold !== null) world.setCaptureOverrides({ phase: phaseHold });
         const partsParam = params.get('parts');
         if (partsParam) world.showOnlyParts(partsParam.split(',').map((p) => p.trim()));
         if (!noPost) {

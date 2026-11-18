@@ -178,6 +178,9 @@ describe('every world that writes a frame-wide flash scales it', () => {
         ['src/themes/chromadelic-highway/chromadelic-highway-world.js', /prefersReducedFlashing\(\) \? 0 :/],
         ['src/themes/voltage-storm/voltage-storm-world.js', /this\.reducedMotion \|\| prefersReducedFlashing\(\)/],
         ['src/themes/rainbow-terraces/rainbow-terraces-world.js', /setReducedMotion\(this\.reduced \|\| prefersReducedFlashing\(\)\)/],
+        // A perfect clear's storm light on the whole land, and the blast's thermal in the column.
+        ['src/themes/pyrestorm/pyrestorm-world.js', /const fs = flashScale\(\);[\s\S]*stormGlow\.valueAt\(time\) \* 0\.95 \* fs/],
+        ['src/themes/pyrestorm/pyrestorm-world.js', /1\.5 \* this\.thermalPower \* fs/],
     ])('%s', (file, pattern) => {
         expect(read(file)).toMatch(pattern);
     });

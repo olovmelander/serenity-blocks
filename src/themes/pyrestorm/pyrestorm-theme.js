@@ -5,11 +5,14 @@
  * threads of lava run down its gullies and out across a black plain in braided rivers that pass
  * below the ridge, while a fissure burns in a curtain of fire to the right. The eruption column
  * climbs five kilometres and bends downwind into a pyrocumulonimbus anvil that roofs the sky, lit
- * orange from below and charged with volcanic lightning. Locks are Strombolian bursts, clears are
- * cloud-to-ground bolts, a chain charges the storm (spider lightning along the anvil) and its
- * break discharges it, four lines are a Vulcanian blast with a shock front through the cloud, a
- * Twist blows a vortex ring, a perfect clear lights the whole anvil; the night's palette drifts
- * with the clock and a level-up moves it a watch on (and sends fresh lava down every channel). The
+ * orange from below and charged with volcanic lightning; charred snags stand on the eye's own slope
+ * against the lava and a crescent moon climbs the clear side of the sky. Locks are Strombolian
+ * bursts, clears are cloud-to-ground bolts, a chain charges the storm (spider lightning along the
+ * anvil) and its break discharges it, four lines are a Vulcanian blast (a shock front, a thermal up
+ * the column, flows of ash down the cone), a Twist blows a vortex ring and raises a fire whirl off
+ * the near lava, a back-to-back run burns blue, a perfect clear lights the whole anvil and sends a
+ * wave of fire down the rivers; the night's palette and the eruption's phase drift with the clock
+ * and a level-up moves both one on (and tears a flank vent open on the cone). The
  * ridge feels the heavy beats as small shakes of the view (a hard drop's thud, the thunder, the
  * blast's air wave, the lava's groan; pyrestorm-shake.js), stilled by reduced motion.
  *
