@@ -1646,10 +1646,15 @@ export class GamepadController {
         const prevState = this.previousStates[slot];
         const inputSheet = blockGlobalShortcuts ? this.getMenuSheet()?.element : null;
 
-        // A binding tile is listening: the press is its answer (settings.js), not a move,
-        // a tab change or the Hub. Held buttons stay latched until released.
-        if (document.querySelector?.('#settings-modal .key-input.listening')) {
-            this.latchMenuButtons(gamepad, slot);
+        // A binding tile is listening, or took its answer a moment ago: the press is its answer
+        // (settings.js), not a move, a tab change, Start or the Hub. The capture reads the pads
+        // on its own timer and can end before this poll sees the press, which then looked new.
+        // Everything held stays latched until released.
+        const captureEndedAt = Number(document.getElementById?.('settings-modal')
+            ?.getAttribute?.('data-capture-ended')) || 0;
+        if (document.querySelector?.('#settings-modal .key-input.listening') || Date.now() - captureEndedAt < 300) {
+            this.latchAllHeld(gamepad, slot);
+            prevState.serenityToggleHub = Boolean(gamepad.buttons[this.getMenuHubButton()]?.pressed);
             return;
         }
 
