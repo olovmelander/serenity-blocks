@@ -3,24 +3,29 @@
  *  COSMIC NOIR — the last lighthouse
  * ═══════════════════════════════════════════════════════════════════════════════
  *
- * A black-and-white film of deep space. A lighthouse stands on a shard of rock in a sea of
- * interstellar smoke, at the edge of the dark, with the home galaxy rising over the sea's horizon
- * and another light flashing far out under it. A captive pulsar turns in the lantern room behind a
- * ring of shutter slats: one beam rakes the sea of smoke (every swell throws a long shadow), its
- * opposite searches the sky, and the lamp's own light leaves between the slats as a fan of shafts
- * (light through venetian blinds) whose shadows lie on the sea as spokes. Most of the frame is
- * dark. A beam that looks toward us blazes and the lens glares. The sea rolls: long rollers run in
- * from the open sea in sets and break on the rock every few seconds, each throwing a curtain of
- * smoke up its face and a burst of bright spray off it; four lines, a crown or a back-to-back make
- * the sea surge, and the next waves break hard. A locking piece goes under the sea
- * beside the card: an ember glows up through the smoke, a puff rises off it and ripples run out. A
- * clear makes the pulsar flare and sends a light echo per line out: a ring of light that runs over
- * the sea to the horizon and a ring in the air that flashes down the tower. Each step of a chain
- * spins the lighthouse up and opens the blinds. Four lines fire the flashbulb: the print turns to
- * its own negative for a moment, and the far light answers. A twist spins the slats. A new level is
- * a reel change: two cue marks flash at the corner of the picture and the print turns to the next
- * film stock (cyanotype, silver, selenium, sepia, platinum); it also drifts along the same line by
- * itself, one stock every STOCK_STEP seconds: the two simply add.
+ * A black-and-white film. A lighthouse stands on a low, wet skerry in a dark sea, at the edge of
+ * the dark, with the home galaxy rising over the sea's horizon and another light flashing far out
+ * under it. A captive pulsar turns in the lantern room behind a ring of shutter slats: one beam
+ * rakes the sea, its opposite searches the sky, and the lamp's own light leaves between the slats
+ * as a fan of shafts (light through venetian blinds). Most of the frame is dark. The sea is black
+ * mirror water: it shows the night's glow on every wave's far face and the galaxy as a road toward
+ * the eye. Long rollers run in from the open sea in sets and break on the rock every few seconds,
+ * each a burst of torn water, mist and streaking drops, and white water runs off the stone.
+ *
+ * The night never holds one look for long: it goes round five acts of weather (a clear night,
+ * scud across the galaxy, a squall with rain in the beam and sheet lightning, the clearing after
+ * it, a fog bank), one every NIGHT_STEP seconds by the clock and one on with every level; hot play
+ * brews a storm of its own. The print's paper tone drifts on its own clock (a breath of a tone,
+ * never a colour).
+ *
+ * Every event has its own answer. A locking piece sends two rings of light out over the water
+ * beside the card. A clear makes the pulsar flare and sends a light echo per line over the sea;
+ * three lines send a meteor across the sky. Four lines fire the flashbulb (the print turns to its
+ * own negative for a moment) and call a great wave up over the rock at once. A twist whips the beam
+ * once round the sea. A back-to-back brings a fork of lightning down beside the board. Each step of
+ * a chain spins the lighthouse up and opens the blinds. A perfect clear makes the galaxy blaze and
+ * let a shower of meteors go. A new level is a reel change: two cue marks, the film's gate rolls
+ * once, and the night turns one act on. When a run ends the iris closes on the lamp.
  *
  * Content lives in CosmicNoirWorld (cosmic-noir-world.js), shared with the playground effect
  * src/playground/effects/cosmic-noir.effect.js, so what is iterated there ships. This class owns
@@ -42,10 +47,10 @@
  * the level-ups took are handed to the rebuilt world too. A rebuilt scene comes back on the stock
  * it had.
  *
- * Warm: none (the scene is one full-screen backdrop and one pass; the first frame compiles every
- * render pipeline; the scene pass has one output). Nothing is downloaded either: the smoke and the
- * sea's field are baked on the CPU (in a worker on a first visit), so there is no load step and
- * nothing arrives after the first frame.
+ * Warm: none (the scene is one full-screen backdrop, two instanced quads and one pass; the first
+ * frame compiles every render pipeline; the scene pass has one output). Nothing is downloaded
+ * either: the smoke, the sea's field, the foam's lace and the rock are baked on the CPU (in a
+ * worker on a first visit), so there is no load step and nothing arrives after the first frame.
  */
 
 import * as THREE from 'three/webgpu';
@@ -391,7 +396,7 @@ export default class CosmicNoirTheme extends BaseTheme {
             }),
         );
         this.registerEventListener(window, 'settingsChanged', (p) => this.handleSettingsChanged(p));
-        this.registerEventListener(window, 'gameOver', () => this.resetSession());
+        this.registerEventListener(window, 'gameOver', () => this.endRun());
 
         const resetPointer = () => {
             this.pointer.x = 0;
@@ -430,6 +435,16 @@ export default class CosmicNoirTheme extends BaseTheme {
             if (n > best) best = n;
         });
         this.world?.onCombo(best);
+    }
+
+    /**
+     * A run is over: whatever is staged still lands in it, the chain is let go, and the iris
+     * closes on the lamp (the world keeps that through the menu's own reset; the next run opens it).
+     */
+    endRun() {
+        this.director?.flush();
+        this.resetSession();
+        this.world?.onGameOver?.();
     }
 
     /** A new run: no chain in flight (the clock, and so the print's drift, runs on). */
@@ -535,7 +550,11 @@ export default class CosmicNoirTheme extends BaseTheme {
         this.modeManager = manager;
         const relayout = () => this.scheduleLayoutReads();
         this.eventUnsubscribers.push(
-            manager.on('modeStarted', relayout),
+            manager.on('modeStarted', () => {
+                relayout();
+                // A new run opens the iris a run's end closed.
+                this.world?.onSessionStart?.();
+            }),
             manager.on('modeActivated', relayout),
             manager.on('modeStopped', () => this.resetSession()),
         );
