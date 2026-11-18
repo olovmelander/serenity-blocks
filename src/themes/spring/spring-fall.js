@@ -220,6 +220,18 @@ const RIB = 4.2;
 /** How far a strand meanders across as it falls (m). */
 const SWAY = 0.65;
 const GLITTER = 3.2;
+/**
+ * What gameplay sends over the fall (spring-world.js writes `u.pulse` and `u.thunder`):
+ *   a pulse    more water coming over the lip for a moment (a clear): a band of thick white water
+ *              that leaves the brink and falls with the fall at its own speed. `width` is how long
+ *              the lip runs full (s, on the water's clock), `white` and `bright` what the band
+ *              adds, `hold` how much less it tears.
+ *   thunder    the whole fall running full (four lines, 0..1): it tears less, runs whiter and
+ *              throws more clumps.
+ */
+export const POUR_PLAY = Object.freeze({
+    width: 0.3, white: 0.7, bright: 0.55, hold: 0.75, thunderHold: 0.6, thunderBright: 0.3, thunderClumps: 0.5,
+});
 
 export function createPourMaterial(u, tex) {
     const material = new THREE.MeshBasicNodeMaterial();
@@ -249,6 +261,10 @@ export function createPourMaterial(u, tex) {
         // drawn out down the fall by the water's own acceleration (short at the brink, long
         // streaks lower down).
         const launch = u.flowClock.sub(tt).toVar();
+        // A pulse: the water that left the lip while it ran full (two can be on the fall at once).
+        const pulseOf = (start, power) => exp(launch.sub(start).div(POUR_PLAY.width).pow2().negate()).mul(power);
+        const pulse = pulseOf(u.pulse.x, u.pulse.y).add(pulseOf(u.pulse.z, u.pulse.w)).min(1.5).toVar();
+        const { thunder } = u;
         // The strands meander a little as they fall (each its own way), never ruled straight.
         const sway = texture(tex.noise, vec2(across.div(9.0).add(0.41), launch.mul(0.09))).g.sub(0.5).mul(SWAY);
         const lane = across.add(sway).toVar();
@@ -281,13 +297,16 @@ export function createPourMaterial(u, tex) {
         const field = strands.add(aer.mul(0.3)).add(packet.mul(0.35)).toVar();
         const aaField = fwidth(field).mul(1.2).add(0.02);
         const white = clamp(aer.mul(smoothstep(float(0.28).sub(aaField), float(0.62).add(aaField), field))
-            .add(burst.mul(1.5)).add(packet.mul(0.5)), 0.0, 1.0).toVar();
+            .add(burst.mul(1.5)).add(packet.mul(thunder.mul(POUR_PLAY.thunderClumps).add(0.5)))
+            .add(pulse.mul(POUR_PLAY.white))
+            .add(thunder.mul(0.18)), 0.0, 1.0).toVar();
         // The brink: for its first moments over the lip the water is a smooth glassy roll before
         // it tears white; the thick tongue holds together for most of a second, its strands
         // tearing white one by one.
         const holds = q.mul(0.75).add(0.2);
+        // (A pulse and the thunder come over already torn white.)
         const brink = float(1.0).sub(smoothstep(holds.mul(0.15), holds, tt.add(fine.sub(0.5).mul(holds).mul(0.6))))
-            .mul(q.mul(0.5).add(0.5));
+            .mul(q.mul(0.5).add(0.5)).mul(float(1.0).sub(pulse.mul(0.7).add(thunder.mul(0.5)).min(1.0)));
         white.mulAssign(float(1.0).sub(brink.mul(0.95)));
 
         // ── The surface: the sheet's own normal, ribbed across by its strands (each column lit
@@ -324,6 +343,7 @@ export function createPourMaterial(u, tex) {
         const wrap = clamp(dot(N, L).add(0.55).div(1.55), 0.0, 1.0);
         const bright = mix(float(0.34), float(1.0), smoothstep(0.25, 0.8, strands)).add(packet.mul(0.4))
             .mul(broad.mul(0.36).add(0.78))
+            .mul(pulse.mul(POUR_PLAY.bright).add(thunder.mul(POUR_PLAY.thunderBright)).add(1.0))
             .mul(float(1.0).sub(b4.mul(0.35)))
             .add(b4.mul(0.35));
         // With the sun behind it the thin water between the strands glows through, the thick
@@ -353,7 +373,9 @@ export function createPourMaterial(u, tex) {
         const inAir = float(1.0).sub(clamp(vPour2.y, 0.0, 1.0).mul(0.85));
         const tear = smoothstep(0.5, 2.6, tt).mul(thinness.mul(0.55).add(0.3)).add(float(1.0).sub(edge).mul(0.35))
             .mul(inAir)
-            .mul(0.7);
+            .mul(0.7)
+            // Full water holds together: a pulse's band and the thundering fall tear less.
+            .mul(float(1.0).sub(pulse.mul(POUR_PLAY.hold).add(thunder.mul(POUR_PLAY.thunderHold)).min(0.9)));
         const held = strands.add(packet.mul(0.25)).add(lumps.r.sub(0.5).mul(0.12)).toVar();
         const aaHeld = fwidth(held).add(0.025);
         const cover = smoothstep(tear.sub(0.08).sub(aaHeld), tear.add(0.1).add(aaHeld), held);
