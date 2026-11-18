@@ -64,6 +64,7 @@ import {
     HELIX,
     SPARKS,
     happeningAt,
+    lensEdges,
     wheelValue,
     floorEnvelope,
     RAIN,
@@ -544,6 +545,7 @@ export class RainbarkWorld {
         this._gustSlot = -1;
         /** The tick whose leaf has let go (dropLeaf). */
         this._leafTick = -1;
+        this._edges = this._edges || [0, 0];
         /** When the Climb's flock of lorikeets went up. */
         this.flockAt = -1e6;
         /** The Sunshower's bow as shown (eased). */
@@ -872,6 +874,8 @@ export class RainbarkWorld {
         if (!this.u) return;
         const height = Math.max(1, this.u.viewport.value.y);
         this.u.pixelAngle.value = (2 * Math.tan((fovForAspect(this.aspect) * DEG) / 2)) / height;
+        const edges = lensEdges(this.aspect, this._edges);
+        this.u.lens.value.set(edges[0], edges[1]);
     }
 
     // ── The Climb and Mistfall (closed form in the clock) ───────────────────────
@@ -2059,7 +2063,8 @@ export class RainbarkWorld {
         const beamsOn = Boolean(this.parts.fx?.beams);
         const pearlNow = lerp(za.pearl, zb.pearl, k);
         const swell = this.beamSwell.valueAt(t) * flashScale();
-        const flicker = 1 + HK[1].flicker * gust * Math.sin(t * 5.3) * Math.sin(t * 2.1 + 1.3);
+        // (A slow flicker: the crowns tossing over the beams, never a strobe.)
+        const flicker = 1 + HK[1].flicker * gust * Math.sin(t * 3.1) * Math.sin(t * 1.3 + 1.3);
         const beamLight = wheelValue(wheel, 'beams') * lerp(BEAMS.tide[0], BEAMS.tide[1], clockA.high)
             * (1 + BEAMS.pearl * pearlNow) * (1 + HK[0].beams * sunbreak) * flicker
             * (1 + BEAMS.surge[0] * level + BEAMS.surge[1] * fever) * (1 + BEAMS.swell * swell)

@@ -125,7 +125,9 @@ export function createBeams(u, count) {
             .add(sin(u.time.mul(aLook.y).mul(1.618).add(aLook.z.mul(2.3))).mul(0.38));
         const breath = smoothstep(0.0, 1.0, s.mul(0.5).add(0.5).sub(B.rest).div(1 - B.rest)).toVar();
         const lit = breath.mul(u.beamGain).toVar();
-        const foot = u.tide.add(B.bottom);
+        // (From an eye down in the mist the beams come on down through it to the eye's own depth,
+        // fading with the vapour over them: god-rays in the pearl, never a blank white.)
+        const foot = u.tide.add(B.bottom).min(u.camY.sub(B.under)).toVar();
         const head = u.camY.add(B.top + B.soften);
         const y = mix(foot, head, positionGeometry.y).toVar();
         const onRay = anchor.add(L.mul(y.sub(anchor.y).div(max(L.y, 0.2)))).toVar();
@@ -136,7 +138,8 @@ export function createBeams(u, count) {
         const P = onRay.add(side.mul(positionGeometry.x.mul(width).mul(0.5))).toVar();
         const ends = smoothstep(foot, foot.add(B.soften), y)
             .mul(float(1.0).sub(smoothstep(u.camY.add(B.top), head, y)));
-        const density = exp(clamp(y.sub(u.hazeY), 0.0, 400.0).div(u.scaleHeight).negate());
+        const density = exp(clamp(y.sub(u.hazeY), 0.0, 400.0).div(u.scaleHeight).negate())
+            .mul(exp(clamp(u.tide.sub(y), 0.0, 200.0).div(-B.sink)));
         const scatter = rbHgMix(dot(toEye.negate(), L), float(B.g)).toVar();
         // (In the shade a beam still reads: cooler and fainter, never gone.)
         const toward = max(scatter, B.floor);

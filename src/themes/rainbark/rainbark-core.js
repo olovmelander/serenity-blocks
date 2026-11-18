@@ -1503,7 +1503,8 @@ export const SHAFT_LIGHT = Object.freeze({
  * (`across`: −1 the frame's left edge … 1 its right, whatever the frame's shape, `sunSide` of them right
  * of the middle, where the gold air is), `rise` metres over or under the eye, and is `width` of its
  * depth across. It is lit from `top` metres over the eye down to `bottom` over the mist (soft ends,
- * `soften`), the sun forward-scattered toward the eye (g = `g`), times `k`, never under `floor` of
+ * `soften`; from an eye down in the mist, on down to `under` metres below it, fading by 1/e every
+ * `sink` metres of vapour over it), the sun forward-scattered toward the eye (g = `g`), times `k`, never under `floor` of
  * its scatter (so the beams in the blue shade still read, cooler and fainter: `shade`).
  *
  * No two frames hold the same beams: each breathes on its own clock (two sines `period` seconds
@@ -1525,6 +1526,8 @@ export const BEAMS = Object.freeze({
     rise: Object.freeze([-8, 12]),
     top: 46,
     bottom: 2,
+    under: 26,
+    sink: 34,
     soften: 18,
     g: 0.6,
     k: 1.9,
@@ -3372,7 +3375,7 @@ export const HAPPENINGS = Object.freeze({
             name: 'sunbreak', weight: 3, length: 16, rise: 3.5, fall: 7, beams: 0.9, flecks: 0.22,
         }),
         Object.freeze({
-            name: 'gust', weight: 3, length: 11, rise: 1.4, fall: 7, wind: 0.5, leaves: 30, flicker: 0.35,
+            name: 'gust', weight: 3, length: 11, rise: 1.4, fall: 7, wind: 0.5, leaves: 30, flicker: 0.3,
         }),
         Object.freeze({
             name: 'mistbank', weight: 2, length: 28, rise: 9, fall: 12, tide: 5, air: 0.4,
@@ -3522,6 +3525,12 @@ export const BOW = Object.freeze({
  * card, of which only the tips show), `scale` times the spray, the twig coming down into the frame
  * (`tilt` radians under level). The last `high` of them hang only where the walkway has climbed
  * into the crowns (growing in from `highFrom`[0] to [1] metres): up there leaves are all round.
+ * A spray is its storey's own and goes up to the next one unseen (`wrap`): once the walkway has
+ * climbed past it by its height over the eye plus the frame's foot at its depth plus `hang`
+ * metres of its own length a unit of scale, within `range` metres of the storey. Depths and
+ * rises are the 16:9 rest lens's (`lens`: its top and foot edges as slopes); on another lens a
+ * spray hangs from the same share of the frame's height, at a depth where the frame is as tall
+ * (sprayPlace), so no lens sees more of a storey than a spray's wrap can hide.
  * A blade is shaded as a blade (`blade`: darker toward its stalk by `base`, its two halves either
  * side of the midrib `fold` apart in tone, a satin streak of the sky's light `sheen` beside it).
  * `crown`: the tufts round every standing trunk's top: from `under` metres below the canopy's
@@ -3562,13 +3571,14 @@ export const FOLIAGE = Object.freeze({
     near: Object.freeze({
         corner: Object.freeze([0.6, 1.14]),
         edge: 0.3,
-        depth: Object.freeze([4.5, 13]),
+        depth: Object.freeze([3.8, 8.4]),
         rise: Object.freeze([0.6, 0.72]),
         riseEdge: 0.76,
-        scale: Object.freeze([0.85, 1.5]),
+        scale: Object.freeze([0.62, 1.12]),
         tilt: Object.freeze([0.25, 0.9]),
         high: 0.4,
         highFrom: Object.freeze([92, 116]),
+        wrap: Object.freeze({ lens: Object.freeze([0.601, 0.344]), hang: 1.7, range: Object.freeze([6, 11.6]) }),
     }),
     crown: Object.freeze({
         under: Object.freeze([1, 30]),
@@ -3592,6 +3602,28 @@ export const FOLIAGE = Object.freeze({
     }),
     blade: Object.freeze({ base: 0.3, fold: 0.16, sheen: 0.22 }),
 });
+
+/**
+ * Where a storey's spray hangs on a lens (the vertex stage's CPU twin): for its record's `rise`,
+ * `depth` and `scale` and the lens's top and foot slopes, { rise, depth, wrapAt } (wrapAt: how far
+ * the walkway climbs past the storey before the spray goes up to the next).
+ */
+export function sprayPlace(rise, depth, scale, top, foot, out = { rise: 0, depth: 0, wrapAt: 0 }) {
+    const W = FOLIAGE.near.wrap;
+    out.depth = depth * ((W.lens[0] + W.lens[1]) / (top + foot));
+    out.rise = rise * (top / W.lens[0]);
+    out.wrapAt = Math.max(W.range[0], Math.min(W.range[1], (out.rise + foot) * out.depth + scale * W.hang));
+    return out;
+}
+
+/** The frame's top and foot edges as slopes for an aspect: [tan(fov/2 + pitch), tan(fov/2 − pitch)]. */
+export function lensEdges(aspect, out = [0, 0]) {
+    const half = (viewFov(aspect) * DEG) / 2;
+    const pitch = viewPitch(aspect) * DEG;
+    out[0] = Math.tan(half + pitch);
+    out[1] = Math.tan(half - pitch);
+    return out;
+}
 
 /** Meditation's clicks (§6.13): at most `rate` peels a second, each band ±`half` metres tall. */
 export const MEDITATION = Object.freeze({ rate: 4, half: 0.55 });

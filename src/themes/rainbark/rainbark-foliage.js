@@ -357,8 +357,20 @@ export function createFoliage(u, tier = {}) {
         };
         // Where it hangs: a storey's own spray across the lens (wrapped a storey at a time), or a
         // bough's place under the canopy.
-        const storey = floor(u.camY.sub(CLIMB_BASE).div(STOREY).add(0.5)).mul(STOREY).add(CLIMB_BASE);
-        const nearAt = vec3(aA.x.mul(aA.z).mul(u.tanHalf.x), storey.add(aA.y.mul(aA.z)), aA.z.negate());
+        // A storey's spray is hung by the lens (u.lens: the frame's top and foot edges as slopes):
+        // from the same share of the frame's height on any frame, and at a depth where the frame
+        // is no taller than on the reference lens, so an upright phone's taller view never sees
+        // more of a storey than a wide one's.
+        const W = F.near.wrap;
+        const band = u.lens.x.add(u.lens.y);
+        const depth = aA.z.mul(float(W.lens[0] + W.lens[1]).div(band)).toVar();
+        const rise = aA.y.mul(u.lens.x.div(W.lens[0])).toVar();
+        // (It goes up to the next storey only once the walkway has climbed far enough past it that
+        // it hangs under the frame's foot, and by then its next place is still over the frame's
+        // top: FOLIAGE.near.wrap. It never jumps in view.)
+        const wrapAt = clamp(rise.add(u.lens.y).mul(depth).add(aA.w.mul(W.hang)), W.range[0], W.range[1]);
+        const storey = floor(u.camY.sub(CLIMB_BASE).sub(wrapAt).div(STOREY)).add(1.0).mul(STOREY).add(CLIMB_BASE);
+        const nearAt = vec3(aA.x.mul(depth).mul(u.tanHalf.x), storey.add(rise.mul(depth)), depth.negate());
         const crownAt = vec3(aA.x, aA.y, aA.z.negate());
         const origin = mix(nearAt, crownAt, crown).toVar();
         const P = origin.add(turn(local).mul(scale)).toVar();
