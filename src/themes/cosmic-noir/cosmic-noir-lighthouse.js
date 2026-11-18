@@ -2,10 +2,11 @@
  * Cosmic Noir — the lighthouse and its rock.
  *
  * One distance field, walked along the view ray inside its bounds only (an upright cylinder round
- * the tower and a ball round the rock): the rock is a clutch of basalt shards (each the meeting of
- * a handful of planes), the tower a flared, banded shaft with one lit window, then a corbel, the
- * gallery and its railing, the lantern room (a low wall, the ring of shutter slats that turn and
- * open, the lens blazing inside), the roof's dome, its ball and its rod.
+ * the tower and a ball round the rock): the rock is a skerry of bedded stone, shaped on the CPU
+ * (cosmic-noir-rock.js) and read here from a small volume; the tower stands on a plinth of dressed
+ * stone, a flared, banded shaft with a door and one lit window, then a corbel, the gallery and its
+ * railing, the lantern room (a low wall, the ring of shutter slats that turn and open, the lens
+ * blazing inside), the roof's dome, its ball and its rod.
  *
  * It is lit as a silhouette is: the lamp lights what looks at it from outside the lantern's own
  * shadow (the railing, the eave's underside, the slats' inner faces across the room), the galaxy
@@ -32,15 +33,18 @@ import {
     mix,
     normalize,
     pow,
+    reflect,
     sin,
     smoothstep,
+    step,
     vec2,
     vec3,
     vec4,
 } from 'three/tsl';
 import {
-    CAGE, PULSAR, SEA, TAU, TOWER, cnBall, cnBeam, cnCage, cnUpright, mulberry32,
+    CAGE, PULSAR, SEA, TAU, TOWER, cnBall, cnBeam, cnCage, cnUpright,
 } from './cosmic-noir-tsl.js';
+import { ROCK_BEDS, ROCK_BOX } from './cosmic-noir-rock.js';
 import { GALAXY_DIR } from './cosmic-noir-sky.js';
 
 /** Heights from the lamp (the field's own frame: the lamp at the origin, y up). */
@@ -59,6 +63,17 @@ const WINDOW = Object.freeze({
 
 /** The galaxy's light on the lighthouse and the rock: their key light, low and from behind. */
 const GALAXY_KEY = 0.2;
+/** What the lantern and the gallery let fall on the rock under them (a share of the lamp's own light). */
+const FALL_LIGHT = 0.42;
+/** How white the water running off the rock is. */
+const ROCK_FOAM = 2.4;
+/** The door at the tower's foot: its bearing (toward the eye), its sill over the foot, its height and half its width. */
+const DOOR = Object.freeze({
+    bearing: 1.78, sill: 0.46, height: 0.95, half: 0.2,
+});
+/** The rock's normal is read no finer than this (about a cell of its volume), then roughened by this much. */
+const ROCK_SOFT = 0.06;
+const ROCK_BUMP = 0.55;
 
 /** What the field says a point belongs to. */
 const ROCK = 0;
@@ -67,84 +82,46 @@ const IRON = 2;
 const WALL = 3;
 const LENS = 4;
 
+/** The plinth the tower stands on: dressed stone, two courses. */
+const PLINTH = Object.freeze({ radius: TOWER.footRadius + 0.3, height: 0.5 });
+
 /** The bounds the field is walked inside (the same frame). */
 export const TOWER_BOUNDS = Object.freeze({
     radius: TOWER.galleryRadius + 0.2,
-    y0: Y_FOOT - 0.4,
+    y0: Y_FOOT - 0.6,
     y1: TOWER.rodTop + 0.1,
-    rock: Object.freeze([1.0, Y_SEA - 0.3, 0.6]),
+    rock: Object.freeze([0.9, Y_SEA + 0.2, 0.2]),
     rockRadius: 5.6,
 });
 
-/**
- * The rock: shards of basalt, each the meeting of planes laid on an ellipsoid (so each is a
- * faceted lump of about that shape). Fixed by a seed: the same rock every visit.
- */
-function rockShards() {
-    const rand = mulberry32(1907);
-    const lumps = [
-        // The island the tower stands on (a level footing), a pinnacle beside it, lower rocks
-        // round it and one fang standing off alone.
-        {
-            c: [0.2, Y_SEA + 0.1, 0.1], r: [2.5, 1.5, 2.2], sides: 9, bevels: 5, flat: true,
-        },
-        {
-            c: [-2.35, Y_SEA + 0.1, 0.9], r: [0.95, 2.2, 0.9], sides: 6, bevels: 3,
-        },
-        {
-            c: [2.3, Y_SEA - 0.45, 0.7], r: [1.4, 1.25, 1.25], sides: 7, bevels: 4,
-        },
-        {
-            c: [0.8, Y_SEA - 0.55, 2.3], r: [1.3, 0.95, 1.0], sides: 6, bevels: 3,
-        },
-        {
-            c: [-1.0, Y_SEA - 0.4, -2.2], r: [1.4, 1.45, 1.2], sides: 5, bevels: 2,
-        },
-        {
-            c: [4.6, Y_SEA - 0.35, 1.2], r: [0.6, 1.2, 0.55], sides: 6, bevels: 2,
-        },
-    ];
-    return lumps.map(({
-        c, r, sides, bevels, flat,
-    }) => {
-        const list = [];
-        const face = (n, cut) => {
-            const l = Math.hypot(n[0], n[1], n[2]);
-            const m = n.map((v) => v / l);
-            // The ellipsoid's reach along this face's normal, cut a little short.
-            const reach = Math.hypot(m[0] * r[0], m[1] * r[1], m[2] * r[2]) * cut;
-            list.push({ n: m, d: reach + m[0] * c[0] + m[1] * c[1] + m[2] * c[2] });
-        };
-        // The top: level under the tower, tipped elsewhere.
-        face(flat ? [0.02, 1, -0.03] : [rand() * 0.6 - 0.3, 1, rand() * 0.6 - 0.3], 1);
-        // The flanks, all the way round (so the lump is closed), each leaning in as it rises.
-        const turn = rand() * TAU;
-        for (let i = 0; i < sides; i++) {
-            const a = turn + ((i + rand() * 0.7) / sides) * TAU;
-            face([Math.cos(a), rand() * 0.6 - 0.08, Math.sin(a)], 0.76 + rand() * 0.24);
-        }
-        // Bevels: the corners between top and flank struck off.
-        for (let i = 0; i < bevels; i++) {
-            const a = rand() * TAU;
-            const lean = 0.55 + rand() * 0.9;
-            face([Math.cos(a), lean, Math.sin(a)], 0.8 + rand() * 0.14);
-        }
-        return list;
-    });
-}
-const SHARDS = rockShards();
+/** The rock's volume: its middle, its size, and how short the walk steps on what it reads (it is carved: not a true distance). */
+const BOX_MID = ROCK_BOX.min.map((lo, k) => (lo + ROCK_BOX.max[k]) * 0.5);
+const BOX_SIZE = ROCK_BOX.min.map((lo, k) => ROCK_BOX.max[k] - lo);
+const ROCK_RELAX = 0.72;
 
 /**
- * The field: vec2(distance, what it is) at a point `q` in the lamp's frame. `turn` = the slats'
- * turn (radians), `fill` = the share of a pitch a slat covers. Pure (no uniforms): one function in
- * the shader, called by the walk and by the normal.
+ * The rock's distance at a point `q` in the lamp's frame: its baked volume inside its box, and
+ * the way to the box outside it. Inline (it reads a texture).
+ */
+export function cnRockDist(u, q) {
+    const local = q.sub(vec3(BOX_MID[0], BOX_MID[1], BOX_MID[2]));
+    const half = vec3(BOX_SIZE[0] * 0.5, BOX_SIZE[1] * 0.5, BOX_SIZE[2] * 0.5);
+    const outside = length(max(abs(local).sub(half), 0.0));
+    const at = clamp(local.div(vec3(BOX_SIZE[0], BOX_SIZE[1], BOX_SIZE[2])).add(0.5), 0.004, 0.996);
+    return u.rock(at).mul(ROCK_RELAX).add(outside);
+}
+
+/**
+ * The tower's field: vec2(distance, what it is) at a point `q` in the lamp's frame. `turn` = the
+ * slats' turn (radians), `fill` = the share of a pitch a slat covers. Pure (no uniforms): one
+ * function in the shader, called by the walk and by the normal.
  */
 export const cnTowerField = /* @__PURE__ */ Fn(([q, turn, fill]) => {
     const rho = length(q.xz).toVar();
     const { y } = q;
     const bearing = atan(q.z, q.x).toVar();
     const dist = float(1e3).toVar();
-    const what = float(ROCK).toVar();
+    const what = float(IRON).toVar();
     const take = (d, id) => {
         If(d.lessThan(dist), () => {
             dist.assign(d);
@@ -152,18 +129,13 @@ export const cnTowerField = /* @__PURE__ */ Fn(([q, turn, fill]) => {
         });
     };
 
-    // ── The rock ──
-    // Its space is bent a little, so no face is quite flat and no edge quite straight.
-    const bent = q.add(sin(q.yzx.mul(1.9).add(vec3(0.7, 2.1, 4.3))).mul(0.17))
-        .add(sin(q.zxy.mul(4.7).add(vec3(1.3, 0.2, 2.9))).mul(0.06)).toVar();
-    SHARDS.forEach((planes) => {
-        let d = null;
-        planes.forEach(({ n, d: reach }) => {
-            const side = dot(bent, vec3(n[0], n[1], n[2])).sub(reach);
-            d = d ? max(d, side) : side;
-        });
-        take(d.mul(0.8), ROCK);
-    });
+    // ── The plinth: two courses of dressed stone under the tower ──
+    const course1 = max(rho.sub(PLINTH.radius), abs(y.sub(Y_FOOT - 0.05)).sub(PLINTH.height * 0.5));
+    const course2 = max(
+        rho.sub(PLINTH.radius - 0.16),
+        abs(y.sub(Y_FOOT + PLINTH.height * 0.5 + 0.05)).sub(PLINTH.height * 0.3),
+    );
+    take(min(course1, course2), WALL);
 
     // ── The shaft: flared at its foot, and the corbel that carries the gallery ──
     const up = clamp(y.sub(Y_FOOT).div(Y_NECK - Y_FOOT), 0.0, 1.0);
@@ -241,17 +213,18 @@ export function cnLighthouse(u, o, ray, { steps = 64, detail = true } = {}) {
         const nearest = float(1e3).toVar();
         const tNearest = t.toVar();
         Loop(steps, () => {
-            const f = cnTowerField(rel.add(ray.mul(t)), u.cageTurn, u.cageFill).toVar();
-            const px = f.x.div(t.mul(u.pixelAngle));
+            const at = rel.add(ray.mul(t)).toVar();
+            const f = min(cnTowerField(at, u.cageTurn, u.cageFill).x, cnRockDist(u, at)).toVar();
+            const px = f.div(t.mul(u.pixelAngle));
             If(px.lessThan(nearest), () => {
                 nearest.assign(px);
                 tNearest.assign(t);
             });
-            If(f.x.lessThan(t.mul(u.pixelAngle).mul(0.5)), () => {
+            If(f.lessThan(t.mul(u.pixelAngle).mul(0.5)), () => {
                 found.assign(1.0);
                 Break();
             });
-            t.addAssign(f.x.mul(0.94));
+            t.addAssign(f.mul(0.94));
             If(t.greaterThan(tTo), () => {
                 Break();
             });
@@ -263,31 +236,59 @@ export function cnLighthouse(u, o, ray, { steps = 64, detail = true } = {}) {
             hitT.assign(tAt);
             const q = rel.add(ray.mul(tAt)).toVar();
             const here = cnTowerField(q, u.cageTurn, u.cageFill).toVar();
-            // The normal, from four reads round the point.
-            const eps = max(tAt.mul(u.pixelAngle).mul(0.75), 0.0025).toVar();
+            const isRock = cnRockDist(u, q).lessThan(here.x).toVar();
+            const what = isRock.select(float(ROCK), here.y).toVar();
+            // The normal, from four reads round the point: of the rock's volume (no finer than
+            // its cells: a mirror shows a volume's every cell) or of the tower's field.
             const k1 = vec3(1.0, -1.0, -1.0);
             const k2 = vec3(-1.0, -1.0, 1.0);
             const k3 = vec3(-1.0, 1.0, -1.0);
             const k4 = vec3(1.0, 1.0, 1.0);
-            const n = normalize(
-                k1.mul(cnTowerField(q.add(k1.mul(eps)), u.cageTurn, u.cageFill).x)
-                    .add(k2.mul(cnTowerField(q.add(k2.mul(eps)), u.cageTurn, u.cageFill).x))
-                    .add(k3.mul(cnTowerField(q.add(k3.mul(eps)), u.cageTurn, u.cageFill).x))
-                    .add(k4.mul(cnTowerField(q.add(k4.mul(eps)), u.cageTurn, u.cageFill).x))
-                    .add(vec3(1e-6, 2e-6, 0.0)),
-            ).toVar();
-            const what = here.y.toVar();
+            const n = vec3(0.0, 1.0, 0.0).toVar();
             const rho = length(q.xz).toVar();
             const bearing = atan(q.z, q.x).toVar();
+            const grain = vec4(0.5, 0.5, 0.5, 0.5).toVar();
+            If(isRock, () => {
+                const eps = max(tAt.mul(u.pixelAngle).mul(0.75), ROCK_SOFT).toVar();
+                n.assign(normalize(
+                    k1.mul(cnRockDist(u, q.add(k1.mul(eps))))
+                        .add(k2.mul(cnRockDist(u, q.add(k2.mul(eps)))))
+                        .add(k3.mul(cnRockDist(u, q.add(k3.mul(eps)))))
+                        .add(k4.mul(cnRockDist(u, q.add(k4.mul(eps)))))
+                        .add(vec3(1e-6, 2e-6, 0.0)),
+                ));
+                if (detail) {
+                    // Its grain, read in the stone's own space, and the roughness finer than a cell.
+                    grain.assign(u.smoke(q.mul(vec3(0.21, 0.42, 0.21))));
+                    const fine = u.smoke(q.mul(0.83).add(vec3(0.37, 0.11, 0.59)));
+                    const bump = vec3(grain.g.sub(fine.r), fine.g.sub(0.25).mul(0.5), fine.b.sub(grain.r));
+                    n.assign(normalize(n.add(bump.mul(ROCK_BUMP))));
+                }
+            }).Else(() => {
+                const eps = max(tAt.mul(u.pixelAngle).mul(0.75), 0.0025).toVar();
+                n.assign(normalize(
+                    k1.mul(cnTowerField(q.add(k1.mul(eps)), u.cageTurn, u.cageFill).x)
+                        .add(k2.mul(cnTowerField(q.add(k2.mul(eps)), u.cageTurn, u.cageFill).x))
+                        .add(k3.mul(cnTowerField(q.add(k3.mul(eps)), u.cageTurn, u.cageFill).x))
+                        .add(k4.mul(cnTowerField(q.add(k4.mul(eps)), u.cageTurn, u.cageFill).x))
+                        .add(vec3(1e-6, 2e-6, 0.0)),
+                ));
+                if (detail) grain.assign(u.smoke(vec3(bearing.mul(0.9), q.y.mul(0.11), rho.mul(0.3))));
+            });
 
             // ── What it is made of ──
             const tone = float(0.07).toVar(); // iron, in shadow most of its life
-            const grain = detail
-                ? u.smoke(vec3(bearing.mul(0.9), q.y.mul(0.11), rho.mul(0.3))).toVar()
-                : vec4(0.5, 0.5, 0.5, 0.5).toVar();
+            // How wet it is: the rock is washed as high as the last wave ran up it.
+            const washed = float(1.0).sub(smoothstep(0.3, u.seaRoll.w.mul(2.4).add(1.5), q.y.sub(Y_SEA))).toVar();
+            const gloss = float(0.12).toVar();
             If(what.lessThan(ROCK + 0.5), () => {
-                // Basalt, streaked.
-                tone.assign(float(0.17).mul(grain.r.mul(0.8).add(grain.g.mul(0.3)).add(0.5)));
+                // Bedded stone, each bed its own grey, streaked; dark where it is wet.
+                const bed = q.y.add(q.x.mul(ROCK_BEDS.dip[0])).add(q.z.mul(ROCK_BEDS.dip[1]))
+                    .add(grain.r.sub(0.5).mul(0.5)).div(ROCK_BEDS.thick);
+                const bedTone = sin(bed.mul(3.7)).mul(sin(bed.mul(1.3).add(1.0))).mul(0.22).add(0.9);
+                tone.assign(float(0.3).mul(grain.r.mul(0.6).add(grain.g.mul(0.5)).add(0.4)).mul(bedTone)
+                    .mul(mix(1.0, 0.5, washed)));
+                gloss.assign(mix(0.22, 1.0, washed));
             }).ElseIf(what.lessThan(SHAFT + 0.5), () => {
                 // The shaft: painted in bands, pale and dark, weathered where the rain ran.
                 const band = fract(q.y.sub(Y_FOOT).div(Y_NECK - Y_FOOT).mul(TOWER.bands * 0.5));
@@ -297,8 +298,17 @@ export function cnLighthouse(u, o, ray, { steps = 64, detail = true } = {}) {
                     .add(float(1.0).sub(smoothstep(0.0, edge, band)));
                 const weather = grain.g.mul(0.5).add(grain.r.mul(0.5)).mul(0.55).add(0.6);
                 tone.assign(mix(0.045, 0.6, clamp(pale, 0.0, 1.0)).mul(weather));
+                // A door at its foot, round-headed, in a pale frame.
+                const aside = abs(bearing.sub(DOOR.bearing)).mul(rho);
+                const up = q.y.sub(Y_FOOT + DOOR.sill).toVar();
+                const head = max(up.sub(DOOR.height - DOOR.half), 0.0);
+                const edge2 = length(vec2(aside, head)).sub(DOOR.half);
+                const standing = step(0.0, up);
+                tone.assign(mix(tone, 0.5, float(1.0).sub(smoothstep(0.035, 0.06, abs(edge2))).mul(standing)));
+                tone.assign(mix(tone, 0.018, float(1.0).sub(smoothstep(-0.012, 0.012, edge2)).mul(standing)));
             }).ElseIf(what.greaterThan(WALL - 0.5).and(what.lessThan(WALL + 0.5)), () => {
                 tone.assign(grain.r.mul(0.2).add(0.42));
+                gloss.assign(0.3);
             });
 
             // ── The lamp's light on it ──
@@ -339,9 +349,39 @@ export function cnLighthouse(u, o, ray, { steps = 64, detail = true } = {}) {
             const fill = u.ambient.mul(n.y.mul(0.35).add(0.65))
                 .add(spill)
                 .add(u.coreGain.mul(0.004).mul(clamp(float(0.55).sub(n.y.mul(0.45)), 0.0, 1.0)));
+            // What the lantern and the gallery let fall lies on whatever looks up at them: the
+            // rock's ledges, the plinth's top.
+            const below = smoothstep(Y_FLOOR - 0.2, Y_FLOOR - 1.6, q.y);
+            const fallen = u.coreGain.mul(FALL_LIGHT).div(r.mul(r).mul(0.035).add(1.0))
+                .mul(clamp(facing.mul(0.75).add(0.25), 0.0, 1.0)).mul(below);
+            // Wet stone and paint mirror: the lamp as a glint, the sky along every edge.
+            const back = reflect(ray, n);
+            const shine = pow(clamp(dot(back, l), 0.0, 1.0), 14.0).mul(u.coreGain.mul(FALL_LIGHT * 3.0))
+                .div(r.mul(r).mul(0.035).add(1.0)).mul(below)
+                .add(pow(edgeOn, 4.0).mul(u.skyGlow).mul(1.6))
+                .add(pow(clamp(dot(back, lg), 0.0, 1.0), 9.0).mul(u.galaxy).mul(0.1))
+                .mul(gloss);
 
-            const shade = direct.add(flashed).add(rim).add(fill).mul(tone)
+            const shade = direct.add(flashed).add(rim).add(fill).add(fallen)
+                .mul(tone)
+                .add(shine)
                 .toVar();
+
+            // ── White water on the rock: what the last wave left, running off it ──
+            If(what.lessThan(ROCK + 0.5), () => {
+                const lift = q.y.sub(Y_SEA).add(grain.g.sub(0.5).mul(0.7));
+                const ran = u.seaRoll.w.mul(2.0).add(0.4).toVar();
+                const band = float(1.0).sub(smoothstep(ran.mul(0.25), ran, lift));
+                // (It drains in threads, drawn out down the stone.)
+                const runs = detail
+                    ? smoothstep(0.4, 0.74, u.smoke(vec3(q.x.mul(0.9), q.y.mul(0.14), q.z.mul(0.9))).g.add(grain.b.mul(0.3)))
+                    : float(0.55);
+                const white = band.mul(mix(runs, float(1.0), u.seaRoll.w.mul(0.55))).mul(n.y.mul(0.3).add(0.7));
+                const foam = direct.add(flashed).add(rim).add(fill).add(fallen)
+                    .add(u.skyGlow.mul(0.5))
+                    .mul(ROCK_FOAM);
+                shade.assign(mix(shade, foam, clamp(white, 0.0, 1.0).mul(0.92)));
+            });
 
             // ── The window: someone keeps the light ──
             const turnTo = abs(bearing.sub(WINDOW.bearing)).mul(rho);

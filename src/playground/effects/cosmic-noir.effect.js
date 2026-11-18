@@ -12,7 +12,8 @@
  *   statsHud=0               with board=1: board only, no HUD mock
  *   combo=<n>                hold a combo of n (the lighthouse spun up, the blinds open)
  *   level=<n>                rest n − 1 stocks along the line (the level's own reel)
- *   event=lock|drop|clear|quad|twist|perfect|levelUp   fire a gameplay event...
+ *   night=<0..4|name>        hold the night on one act: clear, scud, squall, clearing, fog
+ *   event=lock|drop|clear|quad|twist|spin|b2b|perfect|levelUp|over|bolt|shower   fire a gameplay event...
  *   eventAge=<s>             ...and show it <s> seconds later (lines=<n>, row=<r>, u=<0..1>)
  *   demo=1                   live only: play a looping gameplay script
  *   parts=sky,sea,tower      draw only these parts: sky (always drawn), smoke (the light in the
@@ -27,14 +28,16 @@
  *                            little below its lamp (iconFov=34; compose for a small circle:
  *                            capture a square frame)
  *
- * Probes: window.__cosmicNoir = { world, post, seekEvent(t, { name, age, lines, combo, level }) }
- * replays any event at any age and renders it in the same task (contact sheets).
+ * Probes: window.__cosmicNoir = { world, post, seekEvent(t, { name, age, lines, combo, level, night }) }
+ * replays any event at any age, on any act of the night, and renders it in the same task (contact
+ * sheets: window.__cosmicNoir.sheet([{ t, ev, label }], columns)).
  */
 import * as THREE from 'three/webgpu';
 import { CosmicNoirWorld } from '../../themes/cosmic-noir/cosmic-noir-world.js';
 import { CosmicNoirPost, POST_LOOK } from '../../themes/cosmic-noir/cosmic-noir-post.js';
 import { readLayoutRects } from '../../themes/cosmic-noir/cosmic-noir-composition.js';
 import { PULSAR } from '../../themes/cosmic-noir/cosmic-noir-core.js';
+import { NIGHT_ACTS } from '../../themes/cosmic-noir/cosmic-noir-night.js';
 
 export const meta = {
     id: 'cosmic-noir',
@@ -125,6 +128,12 @@ export function create({
     }).build();
     world.bindCamera(camera);
     world.setReducedMotion(params.get('reduce') === '1');
+    if (params.has('night')) {
+        const want = params.get('night');
+        const named = NIGHT_ACTS.findIndex((act) => act.name === want);
+        const index = named >= 0 ? named : Number.parseFloat(want);
+        if (Number.isFinite(index)) world.nightHold = index;
+    }
     const partsParam = params.get('parts');
     if (partsParam) world.showOnlyParts(partsParam.split(',').map((p) => p.trim()));
 
@@ -204,6 +213,11 @@ export function create({
         else if (name === 'clear') world.onClear({ rows: bottom(ev.lines), lines: ev.lines });
         else if (name === 'quad') world.onClear({ rows: bottom(4), lines: 4 });
         else if (name === 'twist') world.onClear({ rows: bottom(2), lines: 2, twist: true });
+        else if (name === 'spin') world.onSpin();
+        else if (name === 'b2b') world.onClear({ rows: bottom(4), lines: 4, b2b: true });
+        else if (name === 'over') world.onGameOver();
+        else if (name === 'bolt') world.strike(world.time, { gain: 1 });
+        else if (name === 'shower') world.shower(world.time);
         else if (name === 'perfect') world.onClear({ rows: bottom(4), lines: 4, perfect: true });
         else if (name === 'levelUp') world.levelUp(ev.level + 1);
     };
@@ -224,8 +238,11 @@ export function create({
         pushPost(time);
     };
     /** Probes: replay any event at any age and render it now. Returns the canvas. */
+    const heldNight = world.nightHold;
     const seekEvent = (time, spec = null) => {
         ev = spec ? { ...urlEvent, ...spec } : urlEvent;
+        // (A tile may hold the night on an act of its own: `night: 0..4`.)
+        world.nightHold = spec && Number.isFinite(spec.night) ? spec.night : heldNight;
         seekTo(time);
         if (post) post.render();
         else renderer.render(scene, camera);
