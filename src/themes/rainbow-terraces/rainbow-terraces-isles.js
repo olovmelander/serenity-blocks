@@ -35,6 +35,9 @@ import {
     airColour, earthShadowAt, horizonHaze, scHash21, scWrap, scWrapPi, seaTone, skyBase,
 } from './rainbow-terraces-tsl.js';
 import { drainSteps, stepClock } from '../shared/build-steps.js';
+import {
+    BALUSTRADE, balustradeGeometry, treeGeometry, treeVariants,
+} from './rainbow-terraces-model-build.js';
 
 /** Stone kinds (attribute aMat). */
 export const MAT = Object.freeze({
@@ -1702,42 +1705,16 @@ export function buildFarGate(W = 1400, H = 2200, { groundAt = () => 0 } = {}) {
     };
 }
 
-/** A turned stone baluster (a lathe), standing on y = 0 at (x, z), `h` tall. */
-function baluster(x, z, h = 0.98) {
-    const prof = [[0.12, 0], [0.16, 0.05], [0.1, 0.15], [0.08, 0.3], [0.14, 0.5], [0.15, 0.6], [0.09, 0.75], [0.08, 0.85],
-        [0.14, 0.92], [0.12, 1]].map(([r, y]) => new THREE.Vector2(r, y * h));
-    const g = new THREE.LatheGeometry(prof, 8);
-    g.deleteAttribute('uv');
-    g.translate(x, 0, z);
-    const w = mergeVertices(g, 1e-4);
-    g.dispose();
-    w.computeVertexNormals();
-    return ensureAttrs(w, MAT.masonry, 0.85);
-}
-
-/** A ledge of travertine (the overlook's own ground): its top at y = 0, a ragged lip toward −z. */
-function buildLedge(x0, x1, zBack, zFront, seed) {
-    const N = makeNoise(seed);
-    const g = new THREE.BoxGeometry(x1 - x0, 1.6, zFront - zBack, 24, 2, 4);
-    g.deleteAttribute('uv');
-    g.translate((x0 + x1) / 2, -0.8, (zBack + zFront) / 2);
-    const pa = g.attributes.position;
-    for (let v = 0; v < pa.count; v++) {
-        const x = pa.getX(v);
-        const z = pa.getZ(v);
-        if (z < zBack + 0.01) pa.setZ(v, z - 0.6 * Math.abs(N.fbm3(x * 0.35, 0.5, 1.7, 3)) - 0.15 * N.noise3(x * 2.1, 3, 1));
-        if (pa.getY(v) > -0.01) pa.setY(v, 0.08 * N.fbm3(x * 0.5, 1.1, z * 0.5, 2));
-    }
-    const w = mergeVertices(g, 1e-4);
-    g.dispose();
-    w.computeVertexNormals();
-    return ensureAttrs(w, MAT.travertine, 0.8);
-}
-
-/** The overlook's parapet (metres): the newel's height, the balusters' count, pitch and height. */
+/**
+ * The overlook's parapet (metres): the newel's height under its finial, the balusters' count, pitch
+ * and height (the balustrade's own lay-out is the model's: rainbow-terraces-model-build.js).
+ */
 export const PARAPET = Object.freeze({
-    newel: 1.5, balusters: 15, pitch: 0.46, baluster: 0.92,
+    newel: BALUSTRADE.top - 0.22, balusters: BALUSTRADE.balusters, pitch: BALUSTRADE.pitch, baluster: 0.92,
 });
+
+/** The level of detail of the overlook's balustrade on a tier (buildParapet's `detail`). */
+export const parapetDetail = (tier) => ((tier.groveTrees ?? 18) >= 14 ? 1 : 0);
 
 /**
  * A low outcrop of the overlook's own travertine, worn round by the weather: a long, flat-topped
@@ -1779,42 +1756,25 @@ function buildOutcropRock(x, z, len, h, depth, seed) {
 
 /**
  * The overlook's parapet, the eye's own ground at the frame's bottom corners (a human-scale anchor:
- * a baluster a metre tall makes the isles and the gate read huge). `left`: a ledge, a dressed newel
- * post on a moulded base under a stepped cap, and a close-set balustrade running in from the frame's
- * left edge; the
- * right: no masonry beside the HUD, only the overlook's own rock, a low mossy outcrop running out
- * through the frame's edges. Local +x is the frame's right, +z toward the eye; what faces the sky
- * stands in the sun behind the eye, the rest in the overlook's shadow.
+ * a baluster a metre tall makes the isles and the gate read huge). `left`: a weathered stone
+ * balustrade built in Blender (balustradeGeometry): flagstones on a walled ledge, their lip worn
+ * and chipped; a plinth course, turned vase balusters and a moulded handrail running in from the
+ * frame's left edge to a newel pier under a ball finial; ivy up the newel and along the rail.
+ * `detail` is its level (0 lean, 1 full). The right: no masonry beside the HUD, only the
+ * overlook's own rock, a low mossy outcrop running out through the frame's edges. Local +x is the
+ * frame's right, +z toward the eye; what faces the sky stands in the sun behind the eye, the rest
+ * in the overlook's shadow.
  */
-export function buildParapet(left = true) {
-    const parts = [];
+export function buildParapet(left = true, detail = 1) {
     if (left) {
-        parts.push(buildLedge(-11, 1.5, -1.2, 6, 3));
-        // The newel: a plinth and a fillet, the shaft, a collar, then the cap stepped out over it
-        // (a slab and a thinner one on top), every course a value of its own in the low sun.
-        const n = PARAPET.newel;
-        parts.push(block(0.25, 0, 0, 0.8, 0.26, 0.8), block(0.25, 0.26, 0, 0.7, 0.06, 0.7));
-        parts.push(block(0.25, 0.32, 0, 0.6, n - 0.44, 0.6));
-        parts.push(block(0.25, n - 0.12, 0, 0.68, 0.12, 0.68));
-        parts.push(block(0.25, n, 0, 0.84, 0.14, 0.84), block(0.25, n + 0.14, 0, 0.66, 0.08, 0.66));
-        // The balustrade: a plinth course, the balusters close-set on it, a moulded handrail.
-        // (The courses and the rail run on into the newel, never stopping short of it.)
-        const run = PARAPET.balusters * PARAPET.pitch + 0.35;
-        const cx = -run / 2;
-        parts.push(block(cx, 0, 0, run, 0.15, 0.4));
-        parts.push(block(cx, 0.15 + PARAPET.baluster, 0, run, 0.07, 0.32));
-        parts.push(block(cx, 0.22 + PARAPET.baluster, 0, run, 0.17, 0.42));
-        for (let i = 0; i < PARAPET.balusters; i++) {
-            const b = baluster(-0.42 - i * PARAPET.pitch, 0, PARAPET.baluster);
-            b.translate(0, 0.15, 0);
-            parts.push(b);
-        }
-    } else {
-        parts.push(buildOutcropRock(2.6, 0.2, 8.5, 1.0, 4.6, 7));
+        const balustrade = ensureAttrs(balustradeGeometry(detail), MAT.masonry);
+        balustrade.userData.top = BALUSTRADE.top;
+        return balustrade;
     }
-    const merged = mergeGeometries(parts, false);
-    parts.forEach((g) => g.dispose());
-    merged.userData.top = left ? PARAPET.newel + 0.22 : 1.4;
+    const rock = buildOutcropRock(2.6, 0.2, 8.5, 1.0, 4.6, 7);
+    const merged = mergeGeometries([rock], false);
+    rock.dispose();
+    merged.userData.top = 1.4;
     return merged;
 }
 
@@ -2080,54 +2040,27 @@ export function buildStrands(p, {
     return g;
 }
 
-/** A tapered six-sided trunk from (x, y, z) along (dx, dy, dz), as a stone piece (dark bark). */
-function buildTrunk(x, y, z, dx, dy, dz, r0, r1, sides = 6) {
-    const len = Math.hypot(dx, dy, dz);
-    const g = new THREE.CylinderGeometry(r1, r0, len, sides, 1, true);
-    g.deleteAttribute('uv');
-    g.translate(0, len / 2, 0);
-    const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), new THREE.Vector3(dx, dy, dz).normalize());
-    g.applyQuaternion(q);
-    g.translate(x, y, z);
-    const w = mergeVertices(g, 1e-4);
-    g.dispose();
-    w.computeVertexNormals();
-    const ao = new Float32Array(w.attributes.position.count).fill(0.55);
-    w.setAttribute('aAO', new THREE.BufferAttribute(ao, 1));
-    return ensureAttrs(w, MAT.iron);
-}
-
-/** A leafy lobe: a jittered icosphere scaled (rx, ry, rz) at (x, y, z), shaded darker underneath. */
-function leafLobe(N, x, y, z, rx, ry, rz, i) {
-    const g = icosphere(1);
-    const pa = g.attributes.position;
-    const ao = new Float32Array(pa.count);
-    for (let v = 0; v < pa.count; v++) {
-        const n = 1 + 0.22 * N.noise3(pa.getX(v) * 2.3 + i, pa.getY(v) * 2.3, pa.getZ(v) * 2.3 - i);
-        const vy = pa.getY(v);
-        pa.setXYZ(v, x + pa.getX(v) * rx * n, y + vy * ry * n, z + pa.getZ(v) * rz * n);
-        ao[v] = 0.5 + 0.5 * (vy * 0.5 + 0.5);
-    }
-    g.computeVertexNormals();
-    g.setAttribute('aAO', new THREE.BufferAttribute(ao, 1));
-    return ensureAttrs(g, MAT.leaf);
-}
-
 /**
- * A grove: [x, y, z, size, kind] spots on a crown (local metres). kind 0 a cypress spire (a column
- * of stacked lobes, the vertical scale cue), 1 an umbrella pine (a leaning trunk under flat pads),
- * 2 a shrub (a low clump).
+ * A grove: [x, y, z, size, kind] spots on a crown (local metres, y sunk into the turf). kind 0 an
+ * Italian cypress (one tapering flame of clumped plumes, the vertical scale cue), 1 a stone pine
+ * (a bare leaning trunk, forking limbs, a broad flat-domed parasol), 2 a shrub (a rounded mound).
+ * The trees are Blender-built models (rainbow-terraces-model-build.js), each turned, stretched
+ * and picked from its kind's shapes by the seed; `detail` is their level: 0 the crown close by,
+ * 1 a crown across the gulf on a lean tier, 2 a far isle's.
  */
-export function buildGrove(spots, seed = 41) {
-    return drainSteps(buildGroveSteps(spots, seed));
+export function buildGrove(spots, seed = 41, detail = 0) {
+    return drainSteps(buildGroveSteps(spots, seed, undefined, detail));
 }
+
+/** The level of detail of the near isles' trees on a tier (buildGrove's `detail`). */
+export const groveDetail = (tier) => ((tier.groveTrees ?? 18) >= 18 ? 0 : 1);
 
 /**
  * `buildGrove` as steps (the isles' build breathes between them): the same trees drawing the same
  * numbers, yielding between two trees once a slice has run. A grove in one step held Rainbow
  * Terraces' first-visit switch frame (12 of its 22 ms, 2026-10-31).
  */
-export function* buildGroveSteps(spots, seed = 41, clock = stepClock(ISLES_SLICE_MS)) {
+export function* buildGroveSteps(spots, seed = 41, clock = stepClock(ISLES_SLICE_MS), detail = 0) {
     const N = makeNoise(seed);
     const parts = [];
     for (let i = 0; i < spots.length; i++) {
@@ -2135,51 +2068,23 @@ export function* buildGroveSteps(spots, seed = 41, clock = stepClock(ISLES_SLICE
             yield 'grove';
             clock.restart();
         }
-        const [x, y, z, size, kind] = spots[i];
-        if (kind === 0) {
-            const h = size * (3.2 + N.rand() * 1.2);
-            parts.push(buildTrunk(x, y - 0.5, z, 0, 1, 0, size * 0.09, size * 0.06));
-            const lobes = 6 + Math.floor(N.rand() * 3);
-            for (let k = 0; k < lobes; k++) {
-                const t = k / (lobes - 1);
-                // Overlapping lobes taper to a point: one flame of leaf, not a stack of balls.
-                const r = size * (0.58 - 0.42 * t ** 1.3) * (0.92 + N.rand() * 0.16);
-                parts.push(leafLobe(
-                    N,
-                    x + (N.rand() - 0.5) * size * 0.15,
-                    y + h * (0.18 + 0.72 * t),
-                    z + (N.rand() - 0.5) * size * 0.15,
-                    r,
-                    r * 1.9,
-                    r,
-                    i * 7 + k,
-                ));
-            }
-        } else if (kind === 1) {
-            const lean = (N.rand() - 0.5) * 0.5;
-            const h = size * (2.2 + N.rand() * 0.8);
-            const tx = Math.sin(lean) * h * 0.4;
-            parts.push(buildTrunk(x, y - 0.5, z, tx, h, tx * 0.3, size * 0.12, size * 0.07));
-            const pads = 3 + Math.floor(N.rand() * 3);
-            for (let k = 0; k < pads; k++) {
-                const a = (k / pads) * Math.PI * 2 + N.rand();
-                const off = size * 0.5 * (k ? 1 : 0);
-                const r = size * (k ? 0.62 : 0.85);
-                parts.push(leafLobe(
-                    N,
-                    x + tx + Math.cos(a) * off,
-                    y + h + (k ? -size * 0.15 : 0),
-                    z + tx * 0.3 + Math.sin(a) * off,
-                    r,
-                    r * 0.55,
-                    r,
-                    i * 7 + k,
-                ));
-            }
-        } else {
-            const r = size * (0.6 + N.rand() * 0.3);
-            parts.push(leafLobe(N, x, y + r * 0.35, z, r, r * 0.7, r, i * 7));
-        }
+        const kind = spots[i][4];
+        // (Every tree draws the same four numbers, whatever its kind: a spot's tree never depends
+        // on the kinds before it.)
+        const turn = N.rand() * Math.PI * 2;
+        const tall = N.rand();
+        const wide = N.rand();
+        const variant = Math.floor(N.rand() * treeVariants(kind));
+        const shrub = kind !== 0 && kind !== 1;
+        const tree = treeGeometry(spots[i], {
+            level: detail,
+            variant,
+            turn,
+            // A cypress 3.2 to 4.5 sizes tall, a pine 2.7 to 3.5; a shrub's mound 0.6 to 0.9 of its size.
+            tall: shrub ? 0.55 + tall * 0.3 : 0.87 + tall * 0.26,
+            wide: shrub ? 0.6 + wide * 0.3 : 0.92 + wide * 0.16,
+        });
+        parts.push(ensureAttrs(tree, MAT.leaf));
     }
     if (clock.due()) {
         yield 'grove';
@@ -2782,7 +2687,7 @@ export function buildFarIsles(detail = 1) {
         const parts = [buildMassif(p, { radial, rings, ...build })];
         // (The ruin's and the grove's feet stand on the same build.)
         const ground = (x, z) => crownHeight(p, x, z, build).y;
-        if (v === 3) parts.push(buildGrove(FAR_GROVE.map(([x, z, size, kind]) => [x, ground(x, z) - 1, z, size, kind]), 90));
+        if (v === 3) parts.push(buildGrove(FAR_GROVE.map(([x, z, size, kind]) => [x, ground(x, z) - 1, z, size, kind]), 90, 2));
         if (v === 4) {
             const [x, z, w] = FAR_RUIN;
             const h = w / 2;
@@ -2931,7 +2836,7 @@ export function* createIslesSteps({
         U, tex, reach: 4800, grounded: true,
     });
     yield* slice('materials');
-    const cornerL = buildParapet(true);
+    const cornerL = buildParapet(true, parapetDetail(tier));
     yield* slice('crag');
     const cornerR = buildParapet(false);
     yield 'crags';
@@ -3015,7 +2920,7 @@ export function* createIslesSteps({
     yield* slice('gateway');
     // The groves keep off the gateway's terrace (and the path's foot at its door), the aqueduct's line.
     const groves = isleGroves(plan, tier, cascades);
-    const trees = yield* buildGroveSteps(groves.spring, 41, clock);
+    const trees = yield* buildGroveSteps(groves.spring, 41, clock, groveDetail(tier));
     yield 'spring grove';
     clock.restart();
     // Outcrops on the crown, clear of the cascade, the path and the gateway.
@@ -3045,7 +2950,7 @@ export function* createIslesSteps({
     const aq = buildAqueduct(aqA.spans, aqA.span, aqA.lower, aqA.upper, aqA.depth, aqA.groundAt).geometry;
     aq.translate(aqA.x, aqA.y, aqA.z);
     yield* slice('aqueduct');
-    const twinTrees = yield* buildGroveSteps(groves.twin, 43, clock);
+    const twinTrees = yield* buildGroveSteps(groves.twin, 43, clock, groveDetail(tier));
     const twinRocks = buildSatellites(twinP, [[-1.05, -55, 0.15, 6], [0.95, -95, -0.25, 4.5]], { seed: 9, detail: 0.8 });
     yield* slice('twin rocks');
     const twinMesh = yield* isle('twin', twinP, {
