@@ -359,6 +359,9 @@ near-black the regression is easy to miss; over magenta it is unmissable.
    `NodeManager.js`) + its "dispose omits device destruction" pin (r185 WebGPUBackend now
    destroys owned devices) — re-point + re-pin; stillwater's manual destroy becomes
    redundant-but-harmless. `composer-dispose.test.js` passes (helper still required).
+   *2026-11-18: the helper (`src/themes/shared/composer-dispose.js`) and its test were
+   removed as unused — nothing in the game called it; the one `EffectComposer` left in
+   src, Wolfhour's legacy path, is unreachable.*
 6. **`backend.hasTimestamp(uid)` → `hasTimestampQuery(uid)`**; `hasTimestamp` is now a
    boolean capability *getter* — so `black-hole-theme.js:2015` throws (swallowed → GPU
    timings silently vanish) and `stellar-velocity-theme.js:938,941`'s guard passes then
