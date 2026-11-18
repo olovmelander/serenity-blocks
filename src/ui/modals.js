@@ -155,6 +155,11 @@ export class ModalManager {
             if (this.gamepadController && modalName !== 'gameOver') {
                 this.gamepadController.enableMenuNavigation();
             }
+            // The main menu's own pad handler (the mode list, its stage and dock) follows the
+            // menu. It used to be armed once at boot, so every later visit ran on the generic
+            // handler, and closing a sheet there handed the pad to gameplay: D-pad, A and B did
+            // nothing on the menu (audit 2026-11-18, A18-UI-1).
+            if (modalName === 'start') this.gamepadController?.enableGameModeSelection?.();
         }
     }
 
@@ -165,6 +170,7 @@ export class ModalManager {
     hide(modalName) {
         const modal = this.modals[modalName];
         if (modal) {
+            const menuWasUp = modalName === 'start' && modal.classList.contains('visible');
             modal.classList.remove('visible');
             if (modalName === 'gameOver') this.gameOverLeaderboardPanel?.hide();
             if (modalName === 'start') {
@@ -187,6 +193,9 @@ export class ModalManager {
             if (this.gamepadController && modalName !== 'start' && modalName !== 'gameOver') {
                 this.gamepadController.disableMenuNavigation();
             }
+            // Only a menu that was up gives the pad back: hideAll() also runs mid-game (resume),
+            // where dropping held input would cut a held direction.
+            if (menuWasUp) this.gamepadController?.disableGameModeSelection?.();
         }
     }
 

@@ -1166,6 +1166,16 @@ export class GamepadController {
         return true;
     }
 
+    /** latchAllHeld for every connected pad, read fresh. */
+    latchHeldOnConnectedPads() {
+        const pads = typeof navigator !== 'undefined' ? navigator.getGamepads?.() : null;
+        if (!pads) return;
+        for (let slot = 0; slot < this.gamepads.length; slot++) {
+            const fresh = this.connected[slot] && this.gamepads[slot] ? pads[this.gamepads[slot].index] : null;
+            if (fresh) this.latchAllHeld(fresh, slot);
+        }
+    }
+
     /**
      * Everything held now waits for its release: the menu buttons, the game's, Start and
      * the main menu's. For a press that changes what owns the pad (a restart, the window
@@ -1345,6 +1355,9 @@ export class GamepadController {
         for (let i = 0; i < this.menuRepeat.length; i++) {
             this.menuRepeat[i] = {};
         }
+        // Buttons still held as the menu takes the pad (the A or B that left a results
+        // screen) wait for their release, as they do for every other menu owner (INPUT-03).
+        this.latchHeldOnConnectedPads();
 
         // Focus the first card or the previously selected one
         if (this.isAnyGamepadConnected() && this.gameModeCards.length > 0) {
