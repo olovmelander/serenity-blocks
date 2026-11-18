@@ -22,12 +22,25 @@
  *               into a full circle; the secondary follows; the bows breathe, then sing
  *   four lines  the hush (the falls thin, the spray hangs, the gliders stop dead), then the glory
  *               opens at the tip of our own shadow, one ring per line, and the great pour
- *   perfect     the same, eight rings, and the Far Gate's spillway runs for the only time
- *   twist      the falls are wrung, two gliders rise in a double helix, the colours turn
- *   B2B         the pools stay brimming; the long-wing keeps station on the bow
- *   level up    the bell tolls the hour: every pool rings, a flight of gliders sails out, and the
- *               light turns one place round the wheel
+ *   perfect     the full circle: eight rings, the Far Gate's spillway (for the only time) and its
+ *               arch filled with light, both bows drawn whole, the seven colours down every fall,
+ *               the rays deep in the air, the bell's rings across the whole sea
+ *   twist       the falls are wrung and a helix of light-water winds up the Mother Fall in the
+ *               colour of the piece that turned; two gliders rise in a double helix, the colours turn
+ *   B2B         the bow gets its twin (the light draws the secondary round, and it holds while
+ *               back-to-backs follow); the pools stay brimming; the long-wing keeps station
+ *   level up    the bell tolls the hour: rings open in the air round it, every pool rings, a flight
+ *               of gliders sails out, and the light turns one place round the wheel
+ *   game over   the dusk falls and stands (the light sinks, the falls thin to threads, the first
+ *               stars come out, the birds go home, one low toll); the next run is its dawn
  * and the clock turns the same wheel by itself (HOUR_SECONDS per hour), in every mode.
+ *
+ * Beside the hours the AIR turns on a wheel of its own (rainbow-terraces-weather.js: fair, beams,
+ * showers, crystal, mist), so an hour is never seen in the same weather twice running; the shadows
+ * of the clouds behind the eye drift over the isles and the sea; and about every half minute
+ * something happens by itself (a skein of the paper birds crosses the far sky, the rays surge,
+ * the plume heaves, a veil of rain brings the bow out, the storm flickers, shooting stars cross
+ * the night), and the bell tells each hour as the light walks into it.
  *
  * Fast play BUILDS (src/themes/shared/gameplay-surge.js): nothing an event starts is restarted
  * by the next. A quad while the glory stands feeds it (more rings, a longer hold, a deeper
@@ -54,7 +67,12 @@ import { tierFor } from './rainbow-terraces-quality.js';
 import {
     REST_RIG, bowPoint, fovForAspect, frameFor, nominalLayout, project, recutStrokes, unproject,
 } from './rainbow-terraces-frame.js';
-import { COLOUR_ROWS, HourWheel, hourAt } from './rainbow-terraces-hours.js';
+import {
+    COLOUR_ROWS, HOUR_SECONDS, HourWheel, hourAt,
+} from './rainbow-terraces-hours.js';
+import {
+    HAPPENINGS, airAt, airPlace, happeningAt, leanColours,
+} from './rainbow-terraces-weather.js';
 import {
     createFieldTexture, createLight, createLutTexture, createNoiseTexture, createSpriteTexture, tune,
 } from './rainbow-terraces-tsl.js';
@@ -208,6 +226,27 @@ export const FRESH = Object.freeze({
 });
 /** Share of a stroke over which a link's light comes in while the pour's bow is fading. */
 const ONSET = 0.12;
+/**
+ * The twin bow (a back-to-back; a perfect clear's crown): the light runs round the secondary from
+ * its foot, whole `draw` s after it kindles (eased in over `kindle` s), burning at `peak`; from
+ * `fadeAt` s it fades over `fade` s, back to what the chain painted (`crownFadeAt`: a crown's holds
+ * longer). While it stands it lends the optics `dial` (Alexander's band deep between the two bows).
+ */
+export const TWIN = Object.freeze({
+    draw: 1.5, kindle: 0.4, peak: 1.1, fadeAt: 4.4, fade: 2.4, crownFadeAt: 8.5, dial: 8.5, crownDial: 11.5,
+});
+/**
+ * The run's end: the dusk falls over `fall` s (the light sinks and cools, the falls thin to
+ * threads, the birds go home, the first stars come out) and stands until the next run, whose dawn
+ * lifts it over `rise` s. `dim` what the lens keeps of the light at full dusk, `flow` of the falls.
+ */
+export const DUSK = Object.freeze({
+    fall: 2.8, rise: 2.4, dim: 0.62, flow: 0.38, key: 0.5,
+});
+/** The seven colours a full circle runs down the falls (scene-linear, the bow read outside in). */
+const SPECTRUM = Object.freeze([
+    [1.0, 0.16, 0.12], [1.0, 0.42, 0.08], [1.0, 0.82, 0.12], [0.2, 0.9, 0.3], [0.1, 0.75, 0.95], [0.16, 0.3, 1.0], [0.6, 0.22, 0.95],
+].map((c) => Object.freeze(c)));
 
 /**
  * Seconds a stroke takes to paint; withdrawal spacing on a break (a long chain's bow lets go over
@@ -451,6 +490,12 @@ function createUniforms() {
         waterClock: uniform(0),
         sprayClock: uniform(0),
         starTurn: uniform(0),
+        /** The cloud sea's relief as the air leaves it (it heaves under a storm, lies flat in mist). */
+        seaSwell: uniform(1),
+        /** The stratus veils under the horizon as the air has them (a rising mist lifts and thickens them). */
+        veilAmt: uniform(1),
+        /** How deep the drifting shadows of the clouds behind the eye lie on the world (tsl.js cloudShadeAt). */
+        cloudShadow: uniform(0.35),
     };
     SCALAR_UNIFORMS.forEach((name) => { U[name] = uniform(0); });
     return U;
@@ -464,10 +509,13 @@ export class RainbowTerracesWorld {
      * @param {boolean} [p.capture=false]  deterministic capture (the eye does not breathe)
      * @param {number} [p.seed=33]
      * @param {number|null} [p.hour]       pin the wheel at a place (playground)
+     * @param {number|null} [p.air]        pin the air's wheel at a place (playground)
+     * @param {boolean} [p.happenings=true] let things happen by themselves (a capture may still them)
      * @param {object|null} [p.tune]       TUNE overrides (playground)
      */
     constructor({
-        scene, quality = 'High', capture = false, seed = RAINBOW_TERRACES_SEED, hour = null, tune: overrides = null,
+        scene, quality = 'High', capture = false, seed = RAINBOW_TERRACES_SEED, hour = null, air = null, happenings = true,
+        tune: overrides = null,
     } = {}) {
         tune(overrides);
         this.scene = scene;
@@ -487,6 +535,17 @@ export class RainbowTerracesWorld {
         this.wheel = new HourWheel();
         if (Number.isFinite(hour)) this.wheel.pin(hour);
         this.hour = hourAt(0, {});
+        /**
+         * The air on its own wheel (rainbow-terraces-weather.js), and what happens in it by itself:
+         * the slot playing now, and the last slot whose one-shot (a flight, a heave of the plume)
+         * has been fired.
+         */
+        this.airPin = Number.isFinite(air) ? air : null;
+        this.air = airAt(this.airPin ?? 0, {});
+        this.happenings = happenings !== false;
+        this.happening = happeningAt(0, { night: 0, storm: 0, rays: false }, {});
+        this.happenFired = -1;
+        this.happenContext = { night: 0, storm: 0, rays: false };
 
         this.aspect = 16 / 9;
         this.viewport = { width: 1600, height: 900 };
@@ -583,6 +642,31 @@ export class RainbowTerracesWorld {
         this.kindle = new Swell({
             attack: 0.15, release: 1.8, ceiling: 1.2, knee: 0.8,
         });
+        /** The rays' surge at a set piece (a four-line clear, a crown, a new level): added to the air's. */
+        this.beams = new Swell({
+            attack: 0.6, release: 3.0, ceiling: 1.1, knee: 0.8,
+        });
+        /**
+         * The twin bow (TWIN): a back-to-back draws the secondary round behind the primary, a comet
+         * of light on each stroke; it holds on while back-to-backs follow, then fades to what the
+         * chain had painted. A perfect clear's crown draws it too and holds it longer.
+         */
+        this.twinAt = -1e4;
+        this.twinFadeAt = -1e4;
+        this.twinLiftAt = -1e4;
+        this.twinLiftFrom = -1e4;
+        this.twinLaid = new Uint8Array(5);
+        /** The full circle (a perfect clear's crown): when it began (the Far Gate's light, the run of colour). */
+        this.fullAt = -1e4;
+        /**
+         * The run's end and the next one's dawn (DUSK): `ended` from a game over until the next run
+         * (or the mode's end), when the dusk fell, when the dawn began and how deep the dusk stood then.
+         */
+        this.ended = false;
+        this.duskAt = -1e4;
+        this.dawnAt = -1e4;
+        this.duskFrom = 0;
+        this.dusk = 0;
         /** Back-to-backs in a row: each throws a taller tower. */
         this.b2bRun = 0;
         /** The terraces overflowing in spate (spill): what has built up toward the next, and where. */
@@ -799,6 +883,8 @@ export class RainbowTerracesWorld {
             U.shower.value.w = 0.26;
         }
         this.showerScale = smile ? 0.4 : 1;
+        // Where the frame stands the wall: the air walks it a little off this (applyHour).
+        this.showerBase = U.shower.value.x;
         U.showerAmt.value = (this.showerHour ?? 0.85) * this.showerScale;
         if (clock.due()) {
             yield 'solve';
@@ -903,7 +989,7 @@ export class RainbowTerracesWorld {
             if (hull) hides.push(hull);
         }
         // The tower: wide at its base, narrowing to its crown (cumulus.js builds it so).
-        const tower = cumulusPlan(f, this.U.shower.value.x).find((c) => c.kind === 0);
+        const tower = cumulusPlan(f, this.showerBase ?? this.U.shower.value.x).find((c) => c.kind === 0);
         if (tower) {
             const len = Math.hypot(tower.x, tower.z) || 1;
             const ax = -tower.z / len;
@@ -1129,8 +1215,12 @@ export class RainbowTerracesWorld {
             const index = geometry.index ? geometry.index.array : null;
             const tris = index ? index.length / 3 : pos.count / 3;
             const m = mesh.matrixWorld.elements;
+            // (The ivy's leaves are thousands of small triangles lying on the stone that already
+            // draws the edge: they are passed over.)
+            const kind = geometry.attributes.aMat ? geometry.attributes.aMat.array : null;
             for (let k = 0; k < tris * 3; k++) {
                 const i0 = index ? index[k] : k;
+                if (kind && kind[i0] > 4.5) continue;
                 const i1 = index ? index[k - (k % 3) + ((k + 1) % 3)] : k - (k % 3) + ((k + 1) % 3);
                 if (!toScreen(m, pos, i0, a).front || !toScreen(m, pos, i1, b).front) continue;
                 const c0 = Math.max(0, Math.ceil(Math.min(a.x, b.x) * FALL_EDGE_BINS));
@@ -1430,6 +1520,20 @@ export class RainbowTerracesWorld {
         if (this.sprayArms) this.sprayArms.length = 0;
         this.span.reset();
         this.kindle.reset();
+        this.beams.reset();
+        this.twinAt = -1e4;
+        this.twinFadeAt = -1e4;
+        this.twinLiftAt = -1e4;
+        this.twinLaid.fill(0);
+        this.fullAt = -1e4;
+        this.ended = false;
+        this.duskAt = -1e4;
+        this.dawnAt = -1e4;
+        this.duskFrom = 0;
+        this.dusk = 0;
+        // (A slot's one-shot is armed for the happening's own start, so a seek into the middle of
+        // one plays it from there: no slot counts as fired.)
+        this.happenFired = -1e9;
         this.b2bRun = 0;
         this.spillDue = 0;
         this.spillNext = 0;
@@ -1451,6 +1555,8 @@ export class RainbowTerracesWorld {
         this.paintTo.fill(-1e4);
         this.paintEnd.fill(1);
         this.pourDone = false;
+        this.hourRung = undefined;
+        this.flickerGain = 0;
         this.wheel.reset?.(time);
         if (hours) this.wheel.restore?.(hours);
         const { U } = this;
@@ -1475,6 +1581,8 @@ export class RainbowTerracesWorld {
     }
 
     resetSession() {
+        // (After a game over this runs under the falling dusk: the day runs out through its night
+        // to the next morning, dimmed, and the next run's dawn lifts onto that morning.)
         this.wheel.newRun?.(this.time);
         this.onCombo(0);
         this.b2b = false;
@@ -1489,9 +1597,74 @@ export class RainbowTerracesWorld {
         });
     }
 
+    /**
+     * The run is over: the dusk falls (DUSK). The light sinks and cools, the falls thin to threads,
+     * the bows let go, the birds go home, the first stars come out, and the bell tolls once, low,
+     * its rings running out slowly across the darkening sea. It stands until the next run's dawn.
+     */
     onGameOver() {
         this.onCombo(0);
         this.graceUntil = -1e4;
+        if (this.ended) return;
+        this.ended = true;
+        // From wherever a dawn still rising had brought it (a run lost in its first seconds).
+        const standing = this.duskLevel(this.time);
+        this.duskFrom = 0;
+        this.duskAt = this.time - DUSK.fall * standing;
+        this.dawnAt = -1e4;
+        // The pour's bow and the twin let go with the light (never switched off: they fade from now).
+        this.revealFadeAt = Math.min(this.revealFadeAt, this.time);
+        this.twinFadeAt = Math.min(this.twinFadeAt, this.time);
+        const toll = this.U.toll.value;
+        toll.set(this.time + 0.5, 0.7);
+        this.tollKind = 'dusk';
+        this.parts.isles?.swing(0.5);
+    }
+
+    /**
+     * A new run begins. After a game over this is its dawn: the dusk lifts off the morning the day
+     * ran on to, the bell rings it in, the falls come back in a surge and a flight sails out. A
+     * first run (or a restart with no ending) changes nothing here.
+     */
+    onSessionStart() {
+        if (!this.ended) return;
+        this.liftDusk();
+        this.surge.levelUp?.(this.time);
+        const toll = this.U.toll.value;
+        toll.set(this.time + 0.3, 1);
+        this.tollKind = 'dawn';
+        this.parts.isles?.swing(0.7);
+        this.beams.hit(0.6, this.time + 0.4);
+        // The falls come back as one front down every fall, in the morning's accent.
+        const { accent } = this.hour.colour;
+        for (let f = 0; f < SLOT.hair; f++) {
+            if (this.fallCpu[f]) this.packet(f, this.U.waterClock.value + 0.5, 0.9, 1.6, accent, 1);
+        }
+        if (this.placement.spring) {
+            const crown = this.isleToWorld('spring', 0, PLAN.spring.top + 10, PLAN.spring.radius * 0.3);
+            this.flock?.launch(crown, this.flightClock + 0.6);
+        }
+    }
+
+    /** The mode ended with the dusk still standing (back to the menu): it lifts quietly. */
+    onSessionStop() {
+        if (this.ended) this.liftDusk();
+    }
+
+    /** The dusk begins to lift from where it stands. */
+    liftDusk() {
+        this.duskFrom = this.duskLevel(this.time);
+        this.dawnAt = this.time;
+        this.ended = false;
+    }
+
+    /** How deep the dusk stands at `t` (0..1): falling since a game over, lifting since a dawn. */
+    duskLevel(t) {
+        if (this.dawnAt > -1e3 && this.dawnAt >= this.duskAt) {
+            return this.duskFrom * (1 - smooth(0, DUSK.rise, t - this.dawnAt));
+        }
+        if (this.duskAt < -1e3) return 0;
+        return smooth(0, DUSK.fall, t - this.duskAt);
     }
 
     restCamera() {
@@ -1702,6 +1875,9 @@ export class RainbowTerracesWorld {
 
     onLock(c) {
         if (!c) return;
+        // A piece locking while the dusk stands means a run is on that no one announced (a restart
+        // that starts no mode): it is that run's dawn.
+        if (this.ended) this.onSessionStart();
         const rgb = pieceLight(c.color || '#ffffff', 0.35, [0, 0, 0]);
         this.lastLock.set(c.player ?? 0, { rgb: rgb.slice(), shape: c.shape ?? null });
         this.surge.lock(c, this.time);
@@ -1817,8 +1993,10 @@ export class RainbowTerracesWorld {
             this.b2b = true;
             this.b2bRun += 1;
             this.flock?.setLongWing(true, this.flightClock);
-            // The back-to-back's own answer: the Mother Fall throws a tower of spray with the bow
-            // standing in it, taller with every back-to-back in a row.
+            // The back-to-back's own answer: the bow gets its twin (the light draws the secondary
+            // round behind the primary, and it holds while back-to-backs follow), and the Mother
+            // Fall throws a tower of spray with the bow standing in it, taller with every one in a row.
+            this.drawTwinBow(t + 0.15);
             this.throwSpray(SPRAY_BURST.tower, t, 1 + 0.25 * Math.min(4, this.b2bRun - 1));
         } else if (c.b2b === false && this.b2b && wave === 0) {
             // A clear that does not continue the back-to-back ends it: the long-wing lands.
@@ -1890,6 +2068,7 @@ export class RainbowTerracesWorld {
     /** A twist: the falls are wrung, two gliders rise, the link colours turn, the bell swings. */
     twist(c) {
         this.wring(this.reduced ? 0.5 : 1);
+        this.twister(c, 1 + 0.2 * Math.min(3, (c.lines || 1) - 1));
         const { card, board } = this.sourceOf(c);
         const row = c.rows && c.rows.length ? c.rows[0] : 15;
         const y = board.y0 + ((row + 0.5) / 20) * (board.y1 - board.y0);
@@ -1903,6 +2082,35 @@ export class RainbowTerracesWorld {
             this.links[0] = last;
             this.bowInfo.links = this.links;
         }
+    }
+
+    /**
+     * The twist's own shape: a double helix of light-water wound up the Mother Fall from where the
+     * frame cuts her to her lip, in the colour of the piece that turned (`strength` 1 a twist that
+     * clears, more with more lines; about a half one that clears nothing: a single short strand).
+     */
+    twister(c, strength) {
+        const fall = this.fallCpu[SLOT.mother];
+        if (!fall || !this.effects) return;
+        const last = this.lastLock.get(c.player ?? 0);
+        const rgb = last ? last.rgb : this.hour.colour.accent;
+        const tFrame = fall.tFrame ?? fall.duration;
+        // Six points down her visible drop (the helix winds round this line, foot to lip).
+        const axis = this.scratch.twistAxis || (this.scratch.twistAxis = new Float32Array(18));
+        const p = this.scratch.a;
+        const water = this.U.waterClock.value;
+        for (let k = 0; k < 6; k++) {
+            const h = 1 - k / 5;
+            fallPoint(fall, tFrame * Math.sqrt(0.04 + 0.92 * h), p, water);
+            axis[k * 3] = p[0];
+            axis[k * 3 + 1] = p[1];
+            axis[k * 3 + 2] = p[2];
+        }
+        const half = fallHalfWidth(fall, tFrame * 0.6, this.U.flow.value.y);
+        const { r: right, f: ahead } = this.frame.cam.basis;
+        this.effects.twister(this.time, {
+            axis, radius: Math.max(9, half * 1.25), right, ahead, colour: rgb, strength: this.reduced ? strength * 0.7 : strength,
+        });
     }
 
     /**
@@ -1925,6 +2133,7 @@ export class RainbowTerracesWorld {
     spin(c) {
         this.surge.spin(this.time);
         this.wring(this.reduced ? 0.25 : 0.5);
+        this.twister(c, 0.55);
         const { card, board } = this.sourceOf(c);
         const row = c.rows && c.rows.length ? c.rows[0] : 15;
         const y = board.y0 + ((row + 0.5) / 20) * (board.y1 - board.y0);
@@ -1996,6 +2205,7 @@ export class RainbowTerracesWorld {
             this.pourAt = t + 1.0;
             this.drawPourBow(this.pourAt);
         }
+        this.fullCircle(this.pourAt);
         let k = 0;
         for (let i = 0; i < this.poolSlots.length && k < 10; i++) {
             const info = this.poolSlots[i];
@@ -2021,6 +2231,8 @@ export class RainbowTerracesWorld {
                 this.pourAt = t + 1.27;
                 this.drawPourBow(this.pourAt);
             }
+            if (perfect) this.fullCircle(this.pourAt);
+            else this.beams.hit(0.45, this.pourAt);
             return;
         }
         this.hush.at = t;
@@ -2033,6 +2245,10 @@ export class RainbowTerracesWorld {
         this.pourAt = t + this.hush.length + 1.27;
         if (perfect) this.spillwayAt = t + this.hush.length + 1.6;
         this.drawPourBow(this.pourAt);
+        // The light behind the eye flares with the pour: the rays stand deep in the air a while
+        // (a perfect clear's whole full circle).
+        if (perfect) this.fullCircle(this.pourAt);
+        else this.beams.hit(0.8, this.pourAt);
     }
 
     /**
@@ -2052,6 +2268,131 @@ export class RainbowTerracesWorld {
                 this.revealLiftFrom = this.revealFadeAt;
             }
             this.revealFadeAt = Math.max(this.revealFadeAt, pourAt + REVEAL.fadeAt);
+        }
+    }
+
+    /**
+     * The twin bow: the light draws the secondary round from its foot at `at` (TWIN). One standing
+     * (or still to be drawn) is kept: it holds on, rising back from now if it had begun to fade.
+     * `crown`: a perfect clear's, which holds longer.
+     */
+    drawTwinBow(at, crown = false) {
+        const hold = crown ? TWIN.crownFadeAt : TWIN.fadeAt;
+        if (this.time >= this.twinFadeAt + TWIN.fade) {
+            this.twinAt = at;
+            this.twinFadeAt = at + hold;
+            this.twinLiftAt = -1e4;
+            this.twinLaid.fill(0);
+            this.twinCrown = crown;
+        } else {
+            if (this.time > this.twinFadeAt) {
+                this.twinLiftAt = this.time;
+                this.twinLiftFrom = this.twinFadeAt;
+            }
+            this.twinFadeAt = Math.max(this.twinFadeAt, at + hold);
+            this.twinCrown = this.twinCrown || crown;
+        }
+    }
+
+    /**
+     * The twin bow now, or null when none stands: as revealNow, for the secondary's five strokes
+     * (`z[k]` how much of stroke 7 + k the light has drawn, `w` how bright, `hold` its fade,
+     * `dial` what it lends the optics, `K`, `reach`, `span`, `d0` its run).
+     */
+    twinNow() {
+        const T = TWIN;
+        const t = this.time;
+        const age = t - this.twinAt;
+        const f = this.frame;
+        if (!(age >= 0) || t >= this.twinFadeAt + T.fade || !f?.strokes2?.length) return null;
+        const tw = this.twinScratch || (this.twinScratch = {
+            K: 0,
+            reach: 0,
+            age: 0,
+            w: 0,
+            hold: 1,
+            dial: 0,
+            z: new Float64Array(5),
+            d0: new Float64Array(5),
+            span: new Float64Array(5),
+        });
+        const strokes = f.strokes2;
+        const wrap = (a) => a - 2 * Math.PI * Math.round(a / (2 * Math.PI));
+        const senseOf = (s) => (s.phi1 < s.phi0 ? -1 : 1);
+        let K = strokes[0].phi0;
+        let first = 0;
+        for (let i = 1; i < strokes.length && i < 5; i++) {
+            const s = strokes[i];
+            const back = senseOf(s) * wrap(s.phi0 - strokes[0].phi0);
+            if (back < first) {
+                first = back;
+                K = s.phi0;
+            }
+        }
+        let total = 0;
+        for (let i = 0; i < 5; i++) {
+            const s = strokes[i];
+            if (!s || !(Math.abs(s.phi1 - s.phi0) > 1e-6)) {
+                tw.d0[i] = 0;
+                tw.span[i] = 0;
+                continue;
+            }
+            const run = s.joins?.[1] ? 0 : RUN_ON[s.hides?.[1] || 0] || 0;
+            tw.d0[i] = Math.max(0, senseOf(s) * wrap(s.phi0 - K));
+            tw.span[i] = Math.abs(s.phi1 - s.phi0) + run;
+            total = Math.max(total, tw.d0[i] + tw.span[i]);
+        }
+        const speed = total / (T.draw - T.kindle / 2);
+        const reach = speed * (age < T.kindle ? (age * age) / (2 * T.kindle) : age - T.kindle / 2);
+        for (let i = 0; i < 5; i++) tw.z[i] = tw.span[i] > 0 ? clamp01((reach - tw.d0[i]) / tw.span[i]) : 0;
+        let hold = 1 - smooth(this.twinFadeAt, this.twinFadeAt + T.fade, t);
+        const LIFT = 0.9;
+        if (t < this.twinLiftAt + LIFT) {
+            const before = 1 - smooth(this.twinLiftFrom, this.twinLiftFrom + T.fade, t);
+            hold = Math.min(hold, Math.max(before, smooth(this.twinLiftAt, this.twinLiftAt + LIFT, t)));
+        }
+        tw.K = K;
+        tw.reach = reach;
+        tw.age = age;
+        tw.hold = hold;
+        tw.w = T.peak * hold;
+        tw.dial = (this.twinCrown ? T.crownDial : T.dial) * smooth(0.1 * T.draw, T.draw + 0.4, age) * hold;
+        return tw;
+    }
+
+    /**
+     * The full circle (a perfect clear's crown, the theme's greatest moment): both bows whole (the
+     * pour draws the primary, the twin the secondary, a band of light running round them), the
+     * rays standing deep in the air, the bell's rings out across the whole sea, a flight from the
+     * crown, the Far Gate's arch filling with light (emitGlows reads `fullAt`), and the seven
+     * colours running down every fall one after another.
+     */
+    fullCircle(at) {
+        // One still playing is fed, never started again.
+        const standing = this.time < this.fullAt + 9;
+        if (!standing) this.fullAt = at;
+        this.drawTwinBow(at + 0.5, true);
+        this.beams.hit(standing ? 0.4 : 1.0, at);
+        const toll = this.U.toll.value;
+        const tolling = this.time - toll.x;
+        if (tolling >= 0 && tolling < 2.5) toll.y = Math.min(1.6, toll.y + 0.4);
+        else toll.set(at + 0.2, 1.4);
+        this.tollKind = 'full';
+        this.parts.isles?.swing(1);
+        if (standing) return;
+        if (this.placement.spring) {
+            const crown = this.isleToWorld('spring', 0, PLAN.spring.top + 10, PLAN.spring.radius * 0.3);
+            this.flock?.launch(crown, this.flightClock + 0.4);
+        }
+        // The seven colours down every fall, outside the bow in, a band apart.
+        const water = this.U.waterClock.value;
+        for (let f = 0; f < SLOT.hair; f++) {
+            if (!this.fallCpu[f]) continue;
+            const wide = f === SLOT.mother ? 0.42 : 0.3;
+            for (let k = 0; k < SPECTRUM.length; k++) {
+                // (Free slots only on the thin falls: the Mother's stripes come first.)
+                this.packet(f, water + 1.3 + k * 0.55, wide, 1.0, SPECTRUM[k], 0, f !== SLOT.mother);
+            }
         }
     }
 
@@ -2106,6 +2447,8 @@ export class RainbowTerracesWorld {
 
     levelUp(level, { silent = false } = {}) {
         this.wheel.levelUp?.(Math.max(1, Math.round(level)), this.time, { silent });
+        // (The hour the bell last told is taken up again from where the light now stands.)
+        this.hourRung = undefined;
         if (silent) return;
         this.surge.levelUp(this.time);
         // A level while the bell still rings rings it louder; it never starts the rings again.
@@ -2113,9 +2456,261 @@ export class RainbowTerracesWorld {
         const tolling = this.time - toll.x;
         if (tolling >= 0 && tolling < 2.5) toll.y = Math.min(1.5, toll.y + 0.35);
         else toll.set(this.time, 1);
+        this.tollKind = 'level';
+        // The bell's voice is seen: rings of the hour's gold opening in the air round the arch.
+        this.bellRings(1);
+        this.beams.hit(0.4, this.time + 0.3);
         this.parts.isles?.swing(0.6);
         const crown = this.isleToWorld('spring', 0, PLAN.spring.top + 10, PLAN.spring.radius * 0.3);
         this.flock?.launch(crown, this.flightClock);
+    }
+
+    /**
+     * Play one of the air's happenings from `at` in place of whatever the slot holds (a capture, a
+     * test); null lets the slots play again.
+     */
+    stageHappening(kind, at = this.time, seed = 7) {
+        this.staged = kind && HAPPENINGS[kind] ? { kind, at, slot: -100 - Math.round(seed) } : null;
+    }
+
+    /** Rings of the hour's gold opening in the air round the bell (the toll, seen); `strength` about 1. */
+    bellRings(strength, at = this.time) {
+        if (!this.parts.isles || !this.effects || !this.placement.spring) return;
+        const a = this.parts.isles.anchors.bell;
+        const p = this.isleToWorld('spring', a.x, a.y - 4, a.z, this.scratch.c);
+        const { key, accent } = this.hour.colour;
+        const { rgb } = this.scratch;
+        rgb[0] = key[0] * 0.7 + accent[0] * 0.3;
+        rgb[1] = key[1] * 0.7 + accent[1] * 0.3;
+        rgb[2] = key[2] * 0.7 + accent[2] * 0.3;
+        this.effects.bell(at, p, Math.max(4, Math.hypot(p[0], p[1], p[2]) * 0.011), rgb, this.reduced ? strength * 0.6 : strength);
+    }
+
+    /**
+     * What happens by itself (rainbow-terraces-weather.js): a slot's one-shot, fired once as it
+     * begins (the airs it changes and the lights it draws are closed forms of its age: applyHour,
+     * emitAir), and the bell telling the hour as the light walks into a new one by the clock. Play
+     * is the world's first voice: nothing of its own starts while a set piece stands or the run
+     * has ended.
+     */
+    stepHappenings() {
+        const t = this.time;
+        // The bell tells the hour (softly: a new level's toll is the loud one).
+        const hourNow = Math.floor(this.wheel.placeAt(t) + 0.5);
+        if (this.hourRung === undefined || this.wheel.turning(t)) this.hourRung = hourNow;
+        if (hourNow !== this.hourRung) {
+            this.hourRung = hourNow;
+            const toll = this.U.toll.value;
+            if (this.happenings && !this.ended && !(t - toll.x < 4)) {
+                // (From the moment the light crossed, not the frame that saw it: any frame rate
+                // rings the same toll.)
+                const at = Math.min(t, Math.max(t - 0.25, t - (this.wheel.placeAt(t) + 0.5 - hourNow) * HOUR_SECONDS));
+                toll.set(at, 0.5);
+                this.tollKind = 'hour';
+                this.bellRings(0.55, at);
+                this.parts.isles?.swing(0.35);
+            }
+        }
+        const hap = this.happening;
+        if (!this.happenings || hap.kind === null || hap.slot === this.happenFired) return;
+        if (!(hap.age >= 0 && hap.age < hap.length)) return;
+        this.happenFired = hap.slot;
+        this.flickerGain = 0;
+        if (this.ended || this.gloryStands(t)) return;
+        if (hap.kind === 'plume') {
+            this.throwSpray(SPRAY_BURST.tower, hap.at, 0.5 + 0.3 * hap.seed);
+        } else if (hap.kind === 'flicker' && !this.reduced && !prefersReducedFlashing()) {
+            // Sheet lightning far inside the storm: a twentieth of the frame, lifted a little.
+            const g = this.flashes.request('routine', 0.3, 0.04, 0, hap.at, 2.5);
+            this.flickerGain = g.at <= t + 1e-3 ? Math.min(1, g.strength / 0.3) : 0;
+        }
+    }
+
+    /**
+     * What the air itself shows, in the glow layer (closed forms of the happening's age, so a seek
+     * lands on the same lights): a skein of the paper birds far out over the gulf, crossing the
+     * whole frame edge to edge at one pace; shooting stars; the storm flickering from within. And
+     * the Far Gate's arch filling with light at a full circle.
+     */
+    emitAir(push) {
+        const f = this.frame;
+        const cam = f?.cam;
+        if (!cam) return;
+        const t = this.time;
+        const hap = this.happening;
+        const d = this.scratch.airA || (this.scratch.airA = [0, 0, -1]);
+        const e = this.scratch.airB || (this.scratch.airB = [0, 0, -1]);
+        const live = this.happenings && hap.kind !== null && hap.age >= 0 && hap.age < hap.length && !this.ended;
+        const sky = Math.min(0.9, f.horizon ?? 0.62);
+        const glow = this.U.gliderGlow.value;
+        if (live && hap.kind === 'flight') {
+            // Edge to edge, never born or lost in view: from a little outside one side of the
+            // frame to a little outside the other, a shallow line across the upper sky.
+            const u = hap.age / hap.length;
+            const leftward = hap.seed < 0.5;
+            const xa = leftward ? 1.12 : -0.12;
+            const xb = leftward ? -0.12 : 1.12;
+            unproject(xa, sky * (0.2 + 0.25 * hash(hap.slot + 5.5)), cam, d);
+            unproject(xb, sky * (0.24 + 0.25 * hash(hap.slot * 1.7 + 2.5)), cam, e);
+            const D = 5200;
+            const hx = (e[0] - d[0]) * D;
+            const hy = (e[1] - d[1]) * D;
+            const hz = (e[2] - d[2]) * D;
+            const hl = Math.hypot(hx, hy, hz) || 1;
+            // Across the skein, level: the heading turned a quarter on the ground.
+            const sl = Math.hypot(hx, hz) || 1;
+            const sx = -hz / sl;
+            const sz = hx / sl;
+            const birds = this.tier.gliders >= 18 ? 11 : 7;
+            const { key, hearth } = this.hour.colour;
+            const r = D * this.U.pixelAngle.value * 3.0;
+            for (let k = 0; k < birds; k++) {
+                const rank = Math.ceil(k / 2);
+                const arm = Math.sign(k) * (k % 2 ? 1 : -1);
+                const h0 = hash(hap.slot * 3.1 + k * 7.7);
+                const back = rank * (64 + 14 * h0);
+                const side = arm * rank * 44 * (0.9 + 0.2 * h0);
+                // Its place in the V, breathing a little on the air.
+                const bob = Math.sin(t * (0.5 + 0.3 * h0) + k * 2.1) * 9;
+                const x = d[0] * D + hx * u - (hx / hl) * back + sx * side;
+                const y = d[1] * D + hy * u - (hy / hl) * back + bob;
+                const z = d[2] * D + hz * u - (hz / hl) * back + sz * side;
+                // A far bird is a wing catching the light: it brightens on every downbeat.
+                const beat = this.reduced ? 0.8 : 0.5 + 0.5 * Math.sin(t * (7.2 + 1.6 * h0) + k * 1.9);
+                const b = 0.5 + 1.1 * beat * beat;
+                const cr = (0.6 + 0.5 * key[0]) * (1 - glow) + hearth[0] * 1.3 * glow;
+                const cg = (0.6 + 0.5 * key[1]) * (1 - glow) + hearth[1] * 1.3 * glow;
+                const cb = (0.6 + 0.5 * key[2]) * (1 - glow) + hearth[2] * 1.3 * glow;
+                push(x, y, z, r, cr * b, cg * b, cb * b, GLOW.glow);
+            }
+        }
+        if (live && hap.kind === 'meteors') {
+            // Shooting stars: three in the slot's seconds, each a head and the trail it leaves.
+            const night = clamp01(this.U.stars.value * 1.4);
+            for (let m = 0; m < 3; m++) {
+                const born = m * 2.3 + 0.8 * hash(hap.slot * 5.3 + m);
+                const age = hap.age - born;
+                const life = 0.75 + 0.3 * hash(hap.slot + m * 3.9);
+                if (age < 0 || age > life + 0.5) continue;
+                const h0 = hash(hap.slot * 2.9 + m * 11.1);
+                const h1 = hash(hap.slot * 7.3 + m * 5.7);
+                const x0 = 0.08 + 0.84 * h0;
+                const y0 = sky * (0.06 + 0.3 * h1);
+                const dir = h0 < 0.5 ? 1 : -1;
+                const lenX = 0.24 * dir;
+                const lenY = sky * (0.16 + 0.1 * h1);
+                const D = 30000;
+                const steps = 14;
+                const k = Math.min(1, age / life);
+                const fade = night * (1 - smooth(life, life + 0.5, age)) * Math.sin(Math.PI * Math.min(1, 0.15 + 0.85 * k)) ** 0.5;
+                let px = 0;
+                let py = 0;
+                let pz = 0;
+                for (let j = steps; j >= 0; j--) {
+                    // The head at k, the trail reaching back a third of its path.
+                    const s = Math.max(0, k - (j / steps) * 0.34);
+                    unproject(x0 + lenX * s, y0 + lenY * s, cam, d);
+                    const x = d[0] * D;
+                    const y = d[1] * D;
+                    const z = d[2] * D;
+                    if (j < steps) {
+                        const b = fade * (1 - j / steps) ** 1.5 * (j === 0 ? 5.0 : 2.8);
+                        const size = D * this.U.pixelAngle.value * (j === 0 ? 3.6 : 2.4);
+                        const reach = Math.hypot(px - x, py - y, pz - z);
+                        push(x, y, z, size, 0.9 * b, 0.95 * b, b, GLOW.streak, px - x, py - y, pz - z, (reach / size) * 1.7 + 1);
+                    }
+                    px = x; py = y; pz = z;
+                }
+            }
+        }
+        if (live && hap.kind === 'flicker' && this.flickerGain > 0) {
+            // Sheet lightning inside the storm: two or three soft pulses lighting the cloud from
+            // within, far and slow (each a quarter-second, never a strobe).
+            const sh = this.U.shower.value;
+            const amt = clamp01(this.U.showerAmt.value);
+            let pulse = 0;
+            for (let j = 0; j < 3; j++) {
+                const at = 0.15 + j * (0.5 + 0.5 * hash(hap.slot * 1.3 + j)) + (j === 2 ? 0.9 : 0);
+                const a = hap.age - at;
+                if (a > 0) pulse = Math.max(pulse, smooth(0, 0.07, a) * (1 - smooth(0.07, 0.34, a)) * (j === 1 ? 1 : 0.65));
+            }
+            if (pulse > 0.01) {
+                const D = 15000;
+                for (let j = 0; j < 2; j++) {
+                    const bearing = sh.x + (hash(hap.slot * 4.1 + j) - 0.5) * sh.y * 1.1;
+                    const el = sh.z + Math.max(0.05, sh.w) * (0.25 + 0.5 * hash(hap.slot * 6.7 + j));
+                    const b = pulse * this.flickerGain * amt * (j ? 1.0 : 1.7);
+                    push(
+                        Math.sin(bearing) * Math.cos(el) * D,
+                        Math.sin(el) * D,
+                        -Math.cos(bearing) * Math.cos(el) * D,
+                        D * (j ? 0.06 : 0.1),
+                        0.66 * b,
+                        0.76 * b,
+                        b,
+                        GLOW.soft,
+                    );
+                }
+            }
+        }
+        // Fireflies over the Spring Isle's meadow once the stars are out (the night, and the dusk of
+        // a run's end): a dozen small green lights drifting at their own slow pace above the turf,
+        // each breathing over seconds (few, slow and soft: never a field of sparks).
+        const fireflies = clamp01((this.U.stars.value - 0.22) * 1.7);
+        if (fireflies > 0.02 && this.placement.spring) {
+            const count = Math.min(14, Math.max(5, Math.round(this.tier.sleepers / 8)));
+            const R = PLAN.spring.radius;
+            const fly = this.scratch.fly || (this.scratch.fly = [0, 0, 0]);
+            for (let k = 0; k < count; k++) {
+                const h0 = hash(k * 3.7 + 1.1);
+                const h1 = hash(k * 5.3 + 2.9);
+                const h2 = hash(k * 7.1 + 4.3);
+                const a = h0 * Math.PI * 2 + t * (0.02 + 0.03 * h1) * (k % 2 ? 1 : -1);
+                const rho = R * (0.18 + 0.5 * h1) + Math.sin(t * 0.21 + k * 1.7) * 2.5;
+                const lx = Math.cos(a) * rho;
+                // (The crown's near half: what the eye sees of the meadow.)
+                const lz = Math.abs(Math.sin(a)) * rho * 0.85;
+                const ground = PLAN.spring.top * 0.85 * (1 - (Math.hypot(lx, lz) / R) ** 2);
+                const ly = ground + 2.5 + 7 * h2 + Math.sin(t * (0.35 + 0.25 * h0) + k * 2.1) * 1.6;
+                const w = this.isleToWorld('spring', lx, ly, lz, fly);
+                const breath = this.reduced ? 0.7 : 0.5 + 0.5 * Math.sin(t * (0.9 + 0.9 * h2) + k * 4.7);
+                const b = fireflies * breath * breath * 1.5;
+                if (b < 0.02) continue;
+                push(w[0], w[1], w[2], Math.hypot(w[0], w[1], w[2]) * 0.0015, 0.62 * b, 1.0 * b, 0.3 * b, GLOW.glow);
+            }
+        }
+        // The full circle: the Far Gate's arch fills with the light behind the eye, rays standing
+        // out of it and slowly turning (far, soft: thirteen kilometres of air lie between).
+        const full = t - this.fullAt;
+        if (full >= 0 && full < 9 && this.placement.gate && this.parts.isles?.anchors?.weir) {
+            const env = smooth(0, 1.4, full) * (1 - smooth(5.5, 9, full)) * (this.reduced ? 0.7 : 1);
+            const { weir } = this.parts.isles.anchors;
+            // (Inside the arch, between its piers: the masonry in front of it hides what it should.)
+            const w = this.isleToWorld('gate', weir.x, weir.y * 0.4, 0, this.scratch.b);
+            const dist = Math.hypot(w[0], w[1], w[2]);
+            const size = dist * 0.026 * (this.placement.gate.scale ?? 1);
+            const { key } = this.hour.colour;
+            const kp = Math.max(key[0], key[1], key[2], 1e-3);
+            const lr = 0.5 + 0.5 * (key[0] / kp);
+            const lg = 0.5 + 0.5 * (key[1] / kp);
+            const lb = 0.5 + 0.5 * (key[2] / kp);
+            push(w[0], w[1], w[2], size * 2.6, lr * 0.75 * env, lg * 0.75 * env, lb * 0.75 * env, GLOW.soft);
+            push(w[0], w[1], w[2], size * 0.9, lr * 2.4 * env, lg * 2.4 * env, lb * 2.4 * env, GLOW.glow);
+            const { r: right, u: up } = cam.basis;
+            const rays = 8;
+            for (let j = 0; j < rays; j++) {
+                const a = (j / rays) * Math.PI * 2 + full * 0.12 + 0.2;
+                const ca = Math.cos(a);
+                const sa = Math.sin(a);
+                const mx = right[0] * ca + up[0] * sa;
+                const my = right[1] * ca + up[1] * sa;
+                const mz = right[2] * ca + up[2] * sa;
+                const long = j % 2 ? 0.7 : 1;
+                const reach = size * 3.4 * long * (0.6 + 0.4 * smooth(0, 2.5, full));
+                const b = 0.55 * env * long;
+                push(w[0] + mx * reach, w[1] + my * reach, w[2] + mz * reach, size * 0.32, lr * b, lg * b, lb * b, GLOW.streak, mx, my, mz, (reach / (size * 0.32)) * 0.9);
+            }
+        }
     }
 
     // ── Frame ──
@@ -2143,14 +2738,20 @@ export class RainbowTerracesWorld {
         U.time.value = t;
         U.waterClock.value += dt * waterRate * pour;
         U.sprayClock.value += dt * sprayRate;
-        U.mistClock.value += dt;
+        // The sky's one wind blows as the air has it (every layer drifts on the mist's clock).
+        U.mistClock.value += dt * (this.air.scalar.wind ?? 1);
         this.flightClock += dt * flightRate;
         // The falls' width: thin in the hush, swollen in the pour, wide with the chain, in spate
         // with the heat of play (a fever's cataract), and kicked by each beat of it.
         const chain = 1 + 0.05 * Math.min(this.dial, 7);
         const spate = 1 + 0.1 * warm + 0.12 * hot + 0.15 * fever + 0.05 * punch;
         const poured = pourAge >= 0 && pourAge < 3 ? 1 + 0.4 * (1 - smooth(0, 3, pourAge)) : 1;
-        U.flow.value.y = (hushing ? 1 - 0.65 * depth : 1) * poured * chain * spate;
+        // At the run's end the falls thin to threads; the dawn brings them back swollen a moment.
+        this.dusk = this.duskLevel(t);
+        const dawnAge = t - this.dawnAt;
+        const dawned = dawnAge >= 0 && dawnAge < 4 ? 1 + 0.35 * smooth(0, 0.8, dawnAge) * (1 - smooth(0.8, 4, dawnAge)) : 1;
+        const thinned = (1 - (1 - DUSK.flow) * this.dusk) * dawned;
+        U.flow.value.y = (hushing ? 1 - 0.65 * depth : 1) * poured * chain * spate * thinned;
         U.flow.value.x = waterRate;
         U.drift.value.set(t * 0.0011, t * 0.0004);
         U.starTurn.value = t * 0.004;
@@ -2162,6 +2763,32 @@ export class RainbowTerracesWorld {
         const place = this.wheel.placeAt(time);
         const h = hourAt(place, this.hour);
         const { U } = this;
+        // The air on its own wheel: it leans the hour's colours (a rising mist, washed air, rain's
+        // slate) and scales the hour's numbers; and what is happening in it by itself just now.
+        const air = airAt(this.airPin ?? airPlace(time), this.air).scalar;
+        leanColours(h.colour, air);
+        const smile = this.frame?.plan === 'smile';
+        const ctx = this.happenContext;
+        ctx.night = h.scalar.stars ?? 0;
+        ctx.storm = (h.scalar.shower ?? 0.85) * air.shower * (this.showerScale ?? 1);
+        ctx.rays = Boolean(this.tier.rays);
+        const hap = happeningAt(time, ctx, this.happening);
+        if (this.staged) {
+            // A capture's own happening, in place of the slot's (stageHappening).
+            const { kind, at } = this.staged;
+            const { length } = HAPPENINGS[kind];
+            const ramp = Math.min(4, length * 0.3);
+            const age = time - at;
+            hap.kind = kind;
+            hap.at = at;
+            hap.length = length;
+            hap.age = age;
+            hap.slot = this.staged.slot;
+            hap.env = age <= 0 || age >= length ? 0 : smooth(0, ramp, age) * (1 - smooth(length - ramp, length, age));
+        }
+        const live = this.happenings && hap.kind !== null;
+        const veil = live && hap.kind === 'veil' ? hap.env : 0;
+        const surge = live && hap.kind === 'beams' ? hap.env : 0;
         const rows = U.rows.array;
         COLOUR_ROWS.forEach((name, i) => {
             const c = h.colour[name];
@@ -2170,6 +2797,18 @@ export class RainbowTerracesWorld {
         SCALAR_UNIFORMS.forEach((name) => {
             if (U[name] && h.scalar[name] !== undefined) U[name].value = h.scalar[name];
         });
+        U.keyGain.value *= air.gain;
+        U.cloud.value *= air.deck;
+        U.spray.value *= air.spray;
+        U.shadowDepth.value = Math.min(0.85, U.shadowDepth.value * air.wedge * (1 + 0.25 * surge));
+        // A veil of rain passing behind the leg brings the bow out by itself, and takes it away.
+        U.bowRest.value = clamp(U.bowRest.value + air.bow + 0.3 * veil, 0.12, 0.9);
+        U.fogbow.value += air.fogbow;
+        U.polar.value *= air.polar;
+        U.seaSwell.value = air.swell;
+        U.veilAmt.value = air.veil;
+        // (The clouds behind the eye cast less as the night comes: the moon's shadows are faint.)
+        U.cloudShadow.value = air.shade * (1 - 0.6 * (h.scalar.stars ?? 0));
         // The light the forms are shaded in: the key from behind the eye turned by the hour (its
         // azimuth swung, its elevation nudged), so each hour models the stone its own way; the bows
         // and the wedges keep the true antisolar geometry (U.key).
@@ -2181,15 +2820,55 @@ export class RainbowTerracesWorld {
             const level = Math.hypot(A[0], A[2]) || 1;
             U.termLine.value.set(A[0] / level, A[2] / level, h.scalar.termRise ?? 0, (h.scalar.termY ?? 0) * 1000);
         }
-        this.showerHour = h.scalar.shower ?? 0.85;
+        // (Never more storm than the shaders were tuned for: the heat of play adds to this.)
+        this.showerHour = Math.min(1.25, (h.scalar.shower ?? 0.85) * air.shower * (1 + 0.25 * veil));
         U.showerAmt.value = this.showerHour * (this.showerScale ?? 1);
-        // The sky's own numbers.
-        U.rays.value = h.scalar.rays ?? 0;
-        U.cirrus.value = h.scalar.cirrus ?? 0;
-        this.post.exposure = h.scalar.exposure ?? 1;
-        this.post.glow = h.scalar.glow ?? 0;
+        // The storm wall walks along the horizon with the air (its crown, the tower, keeps its place:
+        // a few degrees of the wall's dark heart come out from behind it and go in again).
+        if (this.showerBase !== undefined) U.shower.value.x = this.showerBase + (smile ? 0 : air.swing);
+        // The sky's own numbers: the rays as the hour and the air have them, surging when the clouds
+        // behind the eye part by themselves, and at a set piece (a four-line clear, a crown, a level).
+        U.rays.value = Math.min(0.85, (h.scalar.rays ?? 0) + air.rays + 0.3 * surge + 0.45 * this.beams.valueAt(time));
+        U.cirrus.value = (h.scalar.cirrus ?? 0) * air.cirrus;
+        this.post.exposure = (h.scalar.exposure ?? 1) * air.expose;
+        this.post.glow = Math.max(0, (h.scalar.glow ?? 0) + air.glow);
+        // (The grades are the hour's own arrays, rewritten every frame: the dusk may lean on them.)
         this.post.gradeShadow = h.gradeShadow;
         this.post.gradeLight = h.gradeLight;
+    }
+
+    /**
+     * The dusk of a run's end on the hour's own numbers (after applyHour and wearHeat): the key
+     * sinks, the lens closes, the grade cools; the bows let go; the first stars come out and the
+     * Belt of Venus rises; the birds go home (update reads `dusk` for the flock). Nothing here is
+     * a flash: it falls over DUSK.fall seconds and lifts over DUSK.rise.
+     */
+    wearDusk() {
+        const { U } = this;
+        // (The full circle burns in full colour whatever the hour: even the moonbow's pale night
+        // turns to the spectrum while both bows stand, and gives it back as they fade.)
+        const full = this.time - this.fullAt;
+        if (full >= 0 && full < 12) {
+            const env = smooth(0.4, 2.4, full) * (1 - smooth(8, 12, full));
+            U.bowSat.value += (Math.max(U.bowSat.value, 0.9) - U.bowSat.value) * env;
+            U.bowGain.value *= 1 + 0.3 * env;
+        }
+        const d = this.dusk;
+        if (!(d > 1e-4)) return;
+        U.keyGain.value *= 1 - (1 - DUSK.key) * d;
+        U.cloudGain.value *= 1 - 0.25 * d;
+        U.bowGain.value *= 1 - 0.7 * d;
+        U.bowRest.value *= 1 - 0.6 * d;
+        U.stars.value = Math.min(1, U.stars.value + 0.45 * d);
+        U.twilight.value = Math.min(1, U.twilight.value + 0.5 * d);
+        U.rays.value *= 1 - 0.7 * d;
+        U.gliderGlow.value = Math.min(1, U.gliderGlow.value + 0.5 * d);
+        U.hearth.value = Math.min(1, U.hearth.value + 0.4 * d);
+        this.post.exposure *= 1 - (1 - DUSK.dim) * d;
+        const gs = this.post.gradeShadow;
+        const gl = this.post.gradeLight;
+        gs[0] *= 1 - 0.06 * d; gs[2] *= 1 + 0.06 * d;
+        gl[0] *= 1 - 0.07 * d; gl[2] *= 1 + 0.05 * d;
     }
 
     /** The dial eases toward the chain; strokes paint and withdraw one by one (newest first). */
@@ -2207,7 +2886,8 @@ export class RainbowTerracesWorld {
         // so does a fever: the bows burn deeper and, from the top of it, sing (the band of light
         // running round what is painted).
         const reveal = this.revealNow();
-        this.U.bow.value.w = Math.max(this.dial, reveal ? reveal.dial : 0, 10.2 * this.look.fever);
+        const twin = this.twinNow();
+        this.U.bow.value.w = Math.max(this.dial, reveal ? reveal.dial : 0, twin ? twin.dial : 0, 10.2 * this.look.fever);
     }
 
     /**
@@ -2295,6 +2975,7 @@ export class RainbowTerracesWorld {
         const rows = this.U.strokes.array;
         const f = this.frame;
         const reveal = this.revealNow();
+        const twin = this.twinNow();
         const trueBow = this.time - this.trueBowAt;
         const z = this.strokeZ || (this.strokeZ = new Float64Array(STROKES));
         const lens = this.strokeLen || (this.strokeLen = new Float64Array(STROKES));
@@ -2337,6 +3018,20 @@ export class RainbowTerracesWorld {
                 // A stroke it lays glitters as one the chain lays, in the light's own colour.
                 if (zr >= 1 && !this.revealLaid[i]) {
                     this.revealLaid[i] = 1;
+                    if (progress < 1) {
+                        this.laidAt[i] = this.time;
+                        this.glitterKey[i] = 1;
+                    }
+                }
+            }
+            // The twin bow's light on the secondary, the same way (a back-to-back, a crown).
+            const zt = twin && i >= 7 ? twin.z[i - 7] : 0;
+            if (zt > 0) {
+                zi = progress > 0 ? progress + Math.max(0, zt - progress) * twin.hold : zt;
+                wi = Math.max(progress > 0 ? smooth(0, ONSET, progress) : 0, twin.w);
+                tint *= smooth(0, 0.3, progress);
+                if (zt >= 1 && !this.twinLaid[i - 7]) {
+                    this.twinLaid[i - 7] = 1;
                     if (progress < 1) {
                         this.laidAt[i] = this.time;
                         this.glitterKey[i] = 1;
@@ -2431,7 +3126,7 @@ export class RainbowTerracesWorld {
         const { head } = this;
         const n = Math.floor(this.dial);
         const part = this.dial - n;
-        if (part > 1e-4 && n < STROKES && this.dial > head.dial && !reveal) {
+        if (part > 1e-4 && n < STROKES && this.dial > head.dial && !reveal && !(twin && n >= 7)) {
             const s = strokeAt(n);
             if (s) {
                 const hides = s.hides || [0, 0];
@@ -2571,6 +3266,26 @@ export class RainbowTerracesWorld {
                     const across = (hash(k * 3.3 + i * 1.7) - 0.5) * 0.012;
                     const back = phi - sense * k * 0.026;
                     at(0, back, across, 0, 0.0035, light[0] * b, light[1] * b, light[2] * b, GLOW.glint);
+                }
+            }
+        }
+        // The twin bow's light, the same comet on each front of the secondary as it is drawn.
+        const twin = this.twinNow();
+        if (twin) {
+            const lit = smooth(0, 0.35, twin.age) * (this.reduced ? 0.6 : 1);
+            for (let i = 0; i < 5; i++) {
+                const zt = twin.z[i];
+                const s = f.strokes2[i];
+                if (!s || !(zt > 0 && zt < 1) || zt <= this.laid[7 + i]) continue;
+                const sense = s.phi1 < s.phi0 ? -1 : 1;
+                const phi = s.phi0 + sense * zt * twin.span[i];
+                at(1, phi, 0, 0, 0.018, light[0] * 1.3 * lit, light[1] * 1.3 * lit, light[2] * 1.3 * lit, GLOW.soft);
+                at(1, phi, 0, 0, 0.005, 4.4 * lit, 4.4 * lit, 4.4 * lit, GLOW.glow);
+                for (let k = 1; k <= 5; k++) {
+                    const tw = 0.55 + 0.45 * Math.sin(this.time * 23 + k * 2.7 + i * 1.3);
+                    const b = (1 - k / 6) * 2.2 * lit * tw;
+                    const across = (hash(k * 3.3 + i * 2.9 + 7) - 0.5) * 0.012;
+                    at(1, phi - sense * k * 0.026, across, 0, 0.0035, light[0] * b, light[1] * b, light[2] * b, GLOW.glint);
                 }
             }
         }
@@ -3062,6 +3777,8 @@ export class RainbowTerracesWorld {
         }
         // The paint's own light on the bows.
         this.emitPaint(push);
+        // What the air shows by itself, and the Far Gate's light at a full circle.
+        this.emitAir(push);
         // The sleepers in the grotto: a breathing warm heap behind the Mother Fall (night, dawn).
         const hearth = this.hour.scalar.hearth ?? 0;
         if (hearth > 0.02 && this.placement.spring) {
@@ -3128,7 +3845,7 @@ export class RainbowTerracesWorld {
         U.bowSat.value *= 1 + 0.05 * warm + 0.1 * fever;
         U.bowRest.value = Math.min(0.92, U.bowRest.value + 0.08 * warm + 0.12 * hot + 0.3 * fever);
         U.fogbow.value += 0.01 * hot + 0.02 * fever;
-        U.showerAmt.value *= 1 + 0.15 * hot + 0.3 * fever;
+        U.showerAmt.value = Math.min(1.45, U.showerAmt.value * (1 + 0.15 * hot + 0.3 * fever));
         // Storm light: the sun on the stone, the cloud and the white water dims a little as the
         // heat rises, so the light the play makes (the bow, the dye, the jewels) burns against it.
         U.keyGain.value *= 1 - 0.06 * hot - 0.1 * fever;
@@ -3144,6 +3861,8 @@ export class RainbowTerracesWorld {
         this.integrate(dt);
         this.applyHour(this.time);
         this.wearHeat();
+        this.wearDusk();
+        this.stepHappenings();
         this.stepDial(dt);
         this.writeStrokes(dt);
         this.stepGlory();
@@ -3170,7 +3889,8 @@ export class RainbowTerracesWorld {
             // ribbon of the colours played.
             this.flock.ribbon = fever * (this.reduced ? 0.6 : 1);
             this.flock.ribbons = this.recentView;
-            const aloft = Math.min(1, (this.hour.scalar.aloft ?? 1) + 0.4 * hot + 0.6 * fever);
+            // (At a run's end the birds go home with the light.)
+            const aloft = Math.min(1, (this.hour.scalar.aloft ?? 1) + 0.4 * hot + 0.6 * fever) * (1 - 0.8 * this.dusk);
             this.parts.gliders.write(this.flock.sample(this.flightClock, this.bowInfo, aloft));
         }
         this.emitSpray();

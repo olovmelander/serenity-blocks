@@ -274,6 +274,17 @@ export function createUniforms() {
         /** Game over's dusk (0 … 1). */
         dusk: uniform(0),
 
+        // ── The weather (spring-weather.js) and what the sky answers the game with ──
+        /** (altocumulus 0..1, cirrus (1 the hour's own), the veil 0..1, how tall the heaps stand). */
+        sky: uniform(new THREE.Vector4(0.12, 1, 0, 1)),
+        /**
+         * (the rainbow's strength 0..1, the sky's crown for a great clear 0..1, the night-shining
+         * clouds' share 0..1, how far a low sun lights the high clouds from below 0..1).
+         */
+        sky2: uniform(new THREE.Vector4(0, 0, 0, 0)),
+        /** How far the heaps on the horizon have drifted round it (radians, integrated on the CPU). */
+        bankTurn: uniform(0),
+
         // ── Gameplay ──
         /** Back-to-back: the river's glitter while the run lasts (0..1). */
         glory: uniform(0),
@@ -304,5 +315,14 @@ export function createUniforms() {
         foamBoost: uniform(0),
         /** A twist: the whirlpool in the plunge pool (start time, strength). */
         whirl: uniform(new THREE.Vector2(-1e6, 0)),
+        /**
+         * What gameplay sends over the fall: two pulses of full water over the lip, each (when it
+         * came over, on the water's own clock `flowClock`; its power), and the fall's thunder
+         * (0..1: the whole fall running full, four lines).
+         */
+        pulse: uniform(new THREE.Vector4(-1e6, 0, -1e6, 0)),
+        thunder: uniform(0),
+        /** Back-to-back: a sheet of light running down the river (start time, power). */
+        sheen: uniform(new THREE.Vector2(-1e6, 0)),
     };
 }

@@ -71,6 +71,10 @@ const TAU = Math.PI * 2;
 export const WORM_SLOTS = 2;
 export const SLOT_IDLE = 0;
 export const SLOT_SUMMONED = 1;
+/** Far worms a perfect clear calls up along the horizon: bodies only (they mark no sand here). */
+export const FAR_WORMS = 3;
+/** Every body the one worm mesh can draw: the two of the erg, then the far ones. */
+export const WORM_BODIES = WORM_SLOTS + FAR_WORMS;
 
 // ── The breach path (CPU twin of the vertex shader) ─────────────────────────────
 
@@ -114,7 +118,21 @@ export const BREACH_STYLES = Object.freeze({
     summoned: Object.freeze({
         dist: [820, 1250], lean: [12, 58], leap: [0, 0.55], scale: 1.45, lead: 1.6, signSpeed: 380, departSpeed: 110,
     }),
+    // The far worms a perfect clear calls up: giants out by the horizon, crossing the view, quick
+    // for their size so the whole chorus is over in a quarter of a minute. They leave no sign.
+    far: Object.freeze({
+        dist: [3300, 4900],
+        lean: [-28, 28],
+        leap: [0.1, 0.7],
+        scale: 2.1,
+        pace: 1.75,
+        lead: 0,
+        signSpeed: 62,
+        departSpeed: 62,
+    }),
 });
+/** Seconds between the far worms of a chorus breaking the sand. */
+export const CHORUS_STAGGER = 1.5;
 
 /** Seconds the worm sign travels before the head breaks the surface. */
 export const SIGN_LEAD = Object.freeze({ idle: BREACH_STYLES.idle.lead, summoned: BREACH_STYLES.summoned.lead });
@@ -171,7 +189,7 @@ function drawShape(style, rand, az0, az1) {
         k: b * lerp(0.2, 0.44, leap),
         R,
         length: R * (19 + 4 * rand()),
-        speed: (74 + 18 * rand()) * Math.sqrt(scale),
+        speed: (74 + 18 * rand()) * Math.sqrt(scale) * (style.pace ?? 1),
     };
 }
 
@@ -482,10 +500,15 @@ export class WormDirector {
         this.summonCount = 0;
         this.fading = null; // { br, cutAt }: the last summoned worm's dust, fading under a new summons
         this.apart = null; // a worm already above the sand: the one being drawn keeps its distance
+        this.apartList = null; // ...or several (the far worms of one chorus)
+        this.pickStyle = null; // the style being drawn (the far worms' feet need not be in sight)
         this.skipCycle = -1;
         this._idle = null; // { cycle, epoch, br }
+        this.chorus = []; // the far worms of the last perfect clear
+        this.chorusCount = 0;
         this.state = {
             slots: Array.from({ length: WORM_SLOTS }, makeSlotState),
+            far: Array.from({ length: FAR_WORMS }, makeSlotState),
             rumble: 0,
         };
     }
@@ -496,6 +519,8 @@ export class WormDirector {
         this.summonCount = 0;
         this.fading = null;
         this.skipCycle = -1;
+        this.chorus = [];
+        this.chorusCount = 0;
     }
 
     /**
@@ -579,7 +604,7 @@ export class WormDirector {
         const seated = br.seated !== null;
         if (seated) {
             if (!br.seated) f += 8;
-            if (br.duration > MAX_DURATION) f += 3;
+            if (br.duration > MAX_DURATION && this.pickStyle !== BREACH_STYLES.far) f += 3;
             if (br.footDrop > br.k * 0.8) f += 2;
         }
         const edge = (this.view.halfAz - 1.5) * DEG;
@@ -602,9 +627,10 @@ export class WormDirector {
             if (along > 0 && along < br.dist && o.h > (br.b - br.k) * 0.6
                 && Math.abs(o.x * uz - o.z * ux) < o.solid + br.R) f += 5;
         }
-        // Two worms at once each get their own stretch of erg (and of the screen).
-        const other = this.apart;
-        if (other) {
+        // Worms at once each get their own stretch of erg (and of the screen).
+        const others = this.apartList || (this.apart ? [this.apart] : null);
+        for (let i = 0; others && i < others.length; i++) {
+            const other = others[i];
             if (Math.hypot(br.ox - other.ox, br.oz - other.oz) < (br.a + other.a) * 1.6 + 260) f += 3;
             if (Math.abs(br.az - other.az) < 12) f += 2;
         }
@@ -623,7 +649,8 @@ export class WormDirector {
         if (hidden > 0.5) f += 1 + hidden * 4;
         // The sand is the show: where the worm comes up and where it goes down must be in view
         // (the sightline march is the costly rule, so it runs only on otherwise good sites).
-        if (f === 0 && seated) {
+        // (A far worm is its arch against the sky: its feet may stand behind the far dunes.)
+        if (f === 0 && seated && this.pickStyle !== BREACH_STYLES.far) {
             for (let i = 0; i < 2; i++) {
                 const p = feet[i];
                 if (!this.sees(p.x, p.y + br.R * 0.5, p.z)) f += 1.5;
@@ -638,6 +665,7 @@ export class WormDirector {
      * worms instead of losing every draw to the wide side.
      */
     pick(style, rand, t0) {
+        this.pickStyle = style;
         const zones = this.freeZones();
         const widths = zones.map((z) => z[1] - z[0]);
         const total = widths.reduce((sum, width) => sum + width, 0);
@@ -733,6 +761,26 @@ export class WormDirector {
         return true;
     }
 
+    /**
+     * A perfect clear: the deep erg answers. Far worms rise along the horizon one after another,
+     * each in its own stretch of it. Returns their breaches (for the dust at their feet).
+     */
+    summonChorus(t) {
+        const style = BREACH_STYLES.far;
+        this.chorusCount += 1;
+        const made = [];
+        this.apart = null;
+        for (let i = 0; i < FAR_WORMS; i++) {
+            const seed = Math.imul(this.chorusCount * 7 + i + 1, 0xc2b2ae35) ^ this.salt ^ 0x27d4eb2f;
+            const rand = mulberry32(seed >>> 0);
+            this.apartList = made;
+            made.push(this.pick(style, rand, t + 0.9 + i * CHORUS_STAGGER + rand() * 0.4));
+        }
+        this.apartList = null;
+        this.chorus = made;
+        return made;
+    }
+
     /** Where the summoned worm will break the surface (for the dust geyser that heralds it). */
     summonedEmergence() {
         const br = this.summoned;
@@ -766,6 +814,9 @@ export class WormDirector {
             }
         }
         resolveBreach(idle, t, slots[SLOT_IDLE]);
+        // ── The far worms of a chorus: bodies against the sky ──
+        const { far } = this.state;
+        for (let i = 0; i < FAR_WORMS; i++) resolveBreach(this.chorus[i] || null, t, far[i]);
         this.state.rumble = Math.max(slots[0].rumble, slots[1].rumble);
         return this.state;
     }
@@ -773,33 +824,57 @@ export class WormDirector {
 
 // ── The worm mesh ───────────────────────────────────────────────────────────────
 
+/** Armour plates down the body, the keels that run its length, the petals of the maw. */
+export const WORM_SHAPE = Object.freeze({ plates: 64, keels: 9, petals: 5 });
+/** How far a rim tooth stands out past the lip, in cap coordinate (the cap's own length is 1). */
+const TOOTH_REACH = 0.3;
+/** Turns of the hide about its axis per radian of path the head has run: the worm drives like a screw. */
+const SCREW = 0.55;
+
+/** Tube tessellation per quality tier (rings along the body, segments round it, rings of the maw). */
+export const WORM_TIERS = Object.freeze({
+    Minimal: Object.freeze({ rings: 128, segs: 30, capRings: 8 }),
+    Low: Object.freeze({ rings: 192, segs: 40, capRings: 10 }),
+    Medium: Object.freeze({ rings: 256, segs: 50, capRings: 12 }),
+    High: Object.freeze({ rings: 384, segs: 60, capRings: 16 }),
+    Ultra: Object.freeze({ rings: 448, segs: 70, capRings: 18 }),
+    Extreme: Object.freeze({ rings: 512, segs: 80, capRings: 20 }),
+});
+
 /**
  * @param {object} shared world uniforms + atmosphere
- * @param {object} [opts] { rings, segs }
+ * @param {object} [opts] { rings, segs, capRings } (even segs: the rim's teeth take two each)
  */
-export function createWorm(shared, { rings = 160, segs = 32, capRings = 10 } = {}) {
+export function createWorm(shared, { rings = 384, segs: wantSegs = 60, capRings = 16 } = {}) {
     const {
-        uSunA, uSunB, uSunLightA, uSunLightB, uUpper, uZenith, uHorizonCool, atmosphere, noiseTex,
+        uTime, uSunA, uSunB, uSunLightA, uSunLightB, uUpper, uZenith, uHorizonCool, atmosphere, noiseTex,
+        uMoonDir, uMoonLight, uGlowA,
     } = shared;
+    const { plates: PLATES, keels: KEELS, petals: PETALS } = WORM_SHAPE;
+    const segs = wantSegs + (wantSegs % 2);
 
-    // aWorm = (σ, θ, part, α): part 0 = body (σ along the body), 1 = the maw cap (α: 0 at the
-    // rim → 1 at the apex of the closed dome).
-    const ringCount = (rings + 1) + (capRings + 1);
+    // aWorm = (σ, θ, part, α): part 0 = body (σ along the body), 1 = the maw (α: 0 at the rim
+    // of the body → 1 at the lip of the open maw / the apex of the closed dome; the fringe past
+    // 1 is the rim's teeth: every other vertex of the last ring stands out as a tooth's point).
+    const capCount = capRings + 2;
+    const ringCount = (rings + 1) + capCount;
     const verts = ringCount * (segs + 1);
     const data = new Float32Array(verts * 4);
     const pos = new Float32Array(verts * 3); // unused: the vertex node builds every position
     let w = 0;
-    const pushRing = (sigma, part, alpha) => {
+    const pushRing = (sigma, part, alphaAt) => {
         for (let j = 0; j <= segs; j++) {
             data[w * 4] = sigma;
             data[w * 4 + 1] = (j / segs) * Math.PI * 2;
             data[w * 4 + 2] = part;
-            data[w * 4 + 3] = alpha;
+            data[w * 4 + 3] = alphaAt(j);
             w++;
         }
     };
-    for (let i = 0; i <= rings; i++) pushRing(i / rings, 0, 0);
-    for (let i = 0; i <= capRings; i++) pushRing(0, 1, i / capRings);
+    for (let i = 0; i <= rings; i++) pushRing(i / rings, 0, () => 0);
+    for (let i = 0; i <= capRings; i++) pushRing(0, 1, () => i / capRings);
+    const toothRand = mulberry32(6007);
+    pushRing(0, 1, (j) => (j % 2 === 1 ? 1 + TOOTH_REACH * (0.5 + 0.5 * toothRand()) : 1));
     const index = [];
     const strip = (r0, nRings) => {
         for (let i = 0; i < nRings; i++) {
@@ -811,19 +886,19 @@ export function createWorm(shared, { rings = 160, segs = 32, capRings = 10 } = {
         }
     };
     strip(0, rings);
-    strip(rings + 1, capRings);
-    // One instance per worm slot: the same tube, driven by that slot's path.
+    strip(rings + 1, capCount - 1);
+    // One instance per worm: the same tube, driven by that worm's path.
     const geometry = new THREE.InstancedBufferGeometry();
     geometry.setIndex(index);
     geometry.setAttribute('position', new THREE.BufferAttribute(pos, 3));
     geometry.setAttribute('aWorm', new THREE.BufferAttribute(data, 4));
     geometry.setAttribute('aSlot', new THREE.InstancedBufferAttribute(
-        Float32Array.from({ length: WORM_SLOTS }, (_, i) => i),
+        Float32Array.from({ length: WORM_BODIES }, (_, i) => i),
         1,
     ));
     geometry.instanceCount = WORM_SLOTS;
 
-    const slotVec = (x, y, z, v) => Array.from({ length: WORM_SLOTS }, () => new THREE.Vector4(x, y, z, v));
+    const slotVec = (x, y, z, v) => Array.from({ length: WORM_BODIES }, () => new THREE.Vector4(x, y, z, v));
     const uB0 = uniformArray(slotVec(0, 0, 0, 0), 'vec4'); // O.xyz, φ_head
     const uB1 = uniformArray(slotVec(1, 0, 100, 200), 'vec4'); // D.xz, a, b
     const uB2 = uniformArray(slotVec(50, 0, 3, 0), 'vec4'); // k, R (0 = no breach), Lφ, open
@@ -849,124 +924,204 @@ export function createWorm(shared, { rings = 160, segs = 32, capRings = 10 } = {
     const O = B0.xyz;
     const D = vec3(B1.x, 0.0, B1.y);
     const Y = vec3(0.0, 1.0, 0.0);
-    const phi = B0.w.sub(sigma.mul(B2.z));
-    const center = O.add(D.mul(B1.z.mul(sin(phi)))).add(Y.mul(B1.w.mul(cos(phi)).sub(B2.x)));
-    const T = normalize(D.mul(B1.z.mul(cos(phi))).sub(Y.mul(B1.w.mul(sin(phi)))));
     const Pn = normalize(cross(D, Y));
-    const Bn = cross(Pn, T);
-    const ring = Pn.mul(cos(theta)).add(Bn.mul(sin(theta)));
     // Collapsed to zero area while the whole body is under the sand.
     const R = B2.y.mul(B4.x);
     const open = B2.w;
+    const phiHead = B0.w;
+    /** The path's frame at body coordinate s: centre, tangent, and the outside of the arch. */
+    const frameAt = (s) => {
+        const phi = phiHead.sub(s.mul(B2.z));
+        const centre = O.add(D.mul(B1.z.mul(sin(phi)))).add(Y.mul(B1.w.mul(cos(phi)).sub(B2.x)));
+        const T = normalize(D.mul(B1.z.mul(cos(phi))).sub(Y.mul(B1.w.mul(sin(phi)))));
+        return { centre, T, Bn: cross(Pn, T) };
+    };
+    /** The hide turns about the axis as the head runs its path: plates, keels and petals with it. */
+    const turned = (th, s) => th.add(phiHead.mul(SCREW)).add(s.mul(1.7));
+    /** How much of a plate stands at body coordinate s: it rises along its length to a lip at its rear. */
+    const plateAt = (s) => {
+        const f = fract(s.mul(PLATES));
+        return smoothstep(0.0, 0.1, f).mul(f.mul(0.62).add(0.38)).mul(float(1.0).sub(smoothstep(0.84, 1.0, f)));
+    };
+    const taperAt = (s) => {
+        const neck = smoothstep(0.0, 0.04, s).mul(float(1.0).sub(smoothstep(0.05, 0.17, s)));
+        const tip = pow(clamp(float(1.0).sub(s).div(0.09), 0.0, 1.0), 0.55);
+        return mix(float(1.0), float(0.3), smoothstep(0.32, 1.0, s)).mul(neck.mul(0.07).add(1.0)).mul(tip);
+    };
+    /** A point of the body: armour plates, keels that boss each plate, a slow swallow down its length. */
+    const bodyPoint = (s, th) => {
+        const fr = frameAt(s);
+        const tw = turned(th, s);
+        const ringDir = Pn.mul(cos(tw)).add(fr.Bn.mul(sin(tw)));
+        const plate = plateAt(s);
+        const keel = pow(cos(th.mul(KEELS)).mul(0.5).add(0.5), 3.0);
+        const swallow = sin(s.mul(34.0).sub(phiHead.mul(7.0))).mul(0.012).add(1.0);
+        // No two plates alike: each its own height, and every fourth a greater ring.
+        const id = floor(s.mul(PLATES).add(0.02));
+        const own = ssHash21(vec2(id, 9.1)).mul(0.5).add(0.75)
+            .add(float(1.0).sub(step(0.5, fract(id.mul(0.25)).mul(4.0))).mul(0.45));
+        const relief = plate.mul(own).mul(keel.mul(1.1).add(0.72));
+        const r = R.mul(taperAt(s)).mul(relief.mul(0.085).add(0.915)).mul(swallow);
+        return fr.centre.add(ringDir.mul(r));
+    };
+    /**
+     * A point of the maw. Closed, it is a dome over the end of the body; open, five petals of
+     * armour stand out and forward round the throat, deep notches between them, and the rim's
+     * teeth (the fringe past α = 1) stand out along each petal's edge.
+     */
+    const capPoint = (al, th) => {
+        const fr = frameAt(float(0.0));
+        const tw = turned(th, float(0.0));
+        const ringDir = Pn.mul(cos(tw)).add(fr.Bn.mul(sin(tw)));
+        const petal = pow(cos(th.mul(PETALS)).mul(0.5).add(0.5), 0.6);
+        const inLip = min(al, 1.0);
+        const a = inLip.mul(1.5708);
+        // Closed: a blunt point, the petals' seams drawn in toward it.
+        const seam = float(1.0).sub(petal);
+        const rClosed = R.mul(pow(max(cos(a), 0.0), 0.8)).mul(float(1.0).sub(seam.mul(sin(a)).mul(0.1)));
+        const fClosed = R.mul(1.25).mul(sin(a)).mul(petal.mul(0.12).add(0.88));
+        const reach = pow(inLip, 1.4);
+        const rOpen = R.mul(reach.mul(petal.mul(0.52).add(0.2)).add(1.0));
+        const fOpen = R.mul(inLip.mul(0.18).add(inLip.mul(inLip).mul(petal.mul(0.85).sub(0.18))));
+        // The rim's teeth (past the lip): they stand forward and lean in over the throat, long on
+        // a petal's point and none in the notches; folded away while the maw is shut.
+        const fang = max(al.sub(1.0), 0.0).mul(pow(petal, 0.5)).mul(open);
+        return fr.centre.add(ringDir.mul(mix(rClosed, rOpen, open).sub(R.mul(fang.mul(0.55)))))
+            .add(fr.T.mul(mix(fClosed, fOpen, open).add(R.mul(fang.mul(1.7)))));
+    };
+    // Each part's point, and its two neighbours on the surface: the normal is their cross, turned
+    // outward (away from the axis; for the maw, away from a point a little way down the throat).
+    const E = 0.004;
+    const worldPos = mix(bodyPoint(sigma, theta), capPoint(alpha, theta), isCap);
+    const geomNormal = Fn(() => {
+        const dS = mix(bodyPoint(sigma.add(E * 0.25), theta), capPoint(alpha.add(E * 4), theta), isCap).sub(worldPos);
+        const dT = mix(bodyPoint(sigma, theta.add(E * 8)), capPoint(alpha, theta.add(E * 8)), isCap).sub(worldPos);
+        const n = cross(dT, dS).toVar();
+        const fr = frameAt(sigma);
+        const axis = fr.centre.sub(fr.T.mul(R.mul(0.4)).mul(isCap));
+        n.mulAssign(select(dot(n, worldPos.sub(axis)).lessThan(0.0), float(-1.0), float(1.0)));
+        return normalize(n.add(vec3(0.0, 1e-6, 0.0)));
+    })();
 
-    // Body: annular plates, a fuller neck behind the maw, a long taper to a pointed tail.
-    const segPhase = fract(sigma.mul(72.0));
-    const plate = smoothstep(0.0, 0.16, segPhase).mul(float(1.0).sub(smoothstep(0.8, 1.0, segPhase)));
-    const neck = smoothstep(0.0, 0.05, sigma).mul(float(1.0).sub(smoothstep(0.05, 0.16, sigma)));
-    const tip = pow(clamp(float(1.0).sub(sigma).div(0.09), 0.0, 1.0), 0.55);
-    const taper = mix(float(1.0), float(0.3), smoothstep(0.32, 1.0, sigma)).mul(neck.mul(0.06).add(1.0)).mul(tip);
-    const bodyR = R.mul(taper).mul(plate.mul(0.022).add(0.982));
+    // The tube's own normal, without its armour: what the silhouette is judged by.
+    const tubeNormal = Fn(() => {
+        const fr = frameAt(sigma);
+        const tw = turned(theta, sigma);
+        return mix(Pn.mul(cos(tw)).add(fr.Bn.mul(sin(tw))), geomNormal, isCap);
+    })();
 
-    // Maw cap: a closed dome peels open into a flared, faintly three-lobed bell.
-    const petal = cos(theta.mul(3.0)).mul(0.5).add(0.5).mul(0.25);
-    const a = alpha.mul(1.5708);
-    const rClosed = R.mul(cos(a));
-    const fClosed = R.mul(0.75).mul(sin(a));
-    const rOpen = R.mul(float(1.0).add(alpha.pow(1.6).mul(float(0.42).add(petal))));
-    const fOpen = R.mul(alpha.mul(0.22));
-    const capR = mix(rClosed, rOpen, open);
-    const capF = mix(fClosed, fOpen, open);
-    const capN = normalize(mix(ring.mul(cos(a)).add(T.mul(sin(a))), ring.mul(0.75).sub(T.mul(0.66)), open));
-
-    const radius = mix(bodyR, capR, isCap);
-    const worldPos = center.add(ring.mul(radius)).add(T.mul(capF.mul(isCap)));
-    const geomNormal = normalize(mix(ring, capN, isCap));
-
-    material.vertexNode = Fn(() => cameraProjectionMatrix.mul(cameraViewMatrix.mul(vec4(worldPos, 1.0))))();
+    material.vertexNode = cameraProjectionMatrix.mul(cameraViewMatrix.mul(vec4(worldPos, 1.0)));
 
     material.colorNode = Fn(() => {
         const wp = vertexStage(worldPos);
         const Ng = normalize(vertexStage(geomNormal));
+        const Nt = normalize(vertexStage(tubeNormal));
         const vSig = vertexStage(sigma);
         const vTh = vertexStage(theta);
         const vCap = vertexStage(isCap);
-        // Back faces are the inside of the worm: what the open maw reveals. The cap's rings run
+        // Back faces are the inside of the worm: what the open maw reveals. The maw's rings run
         // forward from the rim while the body's run back from it, so its triangles wind the other
-        // way and its front faces are the inside: the closed dome showed its teeth to the world
-        // and the open bell showed hide where the eye looks in.
+        // way and its front faces are the inside.
         const inside = select(frontFacing, vCap, float(1.0).sub(vCap));
         const N = Ng.mul(mix(1.0, -1.0, inside)).toVar();
         const vAlpha = vertexStage(alpha);
-        const vPlate = vertexStage(plate);
-        const V = normalize(cameraPosition.sub(wp));
+        const V = normalize(cameraPosition.sub(wp)).toVar();
+        const tooth = smoothstep(1.0, 1.03, vAlpha).mul(vCap).toVar();
 
-        // ── Hide: dusty grey-ochre plates with dark creases, sand on the back ──
-        // The body reads its grain along its length; the lip (σ = 0) across its flare.
+        // ── Hide: armour plates, each its own weathered tone, dark in the creases between ──
+        const plateF = fract(vSig.mul(PLATES)).toVar();
+        const plate = smoothstep(0.0, 0.1, plateF).mul(plateF.mul(0.62).add(0.38))
+            .mul(float(1.0).sub(smoothstep(0.84, 1.0, plateF)));
+        // The crease under each plate's lip, and the lip's own bright edge above it.
+        const crease = smoothstep(0.86, 0.97, plateF).add(float(1.0).sub(smoothstep(0.0, 0.07, plateF)));
+        const lipEdge = smoothstep(0.7, 0.84, plateF).mul(float(1.0).sub(smoothstep(0.84, 0.9, plateF)));
+        const keel = pow(cos(vTh.mul(KEELS)).mul(0.5).add(0.5), 3.0);
         const grainAt = mix(vec2(vTh.mul(3.0), vSig.mul(96.0)), vec2(vTh.mul(5.0), vAlpha.mul(7.0)), vCap);
         const n1 = ssTexNoise(noiseTex, grainAt);
-        // Each plate its own weathered tone (hashed on the plate index), so the rings read.
-        const plateId = floor(vSig.mul(72.0));
-        const plateTone = mix(0.82, 1.12, ssHash21(vec2(plateId, 3.7)));
-        const hide = mix(vec3(0.2, 0.16, 0.13), vec3(0.31, 0.24, 0.18), n1.x).mul(plateTone).toVar();
-        // The lip is pleated: radial folds that open and close with the bell.
-        const pleats = sin(vTh.mul(18.0).add(n1.y.mul(1.5))).mul(0.5).add(0.5);
-        const lipFold = mix(1.0, mix(0.55, 1.1, pleats), vCap.mul(smoothstep(0.1, 0.6, vAlpha)));
-        hide.mulAssign(mix(0.22, 1.0, max(vPlate, vCap)).mul(lipFold));
+        const plateId = floor(vSig.mul(PLATES));
+        const plateTone = mix(0.8, 1.14, ssHash21(vec2(plateId, 3.7)));
+        const hide = mix(vec3(0.19, 0.15, 0.12), vec3(0.33, 0.25, 0.18), n1.x).mul(plateTone).toVar();
+        // The keels are worn pale where they stand proud.
+        hide.assign(mix(hide, vec3(0.46, 0.34, 0.23), keel.mul(plate).mul(0.5)));
+        // Between the keels each plate is scored along its length.
+        hide.mulAssign(mix(1.0, mix(0.82, 1.06, n1.w), float(1.0).sub(vCap)));
+        // The maw's petals: ridged down their length, darker in the notches between them.
+        const petal = pow(cos(vTh.mul(PETALS)).mul(0.5).add(0.5), 0.6);
+        const ridges = sin(vTh.mul(PETALS * 6).add(n1.y.mul(1.5))).mul(0.5).add(0.5);
+        const petalTone = mix(0.5, 1.05, petal).mul(mix(0.78, 1.08, ridges));
+        hide.mulAssign(mix(mix(0.2, 1.0, float(1.0).sub(clamp(crease, 0.0, 1.0))), petalTone, vCap));
+        // Sand lies on whatever faces up, and in the lee of every lip.
         const back = smoothstep(0.35, 0.85, N.y);
-        hide.assign(mix(hide, vec3(0.7, 0.41, 0.2), back.mul(0.5).mul(n1.y.mul(0.5).add(0.5))));
+        hide.assign(mix(hide, vec3(0.72, 0.42, 0.2), back.mul(0.5).mul(n1.y.mul(0.5).add(0.5))));
 
-        // ── Inside: ember flesh in wet folds, and rows of pale teeth pointing down the throat ──
-        // Teeth are triangles in (around, along) space, a row at a time, each row offset half a
-        // tooth: on the flaring lip their bases sit at the outer edge of the row; in the throat,
-        // at the mouth's side.
+        // ── Inside: ember flesh in wet folds, rows of teeth pointing down the throat, and far
+        // down it the glow of whatever burns in the deep ──
         const toothShape = (around, rowCoord, count, stagger) => {
             const at = around.mul(count / 6.2831).add(stagger);
             const tx = abs(fract(at).sub(0.5)).mul(2.0);
             // Each tooth its own size: no two in a row alike.
             const size = mix(0.62, 1.0, ssHash21(vec2(floor(at), stagger.mul(7.0).add(count))));
-            // A smaller tooth is shorter (its point starts further back) and narrower at its root.
             const along = clamp(rowCoord.sub(float(1.0).sub(size)).div(size), 0.0, 1.0);
             const edge = tx.sub(pow(along, 0.85).mul(size.mul(0.82)));
             const aw = fwidth(edge).add(1e-4);
             return float(1.0).sub(smoothstep(aw.negate(), aw, edge)).mul(smoothstep(0.04, 0.16, rowCoord));
         };
-        const lipRows = clamp(vAlpha.sub(0.34).div(0.66), 0.0, 1.0).mul(3.0);
+        const lipRows = clamp(vAlpha.sub(0.3).div(0.7), 0.0, 1.0).mul(3.0);
         const lipRow = floor(min(lipRows, 2.999));
         const lipAt = fract(lipRows);
-        const lipTooth = toothShape(vTh, lipAt, 30.0, lipRow.mul(0.5)).mul(step(0.34, vAlpha)).mul(vCap);
-        const throatRows = vSig.div(0.05).mul(3.0);
+        const lipTooth = toothShape(vTh, lipAt, 30.0, lipRow.mul(0.5)).mul(step(0.3, vAlpha)).mul(vCap)
+            .mul(float(1.0).sub(tooth));
+        const throatRows = vSig.div(0.045).mul(3.0);
         const throatRow = floor(throatRows);
         const throatAt = float(1.0).sub(fract(throatRows));
         const throatTooth = toothShape(vTh, throatAt, 26.0, throatRow.mul(0.5))
-            .mul(step(throatRows, 3.0)).mul(float(1.0).sub(vCap))
-            .mul(float(1.0).sub(smoothstep(0.0, 0.05, vSig).mul(0.6)));
-        const tooth = max(lipTooth, throatTooth);
-        // A tooth is palest at its point and darkens toward its root in the gum.
+            .mul(step(throatRows, 4.0)).mul(float(1.0).sub(vCap));
+        const fang = max(lipTooth, throatTooth);
         const rootward = mix(throatAt, lipAt, vCap);
         const toothTone = mix(1.0, 0.42, smoothstep(0.3, 1.0, rootward));
-        const depth = float(1.0).sub(smoothstep(0.0, 0.06, vSig)).mul(float(1.0).sub(vCap)).add(vCap);
         const folds = sin(vTh.mul(14.0).add(n1.z.mul(2.0))).mul(0.5).add(0.5);
-        const flesh = mix(vec3(0.02, 0.005, 0.004), vec3(0.2, 0.045, 0.025), depth)
-            .mul(mix(0.6, 1.25, folds));
-        const insideAlbedo = mix(flesh, vec3(0.6, 0.48, 0.34).mul(toothTone), tooth.mul(0.65));
+        const depth = smoothstep(0.0, 0.07, vSig).mul(float(1.0).sub(vCap));
+        const flesh = mix(vec3(0.13, 0.03, 0.018), vec3(0.04, 0.006, 0.005), depth).mul(mix(0.6, 1.25, folds));
+        const insideAlbedo = mix(flesh, vec3(0.62, 0.5, 0.36).mul(toothTone), fang.mul(0.7));
+        // The rim's teeth: bone, pale at the point, stained at the root.
+        const bone = mix(vec3(0.5, 0.36, 0.22), vec3(0.86, 0.76, 0.6), smoothstep(1.0, 1.0 + TOOTH_REACH, vAlpha));
 
-        const albedo = mix(hide, insideAlbedo, inside);
+        const albedo = mix(mix(hide, insideAlbedo, inside), bone, tooth);
         const nlA = dot(N, uSunA);
         const nlB = dot(N, uSunB);
         const direct = uSunLightA.mul(clamp(nlA.mul(1.5), 0.0, 1.0)).add(uSunLightB.mul(clamp(nlB.mul(1.4), 0.0, 1.0)));
         const skyFill = mix(uHorizonCool.mul(0.4), uUpper.mul(0.8).add(uZenith.mul(0.6)), N.y.mul(0.5).add(0.5));
-        const light = direct.mul(float(1.0).sub(inside.mul(0.9))).add(skyFill.mul(float(1.0).sub(inside.mul(0.55))));
+        // The moons light it in silver by night.
+        const moonlit = uMoonLight.mul(clamp(dot(N, uMoonDir).mul(1.4).add(0.08), 0.0, 1.0)).mul(vec3(0.95, 1.0, 1.12));
+        const hidden = inside.mul(float(1.0).sub(tooth));
+        const light = direct.add(moonlit).mul(float(1.0).sub(hidden.mul(0.9)))
+            .add(skyFill.mul(float(1.0).sub(hidden.mul(0.55))));
         const col = albedo.mul(light).toVar();
-        // The teeth hold a faint ember glow so the maw reads as depth, not as a hole.
-        col.addAssign(vec3(1.0, 0.55, 0.25).mul(tooth.mul(toothTone).mul(inside).mul(0.12)));
-        // Backlit rim: only the true silhouette burns, and only when the suns are behind.
-        const rimF = pow(float(1.0).sub(clamp(abs(dot(N, V)), 0.0, 1.0)), 6.0).mul(float(1.0).sub(inside));
+        // A dull sheen on the armour where a plate turns the low suns toward the eye.
+        const Hh = normalize(V.add(uSunA));
+        const sheen = pow(clamp(dot(N, Hh), 0.0, 1.0), 26.0).mul(plate.mul(0.75).add(0.25)).mul(float(1.0).sub(inside));
+        col.addAssign(uSunLightA.mul(sheen.mul(0.16)).mul(vec3(1.0, 0.8, 0.6)));
+        // Each lip's edge catches the light.
+        col.addAssign(uSunLightA.mul(lipEdge.mul(0.07).mul(clamp(nlA.add(0.35), 0.0, 1.0)))
+            .mul(float(1.0).sub(vCap)).mul(float(1.0).sub(inside)));
+        // The throat: the deeper the eye looks, the hotter it glows; it breathes, slowly, and the
+        // teeth stand dark against it.
+        const breath = sin(uTime.mul(1.9).add(vSig.mul(60.0))).mul(0.14).add(0.86);
+        const deep = smoothstep(0.02, 0.1, vSig).mul(float(1.0).sub(vCap)).mul(inside);
+        const furnace = vec3(1.0, 0.24, 0.04).mul(deep.mul(deep).mul(3.4)).mul(breath)
+            .mul(float(1.0).sub(throatTooth.mul(0.85)))
+            .mul(mix(0.6, 1.25, folds));
+        col.addAssign(furnace);
+        // Its light on the inside of the petals near the throat, and the teeth dark against it.
+        const lit = vCap.mul(inside).mul(float(1.0).sub(tooth)).mul(float(1.0).sub(smoothstep(0.0, 0.55, vAlpha)));
+        col.addAssign(vec3(1.0, 0.26, 0.05).mul(lit.mul(0.2)).mul(mix(1.0, 0.35, lipTooth)));
+        // Backlit rim: only the true silhouette burns, and only when the suns (or their afterglow,
+        // or the moons) are behind.
+        const rimF = pow(float(1.0).sub(clamp(abs(dot(Nt, V)), 0.0, 1.0)), 6.0).mul(float(1.0).sub(inside));
         const behind = smoothstep(0.55, 1.0, dot(V.negate(), uSunA).mul(0.5).add(0.5));
-        col.addAssign(uSunLightA.mul(rimF.mul(behind).mul(0.9)).mul(vec3(1.0, 0.72, 0.42)));
-        // Plate brinks catch the light.
-        const brinkN = smoothstep(0.0, 0.12, vPlate).mul(float(1.0).sub(smoothstep(0.12, 0.3, vPlate)))
-            .mul(float(1.0).sub(inside));
-        col.addAssign(uSunLightA.mul(brinkN.mul(0.05).mul(clamp(nlA.add(0.3), 0.0, 1.0))));
+        col.addAssign(uSunLightA.mul(0.9).add(uGlowA.mul(0.12)).mul(rimF.mul(behind)).mul(vec3(1.0, 0.72, 0.42)));
+        const behindM = smoothstep(0.5, 1.0, dot(V.negate(), uMoonDir).mul(0.5).add(0.5));
+        col.addAssign(uMoonLight.mul(rimF.mul(behindM).mul(1.1)));
         // Less haze than the sand: the worm stays a silhouette against the suns.
         return vec4(atmosphere.applyAerial(col, wp, 0.45), 1.0);
     })();
@@ -982,22 +1137,29 @@ export function createWorm(shared, { rings = 160, segs = 32, capRings = 10 } = {
         uniforms: {
             uB0, uB1, uB2, uB3, uB4,
         },
-        /** Push the director's slots into the uniforms (pure writes). */
-        apply(slots) {
-            for (let i = 0; i < WORM_SLOTS; i++) {
-                const st = slots[i];
-                const br = st.breach;
+        /**
+         * Push the director's slots into the uniforms (pure writes): the two worms of the erg
+         * first, then the far ones a perfect clear calls (drawn only while one of them is up).
+         */
+        apply(slots, far = null) {
+            const write = (i, st) => {
+                const br = st?.breach;
                 if (!br) {
                     uB2.array[i].y = 0; // no breach: zero area, zero fill, no sand
                     uB4.array[i].x = 0;
-                    continue;
+                    return false;
                 }
                 uB0.array[i].set(br.ox, br.oy, br.oz, st.phiHead);
                 uB1.array[i].set(br.dx, br.dz, br.a, br.b);
                 uB2.array[i].set(br.k, br.R, br.span, st.open);
                 uB3.array[i].set(br.omega, br.phiUp, br.speed, br.phiDown);
                 uB4.array[i].set(st.show, st.fade, 0, 0);
-            }
+                return st.show > 0;
+            };
+            for (let i = 0; i < WORM_SLOTS; i++) write(i, slots[i]);
+            let farUp = false;
+            for (let i = 0; i < FAR_WORMS; i++) farUp = write(WORM_SLOTS + i, far ? far[i] : null) || farUp;
+            geometry.instanceCount = farUp ? WORM_BODIES : WORM_SLOTS;
         },
         dispose() {
             geometry.dispose();

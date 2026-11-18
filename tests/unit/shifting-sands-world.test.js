@@ -55,9 +55,11 @@ function countDescendants(root) {
     return n;
 }
 
+/** A world under the still, clear sky (the weather has a clock of its own: shifting-sands-living.test.js). */
 function makeWorld(quality = 'Minimal') {
     const scene = new THREE.Scene();
     const world = new ShiftingSandsWorld({ scene, quality, capture: true }).build();
+    world.weatherHold = 0;
     const camera = new THREE.PerspectiveCamera(50, 16 / 9, 2, 26000);
     return { scene, world, camera };
 }
@@ -250,7 +252,7 @@ describe('shifting sands world', () => {
         world.dispose();
     });
 
-    it('walks the dusk there and back by the clock alone, resting at golden, halfway and deep dusk', () => {
+    it('walks the dusk there and back by the clock alone, resting at every hour from golden to night', () => {
         const { world, camera } = makeWorld();
         const { seconds, hold, stops } = DUSK_WALK;
         const at = (t) => {
@@ -265,7 +267,7 @@ describe('shifting sands world', () => {
         const stopsSeen = [];
         for (let k = 0; k <= 2 * stops; k++) stopsSeen.push(at(k * seconds));
         stopsSeen.forEach((s, k) => expect(s.dusk, `stop ${k}`).toBeCloseTo(pingPong(k / stops), 9));
-        expect(stopsSeen[stops].dusk).toBe(1); // deep dusk with no level-up at all
+        expect(stopsSeen[stops].dusk).toBe(1); // the night with no level-up at all
         expect(stopsSeen[1].zenith.equals(opening.zenith)).toBe(false);
         expect(stopsSeen[stops].sunY).toBeLessThan(opening.sunY);
         expect(stopsSeen[2 * stops].dusk).toBe(0); // and back to golden hour
@@ -282,7 +284,7 @@ describe('shifting sands world', () => {
     it('steps the dusk along the walk on a level-up, on top of the clock, and never pins it', () => {
         const { world, camera } = makeWorld();
         const { seconds, stops } = DUSK_WALK;
-        const t1 = seconds; // resting halfway, on the way to deep dusk
+        const t1 = seconds; // resting on the ember's sunset, on the way to the night
         world.update({ time: t1, delta: 0 }, camera);
         const halfway = world.dusk;
         world.onLevelUp(3);

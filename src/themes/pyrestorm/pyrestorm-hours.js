@@ -11,6 +11,13 @@
  * every 100 s, resting 15 % of each step at either end so every palette is really seen); a
  * level-up steps it forward from wherever the last turn was headed, eased over TIMING.levelTurn.
  * A new run starts at level 1 without moving the light.
+ *
+ * The moon keeps the watches too: under the horizon at dusk, it rises amber over the volcano's left
+ * shoulder in the magenta night, climbs and whitens through the violet and indigo nights (its
+ * light rakes the land, cool against the fire) and pales at dawn. `moon` is the night's key light
+ * on the land (at dusk, before the moon is up, the afterglow's crimson), `moonTint` the disc's colour,
+ * `moonEl` / `moonAz` where it stands (degrees up, degrees right of north); `milky` is how much of
+ * the Milky Way shows.
  */
 import {
     TIMING, clamp, lerp, smooth,
@@ -31,6 +38,11 @@ export const WATCHES = Object.freeze([
         stars: 0.35,
         lavaHeat: 1.0,
         hazeDensity: 1.1,
+        moon: [0.34, 0.12, 0.11],
+        moonTint: [1.0, 0.62, 0.38],
+        moonEl: -5,
+        moonAz: -39,
+        milky: 0.25,
     }),
     Object.freeze({
         name: 'magenta night',
@@ -46,6 +58,11 @@ export const WATCHES = Object.freeze([
         stars: 0.6,
         lavaHeat: 1.04,
         hazeDensity: 1.0,
+        moon: [0.5, 0.36, 0.34],
+        moonTint: [1.0, 0.7, 0.5],
+        moonEl: 4.5,
+        moonAz: -38,
+        milky: 0.5,
     }),
     Object.freeze({
         name: 'violet night',
@@ -61,6 +78,11 @@ export const WATCHES = Object.freeze([
         stars: 0.9,
         lavaHeat: 1.08,
         hazeDensity: 0.95,
+        moon: [0.62, 0.66, 0.95],
+        moonTint: [1.0, 0.9, 0.8],
+        moonEl: 9.5,
+        moonAz: -36.5,
+        milky: 0.8,
     }),
     Object.freeze({
         name: 'indigo deep night',
@@ -76,6 +98,11 @@ export const WATCHES = Object.freeze([
         stars: 1.0,
         lavaHeat: 1.12,
         hazeDensity: 0.9,
+        moon: [0.6, 0.82, 1.3],
+        moonTint: [0.92, 0.96, 1.0],
+        moonEl: 14,
+        moonAz: -35,
+        milky: 1.0,
     }),
     Object.freeze({
         name: 'steel dawn',
@@ -91,11 +118,16 @@ export const WATCHES = Object.freeze([
         stars: 0.12,
         lavaHeat: 0.94,
         hazeDensity: 1.15,
+        moon: [0.3, 0.4, 0.6],
+        moonTint: [0.85, 0.9, 1.0],
+        moonEl: 17.5,
+        moonAz: -33.5,
+        milky: 0.1,
     }),
 ]);
 
-const KEYS = ['zenith', 'horizon', 'dusk', 'haze', 'ambient', 'ash', 'bolt', 'fire'];
-const SCALARS = ['duskBearing', 'stars', 'lavaHeat', 'hazeDensity'];
+const KEYS = ['zenith', 'horizon', 'dusk', 'haze', 'ambient', 'ash', 'bolt', 'fire', 'moon', 'moonTint'];
+const SCALARS = ['duskBearing', 'stars', 'lavaHeat', 'hazeDensity', 'moonEl', 'moonAz', 'milky'];
 /** The walk: dusk → dawn → dusk (eight steps round). */
 export const WALK = Object.freeze([0, 1, 2, 3, 4, 3, 2, 1]);
 

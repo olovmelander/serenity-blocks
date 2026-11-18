@@ -1,33 +1,49 @@
 /**
  * Pyrestorm — one shared world (the theme and the playground mount the same one).
  *
- * The eruption at night seen from the tephra ridge: the land (plain, volcano, lava), the sky, the
- * anvil, the column's ash, the lightning, the fountain and the fissure's curtain, the bombs and
- * the motes; and everything gameplay does to them. The volcano answers the board:
+ * The eruption at night seen from the tephra ridge: the land (plain, volcano, lava) and the charred
+ * snags on the eye's own slope, the sky with its moon, the anvil, the column's ash, the lightning,
+ * the fountain and the fissure's curtain, the fire whirls, the bombs and the motes; and everything
+ * gameplay does to them. The volcano answers the board, each event with a shape of its own:
  *
  *   lock        a Strombolian burst: the crater throws incandescent bombs (as many as the piece
  *               has cells, more on a hard drop) that arc out leaning the way the piece locked
  *               (left columns left, right columns right) and splash where they land on the cone,
- *               tinted a little by the piece's colour; a hard drop also shakes the crust open
- *               along every channel (a tremor) and throws sparks
+ *               tinted a little by the piece's colour
+ *   hard drop   a bigger burst, the crust shaken open along every channel (a tremor), and spatter
+ *               leaping off the near rivers where they pass the ridge
  *   clear       one cloud-to-ground bolt per line out of the column, staggered; a higher row
  *               strikes higher up the cone, the floor rows strike the plain; each strike scorches
- *               the ground and lights the column from inside; the fountain kicks
+ *               the ground and lights the column from inside; the fountain kicks. Three lines: the
+ *               fissure answers too, its three vents jetting together
  *   chain       the storm charges: spider lightning crawls along the anvil's underside, more
  *               often as the chain grows, the fountain climbs, the column's foot burns hotter;
  *               when a long chain breaks, the charge goes in one great branched discharge from
  *               the anvil to the summit
  *   four lines  a Vulcanian blast: the crater flashes, a shock front races out through the
- *               column and the anvil (a pale ring of condensation), a ring of bombs, the fountain
- *               jets to twice its height, a glowing surge rolls down the breach, and the bolts
- *   twist      the crater blows a glowing vortex ring that rises and widens over the column
- *   b2b         St Elmo's fire: a violet corona on the summit while the run lasts
+ *               column and the anvil, the crater throws its bombs steeply out of its whole width
+ *               (each drawing its parabola), the fountain jets, a thermal of glowing ash climbs the
+ *               column, flows of ash pour down the cone hugging its ground, then the discharge
+ *               and the storm's answer on the cone's shoulders
+ *   twist       the crater blows a glowing vortex ring that rises and widens beside the column,
+ *               and the hot air over the near lava winds up into a whirl of fire on the side the
+ *               piece turned in on (on both rivers for a twist of two lines or more)
+ *   b2b         sulphur catches: blue fire in tongues along the lava's banks, low along the
+ *               fissure and round the crater's mouth, higher with every step of the run
  *   perfect     sheet lightning sweeps the whole anvil from the head downwind, a crown of bolts
- *               round the summit, the fountain at its highest
- *   level up    the night moves on a watch (it also drifts with the clock alone: a watch every
- *               100 s, wheel = clock / 100 + level − 1) and a surge of fresh lava runs down every
- *               channel from the vents
- *   game over   the eruption sinks to a glow; it wakes with the next run
+ *               round the summit, and a wave of fire runs down both rivers from their sources to
+ *               the eye, the lava gilded behind it
+ *   level up    the night moves on a watch and the eruption a phase (both also drift with the
+ *               clock alone), a surge of fresh lava runs down every channel, and a flank vent tears
+ *               open on the cone's face: a line of fountains and a fresh stream down the fall line
+ *   game over   the eruption sinks to a glow with a last breath of ash: the column thins, the
+ *               rivers crust over, the ash comes down; the next run wakes it with a burst
+ *
+ * Beside play the mountain lives by itself (pyrestorm-phases.js): the eruption turns through five
+ * phases on its own clock (strombolian, paroxysm, ash storm, effusive, the glow), each a different
+ * fountain, column, anvil and lava; and every twenty seconds or so it does something of its own
+ * (a lone bomb, a glowing rockfall, a shooting star, a gust of embers, a vent jetting, a stroke
+ * of the storm, the lava lake turning over, a pour of lava), softly, uncounted as play.
  *
  * The mountain's unrest (shared/gameplay-surge.js) is how hot play runs, and the eruption builds
  * with it instead of answering each event alone: every burst, kick, tremor and flash ADDS to what
@@ -49,20 +65,25 @@
  */
 import * as THREE from 'three/webgpu';
 import {
-    ANVIL, CRATER, DEG, EYE, RIG, TAU, TIMING, VOLCANO, approach, clamp, clamp01, columnPoint, fireTint, hexToLinear,
+    ANVIL, CRATER, DEG, EYE, FISSURE, RIG, RIVERS, TAU, TIMING, VOLCANO, approach, clamp, clamp01, columnPoint, fireTint, hexToLinear,
     landHeight, mulberry32, rigFor, smooth,
 } from './pyrestorm-core.js';
 import {
     WATCHES, WatchWheel, createWatchLight, watchAt,
 } from './pyrestorm-hours.js';
+import {
+    HAPPEN_SECONDS, createPhaseState, happeningAt, phaseAt, phaseIndexOf, phasePlace,
+} from './pyrestorm-phases.js';
 import { tierFor } from './pyrestorm-quality.js';
 import {
     bakeBillows, bakeCrust, bakeLattice, bakeNoise, lavaFieldSteps,
 } from './pyrestorm-bake.js';
 import {
-    HITS, LIGHTS, createBillowTexture, createCrustTexture, createLatticeTexture, createLavaTextures, createNoiseTexture, createUniforms,
+    BLUE_FIRE, FLANK_VENTS, HITS, LIGHTS, createBillowTexture, createCrustTexture, createLatticeTexture, createLavaTextures, createNoiseTexture,
+    createUniforms,
 } from './pyrestorm-tsl.js';
 import { createLand, landSteps } from './pyrestorm-land.js';
+import { createSnags } from './pyrestorm-snags.js';
 import { bakeInWorker } from '../shared/bake-worker-client.js';
 import { createSky } from './pyrestorm-sky.js';
 import { createAnvil } from './pyrestorm-anvil.js';
@@ -81,12 +102,17 @@ import { drainSteps } from '../shared/build-steps.js';
 import { GameplaySurge, Swell } from '../shared/gameplay-surge.js';
 import { flashScale } from '../../utils/photosensitivity.js';
 import { RidgeShake } from './pyrestorm-shake.js';
+import {
+    WHIRL_LIFE, WHIRL_SLOTS, createWhirls, whirlEnvelope,
+} from './pyrestorm-whirl.js';
+import { FANS_PER_VENT, createFans } from './pyrestorm-fans.js';
 
-export const PYRESTORM_PARTS = Object.freeze(['land', 'sky', 'anvil', 'ash', 'bolts', 'jets', 'bombs', 'motes']);
+export const PYRESTORM_PARTS = Object.freeze(['land', 'snags', 'sky', 'anvil', 'ash', 'bolts', 'jets', 'fans', 'whirls', 'bombs', 'motes']);
 export const REST_RIG = Object.freeze({ near: RIG.near, far: RIG.far });
 export const fovForAspect = (aspect) => rigFor(aspect).fov;
 
-const COUNTERS = ['locks', 'hardDrops', 'clears', 'lines', 'bolts', 'quads', 'twists', 'perfects', 'chainSteps', 'discharges', 'spiders', 'b2bSteps', 'levelUps', 'gameOvers', 'wakes'];
+const COUNTERS = ['locks', 'hardDrops', 'clears', 'lines', 'bolts', 'quads', 'twists', 'perfects', 'chainSteps', 'discharges', 'spiders', 'b2bSteps', 'levelUps', 'gameOvers', 'wakes',
+    'whirls', 'vents', 'flows', 'happenings'];
 const emptyCounts = () => Object.fromEntries(COUNTERS.map((k) => [k, 0]));
 /**
  * The shortest gap between two frame-wide flashes (a blast, a perfect clear's sheet), seconds. A
@@ -103,6 +129,66 @@ const CRATER_DISTANCE = Math.hypot(CRATER.x - EYE.x, CRATER.y - EYE.y, CRATER.z 
 /** The fever's own strokes and pours shake the ridge this much of what play's would. */
 const FEVER_THUNDER = 0.5;
 const FEVER_GROAN = 0.5;
+/** The line from the volcano to the eye (radians in the xz plane): bearings are measured from it. */
+const TO_EYE = Math.atan2(EYE.z - VOLCANO.z, EYE.x - VOLCANO.x);
+/**
+ * Where a level-up's flank vent opens, one after another: radians round the cone from the line to
+ * the eye (positive = the screen's left, the face the card does not cover), in the gaps between the
+ * cone's own streams (which run 0.05, 0.32 and 0.59 round from that line on this side).
+ */
+const VENT_BEARINGS = Object.freeze([0.19, 0.82, 0.455, 1.02, -0.09]);
+/** The blast's bombs: the deep orange of rock already cooling as it flies (a fire tint). */
+const BLAST_TINT = Object.freeze([1, 0.74, 0.5]);
+/** A flank vent's fountains play this long (s); its stream reaches its length in about a third of that. */
+const VENT_FOUNTAIN = 11;
+/** Its fans of fire: metres down the vent from its head, and how tall each stands at its height (m). */
+const VENT_FANS = Object.freeze([[40, 620], [300, 470], [560, 330]]);
+/** A back-to-back run's wisps of blue fire: their colour as the particles carry it. */
+const WISP_TINT = Object.freeze(BLUE_FIRE.map((c) => c * 1.5));
+/** How far above a card lightning keeps clear (screen heights): the next pieces stand there. */
+const BOLT_CLEAR_ABOVE = 0.12;
+/** A perfect clear's wave of fire runs down the rivers this fast (km/s) and its gold burns this long (s). */
+const WAVE_SPEED = 6.5;
+const GILD_SECONDS = 5.5;
+/** Four lines: the thermal climbs the column for this long (s). */
+const THERMAL_SECONDS = 9;
+
+/**
+ * The rivers as the events need them: points down the two that pass the eye (the main river on
+ * its left, the fissure's on its right), each (x, y, z, km from the source), every 180 m or so.
+ * From the baked channels when the bake kept them, else from the authored control points.
+ */
+function riverRuns(channels) {
+    const runs = { left: [], right: [] };
+    const take = (side, id) => {
+        const channel = Array.isArray(channels) ? channels.find((c) => c && c.id === id) : null;
+        const pts = [];
+        if (channel?.pts?.length > 1) {
+            let last = -1e9;
+            for (let i = 0; i < channel.pts.length; i++) {
+                const at = channel.s[i];
+                if (at - last < 180) continue;
+                last = at;
+                pts.push([channel.pts[i][0], channel.pts[i][1], ((channel.arc0 || 0) + at) / 1000]);
+            }
+        } else {
+            const river = RIVERS.find((r) => r.id === id);
+            let at = 0;
+            for (let i = 0; river && i < river.points.length - 1; i++) {
+                const a = river.points[i];
+                const b = river.points[i + 1];
+                const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
+                const n = Math.max(1, Math.round(len / 180));
+                for (let k = 0; k < n; k++) pts.push([a[0] + ((b[0] - a[0]) * k) / n, a[1] + ((b[1] - a[1]) * k) / n, (at + (len * k) / n) / 1000]);
+                at += len;
+            }
+        }
+        for (const p of pts) runs[side].push([p[0], landHeight(p[0], p[1]) + 3, p[1], p[2]]);
+    };
+    take('left', 'main');
+    take('right', 'fissure');
+    return runs;
+}
 
 /** Bakes that do not depend on the tier: made once per page, shared by every rebuild. */
 let sharedBakes = null;
@@ -243,6 +329,9 @@ export class PyrestormWorld {
         this.u = createUniforms();
         this.wheel = new WatchWheel();
         this.light = createWatchLight();
+        /** The eruption's phase now (pyrestorm-phases.js), and the happening being waited for. */
+        this.phase = createPhaseState();
+        this._happening = {};
         this.aspect = 16 / 9;
         this.layout = fallbackLayout(1920, 1080);
         this.layoutLive = false;
@@ -263,7 +352,8 @@ export class PyrestormWorld {
             heat: 1,
             saturation: 1.05,
         };
-        this.overrides = { watch: null };
+        /** Captures and tests may hold the night, hold the eruption's phase, and keep the mountain's own happenings off. */
+        this.overrides = { watch: null, phase: null, happenings: true };
         // Bolt slots (CPU mirror of the shader's rows) and the timed queue.
         this.boltSlots = Array.from({ length: BOLT_SLOTS }, () => ({
             kind: 0, born: -1e6, power: 0, a: [0, 0, 0], b: [0, 0, 0], rgb: [1, 1, 1],
@@ -276,6 +366,16 @@ export class PyrestormWorld {
             x: 0, y: 0, z: 0, born: -1e6, rgb: [0, 0, 0], kind: 0, life: 0,
         }));
         this.hitCursor = 0;
+        /** Flank vents (a level-up tears one open): the CPU's mirror of the shader's rows. */
+        this.vents = Array.from({ length: FLANK_VENTS }, () => ({
+            born: -1e6, cos: 1, sin: 0, head: 0, reach: 0, width: 0, seed: 0, fans: VENT_FANS.map(() => [0, 0, 0]),
+        }));
+        /** Fire whirls (a twist raises one off the near lava). */
+        this.whirlSlots = Array.from({ length: WHIRL_SLOTS }, () => ({
+            born: -1e6, power: 0, x: 0, y: 0, z: 0,
+        }));
+        /** The rivers' own points (riverRuns), filled when the world is built. */
+        this.rivers = { left: [], right: [] };
         // Envelopes that accumulate (shared/swell.js): a new event adds to what is still lit and
         // never restarts it. The crater's glow after a burst (it swells in fast and fades), the
         // fountain's kick, the crust's tremor, the frame's flash (a blast), the glare of a perfect
@@ -294,6 +394,17 @@ export class PyrestormWorld {
             attack: 0.15, release: 2.2, ceiling: 0.9, knee: 0.6,
         });
         this.rings = new Swell({ release: 6, ceiling: 3, knee: 2 });
+        /** A gust of embers off the near rivers, and a vent of the fissure jetting (both ease in). */
+        this.gust = new Swell({
+            attack: 1.2, release: 4.5, ceiling: 3, knee: 2,
+        });
+        this.fissureKick = new Swell({
+            attack: 0.35, release: 2.4, ceiling: 2, knee: 1.4,
+        });
+        /** A perfect clear's light on the whole land: it swells in a quarter second and sinks over two. */
+        this.stormGlow = new Swell({
+            attack: 0.25, release: 1.7, ceiling: 1.3, knee: 1,
+        });
         /** The mountain's unrest: how hot play runs, sampled once a frame on the world's clock. */
         this.unrest = new GameplaySurge();
         /**
@@ -330,6 +441,11 @@ export class PyrestormWorld {
         this.glare.reset();
         this.flare.reset();
         this.rings.reset();
+        this.gust.reset();
+        this.fissureKick.reset();
+        this.stormGlow.reset();
+        this.wispClock = 0;
+        if (this.fans) for (const row of this.fans.tables) row.set(0, -1e5, 0, 0);
         this.unrest.reset();
         this.ridge.reset();
         this.play.punch = 0;
@@ -356,6 +472,7 @@ export class PyrestormWorld {
         this.pulseHold = 0;
         this.craterFlashAt = -1e6;
         this.lastLockAt = -1e6;
+        this.lastLockU = 0.5;
         /** When the storm last spent its charge (a chain's end, a perfect clear): it recharges slowly. */
         this.spentAt = -1e6;
         for (const s of this.boltSlots) {
@@ -366,6 +483,27 @@ export class PyrestormWorld {
         for (const q of this.queue) q.at = Infinity;
         for (const h of this.hitList) h.born = -1e6;
         this.hitCursor = 0;
+        for (const v of this.vents) v.born = -1e6;
+        this.ventCursor = 0;
+        this.ventCount = 0;
+        this.ventClock = 0;
+        for (const w of this.whirlSlots) {
+            w.born = -1e6;
+            w.power = 0;
+        }
+        this.whirlCursor = 0;
+        if (this.whirls) for (const row of this.whirls.tables) row.set(0, -1e5, 0, -1e6);
+        /** A back-to-back run's blue fire (eased), the perfect clear's wave of fire, the blast's thermal. */
+        this.blue = 0;
+        this.waveAt = -1e6;
+        this.waveCursor = [0, 0];
+        this.gildGain = 1;
+        this.thermalAt = -1e6;
+        this.thermalPower = 1;
+        /** The storm's own strokes in an ash phase, and the next of the mountain's happenings. */
+        this.stormClock = 0;
+        this.nextHappening = Math.floor(Math.max(0, time) / HAPPEN_SECONDS);
+        this.happenFrom = time;
         this.smoke?.clear();
         this.bombs?.clear();
         if (this.bolts) for (const row of this.bolts.tables) row.set(0, 0, 0, 0);
@@ -397,6 +535,8 @@ export class PyrestormWorld {
         };
         const t = this.textures;
         this.addPart('land', createLand(u, t, tier, prepared.land));
+        // The charred snags on the eye's own slope (the picture's near plane).
+        this.addPart('snags', createSnags(u, t));
         yield 'land';
         this.addPart('sky', createSky(u, t));
         this.addPart('anvil', createAnvil(u, t, tier));
@@ -418,7 +558,12 @@ export class PyrestormWorld {
         yield 'sky and ash';
         this.bolts = createBolts(u, tier);
         this.addPart('bolts', this.bolts);
-        this.addPart('jets', createJets(u, tier));
+        this.addPart('jets', createJets(u, tier, t));
+        this.fans = createFans(u, t);
+        this.addPart('fans', this.fans);
+        this.whirls = createWhirls(u, t);
+        this.addPart('whirls', this.whirls);
+        this.rivers = riverRuns(bakes.lava.channels);
         this.bombs = new Bombs(u, tier.bombs);
         this.addPart('bombs', { mesh: this.bombs.mesh, dispose: () => this.bombs.dispose() });
         this.addPart('motes', createMotes(u, tier.motes));
@@ -539,6 +684,32 @@ export class PyrestormWorld {
         return true;
     }
 
+    /**
+     * How much of a bolt from A to B would be drawn behind the board or the HUD: the number of
+     * five points along it that fall inside either (padded; above a card by BOLT_CLEAR_ABOVE,
+     * where the next pieces are shown). 0 = clear. A thin bright line behind the interface reads
+     * as a crack in it.
+     */
+    boltBehindBoard(A, B) {
+        const card = cardUnion(this.layout);
+        const { hud } = this.layout;
+        const p = this._bp || (this._bp = [0, 0, 0]);
+        const scr = this._bs || (this._bs = { x: 0, y: 0 });
+        let inside = 0;
+        for (let k = 0; k <= 4; k++) {
+            const f = k / 4;
+            p[0] = A[0] + (B[0] - A[0]) * f;
+            p[1] = A[1] + (B[1] - A[1]) * f;
+            p[2] = A[2] + (B[2] - A[2]) * f;
+            const at = this.screenOf(p, scr);
+            if (!at) continue;
+            const m = 0.035;
+            if (card && at.x > card.x0 - m && at.x < card.x1 + m && at.y > card.y0 - BOLT_CLEAR_ABOVE && at.y < card.y1 + m) inside++;
+            else if (hud && at.x > hud.x0 - m && at.x < hud.x1 + m && at.y > hud.y0 - m && at.y < hud.y1 + m) inside++;
+        }
+        return inside;
+    }
+
     /** A ground point at a bearing (radians in the xz plane) and distance from the crater. */
     groundFromCrater(bearing, radius, out = [0, 0, 0]) {
         out[0] = VOLCANO.x + Math.cos(bearing) * radius;
@@ -606,19 +777,22 @@ export class PyrestormWorld {
         const hard = Boolean(context.hardDrop);
         if (hard) this.counts.hardDrops++;
         this.lastLockAt = this.time;
+        this.lastLockU = clamp01(Number.isFinite(context.u) ? context.u : 0.5);
         if (this.activityTarget < 1) this.onSessionStart();
         const cells = Array.isArray(context.cells) ? Math.max(1, Math.floor(context.cells.length / 2)) : 4;
         const drop = clamp01((context.distance || 0) / 18);
         const lean = clamp(Number.isFinite(context.u) ? context.u : 0.5, 0, 1) - 0.5;
         const tint = this.tintOf(context.color);
-        const count = Math.round(cells * (hard ? 5 + drop * 3 : 3));
+        const count = Math.round(cells * (hard ? 3.6 + drop * 2.2 : 3));
         this.unrest.lock(context, this.time);
-        this.burst(this.time, count, lean, tint, hard ? 1.25 + drop * 0.2 : 1);
+        this.burst(this.time, count, lean, tint, hard ? 1.15 + drop * 0.15 : 1);
         if (hard) {
             this.quake.hit(0.65 + drop * 0.35, this.time);
             this.kick.hit(0.13, this.time);
             // The slam thuds through the ground under the eye.
             this.ridge.hardDrop(drop, this.time);
+            // And the near rivers jump: spatter leaps off the lava where it passes the ridge.
+            this.spatter(this.time, drop, lean);
         }
         // A twist that cleared nothing still blows a small ring.
         if (context.twist) this.onTwist({ lines: 0 });
@@ -626,10 +800,10 @@ export class PyrestormWorld {
 
     /**
      * One bomb from `o` to a landing point: it climbs `apex` metres over the vent under the
-     * bombs' time-lapsed gravity and falls onto the land, where an ember of it lies cooling.
-     * Returns its flight (s).
+     * bombs' time-lapsed gravity and falls onto the land, where an ember of it lies cooling
+     * (`trail`: seconds of its arc it draws, its own by default). Returns its flight (s).
      */
-    throwBomb(o, land, apex, born, tint, px, glow = 4.5) {
+    throwBomb(o, land, apex, born, tint, px, glow = 4.5, trail = 0) {
         const r = this.random;
         const g = BOMB_G;
         const vy = Math.sqrt(2 * g * apex);
@@ -648,7 +822,7 @@ export class PyrestormWorld {
             px,
             kind: BOMB.bomb,
             g,
-            trail: 0.7 + r() * 0.6,
+            trail: trail > 0 ? trail : 0.7 + r() * 0.6,
         });
         this.bombs?.spawn({
             x: land[0], y: land[1] + 2, z: land[2], vx: 0, vy: 0, vz: 0, born: born + flight, life: glow * (0.7 + r() * 0.6), tint, px: px * 0.8, kind: BOMB.ember, g: 0,
@@ -682,7 +856,7 @@ export class PyrestormWorld {
             const radius = (600 + r() ** 0.8 * 1800) * (0.75 + 0.25 * power);
             this.groundFromCrater(bearing, radius, land);
             // A wide parabola: the higher it climbs, the further out it falls.
-            const apex = (130 + radius * (0.24 + r() * 0.24)) * power * reach;
+            const apex = (120 + radius * (0.22 + r() * 0.2)) * power * reach;
             const delay = r() * 0.22;
             const flight = this.throwBomb(o, land, apex, time + delay, tint, 3.2 + r() * 2.2);
             if (i < 4) this.schedule(time + delay + flight, 'splash', tint[0] * 0.5 + 0.5, 0, 0, land[0], land[1], land[2]);
@@ -824,6 +998,9 @@ export class PyrestormWorld {
             this.flare.hit(0.45 + 0.1 * Math.min(4, this.b2b + 1), t);
             this.schedule(t + 0.2, 'bolt', BOLT.ground, 1, 1.15, 0.05);
         }
+        // Three lines: the fissure answers, its three vents jetting together.
+        if (lines === 3) this.fissureKick.hit(1.1, t);
+        else if (lines === 2) this.fissureKick.hit(0.3, t);
         if (lines === 4) this.onQuad();
         if (context.twist) this.onTwist(context);
         if (context.combo > this.combo) this.onCombo(context.combo);
@@ -833,7 +1010,7 @@ export class PyrestormWorld {
      * A bolt out of the column (or the anvil's head) to the ground: `row` 0 strikes high on the
      * cone, 19 out on the plain; a strike is placed where it shows (outside the card and HUD).
      */
-    strikeFrom(time, kind, row = 12, power = 1, aim = 0, thunder = 1) {
+    strikeFrom(time, kind, row = 12, power = 1, aim = 0, thunder = 1, wild = false) {
         const r = this.random;
         const A = [0, 0, 0];
         const B = [0, 0, 0];
@@ -847,29 +1024,45 @@ export class PyrestormWorld {
             B[1] = CRATER.y + 90;
             B[2] = CRATER.z + 160;
         } else {
-            columnPoint(0.3 + r() * 0.42, A);
-            A[0] += (r() - 0.5) * 900;
-            A[2] += (r() - 0.5) * 900;
             const toEye = Math.atan2(-VOLCANO.z, -VOLCANO.x);
             const f = clamp(row, 0, 19) / 19;
-            let found = false;
-            for (let k = 0; k < 8 && !found; k++) {
+            // Of a few tries, the first stroke that strikes where it shows and runs clear of the
+            // board and the HUD all its way (else the one least behind them). The column leans in
+            // behind the card as it climbs, so where the stroke leaves it is tried too: lower down
+            // each time.
+            const a0 = this._sa || (this._sa = [0, 0, 0]);
+            const b0 = this._sb || (this._sb = [0, 0, 0]);
+            let least = Infinity;
+            for (let k = 0; k < 10 && least > 0; k++) {
+                columnPoint(0.3 + r() * 0.42 * (1 - k / 12), a0);
+                a0[0] += (r() - 0.5) * 900;
+                a0[2] += (r() - 0.5) * 900;
                 const bearing = aim ? toEye + aim + (r() - 0.5) * 0.3 : toEye + (r() - 0.5) * 2.2;
                 const radius = 900 + f * 5200 + r() * 700;
-                this.groundFromCrater(bearing, radius, B);
-                found = this.seen(B);
+                this.groundFromCrater(bearing, radius, b0);
+                const score = this.boltBehindBoard(a0, b0) + (this.seen(b0) ? 0 : 3);
+                if (score < least) {
+                    least = score;
+                    for (let c = 0; c < 3; c++) {
+                        A[c] = a0[c];
+                        B[c] = b0[c];
+                    }
+                }
             }
         }
         this.strike(time, kind, A, B, power, this.light.bolt);
-        this.counts.bolts++;
+        if (!wild) this.counts.bolts++;
         if (kind !== BOLT.spider) {
             this.addHit(B, time + TIMING.leader, [0.9, 0.75, 0.9], 1, 3);
             // Its thunder reaches the ridge once the sound has crossed the plain: louder the
-            // nearer it struck (`thunder` scales it: the fever's own strokes are softer).
+            // nearer it struck (`thunder` scales it: the fever's own strokes are softer, and a
+            // stroke the storm throws by itself shakes nothing).
             const distance = Math.hypot(B[0] - EYE.x, B[1] - EYE.y, B[2] - EYE.z);
-            this.ridge.thunder(distance, power, time + TIMING.leader, {
-                discharge: kind === BOLT.discharge, share: thunder,
-            });
+            if (!wild && thunder > 0) {
+                this.ridge.thunder(distance, power, time + TIMING.leader, {
+                    discharge: kind === BOLT.discharge, share: thunder,
+                });
+            }
             // Sparks where it strikes.
             for (let i = 0; i < 10; i++) {
                 const a = r() * TAU;
@@ -928,19 +1121,32 @@ export class PyrestormWorld {
         const sa = Math.sin(ANVIL.heading);
         // The near reaches of the anvil (its head and first third), where the underside shows.
         const toWorld = (al, ac, y) => [ANVIL.x + ca * al * ANVIL.along - sa * ac * ANVIL.across, y, ANVIL.z + sa * al * ANVIL.along + ca * ac * ANVIL.across];
-        const along = -0.92 + r() * 0.5;
-        const across = (r() - 0.5) * 0.6;
-        const A = toWorld(along, across, ANVIL.base - 120);
-        const len = 4000 + r() * 6000;
-        // Across the view (east or west), give or take thirty degrees: it crawls, it does not hang.
-        const turn = (r() < 0.5 ? 0 : Math.PI) + (r() - 0.5) * 1.0;
-        // The far end, pulled back inside the anvil's near reaches if it would leave the cloud.
-        const bx = A[0] + Math.cos(turn) * len;
-        const bz = A[2] + Math.sin(turn) * len * 0.6;
-        const rel = [bx - ANVIL.x, bz - ANVIL.z];
-        const bal = Math.max(-0.95, Math.min(-0.3, (rel[0] * ca + rel[1] * sa) / ANVIL.along));
-        const bac = Math.max(-0.4, Math.min(0.4, (rel[1] * ca - rel[0] * sa) / ANVIL.across));
-        const B = toWorld(bal, bac, ANVIL.base - 200 + r() * 120);
+        // A crawler behind the board or the HUD reads as a crack in the interface: of a few
+        // tries the first that is clear of both is taken (else the one least behind them).
+        let A = null;
+        let B = null;
+        let least = Infinity;
+        for (let k = 0; k < 10 && least > 0; k++) {
+            const along = -0.92 + r() * 0.5;
+            const across = (r() - 0.5) * 0.6;
+            const a0 = toWorld(along, across, ANVIL.base - 120);
+            const len = 4000 + r() * 6000;
+            // Across the view (east or west), give or take thirty degrees: it crawls, it does not hang.
+            const turn = (r() < 0.5 ? 0 : Math.PI) + (r() - 0.5) * 1.0;
+            // The far end, pulled back inside the anvil's near reaches if it would leave the cloud.
+            const bx = a0[0] + Math.cos(turn) * len;
+            const bz = a0[2] + Math.sin(turn) * len * 0.6;
+            const rel = [bx - ANVIL.x, bz - ANVIL.z];
+            const bal = Math.max(-0.95, Math.min(-0.3, (rel[0] * ca + rel[1] * sa) / ANVIL.along));
+            const bac = Math.max(-0.4, Math.min(0.4, (rel[1] * ca - rel[0] * sa) / ANVIL.across));
+            const b0 = toWorld(bal, bac, ANVIL.base - 200 + r() * 120);
+            const behind = this.boltBehindBoard(a0, b0);
+            if (behind < least) {
+                least = behind;
+                A = a0;
+                B = b0;
+            }
+        }
         this.strike(time, BOLT.spider, A, B, power, this.light.bolt);
         this.counts.spiders++;
     }
@@ -957,7 +1163,13 @@ export class PyrestormWorld {
             this.blastDue = this.blastAt + FLASH_GAP;
             this.blastDuePower = Math.min(1.45, this.blastDuePower > 0 ? this.blastDuePower + 0.2 : 1.15);
         }
-        this.kick.hit(1.1, t);
+        this.kick.hit(1.8, t);
+        this.fissureKick.hit(0.6, t);
+        // A thermal of glowing ash climbs the column (one still climbing is fed, not restarted).
+        if (t - this.thermalAt > THERMAL_SECONDS * 0.6 || t < this.thermalAt) {
+            this.thermalAt = t;
+            this.thermalPower = 1;
+        } else this.thermalPower = Math.min(1.5, this.thermalPower + 0.25);
         // A ring of bombs in every direction.
         const r = this.random;
         const o = [CRATER.x, CRATER.y + 40, CRATER.z];
@@ -966,15 +1178,28 @@ export class PyrestormWorld {
         const n = Math.min(70, Math.floor(this.tier.bombs / 8), Math.max(8, Math.floor(room / 2)));
         for (let i = 0; i < n; i++) {
             const bearing = (i / n) * TAU + r() * 0.2;
-            this.groundFromCrater(bearing, 700 + r() * 2200, land);
-            const born = t + r() * 0.15;
-            const flight = this.throwBomb(o, land, 550 + r() * 800, born, [1, 1, 1], 3 + r() * 2, 7);
+            const range = 700 + r() * 2700;
+            this.groundFromCrater(bearing, range, land);
+            const born = t + r() * r() * 1.1;
+            // An eruption, not a firework's shell: thrown steeply (the further it lands, the higher
+            // it climbed), out of the whole crater's width instead of one point, over most of a
+            // second, each drawing most of its parabola in the deep orange of cooling rock.
+            const from = r() * TAU;
+            const off = Math.sqrt(r()) * VOLCANO.crater * 0.7;
+            o[0] = CRATER.x + Math.cos(from) * off;
+            o[2] = CRATER.z + Math.sin(from) * off;
+            const apex = range * (0.5 + r() * 0.45) + 150;
+            // (Thin, and no two alike: a few thick clots among many fine ones, long trails and short.)
+            const flight = this.throwBomb(o, land, apex, born, BLAST_TINT, 1.3 + r() ** 3 * 2.6, 7, 0.8 + r() * 1.6);
             if (i % 5 === 0) this.schedule(born + flight, 'splash', 1, 1, 0, land[0], land[1], land[2]);
         }
         this.puff(t, 2.2);
         this.burstGlow.hit(1.3, t);
         this.schedule(t + 0.3, 'surge');
         this.schedule(t + 1.25, 'bolt', BOLT.discharge, 0, 1.5);
+        // The storm round the column answers: strokes onto the cone's shoulders after the discharge.
+        this.schedule(t + 1.7, 'bolt', BOLT.ground, 2, 1.0, 0.7);
+        this.schedule(t + 2.05, 'bolt', BOLT.ground, 5, 0.95, -0.25);
     }
 
     /** The blast itself: the frame's flash, the crater's flash and the shock front, at `power`. */
@@ -987,29 +1212,37 @@ export class PyrestormWorld {
         this.ridge.blast(power, CRATER_DISTANCE, time);
     }
 
-    /** The blast's surge: glowing ash rolling down the breach. */
+    /**
+     * The blast's surge: glowing ash pouring down the cone, hugging its ground (pyrestorm-smoke's
+     * flows). One runs down the breach and two down the face the eye sees; each is a string of
+     * heaps, its head the fastest and the hottest, slowing and swelling as it runs out.
+     */
     surge(time) {
         if (!this.smoke) return;
         const r = this.random;
-        const down = VOLCANO.breach;
-        for (let i = 0; i < 14; i++) {
-            const a = down + (r() - 0.5) * 0.7;
-            const speed = 120 + r() * 90;
-            this.smoke.spawn({
-                x: CRATER.x + Math.cos(a) * 200,
-                y: CRATER.y - 80,
-                z: CRATER.z + Math.sin(a) * 200,
-                vx: Math.cos(a) * speed,
-                vy: -speed * 0.38,
-                vz: Math.sin(a) * speed,
-                born: time + i * 0.12,
-                life: TIMING.surge + r() * 3,
-                radius: 160 + r() * 90,
-                grow: 55 + r() * 30,
-                kind: PUFF.surge,
-                heat: 0.9,
-                variant: Math.floor(r() * 16),
-            });
+        this.counts.flows++;
+        const tongues = [VOLCANO.breach, TO_EYE + 0.78, TO_EYE + 0.3];
+        const heaps = Math.max(6, Math.min(14, Math.round(this.tier.eventPuffs / 14)));
+        for (let j = 0; j < tongues.length; j++) {
+            for (let i = 0; i < heaps; i++) {
+                const a = tongues[j] + (r() - 0.5) * 0.14;
+                const speed = (560 - i * 28) * (0.85 + r() * 0.3);
+                this.smoke.spawn({
+                    x: VOLCANO.x + Math.cos(a) * 400,
+                    y: CRATER.y,
+                    z: VOLCANO.z + Math.sin(a) * 400,
+                    vx: Math.cos(a) * speed,
+                    vy: 0,
+                    vz: Math.sin(a) * speed,
+                    born: time + j * 0.3 + i * 0.1,
+                    life: TIMING.surge + r() * 3,
+                    radius: 120 + i * 9 + r() * 70,
+                    grow: 46 + r() * 30,
+                    kind: PUFF.flow,
+                    heat: Math.max(0.04, 0.5 - i * 0.09),
+                    variant: Math.floor(r() * 16),
+                });
+            }
         }
     }
 
@@ -1023,13 +1256,14 @@ export class PyrestormWorld {
         const small = !(context.lines > 0);
         const stack = Math.min(2, this.rings.valueAt(t));
         this.rings.hit(small ? 0.5 : 1, t);
-        const size = (small ? 0.62 : 1) * (1 + 0.16 * stack);
+        // (1.7 × the first build's ring: at fifteen kilometres that one was twenty pixels wide.)
+        const size = (small ? 0.62 : 1) * (1 + 0.16 * stack) * 1.7;
         const share = small ? 0.4 : 1;
         // A torus: two concentric rings of many small, jittered puffs (a hot inner edge, a sooty
         // outer one), the ring several times wider than its puffs so the hole reads; tipped toward
         // the eye so from below it reads as an ellipse. It leaves on the column's near, upwind side
         // (where it shows against the clear sky), hot, and greys as it climbs.
-        const base = [CRATER.x - 260, CRATER.y + 320 + stack * 240, CRATER.z + 380];
+        const base = [CRATER.x - 420, CRATER.y + 420 + stack * 380, CRATER.z + 520];
         const drift = [-22, 0, 16];
         const tilt = 0.3;
         const cosT = Math.sqrt(1 - tilt * tilt);
@@ -1058,8 +1292,8 @@ export class PyrestormWorld {
                     vz: sz * out * cosT + drift[2],
                     born: t,
                     life: TIMING.ring * (small ? 0.6 : 1),
-                    radius: R.radius * size * (0.8 + r() * 0.4),
-                    grow: R.grow,
+                    radius: R.radius * size * (0.72 + r() * 0.36),
+                    grow: R.grow * 1.5,
                     kind: PUFF.ring,
                     heat: R.heat,
                     variant: Math.floor(r() * 16),
@@ -1068,6 +1302,96 @@ export class PyrestormWorld {
         }
         this.kick.hit(small ? 0.15 : 0.35, t);
         this.ridge.ring(small, t);
+        // And the hot air over the near lava winds up into a whirl of fire, on the side the piece
+        // turned in on; a twist that cleared two lines or more raises one on the other river too.
+        const u01 = Number.isFinite(context.u) ? clamp01(context.u) : this.lastLockU;
+        const side = u01 < 0.5 ? 'left' : 'right';
+        this.whirl(t, side, small ? 0.6 : 1);
+        if (context.lines >= 2) this.whirl(t + 0.35, side === 'left' ? 'right' : 'left', 0.8);
+    }
+
+    /**
+     * A point of a near river that shows beside the card (within `reach` metres of the eye), or
+     * null when none does. `pick` 0..1 chooses among them.
+     */
+    riverPoint(side, pick, reach = 3200) {
+        const run = this.rivers[side] || [];
+        let found = null;
+        let n = 0;
+        let roll = pick;
+        for (let i = 0; i < run.length; i++) {
+            const p = run[i];
+            if (Math.hypot(p[0] - EYE.x, p[2] - EYE.z) > reach || !this.seen(p)) continue;
+            n++;
+            // Reservoir pick: every candidate equally likely, one pass, no list.
+            if (found === null || roll * n < 1) found = p;
+            roll = (roll * 7.13 + 0.37) % 1;
+        }
+        return found;
+    }
+
+    /** A whirl of fire off a near river (pyrestorm-whirl.js), with a spray of sparks at its foot. */
+    whirl(time, side, scale = 1) {
+        const r = this.random;
+        const p = this.riverPoint(side, r(), 2600) || this.riverPoint(side === 'left' ? 'right' : 'left', r(), 2600);
+        if (!p || !this.whirls) return;
+        // The slot whose whirl is spent, else the oldest.
+        let i = 0;
+        let oldest = Infinity;
+        for (let k = 0; k < WHIRL_SLOTS; k++) {
+            const j = (this.whirlCursor + k) % WHIRL_SLOTS;
+            const { born } = this.whirlSlots[j];
+            if (time - born >= WHIRL_LIFE || time < born) {
+                i = j;
+                break;
+            }
+            if (born < oldest) {
+                oldest = born;
+                i = j;
+            }
+        }
+        this.whirlCursor = (i + 1) % WHIRL_SLOTS;
+        const height = (250 + r() * 110) * scale;
+        const slot = this.whirlSlots[i];
+        slot.born = time;
+        slot.power = 0.75 + 0.25 * scale;
+        slot.x = p[0];
+        slot.y = p[1];
+        slot.z = p[2];
+        this.whirls.tables[i * 2].set(p[0], p[1], p[2], time);
+        this.whirls.tables[i * 2 + 1].set(height, height * 0.2, slot.power, r());
+        this.counts.whirls++;
+        for (let k = 0; k < 14; k++) {
+            const a = r() * TAU;
+            const out = 30 + r() * 70;
+            this.bombs?.spawn({
+                x: p[0], y: p[1] + 4, z: p[2], vx: Math.cos(a) * out, vy: 110 + r() * 190, vz: Math.sin(a) * out, born: time + r() * 0.6, life: 0.9 + r() * 0.8, tint: [1, 1, 1], px: 1.7, kind: BOMB.spark, g: 150, drag: 1.1,
+            });
+        }
+        this.gust.hit(0.7 * scale, time);
+    }
+
+    /** A hard drop: spatter leaps off the near rivers (more, and off both, the further it fell). */
+    spatter(time, drop, lean) {
+        const r = this.random;
+        const load = this.bombs ? this.bombs.load : 0;
+        if (load > 0.9) return;
+        const sides = drop > 0.6 ? ['left', 'right'] : [lean < 0 ? 'left' : 'right'];
+        const places = Math.round(2 + drop * 4);
+        for (const side of sides) {
+            for (let n = 0; n < places; n++) {
+                const p = this.riverPoint(side, r(), 2400);
+                if (!p) break;
+                const sparks = Math.round((10 + drop * 14) * (1 - smooth(0.5, 0.9, load) * 0.7));
+                for (let k = 0; k < sparks; k++) {
+                    const a = r() * TAU;
+                    const out = 20 + r() * 55;
+                    this.bombs?.spawn({
+                        x: p[0] + (r() - 0.5) * 40, y: p[1] + 2, z: p[2] + (r() - 0.5) * 40, vx: Math.cos(a) * out, vy: (90 + r() * 170) * (0.7 + 0.5 * drop), vz: Math.sin(a) * out, born: time + 0.04 + r() * 0.1, life: 0.8 + r() * 0.8, tint: [1, 1, 1], px: 2.3 + r() * 0.8, kind: BOMB.splash, g: 170, drag: 0.9,
+                    });
+                }
+            }
+        }
     }
 
     /** The sheet's strength at `time` (before Reduce flashing). */
@@ -1097,6 +1421,17 @@ export class PyrestormWorld {
         }
         this.glare.hit(0.8, t);
         this.kick.hit(1.3, t);
+        this.fissureKick.hit(1.2, t);
+        // The whole storm lights at once: the land stands in its light for a breath.
+        this.stormGlow.hit(1, t);
+        // A wave of fire runs down both rivers from their sources to the eye, the lava gilded
+        // behind it (a wave still running burns brighter instead of starting over).
+        if (t - this.waveAt > GILD_SECONDS || t < this.waveAt) {
+            this.waveAt = t + 0.15;
+            this.waveCursor[0] = 0;
+            this.waveCursor[1] = 0;
+            this.gildGain = 1;
+        } else this.gildGain = Math.min(1.5, this.gildGain + 0.25);
         // The sheet's long thunder: the ground swells into a slow roll under the crown's cracks.
         this.ridge.sheet(t);
         // A crown of bolts round the summit from the anvil's head.
@@ -1148,6 +1483,7 @@ export class PyrestormWorld {
         if (up && !silent) {
             this.counts.levelUps++;
             this.feedPulse(time, 1);
+            this.openVent(time);
             this.kick.hit(0.85, time);
             this.unrest.levelUp(time);
             // The mountain groans as the fresh lava surges down its channels.
@@ -1171,13 +1507,261 @@ export class PyrestormWorld {
         }
     }
 
+    /**
+     * A flank vent tears open on the cone's face (a level-up): a line of fountains at its head for
+     * a few seconds, and a fresh stream that runs down the fall line from it and then cools. Two
+     * may burn at once; a third takes the older one's place.
+     */
+    openVent(time) {
+        const r = this.random;
+        const v = this.vents[this.ventCursor];
+        this.ventCursor = (this.ventCursor + 1) % FLANK_VENTS;
+        const bearing = TO_EYE + VENT_BEARINGS[this.ventCount % VENT_BEARINGS.length] + (r() - 0.5) * 0.1;
+        this.ventCount++;
+        v.born = time;
+        v.cos = Math.cos(bearing);
+        v.sin = Math.sin(bearing);
+        v.head = 1250 + r() * 600;
+        v.reach = 3000 + r() * 1500;
+        v.width = 34 + r() * 12;
+        v.seed = r();
+        VENT_FANS.forEach(([down], k) => {
+            const out = v.head + down;
+            const x = VOLCANO.x + v.cos * out;
+            const z = VOLCANO.z + v.sin * out;
+            v.fans[k][0] = x;
+            v.fans[k][1] = landHeight(x, z);
+            v.fans[k][2] = z;
+        });
+        this.counts.vents++;
+        this.burstGlow.hit(0.5, time);
+    }
+
+    /** The flank vents each frame: their rows for the land, and their fountains while they play. */
+    updateVents(time, dt) {
+        const rows = this.u.tables.flank;
+        const r = this.random;
+        for (let i = 0; i < FLANK_VENTS; i++) {
+            const v = this.vents[i];
+            const age = time - v.born;
+            // Its fans of fire: up in half a second, each breathing on its own beat, dying down.
+            const playing = age >= 0 && age < VENT_FOUNTAIN
+                ? smooth(0, 0.5, age) * (1 - smooth(VENT_FOUNTAIN * 0.45, VENT_FOUNTAIN, age)) * (0.5 + 0.5 * this.activity)
+                : 0;
+            for (let k = 0; this.fans && k < FANS_PER_VENT; k++) {
+                const row = (i * FANS_PER_VENT + k) * 2;
+                const breath = 0.82 + 0.18 * Math.sin(time * (2.3 + k * 0.7) + v.seed * 40 + k * 2.1);
+                this.fans.tables[row].set(v.fans[k][0], v.fans[k][1], v.fans[k][2], VENT_FANS[k][1] * (0.35 + 0.65 * playing) * breath);
+                this.fans.tables[row + 1].set(playing, (v.seed + k * 0.37) % 1, 0, 0);
+            }
+            if (!(age >= 0) || age > 150) {
+                rows[i * 2].set(1, 0, 0, 0);
+                rows[i * 2 + 1].set(0, 0, 0, 0);
+                continue;
+            }
+            const front = v.head + v.reach * (1 - Math.exp(-age / 4.2));
+            // Fresh for ten seconds, then it cools to a dull thread and, in time, goes out.
+            const heat = (0.4 + 0.6 * Math.exp(-Math.max(0, age - 10) / 40)) * (1 - smooth(90, 150, age)) * (0.5 + 0.5 * this.activity);
+            rows[i * 2].set(v.cos, v.sin, v.head, front);
+            rows[i * 2 + 1].set(v.width, heat, v.seed, 0);
+            if (age < VENT_FOUNTAIN && this.bombs && this.bombs.load < 0.85) {
+                // A curtain of fire along the vent's first few hundred metres, dying down.
+                this.ventClock += dt * 80 * (1 - age / VENT_FOUNTAIN) * Math.min(1, this.tier.bombs / 512);
+                while (this.ventClock >= 1) {
+                    this.ventClock -= 1;
+                    const out = v.head + r() * 620;
+                    const x = VOLCANO.x + v.cos * out;
+                    const z = VOLCANO.z + v.sin * out;
+                    const a = r() * TAU;
+                    const side = 15 + r() * 45;
+                    this.bombs.spawn({
+                        x, y: landHeight(x, z) + 4, z, vx: Math.cos(a) * side, vy: (230 + r() * 300) * (1 - (age / VENT_FOUNTAIN) * 0.5), vz: Math.sin(a) * side, born: time, life: 1.1 + r() * 0.9, tint: [1, 1, 1], px: 2.4 + r() * 1.1, kind: BOMB.spark, g: 210, drag: 0.35,
+                    });
+                }
+            }
+        }
+    }
+
+    /**
+     * A back-to-back run: wisps of blue fire rise off the near rivers, the fissure and the crater's
+     * rim for as long as the run lasts, more of them with every step of it.
+     */
+    updateWisps(time, dt) {
+        const blue = this.u.blue.value;
+        if (!(blue > 0.04) || !this.bombs || this.bombs.load > 0.8) return;
+        const r = this.random;
+        this.wispClock += dt * blue * 34 * Math.min(1, this.tier.bombs / 640);
+        while (this.wispClock >= 1) {
+            this.wispClock -= 1;
+            const where = r();
+            let x;
+            let y;
+            let z;
+            if (where < 0.62) {
+                const p = this.riverPoint(r() < 0.5 ? 'left' : 'right', r(), 2800);
+                if (!p) continue;
+                x = p[0] + (r() - 0.5) * 90;
+                y = p[1];
+                z = p[2] + (r() - 0.5) * 90;
+            } else if (where < 0.86) {
+                const f = r();
+                x = FISSURE.a[0] + (FISSURE.b[0] - FISSURE.a[0]) * f;
+                y = 62;
+                z = FISSURE.a[1] + (FISSURE.b[1] - FISSURE.a[1]) * f;
+            } else {
+                const a = r() * TAU;
+                x = CRATER.x + Math.cos(a) * VOLCANO.crater * 0.9;
+                y = CRATER.y + 150;
+                z = CRATER.z + Math.sin(a) * VOLCANO.crater * 0.9;
+            }
+            // Buoyant: it leaves slowly and climbs faster, leaning a little downwind.
+            this.bombs.spawn({
+                x, y: y + 2, z, vx: 8 + (r() - 0.5) * 16, vy: 26 + r() * 44, vz: (r() - 0.5) * 16, born: time, life: 1.2 + r() * 1.4, tint: WISP_TINT, px: 5.5 + r() * 4.5, kind: BOMB.wisp, g: -40, drag: 0.4,
+            });
+        }
+    }
+
+    /**
+     * The perfect clear's wave of fire: as its front passes each point of a river (km from the
+     * source at WAVE_SPEED), spatter fountains up there; bigger near the eye, where it is seen.
+     */
+    updateWave(time) {
+        const age = time - this.waveAt;
+        const strength = age >= 0 ? smooth(0, 0.25, age) * (1 - smooth(GILD_SECONDS * 0.55, GILD_SECONDS, age)) * this.gildGain : 0;
+        this.u.gild.value.set(Math.max(0, age) * WAVE_SPEED, strength);
+        if (!(age >= 0) || age > 4 || !this.bombs) return;
+        const r = this.random;
+        const front = age * WAVE_SPEED;
+        const share = Math.min(1, this.tier.bombs / 640);
+        ['left', 'right'].forEach((side, s) => {
+            const run = this.rivers[side];
+            // The main river's source is the breach, 3.6 km down its arc: start it with the fissure's.
+            const from = run.length ? run[0][3] : 0;
+            while (this.waveCursor[s] < run.length && run[this.waveCursor[s]][3] - from <= front) {
+                const p = run[this.waveCursor[s]];
+                this.waveCursor[s]++;
+                if (this.bombs.load > 0.88) continue;
+                const near = 1 - smooth(1500, 6000, Math.hypot(p[0] - EYE.x, p[2] - EYE.z));
+                // Unevenly: every place its own strength (a few jet high, some barely stir), set
+                // anywhere along its stretch of river, so the wave is surf, never a comb's teeth.
+                const jet = 0.25 + r() ** 2 * 1.5;
+                const sparks = Math.round((3 + near * 13) * share * jet);
+                const along = this.waveCursor[s] < run.length ? run[this.waveCursor[s]] : p;
+                const shift = r();
+                const x0 = p[0] + (along[0] - p[0]) * shift;
+                const z0 = p[2] + (along[2] - p[2]) * shift;
+                for (let k = 0; k < sparks; k++) {
+                    const a = r() * TAU;
+                    const out = 14 + r() * 50;
+                    this.bombs.spawn({
+                        x: x0 + (r() - 0.5) * 70, y: p[1] + 2, z: z0 + (r() - 0.5) * 70, vx: Math.cos(a) * out, vy: (90 + r() * 230 + near * 60) * (0.6 + 0.5 * jet), vz: Math.sin(a) * out, born: time + r() * 0.3, life: 0.9 + r() * 0.9, tint: [1.15, 1, 0.8], px: 1.3 + near * (0.5 + r() * 1.1), kind: BOMB.spark, g: 190, drag: 0.6,
+                    });
+                }
+            }
+        });
+    }
+
+    // ── The mountain's own happenings (pyrestorm-phases.js) ───────────────────────────
+
+    /** The phase that owns the wheel at a time (what a happening is weighted by). */
+    phaseIndexAt(time) {
+        const place = this.overrides.phase !== null ? this.overrides.phase : phasePlace(time, this.wheel.offset(time));
+        return phaseIndexOf(place);
+    }
+
+    /** Fire every happening whose moment has come since the last frame (none while the eruption sleeps). */
+    updateHappenings(time) {
+        const pick = this._phaseIndexAt || (this._phaseIndexAt = (at) => this.phaseIndexAt(at));
+        for (let guard = 0; guard < 8; guard++) {
+            const h = happeningAt(this.nextHappening, pick, this._happening);
+            if (h.at > time) return;
+            this.nextHappening++;
+            // One whose moment passed before this world began (a seek) is not replayed.
+            if (h.kind && h.at > this.happenFrom && this.activity > 0.6 && this.overrides.happenings !== false) this.happen(h);
+        }
+    }
+
+    /** One happening: the mountain doing something by itself. Soft, uncounted as play, never a shake. */
+    happen(h) {
+        const t = h.at;
+        this.counts.happenings++;
+        if (h.kind === 'bomb') {
+            // A lone great bomb, thrown far out onto the plain where it shows.
+            const land = this._p;
+            let found = false;
+            for (let k = 0; k < 8 && !found; k++) {
+                this.groundFromCrater(TO_EYE + (h.a - 0.5) * 2 + k * 0.37, 2600 + h.b * 2600, land);
+                found = this.seen(land);
+            }
+            const o = [CRATER.x, CRATER.y + 30, CRATER.z];
+            const flight = this.throwBomb(o, land, 900 + h.c * 700, t, [1, 1, 1], 5.5, 9);
+            this.schedule(t + flight, 'splash', 1, 1, 0, land[0], land[1], land[2]);
+            this.burstGlow.hit(0.35, t);
+            this.kick.hit(0.1, t);
+        } else if (h.kind === 'rockfall') this.rockfall(t, h);
+        else if (h.kind === 'meteor') this.meteor(t, h);
+        else if (h.kind === 'embers') this.gust.hit(1.4 + h.a, t);
+        else if (h.kind === 'jet') this.fissureKick.hit(0.75 + h.a * 0.5, t);
+        else if (h.kind === 'stroke') this.strikeFrom(t, BOLT.ground, 2 + Math.floor(h.a * 10), 0.7, 0, 0, true);
+        else if (h.kind === 'lake') {
+            this.burstGlow.hit(0.9, t);
+            this.puff(t, 1.3);
+        } else if (h.kind === 'pour') this.feedPulse(t, 0.55);
+    }
+
+    /** A glowing rockfall: blocks break off high on the cone and run down a gully, cooling where they stop. */
+    rockfall(time, h) {
+        if (!this.bombs || this.bombs.room() < 40) return;
+        const r = this.random;
+        const bearing = TO_EYE + (h.a - 0.25) * 1.5;
+        const length = 1300 + h.b * 1100;
+        const blocks = 22;
+        const p = this._p;
+        for (let i = 0; i < blocks; i++) {
+            const f = i / (blocks - 1);
+            this.groundFromCrater(bearing + Math.sin(f * 9 + h.c * 6) * 0.025, 620 + f * length + (r() - 0.5) * 50, p);
+            this.bombs.spawn({
+                x: p[0], y: p[1] + 3, z: p[2], vx: 0, vy: 0, vz: 0, born: time + f * 2.6 + r() * 0.15, life: 2.4 + r() * 3.2, tint: [1, 0.92, 0.85], px: 2 + r() * 1.6, kind: BOMB.ember, g: 0,
+            });
+        }
+    }
+
+    /** A shooting star over the clear, upwind sky (drawn by the bombs' own trail, without gravity). */
+    meteor(time, h) {
+        if (!this.bombs) return;
+        const far = 42000;
+        const az = (-41 + h.a * 12) * DEG;
+        const el = (13 + h.b * 6) * DEG;
+        const from = [EYE.x + Math.sin(az) * Math.cos(el) * far, EYE.y + Math.sin(el) * far, EYE.z - Math.cos(az) * Math.cos(el) * far];
+        // Down and across the sky, toward the volcano's side or away from it.
+        const way = h.c < 0.5 ? 1 : -1;
+        const speed = 9500 + h.c * 4000;
+        const v = [way * speed * 0.86, -speed * 0.5, speed * 0.1];
+        const life = 0.75 + h.b * 0.3;
+        if (!this.seen(from) && !this.seen([from[0] + v[0] * life, from[1] + v[1] * life, from[2] + v[2] * life])) return;
+        this.bombs.spawn({
+            x: from[0], y: from[1], z: from[2], vx: v[0], vy: v[1], vz: v[2], born: time, life, tint: [0.7, 0.85, 1.35], px: 1.8, kind: BOMB.bomb, g: 0, trail: 0.32,
+        });
+    }
+
+    /**
+     * The run is over: the eruption sinks to a glow. A last breath of dark ash rolls out of the
+     * crater, the column thins, the rivers crust over and the ash that hung in the air comes down.
+     */
     onGameOver() {
         this.counts.gameOvers++;
+        if (this.activityTarget >= 1) this.puff(this.time, 1.8);
         this.activityTarget = 0.3;
     }
 
+    /** A new run: a mountain that had sunk to a glow wakes with a burst out of the crater. */
     onSessionStart() {
-        if (this.activityTarget < 1) this.counts.wakes++;
+        if (this.activityTarget < 1) {
+            this.counts.wakes++;
+            this.burstGlow.hit(0.9, this.time);
+            this.kick.hit(0.7, this.time);
+            this.puff(this.time, 1.4);
+        }
         this.activityTarget = 1;
     }
 
@@ -1217,6 +1801,17 @@ export class PyrestormWorld {
         u.stars.value = L.stars;
         u.hazeDensity.value = L.hazeDensity;
         u.duskBearing.value = L.duskBearing;
+        this.updateMoon(L);
+
+        // The eruption's phase: the same wheel offset as the watches (a level-up moves it one on).
+        const E = phaseAt(this.overrides.phase !== null ? this.overrides.phase : phasePlace(time, this.wheel.offset(time)), this.phase);
+        // (A mountain sunk to a glow at a run's end: its column thins, its channels shrink back and
+        // the ash that hung under the anvil comes down.)
+        const asleep = 1 - clamp01((this.activity - 0.3) / 0.7);
+        u.plume.value.set(E.body * (1 - 0.4 * asleep), E.girth * (1 - 0.15 * asleep), E.tone);
+        u.cover.value = E.cover;
+        u.lavaFlux.value = E.flux * (1 - 0.14 * asleep);
+        u.ashFall.value = Math.min(1.2, E.fall + asleep * 0.8);
 
         // A blast that waited out the flash gap goes now.
         if (this.blastDue <= time) {
@@ -1238,7 +1833,7 @@ export class PyrestormWorld {
         const warm = smooth(0.18, 0.55, level);
         const hot = smooth(0.45, 0.85, level);
         // The lava runs hotter with it: brighter rivers, a thinner crust.
-        u.lavaHeat.value = L.lavaHeat * (1 + warm * 0.05 + hot * 0.06 + fever * 0.08);
+        u.lavaHeat.value = L.lavaHeat * E.lava * (1 + warm * 0.05 + hot * 0.06 + fever * 0.08);
 
         // The eruption's state: activity (game over), the storm's charge (the chain, and the fire
         // itself once play runs hot), the fountain.
@@ -1252,15 +1847,22 @@ export class PyrestormWorld {
         // The fountain climbs with the unrest (the summit fountaining in a fever) and every kick
         // adds to what the last ones left.
         const kick = this.kick.valueAt(time);
-        const fountainAsk = Math.min(3.4, 1 + this.charge * 0.55 + kick + warm * 0.3 + hot * 0.3 + fever * 0.5);
+        const fountainAsk = Math.min(3.6, E.fountain + this.charge * 0.55 + kick + warm * 0.3 + hot * 0.3 + fever * 0.5);
         this.fountainLevel += (fountainAsk - this.fountainLevel) * approach(fountainAsk > this.fountainLevel ? 3.5 : 0.9, dt);
         // The crust tears open with each hard drop; hot play keeps it open along every channel.
         this.tremor = this.quake.valueAt(time);
         this.corona += (this.b2b / 4 - this.corona) * approach(1.2, dt);
-        u.burst.value = this.burstGlow.valueAt(time) * this.activity;
+        // A quiet fountain leaves the lava lake to light the crater: its glow breathes, slowly,
+        // through everything a burst's glow lights (the column's foot, the air, the cloud).
+        const breath = 0.5 + 0.5 * Math.sin(time * 0.83 + Math.sin(time * 0.31) * 1.4);
+        const lake = E.lake * (0.3 + 0.7 * breath * breath) * 0.85;
+        u.burst.value = (this.burstGlow.valueAt(time) + lake) * this.activity;
+        u.embers.value = E.embers * (0.4 + 0.6 * this.activity) + this.gust.valueAt(time);
         u.activity.value = this.activity;
         u.charge.value = this.charge;
         u.fountain.value = this.fountainLevel;
+        u.fissure.value = Math.min(3.4, E.fissure * (0.72 + 0.28 * Math.min(2, this.fountainLevel / Math.max(0.3, E.fountain)))
+            + kick * 0.25 + this.fissureKick.valueAt(time));
         u.tremor.value = Math.min(1, this.tremor + (hot * 0.1 + fever * 0.2) * this.activity);
         u.corona.value = Math.min(1.4, this.corona + this.flare.valueAt(time));
         u.time.value = time;
@@ -1269,7 +1871,8 @@ export class PyrestormWorld {
 
         // The storm at rest: now and then the cloud flashes from inside (one crawler, softly).
         if (this.activity > 0.5) {
-            this.ambientClock += dt / this.ambientGap;
+            // (More often the stormier the phase: hardly ever in a lull, every few seconds in the ash.)
+            this.ambientClock += (dt / this.ambientGap) * (0.35 + E.storm * 2.95);
             if (this.ambientClock >= 1) {
                 this.ambientClock = 0;
                 this.ambientGap = 4 + this.random() * 5;
@@ -1314,6 +1917,31 @@ export class PyrestormWorld {
         const pulse = smooth(0, 0.3, pAge) * (1 - smooth(6 + hold, 10 + hold, pAge)) * 1.6 * this.pulseGain;
         u.pulse.value.set(pAge * PULSE_SPEED, pulse);
 
+        // A back-to-back run: sulphur catches and burns blue, higher with every step of the run.
+        this.blue += (this.b2b / 4 - this.blue) * approach(this.b2b / 4 > this.blue ? 2.2 : 0.7, dt);
+        u.blue.value = Math.min(1.3, this.blue * 1.05 + this.flare.valueAt(time) * 0.5) * this.activity;
+        // Four lines: the thermal climbs the column, slowing, and burns out.
+        const tAge = time - this.thermalAt;
+        const thermal = tAge >= 0 && tAge < THERMAL_SECONDS
+            ? smooth(0, 0.3, tAge) * Math.exp(-tAge / 3.2) * 1.5 * this.thermalPower * fs
+            : 0;
+        u.thermal.value.set(0.03 + 0.6 * (1 - Math.exp(-Math.max(0, tAge) / 3.4)), thermal);
+        // A perfect clear: the land in the storm's own light.
+        const glow = this.stormGlow.valueAt(time) * 0.95 * fs;
+        u.stormLight.value.set(this.light.bolt[0] * glow, this.light.bolt[1] * glow, this.light.bolt[2] * glow);
+        this.updateWisps(time, dt);
+        this.updateVents(time, dt);
+        this.updateWave(time);
+        // The storm strikes by itself in an ash phase, and the mountain's own happenings.
+        if (E.storm > 0.5 && this.activity > 0.6) {
+            this.stormClock += dt * (E.storm - 0.5) * 0.26 * fs;
+            while (this.stormClock >= 1) {
+                this.stormClock -= 1;
+                this.strikeFrom(time, BOLT.ground, 1 + Math.floor(this.random() * 9), 0.62, 0, 0, true);
+            }
+        }
+        this.updateHappenings(time);
+
         this.updateLights(time, fs);
         this.updateHits(time);
 
@@ -1329,6 +1957,27 @@ export class PyrestormWorld {
         this.smoke?.update(time, u.eye.value, u.camFwd.value);
         this.bombs?.update(time);
         this.updatePost(time, warm, hot);
+    }
+
+    /**
+     * The moon by the watch: where its disc stands on the sky, and the night's key light (the
+     * afterglow's at dusk, the moon's after), which rakes the land from further left and a little
+     * higher than the disc so every slope that turns to it shows.
+     */
+    updateMoon(L) {
+        const { u } = this;
+        const el = L.moonEl * DEG;
+        const az = L.moonAz * DEG;
+        const d = u.moonDir.value.set(Math.sin(az) * Math.cos(el), Math.sin(el), -Math.cos(az) * Math.cos(el));
+        const r = u.moonRight.value.set(-d.z, 0, d.x).normalize();
+        u.moonUp.value.crossVectors(r, d).normalize();
+        const rakeEl = Math.max(el, 4 * DEG) + 9 * DEG;
+        const rakeAz = az - 26 * DEG;
+        u.rake.value.set(Math.sin(rakeAz) * Math.cos(rakeEl), Math.sin(rakeEl), -Math.cos(rakeAz) * Math.cos(rakeEl));
+        u.moon.value.fromArray(L.moon);
+        u.moonTint.value.fromArray(L.moonTint);
+        u.moonShow.value = smooth(-1.5, 2.5, L.moonEl);
+        u.milky.value = L.milky;
     }
 
     /** The lights the land and the cloud read: live bolts and the blast's flash, strongest first. */
@@ -1392,6 +2041,23 @@ export class PyrestormWorld {
             const e = Math.exp(-fAge / 0.35) * 1.6 * Math.min(1.3, this.blastPower) * fs;
             list.push({
                 x: CRATER.x, y: CRATER.y + 300, z: CRATER.z, radius: 2600, r: e * 1.0, g: e * 0.52, b: e * 0.2, w: e,
+            });
+        }
+        // A flank vent's fountains and a fire whirl light the land round them.
+        for (const v of this.vents) {
+            const age = time - v.born;
+            if (!(age >= 0) || age > VENT_FOUNTAIN + 3) continue;
+            const e = smooth(0, 0.4, age) * (1 - smooth(VENT_FOUNTAIN * 0.5, VENT_FOUNTAIN + 3, age)) * 1.1;
+            const out = v.head + 200;
+            list.push({
+                x: VOLCANO.x + v.cos * out, y: CRATER.y - 300, z: VOLCANO.z + v.sin * out, radius: 1500, r: e, g: e * 0.44, b: e * 0.14, w: e * 0.8,
+            });
+        }
+        for (const w of this.whirlSlots) {
+            const e = whirlEnvelope(time - w.born) * w.power * 0.9;
+            if (e < 0.02) continue;
+            list.push({
+                x: w.x, y: w.y + 120, z: w.z, radius: 520, r: e, g: e * 0.5, b: e * 0.17, w: e * 0.7,
             });
         }
         list.sort((a, b) => b.w - a.w);
@@ -1493,6 +2159,12 @@ export class PyrestormWorld {
             b2b: this.b2b,
             charge: this.charge,
             fountain: this.fountainLevel,
+            phase: {
+                place: this.phase.place, from: this.phase.from, to: this.phase.to, mix: this.phase.mix,
+            },
+            blue: this.blue,
+            /** Flank vents burning: each stream's head and front (m out from the volcano's axis) and heat. */
+            vents: this.u.tables.flank.filter((_, i) => i % 2 === 0).map((row, i) => ({ head: row.z, front: row.w, heat: this.u.tables.flank[i * 2 + 1].y })),
             activity: this.activity,
             tremor: this.tremor,
             /** The ridge's shake on the last camera update: view turns (viewport heights), roll (rad). */

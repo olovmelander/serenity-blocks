@@ -448,6 +448,19 @@ const FELLS = [0.035, 0.05, 0.04];
 const STEP_ROCK = [0.035, 0.037, 0.04];
 /** The fells' ridge down the valley as the mirror meets it: its slope over the level, and its range. */
 const MIRROR_FELLS = Object.freeze({ top: 0.11, range: 0.06 });
+/** How far the mirrored sky is held back straight toward the sun (0..1 of it). */
+export const MIRROR_SUN_HOLD = 0.5;
+/** The sun's glitter road on the water: its tight core (cos^64 of the mirror angle) and its skirt (cos^16). */
+export const SUN_ROAD = Object.freeze({ core: 1.1, skirt: 0.05 });
+/** How much of the direct light the foam loses seen straight against the sun (its shaded side). */
+export const FOAM_AGAINST = 0.5;
+/**
+ * A back-to-back clear's sheet of light: how fast it runs down the river from the pool (m/s), how
+ * long its band is (m) and how fast that grows (m/s), and how long it lives (s).
+ */
+export const SHEEN = Object.freeze({
+    speed: 46, width: 14, spread: 5, life: 9,
+});
 
 export function createRiverMaterial(u, tex) {
     const material = new THREE.MeshBasicNodeMaterial();
@@ -676,7 +689,11 @@ export function createRiverMaterial(u, tex) {
         const Ns = normalize(mix(N, up, rough.mul(0.6).add(0.2)));
         const Rs = V.sub(Ns.mul(dot(V, Ns).mul(2.0)));
         const skyR = skyColour(u, vec3(Rs.x, abs(Rs.y), Rs.z), { withSun: false });
-        const sky = mix(skyR, vec3(spLuma(skyR)).mul(vec3(0.92, 0.97, 1.05)), rough.mul(0.5).add(0.15));
+        const skyMix = mix(skyR, vec3(spLuma(skyR)).mul(vec3(0.92, 0.97, 1.05)), rough.mul(0.5).add(0.15));
+        // Toward a low sun the water mirrors the aureole: held to molten gold, not a white sheet
+        // (the ripples' tilt then still shows in it).
+        const sunward = clamp(dot(normalize(vec3(Rs.x, abs(Rs.y), Rs.z)), L), 0.0, 1.0);
+        const sky = skyMix.mul(float(1.0).sub(sunward.mul(sunward).mul(MIRROR_SUN_HOLD)));
         const mirror = sky.toVar();
         // What stands over the water, in the mirror. The ray is read between the calm normal and
         // the rippled one, so the ripples break the reflection's edges; rough water mirrors only
@@ -748,11 +765,24 @@ export function createRiverMaterial(u, tex) {
         const glint = max(dot(R, L), 0.0);
         const g4 = glint.mul(glint).mul(glint).mul(glint);
         const g16 = g4.mul(g4).mul(g4).mul(g4);
-        water.addAssign(sunLight.mul(g16.mul(g16).mul(1.6).add(g16.mul(0.08))).mul(float(1.0).sub(white.mul(0.7))));
+        // The sun's road: a tight core and a faint skirt (a wide hot lobe laid a white sheet over
+        // the whole pool under a low sun, and the water's form went with it).
+        const g64 = g16.mul(g16).mul(g16).mul(g16);
+        water.addAssign(sunLight.mul(g64.mul(SUN_ROAD.core).add(g16.mul(SUN_ROAD.skirt)))
+            .mul(float(1.0).sub(white.mul(0.7))));
         // Back-to-back: the river glitters, every ripple facing the sun throwing a spark.
         const spark = smoothstep(0.86, 0.97, rip.x.mul(0.55).add(heap.mul(0.45))).mul(g4.mul(0.7).add(0.3));
         water.addAssign(sunLight.mul(0.2).add(u.fill.mul(1.5)).mul(spark).mul(u.glory)
             .mul(1.4));
+        // A back-to-back clear: a sheet of light runs down the river from the pool, a soft band
+        // the ripples break (never sparks: a field of them over water reads as grain).
+        const sheenAge = u.time.sub(u.sheen.x);
+        const sheenAt = s.sub(S_POOL).sub(sheenAge.mul(SHEEN.speed))
+            .div(float(SHEEN.width).add(sheenAge.mul(SHEEN.spread)));
+        const sheen = exp(sheenAt.mul(sheenAt).negate()).mul(u.sheen.y).mul(step(0.0, sheenAge))
+            .mul(float(1.0).sub(smoothstep(SHEEN.life * 0.55, SHEEN.life, sheenAge)));
+        water.addAssign(u.glow.mul(0.5).add(u.fill.mul(1.6)).add(sunLight.mul(0.12))
+            .mul(sheen.mul(rip.x.mul(0.5).add(0.5)).mul(float(1.0).sub(white.mul(0.45)))));
 
         // ── Foam: a heap lit by the sun, shaded in its own hollows ──
         const hx = rip.x.sub(0.5);
@@ -770,7 +800,10 @@ export function createRiverMaterial(u, tex) {
         const aaFroth = smoothstep(0.03, 0.12, fwidth(P.xz.x.div(3.0)).mul(32.0));
         hollow.mulAssign(mix(float(1.0), froth.mul(0.4).add(0.78), inBoil.mul(float(1.0).sub(aaFroth))));
         const behind = clamp(dot(V, L), 0.0, 1.0);
-        const foamLight = sunLight.mul(lit.mul(0.42).add(0.1)).add(u.fill.mul(1.2)).add(u.bounce.mul(0.3));
+        // Seen against the sun the foam shows its shaded side: less of the direct light, more glow.
+        const against = float(1.0).sub(behind.mul(behind).mul(FOAM_AGAINST));
+        const foamLight = sunLight.mul(lit.mul(0.42).add(0.1)).mul(against).add(u.fill.mul(1.2))
+            .add(u.bounce.mul(0.3));
         const foamCol = vec3(...FOAM).mul(foamLight).mul(hollow).add(sunLight.mul(behind.mul(behind).mul(0.1)));
         // Behind the curtain, under the recess the main tongue has worn, the boil lies in the
         // curtain's shadow: lit white, the ribbon's straight back edge read as a hard line once
