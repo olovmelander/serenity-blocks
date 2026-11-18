@@ -8,6 +8,7 @@
  */
 import * as THREE from 'three/webgpu';
 import { SakuraBackdrop } from './sakura-backdrop.js';
+import { SakuraCranes } from './sakura-cranes.js';
 import {
     planPaperLanterns, sakuraLampList, sakuraPlacements, sakuraViewFor,
 } from './sakura-composition.js';
@@ -179,6 +180,13 @@ export class SakuraWorld {
             this.spirits?.flash(x, this.showpieces.gate.top, z, 1.8 * power);
         };
         yield 'showpieces';
+        // The cranes: a small flight that crosses the night sky now and then (sakura-cranes.js).
+        // They draw their chances from a seed of their own, never from `rng`, so the garden built
+        // around them is the garden it was; and the lake mirrors them (not in UNMIRRORED).
+        this.cranes = new SakuraCranes({ light, tier });
+        this.group.add(this.cranes.group);
+        this.cranes.build();
+        yield 'cranes';
         this.excludeFromMirror();
         this.prepareCamera(this.camera.aspect);
         this.director = new SakuraPetalDirector({
@@ -290,6 +298,8 @@ export class SakuraWorld {
         this.spirits?.reset();
         this.foxes?.reset();
         this.showpieces?.reset();
+        // (The skein in the air is forgotten; the cranes' timetable goes on.)
+        this.cranes?.reset();
         this.light?.resetRings();
         this.sky?.reset();
     }
@@ -341,6 +351,9 @@ export class SakuraWorld {
         this.spirits.update(time, frame);
         this.backdrop.update(env.shore);
         this.showpieces.update(time, dt, frame, light.weather.stream);
+        // The cranes fly by the garden's clock; `frame.hush` (the game is over) keeps a flight due
+        // on the ground. Scenery, and slow: neither reduced motion nor the effects setting holds them.
+        this.cranes.update(clock, dt, frame);
     }
 
     getDiagnostics() {
@@ -360,6 +373,8 @@ export class SakuraWorld {
             // And the air it is nearest.
             weather: sakuraWeatherName(this.light?.weatherPhase ?? 0),
             weatherPhase: this.light?.weatherPhase ?? 0,
+            // The cranes: how many are in the air, on which route, when the next flight sets out.
+            cranes: this.cranes?.getDiagnostics() || null,
         };
     }
 
@@ -369,6 +384,8 @@ export class SakuraWorld {
         this.petals?.dispose();
         this.showpieces?.dispose();
         this.showpieces = null;
+        this.cranes?.dispose();
+        this.cranes = null;
         this.spirits?.dispose();
         this.water?.dispose();
         this.foxes?.dispose();
