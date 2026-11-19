@@ -49,6 +49,16 @@ async function sample() {
     await manager.activateMode('local-multiplayer');
     const mode = manager.getCurrentMode();
     mode.deps.frameRateController.setTargetFPS(targetHz);
+    const clockStarts = [];
+    if (clockTrial) {
+        const frc = mode.deps.frameRateController;
+        const startLoop = frc.startHybridLoop.bind(frc);
+        frc.startHybridLoop = (logic, render, options = {}) => {
+            const displaySynced = clockTrial === 'display' && frc.needsHybridMode() === false;
+            clockStarts.push({ requested:frc.targetFPS, detected:frc.monitorRefreshRate, displaySynced });
+            return startLoop(logic, render, { ...options, displaySynced });
+        };
+    }
     const players = Math.max(2, botCount);
     const config = { numPlayers: players, attackStyle: 'standard', endCondition: 'frags', endConditionValue: 99,
         levelProgression: false, teamMode: false, playerHandicaps: [0, 0, 0, 0],
@@ -224,6 +234,7 @@ async function sample() {
         idleCalls, idleUnits, idleFrames, idleMs, idleSchedule, planningTickFrames, botCount, tickPlanningCosts, idlePlanningCosts,
         idleScheduleClock: 'round',
         ...(profileWindows && { wholeOverBudget, longestDisplayIntervals }),
+        ...(clockTrial && { clockTrial, clockStarts }),
         clock: mode._localSimulationLoop?.simulationClock, boards: mode.multiplayerState?.numPlayers,
         canvases: document.querySelectorAll('canvas').length, requestedHz: targetHz };
 }
@@ -372,8 +383,13 @@ app.whenReady().then(async () => {
         throw Error('Expected one local tier from 1 through 10 per bot');
     }
     const scenario = countArg === 'odyssey' ? sampleOdyssey : sample;
+    const clockTrial = process.env.SERENITY_BOT_CLOCK_TRIAL || null;
+    if (clockTrial && (scenario !== sample || !['timer','display'].includes(clockTrial))) {
+        throw Error('The alternate presentation clock trial requires a local room and timer or display');
+    }
     const code = 'const botCount=' + count + ', duration=' + seconds + ', targetHz=' + hz
         + ', profileWindows=' + Boolean(process.env.SERENITY_BOT_CPU_PROFILE)
+        + ', clockTrial=' + JSON.stringify(clockTrial)
         + ', labelledChecks=' + labelled + ', replayTape=' + JSON.stringify(tape)
         + ', rivalConfig=' + JSON.stringify(rival) + ', localTiers=' + JSON.stringify(localTiers) + ', repeatRivals=' + repeatRivals
         + ';' + boardCheck.toString() + ';' + overBudgetFrame.toString() + ';(' + scenario.toString() + ')()';

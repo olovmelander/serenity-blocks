@@ -18,6 +18,7 @@ Remove-Item Env:ELECTRON_RUN_AS_NODE -ErrorAction SilentlyContinue
 Remove-Item Env:SERENITY_BOT_RIVAL_CONFIG -ErrorAction SilentlyContinue
 Remove-Item Env:SERENITY_BOT_TIERS -ErrorAction SilentlyContinue
 Remove-Item Env:SERENITY_BOT_CPU_PROFILE -ErrorAction SilentlyContinue
+Remove-Item Env:SERENITY_BOT_CLOCK_TRIAL -ErrorAction SilentlyContinue
 $dest = [System.IO.Directory]::CreateDirectory($OutputDirectory).FullName
 foreach ($pass in @(1, 2)) {
     $otherRate = if ($FirstRate -eq 60) { 165 } else { 60 }
