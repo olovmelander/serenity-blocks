@@ -111,6 +111,16 @@ export function create({ scene, camera, params }) {
     // the player sees a chapter from orb close-ups and arrival orbits too, not only along the rail.
     const lookYaw = (Number(params?.get?.('lookYaw')) || 0) * (Math.PI / 180);
     const lookPitch = (Number(params?.get?.('lookPitch')) || 0) * (Math.PI / 180);
+    // INSPECTION CAMERA — `?eye=x,y,z&at=x,y,z&fov=<deg>`: stand anywhere (under the sea too) and
+    // look at a world point, with the world graded for that eye (its submerged regime follows
+    // it). For watching one thing at its own place: a dolphin going through the surface.
+    const triple = (key) => {
+        const v = (params?.get?.(key) || '').split(',').map(Number);
+        return v.length === 3 && v.every(Number.isFinite) ? v : null;
+    };
+    const INSPECT_EYE = triple('eye');
+    const INSPECT_AT = triple('at');
+    const inspectFov = Number(params?.get?.('fov')) || 0;
 
     return {
         cameraRadius: 1200,
@@ -123,9 +133,10 @@ export function create({ scene, camera, params }) {
             // The EYE must be the aerial one when the aerial camera is flying, or the world
             // grades itself for a viewer standing at sea level while the picture is taken from
             // 1,800 u up — the submerged term and the aerial mix both read this.
-            const eyeY = AERIAL
+            let eyeY = AERIAL
                 ? AERIAL_CENTRE.y + aerialH
                 : pt.y + ODYSSEY_EYE_RAIL_OFFSET_Y;
+            if (INSPECT_EYE) eyeY = INSPECT_EYE[1];
             if (DEPART && !AERIAL) {
                 world.setDepartureFade(worldDepartureFade(p, cp[4], ACT_END), departVoid);
                 world.setClimb(worldClimbScale(p, cp[4], ACT_END), eye?.position);
@@ -134,6 +145,15 @@ export function create({ scene, camera, params }) {
         },
         camera(time, cam) {
             eye = cam;
+            if (INSPECT_EYE && INSPECT_AT) {
+                cam.position.set(INSPECT_EYE[0], INSPECT_EYE[1], INSPECT_EYE[2]);
+                if (inspectFov > 0 && cam.fov !== inspectFov) {
+                    cam.fov = inspectFov;
+                    cam.updateProjectionMatrix();
+                }
+                cam.lookAt(INSPECT_AT[0], INSPECT_AT[1], INSPECT_AT[2]);
+                return;
+            }
             if (AERIAL) {
                 cam.position.set(
                     AERIAL_CENTRE.x + (Math.sin(aerialYaw) * aerialR),

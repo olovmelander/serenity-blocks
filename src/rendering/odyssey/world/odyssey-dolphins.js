@@ -23,16 +23,27 @@
  * the pod shrinks to nothing before it is no longer submitted.
  *
  * THE SPLASHES are a second small draw: where each dolphin last left the water and where it
- * last went back in, a burst of spray and a ring of foam, for a second and a half.
+ * last went back in, a burst of spray and a ring of foam, for a second and a half. They belong to
+ * the air: an eye under the surface sees the surface instead.
+ *
+ * THE SPLASH FROM BELOW (2026-11-19) is a third, for an eye under the surface (the owner: "when
+ * we see them from under the water we don't see the splash when they jump and break the
+ * surface"). Going in, a dolphin drags air down with it: a white cloud billows round the place
+ * it went in and a trail of bubbles streams off its body along its dive, rising back, wobbling,
+ * and gone at the surface. Coming out, a smaller cloud where its flukes leave. And on the
+ * underside of the surface, lit through from above, the boil of white water where it broke
+ * through and a ring running out from it. Every bubble's place is a function of its mark's age
+ * (closed form, the mark rows the CPU writes each frame), so a seek shows the same bubbles; they
+ * are lit by the surface and hazed by the water as the dolphins are.
  */
 import * as THREE from 'three/webgpu';
 import {
     abs, attribute, cameraPosition, clamp, cos, cross, dot, float, instanceIndex, length, mix, normalGeometry,
     normalize, positionGeometry, positionLocal, positionWorld, sign, sin, smoothstep, texture, uniform, uniformArray, uv,
-    varying, vec2, vec3,
+    varying, vec2, vec3, exp, int, max, min, step,
 } from 'three/tsl';
 import {
-    DOLPHIN_POD, dolphinAt, dolphinSplashes,
+    DOLPHIN_POD, dolphinAt, dolphinDive, dolphinSplashes,
 } from '../composition/odyssey-dolphin-pod.js';
 
 export const DOLPHIN_LOOK = Object.freeze({
@@ -42,6 +53,91 @@ export const DOLPHIN_LOOK = Object.freeze({
     /** Beyond `far[0]` u from the eye the pod shrinks, to nothing by `far[1]` (then it is not drawn). */
     far: Object.freeze([1500, 2600]),
 });
+
+/**
+ * THE SPLASH FROM BELOW, in numbers. Per mark (a dolphin's last entry, its last exit): how many
+ * `puffs` (soft sprites that make the white cloud) and `beads` (single bubbles with a bright rim)
+ * it leaves, and over how much of its path they are shed (s after it went through: `shed` for
+ * the beads, `puffShed` for the cloud). The low tier keeps `lowShare` of each.
+ *   puff, bead  size (u radius; a puff's grows with the dolphin's length over 10 u), life (s),
+ *               rise (u/s), how far the turbulence spreads them (u per 10 u of dolphin), alpha
+ *   churn       the boil and the ring on the surface's underside: life (s), how far the ring
+ *               runs (u per 10 u of dolphin), how far under the mean surface it lies (u)
+ *   girth       where the air comes off: a share of the dolphin's length round its path
+ *   pull        how hard the plunge drags the fresh cloud down (u/s, eased out)
+ *   pixel       the least a bubble is drawn, as a share of its distance (about 1.5 px at 1080p);
+ *               a smaller one is drawn that wide with its light spread thinner
+ */
+export const DOLPHIN_BELOW = Object.freeze({
+    entry: Object.freeze({
+        puffs: 22, beads: 60, shed: 1.0, puffShed: 0.45,
+    }),
+    exit: Object.freeze({
+        puffs: 10, beads: 26, shed: 0.4, puffShed: 0.25,
+    }),
+    lowShare: 0.6,
+    puff: Object.freeze({
+        size: Object.freeze([0.55, 1.5]),
+        life: Object.freeze([1.0, 2.2]),
+        rise: Object.freeze([0.3, 0.9]),
+        spread: 2.4,
+        alpha: 0.62,
+    }),
+    bead: Object.freeze({
+        size: Object.freeze([0.07, 0.28]),
+        life: Object.freeze([1.4, 3.2]),
+        rise: Object.freeze([0.8, 2.4]),
+        spread: 1.2,
+        alpha: 0.95,
+    }),
+    churn: Object.freeze({ life: 2.4, reach: 4.2, depth: 0.12 }),
+    /** How bright the air is under the surface (it turns the surface's light back), and the churn. */
+    light: Object.freeze({ puff: 1.25, bead: 1.35, churn: 1.35 }),
+    girth: 0.1,
+    pull: 1.8,
+    pixel: 0.0016,
+});
+/** A bubble's part: a puff of the cloud, a bead, the churn on the surface's underside. */
+const BELOW_ROLE = Object.freeze({ puff: 0, bead: 1, churn: 2 });
+
+/**
+ * The bubbles' instances, one mark after another (each dolphin's entry, then its exit): per
+ * instance (mark, role, four 0..1 seeds). Deterministic (a hash of the instance's number).
+ * @param {number} dolphins
+ * @param {string} [quality]
+ * @returns {{ count: number, a: Float32Array, b: Float32Array }}
+ */
+export function buildDolphinBubbles(dolphins, quality = 'high') {
+    const B = DOLPHIN_BELOW;
+    const share = quality === 'low' ? B.lowShare : 1;
+    const kinds = [B.entry, B.exit].map((k) => ({
+        puffs: Math.max(1, Math.round(k.puffs * share)), beads: Math.max(1, Math.round(k.beads * share)),
+    }));
+    const rand01 = (n) => {
+        let h = Math.imul(n ^ 0x2c1b3c6d, 2654435761);
+        h = Math.imul(h ^ (h >>> 15), 1274126177);
+        return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+    };
+    // Each instance's (mark, role), in order: per dolphin its entry's puffs, beads and churn, then
+    // its exit's.
+    const plan = [];
+    for (let i = 0; i < dolphins; i += 1) {
+        kinds.forEach((k, kind) => {
+            const mark = (i * 2) + kind;
+            for (let j = 0; j < k.puffs; j += 1) plan.push([mark, BELOW_ROLE.puff]);
+            for (let j = 0; j < k.beads; j += 1) plan.push([mark, BELOW_ROLE.bead]);
+            plan.push([mark, BELOW_ROLE.churn]);
+        });
+    }
+    const n = plan.length;
+    const a = new Float32Array(n * 4);
+    const b = new Float32Array(n * 4);
+    plan.forEach(([mark, role], i) => {
+        a.set([mark, role, rand01((i * 8) + 1), rand01((i * 8) + 2)], i * 4);
+        b.set([rand01((i * 8) + 3), rand01((i * 8) + 4), rand01((i * 8) + 5), rand01((i * 8) + 6)], i * 4);
+    });
+    return { count: n, a, b };
+}
 
 /** The body's sections: [t along the body (0 beak tip .. 1), half-height over the axis, under it, half-width]. */
 const SECTIONS = [
@@ -334,6 +430,174 @@ export function createOdysseyDolphins({
     splashMesh.renderOrder = 6;
     group.add(splashMesh);
 
+    // ── the splash from below: the air each dolphin takes down, and the churn on the underside ──
+    const BW = DOLPHIN_BELOW;
+    const markRows = Array.from({ length: count * 2 * 3 }, () => new THREE.Vector4());
+    const uMarks = uniformArray(markRows, 'vec4');
+    const bubbles = buildDolphinBubbles(count, quality);
+    const bubbleGeo = new THREE.InstancedBufferGeometry();
+    {
+        const quadGeo = new THREE.PlaneGeometry(1, 1, 1, 1);
+        bubbleGeo.setIndex(quadGeo.index);
+        bubbleGeo.setAttribute('position', quadGeo.attributes.position);
+        bubbleGeo.setAttribute('uv', quadGeo.attributes.uv);
+        bubbleGeo.setAttribute('aBelowA', new THREE.InstancedBufferAttribute(bubbles.a, 4));
+        bubbleGeo.setAttribute('aBelowB', new THREE.InstancedBufferAttribute(bubbles.b, 4));
+        bubbleGeo.instanceCount = bubbles.count;
+        quadGeo.dispose();
+    }
+    const uEyeUnder = uniform(0);
+    const bubbleMat = new THREE.MeshBasicNodeMaterial();
+    {
+        const a = attribute('aBelowA', 'vec4');
+        const b = attribute('aBelowB', 'vec4');
+        // The mark's three rows: where and when and which (0 in, 1 out); its heading, the pace and
+        // the dolphin's length; its dive (depth, time under) and how strongly it is drawn.
+        const row = int(a.x.mul(3).add(0.5));
+        const r0 = uMarks.element(row);
+        const r1 = uMarks.element(row.add(1));
+        const r2 = uMarks.element(row.add(2));
+        const isExit = r0.w;
+        const role = a.y;
+        const isPuff = float(1).sub(step(0.5, role));
+        const isChurn = step(1.5, role);
+        const isBead = float(1).sub(isPuff).sub(isChurn);
+        const scale = r1.w.div(10);
+        const dir = vec2(r1.x, r1.y);
+        // Where on its path it was shed (biased to where it went through), and when.
+        const shed = mix(
+            mix(float(BW.entry.shed), float(BW.entry.puffShed), isPuff),
+            mix(float(BW.exit.shed), float(BW.exit.puffShed), isPuff),
+            isExit,
+        );
+        // (The cloud bunches at the plunge; the beads string out along the dive.)
+        const tau = shed.mul(mix(a.z.pow(1.3), a.z.mul(a.z), isPuff));
+        const age = r0.z.sub(tau.add(a.w.mul(0.1))).toVar();
+        // Going in, the air rides the dive (its middle's arc under the surface); coming out it is
+        // left where the flukes leave, behind the place the body broke through, and shallow.
+        const w = min(tau.div(max(r2.y, float(1e-3))), float(1));
+        const yDive = r2.x.mul(4).mul(w).mul(float(1).sub(w)).negate();
+        const yOut = b.x.mul(1.1).add(0.15).mul(scale).negate();
+        const along = mix(r1.z.mul(tau), r1.w.mul(0.25).mul(b.w).negate(), isExit);
+        const t = max(age, float(0));
+        const settle = float(1).sub(exp(t.mul(-3)));
+        // Round its path at the body's girth, then spread by the turbulence.
+        const spin = b.y.mul(Math.PI * 2);
+        const spread = mix(float(BW.bead.spread), float(BW.puff.spread), isPuff).mul(scale);
+        const reach = r1.w.mul(BW.girth).mul(b.z.mul(0.8).add(0.35))
+            .add(spread.mul(float(1).sub(exp(t.mul(-2.2)))));
+        const side = vec2(dir.y.negate(), dir.x);
+        const wob = sin(t.mul(6.5).add(b.w.mul(40))).mul(0.1).mul(isBead);
+        const drag = r1.z.mul(0.06).mul(settle).mul(float(1).sub(isExit));
+        const flat = vec2(r0.x, r0.y)
+            .add(dir.mul(along.add(drag)))
+            .add(side.mul(cos(spin).mul(reach).add(wob)));
+        const rise = mix(
+            mix(float(BW.bead.rise[0]), float(BW.bead.rise[1]), b.z),
+            mix(float(BW.puff.rise[0]), float(BW.puff.rise[1]), b.z),
+            isPuff,
+        );
+        const pull = settle.mul(BW.pull / 3).mul(float(1).sub(isExit)).mul(float(1).sub(w));
+        const yRel = min(
+            mix(yDive, yOut, isExit).add(sin(spin).mul(reach).mul(0.6)).add(rise.mul(t)).sub(pull),
+            float(-0.05),
+        ).toVar();
+        const centre = vec3(flat.x, float(seaLevel).add(yRel), flat.y);
+        // Its life: a puff thins fast, a bead lives until it reaches the surface; coming out,
+        // everything is shorter.
+        const life = mix(
+            mix(float(BW.bead.life[0]), float(BW.bead.life[1]), b.w),
+            mix(float(BW.puff.life[0]), float(BW.puff.life[1]), b.w),
+            isPuff,
+        ).mul(mix(float(1), float(0.6), isExit));
+        const alive = step(0.0, age).mul(float(1).sub(step(life, age))).mul(step(1e-3, r2.z));
+        // Facing the eye; never thinner than a pixel and a half, its light spread thinner when
+        // drawn wider than it is.
+        const toEye = cameraPosition.sub(centre);
+        const dist = max(length(toEye), float(1e-3));
+        const fwd = toEye.div(dist);
+        const right = normalize(cross(vec3(0, 1, 0), fwd).add(vec3(1e-4, 0, 0)));
+        const up = cross(fwd, right);
+        const size = mix(
+            mix(float(BW.bead.size[0]), float(BW.bead.size[1]), b.x.mul(b.x)),
+            mix(float(BW.puff.size[0]), float(BW.puff.size[1]), b.x).mul(scale).mul(settle.mul(0.6).add(0.7)),
+            isPuff,
+        );
+        const drawn = max(size, dist.mul(BW.pixel));
+        const cover = size.div(drawn).pow(2);
+        const q = positionLocal;
+        const sprite = centre.add(right.mul(q.x.mul(drawn).mul(2))).add(up.mul(q.y.mul(drawn).mul(2)));
+        // The churn lies flat under the surface: the boil, and the ring running out of it.
+        const churnLife = mix(float(BW.churn.life), float(BW.churn.life * 0.7), isExit);
+        const churnAge = r0.z;
+        const churnR = scale.mul(float(BW.churn.reach).mul(float(1).sub(exp(churnAge.mul(-1.5)))).add(0.8));
+        const churnAlive = float(1).sub(step(churnLife, churnAge)).mul(step(1e-3, r2.z));
+        const churn = vec3(
+            r0.x.add(q.x.mul(churnR).mul(2)),
+            float(seaLevel - BW.churn.depth),
+            r0.y.add(q.y.mul(churnR).mul(2)),
+        );
+        const shown = mix(alive, churnAlive, isChurn);
+        bubbleMat.positionNode = mix(sprite, churn, isChurn).mul(shown)
+            .add(vec3(r0.x, float(seaLevel - 1), r0.y).mul(float(1).sub(shown)));
+        // How it fades: in at birth, out over the end of its life and as a bead nears the surface.
+        const lifeT = clamp(age.div(life), 0, 1);
+        const fade = smoothstep(float(0), float(0.08), age)
+            .mul(float(1).sub(smoothstep(float(0.55), float(1), lifeT)))
+            .mul(float(1).sub(smoothstep(float(-0.55), float(-0.06), yRel).mul(isBead)))
+            .mul(cover);
+        const churnT = clamp(churnAge.div(churnLife), 0, 1);
+        const vFade = varying(mix(fade, float(1).sub(churnT).pow(1.5), isChurn).mul(r2.z), 'vDolphinBelowFade');
+        const vRole = varying(role, 'vDolphinBelowRole');
+        const vChurnT = varying(churnT, 'vDolphinBelowChurnT');
+        const vSeed = varying(b.y.add(r0.x.mul(0.13)), 'vDolphinBelowSeed');
+        const sUv = uv();
+        const rr = length(sUv.sub(vec2(0.5))).mul(2);
+        const fPuff = float(1).sub(step(0.5, vRole));
+        const fChurn = step(1.5, vRole);
+        const fBead = float(1).sub(fPuff).sub(fChurn);
+        // A puff: a soft white clump broken into foam by the noise.
+        const clump = texture(noiseTex, sUv.mul(0.45).add(vec2(vSeed, vSeed.mul(0.7)))).b;
+        const puffA = exp(rr.mul(rr).mul(-3.2)).mul(float(1).sub(smoothstep(float(0.8), float(1), rr)))
+            .mul(smoothstep(float(0.28), float(0.7), clump).mul(0.8).add(0.2))
+            .mul(BW.puff.alpha);
+        // A bead: a bright rim (the surface's light turned back inside it), a clear middle, and a
+        // glint near its top where the light comes from.
+        const rim = smoothstep(float(0.52), float(0.84), rr).mul(float(1).sub(smoothstep(float(0.84), float(1), rr)));
+        const glintP = sUv.sub(vec2(0.4, 0.72));
+        const glint = exp(dot(glintP, glintP).mul(-140));
+        const beadA = rim.add(float(1).sub(rr).max(0).mul(0.15)).add(glint.mul(0.8)).min(1).mul(BW.bead.alpha);
+        // The churn: a boil of white water that shrinks into the middle as the ring runs out,
+        // both broken into lace.
+        const lace = smoothstep(float(0.34), float(0.62), texture(noiseTex, sUv.mul(0.8).add(vec2(vSeed, vChurnT.mul(0.25)))).b);
+        const boil = float(1).sub(smoothstep(float(0.18), float(0.5), rr.add(vChurnT.mul(0.25))))
+            .mul(float(1).sub(smoothstep(float(0.2), float(0.75), vChurnT)));
+        const ring = smoothstep(float(0.62), float(0.8), rr).mul(float(1).sub(smoothstep(float(0.82), float(1), rr)));
+        const churnA = boil.add(ring.mul(0.7)).mul(lace.mul(0.6).add(0.4)).min(1);
+        // Lit by the surface over it: brighter on top; the churn is lit through from above.
+        const light = mix(
+            mix(float(BW.light.puff), float(BW.light.bead), fBead).mul(mix(float(0.75), float(1.1), sUv.y)),
+            float(BW.light.churn),
+            fChurn,
+        );
+        bubbleMat.colorNode = grade(haze(vec3(0.84, 0.93, 1.0).mul(light), positionWorld));
+        bubbleMat.opacityNode = puffA.mul(fPuff).add(beadA.mul(fBead)).add(churnA.mul(fChurn))
+            .mul(vFade)
+            .mul(uEyeUnder);
+        bubbleMat.alphaTest = 0.01;
+        bubbleMat.transparent = true;
+        bubbleMat.depthWrite = false;
+        bubbleMat.side = THREE.DoubleSide;
+        bubbleMat.fog = false;
+    }
+    const bubbleMesh = new THREE.Mesh(bubbleGeo, bubbleMat);
+    bubbleMesh.name = 'odyssey-dolphin-bubbles';
+    bubbleMesh.frustumCulled = false;
+    // After the sea's underside (drawn first, not depth-written), so the air under it shows.
+    bubbleMesh.renderOrder = 6;
+    group.add(bubbleMesh);
+    const dives = dolphins.map((d) => dolphinDive(d));
+
     const pose = /** @type {any} */ ({});
     const marks = { exit: { x: 0, z: 0, age: 0 }, entry: { x: 0, z: 0, age: 0 } };
     const state = { drawn: false, scale: 0 };
@@ -341,7 +605,7 @@ export function createOdysseyDolphins({
     return {
         group,
         state,
-        meshes: [mesh, splashMesh],
+        meshes: [mesh, splashMesh, bubbleMesh],
         /**
          * @param {number} time the world's clock (s)
          * @param {{ x: number, y: number, z: number }|null} eye the eye's world position
@@ -377,17 +641,31 @@ export function createOdysseyDolphins({
                     splashData[o + 2] = m.age;
                     splashData[o + 3] = k % 2;
                 }
+                // And from below, the same two marks with the dolphin's heading and dive: its
+                // entry, then its exit.
+                [marks.entry, marks.exit].forEach((m, kind) => {
+                    const o = ((i * 2) + kind) * 3;
+                    markRows[o].set(m.x, m.z, m.age, kind);
+                    markRows[o + 1].set(m.tx ?? 1, m.tz ?? 0, dives[i].speed, d.length * scale);
+                    markRows[o + 2].set(dives[i].depth, dives[i].time, scale, 0);
+                });
             }
             splashAttr.needsUpdate = true;
-            // The splashes belong to the air: an eye under the surface sees the surface instead.
+            // The splashes belong to the air: an eye under the surface sees the surface instead,
+            // and the air the dolphins take down with them.
             const above = Math.max(0, Math.min(1, ((eye.y - seaLevel) + 0.2) / 1.2));
+            const under = Math.max(0, Math.min(1, ((seaLevel - eye.y) + 0.3) / 1.2));
             uEyeAbove.value = above * scale;
+            uEyeUnder.value = under;
             mesh.visible = mesh.userData.filterVisible !== false;
             splashMesh.visible = above > 0 && splashMesh.userData.filterVisible !== false;
+            bubbleMesh.visible = under > 0 && bubbleMesh.userData.filterVisible !== false;
         },
         dispose() {
             mat.dispose();
             splashMat.dispose();
+            bubbleMat.dispose();
+            bubbleGeo.dispose();
             hull.dispose();
         },
     };
