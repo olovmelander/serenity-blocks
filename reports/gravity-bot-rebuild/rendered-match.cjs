@@ -70,6 +70,10 @@ async function sample() {
     let bucket = 0, updateCost = 0, didPlan = false, actions = 0, frames = 0, prior = 0;
     const overBudget = [], nearTwoFrames = [], idleSchedule = [], planningTickFrames = [];
     const tickPlanningCosts = [], idlePlanningCosts = [];
+    // The separate CPU-profile pass retains wall-clock windows for expensive
+    // whole updates and the longest display intervals, including idle time.
+    const wholeOverBudget = [], longestDisplayIntervals = [];
+    let longestUpdate = null, longestInput = null;
     let calls = 0, peak = 0, peakStart = 0, slowest;
     let inputTick = 0;
     let tickCost = 0, idleCost = 0;
@@ -94,6 +98,9 @@ async function sample() {
                     const advanced = precompute(...args);
                     const ms = performance.now() - start;
                     updateCost += ms;
+                    if (profileWindows && (!longestUpdate || ms > longestUpdate.ms)) {
+                        longestUpdate = { start, ms, origin: 'between-ticks' };
+                    }
                     if (advanced) {
                         didPlan = true;
                         bucket += ms; calls++; frameIdleCalls++; idleCalls++; idleUnits += advanced; idleMs += ms;
@@ -107,6 +114,16 @@ async function sample() {
             const advance = bots.advanceFixedInput.bind(bots);
             bots.advanceFixedInput = (index, context) => {
                 inputTick = context.tick;
+                if (profileWindows) {
+                    const emit = context.emit;
+                    context = { ...context, emit: command => {
+                        const start = performance.now();
+                        try { return emit(command); } finally {
+                            const ms = performance.now() - start;
+                            if (!longestInput || ms > longestInput.ms) longestInput = { start, ms, slot: index, action: command.action };
+                        }
+                    } };
+                }
                 if (replayTape) {
                     for (const command of byTick.get([round, index, context.tick].join('/')) || []) context.emit(command);
                 } else {
@@ -142,7 +159,13 @@ async function sample() {
                 tickTime = time;
                 if (bot.scheduler.rejected || bot.queueAtPlan !== bot.getPendingGarbage()) replanAt = time;
                 const start = performance.now(); try { return update(dt, time); }
-                finally { updateCost += performance.now() - start; }
+                finally {
+                    const ms = performance.now() - start;
+                    updateCost += ms;
+                    if (profileWindows && (!longestUpdate || ms > longestUpdate.ms)) {
+                        longestUpdate = { start, ms, origin: 'bot-update', slot: bot.playerIndex };
+                    }
+                }
             };
             const adopt = bot.adoptPlan.bind(bot);
             bot.adoptPlan = p => {
@@ -165,6 +188,12 @@ async function sample() {
             if (prior) intervals.push(now - prior);
             if (prior && now - prior > 2000 / targetHz + 0.25) {
                 stalls.push([frames, round, simTick, now - prior, bucket, updateCost]);
+                if (profileWindows) {
+                    longestDisplayIntervals.push({ frame: frames, round, tick: simTick, start: prior, ms: now - prior,
+                        planningMs: bucket, activeMs: updateCost });
+                    longestDisplayIntervals.sort((a,b) => b.ms-a.ms);
+                    if (longestDisplayIntervals.length > 16) longestDisplayIntervals.pop();
+                }
             } else if (prior && now - prior >= 2000 / targetHz - 0.25) {
                 nearTwoFrames.push([frames, round, simTick, now - prior, bucket, updateCost]);
             }
@@ -178,6 +207,11 @@ async function sample() {
             if (bucket > 1000 / targetHz) overBudget.push({ ...overBudgetFrame(
                 frames, round, simTick, bucket, updateCost, calls, peak, peakStart, slowest),
                 idleCalls: frameIdleCalls, longestOrigin: slowestWasIdle ? 'between-ticks' : 'tick' });
+            if (profileWindows && updateCost > 1000/targetHz) {
+                wholeOverBudget.push({ frame:frames, round, tick:simTick, activeMs:updateCost, planningMs:bucket,
+                    longestUpdate, longestInput });
+            }
+            longestUpdate = null; longestInput = null;
             calls = 0; peak = 0; slowest = null; frameIdleCalls = 0; slowestWasIdle = false;
             tickCost = 0; idleCost = 0;
             bucket = 0; updateCost = 0; didPlan = false; prior = now; frames++;
@@ -189,6 +223,7 @@ async function sample() {
         elapsed: performance.now() - start, rounds: round, maxExecutionUpdate, executionOverFrame, overBudget, nearTwoFrames,
         idleCalls, idleUnits, idleFrames, idleMs, idleSchedule, planningTickFrames, botCount, tickPlanningCosts, idlePlanningCosts,
         idleScheduleClock: 'round',
+        ...(profileWindows && { wholeOverBudget, longestDisplayIntervals }),
         clock: mode._localSimulationLoop?.simulationClock, boards: mode.multiplayerState?.numPlayers,
         canvases: document.querySelectorAll('canvas').length, requestedHz: targetHz };
 }
@@ -338,6 +373,7 @@ app.whenReady().then(async () => {
     }
     const scenario = countArg === 'odyssey' ? sampleOdyssey : sample;
     const code = 'const botCount=' + count + ', duration=' + seconds + ', targetHz=' + hz
+        + ', profileWindows=' + Boolean(process.env.SERENITY_BOT_CPU_PROFILE)
         + ', labelledChecks=' + labelled + ', replayTape=' + JSON.stringify(tape)
         + ', rivalConfig=' + JSON.stringify(rival) + ', localTiers=' + JSON.stringify(localTiers) + ', repeatRivals=' + repeatRivals
         + ';' + boardCheck.toString() + ';' + overBudgetFrame.toString() + ';(' + scenario.toString() + ')()';
