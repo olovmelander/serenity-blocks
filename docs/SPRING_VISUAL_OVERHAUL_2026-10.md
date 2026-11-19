@@ -791,3 +791,83 @@ These are doubts of mine, not the owner's words.
   at once before.
 - **Not done**: a physical phone, an uncapped frame-rate reading, the song (still the Moonlit
   Forest recording, retitled), the theme's icon (the view it shows is unchanged).
+
+## Fish in the river (2026-11-19)
+
+The owner asked for jumping trout and salmon in the river (`spring-fish.js`).
+
+To look at it: `/playground.html?effect=spring&t=55&leap=fall` (`leap=fall|ledges|runs` shows the
+first of that lane's leaps from `t` on; `leapPhase=` how far through its flight, past 1 its ring
+and splash; `leapLook=<fov>` aims the inspection lens at the fish).
+
+### What leaps where
+
+| Lane | Fish | Where | The leap |
+|---|---|---|---|
+| `fall` | salmon, 0.65–1.05 m | the plunge pool's middle, 9–20 m below where the tongues land | 1.5–2.7 m high, toward the falling water, often turning onto its side as it drops back |
+| `ledges` | salmon | out of the pool at the foot of a rapids' chute (seven ledges in sight, the nearer more often) | 0.8–1.5 m, up the step onto higher water |
+| `runs` | brown trout, 0.32–0.55 m | the pool's tail, and two calmer runs below the bend | 0.3–0.7 m, across the stream either way, the tail working, sometimes flopping back |
+
+Each lane leaps **by the clock**, a pure function of the time (`leapAt(lane, k)`): about every
+13 s at the fall, 15 s up the ledges, 7 s in the runs, so one every three or four seconds
+somewhere, and a seek shows the same fish in the same place. The heat of play brings the **salmon
+run** on (`HEAT.leaps`, `HEAT.leapsFever`): extra salmon at the fall and up the ledges, up to one
+more every four or five seconds in a fever; never under reduced motion, where the clock's fish
+still leap.
+
+A leap is an arc of the fish's middle at real gravity (T = √(8H/g)) from under the surface to
+under it again, deep enough that the nose breaks the water first; the river (drawn first,
+depth-tested) hides what is still under. The nose follows the flight, the body curls most at the
+top, the tail beats (4 a second a salmon, 6.5 a trout) as a wave run back down the body, and the
+skin's normals turn with the bend. Salmon are countershaded steel-blue over a mirror flank that
+gives back the sky's light more than its blue (dark against the white water, flashing in the sun);
+trout olive over bronze.
+
+Where a fish breaks the water, leaving and falling back, a **ring of foam** spreads and drifts off
+on the current (added light, written once as the leap leaves the water and moved in closed form),
+and a splash of drops is thrown up through the motes (each leap's own seed deals them, so a seek
+splashes the same).
+
+### Decisions and traps
+
+- **Everywhere the river is in sight it runs along the line of sight** (toward the eye down the
+  rapids, away below the bend). A salmon leaping straight upstream is seen end on: at 960 × 540 the
+  first ledge salmon was two pixels. The leaps head well off the stream's line (salmon 0.3–1 rad
+  off upstream, trout across it), toward mid-river when they leave near a bank.
+- **Drawn larger than life**, 1.6 times, as the birds are (1.15, 1.35): a 1.05 m salmon is drawn
+  1.7 m, and is still about 20 pixels at 1080p a hundred metres off. `FISH.*.drawn` is the knob.
+- **Kept clear of the board and the lens's edges.** Every reach carries its own span across the
+  river: below the bend the near bank is past the 16:9 lens's edge, and the far side of the ledge
+  under the knoll is behind the card. `spring-fish.test.js` walks 120 leaps a lane against 10°–34°
+  of bearing.
+- **The fall's mist hides a fish behind it.** Leaping where the tongues land, a pale salmon was
+  lost in the boil's cloud; the lane leaps from the pool's middle, and salmon are dark with a
+  mirror rather than pale.
+- **One instance buffer a mesh.** Four vec4 rows a fish, two a ring, each one interleaved buffer
+  (the eight-vertex-buffer limit). The fish's rows are written only while one is in the air, the
+  rings' only when a leap starts.
+
+### Verification
+
+- **Captures** in a cloud container (headless Chromium, SwiftShader), WebGL2 backend:
+  the three lanes through a long lens and in the full frame at 960 × 540 and 1920 × 1080, High
+  and Minimal, with and without the board; a trout's ring and splash after it falls back; a
+  390 × 844 portrait (the river lies behind the card there, as before). No console error or
+  warning but the container's "No available adapters".
+- **Not captured: the WebGPU backend.** SwiftShader's WebGPU device is lost in this container on
+  the unchanged theme too, so no WebGPU frame of Spring could be drawn here. Both materials build
+  to WGSL and GLSL in `spring-fish.test.js` with no warning and no var read before it is set.
+- **Tests**: `tests/unit/spring-fish.test.js` (19); the full unit suite passes.
+
+| Through a long lens: a salmon in the plunge pool, a salmon below the bend, a trout, a trout's ring and splash |
+|---|
+| ![long lens](spring-captures/fish-long-lens.webp) |
+| **In the game's frame at 1080p, High, with the board (crops at 2×): a salmon in the fall's mist, a trout by a boulder below the bend** |
+| ![in game](spring-captures/fish-in-game.webp) |
+
+### Open calls
+
+- **They are small in the full frame**: 10–25 pixels at 1080p. In motion, with the splash and the
+  ring, they catch the eye; still, they are a detail to find, not a show. `FISH.*.drawn` and the
+  lanes' `gap` are the knobs.
+- **On a phone** the river lies behind the card, and the fish with it.

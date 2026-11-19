@@ -25,6 +25,7 @@
  *   air           the air's own motes: willow down and pollen drifting on the breeze (spring-air.js)
  *   mist          puffs of the fall's mist and the ledges' spray
  *   floes         ice floes a four-line clear can send down the river at once
+ *   fish          salmon and trout in the air at once (the clock's leaps and the salmon run's)
  *   life          birds over the valley
  *   pixelRatioCap the theme's pixel-ratio cap (the adapter's table carries the same values)
  */
@@ -59,6 +60,7 @@ export const QUALITY = Object.freeze({
         air: 320,
         mist: 120,
         floes: 16,
+        fish: 4,
         life: 6,
         pixelRatioCap: 0.7,
     }),
@@ -90,6 +92,7 @@ export const QUALITY = Object.freeze({
         air: 600,
         mist: 180,
         floes: 24,
+        fish: 5,
         life: 10,
         pixelRatioCap: 0.85,
     }),
@@ -121,6 +124,7 @@ export const QUALITY = Object.freeze({
         air: 900,
         mist: 260,
         floes: 32,
+        fish: 6,
         life: 16,
         pixelRatioCap: 1.0,
     }),
@@ -152,6 +156,7 @@ export const QUALITY = Object.freeze({
         air: 1300,
         mist: 360,
         floes: 40,
+        fish: 8,
         life: 22,
         pixelRatioCap: 1.15,
     }),
@@ -183,6 +188,7 @@ export const QUALITY = Object.freeze({
         air: 1800,
         mist: 480,
         floes: 48,
+        fish: 8,
         life: 28,
         pixelRatioCap: 1.35,
     }),
@@ -214,6 +220,7 @@ export const QUALITY = Object.freeze({
         air: 2400,
         mist: 600,
         floes: 56,
+        fish: 10,
         life: 34,
         pixelRatioCap: 1.6,
     }),
