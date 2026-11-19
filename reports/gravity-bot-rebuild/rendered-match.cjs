@@ -48,6 +48,7 @@ async function sample() {
     const manager = game.gameModeManager;
     await manager.activateMode('local-multiplayer');
     const mode = manager.getCurrentMode();
+    const dropProbe = window.botDropProbe?.(mode);
     mode.deps.frameRateController.setTargetFPS(targetHz);
     const clockStarts = [];
     if (clockTrial) {
@@ -97,6 +98,7 @@ async function sample() {
     const setup = mode._setupLocalBots.bind(mode);
     mode._setupLocalBots = () => {
         setup();
+        dropProbe?.watch();
         const bots = mode.botManager;
         if (!observedManagers.has(bots)) {
             observedManagers.add(bots);
@@ -235,6 +237,7 @@ async function sample() {
         idleScheduleClock: 'round',
         ...(profileWindows && { wholeOverBudget, longestDisplayIntervals }),
         ...(clockTrial && { clockTrial, clockStarts }),
+        ...(dropProbe && { dropEffects: await dropProbe.finish() }),
         clock: mode._localSimulationLoop?.simulationClock, boards: mode.multiplayerState?.numPlayers,
         canvases: document.querySelectorAll('canvas').length, requestedHz: targetHz };
 }
@@ -386,6 +389,9 @@ app.whenReady().then(async () => {
     const clockTrial = process.env.SERENITY_BOT_CLOCK_TRIAL || null;
     if (clockTrial && (scenario !== sample || !['timer','display'].includes(clockTrial))) {
         throw Error('The alternate presentation clock trial requires a local room and timer or display');
+    }
+    if (process.env.SERENITY_BOT_DROP_PROBE) {
+        await win.webContents.executeJavaScript(readFileSync(resolve(process.env.SERENITY_BOT_DROP_PROBE), 'utf8'));
     }
     const code = 'const botCount=' + count + ', duration=' + seconds + ', targetHz=' + hz
         + ', profileWindows=' + Boolean(process.env.SERENITY_BOT_CPU_PROFILE)

@@ -36,7 +36,8 @@ async function record(clock, pass, replay) {
     const file = stem + (replay ? '-replay' : '') + '.json';
     if (!existsSync(file)) {
         const env = { ...process.env, SERENITY_BOT_BUILD:resolve(build), SERENITY_BOT_CLOCK_TRIAL:clock };
-        for (const key of ['ELECTRON_RUN_AS_NODE','SERENITY_BOT_CPU_PROFILE','SERENITY_BOT_TIERS','SERENITY_BOT_RIVAL_CONFIG']) delete env[key];
+        for (const key of ['ELECTRON_RUN_AS_NODE','SERENITY_BOT_CPU_PROFILE','SERENITY_BOT_TIERS',
+            'SERENITY_BOT_RIVAL_CONFIG','SERENITY_BOT_DROP_PROBE']) delete env[key];
         const args = ['reports/gravity-bot-rebuild/rendered-match.cjs',file,seatsArg,durationArg,hzArg];
         if (replay) args.push(stem+'.json');
         const stdout = openSync(file+'.log','w'), stderr = openSync(file+'.err','w');
