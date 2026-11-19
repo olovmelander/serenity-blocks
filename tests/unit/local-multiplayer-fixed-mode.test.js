@@ -339,6 +339,13 @@ describe('Local Multiplayer fixed mode integration', () => {
             mode.botManager = new LocalBotManager({ multiplayerState: mp, actionFactory: () => ({}) });
             mode.botManager.configure(slots);
             mode._isBotPlayer = (i) => i === 1;
+            let prepared = 0;
+            const precompute = mode.botManager.precomputeFixedSearch.bind(mode.botManager);
+            mode.botManager.precomputeFixedSearch = (...args) => {
+                const batches = precompute(...args);
+                prepared += batches;
+                return batches;
+            };
             const controller = mode.botManager.controllers.get(1);
             const trace = [];
             const adopt = controller.adoptPlan.bind(controller);
@@ -376,6 +383,7 @@ describe('Local Multiplayer fixed mode integration', () => {
             };
             stopLocalMultiplayerModeLoop(mode);
             mode.botManager.destroy();
+            if (hz === 165) expect(prepared).toBeGreaterThan(0);
             return result;
         };
         const regular = run(60);

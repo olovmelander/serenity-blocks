@@ -76,17 +76,26 @@ function* searchWithinBudget(state, config, pending, weights, root, allowance) {
     return { moves, proof, alternatives: ready.alternatives.map((node) => node.move) };
 }
 
-// Seats can reach the same public position on the shared deal. Advance one copy
-// of that deterministic search, while each seat consumes its own allotted ticks.
-function* sharedSearch(cache, state, config, pending, weights, root, allowance) {
+function advanceSearch(entry) {
+    const next = entry.job.next();
+    if (next.done) {
+        entry.result = next.value;
+        entry.job = null;
+    } else entry.units++;
+}
+
+// A fixed seat consumes one unit at each yield, even when an earlier display
+// frame or another seat has already evaluated that part of the search.
+function* sharedSearch(owner, state, config, pending, weights, root, allowance) {
+    const cache = owner.sharedSearch;
     const {
         x, y, rotation, shapeKey, shape,
     } = state.currentPiece;
     const nextPieces = (state.nextPieces || []).slice(0, config.previews)
         .map((p) => (typeof p === 'string' ? p : p?.shapeKey || p?.type || null));
-    const key = gravityBoardKey(root.cells) + JSON.stringify([root.first, x, y, rotation, shapeKey, shape,
+    const key = cache && gravityBoardKey(root.cells) + JSON.stringify([root.first, x, y, rotation, shapeKey, shape,
         nextPieces, pending, state.lines, rewardContextKey(state), config, weights, allowance]);
-    let entry = cache.get(key);
+    let entry = cache?.get(key);
     if (!entry) {
         // The first step enumerates the live root. Later steps use labelled copies
         // and this reward snapshot, even if the originating seat cancels its plan.
@@ -109,15 +118,19 @@ function* sharedSearch(cache, state, config, pending, weights, root, allowance) 
             units: 0,
             result: null,
         };
-        if (cache.size >= 32) cache.delete(cache.keys().next().value);
-        cache.set(key, entry);
-    }
-    for (let cursor = 0; ; cursor++) {
-        if (cursor === entry.units && entry.job) {
-            const step = entry.job.next();
-            if (step.done) { entry.result = step.value; entry.job = null; } else entry.units++;
+        if (cache) {
+            if (cache.size >= 32) cache.delete(cache.keys().next().value);
+            cache.set(key, entry);
         }
-        if (!entry.job && cursor === entry.units) return entry.result;
+    }
+    owner.activeSearch = entry;
+    for (let cursor = 0; ; cursor++) {
+        if (cursor === entry.units && entry.job) advanceSearch(entry);
+        if (!entry.job && cursor === entry.units) {
+            owner.activeSearch = null;
+            return entry.result;
+        }
+        owner.nextSearchUnit = cursor + 1;
         yield;
     }
 }
@@ -132,6 +145,7 @@ export class GravityBotController extends PuzzleBotController {
         this.judgment = options.judgment;
         const i = this.config.tier - 1;
         this.sharedSearch = i === 9 ? options.sharedSearch : null;
+        this.precomputeBetweenTicks = options.precomputeBetweenTicks === true;
         this.searchConfig = {
             previews: PREVIEWS[i],
             width: WIDTH[i],
@@ -276,6 +290,7 @@ export class GravityBotController extends PuzzleBotController {
 
     reset() {
         super.reset();
+        this.activeSearch = null;
         this.proof = [];
         this.queueAtPlan = null;
         this.recognizedSpawn = null;
@@ -371,7 +386,8 @@ export class GravityBotController extends PuzzleBotController {
             ),
         };
         const args = [state, config, pending, this.weights, root, allowance];
-        const search = this.sharedSearch ? sharedSearch(this.sharedSearch, ...args) : searchWithinBudget(...args);
+        const fixedSearch = this.precomputeBetweenTicks && state.useFixedCascade;
+        const search = this.sharedSearch || fixedSearch ? sharedSearch(this, ...args) : searchWithinBudget(...args);
         const result = yield* search;
         if (!result) return null;
         let { moves, proof: forecast } = result;
@@ -410,6 +426,7 @@ export class GravityBotController extends PuzzleBotController {
     stepSlicedPlan(delta, now) {
         const state = this.playerState;
         if (!this.planJob && this.pendingPlan === undefined) {
+            this.activeSearch = null;
             const board = readGravityBoard(state.boardGrid || state.board, state.isInfinityMode ? 0 : undefined);
             this.planBoardKey = gravityBoardKey(board.cells);
             this.planGrid = state.boardGrid || state.board;
@@ -440,6 +457,19 @@ export class GravityBotController extends PuzzleBotController {
         if (!plan || !this.refreshRoute(plan)) { this.proof = []; return; }
         this.waitingToExecute = now < this.readyAtMs;
         this.adoptPlan(plan);
+    }
+
+    precomputeSearch(elapsedMs, tickMs) {
+        const entry = this.activeSearch;
+        if (!this.planJob || !entry?.job || !(elapsedMs > 0)) return 0;
+        const dueNextTick = this.nextSearchUnit + Math.ceil(this.sliceRate * tickMs);
+        const allowance = Math.max(1, Math.floor(this.sliceRate * elapsedMs));
+        let advanced = 0;
+        while (entry.job && entry.units < dueNextTick && advanced < allowance) {
+            advanceSearch(entry);
+            advanced++;
+        }
+        return advanced;
     }
 
     refreshRoute(plan) {

@@ -390,7 +390,7 @@ function startFixedLoop(mode) {
         const logicUpdate = (_time, delta) => {
             loopState.fixedTickBarrierActive = true;
             try {
-                runLocalMultiplayerFixedTicks(loopState.fixedRuntime, delta, {
+                const result = runLocalMultiplayerFixedTicks(loopState.fixedRuntime, delta, {
                     ownership,
                     advanceInput: (index, context) => {
                         if (mode.botManager?.isBotPlayer(index)) mode.botManager.advanceFixedInput(index, context);
@@ -435,6 +435,9 @@ function startFixedLoop(mode) {
                         console.warn('[LocalMultiplayer] Fixed simulation clock rebased:', clockWarp);
                     },
                 });
+                if (result.tickPlan && result.plannedSteps === 0) {
+                    mode.botManager?.precomputeFixedSearch?.(delta, result.tickPlan.tickMs);
+                }
             } catch (error) {
                 loopOwner?.stop?.();
                 throw error;

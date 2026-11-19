@@ -157,6 +157,43 @@ describe('live gravity policy', () => {
         b.reset();
     });
 
+    it('prepares a shared search only through the following tick and discards a stale observation', () => {
+        const players = [deal(1006), deal(1006)];
+        players.forEach((state) => { state.useFixedCascade = true; });
+        let pending = 0;
+        const match = {
+            players,
+            numPlayers: 2,
+            sharedPieceSeed: 1006,
+            playerPaused: [],
+            getGarbageQueue: () => ({ getTotalLines: () => pending }),
+        };
+        const manager = new LocalBotManager({ multiplayerState: match, actionFactory: () => ({}) });
+        manager.configure([0, 1].map(() => ({ kind: 'bot', difficulty: 10 })));
+        const bots = [...manager.controllers.values()];
+        const tickMs = 1000 / 60;
+        const tick = (index, time) => manager.advanceFixedInput(index, { tick: time, tickMs, emit: () => true });
+        tick(0, 1);
+        tick(1, 1);
+        const search = bots[0].activeSearch;
+        expect(search).toBeTruthy();
+        expect(bots[1].activeSearch).toBe(search);
+        const cursors = bots.map((bot) => bot.nextSearchUnit);
+        expect(manager.precomputeFixedSearch(1000, tickMs)).toBeGreaterThan(0);
+        expect(manager.precomputeFixedSearch(1000, tickMs)).toBe(0);
+        expect(search.units).toBeLessThanOrEqual(cursors[0] + Math.ceil(bots[0].sliceRate * tickMs));
+        expect(bots.map((bot) => bot.nextSearchUnit)).toEqual(cursors);
+        expect(bots.every((bot) => !bot.lastPlan)).toBe(true);
+        pending = 6;
+        tick(0, 2);
+        expect(bots[0].activeSearch).not.toBe(search);
+        bots[0].reset();
+        match.playerPaused[1] = true;
+        expect(manager.precomputeFixedSearch(1000, tickMs)).toBe(0);
+        manager.destroy();
+        players.forEach((state) => state.reset());
+    });
+
     it.each([1, 2, 3, 5, 6, 10])('preserves tier %i judgment draws with synchronous and sliced input', (tier) => {
         const states = [deal(1011), deal(1011)];
         const decisions = states.map((state, index) => {

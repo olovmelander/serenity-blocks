@@ -75,6 +75,7 @@ export class LocalBotManager {
                 playerState,
                 pendingRows: () => this.multiplayerState.getGarbageQueue?.(index)?.getTotalLines() || 0,
                 sharedSearch,
+                precomputeBetweenTicks: true,
                 planUnitsPerMs: gravityPlanningRate(botCount),
                 rng: seededRandom((seed ^ Math.imul(index + 1, 0x85ebca6b)) >>> 0),
                 timingRng: seededRandom((seed ^ Math.imul(index + 1, 0xc2b2ae35)) >>> 0),
@@ -87,6 +88,16 @@ export class LocalBotManager {
         if (!controller) return;
         this.tickInput = context;
         try { controller.update(context.tickMs, context.tick * context.tickMs); } finally { this.tickInput = null; }
+    }
+
+    precomputeFixedSearch(elapsedMs, tickMs) {
+        let advanced = 0;
+        for (const [index, controller] of this.controllers) {
+            if (!controller.playerState.isGameOver && !this.multiplayerState.playerPaused?.[index]) {
+                advanced += controller.precomputeSearch(elapsedMs, tickMs);
+            }
+        }
+        return advanced;
     }
 
     update(deltaMs, nowMs) {
