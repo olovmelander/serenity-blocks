@@ -35,7 +35,9 @@ if (!hz) {
         const quantum = 1000 / 60;
         let credit = 0, render = 0;
         while (!state.isGameOver && state.simFrame < 3600) {
-            credit += render++ === 350 ? 50 : 1000 / Number(hz);
+            const elapsed = render++ === 350 ? 50 : 1000 / Number(hz);
+            credit += elapsed;
+            if (credit + 1e-7 < quantum) seat.precompute(elapsed, quantum);
             while (credit + 1e-7 >= quantum && !state.isGameOver && state.simFrame < 3600) {
                 credit = Math.max(0, credit - quantum);
                 if (state.simFrame === 850) seat.queue.enqueue(packet);

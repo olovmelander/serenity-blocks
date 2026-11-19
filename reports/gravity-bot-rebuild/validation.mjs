@@ -6,6 +6,7 @@ import { resolve } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
 import { play } from './run.mjs';
 import { liveOpening } from './live-openings.mjs';
+import { betweenTickFrames } from './recorded-seat.mjs';
 import { duel } from '../bot-ai-audit-2026-11/duel.mjs';
 import { localBotRoundSeed } from '../../src/core/ai/local-bot-manager.js';
 import { MultiPlayerState } from '../../src/core/multi-player-state.js';
@@ -110,9 +111,13 @@ async function perform(task) {
         };
         if (scheduled) {
             const actual = task.judgmentOdds || task.practicedSlots ? slotTier(tier, 0) : tier;
-            const result = liveOpening(seed, task.limit, false, mode === 'scheduledLegacy', actual, bot => configure(bot, tier), useLocalStyles);
+            const result = liveOpening(seed, task.limit, false, mode === 'scheduledLegacy', actual, bot => configure(bot, tier),
+                useLocalStyles, task.displayHz);
             return { ...result, tier };
         }
+        const afterFixedTick = task.displayHz > 60 && !mode.startsWith('legacy')
+            ? (manager, tick) => betweenTickFrames(task.displayHz, tick, (dt, tickMs) => manager.precomputeFixedSearch(dt, tickMs))
+            : undefined;
         const match = new MultiPlayerState(2);
         const fragTarget = task.fragTarget ?? 3;
         if (!Number.isInteger(fragTarget) || fragTarget < 1 || fragTarget > 100) throw Error('Expected a local frag target from 1 through 100');
@@ -121,7 +126,7 @@ async function perform(task) {
         for (let round = 1; round <= (fragRace ? 5 * fragTarget : 1); round++) {
             const roundSeed = localBotRoundSeed(seed, round);
             const game = task.prefixRounds?.[round - 1] ?? await duel(tier, roundSeed, swap, task.limit,
-                { live: !mode.startsWith('legacy'), fixed: true, configure, slotTier, seriesSeed: seed, useLocalStyles });
+                { live: !mode.startsWith('legacy'), fixed: true, configure, slotTier, seriesSeed: seed, useLocalStyles, afterFixedTick });
             if (game.seed !== roundSeed || game.low !== tier || game.swap !== swap) throw Error('Unmatched round prefix');
             rounds.push(game);
             if (!fragRace) return game;
@@ -175,7 +180,7 @@ if (process.send) {
         throw Error('Expected a local frag target from 1 through 100 and input races');
     }
     const readRows = path => readFileSync(path, 'utf8').trim().split('\n').filter(Boolean).map(JSON.parse);
-    const seriesKey = task => [task.mode,task.tier,task.seed,task.swap,
+    const seriesKey = task => [task.mode,task.tier,task.seed,task.swap,task.displayHz ?? 60,
         ...(task.practicedSlots || [])].join('/');
     const matches = inputs.flatMap(readRows);
     if (new Set(matches.map(r => seriesKey(r.task))).size !== matches.length) throw Error('Repeated starting race');
@@ -211,7 +216,7 @@ if (process.send) {
     const key = t => [t.mode, t.tier, t.seed, t.swap, t.limit, t.tempoSpread || 0, t.styleRange || 0,
         JSON.stringify(t.reactionMaxAdd || {}), JSON.stringify(t.nativeApm || {}), Boolean(t.steadyExpert),
         Boolean(t.centerJudgment), t.safeRoom ?? 0, Boolean(t.checkBeforeDrop),
-        JSON.stringify(t.judgmentOdds || {}), JSON.stringify(t.practicedSlots || []), t.fragTarget ?? 3].join('/');
+        JSON.stringify(t.judgmentOdds || {}), JSON.stringify(t.practicedSlots || []), t.fragTarget ?? 3, t.displayHz ?? 60].join('/');
     const done = new Set(existsSync(output) ? readFileSync(output, 'utf8').trim().split('\n').filter(Boolean)
         .map(line => key(JSON.parse(line).task)) : []);
     const file = openSync(output, 'a');

@@ -6,17 +6,20 @@ function signature(plan) {
     return JSON.stringify(plan.actions) + '/' + plan.candidate.rotation + '/' + plan.candidate.x + '/' + plan.candidate.y;
 }
 
-export function batch(fixtures, tier, units, hz, count, Controller = PuzzleBotController) {
+export function batch(fixtures, tier, units, hz, count, Controller = PuzzleBotController, fixed = null) {
     const times = [];
     const latencies = [];
     const choices = [];
     const work = [];
     const tickCounts = [];
     const frame = 1000 / hz;
+    const quantum = 1000 / 60;
+    let idleBatches = 0;
     for (const fixture of fixtures) {
         const bots = Array.from({ length: count }, (_, i) => {
             const accepted = () => true;
-            const bot = new Controller({ playerState: fixture.state, playerIndex: i, difficulty: tier, actions: {
+            const bot = new Controller({ playerState: fixed ? { ...fixture.state, useFixedCascade: true } : fixture.state,
+                precomputeBetweenTicks: fixed?.prepare, playerIndex: i, difficulty: tier, actions: {
                 moveLeft: accepted, moveRight: accepted, rotateLeft: accepted, rotateRight: accepted,
                 rotateFlip: accepted, softDrop: accepted, hardDrop: accepted },
                 configOverrides: tier === 8 ? { maxApm: 340, reactionMs: [150, 300] } : undefined,
@@ -35,18 +38,36 @@ export function batch(fixtures, tier, units, hz, count, Controller = PuzzleBotCo
             return bot;
         });
         let ticks = 0;
+        let credit = 0, simTicks = 0;
         const adopted = new Set();
         for (let tick = 0; tick < 1000; tick++) {
             const at = tick * frame;
             const before = bots.reduce((sum, b) => sum + b.visits, 0);
             const t0 = performance.now();
-            for (const bot of bots) if (!adopted.has(bot)) bot.update(frame, at);
+            let prepared = 0;
+            if (fixed) {
+                credit += frame;
+                if (credit + 1e-7 < quantum) {
+                    if (fixed.prepare) {
+                        for (const bot of bots) if (!adopted.has(bot)) prepared += bot.precomputeSearch(frame, quantum);
+                    }
+                } else {
+                    while (credit + 1e-7 >= quantum) {
+                        credit = Math.max(0, credit - quantum);
+                        simTicks++;
+                        for (const bot of bots) if (!adopted.has(bot)) bot.update(quantum, simTicks * quantum);
+                    }
+                }
+            } else {
+                for (const bot of bots) if (!adopted.has(bot)) bot.update(frame, at);
+            }
             const ms = performance.now() - t0;
-            if (before < bots.reduce((sum, b) => sum + b.visits, 0)) { times.push(ms); ticks++; }
+            idleBatches += prepared;
+            if (prepared || before < bots.reduce((sum, b) => sum + b.visits, 0)) { times.push(ms); ticks++; }
             for (const bot of bots) {
                 if (bot.lastPlan && !adopted.has(bot)) {
                     adopted.add(bot);
-                    latencies.push(Math.round(Math.max(0, at - bot.readyAtMs)));
+                    latencies.push(Math.round(Math.max(0, (fixed ? simTicks * quantum : at) - bot.readyAtMs)));
                 }
             }
             if (adopted.size === bots.length) break;
@@ -59,7 +80,8 @@ export function batch(fixtures, tier, units, hz, count, Controller = PuzzleBotCo
         tickCounts.push(ticks);
         choices.push(bots.map(b => signature(b.lastPlan)));
     }
-    return { tier, units, hz, count, times, latencies, work, tickCounts, choices };
+    return { tier, units, hz, count, times, latencies, work, tickCounts, choices,
+        ...(fixed ? { clock: 'fixed-local', prepare: fixed.prepare, idleBatches } : {}) };
 }
 
 export function sample(fixtures, repeat) {

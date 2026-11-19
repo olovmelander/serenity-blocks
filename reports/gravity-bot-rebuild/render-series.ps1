@@ -33,6 +33,7 @@ foreach ($pass in @(1, 2)) {
                 $arguments = @('reports/gravity-bot-rebuild/rendered-match.cjs', ('"' + $file + '"'), $seats, $seconds, $rate)
                 if ($replay) { $arguments += ('"' + $stem + '.json"') }
                 $game = Start-Process -FilePath $electron -ArgumentList $arguments -WorkingDirectory $root -PassThru -WindowStyle Hidden -RedirectStandardOutput "$name.log" -RedirectStandardError "$name.err"
+                $processHandle = $game.Handle
                 $game.WaitForExit()
                 if ($game.ExitCode -or !(Test-Path -LiteralPath $file)) { throw "Frame capture failed for $name" }
             }

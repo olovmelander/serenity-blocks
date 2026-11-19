@@ -9,6 +9,13 @@ import { applyLocalMultiplayerFixedCommand } from '../../src/core/game-modes/loc
 import { retireFixedCascade } from '../../src/core/physics.js';
 import { deal, spawn } from '../bot-ai-audit-2026-11/solo.mjs';
 
+// Display callbacks following a completed 60 Hz tick on an ideal refresh clock.
+export function betweenTickFrames(hz, tick, prepare) {
+    const first = Math.floor((tick - 1) * hz / 60);
+    const next = Math.floor(tick * hz / 60);
+    for (let frame = first + 1; frame < next; frame++) prepare(1000 / hz, 1000 / 60);
+}
+
 export function recordedSeat(tier, seed, onPieceLock, observers = {}) {
     const state = deal(seed);
     state.isSeeking = false;
@@ -44,6 +51,7 @@ export function recordedSeat(tier, seed, onPieceLock, observers = {}) {
         },
     };
     return { state, bot: manager.controllers.get(0), queue,
+        precompute: (elapsedMs, tickMs) => manager.precomputeFixedSearch(elapsedMs, tickMs),
         step: () => advanceTick(state, {
             advanceInput: context => manager.advanceFixedInput(0, context),
             applyInput: cmd => applyLocalMultiplayerFixedCommand(cmd, {

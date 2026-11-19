@@ -3,10 +3,10 @@
 import { appendFileSync, readFileSync, writeFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { calculateGarbage } from '../../src/core/garbage.js';
-import { recordedSeat } from './recorded-seat.mjs';
+import { betweenTickFrames, recordedSeat } from './recorded-seat.mjs';
 import { pose } from '../bot-ai-audit-2026-11/solo.mjs';
 
-export function liveOpening(seed, limit = 16, trace = false, control = false, tier = 10, configure, useLocalStyles = true) {
+export function liveOpening(seed, limit = 16, trace = false, control = false, tier = 10, configure, useLocalStyles = true, hz = 60) {
     const showBoards = trace === true;
     const track = [], labels = new Map();
     let latest, attack = 0, rejected = 0;
@@ -44,6 +44,7 @@ export function liveOpening(seed, limit = 16, trace = false, control = false, ti
         for (let tick = 0; tick < Math.max(36000, limit * 600) && !state.isGameOver; tick++) {
             const inputForPiece = inputs;
             const result = seat.step();
+            if (hz > 60 && !control) betweenTickFrames(hz, result.tick, seat.precompute);
             for (const { command, disposition } of result.input) {
                 rejected += Number(disposition !== 'applied');
                 if (showBoards) inputForPiece.push({ type: command.action, dir: command.value ?? undefined, tick: result.tick, disposition });
@@ -63,9 +64,10 @@ export function liveOpening(seed, limit = 16, trace = false, control = false, ti
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-    const [cohort, out, limit = '16', policy] = process.argv.slice(2);
+    const [cohort, out, limit = '16', policy, hz = '60'] = process.argv.slice(2);
     const seeds = cohort.includes('+') ? Array.from({ length: +cohort.split('+')[1] }, (_, i) => +cohort.split('+')[0] + i)
         : readFileSync(cohort, 'utf8').trim().split(/\s+/).map(Number);
     writeFileSync(out, '', { flag: 'wx' });
-    for (const seed of seeds) appendFileSync(out, JSON.stringify(liveOpening(seed, +limit, false, policy === 'control')) + '\n');
+    for (const seed of seeds) appendFileSync(out, JSON.stringify(
+        liveOpening(seed, +limit, false, policy === 'control', 10, undefined, true, Number(hz))) + '\n');
 }

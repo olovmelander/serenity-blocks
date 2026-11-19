@@ -68,18 +68,45 @@ async function sample() {
         byTick.get(key).push(item[3]);
     }
     let bucket = 0, updateCost = 0, didPlan = false, actions = 0, frames = 0, prior = 0;
-    const overBudget = [], nearTwoFrames = [];
+    const overBudget = [], nearTwoFrames = [], idleSchedule = [], planningTickFrames = [];
+    const tickPlanningCosts = [], idlePlanningCosts = [];
     let calls = 0, peak = 0, peakStart = 0, slowest;
+    let inputTick = 0;
+    let tickCost = 0, idleCost = 0;
+    let idleCalls = 0, idleUnits = 0, idleFrames = 0, idleMs = 0, frameIdleCalls = 0, slowestWasIdle = false;
     let maxExecutionUpdate = 0, executionOverFrame = 0;
     const observedManagers = new WeakSet();
+    const roundTick = () => {
+        const loop = mode._localSimulationLoop;
+        return loop?.fixedRuntime ? loop.fixedRuntime.simFrame - loop.roundStartSimFrame : mode.multiplayerState.players[0].simFrame;
+    };
     const setup = mode._setupLocalBots.bind(mode);
     mode._setupLocalBots = () => {
         setup();
         const bots = mode.botManager;
         if (!observedManagers.has(bots)) {
             observedManagers.add(bots);
+            if (bots.precomputeFixedSearch) {
+                const precompute = bots.precomputeFixedSearch.bind(bots);
+                bots.precomputeFixedSearch = (...args) => {
+                    if (replayTape) return 0;
+                    const start = performance.now();
+                    const advanced = precompute(...args);
+                    const ms = performance.now() - start;
+                    updateCost += ms;
+                    if (advanced) {
+                        didPlan = true;
+                        bucket += ms; calls++; frameIdleCalls++; idleCalls++; idleUnits += advanced; idleMs += ms;
+                        idleCost += ms;
+                        idleSchedule.push([round, roundTick(), ...args, advanced, frames]);
+                        if (ms > peak) { peak = ms; peakStart = start; slowest = null; slowestWasIdle = true; }
+                    }
+                    return advanced;
+                };
+            }
             const advance = bots.advanceFixedInput.bind(bots);
             bots.advanceFixedInput = (index, context) => {
+                inputTick = context.tick;
                 if (replayTape) {
                     for (const command of byTick.get([round, index, context.tick].join('/')) || []) context.emit(command);
                 } else {
@@ -98,11 +125,15 @@ async function sample() {
             const stepPlan = bot.stepSlicedPlan.bind(bot);
             bot.stepSlicedPlan = (...args) => {
                 didPlan = true;
+                const last = planningTickFrames.at(-1);
+                if (!last || last[0] !== round || last[1] !== inputTick) {
+                    planningTickFrames.push([round, inputTick, frames]);
+                }
                 const start = performance.now(); try { return stepPlan(...args); }
                 finally {
                     const ms = performance.now() - start;
-                    bucket += ms; calls++;
-                    if (ms > peak) { peak = ms; peakStart = start; slowest = bot; }
+                    bucket += ms; tickCost += ms; calls++;
+                    if (ms > peak) { peak = ms; peakStart = start; slowest = bot; slowestWasIdle = false; }
                 }
             };
             const update = bot.update.bind(bot);
@@ -130,20 +161,25 @@ async function sample() {
     const start = performance.now();
     await new Promise(resolveSample => {
         function frame(now) {
+            const simTick = roundTick();
             if (prior) intervals.push(now - prior);
             if (prior && now - prior > 2000 / targetHz + 0.25) {
-                stalls.push([frames, round, mode.multiplayerState.players[0].simFrame, now - prior, bucket, updateCost]);
+                stalls.push([frames, round, simTick, now - prior, bucket, updateCost]);
             } else if (prior && now - prior >= 2000 / targetHz - 0.25) {
-                nearTwoFrames.push([frames, round, mode.multiplayerState.players[0].simFrame, now - prior, bucket, updateCost]);
+                nearTwoFrames.push([frames, round, simTick, now - prior, bucket, updateCost]);
             }
             if (didPlan) { times.push(bucket); activeUpdates.push(updateCost); }
             else {
                 maxExecutionUpdate = Math.max(maxExecutionUpdate, updateCost);
                 executionOverFrame += Number(updateCost > 1000 / targetHz);
             }
-            if (bucket > 1000 / targetHz) overBudget.push(overBudgetFrame(
-                frames, round, mode.multiplayerState.players[0].simFrame, bucket, updateCost, calls, peak, peakStart, slowest));
-            calls = 0; peak = 0; slowest = null;
+            if (calls > frameIdleCalls) tickPlanningCosts.push(tickCost);
+            if (frameIdleCalls) { idleFrames++; idlePlanningCosts.push(idleCost); }
+            if (bucket > 1000 / targetHz) overBudget.push({ ...overBudgetFrame(
+                frames, round, simTick, bucket, updateCost, calls, peak, peakStart, slowest),
+                idleCalls: frameIdleCalls, longestOrigin: slowestWasIdle ? 'between-ticks' : 'tick' });
+            calls = 0; peak = 0; slowest = null; frameIdleCalls = 0; slowestWasIdle = false;
+            tickCost = 0; idleCost = 0;
             bucket = 0; updateCost = 0; didPlan = false; prior = now; frames++;
             if (now - start < duration * 1000) requestAnimationFrame(frame); else resolveSample();
         }
@@ -151,6 +187,8 @@ async function sample() {
     });
     return { frames, actions, times, activeUpdates, lateness, recoveries, intervals, inputs, checks, stalls, replay: Boolean(replayTape),
         elapsed: performance.now() - start, rounds: round, maxExecutionUpdate, executionOverFrame, overBudget, nearTwoFrames,
+        idleCalls, idleUnits, idleFrames, idleMs, idleSchedule, planningTickFrames, botCount, tickPlanningCosts, idlePlanningCosts,
+        idleScheduleClock: 'round',
         clock: mode._localSimulationLoop?.simulationClock, boards: mode.multiplayerState?.numPlayers,
         canvases: document.querySelectorAll('canvas').length, requestedHz: targetHz };
 }
