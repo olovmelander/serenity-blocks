@@ -32,6 +32,11 @@
  * clear's breath are taken up where they stand by the next one (spring-core.js Rejoin, the shared
  * Swell), so fast play builds on what is lit instead of blinking it out.
  *
+ * and the river's own life (spring-fish.js): salmon leap in the plunge pool and up the rapids'
+ * ledges, trout jump in the pool's tail and the calmer runs below the bend, each with a splash as
+ * it leaves the water and as it falls back; when play runs hot the salmon run comes on, and more
+ * of them leap.
+ *
  * and the air over it all (spring-air.js, spring-motes.js): willow down and pollen drift on the
  * breeze; a lock shakes the piece's own pollen out of its patch and puffs the air round it; a
  * clear lifts pollen and down off the knoll in the cleared rows' colours and sends a breath out
@@ -89,6 +94,7 @@ import { MOTE_KIND, Motes } from './spring-motes.js';
 import { AIR, SpringAir } from './spring-air.js';
 import { Mist } from './spring-mist.js';
 import { Floes } from './spring-floes.js';
+import { Fish, leapPose } from './spring-fish.js';
 import { Flights, VISITS, visitAt } from './spring-flights.js';
 import { cardUnion, fallbackLayout } from './spring-composition.js';
 
@@ -263,6 +269,8 @@ export const FLOOD = Object.freeze({
  *   warm             the sunlight warms toward gold (at full fever; the level adds 0.4 of it)
  *   nudge            the lens dips this far (deg) at a punch of 1 (not under reduced motion)
  *   flightGap        cranes come over at most this often (s) when play breaks into a fever
+ *   leaps            the salmon run: salmon leaping a second at the fall and up the ledges over
+ *                    the clock's own (not under reduced motion)
  */
 export const HEAT = Object.freeze({
     flood: 0.3,
@@ -301,6 +309,8 @@ export const HEAT = Object.freeze({
     warm: 0.3,
     nudge: 0.16,
     flightGap: 30,
+    leaps: 0.04,
+    leapsFever: 0.22,
 });
 
 let BAKED = null;
@@ -638,14 +648,21 @@ export class SpringWorld {
         this.burstScale = clamp(Math.sqrt(tier.motes / MOTES_REFERENCE), 0.55, 1.35);
         this.mist = new Mist(this.u, this.textures, tier.mist);
         this.floes = new Floes(this.u, tier.floes);
+        // Salmon and trout leaping in the river, each throwing its splash as it leaves the water.
+        this.fish = new Fish(this.u, { count: tier.fish, onLeap: (leap) => this.leapSplash(leap) });
+        this._leapPose = {};
         // Three flights at once: a perfect clear's swans, a level-up's cranes and a fever's.
         this.flights = new Flights(this.u, { slots: 3 });
         this.addPart('fx', {
             mesh: this.motes.mesh,
-            meshes: [this.mist.mesh, this.air.mesh, this.motes.mesh, this.floes.mesh, ...this.flights.meshes],
+            meshes: [
+                this.mist.mesh, this.air.mesh, this.motes.mesh, this.floes.mesh, ...this.fish.meshes,
+                ...this.flights.meshes,
+            ],
             reset: () => {
                 this.motes.clear();
                 this.floes.clear();
+                this.fish.reset(this.time);
                 this.flights.clear();
             },
             dispose: () => {
@@ -653,6 +670,7 @@ export class SpringWorld {
                 this.air.dispose();
                 this.mist.dispose();
                 this.floes.dispose();
+                this.fish.dispose();
                 this.flights.dispose();
             },
         });
@@ -1390,6 +1408,48 @@ export class SpringWorld {
     }
 
     /**
+     * A leaping fish's splash: water thrown up with it as it leaves the river, and a crown of
+     * drops where it falls back (thrown now, the second still to come). Each leap's own seed deals
+     * its drops, so a moment shown again splashes the same; the ring sizes them by its room.
+     */
+    leapSplash(leap) {
+        if (!this.motes || !this.ground) return;
+        const r = mulberry32(leap.seed);
+        const power = clamp(leap.length, 0.35, 1.3);
+        for (const age of [0, leap.T]) {
+            const leaving = age === 0;
+            const pose = leapPose(leap, age, this.flood, this._leapPose);
+            const y = (leaving ? leap.level0 : leap.level1) + this.flood + 0.04;
+            const distance = Math.hypot(pose.x - EYE.x, y - EYE.y, pose.z - EYE.z);
+            const scale = clamp(distance / 14, 0.7, 3);
+            const count = this.grant(Math.round((leaving ? 8 : 14) * (0.5 + power) * this.burstScale));
+            // (The water leaving with it is thrown on along its way; the fall back's crown all round.)
+            const along = Math.hypot(pose.fx, pose.fz) || 1;
+            const drag = leaving ? leap.speed * 0.6 : 0;
+            for (let i = 0; i < count; i++) {
+                const a = r() * TAU;
+                const out = (0.3 + r() * 1.1) * power;
+                this.motes.spawn({
+                    x: pose.x + Math.cos(a) * r() * 0.25 * power,
+                    y,
+                    z: pose.z + Math.sin(a) * r() * 0.25 * power,
+                    vx: Math.cos(a) * out + (pose.fx / along) * drag,
+                    vy: (leaving ? 2.4 : 1.7) + r() * 2.2 * Math.sqrt(power),
+                    vz: Math.sin(a) * out + (pose.fz / along) * drag,
+                    born: leap.at + age + r() * 0.06,
+                    life: 0.5 + r() * 0.5,
+                    size: 0.028 * scale * (0.7 + r() * 0.6),
+                    rgb: [0.9, 0.95, 1.0],
+                    kind: MOTE_KIND.dew,
+                    seed: r(),
+                    drift: 0,
+                    gravity: -9.8,
+                });
+            }
+        }
+    }
+
+    /**
      * A surge of white water down the rapids from the pool (power ~1 a line). It takes the surge
      * with the least left of it (faded furthest down the river), never one still to set out.
      */
@@ -1842,6 +1902,9 @@ export class SpringWorld {
         this.updatePost(camera);
         this.motes?.update();
         this.floes?.update(time, this.flood);
+        // Fish leap by the clock; hot play brings the salmon run on.
+        const run = this.reducedMotion ? 0 : HEAT.leaps * level + HEAT.leapsFever * fever;
+        this.fish?.update(time, this.flood, run, dt);
         this.flights?.update(time);
         for (const part of this.partList) part.update?.(time, dt, this);
     }
@@ -1949,6 +2012,7 @@ export class SpringWorld {
             gust: this.u.gust.value,
             bow: this.u.bow.value,
             floes: this.floes?.live ?? 0,
+            fish: this.fish?.airborne ?? 0,
             air: { clock: this.airClock, gyre: this.airGyre, stir: this.stir },
             // The woods' impostor atlas: kept (every tree drawn into it), and the bakes it took.
             woods: this.impostors ? {
