@@ -4,7 +4,7 @@ const { app, BrowserWindow } = require('electron');
 const { createHash } = require('node:crypto');
 const { mkdtempSync, readFileSync, writeFileSync } = require('node:fs');
 const { join, resolve } = require('node:path');
-const { cpus, tmpdir } = require('node:os');
+const { cpus, getPriority, tmpdir } = require('node:os');
 const { pathToFileURL } = require('node:url');
 
 app.setPath('userData', mkdtempSync(join(tmpdir(), 'serenity-bot-match-')));
@@ -328,7 +328,8 @@ app.whenReady().then(async () => {
     const graphics = await app.getGPUInfo('complete');
     data.gpu = graphics.gpuDevice;
     data.runtime = { electron: process.versions.electron, chromium: process.versions.chrome,
-        cpu: cpus()[0].model, renderer: graphics.auxAttributes?.glRenderer };
+        cpu: cpus()[0].model, renderer: graphics.auxAttributes?.glRenderer,
+        mainPriority: getPriority(0), rendererPriority: getPriority(win.webContents.getOSProcessId()) };
     if (repeatRivals) data.runtime.focusEmulated = focusEmulated;
     data.buildManifestSha256 = createHash('sha256').update(readFileSync(join(build, 'manifest.json'))).digest('hex');
     writeFileSync(out, JSON.stringify(data), { flag: 'wx' });

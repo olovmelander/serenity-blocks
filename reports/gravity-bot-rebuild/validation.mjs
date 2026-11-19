@@ -3,6 +3,7 @@
 import { appendFileSync, closeSync, existsSync, openSync, readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { resolve } from 'node:path';
+import { isDeepStrictEqual } from 'node:util';
 import { play } from './run.mjs';
 import { liveOpening } from './live-openings.mjs';
 import { duel } from '../bot-ai-audit-2026-11/duel.mjs';
@@ -113,11 +114,15 @@ async function perform(task) {
             return { ...result, tier };
         }
         const match = new MultiPlayerState(2);
-        match.matchConfig = { ...match.matchConfig, endCondition: 'frags', endConditionValue: 3 };
+        const fragTarget = task.fragTarget ?? 3;
+        if (!Number.isInteger(fragTarget) || fragTarget < 1 || fragTarget > 100) throw Error('Expected a local frag target from 1 through 100');
+        match.matchConfig = { ...match.matchConfig, endCondition: 'frags', endConditionValue: fragTarget };
         const rounds = [];
-        for (let round = 1; round <= (fragRace ? 15 : 1); round++) {
-            const game = await duel(tier, localBotRoundSeed(seed, round), swap, task.limit,
+        for (let round = 1; round <= (fragRace ? 5 * fragTarget : 1); round++) {
+            const roundSeed = localBotRoundSeed(seed, round);
+            const game = task.prefixRounds?.[round - 1] ?? await duel(tier, roundSeed, swap, task.limit,
                 { live: !mode.startsWith('legacy'), fixed: true, configure, slotTier, seriesSeed: seed, useLocalStyles });
+            if (game.seed !== roundSeed || game.low !== tier || game.swap !== swap) throw Error('Unmatched round prefix');
             rounds.push(game);
             if (!fragRace) return game;
             if (!game.lost.some(Boolean)) return { winner: null, censored: 'round-time', frags: match.frags, rounds };
@@ -152,7 +157,7 @@ if (process.send) {
                 const scorer = round.attackers[index];
                 if (lost && scorer === 1 - index) frags[scorer]++;
             });
-            leader = resolveLocalMatchEnd({ endCondition: 'frags', endConditionValue: 3 },
+            leader = resolveLocalMatchEnd({ endCondition: 'frags', endConditionValue: task.fragTarget ?? 3 },
                 round.tiers.map((tier, index) => ({ result: tier, frags: frags[index] })), 0);
         }
         if ((leader === 'draw' ? null : leader) !== row.winner || frags.some((value, i) => value !== row.frags[i])) {
@@ -160,6 +165,44 @@ if (process.send) {
         }
     }
     writeFileSync(output, JSON.stringify({ matches: matches.length, rounds, matched: true }), { flag: 'wx' });
+} else if (process.argv[2] === 'extend-frags') {
+    // Each full round starts on a fresh well with the same series style and a
+    // round-derived deal. Recover the scoreboard from real smaller-target rounds,
+    // then play every remaining round through the ordinary local manager.
+    const [poolFile, target, output, workers, ...inputs] = process.argv.slice(3);
+    const fragTarget = Number(target);
+    if (!Number.isInteger(fragTarget) || fragTarget < 1 || fragTarget > 100 || !inputs.length) {
+        throw Error('Expected a local frag target from 1 through 100 and input races');
+    }
+    const readRows = path => readFileSync(path, 'utf8').trim().split('\n').filter(Boolean).map(JSON.parse);
+    const seriesKey = task => [task.mode,task.tier,task.seed,task.swap,
+        ...(task.practicedSlots || [])].join('/');
+    const matches = inputs.flatMap(readRows);
+    if (new Set(matches.map(r => seriesKey(r.task))).size !== matches.length) throw Error('Repeated starting race');
+    const previous = existsSync(output) ? readRows(output) : [];
+    const sources = new Map(matches.map(record => [seriesKey(record.task), record]));
+    for (const completed of previous) {
+        const source = sources.get(seriesKey(completed.task));
+        if (!source || !isDeepStrictEqual(completed.task, { ...source.task, fragTarget })
+            || !isDeepStrictEqual(completed.row.rounds.slice(0, source.row.rounds.length), source.row.rounds)) {
+            throw Error('Existing continuation differs from the supplied series or its recorded rounds');
+        }
+    }
+    const done = new Set(previous.map(r => seriesKey(r.task)));
+    if (done.size !== previous.length) throw Error('Repeated continuation in output');
+    const { createPool } = await import(pathToFileURL(resolve(poolFile)));
+    const pool = createPool(Number(workers), fileURLToPath(import.meta.url), process.env);
+    const file = openSync(output, 'a');
+    try {
+        await Promise.all(matches.filter(r => !done.has(seriesKey(r.task))).map(async ({ task, row }) => {
+            if (!['frags','legacyFrags'].includes(task.mode) || !row.rounds?.length || fragTarget <= (task.fragTarget ?? 3)) {
+                throw Error('Expected a completed smaller-target race');
+            }
+            const fullTask = { ...task, fragTarget };
+            const full = await pool.run({ ...fullTask, prefixRounds: row.rounds });
+            appendFileSync(file, JSON.stringify({ task: fullTask, row: full }) + '\n');
+        }));
+    } finally { pool.close(); closeSync(file); }
 } else {
     const [poolFile, mode, tiersArg, start, count, limit, output, concurrency = '3', tempoSpread = '0', styleRange = '0', optionFile] = process.argv.slice(2);
     const options = optionFile ? JSON.parse(readFileSync(optionFile, 'utf8')) : {};
@@ -168,7 +211,7 @@ if (process.send) {
     const key = t => [t.mode, t.tier, t.seed, t.swap, t.limit, t.tempoSpread || 0, t.styleRange || 0,
         JSON.stringify(t.reactionMaxAdd || {}), JSON.stringify(t.nativeApm || {}), Boolean(t.steadyExpert),
         Boolean(t.centerJudgment), t.safeRoom ?? 0, Boolean(t.checkBeforeDrop),
-        JSON.stringify(t.judgmentOdds || {}), JSON.stringify(t.practicedSlots || [])].join('/');
+        JSON.stringify(t.judgmentOdds || {}), JSON.stringify(t.practicedSlots || []), t.fragTarget ?? 3].join('/');
     const done = new Set(existsSync(output) ? readFileSync(output, 'utf8').trim().split('\n').filter(Boolean)
         .map(line => key(JSON.parse(line).task)) : []);
     const file = openSync(output, 'a');

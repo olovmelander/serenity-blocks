@@ -6,32 +6,37 @@ import { resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { seededRandom } from '../../src/utils/helpers.js';
 
-const [poolPath, output, argument, extension] = process.argv.slice(2);
+const [poolPath, output, argument, extension, ...prefixFiles] = process.argv.slice(2);
 const fraction = Array.from({ length: 21 }, (_, i) => i / 20);
-function fit(rows) {
+const styleKey = task => [task.seed,task.tier,task.swap,...task.practicedSlots].join('/');
+const readRows = file => readFileSync(file, 'utf8').trim().split('\n').map(JSON.parse);
+function fit(rows, shorter = null, fixedRates = null) {
     if (![2176,4480].includes(rows.length)) throw Error('Incomplete judgment training panel');
     const cells = new Map();
     for (const { task, row } of rows) {
         const [low, high] = task.swap ? [...task.practicedSlots].reverse() : task.practicedSlots;
         const key = [task.tier, Number(low), Number(high)].join('/');
-        const sample = cells.get(key) || { n: 0, sums: [0, 0] };
         const first = row.rounds[0];
         const wins = [first.ticksPlayed <= 9000 ? first.winner : null, row.winner];
+        if (shorter) wins.splice(1, 0, shorter.get(styleKey(task)).winner);
+        const sample = cells.get(key) || { n: 0, sums: wins.map(() => 0) };
         wins.forEach((winner, i) => { sample.sums[i] += winner == null ? 0.5 : Number(winner === task.tier + 1); });
         sample.n++;
         cells.set(key, sample);
     }
-    let paths = new Map(fraction.map(p => [p, { rates: [p], misses: 0, loss: 0, panel: [] }]));
+    const firstOdds = fixedRates ? [fixedRates[0]] : fraction;
+    let paths = new Map(firstOdds.map(p => [p, { rates: [p], misses: 0, loss: 0, panel: [] }]));
     for (let tier = 1; tier < 10; tier++) {
         const next = new Map();
-        for (const high of (tier === 9 ? [0] : fraction)) for (const [low, previous] of paths) {
-            const mean = [0, 0];
+        const upperOdds = fixedRates ? [fixedRates[tier]] : (tier === 9 ? [0] : fraction);
+        for (const high of upperOdds) for (const [low, previous] of paths) {
+            const mean = shorter ? [0, 0, 0] : [0, 0];
             for (const l of [0, 1]) for (const h of (tier === 9 ? [0] : [0, 1])) {
                 const cell = cells.get([tier, l, h].join('/'));
                 const expected = rows.length === 2176 ? 64 : tier === 9 ? 192 : 128;
                 if (cell?.n !== expected) throw Error('Incomplete matched style cell');
                 const mass = (l ? low : 1-low) * (h ? high : 1-high);
-                for (let i = 0; i < 2; i++) mean[i] += mass * cell.sums[i] / cell.n;
+                for (let i = 0; i < mean.length; i++) mean[i] += mass * cell.sums[i] / cell.n;
             }
             const outside = mean.map(p => Math.max(0, 0.55-p, p-0.70));
             const misses = previous.misses + outside.filter(d => d > 0).length;
@@ -48,18 +53,31 @@ function fit(rows) {
     return { ...best, judgmentOdds: Object.fromEntries(best.rates.map((p, i) => [i + 1, p])),
         steadyExpert: true, nativeApm, safeRoom, checkBeforeDrop };
 }
-if (poolPath === 'select') {
+if (poolPath === 'default-seven') {
+    const races = readRows(output);
+    const shorter = new Map(prefixFiles.flatMap(readRows).map(r => [styleKey(r.task),r.row]));
+    if (races.length !== 4480 || shorter.size !== races.length) throw Error('Incomplete default-match training panel');
+    for (const {task,row} of races) {
+        const prefix = shorter.get(styleKey(task));
+        if (task.fragTarget !== 7 || !prefix
+            || JSON.stringify(row.rounds.slice(0, prefix.rounds.length)) !== JSON.stringify(prefix.rounds)) {
+            throw Error('Changed real rounds in the default-match comparison');
+        }
+    }
+    const committed = JSON.parse(readFileSync(extension,'utf8')).rates;
+    const result = { committed: fit(races, shorter, committed), optimumOnTraining: fit(races, shorter) };
+    writeFileSync(argument, JSON.stringify(result, null, 2), { flag: 'wx' });
+} else if (poolPath === 'select') {
     const files = extension ? [output, extension] : [output];
-    const rows = files.flatMap(name => readFileSync(name, 'utf8').trim().split('\n').map(JSON.parse));
+    const rows = files.flatMap(readRows);
     writeFileSync(argument, JSON.stringify(fit(rows), null, 2), { flag: 'wx' });
 } else {
     const hands = argument ? JSON.parse(readFileSync(argument, 'utf8')) : { safeRoom: 10 };
     const spread = hands.checkBeforeDrop ? -1.65 : -1.15;
     const { createPool } = await import(pathToFileURL(resolve(poolPath)));
     const pool = createPool(4, fileURLToPath(new URL('./validation.mjs', import.meta.url)), process.env);
-    const key = t => [t.seed,t.tier,t.swap,...t.practicedSlots].join('/');
     const done = new Set(existsSync(output) ? readFileSync(output,'utf8').trim().split('\n').filter(Boolean)
-        .map(line => key(JSON.parse(line).task)) : []);
+        .map(line => styleKey(JSON.parse(line).task)) : []);
     const file = openSync(output, 'a');
     const jobs = [];
     try {
@@ -84,7 +102,7 @@ if (poolPath === 'select') {
                 for (const swap of [false,true]) {
                     const task = { ...hands, mode: 'frags', tier, seed, swap, limit: 600, tempoSpread: spread,
                         steadyExpert: true, practicedSlots: swap ? [high, low] : [low, high] };
-                    if (!done.has(key(task))) jobs.push(pool.run(task).then(row =>
+                    if (!done.has(styleKey(task))) jobs.push(pool.run(task).then(row =>
                         appendFileSync(file, JSON.stringify({ task, row }) + '\n')));
                 }
             }

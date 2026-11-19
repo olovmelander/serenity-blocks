@@ -8,12 +8,16 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+# The rendered game uses its ordinary desktop priority even when a background
+# fit coordinator launches the measurement script.
+[System.Diagnostics.Process]::GetCurrentProcess().PriorityClass = 'Normal'
 $root = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
 $electron = Join-Path $root 'node_modules/electron/dist/electron.exe'
 $env:SERENITY_BOT_BUILD = (Resolve-Path -LiteralPath $BuildDirectory).Path
 Remove-Item Env:ELECTRON_RUN_AS_NODE -ErrorAction SilentlyContinue
 Remove-Item Env:SERENITY_BOT_RIVAL_CONFIG -ErrorAction SilentlyContinue
 Remove-Item Env:SERENITY_BOT_TIERS -ErrorAction SilentlyContinue
+Remove-Item Env:SERENITY_BOT_CPU_PROFILE -ErrorAction SilentlyContinue
 $dest = [System.IO.Directory]::CreateDirectory($OutputDirectory).FullName
 foreach ($pass in @(1, 2)) {
     $otherRate = if ($FirstRate -eq 60) { 165 } else { 60 }
