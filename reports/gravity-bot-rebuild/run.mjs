@@ -2,7 +2,7 @@
 import { appendFileSync, readFileSync, writeFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { performance } from 'node:perf_hooks';
-import { deal, pose, replay, spawn } from '../bot-ai-audit-2026-11/solo.mjs';
+import { canMatchWaves, deal, pose, replay, spawn } from '../bot-ai-audit-2026-11/solo.mjs';
 import { PuzzleBotController } from '../../src/core/ai/puzzle-bot-controller.js';
 import { GravityBotController } from '../../src/core/ai/gravity-bot-controller.js';
 import { GRAVITY_WEIGHTS } from '../../src/core/ai/gravity-search.js';
@@ -13,19 +13,43 @@ export async function play(seed, tier, limit, options = {}) {
     const state = deal(seed), decisions = seededRandom((seed ^ 0x85ebca6b) >>> 0);
     const Controller = options.legacy ? PuzzleBotController : GravityBotController;
     const bot = new Controller({ playerState: state, difficulty: tier, playerIndex: 0, actions: {}, rng: decisions,
-        searchConfig: options.search, weights: { ...GRAVITY_WEIGHTS, ...options.weights } });
+        searchConfig: options.search, planUnitsPerMs: options.units, weights: { ...GRAVITY_WEIGHTS, ...options.weights } });
     const waves = [], fires = [], track = [], times = [];
     let attack = 0, lines = 0, later = 0, forecast = 0, mismatches = 0, wave = [], queue = [];
     const labels = new Map();
-    const callbacks = { spawnPiece: () => spawn(state), onLineClear: n => wave.push(n),
+    let priorSlip = null, currentSlip = null, mistakeEnabled = 0, opportunity = 0;
+    if (options.attribution) {
+        const select = bot.chooseSelection.bind(bot);
+        bot.chooseSelection = (ranked, full, tactics) => {
+            const choice = select(ranked, full, tactics);
+            const first = ranked[0];
+            if (ranked.indexOf(choice) > 0 && !first.totalLines && !choice.totalLines) currentSlip = first.boardGrid;
+            return choice;
+        };
+    }
+    let waveBoards = [];
+    const visibleRows = () => {
+        const rows = state.boardGrid.map(row => row.map(cell => {
+            if (!cell) return '.';
+            if (!labels.has(cell.id)) labels.set(cell.id, String.fromCharCode(65 + labels.size % 26));
+            return labels.get(cell.id);
+        }).join(''));
+        const top = rows.findIndex(r => /[^.]/.test(r));
+        return top < 0 ? [] : rows.slice(top);
+    };
+    const callbacks = { spawnPiece: () => spawn(state), onLineClear: n => {
+        wave.push(n); if (options.trace) waveBoards.push(visibleRows());
+    },
         onGarbageReady: s => { attack += calculateGarbage(s).getTotalLines(); } };
     for (let lock = 0; lock < limit && !state.isGameOver; lock++) {
+        currentSlip = null;
+        const piece = options.attribution ? { ...state.currentPiece } : null;
         const before = state.score, start = performance.now(), plan = bot.plan();
         times.push(performance.now() - start);
         if (!plan) throw Error('No legal plan, seed ' + seed + ' lock ' + lock);
         const c = plan.candidate;
         queue = queue.filter(item => item.steps.shift() === pose(c));
-        wave = [];
+        wave = []; waveBoards = [];
         await replay(state, plan.actions, callbacks);
         if (wave.length !== c.cascadeCount || (c.waves && !options.legacy
             && (wave.join() !== c.waves.map(w => w.lineCount ?? w).join() || c.score !== state.score - before - 50))) mismatches++;
@@ -33,7 +57,13 @@ export async function play(seed, tier, limit, options = {}) {
         later += total - (wave[0] || 0);
         lines += total;
         waves[wave.length] = (waves[wave.length] || 0) + 1;
-        forecast += Number(wave.length >= 2 && queue.some(q => q.steps.length === 0 && q.depth === wave.length));
+        const predicted = wave.length >= 2 && queue.some(q => q.steps.length === 0 && q.depth === wave.length);
+        forecast += Number(predicted);
+        if (options.attribution && wave.length >= 2 && !predicted) {
+            if (priorSlip && !canMatchWaves(priorSlip, piece, wave.length)) mistakeEnabled++;
+            else opportunity++;
+        }
+        priorSlip = currentSlip;
         queue = queue.filter(q => q.steps.length);
         if (!wave.length) {
             const steps = [];
@@ -46,19 +76,18 @@ export async function play(seed, tier, limit, options = {}) {
             }
         } else fires.push([lock + 1, ...wave]);
         if (options.trace) {
-            const rows = state.boardGrid.map(row => row.map(cell => {
-                if (!cell) return '.';
-                if (!labels.has(cell.id)) labels.set(cell.id, String.fromCharCode(65 + labels.size % 26));
-                return labels.get(cell.id);
-            }).join(''));
+            const expected = [];
+            for (let future = c.futurePlan; future?.candidate; future = future.child) {
+                expected.push({ pose: pose(future.candidate), waves: future.candidate.cascadeCount });
+            }
             track.push({ lock: lock + 1, shape: c.shapeKey, x: c.x, y: c.y, rotation: c.rotation,
-                inputs: plan.actions, waves: wave, rows: rows.slice(rows.findIndex(r => /[^.]/.test(r)) < 0
-                    ? rows.length : rows.findIndex(r => /[^.]/.test(r))), score: state.score, attack });
+                inputs: plan.actions, expected, waves: wave, waveBoards, rows: visibleRows(), score: state.score, attack });
         }
     }
     const result = { seed, tier, locks: times.length, fires, waves, lines, later, forecast, score: state.score,
         attack, mismatches, topOut: state.isGameOver, ms: Math.round(times.reduce((a, b) => a + b, 0)) };
     if (options.trace) result.track = track;
+    if (options.attribution) Object.assign(result, { mistakeEnabled, opportunity });
     state.reset();
     return result;
 }

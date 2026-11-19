@@ -6,6 +6,7 @@ import { findConnectedComponents } from '../cascade-helpers.js';
 import { settleLabelledBoard } from '../stillfall/stillfall-cascade.js';
 import { seededRandom } from '../../utils/helpers.js';
 import { GravityBotController, gravityPlanningRate } from './gravity-bot-controller.js';
+import { LocalBotManager, localBotRoundSeed } from './local-bot-manager.js';
 import { findReachablePlacements } from './reachability-pathfinder.js';
 import {
     gravityBoardKey, gravityReward, reachableTrigger, readGravityBoard,
@@ -19,6 +20,82 @@ function controller(state, rows = () => 0) {
 }
 
 describe('live gravity policy', () => {
+    it('keeps each local seat’s pace across round resets, including series seed zero', () => {
+        const players = [deal(0), deal(0), deal(0)];
+        const match = { numPlayers: players.length, sharedPieceSeed: 0, players };
+        const manager = new LocalBotManager({ multiplayerState: match, actionFactory: () => ({}) });
+        const slots = [4, 4, 10].map((difficulty) => ({ kind: 'bot', difficulty }));
+        const styles = () => [...manager.controllers.values()].map((bot) => [bot.config.tier, bot.localPace?.scale]);
+        manager.configure(slots, 0);
+        const opening = styles();
+        expect(opening[0][1]).toBeGreaterThan(0);
+        expect(opening[0][1]).not.toBe(opening[1][1]);
+        expect(opening[2]).toEqual([10, undefined]);
+        match.sharedPieceSeed = localBotRoundSeed(0, 2);
+        manager.configure(slots, 0);
+        expect(styles()).toEqual(opening);
+        manager.configure(slots, match.sharedPieceSeed);
+        expect(styles()[0][1]).not.toBe(opening[0][1]);
+        players[1].isInfinityMode = true;
+        manager.configure(slots, 0);
+        expect(styles()[1]).toEqual([4, undefined]);
+        manager.destroy();
+        players.forEach((state) => state.reset());
+    });
+
+    it('budgets only the seats occupying the local match', () => {
+        const player = deal(1006);
+        const manager = new LocalBotManager({
+            multiplayerState: { numPlayers: 2, sharedPieceSeed: 1006, players: [null, player] },
+            actionFactory: () => ({}),
+        });
+        const expert = { kind: 'bot', difficulty: 10 };
+        manager.configure([{ kind: 'human' }, expert, expert, expert]);
+        expect([...manager.controllers.keys()]).toEqual([1]);
+        expect(manager.controllers.get(1).planUnitsPerMs).toBe(gravityPlanningRate(1));
+        manager.destroy();
+        player.reset();
+    });
+
+    it('lets a deliberate local seat line up, then wait once before dropping', () => {
+        const state = deal(1006);
+        const inputs = [];
+        const bot = new GravityBotController({
+            playerState: state,
+            difficulty: 4,
+            localPace: { nominalTier: 2, apm: 120, scale: 2 },
+            rng: () => 0.5,
+            actions: {
+                moveRight: () => { inputs.push('move'); return true; },
+                hardDrop: () => { inputs.push('drop'); return true; },
+            },
+        });
+        const ordinary = new GravityBotController({ playerState: state, difficulty: 4, actions: {} });
+        const novice = new GravityBotController({
+            playerState: state, difficulty: 2, actions: {}, rng: () => 0.5,
+        });
+        bot.setSpawnTiming(50);
+        novice.setSpawnTiming(50);
+        expect(bot.searchConfig).toEqual(ordinary.searchConfig);
+        expect(bot.readyAtMs).toBe(novice.readyAtMs);
+        expect(bot.config.actionIntervalMs).toBe(ordinary.config.actionIntervalMs);
+        bot.scheduler.canLock = () => true;
+        bot.lastPlan = { actions: [{ type: 'move', dir: 1 }, { type: 'hardDrop' }] };
+        bot.scheduler.setActions(bot.lastPlan.actions);
+        bot.advanceInput(1, bot.readyAtMs);
+        expect(inputs).toEqual(['move']);
+        const movementCooldown = bot.scheduler.cooldownMs;
+        bot.advanceInput(0, bot.readyAtMs);
+        const dropCooldown = bot.scheduler.cooldownMs;
+        expect(dropCooldown).toBeGreaterThan(movementCooldown);
+        expect(dropCooldown - movementCooldown).toBeLessThanOrEqual(1800);
+        bot.advanceInput(0, bot.readyAtMs);
+        expect(bot.scheduler.cooldownMs).toBe(dropCooldown);
+        bot.advanceInput(dropCooldown + 1, bot.readyAtMs + dropCooldown + 1);
+        expect(inputs).toEqual(['move', 'drop']);
+        state.reset();
+    });
+
     it('respects every cell a vertical trigger adds to the sparsest column', () => {
         const state = deal(1001);
         const weights = { triggerWaves: 1, triggerLines: 10, unseen: 0 };

@@ -10,7 +10,8 @@ for (const id of ids.split(',').map(Number)) {
     for (let seed = Number(first); seed < Number(first) + Number(count); seed++) {
         if (mode === 'ladder') {
             for (const swap of [false, true]) {
-                const result = await duel(id, seed, swap, 150, { live: true, configure: (bot, tier) => {
+                const result = await duel(id, seed, swap, 150, { live: true, fixed: true, seriesSeed: seed,
+                    useLocalStyles: !config.pace, configure: (bot, tier) => {
                     if (config.pace?.[tier]) {
                         const [apm, min, max] = config.pace[tier];
                         bot.config.reactionMs = [min, max];
@@ -22,7 +23,7 @@ for (const id of ids.split(',').map(Number)) {
         } else if (mode === 'rivals') {
             for (const profile of ['stacker', 'cascade']) for (const cadence of ['regular', 'strong']) {
                 const { outcome, reason } = await runAttempt({ levelId: id, seed, profile, cadenceId: 'human-' + cadence,
-                    liveRival: true, rivalTier: config.rivalTiers?.[id], wallBudgetMs: 240000 });
+                    liveRival: true, rivalTier: config.rivalTiers?.[id], judgment: config.judgments?.[id], wallBudgetMs: 240000 });
                 if (outcome === 'error' || reason === 'wall-budget') throw Error(JSON.stringify({ id, seed, outcome, reason }));
                 appendFileSync(output, JSON.stringify({ id, seed, profile, cadence, outcome, reason }) + '\n');
             }

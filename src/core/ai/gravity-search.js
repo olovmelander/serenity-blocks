@@ -380,7 +380,8 @@ function* triggerSteps(board, known, weights, allowUnknown, probe, sliced) {
                 if (count >= maxLines) continue;
                 maxLines = Math.min(maxLines, count + (form.columnAdds[col - x] || 0));
             }
-            const maximum = maxLines ** 2 * Math.max(0, weights.triggerWaves) + maxLines * Math.max(0, weights.triggerLines);
+            const maximum = maxLines ** 2 * Math.max(0, weights.triggerWaves)
+                + maxLines * Math.max(0, weights.triggerLines);
             if (discount > 0 && best >= discount * maximum) continue;
             if (maxLines === 1) {
                 best = Math.max(best, discount * (weights.triggerWaves + weights.triggerLines));

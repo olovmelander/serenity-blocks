@@ -1377,11 +1377,18 @@ export function lockPiece(gameState, playDropCallback, physicsCallbacks, timing 
             console.error('[Game] Physics processing failed:', error);
             markBoardDirty(gameState);
             completePhysicsAndSpawn(
-                gameState, physicsCallbacks, null, '[Game] Recovery spawn failed after physics error:',
+                gameState,
+                physicsCallbacks,
+                null,
+                '[Game] Recovery spawn failed after physics error:',
             );
         };
         if (gameState.useFixedCascade) {
-            try { startFixedCascade(gameState, physicsCallbacks, complete, recover); } catch (error) { recover(error); }
+            try {
+                startFixedCascade(gameState, physicsCallbacks, complete, recover);
+            } catch (error) {
+                recover(error);
+            }
             return;
         }
         gameState.latestPhysicsPromise = processPhysics(gameState, physicsCallbacks)
@@ -1427,7 +1434,7 @@ export const MAX_SIMULATION_DELTA_MS = 50;
  * @param {Object} callbacks - Callbacks for draw, stats, sound, physics
  * @param {number} [tickDeltaMs] - Elapsed game time when the caller owns a fixed tick
  */
-export function updateGame(time, gameState, callbacks = {}, tickDeltaMs) {
+export function updateGame(time, gameState, callbacks = {}, tickDeltaMs = undefined) {
     const {
         drawCallback, updateStatsCallback, playDropCallback, physicsCallbacks,
     } = callbacks || {};

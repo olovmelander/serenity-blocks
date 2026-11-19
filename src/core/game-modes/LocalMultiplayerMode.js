@@ -485,7 +485,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
         }
 
         this._initializeSharedPieceRng(options.seed);
-        this.botSeriesSeed = this.matchConfig?.playerSlots?.some(isBotSlot)
+        this.botSeriesSeed = this.matchConfig?.playerSlots?.slice(0, numPlayers).some(isBotSlot)
             ? this.multiplayerState.sharedPieceSeed : null;
         for (let i = 0; i < numPlayers; i++) {
             const playerNum = i + 1;
@@ -1358,7 +1358,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
             this.botManager.destroy();
         }
 
-        this.botManager.configure(this.matchConfig?.playerSlots || []);
+        this.botManager.configure(this.matchConfig?.playerSlots || [], this.botSeriesSeed);
     }
 
     _isBotPlayer(playerIndex) {
@@ -2049,7 +2049,8 @@ export class LocalMultiplayerMode extends BaseGameMode {
         this.multiplayerState.isPaused = true;
         this._versusCameras().reset();
 
-        const nextSeed = seed ?? (this.botSeriesSeed == null ? undefined : localBotRoundSeed(this.botSeriesSeed, this.versusRound));
+        const nextSeed = seed ?? (this.botSeriesSeed == null
+            ? undefined : localBotRoundSeed(this.botSeriesSeed, this.versusRound));
         this._initializeSharedPieceRng(nextSeed);
 
         // Draw next pieces for all players

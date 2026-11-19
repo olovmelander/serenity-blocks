@@ -125,7 +125,7 @@ export function configureLocalMultiplayerSimulationClock(mode) {
     stopLocalMultiplayerFixedTickRuntime(loopState.fixedRuntime);
     resetLocalMultiplayerFixedMatchClock(loopState.fixedRuntime);
 
-    const includesBot = mode.matchConfig?.playerSlots?.some(isBotSlot);
+    const includesBot = mode.matchConfig?.playerSlots?.slice(0, mode.multiplayerState?.numPlayers).some(isBotSlot);
     const requested = readFlag('fixedTick', Boolean(includesBot));
     const unsupportedReasons = requested ? getUnsupportedFixedConfigReasons(mode) : [];
     loopState.fixedTickEnabled = requested && unsupportedReasons.length === 0;

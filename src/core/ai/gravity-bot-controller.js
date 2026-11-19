@@ -160,6 +160,18 @@ export class GravityBotController extends PuzzleBotController {
             this.config.maxApm = ACTION_RATE[i];
             this.config.actionIntervalMs = 60000 / this.config.maxApm;
         }
+        if (options.localPace) {
+            const { nominalTier, apm, scale } = options.localPace;
+            this.config.reactionMs = [...REACTION[nominalTier - 1]];
+            this.localPace = {
+                scale,
+                interval: Math.max(65, Math.min(950, (60000 / apm) * scale)),
+            };
+            // Practiced movement gets the piece into place while gravity runs.
+            // A slower seat spends the rest of its deliberation lined up to drop.
+            this.config.actionIntervalMs = Math.min(this.config.actionIntervalMs, this.localPace.interval);
+            this.dropHesitation = 0;
+        }
         this.scheduler.canLock = () => {
             const state = this.playerState;
             const p = state.currentPiece;
@@ -176,6 +188,18 @@ export class GravityBotController extends PuzzleBotController {
         if (options.timingRng) this.scheduler.variation = () => options.timingRng() * (0.03 + (9 - i) * 0.018);
         this.proof = [];
         this.queueAtPlan = null;
+    }
+
+    setSpawnTiming(now) {
+        super.setSpawnTiming(now);
+        const pace = this.localPace;
+        if (!pace) return;
+        const raw = this.readyAtMs - now;
+        const scale = Math.min(1, pace.scale);
+        const delay = Math.max(this.config.reactionMs[0], Math.min(1150, raw * scale));
+        this.readyAtMs = now + delay;
+        this.dropHesitation = Math.max(0, Math.min(1150, raw * pace.scale) - delay);
+        this.checkedDrop = false;
     }
 
     getPendingGarbage() {
@@ -241,6 +265,13 @@ export class GravityBotController extends PuzzleBotController {
         const nearby = ranked.slice(1, 7).filter((c) => Math.abs(c.x - best.x) <= 1
             && (c.x !== best.x || c.rotation !== best.rotation)).slice(0, 4);
         return nearby.length ? nearby[Math.floor(this.rng() * nearby.length)] : best;
+    }
+
+    chooseGravityMove(preferred, alternatives) {
+        if (!this.config.mistakeChance || this.rng() >= this.config.mistakeChance) return preferred;
+        const nearby = alternatives.filter((move) => Math.abs(move.x - preferred.x) <= 1
+            && (move.x !== preferred.x || move.rotation !== preferred.rotation)).slice(0, 4);
+        return nearby.length ? nearby[Math.floor(this.rng() * nearby.length)] : preferred;
     }
 
     reset() {
@@ -344,14 +375,10 @@ export class GravityBotController extends PuzzleBotController {
         const result = yield* search;
         if (!result) return null;
         let { moves, proof: forecast } = result;
-        if (this.config.mistakeChance && this.rng() < this.config.mistakeChance) {
-            const preferred = moves[0];
-            const nearby = result.alternatives.filter((move) => Math.abs(move.x - preferred.x) <= 1
-                && (move.x !== preferred.x || move.rotation !== preferred.rotation)).slice(0, 4);
-            if (nearby.length) {
-                moves = [nearby[Math.floor(this.rng() * nearby.length)]];
-                forecast = [];
-            }
+        const selected = this.chooseGravityMove(moves[0], result.alternatives);
+        if (selected !== moves[0]) {
+            moves = [selected];
+            forecast = [];
         }
         if (forecast.length) {
             this.proof = forecast.map((step) => ({ ...step, pending, pressing }));
@@ -443,6 +470,13 @@ export class GravityBotController extends PuzzleBotController {
                 return;
             }
             this.scheduler.setActions(this.lastPlan.actions);
+        }
+        if (this.localPace && !this.checkedDrop
+            && this.scheduler.queue.length === 1 && this.scheduler.queue[0].type === 'hardDrop') {
+            const moves = Math.max(0, (this.lastPlan?.actions.length || 1) - 1);
+            this.scheduler.cooldownMs += Math.min(1800, this.dropHesitation
+                + moves * Math.max(0, this.localPace.interval - this.config.actionIntervalMs));
+            this.checkedDrop = true;
         }
         super.advanceInput(delta, now);
     }

@@ -315,30 +315,41 @@ describe('Local Multiplayer fixed mode integration', () => {
             bindLegacySessionRng(bot, mp.sharedPieceSeed);
             fillBag(bot.nextPieces, bot.randomGenerator);
             spawnPiece(bot);
-            const waves = [], attacks = [], commands = [];
+            const waves = [];
+            const attacks = [];
+            const commands = [];
             mp.onAttack = (from, to, lines) => attacks.push([mp.players[from].simFrame, from, to, lines]);
-            mode.deps.getMultiplayerPhysicsCallbacks = playerNum => {
+            mode.deps.getMultiplayerPhysicsCallbacks = (playerNum) => {
                 const i = playerNum - 1;
                 return {
                     spawnPiece: () => {
-                        const state = mp.players[i], queue = mp.getGarbageQueue(i);
-                        for (let burst = queue.dequeueLineBurst(); burst.length; burst = queue.dequeueLineBurst()) applyGarbage(state, burst);
+                        const state = mp.players[i];
+                        const queue = mp.getGarbageQueue(i);
+                        for (let burst = queue.dequeueLineBurst(); burst.length; burst = queue.dequeueLineBurst()) {
+                            applyGarbage(state, burst);
+                        }
                         return spawnPiece(state);
                     },
-                    onLineClear: (lines, _holes, _masks, _rows, wave) => waves.push([mp.players[i].simFrame, i, wave, lines]),
-                    onGarbageReady: summary => mp.handleGarbageSummary(i, summary),
+                    onLineClear: (lines, _holes, _masks, _rows, wave) => {
+                        waves.push([mp.players[i].simFrame, i, wave, lines]);
+                    },
+                    onGarbageReady: (summary) => mp.handleGarbageSummary(i, summary),
                 };
             };
             mode.botManager = new LocalBotManager({ multiplayerState: mp, actionFactory: () => ({}) });
             mode.botManager.configure(slots);
-            mode._isBotPlayer = i => i === 1;
+            mode._isBotPlayer = (i) => i === 1;
             const controller = mode.botManager.controllers.get(1);
             const trace = [];
             const adopt = controller.adoptPlan.bind(controller);
-            controller.adoptPlan = p => { trace.push([bot.simFrame, p.actions]); adopt(p); };
+            controller.adoptPlan = (plan) => {
+                trace.push([bot.simFrame, plan.actions]);
+                adopt(plan);
+            };
             const advance = mode.botManager.advanceFixedInput.bind(mode.botManager);
             mode.botManager.advanceFixedInput = (i, context) => advance(i, {
-                ...context, emit: command => {
+                ...context,
+                emit: (command) => {
                     const accepted = context.emit(command);
                     commands.push([command.tick, command.action, command.value, accepted]);
                     return accepted;
@@ -353,8 +364,16 @@ describe('Local Multiplayer fixed mode integration', () => {
                 const dt = Math.min(elapsed >= 8000 && elapsed < 8017 ? 50 : 1000 / hz, 30000 - elapsed);
                 elapsed += dt; logic(elapsed, dt);
             }
-            const result = { trace, waves, attacks, commands, board: gravityBoardKey(readGravityBoard(bot.boardGrid).cells),
-                score: bot.score, locks: bot.piecesPlaced, frames: bot.simFrame };
+            const result = {
+                trace,
+                waves,
+                attacks,
+                commands,
+                board: gravityBoardKey(readGravityBoard(bot.boardGrid).cells),
+                score: bot.score,
+                locks: bot.piecesPlaced,
+                frames: bot.simFrame,
+            };
             stopLocalMultiplayerModeLoop(mode);
             mode.botManager.destroy();
             return result;
@@ -362,9 +381,16 @@ describe('Local Multiplayer fixed mode integration', () => {
         const regular = run(60);
         expect(regular.trace.length).toBeGreaterThan(2);
         expect(regular.locks).toBeGreaterThan(1);
-        expect(regular.waves.some(w => w[2] >= 2)).toBe(true);
+        expect(regular.waves.some((wave) => wave[2] >= 2)).toBe(true);
         expect(regular.attacks.length).toBeGreaterThan(0);
         expect(run(165)).toEqual(regular);
+    });
+
+    it('keeps the human clock when a saved bot sits outside the current roster', () => {
+        window.location.search = '';
+        const mode = createMode({ playerSlots: [{ kind: 'human' }, { kind: 'human' }, { kind: 'bot' }] });
+        expect(configureLocalMultiplayerSimulationClock(mode)).toBe(DEMO_LEGACY_SIMULATION_CLOCK);
+        expect(mode.multiplayerState.players.every((player) => !player.useFixedCascade)).toBe(true);
     });
 
     it.each([

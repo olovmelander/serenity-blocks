@@ -65,9 +65,9 @@ export async function duel(low, seed, swap, seconds = 150, options = {}) {
         });
         mp.onAttack = (from, _to, lines) => { stats[from].sent += lines; };
         const oldRng = seededRandom((seed ^ 0x85ebca6b) >>> 0);
-        manager = new LocalBotManager({ multiplayerState: mp,
+        manager = new LocalBotManager({ multiplayerState: mp, useLocalStyles: options.useLocalStyles,
             actionFactory: i => controls(mp.players[i], callbacks[i]), rng: oldRng });
-        manager.configure(tiers.map((tier, i) => ({ kind: 'bot', difficulty: options.slotTier?.(tier, i) ?? tier })));
+        manager.configure(tiers.map((tier, i) => ({ kind: 'bot', difficulty: options.slotTier?.(tier, i) ?? tier })), options.seriesSeed);
         if (!options.live) {
             for (const [i, bot] of manager.controllers) {
                 // The original audit shared one decision stream. The fixed-clock

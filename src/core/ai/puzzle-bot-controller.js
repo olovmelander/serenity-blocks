@@ -237,7 +237,7 @@ export class PuzzleBotController {
             this.lastPlan = null;
             this.planJob = null;
             this.pendingPlan = undefined;
-            this.readyAtMs = nowMs + rollReactionDelay(this.config, this.rng);
+            this.setSpawnTiming(nowMs);
         }
 
         if (!this.lastPlan) {
@@ -246,6 +246,10 @@ export class PuzzleBotController {
         }
 
         this.advanceInput(deltaMs, nowMs);
+    }
+
+    setSpawnTiming(nowMs) {
+        this.readyAtMs = nowMs + rollReactionDelay(this.config, this.rng);
     }
 
     advanceInput(deltaMs) {
