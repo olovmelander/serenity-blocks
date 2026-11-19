@@ -108,6 +108,7 @@ export async function duel(low, seed, swap, seconds = 150, options = {}) {
                 return plan;
             };
         }
+        options.observeManager?.(manager);
         const rounds = Math.round(seconds * 60);
         const runtime = options.fixed ? createLocalMultiplayerFixedTickRuntime() : null;
         const tickOptions = runtime && {
@@ -118,10 +119,17 @@ export async function duel(low, seed, swap, seconds = 150, options = {}) {
                 gameState: mp.players[i], isEnabled: () => true, physicsCallbacks: callbacks[i] }),
         };
         let ticksPlayed = 0;
-        for (; ticksPlayed < rounds && !mp.players.some((s) => s.isGameOver); ticksPlayed++) {
+        const unfinished = options.finishFfaRound
+            ? () => mp.players.filter(s => s.isAlive && !s.isGameOver).length > 1
+            : () => !mp.players.some(s => s.isGameOver);
+        for (; ticksPlayed < rounds && unfinished(); ticksPlayed++) {
             await clock.advance(frame);
             if (runtime) {
                 runLocalMultiplayerFixedTicks(runtime, frame, tickOptions);
+                if (options.finishFfaRound) {
+                    const lost = mp.players.flatMap((s, i) => s.isAlive && s.isGameOver ? [i] : []);
+                    if (lost.length) mp.handlePlayerDeaths(lost).forEach(i => { mp.players[i].currentPiece = null; });
+                }
                 continue;
             }
             manager.update(frame, clock.now);

@@ -97,12 +97,35 @@ const STATES = {
  * @property {number} pathCost
  */
 
+/** @typedef {{ shapeKey: string, shape: number[][], rotation?: number, x: number, y: number }} MovingPiece */
+
 /**
  * @param {Array<Array<unknown>>} boardGrid
- * @param {{ shapeKey: string, shape: number[][], rotation?: number, x: number, y: number }} piece
+ * @param {MovingPiece} piece
  * @returns {ReachedLanding[]} one per landing (x, y, rotation), in the order the search first lands there
  */
 export function reachableLandings(boardGrid, piece) {
+    return searchLandings(boardGrid, piece);
+}
+
+/**
+ * Visit distinct hard-drop endpoints in the same discovery order as reachableLandings.
+ * Return true from the visitor once all requested positions have been seen.
+ * @param {Array<Array<unknown>>} boardGrid
+ * @param {MovingPiece} piece
+ * @param {(x: number, y: number, rotation: number) => boolean} visit
+ */
+export function visitReachableLandings(boardGrid, piece, visit) {
+    searchLandings(boardGrid, piece, visit);
+}
+
+/**
+ * @param {Array<Array<unknown>>} boardGrid
+ * @param {MovingPiece} piece
+ * @param {(x: number, y: number, rotation: number) => boolean} [visit]
+ * @returns {ReachedLanding[]}
+ */
+function searchLandings(boardGrid, piece, visit) {
     const height = boardGrid.length;
     const capacity = (height + 64) * 128 * 4;
     if (capacity > stamps.length) {
@@ -176,6 +199,7 @@ export function reachableLandings(boardGrid, piece) {
     stamps[key(piece.x, piece.y, startRotation)] = stamp;
     /** @type {Map<number, { state: number, cost: number, x: number, y: number, rotation: number }>} */
     const best = new Map();
+    const visitedLandings = visit && new Set();
 
     /** @param {number} from @param {number} action @param {number} x @param {number} y @param {number} rotation */
     const push = (from, action, x, y, rotation) => {
@@ -183,15 +207,17 @@ export function reachableLandings(boardGrid, piece) {
         if (stamps[nextKey] === stamp) return;
         stamps[nextKey] = stamp;
         const index = count;
-        const cost = costs[from] + ACTION_COST[action];
         xs[index] = x;
         ys[index] = y;
         rotations[index] = rotation;
-        parents[index] = from;
-        actions[index] = action;
-        costs[index] = cost;
-        trimmedEnd[index] = action === SOFT_DROP ? trimmedEnd[from] : index;
-        trimmedCost[index] = action === SOFT_DROP ? trimmedCost[from] : cost;
+        if (!visit) {
+            const cost = costs[from] + ACTION_COST[action];
+            parents[index] = from;
+            actions[index] = action;
+            costs[index] = cost;
+            trimmedEnd[index] = action === SOFT_DROP ? trimmedEnd[from] : index;
+            trimmedCost[index] = action === SOFT_DROP ? trimmedCost[from] : cost;
+        }
         count += 1;
     };
     /** @param {number} from @param {number} action @param {number} step @param {number} x @param {number} y @param {number} rotation */
@@ -231,11 +257,18 @@ export function reachableLandings(boardGrid, piece) {
         }
         const landingY = dropRows[pose];
         const landingKey = key(x, landingY, rotation);
-        const existing = best.get(landingKey);
-        if (!existing || trimmedCost[cursor] < existing.cost) {
-            best.set(landingKey, {
-                state: trimmedEnd[cursor], cost: trimmedCost[cursor], x, y: landingY, rotation,
-            });
+        if (visit && visitedLandings) {
+            if (!visitedLandings.has(landingKey)) {
+                visitedLandings.add(landingKey);
+                if (visit(x, landingY, rotation)) return [];
+            }
+        } else {
+            const existing = best.get(landingKey);
+            if (!existing || trimmedCost[cursor] < existing.cost) {
+                best.set(landingKey, {
+                    state: trimmedEnd[cursor], cost: trimmedCost[cursor], x, y: landingY, rotation,
+                });
+            }
         }
         if (fits(rotation, x - 1, y)) push(cursor, MOVE_LEFT, x - 1, y, rotation);
         if (fits(rotation, x + 1, y)) push(cursor, MOVE_RIGHT, x + 1, y, rotation);

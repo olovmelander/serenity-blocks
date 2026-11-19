@@ -2,7 +2,7 @@ import { COLS, HIDDEN_ROWS, SHAPES } from '../constants.js';
 import { rotateShapeMatrix } from '../game.js';
 import { calculateLineClearScore } from '../scoring.js';
 import { settleLabelledBoard } from '../stillfall/stillfall-cascade.js';
-import { reachableLandings } from '../stillfall/stillfall-reach.js';
+import { reachableLandings, visitReachableLandings } from '../stillfall/stillfall-reach.js';
 import { computeProjectedAttack } from './cascade-simulator.js';
 
 // Joint fit on 77201–77208; both score and attack selected this vector on
@@ -49,6 +49,7 @@ for (const [key, matrix] of Object.entries(SHAPES)) {
         const left = Math.min(...dx);
         const top = Math.min(...dy);
         const footprint = offsets.map((v) => v - top * COLS - left).join(',');
+        const equivalent = rotations.find((form) => form.footprint === footprint);
         const columnAdds = new Uint8Array(shape[0].length);
         for (const column of dx) columnAdds[column]++;
         rotations.push({
@@ -63,7 +64,8 @@ for (const [key, matrix] of Object.entries(SHAPES)) {
             right: Math.max(...dx),
             top,
             footprint,
-            distinct: !rotations.some((r) => r.footprint === footprint),
+            equivalentRotation: equivalent?.rotation ?? rotation,
+            distinct: !equivalent,
         });
         shape = rotateShapeMatrix(shape, 'right');
     }
@@ -295,12 +297,18 @@ export function gravityLandings(grid, piece) {
     return landings;
 }
 
+// Equal occupied cells can have different origins and rotation numbers. Both
+// movement searches keep the first representative reached by the real controls.
+function footprintPosition(form, x, y) {
+    return ((y + form.top) * COLS + x + form.left) * 4 + form.equivalentRotation;
+}
+
 function actualLandings(grid, piece) {
     const seen = new Set();
     const result = [];
     for (const landing of gravityLandings(grid, piece)) {
         const form = shapes.get(piece.shapeKey)[landing.rotation];
-        const key = `${landing.y + form.top}/${landing.x + form.left}/${form.footprint}`;
+        const key = footprintPosition(form, landing.x, landing.y);
         if (seen.has(key)) continue;
         seen.add(key);
         result.push({ ...landing, form });
@@ -308,19 +316,53 @@ function actualLandings(grid, piece) {
     return result;
 }
 
-function futureLandings(board, key) {
-    if (board.top > board.first + 3) return skylineLandings(board, key);
+function movementGrid(board) {
     board.movementGrid ??= Array.from({ length: board.height }, (_, y) => (
         Array.from(board.cells.subarray(y * COLS, (y + 1) * COLS), (id) => id || null)
     ));
+    return board.movementGrid;
+}
+
+function futurePiece(board, key) {
     const shape = SHAPES[key];
-    return actualLandings(board.movementGrid, {
+    return {
         shape,
         shapeKey: key,
         rotation: 0,
         x: Math.floor(COLS / 2) - Math.floor(shape[0].length / 2),
         y: board.first - 2,
-    });
+    };
+}
+
+function futureLandings(board, key) {
+    if (board.top > board.first + 3) return skylineLandings(board, key);
+    return actualLandings(movementGrid(board), futurePiece(board, key));
+}
+
+const triggerPositionCache = new Map();
+// Only straight drops that fill a row can enter this trigger test. Once the
+// control search has encountered each requested footprint, its remaining paths
+// cannot change their membership. Body connectivity is read later by the settle.
+function reachableTriggersAtRoof(board, key) {
+    const cacheKey = `${key}/${board.first}/${String.fromCharCode(...board.rows)}`;
+    const cached = triggerPositionCache.get(cacheKey);
+    if (cached) return cached;
+
+    const targets = new Set();
+    for (const { form, x, y } of skylineLandings(board, key)) {
+        if (completes(board, form, x, y)) targets.add(footprintPosition(form, x, y));
+    }
+    const reached = [];
+    if (targets.size) {
+        const rotations = shapes.get(key);
+        visitReachableLandings(movementGrid(board), futurePiece(board, key), (x, y, rotation) => {
+            if (targets.delete(footprintPosition(rotations[rotation], x, y))) reached.push({ x, y, rotation });
+            return targets.size === 0;
+        });
+    }
+    if (triggerPositionCache.size >= 48) triggerPositionCache.delete(triggerPositionCache.keys().next().value);
+    triggerPositionCache.set(cacheKey, reached);
+    return reached;
 }
 
 // For each missing-cell mask, the game's own shapes give the same small set
@@ -367,7 +409,7 @@ function* triggerSteps(board, known, weights, allowUnknown, probe, sliced) {
             if (!discount) continue;
             if (high) {
                 if (!reachable.has(key)) {
-                    reachable.set(key, futureLandings(board, key));
+                    reachable.set(key, reachableTriggersAtRoof(board, key));
                     if (sliced) yield;
                 }
                 if (!reachable.get(key).some((p) => p.x === x && p.y === py && p.rotation === form.rotation)) continue;
