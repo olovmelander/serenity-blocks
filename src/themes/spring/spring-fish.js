@@ -23,11 +23,16 @@
  * on: the leaps head well off the stream's line, and the fish are drawn larger than life (as the
  * birds are), or fifty metres off a trout is a few pixels.
  *
- * One instanced mesh for both kinds. Per fish, four rows the CPU writes while any is in the air
- * (one interleaved buffer): where its middle is and the tail's phase; which way its nose points
- * and its drawn length (0: no fish); which way its back faces and its kind; its curl and the
- * tail's stroke. The vertex stage bends the body and beats the tail; the fragment shades a wet,
- * countershaded skin whose flank catches the sky and flashes in the sun.
+ * The fish are modelled in Blender (scripts/blender/spring_fish.py writes spring-fish-hulls.js):
+ * a salmon and a brown trout, each a lofted body with its fins and eyes, and per vertex how far
+ * along the fish it is, how far up its side, how free (a fin's edge) and what it is (body, fin,
+ * eye). Both hulls are one geometry and one instanced mesh: each fish keeps its own kind's hull
+ * and folds the other away. Per fish, four rows the CPU writes while any is in the air (one
+ * interleaved buffer): where its middle is and the tail's phase; which way its nose points and
+ * its drawn length (0: no fish); which way its back faces and its kind; its curl and the tail's
+ * stroke. The vertex stage bends the body, beats the tail and trails the fins; the fragment shades
+ * a wet, countershaded skin whose flank catches the sky and flashes in the sun, the salmon's few
+ * black spots and the trout's many, red among them, the eye, the jaw and the gill cover.
  *
  * Where a fish breaks the water, leaving and falling back, a ring of foam spreads and drifts off
  * on the current (a second instanced mesh, light that adds: each ring written once, as its leap
@@ -37,6 +42,7 @@
 import * as THREE from 'three/webgpu';
 import {
     Fn,
+    abs,
     attribute,
     cameraProjectionMatrix,
     cameraViewMatrix,
@@ -46,6 +52,8 @@ import {
     dot,
     exp,
     float,
+    floor,
+    fract,
     length,
     mix,
     normalize,
@@ -54,12 +62,14 @@ import {
     sin,
     smoothstep,
     sqrt,
+    step,
     varying,
     vec2,
     vec3,
     vec4,
 } from 'three/tsl';
 import { TAU, clamp as clampJs, mulberry32 } from './spring-core.js';
+import { SPRING_FISH_HULLS } from './spring-fish-hulls.js';
 import {
     aerial, airClarity, skyColour, sunShare,
 } from './spring-light.js';
@@ -72,15 +82,15 @@ export const GRAVITY = 9.81;
 /**
  * The kinds: real length (m, least … most), how often a big one leaps (the length's share is a
  * 0..1 draw to this power: under 1 favours the big), how much larger than life they are drawn
- * (fifty metres off, a trout is a few pixels), how deep and broad the body is against a salmon's,
- * the tail's beats a second in the air and its stroke (share of the length, at the tip).
+ * (fifty metres off, a trout is a few pixels), the tail's beats a second in the air and its stroke
+ * (share of the length, at the tip). Each kind's build is its hull's (spring-fish-hulls.js).
  */
 export const FISH = Object.freeze({
     salmon: Object.freeze({
-        id: 0, length: Object.freeze([0.65, 1.05]), big: 0.8, drawn: 1.6, girth: 1, beat: 4.2, stroke: 0.1,
+        id: 0, length: Object.freeze([0.65, 1.05]), big: 0.8, drawn: 1.6, beat: 4.2, stroke: 0.1,
     }),
     trout: Object.freeze({
-        id: 1, length: Object.freeze([0.32, 0.55]), big: 1.3, drawn: 1.6, girth: 1.14, beat: 6.5, stroke: 0.09,
+        id: 1, length: Object.freeze([0.32, 0.55]), big: 1.3, drawn: 1.6, beat: 6.5, stroke: 0.09,
     }),
 });
 const KIND_BY_ID = Object.freeze([FISH.salmon, FISH.trout]);
@@ -300,72 +310,81 @@ function smoothJs(lo, hi, v) {
 
 // ── The fish ──────────────────────────────────────────────────────────────────────
 
-/**
- * The body's rings, nose to the tail's wrist: [z, half-height, half-width, middle's height], a
- * fish one long (z from −0.5 at the tail's tips to +0.5 at the nose). A salmon's build: deepest a
- * third back from the nose, a fifth as deep as it is long, about half as broad as deep.
- */
-const RINGS = Object.freeze([
-    [0.5, 0.004, 0.003, -0.006],
-    [0.475, 0.03, 0.021, -0.005],
-    [0.42, 0.062, 0.04, -0.002],
-    [0.33, 0.09, 0.054, 0.003],
-    [0.21, 0.105, 0.061, 0.006],
-    [0.07, 0.1, 0.058, 0.005],
-    [-0.07, 0.083, 0.047, 0.002],
-    [-0.19, 0.06, 0.033, 0.0],
-    [-0.28, 0.038, 0.019, 0.0],
-    [-0.33, 0.03, 0.012, 0.0],
-]);
-const SIDES = 10;
+/** What a hull's vertex is (`code` = hull × 4 + region; spring_fish.py). */
+export const REGION = Object.freeze({
+    body: 0, fin: 1, eye: 2, paleFin: 3,
+});
+/** The hulls, in kind order (a fish's kind is its hull). */
+export const HULL_NAMES = Object.freeze(['salmon', 'trout']);
+
+const decodeBase64 = (text) => {
+    const bytes = typeof atob === 'function'
+        ? Uint8Array.from(atob(text), (c) => c.charCodeAt(0))
+        : Uint8Array.from(Buffer.from(text, 'base64'));
+    return bytes.buffer;
+};
+
+/** One hull's arrays, decoded from the generated module. */
+export function decodeFishHull(name) {
+    const h = SPRING_FISH_HULLS[name];
+    return {
+        hull: h.hull,
+        vertexCount: h.vertexCount,
+        triangleCount: h.triangleCount,
+        bodyTriangleCount: h.bodyTriangleCount,
+        positions: new Float32Array(decodeBase64(h.positions)),
+        normals: new Float32Array(decodeBase64(h.normals)),
+        parts: new Float32Array(decodeBase64(h.parts)),
+        index: new Uint16Array(decodeBase64(h.index)),
+    };
+}
 
 /**
- * One fish (unit length, nose +z, back +y). `aFishBody` is (how far back from the nose, 0 … 1,
- * whether it is a fin). The tail is forked, the dorsal and the anal fins stand on the midline.
+ * Both fish in one indexed, instanced geometry (the salmon's vertices first): position, normal
+ * and `aFishPart` (s along the fish 0 nose … 1 tail tips, d dorsal share 0 belly … 1 back, flex 0
+ * root … 1 a fin's free edge, code = hull × 4 + region). One fish long, nose +z, back +y.
  */
 export function fishGeometry() {
-    const position = [];
-    const body = [];
-    const index = [];
-    const vertex = (x, y, z, fin = 0) => {
-        position.push(x, y, z);
-        body.push(clampJs(0.5 - z, 0, 1), fin);
-        return position.length / 3 - 1;
-    };
-    for (const [z, ry, rx, yc] of RINGS) {
-        for (let k = 0; k < SIDES; k++) {
-            const a = (k / SIDES) * TAU;
-            vertex(Math.cos(a) * rx, yc + Math.sin(a) * ry, z);
-        }
+    const hulls = HULL_NAMES.map((name) => decodeFishHull(name));
+    const vertices = hulls.reduce((n, h) => n + h.vertexCount, 0);
+    const triangles = hulls.reduce((n, h) => n + h.triangleCount, 0);
+    const position = new Float32Array(vertices * 3);
+    const normal = new Float32Array(vertices * 3);
+    const part = new Float32Array(vertices * 4);
+    const index = new Uint16Array(triangles * 3);
+    let v = 0;
+    let t = 0;
+    for (const h of hulls) {
+        position.set(h.positions, v * 3);
+        normal.set(h.normals, v * 3);
+        part.set(h.parts, v * 4);
+        for (let i = 0; i < h.index.length; i++) index[t * 3 + i] = h.index[i] + v;
+        v += h.vertexCount;
+        t += h.triangleCount;
     }
-    for (let r = 0; r < RINGS.length - 1; r++) {
-        for (let k = 0; k < SIDES; k++) {
-            const a = r * SIDES + k;
-            const b = r * SIDES + ((k + 1) % SIDES);
-            index.push(a, b, b + SIDES, a, b + SIDES, a + SIDES);
-        }
-    }
-    // The tail's wrist closed off (a fan), then the fins.
-    const wrist = (RINGS.length - 1) * SIDES;
-    const cap = vertex(0, 0, RINGS[RINGS.length - 1][0] - 0.004);
-    for (let k = 0; k < SIDES; k++) index.push(wrist + ((k + 1) % SIDES), wrist + k, cap);
-    const fin = (points) => {
-        const ids = points.map(([y, z]) => vertex(0, y, z, 1));
-        for (let k = 1; k < ids.length - 1; k++) index.push(ids[0], ids[k], ids[k + 1]);
-    };
-    // The tail: two lobes and the fork between them.
-    fin([[0.028, -0.31], [0.125, -0.5], [0.0, -0.44]]);
-    fin([[0.028, -0.31], [0.0, -0.44], [-0.028, -0.31]]);
-    fin([[-0.028, -0.31], [0.0, -0.44], [-0.125, -0.5]]);
-    // The dorsal fin, and the anal fin under the tail's root.
-    fin([[0.1, 0.15], [0.096, 0.0], [0.17, 0.03]]);
-    fin([[-0.05, -0.17], [-0.035, -0.26], [-0.095, -0.25]]);
     const geometry = new THREE.InstancedBufferGeometry();
-    geometry.setAttribute('position', new THREE.Float32BufferAttribute(position, 3));
-    geometry.setAttribute('aFishBody', new THREE.Float32BufferAttribute(body, 2));
-    geometry.setIndex(index);
-    geometry.computeVertexNormals();
+    geometry.setAttribute('position', new THREE.BufferAttribute(position, 3));
+    geometry.setAttribute('normal', new THREE.BufferAttribute(normal, 3));
+    geometry.setAttribute('aFishPart', new THREE.BufferAttribute(part, 4));
+    geometry.setIndex(new THREE.BufferAttribute(index, 1));
     return geometry;
+}
+
+/**
+ * Round spots on a jittered grid over the skin's (s, d): `cells` across the fish's length and
+ * round its side (about square cells on the flank), a spot in a share `fill` of the cells, of
+ * radius `size` (a share of a cell, at most a quarter, so no spot reaches its cell's edge). Inline
+ * TSL; s and d come in non-negative, so each cell is an exact integer pair for the hash.
+ */
+function spotField(s, d, cells, fill, size, salt) {
+    const at = vec2(s.mul(cells[0]), d.mul(cells[1]));
+    const cell = floor(at);
+    const h1 = fract(sin(dot(cell, vec2(12.9898, 78.233)).add(salt)).mul(43758.5453));
+    const h2 = fract(sin(dot(cell, vec2(39.3468, 11.135)).add(salt)).mul(24634.6345));
+    const h3 = fract(sin(dot(cell, vec2(73.156, 52.235)).add(salt)).mul(13758.937));
+    const centre = cell.add(vec2(h2, h3).mul(0.5).add(0.25));
+    const r = length(at.sub(centre));
+    return step(h1, fill).mul(float(1.0).sub(smoothstep(size * 0.7, size, r))).toVar();
 }
 
 /** Floats a fish's instance record holds (four vec4 rows). */
@@ -495,30 +514,37 @@ export class Fish {
         const place = attribute('aFishPlace', 'vec4');
         const axis = attribute('aFishAxis', 'vec4');
         const back = attribute('aFishBack', 'vec4');
-        const flex = attribute('aFishFlex', 'vec4');
-        const shape = attribute('aFishBody', 'vec2');
+        const motion = attribute('aFishFlex', 'vec4');
+        const part = attribute('aFishPart', 'vec4');
         const vWorld = varying(vec3(0.0), 'spFishWorld');
         const vNormal = varying(vec3(0.0, 1.0, 0.0), 'spFishNormal');
-        // How far back from the nose, whether a fin, its kind, how far its skin faces its back.
-        const vSkin = varying(vec4(0.0), 'spFishSkin');
+        // How far along, how far up its side, how free, what it is (the hull's own parts).
+        const vPart = varying(vec4(0.0), 'spFishPart');
         material.vertexNode = Fn(() => {
             const drawn = axis.w;
             const fwd = normalize(axis.xyz);
             const up = normalize(back.xyz);
             const right = cross(up, fwd);
             const kind = back.w;
-            const girth = kind.mul(FISH.trout.girth - 1).add(1.0);
+            const s = part.x.toVar();
+            const code = part.w;
+            const hull = step(3.5, code);
+            const region = code.sub(hull.mul(4.0));
+            // Its own kind's hull; the other is folded away.
+            const mine = abs(hull.sub(kind)).lessThan(0.5);
             const p = positionGeometry;
-            const along = shape.x.toVar();
             // The tail's stroke: a wave running back down the body, growing toward the tail; and
             // the whole body curled (a C: both ends off the middle's line to one side).
-            const wave = place.w.sub(along.mul(4.0)).toVar();
-            const stroke = along.mul(along).mul(flex.y);
-            const off = sin(wave).mul(stroke).add(flex.x.mul(p.z.mul(p.z).mul(4.0).sub(0.33)));
-            // (Its slope along the body turns the skin's normals with the bend.)
-            const slope = flex.x.mul(p.z).mul(8.0)
-                .sub(flex.y.mul(along.mul(2.0).mul(sin(wave)).sub(along.mul(along).mul(4.0).mul(cos(wave)))));
-            const local = vec3(p.x.mul(girth).add(off), p.y.mul(girth), p.z);
+            const wave = place.w.sub(s.mul(4.0)).toVar();
+            const stroke = s.mul(s).mul(motion.y);
+            // The fins trail: their free edges flutter behind the stroke (not the eyes' rims).
+            const finning = abs(region.sub(REGION.eye)).greaterThan(0.5).select(part.z, float(0.0));
+            const flutter = sin(place.w.mul(1.7).add(s.mul(9.0))).mul(finning).mul(0.012);
+            const off = sin(wave).mul(stroke).add(motion.x.mul(p.z.mul(p.z).mul(4.0).sub(0.33))).add(flutter);
+            // (Its slope along the body turns the skin's normals with the bend; s runs against z.)
+            const slope = motion.x.mul(p.z).mul(8.0)
+                .sub(motion.y.mul(s.mul(2.0).mul(sin(wave)).sub(s.mul(s).mul(4.0).mul(cos(wave)))));
+            const local = vec3(p.x.add(off), p.y, p.z);
             const stood = right.mul(local.x).add(up.mul(local.y)).add(fwd.mul(local.z));
             const world = place.xyz.add(stood.mul(drawn)).toVar();
             const n = attribute('normal', 'vec3');
@@ -526,41 +552,92 @@ export class Fish {
             const nLocal = vec3(n.x.add(n.z.mul(slope)).mul(bend), n.y, n.z.sub(n.x.mul(slope)).mul(bend));
             vNormal.assign(right.mul(nLocal.x).add(up.mul(nLocal.y)).add(fwd.mul(nLocal.z)));
             vWorld.assign(world);
-            vSkin.assign(vec4(along, shape.y, kind, n.y));
-            // A fish not in the air is clipped away whole (its length is 0).
-            return drawn.greaterThan(0.0)
-                .select(cameraProjectionMatrix.mul(cameraViewMatrix.mul(vec4(world, 1.0))), vec4(0.0, 0.0, -2.0, 1.0));
+            vPart.assign(part);
+            // A fish not in the air is clipped away whole (its length is 0), and so is the hull
+            // that is not its own.
+            const clip = cameraProjectionMatrix.mul(cameraViewMatrix.mul(vec4(world, 1.0)));
+            return drawn.greaterThan(0.0).and(mine).select(clip, vec4(0.0, 0.0, -2.0, 1.0));
         })();
         material.colorNode = Fn(() => {
             const P = vWorld;
-            const fin = vSkin.y;
-            const kind = vSkin.z;
-            const ny = vSkin.w;
+            const s = vPart.x;
+            const d = vPart.y;
+            const flex = vPart.z;
+            const code = vPart.w;
+            const kind = step(3.5, code).toVar();
+            const region = code.sub(kind.mul(4.0)).toVar();
+            const isFin = float(1.0).sub(step(0.5, abs(region.sub(REGION.fin)))).toVar();
+            const isPale = float(1.0).sub(step(0.5, abs(region.sub(REGION.paleFin)))).toVar();
+            const isEye = float(1.0).sub(step(0.5, abs(region.sub(REGION.eye)))).toVar();
+            const anyFin = isFin.add(isPale).toVar();
+            const isBody = float(1.0).sub(anyFin).sub(isEye).max(0.0)
+                .toVar();
             const V = normalize(u.eye.sub(P)).toVar();
             const N0 = normalize(vNormal);
             // A fin's two faces light alike: turned toward the eye.
             const facing = dot(N0, V).greaterThanEqual(0.0).select(float(1.0), float(-1.0));
-            const N = mix(N0, N0.mul(facing), fin).toVar();
-            // Countershaded: dark on the back, the flank, pale on the belly; the fins dusky.
-            const onBack = smoothstep(0.05, 0.62, ny);
-            const onBelly = float(1.0).sub(smoothstep(-0.78, -0.3, ny));
+            const N = mix(N0, N0.mul(facing), anyFin).toVar();
+            // Countershaded: dark on the back, the flank, pale on the belly.
             // (A salmon's silver is its mirror, not a pale skin: against the white water of the
             // fall and the rapids it reads dark, and flashes.)
-            const backTone = mix(vec3(0.02, 0.028, 0.038), vec3(0.045, 0.04, 0.02), kind);
-            const flankTone = mix(vec3(0.2, 0.215, 0.23), vec3(0.27, 0.2, 0.08), kind);
-            const bellyTone = mix(vec3(0.6, 0.6, 0.58), vec3(0.6, 0.52, 0.32), kind);
-            const finTone = mix(vec3(0.05, 0.06, 0.07), vec3(0.14, 0.1, 0.05), kind);
-            const skin = mix(mix(flankTone, backTone, onBack), bellyTone, onBelly);
-            const albedo = mix(skin, finTone, fin);
+            const onBack = smoothstep(0.58, 0.86, d).toVar();
+            const onBelly = float(1.0).sub(smoothstep(0.2, 0.42, d)).toVar();
+            const backTone = mix(vec3(0.018, 0.026, 0.036), vec3(0.04, 0.036, 0.016), kind);
+            const flankTone = mix(vec3(0.2, 0.215, 0.23), vec3(0.25, 0.18, 0.065), kind);
+            const bellyTone = mix(vec3(0.62, 0.62, 0.6), vec3(0.58, 0.5, 0.3), kind);
+            const skin = mix(mix(flankTone, backTone, onBack), bellyTone, onBelly).toVar();
+            // A salmon's few small black spots, above the lateral line toward the head and on the
+            // gill cover; a trout's many, over its back and flanks, and red ones haloed in pale
+            // round the lateral line.
+            const salmonSpots = spotField(s, d, [40, 10], 0.28, 0.16, 3.1)
+                .mul(smoothstep(0.56, 0.64, d)).mul(float(1.0).sub(smoothstep(0.58, 0.7, s)));
+            const troutBlack = spotField(s, d, [32, 9], 0.55, 0.21, 7.3)
+                .mul(smoothstep(0.4, 0.5, d)).mul(float(1.0).sub(smoothstep(0.8, 0.86, s)));
+            const troutRed = spotField(s, d, [26, 8], 0.4, 0.15, 11.9)
+                .mul(smoothstep(0.26, 0.32, d)).mul(float(1.0).sub(smoothstep(0.5, 0.56, d)))
+                .mul(smoothstep(0.16, 0.22, s))
+                .mul(float(1.0).sub(smoothstep(0.76, 0.82, s)));
+            const troutHalo = spotField(s, d, [26, 8], 0.4, 0.23, 11.9)
+                .mul(smoothstep(0.26, 0.32, d)).mul(float(1.0).sub(smoothstep(0.5, 0.56, d)))
+                .mul(smoothstep(0.16, 0.22, s))
+                .mul(float(1.0).sub(smoothstep(0.76, 0.82, s)));
+            const black = mix(salmonSpots, troutBlack, kind).toVar();
+            skin.assign(mix(skin, vec3(0.62, 0.56, 0.42), troutHalo.mul(kind).mul(0.7)));
+            skin.assign(mix(skin, vec3(0.32, 0.04, 0.02), troutRed.mul(kind)));
+            skin.assign(mix(skin, vec3(0.012, 0.01, 0.01), black.mul(0.92)));
+            // The jaw's line back from the snout, and the gill cover's edge.
+            const jawEnd = mix(float(0.075), float(0.095), kind);
+            const jaw = float(1.0).sub(smoothstep(0.012, 0.03, abs(d.sub(0.36))))
+                .mul(float(1.0).sub(smoothstep(jawEnd.sub(0.012), jawEnd, s)));
+            const gill = float(1.0).sub(smoothstep(0.003, 0.008, abs(s.sub(mix(float(0.19), float(0.215), kind)))))
+                .mul(smoothstep(0.2, 0.3, d)).mul(float(1.0).sub(smoothstep(0.78, 0.86, d)));
+            skin.assign(skin.mul(float(1.0).sub(jaw.mul(0.6)).sub(gill.mul(0.35))));
+            // The fins: a salmon's dark over its back and tail, pale under it; a trout's olive and
+            // amber, the adipose tipped orange.
+            const darkFin = mix(vec3(0.035, 0.045, 0.055), vec3(0.11, 0.085, 0.04), kind);
+            const adipose = smoothstep(0.69, 0.71, s).mul(float(1.0).sub(smoothstep(0.78, 0.8, s)))
+                .mul(step(0.85, d)).mul(smoothstep(0.3, 0.9, flex))
+                .mul(kind);
+            const finTone = mix(
+                mix(darkFin, vec3(0.42, 0.11, 0.02), adipose),
+                mix(vec3(0.27, 0.28, 0.29), vec3(0.34, 0.22, 0.06), kind),
+                isPale,
+            );
+            // The eye: a black pupil in a silver (a trout's, gold) iris.
+            const pupil = float(1.0).sub(smoothstep(0.45, 0.58, flex));
+            const eyeTone = mix(mix(vec3(0.42, 0.43, 0.44), vec3(0.5, 0.36, 0.1), kind), vec3(0.006), pupil);
+            const albedo = skin.mul(isBody).add(finTone.mul(anyFin)).add(eyeTone.mul(isEye));
             const L = u.sunDir;
             const sun = u.sun.mul(sunShare(u, P)).toVar();
             const wrap = clamp(dot(N, L).mul(0.75).add(0.25), 0.0, 1.0);
             const ambient = u.fill.mul(N.y.mul(0.35).add(1.0)).add(u.bounce.mul(float(0.5).sub(N.y.mul(0.5))));
             const diffuse = albedo.mul(sun.mul(wrap.mul(0.65)).add(ambient.mul(1.2)));
             // Wet: the sky in the flank (a salmon's is a mirror; a trout's flashes bronze) and the
-            // sun's highlight on it.
-            const silver = mix(float(0.26), float(0.16), kind).mul(float(1.0).sub(onBack.mul(0.8)))
-                .mul(float(1.0).sub(fin)).toVar();
+            // sun's highlight on it; the fins and the spots are matte, the eye glassy.
+            const silver = mix(float(0.26), float(0.14), kind).mul(float(1.0).sub(onBack.mul(0.8)))
+                .mul(isBody).mul(float(1.0).sub(black))
+                .add(isEye.mul(0.2))
+                .toVar();
             const nv = clamp(dot(N, V), 0.0, 1.0);
             const f = float(1.0).sub(nv);
             const f2 = f.mul(f);
@@ -579,9 +656,10 @@ export class Fish {
             const nh8 = nh4.mul(nh4);
             const nh16 = nh8.mul(nh8);
             const glint = nh16.mul(nh16).mul(nh16).mul(0.55).add(nh8.mul(0.05));
+            const wet = float(1.0).sub(anyFin.mul(0.7));
             const lit = diffuse
-                .add(seen.mul(tint).mul(silver.add(fresnel.mul(0.4))))
-                .add(sun.mul(tint).mul(glint).mul(silver.add(0.3)));
+                .add(seen.mul(tint).mul(silver.add(fresnel.mul(0.4).mul(wet))))
+                .add(sun.mul(tint).mul(glint).mul(silver.add(0.3)).mul(wet));
             return vec4(aerial(u, P, lit), 1.0);
         })();
         return material;

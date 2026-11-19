@@ -1,6 +1,9 @@
 /**
  * Spring — fish in the river (spring-fish.js): salmon leaping at the fall and up the ledges, trout
- * jumping in the calmer runs. The leaps by the clock are a pure function of the time, every leap
+ * jumping in the calmer runs. The Blender-made hulls (scripts/blender/spring_fish.py ->
+ * spring-fish-hulls.js) are what they claim: one fish long, each kind's build, closed bodies wound
+ * outward and mirror-symmetric, fins and eyes in place. The leaps by the clock are a pure function
+ * of the time, every leap
  * leaves and falls back into the river where the lens sees it beside the board, the material
  * and the rings of foam where they break the water build clean to WGSL and GLSL, nothing is uploaded
  * while no fish is in the air, the heat of play brings the salmon run, and the world splashes each
@@ -16,9 +19,10 @@ import {
     EYE, RIG, S_LIP, S_POOL, bearingOf, courseAt, levelAt,
 } from '../../src/themes/spring/spring-plan.js';
 import {
-    FISH, FISH_STRIDE, Fish, GRAVITY, LANES, LANE_INDEX, LONGEST, RING, RING_STRIDE, firstLeapAfter, fishGeometry,
-    leapAt, leapPose,
+    FISH, FISH_STRIDE, Fish, GRAVITY, HULL_NAMES, LANES, LANE_INDEX, LONGEST, REGION, RING, RING_STRIDE,
+    decodeFishHull, firstLeapAfter, fishGeometry, leapAt, leapPose,
 } from '../../src/themes/spring/spring-fish.js';
+import { SPRING_FISH_HULLS } from '../../src/themes/spring/spring-fish-hulls.js';
 import {
     HEAT, REST_RIG, SpringWorld, fovForAspect, valleyGround,
 } from '../../src/themes/spring/spring-world.js';
@@ -33,32 +37,161 @@ const HALF = Math.atan(Math.tan((RIG.landscape.fov * DEG) / 2) * (16 / 9)) / DEG
 const CARD = 10;
 
 describe('spring fish: the body', () => {
-    it('models a fish one long, nose forward, with a forked tail and fins on its midline', () => {
-        const geometry = fishGeometry();
-        const position = geometry.getAttribute('position');
-        const body = geometry.getAttribute('aFishBody');
-        let nose = -Infinity;
-        let tail = Infinity;
-        let deepest = 0;
-        let fins = 0;
-        for (let i = 0; i < position.count; i++) {
-            nose = Math.max(nose, position.getZ(i));
-            tail = Math.min(tail, position.getZ(i));
-            if (body.getY(i) === 1) {
-                fins += 1;
-                expect(position.getX(i)).toBe(0);
-            } else deepest = Math.max(deepest, Math.abs(position.getY(i)));
-            // How far back from the nose, 0 … 1.
-            expect(body.getX(i)).toBeCloseTo(Math.min(1, Math.max(0, 0.5 - position.getZ(i))), 6);
+    /** A hull's vertices as {x, y, z, s, d, flex, region}. */
+    const pointsOf = (h) => Array.from({ length: h.vertexCount }, (_, i) => ({
+        x: h.positions[i * 3],
+        y: h.positions[i * 3 + 1],
+        z: h.positions[i * 3 + 2],
+        s: h.parts[i * 4],
+        d: h.parts[i * 4 + 1],
+        flex: h.parts[i * 4 + 2],
+        region: h.parts[i * 4 + 3] - h.hull * 4,
+    }));
+    /** The body's depth (top to belly) through the band z0 … z1. */
+    const depthOver = (points, z0, z1) => {
+        const band = points.filter((p) => p.region === REGION.body && p.z >= z0 && p.z <= z1);
+        return Math.max(...band.map((p) => p.y)) - Math.min(...band.map((p) => p.y));
+    };
+
+    it('has the arrays it claims, triangles matched to its size in the frame', () => {
+        expect(SPRING_FISH_HULLS.noseZ).toBe(0.5);
+        expect(SPRING_FISH_HULLS.tailZ).toBe(-0.5);
+        HULL_NAMES.forEach((name, kind) => {
+            const h = decodeFishHull(name);
+            expect(h.hull).toBe(kind);
+            expect(h.positions).toHaveLength(h.vertexCount * 3);
+            expect(h.normals).toHaveLength(h.vertexCount * 3);
+            expect(h.parts).toHaveLength(h.vertexCount * 4);
+            expect(h.index).toHaveLength(h.triangleCount * 3);
+            expect(Math.max(...h.index)).toBeLessThan(h.vertexCount);
+            // Enough for the outline at 40 px and through a long lens; more would not show.
+            expect(h.bodyTriangleCount).toBeGreaterThanOrEqual(240);
+            expect(h.triangleCount).toBeLessThan(500);
+        });
+        expect(FISH.salmon.id).toBe(HULL_NAMES.indexOf('salmon'));
+        expect(FISH.trout.id).toBe(HULL_NAMES.indexOf('trout'));
+    });
+
+    it('is one fish long, nose forward, a salmon slim with a slender wrist and a trout deep and thick-set', () => {
+        const [salmon, trout] = HULL_NAMES.map((name) => pointsOf(decodeFishHull(name)));
+        for (const points of [salmon, trout]) {
+            expect(Math.max(...points.map((p) => p.z))).toBeCloseTo(0.5, 3);
+            expect(Math.min(...points.map((p) => p.z))).toBeCloseTo(-0.5, 2);
+            // The nose is the body's.
+            const nose = points.reduce((a, b) => (b.z > a.z ? b : a));
+            expect(nose.region).toBe(REGION.body);
         }
-        expect(nose).toBeCloseTo(0.5, 5);
-        expect(tail).toBeCloseTo(-0.5, 5);
-        // About a fifth as deep as it is long.
-        expect(deepest * 2).toBeGreaterThan(0.18);
-        expect(deepest * 2).toBeLessThan(0.26);
-        expect(fins).toBeGreaterThanOrEqual(12);
-        expect(geometry.index.count / 3).toBeGreaterThan(150);
-        expect(geometry.index.count / 3).toBeLessThan(400);
+        const deep = (points) => depthOver(points, -0.1, 0.25);
+        const wrist = (points) => depthOver(points, -0.33, -0.3);
+        // A salmon about a fifth as deep as it is long, a trout near a quarter.
+        expect(deep(salmon)).toBeGreaterThan(0.19);
+        expect(deep(salmon)).toBeLessThan(0.23);
+        expect(deep(trout)).toBeGreaterThan(0.22);
+        expect(deep(trout)).toBeLessThan(0.26);
+        expect(wrist(trout)).toBeGreaterThan(wrist(salmon) * 1.25);
+        expect(wrist(salmon) / deep(salmon)).toBeLessThan(0.4);
+        // Half as broad as deep, or a little more.
+        const broad = (points) => 2 * Math.max(
+            ...points.filter((p) => p.region === REGION.body).map((p) => Math.abs(p.x)),
+        );
+        expect(broad(salmon) / deep(salmon)).toBeGreaterThan(0.45);
+        expect(broad(salmon) / deep(salmon)).toBeLessThan(0.7);
+        expect(broad(trout)).toBeGreaterThan(broad(salmon));
+        // The salmon's tail forked, the trout's square-cut: how far the fork reaches in from the tips.
+        const fork = (points) => {
+            const tail = points.filter((p) => p.region === REGION.fin && p.z < -0.42);
+            const notch = tail.filter((p) => Math.abs(p.y) < 1e-3).reduce((a, b) => (b.z < a.z ? b : a));
+            return notch.z - Math.min(...tail.map((p) => p.z));
+        };
+        expect(fork(salmon)).toBeGreaterThan(0.03);
+        expect(fork(trout)).toBeLessThan(0.015);
+    });
+
+    it('has closed bodies, wound outward, mirror-symmetric', () => {
+        for (const name of HULL_NAMES) {
+            const h = decodeFishHull(name);
+            const edges = new Map();
+            let volume = 0;
+            for (let t = 0; t < h.bodyTriangleCount; t++) {
+                const [a, b, c] = [h.index[t * 3], h.index[t * 3 + 1], h.index[t * 3 + 2]];
+                for (const [p, q] of [[a, b], [b, c], [c, a]]) {
+                    const key = `${Math.min(p, q)},${Math.max(p, q)}`;
+                    edges.set(key, (edges.get(key) || 0) + 1);
+                }
+                const v = (i) => new THREE.Vector3(h.positions[i * 3], h.positions[i * 3 + 1], h.positions[i * 3 + 2]);
+                volume += v(a).dot(v(b).cross(v(c))) / 6;
+            }
+            // Every edge shared by two triangles: no holes, no flaps.
+            expect([...edges.values()].every((n) => n === 2)).toBe(true);
+            expect(volume).toBeGreaterThan(0);
+            const body = pointsOf(h).filter((p) => p.region === REGION.body);
+            for (const p of body) {
+                const twin = body.some((q) => Math.abs(q.x + p.x) < 1e-4 && Math.abs(q.y - p.y) < 1e-4
+                    && Math.abs(q.z - p.z) < 1e-4);
+                expect(twin).toBe(true);
+            }
+        }
+    });
+
+    it('bakes unit normals and every part in range', () => {
+        for (const name of HULL_NAMES) {
+            const h = decodeFishHull(name);
+            for (let i = 0; i < h.vertexCount; i++) {
+                expect(Math.hypot(h.normals[i * 3], h.normals[i * 3 + 1], h.normals[i * 3 + 2])).toBeCloseTo(1, 3);
+            }
+            const points = pointsOf(h);
+            for (const p of points) {
+                for (const k of ['s', 'd', 'flex']) {
+                    expect(p[k]).toBeGreaterThanOrEqual(0);
+                    expect(p[k]).toBeLessThanOrEqual(1);
+                }
+                expect(Object.values(REGION)).toContain(p.region);
+                // How far along is from the nose to the tail's tips.
+                expect(p.s).toBeCloseTo(Math.min(1, Math.max(0, 0.5 - p.z)), 3);
+            }
+            // The body's back is its top, its belly its bottom.
+            const body = points.filter((p) => p.region === REGION.body && p.z > -0.2 && p.z < 0.3);
+            const top = body.reduce((a, b) => (b.y > a.y ? b : a));
+            const bottom = body.reduce((a, b) => (b.y < a.y ? b : a));
+            expect(top.d).toBeGreaterThan(0.95);
+            expect(bottom.d).toBeLessThan(0.05);
+            expect(points.filter((p) => p.region === REGION.body).every((p) => p.flex === 0)).toBe(true);
+        }
+    });
+
+    it('stands its fins where a salmonid\'s are, roots fixed and edges free, and an eye each side', () => {
+        for (const name of HULL_NAMES) {
+            const points = pointsOf(decodeFishHull(name));
+            const fins = points.filter((p) => p.region === REGION.fin || p.region === REGION.paleFin);
+            expect(fins.some((p) => p.flex === 0)).toBe(true);
+            expect(fins.some((p) => p.flex === 1)).toBe(true);
+            // On the back: the dorsal over the middle and the small adipose behind it.
+            const onBack = points.filter((p) => p.region === REGION.fin && p.x === 0 && p.y > 0.06 && p.z > -0.36);
+            expect(onBack.some((p) => p.z > 0.05 && p.z < 0.15)).toBe(true);
+            expect(onBack.some((p) => p.z < -0.2 && p.z > -0.3)).toBe(true);
+            expect(onBack.some((p) => p.z < -0.05 && p.z > -0.2)).toBe(false);
+            // Pale fins under it: the anal on the midline, the paired fins either side.
+            const pale = points.filter((p) => p.region === REGION.paleFin);
+            expect(pale.some((p) => p.x === 0 && p.y < -0.05 && p.z < -0.15)).toBe(true);
+            expect(pale.some((p) => p.x > 0.02)).toBe(true);
+            expect(pale.some((p) => p.x < -0.02)).toBe(true);
+            // The eyes, small discs on the head, one each side.
+            const eyes = points.filter((p) => p.region === REGION.eye);
+            expect(eyes.length).toBeGreaterThanOrEqual(12);
+            expect(eyes.every((p) => p.z > 0.42 && p.y > 0)).toBe(true);
+            expect(eyes.some((p) => p.x > 0.01) && eyes.some((p) => p.x < -0.01)).toBe(true);
+        }
+    });
+
+    it('merges both hulls into one geometry with their indices offset', () => {
+        const [salmon, trout] = HULL_NAMES.map((name) => decodeFishHull(name));
+        const geometry = fishGeometry();
+        expect(geometry.getAttribute('position').count).toBe(salmon.vertexCount + trout.vertexCount);
+        expect(geometry.index.count).toBe((salmon.triangleCount + trout.triangleCount) * 3);
+        expect(geometry.index.array[salmon.triangleCount * 3]).toBe(trout.index[0] + salmon.vertexCount);
+        const part = geometry.getAttribute('aFishPart');
+        expect(part.getW(0)).toBeLessThan(4);
+        expect(part.getW(salmon.vertexCount)).toBeGreaterThanOrEqual(4);
         geometry.dispose();
     });
 
