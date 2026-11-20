@@ -17,6 +17,25 @@ app.commandLine.appendSwitch('disable-renderer-backgrounding');
 app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
 const [out, countArg, secondsArg, hzArg, tapePath] = process.argv.slice(2);
 const count = Number(countArg), seconds = Number(secondsArg), hz = Number(hzArg);
+// A concurrent theme release can rename chunks outside this game's exercised
+// path. Ask Chromium which scripts it parsed only after the timed match ends.
+async function loadedGameScripts(contents, gameUrl) {
+    const directory = new URL('.', gameUrl).href;
+    const scripts = new Set();
+    const collect = (_event, method, params) => {
+        if (method === 'Debugger.scriptParsed' && params.url.startsWith(directory)) {
+            const path = params.url.slice(directory.length).split(/[?#]/)[0];
+            if (path.endsWith('.js')) scripts.add(path);
+        }
+    };
+    const protocol = contents.debugger;
+    if (!protocol.isAttached()) protocol.attach('1.3');
+    protocol.on('message', collect);
+    try { await protocol.sendCommand('Debugger.enable'); }
+    finally { protocol.off('message', collect); }
+    await protocol.sendCommand('Debugger.disable');
+    return [...scripts].sort();
+}
 function boardCheck(state, pending) {
     const types = state.boardGrid.map(row => row.map(c => c?.type || '.').join('')).join('/');
     if (!labelledChecks) return [state.score, state.piecesPlaced, types];
@@ -441,6 +460,7 @@ app.whenReady().then(async () => {
         writeFileSync(profilePath, JSON.stringify({ navigationStart, profile }), { flag: 'wx' });
     }
     data.checkFormat = labelled ? 'body-v1' : 'type-v1';
+    data.loadedScripts = await loadedGameScripts(win.webContents, url);
     if (localTiers) data.localTiers = localTiers;
     data.sharedTexturePaints = textures;
     data.outputMuted = win.webContents.isAudioMuted();
