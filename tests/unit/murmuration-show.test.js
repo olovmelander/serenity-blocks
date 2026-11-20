@@ -5,6 +5,7 @@ import {
     CHAIN_FIGURES, CHAIN_GRAND_FIGURES, RANDOM_SHAPE_POOL, SwarmShow,
 } from '../../src/themes/murmuration/composition/swarm-show.js';
 import { PALETTE_LEVEL_STEP } from '../../src/themes/murmuration/composition/swarm-palette.js';
+import { FRONT } from '../../src/themes/murmuration/composition/swarm-fronts.js';
 import { IMPULSE_TYPE } from '../../src/themes/murmuration/sim/fluid-particles.js';
 import { SHAPE_NAMES } from '../../src/themes/murmuration/sim/shape-formations.js';
 
@@ -75,6 +76,12 @@ describe('swarm show: locks', () => {
             expect(soft.show.fx[key], key).toBeGreaterThan(0);
             expect(hard.show.fx[key], key).toBeGreaterThan(soft.show.fx[key]);
         }
+        // The light is a front of the event's own shape: a puff for a lock, a chevron for a drop.
+        const [puff] = soft.show.fronts.fronts.filter((front) => front.live);
+        const [bow] = hard.show.fronts.fronts.filter((front) => front.live);
+        expect(puff.kind).toBe(FRONT.ring);
+        expect(bow.kind).toBe(FRONT.chevron);
+        expect(bow.light).toBeGreaterThan(puff.light);
         // A lock gathers nothing.
         expect(soft.sim.setShape).not.toHaveBeenCalled();
     });
@@ -90,10 +97,12 @@ describe('swarm show: locks', () => {
         // The mean of the rows the piece landed on, and its own column.
         expect(locate).toHaveBeenLastCalledWith(lock, 17.5, 0.3, expect.any(Object));
         expect(impulses[0].position).toEqual({ x: 3, y: -2, z: FOCAL.z });
-        // A clear runs along its rows from the middle of the board.
+        // A clear's ring leaves from the middle of its rows, and each row sends a beam of its own.
         const clear = { lines: 2, rows: [19, 18] };
         show.clear(clear);
-        expect(locate).toHaveBeenLastCalledWith(clear, 18.5, 0.5, expect.any(Object));
+        expect(locate).toHaveBeenCalledWith(clear, 18.5, 0.5, expect.any(Object));
+        expect(locate).toHaveBeenCalledWith(clear, 19, 0.5, expect.any(Object));
+        expect(locate).toHaveBeenLastCalledWith(clear, 18, 0.5, expect.any(Object));
         expect(impulses[1].position).toEqual({ x: 3, y: -2, z: FOCAL.z });
 
         // A locate that cannot place the event leaves it at the focal point, whatever it scribbled.
@@ -252,9 +261,13 @@ describe('swarm show: clears', () => {
 
     it('only ever asks the simulation for formations it has', () => {
         expect(RANDOM_SHAPE_POOL.every((name) => SHAPE_NAMES.includes(name))).toBe(true);
-        // 'free' is the release state and the heart belongs to game over.
+        // 'free' is the release state, the roost belongs to game over and the wings to four lines.
         expect(RANDOM_SHAPE_POOL).not.toContain('free');
-        expect(RANDOM_SHAPE_POOL).not.toContain('heart');
+        expect(RANDOM_SHAPE_POOL).not.toContain('roost');
+        expect(RANDOM_SHAPE_POOL).not.toContain('wings');
+        // No hard-edged solids: a flock does not draw a cube.
+        expect(RANDOM_SHAPE_POOL.filter((name) => /cube|pyramid|octahedron|hexagon|crystal|lightning/i.test(name)))
+            .toEqual([]);
         // The flock never draws the game's pieces.
         expect(RANDOM_SHAPE_POOL.filter((name) => /tetromino/i.test(name))).toEqual([]);
         // The twist's knots and the perfect clear's blooms are private lists: roll through them.
@@ -272,7 +285,7 @@ describe('swarm show: clears', () => {
         expect([...asked].filter((name) => !SHAPE_NAMES.includes(name))).toEqual([]);
     });
 
-    it('draws a play\'s figure beside the board and in front of the dust; only the heart takes it all', () => {
+    it('draws a play\'s figure beside the board and in front of the dust; the roost lies along the frame', () => {
         const { show, sim } = makeShow();
         show.clear({ lines: 3, rows: [19, 18, 17] });
         show.resetSession();
@@ -295,10 +308,11 @@ describe('swarm show: clears', () => {
         expect(plays.filter(([, opts]) => !(opts?.keepDust > 0))).toEqual([]);
         show.resetSession();
         show.gameOver();
-        const [name, heart] = figures().at(-1);
-        expect(name).toBe('heart');
-        expect(heart.layout).toBe('center');
-        expect(heart.keepDust).not.toBe(true);
+        const [name, roost] = figures().at(-1);
+        expect(name).toBe('roost');
+        expect(roost.layout).toBe('center');
+        // The dust stays in the air over it: a ghost of the flock still wheeling.
+        expect(roost.keepDust).toBe(true);
     });
 });
 
@@ -455,12 +469,23 @@ describe('swarm show: combo', () => {
         expect(show.shape.name).toBe(quad.name);
         expect(show.shape.growth).toBeGreaterThan(0);
         expect(show.shape.target).toBeGreaterThan(quad.target);
-        // A twist's knot: the figure pirouettes instead.
+        // A twist during the wings: no knot, and the wings keep facing the lens (they are
+        // fitted to the frame, so they never turn).
         show.clear({ lines: 2, rows: [19, 18], twist: true });
         expect(sim.setShape).toHaveBeenCalledTimes(1);
-        expect(show.shape.spinTarget).toBeCloseTo(Math.PI * 2, 9);
-        time = run(show, time, 2.5);
-        expect(sim.setShapePose.mock.calls.at(-1)[0]).toBeGreaterThan(Math.PI);
+        expect(show.shape.name).toBe('wings');
+        expect(show.shape.spinTarget).toBe(0);
+        time = run(show, time, 3);
+        expect(sim.setShapePose.mock.calls.at(-1)[0]).toBe(0);
+        // A rolled figure pirouettes for a twist instead of being dropped for a knot.
+        const rolled = makeShow();
+        rolled.show.clear({ lines: 3, rows: [19, 18, 17] });
+        const at = run(rolled.show, 0, 1);
+        rolled.show.clear({ lines: 2, rows: [19, 18], twist: true });
+        expect(rolled.sim.setShape).toHaveBeenCalledTimes(1);
+        expect(rolled.show.shape.spinTarget).toBeCloseTo(Math.PI * 2, 9);
+        run(rolled.show, at, 1.5);
+        expect(Math.abs(rolled.sim.setShapePose.mock.calls.at(-1)[0])).toBeGreaterThan(Math.PI);
         // Late in its hold, play keeps it a little longer.
         show.clear({ lines: 3, rows: [19, 18, 17] });
         expect(show.shape.until).toBeGreaterThan(quad.until);
@@ -801,10 +826,15 @@ describe('swarm show: the build (fast play accumulates instead of popping)', () 
         expect(show.fire).toBeGreaterThan(0.5);
         const hot = show.heat;
         expect(hot).toBeGreaterThan(0.8);
-        // The board is empty: the chain is over even before the next lock breaks it.
-        run(show, time, 8);
+        // The crown's figure stays gold for as long as it stands …
+        time = run(show, time, 3);
+        expect(show.gold).toBeGreaterThan(0.9);
+        expect(show.heat).toBeGreaterThan(0.8);
+        // … and the board is empty: the chain is over even before the next lock breaks it.
+        run(show, time, 11);
         expect(show.comboCount).toBe(9);
         expect(show.heat).toBeLessThan(hot * 0.4);
+        expect(show.gold).toBeLessThan(0.1);
 
         // The same when the perfect clear lands on its clear's own frame, with that clear's step.
         const same = makeShow();
@@ -818,7 +848,8 @@ describe('swarm show: the build (fast play accumulates instead of popping)', () 
         same.show.combo(10);
         at = run(same.show, at, 1);
         const peak = same.show.heat;
-        run(same.show, at, 8);
+        // (Once the crown's figure has let go: it holds its gold for as long as it stands.)
+        run(same.show, at, 14);
         expect(same.show.heat).toBeLessThan(peak * 0.4);
     });
 
@@ -852,26 +883,28 @@ describe('swarm show: the build (fast play accumulates instead of popping)', () 
 });
 
 describe('swarm show: runs and levels', () => {
-    it.each(['gameStart', 'resetSession'])('holds the game-over heart until %s()', (letGo) => {
+    it.each(['gameStart', 'resetSession'])('holds the flock at its roost until %s()', (letGo) => {
         const {
             show, sim, camera, impulses,
         } = makeShow();
         show.gameOver();
-        // One heart, in the middle: the run is over and the board no longer needs the centre.
-        expect(sim.setShape).toHaveBeenLastCalledWith('heart', expect.objectContaining({ layout: 'center' }));
+        // The flock comes down along the foot of the frame: one bank, whatever the layout.
+        expect(sim.setShape).toHaveBeenLastCalledWith('roost', expect.objectContaining({ layout: 'center' }));
         expect(camera.pullBack).toHaveBeenCalledOnce();
-        let time = run(show, 0, 30);
-        expect(show.shape.name).toBe('heart');
+        // A last fold of light goes down with it; nothing shoves the flock.
+        expect(show.fronts.pending()).toBe(1);
+        expect(impulses).toHaveLength(0);
+        let time = run(show, 0, 8);
+        expect(show.shape.name).toBe('roost');
+        expect(show.isRoosting()).toBe(true);
         expect(show.shape.target).toBeGreaterThan(0);
         expect(show.shape.level).toBeCloseTo(show.shape.target, 3);
-        // The swarm was drawn in to it.
-        expect(impulses.length).toBeGreaterThan(2);
-        expect(impulses.every((impulse) => impulse.type === ATTRACTOR)).toBe(true);
-        // No lesser moment takes the swarm off the heart.
+        expect(show.roosting).toBeGreaterThan(0.9);
+        // No lesser moment takes the swarm off the roost.
         show.clear(QUAD);
         show.combo(8);
         time = run(show, time, 2);
-        expect(show.shape.name).toBe('heart');
+        expect(show.shape.name).toBe('roost');
         expect(sim.setShape).toHaveBeenCalledTimes(1);
 
         show[letGo]();
@@ -894,13 +927,21 @@ describe('swarm show: runs and levels', () => {
         expect(impulses[0]).toMatchObject({ type: RADIAL, position: FOCAL });
         expect(impulses[0].wave).toBeTruthy();
         expect(show.skyFlash).toBeGreaterThan(0);
-        // The colours ease over; they do not jump.
-        expect(show.palettePhase).toBe(0);
+        // The new colours cross the flock as one wave: the motes take the new palette at once
+        // and the wave holds the old one ahead of its front, so nothing jumps on screen.
+        expect(show.palettePhase).toBe(show.palettePhaseTarget);
+        expect(show._wipe.delta).toBeCloseTo(PALETTE_LEVEL_STEP, 12);
+        // The sky's tints ease over behind it, and the flock moves on a mood.
+        expect(show.tintPhase).toBe(0);
         const time = run(show, 0, 0.5);
-        expect(show.palettePhase).toBeGreaterThan(0);
-        expect(show.palettePhase).toBeLessThan(show.palettePhaseTarget);
-        run(show, time, 10);
-        expect(show.palettePhase).toBeCloseTo(show.palettePhaseTarget, 4);
+        expect(show.tintPhase).toBeGreaterThan(0);
+        expect(show.tintPhase).toBeLessThan(show.palettePhaseTarget);
+        expect(show.moodStep).toBeGreaterThan(0);
+        expect(show.moodStep).toBeLessThan(1);
+        run(show, time, 12);
+        expect(show.tintPhase).toBeCloseTo(show.palettePhaseTarget, 4);
+        expect(show.moodStep).toBeCloseTo(1, 2);
+        expect(show._wipe.delta).toBe(0);
 
         // Joining a run in progress: straight to its colours, no wave.
         show.levelUp(6, { silent: true });

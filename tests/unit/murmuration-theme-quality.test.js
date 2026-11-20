@@ -172,21 +172,21 @@ describe('Murmuration theme: a tier or render scale changed while it runs', () =
         expect(SwarmPostPipeline.made).toHaveLength(1);
     });
 
-    it('keeps the level palette and a held heart across the swap', async () => {
+    it('keeps the level palette and a flock at roost across the swap', async () => {
         const { theme, listeners, frame } = await startTheme('Minimal');
         theme.show.levelUp(3, { silent: true });
         listeners.get('gameOver')();
-        expect(theme._heartHeld).toBe(true);
-        expect(theme.show.getState().shape).toBe('heart');
+        expect(theme._runEnded).toBe(true);
+        expect(theme.show.getState().shape).toBe('roost');
 
         listeners.get('settingsChanged')({ detail: { effectQuality: 'Low' } });
         frame();
         expect(theme.qualityName).toBe('Low');
         expect(theme.show.getState().level).toBe(3);
         expect(theme.show.getState().palettePhase).toBeCloseTo(2 * PALETTE_LEVEL_STEP, 6);
-        expect(theme._heartHeld).toBe(true);
-        expect(theme.show.getState().shape).toBe('heart');
-        expect(theme.fluidSim.currentShape).toBe('heart');
+        expect(theme._runEnded).toBe(true);
+        expect(theme.show.getState().shape).toBe('roost');
+        expect(theme.fluidSim.currentShape).toBe('roost');
     });
 
     it('leaves the world alone when a payload names the tier it already runs', async () => {
