@@ -15,6 +15,7 @@ $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
 $electron = Join-Path $root 'node_modules/electron/dist/electron.exe'
 $env:SERENITY_BOT_BUILD = (Resolve-Path -LiteralPath $BuildDirectory).Path
+Remove-Item Env:SERENITY_BOT_GAME_URL -ErrorAction SilentlyContinue
 Remove-Item Env:ELECTRON_RUN_AS_NODE -ErrorAction SilentlyContinue
 Remove-Item Env:SERENITY_BOT_RIVAL_CONFIG -ErrorAction SilentlyContinue
 Remove-Item Env:SERENITY_BOT_TIERS -ErrorAction SilentlyContinue

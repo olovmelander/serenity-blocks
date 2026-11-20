@@ -14,6 +14,13 @@ Feature branch `feature/gravity-bots`, measured against `8dc68d825db61bc04e1cfb4
 | Repeatability | The supported local fixed clock matched 3,403 inputs, 267 waves and 134 outgoing events across two fresh processes at 60 and 165 Hz. The end of this handover names the special rules that still use the original wall clock. |
 | Human appearance and fun | Far-off sampled mistakes fell to 0/58 at tier 1 and 4/67 at tier 2. The blind study is ready for five independent reviewers. Direct-play fun ratings are outstanding. |
 
+### Release decision and follow-ups
+
+On November 20 the owner approved deployment when CI and the planning budgets pass, with two follow-ups.
+
+1. **Display intervals.** Recheck the local rooms and the Neon encounter at 60 and 165 Hz on the same hardware, with each game's own input replay. Compare the number of two-refresh intervals, the shared labelled boards and the renderer activity around any excess. The first pass had extra intervals in five of eight configurations. [Frame measurements](#frame-cost) · [Packaged measurement runner](../reports/gravity-bot-rebuild/render-series.ps1)
+2. **Human play.** Collect five independent reviews of the eight blinded clips and record direct-play fun ratings by tier. The agreed plausibility threshold is 70%. At handover there were zero completed questionnaires. The reserved seven-frag median of 16.3 minutes is worth checking in direct play. [Blind review](../reports/gravity-bot-rebuild/blind-review.html) · [Scoring the responses](../reports/gravity-bot-rebuild/scorecard.py)
+
 ## What the expert actually does
 
 | Tier 10, standard board | Frozen | Gravity policy |
@@ -326,9 +333,13 @@ Four fresh, unprofiled 45-second matches then timed the actual Phaser effects at
 
 ## Verification
 
+The November 20 integration includes upstream revision `1467c03e2`. Main had retuned solo orbs 6, 22, 32 and 41. The generator's proposal now carries the calibrated settings for the eight named opponents alongside those authored changes. Comparing the assembled definitions for all 60 orbs against that revision found identical goals, stars and solo rules. The differences were confined to the eight rivals' difficulty, judgment and displayed tier. The generator's output check passed. [Generator inputs](../artifacts/odyssey-level-design-audit-2026-11/scripts/pass3/proposal.json) · [Assembled campaign](../src/core/odyssey/data/level-design-2026-11.js)
+
+On the integrated tree, 691 focused tests passed across 41 files. The two cold processes reproduced the same 841 decisions, 3,403 inputs, 267 waves, 134 outgoing events and 144 labelled boards as the pre-integration package. Regenerating the seed-1006 walkthrough produced the same text and boards. The pinned campaign command again won orb 49 on lock 105. A fresh installation from the merged lockfile built the production game in 39.77 seconds and passed the boot closure, packaged string and Pages artifact checks. [Board-by-board walkthrough](BOT_AI_CHAIN_REPLAY_2026-11.md) · [Frozen campaign runner](../scripts/odyssey-benchmark/frozen-campaign.mjs)
+
 At a simulated 165 Hz display cadence, the final policy exactly reproduced the prior build's 1,800 first-knockout matches, 1,800 three-frag series and 1,800 seven-frag series. The short races contained 6,572 rounds and the seven-frag continuation reached 16,007. The same comparison reproduced all 80 opening deals, all 80 native 120-lock games, all 400 native 200-lock games and the further 40 expert survival games. The ledger records a digest of each matched panel. The packaged runs above replay the real callback and input timings.
 
-The final tree passed **682 tests across 43 focused files** covering the opponents, benchmark, movement, multiplayer clocks and campaign rules. TypeScript passed. The source lint comparison covered 22 changed files and found the same 37 errors and 12 warnings as the original revision. Vite built the production package in 39.73 seconds. Its entry loads three static chunks totaling 12 KB, and the main entry loads four totaling 1,291 KB. [Recorded checks](../reports/gravity-bot-rebuild/evidence.json.gz)
+Before integration the tree passed **682 tests across 43 focused files** covering the opponents, benchmark, movement, multiplayer clocks and campaign rules. TypeScript passed. The source lint comparison covered 22 changed files and found the same 37 errors and 12 warnings as the original revision. Vite built the production package in 39.73 seconds. Its entry loads three static chunks totaling 12 KB, and the main entry loads four totaling 1,291 KB. [Recorded checks](../reports/gravity-bot-rebuild/evidence.json.gz)
 
 The native Windows full run passed **26,771 tests**, with 37 skipped. Two display assertions expect comma thousands separators. This host renders “8 025” and “48 210” in Swedish. A separate TTS recorder suite stopped when Windows denied its directory symlink. Each of those three files failed the same way on the original revision. The frozen benchmark command reproduced the expert's orb 49 seed-40 primary goal on lock 105. [Campaign construction regression](../tests/unit/odyssey-benchmark-authored-construction.test.js)
 
@@ -383,6 +394,8 @@ node reports/gravity-bot-rebuild/style-fit.mjs default-seven seven.jsonl default
 ```
 
 The packaged test plays the actual local match and the authored Neon encounter in Electron with offscreen shared-texture rendering. Each live run writes its control tape. A fresh game then plays those inputs and compares scores, piece counts, cell types, body connectivity and queued rows. The second pass reverses the order of the display rates. Each capture lasts ten real minutes. Running all 32 on one GPU takes about five hours and twenty minutes plus startup.
+
+For the upstream integration, `render-series.ps1 -LiveOnly` repeats all 16 live measurements. The integration checker compares the command prefixes and labelled checkpoints to the original runs and checks the planning deadlines in each room. A direct invocation of `rendered-match.cjs` also accepts the published game's base URL in `SERENITY_BOT_GAME_URL` and records the manifest hash served by that deployment. [Integration checker](../reports/gravity-bot-rebuild/integration-check.py)
 
 ```powershell
 npm run build

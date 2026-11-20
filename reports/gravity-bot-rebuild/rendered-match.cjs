@@ -361,7 +361,8 @@ app.whenReady().then(async () => {
     });
     win.webContents.session.webRequest.onErrorOccurred(details => console.error(details.error, details.url.slice(0, 240)));
     const build = resolve(process.env.SERENITY_BOT_BUILD || 'dist');
-    const url = pathToFileURL(join(build, 'index.html'));
+    const deployedGame = process.env.SERENITY_BOT_GAME_URL;
+    const url = deployedGame ? new URL(deployedGame) : pathToFileURL(join(build, 'index.html'));
     const recorded = tapePath ? JSON.parse(readFileSync(tapePath, 'utf8')) : null;
     const labelled = !recorded || recorded.checkFormat === 'body-v1';
     // Old recordings used the explicit fixed clock. Current recordings go through
@@ -427,7 +428,16 @@ app.whenReady().then(async () => {
         cpu: cpus()[0].model, renderer: graphics.auxAttributes?.glRenderer,
         mainPriority: getPriority(0), rendererPriority: getPriority(win.webContents.getOSProcessId()) };
     if (repeatRivals) data.runtime.focusEmulated = focusEmulated;
-    data.buildManifestSha256 = createHash('sha256').update(readFileSync(join(build, 'manifest.json'))).digest('hex');
+    let manifest;
+    if (deployedGame) {
+        const response = await win.webContents.session.fetch(new URL('manifest.json', url).href, { cache: 'no-store' });
+        if (!response.ok) throw Error('Deployed game manifest returned HTTP ' + response.status);
+        manifest = Buffer.from(await response.arrayBuffer());
+        data.gameUrl = url.href;
+    } else {
+        manifest = readFileSync(join(build, 'manifest.json'));
+    }
+    data.buildManifestSha256 = createHash('sha256').update(manifest).digest('hex');
     writeFileSync(out, JSON.stringify(data), { flag: 'wx' });
     win.destroy(); app.quit();
 }).catch(error => { console.error(error); app.exit(1); });
