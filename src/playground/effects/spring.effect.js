@@ -15,6 +15,9 @@
  *                            alone, one station every 100 s of `t`, never resting)
  *   hour=<place>             hold the light at a wheel place (0 morning, 1 afternoon, 2 golden
  *                            evening, 3 sunset, 4 light night, 5 dawn mist; fractions mix)
+ *   weather=<place>          hold the weather at a wheel place (0 fair, 1 mackerel sky, 2 building
+ *                            heaps, 3 after the shower, 4 veiled sun, 5 clear and windy; fractions
+ *                            mix; it also turns with the clock alone, one every 130 s of `t`)
  *   parts=land,river         draw only these parts (land, river, rocks, trees, woods, meadow, fx, sky)
  *   falseColor=1             post debug view: band the pre-tone-map max channel
  *   noPost=1                 raw scene (no bloom/grade)
@@ -36,6 +39,11 @@
  *   locks=<n>                before the event, play n locks (and clears=<n> single-line clears)
  *   eventLevel=<n>           the level an event=levelUp steps to (default level + 1)
  *   demo=1                   live: a looping gameplay script
+ *   leap=fall|ledges|runs    show the first of that lane's leaps by the clock from `t` on (salmon
+ *                            at the fall, salmon up the ledges, trout in the runs)...
+ *   leapPhase=<0..4>         ...this far through its flight (default 0.45; past 1, after it falls
+ *                            back: its ring and splash)
+ *   leapLook=<fov>           ...and aim the inspection lens at the fish with this fov (degrees)
  *   atlas=albedo|normal      show the woods' impostor atlas instead of the world (a debug view)
  */
 import * as THREE from 'three/webgpu';
@@ -46,10 +54,16 @@ import { SpringWorld } from '../../themes/spring/spring-world.js';
 import { SpringPost, POST_LOOK } from '../../themes/spring/spring-post.js';
 import { readLayoutRects } from '../../themes/spring/spring-composition.js';
 import { SPRING_TETROMINOS } from '../../themes/spring/spring-tetrominos.js';
+import {
+    LANE_INDEX, firstLeapAfter, leapAt, leapPose,
+} from '../../themes/spring/spring-fish.js';
 
 /** The game's piece colours, and a ten-cell row of codes for synthetic clears. */
 const PIECE_COLORS = Object.values(SPRING_TETROMINOS.colors).slice(0, 7);
 const ROW_CODES = (k) => Array.from({ length: 10 }, (_, c) => (k * 3 + c * 2 + (c > 5 ? 1 : 0)) % 7);
+
+/** The pieces the warm-up locks play, in turn (in the order of PIECE_COLORS). */
+const WARM_SHAPES = ['I', 'T', 'Z', 'L', 'S', 'J', 'O'];
 
 /** A looping script for the live demo (seconds into the loop). */
 const DEMO_LOOP = 40;
@@ -153,6 +167,7 @@ export function create({
     const pointer = { x: num(params, 'px'), y: num(params, 'py') };
     const level = Math.max(1, Math.round(num(params, 'level', 1)));
     const hourHold = params.has('hour') ? num(params, 'hour', 0) : null;
+    const weatherHold = params.has('weather') ? num(params, 'weather', 0) : null;
     const eventName = params.get('event');
     const eventAge = num(params, 'eventAge', 0.6);
     const holdCombo = Math.max(0, Math.round(num(params, 'combo', 0)));
@@ -174,6 +189,11 @@ export function create({
     const standAt = eyeAt.length >= 3 && eyeAt.slice(0, 3).every(Number.isFinite) ? eyeAt : null;
     const lookAt = (params.get('look') || '').split(',').map(Number);
     const inspect = lookAt.length >= 3 && lookAt.slice(0, 3).every(Number.isFinite);
+    const leapLane = Object.hasOwn(LANE_INDEX, params.get('leap')) ? LANE_INDEX[params.get('leap')] : null;
+    const leapPhase = Math.max(0, Math.min(4, num(params, 'leapPhase', 0.45)));
+    const leapLook = params.has('leapLook') ? num(params, 'leapLook', 6) : null;
+    let leapShown = null;
+    const leapPoint = {};
     const size = new THREE.Vector2(1, 1);
     let lastSeek = null;
     let simTime = 0;
@@ -202,6 +222,13 @@ export function create({
             camera.position.set(iconEye[0] || 0, iconEye[1] || 8.2, iconEye[2] || 0);
             camera.fov = iconFov;
             camera.rotation.set(iconPitch * (Math.PI / 180), -iconBearing * (Math.PI / 180), 0, 'YXZ');
+            camera.updateProjectionMatrix();
+            camera.updateMatrixWorld();
+        } else if (leapShown && leapLook) {
+            // The inspection lens on the leaping fish.
+            leapPose(leapShown, time - leapShown.at, world.flood, leapPoint);
+            camera.fov = leapLook;
+            camera.lookAt(leapPoint.x, leapPoint.y, leapPoint.z);
             camera.updateProjectionMatrix();
             camera.updateMatrixWorld();
         } else if (inspect) {
@@ -249,10 +276,16 @@ export function create({
         const h = (to - from) / steps;
         for (let i = 1; i <= steps; i++) frame(from + i * h, h);
     };
-    const seekTo = (asked) => {
-        lastSeek = asked;
-        simTime = asked;
+    const seekTo = (wanted) => {
+        lastSeek = wanted;
+        simTime = wanted;
         if (!world) return;
+        // leap=: the asked moment is that lane's next leap by the clock, `leapPhase` through it.
+        let asked = wanted;
+        if (leapLane !== null) {
+            leapShown = leapAt(leapLane, firstLeapAfter(leapLane, wanted));
+            asked = leapShown.at + leapPhase * leapShown.T;
+        }
         // Events fire inside a short replay before the asked frame (a chain needs time to rise).
         const lead = (eventName ? eventAge : 0) + (holdCombo ? 6 : 0) + (holdB2B ? 4 : 0) + warmLocks * 0.6 + 0.5;
         const time = Math.max(asked, lead);
@@ -279,6 +312,8 @@ export function create({
                 rows: [19 - (i % 9)],
                 u: ((i * 0.37) % 1) * 0.9 + 0.05,
                 color: PIECE_COLORS[i % PIECE_COLORS.length],
+                // (The pieces in turn, as play deals them: a lock with no shape blooms anemones.)
+                shape: WARM_SHAPES[i % WARM_SHAPES.length],
                 hardDrop: i % 4 === 3,
                 distance: 12,
             });
@@ -306,7 +341,11 @@ export function create({
             const [, verb, detail] = DEMO_SCRIPT[demoCursor];
             if (verb === 'lock') {
                 demoPiece += 1;
-                world.onLock({ color: PIECE_COLORS[demoPiece % PIECE_COLORS.length], ...detail });
+                world.onLock({
+                    color: PIECE_COLORS[demoPiece % PIECE_COLORS.length],
+                    shape: WARM_SHAPES[demoPiece % WARM_SHAPES.length],
+                    ...detail,
+                });
             } else {
                 const base = demoPiece;
                 const rowCodes = Array.from({ length: detail.lines }, (_, k) => ROW_CODES(k + base)).flat();
@@ -335,6 +374,7 @@ export function create({
         world.bindCamera(camera);
         world.setReducedMotion(params.get('reduce') === '1');
         if (hourHold !== null) world.setCaptureOverrides({ hour: hourHold });
+        if (weatherHold !== null) world.setCaptureOverrides({ weather: weatherHold });
         const partsParam = params.get('parts');
         if (partsParam) world.showOnlyParts(partsParam.split(',').map((p) => p.trim()));
         if (!noPost) {

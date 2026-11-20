@@ -20,9 +20,10 @@ const TAU = Math.PI * 2;
  * `place`   optional ({ local }) => vec3 node: where a vertex goes instead of where the
  *           instance matrix put it (floating and rising lanterns)
  * `glow`    scales the light of its paper; `tint` its surface colour
+ * `ember`   optional float node: how much the piece itself glows (the gate, when it wakes)
  */
 export function createSakuraPropMaterial(light, name, {
-    look = null, hung = false, place = null, glow = 1, tint = 1, shadowed = true,
+    look = null, hung = false, place = null, glow = 1, tint = 1, shadowed = true, ember = null,
 } = {}) {
     const material = new THREE.MeshBasicNodeMaterial({ fog: false });
     material.name = name;
@@ -55,16 +56,21 @@ export function createSakuraPropMaterial(light, name, {
     const flame = exp(paper.y.mul(-2.2)).mul(1.5).add(0.38);
     const paperColour = look ? mix(vec3(3.0, 1.42, 0.5), vec3(3.0, 0.42, 0.2), look.y) : vec3(3.0, 1.42, 0.5);
     const strength = look ? look.z : float(1);
+    // A front of wind crossing the garden fans every flame it passes.
+    const fanned = varying(light.front(positionWorld.x)).mul(0.45).add(1);
     const lantern = paperColour.mul(paper.x).mul(flame).mul(flicker).mul(strength)
         .mul(glow)
-        .mul(light.uLampGain.mul(0.5).add(0.5));
+        .mul(light.uLampGain.mul(0.5).add(0.5))
+        .mul(fanned);
     const moon = shadowed ? light.moonlight() : float(1);
     const lit = albedo.mul(light.uMoonColor).mul(facing.mul(1.1).add(rim.mul(0.8))).mul(moon)
         .add(albedo.mul(light.ambient(normal)).mul(occlusion).mul(1.5))
         .add(albedo.mul(lamp).mul(occlusion).mul(paper.x.oneMinus()))
         .add(albedo.mul(vec3(1.0, 0.62, 0.76)).mul(ring).mul(0.7))
         .mul(paper.x.mul(0.7).oneMinus())
-        .add(lantern);
+        .add(lantern)
+        // (Lit from within: its own colour, hot, and a rim of gold.)
+        .add(ember ? albedo.mul(vec3(3.2, 1.5, 0.9)).add(vec3(0.5, 0.2, 0.08).mul(rim)).mul(ember) : vec3(0));
     // fragmentNode, not colorNode: these cast into the moon's shadow map, and the shadow
     // pass would otherwise sample that map while drawing it (see sakura-forest.js).
     material.fragmentNode = vec4(light.haze(lit, { world }), 1);

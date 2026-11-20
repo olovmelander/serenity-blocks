@@ -171,6 +171,87 @@ enlarged three times; the playground on WebGPU and on the WebGL2 backend, at Min
 Ultra, and in a 390 x 844 frame. Tests: 612 in 22 files (the moose's path, pose and visit; the
 birds' meshes, fold and flight; the eyes behind trunks).
 
+## The troll's arm, caught in his cloth (2026-11-18)
+
+After the polish above the owner wrote: "The troll still gets stuck in his shorts with his arms."
+The polish had moved his hands; the fault was not where his hands were. It was three faults, one in
+his model and two in how he moves, and the first two had been there since he was first built.
+
+![His arm raised and seated, before and after: a web of cloth and skin from his fist to his loincloth, and without it](stillwater-tarn/troll-arm.jpg)
+
+**1. His arm was grown into his cloth.** He was one surface: one signed distance field, meshed
+once. At rest his left fist hangs by his hip, and a field joins what touches, so fist and
+loincloth were one skin; and bone heat binds skin to the nearest bone it can see, so the cloth
+beside his fist was bound to his HAND (53 % of the front of his loincloth, in the file) and 705 of
+the 1,254 vertices of his left forearm and hand to his thigh. Whenever the hand left his hip a web
+of cloth and skin stretched after it: 300 to 800 edges pulled 5 to 50 cm long in every pose he
+takes, worst with his lantern raised. Raising his staff hand to his chest in the polish above made
+it show more, not less. The same fault, smaller, held his mantle of hair to his thighs (it webbed
+as he walked and sat) and a twig bound to his head to the mantle it was caught in.
+
+He is five shells now, in the one mesh (`scripts/blender/stillwater/troll_shape.py` `SHELLS`):
+his body (skin and cloth), the hair of his head, the mantle over his back, and each arm from the
+ball of its shoulder to its nails with the moss on that shoulder. Each is a field and a closed
+surface of its own; no face joins one to another. An arm is bound to its own three bones and
+nothing else (by rule, blended across the elbow and the wrist); hair and mantle hang by rule from
+his head and torso, never from a leg; his body's skin is bound by bone heat to a skeleton WITHOUT
+his arms. `check_shell` and `check_binding` refuse a build in which that is not so, and
+`stillwater-troll-assets.test.js` pins it on the files. Skin stretched between an arm and his
+trunk: none, in any pose. His look is unchanged (the same masses, the same mane, drawn from the
+same numbers); the triangle counts are the same.
+
+**2. His arms went through his own body.** He is stout, his belly stands further forward than his
+knees when he sits, and his forearms are as thick as a man's thighs. Posed for where his wrists
+should be alone, the hand he rested on his knee lay inside his own lap (under his cloth: this is
+most of what "stuck in his shorts" looked like when he sat), a hand laid on his heart went in
+through his belly, the staff he knocked on the water came down through the side of him, and
+carrying his lantern home he turned his face round into his own fist. His file now names the
+masses he is built of (`flesh` in its extras: pelvis, belly, chest, breasts, shoulders, neck, skull,
+jaw, nose, ears, cloth, thighs, shins, with the bone that carries each; the sculpt's own numbers),
+and `stillwater-troll-flesh.js` with `solveArmClear` / `solveStaffHand` in the body keep both arms
+out of them: where a forearm or a hand would stand in him, the wrist is moved and the elbow swung
+out of it, and the staff goes with the hand that holds it (lifted, the whole of it; planted, it
+leans the other way about its foot). A hand that comes to his body pointing into it lies flat on
+it instead (a hand on his heart, on his belly). Seated, his hand rests on the outside of his knee,
+where it shows. The deepest any part of an arm stands in him through a night of his: 19 cm before,
+under 9 now, and that in passing (a hand to his lantern, the start of a wave). It costs 0.05 ms a
+frame.
+
+**3. His staff hand jumped.** Measuring how smoothly his hands move found that his left hand flew
+30 to 50 cm along the staff in a single frame, every few steps as he walked and whenever he set
+the staff down. Where his hand sits on the staff was found each frame by a step that overshoots
+when his arm is square to the staff, and the polish above had put his hand at his chest, where it
+always is. It is now the exact answer (the two places on the staff a comfortable arm's length from
+his shoulder), and his hand slides and turns on the staff no faster than a hand does
+(`FIST_SLIDE_SPEED`, `FIST_TURN_SPEED`). The staff he had carried was also dropped, not set down
+(the whole way to the ground in an eighth of a second): `STAFF_PLANT`. The largest change of
+either hand's velocity in one frame fell from 28 m/s walking (and worse) to under 2; the largest
+left is 4, the knock of his staff on the water.
+
+Three smaller things with these: a wave now stands his hand up beside his head (his forearm lay
+across his brow on the way); the lantern he trims hangs before the end of his long nose, not in
+his face; and his right hand is where it should be from his first frame (it came out of his chest).
+
+![Twelve of the thirty poses he was measured in, as he is now](stillwater-tarn/troll-poses.jpg)
+
+**How it was found, and how to find the next one.** By measuring, not by looking: at game
+distance none of it could be told apart. Three measures, each of his real file posed by his real
+body through everything he does (thirty poses): how far each edge of his skin is stretched beyond
+its rest length; how deep arm skin stands behind the posed surface of his body's skin and cloth;
+and how much each hand's velocity changes in a frame. `stillwater-troll-flesh.test.js` keeps the
+second and third on the masses (13 tests), and the model's tests the first as a rule on the file.
+The pictures here are those posed meshes rendered in Blender.
+
+**Checked:** the playground on the RTX at Ultra, High, Low and Minimal, on WebGPU and on the WebGL2
+backend, close and at the game's own distance, consoles clean; 645 unit tests in 23 files;
+typecheck, the ts, lint and fitness ratchets, the lifecycle audit, the dependency rules, the
+production build, the performance budgets and the release gates.
+
+**Open:** nobody has watched it move (stills and numbers again). His hair and mantle still pass
+through an arm that crosses them (they are draped at rest, not simulated). His loincloth is a
+stiff band: seated it lies over his thighs but does not hang. A hand has no finger bones: it
+cannot close on what it carries. A far look over his shoulder still twists his long hair hard.
+
 ## Every event its own answer
 
 | Gameplay | The tarn's answer (new in **bold**) |
@@ -226,7 +307,7 @@ measurement, and not an integrated GPU.
 
 ## Verification
 
-- **Unit tests:** 609 in 22 files, all passing. New: `stillwater-night.test.js` (9: the airs'
+- **Unit tests:** 609 in 22 files, all passing (645 in 23 after the troll's arm: see above). New: `stillwater-night.test.js` (9: the airs'
   order and melt, the visitors' schedule, the same visitors however the frames fall),
   `stillwater-tarn.test.js` (19, the real world without a GPU: each air on the hour, the moon by
   the hour, every visitor, two and three lines, the pillars, the dusk, the pulses, the reach, the

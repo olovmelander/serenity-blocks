@@ -178,8 +178,8 @@ export const CHAPTER_CONFIGS = [
         name: 'Sky & Atmospheric Drift',
         subtitle: 'Cross the last air',
         levelRange: [27, 34],
-        arcBeats: ['arrival', 'release', 'teach', 'reinforce', 'test', 'reinforce', 'boss', 'rival'],
-        targetDifficultyCurve: [7, 6, 6, 6, 8, 9, 9, 7],
+        arcBeats: ['arrival', 'release', 'teach', 'reinforce', 'test', 'release', 'boss', 'rival'],
+        targetDifficultyCurve: [7, 6, 6, 6, 8, 6, 9, 7],
 
         themes: {
             primary: [

@@ -233,7 +233,8 @@ describe('spring world: order and rest', () => {
         };
         step(0.1);
         const floes = world.floes.mesh.instanceMatrix;
-        const birds = world.flights.meshes.map((mesh) => mesh.instanceMatrix);
+        // (Each bird is placed by attributes the CPU writes while a flight is out.)
+        const birds = world.flights.meshes.map((mesh) => mesh.userData.attributes.heading);
         const versions = () => [floes.version, ...birds.map((b) => b.version)];
         const idle = versions();
         for (let t = 0.2; t < 1; t += 0.1) step(t);

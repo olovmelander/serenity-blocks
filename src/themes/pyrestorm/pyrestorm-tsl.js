@@ -239,11 +239,20 @@ const colour = (r, g, b) => uniform(new THREE.Vector3(r, g, b));
 
 /** Ground hits (bomb impacts, bolt strikes) the land lights: rows (pos, born) + (rgb, kind). */
 export const HITS = 12;
+/**
+ * Flank vents at once (a level-up tears one open): rows (the fall line's heading x, z from the
+ * volcano's axis; the vent's head and the stream's front, m out from the axis) + (half-width m,
+ * heat 0..1, seed, —).
+ */
+export const FLANK_VENTS = 2;
+/** The colour sulphur burns (a back-to-back run's blue fire), linear HDR. */
+export const BLUE_FIRE = Object.freeze([0.1, 0.42, 2.1]);
 
 export function createUniforms() {
     const tables = {
         lights: rows(LIGHTS * 2),
         hits: rows(HITS * 2),
+        flank: rows(FLANK_VENTS * 2),
     };
     return {
         tables,
@@ -251,6 +260,7 @@ export function createUniforms() {
         lightCount: uniform(0, 'int'),
         hits: uniformArray(tables.hits, 'vec4'),
         hitCount: uniform(0, 'int'),
+        flank: uniformArray(tables.flank, 'vec4'),
 
         time: uniform(0),
         /** The lava's flow clock (s; constant rate, wrapped). */
@@ -276,6 +286,20 @@ export function createUniforms() {
         hazeDensity: uniform(1),
         /** The dusk's (or dawn's) bearing, radians right of the view axis. */
         duskBearing: uniform(-0.6),
+        /**
+         * The night's key light: the moon's (at dusk, the afterglow's) light on the land and the
+         * ash, and the direction it rakes them from (unit, toward the light).
+         */
+        moon: colour(0, 0, 0),
+        rake: uniform(new THREE.Vector3(-0.8, 0.35, -0.5)),
+        /** The moon's disc: toward it (unit), its right and up on the sky, its colour, how much shows. */
+        moonDir: uniform(new THREE.Vector3(-0.56, 0.2, -0.8)),
+        moonRight: uniform(new THREE.Vector3(0.82, 0, -0.57)),
+        moonUp: uniform(new THREE.Vector3(0, 1, 0)),
+        moonTint: colour(1, 0.9, 0.8),
+        moonShow: uniform(0),
+        /** How much of the Milky Way shows (0..1). */
+        milky: uniform(0.5),
 
         /** The fire's colour (the lava's light on rock, cloud and air). */
         fireColour: colour(1.0, 0.36, 0.08),
@@ -285,6 +309,18 @@ export function createUniforms() {
         activity: uniform(1),
         /** The crater fountain's height (1 ordinary; a chain and the blast raise it). */
         fountain: uniform(1),
+        /**
+         * The eruption's phase (pyrestorm-phases.js): the column's (density, girth, ash tone), how
+         * much of the anvil is there, how wide the lava's channels stand, the embers in the air at
+         * the eye and the ash falling out of the anvil.
+         */
+        plume: uniform(new THREE.Vector3(1, 1, 1)),
+        cover: uniform(1),
+        lavaFlux: uniform(1),
+        embers: uniform(1),
+        ashFall: uniform(0.4),
+        /** The fissure's curtain: its height (1 ordinary; the eruption's phases and events raise it). */
+        fissure: uniform(1),
         /** The storm's charge (a chain), 0..1. */
         charge: uniform(0),
         /** A surge of fresh lava down every channel: (front km from the source, strength). */
@@ -295,6 +331,17 @@ export function createUniforms() {
         sheet: uniform(new THREE.Vector2(0, 0)),
         /** Back-to-back: St Elmo's corona on the summit (0..1). */
         corona: uniform(0),
+        /** A back-to-back run: sulphur burning blue along the lava's banks and the fissure (0..1.3). */
+        blue: uniform(0),
+        /** A perfect clear gilds the lava: (the gold front, km from each source; its strength). */
+        gild: uniform(new THREE.Vector2(-10, 0)),
+        /** Four lines: a thermal of glowing ash climbing the column (place along its axis 0..1, strength). */
+        thermal: uniform(new THREE.Vector2(0, 0)),
+        /**
+         * A perfect clear: the whole storm lights at once and the land stands in its light for a
+         * breath (the lightning's colour times a strength that swells and sinks, never a strobe).
+         */
+        stormLight: colour(0, 0, 0),
         /** A hard drop's tremor: the crust cracks open for a moment (0..1). */
         tremor: uniform(0),
         /** A lock's burst glowing in the crater (0 … ~1.6, eased). */

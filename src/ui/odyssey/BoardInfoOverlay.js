@@ -88,6 +88,7 @@ export function createBoardInfoOverlay({ autoContinue = true, onAutoContinueChan
                     </div>
                 </div>
                 <p id="level-panel-description" class="level-description"></p>
+                <div id="level-panel-records"></div>
                 <p id="level-panel-lock" class="level-lock-hint" hidden></p>
                 <p id="level-panel-charm-hint" class="level-charm-hint" hidden></p>
                 <div id="level-panel-objectives" class="level-objectives">

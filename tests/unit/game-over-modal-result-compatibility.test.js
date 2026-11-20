@@ -127,8 +127,8 @@ describe('game-over modal result compatibility', () => {
         await showGameOverModal(single.modalManager, createResultState(), singleScores);
         expect(singleScores.getRank).toHaveBeenCalledWith(4321, { mode: 'single' });
         // The career card is Single Player's: its best is 8,025, not the Infinity run's 987,654.
-        expect(single.finalStats.innerHTML).toContain('8,025');
-        expect(single.finalStats.innerHTML).not.toContain('987,654');
+        expect(single.finalStats.innerHTML).toContain((8025).toLocaleString());
+        expect(single.finalStats.innerHTML).not.toContain((987654).toLocaleString());
 
         const infinity = createModalHarness();
         const infinityScores = {
@@ -142,7 +142,7 @@ describe('game-over modal result compatibility', () => {
         );
         expect(infinityScores.getRank).toHaveBeenCalledWith(987654, { mode: 'infinity' });
         expect(infinity.finalStats.innerHTML).toContain('New record');
-        expect(infinity.finalStats.innerHTML).not.toContain('8,025');
+        expect(infinity.finalStats.innerHTML).not.toContain((8025).toLocaleString());
     });
 
     it('abandons presentation when async ownership expires', async () => {

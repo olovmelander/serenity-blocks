@@ -33,6 +33,8 @@ export const HAZE_HEIGHT = 900;
 export const MIST_HEIGHT = 5.5;
 /** The cloud deck's height (metres). */
 export const CLOUD_BASE = 1500;
+/** How far the horizon band turns cool round from a low sun (0..1 at the point opposite it). */
+export const TWILIGHT_TURN = 0.7;
 
 /**
  * Optical depth of an exponential layer, density a·e^(−y/H), along a ray from height y0 with
@@ -78,7 +80,11 @@ export function skyColour(u, dir, { withSun = true } = {}) {
     const high = mix(mid, u.zenith, smoothstep(0.05, 0.85, e));
     // A wide pale band: the air over the valley whitens the lowest fifteen degrees.
     const band = exp(e.mul(float(5.2).sub(clamp(mu, 0.0, 1.0).mul(2.4))).negate());
-    const base = mix(high, u.horizon, band).toVar();
+    // Under a low sun the horizon's fire stands where the sun is; round from it the band cools
+    // to rose and the blue of the earth's shadow under it (the hour's own colours, turned).
+    const away = smoothstep(0.75, -0.35, mu).mul(u.sky2.w);
+    const cool = u.horizon.mul(vec3(0.5, 0.44, 0.92)).add(u.fill.mul(0.9));
+    const base = mix(high, mix(u.horizon, cool, away.mul(TWILIGHT_TURN)), band).toVar();
     base.addAssign(u.haze.mul(exp(abs(up).mul(40.0).negate())).mul(0.26));
     const glow = sunGlow(mu).mul(u.glow).mul(smoothstep(-0.12, 0.02, up)).mul(exp(e.mul(-3.0)).mul(0.5).add(0.5));
     // The sky's glow and the twilight wedge follow the sky's daylight, not the valley's sun.

@@ -327,3 +327,86 @@ function computeSeaField(seed, size) {
     }
     return { levels, size };
 }
+
+// ── Foam ────────────────────────────────────────────────────────────────────────
+
+/** The seed the foam's lace is baked from, and its edge in texels (one size on every tier: it is small, and magnified soft). */
+export const LACE_SEED = 1955;
+export const LACE_SIZE = 256;
+
+/** The bake cache's key. */
+export const foamLaceKey = (seed, size) => `cosmic-noir:lace:${seed}:${size}`;
+
+/**
+ * White water as one tileable field of cell walls, four values a texel:
+ *   R  walls of large cells (0 on a wall between two cells, rising toward a cell's middle)
+ *   G  walls of small cells
+ *   B  a number per large cell (which rafts of foam are whole, which have burst)
+ *   A  bubbles: a soft dot per fine cell
+ * A wall drawn from the distance to it is a thread of one width everywhere, which the contour of a
+ * noise never is.
+ * @returns {{ data: Uint8Array, size: number }}
+ */
+export function bakeFoamLace(seed = LACE_SEED, size = LACE_SIZE) {
+    return bakeOnce(foamLaceKey(seed, size), () => computeFoamLace(seed, size));
+}
+
+function computeFoamLace(seed, size) {
+    const rand = mulberry32(seed);
+    /** Jittered points, one to a cell of an n × n tile, each with a number of its own. */
+    const scatter = (n) => {
+        const points = new Float32Array(n * n * 3);
+        for (let i = 0; i < n * n; i++) {
+            points[i * 3] = 0.1 + rand() * 0.8;
+            points[i * 3 + 1] = 0.1 + rand() * 0.8;
+            points[i * 3 + 2] = rand();
+        }
+        return { n, points };
+    };
+    const large = scatter(7);
+    const small = scatter(19);
+    const dots = scatter(41);
+    const found = { f1: 0, f2: 0, id: 0 };
+    /** The two nearest points of a scatter to (x, y) in 0..1 (the tile wraps), in cells. */
+    const nearest = ({ n, points }, x, y) => {
+        const gx = x * n;
+        const gy = y * n;
+        const cx = Math.floor(gx);
+        const cy = Math.floor(gy);
+        let f1 = 9;
+        let f2 = 9;
+        let id = 0;
+        for (let j = -1; j <= 1; j++) {
+            for (let i = -1; i <= 1; i++) {
+                const at = (((((cy + j) % n) + n) % n) * n + ((((cx + i) % n) + n) % n)) * 3;
+                const d = Math.hypot(cx + i + points[at] - gx, cy + j + points[at + 1] - gy);
+                if (d < f1) {
+                    f2 = f1;
+                    f1 = d;
+                    id = points[at + 2];
+                } else if (d < f2) f2 = d;
+            }
+        }
+        found.f1 = f1;
+        found.f2 = f2;
+        found.id = id;
+        return found;
+    };
+    const byte = (v) => Math.round(Math.max(0, Math.min(1, v)) * 255);
+    const data = new Uint8Array(size * size * 4);
+    for (let j = 0; j < size; j++) {
+        for (let i = 0; i < size; i++) {
+            const x = (i + 0.5) / size;
+            const y = (j + 0.5) / size;
+            const at = (j * size + i) * 4;
+            const a = nearest(large, x, y);
+            data[at] = byte((a.f2 - a.f1) * 1.25);
+            data[at + 2] = byte(a.id);
+            const b = nearest(small, x, y);
+            data[at + 1] = byte((b.f2 - b.f1) * 1.25);
+            const c = nearest(dots, x, y);
+            data[at + 3] = byte(1 - c.f1 * (2.0 + c.id * 2.4));
+        }
+    }
+    return { data, size };
+}

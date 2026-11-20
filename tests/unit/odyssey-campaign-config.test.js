@@ -157,6 +157,40 @@ describe('Odyssey campaign objectives', () => {
         expect(normalized.stars.three.maxCascadeDepth).toBe(authored.stars.three.maxCascadeDepth);
     });
 
+    it.each([
+        [6, { lines: 20, piecesPlaced: 46 }, 1],
+        [6, { lines: 20, piecesPlaced: 45 }, 2],
+        [6, { lines: 20, piecesPlaced: 46, quads: 1 }, 2],
+        [6, {
+            lines: 20, piecesPlaced: 46, quads: 2, time: 55,
+        }, 3],
+        [6, {
+            lines: 20, piecesPlaced: 46, quads: 2, time: 56,
+        }, 2],
+        [22, { cascades: 6, maxCascadeDepth: 4, piecesPlaced: 55 }, 0],
+        [22, { cascades: 7, maxCascadeDepth: 2, piecesPlaced: 55 }, 1],
+        [22, { cascades: 7, maxCascadeDepth: 3, piecesPlaced: 56 }, 2],
+        [22, { cascades: 7, maxCascadeDepth: 3, piecesPlaced: 55 }, 3],
+        [22, { cascades: 7, maxCascadeDepth: 4, piecesPlaced: 56 }, 3],
+        [32, { cascades: 7 }, 0],
+        [32, { cascades: 8 }, 1],
+        [32, { cascades: 18 }, 2],
+        [32, { cascades: 22, maxCascadeDepth: 3 }, 2],
+        [32, { cascades: 22, maxCascadeDepth: 4 }, 3],
+        [41, { score: 23999, time: 85, quads: 4 }, 0],
+        [41, { score: 24000, time: 101, quads: 4 }, 1],
+        [41, { score: 24000, time: 100, quads: 4 }, 2],
+        [41, { score: 24000, time: 85, quads: 3 }, 2],
+        [41, { score: 24000, time: 85, quads: 4 }, 3],
+    ])('scores orb %i at %j as %i stars', (orb, metrics, expectedStars) => {
+        const level = getLevelById(orb);
+        const evaluator = new VictoryConditionEvaluator();
+        Object.assign(evaluator.trackedMetrics, metrics);
+        const bonuses = evaluator.evaluateBonuses(level.victory.bonuses);
+        expect(evaluator.evaluate({}, level.victory)).toBe(expectedStars > 0);
+        expect(evaluator.calculateStars(level.stars, {}, bonuses)).toBe(expectedStars);
+    });
+
     it('describes the resolved goals instead of stale authored numbers', () => {
         const units = {
             lines: 'lines?', cascade: 'cascades?', score: 'points?', frags: 'knockouts?',

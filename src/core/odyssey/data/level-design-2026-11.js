@@ -1,9 +1,8 @@
 /**
- * Odyssey level design retune (docs/ODYSSEY_LEVEL_DESIGN_AUDIT_2026-11.md: phase 1 and 1b, and pass 2, §8).
+ * Odyssey level design retune (docs/ODYSSEY_LEVEL_DESIGN_AUDIT_2026-11.md, through pass 3).
  *
- * Applied to the assembled campaign, keyed by PUBLIC orb id, so every number here is the one the player
- * meets and the one the audit measured (3,600 shipped attempts against the same seeds). Generated from the
- * audit's proposal.json; each entry's comment is the audit's reason for the change.
+ * Keyed by public orb ID after campaign assembly. Edit proposal.json and run emit_js.py under
+ * artifacts/odyssey-level-design-audit-2026-11/scripts/pass3/ to regenerate this file.
  *
  * Merge rules match the benchmark's proposal scenario: objects merge, and star tiers, bonus lists, modifier
  * lists and rival overrides replace whole. Design rules R1-R9 are asserted by
@@ -65,8 +64,8 @@ export const ODYSSEY_LEVEL_DESIGN_2026_11 = deepFreeze({
     },
     // Pace the first boss to what chapter 1 taught (420 → 246 ms instead of 205 → 120), 30 lines instead of 40.
     // Pass 2: its three stars came on their own in a cascade well, even at casual pace, so two stars ask for 4
-    // cascades and three for 7 cascades and a 4-wave chain. A long run of cascades counts as much as the deep chain:
-    // three stars ask for 7 cascades, a 3-wave chain, and either 11 cascades or a 4-wave chain.
+    // cascades and three for 7 cascades and a 4-wave chain. A long run of cascades counts as much as the deep
+    // chain: three stars ask for 7 cascades, a 3-wave chain, and either 11 cascades or a 4-wave chain.
     4: {
         mechanics: { speed: { startLevel: 3, fixedDropInterval: 420, levelProgression: true } },
         victory: {
@@ -81,21 +80,33 @@ export const ODYSSEY_LEVEL_DESIGN_2026_11 = deepFreeze({
             one: { lines: 30 },
             two: { lines: 30, cascades: 4 },
             three: {
-                lines: 30, cascades: 7, maxCascadeDepth: 3, bonuses: 1,
+                lines: 30,
+                cascades: 7,
+                maxCascadeDepth: 3,
+                bonuses: 1,
             },
         },
     },
-    // Keep.
-    5: { mechanics: { versus: { botOverrides: { maxApm: 90, reactionMs: [500, 900] } } }, role: 'rival' },
-    // Keep: a clean introduction to rubble. Three stars ask for the 2 Quads within 55 s, not a 150 s time nobody
-    // misses.
+    // Cinder learns at tier 1 with the original 90 APM opening pace.
+    5: {
+        mechanics: { versus: { botOverrides: { maxApm: 90, reactionMs: [500, 900] } } },
+        role: 'rival',
+    },
+    // Offer a silver route through efficient digging before the prepared Quad lesson on orb 12. Two Quads within
+    // 55 seconds reward a return visit.
     6: {
         stars: {
             one: { lines: 20 },
-            two: { lines: 20, quads: 1 },
+            two: { lines: 20, bonuses: 1 },
             three: { lines: 20, quads: 2, time: 55 },
         },
         role: 'teach',
+        victory: {
+            bonuses: [
+                { type: 'quad-count', target: 1, description: 'Clear 1 Quad' },
+                { type: 'pieces', target: 45, description: 'Finish within 45 pieces' },
+            ],
+        },
     },
     // Keep; retag it as practice.
     7: { role: 'reinforce' },
@@ -126,8 +137,11 @@ export const ODYSSEY_LEVEL_DESIGN_2026_11 = deepFreeze({
             three: { cascades: 8, maxCascadeDepth: 4 },
         },
     },
-    // Keep.
-    10: { mechanics: { versus: { botOverrides: { maxApm: 120, reactionMs: [420, 760] } } }, role: 'rival' },
+    // Coral reads one preview at the chapter's 120 APM pace.
+    10: {
+        mechanics: { versus: { botOverrides: { maxApm: 120, reactionMs: [420, 760] } } },
+        role: 'rival',
+    },
     // Arrival at 450 → 331 ms instead of 205 → 120, with 26 lines. Star times ask a real pace.
     11: {
         mechanics: { speed: { startLevel: 3, fixedDropInterval: 450, levelProgression: true } },
@@ -153,11 +167,7 @@ export const ODYSSEY_LEVEL_DESIGN_2026_11 = deepFreeze({
                 { type: 'pieces', target: 60, description: 'Finish within 60 pieces' },
             ],
         },
-        stars: {
-            one: { quads: 3 },
-            two: { quads: 3, bonuses: 1 },
-            three: { quads: 3, bonuses: 2 },
-        },
+        stars: { one: { quads: 3 }, two: { quads: 3, bonuses: 1 }, three: { quads: 3, bonuses: 2 } },
         mechanicFocus: 'quads',
     },
     // The first score orb, taught as one: 450 → 263 ms instead of 320 → 151 (start level 3, so the target rises
@@ -234,7 +244,7 @@ export const ODYSSEY_LEVEL_DESIGN_2026_11 = deepFreeze({
         },
         mechanicFocus: 'score',
     },
-    // Keep.
+    // Willow keeps the 165 APM window and uses tier 2 judgment for the D8 odds.
     18: {
         mechanics: { versus: { botDifficulty: 2, botOverrides: { maxApm: 165, reactionMs: [320, 620] } } },
         role: 'rival',
@@ -270,21 +280,21 @@ export const ODYSSEY_LEVEL_DESIGN_2026_11 = deepFreeze({
         modifiers: { active: [] },
         mechanicFocus: 'dig',
     },
-    // No longer a flat repeat of orb 20: cascades over 5 rubble rows at 680 ms. Pass 2: the chapter's rest, 9
-    // cascades instead of 11, with a 70-piece budget for the tidy-run star.
+    // Seven cascades give the player a rest after the mountain dig. A three-wave chain earns silver. A fourth wave
+    // or finishing within 55 pieces earns gold.
     22: {
         mechanics: { board: { startingRows: 5 }, speed: { fixedDropInterval: 680 } },
         victory: {
-            primary: { type: 'cascade', target: 9 },
+            primary: { type: 'cascade', target: 7 },
             bonuses: [
                 { type: 'max-cascade-depth', target: 4, description: 'Trigger a 4-wave chain' },
-                { type: 'pieces', target: 70, description: 'Finish within 70 pieces' },
+                { type: 'pieces', target: 55, description: 'Finish within 55 pieces' },
             ],
         },
         stars: {
-            one: { cascades: 9 },
-            two: { cascades: 9, maxCascadeDepth: 3 },
-            three: { cascades: 9, maxCascadeDepth: 3, bonuses: 1 },
+            one: { cascades: 7 },
+            two: { cascades: 7, maxCascadeDepth: 3 },
+            three: { cascades: 7, maxCascadeDepth: 3, bonuses: 1 },
         },
         role: 'release',
     },
@@ -325,8 +335,11 @@ export const ODYSSEY_LEVEL_DESIGN_2026_11 = deepFreeze({
     },
     // Keep the tall-well cascade boss. Drop the inert multiplier and the uncounted 6-wave bonus.
     25: { victory: { bonuses: [] }, modifiers: { active: ['gravity-cascade'] } },
-    // Keep.
-    26: { mechanics: { versus: { botOverrides: { maxApm: 230, reactionMs: [240, 480] } } }, role: 'rival' },
+    // Frost uses tier 4 judgment and the original 230 APM window.
+    26: {
+        mechanics: { versus: { botOverrides: { maxApm: 230, reactionMs: [240, 480] } } },
+        role: 'rival',
+    },
     // Arrival at 260 ms instead of 84. Stars become reachable: 5 cascades, then 12, with no Quads in the same
     // tier.
     27: {
@@ -365,8 +378,8 @@ export const ODYSSEY_LEVEL_DESIGN_2026_11 = deepFreeze({
         role: 'teach',
         mechanicFocus: 'quads',
     },
-    // Drop the inert multiplier. The chain asks fit the chapter: 3 and 4 waves instead of 4 and 5. Three stars take
-    // a 3-wave chain and either a 4-wave chain or the ten cascades within 70 pieces.
+    // Drop the inert multiplier. The chain asks fit the chapter: 3 and 4 waves instead of 4 and 5. Three stars
+    // take a 3-wave chain and either a 4-wave chain or the ten cascades within 70 pieces.
     30: {
         modifiers: { active: ['gravity-cascade'] },
         victory: {
@@ -398,18 +411,18 @@ export const ODYSSEY_LEVEL_DESIGN_2026_11 = deepFreeze({
         modifiers: { active: ['time-attack'] },
         mechanicFocus: 'quads',
     },
-    // No longer a second boss in a row: a "wonder" showcase. 14 cascades at 580 ms; stars after the goal at 18,
-    // then 22 cascades with a 4-wave chain.
+    // Bank eight cascades after the Quad race. Players can stay on the showcase lap for 18 cascades, then 22 with
+    // a four-wave chain.
     32: {
         mechanics: { board: { startingRows: 6 }, speed: { fixedDropInterval: 580 } },
-        victory: { primary: { type: 'cascade', target: 14 }, bonuses: [] },
+        victory: { primary: { type: 'cascade', target: 8 }, bonuses: [] },
         modifiers: { active: ['gravity-cascade'] },
         stars: {
-            one: { cascades: 14 },
+            one: { cascades: 8 },
             two: { cascades: 18 },
             three: { cascades: 22, maxCascadeDepth: 4 },
         },
-        role: 'reinforce',
+        role: 'release',
     },
     // Take the wall down to a peak: 55,000 in 250 s at 150 → 122 ms needs 0.64 pieces/s instead of 1.11. Three
     // stars: within 145 s and 12 cascades.
@@ -426,7 +439,7 @@ export const ODYSSEY_LEVEL_DESIGN_2026_11 = deepFreeze({
             three: { score: 55000, time: 145, bonuses: 1 },
         },
     },
-    // Zephyr's gravity policy and D8 human input window.
+    // Zephyr uses tier 4 judgment at the original 270 APM pace.
     34: {
         mechanics: { versus: { botDifficulty: 4, botOverrides: { maxApm: 270, reactionMs: [200, 380] } } },
         role: 'rival',
@@ -510,18 +523,19 @@ export const ODYSSEY_LEVEL_DESIGN_2026_11 = deepFreeze({
         stars: { one: { lines: 40 }, two: { lines: 40, time: 90 }, three: { lines: 40, time: 65 } },
         modifiers: { active: ['gravity-cascade', 'time-attack'] },
     },
-    // The rest after the tests: 40,000 at 200 → 140 ms instead of 54,000 at 73 → 48. Star times are real; three
-    // stars add 6 Quads.
+    // Bank the space rest at 24,000 points between the cascade race and the dig. Silver rewards a 100-second
+    // finish. Gold rewards four Quads within 85 seconds. The shorter score goal can finish a deliberate build
+    // before the fifth Quad.
     41: {
         mechanics: { speed: { startLevel: 8, fixedDropInterval: 200, levelProgression: true } },
         victory: {
-            primary: { type: 'score', target: 40000 },
-            bonuses: [{ type: 'quad-count', target: 6, description: 'Clear 6 Quads' }],
+            primary: { type: 'score', target: 24000 },
+            bonuses: [{ type: 'quad-count', target: 4, description: 'Clear 4 Quads' }],
         },
         stars: {
-            one: { score: 40000 },
-            two: { score: 40000, time: 155 },
-            three: { score: 40000, time: 130, bonuses: 1 },
+            one: { score: 24000 },
+            two: { score: 24000, time: 100 },
+            three: { score: 24000, time: 85, bonuses: 1 },
         },
         role: 'release',
     },
@@ -623,18 +637,18 @@ export const ODYSSEY_LEVEL_DESIGN_2026_11 = deepFreeze({
             three: { cascades: 32, maxCascadeDepth: 5 },
         },
     },
-    // Nova and Prism recognize the next build at different rates within the D8 pace caps.
+    // Nova changes preview recognition under pressure at the original 300 APM pace.
     48: {
         mechanics: {
             versus: {
                 botDifficulty: 5,
                 botJudgment: {
-                    previewChance: 0.60,
+                    previewChance: 0.6,
                     digPreviewChance: 0.79,
                     pressAtRows: 8,
                     variation: {
                         chance: 0.2,
-                        judgment: { previewChance: 0.70, digPreviewChance: 0.84, pressAtRows: 14 },
+                        judgment: { previewChance: 0.7, digPreviewChance: 0.84, pressAtRows: 14 },
                     },
                 },
                 botOverrides: { maxApm: 300, reactionMs: [180, 340] },
@@ -737,7 +751,7 @@ export const ODYSSEY_LEVEL_DESIGN_2026_11 = deepFreeze({
         },
         mechanics: { speed: { fixedDropInterval: 340 } },
     },
-    // Prism can hold its next build more often than Nova.
+    // Prism can hold its next build more often than Nova at the original 330 APM pace.
     56: {
         mechanics: {
             versus: {
@@ -814,7 +828,7 @@ export const ODYSSEY_LEVEL_DESIGN_2026_11 = deepFreeze({
         modifiers: { active: ['gravity-cascade', 'combo-multiplier'] },
         role: 'boss',
     },
-    // Neon can plan through a second preview at the final chapter's human pace.
+    // Neon can plan through a second preview at the final chapter's 340 APM pace.
     60: {
         mechanics: {
             versus: {
@@ -847,7 +861,7 @@ function withThreePreviews(level) {
     return { ...level, mechanics: { ...level.mechanics, pieces: { ...level.mechanics.pieces, previewCount: 3 } } };
 }
 
-// A rival's subtitle names its tier, so it follows the retuned tier (D8: rival 56 plays at tier 6).
+// The rival's subtitle follows its authored board-reading tier.
 function withRivalSubtitle(level) {
     const versus = level.mechanics?.versus;
     if (!versus) return level;

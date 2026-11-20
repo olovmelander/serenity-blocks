@@ -41,10 +41,14 @@ export function create({
     // ?level=<n> stands the night <n - 1> hours on from the clock's (every level is an hour on);
     // ?event=level steps it one more, eased, as a level-up in play does.
     const startLevel = Math.max(1, Math.round(Number(params.get('level')) || 1));
+    // ?weather=clear|wind|mackerel|haze|mist|mirror (or 0..5) holds one air still, and ?hour=0..4
+    // one hour; without them the two clocks run as they do in play.
     const standLevel = () => {
         if (!world) return;
         world.hourStep = 0;
         world.setLevel(startLevel, { silent: true });
+        world.pinWeather(params.get('weather'));
+        world.pinHour(params.get('hour'));
     };
     const reactions = new SakuraReactions({
         quality,
@@ -82,6 +86,8 @@ export function create({
             scene, camera, quality, rng, assets, samples,
         }).build();
         standLevel();
+        // ?expose=1 hands the world to a probe (window.__SAKURA_WORLD__) for as long as it lives.
+        if (params.get('expose') === '1') window.__SAKURA_WORLD__ = world;
         post = new SakuraPost({
             renderer, scene, camera, quality, light: world.light, samples, prime: () => world.primeShadows(renderer),
         });
@@ -119,21 +125,62 @@ export function create({
         camera.updateProjectionMatrix();
         camera.updateMatrixWorld();
     };
+    // ?cranes=fly sends a flight of cranes out ?craneAge seconds before the frame (12 by default) on
+    // route ?craneRoute=<n> (0 by default; the routes are sakura-crane-routes.js's, best first), the
+    // other way with ?craneBack=1, of ?craneCount birds (the tier's most by default). With a fixed
+    // ?t= that stages any moment of any route; without one the flight sets out as the page opens.
+    // ?craneCam=<metres> is a lens that far from the skein's leader (or bird ?craneBird=<n>), round
+    // it from its heading by ?craneCamYaw=<deg> and above it by ?craneCamPitch=<deg>, ?craneCamFov=<deg>.
+    const stageCranes = () => {
+        if (params.get('cranes') !== 'fly' || !world?.cranes) return false;
+        return world.cranes.fly({
+            route: number('craneRoute', 0),
+            age: number('craneAge', 12),
+            reversed: params.get('craneBack') === '1',
+            count: number('craneCount', undefined),
+        });
+    };
+    // (Without a fixed ?t= the staged flight sets out on the first frame the garden is there.)
+    let cranesOut = params.has('t');
+    const craneCam = number('craneCam', 0);
+    const craneLook = new THREE.Vector3();
+    const frameCrane = () => {
+        const cranes = world?.cranes;
+        if (!(craneCam > 0) || !cranes?.flying) return;
+        const o = Math.min(cranes.flying - 1, Math.max(0, Math.round(number('craneBird', 0)))) * 12;
+        const { data } = cranes;
+        craneLook.set(data[o], data[o + 1], data[o + 2]);
+        const around = Math.atan2(data[o + 4], data[o + 6]) + number('craneCamYaw', 60) * (Math.PI / 180);
+        const pitch = number('craneCamPitch', -12) * (Math.PI / 180);
+        camera.position.set(
+            craneLook.x + Math.sin(around) * Math.cos(pitch) * craneCam,
+            craneLook.y + Math.sin(pitch) * craneCam,
+            craneLook.z + Math.cos(around) * Math.cos(pitch) * craneCam,
+        );
+        camera.fov = number('craneCamFov', 30);
+        camera.up.set(0, 1, 0);
+        camera.lookAt(craneLook);
+        camera.updateProjectionMatrix();
+        camera.updateMatrixWorld();
+    };
     const update = (time, dt) => {
         reactions.update(dt);
         const frame = reactions.getFrame();
         world?.update(time, dt, frame);
         post?.update(frame);
         frameFox();
+        frameCrane();
     };
-    // ?event=lock|drop|clear|double|triple|quad|combo|streak|spin|perfect|level|over,
-    // placed with ?col=0..9 and ?row=0..19 (0 is the top visible row).
+    // ?event=lock|drop|clear|double|triple|quad|combo|streak|spin|b2b|perfect|level|over|fever,
+    // placed with ?col=0..9 and ?row=0..19 (0 is the top visible row). `b2b` is ?combo back-to-backs
+    // in a row (one by default); `fever` is hot play kept up from the event to the frame, and
+    // `drops` a quick hand: a hard drop every 0.42 s from the event to the frame, column by column.
     const levelUp = () => {
         reactions.onLevelUp();
         world.setLevel(world.level + 1);
     };
-    const fire = (event) => {
-        const column = Number(params.get('col') ?? 1);
+    const fire = (event, at = null) => {
+        const column = at ?? Number(params.get('col') ?? 1);
         const row = Number(params.get('row') ?? 12) + 4;
         const piece = {
             shapeKey: 'T', x: column, y: row, shape: [[0, 1, 0], [1, 1, 1], [0, 0, 0]],
@@ -155,7 +202,9 @@ export function create({
                 reactions.onLineClear(1, { clearedRows: [row + 1] });
             }
         } else if (event === 'spin') reactions.onTwist({ piece });
-        else if (event === 'perfect') reactions.onPerfectClear();
+        else if (event === 'b2b') {
+            for (let i = 0; i < Math.max(1, Number(params.get('combo') || 1)); i += 1) reactions.onBackToBack();
+        } else if (event === 'perfect') reactions.onPerfectClear();
         else if (event === 'level') levelUp();
         else if (event === 'over') reactions.onGameOver();
     };
@@ -180,7 +229,21 @@ export function create({
         let fired = false;
         let acted = false;
         let turned = false;
+        // (`fever`: a double every 0.45 s from the event to the frame, as a hot hand plays.)
+        const hot = params.get('event') === 'fever';
+        const quick = params.get('event') === 'drops';
+        let nextClear = eventTime;
+        let dropped = 0;
         for (let i = 1; i <= steps; i += 1) {
+            if (hot && i * dt >= nextClear) {
+                nextClear += 0.45;
+                fire('double');
+            }
+            if (quick && i * dt >= nextClear) {
+                nextClear += 0.42;
+                dropped += 1;
+                fire('drop', (dropped * 3) % 9);
+            }
             if (!fired && i * dt >= eventTime) {
                 fired = true;
                 fire(params.get('event'));
@@ -194,6 +257,8 @@ export function create({
             if (!turned && i * dt >= turnTime) turned = world.foxes.mind.turnHere(world.foxes.time);
             update(i * dt, dt);
         }
+        // (The staged flight is laid at the frame's own time, and its birds written once more.)
+        if (stageCranes()) update(target, 0);
         sought = time;
     };
     return {
@@ -201,10 +266,16 @@ export function create({
         camera() {},
         seek,
         update(time, dt) {
-            if (!params.has('t')) update(time, Math.max(0, Math.min(0.05, dt)));
+            if (params.has('t')) return;
+            if (!cranesOut && world) {
+                cranesOut = true;
+                stageCranes();
+            }
+            update(time, Math.max(0, Math.min(0.05, dt)));
         },
         render() {
             frameFox();
+            frameCrane();
             if (post) post.render();
         },
         async renderAsync() {
@@ -220,6 +291,7 @@ export function create({
             post?.setSize(width, height);
             frameIcon();
             frameFox();
+            frameCrane();
         },
         getDiagnostics() {
             return {
@@ -241,6 +313,7 @@ export function create({
         },
         dispose() {
             disposed = true;
+            if (window.__SAKURA_WORLD__ === world) delete window.__SAKURA_WORLD__;
             overlay?.remove();
             post?.dispose();
             reactions.dispose();

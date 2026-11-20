@@ -5,6 +5,20 @@ import { getOdysseyLevelBriefing } from '../../src/ui/odyssey/odyssey-level-brie
 const briefing = (next, previous) => getOdysseyLevelBriefing(getLevelById(next), getLevelById(previous));
 
 describe('Odyssey next-orb briefing from effective campaign rules', () => {
+    it('teaches the first line-speed increase on the opening card and in the guide', () => {
+        const result = getOdysseyLevelBriefing(getLevelById(1));
+        expect(result.changes).toEqual(['Pieces fall faster after every 15 lines you clear.']);
+        expect(result.rules).toEqual(result.changes);
+    });
+
+    it('shows the elapsed-time ramp with the survival rule when leaving the tide', () => {
+        const result = briefing(39, 38);
+        expect(result.changes).toHaveLength(2);
+        expect(result.changes[0]).toMatch(/stay alive/i);
+        expect(result.changes[1]).toBe('The pieces fall twice as fast every 2:30.');
+        expect(result.rules).toContain(result.changes[1]);
+    });
+
     it('explains the first cascade goal without falsely introducing cascade physics or the original seeded board', () => {
         const result = briefing(2, 1);
         expect(result.goal).toBe('Trigger 3 cascades');

@@ -48,6 +48,8 @@ export class LeaderboardCache {
             timestamp: this._now(),
             data,
         };
+        const keys = Object.keys(this.cache);
+        if (keys.length > 256) delete this.cache[keys.sort((a, b) => this.cache[a].timestamp - this.cache[b].timestamp)[0]];
         this._save();
     }
 

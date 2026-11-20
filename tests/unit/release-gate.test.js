@@ -166,6 +166,14 @@ describe('behavioral release gates', () => {
         expect(evaluatePrivacyPolicy(noAppId).failed).toBe(true);
     });
 
+    it('requires a populated contact field even when an unrelated address occurs elsewhere', () => {
+        const root = createGateWorkspace();
+        for (const doc of ['# Privacy\nContact: \n\nlegal@example.com', 'Third party: vendor@example.com']) {
+            writeFileSync(join(root, 'PRIVACY_POLICY.md'), doc);
+            expect(evaluatePrivacyPolicy({ root, releaseAppId: 123456 }).failed).toBe(true);
+        }
+    });
+
     it('fails on a missing privacy contact as soon as the release Steam AppID is set', () => {
         const root = createGateWorkspace();
         const placeholder = '# Privacy\nContact: [contact address to be added before release]\n';

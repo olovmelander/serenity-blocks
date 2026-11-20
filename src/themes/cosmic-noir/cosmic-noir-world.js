@@ -5,37 +5,42 @@
  * the air), the camera rig and the choreography. Shared by the theme (cosmic-noir-theme.js) and the
  * playground effect (src/playground/effects/cosmic-noir.effect.js), so what is iterated there ships.
  *
- * "The last lighthouse": a lighthouse on a shard of rock in a sea of interstellar smoke, the home
- * galaxy rising over the sea's horizon. A captive pulsar turns in its lantern room behind a ring of
- * shutter slats: one beam rakes the sea (every swell throws a long shadow), its opposite searches
- * the sky, and the lamp's own light leaves between the slats as a fan of shafts, their shadows
- * lying on the sea as spokes. A beam that looks toward us blazes and the lens glares. The picture
- * is a black-and-white print, toned by one film stock at a time.
+ * "The last lighthouse": a lighthouse on a low, wet skerry in a dark sea, the home galaxy rising
+ * over the sea's horizon. A captive pulsar turns in its lantern room behind a ring of shutter
+ * slats: one beam rakes the sea, its opposite searches the sky, and the lamp's own light leaves
+ * between the slats as a fan of shafts. A beam that looks toward us blazes and the lens glares.
+ * The sea is black mirror water with white water on it; rollers break on the rock. The picture is
+ * a black-and-white print.
  *
- *   lock     the piece goes under: an ember glows up through the sea of smoke beside the card (the
- *            lower the piece locked, the nearer the eye), a puff rises off it and drifts away, and
- *            rings of ripples run out over the sea (a hard drop lands harder).
+ *   lock     two rings of light run out over the water beside the card, over an ember that burns
+ *            under the sea for a moment (the lower the piece locked, the nearer the eye; a hard
+ *            drop lands harder), and a puff rises off it.
  *   clear    the pulsar flares and a light echo per line leaves it: a ring of light that runs out
  *            over the sea from the rock, under the eye and on toward the horizon, and a shell in
  *            the air that flashes down the tower. Each wave of a cascade rings deeper, wider and
- *            quicker than the last.
+ *            quicker than the last. Three lines: a meteor crosses the sky over the board.
  *   combo    each step of a chain spins the lighthouse up (the sweep quickens) and opens the
  *            blinds (the slats turn edge-on: wider shafts); a broken chain lets them close, and
  *            a long one lets one slow ring go (the lighthouse exhales).
  *   four     the flashbulb: the print turns to its own negative for a moment (in hot play a
  *            solarisation: the mid-tones reverse, the blacks stay black), the pulsar flares, four
- *            echoes leave it, and the cage's slats spin.
- *   twist   the cage spins on its axis: the shafts wheel round the lantern (a twist that clears
- *            nothing: a smaller turn and a faint ring).
- *   B2B      a double ring, the cage turns, and the print warms toward its heat tone; each
- *            difficult clear in a row warms it further.
- *   perfect  the crown, layered on the clear still ringing: the blinds open edge-on, the star
- *            filter's spikes blaze, two wide rings go out and the print blazes in its heat tone
- *            (gold highlights, cold shadows). Never a second flashbulb.
- *   level    a reel change: two cue marks flash at the corner of the picture, and the print turns
- *            to the next film stock on the line (cyanotype, silver, selenium, sepia, platinum).
- *   time     by itself, with no level change, the print drifts along the same line: one stock
- *            every STOCK_STEP seconds, there and back. The two simply add.
+ *            echoes leave it, the cage's slats spin, and a great wave breaks over the rock at
+ *            once, harder than any roller.
+ *   twist    the beam whips once round the sea (a turn it pays off smoothly) and the cage spins
+ *            (a twist that clears nothing: half a turn and a faint ring).
+ *   B2B      a fork of lightning falls to the sea beside the board, once the flashbulb has gone;
+ *            a double ring, the cage turns, and the print leans toward its heat tone.
+ *   perfect  the crown, layered on the clear still ringing: the galaxy blazes and lets a shower of
+ *            meteors go, a great wave breaks, the blinds open edge-on, the star filter's spikes
+ *            blaze, two wide rings go out. Never a second flashbulb.
+ *   level    a reel change: two cue marks flash at the corner of the picture, the film's gate
+ *            rolls once, the far light greets it, and the night turns one act on (the print takes
+ *            the next paper too).
+ *   over     the iris closes on the lamp; the next run opens it (or it opens by itself).
+ *   time     by itself, the night goes round its five acts of weather (cosmic-noir-night.js: a
+ *            clear night, scud, a squall with rain and lightning, the clearing, fog), one every
+ *            NIGHT_STEP seconds, and the print's paper tone drifts on its own clock. A level's
+ *            step and the clock simply add. Lightning and a lone meteor fall on grids of moments.
  *
  * Every answer ACCUMULATES (src/themes/shared/swell.js): a weak hit after a strong one only adds to
  * the light. Underneath, the shared GameplaySurge (src/themes/shared/gameplay-surge.js) reads the
@@ -44,9 +49,12 @@
  *   warm     the room takes notice: locks fill it with smoke, the blinds begin to open, the beams
  *            carry more light.
  *   waves    by itself, the sea rolls: long rollers run in from the open sea, in sets, rear up as
- *            they near the rock and break on it, throwing their smoke up its face (a wave between
- *            sets throws a low burst, the tallest of a set reaches half-way up the tower). Four lines, a
- *            crown, a back-to-back and a deep cascade make the sea surge: the next waves break hard.
+ *            they near the rock and break on it, throwing their water up its face (a wave between
+ *            sets throws a low burst, the tallest of a set reaches half-way up the tower). Four
+ *            lines, a crown, a back-to-back and a deep cascade make the sea surge: the next waves
+ *            break hard.
+ *   storm    hot play brews one, slowly (half a minute to come, a minute to go): the cloud closes,
+ *            it rains, and lightning walks the sea, whatever act the night stands on.
  *   hot      the lighthouse runs: the sweep quickens, the blinds open, the beams cut solid blades
  *            through the thickened smoke while the lantern's all-round glow holds back, the sea
  *            heaves higher and runs faster, and the print goes to a harder paper grade (the haze
@@ -69,13 +77,17 @@ import {
     ECHO_SLOTS,
     CUE_SPAN,
     HEAT_TONE,
+    METEOR_GAP,
+    METEOR_SLOTS,
     NEGATIVE_GAP,
     PULSAR,
     PUFF_LIFE,
     PUFF_SLOTS,
+    CALLED_WAVE,
     ROCK,
     ROLLERS,
     ROLLER_RATE,
+    ROLLER_SLOTS,
     ROLLER_SET_RATE,
     SEA,
     SEA_LAYERS,
@@ -88,12 +100,19 @@ import {
     SMOKE_SEED,
     TAU,
     approach,
+    LACE_SEED,
+    LACE_SIZE,
+    ROCK_SEED,
+    bakeRockField,
+    createRockTexture,
+    bakeFoamLace,
     bakeSeaField,
     bakeSmokeNoise,
     beamDirection,
     beamLight,
     cageTransmit,
     createNoirUniforms,
+    createLaceTexture,
     createSeaTexture,
     createSmokeTexture,
     cueAt,
@@ -115,12 +134,17 @@ import {
 } from './cosmic-noir-tsl.js';
 import { tierFor } from './cosmic-noir-quality.js';
 import { createSmoke } from './cosmic-noir-volume.js';
-import { createSpray } from './cosmic-noir-spray.js';
+import { createBurst, createDrops } from './cosmic-noir-spray.js';
 import {
     boardFor, boardPoint, cardUnion, fallbackLayout,
 } from './cosmic-noir-composition.js';
 import { applyCameraBreath } from '../shared/camera-breath.js';
 import { GameplaySurge, Swell } from '../shared/gameplay-surge.js';
+import { CLOUD_RATES, GALAXY_DIR } from './cosmic-noir-sky.js';
+import {
+    NIGHT_ACTS, flashAt, lightningAt, nightAt, nightName, nightPhase, nightPlace, strikeHash,
+} from './cosmic-noir-night.js';
+import { flashScale } from '../../utils/photosensitivity.js';
 
 /** The rest camera. */
 export const REST_RIG = Object.freeze({
@@ -156,6 +180,42 @@ const PUFF_REACH = 34;
  */
 const SEA_RUN = Object.freeze({ swell: 1, billow: 1.7, wisp: 2.6 });
 const WIND_SPEED = Math.hypot(SEA.wind[0], SEA.wind[1]);
+/** The rain's clock comes round after this many seconds (the streaks are redrawn; nobody can tell). */
+const RAIN_WRAP = 64;
+/** How bright lightning stands in the cloud, and how much of it the sea, the rock and the spray take. */
+const FLASH_CLOUD = 1.3;
+const FLASH_WORLD = 0.26;
+/** A fork of lightning: how bright its channel is, and how much of its light the world takes. */
+const BOLT_LINE = 1.6;
+const BOLT_WORLD = 0.3;
+/** A back-to-back's fork of lightning falls this long after the clear (the flashbulb, if any, has gone). */
+const BOLT_AFTER = 0.55;
+/** A twist's whip: the share of the turn the beam still owes that it pays off each second. */
+const WHIP_RATE = 2.8;
+/** The film's gate rolls once on a reel change: a frame line crosses the picture in this many seconds. */
+const ROLL_SPAN = 0.6;
+/** When a run ends the iris closes on the lamp and stays closed this long, unless a new run opens it. */
+const IRIS_HOLD = 7;
+/** A perfect clear's shower: how many meteors leave the galaxy, and over how long. */
+const SHOWER = Object.freeze({ count: 13, span: 2.0 });
+/** A direction in the sky from a bearing right of the lighthouse and an altitude (radians). */
+const skyDir = (bearing, altitude, out = [0, 0, 0]) => {
+    const c = Math.cos(altitude);
+    out[0] = Math.sin(bearing) * c;
+    out[1] = Math.sin(altitude);
+    out[2] = -Math.cos(bearing) * c;
+    return out;
+};
+/** Two unit vectors across the galaxy's direction: to its right along the horizon, and up. */
+const GALAXY_RIGHT = (() => {
+    const l = Math.hypot(GALAXY_DIR[2], GALAXY_DIR[0]) || 1;
+    return [-GALAXY_DIR[2] / l, 0, GALAXY_DIR[0] / l];
+})();
+const GALAXY_UP = [
+    GALAXY_RIGHT[1] * GALAXY_DIR[2] - GALAXY_RIGHT[2] * GALAXY_DIR[1],
+    GALAXY_RIGHT[2] * GALAXY_DIR[0] - GALAXY_RIGHT[0] * GALAXY_DIR[2],
+    GALAXY_RIGHT[0] * GALAXY_DIR[1] - GALAXY_RIGHT[1] * GALAXY_DIR[0],
+];
 /** A layer's drift through its tile (tiles/s, along its own two axes) for a wind speed. */
 const layerRun = (layer, speed) => {
     const vx = SEA_WIND[0] * speed;
@@ -230,6 +290,13 @@ export class CosmicNoirWorld {
         this._from = [0, 0, 0];
         this._beam = [1, 0, 0];
         this._stock = {};
+        this._night = {};
+        this._strike = {};
+        /** Hold the night on one act (captures, the playground's `night=`): a place on the round, or null. */
+        this.nightHold = null;
+        this.weather = {
+            act: NIGHT_ACTS[0].name, cloud: 0, rain: 0, storm: 0, lightning: 0, bolt: 0,
+        };
         this._post = {
             flash: 0,
             negative: 0,
@@ -241,8 +308,18 @@ export class CosmicNoirWorld {
             contrast: 0,
             vignette: 0.55,
             dust: 1,
+            iris: 0,
+            irisAt: { x: 0.2, y: 0.27 },
+            roll: -1,
             stock: this._stock,
         };
+        this.meteorSlots = Array.from({ length: METEOR_SLOTS }, () => ({
+            birth: -1e6, life: 1, from: [0, 1, 0], to: [0, 1, 0], gain: 0, width: 0.002, tail: 0.3,
+        }));
+        this._head = [0, 0, 0];
+        this._tail = [0, 0, 0];
+        /** How far the weather hot play draws in has brewed (0 .. 1): slow to come, slower to go. */
+        this.brew = 0;
         this.echoSlots = Array.from({ length: ECHO_SLOTS }, () => ({ birth: -1e6, strength: 0, width: 1 }));
         this.puffSlots = Array.from({ length: PUFF_SLOTS }, () => ({
             birth: -1e6, from: [0, 0, 0], vel: [0, 0, 0], smoke: 0, ember: 0,
@@ -273,8 +350,14 @@ export class CosmicNoirWorld {
         });
         this.swells = [this.flareSwell, this.flashSwell, this.smokeSwell, this.crownSwell, this.tintSwell,
             this.answerSwell, this.surgeSwell];
-        /** The waves breaking on the rock: the latest first. */
-        this.splashSlots = Array.from({ length: SPLASH_SLOTS }, () => ({ age: 100, strength: 0, seed: 0 }));
+        /**
+         * The waves breaking on the rock. A wave keeps its row for as long as it lives (crest k
+         * takes row k mod ROLLER_SLOTS; the last row is the wave a great moment calls up), so the
+         * spray in the air never changes hands.
+         */
+        this.splashSlots = Array.from({ length: SPLASH_SLOTS }, () => ({
+            age: 100, strength: 0, seed: 0, index: -1,
+        }));
         this.heat = {
             level: 0, fever: 0, punch: 0, stage: 0, warm: 0, hot: 0,
         };
@@ -297,6 +380,22 @@ export class CosmicNoirWorld {
         this.negativeSolar = 0;
         /** Two reel changes' marks: a second inside the first waits its turn. */
         this.cueBirths = [-1e6, -1e6];
+        /** The last fork of lightning an event called down: when, how bright, its seed and bearing. */
+        this.boltBirth = -1e6;
+        this.boltGain = 0;
+        this.boltSeed = 0.5;
+        this.boltBearing = 0.5;
+        /** The turn the beam still has to whip round (a twist), and the reel change's gate roll. */
+        this.whipTurn = 0;
+        this.rollBirth = -1e6;
+        /** When the last run ended (the iris closes on the lamp), and how far the iris has closed. */
+        this.runOver = -1e6;
+        this.iris = 0;
+        this.brew = 0;
+        this.meteorSlots?.forEach((slot) => {
+            slot.birth = -1e6;
+            slot.gain = 0;
+        });
         this.chainGain = 0;
         /** Difficult clears in a row that were back-to-back. */
         this.b2bRun = 0;
@@ -309,7 +408,19 @@ export class CosmicNoirWorld {
         this.echoCursor = 0;
         this.puffCursor = 0;
         this.counts = {
-            locks: 0, clears: 0, quads: 0, levels: 0, crowns: 0, spins: 0, negatives: 0, waves: 0,
+            locks: 0,
+            clears: 0,
+            quads: 0,
+            levels: 0,
+            crowns: 0,
+            spins: 0,
+            negatives: 0,
+            waves: 0,
+            bolts: 0,
+            meteors: 0,
+            showers: 0,
+            overs: 0,
+            called: 0,
         };
         // The clocks a rate drives: closed form until gameplay bends them.
         const motion = this.reducedMotion ? 0.4 : 1;
@@ -322,6 +433,9 @@ export class CosmicNoirWorld {
         this.curl = CURL_RATE.map((c) => c * motion * time);
         /** How far the sea's layers have run through their tiles (swell u, v, billow u, v, wisp u, v). */
         this.seaRun = [...SEA_RATES.swell, ...SEA_RATES.billow, ...SEA_RATES.wisp].map((rate) => wrap1(rate * motion * time));
+        /** How far the cloud's two fields have run (tiles), and the rain's clock. */
+        this.cloudRun = CLOUD_RATES.map((rate) => wrap1(rate * motion * time));
+        this.rainClock = (motion * time) % RAIN_WRAP;
         this.seaHeave = 1;
         // The rollers: the crests and the sets on their own clocks, and the waves breaking now.
         // All of it follows from the clock, so a seek lands on the same sea, plumes and all.
@@ -330,16 +444,22 @@ export class CosmicNoirWorld {
         this.setTurn = ROLLER_SET_RATE * motion * time;
         this.seaSurge = 0;
         const broken = Math.floor(this.rollTurn + SHORE_TURN);
-        this.splashSlots.forEach((slot, k) => {
+        const called = this.splashSlots[ROLLER_SLOTS];
+        called.age = 100;
+        called.strength = 0;
+        called.index = -1;
+        for (let k = 0; k < ROLLER_SLOTS; k++) {
             const index = broken - k;
+            const slot = this.splashSlots[((index % ROLLER_SLOTS) + ROLLER_SLOTS) % ROLLER_SLOTS];
             const met = (index - SHORE_TURN) / rollRate; // when that crest met the shore
             const live = index >= 1 && time - met <= SPLASH.life;
+            slot.index = live ? index : -1;
             slot.age = live ? time - met : 100;
             slot.strength = live
                 ? splashStrength(rollerSet(ROCK.shore, ROLLER_SET_RATE * motion * met), 0) * (this.reducedMotion ? 0.6 : 1)
                 : 0;
             slot.seed = live ? (index * 0.618034) % 1 : 0;
-        });
+        }
         this.echoSlots.forEach((slot) => {
             slot.birth = -1e6;
             slot.strength = 0;
@@ -358,11 +478,21 @@ export class CosmicNoirWorld {
         const smokeFar = createSmokeTexture(baked.far, baked.farSize, 'cosmic-noir-smoke-far');
         const seaField = bakeSeaField(SEA_SEED, tier.sea);
         const sea = createSeaTexture(seaField.levels, seaField.size);
+        const laceField = bakeFoamLace(LACE_SEED, LACE_SIZE);
+        const lace = createLaceTexture(laceField.data, laceField.size);
+        const rock = createRockTexture(bakeRockField(ROCK_SEED, tier.rock));
         const placeholder = new THREE.DataTexture(new Uint8Array([0, 0, 0, 255]), 1, 1);
         placeholder.needsUpdate = true;
-        this.textures.push(smoke, smokeFar, sea, placeholder);
+        this.textures.push(smoke, smokeFar, sea, lace, rock, placeholder);
         const u = createNoirUniforms({
-            smoke, smokeFar, sea, seaSize: seaField.size, target: placeholder, floatTarget: this.floatTarget,
+            smoke,
+            smokeFar,
+            sea,
+            seaSize: seaField.size,
+            lace,
+            rock,
+            target: placeholder,
+            floatTarget: this.floatTarget,
         });
         this.u = u;
         const { a, e1, e2 } = this.basis;
@@ -378,18 +508,20 @@ export class CosmicNoirWorld {
             tower: tier.tower,
             air: tier.air,
             wisps: tier.wisps,
-            splash: tier.splash,
             detail: tier.detail,
             skyLayers: tier.skyLayers,
         });
         this.parts.sky = this.smoke;
         this.root.add(this.smoke.mesh);
         this.disposables.push(this.smoke);
-        // The spray a breaking wave flings off the rock: drawn over the backdrop, added to it.
-        this.spray = createSpray(u, tier.spray);
+        // What a breaking wave throws up the rock: billows of spray laid over the backdrop, and
+        // the drops it flings off, added to it.
+        this.burst = createBurst(u, tier.burst);
+        this.spray = createDrops(u, tier.spray);
+        this.parts.burst = this.burst;
         this.parts.spray = this.spray;
-        this.root.add(this.spray.mesh);
-        this.disposables.push(this.spray);
+        this.root.add(this.burst.mesh, this.spray.mesh);
+        this.disposables.push(this.burst, this.spray);
 
         this.resetState(this.time);
         this.applyStock(1);
@@ -407,6 +539,7 @@ export class CosmicNoirWorld {
         this.smokeOn = keep.has('smoke');
         this.smoke?.show({ sea: keep.has('sea'), tower: keep.has('tower') });
         if (this.spray) this.spray.mesh.visible = keep.has('sea');
+        if (this.burst) this.burst.mesh.visible = keep.has('sea');
         if (!this.smokeOn && this.smoke) {
             // Paint the target clear once (no smoke, full transmittance).
             this._clearTarget = true;
@@ -647,6 +780,7 @@ export class CosmicNoirWorld {
         while (q.length && q[0].time <= t) {
             const { time, kind, data } = q.shift();
             if (kind === 'echo') this.echo(time, data);
+            else if (kind === 'bolt') this.strike(time, data);
         }
     }
 
@@ -672,6 +806,83 @@ export class CosmicNoirWorld {
         slot.birth = time;
         slot.strength = strength;
         slot.width = width;
+    }
+
+    /** The direction of a screen point (fractions, y down) through the camera. */
+    skyDirAt(sx, sy, out = [0, 0, 0]) {
+        const camera = this._camera;
+        if (!camera) return skyDir((sx - 0.2) * 1.4, (0.66 - sy) * 0.8, out);
+        this._ray.set(sx * 2 - 1, 1 - sy * 2, 0.5).unproject(camera).sub(camera.position).normalize();
+        out[0] = this._ray.x;
+        out[1] = this._ray.y;
+        out[2] = this._ray.z;
+        return out;
+    }
+
+    /**
+     * A meteor crosses the sky from one direction to another (unit vectors) in `life` seconds, from
+     * `time` on (which may be a moment ahead). It takes a spent slot, else the oldest.
+     */
+    meteor(time, {
+        from, to, life = 0.7, gain = 1, width = 0.0018, tail = 0.34,
+    }) {
+        // (The last row is kept for the meteor that falls by itself.)
+        let pick = this.meteorSlots[0];
+        for (let i = 0; i < METEOR_SLOTS - 1; i++) {
+            const slot = this.meteorSlots[i];
+            if (slot.birth + slot.life < pick.birth + pick.life) pick = slot;
+        }
+        pick.birth = time;
+        pick.life = life;
+        pick.gain = gain;
+        pick.width = width;
+        pick.tail = tail;
+        for (let k = 0; k < 3; k++) {
+            pick.from[k] = from[k];
+            pick.to[k] = to[k];
+        }
+        this.counts.meteors += 1;
+    }
+
+    /** A shower out of the galaxy: every meteor leaves the same point of the sky, up and outward. */
+    shower(time) {
+        const base = this.counts.showers * 31 + 7;
+        for (let i = 0; i < SHOWER.count; i++) {
+            const h = (salt) => strikeHash(base + i, salt);
+            // (Up and outward only: under the galaxy is the sea.)
+            const turn = Math.PI * (0.06 + 0.88 * ((i + h(21)) / SHOWER.count));
+            const c = Math.cos(turn);
+            const s = Math.sin(turn);
+            const reach = (far) => GALAXY_DIR.map((g, k) => g + (GALAXY_RIGHT[k] * c + GALAXY_UP[k] * s) * far);
+            this.meteor(time + (i / SHOWER.count) * SHOWER.span * (0.6 + 0.4 * h(22)) + 0.08 * h(23), {
+                from: reach(0.07 + 0.12 * h(24)),
+                to: reach(0.5 + 0.45 * h(25)),
+                life: 0.75 + 0.45 * h(26),
+                gain: 0.9 + 0.8 * h(27),
+                width: 0.0021,
+                tail: 0.62,
+            });
+        }
+        this.counts.showers += 1;
+    }
+
+    /** The beam whips round (a twist turns the lamp itself): `turns` of it, eased, on top of its own turn. */
+    whip(turns = 1) {
+        if (this.reducedMotion) return;
+        this.whipTurn = Math.min(TAU * 2, this.whipTurn + TAU * turns);
+    }
+
+    /** A run has ended: the iris closes on the lamp, and the lighthouse lets one slow ring go. */
+    onGameOver() {
+        if (!this.u) return;
+        this.runOver = this.time;
+        this.schedule(this.time, 'echo', { strength: 0.3, width: 1.9 });
+        this.counts.overs += 1;
+    }
+
+    /** A new run begins: the iris opens. */
+    onSessionStart() {
+        this.runOver = -1e6;
     }
 
     /** The smoke a puff still holds at `time` (0 once it is gone). */
@@ -804,12 +1015,24 @@ export class CosmicNoirWorld {
                 this.crownSwell.hit(0.25, t);
             }
             this.cageSpin += 1.4;
-            // The far light answers, a breath later, and the sea gathers itself: the next waves break hard.
+            // The far light answers, a breath later; a great wave breaks over the rock at once,
+            // and the sea gathers itself: the next waves break hard.
             this.answerSwell.hit(1, t + 0.9);
             this.surgeSwell.hit(1, t);
+            this.callWave();
             this.counts.quads += 1;
         }
-        if (twist) this.cageSpin += 3.2;
+        // A twist turns the lamp itself: the beam whips once round the sea, and the slats spin.
+        if (twist) {
+            this.cageSpin += 3.2;
+            this.whip(1);
+        }
+        // Three lines: a meteor crosses the sky over the board, from the galaxy's side.
+        if (n === 3 && !quad && depth === 1) {
+            this.meteor(t + 0.12, {
+                from: this.skyDirAt(0.97, 0.05), to: this.skyDirAt(0.26, 0.2), life: 1.05, gain: 1.6, width: 0.0026, tail: 0.6,
+            });
+        }
         // A deeper wave turns the cage a little more.
         if (deep > 0) this.cageSpin += 0.4 * Math.min(4, deep);
         // A deep cascade and a back-to-back stir the sea too.
@@ -822,6 +1045,9 @@ export class CosmicNoirWorld {
             this.schedule(t + 0.07, 'echo', { strength: strength * 0.9, width: width * 1.15 });
             this.tintSwell.hit(0.4 + 0.15 * Math.min(3, this.b2bRun - 1), t);
             this.cageSpin += 1.0;
+            // And the sky answers: a fork of lightning to the sea beside the board, once the
+            // flashbulb (if this was four lines) has gone.
+            this.schedule(t + BOLT_AFTER, 'bolt', { gain: Math.min(1.3, 0.8 + 0.15 * this.b2bRun) });
         } else if (!quad && !twist && depth === 1) {
             this.b2bRun = 0;
         }
@@ -833,12 +1059,15 @@ export class CosmicNoirWorld {
     crownLight(t) {
         this.answerSwell.hit(0.8, t + 0.7);
         this.surgeSwell.hit(0.7, t);
+        this.callWave();
         this.crownSwell.hit(1, t);
         this.flareSwell.hit(0.8, t);
         this.flashSwell.hit(0.1, t);
         this.schedule(t, 'echo', { strength: 0.6, width: 1.6 });
         this.schedule(t + 0.2, 'echo', { strength: 0.5, width: 1.9 });
         this.cageSpin += 1.0;
+        // The galaxy blazes and lets a shower of meteors go.
+        this.shower(t + 0.15);
         this.counts.crowns += 1;
     }
 
@@ -848,6 +1077,7 @@ export class CosmicNoirWorld {
         const t = this.time;
         this.surge.spin(t);
         this.cageSpin += 1.6;
+        this.whip(0.5);
         this.flareSwell.hit(0.25, t);
         this.schedule(t, 'echo', { strength: 0.18, width: 0.8 });
         this.counts.spins += 1;
@@ -893,6 +1123,9 @@ export class CosmicNoirWorld {
         }
         this.flareSwell.hit(0.5, t);
         this.echo(t, { strength: 0.45, width: 1.4 });
+        // The gate rolls once as the new reel takes, and the far light greets it.
+        if (!this.reducedMotion) this.rollBirth = t + 0.35;
+        this.answerSwell.hit(0.7, t + 1.2);
         this.surge.levelUp(t);
         this.counts.levels += 1;
     }
@@ -930,15 +1163,62 @@ export class CosmicNoirWorld {
      * `index` = which crest (counted from the clock's start), `rate` = the crests' turns a second.
      */
     breakWave(index, rate) {
-        const slots = this.splashSlots;
-        for (let k = slots.length - 1; k > 0; k--) Object.assign(slots[k], slots[k - 1]);
-        const fresh = slots[0];
+        const fresh = this.splashSlots[((index % ROLLER_SLOTS) + ROLLER_SLOTS) % ROLLER_SLOTS];
+        fresh.index = index;
         // It met the shore a part of this frame ago.
         fresh.age = rate > 0 ? (this.rollTurn + SHORE_TURN - index) / rate : 0;
         fresh.strength = splashStrength(rollerSet(ROCK.shore, this.setTurn), this.seaSurge)
             * (0.85 + 0.15 * this.seaHeave) * (this.reducedMotion ? 0.6 : 1);
         fresh.seed = (index * 0.618034) % 1;
         this.counts.waves += 1;
+    }
+
+    /** Where the night stands on its round: the level's steps, the clock, or the act it is held on. */
+    nightNow() {
+        return this.nightHold !== null ? this.nightHold : nightPlace(this.levelPlace, this.time);
+    }
+
+    /** The bearing (radians right of the lighthouse) of a screen column at the horizon. */
+    bearingAt(sx) {
+        const camera = this._camera;
+        if (!camera) return (sx - 0.2) * 1.4;
+        this._ray.set(sx * 2 - 1, 1 - this.horizonY * 2, 0.5).unproject(camera).sub(camera.position);
+        return Math.atan2(this._ray.x, -this._ray.z);
+    }
+
+    /**
+     * A fork of lightning falls to the sea, at a screen column clear of the board (fractions), or
+     * wherever there is room when none is named.
+     */
+    strike(time, { gain = 1, column = null } = {}) {
+        const seed = ((this.counts.bolts + 1) * 0.618034) % 1;
+        // Between the lighthouse and the card, or between the HUD and the galaxy, by turns.
+        const hud = this.layout?.hud;
+        const card = cardUnion(this.layout);
+        const left = card ? Math.max(0.27, card.x0 - 0.06) : 0.31;
+        const right = Math.min(0.97, Math.max(hud ? hud.x1 : 0, card ? card.x1 : 0.62) + 0.07);
+        const at = column ?? (this.counts.bolts % 2 === 0 ? right : left);
+        this.boltBirth = time;
+        this.boltGain = gain;
+        this.boltSeed = seed;
+        this.boltBearing = this.bearingAt(at);
+        this.counts.bolts += 1;
+    }
+
+    /**
+     * A great moment calls a wave up out of turn: it breaks on the rock now, harder than any
+     * roller, and goes over the gallery. One at a time: while the last one is still climbing, the
+     * call only feeds the sea's surge.
+     */
+    callWave(strength = CALLED_WAVE) {
+        const slot = this.splashSlots[ROLLER_SLOTS];
+        if (slot.strength > 0 && slot.age < 2.2) return false;
+        slot.age = 0;
+        slot.strength = strength * (this.reducedMotion ? 0.6 : 1);
+        slot.seed = ((this.counts.called + 1) * 0.381966) % 1;
+        slot.index = -1;
+        this.counts.called += 1;
+        return true;
     }
 
     /** Hand a rebuilt world (quality change, lost GPU) where this one stood. */
@@ -996,6 +1276,51 @@ export class CosmicNoirWorld {
         }
         u.puffCount.value = count;
         this.puffsLive = count;
+
+        // Meteors: the ones an event sent, then the one that may be falling by itself.
+        const { meteors } = u.tables;
+        let shown = 0;
+        const write = (slot, age) => {
+            const k = age / slot.life;
+            const head = this._head;
+            const tail = this._tail;
+            const back = Math.max(0, k - slot.tail);
+            let hl = 0;
+            let tl = 0;
+            for (let c = 0; c < 3; c++) {
+                head[c] = slot.from[c] + (slot.to[c] - slot.from[c]) * k;
+                tail[c] = slot.from[c] + (slot.to[c] - slot.from[c]) * back;
+                hl += head[c] * head[c];
+                tl += tail[c] * tail[c];
+            }
+            hl = Math.sqrt(hl) || 1;
+            tl = Math.sqrt(tl) || 1;
+            const light = slot.gain * smooth(0, 0.14, k) * (1 - smooth(0.68, 1, k));
+            meteors[shown * 2].set(head[0] / hl, head[1] / hl, head[2] / hl, light);
+            meteors[shown * 2 + 1].set(tail[0] / tl, tail[1] / tl, tail[2] / tl, slot.width);
+            shown += 1;
+        };
+        for (let i = 0; i < METEOR_SLOTS - 1; i++) {
+            const slot = this.meteorSlots[i];
+            const age = t - slot.birth;
+            if (age >= 0 && age <= slot.life && slot.gain > 0) write(slot, age);
+        }
+        // (A pure function of the clock: one moment in every METEOR_GAP seconds may hold one.)
+        const turn = Math.floor(t / METEOR_GAP);
+        const fell = (turn + 0.15 + 0.7 * strikeHash(turn, 31)) * METEOR_GAP;
+        if (t >= fell && t <= fell + 0.75 && strikeHash(turn, 32) < 0.62 && shown < METEOR_SLOTS) {
+            const own = this._ownMeteor || (this._ownMeteor = {
+                life: 0.75, from: [0, 1, 0], to: [0, 1, 0], gain: 1, width: 0.0024, tail: 0.45,
+            });
+            const bearing = 0.15 + 1.2 * strikeHash(turn, 33);
+            const altitude = 0.34 + 0.24 * strikeHash(turn, 34);
+            skyDir(bearing, altitude, own.from);
+            skyDir(bearing - 0.32 + 0.64 * strikeHash(turn, 35), altitude - 0.18, own.to);
+            own.gain = 0.7 + 0.7 * strikeHash(turn, 36);
+            write(own, t - fell);
+        }
+        u.meteorCount.value = shown;
+        this.meteorsLive = shown;
     }
 
     // ── Frame ───────────────────────────────────────────────────────────────────
@@ -1036,6 +1361,12 @@ export class CosmicNoirWorld {
         this.spinRate += (spinTarget - this.spinRate) * approach(spinTarget > this.spinRate ? 1.4 : 0.5, dt);
         if (dt === 0) this.spinRate = spinTarget;
         this.spinPhase = (this.spinPhase + this.spinRate * dt) % TAU;
+        // A twist's whip: the turn it owes, paid off quickly and smoothly.
+        if (this.whipTurn > 1e-4) {
+            const paid = this.whipTurn * approach(WHIP_RATE, dt);
+            this.spinPhase = (this.spinPhase + paid) % TAU;
+            this.whipTurn -= paid;
+        }
         this.cageTurn = (this.cageTurn + (CAGE_TURN * motion + this.cageSpin * (calm ? 0.25 : 1)) * dt) % TAU;
         // The chain opens the blinds, and so does the heat; a fever turns them nearly edge-on and
         // the crown all the way.
@@ -1055,11 +1386,30 @@ export class CosmicNoirWorld {
             this.drift[k] += SMOKE.wind[k] * motion * dt;
             this.curl[k] += CURL_RATE[k] * motion * dt;
         }
+        // ── The night's weather: the act the clock and the level have reached, and what play adds ──
+        // (Hot play draws the weather in: the cloud closes, it rains, and lightning walks the sea.)
+        const night = nightAt(this.nightNow(), this._night);
+        // (A storm takes its time: half a minute of hot play to brew, a minute to blow over.)
+        const brewTo = 0.45 * hot + 0.55 * fever;
+        this.brew += (brewTo - this.brew) * approach(brewTo > this.brew ? 0.085 : 0.035, dt);
+        const brewing = this.brew;
+        const { weather } = this;
+        weather.act = nightName(this.nightNow());
+        weather.cloud = night.cloud + (1 - night.cloud) * 0.7 * brewing;
+        weather.rain = clamp01(night.rain + 0.85 * brewing);
+        weather.storm = clamp01(night.storm + 0.9 * brewing);
+        const strike = lightningAt(t, weather.storm, this._strike);
+        const dazzle = flashScale();
+        weather.lightning = strike.light * dazzle;
+        weather.bolt = flashAt(t - this.boltBirth) * this.boltGain * dazzle;
+        for (let k = 0; k < 4; k++) this.cloudRun[k] = wrap1(this.cloudRun[k] + CLOUD_RATES[k] * motion * dt);
+        this.rainClock = (this.rainClock + motion * dt) % RAIN_WRAP;
+
         // The sea runs before the wind, faster as play burns hot, and heaves higher.
         const gale = motion * (1 + 0.5 * hot + 0.4 * fever);
         const rates = [...SEA_RATES.swell, ...SEA_RATES.billow, ...SEA_RATES.wisp];
         for (let k = 0; k < 6; k++) this.seaRun[k] = wrap1(this.seaRun[k] + rates[k] * gale * dt);
-        const heaveTarget = 1 + 0.1 * warm + 0.14 * hot;
+        const heaveTarget = (1 + 0.1 * warm + 0.14 * hot) * night.swell;
         this.seaHeave += (heaveTarget - this.seaHeave) * approach(0.6, dt);
         if (dt === 0) this.seaHeave = heaveTarget;
         // The rollers run in with it, taller under a surge; a crest that reaches the rock breaks.
@@ -1094,18 +1444,30 @@ export class CosmicNoirWorld {
         u.seaDrift.value.set(this.seaRun[0], this.seaRun[1], this.seaRun[2], this.seaRun[3]);
         u.seaFine.value.set(this.seaRun[4], this.seaRun[5]);
         u.seaHeave.value = this.seaHeave;
+        u.cloud.value = weather.cloud;
+        u.cloudDrift.value.set(this.cloudRun[0], this.cloudRun[1], this.cloudRun[2], this.cloudRun[3]);
+        u.stars.value = night.stars * (1 - 0.4 * brewing);
+        // (A perfect clear's crown: the galaxy blazes.)
+        u.galaxy.value = night.galaxy * (1 + 0.9 * Math.min(1, crown));
+        u.mist.value = night.mist;
+        u.fringe.value = night.fringe;
+        u.seaRough.value = night.rough + 0.6 * weather.rain;
+        u.rain.value = weather.rain;
+        u.rainSlant.value = 0.13 + 0.12 * night.wind;
+        u.rainClock.value = this.rainClock;
+        u.flash.value = weather.lightning * FLASH_CLOUD;
+        const ca = Math.cos(strike.altitude);
+        u.flashDir.value.set(Math.sin(strike.bearing) * ca, Math.sin(strike.altitude), -Math.cos(strike.bearing) * ca);
+        u.bolt.value.set(0, weather.bolt * BOLT_LINE, this.boltSeed, this.boltBearing);
+        u.skyGlow.value = night.glow + weather.lightning * FLASH_WORLD + weather.bolt * BOLT_WORLD;
         // The sea round the rock stays churned a few seconds after a wave has broken on it.
         let churn = 0;
-        let tallest = 0;
         for (let k = 0; k < SPLASH_SLOTS; k++) {
             const slot = this.splashSlots[k];
             const live = slot.age < SPLASH.life ? slot.strength : 0;
             u.tables.splashes[k].set(slot.age, live, slot.seed, 0);
             churn += live * smooth(0, 0.5, slot.age) * Math.exp(-slot.age / 3.2);
-            tallest = Math.max(tallest, live);
         }
-        // (A plume's jets and billows reach up to 1.7 times its nominal height.)
-        u.splashTop.value = tallest * SPLASH.height * 1.7 + 1.2;
         u.seaSurge.value = Math.min(1, this.seaSurge);
         u.seaRoll.value.set(
             wrap1(this.rollTurn),
@@ -1136,7 +1498,7 @@ export class CosmicNoirWorld {
         u.farLamp.value = (calm ? 0.45 : farLampAt(t)) + 1.4 * this.answerSwell.valueAt(t);
         // Smoke fills the room: the beams become solid blades through it, seen side-on (the
         // forward scatter gives way, so a beam looking our way no longer greys the whole frame).
-        u.haze.value = SMOKE.haze * (1 + 1.0 * smokeLoad + 0.4 * hot + 0.6 * fever);
+        u.haze.value = SMOKE.haze * night.haze * (1 + 1.0 * smokeLoad + 0.4 * hot + 0.6 * fever);
         u.forward.value = PULSAR.forward - 0.12 * hot - 0.06 * fever;
         this.writeEvents();
 
@@ -1181,6 +1543,15 @@ export class CosmicNoirWorld {
         post.contrast = clamp01(0.25 * warm + 0.35 * hot + 0.4 * fever);
         post.vignette = 0.55 + 0.08 * hot + 0.12 * fever;
         post.dust = 1 + 1.2 * hot + 1.8 * fever;
+        // The reel change's gate roll, and the iris that closes on the lamp when a run ends.
+        const rolled = (t - this.rollBirth) / ROLL_SPAN;
+        post.roll = rolled >= 0 && rolled <= 1 ? rolled : -1;
+        const over = t - this.runOver;
+        const closing = over >= 0 && over < IRIS_HOLD ? 1 : 0;
+        this.iris += (closing - this.iris) * approach(closing > this.iris ? 2.2 : 0.8, dt);
+        post.iris = this.iris;
+        post.irisAt.x = u.pulsarUv.value.x;
+        post.irisAt.y = u.pulsarUv.value.y;
 
         // Paint the smoke for this frame.
         if (this.smoke && sim.draw !== false) {
@@ -1229,6 +1600,9 @@ export class CosmicNoirWorld {
             coreSeen: this.u ? this.u.coreSeen.value : null,
             echoes: this.echoesLive || 0,
             puffs: this.puffsLive || 0,
+            meteors: this.meteorsLive || 0,
+            whip: this.whipTurn,
+            iris: this.iris,
             negative: this._post.negative,
             cue: this._post.cue,
             surge: {
@@ -1249,9 +1623,22 @@ export class CosmicNoirWorld {
             floatTarget: this.u ? this.u.floatTarget : null,
             layoutLive: this.layoutLive,
             horizon: this.horizonY,
+            night: {
+                act: this.weather.act,
+                place: this.nightNow(),
+                mix: nightPhase(this.nightNow()).mix,
+                cloud: this.weather.cloud,
+                rain: this.weather.rain,
+                storm: this.weather.storm,
+                lightning: this.weather.lightning,
+                bolt: this.weather.bolt,
+            },
             seaHeave: this.seaHeave,
             seaSurge: this.seaSurge,
-            waves: this.splashSlots.map((slot) => ({ age: slot.age, strength: slot.age < SPLASH.life ? slot.strength : 0 })),
+            // (The latest first.)
+            waves: this.splashSlots
+                .map((slot) => ({ age: slot.age, strength: slot.age < SPLASH.life ? slot.strength : 0 }))
+                .sort((a, b) => a.age - b.age),
             pulsarUv: this.u ? { x: this.u.pulsarUv.value.x, y: this.u.pulsarUv.value.y } : null,
         };
     }

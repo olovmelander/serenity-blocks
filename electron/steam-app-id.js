@@ -1,3 +1,6 @@
+import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+
 /**
  * The game's Steam AppID: the one constant to set once Steamworks issues it.
  *
@@ -24,7 +27,7 @@ const APP_ID_TEXT = /^\d+$/;
 
 /** True for an id a shipped build may start Steam with. */
 export function isReleaseSteamAppId(appId) {
-    return Number.isSafeInteger(appId) && appId > 0 && appId !== DEV_TEST_STEAM_APP_ID;
+    return Number.isSafeInteger(appId) && appId > 0 && appId <= 0xffffffff && appId !== DEV_TEST_STEAM_APP_ID;
 }
 
 /**
@@ -64,12 +67,24 @@ export function resolveSteamAppId({
         };
     }
 
+    const validDevId = (value) => APP_ID_TEXT.test(value) && Number(value) > 0 && Number(value) <= 0xffffffff;
     const envAppId = env.STEAM_APP_ID;
-    if (envAppId && APP_ID_TEXT.test(envAppId)) return { appId: Number(envAppId), source: 'env' };
+    if (envAppId && validDevId(envAppId)) return { appId: Number(envAppId), source: 'env' };
 
     const text = readAppIdFile()?.trim();
-    if (text && APP_ID_TEXT.test(text)) return { appId: Number(text), source: 'steam_appid.txt' };
+    if (text && validDevId(text)) return { appId: Number(text), source: 'steam_appid.txt' };
 
     if (isReleaseSteamAppId(releaseAppId)) return { appId: releaseAppId, source: 'release' };
     return { appId: DEV_TEST_STEAM_APP_ID, source: 'dev-test' };
+}
+
+/** Bootstrap and the native client must choose the same partition and App ID. */
+export function desktopSteamAppId(isPackaged, appPath) {
+    return resolveSteamAppId({ isPackaged, env: process.env, readAppIdFile: () => {
+        for (const dir of [process.cwd(), appPath]) {
+            const file = join(dir, 'steam_appid.txt');
+            if (existsSync(file)) return readFileSync(file, 'utf8');
+        }
+        return null;
+    } });
 }

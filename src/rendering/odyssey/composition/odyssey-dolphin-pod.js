@@ -235,11 +235,17 @@ export function dolphinAt(d, t, out = /** @type {DolphinPose} */ ({}), spec = DO
 }
 
 /**
+ * A surface mark: where (world xz), how long ago (s), and which way the dolphin was swimming there
+ * (the loop's unit tangent).
+ * @typedef {{ x: number, z: number, age: number, tx?: number, tz?: number }} DolphinMark
+ */
+/**
  * The two marks a dolphin leaves on the surface: where it last left the water and where it last
- * went back in, with the age of each (s). The splashes are drawn there until `splashLife`.
+ * went back in, with the age of each (s) and its heading there. The splashes are drawn there
+ * until `splashLife`; from below, the air it took down follows its heading into the dive.
  * @param {DolphinSpec} d
  * @param {number} t
- * @param {{ exit: { x: number, z: number, age: number }, entry: { x: number, z: number, age: number } }} [out]
+ * @param {{ exit: DolphinMark, entry: DolphinMark }} [out]
  */
 export function dolphinSplashes(d, t, out = { exit: { x: 0, z: 0, age: 0 }, entry: { x: 0, z: 0, age: 0 } }, spec = DOLPHIN_POD) {
     const time = Number.isFinite(t) ? t : 0;
@@ -253,10 +259,24 @@ export function dolphinSplashes(d, t, out = { exit: { x: 0, z: 0, age: 0 }, entr
         into.x = _loop.x - (_loop.tz * d.side);
         into.z = _loop.z + (_loop.tx * d.side);
         into.age = age;
+        into.tx = _loop.tx;
+        into.tz = _loop.tz;
     };
     mark(c * d.period, out.exit);
     mark((c >= spec.leap ? c - spec.leap : c + 1 - spec.leap) * d.period, out.entry);
     return out;
+}
+
+/**
+ * A dolphin's dive under the surface: how deep its middle goes (u) and how long it is under (s).
+ * The same take-off speed that carries it `height` up carries it `depth` down, over the longer
+ * span of its cycle (porpoiseAt).
+ * @param {DolphinSpec} d
+ * @returns {{ depth: number, time: number, speed: number }} speed: its pace along the loop (u/s)
+ */
+export function dolphinDive(d, spec = DOLPHIN_POD) {
+    const lp = d.scout ? spec.scouts : spec;
+    return { depth: (d.height * (1 - spec.leap)) / spec.leap, time: (1 - spec.leap) * d.period, speed: lp.speed };
 }
 
 /**

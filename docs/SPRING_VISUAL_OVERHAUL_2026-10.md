@@ -569,3 +569,352 @@ playground at Minimal, before the fix, which leaves WebGPU alone). Not done: a p
 next start of the theme on the owner's phone is the check.
 
 ![before on WebGL2, after on WebGL2, WebGPU](spring-captures/woods-webgl2-mips-ab.webp)
+
+## Fourth pass: the living valley (2026-11-18)
+
+The owner asked for the whole theme to be audited and raised until it is one of the game's most
+stunning: every part reviewed, what works kept and built on, the theme "varied over time, shifting
+and evolving as you play so it never looks the same for long", every event with its own distinct
+effect and the biggest moments the most spectacular, smooth and easy to read throughout.
+
+To look at it: `/playground.html?effect=spring&t=10&hour=0.3&weather=1&board=1` (`weather` 0 fair,
+1 mackerel sky, 2 building heaps, 3 after the shower, 4 veiled sun, 5 clear and windy; fractions
+mix; it also turns with the clock alone, one every 130 s of `t`), with the events and their
+`eventAge` as before.
+
+### The audit
+
+Every hour and every event was captured from `main` first (the playground, 1600 × 900, High).
+
+| Part | What was found |
+|---|---|
+| The golden evening | The fall, its spray and the whole pool burned out into one cream sheet. The post's false-colour view showed the river over 2.5 after exposure: the sun's glitter on the water was a lobe so wide (cos³² of the mirror angle) that it covered the pool, and the foam was lit as if seen from the sun's side. |
+| The sky | A few cirrus dashes and four heaps on the horizon, the same at every hour of every day. Sunset and the light night were flat gradients with nothing in them. The cumulus deck overhead read as soft smears. |
+| The spray | A violet-blue glowing blob at sunset and through the night (lit by the zenith's blue alone). |
+| The meadow | In a fever or a flush the anemones' white swallowed every other colour on the knoll. Through sunset and the night the lower half of the frame was nearly black. |
+| The air | Round dots: dust, not petals. |
+| The events | Nearly every one was "more flowers and a few specks". Four lines, a perfect clear and a level-up were hard to tell from a single line; the birds were 15-pixel chevrons a quarter of a kilometre off, and a level-up's cranes took twelve seconds to reach the frame. |
+| Over time | Six stations of light and nothing else: no weather, nothing that came by on its own. |
+| Under quick hands | A probe (below) found that 76–87 % of the motes a hot session spawned overwrote one still in the air. |
+
+The fall's plan, the river, the knoll, the woods and the fells are the picture, and stay.
+
+### The weather (`spring-weather.js`)
+
+A second wheel beside the day's, on its own clock: each weather holds and crosses to the next in
+130 s (the crossing takes 46), so a round of six takes 780 s against the day's 600, and the same
+hour does not meet the same sky two days running. A session opens on the fair day, the day the
+hours author. Each weather is a row of numbers the world spends on what it already draws:
+
+| Weather | What it does |
+|---|---|
+| Fair | The hours' own day. |
+| Mackerel sky | Rippled altocumulus over the whole sky; under a low sun it burns from below. |
+| Building heaps | The cumulus stands taller and fuller, its shadows sweep the valley, a fresher breeze. |
+| After the shower | Washed, clear air under broken cloud, a little mist on the water, and a rainbow where the sun allows one. |
+| Veiled sun | A milky veil of cirrostratus, a 22° halo round the sun, soft light, still air. |
+| Clear and windy | A deep clean sky, the fells sharp, the clouds, the plants and the air's motes hurried by a stiff breeze. |
+
+The wind is integrated (`windX`, `windZ`, `bankTurn`), so a weather that blows harder never jumps
+the clouds, and `windTravel(time)` gives a seek the same travel stepping would.
+
+| A mackerel sky in the morning | The same sky at sunset |
+|---|---|
+| ![mackerel morning](spring-captures/living-mackerel-morning.webp) | ![mackerel sunset](spring-captures/living-mackerel-sunset.webp) |
+| **After the shower, the afternoon: the bow over the fells** | **Building heaps** |
+| ![afternoon bow](spring-captures/living-bow-afternoon.webp) | ![heaps](spring-captures/living-heaps.webp) |
+| **Veiled sun, the golden evening** | **The light night, clear: the night-shining clouds** |
+| ![veiled](spring-captures/living-veiled-golden.webp) | ![night shine](spring-captures/living-night-shine.webp) |
+
+### The sky (`spring-sky.js`, `spring-cumulus.js`, `spring-bow.js`)
+
+From the top down, each layer a plane the view ray meets, drifting at its own pace so the layers
+slide past each other and the clouds form and melt; what an hour or a weather does not show is
+branched out, not multiplied by nothing.
+
+- **Stars**: a few of the brightest, high up, in the light night only.
+- **Night-shining clouds**: silver-blue ranks of billows low over the north where the sun hides,
+  in the heart of the light night. Licence: at 65.5° N at the end of May the sun is 2.7° under the
+  horizon at midnight, and noctilucent clouds are seen from about 6°; they are the north's own
+  night sky a few weeks later.
+- **The veil and the halo**: the ring 22.4° from the sun, sharp and red on its inner edge.
+- **Cirrus**, as before, thickened by the weather and lit from below by a low sun.
+- **Altocumulus**: pillows built from two waves (rows across the wind, broken along their
+  length), bent by a noise, not cut from one; white-edged and grey-middled by day, lit from below
+  by a low sun, gold toward it and rose and mauve round from it.
+- **The cumulus deck**: its field cut again through lumps at two sizes, so each cloud is a heap
+  with a cauliflower edge and a grey base seen from under.
+- **The heaps on the horizon** drift round it on the wind (0.02° a second at a breeze of 1, coming
+  back in far outside any lens), billow faster, and stand as tall as the weather builds them.
+- **The twilight**: under a low sun the horizon's fire stands where the sun is, and round from it
+  the band cools to rose and the blue of the earth's shadow.
+- **The rainbow**: a ring of quads at the bow's true angles from the point opposite the sun, a
+  kilometre and a half out, so the near trees hide it and the far fells stand behind it, and it
+  joins the bow in the fall's spray. It stands where a rainbow would and nowhere else: over the
+  fall's side in the morning, low over the fells in the afternoon, and not at all with the sun
+  ahead of the eye or more than 42° up (`bowLight`).
+
+### The light
+
+- **The golden evening**: the sun's road on the water is a tight core and a faint skirt, the
+  mirrored sky is held back toward the sun, foam seen against the sun shows its shaded side, and a
+  cloud of spray shades its own body, blazing only where it is thin. The pool is molten gold with
+  its rocks and ripples in it, and the fall keeps its strands.
+- **The spray out of the sun** takes the horizon's and the haze's light with the zenith's, so it
+  no longer glows violet in the evening's shade.
+- **Sunset and the light night**: more of the sky's light on the land (`fill`, `bounce`), so the
+  meadow's flowers show through the dusk.
+- **The meadow**: a flush or the heat of play opens the flowers half as far as a lock's own patch
+  does, and a pale petal takes less of the game's extra light, so the knoll keeps its colours.
+
+| The golden evening: before, after | The light night: before, after |
+|---|---|
+| ![golden before](spring-captures/living-golden-before.webp) | ![night before](spring-captures/living-night-before.webp) |
+| ![golden after](spring-captures/living-golden-after.webp) | ![night after](spring-captures/living-night-after.webp) |
+
+### What gameplay does now
+
+Each event has a sight of its own; this table replaces the one above.
+
+| Event | What happens |
+|---|---|
+| Lock | A patch of the piece's own flower bursts into bloom where it landed, its light rolling out through the meadow, **and a puff of its petals is thrown up over it**, tumbling as they fall back; its pollen drifts off on the breeze. A hard drop throws more, higher and wider, and knocks a ring of down off the plants. |
+| Clear | **More water comes over the fall**: a pulse of thick white water leaves the brink and falls with the fall at its own speed, and the surge it becomes leaves the pool as it lands. The knoll flushes into bloom, and **a gust carries a streamer of petals across the knoll for each line that went**, in that row's own colours, each on the next of four lanes. |
+| Chain | The spring flood rises with each link (the river, the spray, the bow in it), a whirlwind of petals turns beside the card on alternate sides, the air stirs; a broken chain lets its down go. |
+| Four lines | **The fall thunders**: it runs full and white from brink to pool, its spray towers over the brink, the bow blazes across it, the last of the winter's ice goes out on the great surge, and the sky answers with half its crown. |
+| T-spin | The pool turns in a whirl, and a tall whirlwind of petals turns beside the card on the lock's side. |
+| Back-to-back | **A sheet of light runs down the river** from the pool to the far bend, stronger each step of the run (a soft band the ripples break, never sparks); the river glitters while the run lasts. |
+| Perfect clear | **The sky's crown**, and what it shows follows the hour: every cloud flushed with the hour's glow; a rainbow with the sun behind the eye; the sun's shafts fanned out with the sun ahead; the night-shining clouds flared in the light night. **Whooper swans come over the fall's brink, drop to the river and fly low along it past the knoll.** The air stills and turns gold, gold petals shower, and the whole knoll stands in flower. |
+| Level up | The day steps a station forward; **a skein of cranes crosses the valley** from the left edge to the right; willow down drifts over. |
+| Fever | The flood at its height, the knoll in flower in the colours played, cranes over the gorge's rim. |
+| Game over | The light falls to dusk and **the last petals let go**, falling slowly over the knoll. |
+
+| A hard drop | Three lines: the streamers |
+|---|---|
+| ![lock](spring-captures/living-lock.webp) | ![clear](spring-captures/living-clear.webp) |
+| **Four lines: before** | **Four lines: the fall thunders** |
+| ![quad before](spring-captures/living-quad-before.webp) | ![quad](spring-captures/living-quad.webp) |
+| **The thundering fall, close** | **A T-spin** |
+| ![quad close](spring-captures/living-quad-fall.webp) | ![twist](spring-captures/living-twist.webp) |
+| **A perfect clear: the swans along the river** | **A perfect clear in the light night** |
+| ![swans](spring-captures/living-perfect-swans.webp) | ![perfect night](spring-captures/living-perfect-night.webp) |
+| **A level-up's cranes (a long lens)** | **A run's end** |
+| ![cranes](spring-captures/living-cranes.webp) | ![over](spring-captures/living-over.webp) |
+
+Everything rejoins as before: the thunder and the crown are `Rejoin` envelopes (a second quad
+takes the thunder up where it stands), a clear soon after another feeds the pulse still at the lip
+and a later one takes the other of two slots, and the streamers step through the lanes.
+
+### Birds (`spring-flights.js`)
+
+Remade. Each bird is a body, a neck and head, and wings of an arm and a hand hinged at the wrist
+(168 triangles a swan, 184 a crane): the vertex stage beats them, the hand a little behind the arm, the body
+rising on the downstroke. Swans are white with the yellow-and-black bill; cranes grey with dark
+flight feathers, a dark neck and trailing legs. A flight flies a curve through waypoints by arc
+length, every bird at its place behind and beside the leader from the first frame, banked into the
+route's turns; it starts just out of sight (behind the fall's brink, or a few seconds' flight
+beyond the widest lens's left edge) and leaves through the right edge, so no bird is grown, shrunk
+or raced in. Three routes: `river` (over the brink, down to the water, low past the knoll against
+the dark river, up and away), `high` and `rim`.
+
+Birds also come **by the clock**, about every two minutes: a pair of swans along the river, a few
+cranes high up, three of either over the rim (`VISITS`, dealt by the visit's number, so a seek
+puts a visit under way back on its route).
+
+### The pop under quick hands
+
+A CPU probe (a real world in Node, a scripted 42 s of hot play at 60 fps: a hard drop every 0.6 s,
+a clear every other lock in a rising chain, quads and a perfect clear among them) counted the motes
+written over a slot whose mote was still within four fifths of its life:
+
+| Tier (ring before → after) | `main` | This pass |
+|---|---:|---:|
+| Minimal (384 → 512) | 7,023 of 8,826 (80 %) | 0 of 4,050 |
+| Low (640 → 832) | 9,652 of 11,255 (86 %) | 0 of 6,554 |
+| Medium (896 → 1,152) | 11,682 of 13,408 (87 %) | 0 of 8,964 |
+| High (1,280 → 1,664) | 13,975 of 16,038 (87 %) | 0 of 12,749 |
+| Extreme (2,304 → 2,944) | 16,374 of 21,470 (76 %) | 0 of 21,645 |
+
+Hot play asks for about twice the ring, and each spawn took the slot whose turn it was. Every burst
+is now sized by the room the ring has (`SpringWorld.grant`, `Motes.free`: slots never used or past
+nine tenths of their life), free slots are handed out first, an event's petals are spawned before
+its pollen, and the rings are a third larger. Calm play spawns what it did. Screenshots cannot show
+this; the probe's counts are the evidence, and `tests/unit/spring-living.test.js` pins the zero.
+
+### Verification
+
+- **Playground**, a private headless Chrome on the RTX 5080 Laptop from a private dev server,
+  capped at 30 fps: every hour against several weathers with the board, every event at several
+  ages, the fall close up, the birds through a long lens, a live strip of the looping demo;
+  WebGL2 at Low and Minimal (`forceWebGL=1`), Minimal on WebGPU, Medium, reduced motion, a
+  420 × 900 portrait. No WebGPU validation error, shader error or console warning in any.
+- **The real game** (`/?skipIntro=1&unlockAll=1`, the frame rate capped at 30): Spring picked from
+  the menu, a single-player run started, 33 real hard drops over 26 s, a game over and the next
+  run's morning, then four lines and a perfect clear sent to the theme's world. WebGPU, High,
+  0 dropped events; the console held only the two Steam Cloud notices a browser always has and one
+  mode notice from the script's own late call.
+- **Cost**: the playground's GPU timer at 1920 × 1080, High, capped at 30 fps, fourteen seconds a
+  case, `main` and this pass served side by side, three rounds, medians:
+  the morning 2.2–2.5 ms a frame on `main` and 2.1 ms here under a mackerel sky; the light night
+  2.0–2.1 ms on `main` and 2.3–2.4 ms here under building heaps (the stars and the night-shining
+  clouds are its own); the looping demo 2.1–2.4 ms on `main` and 2.2–2.4 ms here. One round on
+  `main` read 6.5 ms (the GPU clocked down between capped frames): capped readings scatter by a
+  few tenths of a millisecond, so this says the pass costs at most a few tenths, not what the
+  frame rate is. An uncapped frame-rate reading was not taken.
+- **Tests**: `tests/unit/spring-living.test.js` (37: the weather wheel, the sun's gates for the bow,
+  the night-shining clouds and the under-light, the wind's travel, the sky, the rainbow, the heaps
+  and the birds built to WGSL and GLSL with no var read before it is set, the routes' starts and
+  ends against the widest lens, a flight flown whole at one pace, the clock's visits and a seek
+  into one, each event's own sight, the session state through a rebuild, the motes never cut
+  short); three older tests updated for the petals and the birds' new mesh. The Spring files:
+  14 test files, 295 tests, lint and typecheck clean.
+
+| Minimal on WebGL2: a perfect clear at sunset under a mackerel sky |
+|---|
+| ![minimal webgl2](spring-captures/living-minimal-webgl2.webp) |
+
+### Open calls
+
+These are doubts of mine, not the owner's words.
+
+- **The night-shining clouds are a licence** (above). They are the light night's only sight of its
+  own; without them it has the rose band and the mist.
+- **The rainbow is rare by the clock.** It needs the "after the shower" weather to meet the
+  morning or the afternoon; four lines and a perfect clear raise it whenever the sun allows. In the
+  morning its foot stands at the frame's left edge; the afternoon's low arc over the fells is the
+  one that reads.
+- **The birds are drawn larger than life** (swans 1.15, cranes 1.35), and a level-up's cranes are
+  hidden for a few seconds as they pass behind the hill's trees in the middle of the frame.
+- **The fall's rock was not re-cut.** Its lip is still a level line between two square shoulders;
+  the thunder, the pulse and the spray's tower give it life, but its outline is the old one.
+- **A clear's surge now leaves the pool 1.2 s after the clear** (as its pulse lands), where it left
+  at once before.
+- **Not done**: a physical phone, an uncapped frame-rate reading, the song (still the Moonlit
+  Forest recording, retitled), the theme's icon (the view it shows is unchanged).
+
+## Fish in the river (2026-11-19)
+
+The owner asked for jumping trout and salmon in the river (`spring-fish.js`).
+
+To look at it: `/playground.html?effect=spring&t=55&leap=fall` (`leap=fall|ledges|runs` shows the
+first of that lane's leaps from `t` on; `leapPhase=` how far through its flight, past 1 its ring
+and splash; `leapLook=<fov>` aims the inspection lens at the fish).
+
+### What leaps where
+
+| Lane | Fish | Where | The leap |
+|---|---|---|---|
+| `fall` | salmon, 0.65–1.05 m | the plunge pool's middle, 9–20 m below where the tongues land | 1.5–2.7 m high, toward the falling water, often turning onto its side as it drops back |
+| `ledges` | salmon | out of the pool at the foot of a rapids' chute (seven ledges in sight, the nearer more often) | 0.8–1.5 m, up the step onto higher water |
+| `runs` | brown trout, 0.32–0.55 m | the pool's tail, and two calmer runs below the bend | 0.3–0.7 m, across the stream either way, the tail working, sometimes flopping back |
+
+Each lane leaps **by the clock**, a pure function of the time (`leapAt(lane, k)`): about every
+13 s at the fall, 15 s up the ledges, 7 s in the runs, so one every three or four seconds
+somewhere, and a seek shows the same fish in the same place. The heat of play brings the **salmon
+run** on (`HEAT.leaps`, `HEAT.leapsFever`): extra salmon at the fall and up the ledges, up to one
+more every four or five seconds in a fever; never under reduced motion, where the clock's fish
+still leap.
+
+A leap is an arc of the fish's middle at real gravity (T = √(8H/g)) from under the surface to
+under it again, deep enough that the nose breaks the water first; the river (drawn first,
+depth-tested) hides what is still under. The nose follows the flight, the body curls most at the
+top, the tail beats (4 a second a salmon, 6.5 a trout) as a wave run back down the body, and the
+skin's normals turn with the bend; the fins' free edges trail and flutter behind the stroke.
+Salmon are countershaded steel-blue over a mirror flank that gives back the sky's light more than
+its blue (dark against the white water, flashing in the sun), with a few black spots on the upper
+flank and the gill cover; trout olive over bronze, black-spotted all over the back and flanks, red
+spots haloed in pale round the lateral line, the adipose tipped orange.
+
+Where a fish breaks the water, leaving and falling back, a **ring of foam** spreads and drifts off
+on the current (added light, written once as the leap leaves the water and moved in closed form),
+and a splash of drops is thrown up through the motes (each leap's own seed deals them, so a seek
+splashes the same).
+
+### The models (Blender)
+
+Asked for next: "Model the fishes by code or in Blender. Do what you believe would be best!" The
+first fish were a ten-sided tube with three flat fins, the same for both kinds bar a deeper scale
+for the trout. They are now modelled in Blender, as the Odyssey's fish are
+(`scripts/blender/odyssey/odyssey_fish.py`): `scripts/blender/spring_fish.py` builds both in
+headless Blender (about a second) and writes `src/themes/spring/spring-fish-hulls.js`, plain base64
+arrays in the code (no download, no loader); run again, it writes the same file.
+
+| | Atlantic salmon | Brown trout |
+|---|---|---|
+| Build | a fifth as deep as long, deepest two fifths back; a slender wrist to the tail (a third of its depth) | near a quarter as deep, a thick wrist; broader |
+| Head | small and pointed, a small eye | bigger and blunter, a larger eye |
+| Tail | slightly forked (the fork 0.04 of its length in from the tips) | square-cut, rounded corners |
+| Fins | dorsal over the middle, a small adipose, anal, pelvics under the dorsal's rear, pectorals low behind the gill cover | the same, a little broader; a larger adipose |
+| Triangles | 300 body, 374 in all | 300 body, 374 in all |
+
+Each body is a loft of super-elliptic sections along spline profiles (top, belly, width), 3,840
+triangles dense, collapsed by Blender's Decimate (symmetric about the midplane) to 300 with smooth
+normals; the fins are sheets with their roots sunk in the body; the eyes are discs laid on the
+skin by a BVH ray cast. Per vertex the module bakes how far along the fish it is, how far up its
+side, how free (a fin's edge), and what it is (body, a dark fin, an eye, a pale fin): the game's
+tail wave, fin flutter, countershading, spots, eye, jaw and gill cover read those. Both hulls are
+one geometry and one draw; each fish folds away the hull that is not its kind.
+
+![The models in Blender (Cycles previews): the salmon and the trout from the side and three-quarters](spring-captures/fish-models.webp)
+
+In a cloud container without Blender, `pip install bpy==5.2.4` (Blender 5.2 as a Python module, the
+repo's version) runs the script after `import bpy` (bmesh and mathutils come with it); it reproduces
+the Odyssey's fish byte for byte. Workbench needs a GPU context there: `--engine cycles` renders
+the previews on the CPU.
+
+### Decisions and traps
+
+- **Blender, not code**, for the bodies: the same loft written in JavaScript would have been the
+  dense 3,840 triangles, or a hand-thinned one; Decimate keeps the outline where it turns (snout,
+  wrist, tail) and spends little on the flanks, the BVH lays the eyes on the actual skin, and the
+  previews show the fish before the game does. The Odyssey's birds and fish, Summer's swans and
+  the forest's owl are made the same way (Spring's own swans and cranes are still built in code).
+- **Everywhere the river is in sight it runs along the line of sight** (toward the eye down the
+  rapids, away below the bend). A salmon leaping straight upstream is seen end on: at 960 × 540 the
+  first ledge salmon was two pixels. The leaps head well off the stream's line (salmon 0.3–1 rad
+  off upstream, trout across it), toward mid-river when they leave near a bank.
+- **Drawn larger than life**, 1.6 times, as the birds are (1.15, 1.35): a 1.05 m salmon is drawn
+  1.7 m, and is still about 20 pixels at 1080p a hundred metres off. `FISH.*.drawn` is the knob.
+- **Kept clear of the board and the lens's edges.** Every reach carries its own span across the
+  river: below the bend the near bank is past the 16:9 lens's edge, and the far side of the ledge
+  under the knoll is behind the card. `spring-fish.test.js` walks 120 leaps a lane against 10°–34°
+  of bearing.
+- **The fall's mist hides a fish behind it.** Leaping where the tongues land, a pale salmon was
+  lost in the boil's cloud; the lane leaps from the pool's middle, and salmon are dark with a
+  mirror rather than pale.
+- **One instance buffer a mesh.** Four vec4 rows a fish, two a ring, each one interleaved buffer
+  (the eight-vertex-buffer limit). The fish's rows are written only while one is in the air, the
+  rings' only when a leap starts.
+- **Spots in the skin's own coordinates.** They are cells over (along, up the side), each cell an
+  exact integer pair for the hash and each spot kept inside its cell, so no seam shows; at game
+  size they blur into the flank's tone, through a long lens they are a trout's.
+
+### Verification
+
+- **Captures** in a cloud container (headless Chromium, SwiftShader), WebGL2 backend:
+  the three lanes through a long lens and in the full frame at 960 × 540 and 1920 × 1080, High
+  and Minimal, with and without the board; a trout's ring and splash after it falls back; a
+  390 × 844 portrait (the river lies behind the card there, as before); the Blender models the
+  same, and a broadside salmon over the rapids in the golden evening. No console error or warning
+  but the container's "No available adapters".
+- **Not captured: the WebGPU backend.** SwiftShader's WebGPU device is lost in this container on
+  the unchanged theme too; with lavapipe's Vulkan driver the device lives and frames are drawn,
+  but neither a screenshot nor a read of the canvas returns them (white, black). So no WebGPU
+  frame of Spring could be seen here. Both materials build to WGSL and GLSL in
+  `spring-fish.test.js` with no warning and no var read before it is set.
+- **Tests**: `tests/unit/spring-fish.test.js` (24: the hulls' arrays, length and builds, closed
+  bodies wound outward and mirror-symmetric, parts in range, fins and eyes where a salmonid's are,
+  both hulls in one geometry; then the leaps); the full unit suite passes.
+
+| Through a long lens: a salmon broadside over the rapids (golden evening), a trout, a salmon broaching by a boulder, a trout leaving its ring |
+|---|
+| ![long lens](spring-captures/fish-long-lens.webp) |
+| **In the game's frame at 1080p, High, with the board: that salmon, lower left over the near rocks (below, at 2×)** |
+| ![in game](spring-captures/fish-in-game.webp) |
+
+### Open calls
+
+- **They are small in the full frame**: 10–25 pixels at 1080p for most leaps, about 60 for a salmon
+  up the nearest ledge. In motion, with the splash and the ring, they catch the eye; still, they
+  are a detail to find, not a show. `FISH.*.drawn` and the lanes' `gap` are the knobs.
+- **On a phone** the river lies behind the card, and the fish with it.

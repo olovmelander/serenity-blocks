@@ -9,7 +9,8 @@
  *
  * Light at a sample: the crater's fire from below (reddening and fading with height, shadowed by
  * one tap of density toward the crater, so lobes turned to the fire burn and the folds between them
- * go dark), the night sky from above (one tap upward), the lava's wide glow and the lightning (once
+ * go dark), the night sky and the moon from above (one tap up and toward the moon: its cool rim on
+ * the lobes that face it), the lava's wide glow and the lightning (once
  * per ray), the blast's front passing through, and the incandescent ejecta in the column's foot.
  * Front to back, premultiplied; the march stops once the ash is opaque. The density is pinned where
  * it is made, so each of its three uses (the sample, a tap toward the fire, a tap up) is emitted
@@ -233,7 +234,8 @@ export function createPlume(u, t, tier) {
         const B2 = cross(T, B1);
         const w = widthAt(k);
         const d = P.sub(C);
-        const rho = length(d).div(w.mul(0.5));
+        // The eruption's phase sets the column's girth (u.plume.y) and how solid it is (u.plume.x).
+        const rho = length(d).div(w.mul(0.5).mul(u.plume.y));
         // The column's frame: across in widths, along in widths travelled; turning slowly as it climbs.
         const along = alongAt(k);
         const turn = along.mul(0.45).add(u.time.mul(0.015));
@@ -246,14 +248,22 @@ export function createPlume(u, t, tier) {
         let f = billow(noise3(t.lattice, q).x).mul(0.55);
         f = f.add(billow(noise3(t.lattice, q.mul(2.3).add(vec3(5.2, 1.3, u.time.mul(-0.07)))).y).mul(0.3));
         f = f.add(billow(noise3(t.lattice, q.mul(5.1).add(vec3(2.7, 8.1, u.time.mul(-0.16)))).x).mul(0.15));
-        const raw = float(1.0).sub(rho).mul(1.3).add(f.sub(0.42).mul(1.25));
+        // (Four lines: the column swells where the blast's thermal climbs it, a head on a stalk.)
+        const offB = k.sub(u.thermal.x).div(0.11);
+        const raw = float(1.0).sub(rho).mul(1.3).add(f.sub(0.42).mul(1.25))
+            .add(u.plume.x.sub(1.0).mul(0.12))
+            .add(exp(offB.mul(offB).negate()).mul(u.thermal.y).mul(0.045));
         // Rounded off below the vent (the distance to the axis' foot), gone into the anvil's head.
         // Pinned: read in several branches, it must be computed once.
         // No ash below the crater's rim (≈ 330 m over the vent): the tube is wider than the crater
         // and a ray starts at its front face, so ash down inside the crater was drawn over the near
         // rim and hung down the breach like a curtain. The column rises out of the crater instead.
         const below = smoothstep(CRATER.y + RIM_LIFT - 130.0, CRATER.y + RIM_LIFT + 70.0, P.y);
-        const den = smoothstep(-0.04, 0.34, raw).mul(float(1.0).sub(smoothstep(0.92, 1.0, k))).mul(below);
+        // A thin column never reaches the anvil: it thins out and is gone part of the way up
+        // (a full one runs on into the anvil's head).
+        const kEnd = u.plume.x.sub(0.35).div(0.6).clamp(0.0, 1.0).mul(0.52)
+            .add(0.48);
+        const den = smoothstep(-0.04, 0.34, raw).mul(float(1.0).sub(smoothstep(kEnd.sub(0.3).min(0.92), kEnd, k))).mul(below);
         return { den: den.toVar(), k: k.toVar() };
     };
 
@@ -271,7 +281,7 @@ export function createPlume(u, t, tier) {
         // Each pixel starts a random fraction of a step in (no banding; a hash, so the residue is
         // grain like the post's, never the diagonal hatching interleaved gradient noise leaves).
         const jitter = pyHash21(screenCoordinate.xy.floor()).toVar();
-        const sigma = float(26.0).div(w0).toVar();
+        const sigma = float(26.0).div(w0).mul(u.plume.x).toVar();
         const mid = P0.add(V.mul(w0.mul(0.4))).toVar();
         // Once per ray: the lava's wide glow from below and the lightning inside the cloud.
         const aboveMid = max(mid.y.sub(CRATER.y), 0.0);
@@ -282,6 +292,7 @@ export function createPlume(u, t, tier) {
         const bolts = lightningAt(u, mid, vec3(0.0, -1.0, 0.0), 1).mul(0.55).toVar();
         const coolSky = mix(u.ambient, vec3(0.022, 0.026, 0.04), 0.5).toVar();
         const fireAt = vec3(CRATER.x, CRATER.y + 150.0, CRATER.z);
+        const toKey = normalize(u.rake.add(vec3(0.0, 0.75, 0.0))).toVar();
         const acc = vec3(0.0).toVar();
         const keep = float(1.0).toVar();
         Loop({
@@ -294,28 +305,41 @@ export function createPlume(u, t, tier) {
                 const { k } = sample;
                 const w = widthAt(k);
                 const above = max(P.y.sub(CRATER.y), 0.0);
-                // The fire: it reaches the column's lower third, reddening through the ash it crosses.
-                const reach = exp(above.div(-900.0));
-                const deep = mix(vec3(1.0, 0.45, 0.3), vec3(1.0, 1.0, 1.0), reach);
-                const burn = u.fountain.add(u.burst.mul(1.3)).mul(u.activity).mul(reach.mul(0.95).add(0.05));
+                // The fire: it burns on the column's lower third (further up the taller the fountain
+                // stands), reddening through the ash it crosses, and a dull red of it carries on up
+                // the whole column and under its bend.
+                const reach = exp(above.div(u.fountain.mul(260.0).add(760.0)).negate());
+                const far = exp(above.div(-3600.0));
+                const deep = mix(vec3(1.0, 0.4, 0.26), vec3(1.0, 1.0, 1.0), reach);
+                const burn = u.fountain.add(u.burst.mul(1.3)).mul(u.activity).mul(reach.mul(0.95).add(far.mul(0.16)).add(0.03));
                 // Each light by the density's slope toward it (a lobe's face turned to it is lit,
                 // round and soft) and by what lies between (the folds between lobes go dark): a tap
                 // a step toward the fire and a step up, the step a share of the column's width.
                 const toFire = normalize(fireAt.sub(P));
                 const denF = densityAt(P.add(toFire.mul(w.mul(0.07)))).den;
-                const denS = densityAt(P.add(vec3(0.0, 1.0, 0.0).mul(w.mul(0.07)))).den;
+                // (The second tap goes toward the night's key light: up and to the moon's side, so the
+                // lobes turned to it take its cool rim and the fire's side stays the fire's.)
+                const denS = densityAt(P.add(toKey.mul(w.mul(0.07)))).den;
                 const shadeF = clamp(den.sub(denF).mul(1.6).add(0.5), 0.0, 1.0).mul(exp(denF.mul(-1.4)).mul(0.6).add(0.4));
                 const shadeS = clamp(den.sub(denS).mul(1.6).add(0.5), 0.0, 1.0).mul(exp(denS.mul(-1.4)).mul(0.6).add(0.4));
                 const fire = u.fireColour.mul(deep).mul(burn).mul(shadeF.mul(0.85).add(0.15)).mul(4.0);
-                const sky = coolSky.mul(shadeS.mul(0.8).add(0.2)).mul(1.8);
+                const sky = coolSky.mul(shadeS.mul(0.8).add(0.2)).mul(1.8).add(u.moon.mul(shadeS).mul(0.26));
                 // The blast's front: the ash flashes pale where it passes (condensation).
                 const dShock = length(P.sub(fireAt)).sub(u.shock.x);
                 const shock = exp(dShock.div(260.0).mul(dShock.div(260.0)).negate()).mul(u.shock.y);
-                const light = fire.add(lavaBelow).add(sky).add(bolts).add(vec3(0.7, 0.68, 0.74).mul(shock));
+                // A chain charges the storm: the column's upper reaches glow with it, faintly.
+                const charged = u.bolt.mul(u.charge).mul(smoothstep(0.4, 0.9, k)).mul(0.035);
+                const light = fire.add(lavaBelow).add(sky).add(bolts).add(vec3(0.7, 0.68, 0.74).mul(shock))
+                    .add(u.stormLight.mul(0.3))
+                    .add(charged);
                 // Incandescent ejecta in the column's foot.
                 const hot = float(1.0).sub(smoothstep(0.0, 0.06, k)).mul(u.activity)
                     .mul(u.fountain.mul(0.3).add(0.7).add(u.burst.mul(0.6)));
-                const col = u.ash.mul(light).add(pyBlackbody(hot.mul(0.45).add(0.12)).mul(hot).mul(0.1));
+                // Four lines: a thermal of glowing ash climbs the column (the blast's fireball).
+                const offT = k.sub(u.thermal.x).div(0.085);
+                const therm = exp(offT.mul(offT).negate()).mul(u.thermal.y);
+                const col = u.ash.mul(u.plume.z).mul(light).add(pyBlackbody(hot.mul(0.45).add(0.12)).mul(hot).mul(0.1))
+                    .add(pyBlackbody(therm.mul(0.26).add(0.42).min(0.86)).mul(therm).mul(0.5));
                 const a = float(1.0).sub(exp(den.mul(sigma).mul(dt).negate()));
                 acc.addAssign(col.mul(a).mul(keep));
                 keep.mulAssign(float(1.0).sub(a));

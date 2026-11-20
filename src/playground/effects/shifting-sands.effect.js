@@ -10,8 +10,11 @@
  *   board=1                  overlay a mock gameplay board + HUD (the solo layout rules); the
  *                            post's calm zones read its rects
  *   statsHud=0               with board=1: board only, no HUD mock
- *   event=lock|combo|clear|quad|levelUp   fire a gameplay event...
+ *   event=lock|hard|combo|single|double|triple|quad|twist|spin|b2b|perfect|levelUp|over
+ *                            fire a gameplay event (clear&lines=<n> also works)...
  *   eventAge=<s>             ...and show it <s> seconds later (combo=<n>, lines=<n>, level=<n>)
+ *   weather=<name|phase>     hold the weather: clear, streets, deck, haze, wind, front
+ *   wallAz=<deg>             hold the front at an azimuth
  *   dusk=0..1                hold the dusk still (otherwise the clock walks it: golden hour,
  *                            halfway, deep dusk and back, a stop every DUSK_WALK.seconds)
  *   level=<n>                (no event) the run is at level n: its steps along the walk on top
@@ -37,6 +40,7 @@ import * as THREE from 'three/webgpu';
 import { ShiftingSandsWorld } from '../../themes/shifting-sands/shifting-sands-world.js';
 import { ShiftingSandsPost, POST_LOOK } from '../../themes/shifting-sands/shifting-sands-post.js';
 import { REST_RIG, readLayoutRects, restVerticalFov } from '../../themes/shifting-sands/shifting-sands-composition.js';
+import { weatherIndex } from '../../themes/shifting-sands/shifting-sands-weather.js';
 
 export const meta = {
     id: 'shifting-sands',
@@ -100,6 +104,13 @@ export function create({
     const partsParam = params.get('parts');
     if (partsParam) world.showOnlyParts(partsParam.split(',').map((p) => p.trim()));
     if (params.has('dusk')) world.duskHold = num(params, 'dusk');
+    // weather=<name|phase>: hold the weather still (clear, streets, deck, haze, wind, front, or a
+    // number round the wheel); wallAz=<deg>: hold the front at an azimuth.
+    if (params.has('weather')) {
+        const named = weatherIndex(params.get('weather'));
+        world.weatherHold = named >= 0 ? named : num(params, 'weather');
+    }
+    if (params.has('wallAz')) world.wallHold = num(params, 'wallAz');
     // level=<n> (without an event): the run has reached level n, its steps along the dusk's walk
     // already eased in, so ?t= shows the clock's walk with the level on top.
     if (params.has('level') && !params.get('event')) {
@@ -153,9 +164,20 @@ export function create({
     const eventAge = num(params, 'eventAge', 0.5);
     const fireEvent = () => {
         if (eventName === 'lock') world.onPieceLock?.();
-        else if (eventName === 'combo') world.onCombo?.(num(params, 'combo', 4));
+        else if (eventName === 'hard') {
+            world.onHardDrop?.();
+            world.onPieceLock?.();
+        } else if (eventName === 'combo') world.onCombo?.(num(params, 'combo', 4));
         else if (eventName === 'clear') world.onLineClear?.(num(params, 'lines', 2));
+        else if (eventName === 'single') world.onLineClear?.(1);
+        else if (eventName === 'double') world.onLineClear?.(2);
+        else if (eventName === 'triple') world.onLineClear?.(3);
         else if (eventName === 'quad') world.onLineClear?.(4);
+        else if (eventName === 'twist') world.onTwist?.(num(params, 'lines', 2));
+        else if (eventName === 'spin') world.onTwist?.(0);
+        else if (eventName === 'b2b') world.onBackToBack?.();
+        else if (eventName === 'perfect') world.onPerfectClear?.();
+        else if (eventName === 'over') world.endRun?.();
         else if (eventName === 'levelUp') world.onLevelUp?.(num(params, 'level', 2));
     };
 

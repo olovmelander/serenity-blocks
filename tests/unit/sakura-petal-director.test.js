@@ -1539,3 +1539,867 @@ describe('Sakura petal director', () => {
         }, 30000);
     });
 });
+
+/**
+ * The second pass over the garden's answers (2026-11): each event has an instrument of its own
+ * (sakura-showpieces.js), so the director has four more hooks (`splash`, `helix`, `gate`,
+ * `spirit`), reads the fireflies' swarm out of the frame, and makes the lake's rings give way to
+ * one another (`ripple`).
+ */
+describe('Sakura petal director: each event\'s own instrument', () => {
+    /** Every hook the garden offers, recording what is asked of it. */
+    function showEffects() {
+        const effects = spyEffects();
+        Object.assign(effects, {
+            splash: vi.fn(), helix: vi.fn(), gate: vi.fn(), spirit: vi.fn(),
+        });
+        effects.splashes = () => effects.splash.mock.calls.map(([x, z, strength]) => ({ x, z, strength }));
+        effects.helices = () => effects.helix.mock.calls.map(([x, y, z, side, strength, height]) => ({
+            x, y, z, side, strength, height,
+        }));
+        return effects;
+    }
+
+    const screenOf = (camera, x, y, z) => {
+        const point = ndc(new THREE.Vector3(x, y, z), camera);
+        return { x: point.x * 0.5 + 0.5, y: 0.5 - point.y * 0.5, ahead: point.z < 1 };
+    };
+
+    describe('the crown of spray', () => {
+        it.each([
+            ['landscape', LANDSCAPE], ['portrait', PORTRAIT], ['a square window', 1], ['an ultrawide one', 21 / 9],
+        ])('stands on open water beside the card on the piece\'s side, in view, in %s', (_label, aspect) => {
+            for (const seed of [1, 2, 3, 4, 5, 6]) {
+                const effects = showEffects();
+                const {
+                    director, sim, stage, camera,
+                } = createDirector({ aspect, seed, effects });
+                for (let event = 0; event < 60; event += 1) {
+                    const side = event % 2 ? 1 : -1;
+                    const strength = 0.12 + (event % 9) * 0.1;
+                    director.apply(frameWith([emitter({
+                        id: event % 7, serial: event, kind: 'splash', side, strength, age: STEP, duration: 0.5,
+                    })]), STEP);
+                    expect(effects.splash, `event ${event}`).toHaveBeenCalledTimes(event + 1);
+                    const crown = effects.splashes().at(-1);
+                    expect([crown.x, crown.z].every(Number.isFinite)).toBe(true);
+                    // How far the piece fell, as the frame gave it.
+                    expect(crown.strength).toBe(strength);
+                    // On the lake, never on a bank: the banks reach in under the card's corners.
+                    expect(sakuraSurfaceHeight(crown.x, crown.z)).toBeLessThanOrEqual(SAKURA_WATER_LEVEL + 0.001);
+                    expect(sakuraLand(crown.x, crown.z)).toBeLessThan(0.01);
+                    // Out past the card's edge on the piece's side, where it can be seen.
+                    const seen = screenOf(camera, crown.x, SAKURA_WATER_LEVEL, crown.z);
+                    expect(seen.ahead).toBe(true);
+                    if (side < 0) expect(seen.x).toBeLessThan(stage.board.x0);
+                    else expect(seen.x).toBeGreaterThan(stage.board.x1);
+                    expect(seen.x).toBeGreaterThan(0);
+                    expect(seen.x).toBeLessThan(1);
+                    expect(seen.y).toBeGreaterThan(0.5);
+                    expect(seen.y).toBeLessThan(1);
+                }
+                // Spray is light: no petals, no force on the petals, and no ring of its own (the
+                // lock's ring is already crossing the lake).
+                expect(sim.spawn).not.toHaveBeenCalled();
+                expect(director.fields).toEqual([]);
+                expect(effects.ring).not.toHaveBeenCalled();
+                expect(effects.flash).not.toHaveBeenCalled();
+            }
+        });
+
+        it('rises once for a hard drop: later frames of the same emitter add nothing', () => {
+            const effects = showEffects();
+            const { director, sim } = createDirector({ effects });
+            play(director, sim, [{
+                kind: 'splash', side: -1, strength: 0.7, duration: 0.5,
+            }], { seconds: 0.45 });
+            expect(effects.splash).toHaveBeenCalledOnce();
+            expect(effects.splash.mock.calls[0][2]).toBe(0.7);
+            // The same slot under a new serial is another hard drop.
+            director.apply(frameWith([emitter({
+                id: 0, serial: 5, kind: 'splash', side: 1, strength: 0.3,
+            })]), STEP);
+            expect(effects.splash).toHaveBeenCalledTimes(2);
+        });
+
+        it('is not raised at all where there is no open water to raise it on', () => {
+            const dry = showEffects();
+            const land = createDirector({ effects: dry, surface: () => 1.5 });
+            for (let event = 0; event < 40; event += 1) {
+                expect(land.director.splash(emitter({ kind: 'splash', side: event % 2 ? 1 : -1 }))).toBe(false);
+            }
+            expect(dry.splash).not.toHaveBeenCalled();
+            expect(dry.ring).not.toHaveBeenCalled();
+            // A lake that only begins further out is found by reaching further, never by settling
+            // for the bank.
+            const far = showEffects();
+            const shore = (x, z) => (z > -18 ? 0.8 : 0);
+            const reaching = createDirector({ effects: far, surface: shore });
+            let raised = 0;
+            for (let event = 0; event < 200; event += 1) {
+                if (reaching.director.splash(emitter({ kind: 'splash', side: event % 2 ? 1 : -1 }))) raised += 1;
+            }
+            expect(raised).toBeGreaterThan(100);
+            expect(far.splash).toHaveBeenCalledTimes(raised);
+            for (const crown of far.splashes()) expect(shore(crown.x, crown.z)).toBe(0);
+            // Without the hook it still looks, and says whether it found water.
+            const bare = createDirector({ effects: {} });
+            expect(bare.director.splash(emitter({ kind: 'splash', side: -1 }))).toBe(true);
+        });
+    });
+
+    describe('the double helix', () => {
+        it.each([[-1], [1]])('winds up beside the card where the piece turned, once, on side %i', (side) => {
+            const effects = showEffects();
+            const { director, sim, stage } = createDirector({ effects });
+            const log = play(director, sim, [{
+                kind: 'spin', side, row: 0.6, strength: 0.8, duration: 1.7,
+            }], { seconds: 1.6 });
+            expect(effects.helix).toHaveBeenCalledOnce();
+            const [helix] = effects.helices();
+            const edge = stage.edge(side, 0.6, SAKURA_STAGE_DEPTH, undefined, 0.01);
+            const centre = stage.centre();
+            // Its foot is on the ground two metres out from the card's edge, on the twist's side.
+            expect(helix.x).toBeCloseTo(edge.x + side * 2, 9);
+            expect(helix.z).toBeCloseTo(edge.z, 9);
+            expect((helix.x - centre.x) * side).toBeGreaterThan(Math.abs(edge.x - centre.x));
+            expect(helix.y).toBeCloseTo(sakuraSurfaceHeight(helix.x, helix.z) + 0.15, 9);
+            expect(helix.side).toBe(side);
+            // A twist that cleared lines is a whole helix; it stands to above where the piece turned.
+            expect(helix.strength).toBeCloseTo(1, 9);
+            expect(helix.height).toBeCloseTo(Math.max(3.2, edge.y + 2.4 - helix.y), 9);
+            expect(helix.y + helix.height).toBeGreaterThan(edge.y + 2);
+            // A few real petals are caught up in it (fewer than the spiral once threw): 34 at the
+            // reference budget, and the small vortex that carries them.
+            expect(log[0].spawned).toBe(34);
+            expect(log.slice(1).every((entry) => entry.spawned === 0)).toBe(true);
+            expect(log[0].fields.map((field) => field.kind)).toEqual(['vortex']);
+        });
+
+        it('is smaller for a twist that cleared nothing, never shorter than a person, and scales its petals', () => {
+            const helixFor = (overrides, options = {}) => {
+                const effects = showEffects();
+                const built = createDirector({ effects, ...options });
+                built.director.apply(frameWith([emitter({ kind: 'spin', ...overrides })]), STEP);
+                expect(effects.helix).toHaveBeenCalledOnce();
+                return { ...effects.helices()[0], thrown: built.sim.spawn.mock.calls.length };
+            };
+            // (SakuraReactions sends 0.8 for a twist that cleared lines and 0.48 for one that did not.)
+            expect(helixFor({ strength: 0.8 }).strength).toBeCloseTo(1, 9);
+            expect(helixFor({ strength: 0.48 }).strength).toBeCloseTo(0.6, 9);
+            // At the foot of the card the piece is below the eye: the helix still stands 3.2 m.
+            const low = helixFor({ row: 0, side: -1 });
+            const high = helixFor({ row: 1, side: -1 });
+            expect(low.height).toBeGreaterThanOrEqual(3.2);
+            expect(high.height).toBeGreaterThan(low.height);
+            for (const helix of [low, high]) {
+                expect([helix.x, helix.y, helix.z, helix.strength, helix.height].every(Number.isFinite)).toBe(true);
+            }
+            // The real petals follow the tier's budget; the helix itself is the showpieces'.
+            expect(helixFor({}, { petals: 6000 }).thrown).toBe(34);
+            expect(helixFor({}, { petals: 12000 }).thrown).toBe(68);
+            expect(helixFor({}, { petals: 1100 }).thrown).toBe(Math.round(34 * 0.2));
+            // A slot reused under a new serial is another twist.
+            const effects = showEffects();
+            const { director } = createDirector({ effects });
+            director.apply(frameWith([emitter({ kind: 'spin', id: 2, serial: 1 })]), STEP);
+            director.apply(frameWith([emitter({
+                kind: 'spin', id: 2, serial: 1, age: 0.3,
+            })]), STEP);
+            director.apply(frameWith([emitter({ kind: 'spin', id: 2, serial: 2 })]), STEP);
+            expect(effects.helix).toHaveBeenCalledTimes(2);
+        });
+    });
+
+    describe('the gate and the star fox', () => {
+        it('wakes the gate once for a back-to-back and sends the star fox once for a perfect clear', () => {
+            const effects = showEffects();
+            const { director, sim } = createDirector({ effects });
+            const log = play(director, sim, [
+                { kind: 'gate', strength: 0.55, duration: 1.2 },
+                { kind: 'spirit', strength: 1, duration: 2.6 },
+            ], { seconds: 2.5 });
+            expect(effects.gate).toHaveBeenCalledExactlyOnceWith(0.55);
+            expect(effects.spirit).toHaveBeenCalledExactlyOnceWith(1);
+            // Both are light: nothing is thrown, nothing pushes the petals, and the director itself
+            // sends no ring (the gate's ring is the garden's to place).
+            expect(sim.spawn).not.toHaveBeenCalled();
+            expect(log.every((entry) => entry.fields.length === 0)).toBe(true);
+            for (const hook of [effects.ring, effects.flash, effects.star, effects.splash, effects.helix]) {
+                expect(hook).not.toHaveBeenCalled();
+            }
+            // New serials are new events.
+            director.apply(frameWith([
+                emitter({
+                    id: 0, serial: 7, kind: 'gate', strength: 1,
+                }),
+                emitter({
+                    id: 1, serial: 8, kind: 'spirit', strength: 0.7,
+                }),
+            ]), STEP);
+            expect(effects.gate.mock.calls).toEqual([[0.55], [1]]);
+            expect(effects.spirit.mock.calls).toEqual([[1], [0.7]]);
+        });
+
+        it('plays every new kind without any of the garden\'s hooks', () => {
+            const every = ['splash', 'gate', 'spirit', 'swarm', 'spin'].map((kind, index) => emitter({
+                id: index, serial: index, kind, age: 0.1,
+            }));
+            for (const effects of [{}, {
+                splash: null, helix: undefined, gate: null, spirit: undefined,
+            }]) {
+                const { director } = createDirector({ effects });
+                expect(() => director.apply(frameWith(every), STEP)).not.toThrow();
+                expect(director.swarm).toBeGreaterThan(0);
+            }
+        });
+    });
+
+    describe('the fireflies\' swarm', () => {
+        const swarm = (overrides) => emitter({
+            kind: 'swarm', strength: 0.8, duration: 3.4, ...overrides,
+        });
+
+        it('rests at nothing, and offers the simulation a place for the air\'s share of falling petals', () => {
+            const { director } = createDirector();
+            expect(director.swarm).toBe(0);
+            const env = director.apply(frameWith(), STEP);
+            expect(env.swarm).toBe(0);
+            // (`fall` is the weather's: the director only keeps its place, at all of them.)
+            expect(env.fall).toBe(1);
+            expect(Object.keys(env).sort())
+                .toEqual(['breeze', 'fall', 'fields', 'front', 'fronts', 'gust', 'swarm', 'windX', 'windZ']);
+            expect(env.shore).toBeUndefined();
+        });
+
+        it('rises from nothing, is whole at the middle of its life and sinks back to nothing', () => {
+            const { director } = createDirector();
+            const at = (age) => director.apply(frameWith([swarm({ age })]), STEP).swarm;
+            expect(at(0)).toBe(0);
+            expect(at(1.7)).toBeCloseTo(0.8, 9);
+            expect(at(3.4)).toBeLessThan(1e-9);
+            expect(at(3.4)).toBeGreaterThanOrEqual(0);
+            // Exactly its strength times the sine of its life, softened.
+            for (const age of [0.1, 0.5, 1, 2.4, 3.3]) {
+                expect(at(age), `age ${age}`).toBeCloseTo(0.8 * Math.sin(Math.PI * (age / 3.4)) ** 0.7, 12);
+            }
+            expect(director.swarm).toBe(director.env.swarm);
+            // An age past its life (a long frame) is its end, not a negative rise.
+            for (const age of [3.5, 10, 1e9]) {
+                const value = at(age);
+                expect(value >= 0 && value < 1e-9, `age ${age}: ${value}`).toBe(true);
+            }
+            // Gone from the frame, gone from the garden.
+            expect(director.apply(frameWith(), STEP).swarm).toBe(0);
+            expect(director.swarm).toBe(0);
+        });
+
+        it('never steps: a frame moves it a little, at the start, at the height and at the end', () => {
+            const { director } = createDirector();
+            let last = 0;
+            let steepest = 0;
+            for (let frame = 0; frame <= Math.ceil(3.4 * 60); frame += 1) {
+                const live = [swarm({ strength: 1, age: Math.min(3.4, frame * STEP) })];
+                const value = director.apply(frameWith(live), STEP).swarm;
+                expect(value).toBeGreaterThanOrEqual(0);
+                expect(value).toBeLessThanOrEqual(1);
+                steepest = Math.max(steepest, Math.abs(value - last));
+                last = value;
+            }
+            // (Its first and last frames are the steepest: a twentieth of the way.)
+            expect(steepest).toBeLessThan(0.06);
+            expect(last).toBeLessThan(1e-9);
+        });
+
+        it('is the highest of the swarms still playing, so a second one never drops it', () => {
+            const { director } = createDirector();
+            const rise = (strength, age) => (
+                age < 0 || age > 3.4 ? 0 : strength * Math.sin(Math.PI * (age / 3.4)) ** 0.7);
+            let last = 0;
+            const trace = [];
+            // Three lines, and four lines 1.2 s later.
+            for (let frame = 0; frame <= 60 * 5; frame += 1) {
+                const t = frame * STEP;
+                const live = [];
+                if (t < 3.4) live.push(swarm({ id: 0, serial: 0, age: t }));
+                if (t >= 1.2 && t < 4.6) {
+                    live.push(swarm({
+                        id: 1, serial: 1, strength: 1, age: t - 1.2,
+                    }));
+                }
+                const value = director.apply(frameWith(live), STEP).swarm;
+                // No step when the second starts (it starts at nothing, under the first), when it
+                // overtakes, or when the first ends (it ends at nothing, under the second).
+                expect(Math.abs(value - last), `t ${t.toFixed(3)}`).toBeLessThan(0.06);
+                // Never under either of them: the second cannot pull the first one's cloud down.
+                expect(value).toBeGreaterThanOrEqual(Math.max(rise(0.8, t), rise(1, t - 1.2)) - 1e-9);
+                expect(value).toBeLessThanOrEqual(1);
+                trace.push(value);
+                last = value;
+            }
+            // It reaches the first one's height, goes on to the second one's and ends at nothing.
+            expect(trace[Math.round(1.7 * 60)]).toBeCloseTo(0.8, 3);
+            expect(Math.max(...trace)).toBeCloseTo(1, 3);
+            expect(trace.indexOf(Math.max(...trace)) * STEP).toBeCloseTo(1.2 + 1.7, 1);
+            expect(trace.at(-1)).toBe(0);
+        });
+
+        it('throws nothing and pushes nothing: the fireflies are the garden\'s, not the simulation\'s', () => {
+            const effects = showEffects();
+            const { director, sim } = createDirector({ effects });
+            const log = play(director, sim, [{ kind: 'swarm', strength: 1, duration: 3.4 }], { seconds: 3.3 });
+            expect(sim.spawn).not.toHaveBeenCalled();
+            expect(log.every((entry) => entry.fields.length === 0)).toBe(true);
+            for (const hook of Object.values(effects).filter((value) => value?.mock)) {
+                expect(hook).not.toHaveBeenCalled();
+            }
+        });
+    });
+
+    describe('rings that make room for one another', () => {
+        const lock = (serial, strength = 0.66) => emitter({
+            id: serial % 6, serial, kind: 'lock', strength, age: STEP, duration: 1.2,
+        });
+
+        it('sends the first ring of a run whole and each that follows hard on it fainter', () => {
+            const { director, effects } = createDirector();
+            expect(director.ringLoad).toBe(0);
+            director.apply(frameWith([lock(0)]), STEP);
+            const [first] = effects.rings();
+            // Whole: what a lock of that strength always sent.
+            expect(first.strength).toBeCloseTo(0.45 + 0.66 * 0.9, 12);
+            expect(director.ringLoad).toBeCloseTo(first.strength, 12);
+            director.apply(frameWith([lock(1)]), STEP);
+            const second = effects.rings()[1];
+            const load = first.strength * Math.exp(-STEP / 1.2);
+            expect(second.strength).toBeCloseTo(first.strength / (1 + 1.3 * load), 12);
+            expect(second.strength).toBeLessThan(first.strength * 0.5);
+            expect(director.ringLoad).toBeCloseTo(load + second.strength, 12);
+            // Where a ring lands is not changed by how strong it is let be.
+            const alone = createDirector();
+            alone.director.apply(frameWith([lock(0)]), STEP);
+            expect(alone.effects.rings()[0]).toEqual(first);
+        });
+
+        it('forgets the light the last rings left over a second or so, whatever the frame rate', () => {
+            for (const fps of [30, 60, 144]) {
+                const { director, effects } = createDirector();
+                director.apply(frameWith([lock(0)]), 1 / fps);
+                const sent = effects.rings()[0].strength;
+                const frames = Math.round(fps * 1.2);
+                for (let frame = 0; frame < frames; frame += 1) director.apply(frameWith(), 1 / fps);
+                // (To 1/e in 1.2 s: the same fall at any frame rate.)
+                expect(director.ringLoad, `${fps} fps`).toBeCloseTo(sent * Math.exp(-(frames / fps) / 1.2), 9);
+                expect(director.ringLoad / sent).toBeCloseTo(1 / Math.E, 2);
+                for (let frame = 0; frame < fps * 12; frame += 1) director.apply(frameWith(), 1 / fps);
+                expect(director.ringLoad).toBeLessThan(1e-3);
+                // After a rest the next ring is whole again (to a part in a thousand).
+                director.apply(frameWith([lock(1)]), 1 / fps);
+                expect(effects.rings()[1].strength).toBeGreaterThan(sent * 0.998);
+            }
+            // A paused frame, a frame of nonsense: nothing is forgotten, nothing goes wrong.
+            const { director } = createDirector();
+            director.apply(frameWith([lock(0)]), STEP);
+            const held = director.ringLoad;
+            for (const dt of [0, -1, NaN, Infinity, -Infinity, undefined, null, '0.5']) {
+                director.apply(frameWith(), dt);
+                expect(director.ringLoad, String(dt)).toBe(held);
+            }
+        });
+
+        it('settles near two fifths of a ring for a hard-dropped lock every 0.42 s', () => {
+            const settled = (strength) => {
+                const { director, effects } = createDirector();
+                let serial = 0;
+                for (let frame = 0; frame < 60 * 30; frame += 1) {
+                    const live = frame % 25 === 0 ? [lock(serial)] : [];
+                    if (frame % 25 === 0) serial += 1;
+                    director.apply(frameWith(live.map((entry) => ({ ...entry, strength }))), STEP);
+                }
+                const strengths = effects.rings().map((ring) => ring.strength);
+                // The run only ever thins toward its level: no ring is stronger than the one before.
+                for (let index = 1; index < strengths.length; index += 1) {
+                    expect(strengths[index]).toBeLessThanOrEqual(strengths[index - 1] + 1e-9);
+                }
+                expect(strengths.every((value) => value > 0)).toBe(true);
+                return strengths.at(-1) / strengths[0];
+            };
+            // (A hard drop from most of the way up locks at about 0.66; a piece set down, at 0.26.)
+            expect(settled(0.66)).toBeGreaterThan(0.36);
+            expect(settled(0.66)).toBeLessThan(0.46);
+            expect(settled(0.26)).toBeGreaterThan(0.4);
+            expect(settled(0.26)).toBeLessThan(0.55);
+        });
+
+        it('weighs a clear\'s ring with the lock\'s: together on the lake they are less than their sum', () => {
+            const frame = (emitters) => frameWith(emitters);
+            const jets = [-1, 1].map((side, index) => emitter({
+                id: 3 + index,
+                serial: 10 + index,
+                kind: 'clear',
+                side,
+                lines: 2,
+                strength: 0.7,
+                age: STEP,
+                duration: 1.74,
+            }));
+            const clearOnly = createDirector();
+            clearOnly.director.apply(frame(jets), STEP);
+            const [whole] = clearOnly.effects.rings();
+            const both = createDirector();
+            both.director.apply(frame([lock(0), ...jets]), STEP);
+            const rings = both.effects.rings();
+            expect(rings).toHaveLength(2);
+            expect(rings[0].strength).toBeCloseTo(0.45 + 0.66 * 0.9, 12);
+            expect(rings[1].strength).toBeCloseTo(whole.strength / (1 + 1.3 * rings[0].strength), 12);
+            expect([rings[1].x, rings[1].z]).toEqual([whole.x, whole.z]);
+        });
+
+        it('sends no ring for no strength, and counts none', () => {
+            const { director, effects } = createDirector();
+            for (const strength of [0, -1, NaN, undefined, null, 'strong', -Infinity]) {
+                director.ripple(1, -20, strength);
+                expect(effects.ring, String(strength)).not.toHaveBeenCalled();
+                expect(director.ringLoad).toBe(0);
+            }
+            director.ripple(1, -20, 0.5);
+            expect(effects.ring).toHaveBeenCalledExactlyOnceWith(1, -20, 0.5);
+            expect(director.ringLoad).toBe(0.5);
+            // Without the hook the load is still kept (the ring would have been there).
+            const bare = createDirector({ effects: {} });
+            expect(() => bare.director.ripple(1, -20, 0.5)).not.toThrow();
+            expect(bare.director.ringLoad).toBe(0.5);
+        });
+
+        it('starts a new session with a whole ring', () => {
+            const { director, effects } = createDirector();
+            for (let serial = 0; serial < 8; serial += 1) director.apply(frameWith([lock(serial)]), STEP);
+            expect(director.ringLoad).toBeGreaterThan(1);
+            director.reset();
+            expect(director.ringLoad).toBe(0);
+            director.apply(frameWith([lock(0)]), STEP);
+            expect(effects.rings().at(-1).strength).toBeCloseTo(effects.rings()[0].strength, 12);
+        });
+
+        it('is gentler still as play runs hot, the two together', () => {
+            const ringAt = (level) => {
+                const { director, effects } = createDirector();
+                director.apply(frameWith([lock(0)], { level }), STEP);
+                return effects.rings()[0].strength;
+            };
+            expect(ringAt(1)).toBeCloseTo(ringAt(0) * 0.55, 12);
+            expect(ringAt(0.5)).toBeLessThan(ringAt(0));
+            expect(ringAt(0.5)).toBeGreaterThan(ringAt(1));
+        });
+    });
+
+    describe('a flight of sky lanterns', () => {
+        it('lifts most of a flight off the lake either side of the card, near to far, the rest from the banks', () => {
+            const camera = frameCamera(LANDSCAPE);
+            const effects = spyEffects();
+            const { director, stage } = createDirector({ effects, skyLanterns: 44, seed: 11 });
+            for (let flight = 0; flight < 200; flight += 1) {
+                director.lanterns(emitter({ kind: 'lanterns', strength: 1, serial: flight }));
+            }
+            const lanterns = effects.skies();
+            expect(lanterns).toHaveLength(200 * 44);
+            const beside = lanterns.filter((lantern) => {
+                const seen = screenOf(camera, lantern.x, lantern.y, lantern.z);
+                const offCard = seen.x < stage.board.x0 || seen.x > stage.board.x1;
+                return sakuraLand(lantern.x, lantern.z) <= 0 && offCard && seen.x > 0 && seen.x < 1 && seen.ahead;
+            });
+            // About two thirds of them stand in the water where it shows either side of the board.
+            expect(beside.length / lanterns.length).toBeGreaterThan(0.5);
+            expect(beside.length / lanterns.length).toBeLessThan(0.8);
+            const left = beside.filter((lantern) => screenOf(camera, lantern.x, lantern.y, lantern.z).x < 0.5).length;
+            expect(left / beside.length).toBeGreaterThan(0.35);
+            expect(left / beside.length).toBeLessThan(0.65);
+            // Near to far: from just past the knoll's bank to deep in the lake.
+            const depths = beside.map((lantern) => camera.position.z - lantern.z);
+            expect(Math.min(...depths)).toBeLessThan(30);
+            expect(Math.max(...depths)).toBeGreaterThan(70);
+            // Every one is released just above whatever it stands on, never under it, and in front.
+            for (const lantern of lanterns) {
+                expect([lantern.x, lantern.y, lantern.z, lantern.delay].every(Number.isFinite)).toBe(true);
+                const ground = sakuraSurfaceHeight(lantern.x, lantern.z);
+                expect(lantern.y).toBeGreaterThanOrEqual(ground + 0.6 - 1e-9);
+                expect(lantern.y).toBeLessThan(ground + 1.5);
+                expect(lantern.z).toBeLessThan(camera.position.z);
+                expect(lantern.delay).toBeGreaterThanOrEqual(0);
+                expect(lantern.delay).toBeLessThan(4.5);
+            }
+        });
+    });
+
+    describe('what it is handed', () => {
+        // Was a fault (fixed 2026-11-18): sakura-petal-director.js apply() (the swarm loop, `Math.max(swarm, strength *
+        // Math.sin(Math.PI * run) ** 0.7)`) lets a swarm emitter with a strength or a duration that
+        // is not a number make `director.swarm` and `env.swarm` NaN (Math.max of NaN is NaN), and
+        // one stronger than 1 take it past 1. SakuraReactions never emits either, and SakuraSpirits
+        // clamps the swarm it is given, so play does not reach it; the director's own contract
+        // (env.swarm in 0..1) does not hold for such a frame. Reproduce: director.apply({ emitters:
+        // [{ id: 0, serial: 0, kind: 'swarm', strength: NaN, age: 1, duration: 3.4 }] }, 1 / 60).swarm
+        // is NaN.
+        it('keeps the swarm a share whatever an emitter carries', () => {
+            const { director } = createDirector();
+            const junk = [NaN, Infinity, -Infinity, undefined, null, 'x', -1, 0, 7];
+            for (const strength of junk) {
+                for (const duration of junk) {
+                    const env = director.apply(frameWith([{
+                        id: 0, serial: 0, kind: 'swarm', strength, age: 1, duration,
+                    }]), STEP);
+                    const label = `swarm ${String(strength)} / ${String(duration)}: ${env.swarm}`;
+                    expect(env.swarm >= 0 && env.swarm <= 1, label).toBe(true);
+                }
+            }
+        });
+
+        it('takes frames of nonsense without throwing, and leaves the garden as it was', () => {
+            const effects = showEffects();
+            const { director, sim } = createDirector({ effects });
+            const junk = [undefined, null, NaN, Infinity, 'x', [], {}, -1, 1e308];
+            for (const value of junk) {
+                const frame = frameWith([
+                    emitter({
+                        id: 0, serial: 0, kind: 'gate', strength: value,
+                    }),
+                    emitter({
+                        id: 1, serial: 1, kind: 'spirit', strength: value,
+                    }),
+                    emitter({
+                        id: 2, serial: 2, kind: 'splash', strength: value, side: value,
+                    }),
+                ], {
+                    level: value,
+                    gust: value,
+                    hush: value,
+                    motion: value,
+                    blizzard: value,
+                    fronts: value,
+                });
+                expect(() => director.apply(frame, STEP), String(value)).not.toThrow();
+                director.reset();
+            }
+            expect(sim.spawn).not.toHaveBeenCalled();
+            // What the hooks were handed is what the frame carried: the garden's parts each guard
+            // their own (SakuraShowpieces refuses a crown or a star fox that is not a number).
+            expect(effects.gate).toHaveBeenCalledTimes(junk.length);
+            expect(effects.spirit).toHaveBeenCalledTimes(junk.length);
+            for (const crown of effects.splashes()) {
+                expect([crown.x, crown.z].every(Number.isFinite)).toBe(true);
+                expect(sakuraSurfaceHeight(crown.x, crown.z)).toBeLessThanOrEqual(SAKURA_WATER_LEVEL + 0.001);
+            }
+        });
+    });
+});
+
+/**
+ * Ten minutes of play at 60 frames a second through the real reactions and the real director,
+ * with the garden's hooks replaced by counters: random locks and hard drops, clears of every
+ * size, cascades, twists, back-to-backs, perfect clears, level-ups, pile-ups in which every
+ * handler fires in one frame, games that end and begin again, Reduce motion switched on and off.
+ * Every number of every frame and everything handed to the garden is checked on the way.
+ */
+describe('Sakura reactions and petal director: ten minutes of play', () => {
+    const KINDS = ['lock', 'clear', 'floats', 'star', 'shower', 'combo', 'lanterns', 'spin', 'rise', 'splash', 'swarm',
+        'gate', 'spirit', 'festival'];
+    const UNIT = ['gust', 'glow', 'lanterns', 'moon', 'vortex', 'heat', 'spirit', 'constellation', 'figures', 'hush',
+        'blizzard', 'sway', 'punch', 'level', 'fever', 'motion'];
+    const HOOKS = ['ring', 'flash', 'star', 'floatLantern', 'skyLantern', 'splash', 'helix', 'gate', 'spirit', 'spawn'];
+    const EVENTS = ['locks', 'drops', 'clears', 'lines', 'twists', 'b2b', 'perfect', 'levels', 'over', 'pileUps'];
+    const sessions = new Map();
+
+    /** Every number anywhere in a value that is not finite, as readable paths. */
+    function nonFinite(value, path, found = []) {
+        if (typeof value === 'number') {
+            if (!Number.isFinite(value)) found.push(`${path} = ${value}`);
+        } else if (Array.isArray(value)) value.forEach((entry, index) => nonFinite(entry, `${path}[${index}]`, found));
+        else if (value && typeof value === 'object') {
+            Object.entries(value).forEach(([key, entry]) => nonFinite(entry, `${path}.${key}`, found));
+        }
+        return found;
+    }
+
+    /** Every way a frame can leave its documented ranges. */
+    function frameProblems(frame, capacity) {
+        const problems = nonFinite(frame, 'frame');
+        const within = (key, low, high) => {
+            if (!(frame[key] >= low && frame[key] <= high)) problems.push(`${key} = ${frame[key]}`);
+        };
+        for (const key of UNIT) within(key, 0, 1);
+        within('foxfire', 0, 14);
+        within('crown', 0, 1.3);
+        within('corona', 0, 1.6);
+        if (![0, 1, 2, 3].includes(frame.stage)) problems.push(`stage = ${frame.stage}`);
+        if (!Number.isInteger(frame.streak) || frame.streak < 0) problems.push(`streak = ${frame.streak}`);
+        if (!Number.isInteger(frame.leap) || frame.leap < 0) problems.push(`leap = ${frame.leap}`);
+        if (frame.fronts.length > 3) problems.push(`${frame.fronts.length} fronts`);
+        for (const front of [...frame.fronts, ...(frame.front ? [frame.front] : [])]) {
+            const ok = Math.abs(front.position) <= 1.4 + 1e-9 && front.direction === 1
+                && front.strength >= 0 && front.strength <= 1;
+            if (!ok) problems.push(`front ${JSON.stringify(front)}`);
+        }
+        if (frame.emitters.length > capacity) problems.push(`${frame.emitters.length} emitters`);
+        for (const live of frame.emitters) {
+            const ok = KINDS.includes(live.kind) && live.strength > 0 && live.strength <= 1
+                && live.age >= 0 && live.age < live.duration && live.progress >= 0 && live.progress < 1
+                && (live.side === 1 || live.side === -1) && live.column >= 0 && live.column <= 1
+                && live.row >= 0 && live.row <= 1 && Number.isInteger(live.lines) && live.lines >= 0
+                && live.seed >= 0 && live.seed < 1;
+            if (!ok) problems.push(`emitter ${JSON.stringify(live)}`);
+        }
+        return problems;
+    }
+
+    /** Play the session once a tier (the tests below each read a part of what happened). */
+    function session(quality) {
+        if (sessions.has(quality)) return sessions.get(quality);
+        const tier = SAKURA_TIERS[quality];
+        const reactions = new SakuraReactions({ quality, rng: seededRandom(41) });
+        // What was asked for, by serial: an emitter the garden never saw is one that was lost.
+        const emitted = new Map();
+        const emit = reactions.emit.bind(reactions);
+        reactions.emit = (kind, options) => {
+            const slot = emit(kind, options);
+            emitted.set(slot.serial, { kind, lines: slot.lines, strength: slot.strength });
+            return slot;
+        };
+        const camera = frameCamera(LANDSCAPE);
+        const stage = new SakuraStage(camera);
+        const problems = [];
+        const note = (message) => { if (problems.length < 20) problems.push(message); };
+        const counts = Object.fromEntries(HOOKS.map((key) => [key, 0]));
+        const finite = (hook, args) => {
+            counts[hook] += 1;
+            if (!args.every(Number.isFinite)) note(`${hook}(${args.join(', ')})`);
+        };
+        const peaks = { ring: 0, swarm: 0, blizzard: 0 };
+        const effects = {
+            ring: (x, z, strength) => {
+                finite('ring', [x, z, strength]);
+                peaks.ring = Math.max(peaks.ring, strength);
+                if (!(strength > 0 && strength < 1.6)) note(`ring strength ${strength}`);
+                if (!(sakuraLand(x, z) < 0)) note(`ring on land at ${x}, ${z}`);
+            },
+            flash: (x, y, z, strength) => {
+                finite('flash', [x, y, z, strength]);
+                if (!(strength > 0) || !(y > sakuraSurfaceHeight(x, z))) note(`flash ${x}, ${y}, ${z}, ${strength}`);
+            },
+            star: (strength) => {
+                finite('star', [strength]);
+                if (!(strength > 0 && strength <= 1)) note(`star ${strength}`);
+            },
+            floatLantern: (x, z, vx, vz, power) => finite('floatLantern', [x, z, vx, vz, power]),
+            skyLantern: (x, y, z, delay) => {
+                finite('skyLantern', [x, y, z, delay]);
+                if (!(y > sakuraSurfaceHeight(x, z)) || !(delay >= 0)) note(`sky lantern ${x}, ${y}, ${z}, ${delay}`);
+            },
+            splash: (x, z, strength) => {
+                finite('splash', [x, z, strength]);
+                if (!(sakuraSurfaceHeight(x, z) <= SAKURA_WATER_LEVEL + 0.001)) note(`splash on land at ${x}, ${z}`);
+                if (!(strength >= 0.12 && strength <= 1)) note(`splash strength ${strength}`);
+                const seen = ndc(new THREE.Vector3(x, 0, z), camera).x * 0.5 + 0.5;
+                if (seen > stage.board.x0 && seen < stage.board.x1) note(`splash behind the card at ${seen}`);
+            },
+            helix: (x, y, z, side, strength, height) => {
+                finite('helix', [x, y, z, side, strength, height]);
+                if (Math.abs(side) !== 1 || !(strength > 0 && strength <= 1 + 1e-9) || !(height >= 3.2)) {
+                    note(`helix ${side}, ${strength}, ${height}`);
+                }
+            },
+            gate: (strength) => {
+                finite('gate', [strength]);
+                if (!(strength >= 0.4 && strength <= 1)) note(`gate ${strength}`);
+            },
+            spirit: (strength) => {
+                finite('spirit', [strength]);
+                if (strength !== 1) note(`spirit ${strength}`);
+            },
+        };
+        const sim = { spawn: (...args) => { finite('spawn', args); return 0; } };
+        const director = new SakuraPetalDirector({
+            stage, sim, tier, rng: seededRandom(77), surface: sakuraSurfaceHeight, effects,
+        });
+        const wind = { x: 0.96, z: 0.28, strength: 0.24 };
+        const random = seededRandom(20261118);
+        const pick = (low, high) => low + random() * (high - low);
+        const piece = () => ({ x: Math.floor(pick(0, 10)), y: Math.floor(pick(6, 23)), shape: [[1, 1], [1, 1]] });
+        const sent = Object.fromEntries(EVENTS.map((key) => [key, 0]));
+        const count = (...keys) => keys.forEach((key) => { sent[key] += 1; });
+        const everything = () => {
+            const dropped = piece();
+            reactions.onHardDrop({ piece: dropped, distance: 18 });
+            reactions.onPieceLock({ piece: dropped });
+            reactions.onLineClear(4, { clearedRows: [20, 21, 22, 23] });
+            reactions.onCombo(9);
+            reactions.onTwist({ piece: dropped });
+            reactions.onBackToBack();
+            reactions.onPerfectClear();
+            reactions.onLevelUp();
+            count('pileUps', 'locks', 'drops', 'clears', 'twists', 'b2b', 'perfect', 'levels');
+            sent.lines += 4;
+        };
+        const seen = new Set();
+        const seenKinds = new Set();
+        let nextLock = 0.5;
+        let nextPileUp = 20;
+        let over = false;
+        let resumeAt = 0;
+        let leaps = 0;
+        for (let frame = 0; frame < 60 * 600; frame += 1) {
+            const t = frame * STEP;
+            const at = `t ${t.toFixed(2)}`;
+            // A game ends every couple of minutes, rests five seconds and begins again.
+            if (!over && frame > 0 && frame % (60 * 113) === 0) {
+                reactions.onGameOver();
+                count('over');
+                over = true;
+                resumeAt = t + 5;
+            }
+            if (over && t >= resumeAt) over = false;
+            // Reduce motion for the third and the eighth minute.
+            if (frame % (60 * 60) === 0) reactions.setMotion([2, 7].includes(frame / 3600) ? 0.35 : 1);
+            if (!over && t >= nextPileUp) {
+                nextPileUp = t + pick(15, 30);
+                everything();
+            } else if (!over && t >= nextLock) {
+                // A steady hand: a lock every 0.5 to 1.1 s, most of them dropped, four in ten clearing.
+                nextLock = t + pick(0.5, 1.1);
+                const locked = piece();
+                if (random() < 0.7) {
+                    reactions.onHardDrop({ piece: locked, distance: pick(0, 20) });
+                    count('drops');
+                }
+                reactions.onPieceLock({ piece: locked });
+                count('locks');
+                if (random() < 0.4) {
+                    const lines = 1 + Math.floor(random() ** 1.6 * 4);
+                    reactions.onLineClear(lines, { clearedRows: [23 - Math.floor(pick(0, 6))], cascadeCount: 1 });
+                    count('clears');
+                    sent.lines += lines;
+                    if (random() < 0.2) {
+                        reactions.onCombo(2 + Math.floor(pick(0, 5)));
+                        reactions.onLineClear(1, { clearedRows: [23], cascadeCount: 2 });
+                        count('clears', 'lines');
+                    }
+                    if (lines === 4 && random() < 0.5 && reactions.onBackToBack()) count('b2b');
+                    if (random() < 0.1 && reactions.onTwist({ piece: locked, lineCount: lines })) count('twists');
+                    if (random() < 0.03 && reactions.onPerfectClear()) count('perfect');
+                    if (random() < 0.05 && reactions.onLevelUp()) count('levels');
+                } else if (random() < 0.05 && reactions.onTwist({ piece: locked, lineCount: 0 })) count('twists');
+            }
+            const state = reactions.update(STEP);
+            frameProblems(state, reactions.maxEmitters).forEach((found) => note(`${at}: ${found}`));
+            if (state.leap < leaps) note(`leap fell from ${leaps} to ${state.leap}`);
+            leaps = state.leap;
+            state.emitters.forEach((live) => { seen.add(live.serial); seenKinds.add(live.kind); });
+            peaks.blizzard = Math.max(peaks.blizzard, state.blizzard);
+            const env = director.apply(state, STEP, wind);
+            nonFinite(env, 'env').forEach((found) => note(`${at}: ${found}`));
+            if (!(env.swarm >= 0 && env.swarm <= 1)) note(`${at}: swarm ${env.swarm}`);
+            const windy = env.breeze >= 0 && env.gust >= 0 && env.gust <= 4.5;
+            if (!windy) note(`${at}: wind ${env.breeze}, ${env.gust}`);
+            if (!(director.ringLoad >= 0 && Number.isFinite(director.ringLoad))) note(`ringLoad ${director.ringLoad}`);
+            if (env.fronts.length > 3) note(`${env.fronts.length} fronts in the garden`);
+            peaks.swarm = Math.max(peaks.swarm, env.swarm);
+        }
+        // Hands at rest for three minutes (the fever's last stars and lanterns are still played).
+        let rest = null;
+        for (let frame = 0; frame < 60 * 180; frame += 1) {
+            rest = reactions.update(STEP);
+            rest.emitters.forEach((live) => seen.add(live.serial));
+            director.apply(rest, STEP, wind);
+        }
+        const result = {
+            reactions, director, problems, counts, peaks, sent, emitted, seen, seenKinds, rest,
+        };
+        sessions.set(quality, result);
+        return result;
+    }
+
+    it.each([['Minimal'], ['High'], ['Extreme']])('keeps every number finite and in range at %s', (quality) => {
+        const {
+            problems, sent, seenKinds, peaks, reactions, emitted,
+        } = session(quality);
+        expect(problems).toEqual([]);
+        // The session really happened: every kind of emitter, every instrument at its height.
+        expect(sent.locks).toBeGreaterThan(600);
+        expect(sent.pileUps).toBeGreaterThan(15);
+        expect(sent.over).toBe(5);
+        expect(sent.perfect).toBeGreaterThan(15);
+        expect([...seenKinds].sort()).toEqual([...KINDS].sort());
+        expect(peaks.swarm).toBeCloseTo(1, 2);
+        expect(peaks.blizzard).toBeGreaterThan(0.95);
+        expect(peaks.ring).toBeGreaterThan(0.9);
+        expect(emitted.size).toBe(reactions.serial);
+    }, 120000);
+
+    it.each([['Minimal'], ['High'], ['Extreme']])('plays every emitter the garden saw, once each, at %s', (quality) => {
+        const {
+            counts, sent, emitted, seen,
+        } = session(quality);
+        const asked = (kind) => [...emitted.values()].filter((entry) => entry.kind === kind);
+        const played = (kind) => [...emitted].filter(([serial, entry]) => entry.kind === kind && seen.has(serial))
+            .map(([, entry]) => entry);
+        // What the game sent is what the reactions asked the garden for.
+        expect(asked('lock')).toHaveLength(sent.locks);
+        expect(asked('gate')).toHaveLength(sent.b2b);
+        expect(asked('spirit')).toHaveLength(sent.perfect);
+        expect(asked('spin')).toHaveLength(sent.twists);
+        expect(asked('floats').reduce((sum, entry) => sum + entry.lines, 0)).toBe(sent.lines);
+        expect(asked('splash').length).toBeGreaterThan(sent.drops * 0.7);
+        expect(asked('splash').length).toBeLessThanOrEqual(sent.drops);
+        // And what the garden saw, it played: once each.
+        expect(counts.gate).toBe(played('gate').length);
+        expect(counts.spirit).toBe(played('spirit').length);
+        expect(counts.helix).toBe(played('spin').length);
+        expect(counts.star).toBe(played('star').length);
+        // A crown of spray for every hard drop that fell far enough, each on open water.
+        expect(counts.splash).toBe(played('splash').length);
+        // A lantern afloat for every cleared line.
+        expect(counts.floatLantern).toBe(played('floats').reduce((sum, entry) => sum + Math.max(1, entry.lines), 0));
+        // A ring for every lock and one for every clear (never one for the spray), and a burst of
+        // light for every lock and on both sides of every clear.
+        expect(counts.ring).toBe(played('lock').length + played('clear').length / 2);
+        expect(counts.flash).toBe(played('lock').length + played('clear').length);
+        expect(counts.skyLantern).toBeGreaterThan(sent.levels * 3);
+        expect(counts.spawn).toBeGreaterThan(sent.locks * 10);
+    }, 120000);
+
+    it.each([['Minimal'], ['High'], ['Extreme']])('comes back to rest when the hands do, exactly, at %s', (quality) => {
+        const { rest, reactions, director } = session(quality);
+        expect(frameProblems(rest, reactions.maxEmitters)).toEqual([]);
+        expect(rest.emitters).toEqual([]);
+        for (const key of ['gust', 'glow', 'lanterns', 'moon', 'vortex', 'heat', 'constellation', 'figures', 'foxfire',
+            'blizzard', 'sway', 'punch', 'level', 'fever', 'stage', 'crown', 'corona', 'hush']) {
+            expect(rest[key], key).toBe(0);
+        }
+        expect(director.swarm).toBe(0);
+        expect(director.fields).toEqual([]);
+        expect(director.ringLoad).toBeLessThan(1e-9);
+    }, 120000);
+
+    it.each([['High'], ['Extreme']])('loses nothing the game asked for before the garden saw it, at %s', (quality) => {
+        const { emitted, seen } = session(quality);
+        const lost = [...emitted.keys()].filter((serial) => !seen.has(serial));
+        expect(lost.map((serial) => emitted.get(serial).kind)).toEqual([]);
+    }, 120000);
+
+    // Was a fault (fixed 2026-11-18): sakura-reactions.js emit() (lines 316-337). When a frame asks for more emitters than
+    // the pool has free and spent slots, it gives up "the one with the least of its work left" —
+    // and an emitter the garden has not yet seen counts only its strength, so a faint one that
+    // has never been played (a back-to-back's gate at 0.4-0.6, a single line's lanterns at 0.25,
+    // a set-down lock at 0.26) is given up before a jet or a shower the garden has been playing
+    // for a frame and still has most of its work to do. A one-shot emitter lost unseen is the
+    // whole event lost (here: the ring from the gate's feet). The header's "no tier's pool is
+    // smaller, so none is reclaimed before the garden has played it" holds only for an empty
+    // pool: with 22 slots (Minimal and Low) this session's every-handler frames, arriving in
+    // steady play, lose two gates in ten minutes. Short reproduction, Minimal: onLineClear(4),
+    // onPerfectClear(), onLevelUp(), update(1 / 60), then every handler in one frame: the frame's
+    // own gate emitter is gone before any frame holds it.
+    it('loses nothing the game asked for before the garden saw it, at Minimal', () => {
+        const { emitted, seen } = session('Minimal');
+        const lost = [...emitted.keys()].filter((serial) => !seen.has(serial));
+        expect(lost.map((serial) => emitted.get(serial).kind)).toEqual([]);
+    }, 120000);
+});

@@ -108,6 +108,7 @@ export function getOdysseyLevelBriefing(nextLevel, previousLevel = null) {
     const goalRule = getGoalRule(nextLevel);
     const mirror = hasModifier(nextLevel, 'mirror');
     const multiplier = hasModifier(nextLevel, 'combo-multiplier');
+    const ramp = getSpeedRamp(nextLevel);
     const rules = [
         deadline,
         mirror && MIRROR_RULE,
@@ -115,10 +116,11 @@ export function getOdysseyLevelBriefing(nextLevel, previousLevel = null) {
         goalRule,
         !duel && board && (board.rows !== 20 || board.startingRows > 0) && board.text,
         multiplier && MULTIPLIER_RULE,
-        getSpeedRamp(nextLevel),
+        ramp,
         hasTide(nextLevel) && TIDE_RULE,
         hasModifier(nextLevel, 'speed-up') && 'Pieces fall 50% faster.',
         hasModifier(nextLevel, 'slow-start') && 'Opening drop speed is slower.',
+        nextLevel.id === 1 && hasSpeedProgression(nextLevel) && 'Pieces fall faster after every 15 lines you clear.',
     ].filter(Boolean);
     if (!previousLevel) {
         return {
@@ -138,6 +140,7 @@ export function getOdysseyLevelBriefing(nextLevel, previousLevel = null) {
     if (duel && !previousDuel) changes.push(ATTACK_RULE, RESET_RULE);
     if (!duel && previousDuel) changes.push('Solo play resumes; topping out ends the attempt.');
     if (goalRule && goalRule !== getGoalRule(previousLevel)) changes.push(goalRule);
+    if (ramp && ramp !== getSpeedRamp(previousLevel)) changes.push(ramp);
     if (hasModifier(nextLevel, 'speed-up') !== hasModifier(previousLevel, 'speed-up')) {
         changes.push(hasModifier(nextLevel, 'speed-up')
             ? 'Pieces fall 50% faster.' : 'The extra drop-speed boost is gone.');
@@ -153,8 +156,6 @@ export function getOdysseyLevelBriefing(nextLevel, previousLevel = null) {
     if (hasTide(nextLevel) !== hasTide(previousLevel)) {
         changes.push(hasTide(nextLevel) ? TIDE_RULE : 'No more rubble rising from below.');
     }
-    const ramp = getSpeedRamp(nextLevel);
-    if (ramp && ramp !== getSpeedRamp(previousLevel)) changes.push(ramp);
     const progression = hasSpeedProgression(nextLevel);
     const previousProgression = hasSpeedProgression(previousLevel);
     if (!ramp && !getSpeedRamp(previousLevel)

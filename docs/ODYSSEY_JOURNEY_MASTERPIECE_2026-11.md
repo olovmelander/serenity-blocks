@@ -384,3 +384,50 @@ only), a physical gamepad, and a phone frame.
 - Radial-gradient sizes reject CSS math functions in this Chrome and drop the whole layer.
 - Tooling: headless Chrome over CDP drives the real game (see the session memory note);
   `pauseOnFocusLoss` must be off; a save is seeded through `odysseyState.completeLevel`.
+
+## 9. Follow-up: the dolphins' splash from below (2026-11-19)
+
+The owner: "When we see them from under the water we don't see the splash when they jump and break
+the surface. We only see the splash from above the water."
+
+That was by design: the splashes (a spray burst and a foam ring at each mark) were gated to an eye
+above the surface, because the sea is a transparent sheet drawn before them, so from below they
+would have drawn over the water's underside. Nothing stood in for them under the water, so a
+dolphin went through the surface without a mark.
+
+**What an eye under the water now sees** (`world/odyssey-dolphins.js`, the third draw,
+`odyssey-dolphin-bubbles`, gated to an eye under the surface as the spray is to one above it):
+
+- **Going in, the air it drags down.** A white cloud billows round the place it went in (soft
+  puffs broken into foam by the detail noise), and a trail of single bubbles streams off its body
+  along its dive (bright rims and a glint on top, wobbling), rising back and gone at the surface.
+- **Coming out, a smaller cloud** where the flukes leave, the bubbles racing up.
+- **The churn on the underside of the surface**: the boil of white water where it broke through,
+  shrinking into the middle as a ring runs out from it, lit through from above.
+
+Every bubble's place is closed form from its mark's age, heading and the dolphin's dive (the pod
+now gives each mark its heading, `dolphinSplashes`, and the dive's depth and time, `dolphinDive`),
+so a seek shows the same bubbles; the CPU writes six vec4 rows a dolphin a frame. They are lit by
+the surface and hazed by the water as the dolphins are. Each mark's air lives less than the
+dolphin takes to come round to its next mark of the same kind, so no bubble is ever cut short. One
+instanced draw of 840 quads (High; 219 on Low, its three dolphins), submitted only while the eye is
+under the surface.
+The numbers are `DOLPHIN_BELOW`.
+
+![The same moment from below, 1.1 s after a dolphin went in: before (nothing marks it) and after](images/odyssey-journey-masterpiece-2026-11/dolphins-below-before-after.jpg)
+
+![Going in at 0.15, 0.5 and 1.1 s, and coming out at 0.3 s](images/odyssey-journey-masterpiece-2026-11/dolphins-below-sequence.jpg)
+
+![From the game's own camera on the climb (p 0.13 and p 0.116): a scout going in under the window](images/odyssey-journey-masterpiece-2026-11/dolphins-below-game-camera.jpg)
+
+**Checked:** captures on the WebGL2 backend (SwiftShader in a cloud container), the full world,
+High and Low, from a camera beside an entry and from the real camera rig's pose at p 0.116 and
+0.13; console clean but for the container's "No available adapters". The playground's
+`odyssey-world` effect gained an inspection camera for it (`eye=x,y,z&at=x,y,z&fov=`). Not
+captured: the WebGPU backend (its software device here draws frames that never reach a
+screenshot); the new material builds to WGSL and GLSL on both tiers with no var read before it is
+set (`odyssey-ocean-shaders.test.js`), and `odyssey-dolphins.test.js` pins the marks' headings,
+the dive, the bubble plan and their lifetimes.
+
+**For the owner to judge:** how white the cloud is (`DOLPHIN_BELOW.light`, `puff.alpha`), and how
+long the trail runs down the dive (`entry.shed`, `bead.life`).

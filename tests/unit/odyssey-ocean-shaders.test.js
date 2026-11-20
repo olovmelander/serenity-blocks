@@ -26,7 +26,7 @@ const railSamples = Array.from({ length: 48 }, (_, i) => {
 const NAMES = [
     'odyssey-ocean-reef', 'odyssey-ocean-kelp-forest', 'odyssey-ocean-shafts',
     'odyssey-breach-drops', 'odyssey-breach-sheet', 'odyssey-world-water',
-    'odyssey-dolphins', 'odyssey-dolphin-splashes',
+    'odyssey-dolphins', 'odyssey-dolphin-splashes', 'odyssey-dolphin-bubbles',
 ];
 const SEA = ODYSSEY_SEA_LEVEL;
 
@@ -104,12 +104,15 @@ describe("the world draws them by the sea's rules", () => {
         world.setQuenchCarry(1);
         world.update(40, rail, 0.1, SEA - 20, camera(SEA - 20));
         expect(pod.visible).toBe(true);
-        // The splashes belong to the air: under the surface they are not submitted.
+        // The splashes belong to the air: under the surface they are not submitted. What an eye
+        // under the water sees instead is the air the dolphins take down, and the churn.
         expect(get('odyssey-dolphin-splashes').visible).toBe(false);
+        expect(get('odyssey-dolphin-bubbles').visible).toBe(true);
         world.setQuenchCarry(1);
         world.update(40.02, rail, 0.106, SEA + 6, camera(SEA + 6));
         expect(pod.visible).toBe(true);
         expect(get('odyssey-dolphin-splashes').visible).toBe(true);
+        expect(get('odyssey-dolphin-bubbles').visible).toBe(false);
         // Far up the climb the pod has shrunk to nothing before it is no longer drawn.
         const far = new THREE.PerspectiveCamera(58, 1.6, 0.1, 9000);
         far.position.set(-8, SEA + 3200, 3);

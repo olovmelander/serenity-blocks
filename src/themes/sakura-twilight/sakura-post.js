@@ -117,12 +117,16 @@ export class SakuraPost {
         // The iris closes as play heats, so the garden's added light stays colour; the hour of the
         // night (sakura-hours.js) sets where it rests.
         const hour = Number.isFinite(this.light?.hourExposure) ? this.light.hourExposure : 1;
+        // (When the game ends the garden dims with its lanterns: a slow fall, not a flash.)
         this.uExposure.value = (1.0 + glow * 0.06 * (1 - 0.4 * level) - 0.09 * Math.max(0, level - 0.15)
-            - 0.03 * fever) * hour;
+            - 0.03 * fever) * hour * (1 - 0.14 * clamp01(frame.hush));
         // The beams are a veil over the whole garden, the dark grass and water included: each
         // event's flare is held lower as play heats (the fever brightens the moon's own halo in
         // the sky instead of pinning the whole frame pale), and the perfect clear's crown opens them.
-        this.uBeams.value = 1 + clamp01(frame.moon) * 1.5 * flash * (1 - 0.5 * level) + 0.5 * crown;
+        // At rest their density is the hour's and the air's (the moonlit night and a mist stand
+        // full of shafts; the lantern night has few).
+        const shafts = Number.isFinite(this.light?.shafts) ? this.light.shafts : 1;
+        this.uBeams.value = shafts + clamp01(frame.moon) * 1.5 * flash * (1 - 0.5 * level) + 0.5 * crown;
         this.uSpirit.value = Math.max(clamp01(frame.spirit), 0.5 * level + 0.5 * fever);
         if (this.bloomNode) {
             // Less haze as the air fills with lit petals: the bloom eases back as play heats and

@@ -12,13 +12,14 @@ function createNativeHarness(client) {
     const handlers = new Map();
     const exposed = {};
     const nativeContext = {
-        steamworksClient: client,
+        steamSteamId: '101',
+        steamworksClient: { ...client, localplayer: { getSteamId: () => ({ steamId64: 101n }) } },
         Buffer,
         ipcMain: { handle: (name, callback) => handlers.set(name, callback) },
     };
     const helperStart = nativeSource.indexOf('function resolveCloudWriteBuffer');
     const helperEnd = nativeSource.indexOf('\n// ---', helperStart);
-    const apiStart = nativeSource.indexOf('function getRemoteStorageApi');
+    const apiStart = nativeSource.indexOf('function sameSteamAccount');
     const apiEnd = nativeSource.indexOf('function getAchievementsApi', apiStart);
     const handlersStart = nativeSource.indexOf('// --- Cloud Storage ---');
     const handlersEnd = nativeSource.indexOf('// --- Friends & Social ---', handlersStart);
@@ -86,6 +87,15 @@ beforeEach(() => {
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 describe('Steam Cloud service → preload → native handler contract', () => {
+    it('refuses reads and writes when the native account changes under an open profile', async () => {
+        const cloud = createCloud();
+        const harness = createNativeHarness({ cloud: cloud.api });
+        harness.nativeContext.steamSteamId = '102';
+        const service = await createService(harness);
+        expect((await service.cloudWrite('stats.json', '{}', { queueIfOffline: false })).success).toBe(false);
+        expect(cloud.api.writeFile).not.toHaveBeenCalled();
+    });
+
     it('uses the installed cloud namespace and round-trips text with positional arguments', async () => {
         const cloud = createCloud();
         const harness = createNativeHarness({ cloud: cloud.api });

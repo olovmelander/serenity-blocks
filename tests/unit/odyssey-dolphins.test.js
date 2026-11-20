@@ -11,11 +11,14 @@ import {
     ODYSSEY_BREACH_P, ODYSSEY_SEA_LEVEL, odysseyWorldHeight,
 } from '../../src/rendering/odyssey/world/odyssey-world-height.js';
 import {
-    DOLPHIN_POD, dolphinAt, dolphinLoopAt, dolphinLoopLength, dolphinLoopPoints, dolphinSplashes, porpoiseAt,
+    DOLPHIN_POD, dolphinAt, dolphinDive, dolphinLoopAt, dolphinLoopLength, dolphinLoopPoints, dolphinSplashes,
+    porpoiseAt,
 } from '../../src/rendering/odyssey/composition/odyssey-dolphin-pod.js';
 import { OCEAN_ROAM, roamAt } from '../../src/rendering/odyssey/composition/odyssey-ocean-roam.js';
 import { OCEAN_REEF, planOceanReef } from '../../src/rendering/odyssey/world/odyssey-ocean-reef.js';
-import { buildDolphinHull } from '../../src/rendering/odyssey/world/odyssey-dolphins.js';
+import {
+    DOLPHIN_BELOW, buildDolphinBubbles, buildDolphinHull,
+} from '../../src/rendering/odyssey/world/odyssey-dolphins.js';
 import { createOdysseyCameraRig } from './helpers/odyssey-camera-rig.js';
 
 const SEA = ODYSSEY_SEA_LEVEL;
@@ -124,6 +127,91 @@ describe('the dolphins porpoise: an arc through the air, a dive under, no corner
             }
         });
         expect(P.splashLife).toBeLessThan(Math.min(...P.dolphins.map((d) => d.period)));
+    });
+
+    it('marks which way it was swimming where it went through (the air it takes down follows it)', () => {
+        const marks = dolphinSplashes(P.dolphins[0], 0);
+        const pose = {};
+        P.dolphins.forEach((d) => {
+            for (let t = 3; t < 40; t += 0.61) {
+                dolphinSplashes(d, t, marks);
+                for (const m of [marks.entry, marks.exit]) {
+                    expect(Math.hypot(m.tx, m.tz)).toBeCloseTo(1, 6);
+                    dolphinAt(d, t - m.age, pose);
+                    expect(Math.atan2(m.tx, m.tz)).toBeCloseTo(pose.yaw, 6);
+                }
+            }
+        });
+    });
+
+    it('dives as deep and as long as its arc says', () => {
+        const q = { y: 0, dy: 0 };
+        P.dolphins.forEach((d) => {
+            const dive = dolphinDive(d);
+            expect(dive.depth).toBeCloseTo(diveOf(d), 9);
+            expect(dive.time).toBeCloseTo((1 - P.leap) * d.period, 9);
+            expect(dive.speed).toBe(loopOf(d).speed);
+            // The deepest point of the dive is halfway through it.
+            porpoiseAt(P.leap + ((1 - P.leap) / 2), d.height, q);
+            expect(q.y).toBeCloseTo(-dive.depth, 9);
+        });
+    });
+});
+
+describe('the splash from below: the air the dolphins take down', () => {
+    const roles = (plan, i) => [plan.a[i * 4], plan.a[(i * 4) + 1]];
+
+    it('leaves at every mark a cloud, a trail of beads and one churn on the underside', () => {
+        ['high', 'low'].forEach((quality) => {
+            const dolphins = quality === 'low' ? P.lowCount : P.dolphins.length;
+            const plan = buildDolphinBubbles(dolphins, quality);
+            const perMark = new Map();
+            for (let i = 0; i < plan.count; i += 1) {
+                const [mark, role] = roles(plan, i);
+                expect(Number.isInteger(mark)).toBe(true);
+                expect(mark).toBeGreaterThanOrEqual(0);
+                expect(mark).toBeLessThan(dolphins * 2);
+                const tally = perMark.get(mark) || [0, 0, 0];
+                tally[role] += 1;
+                perMark.set(mark, tally);
+                for (let k = 2; k < 4; k += 1) {
+                    expect(plan.a[(i * 4) + k]).toBeGreaterThanOrEqual(0);
+                    expect(plan.a[(i * 4) + k]).toBeLessThan(1);
+                }
+                for (let k = 0; k < 4; k += 1) {
+                    expect(plan.b[(i * 4) + k]).toBeGreaterThanOrEqual(0);
+                    expect(plan.b[(i * 4) + k]).toBeLessThan(1);
+                }
+            }
+            expect(perMark.size).toBe(dolphins * 2);
+            perMark.forEach(([puffs, beads, churn], mark) => {
+                expect(churn).toBe(1);
+                expect(puffs).toBeGreaterThan(0);
+                expect(beads).toBeGreaterThan(puffs);
+                // Going in takes more air down than coming out leaves.
+                if (mark % 2 === 0) {
+                    const [outPuffs, outBeads] = perMark.get(mark + 1);
+                    expect(puffs).toBeGreaterThan(outPuffs);
+                    expect(beads).toBeGreaterThan(outBeads);
+                }
+            });
+        });
+        const high = buildDolphinBubbles(P.dolphins.length, 'high');
+        const low = buildDolphinBubbles(P.dolphins.length, 'low');
+        expect(low.count).toBeLessThan(high.count);
+        // The same plan every time (the bubbles of a seek are the bubbles it would have seen).
+        expect(Array.from(buildDolphinBubbles(3).b)).toEqual(Array.from(buildDolphinBubbles(3).b));
+    });
+
+    it('lives no longer than the dolphin takes to come round to the next mark of the same kind', () => {
+        const B = DOLPHIN_BELOW;
+        const shortest = Math.min(...P.dolphins.map((d) => d.period));
+        const latest = Math.max(B.entry.shed, B.exit.shed) + 0.1;
+        expect(latest + B.bead.life[1]).toBeLessThan(shortest);
+        expect(latest + B.puff.life[1]).toBeLessThan(shortest);
+        expect(B.churn.life).toBeLessThan(shortest);
+        // The trail is shed while the dolphin is still under, not after it has come out again.
+        P.dolphins.forEach((d) => expect(B.entry.shed).toBeLessThan(dolphinDive(d).time));
     });
 });
 
