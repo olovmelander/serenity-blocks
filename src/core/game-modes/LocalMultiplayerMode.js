@@ -1349,15 +1349,10 @@ export class LocalMultiplayerMode extends BaseGameMode {
     _setupLocalBots() {
         if (!this.multiplayerState) return;
 
-        if (!this.botManager) {
-            this.botManager = new LocalBotManager({
-                actionFactory: (playerIndex) => this._createBotActions(playerIndex),
-                multiplayerState: this.multiplayerState,
-            });
-        } else {
-            this.botManager.destroy();
-        }
-
+        this.botManager ??= new LocalBotManager({
+            actionFactory: (playerIndex) => this._createBotActions(playerIndex),
+            multiplayerState: this.multiplayerState,
+        });
         this.botManager.configure(this.matchConfig?.playerSlots || [], this.botSeriesSeed);
     }
 

@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { COLS, HIDDEN_ROWS } from '../constants.js';
+import { rebuildBoardGridFromPieces } from '../board.js';
 import { resolveCascade } from '../cascade-resolver.js';
 import { calculateGarbage } from '../garbage.js';
+import { restoreBoardState } from '../game.js';
 import { findConnectedComponents } from '../cascade-helpers.js';
 import { settleLabelledBoard } from '../stillfall/stillfall-cascade.js';
 import { seededRandom } from '../../utils/helpers.js';
@@ -17,6 +19,11 @@ function controller(state, rows = () => 0) {
     return new GravityBotController({
         playerState: state, difficulty: 10, actions: {}, rng: seededRandom(71), pendingRows: rows,
     });
+}
+
+function restorePieces(state, lockedPieces, targetGrid) {
+    const grid = rebuildBoardGridFromPieces(lockedPieces, targetGrid);
+    restoreBoardState(state, { grid, lockedPieces }, { adoptBoard: true });
 }
 
 describe('live gravity policy', () => {
@@ -259,8 +266,8 @@ describe('live gravity policy', () => {
         const tick = 1000 / 60;
         for (let i = 1; i <= 60 && !bot.lastPlan; i++) bot.update(tick, i * tick);
         expect(bot.refreshRoute(bot.lastPlan)).toBe(true);
-        state.boardGrid = state.boardGrid.map((row) => row.slice());
-        state.boardGrid.at(-1)[2] = { id: 7, type: 'T' };
+        restorePieces(state, [{ x: 2, y: state.boardGrid.length - 1, shape: [[1]], shapeKey: 'T', pieceId: 7 }]);
+        expect(state.boardVersion).toBe(7);
         expect(bot.refreshRoute(bot.lastPlan)).toBe(false);
         state.reset();
     });
@@ -370,10 +377,11 @@ describe('live gravity policy', () => {
 
     it('has a legal escape before the reaction deadline on a clean, high stack', async () => {
         const state = deal(1006);
-        for (let y = HIDDEN_ROWS + 2; y < state.boardGrid.length; y++) {
-            state.boardGrid[y][1] = { id: 'left', type: 'I' };
-        }
-        state.lockedPieces = findConnectedComponents(state.boardGrid);
+        const top = HIDDEN_ROWS + 2;
+        restorePieces(state, [{
+            x: 1, y: top, shapeKey: 'I', pieceId: 'left',
+            shape: Array.from({ length: state.boardGrid.length - top }, () => [1]),
+        }]);
         const immediate = new GravityBotController({
             playerState: state, difficulty: 10, actions: {}, rng: seededRandom(71), planUnitsPerMs: 0,
         }).plan();
@@ -399,9 +407,11 @@ describe('live gravity policy', () => {
     it('preserves reachable poses and input paths on an expanded Infinity well', () => {
         const state = deal(1006);
         state.isInfinityMode = true;
-        state.boardGrid = Array.from({ length: 112 }, () => Array(COLS).fill(null));
+        const grid = Array.from({ length: 112 }, () => Array(COLS).fill(null));
+        restorePieces(state, [{
+            x: 2, y: 104, shapeKey: 'I', pieceId: 7, shape: Array.from({ length: 8 }, () => [1]),
+        }], grid);
         state.currentPiece.y = 89;
-        for (let y = 104; y < 112; y++) state.boardGrid[y][2] = { id: 7, type: 'I' };
         const poses = (list) => list.map(({
             x, y, rotation, actions,
         }) => [x, y, rotation, actions]);
