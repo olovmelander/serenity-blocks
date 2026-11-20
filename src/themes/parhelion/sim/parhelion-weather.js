@@ -164,9 +164,18 @@ export function createHappening() {
     };
 }
 
+/** The long happenings (odd slots) and the short ones (even slots), as HAPPENING_KINDS indices. */
+const LONG_KINDS = Object.freeze([0, 2, 4]);
+const SHORT_KINDS = Object.freeze([1, 3]);
+
 /**
  * The happening of the slot `time` stands in. Pure: the same time gives the same answer.
- * The first slot is quiet (a theme opens at rest), and a kind never follows itself.
+ * The first slot is quiet (a theme opens at rest). Odd slots take the long happenings in turn
+ * (a gust, a hound flaring, the range's flush) and even slots the short ones (a glint, a
+ * shimmer), so a kind never follows itself, none goes missing and the plain keeps a rhythm of
+ * long and short; WHEN in its slot each starts, and on which side, is the hash's. (A first try
+ * picked any kind by the hash and stepped off the slot before's: the slot before had sometimes
+ * stepped too, so two gusts still came running.)
  * @param {number} time
  * @param {ReturnType<typeof createHappening>} [out]
  */
@@ -174,12 +183,8 @@ export function happeningAt(time, out = createHappening()) {
     const t = Math.max(0, Number(time) || 0);
     const slot = Math.floor(t / HAPPENING_SECONDS);
     out.slot = slot;
-    const count = HAPPENING_KINDS.length;
-    let index = Math.floor(hash01(slot) * count) % count;
-    if (slot > 0) {
-        const before = Math.floor(hash01(slot - 1) * count) % count;
-        if (index === before) index = (index + 1 + Math.floor(hash01(slot + 0.5) * (count - 1))) % count;
-    }
+    const turn = Math.floor(slot / 2);
+    const index = slot % 2 === 1 ? LONG_KINDS[turn % LONG_KINDS.length] : SHORT_KINDS[turn % SHORT_KINDS.length];
     out.kindIndex = slot === 0 ? -1 : index;
     out.kind = slot === 0 ? '' : HAPPENING_KINDS[index];
     out.length = slot === 0 ? 0 : HAPPENING_LENGTH[out.kind];

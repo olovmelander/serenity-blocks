@@ -10,6 +10,12 @@
  * hounds stand beside the board. The theme wrapper (src/themes/parhelion/parhelion-theme.js)
  * drives this runtime.
  *
+ * The living pass (2026-11, docs/PARHELION_LIVING_HALO_2026-11.md): the far stones are an avenue
+ * of Blender-built menhirs in two rows from the frame's corners to the horizon; the Vigil Stone
+ * holds stars; the sun goes under on the walk back (a paraselene over blue snow, under stars,
+ * with dusk and dawn either side), five airs turn beside it, and each event has its own shape
+ * (rings on the plain, shafts of light, a wheel, pillars over the avenue, an open night).
+ *
  * ONE clock source: the runtime owns a ParhelionOpticsState and writes its reused `out` into
  * the shared uniforms every frame (deduped at ε 1e-4): gains, arcs, bursts, pillars, dust
  * effects, rim, bloom kick, the integrated clocks and the rotational shake.
@@ -71,7 +77,7 @@ import {
     createStoneRimMaterial,
     resolveParhelionTier,
 } from './parhelion-materials.js';
-import { buildFarStoneMesh, buildStoneGeometry } from './parhelion-geometry.js';
+import { buildFarStoneMeshes, buildStoneGeometry } from './parhelion-geometry.js';
 import {
     PARHELION_DUST_COUNTS,
     buildAvenueGeometry,
@@ -502,10 +508,11 @@ export function create(ctx) {
     rimShell.renderOrder = 11;
     rimShell.visible = !calmDebug;
 
-    // The far stones: one instanced draw, opaque, before the snow (early-z).
+    // The far stones (the avenue's menhirs): one instanced draw a kind, opaque, before the
+    // snow (early-z). renderOrder on the meshes themselves, never on a group.
     const farStoneMaterial = createFarStoneMaterial(u, tier);
-    const farStones = buildFarStoneMesh(farStoneMaterial, FAR_STONES);
-    farStones.renderOrder = 0;
+    const farStones = buildFarStoneMeshes(farStoneMaterial, FAR_STONES);
+    farStones.forEach((mesh) => { mesh.renderOrder = 0; });
 
     const snowGeometry = new THREE.PlaneGeometry(SNOW_SIZE, SNOW_SIZE, 1, 1);
     snowGeometry.rotateX(-Math.PI / 2);
@@ -545,9 +552,9 @@ export function create(ctx) {
     avenue.frustumCulled = false;
     avenue.renderOrder = 16;
 
-    scene.add(stone, farStones, snow, dome, rimShell, pillars, avenue, dust, glints);
+    scene.add(stone, ...farStones, snow, dome, rimShell, pillars, avenue, dust, glints);
     disposables.push(
-        farStones.geometry,
+        ...farStones.map((mesh) => mesh.geometry),
         farStoneMaterial,
         stoneGeometry,
         stoneMaterial,
@@ -1025,7 +1032,7 @@ export function create(ctx) {
             };
         },
         dispose() {
-            scene.remove(stone, farStones, snow, dome, rimShell, pillars, avenue, dust, glints);
+            scene.remove(stone, ...farStones, snow, dome, rimShell, pillars, avenue, dust, glints);
             post?.dispose();
             disposables.forEach((item) => item.dispose());
             overlay?.dispose();

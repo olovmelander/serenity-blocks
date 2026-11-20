@@ -40,6 +40,19 @@
  * the hounds blazing and running out along the parhelic line, glittering dust). The heat is an
  * input like the resonance: the runtime samples it once a frame (sampleHeat) before update(),
  * so update() stays a pure function of the cues, the heat and the time.
+ *
+ * The living pass (2026-11, docs/PARHELION_LIVING_HALO_2026-11.md): the plain never stands in
+ * one look for long, and every event has a shape of its own. By the clock (parhelion-weather.js):
+ * the night on the Lower Sun's walk back (`night`, `dusk`, `stars`: the display becomes a
+ * paraselene), a second wheel of five airs multiplied into what the hour shows (`air`, `grade`,
+ * `nacre`, the clocks' rates) and one small happening a slot, armed on its own start. By play:
+ * rings that cross the plain from the stone's foot (`ground`: a hard drop, four lines, the Sun
+ * Cross, a perfect clear), shafts of light round the stone (`rays`: four lines; a twist winds
+ * them into a wheel that turns once; a perfect clear splits them into the spectrum), the night
+ * a perfect clear opens, a level's band of gold and the far range's flush (`sweep`), a
+ * back-to-back answered down the avenue (`avenue`), and a run's end, which puts the sun under
+ * (gameOver / sessionStart: the one thing that outlives resetSession). The warmth walk itself is
+ * numerically what it was.
  */
 import {
     CAM_REST,
@@ -1295,7 +1308,9 @@ export class ParhelionOpticsState {
         grade[1] = 1 + (lean > 0 ? 0 : 0.02 * lean);
         grade[2] = 1 - (lean > 0 ? 0.09 * lean : 0.08 * lean);
         grade[3] = air.sat;
-        const raysAmbient = air.rays * (0.75 + 0.25 * out.breath) + 0.25 * heatHot + 0.5 * heatFever + 0.6 * cross;
+        // (Against a night sky the same shafts are twice as loud: the air's own are halved there.)
+        const raysAmbient = air.rays * (0.75 + 0.25 * out.breath) * (1 - 0.5 * night)
+            + 0.25 * heatHot + 0.5 * heatFever + 0.6 * cross;
         out.rays[0] = clamp(raysAmbient + this._channel(CH_RAYS, t) * flash, 0, 2.4);
         out.rays[1] = this._wheelTurn(t);
         out.rays[2] = clamp01(this._channel(CH_WHEEL, t));
@@ -1396,7 +1411,8 @@ export class ParhelionOpticsState {
             // A gust comes over the plain: the spindrift races, the dust swirls.
             this._env(CH_GUST, at, 2.2, 3.0, 2.4, 1);
         } else if (kind === 'glint') {
-            // A glint runs once round the ring.
+            // A glint runs once round the ring (not under reduced motion: it is all motion).
+            if (this.reducedMotion) return;
             const slot = this._waveSlot(0, at);
             this._arc(slot, 0, at, 0.3, WAVE_WIDTH, ARC_MODE.WHITE);
             this._arcMotion(slot, HALF_PI, HALF_PI - hap.side * TWO_PI, 2.6, EASE_IN_OUT_CUBIC);
@@ -1423,7 +1439,8 @@ export class ParhelionOpticsState {
      * @param {number} [tint] 0 the hour's own light, 1 the prism
      */
     _groundRing(birth, strength, tint = 0) {
-        if (!(strength > 0)) return;
+        // A ring is motion across the whole plain: none under reduced motion.
+        if (!(strength > 0) || this.reducedMotion || this.cueRm) return;
         let pick = 0;
         let oldest = Infinity;
         for (let i = 0; i < GROUND_RING.slots; i++) {
@@ -1468,10 +1485,12 @@ export class ParhelionOpticsState {
 
     /** A level: a band of gold crosses the plain from the horizon, the far range flushes rose. */
     _levelLight(t) {
+        this._env(CH_ALPEN, t, 1.0, 2.4, 2.6, 1.0 * this.gain);
+        // Under reduced motion the range still flushes; the band that crosses the plain stays home.
+        if (this.reducedMotion) return;
         this.sweepBirth = t;
         this.sweepStrength = this.gain;
-        this._env(CH_ALPEN, t, 1.0, 2.4, 2.6, 1.0 * this.gain);
-        if (!this.reducedMotion) this._env(CH_RAYS, t, 0.5, 0.8, 1.2, 0.35 * this.gain);
+        this._env(CH_RAYS, t, 0.5, 0.8, 1.2, 0.35 * this.gain);
     }
 
     /** out.sweep: where the level's band stands now, and the far range's flush. */
@@ -1637,7 +1656,7 @@ export class ParhelionOpticsState {
         if (!rm) this._shake(meet, 0.12, 0.15);
         // As the halo closes the hidden sun breaks out round the stone: shafts of light, and a
         // ring across the plain.
-        this._env(CH_RAYS, meet, 0.12, 0.3, 0.9, 1.15 * s);
+        this._env(CH_RAYS, meet, 0.12, 0.3, 0.9, 1.0 * s);
         this._groundRing(meet, 1.0 * s, 0);
         const motes = 40 + 4 * Math.min(3, Math.max(0, finiteNumber(c.depth, 0)));
         this._laneMotesTowardRing(t, 1.3 * s, motes, 0.9, 0.4);

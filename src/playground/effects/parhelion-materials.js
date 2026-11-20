@@ -11,6 +11,13 @@
  * drifts lit against the 9.5° sun (blue camera-facing slopes, gold crests), the far stones'
  * long shadows and the lower halo glinting in it; the dome draws two backlit mountain ranges
  * on the horizon; the far stones (createFarStoneMaterial) give the scene its scale.
+ *
+ * Living pass 2026-11: every material ends with the night's grade (ph_night; light that adds is
+ * turned silver instead); the dome also draws the afterglow, mother-of-pearl cloud, stars and
+ * the shafts of light round the stone, each behind a branch on its own uniform, so a clear noon
+ * runs none of them; the snow draws the rings that cross the plain (a second loop, over the live
+ * rows) and a level's band of gold; the stone holds the sky's own stars on the line of sight;
+ * the far stones are cleaved menhirs with the model's occlusion and snow on their ledges.
  */
 
 import * as THREE from 'three/webgpu';
@@ -470,7 +477,7 @@ export function createDomeMaterial(u, tierIn, { calmDebug = false } = {}) {
             const band = phi.mul(0.3183).add(a.mul(2.0)).mul(6.2832);
             const prism = cos(vec3(band, band.add(2.094), band.add(4.189))).mul(0.3).add(0.72);
             const plain = mix(linearColor(0xFFE9C4), linearColor(0xFFD6A0), lowSun);
-            opt.addAssign(mix(plain, prism, u.uRays.w.mul(0.8)).mul(pattern.mul(shaft).mul(u.uRays.x).mul(3.0)));
+            opt.addAssign(mix(plain, prism, u.uRays.w.mul(0.8)).mul(pattern.mul(shaft).mul(u.uRays.x).mul(2.3)));
         });
 
         // Reaction arcs: ONE WGSL loop over the live slots; costs nothing when idle.
@@ -732,14 +739,25 @@ export function createFarStoneMaterial(u, tierIn) {
         const dist = length(toP).toVar();
         const dir = toP.div(dist).toVar();
         const side = abs(n.x);
-        const light = saturate(side.mul(side).mul(0.9).add(max(n.y, 0.0).mul(0.45)).add(0.08));
+        // The model's own occlusion darkens its cracks and the undersides of its ledges.
+        const ao = attribute('aAo', 'float');
+        const light = saturate(side.mul(side).mul(0.9).add(max(n.y, 0.0).mul(0.45)).add(0.08)).mul(ao.mul(0.65).add(0.35));
         let col = mix(linearColor(0x0B0F1A), linearColor(0x3A4874), light);
-        col = mix(col, linearColor(0x7F93C8), smoothstep(0.5, 0.8, n.y).mul(0.85));
+        // Snow on every top and ledge: sky-blue in the stone's own shade, gold-white where the
+        // low sun behind the stone grazes it.
+        const sunLit = smoothstep(0.02, 0.2, dot(n, vec3(...S_VEC)));
+        const snowCol = mix(linearColor(0x7F93C8), mix(linearColor(0xFFE2B0), linearColor(0xFFB888), phLow(u.uWarmth)), sunLit);
+        col = mix(col, snowCol, smoothstep(0.5, 0.8, n.y).mul(0.9));
         const cA = dot(dir, vec3(...S_VEC)).toVar();
         const prox = exp(acos(clamp(cA, -1.0, 1.0)).div(0.25).negate()).mul(2.5).add(0.2);
         const edge = float(1.0).sub(saturate(dot(n, dir.negate())));
         const farRim = mix(linearColor(0xFFC978), linearColor(0xFFA060), phLow(u.uWarmth));
-        col = col.add(farRim.mul(edge.mul(edge).mul(edge).mul(prox).mul(0.9)));
+        // The gold rim: only on a face seen nearly edge-on AND turned to the sun behind it. On a
+        // cleaved stone a plain fresnel term lights a whole flat face a muddy brown.
+        const edge2 = edge.mul(edge);
+        const grazed = smoothstep(-0.25, 0.35, dot(n, vec3(...S_VEC)));
+        col = col.add(farRim.mul(edge2.mul(edge2).mul(edge).mul(grazed).mul(prox)
+            .mul(1.5)));
         // Aerial perspective into the horizon air (ph_fog over ph_haze, as the snow and the dome).
         // A level's band of light crossing the plain lights each stone as it passes.
         const lg = log(dist.div(u.uSweep.x)).div(u.uSweep.y.mul(1.6));

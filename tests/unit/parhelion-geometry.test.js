@@ -10,17 +10,21 @@ import {
     DEFAULT_STONE_PROFILE,
     FAR_STONES,
     MEASURED_VIEWPORTS,
+    MENHIR_KINDS,
     STONE,
     projectWorld,
     solveStone,
 } from '../../src/playground/effects/parhelion-composition.js';
 import {
+    MENHIR_SINK,
     STONE_SEED,
-    buildFarStoneMesh,
+    buildFarStoneMeshes,
+    buildMenhirGeometry,
     buildStoneGeometry,
     buildStoneRings,
     measureStoneProfile,
 } from '../../src/playground/effects/parhelion-geometry.js';
+import { PARHELION_MENHIRS } from '../../src/themes/parhelion/parhelion-menhir-models.js';
 
 describe('parhelion stone geometry', () => {
     const { geometry, profile } = buildStoneGeometry(STONE_SEED);
@@ -124,30 +128,77 @@ describe('parhelion stone geometry', () => {
     });
 });
 
-describe('parhelion far stones mesh', () => {
-    it('is ONE instanced draw of the composition row: split slabs, no ledge attributes', () => {
+describe('parhelion far stones: the avenue of menhirs (2026-11 living pass)', () => {
+    it('is ONE instanced draw a kind, every stone of the composition placed once', () => {
         const material = new THREE.MeshBasicNodeMaterial();
-        const mesh = buildFarStoneMesh(material, FAR_STONES);
-        expect(mesh.isInstancedMesh).toBe(true);
-        expect(mesh.count).toBe(FAR_STONES.length);
-        expect(mesh.geometry.index).toBeNull();
-        expect(mesh.geometry.attributes.aLedge).toBeUndefined();
-        expect(mesh.geometry.attributes.aLedgeW).toBeUndefined();
+        const meshes = buildFarStoneMeshes(material, FAR_STONES);
+        const kinds = new Set(FAR_STONES.map((stone) => stone[6]));
+        expect(meshes.length).toBe(kinds.size);
+        expect(meshes.length).toBeLessThanOrEqual(MENHIR_KINDS.length);
+        expect(meshes.reduce((sum, mesh) => sum + mesh.count, 0)).toBe(FAR_STONES.length);
         const m = new THREE.Matrix4();
         const p = new THREE.Vector3();
-        FAR_STONES.forEach(([x, z], i) => {
-            mesh.getMatrixAt(i, m);
-            p.setFromMatrixPosition(m);
-            expect(p.x).toBeCloseTo(x, 6);
-            expect(p.z).toBeCloseTo(z, 6);
-            expect(p.y).toBeLessThan(0);
+        const q = new THREE.Quaternion();
+        const s = new THREE.Vector3();
+        MENHIR_KINDS.forEach((name, kind) => {
+            const mesh = meshes.find((entry) => entry.name.endsWith(name));
+            const rows = FAR_STONES.filter((stone) => stone[6] === kind);
+            expect(mesh.isInstancedMesh, name).toBe(true);
+            expect(mesh.count, name).toBe(rows.length);
+            rows.forEach(([x, z, , height], i) => {
+                mesh.getMatrixAt(i, m);
+                m.decompose(p, q, s);
+                // Float32 matrices: the foot is where the composition says, to a millimetre.
+                expect(p.x).toBeCloseTo(x, 3);
+                expect(p.z).toBeCloseTo(z, 3);
+                // Sunk a little into the snow (less than the model's own buried foot), and its
+                // model one stone-height tall on every axis (no squash: the kinds keep their shape).
+                expect(p.y).toBeCloseTo(-MENHIR_SINK * height, 3);
+                expect(s.x).toBeCloseTo(height, 3);
+                expect(s.y).toBeCloseTo(height, 3);
+                expect(s.z).toBeCloseTo(height, 3);
+            });
         });
-        // The crown is cut flat (a slanted plane), so no vertex rises above ≈ 1.05 unit height.
-        const pos = mesh.geometry.attributes.position;
-        let top = 0;
-        for (let i = 0; i < pos.count; i++) top = Math.max(top, pos.getY(i));
-        expect(top).toBeLessThan(1.06);
-        mesh.geometry.dispose();
+        meshes.forEach((mesh) => mesh.geometry.dispose());
         material.dispose();
+    });
+
+    it('decodes each model to a unit-tall indexed mesh with unit normals and an occlusion in 0..1', () => {
+        MENHIR_KINDS.forEach((name) => {
+            const model = PARHELION_MENHIRS[name];
+            expect(MENHIR_SINK, name).toBeLessThan(model.bury);
+            const geometry = buildMenhirGeometry(model);
+            const pos = geometry.attributes.position;
+            const { normal } = geometry.attributes;
+            const ao = geometry.attributes.aAo;
+            expect(geometry.index.count % 3).toBe(0);
+            expect(pos.count).toBe(normal.count);
+            expect(pos.count).toBe(ao.count);
+            let top = -Infinity;
+            let bottom = Infinity;
+            for (let i = 0; i < pos.count; i++) {
+                top = Math.max(top, pos.getY(i));
+                bottom = Math.min(bottom, pos.getY(i));
+                const length = Math.hypot(normal.getX(i), normal.getY(i), normal.getZ(i));
+                expect(length).toBeGreaterThan(0.97);
+                expect(length).toBeLessThan(1.03);
+                expect(ao.getX(i)).toBeGreaterThanOrEqual(0);
+                expect(ao.getX(i)).toBeLessThanOrEqual(1);
+            }
+            expect(top, name).toBeCloseTo(1, 3);
+            expect(bottom, name).toBeLessThan(0);
+            for (let i = 0; i < geometry.index.count; i++) expect(geometry.index.getX(i)).toBeLessThan(pos.count);
+            geometry.dispose();
+        });
+    });
+
+    it('gives each stone the half-width its kind really has (its shadow and its light pillar use it)', () => {
+        FAR_STONES.forEach(([, , halfWidth, height, , , kind]) => {
+            const model = PARHELION_MENHIRS[MENHIR_KINDS[kind]];
+            const real = Math.max(Math.abs(model.min[0]), Math.abs(model.max[0])) * height;
+            // Within a third of the model's own broadest half-width (a shadow is softened anyway).
+            expect(halfWidth / real, MENHIR_KINDS[kind]).toBeGreaterThan(0.66);
+            expect(halfWidth / real, MENHIR_KINDS[kind]).toBeLessThan(1.34);
+        });
     });
 });

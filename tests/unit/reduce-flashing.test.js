@@ -181,6 +181,12 @@ describe('every world that writes a frame-wide flash scales it', () => {
         // A perfect clear's storm light on the whole land, and the blast's thermal in the column.
         ['src/themes/pyrestorm/pyrestorm-world.js', /const fs = flashScale\(\);[\s\S]*stormGlow\.valueAt\(time\) \* 0\.95 \* fs/],
         ['src/themes/pyrestorm/pyrestorm-world.js', /1\.5 \* this\.thermalPower \* fs/],
+        // Parhelion has no flash in its post: its frame-wide lights are written by the optics
+        // state. The burst of shafts round the stone, the night a perfect clear opens, and the
+        // rings that cross the plain.
+        ['src/themes/parhelion/sim/parhelion-optics-state.js', /this\._channel\(CH_RAYS, t\) \* flash/],
+        ['src/themes/parhelion/sim/parhelion-optics-state.js', /this\._channel\(CH_NIGHT, t\)\) \* flash/],
+        ['src/themes/parhelion/sim/parhelion-optics-state.js', /strength \* \(0\.4 \+ 0\.6 \* flash\)/],
     ])('%s', (file, pattern) => {
         expect(read(file)).toMatch(pattern);
     });
