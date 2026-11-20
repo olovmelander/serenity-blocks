@@ -10,6 +10,12 @@
  * hounds stand beside the board. The theme wrapper (src/themes/parhelion/parhelion-theme.js)
  * drives this runtime.
  *
+ * The living pass (2026-11, docs/PARHELION_LIVING_HALO_2026-11.md): the far stones are an avenue
+ * of Blender-built menhirs in two rows from the frame's corners to the horizon; the Vigil Stone
+ * holds stars; the sun goes under on the walk back (a paraselene over blue snow, under stars,
+ * with dusk and dawn either side), five airs turn beside it, and each event has its own shape
+ * (rings on the plain, shafts of light, a wheel, pillars over the avenue, an open night).
+ *
  * ONE clock source: the runtime owns a ParhelionOpticsState and writes its reused `out` into
  * the shared uniforms every frame (deduped at ε 1e-4): gains, arcs, bursts, pillars, dust
  * effects, rim, bloom kick, the integrated clocks and the rotational shake.
@@ -29,7 +35,12 @@
  *   ?parhelionCombo=<n>     static resonance preview (Warm Hounds / Crowning / Parhelic Line)
  *   ?parhelionPulse=<cue>&parhelionPulseAge=<s>  one deterministic reaction through the real
  *                           optics state: lock, harddrop, single, double, triple, quad, twist,
- *                           apex, perfect, echo
+ *                           apex, perfect, echo (b2b), level (a level-up), over (a run's end),
+ *                           drops (a hard drop every 0.45 s for the 6 s before the frame)
+ *   ?parhelionHour=<0..2>   hold a place on the Lower Sun's walk: 0 noon, 1 the golden sun,
+ *                           1.25 dusk, 1.5 the moonlit night, 1.75 dawn
+ *   ?parhelionAir=<name>    hold one air: clear | cirrus | crystal | drift | fog
+ *   ?parhelionHappenings=0  none of the things that happen by themselves (a still frame)
  *   ?parhelionCalmDebug=1   calm-union outline in the dome (stone hidden so it shows)
  *   ?parhelionNoPost=1      direct render (no RenderPipeline) — debugging only
  *   ?parhelionBloom=<s>     bloom strength override (A/B only)
@@ -66,12 +77,14 @@ import {
     createStoneRimMaterial,
     resolveParhelionTier,
 } from './parhelion-materials.js';
-import { buildFarStoneMesh, buildStoneGeometry } from './parhelion-geometry.js';
+import { buildFarStoneMeshes, buildStoneGeometry } from './parhelion-geometry.js';
 import {
     PARHELION_DUST_COUNTS,
+    buildAvenueGeometry,
     buildDustSprite,
     buildGlintSprite,
     buildPillarGeometry,
+    createAvenueMaterial,
     createBurstUniforms,
     createDustMaterial,
     createGlintMaterial,
@@ -82,6 +95,7 @@ import { applyCameraBreath } from '../../themes/shared/camera-breath.js';
 import { ThemeCameraRig } from '../../themes/shared/camera-rig.js';
 import { ParhelionOpticsState } from '../../themes/parhelion/sim/parhelion-optics-state.js';
 import { CUE } from '../../themes/parhelion/sim/parhelion-reaction-director.js';
+import { AIR_NAMES } from '../../themes/parhelion/sim/parhelion-weather.js';
 
 export const meta = {
     id: 'parhelion',
@@ -124,7 +138,11 @@ const PULSE_CUES = Object.freeze({
     apex: Object.freeze({ kind: CUE.APEX, lines: 1, combo: 10 }),
     perfect: Object.freeze({ kind: CUE.PERFECT, lines: 4 }),
     echo: Object.freeze({ kind: CUE.ECHO, lines: 4, echoOf: CUE.QUAD }),
+    b2b: Object.freeze({ kind: CUE.ECHO, lines: 4, echoOf: CUE.QUAD }),
 });
+
+/** `?parhelionPulse=` names that are not a cue: a level-up, a run's end, sustained hard drops. */
+const PULSE_SPECIALS = Object.freeze(['level', 'over', 'drops']);
 
 // ---------------------------------------------------------------------------------------
 // Small pure helpers
@@ -454,9 +472,19 @@ export function create(ctx) {
     const { caps } = optics;
     if (combo > 0) optics.setResonance(Math.min(1, combo / 10));
     if (level > 1) optics.setLevel(level, 0);
-    const pulseCue = makePulseCue(params?.get?.('parhelionPulse'));
+    const pulseName = String(params?.get?.('parhelionPulse') || '').toLowerCase();
+    const pulseCue = makePulseCue(pulseName);
+    const pulseSpecial = PULSE_SPECIALS.includes(pulseName) ? pulseName : '';
     const pulseAge = Math.max(0, readNumber(params, 'parhelionPulseAge', 0.5));
-    let pulsePending = Boolean(pulseCue);
+    let pulsePending = Boolean(pulseCue) || Boolean(pulseSpecial);
+    // Captures: hold a place on the Lower Sun's walk, hold one air, still the happenings.
+    const airName = String(params?.get?.('parhelionAir') || '').toLowerCase();
+    const hour = readNumber(params, 'parhelionHour', -1);
+    optics.configure({
+        air: AIR_NAMES.indexOf(airName),
+        walk: hour >= 0 ? hour : -1,
+        happenings: params?.get?.('parhelionHappenings') !== '0',
+    });
 
     const u = createSharedUniforms();
     const disposables = [];
@@ -480,10 +508,11 @@ export function create(ctx) {
     rimShell.renderOrder = 11;
     rimShell.visible = !calmDebug;
 
-    // The far stones: one instanced draw, opaque, before the snow (early-z).
+    // The far stones (the avenue's menhirs): one instanced draw a kind, opaque, before the
+    // snow (early-z). renderOrder on the meshes themselves, never on a group.
     const farStoneMaterial = createFarStoneMaterial(u, tier);
-    const farStones = buildFarStoneMesh(farStoneMaterial, FAR_STONES);
-    farStones.renderOrder = 0;
+    const farStones = buildFarStoneMeshes(farStoneMaterial, FAR_STONES);
+    farStones.forEach((mesh) => { mesh.renderOrder = 0; });
 
     const snowGeometry = new THREE.PlaneGeometry(SNOW_SIZE, SNOW_SIZE, 1, 1);
     snowGeometry.rotateX(-Math.PI / 2);
@@ -515,9 +544,17 @@ export function create(ctx) {
     const glintMaterial = createGlintMaterial(u, bursts, caps.perSlot);
     const glints = buildGlintSprite(glintMaterial, caps.burstSlots * caps.perSlot);
 
-    scene.add(stone, farStones, snow, dome, rimShell, pillars, dust, glints);
+    // The avenue's answer: one quad a far stone, zero width while no wave runs.
+    const avenueGeometry = buildAvenueGeometry(FAR_STONES);
+    const avenueMaterial = createAvenueMaterial(u);
+    const avenue = new THREE.Mesh(avenueGeometry, avenueMaterial);
+    avenue.name = 'parhelion-avenue-pillars';
+    avenue.frustumCulled = false;
+    avenue.renderOrder = 16;
+
+    scene.add(stone, ...farStones, snow, dome, rimShell, pillars, avenue, dust, glints);
     disposables.push(
-        farStones.geometry,
+        ...farStones.map((mesh) => mesh.geometry),
         farStoneMaterial,
         stoneGeometry,
         stoneMaterial,
@@ -528,6 +565,8 @@ export function create(ctx) {
         domeMaterial,
         pillarGeometry,
         pillarMaterial,
+        avenueGeometry,
+        avenueMaterial,
         dust.geometry,
         dustMaterial,
         glints.geometry,
@@ -754,6 +793,21 @@ export function create(ctx) {
         setScalar(u.uDustGain, out.dustGain);
         setScalar(u.uDensity, out.density);
         setScalar(u.uRim, out.rim);
+        // The living pass: the night, the air, and each event's own shape.
+        setScalar(u.uNight, out.night);
+        setScalar(u.uDusk, out.dusk);
+        setScalar(u.uStars, out.stars);
+        setScalar(u.uStoneStars, out.stoneStars);
+        setScalar(u.uNacre, out.nacre);
+        setV4(u.uAir.value, out.air[0], out.air[1], out.air[2], out.air[3]);
+        setV4(u.uRays.value, out.rays[0], out.rays[1], out.rays[2], out.rays[3]);
+        setV4(u.uSweep.value, out.sweep[0], out.sweep[1], out.sweep[2], out.sweep[3]);
+        setV4(u.uAvenue.value, out.avenue[0], out.avenue[1], out.avenue[2], out.avenue[3]);
+        for (let i = 0; i < u.groundSlots.length; i++) {
+            const o = i * 4;
+            setV4(u.groundSlots[i], out.ground[o], out.ground[o + 1], out.ground[o + 2], out.ground[o + 3]);
+        }
+        if (u.uGroundCount.value !== out.groundCount) u.uGroundCount.value = out.groundCount;
         if (out.burstDirty) {
             const { values } = bursts;
             for (let i = 0; i < bursts.slots; i++) {
@@ -778,6 +832,7 @@ export function create(ctx) {
         }
         post?.setBloomKick(out.bloomKick);
         post?.setExposure(out.exposure);
+        post?.setGrade(out.grade[0], out.grade[1], out.grade[2], out.grade[3]);
         // Reduced motion: the optics state's camera breath scale (0.3) damps the rig's float.
         cameraRig.breatheScale = CAMERA_RIG.BREATHE_SCALE * out.breathScale;
         shake.yaw = out.shake.yawDeg * DEG;
@@ -787,7 +842,18 @@ export function create(ctx) {
     function evaluate(t, dt, seeking, allowPulse = true) {
         if (pulsePending && allowPulse) {
             // The pulse is born `age` seconds before the first evaluated frame.
-            optics.applyCue(pulseCue, t - pulseAge);
+            if (pulseCue) optics.applyCue(pulseCue, t - pulseAge);
+            else if (pulseSpecial === 'level') optics.setLevel(level + 1, t - pulseAge);
+            else if (pulseSpecial === 'over') optics.gameOver(t - pulseAge);
+            else if (pulseSpecial === 'drops') {
+                // Sustained play: a hard drop every 0.45 s over the six seconds before the frame.
+                const drop = makePulseCue('harddrop');
+                for (let k = 13; k >= 0; k--) {
+                    drop.lockCount = 14 - k;
+                    drop.lockU = k % 2 ? 0.3 : 0.7;
+                    optics.applyCue(drop, t - pulseAge - k * 0.45);
+                }
+            }
             pulsePending = false;
         }
         // The heat of play, once a frame on this clock (a seek holds the fever: GameplaySurge).
@@ -882,6 +948,14 @@ export function create(ctx) {
         resetSession() {
             optics.resetSession();
         },
+        /** A run ended: the sun goes under (the night outlives resetSession and the menu). */
+        gameOver() {
+            optics.gameOver(now);
+        },
+        /** A new run: day breaks at once. */
+        sessionStart() {
+            optics.sessionStart(now);
+        },
         camera(time, cam) {
             const cameraFov = iconMode ? ICON_VFOV_DEG : vfovDeg(view.aspect);
             if (Math.abs(cam.fov - cameraFov) > 1e-6 || cam.near !== CAMERA_NEAR || cam.far !== CAMERA_FAR) {
@@ -904,8 +978,8 @@ export function create(ctx) {
         getCaptureMeta() {
             return {
                 tier: tier.name,
-                pulse: pulseCue ? params.get('parhelionPulse') : null,
-                pulseAge: pulseCue ? pulseAge : null,
+                pulse: pulseCue || pulseSpecial ? pulseName : null,
+                pulseAge: pulseCue || pulseSpecial ? pulseAge : null,
                 time: now,
             };
         },
@@ -939,6 +1013,14 @@ export function create(ctx) {
                     rim: out.rim,
                     ringFlash: out.ringFlash,
                     prism: out.prism,
+                    night: out.night,
+                    dusk: out.dusk,
+                    stars: out.stars,
+                    air: Array.from(out.air),
+                    airName: AIR_NAMES[optics.air.index],
+                    rays: Array.from(out.rays),
+                    groundCount: out.groundCount,
+                    happening: optics.hap.kind,
                 },
                 pulse: pulseCue ? { name: params.get('parhelionPulse'), age: pulseAge } : null,
                 dust: dustSpec.count,
@@ -950,7 +1032,7 @@ export function create(ctx) {
             };
         },
         dispose() {
-            scene.remove(stone, farStones, snow, dome, rimShell, pillars, dust, glints);
+            scene.remove(stone, ...farStones, snow, dome, rimShell, pillars, avenue, dust, glints);
             post?.dispose();
             disposables.forEach((item) => item.dispose());
             overlay?.dispose();

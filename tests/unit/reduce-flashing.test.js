@@ -186,6 +186,12 @@ describe('every world that writes a frame-wide flash scales it', () => {
         ['src/themes/neon-dusk/neon-dusk-world.js', /this\.scan\.energy \* envelope \* flashScale\(\)/],
         // Lightning far inside a cloud bank (a clock happening, and a deep chain's answer).
         ['src/themes/painted-ages/painted-ages-world.js', /const scale = flashScale\(\);[\s\S]*h\.age\)[^;]*\* scale;[\s\S]*stormFlickerAt\) \* scale;/],
+        // Parhelion has no flash in its post: its frame-wide lights are written by the optics
+        // state. The burst of shafts round the stone, the night a perfect clear opens, and the
+        // rings that cross the plain.
+        ['src/themes/parhelion/sim/parhelion-optics-state.js', /this\._channel\(CH_RAYS, t\) \* flash/],
+        ['src/themes/parhelion/sim/parhelion-optics-state.js', /this\._channel\(CH_NIGHT, t\)\) \* flash/],
+        ['src/themes/parhelion/sim/parhelion-optics-state.js', /strength \* \(0\.4 \+ 0\.6 \* flash\)/],
     ])('%s', (file, pattern) => {
         expect(read(file)).toMatch(pattern);
     });
