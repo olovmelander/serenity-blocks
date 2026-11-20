@@ -49,7 +49,9 @@ const LOOK_AHEAD = 12;
  * Two rings share the buffer: rain cycles through its own `rainSlots` at the end; everything else
  * (pigment dust, sparks, the dust devil) through the rest, where a new mote takes a spent slot
  * near the cursor, or else the one closest to the end of its life (the faintest), never a mote
- * that has just risen.
+ * that has just risen. A run's sky lanterns ride in the RAIN's ring: they live half a minute,
+ * and in the pigment ring the next run's first locks wrote over them (on the lean tiers, all of
+ * them within seconds).
  */
 export class Motes {
     constructor(u, count = 2048) {
@@ -176,7 +178,7 @@ export class Motes {
         x, y, z, vx = 0, vy = 0, vz = 0, born, life = 3, rgb = [1, 1, 1], size = 1, kind = MOTE_KIND.dust, seed = Math.random(), swirl = 0, rise = 0,
     }) {
         let i;
-        if (kind === MOTE_KIND.rain) {
+        if (kind === MOTE_KIND.rain || kind === MOTE_KIND.lantern) {
             i = this.pigmentSlots + this.rainCursor;
             this.rainCursor = (this.rainCursor + 1) % this.rainSlots;
         } else {

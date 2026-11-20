@@ -367,7 +367,7 @@ export function createUniforms() {
          * fields slide through each other and the clouds form and melt instead of only passing.
          */
         wind2: uniform(new THREE.Vector2(0, 0)),
-        cloudCover: uniform(0.32),
+        cloudCover: uniform(0.38),
         /** How hard the wind blows now (1 on a fair day; the weather's and play's wind raise it). */
         windSpeed: uniform(1),
         /** How much of the sun a cloud's shadow takes (the weather's; 0.72 on a fair day). */
@@ -457,10 +457,11 @@ export function createUniforms() {
         /** Back-to-back's veins of gold across the beds: (a clear's flare, the flare's run in m). */
         veins: uniform(new THREE.Vector2(0, 0)),
         /**
-         * The lamps along the stair: (a flare's front 0..1 along the walk, the flare's strength,
-         * how far up the walk the lamps are lit at dusk 0..1).
+         * A level-up's flare up the stair's lamps: (its front along the walk, 0 by the eye … 1 at
+         * the pavilion, -1 when none runs; its strength). The lamps' own lighting at dusk follows
+         * `lamps`, each by its place along the walk.
          */
-        lampRun: uniform(new THREE.Vector3(-1, 0, 1)),
+        lampRun: uniform(new THREE.Vector2(-1, 0)),
         recordTop: uniform(160),
         recordHead: uniform(RECORD_ROWS - 1),
         recordCount: uniform(0),

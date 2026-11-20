@@ -1261,7 +1261,7 @@ export class PaintedAgesWorld {
         u.strataShift.value = thereAndBack((this.shiftSteps(time) + dawn) * LEVEL_SHIFT, SHIFT_RANGE);
         // A level-up's flare runs the lamps up the stair.
         const lampAge = time - this.lampRunAt;
-        u.lampRun.value.set(lampAge >= 0 && lampAge < LAMP_RUN_LIFE ? (lampAge / LAMP_RUN) * 1.15 - 0.05 : -1, lampAge >= 0 && lampAge < LAMP_RUN_LIFE ? 1 - smooth(LAMP_RUN_LIFE - 1, LAMP_RUN_LIFE, lampAge) : 0, 1);
+        u.lampRun.value.set(lampAge >= 0 && lampAge < LAMP_RUN_LIFE ? (lampAge / LAMP_RUN) * 1.15 - 0.05 : -1, lampAge >= 0 && lampAge < LAMP_RUN_LIFE ? 1 - smooth(LAMP_RUN_LIFE - 1, LAMP_RUN_LIFE, lampAge) : 0);
         const L = this.dusk > 0.001 ? blendLight(this._hourLight, this._duskLight, this.dusk * 0.85, this.light) : copyLight(this._hourLight, this.light);
         u.sunDir.value.set(L.dir[0], L.dir[1], L.dir[2]);
         u.sunUp.value = L.sunUp;
@@ -1462,7 +1462,7 @@ export class PaintedAgesWorld {
         }
         const on = this.overrides.happenings !== false || Boolean(forced);
         const meteor = on && h.kind === 'meteor' ? swellOver(h.age, 0.07, 1.25) * smooth(0.4, 0.8, L.stars) : 0;
-        u.meteor.value.set(h.side * (0.3 + 0.22 * h.seed), 0.2 + 0.07 * ((h.seed * 7.3) % 1), Math.max(0, h.age), meteor);
+        u.meteor.value.set(h.side * (0.36 + 0.2 * h.seed), 0.2 + 0.07 * ((h.seed * 7.3) % 1), Math.max(0, h.age), meteor);
         // One stroke and its echo; a single soft swell when flashing is reduced.
         const scale = flashScale();
         const stroke = (age) => swellOver(age, 0.06, 0.6) + (scale < 1 ? 0 : 0.7 * swellOver(age - 0.42, 0.05, 0.5));

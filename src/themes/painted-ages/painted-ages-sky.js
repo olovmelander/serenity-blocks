@@ -150,7 +150,9 @@ export function createSky(u, t, tier) {
             sky.addAssign(light.mul(u.stars).mul(height).mul(0.95));
             // A meteor: a head running down the sky on a short bright tail.
             If(u.meteor.w.greaterThan(0.001), () => {
-                const run = vec2(-0.34, -0.2);
+                // It falls toward the middle of the sky from whichever side it began on (run
+                // one way only, a third of those on the far side left the frame at full strength).
+                const run = vec2(u.meteor.x.sign().mul(-0.34), -0.2);
                 const head = vec2(u.meteor.x, u.meteor.y).add(run.mul(u.meteor.z.mul(0.55)));
                 const rel = vec2(az, dir.y).sub(head);
                 const back = clamp(dot(rel, run.negate()).div(dot(run, run)), 0.0, 0.15);

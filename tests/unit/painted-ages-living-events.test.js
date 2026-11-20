@@ -931,7 +931,9 @@ describe('Painted Ages events: a run\'s end sends the sky lanterns up', () => {
         const terrace = groundHeight(fields, PAVILION.x, PAVILION.z, true);
         const births = [];
         for (const i of lanterns) {
-            expect(i).toBeLessThan(motes.pigmentSlots);
+            // They ride in the rain's ring: in the pigment ring the next run's first locks wrote
+            // over them (this file's helper saw 3 of 18 left after 8 s at Low, none at Minimal).
+            expect(i).toBeGreaterThanOrEqual(motes.pigmentSlots);
             const [x, y, z, born] = motes.start.subarray(i * 4, i * 4 + 4);
             const [, vy, , life] = motes.move.subarray(i * 4, i * 4 + 4);
             expect(Math.hypot(x - PAVILION.x, z - PAVILION.z)).toBeLessThan(12);

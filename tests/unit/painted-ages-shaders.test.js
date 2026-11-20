@@ -31,7 +31,7 @@ import { createVultures } from '../../src/themes/painted-ages/painted-ages-vultu
 
 vi.setConfig({ testTimeout: 60_000 });
 
-/** The default tier, a lean one, and the leanest (it thins the props, the pennants, the banks and the pools). */
+/** The default tier, a lean one, and the leanest (no flutes, one cloud layer, the pennants at twice the pitch). */
 const TIERS = ['High', 'Low', 'Minimal'];
 /**
  * The materials the living pass added (the dust devils, the pennants) and the ones it changed: each
@@ -42,7 +42,7 @@ const LIVING_MATERIALS = [
     'PaintedAgesProps', 'PaintedAgesHalos', 'PaintedAgesMotes', 'PaintedAgesPoplars',
 ];
 const BACKENDS = [['WGSL', false], ['GLSL', true]];
-/** The land's fragment is the largest stage (about 48 KiB at the time of writing). */
+/** The land's fragment is the largest stage (about 60 KiB in WGSL and 68 in GLSL since the living pass). */
 const FRAGMENT_BUDGET = 96 * 1024;
 
 const canvas = {
