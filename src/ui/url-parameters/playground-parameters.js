@@ -6029,7 +6029,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
         [
             'parts',
             'Draw only these parts.',
-            'Comma list of land, sky, props, cumulus, poplars, devils, motes.',
+            'Comma list of land, sky, props, cumulus, poplars, devils, vultures, motes.',
             'All.',
             'land,sky',
         ],
@@ -6119,6 +6119,23 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'Off.',
             '1',
         ],
+        [
+            'vultures',
+            'Fly one visit of the bearded vultures alone: a thermal (birds circling in a rising column) or a close pass.',
+            'thermal, pass or off (no birds).',
+            'Their own timetable.',
+            'thermal',
+        ],
+        [
+            'vultureAge',
+            'Seconds into that visit (0 is the first bird banking into its circle; an arrival is a few seconds before).',
+            'Seconds, may be negative.',
+            '0.',
+            '15',
+        ],
+        ['vultureSide', 'The side of the board card the visit flies on.', '-1 (left) or 1 (right).', 'The timetable’s.', '-1'],
+        ['vultureVisit', 'Which visit of the timetable to fly (its seeded birds and site).', 'Integer ≥ 0.', '0.', '2'],
+        ['vultureWay', 'A pass flown as its route is written or back along it.', '1 or -1.', 'The timetable’s.', '1'],
     ].map(([name, description, values, defaultValue, value]) => ({
         name,
         category: 'Playground',

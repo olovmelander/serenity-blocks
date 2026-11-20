@@ -159,7 +159,7 @@ const captureThemes = [
         'backdrop, surface, seabed, branching, tables, brains, sponges, fans, anemones, kelp, grass, '
         + 'school, reefFish, whales, mantas, turtles, jellies, motes, pool'],
 
-    ['painted-ages', 'paintedAges', 'Painted Ages', 'land, sky, props, cumulus, poplars, devils, motes'],
+    ['painted-ages', 'paintedAges', 'Painted Ages', 'land, sky, props, cumulus, poplars, devils, vultures, motes'],
 
     ['pyrestorm', 'pyrestorm', 'Pyrestorm', 'land, snags, sky, anvil, ash, bolts, jets, fans, whirls, bombs, motes'],
 

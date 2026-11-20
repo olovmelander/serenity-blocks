@@ -74,6 +74,7 @@ import { DevilTable, createDevils } from './painted-ages-devils.js';
 import { createPropsSteps } from './painted-ages-props.js';
 import { createCumulus } from './painted-ages-cumulus.js';
 import { createPoplars } from './painted-ages-life.js';
+import { createVultures } from './painted-ages-vultures.js';
 import { EventTables, MOTE_KIND, Motes } from './painted-ages-fx.js';
 import { createFanGeometry, createLandMaterial, fanPositionSteps } from './painted-ages-land.js';
 import { createShadowPass } from './painted-ages-shadow.js';
@@ -84,7 +85,7 @@ import { drainSteps } from '../shared/build-steps.js';
 import { GameplaySurge, Swell } from '../shared/gameplay-surge.js';
 import { flashScale } from '../../utils/photosensitivity.js';
 
-export const PAINTED_AGES_PARTS = Object.freeze(['land', 'sky', 'props', 'cumulus', 'poplars', 'devils', 'motes']);
+export const PAINTED_AGES_PARTS = Object.freeze(['land', 'sky', 'props', 'cumulus', 'poplars', 'devils', 'vultures', 'motes']);
 export const REST_RIG = Object.freeze({ near: RIG.near, far: RIG.far });
 export const fovForAspect = (aspect) => rigFor(aspect).fov;
 
@@ -440,6 +441,7 @@ export class PaintedAgesWorld {
         this.addPart('sky', createSky(this.u, this.textures, tier));
         this.addPart('cumulus', createCumulus(this.u, this.textures, tier, tier.banks));
         this.addPart('devils', createDevils(this.u, this.textures));
+        this.addPart('vultures', createVultures(this.u, this.textures, tier, this.fields));
         this.motes = new Motes(this.u, tier.motes);
         this.addPart('motes', {
             mesh: this.motes.mesh,
