@@ -20,7 +20,8 @@
  */
 
 import * as THREE from 'three/webgpu';
-import { STONE } from './parhelion-composition.js';
+import { MENHIR_KINDS, STONE } from './parhelion-composition.js';
+import { PARHELION_MENHIRS } from '../../themes/parhelion/parhelion-menhir-models.js';
 
 /** Default stone seed (§5.1). */
 export const STONE_SEED = 0x5057;
@@ -293,45 +294,64 @@ export function buildStoneGeometry(seed = STONE_SEED, options = {}) {
     return { geometry, profile: measureStoneProfile(rings), crown: { x: apex.x, y: apex.y } };
 }
 
-/** Seed of the far stones' shared mesh (a coarser cousin of the Vigil Stone). */
-export const FAR_STONE_SEED = 0x7a11;
+/** How far a far stone is sunk into the snow, as a share of its height (its model's buried foot is 0.08). */
+export const MENHIR_SINK = 0.035;
 
 /**
- * The far stones (composition FAR_STONES) as ONE instanced mesh: a coarse stone lathe (no
- * ledge attributes), each instance turned, leaned, scaled to its size and sunk a little into
- * the snow. One draw call for the whole row.
- * @param {THREE.Material} material
- * @param {ReadonlyArray<ReadonlyArray<number>>} stones `[x, z, halfWidth, height, lean, turn]`
+ * One menhir kind's geometry from the generated numbers
+ * (src/themes/parhelion/parhelion-menhir-models.js, modelled in Blender): `position` in units
+ * of the stone's height (the ground at y 0, its top at y 1), `normal` (split along every sharp
+ * arris), and `aAo` (its ambient occlusion, 1 in the open).
+ * @param {{ quant: number, positions: number[], normals: number[], ao: number[], index: number[] }} model
  */
-export function buildFarStoneMesh(material, stones) {
-    const { geometry: lathe } = buildStoneGeometry(FAR_STONE_SEED, { radial: 14, rows: 12 });
-    // Split slabs, not thumbs: cut the domed crown off along a slanted plane, then shade flat
-    // (non-indexed), so each far stone shows cleaved faces and a sharp, leaning top.
-    const pos = lathe.attributes.position;
-    for (let i = 0; i < pos.count; i++) {
-        const cut = 0.86 + 0.16 * pos.getX(i) - 0.05 * pos.getZ(i);
-        if (pos.getY(i) > cut) pos.setY(i, cut);
+export function buildMenhirGeometry(model) {
+    const count = model.positions.length / 3;
+    const positions = new Float32Array(count * 3);
+    const normals = new Float32Array(count * 3);
+    const ao = new Float32Array(count);
+    for (let i = 0; i < count * 3; i++) {
+        positions[i] = model.positions[i] * model.quant;
+        normals[i] = model.normals[i] / 127;
     }
-    const geometry = lathe.toNonIndexed();
-    lathe.dispose();
-    geometry.deleteAttribute('aLedge');
-    geometry.deleteAttribute('aLedgeW');
-    geometry.computeVertexNormals();
-    const mesh = new THREE.InstancedMesh(geometry, material, stones.length);
+    for (let i = 0; i < count; i++) ao[i] = model.ao[i] / 255;
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geometry.setAttribute('normal', new THREE.BufferAttribute(normals, 3));
+    geometry.setAttribute('aAo', new THREE.BufferAttribute(ao, 1));
+    geometry.setIndex(model.index);
+    geometry.computeBoundingSphere();
+    return geometry;
+}
+
+/**
+ * The far stones (composition FAR_STONES): the avenue's menhirs, ONE instanced draw a kind
+ * (three draws for the sixteen stones). Each instance is its model at the stone's height,
+ * turned, leaned and sunk a little into the snow.
+ * @param {THREE.Material} material
+ * @param {ReadonlyArray<ReadonlyArray<number>>} stones `[x, z, halfWidth, height, lean, turn, kind]`
+ * @returns {THREE.InstancedMesh[]} one mesh a kind that has stones, in MENHIR_KINDS order
+ */
+export function buildFarStoneMeshes(material, stones) {
     const matrix = new THREE.Matrix4();
     const quat = new THREE.Quaternion();
     const euler = new THREE.Euler();
     const scale = new THREE.Vector3();
     const at = new THREE.Vector3();
-    stones.forEach(([x, z, halfWidth, height, lean, turn], i) => {
-        euler.set(0, turn, lean, 'ZYX');
-        // Slabs: thinner front to back, so a turned stone shows a narrow edge.
-        scale.set(halfWidth, height / 1.04, halfWidth * 0.42);
-        at.set(x, -1.2, z);
-        mesh.setMatrixAt(i, matrix.compose(at, quat.setFromEuler(euler), scale));
+    const meshes = [];
+    MENHIR_KINDS.forEach((name, kind) => {
+        const rows = stones.filter((stone) => (stone[6] ?? 0) === kind);
+        if (rows.length === 0) return;
+        const mesh = new THREE.InstancedMesh(buildMenhirGeometry(PARHELION_MENHIRS[name]), material, rows.length);
+        rows.forEach(([x, z, , height, lean, turn], i) => {
+            euler.set(0, turn, lean, 'ZYX');
+            scale.setScalar(height);
+            at.set(x, -MENHIR_SINK * height, z);
+            mesh.setMatrixAt(i, matrix.compose(at, quat.setFromEuler(euler), scale));
+        });
+        mesh.instanceMatrix.needsUpdate = true;
+        mesh.frustumCulled = false;
+        mesh.name = `parhelion-far-stones-${name}`;
+        meshes.push(mesh);
     });
-    mesh.instanceMatrix.needsUpdate = true;
-    mesh.frustumCulled = false;
-    mesh.name = 'parhelion-far-stones';
-    return mesh;
+    return meshes;
 }

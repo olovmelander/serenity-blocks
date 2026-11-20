@@ -81,16 +81,32 @@ describe('nimbus-veil moods: the palettes', () => {
 });
 
 describe('nimbus-veil moods: the clock turns them, a level is a step on top', () => {
-    it('turns through every mood by the clock alone; the sun keeps its place', () => {
+    // Re-pinned 2026-11-20 (the living pass): the sun used to keep its place and change colour
+    // only. It now rides an arc with the hours; what still never changes is its bearing, which
+    // the deck's shadows are found along.
+    it('turns through every mood by the clock alone; the sun rides its arc and keeps its bearing', () => {
         const w = world();
-        const sun = w.u.sunDir.value.clone();
         for (let k = 0; k < MOOD_COUNT + 1; k++) {
             at(w, resting(k));
+            const mood = MOODS[k % MOOD_COUNT];
             expect(far(live(w), pure(k % MOOD_COUNT)), `mood ${k}`).toBeLessThan(1e-6);
-            expect(w.u.starGain.value).toBeCloseTo(MOODS[k % MOOD_COUNT].stars, 9);
-            expect(w.u.sunDir.value.equals(sun)).toBe(true);
+            expect(w.u.starGain.value).toBeCloseTo(mood.stars, 9);
+            const sun = w.u.sunDir.value;
+            expect(sun.x).toBe(0);
+            expect(sun.z).toBeLessThan(0);
+            expect(THREE.MathUtils.radToDeg(Math.asin(sun.y)), `sun in mood ${k}`).toBeCloseTo(mood.sun, 6);
+            expect(w.u.sunTan.value).toBeCloseTo(Math.tan(Math.asin(sun.y)), 9);
         }
-        expect(Math.asin(sun.y)).toBeCloseTo(SUN.elevation, 9);
+        // The first mood has the sun the place was built for. It climbs to its noon, sinks through
+        // the evening and stands under the sea line in the blue hour, when none of it reaches the deck.
+        expect(MOODS[0].sun).toBeCloseTo(THREE.MathUtils.radToDeg(SUN.elevation), 9);
+        expect(Math.max(...MOODS.map((mood) => mood.sun))).toBe(MOODS[2].sun);
+        expect(MOODS[3].sun).toBeLessThan(MOODS[0].sun);
+        expect(MOODS[4].sun).toBeLessThan(0);
+        at(w, resting(4));
+        expect(w.u.day.value).toBe(0);
+        at(w, resting(0));
+        expect(w.u.day.value).toBe(1);
         at(w, MOOD_HOLD * MOOD_PERIOD * 0.99);
         expect(far(live(w), pure(0))).toBeLessThan(1e-6);
         at(w, (MOOD_HOLD + (1 - MOOD_HOLD) * 0.5) * MOOD_PERIOD);

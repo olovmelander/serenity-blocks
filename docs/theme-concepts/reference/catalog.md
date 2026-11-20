@@ -1361,7 +1361,8 @@ Registry entries are in `src/themes/theme-registry.js:325-428`. The groups are: 
   - Haze runs `0xb895bd` to `0xffcb92` (`nimbus-veil-tsl.js:148`).
   - Sky ramp: `0xe9b3b8`, `0xffc79a`, `0xa39cd0`, `0x5f7fc6`, `0x2b4f9e` (`:155-158`).
   - Motes: `0xffe6b3`, `0xfff6e0`, `0xffd0a0`, `0xf6e2ff`.
-  - Pieces (`nimbus-veil-tetrominos.js:13-20`) are moonlit pastels: I `#dff6ff`, O `#f6f6ff`, T `#bfc6ff`, S `#cfe9ff`, Z `#aebdff`, J `#9ab0d8`, L `#e2ecff`, GARBAGE `#161a27`. Render mode `glow`.
+  - Pieces (`nimbus-veil-tetrominos.js`) were moonlit pastels until 2026-11-20 and are now seven hues of the light: I `#ffcf6b`, O `#6fb2ff`, T `#ff7d66`, S `#a98bff`, Z `#5fd9c4`, J `#ff86b8`, L `#f3efff`, GARBAGE `#46486a`. Render mode `glow`.
+- **Since this survey (the living pass, 2026-11-20).** The sun rides an arc with five hours and sets under the sea line; an air of its own turns beside them on a plane-projected high cloud (cirrus fibres, a mackerel sky); each event has an instrument of its own (a ripple, waves in echelon, rays, stepping stones on the deck, a corona, lanterns in the towers, the spectrum); ice halos, sundogs and sun pillars are left to Parhelion. See `docs/NIMBUS_VEIL_VISUAL_OVERHAUL_2026-10.md`.
 - **Motifs.**
   - A polar-grid cloud sea of about 33k vertices, displaced by eroded fBm.
   - Cloud tops wrap-lit gold, valleys lavender, silver linings toward the sun (`nimbus-veil-cloudsea.js:1-10`).
@@ -1715,7 +1716,7 @@ mountains, box city, neon grid) is Neon Dusk's.
 
 ### 60. parhelion ("Parhelion")
 
-- **Files.** Icon at `src/themes/parhelion/parhelion-theme-icon.png`. The scene is the playground effect `src/playground/effects/parhelion.effect.js` plus `parhelion-{composition,geometry,materials,optics,particles,post}.js`. The wrapper is `src/themes/parhelion/parhelion-theme.js` (754 lines). There is no overhaul doc.
+- **Files.** Icon at `src/themes/parhelion/parhelion-theme-icon.png`. The scene is the playground effect `src/playground/effects/parhelion.effect.js` plus `parhelion-{composition,geometry,materials,optics,particles,post}.js`; the clock's weather is `src/themes/parhelion/sim/parhelion-weather.js` and the far stones' models `src/themes/parhelion/parhelion-menhir-models.js`. The wrapper is `src/themes/parhelion/parhelion-theme.js`. Record of the 2026-11 living pass: `docs/PARHELION_LIVING_HALO_2026-11.md`.
 - **Icon.** A dark faceted standing stone (the "Vigil Stone") hides the sun. A white 22° halo ring with a red inner edge, sundog flares, an upper tangent arc and a parhelic line sit in a cobalt sky over a pale golden snowfield.
 - **Look** (`parhelion.effect.js:1-12`, visual pass 2026-10-20). A 22° ice-halo display: a dusky lens, red inner edge, sundogs, parhelic line, upper tangent arc, a glittering sun pillar. It frames the Vigil Stone (a weathered backlit standing stone with snow on its ledges and a gold rim) over a contre-jour snowfield of backlit drifts (blue slopes, gold crests) under cobalt sky, with two blue mountain ranges trailing snow banners on the horizon, a rolling bank of ice fog glowing gold toward the sun along the far plain, faint cirrostratus fibres, blowing snow streaming over the drifts, a row of far standing stones casting long shadows toward the viewer, ice glaze and twinkling hoarfrost on the stone, diamond dust glinting in the low air and along the halo (which closes below the horizon as glints on the snow), a glint pool and "hound pillars". Levels ("Lower Sun") turn the plain and the stone's rim visibly golden. On portrait screens the lens widens so the sundogs flank the board.
 - **Palette.**
@@ -1735,9 +1736,11 @@ mountains, box city, neon grid) is Neon Dusk's.
   | PERFECT, "Clear Sky" | The sky clears. |
   | B2B ECHO, "The Hounds Answer" | A fainter repeat. |
   | Every 12 locks, "Full Circle" | A brightness wave runs once around the ring. |
-  | Level up, "Lower Sun" | The light warms. |
+  | Level up, "Lower Sun" | The light warms; a band of gold crosses the plain and the far range flushes rose (2026-11). |
+  | 2026-11 living pass | Hard drop: a gold ring crosses the plain. Four lines: shafts of light round the stone. Twist: the shafts wind into a wheel of three. Back-to-back: a pillar of light over each stone of the avenue in turn. Perfect clear: the night opens on the stars. Run's end: the sun goes under. |
 - **Tech.** All `MeshBasicNodeMaterial`. `setLayout`'d TSL helper Fns (a shader-size test gate), value noise only (no `mx_*`). Diamond dust as one instanced Sprite. One clock in `ParhelionOpticsState`.
-- **Avoid reusing.** Ice halos, sundogs or parhelia, optical arcs, snowfields, monoliths or standing stones (and stone rows), diamond dust, cobalt-and-gold daylight.
+- **Over time (2026-11).** The Lower Sun walks to a golden sun and back through a moonlit night (a paraselene under stars, dusk and dawn with mother-of-pearl cloud); five airs turn beside it (clear, cirrus, crystal, drift, fog); a small happening every 37 s.
+- **Avoid reusing.** Ice halos, sundogs or parhelia, moon halos, optical arcs, snowfields, monoliths or standing stones (and stone rows, light pillars over them), diamond dust, mother-of-pearl cloud, cobalt-and-gold daylight.
 
 ### Cross-cutting: what is already taken (across this set; survey 4)
 

@@ -596,7 +596,7 @@ to end, the same front as the level's wave with no change of colour) and a **fal
 while a figure stands or the play is hot).
 
 Tried and dropped: a far flock crossing behind the wisps. As smoke it was a mauve smudge, as
-points of light a patch of grain (gotcha #1762).
+points of light a patch of grain (gotcha #1772).
 
 ### Tiers, backends, phone
 

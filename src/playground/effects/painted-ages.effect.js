@@ -16,10 +16,17 @@
  *                            level's own hour)
  *   hour=<place>             hold the light at a wheel place (0 first light, 1 morning, 2 high
  *                            day, 3 afternoon, 4 sunset, 5 blue hour; fractions mix)
+ *   air=<name|place>         hold the weather at an air (fair, towers, pools, showers, crystal,
+ *                            mist, dust; or a wheel place, fractions mix); otherwise it turns with
+ *                            the clock, one air every 92 s
+ *   happenings=0             no clock happenings (meteor, lightning in a far bank)
+ *   happen=meteor|flicker|gust   play that clock happening...
+ *   happenAge=<s>            ...and show it <s> seconds old (default 0.35)
  *   parts=land,sky           draw only these parts
  *   falseColor=1             post debug view: band the pre-tone-map max channel
  *   noPost=1                 raw scene (no bloom/grade)
  *   bloom=0|1                override the tier's bloom
+ *   fxaa=0|1                 override the tier's closing antialiasing pass
  *   px=-1..1&py=-1..1        hold a pointer-parallax offset
  *   reduce=1                 reduced motion
  *   look=x,y,z,fov           inspection lens: from the eye, look at a world point with this fov
@@ -32,12 +39,20 @@
  *   eventLevel=<n>           the level an event=levelUp steps to (default level + 1)
  *   recordTop=<g>            where the record's newest bed stands (geological metres)
  *   demo=1                   live: a looping gameplay script
+ *   vultures=thermal|pass|off   fly that visit of the bearded vultures alone (off: none; without
+ *                            it they keep their own timetable: painted-ages-vulture-routes.js)...
+ *   vultureAge=<s>           ...this many seconds into it (0: the first bird banks; an arrival is
+ *                            a few seconds before, so negative), on the side
+ *   vultureSide=-1|1         left or right of the card, as visit
+ *   vultureVisit=<n>         n of the timetable (its seeded birds), a pass flown
+ *   vultureWay=-1|1          back along its route or as written
  */
 import * as THREE from 'three/webgpu';
 import { PaintedAgesWorld } from '../../themes/painted-ages/painted-ages-world.js';
 import { PaintedAgesPost, POST_LOOK } from '../../themes/painted-ages/painted-ages-post.js';
 import { readLayoutRects } from '../../themes/painted-ages/painted-ages-composition.js';
 import { PAINTED_AGES_TETROMINOS } from '../../themes/painted-ages/painted-ages-tetrominos.js';
+import { AIR_NAMES } from '../../themes/painted-ages/painted-ages-weather.js';
 
 /** The game's piece colours, and a ten-cell row of codes for synthetic clears. */
 const PIECE_COLORS = Object.values(PAINTED_AGES_TETROMINOS.colors).slice(0, 7);
@@ -133,12 +148,18 @@ export function create({
     const overlay = params.get('board') === '1' ? mountBoardOverlay(params.get('statsHud') !== '0') : null;
     const look = { ...(POST_LOOK[quality] || POST_LOOK.High) };
     if (params.has('bloom')) look.bloom = params.get('bloom') === '1';
+    if (params.has('fxaa')) look.fxaa = params.get('fxaa') === '1';
     const noPost = params.get('noPost') === '1';
     if (noPost) renderer.toneMapping = THREE.AgXToneMapping;
     let post = null;
     const pointer = { x: num(params, 'px'), y: num(params, 'py') };
     const level = Math.max(1, Math.round(num(params, 'level', 1)));
     const hourHold = params.has('hour') ? num(params, 'hour', 0) : null;
+    const airName = AIR_NAMES.indexOf(params.get('air'));
+    const airPlace = airName >= 0 ? airName : num(params, 'air', 0);
+    const airHold = params.has('air') ? airPlace : null;
+    const happen = params.get('happen');
+    const happenAge = num(params, 'happenAge', 0.35);
     const eventName = params.get('event');
     const eventAge = num(params, 'eventAge', 0.6);
     const holdCombo = Math.max(0, Math.round(num(params, 'combo', 0)));
@@ -148,6 +169,9 @@ export function create({
     const colorParam = params.get('color');
     const eventColor = colorParam ? `#${colorParam.replace('#', '')}` : PIECE_COLORS[0];
     const demo = params.get('demo') === '1';
+    const vultures = params.has('vultures') ? {
+        kind: params.get('vultures'), age: num(params, 'vultureAge', 0), side: num(params, 'vultureSide', 0), visit: num(params, 'vultureVisit', 0), way: num(params, 'vultureWay', 0),
+    } : null;
     let demoCursor = 0;
     let demoLoop = -1;
     let demoPiece = 0;
@@ -195,8 +219,11 @@ export function create({
             world.onLock({
                 rows: [row, row - 1], u, hardDrop: true, distance: 16, color: eventColor,
             });
-        } else if (eventName === 'clear') world.onClear({ lines, rowCodes: codes(lines), combo: Math.max(1, holdCombo) });
-        else if (eventName === 'quad') world.onClear({ lines: 4, rowCodes: codes(4), combo: Math.max(1, holdCombo) });
+        } else if (eventName === 'clear') {
+            world.onClear({
+                lines, rowCodes: codes(lines), combo: Math.max(1, holdCombo), b2b: holdB2B > 0,
+            });
+        } else if (eventName === 'quad') world.onClear({ lines: 4, rowCodes: codes(4), combo: Math.max(1, holdCombo) });
         else if (eventName === 'twist') {
             world.onClear({
                 lines: 2, rowCodes: codes(2), twist: true, u, color: PIECE_COLORS[2],
@@ -219,12 +246,15 @@ export function create({
         simTime = asked;
         if (!world) return;
         // Events fire inside a short replay before the asked frame (the chain needs time to walk in).
-        const lead = (eventName ? eventAge : 0) + (holdCombo ? 6 : 0) + warmLocks * 0.6 + 0.5;
+        // (A happening is replayed from its own start, as an event is: the wind's dust devil
+        // rises in its first second.)
+        const lead = Math.max(eventName ? eventAge : 0, happen ? happenAge : 0) + (holdCombo ? 6 : 0) + warmLocks * 0.6 + 0.5;
         const time = Math.max(asked, lead);
         const start = time - lead;
         // Each seek replays from scratch: rows an earlier replay laid down must not come back.
         world.clearHistory();
         world.seek(start);
+        if (happen) world.setCaptureOverrides({ happen, happenAt: time - happenAge });
         if (level > 1) world.levelUp(level, { silent: true, time: start });
         if (holdB2B) world.onB2B(holdB2B);
         frame(start, 0);
@@ -248,6 +278,7 @@ export function create({
                 world.onClear({ lines: 1, rowCodes: ROW_CODES(i), combo: 1 });
             }
         }
+        if (vultures) world.parts.vultures?.stage({ ...vultures, time });
         const eventTime = eventName ? time - eventAge : time;
         if (eventTime > cursor) stepTo(cursor, eventTime, 0.05);
         if (eventName) {
@@ -289,6 +320,8 @@ export function create({
         world.bindCamera(camera);
         world.setReducedMotion(params.get('reduce') === '1');
         if (hourHold !== null) world.setCaptureOverrides({ hour: hourHold });
+        if (airHold !== null) world.setCaptureOverrides({ air: airHold });
+        if (params.get('happenings') === '0') world.setCaptureOverrides({ happenings: false });
         if (params.has('recordTop')) world.setCaptureOverrides({ recordTop: num(params, 'recordTop', 150) });
         const partsParam = params.get('parts');
         if (partsParam) world.showOnlyParts(partsParam.split(',').map((p) => p.trim()));

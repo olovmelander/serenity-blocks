@@ -116,26 +116,49 @@ export const STATION_COUNT = 12;
 export const OUTER_LANE_MAX_AZ = 30 * DEG;
 export const OUTER_LANE_FILL = 0.86;
 
+/** The far stones' kinds (parhelion-menhir-models.js) and each kind's half-width a metre of height. */
+export const MENHIR_KINDS = Object.freeze(['tall', 'tooth', 'broad']);
+const MENHIR_HALF_WIDTH = Object.freeze([0.13, 0.17, 0.25]);
+
 /**
- * The far stones: a loose row of small standing stones out on the plain, in both side lanes,
- * receding toward the horizon — 13–22 m slabs that give the Vigil Stone (≈ 90 m) its scale. Each entry is
- * `[x, z, halfWidth, height, lean, turn]` in metres / radians: ground position of the foot,
- * core half-width, height above the snow, lean (about the view axis) and turn (about the
- * vertical, so each shows a different face). All stand beyond the hound pillars (180 m) and
- * outside the card's columns at every measured viewport (pinned by the composition test).
- * Their long shadows (height · cot E) fall toward the camera in the snow shader.
+ * One row of the avenue: `count` stones from the near end (bearing `azNear` degrees off the
+ * sun, `zNear` metres out) to the far end (`azFar`, `zFar`), stepping out by equal ratios of
+ * distance and closing on the sun's bearing faster near the eye than far away. Rows that ran
+ * straight away from the eye stood as one column on screen; these cross the plain as a diagonal
+ * that leads the eye from the frame's lower corner to the horizon beside the Vigil Stone.
+ */
+function avenueRow(side, azNear, azFar, zNear, zFar, stones) {
+    const count = stones.length;
+    return stones.map(([height, kind, lean, turn], k) => {
+        const u = k / (count - 1);
+        const z = -zNear * (zFar / zNear) ** u;
+        const az = (azFar + (azNear - azFar) * (1 - u) ** 1.3) * DEG;
+        const x = side * -z * Math.tan(az);
+        const round = (v, n) => Math.round(v * n) / n;
+        return Object.freeze([round(x, 10), round(z, 10), round(height * MENHIR_HALF_WIDTH[kind], 100), height, lean, turn, kind]);
+    });
+}
+
+/**
+ * The far stones: the avenue. Two rows of standing stones cross the plain from the frame's
+ * lower corners to the horizon on either side of the Vigil Stone — 13–22 m menhirs that give
+ * it (≈ 90 m) its scale, and whose long shadows (height · cot E) fall toward the eye in the
+ * snow shader. Each entry is `[x, z, halfWidth, height, lean, turn, kind]` in metres / radians:
+ * ground position of the foot, half-width (its shadow's and its light pillar's), height above
+ * the snow, lean (about the view axis), turn (about the vertical, so each shows another face)
+ * and its kind (MENHIR_KINDS). All stand beyond the hound pillars (180 m) and outside the
+ * card's columns at every measured viewport (pinned by the composition test); each hound
+ * stands over its row (the rows cross the dogs' bearing about 650 m out).
  */
 export const FAR_STONES = Object.freeze([
-    Object.freeze([-165, -310, 3.0, 18.0, 0.07, 0.4]),
-    Object.freeze([-255, -490, 2.6, 14.0, -0.05, 2.1]),
-    Object.freeze([-365, -740, 3.6, 22.0, 0.04, 4.0]),
-    Object.freeze([-510, -1120, 2.8, 15.0, 0.12, 5.3]),
-    Object.freeze([195, -360, 2.8, 16.0, -0.06, 1.2]),
-    Object.freeze([295, -580, 3.8, 21.0, 0.03, 3.1]),
-    Object.freeze([440, -960, 2.5, 13.0, -0.1, 0.7]),
-    Object.freeze([-120, -250, 2.3, 10.5, 0.2, 2.6]),
-    Object.freeze([-680, -1560, 3.2, 16.0, 0.02, 1.0]),
-    Object.freeze([600, -1400, 2.9, 14.0, -0.04, 4.4]),
+    ...avenueRow(-1, 33, 17.5, 195, 1720, [
+        [16, 0, 0.05, 0.3], [21, 2, -0.04, -0.5], [14, 1, 0.07, 0.9], [22, 0, -0.03, 0.1],
+        [15, 1, 0.06, -0.3], [19, 2, 0.02, 0.6], [14.5, 0, -0.06, -0.8], [21, 1, 0.03, 0.2],
+    ]),
+    ...avenueRow(1, 35, 19, 210, 1900, [
+        [19, 1, -0.05, -0.4], [13.5, 0, 0.06, 0.7], [22, 2, 0.03, -0.2], [15, 0, -0.07, 0.5],
+        [20, 1, 0.04, -0.9], [14, 0, -0.02, 0.3], [18, 2, 0.05, -0.6], [22, 0, -0.04, 0.1],
+    ]),
 ]);
 
 /**
@@ -146,7 +169,7 @@ export const FAR_STONES = Object.freeze([
 export const PILLAR = Object.freeze({
     COUNT: 6,
     DIST: 180,
-    WIDTH: 3.2,
+    WIDTH: 7,
     HEIGHT: 260,
     SPARE_OFFSET: 1.5,
 });

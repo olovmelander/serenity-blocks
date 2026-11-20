@@ -6,7 +6,9 @@
  *  - waveLight: each clear's band of light climbing the strata through the whole land;
  *  - rainbow: the bow over the valley after a chain (primary, and a secondary on long ones);
  *  - showerVeil: the rain hanging under the clouds while a chain holds;
- *  - sparkle: back-to-back's glints of mica and gypsum on the sunlit rock.
+ *  - goldVeins: back-to-back's veins of gold cutting ACROSS the beds, a flare running out
+ *    along them;
+ *  - riverWater: the river, and four lines' flood of paint poured into it.
  *
  * Inline builders (they read the uniform tables).
  */
@@ -24,6 +26,7 @@ import {
     float,
     floor,
     fract,
+    fwidth,
     int,
     length,
     max,
@@ -34,11 +37,11 @@ import {
     select,
     sin,
     smoothstep,
+    texture,
     vec2,
     vec3,
     vec4,
 } from 'three/tsl';
-import { paHash21 } from './painted-ages-tsl.js';
 import { RIVER, RIVER_ALONG } from './painted-ages-plan.js';
 import { skyColour } from './painted-ages-light.js';
 
@@ -76,8 +79,12 @@ export function ribbonLight(u, xz, g, gw) {
             .mul(float(1.0).sub(smoothstep(2.4, 3.6, age)));
         // A hard drop also sends a ring of light out along the ground itself.
         const ring = exp(sq(ahead.div(6.0)).negate()).mul(s.w).mul(exp(age.div(0.8).negate())).mul(0.9);
-        const near = exp(d.div(70.0).negate()).mul(exp(age.div(0.8).negate())).mul(3.2);
-        const amount = inBed.mul(head.add(trail).add(near)).mul(reach).mul(fade).add(ring.mul(reach));
+        const near = exp(d.div(70.0).negate()).mul(exp(age.div(0.8).negate())).mul(2.0);
+        // Where the piece landed, a stain of its pigment blooms on the rock and sinks in (the
+        // bed's light is a thin line: alone, a lock far off was hard to find).
+        const stain = exp(sq(d.div(30.0)).negate()).mul(smoothstep(0.0, 0.06, age)).mul(exp(age.div(0.75).negate())).mul(0.24);
+        const amount = inBed.mul(head.add(trail).add(near)).mul(reach).mul(fade).add(ring.mul(reach))
+            .add(stain);
         // Lifted toward white a little, so a red ribbon still glows over red rock.
         sum.addAssign(mix(c.xyz, vec3(c.xyz.x.max(c.xyz.y).max(c.xyz.z)), 0.22).mul(c.w).mul(amount));
     });
@@ -148,7 +155,29 @@ export function rainbow(u, dir) {
     const strength = u.bow.x.mul(smoothstep(0.0, 1.5, u.bow.z));
     // Fainter toward its crown (the drops thin out up there), as a real bow is.
     const crown = smoothstep(0.32, 0.05, dir.y).mul(0.6).add(0.4);
-    return primary.add(secondary).mul(strength).mul(crown).mul(0.42);
+    // A far shower shows only a shard of it: the foot of the bow on the shower's side, where
+    // its curtains hang (bowLeg ±1). A chain's bow or a perfect clear's stands whole (0).
+    const side = atan(dir.x, dir.z.negate()).mul(u.bowLeg.sign());
+    const shard = smoothstep(0.22, 0.4, side).mul(smoothstep(0.2, 0.08, dir.y));
+    const whole = mix(float(1.0), shard, abs(u.bowLeg));
+    return primary.add(secondary).mul(strength).mul(crown).mul(whole)
+        .mul(0.42);
+}
+
+/**
+ * The weather's far shower: curtains of rain hanging on one side of the view, slanting with the
+ * wind and thinning as they fall. `az` is the bearing (radians right of the view axis), `lift`
+ * a height along the curtain (a direction's y in the sky, a fraction of it on the land) the
+ * slant runs with. `u.virga` = (bearing, amount, slant). Returns 0..1.
+ */
+export function virgaVeil(u, noise, az, lift) {
+    const rel = az.sub(u.virga.x);
+    const window = exp(sq(rel.div(0.2)).negate());
+    const s = rel.add(lift.mul(u.virga.z));
+    const broad = texture(noise, vec2(s.mul(1.9), u.time.mul(0.004).add(0.37))).r;
+    const fine = texture(noise, vec2(s.mul(9.0), u.time.mul(0.007).add(0.81))).b;
+    const curtains = smoothstep(0.24, 0.56, broad.mul(0.7).add(fine.mul(0.3)));
+    return curtains.mul(window).mul(u.virga.y);
 }
 
 /** Rain hanging under the clouds while a chain holds: vertical veils, thicker toward the front. */
@@ -160,22 +189,48 @@ export function showerVeil(u, dir) {
     return cols.mul(low).mul(u.showerPower);
 }
 
-/** Back-to-back: mica and gypsum glinting on the sunlit rock (a few bright cells that twinkle). */
-export function sparkle(u, xz, dist, lit) {
-    const cell = floor(xz.div(max(dist.mul(0.0016), 0.35)));
-    const h = paHash21(cell);
-    const twinkle = sin(u.time.mul(2.3).add(h.mul(40.0))).mul(0.5).add(0.5);
-    const on = smoothstep(0.985, 1.0, h).mul(twinkle).mul(u.sheen);
-    return on.mul(lit).mul(6.0);
+/**
+ * Back-to-back: veins of gold. Two families of thin seams cut ACROSS the beds (their
+ * coordinates lean on the geological height, so on a slope a vein crosses the stripes at a
+ * slant, where every other light of play runs along them), wandering a little, a pixel or two
+ * wide and gone where the eye cannot resolve them. A run's level (`u.sheen`) holds a soft glow in
+ * them; `u.veins` = (a back-to-back clear's flare, the flare's run in metres from the eye) is a
+ * front of light racing out along the seams. Returns light to add (kept to the rock by the caller).
+ */
+export function goldVeins(u, noise, xz, g) {
+    const out = vec3(0.0).toVar();
+    If(u.sheen.add(u.veins.x).greaterThan(0.004), () => {
+        const wander = texture(noise, xz.div(900.0)).rg.sub(0.5);
+        const c1 = xz.x.mul(0.82).add(xz.y.mul(0.57)).add(g.mul(1.3)).add(wander.x.mul(210.0))
+            .div(340.0)
+            .toVar();
+        const c2 = xz.x.mul(-0.5).add(xz.y.mul(0.87)).sub(g.mul(1.1)).add(wander.y.mul(210.0))
+            .div(470.0)
+            .toVar();
+        const seam = (c) => {
+            const d = abs(fract(c).sub(0.5));
+            const w = fwidth(c).mul(1.1).clamp(0.0016, 0.5);
+            return float(1.0).sub(smoothstep(w, w.mul(2.2), d)).mul(smoothstep(0.3, 0.1, w));
+        };
+        const seams = seam(c1).add(seam(c2).mul(0.7));
+        const run = length(xz.sub(u.eye.xz)).sub(u.veins.y);
+        // The front, and the light it leaves in the seams behind it for a moment.
+        const front = exp(sq(run.div(240.0)).negate()).add(smoothstep(200.0, -200.0, run).mul(0.22));
+        const shimmer = sin(c2.mul(31.0).add(u.time.mul(1.6))).mul(0.25).add(0.75);
+        out.assign(vec3(1.55, 1.12, 0.46).mul(seams).mul(u.sheen.mul(0.55).mul(shimmer).add(u.veins.x.mul(front).mul(5.0))));
+    });
+    return out;
 }
 
 /**
- * Distance from a point to the river's course and how far along the course (metres from its
- * source) the nearest point lies: the polyline's segments unrolled as constants.
+ * Distance from a point to the river's course, how far along the course (metres from its
+ * source) the nearest point lies, and which bank the point is on (±1): the polyline's segments
+ * unrolled as constants.
  */
 export const paRiver = /* @__PURE__ */ Fn(([p]) => {
     const best = float(1e9).toVar();
     const along = float(0.0).toVar();
+    const side = float(1.0).toVar();
     for (let i = 0; i < RIVER.length - 1; i += 1) {
         const [ax, az] = RIVER[i];
         const [bx, bz] = RIVER[i + 1];
@@ -187,27 +242,30 @@ export const paRiver = /* @__PURE__ */ Fn(([p]) => {
         const d = length(rel.sub(vec2(dx, dz).mul(t)));
         const closer = d.lessThan(best);
         along.assign(select(closer, t.mul(Math.sqrt(len2)).add(RIVER_ALONG[i]), along));
+        // Which bank: the sign of the cross product with the reach's direction.
+        side.assign(select(closer, rel.x.mul(dz).sub(rel.y.mul(dx)).sign(), side));
         best.assign(min(best, d));
     }
-    return vec2(best, along);
-}).setLayout({ name: 'pa_river', type: 'vec2', inputs: [{ name: 'p', type: 'vec2' }] });
+    return vec3(best, along, side);
+}).setLayout({ name: 'pa_river', type: 'vec3', inputs: [{ name: 'p', type: 'vec2' }] });
 
 /**
  * The water in the valley: a thin braided stream along the river's course, and on four lines the
  * flash flood (wide, turbid with the cleared rows' pigment, foaming at its front). Returns
- * vec4(colour, how much of the point is water). `above` = height over the river's bed.
+ * vec4(colour, how much of the point is water). `r` = paRiver at the point (the land reads it
+ * once, for the fields too), `above` = height over the river's bed.
  */
-export function riverWater(u, noise, texture, xz, above, dist, view) {
+export function riverWater(u, noise, xz, r, above, dist, view) {
     const out = vec4(0.0).toVar();
-    If(dist.lessThan(9000.0).and(above.lessThan(6.0)), () => {
-        const r = paRiver(xz);
+    If(dist.lessThan(9000.0).and(above.lessThan(8.0)), () => {
         const wiggle = texture(noise, xz.div(70.0)).r.sub(0.5);
-        const stream = float(3.4).add(wiggle.mul(4.0)).max(1.2);
+        // The stream: a main thread a few metres wide that swells and pinches.
+        const stream = float(5.2).add(wiggle.mul(6.5)).max(1.6);
         const flooding = u.flood.y;
         const behind = smoothstep(30.0, -30.0, r.y.sub(u.flood.x));
-        const floodW = float(30.0).add(wiggle.mul(22.0)).mul(flooding).mul(behind);
-        const width = max(stream, floodW);
-        const lowEnough = float(1.0).sub(smoothstep(0.8, mix(float(2.2), float(4.5), flooding), above));
+        const floodW = float(40.0).add(wiggle.mul(26.0)).mul(flooding).mul(behind);
+        const width = max(stream, floodW).toVar();
+        const lowEnough = float(1.0).sub(smoothstep(0.8, mix(float(2.2), float(6.0), flooding), above));
         const wet = float(1.0).sub(smoothstep(width, width.add(max(dist.mul(0.004), 1.2)), r.x)).mul(lowEnough);
         If(wet.greaterThan(0.01), () => {
             // Ripples: streaks drawn down the current (the river's own coordinates: along, across),
@@ -238,18 +296,26 @@ export function riverWater(u, noise, texture, xz, above, dist, view) {
             const twinkle = texture(noise, xz.div(2.6).add(vec2(t.mul(0.21), t.mul(-0.17)))).a;
             const glint = lobe.mul(mix(smoothstep(0.55, 0.85, twinkle).mul(5.0), float(0.9), unresolved))
                 .mul(float(1.0).sub(flooding.mul(0.7)));
-            // The flood carries the four cleared rows' pigments down the river, one after another in
-            // pulses, streaked by the current.
-            const streak = sin(r.y.mul(0.045).add(r.x.mul(0.35)).sub(t.mul(4.0))).mul(0.5).add(0.5);
-            const phase = fract(r.y.div(140.0).sub(t.mul(0.75))).mul(4.0);
+            // The flood carries the four cleared rows' pigments down the river as paint poured
+            // into water: marbled, drawn out into long streaks by the current and folding into
+            // each other, a pale seam where two paints meet. (Laid one after another in lanes,
+            // they read as a strip of coloured tiles.)
+            const s = r.y.sub(t.mul(46.0)).div(520.0);
+            const cs = r.z.mul(r.x).div(max(width, 1.0));
+            const fold = texture(noise, vec2(s.mul(0.55), cs.mul(0.22).add(s.mul(0.07)))).rg;
+            const marble = fold.x.mul(1.9).add(cs.mul(0.42)).add(s.mul(0.6)).add(fold.y.mul(0.5));
+            const phase = fract(marble).mul(4.0).toVar();
             const lane = floor(phase);
-            const blend = smoothstep(0.72, 1.0, fract(phase));
+            const part = fract(phase);
+            const blend = smoothstep(0.3, 0.7, part);
             const rowA = u.floodRows.element(int(lane)).xyz;
             const rowB = u.floodRows.element(int(lane.add(1.0).mod(4.0))).xyz;
-            const pulse = mix(rowA, rowB, blend);
-            // A clear stream shows the sky; the flood is opaque with the rows' pigment, streaked
-            // down the current, white where it breaks over the bars and at its front.
-            const pigment = mix(pulse.mul(0.6).add(0.03), pulse.mul(1.05).add(0.06), streak);
+            const pulse = mix(rowA, rowB, blend).toVar();
+            const fibre = texture(noise, vec2(s.mul(3.1), cs.mul(1.7).add(fold.y))).a;
+            const seam = exp(sq(part.sub(0.5).div(0.08)).negate());
+            // A clear stream shows the sky; the flood is opaque with the rows' pigment, white
+            // where it breaks over the bars and at its front.
+            const pigment = mix(pulse.mul(mix(float(0.5), float(1.12), fibre)).add(0.03), vec3(0.86, 0.8, 0.68), seam.mul(0.32));
             // A clear braided stream is silty, a little teal over its gravel, and its gravel shows
             // through the shallows at its edges.
             const shallow = smoothstep(width.mul(0.25), width, r.x).mul(float(1.0).sub(flooding));
@@ -257,7 +323,10 @@ export function riverWater(u, noise, texture, xz, above, dist, view) {
             const body = mix(clear, pigment, flooding);
             const sunk = u.sun.mul(u.sunUp).mul(clamp(u.sunDir.y, 0.15, 1.0)).mul(0.55).add(u.fill.mul(1.2));
             const churn = texture(noise, vec2(r.y.mul(0.012).sub(t.mul(0.55)), r.x.mul(0.05))).b;
+            // Foam where the flood breaks over the bars, along its banks and at its front.
+            const banks = smoothstep(0.7, 0.98, abs(cs)).mul(smoothstep(0.35, 0.7, churn));
             const foam = smoothstep(0.62, 0.78, churn).mul(flooding).mul(0.8)
+                .add(banks.mul(flooding).mul(0.9))
                 .add(exp(sq(r.y.sub(u.flood.x).div(40.0)).negate()).mul(flooding).mul(1.4));
             const sheen = fres.mul(mix(float(1.0), float(0.35), flooding)).add(float(1.0).sub(flooding).mul(0.3));
             const water = mix(body.mul(sunk), mirrored, sheen)

@@ -21,6 +21,7 @@ import * as THREE from 'three/webgpu';
 import {
     Fn,
     Loop,
+    abs,
     attribute,
     cameraPosition,
     clamp,
@@ -45,7 +46,6 @@ import {
     vec4,
 } from 'three/tsl';
 import {
-    SUN_DIR,
     TOWERS,
     nvApplyHaze,
     nvDomes,
@@ -54,6 +54,27 @@ import {
     towerHalfWidth,
 } from './nimbus-veil-tsl.js';
 import { SEA_HAZE, ringLight } from './nimbus-veil-cloudsea.js';
+
+/**
+ * How far a tower can stand above its built height, as a share of it: a new level's surge and a
+ * tower boiling up by itself both stretch it, and its card must have the room.
+ */
+export const TOWER_RISE = 0.13;
+
+/**
+ * The bearing the lanterns are counted out from: between where the sun sits in the menu's view
+ * (0) and the middle of the game's view, so the first towers to light are on screen in both.
+ */
+export const LANTERN_BEARING = 20;
+
+/** The order a streak lights the towers in: nearest LANTERN_BEARING first (their indices). */
+export function lanternOrder(towers) {
+    return towers.map((tower, index) => ({ index, off: Math.abs(tower.az - LANTERN_BEARING) }))
+        .sort((a, b) => a.off - b.off)
+        .map((entry) => entry.index);
+}
+const SURGE_RISE = 0.045;
+const BOIL_RISE = 0.07;
 
 /** The billows' soft union sharpness (1 / world units): creases a few units wide. */
 const UNION_K = 0.28;
@@ -119,8 +140,11 @@ export function towerBillows(tower, count, rand) {
  */
 export function createCumulus(u, { rand, towers, billowsPerTower }) {
     if (!towers || !billowsPerTower) return null;
-    const list = TOWERS.slice(0, towers).map((tower) => ({
+    const built = TOWERS.slice(0, towers);
+    const order = lanternOrder(built);
+    const list = built.map((tower, index) => ({
         tower,
+        rank: order.indexOf(index),
         billows: towerBillows(tower, billowsPerTower, rand),
     }));
     // Far to near from the rest camera: the cards blend in that order.
@@ -131,8 +155,9 @@ export function createCumulus(u, { rand, towers, billowsPerTower }) {
     const uvs = [];
     const cards = [];
     const rects = [];
+    const ranks = [];
     const index = [];
-    list.forEach(({ tower, billows }) => {
+    list.forEach(({ tower, billows, rank }) => {
         const start = rows.length;
         let xMin = Infinity;
         let xMax = -Infinity;
@@ -144,9 +169,10 @@ export function createCumulus(u, { rand, towers, billowsPerTower }) {
             yMax = Math.max(yMax, y + r);
         }
         const margin = tower.h * 0.04;
-        xMin -= margin;
-        xMax += margin;
-        yMax += margin;
+        xMin -= margin * 1.6;
+        xMax += margin * 1.6;
+        // Room over the crown for the tower to rise into (TOWER_RISE of its height).
+        yMax = yMax * (1 + TOWER_RISE) + margin;
         const yMin = -10;
         const a = THREE.MathUtils.degToRad(tower.az);
         // The card faces the rest camera: its right is the horizontal tangent of the bearing.
@@ -159,6 +185,7 @@ export function createCumulus(u, { rand, towers, billowsPerTower }) {
             uvs.push(sx, sy);
             cards.push(start, billows.length, tower.h, a);
             rects.push(xMin, yMin, xMax - xMin, yMax - yMin);
+            ranks.push(rank);
         }
         index.push(base, base + 1, base + 2, base, base + 2, base + 3);
     });
@@ -167,6 +194,7 @@ export function createCumulus(u, { rand, towers, billowsPerTower }) {
     geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
     geometry.setAttribute('aCard', new THREE.Float32BufferAttribute(cards, 4));
     geometry.setAttribute('aRect', new THREE.Float32BufferAttribute(rects, 4));
+    geometry.setAttribute('aRank', new THREE.Float32BufferAttribute(ranks, 1));
     geometry.setIndex(index);
     geometry.computeBoundingSphere();
 
@@ -180,6 +208,7 @@ export function createCumulus(u, { rand, towers, billowsPerTower }) {
 
     const card = attribute('aCard', 'vec4'); // first billow, billow count, tower height, bearing
     const rect = attribute('aRect', 'vec4'); // card frame: x min, y min, width, height
+    const rank = attribute('aRank', 'float'); // this tower's place in the order the lanterns light
     const st = attribute('uv', 'vec2');
     material.colorNode = Fn(() => {
         // Per-card values arrive as varyings: integers are rounded back before indexing.
@@ -187,7 +216,12 @@ export function createCumulus(u, { rand, towers, billowsPerTower }) {
         const count = int(floor(card.y.add(0.5))).toVar();
         const H = card.z.toVar();
         const bearing = card.w.toVar();
-        const p = vec2(rect.x.add(st.x.mul(rect.z)), rect.y.add(st.y.mul(rect.w))).toVar();
+        // This tower's own share of a happening: boiling up, or lit from inside.
+        const boil = abs(bearing.sub(u.boil.x)).lessThan(0.01).select(u.boil.y, float(0.0)).toVar();
+        const ember = abs(bearing.sub(u.ember.x)).lessThan(0.01).select(u.ember.y, float(0.0)).toVar();
+        // A new level's surge (u.climb.z) and a boil stretch the tower upward from its foot.
+        const rise = float(1.0).add(u.climb.z.mul(SURGE_RISE)).add(boil.mul(BOIL_RISE)).toVar();
+        const p = vec2(rect.x.add(st.x.mul(rect.z)), rect.y.add(st.y.mul(rect.w)).div(rise)).toVar();
 
         // ── Fray: the outline lumps both ways, cauliflower on cauliflower, drifting slowly ──
         const seed = bearing.mul(41.3);
@@ -198,8 +232,13 @@ export function createCumulus(u, { rand, towers, billowsPerTower }) {
         // Cauliflower: small domes swell and shrink every billow a little (so no billow's edge is
         // a circle) and bend the light. Domes, not value noise: value noise's slope dies along
         // every cell edge and draws blocks.
-        const bump = nvDomes(p.div(H.mul(0.07)).add(vec2(seed.mul(0.7), 0.0)), 1e4).toVar();
-        const swell = bump.x.sub(0.45).mul(0.16).add(1.0).toVar();
+        // The field climbs the tower slowly: convection, seen as it is in a time-lapse.
+        const climbing = vec2(seed.mul(0.7).add(64.0), float(512.0).sub(u.time.mul(0.011)));
+        const bump = nvDomes(p.div(H.mul(0.07)).add(climbing), 1e4).toVar();
+        // A boiling tower's upper billows swell.
+        const swell = bump.x.sub(0.45).mul(0.16).add(1.0)
+            .add(boil.mul(0.11).mul(smoothstep(0.35, 0.9, p.y.div(H))))
+            .toVar();
 
         // ── The union: the outline is the deepest billow's signed distance; the light is the
         // soft-max blend of the billows' sphere normals ──
@@ -242,16 +281,22 @@ export function createCumulus(u, { rand, towers, billowsPerTower }) {
         // ── Light, in the card's frame: right, up, out toward the eye ──
         const right = vec3(cos(bearing), 0.0, sin(bearing));
         const out = vec3(sin(bearing).negate(), 0.0, cos(bearing));
-        const L = vec3(SUN_DIR[0], SUN_DIR[1], SUN_DIR[2]);
+        const L = u.sunDir;
         const N = right.mul(nrm.x).add(vec3(0.0, nrm.y, 0.0)).add(out.mul(nrm.z)).toVar();
-        const height = clamp(p.y.div(H), 0.0, 1.0);
-        const diff = clamp(dot(N, L).mul(0.9).add(0.18), 0.0, 1.0);
-        const sunCol = u.mood.sunLight;
+        const height = clamp(p.y.div(H), 0.0, 1.0).toVar();
+        const diff = clamp(dot(N, L).mul(0.9).add(0.18), 0.0, 1.0).toVar();
+        // A sinking sun leaves the towers from the foot up: the deck is in shade first, then
+        // the bodies, and the high crowns hold the last light after it has set.
+        const reach = smoothstep(-0.012, 0.045, u.sunEl.add(p.y.mul(0.1 / 270))).toVar();
+        const gloam = float(1.0).sub(u.day).toVar();
+        // The last light is the strongest colour in the frame: it burns a little brighter for it.
+        const sunCol = u.mood.sunLight.mul(reach).mul(gloam.mul(1.1).add(1.0)).toVar();
         // The shade is the sky's light scattered inside the cloud: violet low, lavender-blue
         // where the form turns up to the zenith and higher up the tower.
         // The violet deepens as the crowns burn (u.blaze.y), so the fire reads against it.
+        // After sunset the whole sky is the lamp: the shade lifts a little.
         const shade = mix(u.mood.shadeLow, u.mood.shadeHigh, clamp(N.y.mul(0.5).add(height.mul(0.6)), 0.0, 1.0))
-            .mul(float(1.0).sub(min(u.blaze.y, 1.2).mul(0.25)));
+            .mul(float(1.0).sub(min(u.blaze.y, 1.2).mul(0.25))).mul(gloam.mul(0.9).add(1.0));
         // Creases and the deep base see less sky.
         const ao = mix(float(0.62), float(1.0), smoothstep(0.0, H.mul(0.05), top))
             .mul(mix(float(0.7), float(1.0), smoothstep(0.0, 0.35, height)));
@@ -261,7 +306,7 @@ export function createCumulus(u, { rand, towers, billowsPerTower }) {
         // Silver lining: with the sun behind, the heap glows where it is thin (its outline).
         const behind = clamp(dot(L, out.negate()), 0.0, 1.0);
         const b2 = behind.mul(behind);
-        const thin = exp(max(sd.add(fray), 0.0).div(H.mul(0.03)).negate());
+        const thin = exp(max(sd.add(fray), 0.0).div(H.mul(0.03)).negate()).toVar();
         col.addAssign(sunCol.mul(thin).mul(b2.mul(b2).mul(2.2).add(0.1)).mul(u.sunPulse.mul(0.4).add(1.0)));
         // Thin edges pass light from any side: the frayed outline never darkens against the sky.
         col.addAssign(sunCol.mul(thin.mul(0.3).mul(diff.mul(0.6).add(0.4))));
@@ -272,8 +317,26 @@ export function createCumulus(u, { rand, towers, billowsPerTower }) {
         // Overlapping bands light a tower no more than about one does; a hot band lights the
         // faces that turn to the sun and leaves the shade side violet.
         const wave = ringLight(u.rings, dist, 2.5, 0.45, 0.35);
-        col.addAssign(mix(sunCol, rgb(0xff9450, 1.9), wave.heat).mul(wave.sum)
-            .mul(diff.mul(0.5).add(float(0.35).sub(wave.heat.mul(0.22)))));
+        col.addAssign(mix(u.mood.sunLight, rgb(0xff9450, 1.9), wave.heat).mul(wave.sum)
+            .mul(diff.mul(0.5).add(float(0.35).sub(wave.heat.mul(0.22)))).mul(u.lampInfo.z));
+        // A new level: light climbs the tower from the deck to its crown (u.climb.x is how far,
+        // in tower heights), a bright band with what it has passed still glowing under it.
+        const climbAt = height.sub(u.climb.x);
+        const climbBand = exp(climbAt.mul(climbAt).mul(-1.0 / (0.11 * 0.11)));
+        const climbTrail = smoothstep(0.0, 0.5, climbAt.negate())
+            .mul(float(1.0).sub(smoothstep(0.5, 1.1, climbAt.negate())));
+        col.addAssign(u.mood.glowCore.mul(climbBand.mul(1.5).add(climbTrail.mul(0.35)))
+            .mul(diff.mul(0.6).add(thin.mul(0.9)).add(0.45)).mul(u.climb.y));
+        // A back-to-back streak's lanterns: a warm light at this tower's heart, lit once the
+        // streak has counted out to it (u.lanterns), steady where heat lightning flickers.
+        const lantern = clamp(u.lanterns.sub(rank), 0.0, 1.0);
+        const ld = p.sub(vec2(0.0, H.mul(0.42))).div(vec2(H.mul(0.22), H.mul(0.26)));
+        col.addAssign(rgb(0xff9a3c, 3.2).mul(exp(dot(ld, ld).negate())).mul(lantern).mul(u.lampInfo.z)
+            .mul(mix(float(1.0), float(0.7), smoothstep(0.0, H.mul(0.05), top))));
+        // Heat lightning: a glow deep inside this tower, soft through the cloud around it.
+        const ed = p.sub(vec2(u.ember.z.mul(H), u.ember.w.mul(H))).div(H.mul(0.24));
+        col.addAssign(rgb(0xffe2c4, 2.4).mul(exp(dot(ed, ed).negate())).mul(ember)
+            .mul(mix(float(1.0), float(0.6), smoothstep(0.0, H.mul(0.05), top))));
         // Hot play sets the crowns burning (u.blaze.y): the outline turns to a burning amber
         // lining and the faces that turn to the sun catch fire; the rest stays violet.
         const upper = smoothstep(0.35, 0.95, height);

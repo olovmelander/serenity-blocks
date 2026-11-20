@@ -397,7 +397,7 @@ export default class ParhelionTheme extends BaseTheme {
             eventBus.on(EVENTS.VIEWPORT_RESIZED, (viewport) => this.handleViewportResized(viewport)),
         );
         this.registerEventListener(window, 'settingsChanged', onSettings);
-        this.registerEventListener(window, 'gameOver', () => this.resetReactions());
+        this.registerEventListener(window, 'gameOver', () => this.endRun());
 
         // Pointer parallax for the shared camera rig (koi's pattern): primary mouse/pen only,
         // re-centred on leave/cancel/blur, off while paused or under reduced motion.
@@ -435,7 +435,11 @@ export default class ParhelionTheme extends BaseTheme {
         this.modeManager = manager;
         const relayout = () => this.scheduleLayoutReads();
         this.eventUnsubscribers.push(
-            manager.on('modeStarted', relayout),
+            // A new run: the rects are read again, and a run-end night gives the day back at once.
+            manager.on('modeStarted', () => {
+                relayout();
+                this.runtime?.sessionStart?.();
+            }),
             manager.on('modeActivated', relayout),
             manager.on('modeStopped', () => this.resetReactions()),
         );
@@ -467,7 +471,20 @@ export default class ParhelionTheme extends BaseTheme {
         this.runtime?.configure?.({ reducedMotion: this.reducedMotion, intensity });
     }
 
-    /** Window 'gameOver' and modeStopped: forget chains, counts and the Lower Sun level. */
+    /**
+     * Window 'gameOver': the run's chains, counts and level go, and then the sun goes under.
+     * In that order (gotcha #1716): the reset wipes every reaction, and the run-end night is
+     * the one thing that must outlive it (the optics state keeps it through resetSession, the
+     * menu and modeStopped, gives the light back by itself after a while, and at once on the
+     * next modeStarted).
+     */
+    endRun() {
+        const allowed = this.effectsAllowed();
+        this.resetReactions();
+        if (allowed) this.runtime?.gameOver?.();
+    }
+
+    /** modeStopped (and a run's end): forget chains, counts and the Lower Sun level. */
     resetReactions() {
         this.director?.reset();
         this.level = 1;

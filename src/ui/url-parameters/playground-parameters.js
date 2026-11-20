@@ -1206,7 +1206,10 @@ export const PLAYGROUND_URL_PARAMETERS = [
             + 'starts) or gameOver (Mistfall). Kaleidosonic: lock, drop, clear, quad, twist, perfect, '
             + 'levelUp, release (the chain held by peak breaks) or over (the light sinks). Synthwave '
             + 'Sunset: lock, clear, quad, chain (the coaster lifted chain=<n> notches), ride (a chain '
-            + 'of chain=<n> breaks and the coaster goes once round its circuit) or levelUp.',
+            + 'of chain=<n> breaks and the coaster goes once round its circuit) or levelUp. Nimbus Veil: '
+            + 'lock, hard, clear, quad, combo (a cascade of combo=<n> waves), chain, chainEnd, twist, twist0 '
+            + '(a twist with no lines), b2b, perfect, levelUp, over (the run ends), dawn (it ends and the '
+            + 'next begins) or fever.',
         defaultValue: 'Idle in most previews; Lunar Sigil uses lock.',
         example: 'event=lock',
         notes: 'Use on playground.html with effect=<the matching effect ID>. For deterministic replay, '
@@ -3513,6 +3516,20 @@ export const PLAYGROUND_URL_PARAMETERS = [
         ],
     },
     {
+        name: 'parhelionAir',
+        category: 'Playground',
+        scope: 'playground.html — parhelion; game themes: Parhelion',
+        description: 'Hold one of Parhelion\'s airs instead of letting its weather wheel turn.',
+        values: 'clear, cirrus, crystal, drift, fog (case-insensitive).',
+        defaultValue: 'The wheel turns by the clock.',
+        example: 'parhelionAir=crystal',
+        notes: 'Use on playground.html with effect=<the matching effect ID>. Also read by the listed '
+            + 'game themes while active.',
+        sources: [
+            'src/playground/effects/parhelion.effect.js',
+        ],
+    },
+    {
         name: 'parhelionBloom',
         category: 'Playground',
         scope: 'playground.html — parhelion; game themes: Parhelion',
@@ -3562,6 +3579,34 @@ export const PLAYGROUND_URL_PARAMETERS = [
         values: '1 enables.',
         defaultValue: 'Off.',
         example: 'parhelionCounters=1',
+        notes: 'Use on playground.html with effect=<the matching effect ID>. Also read by the listed '
+            + 'game themes while active.',
+        sources: [
+            'src/playground/effects/parhelion.effect.js',
+        ],
+    },
+    {
+        name: 'parhelionHappenings',
+        category: 'Playground',
+        scope: 'playground.html — parhelion; game themes: Parhelion',
+        description: 'Turn off the things Parhelion plays by itself (a gust, a glint round the ring, a hound flaring).',
+        values: '0 disables.',
+        defaultValue: 'On.',
+        example: 'parhelionHappenings=0',
+        notes: 'Use on playground.html with effect=<the matching effect ID>. Also read by the listed '
+            + 'game themes while active.',
+        sources: [
+            'src/playground/effects/parhelion.effect.js',
+        ],
+    },
+    {
+        name: 'parhelionHour',
+        category: 'Playground',
+        scope: 'playground.html — parhelion; game themes: Parhelion',
+        description: 'Hold a place on Parhelion\'s Lower Sun walk instead of letting the clock walk it.',
+        values: '0 to 2: 0 noon, 1 the golden sun, 1.25 dusk, 1.5 the moonlit night, 1.75 dawn.',
+        defaultValue: 'The clock (and the level) walk it.',
+        example: 'parhelionHour=1.5',
         notes: 'Use on playground.html with effect=<the matching effect ID>. Also read by the listed '
             + 'game themes while active.',
         sources: [
@@ -3658,7 +3703,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
         scope: 'playground.html — parhelion; game themes: Parhelion',
         description: 'Trigger a named Parhelion reaction.',
         values: 'lock, harddrop, stonefall, single, clear, double, triple, quad, twist, apex, perfect, '
-            + 'echo (case-insensitive).',
+            + 'echo, b2b, level, over, drops (case-insensitive).',
         defaultValue: 'No simulated cue.',
         example: 'parhelionPulse=lock',
         notes: 'Use on playground.html with effect=<the matching effect ID>. Also read by the listed '
@@ -6140,7 +6185,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
         [
             'parts',
             'Draw only these parts.',
-            'Comma list of land, sky, props, cumulus, poplars, motes.',
+            'Comma list of land, sky, props, cumulus, poplars, devils, vultures, motes.',
             'All.',
             'land,sky',
         ],
@@ -6153,6 +6198,17 @@ export const PLAYGROUND_URL_PARAMETERS = [
             '1',
         ],
         ['bloom', 'Override the tier’s bloom.', '0 or 1.', 'The tier’s.', '0'],
+        ['fxaa', 'Override the tier’s closing antialiasing pass.', '0 or 1.', 'The tier’s.', '0'],
+        [
+            'air',
+            'Hold the weather at one air of its wheel (otherwise it turns with the clock, one air every 92 s).',
+            'fair, towers, pools, showers, crystal, mist or dust; or a wheel place (fractions mix).',
+            'The clock’s.',
+            'pools',
+        ],
+        ['happenings', 'Switch the clock’s small happenings off (meteor, lightning in a far bank, the wind’s dust devil).', '0 disables.', 'On.', '0'],
+        ['happen', 'Play one clock happening before the frame.', 'meteor, flicker or gust.', 'None.', 'meteor'],
+        ['happenAge', 'Show that happening this many seconds old.', 'Seconds.', '0.35.', '0.5'],
         ['px', 'Hold the pointer parallax horizontally.', '−1 to 1.', '0.', '0.5'],
         ['py', 'Hold the pointer parallax vertically.', '−1 to 1.', '0.', '-0.3'],
         [
@@ -6202,7 +6258,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             '0.',
             '6',
         ],
-        ['b2b', 'Hold a back-to-back level (mica glints on the sunlit rock).', '0 to 4.', '0.', '4'],
+        ['b2b', 'Hold a back-to-back level (veins of gold glow across the beds).', '0 to 4.', '0.', '4'],
         ['locks', 'Play this many locks before the frame.', 'Integer ≥ 0.', '0.', '12'],
         [
             'clears',
@@ -6219,6 +6275,23 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'Off.',
             '1',
         ],
+        [
+            'vultures',
+            'Fly one visit of the bearded vultures alone: a thermal (birds circling in a rising column) or a close pass.',
+            'thermal, pass or off (no birds).',
+            'Their own timetable.',
+            'thermal',
+        ],
+        [
+            'vultureAge',
+            'Seconds into that visit (0 is the first bird banking into its circle; an arrival is a few seconds before).',
+            'Seconds, may be negative.',
+            '0.',
+            '15',
+        ],
+        ['vultureSide', 'The side of the board card the visit flies on.', '-1 (left) or 1 (right).', 'The timetable’s.', '-1'],
+        ['vultureVisit', 'Which visit of the timetable to fly (its seeded birds and site).', 'Integer ≥ 0.', '0.', '2'],
+        ['vultureWay', 'A pass flown as its route is written or back along it.', '1 or -1.', 'The timetable’s.', '1'],
     ].map(([name, description, values, defaultValue, value]) => ({
         name,
         category: 'Playground',
@@ -7253,4 +7326,77 @@ export const PLAYGROUND_URL_PARAMETERS = [
         notes: 'Use on playground.html with effect=tornado.',
         sources: ['src/playground/effects/tornado.effect.js'],
     })),
+    {
+        name: 'air',
+        category: 'Playground',
+        scope: 'playground.html — nimbus-veil',
+        description: 'Hold one air over the cloud sea instead of the clock’s own (the air turns on a wheel '
+            + 'of 96 s beside the hours’ 110 s).',
+        values: 'fair, tails (mares’ tails on a quick wind), mackerel (a rippled ceiling), beams (a broken '
+            + 'ceiling: shade on the deck, the sun fanned into beams) or mist (the veils rise, the heads sink).',
+        defaultValue: 'Unset (the clock decides).',
+        example: 'air=mackerel',
+        notes: 'Use on playground.html with effect=nimbus-veil.',
+        sources: [
+            'src/playground/effects/nimbus-veil.effect.js',
+        ],
+    },
+    {
+        name: 'happen',
+        category: 'Playground',
+        scope: 'playground.html — nimbus-veil',
+        description: 'Hold one of the sky’s own happenings in every slot instead of the clock’s (one to a '
+            + 'slot of 36 s, with quiet slots between).',
+        values: 'skein (birds cross the light), glitter (the motes flash toward the sun), boil (a tower boils up), '
+            + 'meteor (shooting stars; a night hour) or flicker (heat lightning inside a tower; dusk or night).',
+        defaultValue: 'Unset (the clock decides).',
+        example: 'happen=skein',
+        notes: 'Use on playground.html with effect=nimbus-veil. A held happening begins with its slot: its age is t '
+            + 'modulo 36 s.',
+        sources: [
+            'src/playground/effects/nimbus-veil.effect.js',
+        ],
+    },
+    {
+        name: 'happenings',
+        category: 'Playground',
+        scope: 'playground.html — nimbus-veil',
+        description: 'Leave the sky’s own happenings out of the frame.',
+        values: '0 disables; any other value keeps them.',
+        defaultValue: 'On.',
+        example: 'happenings=0',
+        notes: 'Use on playground.html with effect=nimbus-veil, for a frame with nothing in it but the hour '
+            + 'and the air.',
+        sources: [
+            'src/playground/effects/nimbus-veil.effect.js',
+        ],
+    },
+    {
+        name: 'chain',
+        category: 'Playground',
+        scope: 'playground.html — nimbus-veil',
+        description: 'How many clears in a row event=chain or event=chainEnd plays, 0.7 s apart (each lights '
+            + 'the next stepping stone on the deck).',
+        values: 'Integer, at least 2.',
+        defaultValue: '5.',
+        example: 'chain=6',
+        notes: 'Use on playground.html with effect=nimbus-veil&event=chain; eventAge counts from the first clear.',
+        sources: [
+            'src/playground/effects/nimbus-veil.effect.js',
+        ],
+    },
+    {
+        name: 'streak',
+        category: 'Playground',
+        scope: 'playground.html — nimbus-veil',
+        description: 'How many back-to-backs event=b2b plays, 2.2 s apart (each lights one more tower’s '
+            + 'lantern).',
+        values: 'Integer, at least 1.',
+        defaultValue: '1.',
+        example: 'streak=3',
+        notes: 'Use on playground.html with effect=nimbus-veil&event=b2b; eventAge counts from the first.',
+        sources: [
+            'src/playground/effects/nimbus-veil.effect.js',
+        ],
+    },
 ];
