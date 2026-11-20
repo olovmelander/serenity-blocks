@@ -10,7 +10,7 @@ Feature branch `feature/gravity-bots`, measured against `8dc68d825db61bc04e1cfb4
 | Survival and defense | **Passed.** Deaths fell from 100 to 28 in 400 native-paced games. Every tier held or improved its original survival count. The expert survived all 16 six-row attacks and removed at least half the marked rows on 13. |
 | Local difficulty | On the reserved 100-bag panel, **9/9 adjacent pairs** met the 55–70% target in both three- and seven-frag matches. On the established seven-frag panel, tier 10 earned 70.50% against tier 9. Completed seven-frag series on the reserved panel lasted a median of **16.3 minutes**, up from 9.6. |
 | Campaign balance | **9/9 gates** on all 4,500 freshly replayed attempts after integrating the latest authored orbs. All 600 rival game records matched the calibrated build. Every historical human-pace proxy stayed inside the approved tolerance. |
-| Frame cost | In the first pass, all 124,757 active planning frames fit their display budgets. All eight games met the percentile and response targets. Three of eight had at most as many two-refresh intervals as their matched replay. The reverse-order pass is in progress. |
+| Frame cost | The pre-integration package passed every percentile and first-plan target. One of 260,207 planning frames exceeded its display budget. Eight of 16 games had excess two-refresh intervals. Four focused repeats on the synced package passed every planning target. |
 | Repeatability | The supported local fixed clock matched 3,403 inputs, 267 waves and 134 outgoing events across two fresh processes at 60 and 165 Hz. The end of this handover names the special rules that still use the original wall clock. |
 | Human appearance and fun | Far-off sampled mistakes fell to 0/58 at tier 1 and 4/67 at tier 2. The blind study is ready for five independent reviewers. Direct-play fun ratings are outstanding. |
 
@@ -18,7 +18,7 @@ Feature branch `feature/gravity-bots`, measured against `8dc68d825db61bc04e1cfb4
 
 On November 20 the owner approved deployment when CI and the planning budgets pass, with two follow-ups.
 
-1. **Display intervals.** Recheck the local rooms and the Neon encounter at 60 and 165 Hz on the same hardware, with each game's own input replay. Compare the number of two-refresh intervals, the shared labelled boards and the renderer activity around any excess. The first pass had extra intervals in five of eight configurations. [Frame measurements](#frame-cost) · [Packaged measurement runner](../reports/gravity-bot-rebuild/render-series.ps1)
+1. **Display intervals.** Recheck the local rooms and the Neon encounter at 60 and 165 Hz on the same hardware, with each game's own input replay. The completed comparison found extra two-refresh intervals in five of eight games in the first order and three of eight in reverse order. The largest excess was in the four-expert room at 165 Hz. [Frame measurements](#both-measurement-orders-on-the-pre-integration-package) · [Packaged measurement runner](../reports/gravity-bot-rebuild/render-series.ps1)
 2. **Human play.** Collect five independent reviews of the eight blinded clips and record direct-play fun ratings by tier. The agreed plausibility threshold is 70%. At handover there were zero completed questionnaires. The reserved seven-frag median of 16.3 minutes is worth checking in direct play. [Blind review](../reports/gravity-bot-rebuild/blind-review.html) · [Scoring the responses](../reports/gravity-bot-rebuild/scorecard.py)
 
 ## What the expert actually does
@@ -290,6 +290,35 @@ The recorded-schedule comparison also replayed all 10,427 inputs and 105 checkpo
 | One expert | 1.727 → 1.183 ms | 2.494 → 1.933 ms | 5.554 → 6.681 ms | 5,875 → 5,992 ms |
 | Three experts | 0.317 → 0.228 ms | 0.527 → 0.405 ms | 1.763 → 1.575 ms | 2,532 → 2,602 ms |
 | Four experts | 0.143 → 0.099 ms | 0.255 → 0.177 ms | 1.044 → 0.737 ms | 1,594 → 1,547 ms |
+
+### Both measurement orders on the pre-integration package
+
+Sixteen ten-minute matches and their sixteen input-only replays matched all **1,724 labelled-board checks**. The planner met its p95, p99 and first-plan deadline in all 16 matches. One of 260,207 active planning frames exceeded a display frame. Eight matches had more two-refresh intervals than replay. The largest display difference occurred with four experts at 165 Hz in the reverse order, with 11,258 intervals live and 1,657 on tape. The planner stayed inside 4.6 ms throughout that game. Each row includes the elapsed work of every active seat. [Paired recordings](../reports/gravity-bot-rebuild/evidence.json.gz) ? [Repeat the scorecard](../reports/gravity-bot-rebuild/scorecard.py)
+
+| Room | Hz | Pass | Delivered Hz, live / tape | Planner p95 / p99 / max, ms | Whole bot p95 / p99 / max, planning frames | Max on other frames, ms | Over-frame planner updates | Two-refresh intervals, live / tape | First / recovery lateness p95, ms | Matched checks |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| One expert | 60 | 1 | 60.0 / 60.0 | 1.3 / 1.8 / 3.5 | 1.4 / 1.8 / 3.5 | 8.6 | 0 / 8,235 | 6 / 6 | 0.0 / 0.0 | 108/108 |
+| One expert | 60 | 2 | 60.0 / 60.0 | 1.2 / 1.7 / 4.3 | 1.3 / 1.7 / 4.6 | 9.5 | 0 / 8,193 | 7 / 9 | 0.0 / 0.0 | 108/108 |
+| Three experts | 60 | 1 | 60.0 / 60.0 | 0.4 / 0.7 / 2.5 | 0.7 / 1.1 / 5.0 | 8.4 | 0 / 16,767 | 6 / 8 | 0.0 / 50.0 | 105/105 |
+| Three experts | 60 | 2 | 60.0 / 59.8 | 0.5 / 0.7 / 2.1 | 0.7 / 1.1 / 4.6 | 7.7 | 0 / 16,835 | 6 / 9 | 0.0 / 50.0 | 105/105 |
+| Four experts | 60 | 1 | 60.0 / 60.0 | 0.4 / 0.7 / 1.8 | 0.8 / 1.2 / 4.8 | 7.5 | 0 / 19,492 | 11 / 10 | 0.0 / 33.3 | 108/108 |
+| Four experts | 60 | 2 | 59.6 / 60.0 | 0.4 / 0.6 / 6.9 | 0.8 / 1.2 / 14.6 | 6.5 | 0 / 19,407 | 11 / 21 | 0.0 / 33.3 | 108/108 |
+| Neon | 60 | 1 | 59.9 / 59.9 | 0.8 / 1.0 / 1.9 | 0.8 / 1.0 / 2.0 | 6.5 | 0 / 2,604 | 15 / 14 | 0.0 / 66.7 | 110/110 |
+| Neon | 60 | 2 | 59.9 / 59.9 | 0.8 / 1.0 / 2.7 | 0.8 / 1.1 / 2.9 | 8.2 | 0 / 2,605 | 19 / 24 | 0.0 / 66.7 | 110/110 |
+| One expert | 165 | 1 | 162.8 / 163.1 | 1.4 / 2.2 / 5.9 | 1.4 / 2.2 / 5.9 | 15.5 | 0 / 14,043 | 1,195 / 988 | 0.0 / 0.0 | 108/108 |
+| One expert | 165 | 2 | 161.8 / 164.3 | 1.0 / 1.7 / 12.6 | 1.0 / 1.7 / 12.6 | 7.0 | 1 / 17,968 | 1,652 / 349 | 0.0 / 0.0 | 108/108 |
+| Three experts | 165 | 1 | 161.7 / 162.2 | 0.4 / 0.7 / 3.8 | 0.7 / 1.4 / 10.8 | 13.8 | 0 / 27,611 | 1,797 / 1,488 | 0.0 / 50.0 | 105/105 |
+| Three experts | 165 | 2 | 163.9 / 163.8 | 0.3 / 0.5 / 2.3 | 0.4 / 1.0 / 6.8 | 9.3 | 0 / 34,053 | 550 / 556 | 0.0 / 50.0 | 105/105 |
+| Four experts | 165 | 1 | 163.1 / 164.7 | 0.3 / 0.5 / 2.5 | 0.7 / 1.2 / 8.5 | 9.9 | 0 / 33,384 | 993 / 117 | 0.0 / 33.3 | 108/108 |
+| Four experts | 165 | 2 | 141.7 / 161.6 | 0.3 / 0.6 / 4.6 | 0.6 / 1.4 / 15.8 | 17.1 | 0 / 33,761 | 11,258 / 1,657 | 0.0 / 33.3 | 108/108 |
+| Neon | 165 | 1 | 164.5 / 164.5 | 0.9 / 1.1 / 2.0 | 0.9 / 1.1 / 2.2 | 6.9 | 0 / 2,621 | 125 / 129 | 0.0 / 66.7 | 110/110 |
+| Neon | 165 | 2 | 164.6 / 164.6 | 0.8 / 1.0 / 2.3 | 0.8 / 1.0 / 2.6 | 6.4 | 0 / 2,628 | 113 / 112 | 0.0 / 66.7 | 110/110 |
+
+In the reverse-order single-expert game at 165 Hz, one fixed-tick planning call took **12.6 ms** against a 6.06 ms frame. It followed the nineteenth lock, at round 11, tick 550, with no queued garbage. The same turn replayed 60 times on its original between-tick schedule took 0.340 ms at the median, 0.442 ms at p95 and 0.638 ms at its slowest. Every repeat matched all 66 inputs and the labelled board through tick 556. The original sample has no CPU trace that identifies the source of the delay. [Fixed-clock replay](../reports/gravity-bot-rebuild/replay-cost.mjs) ? [Recorded investigation](../reports/gravity-bot-rebuild/integration.json.gz)
+
+Three allocation changes preserved search choices but produced median process CPU of 344, 359 and 360 ms against 344 ms for their control. An indexed landing table gave 344 ms against its own 359 ms control across 48 real roots, including 11 garbage boards. That 4.2% gain fell short of the predeclared 5% requirement. In 16 fresh Electron processes per version the median selected call took 0.597 ms with the shipped search and 0.600 ms with the index. The release uses the measured control.
+
+After syncing Painted Ages, four fresh rendered matches opened directly on the deal for round 11. Each reproduced all 121 inputs and all three labelled boards through tick 900. The planning calls at tick 550 took **0.8, 1.0, 1.3 and 0.9 ms**. The slowest planning frame anywhere in the four 16-second runs took 2.5 ms. All four also passed the percentile and first-plan checks. [Packaged investigation and full timing samples](../reports/gravity-bot-rebuild/integration.json.gz)
 
 ### Pressure, roof and Infinity on the final build
 
