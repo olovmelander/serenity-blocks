@@ -23,6 +23,7 @@ import * as THREE from 'three/webgpu';
 import {
     Fn,
     If,
+    Loop,
     abs,
     cameraPosition,
     clamp,
@@ -30,6 +31,7 @@ import {
     exp,
     float,
     fwidth,
+    int,
     length,
     max,
     min,
@@ -45,15 +47,32 @@ import {
 import {
     RIG,
     SEA_WRAP,
-    SUN_DIR,
-    SUN_TAN,
     TOWERS,
     nvApplyHaze,
     nvDomes,
     nvDomesH,
+    nvNoise2,
     nvNoisedP,
+    nvSpectrum,
     rgb,
 } from './nimbus-veil-tsl.js';
+
+/** Ripples on the deck that can spread at once (a lock a ripple). */
+export const RIPPLE_SLOTS = 4;
+
+/**
+ * A chain's stepping stones: bars of light on the deck along the sun's bearing, one more for
+ * each clear, each nearer the lens than the last (their distances from the rest camera). The
+ * distances are chosen so the stones stand at even steps down the SCREEN (2.2 degrees apart,
+ * from 3.6 degrees under the horizon): a stair of light from the sun to the eye. The sun's bearing
+ * is where the layout parks the sun, so the stair always lies in the open stage.
+ */
+export const ROAD_STONES = Object.freeze([381, 236, 171, 133, 109, 92, 80, 70]);
+/**
+ * A stone's half-size at distance D, across the bearing and along it: the same size on screen
+ * near or far (a fixed angle across; along, a fixed angle as the grazing eye sees the deck).
+ */
+export const stoneSize = (distance) => ({ across: distance * 0.096, along: distance * distance * 0.00042 });
 
 /** Gaussian haze rate along the sea (1 / distance). */
 export const SEA_HAZE = 1 / 1500;
@@ -125,27 +144,35 @@ function buildSeaGeometry(rings, segments) {
 /**
  * Every light-wave slot (P = radius, 1/width, energy, heat; a gaussian band) at `dist`: their summed light and its colour, gold for a plain wave and
  * molten amber for a hot one (a deep cascade, a long chain, a fever), weighted by each band's
- * light. `wide` widens the bands (the towers take them three times as wide).
+ * light. `wide` widens the bands (the towers take them three times as wide). `fringe` is the
+ * shade that lies either side of a band's core (|d|·e^(−d²): nothing at the core, most at its
+ * shoulders): on a deck as bright as the band itself, the fringe is what makes it a line.
  */
 export function ringLight(rings, dist, wide = 1, knee = 0.8, room = 0.6) {
     const sum = float(0.0).toVar();
     const hot = float(0.0).toVar();
+    const fringe = float(0.0).toVar();
     rings.forEach((P) => {
-        const d = dist.sub(P.x).mul(P.y).div(wide);
-        const r = exp(d.mul(d).negate()).mul(P.z);
-        sum.addAssign(r);
-        hot.addAssign(r.mul(P.w));
+        const d = dist.sub(P.x).mul(P.y).div(wide).toVar();
+        const r = exp(d.mul(d).mul(0.5).negate()).mul(P.z).toVar();
+        const core = r.mul(exp(d.mul(d).mul(0.5).negate()));
+        sum.addAssign(core);
+        hot.addAssign(core.mul(P.w));
+        fringe.addAssign(abs(d).mul(r));
     });
     const heat = clamp(hot.div(max(sum, 1e-4)), 0.0, 1.0);
     // Bands that overlap add up to a soft limit: one wave reads as it always has, a procession
     // never floods the deck or a tower with light (linear to `knee`, then easing to knee + room).
     const over = max(sum.sub(knee), 0.0);
     const light = min(sum, knee).add(over.div(over.div(room).add(1.0)));
-    return { sum: light, heat };
+    return { sum: light, heat, fringe };
 }
 
-/** Swell, mask and heads at field point q (world units, scrolled): their values and gradients. */
-function baseField(q) {
+/**
+ * Swell, mask and heads at field point q (world units, scrolled): their values and gradients.
+ * `pile` is how high the air lets the heads stand (u.air.w: 1 on a plain day, less toward stratus).
+ */
+function baseField(q, pile) {
     const sw = nvNoisedP(q.div(F.swellCell), period(F.swellCell)).toVar();
     const mk = nvNoisedP(q.div(F.maskCell).add(vec2(31.7, 0.0)), period(F.maskCell)).toVar();
     const hp = nvDomes(q.div(F.heapCell).add(vec2(-21.7, 0.0)), period(F.heapCell)).toVar();
@@ -155,8 +182,9 @@ function baseField(q) {
     const ms = clamp(mk.x.sub(0.2).div(0.65), 0.0, 1.0);
     const m = ms.mul(ms).mul(float(3.0).sub(ms.mul(2.0))).mul(1.1)
         .add(0.15)
+        .mul(pile)
         .toVar();
-    const gradM = mk.yz.mul(ms.mul(float(1.0).sub(ms)).mul((6.0 * 1.1) / (0.65 * F.maskCell)));
+    const gradM = mk.yz.mul(ms.mul(float(1.0).sub(ms)).mul((6.0 * 1.1) / (0.65 * F.maskCell))).mul(pile);
     const swell = sw.x.sub(0.5).mul(F.swellH);
     const gradSwell = sw.yz.mul(F.swellH / F.swellCell).toVar();
     // Heaps (big domes) carry heads (smaller ones): both rise with the mask.
@@ -178,6 +206,7 @@ function baseField(q) {
  * @param {number[]} [opts.shadowTaps]  self-shadow taps toward the sun (world units)
  * @param {boolean} [opts.cauliflower]  the cauliflower octave in the normal
  * @param {boolean} [opts.fine]         the finest octave in the normal
+ * @param {boolean} [opts.shade]        the high cloud's shade drifting over the deck
  * @param {number} [opts.towers=0]      how many towers (prefix of TOWERS) throw shadows
  */
 export function createCloudSea(u, opts = {}) {
@@ -185,6 +214,7 @@ export function createCloudSea(u, opts = {}) {
     const taps = opts.shadowTaps ?? SEA_SHADOW_TAPS.four;
     const withCauli = opts.cauliflower !== false;
     const withFine = opts.fine !== false;
+    const withShade = opts.shade !== false;
     const towers = TOWERS.slice(0, Math.max(0, opts.towers ?? 0));
     const material = new THREE.MeshBasicNodeMaterial();
     material.name = 'NimbusCloudSea';
@@ -197,7 +227,7 @@ export function createCloudSea(u, opts = {}) {
         const p = positionLocal;
         const q = vec2(p.x, p.z.sub(u.seaScroll));
         const r = length(vec2(p.x.sub(RIG.x), p.z.sub(RIG.z)));
-        const f = baseField(q);
+        const f = baseField(q, u.air.w);
         const headsFade = float(1.0).sub(smoothstep(520.0, 1100.0, r));
         const h = f.swell.add(f.heads.mul(headsFade)).toVar();
         if (withCauli) {
@@ -219,7 +249,7 @@ export function createCloudSea(u, opts = {}) {
         const fw = fwidth(q);
         const foot = sqrt(max(fw.x.mul(fw.y), 1e-8)).mul(1.4).toVar();
 
-        const f = baseField(q);
+        const f = baseField(q, u.air.w);
         const crown = smoothstep(0.15, 0.7, f.hd.x).toVar();
         // Far out the heads flatten into the deck's texture, then into a plain.
         // Far out the heads flatten into the heaps' larger forms (their rows would read as
@@ -253,9 +283,9 @@ export function createCloudSea(u, opts = {}) {
 
         const n = normalize(vec3(grad.x.negate(), 1.0, grad.y.negate())).toVar();
         const V = normalize(rel).toVar();
-        const L = vec3(SUN_DIR[0], SUN_DIR[1], SUN_DIR[2]);
+        const L = u.sunDir;
 
-        // ── Self-shadow: the ray toward the sun climbs SUN_TAN per unit; a higher head on its
+        // ── Self-shadow: the ray toward the sun climbs u.sunTan per unit; a higher head on its
         // way puts this point in shadow. The swell and the mask change slowly, so they are
         // carried along the taps by their gradients; each tap reads the heads again. ──
         const shadow = float(1.0).toVar();
@@ -276,7 +306,7 @@ export function createCloudSea(u, opts = {}) {
                     const piledT = heapT.mul(F.heapH).add(headT.mul(F.headH));
                     const ht = f.swell.sub(f.gradSwell.y.mul(t)).add(piledT.mul(mT));
                     const pen = 0.3 + t * 0.07;
-                    const clear = h0.add(t * SUN_TAN).sub(ht);
+                    const clear = h0.add(u.sunTan.mul(t)).sub(ht);
                     shade.assign(min(shade, smoothstep(-pen, pen, clear)));
                 }
                 shadow.assign(mix(shade, float(1.0), smoothstep(700.0, 1400.0, dist)));
@@ -289,7 +319,7 @@ export function createCloudSea(u, opts = {}) {
         const towerLit = float(1.0).toVar();
         towers.forEach((t) => {
             const s = p.z.sub(t.z);
-            const yr = height.sub(F.offset).add(s.mul(SUN_TAN));
+            const yr = height.sub(F.offset).add(s.mul(u.sunTan));
             const yn = clamp(yr.div(t.h), 0.0, 1.2);
             // towerHalfWidth() (nimbus-veil-tsl.js) in TSL: a tapering body and a round crown.
             const crownT = clamp(yn.sub(0.78).div(0.32), 0.0, 1.0);
@@ -301,7 +331,18 @@ export function createCloudSea(u, opts = {}) {
             const behind = smoothstep(t.h * -0.15, 0.0, s);
             towerLit.mulAssign(float(1.0).sub(across.mul(below).mul(behind).mul(0.85)));
         });
-        const lit = shadow.mul(towerLit).toVar();
+        // ── The high cloud's shade: when the ceiling is broken (u.air2.x) its shadows drift over
+        // the deck on the wind, fields of dimmer cloud with the sun still on the heads between. ──
+        const ceilLit = float(1.0).toVar();
+        if (withShade) {
+            If(u.air2.x.greaterThan(0.02), () => {
+                const sp = vec2(p.x, p.z).mul(0.0042).add(vec2(u.ceilFlow.x.mul(9.0), u.ceilFlow.y.mul(9.0).add(4.4)));
+                const cover = nvNoise2(sp).mul(0.66).add(nvNoise2(sp.mul(2.3).add(vec2(11.3, 5.9))).mul(0.34));
+                ceilLit.assign(float(1.0).sub(smoothstep(0.42, 0.7, cover).mul(u.air2.x).mul(0.52)));
+            });
+        }
+        // What of the sun reaches this point: none of it once the sun stands under the sea line.
+        const lit = shadow.mul(towerLit).mul(ceilLit).mul(u.day).toVar();
 
         // ── Light ──
         const ndl = dot(n, L);
@@ -313,12 +354,17 @@ export function createCloudSea(u, opts = {}) {
         // Sky light: lavender-blue from the zenith on the crowns, rose from the horizon on the
         // flanks; creases see less of the sky.
         const sky = mix(u.mood.skyLow, u.mood.skyHigh, n.y.mul(0.5).add(0.5));
-        const creaseDark = mix(float(0.5), float(0.85), smoothstep(150.0, 700.0, dist));
+        const creaseDark = mix(float(0.42), float(0.85), smoothstep(110.0, 700.0, dist));
         const ao = mix(creaseDark, float(1.0), smoothstep(0.0, 0.55, f.hd.x))
-            .mul(mix(float(0.85), float(1.0), smoothstep(0.0, 0.5, cauli)));
+            .mul(mix(float(0.76), float(1.0), smoothstep(0.0, 0.5, cauli)));
+        // Once the sun is under the sea line the whole sky is the lamp: its fill rises, and the
+        // faces that look toward the afterglow take a little of its colour.
+        const gloam = float(1.0).sub(u.day).toVar();
+        const fill = sky.mul(ao).mul(gloam.mul(1.5).add(0.85))
+            .add(u.mood.glowWide.mul(clamp(n.z.negate().mul(0.6).add(0.4), 0.0, 1.0)).mul(gloam).mul(ao).mul(0.32));
         // Cloud tops scatter: even a crown the sun barely grazes is bright, so the sun's light
         // has a floor under the slope term — and the shadows (heads, tower lanes) read against it.
-        const col = sunCol.mul(diff.mul(0.7).add(0.3).mul(lit).mul(0.85)).add(sky.mul(ao).mul(0.85)).toVar();
+        const col = sunCol.mul(diff.mul(0.7).add(0.3).mul(lit).mul(0.85)).add(fill).toVar();
         // Light leaks through the cloud: a lit crown's shade side still glows a little.
         col.addAssign(sunCol.mul(0.07).mul(crown).mul(lit));
 
@@ -333,20 +379,79 @@ export function createCloudSea(u, opts = {}) {
         const facing = clamp(dot(n, V.negate()), 0.0, 1.0);
         const g = float(1.0).sub(facing);
         const rim = g.mul(g).mul(g);
-        col.addAssign(sunCol.mul(lobe).mul(rim.mul(1.5).add(0.1)).mul(mix(lit, float(1.0), 0.2))
+        col.addAssign(sunCol.mul(lobe).mul(rim.mul(1.5).add(0.1)).mul(mix(lit, u.day, 0.2))
             .mul(u.sunPulse.mul(0.5).add(1.0)));
+        // And a wider, softer lining: every head between the eye and the sun wears a thin rim
+        // of light on the edge it turns away, far beyond the glare path.
+        col.addAssign(sunCol.mul(c4.mul(rim).mul(0.42)).mul(lit));
         // As play heats the glare path turns molten: deep amber down the sun's bearing, on the
         // lit faces, the shadows left dark.
         col.addAssign(rgb(0xff8a3a, 1.5).mul(lobe).mul(rim.add(0.3)).mul(mix(float(0.25), float(1.0), lit))
-            .mul(u.blaze.z));
+            .mul(u.blaze.z)
+            .mul(u.day.mul(0.75).add(0.25)));
 
         // ── Light waves (line clears / level up) rolling in over the heads toward the camera,
         // brightest on the crowns; a hot wave burns amber ──
         const ring = ringLight(u.rings, dist, 1, 0.7, 0.4);
-        const ringCol = mix(rgb(0xffd9a0, 2.2), rgb(0xff8644, 2.0), ring.heat);
+        // (u.lampInfo.z: event light is as bright as the hour lets it be; the night's is dimmer.)
+        const ringCol = mix(rgb(0xffcf80, 2.6), rgb(0xff8644, 2.3), ring.heat).mul(u.lampInfo.z);
+        // The shade at a band's shoulders (on the sunlit deck a band is no brighter than the deck).
+        col.mulAssign(float(1.0).sub(min(ring.fringe, 1.0).mul(0.36).mul(u.day.mul(0.6).add(0.4))));
         // A hot band leaves the shadows darker: it reads as a line of fire on the crowns.
+        // The waves are light of their own: they cross a deck in shade as brightly as a lit one.
+        const waveLit = mix(shadow.mul(towerLit), float(1.0), gloam);
         col.addAssign(ringCol.mul(ring.sum.mul(mix(float(0.45), float(1.0), crown))
-            .mul(mix(float(0.6).sub(ring.heat.mul(0.35)), float(1.0), lit))));
+            .mul(mix(float(0.6).sub(ring.heat.mul(0.35)), float(1.0), waveLit))));
+
+        // ── A perfect clear's wave carries the spectrum: red on its leading edge, violet behind ──
+        const { glory } = u;
+        const across = dist.sub(glory.x).mul(glory.y).toVar();
+        col.addAssign(nvSpectrum(clamp(float(0.5).sub(across.mul(0.36)), 0.0, 1.0)).mul(0.9).add(0.25)
+            .mul(exp(across.mul(across).negate()).mul(glory.z).mul(mix(float(0.55), float(1.0), crown)).mul(1.35))
+            .mul(u.lampInfo.z));
+
+        // ── A chain's stepping stones (u.road: x how many are lit, y on/off): a stair of bars
+        // of light down the sun's bearing, the newest the nearest. Each has a core of light and
+        // a rim of shade, as the waves have, so it reads on the sunlit deck too. ──
+        If(u.road.y.greaterThan(0.003), () => {
+            const aside = p.x.sub(RIG.x).toVar();
+            const toward = float(RIG.z).sub(p.z).toVar();
+            const stones = float(0.0).toVar();
+            const rims = float(0.0).toVar();
+            ROAD_STONES.forEach((distance, k) => {
+                const size = stoneSize(distance);
+                const ex = aside.div(size.across);
+                const ez = toward.sub(distance).div(size.along);
+                const d2 = ex.mul(ex).add(ez.mul(ez)).toVar();
+                const wide = exp(d2.mul(-0.5)).mul(clamp(u.road.x.sub(k), 0.0, 1.0)).toVar();
+                stones.addAssign(wide.mul(exp(d2.mul(-0.5))));
+                rims.addAssign(sqrt(d2).mul(wide));
+            });
+            col.mulAssign(float(1.0).sub(min(rims, 1.0).mul(0.7).mul(u.day.mul(0.6).add(0.4))));
+            col.addAssign(u.lampTint.mul(min(stones, 1.4).mul(mix(float(0.65), float(1.0), crown)).mul(3.8))
+                .mul(u.lampInfo.z));
+        });
+
+        // ── A lock's ripple: a ring of light spreading on the deck beside the board ──
+        const ripple = float(0.0).toVar();
+        const trough = float(0.0).toVar();
+        Loop({
+            start: int(0), end: int(RIPPLE_SLOTS), type: 'int', condition: '<',
+        }, ({ i }) => {
+            const slot = u.ripples.element(i);
+            const from = length(vec2(p.x, p.z).sub(slot.xy)).toVar();
+            const off = from.sub(slot.z);
+            const wide = slot.z.mul(0.2).add(1.6);
+            // The crest, a soft light inside it that it leaves behind, and the trough that
+            // runs ahead of it: on a deck this bright a ripple reads by its shade as much.
+            ripple.addAssign(exp(off.mul(off).div(wide.mul(wide)).negate())
+                .add(float(1.0).sub(smoothstep(0.0, slot.z, from)).mul(0.2)).mul(slot.w));
+            const ahead = off.sub(wide.mul(1.9));
+            trough.addAssign(exp(ahead.mul(ahead).div(wide.mul(wide)).negate()).mul(slot.w));
+        });
+        col.mulAssign(float(1.0).sub(min(trough, 1.0).mul(0.5)));
+        col.addAssign(u.lampTint.mul(min(ripple, 1.6).mul(mix(float(0.6), float(1.0), crown)).mul(3.0))
+            .mul(u.lampInfo.z));
 
         // ── Mist pooled in the creases: violet, warm toward the sun ──
         const mist = mix(u.mood.mistA, u.mood.mistT, clamp(lobe.mul(2.0), 0.0, 1.0));

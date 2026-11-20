@@ -99,13 +99,18 @@ export const SECONDARY = Object.freeze({
 export const MOOD_KEYS = Object.freeze([...PRIMARY_KEYS, ...Object.keys(SECONDARY)]);
 
 /**
- * The moods, in the order the clock turns through them. `stars` is the starlight (0 = none).
- * @type {ReadonlyArray<{ name: string, stars: number, colors: Record<string, Hex> }>}
+ * The moods, in the order the clock turns through them. `stars` is the starlight (0 = none) and
+ * `sun` the sun's height over the horizon in degrees: it climbs through the morning to its noon,
+ * sinks through the evening and stands under the sea line in the blue hour, so the melt from the
+ * blue hour back to the first mood is a sunrise and the one into it a sunset. Its bearing never
+ * changes (the deck's shadows are found along it).
+ * @type {ReadonlyArray<{ name: string, stars: number, sun: number, colors: Record<string, Hex> }>}
  */
 const AUTHORED = Object.freeze([
     {
         name: 'golden sunrise',
         stars: 0,
+        sun: 9.5,
         colors: {
             hazeA: 0xb895bd,
             hazeT: [0xffcb92, 1.12],
@@ -126,6 +131,7 @@ const AUTHORED = Object.freeze([
     {
         name: 'pearl morning',
         stars: 0,
+        sun: 14,
         colors: {
             hazeA: 0xa8b0d4,
             hazeT: [0xffdcc4, 0.98],
@@ -146,6 +152,7 @@ const AUTHORED = Object.freeze([
     {
         name: 'white noon',
         stars: 0,
+        sun: 20,
         colors: {
             hazeA: 0x8ea8d8,
             hazeT: [0xd8e0ee, 0.95],
@@ -166,6 +173,7 @@ const AUTHORED = Object.freeze([
     {
         name: 'rose evening',
         stars: 0.12,
+        sun: 5.5,
         colors: {
             hazeA: 0xa8749e,
             hazeT: [0xff9a86, 1.1],
@@ -186,6 +194,7 @@ const AUTHORED = Object.freeze([
     {
         name: 'blue hour',
         stars: 1,
+        sun: -3.4,
         colors: {
             hazeA: 0x4a5490,
             hazeT: [0xd88a6a, 0.8],
@@ -247,7 +256,7 @@ const TODAY = AUTHORED[0];
 /** The moods as scene-linear palettes: every key of MOOD_KEYS, plus `name` and `stars`. */
 export const MOODS = Object.freeze(AUTHORED.map((mood, index) => {
     /** @type {Record<string, any>} */
-    const out = { name: mood.name, stars: mood.stars };
+    const out = { name: mood.name, stars: mood.stars, sun: mood.sun };
     for (const key of PRIMARY_KEYS) out[key] = lin(mood.colors[key]);
     for (const [key, [parent, today]] of Object.entries(SECONDARY)) {
         out[key] = index === 0 ? lin(today) : relate(lin(today), lin(TODAY.colors[parent]), out[parent]);
@@ -271,6 +280,16 @@ export function moodAt(phase, out = {}) {
     wheelAt(phase, MOOD_COUNT, AT);
     out.stars = MOODS[AT.a].stars + (MOODS[AT.b].stars - MOODS[AT.a].stars) * AT.melt;
     return out;
+}
+
+/**
+ * The sun's height over the horizon (degrees) at `phase` round the wheel: each mood's own on a
+ * whole phase, a straight glide between.
+ * @param {number} phase
+ */
+export function sunHeightAt(phase) {
+    wheelAt(phase, MOOD_COUNT, AT);
+    return MOODS[AT.a].sun + (MOODS[AT.b].sun - MOODS[AT.a].sun) * AT.melt;
 }
 
 /** The name of the mood nearest `phase`. */

@@ -111,6 +111,8 @@ export class NimbusVeilPost {
         this.uBloomBoost = uniform(0);
         /** The iris: closes a little as play heats, so the colours stay saturated. */
         this.uExposure = uniform(1);
+        /** The veil closed at a run's end (0..1): the light drains, the colour cools. */
+        this.uDusk = uniform(0);
 
         this.bloomNode = null;
         if (look.bloom) {
@@ -174,7 +176,7 @@ export class NimbusVeilPost {
                     });
                 }
             }
-            const H = S.add(B).mul(this.uExposure).toVar();
+            const H = S.add(B).mul(this.uExposure).mul(float(1.0).sub(this.uDusk.mul(0.42))).toVar();
             // Mid-tone contrast before the tone map (the darks are left alone).
             const Lh = max(dot(H, LUMA), 1e-4);
             H.mulAssign(pow(Lh.div(0.22), float(0.14).mul(smoothstep(0.015, 0.08, Lh))));
@@ -188,8 +190,10 @@ export class NimbusVeilPost {
             const mx = nvMax3(T);
             const sat = mx.sub(min(T.x, min(T.y, T.z))).div(max(mx, 1e-4));
             T.assign(mix(vec3(L), T, float(1.0).add(float(0.12).mul(float(1.0).sub(sat)))));
+            // The closed veil: half the colour goes, what is left leans to a cool grey.
+            T.assign(mix(T, vec3(L).mul(vec3(0.88, 0.92, 1.08)), this.uDusk.mul(0.5)));
             const rad = length(centered.mul(vec2(this.uAspect.div(1.778), 1.0)).mul(2.0));
-            T.mulAssign(float(1.0).sub(smoothstep(0.6, 1.4, rad).mul(0.22)));
+            T.mulAssign(float(1.0).sub(smoothstep(0.6, 1.4, rad).mul(this.uDusk.mul(0.28).add(0.22))));
 
             const D = vec3(renderOutput(vec4(clamp(T, 0.0, 1.0), 1.0), THREE.NoToneMapping).rgb).toVar();
             const px = floor(screenCoordinate);
@@ -211,6 +215,7 @@ export class NimbusVeilPost {
         if (params.bloomBoost !== undefined) this.uBloomBoost.value = params.bloomBoost;
         if (params.rays !== undefined) this.uRays.value = params.rays;
         if (params.exposure !== undefined) this.uExposure.value = params.exposure;
+        if (params.dusk !== undefined) this.uDusk.value = params.dusk;
     }
 
     render() {
