@@ -178,7 +178,9 @@ scoped rows, among them `hour` (hold the light on the wheel of hours), `look` (a
 lens for icons and close-ups), `combo`, `peak`, `b2b`, `locks`, `clears` and `recordTop`;
 the old `deposits`, `cascade`, `wet`, `formation`, `view`, `sun` and icon rows are retired.
 Use `effect=painted-ages&t=10&hour=<place>` for a deterministic playground capture; the part
-names are `land`, `sky`, `props`, `cumulus`, `poplars` and `motes`.
+names are `land`, `sky`, `props`, `cumulus`, `poplars`, `devils` and `motes`. The 2026-11-20
+living pass added `air` (hold the weather at one air of its wheel), `happenings`, `happen` and
+`happenAge` (the clock's small happenings) and `fxaa`.
 
 High Coast (2026-10-13), which replaces Mountain, adds the capture flags `highCoastForceWebGL`,
 `highCoastTime`, `highCoastFixedDt`, `highCoastParts` and `highCoastFalseColor`, plus the

@@ -6029,7 +6029,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
         [
             'parts',
             'Draw only these parts.',
-            'Comma list of land, sky, props, cumulus, poplars, motes.',
+            'Comma list of land, sky, props, cumulus, poplars, devils, motes.',
             'All.',
             'land,sky',
         ],
@@ -6042,6 +6042,17 @@ export const PLAYGROUND_URL_PARAMETERS = [
             '1',
         ],
         ['bloom', 'Override the tier’s bloom.', '0 or 1.', 'The tier’s.', '0'],
+        ['fxaa', 'Override the tier’s closing antialiasing pass.', '0 or 1.', 'The tier’s.', '0'],
+        [
+            'air',
+            'Hold the weather at one air of its wheel (otherwise it turns with the clock, one air every 92 s).',
+            'fair, towers, pools, showers, crystal, mist or dust; or a wheel place (fractions mix).',
+            'The clock’s.',
+            'pools',
+        ],
+        ['happenings', 'Switch the clock’s small happenings off (meteor, lightning in a far bank, the wind’s dust devil).', '0 disables.', 'On.', '0'],
+        ['happen', 'Play one clock happening before the frame.', 'meteor, flicker or gust.', 'None.', 'meteor'],
+        ['happenAge', 'Show that happening this many seconds old.', 'Seconds.', '0.35.', '0.5'],
         ['px', 'Hold the pointer parallax horizontally.', '−1 to 1.', '0.', '0.5'],
         ['py', 'Hold the pointer parallax vertically.', '−1 to 1.', '0.', '-0.3'],
         [
@@ -6091,7 +6102,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             '0.',
             '6',
         ],
-        ['b2b', 'Hold a back-to-back level (mica glints on the sunlit rock).', '0 to 4.', '0.', '4'],
+        ['b2b', 'Hold a back-to-back level (veins of gold glow across the beds).', '0 to 4.', '0.', '4'],
         ['locks', 'Play this many locks before the frame.', 'Integer ≥ 0.', '0.', '12'],
         [
             'clears',
