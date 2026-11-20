@@ -1,12 +1,15 @@
 import { describe, expect, it } from 'vitest';
 
 import {
-    ODYSSEY_BOULDERS, boulderMatrix, buildBoulderGeometry, buildBoulderSites,
+    ODYSSEY_BOULDERS, ODYSSEY_TARN_ROCKS, boulderMatrix, buildBoulderGeometry, buildBoulderSites,
 } from './odyssey-boulders.js';
-import { ODYSSEY_TARN, odysseyTarnRn, odysseyWorldHeight } from './odyssey-world-height.js';
+import {
+    ODYSSEY_TARN, odysseyTarnDistance, odysseyTarnRn, odysseyWorldHeight,
+} from './odyssey-world-height.js';
 import { scatterZonedForest } from './odyssey-forest-scatter.js';
 import { getOdysseyPathPointAt, getOdysseyWorldRailPointAt } from '../path-utils.js';
 import { ODYSSEY_DEER } from '../composition/odyssey-deer-herd.js';
+import { ODYSSEY_POND } from '../composition/odyssey-pond-life-motion.js';
 
 /**
  * BOULDERS AND OUTCROPS (Act II leftovers): rocks for scale, sited on the rail camera. These pin
@@ -27,12 +30,33 @@ describe('the boulders and outcrops', () => {
     it('keeps out of the tarn and its open meadow, the rail\'s track and the deer\'s glade', () => {
         const track = Array.from({ length: 1200 }, (_, i) => getOdysseyPathPointAt(0.12 + ((0.6 * i) / 1199)));
         const spots = ODYSSEY_DEER.members.flatMap((m) => m.spots);
-        rocks.forEach((r) => {
+        // (The tarn's own stones, ODYSSEY_TARN_ROCKS, stand on its islet and in its shallows on
+        // purpose, under the rail's track where it crosses the water 70-150 u up: they are seen
+        // from the orbs' close-ups, not the rail's forward view. The next test holds them.)
+        rocks.filter((r) => r.kind !== 'tarn').forEach((r) => {
             const at = `${r.kind} rock at (${r.x.toFixed(0)}, ${r.z.toFixed(0)})`;
             expect(odysseyTarnRn(r.x, r.z), at).toBeGreaterThan(ODYSSEY_TARN.clearing);
             const railD = Math.min(...track.map((p) => Math.hypot(p.x - r.x, p.z - r.z)));
             expect(railD, at).toBeGreaterThan(25);
             spots.forEach(([x, z]) => expect(Math.hypot(x - r.x, z - r.z), at).toBeGreaterThan(25));
+        });
+    });
+
+    it('sets the stones of the tarn by its water: on the islet, at the point, in the shallows, clear of its life', () => {
+        const tarnRocks = rocks.filter((r) => r.kind === 'tarn');
+        expect(tarnRocks.length).toBe(ODYSSEY_TARN_ROCKS.length);
+        const swans = ODYSSEY_POND.swans.route;
+        const heron = Object.values(ODYSSEY_POND.heron.sites).flat();
+        tarnRocks.forEach((r) => {
+            const at = `tarn rock at (${r.x.toFixed(0)}, ${r.z.toFixed(0)})`;
+            // By the water: within a few units of its shore, on either side.
+            expect(Math.abs(odysseyTarnDistance(r.x, r.z)), at).toBeLessThan(8);
+            // Out of the swans' way and the heron's shallows.
+            swans.forEach(([x, z]) => expect(Math.hypot(x - r.x, z - r.z), at).toBeGreaterThan(6));
+            heron.forEach(([x, z]) => expect(Math.hypot(x - r.x, z - r.z), at).toBeGreaterThan(6));
+            // Seated: it stands out of the water by at least a third of its height.
+            const top = r.y + (ODYSSEY_BOULDERS.shapes[r.shape].flat * r.sy);
+            expect(top - Math.max(odysseyWorldHeight(r.x, r.z), ODYSSEY_TARN.waterY), at).toBeGreaterThan(r.sy * 0.33);
         });
     });
 

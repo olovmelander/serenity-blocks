@@ -133,7 +133,9 @@ describe('relief + macro + detail bakes (pure halves)', () => {
         // and 2026-10-26 with the tarn in the meadow (odysseyTarnCarve, the same sculpt delta).
         // ...and 2026-11-02 with the north beach and the plain's swells (ODYSSEY_NORTH_BEACH,
         // PLAIN_SWELLS): the macro gains the bay and the swells, the detail weight drops on the beach.
-        expect(sha(a.total)).toBe('8cc0ef346c8e85bd726209b32f89b7e5');
+        // ...and 2026-11-20 with the tarn redrawn (a drawn shore and a profile across it,
+        // odysseyTarnProfile): the total height under and round the tarn changes, nothing else.
+        expect(sha(a.total)).toBe('e526e6a1c4ef221f51582affa29df2d4');
         expect(a.data.length).toBe(96 * 96 * 4);
         expect(a.total.length).toBe(96 * 96);
         const sample = makeReliefSampler(a);
@@ -161,7 +163,8 @@ describe('relief + macro + detail bakes (pure halves)', () => {
         expect(baked.summit.res).toBe(640);
         expect(Object.keys(baked.ms)).toEqual(['relief', 'sunFields', 'atlas', 'detail', 'macro', 'total']);
         const buffers = worldTextureDataBuffers(baked);
-        expect(buffers.length).toBe(11);
+        // (12 since 2026-11-20: the tarn's own plate rides on the sculpt plate's record.)
+        expect(buffers.length).toBe(12);
         buffers.forEach((b) => expect(b).toBeInstanceOf(ArrayBuffer));
         // Detail bake is the pinned cloud silhouette's host: same field, same stats.
         expect(sha(baked.detail.data)).toBe(sha(bakeDetailNormalData().data));

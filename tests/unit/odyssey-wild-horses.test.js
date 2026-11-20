@@ -32,7 +32,7 @@ import {
 } from '../../src/rendering/odyssey/world/odyssey-meadow-clearing.js';
 import { createOdysseyHorses, parseOdysseyHorse } from '../../src/rendering/odyssey/composition/odyssey-horses.js';
 import {
-    ODYSSEY_SEA_LEVEL, odysseyTarnRn, odysseyWorldDetailWeight, odysseyWorldHeight, odysseyWorldMacro,
+    ODYSSEY_SEA_LEVEL, odysseyTarnDistance, odysseyWorldDetailWeight, odysseyWorldHeight, odysseyWorldMacro,
     odysseyWorldRelief,
 } from '../../src/rendering/odyssey/world/odyssey-world-height.js';
 import { scatterZonedForest } from '../../src/rendering/odyssey/world/odyssey-forest-scatter.js';
@@ -256,7 +256,7 @@ describe('the band on the ground', () => {
                 if (Math.round(t * 15) % 15 === 0) {
                     for (const p of track) m.rail = Math.min(m.rail, Math.hypot(p.x - state.x, p.z - state.z));
                 }
-                m.tarn = Math.min(m.tarn, odysseyTarnRn(state.x, state.z));
+                m.tarn = Math.min(m.tarn, odysseyTarnDistance(state.x, state.z));
                 m.dry = Math.min(m.dry, odysseyWorldHeight(state.x, state.z) - ODYSSEY_SEA_LEVEL);
                 const e = 1.5;
                 m.slope = Math.max(m.slope, Math.hypot(
@@ -304,7 +304,8 @@ describe('the band on the ground', () => {
 
     it('keeps every horse on dry, walkable grass, clear of trees, boulders, the tarn and the rail', () => {
         // Measured 2026-11-02: crowns >= 0.4 u, boulders >= 1.9 u, tarn distance >= 1.64, rail >= 36 u,
-        // slope <= 0.31.
+        // slope <= 0.31. (The tarn was redrawn 2026-11-20: its distance is in world units now, the
+        // band's nearest pass ~23.7 u from the waterline, its open meadow's edge ~26 u.)
         stats.forEach((m, i) => {
             const label = `${band[i].member.name} #${i}`;
             expect(m.dry, `${label} above the sea`).toBeGreaterThan(8);
@@ -313,7 +314,7 @@ describe('the band on the ground', () => {
             // (Measured 2026-11-03: the grey mare passes ~1 u outside a field rock's radius as the
             // long run sets off.)
             expect(m.rock, `${label} clear of the boulders`).toBeGreaterThan(0.75);
-            expect(m.tarn, `${label} away from the tarn`).toBeGreaterThan(1.5);
+            expect(m.tarn, `${label} away from the tarn`).toBeGreaterThan(18);
             expect(m.rail, `${label} away from the rail's track`).toBeGreaterThan(30);
         });
     });

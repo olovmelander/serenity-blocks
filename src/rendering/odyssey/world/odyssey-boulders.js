@@ -133,6 +133,48 @@ export const ODYSSEY_PERCH_ROCKS = Object.freeze([
     }),
 ]);
 
+/**
+ * THE TARN'S STONES (2026-11-20): rocks set by hand on the islet, at the tip of the point and in
+ * the shallows of the tarn (ODYSSEY_TARN), so the water has something standing in it and its
+ * banks read as a real shore: a rock half in clear water says how clear and how shallow it is.
+ * Drawn and seated like every other rock; the ones in the water are partly under it (the tarn's
+ * film lies over their feet). They stand inside the tarn's open meadow on purpose
+ * (odyssey-boulders.test.js exempts them), clear of the swans' route and the heron's spots.
+ */
+export const ODYSSEY_TARN_ROCKS = Object.freeze([
+    // The islet: one broad rock and two smaller.
+    Object.freeze({
+        x: -213.5, z: -432.5, sx: 3.6, sy: 2.5, sz: 2.8, yaw: 0.7, shape: 0, tone: 0.9, moss: 0.45,
+    }),
+    Object.freeze({
+        x: -208.5, z: -434.8, sx: 2.2, sy: 1.6, sz: 1.8, yaw: -0.4, shape: 2, tone: 1.1, moss: 0.3,
+    }),
+    Object.freeze({
+        x: -217.6, z: -429.8, sx: 1.7, sy: 1.2, sz: 1.4, yaw: 1.9, shape: 1, tone: 1.0, moss: 0.35,
+    }),
+    // The point's tip, running out into the water.
+    Object.freeze({
+        x: -231.8, z: -444.2, sx: 2.6, sy: 1.8, sz: 2.0, yaw: 0.3, shape: 1, tone: 1.2, moss: 0.25,
+    }),
+    Object.freeze({
+        x: -228.4, z: -447.2, sx: 1.6, sy: 1.1, sz: 1.3, yaw: -1.1, shape: 2, tone: 1.3, moss: 0.2,
+    }),
+    Object.freeze({
+        x: -224.2, z: -438.6, sx: 1.2, sy: 0.9, sz: 1.0, yaw: 0.9, shape: 0, tone: 1.1, moss: 0.3,
+    }),
+    // The south bay's shallows.
+    Object.freeze({
+        x: -200.8, z: -405.2, sx: 2.0, sy: 1.4, sz: 1.6, yaw: 0.2, shape: 2, tone: 1.0, moss: 0.4,
+    }),
+    Object.freeze({
+        x: -196.0, z: -402.6, sx: 1.3, sy: 0.9, sz: 1.1, yaw: 2.4, shape: 0, tone: 1.15, moss: 0.3,
+    }),
+    // The east flats by the inlet.
+    Object.freeze({
+        x: -150.0, z: -425.0, sx: 2.3, sy: 1.5, sz: 1.8, yaw: -0.6, shape: 1, tone: 1.05, moss: 0.35,
+    }),
+]);
+
 /** A small deterministic generator (mulberry32). */
 function rng(seed) {
     let s = (seed * 2654435761) >>> 0;
@@ -274,6 +316,9 @@ export function buildBoulderSites(heightAt, { trees = [] } = {}) {
     const clearOfRail = (x, z) => !track.some((p) => Math.hypot(p.x - x, p.z - z) < B.railClear);
     ODYSSEY_PERCH_ROCKS.forEach((rock) => {
         rocks.push(seatRock(heightAt, { ...rock, anchor: -1, kind: 'perch' }));
+    });
+    ODYSSEY_TARN_ROCKS.forEach((rock) => {
+        rocks.push(seatRock(heightAt, { ...rock, anchor: -1, kind: 'tarn' }));
     });
     B.anchors.forEach((anchor, ai) => {
         const r = rng(anchor.seed * 7919);

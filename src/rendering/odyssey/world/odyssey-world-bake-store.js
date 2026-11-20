@@ -108,6 +108,9 @@ export function isUsableStoredWorldBake(stored, request) {
     const platesOk = ['atlas', 'detail', 'macro', 'summit']
         .every((plate) => isTyped(textures[plate]?.data) && textures[plate].data.length > 0);
     if (!platesOk) return false;
+    // The tarn's own plate rides on the sculpt plate's record (2026-11-20): a copy kept before
+    // it existed has none, and reads as a miss.
+    if (!isTyped(textures.summit.tarn?.data) || textures.summit.tarn.data.length === 0) return false;
     if (!!request.cloudField && Array.isArray(request.cloudSpecs)) {
         if (!field || !isTyped(field.position) || field.masses !== request.cloudSpecs.length) return false;
     } else if (field !== null) {
