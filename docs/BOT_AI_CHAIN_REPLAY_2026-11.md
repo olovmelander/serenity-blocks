@@ -2,7 +2,7 @@
 
 Tier 10 on standard seed 1006 fired 4 waves on lock 13. The bot could see the active piece and three previews. The local fixed clock ran at 60 ticks per second. Every input below was accepted.
 
-Read boards from the top down. Each letter identifies a locked body. A dot is an empty cell. The floor is below the final row. Columns and rotations use the game’s zero-based piece origin and clockwise quarter turns.
+Read boards from the top down. Each letter identifies a locked body. A dot is an empty cell. Row 1 sits on the floor. Each wave shows the board just before its full rows disappear. Columns and rotations use the game’s zero-based piece origin and clockwise quarter turns.
 
 ## Lock 1 · L
 
@@ -134,7 +134,7 @@ CC.EAAABBD
 
 Column 5, rotation 2. Inputs were move 1 (tick 341), rotate flip (tick 346), hardDrop (tick 351).
 
-Before locking, the bot forecast 4 waves in 1 more pieces.
+Before locking, the bot forecast 4 waves in 1 more piece.
 
 ```text
 ...KK..L..
@@ -149,7 +149,7 @@ CC.EAAABBD
 
 Column 7, rotation 1. Inputs were move 1 (tick 368), move 1 (tick 373), move 1 (tick 378), rotate right (tick 383), move 1 (tick 388), hardDrop (tick 393).
 
-Wave 1 cleared 1 row.
+Wave 1 clears row 5.
 
 ```text
 .........M
@@ -162,7 +162,7 @@ GCEFFI.JJD
 CC.EAAABBD
 ```
 
-Wave 2 cleared 1 row.
+Wave 2 clears row 4.
 
 ```text
 .........M
@@ -174,7 +174,7 @@ GCEFFI.JJD
 CC.EAAABBD
 ```
 
-Wave 3 cleared 1 row.
+Wave 3 clears row 2.
 
 ```text
 .........M
@@ -185,7 +185,7 @@ GCEEFFABBD
 CC.EAAABBD
 ```
 
-Wave 4 cleared 1 row.
+Wave 4 clears row 1.
 
 ```text
 .........M
@@ -194,6 +194,8 @@ Wave 4 cleared 1 row.
 .C.FFI.JJD
 CCEEAAABBD
 ```
+
+After the fragments settle
 
 ```text
 .........M
@@ -204,7 +206,7 @@ CCEEAAABBD
 
 At the end of the fire the score was 4628 and cumulative outgoing garbage was 3 rows.
 
-Reproduce from the feature worktree with the following command.
+Reproduce the walkthrough from the repository root.
 
 ```powershell
 node reports/gravity-bot-rebuild/chain-demo.mjs 1006 chain-replay.md
