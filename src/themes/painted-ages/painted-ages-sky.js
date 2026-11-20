@@ -153,10 +153,10 @@ export function createSky(u, t, tier) {
                 const run = vec2(-0.34, -0.2);
                 const head = vec2(u.meteor.x, u.meteor.y).add(run.mul(u.meteor.z.mul(0.55)));
                 const rel = vec2(az, dir.y).sub(head);
-                const back = clamp(dot(rel, run.negate()).div(dot(run, run)), 0.0, 0.22);
+                const back = clamp(dot(rel, run.negate()).div(dot(run, run)), 0.0, 0.15);
                 const off = length(rel.add(run.mul(back)));
-                const width = max(float(0.0011), u.pixelAngle.mul(0.8));
-                const streak = exp(sq(off.div(width)).negate()).mul(float(1.0).sub(back.div(0.22)));
+                const width = max(float(0.0008), u.pixelAngle.mul(0.8));
+                const streak = exp(sq(off.div(width)).negate()).mul(float(1.0).sub(back.div(0.15)));
                 sky.addAssign(vec3(1.0, 0.94, 0.82).mul(streak).mul(u.meteor.w).mul(3.2));
             });
         });

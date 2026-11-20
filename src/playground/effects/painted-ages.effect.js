@@ -26,6 +26,7 @@
  *   falseColor=1             post debug view: band the pre-tone-map max channel
  *   noPost=1                 raw scene (no bloom/grade)
  *   bloom=0|1                override the tier's bloom
+ *   fxaa=0|1                 override the tier's closing antialiasing pass
  *   px=-1..1&py=-1..1        hold a pointer-parallax offset
  *   reduce=1                 reduced motion
  *   look=x,y,z,fov           inspection lens: from the eye, look at a world point with this fov
@@ -140,6 +141,7 @@ export function create({
     const overlay = params.get('board') === '1' ? mountBoardOverlay(params.get('statsHud') !== '0') : null;
     const look = { ...(POST_LOOK[quality] || POST_LOOK.High) };
     if (params.has('bloom')) look.bloom = params.get('bloom') === '1';
+    if (params.has('fxaa')) look.fxaa = params.get('fxaa') === '1';
     const noPost = params.get('noPost') === '1';
     if (noPost) renderer.toneMapping = THREE.AgXToneMapping;
     let post = null;

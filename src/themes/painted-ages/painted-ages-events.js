@@ -252,14 +252,15 @@ export const paRiver = /* @__PURE__ */ Fn(([p]) => {
 /**
  * The water in the valley: a thin braided stream along the river's course, and on four lines the
  * flash flood (wide, turbid with the cleared rows' pigment, foaming at its front). Returns
- * vec4(colour, how much of the point is water). `above` = height over the river's bed.
+ * vec4(colour, how much of the point is water). `r` = paRiver at the point (the land reads it
+ * once, for the fields too), `above` = height over the river's bed.
  */
-export function riverWater(u, noise, xz, above, dist, view) {
+export function riverWater(u, noise, xz, r, above, dist, view) {
     const out = vec4(0.0).toVar();
     If(dist.lessThan(9000.0).and(above.lessThan(8.0)), () => {
-        const r = paRiver(xz).toVar();
         const wiggle = texture(noise, xz.div(70.0)).r.sub(0.5);
-        const stream = float(3.4).add(wiggle.mul(4.0)).max(1.2);
+        // The stream: a main thread a few metres wide that swells and pinches.
+        const stream = float(5.2).add(wiggle.mul(6.5)).max(1.6);
         const flooding = u.flood.y;
         const behind = smoothstep(30.0, -30.0, r.y.sub(u.flood.x));
         const floodW = float(40.0).add(wiggle.mul(26.0)).mul(flooding).mul(behind);

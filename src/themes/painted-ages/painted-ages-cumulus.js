@@ -257,11 +257,11 @@ export function createCumulus(u, t, tier, count = 9) {
             const b = billows.element(id.mul(BILLOWS).add(k));
             const share = k === 0 ? float(0.0) : b.w;
             const own = ((k * 0.618034) % 1) * 6.2832;
-            const breath = sin(clock.mul(0.11).add(own));
-            const swell = sin(clock.mul(0.17).sub(share.mul(5.0)));
-            const centre = vec2(b.x.add(breath.mul(0.005)), b.y.mul(mix(float(1.0), grow, share)));
+            const breath = sin(clock.mul(0.17).add(own));
+            const swell = sin(clock.mul(0.26).sub(share.mul(5.0)));
+            const centre = vec2(b.x.add(breath.mul(0.008)), b.y.mul(mix(float(1.0), grow, share)));
             const radius = b.z.mul(mix(float(1.0), grow.mul(0.3).add(0.7), share))
-                .mul(breath.mul(0.045).add(1.0).add(swell.mul(share).mul(0.085))).toVar();
+                .mul(breath.mul(0.07).add(1.0).add(swell.mul(share).mul(0.13))).toVar();
             const d = p.sub(centre);
             const dd = dot(d, d);
             const len = sqrt(dd).max(1e-5);
@@ -294,11 +294,11 @@ export function createCumulus(u, t, tier, count = 9) {
         const edge = union.toVar();
         LUMP.slice(0, lumpOctaves).forEach((oct, o) => {
             // The lumps well up the heap (a cell every forty seconds or so): its skin boils.
-            const rising = vec2(0.0, u.boil.mul(o === 0 ? 0.022 : 0.04));
+            const rising = vec2(0.0, u.boil.mul(o === 0 ? 0.04 : 0.07));
             const c = paLumpCells(p.mul(oct.cells).add(seedShift.mul(o + 1)).sub(rising));
             edge.subAssign(c.x.sub(0.45).mul(oct.reach));
             bump.addAssign(c.yz.mul(o === 0 ? 0.6 : 0.35));
-            lumpLight.mulAssign(mix(float(o === 0 ? 0.62 : 0.82), float(1.0), smoothstep(0.1, 0.8, c.w)));
+            lumpLight.mulAssign(mix(float(o === 0 ? 0.52 : 0.78), float(1.0), smoothstep(0.1, 0.8, c.w)));
         });
         const lumpStrength = mix(float(0.4), float(1.0), rim);
         bump.mulAssign(lumpStrength);
@@ -332,7 +332,7 @@ export function createCumulus(u, t, tier, count = 9) {
         // The base and the lower heap stand in the heap's own shadow.
         const height = clamp(p.y.sub(baseY).div(aspect.sub(baseY).max(0.05)), 0.0, 1.0);
         const under = float(1.0).sub(smoothstep(0.0, 0.4, height));
-        sunAmount.mulAssign(float(1.0).sub(under.mul(0.55)));
+        sunAmount.mulAssign(float(1.0).sub(under.mul(0.68)));
         const sunUp = u.sunUp.mul(0.85).add(0.15);
         const shade = u.cloudShade.mul(mix(float(0.8), float(1.25), nrm.y.mul(0.5).add(0.5)))
             .add(u.fill.mul(nrm.y.max(0.0).mul(0.6)))

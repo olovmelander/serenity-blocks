@@ -45,6 +45,7 @@ import { groundHeight } from './painted-ages-field.js';
 import { PAVILION, SPUR } from './painted-ages-plan.js';
 import { aerial, cloudShadow } from './painted-ages-light.js';
 import { shadowAt } from './painted-ages-shadow.js';
+import { createPennants } from './painted-ages-pennants.js';
 import { drainSteps, stepClock } from '../shared/build-steps.js';
 
 /** Surface kinds (the `aKind` attribute). */
@@ -270,7 +271,7 @@ export function findCrest(fields, step = 2.2) {
 const PROPS_SLICE_MS = 8;
 
 /** The boardwalk's pieces along the crest, as steps: yields between sections once `clock` is due. */
-function* boardwalkPartsSteps(fields, crest, glows = [], clock = stepClock(PROPS_SLICE_MS)) {
+function* boardwalkPartsSteps(fields, crest, glows = [], clock = stepClock(PROPS_SLICE_MS), rail = []) {
     const parts = [];
     const ground = (x, z) => groundHeight(fields, x, z, true);
     const width = 1.7;
@@ -333,11 +334,15 @@ function* boardwalkPartsSteps(fields, crest, glows = [], clock = stepClock(PROPS
             parts.push(beam({ x: pa.x, y: a.y + 0.55, z: pa.z }, { x: pb.x, y: b.y + 0.55, z: pb.z }, 0.05, 0.05, KIND.wood));
         }
         sinceLamp += run;
+        const o = (width * 0.5 + 0.1);
+        const px = a.x + a.sx * o;
+        const pz = a.z + a.sz * o;
+        // The line the pennants follow: the walk's lamp side, post by post.
+        rail.push({
+            x: px, y: a.y, z: pz, lamp: sinceLamp > 22,
+        });
         if (sinceLamp > 22) {
             sinceLamp = 0;
-            const o = (width * 0.5 + 0.1);
-            const px = a.x + a.sx * o;
-            const pz = a.z + a.sz * o;
             parts.push(beam({ x: px, y: a.y, z: pz }, { x: px, y: a.y + 1.9, z: pz }, 0.1, 0.1, KIND.darkWood));
             // How far along the walk this lamp stands (0 by the eye … just under 1 at the top).
             const order = Math.min(0.95, i / Math.max(1, deck.length - 1));
@@ -364,7 +369,8 @@ export function* createPropsSteps(u, t, tier, fields) {
     const clock = stepClock(PROPS_SLICE_MS);
     const crest = findCrest(fields);
     const glows = [];
-    const walk = yield* boardwalkPartsSteps(fields, crest, glows, clock);
+    const rail = [];
+    const walk = yield* boardwalkPartsSteps(fields, crest, glows, clock, rail);
     if (clock.due()) {
         yield 'boardwalk';
         clock.restart();
@@ -437,9 +443,12 @@ export function* createPropsSteps(u, t, tier, fields) {
     mesh.name = 'PaintedAgesProps';
     mesh.renderOrder = 1;
     const halo = createHalos(u, glows);
+    // Strings of pennants from lamp to lamp up the stair, along the walk's own line.
+    const pennants = createPennants(u, t, rail, tier);
     return {
         mesh,
-        meshes: [mesh, halo.mesh],
+        meshes: [mesh, halo.mesh, pennants.mesh],
+        pennants,
         crest,
         glows,
         update() {},
@@ -447,6 +456,7 @@ export function* createPropsSteps(u, t, tier, fields) {
             geometry.dispose();
             material.dispose();
             halo.dispose();
+            pennants.dispose();
         },
     };
 }

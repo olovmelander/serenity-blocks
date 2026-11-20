@@ -1229,6 +1229,7 @@ export class PaintedAgesWorld {
         this.windDrift += dt * ((A.wind - 1) + (1.4 * warmth + 2.4 * fever) * (this.reducedMotion ? 0.3 : 1));
         const drift = time + this.windDrift;
         u.wind.value.set(drift * 9.5, drift * -3.2);
+        u.windSpeed.value = (A.wind + 1.4 * warmth + 2.4 * fever) * (this.reducedMotion ? 0.4 : 1);
         // The deck's finer field takes another heading: the two slide through each other.
         u.wind2.value.set(drift * 5.2, drift * 6.3);
 

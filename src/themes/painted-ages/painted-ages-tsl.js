@@ -368,6 +368,8 @@ export function createUniforms() {
          */
         wind2: uniform(new THREE.Vector2(0, 0)),
         cloudCover: uniform(0.32),
+        /** How hard the wind blows now (1 on a fair day; the weather's and play's wind raise it). */
+        windSpeed: uniform(1),
         /** How much of the sun a cloud's shadow takes (the weather's; 0.72 on a fair day). */
         cloudDepth: uniform(0.72),
         /** The valley layer's scale height (metres): the weather's sea of mist stands deeper. */
