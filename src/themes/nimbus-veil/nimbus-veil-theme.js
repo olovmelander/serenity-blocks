@@ -1,11 +1,17 @@
 /**
- * Nimbus Veil Theme — above a golden sea of clouds at sunset: billowing cloud tops, towering
- * cumulus, crepuscular rays, drifting mist veils and floating golden motes.
+ * Nimbus Veil Theme — a flight over a sea of clouds: cumulus heads to the horizon, towers
+ * standing out of them, a sun that rides its arc from a golden sunrise to the blue hour, high
+ * cloud streaming over, veils of mist, and the light that ice in the air draws round the sun.
  *
  * The theme is a thin lifecycle shell. The world (nimbus-veil-world.js) builds and drives
- * every part and solves the composition — the camera yaws so the sun sits in the free zone beside
- * the gameplay board; with no board on screen it faces the sun. The post stack
- * (nimbus-veil-post.js) does bloom, the light rays and the grade.
+ * every part, turns the hours, the air and the sky's own happenings by their clocks, gives every
+ * gameplay event an instrument of its own and solves the composition — the camera yaws so the
+ * sun sits in the free zone beside the gameplay board; with no board on screen it faces the sun.
+ * The post stack (nimbus-veil-post.js) does bloom, the light rays and the grade.
+ *
+ * The end of a run is the world's to mark (onGameOver: the veil closes and stands closed); the
+ * next run's start lifts it (onSessionStart), and leaving the mode lifts it quietly
+ * (onSessionStop).
  *
  * Renderer: ONE node-material path on both WebGPURenderer backends (ADR-0019) — WebGPU where
  * available, its WebGL2 backend otherwise (or with ?forceWebGL=1). No compute, no MRT: every
@@ -71,8 +77,10 @@ export default class NimbusVeilTheme extends BaseTheme {
             time: 0, delta: 0, pointerX: 0, pointerY: 0,
         };
         this._postParams = {
-            time: 0, sun: this.sunUv, sunVis: 0, bloomBoost: 0, rays: 1, exposure: 1,
+            time: 0, sun: this.sunUv, sunVis: 0, bloomBoost: 0, rays: 1, exposure: 1, dusk: 0,
         };
+        /** The game's mode manager, once it exists (it tells a run's start and the mode's end). */
+        this.modeManager = null;
 
         this.layoutWatch = null;
         this.appliedBoard = undefined;
@@ -290,6 +298,7 @@ export default class NimbusVeilTheme extends BaseTheme {
         this.layoutWatch = watch;
         const commit = () => {
             if (this.layoutWatch !== watch || !this.world || !this.isActive) return;
+            this.ensureModeManagerListeners();
             const board = readBoardRect();
             if (this.appliedBoard !== undefined && !boardRectsDiffer(board, this.appliedBoard)) return;
             this.appliedBoard = board;
@@ -352,6 +361,7 @@ export default class NimbusVeilTheme extends BaseTheme {
 
     setupEventListeners() {
         this.clearEventUnsubscribers();
+        this.modeManager = null;
         // Nimbus has always reacted unless background effects are switched off; a paused
         // (parked) theme's clock stands still, so nothing is queued onto it.
         const reactive = () => this.isActive && !this.isPaused
@@ -411,6 +421,12 @@ export default class NimbusVeilTheme extends BaseTheme {
             this.pointerY = (e.clientY / window.innerHeight) * 2 - 1;
         };
         const onResize = () => this.resize(window.innerWidth, window.innerHeight);
+        // The run is over: the world's veil closes (the light's own business, like the hours:
+        // it is not a reaction the background-effects setting gates).
+        const onGameOver = () => {
+            if (this.isActive) this.world?.onGameOver?.();
+        };
+        window.addEventListener('gameOver', onGameOver);
         window.addEventListener('pointermove', onPointerMove);
         // The window's size through the viewport broadcaster: debounced, and only a real change.
         const resizeUnsub = eventBus.on(EVENTS.VIEWPORT_RESIZED, onResize);
@@ -424,7 +440,34 @@ export default class NimbusVeilTheme extends BaseTheme {
             perfectUnsub,
             levelUnsub,
             () => window.removeEventListener('pointermove', onPointerMove),
+            () => window.removeEventListener('gameOver', onGameOver),
             resizeUnsub,
+        );
+        this.ensureModeManagerListeners();
+    }
+
+    /**
+     * The mode manager may appear after the first build (boot prewarm): subscribe once it does.
+     * A run's start lifts the veil a game over closed and takes the light back to the first
+     * level's hour; leaving the mode lifts the veil quietly.
+     */
+    ensureModeManagerListeners() {
+        const manager = typeof window !== 'undefined' ? window.serenityBlocks?.gameModeManager : null;
+        if (!manager?.on || manager === this.modeManager) return;
+        this.modeManager = manager;
+        this.eventUnsubscribers.push(
+            manager.on('modeStarted', () => {
+                if (!this.isActive) return;
+                this.comboTracker.reset?.();
+                this.level = 1;
+                this.world?.setLevel?.(1);
+                this.world?.onSessionStart?.();
+            }),
+            manager.on('modeStopped', () => {
+                if (!this.isActive) return;
+                this.comboTracker.reset?.();
+                this.world?.onSessionStop?.();
+            }),
         );
     }
 
@@ -489,6 +532,7 @@ export default class NimbusVeilTheme extends BaseTheme {
             pp.bloomBoost = state.bloomBoost;
             pp.rays = state.rays;
             pp.exposure = state.exposure;
+            pp.dusk = state.dusk;
             this.postProcessing.update(pp);
             this.postProcessing.render();
         } else if (this.passThrough) {

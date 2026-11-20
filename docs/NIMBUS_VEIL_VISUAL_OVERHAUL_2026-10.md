@@ -137,3 +137,261 @@ weak-GPU or phone measurement was made.
   a tower's base. It is a real gap in the heap, lit from behind, and mostly below the deck.
 - The motes read as small specks; they were not part of this pass.
 - The horizon banks are deliberately faint: most of the horizon is behind the towers or the card.
+
+## The living pass (2026-11-20)
+
+The owner asked for an audit of everything the theme is made of and for it to be raised to one of
+the game's most beautiful: varied over time, a distinct effect for every event with the biggest
+moments the most spectacular, smooth, and easy to read. Worked on the branch
+`feature/nimbus-veil-masterpiece` with three 0.187.0, judged on captures on the RTX 5080 Laptop
+(WebGPU through a private headless Chrome, 30 frames a second) against a baseline of the same
+queries taken before any change.
+
+| Before | After |
+| --- | --- |
+| ![Before, the first hour](nimbus-veil-captures/living-before-m0-golden.jpg) | ![After, the first hour](nimbus-veil-captures/living-golden.jpg) |
+| ![Before, the blue hour](nimbus-veil-captures/living-before-m4-blue.jpg) | ![After, the blue hour](nimbus-veil-captures/living-blue-hour.jpg) |
+
+**What the audit found**, largest first:
+
+- The sky over the horizon, most of the upper half of the frame, was nearly empty: a gradient, a
+  flat sun disc and a smudge of cirrus read in (bearing, height), which has no perspective.
+- Nothing changed by itself but the palette. The sun never moved, so the "blue hour" was a pink
+  day with stars over it: the same disc in the same place throwing the same shadows.
+- Every event was a mix of the same three things (a wave from the horizon, glints from the sun,
+  a glow), so a back-to-back, a twist, a cascade and a perfect clear could not be told apart.
+  A game over and a new run showed nothing at all.
+- The veils of mist the theme is named for were all but invisible (a third opaque where their
+  noise peaked and near nothing elsewhere), and that noise was stretched upright, not along the deck.
+- The stars were one hashed grid, all of a size.
+- The pieces were seven near-whites (from the theme's first, moonlit-void version): I, O, L and S
+  could not be told apart by colour.
+- Two events of one tick shared a wave slot (see "A bug this found").
+- The stylesheet still carried about 180 lines for the DOM layers of the pre-2026-08 theme.
+
+What was kept: the towers, the deck's field of heads with its shadows, the composition solver and
+the camera, the way play builds the light (the surge, the waves' procession, the fever).
+
+### Three clocks
+
+**The hours move the sun.** The sun now rides an arc with the five moods (`sun` in
+`nimbus-veil-moods.js`): 9.5° at the golden sunrise (the look the place was built for, unchanged),
+14° in the pearl morning, 20° at the white noon, 5.5° in the rose evening, and 3.4° under the sea
+line in the blue hour. So the melt into the blue hour is a sunset and the melt out of it a
+sunrise. Its bearing never changes, which is what lets the deck's shadows stay analytic: the
+shaders read `u.sunDir` and `u.sunTan` where they read constants. Three things follow the height
+(`sunReach` in `nimbus-veil-world.js`): how much of the sun reaches the deck (`u.day`: none once
+it has set, when the sky's fill rises instead), how far up a tower its light still reaches (the
+deck goes into shade first and the high crowns hold the last light), and how strongly it lights
+the high cloud from below. A level still steps the hour; the sun follows by its own slower ease,
+so it glides to its new place while the colours lead.
+
+![Sunset, mid-melt](nimbus-veil-captures/living-sunset.jpg)
+
+**The air turns beside them** (`nimbus-veil-weather.js`): five airs of 96 s against five hours of
+110 s, so an hour meets a different air each time round (the pair repeats after 88 minutes).
+
+| Air | What it is |
+| --- | --- |
+| fair | a few high wisps; the deck as it was |
+| tails | mares' tails: long fibres of high cloud on a quick wind |
+| mackerel | a rippled ceiling of small cloudlets, lit from below when the sun is low |
+| beams | a broken ceiling: its shade drifts over the deck and the sun fans into beams |
+| mist | the veils rise, the heads sink toward stratus, distance closes in |
+
+Each sets seven numbers (`AIR_KEYS`): how much high cloud and of what kind, the veils, how high
+the deck's heads pile, how strongly the ceiling breaks the sun, the haze's rate, the wind.
+
+| Noon, mares' tails | Blue hour, a mackerel sky | Mist |
+| --- | --- | --- |
+| ![Noon](nimbus-veil-captures/living-noon-tails.jpg) | ![Mackerel](nimbus-veil-captures/living-blue-mackerel.jpg) | ![Mist](nimbus-veil-captures/living-mist.jpg) |
+
+**And the sky has happenings of its own**, one to a slot of 36 s with about a quarter of the
+slots quiet: a skein of birds crossing the light edge to edge, the motes flashing toward the sun,
+a tower that boils up, and after dark shooting stars and heat lightning inside a tower. Which one
+a slot holds is a hash of its number and of the starlight at its start, and everything a
+happening shows is a function of its age, so a seek, a replay and a rebuild land on the same sky
+and nothing is "armed" or "fired".
+
+| A skein | Heat lightning in a tower |
+| --- | --- |
+| ![Skein](nimbus-veil-captures/living-skein.jpg) | ![Flicker](nimbus-veil-captures/living-flicker.jpg) |
+
+### The scene
+
+- **The high cloud** (`nimbus-veil-sky.js`) lies on a plane over the eye (`dir.xz / dir.y`), so
+  its fibres and rows converge on the horizon. Fibres are one fbm stretched twelve to one along
+  the wind; cloudlets are the deck's own dome field thresholded high. Each melts to a sheet where
+  its cell is finer than a pixel. It is lit by its thinness, white-gold toward the sun, and from
+  below once the sun is low.
+- **The night** is behind one uniform branch: stars of two sizes with a few bright and most
+  faint, the Milky Way, a young crescent with earthshine over the place the sun went down, the
+  evening star.
+- **The veils** are four long bands at four depths (one to four by tier), with a forward glow
+  looking into the sun; the air sets their density.
+- **The deck** takes the air's head height, the high cloud's drifting shade, deeper creases near
+  the lens and a thin rim of light on every head between the eye and the sun.
+- **The towers** climb slowly inside (the cauliflower field drifts up them) and hold the last
+  light on their crowns after sunset.
+- **The pieces** are seven hues, 30° or more apart: sun gold, ember, evening rose, shade violet,
+  noon blue, corona green and a pearl (0 of 7 in the palette gate's bands).
+- **The stylesheet**: the dead rules are gone, and the container's backdrop for the moment before
+  the first frame is the first hour's sky, not grey.
+
+### The events
+
+Every event has an instrument no other event plays (pinned by "plays a different set of
+instruments for every event" in `tests/unit/nimbus-veil-living.test.js`).
+
+| Event | Instrument |
+| --- | --- |
+| Lock | A ripple of light spreads on the deck in the open stage beside the board, with a trough ahead of its crest and a few glints lifting from where it landed. A hard drop's is wider. |
+| One to three lines | As many light waves, in echelon, rolling in from beyond the towers. |
+| Four lines | Four waves on the deck and a wave of light crossing the high cloud overhead, the crowns lit. |
+| Cascade | A ray from the sun for each wave, standing together. |
+| Chain | Stepping stones of light on the deck down the sun's bearing, one more and one nearer with each clear (eight, at even steps down the screen). When the chain breaks the world breathes out and they go out from the nearest back. |
+| Twist | A corona of mother-of-pearl round the sun, turning, and its colours in the cloud near it. |
+| Back-to-back | A lantern lit at the heart of a tower, one more tower for each in the streak; the gold tide line that halts mid-deck (kept). |
+| Perfect clear | The whole fan of rays at once, the spectrum rolling out over the deck and over the high cloud, every crown lit, and the air itself clearing to the horizon. |
+| New level | Light climbs every tower from the deck to its crown while the towers surge, as the hour turns. |
+| The run ends | The veil closes: the mist takes the towers, the light drains, and it stands so. |
+| A new run | The veil lifts on a fan of rays. |
+
+| Three lines | A cascade | A twist |
+| --- | --- | --- |
+| ![Three lines](nimbus-veil-captures/living-clear3.jpg) | ![Cascade](nimbus-veil-captures/living-cascade.jpg) | ![Twist](nimbus-veil-captures/living-twist.jpg) |
+
+| A chain | A back-to-back streak, at night | A new level |
+| --- | --- | --- |
+| ![Chain](nimbus-veil-captures/living-chain.jpg) | ![Back-to-back](nimbus-veil-captures/living-b2b-night.jpg) | ![Level](nimbus-veil-captures/living-level.jpg) |
+
+| A perfect clear | ...at night | The run ends |
+| --- | --- | --- |
+| ![Perfect](nimbus-veil-captures/living-perfect.jpg) | ![Perfect, night](nimbus-veil-captures/living-perfect-night.jpg) | ![Over](nimbus-veil-captures/living-over.jpg) |
+
+At night the rays and the corona stand round the moon (`setLamp`: the lamp hands over through
+zero, so nothing jumps across the sky), and every event light is scaled to the hour (`lampInfo.z`,
+0.4 once the stars are out).
+
+**Taken back out: the halo.** The first version of this pass gave the chain a sun pillar, the
+back-to-back a pair of sundogs and the perfect clear a ring with an arc. They worked, and they are
+Parhelion's: that theme is an ice-halo display, and its catalogue entry lists exactly those. The
+stones, the lanterns and the full fan replaced them, and `nimbus-veil-optics.js` now carries only
+the rays and the corona, with a note saying why.
+
+### Traps (each is a row in the skill's gotchas)
+
+- **Bright on bright (#1762).** By day the deck and the glow round the sun are already as bright
+  as any light added to them, so a white-gold wave, pillar or band was plainly in the uniforms
+  and invisible in the frame. The event lights read by colour and shade now: a deep gold tint, a
+  dark fringe at a band's shoulders, a trough ahead of a ripple, and the iris closing 13 % on the
+  big moments (`focus`).
+- **Light in front of the towers (#1432).** Rays drawn in the sky function stopped at every
+  tower's outline. They are on an additive card that follows the lamp, drawn after the towers.
+- **The ceiling's scale (#1433).** On the plane one unit is the layer's height, so the first
+  tries drew ribbons the size of the sky, then a sheet with star-shaped holes, then a lattice of
+  faint discs.
+- **A bug this found (#1763).** Slots were handed to "the slot with the least light left", and
+  an envelope with an attack is zero at age zero: four lines and their back-to-back, which land in
+  one tick, shared a slot and one wave silently replaced the other. A slot still rising now
+  counts as full. The old test compared two worlds that both lost the wave, so it passed.
+
+### How it is built
+
+| File | Change |
+| --- | --- |
+| `nimbus-veil-weather.js` (new) | The airs, the happenings' slots; three-free. |
+| `nimbus-veil-optics.js` (new) | The card for the rays and the corona. |
+| `nimbus-veil-moods.js` | A sun height per mood, `sunHeightAt`. |
+| `nimbus-veil-sky.js` | The ceiling, the night, the wave over the high cloud. |
+| `nimbus-veil-cloudsea.js` | Live sun, head height, cloud shade, ripples, stones, the spectrum, `ringLight`'s fringe. |
+| `nimbus-veil-cumulus.js` | Live sun, last light, the climb, the surge, boil, lanterns, inner lightning. |
+| `nimbus-veil-fx.js` | Four veils, the birds, the motes' flash. |
+| `nimbus-veil-world.js` | The three clocks, the lamp, every instrument, the veil at a run's end. |
+| `nimbus-veil-post.js` | The closed veil's grade (`uDusk`). |
+| `nimbus-veil-theme.js` | `gameOver` and the mode manager's start and stop reach the world. |
+| `nimbus-veil-tetrominos.js` | The seven hues. |
+
+Draws at High went from seven to eleven (two more veils, the birds, the optics card). There is
+no new texture, pass or render target.
+
+### Tiers
+
+Every tier keeps every instrument, the veils and the birds (pinned by "keeps every tier whole").
+
+| Tier | Veils | Birds | Cloudlets | Ceiling octaves | Milky Way | Cloud shade on the deck |
+| --- | ---: | ---: | --- | ---: | --- | --- |
+| Minimal | 1 | 9 | fibres only | 2 | off | off |
+| Low | 2 | 11 | fibres only | 2 | off | on |
+| Medium | 3 | 13 | on | 3 | on | on |
+| High and up | 4 | 15 | on | 3 | on | on |
+
+![Minimal](nimbus-veil-captures/living-minimal.jpg)
+
+### Verified, and not
+
+**Cost.** GPU time a frame from the playground profiler's timestamps (`profile=1&trackTimestamp=1`),
+1600 × 900 at High, capped at 30 frames a second, old and new interleaved over three rounds (the
+old code served from a detached worktree of the same commit): 0.71, 0.77, 0.77 ms before; 0.83,
+0.83, 0.90 ms after in fair air; 0.91, 0.81, 0.99 ms under a mackerel sky; 0.94, 0.92, 1.05 ms
+for the heaviest sky (night and mackerel). So about a tenth to a quarter of a millisecond on this
+GPU. Each window held only seven timestamp samples, and the reading was taken before the halo was
+taken back out and the stones and lanterns put in (which removed four terms from the optics card
+and added a block on the deck behind a uniform test and one gaussian a tower pixel): it says the
+size of the change, not its exact value. Not measured: an integrated GPU, a phone, an uncapped
+frame rate.
+
+**Captures.** A 36-frame set before the halo was taken out and a 22-frame set after it, each with
+a clean console: every hour, every air, both mid-melts, every event by day and several by night,
+the happenings, WebGL2 (`forceWebGL=1`), Minimal, Low, and a 390 × 844 portrait frame.
+
+**The real game** (private headless Chrome, single player, real key presses, twice): WebGPU at
+High, the dynamic resolution stayed at 1, a lock's ripple on the deck beside the board, the veil
+closed behind the game-over card and lifted for the next run, the dawn's rays as the first board
+appeared; the console held only the browser's audio and Steam-cloud lines.
+
+![In the game](nimbus-veil-captures/living-ingame-04-after-locks.jpg)
+
+| WebGL2 | The veil lifts | Portrait |
+| --- | --- | --- |
+| ![WebGL2](nimbus-veil-captures/living-webgl.jpg) | ![Dawn](nimbus-veil-captures/living-dawn.jpg) | ![Portrait](nimbus-veil-captures/living-portrait.jpg) |
+
+**Tests.** `tests/unit/nimbus-veil-living.test.js` (new, 31), and the three existing files with
+four tests re-pinned on purpose (the sun no longer keeps its place; eleven draws; a burst is
+called directly now that a cascade's instrument is its rays; a clear of n lines sends n bands):
+63 in all. The shader gate walks the scene, so the new parts are built to
+WGSL and GLSL at High and Minimal with the rest. Typecheck, lint, the lifecycle audit, the
+boundary check, the palette gate, the registry, catalogue, camera-breath and reduce-flashing
+tests pass.
+
+**Not verified, and open** (the writer's doubts, not the owner's words):
+
+- Nobody has watched it move: every judgement above is from stills. The waves' echelon, the
+  stones going out, the skein's wingbeat and the sunrise are the things to look at first.
+- A second run's dawn was not captured (the mode's title card was up at the moment the frame was
+  taken); the first run's was.
+- By day the chain's stones are quiet on the sunlit deck: they read, but they are the faintest of
+  the instruments there. At night they are plain.
+- In a portrait frame the board covers the middle of the picture, and at night the moon (and so
+  the corona and the rays) stands behind it.
+- The mackerel cloudlets are flat-toned discs: a stylised mackerel sky, not a modelled one.
+- A perfect clear's spectrum is a bold thing in a quiet theme. It is the one moment allowed to be.
+- The boiling tower's crown can leave the top of the frame when it is the tall tower on the right.
+- The theme's icon was not re-baked; its world's first hour is unchanged.
+- Blender was offered and not used: this world is light and vapour with nothing solid in it, and
+  the birds are a few pixels of wing drawn in the fragment.
+- Two-board and online layouts, Reduce motion and Reduce flashing were unit-tested and not
+  captured.
+
+### Reproduce
+
+```
+playground.html?effect=nimbus-veil&maxFps=30&t=12&happenings=0             the first hour, fair
+...&t=232  ...&t=342  ...&t=452                                             noon, evening, blue hour
+...&t=404  ...&t=514                                                        sunset and sunrise, mid-melt
+...&air=fair|tails|mackerel|beams|mist                                      hold one air
+...&happen=skein|glitter|boil|meteor|flicker                                hold one happening (age = t mod 36)
+...&event=lock|hard|clear|quad|combo|chain|chainEnd|twist|twist0|b2b|perfect|levelUp|over|dawn|fever
+   with eventAge=<s>, lines=, combo=, chain=, streak=
+...&board=0   ...&quality=Minimal   ...&forceWebGL=1
+```
