@@ -157,10 +157,12 @@ describe('murmuration layout: the swarm in the frame', () => {
         expect(wide.extent.x).toBeCloseTo(radius, 9);
         expect(wide.extent.y).toBeLessThan(wide.extent.x);
         expect(wide.crowding).toBeCloseTo(1, 9);
-        // Portrait squeezes it sideways, so the same motes fly closer together.
+        // Portrait squeezes it sideways, so the same motes fly closer together; and the loop
+        // grows tall, so that its top and bottom arcs show above and below the board's card.
         expect(tall.extent.x).toBeLessThan(wide.extent.x);
         expect(tall.extent.x).toBeLessThan(tall.extent.y);
-        expect(tall.extent.y).toBeLessThanOrEqual(wide.extent.y);
+        expect(tall.extent.y).toBeGreaterThan(wide.extent.y);
+        expect(tall.extent.y).toBeLessThan(tall.halfHeight);
         expect(tall.extent.z).toBe(wide.extent.z);
         expect(tall.crowding).toBeGreaterThan(1);
         expect(tall.crowding).toBeCloseTo(

@@ -47,6 +47,7 @@ import {
     int,
     length,
     max,
+    min,
     mix,
     pow,
     sign,
@@ -136,6 +137,25 @@ const FLASH_DECAY = 40;
 /** Legacy (non-wave) impulse decay, 1/s. */
 const IMPULSE_DECAY = 4;
 const TAU = Math.PI * 2;
+/** The outer wall never closes nearer the inner one than this (fractions of the radius). */
+const MIN_BAND = 0.2;
+/** A figure's wingbeat: how far the beat lags from shoulder to tip (radians), and where the wing starts. */
+export const FLAP_LAG = 1.15;
+export const FLAP_BODY = 0.1;
+
+/**
+ * The outer wall's radius round the board, as a multiple of the ring's: the flock's FORM.
+ * `form` = (base, cos θ, sin θ, cos 2θ, sin 2θ) weights; (c, s) the unit direction from the
+ * middle in swarm space. One lobe gathers the flock to a side, two part it into wings.
+ */
+export function formRadius(form, c, s) {
+    return form[0] + form[1] * c + form[2] * s + form[3] * (c * c - s * s) + form[4] * 2 * c * s;
+}
+
+/** How fast formRadius changes round the board (its derivative by the angle). */
+export function formSlope(form, c, s) {
+    return -form[1] * s + form[2] * c - form[3] * 4 * c * s + form[4] * 2 * (c * c - s * s);
+}
 
 function mulberry32(seed) {
     let a = seed >>> 0; // eslint-disable-line no-bitwise
@@ -191,7 +211,7 @@ export class FluidParticleSim {
             this._impulsePositions.push(uniform(new THREE.Vector4(0, 0, 0, 0)));
             this._impulseParams.push(uniform(new THREE.Vector4(0, 1, 0, 0)));
             this._impulseWaves.push(uniform(new THREE.Vector4(0, 0, 0, 1)));
-            this._impulseMeta.push({ speed: 0, decay: IMPULSE_DECAY });
+            this._impulseMeta.push({ speed: 0, decay: IMPULSE_DECAY, id: 0 });
         }
 
         // ─── Globals ───
@@ -217,6 +237,12 @@ export class FluidParticleSim {
         // The disc is tipped out of the screen plane so one wing swims toward the lens
         // and the other away: z_plane = dot(q.xy, tilt), in half-extent units.
         this.uTilt = uniform(new THREE.Vector2(options.tiltX ?? 0.55, options.tiltY ?? 0.2));
+        // The flock's form: the outer wall's radius round the board is
+        //   ring.y × (base + x cos θ + y sin θ + z cos 2θ + w sin 2θ)      (formRadius)
+        // A ring at rest (base 1, the rest 0); the moods lean it to a side or part it into wings.
+        this.uForm = uniform(new THREE.Vector4(0, 0, 0, 0));
+        this.uFormBase = uniform(1);
+        this._form = [1, 0, 0, 0, 0];
 
         // Sources: xyz = world position, w = spread radius. The share of motes reborn as
         // dust anywhere in the annulus instead is uAmbient.
@@ -244,10 +270,15 @@ export class FluidParticleSim {
         // Half-size of the figure as fitted (world units): the renderer runs a formation's
         // hue across this, so a small figure takes the same gradient as a large one.
         this.uShapeSpan = uniform(DEFAULT_SHAPE_SPAN);
+        // A figure drawn above (or below) the boards, where a narrow frame has room: its lift.
+        this.uShapeLift = uniform(0);
+        // A figure's wingbeat: (phase, amplitude as a share of the figure's half-size).
+        this.uShapeFlap = uniform(new THREE.Vector2(0, 0));
         this._shapeFit = { halfWidth: Infinity, halfHeight: Infinity };
         this._shapeLayout = {
-            twin: false, offsetX: 0, halfWidth: Infinity, halfHeight: Infinity,
+            twin: false, offsetX: 0, offsetY: 0, blocked: 0, halfWidth: Infinity, halfHeight: Infinity,
         };
+        this._impulseSerial = 0;
 
         this.computeNode = null;
         this._flow = [0, 0, 0];
@@ -263,9 +294,13 @@ export class FluidParticleSim {
         const lane = (k + 0.5) / EMITTER_COUNT;
         // Alternate lanes inside and outside so neighbouring sources are not neighbours in radius.
         const mixLane = (k % 2 === 0 ? lane : 1 - lane) * 0.74 + 0.13;
-        const r = ring.x + (ring.y - ring.x) * mixLane + Math.sin(time * 0.07 + k * 1.9) * 0.06;
         // The sources wander against the gyre, slowly: the ribbons never set into a pattern.
         const angle = (k / EMITTER_COUNT) * TAU + k * 0.61 - time * 0.04;
+        // … and keep inside the flock's form, so a ribbon is never born outside its wall.
+        const form = this._form;
+        const outer = form ? Math.max(ring.x + MIN_BAND, ring.y * formRadius(form, Math.cos(angle), Math.sin(angle)))
+            : ring.y;
+        const r = ring.x + (outer - ring.x) * mixLane + Math.sin(time * 0.07 + k * 1.9) * 0.06;
         out.x = Math.cos(angle) * r;
         out.y = Math.sin(angle) * r;
         out.z = Math.sin(time * 0.11 + k * 2.1) * 0.3;
@@ -384,12 +419,31 @@ export class FluidParticleSim {
         const shapeRot = this.uShapeRot;
         const shapeScale = this.uShapeScale;
         const shapeTwin = this.uShapeTwin;
+        const shapeLift = this.uShapeLift;
+        const shapeFlap = this.uShapeFlap;
+        const shapeSpan = this.uShapeSpan;
+        const form = this.uForm;
+        const formBase = this.uFormBase;
         const emitters = this.uEmitters;
         const ambientShare = this.uAmbient;
         const flowGains = this.uFlowGains;
         const impulsePositions = this._impulsePositions;
         const impulseParams = this._impulseParams;
         const impulseWaves = this._impulseWaves;
+
+        // The outer wall round the board for a unit direction (c, s): see formRadius().
+        const outerAt = (c, s) => max(
+            ring.y.mul(formBase.add(c.mul(form.x)).add(s.mul(form.y))
+                .add(c.mul(c).sub(s.mul(s)).mul(form.z))
+                .add(c.mul(s).mul(2.0).mul(form.w))),
+            ring.x.add(MIN_BAND),
+        );
+        // … and how fast it changes round the board: see formSlope().
+        const outerSlope = (c, s) => ring.y.mul(
+            s.mul(form.x).negate().add(c.mul(form.y))
+                .sub(c.mul(s).mul(4.0).mul(form.z))
+                .add(c.mul(c).sub(s.mul(s)).mul(2.0).mul(form.w)),
+        );
 
         const computeFn = Fn(() => {
             const index = instanceIndex;
@@ -428,7 +482,17 @@ export class FluidParticleSim {
             // mote keeps its own idea of where the walls are, so the swarm has no shared
             // edge to pile up along: its rim frays instead of drawing an ellipse.
             const ringIn = ring.x.mul(col.x.mul(WALL_SPREAD_IN).add(1.0 - WALL_SPREAD_IN * 0.4)).toVar();
-            const ringOut = ring.y.mul(col.x.mul(WALL_SPREAD_OUT).add(1.0 - WALL_SPREAD_OUT * 0.8)).toVar();
+            const outer = outerAt(radial.x, radial.y).toVar();
+            const ringOut = outer.mul(col.x.mul(WALL_SPREAD_OUT).add(1.0 - WALL_SPREAD_OUT * 0.8)).toVar();
+            // The gyre follows the form. A wall alone only squeezes: motes funnelled through a
+            // narrow place stayed against the inner wall for the rest of the turn, and the wide
+            // places stood empty. So each mote keeps its share of the way from the inner wall to
+            // the outer one as it goes round: it is carried outward where the flock widens and
+            // inward where it narrows.
+            const share = clamp(r.sub(ring.x).div(max(outer.sub(ring.x), float(0.05))), 0.0, 1.3);
+            const widen = omega.mul(share).mul(outerSlope(radial.x, radial.y)).toVar();
+            field.x.addAssign(radial.x.mul(widen).mul(extent.x));
+            field.y.addAssign(radial.y.mul(widen).mul(extent.y));
             const wall = max(ringIn.sub(r), float(0.0)).sub(max(r.sub(ringOut), float(0.0)))
                 .mul(contain).mul(WALL_STIFFNESS);
             field.x.addAssign(radial.x.mul(wall).mul(extent.x));
@@ -462,11 +526,14 @@ export class FluidParticleSim {
             // The figure turns about its own vertical axis; a twinned mote then takes the
             // copy on its side of the board, mirrored so the pair is symmetric.
             const tLocal = tgt.xyz.mul(shapeScale).toVar();
+            // A figure with wings beats them: the beat runs out from the shoulder to the tip.
+            const wing = max(abs(tLocal.x).div(shapeSpan).sub(FLAP_BODY), float(0.0)).toVar();
+            tLocal.y.addAssign(sin(shapeFlap.x.sub(wing.mul(FLAP_LAG))).mul(shapeFlap.y).mul(wing).mul(shapeSpan));
             const side = step(0.5, col.x).mul(2.0).sub(1.0).toVar();
             const turnedX = tLocal.x.mul(shapeRot.x).add(tLocal.z.mul(shapeRot.y));
             const tWorld = vec3(
                 turnedX.mul(mix(float(1.0), side, shapeTwin.x)).add(side.mul(shapeTwin.x).mul(shapeTwin.y)),
-                tLocal.y,
+                tLocal.y.add(shapeLift),
                 tLocal.z.mul(shapeRot.x).sub(tLocal.x.mul(shapeRot.y)),
             ).add(focal).toVar();
             const toTarget = tWorld.sub(p).toVar();
@@ -526,10 +593,12 @@ export class FluidParticleSim {
                 const r2 = fract(sin(idxF.mul(78.233).add(time.mul(0.53))).mul(43758.5453));
                 const r3 = fract(sin(idxF.mul(39.425).add(time.mul(0.71))).mul(43758.5453));
                 // Dust
-                const rr = mix(ring.x, ring.y, r1.sqrt());
                 const theta = r2.mul(6.2832);
-                const qx = cos(theta).mul(rr);
-                const qy = sin(theta).mul(rr);
+                const cT = cos(theta).toVar();
+                const sT = sin(theta).toVar();
+                const rr = mix(ring.x, min(outerAt(cT, sT), ring.y.mul(1.25)), r1.sqrt());
+                const qx = cT.mul(rr);
+                const qy = sT.mul(rr);
                 const qz = qx.mul(tilt.x).add(qy.mul(tilt.y)).add(r3.sub(0.5).mul(1.6));
                 const dust = focal.add(vec3(qx, qy, qz).mul(extent));
                 // Ribbon: at the mote's source, denser toward its centre.
@@ -579,6 +648,12 @@ export class FluidParticleSim {
         const shapeScale = this.uShapeScale.value;
         const twin = this.uShapeTwin.value.x > 0.5;
         const twinOffset = this.uShapeTwin.value.y;
+        const lift = this.uShapeLift.value;
+        const flapPhase = this.uShapeFlap.value.x;
+        const flapAmp = this.uShapeFlap.value.y;
+        const span = this.uShapeSpan.value;
+        const form = this._form;
+        const formed = form[1] !== 0 || form[2] !== 0 || form[3] !== 0 || form[4] !== 0 || form[0] !== 1;
         const followBase = (1 - Math.exp(-FIELD_FOLLOW * dt)) * flowOn;
         const damping = this.uDamping.value ** (dt * 60);
         const maxSpeed = this.uMaxSpeed.value;
@@ -619,18 +694,27 @@ export class FluidParticleSim {
 
             const seedA = colors[j];
             const ringIn = ringInBase * (seedA * WALL_SPREAD_IN + 1 - WALL_SPREAD_IN * 0.4);
-            const ringOut = ringOutBase * (seedA * WALL_SPREAD_OUT + 1 - WALL_SPREAD_OUT * 0.8);
-            const outerBand = ringOut - 0.3; const innerBand = ringIn + 0.2;
-            const shapeW = shape * targets[j + 3];
-            const hold = shapeW > 0 ? smooth01(0, 0.5, shapeW) : 0;
-
-            // 1. Field
             const qx = (x - fX) * invX;
             const qy = (y - fY) * invY;
             const qz = (z - fZ) * invZ;
             const r = Math.sqrt(qx * qx + qy * qy);
             const rs = r > 0.001 ? r : 0.001;
             const radX = qx / rs; const radY = qy / rs;
+            let outer = ringOutBase;
+            let widen = 0;
+            if (formed) {
+                outer = ringOutBase * formRadius(form, radX, radY);
+                if (outer < ringInBase + MIN_BAND) outer = ringInBase + MIN_BAND;
+                let share = (r - ringInBase) / Math.max(outer - ringInBase, 0.05);
+                if (share < 0) share = 0; else if (share > 1.3) share = 1.3;
+                widen = share * ringOutBase * formSlope(form, radX, radY);
+            }
+            const ringOut = outer * (seedA * WALL_SPREAD_OUT + 1 - WALL_SPREAD_OUT * 0.8);
+            const outerBand = ringOut - 0.3; const innerBand = ringIn + 0.2;
+            const shapeW = shape * targets[j + 3];
+            const hold = shapeW > 0 ? smooth01(0, 0.5, shapeW) : 0;
+
+            // 1. Field
             const zOff = qz - (qx * tiltX + qy * tiltY);
             const zAbs = zOff < 0 ? -zOff : zOff;
             const zSign = zOff < 0 ? -1 : 1;
@@ -639,8 +723,8 @@ export class FluidParticleSim {
                 let wall = 0;
                 if (r < ringIn) wall = (ringIn - r) * contain;
                 else if (r > ringOut) wall = -(r - ringOut) * contain;
-                let fx = (-qy * omega + radX * wall) * eX;
-                let fy = (qx * omega + radY * wall) * eY;
+                let fx = (-qy * omega + radX * (wall + omega * widen)) * eX;
+                let fy = (qx * omega + radY * (wall + omega * widen)) * eY;
                 let fz = zAbs > DISC_HALF ? -(zAbs - DISC_HALF) * zSign * contain * eZ : 0;
                 if (flowing) {
                     sampleFlowPrepared(x, y, z, flow, gainCoarse, gainFine);
@@ -670,13 +754,18 @@ export class FluidParticleSim {
             // 2. Formation
             const lx = targets[j] * shapeScale;
             const lz = targets[j + 2] * shapeScale;
+            let ly = targets[j + 1] * shapeScale;
+            if (flapAmp !== 0) {
+                const wing = Math.abs(lx) / span - FLAP_BODY;
+                if (wing > 0) ly += Math.sin(flapPhase - wing * FLAP_LAG) * flapAmp * wing * span;
+            }
             let tx = lx * rotC + lz * rotS;
             if (twin) {
                 const side = seedA >= 0.5 ? 1 : -1;
                 tx = tx * side + side * twinOffset;
             }
             tx += fX;
-            const ty = targets[j + 1] * shapeScale + fY;
+            const ty = ly + lift + fY;
             const tz = lz * rotC - lx * rotS + fZ;
             let drag = damping;
             if (shapeW > 0) {
@@ -744,9 +833,17 @@ export class FluidParticleSim {
                     const r2 = hash01(i * 78.233 + time * 0.53);
                     const r3 = hash01(i * 39.425 + time * 0.71);
                     if (colors[j + 1] <= ambient) {
-                        const rr = ringInBase + (ringOutBase - ringInBase) * Math.sqrt(r1);
                         const theta = r2 * 6.2832;
-                        const bx = Math.cos(theta) * rr; const by = Math.sin(theta) * rr;
+                        const cT = Math.cos(theta); const sT = Math.sin(theta);
+                        let rim = ringOutBase;
+                        if (formed) {
+                            rim = Math.min(
+                                Math.max(ringOutBase * formRadius(form, cT, sT), ringInBase + MIN_BAND),
+                                ringOutBase * 1.25,
+                            );
+                        }
+                        const rr = ringInBase + (rim - ringInBase) * Math.sqrt(r1);
+                        const bx = cT * rr; const by = sT * rr;
                         x = fX + bx * eX;
                         y = fY + by * eY;
                         z = fZ + (bx * tiltX + by * tiltY + (r3 - 0.5) * 1.6) * eZ;
@@ -801,6 +898,8 @@ export class FluidParticleSim {
         const d = dir || { x: 0, y: 0, z: 1 };
         this._impulseParams[slot].value.set(d.x, d.y, d.z, type);
         const meta = this._impulseMeta[slot];
+        this._impulseSerial += 1;
+        meta.id = this._impulseSerial;
         if (wave) {
             this._impulseWaves[slot].value.set(
                 wave.radius ?? 0,
@@ -816,6 +915,33 @@ export class FluidParticleSim {
             meta.decay = IMPULSE_DECAY;
         }
         return slot;
+    }
+
+    /** The identity of the impulse now in `slot` (a later push that takes the slot changes it). */
+    impulseId(slot) {
+        return this._impulseMeta?.[slot]?.id ?? 0;
+    }
+
+    /**
+     * Move a blunt impulse that is still the one pushed as `id`, and hold it at `strength`:
+     * something flying through the flock. False once another impulse has taken the slot.
+     */
+    steerImpulse(slot, id, position, strength) {
+        const meta = this._impulseMeta?.[slot];
+        if (!meta || meta.id !== id) return false;
+        this._impulsePositions[slot].value.set(position.x, position.y, position.z, Math.max(0, strength));
+        return true;
+    }
+
+    /**
+     * The flock's form (see formRadius): `base` and the four lobe weights.
+     * @param {number} base @param {number} c1 @param {number} s1 @param {number} c2 @param {number} s2
+     */
+    setForm(base = 1, c1 = 0, s1 = 0, c2 = 0, s2 = 0) {
+        const f = this._form;
+        f[0] = base; f[1] = c1; f[2] = s1; f[3] = c2; f[4] = s2;
+        this.uFormBase.value = base;
+        this.uForm.value.set(c1, s1, c2, s2);
     }
 
     /** Impulses fade on their own; a wave's ring also travels. */
@@ -869,10 +995,13 @@ export class FluidParticleSim {
      * `setShape` (a figure already formed keeps the layout it was given).
      */
     setShapeLayout({
-        twin = false, offsetX = 0, halfWidth = Infinity, halfHeight = Infinity,
+        twin = false, offsetX = 0, offsetY = 0, blocked = 0, halfWidth = Infinity, halfHeight = Infinity,
     } = {}) {
         this._shapeLayout.twin = twin === true && offsetX > 0;
         this._shapeLayout.offsetX = offsetX;
+        // Without room beside the boards a figure may stand above (or below) them instead.
+        this._shapeLayout.offsetY = twin === true ? 0 : (Number(offsetY) || 0);
+        this._shapeLayout.blocked = Math.max(0, Number(blocked) || 0);
         this._shapeLayout.halfWidth = halfWidth > 0 ? halfWidth : Infinity;
         this._shapeLayout.halfHeight = halfHeight > 0 ? halfHeight : Infinity;
     }
@@ -888,7 +1017,14 @@ export class FluidParticleSim {
      * @returns {boolean} false when the shape is unknown
      */
     setShape(shapeName, opts = {}) {
-        const ok = generateShape(shapeName, this.targetData, this.count, opts);
+        // A figure authored to the frame (the roost, the wings either side of the boards) reads it here.
+        const authored = shapeName === 'free' ? opts : {
+            ...opts,
+            frame: this._shapeFit,
+            blocked: this._shapeLayout.blocked,
+            room: this._shapeLayout.twin,
+        };
+        const ok = generateShape(shapeName, this.targetData, this.count, authored);
         if (!ok) {
             console.warn(`[FluidParticleSim] Unknown shape: ${shapeName}`);
             return false;
@@ -914,14 +1050,18 @@ export class FluidParticleSim {
             halfH = Math.max(halfH, Math.abs(targets[j + 1]));
         }
         const layout = this._shapeLayout;
-        const twin = layout.twin && opts.layout !== 'center';
-        const box = twin ? layout : this._shapeFit;
+        const centred = opts.layout === 'center';
+        const twin = layout.twin && !centred;
+        // A narrow frame's figure stands in the band the boards leave free.
+        const lifted = !twin && !centred && layout.offsetY !== 0;
+        const box = twin || lifted ? layout : this._shapeFit;
         const fit = Math.min(
             1,
             box.halfWidth / Math.max(halfW, 0.001),
             box.halfHeight / Math.max(halfH, 0.001),
         );
         this.uShapeTwin.value.set(twin ? 1 : 0, twin ? layout.offsetX : 0);
+        this.uShapeLift.value = lifted ? layout.offsetY : 0;
         this.uShapeSpan.value = Math.max(MIN_SHAPE_SPAN, Math.max(halfW, halfH) * fit);
         const jitter = (opts.jitter ?? 0.14) * Math.max(0.45, fit);
         // With `keepDust` the dust between the ribbons stays in the flow: the figure
@@ -963,6 +1103,16 @@ export class FluidParticleSim {
     setShapePose(yaw = 0, scale = 1) {
         this.uShapeRot.value.set(Math.cos(yaw), Math.sin(yaw));
         this.uShapeScale.value = scale;
+    }
+
+    /** Is there room for a figure either side of the boards (the twin layout)? */
+    hasRoomBeside() {
+        return this._shapeLayout.twin === true;
+    }
+
+    /** A winged figure's beat: its phase (radians) and how far the tips swing (0 = still). */
+    setShapeFlap(phase = 0, amplitude = 0) {
+        this.uShapeFlap.value.set(phase, amplitude);
     }
 
     update(delta, time, options = {}) {

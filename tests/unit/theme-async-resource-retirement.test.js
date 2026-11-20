@@ -87,19 +87,21 @@ describe('theme async resource retirement', () => {
         ['dispose', (show) => show.dispose()],
         ['resetSession', (show) => show.resetSession()],
         ['gameStart', (show) => show.gameStart()],
-    ])('cuts the game-over attractor chain short on %s()', (name, letGo) => {
+    ])('cuts the draw-in of a perfect clear short on %s()', (name, letGo) => {
         const timeout = vi.spyOn(globalThis, 'setTimeout');
         const interval = vi.spyOn(globalThis, 'setInterval');
         const { sim, show } = makeShow();
 
-        show.gameOver();
-        expect(sim.setShape).toHaveBeenCalledWith('heart', expect.any(Object));
+        // (The game over itself queues nothing any more: the flock comes down to roost on a
+        // formation. The longest chain a show queues is the perfect clear's: three pulls, then
+        // the bloom.)
+        show.clear({ lines: 1, rows: [19], perfect: true });
         // The whole chain is queued: nothing pulls before the clock runs.
         expect(sim.pushImpulse).not.toHaveBeenCalled();
         const chain = show.getState().queued;
         expect(chain).toBeGreaterThan(2);
 
-        const time = advance(show, 0, 0.5);
+        const time = advance(show, 0, 0.2);
         const fired = sim.pushImpulse.mock.calls.length;
         expect(fired).toBeGreaterThan(0);
         expect(fired).toBeLessThan(chain);

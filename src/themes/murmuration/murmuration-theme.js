@@ -6,7 +6,8 @@
  * a dark nebula, framing the board like a flock at dusk. Play moves it: a locking piece
  * sends a ring of light out through the swarm, a cleared line throws its light sideways,
  * a chain spins the gyre up and warms it toward gold, and the big moments gather the
- * whole swarm into a figure.
+ * whole swarm into a figure. Left alone it is never one shape for long: it turns through five
+ * moods by the clock, and things happen in its sky by themselves.
  *
  * This file holds no visual logic. It owns the renderer and the frame loop and wires the
  * parts together:
@@ -19,6 +20,8 @@
  *   post/render-pipeline.js       bloom, hue-preserving tonemap, grade
  *   composition/play-director.js  gameplay events → one lock / one clear per frame, true combo
  *   composition/swarm-show.js     what the swarm does about them
+ *   composition/swarm-fronts.js   the light each event sends through the flock
+ *   composition/swarm-moods.js    the flock's moods and what happens by itself
  *   composition/camera-director.js  the lens
  */
 import * as THREE from 'three/webgpu';
@@ -31,8 +34,8 @@ import { BOARD_CANVAS_SELECTOR, boardPoint, readBoardRect } from './composition/
 import { SWARM_EVENT_HANDLERS, SwarmPlayDirector } from './composition/play-director.js';
 import { RANDOM_SHAPE_POOL, SwarmShow } from './composition/swarm-show.js';
 import {
-    BLOOM_REACTION, BOARD_HALO, NO_POST_EXPOSURE, QUALITY_PRESETS, SWARM_FOCAL,
-    applyCrowding, applySwarmFrame, normalizeQuality, projectToPlane, shapeLayout, swarmFrame,
+    BLOOM_REACTION, BOARD_HALO, CARD_REACH, NO_POST_EXPOSURE, NO_POST_SKY_TOE, QUALITY_PRESETS, SWARM_FOCAL,
+    applyCrowding, applySwarmFrame, normalizeQuality, projectToPlane, shapeLayout, skyPixel, swarmFrame,
     swarmLook,
 } from './composition/swarm-tiers.js';
 import { createNebulaSky } from './rendering/nebula-volume.js';
@@ -148,7 +151,7 @@ export default class MurmurationTheme extends BaseTheme {
         this._boardRect = null; // the primary board, window fractions
         this._frame = null; // the view at the focal plane (swarmFrame)
         this._screenPoint = { x: 0.5, y: 0.5 };
-        this._heartHeld = false;
+        this._runEnded = false;
 
         // Reused dynamic-params payload — avoid per-frame allocation
         this._dynPostParams = {
@@ -247,7 +250,12 @@ export default class MurmurationTheme extends BaseTheme {
      */
     _buildWorld() {
         const { renderer } = this;
-        this.nebula = createNebulaSky({ detail: this.qualityPreset.skyDetail });
+        // (Without a post stack nothing sinks the gas into the night: the sky does it itself.)
+        this.nebula = createNebulaSky({
+            detail: this.qualityPreset.skyDetail,
+            toe: this.qualityPreset.enablePost ? 0 : NO_POST_SKY_TOE,
+        });
+        this.nebula.uniforms.uPixel.value = skyPixel(REST_FOV, this._pixelHeight);
         this.scene.add(this.nebula.mesh);
 
         // ── The swarm ──
@@ -320,6 +328,7 @@ export default class MurmurationTheme extends BaseTheme {
             locate: (detail, row, u, out) => this._locate(detail, row, u, out),
         });
         this.fxState = this.show.fx;
+        this._syncShowFrame();
         this.playDirector = new SwarmPlayDirector({
             sink: {
                 lock: (detail) => this._onLock(detail),
@@ -333,7 +342,7 @@ export default class MurmurationTheme extends BaseTheme {
                 levelUp: (level) => this.show?.levelUp(level, { silent: this.playDirector?.enabled === false }),
             },
         });
-        this._heartHeld = false;
+        this._runEnded = false;
         this._applyReactionSettings(null);
 
         // ── Board zone wiring (both swarm + post halo). Called AFTER both are
@@ -383,19 +392,19 @@ export default class MurmurationTheme extends BaseTheme {
         const next = this._pendingQuality;
         this._pendingQuality = null;
         if (!next || next === this.qualityName || !this.renderer || !this.scene) return;
-        // What the run has built up outlives the swap: the level's palette and a held heart.
+        // What the run has built up outlives the swap: the level's palette and mood, and a
+        // flock that has come down to roost.
         const level = this.show?.level ?? 1;
-        const heart = this._heartHeld;
+        const roosting = this._runEnded && this.show?.isRoosting?.() === true;
+        const ended = this._runEnded;
         this._teardownWorld();
         this._setQuality(next);
         this._pixelRatioStale = true; // the tier is part of the pixel ratio
         this._applyPixelRatio();
         this._buildWorld();
         if (level > 1) this.show?.levelUp(level, { silent: true });
-        if (heart && this.show) {
-            this.show.gameOver();
-            this._heartHeld = true;
-        }
+        if (roosting && this.show) this.show.gameOver();
+        this._runEnded = ended;
         console.log(`[Murmuration] Quality changed (quality=${this.qualityName}, post=${!!this.postPipeline})`);
     }
 
@@ -525,6 +534,7 @@ export default class MurmurationTheme extends BaseTheme {
         this.camera.aspect = w / h;
         this.camera.updateProjectionMatrix();
         this._pixelHeight = Math.max(1, h * (this.renderer.getPixelRatio?.() ?? 1));
+        if (this.nebula?.uniforms?.uPixel) this.nebula.uniforms.uPixel.value = skyPixel(REST_FOV, this._pixelHeight);
         // The swarm follows the frame: wings on a wide screen, a tall loop on a phone.
         if (this.camera.position && typeof this.fluidSim?.setExtent === 'function') {
             const frame = swarmFrame(this.camera, this._swarmRadius, this._focal, REST_FOV);
@@ -532,6 +542,7 @@ export default class MurmurationTheme extends BaseTheme {
             applySwarmFrame(this.fluidSim, frame);
             applyCrowding(this.fluidRenderer, this._swarmLook, frame.crowding);
         }
+        this._syncShowFrame();
         // Re-project the board zone — wider aspects shrink the board's
         // world-space half-extents at the focal plane, narrower stretch them.
         this._updateBoardZone();
@@ -539,27 +550,40 @@ export default class MurmurationTheme extends BaseTheme {
 
     // ── Gameplay ──────────────────────────────────────────────────────────────
 
-    /** A piece locking is proof a run is under way: let the game-over heart go first. */
+    /** The view at the focal plane, for the show: what its fronts, moods and figures are sized by. */
+    _syncShowFrame() {
+        if (!this.show || !this.camera) return;
+        const frame = this._frame || swarmFrame(this.camera, this._swarmRadius, this._focal, REST_FOV);
+        this.show.setFrame({ halfWidth: frame.halfWidth, halfHeight: frame.halfHeight, aspect: this.camera.aspect });
+    }
+
+    /** A piece locking is proof a run is under way: the flock lifts from its roost first. */
     _onLock(detail) {
         // Called from inside the director's flush: release through the show only. Resetting
         // the director here would wipe the clear staged with this very lock.
-        if (this._heartHeld) {
-            this._heartHeld = false;
+        if (this._runEnded) {
+            this._runEnded = false;
             this.show?.gameStart();
         }
         this.show?.lock(detail);
     }
 
+    /**
+     * The run is over. In this order (gotcha #1716): the last lock lands in the run it belongs
+     * to, the run's own state is dropped WITHOUT wiping the world, and only then does the flock
+     * come down to roost.
+     */
     _onGameOver() {
         if (!this.isActive || !this.show) return;
+        this.playDirector?.flush();
         this.playDirector?.reset();
         this.show.resetSession();
         this.show.gameOver();
-        this._heartHeld = true;
+        this._runEnded = true;
     }
 
     _onGameStart() {
-        this._heartHeld = false;
+        this._runEnded = false;
         this.playDirector?.reset();
         this.show?.gameStart();
     }
@@ -627,6 +651,11 @@ export default class MurmurationTheme extends BaseTheme {
             list: () => SHAPE_NAMES,
             current: () => this.fluidSim?.currentShape || 'free',
             pool: () => RANDOM_SHAPE_POOL.slice(),
+            // Pin a mood (0 wheel, 1 wings, 2 drift, 3 gale, 4 veil); no argument hands it back to the clock.
+            mood: (n = null) => {
+                if (this.show) this.show.moodHold = Number.isFinite(n) ? n : null;
+                return this.show?.getState().mood ?? null;
+            },
             roll: (strength = 0.6) => {
                 const pick = this._pickRandomShape();
                 if (pick) this.setShape(pick, {}, strength, 0);
@@ -669,6 +698,8 @@ export default class MurmurationTheme extends BaseTheme {
         let boardRect = null;
         let spanLeft = Infinity;
         let spanRight = -Infinity;
+        let spanTop = Infinity;
+        let spanBottom = -Infinity;
         for (const board of document.querySelectorAll(BOARD_CANVAS_SELECTOR)) {
             const rect = board.getBoundingClientRect();
             const style = window.getComputedStyle?.(board);
@@ -681,6 +712,9 @@ export default class MurmurationTheme extends BaseTheme {
                 // Every board on screen (local multiplayer has several): the span they cover.
                 spanLeft = Math.min(spanLeft, rect.left / vw);
                 spanRight = Math.max(spanRight, rect.right / vw);
+                // … and how high and low their cards reach (a card stands a little past its canvas).
+                spanTop = Math.min(spanTop, (rect.top - rect.height * CARD_REACH.above) / vh);
+                spanBottom = Math.max(spanBottom, (rect.bottom + rect.height * CARD_REACH.below) / vh);
             }
         }
         if (this._boardResizeObserver && boardCanvas !== this._observedBoardCanvas) {
@@ -744,7 +778,13 @@ export default class MurmurationTheme extends BaseTheme {
                 const blockedUV = spanRight > spanLeft
                     ? Math.max(Math.abs(spanLeft - 0.5), Math.abs(spanRight - 0.5))
                     : rectHalfUV.x;
-                this.fluidSim.setShapeLayout(shapeLayout(this._frame, blockedUV * worldWidth * 1.3));
+                // A frame with no room beside its boards (a phone) draws its figure in the band
+                // of sky above or below them.
+                const band = spanBottom > spanTop ? {
+                    top: (0.5 - spanTop) * worldHeight,
+                    bottom: (0.5 - spanBottom) * worldHeight,
+                } : null;
+                this.fluidSim.setShapeLayout(shapeLayout(this._frame, blockedUV * worldWidth * 1.3, band));
             }
         }
 
@@ -903,7 +943,7 @@ export default class MurmurationTheme extends BaseTheme {
         this._pixelRatioStale = false;
 
         this._teardownWorld();
-        this._heartHeld = false;
+        this._runEnded = false;
         this.cameraDirector = null;
 
         if (this.renderer) {

@@ -8,18 +8,32 @@
  * queue keyed on the show's own clock and runs from `update()`, so a capture can replay a
  * moment exactly and stopping the theme leaves nothing scheduled.
  *
- *   LOCK          a ring of light leaves the piece and crosses the swarm
- *   HARD DROP     the same, harder and faster, and the lens takes the hit
- *   CLEAR 1–3     a tall ellipse whose sides sweep outward across both wings
- *   CASCADE       each wave's ring rounder, wider, faster and brighter than the last
- *   BACK-TO-BACK  the clear's ring answered by a second, harder one right behind it
- *   QUAD          two rings, a swirl, the sky lights up, the swarm gathers into a shape
- *   TWIST        two counter-turning eddies and a knot — or the figure held pirouettes
- *   PERFECT CLEAR the swarm is drawn in to a point, then blooms in gold (the chain's crown)
- *   COMBO         the gyre spins up and the swarm warms toward gold; from four the flock
- *                 draws ONE figure and the chain grows it
- *   LEVEL UP      the palette steps on
- *   GAME OVER     a heart, held until the next run
+ * Every event has an instrument of its own. The simulation still shoves the flock (a ring, a
+ * swirl, a pull); the LIGHT is a front of the event's own shape, drawn by the mote shader
+ * (composition/swarm-fronts.js):
+ *
+ *   LOCK          a puff of the piece's own colour where it came to rest
+ *   HARD DROP     a chevron: the bow wave the drop throws up and out, and the lens takes the hit
+ *   CLEAR 1–3     a beam along each cleared row, leaving the board to both sides: one row, one
+ *                 beam, so the eye can count them
+ *   CASCADE       each wave's beams faster and brighter than the last
+ *   BACK-TO-BACK  the beams are answered: gold ones come back in from the frame's edges
+ *   QUAD          four beams, a swirl, the sky lights — and the flock spreads into two great
+ *                 WINGS either side of the board and beats them (the board is the body)
+ *   TWIST         a pinwheel unwinds at the piece, two counter-turning eddies, and a knot —
+ *                 or the figure held pirouettes
+ *   PERFECT CLEAR the swarm is drawn in to a point, then blooms in gold: a gold ring through
+ *                 the flock, a gold figure that stays gold, and a shower of shooting stars
+ *   COMBO         each step runs down every ribbon like a fuse; the gyre spins up and the swarm
+ *                 warms toward gold; from four the flock draws ONE figure and the chain grows it
+ *   LEVEL UP      the new palette crosses the flock as one wave, and the flock moves on a mood
+ *   GAME OVER     the flock comes down to ROOST along the foot of the frame; it lifts again by
+ *                 itself after a while, and at once when the next run starts
+ *
+ * The flock is never one shape for long (composition/swarm-moods.js): five moods turn by the
+ * clock in every mode, each with its own form, flow, trails, colours and sky, and things happen
+ * by themselves — a shooting star, a great fold of light sweeping the whole flock, a falcon's
+ * stoop.
  *
  * Fast play BUILDS here instead of popping (src/themes/shared/gameplay-surge.js). Every
  * frame-wide light is a Swell — a new hit adds to what is still lit, so a single after a quad
@@ -45,25 +59,31 @@ import { IMPULSE_TYPE } from '../sim/fluid-particles.js';
 import {
     FIRE, PALETTE_LEVEL_STEP, PALETTE_SPAN, heatWarmth, samplePalette, turnHue,
 } from './swarm-palette.js';
+import { FRONT, FrontTable } from './swarm-fronts.js';
+import {
+    MOODS, falconPath, happeningAt, meteorLine, moodAt, moodForm, moodPhase, stepMood,
+} from './swarm-moods.js';
 import { flashScale } from '../../../utils/photosensitivity.js';
 import { GameplaySurge, Swell } from '../../shared/gameplay-surge.js';
 
 /**
- * Every formation a gameplay moment may roll. 'free' is the release state and 'heart' is
- * kept for game over, so neither is in the pool. The flock never draws the game's pieces:
- * the board shows those, and the sky keeps to its own figures.
+ * Every formation a gameplay moment may roll. 'free' is the release state, 'roost' is kept for
+ * game over and 'wings' for four lines, so none of them is in the pool. The flock never draws
+ * the game's pieces (the board shows those), and it no longer draws hard-edged solids either:
+ * a cube or a pyramid is a particle demo, not something a flock does.
  */
 export const RANDOM_SHAPE_POOL = Object.freeze([
-    'sphere', 'torus', 'helix', 'galaxy', 'cube', 'star', 'wave', 'butterfly',
-    'ring', 'pyramid', 'octahedron', 'hexagon',
-    'sunflower', 'infinity', 'trefoil', 'vortex', 'wavySphere', 'lightning',
-    'snowflake', 'lotus', 'crescent', 'crystalShard', 'mobius', 'comet', 'nautilus',
+    'sphere', 'torus', 'helix', 'galaxy', 'star', 'wave', 'butterfly', 'ring',
+    'sunflower', 'infinity', 'trefoil', 'vortex', 'wavySphere',
+    'snowflake', 'lotus', 'crescent', 'mobius', 'comet', 'nautilus',
 ]);
 
 /** Solids turn all the way round; everything else faces the camera and only sways. */
 const TURNING_SHAPES = new Set([
     'sphere', 'helix', 'cube', 'pyramid', 'octahedron', 'wavySphere', 'crystalShard', 'trefoil', 'mobius',
 ]);
+/** Figures that face the camera and never turn or sway: they are fitted to the frame. */
+const STILL_SHAPES = new Set(['wings', 'roost']);
 const KNOT_SHAPES = Object.freeze(['trefoil', 'infinity', 'mobius', 'vortex']);
 // (A sunflower is a flat disc of points: as a crown it reads as a blob, so it is not one.)
 const BLOOM_SHAPES = Object.freeze(['lotus', 'snowflake']);
@@ -163,6 +183,45 @@ const LENS_HOLD = 0.2;
 /** Reduced motion keeps this much of the show's own motion (pirouettes stop altogether). */
 const CALM_MOTION = 0.4;
 
+/** The wings of a quad: their strength, how long they are held, their beat (rad/s) and its swing. */
+const WINGS_STRENGTH = 0.85;
+const WINGS_HOLD = 5.2;
+const WING_BEAT = 3.5;
+const WING_SWING = 0.24;
+/** The roost: how firmly the flock settles, how long before it lifts again by itself. */
+const ROOST_STRENGTH = 0.36;
+const ROOST_HOLD = 16;
+/** A crown's figure stays this far in the fire for as long as it is held. */
+const CROWN_FIRE = 0.9;
+/** How much each lock's puff is held back by the puffs just sent (a quick hand never floods the frame). */
+const LOCK_CROWDING = 1.3;
+/** A chain's fuse runs a ribbon's length in about this long (s). */
+const FUSE_SECONDS = 1.15;
+/** A new level's colours take this long to cross the flock (s). */
+const WIPE_SECONDS = 2.4;
+/** How fast the flock takes up a new level's mood (1/s). */
+const MOOD_STEP_RATE = 0.55;
+/** How brightly the great turn folds as it sweeps the flock. */
+const GREAT_TURN = 0.8;
+/** How hard the falcon's stoop parts the motes it flies through. */
+const FALCON_PUSH = 30;
+/** How far up and down the wings a clear's rays fan (shares of the frame's half-height), by line count. */
+const BEAM_FAN = Object.freeze([0, 0.22, 0.34, 0.46]);
+
+const FRAME_DEFAULT = Object.freeze({ halfWidth: 10.1, halfHeight: 5.68, aspect: 16 / 9 });
+const GOLD = Object.freeze([1, 0.72, 0.26]);
+const SILVER = Object.freeze([0.86, 0.93, 1]);
+
+/** A CSS hex colour as linear RGB in `out`, or null. */
+function hexToLinear(hex, out) {
+    if (typeof hex !== 'string' || !/^#[0-9a-f]{6}$/i.test(hex)) return null;
+    for (let i = 0; i < 3; i += 1) {
+        const c = Number.parseInt(hex.slice(1 + i * 2, 3 + i * 2), 16) / 255;
+        out[i] = c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+    }
+    return out;
+}
+
 const clamp01 = (v) => Math.max(0, Math.min(1, v));
 const smooth01 = (v) => {
     const k = clamp01(v);
@@ -252,6 +311,39 @@ export class SwarmShow {
         this.flockLead = 0;
         this.flockClock = 0;
 
+        // Play's light: the fronts the mote shader draws.
+        this.fronts = new FrontTable({
+            rows: visual?.frontRows || null,
+            count: visual?.uniforms?.uFrontCount || null,
+        });
+        /** The view at the focal plane (world half-size and aspect): set by the theme on resize. */
+        this.frame = { ...FRAME_DEFAULT };
+        // The mood: the level's step (eased) plus the clock. `moodHold` pins a mood (captures).
+        this.moodStep = 0;
+        this.moodHold = null;
+        this.mood = moodAt(0, {});
+        this._formWeights = [1, 0, 0, 0, 0];
+        this._lockLoad = 0;
+        this._fuse = { at: -Infinity, light: 0 };
+        this._wipe = { at: -Infinity, delta: 0 };
+        /** The palette the sky and the halo wear follows the motes' at its own ease. */
+        this.tintPhase = 0;
+        /** How far the crown has turned the flock to gold (0..1). */
+        this.gold = 0;
+        /** Until when the roost holds before the flock lifts by itself. */
+        this._roostUntil = -Infinity;
+        this.roosting = 0;
+        /** The crown's shower of shooting stars. */
+        this._showerAt = -Infinity;
+        this._happening = happeningAt(0);
+        this._falcon = {
+            slot: -1, id: 0, key: -1, front: null,
+        };
+        this._line = [0, 0, 0];
+        this._falconAt = { x: 0, y: 0, z: 0 };
+        this._rgb = [1, 1, 1];
+        this._base = null;
+
         this.shape = {
             name: 'free',
             level: 0,
@@ -285,6 +377,28 @@ export class SwarmShow {
         /** The swarm's middle hue right now (linear RGB), for anything that wants to match it. */
         this.haloTint = [0.45, 0.3, 1.0];
         this.surge.sample(this.time);
+    }
+
+    /** The view at the focal plane: world half-size and aspect (the theme calls it on resize). */
+    setFrame(frame) {
+        if (!frame) return;
+        if (frame.halfWidth > 0) this.frame.halfWidth = frame.halfWidth;
+        if (frame.halfHeight > 0) this.frame.halfHeight = frame.halfHeight;
+        this.frame.aspect = frame.aspect > 0 ? frame.aspect : this.frame.halfWidth / this.frame.halfHeight;
+    }
+
+    /** Send a front of light, placed from a world point on the focal plane. */
+    _front(kind, at, spec) {
+        return this.fronts.add({
+            ...spec, kind, x: at.x - this.focal.x, y: at.y - this.focal.y,
+        });
+    }
+
+    /** The swarm's hue `offset` of the way round the palette from its middle, lifted toward white. */
+    _hue(offset, white = 0.35, out = this._rgb) {
+        samplePalette(this.palettePhase + this.flockClock * 0.006 + offset, out);
+        for (let i = 0; i < 3; i += 1) out[i] += (1 - out[i]) * white;
+        return out;
     }
 
     // ── helpers ─────────────────────────────────────────────────────────────────
@@ -383,6 +497,7 @@ export class SwarmShow {
         s.since = this.time;
         s.priority = priority;
         s.turning = TURNING_SHAPES.has(name);
+        s.still = STILL_SHAPES.has(name);
         s.formedAt = -1;
         s.chain = false;
         s.evolved = false;
@@ -439,7 +554,7 @@ export class SwarmShow {
     /** A twist turns the figure held once round (its twin the other way). */
     _pirouette() {
         const s = this.shape;
-        if (this.reducedMotion || s.name === 'free' || !(s.target > 0)) return;
+        if (this.reducedMotion || s.name === 'free' || s.still || !(s.target > 0)) return;
         s.spinTarget += Math.PI * 2;
     }
 
@@ -512,9 +627,25 @@ export class SwarmShow {
         this._push(origin, (hard ? 10.5 : 4) * (1 + pace * 0.5), null, IMPULSE_TYPE.RADIAL, {
             speed: (hard ? 9.5 : 7.5) * (1 + pace * 0.2),
             width: (hard ? 0.2 : 0.16) * (1 + pace * 0.3),
-            flash: (hard ? 1.4 : 1.0) * (1 + pace * 0.25),
+            flash: hard ? 0.3 : 0.2,
             decay: hard ? 1.2 : 1.5,
         });
+        // The light: a puff of the piece's own colour — or, for a hard drop, the bow wave it
+        // throws up and out. A quick hand is held back by what it has just sent, so a lock a
+        // second is whole and four a second never flood the flock.
+        const crowd = (1 + pace * 0.3) / (1 + LOCK_CROWDING * this._lockLoad);
+        this._lockLoad += hard ? 1.3 : 1;
+        const rgb = hexToLinear(detail.color, this._rgb) || this._hue(0.5, 0.2);
+        if (hard) {
+            for (let i = 0; i < 3; i += 1) rgb[i] += (1 - rgb[i]) * 0.3;
+            this._front(FRONT.chevron, origin, {
+                speed: 11 * (1 + pace * 0.2), width: 0.42, reach: 8.5, light: 1.25 * crowd, rgb, life: 1.0,
+            });
+        } else {
+            this._front(FRONT.ring, origin, {
+                speed: 5.2 * (1 + pace * 0.2), width: 0.36, reach: 5.2, light: 1.1 * crowd, rgb, life: 1.0,
+            });
+        }
         // The lens takes the tap: a micro-shake, a breath of zoom, a flick of colour.
         if (!this.reducedMotion) {
             this.camera?.shake(hard ? 0.14 : 0.06, hard ? 200 : 160);
@@ -556,6 +687,7 @@ export class SwarmShow {
             ring.squash = Math.min(0.75, 0.4 + deeper * 0.08);
             ring.decay = 1.1;
             this._pushRing(ring, ring.strength);
+            this._beams(detail, lines, row, 1 + lines * 0.12 + deeper * 0.2, 0.24);
             this._lightSky(0.12 * lines * (1 + deeper * 0.3));
             if (deeper > 0) this._grow(GROW.wave * deeper);
             // A twist draws its own knot below; a plain triple rolls from the whole pool.
@@ -568,13 +700,57 @@ export class SwarmShow {
     /** Push the ring described by `ring` (a reused record) at `strength`. */
     _pushRing(ring, strength, scale = 1) {
         this._ringAt.x = ring.x; this._ringAt.y = ring.y; this._ringAt.z = ring.z;
+        // The ring is the shove; its light is the beams', so the simulation's own is a trace.
         this._push(this._ringAt, strength, null, IMPULSE_TYPE.RADIAL, {
             speed: ring.speed * (scale > 1 ? 1.15 : 1),
             width: ring.width * scale,
-            flash: ring.flash * (scale > 1 ? 1.25 : 1),
+            flash: ring.flash * 0.2 * (scale > 1 ? 1.25 : 1),
             squash: ring.squash,
             decay: ring.decay,
         });
+    }
+
+    /**
+     * A beam for each cleared row: a ray of light from the row out through both wings of the
+     * flock, struck one after another. Rows clear at the foot of the board, where the flock is
+     * thin, so a band at the row's own height lit almost nothing: each line's ray climbs (or
+     * falls) to a height of its own in the wings instead, and the rays fan out from the rows
+     * they left — one, two, three or four of them, to be counted. `kind` is FRONT.beam, or
+     * FRONT.answer for the ones that come back in.
+     */
+    _beams(detail, lines, row, light, halfHeight, kind = FRONT.beam, delay = 0, rgb = null) {
+        const rows = detail.rows && detail.rows.length ? detail.rows : null;
+        const count = rows ? Math.min(4, rows.length) : lines;
+        const { pace } = this;
+        const { halfWidth, halfHeight: tall } = this.frame;
+        const reach = Math.hypot(halfWidth, tall) + 1.5;
+        const tint = rgb || this._hue(0.5, 0.45);
+        const r = tint[0]; const g = tint[1]; const b = tint[2];
+        // Where the rays cross the middle of a wing: spread over the flock's height.
+        const across = Math.max(2.5, halfWidth * 0.62);
+        const spread = tall * BEAM_FAN[Math.min(count, BEAM_FAN.length) - 1];
+        for (let i = 0; i < count; i += 1) {
+            const at = this._origin(detail, rows ? rows[i] : row - (count - 1) * 0.5 + i, 0.5);
+            const target = this.focal.y + (count > 1 ? ((count - 1 - i) / (count - 1) - 0.5) * 2 * spread : 0);
+            this._rgb[0] = r; this._rgb[1] = g; this._rgb[2] = b;
+            this._front(kind, at, {
+                speed: (kind === FRONT.answer ? 15 : 13) * (1 + pace * 0.15),
+                width: 0.5,
+                reach,
+                light,
+                rgb: this._rgb,
+                shape: halfHeight,
+                angle: Math.atan2(target - at.y, across),
+                glow: 0.7,
+                wake: 0.9,
+                life: reach / 13 + 0.9,
+                delay: delay + i * 0.05,
+            });
+        }
+        // Remembered for a back-to-back's answer.
+        this._beamsSent = {
+            player: detail.player, rows: rows ? rows.slice(0, 4) : null, screen: null, lines, row, light, halfHeight,
+        };
     }
 
     /**
@@ -585,6 +761,11 @@ export class SwarmShow {
         this._lightSky(0.45);
         this.fx.rewardPulse = Math.min(1, this.fx.rewardPulse + 0.3);
         this._grow(GROW.b2b);
+        // The answer: gold beams come back in along the same rows, from the frame's edges.
+        const sent = this._beamsSent;
+        if (sent && ring.strength > 0) {
+            this._beams(sent, sent.lines, sent.row, sent.light * 1.1, sent.halfHeight, FRONT.answer, 0.34, GOLD);
+        }
         if (!(ring.strength > 0)) return;
         const echo = {
             x: ring.x,
@@ -619,12 +800,30 @@ export class SwarmShow {
         this.after(0.22, () => this._push(at, 10 * (1 + pace * 0.3), null, IMPULSE_TYPE.RADIAL, {
             speed: 8, width: 0.2, flash: 1.0, decay: 1.1,
         }));
+        // Four beams, wider and brighter than a triple's.
+        this._beams(detail, 4, row, 1.45, 0.3);
         // Added to what is lit: a quad after a perfect clear no longer darkens its sky.
         this._lightSky(1);
         this._punch(0, 0.3, 0);
         if (!this.reducedMotion) this.camera?.dolly(0.18);
-        // In a chain the quad does not tear the chain's figure down: it grows it.
-        this.requestRandomShape(RANDOM_SHAPE_POOL, 0.7, 4.5, 2, GROW.quad);
+        // The flock spreads its wings. In a chain the quad does not tear the chain's figure
+        // down: it grows it.
+        this._spreadWings();
+    }
+
+    /**
+     * The great wings: with room beside the boards they unfold from the card's edges and the
+     * board is the body; without, a whole bird where the layout puts figures. False when a
+     * figure of the chain is held (it grows instead).
+     */
+    _spreadWings() {
+        if (!this.canRequestShape(2)) {
+            this._grow(GROW.quad);
+            return false;
+        }
+        const beside = this.sim?.hasRoomBeside?.() === true;
+        const opts = beside ? { layout: 'center', keepDust: true, jitter: 0.05 } : { keepDust: true, jitter: 0.05 };
+        return this.requestShape('wings', opts, WINGS_STRENGTH, WINGS_HOLD, 2);
     }
 
     _twist(detail, row) {
@@ -632,6 +831,20 @@ export class SwarmShow {
         const at = { x: origin.x, y: origin.y, z: origin.z };
         this._push({ x: at.x - 1.6, y: at.y, z: at.z }, 4.5, AXIS_IN, IMPULSE_TYPE.VORTEX);
         this._push({ x: at.x + 1.6, y: at.y, z: at.z }, 4.5, AXIS_OUT, IMPULSE_TYPE.VORTEX);
+        // The pinwheel: three thin arms unwind out from behind the board, through both wings,
+        // and turn — the whole flock is the twist's wheel. (Unwound from the piece itself, at
+        // the foot of the board, it turned where the flock is thinnest and was not seen.)
+        this._pinwheelWay = -(this._pinwheelWay || 1);
+        this._front(FRONT.pinwheel, this.focal, {
+            speed: 9,
+            width: 0.3,
+            reach: Math.hypot(this.frame.halfWidth, this.frame.halfHeight) * 0.92,
+            light: 1.35,
+            rgb: this._hue(0.42, 0.45),
+            shape: 3 * this._pinwheelWay,
+            life: 2.1,
+            wake: 0.6,
+        });
         this._lightSky(0.5);
         // A knot — or, with a figure held, the figure pirouettes and grows.
         if (!this.requestRandomShape(KNOT_SHAPES, 0.62, 3.2, 1, GROW.twist)) this._pirouette();
@@ -644,6 +857,18 @@ export class SwarmShow {
         const at = { x: origin.x, y: origin.y, z: origin.z };
         this._push({ x: at.x - 1.2, y: at.y, z: at.z }, 2.6, AXIS_IN, IMPULSE_TYPE.VORTEX);
         this._push({ x: at.x + 1.2, y: at.y, z: at.z }, 2.6, AXIS_OUT, IMPULSE_TYPE.VORTEX);
+        // A small pinwheel of two arms: the turn without the lines.
+        this._pinwheelWay = -(this._pinwheelWay || 1);
+        this._front(FRONT.pinwheel, this.focal, {
+            speed: 8,
+            width: 0.24,
+            reach: this.frame.halfWidth * 0.62,
+            light: 1.15,
+            rgb: this._hue(0.42, 0.45),
+            shape: 2 * this._pinwheelWay,
+            life: 1.4,
+            wake: 0.6,
+        });
         this._lightSky(0.15);
         if (this._grow(GROW.spin)) this._pirouette();
     }
@@ -668,12 +893,18 @@ export class SwarmShow {
         this._crown.hit(1, this.time + 0.42);
         this.after(0.42, () => {
             this._push(at, 24 * (1 + pace * 0.25), null, IMPULSE_TYPE.RADIAL, {
-                speed: 11, width: 0.4, flash: 1.5, decay: 0.9,
+                speed: 11, width: 0.4, flash: 0.3, decay: 0.9,
             });
             this._lightSky(1.3);
             this._punch(0, 0.4, 0);
             this.requestRandomShape(BLOOM_SHAPES, 0.9, 5.5, 3);
         });
+        // The bloom's light: one wide gold ring through the whole flock, then a shower of
+        // shooting stars falling away from the board.
+        this._front(FRONT.ring, at, {
+            speed: 12, width: 0.8, reach: this.frame.halfWidth * 1.6, light: 1.7, rgb: GOLD, life: 1.6, delay: 0.42,
+        });
+        this._showerAt = this.time + 0.55;
         // A perfect clear empties the board: the chain is over. Its heat bleeds out after the bloom.
         this._chainSpentAt = this.time + CROWN_HOLD;
         this._crownedAt = this.time;
@@ -704,8 +935,10 @@ export class SwarmShow {
         this._comboGlow.hit(0.16 + best * 0.04, this.time);
         fx.comboIntensity = this._comboGlow.valueAt(this.time);
         fx.rewardPulse = Math.min(1, fx.rewardPulse + 0.15 + best * 0.05);
-        // Each step of the chain gives the gyre a shove.
+        // Each step of the chain gives the gyre a shove, and runs down every ribbon like a fuse.
         this._push(this._focalPoint(), Math.min(4.5, 1.5 + best * 0.3), AXIS_IN, IMPULSE_TYPE.VORTEX);
+        this._fuse.at = this.time;
+        this._fuse.light = Math.min(1.5, 0.55 + best * 0.1);
         if (best >= 4) {
             if (shape.chain && shape.target > 0) this._growChain(best);
             else this._commitChain(best);
@@ -720,30 +953,71 @@ export class SwarmShow {
         this.level = Math.max(1, Math.round(level) || 1);
         this.palettePhaseTarget = (this.level - 1) * PALETTE_LEVEL_STEP;
         if (options.silent) {
+            // A rebuild or a capture: the level's palette and mood at once, no wave.
             this.palettePhase = this.palettePhaseTarget;
+            this.tintPhase = this.palettePhaseTarget;
+            this.moodStep = stepMood(this.moodStep, this.level, 1);
+            this._wipe.delta = 0;
             return;
         }
         this.surge.levelUp(this.time);
+        // The new colours cross the flock as ONE wave: the motes take the new palette at once,
+        // and ahead of the wave's front they still wear the old one.
+        this._wipe.delta = this.palettePhaseTarget - this.palettePhase
+            + (this.time - this._wipe.at < WIPE_SECONDS ? this._wipe.delta : 0);
+        this._wipe.at = this.time;
+        this.palettePhase = this.palettePhaseTarget;
         this._push(this._focalPoint(), 4, null, IMPULSE_TYPE.RADIAL, {
-            speed: 5, width: 0.5, flash: 0.9, decay: 0.6,
+            speed: 5, width: 0.5, flash: 0.2, decay: 0.6,
         });
         this._lightSky(0.5);
         this._grow(GROW.level);
     }
 
-    /** The heart, held until the next run starts. */
+    /**
+     * The run is over: the flock comes down to roost along the foot of the frame, where a
+     * murmuration ends its evening. It is held until the next run starts — or, so that no menu
+     * ever stands over a dead sky, until it lifts again by itself.
+     */
     gameOver() {
         if (!this.reducedMotion) this.camera?.pullBack(0.6);
-        // One heart, centred: the run is over and the card no longer needs the middle.
-        this.requestShape('heart', { scale: 0.65, depth: 1.8, layout: 'center' }, 0.75, Infinity, 5);
-        const at = { x: this.focal.x, y: this.focal.y, z: this.focal.z };
-        for (let i = 0; i < 12; i += 1) {
-            this.after(i * 0.15, () => this._push(at, 1.8, AXIS_IN, IMPULSE_TYPE.ATTRACTOR));
-        }
+        // (The dust stays in the air: a ghost of the flock still wheels over the roost.)
+        this.requestShape('roost', { layout: 'center', jitter: 0.1, keepDust: true }, ROOST_STRENGTH, Infinity, 5);
+        this._roostUntil = this.time + ROOST_HOLD;
+        // One last slow fold of light goes down through the flock with it.
+        const top = { x: this.focal.x, y: this.focal.y + this.frame.halfHeight * 1.5, z: this.focal.z };
+        this._front(FRONT.ring, top, {
+            speed: 4.2, width: 1.1, reach: this.frame.halfHeight * 4, light: 0.55, rgb: this._hue(0.1, 0.5), life: 3.2,
+        });
     }
 
+    /** True while the flock is down (or coming down) at the roost. */
+    isRoosting() {
+        return this.shape.name === 'roost' && this.shape.target > 0;
+    }
+
+    /**
+     * A new run. From the roost the flock lifts in a rush; either way a fold of first light
+     * rises through it.
+     */
     gameStart() {
+        const roosting = this.isRoosting();
         this.resetSession();
+        const below = { x: this.focal.x, y: this.focal.y - this.frame.halfHeight * 1.35, z: this.focal.z };
+        if (roosting) {
+            this._push(below, 16, null, IMPULSE_TYPE.RADIAL, {
+                speed: 8, width: 2.4, flash: 0, decay: 0.8,
+            });
+        }
+        this._front(FRONT.ring, below, {
+            speed: 8.5,
+            width: 0.9,
+            reach: this.frame.halfHeight * 4.2,
+            // (From the roost the flock is packed along the frame's foot: a gentler light there.)
+            light: roosting ? 0.5 : 0.55,
+            rgb: this._hue(0.5, 0.55),
+            life: 2.0,
+        });
     }
 
     /**
@@ -757,6 +1031,8 @@ export class SwarmShow {
         this.heatTarget = 0;
         this._chainSpentAt = Infinity;
         this._crownedAt = -Infinity;
+        this._roostUntil = -Infinity;
+        this._beamsSent = null;
         this.shape.priority = 0;
         this.releaseShape();
     }
@@ -768,12 +1044,25 @@ export class SwarmShow {
         this.level = 1;
         this.palettePhase = 0;
         this.palettePhaseTarget = 0;
+        this.tintPhase = 0;
+        this.moodStep = 0;
+        this.moodNow = 0;
         this.skyFlash = 0;
         this.skyPulse = 0;
         this.shapeColor = 0;
         this.fire = 0;
+        this.gold = 0;
+        this.roosting = 0;
         this.flockLead = 0;
         this.flockClock = this.time;
+        this.fronts.clear();
+        this._lockLoad = 0;
+        this._fuse.at = -Infinity;
+        this._wipe.at = -Infinity;
+        this._wipe.delta = 0;
+        this._showerAt = -Infinity;
+        this._falcon.slot = -1;
+        this._falcon.front = null;
         const s = this.shape;
         s.name = 'free';
         s.level = 0;
@@ -851,19 +1140,39 @@ export class SwarmShow {
         const crown = this._crown.valueAt(time);
         let heatGoal = time < this._chainSpentAt ? this.heatTarget : 0;
         heatGoal = Math.max(heatGoal, PACE_HEAT * smooth01((pace - 0.3) / 0.6), CROWN_HEAT * crown);
+        if (this.shape.priority === 3 && this.shape.target > 0) heatGoal = Math.max(heatGoal, CROWN_HEAT);
         this.heat = ease(this.heat, heatGoal, heatGoal > this.heat ? HEAT_RISE : HEAT_FALL, dt);
         fx.stageHeat = this.heat;
+        // (A level's wave snaps the motes' palette and carries the change itself; this eases
+        // whatever else moved it, and the sky's tints behind it.)
         this.palettePhase = ease(this.palettePhase, this.palettePhaseTarget, 1.1, dt);
-        // In a fever the figure held catches the sunset; the crown burns it gold.
-        const fireGoal = Math.max(smooth01((surge.fever - 0.2) / 0.6), crown);
+        this.tintPhase = ease(this.tintPhase, this.palettePhaseTarget, 1.1, dt);
+        this._lockLoad *= Math.exp(-dt);
+        if (time - this._wipe.at >= WIPE_SECONDS) this._wipe.delta = 0;
+        // In a fever the figure held catches the sunset; the crown burns it gold, and its
+        // figure stays gold for as long as it stands.
+        const crowned = this.shape.priority === 3 && this.shape.target > 0;
+        const fireGoal = Math.max(smooth01((surge.fever - 0.2) / 0.6), crown, crowned ? CROWN_FIRE : 0);
         this.fire = ease(this.fire, fireGoal, fireGoal > this.fire ? 1.4 : 0.5, dt);
+        // … and gold through and through while the crown stands.
+        const goldGoal = Math.max(crown, crowned ? 1 : 0);
+        this.gold = ease(this.gold, goldGoal, goldGoal > this.gold ? 2.6 : 0.7, dt);
         // The flock's clock runs ahead with the play: its banking ripples come sooner.
         this.flockLead += dt * FLOCK_QUICKEN * pace * calm;
         this.flockClock = time + this.flockLead;
         const drift = this.flockClock * 0.006;
 
+        // The mood: the level's step, eased the short way round, plus the clock.
+        this.moodStep = stepMood(this.moodStep, this.level, 1 - Math.exp(-MOOD_STEP_RATE * dt));
+        const moodNow = this.moodHold === null ? moodPhase(this.moodStep, time) : this.moodHold;
+        const mood = moodAt(moodNow, this.mood);
+        this.moodNow = moodNow;
+
         // Formation state.
         const { shape } = this;
+        // The roost lifts by itself after a while: no menu stands over a dead sky.
+        if (shape.name === 'roost' && shape.target > 0 && time >= this._roostUntil) this.releaseShape();
+        this.roosting = ease(this.roosting, this.isRoosting() ? 1 : 0, 0.9, dt);
         if (shape.name !== 'free' && time >= shape.until) {
             shape.target = 0;
             shape.chain = false;
@@ -884,19 +1193,31 @@ export class SwarmShow {
         shape.phase += dt * (1 + pace * 0.5 * calm);
         // A pirouette is quick: the figure is edge-on for a moment, not a beat.
         shape.spin = ease(shape.spin, shape.spinTarget, 4.5, dt);
-        const yaw = (shape.turning ? shape.phase * 0.42 : Math.sin(shape.phase * 0.7) * 0.2) + shape.spin;
+        let yaw = (shape.turning ? shape.phase * 0.42 : Math.sin(shape.phase * 0.7) * 0.2) + shape.spin;
+        if (shape.still) yaw = 0;
         const scaleGoal = 1 + shape.growth * GROW_SCALE + this._breath.valueAt(time) * BREATH_SCALE * calm;
         shape.scale = ease(shape.scale, shape.name === 'free' ? 1 : scaleGoal, 6, dt);
 
-        // The flock: the chain spins the gyre up, play stirs it.
-        this.simParams.turbulence = this.baseTurbulence + fx.comboIntensity * 0.4 + this.heat * 0.25 + pace * 0.1;
-        this.simParams.gyre = this.baseGyre * (1 + this.heat * 1.6 + fx.comboIntensity * 0.7 + pace * 0.4);
+        // The flock: the mood sets its pace, the chain spins the gyre up, play stirs it.
+        this.simParams.turbulence = (this.baseTurbulence + fx.comboIntensity * 0.4 + this.heat * 0.25 + pace * 0.1)
+            * mood.turb;
+        this.simParams.gyre = this.baseGyre * mood.gyre * (1 + this.heat * 1.6 + fx.comboIntensity * 0.7 + pace * 0.4);
 
         const { sim, visual, sky } = this;
         if (sim) {
             sim.setShapeStrength(shape.level);
             sim.setShapePose?.(shape.name === 'free' ? 0 : yaw, shape.name === 'free' ? 1 : shape.scale);
+            // The wings beat (slower and smaller under reduced motion).
+            const beat = shape.name === 'wings' ? WING_SWING * calm * Math.min(1, shape.level * 2) : 0;
+            sim.setShapeFlap?.(shape.phase * WING_BEAT, beat);
+            // The mood's form, flow and lean.
+            const form = moodForm(mood, time, this.frame.aspect, this._formWeights);
+            sim.setForm?.(form[0], form[1], form[2], form[3], form[4]);
+            sim.uTilt?.value.set(mood.tiltX, mood.tiltY);
+            sim.uFlowGains?.value.set(mood.coarse, mood.fine);
         }
+        this._happen(time, dt);
+        this.fronts.update(time);
         // How much of the swarm's colour the heat may take: a figure keeps most of its own
         // until it catches the fire.
         const keepsOwn = this.shapeColor * (1 - this.fire);
@@ -908,20 +1229,58 @@ export class SwarmShow {
             u.uHeat.value = this.shapeColor > 0 ? (this.heat * (1 - keepsOwn * 0.7)) / shaderKeep : this.heat;
             u.uPalettePhase.value = this.palettePhase;
             u.uShapeColor.value = this.shapeColor;
+            if (u.uCrown) u.uCrown.value = this.gold;
             // A formation packs the swarm into a figure a quarter of its size; take the
             // exposure down with it, or the figure is a slab of white instead of motes (a figure
             // that has grown, in hot play, is let a little brighter, so a chain's figure never
             // reads dimmer than the flock it was drawn from). A hot swarm is a fast one, and
             // fast motes are bright ones: hold the total back so a long chain turns the swarm
             // gold instead of bleaching it.
-            const relax = 1 - shape.growth * 0.25 - pace * FIGURE_LIFT;
-            u.uExposure.value = (visual.baseExposure ?? 1) * (1 - held * 0.66 * relax) * (1 - this.heat * 0.3);
-            if (u.uTurn) u.uTurn.value = 1 + pace * TURN_LIFT;
+            // (The wings span the whole frame, so they are packed far less; the roost is a
+            // strip along its foot, packed far more, and glows like embers going out.)
+            const wide = shape.name === 'wings' ? 0.36 : 0;
+            const relax = 1 - shape.growth * 0.25 - pace * FIGURE_LIFT - wide;
+            u.uExposure.value = (visual.baseExposure ?? 1) * (1 - held * 0.66 * relax) * (1 - this.heat * 0.3)
+                * (1 - this.roosting * 0.2);
+            // The mood: how long the trails are, how many hues the flock wears, how the turn folds.
+            const base = this._base || (this._base = {
+                stretch: u.uStretch?.value ?? 0.1, span: u.uPaletteSpan?.value ?? PALETTE_SPAN,
+            });
+            if (u.uStretch) u.uStretch.value = base.stretch * mood.stretch;
+            if (u.uPaletteSpan) u.uPaletteSpan.value = base.span * (mood.span / MOODS[0].span);
+            if (u.uTurn) u.uTurn.value = mood.turn * (1 + pace * TURN_LIFT);
+            // A chain's fuse, and a level's wave of colour.
+            if (u.uFuse) {
+                const ran = (time - this._fuse.at) / FUSE_SECONDS;
+                u.uFuse.value.set(ran * 1.15 - 0.05, ran >= 0 && ran < 1 ? this._fuse.light * (1 - ran * ran) : 0);
+            }
+            if (u.uWipe) {
+                const ran = (time - this._wipe.at) / WIPE_SECONDS;
+                const live = ran >= 0 && ran < 1;
+                const tallFrame = this.frame.aspect < 0.85;
+                const reach = (tallFrame ? this.frame.halfHeight : this.frame.halfWidth) + 2.6;
+                const turn = this._happening;
+                if (live) {
+                    const crest = Math.sin(Math.PI * Math.min(1, ran * 1.15)) * 0.9;
+                    u.uWipe.value.set((ran * 2 - 1) * reach, this._wipe.delta, crest);
+                    u.uWipeAxis?.value.set(tallFrame ? 0 : 1, tallFrame ? 1 : 0);
+                } else if (turn.kind === 'turn' && turn.live && !this.isRoosting()) {
+                    // The great turn: the same front without a change of colour, from a bearing
+                    // of its own, end to end through the whole flock.
+                    const done = turn.age / turn.length;
+                    const bearing = turn.seed * Math.PI * 2;
+                    const across = Math.hypot(this.frame.halfWidth, this.frame.halfHeight) + 2.6;
+                    u.uWipe.value.set((done * 2 - 1) * across, 0, Math.sin(Math.PI * done) * GREAT_TURN * calm);
+                    u.uWipeAxis?.value.set(Math.cos(bearing), Math.sin(bearing));
+                } else {
+                    u.uWipe.value.set(reach * 4, 0, 0);
+                }
+            }
         }
         // The board's halo and the sky are lit by the swarm, so they warm as it does — along
         // the same turn of hue the motes take (shader: murm_turnHue).
         const warmth = heatWarmth(this.heat, keepsOwn);
-        samplePalette(this.palettePhase + drift + PALETTE_SPAN * 0.3, this.haloTint);
+        samplePalette(this.tintPhase + drift + PALETTE_SPAN * 0.3, this.haloTint);
         turnHue(this.haloTint, FIRE.amber, warmth, this.haloTint);
         this.skyPulse = fx.comboPulse * (1 - SKY_HOLD * pace) + SKY_GLOW * pace;
         if (sky?.uniforms) {
@@ -929,16 +1288,24 @@ export class SwarmShow {
             u.uHeat.value = this.heat;
             u.uPulse.value = this.skyPulse;
             if (u.uFlash) u.uFlash.value = this.skyFlash * flashScale();
+            // The mood's sky; with the flock at roost the gas sinks and the stars come out.
+            u.uMood?.value.set(
+                mood.nebula * (1 - this.roosting * 0.35),
+                mood.stars * (1 + this.roosting * 0.5),
+                mood.dusk,
+                mood.violet,
+            );
+            this._writeSky(time);
             if (u.uTintA && u.uTintB) {
                 const a = turnHue(
-                    samplePalette(this.palettePhase + drift - PALETTE_SPAN * 0.2, this._tint),
+                    samplePalette(this.tintPhase + drift - PALETTE_SPAN * 0.2, this._tint),
                     FIRE.ember,
                     warmth * 0.8,
                     this._tint,
                 );
                 u.uTintA.value.setRGB(a[0] * 0.7, a[1] * 0.7, a[2] * 0.7);
                 const b = turnHue(
-                    samplePalette(this.palettePhase + drift + PALETTE_SPAN * 0.75, this._tint),
+                    samplePalette(this.tintPhase + drift + PALETTE_SPAN * 0.75, this._tint),
                     FIRE.gold,
                     warmth * 0.8,
                     this._tint,
@@ -947,7 +1314,7 @@ export class SwarmShow {
             }
             if (u.uWingA && u.uWingB) {
                 // The hues the renderer gives the middle of each wing (seven units out).
-                const at = this.palettePhase + drift;
+                const at = this.tintPhase + drift;
                 const wing = PALETTE_SPAN * 0.7;
                 const a = turnHue(samplePalette(at - wing, this._tint), FIRE.ember, warmth, this._tint);
                 u.uWingA.value.setRGB(a[0], a[1], a[2]);
@@ -957,6 +1324,92 @@ export class SwarmShow {
         }
         // In a fever the lens leans in and holds, instead of punching at every step.
         if (!this.reducedMotion) this.camera?.hold?.(LENS_HOLD * surge.fever);
+    }
+
+    // ── things that happen by themselves ────────────────────────────────────────
+
+    /**
+     * The clock's happenings. The sky's (a shooting star, a shower) and the flock's great turn
+     * are closed forms of the happening's age (`_writeSky`, and the wave of light in update());
+     * the falcon is the one that needs the simulation: a hard little push that flies a straight
+     * line through one wing, with a silver flare on the motes it parts. Armed on the first
+     * frame inside its own window, so a seek into the middle of a stoop still shows it.
+     */
+    _happen(time, dt) {
+        const h = happeningAt(time, this._happening);
+        const falcon = this._falcon;
+        // Not under reduced motion, and not while a figure stands or the play is hot: the flock is busy.
+        const flying = h.kind === 'falcon' && h.live && !this.reducedMotion
+            && !(this.shape.target > 0) && this.surgeState.stage < 2;
+        const at = this._falconAt;
+        if (!flying) {
+            // The stoop is over (or called off): let go of the push and the flare.
+            if (falcon.key >= 0) {
+                at.x = 0; at.y = 0; at.z = 0;
+                this.sim?.steerImpulse?.(falcon.key, falcon.id, at, 0);
+                falcon.key = -1;
+            }
+            if (falcon.front) {
+                if (falcon.front.live && falcon.front.speed === 0) falcon.front.life = 0;
+                falcon.front = null;
+            }
+            return;
+        }
+        const done = h.age / h.length;
+        falconPath(h.seed, done, this.frame, at);
+        at.x += this.focal.x; at.y += this.focal.y; at.z = this.focal.z;
+        const strength = FALCON_PUSH * Math.sin(Math.PI * Math.min(1, done * 1.1));
+        const held = falcon.slot === h.slot && falcon.key >= 0
+            && this.sim?.steerImpulse?.(falcon.key, falcon.id, at, strength) === true;
+        if (!held && dt >= 0) {
+            // Its own tight push: a wave that stands still and does not fade, steered every frame.
+            const key = this._push(at, strength, null, IMPULSE_TYPE.RADIAL, {
+                radius: 0, width: 1.1, speed: 0, flash: 0, decay: 0,
+            });
+            falcon.key = Number.isInteger(key) ? key : -1;
+            falcon.id = falcon.key >= 0 ? (this.sim?.impulseId?.(falcon.key) ?? 0) : 0;
+        }
+        if (falcon.slot !== h.slot) {
+            falcon.slot = h.slot;
+            falcon.front = this._front(FRONT.ring, at, {
+                speed: 0, width: 0.6, reach: 2.4, light: 0.9, rgb: SILVER, life: h.length - h.age, attack: 0.25,
+            });
+        }
+        if (falcon.front && falcon.front.live) {
+            falcon.front.x = at.x - this.focal.x;
+            falcon.front.y = at.y - this.focal.y;
+        }
+    }
+
+    /** Shooting stars: written from the happening's age, never from a timer. */
+    _writeSky(time) {
+        const { sky } = this;
+        const rows = sky?.meteorRows;
+        const u = sky?.uniforms;
+        if (!u) return;
+        const h = this._happening;
+        const { aspect } = this.frame;
+        let live = 0;
+        const line = this._line;
+        if (rows) {
+            const put = (seed, age) => {
+                if (live >= rows.length || !(age >= 0) || age >= 1.15) return;
+                meteorLine(seed, aspect, line);
+                rows[live].set(line[0], line[1], line[2], age);
+                live += 1;
+            };
+            if (h.kind === 'meteor' && h.live) put(h.seed, h.age);
+            if (h.kind === 'shower' && h.live) {
+                // Five, a second apart, each on a line of its own.
+                for (let i = 0; i < 5; i += 1) put(h.seed + i * 0.173 + 0.31, h.age - i * 1.05);
+            }
+            // The crown's shower: six at once, falling away from the board to both sides.
+            const since = time - this._showerAt;
+            if (since >= 0 && since < 2.2) {
+                for (let i = 0; i < 6; i += 1) put(0.07 + i * 0.151 + this._crownedAt * 0.013, since - i * 0.14);
+            }
+            if (u.uMeteorCount) u.uMeteorCount.value = live;
+        }
     }
 
     getState() {
@@ -973,12 +1426,18 @@ export class SwarmShow {
             fever: this.surgeState.fever,
             fire: this.fire,
             queued: this._queue.length,
+            mood: this.moodNow ?? 0,
+            fronts: this.fronts.pending(),
+            roosting: this.isRoosting(),
+            happening: this._happening.live ? this._happening.kind : null,
         };
     }
 
     dispose() {
         this._queue.length = 0;
         this.combos.clear();
+        this.fronts.clear();
+        this.fronts.attach(null, null);
         this.sim = null;
         this.visual = null;
         this.sky = null;
