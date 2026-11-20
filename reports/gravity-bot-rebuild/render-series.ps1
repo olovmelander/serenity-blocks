@@ -4,7 +4,8 @@ param(
     [string]$Prefix = 'packaged',
     [int]$ThreeSeatSeconds = 600,
     [int]$OtherSeconds = 600,
-    [ValidateSet(60,165)][int]$FirstRate = 60
+    [ValidateSet(60,165)][int]$FirstRate = 60,
+    [switch]$LiveOnly
 )
 
 $ErrorActionPreference = 'Stop'
@@ -21,6 +22,8 @@ Remove-Item Env:SERENITY_BOT_CPU_PROFILE -ErrorAction SilentlyContinue
 Remove-Item Env:SERENITY_BOT_CLOCK_TRIAL -ErrorAction SilentlyContinue
 Remove-Item Env:SERENITY_BOT_DROP_PROBE -ErrorAction SilentlyContinue
 $dest = [System.IO.Directory]::CreateDirectory($OutputDirectory).FullName
+$recordingModes = @($false)
+if (!$LiveOnly) { $recordingModes += $true }
 foreach ($pass in @(1, 2)) {
     $otherRate = if ($FirstRate -eq 60) { 165 } else { 60 }
     $rates = if ($pass -eq 1) { @($FirstRate, $otherRate) } else { @($otherRate, $FirstRate) }
@@ -28,7 +31,7 @@ foreach ($pass in @(1, 2)) {
         foreach ($seats in @('3', '4', '1', 'odyssey')) {
             $seconds = if ($seats -eq '3') { $ThreeSeatSeconds } else { $OtherSeconds }
             $stem = Join-Path $dest ("$Prefix-$pass-$seats-$rate")
-            foreach ($replay in @($false, $true)) {
+            foreach ($replay in $recordingModes) {
                 $name = if ($replay) { "$stem-replay" } else { $stem }
                 $file = "$name.json"
                 if (Test-Path -LiteralPath $file) { continue }

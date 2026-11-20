@@ -3,10 +3,10 @@ from collections import defaultdict
 import argparse
 import gzip
 import json
-import math
 from pathlib import Path
 import random
 import statistics
+from frame_metrics import percentile, planning_gates
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('ledger', nargs='?', type=Path, default=Path(__file__).with_name('evidence.json.gz'))
@@ -38,10 +38,6 @@ if args.reviews:
     print('Plausibility gate', 'passed' if completed >= 5 and percent >= 70 else 'open')
     for play in plays:
         print(f'Direct play at tier {play["tier"]} received a {play["fun"]} rating. {play["note"]}')
-
-
-def percentile(values, fraction):
-    return sorted(values)[max(0, math.ceil(fraction * len(values)) - 1)] if values else 0
 
 
 def paired_outcome(control, candidate, criterion):
@@ -281,14 +277,8 @@ for name, run in sorted(ledger['renderer'].items()):
           f'{sum(event[4]>0 for event in missed[0])}/{len(missed[0])}  '
           f'{sum(a[k]==b[k] for k in shared)}/{len(shared)}  {excess_segments}/{segments}  {load_text}')
     if name.startswith(reference+'-render-'):
-        p95_limit, p99_limit = (2,4) if hz == 60 else (1.5,2.5)
-        gates = {
-            'planning p95':percentile(run['times'],.95) <= p95_limit + 1e-6,
-            'planning p99':percentile(run['times'],.99) <= p99_limit + 1e-6,
-            'every planner update within one frame':not run['overBudget'],
-            'no extra two-refresh display intervals':len(missed[0]) <= len(missed[1]),
-            'first legal plan on time at p95':bool(run['lateness']) and percentile(run['lateness'],.95) <= 1000/hz + 1e-6,
-        }
+        gates = planning_gates(run)
+        gates['no extra two-refresh display intervals'] = len(missed[0]) <= len(missed[1])
         gates['all frame gates'] = all(gates.values())
         for measure,passed in gates.items():
             frame_gates[measure].append((name,passed))
