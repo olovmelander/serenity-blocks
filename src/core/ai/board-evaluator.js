@@ -647,9 +647,9 @@ export function evaluateCandidate(candidate, difficultyConfig = null, rng = Math
     const perfectClear = Boolean(candidate.perfectClear);
     const projectedAttack = candidate.projectedAttack
         ?? computeProjectedAttack(totalLines, perfectClear);
-    const projectedScore = totalLines > 0
+    const projectedScore = candidate.waveScore ?? (totalLines > 0
         ? calculateLineClearScore(totalLines, 1, Math.max(1, cascadeCount), perfectClear)
-        : 0;
+        : 0);
 
     // LATENT (unrealized) discharge of an in-progress, unfired machine — the
     // hypothetical-trigger technique. Only meaningful when we did NOT just fire,

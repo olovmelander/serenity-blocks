@@ -169,14 +169,15 @@ beforeAll(async () => {
     fs.writeFileSync(path.join(dir, 'scripts', 'tts-script.json'), JSON.stringify(SCRIPT, null, 2));
     fs.mkdirSync(path.join(dir, 'src', 'ui', 'effects'), { recursive: true });
     fs.mkdirSync(path.join(dir, 'public', 'assets', 'audio', 'breathwork', 'voices'), { recursive: true });
-    fs.symlinkSync(path.join(ROOT, 'node_modules'), path.join(dir, 'node_modules'), 'dir');
+    const dependencyLinkType = process.platform === 'win32' ? 'junction' : 'dir';
+    fs.symlinkSync(path.join(ROOT, 'node_modules'), path.join(dir, 'node_modules'), dependencyLinkType);
     api = standIn();
     await new Promise((resolve) => { api.server.listen(0, '127.0.0.1', resolve); });
     base = `http://127.0.0.1:${api.server.address().port}`;
 });
 
 afterAll(async () => {
-    await new Promise((resolve) => { api?.server.close(resolve); });
+    if (api?.server.listening) await new Promise((resolve) => { api.server.close(resolve); });
     if (dir) fs.rmSync(dir, { recursive: true, force: true });
 });
 

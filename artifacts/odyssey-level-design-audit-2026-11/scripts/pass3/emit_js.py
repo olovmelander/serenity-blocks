@@ -130,7 +130,7 @@ lines += [
     "    return { ...level, mechanics: { ...level.mechanics, pieces: { ...level.mechanics.pieces, previewCount: 3 } } };",
     "}",
     "",
-    "// A rival's subtitle names its tier, so it follows the retuned tier (D8: rival 56 plays at tier 6).",
+    "// The rival's subtitle follows its authored board-reading tier.",
     "function withRivalSubtitle(level) {",
     "    const versus = level.mechanics?.versus;",
     "    if (!versus) return level;",

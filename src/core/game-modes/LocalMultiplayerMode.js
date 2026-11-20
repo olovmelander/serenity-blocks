@@ -13,7 +13,7 @@ import {
     hardDrop as coreHardDrop,
 } from '../game.js';
 import { createEmptyMatchMetrics, accumulateMatchMetrics } from '../match-metrics.js';
-import { LocalBotManager } from '../ai/local-bot-manager.js';
+import { isBotSlot, LocalBotManager, localBotRoundSeed } from '../ai/local-bot-manager.js';
 
 import { expandGridIfNeeded, calculateBuildHeight } from '../infinity-grid.js';
 import { synchronizeInfinitySimulationCamera } from '../infinity-spawn-policy.js';
@@ -485,6 +485,8 @@ export class LocalMultiplayerMode extends BaseGameMode {
         }
 
         this._initializeSharedPieceRng(options.seed);
+        this.botSeriesSeed = this.matchConfig?.playerSlots?.slice(0, numPlayers).some(isBotSlot)
+            ? this.multiplayerState.sharedPieceSeed : null;
         for (let i = 0; i < numPlayers; i++) {
             const playerNum = i + 1;
             const canvases = this.playerNextCanvases.get(playerNum);
@@ -1347,17 +1349,11 @@ export class LocalMultiplayerMode extends BaseGameMode {
     _setupLocalBots() {
         if (!this.multiplayerState) return;
 
-        if (!this.botManager) {
-            this.botManager = new LocalBotManager({
-                actionFactory: (playerIndex) => this._createBotActions(playerIndex),
-                multiplayerState: this.multiplayerState,
-                rng: Math.random,
-            });
-        } else {
-            this.botManager.destroy();
-        }
-
-        this.botManager.configure(this.matchConfig?.playerSlots || []);
+        this.botManager ??= new LocalBotManager({
+            actionFactory: (playerIndex) => this._createBotActions(playerIndex),
+            multiplayerState: this.multiplayerState,
+        });
+        this.botManager.configure(this.matchConfig?.playerSlots || [], this.botSeriesSeed);
     }
 
     _isBotPlayer(playerIndex) {
@@ -2048,7 +2044,9 @@ export class LocalMultiplayerMode extends BaseGameMode {
         this.multiplayerState.isPaused = true;
         this._versusCameras().reset();
 
-        this._initializeSharedPieceRng(seed);
+        const nextSeed = seed ?? (this.botSeriesSeed == null
+            ? undefined : localBotRoundSeed(this.botSeriesSeed, this.versusRound));
+        this._initializeSharedPieceRng(nextSeed);
 
         // Draw next pieces for all players
         for (let i = 0; i < numPlayers; i++) {

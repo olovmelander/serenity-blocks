@@ -143,8 +143,19 @@
     }
   },
   "5": {
-    "reason": "Keep.",
+    "reason": "Cinder learns at tier 1 with the original 90 APM opening pace.",
     "override": {
+      "mechanics": {
+        "versus": {
+          "botOverrides": {
+            "maxApm": 90,
+            "reactionMs": [
+              500,
+              900
+            ]
+          }
+        }
+      },
       "role": "rival"
     }
   },
@@ -258,8 +269,19 @@
     }
   },
   "10": {
-    "reason": "Keep.",
+    "reason": "Coral reads one preview at the chapter's 120 APM pace.",
     "override": {
+      "mechanics": {
+        "versus": {
+          "botOverrides": {
+            "maxApm": 120,
+            "reactionMs": [
+              420,
+              760
+            ]
+          }
+        }
+      },
       "role": "rival"
     }
   },
@@ -547,8 +569,20 @@
     }
   },
   "18": {
-    "reason": "Keep.",
+    "reason": "Willow keeps the 165 APM window and uses tier 2 judgment for the D8 odds.",
     "override": {
+      "mechanics": {
+        "versus": {
+          "botDifficulty": 2,
+          "botOverrides": {
+            "maxApm": 165,
+            "reactionMs": [
+              320,
+              620
+            ]
+          }
+        }
+      },
       "role": "rival"
     }
   },
@@ -777,8 +811,19 @@
     }
   },
   "26": {
-    "reason": "Keep.",
+    "reason": "Frost uses tier 4 judgment and the original 230 APM window.",
     "override": {
+      "mechanics": {
+        "versus": {
+          "botOverrides": {
+            "maxApm": 230,
+            "reactionMs": [
+              240,
+              480
+            ]
+          }
+        }
+      },
       "role": "rival"
     }
   },
@@ -1055,10 +1100,11 @@
     }
   },
   "34": {
-    "reason": "Capped at 270 actions a minute (tier 5 plays at 320).",
+    "reason": "Zephyr uses tier 4 judgment at the original 270 APM pace.",
     "override": {
       "mechanics": {
         "versus": {
+          "botDifficulty": 4,
           "botOverrides": {
             "maxApm": 270,
             "reactionMs": [
@@ -1583,10 +1629,24 @@
     }
   },
   "48": {
-    "reason": "Capped at 300 actions a minute (tier 6 plays at 460).",
+    "reason": "Nova changes preview recognition under pressure at the original 300 APM pace.",
     "override": {
       "mechanics": {
         "versus": {
+          "botDifficulty": 5,
+          "botJudgment": {
+            "previewChance": 0.6,
+            "digPreviewChance": 0.79,
+            "pressAtRows": 8,
+            "variation": {
+              "chance": 0.2,
+              "judgment": {
+                "previewChance": 0.7,
+                "digPreviewChance": 0.84,
+                "pressAtRows": 14
+              }
+            }
+          },
           "botOverrides": {
             "maxApm": 300,
             "reactionMs": [
@@ -1874,18 +1934,28 @@
     }
   },
   "56": {
-    "reason": "Tier 6 instead of 7 (D8): tier 7 looks two pieces ahead, which made Prism as hard as the last rival for a person. Capped at 330 actions a minute (tier 6 plays at 460).",
+    "reason": "Prism can hold its next build more often than Nova at the original 330 APM pace.",
     "override": {
       "mechanics": {
         "versus": {
+          "botDifficulty": 5,
+          "botJudgment": {
+            "previewChance": 0.76,
+            "digPreviewChance": 1,
+            "variation": {
+              "chance": 0.35,
+              "judgment": {
+                "pressAtRows": 2
+              }
+            }
+          },
           "botOverrides": {
             "maxApm": 330,
             "reactionMs": [
               160,
               320
             ]
-          },
-          "botDifficulty": 6
+          }
         }
       },
       "role": "rival"
@@ -2031,10 +2101,14 @@
     }
   },
   "60": {
-    "reason": "The last rival stays the strongest but becomes beatable: capped at 340 actions a minute (tier 8 plays at 900).",
+    "reason": "Neon can plan through a second preview at the final chapter's 340 APM pace.",
     "override": {
       "mechanics": {
         "versus": {
+          "botDifficulty": 6,
+          "botJudgment": {
+            "twoPreviewChance": 0.52
+          },
           "botOverrides": {
             "maxApm": 340,
             "reactionMs": [

@@ -18,7 +18,9 @@ import {
     generateBoard, createBoardGrid, rebuildBoardGridFromPieces, markBoardDirty, invalidateGhostCache,
 } from './board.js';
 import { insertGarbageEntries } from './garbage.js';
-import { processPhysics, tryProcessNoClearSync } from './physics.js';
+import {
+    cancelFixedCascade, processPhysics, startFixedCascade, tryProcessNoClearSync,
+} from './physics.js';
 import { piecePool } from '../utils/object-pool.js';
 import { performanceMonitor } from '../utils/performance-monitor.js';
 import { createInfinityGrid, expandGridIfNeeded } from './infinity-grid.js';
@@ -680,6 +682,7 @@ export class GameState {
         this._hitStopTickSourceMs = 0;
         this._hitStopTickDurationMs = this.simTickMs;
         this.isProcessingPhysics = false;
+        this.useFixedCascade = false;
         this.isStopped = false;
         this.isAlive = true; // For multiplayer: tracks if player is still in the round
         this.isReplay = false;
@@ -753,6 +756,7 @@ export class GameState {
      * Resets the game state to initial values
      */
     reset() {
+        cancelFixedCascade(this);
         // A restart mid-physics invalidates in-flight §5.10 shadow samples.
         this.boardMutationEpoch = (this.boardMutationEpoch || 0) + 1;
         this.lockedPieces = [];
@@ -1360,28 +1364,36 @@ export function lockPiece(gameState, playDropCallback, physicsCallbacks, timing 
         // physics mutates, diff after it completes (pre/post tap points).
         const shadowSample = cascadeShadowEnabled() ? armCascadeShadow(gameState) : null;
         gameState.isProcessingPhysics = true;
-        if (timing?.fixedTick === true && tryProcessNoClearSync(gameState, physicsCallbacks)) {
+        if ((timing?.fixedTick || gameState.useFixedCascade) && tryProcessNoClearSync(gameState, physicsCallbacks)) {
             gameState.latestPhysicsPromise = null;
             completePhysicsAndSpawn(gameState, physicsCallbacks, shadowSample);
-            if (timing.inputPhase === true && gameState.currentPiece) {
+            if (timing?.inputPhase === true && gameState.currentPiece) {
                 gameState._fixedInputSpawnFrame = gameState.simFrame;
             }
             return;
         }
+        const complete = () => completePhysicsAndSpawn(gameState, physicsCallbacks, shadowSample);
+        const recover = (error) => {
+            console.error('[Game] Physics processing failed:', error);
+            markBoardDirty(gameState);
+            completePhysicsAndSpawn(
+                gameState,
+                physicsCallbacks,
+                null,
+                '[Game] Recovery spawn failed after physics error:',
+            );
+        };
+        if (gameState.useFixedCascade) {
+            try {
+                startFixedCascade(gameState, physicsCallbacks, complete, recover);
+            } catch (error) {
+                recover(error);
+            }
+            return;
+        }
         gameState.latestPhysicsPromise = processPhysics(gameState, physicsCallbacks)
-            .then(() => {
-                completePhysicsAndSpawn(gameState, physicsCallbacks, shadowSample);
-            })
-            .catch((error) => {
-                console.error('[Game] Physics processing failed:', error);
-                markBoardDirty(gameState);
-                completePhysicsAndSpawn(
-                    gameState,
-                    physicsCallbacks,
-                    null,
-                    '[Game] Recovery spawn failed after physics error:',
-                );
-            });
+            .then(complete)
+            .catch(recover);
     }
 }
 
@@ -1420,8 +1432,9 @@ export const MAX_SIMULATION_DELTA_MS = 50;
  * @param {number} time - Current timestamp
  * @param {GameState} gameState - Current game state
  * @param {Object} callbacks - Callbacks for draw, stats, sound, physics
+ * @param {number} [tickDeltaMs] - Elapsed game time when the caller owns a fixed tick
  */
-export function updateGame(time, gameState, callbacks = {}) {
+export function updateGame(time, gameState, callbacks = {}, tickDeltaMs = undefined) {
     const {
         drawCallback, updateStatsCallback, playDropCallback, physicsCallbacks,
     } = callbacks || {};
@@ -1442,7 +1455,7 @@ export function updateGame(time, gameState, callbacks = {}) {
     // PERFORMANCE FIX: Process game logic only when not paused
     if (!gameState.isPaused) {
         const previousTime = Number.isFinite(gameState.lastTime) ? gameState.lastTime : safeTime;
-        const delta = Math.max(0, safeTime - previousTime);
+        const delta = tickDeltaMs ?? Math.max(0, safeTime - previousTime);
         // Raw `delta` stays the wall-clock quantity (sim clock, hit-stop expiry).
         // Player-visible motion runs on the clamped one so a GPU stall cannot be
         // replayed as a burst of moves — see MAX_SIMULATION_DELTA_MS.

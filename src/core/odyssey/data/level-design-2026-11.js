@@ -87,8 +87,11 @@ export const ODYSSEY_LEVEL_DESIGN_2026_11 = deepFreeze({
             },
         },
     },
-    // Keep.
-    5: { role: 'rival' },
+    // Cinder learns at tier 1 with the original 90 APM opening pace.
+    5: {
+        mechanics: { versus: { botOverrides: { maxApm: 90, reactionMs: [500, 900] } } },
+        role: 'rival',
+    },
     // Offer a silver route through efficient digging before the prepared Quad lesson on orb 12. Two Quads within
     // 55 seconds reward a return visit.
     6: {
@@ -134,8 +137,11 @@ export const ODYSSEY_LEVEL_DESIGN_2026_11 = deepFreeze({
             three: { cascades: 8, maxCascadeDepth: 4 },
         },
     },
-    // Keep.
-    10: { role: 'rival' },
+    // Coral reads one preview at the chapter's 120 APM pace.
+    10: {
+        mechanics: { versus: { botOverrides: { maxApm: 120, reactionMs: [420, 760] } } },
+        role: 'rival',
+    },
     // Arrival at 450 → 331 ms instead of 205 → 120, with 26 lines. Star times ask a real pace.
     11: {
         mechanics: { speed: { startLevel: 3, fixedDropInterval: 450, levelProgression: true } },
@@ -238,8 +244,11 @@ export const ODYSSEY_LEVEL_DESIGN_2026_11 = deepFreeze({
         },
         mechanicFocus: 'score',
     },
-    // Keep.
-    18: { role: 'rival' },
+    // Willow keeps the 165 APM window and uses tier 2 judgment for the D8 odds.
+    18: {
+        mechanics: { versus: { botDifficulty: 2, botOverrides: { maxApm: 165, reactionMs: [320, 620] } } },
+        role: 'rival',
+    },
     // Arrival at 330 ms instead of 120. Three stars ask for 8 cascades instead of cascades and Quads in one run.
     19: {
         mechanics: { speed: { startLevel: 5, fixedDropInterval: 330, levelProgression: true } },
@@ -326,8 +335,11 @@ export const ODYSSEY_LEVEL_DESIGN_2026_11 = deepFreeze({
     },
     // Keep the tall-well cascade boss. Drop the inert multiplier and the uncounted 6-wave bonus.
     25: { victory: { bonuses: [] }, modifiers: { active: ['gravity-cascade'] } },
-    // Keep.
-    26: { role: 'rival' },
+    // Frost uses tier 4 judgment and the original 230 APM window.
+    26: {
+        mechanics: { versus: { botOverrides: { maxApm: 230, reactionMs: [240, 480] } } },
+        role: 'rival',
+    },
     // Arrival at 260 ms instead of 84. Stars become reachable: 5 cascades, then 12, with no Quads in the same
     // tier.
     27: {
@@ -427,9 +439,9 @@ export const ODYSSEY_LEVEL_DESIGN_2026_11 = deepFreeze({
             three: { score: 55000, time: 145, bonuses: 1 },
         },
     },
-    // Capped at 270 actions a minute (tier 5 plays at 320).
+    // Zephyr uses tier 4 judgment at the original 270 APM pace.
     34: {
-        mechanics: { versus: { botOverrides: { maxApm: 270, reactionMs: [200, 380] } } },
+        mechanics: { versus: { botDifficulty: 4, botOverrides: { maxApm: 270, reactionMs: [200, 380] } } },
         role: 'rival',
     },
     // Pace 240 → 134 ms instead of 151 → 84. Stars become reachable: 3 Quads, then 5, with no chain in the same
@@ -625,9 +637,23 @@ export const ODYSSEY_LEVEL_DESIGN_2026_11 = deepFreeze({
             three: { cascades: 32, maxCascadeDepth: 5 },
         },
     },
-    // Capped at 300 actions a minute (tier 6 plays at 460).
+    // Nova changes preview recognition under pressure at the original 300 APM pace.
     48: {
-        mechanics: { versus: { botOverrides: { maxApm: 300, reactionMs: [180, 340] } } },
+        mechanics: {
+            versus: {
+                botDifficulty: 5,
+                botJudgment: {
+                    previewChance: 0.6,
+                    digPreviewChance: 0.79,
+                    pressAtRows: 8,
+                    variation: {
+                        chance: 0.2,
+                        judgment: { previewChance: 0.7, digPreviewChance: 0.84, pressAtRows: 14 },
+                    },
+                },
+                botOverrides: { maxApm: 300, reactionMs: [180, 340] },
+            },
+        },
         role: 'rival',
     },
     // Arrival at 200 ms instead of 84. Stars become reachable: 4 Quads, then 6 (no policy reached the shipped 8).
@@ -725,10 +751,19 @@ export const ODYSSEY_LEVEL_DESIGN_2026_11 = deepFreeze({
         },
         mechanics: { speed: { fixedDropInterval: 340 } },
     },
-    // Tier 6 instead of 7 (D8): tier 7 looks two pieces ahead, which made Prism as hard as the last rival for a
-    // person. Capped at 330 actions a minute (tier 6 plays at 460).
+    // Prism can hold its next build more often than Nova at the original 330 APM pace.
     56: {
-        mechanics: { versus: { botOverrides: { maxApm: 330, reactionMs: [160, 320] }, botDifficulty: 6 } },
+        mechanics: {
+            versus: {
+                botDifficulty: 5,
+                botJudgment: {
+                    previewChance: 0.76,
+                    digPreviewChance: 1,
+                    variation: { chance: 0.35, judgment: { pressAtRows: 2 } },
+                },
+                botOverrides: { maxApm: 330, reactionMs: [160, 320] },
+            },
+        },
         role: 'rival',
     },
     // Pace 180 → 126 ms instead of 120 → 84. Real star times; three stars add 4 Quads.
@@ -793,10 +828,15 @@ export const ODYSSEY_LEVEL_DESIGN_2026_11 = deepFreeze({
         modifiers: { active: ['gravity-cascade', 'combo-multiplier'] },
         role: 'boss',
     },
-    // The last rival stays the strongest but becomes beatable: capped at 340 actions a minute (tier 8 plays at
-    // 900).
+    // Neon can plan through a second preview at the final chapter's 340 APM pace.
     60: {
-        mechanics: { versus: { botOverrides: { maxApm: 340, reactionMs: [150, 300] } } },
+        mechanics: {
+            versus: {
+                botDifficulty: 6,
+                botJudgment: { twoPreviewChance: 0.52 },
+                botOverrides: { maxApm: 340, reactionMs: [150, 300] },
+            },
+        },
         role: 'rival',
     },
 });
@@ -821,7 +861,7 @@ function withThreePreviews(level) {
     return { ...level, mechanics: { ...level.mechanics, pieces: { ...level.mechanics.pieces, previewCount: 3 } } };
 }
 
-// A rival's subtitle names its tier, so it follows the retuned tier (D8: rival 56 plays at tier 6).
+// The rival's subtitle follows its authored board-reading tier.
 function withRivalSubtitle(level) {
     const versus = level.mechanics?.versus;
     if (!versus) return level;

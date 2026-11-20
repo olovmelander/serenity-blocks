@@ -3,6 +3,7 @@
 import { consumeFixedHitStopTick } from './game.js';
 import { FIXED_TICK_MS } from './fixed-tick-clock.js';
 import { advanceBlindTimersTick } from './blind.js';
+import { advanceFixedCascade } from './physics.js';
 
 export const INPUT_DISPOSITIONS = Object.freeze({
     APPLIED: 'applied',
@@ -74,6 +75,9 @@ export function advanceTick(gameState, options = {}) {
     gameState.simFrame = priorFrame + 1;
     gameState.simTimeMs = timeBase + tickMs;
     gameState.lastTime = gameState.simTimeMs;
+    if (gameState.useFixedCascade && advanceFixedCascade(gameState, tickMs)) {
+        if (gameState.currentPiece) gameState._fixedInputSpawnFrame = gameState.simFrame;
+    }
     advanceBlindTimersTick(gameState, tickMs);
 
     /** @type {InputDispositionRecord[]} */
