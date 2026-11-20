@@ -51,7 +51,7 @@
 import * as THREE from 'three/webgpu';
 import {
     DEG, EYE, FIELDS, FIELD_ORDER, PIECE_COLORS, RECORD_ROWS, RIG, StrataRecord, TAU, TIMING, approach, buildBeds,
-    clamp, hexToLinear, mulberry32, rigFor, smooth, smoother, strataG,
+    clamp, hexToLinear, lerp, mulberry32, rigFor, smooth, smoother, strataG,
 } from './painted-ages-core.js';
 import {
     HOURS, HOUR_COUNT, HourWheel, blendLight, copyLight, createLight, lightAt,
@@ -70,7 +70,7 @@ import {
     bilinear, fieldCoords, fieldInset, groundHeight,
 } from './painted-ages-field.js';
 import { PAVILION, RIVER_LENGTH } from './painted-ages-plan.js';
-import { DevilTable, createDevils } from './painted-ages-devils.js';
+import { DEVIL_LIFE, DevilTable, createDevils } from './painted-ages-devils.js';
 import { createPropsSteps } from './painted-ages-props.js';
 import { createCumulus } from './painted-ages-cumulus.js';
 import { createPoplars } from './painted-ages-life.js';
@@ -138,6 +138,10 @@ const MICA = [1.3, 1.15, 0.85];
 /** The moon: its bearing (radians right of the view axis) and its light on the land at full. */
 const MOON_AZ = 27.5 * DEG;
 const MOON_LIGHT = [0.1, 0.125, 0.2];
+/** The dust tint's own brightness (its colours are leaned toward at the air's brightness). */
+const DUST_LUMA = DUST_TINT[0] * 0.2126 + DUST_TINT[1] * 0.7152 + DUST_TINT[2] * 0.0722;
+/** How far (screen fractions) a dust devil's foot keeps from the card's edge. */
+const DEVIL_CLEAR = 0.045;
 /** The pale dust of a devil the wind raises by itself (linear). */
 const GUST_DUST = [0.74, 0.58, 0.44];
 
@@ -332,6 +336,7 @@ export class PaintedAgesWorld {
         this.bowStrength = 0;
         this.bowSecond = 0;
         this.bowSecondShown = 0;
+        this.shardShown = 0;
         this.perfectAt = -1e6;
         this.duskFrom = 0;
         this.duskTarget = 0;
@@ -857,47 +862,91 @@ export class PaintedAgesWorld {
      * can stand and be seen whole (the valley floors beside the card, never the near slopes).
      */
     devilSite(u01) {
-        const p = this.sitePoint(u01, 10);
+        const left = u01 < 0.5;
+        const stage = this.devilStage(left) || this.devilStage(!left);
+        const fallback = () => {
+            const hit = this.landSite(u01, 18.5);
+            if (hit) hit.side = left ? -1 : 1;
+            return hit;
+        };
+        if (!stage) return fallback();
+        // The column's place across its own side (the far edge … the card's edge on the left,
+        // the card's edge … the far edge on the right); the middle of the other side if its own
+        // has no room.
+        const k = clamp(left ? u01 / 0.5 : (u01 - 0.5) / 0.5, 0, 1);
+        const sx = stage.lo + (stage.hi - stage.lo) * ((stage.side < 0) === left ? k : 0.5);
         const out = this._site;
         const ground = (px, pz) => groundHeight(this.fields, px, pz);
         // Level ground first (a valley floor); failing that, any gentle shoulder of a hill.
         for (const steepest of [0.16, 0.5]) {
-            for (let k = 0; k < 13; k++) {
-                const sy = 0.53 + k * 0.024;
+            for (let j = 0; j < 14; j++) {
+                const sy = 0.5 + j * 0.028;
                 for (const dx of [0, -0.045, 0.045, -0.09, 0.09]) {
-                    const hit = this.landAt(clamp(p.x + dx, 0.05, 0.93), sy, out);
+                    // Never out of its stage: a step sideways must not land it behind the card or HUD.
+                    if (sx + dx < stage.lo || sx + dx > stage.hi) continue;
+                    const hit = this.landAt(sx + dx, sy, out);
                     if (!hit || hit.distance < 430 || hit.distance > 1700) continue;
                     const { x, z } = hit;
                     const slope = Math.max(Math.abs(ground(x + 6, z) - ground(x - 6, z)), Math.abs(ground(x, z + 6) - ground(x, z - 6))) / 12;
-                    if (slope < steepest) return hit;
+                    if (slope < steepest) {
+                        hit.side = stage.side;
+                        return hit;
+                    }
                 }
             }
         }
-        return this.landSite(u01, 18.5);
+        return fallback();
+    }
+
+    /**
+     * The stretch of the screen (fractions across) a dust devil may stand in on one side of the
+     * card: clear of the card and, where the HUD stands on that side, the wider gap beside the
+     * HUD. Null when the side has no room (a phone's upright frame).
+     */
+    devilStage(left) {
+        const card = cardUnion(this.layout) || {
+            x0: 0.41, x1: 0.59, y0: 0.08, y1: 0.93,
+        };
+        const { hud } = this.layout;
+        let lo = left ? 0.05 : card.x1 + DEVIL_CLEAR;
+        let hi = left ? card.x0 - DEVIL_CLEAR : 0.95;
+        if (hud && hud.x1 > lo && hud.x0 < hi) {
+            const before = hud.x0 - 0.03 - lo;
+            const after = hi - (hud.x1 + 0.03);
+            if (after > before) lo = hud.x1 + 0.03;
+            else hi = hud.x0 - 0.03;
+        }
+        return hi - lo >= 0.035 ? { lo, hi, side: left ? -1 : 1 } : null;
     }
 
     /**
      * Spin up a dust devil (`share` 1: a twist; less: a twist that cleared nothing, or the
-     * weather's own): the funnel, and a few grains flung round its foot.
+     * weather's own): the funnel, and a few grains flung round its foot. It drifts AWAY from
+     * the card (one that walked toward it spent most of its life behind it). `at` is when it
+     * began (the clock's own devil is raised at its true age after a seek) and `seeded` (0..1)
+     * fixes its drift and turn instead of the world's own draws.
      */
-    raiseDevil(u01, rgb, share = 1) {
+    raiseDevil(u01, rgb, share = 1, { at = this.time, seeded = null } = {}) {
         const p = this.devilSite(u01);
         if (!p) return false;
         const r = this.random;
+        const draw = seeded === null ? r : mulberry32(Math.floor(clamp(seeded, 0, 1) * 0xffffff) ^ 0x6d71);
         const height = clamp(p.distance * 0.2, 60, 260) * (0.55 + 0.45 * share);
+        const side = p.side || (u01 < 0.5 ? -1 : 1);
         this.devils.spawn({
             x: p.x,
             y: p.y - 1,
             z: p.z,
-            time: this.time,
+            time: at,
             rgb,
             height,
             strength: 0.62 + 0.38 * share,
-            driftX: 3 + r() * 3.5,
-            driftZ: (r() - 0.5) * 2.4,
-            seed: r(),
+            driftX: side * (1.4 + draw() * 2.4),
+            driftZ: (draw() - 0.5) * 2.4,
+            seed: draw(),
         });
-        if (!this.motes) return true;
+        // (No grains for one met already standing.)
+        if (!this.motes || this.time - at > 1.5) return true;
         const scale = height / 110;
         // Never more than a small share of the pigment ring: the devil leaves the puffs be.
         const count = Math.min(Math.round(64 * share), Math.floor(this.motes.pigmentSlots * 0.08 * share));
@@ -947,6 +996,9 @@ export class PaintedAgesWorld {
                 g0: -420 - k * 20, climb: 170, time: this.time + k * 0.22, power: 1.6, rgb: PIECE_LINEAR[k].slice(), half: 3.6, life: 5,
             });
         }
+        // (A turn that has just run out is counted before another may begin: a perfect clear
+        // landing in that very frame would otherwise take its place and the stars jump back.)
+        this.settleSpin(this.time);
         const wheeling = this.time - this.spinAt < SPIN_SECONDS;
         if (this.reducedMotion) {
             // No sweep of the light under reduced motion: the bow rises at once.
@@ -997,7 +1049,17 @@ export class PaintedAgesWorld {
         this.bowSince = this.time;
         this.bowStrength = strength;
         this.bowSecond = second;
-        this.bowSecondShown = second;
+        // On an empty sky a double bow's second arc rises with the first; over a far shower's
+        // shard (already on screen) it fades in instead of popping into the shard.
+        if (!(this.shardShown > 0.01)) this.bowSecondShown = second;
+    }
+
+    /** Count a finished turn of the day once, so the stars stay where the sweep left them. */
+    settleSpin(time) {
+        if (this.spinAt > -1e5 && time - this.spinAt >= SPIN_SECONDS && this.spinCounted !== this.spinAt) {
+            this.spinCounted = this.spinAt;
+            this.spinsDone += 1;
+        }
     }
 
     onCombo(value) {
@@ -1159,11 +1221,7 @@ export class PaintedAgesWorld {
         }
         const spinAge = time - this.spinAt;
         const spinning = spinAge >= 0 && spinAge < SPIN_SECONDS;
-        // (A finished turn is counted once, so the stars stay where the sweep left them.)
-        if (this.spinAt > -1e5 && spinAge >= SPIN_SECONDS && this.spinCounted !== this.spinAt) {
-            this.spinCounted = this.spinAt;
-            this.spinsDone += 1;
-        }
+        this.settleSpin(time);
         const turn = spinning ? smoother(spinAge / SPIN_SECONDS) : 0;
         const sweep = spinning ? smooth(0, 0.7, spinAge) * (1 - smooth(SPIN_SECONDS - 0.7, SPIN_SECONDS, spinAge)) : 0;
         this.spinning = spinning;
@@ -1172,10 +1230,12 @@ export class PaintedAgesWorld {
         lightAt(place + HOUR_COUNT * turn, this._hourLight, sweep);
         // The sky turns about the pole: slowly by the clock, and in one sweep with the age.
         u.starTurn.value = (time * 0.0016 + SPIN_TURN * (this.spinsDone + turn)) % TAU;
-        // The ages laid down: a level's slide, and one more with every new day of the clock.
-        const days = place / HOUR_COUNT;
+        // The ages laid down: a level's slide, and one more with every new day OF THE CLOCK
+        // (ten minutes: read off the clock alone, never off the wheel's place, which a level-up
+        // also turns: every sixth level-up would bring the day's step in on top of its own).
+        const days = Math.max(0, time) / (TIMING.hour * HOUR_COUNT);
         const dawn = Math.max(0, Math.floor(days) - 1 + smooth(0, 0.012, days - Math.floor(days)));
-        u.strataShift.value = thereAndBack((this.shiftSteps(time) + (this.overrides.hour !== null ? 0 : dawn)) * LEVEL_SHIFT, SHIFT_RANGE);
+        u.strataShift.value = thereAndBack((this.shiftSteps(time) + dawn) * LEVEL_SHIFT, SHIFT_RANGE);
         // A level-up's flare runs the lamps up the stair.
         const lampAge = time - this.lampRunAt;
         u.lampRun.value.set(lampAge >= 0 && lampAge < LAMP_RUN_LIFE ? (lampAge / LAMP_RUN) * 1.15 - 0.05 : -1, lampAge >= 0 && lampAge < LAMP_RUN_LIFE ? 1 - smooth(LAMP_RUN_LIFE - 1, LAMP_RUN_LIFE, lampAge) : 0, 1);
@@ -1259,6 +1319,10 @@ export class PaintedAgesWorld {
         // A chain's bow or a perfect clear's stands whole and takes over from the shard.
         this.bowSecondShown += (this.bowSecond - this.bowSecondShown) * approach(0.9, dt);
         const bow = this.bowStrength * this.bowLive(time - this.bowAt);
+        // An event's double bow that has run its life leaves nothing behind: the shower's
+        // shard is a single one again.
+        if (time - this.bowAt > TIMING.bowLife) this.bowSecond = 0;
+        this.shardShown = shard;
         u.bow.value.set(Math.max(bow, shard), this.bowSecondShown, shard > 0.01 ? Math.max(1.5, time - this.bowSince) : time - this.bowSince);
         u.bowLeg.value = shard > 0.01 ? Math.sign(virgaAz) * clamp(1 - bow / shard, 0, 1) : 0;
         this.happen(time, L, A, day);
@@ -1342,8 +1406,17 @@ export class PaintedAgesWorld {
     /** Lean a uniform's colour toward the dust the wind carries, keeping its brightness. */
     dustTint(v, k) {
         if (!(k > 0)) return;
-        const lum = (v.x * 0.2126 + v.y * 0.7152 + v.z * 0.0722) * 1.12;
-        v.set(v.x + (DUST_TINT[0] * lum - v.x) * k, v.y + (DUST_TINT[1] * lum - v.y) * k, v.z + (DUST_TINT[2] * lum - v.z) * k);
+        const lum = v.x * 0.2126 + v.y * 0.7152 + v.z * 0.0722;
+        if (!(lum > 0)) return;
+        // Toward the dust's own colour at the SAME brightness; and where the hour's air is
+        // already as red as dust (a sunset), toward its own colour warmed, so dust never cools it.
+        const warmth = smooth(1.3, 1.8, v.x / Math.max(1e-6, v.z));
+        const own = [v.x * 1.15, v.y, v.z * 0.82];
+        const ownLum = own[0] * 0.2126 + own[1] * 0.7152 + own[2] * 0.0722;
+        const tr = lerp((DUST_TINT[0] * lum) / DUST_LUMA, (own[0] * lum) / ownLum, warmth);
+        const tg = lerp((DUST_TINT[1] * lum) / DUST_LUMA, (own[1] * lum) / ownLum, warmth);
+        const tb = lerp((DUST_TINT[2] * lum) / DUST_LUMA, (own[2] * lum) / ownLum, warmth);
+        v.set(v.x + (tr - v.x) * k, v.y + (tg - v.y) * k, v.z + (tb - v.z) * k);
     }
 
     /**
@@ -1378,12 +1451,17 @@ export class PaintedAgesWorld {
             flicker = storm;
             seed = this.stormFlickerSeed;
         }
-        u.flicker.value.set(Math.floor(seed * 4) % 4, flicker, seed);
-        // The wind's own dust devil: pale, by day, when none stands already (one a slot).
-        if (on && h.kind === 'gust' && h.slot !== this._gustSlot && h.age >= 0 && h.age < 1.2) {
+        // (A stroke and its echo overlap: together they never pass the strength of one.)
+        u.flicker.value.set(Math.floor(seed * 4) % 4, Math.min(1, flicker), seed);
+        // The wind's own dust devil: pale, by day, when none stands already (one a slot). It
+        // is the CLOCK'S: met anywhere in its life (a seek, a capture) it stands at its true
+        // age, where the slot's draw put it.
+        if (on && h.kind === 'gust' && h.slot !== this._gustSlot && h.age >= 0 && h.age < DEVIL_LIFE) {
             this._gustSlot = h.slot;
             if (day > 0.5 && !this.reducedMotion && this.devils.standing(time) === 0) {
-                this.raiseDevil(h.side < 0 ? 0.12 + 0.2 * h.seed : 0.68 + 0.2 * h.seed, GUST_DUST, 0.5 + 0.3 * A.dust);
+                this.raiseDevil(h.side < 0 ? 0.12 + 0.2 * h.seed : 0.68 + 0.2 * h.seed, GUST_DUST, 0.5 + 0.3 * A.dust, {
+                    at: time - h.age, seeded: h.seed,
+                });
             }
         }
     }

@@ -85,7 +85,9 @@ export function airPlace(time) {
 const _wheel = { a: 0, b: 0, melt: 0 };
 
 /** The air at a wheel place, written into `out` (allocated once by the caller). */
-export function airAt(place, out = createAir()) {
+export function airAt(at, out = createAir()) {
+    // (A place that is not a number is the wheel's start: the world reads `place` back.)
+    const place = Number.isFinite(at) ? at : 0;
     const w = wheelAt(place, AIR_COUNT, _wheel);
     const a = AIRS[w.a];
     const b = AIRS[w.b];
