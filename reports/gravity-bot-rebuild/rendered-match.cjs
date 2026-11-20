@@ -66,10 +66,12 @@ async function sample() {
         playerSlots: Array.from({ length: players }, (_, i) => ({ slot: i, kind: i < botCount ? 'bot' : 'human',
             difficulty: localTiers?.[i] ?? 10, handicap: 0, name: 'Seat ' + (i + 1) })) };
     const init = mode._initializeSharedPieceRng.bind(mode);
-    let round = 0;
+    const firstRound = focus?.round ?? 1;
+    const watchedCalls = [];
+    let round = firstRound - 1;
     mode._initializeSharedPieceRng = seed => {
         round++;
-        return init(round === 1 ? 83101 : seed);
+        return init(round === firstRound ? (focus?.seed ?? 83101) : seed);
     };
     const times = [], activeUpdates = [], lateness = [], recoveries = [], intervals = [], inputs = [], checks = [], stalls = [];
     const byTick = new Map();
@@ -97,6 +99,10 @@ async function sample() {
     };
     const setup = mode._setupLocalBots.bind(mode);
     mode._setupLocalBots = () => {
+        if (focus && round === firstRound) {
+            mode.botSeriesSeed = 83101;
+            mode.versusRound = round;
+        }
         setup();
         dropProbe?.watch();
         const bots = mode.botManager;
@@ -162,6 +168,10 @@ async function sample() {
                 finally {
                     const ms = performance.now() - start;
                     bucket += ms; tickCost += ms; calls++;
+                    if (focus && round === firstRound && inputTick === focus.tick) {
+                        watchedCalls.push({ slot: bot.playerIndex, locks: bot.playerState.piecesPlaced,
+                            pending: bot.getPendingGarbage(), ms });
+                    }
                     if (ms > peak) { peak = ms; peakStart = start; slowest = bot; slowestWasIdle = false; }
                 }
             };
@@ -232,9 +242,10 @@ async function sample() {
         requestAnimationFrame(frame);
     });
     return { frames, actions, times, activeUpdates, lateness, recoveries, intervals, inputs, checks, stalls, replay: Boolean(replayTape),
-        elapsed: performance.now() - start, rounds: round, maxExecutionUpdate, executionOverFrame, overBudget, nearTwoFrames,
+        elapsed: performance.now() - start, rounds: round - firstRound + 1, maxExecutionUpdate, executionOverFrame, overBudget, nearTwoFrames,
         idleCalls, idleUnits, idleFrames, idleMs, idleSchedule, planningTickFrames, botCount, tickPlanningCosts, idlePlanningCosts,
         idleScheduleClock: 'round',
+        ...(focus && { focus: { ...focus, calls: watchedCalls } }),
         ...(profileWindows && { wholeOverBudget, longestDisplayIntervals }),
         ...(clockTrial && { clockTrial, clockStarts }),
         ...(dropProbe && { dropEffects: await dropProbe.finish() }),
@@ -387,6 +398,16 @@ app.whenReady().then(async () => {
         throw Error('Expected one local tier from 1 through 10 per bot');
     }
     const scenario = countArg === 'odyssey' ? sampleOdyssey : sample;
+    let focus = recorded?.focus || null;
+    if (process.env.SERENITY_BOT_FOCUS) {
+        const coordinate = /^(\d+)\/(\d+)$/.exec(process.env.SERENITY_BOT_FOCUS);
+        if (!coordinate || count !== 1 || !Number(coordinate[1]) || !Number(coordinate[2])) {
+            throw Error('SERENITY_BOT_FOCUS requires a local single-bot round/tick coordinate');
+        }
+        const round = Number(coordinate[1]), tick = Number(coordinate[2]);
+        const { localBotRoundSeed } = await import('../../src/core/ai/local-bot-manager.js');
+        focus = { round, tick, seed: localBotRoundSeed(83101, round) };
+    }
     const clockTrial = process.env.SERENITY_BOT_CLOCK_TRIAL || null;
     if (clockTrial && (scenario !== sample || !['timer','display'].includes(clockTrial))) {
         throw Error('The alternate presentation clock trial requires a local room and timer or display');
@@ -397,6 +418,7 @@ app.whenReady().then(async () => {
     const code = 'const botCount=' + count + ', duration=' + seconds + ', targetHz=' + hz
         + ', profileWindows=' + Boolean(process.env.SERENITY_BOT_CPU_PROFILE)
         + ', clockTrial=' + JSON.stringify(clockTrial)
+        + ', focus=' + JSON.stringify(focus)
         + ', labelledChecks=' + labelled + ', replayTape=' + JSON.stringify(tape)
         + ', rivalConfig=' + JSON.stringify(rival) + ', localTiers=' + JSON.stringify(localTiers) + ', repeatRivals=' + repeatRivals
         + ';' + boardCheck.toString() + ';' + overBudgetFrame.toString() + ';(' + scenario.toString() + ')()';

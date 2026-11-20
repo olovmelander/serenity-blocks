@@ -9,6 +9,7 @@ from collections import Counter
 import gzip
 import json
 from pathlib import Path
+from statistics import median
 from tempfile import NamedTemporaryFile
 
 from frame_metrics import percentile, planning_gates
@@ -30,6 +31,13 @@ def cases():
                 yield f'{repeat}-{room}-{hz}', room, hz
 
 
+def search_trial(directory, name):
+    result = read_json(directory / name)
+    for method in result['methods']:
+        method['path'] = Path(method['path'].replace('\\', '/')).name
+    return result
+
+
 def collect(directory):
     gates = directory / 'nov20-integrated-gates'
     return {
@@ -42,6 +50,15 @@ def collect(directory):
             'attempts': [json.loads(line) for line in (gates / 'all15.jsonl').read_text(encoding='utf-8').splitlines()],
         },
         'coldProcessReplay': read_json(directory / 'nov20-cold-traces.json'),
+        'plannerSpike': {
+            'protocol': read_json(directory / 'nov20-solo-test-protocol.json'),
+            'scheduled': read_json(directory / 'nov20-solo-spike-60.json'),
+            'freshProcesses': {p.stem.removeprefix('nov20-case-'): read_json(p)
+                               for p in sorted(directory.glob('nov20-case-*.json'))},
+            'allocationTrial': search_trial(directory, 'nov20-root-allocation-ab.json'),
+            'landingIndexTrial': search_trial(directory, 'nov20-indexed-search-ab.json'),
+            'renderer': [read_json(directory / f'nov20-render-round11-{i}.json') for i in range(1, 5)],
+        },
         'renderer': {key: read_json(directory / f'integrated-render-{key}.json') for key, _, _ in cases()},
     }
 
@@ -107,29 +124,63 @@ def check_game(previous, current, room, hz, manifest):
     return count, len(common)
 
 
+def check_spike(before, evidence, manifest):
+    event, = before['overBudget']
+    coordinate = event['round'], event['tick']
+    expected_inputs = [item for item in before['inputs'] if item[0] == event['round']]
+    expected_checks = [item for item in before['checks'] if item[0] == event['round']]
+    scheduled = evidence['scheduled']
+    if scheduled['events'] != [event] or len(scheduled['rounds']) != 60:
+        raise ValueError('Scheduled investigation does not reproduce the original frame')
+    costs = []
+    for result in scheduled['rounds']:
+        call, = [c for c in result['calls'] if c['tick'] == event['tick']]
+        if (result['round'] != event['round'] or call['locks'] != event['locks'] or call['pending'] != event['pendingRows']
+                or result['matchedInputs'] != sum(i[2] <= result['ticks'] for i in expected_inputs)
+                or result['matchedChecks'] != sum(c[1] <= result['ticks'] for c in expected_checks)):
+            raise ValueError('Scheduled replay differs at the recorded turn')
+        costs.append(call['ms'])
+    print(f'Original {event["planningMs"]:.1f} ms frame at {coordinate}; 60 exact-schedule call times'
+          f' (median / p95 / max): {median(costs):.3f} / {percentile(costs, .95):.3f} / {max(costs):.3f} ms')
+    for run in evidence['renderer']:
+        focus = run['focus']
+        call, = focus['calls']
+        if ((focus['round'], focus['tick']) != coordinate or (call['locks'], call['pending']) != (event['locks'], event['pendingRows'])
+                or run['buildManifestSha256'] != manifest or run['replay'] or run['requestedHz'] != 165 or run['elapsed'] < 16000
+                or not run['sharedTexturePaints'] or run['overBudget'] or run['runtime']['rendererPriority'] != 0
+                or run['inputs'] != expected_inputs[:len(run['inputs'])] or not run['checks'] or run['checks'][-1][1] <= event['tick']
+                or run['checks'] != expected_checks[:len(run['checks'])]):
+            raise ValueError('Focused packaged run differs in its measured state, budget or inputs')
+        print(f'  Packaged round: {call["ms"]:.1f} ms on the selected tick, {max(run["times"]):.1f} ms maximum,'
+              f' {len(run["inputs"])} matching inputs and {len(run["checks"])} labelled checkpoints')
+
+
 def verify(reference, current):
     compare_campaign(reference['campaign']['remapped-gates']['raw'], current['campaign'],
                      current['levelIntegration']['upstreamRetuned'])
     if reference['coldProcessReplay'] != current['coldProcessReplay']:
         raise ValueError('Cold-process replay hashes changed')
+    check_spike(reference['renderer']['prefetched-render-2-1-165'], current['plannerSpike'], current['build']['manifestSha256'])
     totals = Counter()
-    failures = []
+    reference_failures = []
+    release_failures = []
     print('Pass/room/Hz      active frames    p95    p99    max    late p95    paired inputs / boards')
     for key, room, hz in cases():
         before = reference['renderer']['prefetched-render-' + key]
         run = current['renderer'][key]
         inputs, boards = check_game(before, run, room, hz, current['build']['manifestSha256'])
-        for label, data in [('reference', before), ('integrated', run)]:
+        for failures, data in [(reference_failures, before), (release_failures, run)]:
             for gate, passed in planning_gates(data).items():
                 if not passed:
-                    failures.append((label, key, gate))
+                    failures.append((key, gate))
         times = run['times']
         totals.update(frames=len(times), inputs=inputs, boards=boards)
         print(f'{key:<17} {len(times):>8}   {percentile(times,.95):>4.1f}   {percentile(times,.99):>4.1f}'
               f'   {max(times):>4.1f}       {percentile(run["lateness"],.95):>4.1f}      {inputs:>5} / {boards}')
     print('Integrated totals:', dict(totals))
-    if failures:
-        raise ValueError(f'Planning gates outside budget: {failures}')
+    print('Pre-integration planning gate misses:', reference_failures)
+    if release_failures:
+        raise ValueError(f'Integrated planning gates outside budget: {release_failures}')
 
 
 if __name__ == '__main__':

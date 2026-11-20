@@ -22,6 +22,7 @@ Remove-Item Env:SERENITY_BOT_TIERS -ErrorAction SilentlyContinue
 Remove-Item Env:SERENITY_BOT_CPU_PROFILE -ErrorAction SilentlyContinue
 Remove-Item Env:SERENITY_BOT_CLOCK_TRIAL -ErrorAction SilentlyContinue
 Remove-Item Env:SERENITY_BOT_DROP_PROBE -ErrorAction SilentlyContinue
+Remove-Item Env:SERENITY_BOT_FOCUS -ErrorAction SilentlyContinue
 $dest = [System.IO.Directory]::CreateDirectory($OutputDirectory).FullName
 $recordingModes = @($false)
 if (!$LiveOnly) { $recordingModes += $true }
