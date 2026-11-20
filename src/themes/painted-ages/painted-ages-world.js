@@ -1521,7 +1521,8 @@ export class PaintedAgesWorld {
         // the colours stay deep instead of washing out; the wet rock and the heat saturate them.
         post.exposure = L.exposure * (1 - 0.05 * warmth - 0.1 * fever);
         post.shaftColour = L.glow;
-        post.saturation = 1.0 + this.wetLevel * 0.14 + 0.05 * warmth + 0.08 * fever;
+        // (and the air's own: deeper in crystal air, a little paler in dust)
+        post.saturation = 1.0 + this.wetLevel * 0.14 + 0.05 * warmth + 0.08 * fever + this.air.sat;
         post.bloomBoost = Math.min(1, this.showerPower * 0.2 + this.sheenLevel * 0.3 + (this.perfectPaint || 0) * 0.4
             + 0.04 * warmth + 0.04 * fever);
         // A flash on four lines and on a perfect clear (accumulating: a second never cuts the first).

@@ -31,7 +31,16 @@ import { createVultures } from '../../src/themes/painted-ages/painted-ages-vultu
 
 vi.setConfig({ testTimeout: 60_000 });
 
-const TIERS = ['High', 'Low'];
+/** The default tier, a lean one, and the leanest (it thins the props, the pennants, the banks and the pools). */
+const TIERS = ['High', 'Low', 'Minimal'];
+/**
+ * The materials the living pass added (the dust devils, the pennants) and the ones it changed: each
+ * must come out of both builders at every tier above.
+ */
+const LIVING_MATERIALS = [
+    'PaintedAgesDevils', 'PaintedAgesPennants', 'PaintedAgesSky', 'PaintedAgesCumulus', 'PaintedAgesLand',
+    'PaintedAgesProps', 'PaintedAgesHalos', 'PaintedAgesMotes', 'PaintedAgesPoplars',
+];
 const BACKENDS = [['WGSL', false], ['GLSL', true]];
 /** The land's fragment is the largest stage (about 48 KiB at the time of writing). */
 const FRAGMENT_BUDGET = 96 * 1024;
@@ -202,9 +211,50 @@ describe.each(TIERS)('Painted Ages shaders at %s', (quality) => {
         for (const field of FIELD_ORDER) expect(names).toContain(`shadow-${field}`);
         expect(names).toContain('poplar-shade');
         expect(names).toContain('props#1'); // the lanterns' and lamps' halos
+        expect(names).toContain('props#2'); // the pennants up the stair
         Object.values(world.parts).forEach((part) => {
             (part.meshes || [part.mesh]).forEach((mesh) => expect(mesh.material.isNodeMaterial, mesh.name).toBe(true));
         });
+    });
+
+    it('builds the living pass\'s materials for both backends: the devils, the pennants, every one it changed', () => {
+        /** material name → the target it was built as (a part, or `part#n` for a part's further meshes). */
+        const targetOf = {};
+        for (const [name, part] of Object.entries(world.parts)) {
+            (part.meshes || [part.mesh]).forEach((mesh, i) => {
+                if (mesh) targetOf[mesh.material.name] = i ? `${name}#${i}` : name;
+            });
+        }
+        for (const material of LIVING_MATERIALS) {
+            const target = targetOf[material];
+            expect(target, material).toBeTruthy();
+            for (const [label] of BACKENDS) {
+                const out = built[target][label];
+                expect(out.thrown, `${material}, ${label}`).toBeUndefined();
+                expect(said[target][label], `${material}, ${label}`).toEqual([]);
+                for (const stage of ['vertex', 'fragment']) {
+                    expect(typeof out[stage], `${material}, ${label}, ${stage}`).toBe('string');
+                    expect(out[stage].length, `${material}, ${label}, ${stage}`).toBeGreaterThan(200);
+                    expect(out[stage], `${material}, ${label}, ${stage}`).not.toMatch(/\bNaN\b|\bInfinity\b/);
+                }
+                expect(Buffer.byteLength(out.fragment), `${material}, ${label}`).toBeLessThan(FRAGMENT_BUDGET);
+            }
+            for (const stage of ['vertex', 'fragment']) {
+                expect(unassignedReads(built[target].WGSL[stage]), `${material} ${stage}`).toEqual([]);
+            }
+        }
+        // The devils are a part of their own; the pennants ride with the props, beside the halos.
+        expect(targetOf.PaintedAgesDevils).toBe('devils');
+        expect(targetOf.PaintedAgesPennants).toMatch(/^props#\d$/);
+        expect(targetOf.PaintedAgesHalos).toBe('props#1');
+        // The devils' cards and the pennants' cloth are placed in the vertex stage, and each draws
+        // from the noise in its fragment stage (the funnel's winding pigment, the cloud's shadow).
+        for (const material of ['PaintedAgesDevils', 'PaintedAgesPennants']) {
+            const { WGSL, GLSL } = built[targetOf[material]];
+            expect(WGSL.fragment, material).toMatch(/textureSample/);
+            expect(GLSL.fragment, material).toMatch(/texture\s*\(/);
+            expect(WGSL.vertex.length, material).toBeGreaterThan(600);
+        }
     });
 
     it('builds every material for WebGPU and for the WebGL2 fallback without a word', () => {
