@@ -142,6 +142,8 @@ const MOON_LIGHT = [0.1, 0.125, 0.2];
 const DUST_LUMA = DUST_TINT[0] * 0.2126 + DUST_TINT[1] * 0.7152 + DUST_TINT[2] * 0.0722;
 /** How far (screen fractions) a dust devil's foot keeps from the card's edge. */
 const DEVIL_CLEAR = 0.045;
+/** How many columns either side of the wanted one a devil's site is looked for in. */
+const DEVIL_COLUMNS = 6;
 /** The pale dust of a devil the wind raises by itself (linear). */
 const GUST_DUST = [0.74, 0.58, 0.44];
 
@@ -300,6 +302,9 @@ export class PaintedAgesWorld {
         this.tables = new EventTables(this.u);
         this.devils = new DevilTable(this.u);
         this._site = {
+            x: 0, y: 0, z: 0, distance: 0, side: 0,
+        };
+        this._gentle = {
             x: 0, y: 0, z: 0, distance: 0,
         };
         /**
@@ -337,6 +342,7 @@ export class PaintedAgesWorld {
         this.bowSecond = 0;
         this.bowSecondShown = 0;
         this.shardShown = 0;
+        this.shardFull = 0;
         this.perfectAt = -1e6;
         this.duskFrom = 0;
         this.duskTarget = 0;
@@ -876,24 +882,38 @@ export class PaintedAgesWorld {
         const k = clamp(left ? u01 / 0.5 : (u01 - 0.5) / 0.5, 0, 1);
         const sx = stage.lo + (stage.hi - stage.lo) * ((stage.side < 0) === left ? k : 0.5);
         const out = this._site;
+        const gentle = this._gentle;
+        gentle.distance = 0;
         const ground = (px, pz) => groundHeight(this.fields, px, pz);
-        // Level ground first (a valley floor); failing that, any gentle shoulder of a hill.
-        for (const steepest of [0.16, 0.5]) {
+        // The wanted column first, then outward both ways across the whole stage (never out of
+        // it: a step sideways must not land the devil behind the card or the HUD). Level ground
+        // wins at once (a valley floor); failing that, the first gentle shoulder of a hill met.
+        for (let s = 0; s <= 2 * DEVIL_COLUMNS; s++) {
+            const x = sx + Math.ceil(s / 2) * 0.045 * (s % 2 ? -1 : 1);
+            if (x < stage.lo || x > stage.hi) continue;
             for (let j = 0; j < 14; j++) {
-                const sy = 0.5 + j * 0.028;
-                for (const dx of [0, -0.045, 0.045, -0.09, 0.09]) {
-                    // Never out of its stage: a step sideways must not land it behind the card or HUD.
-                    if (sx + dx < stage.lo || sx + dx > stage.hi) continue;
-                    const hit = this.landAt(sx + dx, sy, out);
-                    if (!hit || hit.distance < 430 || hit.distance > 1700) continue;
-                    const { x, z } = hit;
-                    const slope = Math.max(Math.abs(ground(x + 6, z) - ground(x - 6, z)), Math.abs(ground(x, z + 6) - ground(x, z - 6))) / 12;
-                    if (slope < steepest) {
-                        hit.side = stage.side;
-                        return hit;
-                    }
+                const hit = this.landAt(x, 0.5 + j * 0.028, out);
+                if (!hit || hit.distance < 430 || hit.distance > 1700) continue;
+                const slope = Math.max(Math.abs(ground(hit.x + 6, hit.z) - ground(hit.x - 6, hit.z)), Math.abs(ground(hit.x, hit.z + 6) - ground(hit.x, hit.z - 6))) / 12;
+                if (slope < 0.16) {
+                    hit.side = stage.side;
+                    return hit;
+                }
+                if (slope < 0.5 && !(gentle.distance > 0)) {
+                    gentle.x = hit.x;
+                    gentle.y = hit.y;
+                    gentle.z = hit.z;
+                    gentle.distance = hit.distance;
                 }
             }
+        }
+        if (gentle.distance > 0) {
+            out.x = gentle.x;
+            out.y = gentle.y;
+            out.z = gentle.z;
+            out.distance = gentle.distance;
+            out.side = stage.side;
+            return out;
         }
         return fallback();
     }
@@ -931,7 +951,8 @@ export class PaintedAgesWorld {
         if (!p) return false;
         const r = this.random;
         const draw = seeded === null ? r : mulberry32(Math.floor(clamp(seeded, 0, 1) * 0xffffff) ^ 0x6d71);
-        const height = clamp(p.distance * 0.2, 60, 260) * (0.55 + 0.45 * share);
+        // (As tall on screen wherever it stands: a near one is a small one, not a wall.)
+        const height = clamp(p.distance * 0.2, 24, 260) * (0.55 + 0.45 * share);
         const side = p.side || (u01 < 0.5 ? -1 : 1);
         this.devils.spawn({
             x: p.x,
@@ -1036,7 +1057,9 @@ export class PaintedAgesWorld {
      * already lit stays lit), so a chain's break right after a perfect clear's double bow, or a
      * perfect clear during a chain's bow, only ever adds to it.
      */
-    raiseBow(strength, second) {
+    raiseBow(asked, second) {
+        // An event's bow outshines a far shower's shard: over a shower it rises a little above it.
+        const strength = Math.max(asked, (this.shardFull || 0) * 1.15);
         const shown = this.bowStrength * this.bowLive(this.time - this.bowAt);
         if (shown > 0.005) {
             const target = Math.max(strength, shown);
@@ -1314,7 +1337,9 @@ export class PaintedAgesWorld {
         // The weather's far shower: curtains on one side, and by day a shard of rainbow in them.
         const virgaAz = virgaBearing(A.place);
         u.virga.value.set(virgaAz, A.virga * (1 - 0.7 * this.showerPower), Math.sign(virgaAz) * 0.2);
-        const shard = 0.78 * smooth(0.35, 0.9, A.virga) * day * (1 - this.showerPower);
+        // (A chain's storm dims the shard; `shardFull` is what the shower itself would show.)
+        this.shardFull = 0.78 * smooth(0.35, 0.9, A.virga) * day;
+        const shard = this.shardFull * (1 - this.showerPower);
         // The bow (its age counts from when it first showed: a bow carried on never re-fades).
         // A chain's bow or a perfect clear's stands whole and takes over from the shard.
         this.bowSecondShown += (this.bowSecond - this.bowSecondShown) * approach(0.9, dt);
@@ -1324,7 +1349,9 @@ export class PaintedAgesWorld {
         if (time - this.bowAt > TIMING.bowLife) this.bowSecond = 0;
         this.shardShown = shard;
         u.bow.value.set(Math.max(bow, shard), this.bowSecondShown, shard > 0.01 ? Math.max(1.5, time - this.bowSince) : time - this.bowSince);
-        u.bowLeg.value = shard > 0.01 ? Math.sign(virgaAz) * clamp(1 - bow / shard, 0, 1) : 0;
+        // (The whole arc once the event's bow has most of the shard's strength: a chain's bow
+        // is fainter than the shard and must still stand whole.)
+        u.bowLeg.value = shard > 0.01 ? Math.sign(virgaAz) * clamp(1 - bow / (0.6 * shard), 0, 1) : 0;
         this.happen(time, L, A, day);
         // Perfect clear: the painted sky; a fever lets the clouds catch some of the land's colours.
         this.perfectPaint = this.paintAt(time);
