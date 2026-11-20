@@ -7,7 +7,8 @@ Run headless (nothing in an open Blender session is touched):
 
 The gulls wheel over the surf, the swallows hunt over the meadows and a skein of geese crosses the
 massif (composition/odyssey-flights.js). In the game frame at 2560 x 1440 a gull is 20-55 px from
-wingtip to wingtip, a swallow 7-36 px and a goose 9-35 px, so each bird is built for that size:
+wingtip to wingtip and a swallow 7-36 px (the goose was 9-35 px; since the 2026-11-20 staging it
+comes to 100-220 px, and is built finer: see its own header), so each bird is built for its size:
 a few hundred triangles that get the silhouette (the planform with its wrist, the body's
 volume, the bill, the tail), the plumage pattern the eye can still name at 30 px (the gull's
 black wingtips with white mirrors on a grey mantle and white body, the swallow's blue-black
@@ -505,38 +506,67 @@ def build_swallow():
 # THE GREYLAG GOOSE (Anser anser): 1.60 m span, 0.82 m long. Grey-brown, the back barred by pale
 # feather edges, a paler breast and belly, white under the tail; the pale grey forewing against
 # dark flight feathers, above and below; a long neck, a heavy body, an orange bill.
+#
+# REBUILT FOR THE NEAR VIEW (2026-11-20): the skein now crosses low along the foot of the wall, and
+# the orbs there see a goose 100-220 px across, from level with it and from above (it was built
+# for 9-35 px, and near it was a smooth paddle-winged toy). Finer where the eye now rests: a long
+# tapered hand, the wing's bar of pale covert tips, the flight feathers told one from the next,
+# the back's bars, the white band over the tail, a rounded head with its eye, a heavier bill.
 # =================================================================================================
 
 GOOSE_PLUMAGE = {
     "head": lin("#857767"),
     "neck": lin("#7d6f60"),
+    "furrow": lin("#685b4e"),
+    "eye": lin("#1c1815"),
     "mantle": lin("#6a5d50"),
-    "fringe": lin("#a89a88"),
+    "fringe": lin("#b3a592"),
     "breast": lin("#968a7b"),
     "belly": lin("#bdb4a7"),
     "flank": lin("#73665a"),
     "white": lin("#ece8e1"),
-    "rump": lin("#5c5249"),
-    "tail": lin("#6a6158"),
-    "forewing": lin("#a4aaa8"),
+    "rump": lin("#8f918e"),
+    "tail": lin("#5a5148"),
+    "forewing": lin("#b4bbba"),
     "covert": lin("#867b6e"),
+    "covertTip": lin("#c9c0b1"),
     "flight": lin("#3a3631"),
+    "shaft": lin("#57504a"),
     "underwing": lin("#b2b3ae"),
     "underFlight": lin("#55514c"),
     "bill": lin("#e88a3a"),
     "nail": lin("#e7d8c4"),
 }
 
+# The body's rings (z, half width, top, bottom, centre height), tail to shoulders: deep in the
+# chest, tapering to the rump. Every other ring carries the back's pale feather edges (a bar a ring).
+GOOSE_BODY = [
+    (-0.270, 0.024, 0.016, 0.016, 0.014),
+    (-0.232, 0.050, 0.034, 0.038, 0.009),
+    (-0.185, 0.070, 0.046, 0.058, 0.004),
+    (-0.130, 0.087, 0.056, 0.078, -0.003),
+    (-0.070, 0.098, 0.062, 0.092, -0.007),
+    (-0.010, 0.103, 0.066, 0.099, -0.009),
+    (0.050, 0.100, 0.067, 0.100, -0.009),
+    (0.100, 0.085, 0.062, 0.090, -0.006),
+    (0.140, 0.062, 0.052, 0.068, -0.002),
+    (0.172, 0.043, 0.044, 0.050, 0.001),
+]
+
 
 def goose_body_colour(z, ca, sa):
     P = GOOSE_PLUMAGE
     # The barred back: alternate rings carry the pale feather edges (one bar a ring).
-    bar = 1.0 if int(round((z + 0.30) / 0.065)) % 2 == 0 else 0.0
-    back = mix(P["mantle"], P["fringe"], 0.42 * bar * smooth(0.12, -0.18, z))
-    back = mix(back, P["rump"], smooth(-0.14, -0.20, z))
+    k = min(range(len(GOOSE_BODY)), key=lambda i: abs(GOOSE_BODY[i][0] - z))
+    bar = 1.0 if k % 2 == 0 else 0.0
+    back = mix(P["mantle"], P["fringe"], 0.5 * bar * smooth(0.12, -0.10, z))
+    # The lower back and rump pale grey, the coverts over the tail white (the white band a goose
+    # shows as it flies away).
+    back = mix(back, P["rump"], smooth(-0.11, -0.17, z))
+    back = mix(back, P["white"], smooth(-0.20, -0.235, z))
     # The flanks grey-brown, barred with pale edges too; the breast and the belly paler only
     # underneath, the vent white.
-    flank = mix(P["flank"], P["fringe"], 0.3 * bar)
+    flank = mix(P["flank"], P["fringe"], 0.36 * bar)
     under = mix(P["breast"], P["belly"], smooth(0.06, -0.08, z))
     under = mix(under, P["white"], smooth(-0.12, -0.20, z))
     side = mix(under, flank, smooth(-0.8, -0.35, sa))
@@ -544,9 +574,29 @@ def goose_body_colour(z, ca, sa):
     return mix(col, P["neck"], smooth(0.11, 0.16, z))
 
 
+# The neck and the head (z, half width, top, bottom, centre height): a long neck, a rounded head.
+GOOSE_NECK = [
+    (0.130, 0.040, 0.044, 0.050, 0.000),
+    (0.190, 0.031, 0.034, 0.039, -0.001),
+    (0.250, 0.0265, 0.030, 0.031, -0.003),
+    (0.310, 0.0255, 0.029, 0.029, -0.005),
+    (0.356, 0.0300, 0.038, 0.028, -0.005),
+    (0.392, 0.0305, 0.039, 0.027, -0.005),
+    (0.420, 0.0240, 0.029, 0.022, -0.007),
+    (0.436, 0.0160, 0.019, 0.016, -0.010),
+]
+
+
 def goose_neck_colour(z, ca, sa):
     P = GOOSE_PLUMAGE
-    return mix(P["neck"], P["head"], smooth(0.30, 0.37, z))
+    # The neck's feathers lie in furrows (every other ring a shade darker); the head a little paler.
+    k = min(range(len(GOOSE_NECK)), key=lambda i: abs(GOOSE_NECK[i][0] - z))
+    col = mix(P["neck"], P["furrow"], 0.5 if (k % 2 == 1 and z < 0.33) else 0.0)
+    col = mix(col, P["head"], smooth(0.30, 0.37, z))
+    # The eye: the head's widest ring, on each side.
+    if abs(z - 0.392) < 1e-6 and abs(ca) > 0.9:
+        col = P["eye"]
+    return col
 
 
 GOOSE = {
@@ -556,14 +606,20 @@ GOOSE = {
     "armBand": (0.064, 0.200), "armBandTE": (0.064, 0.255),
     "handBand": (0.345, 0.398), "handBandTE": (0.230, 0.500),
     "tipBand": (0.600, 0.790),
-    # Long and broad, the carpal the forward-most point, the hand tapering to a blunt point.
+    # Long and broad in the arm, the carpal the forward-most point, the hand sweeping back to a
+    # point (a goose's wing is no paddle: its outer primaries make a long, tapered hand). Enough
+    # stations that the planform holds at 200 px across, three inside each hinge's band.
     "planform": [
-        (0.060, 0.106, -0.205), (0.140, 0.112, -0.200), (0.220, 0.118, -0.195), (0.300, 0.127, -0.184),
-        (0.345, 0.133, -0.175), (0.398, 0.134, -0.166), (0.470, 0.122, -0.155), (0.560, 0.096, -0.147),
-        (0.650, 0.051, -0.140), (0.720, 0.008, -0.132), (0.770, -0.030, -0.122),
+        (0.060, 0.110, -0.210), (0.110, 0.114, -0.208), (0.160, 0.118, -0.204), (0.210, 0.122, -0.200),
+        (0.260, 0.127, -0.194), (0.305, 0.131, -0.187), (0.345, 0.135, -0.178), (0.372, 0.137, -0.170),
+        (0.398, 0.136, -0.162), (0.440, 0.128, -0.151), (0.490, 0.114, -0.141), (0.545, 0.094, -0.132),
+        (0.600, 0.068, -0.124), (0.655, 0.036, -0.117), (0.705, 0.000, -0.111), (0.745, -0.034, -0.107),
+        (0.775, -0.064, -0.105),
     ],
-    "tip": (0.800, -0.085),
-    "chord": [0.0, 0.3, 0.62, 1.0],
+    "tip": (0.800, -0.100),
+    # Across the chord: the leading edge, the pale forewing, the coverts with their pale tips (two
+    # points close together: a line), the flight feathers to the trailing edge.
+    "chord": [0.0, 0.10, 0.26, 0.40, 0.46, 0.52, 0.76, 1.0],
     "camber": 0.04,
     "wingY": lambda s: 0.036 - 0.006 * (s / 0.8),
     "tailY": 0.011,
@@ -572,49 +628,47 @@ GOOSE = {
 
 def goose_wing_colour(s, c):
     P = GOOSE_PLUMAGE
+    hand = smooth(0.36, 0.44, s)
+    # The feathers themselves: every other station a shade paler down the flight feathers, so the
+    # secondaries and the primaries read one from the next when the bird is near.
+    k = min(range(len(GOOSE["planform"])), key=lambda i: abs(GOOSE["planform"][i][0] - s))
+    rib = 1.0 if k % 2 == 0 else 0.0
     # Above: the pale grey forewing (the lesser and median coverts, out over the hand's base),
-    # grey-brown greater coverts edged pale, the dark flight feathers behind and at the hand.
-    hand = smooth(0.36, 0.42, s)
-    fore = mix(P["forewing"], P["covert"], smooth(0.25, 0.5, c) * (1 - hand * 0.6))
-    top = mix(fore, P["flight"], smooth(0.55, 0.85, c) * (1 - hand) + hand * smooth(0.15, 0.45, c))
-    top = mix(top, P["flight"], smooth(0.58, 0.70, s))
-    # Below: pale grey coverts, dark flight feathers.
-    under = mix(P["underwing"], P["underFlight"], max(smooth(0.3, 0.7, c), smooth(0.55, 0.68, s)))
+    # grey-brown greater coverts with pale tips (the bar across the wing), the dark flight
+    # feathers behind and at the hand.
+    fore = mix(P["forewing"], P["covert"], smooth(0.22, 0.40, c) * (1 - hand * 0.5))
+    bar = (1 - smooth(0.0, 0.035, abs(c - 0.46))) * (1 - smooth(0.42, 0.56, s))
+    fore = mix(fore, P["covertTip"], 0.85 * bar)
+    flight = mix(P["flight"], P["shaft"], 0.55 * rib)
+    arm_flight = smooth(0.47, 0.52, c)
+    hand_flight = smooth(0.14, 0.40, c)
+    top = mix(fore, flight, arm_flight * (1 - hand) + hand * hand_flight)
+    top = mix(top, flight, smooth(0.60, 0.72, s))
+    # Below: pale grey coverts, dark flight feathers (their shafts a shade paler too).
+    under_flight = mix(P["underFlight"], P["underwing"], 0.22 * rib)
+    under = mix(P["underwing"], under_flight, max(smooth(0.40, 0.54, c), smooth(0.58, 0.70, s)))
     return top, under
 
 
 def build_goose():
     b = Builder("goose")
     P = GOOSE_PLUMAGE
-    shell(b, "body", [
-        (-0.262, 0.027, 0.018, 0.018, 0.012),
-        (-0.205, 0.060, 0.040, 0.048, 0.005),
-        (-0.120, 0.088, 0.055, 0.078, -0.004),
-        (-0.030, 0.102, 0.064, 0.096, -0.008),
-        (0.050, 0.098, 0.066, 0.098, -0.008),
-        (0.115, 0.072, 0.056, 0.079, -0.003),
-        (0.160, 0.042, 0.042, 0.050, 0.001),
-    ], 8, goose_body_colour,
-        tail=((0.0, 0.012, -0.272), P["white"]), nose=((0.0, 0.002, 0.172), P["neck"]))
-    shell(b, "neck", [
-        (0.130, 0.040, 0.044, 0.050, 0.000),
-        (0.215, 0.029, 0.032, 0.036, -0.002),
-        (0.300, 0.0250, 0.029, 0.029, -0.005),
-        (0.360, 0.0285, 0.036, 0.027, -0.005),
-        (0.400, 0.0270, 0.034, 0.024, -0.006),
-        (0.428, 0.0170, 0.020, 0.017, -0.009),
-    ], 6, goose_neck_colour,
-        tail=((0.0, 0.000, 0.120), P["neck"]), nose=((0.0, -0.010, 0.436), P["head"]), power=0.95)
-    cone(b, "bill", 0.420, (0.0, -0.017, 0.498), -0.011, 0.012, 0.011,
-         lambda t: mix(P["bill"], P["nail"], 0.3 * t))
+    shell(b, "body", GOOSE_BODY, 10, goose_body_colour,
+          tail=((0.0, 0.013, -0.280), P["white"]), nose=((0.0, 0.002, 0.184), P["neck"]))
+    shell(b, "neck", GOOSE_NECK, 8, goose_neck_colour,
+          tail=((0.0, 0.000, 0.120), P["neck"]), nose=((0.0, -0.011, 0.444), P["head"]), power=0.95)
+    cone(b, "bill", 0.424, (0.0, -0.019, 0.506), -0.011, 0.014, 0.0125,
+         lambda t: mix(P["bill"], P["nail"], 0.35 * t), count=6)
     for side in (1, -1):
         build_wing(b, GOOSE, side, goose_wing_colour)
-    # The tail: a short rounded fan, grey-brown with a white tip; white beneath.
-    pts, mirror = mirrored([(0.0, 0.014, -0.200), (0.040, 0.014, -0.205), (0.0, 0.011, -0.300),
-                            (0.062, 0.011, -0.285), (0.0, 0.010, -0.332), (0.044, 0.010, -0.322)])
-    build_sheet(b, "tail", pts, tail_tris([(0, 1, 3), (0, 3, 2), (2, 3, 5), (2, 5, 4)], mirror),
-                lambda p: (mix(P["tail"], P["white"], smooth(-0.31, -0.33, p[2])), P["white"]),
-                lambda p: smooth(0.20, 0.332, -p[2]))
+    # The tail: a short rounded fan, dark grey-brown with a white tip; white beneath.
+    pts, mirror = mirrored([(0.0, 0.014, -0.200), (0.036, 0.014, -0.204), (0.0, 0.012, -0.262),
+                            (0.056, 0.012, -0.256), (0.0, 0.011, -0.306), (0.064, 0.011, -0.292),
+                            (0.0, 0.010, -0.336), (0.042, 0.010, -0.327)])
+    build_sheet(b, "tail", pts, tail_tris([(0, 1, 3), (0, 3, 2), (2, 3, 5), (2, 5, 4), (4, 5, 7), (4, 7, 6)], mirror),
+                lambda p: (mix(mix(P["white"], P["tail"], smooth(-0.215, -0.25, p[2])), P["white"],
+                               smooth(-0.305, -0.326, p[2])), P["white"]),
+                lambda p: smooth(0.20, 0.336, -p[2]))
     return b
 
 

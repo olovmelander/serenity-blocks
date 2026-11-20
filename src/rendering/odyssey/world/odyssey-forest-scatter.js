@@ -7,7 +7,8 @@ import {
 } from './odyssey-forest-species.js';
 import { railSeesForestSite } from './odyssey-forest-visibility.js';
 import {
-    ODYSSEY_NORTH_BEACH, ODYSSEY_NORTH_LAKE, ODYSSEY_TARN, odysseyNorthBeachAt, odysseyNorthLakeRn, odysseyTarnRn,
+    ODYSSEY_NORTH_BEACH, ODYSSEY_NORTH_LAKE, ODYSSEY_TARN, odysseyNorthBeachAt, odysseyNorthLakeRn, odysseyTarnDistance,
+    odysseyTarnRn,
 } from './odyssey-world-height.js';
 import { ODYSSEY_MEADOW_CLEARING, odysseyMeadowOpenness } from './odyssey-meadow-clearing.js';
 
@@ -30,6 +31,18 @@ export function siteOnNorthBeach(x, z) {
  * keeps its trees. The lobe metric is the lake's own export, so this can never
  * disagree with the carve.
  */
+/**
+ * Where an AUTHORED framing tree may not stand: in water (the north beach, the tarn and a few
+ * units of its shore, the north lake). Unlike the grid's sites it ignores the tarn's open meadow,
+ * which only thins the scatter: a framing tree stands where it was authored (2026-11-20: the
+ * redrawn tarn's clearing had silently dropped the autumn pair's maple).
+ */
+function framingSiteWet(x, z, y) {
+    if (siteOnNorthBeach(x, z)) return true;
+    if (odysseyTarnDistance(x, z) < 4) return true;
+    return y <= ODYSSEY_NORTH_LAKE.waterY + 1.5 && odysseyNorthLakeRn(x, z) <= 1;
+}
+
 function siteInNorthLake(x, z, y) {
     if (siteOnNorthBeach(x, z)) return true;
     // ...and the tarn in the meadow (2026-10-26): no tree stands in its water, nor in the open
@@ -1206,7 +1219,7 @@ export function scatterZonedForest(heightAt, {
         if (!spec) return;
         const y = heightAt(f.x, f.z);
         if (y < seaLevel + 3) return;
-        if (siteInNorthLake(f.x, f.z, y)) return;
+        if (framingSiteWet(f.x, f.z, y)) return;
         const stage = spec.stages.find((st) => st.id === 'old') ?? spec.stages[0];
         const jitter = 1 + ((hash2(fi, 977, 9) - 0.5) * 0.10);
         const hueT = spec.crownAlt ? hash2(fi, 977, 11) ** 1.7 : 0;

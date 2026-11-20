@@ -122,9 +122,11 @@ class ReplyingWorker {
                 reply({ stage: 'sunFields', sunFields, ms: 1 });
             }
             if (job.lane === 'plates') {
-                for (const stage of ['atlas', 'detail', 'macro', 'summit']) {
+                for (const stage of ['atlas', 'detail', 'macro']) {
                     reply({ stage, [stage]: { data: new Uint16Array(4) }, ms: 1 });
                 }
+                // (The sculpt plate carries the tarn's own plate, 2026-11-20.)
+                reply({ stage: 'summit', summit: { data: new Uint16Array(4), tarn: { data: new Uint16Array(4) } }, ms: 1 });
             }
             reply({ stage: 'done', lane: job.lane, ms: 1 });
         });
@@ -150,7 +152,7 @@ function keptCopy() {
             atlas: { data: new Uint16Array(4) },
             detail: { data: new Uint16Array(4) },
             macro: { data: new Uint16Array(4) },
-            summit: { data: new Uint16Array(4) },
+            summit: { data: new Uint16Array(4), tarn: { data: new Uint16Array(4) } },
         },
         cloudField: null,
         scatter: null,

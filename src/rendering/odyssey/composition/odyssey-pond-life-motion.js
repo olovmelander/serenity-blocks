@@ -44,10 +44,14 @@ export const ODYSSEY_POND = Object.freeze({
      */
     window: Object.freeze([0.09, 0.34]),
     swans: Object.freeze({
-        /** The route's waypoints (world x, z), a closed loop through the deep water. */
+        /**
+         * The route's waypoints (world x, z), a closed loop through the deep water: the west pool,
+         * out through the strait's north lane, round the main water's west basin and back by the
+         * south lane (re-laid 2026-11-20 on the redrawn tarn).
+         */
         route: Object.freeze([
-            [-335, -437], [-336, -445], [-323, -449], [-306, -444], [-292, -441], [-268, -444],
-            [-250, -439], [-251, -428], [-271, -426], [-293, -437], [-308, -436], [-322, -433],
+            [-336, -438], [-336, -445], [-324, -449], [-310, -442.5], [-296, -441], [-268, -444],
+            [-250, -439], [-251, -428], [-271, -426], [-292, -436], [-306, -437], [-322, -436.5],
         ]),
         /** Gliding speed (u/s at the drawn size) and how much it breathes over `breath` seconds. */
         speed: 0.95,
@@ -68,11 +72,12 @@ export const ODYSSEY_POND = Object.freeze({
          * the rail and read as a pale stroke (VISIBILITY, 2026-11-03).
          */
         scale: 4.2,
-        /** Its two places in the west lobe's shallows (world x, z): the north shore, which every
-         * view of the pond sees, and the south-west shallows by the drinkers' bank. */
+        /** Its two places in the west pool's shallows (world x, z): the north shore, which every
+         * view of the pond sees, and the south-west shallows by the drinkers' bank (moved
+         * 2026-11-20 onto the redrawn shore's shallows, ~0.3 u of water). */
         sites: Object.freeze({
-            north: Object.freeze([[-336.0, -451.0], [-331.5, -454.0], [-327.0, -455.5]]),
-            west: Object.freeze([[-338.6, -432.4], [-333.0, -427.6]]),
+            north: Object.freeze([[-335.9, -461.6], [-330.2, -460.4], [-326.0, -459.6]]),
+            west: Object.freeze([[-338.6, -432.4], [-333.0, -430.1]]),
         }),
         /**
          * Its round: each stop a spot it stands at, and how it leaves for the next (the last for
@@ -83,7 +88,7 @@ export const ODYSSEY_POND = Object.freeze({
             Object.freeze({ site: 'north', spot: 2, then: 'walk' }),
             Object.freeze({ site: 'north', spot: 1, then: 'walk' }),
             Object.freeze({
-                site: 'north', spot: 0, then: 'fly', via: Object.freeze([[-343.3, -451.0], [-348.7, -446.2], [-349.4, -439.2], [-345.2, -433.7]]),
+                site: 'north', spot: 0, then: 'fly', via: Object.freeze([[-344.0, -457.5], [-350.0, -450.0], [-351.0, -442.0], [-346.5, -435.0]]),
             }),
             Object.freeze({ site: 'west', spot: 0, then: 'walk' }),
             Object.freeze({
@@ -127,14 +132,14 @@ export const ODYSSEY_TARN_DEER = Object.freeze({
             size: 1.0,
             seed: 131,
             tone: 0.6,
-            spots: Object.freeze([[-347.5, -442.0], [-367, -441], [-381, -443]]),
+            spots: Object.freeze([[-359.5, -441.4], [-367, -441], [-381, -443]]),
         }),
         Object.freeze({
             name: 'calf',
             size: 0.62,
             seed: 131,
             tone: 0.35,
-            spots: Object.freeze([[-347.4, -439.2], [-365.5, -438.1], [-381.5, -440.2]]),
+            spots: Object.freeze([[-357.3, -438.6], [-365.5, -438.1], [-381.5, -440.2]]),
         }),
     ]),
 });

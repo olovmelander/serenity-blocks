@@ -67,8 +67,11 @@ import {
 } from './odyssey-swallow-flyby.js';
 
 const TAU = Math.PI * 2;
-/** How far a gull's loop centre wanders over a minute or so (world units). */
-const GULL_DRIFT = 22;
+/**
+ * How far a gull's loop centre wanders over a minute or so (world units). 8 (22 until the
+ * 2026-11-20 staging): the loops are sited to the unit against the rail and the seats' eyes.
+ */
+const GULL_DRIFT = 8;
 
 /** Bird kinds (the `kind` field of a flock) — selects the flight model and the plumage. */
 export const FLIGHT_KIND = Object.freeze({ GULL: 0, SWALLOW: 1, GOOSE: 2 });
@@ -133,17 +136,43 @@ export const ODYSSEY_FLIGHTS = Object.freeze([
         id: 'gulls',
         kind: FLIGHT_KIND.GULL,
         count: 12,
-        // Two parties over the surf: one off the shore to the left of the rail (the coast the
-        // L13-L14 shots turn to), one over the beach line the rail crosses at z ~ -215 (ahead of
-        // L11-L12 and L15-L16).
+        // THE SITES (2026-11-20). The gulls were two parties sited for the travelling rail camera:
+        // from the orbs' close-ups (the eye 10 u south of its orb, looking due north and 12 degrees
+        // down, the orb panel over the right fifth of the frame) the western party was out of frame
+        // at every orb and the eastern one slid under the panel by L15. Each loop is now sited by
+        // search against those close-ups (`sites`: centre x, y, z, radius, lap seconds, phase,
+        // seed): of some three thousand loops the ones kept clear the rail by 27 u, every seat's
+        // eye by 28, the water and the ground by 4.5 and the tree crowns by 5; of those, the
+        // twelve that give L11-L16 the most gulls in the free part of the frame. Some skim the
+        // water under the rail (seen from above, white on blue), some wheel over the beach and
+        // the forest's edge. tests/unit/odyssey-bird-staging.test.js holds every number here.
+        sites: Object.freeze([
+            Object.freeze([-112.7, 309.7, -176.2, 18, -19.6, 0.436, 0.548]),
+            Object.freeze([-52.1, 326.7, -174.9, 14.1, 23.7, 0.402, 0.624]),
+            Object.freeze([-82.8, 360.6, -234.6, 18.8, 21.8, 0.565, 0.652]),
+            Object.freeze([-85.2, 359.2, -279.7, 20.1, 23.9, 0.12, 0.461]),
+            Object.freeze([-11.7, 313.8, -99.7, 13.3, -17.5, 0.883, 0.054]),
+            Object.freeze([-69.4, 365.2, -242.3, 16.9, 18.6, 0.054, 0.857]),
+            Object.freeze([-34.3, 334.8, -198.5, 17.1, 23.2, 0.96, 0.295]),
+            Object.freeze([3.8, 301.1, -105.9, 24.5, -16.4, 0.724, 0.02]),
+            Object.freeze([-52, 303.2, -160.2, 15.7, -16.4, 0.656, 0.369]),
+            Object.freeze([-147.2, 302.8, -146.6, 19.6, 21.3, 0.701, 0.474]),
+            Object.freeze([-47.9, 355.6, -255.4, 13.7, 22.5, 0.46, 0.967]),
+            Object.freeze([26.5, 301.4, -172.7, 21.8, -15.7, 0.136, 0.184]),
+        ]),
+        // (Where a party would be scattered without `sites`: the playground's and the tests' flocks.)
         centre: Object.freeze([-238, 331, -176]),
         centreB: Object.freeze([28, 322, -204]),
         spread: Object.freeze([46, 26]), // each bird's own loop centre, +-x / +-z
         radius: Object.freeze([18, 38]),
         height: Object.freeze([-6, 18]),
         lapSeconds: Object.freeze([16, 27]),
-        span: 5.75,
-        window: Object.freeze([0.132, 0.142, 0.221, 0.234]),
+        // 7.3 (5.75 until 2026-11-20): 5.2 times life, as the goose, the eagle and the vultures are
+        // drawn (the gull was 4.1 times, the smallest of them against its own size).
+        span: 7.3,
+        // Out only once the rail camera has left the last loop behind (p 0.248 on the real camera;
+        // it was 0.221-0.234, with the old parties far to the side): odyssey-bird-staging.test.js.
+        window: Object.freeze([0.132, 0.142, 0.2495, 0.2565]),
     }),
     Object.freeze({
         id: 'swallows',
@@ -166,21 +195,37 @@ export const ODYSSEY_FLIGHTS = Object.freeze([
     Object.freeze({
         id: 'geese',
         kind: FLIGHT_KIND.GOOSE,
-        count: 9,
+        count: 16,
         // A straight crossing in front of the massif's face, west -> east, climbing gently.
-        // 200 u farther north and 80 u higher than it first flew (2026-10-20): the old line
-        // crossed the wall's rail (6 u at p 0.371), so the skein had to dissolve mid-sky before
-        // the climb. Here it keeps 169 u off the rail and 45 u over the ground, stays in frame
-        // from L15 up the wall to L27, and leaves the frame on the glide after L28 — where it
-        // fades (odyssey-act2-fade-out-of-view.test.js).
-        from: Object.freeze([-760, 535, -670]),
-        to: Object.freeze([640, 585, -820]),
-        period: 52, // seconds per crossing (the crossing itself is the first `travel` of it)
-        travel: 0.78,
-        phase: 0.36, // where in its period the skein is at clock 0 (mid-frame at the capture clock)
+        // THE LINE (2026-11-20): it flew 200-500 u north of the meadow and 150-230 u over the
+        // orbs' eyes, which a close-up (12 degrees down, the HUD along its top) never showed: no
+        // seat from L11 to L27 saw a goose. It now crosses LOW, along the foot of the wall: under
+        // the rail where the rail starts up the wall (30 u clear of it, 41 u of every seat's eye),
+        // so the meadow's seats see it come across the upper part of their frames in front of the
+        // massif (a goose 23 px across from L17, 50 from L24) and the wall's first seats see it
+        // pass close, from level with it and from above (70-100 px from L25-L27). Both ends lie
+        // outside every seat's frame and the rail camera's. Two skeins fly the line, half a
+        // period apart (`skeins`: birds, delay as a share of the period, metres aside of the line
+        // and over it), as geese do. tests/unit/odyssey-bird-staging.test.js.
+        from: Object.freeze([-820, 402, -560]),
+        to: Object.freeze([660, 422, -520]),
+        period: 60, // seconds per crossing (the crossing itself is the first `travel` of it)
+        travel: 0.8,
+        phase: 0.36, // where in its period the first skein is at clock 0
+        skeins: Object.freeze([
+            Object.freeze({
+                count: 9, delay: 0, aside: 0, lift: 0,
+            }),
+            Object.freeze({
+                count: 7, delay: 0.5, aside: -30, lift: 8,
+            }),
+        ]),
         spacing: 9,
         span: 8.6,
-        window: Object.freeze([0.150, 0.160, 0.412, 0.426]),
+        // In with the shore itself (the breach: the whole island appears; it was 0.150-0.160, a
+        // ramp the L11 and L12 seats parked inside), out between L28 and L29, where neither a seat
+        // nor the rail camera (which loses the line at p 0.356) has a goose in frame.
+        window: Object.freeze([0.132, 0.142, 0.412, 0.426]),
     }),
 ]);
 
@@ -200,26 +245,41 @@ export function resolveFlightLanes(flocks = ODYSSEY_FLIGHTS, { flyby = ODYSSEY_S
     flocks.forEach((flock, flockIndex) => {
         for (let i = 0; i < flock.count; i += 1) {
             if (flock.kind === FLIGHT_KIND.GOOSE) {
+                // Which skein of the flock this goose flies in, and its place in that skein.
+                const skeins = flock.skeins || [{
+                    count: flock.count, delay: 0, aside: 0, lift: 0,
+                }];
+                let own = i;
+                let skein = skeins[0];
+                for (let k = 0; k < skeins.length; k += 1) {
+                    skein = skeins[k];
+                    if (own < skein.count) break;
+                    own -= skein.count;
+                }
                 // A V: the leader at rank 0, then alternate sides, one rank further back each pair.
-                const rank = Math.ceil(i / 2);
+                const rank = Math.ceil(own / 2);
                 let side = 0;
-                if (i > 0) side = (i % 2 === 1) ? 1 : -1;
+                if (own > 0) side = (own % 2 === 1) ? 1 : -1;
+                const jitter = (rnd() - 0.5) * 1.2;
+                rnd(); // (a number every lane draws: the flocks keep their own)
                 lanes.push({
                     flock: flockIndex,
                     kind: flock.kind,
-                    // centre = the formation slot (back, side), radius = rank, height jitter
+                    // centre = the formation slot (back, side) and the skein's height over the line
+                    // with the bird's own jitter; radius = how far aside of the line its skein
+                    // flies; phase = how much of a period after the first skein it sets out.
                     cx: rank,
-                    cy: (rnd() - 0.5) * 1.2,
+                    cy: skein.lift + jitter,
                     cz: side,
-                    radius: rank,
+                    radius: skein.aside,
                     lap: flock.period,
-                    phase: rnd(),
+                    phase: skein.delay,
                     seed: rnd(),
                 });
                 continue;
             }
             const base = (flock.centreB && i % 2 === 1) ? flock.centreB : flock.centre;
-            lanes.push({
+            const lane = {
                 flock: flockIndex,
                 kind: flock.kind,
                 cx: base[0] + ((rnd() - 0.5) * 2 * flock.spread[0]),
@@ -230,7 +290,12 @@ export function resolveFlightLanes(flocks = ODYSSEY_FLIGHTS, { flyby = ODYSSEY_S
                     * (rnd() < 0.5 ? -1 : 1),
                 phase: rnd(),
                 seed: rnd(),
-            });
+            };
+            // A sited flock: each bird's loop is given (the draws above are still made, so the
+            // flocks after this one keep their own numbers).
+            const site = flock.sites?.[i];
+            if (site) [lane.cx, lane.cy, lane.cz, lane.radius, lane.lap, lane.phase, lane.seed] = site;
+            lanes.push(lane);
         }
     });
     const swallows = flocks.findIndex((f) => f.kind === FLIGHT_KIND.SWALLOW);
@@ -267,7 +332,7 @@ export function flightPositionAt(lane, t, flocks = ODYSSEY_FLIGHTS) {
     if (lane.flyby) return swallowFlybyPositionAt(t, lane.flyby);
     const flock = flocks[lane.flock];
     if (flock.kind === FLIGHT_KIND.GOOSE) {
-        const cyc = ((((t / flock.period) + flock.phase) % 1) + 1) % 1;
+        const cyc = ((((t / flock.period) + flock.phase + lane.phase) % 1) + 1) % 1;
         const s = cyc / flock.travel;
         const run = [0, 1, 2].map((k) => flock.to[k] - flock.from[k]);
         const flat = Math.hypot(run[0], run[2]) || 1;
@@ -279,7 +344,7 @@ export function flightPositionAt(lane, t, flocks = ODYSSEY_FLIGHTS) {
         // The V breathes: each slot slides a little back and out and weaves, slowly, its own way.
         const backK = lane.cx * sp * (1 + (0.05 * Math.sin((t * 0.13) + (lane.seed * 5))));
         const sideK = (lane.cz * lane.cx * sp * 0.72 * (1 + (0.05 * Math.sin((t * 0.11) + (lane.seed * 3)))))
-            + (Math.sin((t * 0.17) + (lane.seed * 4)) * 0.6 * Math.min(1, lane.cx));
+            + (Math.sin((t * 0.17) + (lane.seed * 4)) * 0.6 * Math.min(1, lane.cx)) + lane.radius;
         return {
             x: flock.from[0] + (run[0] * s) + (back[0] * backK) + (sideV[0] * sideK),
             y: flock.from[1] + (run[1] * s) + lane.cy + bob,
@@ -535,13 +600,15 @@ export function createOdysseyFlights({
             : eight;
         // GOOSE: s runs 0..1 across `travel` of the period; the V trails behind the leader.
         const period = float(goose ? goose.period : 1);
-        const cyc = fract(t.div(period).add(goose ? goose.phase : 0));
+        // (A goose's own skein sets out `aMotion.y` of a period after the first, `aSeat.w` aside of the line.)
+        const cyc = fract(t.div(period).add(goose ? goose.phase : 0).add(aMotion.y));
         const s = cyc.div(goose ? goose.travel : 1);
         const spacing = float(goose ? goose.spacing : 1);
         const backK = aSeat.x.mul(spacing).mul(sin(t.mul(0.13).add(seed.mul(5.0))).mul(0.05).add(1.0));
         const breathe = sin(t.mul(0.11).add(seed.mul(3.0))).mul(0.05).add(1.0);
         const sideK = aSeat.z.mul(aSeat.x).mul(spacing).mul(0.72).mul(breathe)
-            .add(sin(t.mul(0.17).add(seed.mul(4.0))).mul(0.6).mul(clamp(aSeat.x, 0.0, 1.0)));
+            .add(sin(t.mul(0.17).add(seed.mul(4.0))).mul(0.6).mul(clamp(aSeat.x, 0.0, 1.0)))
+            .add(aSeat.w);
         const gooseP = uGooseFrom.add(uGooseRun.mul(s))
             .add(uGooseBack.mul(backK))
             .add(uGooseSide.mul(sideK))
@@ -659,7 +726,7 @@ export function createOdysseyFlights({
         vBounce.assign(perKind3([[0.30, 0.31, 0.28], [0.20, 0.26, 0.13], [0.22, 0.24, 0.17]]));
 
         // Skein birds only exist while the V is crossing; the rest of the period it is gone.
-        const goosePeriodK = goose ? fract(t.div(goose.period).add(goose.phase)) : float(0);
+        const goosePeriodK = goose ? fract(t.div(goose.period).add(goose.phase).add(aMotion.y)) : float(0);
         const gooseShown = goose
             ? smoothstep(0.0, 0.04, goosePeriodK)
                 .mul(float(1).sub(smoothstep(goose.travel - 0.04, goose.travel, goosePeriodK)))

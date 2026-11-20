@@ -41,30 +41,40 @@ const DEG = Math.PI / 180;
  *   span      wingspan as drawn (world units): five times life, as a long lens shows it
  *   window    [fade in from, fully in by, fade out from, gone by] in JOURNEY progress
  *
- * The window ends where the camera has CLIMBED PAST the bird, not at a round number. It used to
- * fade over p 0.386-0.404 with the whole thermal still in frame, so the player parked at L28
- * (p 0.3996) watched it dissolve to 15 % in the middle of the picture. Measured on the real
- * camera (odyssey-act2-fade-out-of-view.test.js): the thermal stays in frame up the wall and
- * through the glide from L28, slides off the lower right as the rail passes it (closest ~60 u at
- * p ~0.44), and is wholly out of frame from p 0.446. It now fades just after that, and is gone
- * before L29 (p 0.4503) parks, so no parked orb draws a bird it cannot see. The fade in
- * (0.300-0.318) happens off frame up and to the right of the L23-L24 views.
+ * THE WINDOW (2026-11-20, with the thermal's new place). It comes in with the shore itself (the
+ * breach, where the whole island appears: from there it is a speck turning at the massif's foot,
+ * 580 u off, that the journey walks up to) and goes between L28 and L29: the rail camera loses
+ * the thermal at p 0.340, as it starts up the wall over it, L27's close-up (p 0.3942) still looks
+ * down on it, and L28's (p 0.3996) and every seat after have none of it in frame. A window never
+ * ends where a parked orb or the travelling camera still sees the bird (it once faded over p
+ * 0.386-0.404 with the thermal in the middle of L28's picture): odyssey-bird-staging.test.js and
+ * odyssey-act2-fade-out-of-view.test.js hold both views.
  */
 export const ODYSSEY_EAGLE = Object.freeze({
+    // THE THERMAL (2026-11-20). It stood at (-96, 612, -616), sited for the travelling rail
+    // camera: from the orbs' close-ups (the eye 10 u south of its orb, looking due north and 12
+    // degrees down) it was 20-50 degrees over the top of the frame at every seat it was drawn
+    // for, so a parked player never saw the island's biggest bird. It now turns low over the foot
+    // of the wall, just west of where the rail starts up it (the rail is a hundred units overhead
+    // there) and under the skein's line: sited against the close-ups, clear of the ground by 33 u
+    // (the tree crowns by 5: it hunts the forest's edge), of the rail by 46 and of every seat's
+    // eye by 57. Every seat from L16 to L25 has it in frame the whole time, left of the middle
+    // (28 px across from L16, 65 from L24, 92 from L25), and the wall's first two look down on
+    // it nine tenths of the time (about 120 px). tests/unit/odyssey-bird-staging.test.js.
     thermal: Object.freeze({
-        x: -96,
-        y: 612,
-        z: -616,
-        radius: 46,
-        wanderX: 20,
-        wanderZ: 24,
-        swing: 12,
-        tilt: 6,
+        x: -254,
+        y: 392,
+        z: -548,
+        radius: 25,
+        wanderX: 7,
+        wanderZ: 8,
+        swing: 2.5,
+        tilt: 2.5,
     }),
     round: 84,
     turns: 3,
     span: 11,
-    window: Object.freeze([0.300, 0.318, 0.4470, 0.4500]),
+    window: Object.freeze([0.132, 0.142, 0.402, 0.412]),
 });
 /** Wingbeats a second in a bout. */
 export const EAGLE_BEAT = 1.6;

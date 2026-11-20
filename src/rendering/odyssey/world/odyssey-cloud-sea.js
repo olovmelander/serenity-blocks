@@ -80,7 +80,9 @@ export const ODYSSEY_CLOUD_SEA = Object.freeze({
      * east-north-east, the island's lee, which the climb's last orbs look down on); the floor is
      * whole `ramp` beyond that.
      */
-    clear: Object.freeze([900, 1500]),
+    // (1500 until 2026-11-20: the bed lay 0.95 opaque over the coast the climb looks down on, a
+    // lilac veil over the shallows and the open sea beyond; the lee now opens to 2000.)
+    clear: Object.freeze([900, 2000]),
     open: Object.freeze([0.94, -0.342]),
     ramp: 900,
     /** The mesh: rings from `inner` to `outer` (geometric), [segments round, rings] by tier. */
@@ -719,7 +721,7 @@ export function createOdysseyCloudSea({
     const bedSwell = texture(plate, plateUv(vBed.xz)).a;
     // (the lanes hold a little less haze from near; from very high the sheet is whole)
     const laneFloor = mix(float(0.84), float(1.0), fromHigh);
-    bedMaterial.opacityNode = smoothstep(float(0.03), float(0.42), coverAt(vBed.xz, bedRegion))
+    bedMaterial.opacityNode = smoothstep(float(0.06), float(0.80), coverAt(vBed.xz, bedRegion))
         .mul(mix(laneFloor, float(1.0), smoothstep(float(0.10), float(0.36), bedSwell)))
         .mul(S.bed.alpha);
     bedMaterial.alphaTest = 0.004;

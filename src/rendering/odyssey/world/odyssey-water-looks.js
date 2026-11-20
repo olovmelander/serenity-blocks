@@ -73,7 +73,9 @@ export const SEA_ABSORB_GAIN = 2.6;
  * script's four plates (`bands`) and every other water term in common.
  */
 export const SEA_RAMP = Object.freeze({
-    shore: ODYSSEY_WATER_RAMP.shore,
+    // (2026-11-20: its own shore, clearer and less milky than the colour script's viridian, which
+    // was brighter than the sand under it and turned the shallows to frosted glass.)
+    shore: Object.freeze([0.26, 0.62, 0.60]),
     shelf: Object.freeze([0.10, 0.41, 0.50]),
     open: Object.freeze([0.05, 0.27, 0.40]),
     deep: Object.freeze([0.03, 0.15, 0.24]),
@@ -83,7 +85,7 @@ export const SEA_RAMP = Object.freeze({
  * dissolve fades with how steeply the eye looks down at the water: the sines of the angles where
  * it starts to let go (~3 degrees) and where it is gone (~14 degrees). See the dissolve.
  */
-export const SEA_HORIZON_DOWN = Object.freeze([0.05, 0.25]);
+export const SEA_HORIZON_DOWN = Object.freeze([0.015, 0.18]);
 /**
  * THE SURF LINE FROM AFAR (2026-11-02): the soft white line on the waterline once a pixel spans
  * more depth than the swash front. Its width in pixels (calm, at the top of a run-up), how much of
@@ -98,6 +100,18 @@ export const SEA_SURF = Object.freeze({
     gain: 0.70,
     thinPx: Object.freeze([2.0, 8.0]),
     thinKeep: 0.4,
+});
+/**
+ * THE WINDROWS (2026-11-20): long foam lines across the wind every `spacing` u, wandering
+ * `wander` u, `halfWidth` u half wide (or ~0.7 px, whichever is wider), kept off the near water
+ * (gone under the first distance, whole past the second, u) and at `gain`.
+ */
+export const SEA_WINDROWS = Object.freeze({
+    spacing: 17,
+    wander: 26,
+    halfWidth: 0.22,
+    near: Object.freeze([45, 120]),
+    gain: 0.16,
 });
 /** The sea film's opacity over the water's depth: clear at the first, whole at the second (u). */
 export const SEA_FILM = Object.freeze([-0.45, 2.0]);

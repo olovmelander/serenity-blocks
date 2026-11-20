@@ -197,12 +197,16 @@ describe("the massif's eagle", () => {
         gltf = await new GLTFLoader().parseAsync(bytes, '');
     });
 
-    it('is shown only from the end of chapter 4 up the first half of the climb', () => {
-        // Where it leaves is the camera's business: odyssey-act2-fade-out-of-view.test.js.
-        const [a, , , d] = ODYSSEY_EAGLE.window;
-        expect(a).toBeGreaterThan(CP[3]);
+    it('is there from the shore up the first of the climb', () => {
+        // It comes in with the island itself (the breach) and turns at the massif's foot, a
+        // speck the journey walks up to. Where it leaves is the camera's business:
+        // odyssey-act2-fade-out-of-view.test.js and odyssey-bird-staging.test.js.
+        const [a, b, , d] = ODYSSEY_EAGLE.window;
+        expect(a).toBeGreaterThan(CP[2] - 0.015);
+        expect(b).toBeLessThanOrEqual(CP[2]);
         expect(d).toBeLessThan((CP[4] + CP[5]) / 2);
-        expect(eagleRevealAt(CP[3])).toBe(0);
+        expect(eagleRevealAt(CP[2] - 0.03)).toBe(0);
+        expect(eagleRevealAt(CP[3])).toBe(1);
         expect(eagleRevealAt((CP[3] + CP[4]) / 2 + 0.03)).toBeGreaterThan(0.99);
         expect(eagleRevealAt(0.5)).toBe(0);
     });
@@ -217,7 +221,9 @@ describe("the massif's eagle", () => {
             const [w0, , , w3] = ODYSSEY_EAGLE.window;
             if (Math.round(t / 0.7) % 6 === 0) rail = Math.min(rail, railDistance(pt, w0, w3));
         }
-        expect(clear, 'terrain clearance').toBeGreaterThan(40);
+        // (It hunts the forest's edge at the foot of the wall: 33 u over the ground there, and
+        // odyssey-bird-staging.test.js holds it over the tree crowns.)
+        expect(clear, 'terrain clearance').toBeGreaterThan(30);
         expect(rail, 'rail clearance').toBeGreaterThan(45);
     });
 

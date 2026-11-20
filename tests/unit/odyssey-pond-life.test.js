@@ -29,7 +29,7 @@ import {
 } from '../../src/rendering/odyssey/composition/odyssey-deer-herd.js';
 import { parseOdysseyDeer } from '../../src/rendering/odyssey/composition/odyssey-deer.js';
 import {
-    ODYSSEY_SEA_LEVEL, ODYSSEY_TARN, odysseyTarnRn, odysseyWorldHeight,
+    ODYSSEY_SEA_LEVEL, ODYSSEY_TARN, odysseyTarnDistance, odysseyWorldHeight,
 } from '../../src/rendering/odyssey/world/odyssey-world-height.js';
 import { scatterZonedForest } from '../../src/rendering/odyssey/world/odyssey-forest-scatter.js';
 import { buildBoulderSites } from '../../src/rendering/odyssey/world/odyssey-boulders.js';
@@ -190,8 +190,9 @@ describe('the swans', () => {
         for (let t = 0; t < loop; t += 0.5) states.push([swanStateAt(0, t, {}), swanStateAt(1, t, {})]);
     });
 
-    it('never leave the water: the whole hull over water at least 0.6 deep, all the loop', () => {
-        let rn = 0;
+    it('never leave the water: the whole hull 4 u inside the shore, over water at least 0.6 deep, all the loop', () => {
+        // (World units since the tarn was redrawn, 2026-11-20: its normalized measure changed.)
+        let dist = -Infinity;
         let depth = Infinity;
         states.forEach((pair) => pair.forEach((s) => {
             const fx = Math.sin(s.heading);
@@ -199,11 +200,11 @@ describe('the swans', () => {
             for (const [a, b] of [[1.9, 0], [-1.7, 0], [0, 0.7], [0, -0.7], [0, 0]]) {
                 const x = s.x + (fx * a) + (fz * b);
                 const z = s.z + (fz * a) - (fx * b);
-                rn = Math.max(rn, odysseyTarnRn(x, z));
+                dist = Math.max(dist, odysseyTarnDistance(x, z));
                 depth = Math.min(depth, W - odysseyWorldHeight(x, z));
             }
         }));
-        expect(rn).toBeLessThan(0.75);
+        expect(dist).toBeLessThan(-4);
         expect(depth).toBeGreaterThan(0.6);
     });
 
@@ -484,7 +485,7 @@ describe('the drinkers', () => {
             for (let t = 0; t < deer.loop; t += 1) {
                 const s = deerStateAt(deer, t);
                 const pose = poseDeer(rig, deer, t, odysseyWorldHeight, null, 0, ODYSSEY_TARN_DEER);
-                nearest = Math.min(nearest, odysseyTarnRn(s.x, s.z));
+                nearest = Math.min(nearest, odysseyTarnDistance(s.x, s.z));
                 const e = 1.5;
                 slope = Math.max(slope, Math.hypot(
                     (odysseyWorldHeight(s.x + e, s.z) - odysseyWorldHeight(s.x - e, s.z)) / (2 * e),
@@ -498,13 +499,18 @@ describe('the drinkers', () => {
                 for (const r of rocks) clear = Math.min(clear, Math.hypot(r.x - s.x, r.z - s.z) - Math.max(r.sx, r.sz) - 1);
             }
             const label = `${deer.member.name} #${i}`;
-            expect(nearest, `${label} comes down to the water`).toBeLessThan(1.05);
+            // (World units since the tarn was redrawn, 2026-11-20: within a few units of the waterline, never in it.)
+            expect(nearest, `${label} comes down to the water`).toBeLessThan(3);
+            expect(nearest, `${label} stays out of the water`).toBeGreaterThan(0);
             expect(wet, `${label} never deeper than its fetlocks`).toBeLessThan(0.6);
-            // The bowl's rim is steeper than the glade: they come down its gentlest stretch.
+            // The bank is steeper than the glade: they come down its gentlest stretch.
             expect(slope, `${label} slope`).toBeLessThan(0.75);
             expect(hoof, `${label} standing hooves on the ground (share of size)`).toBeLessThan(0.1);
             expect(clear, `${label} clear of trees and rocks`).toBeGreaterThan(0.5);
-            expect(odysseyWorldHeight(deer.member.spots[1][0], deer.member.spots[1][1]) - ODYSSEY_SEA_LEVEL).toBeGreaterThan(8);
+            // Its second spot is meadow over the tarn, not its beach (the tarn's bank flattens the
+            // meadow by the water since it was redrawn, 2026-11-20: over the water, not the sea).
+            expect(odysseyWorldHeight(deer.member.spots[1][0], deer.member.spots[1][1]) - W).toBeGreaterThan(1.5);
+            expect(odysseyWorldHeight(deer.member.spots[1][0], deer.member.spots[1][1]) - ODYSSEY_SEA_LEVEL).toBeGreaterThan(6);
         });
     }, 120_000);
 });

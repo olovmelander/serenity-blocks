@@ -979,7 +979,7 @@ export function odysseySummitSculpt(x, z) {
     return horn * envelope + ((ridge + couloir + ledge + rough) * grow);
 }
 
-// ── THE TARN (2026-10-26, Act II masterpiece pass, step 6) ──────────────────────────────────
+// ── THE TARN (2026-10-26, Act II masterpiece pass, step 6; redrawn 2026-11-20) ─────────────
 
 /**
  * THE TARN — the pond the chapter-3 basin was scooped for. The macro field has carried an inland
@@ -987,97 +987,304 @@ export function odysseySummitSculpt(x, z) {
  * north lake, the act's only other water above the sea, stands behind the hero massif from every
  * chapter 3-4 station and below the frame through the climb. So a small tarn is set in the basin's
  * meadow at the massif's foot, on the line the chapter-4 eyes look along: in frame and unblocked
- * from L20 to L23 (p 0.246-0.30, scored on the in-game camera), 160-270 u out and 60-80 u below
- * the eye, where its reflected rays rise into the hero massif's face, so the tarn mirrors the
- * mountain (the renderer's tarn material marches them over the height field).
+ * from L18 to L23 (p 0.23-0.30), 100-270 u out and 60-110 u below the eye.
  *
- * Two lobes joined into one bean, a meandering shore, a bowl whose floor is set ABSOLUTELY
- * (`floorY`, under `waterY`) rather than dug a fixed depth: the meadow round it rises from 294 u to
- * ~301 u across it, so a fixed-depth carve would flood the low side or leave the high side dry.
- * With the floor absolute, the waterline lands where the bank meets `waterY`. SITED ON THE FLAT:
- * the first site straddled the massif's foot, its west bank fell 25 u, and the ground shader
- * turned that slope to rock, a grey crater round the water; here the banks stay meadow, and the
- * wall ramp is wide (`TARN_WALL_START`) so they stay gentle. Exactly zero outside the lobes (the
- * forest scatter, the rail's clearances and the orbs see no change there).
+ * A DRAWN SHORE (2026-11-20, Olov: "improve the looks of the pond ... the ponds need to have a
+ * better shape"). It was three ellipses joined, and it read as three circles in a dug bowl: the
+ * lobes showed in the outline, the depth's plates ran in rings round each of them, and the bowl's
+ * wall (the same drop all the way round) stood as a dark ring in the meadow. Now the shore is an
+ * OUTLINE drawn by hand (`outline`, a closed curve through its points, world x and z, clockwise
+ * from the west end), the way a tarn lies in a meadow under a mountain:
+ *   - a small west pool and a wider main water, joined by a strait;
+ *   - one long point running out from the north shore, an islet off its tip;
+ *   - bays of different sizes on the south shore, none opposite another;
+ *   - the east end drawn out into a narrow inlet.
+ * A low noise moves the drawn line a few units in and out (`ragged`), so no stretch of it is a
+ * ruled curve.
+ *
+ * ACROSS THE SHORE the ground is a profile of the distance to that line, not a bowl:
+ *   - under the water a SHELF (the shallows, a gentle slope), then a drop to a floor that rolls
+ *     (`floor`, `roll`). The shelf is wide where the meadow lies flat by the water and narrow
+ *     under a rising bank, as it is in a real pond: so the pale shallows are a broad flat in the
+ *     east and the south-east and a thin line under the north shore;
+ *   - above it a low beach on the same slope, easing over `bank` units into the meadow's own
+ *     ground. Where the meadow stands high over the water (the west) that is a long gentle slope,
+ *     not a wall.
+ * The profile sets the ground ABSOLUTELY inside the shore (the waterline is the drawn line
+ * itself, whatever the meadow's height there was), and it is exactly the meadow's own ground
+ * beyond `bank` (the forest scatter, the rail's clearances and the orbs see no change there).
  */
 export const ODYSSEY_TARN = Object.freeze({
     waterY: 293.0,
-    floorY: 289.8,
-    lobes: Object.freeze([
-        Object.freeze({
-            x: -205, z: -428, rx: 60, rz: 42,
-        }),
-        Object.freeze({
-            x: -262, z: -432, rx: 62, rz: 44,
-        }),
-        Object.freeze({
-            x: -320, z: -440, rx: 50, rz: 36,
-        }),
-    ]),
+    /** The floor is never lower than this (the rolling floor's deepest, with room). */
+    floorY: 288.2,
+    /** The shore, clockwise from the west end (world x, z). */
+    outline: Object.freeze([
+        [-356, -446], [-350, -456], [-337, -463], [-321, -461], [-309, -453], [-300, -449],
+        [-290, -451], [-282, -457], [-274, -465], [-262, -466], [-250, -467], [-243, -464],
+        [-240, -457], [-236, -447], [-231, -441], [-227, -449], [-226, -460], [-220, -464],
+        [-207, -467], [-190, -467], [-174, -464], [-160, -459], [-150, -456], [-140, -449],
+        [-128, -443], [-136, -437], [-146, -428], [-152, -416], [-163, -406], [-178, -400],
+        [-194, -398], [-207, -403], [-214, -411], [-224, -409], [-236, -402], [-250, -398],
+        [-264, -399], [-275, -405], [-284, -413], [-292, -420], [-303, -422], [-318, -424],
+        [-334, -429], [-347, -436],
+    ].map((p) => Object.freeze(p))),
+    /** The islet off the point (its own closed line), and how high its back stands (u). */
+    islet: Object.freeze([
+        [-223.5, -433.5], [-215.5, -438.5], [-205, -436], [-202.5, -429.5], [-210.5, -425.5], [-221, -427],
+    ].map((p) => Object.freeze(p))),
+    isletRise: 1.5,
+    /** How far the low noise moves the drawn line in and out (u), and its two scales (u). */
+    ragged: Object.freeze([2.4, 1.0]),
+    raggedCells: Object.freeze([31, 12]),
+    /**
+     * The shelf: its width under a rising bank and on the flats (u), its slope there, and the
+     * meadow's height over the water at which a bank counts as flat or as rising (u).
+     */
+    shelf: Object.freeze([3, 14]),
+    shelfSlope: Object.freeze([0.16, 0.07]),
+    shelfBank: Object.freeze([1.5, 6.5]),
+    /** The drop from the shelf to the floor (u across), the floor's depth and its roll (u). */
+    drop: 15,
+    floor: 3.3,
+    roll: 0.9,
+    /** The bank: how far the profile reaches into the meadow, and how high the beach rises (u). */
+    bank: 34,
+    beachRise: 0.9,
+    /** One unit of `odysseyTarnRn` beyond the shore, in world units. */
+    rnUnit: 48,
     /** The meadow kept open round it (tarn distance): no tree stands nearer, so its banks show. */
     clearing: 1.55,
 });
-const TARN_SHORE_MIN_INSET = 0.05;
-const TARN_SHORE_MEANDER = 0.22;
-const TARN_WALL_START = 0.42;
-const TARN_WALL_POW = 0.6;
 
-function tarnShoreInset(x, z) {
-    const broad = valueNoise((x / 62) + 13.1, (z / 62) - 41.7);
-    const fine = valueNoise((x / 23) - 27.4, (z / 23) + 8.3);
-    return TARN_SHORE_MIN_INSET + (((broad * 0.7) + (fine * 0.3)) * TARN_SHORE_MEANDER);
-}
-
-/** Normalized tarn distance, shore meander included: < 1 inside the carve (the north lake's rule). */
-export function odysseyTarnRn(x, z) {
-    let best = Infinity;
-    for (let i = 0; i < ODYSSEY_TARN.lobes.length; i += 1) {
-        const lb = ODYSSEY_TARN.lobes[i];
-        const lx = (x - lb.x) / lb.rx;
-        const lz = (z - lb.z) / lb.rz;
-        best = Math.min(best, Math.sqrt((lx * lx) + (lz * lz)));
+/** A closed curve through `points` (Catmull-Rom), as a dense polyline: `per` pieces a span. */
+function closedCurve(points, per) {
+    const n = points.length;
+    const out = [];
+    const c = (p0, p1, p2, p3, t) => 0.5 * ((2 * p1) + ((p2 - p0) * t)
+        + (((2 * p0) - (5 * p1) + (4 * p2) - p3) * t * t)
+        + (((3 * p1) - p0 - (3 * p2) + p3) * t * t * t));
+    for (let i = 0; i < n; i += 1) {
+        const p0 = points[(i - 1 + n) % n];
+        const p1 = points[i];
+        const p2 = points[(i + 1) % n];
+        const p3 = points[(i + 2) % n];
+        for (let k = 0; k < per; k += 1) {
+            const t = k / per;
+            out.push([c(p0[0], p1[0], p2[0], p3[0], t), c(p0[1], p1[1], p2[1], p3[1], t)]);
+        }
     }
-    return best + tarnShoreInset(x, z);
+    return out;
 }
 
 /**
- * The tarn's carve at (x, z) over a `ground` height there, world units (<= 0; 0 outside it). The
- * bowl's wall is the north lake's power ramp (it CUTS the water plane, so the waterline follows
- * the meander rather than the mesh), pulling the ground down toward the absolute floor.
+ * A closed polyline cut into chunks of consecutive segments, each with its bounding box, so a
+ * distance query can skip the chunks that cannot hold the nearest point (the tarn's plate bake
+ * asks some hundred thousand of them).
+ */
+function chunkedPolyline(poly, per = 12) {
+    const chunks = [];
+    for (let start = 0; start < poly.length; start += per) {
+        const end = Math.min(poly.length, start + per);
+        let x0 = Infinity;
+        let x1 = -Infinity;
+        let z0 = Infinity;
+        let z1 = -Infinity;
+        // Segment k runs from point k - 1 (the last for k = 0) to point k.
+        for (let k = start; k < end; k += 1) {
+            for (const p of [poly[k], poly[(k - 1 + poly.length) % poly.length]]) {
+                x0 = Math.min(x0, p[0]);
+                x1 = Math.max(x1, p[0]);
+                z0 = Math.min(z0, p[1]);
+                z1 = Math.max(z1, p[1]);
+            }
+        }
+        chunks.push({
+            start, end, x0, x1, z0, z1,
+        });
+    }
+    return { poly, chunks };
+}
+
+/** Signed distance (u) from (x, z) to a chunked closed polyline: negative inside it. */
+function polylineDistance(line, x, z) {
+    const { poly, chunks } = line;
+    const n = poly.length;
+    let best = Infinity;
+    let inside = false;
+    for (let c = 0; c < chunks.length; c += 1) {
+        const ch = chunks[c];
+        const ox = Math.max(ch.x0 - x, 0, x - ch.x1);
+        const oz = Math.max(ch.z0 - z, 0, z - ch.z1);
+        const near = (ox * ox) + (oz * oz) < best;
+        // A crossing to the right of the point can only come from a chunk that spans its z and
+        // reaches past its x.
+        const crosses = z >= ch.z0 && z <= ch.z1 && x <= ch.x1;
+        if (!near && !crosses) continue;
+        for (let k = ch.start; k < ch.end; k += 1) {
+            const a = poly[(k - 1 + n) % n];
+            const ax = a[0];
+            const az = a[1];
+            const ex = poly[k][0] - ax;
+            const ez = poly[k][1] - az;
+            if (near) {
+                const t = Math.max(0, Math.min(1, (((x - ax) * ex) + ((z - az) * ez)) / ((ex * ex) + (ez * ez))));
+                const dx = x - (ax + (ex * t));
+                const dz = z - (az + (ez * t));
+                best = Math.min(best, (dx * dx) + (dz * dz));
+            }
+            if (crosses && (az > z) !== ((az + ez) > z) && x < ((ex * (z - az)) / ez) + ax) inside = !inside;
+        }
+    }
+    return inside ? -Math.sqrt(best) : Math.sqrt(best);
+}
+
+const TARN_SHORE = chunkedPolyline(closedCurve(ODYSSEY_TARN.outline, 6));
+const TARN_ISLET = chunkedPolyline(closedCurve(ODYSSEY_TARN.islet, 5));
+/** How far the ragged line can stand from the drawn one (u). */
+const TARN_RAGGED_REACH = ODYSSEY_TARN.ragged[0] + ODYSSEY_TARN.ragged[1];
+/** Beyond this distance from the drawn line nothing of the tarn is left (u). */
+const TARN_REACH = ODYSSEY_TARN.bank + TARN_RAGGED_REACH;
+
+/**
+ * The square the tarn's profile lives in, [x0, x1, z0, z1]: outside it the ground is the
+ * meadow's own. (The sculpt plate's bake, the water's mesh and the ground's paint read it.)
+ */
+export const ODYSSEY_TARN_BOX = Object.freeze(TARN_SHORE.poly.reduce((box, [x, z]) => [
+    Math.min(box[0], x - TARN_REACH), Math.max(box[1], x + TARN_REACH),
+    Math.min(box[2], z - TARN_REACH), Math.max(box[3], z + TARN_REACH),
+], [Infinity, -Infinity, Infinity, -Infinity]));
+
+/** The drawn shore and the islet's, as dense closed polylines of [x, z] (before the ragged noise). */
+export function odysseyTarnLines() {
+    return { shore: TARN_SHORE.poly, islet: TARN_ISLET.poly };
+}
+
+/**
+ * THE TARN'S PLATE (2026-11-20): the tarn's form at ~0.6 u over ODYSSEY_TARN_BOX, its own small
+ * texture (bakeTarnPlateData), texel centres on the box's grid. The ground's shader takes the
+ * tarn from it EXACTLY, whatever the macro and relief plates draw under it (see
+ * odysseyTarnProfile): before, the tarn's carve rode on the shared sculpt plate as a delta from
+ * the analytic ground, and the plates the shader rebuilds that ground from stand up to a unit off
+ * it, which on a shelf sloping 1 in 10 moved the waterline by several units, in teeth.
+ */
+export const ODYSSEY_TARN_PLATE = Object.freeze({
+    box: ODYSSEY_TARN_BOX,
+    resX: 512,
+    resZ: Math.round(512 * ((ODYSSEY_TARN_BOX[3] - ODYSSEY_TARN_BOX[2]) / (ODYSSEY_TARN_BOX[1] - ODYSSEY_TARN_BOX[0]))),
+});
+
+function tarnRagged(x, z) {
+    const T = ODYSSEY_TARN;
+    return ((valueNoise((x / T.raggedCells[0]) + 13.1, (z / T.raggedCells[0]) - 41.7) - 0.5) * 2 * T.ragged[0])
+        + ((valueNoise((x / T.raggedCells[1]) - 27.4, (z / T.raggedCells[1]) + 8.3) - 0.5) * 2 * T.ragged[1]);
+}
+
+/**
+ * Distance (u) from (x, z) to the tarn's waterline, the ragged noise included: negative in the
+ * water, positive on land (the islet is land). Outside the tarn's box it is the reach plus the
+ * way to the box, a lower bound that keeps growing (not the true distance).
+ * @param {number} x
+ * @param {number} z
+ */
+export function odysseyTarnDistance(x, z) {
+    const B = ODYSSEY_TARN_BOX;
+    // Outside the box: at least the reach, growing with the way out (so a threshold on the
+    // distance, or on odysseyTarnRn, can never cover the rest of the island).
+    if (x <= B[0] || x >= B[1] || z <= B[2] || z >= B[3]) {
+        return TARN_REACH + Math.hypot(Math.max(B[0] - x, 0, x - B[1]), Math.max(B[2] - z, 0, z - B[3]));
+    }
+    const n = tarnRagged(x, z);
+    const d = polylineDistance(TARN_SHORE, x, z) + n;
+    if (d > 0) return d;
+    // In the water: the islet's shore is a waterline too.
+    return Math.max(d, -(polylineDistance(TARN_ISLET, x, z) + n));
+}
+
+/**
+ * Normalized tarn distance: < 1 in the water, 1 on the waterline, `rnUnit` world units a step
+ * beyond it (the measure the forest's clearing reads; see odysseyTarnDistance outside the box).
+ */
+export function odysseyTarnRn(x, z) {
+    return 1 + (odysseyTarnDistance(x, z) / ODYSSEY_TARN.rnUnit);
+}
+
+/** Smootherstep on 0..1: no kink in the slope at either end. */
+function tarnEase(v) {
+    const t = Math.max(0, Math.min(1, v));
+    return t * t * t * ((t * ((t * 6) - 15)) + 10);
+}
+
+/**
+ * THE TARN AT (x, z), over the `ground` the rest of the field draws there: the drawn height is
+ * `ground * (1 - weight) + target * weight`. In the water and on the islet the weight is 1 and the
+ * target is the profile's own height (shelf, drop and rolling floor under the water; ODYSSEY_TARN);
+ * on the bank the target is the beach and the weight eases from 1 at the waterline to 0 at
+ * `bank` units into the meadow. Also `d`, the distance to the waterline (odysseyTarnDistance),
+ * and `flat`, how flat the meadow lies by the water there (1 on the flats).
+ * @param {number} x
+ * @param {number} z
+ * @param {number} ground
+ * @returns {{target: number, weight: number, d: number, flat: number}}
+ */
+export function odysseyTarnProfile(x, z, ground) {
+    const T = ODYSSEY_TARN;
+    const d = odysseyTarnDistance(x, z);
+    if (d >= T.bank) {
+        return {
+            target: ground, weight: 0, d, flat: 0,
+        };
+    }
+    // How flat the meadow lies by the water here: 1 on the flats, 0 under a rising bank.
+    const flat = 1 - smoothstepRange(T.shelfBank[0], T.shelfBank[1], ground - T.waterY);
+    const slope = T.shelfSlope[0] + ((T.shelfSlope[1] - T.shelfSlope[0]) * flat);
+    if (d <= 0) {
+        const s = -d;
+        const shelf = (T.shelf[0] + ((T.shelf[1] - T.shelf[0]) * flat))
+            * (0.75 + (0.5 * valueNoise((x / 27) + 3.9, (z / 27) - 6.2)));
+        const floor = T.floor
+            + ((valueNoise((x / 38) + 5.3, (z / 38) - 2.1) - 0.5) * 2 * T.roll)
+            + ((valueNoise((x / 15) - 9.7, (z / 15) + 4.4) - 0.5) * 0.5);
+        const lip = slope * shelf;
+        const depth = (slope * Math.min(s, shelf)) + (Math.max(floor - lip, 0) * tarnEase((s - (shelf * 0.7)) / T.drop));
+        return {
+            target: Math.max(T.waterY - depth, T.floorY), weight: 1, d, flat,
+        };
+    }
+    let target = T.waterY + Math.min(slope * d, T.beachRise);
+    let weight = 1 - tarnEase(d / T.bank);
+    // The islet's back: the ground rises from its shore toward its middle.
+    const inIslet = -polylineDistance(TARN_ISLET, x, z);
+    if (inIslet > -TARN_RAGGED_REACH) {
+        const back = T.waterY + (T.isletRise * smoothstepRange(0, 4.5, inIslet + tarnRagged(x, z)));
+        if (back > (ground * (1 - weight)) + (target * weight)) {
+            target = back;
+            weight = 1;
+        }
+    }
+    return {
+        target, weight, d, flat,
+    };
+}
+
+/**
+ * The tarn's carve at (x, z) over a `ground` height there, world units (0 beyond the bank): the
+ * profile's height less the ground's (odysseyTarnProfile).
  * @param {number} x
  * @param {number} z
  * @param {number} ground the height the rest of the field draws here
  * @returns {number}
  */
 export function odysseyTarnCarve(x, z, ground) {
-    let nearest = Infinity;
-    for (let i = 0; i < ODYSSEY_TARN.lobes.length; i += 1) {
-        const lb = ODYSSEY_TARN.lobes[i];
-        const lx = (x - lb.x) / lb.rx;
-        const lz = (z - lb.z) / lb.rz;
-        nearest = Math.min(nearest, (lx * lx) + (lz * lz));
-    }
-    // Exact reject: the inset is strictly positive, so raw rn >= 1 is outside the carve.
-    if (nearest >= 1) return 0;
-    const inset = tarnShoreInset(x, z);
-    let wall = 0;
-    for (let i = 0; i < ODYSSEY_TARN.lobes.length; i += 1) {
-        const lb = ODYSSEY_TARN.lobes[i];
-        const lx = (x - lb.x) / lb.rx;
-        const lz = (z - lb.z) / lb.rz;
-        const rn = Math.sqrt((lx * lx) + (lz * lz)) + inset;
-        const t = Math.max(0, Math.min(1, (1 - rn) / (1 - TARN_WALL_START)));
-        wall = smoothMax(wall, t ** TARN_WALL_POW, 0.12);
-    }
-    wall = Math.min(1, wall);
-    return (Math.min(ODYSSEY_TARN.floorY, ground) - ground) * wall;
+    const p = odysseyTarnProfile(x, z, ground);
+    return (p.target - ground) * p.weight;
 }
 
 /**
- * THE SCULPT PLATE: one ~1.8 u plate (`bakeSculptPlateData`) for the two places the 8.8 u relief
- * cannot hold the form the eye needs — the hero summit (odysseySummitSculpt) and the tarn
- * (odysseyTarnCarve). A square round both; its border is outside either's reach, so a clamped
- * sampler reads 0 everywhere else.
+ * THE SCULPT PLATE: one ~1.8 u plate (`bakeSculptPlateData`) for the place the 8.8 u relief
+ * cannot hold the form the eye needs: the hero summit (odysseySummitSculpt). Its border is
+ * outside the summit's reach, so a clamped sampler reads 0 everywhere else. (It carried the tarn
+ * too until 2026-11-20; the tarn has its own plate now, ODYSSEY_TARN_PLATE.)
  */
 export const ODYSSEY_SCULPT_PLATE = Object.freeze({
     x: -182.7,
@@ -1087,8 +1294,8 @@ export const ODYSSEY_SCULPT_PLATE = Object.freeze({
 });
 
 /**
- * What the sculpt plate holds at (x, z): the summit's sculpt plus the tarn's carve, over the
- * `ground` the macro and relief draw there.
+ * The sculpted part of the drawn height at (x, z), over the `ground` the macro and relief draw
+ * there: the summit's sculpt (the sculpt plate) and the tarn's carve (the tarn's plate).
  * @param {number} x
  * @param {number} z
  * @param {number} ground
