@@ -363,6 +363,9 @@ export function foldBirdNode({
     };
 }
 
+/** How much of the sun's hue the plumage takes (the rest of its light is the sun's brightness, uncoloured). */
+export const BIRD_SUN_HUE = 0.5;
+
 /**
  * The birds' light (TSL colour node), the act's as on the eagle: the sun from behind the camera's
  * shoulder on the backs and the near wings, the sky from above, what lies below bounced up under
@@ -398,7 +401,13 @@ export function birdColourNode({
         const skyUp = clamp(N.y, 0.0, 1.0);
         const groundUp = clamp(N.y.negate(), 0.0, 1.0);
         const ambient = haze.mul(skyUp.mul(0.22).add(0.18)).add(clamp(bounce, 0.0, 1.0).mul(groundUp.mul(0.45)));
-        const lit = albedo.mul(sunColour.mul(ndl.mul(0.92)).add(ambient));
+        // A low sun is orange, and plumage lit by that alone loses its own colours (a greylag's
+        // grey forewing went cream, a griffon's sand went orange: 2026-11-20, once the birds flew
+        // near enough to see). Feathers are lit by the whole sky as well as the disc: the sun on
+        // them keeps its brightness and BIRD_SUN_HUE of its hue.
+        const sunGrey = dot(sunColour, vec3(0.2126, 0.7152, 0.0722));
+        const sun = mix(vec3(sunGrey), sunColour, BIRD_SUN_HUE);
+        const lit = albedo.mul(sun.mul(ndl.mul(0.92)).add(ambient));
         const edge = float(1.0).sub(abs(dot(N, V)));
         const rim = haze.mul(edge.mul(edge).mul(edge).mul(thin.mul(0.14).add(0.06)))
             .mul(float(1).sub(far.x));

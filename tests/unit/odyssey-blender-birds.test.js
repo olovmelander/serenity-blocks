@@ -117,7 +117,9 @@ describe('the Blender birds (models)', () => {
             expect(m.name).toBe(name);
             expect(m.span).toBeCloseTo(span, 1);
             expect(m.triangleCount).toBeGreaterThanOrEqual(100);
-            expect(m.triangleCount).toBeLessThanOrEqual(400);
+            // (The goose is seen 100-220 px across since the skein flies the foot of the wall,
+            // 2026-11-20, and is built finer for it; the others for some tens of pixels.)
+            expect(m.triangleCount).toBeLessThanOrEqual(name === 'goose' ? 900 : 400);
             expect(m.index.length).toBe(m.triangleCount * 3);
             expect(m.positions.length).toBe(m.vertexCount * 3);
             ['normals', 'top', 'under'].forEach((k) => expect(m[k].length, k).toBe(m.vertexCount * 3));
@@ -207,7 +209,7 @@ describe('the Blender birds (models)', () => {
         expect(luminance(covert)).toBeGreaterThan(luminance(flightV) * 4);
         expect(luminance(vec(vulture.top, nearest(vulture, [0, 0.07, 0.36])))).toBeGreaterThan(luminance(covert));
         // Goose: grey-brown, an orange bill, a pale forewing over dark flight feathers.
-        const bill = vec(goose.top, nearest(goose, [0, -0.015, 0.47]));
+        const bill = vec(goose.top, nearest(goose, [0, -0.019, 0.5]));
         expect(bill[0]).toBeGreaterThan(bill[2] * 3);
         const fore = vec(goose.top, nearest(goose, [0.2, 0.04, 0.11]));
         const flightF = vec(goose.top, nearest(goose, [0.2, 0.04, -0.19]));
@@ -432,7 +434,8 @@ describe('natural flight (2026-11-03)', () => {
 
     it('starts and ends a gull\'s bout at mid-upstroke, where the beat meets the glide', () => {
         lanesOf(FLIGHT_KIND.GULL).slice(0, 4).forEach((lane) => {
-            let was = 0;
+            // (A bout may be under way as the clock starts: only the ones that begin are read.)
+            let was = birdBeatOf(lane, -1 / 120).weight;
             let starts = 0;
             for (let t = 0; t < 120; t += 1 / 120) {
                 const { weight, phase } = birdBeatOf(lane, t);
@@ -486,8 +489,9 @@ describe('natural flight (2026-11-03)', () => {
         // Each rank is a little later than the one ahead of it.
         const t = 44;
         const phase = (lane) => birdBeatOf(lane, t).phase;
-        geese.slice(1).forEach((lane) => {
-            const lead = geese.find((g) => g.cx === lane.cx - 1);
+        // (Two skeins fly the line: a rank follows the one ahead of it in its own skein.)
+        geese.filter((lane) => lane.cx > 0).forEach((lane) => {
+            const lead = geese.find((g) => g.cx === lane.cx - 1 && g.phase === lane.phase);
             const lag = phase(lead) - phase(lane);
             expect(lag).toBeGreaterThan(0.05);
             expect(lag).toBeLessThan(0.35);
@@ -559,7 +563,9 @@ describe('seen from the rail (the 2026-11-03 visibility check)', () => {
     it('draws each bird large enough to read, and keeps their sizes true to each other', () => {
         const span = (id) => ODYSSEY_FLIGHTS.find((f) => f.id === id).span;
         // Gulls 1.25x, swallows 1.54x, geese 1.3x what they were: measured in the game, specks.
-        expect(span('gulls')).toBeCloseTo(5.75, 2);
+        // (The gulls again, 2026-11-20: 7.3 is 5.2 times life, as the goose, the eagle and the
+        // vultures are drawn; at 5.75 the gull was the smallest of them against its own size.)
+        expect(span('gulls')).toBeCloseTo(7.3, 2);
         expect(span('swallows')).toBeCloseTo(2.0, 2);
         expect(span('geese')).toBeCloseTo(8.6, 2);
         // A swallow stays a small bird beside a gull (life: 0.24), a goose a big one.
@@ -608,8 +614,9 @@ describe('the lowland flights draw', () => {
 
     it('shows only the flocks whose window is open', () => {
         const flights = createOdysseyFlights();
+        // (The skein is there from the shore: a far V across the foot of the massif.)
         flights.update(9, 0.15);
-        expect(flights.meshes.map((m) => m.visible)).toEqual([true, false, false]);
+        expect(flights.meshes.map((m) => m.visible)).toEqual([true, false, true]);
         flights.update(9, 0.30);
         expect(flights.meshes.map((m) => m.visible)).toEqual([false, true, true]);
         flights.update(9, 0.5);

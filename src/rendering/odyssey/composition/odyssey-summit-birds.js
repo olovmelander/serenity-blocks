@@ -22,10 +22,9 @@
  * and its body rises against a beat. They beat a quarter of the time before. `summitWingPose` and
  * `summitFrameAt` are the vertex stage's CPU twins.
  *
- * WHERE: the kettle's centre and lanes were solved on the in-game camera (BEYOND profile, drift
- * pinned) so it is in frame at every station from L29 to L34, clears the hero cone (>= 30 u) and
- * never comes within ~85 u of the eye; the rail only crosses above it (>= 120 u) after the flock
- * has gone. `odyssey-summit-birds.test.js` holds the terrain and rail clearances.
+ * WHERE: a column beside the wall, leaning with it (SUMMIT_BIRDS below: sited against the
+ * orbs' close-ups, 2026-11-20). `odyssey-summit-birds.test.js` holds the terrain and rail
+ * clearances, tests/unit/odyssey-bird-staging.test.js what each seat sees.
  *
  * WHY A COMPOSITION ELEMENT (the whale pass's reasoning, ADR-0017): a one-off staged moment on
  * the rail, not world content — the world renderer stays untouched.
@@ -45,12 +44,27 @@ import {
     birdWingPoseAt, decodeBirdModel, foldBirdNode, setBirdTemplate, tailBirdNode,
 } from './odyssey-bird-rig.js';
 
-/** The kettle: centre of the thermal, lane radii and heights, and one lap's period. */
+/**
+ * The kettle: the middle of the thermal, how it leans, lane radii and heights, one lap's period.
+ *
+ * THE COLUMN (2026-11-20). The kettle was a ring round the summit at one height (centre 0, 940,
+ * -1055; lanes 55-95 u out, 22 u up and down), sited for the travelling rail camera: from the
+ * orbs' close-ups it was out of frame at L29 and L30 (two to three hundred units overhead) and
+ * sat up under the orb panel from L31. A thermal is a column, and a kettle fills it from the
+ * bottom to the top: the birds now turn at every height from the foot of the climb to its last
+ * orb (`heightSpread` either side of `centre`), in a column that leans as the wall does
+ * (`lean`: how far its middle moves east and south for each unit of height), west of the rail.
+ * Sited by search against the close-ups: every seat from L28 to L32 has two or three vultures
+ * in the open left of its frame the whole time (73-97 px across), L33 four fifths of it. Clear
+ * of the mountain by 30 u, of the rail by 60 and of every seat's eye by 50.
+ * tests/unit/odyssey-bird-staging.test.js.
+ */
 export const SUMMIT_BIRDS = Object.freeze({
-    count: 12,
-    centre: Object.freeze([0, 940, -1055]),
-    radius: Object.freeze([55, 95]),
-    heightSpread: 22,
+    count: 14,
+    centre: Object.freeze([-286, 795, -894]),
+    lean: Object.freeze([0.066, -0.838]),
+    radius: Object.freeze([36, 45]),
+    heightSpread: 255,
     lapSeconds: 44,
     /**
      * A bird's wingspan, world units: 13.7 (5.3x life; 11.4 until the 2026-11-03 visibility check,
@@ -60,13 +74,15 @@ export const SUMMIT_BIRDS = Object.freeze({
     /** Roll into the turn, radians (each bird tilts in and out of it: SUMMIT_SOAR.tilt). */
     bank: 0.32,
     /**
-     * [fade in from, fully in by, fade out from, gone by] in JOURNEY progress. The fade out
-     * waits until the climb has carried the whole kettle out of frame (p 0.678 on the real
-     * camera; it began at 0.665 with a quarter of it still in view) — see
-     * odyssey-act2-fade-out-of-view.test.js. (0.674 until 2026-11-02: L33's view now looks down
-     * past the horn, over the kettle, and lets it go ~0.005 later.)
+     * [fade in from, fully in by, fade out from, gone by] in JOURNEY progress. In with the shore
+     * itself (the breach, where the whole island appears): from there the column is a ring of
+     * specks high on the massif, 800 u off, and it was in the rail camera's frame all the way up,
+     * so the old ramp (0.36-0.40) grew the birds in view on the first of the climb. Out between
+     * L33 and L34: the rail camera loses the column at p 0.603, L33's close-up (p 0.653) still
+     * has its top birds, L34's has none. odyssey-bird-staging.test.js and
+     * odyssey-act2-fade-out-of-view.test.js hold both views.
      */
-    window: Object.freeze([0.36, 0.40, 0.679, 0.709]),
+    window: Object.freeze([0.132, 0.142, 0.668, 0.695]),
 });
 
 /**
@@ -155,10 +171,11 @@ function laneAngle(lane, t, config) {
 export function summitBirdPositionAt(lane, t, config = SUMMIT_BIRDS) {
     const a = laneAngle(lane, t, config);
     const bob = Math.sin((t * 0.23) + (lane.seed * 9)) * 3;
+    const [leanX, leanZ] = config.lean || [0, 0];
     return {
-        x: config.centre[0] + (Math.cos(a) * lane.radius),
+        x: config.centre[0] + (Math.cos(a) * lane.radius) + (leanX * lane.height),
         y: config.centre[1] + lane.height + bob,
-        z: config.centre[2] + (Math.sin(a) * lane.radius),
+        z: config.centre[2] + (Math.sin(a) * lane.radius) + (leanZ * lane.height),
     };
 }
 
@@ -242,7 +259,11 @@ export function createSummitBirds({
         const up = up0.mul(cp).sub(forward0.mul(sp)).toVar();
         const forward = forward0.mul(cp).add(up0.mul(sp)).toVar();
         const bob = sin(uTime.mul(0.23).add(seed.mul(9.0))).mul(3.0);
-        const seat = vec3(...config.centre).add(radial.mul(aLane.y)).add(vec3(0, 1, 0).mul(aLane.z.add(bob))).toVar();
+        // (The column leans: a lane's middle moves with its height.)
+        const [leanX, leanZ] = config.lean || [0, 0];
+        const seat = vec3(...config.centre).add(radial.mul(aLane.y)).add(vec3(0, 1, 0).mul(aLane.z.add(bob)))
+            .add(vec3(leanX, 0, leanZ).mul(aLane.z))
+            .toVar();
 
         // SOARING (the twin: summitWingPose): wings held in a shallow dihedral that flexes on the
         // air, the fingers curled up and bending with the gusts; a bout of slow beats now and

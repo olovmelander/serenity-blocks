@@ -505,3 +505,134 @@ Look through `seat-L19` and scrub frames 150-200.
 - **Bigger.** It could cross the top of the view above the rail at two or three seats (L19, L22).
   It would then be about 25 u off in the frame (~95 px), 15 u from the next seat's eye. That is a
   stronger moment, over the middle of the view.
+
+## Staged for the orb close-ups (2026-11-20)
+
+Asked for by Olov: "We need to improve some of the birds, animation and composition in odyssey
+mode as well." The audit below found that the composition was the part that failed, and why.
+
+### What a player actually looks at
+
+A player rests in an orb's **close-up**: the eye 10 u south of the orb and 2 u over it, looking
+at it, so due north and about 12 degrees down, with the HUD along the top 75 px of the frame and
+the orb's panel over its right fifth. Every earlier pass sited the birds, and measured them,
+against the **travelling rail camera** (the tests' "parked view" is that camera stopped at the
+orb's park, not the close-up the board then moves to). The two are different pictures.
+
+Measured in the real game (headless Chrome, 1920 x 1080, High, the orb's own selection flow, a
+save with 40 orbs cleared): for each seat, over 208 s of the board's clock, the share of the time
+a bird of the kind is in the part of the frame the UI leaves free, and how big the biggest is
+(wingtip to wingtip, pixels).
+
+| | before | after |
+|---|---|---|
+| Gulls, L11-L13 | 100 %, 37-49 px, up at the top right | 100 %, 90-97 px |
+| Gulls, L14 / L15 / L16 | 84 % / 25 % / 0 (behind the panel) | 100 %, 92-117 px |
+| Geese, L11-L27 | 0-6 % (under the HUD, 12 px) | 94 % at L12 (17 px), 65 % at L18 (25 px), 41 % at L22 (41 px), 32 % at L24 (57 px), 21 % at L26-L27 (94-99 px) |
+| Eagle, every seat | 0 (20-50 degrees over the top of the frame) | 100 % from L12 to L24 (21 to 74 px), 96 % at L26 and 92 % at L27 (120 px) |
+| Vultures, L28 / L29 / L30 | 0 / 0 / 0 | 100 %, 78-100 px |
+| Vultures, L31-L33 | 100 %, 44-77 px, up under the panel | 100 % at L31-L32 (72-80 px), 70 % at L33, on the open left |
+| No bird at all in frame | L25, L26, L27, L29, L30 | none |
+
+![L13 before and after: the gulls](images/odyssey-birds-staging-2026-11-20/gulls-before-after.jpg)
+
+![L26 before and after: a skein crossing the foot of the wall, the eagle on the left](images/odyssey-birds-staging-2026-11-20/wall-foot-before-after.jpg)
+
+![L29 and L31 before (left) and after: the vultures' column](images/odyssey-birds-staging-2026-11-20/vultures-before-after.jpg)
+
+### How each kind is sited now
+
+A close-up looks north into rising ground, so what it shows of the air is a wedge: from the
+ground up to about 15 degrees over the eye, between the rail (which runs up the left of the
+frame on the shore and the meadow, and straight up the middle at the wall) and the panel. Each
+kind was put into that wedge by search or by hand in a siting lab (below), under clearances from
+the rail, every seat's eye, the ground, the water and the tree crowns.
+
+- **Gulls** (`ODYSSEY_FLIGHTS` gulls, `sites`): twelve loops chosen from some 3,800 tried, each
+  given by its numbers. Some skim the water under the rail (seen from above, white on blue),
+  some wheel over the beach and the forest's edge. They are drawn 7.3 u across (5.75): 5.2 times
+  life, as the goose, the eagle and the vultures already were. Their loops' drift is 8 u (22).
+- **Geese**: the line was 200-500 u north and 150-230 u over the eyes. It now crosses low along
+  the foot of the wall, under the rail where the rail starts up it. Two skeins fly it (nine and
+  seven geese, `skeins`), half a period apart, the second 30 u north and 8 u higher: one minute
+  a crossing, 31 u/s. Both ends of the line are outside every close-up's frame.
+- **The eagle**: its thermal stood at (-96, 612, -616). It now turns low over the forest's edge
+  at the foot of the wall, west of the rail (the rail is a hundred units overhead there), under
+  the skeins' line. From the shore it is a speck turning at the massif's foot that the journey
+  walks up to.
+- **The vultures**: the kettle was a ring round the summit at one height. It is now a column
+  (`heightSpread` 255 u either side of its middle, fourteen birds) that leans as the wall does
+  (`lean`), west of the rail: a thermal filled from its foot to its top, so every seat of the
+  climb has two or three birds at its own height.
+- **When they are drawn**: all four come in with the shore itself (the breach, where the whole
+  island appears), so nothing grows in view on the way; each goes between two orbs neither of
+  whose close-ups, nor the rail camera, has it in frame.
+
+![The eagle from L26, and a skein passing under L27](images/odyssey-birds-staging-2026-11-20/eagle-and-skein.jpg)
+
+### The goose, rebuilt for the near view
+
+The skein used to be 9-35 px a bird; now the wall's first seats see a goose 100-220 px across,
+from level with it and from above, and at that size the old model was a smooth, paddle-winged
+toy. `odyssey_birds.py` builds a finer one (814 triangles, was 326): a long tapered hand, the
+bar of pale covert tips across the wing, the flight feathers told one from the next (every other
+station a shade paler), the back's bars, the white band over the tail, a rounded head with its
+eye, a heavier bill. The hinges and their bands are unchanged, so the keyed beat fits as it did
+(worst stretch 1.32, squash 0.58). The gull, the swallow and the vulture are byte for byte what
+they were.
+
+![The goose in the Blender previews, before (top) and after](images/odyssey-birds-staging-2026-11-20/goose-model.jpg)
+
+![Geese passing under the L27 seat, x3](images/odyssey-birds-staging-2026-11-20/geese-close.jpg)
+
+**The light.** Near, in the afternoon's low sun, plumage lit by the sun's colour alone lost its
+own (the grey forewing went cream, a griffon's sand orange). The sun on feathers now keeps its
+brightness and half its hue (`BIRD_SUN_HUE` in odyssey-bird-rig.js: feathers are lit by the whole
+sky as well as the disc). By day nothing changes.
+
+### Tools
+
+Scratch tools of the session (recipes, not files in the repo):
+
+- **The game's own view**: the real game in a private headless Chrome over CDP, a save seeded
+  with `odysseyState.completeLevel` for orbs 1-40, then `boardController.travelToLevel(id)` (the
+  real selection flow, ending in the close-up), the board clock set with `board.time = t`.
+- **The audit**: run in the page at each seat: the three bird modules imported, every bird's
+  place over 208 s projected with the live camera's own matrices, tallied in the free frame.
+- **The siting lab** (node): the seats' cameras dumped from the game, the CPU height mirror, the
+  forest's tree list and the live rail. It reproduced the game's audit to the pixel before it
+  was used to search. The eagle's first search weighted the wrong seats and put it at the
+  frame's left edge; looking at the frames, then a hand-placed thermal under the climbing rail,
+  did better than the search.
+
+### Tests
+
+- `tests/unit/odyssey-bird-staging.test.js` (new, 16): for each kind, what every seat it is
+  meant for sees in the free frame (share of the time, how many, how big), through the seat's
+  own lens and the narrowest; the clearances; that no goose appears or goes inside a close-up;
+  that no window fades with a bird in a seat's frame or the rail camera's; and that every orb
+  from L11 to L33 has a bird of 24 px or more in its free frame nine tenths of the time (L33
+  six tenths).
+- Twelve older tests pinned the old places, sizes and windows and were re-pinned on purpose
+  (`odyssey-act2-life`, `odyssey-act2-fade-out-of-view`, `odyssey-blender-birds`,
+  `odyssey-summit-birds`); one of them (a gull's bout) read a bout already under way at clock 0
+  as a start, which the new seeds exposed.
+
+### Not verified, and left for the owner
+
+- Nobody has watched the new staging move for long: it was judged from stills, the audit's
+  numbers, one eight-frame strip and the playground's beat strips.
+- **Cost** was not measured again. The eagle (one skinned draw) and the vultures (one draw, 14 x
+  388 triangles) are now drawn from the shore, not only near their old windows; the geese are
+  16 x 814 triangles (were 9 x 326). No new material, pipeline, texture or pass.
+- The west end of the skeins' line lies in the travelling rail camera's frame over the meadow (as
+  the old line's did): a goose sets out there 650-980 u off, a speck in the haze.
+- The skeins pass 9-12 u over the eagle's thermal. They never touch; from the south they cross
+  the same patch of the frame for a second or two a crossing.
+- At L33 the vultures are in frame two thirds of the time (the column's top); L34 has none.
+- A close-up's lens is the one the camera carried there (57-75 degrees by orb): the numbers above
+  are for arriving from the orb before.
+- The swallows (13-28 px from their seats, with the fly-by), the pond's swans and heron, and
+  the butterflies were not touched.
+- Gulls are still small birds in a big picture at most moments (30-60 px seen obliquely); the
+  biggest moments (150-200 px) happen at the frame's edges.

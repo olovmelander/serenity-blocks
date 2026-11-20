@@ -31,7 +31,9 @@ import {
 import {
     ODYSSEY_FLIGHTS, flightPositionAt, resolveFlightLanes,
 } from '../../src/rendering/odyssey/composition/odyssey-flights.js';
-import { SUMMIT_BIRDS } from '../../src/rendering/odyssey/composition/odyssey-summit-birds.js';
+import {
+    SUMMIT_BIRDS, resolveSummitBirdLanes, summitBirdPositionAt,
+} from '../../src/rendering/odyssey/composition/odyssey-summit-birds.js';
 
 const FRAME = 1.1;
 const LAG = 0.001;
@@ -180,10 +182,11 @@ describe('Act II set pieces fade only out of view (real camera, live spline, hei
     }
     const birdsInFrame = (camera) => loop.filter((pt) => inFrame(camera, pt)).length;
 
-    it('keeps the eagle full while L28 looks at it, and draws none at L29', () => {
-        const l28 = parkOf(rig, 28);
-        expect(eagleRevealAt(l28)).toBe(1);
-        expect(birdsInFrame(poseAt(rig, l28))).toBeGreaterThan(loop.length * 0.8);
+    it('keeps the eagle full at every park that has it in view, and draws none at L29', () => {
+        // (Its thermal stands at the foot of the wall since 2026-11-20: the rail camera has the
+        // whole of it in frame up the meadow, and loses it as the climb begins over it.)
+        [16, 20, 24, 26, 27].forEach((id) => expect(eagleRevealAt(parkOf(rig, id)), `L${id}`).toBe(1));
+        expect(birdsInFrame(poseAt(rig, parkOf(rig, 24)))).toBeGreaterThan(loop.length * 0.8);
         // Past it by L29: a parked orb never draws a bird it cannot see.
         expect(eagleRevealAt(parkOf(rig, 29))).toBe(0);
     });
@@ -236,24 +239,23 @@ describe('Act II set pieces fade only out of view (real camera, live spline, hei
             const seen = places.filter((pt) => pointSeen(camera, pt)).length;
             expect(seen, `geese seen at p=${p.toFixed(4)}`).toBe(0);
         }
-        // ...and they are there to be seen up the wall: the parked view at L27 holds the skein.
-        const l27 = poseAt(rig, parkOf(rig, 27));
-        expect(places.filter((pt) => pointSeen(l27, pt)).length).toBeGreaterThan(places.length * 0.3);
+        // ...and they are there to be seen on the way to the wall: the travelling view at L24's
+        // park holds the skein's line (it crosses the foot of the wall, under where the rail
+        // climbs; what the orbs' close-ups see of it: odyssey-bird-staging.test.js).
+        const l24 = poseAt(rig, parkOf(rig, 24));
+        expect(places.filter((pt) => pointSeen(l24, pt)).length).toBeGreaterThan(places.length * 0.3);
     });
 
     it('fades the summit kettle only once the climb has carried it out of view', () => {
-        // Every place a bird can be: all round the thermal, at both lane radii and both heights.
-        const [cx, cy, cz] = SUMMIT_BIRDS.centre;
+        // Every place a bird can be: each lane of the column, all round it (the column leans, so
+        // a lane's middle moves with its height).
         const places = [];
-        for (let deg = 0; deg < 360; deg += 10) {
-            SUMMIT_BIRDS.radius.forEach((r) => {
-                [-1, 1].forEach((h) => places.push(new THREE.Vector3(
-                    cx + (Math.cos(deg * DEG) * r),
-                    cy + (h * SUMMIT_BIRDS.heightSpread),
-                    cz + (Math.sin(deg * DEG) * r),
-                )));
-            });
-        }
+        resolveSummitBirdLanes().forEach((lane) => {
+            for (let t = 0; t < SUMMIT_BIRDS.lapSeconds * 1.3; t += 1.5) {
+                const q = summitBirdPositionAt(lane, t);
+                places.push(new THREE.Vector3(q.x, q.y, q.z));
+            }
+        });
         const { window } = SUMMIT_BIRDS;
         const [a, b] = fadeOutSpan((p) => windowWeight(window, p), window[1], rig.cp[5]);
         for (let p = a - LAG; p <= b; p += STEP) {

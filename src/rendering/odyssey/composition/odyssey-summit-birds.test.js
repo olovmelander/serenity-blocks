@@ -1,5 +1,6 @@
 /**
- * The summit birds (chapter 5): structure, staging, and the clearances the kettle was solved to.
+ * The summit birds (the vultures' column beside the wall): structure, staging, and the clearances
+ * the kettle was solved to.
  */
 import * as THREE from 'three/webgpu';
 import { describe, expect, it } from 'vitest';
@@ -7,6 +8,7 @@ import {
     SUMMIT_BIRDS,
     createSummitBirds,
     resolveSummitBirdLanes,
+    summitBirdPositionAt,
 } from './odyssey-summit-birds.js';
 import { getOdysseyPathPointAt } from '../path-utils.js';
 import { deriveOdysseyChapterPositions } from '../../../core/odyssey/data/odyssey-layout.js';
@@ -32,13 +34,15 @@ describe('odyssey summit birds', () => {
         birds.dispose();
     });
 
-    it('lives inside chapter 5 only: revealed by progress, gone before the sky darkens', () => {
+    it('is there from the shore to the top of the climb: revealed by progress, gone before the sky darkens', () => {
         const birds = createSummitBirds();
         const [inFrom, inTo, outFrom, outTo] = SUMMIT_BIRDS.window;
-        // The window sits inside chapter 5, after the 4->5 seam and before the stars come out.
-        expect(inFrom).toBeGreaterThan(CP[4]);
+        // It comes in with the island itself (the breach: from the shore the column is a ring of
+        // specks high on the massif) and goes before the stars come out.
+        expect(inFrom).toBeGreaterThan(CP[2] - 0.015);
+        expect(inTo).toBeLessThanOrEqual(CP[2]);
         expect(outTo).toBeLessThan(CP[5] - 0.04);
-        [[0.2, 0], [inFrom, 0], [inTo, 1], [0.55, 1], [outFrom, 1], [outTo, 0], [0.8, 0]].forEach(([p, want]) => {
+        [[0.1, 0], [inFrom, 0], [inTo, 1], [0.2, 1], [0.55, 1], [outFrom, 1], [outTo, 0], [0.8, 0]].forEach(([p, want]) => {
             birds.update(12, p);
             expect(birds.uniforms.uReveal.value, `reveal @p=${p}`).toBeCloseTo(want, 6);
             expect(birds.mesh.visible, `visible @p=${p}`).toBe(want > 0.01);
@@ -65,33 +69,24 @@ describe('odyssey summit birds', () => {
     });
 
     it('keeps the kettle clear of the mountain and of the rail while it is visible', () => {
-        const [cx, cy, cz] = SUMMIT_BIRDS.centre;
-        const lowest = cy - SUMMIT_BIRDS.heightSpread - 3; // the bob
-        // Terrain under every lane, all the way round.
-        const heights = [];
-        for (let a = 0; a < 48; a += 1) {
-            for (let lane = 0; lane < SUMMIT_BIRDS.radius.length; lane += 1) {
-                const r = SUMMIT_BIRDS.radius[lane];
-                heights.push(odysseyWorldHeight(
-                    cx + (Math.cos((a * Math.PI) / 24) * r),
-                    cz + (Math.sin((a * Math.PI) / 24) * r),
-                ));
-            }
-        }
-        const top = Math.max(...heights);
-        expect(lowest - top, `kettle floor ${lowest} over terrain ${top.toFixed(0)}`).toBeGreaterThan(25);
-
-        // The rail, across the window the flock is drawn in: no bird within 60 u of it.
-        const reach = SUMMIT_BIRDS.radius[1];
+        // Every bird on its own lane of the leaning column, all round it.
+        const lanes = resolveSummitBirdLanes();
         const [inFrom, , , outTo] = SUMMIT_BIRDS.window;
-        const centre = new THREE.Vector3(cx, cy, cz);
+        const rail = [];
+        for (let p = inFrom; p <= outTo; p += 0.001) rail.push(getOdysseyPathPointAt(p));
+        let floor = Infinity;
         let nearest = Infinity;
-        for (let p = inFrom; p <= outTo; p += 0.002) {
-            const pt = getOdysseyPathPointAt(p);
-            const horizontal = Math.max(0, Math.hypot(pt.x - centre.x, pt.z - centre.z) - reach);
-            const vertical = Math.max(0, Math.abs(pt.y - centre.y) - SUMMIT_BIRDS.heightSpread - 3);
-            nearest = Math.min(nearest, Math.hypot(horizontal, vertical));
-        }
-        expect(nearest, `nearest approach to the rail ${nearest.toFixed(0)} u`).toBeGreaterThan(60);
+        const at = new THREE.Vector3();
+        lanes.forEach((lane) => {
+            for (let t = 0; t < SUMMIT_BIRDS.lapSeconds * 1.3; t += 1) {
+                const q = summitBirdPositionAt(lane, t);
+                floor = Math.min(floor, q.y - odysseyWorldHeight(q.x, q.z));
+                at.set(q.x, q.y, q.z);
+                for (const pt of rail) nearest = Math.min(nearest, at.distanceTo(pt));
+            }
+        });
+        expect(floor, `lowest bird ${floor.toFixed(0)} u over the terrain`).toBeGreaterThan(25);
+        // The rail, across the window the flock is drawn in: no bird within 55 u of it.
+        expect(nearest, `nearest approach to the rail ${nearest.toFixed(0)} u`).toBeGreaterThan(55);
     });
 });
