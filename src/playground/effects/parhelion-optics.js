@@ -28,10 +28,12 @@ import {
     min,
     mix,
     round,
+    normalize,
     select,
     sign,
     sin,
     smoothstep,
+    sqrt,
     step,
     vec2,
     vec3,
@@ -131,6 +133,57 @@ export const phTone = /* @__PURE__ */ Fn(([c]) => {
     // vec3(mT, mT, mT), not vec3(mT): a select() lowered to a var loses the splat in r185 WGSL.
     return mix(s, vec3(mT, mT, mT), smoothstep(1.0, 3.0, m).mul(0.6));
 }).setLayout({ name: 'ph_tone', type: 'vec3', inputs: [v3('c')] });
+
+/**
+ * The night's light on anything (the living pass, 2026-11): the scene's own luminance carried
+ * on a moonlit duotone, deep navy in the shade to silver-blue in the light, with a quarter of
+ * the day's colour kept under it so the snow, the rock and the sky still differ. `night` 0 is
+ * the day untouched. Every surface ends with it, so a moonlit night costs one call a material.
+ */
+export const phNight = /* @__PURE__ */ Fn(([c, night]) => {
+    const l = clamp(dot(c, vec3(LUMA[0], LUMA[1], LUMA[2])), 0.0, 1.3);
+    const moon = mix(vec3(0.010, 0.017, 0.046), vec3(0.23, 0.35, 0.70), l.mul(sqrt(l)));
+    const kept = c.mul(vec3(0.22, 0.36, 0.72));
+    return mix(c, mix(moon, kept, 0.25), night);
+}).setLayout({ name: 'ph_night', type: 'vec3', inputs: [v3('c'), f('night')] });
+
+/**
+ * The two star lattices: cells a radian, light, and how steeply the light is dealt (the power
+ * of the hash, 16 or 12: a handful of bright stars and a dust of faint ones. A first try at the
+ * 8th and the 4th was a blizzard; gotcha #1411).
+ */
+const STAR_LAYERS = Object.freeze([
+    Object.freeze([29, 2.6, 16]),
+    Object.freeze([61, 0.85, 12]),
+]);
+
+/**
+ * Stars in a direction `d`: one a cell of a 3D lattice (no pole, no seam: gotcha #148), each a
+ * point about a pixel wide whatever the lens (`pix` is one pixel's angle), warm to blue-white,
+ * twinkling on the clock `tw`. The sky draws them at night; the Vigil Stone, which is a window
+ * on the night, holds them by day too. The hash is written out (no nested laid-out call).
+ */
+export const phStars = /* @__PURE__ */ Fn(([d, pix, tw]) => {
+    const acc = vec3(0.0).toVar();
+    STAR_LAYERS.forEach(([scale, gain, steep]) => {
+        // (steep: the power of the hash the light is dealt by.)
+        const cell = floor(d.mul(scale));
+        const p0 = fract(cell.mul(vec3(0.1031, 0.103, 0.0973)));
+        const p = p0.add(dot(p0, p0.yzx.add(33.33)));
+        const h = fract(p.x.add(p.y).mul(p.z));
+        const h2 = fract(p.x.add(p.z).mul(p.y));
+        const h3 = fract(p.y.add(p.z).mul(p.x));
+        const star = normalize(cell.add(vec3(h2, h3, fract(h.mul(57.3))).mul(0.56).add(0.22)));
+        const off = d.sub(star).div(pix.mul(1.05));
+        const h4 = h.mul(h).mul(h).mul(h);
+        const h8 = h4.mul(h4);
+        const light = steep === 16 ? h8.mul(h8) : h8.mul(h4);
+        const twinkle = sin(tw.mul(h2.mul(5.0).add(1.5)).add(h3.mul(40.0))).mul(0.3).add(0.7);
+        const tint = mix(vec3(1.0, 0.84, 0.66), vec3(0.74, 0.86, 1.0), h3);
+        acc.addAssign(tint.mul(exp(dot(off, off).negate()).mul(light).mul(twinkle).mul(gain)));
+    });
+    return acc;
+}).setLayout({ name: 'ph_stars', type: 'vec3', inputs: [v3('d'), f('pix'), f('tw')] });
 
 /** Static ±1 triangular dither (add /255 after the OETF). */
 export const phTriDither = /* @__PURE__ */ Fn(([fc]) => hash21(fc).add(hash21(fc.add(17.31))).sub(1.0))
@@ -404,7 +457,7 @@ export const MOUNTAINS = Object.freeze({
  * the foot of both ranges sinks into the horizon haze. `haze` is ph_haze for this direction,
  * `aa` one pixel's angle.
  */
-export const phRidge = /* @__PURE__ */ Fn(([az, el, sunward, laneW, haze, aa, phase, warmth]) => {
+export const phRidge = /* @__PURE__ */ Fn(([az, el, sunward, laneW, haze, aa, phase, warmth, alpen]) => {
     const lowSun = lowOf(warmth);
     const left = smoothstep(-0.1, -0.6, az).mul(MOUNTAINS.LEFT);
     const kF = MOUNTAINS.FAR.scale;
@@ -431,26 +484,36 @@ export const phRidge = /* @__PURE__ */ Fn(([az, el, sunward, laneW, haze, aa, ph
     const coverN = smoothstep(aa.negate(), aa, dN).mul(above);
     // Which side of each peak faces the sun's bearing (az 0): the slope falling toward it.
     const towardSun = az.sign().negate();
+    // Couloirs and spurs: ribs that run down each face ASLANT (their phase slides with the depth
+    // below the crest), so a face is cut by ridgelines falling away from its peak. Upright ribs
+    // and a lit side that changed at the peak's own bearing drew a vertical fold down every
+    // mountain; the same ribs now also break the edge between a peak's lit and shaded sides.
+    const ribF = phNoise1(az.mul(130.0).add(max(dF, 0.0).mul(towardSun).mul(95.0)).add(5.0)).toVar();
+    const ribN = phNoise1(az.mul(210.0).add(max(dN, 0.0).mul(towardSun).mul(170.0)).add(9.0)).toVar();
     // Wide, soft transitions: the split between a peak's lit and shaded sides must not read as
     // a vertical fold line down the face.
-    const litF = smoothstep(-0.9, 0.9, sF.mul(towardSun).negate());
-    const litN = smoothstep(-0.9, 0.9, sN.mul(towardSun).negate());
+    const litF = clamp(smoothstep(-0.9, 0.9, sF.mul(towardSun).negate()).add(ribF.sub(0.5).mul(0.8)), 0.0, 1.0);
+    const litN = clamp(smoothstep(-0.9, 0.9, sN.mul(towardSun).negate()).add(ribN.sub(0.5).mul(0.8)), 0.0, 1.0);
     // Gold rims: max(depth, 0) keeps exp() bounded above the crest (no Inf/NaN in the sky).
     const glow = sunward.mul(sunward).mul(1.3).add(0.05).mul(laneW.mul(0.5).add(0.5));
     const rimF = exp(max(dF, 0.0).div(0.0011).negate()).mul(glow).mul(litF.mul(0.7).add(0.3));
     const rimN = exp(max(dN, 0.0).div(0.0008).negate()).mul(glow).mul(litN.mul(0.7).add(0.3));
-    // Couloirs: faint vertical ribs down the shaded snow faces.
-    const rib = phNoise1(az.mul(170.0).add(5.0)).mul(0.16).add(0.92);
     // The late golden sun: shaded faces lean violet, lit ones take the alpenglow's rose-gold.
     const violet = mix(vec3(1.0), vec3(1.08, 0.9, 1.0), lowSun);
-    const shadeF = mix(linearColor(0x566DA4), linearColor(0x46598F), smoothstep(0.0, 0.03, dF)).mul(rib).mul(violet);
-    const shadeN = mix(linearColor(0x3A4C83), linearColor(0x2C3B6C), smoothstep(0.0, 0.012, dN)).mul(rib).mul(violet);
-    const dayLit = mix(linearColor(0x8FA2CF), linearColor(0xD9C2AA), sunward.mul(sunward));
-    const warmLit = mix(dayLit, linearColor(0xE8AC94), lowSun.mul(0.8));
-    const litMore = lowSun.mul(0.3).add(1.0);
-    const faceF = mix(shadeF, warmLit, litF.mul(0.32).mul(litMore).mul(smoothstep(0.016, 0.0, dF)));
-    const faceN = mix(shadeN, warmLit.mul(0.85), litN.mul(0.28).mul(litMore).mul(smoothstep(0.007, 0.0, dN)));
-    const gold = mix(linearColor(0xFFDDA8), linearColor(0xFFB577), lowSun.mul(0.7));
+    const shadeF = mix(linearColor(0x566DA4), linearColor(0x46598F), smoothstep(0.0, 0.03, dF))
+        .mul(ribF.mul(0.3).add(0.85)).mul(violet);
+    const shadeN = mix(linearColor(0x3A4C83), linearColor(0x2C3B6C), smoothstep(0.0, 0.012, dN))
+        .mul(ribN.mul(0.3).add(0.85)).mul(violet);
+    const dayLit = mix(linearColor(0xA9B9DE), linearColor(0xE6CDB0), sunward.mul(sunward));
+    // The alpenglow (a level's flush, a happening): the lit snow turns rose-gold and reaches
+    // further down each face, on top of what the late sun already gives.
+    const flush = min(alpen, 1.0);
+    const warmLit = mix(mix(dayLit, linearColor(0xE8AC94), lowSun.mul(0.8)), linearColor(0xFF9E86), flush.mul(0.85));
+    const litMore = lowSun.mul(0.3).add(flush.mul(0.9)).add(1.0);
+    const reach = flush.mul(0.02).add(0.026);
+    const faceF = mix(shadeF, warmLit, min(litF.mul(0.5).mul(litMore), 1.0).mul(smoothstep(reach, 0.0, dF)));
+    const faceN = mix(shadeN, warmLit.mul(0.85), min(litN.mul(0.4).mul(litMore), 1.0).mul(smoothstep(reach.mul(0.45), 0.0, dN)));
+    const gold = mix(mix(linearColor(0xFFDDA8), linearColor(0xFFB577), lowSun.mul(0.7)), linearColor(0xFFA98C), flush.mul(0.6));
     // Aerial perspective toward a COOL haze (the warm sunward haze would grey the blue faces).
     const coolHaze = mix(haze, mix(linearColor(0xB4C8EA), linearColor(0xC4B4DA), lowSun), 0.6);
     const colF = mix(mix(faceF, coolHaze, 0.28), gold, min(rimF, 1.0));
@@ -473,7 +536,9 @@ export const phRidge = /* @__PURE__ */ Fn(([az, el, sunward, laneW, haze, aa, ph
 }).setLayout({
     name: 'ph_ridge',
     type: 'vec4',
-    inputs: [f('az'), f('el'), f('sunward'), f('laneW'), v3('haze'), f('aa'), f('phase'), f('warmth')],
+    inputs: [
+        f('az'), f('el'), f('sunward'), f('laneW'), v3('haze'), f('aa'), f('phase'), f('warmth'), f('alpen'),
+    ],
 });
 
 /** The ice fog's colour (inline TSL, shared by ph_fog and ph_fogFar so the two never drift). */
@@ -496,7 +561,7 @@ export const FOG_FLOOR = 0.8;
  * Sun level. The dome lays it over the sky and the mountains' feet, and the snow and the far
  * stones fade into the same colour, so the horizon has no seam.
  */
-export const phFog = /* @__PURE__ */ Fn(([az, el, sunward, warmth, phase]) => {
+export const phFog = /* @__PURE__ */ Fn(([az, el, sunward, warmth, phase, lift]) => {
     const x = az.mul(7.0).add(phase.mul(0.6)).add(1.3);
     const i = floor(x);
     const fr = fract(x);
@@ -508,19 +573,21 @@ export const phFog = /* @__PURE__ */ Fn(([az, el, sunward, warmth, phase]) => {
     const s2 = fr2.mul(fr2).mul(float(3.0).sub(fr2.mul(2.0)));
     const n2 = mix(fract(sin(i2.mul(127.1)).mul(43758.5453)), fract(sin(i2.add(1.0).mul(127.1)).mul(43758.5453)), s2);
     // Rolling banks: tall swells with low gaps between them, a finer lumpy edge on top.
-    const top = smoothstep(0.2, 0.9, n1).mul(0.017).add(n2.mul(0.006)).add(0.003);
+    // The air's ice fog (`lift` 0..1) raises the whole bank off the plain, over the ranges' feet.
+    const top = smoothstep(0.2, 0.9, n1).mul(0.017).add(n2.mul(0.006)).add(0.003)
+        .mul(lift.mul(2.8).add(1.0));
     // Thinning gradually upward through the bank (mist, not a painted band).
     const body = float(1.0).sub(smoothstep(top.mul(-0.2), top, el));
     // A thin veil above the bank; max(…, 0) keeps the exp bounded below the horizon.
-    const wisp = exp(max(el.sub(top), 0.0).div(0.008).negate()).mul(0.22);
-    const amount = max(body.mul(body).mul(FOG_FLOOR), wisp);
+    const wisp = exp(max(el.sub(top), 0.0).div(lift.mul(0.03).add(0.008)).negate()).mul(lift.mul(0.3).add(0.22));
+    const amount = max(body.mul(body).mul(lift.mul(0.14).add(FOG_FLOOR)), wisp);
     const warmGold = mix(linearColor(0xFFE4BC), linearColor(0xFFCF98), warmth);
     const gold = mix(warmGold, linearColor(0xFFA86A), lowOf(warmth).mul(0.6));
     // The bank's top catches the low sun: a gold-lit rim along its rolling edge.
     const rim = exp(abs(el.sub(top.mul(0.8))).div(0.0025).negate()).mul(sunward.mul(0.55).add(0.12));
     return vec4(fogTint(sunward, warmth).add(gold.mul(rim)), amount);
 }).setLayout({
-    name: 'ph_fog', type: 'vec4', inputs: [f('az'), f('el'), f('sunward'), f('warmth'), f('phase')],
+    name: 'ph_fog', type: 'vec4', inputs: [f('az'), f('el'), f('sunward'), f('warmth'), f('phase'), f('lift')],
 });
 
 /**

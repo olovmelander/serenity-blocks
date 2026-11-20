@@ -8,11 +8,16 @@
  *   2. every shared helper is a setLayout'd Fn, emitted ONCE as a real WGSL `fn` (a layout-less
  *      Fn re-inlines its body at every call site);
  *   3. the reaction-arc loop is a single TSL Loop (one WGSL `for`), not a JS-unrolled chain;
- *   4. the fragment stays under 22 KB with ≤ 2 value-noise evaluations at High (2026-10-20 visual
+ *   4. the fragment stays under 32 KB with ≤ 2 value-noise evaluations at High (2026-10-20 visual
  *      pass: the two backlit mountain ranges with snow banners, ph_ridge with its sine-hash
  *      ph_noise1 / ph_ridgedD, ≈ 3.7 KB, replaced the ridge's value-noise read; the ice-fog bank
  *      ph_fog ≈ 1.5 KB. Measured in the playground: no start-up difference with a warm shader
  *      cache; ≈ +0.3 s on a cold, cache-less start, all materials together).
+ *      2026-11 living pass: the budget rose from 22 KB to 32 KB on purpose (the dome measures
+ *      28.7 KB): the night's grade and stars (ph_night, ph_stars), the shafts of light round the
+ *      stone, the mother-of-pearl cloud and the afterglow all live in the dome, each behind a
+ *      branch on a uniform so a clear noon runs none of them. Still no new noise read (the cloud
+ *      reuses the veil's), still one fn a helper, and a third of the fleet's 48 KB stage budget.
  *
  * The build goes through three's own WGSLNodeBuilder against a stub renderer — the harness from
  * tests/unit/odyssey-tsl-noise-emission.test.js.
@@ -83,13 +88,14 @@ const fnNames = (wgsl) => [...wgsl.matchAll(/^fn\s+(\w+)\s*\(/gm)].map((m) => m[
 // Call sites of `name(` minus its single definition.
 const callCount = (wgsl, name) => (wgsl.match(new RegExp(`\\b${name}\\s*\\(`, 'g')) || []).length - 1;
 const bytes = (text) => Buffer.byteLength(text, 'utf8');
-/** §5.3: the dome fragment stays under 22 KB (KiB) with every helper a real fn. */
-const DOME_WGSL_BUDGET = 22 * 1024;
+/** §5.3 (re-pinned 2026-11, see the header): the dome fragment stays under 32 KB (KiB) with every helper a real fn. */
+const DOME_WGSL_BUDGET = 32 * 1024;
 
 const DOME_HELPERS = [
     'ph_prof', 'ph_spectral', 'ph_softCap', 'ph_calmBox', 'ph_laneW', 'ph_haze', 'ph_skyOut', 'ph_lens',
     'ph_halo', 'ph_haloTint', 'ph_dogs', 'ph_parhelic', 'ph_uta', 'ph_crown', 'ph_sunPillar', 'ph_lowitz',
     'ph_arcGlow', 'ph_ridge', 'ph_noise1', 'ph_ridgedD', 'ph_fog', 'od_noise2', 'od_hash21',
+    'ph_night', 'ph_stars',
 ];
 
 describe('parhelion dome WGSL size gate', () => {
@@ -108,7 +114,7 @@ describe('parhelion dome WGSL size gate', () => {
         expect(materialXNoiseFunctions(wgsl)).toEqual([]);
     });
 
-    it('stays under 22 KB', () => {
+    it('stays under 32 KB', () => {
         expect(bytes(wgsl)).toBeLessThan(DOME_WGSL_BUDGET);
     });
 
@@ -138,7 +144,7 @@ describe('parhelion tiers shape the dome graph', () => {
         expect(callCount(wgsl, 'od_noise2')).toBe(1);
     });
 
-    it('Ultra adds the third veil noise eval and stays under 22 KB', () => {
+    it('Ultra adds the third veil noise eval and stays under 32 KB', () => {
         const wgsl = buildFragment(createDomeMaterial(createSharedUniforms(), 'Ultra'));
         expect(callCount(wgsl, 'od_noise2')).toBe(3);
         expect(bytes(wgsl)).toBeLessThan(DOME_WGSL_BUDGET);
@@ -146,29 +152,35 @@ describe('parhelion tiers shape the dome graph', () => {
 });
 
 describe('parhelion stone / snow fragments', () => {
-    it('snow fragment stays under 15.5 KB, no mx_, exactly 3 noise evals (macro, sastrugi, drift)', () => {
+    it('snow fragment stays under 19.5 KB, no mx_, exactly 3 noise evals (macro, sastrugi, drift)', () => {
         // 2026-10-20: drifts (analytic swells), the far stones' shadow loop and the lower-halo
         // glints (hashes on a projected grid) grew it from ≈ 10 KB; still three noise reads.
+        // 2026-11 living pass (15.5 → 19.5 KB on purpose; it measures 17.3 KB): the rings that
+        // cross the plain (a second loop, over the live rows only), a level's band, the night.
         const wgsl = buildFragment(createSnowMaterial(createSharedUniforms(), 'High'));
         expect(materialXNoiseFunctions(wgsl)).toEqual([]);
-        expect(bytes(wgsl)).toBeLessThan(15_500);
+        expect(bytes(wgsl)).toBeLessThan(19_500);
         // The far plain fades into the noise-free horizon air (ph_fogFar), never the dome's banks.
         expect(fnNames(wgsl)).toContain('ph_fogFar');
         expect(fnNames(wgsl)).not.toContain('ph_fog');
         // The far stones' shadows are ONE loop calling one laid-out helper.
         expect(fnNames(wgsl)).toContain('ph_farShadow');
         expect(callCount(wgsl, 'ph_farShadow')).toBe(1);
-        expect((wgsl.match(/\bfor\s*\(/g) || []).length).toBe(1);
+        // Two loops: the far stones' shadows, and the rings on the plain (uGroundCount rows).
+        expect((wgsl.match(/\bfor\s*\(/g) || []).length).toBe(2);
         expect(callCount(wgsl, 'od_noise2')).toBe(3);
         expect(fnNames(wgsl)).toContain('ph_softCap');
     });
 
-    it('stone fragment: no mx_, three noise evals at High (grain, streaks, lichen), under 10.5 KB', () => {
+    it('stone fragment: no mx_, three noise evals at High (grain, streaks, lichen), under 14.5 KB', () => {
+        // 2026-11 living pass (10.5 → 14.5 KB on purpose; it measures 12.9 KB): the stars the
+        // stone holds (ph_stars, called once, no noise) and the night's grade.
         const { geometry } = buildStoneGeometry();
         const wgsl = buildFragment(createStoneMaterial(createSharedUniforms(), 'High'), geometry);
         expect(materialXNoiseFunctions(wgsl)).toEqual([]);
         expect(callCount(wgsl, 'od_noise2')).toBe(3);
-        expect(bytes(wgsl)).toBeLessThan(10_500);
+        expect(callCount(wgsl, 'ph_stars')).toBe(1);
+        expect(bytes(wgsl)).toBeLessThan(14_500);
     });
 
     it('far stones fragment: small, no noise, no mx_', () => {

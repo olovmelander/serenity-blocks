@@ -3501,6 +3501,20 @@ export const PLAYGROUND_URL_PARAMETERS = [
         ],
     },
     {
+        name: 'parhelionAir',
+        category: 'Playground',
+        scope: 'playground.html — parhelion; game themes: Parhelion',
+        description: 'Hold one of Parhelion\'s airs instead of letting its weather wheel turn.',
+        values: 'clear, cirrus, crystal, drift, fog (case-insensitive).',
+        defaultValue: 'The wheel turns by the clock.',
+        example: 'parhelionAir=crystal',
+        notes: 'Use on playground.html with effect=<the matching effect ID>. Also read by the listed '
+            + 'game themes while active.',
+        sources: [
+            'src/playground/effects/parhelion.effect.js',
+        ],
+    },
+    {
         name: 'parhelionBloom',
         category: 'Playground',
         scope: 'playground.html — parhelion; game themes: Parhelion',
@@ -3550,6 +3564,34 @@ export const PLAYGROUND_URL_PARAMETERS = [
         values: '1 enables.',
         defaultValue: 'Off.',
         example: 'parhelionCounters=1',
+        notes: 'Use on playground.html with effect=<the matching effect ID>. Also read by the listed '
+            + 'game themes while active.',
+        sources: [
+            'src/playground/effects/parhelion.effect.js',
+        ],
+    },
+    {
+        name: 'parhelionHappenings',
+        category: 'Playground',
+        scope: 'playground.html — parhelion; game themes: Parhelion',
+        description: 'Turn off the things Parhelion plays by itself (a gust, a glint round the ring, a hound flaring).',
+        values: '0 disables.',
+        defaultValue: 'On.',
+        example: 'parhelionHappenings=0',
+        notes: 'Use on playground.html with effect=<the matching effect ID>. Also read by the listed '
+            + 'game themes while active.',
+        sources: [
+            'src/playground/effects/parhelion.effect.js',
+        ],
+    },
+    {
+        name: 'parhelionHour',
+        category: 'Playground',
+        scope: 'playground.html — parhelion; game themes: Parhelion',
+        description: 'Hold a place on Parhelion\'s Lower Sun walk instead of letting the clock walk it.',
+        values: '0 to 2: 0 noon, 1 the golden sun, 1.25 dusk, 1.5 the moonlit night, 1.75 dawn.',
+        defaultValue: 'The clock (and the level) walk it.',
+        example: 'parhelionHour=1.5',
         notes: 'Use on playground.html with effect=<the matching effect ID>. Also read by the listed '
             + 'game themes while active.',
         sources: [
@@ -3646,7 +3688,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
         scope: 'playground.html — parhelion; game themes: Parhelion',
         description: 'Trigger a named Parhelion reaction.',
         values: 'lock, harddrop, stonefall, single, clear, double, triple, quad, twist, apex, perfect, '
-            + 'echo (case-insensitive).',
+            + 'echo, b2b, level, over, drops (case-insensitive).',
         defaultValue: 'No simulated cue.',
         example: 'parhelionPulse=lock',
         notes: 'Use on playground.html with effect=<the matching effect ID>. Also read by the listed '

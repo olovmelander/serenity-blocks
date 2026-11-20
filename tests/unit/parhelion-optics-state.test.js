@@ -848,6 +848,9 @@ describe('Parhelion resonance, level and ambient life (§7.4, §8)', () => {
         const state = createState();
         expect(state.update(2.5, 0).breath).toBeCloseTo(1.15, 9);
         expect(state.update(7.5, 0).breath).toBeCloseTo(0.85, 9);
+        // §7.2's are the RESTING rates: the clear air's (2026-11: every other air turns the
+        // clocks at its own rate, and a seek lands on that integral; parhelion-living.test.js).
+        state.configure({ air: 0 });
         state.seek(100);
         const out = state.update(100, 0);
         expect(out.clocks.dustClock).toBeCloseTo(100, 9);
