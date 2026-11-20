@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildLocalMatchConfig } from './local-match-config-modal.js';
+import { buildLocalMatchConfig, nextStepperValue } from './local-match-config-modal.js';
 
 // FormData semantics: missing/unchecked fields are absent; checkboxes => 'on';
 // disabled controls (e.g. a human slot's bot-difficulty) are absent.
@@ -94,6 +94,20 @@ describe('buildLocalMatchConfig — config contract', () => {
         expect(config.playerSlots[1].difficulty).toBe(1);
     });
 
+    it('accepts a well as short as 40 rows and defaults to 100', () => {
+        const rowsFor = (infinityMaxRows) => buildLocalMatchConfig({
+            numPlayers: '2', matchMode: 'infinity-lms', infinityMaxRows,
+        }).infinityMaxRows;
+        expect(rowsFor('40')).toBe(40);
+        expect(rowsFor('75')).toBe(75);
+        expect(rowsFor('100')).toBe(100);
+        expect(rowsFor('39')).toBe(40);
+        expect(rowsFor('0')).toBe(40);
+        // An emptied field or a missing one plays the default, not the minimum.
+        expect(rowsFor('')).toBe(100);
+        expect(rowsFor(undefined)).toBe(100);
+    });
+
     it('derives team mode from shared teams (+ hot potato attack style)', () => {
         // Two pairs sharing teams (2v2) => isTeamMode derived true, no toggle.
         const config = buildLocalMatchConfig({
@@ -151,6 +165,44 @@ describe('buildLocalMatchConfig — config contract', () => {
         // so the round can never hang with zero attack targets.
         expect(build(2, [0, 0]).isTeamMode).toBe(false);
         expect(build(4, [2, 2, 2, 2]).isTeamMode).toBe(false);
+    });
+
+    it('steps the well height by tens up to 100 and by fifties above', () => {
+        const well = {
+            min: 40, max: 1000, step: 50, fineStep: 10, fineBelow: 100,
+        };
+        const walk = (from, direction, presses) => {
+            const stops = [];
+            let value = from;
+            for (let i = 0; i < presses; i += 1) {
+                value = nextStepperValue(value, direction, well);
+                stops.push(value);
+            }
+            return stops;
+        };
+        expect(walk(100, -1, 7)).toEqual([90, 80, 70, 60, 50, 40, 40]);
+        expect(walk(40, 1, 8)).toEqual([50, 60, 70, 80, 90, 100, 150, 200]);
+        expect(walk(200, -1, 3)).toEqual([150, 100, 90]);
+        expect(walk(950, 1, 2)).toEqual([1000, 1000]);
+        // A typed in-between height lands on the next stop in the direction pressed.
+        expect(nextStepperValue(45, 1, well)).toBe(50);
+        expect(nextStepperValue(45, -1, well)).toBe(40);
+        expect(nextStepperValue(120, 1, well)).toBe(150);
+        expect(nextStepperValue(120, -1, well)).toBe(100);
+        expect(nextStepperValue(7, 1, well)).toBe(40);
+        expect(nextStepperValue(NaN, 1, well)).toBe(40);
+    });
+
+    it('steps a plain field one at a time within its range', () => {
+        const level = { min: 1, max: 9, step: 1 };
+        expect(nextStepperValue(1, 1, level)).toBe(2);
+        expect(nextStepperValue(5, -1, level)).toBe(4);
+        expect(nextStepperValue(9, 1, level)).toBe(9);
+        expect(nextStepperValue(1, -1, level)).toBe(1);
+        // The fields the sheet builds without a fine stride read NaN for it.
+        expect(nextStepperValue(7, 1, {
+            min: 1, max: 100, step: 1, fineStep: NaN, fineBelow: NaN,
+        })).toBe(8);
     });
 
     it('maps each attack style to the correct garbage rules', () => {
