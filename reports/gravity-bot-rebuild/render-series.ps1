@@ -5,6 +5,7 @@ param(
     [int]$ThreeSeatSeconds = 600,
     [int]$OtherSeconds = 600,
     [ValidateSet(60,165)][int]$FirstRate = 60,
+    [ValidateRange(1,2)][int]$PassCount = 2,
     [switch]$LiveOnly
 )
 
@@ -26,7 +27,7 @@ Remove-Item Env:SERENITY_BOT_FOCUS -ErrorAction SilentlyContinue
 $dest = [System.IO.Directory]::CreateDirectory($OutputDirectory).FullName
 $recordingModes = @($false)
 if (!$LiveOnly) { $recordingModes += $true }
-foreach ($pass in @(1, 2)) {
+foreach ($pass in 1..$PassCount) {
     $otherRate = if ($FirstRate -eq 60) { 165 } else { 60 }
     $rates = if ($pass -eq 1) { @($FirstRate, $otherRate) } else { @($otherRate, $FirstRate) }
     foreach ($rate in $rates) {

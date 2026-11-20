@@ -60,6 +60,12 @@ def collect(directory):
             'renderer': [read_json(directory / f'nov20-render-round11-{i}.json') for i in range(1, 5)],
         },
         'renderer': {key: read_json(directory / f'integrated-render-{key}.json') for key, _, _ in cases()},
+        'release': {
+            'build': read_json(directory / 'nov20-release-build.json'),
+            'parsedScripts': read_json(directory / 'nov20-release-scripts.json'),
+            'renderer': {key: read_json(directory / f'release-render-{key}.json')
+                         for key, _, _ in cases() if key.startswith('1-')},
+        },
     }
 
 
@@ -100,16 +106,16 @@ def compare_campaign(previous, current, retuned):
         raise ValueError('Unexpected campaign gameplay change or failed gate')
 
 
-def check_game(previous, current, room, hz, manifest):
+def check_game(previous, current, room, hz, manifest, seconds=600):
     runtime = current['runtime']
     if (current['buildManifestSha256'] != manifest or current['requestedHz'] != hz or current['replay']
-            or current['elapsed'] < 600000 or not current['sharedTexturePaints'] or current['checkFormat'] != 'body-v1'
+            or current['elapsed'] < seconds * 1000 or not current['sharedTexturePaints'] or current['checkFormat'] != 'body-v1'
             or current['boards'] != previous['boards'] or current['clock'] != previous['clock']
             or any(runtime[k] != previous['runtime'][k] for k in ('cpu', 'electron', 'chromium', 'renderer'))
             or runtime['mainPriority'] != 0 or runtime['rendererPriority'] != 0):
         raise ValueError('Invalid live packaged measurement')
     if room == 'odyssey':
-        if current['rivalTier'] != previous['rivalTier'] or current['activeTicks'] < 27000:
+        if current['rivalTier'] != previous['rivalTier'] or current['activeTicks'] < seconds * 45:
             raise ValueError('Insufficient active play with the same authored Odyssey rival')
     elif current['botCount'] != int(room):
         raise ValueError('Unexpected local opponent count')
@@ -118,9 +124,12 @@ def check_game(previous, current, room, hz, manifest):
     count = min(len(r['inputs']) for r in (previous, current))
     boards = [{(c[0], c[1]): c[2:] for c in r['checks']} for r in (previous, current)]
     common = boards[0].keys() & boards[1].keys()
+    expected_boards = max(map(len, boards)) if seconds == 600 else len(boards[1])
     if (not count or previous['inputs'][:count] != current['inputs'][:count] or not common
-            or len(common) < .95 * max(map(len, boards)) or any(boards[0][k] != boards[1][k] for k in common)):
+            or len(common) < .95 * expected_boards or any(boards[0][k] != boards[1][k] for k in common)):
         raise ValueError('Seeded inputs or labelled boards differ after integration')
+    if seconds < 600 and (count != len(current['inputs']) or len(common) != len(boards[1]) or len(common) < seconds // 30):
+        raise ValueError('Incomplete input or board parity with the longer game')
     return count, len(common)
 
 
@@ -155,6 +164,36 @@ def check_spike(before, evidence, manifest):
               f' {len(run["inputs"])} matching inputs and {len(run["checks"])} labelled checkpoints')
 
 
+def check_release(measured, release):
+    proof = release['parsedScripts']
+    manifest = release['build']['manifestSha256']
+    parsed = {script for run in measured['renderer'].values() for script in run['loadedScripts']}
+    rows = proof['scripts']
+    if (proof['measuredManifest'] != measured['build']['manifestSha256'] or proof['candidateManifest'] != manifest
+            or parsed != {row['measured'] for row in rows}
+            or any(r['status'] not in ('identical', 'dependency filenames only')
+                   or r['normalizedSha256'][0] != r['normalizedSha256'][1] for r in rows)):
+        raise ValueError('A script exercised in the measured game changed after the upstream sync')
+    files = {row['candidate'] for row in rows}
+    totals = Counter()
+    print('Release script comparison:', dict(Counter(row['status'] for row in rows)))
+    for key, room, hz in cases():
+        if not key.startswith('1-'):
+            continue
+        game = release['renderer'][key]
+        inputs, boards = check_game(measured['renderer'][key], game, room, hz, manifest, seconds=120)
+        if not game['loadedScripts'] or set(game['loadedScripts']) - files:
+            raise ValueError(f'Unverified script loaded in release game {key}')
+        failed = [g for g, passed in planning_gates(game).items() if not passed]
+        if failed:
+            raise ValueError(f'Release game {key} exceeded its planning budget: {failed}')
+        times = game['times']
+        totals.update(frames=len(times), inputs=inputs, boards=boards)
+        print(f'  {key}: {len(times)} active frames, p95 / p99 / max {percentile(times,.95):.1f} / '
+              f'{percentile(times,.99):.1f} / {max(times):.1f} ms, {inputs} inputs, {boards} boards')
+    print('Release totals:', dict(totals))
+
+
 def verify(reference, current):
     compare_campaign(reference['campaign']['remapped-gates']['raw'], current['campaign'],
                      current['levelIntegration']['upstreamRetuned'])
@@ -181,6 +220,7 @@ def verify(reference, current):
     print('Pre-integration planning gate misses:', reference_failures)
     if release_failures:
         raise ValueError(f'Integrated planning gates outside budget: {release_failures}')
+    check_release(current, current['release'])
 
 
 if __name__ == '__main__':

@@ -432,6 +432,8 @@ The packaged test plays the actual local match and the authored Neon encounter i
 
 For the upstream integration, `render-series.ps1 -LiveOnly` repeats all 16 live measurements. The integration checker compares the command prefixes and labelled checkpoints to the original runs and checks the planning deadlines in each room. Set `SERENITY_BOT_FOCUS` to `11/550` for a single-expert capture starting at the deal for round 11. It records the planning time, lock count and pending garbage at tick 550. A direct invocation of `rendered-match.cjs` also accepts the published game's base URL in `SERENITY_BOT_GAME_URL` and records the manifest hash served by that deployment. [Integration checker](../reports/gravity-bot-rebuild/integration-check.py)
 
+Nimbus Veil landed upstream while those ten-minute measurements were running. After each game, Chromium inventories the scripts it parsed. The build comparison checks every such script against the newly synced package, first by exact bytes and then with emitted JavaScript dependency filenames resolved to their Vite manifest identities. A changed statement or an import targeting another module fails the comparison. A separate two-minute game on the newer package checks commands, boards and all planning budgets in each of the eight room and refresh-rate combinations. To repeat that series, use `-PassCount 1 -ThreeSeatSeconds 120 -OtherSeconds 120 -LiveOnly -FirstRate 165`. [Compare the scripts in two production builds](../reports/gravity-bot-rebuild/compare-loaded-scripts.py)
+
 ```powershell
 npm run build
 & .\reports\gravity-bot-rebuild\render-series.ps1 -OutputDirectory .\artifacts\gravity-render -BuildDirectory .\dist -FirstRate 165 -ThreeSeatSeconds 600 -OtherSeconds 600
