@@ -39,7 +39,7 @@ export const ODYSSEY_THEME_PASSAGE_PALETTES = Object.freeze({
     murmuration: ['#5df8fa', '#119ad9', '#5851cd', '#010968', 0.44],
     'nebula-flow': ['#ccaf9e', '#4f6786', '#b28369', '#353344', 0.37],
     'neon-district': ['#b1dba2', '#c77033', '#54619b', '#3f324b', 0.4],
-    'neon-dusk': ['#fccb73', '#a81a50', '#e7793c', '#3d0025', 0.25],
+    'neon-dusk': ['#fbce7a', '#ae1e54', '#e87b42', '#3f0128', 0.27],
     'nimbus-veil': ['#ffe8cd', '#f8c5a8', '#b79dd7', '#c198b1', 0.8],
     ocean: ['#5ac9b7', '#1588a8', '#34a5af', '#155b76', 0.44],
     'painted-ages': ['#fcecaa', '#e68856', '#7e8aca', '#6f5150', 0.59],

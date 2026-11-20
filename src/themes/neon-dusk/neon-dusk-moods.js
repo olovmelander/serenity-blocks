@@ -67,11 +67,19 @@ const lin = (spec) => (Array.isArray(spec) ? linearHex(spec[0], spec[1]) : linea
  *   glowWide         the broad air round the sun
  *   glowHalo         the halo hugging its rim
  *   glowBand         the band of light along the horizon under it
+ *   grid / gridFar   the glass's neon grid underfoot / toward the horizon
+ *   gridHot / gridFarHot   where a hot hand swings them (the world mixes, round the colour wheel)
+ *   scanLow / scanHigh     the ranges' scan lines at their feet / toward their crests
+ *   scanLowHot / scanHighHot   the same, swung by a hot hand
+ *   ridge / ridgeFar the neon line along the near crests / along the far wall
  */
 export const PRIMARY_KEYS = Object.freeze([
     'hazeA', 'hazeT', 'lowA', 'lowT', 'midA', 'midT', 'high', 'upper', 'zenith',
     'sun0', 'sun1', 'sun2', 'sun3', 'sun4',
     'glowWide', 'glowHalo', 'glowBand',
+    'grid', 'gridFar', 'gridHot', 'gridFarHot',
+    'scanLow', 'scanHigh', 'scanLowHot', 'scanHighHot',
+    'ridge', 'ridgeFar',
 ]);
 
 /**
@@ -85,6 +93,9 @@ export const PRIMARY_KEYS = Object.freeze([
  *   airA / airT                            the light in the air toward the sun
  *   glass                                  the dark glass of the floor
  *   mirrorRange                            the ranges in the analytic mirror (Low and Minimal)
+ *   galaxy                                 the galaxy's own light
+ *   planetLit / planetBand / planetDark    the ringed planet: its lit crescent, the bands in it, its night side
+ *   ring                                   its rings
  * @type {Readonly<Record<string, [string, Hex]>>}
  */
 export const SECONDARY = Object.freeze({
@@ -105,6 +116,11 @@ export const SECONDARY = Object.freeze({
     airT: ['glowHalo', [0xff6a3e, 0.75]],
     glass: ['zenith', 0x06020e],
     mirrorRange: ['upper', 0x140a26],
+    galaxy: ['high', [0x8a5cff, 0.5]],
+    planetLit: ['sun3', [0xffb86a, 1.05]],
+    planetBand: ['sun1', [0xff5a7a, 0.9]],
+    planetDark: ['upper', 0x1c1040],
+    ring: ['glowHalo', [0xffb07a, 1.25]],
 });
 
 /** Every colour a mood sets, in a fixed order (the uniforms the shaders read). */
@@ -136,6 +152,16 @@ const AUTHORED = Object.freeze([
             glowWide: 0xff2a7a,
             glowHalo: 0xff6a2e,
             glowBand: 0xff5a5e,
+            grid: 0xff2a9d,
+            gridFar: 0x8a3cff,
+            gridHot: 0x2ce8ff,
+            gridFarHot: 0x3a7bff,
+            scanLow: [0xff2fa8, 1.2],
+            scanHigh: [0x2ce8ff, 1.25],
+            scanLowHot: [0x9b4bff, 1.2],
+            scanHighHot: [0xff6ad8, 1.3],
+            ridge: [0x2ce8ff, 1.5],
+            ridgeFar: [0xff4fd8, 1.2],
         },
     },
     {
@@ -159,6 +185,16 @@ const AUTHORED = Object.freeze([
             glowWide: 0xd02ab0,
             glowHalo: 0xff5aa0,
             glowBand: 0xe856b8,
+            grid: 0xb44cff,
+            gridFar: 0x5a3cff,
+            gridHot: 0x3affd0,
+            gridFarHot: 0x2ab8ff,
+            scanLow: [0xd24dff, 1.2],
+            scanHigh: [0x6ae0ff, 1.25],
+            scanLowHot: [0xff4fb0, 1.2],
+            scanHighHot: [0x9affe0, 1.3],
+            ridge: [0x7ae8ff, 1.5],
+            ridgeFar: [0xd060ff, 1.2],
         },
     },
     {
@@ -182,6 +218,16 @@ const AUTHORED = Object.freeze([
             glowWide: 0x2a7aff,
             glowHalo: 0x3ad8ff,
             glowBand: 0x30b0ff,
+            grid: 0x14d2ff,
+            gridFar: 0x2a5cff,
+            gridHot: 0xff3fb0,
+            gridFarHot: 0xa24bff,
+            scanLow: [0x2a8cff, 1.2],
+            scanHigh: [0x5affe6, 1.25],
+            scanLowHot: [0xb44cff, 1.2],
+            scanHighHot: [0xff8ad8, 1.3],
+            ridge: [0xff4fc0, 1.5],
+            ridgeFar: [0x4a9cff, 1.2],
         },
     },
     {
@@ -205,6 +251,16 @@ const AUTHORED = Object.freeze([
             glowWide: 0x7a2aff,
             glowHalo: 0xb060ff,
             glowBand: 0x8a50ff,
+            grid: 0x7a4dff,
+            gridFar: 0x3a3cff,
+            gridHot: 0xff3fd2,
+            gridFarHot: 0xb44cff,
+            scanLow: [0x8a4dff, 1.2],
+            scanHigh: [0x4dffc8, 1.25],
+            scanLowHot: [0xff4fb0, 1.2],
+            scanHighHot: [0xd8ff7a, 1.3],
+            ridge: [0x4dffc8, 1.5],
+            ridgeFar: [0x9a6cff, 1.2],
         },
     },
     {
@@ -228,6 +284,16 @@ const AUTHORED = Object.freeze([
             glowWide: 0xff6a40,
             glowHalo: 0xffb040,
             glowBand: 0xff9050,
+            grid: 0xff7a2a,
+            gridFar: 0xff3a8a,
+            gridHot: 0x2ce8ff,
+            gridFarHot: 0x4a7bff,
+            scanLow: [0xff5a3a, 1.2],
+            scanHigh: [0xffe07a, 1.25],
+            scanLowHot: [0xff3fb0, 1.2],
+            scanHighHot: [0x7affe6, 1.3],
+            ridge: [0xffd24a, 1.5],
+            ridgeFar: [0xff7a6a, 1.2],
         },
     },
 ]);
@@ -267,6 +333,34 @@ export function relate(child0, parent0, parent) {
     const s = Math.min(1, sp0 > 1e-6 ? sp * (sc / sp0) : sc);
     const v = vp0 > 1e-9 ? vp * (vc / vp0) : vc;
     return rgbOf(hue, s, v);
+}
+
+/**
+ * `a` swung toward `b` by `k` (0..1) the short way round the colour wheel, saturation and
+ * brightness crossing over: pink to cyan goes through violet, never through a grey lavender.
+ * @param {number[]} a @param {number[]} b @param {number} k @param {number[]} [out]
+ */
+export function swing(a, b, k, out = [0, 0, 0]) {
+    const t = Math.min(1, Math.max(0, k));
+    if (t <= 0 || t >= 1) {
+        const c = t <= 0 ? a : b;
+        out[0] = c[0];
+        out[1] = c[1];
+        out[2] = c[2];
+        return out;
+    }
+    const [ha, sa, va] = hsv(a);
+    const [hb, sb, vb] = hsv(b);
+    let hue = Number.isNaN(ha) ? hb : ha;
+    if (!Number.isNaN(ha) && !Number.isNaN(hb)) {
+        const turn = ((hb - ha + 1.5) % 1) - 0.5;
+        hue = (((ha + turn * t) % 1) + 1) % 1;
+    }
+    const c = rgbOf(Number.isNaN(hue) ? 0 : hue, sa + (sb - sa) * t, va + (vb - va) * t);
+    out[0] = c[0];
+    out[1] = c[1];
+    out[2] = c[2];
+    return out;
 }
 
 const TODAY = AUTHORED[0];

@@ -298,6 +298,7 @@ export default class NeonDuskTheme extends BaseTheme {
         this.layoutWatch = watch;
         const commit = () => {
             if (this.layoutWatch !== watch || !this.world || !this.isActive) return;
+            this.ensureModeManagerListeners();
             const board = readBoardRect();
             if (this.appliedBoard !== undefined && !boardRectsDiffer(board, this.appliedBoard)) return;
             this.appliedBoard = board;
@@ -314,6 +315,24 @@ export default class NeonDuskTheme extends BaseTheme {
         watch.interval = setInterval(watch.schedule, LAYOUT_POLL_MS);
         this.observeBoards(watch);
         watch.schedule();
+    }
+
+    /**
+     * The mode manager may appear after the first build (boot prewarm); subscribe once it does.
+     * A run that follows a game over is the dusk's sunrise; leaving the mode lifts the night.
+     */
+    ensureModeManagerListeners() {
+        const manager = typeof window !== 'undefined' ? window.serenityBlocks?.gameModeManager : null;
+        if (!manager?.on || manager === this.modeManager) return;
+        this.modeManager = manager;
+        this.modeUnsubscribers = [
+            manager.on('modeStarted', () => {
+                if (this.isActive) this.world?.onSessionStart?.();
+            }),
+            manager.on('modeStopped', () => {
+                this.world?.onSessionStop?.();
+            }),
+        ];
     }
 
     /** One line per composition change: which board rect was read and where the sun lands. */
@@ -403,6 +422,12 @@ export default class NeonDuskTheme extends BaseTheme {
             this.pointerY = (e.clientY / window.innerHeight) * 2 - 1;
         };
         const onResize = () => this.resize(window.innerWidth, window.innerHeight);
+        // A run's end is the dusk's sunset (the world marks it whatever the settings: it is the
+        // light, not a reaction); the next run's start is its sunrise.
+        const onGameOver = () => {
+            if (this.isActive) this.world?.onGameOver?.();
+        };
+        window.addEventListener('gameOver', onGameOver);
         window.addEventListener('pointermove', onPointerMove);
         // The window's size through the viewport broadcaster: debounced, and only a real change.
         const resizeUnsub = eventBus.on(EVENTS.VIEWPORT_RESIZED, onResize);
@@ -415,6 +440,7 @@ export default class NeonDuskTheme extends BaseTheme {
             twistUnsub,
             b2bUnsub,
             perfectUnsub,
+            () => window.removeEventListener('gameOver', onGameOver),
             () => window.removeEventListener('pointermove', onPointerMove),
             resizeUnsub,
         );
@@ -598,6 +624,11 @@ export default class NeonDuskTheme extends BaseTheme {
         super.stop();
 
         this.clearEventUnsubscribers();
+        (this.modeUnsubscribers || []).forEach((off) => {
+            if (typeof off === 'function') off();
+        });
+        this.modeUnsubscribers = [];
+        this.modeManager = null;
         this.disposePost();
         this.world?.dispose();
         this.world = null;

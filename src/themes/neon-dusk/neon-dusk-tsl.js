@@ -17,13 +17,16 @@ import {
     Fn,
     abs,
     cameraViewMatrix,
+    clamp,
     dot,
     exp,
     float,
     floor,
     fract,
+    length,
     max,
     mix,
+    select,
     sign,
     smoothstep,
     sqrt,
@@ -182,3 +185,43 @@ export const ndSunDisc = (u, d, mirrored = false) => {
     const up = sign(cameraViewMatrix.mul(vec4(0.0, 1.0, 0.0, 0.0)).y);
     return vec2(local.x, local.y.mul(mirrored ? up.negate() : up));
 };
+
+/**
+ * Where a view direction d lies round a small body at world direction s (a planet), in the body's
+ * angular radii, measured in the drawing camera's image plane (round on screen at any yaw) along
+ * two WORLD axes: `axisX` (the body's east) and `axisY` (its north). Read through world axes, the
+ * floor's mirror camera draws the same body, whichever way its own image plane is handed.
+ * z is the body's depth along the view axis (negative behind the lens).
+ */
+export const ndBodyPlane = (d, s, radius, axisX, axisY) => {
+    const P = ndImagePlane(d);
+    const S = ndImagePlane(s);
+    const rImg = tan(radius).div(max(S.z, 1e-3));
+    const raw = P.xy.sub(S.xy).div(rImg);
+    const ax = cameraViewMatrix.mul(vec4(axisX, 0.0)).xy;
+    const ay = cameraViewMatrix.mul(vec4(axisY, 0.0)).xy;
+    const axn = ax.div(max(length(ax), 1e-4));
+    const ayn = ay.div(max(length(ay), 1e-4));
+    return vec3(dot(raw, axn), dot(raw, ayn), S.z);
+};
+
+// ── The neon triangle ──────────────────────────────────────────────────────────
+
+/**
+ * Signed distance to an equilateral triangle, apex up, centred on its centroid: `r` is half its
+ * side (negative inside).
+ */
+export const ndSdTriangle = /* @__PURE__ */ Fn(([pIn, r]) => {
+    const k = 1.7320508;
+    const px = abs(pIn.x).sub(r).toVar();
+    const py = pIn.y.add(r.div(k)).toVar();
+    const fold = px.add(py.mul(k)).greaterThan(0.0);
+    const fx = select(fold, px.sub(py.mul(k)).mul(0.5), px).toVar();
+    const fy = select(fold, px.mul(-k).sub(py).mul(0.5), py).toVar();
+    const cx = fx.sub(clamp(fx, r.mul(-2.0), 0.0));
+    return length(vec2(cx, fy)).negate().mul(sign(fy));
+}).setLayout({
+    name: 'nd_sdTriangle',
+    type: 'float',
+    inputs: [{ name: 'pIn', type: 'vec2' }, { name: 'r', type: 'float' }],
+});
