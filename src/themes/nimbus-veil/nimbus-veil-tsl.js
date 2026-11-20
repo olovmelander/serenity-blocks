@@ -19,6 +19,7 @@ import {
     abs,
     acos,
     clamp,
+    cos,
     dot,
     exp,
     float,
@@ -105,10 +106,26 @@ export function towerHalfWidth(h, yn) {
     return h * body * crown;
 }
 
-/** The sun's direction as plain numbers, for pure (laid-out) helpers. */
+/**
+ * The sun's direction and the tangent of its height in the FIRST mood (the golden sunrise), as
+ * plain numbers. The live sun rides an arc with the hours (nimbus-veil-moods.js `sun`): the
+ * shaders read `u.sunDir` and `u.sunTan`, which the world writes each frame. Its bearing never
+ * leaves −z, so the deck's shadows are always found along one axis.
+ */
 export const SUN_DIR = Object.freeze([0, Math.sin(SUN.elevation), -Math.cos(SUN.elevation)]);
 /** tan(sun elevation): how fast a ray toward the sun climbs per unit of horizontal travel. */
 export const SUN_TAN = Math.tan(SUN.elevation);
+
+/** A unit direction from a bearing (degrees from the sun's, toward +x) and a height (degrees). */
+export function bearingVector(az, el) {
+    const a = THREE.MathUtils.degToRad(az);
+    const e = THREE.MathUtils.degToRad(el);
+    return [Math.sin(a) * Math.cos(e), Math.sin(e), -Math.cos(a) * Math.cos(e)];
+}
+
+/** Where the young moon and the evening star stand, and the moon's angular radius (radians). */
+export const MOON = Object.freeze({ az: 6.5, el: 16, radius: THREE.MathUtils.degToRad(1.15) });
+export const EVENING_STAR = Object.freeze({ az: -5.5, el: 10.5 });
 
 /** A linear-space vec3 constant from an sRGB hex, optionally scaled (HDR). */
 export function rgb(hex, scale = 1) {
@@ -264,7 +281,7 @@ export const nvHazeColor = (u, sa) => mix(u.mood.hazeA, u.mood.hazeT, sa);
  */
 export const nvSunGlow = (u, dir, pulse) => {
     const m = u.mood;
-    const ang = acos(clamp(dot(dir, vec3(SUN_DIR[0], SUN_DIR[1], SUN_DIR[2])), -1.0, 1.0));
+    const ang = acos(clamp(dot(dir, u.sunDir), -1.0, 1.0));
     const wide = exp(ang.mul(-2.6)).mul(pulse.mul(0.4).add(0.55));
     const core = exp(ang.mul(-14.0)).mul(pulse.mul(1.2).add(1.1));
     const front = smoothstep(0.0, 0.5, dir.z.negate());
@@ -296,12 +313,16 @@ export const nvSkyGradient = (u, e, sa) => {
  */
 export const nvApplyHaze = (u, col, rel, k, pulse) => {
     const dist = sqrt(rel.x.mul(rel.x).add(rel.z.mul(rel.z)));
-    const fk = dist.mul(k);
+    // The air's own reach (u.air2.z: 1 on a plain day, more in mist, less when it clears).
+    const fk = dist.mul(k).mul(u.air2.z);
     const amount = float(1.0).sub(exp(fk.mul(fk).negate()));
     // The horizon on this bearing (level direction): the sea line's own colour.
     const level = vec3(rel.x, 0.0, rel.z).div(max(dist, 1e-3));
     return mix(col, nvAir(u, level, pulse), min(amount, 1.0));
 };
+
+/** A colour of the spectrum, red (0) through green to violet (1). */
+export const nvSpectrum = (t) => cos(vec3(0.0, 0.33, 0.67).sub(t.mul(0.8)).mul(6.2832)).mul(0.5).add(0.5);
 
 /** Max of the three channels. */
 export const nvMax3 = (c) => max(c.x, max(c.y, c.z));

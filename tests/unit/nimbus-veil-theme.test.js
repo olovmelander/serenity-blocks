@@ -175,13 +175,13 @@ describe('nimbus-veil world', () => {
         scene.traverse((obj) => {
             if (obj.isMesh || obj.isSprite) drawables += 1;
         });
-        // sky, cloud sea, cumulus, two veils, motes, sparkles
-        expect(drawables).toBe(7);
+        // sky, cloud sea, cumulus, the optics card, four veils, the birds, motes, sparkles
+        expect(drawables).toBe(11);
         world.dispose();
         expect(scene.children).toHaveLength(0);
     });
 
-    it('sends the combo glints from the sun across the whole screen', () => {
+    it('sends a burst\'s glints from the sun across the whole screen', () => {
         const world = new NimbusWorld({ scene: new THREE.Scene(), random: seeded() }).build();
         world.setLayout(16 / 9, {
             x0: (960 - 162) / 1920, y0: 0.21, x1: (960 + 162) / 1920, y1: 0.79,
@@ -193,7 +193,8 @@ describe('nimbus-veil world', () => {
         const sun = new THREE.Vector2();
         world.getSunScreen(camera, sun);
 
-        world.onCombo(5);
+        // (A cascade's own instrument is its rays now; the burst is four lines' and a new level's.)
+        world.emitHeavenlyBurst(160);
         const { iSpawn, iVel, iMotion } = world.fx.sparkles;
         const p = new THREE.Vector3();
         const ends = [];
@@ -259,6 +260,9 @@ describe('nimbus-veil build-up (shared/gameplay-surge.js)', () => {
             world.onLineClear(4, { cascade: 1, combo: 1, chainStep: true });
             world.onB2B();
         }
+        // Four lines and their back-to-back land in one tick and each keeps its own bands: the
+        // four in echelon and the tide line.
+        expect(a.world.rings.filter((r) => r.energy > 0)).toHaveLength(5);
         a.run(0.4);
         b.run(0.4);
         // b: a single, then the two waves of its cascade, right behind the quad.
@@ -300,11 +304,16 @@ describe('nimbus-veil build-up (shared/gameplay-surge.js)', () => {
             world.onLineClear(1, { cascade: w, combo: 1 });
         }
         run(DT);
+        // The lock's own two lines are two bands in echelon; each of the five waves after is one.
         const bands = world.u.rings.filter((r) => r.value.z > 1e-3);
-        expect(bands).toHaveLength(Math.min(6, RING_SLOTS));
+        expect(bands).toHaveLength(Math.min(7, RING_SLOTS));
+        const live = world.rings.filter((r) => r.energy > 0).sort((p, q) => p.t0 - q.t0);
+        expect(live).toHaveLength(7);
+        expect(live[1].t0 - live[0].t0).toBeGreaterThan(0.1);
+        expect(live[1].energy).toBe(live[0].energy);
         // Deeper, brighter, faster, hotter: each one-line wave past the first outdoes the last.
-        const waves = world.rings.slice().sort((p, q) => p.t0 - q.t0);
-        for (let i = 2; i < waves.length; i += 1) {
+        const waves = live.slice(1);
+        for (let i = 1; i < waves.length; i += 1) {
             expect(waves[i].energy).toBeGreaterThan(waves[i - 1].energy);
             expect(waves[i].dur).toBeLessThan(waves[i - 1].dur);
             expect(waves[i].heat).toBeGreaterThanOrEqual(waves[i - 1].heat);

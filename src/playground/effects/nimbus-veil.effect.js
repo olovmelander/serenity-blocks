@@ -12,8 +12,16 @@
  *                            layout rules from public/styles/main.css; the composition solver
  *                            reads its rect exactly as in game). board=0 → the centred menu shot
  *   hud=0                    board without the HUD mock
- *   event=lock|clear|combo|quad|levelUp  fire a gameplay event...
- *   eventAge=<s>             ...and show it <s> seconds later (combo=<n>, lines=<n>)
+ *   event=<name>             play a gameplay event...
+ *   eventAge=<s>             ...and show it <s> seconds after it began. Names: lock, hard,
+ *                            clear (lines=<n>), quad, combo (a cascade of combo=<n> waves),
+ *                            chain (chain=<n> clears in a row), chainEnd, twist, twist0 (no
+ *                            lines), b2b (streak=<n>), perfect, levelUp, over (the run ends),
+ *                            dawn (the run ends, and 4 s later the next begins), fever
+ *   air=<name>               hold one air: fair, tails, mackerel, beams, mist (default: the clock's)
+ *   happen=<kind>            hold one happening in every slot: skein, glitter, boil, meteor,
+ *                            flicker (its age is t modulo the slot's 36 s)
+ *   happenings=0             no happenings
  *   parts=sky,sea,...        draw only these parts (sky sea cumulus fx)
  *   noPost=1                 raw scene (no bloom/grade)
  *   pointerX / pointerY      hold a pointer-parallax offset (-1..1)
@@ -96,13 +104,58 @@ export function create({
     const pointerY = num(params, 'pointerY');
     const eventName = params.get('event');
     const eventAge = num(params, 'eventAge', 0.4);
-    const fireEvent = () => {
-        if (eventName === 'lock') {
-            world.onPieceLock();
-        } else if (eventName === 'combo') world.onCombo(num(params, 'combo', 4));
-        else if (eventName === 'clear') world.onLineClear(num(params, 'lines', 2));
-        else if (eventName === 'quad') world.onLineClear(4);
-        else if (eventName === 'levelUp') world.onLevelUp();
+    const airParam = params.get('air');
+    if (airParam) world.setAir(airParam);
+    const happenParam = params.get('happen');
+    world.setHappenings(params.get('happenings') !== '0', happenParam);
+
+    /** The event as a script: [seconds after its start, what happens then], in order. */
+    const eventScript = () => {
+        const list = [];
+        const at = (offset, fn) => list.push([offset, fn]);
+        if (eventName === 'lock') at(0, () => world.onPieceLock());
+        else if (eventName === 'hard') at(0, () => { world.onHardDrop(); world.onPieceLock(); });
+        else if (eventName === 'clear') at(0, () => world.onLineClear(num(params, 'lines', 2)));
+        else if (eventName === 'quad') at(0, () => world.onLineClear(4));
+        else if (eventName === 'combo') {
+            const waves = Math.max(2, num(params, 'combo', 4));
+            at(0, () => world.onLineClear(2, { cascade: 1 }));
+            for (let k = 2; k <= waves; k += 1) {
+                at((k - 1) * 0.36, () => { world.onLineClear(1, { cascade: k }); world.onCombo(k); });
+            }
+        } else if (eventName === 'chain' || eventName === 'chainEnd') {
+            const n = Math.max(2, num(params, 'chain', 5));
+            for (let k = 1; k <= n; k += 1) {
+                at((k - 1) * 0.7, () => {
+                    world.onPieceLock({ chain: k - 1 });
+                    world.onLineClear(1, { combo: k, chainStep: true });
+                });
+            }
+            if (eventName === 'chainEnd') at(n * 0.7, () => world.onPieceLock({ chain: n }));
+        } else if (eventName === 'twist') at(0, () => { world.onLineClear(2); world.onTwist(2); });
+        else if (eventName === 'twist0') at(0, () => world.onTwist(0));
+        else if (eventName === 'b2b') {
+            const streak = Math.max(1, num(params, 'streak', 1));
+            for (let k = 0; k < streak; k += 1) at(k * 2.2, () => { world.onLineClear(4); world.onB2B(); });
+        } else if (eventName === 'perfect') {
+            at(0, () => world.onLineClear(4));
+            at(0.36, () => world.onPerfectClear());
+        } else if (eventName === 'levelUp') {
+            at(0, () => { world.setLevel(world.level + 1); world.onLevelUp(); });
+        } else if (eventName === 'over') at(0, () => world.onGameOver());
+        else if (eventName === 'dawn') {
+            at(0, () => world.onGameOver());
+            at(4, () => world.onSessionStart());
+        } else if (eventName === 'fever') {
+            for (let k = 0; k < 60; k += 1) {
+                at(k * 0.4, () => {
+                    world.onHardDrop();
+                    world.onPieceLock({ chain: k });
+                    world.onLineClear(1 + (k % 3), { combo: k + 1, chainStep: true });
+                });
+            }
+        }
+        return list;
     };
 
     const size = new THREE.Vector2();
@@ -124,7 +177,16 @@ export function create({
     const pushPost = (time) => {
         if (!post) return;
         const vis = world.getSunScreen(camera, sunUv);
-        post.update({ time, sun: sunUv, sunVis: vis });
+        const state = world.postState();
+        post.update({
+            time,
+            sun: sunUv,
+            sunVis: vis,
+            bloomBoost: state.bloomBoost,
+            rays: state.rays,
+            exposure: state.exposure,
+            dusk: state.dusk,
+        });
     };
     const step = (time, dt) => {
         world.updateCamera(camera, sim(time, dt));
@@ -137,10 +199,19 @@ export function create({
         world.seek(t0);
         step(t0, 0);
         if (eventName) {
-            fireEvent();
+            world.setLevel(num(params, 'level', 1), { silent: true });
+            const script = eventScript();
             const steps = Math.max(1, Math.round(eventAge * 60));
             const dt = eventAge / steps;
-            for (let i = 1; i <= steps; i += 1) step(t0 + i * dt, dt);
+            let next = 0;
+            for (let i = 0; i <= steps; i += 1) {
+                const age = i * dt;
+                if (i > 0) step(t0 + age, dt);
+                while (next < script.length && script[next][0] <= age + 1e-6) {
+                    script[next][1]();
+                    next += 1;
+                }
+            }
         }
         step(time, 0);
     };

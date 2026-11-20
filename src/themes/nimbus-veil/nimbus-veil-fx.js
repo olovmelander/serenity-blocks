@@ -1,5 +1,6 @@
 /**
- * Nimbus Veil — atmosphere and gameplay FX: drifting golden motes, event sparkles, mist veils.
+ * Nimbus Veil — atmosphere and gameplay FX: drifting golden motes (and the ice glitter that
+ * passes through them), event sparkles, the veils of mist over the deck, a skein of birds.
  *
  * Motion is analytic in the vertex stage (spawn state + age), so nothing is uploaded per frame:
  * a spawn writes one instance's attributes as a ranged upload, and the same code runs on both
@@ -16,6 +17,8 @@ import {
     attribute,
     cameraPosition,
     clamp,
+    cross,
+    dot,
     exp,
     float,
     fract,
@@ -23,6 +26,7 @@ import {
     max,
     mix,
     normalize,
+    positionGeometry,
     positionWorld,
     pow,
     sin,
@@ -31,6 +35,7 @@ import {
     uv,
     vec2,
     vec3,
+    vec4,
 } from 'three/tsl';
 import {
     RIG,
@@ -55,9 +60,9 @@ function touch(attr, index) {
 const glint = (local, flare) => {
     const d = length(local);
     const core = exp(d.mul(d).mul(-9.0));
-    const cross = exp(abs(local.x).mul(-26.0)).mul(exp(abs(local.y).mul(-3.2)))
+    const arms = exp(abs(local.x).mul(-26.0)).mul(exp(abs(local.y).mul(-3.2)))
         .add(exp(abs(local.y).mul(-26.0)).mul(exp(abs(local.x).mul(-3.2))));
-    return core.add(cross.mul(flare)).mul(float(1.0).sub(smoothstep(0.85, 1.0, d)));
+    return core.add(arms.mul(flare)).mul(float(1.0).sub(smoothstep(0.85, 1.0, d)));
 };
 
 function createMotes(u, count, rand) {
@@ -90,8 +95,13 @@ function createMotes(u, count, rand) {
         const riseT = rise.div(40.0);
         const wrapFade = smoothstep(0.0, 0.12, riseT).mul(float(1.0).sub(smoothstep(0.8, 1.0, riseT)));
         const fog = exp(dist.mul(SEA_HAZE * 1.4).negate());
+        // Ice glitter passing (u.glitter): the motes toward the sun flash, each on its own beat.
+        const toSun = max(dot(normalize(pos.sub(cameraPosition)), u.sunDir), 0.0);
+        const s2 = toSun.mul(toSun);
+        const flash = pow(sin(t.mul(float(5.0).add(ph.mul(0.9))).add(ph.mul(11.0))).mul(0.5).add(0.5), 6.0);
+        const gain = u.moteGlow.mul(0.9).add(u.glitter.mul(s2.mul(s2)).mul(flash.mul(7.0).add(0.6)));
         return look.xyz.mul(glint(local, twinkle.mul(0.5)).mul(twinkle.mul(0.6).add(0.4)).mul(wrapFade).mul(fog)
-            .mul(u.moteGlow.mul(0.9)));
+            .mul(gain));
     })();
     material.opacityNode = float(1.0);
 
@@ -169,21 +179,31 @@ function createSparkles(u, count) {
 }
 
 /**
- * Mist veils: wide bands hugging the cloud sea in front of the camera (in a group the world
- * turns with the view's yaw). fbm density scrolls sideways; warm toward the sun, lavender away.
+ * The veils: long bands of mist lying over the cloud sea at four depths, in a group the world
+ * turns with the view's yaw. fbm density streams sideways on the flight clock; the air sets how
+ * much of it there is (u.air.z: thin on a fair day, thick in mist, closing in at a run's end).
+ * Lavender away from the sun, warm toward it, and looking INTO the sun the mist lights up: that
+ * forward glow is what makes it read as a veil and not a smudge. Lower tiers take the near ones.
  */
+const VEIL_SPECS = Object.freeze([
+    {
+        d: 60, w: 300, h: 24, y: 4, k: 0.42, speed: 0.016,
+    },
+    {
+        d: 135, w: 640, h: 40, y: 7, k: 0.46, speed: 0.011,
+    },
+    {
+        d: 270, w: 1250, h: 66, y: 11, k: 0.48, speed: 0.0075,
+    },
+    {
+        d: 520, w: 2400, h: 120, y: 18, k: 0.44, speed: 0.005,
+    },
+]);
+
 function createVeils(u, layers) {
     const group = new THREE.Group();
     group.name = 'NimbusVeils';
-    const specs = [
-        {
-            d: 70, w: 230, h: 30, y: 6, k: 0.32, speed: 0.012,
-        },
-        {
-            d: 140, w: 440, h: 46, y: 9, k: 0.26, speed: 0.008,
-        },
-    ].slice(0, layers);
-    specs.forEach((spec, i) => {
+    VEIL_SPECS.slice(0, layers).forEach((spec, i) => {
         const material = new THREE.MeshBasicNodeMaterial();
         material.name = `NimbusVeil${i}`;
         material.transparent = true;
@@ -191,16 +211,29 @@ function createVeils(u, layers) {
         material.fog = false;
         const vu = uv();
         material.colorNode = Fn(() => {
-            const V = normalize(positionWorld.sub(cameraPosition));
+            const V = normalize(positionWorld.sub(cameraPosition)).toVar();
             const sa = nvSunAlign(V.z.div(max(length(vec2(V.x, V.z)), 1e-4)));
-            return mix(u.mood.veilA, u.mood.veilT, sa).mul(float(1.0).add(u.seaGlow.mul(0.2)));
+            const toSun = max(dot(V, u.sunDir), 0.0);
+            const c2 = toSun.mul(toSun);
+            const c8 = c2.mul(c2).mul(c2).mul(c2);
+            const lobe = c8.mul(c8).mul(u.day.mul(0.8).add(0.2));
+            return mix(u.mood.veilA, u.mood.veilT, sa).mul(float(1.0).add(u.seaGlow.mul(0.2)))
+                .add(u.mood.veilT.mul(lobe).mul(0.9));
         })();
         material.opacityNode = Fn(() => {
-            const p = vec2(vu.x.mul(5.0).add(u.flight.mul(spec.speed)).add(i * 3.7), vu.y.mul(1.6));
+            // Long and low: a cell of the mist is five times as wide as it is tall.
+            const p = vec2(
+                vu.x.mul(spec.w / (spec.h * 3.4)).add(u.flight.mul(spec.speed)).add(i * 3.7),
+                vu.y.mul(1.5).add(i * 1.3),
+            );
             const n = nvFbm3(p);
-            const band = smoothstep(0.0, 0.35, vu.y).mul(float(1.0).sub(smoothstep(0.45, 1.0, vu.y)));
-            const sides = smoothstep(0.0, 0.12, vu.x).mul(float(1.0).sub(smoothstep(0.88, 1.0, vu.x)));
-            return smoothstep(0.38, 0.85, n).mul(band).mul(sides).mul(spec.k);
+            // More air, more veil: the threshold falls and the mist joins up.
+            const thick = clamp(u.air.z, 0.0, 2.4);
+            const thr = mix(float(0.66), float(0.26), clamp(thick.mul(0.55), 0.0, 1.0));
+            const band = smoothstep(0.0, 0.3, vu.y).mul(float(1.0).sub(smoothstep(0.4, 1.0, vu.y)));
+            const sides = smoothstep(0.0, 0.1, vu.x).mul(float(1.0).sub(smoothstep(0.9, 1.0, vu.x)));
+            return smoothstep(thr, thr.add(0.36), n).mul(band).mul(sides).mul(spec.k)
+                .mul(clamp(thick.mul(0.9).add(0.25), 0.0, 1.9));
         })();
         const mesh = new THREE.Mesh(new THREE.PlaneGeometry(spec.w, spec.h), material);
         mesh.position.set(0, spec.y - RIG.height, -spec.d);
@@ -211,6 +244,85 @@ function createVeils(u, layers) {
     return group;
 }
 
+/** A bird's wingspan (world units: these are big birds, seen a long way off). */
+const BIRD_SPAN = 12.5;
+
+/**
+ * The skein: `count` birds in a chevron behind their leader, one draw. The world gives the
+ * leader's place and heading (u.skein, u.skeinDir) while a skein is in the sky, and a zero size
+ * otherwise; each bird is a quad turned to the camera with its wings drawn in the fragment, two
+ * strokes beating about the body, dark against the light. The chevron trails back from the
+ * leader, the arm nearer the eye a little lower, so it reads as a V from below.
+ */
+function createBirds(u, count, rand) {
+    const positions = new Float32Array(count * 4 * 3);
+    const uvs = new Float32Array(count * 4 * 2);
+    const birds = new Float32Array(count * 4 * 4);
+    const index = [];
+    for (let k = 0; k < count; k += 1) {
+        const row = Math.ceil(k / 2);
+        const arm = k % 2 === 1 ? 1 : -1;
+        const back = row * 12.5 + (k ? (rand() - 0.5) * 4 : 0);
+        const across = arm * row * 8.5 + (k ? (rand() - 0.5) * 3 : 0);
+        const phase = rand() * 6.28;
+        const size = 0.86 + rand() * 0.28;
+        [[-1, -0.5], [1, -0.5], [1, 0.5], [-1, 0.5]].forEach(([cx, cy], c) => {
+            const v = k * 4 + c;
+            positions.set([cx, cy, 0], v * 3);
+            uvs.set([cx * 0.5 + 0.5, cy + 0.5], v * 2);
+            birds.set([back, across, phase, size], v * 4);
+        });
+        const base = k * 4;
+        index.push(base, base + 1, base + 2, base, base + 2, base + 3);
+    }
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geometry.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
+    geometry.setAttribute('aBird', new THREE.BufferAttribute(birds, 4));
+    geometry.setIndex(index);
+    geometry.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 1e5);
+
+    const material = new THREE.MeshBasicNodeMaterial();
+    material.name = 'NimbusBirds';
+    material.transparent = true;
+    material.depthWrite = false;
+    material.side = THREE.DoubleSide;
+    material.fog = false;
+    const bird = attribute('aBird', 'vec4'); // back along the heading, across it, wingbeat phase, size
+    material.positionNode = Fn(() => {
+        const heading = u.skeinDir.xyz;
+        const side = normalize(cross(heading, vec3(0.0, 1.0, 0.0)));
+        const bob = sin(u.skein.w.mul(0.8).add(bird.z)).mul(0.6);
+        const centre = u.skein.xyz.sub(heading.mul(bird.x)).add(side.mul(bird.y))
+            .add(vec3(0.0, bird.y.mul(-0.3).add(bob), 0.0));
+        const span = bird.w.mul(BIRD_SPAN * 0.5).mul(u.skeinDir.w);
+        return centre.add(u.camRight.mul(positionGeometry.x.mul(span)))
+            .add(u.camUp.mul(positionGeometry.y.mul(span)));
+    })();
+    material.colorNode = Fn(() => {
+        const q = uv().sub(0.5).mul(2.0).toVar(); // x along the wings, y up, both -1..1
+        const w = abs(q.x).toVar();
+        // The beat: each bird on its own phase.
+        const beat = sin(u.skein.w.mul(5.4).add(bird.z));
+        const line = beat.mul(w).mul(0.62).add(w.mul(float(1.0).sub(w)).mul(0.9));
+        const thick = float(0.2).sub(w.mul(0.15));
+        const wing = float(1.0).sub(smoothstep(thick.mul(0.45), thick, abs(q.y.sub(line))))
+            .mul(float(1.0).sub(smoothstep(0.86, 1.0, w)));
+        const bx = q.x.div(0.17);
+        const by = q.y.sub(0.04).div(0.3);
+        const body = float(1.0).sub(smoothstep(0.6, 1.0, bx.mul(bx).add(by.mul(by))));
+        const alpha = max(wing, body);
+        // Dark against the light; the low sun warms it a little.
+        const col = u.mood.shadeLow.mul(0.3).add(u.mood.sunLight.mul(0.05).mul(u.day));
+        return vec4(col, alpha.mul(0.92));
+    })();
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.name = 'NimbusBirds';
+    mesh.frustumCulled = false;
+    mesh.renderOrder = 27.5;
+    return mesh;
+}
+
 export class NimbusFx {
     /**
      * @param {object} u  shared world uniforms
@@ -218,10 +330,11 @@ export class NimbusFx {
      * @param {number} opts.motes
      * @param {number} opts.sparkles
      * @param {number} opts.veils
+     * @param {number} [opts.birds]
      * @param {() => number} opts.rand
      */
     constructor(u, {
-        motes, sparkles, veils, rand,
+        motes, sparkles, veils, birds = 0, rand,
     }) {
         this.group = new THREE.Group();
         this.group.name = 'NimbusFx';
@@ -231,9 +344,11 @@ export class NimbusFx {
         /** When each sparkle slot's glint ends (CPU copy): a new glint takes a finished slot. */
         this.sparkEnd = new Float64Array(this.sparkles.iSpawn.count).fill(-1e6);
         this.veils = veils > 0 ? createVeils(u, veils) : null;
+        this.birds = birds > 0 ? createBirds(u, birds, rand) : null;
         if (this.motes) this.group.add(this.motes);
         this.group.add(this.sparkles.sprite);
         if (this.veils) this.group.add(this.veils);
+        if (this.birds) this.group.add(this.birds);
     }
 
     get sparkleCapacity() {
