@@ -702,7 +702,9 @@ export class PaintedAgesWorld {
             g,
             time: this.time,
             rgb,
-            power: (hard ? 6.0 + drop * 2 : 4.6) * (1 + 0.35 * pace),
+            // (A bed on the near hill fills a wide stretch of the screen: lit as hard as a far
+            // one, quick drops laid a white glare over it. Its light is held back by nearness.)
+            power: (hard ? 6.0 + drop * 2 : 4.6) * (1 + 0.35 * pace) * clamp(p.distance / 520, 0.5, 1),
             half: hard ? 5.0 : 4.0,
             speed: (hard ? 270 : 175) * (1 + 0.25 * pace),
             reach: (hard ? 1500 : 950) * (1 + 0.45 * pace),
