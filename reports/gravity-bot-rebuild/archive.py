@@ -548,10 +548,13 @@ for repeat in (1,2):
             key = f'prefetched-render-{repeat}-{mode}-{hz}'
             live, tape = ledger['renderer'][key], ledger['renderer'][key + '-replay']
             manifests.add(live['buildManifestSha256'])
+            for setting in ('cpu','electron','chromium','renderer','mainPriority','rendererPriority'):
+                if live['runtime'][setting] != tape['runtime'][setting]:
+                    raise ValueError(f'Different renderer runtime setting {setting} in {key}')
             if (live['buildManifestSha256'] != tape['buildManifestSha256'] or live['checkFormat'] != 'body-v1'
                     or tape['checkFormat'] != 'body-v1' or not live['times'] or not tape['replay']
                     or not all(r['requestedHz'] == hz and r['sharedTexturePaints'] and r['runtime']['renderer']
-                               and r['runtime']['mainPriority'] == 0
+                               and r['runtime']['mainPriority'] == 0 and r['runtime']['rendererPriority'] == 0
                                for r in (live,tape)) or min(live['elapsed'], tape['elapsed']) < 600000):
                 raise ValueError('Invalid matched renderer recording ' + key)
             left = {(r[0],r[1]): r[2:] for r in live['checks']}
