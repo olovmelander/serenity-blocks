@@ -1254,7 +1254,7 @@ export class PaintedAgesWorld {
         // The weather's far shower: curtains on one side, and by day a shard of rainbow in them.
         const virgaAz = virgaBearing(A.place);
         u.virga.value.set(virgaAz, A.virga * (1 - 0.7 * this.showerPower), Math.sign(virgaAz) * 0.2);
-        const shard = 0.5 * smooth(0.35, 0.9, A.virga) * day * (1 - this.showerPower);
+        const shard = 0.78 * smooth(0.35, 0.9, A.virga) * day * (1 - this.showerPower);
         // The bow (its age counts from when it first showed: a bow carried on never re-fades).
         // A chain's bow or a perfect clear's stands whole and takes over from the shard.
         this.bowSecondShown += (this.bowSecond - this.bowSecondShown) * approach(0.9, dt);

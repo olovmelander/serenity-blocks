@@ -172,11 +172,11 @@ export function rainbow(u, dir) {
  */
 export function virgaVeil(u, noise, az, lift) {
     const rel = az.sub(u.virga.x);
-    const window = exp(sq(rel.div(0.17)).negate());
+    const window = exp(sq(rel.div(0.2)).negate());
     const s = rel.add(lift.mul(u.virga.z));
     const broad = texture(noise, vec2(s.mul(1.9), u.time.mul(0.004).add(0.37))).r;
     const fine = texture(noise, vec2(s.mul(9.0), u.time.mul(0.007).add(0.81))).b;
-    const curtains = smoothstep(0.3, 0.62, broad.mul(0.7).add(fine.mul(0.3)));
+    const curtains = smoothstep(0.24, 0.56, broad.mul(0.7).add(fine.mul(0.3)));
     return curtains.mul(window).mul(u.virga.y);
 }
 

@@ -414,8 +414,10 @@ export function createLandMaterial(u, t, tier) {
         If(u.virga.y.greaterThan(0.01).and(dist.greaterThan(2600.0)), () => {
             const rd = V.div(dist);
             const curtain = virgaVeil(u, t.noise, atan(rd.x, rd.z.negate()), rd.y.add(0.12))
-                .mul(smoothstep(2600.0, 7000.0, dist));
-            col.assign(mix(col, u.haze.mul(0.5).add(u.cloudShade.mul(0.55)), curtain.mul(0.72)));
+                .mul(smoothstep(2200.0, 5200.0, dist));
+            // (Rain against sunlit land is darker and bluer than the haze: a wash of the
+            // haze's own colour could not be told from distance.)
+            col.assign(mix(col, u.cloudShade.mul(0.82).add(u.haze.mul(0.14)), curtain.mul(0.8)));
         });
         return vec4(col, 1.0);
     })();

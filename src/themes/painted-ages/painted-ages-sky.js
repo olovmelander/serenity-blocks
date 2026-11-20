@@ -262,7 +262,7 @@ export function createSky(u, t, tier) {
             // Rain is darker than the sky behind it; it hangs from a dark base low in the sky.
             const under = smoothstep(0.19, 0.12, dir.y).mul(smoothstep(-0.02, 0.03, dir.y));
             const base = exp(sq(dir.y.sub(0.165).div(0.03)).negate()).mul(exp(sq(az.sub(u.virga.x).div(0.2)).negate())).mul(u.virga.y);
-            const wetAir = u.cloudShade.mul(0.72).add(u.haze.mul(0.16));
+            const wetAir = u.cloudShade.mul(0.66).add(u.haze.mul(0.12));
             sky.assign(mix(sky, wetAir, max(virgaVeil(u, t.noise, az, dir.y).mul(under).mul(0.82), base.mul(0.8))));
         });
         // The bow over the valley.
