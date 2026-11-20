@@ -207,15 +207,18 @@ the deck's heads pile, how strongly the ceiling breaks the sun, the haze's rate,
 | ![Noon](nimbus-veil-captures/living-noon-tails.jpg) | ![Mackerel](nimbus-veil-captures/living-blue-mackerel.jpg) | ![Mist](nimbus-veil-captures/living-mist.jpg) |
 
 **And the sky has happenings of its own**, one to a slot of 36 s with about a quarter of the
-slots quiet: a skein of birds crossing the light edge to edge, the motes flashing toward the sun,
+slots quiet: albatrosses crossing the view edge to edge, the motes flashing toward the sun,
 a tower that boils up, and after dark shooting stars and heat lightning inside a tower. Which one
 a slot holds is a hash of its number and of the starlight at its start, and everything a
 happening shows is a function of its age, so a seek, a replay and a rebuild land on the same sky
 and nothing is "armed" or "fired".
 
-| A skein | Heat lightning in a tower |
+| Albatrosses | Heat lightning in a tower |
 | --- | --- |
-| ![Skein](nimbus-veil-captures/living-skein.jpg) | ![Flicker](nimbus-veil-captures/living-flicker.jpg) |
+| ![Albatrosses](nimbus-veil-captures/living-albatross.jpg) | ![Flicker](nimbus-veil-captures/living-flicker.jpg) |
+
+(The birds were first a skein of strokes drawn in the fragment; they were rebuilt the same day:
+see "The albatrosses, and a night the stars own" below.)
 
 ### The scene
 
@@ -306,14 +309,15 @@ the rays and the corona, with a note saying why.
 | `nimbus-veil-sky.js` | The ceiling, the night, the wave over the high cloud. |
 | `nimbus-veil-cloudsea.js` | Live sun, head height, cloud shade, ripples, stones, the spectrum, `ringLight`'s fringe. |
 | `nimbus-veil-cumulus.js` | Live sun, last light, the climb, the surge, boil, lanterns, inner lightning. |
-| `nimbus-veil-fx.js` | Four veils, the birds, the motes' flash. |
+| `nimbus-veil-fx.js` | Four veils, the motes' flash. |
+| `nimbus-veil-albatross.js`, `-flight.js`, `-model.js` (new) | The albatrosses: the draw, the flight, the Blender-built bird. |
 | `nimbus-veil-world.js` | The three clocks, the lamp, every instrument, the veil at a run's end. |
 | `nimbus-veil-post.js` | The closed veil's grade (`uDusk`). |
 | `nimbus-veil-theme.js` | `gameOver` and the mode manager's start and stop reach the world. |
 | `nimbus-veil-tetrominos.js` | The seven hues. |
 
-Draws at High went from seven to eleven (two more veils, the birds, the optics card). There is
-no new texture, pass or render target.
+Draws at High went from seven to eleven (two more veils, the albatrosses, the optics card).
+There is no new texture, pass or render target.
 
 ### Tiers
 
@@ -321,10 +325,12 @@ Every tier keeps every instrument, the veils and the birds (pinned by "keeps eve
 
 | Tier | Veils | Birds | Cloudlets | Ceiling octaves | Milky Way | Cloud shade on the deck |
 | --- | ---: | ---: | --- | ---: | --- | --- |
-| Minimal | 1 | 9 | fibres only | 2 | off | off |
-| Low | 2 | 11 | fibres only | 2 | off | on |
-| Medium | 3 | 13 | on | 3 | on | on |
-| High and up | 4 | 15 | on | 3 | on | on |
+| Minimal | 1 | 3 | fibres only | 2 | off | off |
+| Low | 2 | 3 | fibres only | 2 | off | on |
+| Medium | 3 | 4 | on | 3 | on | on |
+| High and up | 4 | 5 | on | 3 | on | on |
+
+(Birds: the most albatrosses a passage holds.)
 
 ![Minimal](nimbus-veil-captures/living-minimal.jpg)
 
@@ -367,7 +373,7 @@ tests pass.
 **Not verified, and open** (the writer's doubts, not the owner's words):
 
 - Nobody has watched it move: every judgement above is from stills. The waves' echelon, the
-  stones going out, the skein's wingbeat and the sunrise are the things to look at first.
+  stones going out and the sunrise are the things to look at first.
 - A second run's dawn was not captured (the mode's title card was up at the moment the frame was
   taken); the first run's was.
 - By day the chain's stones are quiet on the sunlit deck: they read, but they are the faintest of
@@ -378,10 +384,104 @@ tests pass.
 - A perfect clear's spectrum is a bold thing in a quiet theme. It is the one moment allowed to be.
 - The boiling tower's crown can leave the top of the frame when it is the tall tower on the right.
 - The theme's icon was not re-baked; its world's first hour is unchanged.
-- Blender was offered and not used: this world is light and vapour with nothing solid in it, and
-  the birds are a few pixels of wing drawn in the fragment.
+- (Blender was not used in this pass; the birds' rebuild below is where it was.)
 - Two-board and online layouts, Reduce motion and Reduce flashing were unit-tested and not
   captured.
+
+### The albatrosses, and a night the stars own (2026-11-20, the same day)
+
+Two things the owner asked for once the pass above was in the game: "fix the flying birds", and
+"show the stars more during the night: now they are quite hidden by the upper clouds".
+
+**The birds.** The skein was a chevron of quads with two strokes drawn in the fragment, beating
+in step on a straight line a long way off: it read as a row of ticks. It is gone. What crosses the
+view now is the bird of a sea without a shore: **albatrosses**, two to five on one course, one
+behind the other (now and then one alone), on stiff wings three body-lengths across. No other
+theme has them (the geese, cranes, swans, gulls, vultures, flamingos and owls are taken).
+
+| By day | In the game | Close |
+| --- | --- | --- |
+| ![Albatrosses](nimbus-veil-captures/living-albatross.jpg) | ![In the game](nimbus-veil-captures/living-albatross-ingame.jpg) | ![Close](nimbus-veil-captures/living-albatross-close.jpg) |
+
+- **The model is Blender's** (`scripts/blender/nimbus_veil_albatross.py`, run headless; it writes
+  `nimbus-veil-albatross-model.js`, numbers and no file to load: 322 vertices, 544 triangles).
+  Long narrow wings that come to a point, a stout white body, a dark brow, a hooked straw bill, a
+  short grey tail; white below with a dark margin, slate above with a saddle across the back. No
+  skeleton: every vertex carries how much of the shoulder's and the wrist's turn and of the tail's
+  fan and twist it takes, and the script's own twin of the vertex stage is held to the theme's by
+  the vertices it writes out (`checks`). The script also renders the lineups it was judged by,
+  each at game size (30, 50 and 90 px across, enlarged eight times).
+
+  ![The model](nimbus-veil-captures/living-albatross-model.jpg)
+
+- **The flight is the way these birds really cross a sea** (`nimbus-veil-albatross-flight.js`,
+  numbers only): a straight course over the deck from outside one edge of the view to outside the
+  other at an even pace, and on it a long S, up one side with the belly shown and down the other,
+  low over the cloud heads, with the back shown; banked into every turn by what the turn pulls,
+  the wings bending up under the load at the bottom of a swoop and easing at the top, the tail
+  fanning in the turns, and on some climbs three slow beats. A follower flies where its leader
+  was a moment ago, in its own hand (a little early or late, wider or narrower), so the line comes
+  in whole and evenly spaced and is a company, not one bird drawn five times. Three kinds of
+  passage (overtaking the eye, coming toward it, abeam), either way; everything is a closed form
+  of the happening's age, so a pinned capture and a seek land on the same birds. (The first
+  course was laid in screen terms and the birds crawled and dashed: gotcha #1769.)
+- **The light is the cloud sea's** (`nimbus-veil-albatross.js`, one instanced draw, three rows of
+  four numbers a bird): the sun wrapped a little round the bird, the sky from above, the bright
+  deck from below, a little sun through the thin flight feathers and along the outline of a bird
+  that stands against it, then the deck's air. They are solid (they write depth: a cloud head can
+  hide one, a veil drifts in front of it).
+- **A bird against the sun stays a dark shape.** The first frames had a pale cream ghost there:
+  with `noPost=1` the bird was a clean silhouette, and the post's bloom and sun rays, which are
+  ADDED over everything, laid more light on it than it had. So a bird marks itself in the scene
+  pass's alpha (`ALBATROSS_MASK`, its material writes the whole fragment) and the output pass
+  keeps three quarters of the glare off whatever carries the mark (`GLARE_ON_MARK`; gotcha #900,
+  the Waves theme's recipe, written again here: a theme imports no other theme). For the mark
+  to survive, the three additive parts (the optics card, the motes, the sparkles) now add their
+  light with an alpha of zero (premultiplied, a custom output) instead of adding 1 to the alpha
+  over their whole card or square. Their look is unchanged (the cascade, twist, perfect and level
+  frames were taken again and compared).
+
+| Evening | Against the sun |
+| --- | --- |
+| ![Evening](nimbus-veil-captures/living-albatross-evening.jpg) | ![The game view](nimbus-veil-captures/living-albatross-game.jpg) |
+
+**The night.** Once the stars are out (`nightK`, from the starlight) the high cloud stands back:
+there is less of it (its threshold rises, and a mackerel sky keeps only its taller cloudlets, so
+the rows open), it is thinner, what stands overhead goes dark (only the cloud toward the afterglow
+and low over it still burns), and seven tenths of the starlight a cloud covers shows through it.
+The stars themselves are more and brighter (one cell in five of the fine layer, one in six of the
+large). By day nothing changed.
+
+| Blue hour, fair | Blue hour, a mackerel sky |
+| --- | --- |
+| ![Blue hour](nimbus-veil-captures/living-blue-hour.jpg) | ![Mackerel](nimbus-veil-captures/living-blue-mackerel.jpg) |
+
+**Verified.** Captures with a clean console, WebGPU and `forceWebGL=1`: the birds by day, in the
+evening, in mist, at High, Low and Minimal (three birds there), in a 390 × 844 portrait frame
+(they pass behind the board card), a wingbeat in four frames, the same bird with and without the
+post; the night under every air, at Minimal and on WebGL2. The real game (private headless
+Chrome, single player, real key presses): three albatrosses crossed while pieces locked, WebGPU
+at High, the dynamic resolution stayed at 1, the console held only the browser's audio and
+Steam-cloud lines. `tests/unit/nimbus-veil-albatross.test.js` (new, 12): the model as decoded,
+the pose twin, every passage of 48 slots on four screen shapes (in and out over an edge, an even
+pace, no steep climb, a bank into every turn, clear of the deck's heads and of the lens), the
+mark and the additive parts' alpha; the living tests' skein assertions are re-pinned to the
+albatrosses. The shader gate builds the bird's material to WGSL and GLSL with the rest.
+
+**Not verified, and open** (the writer's doubts, not the owner's words):
+
+- Nobody has watched them move: the flight was judged from stills and from an eight-frame
+  sequence two seconds apart. The S, the bank and the three slow beats are the things to look at.
+- The birds are drawn 1.7 times life size and fly 27 to 124 units ahead of the eye (30 to 150 px
+  across at 900 lines; 35 at the far end): chosen to read in this view, not measured against anything.
+- A passage is one of the five happenings and comes as often as the skein did (about one slot in
+  four by day). More often is one number (`HAPPEN_QUIET`, or a second slot for it).
+- In a portrait frame the board card covers most of the course: the birds show above and beside it
+  for a moment each.
+- The cost was not measured again: five instances of 544 triangles and no new pass, texture or
+  sample (the post reads the alpha of the sample it already takes).
+- The night's high cloud is dimmer and sparser than it was. If the mackerel night was liked as a
+  ceiling, `nightK`'s four numbers in the sky are where it is.
 
 ### Reproduce
 
@@ -390,7 +490,7 @@ playground.html?effect=nimbus-veil&maxFps=30&t=12&happenings=0             the f
 ...&t=232  ...&t=342  ...&t=452                                             noon, evening, blue hour
 ...&t=404  ...&t=514                                                        sunset and sunrise, mid-melt
 ...&air=fair|tails|mackerel|beams|mist                                      hold one air
-...&happen=skein|glitter|boil|meteor|flicker                                hold one happening (age = t mod 36)
+...&happen=albatross|glitter|boil|meteor|flicker                            hold one happening (age = t mod 36)
 ...&event=lock|hard|clear|quad|combo|chain|chainEnd|twist|twist0|b2b|perfect|levelUp|over|dawn|fever
    with eventAge=<s>, lines=, combo=, chain=, streak=
 ...&board=0   ...&quality=Minimal   ...&forceWebGL=1
