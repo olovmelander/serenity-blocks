@@ -10,7 +10,7 @@ Feature branch `feature/gravity-bots`, measured against `8dc68d825db61bc04e1cfb4
 | Survival and defense | **Passed.** Deaths fell from 100 to 28 in 400 native-paced games. Every tier held or improved its original survival count. The expert survived all 16 six-row attacks and removed at least half the marked rows on 13. |
 | Local difficulty | On the reserved 100-bag panel, **9/9 adjacent pairs** met the 55–70% target in both three- and seven-frag matches. On the established seven-frag panel, tier 10 earned 70.50% against tier 9. Completed seven-frag series on the reserved panel lasted a median of **16.3 minutes**, up from 9.6. |
 | Campaign balance | **9/9 gates** on all 4,500 freshly replayed attempts after integrating the latest authored orbs. All 600 rival game records matched the calibrated build. Every historical human-pace proxy stayed inside the approved tolerance. |
-| Frame cost | The pre-integration package passed every percentile and first-plan target. One of 260,207 planning frames exceeded its display budget. Eight of 16 games had excess two-refresh intervals. Four focused repeats on the synced package passed every planning target. |
+| Frame cost | **Passed the planning budgets.** All 16 ten-minute games and all eight release-package checks passed, covering 321,704 active planning frames. The earlier live/input-replay comparison recorded excess two-refresh display intervals in eight of 16 games. |
 | Repeatability | The supported local fixed clock matched 3,403 inputs, 267 waves and 134 outgoing events across two fresh processes at 60 and 165 Hz. The end of this handover names the special rules that still use the original wall clock. |
 | Human appearance and fun | Far-off sampled mistakes fell to 0/58 at tier 1 and 4/67 at tier 2. The blind study is ready for five independent reviewers. Direct-play fun ratings are outstanding. |
 
@@ -240,6 +240,27 @@ Rival duration also varies at the preserved pace caps. On the 15 campaign bags, 
 
 The reference host ran Electron 44.9.3 and Chromium 152.0.7977.167 on a Ryzen 9 9955HX3D and RTX 5080 Laptop GPU, using ANGLE Direct3D 11. The packaged game drew to a 1280 × 720 offscreen window at normal Windows priority and delivered GPU shared textures. The display metric counts elapsed time between Chromium animation callbacks. A two-refresh interval is at least 33.08 ms at 60 Hz or 11.87 ms at 165 Hz, including the 0.25 ms timestamp tolerance. The scorecard also reports intervals beyond two refreshes plus 0.25 ms. Planner times measure elapsed work across all seats between callbacks. The complete active-update times also include applying each accepted input and the game effects it triggers. [Packaged renderer and timing boundaries](../reports/gravity-bot-rebuild/rendered-match.cjs)
 
+### Integrated planning budgets
+
+All 16 ten-minute matches passed the aggregate planning and first-plan budgets at 60 and 165 Hz. The measured game at `9c56a6871` reproduced 123,025 commands and 1,724 labelled boards from the corresponding pre-integration runs. Every one of its 291,616 active planning frames fit its display interval. [Full timing and state comparisons](../reports/gravity-bot-rebuild/integration.json.gz)
+
+The independently installed release package at `4316cb95a` includes main at `e8f00cd00`. Across all rooms Chromium parsed 44 game scripts. In the synced package, 20 matched byte for byte and 24 differed only in emitted dependency filenames. All eight fresh two-minute games on that package passed the same planning budgets across 30,088 active frames. Every one of their 12,120 commands and 176 labelled boards matched its longer game. [Script comparison](../reports/gravity-bot-rebuild/compare-loaded-scripts.py) · [Budget and replay checks](../reports/gravity-bot-rebuild/integration-check.py)
+
+Each timing cell gives p95 / p99 / maximum planning milliseconds, summed over all seats in a display frame. Across the 24 games, the largest planning frame was 7.3 ms at 60 Hz and 3.6 ms at 165 Hz. The largest per-game p95 first-plan lateness was 0.0 ms. [Release PR and CI](https://github.com/olovmelander/serenity-blocks/pull/371)
+
+| Room | Hz | Ten minutes, first order | Ten minutes, reverse order | Two minutes on the release package |
+|---|---:|---:|---:|---:|
+| One expert | 60 | 1.2 / 1.6 / 2.7 | 1.3 / 1.6 / 3.9 | 1.1 / 1.5 / 2.6 |
+| Three experts | 60 | 0.4 / 0.7 / 2.0 | 0.5 / 0.9 / 7.3 | 0.5 / 0.7 / 1.8 |
+| Four experts | 60 | 0.4 / 0.6 / 2.2 | 0.4 / 0.6 / 1.8 | 0.4 / 0.7 / 1.9 |
+| Neon | 60 | 0.7 / 0.9 / 1.7 | 0.7 / 0.9 / 1.7 | 0.7 / 0.9 / 1.6 |
+| One expert | 165 | 0.7 / 1.0 / 3.6 | 0.7 / 1.0 / 2.5 | 0.6 / 0.9 / 2.2 |
+| Three experts | 165 | 0.2 / 0.4 / 1.9 | 0.2 / 0.4 / 1.5 | 0.3 / 0.5 / 2.1 |
+| Four experts | 165 | 0.2 / 0.4 / 1.8 | 0.2 / 0.4 / 1.7 | 0.3 / 0.5 / 1.5 |
+| Neon | 165 | 0.8 / 1.0 / 2.6 | 0.8 / 1.0 / 1.8 | 0.9 / 1.1 / 1.8 |
+
+### Search cost before integration
+
 The host restarted during the second three-expert 60 Hz replay on November 19. Seventeen complete recordings survived. On November 20 the recorder played the saved live input tape again from the beginning with the same packaged build. The archive preserves the 19 half-minute host-load samples from the interrupted attempt separately. This pair crosses desktop sessions.
 
 On eight real opening deals played in both three- and four-expert rooms, 40% and 47% of completed search batches repeated the same public position. The opponents now share one copy of that work. Each seat spends its original number of logical ticks before acting. The cache includes the labelled board, active pose, public queue, pressure, reward context, weights and search allowance. Paired runs with sharing off and on exactly matched every decision, board, queue, score and final round tally. Two passes per deal took **3.19 → 2.08 seconds** of aggregate planning with three experts and **2.89 → 1.78 seconds** with four. Total process CPU across the same rounds fell from 6.00 → 3.66 and 4.36 → 3.53 seconds. [Paired multi-seat runner](../reports/gravity-bot-rebuild/shared-work.mjs)
@@ -382,6 +403,13 @@ At a simulated 165 Hz display cadence, the final policy exactly reproduced the p
 
 ## Reproducing a run
 
+From the repository root, replay the release checks against the two committed evidence files. The checker compares campaign outcomes, seeded inputs and labelled boards, then tests each game's measured planning times against its refresh-rate budgets.
+
+```powershell
+$evidence = 'reports/gravity-bot-rebuild'
+python -B -X utf8 "$evidence/integration-check.py" "$evidence/evidence.json.gz" "$evidence/integration.json.gz"
+```
+
 Use a new output path for each comparison. Training, selection and final panels have separate seeds. The campaign wrapper checks out the exact local Git object in a temporary directory and runs the original JavaScript instrument against its original levels and opponents.
 
 ```powershell
@@ -434,7 +462,7 @@ The packaged test plays the actual local match and the authored Neon encounter i
 
 For the upstream integration, `render-series.ps1 -LiveOnly` repeats all 16 live measurements. The integration checker compares the command prefixes and labelled checkpoints to the original runs and checks the planning deadlines in each room. Set `SERENITY_BOT_FOCUS` to `11/550` for a single-expert capture starting at the deal for round 11. It records the planning time, lock count and pending garbage at tick 550. A direct invocation of `rendered-match.cjs` also accepts the published game's base URL in `SERENITY_BOT_GAME_URL` and records the manifest hash served by that deployment. [Integration checker](../reports/gravity-bot-rebuild/integration-check.py)
 
-Nimbus Veil landed upstream while those ten-minute measurements were running. After each game, Chromium inventories the scripts it parsed. The build comparison checks every such script against the newly synced package, first by exact bytes and then with emitted JavaScript dependency filenames resolved to their Vite manifest identities. A changed statement or an import targeting another module fails the comparison. A separate two-minute game on the newer package checks commands, boards and all planning budgets in each of the eight room and refresh-rate combinations. To repeat that series, use `-PassCount 1 -ThreeSeatSeconds 120 -OtherSeconds 120 -LiveOnly -FirstRate 165`. [Compare the scripts in two production builds](../reports/gravity-bot-rebuild/compare-loaded-scripts.py)
+Nimbus Veil, Parhelion and Murmuration landed upstream while those ten-minute measurements were running. After each game, Chromium inventories the scripts it parsed. The build comparison checks every such script against the newly synced package, first by exact bytes and then with emitted JavaScript dependency filenames resolved to their Vite manifest identities. A changed statement or an import targeting another module fails the comparison. A separate two-minute game on the newer package checks commands, boards and all planning budgets in each of the eight room and refresh-rate combinations. To repeat that series, use `-PassCount 1 -ThreeSeatSeconds 120 -OtherSeconds 120 -LiveOnly -FirstRate 165`. [Compare the scripts in two production builds](../reports/gravity-bot-rebuild/compare-loaded-scripts.py)
 
 ```powershell
 npm run build
