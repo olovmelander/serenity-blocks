@@ -4,10 +4,18 @@
  * Windbreak rows of columnar poplars on the valley floor beside the river, as a farmed valley
  * plants them: straight rows along the banks (some doubled), rows down the edges of the fields
  * running out from the water, and a few wild clumps by it. A row is one planting, of an age and
- * turning together in autumn, so one row may still be green beside a gold one. Instanced
- * spindles; the canopy is shaded in clumps (noise on its own surface), sways a little in the
- * wind (a constant rate), and is lit like the land and read through the same air. (Low scrub
- * is drawn by the land's own shader.)
+ * turning together in autumn, so one row may still be green beside a gold one. (Low scrub is
+ * drawn by the land's own shader.)
+ *
+ * The tree is one poplar grown in Blender (scripts/blender/painted_ages_poplar.py writes
+ * painted-ages-poplar-model.js: a pale bole, a slim inner column, eighteen ascending plumes of
+ * leaves, a forked top, in three levels of detail), instanced. No two stand alike: the vertex
+ * stage makes each slim or broad, draws its plumes in or out, cuts a ragged top and leans it, all
+ * from the tree's seed. Gusts travel through the rows with the cloud deck's drift: a tree bows
+ * downwind and trembles, and its leaves flash their pale undersides plume by plume. The crown is
+ * lit as a mass: a dark green core in the clefts, gold on the plumes' skin, the top and the tips
+ * turning first, the sun glowing through it when it stands behind, the cool sky in its shade,
+ * the same shadows and the same air as the land.
  *
  * The trees throw their shadows across the valley, long at the golden hours, short at noon.
  * A small map, laid out on a level plane and projected along the sun, holds the height of the
@@ -20,8 +28,12 @@ import {
     If,
     attribute,
     clamp,
+    cos,
     dot,
     float,
+    floor,
+    length,
+    max,
     mix,
     normalWorld,
     normalize,
@@ -32,6 +44,7 @@ import {
     smoothstep,
     texture,
     uniform,
+    varying,
     vec2,
     vec3,
     vec4,
@@ -44,7 +57,9 @@ import {
     RIVER, RIVER_ALONG, riverDistance, riverFloor,
 } from './painted-ages-plan.js';
 import { aerial, cloudShadow, mistPatches } from './painted-ages-light.js';
+import { PAINTED_AGES_POPLAR } from './painted-ages-poplar-model.js';
 import { shadowAt } from './painted-ages-shadow.js';
+import { paHash21 } from './painted-ages-tsl.js';
 
 // ── Where they stand ──────────────────────────────────────────────────────────────
 
@@ -549,50 +564,113 @@ export function poplarShadeAt(shade, P, clearRun = 0) {
 
 // ── The trees ─────────────────────────────────────────────────────────────────────
 
-/** A poplar's spindle: a lathe of its profile (radius 1 at the widest, height 1), with a trunk. */
-function poplarGeometry() {
-    const pts = [];
-    const rings = 12;
-    for (let k = 0; k <= rings; k++) {
-        const t = k / rings;
-        // Narrow at the foot of the crown, widest a third of the way up, tapering to a point.
-        const r = t < 0.12 ? 0.25 + t * 4 : Math.sin(Math.min(1, (t - 0.05) / 0.95) * Math.PI) ** 0.8 * (1 - t * 0.35);
-        pts.push(new THREE.Vector2(Math.max(0.02, r), 0.12 + t * 0.88));
+/** Which of the grown tree's levels of detail a props tier draws (the most where the most stand). */
+export const POPLAR_LEVEL = Object.freeze({ 0: 'lean', 1: 'mid', 2: 'fine' });
+
+/** A tree's foot stands this far in the ground (metres), so it never floats on a rise. */
+const FOOT_SINK = 0.4;
+
+/**
+ * How a tree differs from the one grown tree, and how it moves (the vertex stage's numbers).
+ * Widths are shares of the tree's radius, heights and bends shares of its height.
+ */
+export const POPLAR_FORM = Object.freeze({
+    /** A young slim tree … a broad old one. */
+    girth: Object.freeze([0.9, 1.2]),
+    /** How much the width shifts between the foot of the crown and its top (broad low or carried high). */
+    carry: 0.7,
+    /** A plume drawn in … standing out, and how far it sits lower or higher. */
+    plume: Object.freeze([0.8, 1.12]),
+    plumeLift: 0.028,
+    /** The top above this share of the height is what a ragged tree has lost most of. */
+    cutFrom: 0.82,
+    cutKeeps: 0.3,
+    /** The most a tree leans by itself, at its top. */
+    lean: 0.05,
+    /** The wind's bend at the top: at rest, and more in a gust; the tremble on top of it. */
+    bendRest: 0.006,
+    bendGust: 0.055,
+    tremble: 0.006,
+    /** A plume's skin breathes in and out by this share of its reach. */
+    flutter: 0.04,
+});
+
+/** The way the wind blows over the ground: the unit of the cloud deck's drift (`u.wind`). */
+const WIND_ALONG = Object.freeze([0.948, -0.319]);
+
+function decode(text, Type) {
+    const binary = atob(text);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    return new Type(bytes.buffer);
+}
+
+/** The model's levels decoded once a page: every world (a rebuild, a quality change) shares them. */
+const decoded = new Map();
+
+/**
+ * One level of the grown poplar as plain arrays: the unit tree (its foot at y = 0, its top at
+ * y = 1, its widest point one unit from the axis). `crown` holds four numbers a vertex: out (0 in
+ * a cleft … 1 on a plume's skin), open (how much sky it sees), clump (its plume, an integer),
+ * bark (1 on the bole).
+ */
+export function poplarModel(name = 'fine') {
+    if (decoded.has(name)) return decoded.get(name);
+    const level = PAINTED_AGES_POPLAR.levels.find((l) => l.name === name) ?? PAINTED_AGES_POPLAR.levels[0];
+    const stored = decode(level.positions, Int16Array);
+    const positions = new Float32Array(stored.length);
+    for (let i = 0; i < stored.length; i++) positions[i] = stored[i] * PAINTED_AGES_POPLAR.quant;
+    const storedNormals = decode(level.normals, Int16Array);
+    const normals = new Float32Array(storedNormals.length);
+    for (let i = 0; i < normals.length; i++) normals[i] = storedNormals[i] / 32767;
+    const bytes = decode(level.crown, Uint8Array);
+    const crown = new Float32Array(bytes.length);
+    for (let i = 0; i < bytes.length; i += 4) {
+        crown[i] = bytes[i] / 255;
+        crown[i + 1] = bytes[i + 1] / 255;
+        crown[i + 2] = bytes[i + 2];
+        crown[i + 3] = bytes[i + 3] / 255;
     }
-    const crown = new THREE.LatheGeometry(pts, 9);
-    const trunk = new THREE.CylinderGeometry(0.06, 0.09, 0.2, 6);
-    trunk.translate(0, 0.08, 0);
-    crown.deleteAttribute('uv');
-    trunk.deleteAttribute('uv');
-    const merged = new THREE.BufferGeometry();
-    const a = crown.toNonIndexed();
-    const b = trunk.toNonIndexed();
-    const pos = new Float32Array(a.attributes.position.count * 3 + b.attributes.position.count * 3);
-    pos.set(a.attributes.position.array, 0);
-    pos.set(b.attributes.position.array, a.attributes.position.count * 3);
-    const nrm = new Float32Array(pos.length);
-    nrm.set(a.attributes.normal.array, 0);
-    nrm.set(b.attributes.normal.array, a.attributes.normal.count * 3);
-    const bark = new Float32Array(pos.length / 3);
-    bark.fill(1, a.attributes.position.count);
-    merged.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-    merged.setAttribute('normal', new THREE.BufferAttribute(nrm, 3));
-    merged.setAttribute('aBark', new THREE.BufferAttribute(bark, 1));
-    crown.dispose();
-    trunk.dispose();
-    a.dispose();
-    b.dispose();
-    return merged;
+    const model = Object.freeze({
+        name: level.name,
+        positions,
+        normals,
+        crown,
+        index: decode(level.index, Uint16Array),
+        vertexCount: level.vertexCount,
+        triangleCount: level.triangleCount,
+    });
+    decoded.set(name, model);
+    return model;
+}
+
+/** A level of the grown poplar as a geometry of its own (the arrays are shared, never written). */
+export function poplarGeometry(name = 'fine') {
+    const model = poplarModel(name);
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.BufferAttribute(model.positions, 3));
+    geometry.setAttribute('normal', new THREE.BufferAttribute(model.normals, 3));
+    geometry.setAttribute('aCrown', new THREE.BufferAttribute(model.crown, 4));
+    geometry.setIndex(new THREE.BufferAttribute(model.index, 1));
+    geometry.userData.level = model.name;
+    return geometry;
 }
 
 export function createPoplars(u, t, tier, fields) {
     const count = POPLAR_COUNT[tier.props] ?? POPLAR_COUNT[2];
     const sites = poplarSites(fields, count);
-    const geometry = poplarGeometry();
-    const data = new Float32Array(Math.max(1, sites.length) * 4);
-    sites.forEach((s, i) => data.set([s.golden, s.seed, s.height, 0], i * 4));
+    const geometry = poplarGeometry(POPLAR_LEVEL[tier.props] ?? POPLAR_LEVEL[2]);
+    const slots = Math.max(1, sites.length);
+    // Per tree: (how golden, seed, height, radius) and where its foot stands.
+    const data = new Float32Array(slots * 4);
+    const feet = new Float32Array(slots * 4);
+    sites.forEach((s, i) => {
+        data.set([s.golden, s.seed, s.height, s.radius], i * 4);
+        feet.set([s.x, s.y - FOOT_SINK, s.z, 0], i * 4);
+    });
     geometry.setAttribute('aTree', new THREE.InstancedBufferAttribute(data, 4));
-    const mesh = new THREE.InstancedMesh(geometry, null, Math.max(1, sites.length));
+    geometry.setAttribute('aRoot', new THREE.InstancedBufferAttribute(feet, 4));
+    const mesh = new THREE.InstancedMesh(geometry, null, slots);
     mesh.name = 'PaintedAgesPoplars';
     const m = new THREE.Matrix4();
     const q = new THREE.Quaternion();
@@ -602,7 +680,7 @@ export function createPoplars(u, t, tier, fields) {
     sites.forEach((s, i) => {
         q.setFromAxisAngle(up, s.seed * 6.28);
         sc.set(s.radius, s.height, s.radius);
-        pos.set(s.x, s.y - 0.4, s.z);
+        pos.set(s.x, s.y - FOOT_SINK, s.z);
         m.compose(pos, q, sc);
         mesh.setMatrixAt(i, m);
     });
@@ -610,6 +688,8 @@ export function createPoplars(u, t, tier, fields) {
     mesh.instanceMatrix.needsUpdate = true;
     mesh.frustumCulled = false;
     mesh.renderOrder = 2;
+    // The caster draws the grown tree as it stands in its instance matrix: what the vertex stage
+    // below does to one tree (a plume drawn in, a lean, the wind) is a texel of the map at most.
     const shade = tier.poplarShade ? createPoplarShade(sites, geometry, mesh.instanceMatrix, tier.poplarShade) : null;
     // Reachable from the scene graph for probes (`scene.getObjectByName('PaintedAgesPoplars')`).
     mesh.userData.shade = shade;
@@ -617,32 +697,118 @@ export function createPoplars(u, t, tier, fields) {
     const material = new THREE.MeshBasicNodeMaterial();
     material.name = 'PaintedAgesPoplars';
     material.fog = false;
+    const F = POPLAR_FORM;
     const tree = attribute('aTree', 'vec4');
-    const bark = attribute('aBark', 'float');
-    // A breath of wind in the crowns (constant rate; amplitude by height up the tree).
+    const root = attribute('aRoot', 'vec4');
+    const crown = attribute('aCrown', 'vec4');
+    // The tree's own numbers: an exact integer from its seed, hashed (the vertex stage reads an
+    // instance's value exactly; nothing here is hashed in the fragment stage).
+    const key = floor(tree.y.mul(251.0));
+    const h1 = paHash21(vec2(key, 3.0));
+    const h2 = paHash21(vec2(key, 11.0));
+    const h3 = paHash21(vec2(key, 23.0));
+    // A plume's own number in this tree: how far it stands out, how far it has turned.
+    const plume = paHash21(vec2(crown.z, key.add(17.0)));
+    // The wind: gusts as fronts that travel with the cloud deck's drift (so a quick hand's breeze
+    // runs through the rows too), bent across the wind and never evenly spaced. 0 calm … 1 a gust.
+    const windAt = root.xz.add(u.wind);
+    const along = windAt.x.mul(WIND_ALONG[0]).add(windAt.y.mul(WIND_ALONG[1]));
+    const across = windAt.y.mul(WIND_ALONG[0]).sub(windAt.x.mul(WIND_ALONG[1]));
+    const fronts = sin(along.div(34.0).add(sin(across.div(57.0).add(along.div(113.0))).mul(1.3))).mul(0.72)
+        .add(sin(along.div(13.0).add(across.div(31.0))).mul(0.34));
+    const gust = smoothstep(-0.25, 0.9, fronts);
+    // A plume's leaves turning in the wind, each plume in its own time.
+    const flutter = sin(u.time.mul(2.1).add(crown.z.mul(2.4)).add(key.mul(1.3)));
+    const vPlume = varying(plume, 'vPoplarPlume');
+    const vGust = varying(gust, 'vPoplarGust');
+    const vFlutter = varying(flutter, 'vPoplarFlutter');
+
     material.positionNode = Fn(() => {
-        const sway = sin(u.time.mul(0.9).add(tree.y.mul(40.0))).mul(0.018).mul(positionGeometry.y.mul(positionGeometry.y));
-        return positionLocal.add(vec3(sway, 0.0, sway.mul(0.4)));
+        // How high up the tree (0 its foot … 1 its top).
+        const y = positionGeometry.y.toVar();
+        const leaf = float(1.0).sub(crown.w);
+        const height = tree.z;
+        // Motion finer than a pixel is no motion, only a flicker along the outline: the skin's
+        // breath and the tremble are for a lens that draws a metre several pixels wide.
+        const pixelsAMetre = float(1.0).div(max(length(root.xyz.sub(u.eye)).mul(u.pixelAngle), 1e-5));
+        const close = smoothstep(1.5, 4.0, pixelsAMetre);
+        // From the foot, in metres: the instance matrix has already stood the tree up.
+        const rel = positionLocal.sub(root.xyz);
+        // Its form: slim or broad, its width low down or carried high, each plume drawn in or
+        // standing out; the bole keeps its own width.
+        const girth = mix(float(F.girth[0]), float(F.girth[1]), h1);
+        const carried = float(1.0).add(h2.sub(0.5).mul(F.carry).mul(float(0.45).sub(y)));
+        const wide = mix(float(1.0), girth.mul(carried).mul(mix(float(F.plume[0]), float(F.plume[1]), plume)), leaf);
+        // A plume's skin breathes with the wind (its tips most).
+        const breath = flutter.mul(F.flutter).mul(crown.x).mul(gust.mul(0.7).add(0.3))
+            .mul(leaf.mul(close));
+        const swell = wide.add(breath).sub(1.0);
+        // A plume sits a little lower or higher; a ragged tree has lost most of its top.
+        const lift = paHash21(vec2(crown.z.add(31.0), key)).sub(0.5).mul(F.plumeLift)
+            .mul(leaf.mul(smoothstep(0.16, 0.3, y)));
+        const cut = h3.sqrt().mul(0.2).add(F.cutFrom);
+        const lost = max(y.sub(cut), 0.0).mul(1.0 - F.cutKeeps);
+        const rise = lift.sub(lost).mul(height);
+        // It leans a little its own way, and bends downwind: more in a gust, trembling as it does.
+        const bow = y.mul(y).mul(height);
+        const leanAngle = h2.mul(6.2832);
+        const lean = h1.mul(h3).mul(F.lean);
+        const tremble = sin(u.time.mul(2.3).add(key.mul(0.7)).add(along.mul(0.11)))
+            .mul(gust.mul(0.8).add(0.2)).mul(close.mul(F.tremble));
+        const bend = gust.mul(F.bendGust).add(F.bendRest).add(tremble);
+        const swayX = bow.mul(cos(leanAngle).mul(lean).sub(bend.mul(WIND_ALONG[0])));
+        const swayZ = bow.mul(sin(leanAngle).mul(lean).sub(bend.mul(WIND_ALONG[1])));
+        return positionLocal.add(vec3(rel.x.mul(swell).add(swayX), rise, rel.z.mul(swell).add(swayZ)));
     })();
     material.colorNode = Fn(() => {
         const P = positionWorld;
-        const golden = mix(vec3(0.16, 0.2, 0.05), vec3(0.6, 0.38, 0.06), tree.x).mul(tree.y.mul(0.3).add(0.85));
-        // Clumps of leaves: the crown's own surface is not one flat colour.
-        const clump = texture(t.noise, vec2(P.x.add(P.y.mul(0.7)), P.z.sub(P.y.mul(0.5))).mul(0.35)).a;
-        const albedo = mix(golden.mul(clump.mul(0.6).add(0.6)), vec3(0.09, 0.07, 0.05), bark);
+        // (Interpolated shares are clamped: on a tree a few pixels wide MSAA reads them outside 0..1.)
+        const bark = clamp(crown.w, 0.0, 1.0);
+        const leaf = float(1.0).sub(bark);
+        const out = clamp(crown.x, 0.0, 1.0);
+        const open = clamp(crown.y, 0.0, 1.0);
+        const high = clamp(positionGeometry.y, 0.0, 1.0);
+        const tone = clamp(vPlume, 0.0, 1.0);
+        const windy = clamp(vGust, 0.0, 1.0);
+        // How far these leaves have turned: the planting's own gold, the top and the plumes' tips
+        // first, a plume at a time; the inner crown keeps its green longest.
+        const turned = clamp(tree.x.mul(1.9).sub(0.45).add(high.sub(0.5).mul(0.5)).add(out.sub(0.6).mul(0.5))
+            .add(tone.sub(0.5).mul(0.6)), 0.0, 1.0).toVar();
+        // Depth: dark and deep in the clefts, pale on the plumes' lit skin.
+        const depth = out.mul(open.mul(0.65).add(0.35));
+        const green = mix(vec3(0.04, 0.075, 0.02), vec3(0.13, 0.2, 0.045), depth);
+        // (Gold deepens toward amber low in the crown and pales toward lemon at its top.)
+        const gold = mix(vec3(0.34, 0.17, 0.02), vec3(0.86, 0.6, 0.085), depth)
+            .mul(mix(vec3(0.96, 0.84, 0.7), vec3(1.03, 1.06, 1.5), high));
+        // In a gust the leaves show their pale undersides, plume by plume.
+        const pale = mix(vec3(0.34, 0.42, 0.26), vec3(0.95, 0.8, 0.36), turned);
+        const flash = windy.mul(clamp(vFlutter, -1.0, 1.0).mul(0.5).add(0.5)).mul(out).mul(0.5);
+        const leaves = mix(mix(green, gold, turned).mul(tone.mul(0.3).add(0.85)), pale, flash);
+        const albedo = mix(leaves, vec3(0.34, 0.33, 0.28), bark).toVar();
         const n = normalize(normalWorld);
         const L = u.sunDir;
-        const wrap = clamp(dot(n, L).add(0.35).div(1.35), 0.0, 1.0);
+        const wrap = clamp(dot(n, L).add(0.3).div(1.3), 0.0, 1.0);
+        // A cleft stands in its plumes' shade.
+        const self = mix(float(0.5), float(1.0), open);
         // The land's shadow, and another row's when the sun runs across the plantings (a sun ray
         // crosses its own crown within the crown's width, about 6 m at the widest).
         const shadow = shadowAt(t.shadow, P.xz).mul(poplarShadeAt(shade, P, 7.5));
         const clouds = cloudShadow(u, t.noise, P);
         const view = normalize(P.sub(u.eye));
-        // Light through the leaves when the sun stands behind the crown.
-        const through = clamp(dot(view, L), 0.0, 1.0).pow(4.0).mul(0.6).mul(float(1.0).sub(bark));
-        const direct = u.sun.mul(wrap.add(through)).mul(shadow).mul(clouds).mul(u.sunUp);
-        const sky = u.fill.mul(n.y.mul(0.35).add(0.65));
-        const lit = albedo.mul(direct.add(sky).add(u.bounce.mul(0.5)));
+        // The sun behind the crown: its light comes THROUGH the leaves, in their own colour and
+        // deeper, most where the crown is thin (toward its outline, on a plume's skin).
+        const behind = clamp(dot(view, L), 0.0, 1.0);
+        const edge = float(1.0).sub(clamp(dot(n, view).abs(), 0.0, 1.0));
+        const thin = edge.mul(out).mul(0.85).add(0.15);
+        const glow = mix(vec3(0.42, 0.62, 0.08), vec3(1.0, 0.66, 0.12), turned);
+        const through = behind.mul(behind).mul(behind).mul(thin.mul(leaf).mul(0.9));
+        const direct = u.sun.mul(albedo.mul(wrap).mul(self).add(glow.mul(through)))
+            .mul(shadow.mul(clouds).mul(u.sunUp));
+        // The cool sky in the shade (less of it in a cleft and low in the row), the ground's
+        // warmth from below.
+        const sky = u.fill.mul(n.y.mul(0.35).add(0.65)).mul(open.mul(0.6).add(0.4)).mul(high.mul(0.3).add(0.7));
+        const ground = u.bounce.mul(float(0.65).sub(n.y.mul(0.35)));
+        const lit = direct.add(albedo.mul(sky.add(ground)));
         // The same mist banks the valley floor stands in.
         return vec4(aerial(u, P, lit, mistPatches(u, t.noise, P.xz)), 1.0);
     })();
@@ -652,6 +818,7 @@ export function createPoplars(u, t, tier, fields) {
         meshes: [mesh],
         sites,
         shade,
+        level: geometry.userData.level,
         update() {},
         /** GPU work before the frame: the trees' shadow map, when the sun has moved. */
         prerender(renderer, sunDir) {
