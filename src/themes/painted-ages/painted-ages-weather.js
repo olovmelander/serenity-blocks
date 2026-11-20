@@ -123,15 +123,23 @@ export function airDrift(time) {
 /** The warm dust the wind carries (linear), as a tint the haze and the low layer lean toward. */
 export const DUST_TINT = Object.freeze([1.0, 0.7, 0.46]);
 
+/** The showers air's place on the wheel. */
+const SHOWERS = AIRS.findIndex((air) => air.name === 'showers');
+
 /**
  * Where the far shower's curtains hang, in radians right of the view axis: one side of the board
  * per visit of the showers air (seeded by the visit), drifting slowly downwind while it lasts.
+ * Continuous through the whole visit (it melts in, rests and melts out without a step: the side
+ * changes only half a wheel away, where there is no shower to see).
  */
 export function virgaBearing(place) {
-    const visit = Math.floor((place + 0.5) / AIR_COUNT);
+    const p = Number.isFinite(place) ? place : 0;
+    const turns = (p - SHOWERS + AIR_COUNT / 2) / AIR_COUNT;
+    const visit = Math.floor(turns);
+    // How far the wheel stands from the showers air: -1 melting in … 0 resting … 1 melting out.
+    const from = clamp((turns - visit) * AIR_COUNT - AIR_COUNT / 2, -1, 1);
     const side = mulberry32(0x71a9 + visit * 131)() < 0.5 ? -1 : 1;
-    const drift = (place - Math.floor(place)) - 0.5;
-    return side * (0.36 + 0.07 * drift);
+    return side * (0.4 + 0.04 * from);
 }
 
 // ── Happenings ────────────────────────────────────────────────────────────────────
