@@ -281,7 +281,7 @@ the rays and the corona, with a note saying why.
 
 ### Traps (each is a row in the skill's gotchas)
 
-- **Bright on bright (#1759).** By day the deck and the glow round the sun are already as bright
+- **Bright on bright (#1762).** By day the deck and the glow round the sun are already as bright
   as any light added to them, so a white-gold wave, pillar or band was plainly in the uniforms
   and invisible in the frame. The event lights read by colour and shade now: a deep gold tint, a
   dark fringe at a band's shoulders, a trough ahead of a ripple, and the iris closing 13 % on the
@@ -291,7 +291,7 @@ the rays and the corona, with a note saying why.
 - **The ceiling's scale (#1433).** On the plane one unit is the layer's height, so the first
   tries drew ribbons the size of the sky, then a sheet with star-shaped holes, then a lattice of
   faint discs.
-- **A bug this found (#1760).** Slots were handed to "the slot with the least light left", and
+- **A bug this found (#1763).** Slots were handed to "the slot with the least light left", and
   an envelope with an attack is zero at age zero: four lines and their back-to-back, which land in
   one tick, shared a slot and one wave silently replaced the other. A slot still rising now
   counts as full. The old test compared two worlds that both lost the wave, so it passed.

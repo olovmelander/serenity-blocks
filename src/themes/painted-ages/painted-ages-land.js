@@ -20,6 +20,7 @@ import * as THREE from 'three/webgpu';
 import {
     Fn,
     If,
+    atan,
     clamp,
     cos,
     dot,
@@ -30,12 +31,14 @@ import {
     fwidth,
     length,
     max,
+    min,
     mix,
     normalize,
     positionWorld,
     select,
     sin,
     smoothstep,
+    step,
     texture,
     vec2,
     vec3,
@@ -46,13 +49,15 @@ import {
 } from './painted-ages-core.js';
 import { groundHeight } from './painted-ages-field.js';
 import {
-    columnU, fieldUV, fieldWeight, landAt, paHash22, paLuma, paStrataG,
+    columnU, fieldUV, fieldWeight, landAt, paHash21, paHash22, paLuma, paStrataG,
 } from './painted-ages-tsl.js';
 import { shadowAt } from './painted-ages-shadow.js';
 import { poplarShadeAt } from './painted-ages-life.js';
-import { aerial, cloudShadow, mistPatches } from './painted-ages-light.js';
 import {
-    rainbow, ribbonLight, riverWater, sparkle, waveLight,
+    aerial, cloudShadow, mistPatches, moonLight,
+} from './painted-ages-light.js';
+import {
+    goldVeins, paRiver, rainbow, ribbonLight, riverWater, virgaVeil, waveLight,
 } from './painted-ages-events.js';
 
 /** The fan: half-width (degrees) of the bearings it covers, and its nearest and farthest rows. */
@@ -210,7 +215,10 @@ export function createLandMaterial(u, t, tier) {
         const ySmooth = mix(P.y, hMid, fieldWeight(fm, xz).mul(0.8));
         const g = paStrataG(vec3(P.x, ySmooth, P.z)).add(detailH.mul(0.25)).add(warp).toVar();
         const gw = fwidth(g).toVar();
-        const cu = columnU(g);
+        // Which bed of the column lies here: the column slides under the land as ages are laid
+        // down (a level-up), so every stripe moves up its slope; what play lights keeps its place.
+        const gs = g.add(u.strataShift).toVar();
+        const cu = columnU(gs);
         const bed = texture(t.column, vec2(cu, 0.5)).toVar();
         const albedo = bed.rgb.toVar();
         // The local mean (the colluvium that dusts the gentle slopes and fills the washes).
@@ -218,7 +226,7 @@ export function createLandMaterial(u, t, tier) {
         // Far ranges: the bands soften into their mean as the air takes them (kept sharp, a
         // range ten kilometres off reads as contour lines rather than rock).
         albedo.assign(mix(albedo, mean, smoothstep(2400.0, 11000.0, dist).mul(0.68)));
-        const upslope = texture(t.column, vec2(columnU(g.add(9.0)), 0.5)).level(6.0).rgb;
+        const upslope = texture(t.column, vec2(columnU(gs.add(9.0)), 0.5)).level(6.0).rgb;
 
         // The mineral record crowns the hills: its beds stack down from recordTop.
         const recordGlow = vec3(0.0).toVar();
@@ -277,11 +285,65 @@ export function createLandMaterial(u, t, tier) {
             .mul(float(1.0).sub(smoothstep(0.38, 0.62, flow).mul(0.22)));
         albedo.assign(mix(albedo, silt, plain.mul(0.82)));
         albedo.assign(mix(albedo, sand, onFloor.mul(0.85)));
+        // ── The river's course, and the fields along it ──
+        // (Read once here: the fields and the water both stand on it.)
+        const aboveBed = land.x.sub(floorY).toVar();
+        const river = vec3(1e5, 0.0, 1.0).toVar();
+        If(dist.lessThan(9000.0).and(aboveBed.lessThan(12.0)), () => {
+            river.assign(paRiver(xz));
+        });
+        // A farmed valley: beyond the river's gravel, two ranks of small fields on each bank
+        // (lucerne, ripe barley, stubble, plough, fallow), a pale bund between one and the next,
+        // their furrows running with the river. They follow its course, so they bend with it.
+        const tilled = float(0.0).toVar();
+        If(river.x.lessThan(150.0).and(dist.lessThan(3600.0)), () => {
+            const DEPTH = 52.0;
+            const LENGTH = 78.0;
+            const out = river.x.sub(15.0).div(DEPTH).toVar();
+            const rank = floor(out);
+            const run = river.y.div(LENGTH).add(rank.mul(0.37)).toVar();
+            const id = vec2(floor(run), rank.mul(2.0).add(river.z.mul(0.5).add(0.5)));
+            const pick = paHash21(id.add(vec2(11.0, 5.0)));
+            const lot = paHash21(id.add(vec2(3.0, 41.0)));
+            const crop = select(
+                pick.lessThan(0.3),
+                vec3(0.15, 0.21, 0.085),
+                select(pick.lessThan(0.53), vec3(0.5, 0.37, 0.13), select(
+                    pick.lessThan(0.7),
+                    vec3(0.42, 0.33, 0.2),
+                    select(pick.lessThan(0.86), vec3(0.2, 0.13, 0.09), vec3(0.3, 0.3, 0.19)),
+                )),
+            );
+            // Metres to the field's nearest edge: the bund.
+            const fa = fract(run);
+            const fc = fract(out);
+            const edge = min(min(fa, float(1.0).sub(fa)).mul(LENGTH), min(fc, float(1.0).sub(fc)).mul(DEPTH));
+            const bund = float(1.0).sub(smoothstep(footprint.mul(0.7).add(0.7), footprint.mul(1.4).add(2.0), edge));
+            // Furrows, where the eye can resolve them; a field's own unevenness otherwise.
+            const furrow = sin(river.x.mul(6.2832 / 2.6)).mul(0.5).add(0.5);
+            const fineness = float(1.0).sub(smoothstep(0.35, 1.1, footprint));
+            const uneven = texture(t.noise, xz.div(46.0)).g.mul(0.3).add(0.85);
+            const field = mix(crop.mul(uneven).mul(mix(float(1.0), furrow.mul(0.26).add(0.86), fineness)), vec3(0.47, 0.4, 0.32), bund.mul(0.8));
+            // Level, low ground only, between the gravel and the second rank's far edge; one
+            // lot in six is left bare.
+            const level = smoothstep(0.93, 0.985, nMacro.y).mul(float(1.0).sub(smoothstep(4.0, 9.0, aboveBed)));
+            const within = smoothstep(0.0, 0.08, out).mul(float(1.0).sub(smoothstep(1.92, 2.0, out)));
+            tilled.assign(level.mul(within).mul(step(0.16, lot)).mul(float(1.0).sub(smoothstep(2400.0, 3600.0, dist))));
+            albedo.assign(mix(albedo, field, tilled.mul(0.9)));
+        });
         // The summit under the eye: gravel and dry soil (the beds would be metres-wide stripes here).
         const summit = float(1.0).sub(smoothstep(16.0, 38.0, dist));
-        const pebble = texture(t.noise, xz.mul(1.7)).a;
+        const pebble = texture(t.noise, xz.div(2.2)).r;
         const soil = mix(vec3(0.36, 0.27, 0.2), vec3(0.52, 0.42, 0.33), pebble).mul(texture(t.noise, xz.mul(0.31)).g.mul(0.35).add(0.75));
         albedo.assign(mix(albedo, mix(soil, mean, 0.25), summit.mul(0.88)));
+        // Near the eye the ground has a grain: grit and pebbles, sized for what a pixel covers
+        // there and gone further off (the beds alone read as flat paint under the lens).
+        If(dist.lessThan(300.0), () => {
+            const nearness = float(1.0).sub(smoothstep(150.0, 300.0, dist));
+            const grit = mix(texture(t.noise, xz.div(1.3)).r, texture(t.noise, xz.div(6.5)).r, smoothstep(0.012, 0.07, footprint));
+            const stones = smoothstep(0.62, 0.74, texture(t.noise, xz.div(3.1).add(vec2(0.37, 0.11))).a);
+            albedo.mulAssign(mix(float(1.0), grit.mul(0.56).add(0.73).sub(stones.mul(0.12)), nearness));
+        });
         // Scrub: dark grey-green tufts on the floor and the gentle footslopes.
         const scrubCell = texture(t.noise, xz.div(14.0)).a;
         const scrub = smoothstep(0.6, 0.68, scrubCell).mul(smoothstep(0.9, 0.98, nMacro.y)).mul(float(1.0).sub(smoothstep(30.0, 90.0, above)));
@@ -309,7 +371,8 @@ export function createLandMaterial(u, t, tier) {
         const skyLight = u.fill.mul(n.y.mul(0.45).add(0.55)).mul(sky);
         // The red ground throws its light back up into the shadowed faces.
         const bounce = u.bounce.mul(float(1.0).sub(n.y).mul(0.6).add(0.15)).mul(sky);
-        const lit = albedo.mul(direct.add(skyLight).add(bounce)).toVar();
+        // By night the moon gives the hills their form (soft, unshadowed).
+        const lit = albedo.mul(direct.add(skyLight).add(bounce).add(moonLight(u, n).mul(sky))).toVar();
         // Wet rock glints toward the sun.
         If(wet.greaterThan(0.01), () => {
             const view = V.div(max(dist, 1e-3)).negate();
@@ -319,17 +382,16 @@ export function createLandMaterial(u, t, tier) {
             const s8 = s2.mul(s2).mul(s2).mul(s2);
             lit.addAssign(u.sun.mul(s8.mul(s8).mul(0.35)).mul(wet).mul(shadow).mul(clouds));
         });
-        // Back-to-back: mica glints where the sun reaches.
-        lit.addAssign(sparkle(u, xz, dist, u.sun.mul(ndl).mul(shadow).mul(clouds).mul(u.sunUp)));
         // The water in the valley (and the flood).
         // (Its height over the bed is read per pixel off the field: the mesh's rows lie tens of
         // metres apart out there, and its interpolated height would dash a shallow channel.)
-        const water = riverWater(u, t.noise, texture, xz, land.x.sub(floorY), dist, V);
+        const water = riverWater(u, t.noise, xz, river, aboveBed, dist, V);
         lit.assign(mix(lit, water.xyz, water.w));
         // What gameplay lights: the ribbons along their beds, the waves through the strata, the record.
         // (Strata light belongs to the rock: the alluvium on the flats takes little of it.)
         // A band in geological height covers a whole flat at once: only a slope shows it as a bed.
-        const rock = float(1.0).sub(plain.mul(0.85)).sub(onFloor.mul(0.1)).max(0.0)
+        const rock = float(1.0).sub(plain.mul(0.85)).sub(onFloor.mul(0.1)).sub(tilled)
+            .max(0.0)
             .mul(smoothstep(0.06, 0.32, slope));
         // The heat of play: the beds glow in their own pigment, a slow tide of colour climbing
         // them, and the beds between its crests sink into shadow, so the land keeps its darks
@@ -338,7 +400,9 @@ export function createLandMaterial(u, t, tier) {
         const crest = tide.mul(tide).mul(tide.mul(tide));
         lit.mulAssign(float(1.0).sub(u.strataGlow.mul(0.55).mul(float(1.0).sub(tide)).mul(rock)));
         const kindled = albedo.mul(u.strataGlow).mul(crest.mul(1.25));
-        lit.addAssign(ribbonLight(u, xz, g, gw).add(waveLight(u, g, gw)).add(kindled).mul(rock)
+        // Back-to-back: veins of gold across the beds.
+        lit.addAssign(ribbonLight(u, xz, g, gw).add(waveLight(u, g, gw)).add(kindled).add(goldVeins(u, t.noise, xz, g))
+            .mul(rock)
             .add(recordGlow));
         const col = aerial(u, P, lit, mistPatches(u, t.noise, xz)).toVar();
         // The bow stands in the air in front of the far hills; rain veils hang beyond the front.
@@ -346,6 +410,15 @@ export function createLandMaterial(u, t, tier) {
         const veil = u.showerPower.mul(smoothstep(u.showerFront.sub(150.0), u.showerFront.add(900.0), dist))
             .mul(texture(t.noise, vec2(xz.x.mul(0.002).add(u.time.mul(0.01)), 0.3)).g.mul(0.6).add(0.4));
         col.assign(mix(col, u.haze.mul(0.75).add(u.fill.mul(0.3)), veil.mul(0.42)));
+        // The weather's far shower: its curtains hang in front of the far ranges on one side.
+        If(u.virga.y.greaterThan(0.01).and(dist.greaterThan(2600.0)), () => {
+            const rd = V.div(dist);
+            const curtain = virgaVeil(u, t.noise, atan(rd.x, rd.z.negate()), rd.y.add(0.12))
+                .mul(smoothstep(2200.0, 5200.0, dist));
+            // (Rain against sunlit land is darker and bluer than the haze: a wash of the
+            // haze's own colour could not be told from distance.)
+            col.assign(mix(col, u.cloudShade.mul(0.82).add(u.haze.mul(0.14)), curtain.mul(0.8)));
+        });
         return vec4(col, 1.0);
     })();
     return material;

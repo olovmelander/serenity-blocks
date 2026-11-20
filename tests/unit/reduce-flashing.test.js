@@ -184,6 +184,8 @@ describe('every world that writes a frame-wide flash scales it', () => {
         // A quad's sunburst over a third of the sky, and a level's scan bar across all of it.
         ['src/themes/neon-dusk/neon-dusk-world.js', /this\.raySwell\.valueAt\(t\) \* flashScale\(\)/],
         ['src/themes/neon-dusk/neon-dusk-world.js', /this\.scan\.energy \* envelope \* flashScale\(\)/],
+        // Lightning far inside a cloud bank (a clock happening, and a deep chain's answer).
+        ['src/themes/painted-ages/painted-ages-world.js', /const scale = flashScale\(\);[\s\S]*h\.age\)[^;]*\* scale;[\s\S]*stormFlickerAt\) \* scale;/],
     ])('%s', (file, pattern) => {
         expect(read(file)).toMatch(pattern);
     });

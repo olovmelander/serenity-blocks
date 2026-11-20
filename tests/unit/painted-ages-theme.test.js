@@ -652,7 +652,8 @@ describe('PaintedAges theme: one node renderer on both backends', () => {
         expect(theme.post).toBe(mocks.posts[0]);
         expect(theme.post).toMatchObject({ renderer: theme.renderer, scene: theme.scene, camera: theme.camera });
         // (This post takes no noise texture: its grain is hashed.)
-        expect(theme.post.params).toEqual({ look: POST_LOOK.High, falseColor: false });
+        // (The game's antialiasing setting decides the closing FXAA pass.)
+        expect(theme.post.params).toEqual({ look: POST_LOOK.High, falseColor: false, antialias: expect.any(Boolean) });
         // The world paints into no target of its own: it is never handed the renderer.
         expect(theme.world.options).not.toHaveProperty('renderer');
         expect(theme.passThrough).toBeNull();
