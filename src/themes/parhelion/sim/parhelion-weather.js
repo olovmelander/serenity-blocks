@@ -19,10 +19,12 @@
  * racing over the plain, the far stones half veiled) and fog (ice fog lifting off the plain, the
  * ring soft in a wide glow). Phase 0 is the old look, exactly.
  *
- * THE HAPPENINGS. Every HAPPENING_SECONDS one small thing happens by itself, picked by a hash of
- * its slot: a gust, a glint running round the ring, a hound flaring, a shimmer falling through
- * the dust, a flush on the far range. happeningAt() is the whole schedule as a closed form; the
- * optics state arms each on its OWN start, never on the frame that noticed it (gotcha #1742).
+ * THE HAPPENINGS. Every HAPPENING_SECONDS one small thing happens by itself, the long ones and
+ * the short ones in turn: a gust, a glint running round the ring, a hound flaring, a shimmer
+ * falling through the dust, a flush on the far range. happeningAt() is the whole schedule as a
+ * closed form and happeningSwell() what one shows at any age (a rise, a stand, a fall to exactly
+ * nothing, inside its own slot): the optics state arms nothing and stores nothing, it adds the
+ * slot's swell to the frame (gotcha #1762: armed envelopes stacked under a seek).
  */
 import { moodDrift, wheelAt } from '../../shared/mood-clock.js';
 
@@ -104,6 +106,40 @@ export function airAt(time, out = createAir(), pin = -1) {
     return out;
 }
 
+/**
+ * ∫₀ᵗ of one of an air's numbers over the wheel's own turning (the area under what airAt()
+ * gives for `key`), in closed form: a rest is a rectangle, a melt the integral of a smoothstep
+ * (x³ − x⁴/2). The optics state's clocks run at the air's rates, so this is where a seek puts
+ * them: on the clock a frame-stepped run has reached.
+ * @param {number} time seconds on the theme clock
+ * @param {string} key one of AIR_FIELDS (a rate)
+ * @param {number} [pin] an air's index to hold, or −1 for the clock
+ */
+export function airIntegral(time, key, pin = -1) {
+    const t = Number.isFinite(time) ? Math.max(0, time) : 0;
+    const count = AIR_LIST.length;
+    if (pin >= 0) return AIR_LIST[Math.trunc(pin) % count][key] * t;
+    const rest = AIR_HOLD;
+    const melt = 1 - rest;
+    // One whole period that rests on `a` and melts into `b`.
+    const period = (a, b) => (a * rest + (a + (b - a) / 2) * melt) * AIR_SECONDS;
+    const at = (index) => AIR_LIST[index % count][key];
+    const turns = t / AIR_SECONDS;
+    const whole = Math.floor(turns);
+    const part = turns - whole;
+    let wheel = 0;
+    for (let k = 0; k < count; k++) wheel += period(at(k), at(k + 1));
+    const wheels = Math.floor(whole / count);
+    const left = whole - wheels * count;
+    let sum = wheels * wheel;
+    for (let k = 0; k < left; k++) sum += period(at(k), at(k + 1));
+    const a = at(left);
+    const b = at(left + 1);
+    if (part <= rest) return sum + a * part * AIR_SECONDS;
+    const x = (part - rest) / melt;
+    return sum + (a * rest + (a * x + (b - a) * (x * x * x - (x * x * x * x) / 2)) * melt) * AIR_SECONDS;
+}
+
 // ---------------------------------------------------------------------------------------
 // The night on the Lower Sun's walk
 // ---------------------------------------------------------------------------------------
@@ -137,7 +173,7 @@ export function nightOf(walk) {
  * @param {number} night
  */
 export function duskOf(night) {
-    const n = Math.min(1, Math.max(0, night));
+    const n = Number.isFinite(night) ? Math.min(1, Math.max(0, night)) : 0;
     return 4 * n * (1 - n);
 }
 
@@ -148,9 +184,34 @@ export function duskOf(night) {
 /** One happening a slot; it starts a few seconds into it and lasts `length`. */
 export const HAPPENING_SECONDS = 37;
 export const HAPPENING_KINDS = Object.freeze(['gust', 'glint', 'hound', 'shimmer', 'flush']);
-const HAPPENING_LENGTH = Object.freeze({
-    gust: 9, glint: 3, hound: 7, shimmer: 5, flush: 10,
+
+/**
+ * A happening's swell: the seconds it takes to rise, to stand and to fall away. It is over,
+ * exactly, at their sum (its `length`): nothing rings on past it, so "live" is the whole of it.
+ */
+export const HAPPENING_SHAPE = Object.freeze({
+    gust: Object.freeze([2.2, 3.0, 6.0]),
+    glint: Object.freeze([0.3, 2.3, 1.2]),
+    hound: Object.freeze([2.0, 2.0, 6.0]),
+    shimmer: Object.freeze([0.8, 2.0, 4.5]),
+    flush: Object.freeze([3.0, 3.0, 8.0]),
 });
+const HAPPENING_LENGTH = Object.freeze(Object.fromEntries(
+    HAPPENING_KINDS.map((kind) => [kind, HAPPENING_SHAPE[kind][0] + HAPPENING_SHAPE[kind][1] + HAPPENING_SHAPE[kind][2]]),
+));
+
+/**
+ * How much of a happening of `kind` shows `age` seconds after its start (0..1): an eased rise,
+ * a stand, an eased fall to exactly nothing at its length.
+ * @param {string} kind one of HAPPENING_KINDS
+ * @param {number} age
+ */
+export function happeningSwell(kind, age) {
+    const shape = HAPPENING_SHAPE[kind];
+    if (!shape || !(age > 0)) return 0;
+    const [rise, stand, fall] = shape;
+    return smoothstep(0, rise, age) * (1 - smoothstep(rise + stand, rise + stand + fall, age));
+}
 
 function hash01(n) {
     const s = Math.sin(n * 127.1 + 311.7) * 43758.5453;
@@ -180,7 +241,8 @@ const SHORT_KINDS = Object.freeze([1, 3]);
  * @param {ReturnType<typeof createHappening>} [out]
  */
 export function happeningAt(time, out = createHappening()) {
-    const t = Math.max(0, Number(time) || 0);
+    // (A time that is not a number, or not finite, stands in the quiet first slot.)
+    const t = Number.isFinite(time) ? Math.max(0, Number(time)) : 0;
     const slot = Math.floor(t / HAPPENING_SECONDS);
     out.slot = slot;
     const turn = Math.floor(slot / 2);
@@ -188,7 +250,9 @@ export function happeningAt(time, out = createHappening()) {
     out.kindIndex = slot === 0 ? -1 : index;
     out.kind = slot === 0 ? '' : HAPPENING_KINDS[index];
     out.length = slot === 0 ? 0 : HAPPENING_LENGTH[out.kind];
-    out.at = slot * HAPPENING_SECONDS + 5 + hash01(slot + 0.25) * (HAPPENING_SECONDS - 5 - 12);
+    // It starts at least four seconds into its slot and is over a second before the slot ends,
+    // whatever its length: the slot's happening is the only one that can show at any time.
+    out.at = slot * HAPPENING_SECONDS + 4 + hash01(slot + 0.25) * (HAPPENING_SECONDS - 5 - out.length);
     out.side = hash01(slot + 0.75) < 0.5 ? -1 : 1;
     out.age = t - out.at;
     out.live = slot > 0 && out.age >= 0 && out.age < out.length;

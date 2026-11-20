@@ -45,7 +45,7 @@
  * one look for long, and every event has a shape of its own. By the clock (parhelion-weather.js):
  * the night on the Lower Sun's walk back (`night`, `dusk`, `stars`: the display becomes a
  * paraselene), a second wheel of five airs multiplied into what the hour shows (`air`, `grade`,
- * `nacre`, the clocks' rates) and one small happening a slot, armed on its own start. By play:
+ * `nacre`, the clocks' rates) and one small happening a slot, a closed form of its age. By play:
  * rings that cross the plain from the stone's foot (`ground`: a hard drop, four lines, the Sun
  * Cross, a perfect clear), shafts of light round the stone (`rays`: four lines; a twist winds
  * them into a wheel that turns once; a perfect clear splits them into the spectrum), the night
@@ -87,7 +87,7 @@ import {
 } from '../../shared/mood-clock.js';
 import { CUE, PARHELION_PLAYER_SLOTS, PARHELION_REDUCED_MOTION_INTENSITY } from './parhelion-reaction-director.js';
 import {
-    airAt, createAir, createHappening, duskOf, happeningAt, nightOf,
+    AIRS, airAt, airIntegral, createAir, createHappening, duskOf, happeningAt, happeningSwell, nightOf,
 } from './parhelion-weather.js';
 
 const HALF_PI = Math.PI / 2;
@@ -256,8 +256,7 @@ const CH_RAY_TINT = 24;
 const CH_NIGHT = 25;
 const CH_STARS = 26;
 const CH_ALPEN = 27;
-const CH_GUST = 28;
-const CHANNEL_COUNT = 29;
+const CHANNEL_COUNT = 28;
 
 const ENVELOPES = PARHELION_OPTICS_CAPS.envelopesPerChannel;
 const ENV_STRIDE = 5;
@@ -422,7 +421,7 @@ const ROLE_STATION = 1;
  * `reach` where it is spent, `width` its crest's share of the radius.
  */
 export const GROUND_RING = Object.freeze({
-    slots: 4, from: 34, rate: 1.9, reach: 2600, width: 0.045,
+    slots: 8, from: 34, rate: 1.9, reach: 2600, width: 0.045,
 });
 const RING_LIFE = Math.log(GROUND_RING.reach / GROUND_RING.from) / GROUND_RING.rate;
 
@@ -785,7 +784,10 @@ export class ParhelionOpticsState {
         this.walkPin = -1;
         this.happenings = true;
         this.hap = createHappening();
-        this.hapSlot = -1;
+        /** What the happenings give this frame (a closed form of the time: _happenings()). */
+        this.hapNow = {
+            gust: 0, flareL: 0, flareR: 0, tail: 0, shower: 0, density: 0, alpen: 0, glint: 0, glintPhi: HALF_PI,
+        };
         // Rings on the plain: birth, strength and tint per slot.
         this.ringBirth = new Float64Array(GROUND_RING.slots).fill(DORMANT_BIRTH);
         this.ringStrength = new Float64Array(GROUND_RING.slots);
@@ -1022,9 +1024,17 @@ export class ParhelionOpticsState {
     /** A new run: day breaks (the run-end night lifts over RUN_END.wake). */
     sessionStart(now = this.now) {
         const t = finiteNumber(now, this.now);
-        if (!(this._overAt(t) > 0)) return;
-        // Dawn from where the night stands now: re-time the release so the value is continuous.
+        if (this.overAt === -Infinity) return;
         const standing = this._overAt(t);
+        if (!(standing > 1e-6)) {
+            // A run-end night that has not begun to show (the new run starts in the instant the
+            // last one ended) or is already over: there is no night to lift, and none may fall.
+            this.overAt = -Infinity;
+            this.overRelease = Infinity;
+            this.overDawn = RUN_END.dawn;
+            return;
+        }
+        // Dawn from where the night stands now: re-time the release so the value is continuous.
         this.overAt = t - RUN_END.fall;
         this.overRelease = t - RUN_END.wake * inverseSmoothstep(1 - standing / RUN_END.night);
         this.overDawn = RUN_END.wake;
@@ -1040,18 +1050,22 @@ export class ParhelionOpticsState {
     }
 
     /**
-     * `?t=` reproducibility: integrated clocks = t·rate. The dust clock also subtracts every
-     * Clear Sky hush already scheduled, exactly as a frame-stepped run would have.
+     * `?t=` reproducibility: integrated clocks = ∫ rate. The air turns each clock at its own
+     * rate, so the integral is the air's (airIntegral, a closed form), calmed like update()'s
+     * under reduced motion. The dust clock also subtracts every Clear Sky hush already
+     * scheduled, exactly as a frame-stepped run would have. What a seek cannot know it holds at
+     * rest: the heat of play (a seek holds the fever) and the few seconds a gust quickens.
      */
     seek(t) {
         const time = finiteNumber(t, 0);
+        const span = Math.max(0, time);
+        const motion = this.reducedMotion ? 0.3 : 1;
+        const turned = (key) => time + (airIntegral(span, key, this.airPin) - span) * motion;
         const live = this.hushActive ? this.hushDepth * hushIntegral(time - this.hushBirth) : 0;
-        this.dustClock = time * this.dustBaseRate - this.hushBank - live;
-        this.veilPhase = time * PARHELION_CLOCK_RATES.veil;
-        this.driftPhase = time * PARHELION_CLOCK_RATES.drift;
+        this.dustClock = turned('dustRate') * this.dustBaseRate - this.hushBank - live;
+        this.veilPhase = turned('veilRate') * PARHELION_CLOCK_RATES.veil;
+        this.driftPhase = turned('driftRate') * PARHELION_CLOCK_RATES.drift;
         this.now = time;
-        // A seek may land inside a happening: it is armed again, on its own start (#1742).
-        this.hapSlot = -1;
     }
 
     // ── cues ─────────────────────────────────────────────────────────────────────
@@ -1168,8 +1182,8 @@ export class ParhelionOpticsState {
         // the resting rates: a seek holds the fever too).
         // The air (a second wheel beside the walk) and what happens by itself this slot.
         const air = airAt(t, this.air, this.airPin);
-        this._stepHappenings(t);
-        const gust = clamp(this._channel(CH_GUST, t), 0, 1.5);
+        const hap = this._happenings(t);
+        const gust = clamp(hap.gust, 0, 1.5);
         const dustQuick = (1 + (0.3 * heatHot + 0.45 * heatFever) * motion)
             * (1 + (air.dustRate - 1 + 0.5 * gust) * motion);
         let dustStep = step * this.dustBaseRate * dustQuick;
@@ -1264,9 +1278,9 @@ export class ParhelionOpticsState {
 
         // The hounds run with play: they flare, warm and grow longer comet tails.
         const flareHeat = 0.12 * heatHot + 0.3 * heatFever;
-        out.dogFlare[0] = clamp(flareHeat + this._channel(CH_FLARE_L, t), 0, 2);
-        out.dogFlare[1] = clamp(flareHeat + this._channel(CH_FLARE_R, t), 0, 2);
-        out.dogTail = clamp(idle.dogTail + 0.35 * heatHot + 0.75 * heatFever + this._channel(CH_TAIL, t), 1, 2.5);
+        out.dogFlare[0] = clamp(flareHeat + hap.flareL + this._channel(CH_FLARE_L, t), 0, 2);
+        out.dogFlare[1] = clamp(flareHeat + hap.flareR + this._channel(CH_FLARE_R, t), 0, 2);
+        out.dogTail = clamp(idle.dogTail + 0.35 * heatHot + 0.75 * heatFever + hap.tail + this._channel(CH_TAIL, t), 1, 2.5);
         // (A moon's hounds are silver: the night takes the warmth back out of them.)
         out.dogTint = clamp01(warm + 0.35 * heatWarm + 0.35 * heatFever + LOW_SUN_TINT * lowSun) * (1 - night);
         this._writePc(t, heatFever);
@@ -1275,11 +1289,11 @@ export class ParhelionOpticsState {
         // sparkles with every hit (the punch rides on a floor under rapid locks).
         out.ringFlash = clamp(this._channel(CH_RING_FLASH, t), 0, 1.5) * flash;
         out.prism = caps.prism ? clamp(this._channel(CH_PRISM, t), 0, 1.5) * flash : 0;
-        out.shower = clamp(this._channel(CH_SHOWER, t), 0, 1.5) * flash;
+        out.shower = clamp(hap.shower + this._channel(CH_SHOWER, t), 0, 1.5) * flash;
         out.crossArm = clamp(SUN_CROSS.crossArm * cross + 0.3 * heatFever + this._channel(CH_CROSS_ARM, t), 0, 1.5);
         const levelDensity = Math.min(LEVEL_DENSITY_CAP, LEVEL_DENSITY_STEP * idle.density * levelSteps);
         const densityHeat = 0.1 * heatWarm + 0.12 * heatHot + 0.15 * heatFever;
-        out.density = clamp(idle.density + air.density + levelDensity + 0.15 * line + densityHeat
+        out.density = clamp(idle.density + air.density + hap.density + levelDensity + 0.15 * line + densityHeat
             + SUN_CROSS.density * cross + this._channel(CH_DENSITY, t), 0, 1);
         const dustHeat = 0.25 * heatWarm + 0.45 * heatHot + 0.8 * heatFever + 0.5 * Math.min(1, punch);
         const dustMul = (1 + 0.3 * line) * air.dust
@@ -1299,7 +1313,10 @@ export class ParhelionOpticsState {
         out.air[1] = air.fog;
         out.air[2] = air.drift * (1 + 2.2 * gust + (0.5 * heatHot + 0.8 * heatFever) * motion);
         out.air[3] = air.glow;
-        out.nacre = air.nacre * Math.max(out.dusk, 0.3 * lowSun * (1 - night));
+        // Mother-of-pearl shows through the afterglow in every air; by day only the airs that
+        // have more of it than the clear one show any (under a low sun), so the clear air by day
+        // is the display as designed.
+        out.nacre = Math.max(air.nacre * out.dusk, Math.max(0, air.nacre - AIRS.clear.nacre) * 0.5 * lowSun * (1 - night));
         // The air leans the whole frame: gold for the crystal air, a blue-grey cold for the
         // ground blizzard, pale for the ice fog (scalars alone never change an air's colour).
         const lean = air.warm;
@@ -1342,6 +1359,20 @@ export class ParhelionOpticsState {
                 arcs[o + 1] = 0;
                 arcs[o + 2] = 1;
                 arcs[o + 3] = 0;
+            }
+        }
+        // A happening's glint runs round the ring in a row no arc holds (a closed form of the
+        // time, like every happening: it is never armed, so a seek cannot double it).
+        if (hap.glint > ARC_EPSILON) {
+            for (let i = 0; i < ARC_SLOTS; i++) {
+                const o = i * 4;
+                if (arcs[o + 1] > ARC_EPSILON) continue;
+                arcs[o] = wrapPi(hap.glintPhi);
+                arcs[o + 1] = hap.glint;
+                arcs[o + 2] = WAVE_WIDTH;
+                arcs[o + 3] = ARC_MODE.WHITE;
+                arcCount = Math.max(arcCount, i + 1);
+                break;
             }
         }
         out.arcCount = arcCount;
@@ -1397,43 +1428,69 @@ export class ParhelionOpticsState {
     // ── the living pass: happenings, rings on the plain, the level's light, the wheel ──
 
     /**
-     * What happens by itself this slot (parhelion-weather.js happeningAt): armed once, on the
-     * happening's OWN start, so a seek into it and a replay at any frame rate land on the same
-     * picture. Ambient life, not a reaction: it plays with reactions off too.
+     * What happens by itself (parhelion-weather.js happeningAt), as a CLOSED FORM of the time:
+     * what this slot's happening gives at `t` (it starts and ends inside its slot), written into
+     * the reused `hapNow`. Nothing is armed and nothing is stored, so a seek into the middle of
+     * one, a seek into its last second, a replay at any frame rate and a reset in its tail all
+     * land on the same picture. (A first form armed envelopes on the happening's start: a seek
+     * forgot the arming but not the envelopes and stacked a second copy, a seek past its nominal
+     * length found nothing where its light still rang on, and a reset cut that tail off in one
+     * frame.) Ambient life, not a reaction: it plays with reactions off too.
      */
-    _stepHappenings(t) {
-        if (!this.happenings) return;
-        const hap = happeningAt(t, this.hap);
-        if (hap.slot === this.hapSlot || hap.kindIndex < 0 || !hap.live) return;
-        this.hapSlot = hap.slot;
+    _happenings(t) {
+        const h = this.hapNow;
+        h.gust = 0;
+        h.flareL = 0;
+        h.flareR = 0;
+        h.tail = 0;
+        h.shower = 0;
+        h.density = 0;
+        h.alpen = 0;
+        h.glint = 0;
+        h.glintPhi = HALF_PI;
+        if (!this.happenings) return h;
+        this._addHappening(happeningAt(t, this.hap), t, h);
+        return h;
+    }
+
+    _addHappening(hap, t, h) {
+        if (hap.kindIndex < 0) return;
         const { at, kind } = hap;
+        // Its swell (parhelion-weather.js): a rise, a stand, a fall to nothing at its length.
+        const swell = happeningSwell(kind, t - at);
+        if (!(swell > 0)) return;
         if (kind === 'gust') {
             // A gust comes over the plain: the spindrift races, the dust swirls.
-            this._env(CH_GUST, at, 2.2, 3.0, 2.4, 1);
+            h.gust += swell;
         } else if (kind === 'glint') {
             // A glint runs once round the ring (not under reduced motion: it is all motion).
             if (this.reducedMotion) return;
-            const slot = this._waveSlot(0, at);
-            this._arc(slot, 0, at, 0.3, WAVE_WIDTH, ARC_MODE.WHITE);
-            this._arcMotion(slot, HALF_PI, HALF_PI - hap.side * TWO_PI, 2.6, EASE_IN_OUT_CUBIC);
-            this._arcEnvelope(slot, 0.3, 2.3, 0.5);
+            const amp = 0.5 * swell;
+            if (amp > h.glint) {
+                h.glint = amp;
+                h.glintPhi = HALF_PI - hap.side * TWO_PI * ease(EASE_IN_OUT_CUBIC, clamp01((t - at) / 2.6));
+            }
         } else if (kind === 'hound') {
             // One hound flares and streams a long tail.
-            this._env(hap.side < 0 ? CH_FLARE_L : CH_FLARE_R, at, 2.0, 2.0, 2.4, 0.5);
-            this._env(CH_TAIL, at, 2.0, 2.0, 2.4, 0.45);
+            if (hap.side < 0) h.flareL += 0.8 * swell;
+            else h.flareR += 0.8 * swell;
+            h.tail += 0.7 * swell;
         } else if (kind === 'shimmer') {
             // A shimmer falls through the diamond dust.
-            this._env(CH_SHOWER, at, 0.8, 2.0, 1.8, 0.4);
-            this._env(CH_DENSITY, at, 0.8, 2.0, 1.8, 0.2);
+            h.shower += 0.8 * swell;
+            h.density += 0.3 * swell;
         } else if (kind === 'flush') {
             // The far range flushes for a while.
-            this._env(CH_ALPEN, at, 3.0, 3.0, 3.5, 0.55);
+            h.alpen += 0.7 * swell;
         }
     }
 
     /**
-     * A ring leaves the Vigil Stone's foot and crosses the plain. The oldest slot goes (the
-     * ring farthest out), so a hard drop a second never cuts a young ring short.
+     * A ring leaves the Vigil Stone's foot and crosses the plain. It takes a spent row, else
+     * the row whose ring has the least light left (the one fading at the horizon): with eight
+     * rows and a life of 2.3 s, a hard drop three times a second never takes a ring away while
+     * it still shows. (Four rows, the oldest replaced, cut each ring at 41 % of its light under
+     * a drop every 0.45 s.)
      * @param {number} birth
      * @param {number} strength
      * @param {number} [tint] 0 the hour's own light, 1 the prism
@@ -1442,10 +1499,14 @@ export class ParhelionOpticsState {
         // A ring is motion across the whole plain: none under reduced motion.
         if (!(strength > 0) || this.reducedMotion || this.cueRm) return;
         let pick = 0;
-        let oldest = Infinity;
+        let least = Infinity;
         for (let i = 0; i < GROUND_RING.slots; i++) {
-            if (this.ringBirth[i] < oldest) {
-                oldest = this.ringBirth[i];
+            const u = (birth - this.ringBirth[i]) / RING_LIFE;
+            // What the row's ring still has to give when the new one is born (a ring still to
+            // come keeps its whole strength).
+            const left = u >= 1 ? 0 : this.ringStrength[i] * (u <= 0 ? 1 : 1 - smoothstep(0.5, 1, u));
+            if (left < least) {
+                least = left;
                 pick = i;
             }
         }
@@ -1488,6 +1549,10 @@ export class ParhelionOpticsState {
         this._env(CH_ALPEN, t, 1.0, 2.4, 2.6, 1.0 * this.gain);
         // Under reduced motion the range still flushes; the band that crosses the plain stays home.
         if (this.reducedMotion) return;
+        // A band still crossing the plain carries on (a second level inside its few seconds must
+        // not snap it back to the horizon); the range's flush above is what answers twice.
+        const age = t - this.sweepBirth;
+        if (age >= 0 && age < LEVEL_SWEEP.life && this.sweepStrength > 0) return;
         this.sweepBirth = t;
         this.sweepStrength = this.gain;
         this._env(CH_RAYS, t, 0.5, 0.8, 1.2, 0.35 * this.gain);
@@ -1506,7 +1571,8 @@ export class ParhelionOpticsState {
         // The far range flushes with a level and a happening, and by itself as the sun lowers
         // and through the afterglow (the alpenglow proper).
         const lowSun = lowSunOf(this.out.warmth);
-        sweep[3] = clamp(this._channel(CH_ALPEN, t) + 0.45 * lowSun * (1 - this.out.night) + 0.5 * this.out.dusk, 0, 1.5);
+        sweep[3] = clamp(this._channel(CH_ALPEN, t) + this.hapNow.alpen
+            + 0.45 * lowSun * (1 - this.out.night) + 0.5 * this.out.dusk, 0, 1.5);
     }
 
     /** A twist: the shafts of light become a wheel that turns once, the way the piece turned. */
@@ -2464,9 +2530,9 @@ export class ParhelionOpticsState {
         this.sweepStrength = 0;
         this.wheelBirth = DORMANT_BIRTH;
         this.wheelFrom = 0;
+        this.wheelDir = 1;
         this.out.avenue[0] = DORMANT_BIRTH;
         this.out.avenue[1] = 0;
-        this.hapSlot = -1;
     }
 }
 

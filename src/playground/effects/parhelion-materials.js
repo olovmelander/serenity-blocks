@@ -218,7 +218,7 @@ export const IDLE_OPTICS = Object.freeze({
 export const REST_RIM = 1.0;
 
 /** Rings on the plain the snow reads (the optics state's GROUND_RING.slots). */
-export const GROUND_SLOTS = 4;
+export const GROUND_SLOTS = 8;
 
 /** What moonlight makes of light that adds (the ring, the hounds, a rim, a pillar): silver. */
 const MOON_SILVER = Object.freeze([0.66, 0.79, 1.0]);
@@ -297,7 +297,7 @@ export function createSharedUniforms() {
         uDusk: uniform(0),
         /** The stars' light in the sky, and in the Vigil Stone (it holds the night by day too). */
         uStars: uniform(0),
-        uStoneStars: uniform(0.5),
+        uStoneStars: uniform(0.42),
         /** (veil ×, ice fog lift 0..1, blowing snow ×, glow round the ring 0..1). */
         uAir: uniform(new THREE.Vector4(1, 0, 1, 0)),
         uNacre: uniform(0),

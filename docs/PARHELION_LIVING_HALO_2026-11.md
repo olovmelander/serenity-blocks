@@ -95,8 +95,10 @@ look exactly.
 
 Every 37 s one small thing also happens by itself (`happeningAt`): a gust over the plain, a
 glint running round the ring, a hound flaring, a shimmer falling through the dust, the far
-range flushing. Each is armed on its own start, so a seek into one and a replay at any frame
-rate land on the same picture.
+range flushing. The long ones and the short ones come in turn, so a kind never follows itself.
+Each is a closed form of its own age (a rise, a stand, a fall to exactly nothing, inside its
+slot): nothing is armed or stored, so a seek into one and a replay at any frame rate land on
+the same picture.
 
 ### The avenue
 
@@ -144,6 +146,24 @@ pixels each), and the shipped icon's stronger double ring reads better small. It
 - Shader budgets re-pinned on purpose in `tests/unit/parhelion-shader-size.test.js`: the dome
   22 → 32 KB (it measures 28.7), the snow 15.5 → 19.5 KB, the stone 10.5 → 14.5 KB. Still no new
   noise read anywhere, one function a helper.
+- **Contract tests, written by a helper that was told to pin faults instead of bending tests**
+  (`tests/unit/parhelion-weather.test.js`, `parhelion-living.test.js`, `parhelion-run-end.test.js`,
+  `parhelion-shaders.test.js`, 191 tests; the models have `parhelion-menhir-models.test.js`). The
+  87 older sim tests stayed green throughout, because the warmth walk was left as it was and the
+  night added beside it. The helper found nine faults in the new code, all fixed:
+
+  | Found | Fixed by |
+  | --- | --- |
+  | A repeated seek stacked a live happening (every `?t=` still inside one showed it three or four times too strong); a seek past its nominal length found nothing where its light still rang on; a reset cut that tail off in one frame | Happenings are a closed form of the time now (`happeningSwell`: a rise, a stand, a fall to exactly nothing at its length, each inside its own slot). Nothing is armed and nothing is stored |
+  | A ring was taken away while it still showed (four rows, the oldest out: at 39 % of its light under a drop every 0.45 s) | Eight rows, and a new ring takes the row with the least light left |
+  | A new run that started in the instant the last one ended kept the night (it had not begun to show, so there was "nothing to lift") | `sessionStart` cancels a run-end night by its birth, not by its value |
+  | The clear air was not the display as designed once the sun was low (a little mother-of-pearl by day) | By day only the airs with more of it than the clear one show any |
+  | A seek's clocks ignored the air's rates (other cloud and spindrift phases than the game has at that second) | `airIntegral`: the closed-form area under the air's rate, which is where a seek puts each clock |
+  | Three nits: `duskOf(NaN)`, `happeningAt(Infinity)`, the stone's stars resting at 0.5 in the uniform bag and 0.42 in the state | Guarded; one number |
+
+  Two things it saw and did not pin were put right as well: a second level-up inside the band's
+  few seconds no longer snaps the band back to the horizon, and a reset gives the wheel its
+  direction back.
 
 ## Open calls
 
@@ -153,4 +173,9 @@ Mine, not the owner's words:
 - The night is a quarter of the cycle. If the theme should stay a daylight theme, `NIGHT_WALK`
   shortens it without touching anything else.
 - The mother-of-pearl cloud is drawn from the veil's own noise, so it follows its streaks.
+- The menhirs are cleaved and a little architectural up close (their fronts are near-planes);
+  at the size they are seen they read as standing stones, three shapes that tell apart.
+- A seek holds what it cannot know at rest: the heat of play, and the few seconds a gust
+  quickens the clocks.
+- The phone frame shows only the side slivers of the display, as before the pass.
 - No integrated-GPU run.
