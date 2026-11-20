@@ -2,7 +2,7 @@
  * Painted Ages shader gate — no GPU needed.
  *
  * Every material of a High and a Low world (the land, the props and their halos, the poplars, the
- * sky, the cumulus banks, the motes, and the three shadow passes' quads) is built through three's
+ * sky, the cumulus banks, the vultures, the motes, and the three shadow passes' quads) is built through three's
  * own node builders for BOTH backends: the WGSL one of WebGPU and the GLSL one of the WebGL2
  * fallback, by a real WebGPURenderer whose device is a stub. A graph one builder cannot turn into
  * a shader throws (or warns) here instead of leaving a part undrawn on someone's machine.
@@ -24,12 +24,25 @@ import { FIELDS, FIELD_ORDER, PIECE_COLORS } from '../../src/themes/painted-ages
 import { decodeField } from '../../src/themes/painted-ages/painted-ages-field.js';
 import { POST_LOOK, PaintedAgesPost } from '../../src/themes/painted-ages/painted-ages-post.js';
 import { decodePng } from '../../scripts/painted-ages/png.mjs';
+// (vultures)
+import { tierFor } from '../../src/themes/painted-ages/painted-ages-quality.js';
+import { createNoiseTexture, createUniforms } from '../../src/themes/painted-ages/painted-ages-tsl.js';
+import { createVultures } from '../../src/themes/painted-ages/painted-ages-vultures.js';
 
 vi.setConfig({ testTimeout: 60_000 });
 
-const TIERS = ['High', 'Low'];
+/** The default tier, a lean one, and the leanest (no flutes, one cloud layer, the pennants at twice the pitch). */
+const TIERS = ['High', 'Low', 'Minimal'];
+/**
+ * The materials the living pass added (the dust devils, the pennants) and the ones it changed: each
+ * must come out of both builders at every tier above.
+ */
+const LIVING_MATERIALS = [
+    'PaintedAgesDevils', 'PaintedAgesPennants', 'PaintedAgesSky', 'PaintedAgesCumulus', 'PaintedAgesLand',
+    'PaintedAgesProps', 'PaintedAgesHalos', 'PaintedAgesMotes', 'PaintedAgesPoplars',
+];
 const BACKENDS = [['WGSL', false], ['GLSL', true]];
-/** The land's fragment is the largest stage (about 48 KiB at the time of writing). */
+/** The land's fragment is the largest stage (about 60 KiB in WGSL and 68 in GLSL since the living pass). */
 const FRAGMENT_BUDGET = 96 * 1024;
 
 const canvas = {
@@ -198,9 +211,50 @@ describe.each(TIERS)('Painted Ages shaders at %s', (quality) => {
         for (const field of FIELD_ORDER) expect(names).toContain(`shadow-${field}`);
         expect(names).toContain('poplar-shade');
         expect(names).toContain('props#1'); // the lanterns' and lamps' halos
+        expect(names).toContain('props#2'); // the pennants up the stair
         Object.values(world.parts).forEach((part) => {
             (part.meshes || [part.mesh]).forEach((mesh) => expect(mesh.material.isNodeMaterial, mesh.name).toBe(true));
         });
+    });
+
+    it('builds the living pass\'s materials for both backends: the devils, the pennants, every one it changed', () => {
+        /** material name → the target it was built as (a part, or `part#n` for a part's further meshes). */
+        const targetOf = {};
+        for (const [name, part] of Object.entries(world.parts)) {
+            (part.meshes || [part.mesh]).forEach((mesh, i) => {
+                if (mesh) targetOf[mesh.material.name] = i ? `${name}#${i}` : name;
+            });
+        }
+        for (const material of LIVING_MATERIALS) {
+            const target = targetOf[material];
+            expect(target, material).toBeTruthy();
+            for (const [label] of BACKENDS) {
+                const out = built[target][label];
+                expect(out.thrown, `${material}, ${label}`).toBeUndefined();
+                expect(said[target][label], `${material}, ${label}`).toEqual([]);
+                for (const stage of ['vertex', 'fragment']) {
+                    expect(typeof out[stage], `${material}, ${label}, ${stage}`).toBe('string');
+                    expect(out[stage].length, `${material}, ${label}, ${stage}`).toBeGreaterThan(200);
+                    expect(out[stage], `${material}, ${label}, ${stage}`).not.toMatch(/\bNaN\b|\bInfinity\b/);
+                }
+                expect(Buffer.byteLength(out.fragment), `${material}, ${label}`).toBeLessThan(FRAGMENT_BUDGET);
+            }
+            for (const stage of ['vertex', 'fragment']) {
+                expect(unassignedReads(built[target].WGSL[stage]), `${material} ${stage}`).toEqual([]);
+            }
+        }
+        // The devils are a part of their own; the pennants ride with the props, beside the halos.
+        expect(targetOf.PaintedAgesDevils).toBe('devils');
+        expect(targetOf.PaintedAgesPennants).toMatch(/^props#\d$/);
+        expect(targetOf.PaintedAgesHalos).toBe('props#1');
+        // The devils' cards and the pennants' cloth are placed in the vertex stage, and each draws
+        // from the noise in its fragment stage (the funnel's winding pigment, the cloud's shadow).
+        for (const material of ['PaintedAgesDevils', 'PaintedAgesPennants']) {
+            const { WGSL, GLSL } = built[targetOf[material]];
+            expect(WGSL.fragment, material).toMatch(/textureSample/);
+            expect(GLSL.fragment, material).toMatch(/texture\s*\(/);
+            expect(WGSL.vertex.length, material).toBeGreaterThan(600);
+        }
     });
 
     it('builds every material for WebGPU and for the WebGL2 fallback without a word', () => {
@@ -263,6 +317,53 @@ describe.each(TIERS)('Painted Ages shaders at %s', (quality) => {
             'fn main() {', 'if ( c ) {', 'nodeVar1 = 1.0;', '} else {', 'nodeVar1 = 0.0;', '}',
             'nodeVar3 = nodeVar1;', '}',
         ].join('\n'))).toEqual([]);
+    });
+});
+
+// (vultures) The bearded vultures' material on the default tier and the leanest, with a thermal
+// and a pass in the air (their rows written), for both backends.
+describe.each(['High', 'Minimal'])('Painted Ages vultures at %s', (quality) => {
+    it.each(BACKENDS)('builds its material on the %s backend without a word', (label) => {
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(40, 16 / 9, 1.5, 60000);
+        const u = createUniforms();
+        const part = createVultures(u, { noise: createNoiseTexture() }, tierFor(quality), fields);
+        part.stage({ kind: 'thermal', age: 14, time: 40 });
+        part.update(40, 1 / 30);
+        const heard = [];
+        const listen = (...args) => heard.push(args.map(String).join(' ').slice(0, 400));
+        const warn = vi.spyOn(console, 'warn').mockImplementation(listen);
+        const error = vi.spyOn(console, 'error').mockImplementation(listen);
+        try {
+            const renderer = renderers[label];
+            const builder = renderer.backend.createNodeBuilder(part.mesh, renderer);
+            builder.scene = scene;
+            builder.material = part.mesh.material;
+            builder.camera = camera;
+            builder.context.material = part.mesh.material;
+            builder.lightsNode = renderer.lighting.getNode(scene);
+            builder.fogNode = null;
+            builder.clippingContext = null;
+            builder.build();
+            expect(heard).toEqual([]);
+            for (const stage of [builder.vertexShader, builder.fragmentShader]) {
+                expect(stage.length).toBeGreaterThan(800);
+                expect(stage).not.toMatch(/NaN|Infinity/);
+                expect(Buffer.byteLength(stage)).toBeLessThan(FRAGMENT_BUDGET);
+            }
+            if (label === 'WGSL') {
+                expect(builder.vertexShader).toMatch(/@vertex/);
+                expect(builder.fragmentShader).toMatch(/@fragment/);
+                expect(unassignedReads(builder.vertexShader)).toEqual([]);
+                expect(unassignedReads(builder.fragmentShader)).toEqual([]);
+            } else expect(builder.fragmentShader).toMatch(/void main()/);
+            // The tier's birds and the pass's own, as one instanced draw.
+            expect(part.mesh.geometry.instanceCount).toBe(tierFor(quality).vultures + 1);
+        } finally {
+            warn.mockRestore();
+            error.mockRestore();
+            part.dispose();
+        }
     });
 });
 

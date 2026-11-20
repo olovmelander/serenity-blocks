@@ -354,6 +354,7 @@ export default class PaintedAgesTheme extends BaseTheme {
             this.post = new PaintedAgesPost(this.renderer, this.scene, this.camera, {
                 look,
                 falseColor: this.flags.falseColor,
+                antialias: this.getAntialiasEnabled(),
             });
         } catch (error) {
             console.warn(`${LOG_PREFIX} Post stack failed; rendering pass-through:`, error);

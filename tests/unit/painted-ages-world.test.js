@@ -12,7 +12,7 @@ import {
 } from 'vitest';
 import * as THREE from 'three/webgpu';
 import {
-    PAINTED_AGES_PARTS, PaintedAgesWorld, RECORD_SHOWN, RECORD_TOP, REST_RIG, fovForAspect,
+    PAINTED_AGES_PARTS, PaintedAgesWorld, RECORD_SHOWN, RECORD_TOP, REST_RIG, SPIN_SECONDS, fovForAspect,
 } from '../../src/themes/painted-ages/painted-ages-world.js';
 import {
     EYE, FIELDS, FIELD_ORDER, PIECE_CODE, PIECE_COLORS, RECORD_ROWS, TIMING, hexToLinear,
@@ -266,10 +266,25 @@ describe('PaintedAgesWorld clears', () => {
         expect(world.counts.clears).toBe(clears);
         stepTo(world, camera, world.time + 2);
         expect(world.u.paint.value).toBeGreaterThan(0.99);
+        // The day is wheeling round (an age in a breath): the double bow waits for the light.
+        expect(world.spinning).toBe(true);
+        expect(world.u.bow.value.x).toBe(0);
+        stepTo(world, camera, world.time + SPIN_SECONDS);
+        expect(world.spinning).toBe(false);
         expect(world.u.bow.value.x).toBeGreaterThan(0);
         expect(world.u.bow.value.y).toBe(1);
         stepTo(world, camera, world.time + TIMING.perfectHold + TIMING.perfectFade);
         expect(world.u.paint.value).toBe(0);
+    });
+
+    it('raises the perfect clear’s bow at once under reduced motion (no sweep of the light)', () => {
+        const { world, camera } = makeWorld();
+        world.setReducedMotion(true);
+        world.onClear({ lines: 4, perfect: true });
+        stepTo(world, camera, world.time + 2);
+        expect(world.spinning).toBe(false);
+        expect(world.u.bow.value.x).toBeGreaterThan(0);
+        expect(world.u.bow.value.y).toBe(1);
     });
 });
 
@@ -711,8 +726,10 @@ describe('PaintedAgesWorld build-up (the heat of play)', () => {
         quad();
         run(1);
         world.onClear({ lines: 4, perfect: true });
+        // The perfect clear's day wheels round; its double bow stands once the light is back.
+        run(SPIN_SECONDS);
         const crowned = world.time;
-        run(3);
+        run(1);
         // A chain of four breaks: its single bow joins the double one instead of replacing it.
         world.onCombo(3);
         world.onCombo(4);

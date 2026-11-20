@@ -10,7 +10,10 @@
  * lanterns under the eaves.
  *
  * The material lights itself like the land (sun with the land's own shadow, sky, bounce, the air)
- * and lets its lamps and lanterns glow as the light fails (`u.lamps`).
+ * and lets its lamps and lanterns glow as the light fails (`u.lamps`): one after another up the
+ * stair, the lamp nearest the eye first and the pavilion's lanterns last (each lamp knows how far
+ * along the walk it stands: its ORDER, carried in the fraction of its surface kind). A level-up
+ * runs a flare up the same line (`u.lampRun`).
  */
 import * as THREE from 'three/webgpu';
 import {
@@ -42,6 +45,7 @@ import { groundHeight } from './painted-ages-field.js';
 import { PAVILION, SPUR } from './painted-ages-plan.js';
 import { aerial, cloudShadow } from './painted-ages-light.js';
 import { shadowAt } from './painted-ages-shadow.js';
+import { createPennants } from './painted-ages-pennants.js';
 import { drainSteps, stepClock } from '../shared/build-steps.js';
 
 /** Surface kinds (the `aKind` attribute). */
@@ -58,6 +62,23 @@ const KIND_COLOUR = [
     [0.9, 0.7, 0.4], // lamp glass
     [0.18, 0.11, 0.07], // dark timber (undersides, brackets)
 ];
+
+/**
+ * A lamp's ORDER along the walk rides in the fraction of its kind: kind + ORDER_STEP × order
+ * (the kinds are told apart within ±0.3, so a quarter never crosses into a neighbour).
+ */
+const ORDER_STEP = 0.25;
+
+/**
+ * How brightly the lamp standing `order` along the walk (0 by the eye … 1 at the pavilion)
+ * burns: lit in turn as the light fails, plus a level-up's flare passing it.
+ */
+function lampGlow(u, order) {
+    const lit = smoothstep(order.mul(0.6), order.mul(0.6).add(0.4), u.lamps);
+    const d = order.sub(u.lampRun.x).div(0.11);
+    const flare = exp(d.mul(d).negate()).mul(u.lampRun.y);
+    return max(lit, flare);
+}
 
 /** A box between two corners in local space, kind-tagged. */
 function box(w, h, d, x, y, z, kind, rotY = 0) {
@@ -187,8 +208,8 @@ function pavilionParts(glows = []) {
         const l = new THREE.SphereGeometry(0.42, 10, 8);
         l.scale(1, 1.25, 1);
         l.translate(x, by - 0.2, z);
-        parts.push(tag(l, KIND.lantern));
-        glows.push([x, by - 0.2, z, 3.2, 0]);
+        parts.push(tag(l, KIND.lantern + ORDER_STEP));
+        glows.push([x, by - 0.2, z, 3.2, 0, 1]);
         parts.push(box(0.04, 0.6, 0.04, x, by + 0.3, z, KIND.darkWood));
     }
     return parts;
@@ -250,7 +271,7 @@ export function findCrest(fields, step = 2.2) {
 const PROPS_SLICE_MS = 8;
 
 /** The boardwalk's pieces along the crest, as steps: yields between sections once `clock` is due. */
-function* boardwalkPartsSteps(fields, crest, glows = [], clock = stepClock(PROPS_SLICE_MS)) {
+function* boardwalkPartsSteps(fields, crest, glows = [], clock = stepClock(PROPS_SLICE_MS), rail = []) {
     const parts = [];
     const ground = (x, z) => groundHeight(fields, x, z, true);
     const width = 1.7;
@@ -313,14 +334,20 @@ function* boardwalkPartsSteps(fields, crest, glows = [], clock = stepClock(PROPS
             parts.push(beam({ x: pa.x, y: a.y + 0.55, z: pa.z }, { x: pb.x, y: b.y + 0.55, z: pb.z }, 0.05, 0.05, KIND.wood));
         }
         sinceLamp += run;
+        const o = (width * 0.5 + 0.1);
+        const px = a.x + a.sx * o;
+        const pz = a.z + a.sz * o;
+        // The line the pennants follow: the walk's lamp side, post by post.
+        rail.push({
+            x: px, y: a.y, z: pz, lamp: sinceLamp > 22,
+        });
         if (sinceLamp > 22) {
             sinceLamp = 0;
-            const o = (width * 0.5 + 0.1);
-            const px = a.x + a.sx * o;
-            const pz = a.z + a.sz * o;
             parts.push(beam({ x: px, y: a.y, z: pz }, { x: px, y: a.y + 1.9, z: pz }, 0.1, 0.1, KIND.darkWood));
-            parts.push(box(0.26, 0.34, 0.26, px, a.y + 2.05, pz, KIND.lamp));
-            glows.push([px, a.y + 2.05, pz, 1.6, 1]);
+            // How far along the walk this lamp stands (0 by the eye … just under 1 at the top).
+            const order = Math.min(0.95, i / Math.max(1, deck.length - 1));
+            parts.push(box(0.26, 0.34, 0.26, px, a.y + 2.05, pz, KIND.lamp + ORDER_STEP * order));
+            glows.push([px, a.y + 2.05, pz, 1.6, 1, order]);
             parts.push(box(0.34, 0.06, 0.34, px, a.y + 2.25, pz, KIND.darkWood));
         }
     }
@@ -342,7 +369,8 @@ export function* createPropsSteps(u, t, tier, fields) {
     const clock = stepClock(PROPS_SLICE_MS);
     const crest = findCrest(fields);
     const glows = [];
-    const walk = yield* boardwalkPartsSteps(fields, crest, glows, clock);
+    const rail = [];
+    const walk = yield* boardwalkPartsSteps(fields, crest, glows, clock, rail);
     if (clock.due()) {
         yield 'boardwalk';
         clock.restart();
@@ -358,9 +386,9 @@ export function* createPropsSteps(u, t, tier, fields) {
     );
     for (const g of pav) g.applyMatrix4(place);
     const v = new THREE.Vector3();
-    for (const [x, y, z, size, kind] of pavGlows) {
+    for (const [x, y, z, size, kind, order] of pavGlows) {
         v.set(x, y, z).applyMatrix4(place);
-        glows.push([v.x, v.y, v.z, size, kind]);
+        glows.push([v.x, v.y, v.z, size, kind, order]);
     }
     yield 'pavilion';
     clock.restart();
@@ -403,9 +431,11 @@ export function* createPropsSteps(u, t, tier, fields) {
         const s4 = spec.mul(spec).mul(spec).mul(spec);
         const shine = is(KIND.gold).mul(0.9).add(is(KIND.lacquer).mul(0.25)).add(is(KIND.tile).mul(0.12));
         lit.addAssign(u.sun.mul(s4.mul(s4)).mul(shine).mul(shadow).mul(u.sunUp));
-        // Lamps and lanterns glow as the light fails.
+        // Lamps and lanterns glow as the light fails, in turn up the stair; a level-up's flare
+        // runs the same line.
         const glowKind = is(KIND.lantern).add(is(KIND.lamp));
-        const glow = mix(vec3(1.6, 0.42, 0.12), vec3(2.2, 1.35, 0.6), is(KIND.lamp)).mul(u.lamps).mul(glowKind);
+        const burning = lampGlow(u, fract(k).div(ORDER_STEP));
+        const glow = mix(vec3(1.6, 0.42, 0.12), vec3(2.2, 1.35, 0.6), is(KIND.lamp)).mul(burning).mul(glowKind);
         lit.addAssign(glow.mul(4.0));
         return vec4(aerial(u, P, lit), 1.0);
     })();
@@ -413,9 +443,12 @@ export function* createPropsSteps(u, t, tier, fields) {
     mesh.name = 'PaintedAgesProps';
     mesh.renderOrder = 1;
     const halo = createHalos(u, glows);
+    // Strings of pennants from lamp to lamp up the stair, along the walk's own line.
+    const pennants = createPennants(u, t, rail, tier);
     return {
         mesh,
-        meshes: [mesh, halo.mesh],
+        meshes: [mesh, halo.mesh, pennants.mesh],
+        pennants,
         crest,
         glows,
         update() {},
@@ -423,6 +456,7 @@ export function* createPropsSteps(u, t, tier, fields) {
             geometry.dispose();
             material.dispose();
             halo.dispose();
+            pennants.dispose();
         },
     };
 }
@@ -434,12 +468,14 @@ export function* createPropsSteps(u, t, tier, fields) {
 function createHalos(u, glows) {
     const n = Math.max(1, glows.length);
     const centres = new Float32Array(n * 4 * 4);
+    const orders = new Float32Array(n * 4);
     const corners = new Float32Array(n * 4 * 2);
     const positions = new Float32Array(n * 4 * 3);
     const index = [];
-    glows.forEach(([x, y, z, size, kind], i) => {
+    glows.forEach(([x, y, z, size, kind, order = 0], i) => {
         for (let c = 0; c < 4; c++) {
             const o = i * 4 + c;
+            orders[o] = order;
             centres.set([x, y, z, kind ? -size : size], o * 4);
             corners.set([c === 1 || c === 2 ? 1 : -1, c >= 2 ? 1 : -1], o * 2);
             positions.set([x, y, z], o * 3);
@@ -451,6 +487,7 @@ function createHalos(u, glows) {
     geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
     geometry.setAttribute('aCentre', new THREE.BufferAttribute(centres, 4));
     geometry.setAttribute('aCorner', new THREE.BufferAttribute(corners, 2));
+    geometry.setAttribute('aOrder', new THREE.BufferAttribute(orders, 1));
     geometry.setIndex(index);
     geometry.computeBoundingSphere();
     const material = new THREE.MeshBasicNodeMaterial();
@@ -473,7 +510,7 @@ function createHalos(u, glows) {
         const fall = exp(r.mul(r).mul(-5.5)).sub(0.004).max(0.0);
         const lamp = centre.w.lessThan(0.0).select(1.0, 0.0);
         const tint = mix(vec3(1.4, 0.32, 0.08), vec3(1.5, 0.95, 0.42), lamp);
-        return vec4(tint.mul(fall).mul(u.lamps).mul(0.9), 0.0);
+        return vec4(tint.mul(fall).mul(lampGlow(u, attribute('aOrder', 'float'))).mul(0.9), 0.0);
     })();
     const mesh = new THREE.Mesh(geometry, material);
     mesh.name = 'PaintedAgesHalos';

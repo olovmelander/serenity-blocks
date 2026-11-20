@@ -332,6 +332,8 @@ export const RIBBONS = 12;
  * climbing: when the table is full the faintest gives way (painted-ages-fx.js).
  */
 export const WAVES = 16;
+/** Dust devils standing at once (a twist's, a spin's, the weather's own): three rows each. */
+export const DEVILS = 3;
 
 const rows = (count) => Array.from({ length: count }, () => new THREE.Vector4(0, 0, 0, 0));
 const colour = (r, g, b) => uniform(new THREE.Vector3(r, g, b));
@@ -345,19 +347,53 @@ export function createUniforms() {
         floodRows: rows(4),
         // per wave: (g low, g high, start time, power) + (rgb, kind)
         waves: rows(WAVES * 2),
+        // per dust devil: (foot x, y, z, start time) + (rgb, height m) + (seed, drift x, drift z m/s, strength)
+        devils: rows(DEVILS * 3),
     };
     return {
         tables,
         ribbons: uniformArray(tables.ribbons, 'vec4'),
         waves: uniformArray(tables.waves, 'vec4'),
         floodRows: uniformArray(tables.floodRows, 'vec4'),
+        devils: uniformArray(tables.devils, 'vec4'),
         ribbonCount: uniform(0, 'int'),
         waveCount: uniform(0, 'int'),
 
         time: uniform(0),
         /** The cloud deck's drift (metres, integrated on the CPU). */
         wind: uniform(new THREE.Vector2(0, 0)),
-        cloudCover: uniform(0.32),
+        /**
+         * The drift of the deck's finer field: another heading and pace than `wind`, so the two
+         * fields slide through each other and the clouds form and melt instead of only passing.
+         */
+        wind2: uniform(new THREE.Vector2(0, 0)),
+        cloudCover: uniform(0.38),
+        /** How hard the wind blows now (1 on a fair day; the weather's and play's wind raise it). */
+        windSpeed: uniform(1),
+        /** How much of the sun a cloud's shadow takes (the weather's; 0.72 on a fair day). */
+        cloudDepth: uniform(0.72),
+        /** The valley layer's scale height (metres): the weather's sea of mist stands deeper. */
+        mistHeight: uniform(38),
+        /** The cumulus banks: how high they have grown (0..1) and their boiling clock (s). */
+        towerGrow: uniform(0.55),
+        boil: uniform(0),
+        /** The high cirrus (a factor on its cover). */
+        cirrus: uniform(1),
+        /** A far shower's curtains: (bearing in radians right of the view axis, amount, slant). */
+        virga: uniform(new THREE.Vector3(0.4, 0, 0.3)),
+        /** The bow's share drawn: 0 the whole arc, ±1 only its leg on that side (a shower's shard). */
+        bowLeg: uniform(0),
+        /** The moon: toward it, and its light (colour × strength; black by day). */
+        moonDir: uniform(new THREE.Vector3(0.42, 0.2, -0.88)),
+        moon: colour(0, 0, 0),
+        /** How much of the moon shows (0 by day … 1 in the blue hour). */
+        moonUp: uniform(0),
+        /** The stars' turn about the pole (radians): an age wheeling by on a perfect clear. */
+        starTurn: uniform(0),
+        /** A meteor: (bearing, elevation of its head in radians, age in s, strength). */
+        meteor: uniform(new THREE.Vector4(0, 0.2, 99, 0)),
+        /** Lightning inside a far bank: (the bank's index, strength 0..1, a seed). */
+        flicker: uniform(new THREE.Vector3(0, 0, 0)),
 
         eye: uniform(new THREE.Vector3(0, 172, 0)),
         camRight: uniform(new THREE.Vector3(1, 0, 0)),
@@ -396,7 +432,7 @@ export function createUniforms() {
         floodColour: colour(0.6, 0.3, 0.2),
         /** Perfect clear: the clouds take the record's colours (0..1). */
         paint: uniform(0),
-        /** Back-to-back: the strata's sheen (0..1). */
+        /** Back-to-back: the run's level, the glow its veins of gold hold (0..1.6). */
         sheen: uniform(0),
         /** Game over: the light falls (0..1). */
         dusk: uniform(0),
@@ -413,6 +449,19 @@ export function createUniforms() {
          * own pigment, a slow tide of colour climbing them (0 at rest and under casual play).
          */
         strataGlow: uniform(0),
+        /**
+         * The column of beds slid under the land (metres of geological height): a level-up lays
+         * new ages down, and every stripe on every hill moves up the slope to make room.
+         */
+        strataShift: uniform(0),
+        /** Back-to-back's veins of gold across the beds: (a clear's flare, the flare's run in m). */
+        veins: uniform(new THREE.Vector2(0, 0)),
+        /**
+         * A level-up's flare up the stair's lamps: (its front along the walk, 0 by the eye … 1 at
+         * the pavilion, -1 when none runs; its strength). The lamps' own lighting at dusk follows
+         * `lamps`, each by its place along the walk.
+         */
+        lampRun: uniform(new THREE.Vector2(-1, 0)),
         recordTop: uniform(160),
         recordHead: uniform(RECORD_ROWS - 1),
         recordCount: uniform(0),
