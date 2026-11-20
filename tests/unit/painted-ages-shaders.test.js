@@ -2,7 +2,7 @@
  * Painted Ages shader gate — no GPU needed.
  *
  * Every material of a High and a Low world (the land, the props and their halos, the poplars, the
- * sky, the cumulus banks, the motes, and the three shadow passes' quads) is built through three's
+ * sky, the cumulus banks, the vultures, the motes, and the three shadow passes' quads) is built through three's
  * own node builders for BOTH backends: the WGSL one of WebGPU and the GLSL one of the WebGL2
  * fallback, by a real WebGPURenderer whose device is a stub. A graph one builder cannot turn into
  * a shader throws (or warns) here instead of leaving a part undrawn on someone's machine.
@@ -24,6 +24,10 @@ import { FIELDS, FIELD_ORDER, PIECE_COLORS } from '../../src/themes/painted-ages
 import { decodeField } from '../../src/themes/painted-ages/painted-ages-field.js';
 import { POST_LOOK, PaintedAgesPost } from '../../src/themes/painted-ages/painted-ages-post.js';
 import { decodePng } from '../../scripts/painted-ages/png.mjs';
+// (vultures)
+import { tierFor } from '../../src/themes/painted-ages/painted-ages-quality.js';
+import { createNoiseTexture, createUniforms } from '../../src/themes/painted-ages/painted-ages-tsl.js';
+import { createVultures } from '../../src/themes/painted-ages/painted-ages-vultures.js';
 
 vi.setConfig({ testTimeout: 60_000 });
 
@@ -263,6 +267,53 @@ describe.each(TIERS)('Painted Ages shaders at %s', (quality) => {
             'fn main() {', 'if ( c ) {', 'nodeVar1 = 1.0;', '} else {', 'nodeVar1 = 0.0;', '}',
             'nodeVar3 = nodeVar1;', '}',
         ].join('\n'))).toEqual([]);
+    });
+});
+
+// (vultures) The bearded vultures' material on the default tier and the leanest, with a thermal
+// and a pass in the air (their rows written), for both backends.
+describe.each(['High', 'Minimal'])('Painted Ages vultures at %s', (quality) => {
+    it.each(BACKENDS)('builds its material on the %s backend without a word', (label) => {
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(40, 16 / 9, 1.5, 60000);
+        const u = createUniforms();
+        const part = createVultures(u, { noise: createNoiseTexture() }, tierFor(quality), fields);
+        part.stage({ kind: 'thermal', age: 14, time: 40 });
+        part.update(40, 1 / 30);
+        const heard = [];
+        const listen = (...args) => heard.push(args.map(String).join(' ').slice(0, 400));
+        const warn = vi.spyOn(console, 'warn').mockImplementation(listen);
+        const error = vi.spyOn(console, 'error').mockImplementation(listen);
+        try {
+            const renderer = renderers[label];
+            const builder = renderer.backend.createNodeBuilder(part.mesh, renderer);
+            builder.scene = scene;
+            builder.material = part.mesh.material;
+            builder.camera = camera;
+            builder.context.material = part.mesh.material;
+            builder.lightsNode = renderer.lighting.getNode(scene);
+            builder.fogNode = null;
+            builder.clippingContext = null;
+            builder.build();
+            expect(heard).toEqual([]);
+            for (const stage of [builder.vertexShader, builder.fragmentShader]) {
+                expect(stage.length).toBeGreaterThan(800);
+                expect(stage).not.toMatch(/NaN|Infinity/);
+                expect(Buffer.byteLength(stage)).toBeLessThan(FRAGMENT_BUDGET);
+            }
+            if (label === 'WGSL') {
+                expect(builder.vertexShader).toMatch(/@vertex/);
+                expect(builder.fragmentShader).toMatch(/@fragment/);
+                expect(unassignedReads(builder.vertexShader)).toEqual([]);
+                expect(unassignedReads(builder.fragmentShader)).toEqual([]);
+            } else expect(builder.fragmentShader).toMatch(/void main()/);
+            // The tier's birds and the pass's own, as one instanced draw.
+            expect(part.mesh.geometry.instanceCount).toBe(tierFor(quality).vultures + 1);
+        } finally {
+            warn.mockRestore();
+            error.mockRestore();
+            part.dispose();
+        }
     });
 });
 

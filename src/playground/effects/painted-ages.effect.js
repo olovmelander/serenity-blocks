@@ -32,6 +32,13 @@
  *   eventLevel=<n>           the level an event=levelUp steps to (default level + 1)
  *   recordTop=<g>            where the record's newest bed stands (geological metres)
  *   demo=1                   live: a looping gameplay script
+ *   vultures=thermal|pass|off   fly that visit of the bearded vultures alone (off: none; without
+ *                            it they keep their own timetable: painted-ages-vulture-routes.js)...
+ *   vultureAge=<s>           ...this many seconds into it (0: the first bird banks; an arrival is
+ *                            a few seconds before, so negative), on the side
+ *   vultureSide=-1|1         left or right of the card, as visit
+ *   vultureVisit=<n>         n of the timetable (its seeded birds), a pass flown
+ *   vultureWay=-1|1          back along its route or as written
  */
 import * as THREE from 'three/webgpu';
 import { PaintedAgesWorld } from '../../themes/painted-ages/painted-ages-world.js';
@@ -148,6 +155,9 @@ export function create({
     const colorParam = params.get('color');
     const eventColor = colorParam ? `#${colorParam.replace('#', '')}` : PIECE_COLORS[0];
     const demo = params.get('demo') === '1';
+    const vultures = params.has('vultures') ? {
+        kind: params.get('vultures'), age: num(params, 'vultureAge', 0), side: num(params, 'vultureSide', 0), visit: num(params, 'vultureVisit', 0), way: num(params, 'vultureWay', 0),
+    } : null;
     let demoCursor = 0;
     let demoLoop = -1;
     let demoPiece = 0;
@@ -248,6 +258,7 @@ export function create({
                 world.onClear({ lines: 1, rowCodes: ROW_CODES(i), combo: 1 });
             }
         }
+        if (vultures) world.parts.vultures?.stage({ ...vultures, time });
         const eventTime = eventName ? time - eventAge : time;
         if (eventTime > cursor) stepTo(cursor, eventTime, 0.05);
         if (eventName) {
