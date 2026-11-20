@@ -21,6 +21,11 @@ import {
     closeLayer, focusSoon, mpIcon, openLayer,
 } from './components/mp-sheet.js';
 import { BOT_SKILL_TIERS, seatSetupControls } from './local-seat-controls.js';
+import {
+    INFINITY_WELL_ROWS_COARSE_STEP, INFINITY_WELL_ROWS_DEFAULT, INFINITY_WELL_ROWS_FINE_BELOW,
+    INFINITY_WELL_ROWS_FINE_STEP, INFINITY_WELL_ROWS_MAX, INFINITY_WELL_ROWS_MIN,
+    readInfinityWellRows,
+} from '../core/multiplayer/infinity-well-rule.js';
 
 const DEFAULT_BOT_SKILL = 5;
 const LAST_SETUP_KEY = 'serenity.localMatch.lastSetup';
@@ -128,10 +133,7 @@ export function buildLocalMatchConfig(values = {}) {
     const matchMode = get('matchMode');
     const endCondition = get('endCondition');
     const isInfinityLMS = matchMode === 'infinity-lms';
-    const rawInfinityRows = parseInt(get('infinityMaxRows'), 10);
-    const infinityMaxRows = Number.isFinite(rawInfinityRows)
-        ? Math.min(1000, Math.max(100, rawInfinityRows))
-        : 100;
+    const infinityMaxRows = readInfinityWellRows(get('infinityMaxRows'));
     const attackStyle = get('attackStyle') || 'standard';
 
     const config = {
@@ -193,14 +195,45 @@ export function buildLocalMatchConfig(values = {}) {
     return config;
 }
 
+/**
+ * Where a stepper's −/+ button takes its field: the next multiple of the stride in that
+ * direction, kept within the range. A field with a fine stride moves by it at and below
+ * `fineBelow` and by `step` above, so a wide range has close stops where they matter (the
+ * well height: 40, 50 … 100, then 150, 200 … 1,000). A typed in-between number lands on
+ * the nearest stop the same way, and a field that cannot be read starts from its minimum.
+ *
+ * @param {number} current the field's value
+ * @param {number} direction below zero for −, above for +
+ * @param {{min: number, max: number, step?: number, fineStep?: number, fineBelow?: number}} range
+ * @returns {number}
+ */
+export function nextStepperValue(current, direction, {
+    min, max, step = 1, fineStep, fineBelow,
+}) {
+    const clamp = (value) => Math.min(max, Math.max(min, value));
+    if (!Number.isFinite(current)) return clamp(min);
+    const up = direction > 0;
+    const fine = fineStep > 0 && Number.isFinite(fineBelow)
+        && (up ? current < fineBelow : current <= fineBelow);
+    const stride = Math.max(1, fine ? fineStep : step);
+    return clamp(up
+        ? (Math.floor(current / stride) + 1) * stride
+        : (Math.ceil(current / stride) - 1) * stride);
+}
+
 const stepper = (id, name, {
-    min, max, value, step = 1, label,
-}) => `
-    <div class="sb-stepper" data-stepper-for="${id}">
+    min, max, value, step = 1, fineStep = 0, fineBelow = 0, label,
+}) => {
+    const fine = fineStep ? ` data-fine-step="${fineStep}" data-fine-below="${fineBelow}"` : '';
+    return `
+    <div class="sb-stepper" data-stepper-for="${id}"${fine}>
         <button type="button" class="sb-stepper__btn" data-step="-${step}" aria-label="Decrease ${label}">${mpIcon('minus', 16)}</button>
-        <input type="number" id="${id}" name="${name}" min="${min}" max="${max}" step="${step}" value="${value}" inputmode="numeric" />
+        <input type="number" id="${id}" name="${name}" min="${min}" max="${max}" step="${fineStep || step}" value="${value}" inputmode="numeric" />
         <button type="button" class="sb-stepper__btn" data-step="${step}" aria-label="Increase ${label}">${mpIcon('plus', 16)}</button>
     </div>`;
+};
+
+const WELL_ROWS_RANGE = `from ${INFINITY_WELL_ROWS_MIN} to ${INFINITY_WELL_ROWS_MAX.toLocaleString('en-US')}`;
 
 export class LocalMatchConfigModal {
     constructor(onStartMatch, onCancel = null) {
@@ -296,10 +329,16 @@ export class LocalMatchConfigModal {
                   <div class="sb-mp-field sb-mp-field--inline" id="infinity-rows-group" hidden>
                     <div class="sb-mp-field__text">
                       <label class="sb-mp-field__label" for="infinity-max-rows">Well height</label>
-                      <p class="sb-mp-help">Rows in each well, from 100 to 1,000.</p>
+                      <p class="sb-mp-help">Rows in each well, ${WELL_ROWS_RANGE}.</p>
                     </div>
                     ${stepper('infinity-max-rows', 'infinityMaxRows', {
-        min: 100, max: 1000, value: 100, step: 50, label: 'the well height',
+        min: INFINITY_WELL_ROWS_MIN,
+        max: INFINITY_WELL_ROWS_MAX,
+        value: INFINITY_WELL_ROWS_DEFAULT,
+        step: INFINITY_WELL_ROWS_COARSE_STEP,
+        fineStep: INFINITY_WELL_ROWS_FINE_STEP,
+        fineBelow: INFINITY_WELL_ROWS_FINE_BELOW,
+        label: 'the well height',
     })}
                   </div>
                 </div>
@@ -411,8 +450,12 @@ export class LocalMatchConfigModal {
             wrap.querySelectorAll('[data-step]').forEach((button) => {
                 button.addEventListener('click', () => {
                     const step = parseInt(button.dataset.step, 10) || 0;
-                    const current = parseInt(input.value, 10);
-                    input.value = String(clamp((Number.isFinite(current) ? current : range().min) + step));
+                    input.value = String(nextStepperValue(parseInt(input.value, 10), step, {
+                        ...range(),
+                        step: Math.abs(step),
+                        fineStep: parseInt(wrap.dataset.fineStep, 10),
+                        fineBelow: parseInt(wrap.dataset.fineBelow, 10),
+                    }));
                     input.dispatchEvent(new Event('input', { bubbles: true }));
                     input.dispatchEvent(new Event('change', { bubbles: true }));
                 });

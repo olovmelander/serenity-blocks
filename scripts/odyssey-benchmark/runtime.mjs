@@ -18,6 +18,8 @@ import { resolveScenario } from './scenarios.mjs';
 import { createVirtualClock } from './virtual-clock.mjs';
 
 const FRAME_MS = 1000 / 60;
+// Human proxy scores use the rival tiers against which the original gates were measured.
+const FROZEN_RIVAL_TIERS = { 5: 1, 10: 2, 18: 3, 26: 4, 34: 5, 48: 6, 56: 6, 60: 8 };
 const ATTACK_COUNTERS = [
     'attacksSent', 'attackLinesSent', 'cleanLinesSent',
     'attacksReceived', 'attackLinesReceived', 'cleanLinesReceived',
@@ -98,7 +100,7 @@ export function summarizeFeel(samples) {
 export async function runAttempt({
     levelId, seed, profile = 'stacker', maxSimSeconds = 900, maxPieces = 1200,
     wallBudgetMs = 20000, trace = false, scenarioId = 'baseline', cadenceId = 'native',
-    lapWindowSeconds = null,
+    lapWindowSeconds = null, liveRival = false, rivalTier, judgment, configureRival,
 }) {
     const startedAt = wallNow();
     const profileId = typeof profile === 'string' ? profile : profile?.id || profile?.profileId;
@@ -451,8 +453,11 @@ export async function runAttempt({
         });
         if (levelConfig.mechanics.versus) {
             session.duel = new OdysseyBotMatch(session, {
-                seed, isActive, onRoundStart: () => { startRound(); humanBot?.reset(); },
+                seed, isActive, frozenRival: !liveRival,
+                rivalTier: rivalTier ?? (liveRival ? undefined : FROZEN_RIVAL_TIERS[levelId]),
+                judgment, onRoundStart: () => { startRound(); humanBot?.reset(); },
             });
+            configureRival?.(session.duel);
             initialPhysicsPolicy.initialIntervalMs = session.gameState.dropInterval;
             initialPhysicsPolicy.levelProgression = !session.gameState.disableLevelProgression;
             observeDuel();

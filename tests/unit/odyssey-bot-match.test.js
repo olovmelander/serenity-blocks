@@ -15,7 +15,7 @@ function deferred() {
     return { promise, resolve, reject };
 }
 
-function createMatch(authoredLevel = null) {
+function createMatch(authoredLevel = null, seed = 1234) {
     const levelConfig = authoredLevel ?? {
         id: 4,
         name: 'Chapter challenger',
@@ -37,7 +37,7 @@ function createMatch(authoredLevel = null) {
     hybridEngine.configure(levelConfig);
     const session = { levelConfig, hybridEngine, gameState: hybridEngine.createGameState() };
     const onRoundStart = vi.fn();
-    const match = new OdysseyBotMatch(session, { seed: 1234, isActive: () => !session.retired, onRoundStart });
+    const match = new OdysseyBotMatch(session, { seed, isActive: () => !session.retired, onRoundStart });
     session.duel = match;
     fillBag(session.gameState.nextPieces, session.gameState.randomGenerator);
     spawnPiece(session.gameState);
@@ -69,6 +69,51 @@ describe('Odyssey beat-the-bot match', () => {
         vi.spyOn(console, 'warn').mockImplementation(() => {});
     });
     afterEach(() => { vi.restoreAllMocks(); });
+
+    it.each([[15001, 2], [1001, undefined]])(
+        'keeps Prism’s seeded pressure judgment across rounds on %i',
+        async (seed, threshold) => {
+            const { match } = createMatch(getLevelById(56), seed);
+            const style = match.bot.judgment;
+            expect(style.pressAtRows).toBe(threshold);
+            expect(style.digPreviewChance).toBe(1);
+            await resolveDeath(match, 1, 0);
+            nextRound(match);
+            expect(match.round).toBe(2);
+            expect(match.bot.judgment).toEqual(style);
+            match.stop();
+        },
+    );
+
+    it('replays the rival score and drops across display rates and different wall-clock origins', () => {
+        const play = (hz, origin) => {
+            const { match } = createMatch(getLevelById(60));
+            match.setPaused(false, origin);
+            const result = [];
+            const update = match.bot.update.bind(match.bot);
+            let tick = 0;
+            match.bot.update = (delta, time) => {
+                update(delta, time);
+                tick++;
+                if (tick % 60 === 0) {
+                    result.push(match.players.map((p) => [
+                        p.score, p.piecesPlaced, p.lines, p.currentPiece?.x, p.currentPiece?.y, p.dropCounter,
+                        p.boardGrid.map((row) => row.map((c) => c?.type || '.').join('')).join('/'),
+                    ]));
+                }
+            };
+            let elapsed = 0;
+            for (let frame = 0; elapsed < 30000 - 1e-6; frame++) {
+                const delta = Math.min(30000 - elapsed, frame === 71 ? 50 : 1000 / hz);
+                elapsed += delta;
+                match.update(origin + elapsed, delta, {});
+            }
+            match.stop();
+            expect(tick).toBe(1800);
+            return result;
+        };
+        expect(play(165, 83454.789)).toEqual(play(60, 1234.567));
+    });
 
     it('drives the canonical bot effects through actual accepted movement, rotation and lock physics', async () => {
         const { match } = createMatch();
@@ -202,7 +247,10 @@ describe('Odyssey beat-the-bot match', () => {
             human.currentPiece.x = 4 - occupiedColumn;
             const callbacks = match.wrapHumanCallbacks(session.hybridEngine.buildPhysicsCallbacks({}));
             hardDrop(human, null, callbacks);
-            await vi.runAllTimersAsync();
+            for (let tick = 1; tick <= 90 && human.isProcessingPhysics; tick++) {
+                match.update(tick * (1000 / 60), 1000 / 60, callbacks);
+            }
+            expect(human.isProcessingPhysics).toBe(false);
             await human.latestPhysicsPromise;
             expect(session.hybridEngine.getMetrics().lines).toBe(4);
             expect(session.hybridEngine.getMetrics().quads).toBe(1);

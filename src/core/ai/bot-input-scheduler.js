@@ -32,6 +32,8 @@ export class BotInputScheduler {
         this.cooldownMs = action?.type === 'hardDrop'
             ? Math.max(45, interval * 0.65)
             : interval;
+        if (this.canLock) this.rejected = !performed;
+        if (this.variation) this.cooldownMs *= 1 + this.variation();
 
         return performed;
     }
@@ -51,6 +53,7 @@ export class BotInputScheduler {
         case 'softDrop':
             return Boolean(this.actions.softDrop?.());
         case 'hardDrop':
+            if (this.canLock) return this.canLock() && this.actions.hardDrop?.() !== false;
             this.actions.hardDrop?.();
             return true;
         default:

@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest';
-import { getBotDifficultyConfig } from '../../src/core/ai/bot-difficulty.js';
 import { LEVEL_SPEEDS } from '../../src/core/constants.js';
 import { CHAPTER_CONFIGS } from '../../src/core/odyssey/data/chapters.js';
 import { LEVEL_CONFIGS } from '../../src/core/odyssey/data/levels.js';
@@ -302,22 +301,21 @@ describe('Odyssey campaign design rules (level design audit 2026-11)', () => {
     it('R8: makes each rival at least as smart as the last and faster, but never faster than a strong person', () => {
         let previousApm = 0;
         let previousTier = 0;
+        let previousReaction = [Infinity, Infinity];
         for (const level of duels) {
             const { botDifficulty, botOverrides } = level.mechanics.versus;
-            const tier = getBotDifficultyConfig(botDifficulty);
             expect(level.role).toBe('rival');
-            // D8: a rival may share the last one's tier (Prism, 56, plays at Nova's tier 6) but never drop below it.
+            // D8 measures the rival's hands independently of its remapped board-reading tier.
             expect(botDifficulty, `orb ${level.id} tier`).toBeGreaterThanOrEqual(previousTier);
             previousTier = botDifficulty;
-            if (botDifficulty <= 4) {
-                expect(botOverrides, `tier ${botDifficulty} plays at its own pace`).toBeUndefined();
-                previousApm = tier.maxApm;
-                continue;
-            }
             expect(botOverrides.maxApm).toBeGreaterThan(previousApm);
-            expect(botOverrides.maxApm).toBeLessThan(tier.maxApm);
             expect(botOverrides.maxApm).toBeLessThanOrEqual(360);
-            expect(botOverrides.reactionMs[0]).toBeGreaterThanOrEqual(140);
+            const [fastest, slowest] = botOverrides.reactionMs;
+            expect(fastest).toBeGreaterThanOrEqual(140);
+            expect(slowest).toBeGreaterThanOrEqual(fastest);
+            expect(fastest).toBeLessThanOrEqual(previousReaction[0]);
+            expect(slowest).toBeLessThanOrEqual(previousReaction[1]);
+            previousReaction = botOverrides.reactionMs;
             previousApm = botOverrides.maxApm;
         }
     });

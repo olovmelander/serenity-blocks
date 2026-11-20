@@ -9,6 +9,8 @@ import {
     softDrop as coreSoftDrop,
 } from '../game.js';
 import { decrementBlindTimers } from '../blind.js';
+import { isBotSlot } from '../ai/local-bot-manager.js';
+import { retireFixedCascade } from '../physics.js';
 import { checkInfinityGameOver } from '../infinity-grid.js';
 import {
     applyFixedHardDropHitStop,
@@ -103,9 +105,6 @@ function getUnsupportedFixedConfigReasons(mode) {
     if (config.isInfinityLMS) reasons.push('Infinity LMS fixed-tick rules are not yet supported');
     if (config.hotPotato || config.attackStyle === 'hot_potato') reasons.push('Hot Potato uses wall time');
     if (config.endCondition === 'time') reasons.push('time-limit matches use wall time');
-    if (config.playerSlots?.some((slot) => (
-        slot?.kind === 'bot' || slot?.type === 'bot' || slot?.isBot === true
-    ))) reasons.push('bots use wall time and unseeded randomness');
     if (
         players.length < 2
         || players.some((player) => !player?.playerInput?.pendingEdges)
@@ -126,7 +125,8 @@ export function configureLocalMultiplayerSimulationClock(mode) {
     stopLocalMultiplayerFixedTickRuntime(loopState.fixedRuntime);
     resetLocalMultiplayerFixedMatchClock(loopState.fixedRuntime);
 
-    const requested = readFlag('fixedTick', false);
+    const includesBot = mode.matchConfig?.playerSlots?.slice(0, mode.multiplayerState?.numPlayers).some(isBotSlot);
+    const requested = readFlag('fixedTick', Boolean(includesBot));
     const unsupportedReasons = requested ? getUnsupportedFixedConfigReasons(mode) : [];
     loopState.fixedTickEnabled = requested && unsupportedReasons.length === 0;
     loopState.simulationClock = loopState.fixedTickEnabled
@@ -146,6 +146,7 @@ export function configureLocalMultiplayerSimulationClock(mode) {
     const players = mode.multiplayerState?.players || [];
     players.forEach((gameState) => {
         gameState.simulationClock = loopState.simulationClock;
+        gameState.useFixedCascade = Boolean(includesBot && loopState.fixedTickEnabled);
         if (!loopState.fixedTickEnabled) return;
         updateInputHandlingConfig(gameState.playerInput, settings);
         gameState.hitStopEnabled = !prefersReducedMotion(settings);
@@ -161,6 +162,7 @@ function fallbackLocalMultiplayerSimulationClock(mode, reason) {
     loopState.lastClockWarp = null;
     (mode.multiplayerState?.players || []).forEach((gameState) => {
         gameState.simulationClock = DEMO_LEGACY_SIMULATION_CLOCK;
+        gameState.useFixedCascade = false;
     });
     console.warn(`[LocalMultiplayer] fixedTick startup fell back to legacy clock: ${reason}`);
 }
@@ -388,9 +390,12 @@ function startFixedLoop(mode) {
         const logicUpdate = (_time, delta) => {
             loopState.fixedTickBarrierActive = true;
             try {
-                runLocalMultiplayerFixedTicks(loopState.fixedRuntime, delta, {
+                const result = runLocalMultiplayerFixedTicks(loopState.fixedRuntime, delta, {
                     ownership,
-                    advanceInput: inputBinding.advanceInput,
+                    advanceInput: (index, context) => {
+                        if (mode.botManager?.isBotPlayer(index)) mode.botManager.advanceFixedInput(index, context);
+                        else inputBinding.advanceInput(index, context);
+                    },
                     applyInput: (playerIndex, command) => applyLocalMultiplayerFixedCommand(command, {
                         gameState: ownership.players[playerIndex],
                         isEnabled: () => (
@@ -430,6 +435,9 @@ function startFixedLoop(mode) {
                         console.warn('[LocalMultiplayer] Fixed simulation clock rebased:', clockWarp);
                     },
                 });
+                if (result.tickPlan && result.plannedSteps === 0) {
+                    mode.botManager?.precomputeFixedSearch?.(delta, result.tickPlan.tickMs);
+                }
             } catch (error) {
                 loopOwner?.stop?.();
                 throw error;
@@ -688,6 +696,7 @@ export function retireLocalMultiplayerRound(mode) {
     stopLocalMultiplayerModeLoop(mode);
     if (multiplayerState) multiplayerState.isPaused = true;
     players.forEach((player) => { player.isStopped = true; });
+    players.forEach(retireFixedCascade);
     return Object.freeze({
         clock,
         generation: ensureLoopState(mode).transitionGeneration,

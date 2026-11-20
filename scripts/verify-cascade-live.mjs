@@ -1,32 +1,21 @@
-// Headless LIVE verification of the cascade-machine bot.
-// Drives the EXACT real match code path — real spawnPiece -> real move/rotate/
-// hardDrop -> real lockPiece -> real processPhysics cascade (run in seek mode so
-// the animation waits are skipped) — and observes whether the bot builds and
-// FIRES side-lane cascade machines through the real physics (not the bot's own
-// simulator). Run with: node scripts/verify-cascade-live.mjs [pieces] [difficulty]
+// Replay a controller's legal inputs through live physics, skipping animation waits.
+// node scripts/verify-cascade-live.mjs [pieces] [difficulty] [seed] [--legacy]
 import { COLS, HIDDEN_ROWS } from '../src/core/constants.js';
 import {
     GameState, spawnPiece, move, rotate, softDrop, hardDrop, fillBag,
 } from '../src/core/game.js';
 import { PuzzleBotController } from '../src/core/ai/puzzle-bot-controller.js';
+import { GravityBotController } from '../src/core/ai/gravity-bot-controller.js';
+import { calculateGarbage } from '../src/core/garbage.js';
+import { bindLegacySessionRng } from '../src/core/session-rng.js';
+import { seededRandom } from '../src/utils/helpers.js';
 
-const PIECES = Number.parseInt(process.env.PIECES || process.argv[2] || '160', 10);
-const DIFFICULTY = Number.parseInt(process.env.DIFFICULTY || process.argv[3] || '10', 10);
-const SEED = Number.parseInt(process.env.SEED || process.argv[4] || '1337', 10);
-// Experimental "hold to build bigger when safe" knob (0 = current shipped behaviour).
-const HOLD_TARGET = Number.parseInt(process.env.HOLD_TARGET || '0', 10);
-const SAFE_ROWS = Number.parseInt(process.env.SAFE_ROWS || '8', 10);
+const args = process.argv.slice(2).filter((arg) => arg !== '--legacy');
+const PIECES = Number.parseInt(process.env.PIECES || args[0] || '160', 10);
+const DIFFICULTY = Number.parseInt(process.env.DIFFICULTY || args[1] || '10', 10);
+const SEED = Number.parseInt(process.env.SEED || args[2] || '1337', 10);
 const QUIET = process.env.QUIET === '1';
-
-function mulberry32(seed) {
-    let a = seed >>> 0;
-    return function rng() {
-        a |= 0; a = (a + 0x6D2B79F5) | 0;
-        let t = Math.imul(a ^ (a >>> 15), 1 | a);
-        t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-    };
-}
+const legacy = process.argv.includes('--legacy');
 
 function snapshotBoard(gs) {
     const grid = gs.boardGrid;
@@ -44,19 +33,19 @@ function snapshotBoard(gs) {
 }
 
 async function main() {
-    const rng = mulberry32(SEED);
-    const gs = new GameState();
+    const gs = new GameState({ disableLevelProgression: true, hitStopEnabled: false, lockBonusPolicy: 'legacy-max' });
     gs.isSeeking = true; // real cascade logic, no animation/RAF waits
-    gs.randomGenerator = rng;
-    fillBag(gs.nextPieces, rng);
+    bindLegacySessionRng(gs, SEED);
+    fillBag(gs.nextPieces, gs.randomGenerator);
 
     let lastSummary = null;
+    let waveLines = [];
     let perfectClears = 0;
     const physicsCb = {
         spawnPiece: () => spawnPiece(gs, null, () => { gs.isGameOver = true; }),
         onGarbageReady: (s) => { lastSummary = s; },
         onPerfectClear: () => { perfectClears += 1; },
-        onPieceLock: () => {},
+        onLineClear: (lines) => waveLines.push(lines),
     };
 
     const actions = {
@@ -65,7 +54,7 @@ async function main() {
         rotateLeft: () => rotate(gs, 'left'),
         rotateRight: () => rotate(gs, 'right'),
         rotateFlip: () => rotate(gs, 'flip'),
-        softDrop: () => softDrop(gs, null, null),
+        softDrop: () => softDrop(gs, null, physicsCb),
         hardDrop: () => hardDrop(gs, null, physicsCb),
     };
     const perform = (a) => {
@@ -81,8 +70,9 @@ async function main() {
         }
     };
 
-    const bot = new PuzzleBotController({
-        actions, difficulty: DIFFICULTY, playerIndex: 0, playerState: gs, rng,
+    const Controller = legacy ? PuzzleBotController : GravityBotController;
+    const bot = new Controller({
+        actions, difficulty: DIFFICULTY, playerIndex: 0, playerState: gs, rng: seededRandom((SEED ^ 0x85ebca6b) >>> 0),
     });
 
     // First piece.
@@ -91,25 +81,23 @@ async function main() {
     const stats = {
         pieces: 0, totalLines: 0, clears: 0, cascades: 0, quadPlus: 0,
         maxDepth: 0, maxComplexity: 0, perfectClears: 0, attackSent: 0,
-        bySize: {}, fires: [],
+        bySize: {}, byWaves: {}, laterLines: 0, fires: [],
     };
     let bestMachine = null; // { preBoard, depth, complexity, clean, atPiece }
 
     for (let i = 0; i < PIECES && gs.currentPiece && !gs.isGameOver; i++) {
         const preBoard = snapshotBoard(gs);
+        const top = gs.boardGrid.findIndex((row, y) => y >= HIDDEN_ROWS && row.some(Boolean));
+        const preHeight = top < 0 ? 0 : gs.boardGrid.length - top;
         lastSummary = null;
+        waveLines = [];
 
         const plan = bot.plan();
         if (!plan) break;
-        for (const a of plan.actions) perform(a);
-        if (gs.currentPiece && !gs.isProcessingPhysics) hardDrop(gs, null, physicsCb);
+        const before = gs.piecesPlaced;
+        for (const a of plan.actions) if (!perform(a)) throw Error('Rejected input ' + JSON.stringify(a));
         if (gs.latestPhysicsPromise) await gs.latestPhysicsPromise;
-
-        // Stack height of the board the piece landed on (pre-fire), for diagnosis.
-        let preHeight = 0;
-        for (let y = HIDDEN_ROWS; y < gs.boardGrid.length; y++) {
-            if (gs.boardGrid[y]?.some((c) => c)) { preHeight = gs.boardGrid.length - y; break; }
-        }
+        if (!gs.isGameOver && gs.piecesPlaced !== before + 1) throw Error('Expected one lock per plan');
 
         stats.pieces += 1;
         if (lastSummary && lastSummary.depth > 0) {
@@ -118,27 +106,28 @@ async function main() {
                 stats.singleHeights = stats.singleHeights || [];
                 stats.singleHeights.push(preHeight);
             }
-            const complexity = lastSummary.complexity || 1;
-            const clean = !!lastSummary.sendForClean;
+            const complexity = waveLines.length;
+            const clean = !!lastSummary.sendForPerfectClear;
             stats.clears += 1;
             stats.totalLines += depth;
             stats.bySize[depth] = (stats.bySize[depth] || 0) + 1;
+            stats.byWaves[complexity] = (stats.byWaves[complexity] || 0) + 1;
+            stats.laterLines += waveLines.slice(1).reduce((sum, n) => sum + n, 0);
             if (complexity >= 2) stats.cascades += 1;
             if (depth >= 4) stats.quadPlus += 1;
             stats.maxDepth = Math.max(stats.maxDepth, depth);
             stats.maxComplexity = Math.max(stats.maxComplexity, complexity);
-            stats.attackSent += Math.max(0, depth - 1) + (clean ? Math.floor((1 + depth) / 2) : 0);
+            stats.attackSent += calculateGarbage(lastSummary).getTotalLines();
             if (depth >= 3 || complexity >= 2) {
-                stats.fires.push({ piece: i, depth, complexity, clean });
+                stats.fires.push({ piece: i + 1, depth, complexity, waves: waveLines, clean });
             }
-            if (depth > (bestMachine?.depth || 0)) {
-                bestMachine = { preBoard, depth, complexity, clean, atPiece: i };
+            if (complexity > (bestMachine?.complexity || 0)
+                || (complexity === bestMachine?.complexity && depth > bestMachine.depth)) {
+                bestMachine = { preBoard, depth, complexity, clean, atPiece: i + 1 };
             }
-            // First deliberate "big cascade" (>=4 lines) and whether it happened on
-            // a clean early build (low board) vs a forced/messy late one.
-            if (depth >= 4 && !stats.firstBigFire) {
+            if (complexity >= 4 && !stats.firstBigFire) {
                 stats.firstBigFire = {
-                    piece: i, depth, complexity, clean, preHeight, preBoard,
+                    piece: i + 1, depth, complexity, clean, preHeight, preBoard,
                 };
             }
         }
@@ -150,12 +139,13 @@ async function main() {
     const avgCascadeDepth = cascadeDepths.length
         ? (cascadeDepths.reduce((a, b) => a + b, 0) / cascadeDepths.length) : 0;
     const summary = {
-        hold: HOLD_TARGET, safeRows: SAFE_ROWS, seed: SEED, pieces: stats.pieces,
+        policy: legacy ? 'legacy' : 'gravity', seed: SEED, pieces: stats.pieces, score: gs.score,
         toppedOut: gs.isGameOver, totalLines: stats.totalLines,
         linesPerPiece: +(stats.totalLines / Math.max(1, stats.pieces)).toFixed(3),
         clears: stats.clears, cascades: stats.cascades, quadPlus: stats.quadPlus,
         big5: stats.fires.filter((f) => f.depth >= 5).length,
         maxDepth: stats.maxDepth, maxComplexity: stats.maxComplexity,
+        maxWaves: stats.maxComplexity, waveSpread: stats.byWaves, laterLines: stats.laterLines,
         avgCascadeDepth: +avgCascadeDepth.toFixed(2), attackSent: stats.attackSent,
         perfectClears, singles: (stats.singleHeights || []).length,
     };
@@ -173,12 +163,12 @@ async function main() {
     }
     if (stats.firstBigFire) {
         const f = stats.firstBigFire;
-        console.log(`\n--- FIRST big cascade (>=4 lines): piece #${f.piece}, ${f.depth} lines, ` +
+        console.log(`\n--- First four-wave fire on piece #${f.piece}, ${f.depth} lines, ` +
             `complexity ${f.complexity}, board height ${f.preHeight}/20 ` +
             `(${f.preHeight <= 10 ? 'CLEAN early build' : 'tall board'}) ---`);
         console.log(f.preBoard.join('\n'));
     } else {
-        console.log('\n--- NO big cascade (>=4) fired this run ---');
+        console.log('\nNo four-wave fire in this run.');
     }
     console.log('\nfires (depth>=3 or cascade):', JSON.stringify(stats.fires));
     console.log(gs.isGameOver ? `\n[topped out after ${stats.pieces} pieces]` : `\n[survived all ${stats.pieces} pieces]`);
