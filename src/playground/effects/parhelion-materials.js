@@ -37,6 +37,7 @@ import {
     fwidth,
     inverseSqrt,
     length,
+    log,
     max,
     min,
     mix,
@@ -77,11 +78,14 @@ import {
     phLens,
     phLow,
     phLowitz,
+    phNight,
     phParhelic,
     phRidge,
     phSkyOut,
     phSastrugi,
     phSoftCap,
+    phSpectral,
+    phStars,
     phSunPillar,
     phTone,
     phUta,
@@ -206,6 +210,12 @@ export const IDLE_OPTICS = Object.freeze({
 /** Resting stone rim gain (§5.1: peak ≤ 0.9 at rest, no bloom). */
 export const REST_RIM = 1.0;
 
+/** Rings on the plain the snow reads (the optics state's GROUND_RING.slots). */
+export const GROUND_SLOTS = 4;
+
+/** What moonlight makes of light that adds (the ring, the hounds, a rim, a pillar): silver. */
+const MOON_SILVER = Object.freeze([0.66, 0.79, 1.0]);
+
 function rectVec4(r) {
     return new THREE.Vector4(r.x0, r.y0, r.x1, r.y1);
 }
@@ -219,6 +229,7 @@ export function createSharedUniforms() {
     // Hound pillars (§5.6): (birth, amp, beadStartV, life) and (worldX, worldZ, width, height).
     const pillarSlots = Array.from({ length: PILLAR_LANES }, () => new THREE.Vector4(-1e4, 0, 1.05, 1));
     const pillarPlaceSlots = Array.from({ length: PILLAR_LANES }, () => new THREE.Vector4(0, -180, 3.2, 260));
+    const groundSlots = Array.from({ length: GROUND_SLOTS }, () => new THREE.Vector4(0, 0, 0, 0));
     const { aspect } = DEFAULT_LAYOUT;
     return {
         // Clocks (CPU-integrated so rate changes never jump; seek(t) sets them to t·rate).
@@ -273,6 +284,26 @@ export function createSharedUniforms() {
         pillarPlaceSlots,
         uPillars: uniformArray(pillarSlots, 'vec4'),
         uPillarPlace: uniformArray(pillarPlaceSlots, 'vec4'),
+        // ── The living pass (2026-11): the night, the air, and each event's own shape.
+        /** 0 day .. 1 the moonlit night; the afterglow on the sunward horizon between them. */
+        uNight: uniform(0),
+        uDusk: uniform(0),
+        /** The stars' light in the sky, and in the Vigil Stone (it holds the night by day too). */
+        uStars: uniform(0),
+        uStoneStars: uniform(0.5),
+        /** (veil ×, ice fog lift 0..1, blowing snow ×, glow round the ring 0..1). */
+        uAir: uniform(new THREE.Vector4(1, 0, 1, 0)),
+        uNacre: uniform(0),
+        /** Shafts of light round the stone: (gain, turn rad, wheel 0..1, spectrum 0..1). */
+        uRays: uniform(new THREE.Vector4(0, 0, 0, 0)),
+        /** Rings crossing the plain: (radius m, crest width m, strength, tint), live rows first. */
+        groundSlots,
+        uGround: uniformArray(groundSlots, 'vec4'),
+        uGroundCount: uniform(0, 'int'),
+        /** A level's band of light: (distance m, width in e-folds, strength, the range's flush). */
+        uSweep: uniform(new THREE.Vector4(2800, 0.17, 0, 0)),
+        /** The avenue's answer: (birth, strength, seconds between stones, life). */
+        uAvenue: uniform(new THREE.Vector4(-1e4, 0, 0.07, 2.2)),
     };
 }
 
@@ -287,6 +318,8 @@ const U_VEC = [U.x, U.y, U.z].map(round6);
 const R22S = Math.round(R22 * 1e5) / 1e5;
 const LENS_IN = Math.round((R22 - 0.014) * 1e5) / 1e5;
 const LENS_OUT = Math.round((R22 - 0.002) * 1e5) / 1e5;
+/** Where the rings on the plain leave from: the foot of the Vigil Stone's front face (z, m). */
+const RING_Z = STONE.Z + 7;
 
 // ---------------------------------------------------------------------------------------
 // Sky dome + halo display (§5.3) — THE hero
@@ -331,7 +364,7 @@ export function createDomeMaterial(u, tierIn, { calmDebug = false } = {}) {
         const up = pow(smoothstep(0.0, lowSun.mul(0.1).add(0.40), d.y), 0.75);
 
         // ── Cirrostratus veil (noise evals: 1 / 2 / 3 by tier).
-        const veilA = noise2(vec2(az.mul(3.0).add(u.uVeilPhase), el.mul(9.0)));
+        const veilA = noise2(vec2(az.mul(3.0).add(u.uVeilPhase), el.mul(9.0))).toVar();
         let veil = veilA;
         if (tier.skyEvals >= 3) {
             // Fibrous cirrostratus: the second read is stretched across a slanting fibre direction.
@@ -349,8 +382,9 @@ export function createDomeMaterial(u, tierIn, { calmDebug = false } = {}) {
         // ── Sky: bright outside the ring, a hard step into the dusky lens inside it. The thin
         //    cirrostratus sheet (the halo's own cloud) shows as faint fibres, lit by forward
         //    scattering toward the hidden sun, continuous across the ring.
-        const fib = smoothstep(0.42, 0.88, v).mul(float(1.0).sub(up.mul(0.45)));
-        const veilGlow = fib.mul(exp(a.div(0.5).negate()).mul(0.28).add(0.055));
+        const fib = smoothstep(0.42, 0.88, v).mul(float(1.0).sub(up.mul(0.45))).toVar();
+        // The air's cirrus (uAir.x) thickens the sheet's light: mares' tails over the whole sky.
+        const veilGlow = fib.mul(exp(a.div(0.5).negate()).mul(0.28).add(u.uAir.x.mul(0.055))).mul(u.uAir.x);
         const sheenDay = mix(linearColor(0xE6EDF8), linearColor(0xFFF0D8), sunward);
         const sheenCol = mix(sheenDay, linearColor(0xF8C6A8), lowSun.mul(0.75));
         const veilSheen = sheenCol.mul(veilGlow).toVar();
@@ -362,11 +396,38 @@ export function createDomeMaterial(u, tierIn, { calmDebug = false } = {}) {
 
         // ── Two backlit mountain ranges on the horizon, higher on the left (hash noise, no reads).
         const laneW = phLaneW(screenUV, u.uCalmUnion);
-        const rid = phRidge(az, el, sunward, laneW, haze, u.uPixAng, u.uVeilPhase, u.uWarmth);
+        const rid = phRidge(az, el, sunward, laneW, haze, u.uPixAng, u.uVeilPhase, u.uWarmth, u.uSweep.w).toVar();
         // ── Ice fog lying on the far plain: veils the mountains' feet, glows toward the sun.
-        const fog = phFog(az, el, sunward, u.uWarmth, u.uVeilPhase);
+        const fog = phFog(az, el, sunward, u.uWarmth, u.uVeilPhase, u.uAir.y).toVar();
         // ph_ridge is premultiplied (its snow banners add light over the open sky).
-        const sky = mix(skyCore.mul(float(1.0).sub(rid.a)).add(rid.rgb), fog.rgb, fog.a);
+        const skyDay = mix(skyCore.mul(float(1.0).sub(rid.a)).add(rid.rgb), fog.rgb, fog.a);
+        // ── The night (the hour's moon, a perfect clear's open sky, a run's end). While it falls
+        //    or lifts the sunward horizon keeps its afterglow: a narrow warm band under the blue.
+        const lift = max(d.y, 0.0);
+        const afterglow = exp(lift.div(0.085).negate()).mul(sunward.mul(0.7).add(0.3)).mul(u.uDusk);
+        const sky = phNight(skyDay, u.uNight.mul(float(1.0).sub(afterglow.mul(0.85)))).toVar();
+        const open = float(1.0).sub(rid.a).mul(float(1.0).sub(fog.a)).toVar();
+        If(u.uNacre.greaterThan(0.004), () => {
+            // Mother-of-pearl cloud: lens clouds high in the afterglow, still in the sun that has
+            // left the plain, their thin ice turning the light to pearl. The veil's own reads,
+            // no new noise: a body picked from one, the film's thickness from both.
+            const body = smoothstep(0.52, 0.82, veilA).mul(smoothstep(0.1, 0.24, d.y))
+                .mul(smoothstep(R22S + 0.04, R22S + 0.2, a));
+            // Broad bands of pastel across each cloud (the film thickens toward its middle), most of
+            // it pearl white: a rainbow smear is what this must never read as.
+            const film = veilA.mul(2.4).add(el.mul(2.2)).add(az.mul(0.7)).mul(6.2832);
+            const hue = cos(vec3(film, film.add(2.094), film.add(4.189))).mul(0.5).add(0.5);
+            const pearl = mix(vec3(0.94, 0.9, 0.98), hue, 0.42);
+            const m = body.mul(u.uNacre).mul(open);
+            sky.assign(mix(sky, pearl.mul(0.6), m.mul(0.75)).add(pearl.mul(m).mul(0.08)));
+        });
+        If(u.uStars.greaterThan(0.004), () => {
+            // Stars: hidden by the ranges and the fog, thinned by the cirrus, lost in the low air.
+            // A star shows only against a dark sky (the afterglow and the lens's glow drown it).
+            const dark = float(1.0).sub(smoothstep(0.03, 0.2, dot(sky, vec3(0.2126, 0.7152, 0.0722))));
+            const clear = open.mul(smoothstep(0.0, 0.12, d.y)).mul(float(1.0).sub(fib.mul(0.6))).mul(dark);
+            sky.addAssign(phStars(d, u.uPixAng, u.uDustClock).mul(u.uStars.mul(clear)));
+        });
 
         // ── The halo display.
         const parhelicCol = mix(linearColor(0xF5F1EA), linearColor(0xFFD6B0), lowSun);
@@ -381,7 +442,36 @@ export function createDomeMaterial(u, tierIn, { calmDebug = false } = {}) {
             .add(pillar);
         if (tier.crown) optics = optics.add(linearColor(0xF4F2FF).mul(phCrown(a, cphi2, u.uK1.x)));
         if (tier.lowitz) optics = optics.add(linearColor(0xFFF6E6).mul(phLowitz(a, sphi, u.uK1.z)));
+        // Ice fog (uAir.w) scatters the ring into a wide soft glow, and fills the lens with light.
+        optics = optics.add(linearColor(0xDCE2F4).mul(exp(abs(xG).div(0.075).negate()).mul(0.2)
+            .add(exp(a.div(0.3).negate()).mul(0.12)).mul(u.uAir.w)));
         const opt = optics.toVar();
+
+        // Shafts of light round the stone (the air's, a four-line clear's burst, the Sun Cross's):
+        // the hidden sun breaking out past its edge. A sum of whole-number waves round the sun,
+        // so the pattern closes on itself (no seam, no comb: gotcha #1706), each bundle its own
+        // length; the hub is behind the stone. A twist winds them into a wheel of three curved
+        // shafts that turns once (uRays.y), a perfect clear splits them into the spectrum.
+        If(u.uRays.x.greaterThan(0.004), () => {
+            const phi = atan(sphi, cphi).toVar();
+            const slow = u.uVeilPhase.mul(3.0);
+            const g = sin(phi.mul(5.0).add(slow).add(0.7)).mul(0.5)
+                .add(sin(phi.mul(9.0).sub(slow.mul(1.7)).sub(1.9)).mul(0.3))
+                .add(sin(phi.mul(14.0).add(slow.mul(0.6)).add(2.6)).mul(0.22))
+                .add(sin(phi.mul(23.0).add(0.3)).mul(0.12));
+            const god = smoothstep(0.0, 0.95, g).toVar();
+            // The wheel: three arms, each a LINE of one thickness with a soft skirt (a power of a
+            // cosine is wide soft bands that read as haze; gotcha #1715), curving as they run out.
+            const turn = fract(phi.sub(u.uRays.y).add(a.mul(3.2)).mul(0.47746).add(0.5)).sub(0.5).mul(2.0944);
+            const arm = exp(turn.mul(turn).mul(-170.0)).mul(0.8).add(exp(abs(turn).mul(-4.2)).mul(0.12));
+            const pattern = mix(god.mul(god).mul(god.mul(0.6).add(0.4)), arm, u.uRays.z);
+            const reach = mix(sin(phi.mul(3.0).add(1.1)).mul(0.12).add(0.4), 0.5, u.uRays.z);
+            const shaft = exp(a.div(reach).negate()).mul(smoothstep(0.05, 0.17, a));
+            const band = phi.mul(0.3183).add(a.mul(2.0)).mul(6.2832);
+            const prism = cos(vec3(band, band.add(2.094), band.add(4.189))).mul(0.3).add(0.72);
+            const plain = mix(linearColor(0xFFE9C4), linearColor(0xFFD6A0), lowSun);
+            opt.addAssign(mix(plain, prism, u.uRays.w.mul(0.8)).mul(pattern.mul(shaft).mul(u.uRays.x).mul(3.0)));
+        });
 
         // Reaction arcs: ONE WGSL loop over the live slots; costs nothing when idle.
         If(u.uArcCount.greaterThan(0), () => {
@@ -394,7 +484,15 @@ export function createDomeMaterial(u, tierIn, { calmDebug = false } = {}) {
 
         // Optics dim over the calm union (the card) — the stone occludes most of it anyway.
         const calmU = phCalmBox(screenUV, u.uCalmUnion, 0.015, u.uAspect);
-        let col = sky.add(opt.mul(mix(1.0, 0.2, calmU)).mul(u.uK1.w));
+        // By moonlight the whole display is silver (a paraselene keeps only a whisper of colour).
+        const optL = dot(opt, vec3(0.2126, 0.7152, 0.0722));
+        // (A perfect clear's open night keeps every colour: its shafts carry the spectrum.)
+        const moonOpt = mix(
+            opt,
+            vec3(optL, optL, optL).mul(vec3(0.8, 0.9, 1.12)),
+            u.uNight.mul(0.8).mul(float(1.0).sub(u.uRays.w)),
+        );
+        let col = sky.add(moonOpt.mul(mix(1.0, 0.2, calmU)).mul(u.uK1.w));
         if (minimal) col = phTone(col).mul(float(1.0).sub(u.uUnionDim.mul(calmU)));
         if (calmDebug) {
             const edge = phCalmBox(screenUV, u.uCalmUnion, 0.004, u.uAspect);
@@ -550,6 +648,15 @@ export function createStoneMaterial(u, tierIn) {
             col = col.add(frostCol.mul(frost.mul(1.4)));
         }
 
+        if (!minimal) {
+            // The stone is a window on the night: stars stand in its dark face (the sky's own, on
+            // the line of sight, so they slide behind its edge as the eye moves), by day too. Only
+            // on the face turned to the eye, never on snow, and never behind the card.
+            const faceOn = smoothstep(0.3, 0.75, dot(n0, view)).mul(float(1.0).sub(snowM)).mul(open);
+            col = col.add(phStars(view.negate(), u.uPixAng, u.uDustClock).mul(u.uStoneStars.mul(faceOn)));
+        }
+        col = phNight(col, u.uNight);
+
         // Behind the card: the board backdrop value (#151B2C, L ≈ .011 — under the idle board-rect
         // mean ≤ .013 once the attenuated bloom is added), its light flattened to ±3 %.
         const calmFace = linearColor(0x151B2C).mul(light.sub(0.5).mul(0.06).add(1.0));
@@ -562,7 +669,7 @@ export function createStoneMaterial(u, tierIn) {
         const buried = smoothstep(driftH.add(2.2), driftH.sub(1.0), p.y);
         const driftLit = mix(linearColor(0x4A5C94), linearColor(0x7F93C6), smoothstep(-3.0, 1.5, p.y.sub(driftH)))
             .mul(mix(vec3(1.0), vec3(0.95, 0.84, 1.0), lowSun));
-        const driftCol = mix(driftLit, linearColor(0x171D2F), calmU);
+        const driftCol = mix(phNight(driftLit, u.uNight), linearColor(0x171D2F), calmU);
         let out = mix(col, driftCol, buried);
         if (minimal) out = phTone(out).mul(float(1.0).sub(u.uUnionDim.mul(calmU)));
         return out;
@@ -597,7 +704,8 @@ export function createStoneRimMaterial(u) {
         const lift = smoothstep(4.0, 14.0, positionWorld.y);
         const outside = float(1.0).sub(calmU).mul(lift);
         const gain = sunProx.mul(6.0).add(0.01).mul(u.uRim).mul(outside);
-        return linearColor(0xFFCF7A).mul(gain.mul(0.9));
+        // A moon's rim is silver.
+        return mix(linearColor(0xFFCF7A), linearColor(0xC4D6FF), u.uNight).mul(gain.mul(0.9));
     })();
     material.opacityNode = float(1.0);
     return material;
@@ -633,9 +741,16 @@ export function createFarStoneMaterial(u, tierIn) {
         const farRim = mix(linearColor(0xFFC978), linearColor(0xFFA060), phLow(u.uWarmth));
         col = col.add(farRim.mul(edge.mul(edge).mul(edge).mul(prox).mul(0.9)));
         // Aerial perspective into the horizon air (ph_fog over ph_haze, as the snow and the dome).
+        // A level's band of light crossing the plain lights each stone as it passes.
+        const lg = log(dist.div(u.uSweep.x)).div(u.uSweep.y.mul(1.6));
+        const pass = exp(lg.mul(lg).negate()).mul(u.uSweep.z);
+        col = col.add(farRim.mul(pass.mul(edge.mul(1.6).add(0.25))));
         const sw = pow(max(cA, 0.0), 4.0);
         const air = phFogFar(phHaze(dir, sw, u.uWarmth), sw, u.uWarmth);
-        col = mix(col, air, smoothstep(200.0, 2600.0, dist).mul(0.75));
+        // The air's ice fog and ground blizzard (uAir.y) bring the horizon's air nearer.
+        const airNear = float(1.0).sub(u.uAir.y.mul(0.62));
+        col = mix(col, air, smoothstep(airNear.mul(200.0), airNear.mul(2600.0), dist).mul(u.uAir.y.mul(0.2).add(0.75)));
+        col = phNight(col, u.uNight);
         return tier.post ? col : phTone(col);
     })();
     return material;
@@ -736,6 +851,23 @@ export function createSnowMaterial(u, tierIn) {
         });
         const sunHere = sunK.mul(float(1.0).sub(inShadow)).mul(float(1.0).sub(farShadow.mul(0.92))).toVar();
 
+        // Rings crossing the plain from the stone's foot (a hard drop, four lines, a perfect
+        // clear): a crest of lifted snow with a blue trough behind it. ONE loop over the live rows.
+        const ringLight = float(0.0).toVar();
+        const ringShade = float(0.0).toVar();
+        const ringTint = float(0.0).toVar();
+        const rr = length(p.xz.sub(vec2(0.0, RING_Z))).toVar();
+        If(u.uGroundCount.greaterThan(0), () => {
+            Loop(u.uGroundCount, ({ i }) => {
+                const row = u.uGround.element(i);
+                const x = rr.sub(row.x).div(row.y).toVar();
+                ringLight.addAssign(exp(x.mul(x).mul(-2.5)).mul(row.z));
+                const back = x.add(2.0);
+                ringShade.addAssign(exp(back.mul(back).mul(-0.5)).mul(row.z));
+                ringTint.assign(max(ringTint, row.w));
+            });
+        });
+
         // Lit snow: white, warming toward the sun's azimuth; forward-scatter glare near it. Under
         // the late golden sun the whole lit field turns peach-gold, deeper toward the sun.
         const lowSun = phLow(u.uWarmth).toVar();
@@ -757,13 +889,27 @@ export function createSnowMaterial(u, tierIn) {
         const surf = phSoftCap(snowCol.add(gold), 0.85);
         const calmU = phCalmBox(screenUV, u.uCalmUnion, 0.02, u.uAspect);
         let col = mix(surf, linearColor(0x171D2F), calmU.mul(inShadow));
+        // A level's band of gold crossing the plain from the horizon to the eye (a multiply of
+        // the snow's own light: white snow cannot get whiter, it can turn gold; gotcha #1733).
+        const lg = log(dist.div(u.uSweep.x)).div(u.uSweep.y);
+        const band = exp(lg.mul(lg).negate()).mul(u.uSweep.z).toVar();
+        col = col.mul(mix(vec3(1.0), vec3(1.14, 0.86, 0.52), band.mul(0.9)))
+            .add(linearColor(0xFFC978).mul(band.mul(smoothstep(0.0, 1.2, lg)).mul(0.8)));
+        // The rings: their trough takes a little light away, their crest is lifted snow in the sun.
+        // (Gold, not white: on sunlit snow a white line is the snow. The trough alone would be
+        // one more drift shadow among the plain's own.)
+        const crestCol = mix(linearColor(0xFFD08A), phSpectral(fract(rr.mul(0.004))), ringTint);
+        col = col.mul(float(1.0).sub(min(ringShade, 1.0).mul(0.4))).add(crestCol.mul(min(ringLight, 1.5).mul(1.9)));
 
         // 3 — blowing snow: long thin streamers running with the wind, lifted off the surface, so
         //     they catch the low sun even over the shaded drift troughs (gold-white toward the sun,
         //     faint white away from it); only the Vigil Stone's own shadow puts them out.
         if (tier.snowEvals >= 2) {
             const wisp = noise2(vec2(along.mul(0.02).sub(u.uDriftPhase), across.mul(0.22).add(macro.mul(1.5))));
-            const streamer = smoothstep(0.5, 0.92, wisp).mul(smoothstep(950.0, 140.0, dist));
+            // The air's ground blizzard (uAir.z): more of the plain is streaming, and harder.
+            const blow = u.uAir.z;
+            const streamer = min(smoothstep(float(0.53).sub(blow.mul(0.03)), 0.9, wisp).mul(blow), 2.0)
+                .mul(smoothstep(950.0, 140.0, dist));
             const backlit = pow(toSun, 8.0).mul(0.7).add(0.15);
             const blowCol = mix(linearColor(0xE2EAF8), linearColor(0xFFE6C2), pow(toSun, 6.0));
             col = col.add(blowCol.mul(streamer.mul(backlit).mul(float(1.0).sub(inShadow.mul(0.85)))));
@@ -773,8 +919,14 @@ export function createSnowMaterial(u, tierIn) {
         // dome's colour just under the horizon, so the seam never shows; a darker foreground strip.
         const sw = pow(toSun, 4.0);
         const air = phFogFar(phHaze(dir, sw, u.uWarmth), sw, u.uWarmth);
-        col = mix(col, air, smoothstep(450.0, 2600.0, dist).mul(0.9).add(smoothstep(2600.0, 5000.0, dist).mul(0.1)));
+        // The air's ice fog and ground blizzard (uAir.y) bring the horizon's air nearer.
+        const airNear = float(1.0).sub(u.uAir.y.mul(0.62));
+        const airK = smoothstep(airNear.mul(450.0), airNear.mul(2600.0), dist).mul(0.9).add(smoothstep(2600.0, 5000.0, dist).mul(0.1));
+        col = mix(col, air, airK);
         col = col.mul(mix(0.86, 1.0, smoothstep(110.0, 460.0, dist)));
+        col = phNight(col, u.uNight);
+        // Light that adds on the snow (glitter, the lower halo) is silver under the moon.
+        const silver = mix(vec3(1.0), vec3(...MOON_SILVER), u.uNight);
 
         if (!minimal) {
             // Specular glitter: one 0.9 m cell in ~70 holds a pixel-point ice plate.
@@ -787,7 +939,10 @@ export function createSnowMaterial(u, tierIn) {
             const tw = pow(sin(twPhase).mul(0.5).add(0.5), 6.0).mul(0.75).add(0.25);
             const near = float(1.0).sub(smoothstep(0.8, 3.0, fp));
             const visible = smoothstep(0.3, 0.8, sunHere).mul(float(1.0).sub(calmU));
-            const glit = step(0.986, g).mul(spot).mul(tw.mul(near)).mul(visible);
+            // A ring's crest and a level's band set the plain glittering as they pass.
+            const stirred = min(ringLight, 1.5).mul(3.0).add(band.mul(2.0)).add(1.0);
+            const glit = step(0.986, g).mul(spot).mul(tw.mul(near)).mul(visible)
+                .mul(stirred);
             const aRing = acos(clamp(dot(dir, vec3(...S_VEC)), -1.0, 1.0)).sub(R22S).toVar();
             // The lower halo in the diamond dust over the snow: crystals glint along the 22° ring
             // below the horizon, red inside → white → ice-blue outside, closing the circle round
@@ -811,13 +966,14 @@ export function createSnowMaterial(u, tierIn) {
                 linearColor(0xA8CCF4),
                 smoothstep(0.004, 0.012, aRing),
             );
-            col = col.add(ringCol.mul(ringGlit.mul(2.6)));
+            col = col.add(ringCol.mul(silver).mul(ringGlit.mul(2.6)));
             // Below-horizon ring flash (reactions; 0 at rest): the prism arc through the glitter.
             const prism = u.uPrism.mul(exp(aRing.mul(aRing).div(0.0004).negate()));
             // Two-stop prism (red inside → ice-blue outside): the full ramp is not worth its bytes here.
             const prismT = clamp(aRing.add(0.01).div(0.03), 0.0, 1.0);
             const prismCol = mix(linearColor(0xFF6A4A), linearColor(0x9CC7F0), prismT).mul(prism.mul(3.0));
-            col = col.add(linearColor(0xFFF3D6).mul(sunward.mul(0.8).add(1.6)).add(prismCol).mul(glit));
+            col = col.add(linearColor(0xFFF3D6).mul(sunward.mul(0.8).add(1.6)).add(prismCol).mul(silver)
+                .mul(glit));
         } else {
             col = phTone(col).mul(float(1.0).sub(u.uUnionDim.mul(calmU)));
         }

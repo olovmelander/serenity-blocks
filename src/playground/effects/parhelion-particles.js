@@ -67,6 +67,8 @@ const U3 = [U.x, U.y, U.z].map(round6);
 const R22S = round6(R22);
 const DOG_AZS = round6(DOG_AZ);
 const ES = round6(E);
+/** What moonlight makes of light that adds (parhelion-materials.js MOON_SILVER). */
+const MOON_SILVER = Object.freeze([0.66, 0.79, 1.0]);
 
 /** Diamond-dust instance counts per tier (§9) and the near-bokeh class (Ultra and above). */
 export const PARHELION_DUST_COUNTS = Object.freeze({
@@ -241,7 +243,9 @@ export function createDustMaterial(u, { minimal = false } = {}) {
     // Single crystals refract: a flash carries a little of its own spectral hue.
     const own = mix(warm, phSpectral(kind.z), flash.mul(0.3));
     const tint = mix(own, prism, ringWide.mul(u.uPrism.mul(0.5).add(0.5)));
-    material.colorNode = vertexStage(tint.mul(bright)).mul(starProfile());
+    // Under the moon the dust glints silver.
+    const moonlit = mix(vec3(1.0), vec3(...MOON_SILVER), u.uNight);
+    material.colorNode = vertexStage(tint.mul(moonlit).mul(bright)).mul(starProfile());
     material.opacityNode = float(1.0);
     return material;
 }
@@ -373,14 +377,81 @@ export function createPillarMaterial(u, { glitter = true } = {}) {
     const ax = q.x.sub(0.5).mul(2.0);
     const beadV = mix(state.w, 1.05, smoothstep(0.0, life.mul(0.7), state.x));
     const shaft = smoothstep(0.0, 0.25, q.y).mul(float(1.0).sub(smoothstep(0.75, 1.0, q.y)));
-    const core = exp(ax.mul(ax).mul(-9.0)).mul(shaft.mul(0.72).add(0.28));
+    // A light pillar is a soft column: a bright narrow core inside a wide, faint skirt of the
+    // same light (the old hairline read as a scratch on the lens).
+    const along = shaft.mul(0.72).add(0.28);
+    const core = exp(ax.mul(ax).mul(-26.0)).mul(along);
+    const skirt = exp(ax.mul(ax).mul(-3.4)).mul(0.3).mul(along);
     const bd = q.y.sub(beadV).div(0.045);
     const bead = exp(bd.mul(bd).negate()).mul(exp(ax.mul(ax).mul(-4.0))).mul(1.8);
     const sparkle = glitter
-        ? step(0.55, noise2(vec2(ax.mul(7.0), q.y.mul(90.0).sub(u.uTime.mul(1.6))))).mul(0.5)
+        ? smoothstep(0.45, 0.7, noise2(vec2(attribute('aLane', 'float').mul(3.7), q.y.mul(90.0).sub(u.uTime.mul(1.6))))).mul(0.3)
         : float(0.0);
-    const gold = mix(linearColor(0xFFD98A), linearColor(0xFFF4DC), q.y);
-    material.colorNode = gold.mul(core.mul(sparkle.add(0.7)).add(bead)).mul(state.z.mul(state.y));
+    const gold = mix(mix(linearColor(0xFFD98A), linearColor(0xFFF4DC), q.y), vec3(...MOON_SILVER), u.uNight);
+    // The glitter rides the core only: on the skirt it tore the column's edge into flames.
+    material.colorNode = gold.mul(core.mul(sparkle.add(0.7)).add(skirt).add(bead)).mul(state.z.mul(state.y));
+    material.opacityNode = float(1.0);
+    return material;
+}
+
+// ---------------------------------------------------------------------------------------
+// The avenue's answer (a back-to-back): a pillar of light over stone after stone
+// ---------------------------------------------------------------------------------------
+
+/**
+ * One quad a far stone, in the stones' own order: `aLane` its row in uFarStones, `aRank` its
+ * place in the wave (nearest first), `aHue` its light on the spectral ramp.
+ * @param {ReadonlyArray<ReadonlyArray<number>>} stones `[x, z, halfWidth, height, …]`
+ */
+export function buildAvenueGeometry(stones) {
+    const geometry = buildPillarGeometry(stones.length);
+    const order = stones.map((s, i) => [Math.hypot(s[0], s[1]), i]).sort((a, b) => a[0] - b[0]);
+    const rank = new Float32Array(stones.length * 4);
+    const hue = new Float32Array(stones.length * 4);
+    order.forEach(([, index], place) => {
+        for (let c = 0; c < 4; c++) {
+            rank[index * 4 + c] = place;
+            // Alternating warm and cool down the row: ember-gold, white, ice.
+            hue[index * 4 + c] = [0.34, 0.62, 0.9, 0.48][place % 4];
+        }
+    });
+    geometry.setAttribute('aRank', new THREE.BufferAttribute(rank, 1));
+    geometry.setAttribute('aHue', new THREE.BufferAttribute(hue, 1));
+    return geometry;
+}
+
+/**
+ * Light pillars over the standing stones: what diamond dust does over every lamp on a cold
+ * night, here over each stone of the avenue in turn, the wave running out to the horizon. A
+ * dormant pillar has zero width.
+ * @param {object} u shared uniforms (uFarStones, uAvenue, uTime, uCamRest, uNight)
+ */
+export function createAvenueMaterial(u) {
+    const material = additive(new THREE.MeshBasicNodeMaterial());
+    material.name = 'parhelion-avenue';
+    material.side = THREE.FrontSide;
+
+    const k = int(attribute('aLane', 'float'));
+    const stone = u.uFarStones.element(k);
+    const age = u.uTime.sub(u.uAvenue.x).sub(attribute('aRank', 'float').mul(u.uAvenue.z));
+    const lifeK = max(u.uAvenue.w, 1e-3);
+    const alive = smoothstep(0.0, 0.22, age).mul(float(1.0).sub(smoothstep(lifeK.mul(0.4), lifeK, age)))
+        .mul(step(0.0, age)).mul(u.uAvenue.y);
+    const base = vec3(stone.x, stone.w.mul(0.8), stone.y);
+    const right = normalize(cross(vec3(0.0, 1.0, 0.0), u.uCamRest.sub(base)));
+    const q = uv();
+    material.positionNode = base.add(right.mul(q.x.sub(0.5).mul(stone.z.mul(3.4)).mul(step(0.001, alive))))
+        .add(vec3(0.0, 1.0, 0.0).mul(q.y.mul(stone.w.mul(6.0))));
+
+    const state = vertexStage(vec3(age.div(lifeK), alive, attribute('aHue', 'float')));
+    const ax = q.x.sub(0.5).mul(2.0);
+    const column = exp(ax.mul(ax).mul(-14.0)).add(exp(ax.mul(ax).mul(-2.6)).mul(0.3));
+    // Brightest over the stone, thinning upward; a knot of light climbs it once.
+    const rise = exp(q.y.mul(-2.6)).mul(smoothstep(0.0, 0.03, q.y)).mul(float(1.0).sub(smoothstep(0.8, 1.0, q.y)));
+    const kd = q.y.sub(state.x.mul(1.3)).div(0.07);
+    const knot = exp(kd.mul(kd).negate()).mul(0.8);
+    const light = mix(phSpectral(state.z), vec3(...MOON_SILVER), u.uNight);
+    material.colorNode = light.mul(column.mul(rise.add(knot)).mul(state.y).mul(1.2));
     material.opacityNode = float(1.0);
     return material;
 }

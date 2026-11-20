@@ -99,12 +99,14 @@ export class ParhelionPost {
         this.uCalmParams = uniformArray(this.calmParams, 'vec4');
         this.uCalmCount = uniform(0, 'int');
         this.uExposure = uniform(exposure);
+        /** The air's lean: (red ×, green ×, blue ×, saturation ×); neutral at rest. */
+        this.uGrade = uniform(new THREE.Vector4(1, 1, 1, 1));
         this.uBloomKick = 0;
         const uAspect = aspect || uniform(16 / 9);
         const uTime = time || uniform(0);
 
         const {
-            bloomNode, uCalmRects, uCalmParams, uCalmCount, uExposure,
+            bloomNode, uCalmRects, uCalmParams, uCalmCount, uExposure, uGrade,
         } = this;
         this.pipeline.outputColorTransform = false;
         this.pipeline.outputNode = Fn(() => {
@@ -124,9 +126,10 @@ export class ParhelionPost {
             const base = sceneColor.rgb.mul(float(1.0).sub(dim));
             const flat = mix(base, vec3(dot(base, luma)), desat);
             const hdr = flat.add(bloomNode.rgb.mul(mix(1.0, BLOOM_ATTEN, calm)));
-            const toned = phTone(hdr.mul(uExposure)).toVar();
-            // Grade: a touch of saturation, split-tone (cobalt shadows / warm highlights), vignette.
-            const sat = mix(vec3(dot(toned, luma)), toned, 1.05);
+            const toned = phTone(hdr.mul(uExposure)).mul(uGrade.rgb).toVar();
+            // Grade: a touch of saturation (the air's own on top), split-tone (cobalt shadows /
+            // warm highlights), vignette.
+            const sat = mix(vec3(dot(toned, luma)), toned, uGrade.w.mul(1.05));
             const l = dot(sat, luma);
             const lo = float(1.0).sub(l);
             const cool = mix(sat, linearColor(0x1B2A55), lo.mul(lo).mul(0.06));
@@ -175,6 +178,13 @@ export class ParhelionPost {
     setExposure(exposure) {
         const value = Number.isFinite(exposure) ? exposure : 1;
         if (Math.abs(this.uExposure.value - value) > WRITE_EPS) this.uExposure.value = value;
+    }
+
+    /** The air's lean in the grade (neutral 1, 1, 1, 1); writes only when it moves. */
+    setGrade(r, g, b, saturation) {
+        const v = this.uGrade.value;
+        if (Math.abs(v.x - r) > WRITE_EPS || Math.abs(v.y - g) > WRITE_EPS || Math.abs(v.z - b) > WRITE_EPS
+            || Math.abs(v.w - saturation) > WRITE_EPS) v.set(r, g, b, saturation);
     }
 
     render() {
