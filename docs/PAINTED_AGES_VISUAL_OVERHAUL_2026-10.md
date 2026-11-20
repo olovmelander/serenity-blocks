@@ -448,8 +448,9 @@ dust devil of the wind's own by day.
 | Level up | a pale band | new ages are laid down: the column of beds slides under the land, so every stripe on every hill moves up its slope (16 m of geological height over four seconds; it stays, so each level's land is striped differently, there and back over 400 m); the marker bed; the lamps flare in turn up the stair to the pavilion |
 | Game over | dusk, lamps | dusk; the lamps light one after another up the stair (each lamp knows its place along the walk), the moon rises, and sky lanterns leave the pavilion and drift up over the valley |
 
-By the clock alone the strata also slide one step at the start of each new day of the wheel
-(every 600 s, not in the first), so the land changes in modes that never level up.
+By the clock alone the strata also slide one step with every ten minutes of play (not in the
+first ten; read off the clock, never off the wheel's place, which a level-up also turns), so the
+land changes in modes that never level up.
 
 ### Decisions and traps
 
@@ -467,7 +468,64 @@ By the clock alone the strata also slide one step at the start of each new day o
   are taken out while it lasts, the stars keep their turn, and the shadows follow in degree steps.
 - Gotcha rows: #1205 (a dev server serving a stale module after scripted edits), #1522, #1523
   (cloud shadows, heaped banks), #1759 to #1761 (the funnel, near-bed glare, the day's sweep),
-  #707 (inflated thin meshes), #1105 (FXAA over a dense fan); the poplar helper's are #1612 and #1204.
+  #707 (inflated thin meshes), #1105 (FXAA over a dense fan).
+
+### Verification
+
+- **Captures** (a private headless Chrome on real WebGPU, 1600 × 900, 30 fps cap, every one with a
+  clean console): the six hours before and after, the seven airs, every event at one or more
+  ages, the clock alone at six times over ten minutes (six different pictures), six levels of the
+  sliding strata, Minimal, Low, the WebGL2 backend (at rest and with a twist), 390 × 844 and
+  2560 × 1080. The sheets are in the captures table below.
+- **The real game** (headless Chrome, single player, real key presses, High on WebGPU): 62 hard
+  drops in half a minute, a game over with its dusk and lanterns, a new run. The only console
+  lines were the browser's usual ones (Steam Cloud deferred, a power-preference notice). That run
+  is what showed the near bed's white glare under quick drops.
+- **Frame by frame** (a world in Node at 60 fps): through the perfect clear's sweep the exposure
+  moves at most 1.7 % in a frame and the light ends on the hour it left; a level-up's slide moves
+  the strata at most 0.12 m in a frame.
+- **Frame cost** (playground, 1920 × 1080, 30 fps cap, GPU timestamps, main and the branch on two
+  private servers, three interleaved rounds, medians): High in the morning 0.64 → 0.78 ms, High at
+  sunset 1.24 → 1.37 ms, Low in the morning 0.37 → 0.45 ms. The poplars' triangles and the
+  vultures are in those numbers.
+- **Tests:** the theme's twenty suites, 499 tests. Six of the files (the weather's wheel, what
+  each air does to the world, every event's new effect, the clock's happenings, a ten-minute
+  seeded session, the pennants) were written by a tests-only helper told to pin faults rather
+  than bend to the code; they pinned nineteen in this pass's own work, all fixed and now plain
+  tests: a dust devil raised behind the HUD, behind the card in an upright frame, or drifting
+  behind the card; a near site on squarer screens; a doubled, lurching slide on every sixth
+  level-up; the stars thrown back when a perfect clear landed in the frame a sweep ended; the
+  shower's curtains stepping 4° as its air arrived; a second bow popping into the shard and never
+  leaving it; a chain's bow weaker than the shard; dust dimming the air and cooling a sunset; an
+  air's saturation never reaching the grade; the wind's dust devil missing after a seek; the far
+  lightning's two strokes summing past one; a place that is not a number passed on. The shader
+  gate builds the devils, the pennants and the vultures for WGSL and GLSL at High and Minimal
+  (the land's fragment is now 60 KiB in WGSL and 68 in GLSL, of a 96 KiB budget).
+  The full unit suite on the final tree: 1,427 of 1,429 files and 26,718 tests pass, one file
+  skipped; the one red, `tts-recorder-e2e`, is this machine's known symlink failure, red on
+  untouched main too.
+- **Gates:** typecheck clean; ESLint on the theme at its baseline (48 errors, all in the untouched
+  tier table); the lint ratchet under its baseline (430 of 432); import boundaries; the theme
+  lifecycle audit; the palette gate; the IP-string gate; the skill's audit and its tests; the
+  production build with its boot closure (the theme's chunk is 208 KB).
+
+### Not done, and calls for the owner
+
+- **Not measured:** an uncapped frame rate, the integrated GPU, a physical phone. Nobody has
+  watched it move: the clouds, flags, vultures and the day's sweep were judged from frames and
+  from frame-to-frame numbers.
+- **The theme icon** was not re-baked (the banks and the valley floor differ from it now).
+- **The strata's slide** changes which beds the hero hill shows at each level. Six sampled levels
+  all read well; it is still a new behaviour of a look the owner knew.
+- **The fields** bring muted sage and straw into the valley: a new note beside the painted rock.
+- **The far shower** is quiet by design (curtains on one side, a shard of bow); the dust air has
+  no streamers of its own beyond the haze and the wind's dust devil.
+- **In an upright frame whose side the HUD fills**, a twist's dust devil stands on the other side
+  of the card rather than behind the HUD (seen beats sided).
+- **Pavilion and walkway** keep their models; they gained the lamps' order, the flare and the
+  pennants. Leaf litter under the poplar rows is still not drawn.
+- **Rebuild in place** (a quality change in play) carries the new clocks, but a standing dust
+  devil and lanterns in the air are not carried over, as motes never were.
 
 ## Captures
 
