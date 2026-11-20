@@ -173,16 +173,26 @@ describe('neon-dusk builds with play', () => {
         world.onPieceLock({ type: 'T', x: 2 });
         expect(Math.max(...world.ripples.map((r) => r.energy))).toBeCloseTo(1.5);
 
+        // ...and a square shock runs out along the grid from where it landed.
+        runTo(world, world.time + 0.2);
+        expect(Math.max(world.u.shock0.value.w, world.u.shock1.value.w)).toBeGreaterThan(0.3);
+
+        // A twist stands the neon triangle round the sun (2026-11: it had been a spun halo, the
+        // same instrument as every other event; now each event has its own), still spinning home.
         runTo(world, world.time + 0.5);
         world.onTwist(0);
         runTo(world, world.time + 0.2);
-        const spun = world.holos.find((h) => h.energy > 0);
-        expect(spun.spin).not.toBe(0);
+        expect(world.u.tri.value.z).toBeGreaterThan(0.3);
+        expect(world.u.tri.value.y).not.toBe(0);
+        expect(world.holos.every((h) => h.energy <= 0 || world.time - h.t0 > 2.2)).toBe(true);
 
+        // Back-to-back slides the sun's twins apart (it had been two more spun halos), with the
+        // double sweep through the ranges it always had.
         runTo(world, world.time + 3);
         world.onB2B(true);
         runTo(world, world.time + 0.3);
-        expect(world.holos.filter((h) => h.energy > 0 && h.spin !== 0).length).toBe(2);
+        expect(world.u.twin.value.y).toBeGreaterThan(0.3);
+        expect(world.u.twin.value.x).toBeGreaterThan(0.1);
         expect(sweeps(world).length).toBeGreaterThanOrEqual(2);
         world.dispose();
     });

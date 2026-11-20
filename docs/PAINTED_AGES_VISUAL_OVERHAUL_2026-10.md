@@ -466,8 +466,8 @@ By the clock alone the strata also slide one step at the start of each new day o
 - The sweep of the day is a whole turn of the wheel, so nothing is left to undo; the hours' rests
   are taken out while it lasts, the stars keep their turn, and the shadows follow in degree steps.
 - Gotcha rows: #1205 (a dev server serving a stale module after scripted edits), #1522, #1523
-  (cloud shadows, heaped banks), #1758 to #1760 (the funnel, near-bed glare, the day's sweep),
-  #706 (inflated thin meshes), #1105 (FXAA over a dense fan).
+  (cloud shadows, heaped banks), #1759 to #1761 (the funnel, near-bed glare, the day's sweep),
+  #707 (inflated thin meshes), #1105 (FXAA over a dense fan); the poplar helper's are #1612 and #1204.
 
 ## Captures
 

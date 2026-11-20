@@ -1,6 +1,7 @@
 /**
- * Neon Dusk — gameplay and atmosphere FX: drifting neon pixel dust, burst pixels, and the
- * hologram of each locked tetromino standing up out of the glass.
+ * Neon Dusk — gameplay and atmosphere FX: drifting neon pixel dust, burst pixels, the hologram
+ * of each locked tetromino standing up out of the glass, and the pillar of light a hard drop
+ * strikes out of it.
  *
  * Motion is analytic in the vertex stage (spawn state + age), so nothing is uploaded per frame:
  * a spawn writes one instance's attributes as a ranged upload, and the same code runs on both
@@ -74,6 +75,21 @@ const neonPixel = (local, flare) => {
     return core.add(halo).add(cross.mul(flare)).mul(float(1.0).sub(smoothstep(0.85, 1.0, box)));
 };
 
+/**
+ * A rising mote in sprite space: a short upright dash of light in a soft glow. Upright, so it
+ * reads as something climbing off the glass and never as one more star in the sky.
+ */
+const neonMote = (local) => {
+    const ax = abs(local.x);
+    const ay = abs(local.y);
+    const core = float(1.0).sub(smoothstep(0.1, 0.2, ax)).mul(float(1.0).sub(smoothstep(0.42, 0.8, ay)));
+    const halo = exp(ax.mul(-7.0)).mul(exp(ay.mul(-2.6))).mul(0.4);
+    return core.add(halo).mul(float(1.0).sub(smoothstep(0.85, 1.0, max(ax, ay))));
+};
+
+/** The dust rises through a column this tall (world units) and wraps. */
+export const DUST_COLUMN = 22;
+
 const DUST_PALETTE = [0xff4fd8, 0x39f0ff, 0xb46bff, 0xff7aa8, 0x8fe9ff];
 
 function createDust(u, count, rand) {
@@ -89,9 +105,9 @@ function createDust(u, count, rand) {
     const look = attribute('iMoteLook', 'vec4'); // r, g, b, size px
     const t = u.time;
     const ph = mote.w;
-    // Rise slowly through a 34-unit column and wrap; drift sideways a little. The rise runs on
-    // the dust's own clock (the world's time at rest; it quickens as play heats).
-    const rise = fract(u.dustRun.mul(0.014).add(ph.mul(0.159))).mul(34.0);
+    // Rise slowly through the column and wrap; drift sideways a little. The rise runs on the
+    // dust's own clock (the world's time at rest; it quickens as play heats).
+    const rise = fract(u.dustRun.mul(0.02).add(ph.mul(0.159))).mul(DUST_COLUMN);
     const pos = vec3(
         mote.x.add(sin(t.mul(0.08).add(ph)).mul(2.5)),
         mote.y.add(rise),
@@ -105,10 +121,10 @@ function createDust(u, count, rand) {
         // Retro flicker: mostly steady, with quick blinks.
         const blink = step(0.12, fract(t.mul(float(0.7).add(ph.mul(0.05))).add(ph)));
         const twinkle = sin(t.mul(float(1.3).add(ph.mul(0.11))).add(ph.mul(5.0))).mul(0.3).add(0.7);
-        const riseT = rise.div(34.0);
-        const wrapFade = smoothstep(0.0, 0.12, riseT).mul(float(1.0).sub(smoothstep(0.75, 1.0, riseT)));
+        const riseT = rise.div(DUST_COLUMN);
+        const wrapFade = smoothstep(0.0, 0.12, riseT).mul(float(1.0).sub(smoothstep(0.55, 1.0, riseT)));
         const fog = exp(dist.mul(-0.006));
-        return look.xyz.mul(neonPixel(local, float(0.3)).mul(twinkle).mul(blink).mul(wrapFade)
+        return look.xyz.mul(neonMote(local).mul(twinkle).mul(blink).mul(wrapFade)
             .mul(fog)
             .mul(u.dustGain));
     })();
@@ -125,9 +141,9 @@ function createDust(u, count, rand) {
         const d = 22 + rand() * 190;
         const x = RIG.x + Math.sin(phi) * d;
         const z = RIG.z - Math.cos(phi) * d;
-        iMote.array.set([x, 0.5 + rand() * 10, z, rand() * 6.28], i * 4);
+        iMote.array.set([x, 0.3 + rand() * 3, z, rand() * 6.28], i * 4);
         const c = palette[Math.floor(rand() * palette.length)];
-        iMoteLook.array.set([c.r, c.g, c.b, 4 + rand() * 4], i * 4);
+        iMoteLook.array.set([c.r, c.g, c.b, 5 + rand() * 5], i * 4);
     }
     sprite.geometry.setAttribute('iMote', iMote);
     sprite.geometry.setAttribute('iMoteLook', iMoteLook);
@@ -435,6 +451,69 @@ function createTiles(u, count) {
     return { mesh, iCell, iTint };
 }
 
+/** How many hard drops' pillars stand at once, how tall and wide they are (units) and how long they last (s). */
+export const PILLAR = Object.freeze({
+    slots: 4, height: 64, width: 2.6, life: 0.95,
+});
+
+/**
+ * A hard drop's pillar: a thin shaft of light that shoots up out of the glass where the piece
+ * struck and fades from its top down. One quad a pillar, turned to the lens about its own
+ * upright (u.camRight), riding the floor's scroll; a dead slot has no size.
+ */
+function createPillars(u, count) {
+    const material = new THREE.MeshBasicNodeMaterial();
+    material.name = 'NeonDuskPillars';
+    material.transparent = true;
+    material.depthWrite = false;
+    material.blending = THREE.AdditiveBlending;
+    material.side = THREE.DoubleSide;
+    material.fog = false;
+
+    const post = attribute('iPillar', 'vec4'); // x, z at a scroll run of 0, t0, light
+    const tint = attribute('iPillarTint', 'vec4'); // r, g, b, unused
+    const age = u.time.sub(post.z);
+    const alive = step(0.0, age).mul(step(age, PILLAR.life));
+    // It shoots up in a tenth of a second.
+    const grown = smoothstep(0.0, 0.1, age);
+    const g = positionGeometry;
+    const wide = g.x.mul(PILLAR.width).mul(alive);
+    material.positionNode = vec3(
+        post.x.add(u.camRight.x.mul(wide)),
+        g.y.mul(PILLAR.height).mul(grown).mul(alive),
+        post.y.add(u.scrollRun).add(u.camRight.z.mul(wide)),
+    );
+    material.colorNode = Fn(() => {
+        const across = abs(g.x.mul(2.0)).toVar();
+        const k = across.div(0.13);
+        const core = exp(k.mul(k).negate());
+        const glow = exp(across.mul(-3.4)).mul(0.3);
+        const up = clamp(g.y, 0.0, 1.0);
+        // Bright at the foot, thinning upward; it lets go from the top down.
+        const reach = float(1.0).sub(smoothstep(0.2, 0.95, age.div(PILLAR.life))).toVar();
+        const column = exp(up.mul(-2.4)).mul(float(1.0).sub(smoothstep(reach.sub(0.25), reach.add(0.05), up.mul(0.8))));
+        const edge = float(1.0).sub(smoothstep(0.8, 1.0, across));
+        return mix(tint.xyz, vec3(1.0), core.mul(0.5)).mul(core.add(glow).mul(column).mul(edge).mul(post.w)
+            .mul(alive)
+            .mul(2.6));
+    })();
+    material.opacityNode = float(1.0);
+
+    const geometry = new THREE.PlaneGeometry(1, 1);
+    geometry.translate(0, 0.5, 0);
+    const mesh = new THREE.InstancedMesh(geometry, material, count);
+    mesh.name = 'NeonDuskPillars';
+    const iPillar = instanced(count, 4);
+    const iPillarTint = instanced(count, 4);
+    for (let i = 0; i < count; i += 1) iPillar.array.set([0, 0, -1e6, 0], i * 4);
+    geometry.setAttribute('iPillar', iPillar);
+    geometry.setAttribute('iPillarTint', iPillarTint);
+    mesh.frustumCulled = false;
+    mesh.renderOrder = 42;
+    mesh.layers.set(DIRECT_ONLY_LAYER);
+    return { mesh, iPillar, iPillarTint };
+}
+
 export class NeonDuskFx {
     /**
      * @param {object} u  shared world uniforms
@@ -458,9 +537,26 @@ export class NeonDuskFx {
         // The tile cursor runs DOWN the buffer: a newer piece (spawned farther off, the older
         // ones having ridden toward the camera) is drawn before the older ones in front of it.
         this.tileCursor = 0;
+        this.pillars = createPillars(u, PILLAR.slots);
+        this.pillarCursor = 0;
         if (this.dust) this.group.add(this.dust);
         this.group.add(this.burst.sprite);
         this.group.add(this.tiles.mesh);
+        this.group.add(this.pillars.mesh);
+    }
+
+    /**
+     * Strike a pillar of light out of the glass at (x, z) at `t0`: `run` is the floor's scroll
+     * then (it rides it), `light` its strength.
+     */
+    spawnPillar(t0, x, z, run, color, light = 1) {
+        const { iPillar, iPillarTint } = this.pillars;
+        const i = this.pillarCursor;
+        this.pillarCursor = (i + 1) % iPillar.count;
+        iPillar.array.set([x, z - run, t0, light], i * 4);
+        iPillarTint.array.set([color.r, color.g, color.b, 0], i * 4);
+        touch(iPillar, i);
+        touch(iPillarTint, i);
     }
 
     get burstCapacity() {
@@ -543,6 +639,11 @@ export class NeonDuskFx {
         iCell.clearUpdateRanges();
         iCell.addUpdateRange(0, iCell.array.length);
         iCell.needsUpdate = true;
+        const { iPillar } = this.pillars;
+        for (let i = 0; i < iPillar.count; i += 1) iPillar.array[i * 4 + 2] = -1e6;
+        iPillar.clearUpdateRanges();
+        iPillar.addUpdateRange(0, iPillar.array.length);
+        iPillar.needsUpdate = true;
     }
 
     dispose() {

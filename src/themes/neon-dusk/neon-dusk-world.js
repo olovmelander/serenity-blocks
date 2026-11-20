@@ -8,31 +8,57 @@
  * Layout changes ease in as a slow pan. The lens is Hor+ (fixed vertical FOV, horizontal capped)
  * and the pitch puts the horizon at RIG.horizonFrac.
  *
- * Draws at High: sky, mountains, floor, dust, burst pixels, tiles — six, plus the floor's
- * reflector pass (sky + mountains again, at 0.4 resolution on High; the fx stay out of it).
+ * Draws at High: sky, mountains, ridgelines, floor, dust, burst pixels, tiles, pillars — eight,
+ * plus the floor's reflector pass (sky, mountains and ridgelines again, at 0.4 resolution on
+ * High; the fx stay out of it).
+ *
+ * The dusk never stands still (neon-dusk-moods.js, neon-dusk-clock.js). Five moods turn the
+ * colour of the light — sky, sun, grid, scan lines and ridgelines all change hue together — and
+ * beside them, on a period of their own, five airs turn what hangs in the sky: a clear dusk,
+ * cloud bars across the sun, a deep sky with the galaxy bright, a haze with the sun's rays in
+ * it, and the dome's lattice overhead. The stars wheel about a pole above the frame, a ringed
+ * planet rises, arcs over the sun and sets, the sun rides a little higher and lower in the
+ * pass, and now and then something crosses the picture: a meteor shower, a comet, a satellite,
+ * lights racing out along the grid. A level is one mood forward on top, eased in over a few
+ * seconds while the level-up's own show plays.
+ *
+ * Every gameplay event has an instrument of its own:
+ *   a lock         the piece's hologram rises far out on the glass and glides in; a ripple
+ *   a hard drop    a pillar of light strikes up where it landed and a SQUARE shock runs out
+ *                  along the grid lines
+ *   a single       a pulse of light runs out along the ridgelines from the pass; a wave rolls
+ *                  in over the glass; a scan sweeps the ranges
+ *   a double       + a dashed halo leaves the sun
+ *   a triple       + three laser beams fan up out of the pass
+ *   a quad         the sunburst: rays thrown across the whole sky, a five-beam laser crown,
+ *                  a storm of pixels off the sun's face, the tape slips
+ *   a twist        the neon triangle stands round the sun and spins home (an echo a line)
+ *   back-to-back   the sun's twins: a cyan and a magenta ghost slide out of it and fold back,
+ *                  wider with each streak; a double scan
+ *   a cascade      a volley of meteors, one more a wave; the palette swings
+ *   a combo        the sun's slits light one by one from its base (the chain's meter)
+ *   a perfect      the coronation: the slits close and the disc burns gold, the rays stand
+ *                  round it, seven gold beams crown it, every ridgeline is gilded from the
+ *                  pass outward, meteors fall, and the glass breathes the light back out
+ *   a level        the scan bar climbs the whole sky, the ranges light far to near, lights
+ *                  race out along the grid
+ *   a run's end    the sun goes down behind the pass and the stars come out; the next run
+ *                  is its sunrise
  *
  * Gameplay builds instead of popping (src/themes/shared/gameplay-surge.js). Every event layer
- * ADDS to what is still lit: the sun's glow is a Swell, the light waves, halos, scan sweeps,
- * lock ripples and shooting stars are slot pools that join a wave launched the same moment
- * and otherwise take a free or the weakest slot, never one in full flight. The surge's level
- * and fever drive the dusk itself, in four acts:
+ * ADDS to what is still lit: the sun's glow is a Swell, the layers are slot pools that join a
+ * wave launched the same moment and otherwise take a free or the weakest slot, never one in
+ * full flight. The surge's level and fever drive the dusk itself, in four acts:
  *   calm   — the dusk as it always was;
  *   warm   — the sun stokes up, the ridges' scan lines brighten, the grid quickens;
  *   hot    — the glass rushes toward the lens, bands of light run in along the grid on a beat,
- *            the holograms stand taller, the palette swings from magenta toward cyan;
- *   fever  — the sun burns gold and its slits race, it beats out halos in time with the
- *            grid's bands, a meteor shower falls away from it, the dust streams up.
- * A perfect clear crowns it: the slits close and the whole disc burns gold, every range lights
- * up and the glass breathes the light back out to the horizon. The end of a chain exhales too.
- *
- * The light itself turns by the clock, in every mode (neon-dusk-moods.js): five moods of the dusk
- * (magenta dusk, violet twilight, teal night, ultraviolet midnight, amber dawn), each resting a
- * while and then melting into the next. A level is one mood forward on top, eased in over a few
- * seconds while the level-up's burst plays.
+ *            the holograms stand taller, the palette swings round the colour wheel;
+ *   fever  — the sun burns gold and its slits race, its rays stand out, it beats out halos in
+ *            time with the grid's bands, a meteor shower falls away from it, the dust streams up.
  */
 
 import * as THREE from 'three/webgpu';
-import { uniform } from 'three/tsl';
+import { uniform, uniformArray } from 'three/tsl';
 import {
     GRID_SPACING,
     RIG,
@@ -40,9 +66,11 @@ import {
     SCROLL_WRAP,
     SUN,
 } from './neon-dusk-tsl.js';
-import { SLITS, createSky } from './neon-dusk-sky.js';
+import { SKY_SLOTS, SLITS, createSky } from './neon-dusk-sky.js';
 import { createMountainsSteps } from './neon-dusk-mountains.js';
-import { AMBIENT_PULSE, createFloor } from './neon-dusk-floor.js';
+import { RIDGE_PULSES, createRidges } from './neon-dusk-ridges.js';
+import { NeonDuskFlight } from './neon-dusk-flight.js';
+import { AMBIENT_PULSE, RACER_SLOTS, createFloor } from './neon-dusk-floor.js';
 import {
     DIRECT_ONLY_LAYER, NeonDuskFx, TILE_HOLOGRAM, pieceOutlineBits,
 } from './neon-dusk-fx.js';
@@ -52,15 +80,21 @@ import {
     GameplaySurge, SURGE_WEIGHTS, Swell, softCeiling,
 } from '../shared/gameplay-surge.js';
 import { ComboTracker } from '../../core/combo-tracker.js';
+import { flashScale } from '../../utils/photosensitivity.js';
 import { easeStep, moodDrift } from '../shared/mood-clock.js';
 import {
-    MOODS, MOOD_COUNT, MOOD_HOLD, MOOD_KEYS, MOOD_PERIOD, moodAt, moodName,
+    MOODS, MOOD_COUNT, MOOD_HOLD, MOOD_KEYS, MOOD_PERIOD, moodAt, moodName, swing,
 } from './neon-dusk-moods.js';
+import {
+    AIRS, HAPPENING_PERIOD, PLANET, SKY_POLE, airAt, airName, airPhase, happeningOf, planetAt,
+    skyTurn, sunDrift, windowRandom,
+} from './neon-dusk-clock.js';
 
 /**
- * Per-tier content. Every tier keeps the composition; tiers trade detail, not layout.
- * `reflection` = the floor reflector's resolution scale (0 = analytic sky mirror, no 2nd render);
- * `reflectionBlur` = the mip level the mirror is read at (0 = no mip chain).
+ * Per-tier content. Every tier keeps the composition and every event; tiers trade detail, not
+ * layout. `reflection` = the floor reflector's resolution scale (0 = analytic sky mirror, no 2nd
+ * render); `reflectionBlur` = the mip level the mirror is read at (0 = no mip chain); `fine` =
+ * the galaxy's own crowd of faint stars and its dust rift.
  */
 export const WORLD_QUALITY = Object.freeze({
     Minimal: {
@@ -71,61 +105,67 @@ export const WORLD_QUALITY = Object.freeze({
         tiles: 48,
         clouds: false,
         stars: 0.6,
+        fine: false,
         reflection: 0,
         reflectionBlur: 0,
     },
     Low: {
         detail: 0.7,
         contours: true,
-        dust: 60,
+        dust: 70,
         burst: 200,
         tiles: 64,
         clouds: true,
         stars: 1,
+        fine: false,
         reflection: 0,
         reflectionBlur: 0,
     },
     Medium: {
         detail: 0.85,
         contours: true,
-        dust: 120,
+        dust: 140,
         burst: 300,
         tiles: 96,
         clouds: true,
         stars: 1,
+        fine: true,
         reflection: 0.3,
         reflectionBlur: 0,
     },
     High: {
         detail: 1,
         contours: true,
-        dust: 180,
+        dust: 210,
         burst: 450,
         tiles: 96,
         clouds: true,
         stars: 1,
+        fine: true,
         reflection: 0.4,
         reflectionBlur: 1.6,
     },
     Ultra: {
         detail: 1.15,
         contours: true,
-        dust: 240,
+        dust: 270,
         burst: 600,
         tiles: 128,
         clouds: true,
         stars: 1,
+        fine: true,
         reflection: 0.5,
         reflectionBlur: 1.9,
     },
     Extreme: {
         detail: 1.3,
         contours: true,
-        dust: 300,
+        dust: 330,
         burst: 800,
         tiles: 160,
         clouds: true,
         stars: 1,
+        fine: true,
         reflection: 0.6,
         reflectionBlur: 2.1,
     },
@@ -205,10 +245,22 @@ const smooth = (a, b, x) => {
     const k = Math.min(1, Math.max(0, (x - a) / (b - a)));
     return k * k * (3 - 2 * k);
 };
+const easeOut = (x) => 1 - (1 - Math.min(1, Math.max(0, x))) ** 3;
 
-/** Event-layer slots: floor light waves, halos, shooting stars, lock ripples, scan sweeps. */
+/**
+ * Event-layer slots: floor light waves, halos, lock ripples, scan sweeps, meteors, laser beams,
+ * ridgeline pulses, hard-drop shocks and grid racers.
+ */
 export const SLOTS = Object.freeze({
-    rings: 3, holos: 3, shoots: 3, ripples: 4, contours: 4,
+    rings: 3,
+    holos: 3,
+    shoots: SKY_SLOTS.meteors,
+    ripples: 4,
+    contours: 4,
+    beams: SKY_SLOTS.beams,
+    pulses: RIDGE_PULSES,
+    shocks: 2,
+    racers: RACER_SLOTS,
 });
 /** A floor wave launched within this long of one still waiting below the horizon joins it. */
 const RING_JOIN = 0.7;
@@ -221,6 +273,36 @@ const ringEnvelope = (age) => Math.min(1, age / 0.15) * (1 - smooth(2.2, 3, age)
 const holoEnvelope = (age) => Math.min(1, age / 0.1) * (1 - age / 2.2) ** 1.5;
 const rippleEnvelope = (age) => Math.min(1, age / 0.08) * (1 - age / 1.8) ** 1.5;
 const contourEnvelope = (age) => Math.min(1, age / 0.12) * (1 - smooth(1.2, 1.6, age));
+
+/** A meteor as the sky's shooting stars always flew: 0.9 s, 0.22 rad, a 0.09 rad tail. */
+export const METEOR = Object.freeze({
+    life: 0.9, reach: 0.22, tail: 0.09, gain: 1, width: 1,
+});
+
+/**
+ * The instruments' own shapes:
+ *   the triangle (a twist)   half its side in sun radii, how long it stands, how long it spins
+ *   the twins (back-to-back) how far the ghosts slide (sun radii; more a streak), how long
+ *   the scan bar (a level)   how high it climbs (the sine of the elevation), how long it takes
+ *   a ridge pulse            how fast it runs out along the crests (rad of bearing a second),
+ *                            how wide it is, and the bearing at which it is spent
+ *   a hard drop's shock      how fast the square runs out (units/s) and how long it lasts
+ *   a racer                  its speed (units/s), tail (units) and life (s)
+ *   the run's end            how far the sun goes down (rad) and how fast it sets and rises (1/s)
+ */
+export const SHOW = Object.freeze({
+    triangle: Object.freeze({
+        side: 2.05, life: 1.6, spin: 0.95, turn: (Math.PI * 2) / 3,
+    }),
+    twins: Object.freeze({
+        reach: 0.5, perStreak: 0.14, most: 1.1, life: 1.35,
+    }),
+    scan: Object.freeze({ top: 0.62, climb: 1.7, life: 2 }),
+    pulse: Object.freeze({ speed: 0.8, width: 0.11, spent: 2.3 }),
+    shock: Object.freeze({ speed: 64, life: 1.3 }),
+    racer: Object.freeze({ speed: 150, tail: 38, life: 5.2 }),
+    sunset: Object.freeze({ drop: 0.255, set: 0.55, rise: 1.1 }),
+});
 
 /** The slot with the least light still to give (`left` reads it): a new event takes it. */
 function weakest(slots, left) {
@@ -250,10 +332,17 @@ export function pieceColor(piece, type, out) {
     return out.set(PIECE_COLORS[type]);
 }
 
+const rows = (n) => Array.from({ length: n }, () => new THREE.Vector4(0, 0, 0, 0));
+
 export function createWorldUniforms() {
+    const mood0 = MOODS[0];
     return {
         time: uniform(0),
         scroll: uniform(0),
+        /** The lens's aspect (the ridgelines are widened in the image). */
+        aspect: uniform(16 / 9),
+        /** The camera's level right (the pillars turn to the lens about their upright). */
+        camRight: uniform(new THREE.Vector3(1, 0, 0)),
         sunDir: uniform(new THREE.Vector3(0, 0, -1)),
         sunRight: uniform(new THREE.Vector3(1, 0, 0)),
         sunUp: uniform(new THREE.Vector3(0, 1, 0)),
@@ -269,19 +358,46 @@ export function createWorldUniforms() {
         ripple1: uniform(new THREE.Vector4(0, 0, 0, 0)),
         ripple2: uniform(new THREE.Vector4(0, 0, 0, 0)),
         ripple3: uniform(new THREE.Vector4(0, 0, 0, 0)),
+        /** Hard drops' square shocks along the grid: (x, z, half-size, energy). */
+        shock0: uniform(new THREE.Vector4(0, 0, 0, 0)),
+        shock1: uniform(new THREE.Vector4(0, 0, 0, 0)),
+        /** Lights racing out along the grid: (lane x, head z, light, tail length), packed. */
+        racers: uniformArray(rows(SLOTS.racers), 'vec4'),
+        racerCount: uniform(0, 'int'),
         /** Hologram rings out of the sun: (radius in sun radii, 1/width, energy, dash turn). */
         holo0: uniform(new THREE.Vector4(0, 1, 0, 0)),
         holo1: uniform(new THREE.Vector4(0, 1, 0, 0)),
         holo2: uniform(new THREE.Vector4(0, 1, 0, 0)),
-        /** Shooting stars: (azimuth, elevation, heading, normalised age; ≥ 1 = dead). */
-        shoot0: uniform(new THREE.Vector4(0, 0, 0, 2)),
-        shoot1: uniform(new THREE.Vector4(0, 0, 0, 2)),
-        shoot2: uniform(new THREE.Vector4(0, 0, 0, 2)),
+        /**
+         * Meteors and satellites, two rows each, packed: (azimuth, elevation, heading, age 0..1)
+         * and (reach, tail, light, width).
+         */
+        shoots: uniformArray(rows(SLOTS.shoots * 2), 'vec4'),
+        shootCount: uniform(0, 'int'),
+        /** Laser beams out of the pass, packed: (angle from upright, half-width, light, hue). */
+        beams: uniformArray(rows(SLOTS.beams), 'vec4'),
+        beamCount: uniform(0, 'int'),
+        /** A twist's triangle: (half its side in sun radii, its turn, light, echoes). */
+        tri: uniform(new THREE.Vector4(SHOW.triangle.side, 0, 0, 0)),
+        /** Back-to-back's twin suns: (how far apart, in sun radii; light). */
+        twin: uniform(new THREE.Vector2(0, 0)),
+        /** The sunburst: (light, turn, reach in sun radii). */
+        rays: uniform(new THREE.Vector3(0, 0, 1)),
+        /** A level's scan bar: (the sine of its elevation, light). */
+        scan: uniform(new THREE.Vector2(0, 0)),
+        /** A comet: (azimuth, elevation, its tail's heading, light). */
+        comet: uniform(new THREE.Vector4(0, 0, 0, 0)),
+        /** The chain's meter: how many of the sun's slits are lit, from its base. */
+        slitFill: uniform(0),
         /** Waves of light rolling through the ranges toward the camera: (distance, energy) × 4. */
         contourA: uniform(new THREE.Vector4(0, 0, 0, 0)),
         contourB: uniform(new THREE.Vector4(0, 0, 0, 0)),
         /** The ridges' scan lines' own light: 0.8 at rest, more as play heats. */
         scanGain: uniform(0.8),
+        /** The ridgelines' light (1 at rest) and the pulses running along them, packed. */
+        ridgeGain: uniform(1),
+        ridgePulses: uniformArray(rows(SLOTS.pulses), 'vec4'),
+        ridgePulseCount: uniform(0, 'int'),
         /** The ambient light that moves at rest (the grid's slow pulse): 1, or 0 under reduced motion. */
         ambient: uniform(1),
         /** The grid's pulse: (phase of the band running in, 0..1; its energy). */
@@ -292,6 +408,8 @@ export function createWorldUniforms() {
         sunHeat: uniform(0),
         /** A perfect clear's crown (0..1): the slits close and the disc burns gold. */
         crown: uniform(0),
+        /** The run's end (0..1): the sun has gone down, the stars are out. */
+        night: uniform(0),
         /** The holograms' height (1 at rest; taller as play heats). */
         tileLift: uniform(1),
         /** The floor's scroll, unwrapped. */
@@ -300,11 +418,31 @@ export function createWorldUniforms() {
         tileRun: uniform(0),
         /** The dust's clock (the world's time at rest; quicker as play heats) and its light. */
         dustRun: uniform(0),
-        dustGain: uniform(1.6),
+        dustGain: uniform(2.1),
         /** The live mood's colours (neon-dusk-moods.js MOOD_KEYS), scene-linear. */
-        mood: Object.fromEntries(MOOD_KEYS.map((key) => [key, uniform(new THREE.Vector3(...MOODS[0][key]))])),
-        /** The live mood's starlight (1 in today's). */
-        starGain: uniform(MOODS[0].stars),
+        mood: Object.fromEntries(MOOD_KEYS.map((key) => [key, uniform(new THREE.Vector3(...mood0[key]))])),
+        /** The live mood's starlight (1 in today's), times the air's. */
+        starGain: uniform(mood0.stars),
+        /** The grid's and the scan lines' live colours (the mood's, swung by a hot hand). */
+        gridNear: uniform(new THREE.Vector3(...mood0.grid)),
+        gridFar: uniform(new THREE.Vector3(...mood0.gridFar)),
+        scanLow: uniform(new THREE.Vector3(...mood0.scanLow)),
+        scanHigh: uniform(new THREE.Vector3(...mood0.scanHigh)),
+        ridge: uniform(new THREE.Vector3(...mood0.ridge)),
+        ridgeFar: uniform(new THREE.Vector3(...mood0.ridgeFar)),
+        /** The live air (neon-dusk-clock.js AIRS). */
+        cloud: uniform(AIRS[0].cloud),
+        deep: uniform(AIRS[0].deep),
+        haze: uniform(AIRS[0].haze),
+        lattice: uniform(AIRS[0].lattice),
+        calm: uniform(AIRS[0].calm),
+        /** The sky's own turned frame (its y axis is the pole the stars wheel about). */
+        skyRot: uniform(new THREE.Matrix3()),
+        /** The ringed planet: where it stands, its east and north, (radius, rings' opening, how much of it shows, the rings' light). */
+        planetDir: uniform(new THREE.Vector3(0, 0.3, -1).normalize()),
+        planetEast: uniform(new THREE.Vector3(1, 0, 0)),
+        planetNorth: uniform(new THREE.Vector3(0, 1, 0)),
+        planet: uniform(new THREE.Vector4(PLANET.radius, 0.3, 0, 1.25)),
     };
 }
 
@@ -313,17 +451,6 @@ const MOOD_EASE = 0.8;
 
 /** At rest a shooting star crosses the sky once in each window of this many seconds. */
 export const AMBIENT_SHOOT_PERIOD = 19;
-
-/** A small deterministic generator for one ambient window (so a seek replays the same star). */
-function windowRandom(k) {
-    let s = (Math.imul(k | 0, 0x9e3779b1) ^ 0x5bd1e995) >>> 0;
-    return () => {
-        s = (s + 0x6d2b79f5) >>> 0;
-        let t = Math.imul(s ^ (s >>> 15), 1 | s);
-        t ^= t + Math.imul(t ^ (t >>> 7), 61 | t);
-        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-    };
-}
 
 export class NeonDuskWorld {
     /**
@@ -354,13 +481,10 @@ export class NeonDuskWorld {
         this.yawSettled = false;
         this.board = null;
 
-        const el = SUN.elevation;
-        this.sunDir = new THREE.Vector3(0, Math.sin(el), -Math.cos(el));
-        this.sunUp = new THREE.Vector3(0, Math.cos(el), Math.sin(el));
+        this.sunDir = new THREE.Vector3();
+        this.sunUp = new THREE.Vector3();
         this.sunRight = new THREE.Vector3(1, 0, 0);
-        this.u.sunDir.value.copy(this.sunDir);
-        this.u.sunUp.value.copy(this.sunUp);
-        this.u.sunRight.value.copy(this.sunRight);
+        this.setSunElevation(SUN.elevation);
 
         /** The sun's glow (what u.sunPulse shows): event hits add to what is still lit. */
         this.sunPulse = 0;
@@ -370,6 +494,10 @@ export class NeonDuskWorld {
         /** A perfect clear's crown: it swells in, holds a beat and lets go over ~3 s. */
         this.crownSwell = new Swell({
             attack: 0.12, release: 1.3, ceiling: 1, knee: 0.8,
+        });
+        /** The sunburst's own swell (a quad, a perfect clear, a sunrise). */
+        this.raySwell = new Swell({
+            attack: 0.08, release: 1.25, ceiling: 1.3, knee: 0.9,
         });
         /**
          * How hot play runs (src/themes/shared/gameplay-surge.js), and the true combo (the lock
@@ -398,26 +526,66 @@ export class NeonDuskWorld {
         this.slitPhase = 0;
         this.dustRun = 0;
         this.meteorDue = 0;
+        this.rayTurn = 0;
+        this.slitFill = 0;
+        this.slitGoal = 0;
+        /** The run's end: the sun is down (`ended`), and how far (`nightK`, eased). */
+        this.ended = false;
+        this.nightK = 0;
         /** The game's level (a level is one mood forward) and its eased step on the wheel. */
         this.level = 1;
         this.moodStep = 0;
         this._mood = {};
+        this._air = {};
+        this._planet = {
+            azimuth: 0, elevation: 0, arc: 0, roll: 0, open: 0, up: 0,
+        };
+        /**
+         * Iteration aids (the playground sets them): `air` pins the air (an index into AIRS, or
+         * null for the clock's), `happenings` off stills the sky's visitors, `planetTime` pins
+         * the planet's round.
+         */
+        this.tune = { air: null, happenings: true, planetTime: null };
 
         const slots = (n, make) => Array.from({ length: n }, make);
         this.rings = slots(SLOTS.rings, () => ({ t0: -1e6, energy: 0, out: false }));
         this.holos = slots(SLOTS.holos, () => ({ t0: -1e6, energy: 0, spin: 0 }));
-        this.shoots = slots(SLOTS.shoots, () => ({ t0: -1e6 }));
+        this.shoots = slots(SLOTS.shoots, () => ({
+            t0: -1e6, life: METEOR.life, az: 0, el: 0, heading: 0, reach: METEOR.reach, tail: METEOR.tail, gain: 1, width: 1,
+        }));
         this.ripples = slots(SLOTS.ripples, () => ({
             t0: -1e6, x: 0, z: 0, run: 0, energy: 0,
         }));
         this.contours = slots(SLOTS.contours, () => ({ t0: -1e6, energy: 0, speed: 1 }));
+        this.beams = slots(SLOTS.beams, () => ({
+            t0: -1e6, life: 1, from: 0, to: 0, width: 0.03, energy: 0, hue: 0,
+        }));
+        this.pulses = slots(SLOTS.pulses, () => ({
+            t0: -1e6, energy: 0, speed: SHOW.pulse.speed, width: SHOW.pulse.width, range: -1,
+        }));
+        this.shocks = slots(SLOTS.shocks, () => ({
+            t0: -1e6, x: 0, z: 0, run: 0, energy: 0,
+        }));
+        this.racers = slots(SLOTS.racers, () => ({
+            t0: -1e6, x: 0, z: 0, energy: 0,
+        }));
+        /** The one-at-a-time instruments. */
+        this.triangle = {
+            t0: -1e6, energy: 0, echoes: 0, dir: 1,
+        };
+        this.twins = { t0: -1e6, energy: 0, reach: SHOW.twins.reach };
+        this.scan = { t0: -1e6, energy: 0 };
+        this.comet = {
+            t0: -1e6, life: 0, az: 0, el: 0, vaz: 0, vel: 0, energy: 0,
+        };
         const { u } = this;
         this.ringU = [u.ring0, u.ring1, u.ring2];
         this.holoU = [u.holo0, u.holo1, u.holo2];
-        this.shootU = [u.shoot0, u.shoot1, u.shoot2];
         this.rippleU = [u.ripple0, u.ripple1, u.ripple2, u.ripple3];
+        this.shockU = [u.shock0, u.shock1];
         this.contourV = [u.contourA.value, u.contourB.value];
         this._color = new THREE.Color();
+        this._swing = [0, 0, 0];
 
         this._camRest = new THREE.Vector3(RIG.x, RIG.height, RIG.z);
         this._fwd = new THREE.Vector3();
@@ -427,6 +595,10 @@ export class NeonDuskWorld {
         this._target = new THREE.Vector3();
         this._a = new THREE.Vector3();
         this._b = new THREE.Vector3();
+        this._pole = new THREE.Vector3();
+        this._ex = new THREE.Vector3();
+        this._ez = new THREE.Vector3();
+        this.applyClocks(0);
     }
 
     build() {
@@ -440,20 +612,24 @@ export class NeonDuskWorld {
      */
     * buildSteps() {
         const { q, u, rand } = this;
-        this.parts.sky = createSky(u, { clouds: q.clouds, starDensity: q.stars });
+        this.parts.sky = createSky(u, { clouds: q.clouds, starDensity: q.stars, fine: q.fine });
         yield 'sky';
         this.parts.mountains = yield* createMountainsSteps(u, { detail: q.detail, contours: q.contours });
         yield 'mountains';
+        this.parts.ridges = createRidges(u, this.parts.mountains.userData.crests);
+        yield 'ridges';
         const floor = createFloor(u, { reflectionScale: q.reflection, reflectionBlur: q.reflectionBlur });
         this.parts.floor = floor.mesh;
         this.reflection = floor.reflection;
         this.fx = new NeonDuskFx(u, {
             dust: q.dust, burst: q.burst, tiles: q.tiles, rand,
         });
+        this.flight = new NeonDuskFlight(u);
         for (const part of Object.values(this.parts)) {
             if (part) this.root.add(part);
         }
         if (floor.reflectorTarget) this.root.add(floor.reflectorTarget);
+        this.root.add(this.flight.group);
         this.root.add(this.fx.group);
         this.scene.add(this.root);
         return this;
@@ -476,14 +652,26 @@ export class NeonDuskWorld {
         return Math.min(RIG.vfov, THREE.MathUtils.radToDeg(capped));
     }
 
+    /** Stand the sun `elevation` (rad) over the horizon at azimuth 0 (the pass). */
+    setSunElevation(elevation) {
+        this.sunDir.set(0, Math.sin(elevation), -Math.cos(elevation));
+        this.sunUp.set(0, Math.cos(elevation), Math.sin(elevation));
+        this.u.sunDir.value.copy(this.sunDir);
+        this.u.sunUp.value.copy(this.sunUp);
+        this.u.sunRight.value.copy(this.sunRight);
+    }
+
     /** Screen x (fraction from the left) of the sun for a camera yaw. */
     sunScreenX(yaw) {
         const tanV = Math.tan(THREE.MathUtils.degToRad(this.lens.vfov) / 2);
         const cp = Math.cos(this.pitch);
         const sp = Math.sin(this.pitch);
-        const d = this.sunDir;
-        const depth = d.x * Math.sin(yaw) * cp + d.y * sp - d.z * Math.cos(yaw) * cp;
-        const side = d.x * Math.cos(yaw) + d.z * Math.sin(yaw);
+        // The pass's bearing at the sun's authored height: the composition does not follow the
+        // sun's own rise and fall.
+        const dy = Math.sin(SUN.elevation);
+        const dz = -Math.cos(SUN.elevation);
+        const depth = dy * sp - dz * Math.cos(yaw) * cp;
+        const side = dz * Math.sin(yaw);
         return (side / Math.max(1e-4, depth) / (tanV * this.lens.aspect)) * 0.5 + 0.5;
     }
 
@@ -491,6 +679,7 @@ export class NeonDuskWorld {
     setLayout(aspect, board = null, { immediate = false } = {}) {
         this.lens.aspect = Math.max(0.1, aspect || 16 / 9);
         this.lens.vfov = NeonDuskWorld.verticalFov(this.lens.aspect);
+        this.u.aspect.value = this.lens.aspect;
         const tanV = Math.tan(THREE.MathUtils.degToRad(this.lens.vfov) / 2);
         this.pitch = Math.atan((2 * RIG.horizonFrac - 1) * tanV);
         this.board = board;
@@ -519,6 +708,11 @@ export class NeonDuskWorld {
         return { fwd: this._fwd, right: this._right, up: this._up };
     }
 
+    /** Half the lens's horizontal field (rad). */
+    halfField() {
+        return Math.atan(Math.tan(THREE.MathUtils.degToRad(this.lens.vfov) / 2) * this.lens.aspect);
+    }
+
     /** Camera: eased yaw, the rest pose, a slow gliding drift and pointer parallax. */
     updateCamera(camera, sim) {
         const dt = sim.delta ?? 0;
@@ -535,6 +729,7 @@ export class NeonDuskWorld {
         }
         const t = sim.time ?? this.time;
         const { fwd, right } = this.viewBasis();
+        this.u.camRight.value.copy(right);
         const driftX = (Math.sin(t * 0.05) * 1.4 + Math.sin(t * 0.023 + 1.1) * 0.6) * motion;
         const driftY = (Math.sin(t * 0.07 + 0.4) * 0.35 + Math.sin(t * 0.019) * 0.2) * motion;
         const px = (sim.pointerX ?? 0) * 1.6 * motion;
@@ -581,6 +776,13 @@ export class NeonDuskWorld {
         const crown = this.crownSwell.valueAt(t);
         this.checkChain();
 
+        // The run's end: the sun goes down behind the pass (and comes back up for the next).
+        const S = SHOW.sunset;
+        this.nightK += ((this.ended ? 1 : 0) - this.nightK) * approach(this.ended ? S.set : S.rise, dt);
+        if (this.nightK < 1e-4) this.nightK = 0;
+        const night = this.nightK * this.nightK * (3 - 2 * this.nightK);
+        u.night.value = night;
+
         // The grid quickens with the heat (6 → ~16 units/s in a fever).
         this.scrollLag = (this.scrollLag ?? 0) + dt * SCROLL_SPEED * 0.7 * (1 - motion);
         this.scrollExtra += dt * SCROLL_SPEED * (0.45 * warm + 0.55 * hot + 0.65 * fever) * motion;
@@ -611,6 +813,11 @@ export class NeonDuskWorld {
             this.emitShootingStar();
         }
         this.updateAmbientShoot(t, motion);
+        this.updateHappenings(t, motion);
+        this.flight?.update(t, motion);
+
+        // The clocks: the air, the sky's turn, the planet, the sun's height.
+        this.applyClocks(dt, night);
 
         // The sun stokes up: its slits slide faster, its face burns toward the gold crown, its
         // glow keeps a floor under the events' hits; a perfect clear closes the slits.
@@ -624,19 +831,33 @@ export class NeonDuskWorld {
         u.sunPulse.value = this.sunPulse;
         this.glitch *= Math.exp(-3.5 * dt) * motion;
 
-        // The palette swings from magenta toward cyan with the chain, and holds there while
-        // play stays hot; when the chain breaks it eases back over a few seconds.
+        // The sunburst: its rays stand faint in the haze air and in a fever, a quad and a
+        // perfect clear throw them out, and they turn a little faster while they burn.
+        // A burst lights a third of the frame at once: Reduce flashing holds it back (ADR-0021).
+        const burst = this.raySwell.valueAt(t) * flashScale();
+        const rays = 0.22 * u.haze.value + 0.2 * fever + 0.55 * Math.min(1, crown) * (0.4 + 0.6 * flashScale()) + burst;
+        this.rayTurn = (this.rayTurn + dt * (0.04 + 0.35 * burst) * motion) % (Math.PI * 2);
+        u.rays.value.set(rays * (1 - 0.8 * night), this.rayTurn, 0.8 + 0.5 * u.haze.value + 2.4 * burst + 1.3 * Math.min(1, crown));
+
+        // The chain's meter: a slit of the sun lights for each step of the combo.
+        this.slitFill += (this.slitGoal - this.slitFill) * approach(this.slitGoal > this.slitFill ? 7 : 2.2, dt);
+        u.slitFill.value = this.slitFill < 0.01 ? 0 : this.slitFill;
+
+        // The palette swings round the colour wheel with the chain (in today's mood from
+        // magenta toward cyan), and holds there while play stays hot; when the chain breaks
+        // it eases back over a few seconds.
         this.comboTarget *= Math.exp(-0.35 * dt);
         const shiftTo = Math.max(this.comboTarget, 0.3 * hot + 0.45 * fever);
         this.comboShift += (shiftTo - this.comboShift) * approach(2.5, dt);
         u.comboShift.value = THREE.MathUtils.clamp(this.comboShift, 0, 1);
 
         // The ridges stay lit, the holograms stand taller, the dust streams up.
-        u.scanGain.value = 0.8 + 0.3 * warm + 0.35 * hot + 0.45 * fever + crown * 1.1;
+        u.scanGain.value = (0.8 + 0.3 * warm + 0.35 * hot + 0.45 * fever + crown * 1.1) * (1 - 0.35 * night);
+        u.ridgeGain.value = (1 + 0.2 * warm + 0.25 * hot + 0.35 * fever + crown * 1.4) * (1 - 0.3 * night);
         u.tileLift.value = 1 + 0.15 * warm + 0.15 * hot + 0.2 * fever;
         this.dustRun += dt * (1 + (1.5 * hot + 2.5 * fever) * motion);
         u.dustRun.value = this.dustRun;
-        u.dustGain.value = 1.6 * (1 + 0.3 * hot + 0.5 * fever);
+        u.dustGain.value = 2.1 * (1 + 0.3 * hot + 0.5 * fever);
 
         // The post: the iris closes a little as the dusk burns hotter (colours stay saturated),
         // and the bloom grows a touch.
@@ -650,6 +871,73 @@ export class NeonDuskWorld {
 
         this.applyMood(approach(MOOD_EASE, dt));
         this.updateSlots(t);
+    }
+
+    // ── The clocks: air, sky, planet, sun ───────────────────────────────────
+
+    /** The time the slow clocks read: the world's, held back under reduced motion. */
+    clockTime() {
+        return Math.max(0, this.time - (this.clockLag ?? 0));
+    }
+
+    /**
+     * Set what the slow clocks turn: the air's scalars, the sky's own frame, the planet and the
+     * sun's height. All closed forms of the time (a seek lands on the same sky); reduced motion
+     * runs them at a fifth.
+     */
+    applyClocks(dt, night = 0) {
+        const { u } = this;
+        const motion = this.motion ?? 1;
+        this.clockLag = (this.clockLag ?? 0) + dt * 0.8 * (1 - motion);
+        const t = this.clockTime();
+
+        const air = airAt(this.tune.air ?? airPhase(t), this._air);
+        u.cloud.value = air.cloud;
+        u.deep.value = air.deep * (1 + 0.6 * night);
+        u.haze.value = air.haze * (1 - night);
+        u.lattice.value = air.lattice;
+        u.calm.value = air.calm;
+
+        // The sky's frame: y is the pole, x and z turn about it.
+        const P = SKY_POLE;
+        const pole = this._pole.set(
+            Math.sin(P.azimuth) * Math.cos(P.elevation),
+            Math.sin(P.elevation),
+            -Math.cos(P.azimuth) * Math.cos(P.elevation),
+        );
+        const ex = this._ex.set(Math.cos(P.azimuth), 0, Math.sin(P.azimuth));
+        const ez = this._ez.crossVectors(ex, pole).normalize();
+        const turn = skyTurn(t, this.moodStep);
+        const c = Math.cos(turn);
+        const s = Math.sin(turn);
+        u.skyRot.value.set(
+            ex.x * c + ez.x * s,
+            ex.y * c + ez.y * s,
+            ex.z * c + ez.z * s,
+            pole.x,
+            pole.y,
+            pole.z,
+            ez.x * c - ex.x * s,
+            ez.y * c - ex.y * s,
+            ez.z * c - ex.z * s,
+        );
+
+        // The planet: where it stands, its rings' roll and opening, and its fade at the ends
+        // of its arc (it rises and sets behind the ranges).
+        const planet = planetAt(this.tune.planetTime ?? t, this._planet);
+        const ce = Math.cos(planet.elevation);
+        const dir = u.planetDir.value.set(Math.sin(planet.azimuth) * ce, Math.sin(planet.elevation), -Math.cos(planet.azimuth) * ce);
+        const east0 = this._a.set(-dir.z, 0, dir.x).normalize();
+        const north0 = this._b.crossVectors(east0, dir).normalize();
+        const cr = Math.cos(planet.roll);
+        const sr = Math.sin(planet.roll);
+        u.planetEast.value.copy(east0).multiplyScalar(cr).addScaledVector(north0, sr);
+        u.planetNorth.value.copy(north0).multiplyScalar(cr).addScaledVector(east0, -sr);
+        const show = planet.up ? smooth(0, 0.05, planet.arc) * (1 - smooth(0.95, 1, planet.arc)) : 0;
+        u.planet.value.set(PLANET.radius, planet.open, show, 1.25);
+
+        // The sun's height: its slow ride in the pass, and its setting at a run's end.
+        this.setSunElevation(SUN.elevation + sunDrift(t) - SHOW.sunset.drop * night);
     }
 
     // ── Mood: the clock turns the light, a level is a step on top ───────────
@@ -677,6 +965,11 @@ export class NeonDuskWorld {
         return moodName(this.moodStep + moodDrift(this.time, MOOD_PERIOD, MOOD_HOLD));
     }
 
+    /** The live air's name (diagnostics). */
+    airName() {
+        return airName(this.tune.air ?? airPhase(this.clockTime()));
+    }
+
     /**
      * Set the live mood's uniforms. The clock's turn is exact (a function of the time alone, so a
      * seek and a replay agree); the level's step eases in by `k` (1 snaps), the short way round.
@@ -690,11 +983,26 @@ export class NeonDuskWorld {
             const c = mood[key];
             u.mood[key].value.set(c[0], c[1], c[2]);
         }
-        u.starGain.value = mood.stars;
+        u.starGain.value = mood.stars * (this._air.stars ?? 1) * (1 + 0.5 * u.night.value);
+        // The grid and the scan lines: the mood's colours, swung by a hot hand.
+        const shift = u.comboShift.value;
+        const out = this._swing;
+        const write = (target, from, to) => {
+            swing(mood[from], mood[to], shift, out);
+            target.value.set(out[0], out[1], out[2]);
+        };
+        write(u.gridNear, 'grid', 'gridHot');
+        write(u.gridFar, 'gridFar', 'gridFarHot');
+        write(u.scanLow, 'scanLow', 'scanLowHot');
+        write(u.scanHigh, 'scanHigh', 'scanHighHot');
+        u.ridge.value.set(mood.ridge[0], mood.ridge[1], mood.ridge[2]);
+        u.ridgeFar.value.set(mood.ridgeFar[0], mood.ridgeFar[1], mood.ridgeFar[2]);
     }
 
     /** The event layers' uniforms from their slots (plain loops: nothing allocated a frame). */
     updateSlots(t) {
+        const { u } = this;
+        const motion = this.motion ?? 1;
         // Floor light waves: in from 700 units to past the camera in ~2.8 s, or (an exhale)
         // out from the camera toward the horizon.
         for (let i = 0; i < this.rings.length; i += 1) {
@@ -724,10 +1032,18 @@ export class NeonDuskWorld {
             }
         }
 
-        // Shooting stars live 0.9 s.
+        // Meteors: the live ones packed at the front, two rows each.
+        const shootRows = u.shoots.array;
+        let live = 0;
         for (let i = 0; i < this.shoots.length; i += 1) {
-            this.shootU[i].value.w = Math.max(0, (t - this.shoots[i].t0) / 0.9);
+            const star = this.shoots[i];
+            const age = (t - star.t0) / star.life;
+            if (age < 0 || age >= 1) continue;
+            shootRows[live * 2].set(star.az, star.el, star.heading, age);
+            shootRows[live * 2 + 1].set(star.reach, star.tail, star.gain, star.width);
+            live += 1;
         }
+        u.shootCount.value = live;
 
         // Lock ripples spread at 46 units/s and fade over 1.8 s, riding the floor's scroll.
         for (let i = 0; i < this.ripples.length; i += 1) {
@@ -741,15 +1057,33 @@ export class NeonDuskWorld {
             }
         }
 
+        // A hard drop's shock: a square running out along the grid, riding the scroll.
+        for (let i = 0; i < this.shocks.length; i += 1) {
+            const shock = this.shocks[i];
+            const age = t - shock.t0;
+            const v = this.shockU[i].value;
+            if (age < 0 || age >= SHOW.shock.life || shock.energy <= 0) {
+                v.w = 0;
+            } else {
+                const k = age / SHOW.shock.life;
+                v.set(
+                    shock.x,
+                    shock.z + (this.scrollRun - shock.run),
+                    3 + age * SHOW.shock.speed,
+                    shock.energy * Math.min(1, age / 0.05) * (1 - k) ** 1.4,
+                );
+            }
+        }
+
         // Scan sweeps roll in from behind the far range (3000 → 350 units) in 1.5 s at their
         // own pace (a deeper cascade wave sweeps faster): (distance, energy) pairs, two a vec4.
         for (let i = 0; i < this.contours.length; i += 1) {
             const wave = this.contours[i];
             const v = this.contourV[i >> 1];
             const age = (t - wave.t0) * wave.speed;
-            const live = age >= 0 && age < 1.6 && wave.energy > 0;
-            const dist = live ? 3000 - age * 1770 : 0;
-            const energy = live ? wave.energy * contourEnvelope(age) : 0;
+            const alive = age >= 0 && age < 1.6 && wave.energy > 0;
+            const dist = alive ? 3000 - age * 1770 : 0;
+            const energy = alive ? wave.energy * contourEnvelope(age) : 0;
             if (i & 1) {
                 v.z = dist;
                 v.w = energy;
@@ -758,6 +1092,101 @@ export class NeonDuskWorld {
                 v.y = energy;
             }
         }
+
+        // Ridgeline pulses run out along the crests from the pass, both ways at once.
+        const pulseRows = u.ridgePulses.array;
+        live = 0;
+        for (let i = 0; i < this.pulses.length; i += 1) {
+            const pulse = this.pulses[i];
+            const age = t - pulse.t0;
+            if (age < 0 || pulse.energy <= 0) continue;
+            const at = age * pulse.speed;
+            if (at >= SHOW.pulse.spent) continue;
+            const envelope = Math.min(1, age / 0.07) * (1 - smooth(1.3, SHOW.pulse.spent, at));
+            pulseRows[live].set(at, 1 / pulse.width, pulse.energy * envelope, pulse.range);
+            live += 1;
+        }
+        u.ridgePulseCount.value = live;
+
+        // Laser beams: each sweeps from one angle to another over its life.
+        const beamRows = u.beams.array;
+        live = 0;
+        for (let i = 0; i < this.beams.length; i += 1) {
+            const beam = this.beams[i];
+            const age = t - beam.t0;
+            if (age < 0 || age >= beam.life || beam.energy <= 0) continue;
+            const k = age / beam.life;
+            const sweep = motion * easeOut(k) + (1 - motion) * 0.5;
+            const envelope = Math.min(1, age / 0.1) * (1 - smooth(0.62, 1, k));
+            beamRows[live].set(beam.from + (beam.to - beam.from) * sweep, beam.width, beam.energy * envelope, beam.hue);
+            live += 1;
+        }
+        u.beamCount.value = live;
+
+        // Racers: lights running out along the grid's lines toward the horizon.
+        const racerRows = u.racers.array;
+        live = 0;
+        for (let i = 0; i < this.racers.length; i += 1) {
+            const racer = this.racers[i];
+            const age = t - racer.t0;
+            if (age < 0 || age >= SHOW.racer.life || racer.energy <= 0) continue;
+            const k = age / SHOW.racer.life;
+            const envelope = Math.min(1, age / 0.25) * (1 - smooth(0.6, 1, k));
+            racerRows[live].set(racer.x, racer.z - age * SHOW.racer.speed, racer.energy * envelope, SHOW.racer.tail);
+            live += 1;
+        }
+        u.racerCount.value = live;
+
+        // A twist's triangle: it grows in, spins home (a third of a turn) and fades.
+        const tri = this.triangle;
+        const T = SHOW.triangle;
+        const triAge = t - tri.t0;
+        if (triAge < 0 || triAge >= T.life || tri.energy <= 0) {
+            u.tri.value.z = 0;
+        } else {
+            const turn = tri.dir * T.turn * (1 - easeOut(triAge / T.spin)) * motion;
+            const grow = 0.8 + 0.2 * easeOut(triAge / 0.45);
+            const envelope = Math.min(1, triAge / 0.07) * (1 - smooth(T.life * 0.6, T.life, triAge));
+            u.tri.value.set(T.side * grow, turn, tri.energy * envelope, tri.echoes);
+        }
+
+        // Back-to-back's twins: out and back.
+        const twin = this.twins;
+        const twinAge = t - twin.t0;
+        if (twinAge < 0 || twinAge >= SHOW.twins.life || twin.energy <= 0) {
+            u.twin.value.y = 0;
+        } else {
+            const k = twinAge / SHOW.twins.life;
+            const out = Math.sin(Math.PI * Math.min(1, k * 1.08)) ** 0.75;
+            const envelope = Math.min(1, twinAge / 0.08) * (1 - smooth(0.75, 1, k));
+            u.twin.value.set(twin.reach * out * (0.35 + 0.65 * motion), twin.energy * envelope);
+        }
+
+        // A level's scan bar climbs the sky.
+        const scanAge = t - this.scan.t0;
+        if (scanAge < 0 || scanAge >= SHOW.scan.life || this.scan.energy <= 0) {
+            u.scan.value.y = 0;
+        } else {
+            const k = Math.min(1, scanAge / SHOW.scan.climb);
+            const climb = k * k * (3 - 2 * k);
+            const envelope = Math.min(1, scanAge / 0.12) * (1 - smooth(SHOW.scan.climb * 0.8, SHOW.scan.life, scanAge));
+            // The bar and its wake cross the whole sky: held back under Reduce flashing.
+            u.scan.value.set(0.004 + SHOW.scan.top * climb, this.scan.energy * envelope * flashScale());
+        }
+
+        // A comet hangs in the sky and drifts.
+        const { comet } = this;
+        const cometAge = t - comet.t0;
+        if (cometAge < 0 || cometAge >= comet.life || comet.energy <= 0) {
+            u.comet.value.w = 0;
+        } else {
+            const az = comet.az + comet.vaz * cometAge;
+            const el = comet.el + comet.vel * cometAge;
+            // Its tail streams away from the sun.
+            const heading = Math.atan2(el - Math.asin(this.sunDir.y), az);
+            const envelope = smooth(0, 4, cometAge) * (1 - smooth(comet.life - 5, comet.life, cometAge));
+            u.comet.value.set(az, el, heading, comet.energy * envelope);
+        }
     }
 
     seek(time) {
@@ -765,6 +1194,7 @@ export class NeonDuskWorld {
         this.sunPulse = 0;
         this.sunSwell.reset();
         this.crownSwell.reset();
+        this.raySwell.reset();
         this.surge.reset();
         this.heat = this.surge.sample(Number.NaN);
         this.combo.reset();
@@ -781,13 +1211,31 @@ export class NeonDuskWorld {
         this.slitPhase = time * SLITS.speed;
         this.dustRun = time;
         this.meteorDue = 0;
+        this.rayTurn = (time * 0.04) % (Math.PI * 2);
+        this.slitFill = 0;
+        this.slitGoal = 0;
+        this.ended = false;
+        this.nightK = 0;
+        this.u.night.value = 0;
         this.rings.forEach((r) => { r.t0 = -1e6; r.energy = 0; });
         this.holos.forEach((r) => { r.t0 = -1e6; r.energy = 0; });
         this.shoots.forEach((r) => { r.t0 = -1e6; });
         this.ripples.forEach((r) => { r.t0 = -1e6; r.energy = 0; });
         this.contours.forEach((r) => { r.t0 = -1e6; r.energy = 0; });
+        this.beams.forEach((r) => { r.t0 = -1e6; r.energy = 0; });
+        this.pulses.forEach((r) => { r.t0 = -1e6; r.energy = 0; });
+        this.shocks.forEach((r) => { r.t0 = -1e6; r.energy = 0; });
+        this.racers.forEach((r) => { r.t0 = -1e6; r.energy = 0; });
+        this.triangle.t0 = -1e6;
+        this.twins.t0 = -1e6;
+        this.scan.t0 = -1e6;
+        this.comet.t0 = -1e6;
+        this.comet.energy = 0;
         this.ambientShootWindow = undefined;
+        this.happenWindow = undefined;
         this.fx?.clear();
+        this.flight?.clear();
+        this.applyClocks(0);
         this.applyMood(1);
     }
 
@@ -841,13 +1289,16 @@ export class NeonDuskWorld {
      * far out on the floor on the sun's side of the board (hologramPath), gliding in along the
      * grid toward the camera and lying back down in the glass as it arrives; a ripple ring
      * spreads out from where it rose and a few pixels rise off it.
-     * A hard drop lands harder: a stronger ripple, more pixels, a bigger thump.
+     * A hard drop lands harder: a pillar of light strikes up out of the glass where it rose, a
+     * square shock runs out along the grid's lines, a stronger ripple, more pixels, a bigger thump.
      */
     onPieceLock(piece) {
         const r = this.rand;
         const t = this.time;
         const hard = this.hardDropAt === t;
         this.hardDropAt = -1e6;
+        // A lock after the run's end is a new run: the sun comes back up.
+        if (this.ended) this.onSessionStart();
         // The chain: a lock that clears nothing ends it (checkChain sees it next frame).
         this.combo.notePieceLocked();
         this.lastLockAt = t;
@@ -890,6 +1341,11 @@ export class NeonDuskWorld {
         placed.sort((p, q) => p.depth - q.depth);
         this.fx.spawnPiece(t, placed, color, this.tileRun, this.tileRun + path.travel);
         this.spawnRipple(path.x, path.z, hard ? 1.5 : 1);
+        if (hard) {
+            const motion = this.motion ?? 1;
+            this.spawnShock(path.x, path.z, 0.9 * (0.5 + 0.5 * motion));
+            this.fx.spawnPillar(t, cx + midX * S, cz - midY * S, this.scrollRun, color, 1);
+        }
         const pixels = hard ? 10 : 6;
         for (let i = 0; i < pixels; i += 1) {
             const [px, py] = cells[i % cells.length];
@@ -916,7 +1372,9 @@ export class NeonDuskWorld {
     /**
      * A line clear (one wave of a lock's clear; `cascade` = its depth, 1 for the first). Each
      * cascade wave rolls through deeper, brighter and faster than the last, and each step of the
-     * true combo lifts what the next clear lights.
+     * true combo lifts what the next clear lights. More lines bring more instruments: a single
+     * is a pulse along the ridgelines (with the glass's wave and the ranges' scan), a double
+     * adds the halo, a triple the laser fan, a quad the sunburst.
      */
     onLineClear(lines = 1, { cascade = 1 } = {}) {
         const t = this.time;
@@ -926,16 +1384,26 @@ export class NeonDuskWorld {
         const combo = this.combo.noteLineClear();
         this.chainLen = combo;
         const steps = Math.min(10, Math.max(0, combo - 1));
+        // The chain's meter: a slit of the sun for each step.
+        this.slitGoal = Math.min(6, steps);
+        // The ridgelines: a pulse of light runs out along the crests from the pass, at once.
+        const pulseEnergy = (0.55 + 0.16 * n) * (1 + 0.18 * deeper) + 0.04 * steps;
+        this.triggerRidgePulse(pulseEnergy, { speed: SHOW.pulse.speed * (1 + 0.16 * deeper) });
+        if (n >= 3) this.triggerRidgePulse(pulseEnergy * 0.7, { delay: 0.16 });
         // The floor: a wave of light rolls in from the horizon; a quick hand's clears join the
         // one still waiting below it and arrive as one brighter band.
-        this.triggerRing((0.5 + 0.2 * n) * (1 + 0.18 * deeper) + 0.04 * steps, 1.25);
+        this.triggerRing((0.5 + 0.2 * n) * (1 + 0.18 * deeper) + 0.04 * steps, 0.6);
         // The ranges: a laser sweep rolls through toward the camera.
         this.triggerContour((0.5 + 0.15 * n) * (1 + 0.22 * deeper) + 0.035 * steps, 1 + 0.16 * deeper);
         if (n >= 2 || steps >= 2) this.triggerHolo(0.6 + 0.15 * n + 0.04 * steps);
-        if (n >= 4) this.triggerHolo(1.2, 0.35);
+        if (n === 3) this.triggerBeams('triple');
         this.sunSwell.hit(0.12 * n + 0.05 * deeper + 0.03 * steps, t);
         this.emitRisingPixels(this.burstCount(0.05 * n + 0.01 * steps, 22 * n + 6 * Math.min(6, steps)));
         if (n >= 4) {
+            // The quad: the sunburst.
+            this.triggerHolo(1.2, 0.35);
+            this.triggerBeams('quad');
+            this.raySwell.hit(1, t);
             this.sunSwell.hit(0.7, t);
             this.glitch = Math.min(1, this.glitch + 0.5);
             this.emitSunBurst(this.burstCount(0.45, 220));
@@ -946,31 +1414,36 @@ export class NeonDuskWorld {
         else this.surge.clear({ lines: n, cascade: 2 }, t);
     }
 
-    /** A cascade wave past the first (`count` = its depth; it comes before the wave's clear). */
+    /**
+     * A cascade wave past the first (`count` = its depth; it comes before the wave's clear): a
+     * volley of meteors falls away from the sun, one more a wave, and the palette swings.
+     */
     onCombo(count = 1) {
         const c = Math.max(0, count | 0);
         this.comboTarget = Math.min(1, Math.max(this.comboTarget, c * 0.16));
         this.sunSwell.hit(0.2, this.time);
         this.glitch = Math.min(1, this.glitch + 0.3 + c * 0.05);
-        if (c >= 2) {
-            this.emitShootingStar();
-            this.emitSunBurst(this.burstCount(0.12 + c * 0.06, 60 + 28 * c));
-        }
-        // From the third wave a halo leaves the sun, each one brighter than the last.
-        if (c >= 3) this.triggerHolo(0.5 + 0.12 * c);
+        this.emitVolley(Math.min(5, Math.max(1, c)));
+        if (c >= 2) this.emitSunBurst(this.burstCount(0.12 + c * 0.06, 60 + 28 * c));
     }
 
     /**
-     * A level-up's burst (the mood's step comes with setLevel, which the theme calls whether or not
-     * background effects are on: that setting gates reactions, not the light).
+     * A level-up's show (the mood's step comes with setLevel, which the theme calls whether or not
+     * background effects are on: that setting gates reactions, not the light): the scan bar climbs
+     * the sky, the ranges light far to near, lights race out along the grid.
      */
     onLevelUp() {
         const t = this.time;
         this.sunSwell.hit(0.8, t);
         this.glitch = Math.min(1, this.glitch + 0.6);
-        this.triggerRing(1.0, 1.25);
+        this.scan.t0 = t;
+        this.scan.energy = 1;
+        this.triggerRidgePulse(0.9, { range: 0 });
+        this.triggerRidgePulse(1.0, { range: 1, delay: 0.22 });
+        this.triggerRidgePulse(1.1, { range: 2, delay: 0.44 });
+        this.emitRacers(SLOTS.racers, t, this.rand);
+        this.triggerRing(1.0, 0.6);
         this.triggerHolo(1.2);
-        this.triggerHolo(1.0, 0.4);
         this.triggerContour(1.2, 1.1);
         this.emitShootingStar();
         this.emitSunBurst(this.burstCount(0.4, 180));
@@ -978,13 +1451,18 @@ export class NeonDuskWorld {
     }
 
     /**
-     * A twist: a spun halo, its dashes wheeling round the sun (it turns the clear's own halo
-     * when they leave together). One that clears nothing still turns a small one.
+     * A twist: the neon triangle stands round the sun and spins home, with an echo for each line
+     * it clears. One that clears nothing still turns a small one.
      */
     onTwist(lineCount = 0) {
         const t = this.time;
         const n = Math.max(0, lineCount | 0);
-        this.triggerHolo(n > 0 ? 0.7 + 0.15 * n : 0.45, 0, { spin: n > 0 ? 8 : 6 });
+        const tri = this.triangle;
+        const still = t - tri.t0 < SHOW.triangle.life * 0.6 ? tri.energy : 0;
+        tri.energy = softCeiling(Math.max(still, n > 0 ? 0.8 + 0.12 * n : 0.55), 1.1, 1.4);
+        tri.echoes = Math.max(n, t - tri.t0 < 0.3 ? tri.echoes : 0);
+        tri.dir = -tri.dir;
+        tri.t0 = t;
         this.sunSwell.hit(n > 0 ? 0.15 : 0.08, t);
         if (n === 0) this.emitRisingPixels(this.burstCount(0.03, 14));
         const k = n > 0 ? 1 : 0.5;
@@ -993,8 +1471,8 @@ export class NeonDuskWorld {
     }
 
     /**
-     * Back-to-back: twin halos wheeling opposite ways and a double laser sweep through the
-     * ranges, each streak brighter than the last.
+     * Back-to-back: the sun's twins slide out of it and fold back, farther with each streak, and
+     * a double laser sweep rolls through the ranges.
      */
     onB2B(active = true) {
         if (active === false) {
@@ -1004,8 +1482,10 @@ export class NeonDuskWorld {
         const t = this.time;
         this.b2bStreak += 1;
         const k = 1 + 0.25 * Math.min(4, this.b2bStreak - 1);
-        this.triggerHolo(0.85 * k, 0.05, { spin: 5, join: false });
-        this.triggerHolo(0.85 * k, 0.2, { spin: -5, join: false });
+        const W = SHOW.twins;
+        this.twins.t0 = t;
+        this.twins.energy = Math.min(1.5, 0.85 * k);
+        this.twins.reach = Math.min(W.most, W.reach + W.perStreak * (this.b2bStreak - 1));
         this.triggerContour(0.9 * k, 1.12);
         this.triggerContour(0.9 * k, 1.12, 0.22);
         this.sunSwell.hit(0.3 * k, t);
@@ -1015,34 +1495,62 @@ export class NeonDuskWorld {
 
     /**
      * The perfect clear (it comes ~0.36 s after the clear's last wave): a crown on the clear
-     * still playing, not a new clear. The slits close and the whole disc burns gold, halos
-     * fill the sky, every range lights up, and the glass breathes the light back out to the
-     * horizon as it lets go.
+     * still playing, not a new clear. The coronation: the slits close and the whole disc burns
+     * gold, its rays stand round it, seven gold beams crown it, every ridgeline is gilded from
+     * the pass outward, meteors fall, and the glass breathes the light back out to the horizon
+     * as it lets go.
      */
     onPerfectClear() {
         const t = this.time;
         this.crownSwell.hit(1, t);
-        this.sunSwell.hit(0.5, t);
+        this.sunSwell.hit(0.4, t);
+        this.raySwell.hit(0.7, t);
+        this.triggerBeams('crown');
+        this.triggerRidgePulse(1.5, { speed: SHOW.pulse.speed * 0.6, width: SHOW.pulse.width * 2.4 });
+        this.triggerRidgePulse(1.1, { speed: SHOW.pulse.speed * 0.6, width: SHOW.pulse.width * 2.4, delay: 0.5 });
         this.triggerHolo(1.4, 0, { spin: 2 });
         this.triggerHolo(1.1, 0.45, { spin: -2 });
         this.triggerContour(1.6, 1.25);
         this.triggerRing(1.0, 0.5, { out: true });
-        this.emitShootingStar();
-        this.emitShootingStar();
+        this.emitVolley(6);
         this.emitSunBurst(this.burstCount(0.35, 160));
         this.surge.punch.hit(SURGE_WEIGHTS.punch.perfect, t);
         this.surge.level.hit(SURGE_WEIGHTS.heat.perfect, t);
     }
 
+    /** The run is over: the sun goes down behind the pass and stays down until the next run. */
+    onGameOver() {
+        if (this.ended) return;
+        this.ended = true;
+        this.slitGoal = 0;
+        this.triggerRing(0.7, 0.2, { out: true });
+    }
+
+    /** A new run: after a run's end it is the sunrise (the sun comes up, a pulse runs the ridges). */
+    onSessionStart() {
+        if (!this.ended) return;
+        this.ended = false;
+        this.raySwell.hit(0.45, this.time);
+        this.triggerRidgePulse(0.9);
+        this.triggerRing(0.6, 0.3);
+    }
+
+    /** Leaving the mode with the sun still down lifts the night quietly. */
+    onSessionStop() {
+        this.ended = false;
+    }
+
     /**
      * After a lock that cleared nothing, a chain of three or more is over: the glass exhales,
-     * a soft wave running out to the horizon (the palette eases back by itself).
+     * a soft wave running out to the horizon (the palette eases back by itself), and the sun's
+     * lit slits go out.
      */
     checkChain() {
         if (this.lastLockCleared || !(this.time > this.lastLockAt)) return;
         this.lastLockCleared = true;
         const chain = this.chainLen;
         this.chainLen = 0;
+        this.slitGoal = 0;
         if (chain >= 3) this.triggerRing(0.3 + 0.05 * Math.min(10, chain), 0, { out: true });
     }
 
@@ -1116,6 +1624,74 @@ export class NeonDuskWorld {
         wave.speed = speed;
     }
 
+    /**
+     * A pulse of light out along the ridgelines from the pass after `delay` s (`range` = the one
+     * range it runs on, or −1 for all three). One launched with another on the same ranges joins
+     * it; otherwise it takes a spent slot, else the one farthest along.
+     */
+    triggerRidgePulse(energy, {
+        speed = SHOW.pulse.speed, width = SHOW.pulse.width, range = -1, delay = 0,
+    } = {}) {
+        const now = this.time;
+        const at = now + delay;
+        for (const pulse of this.pulses) {
+            if (pulse.energy > 0 && pulse.range === range && Math.abs(at - pulse.t0) < 0.09) {
+                pulse.energy = softCeiling(pulse.energy + energy, 1.4, 2.1);
+                pulse.speed = Math.max(pulse.speed, speed);
+                return;
+            }
+        }
+        const pulse = weakest(this.pulses, (s) => {
+            const age = now - s.t0;
+            if (s.energy <= 0 || age * s.speed >= SHOW.pulse.spent) return 0;
+            return age < 0 ? s.energy : s.energy * (1 - (age * s.speed) / SHOW.pulse.spent);
+        });
+        pulse.t0 = at;
+        pulse.energy = energy;
+        pulse.speed = speed;
+        pulse.width = width;
+        pulse.range = range;
+    }
+
+    /**
+     * Laser beams out of the pass: a `triple`'s fan of three, a `quad`'s crown of five opening
+     * across the sky, a perfect clear's `crown` of seven gold ones. Each takes a spent slot,
+     * else the beam nearest its end.
+     */
+    triggerBeams(kind) {
+        const t = this.time;
+        const take = () => weakest(this.beams, (s) => {
+            const age = t - s.t0;
+            if (s.energy <= 0 || age >= s.life) return 0;
+            return age < 0 ? s.energy : s.energy * (1 - age / s.life);
+        });
+        const add = (from, to, life, width, energy, hue, delay = 0) => {
+            const beam = take();
+            beam.t0 = t + delay;
+            beam.life = life;
+            beam.from = from;
+            beam.to = to;
+            beam.width = width;
+            beam.energy = energy;
+            beam.hue = hue;
+        };
+        if (kind === 'triple') {
+            add(-0.16, -0.62, 1.7, 0.03, 0.95, 0);
+            add(0.02, 0.0, 1.7, 0.03, 0.85, 1, 0.05);
+            add(0.16, 0.62, 1.7, 0.03, 0.95, 0, 0.1);
+        } else if (kind === 'quad') {
+            for (let i = 0; i < 5; i += 1) {
+                const k = i - 2;
+                add(k * 0.1, k * 0.5, 2.3, 0.034, 1.15, i % 2, Math.abs(k) * 0.05);
+            }
+        } else {
+            for (let i = 0; i < 7; i += 1) {
+                const k = i - 3;
+                add(k * 0.2, k * 0.36, 4.2, 0.03, 1.05, 2, Math.abs(k) * 0.07);
+            }
+        }
+    }
+
     /** A lock's ripple in the glass at (x, z): the weakest of the four rings makes way. */
     spawnRipple(x, z, energy) {
         const now = this.time;
@@ -1129,6 +1705,21 @@ export class NeonDuskWorld {
         rip.z = z;
         rip.run = this.scrollRun;
         rip.energy = energy;
+    }
+
+    /** A hard drop's square shock at (x, z): the weaker of the two makes way. */
+    spawnShock(x, z, energy) {
+        const now = this.time;
+        const shock = weakest(this.shocks, (s) => {
+            const age = now - s.t0;
+            if (s.energy <= 0 || age >= SHOW.shock.life) return 0;
+            return s.energy * (1 - age / SHOW.shock.life);
+        });
+        shock.t0 = now;
+        shock.x = x;
+        shock.z = z;
+        shock.run = this.scrollRun;
+        shock.energy = energy;
     }
 
     /**
@@ -1149,23 +1740,170 @@ export class NeonDuskWorld {
     }
 
     /**
-     * A shooting star across the visible upper sky, falling away from the sun. It takes a dead
-     * slot, else the star furthest through its streak.
+     * The sky's visitors: in each HAPPENING_PERIOD window one may come (neon-dusk-clock.js), at
+     * a time and with numbers drawn from the window's own hash, so a seek lands in the middle of
+     * the same happening. None under reduced motion.
      */
-    emitShootingStar(t0 = this.time, r = this.rand) {
-        let slot = 0;
-        for (let i = 1; i < this.shoots.length; i += 1) {
-            if (this.shoots[i].t0 < this.shoots[slot].t0) slot = i;
+    updateHappenings(t, motion) {
+        if (motion < 0.5 || !this.tune.happenings) return;
+        const k = Math.floor(t / HAPPENING_PERIOD);
+        if (this.happenWindow === k) return;
+        const h = happeningOf(k);
+        if (t < h.start) return;
+        this.happenWindow = k;
+        if (t - h.start < h.duration) this.startHappening(h.kind, h.start, h.random);
+    }
+
+    /** Begin a happening of `kind` as of `t0` (it may already be under way) with generator `r`. */
+    startHappening(kind, t0 = this.time, r = this.rand) {
+        const half = this.halfField();
+        const boarded = Boolean(this.board && this.board.x0 > 0.16);
+        // With a board up the open sky is to its right; without one, either side.
+        const eitherSide = () => (r() < 0.5 ? -1 : 1);
+        if (kind === 'meteors') {
+            // A shower from one radiant, high over the open sky.
+            const side = boarded ? 1 : eitherSide();
+            const az0 = this.yaw + side * half * (0.45 + 0.3 * r());
+            const count = 5 + Math.floor(r() * 3);
+            for (let i = 0; i < count; i += 1) {
+                const heading = -Math.PI / 2 + (r() - 0.5) * 1.5;
+                this.emitMeteor({
+                    t0: t0 + i * (0.5 + 0.5 * r()),
+                    az: az0 + (r() - 0.5) * 0.3,
+                    el: 0.36 + r() * 0.12,
+                    heading,
+                    reach: 0.2 + r() * 0.12,
+                    tail: 0.1,
+                    gain: 0.9,
+                });
+            }
+        } else if (kind === 'satellite') {
+            const dir = r() < 0.5 ? -1 : 1;
+            this.emitMeteor({
+                t0,
+                life: 16,
+                az: this.yaw - dir * half * 1.05,
+                el: 0.3 + r() * 0.14,
+                heading: dir > 0 ? (r() - 0.5) * 0.12 : Math.PI + (r() - 0.5) * 0.12,
+                reach: half * 2.2,
+                tail: 0,
+                gain: 0.5,
+                width: 1.25,
+            });
+        } else if (kind === 'comet') {
+            const side = boarded ? 1 : eitherSide();
+            const { comet } = this;
+            comet.t0 = t0;
+            comet.life = 22;
+            comet.az = this.yaw + side * half * (0.55 + 0.25 * r());
+            comet.el = 0.3 + r() * 0.1;
+            comet.vaz = -side * 0.0022;
+            comet.vel = -0.0012;
+            comet.energy = 0.9;
+        } else if (kind === 'racers') {
+            this.emitRacers(3 + Math.floor(r() * 2), t0, r, 0.75);
+        } else if (kind === 'flight') {
+            this.flight?.start(t0, r);
         }
-        this.shoots[slot].t0 = t0;
-        const uni = this.shootU[slot];
-        const halfH = Math.atan(Math.tan(THREE.MathUtils.degToRad(this.lens.vfov) / 2) * this.lens.aspect);
-        const az = this.yaw + (r() * 2 - 1) * halfH * 0.75;
+    }
+
+    /**
+     * A meteor across the sky (the fields of METEOR, plus where it starts and its heading). It
+     * takes a dead slot, else the one furthest through its flight.
+     */
+    emitMeteor({
+        t0 = this.time, az, el, heading, life = METEOR.life, reach = METEOR.reach, tail = METEOR.tail,
+        gain = METEOR.gain, width = METEOR.width,
+    }) {
+        const now = this.time;
+        let slot = this.shoots[0];
+        let most = -Infinity;
+        for (const star of this.shoots) {
+            const age = (now - star.t0) / star.life;
+            const through = age >= 1 ? 2 : age;
+            if (through > most) {
+                most = through;
+                slot = star;
+            }
+        }
+        slot.t0 = t0;
+        slot.life = life;
+        slot.az = az;
+        slot.el = el;
+        slot.heading = heading;
+        slot.reach = reach;
+        slot.tail = tail;
+        slot.gain = gain;
+        slot.width = width;
+    }
+
+    /** A shooting star across the visible upper sky, falling away from the sun. */
+    emitShootingStar(t0 = this.time, r = this.rand) {
+        const az = this.yaw + (r() * 2 - 1) * this.halfField() * 0.75;
         const el = 0.22 + r() * 0.22;
         // Heading in (azimuth, elevation) space: across and down.
         const across = az > this.yaw ? 1 : -1;
         const heading = Math.atan2(-(0.35 + r() * 0.4), across * (0.8 + r() * 0.4));
-        uni.value.set(az, el, heading, 0);
+        this.emitMeteor({
+            t0, az, el, heading,
+        });
+    }
+
+    /** A volley: `count` meteors fanning away from over the sun, a beat apart. */
+    emitVolley(count) {
+        const r = this.rand;
+        const t = this.time;
+        const scale = 0.35 + 0.65 * (this.motion ?? 1);
+        const n = Math.max(1, Math.round(count * scale));
+        for (let i = 0; i < n; i += 1) {
+            const fan = n > 1 ? i / (n - 1) - 0.5 : (r() - 0.5) * 0.6;
+            // Out to its own side and down.
+            const side = fan >= 0 ? 1 : -1;
+            this.emitMeteor({
+                t0: t + i * 0.07,
+                az: fan * 0.5 + (r() - 0.5) * 0.08,
+                el: 0.3 + r() * 0.1,
+                heading: Math.atan2(-(0.3 + 0.3 * r()), side * (0.5 + Math.abs(fan) * 1.4)),
+                reach: 0.26 + r() * 0.1,
+                tail: 0.11,
+                gain: 1.1,
+                width: 1.2,
+            });
+        }
+    }
+
+    /**
+     * Send `count` lights racing out along the grid's lines from under the lens toward the
+     * horizon, as of `t0`, on lanes spread across the view.
+     */
+    emitRacers(count, t0 = this.time, r = this.rand, energy = 1) {
+        const scale = 0.35 + 0.65 * (this.motion ?? 1);
+        const n = Math.max(1, Math.round(count * scale));
+        const S = GRID_SPACING;
+        const { fwd, right } = this.viewBasis();
+        const cam = this._camRest;
+        const tanH = Math.tan(THREE.MathUtils.degToRad(this.lens.vfov) / 2) * this.lens.aspect;
+        for (let i = 0; i < n; i += 1) {
+            // A lane under the lens, across the near field.
+            const nx = -0.9 + (1.8 * (i + r())) / n;
+            const depth = 26 + r() * 22;
+            const x = cam.x + fwd.x * depth + right.x * nx * tanH * depth;
+            const z = cam.z + fwd.z * depth + right.z * nx * tanH * depth;
+            let slot = this.racers[0];
+            let most = -Infinity;
+            for (const racer of this.racers) {
+                const age = t0 - racer.t0;
+                const through = racer.energy <= 0 || age >= SHOW.racer.life ? 2 : age / SHOW.racer.life;
+                if (through > most) {
+                    most = through;
+                    slot = racer;
+                }
+            }
+            slot.t0 = t0 + i * 0.12;
+            slot.x = Math.round(x / S) * S;
+            slot.z = z + 30;
+            slot.energy = energy * (0.8 + 0.4 * r());
+        }
     }
 
     burstCount(share, cap) {
@@ -1273,13 +2011,30 @@ export class NeonDuskWorld {
         }
     }
 
-    /** Hide everything but the named parts (sky mountains floor fx) — iteration aid. */
+    /** What the dusk is doing now (diagnostics, the playground, tests). */
+    getState() {
+        return {
+            mood: this.moodName(),
+            air: this.airName(),
+            planet: { ...this._planet },
+            night: this.u.night.value,
+            ended: this.ended,
+            stage: this.heat.stage,
+            meteors: this.u.shootCount.value,
+            beams: this.u.beamCount.value,
+            ridgePulses: this.u.ridgePulseCount.value,
+            racers: this.u.racerCount.value,
+        };
+    }
+
+    /** Hide everything but the named parts (sky mountains ridges floor fx) — iteration aid. */
     showOnlyParts(names) {
         const keep = new Set(names);
         for (const [name, part] of Object.entries(this.parts)) {
             if (part) part.visible = keep.has(name);
         }
         this.fx.group.visible = keep.has('fx');
+        this.flight.group.visible = keep.has('flight') || keep.has('fx');
     }
 
     dispose() {
@@ -1292,6 +2047,7 @@ export class NeonDuskWorld {
         this.reflection?.dispose?.();
         this.reflection = null;
         this.fx?.dispose();
+        this.flight?.dispose();
         this.parts = {};
     }
 }

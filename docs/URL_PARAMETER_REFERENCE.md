@@ -5,7 +5,7 @@ in development and built games. Search by parameter name, purpose, theme or tool
 by category. Expand an entry for accepted values, the default, examples and source files.
 The reference only displays documentation; it never applies flags, navigates, or saves settings.
 
-The catalog documents **755 parameter names in 974 scoped entries**. The Odyssey overhaul (2026-10-20)
+The catalog documents **824 parameter names in 1105 scoped entries** (counted 2026-11-20). The Odyssey overhaul (2026-10-20)
 added `odysseyNoVisitors` (the whale shark and manta of the deep ocean), `odysseyCh6GiantAurora`
 (the retired crown on the ringed giant) and `odysseyCh7Throttle` (the warp drive held at a fixed
 throttle for captures), with the Act II and chapter 8 lanes' own levers. The Cosmic Noir rebuild
@@ -211,6 +211,15 @@ are `land`, `snags`, `sky`, `anvil`, `ash`, `bolts`, `jets`, `fans`, `whirls`, `
 `motes`. Its living pass (2026-11-18) adds five rows to the effect: `phase` (hold the eruption on
 its own wheel of phases, as `watch` holds the night), `event=happen` with `kind` (one of the
 mountain's own happenings) and `ha`, `hb`, `hc` (the three numbers that shape it).
+
+Neon Dusk's living pass (2026-11-20) adds seven rows to the `neon-dusk` effect: `air` (hold one of
+the five airs that turn beside the moods), `happenings` (0 holds off the sky's visitors), `happen`
+with `happenAge` (begin a meteor shower, a comet, a satellite, the grid's racers or the flight of
+gliders, and stand that far into it), `planetAt` (pin the ringed planet's round), `streak`
+(back-to-backs in a row) and `expose` (the world as `window.__NEON_DUSK__`). Its `event` now also
+takes `hardDrop`, `b2b`, `gameOver`, `sunrise` and `chain` (clearing locks in a row: `count`,
+`every`), and `parts` takes `ridges`. No reader was retired. Use
+`effect=neon-dusk&t=20&happenings=0` for a deterministic capture of the dusk at rest.
 
 Kaleidosonic (2026-10-13), a new theme in Singing Bowl's place, adds the capture flags
 `kaleidosonicForceWebGL`, `kaleidosonicTime`, `kaleidosonicFixedDt`, `kaleidosonicParts` and

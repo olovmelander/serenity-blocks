@@ -12,11 +12,17 @@
  * line clears roll a wave of light in from the horizon (three slots), and the end of a chain
  * breathes one back out. As play heats, the grid's own pulse comes faster and brighter until
  * the bands run in on the beat.
+ *
+ * The grid wears the live mood's colours (the world mixes them, swung by a hot hand), its
+ * crossings glint, a hard drop sends a SQUARE shock out along the lines from where the piece
+ * landed, and now and then lights race out along the lines toward the horizon (u.racers).
  */
 
 import * as THREE from 'three/webgpu';
 import {
     Fn,
+    If,
+    Loop,
     abs,
     atan,
     cameraPosition,
@@ -27,6 +33,7 @@ import {
     float,
     fract,
     fwidth,
+    int,
     length,
     max,
     min,
@@ -38,6 +45,7 @@ import {
     screenUV,
     sin,
     smoothstep,
+    step,
     vec2,
     vec3,
 } from 'three/tsl';
@@ -49,7 +57,6 @@ import {
     ndSkyGradient,
     ndSunAlign,
     ndSunDisc,
-    rgb,
 } from './neon-dusk-tsl.js';
 import { SUN_CROWN, ndSunColor, ndSunSlits } from './neon-dusk-sky.js';
 
@@ -65,6 +72,9 @@ export const AMBIENT_PULSE = Object.freeze({
 const PULSE_RUN = AMBIENT_PULSE.run / AMBIENT_PULSE.period;
 const PULSE_IN = 0.6 / AMBIENT_PULSE.period;
 const PULSE_OUT = (AMBIENT_PULSE.run - 1.5) / AMBIENT_PULSE.period;
+
+/** The most lights racing along the grid at once. */
+export const RACER_SLOTS = 6;
 
 /** A gaussian ring at `dist` for pulse slot P = (radius, 1/width, energy, 0). */
 const ringTerm = (dist, P) => {
@@ -156,6 +166,12 @@ export function createFloor(u, opts = {}) {
             rippleWave.addAssign(rd.mul(ring));
         }
         const wave = ringTerm(dist, u.ring0).add(ringTerm(dist, u.ring1)).add(ringTerm(dist, u.ring2)).toVar();
+        // A hard drop's shock: a square running out along the grid lines (the grid's own metric).
+        const shock = float(0.0).toVar();
+        for (const hit of [u.shock0, u.shock1]) {
+            const sq = max(abs(p.x.sub(hit.x)), abs(p.z.sub(hit.y))).sub(hit.z).mul(0.22);
+            shock.addAssign(exp(sq.mul(sq).negate()).mul(hit.w));
+        }
         // At rest a soft band of light runs in along the grid every AMBIENT_PULSE.period seconds;
         // as play heats the bands come quicker and brighter (off under reduced motion).
         const ambP = u.pulse.x;
@@ -184,7 +200,12 @@ export function createFloor(u, opts = {}) {
         const rfw = fwidth(rph);
         const rippleOn = float(1.0).sub(smoothstep(0.6, 1.8, rfw)).toVar();
         const crest = sin(rph).toVar();
-        const barMask = mix(float(1.0), smoothstep(-0.55, 0.45, crest).mul(0.9).add(0.18), rippleOn.mul(0.85));
+        // A calm air lays the glass nearly still: a cleaner mirror.
+        const barMask = mix(
+            float(1.0),
+            smoothstep(-0.55, 0.45, crest).mul(0.9).add(0.18),
+            rippleOn.mul(float(0.85).sub(u.calm.mul(0.55))),
+        );
 
         const mirror = vec3(0.0).toVar();
         if (reflection) {
@@ -222,21 +243,45 @@ export function createFloor(u, opts = {}) {
 
         // ── Neon grid ──
         const hw = float(0.018);
-        const line = max(ndLineAA(dx, hw, fx), ndLineAA(dz, hw, fz)).toVar();
+        const lineX = ndLineAA(dx, hw, fx).toVar();
+        const lineZ = ndLineAA(dz, hw, fz).toVar();
+        // The lines, and a glint where they cross.
+        const line = max(lineX, lineZ).add(lineX.mul(lineZ).mul(1.4)).toVar();
         const haloNear = max(exp(abs(dx).mul(-14.0)), exp(abs(dz).mul(-14.0)));
         const haloMix = smoothstep(0.05, 0.3, max(fx, fz));
         const halo = mix(haloNear, float(0.2), haloMix).mul(0.16);
-        // Magenta, pink, then through violet to cyan (never through a grey lavender).
-        const near = mix(rgb(0xff2a9d), rgb(0xff3fd2), smoothstep(0.0, 0.35, u.comboShift));
-        const violet = mix(near, rgb(0x9a4dff), smoothstep(0.3, 0.65, u.comboShift));
-        const shifted = mix(violet, rgb(0x2ce8ff), smoothstep(0.6, 1.0, u.comboShift));
-        const far = mix(rgb(0x8a3cff), rgb(0x3a7bff), u.comboShift);
-        const lineCol = mix(shifted, far, smoothstep(60.0, 700.0, dist)).mul(1.9);
-        const energy = line.add(halo).mul(float(1.0).add(wave.mul(2.6)).add(rippleRing.mul(2.0)));
+        // The live mood's grid colours, swung by a hot hand round the colour wheel (the world
+        // mixes them: in today's mood magenta through violet to cyan, never a grey lavender).
+        const lineCol = mix(u.gridNear, u.gridFar, smoothstep(60.0, 700.0, dist)).mul(1.9).toVar();
+        const energy = line.add(halo).mul(float(1.0).add(wave.mul(2.6)).add(rippleRing.mul(2.0)).add(shock.mul(3.4)))
+            .mul(float(1.0).sub(u.night.mul(0.4)));
         // The grid fades with distance so the mirror owns the far floor.
-        const gridFade = exp(dist.mul(-0.0019));
+        const gridFade = exp(dist.mul(-0.0019)).toVar();
         col.addAssign(lineCol.mul(energy).mul(gridFade));
         col.addAssign(lineCol.mul(wave.mul(0.04).add(rippleRing.mul(0.05))).mul(gridFade));
+        // The shock's own light: a pale square on the glass itself, whitest along the lines it
+        // runs over (a saturated line only blooms harder when it is given more of its own colour).
+        col.addAssign(mix(lineCol, vec3(2.1), 0.6).mul(shock.mul(line.mul(1.5).add(0.3))).mul(gridFade));
+
+        // ── Racers: lights running out along the grid's lines toward the horizon, each a
+        // bright head and a tail lying behind it: (lane x, head z, light, tail length) ──
+        If(u.racerCount.greaterThan(int(0)), () => {
+            const racing = float(0.0).toVar();
+            Loop({
+                start: int(0), end: u.racerCount, type: 'int', condition: '<', name: 'k',
+            }, ({ k }) => {
+                const R = u.racers.element(k).toVar();
+                const off = abs(p.x.sub(R.x)).toVar();
+                const side = off.mul(3.4);
+                // A thin heart on the line itself and a faint glow beside it.
+                const lane = exp(side.mul(side).negate()).add(exp(off.mul(-1.3)).mul(0.16));
+                const behind = p.z.sub(R.y).toVar();
+                const tail = exp(max(behind, 0.0).div(max(R.w, 0.5)).negate()).mul(step(0.0, behind));
+                const hd = behind.mul(0.45);
+                racing.addAssign(lane.mul(tail.add(exp(hd.mul(hd).negate()))).mul(R.z));
+            });
+            col.addAssign(mix(lineCol, vec3(1.9), 0.5).mul(racing).mul(exp(dist.mul(-0.0011))).mul(1.25));
+        });
 
         // ── Far floor: into the horizon haze (the colour the sky starts from) ──
         const fk = dist.mul(1 / 2900);

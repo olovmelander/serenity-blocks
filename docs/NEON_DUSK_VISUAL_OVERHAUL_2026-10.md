@@ -83,4 +83,122 @@ ambient shooting star.
 
 The icon is the `board=0` frame at `t=20`, `quality=Extreme`, in an 840 × 840 window, cropped to
 78 % of the frame height round its centre, lifted (`contrast(1.08) saturate(1.12)`) and clipped to a
-512 px circle on a transparent ground.
+512 px circle on a transparent ground. (Superseded 2026-11-20: the living pass re-baked it, below.)
+
+# The living pass (2026-11-20)
+
+Asked for: a full audit, then the theme raised to one of the game's most striking: varied over
+time, an effect of its own for every event with the biggest moments the most spectacular, smooth
+and readable. Built on `feature/neon-dusk-masterpiece`. The composition, the sun, the glass and
+the mood wheel of the dusk pass are kept; this pass builds on them.
+
+![Before and after](neon-dusk-captures/living-before-after.jpg)
+
+## What the audit found
+
+Judged from captures of all five moods, every event at two ages, Low, Minimal, WebGL2 and portrait
+(the "before" set), not from the code:
+
+- **Every event was the same instrument.** A double, a quad, a twist, a back-to-back, a perfect
+  clear and a level-up were all "dashed halos leave the sun" at different strengths. A single
+  showed nothing for over a second (its floor wave waited 1.25 s below the horizon); a hard drop
+  was a slightly stronger ripple far out on the glass.
+- **Nothing changed but the colour.** Five good palettes, but the grid stayed hot pink and the
+  ridges cyan in all of them, so "teal night" was a blue sky over the same floor. Beside the
+  moods: one grid pulse every 11 s and one shooting star every 19 s.
+- **The upper sky was empty**: an even sprinkle of similar stars over a gradient, the stratus
+  bars hairlines, nothing in the open sky right of the board.
+- **The ranges had no ridgelines.** The scan lines are cross-sections at fixed distances; they
+  never trace a crest, so the skylines themselves were dark edges.
+- **The dust** was a dozen visible specks.
+- Kept as they were: the sun and its slits, the composition solver, the glass and its sun road,
+  the lock holograms, the surge's four acts, the post chain.
+
+## What changed
+
+| Part | Change |
+| --- | --- |
+| Moods (`neon-dusk-moods.js`) | A mood now also sets the grid (near, far), the scan lines (foot, crest), the ridgelines and where a hot hand swings each of them (`swing()`: the short way round the colour wheel). Magenta dusk keeps its pink grid and cyan ridges; violet twilight has a violet grid; teal night a cyan grid under hot pink ridgelines; ultraviolet midnight a violet grid under mint ridges; amber dawn an orange grid under gold ones. |
+| Clocks (`neon-dusk-clock.js`, new, three-free) | Beside the moods (105 s), five **airs** on a 76 s period: clear, cloud bars, deep sky, haze, lattice. The **sky turns** about a pole above the frame (a turn in 40 min, a level a step on top). A **ringed planet** rises beside the pass, arcs over the sun and sets (560 s; down for a quarter of it). The **sun rides** ±1.1° in the pass. **Happenings**: in each 27 s window one may come, drawn from the window's hash (a seek lands in the middle of the same one): a meteor shower, a comet, a satellite, lights racing out along the grid, a flight of gliders. |
+| Sky (`neon-dusk-sky.js`) | Stars in the sky's own turned frame, on lattices of equal-area cells, each star's image sized in pixels and its brightness dealt steeply (a few bright, a dust of faint). The **galaxy's band** as points crowded by a density, with its own glow and one dust rift. The **planet**: a dark globe with a lit crescent toward the sun, bands, and rings its shadow cuts, measured along its own world axes so the glass mirrors the same planet. The **sunburst** (thin rays fanned round the disc), the **lattice** (the dome's grid overhead, running with the floor's), cloud bars that swell into slats in the cloud air. Event layers behind uniform branches: halos, the triangle, the twins, laser beams, the scan bar, meteors (a packed table), a comet. Fragment stage 43.8 KB of WGSL (22.6 before); the gate's budget is 96. |
+| Ridgelines (`neon-dusk-ridges.js`, new) | One neon line along each range's skyline: the mountains' build hands over each range's crest as the rest camera sees it, and a ribbon is widened in the image square to the line's own run (the same width on screen at any distance and slope), drawn a little toward the eye along its own sight line so its own slope does not cut it. Warm beside the sun, a slow shimmer, pulses of light running out from the pass. One additive draw; the glass mirrors it. |
+| Mountains (`neon-dusk-mountains.js`) | A wire net over the scan lines: the floor grid's own x lines carried up the slopes. Scan colours from the mood. |
+| Floor (`neon-dusk-floor.js`) | The grid in the mood's colours, a glint where its lines cross, a hard drop's **square** shock (the grid's own metric), racers along the lines, a calmer mirror in the still airs. |
+| FX (`neon-dusk-fx.js`) | A hard drop's pillar of light. The dust restyled as short upright dashes kept low over the glass (as squares, the near ones floated up among the stars as confetti). |
+| Flight (`neon-dusk-flight.js`, `neon-dusk-glider-model.js`, new) | Five gliders out of the sun, through the pass and over the lens, a line of light behind each. The hull is modelled in **Blender** (`scripts/blender/neon_dusk_glider.py`, headless; 98 triangles): a faceted delta dart exported with an edge code a corner, so only its real creases light, never a triangulation's diagonal. Two instanced draws, parked at no size. |
+| World (`neon-dusk-world.js`) | Drives all of it; the event table below; a run's end and the next run's start. |
+| Theme (`neon-dusk-theme.js`) | Hears `gameOver` and the mode manager's `modeStarted` / `modeStopped`. |
+
+![Moods and airs](neon-dusk-captures/living-moods-airs.jpg)
+
+![The sky's visitors](neon-dusk-captures/living-visitors.jpg)
+
+## An instrument for every event
+
+| Event | What plays |
+| --- | --- |
+| Lock | the piece's hologram rises far out and glides in (kept); a ripple |
+| Hard drop | a pillar of light strikes up where it landed; a square shock runs out along the grid lines |
+| Single | a pulse of light runs out along the ridgelines from the pass, at once; the glass's wave (now 0.6 s out, was 1.25); the ranges' scan |
+| Double | + a dashed halo leaves the sun |
+| Triple | + three laser beams fan up out of the pass |
+| Quad | the sunburst: rays thrown across the sky, a five-beam crown, the pixel storm, the tape slips |
+| Twist | the neon triangle stands round the sun and spins home, an echo a line cleared |
+| Back-to-back | the sun's twins: a cyan and a magenta ghost slide out and fold back, farther each streak; a double scan |
+| Cascade | a volley of meteors, one more a wave; the palette swings |
+| Combo | the sun's slits light one by one from its base (the chain's meter); they go out when it breaks |
+| Perfect clear | the coronation: the slits close and the disc burns gold, rays stand round it, seven gold beams crown it, every ridgeline is gilded from the pass outward, meteors fall, the glass breathes out |
+| Level | the scan bar climbs the whole sky, the ranges light far to near, lights race out along the grid, the mood steps |
+| Run's end | the sun goes down behind the pass, the stars come out; the next run is its sunrise |
+
+![Events](neon-dusk-captures/living-events.jpg)
+
+![In the game](neon-dusk-captures/living-in-game.jpg)
+
+Reduce flashing holds the sunburst and the scan bar back where the world writes them (ADR-0021;
+both lines are in `tests/unit/reduce-flashing.test.js`). Reduced motion: no happenings, the slow
+clocks at a fifth, beams and twins held near their middle, a third of the pixels.
+
+## Verification
+
+- Tests: `tests/unit/neon-dusk-living.test.js` (new, 17: the clocks, each event's own instrument and
+  no other's, the biggest moments the biggest, the happenings by the clock and after a seek, the
+  sunset and sunrise, every layer inside its slots under a hot hand, the ridgelines on the
+  skylines, the glider's hull, a flight's pass). Re-pinned with the reason in the test: the draw
+  count (6 to 10), the twist and back-to-back's instruments, the shooting star's table, the mood
+  step's last sliver (1e-3 to 2e-3). The shader gate builds every material, the new ones too, to
+  WGSL and GLSL at High and Low. 134 tests in the theme's files and the reduce-flashing gate, all
+  passing.
+- Playground captures on WebGPU (1600 × 900), console clean in every one: the five moods and the
+  five airs; every event; each happening; Minimal, Low, Medium; High and Minimal on the forced
+  WebGL2 backend; 430 × 852 and 390 × 844 upright; 2200 × 900.
+- In the game (headless Chrome, private dev server, single player, High, WebGPU): real hard
+  drops from the keyboard, a quad, a twist, a back-to-back, a perfect clear and a level-up through
+  the bus (the level moved the mood on), a stack played to the top (`gameOver` set the sun: night
+  0.999), and the next run (sunrise). Only the browser's own audio and Steam-cloud warnings.
+- Cost, playground at 1920 × 1080, 30 fps cap, the playground's GPU timestamps, main and the
+  branch interleaved over three rounds on this laptop's discrete GPU: High 0.31 ms before, 0.37
+  after; Low 0.20 before, 0.24 after. Not measured: an uncapped run, the peak of a quad or a
+  perfect clear, integrated GPUs, phones, the theme perf lane (ADR-0016).
+
+## Open
+
+- Upright phones still put the board over the sun (the dusk pass's composition, unchanged): the
+  triangle, the twins and the halos stand half behind the card there.
+- The cloud-bars air is the quietest of the five; the bars are soft slats, not bold cut-outs.
+- The wire net's lines run nearly upright on faces square to the lens.
+- The planet's globe is 4.6° across; nobody has judged it in motion, nor the flight, nor a fever.
+- Infinity, versus and local multiplayer layouts were not captured.
+
+## Reproduce
+
+`/playground.html?effect=neon-dusk&t=20&happenings=0`, then `air=0..4`, `t=` for the mood (105 s
+each), `event=hardDrop|clear|quad|twist|b2b|combo|chain|perfect|levelUp|gameOver|sunrise` with
+`eventAge=`, `happen=meteors|comet|satellite|racers|flight` with `happenAge=`, `planetAt=`.
+
+The glider: `blender --background --factory-startup --python scripts/blender/neon_dusk_glider.py --
+--out src/themes/neon-dusk/neon-dusk-glider-model.js [--preview <dir>]`.
+
+The icon is the `board=0&hud=0` frame at `t=20&air=0&planetAt=70&happenings=0`, `quality=Extreme`,
+in an 840 × 840 window, cropped to 78 % of the frame height round its centre, lifted
+(`contrast(1.08) saturate(1.12)`) and clipped to a 512 px circle on a transparent ground.

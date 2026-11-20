@@ -109,6 +109,21 @@ describe('neon-dusk theme wiring', () => {
         expect(world.onCombo).toHaveBeenCalledTimes(1);
         expect(win.listenerCount('pointermove')).toBe(0);
         expect(win.listenerCount('resize')).toBe(0);
+        expect(win.listenerCount('gameOver')).toBe(0);
+    });
+
+    it('tells the world of a run\'s end whatever the background-effects setting (it is the light, not a reaction)', () => {
+        const theme = new NeonDuskTheme();
+        theme.isActive = true;
+        const world = { onGameOver: vi.fn(), dispose: vi.fn() };
+        theme.world = world;
+        theme.setupEventListeners();
+        expect(win.listenerCount('gameOver')).toBe(1);
+        win.settings.backgroundComboEffects = false;
+        const [onGameOver] = win.addEventListener.mock.calls.find(([event]) => event === 'gameOver').slice(1);
+        onGameOver();
+        expect(world.onGameOver).toHaveBeenCalledTimes(1);
+        theme.stop();
     });
 
     it('survives stop() on a theme that never built a scene', () => {
@@ -158,8 +173,8 @@ describe('neon-dusk world', () => {
         scene.traverse((obj) => {
             if (obj.isMesh || obj.isSprite) drawables += 1;
         });
-        // sky, mountains, floor, dust, burst pixels, tiles
-        expect(drawables).toBe(6);
+        // sky, mountains, ridgelines, floor, dust, burst pixels, tiles, pillars, gliders, their trails
+        expect(drawables).toBe(10);
         expect(world.reflection).toBeTruthy();
         world.dispose();
         expect(scene.children).toHaveLength(0);
@@ -339,8 +354,11 @@ describe('neon-dusk world', () => {
     });
 
     it('sends a shooting star now and then at rest: the same one after a seek, none under reduced motion', () => {
-        const live = (world) => [world.u.shoot0.value, world.u.shoot1.value].find((s) => s.w < 1);
+        // The live meteors are packed at the front of the sky's table: (azimuth, elevation, heading, age).
+        const live = (world) => (world.u.shootCount.value > 0 ? world.u.shoots.array[0] : undefined);
         const world = new NeonDuskWorld({ scene: new THREE.Scene(), random: seeded() }).build();
+        // The lone star at rest, without the sky's other visitors (neon-dusk-living.test.js has those).
+        world.tune.happenings = false;
         world.setLayout(16 / 9, null, { immediate: true });
         let fired = null;
         for (let t = 0; t < AMBIENT_SHOOT_PERIOD * 2 && fired === null; t += 0.05) {
@@ -362,6 +380,7 @@ describe('neon-dusk world', () => {
         const calm = new NeonDuskWorld({ scene: new THREE.Scene(), random: seeded() }).build();
         calm.setLayout(16 / 9, null, { immediate: true });
         calm.motion = 0;
+        // (with the visitors on: none of them comes under reduced motion either)
         for (let t = 0; t < AMBIENT_SHOOT_PERIOD * 3; t += 0.1) {
             calm.update({ time: t, delta: 0.1 });
             expect(live(calm)).toBeUndefined();
