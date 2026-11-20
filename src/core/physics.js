@@ -119,9 +119,13 @@ const SETTLE_TAIL_MS = 20;
  * @param {{wait:(ms:number)=>Promise<boolean>}} pacer shared animation timeline
  */
 async function holdClearedRows(markedBoard, speedClass, callbacks, pacer) {
+    await pacer.wait(beginClearHold(markedBoard, speedClass, callbacks));
+}
+
+function beginClearHold(markedBoard, speedClass, callbacks) {
     if (callbacks.updateBoard) callbacks.updateBoard(markedBoard);
     if (callbacks.draw) callbacks.draw();
-    await pacer.wait(LINE_CLEAR_HOLD_MS * speedClass);
+    return LINE_CLEAR_HOLD_MS * speedClass;
 }
 
 /**
@@ -135,9 +139,13 @@ async function holdClearedRows(markedBoard, speedClass, callbacks, pacer) {
  * @param {{wait:(ms:number)=>Promise<boolean>}} pacer shared animation timeline
  */
 async function settleLead(gameState, speedClass, callbacks, pacer) {
+    await pacer.wait(beginSettleLead(gameState, speedClass, callbacks));
+}
+
+function beginSettleLead(gameState, speedClass, callbacks) {
     markBoardDirty(gameState);
     if (callbacks.draw) callbacks.draw();
-    await pacer.wait(SETTLE_LEAD_MS * speedClass);
+    return SETTLE_LEAD_MS * speedClass;
 }
 
 /** Resolve once the wall clock reaches `deadlineMs`. */
@@ -267,6 +275,14 @@ export async function applyGravity(
     pacer = null,
 ) {
     const animationPacer = resolvePacer(gameState, pacer);
+    for (const ms of fallingRows(gameState, drawCallback, placementGrid, callbacks)) {
+        // Each next row depends on the previous row and its presentation deadline.
+        // eslint-disable-next-line no-await-in-loop
+        await animationPacer.wait(ms);
+    }
+}
+
+function* fallingRows(gameState, drawCallback, placementGrid, callbacks) {
     const { lockedPieces, boardGrid } = gameState;
     let blocksStillFalling = true;
 
@@ -387,11 +403,7 @@ export async function applyGravity(
 
             // Paced against the sequence timeline, so a long frame advances
             // several rows instead of costing a whole frame for one row.
-            // eslint-disable-next-line no-await-in-loop
-            const yielded = await animationPacer.wait(gravityDelay);
-            if (!yielded && !gameState.isSeeking) {
-                physicsLog('[Gravity] Behind schedule — catching up without yielding a frame');
-            }
+            yield gravityDelay;
         }
     }
 
@@ -1161,7 +1173,13 @@ export async function processPhysicsResolved(
 
     // Shared with the legacy path: one animation timeline for every wave.
     const pacer = createAnimationPacer(gameState);
+    for (const ms of resolvedWaveSteps(gameState, callbacks, result)) {
+        // eslint-disable-next-line no-await-in-loop
+        await pacer.wait(ms);
+    }
+}
 
+function* resolvedWaveSteps(gameState, callbacks, result) {
     for (const wave of result.waves) {
         // One live array per wave, threaded through flash + clear exactly like
         // the legacy loop's `fullLines` (triggerFlash consumers get the same
@@ -1236,22 +1254,78 @@ export async function processPhysicsResolved(
         // --- Flash: same shared schedule the legacy path runs ---
         rebuildBoardGridFromPieces(gameState.lockedPieces, gameState.boardGrid);
         const markedBoard = cloneBoardGrid(gameState.boardGrid);
-        // eslint-disable-next-line no-await-in-loop
-        await holdClearedRows(markedBoard, wave.speedMultiplierClass, callbacks, pacer);
+        yield beginClearHold(markedBoard, wave.speedMultiplierClass, callbacks);
 
         // --- Clear + split + settle (same deterministic helpers) ---
         gameState.lockedPieces = removeClearedLines(gameState.lockedPieces, fullLines);
         rebuildBoardGridFromPieces(gameState.lockedPieces, gameState.boardGrid);
         gameState.lockedPieces = findConnectedComponents(gameState.boardGrid);
-        // eslint-disable-next-line no-await-in-loop
-        await settleLead(gameState, wave.speedMultiplierClass, callbacks, pacer);
-        // eslint-disable-next-line no-await-in-loop
-        await applyGravity(gameState, callbacks.draw, null, callbacks, pacer);
-        // eslint-disable-next-line no-await-in-loop
-        await pacer.wait(SETTLE_TAIL_MS * wave.speedMultiplierClass);
+        yield beginSettleLead(gameState, wave.speedMultiplierClass, callbacks);
+        yield* fallingRows(gameState, callbacks.draw, null, callbacks);
+        yield SETTLE_TAIL_MS * wave.speedMultiplierClass;
     }
 
     finalizeResolvedPhysics(gameState, callbacks, result);
+}
+
+// Seeded matches use the same per-wave callbacks and authored animation delays.
+// Their fixed clock owns the continuation, including any catch-up ticks within a render.
+const fixedCascades = new WeakMap();
+
+export function startFixedCascade(gameState, callbacks, onComplete, onError) {
+    const result = resolveCascade(gameState.lockedPieces, createResolverContext(gameState));
+    let settlePromise;
+    const promise = new Promise((resolve) => { settlePromise = resolve; });
+    const job = {
+        steps: resolvedWaveSteps(gameState, callbacks, result),
+        remaining: 0,
+        onComplete,
+        onError,
+        settlePromise,
+    };
+    fixedCascades.set(gameState, job);
+    gameState.latestPhysicsPromise = promise;
+    advanceFixedCascade(gameState, 0);
+    return promise;
+}
+
+export function advanceFixedCascade(gameState, delta) {
+    const job = fixedCascades.get(gameState);
+    if (!job) return false;
+    job.remaining -= delta;
+    if (job.running) return true;
+    job.running = true;
+    try {
+        while (job.remaining <= 1e-7 && fixedCascades.get(gameState) === job) {
+            const step = job.steps.next();
+            if (!step.done) job.remaining += step.value;
+            else {
+                fixedCascades.delete(gameState);
+                job.onComplete();
+                job.settlePromise();
+                break;
+            }
+        }
+    } catch (error) {
+        fixedCascades.delete(gameState);
+        try { job.onError(error); } finally { job.settlePromise(); }
+    } finally {
+        job.running = false;
+    }
+    return true;
+}
+
+export function retireFixedCascade(gameState) {
+    // Retiring callbacks are generation-fenced by their match owner. Finish the
+    // same result before a round resets its board or releases its physics barrier.
+    if (fixedCascades.has(gameState)) advanceFixedCascade(gameState, Infinity);
+}
+
+export function cancelFixedCascade(gameState) {
+    const job = fixedCascades.get(gameState);
+    if (!job) return;
+    fixedCascades.delete(gameState);
+    job.settlePromise();
 }
 
 /**

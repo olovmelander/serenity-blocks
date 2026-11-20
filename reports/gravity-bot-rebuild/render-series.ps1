@@ -1,0 +1,50 @@
+param(
+    [Parameter(Mandatory)][string]$OutputDirectory,
+    [Parameter(Mandatory)][string]$BuildDirectory,
+    [string]$Prefix = 'packaged',
+    [int]$ThreeSeatSeconds = 600,
+    [int]$OtherSeconds = 600,
+    [ValidateSet(60,165)][int]$FirstRate = 60,
+    [ValidateRange(1,2)][int]$PassCount = 2,
+    [switch]$LiveOnly
+)
+
+$ErrorActionPreference = 'Stop'
+# The rendered game uses its ordinary desktop priority even when a background
+# fit coordinator launches the measurement script.
+[System.Diagnostics.Process]::GetCurrentProcess().PriorityClass = 'Normal'
+$root = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
+$electron = Join-Path $root 'node_modules/electron/dist/electron.exe'
+$env:SERENITY_BOT_BUILD = (Resolve-Path -LiteralPath $BuildDirectory).Path
+Remove-Item Env:SERENITY_BOT_GAME_URL -ErrorAction SilentlyContinue
+Remove-Item Env:ELECTRON_RUN_AS_NODE -ErrorAction SilentlyContinue
+Remove-Item Env:SERENITY_BOT_RIVAL_CONFIG -ErrorAction SilentlyContinue
+Remove-Item Env:SERENITY_BOT_TIERS -ErrorAction SilentlyContinue
+Remove-Item Env:SERENITY_BOT_CPU_PROFILE -ErrorAction SilentlyContinue
+Remove-Item Env:SERENITY_BOT_CLOCK_TRIAL -ErrorAction SilentlyContinue
+Remove-Item Env:SERENITY_BOT_DROP_PROBE -ErrorAction SilentlyContinue
+Remove-Item Env:SERENITY_BOT_FOCUS -ErrorAction SilentlyContinue
+$dest = [System.IO.Directory]::CreateDirectory($OutputDirectory).FullName
+$recordingModes = @($false)
+if (!$LiveOnly) { $recordingModes += $true }
+foreach ($pass in 1..$PassCount) {
+    $otherRate = if ($FirstRate -eq 60) { 165 } else { 60 }
+    $rates = if ($pass -eq 1) { @($FirstRate, $otherRate) } else { @($otherRate, $FirstRate) }
+    foreach ($rate in $rates) {
+        foreach ($seats in @('3', '4', '1', 'odyssey')) {
+            $seconds = if ($seats -eq '3') { $ThreeSeatSeconds } else { $OtherSeconds }
+            $stem = Join-Path $dest ("$Prefix-$pass-$seats-$rate")
+            foreach ($replay in $recordingModes) {
+                $name = if ($replay) { "$stem-replay" } else { $stem }
+                $file = "$name.json"
+                if (Test-Path -LiteralPath $file) { continue }
+                $arguments = @('reports/gravity-bot-rebuild/rendered-match.cjs', ('"' + $file + '"'), $seats, $seconds, $rate)
+                if ($replay) { $arguments += ('"' + $stem + '.json"') }
+                $game = Start-Process -FilePath $electron -ArgumentList $arguments -WorkingDirectory $root -PassThru -WindowStyle Hidden -RedirectStandardOutput "$name.log" -RedirectStandardError "$name.err"
+                $processHandle = $game.Handle
+                $game.WaitForExit()
+                if ($game.ExitCode -or !(Test-Path -LiteralPath $file)) { throw "Frame capture failed for $name" }
+            }
+        }
+    }
+}

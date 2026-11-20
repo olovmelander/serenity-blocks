@@ -9,6 +9,7 @@ import { describe, expect, it } from 'vitest';
 import { COLS, PIECE_KEYS } from '../../src/core/constants.js';
 import { findReachablePlacements } from '../../src/core/ai/reachability-pathfinder.js';
 import { buildPuzzle } from '../../src/core/stillfall/stillfall-puzzle.js';
+import { reachableLandings, visitReachableLandings } from '../../src/core/stillfall/stillfall-reach.js';
 import {
     applyPlacement, boardFor, cellsOf, createRun, currentShapeKey, listPlacements, spawnPiece,
 } from '../../src/core/stillfall/stillfall-sim.js';
@@ -78,6 +79,25 @@ function randomBoardRun(seed, shapeKey) {
 }
 
 describe('Stillfall reachability', () => {
+    it('keeps landing discovery order when a trigger stops the movement search early', () => {
+        for (const key of PIECE_KEYS) {
+            const grid = boardFor(randomBoardRun(7919, key).lockedPieces);
+            const piece = spawnPiece(key, grid);
+            const full = reachableLandings(grid, piece);
+            const positions = full.map(({ x, y, rotation }) => [x, y, rotation]);
+            expect(positions.length).toBeGreaterThan(7);
+            for (const limit of [7, Infinity]) {
+                const visited = [];
+                visitReachableLandings(grid, piece, (x, y, rotation) => {
+                    visited.push([x, y, rotation]);
+                    return visited.length === limit;
+                });
+                expect(visited).toEqual(positions.slice(0, limit));
+            }
+            expect(reachableLandings(grid, piece)).toEqual(full);
+        }
+    });
+
     it.each(STILLFALL_PUZZLES.map((definition) => [definition.id, definition]))(
         'finds what the bot pathfinder finds on %s and after each opening',
         (id, definition) => {

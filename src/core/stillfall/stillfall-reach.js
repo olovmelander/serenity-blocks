@@ -63,10 +63,13 @@ const I_TURN_KICKS = turnKicks(I_KICKS);
 const JLSTZ_TURN_KICKS = turnKicks(JLSTZ_KICKS);
 
 /**
- * Visited states, as the call that last saw them: a state key is under 2^16 for any
- * position on a board under 64 rows, and a new call needs no clearing.
+ * Store the last call that visited each state. The default allocation covers
+ * 64 rows. An expanded Infinity well grows it once for its actual height.
  */
-const STAMPS = new Uint32Array(1 << 16);
+let stamps = new Uint32Array(1 << 16);
+let fitStamps = new Int32Array(stamps.length);
+let dropStamps = new Uint32Array(stamps.length);
+let dropRows = new Int32Array(stamps.length);
 let generation = 0;
 /**
  * One search's states. The search stops expanding once it holds MAX_STATES, and one
@@ -94,13 +97,53 @@ const STATES = {
  * @property {number} pathCost
  */
 
+/** @typedef {{ shapeKey: string, shape: number[][], rotation?: number, x: number, y: number }} MovingPiece */
+
 /**
  * @param {Array<Array<unknown>>} boardGrid
- * @param {{ shapeKey: string, shape: number[][], rotation?: number, x: number, y: number }} piece
+ * @param {MovingPiece} piece
  * @returns {ReachedLanding[]} one per landing (x, y, rotation), in the order the search first lands there
  */
 export function reachableLandings(boardGrid, piece) {
+    return searchLandings(boardGrid, piece);
+}
+
+/**
+ * Visit distinct hard-drop endpoints in the same discovery order as reachableLandings.
+ * Return true from the visitor once all requested positions have been seen.
+ * @param {Array<Array<unknown>>} boardGrid
+ * @param {MovingPiece} piece
+ * @param {(x: number, y: number, rotation: number) => boolean} visit
+ */
+export function visitReachableLandings(boardGrid, piece, visit) {
+    searchLandings(boardGrid, piece, visit);
+}
+
+/**
+ * @param {Array<Array<unknown>>} boardGrid
+ * @param {MovingPiece} piece
+ * @param {(x: number, y: number, rotation: number) => boolean} [visit]
+ * @returns {ReachedLanding[]}
+ */
+function searchLandings(boardGrid, piece, visit) {
     const height = boardGrid.length;
+    const capacity = (height + 64) * 128 * 4;
+    if (capacity > stamps.length) {
+        stamps = new Uint32Array(capacity);
+        fitStamps = new Int32Array(capacity);
+        dropStamps = new Uint32Array(capacity);
+        dropRows = new Int32Array(capacity);
+    }
+    if (++generation > 0x7fffffff) {
+        stamps.fill(0);
+        fitStamps.fill(0);
+        dropStamps.fill(0);
+        generation = 1;
+    }
+    const stamp = generation;
+    const rowStride = 128 * 4;
+    const key = (/** @type {number} */ x, /** @type {number} */ y, /** @type {number} */ rotation) => (
+        ((y + 64) * 128 + (x + 64)) * 4 + rotation);
     const startRotation = piece.rotation ?? 0;
     // A shape is fixed by its rotation: right turns from the start shape (left = three rights).
     /** @type {number[][][]} */
@@ -119,26 +162,28 @@ export function reachableLandings(boardGrid, piece) {
     }
 
     const fits = (/** @type {number} */ rotation, /** @type {number} */ x, /** @type {number} */ y) => {
+        const pose = key(x, y, rotation);
+        if (fitStamps[pose] === stamp) return true;
+        if (fitStamps[pose] === -stamp) return false;
         const filled = cells[rotation];
         for (let i = 0; i < filled.length; i += 2) {
             const bx = x + filled[i];
             const by = y + filled[i + 1];
-            if (bx < 0 || bx >= COLS || by >= height) return false;
-            if (by >= 0 && boardGrid[by][bx] !== null) return false;
+            if (bx < 0 || bx >= COLS || by >= height || (by >= 0 && boardGrid[by][bx] !== null)) {
+                fitStamps[pose] = -stamp;
+                return false;
+            }
         }
+        fitStamps[pose] = stamp;
         return true;
     };
     if (!fits(startRotation, piece.x, piece.y)) return [];
 
     const isO = piece.shapeKey === 'O';
     const kicksByTurn = piece.shapeKey === 'I' ? I_TURN_KICKS : JLSTZ_TURN_KICKS;
-    const key = (/** @type {number} */ x, /** @type {number} */ y, /** @type {number} */ rotation) => (
-        ((y + 64) * 128 + (x + 64)) * 4 + rotation);
 
     // State arrays (shared buffers; the search is synchronous and never re-entered):
     // position, the link back, and the path as the pathfinder would trim it.
-    generation = generation === 0xffffffff ? (STAMPS.fill(0), 1) : generation + 1;
-    const stamp = generation;
     const {
         xs, ys, rotations, parents, actions, costs, trimmedEnd, trimmedCost,
     } = STATES;
@@ -151,25 +196,28 @@ export function reachableLandings(boardGrid, piece) {
     trimmedEnd[0] = 0;
     trimmedCost[0] = 0;
     let count = 1;
-    STAMPS[key(piece.x, piece.y, startRotation)] = stamp;
+    stamps[key(piece.x, piece.y, startRotation)] = stamp;
     /** @type {Map<number, { state: number, cost: number, x: number, y: number, rotation: number }>} */
     const best = new Map();
+    const visitedLandings = visit && new Set();
 
     /** @param {number} from @param {number} action @param {number} x @param {number} y @param {number} rotation */
     const push = (from, action, x, y, rotation) => {
         const nextKey = key(x, y, rotation);
-        if (STAMPS[nextKey] === stamp) return;
-        STAMPS[nextKey] = stamp;
+        if (stamps[nextKey] === stamp) return;
+        stamps[nextKey] = stamp;
         const index = count;
-        const cost = costs[from] + ACTION_COST[action];
         xs[index] = x;
         ys[index] = y;
         rotations[index] = rotation;
-        parents[index] = from;
-        actions[index] = action;
-        costs[index] = cost;
-        trimmedEnd[index] = action === SOFT_DROP ? trimmedEnd[from] : index;
-        trimmedCost[index] = action === SOFT_DROP ? trimmedCost[from] : cost;
+        if (!visit) {
+            const cost = costs[from] + ACTION_COST[action];
+            parents[index] = from;
+            actions[index] = action;
+            costs[index] = cost;
+            trimmedEnd[index] = action === SOFT_DROP ? trimmedEnd[from] : index;
+            trimmedCost[index] = action === SOFT_DROP ? trimmedCost[from] : cost;
+        }
         count += 1;
     };
     /** @param {number} from @param {number} action @param {number} step @param {number} x @param {number} y @param {number} rotation */
@@ -188,14 +236,39 @@ export function reachableLandings(boardGrid, piece) {
         const x = xs[cursor];
         const y = ys[cursor];
         const rotation = rotations[cursor];
-        let landingY = y;
-        while (fits(rotation, x, landingY + 1)) landingY += 1;
+        // Every pose on an unobstructed vertical descent has the same hard-drop
+        // endpoint. Memoize just that run so a cavity still has its own endpoint.
+        const pose = key(x, y, rotation);
+        if (dropStamps[pose] !== stamp) {
+            let bottom = y;
+            let endPose = pose;
+            while (fits(rotation, x, bottom + 1)) {
+                bottom++;
+                endPose += rowStride;
+                if (dropStamps[endPose] === stamp) {
+                    bottom = dropRows[endPose];
+                    break;
+                }
+            }
+            for (let p = pose; p <= endPose; p += rowStride) {
+                dropStamps[p] = stamp;
+                dropRows[p] = bottom;
+            }
+        }
+        const landingY = dropRows[pose];
         const landingKey = key(x, landingY, rotation);
-        const existing = best.get(landingKey);
-        if (!existing || trimmedCost[cursor] < existing.cost) {
-            best.set(landingKey, {
-                state: trimmedEnd[cursor], cost: trimmedCost[cursor], x, y: landingY, rotation,
-            });
+        if (visit && visitedLandings) {
+            if (!visitedLandings.has(landingKey)) {
+                visitedLandings.add(landingKey);
+                if (visit(x, landingY, rotation)) return [];
+            }
+        } else {
+            const existing = best.get(landingKey);
+            if (!existing || trimmedCost[cursor] < existing.cost) {
+                best.set(landingKey, {
+                    state: trimmedEnd[cursor], cost: trimmedCost[cursor], x, y: landingY, rotation,
+                });
+            }
         }
         if (fits(rotation, x - 1, y)) push(cursor, MOVE_LEFT, x - 1, y, rotation);
         if (fits(rotation, x + 1, y)) push(cursor, MOVE_RIGHT, x + 1, y, rotation);
