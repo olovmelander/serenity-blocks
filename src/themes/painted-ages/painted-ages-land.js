@@ -390,7 +390,8 @@ export function createLandMaterial(u, t, tier) {
         // What gameplay lights: the ribbons along their beds, the waves through the strata, the record.
         // (Strata light belongs to the rock: the alluvium on the flats takes little of it.)
         // A band in geological height covers a whole flat at once: only a slope shows it as a bed.
-        const rock = float(1.0).sub(plain.mul(0.85)).sub(onFloor.mul(0.1)).sub(tilled).max(0.0)
+        const rock = float(1.0).sub(plain.mul(0.85)).sub(onFloor.mul(0.1)).sub(tilled)
+            .max(0.0)
             .mul(smoothstep(0.06, 0.32, slope));
         // The heat of play: the beds glow in their own pigment, a slow tide of colour climbing
         // them, and the beds between its crests sink into shadow, so the land keeps its darks

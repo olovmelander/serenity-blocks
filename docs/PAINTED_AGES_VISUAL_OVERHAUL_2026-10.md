@@ -339,10 +339,146 @@ mean of 1.1 levels over the right third between two seconds, the grain's own flo
 Not done: the real game (the playground mounts the same world), a timed frame cost (parallel
 sessions held the GPU; the trees cover about 1 % of the frame and are one draw).
 
+## The living pass (2026-11-20)
+
+The owner asked for a full audit of the theme and then to make it "one of the most visually
+stunning themes in my game": every part named (the striped mountains and hills, the pavilion, the
+lantern-lit stairway, the walkway, the river, the poplar rows, the valley mist, the towering
+clouds, the sun, the sky, colours, light, animation, UI, every event effect), varied over time
+"so it never looks the same for long", a distinct effect for every event with the biggest moments
+the most spectacular, smooth and easy to read; Blender allowed for models.
+
+To look at it: `/playground.html?effect=painted-ages&maxFps=30&board=1&hud=0&t=10&hour=1`, plus
+`air=fair|towers|pools|showers|crystal|mist|dust` (hold the weather), `happen=meteor|flicker|gust`
+with `happenAge`, `happenings=0`, `fxaa=0|1`, `vultures=thermal|pass|off` with `vultureAge`,
+`vultureSide`, `vultureVisit`, `vultureWay`, and the events as before (`event=…&eventAge=…`).
+
+### What the audit found (from captures of main, kept in the session's scratch)
+
+Strong, and kept: the land and its strata, the composition, the six hours of light, the clear's
+bands, the four lines' tide, the chain's bow, the stair's lamps at dusk.
+
+Weak, generic or missing:
+
+- **Nothing changed but the hour.** One sky per hour, the same cloud shapes in the same places,
+  clouds that only translated; nothing alive but poplars swaying far off.
+- **The cumulus banks** read as thumbs: a narrow chimney of billows on a thin raft, every bank
+  alike, standing still.
+- **The blue hour** was flat: no moon, uniform white dots for stars, the land lit by fill alone.
+- **Cloud shadows** were a faint grey wash (read off the deck's soft cover), never a shadow.
+- **The valley floor** was bare sand, the river a thin featureless line, the poplars matchsticks.
+- **The ground near the eye** was blurred paint (its pebble noise was sized under a pixel).
+- **Edges** were stair-stepped: the scene pass has no MSAA and nothing smoothed it.
+- **Events:** the twist's dust devil was a white smear of additive motes on the near slope; the
+  flood was a strip of flat coloured tiles; back-to-back was pixel sparks (grain, which the owner
+  has rejected on other themes); the level-up was a clear's band in white; the perfect clear
+  painted the clouds in candy-striped spectrum and otherwise repeated the four lines; game over
+  was simply the blue hour; a plain lock was hard to find at all.
+
+### The weather: a wheel of airs beside the hours (`painted-ages-weather.js`)
+
+Seven airs of 92 s (not a divisor of the hour's 100 s, so the two wheels drift against each other
+and an hour is rarely met twice in the same air), each resting 40 % of its time and melting into
+the next; a pure function of the clock, air 0 the day as it was:
+
+| Air | What it is |
+|---|---|
+| fair | scattered cloud, soft shadows |
+| towers | the banks boil up to their full height, the deck thins |
+| pools | a broken deck: most of the land in shade, pools of sunlight wandering the stripes |
+| showers | a far shower trails curtains across one side, a shard of rainbow in them by day |
+| crystal | thin haze, deep colours, the snow peaks sharp, cirrus high up |
+| mist | a sea of mist in the valleys, the hills standing out of it |
+| dust | a warm wind: the clouds race, dust along the valley floor, the far ranges fade |
+
+It drives the deck's cover and the depth of its shadows, the haze, the valley layer (density,
+height, and by day a dust tint), the wind (integrated, so a seek lands under the sky a live run
+would have reached: `airDrift`), the banks' growth, the cirrus and the far shower. A chain's
+storm still closes the sky over any air. Small **happenings** come by the clock (slots of 23 s,
+one seeded draw each): a meteor while the stars are out, lightning far inside a bank in the dim
+hours (one soft stroke and an echo; a single stroke, scaled, under Reduce flashing), and a pale
+dust devil of the wind's own by day.
+
+### Sky, cloud and light
+
+- **The deck forms and melts.** Its two noise fields ride different drifts (`u.wind`, `u.wind2`),
+  so a cloud is where both stand high. The land's shadows read the same function (`deckCover`)
+  with an edge of their own, so there are real shadows and real pools of light.
+- **The banks** (`painted-ages-cumulus.js`): a floor, a broad mound, a main tower and a lower
+  turret; each billow carries a share of the bank's growth (the weather lifts the towers off a
+  base that stays); every billow breathes, a swell travels up each tower, and the lump lattice
+  wells upward, so the skin boils. Lightning glows behind the lumps; the moon silvers them.
+- **The dark hours** (`painted-ages-sky.js`): stars in two layers with magnitudes, colours and a
+  slow twinkle, sized no smaller than a pixel; the river of heaven rising out of the horizon in
+  the left third; a gibbous moon with its seas and halo that rises as the dark deepens (right
+  third, beside a bank) and lays a soft unshadowed light on the land, the clouds and the props,
+  so the hills keep their form at night; a meteor. The sky turns about the pole.
+- **Antialiasing:** FXAA closes the post chain from Low up (the scene pass stays single-sampled:
+  the land is a dense fan of pixel-sized triangles with a heavy fragment stage).
+
+### The valley and the overlook
+
+- **Fields** along the river (`painted-ages-land.js`): two ranks of small lots on each bank
+  (lucerne, ripe barley, stubble, plough, fallow), a pale bund between them, furrows where the
+  eye can resolve them. They follow the river's own coordinates, so they bend with it.
+- **The river** is a little wider; its course is read once for the fields and the water.
+- **The poplars** are a Blender-grown tree in autumn colour with gusts that travel down a row
+  (see the section above; built by a helper on its own branch).
+- **Pennants** (`painted-ages-pennants.js`): strings of small flags from lamp to lamp along the
+  walk's own line, fluttering with the weather's wind: flags near the eye, a dotted line of colour
+  up the stair.
+- **The ground near the eye** has grain (grit and stones sized for what a pixel covers there).
+- **Bearded vultures** (`painted-ages-vultures.js`, a Blender model; built by a helper): two to
+  four circling in a thermal over a side third for about a minute in every three, and now and
+  then one passing the overlook close, large. By day only; world-anchored; every visit enters and
+  leaves outside the frame and keeps off the card and HUD.
+
+### What gameplay does now
+
+| Event | Before | Now |
+|---|---|---|
+| Lock | a thin ribbon along the bed | the same, plus a stain of the piece's pigment that blooms where it landed; a bed on the near hill takes less of the light (quick drops laid a white glare on it) |
+| Hard drop | wider ribbon, ring, sparks | unchanged |
+| Clear | a band per row climbs the strata | unchanged |
+| Twist | additive motes on a helix | a funnel of pigment dust on the valley floor (`painted-ages-devils.js`): it climbs out of the ground, stands, drifts, lifts off its foot and thins away; a twist that clears nothing raises a small one |
+| Back-to-back | pixel sparks on the rock | veins of gold cutting ACROSS the beds (every other light runs along them); a run holds a soft glow in them and each clear sends a flare racing out along the seams |
+| Four lines | rainbow tide; a flood drawn as lanes of flat colour | the tide; the flood as paint poured into water: marbled, drawn out by the current, a pale seam where two paints meet, foam at the banks and the front |
+| Chain | the sky closes to a grey deck | the storm with pools of sun breaking through; from the fourth step each step is answered by lightning far inside a bank |
+| Perfect clear | spectrum-striped clouds, the tide again, a double bow | **an age in a breath**: the whole day wheels round once in 7.5 s (the sun arcs over and sets, night falls, the stars turn, the lamps come on, dawn breaks) while every bed lights and the clouds take the land's own strata; as the light returns the double bow stands over the valley. Under reduced motion the light does not sweep and the bow rises at once |
+| Level up | a pale band | new ages are laid down: the column of beds slides under the land, so every stripe on every hill moves up its slope (16 m of geological height over four seconds; it stays, so each level's land is striped differently, there and back over 400 m); the marker bed; the lamps flare in turn up the stair to the pavilion |
+| Game over | dusk, lamps | dusk; the lamps light one after another up the stair (each lamp knows its place along the walk), the moon rises, and sky lanterns leave the pavilion and drift up over the valley |
+
+By the clock alone the strata also slide one step at the start of each new day of the wheel
+(every 600 s, not in the first), so the land changes in modes that never level up.
+
+### Decisions and traps
+
+- Air 0 is the look the owner knew; the first weather values were also checked for being seen at
+  all (the cloud shadows were not, until they got an edge).
+- The far shower shows a SHARD of the bow (its foot on the shower's side); a chain's bow or a
+  perfect clear's stands whole and takes over from it.
+- The dust devil stands on level ground 430 to 1700 m off on the lock's side of the card, found
+  by marching rays; on the near slope it was a wall.
+- Pennants strung straight from lamp to lamp cut the walk's bends and lay across the open slope
+  like spilt confetti; they follow the walk's own line.
+- A crack pattern for the near ground (isolines of the noise) read as worm trails and was
+  dropped; the grain stayed.
+- The sweep of the day is a whole turn of the wheel, so nothing is left to undo; the hours' rests
+  are taken out while it lasts, the stars keep their turn, and the shadows follow in degree steps.
+- Gotcha rows: #1205 (a dev server serving a stale module after scripted edits), #1522, #1523
+  (cloud shadows, heaped banks), #1758 to #1760 (the funnel, near-bed glare, the day's sweep),
+  #706 (inflated thin meshes), #1105 (FXAA over a dense fan).
+
 ## Captures
 
 | What | Image |
 |---|---|
+| Living pass: before and after at four hours of light | [living-before-after.jpg](painted-ages-captures/living-before-after.jpg) |
+| Living pass: the seven airs of the weather, the moon and a meteor, lightning inside a bank | [living-airs.jpg](painted-ages-captures/living-airs.jpg) |
+| Living pass: lock, hard drop, clear, twist, back-to-back, four lines (tide and flood), a chain and its bow | [living-events-1.jpg](painted-ages-captures/living-events-1.jpg) |
+| Living pass: level-up, the perfect clear's day at 2.2 s, 4.2 s and 9.5 s, game over, a vulture passing | [living-events-2.jpg](painted-ages-captures/living-events-2.jpg) |
+| Living pass: a cumulus bank, the pennants, the valley floor and the flood, enlarged, before and after | [living-details.jpg](painted-ages-captures/living-details.jpg) |
+| Living pass: Minimal, Low, WebGL2, 21:9 and the real game | [living-tiers.jpg](painted-ages-captures/living-tiers.jpg) |
 | Poplar model: the right third at game size, before and after, first light, morning, afternoon, sunset | [poplar-model-game-size.jpg](painted-ages-captures/poplar-model-game-size.jpg) |
 | Poplar model: the rows through a 9° lens, before and after, morning, afternoon, sunset | [poplar-model-closeup.jpg](painted-ages-captures/poplar-model-closeup.jpg) |
 | Poplar model: High on WebGPU and on WebGL2, Low, Minimal, high day, blue hour | [poplar-model-tiers.jpg](painted-ages-captures/poplar-model-tiers.jpg) |
