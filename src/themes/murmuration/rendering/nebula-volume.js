@@ -9,9 +9,15 @@
  *   2. Emission nebula: domain-warped value-noise FBM gathered into a diagonal band
  *      behind the swarm, tinted by the two hues the swarm is currently wearing, and cut
  *      by dark dust lanes. It answers play: a combo pulse lights the cloud from within.
- *   3. Two layers of stars with their own colour temperature and twinkle. The layers
- *      shift by different amounts as the camera moves, so the sky has depth of its own.
+ *   3. Stars in layers with their own colour temperature and twinkle, a few bright ones
+ *      with a soft glow and a glint. The layers shift by different amounts as the camera
+ *      moves, so the sky has depth of its own. No star is drawn under about a pixel.
  *   4. The swarm's own light scattered in the dust: a wide, faint halo at the centre.
+ *   5. What happens by itself (composition/swarm-moods.js schedules it): shooting stars, one
+ *      now and then, a shower of them for a perfect clear.
+ *
+ * The flock's moods turn the sky too (`uMood`): how much gas shows, how bright the stars
+ * stand, a dusk glow low in the frame, and how far the wisps lean to violet.
  *
  * The camera of this theme only ever looks one way through a 38° lens, so the dome is
  * composed in tangent-plane coordinates (s = dir.xy / -dir.z), like a matte painting.
@@ -23,13 +29,17 @@ import * as THREE from 'three';
 import { MeshBasicNodeMaterial } from 'three/webgpu';
 import {
     Fn,
+    Loop,
     abs,
     cameraPosition,
+    clamp,
+    cos,
     dot,
     exp,
     float,
     floor,
     fract,
+    int,
     length,
     mat3,
     max,
@@ -39,9 +49,17 @@ import {
     sin,
     smoothstep,
     uniform,
+    uniformArray,
     vec2,
     vec3,
 } from 'three/tsl';
+
+/** Shooting stars the sky can draw at once (a perfect clear's shower fills them all). */
+export const MAX_METEORS = 6;
+/** A shooting star: how fast it falls and how long its streak is (tangent-plane units), and its life (s). */
+export const METEOR_SPEED = 0.5;
+export const METEOR_LENGTH = 0.13;
+export const METEOR_LIFE = 1.15;
 
 const hash21 = /* @__PURE__ */ Fn(([p]) => {
     const p3 = fract(vec3(p.x, p.y, p.x).mul(0.1031)).toVar();
@@ -74,6 +92,9 @@ const noise3 = /* @__PURE__ */ Fn(([pIn]) => {
     );
 }).setLayout({ name: 'murm_noise3', type: 'float', inputs: [{ name: 'pIn', type: 'vec3' }] });
 
+/** 1 where x is positive. */
+const step01 = (x) => smoothstep(0.0, 1e-5, x);
+
 const OCTAVE_TURN = mat3(0.00, 0.80, 0.60, -0.80, 0.36, -0.48, -0.60, -0.48, 0.64);
 /** The direction the nebula's band runs across the sky (unit length, folded in JS). */
 const BAND_AXIS = vec3(0.94 / Math.hypot(0.94, 0.34), 0.34 / Math.hypot(0.94, 0.34), 0.0);
@@ -99,7 +120,11 @@ function makeFbm(octaves, name) {
  * `cells` = grid cells per unit of tangent-plane coordinate; `density` = share of cells
  * that hold a star; `radius` in cell units.
  */
-const starLayer = /* @__PURE__ */ Fn(([s, cells, density, radius, time]) => {
+const starLayer = /* @__PURE__ */ Fn(([s, cells, density, radiusIn, time, pixel]) => {
+    // Never under about a pixel: a smaller star keeps its light and stops shimmering.
+    const floorR = pixel.mul(cells).mul(0.8).toVar();
+    const radius = max(radiusIn, floorR).toVar();
+    const spread = radiusIn.div(radius).toVar();
     const g = s.mul(cells).toVar();
     const id = floor(g).toVar();
     const f = fract(g).sub(0.5).toVar();
@@ -114,7 +139,7 @@ const starLayer = /* @__PURE__ */ Fn(([s, cells, density, radius, time]) => {
     const twinkle = float(0.78).add(sin(time.mul(h2.mul(2.2).add(0.6)).add(h.mul(90.0))).mul(0.22));
     const core = smoothstep(radius, radius.mul(0.15), d);
     const temperature = mix(vec3(0.62, 0.74, 1.0), vec3(1.0, 0.86, 0.74), smoothstep(0.55, 1.0, h2));
-    return temperature.mul(core.mul(present).mul(magnitude).mul(twinkle));
+    return temperature.mul(core.mul(present).mul(magnitude).mul(twinkle).mul(spread.mul(spread)));
 }).setLayout({
     name: 'murm_stars',
     type: 'vec3',
@@ -122,8 +147,48 @@ const starLayer = /* @__PURE__ */ Fn(([s, cells, density, radius, time]) => {
         { name: 's', type: 'vec2' },
         { name: 'cells', type: 'float' },
         { name: 'density', type: 'float' },
-        { name: 'radius', type: 'float' },
+        { name: 'radiusIn', type: 'float' },
         { name: 'time', type: 'float' },
+        { name: 'pixel', type: 'float' },
+    ],
+});
+
+/**
+ * The few bright stars: a hard core, a soft glow, and (with `glint` 1) a thin four-point
+ * cross. One to a cell of a coarse grid, most cells empty. Returns rgb.
+ */
+const heroStars = /* @__PURE__ */ Fn(([s, time, pixel, glint]) => {
+    const g = s.mul(6.5).toVar();
+    const id = floor(g).toVar();
+    const f = fract(g).sub(0.5).toVar();
+    const h = hash21(id.add(vec2(5.0, 71.0))).toVar();
+    const h2 = hash21(id.add(vec2(61.0, 13.0))).toVar();
+    const h3 = hash21(id.add(vec2(19.0, 47.0))).toVar();
+    const at = f.sub(vec2(h2, h3).sub(0.5).mul(0.72)).div(6.5).toVar(); // tangent-plane units
+    const d = length(at).toVar();
+    const present = smoothstep(0.52, 0.6, h);
+    const size = h3.mul(0.6).add(0.55).toVar();
+    const core = max(pixel.mul(1.15), float(0.0011).mul(size)).toVar();
+    const body = exp(d.mul(d).div(core.mul(core)).negate()).mul(1.5)
+        .add(float(1.0).div(d.div(core.mul(2.6)).mul(d.div(core.mul(2.6))).add(1.0)).mul(0.075)
+            .mul(float(1.0).sub(smoothstep(0.012, 0.03, d))));
+    const armW = max(pixel.mul(0.7), float(0.0005)).toVar();
+    const reach = float(0.016).mul(size).toVar();
+    const arms = exp(abs(at.y).div(armW).negate()).mul(exp(abs(at.x).div(reach).negate()))
+        .add(exp(abs(at.x).div(armW).negate()).mul(exp(abs(at.y).div(reach).negate())))
+        .mul(0.34)
+        .mul(glint);
+    const twinkle = float(0.8).add(sin(time.mul(h2.mul(1.3).add(0.5)).add(h.mul(70.0))).mul(0.2));
+    const temperature = mix(vec3(0.66, 0.78, 1.0), vec3(1.0, 0.84, 0.7), smoothstep(0.6, 1.0, h2));
+    return temperature.mul(body.add(arms).mul(present).mul(twinkle).mul(size));
+}).setLayout({
+    name: 'murm_heroStars',
+    type: 'vec3',
+    inputs: [
+        { name: 's', type: 'vec2' },
+        { name: 'time', type: 'float' },
+        { name: 'pixel', type: 'float' },
+        { name: 'glint', type: 'float' },
     ],
 });
 
@@ -148,6 +213,16 @@ export function createNebulaSky(options = {}) {
     const uWingB = uniform(new THREE.Color(0.6, 0.2, 1.0));
     // Camera offset from rest (world units): star layers shift against each other.
     const uParallax = uniform(new THREE.Vector2(0, 0));
+    // The flock's mood in the sky: (gas, star light, the dusk glow low in the frame, violet lean).
+    const uMood = uniform(new THREE.Vector4(1, 1, 0.25, 0.35));
+    // One buffer pixel in tangent-plane units (the frame is about 0.69 units tall).
+    const uPixel = uniform(0.00096);
+    // Shooting stars: (x, y, the angle it falls along, age in seconds), live ones packed first.
+    const meteorRows = Array.from({ length: MAX_METEORS }, () => new THREE.Vector4(0, 0, 0, 0));
+    const uMeteors = uniformArray(meteorRows, 'vec4');
+    const uMeteorCount = uniform(0, 'int');
+    // Without a post stack nothing sinks the gas into the night: the sky does it itself.
+    const toe = Number(options.toe) > 0 ? Number(options.toe) : 0;
 
     const fbmCloud = makeFbm(high ? 5 : 3, high ? 'murm_fbm5' : 'murm_fbm3');
     const fbmWarp = makeFbm(high ? 3 : 2, high ? 'murm_fbm3w' : 'murm_fbm2w');
@@ -163,6 +238,9 @@ export function createNebulaSky(options = {}) {
             vec3(0.004, 0.008, 0.026),
             smoothstep(-0.4, 0.4, s.y),
         ).toVar();
+        // Dusk: a glow that stands low in the frame in some moods, as if the day had only just gone.
+        const low = exp(max(s.y.add(0.42), float(0.0)).mul(-7.0));
+        ground.addAssign(mix(vec3(0.34, 0.07, 0.44), uTintB, 0.3).mul(low.mul(uMood.z).mul(0.085)));
 
         // 2. Nebula
         const drift = vec3(uTime.mul(0.006), uTime.mul(-0.004), uTime.mul(0.005));
@@ -201,27 +279,58 @@ export function createNebulaSky(options = {}) {
         const wisps = smoothstep(0.55, 0.95, cloud).mul(density);
 
         const hueMix = smoothstep(0.3, 0.7, fbmWarp(p.mul(0.6).add(vec3(0.0, 21.0, 3.0))));
-        const tint = mix(uTintA, uTintB, hueMix).toVar();
+        // The wisps lean to violet (by the mood), whatever the swarm is wearing.
+        const worn = mix(uTintA, uTintB, hueMix).toVar();
+        const wornLevel = max(max(worn.r, worn.g), worn.b);
+        const tint = mix(worn, vec3(0.42, 0.16, 0.86).mul(wornLevel), uMood.w.mul(0.55)).toVar();
         const inner = float(1.0).add(uPulse.mul(1.2)).add(uFlash.mul(1.4));
         // The light swells on a wide ramp, with a brighter heart where the cloud is thickest.
         const nebula = tint.mul(density.mul(0.085).add(density.mul(density).mul(0.06)))
             .add(mix(tint, vec3(1.0, 0.82, 0.9), 0.35).mul(wisps.mul(0.11)))
             .add(mix(tint, vec3(0.9, 0.95, 1.0), 0.5).mul(threads.mul(0.12)))
             .mul(dust)
-            .mul(inner);
+            .mul(inner)
+            .mul(uMood.x);
         // The tints already turn with the swarm's heat; this only warms the gas a touch more.
         const warmed = mix(nebula, nebula.mul(vec3(1.4, 0.92, 0.65)), uHeat.mul(0.25));
 
         // 3. Stars. Dust hides the faint layers; a dust of tiny stars thickens along the band.
-        const far = starLayer(s.add(uParallax.mul(0.004)), float(96.0), float(0.5), float(0.085), uTime);
+        const far = starLayer(s.add(uParallax.mul(0.004)), float(96.0), float(0.5), float(0.085), uTime, uPixel);
         const nearAt = s.add(uParallax.mul(0.012)).add(vec2(3.7, 1.9));
-        const near = starLayer(nearAt, float(38.0), float(0.2), float(0.07), uTime);
+        const near = starLayer(nearAt, float(38.0), float(0.2), float(0.07), uTime, uPixel);
         let stars = far.mul(dust.mul(0.55)).mul(float(1.0).sub(density.mul(0.7))).add(near.mul(1.5));
         if (high) {
             const fineAt = s.add(uParallax.mul(0.002)).add(vec2(11.3, 5.1));
-            const fine = starLayer(fineAt, float(230.0), band.mul(0.55).sub(0.1), float(0.11), uTime);
+            const fine = starLayer(fineAt, float(230.0), band.mul(0.55).sub(0.1), float(0.11), uTime, uPixel);
             stars = stars.add(fine.mul(dust).mul(0.32));
         }
+        // The few bright ones, nearest of all (they move most as the camera does).
+        const heroes = heroStars(s.add(uParallax.mul(0.02)).add(vec2(1.3, 7.7)), uTime, uPixel, float(high ? 1 : 0));
+        stars = stars.add(heroes.mul(dust.mul(0.5).add(0.5))).mul(uMood.y);
+
+        // 5. What happens by itself.
+        const happenings = vec3(0.0).toVar();
+        // Shooting stars: a head, and a streak behind it that thins to nothing.
+        const streakW = max(uPixel.mul(0.9), float(0.0008)).toVar();
+        Loop({
+            start: int(0), end: uMeteorCount, type: 'int', condition: '<', name: 'm',
+        }, ({ m }) => {
+            const row = uMeteors.element(m).toVar();
+            const dirM = vec2(cos(row.z), sin(row.z)).toVar();
+            const head = row.xy.add(dirM.mul(row.w.mul(METEOR_SPEED))).toVar();
+            const toHead = s.sub(head).toVar();
+            const along = dot(toHead, dirM).toVar(); // negative behind the head
+            const aside = dot(toHead, vec2(dirM.y.negate(), dirM.x)).toVar();
+            const life = smoothstep(0.0, 0.12, row.w)
+                .mul(float(1.0).sub(smoothstep(METEOR_LIFE * 0.62, METEOR_LIFE, row.w)));
+            const tail = clamp(along.div(METEOR_LENGTH).add(1.0), 0.0, 1.0).mul(step01(along.negate()));
+            const widthAt = streakW.mul(tail.mul(0.7).add(0.3));
+            const streak = exp(aside.mul(aside).div(widthAt.mul(widthAt)).negate()).mul(tail.mul(tail));
+            const glowR = streakW.mul(3.2);
+            const headGlow = exp(dot(toHead, toHead).div(glowR.mul(glowR)).negate());
+            happenings.addAssign(mix(vec3(0.72, 0.84, 1.0), vec3(1.0, 0.96, 0.9), tail)
+                .mul(streak.mul(0.9).add(headGlow.mul(0.8)).mul(life)));
+        });
 
         // 4. The swarm's light in the dust: a faint glow round the swarm, each wing in its own
         // colour, brighter where there is gas to catch it. Play lifts it.
@@ -233,7 +342,10 @@ export function createNebulaSky(options = {}) {
         const scatterGain = float(0.022).add(uPulse.mul(0.04)).add(uFlash.mul(0.09));
         const scatter = wingTint.mul(reach.mul(catchLight).mul(scatterGain));
 
-        return ground.add(warmed).add(scatter).add(stars);
+        const night = ground.add(warmed).add(scatter).toVar();
+        // (Minimal has no post stack to sink the gas into the night: a toe of its own.)
+        if (toe > 0) night.assign(max(night.sub(toe), vec3(0.0)).mul(1.0 + toe * 6.0));
+        return night.add(stars).add(happenings);
     })();
 
     const material = new MeshBasicNodeMaterial({
@@ -253,8 +365,22 @@ export function createNebulaSky(options = {}) {
     return {
         mesh,
         uniforms: {
-            uTime, uHeat, uActProgress, uPulse, uFlash, uTintA, uTintB, uWingA, uWingB, uParallax,
+            uTime,
+            uHeat,
+            uActProgress,
+            uPulse,
+            uFlash,
+            uTintA,
+            uTintB,
+            uWingA,
+            uWingB,
+            uParallax,
+            uMood,
+            uPixel,
+            uMeteorCount,
         },
+        /** The shooting stars' rows (x, y, angle, age): the show writes them, live ones first. */
+        meteorRows,
         dispose: () => {
             geometry.dispose();
             material.dispose();

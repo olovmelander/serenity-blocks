@@ -9,8 +9,15 @@
  *   shape=<name>             hold a formation (heart, galaxy, torus, ...)
  *   combo=<n>                hold a combo of n (the gyre spins up, the swarm warms)
  *   level=<n>                rest on level n's palette
- *   event=lock|drop|clear|quad|twist|perfect|levelUp|gameOver   fire a gameplay event...
- *   eventAge=<s>             ...and show it <s> seconds later (lines=<n>, row=<r>, u=<0..1>)
+ *   event=lock|drop|clear|quad|twist|spin|b2b|perfect|step|levelUp|gameOver|gameStart|drops
+ *                            fire a gameplay event (`step` = the next step of the chain held by
+ *                            combo=; `b2b` = a two-line clear answered back to back; `gameStart`
+ *                            = a new run from the roost; `drops` = a hard drop every 0.42 s for
+ *                            six seconds, the quick hand a single capture cannot show)...
+ *   eventAge=<s>             ...and show it <s> seconds later (lines=<n>, row=<r>, u=<0..1>,
+ *                            color=<rrggbb> the piece's colour)
+ *   mood=<0..5>              hold a mood (0 wheel, 1 wings, 2 drift, 3 gale, 4 veil; a fraction
+ *                            is the melt between two) instead of letting the clock turn it
  *   demo=1                   live only: play a looping gameplay script
  *   noPost=1                 raw scene (no bloom/grade)
  *   px=-1..1&py=-1..1        hold a pointer-parallax offset
@@ -32,8 +39,8 @@ import { SwarmPostPipeline, getSwarmPostProfile } from '../../themes/murmuration
 import { CameraDirector } from '../../themes/murmuration/composition/camera-director.js';
 import { SwarmShow } from '../../themes/murmuration/composition/swarm-show.js';
 import {
-    BLOOM_REACTION, BOARD_HALO, NO_POST_EXPOSURE, QUALITY_PRESETS, SWARM_FOCAL,
-    applyCrowding, applySwarmFrame, normalizeQuality, projectToPlane, shapeLayout, swarmFrame,
+    BLOOM_REACTION, BOARD_HALO, CARD_REACH, NO_POST_EXPOSURE, NO_POST_SKY_TOE, QUALITY_PRESETS, SWARM_FOCAL,
+    applyCrowding, applySwarmFrame, normalizeQuality, projectToPlane, shapeLayout, skyPixel, swarmFrame,
     swarmLook,
 } from '../../themes/murmuration/composition/swarm-tiers.js';
 import {
@@ -153,7 +160,8 @@ export function create({
 
     const focal = new THREE.Vector3(SWARM_FOCAL.x, SWARM_FOCAL.y, SWARM_FOCAL.z);
     let frame = swarmFrame(camera, budget.focalRadius, focal, REST_FOV);
-    const nebula = createNebulaSky({ detail: preset.skyDetail });
+    const usePost = preset.enablePost && params.get('noPost') !== '1';
+    const nebula = createNebulaSky({ detail: preset.skyDetail, toe: usePost ? 0 : NO_POST_SKY_TOE });
     const sim = new FluidParticleSim(budget.count, {
         cpu: !native,
         seed,
@@ -186,7 +194,6 @@ export function create({
     setExposure();
     scene.add(nebula.mesh, fluid.mesh);
 
-    const usePost = preset.enablePost && params.get('noPost') !== '1';
     const profile = getSwarmPostProfile(quality);
     if (tune.bloom >= 0) profile.bloomStrength = tune.bloom;
     if (tune.bloomRadius >= 0) profile.bloomRadius = tune.bloomRadius;
@@ -216,6 +223,7 @@ export function create({
     });
     if (tune.gyre >= 0) show.baseGyre = tune.gyre;
     if (tune.turbulence >= 0) show.baseTurbulence = tune.turbulence;
+    if (params.has('mood')) show.moodHold = num(params, 'mood', 0);
 
     const size = new THREE.Vector2(1, 1);
     const halo = { center: new THREE.Vector2(0.5, 0.5), halfSize: new THREE.Vector2(0.1, 0.3) };
@@ -226,6 +234,8 @@ export function create({
         applySwarmFrame(sim, frame);
         setExposure();
         renderer.getDrawingBufferSize(size);
+        show.setFrame({ halfWidth: frame.halfWidth, halfHeight: frame.halfHeight, aspect: camera.aspect });
+        nebula.uniforms.uPixel.value = skyPixel(REST_FOV, size.y);
         const board = overlay ? readBoardRect(0) : null;
         if (board && post) {
             halo.center.set((board.x0 + board.x1) * 0.5, (board.y0 + board.y1) * 0.5);
@@ -242,7 +252,13 @@ export function create({
         projectToPlane(camera, span.x1, span.y1, focal.z, b);
         half.set(Math.abs(b.x - a.x) * 0.5, Math.abs(b.y - a.y) * 0.5, 0.4);
         if (board) sim.setBoardZone({ halfExtents: half });
-        sim.setShapeLayout(params.get('twin') === '0' ? {} : shapeLayout(frame, half.x * 1.3));
+        // The card round the canvas reaches a little above and below it.
+        const tall = Math.abs(b.y - a.y);
+        const band = board ? {
+            top: Math.max(a.y, b.y) + tall * CARD_REACH.above - focal.y,
+            bottom: Math.min(a.y, b.y) - tall * CARD_REACH.below - focal.y,
+        } : null;
+        sim.setShapeLayout(params.get('twin') === '0' ? {} : shapeLayout(frame, half.x * 1.3, band));
     };
     syncViewport();
 
@@ -287,22 +303,33 @@ export function create({
     const holdCombo = Math.max(0, Math.round(num(params, 'combo', 0)));
     const level = Math.max(1, Math.round(num(params, 'level', 1)));
     const holdShape = params.get('shape');
+    const pieceColor = `#${(params.get('color') || 'ff5bd6').replace('#', '')}`;
+    /** A hard drop every DROP_EVERY seconds for DROP_RUN seconds: the quick hand. */
+    const DROP_EVERY = 0.42;
+    const DROP_RUN = 6;
     const fireEvent = () => {
         const row = Math.round(num(params, 'row', 14));
         const u = num(params, 'u', 0.3);
         const lines = Math.max(1, Math.min(4, Math.round(num(params, 'lines', 2))));
         const bottom = (n) => Array.from({ length: n }, (_, i) => 19 - i);
-        if (eventName === 'lock') show.lock({ rows: [row, row - 1], u });
-        else if (eventName === 'drop') show.lock({ rows: [row, row - 1], u, hardDrop: true });
-        else if (eventName === 'clear') show.clear({ rows: bottom(lines), lines });
+        if (eventName === 'lock') show.lock({ rows: [row, row - 1], u, color: pieceColor });
+        else if (eventName === 'drop') {
+            show.lock({
+                rows: [row, row - 1], u, hardDrop: true, color: pieceColor,
+            });
+        } else if (eventName === 'clear') show.clear({ rows: bottom(lines), lines });
         else if (eventName === 'quad') show.clear({ rows: bottom(4), lines: 4 });
+        else if (eventName === 'b2b') show.clear({ rows: bottom(lines), lines, b2b: true });
         else if (eventName === 'twist') {
             show.clear({
                 rows: bottom(2), lines: 2, twist: true, u,
             });
-        } else if (eventName === 'perfect') show.clear({ rows: bottom(4), lines: 4, perfect: true });
+        } else if (eventName === 'spin') show.spin({ rows: [row, row - 1], u });
+        else if (eventName === 'perfect') show.clear({ rows: bottom(4), lines: 4, perfect: true });
+        else if (eventName === 'step') show.combo(holdCombo + 1);
         else if (eventName === 'levelUp') show.levelUp(num(params, 'eventLevel', level + 1));
         else if (eventName === 'gameOver') show.gameOver();
+        else if (eventName === 'gameStart') show.gameStart();
     };
     const applyHolds = () => {
         if (level > 1) show.levelUp(level, { silent: true });
@@ -325,15 +352,34 @@ export function create({
         applyHolds();
         let cursor = start;
         const stepTo = (to) => {
+            if (!(to > cursor)) return;
             const steps = Math.max(1, Math.round((to - cursor) / STEP));
             const h = (to - cursor) / steps;
             for (let i = 1; i <= steps; i += 1) step(cursor + i * h, h);
             cursor = to;
         };
-        if (eventTime > cursor) stepTo(eventTime);
-        if (eventName) {
-            fireEvent();
-            if (time > cursor) stepTo(time);
+        if (eventName === 'gameStart') {
+            // A new run from the roost: the run before it ended eight seconds earlier.
+            stepTo(eventTime - 8);
+            show.gameOver();
+        }
+        if (eventName === 'drops') {
+            // The quick hand: `eventAge` seconds into a run of hard drops, one every 0.42 s.
+            const first = time - Math.min(eventAge, DROP_RUN);
+            stepTo(first);
+            for (let k = 0; first + k * DROP_EVERY <= time; k += 1) {
+                stepTo(first + k * DROP_EVERY);
+                show.lock({
+                    rows: [19 - (k % 6), 18 - (k % 6)], u: ((k * 0.37) % 1), hardDrop: true, color: pieceColor,
+                });
+            }
+            stepTo(time);
+        } else {
+            stepTo(eventTime);
+            if (eventName) {
+                fireEvent();
+                stepTo(time);
+            }
         }
         step(time, 0);
     };
@@ -388,6 +434,8 @@ export function create({
             if (name === 'lock') show.lock(detail);
             else if (name === 'clear') show.clear(detail);
             else if (name === 'combo') show.combo(detail.combo ?? 0);
+            else if (name === 'spin') show.spin(detail);
+            else if (name === 'crown') show.crown(detail);
             else if (name === 'levelUp') show.levelUp(detail.level ?? show.level + 1);
             else if (name === 'gameOver') show.gameOver();
             else if (name === 'gameStart') show.gameStart();

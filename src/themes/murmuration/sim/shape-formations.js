@@ -799,6 +799,142 @@ function fillNautilus(arr, n, opts = {}) {
     }
 }
 
+const hashUnit = (x) => {
+    const v = Math.sin(x) * 43758.5453;
+    return v - Math.floor(v);
+};
+
+// ──────────────────────────────────────────────────────────────────────────
+// Wings — a great bird of light, seen head-on with its wings spread.
+//
+// With room either side of the boards and `layout: 'center'`, the boards stand where the body
+// would be: the wings unfold from the card's edges out to the frame, and the playfield itself
+// is the body. Otherwise a whole bird (body, head, a fanned tail), which the layout places
+// like any other figure.
+//
+// A wing is a bright arm (the coverts along its leading edge) and a fan of feathers hanging
+// from it. A feather is a LINE with its motes dealt evenly along it — motes scattered over a
+// wing's area read as glitter, not as a wing (gotcha #1724) — and narrows to its tip, so the
+// primaries part into fingers. The simulation beats the wings (setShapeFlap).
+// opts: { layout, feathers=24 } plus the sim's { frame, blocked, room }
+// ──────────────────────────────────────────────────────────────────────────
+function fillWings(arr, n, opts = {}) {
+    const frame = opts.frame || {};
+    const boardBody = opts.layout === 'center' && opts.room === true && opts.blocked > 0
+        && Number.isFinite(frame.halfWidth);
+    const reach = boardBody ? frame.halfWidth * 0.99 : 9.2;
+    const gap = boardBody ? Math.min(opts.blocked + 0.15, reach * 0.55) : 0.55;
+    const span = reach - gap; // one wing, shoulder to tip
+    const tall = boardBody && Number.isFinite(frame.halfHeight) ? frame.halfHeight : 4.9;
+    // The wing's own scale: long enough to fill the side of the frame, never taller than it.
+    const S = Math.min(span, tall * 1.55);
+    const shoulderY = boardBody ? tall * 0.1 : 0.55;
+    const feathers = Math.max(8, Math.round(opts.feathers ?? 24));
+    const bodyShare = boardBody ? 0 : 0.2;
+    const bodyCount = Math.floor(n * bodyShare);
+    const wingCount = n - bodyCount;
+    // The arm: it climbs from the shoulder to the wrist and runs on, a little lower, to the tip.
+    const armY = (s) => shoulderY + S * (0.4 * s - 0.2 * s * s + 0.1 * Math.sin(Math.PI * s));
+    // (The outermost feathers reach on past the arm's end: the arm stops short by their length,
+    // so the tips come to the edge of the frame and not past it.)
+    const armSpan = span - S * 0.28;
+    const armX = (s) => gap + armSpan * s;
+    for (let i = 0; i < wingCount; i += 1) {
+        const i4 = i * 4;
+        const side = i % 2 === 0 ? 1 : -1;
+        const m = i >> 1; // eslint-disable-line no-bitwise
+        const h1 = hashUnit(m * 12.9898 + 1.7);
+        const h2 = hashUnit(m * 78.233 + 4.1);
+        const h3 = hashUnit(m * 39.425 + 9.3);
+        let x; let y;
+        if (m % 9 < 2) {
+            // Coverts: a dense band under the leading edge, thinning toward the tip.
+            const s = (m * GOLDEN_RATIO_F) % 1;
+            const depth = S * 0.11 * (1 - 0.7 * s) * h1 * h1;
+            x = armX(s);
+            y = armY(s) - depth;
+        } else {
+            // A feather: rooted on the arm, hanging down by the body and reaching out at the tip.
+            const k = m % feathers;
+            const s = (k + 0.5) / feathers;
+            const angle = (-90 + 72 * s ** 1.5) * (Math.PI / 180);
+            const length = S * (0.56 - 0.22 * s) * (0.82 + 0.18 * Math.sin(Math.PI * s));
+            // Dealt evenly along the feather, a little denser by the root.
+            const f = (((Math.floor(m / feathers) + 0.5) * GOLDEN_RATIO_F) % 1) ** 0.85;
+            // The blade: as wide as the gap to its neighbour at the root, a third of it at the tip.
+            const blade = (armSpan / feathers) * 0.42 * (1 - 0.68 * f) * (h2 * 2 - 1);
+            const sweep = S * 0.05 * f * f * s; // the outer feathers curve back toward the body
+            const cosA = Math.cos(angle);
+            const sinA = Math.sin(angle);
+            // (Never behind the boards: the innermost feathers hang at the card's edge.)
+            x = Math.max(armX(s) + cosA * length * f + sinA * blade - sweep, gap - 0.14);
+            y = armY(s) + sinA * length * f - cosA * blade;
+        }
+        arr[i4] = x * side;
+        arr[i4 + 1] = y;
+        arr[i4 + 2] = (h3 - 0.5) * 0.5;
+        arr[i4 + 3] = 1;
+    }
+    for (let i = wingCount; i < n; i += 1) {
+        const i4 = i * 4;
+        const m = i - wingCount;
+        const h1 = hashUnit(m * 12.9898 + 3.3);
+        const h2 = hashUnit(m * 78.233 + 6.1);
+        const part = m % 10;
+        let x; let y;
+        if (part < 5) {
+            // Body: a slim ellipse, kept inside the wing roots.
+            const a = h1 * Math.PI * 2;
+            const r = Math.sqrt(h2);
+            x = Math.cos(a) * r * 0.5;
+            y = -0.3 + Math.sin(a) * r * 1.75;
+        } else if (part < 7) {
+            const a = h1 * Math.PI * 2;
+            const r = Math.sqrt(h2) * 0.46;
+            x = Math.cos(a) * r;
+            y = 1.8 + Math.sin(a) * r;
+        } else {
+            // Tail: seven feathers fanned below the body.
+            const k = m % 7;
+            const angle = (-90 + (k - 3) * 11) * (Math.PI / 180);
+            const f = ((Math.floor(m / 7) + 0.5) * GOLDEN_RATIO_F) % 1;
+            const blade = 0.13 * (1 - 0.5 * f) * (h1 * 2 - 1);
+            x = Math.cos(angle) * 2.5 * f - Math.sin(angle) * blade;
+            y = -1.7 + Math.sin(angle) * 2.5 * f + Math.cos(angle) * blade;
+        }
+        arr[i4] = x;
+        arr[i4 + 1] = y;
+        arr[i4 + 2] = (h2 - 0.5) * 0.6;
+        arr[i4 + 3] = 1;
+    }
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// Roost — the flock come down for the night: a long low bank along the foot of the frame,
+// mounded like a reed bed, most of it on the ground line with a few plumes still settling.
+// Authored to the frame (opts.frame: the half-size figures are fitted to), so it is the same
+// bank on a wide screen and on a phone. Request it with `layout: 'center'`.
+// ──────────────────────────────────────────────────────────────────────────
+function fillRoost(arr, n, opts = {}) {
+    const frame = opts.frame || {};
+    const W = Number.isFinite(frame.halfWidth) ? frame.halfWidth : 9;
+    const H = Number.isFinite(frame.halfHeight) ? frame.halfHeight : 4.9;
+    for (let i = 0; i < n; i += 1) {
+        const i4 = i * 4;
+        const u = (i * GOLDEN_RATIO_F) % 1;
+        const x = (u * 2 - 1) * W * 0.985;
+        const mound = Math.sin(x * 0.55 + 0.7) * 0.5 + Math.sin(x * 1.31 + 2.1) * 0.3 + Math.sin(x * 2.9) * 0.2;
+        const h = hashUnit(i * 12.9898 + 0.37);
+        // Most motes lie along the ground; over each mound a plume still hangs, thinning upward.
+        const rise = h * h * h;
+        const plume = Math.max(0, mound) ** 1.5;
+        arr[i4] = x;
+        arr[i4 + 1] = -H * 0.985 + H * (0.06 + 0.05 * mound) + rise * H * (0.16 + 0.5 * plume);
+        arr[i4 + 2] = (hashUnit(i * 78.233 + 1.9) - 0.5) * 2.4;
+        arr[i4 + 3] = 1;
+    }
+}
+
 // Free — zero attraction. Particles ignore targets and behave as free fluid.
 // Useful as a "release" state when returning from a formation.
 // ──────────────────────────────────────────────────────────────────────────
@@ -845,6 +981,9 @@ export const SHAPE_GENERATORS = Object.freeze({
     mobius: fillMobius,
     comet: fillComet,
     nautilus: fillNautilus,
+    // The flock's own figures: a great bird, and the bank it settles in at a run's end.
+    wings: fillWings,
+    roost: fillRoost,
     free: fillFree,
 });
 

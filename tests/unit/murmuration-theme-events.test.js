@@ -166,12 +166,15 @@ describe('Murmuration theme: gameplay wiring', () => {
             expect(offset).toBeGreaterThan(2);
             expect(offset).toBeLessThan(theme.fluidSim.uExtent.value.x * 1.2);
         }
-        // The game-over heart is always one heart, in the middle.
+        // (This board fills the frame's height: no band of sky is left to lift a figure into.)
+        expect(theme.fluidSim.uShapeLift.value).toBe(0);
+        // The roost is always one bank along the foot of the frame.
         theme.setShape('free');
         wait(4);
         listeners.get('gameOver')();
-        expect(theme.fluidSim.currentShape).toBe('heart');
+        expect(theme.fluidSim.currentShape).toBe('roost');
         expect(theme.fluidSim.uShapeTwin.value.toArray()).toEqual([0, 0]);
+        expect(theme.fluidSim.uShapeLift.value).toBe(0);
     });
 
     it('runs its frame on the CPU path: the swarm flies, nothing is dispatched to compute', async () => {
@@ -229,21 +232,25 @@ describe('Murmuration theme: gameplay wiring', () => {
         expect(lock).toHaveBeenCalledOnce();
     });
 
-    it('gathers the heart when a run ends on the window, and holds it', async () => {
+    it('brings the flock down to roost when a run ends on the window, and lifts it again by itself', async () => {
         const { theme, listeners, wait } = await startTheme();
         wait(0.5);
         expect(theme.show.shape.name).toBe('free');
         listeners.get('gameOver')({ detail: { gameState: {} } });
-        expect(theme.show.shape.name).toBe('heart');
-        expect(theme.fluidSim.currentShape).toBe('heart');
-        wait(20);
-        expect(theme.show.shape.name).toBe('heart');
-        expect(theme.fluidSim.currentShape).toBe('heart');
-        expect(theme.fluidSim.uShapeStrength.value).toBeGreaterThan(0.5);
-        expect(theme.show.getState().queued).toBe(0); // the chain that drew it in has run out
+        expect(theme.show.shape.name).toBe('roost');
+        expect(theme.fluidSim.currentShape).toBe('roost');
+        wait(10);
+        expect(theme.show.shape.name).toBe('roost');
+        expect(theme.fluidSim.currentShape).toBe('roost');
+        expect(theme.fluidSim.uShapeStrength.value).toBeGreaterThan(0.3);
+        expect(theme.show.getState().queued).toBe(0);
+        // No menu stands over a dead sky: after a while the flock is in the air again.
+        wait(12);
+        expect(theme.show.isRoosting()).toBe(false);
+        expect(theme.fluidSim.currentShape).toBe('free');
     });
 
-    it('lets the heart go on the next lock, and that lock still lands', async () => {
+    it('lifts the flock on the next lock, and that lock still lands', async () => {
         const { theme, listeners, wait } = await startTheme();
         listeners.get('gameOver')();
         wait(3);
@@ -266,7 +273,7 @@ describe('Murmuration theme: gameplay wiring', () => {
         expect(lock).toHaveBeenCalledTimes(2);
     });
 
-    it('lets the heart go when the next run is started from the menu', async () => {
+    it('lifts the flock when the next run is started from the menu', async () => {
         const { theme, listeners, wait } = await startTheme();
         listeners.get('gameOver')();
         wait(3);
@@ -274,11 +281,11 @@ describe('Murmuration theme: gameplay wiring', () => {
         expect(theme.show.shape.target).toBe(0);
         wait(4);
         expect(theme.fluidSim.currentShape).toBe('free');
-        // Starting a run with no heart held is harmless.
+        // Starting a run with the flock already in the air is harmless.
         expect(() => listeners.get('startGameWithMode')()).not.toThrow();
     });
 
-    it('forgets the run that ended: the lock that killed it does not release the heart', async () => {
+    it('forgets the run that ended: the lock that killed it does not lift the roost', async () => {
         const { theme, listeners, wait } = await startTheme();
         for (let i = 0; i < 3; i += 1) {
             eventBus.emit(EVENTS.PIECE_LOCK, { piece: I });
@@ -293,7 +300,7 @@ describe('Murmuration theme: gameplay wiring', () => {
         expect(theme.show.comboCount).toBe(0);
         expect(theme.show.heatTarget).toBe(0);
         wait(1);
-        expect(theme.show.shape.name).toBe('heart');
+        expect(theme.show.shape.name).toBe('roost');
         expect(theme.show.shape.target).toBeGreaterThan(0);
     });
 
@@ -457,9 +464,9 @@ describe('Murmuration theme: stopping', () => {
         const disposeShow = vi.spyOn(show, 'dispose');
         const resetDirector = vi.spyOn(playDirector, 'reset');
         const disposeSim = vi.spyOn(fluidSim, 'dispose');
-        // A quad's follow-ups and a game-over chain are still queued when the theme stops.
-        show.clear({ lines: 4, rows: [19, 18, 17, 16] });
+        // A run has ended and a quad's follow-ups are still queued when the theme stops.
         late.get('gameOver')();
+        show.clear({ lines: 4, rows: [19, 18, 17, 16] });
         expect(show.getState().queued).toBeGreaterThan(0);
 
         theme.stop();

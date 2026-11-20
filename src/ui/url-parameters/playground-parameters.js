@@ -655,7 +655,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
         category: 'Playground',
         scope: 'playground.html — aurora, black-hole, chiral-gold, fluid-dreams, galaxy, geode, halcyon-apex, '
             + 'himalayan-peak, ice-temple, kaleidosonic, koi-pond, luminous-tides, lunara, moonlit-greenhouse, '
-            + 'nebula-flow, neon-district, ocean, rainbark, rainbow-terraces, serenity-warp, solar-eclipse, '
+            + 'murmuration, nebula-flow, neon-district, ocean, rainbark, rainbow-terraces, serenity-warp, solar-eclipse, '
             + 'starlight, stellar-drift, stellar-velocity, stillwater, sunset, supernova, thermal-bloom, tornado, '
             + 'vesper-chrysalis, void-ember, voltage-storm, waves, winter',
         description: 'Set the piece/reaction color.',
@@ -678,6 +678,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/luminous-tides.effect.js',
             'src/playground/effects/lunara.effect.js',
             'src/playground/effects/moonlit-greenhouse.effect.js',
+            'src/playground/effects/murmuration.effect.js',
             'src/playground/effects/nebula-flow.effect.js',
             'src/playground/effects/neon-district.effect.js',
             'src/playground/effects/ocean.effect.js',
@@ -921,6 +922,20 @@ export const PLAYGROUND_URL_PARAMETERS = [
         notes: 'Use on playground.html with effect=rainbark.',
         sources: [
             'src/playground/effects/rainbark.effect.js',
+        ],
+    },
+    {
+        name: 'mood',
+        category: 'Playground',
+        scope: 'playground.html — murmuration',
+        description: 'Hold one of the flock’s moods, whatever the level and the clock say: 0 wheel (the ring '
+            + 'round the board), 1 wings, 2 drift, 3 gale, 4 veil.',
+        values: 'Number; a fraction is the melt between two moods, and the wheel wraps after 4.',
+        defaultValue: 'Unset (the clock turns one mood every 105 s, and each level one mood more).',
+        example: 'mood=1',
+        notes: 'Use on playground.html with effect=murmuration; give the flock a minute to take the form (t=90).',
+        sources: [
+            'src/playground/effects/murmuration.effect.js',
         ],
     },
     {

@@ -424,7 +424,7 @@ theme has them (the geese, cranes, swans, gulls, vultures, flamingos and owls ar
   in whole and evenly spaced and is a company, not one bird drawn five times. Three kinds of
   passage (overtaking the eye, coming toward it, abeam), either way; everything is a closed form
   of the happening's age, so a pinned capture and a seek land on the same birds. (The first
-  course was laid in screen terms and the birds crawled and dashed: gotcha #1769.)
+  course was laid in screen terms and the birds crawled and dashed: gotcha #1773.)
 - **The light is the cloud sea's** (`nimbus-veil-albatross.js`, one instanced draw, three rows of
   four numbers a bird): the sun wrapped a little round the bird, the sky from above, the bright
   deck from below, a little sun through the thin flight feathers and along the outline of a bird
