@@ -1361,7 +1361,8 @@ Registry entries are in `src/themes/theme-registry.js:325-428`. The groups are: 
   - Haze runs `0xb895bd` to `0xffcb92` (`nimbus-veil-tsl.js:148`).
   - Sky ramp: `0xe9b3b8`, `0xffc79a`, `0xa39cd0`, `0x5f7fc6`, `0x2b4f9e` (`:155-158`).
   - Motes: `0xffe6b3`, `0xfff6e0`, `0xffd0a0`, `0xf6e2ff`.
-  - Pieces (`nimbus-veil-tetrominos.js:13-20`) are moonlit pastels: I `#dff6ff`, O `#f6f6ff`, T `#bfc6ff`, S `#cfe9ff`, Z `#aebdff`, J `#9ab0d8`, L `#e2ecff`, GARBAGE `#161a27`. Render mode `glow`.
+  - Pieces (`nimbus-veil-tetrominos.js`) were moonlit pastels until 2026-11-20 and are now seven hues of the light: I `#ffcf6b`, O `#6fb2ff`, T `#ff7d66`, S `#a98bff`, Z `#5fd9c4`, J `#ff86b8`, L `#f3efff`, GARBAGE `#46486a`. Render mode `glow`.
+- **Since this survey (the living pass, 2026-11-20).** The sun rides an arc with five hours and sets under the sea line; an air of its own turns beside them on a plane-projected high cloud (cirrus fibres, a mackerel sky); each event has an instrument of its own (a ripple, waves in echelon, rays, stepping stones on the deck, a corona, lanterns in the towers, the spectrum); ice halos, sundogs and sun pillars are left to Parhelion. See `docs/NIMBUS_VEIL_VISUAL_OVERHAUL_2026-10.md`.
 - **Motifs.**
   - A polar-grid cloud sea of about 33k vertices, displaced by eroded fBm.
   - Cloud tops wrap-lit gold, valleys lavender, silver linings toward the sun (`nimbus-veil-cloudsea.js:1-10`).

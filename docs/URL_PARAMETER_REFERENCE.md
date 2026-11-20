@@ -67,7 +67,9 @@ and `happen` (`happen=0` holds off the evening's own happenings), and its `parts
 `glints`, `flutter` and `meteors`. The foxes' rebuild (Winter's, then Sakura Twilight's, on one shared rig) added `foxCam`,
 `foxCamYaw`, `foxCamFov`, `foxAct` and `foxActAge` to the `winter` and `sakura-twilight` playground
 effects, and `foxWhich` to the latter; Sakura Twilight keeping one fox of its pair
-(2026-10-18) retired `foxWhich` again.
+(2026-10-18) retired `foxWhich` again. Nimbus Veil's living pass (2026-11-20) gave the `nimbus-veil`
+playground effect entries of its own for `air`, `happen`, `happenings`, `chain` and `streak`, and more
+cues for `event`.
 The Tornado rebuild added the capture flags `tornadoForceWebGL`, `tornadoTime`,
 `tornadoFixedDt`, `tornadoParts` and `tornadoFalseColor` plus the `tornado` playground effect
 (it reads 25 parameters the other full-world effects already had, so it adds no name of its
