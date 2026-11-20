@@ -7347,12 +7347,12 @@ export const PLAYGROUND_URL_PARAMETERS = [
         scope: 'playground.html — nimbus-veil',
         description: 'Hold one of the sky’s own happenings in every slot instead of the clock’s (one to a '
             + 'slot of 36 s, with quiet slots between).',
-        values: 'skein (birds cross the light), glitter (the motes flash toward the sun), boil (a tower boils up), '
+        values: 'albatross (albatrosses cross the view), glitter (the motes flash toward the sun), boil (a tower boils up), '
             + 'meteor (shooting stars; a night hour) or flicker (heat lightning inside a tower; dusk or night).',
         defaultValue: 'Unset (the clock decides).',
-        example: 'happen=skein',
+        example: 'happen=albatross',
         notes: 'Use on playground.html with effect=nimbus-veil. A held happening begins with its slot: its age is t '
-            + 'modulo 36 s.',
+            + 'modulo 36 s. Each slot has its own albatrosses (how many, which way, how near).',
         sources: [
             'src/playground/effects/nimbus-veil.effect.js',
         ],

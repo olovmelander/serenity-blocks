@@ -189,7 +189,7 @@ describe('nimbus-veil happenings: the sky by itself', () => {
         }
         expect(night.has('meteor')).toBe(true);
         expect(night.has('flicker')).toBe(true);
-        expect(night.has('skein')).toBe(false);
+        expect(night.has('albatross')).toBe(false);
         expect(dusk.has('flicker')).toBe(true);
         expect(dusk.has('meteor')).toBe(false);
         expect(HAPPENINGS.meteor.day).toBe(false);
@@ -229,7 +229,13 @@ describe('nimbus-veil happenings: the sky by itself', () => {
             return world.u;
         };
         const quiet = (u, except) => {
-            if (except !== 'skein') expect(u.skeinDir.value.w).toBe(0);
+            if (except !== 'albatross') {
+                expect(world.albatross.state().flying).toBe(0);
+                // (A bird that is not in the air has no size: the first number of each bird's rows.)
+                world.albatross.table.forEach((row, i) => {
+                    if (i % 3 === 0) expect(row.w).toBe(0);
+                });
+            }
             if (except !== 'glitter') expect(u.glitter.value).toBe(0);
             if (except !== 'boil') expect(u.boil.value.y).toBe(0);
             if (except !== 'flicker') expect(u.ember.value.y).toBe(0);
@@ -238,21 +244,31 @@ describe('nimbus-veil happenings: the sky by itself', () => {
         world.setHappenings(false);
         quiet(at(13), null);
 
-        world.setHappenings(true, 'skein');
-        let u = at(HAPPENINGS.skein.dur / 2);
-        expect(u.skeinDir.value.w).toBe(1);
-        expect(new THREE.Vector3(u.skeinDir.value.x, u.skeinDir.value.y, u.skeinDir.value.z).length()).toBeCloseTo(1, 6);
-        quiet(u, 'skein');
-        // The skein crosses the whole view: its leader starts off one edge and ends off the other.
+        world.setHappenings(true, 'albatross');
+        let u = at(8);
+        expect(world.albatross.state().flying).toBeGreaterThan(0);
+        // A bird in the air: a size, and a heading of length one.
+        const leader = world.albatross.table;
+        expect(leader[0].w).toBeGreaterThan(1);
+        expect(new THREE.Vector3(leader[1].x, leader[1].y, leader[1].z).length()).toBeCloseTo(1, 6);
+        quiet(u, 'albatross');
+        // The leader crosses the whole view: it comes in over one edge and leaves over the other.
         const leaderX = (t) => {
-            const v = at(t).skein.value;
-            return new THREE.Vector3(v.x, v.y, v.z).project(camera).x;
+            at(t);
+            const v = world.albatross.table[0];
+            return v.w > 0 ? new THREE.Vector3(v.x, v.y, v.z).project(camera).x : null;
         };
-        const x0 = leaderX(0.05);
-        const x1 = leaderX(HAPPENINGS.skein.dur - 0.05);
-        expect(Math.min(x0, x1)).toBeLessThan(-1.1);
-        expect(Math.max(x0, x1)).toBeGreaterThan(1.3);
-        expect(at(HAPPENINGS.skein.dur + 1).skeinDir.value.w).toBe(0);
+        const x0 = leaderX(0.02);
+        let x1 = x0;
+        for (let t = 0.5; t < HAPPENINGS.albatross.dur; t += 0.25) x1 = leaderX(t) ?? x1;
+        expect(Math.min(x0, x1)).toBeLessThan(-1.05);
+        expect(Math.max(x0, x1)).toBeGreaterThan(1.05);
+        // A seek lands mid-flight on the same birds.
+        const once = at(9.5) && world.albatross.table.map((row) => row.toArray());
+        at(3);
+        expect(at(9.5) && world.albatross.table.map((row) => row.toArray())).toEqual(once);
+        at(HAPPENINGS.albatross.dur + 1);
+        expect(world.albatross.state().flying).toBe(0);
 
         world.setHappenings(true, 'glitter');
         u = at(HAPPENINGS.glitter.dur / 2);
@@ -736,10 +752,11 @@ describe('nimbus-veil events: an instrument each', () => {
     it('keeps every tier whole: each has the veils, the birds and every instrument', () => {
         for (const [name, tier] of Object.entries(WORLD_QUALITY)) {
             expect(tier.veils, name).toBeGreaterThanOrEqual(1);
-            expect(tier.birds, name).toBeGreaterThanOrEqual(7);
+            expect(tier.birds, name).toBeGreaterThanOrEqual(2);
             const { world, run } = stage({ quality: name });
             expect(world.parts.optics, name).toBeTruthy();
-            expect(world.fx.birds, name).toBeTruthy();
+            expect(world.parts.birds, name).toBeTruthy();
+            expect(world.albatross.most, name).toBe(tier.birds);
             world.onLineClear(4);
             world.onPerfectClear();
             run(0.8);

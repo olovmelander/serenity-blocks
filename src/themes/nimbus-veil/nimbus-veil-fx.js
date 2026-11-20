@@ -1,13 +1,16 @@
 /**
  * Nimbus Veil — atmosphere and gameplay FX: drifting golden motes (and the ice glitter that
- * passes through them), event sparkles, the veils of mist over the deck, a skein of birds.
+ * passes through them), event sparkles, the veils of mist over the deck. (The birds are a part
+ * of their own: nimbus-veil-albatross.js.)
  *
  * Motion is analytic in the vertex stage (spawn state + age), so nothing is uploaded per frame:
  * a spawn writes one instance's attributes as a ranged upload, and the same code runs on both
  * WebGPURenderer backends. Motes and sparkles are instanced Sprites (THREE.Points would be one
  * pixel wide on WebGPU whatever the size node says).
  *
- * Additive materials write premultiplied colour with alpha 1 (AdditiveBlending is SrcAlpha, One).
+ * The additive sprites add their light with an alpha of zero (premultiplied, a custom output), so
+ * the scene pass's alpha is left as it was under each sprite's whole square: a bird's mark there
+ * (nimbus-veil-albatross.js) reaches the post.
  */
 
 import * as THREE from 'three/webgpu';
@@ -17,7 +20,6 @@ import {
     attribute,
     cameraPosition,
     clamp,
-    cross,
     dot,
     exp,
     float,
@@ -26,7 +28,6 @@ import {
     max,
     mix,
     normalize,
-    positionGeometry,
     positionWorld,
     pow,
     sin,
@@ -71,6 +72,7 @@ function createMotes(u, count, rand) {
     material.transparent = true;
     material.depthWrite = false;
     material.blending = THREE.AdditiveBlending;
+    material.premultipliedAlpha = true;
     material.sizeAttenuation = false;
     material.fog = false;
 
@@ -89,7 +91,7 @@ function createMotes(u, count, rand) {
     const dist = length(pos.sub(cameraPosition));
     material.positionNode = pos;
     material.sizeNode = look.w.mul(clamp(float(70.0).div(dist), 0.5, 2.0));
-    material.colorNode = Fn(() => {
+    const light = Fn(() => {
         const local = uv().sub(0.5).mul(2.0);
         const twinkle = sin(t.mul(float(1.1).add(ph.mul(0.13))).add(ph.mul(5.0))).mul(0.5).add(0.5);
         const riseT = rise.div(40.0);
@@ -103,7 +105,7 @@ function createMotes(u, count, rand) {
         return look.xyz.mul(glint(local, twinkle.mul(0.5)).mul(twinkle.mul(0.6).add(0.4)).mul(wrapFade).mul(fog)
             .mul(gain));
     })();
-    material.opacityNode = float(1.0);
+    material.outputNode = vec4(light, 0.0);
 
     const sprite = new THREE.Sprite(material);
     sprite.name = 'NimbusMotes';
@@ -132,6 +134,7 @@ function createSparkles(u, count) {
     material.transparent = true;
     material.depthWrite = false;
     material.blending = THREE.AdditiveBlending;
+    material.premultipliedAlpha = true;
     material.sizeAttenuation = false;
     material.fog = false;
 
@@ -150,13 +153,13 @@ function createSparkles(u, count) {
     const fadeIn = smoothstep(0.0, 0.08, lifeT);
     const fadeOut = pow(float(1.0).sub(lifeT), 0.9);
     material.sizeNode = look.w.mul(mix(float(1.3), float(0.7), lifeT)).mul(alive);
-    material.colorNode = Fn(() => {
+    const light = Fn(() => {
         const local = uv().sub(0.5).mul(2.0);
         const twinkle = sin(age.mul(motion.z).add(motion.w)).mul(0.5).add(0.5);
         return look.xyz.mul(glint(local, twinkle.mul(0.9).add(0.2)).mul(fadeIn.mul(fadeOut))
             .mul(twinkle.mul(0.5).add(0.6)).mul(2.4));
     })();
-    material.opacityNode = float(1.0);
+    material.outputNode = vec4(light, 0.0);
 
     const sprite = new THREE.Sprite(material);
     sprite.name = 'NimbusSparkles';
@@ -244,85 +247,6 @@ function createVeils(u, layers) {
     return group;
 }
 
-/** A bird's wingspan (world units: these are big birds, seen a long way off). */
-const BIRD_SPAN = 12.5;
-
-/**
- * The skein: `count` birds in a chevron behind their leader, one draw. The world gives the
- * leader's place and heading (u.skein, u.skeinDir) while a skein is in the sky, and a zero size
- * otherwise; each bird is a quad turned to the camera with its wings drawn in the fragment, two
- * strokes beating about the body, dark against the light. The chevron trails back from the
- * leader, the arm nearer the eye a little lower, so it reads as a V from below.
- */
-function createBirds(u, count, rand) {
-    const positions = new Float32Array(count * 4 * 3);
-    const uvs = new Float32Array(count * 4 * 2);
-    const birds = new Float32Array(count * 4 * 4);
-    const index = [];
-    for (let k = 0; k < count; k += 1) {
-        const row = Math.ceil(k / 2);
-        const arm = k % 2 === 1 ? 1 : -1;
-        const back = row * 12.5 + (k ? (rand() - 0.5) * 4 : 0);
-        const across = arm * row * 8.5 + (k ? (rand() - 0.5) * 3 : 0);
-        const phase = rand() * 6.28;
-        const size = 0.86 + rand() * 0.28;
-        [[-1, -0.5], [1, -0.5], [1, 0.5], [-1, 0.5]].forEach(([cx, cy], c) => {
-            const v = k * 4 + c;
-            positions.set([cx, cy, 0], v * 3);
-            uvs.set([cx * 0.5 + 0.5, cy + 0.5], v * 2);
-            birds.set([back, across, phase, size], v * 4);
-        });
-        const base = k * 4;
-        index.push(base, base + 1, base + 2, base, base + 2, base + 3);
-    }
-    const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-    geometry.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
-    geometry.setAttribute('aBird', new THREE.BufferAttribute(birds, 4));
-    geometry.setIndex(index);
-    geometry.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 1e5);
-
-    const material = new THREE.MeshBasicNodeMaterial();
-    material.name = 'NimbusBirds';
-    material.transparent = true;
-    material.depthWrite = false;
-    material.side = THREE.DoubleSide;
-    material.fog = false;
-    const bird = attribute('aBird', 'vec4'); // back along the heading, across it, wingbeat phase, size
-    material.positionNode = Fn(() => {
-        const heading = u.skeinDir.xyz;
-        const side = normalize(cross(heading, vec3(0.0, 1.0, 0.0)));
-        const bob = sin(u.skein.w.mul(0.8).add(bird.z)).mul(0.6);
-        const centre = u.skein.xyz.sub(heading.mul(bird.x)).add(side.mul(bird.y))
-            .add(vec3(0.0, bird.y.mul(-0.3).add(bob), 0.0));
-        const span = bird.w.mul(BIRD_SPAN * 0.5).mul(u.skeinDir.w);
-        return centre.add(u.camRight.mul(positionGeometry.x.mul(span)))
-            .add(u.camUp.mul(positionGeometry.y.mul(span)));
-    })();
-    material.colorNode = Fn(() => {
-        const q = uv().sub(0.5).mul(2.0).toVar(); // x along the wings, y up, both -1..1
-        const w = abs(q.x).toVar();
-        // The beat: each bird on its own phase.
-        const beat = sin(u.skein.w.mul(5.4).add(bird.z));
-        const line = beat.mul(w).mul(0.62).add(w.mul(float(1.0).sub(w)).mul(0.9));
-        const thick = float(0.2).sub(w.mul(0.15));
-        const wing = float(1.0).sub(smoothstep(thick.mul(0.45), thick, abs(q.y.sub(line))))
-            .mul(float(1.0).sub(smoothstep(0.86, 1.0, w)));
-        const bx = q.x.div(0.17);
-        const by = q.y.sub(0.04).div(0.3);
-        const body = float(1.0).sub(smoothstep(0.6, 1.0, bx.mul(bx).add(by.mul(by))));
-        const alpha = max(wing, body);
-        // Dark against the light; the low sun warms it a little.
-        const col = u.mood.shadeLow.mul(0.3).add(u.mood.sunLight.mul(0.05).mul(u.day));
-        return vec4(col, alpha.mul(0.92));
-    })();
-    const mesh = new THREE.Mesh(geometry, material);
-    mesh.name = 'NimbusBirds';
-    mesh.frustumCulled = false;
-    mesh.renderOrder = 27.5;
-    return mesh;
-}
-
 export class NimbusFx {
     /**
      * @param {object} u  shared world uniforms
@@ -334,7 +258,7 @@ export class NimbusFx {
      * @param {() => number} opts.rand
      */
     constructor(u, {
-        motes, sparkles, veils, birds = 0, rand,
+        motes, sparkles, veils, rand,
     }) {
         this.group = new THREE.Group();
         this.group.name = 'NimbusFx';
@@ -344,11 +268,9 @@ export class NimbusFx {
         /** When each sparkle slot's glint ends (CPU copy): a new glint takes a finished slot. */
         this.sparkEnd = new Float64Array(this.sparkles.iSpawn.count).fill(-1e6);
         this.veils = veils > 0 ? createVeils(u, veils) : null;
-        this.birds = birds > 0 ? createBirds(u, birds, rand) : null;
         if (this.motes) this.group.add(this.motes);
         this.group.add(this.sparkles.sprite);
         if (this.veils) this.group.add(this.veils);
-        if (this.birds) this.group.add(this.birds);
     }
 
     get sparkleCapacity() {

@@ -175,7 +175,7 @@ describe('nimbus-veil world', () => {
         scene.traverse((obj) => {
             if (obj.isMesh || obj.isSprite) drawables += 1;
         });
-        // sky, cloud sea, cumulus, the optics card, four veils, the birds, motes, sparkles
+        // sky, cloud sea, cumulus, the optics card, four veils, the albatrosses, motes, sparkles
         expect(drawables).toBe(11);
         world.dispose();
         expect(scene.children).toHaveLength(0);

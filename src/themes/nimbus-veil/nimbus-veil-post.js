@@ -39,6 +39,9 @@ import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { disposeBloomNodeDeep } from '../shared/bloom-dispose.js';
 import { nvHash21, nvMax3 } from './nimbus-veil-tsl.js';
 
+/** The share of the glare (bloom and the sun's rays) that still falls on what marks itself. */
+export const GLARE_ON_MARK = 0.25;
+
 /**
  * Per-tier look. `rays` = radial taps (0 = none). `msaa` is the scene-pass sample count
  * (WebGPU: 1 or 4): the cloud domes' and towers' silhouettes against the sky are geometry edges.
@@ -74,7 +77,8 @@ const LUMA = vec3(0.2126, 0.7152, 0.0722);
 export function createPassThroughPipeline(renderer, scene, camera) {
     const pipeline = new THREE.RenderPipeline(renderer);
     const scenePass = pass(scene, camera, { samples: 0 });
-    pipeline.outputNode = scenePass;
+    // (The scene's alpha carries a mark, nimbus-veil-albatross.js: the picture is shown opaque.)
+    pipeline.outputNode = vec4(scenePass.rgb, 1.0);
     return {
         render: () => pipeline.render(),
         update() {},
@@ -140,7 +144,8 @@ export class NimbusVeilPost {
         const outputFn = Fn(() => {
             const st = screenUV;
             const centered = st.sub(0.5);
-            const S = vec3(sceneColor.sample(st).rgb).toVar();
+            const seen = vec4(sceneColor.sample(st)).toVar();
+            const S = vec3(seen.rgb).toVar();
 
             const B = vec3(0.0).toVar();
             if (this.bloomNode) {
@@ -176,6 +181,9 @@ export class NimbusVeilPost {
                     });
                 }
             }
+            // A bird marks itself in the scene's alpha (nimbus-veil-albatross.js ALBATROSS_MASK):
+            // the glare is kept off it, so it stays a dark shape against the sun.
+            B.mulAssign(smoothstep(0.4, 0.9, seen.a).mul(1.0 - GLARE_ON_MARK).add(GLARE_ON_MARK));
             const H = S.add(B).mul(this.uExposure).mul(float(1.0).sub(this.uDusk.mul(0.42))).toVar();
             // Mid-tone contrast before the tone map (the darks are left alone).
             const Lh = max(dot(H, LUMA), 1e-4);

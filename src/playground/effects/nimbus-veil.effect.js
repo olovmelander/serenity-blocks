@@ -19,8 +19,9 @@
  *                            lines), b2b (streak=<n>), perfect, levelUp, over (the run ends),
  *                            dawn (the run ends, and 4 s later the next begins), fever
  *   air=<name>               hold one air: fair, tails, mackerel, beams, mist (default: the clock's)
- *   happen=<kind>            hold one happening in every slot: skein, glitter, boil, meteor,
- *                            flicker (its age is t modulo the slot's 36 s)
+ *   happen=<kind>            hold one happening in every slot: albatross, glitter, boil, meteor,
+ *                            flicker (its age is t modulo the slot's 36 s; each slot's albatrosses
+ *                            are its own: how many, which way, how near)
  *   happenings=0             no happenings
  *   parts=sky,sea,...        draw only these parts (sky sea cumulus fx)
  *   noPost=1                 raw scene (no bloom/grade)
