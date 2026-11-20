@@ -24,7 +24,7 @@
  * falling through the dust, a flush on the far range. happeningAt() is the whole schedule as a
  * closed form and happeningSwell() what one shows at any age (a rise, a stand, a fall to exactly
  * nothing, inside its own slot): the optics state arms nothing and stores nothing, it adds the
- * slot's swell to the frame (gotcha #1762: armed envelopes stacked under a seek).
+ * slot's swell to the frame (gotcha #1763: armed envelopes stacked under a seek).
  */
 import { moodDrift, wheelAt } from '../../shared/mood-clock.js';
 

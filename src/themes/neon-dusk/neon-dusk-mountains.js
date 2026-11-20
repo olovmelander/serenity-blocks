@@ -8,6 +8,11 @@
  * and the far range is a pale haze-washed wall. The sun sits low behind them, so every ridge
  * that turns edge-on to the view burns with a rim of sunset light, hottest near the sun.
  * Luminous mist pools along their feet above the glass floor.
+ *
+ * Over the scan lines lies a wire net: the floor's own grid carried up the slopes (lines of
+ * constant world x, climbing every face), so the ranges read as the terrain of the same machine
+ * that drew the glass. The build also hands back each range's SKYLINE as the rest camera sees it
+ * (`mesh.userData.crests`): neon-dusk-ridges.js draws the neon ridgelines along them.
  */
 
 import * as THREE from 'three/webgpu';
@@ -39,7 +44,6 @@ import {
     ndLineAA,
     ndSkyGradient,
     ndSunAlign,
-    rgb,
 } from './neon-dusk-tsl.js';
 import { drainSteps, stepClock } from '../shared/build-steps.js';
 
@@ -110,6 +114,9 @@ export const RANGES = Object.freeze([
  * composition was tuned on.
  */
 export const TERRAIN_SEED = 0x57a21197;
+
+/** The wire net's pitch (world units between its lines) on the middle and the near range, and its light. */
+export const WIRE = Object.freeze({ mid: 64, near: 26, gain: 0.36 });
 
 function mulberry32(seed) {
     let a = seed >>> 0;
@@ -265,6 +272,36 @@ function* buildRangeSteps(range, index, noise, clock) {
     return geometry;
 }
 
+/**
+ * A range's skyline from the rest camera: in each column of its strip, the vertex that stands
+ * highest in the lens (the greatest elevation angle). Returns [x, y, z] a column, in the strip's
+ * own order (azimuth −span … +span).
+ * @param {THREE.BufferGeometry} geometry  one range's strip (buildRangeSteps)
+ * @param {number} seg @param {number} rows
+ */
+export function crestOf(geometry, seg, rows) {
+    const pos = geometry.attributes.position.array;
+    const out = new Float32Array((seg + 1) * 3);
+    const col = rows + 1;
+    for (let s = 0; s <= seg; s += 1) {
+        let best = 0;
+        let bestTan = -Infinity;
+        for (let j = 0; j <= rows; j += 1) {
+            const i = (s * col + j) * 3;
+            const reach = Math.hypot(pos[i] - RIG.x, pos[i + 2] - RIG.z);
+            const tan = (pos[i + 1] - RIG.height) / Math.max(1, reach);
+            if (tan > bestTan) {
+                bestTan = tan;
+                best = i;
+            }
+        }
+        out[s * 3] = pos[best];
+        out[s * 3 + 1] = pos[best + 1];
+        out[s * 3 + 2] = pos[best + 2];
+    }
+    return out;
+}
+
 function mergeGeometries(list) {
     let vertexCount = 0;
     let indexCount = 0;
@@ -321,13 +358,14 @@ export function* createMountainsSteps(u, { detail = 1, contours = true, seed = T
     const clock = stepClock(MOUNTAIN_SLICE_MS);
     const noise = makePerlin(mulberry32(seed));
     const strips = [];
+    const crests = [];
     for (let i = 0; i < RANGES.length; i++) {
         const range = RANGES[i];
-        strips.push(yield* buildRangeSteps({
-            ...range,
-            seg: Math.max(48, Math.round(range.seg * detail)),
-            rows: Math.max(8, Math.round(range.rows * Math.sqrt(detail))),
-        }, i, noise, clock));
+        const seg = Math.max(48, Math.round(range.seg * detail));
+        const rows = Math.max(8, Math.round(range.rows * Math.sqrt(detail)));
+        const strip = yield* buildRangeSteps({ ...range, seg, rows }, i, noise, clock);
+        strips.push(strip);
+        crests.push({ range: i, points: crestOf(strip, seg, rows) });
     }
     if (clock.due()) {
         yield 'mountains';
@@ -358,6 +396,9 @@ export function* createMountainsSteps(u, { detail = 1, contours = true, seed = T
         const spacing = mix(float(34.0), float(15.0), wNear);
         const cr = restDist.div(spacing);
         const fwC = fwidth(cr);
+        // The wire net: the floor grid's own x lines carried up the slopes.
+        const wx = p.x.div(mix(float(WIRE.mid), float(WIRE.near), wNear));
+        const fwW = fwidth(wx);
 
         // ── Body: silhouettes that step back in tone, near-black violet in front. The sun is
         // behind them, so the faces the eye sees are in shadow: the sky above lifts them only a
@@ -404,14 +445,21 @@ export function* createMountainsSteps(u, { detail = 1, contours = true, seed = T
             const wave = sweep(u.contourA.x, u.contourA.y).add(sweep(u.contourA.z, u.contourA.w))
                 .add(sweep(u.contourB.x, u.contourB.y)).add(sweep(u.contourB.z, u.contourB.w))
                 .toVar();
-            const low = mix(rgb(0xff2fa8, 1.2), rgb(0x9b4bff, 1.2), u.comboShift);
-            const highC = mix(rgb(0x2ce8ff, 1.25), rgb(0xff6ad8, 1.3), u.comboShift);
-            const lineCol = mix(low, highC, smoothstep(4.0, 70.0, p.y));
+            // The live mood's scan colours, swung by a hot hand (the world mixes them).
+            const lineCol = mix(u.scanLow, u.scanHigh, smoothstep(4.0, 70.0, p.y));
             const lineW = wMid.mul(0.6).add(wNear.mul(0.9)).mul(smoothstep(1.0, 6.0, p.y))
-                .mul(exp(dist.mul(-0.0005)));
+                .mul(exp(dist.mul(-0.0005)))
+                .toVar();
             // The lines' own light (0.8 at rest) rises as play heats: the ridges stay lit.
-            col.addAssign(lineCol.mul(line.mul(lineW).mul(u.scanGain.add(wave.mul(3.0)))));
+            const lineGain = u.scanGain.add(wave.mul(3.0)).toVar();
+            col.addAssign(lineCol.mul(line.mul(lineW).mul(lineGain)));
             col.addAssign(lineCol.mul(wave.mul(wMid.add(wNear)).mul(0.06)));
+            // The wire net: thinner and dimmer than the scan lines, gone where its lines crowd
+            // (a face seen edge-on), brightest where a sweep passes.
+            const dWire = fract(wx.add(0.5)).sub(0.5);
+            const wire = ndLineAA(dWire, min(float(0.022), fwW.mul(0.9)), fwW)
+                .mul(float(1.0).sub(smoothstep(0.1, 0.34, fwW)));
+            col.addAssign(lineCol.mul(wire.mul(lineW).mul(lineGain).mul(WIRE.gain)));
         }
 
         // ── Mist pooling at the feet, luminous toward the sun ──
@@ -442,5 +490,6 @@ export function* createMountainsSteps(u, { detail = 1, contours = true, seed = T
     mesh.name = 'NeonDuskMountains';
     mesh.frustumCulled = false;
     mesh.renderOrder = -5;
+    mesh.userData.crests = crests;
     return mesh;
 }

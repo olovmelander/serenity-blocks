@@ -95,7 +95,11 @@ describe('neon-dusk moods: the clock turns them, a level is a step on top', () =
             t += 1 / 30;
             at(w, t, 1 / 30);
         }
-        expect(far(live(w), pure(3))).toBeLessThan(1e-3);
+        // Ten seconds on the step has all but landed. (2e-3, was 1e-3: since 2026-11 a mood also
+        // sets the grid's, the scan lines' and the ridgelines' colours, some at 1.5 and nearly
+        // half-way round the colour wheel from the next mood's, so the same last sliver of the
+        // ease is a slightly larger number.)
+        expect(far(live(w), pure(3))).toBeLessThan(2e-3);
         // A level goes round the wheel the short way, and a seek lands on the same light.
         w.setLevel(1 + MOOD_COUNT);
         w.seek(t);
