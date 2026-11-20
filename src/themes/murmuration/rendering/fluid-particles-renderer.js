@@ -19,6 +19,12 @@
  *   SIZE     — a power-law size class per mote, a floor of about a pixel (smaller motes
  *              keep their energy but stop shimmering), and a few "hero" motes that carry
  *              a four-point glint.
+ *   PLAY     — the light play sends through the flock. Each event has a FRONT of its own
+ *              shape (a puff, a chevron, beams along the cleared rows, a pinwheel …), read
+ *              from one table of rows: a mote the front reaches flares in the front's
+ *              colour and banks, and glows on for a moment behind it. A chain's step runs
+ *              down every ribbon like a fuse, and a new level's colours cross the flock as
+ *              one wave. (composition/swarm-fronts.js writes the table.)
  *
  * The material writes the same light to the emissive target, which is what the selective
  * bloom reads on the native path.
@@ -27,9 +33,12 @@ import * as THREE from 'three';
 import { MeshBasicNodeMaterial } from 'three/webgpu';
 import {
     Fn,
+    If,
+    Loop,
     abs,
     atan,
     attribute,
+    cameraPosition,
     cameraProjectionMatrix,
     cameraViewMatrix,
     clamp,
@@ -42,6 +51,7 @@ import {
     instanceIndex,
     int,
     length,
+    log,
     max,
     min,
     mix,
@@ -61,6 +71,9 @@ import {
 import {
     FIRE, HEAT_EXPONENT, PALETTE_SPAN, SWARM_PALETTE,
 } from '../composition/swarm-palette.js';
+import {
+    FRONT, FRONT_ROWS, MAX_FRONTS, SPIRAL_WIND,
+} from '../composition/swarm-fronts.js';
 
 /** World-space radius of a median mote at sizeMul 1. */
 const BASE_PARTICLE_SIZE = 0.023;
@@ -79,6 +92,12 @@ const TURN_REACH = 13;
 const TURN_WIDTH = 0.75;
 
 const PALETTE_STOPS = SWARM_PALETTE.length;
+/** How much a front's light lifts a mote it reaches, and the most all fronts together may. */
+const FRONT_LIFT = 2.3;
+const FRONT_CEILING = 1.9;
+/** The chevron's half-angle (a hard drop's bow wave), as (sin, cos). */
+const CHEVRON = Object.freeze([Math.sin(0.66), Math.cos(0.66)]);
+const TAU = Math.PI * 2;
 
 /**
  * The colour `k` of the way from `cA` to `cB`, turning the hue in the direction of rising
@@ -146,6 +165,22 @@ export function createFluidParticlesRenderer(sim, options = {}) {
     const uAmbient = sim.uAmbient ?? uniform(0.22);
     // How strongly the turn shows (0 = never).
     const uTurn = uniform(options.turn ?? 1.0);
+    // The crown (a perfect clear): 1 turns the whole flock, figure and all, to gold.
+    const uCrown = uniform(0);
+    // A lifted figure's own height (the simulation's), for its colours.
+    const uShapeLift = sim.uShapeLift ?? uniform(0);
+    // Play's light: MAX_FRONTS fronts of FRONT_ROWS rows each, live ones packed first.
+    //   A = (x, y, age, kind)   B = (speed, width, reach, light)   C = (r, g, b, the kind's own number)
+    //   D = (a beam's direction x, y, seconds of afterglow, how bright that glow is)
+    const frontRows = Array.from({ length: MAX_FRONTS * FRONT_ROWS }, () => new THREE.Vector4(0, 0, 0, 0));
+    const uFronts = uniformArray(frontRows, 'vec4');
+    const uFrontCount = uniform(0, 'int');
+    // A chain's step running down every ribbon: (where along a ribbon's life 0..1, its light).
+    const uFuse = uniform(new THREE.Vector2(0, 0));
+    // A new level's colours crossing the flock: (the front's place along the axis, the palette
+    // step still to come ahead of it, the light of its crest), and the axis it runs along.
+    const uWipe = uniform(new THREE.Vector3(0, 0, 0));
+    const uWipeAxis = uniform(new THREE.Vector2(1, 0));
 
     const material = new MeshBasicNodeMaterial({
         transparent: true,
@@ -267,6 +302,103 @@ export function createFluidParticlesRenderer(sim, options = {}) {
             .mul(crest)
             .mul(0.55)
             .toVar();
+        // (A front of play banks the motes it reaches too: added below.)
+
+        // ── Play's light ──
+        // Every front in the table: how far this mote is from it (g < 0 once it has passed),
+        // and where the front shows at all (mask). The crest is the front itself; behind it
+        // the motes glow on for a moment, so the front draws a band and not a hairline.
+        // Fronts are drawn where the mote is SEEN on the focal plane, not where it is: the
+        // flock is nine units deep, and a row's beam must stay on its row at every depth.
+        const onScreen = center.xy.sub(cameraPosition.xy).mul(uFocusDistance.div(viewDist))
+            .add(cameraPosition.xy).sub(uFocal.xy)
+            .toVar();
+        const playLight = float(0.0).toVar();
+        const playTint = vec3(0.0).toVar();
+        Loop({
+            start: int(0), end: uFrontCount, type: 'int', condition: '<', name: 'k',
+        }, ({ k }) => {
+            const A = uFronts.element(k.mul(FRONT_ROWS)).toVar();
+            const B = uFronts.element(k.mul(FRONT_ROWS).add(1)).toVar();
+            const C = uFronts.element(k.mul(FRONT_ROWS).add(2)).toVar();
+            const D = uFronts.element(k.mul(FRONT_ROWS).add(3)).toVar();
+            const d = onScreen.sub(A.xy).toVar();
+            const ax = abs(d.x).toVar();
+            const travelled = B.x.mul(A.z).toVar();
+            const gap = float(0.0).toVar();
+            const mask = float(0.0).toVar();
+            const glow = max(abs(B.x).mul(D.z), B.y.mul(2.0)).toVar();
+            If(A.w.lessThan(FRONT.ring + 0.5), () => {
+                // A ring (a puff where a piece came to rest): C.w squashes it.
+                const dist = length(vec2(d.x, d.y.mul(C.w))).toVar();
+                gap.assign(dist.sub(travelled));
+                mask.assign(float(1.0).sub(smoothstep(B.z.mul(0.55), B.z, dist)));
+            }).ElseIf(A.w.lessThan(FRONT.beam + 0.5), () => {
+                // A beam: a ray from a cleared row out through both wings (D its direction on
+                // the right, mirrored on the left; C.w its half-thickness). Its front runs out
+                // along it, and it widens a little as it goes.
+                const along = ax.mul(D.x).add(d.y.mul(D.y)).toVar();
+                const off = d.y.mul(D.x).sub(ax.mul(D.y)).div(C.w.mul(along.mul(0.06).add(1.0))).toVar();
+                gap.assign(along.sub(travelled));
+                // (The rays of one clear all leave the same few rows: they come up to full light
+                // only once they have parted, or their overlap is a white knot beside the card.)
+                mask.assign(exp(off.mul(off).negate()).mul(float(1.0).sub(smoothstep(B.z.mul(0.7), B.z, along)))
+                    .mul(smoothstep(1.6, 4.2, along)));
+            }).ElseIf(A.w.lessThan(FRONT.answer + 0.5), () => {
+                // The answer: the same ray, its front coming back in from the frame's edge.
+                const along = ax.mul(D.x).add(d.y.mul(D.y)).toVar();
+                const off = d.y.mul(D.x).sub(ax.mul(D.y)).div(C.w.mul(along.mul(0.06).add(1.0))).toVar();
+                gap.assign(B.z.sub(travelled).sub(along));
+                mask.assign(exp(off.mul(off).negate()).mul(smoothstep(0.0, B.z.mul(0.25), along)));
+            }).ElseIf(A.w.lessThan(FRONT.chevron + 0.5), () => {
+                // A chevron: the bow wave a hard drop throws up and out from where it landed.
+                const dist = length(d).toVar();
+                gap.assign(ax.mul(CHEVRON[0]).add(d.y.mul(CHEVRON[1])).sub(travelled));
+                mask.assign(float(1.0).sub(smoothstep(B.z.mul(0.5), B.z, dist))
+                    .mul(smoothstep(-0.9, 0.3, d.y.add(ax.mul(0.5)))));
+            })
+                .Else(() => {
+                // A pinwheel: thin arms unwinding out of a twist and turning (C.w = arms, signed
+                // by the way they turn). An arm is a LINE of one thickness: the distance round
+                // to the nearest arm, in world units.
+                    const r = max(length(d), float(0.05)).toVar();
+                    const arms = abs(C.w).toVar();
+                    const way = C.w.div(arms).toVar();
+                    const psi = atan(d.y, d.x).mul(way).sub(log(r).mul(SPIRAL_WIND)).sub(A.z.mul(2.4));
+                    const off = fract(psi.mul(arms).div(TAU).add(0.5)).sub(0.5)
+                        .mul(TAU / Math.sqrt(1 + SPIRAL_WIND * SPIRAL_WIND)).div(arms)
+                        .mul(r);
+                    const rim = min(travelled, B.z).toVar();
+                    gap.assign(off);
+                    glow.assign(0.45);
+                    mask.assign(smoothstep(0.15, 0.7, r).mul(float(1.0).sub(smoothstep(rim.mul(0.6), rim, r))));
+                });
+            const front = gap.div(B.y).toVar();
+            const fold = exp(front.mul(front).negate()).toVar();
+            const trail = exp(min(gap, float(0.0)).div(glow)).mul(step(gap, 0.0)).mul(D.w);
+            const lit = fold.add(trail.mul(float(1.0).sub(fold))).mul(mask).mul(B.w).toVar();
+            playLight.addAssign(lit);
+            playTint.addAssign(C.xyz.mul(lit));
+            bank.addAssign(fold.mul(mask).mul(min(B.w, float(1.0))).mul(0.4));
+        });
+        // The fuse: a chain's step runs down every ribbon, head to tail.
+        const fuseAt = age.sub(uFuse.x).toVar();
+        const fuse = exp(fuseAt.mul(fuseAt).mul(-1.0 / (0.05 * 0.05)))
+            .add(exp(min(fuseAt, float(0.0)).div(0.16)).mul(step(fuseAt, 0.0)).mul(0.35))
+            .mul(uFuse.y)
+            .toVar();
+        playLight.addAssign(fuse);
+        playTint.addAssign(vec3(...FIRE.gold).mul(fuse));
+        // The wipe: a new level's colours cross the flock behind one bent front.
+        const wipeAt = dot(onScreen, uWipeAxis)
+            .add(sin(dot(onScreen, vec2(uWipeAxis.y.negate(), uWipeAxis.x)).mul(0.36)).mul(1.1))
+            .sub(uWipe.x).toVar();
+        const wipeAhead = smoothstep(-1.6, 0.0, wipeAt).mul(uWipe.y);
+        const wipeCrest = exp(wipeAt.mul(wipeAt).mul(-1.0 / (0.55 * 0.55))).mul(uWipe.z).toVar();
+        playLight.addAssign(wipeCrest);
+        playTint.addAssign(vec3(1.0, 0.97, 0.94).mul(wipeCrest));
+        const played = min(playLight, float(FRONT_CEILING)).toVar();
+        brightness.mulAssign(float(1.0).add(played.mul(FRONT_LIFT)));
 
         // ── Colour: by place, or along the formation ──
         // The hue also runs on along a ribbon as its motes age, so a ribbon is a gradient.
@@ -279,10 +411,12 @@ export function createFluidParticlesRenderer(sim, options = {}) {
         const side = step(0.5, seedA).mul(2.0).sub(1.0);
         // Measured in the figure's own half-size, so a small figure (a phone, boards across
         // the frame) carries the same gradient as a large one.
-        const figure = rel.sub(vec3(side.mul(uShapeTwin.x).mul(uShapeTwin.y), 0.0, 0.0))
+        const figure = rel.sub(vec3(side.mul(uShapeTwin.x).mul(uShapeTwin.y), uShapeLift, 0.0))
             .div(max(uShapeSpan, float(0.5))).toVar();
         const byShape = figure.y.mul(0.34).add(length(figure.xy).mul(0.24)).add(seedA.mul(0.04));
-        const hue = mix(byPlace, byShape, uShapeColor).add(uPalettePhase).add(uTime.mul(0.006)).toVar();
+        const hue = mix(byPlace, byShape, uShapeColor).add(uPalettePhase).add(uTime.mul(0.006))
+            .sub(wipeAhead)
+            .toVar();
         const base = paletteAt(hue).toVar();
         // Heat (a long combo) turns the free swarm to fire — a formation keeps most of its own
         // colours. The fire has hues of its own by place (ember, amber, gold), so the swarm
@@ -296,11 +430,18 @@ export function createFluidParticlesRenderer(sim, options = {}) {
         const ember = vec3(...FIRE.ember);
         const amber = vec3(...FIRE.amber);
         const gold = vec3(...FIRE.gold);
-        const fire = mix(mix(ember, amber, w), mix(amber, gold, w), w).toVar();
-        const heated = turnHue(base, fire, heatK);
+        // The crown is gold through and through: its fire leaves the embers out, and it takes
+        // the figure's colours too.
+        const flame = mix(mix(ember, amber, w), mix(amber, gold, w), w);
+        const fire = mix(flame, mix(amber, gold, w.mul(0.5).add(0.5)), uCrown).toVar();
+        const heated = turnHue(base, fire, max(heatK, uCrown.mul(0.97)));
         const whiten = clamp(flash.mul(0.45).add(youth.mul(0.3).mul(float(1.0).sub(uShapeColor)))
             .add(crest.mul(0.14)), 0.0, 0.65);
-        const lit = mix(heated, vec3(1.0, 0.96, 0.92), whiten);
+        const lit = mix(
+            mix(heated, vec3(1.0, 0.96, 0.92), whiten),
+            playTint.div(max(playLight, float(1e-3))),
+            clamp(played.mul(0.62), 0.0, 0.8),
+        );
 
         // ── Trail ──
         // The mote draws the path it has just flown: its head where it is, a tail behind it
@@ -418,8 +559,15 @@ export function createFluidParticlesRenderer(sim, options = {}) {
             uShapeColor,
             uFocal,
             uTurn,
+            uCrown,
+            uFrontCount,
+            uFuse,
+            uWipe,
+            uWipeAxis,
         },
         palette,
+        /** The front table's rows (FRONT_ROWS Vector4 a front): composition/swarm-fronts.js writes them. */
+        frontRows,
         /** Keep the lens in step with the camera (call after the camera moved). */
         setLens(camera, viewportHeight, focusPoint) {
             const fov = ((camera?.fov ?? 38) * Math.PI) / 180;

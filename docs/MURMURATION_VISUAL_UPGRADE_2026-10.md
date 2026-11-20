@@ -494,3 +494,148 @@ locale in the records view and a symlink permission in the recorder test).
 Not done: a perf-lane reading (the trail quads are longer, but the motes are smaller and fewer
 pixels are covered by out-of-focus discs; the sky adds one three-octave noise read and one star
 layer on High); a physical phone; the theme icon still shows the old look.
+
+## The living pass: moods, an instrument for every event, the wings and the roost (2026-11-20)
+
+Built on `feature/murmuration-living` (worktree `../serenity-blocks-murmuration`), three 0.187.0.
+The silk, the sunset of a chain and the chain's own figure are kept as they were; this pass adds
+what the audit found missing.
+
+### What was weak
+
+Captures of `main` (rest at four times, every event, the tiers, a phone frame):
+
+- **The flock was one shape for ever.** Its colours drifted and its ribbons wound, but the
+  silhouette was always the same ring round the board: no stretching, parting or gathering, the
+  very thing a murmuration is known for.
+- **Every event was the same instrument.** A lock, a hard drop, a clear, a back-to-back and a
+  level-up were each a hairline ring in the simulation whose light was gone in two frames; in a
+  still, and mostly in motion, a lock and a level-up could not be told from rest.
+- **The big moments had no identity.** Three lines and four lines rolled a figure from the same
+  pool of 25 (a cube, a pyramid, a lightning bolt among them). The perfect clear's "gold" figure
+  came out magenta. The game-over heart stood behind the board card.
+- **The sky was empty**: a few stars and blue smoke at the frame's edges, and nothing ever
+  happened in it.
+- **A phone** showed a sliver of the flock and none of its figures: all of it behind the card.
+
+### Moods: the flock is never one shape for long
+
+![The five moods and a shooting star](murmuration-captures/living-moods.webp)
+
+`composition/swarm-moods.js`. Five moods turn on the shared mood clock (105 s a mood, resting
+on each before it melts into the next) in every mode; a level-up moves the flock one mood on.
+A mood is numbers: the flock's **form**, how it flows, how its motes are drawn, and its sky.
+
+| Mood | The flock | The sky |
+|---|---|---|
+| wheel | the ring round the board, as the theme has always opened | as it was |
+| wings | parts above and below the board into a wide flat eye, each side its own colour | more stars, a dusk glow low in the frame |
+| drift | gathers to one side as a dense bulb and trails a tail; the side it favours wanders | violet wisps |
+| gale | fast, frayed, many-coloured: the gyre races and the eddies tear the ribbons | crisp |
+| veil | slow, wide and thin: long silk in two neighbouring hues | the most stars, the most gas |
+
+The form is the simulation's outer wall written as a closed form of the angle round the board
+(`formRadius`: a base and four lobe weights; one lobe leans the flock to a side, two part it).
+A wall alone was not enough: motes funnelled through a narrow place stayed against the inner
+wall, and the flock collapsed into a stream. So the **gyre follows the form**: each mote keeps
+its share of the way from the inner wall to the outer one as it goes round (a radial velocity of
+`omega × share × dR/dθ`), and rebirths and sources stay inside the form too. The same arithmetic
+runs in the compute pass and in `stepCPU()`. On a phone the two lobes lie above and below the
+board, and the loop is taller, so its arcs show in the bands of sky the card leaves free.
+
+### An instrument for every event
+
+![Every event](murmuration-captures/living-events.webp)
+
+`composition/swarm-fronts.js` and the mote shader. The simulation still shoves the flock; the
+**light** is now a front of the event's own shape, read by the vertex stage from one table of
+rows (ten fronts of four rows, live ones packed first, a loop to a count uniform: zero
+iterations at rest). A mote a front reaches flares in the front's colour, banks, and glows on
+behind it, so the eye is given a band to follow. Fronts are computed where a mote is *seen* on
+the focal plane, so a ray stays a line through a flock nine units deep.
+
+| Moment | Its instrument |
+|---|---|
+| Lock | a puff in the **piece's own colour**, leaving the card on the side the piece landed |
+| Hard drop | a **chevron**: the bow wave the drop throws up and out; the lens takes the hit |
+| Clear, 1–3 lines | a **ray for each line**, fanning from the cleared rows out through both wings, each at a height of its own: they can be counted |
+| Back-to-back | the rays are **answered**: gold ones come back in from the frame's edges |
+| Four lines | four rays, the swirl, the sky — and the flock spreads into two great **wings** either side of the board and beats them: the board is the body |
+| Twist | a **pinwheel** of three arms unwinds from behind the board through both wings (two arms for a twist that cleared nothing), two eddies, a knot — or the held figure pirouettes |
+| Chain step | a **fuse**: light runs down every ribbon from head to tail; the sunset and the chain's figure as before |
+| Perfect clear | drawn in, then a gold ring through the whole flock, a **shower of shooting stars**, and a crown figure that is gold and **stays** gold |
+| Level up | the new palette crosses the flock as **one wave** behind a bent front, and the mood steps on |
+| Game over | the flock comes down to **roost** along the foot of the frame under a starrier sky; it lifts again by itself after 16 s, so no menu stands over a dead sky |
+| New run | a fold of first light rises through the flock; from the roost it **lifts** in a rush |
+
+Quick play is budgeted where the light is sent: each lock's puff is divided by what the last
+ones were sent with (decaying over a second), so a lock a second is whole and a hard drop every
+0.42 s never floods the flock (`event=drops` in the playground is that capture).
+
+**The wings** (`fillWings` in `sim/shape-formations.js`): a bright arm and a fan of feathers
+hanging from it, each feather a line with its motes dealt evenly along it (gotcha #1724). With
+room either side of the boards the wings unfold from the card's edges out to the frame; without
+(a phone, boards across the frame) a whole bird, body, head and tail, stands where the layout
+puts figures. The simulation beats them (`setShapeFlap`: the beat runs out from shoulder to
+tip). **The roost** (`fillRoost`) is authored to the frame, so it is the same bank on a wide
+screen and a phone. Figures a flock would not draw (cube, pyramid, octahedron, hexagon, crystal
+shard, lightning) are out of the pool play rolls from; they are still there by name.
+
+**A phone's figure** now stands in the band of sky above the board (below it only when that
+band is half as tall again: thumbs are below), instead of behind the card.
+
+### The sky, and what happens by itself
+
+More stars with a floor of about a pixel, a few bright ones with a soft glow and a thin glint,
+wisps that lean to violet by the mood, a dusk glow low in the frame in some moods, and Minimal
+(no post stack) sinks its own gas into the night with a toe, where it used to be a grey haze.
+On a round of 41-second slots, a pure function of the clock (`happeningAt`): a **shooting
+star**, a shower of five, a **great turn** (one fold of light sweeping the whole flock from end
+to end, the same front as the level's wave with no change of colour) and a **falcon's stoop**
+(a tight push steered through one wing with a silver flare; not under reduced motion, and not
+while a figure stands or the play is hot).
+
+Tried and dropped: a far flock crossing behind the wisps. As smoke it was a mauve smudge, as
+points of light a patch of grain (gotcha #1762).
+
+### Tiers, backends, phone
+
+![Minimal, Low, the WebGL2 backend, and a phone at rest, at four lines and at game over](murmuration-captures/living-tiers.webp)
+
+Every tier keeps every mood and every event; nothing here is gated by tier except what already
+was (mote counts, post, sky octaves, the star glint on the high sky).
+
+### Verification
+
+- **Tests**: the theme's 15 files hold 218 tests (27 new in
+  `tests/unit/murmuration-living.test.js`: the front table, the moods and their forms, the
+  happenings' schedule at two frame rates, a front per event, the lock budget, the wings, the
+  roost, the phone band, the steered push, and the CPU twin filling both wings of a parted
+  form). 18 older tests were re-pinned on purpose: the heart is the roost, the light of a ring
+  is a front, a level's palette snaps under its wave, a phone's loop is taller. The shader gate
+  builds the swarm and the sky to WGSL and GLSL at High and Minimal. Typecheck, the theme's
+  lint and the cross-theme gates (registry lifecycle, dual-state tripwire, URL parameter
+  catalogue, camera breath, reduce flashing, the skill contract) pass.
+- **Playground**, private headless Chrome, 30 fps, consoles clean: every mood, every event,
+  the happenings, Minimal, Low, High and Extreme; the WebGL2 backend (CPU twin) at High, Medium
+  and Minimal; 390 × 844; 1720 × 720.
+- **The real game** (headless Chrome, single player, High, WebGPU, 60 000 motes, 30 fps): real
+  hard drops, a four-line clear, a perfect clear and a level-up on the bus, a real top-out and
+  the result screen. The wings spread, the crown bloomed gold, the mood stepped, the flock
+  roosted and was in the air again 19 s later. Console: the two expected Steam cloud notes only.
+- **Cost** (playground live, GPU timestamps, capped at 30 fps, 1920 × 1080, RTX, branch and
+  `main` interleaved, two rounds of 16 s; noise about ±0.15 ms): High at rest 1.53 → 1.56 ms,
+  High in play 1.79 → 1.70 ms, Low at rest 0.71 → 0.71 ms, Low in play 0.61 → 0.73 ms. No
+  difference outside the noise.
+
+Not verified: an uncapped measurement; the integrated GPU; a physical phone (and the real
+phone layout: the band above the board is taken from the board canvas plus a card allowance);
+local multiplayer and online layouts in a capture; sessions of hours. The theme icon and
+`docs/theme-screenshots/` still show the earlier look.
+
+Open calls for the owner: the roost replaces the game-over heart; the wings pass behind the
+score panel on the right; the falcon's stoop reads in motion but not in a still; in a phone
+frame the flock at rest is still mostly behind the card.
+
+Playground: `event=lock|drop|clear|quad|twist|spin|b2b|perfect|step|levelUp|gameOver|gameStart|drops`,
+`mood=<0..4>`, `color=<rrggbb>`. Console: `window.murmuration.mood(n)`.

@@ -132,6 +132,9 @@ export function frameHalfExtents(camera, focal = SWARM_FOCAL, restFov = null) {
     return { halfWidth: halfHeight * (camera.aspect || 1), halfHeight, distance };
 }
 
+/** A frame narrower than this share of its height is a phone held upright. */
+export const NARROW_FRAME = 0.85;
+
 /**
  * The swarm's size for a frame. A wide screen gets wings either side of the board; a
  * phone gets a tall loop that shows above and below it.
@@ -144,7 +147,10 @@ export function swarmFrame(camera, radius, focal = SWARM_FOCAL, restFov = null) 
     const wideX = radius;
     const wideY = radius * 0.48;
     const x = Math.min(wideX, frame.halfWidth * 0.94);
-    const y = Math.min(wideY, frame.halfHeight * 0.8);
+    // A narrow frame's board covers the middle from edge to edge: the loop grows tall enough
+    // for its top and bottom arcs to show in the bands of sky above and below the card.
+    const narrow = frame.halfWidth < frame.halfHeight * NARROW_FRAME;
+    const y = narrow ? Math.min(radius * 0.62, frame.halfHeight * 0.96) : Math.min(wideY, frame.halfHeight * 0.8);
     return {
         extent: new THREE.Vector3(x, y, radius * 0.46),
         halfWidth: frame.halfWidth,
@@ -155,15 +161,26 @@ export function swarmFrame(camera, radius, focal = SWARM_FOCAL, restFov = null) 
     };
 }
 
+/** The least band of free sky (world units) a lifted figure is drawn in. */
+export const MIN_FIGURE_BAND = 1.1;
+/** A figure stands above the boards unless the band below is this much taller (a phone's thumbs are below). */
+const BELOW_PREFERENCE = 1.5;
+
 /**
  * Where formations go for a frame whose middle is taken by the board(s). With room either
  * side, a figure is drawn as a mirrored pair flanking the board — a single figure centred
  * behind the card would be half hidden by it. Without room (a phone), one centred figure.
  *
+ * A phone has no room beside its board but a band of sky above it (and a narrower one below):
+ * given the boards' top and bottom, the one figure stands in the taller band, where it is seen,
+ * instead of behind the card.
+ *
  * @param {{ halfWidth: number, halfHeight: number }} frame  the view at the focal plane
  * @param {number} blockedHalfWidth  half-width of the span the boards cover (world units)
+ * @param {{ top: number, bottom: number }|null} [band]  the boards' top and bottom edges
+ *   (world units from the focal point, up positive)
  */
-export function shapeLayout(frame, blockedHalfWidth) {
+export function shapeLayout(frame, blockedHalfWidth, band = null) {
     const blocked = Math.max(0, blockedHalfWidth || 0);
     const margin = frame.halfWidth - blocked;
     const halfHeight = frame.halfHeight * 0.86;
@@ -171,13 +188,41 @@ export function shapeLayout(frame, blockedHalfWidth) {
         return {
             twin: true,
             offsetX: blocked + margin * 0.5,
+            offsetY: 0,
+            blocked,
             halfWidth: margin * 0.46,
             halfHeight,
         };
     }
+    if (blocked > 0 && band && Number.isFinite(band.top) && Number.isFinite(band.bottom)) {
+        const above = frame.halfHeight - band.top;
+        const below = frame.halfHeight + band.bottom;
+        const over = above >= MIN_FIGURE_BAND && above * BELOW_PREFERENCE >= below;
+        const free = over ? above : Math.max(above, below);
+        if (free >= MIN_FIGURE_BAND) {
+            return {
+                twin: false,
+                offsetX: 0,
+                offsetY: over || above >= below ? band.top + above * 0.5 : band.bottom - below * 0.5,
+                blocked,
+                halfWidth: frame.halfWidth * 0.9,
+                halfHeight: free * 0.44,
+            };
+        }
+    }
     return {
-        twin: false, offsetX: 0, halfWidth: frame.halfWidth * 0.9, halfHeight,
+        twin: false, offsetX: 0, offsetY: 0, blocked, halfWidth: frame.halfWidth * 0.9, halfHeight,
     };
+}
+
+/** How far the card round a board canvas reaches above and below it, in canvas heights. */
+export const CARD_REACH = Object.freeze({ above: 0.19, below: 0.04 });
+/** Minimal has no post stack: the toe the sky sinks its own gas with. */
+export const NO_POST_SKY_TOE = 0.012;
+
+/** One buffer pixel in the sky's tangent-plane units, for a lens and a buffer height. */
+export function skyPixel(fovDegrees, pixelHeight) {
+    return (2 * Math.tan((fovDegrees * Math.PI) / 360)) / Math.max(1, pixelHeight);
 }
 
 /**
