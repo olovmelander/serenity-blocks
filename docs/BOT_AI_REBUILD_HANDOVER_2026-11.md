@@ -18,8 +18,8 @@ Feature branch `feature/gravity-bots`, measured against `8dc68d825db61bc04e1cfb4
 
 On November 20 the owner approved deployment when CI and the planning budgets pass, with two follow-ups.
 
-1. **Display intervals.** Recheck the local rooms and the Neon encounter at 60 and 165 Hz on the same hardware, with each game's own input replay. The completed comparison found extra two-refresh intervals in five of eight games in the first order and three of eight in reverse order. The largest excess was in the four-expert room at 165 Hz. [Frame measurements](#both-measurement-orders-on-the-pre-integration-package) · [Packaged measurement runner](../reports/gravity-bot-rebuild/render-series.ps1)
-2. **Human play.** Collect five independent reviews of the eight blinded clips and record direct-play fun ratings by tier. The agreed plausibility threshold is 70%. At handover there were zero completed questionnaires. The reserved seven-frag median of 16.3 minutes is worth checking in direct play. [Blind review](../reports/gravity-bot-rebuild/blind-review.html) · [Scoring the responses](../reports/gravity-bot-rebuild/scorecard.py)
+1. **Display intervals.** The deployed game at `a55bd62b0` has now been compared with its own input replay in all eight room and refresh-rate combinations. Seven of the eight short matches had more two-refresh intervals live. The earlier ten-minute comparison found an excess in eight of 16 games. [Deployed measurements](#display-intervals-on-the-deployed-game) · [Ten-minute reference](#both-measurement-orders-on-the-pre-integration-package)
+2. **Human play.** Collect five independent reviews of the eight blinded clips and record direct-play fun ratings by tier. The agreed plausibility threshold is 70%. Each reviewer can open the public study, rate all eight clips, and download a response file. At handover there were zero completed questionnaires. The reserved seven-frag median of 16.3 minutes is worth checking in direct play. [Play the blind review](https://olovmelander.github.io/serenity-blocks/playtests/opponent-movement.html) · [Scoring the responses](../reports/gravity-bot-rebuild/scorecard.py)
 
 ## What the expert actually does
 
@@ -108,7 +108,7 @@ The local input scheduler produced these measurements on eight bags per tier. Re
 | 7 | 250 / 250 / 333 | 3,164 | 0 / 0 | 0 |
 | 10 | 217 / 250 / 283 | 3,243 | 0 / 0 | 0 |
 
-At tiers 1 and 2, **0/58 and 4/67** sampled lower-ranked choices moved three or more origin columns away. The audit observed 69/140 and 56/105. The observer counted calls to the existing random stream to distinguish a sampled error from a deliberate discharge. The blind review contains eight 18-second clips from tiers 1–6, including five with the same six-row attack. The ≥70% plausibility threshold requires at least five independent people who rate all eight clips. “Unsure” counts in the denominator. The form records what moved each judgment and accepts a separate fun rating after direct play. No human responses have been collected. `scorecard.py --reviews` checks the clip-set fingerprint in each downloaded file. [Open the blind study](../reports/gravity-bot-rebuild/blind-review.html) · [Input measurements](../reports/gravity-bot-rebuild/movement.mjs)
+At tiers 1 and 2, **0/58 and 4/67** sampled lower-ranked choices moved three or more origin columns away. The audit observed 69/140 and 56/105. The observer counted calls to the existing random stream to distinguish a sampled error from a deliberate discharge. The blind review contains eight 18-second clips from tiers 1–6, including five with the same six-row attack. The ≥70% plausibility threshold requires at least five independent people who rate all eight clips. “Unsure” counts in the denominator. The form records what moved each judgment and accepts a separate fun rating after direct play. No human responses have been collected. `scorecard.py --reviews` checks the clip-set fingerprint in each downloaded file. [Open the blind study](https://olovmelander.github.io/serenity-blocks/playtests/opponent-movement.html) · [Input measurements](../reports/gravity-bot-rebuild/movement.mjs)
 
 ## Local versus at playing speed
 
@@ -340,6 +340,25 @@ In the reverse-order single-expert game at 165 Hz, one fixed-tick planning call 
 Three allocation changes preserved search choices but produced median process CPU of 344, 359 and 360 ms against 344 ms for their control. An indexed landing table gave 344 ms against its own 359 ms control across 48 real roots, including 11 garbage boards. That 4.2% gain fell short of the predeclared 5% requirement. In 16 fresh Electron processes per version the median selected call took 0.597 ms with the shipped search and 0.600 ms with the index. The release uses the measured control.
 
 After syncing Painted Ages, four fresh rendered matches opened directly on the deal for round 11. Each reproduced all 121 inputs and all three labelled boards through tick 900. The planning calls at tick 550 took **0.8, 1.0, 1.3 and 0.9 ms**. The slowest planning frame anywhere in the four 16-second runs took 2.5 ms. All four also passed the percentile and first-plan checks. [Packaged investigation and full timing samples](../reports/gravity-bot-rebuild/integration.json.gz)
+
+### Display intervals on the deployed game
+
+At `a55bd62b0`, the public site and the independently built Windows package served the same game manifest. Each live match supplied its own recorded inputs to a fresh Electron process on the same machine. Across these eight matches the tapes contained 9,527 commands and reproduced all 131 body-labelled checkpoints. All 21,962 active planning frames fit their display interval. The longest planning frame took 3.4 ms. [Raw paired recordings](../reports/gravity-bot-rebuild/display-followup.json.gz)
+
+| Room | Hz | Site or package | Seconds | Two-refresh intervals, live / replay | Difference | Delivered Hz, live / replay | Matched boards |
+|---|---:|---|---:|---:|---:|---:|---:|
+| One expert | 60 | Installed | 120 | 5 / 4 | +1 | 60.0 / 60.0 | 22 |
+| Three experts | 60 | Published | 60 | 6 / 4 | +2 | 59.9 / 59.9 | 10 |
+| Four experts | 60 | Installed | 120 | 6 / 5 | +1 | 59.9 / 60.0 | 23 |
+| Neon | 60 | Published | 60 | 5 / 4 | +1 | 59.9 / 59.9 | 11 |
+| One expert | 165 | Published | 60 | 21 / 20 | +1 | 164.2 / 164.2 | 11 |
+| Three experts | 165 | Installed | 120 | 42 / 31 | +11 | 164.2 / 164.4 | 21 |
+| Four experts | 165 | Published | 60 | 35 / 40 | -5 | 163.7 / 163.5 | 11 |
+| Neon | 165 | Installed | 120 | 74 / 61 | +13 | 163.7 / 164.0 | 22 |
+
+The counts include every animation interval lasting at least two refreshes minus 0.25 ms. In the four-expert room at 165 Hz the one-minute result was 35 live and 40 on replay. All four installed live games overlapped at least part of the Windows full test run. Their replays ran after the suite finished. Both sides of each public pair ran after it finished. The fresh ten-minute four-expert comparison, including host load and minute-by-minute counts, is recorded in the [release PR](https://github.com/olovmelander/serenity-blocks/pull/371).
+
+Read the committed recordings with `python -B -X utf8 reports/gravity-bot-rebuild/display-pairs.py`. The same checker accepts two renderer JSON files as positional arguments. For a new input-only replay, pass the original live JSON as the final argument to `rendered-match.cjs`, with the same room, duration, refresh rate and game build. [Interval and checkpoint checks](../reports/gravity-bot-rebuild/display-pairs.py)
 
 ### Pressure, roof and Infinity on the final build
 

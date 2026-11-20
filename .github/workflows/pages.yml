@@ -84,6 +84,8 @@ jobs:
           cache: npm
       - run: npm ci --ignore-scripts
       - run: npm run build
+      - name: Include the standalone opponent movement study in Pages
+        run: install -D -m 644 reports/gravity-bot-rebuild/blind-review.html dist/playtests/opponent-movement.html
       # Shipped-artifact IP-string gate (the legal review v4.0, P0.7). It
       # scans public/ + index.html + dist/, so it MUST run after the build or it
       # silently skips the built bundles — which is where a mark token actually
