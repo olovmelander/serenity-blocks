@@ -246,7 +246,9 @@ export function create({
         simTime = asked;
         if (!world) return;
         // Events fire inside a short replay before the asked frame (the chain needs time to walk in).
-        const lead = (eventName ? eventAge : 0) + (holdCombo ? 6 : 0) + warmLocks * 0.6 + 0.5;
+        // (A happening is replayed from its own start, as an event is: the wind's dust devil
+        // rises in its first second.)
+        const lead = Math.max(eventName ? eventAge : 0, happen ? happenAge : 0) + (holdCombo ? 6 : 0) + warmLocks * 0.6 + 0.5;
         const time = Math.max(asked, lead);
         const start = time - lead;
         // Each seek replays from scratch: rows an earlier replay laid down must not come back.
