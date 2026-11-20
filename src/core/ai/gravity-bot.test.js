@@ -266,7 +266,9 @@ describe('live gravity policy', () => {
         const tick = 1000 / 60;
         for (let i = 1; i <= 60 && !bot.lastPlan; i++) bot.update(tick, i * tick);
         expect(bot.refreshRoute(bot.lastPlan)).toBe(true);
-        restorePieces(state, [{ x: 2, y: state.boardGrid.length - 1, shape: [[1]], shapeKey: 'T', pieceId: 7 }]);
+        restorePieces(state, [{
+            x: 2, y: state.boardGrid.length - 1, shape: [[1]], shapeKey: 'T', pieceId: 7,
+        }]);
         expect(state.boardVersion).toBe(7);
         expect(bot.refreshRoute(bot.lastPlan)).toBe(false);
         state.reset();
@@ -379,7 +381,10 @@ describe('live gravity policy', () => {
         const state = deal(1006);
         const top = HIDDEN_ROWS + 2;
         restorePieces(state, [{
-            x: 1, y: top, shapeKey: 'I', pieceId: 'left',
+            x: 1,
+            y: top,
+            shapeKey: 'I',
+            pieceId: 'left',
             shape: Array.from({ length: state.boardGrid.length - top }, () => [1]),
         }]);
         const immediate = new GravityBotController({

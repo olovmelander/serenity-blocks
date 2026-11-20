@@ -31,12 +31,27 @@ cadences = [('stacker', 'deliberate'), ('stacker', 'native'), ('cascade', 'stead
 expected = {(orb, seed, profile, cadence)
             for start in (12001, 13001, 16001) for seed in range(start, start + 5)
             for orb in range(1, 61) for profile, cadence in cadences}
+
+# The fit handover includes the schema its scorers read. In that archive
+# orb 12's primary counts Quads and orb 6's first bonus counts Quads.
+archived = {row['id']: row for row in json.loads((tools / 'archived-levels.json').read_text(encoding='utf-8'))}
+quad_fields = {archived[12]['victory']['primary']['type']: 'quads',
+               archived[6]['victory']['bonuses'][0]['type']: 'quad-count'}
+
+
+def canonical_quad_fields(text):
+    for old, current in quad_fields.items():
+        for quote in ("'", '"'):
+            text = text.replace(quote + old + quote, quote + current + quote)
+    return text
+
+
 def load_rows(sources):
     found = {}
     for source in sources:
         with source.open(encoding='utf-8') as lines:
             for line in lines:
-                row = json.loads(line.replace('"tetrises"', '"quads"').replace('"tetris-count"', '"quad-count"'))
+                row = json.loads(canonical_quad_fields(line))
                 key = tuple(row[x] for x in ('levelId', 'seed', 'profileId', 'cadenceId'))
                 if key in found or key not in expected:
                     raise ValueError(f'Unexpected or duplicate attempt {key} in {source}')
@@ -71,7 +86,7 @@ with TemporaryDirectory(prefix='serenity-campaign-gates-') as scratch:
     # predicates on primary goals, bonus checks, metrics and the HDI judge.
     for script in ('static.py', 'restar.py', 'final.py', 'gates_p2.py'):
         code = (tools / script).read_text(encoding='utf-8')
-        Path(scratch, script).write_text(code.replace('tetrises', 'quads').replace('tetris-count', 'quad-count'), encoding='utf-8')
+        Path(scratch, script).write_text(canonical_quad_fields(code), encoding='utf-8')
     for script, args, name in [('static.py', [levels], 'static.txt'),
                                ('final.py', [levels, static, raw, final], 'final.txt'),
                                ('gates_p2.py', [levels, final], 'gates.txt')]:
