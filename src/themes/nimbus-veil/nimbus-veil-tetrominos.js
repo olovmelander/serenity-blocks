@@ -1,23 +1,30 @@
 /**
- * Nimbus Veil Theme - Tetromino Visual Configuration
+ * Nimbus Veil — the pieces: the colours of the light over the cloud sea.
  *
- * Ethereal palette inspired by moonlit clouds drifting in a dark void.
- * Soft whites, icy blues, and gentle lavenders keep the pieces airy while
- * a cool glow effect mirrors the theme's atmospheric lighting.
+ * Seven lights a day above the clouds passes through, each a hue of its own so two pieces are
+ * never told apart by shade alone: the sun's gold, the ember of its last light, the rose of the
+ * evening deck, the violet of the towers' shade, the blue of the high noon sky, the sea-green in
+ * a corona's mother-of-pearl, and the pearl of a crown the sun has just reached. They are luminous and a
+ * little soft, like light on cloud, and they read against the dark board at a glance. None sits
+ * in the hue band a falling-block game usually gives its shape
+ * (scripts/palette-guideline-check.mjs screens 0 of 7).
+ *
+ * Neighbouring hues stand 30 degrees or more apart (gold 42, ember 10, rose 335, violet 262,
+ * sky 212, ice 172, pearl nearly white) and differ in lightness as well.
  */
 
 export const NIMBUS_VEIL_TETROMINOS = {
     version: 1,
 
     colors: {
-        I: '#dff6ff', // Moonlit cyan
-        O: '#f6f6ff', // Soft cloud white
-        T: '#bfc6ff', // Lavender mist
-        S: '#cfe9ff', // Pale aqua drift
-        Z: '#aebdff', // Cool indigo haze
-        J: '#9ab0d8', // Dusky periwinkle
-        L: '#e2ecff', // Frosted blue-white
-        GARBAGE: '#161a27', // Void shadow
+        I: '#ffcf6b', // sun gold
+        O: '#6fb2ff', // noon sky
+        T: '#ff7d66', // ember
+        S: '#a98bff', // tower shade violet
+        Z: '#5fd9c4', // corona green
+        J: '#ff86b8', // evening rose
+        L: '#f3efff', // crown pearl
+        GARBAGE: '#46486a', // deck shade
     },
 
     renderMode: 'glow',
@@ -33,7 +40,7 @@ export const NIMBUS_VEIL_TETROMINOS = {
 
         pulse: true,
         pulseSpeed: 0.03,
-        pulseAmplitude: 0.18,
+        pulseAmplitude: 0.14,
 
         shimmer: true,
         shimmerSpeed: 0.04,

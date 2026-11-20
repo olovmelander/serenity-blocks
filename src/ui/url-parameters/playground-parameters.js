@@ -1191,7 +1191,10 @@ export const PLAYGROUND_URL_PARAMETERS = [
             + 'starts) or gameOver (Mistfall). Kaleidosonic: lock, drop, clear, quad, twist, perfect, '
             + 'levelUp, release (the chain held by peak breaks) or over (the light sinks). Synthwave '
             + 'Sunset: lock, clear, quad, chain (the coaster lifted chain=<n> notches), ride (a chain '
-            + 'of chain=<n> breaks and the coaster goes once round its circuit) or levelUp.',
+            + 'of chain=<n> breaks and the coaster goes once round its circuit) or levelUp. Nimbus Veil: '
+            + 'lock, hard, clear, quad, combo (a cascade of combo=<n> waves), chain, chainEnd, twist, twist0 '
+            + '(a twist with no lines), b2b, perfect, levelUp, over (the run ends), dawn (it ends and the '
+            + 'next begins) or fever.',
         defaultValue: 'Idle in most previews; Lunar Sigil uses lock.',
         example: 'event=lock',
         notes: 'Use on playground.html with effect=<the matching effect ID>. For deterministic replay, '
@@ -7142,4 +7145,77 @@ export const PLAYGROUND_URL_PARAMETERS = [
         notes: 'Use on playground.html with effect=tornado.',
         sources: ['src/playground/effects/tornado.effect.js'],
     })),
+    {
+        name: 'air',
+        category: 'Playground',
+        scope: 'playground.html — nimbus-veil',
+        description: 'Hold one air over the cloud sea instead of the clock’s own (the air turns on a wheel '
+            + 'of 96 s beside the hours’ 110 s).',
+        values: 'fair, tails (mares’ tails on a quick wind), mackerel (a rippled ceiling), beams (a broken '
+            + 'ceiling: shade on the deck, the sun fanned into beams) or mist (the veils rise, the heads sink).',
+        defaultValue: 'Unset (the clock decides).',
+        example: 'air=mackerel',
+        notes: 'Use on playground.html with effect=nimbus-veil.',
+        sources: [
+            'src/playground/effects/nimbus-veil.effect.js',
+        ],
+    },
+    {
+        name: 'happen',
+        category: 'Playground',
+        scope: 'playground.html — nimbus-veil',
+        description: 'Hold one of the sky’s own happenings in every slot instead of the clock’s (one to a '
+            + 'slot of 36 s, with quiet slots between).',
+        values: 'skein (birds cross the light), glitter (the motes flash toward the sun), boil (a tower boils up), '
+            + 'meteor (shooting stars; a night hour) or flicker (heat lightning inside a tower; dusk or night).',
+        defaultValue: 'Unset (the clock decides).',
+        example: 'happen=skein',
+        notes: 'Use on playground.html with effect=nimbus-veil. A held happening begins with its slot: its age is t '
+            + 'modulo 36 s.',
+        sources: [
+            'src/playground/effects/nimbus-veil.effect.js',
+        ],
+    },
+    {
+        name: 'happenings',
+        category: 'Playground',
+        scope: 'playground.html — nimbus-veil',
+        description: 'Leave the sky’s own happenings out of the frame.',
+        values: '0 disables; any other value keeps them.',
+        defaultValue: 'On.',
+        example: 'happenings=0',
+        notes: 'Use on playground.html with effect=nimbus-veil, for a frame with nothing in it but the hour '
+            + 'and the air.',
+        sources: [
+            'src/playground/effects/nimbus-veil.effect.js',
+        ],
+    },
+    {
+        name: 'chain',
+        category: 'Playground',
+        scope: 'playground.html — nimbus-veil',
+        description: 'How many clears in a row event=chain or event=chainEnd plays, 0.7 s apart (each lights '
+            + 'the next stepping stone on the deck).',
+        values: 'Integer, at least 2.',
+        defaultValue: '5.',
+        example: 'chain=6',
+        notes: 'Use on playground.html with effect=nimbus-veil&event=chain; eventAge counts from the first clear.',
+        sources: [
+            'src/playground/effects/nimbus-veil.effect.js',
+        ],
+    },
+    {
+        name: 'streak',
+        category: 'Playground',
+        scope: 'playground.html — nimbus-veil',
+        description: 'How many back-to-backs event=b2b plays, 2.2 s apart (each lights one more tower’s '
+            + 'lantern).',
+        values: 'Integer, at least 1.',
+        defaultValue: '1.',
+        example: 'streak=3',
+        notes: 'Use on playground.html with effect=nimbus-veil&event=b2b; eventAge counts from the first.',
+        sources: [
+            'src/playground/effects/nimbus-veil.effect.js',
+        ],
+    },
 ];
