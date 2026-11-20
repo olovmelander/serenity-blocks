@@ -14,9 +14,9 @@ import { projectInfinityPresentationCamera } from '../../src/core/infinity-spawn
 vi.mock('phaser', () => ({ default: { Game: vi.fn() } }));
 vi.mock('../../src/rendering/phaser/board-juice.js', () => ({ BoardJuice: vi.fn() }));
 
-function createMatch(numPlayers = 2) {
+function createMatch(numPlayers = 2, infinityMaxRows = 100) {
     const match = new MultiPlayerState(numPlayers);
-    match.setMatchConfig({ isInfinityLMS: true, infinityMaxRows: 100 });
+    match.setMatchConfig({ isInfinityLMS: true, infinityMaxRows });
     match.reset();
     return match;
 }
@@ -211,6 +211,90 @@ describe('local multiplayer Infinity stacking and roof rules', () => {
         setTower(low, 20);
         low.nextPieces = ['T'];
         expect(spawnPiece(low, null, vi.fn()).y).toBe(12);
+    });
+
+    it('keeps the well height between 40 and 1,000 rows, and 100 when none is given', () => {
+        const heightFor = (infinityMaxRows) => {
+            const match = new MultiPlayerState(2);
+            match.setMatchConfig({ isInfinityLMS: true, infinityMaxRows });
+            match.reset();
+            return [match.matchConfig.infinityMaxRows, match.players[0].maxRows];
+        };
+        expect(heightFor(40)).toEqual([40, 40]);
+        expect(heightFor('60')).toEqual([60, 60]);
+        expect(heightFor(100)).toEqual([100, 100]);
+        expect(heightFor(1000)).toEqual([1000, 1000]);
+        expect(heightFor(39)).toEqual([40, 40]);
+        expect(heightFor(0)).toEqual([40, 40]);
+        expect(heightFor(5000)).toEqual([1000, 1000]);
+        expect(heightFor(undefined)).toEqual([100, 100]);
+        expect(heightFor('')).toEqual([100, 100]);
+        expect(heightFor('tall')).toEqual([100, 100]);
+        // A match that never names a height plays the default.
+        const plain = new MultiPlayerState(2);
+        plain.setMatchConfig({ isInfinityLMS: true });
+        plain.reset();
+        expect(plain.players[0].maxRows).toBe(100);
+        expect(plain.players[0].boardGrid).toHaveLength(44);
+    });
+
+    it('opens a 40-row well at its full height and never grows it', () => {
+        const match = createMatch(2, 40);
+        const mode = createMode(match);
+        for (const player of match.players) {
+            expect(player.maxRows).toBe(40);
+            expect(player.boardGrid).toHaveLength(40);
+            expect(player.infinityStats.rowsReached).toBe(40);
+            // The opening view is the well's lower 20 rows; the first piece enters two above it.
+            expect(player.cameraRow).toBe(20);
+        }
+        const player = match.players[0];
+        player.nextPieces = ['O', 'O'];
+        const onDeath = vi.fn();
+        expect(spawnPiece(player, null, onDeath).y).toBe(18);
+
+        // A tower near the top asks for more rows; the well has none to give.
+        setTower(player, 5);
+        mode._maybeExpandPlayerGrid(player, null);
+        expect(player.boardGrid).toHaveLength(40);
+
+        // Nor does a burst of garbage raise the roof: it pushes the stack into it.
+        const burst = Array.from({ length: 4 }, () => ({ type: 'line', holeMask: 1 << 9 }));
+        const result = applyGarbage(player, burst);
+        expect(result.rowsAdded).toBe(0);
+        expect(player.boardGrid).toHaveLength(40);
+        expect(player.infinityStats.rowsReached).toBe(40);
+        expect(onDeath).not.toHaveBeenCalled();
+
+        // A new round opens the same short well.
+        match.reset();
+        expect(match.players[0].boardGrid).toHaveLength(40);
+    });
+
+    it('lets a well between 40 and 44 rows open whole, and a taller one grow to its height', () => {
+        expect(createMatch(2, 42).players[0].boardGrid).toHaveLength(42);
+        const player = createMatch(2, 50).players[0];
+        expect(player.boardGrid).toHaveLength(44);
+        while (expandGridIfNeeded(player, player.maxRows)) { /* grow to the roof */ }
+        expect(player.boardGrid).toHaveLength(50);
+    });
+
+    it('eliminates a player whose stack reaches the roof of a 40-row well', () => {
+        const match = createMatch(2, 40);
+        const mode = createMode(match);
+        const player = match.players[0];
+        setTower(player, 0, 0);
+        const frames = [];
+        vi.stubGlobal('window', {});
+        vi.stubGlobal('requestAnimationFrame', vi.fn((callback) => { frames.push(callback); return frames.length; }));
+        vi.stubGlobal('cancelAnimationFrame', vi.fn());
+
+        startLocalMultiplayerModeLoop(mode);
+        frames[0](16);
+
+        expect(player.boardGrid).toHaveLength(40);
+        expect(mode._handleGameOver).toHaveBeenCalledExactlyOnceWith(0);
+        expect(player.isGameOver).toBe(true);
     });
 
     it('restores standard board rules when a match switches out of Infinity', () => {

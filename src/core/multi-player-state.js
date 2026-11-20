@@ -15,6 +15,9 @@ import { processPhysics } from './physics.js';
 import { COLS, ROWS } from './constants.js';
 import { INFINITY_SPAWN_POLICY_BOARD_ANCHOR_V1 } from './infinity-spawn-policy.js';
 import { applyMatchLevelRule } from './multiplayer/match-level-rule.js';
+import {
+    INFINITY_WELL_ROWS_DEFAULT, infinityWellOpeningRows, readInfinityWellRows,
+} from './multiplayer/infinity-well-rule.js';
 
 /**
  * Player color scheme for visual distinction
@@ -82,7 +85,7 @@ export class MultiPlayerState {
             boringRules: false,
             isTeamMode: false,
             playerTeams: [],
-            infinityMaxRows: 100,
+            infinityMaxRows: INFINITY_WELL_ROWS_DEFAULT,
         };
 
         this._assignPlayerColors();
@@ -127,10 +130,8 @@ export class MultiPlayerState {
      * Set match configuration
      */
     setMatchConfig(config) {
-        const rawInfinityRows = Number(config?.infinityMaxRows);
-        const infinityMaxRows = Number.isFinite(rawInfinityRows)
-            ? Math.min(1000, Math.max(100, rawInfinityRows))
-            : 100;
+        // The well height (infinity-well-rule.js): 40 to 1,000 rows, 100 when none is given.
+        const infinityMaxRows = readInfinityWellRows(config?.infinityMaxRows);
 
         this.matchConfig = {
             ...this.matchConfig,
@@ -376,8 +377,10 @@ export class MultiPlayerState {
             const player = this.players[i];
             player.isInfinityMode = Boolean(this.matchConfig?.isInfinityLMS);
             if (player.isInfinityMode) {
-                player.maxRows = this.matchConfig.infinityMaxRows;
-                player.initialInfinityRows = 44;
+                // A well shorter than the usual opening grid opens at its full height:
+                // the grid can never be taller than the well the match chose.
+                player.maxRows = readInfinityWellRows(this.matchConfig.infinityMaxRows);
+                player.initialInfinityRows = infinityWellOpeningRows(player.maxRows);
                 player.infinitySpawnPolicy = INFINITY_SPAWN_POLICY_BOARD_ANCHOR_V1;
                 player.infinityVisibleRows = ROWS;
                 player.infinitySpawnOffsetRows = 2;
@@ -388,11 +391,11 @@ export class MultiPlayerState {
             if (this.matchConfig?.isInfinityLMS) {
                 // Enable infinity mode
                 this.players[i].isInfinityMode = true;
-                this.players[i].maxRows = this.matchConfig?.infinityMaxRows || 100;
+                this.players[i].maxRows = readInfinityWellRows(this.matchConfig?.infinityMaxRows);
                 this.players[i].disableLevelProgression = true;
                 this.players[i].disableGarbage = false; // Keep garbage for multiplayer
 
-                // reset() created the 44-row Infinity grid.
+                // reset() created the opening Infinity grid (44 rows, or a shorter well's all).
                 const infinityGrid = this.players[i].boardGrid;
 
                 // Initialize infinity stats
@@ -402,7 +405,7 @@ export class MultiPlayerState {
                     maxComboComplexity: 0,
                     maxComboDepth: 0,
                     totalCascades: 0,
-                    rowsReached: 44,
+                    rowsReached: infinityGrid.length,
                 };
 
                 // Camera tracking
@@ -410,7 +413,7 @@ export class MultiPlayerState {
                 this.players[i].cameraRow = startingCameraRow;
                 this.players[i].currentTopRow = startingCameraRow;
 
-                console.log(`[MultiPlayerState] Player ${i + 1} initialized for Infinity LMS: 44 rows, max ${this.players[i].maxRows}`);
+                console.log(`[MultiPlayerState] Player ${i + 1} initialized for Infinity LMS: ${infinityGrid.length} rows, max ${this.players[i].maxRows}`);
             } else if (this.matchConfig) {
                 // The match's level rule (match-level-rule.js, shared with online play): the
                 // starting level and its speed, and no levelling up unless the match turns it on.
