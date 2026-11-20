@@ -181,6 +181,9 @@ describe('every world that writes a frame-wide flash scales it', () => {
         // A perfect clear's storm light on the whole land, and the blast's thermal in the column.
         ['src/themes/pyrestorm/pyrestorm-world.js', /const fs = flashScale\(\);[\s\S]*stormGlow\.valueAt\(time\) \* 0\.95 \* fs/],
         ['src/themes/pyrestorm/pyrestorm-world.js', /1\.5 \* this\.thermalPower \* fs/],
+        // A quad's sunburst over a third of the sky, and a level's scan bar across all of it.
+        ['src/themes/neon-dusk/neon-dusk-world.js', /this\.raySwell\.valueAt\(t\) \* flashScale\(\)/],
+        ['src/themes/neon-dusk/neon-dusk-world.js', /this\.scan\.energy \* envelope \* flashScale\(\)/],
     ])('%s', (file, pattern) => {
         expect(read(file)).toMatch(pattern);
     });
