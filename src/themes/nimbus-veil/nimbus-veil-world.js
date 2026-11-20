@@ -8,7 +8,8 @@
  * a slow pan. The lens is Hor+ (fixed vertical FOV, horizontal capped) and the pitch puts the
  * horizon at RIG.horizonFrac.
  *
- * Draws at High: sky, cloud sea, cumulus, four veils, birds, the optics card, motes, sparkles —
+ * Draws at High: sky, cloud sea, cumulus, four veils, the albatrosses, the optics card, motes,
+ * sparkles —
  * eleven.
  *
  * Three clocks turn the place, in every mode:
@@ -19,7 +20,7 @@
  *     before it leaves the towers' crowns and the high cloud. A level is one hour forward on top;
  *   - the AIR (nimbus-veil-weather.js): fair, mares' tails, a mackerel sky, a broken ceiling
  *     that fans the sun into beams and shade, and mist, on a wheel of its own length;
- *   - HAPPENINGS, one to a slot with quiet slots between: a skein of birds, a drift of ice
+ *   - HAPPENINGS, one to a slot with quiet slots between: albatrosses crossing, a drift of ice
  *     glitter, a tower that boils up, shooting stars, heat lightning inside a far tower.
  *
  * Play builds the light instead of restarting it (src/themes/shared/gameplay-surge.js). Every
@@ -67,6 +68,7 @@ import {
 } from './nimbus-veil-cloudsea.js';
 import { createCumulus } from './nimbus-veil-cumulus.js';
 import { NimbusFx } from './nimbus-veil-fx.js';
+import { createAlbatrosses } from './nimbus-veil-albatross.js';
 import { applyCameraBreath, easedMotion } from '../shared/camera-breath.js';
 import { GameplaySurge, Swell } from '../shared/gameplay-surge.js';
 import { flashScale } from '../../utils/photosensitivity.js';
@@ -79,25 +81,28 @@ import {
     happeningSlot, happeningState, slotHash,
 } from './nimbus-veil-weather.js';
 
-/** Per-tier content. Every tier keeps the composition; tiers trade detail, not layout. */
+/**
+ * Per-tier content. Every tier keeps the composition; tiers trade detail, not layout. (`birds`:
+ * the most albatrosses a passage holds.)
+ */
 export const WORLD_QUALITY = Object.freeze({
     Minimal: {
-        rings: 90, segments: 100, towers: 3, billows: 22, motes: 0, sparkles: 120, veils: 1, birds: 9,
+        rings: 90, segments: 100, towers: 3, billows: 22, motes: 0, sparkles: 120, veils: 1, birds: 3,
     },
     Low: {
-        rings: 120, segments: 130, towers: 4, billows: 28, motes: 40, sparkles: 200, veils: 2, birds: 11,
+        rings: 120, segments: 130, towers: 4, billows: 28, motes: 40, sparkles: 200, veils: 2, birds: 3,
     },
     Medium: {
-        rings: 150, segments: 150, towers: 5, billows: 34, motes: 80, sparkles: 300, veils: 3, birds: 13,
+        rings: 150, segments: 150, towers: 5, billows: 34, motes: 80, sparkles: 300, veils: 3, birds: 4,
     },
     High: {
-        rings: 180, segments: 180, towers: 7, billows: 44, motes: 120, sparkles: 450, veils: 4, birds: 15,
+        rings: 180, segments: 180, towers: 7, billows: 44, motes: 120, sparkles: 450, veils: 4, birds: 5,
     },
     Ultra: {
-        rings: 200, segments: 200, towers: 7, billows: 50, motes: 160, sparkles: 600, veils: 4, birds: 15,
+        rings: 200, segments: 200, towers: 7, billows: 50, motes: 160, sparkles: 600, veils: 4, birds: 5,
     },
     Extreme: {
-        rings: 220, segments: 220, towers: 7, billows: 56, motes: 200, sparkles: 800, veils: 4, birds: 15,
+        rings: 220, segments: 220, towers: 7, billows: 56, motes: 200, sparkles: 800, veils: 4, birds: 5,
     },
 });
 
@@ -419,9 +424,6 @@ export function createWorldUniforms() {
         meteorA: uniform(new THREE.Vector4(0, 1, 0, 1)),
         meteorB: uniform(new THREE.Vector4(0, 1, 0, 1)),
         meteorGain: uniform(new THREE.Vector2(0, 0)),
-        /** The skein: (the leader's place, the wingbeat's clock) and (its heading, 1 while it flies). */
-        skein: uniform(new THREE.Vector4(0, -500, 0, 0)),
-        skeinDir: uniform(new THREE.Vector4(1, 0, 0, 0)),
     };
 }
 
@@ -598,8 +600,14 @@ export class NimbusWorld {
         this.parts.cumulus = createCumulus(u, { rand, towers: q.towers, billowsPerTower: q.billows });
         this.parts.optics = createOptics(u);
         this.fx = new NimbusFx(u, {
-            motes: q.motes, sparkles: q.sparkles, veils: q.veils, birds: q.birds, rand,
+            motes: q.motes, sparkles: q.sparkles, veils: q.veils, rand,
         });
+        /** The albatrosses (their mesh is a part like the others; the flight is asked each frame). */
+        this.albatross = createAlbatrosses(u, q.birds);
+        this.parts.birds = this.albatross.mesh;
+        this._birdFrame = {
+            eyeX: RIG.x, eyeZ: RIG.z, yaw: 0, tanH: 1,
+        };
         for (const part of Object.values(this.parts)) {
             if (part) this.root.add(part);
         }
@@ -1079,18 +1087,13 @@ export class NimbusWorld {
             }
         }
 
-        // The skein: one line across the view, edge to edge, whole from its first bird.
-        if (h.kind === 'skein') {
-            const dirSign = h.seed < 0.5 ? 1 : -1;
-            const ny = 0.02 + slotHash(this.happenSlot, 5) * 0.34;
-            const depth = 250 + slotHash(this.happenSlot, 6) * 70;
-            const from = this.pointAt(-1.22 * dirSign, ny, depth, this._a);
-            const to = this.pointAt(1.62 * dirSign, ny + 0.1, depth, this._b);
-            const p = this._tmp.copy(from).lerp(to, h.u);
-            u.skein.value.set(p.x, p.y + Math.sin(h.age * 0.5) * 2.5, p.z, t);
-            this._tmp.copy(to).sub(from).normalize();
-            u.skeinDir.value.set(this._tmp.x, this._tmp.y, this._tmp.z, 1);
-        } else u.skeinDir.value.w = 0;
+        // The albatrosses: one course across the view, edge to edge, in the lens's own frame.
+        if (h.kind === 'albatross' && this.albatross) {
+            const frame = this._birdFrame;
+            frame.yaw = this.yaw;
+            frame.tanH = Math.tan(THREE.MathUtils.degToRad(this.lens.vfov) / 2) * this.lens.aspect;
+            this.albatross.fly(this.happenSlot, h.age, h.dur, frame);
+        } else this.albatross?.rest();
     }
 
     /** The happening in the sky now (diagnostics): its kind or null, and its age. */

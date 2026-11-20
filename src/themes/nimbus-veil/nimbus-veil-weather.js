@@ -17,7 +17,7 @@
  *   4  mist        the veils rise, the heads sink toward stratus, the far towers soften
  *
  * And between them the sky has happenings of its own, one to a slot of HAPPEN_SLOT seconds, with
- * quiet slots between: a skein of birds crossing the light, a drift of ice glitter, a tower that
+ * quiet slots between: albatrosses crossing the view, a drift of ice glitter, a tower that
  * boils up, and after dark shooting stars and heat lightning inside a far tower. Which one a
  * slot holds is a hash of its number, so a seek, a replay and a rebuild land on the same sky;
  * everything a happening shows is a function of its age.
@@ -112,9 +112,12 @@ export const HAPPEN_QUIET = 0.26;
  * @type {Readonly<Record<string, Readonly<{ dur: number, day: boolean, dusk: boolean, night: boolean }>>>}
  */
 export const HAPPENINGS = Object.freeze({
-    /** A skein of birds crosses the light, edge to edge, whole from its first bird. */
-    skein: Object.freeze({
-        dur: 26, day: true, dusk: true, night: false,
+    /**
+     * Albatrosses cross the view, one behind the other on one course, edge to edge
+     * (nimbus-veil-albatross-flight.js): `dur` is from the first bird in to the last one out.
+     */
+    albatross: Object.freeze({
+        dur: 31, day: true, dusk: true, night: false,
     }),
     /** A drift of ice crystals glitters past, toward the sun. */
     glitter: Object.freeze({

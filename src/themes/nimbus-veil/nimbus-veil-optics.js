@@ -11,7 +11,9 @@
  * the air between the eye and a cloud shows in front of the cloud, so a ray is never cut by a
  * tower (the towers composite over the sky function, where these were first drawn and were
  * hidden). One uniform test skips the corona at rest, and the card's own edge fades out before
- * anything could be cut by it.
+ * anything could be cut by it. Its light is added with an alpha of zero (premultiplied, a custom
+ * output), so the scene pass's alpha is left as it was under the card: a bird's mark there
+ * (nimbus-veil-albatross.js) reaches the post.
  *
  * What is NOT here, on purpose: a halo ring, sundogs, a sun pillar, arcs. They were tried for
  * this pass and they are Parhelion's (that theme is an ice-halo display): this one keeps to what
@@ -38,6 +40,7 @@ import {
     smoothstep,
     vec2,
     vec3,
+    vec4,
 } from 'three/tsl';
 import { nvSpectrum } from './nimbus-veil-tsl.js';
 
@@ -59,13 +62,14 @@ export function createOptics(u) {
     material.depthWrite = false;
     material.depthTest = false;
     material.blending = THREE.AdditiveBlending;
+    material.premultipliedAlpha = true;
     material.fog = false;
 
     material.positionNode = cameraPosition.add(u.lampDir.mul(DISTANCE))
         .add(u.lampRight.mul(positionGeometry.x.mul(DISTANCE * EXTENT)))
         .add(u.lampUp.mul(positionGeometry.y.mul(DISTANCE * EXTENT)));
 
-    material.colorNode = Fn(() => {
+    const lightInAir = Fn(() => {
         const dir = normalize(positionWorld.sub(cameraPosition)).toVar();
         // The lamp's frame: local tangent coordinates ≈ angle from its centre (radians).
         const lx = dot(dir, u.lampRight).toVar();
@@ -101,7 +105,7 @@ export function createOptics(u) {
         const edge = float(1.0).sub(smoothstep(0.5, 0.62, ang));
         return light.mul(edge).mul(u.lampInfo.y).mul(u.lampInfo.z);
     })();
-    material.opacityNode = float(1.0);
+    material.outputNode = vec4(lightInAir, 0.0);
 
     const mesh = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), material);
     mesh.name = 'NimbusOptics';

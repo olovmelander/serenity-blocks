@@ -148,8 +148,10 @@ export function createSky(u, opts = {}) {
 
         // ── The night: stars of several sizes, the Milky Way, the young moon, the evening star,
         // a shooting star. The mood's starlight gates it all (a uniform branch). ──
+        // (The starlight is kept: a share of it shows through the high cloud laid over it below.)
+        const starLight = vec3(0.0).toVar();
         If(u.starGain.greaterThan(0.001), () => {
-            const veil = smoothstep(0.04, 0.3, e).mul(float(1.0).sub(sa.mul(0.8)))
+            const veil = smoothstep(0.03, 0.2, e).mul(float(1.0).sub(sa.mul(0.6)))
                 .mul(float(1.0).sub(smoothstep(0.0, 0.6, glow.x))).toVar();
             const px = fwS.mul(110.0).toVar();
             const stars = vec3(0.0).toVar();
@@ -160,7 +162,7 @@ export function createSky(u, opts = {}) {
                 const band = exp(off.mul(off).mul(-34.0)).toVar();
                 const dust = nvFbm3(vec2(az.mul(3.1).add(off.mul(9.0)), e.mul(5.5)));
                 milk.assign(band.mul(smoothstep(0.25, 0.8, dust)));
-                stars.addAssign(mix(rgb(0x8f9fe0), rgb(0xe6c8d8), dust).mul(milk.mul(0.085)));
+                stars.addAssign(mix(rgb(0x8f9fe0), rgb(0xe6c8d8), dust).mul(milk.mul(0.13)));
             }
             const layer = (scale, seed, floorAt, gain) => {
                 const sp = vec2(az.mul(scale), e.mul(scale));
@@ -177,9 +179,11 @@ export function createSky(u, opts = {}) {
                 const bright = h2.mul(h2).mul(2.6).add(0.2);
                 return mix(rgb(0xcfdcff), rgb(0xffe6c8), hx).mul(core.mul(there).mul(twinkle).mul(bright).mul(gain));
             };
-            stars.addAssign(layer(110, 0, float(0.86), 1.0));
-            if (withMilky) stars.addAssign(layer(64, 31.7, float(0.9), 1.7));
-            col.addAssign(stars.mul(veil).mul(u.starGain));
+            // One cell in five holds a star of the fine layer, one in six of the large.
+            stars.addAssign(layer(110, 0, float(0.8), 1.9));
+            if (withMilky) stars.addAssign(layer(64, 31.7, float(0.84), 2.9));
+            starLight.assign(stars.mul(veil).mul(u.starGain));
+            col.addAssign(starLight);
 
             // The young moon: a thin crescent lit from the place the sun went down, the rest of
             // its disc in earthshine.
@@ -266,7 +270,10 @@ export function createSky(u, opts = {}) {
             const fib = mix(float(0.5), fine
                 ? nvFbm3(fp)
                 : nvNoise2(fp).mul(0.64).add(nvNoise2(fp.mul(2.03).add(vec2(17.1, 3.7))).mul(0.36)), fibRoom).toVar();
-            const thr = mix(float(0.8), float(0.33), u.air.x).toVar();
+            // Once the stars are out the high cloud stands back: there is less of it and it is
+            // thinner, so the night sky is the stars' and the cloud a veil across part of it.
+            const nightK = smoothstep(0.15, 0.8, u.starGain).toVar();
+            const thr = mix(float(0.8), float(0.33), u.air.x).add(nightK.mul(0.23)).toVar();
             // Feathered: a fibre thickens slowly from nothing, so its edges are never ruled.
             const dens = smoothstep(thr, thr.add(0.46), fib.mul(big.mul(0.9).add(0.55))).toVar();
             if (withRipples) {
@@ -287,17 +294,20 @@ export function createSky(u, opts = {}) {
                     // Only the taller domes stand as cloudlets: blue shows between them.
                     // (A trace of this kind in the air is no kind at all: it comes in past a fifth.)
                     // (The fibres' own grain runs through them, so no two cloudlets are one tone.)
+                    // (At night fewer of them do: the rows open and the stars stand between.)
+                    const least = nightK.mul(0.11).add(0.44);
                     dens.assign(mix(
                         dens,
-                        smoothstep(0.44, 0.8, cl).mul(patch).mul(fib.mul(0.55).add(0.62)),
+                        smoothstep(least, least.add(0.36), cl).mul(patch).mul(fib.mul(0.55).add(0.62)),
                         smoothstep(0.2, 0.9, u.air.y),
                     ));
                 });
             }
             const env = smoothstep(0.018, 0.14, e).toVar();
             // The sun shows through: the cloud thins in front of it.
-            const alpha = dens.mul(env).mul(mix(float(0.56), float(0.8), u.air.y))
-                .mul(float(1.0).sub(exp(ang.mul(-9.0)).mul(facing).mul(0.6))).toVar();
+            const alpha = dens.mul(env).mul(mix(float(0.56), float(0.8), u.air.y)).mul(float(1.0).sub(nightK.mul(0.54)))
+                .mul(float(1.0).sub(exp(ang.mul(-9.0)).mul(facing).mul(0.6)))
+                .toVar();
 
             // Thin cloud is bright where it thins and dull where it is thick; toward the sun it
             // scatters white-gold; and a low sun lights it from below (u.ceil.x), strongest on
@@ -306,14 +316,25 @@ export function createSky(u, opts = {}) {
             const thick = smoothstep(0.55, 1.0, dens);
             const wide = exp(ang.mul(-2.6)).mul(facing);
             const core = exp(ang.mul(-11.0)).mul(facing);
-            const body = m.cirrusA.mul(edge.mul(0.3).add(0.74)).mul(float(1.0).sub(thick.mul(0.34)));
-            const under = m.cirrusT.mul(u.ceil.x).mul(edge.mul(0.55).add(0.45)).mul(float(1.0).sub(thick.mul(0.45)));
+            const body = m.cirrusA.mul(edge.mul(0.3).add(0.74)).mul(float(1.0).sub(thick.mul(0.34)))
+                .mul(float(1.0).sub(nightK.mul(0.22)));
+            // After sunset only the cloud toward the afterglow, and low over it, still burns: what
+            // stands overhead goes dark, a veil the stars show through.
+            const afterglow = mix(
+                float(1.0),
+                clamp(sa.mul(1.3).add(0.1), 0.0, 1.0).mul(float(1.0).sub(smoothstep(0.08, 0.42, e).mul(0.6))),
+                nightK,
+            );
+            const under = m.cirrusT.mul(u.ceil.x).mul(afterglow).mul(edge.mul(0.55).add(0.45))
+                .mul(float(1.0).sub(thick.mul(0.45)));
             const fwd = m.cirrusT.mul(wide.mul(0.8).add(core.mul(1.5))).mul(pulse.mul(0.4).add(1.0));
             const cloud = body.add(under).add(fwd).toVar();
             // A twist's mother-of-pearl: the cloud near the sun takes the colours of thin ice.
             const pearl = nvSpectrum(fract(ang.mul(7.0).add(fib.mul(1.6)).sub(u.optics.y)));
             cloud.addAssign(pearl.mul(u.optics.x).mul(exp(ang.mul(-3.2))).mul(facing).mul(0.9));
             col.assign(mix(col, cloud, alpha));
+            // Thin cloud does not put a star out: some of what it covers still shows.
+            col.addAssign(starLight.mul(alpha).mul(0.7));
 
             // Four lines: a wave of light crosses the ceiling from the horizon to overhead, in
             // step with the one on the deck. It burns on the cloud and shows as a faint arc on
