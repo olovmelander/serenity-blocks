@@ -161,4 +161,3 @@ writeFileSync(output, JSON.stringify({ manifest: capture.buildManifestSha256, re
     recoveredRoundClockOffsets: Object.fromEntries(offsets),
     runtime: { v8: process.versions.v8, node: process.versions.node, electron: process.versions.electron, cpu: cpus()[0].model },
     events: capture.overBudget, rounds }), { flag: 'wx' });
-

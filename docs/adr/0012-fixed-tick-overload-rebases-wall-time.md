@@ -93,10 +93,10 @@ player by traversal order.
 
 The Local adapter never displaces a foreign FrameRateController or input adapter. If either controller
 cannot accept exact ownership, every board is atomically relatched to `legacy-variable-v1` and the
-extracted legacy RAF path starts instead. Bots, Hot Potato, time limits, and Infinity LMS also fail closed
-to that whole-match fallback because they still use unseeded randomness, wall-time policy, or a
-renderer-derived simulation camera. This is migration infrastructure only; asynchronous cascade
-continuations, always-seeded match artifacts, remaining rule variants, and §5.8 result versions are open.
+extracted legacy RAF path starts instead. The initial rollout also used that fallback for bots,
+Hot Potato, time limits, and Infinity LMS. The November 18 amendment below records the seeded bot
+and cascade migration. The remaining rule variants use wall-time policy or a renderer-derived
+simulation camera. Always-seeded match artifacts and §5.8 result versions remain open.
 
 The October 2026 local Infinity repair replaces that renderer-derived spawn camera with the existing
 board-anchor policy. Infinity LMS still falls back as a whole match: this repair does not certify or
@@ -195,8 +195,14 @@ ordering, stale/stop/replacement fencing, and throw/debt semantics;
 Standard local matches with a bot default to the shared fixed clock. Their seeded
 slot controllers enqueue the same input commands as other seats at each board's
 turn in the barrier. The match seed determines each round and each slot's
-judgment and movement timing. An explicit clock override and the existing
-fallback for special rules or unavailable clock ownership still apply.
+judgment and movement timing. The explicit variable-clock setting, unavailable
+clock ownership, Hot Potato, time limits and Infinity LMS select the whole-match fallback.
+
+When a local update arrives before the next logical tick, an active gravity search
+may evaluate up to that next tick's batches on its existing public snapshot.
+Each seat still consumes its own batches on the board clock. Only a board tick
+can select a move, draw a mistake, adopt a route or emit an input. A change in
+incoming rows invalidates the old plan at the next observation.
 The seeded two-seat test in `local-multiplayer-fixed-mode.test.js` exercises
 normal mode startup, both bot schedulers and a catch-up frame at 60 and 165 Hz.
 
@@ -212,3 +218,4 @@ replay. It commits scores, level changes and callbacks at the existing wave
 boundaries. Round retirement drains both boards before reset. The replay test
 compares input dispositions, ordered waves, routed garbage, board connectivity
 and score across cadences, including a catch-up during play.
+[Rebuild measurements and replay coverage](../BOT_AI_REBUILD_HANDOVER_2026-11.md)

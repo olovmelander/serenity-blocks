@@ -1,6 +1,6 @@
 # Gravity-first bot rebuild plan
 
-18 November 2026 · Awaiting owner approval for implementation
+18 November 2026 · Approved for implementation on the feature branch
 
 **Give the live planner credit for what a legal trigger would release, then spend its limited search time on those builds.** The offline player did this with the current piece and three previews. It raised four-wave openings from 2/40 to 20/40 on the audit bags and from 1/40 to 13/40 on fresh bags. Widening the shipped beam alone reached 7/40 and tripled placement work. The production task is to recover a useful share of the first gain inside the frame budget, defend under pressure and distribute that skill across ten playable opponents. [Measurements](BOT_AI_AUDIT_2026-11.md) · [Seed-level evidence](../reports/bot-ai-audit-2026-11/evidence.json.gz)
 
@@ -75,4 +75,4 @@ On the historical human-pace panels, allow at most **one changed win per 10** or
 5. **Preserve current paired rival odds and D8's chapter ordering by remapping tiers at existing pace caps.** The larger historical differences for Zephyr and Neon are recorded for a separate level-design decision if desired. Recommend approval of the remap rule without orb changes.
 6. **Run the joint fit in the background after approval.** Include search-discovered patterns only if they clear their independent marginal-gain test. Recommend this order.
 
-Implementation starts after approval of this plan.
+The [implementation handover](BOT_AI_REBUILD_HANDOVER_2026-11.md) records the measured outcomes and remaining release gates.
