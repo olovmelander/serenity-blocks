@@ -8,7 +8,13 @@
  *   calm zones (what shows through the translucent board card and HUD is soft-clipped and its
  *   bloom held back) → bloom + shafts → exposure (the hour's) → filmic (a hue-preserving shoulder
  *   on the max channel; only the hottest values roll toward white) → grade (warm lights, cool
- *   shadows, a touch of saturation) → vignette → sRGB → grain and dither.
+ *   shadows, a touch of saturation) → vignette → sRGB → grain and dither → FXAA (Low and up).
+ *
+ * The scene pass stays single-sampled (the land is a dense fan of pixel-sized triangles, and
+ * its fragment stage is the frame's whole cost: under MSAA it would run once per triangle a
+ * pixel's samples touch). FXAA, last and on the encoded picture, takes the stair-steps off what
+ * is thin against the light instead: the walkway's rails and treads, the pavilion's eaves, the
+ * poplars, the skyline and the edges of the beds.
  *
  * Tone mapping happens exactly once: renderer.toneMapping = NoToneMapping and the pipeline's
  * outputColorTransform is off (the output node encodes sRGB itself).
@@ -41,29 +47,33 @@ import {
     vec4,
 } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
+import { fxaa } from 'three/addons/tsl/display/FXAANode.js';
 import { disposeBloomNodeDeep } from '../shared/bloom-dispose.js';
 import { paHash21, paLuma, paMax3 } from './painted-ages-tsl.js';
 import { flashScale } from '../../utils/photosensitivity.js';
 
-/** Per-tier look. `bloom: false` builds no BloomNode; `shafts` the sun's shafts. */
+/**
+ * Per-tier look. `bloom: false` builds no BloomNode; `shafts` the sun's shafts; `fxaa` the
+ * closing antialiasing pass (not built on Minimal, nor with the game's antialiasing off).
+ */
 export const POST_LOOK = Object.freeze({
     Extreme: {
-        bloom: true, bloomStrength: 0.34, bloomResolution: 0.5, shafts: true,
+        bloom: true, bloomStrength: 0.34, bloomResolution: 0.5, shafts: true, fxaa: true,
     },
     Ultra: {
-        bloom: true, bloomStrength: 0.34, bloomResolution: 0.5, shafts: true,
+        bloom: true, bloomStrength: 0.34, bloomResolution: 0.5, shafts: true, fxaa: true,
     },
     High: {
-        bloom: true, bloomStrength: 0.32, bloomResolution: 0.45, shafts: true,
+        bloom: true, bloomStrength: 0.32, bloomResolution: 0.45, shafts: true, fxaa: true,
     },
     Medium: {
-        bloom: true, bloomStrength: 0.3, bloomResolution: 0.33, shafts: false,
+        bloom: true, bloomStrength: 0.3, bloomResolution: 0.33, shafts: false, fxaa: true,
     },
     Low: {
-        bloom: false, bloomStrength: 0, bloomResolution: 0.25, shafts: false,
+        bloom: false, bloomStrength: 0, bloomResolution: 0.25, shafts: false, fxaa: true,
     },
     Minimal: {
-        bloom: false, bloomStrength: 0, bloomResolution: 0.25, shafts: false,
+        bloom: false, bloomStrength: 0, bloomResolution: 0.25, shafts: false, fxaa: false,
     },
 });
 
@@ -108,6 +118,7 @@ export class PaintedAgesPost {
      * @param {object} params
      * @param {object} params.look        POST_LOOK entry
      * @param {boolean} [params.falseColor=false]
+     * @param {boolean} [params.antialias=true] the game's antialiasing setting (off: no FXAA)
      */
     constructor(renderer, scene, camera, params = {}) {
         const look = params.look || POST_LOOK.High;
@@ -265,7 +276,10 @@ export class PaintedAgesPost {
         });
 
         this.pipeline.outputColorTransform = false;
-        this.pipeline.outputNode = outputFn();
+        // FXAA last, over the encoded picture; never over the false-colour view.
+        const smoothed = look.fxaa === true && params.antialias !== false && !falseColor;
+        this.fxaaNode = smoothed ? fxaa(outputFn()) : null;
+        this.pipeline.outputNode = this.fxaaNode || outputFn();
         this.pipeline.needsUpdate = true;
     }
 
@@ -315,9 +329,12 @@ export class PaintedAgesPost {
     dispose() {
         this.scenePass?.dispose();
         if (this.bloomNode) disposeBloomNodeDeep(this.bloomNode);
+        // FXAA reads the graded picture through a render target of its own.
+        this.fxaaNode?.textureNode?.dispose?.();
         this.pipeline?.dispose();
         this.scenePass = null;
         this.bloomNode = null;
+        this.fxaaNode = null;
         this.pipeline = null;
     }
 }

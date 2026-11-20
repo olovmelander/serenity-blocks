@@ -19,6 +19,7 @@ import * as THREE from 'three/webgpu';
 import {
     Fn,
     If,
+    abs,
     attribute,
     cos,
     positionWorld,
@@ -38,13 +39,16 @@ import {
     normalize,
     smoothstep,
     sqrt,
+    texture,
     uniformArray,
     vec2,
     vec3,
     vec4,
 } from 'three/tsl';
 import { DEG, EYE, mulberry32 } from './painted-ages-core.js';
-import { noise3, paHash21, paHash22 } from './painted-ages-tsl.js';
+import {
+    columnU, noise3, paHash21, paHash22, paLuma,
+} from './painted-ages-tsl.js';
 import { skyColour } from './painted-ages-light.js';
 
 /** Billows per bank. */
@@ -99,42 +103,59 @@ export function cumulusBanks(count = 9, seed = 0xc0b5) {
     }));
 }
 
-/** The billows of a bank in its own frame (x across 0..1 of its width, y up in widths). */
+/** How a bank's billows are shared out: the floor, the mound under the towers, the two towers. */
+const FLOOR_BILLOWS = 7;
+const MOUND_BILLOWS = 6;
+const MAIN_BILLOWS = 8;
+const SIDE_BILLOWS = BILLOWS - FLOOR_BILLOWS - MOUND_BILLOWS - MAIN_BILLOWS;
+
+/**
+ * The billows of a bank in its own frame: `[x, y, r, share]`, x across 0..1 of its width, y up
+ * and r in widths, `share` how much of the bank's GROWTH the billow takes (0 on the floor, 1 at
+ * a tower's crown: as the weather builds the banks up, a tower climbs off a base that stays).
+ *
+ * A heap, not a chimney: a floor of flattened billows along a flat base, a broad mound on it (the
+ * heap's shoulders), the main tower rising off the mound in zigzag pairs that narrow to a
+ * rounded crown, and a lower turret beside it (or, for a bank of two towers, a second tower
+ * across the mound).
+ */
 export function billowsFor(bank, random) {
     const out = [];
     const aspect = bank.height / bank.width;
+    // A low raft's billows are smaller (in widths), or they would stand taller than the bank.
+    const size = Math.min(1, aspect / 0.42);
+    const push = (x, y, r, share) => out.push([x, Math.max(Math.min(y, aspect - r * 0.9), r * 0.55), r, share]);
     // The floor: overlapping billows along a flat base, flattened (their centres low).
-    const floorCount = 8;
-    for (let k = 0; k < floorCount; k++) {
-        const r = 0.05 + random() * 0.035;
-        const x = 0.1 + (0.8 * k) / (floorCount - 1) + (random() - 0.5) * 0.05;
-        out.push([x, r * 0.55, r]);
+    for (let k = 0; k < FLOOR_BILLOWS; k++) {
+        const r = 0.055 + random() * 0.03;
+        push(0.09 + (0.82 * k) / (FLOOR_BILLOWS - 1) + (random() - 0.5) * 0.05, r * 0.55, r, 0);
     }
-    // Towers: stacked billows rising off the floor, wide at the bottom, narrowing as they climb.
     const towers = Math.max(1, bank.towers || 1);
-    const centres = [];
-    for (let k = 0; k < towers; k++) {
-        centres.push(towers === 1 ? 0.35 + random() * 0.3 : 0.22 + k * 0.5 + random() * 0.08);
+    const main = towers === 1 ? 0.36 + random() * 0.28 : 0.3 + random() * 0.1;
+    // The mound: a broad hump under the towers, highest under the main one.
+    for (let k = 0; k < MOUND_BILLOWS; k++) {
+        const s = (k / (MOUND_BILLOWS - 1)) * 2 - 1;
+        const r = (0.088 + random() * 0.03) * size;
+        const reach = towers === 1 ? 0.25 : 0.33;
+        const x = main + (towers === 1 ? 0 : 0.14) + s * reach + (random() - 0.5) * 0.04;
+        push(x, aspect * (0.1 + 0.2 * (1 - s * s)) + r * 0.3, r, 0.28 * (1 - s * s));
     }
-    const climb = BILLOWS - floorCount;
-    // Each tower leans a little with the wind shear, and swells and pinches as it climbs.
-    const lean = centres.map(() => (random() - 0.5) * 0.12);
-    const swell = centres.map(() => random() * 6.28);
-    for (let k = 0; k < climb; k++) {
-        const tower = k % towers;
-        const step = Math.floor(k / towers);
-        // The second tower is the lower one.
-        const crown = tower === 0 ? 0.94 : 0.62;
-        const t = (step + random() * 0.6) / Math.ceil(climb / towers);
-        const r = (0.088 - 0.042 * t) * (0.85 + random() * 0.3);
-        // Billows climb in zigzag pairs, left and right of the tower's axis, so a tower has a
-        // body as wide as a few billows that narrows toward its crown.
-        const side = step % 2 === 0 ? -1 : 1;
-        const width = 0.11 * (1 - 0.5 * t) * (0.75 + 0.45 * Math.sin(swell[tower] + t * 7.5));
-        const x = centres[tower] + lean[tower] * t + side * width * (0.45 + random() * 0.55);
-        const y = Math.min(aspect * (0.16 + crown * 0.84 * t ** 0.9), aspect - r * 0.9);
-        out.push([x, Math.max(y, r * 0.6), r]);
-    }
+    // A tower: billows in zigzag pairs about an axis that leans a little with the wind shear.
+    const tower = (count, centre, crown, girth) => {
+        const lean = (random() - 0.5) * 0.11;
+        for (let k = 0; k < count; k++) {
+            const t = (k + random() * 0.5) / count;
+            const r = (girth - girth * 0.46 * t) * (0.88 + random() * 0.24) * size;
+            const side = k % 2 === 0 ? -1 : 1;
+            const x = centre + lean * t + side * girth * 0.45 * (1 - 0.6 * t) * (0.4 + random() * 0.6);
+            push(x, aspect * (0.28 + (crown - 0.28) * t ** 0.9), r, 0.32 + 0.68 * t);
+        }
+    };
+    tower(MAIN_BILLOWS, main, 0.97, 0.108);
+    // The lower turret stands beside the main tower; a second tower stands across the mound.
+    const sideOf = main > 0.5 ? -1 : 1;
+    const second = towers === 1 ? main + sideOf * (0.19 + random() * 0.07) : main + 0.34 + random() * 0.06;
+    tower(SIDE_BILLOWS, Math.min(0.86, Math.max(0.14, second)), towers === 1 ? 0.56 : 0.76, 0.086);
     return out;
 }
 
@@ -178,8 +199,9 @@ export function createCumulus(u, t, tier, count = 9) {
     const index = [];
     banks.forEach((bank, b) => {
         const a = bank.bearing * DEG;
-        // Each billow row carries its bank's bearing (the bank's frame for lighting).
-        for (const [x, y, r] of billowsFor(bank, random)) rows.push(new THREE.Vector4(x, y, r, a));
+        // A bank's first row carries its bearing (the bank's frame for lighting) in w; every
+        // other row its share of the bank's growth (the first is a floor billow: no share).
+        billowsFor(bank, random).forEach(([x, y, r, share], k) => rows.push(new THREE.Vector4(x, y, r, k === 0 ? a : share)));
         const cx = EYE.x + Math.sin(a) * bank.distance;
         const cz = EYE.z - Math.cos(a) * bank.distance;
         // The card faces the eye: its right is the horizontal tangent of the bearing.
@@ -226,17 +248,29 @@ export function createCumulus(u, t, tier, count = 9) {
         const dSum = float(0.0).toVar();
         const gSum = vec2(0.0).toVar();
         const nSum = vec3(0.0).toVar();
+        // The heap LIVES: the weather grows its towers off the base (towerGrow), every billow
+        // breathes on its own clock, and a swell travels up each tower (the boil of a growing
+        // cloud), so the outline is never the same for long.
+        const grow = u.towerGrow.mul(0.42).add(0.58).toVar();
+        const clock = u.boil.add(card.w.mul(50.0)).toVar();
         for (let k = 0; k < BILLOWS; k++) {
             const b = billows.element(id.mul(BILLOWS).add(k));
-            const d = p.sub(b.xy);
+            const share = k === 0 ? float(0.0) : b.w;
+            const own = ((k * 0.618034) % 1) * 6.2832;
+            const breath = sin(clock.mul(0.17).add(own));
+            const swell = sin(clock.mul(0.26).sub(share.mul(5.0)));
+            const centre = vec2(b.x.add(breath.mul(0.008)), b.y.mul(mix(float(1.0), grow, share)));
+            const radius = b.z.mul(mix(float(1.0), grow.mul(0.3).add(0.7), share))
+                .mul(breath.mul(0.07).add(1.0).add(swell.mul(share).mul(0.13))).toVar();
+            const d = p.sub(centre);
             const dd = dot(d, d);
             const len = sqrt(dd).max(1e-5);
-            const wd = exp(len.sub(b.z).div(-SOFT).min(40.0));
+            const wd = exp(len.sub(radius).div(-SOFT).min(40.0));
             dSum.addAssign(wd);
             gSum.addAssign(d.div(len).mul(wd));
-            const z = sqrt(max(b.z.mul(b.z).sub(dd), 0.0));
+            const z = sqrt(max(radius.mul(radius).sub(dd), 0.0));
             const wz = exp(z.div(SOFT_NORMAL).min(40.0)).mul(z.greaterThan(0.0).select(1.0, 0.0));
-            nSum.addAssign(vec3(d, z.max(0.004)).div(b.z).mul(wz));
+            nSum.addAssign(vec3(d, z.max(0.004)).div(radius).mul(wz));
         }
         const union = log(dSum.max(1e-30)).mul(-SOFT).toVar();
         // How deep inside the heap (widths), and the pillow it makes: rounded like a billow at its
@@ -259,10 +293,12 @@ export function createCumulus(u, t, tier, count = 9) {
         const lumpLight = float(1.0).toVar();
         const edge = union.toVar();
         LUMP.slice(0, lumpOctaves).forEach((oct, o) => {
-            const c = paLumpCells(p.mul(oct.cells).add(seedShift.mul(o + 1)));
+            // The lumps well up the heap (a cell every forty seconds or so): its skin boils.
+            const rising = vec2(0.0, u.boil.mul(o === 0 ? 0.04 : 0.07));
+            const c = paLumpCells(p.mul(oct.cells).add(seedShift.mul(o + 1)).sub(rising));
             edge.subAssign(c.x.sub(0.45).mul(oct.reach));
             bump.addAssign(c.yz.mul(o === 0 ? 0.6 : 0.35));
-            lumpLight.mulAssign(mix(float(o === 0 ? 0.62 : 0.82), float(1.0), smoothstep(0.1, 0.8, c.w)));
+            lumpLight.mulAssign(mix(float(o === 0 ? 0.52 : 0.78), float(1.0), smoothstep(0.1, 0.8, c.w)));
         });
         const lumpStrength = mix(float(0.4), float(1.0), rim);
         bump.mulAssign(lumpStrength);
@@ -296,7 +332,7 @@ export function createCumulus(u, t, tier, count = 9) {
         // The base and the lower heap stand in the heap's own shadow.
         const height = clamp(p.y.sub(baseY).div(aspect.sub(baseY).max(0.05)), 0.0, 1.0);
         const under = float(1.0).sub(smoothstep(0.0, 0.4, height));
-        sunAmount.mulAssign(float(1.0).sub(under.mul(0.55)));
+        sunAmount.mulAssign(float(1.0).sub(under.mul(0.68)));
         const sunUp = u.sunUp.mul(0.85).add(0.15);
         const shade = u.cloudShade.mul(mix(float(0.8), float(1.25), nrm.y.mul(0.5).add(0.5)))
             .add(u.fill.mul(nrm.y.max(0.0).mul(0.6)))
@@ -318,16 +354,23 @@ export function createCumulus(u, t, tier, count = 9) {
         col.mulAssign(float(1.0).sub(behind.mul(nearSun.mul(0.6).add(0.15)).mul(float(1.0).sub(thread))));
         col.addAssign(u.glow.mul(thread.add(glowRim)).mul(lining).mul(mix(float(0.6), float(1.0), lumpLight))
             .mul(3.2));
-        // Perfect clear: the heaps take the pieces' colours in bands up their height, like the
-        // strata of the land under them.
+        // By night the moon silvers the side that faces it.
+        const moonCard = normalize(vec3(dot(u.moonDir, right), u.moonDir.y, dot(u.moonDir, out)));
+        col.addAssign(u.moon.mul(clamp(dot(nrm, moonCard).mul(0.6).add(0.4), 0.0, 1.0)).mul(lumpLight).mul(1.5));
+        // Lightning far inside a bank: a glow behind its lumps, the creases dark against it.
+        If(u.flicker.y.greaterThan(0.002).and(abs(u.flicker.x.sub(card.x)).lessThan(0.5)), () => {
+            const at = vec2(u.flicker.z.mul(0.5).add(0.25), aspect.mul(u.flicker.z.mul(0.37).fract().mul(0.4).add(0.25)));
+            const blob = exp(dot(p.sub(at), p.sub(at)).div(-0.012));
+            col.addAssign(vec3(0.74, 0.8, 1.0).mul(blob.mul(u.flicker.y).mul(lumpLight.mul(0.7).add(0.3)).mul(2.6)));
+        });
+        // Perfect clear: the heaps take the LAND'S OWN strata, bed over bed up their height (the
+        // column of beds the hills are cut from, read up the cloud: oxblood, ochre, cream, sage),
+        // their light and shade kept. (Bands of pure spectrum read as candy stripes.)
         If(u.paint.greaterThan(0.01), () => {
-            const band = fract(p.y.mul(9.0).add(card.w.mul(3.0)).add(p.x.mul(0.8)));
-            const hue = vec3(
-                smoothstep(0.0, 0.33, band).mul(float(1.0).sub(smoothstep(0.5, 0.83, band))),
-                smoothstep(0.17, 0.5, band).mul(float(1.0).sub(smoothstep(0.67, 1.0, band))),
-                smoothstep(0.5, 0.83, band).add(float(1.0).sub(smoothstep(0.0, 0.33, band))).clamp(0.0, 1.0),
-            );
-            col.assign(mix(col, col.mul(hue.mul(1.5).add(0.3)), u.paint.mul(0.8)));
+            const g = p.y.mul(110.0).add(p.x.mul(14.0)).add(card.w.mul(260.0)).sub(160.0);
+            const bed = texture(t.column, vec2(columnU(g), 0.5)).level(3.0).rgb;
+            const rich = mix(vec3(paLuma(bed)), bed, 1.45).max(0.0);
+            col.assign(mix(col, rich.mul(paLuma(col).mul(2.3).add(0.12)), u.paint.mul(0.8)));
         });
         // The air: thirty kilometres of it along this line, taking more of the lower heap (and
         // less toward the sun, where the heaps stand dark against the glow).

@@ -12,6 +12,8 @@
  *                      how many poplars stand in the valley (painted-ages-life.js POPLAR_COUNT)
  *   poplarShade        the poplars' shadow map: its texel (metres; the map's longest edge caps
  *                      it at 2048) and the taps a reader takes (1, or 4 for a soft edge)
+ *   vultures           the most bearded vultures a thermal has (painted-ages-vultures.js; the
+ *                      close pass's one bird is drawn besides)
  */
 const tier = (o) => Object.freeze({ ...o, shadow: Object.freeze(o.shadow) });
 
@@ -52,8 +54,13 @@ const TIERS = Object.freeze({
     }),
 });
 
+/** The most vultures a thermal has per tier. */
+const VULTURES = Object.freeze({
+    Minimal: 2, Low: 2, Medium: 3, High: 3, Ultra: 4, Extreme: 4,
+});
+
 export const QUALITY = Object.freeze(Object.fromEntries(Object.entries(TIERS)
-    .map(([name, o]) => [name, Object.freeze({ ...o, poplarShade: POPLAR_SHADE[name] })])));
+    .map(([name, o]) => [name, Object.freeze({ ...o, poplarShade: POPLAR_SHADE[name], vultures: VULTURES[name] })])));
 
 export const QUALITY_NAMES = Object.freeze(Object.keys(QUALITY));
 

@@ -108,7 +108,9 @@ export function skyColour(u, dir, { withSun = true } = {}) {
 export function mistPatches(u, noise, xz) {
     const drift = u.wind.mul(0.35);
     const a = texture(noise, xz.add(drift).div(1900.0)).r;
-    const b = texture(noise, xz.sub(drift.mul(0.6)).div(620.0).add(vec2(0.3, 0.7))).g;
+    // The finer banks ride their own drift (`wind2`): they pass through the broad ones, so the
+    // mist's lanes open and close rather than sliding by as one sheet.
+    const b = texture(noise, xz.add(u.wind2.mul(0.3)).div(620.0).add(vec2(0.3, 0.7))).g;
     return smoothstep(0.34, 0.66, a.mul(0.62).add(b.mul(0.38))).mul(1.75).add(0.15);
 }
 
@@ -126,7 +128,7 @@ export function aerial(u, P, colour, mistScale = null) {
     const tauHaze = layerDepth(hazeA, float(HAZE_HEIGHT), u.eye.y, rd.y, d);
     // The valley mist: a thin layer on the valley floor (relative to its floor height).
     const mistA = u.mistDensity.mul(1.0 / 700);
-    const tauFlat = layerDepth(mistA, float(MIST_HEIGHT), u.eye.y.sub(MIST_FLOOR), rd.y, d);
+    const tauFlat = layerDepth(mistA, u.mistHeight, u.eye.y.sub(MIST_FLOOR), rd.y, d);
     const tauMist = mistScale ? tauFlat.mul(mistScale) : tauFlat;
     const mu = dot(rd, u.sunDir);
     const sunward = sunGlow(mu);
@@ -146,8 +148,31 @@ export function airClarity(u, P) {
     const rd = V.div(d);
     const hazeA = u.hazeDensity.mul(1.0 / 16000);
     const tau = layerDepth(hazeA, float(HAZE_HEIGHT), u.eye.y, rd.y, d)
-        .add(layerDepth(u.mistDensity.mul(1.0 / 700), float(MIST_HEIGHT), u.eye.y.sub(MIST_FLOOR), rd.y, d));
+        .add(layerDepth(u.mistDensity.mul(1.0 / 700), u.mistHeight, u.eye.y.sub(MIST_FLOOR), rd.y, d));
     return exp(tau.negate());
+}
+
+/**
+ * The cloud deck's cover over a deck point `q` (metres, before any drift): two fields of the
+ * noise, the broad one riding `wind` and the finer one `wind2`. They slide through each other,
+ * so a cloud is where both happen to stand high: it forms, thickens and melts as they part,
+ * instead of crossing the sky as a fixed shape. The sky and the land's shadows read the same.
+ */
+export function deckCover(u, noise, q) {
+    const a = texture(noise, q.add(u.wind).div(14000.0)).r;
+    const b = texture(noise, q.add(u.wind2).div(5200.0).add(vec2(0.37, 0.61))).g;
+    const cover = a.mul(0.65).add(b.mul(0.35));
+    const lo = float(1.0).sub(u.cloudCover);
+    return smoothstep(lo, lo.add(0.22), cover);
+}
+
+/**
+ * The moon's light on a surface with normal `n`: soft and unshadowed (a wrapped lobe), so the
+ * hills keep their form in the dark hours. Black by day (`u.moon` is).
+ */
+export function moonLight(u, n) {
+    const w = clamp(dot(n, u.moonDir).mul(0.6).add(0.4), 0.0, 1.0);
+    return u.moon.mul(w.mul(w));
 }
 
 /**
@@ -156,12 +181,10 @@ export function airClarity(u, P) {
  */
 export function cloudShadow(u, noise, P) {
     const lift = max(float(CLOUD_BASE).sub(P.y), 0.0).div(max(u.sunDir.y, 0.06));
-    const at = P.xz.add(u.sunDir.xz.mul(lift)).add(u.wind);
-    const a = texture(noise, at.div(14000.0)).r;
-    const b = texture(noise, at.div(5200.0).add(vec2(0.37, 0.61))).g;
-    const cover = a.mul(0.65).add(b.mul(0.35));
-    const thick = smoothstep(float(1.0).sub(u.cloudCover), float(1.0).sub(u.cloudCover).add(0.22), cover);
-    return float(1.0).sub(thick.mul(0.72));
+    const thick = deckCover(u, noise, P.xz.add(u.sunDir.xz.mul(lift)));
+    // A cloud's shadow has an edge: thin cloud lets the sun through, a body of it does not
+    // (read straight, the cover laid a faint grey wash over half the land and no shadow at all).
+    return float(1.0).sub(smoothstep(0.06, 0.6, thick).mul(u.cloudDepth));
 }
 
 export { min, pow, vec3 };
