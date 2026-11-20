@@ -135,7 +135,7 @@ describe('relief + macro + detail bakes (pure halves)', () => {
         // PLAIN_SWELLS): the macro gains the bay and the swells, the detail weight drops on the beach.
         // ...and 2026-11-20 with the tarn redrawn (a drawn shore and a profile across it,
         // odysseyTarnProfile): the total height under and round the tarn changes, nothing else.
-        expect(sha(a.total)).toBe('e526e6a1c4ef221f51582affa29df2d4');
+        expect(sha(a.total)).toBe('329ebeea55845f06c1a2fcaf0d72900f');
         expect(a.data.length).toBe(96 * 96 * 4);
         expect(a.total.length).toBe(96 * 96);
         const sample = makeReliefSampler(a);
