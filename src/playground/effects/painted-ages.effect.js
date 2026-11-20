@@ -16,6 +16,12 @@
  *                            level's own hour)
  *   hour=<place>             hold the light at a wheel place (0 first light, 1 morning, 2 high
  *                            day, 3 afternoon, 4 sunset, 5 blue hour; fractions mix)
+ *   air=<name|place>         hold the weather at an air (fair, towers, pools, showers, crystal,
+ *                            mist, dust; or a wheel place, fractions mix); otherwise it turns with
+ *                            the clock, one air every 92 s
+ *   happenings=0             no clock happenings (meteor, lightning in a far bank)
+ *   happen=meteor|flicker|gust   play that clock happening...
+ *   happenAge=<s>            ...and show it <s> seconds old (default 0.35)
  *   parts=land,sky           draw only these parts
  *   falseColor=1             post debug view: band the pre-tone-map max channel
  *   noPost=1                 raw scene (no bloom/grade)
@@ -38,6 +44,7 @@ import { PaintedAgesWorld } from '../../themes/painted-ages/painted-ages-world.j
 import { PaintedAgesPost, POST_LOOK } from '../../themes/painted-ages/painted-ages-post.js';
 import { readLayoutRects } from '../../themes/painted-ages/painted-ages-composition.js';
 import { PAINTED_AGES_TETROMINOS } from '../../themes/painted-ages/painted-ages-tetrominos.js';
+import { AIR_NAMES } from '../../themes/painted-ages/painted-ages-weather.js';
 
 /** The game's piece colours, and a ten-cell row of codes for synthetic clears. */
 const PIECE_COLORS = Object.values(PAINTED_AGES_TETROMINOS.colors).slice(0, 7);
@@ -139,6 +146,11 @@ export function create({
     const pointer = { x: num(params, 'px'), y: num(params, 'py') };
     const level = Math.max(1, Math.round(num(params, 'level', 1)));
     const hourHold = params.has('hour') ? num(params, 'hour', 0) : null;
+    const airName = AIR_NAMES.indexOf(params.get('air'));
+    const airPlace = airName >= 0 ? airName : num(params, 'air', 0);
+    const airHold = params.has('air') ? airPlace : null;
+    const happen = params.get('happen');
+    const happenAge = num(params, 'happenAge', 0.35);
     const eventName = params.get('event');
     const eventAge = num(params, 'eventAge', 0.6);
     const holdCombo = Math.max(0, Math.round(num(params, 'combo', 0)));
@@ -195,8 +207,11 @@ export function create({
             world.onLock({
                 rows: [row, row - 1], u, hardDrop: true, distance: 16, color: eventColor,
             });
-        } else if (eventName === 'clear') world.onClear({ lines, rowCodes: codes(lines), combo: Math.max(1, holdCombo) });
-        else if (eventName === 'quad') world.onClear({ lines: 4, rowCodes: codes(4), combo: Math.max(1, holdCombo) });
+        } else if (eventName === 'clear') {
+            world.onClear({
+                lines, rowCodes: codes(lines), combo: Math.max(1, holdCombo), b2b: holdB2B > 0,
+            });
+        } else if (eventName === 'quad') world.onClear({ lines: 4, rowCodes: codes(4), combo: Math.max(1, holdCombo) });
         else if (eventName === 'twist') {
             world.onClear({
                 lines: 2, rowCodes: codes(2), twist: true, u, color: PIECE_COLORS[2],
@@ -225,6 +240,7 @@ export function create({
         // Each seek replays from scratch: rows an earlier replay laid down must not come back.
         world.clearHistory();
         world.seek(start);
+        if (happen) world.setCaptureOverrides({ happen, happenAt: time - happenAge });
         if (level > 1) world.levelUp(level, { silent: true, time: start });
         if (holdB2B) world.onB2B(holdB2B);
         frame(start, 0);
@@ -289,6 +305,8 @@ export function create({
         world.bindCamera(camera);
         world.setReducedMotion(params.get('reduce') === '1');
         if (hourHold !== null) world.setCaptureOverrides({ hour: hourHold });
+        if (airHold !== null) world.setCaptureOverrides({ air: airHold });
+        if (params.get('happenings') === '0') world.setCaptureOverrides({ happenings: false });
         if (params.has('recordTop')) world.setCaptureOverrides({ recordTop: num(params, 'recordTop', 150) });
         const partsParam = params.get('parts');
         if (partsParam) world.showOnlyParts(partsParam.split(',').map((p) => p.trim()));

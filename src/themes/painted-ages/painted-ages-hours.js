@@ -155,14 +155,19 @@ export function hourPlace(level, time) {
     return Math.max(0, (Number(level) || 1) - 1) + t / TIMING.hour;
 }
 
-/** Hour index (0..5) and the eased mix toward the next one for a wheel place. */
-export function hourMix(place) {
+/**
+ * Hour index (0..5) and the eased mix toward the next one for a wheel place. `sweep` (0..1)
+ * takes the rests out: at 1 the mix runs evenly through the hour (a whole day wheeling by in
+ * seconds would otherwise stop and start at every hour).
+ */
+export function hourMix(place, sweep = 0) {
     const p = Number.isFinite(place) ? place : 0;
     const whole = Math.floor(p);
     const from = ((whole % HOUR_COUNT) + HOUR_COUNT) % HOUR_COUNT;
     const to = (from + 1) % HOUR_COUNT;
     const rest = TIMING.hourRest;
-    const mix = smooth(rest, 1 - rest, p - whole);
+    const eased = smooth(rest, 1 - rest, p - whole);
+    const mix = sweep > 0 ? lerp(eased, p - whole, clamp(sweep, 0, 1)) : eased;
     return { from, to, mix };
 }
 
@@ -171,8 +176,8 @@ export function hourMix(place) {
  * linear light; the sun's azimuth walks the increasing way round (the hours are authored in
  * increasing azimuth, the last hour's successor one turn on).
  */
-export function lightAt(place, out = createLight()) {
-    const { from, to, mix } = hourMix(place);
+export function lightAt(place, out = createLight(), sweep = 0) {
+    const { from, to, mix } = hourMix(place, sweep);
     const a = HOURS[from];
     const b = HOURS[to];
     for (const key of COLOUR_KEYS) {

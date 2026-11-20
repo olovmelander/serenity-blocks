@@ -1,5 +1,6 @@
 /**
- * Painted Ages — the motes: pigment dust, sparks, rain and the dust devil's swirl.
+ * Painted Ages — the motes: pigment dust, sparks, rain, the grains a dust devil flings, and the
+ * sky lanterns of a run's end.
  *
  * One instanced billboard mesh whose instances are written once when spawned and then move in
  * closed form on the GPU (no per-frame CPU work beyond the spawns).
@@ -26,7 +27,7 @@ import {
 import { airClarity } from './painted-ages-light.js';
 
 export const MOTE_KIND = Object.freeze({
-    dust: 0, spark: 1, rain: 2, devil: 3,
+    dust: 0, spark: 1, rain: 2, devil: 3, lantern: 4,
 });
 
 /**
@@ -153,8 +154,12 @@ export class Motes {
             // Sparks burn bright and short; dust glows in the sun; rain is a faint silver.
             // Pigment dust glows in its own colour (lit by the sun a little more); sparks burn hot.
             const sunlit = u.sun.mul(u.sunUp).mul(0.1).add(u.fill.mul(0.4)).add(0.9);
-            const lightOf = mix(sunlit, vec3(1.0, 1.0, 1.0), isKind(MOTE_KIND.spark));
-            const power = mix(float(1.4), float(3.2), isKind(MOTE_KIND.spark)).mul(mix(float(1.0), float(0.3), isKind(MOTE_KIND.rain)));
+            // A sky lantern burns with its own flame, which wavers.
+            const lantern = isKind(MOTE_KIND.lantern);
+            const waver = sin(u.time.mul(5.3).add(kind.y.mul(50.0))).mul(0.14).add(0.86);
+            const lightOf = mix(sunlit, vec3(1.0, 1.0, 1.0), isKind(MOTE_KIND.spark).add(lantern));
+            const power = mix(float(1.4), float(3.2), isKind(MOTE_KIND.spark)).mul(mix(float(1.0), float(0.3), isKind(MOTE_KIND.rain)))
+                .mul(mix(float(1.0), waver.mul(2.1), lantern));
             const clarity = airClarity(this.u, centre());
             const rgb = look.xyz.mul(lightOf).mul(power).mul(disc).mul(fadeIn)
                 .mul(fadeOut)

@@ -17,12 +17,21 @@
  *               after a long one), and the rock dries in the sun
  *   four lines  a rainbow tide climbs every bed, and a flash flood of coloured water races down
  *               the river through the valley
- *   twist      a dust devil of pigment spins up from the valley floor
- *   b2b         mica glints on the sunlit rock
- *   perfect     the clouds take the mineral colours, every bed lights, a double bow
- *   level up    the day steps an hour forward (it also turns with the clock alone); a pale marker
- *               bed of light climbs the land
- *   game over   dusk falls and the lanterns light; morning returns with the next run
+ *   twist      a dust devil of pigment spins up on the valley floor: a funnel in the piece's
+ *               colour that stands, drifts and lifts away (painted-ages-devils.js)
+ *   b2b         veins of gold cut across the beds, a flare of light racing out along them
+ *   perfect     an age in a breath: the whole day wheels round once (the sun arcs over, night
+ *               falls, the stars turn, dawn breaks), the clouds take the land's own strata,
+ *               every bed lights, and as the light returns a double bow stands over the valley
+ *   level up    the day steps an hour forward (it also turns with the clock alone); new ages
+ *               are laid down: every stripe on every hill slides up its slope, a pale marker
+ *               bed climbs the land, and the lamps flare in turn up the stair to the pavilion
+ *   game over   dusk falls, the lamps light one by one up the stair, and sky lanterns rise
+ *               from the pavilion; morning returns with the next run
+ *
+ * Beside the hours turns the WEATHER (painted-ages-weather.js): a wheel of airs (fair, towers,
+ * pools of light, a far shower, crystal air, a sea of mist, a wind of dust), and small
+ * happenings by the clock (a meteor, lightning far inside a bank, a dust devil of the wind's own).
  *
  * Everything gameplay lights ACCUMULATES (src/themes/shared/gameplay-surge.js): a new band joins
  * the ones still climbing (the faintest gives way when the table is full), a second bow or flood
@@ -42,12 +51,15 @@
 import * as THREE from 'three/webgpu';
 import {
     DEG, EYE, FIELDS, FIELD_ORDER, PIECE_COLORS, RECORD_ROWS, RIG, StrataRecord, TAU, TIMING, approach, buildBeds,
-    clamp, hexToLinear, mulberry32, rigFor, smooth, strataG,
+    clamp, hexToLinear, mulberry32, rigFor, smooth, smoother, strataG,
 } from './painted-ages-core.js';
 import {
-    HOURS, HourWheel, blendLight, copyLight, createLight, lightAt,
+    HOURS, HOUR_COUNT, HourWheel, blendLight, copyLight, createLight, lightAt,
 } from './painted-ages-hours.js';
 import { tierFor } from './painted-ages-quality.js';
+import {
+    DUST_TINT, airAt, airDrift, airPlace, createAir, happeningAt, swellOver, virgaBearing,
+} from './painted-ages-weather.js';
 import { breathe, loadBadlands, planBadlands } from './painted-ages-assets.js';
 import {
     createColumnTexture, createFieldTexture, createFlowTexture, createLatticeTexture, createNoiseTexture,
@@ -57,7 +69,8 @@ import { fillFieldTextureRows } from './painted-ages-field-data.js';
 import {
     bilinear, fieldCoords, fieldInset, groundHeight,
 } from './painted-ages-field.js';
-import { RIVER_LENGTH } from './painted-ages-plan.js';
+import { PAVILION, RIVER_LENGTH } from './painted-ages-plan.js';
+import { DevilTable, createDevils } from './painted-ages-devils.js';
 import { createPropsSteps } from './painted-ages-props.js';
 import { createCumulus } from './painted-ages-cumulus.js';
 import { createPoplars } from './painted-ages-life.js';
@@ -69,8 +82,9 @@ import { cardUnion, fallbackLayout } from './painted-ages-composition.js';
 import { applyCameraBreath } from '../shared/camera-breath.js';
 import { drainSteps } from '../shared/build-steps.js';
 import { GameplaySurge, Swell } from '../shared/gameplay-surge.js';
+import { flashScale } from '../../utils/photosensitivity.js';
 
-export const PAINTED_AGES_PARTS = Object.freeze(['land', 'sky', 'props', 'cumulus', 'poplars', 'motes']);
+export const PAINTED_AGES_PARTS = Object.freeze(['land', 'sky', 'props', 'cumulus', 'poplars', 'devils', 'motes']);
 export const REST_RIG = Object.freeze({ near: RIG.near, far: RIG.far });
 export const fovForAspect = (aspect) => rigFor(aspect).fov;
 
@@ -85,7 +99,29 @@ const SNAPSHOT = Object.freeze([
     'time', 'level', 'combo', 'peak', 'b2b', 'wetLevel', 'showerPower', 'showerFront', 'bowAt', 'bowStrength', 'bowSecond',
     'bowSince', 'bowSecondShown', 'perfectAt', 'duskFrom', 'duskTarget', 'duskAt', 'sheenLevel', 'floodAt', 'floodEnd',
     'floodFront', 'depositAt', 'settleFrom', 'freshRows', 'lastLockAt', 'windDrift', 'nod', 'zoom', 'warmth', 'floodHead',
+    'veinAt', 'spinAt', 'spinsDone', 'spinCounted', 'bowDueAt', 'lampRunAt', 'shiftFrom', 'shiftTo', 'shiftAt', 'stormFlickerAt', 'lanternsAt',
 ]);
+/** A perfect clear's age: the day wheels round once in this long (s). */
+export const SPIN_SECONDS = 7.5;
+/** How far the sky turns about the pole while it does (radians). */
+const SPIN_TURN = 1.05;
+/** A level's new ages: the column slides this far (metres of geological height) over this long. */
+export const LEVEL_SHIFT = 16;
+const SHIFT_SECONDS = 4.2;
+/** The column slides up to this far and back (it is not endless). */
+const SHIFT_RANGE = 400;
+/** A level-up's flare runs the stair's lamps in this long (s), and is gone by LAMP_RUN_LIFE. */
+const LAMP_RUN = 2.4;
+const LAMP_RUN_LIFE = 3.8;
+/** Sky lanterns at a run's end (most; a lean pool sends fewer), and their warm light. */
+const LANTERNS = 34;
+const LANTERN_LIGHT = [1.55, 0.62, 0.16];
+
+/** A walk there and back over 0..range (the column's slide: up, then down again). */
+function thereAndBack(x, range) {
+    const p = ((x % (2 * range)) + 2 * range) % (2 * range);
+    return p <= range ? p : 2 * range - p;
+}
 /** A rain streak's life (s): it falls from above the eye to below it. */
 const RAIN_LIFE = 6;
 /** The bow fades in over this long (s); a painted sky over PAINT_IN. */
@@ -98,6 +134,11 @@ const FLOOD_SPEED = 950;
 const FRESH_ROWS = 8;
 /** The glint a back-to-back clear's bands carry (linear). */
 const MICA = [1.3, 1.15, 0.85];
+/** The moon: its bearing (radians right of the view axis) and its light on the land at full. */
+const MOON_AZ = 27.5 * DEG;
+const MOON_LIGHT = [0.1, 0.125, 0.2];
+/** The pale dust of a devil the wind raises by itself (linear). */
+const GUST_DUST = [0.74, 0.58, 0.44];
 
 /** Where smooth(0, 1, x) reaches v (its inverse on [0, 1]): to pick a fade up where it stands. */
 function unsmooth(v) {
@@ -243,9 +284,19 @@ export class PaintedAgesWorld {
             flashColour: [1, 0.9, 0.75],
             saturation: 1.06,
         };
-        this.overrides = { hour: null, recordTop: null };
+        this.overrides = {
+            hour: null, recordTop: null, air: null, happenings: true, happen: null,
+        };
+        /** The air of the hour (painted-ages-weather.js), and the slot whose happening last began. */
+        this.air = createAir();
+        this._happening = {};
+        this._tint = [0, 0, 0];
         this.random = mulberry32(seed ^ 0x51ab);
         this.tables = new EventTables(this.u);
+        this.devils = new DevilTable(this.u);
+        this._site = {
+            x: 0, y: 0, z: 0, distance: 0,
+        };
         /**
          * How hot play runs (src/themes/shared/gameplay-surge.js), sampled once a frame on the
          * world's clock: `heat` is the latest sample (the camera reads the last frame's).
@@ -295,10 +346,27 @@ export class PaintedAgesWorld {
         this.freshRows = 1;
         this.lastLockAt = -1e6;
         this.rainCarry = 0;
-        this.windDrift = 0;
+        // The deck's drift carries what the weather's winds have added up to now (a seek lands
+        // on the sky a live run would have reached).
+        this.windDrift = airDrift(time);
         this.nod = 0;
         this.zoom = 0;
         this.warmth = 0;
+        this.veinAt = -1e6;
+        this.spinAt = -1e6;
+        this.spinsDone = 0;
+        this.spinCounted = null;
+        this.spinning = false;
+        this.bowDueAt = Infinity;
+        this.lampRunAt = -1e6;
+        this.shiftFrom = 0;
+        this.shiftTo = 0;
+        this.shiftAt = -1e6;
+        this.stormFlickerAt = -1e6;
+        this.stormFlickerSeed = 0;
+        this.lanternsAt = -1e6;
+        this._gustSlot = -1;
+        this.devils.reset();
         this.tables.reset();
         this.motes?.clear();
         this.surge.reset();
@@ -371,6 +439,7 @@ export class PaintedAgesWorld {
         this.addPart('poplars', poplars);
         this.addPart('sky', createSky(this.u, this.textures, tier));
         this.addPart('cumulus', createCumulus(this.u, this.textures, tier, tier.banks));
+        this.addPart('devils', createDevils(this.u, this.textures));
         this.motes = new Motes(this.u, tier.motes);
         this.addPart('motes', {
             mesh: this.motes.mesh,
@@ -633,8 +702,8 @@ export class PaintedAgesWorld {
             g,
             time: this.time,
             rgb,
-            power: (hard ? 6.0 + drop * 2 : 4.4) * (1 + 0.35 * pace),
-            half: hard ? 5.0 : 3.6,
+            power: (hard ? 6.0 + drop * 2 : 4.6) * (1 + 0.35 * pace),
+            half: hard ? 5.0 : 4.0,
             speed: (hard ? 270 : 175) * (1 + 0.25 * pace),
             reach: (hard ? 1500 : 950) * (1 + 0.45 * pace),
             kind: hard ? 1 : 0,
@@ -698,8 +767,10 @@ export class PaintedAgesWorld {
             });
         }
         if (b2b) {
-            // The mica flares, higher the longer the run (it settles back to the run's own sheen).
+            // The veins of gold flare, higher the longer the run (they settle back to the run's
+            // own glow), and the flare's front runs out along them from the eye.
             this.sheenKick.hit(0.45 + 0.12 * Math.min(4, this.b2b + 1), t);
+            this.veinAt = t;
         }
         this.surge.clear(context, t);
         // Pigment rises off the hills beside the card.
@@ -777,41 +848,91 @@ export class PaintedAgesWorld {
         return smooth(0, 0.4, age) * (1 - smooth(this.floodEnd - 5, this.floodEnd, time));
     }
 
-    onTwist(context = {}, share = 1) {
-        this.counts.twists++;
-        // On the valley floor at a middle distance, on the side the T locked on.
-        const p = this.landSite(context.u ?? (this.random() < 0.5 ? 0.2 : 0.8), 18.5);
-        if (!p || !this.motes) return;
-        const rgb = this.pigment(context.color || PIECE_COLORS[1]);
+    /**
+     * Level ground at a middle distance on the side of board column `u01`: where a dust devil
+     * can stand and be seen whole (the valley floors beside the card, never the near slopes).
+     */
+    devilSite(u01) {
+        const p = this.sitePoint(u01, 10);
+        const out = this._site;
+        const ground = (px, pz) => groundHeight(this.fields, px, pz);
+        // Level ground first (a valley floor); failing that, any gentle shoulder of a hill.
+        for (const steepest of [0.16, 0.5]) {
+            for (let k = 0; k < 13; k++) {
+                const sy = 0.53 + k * 0.024;
+                for (const dx of [0, -0.045, 0.045, -0.09, 0.09]) {
+                    const hit = this.landAt(clamp(p.x + dx, 0.05, 0.93), sy, out);
+                    if (!hit || hit.distance < 430 || hit.distance > 1700) continue;
+                    const { x, z } = hit;
+                    const slope = Math.max(Math.abs(ground(x + 6, z) - ground(x - 6, z)), Math.abs(ground(x, z + 6) - ground(x, z - 6))) / 12;
+                    if (slope < steepest) return hit;
+                }
+            }
+        }
+        return this.landSite(u01, 18.5);
+    }
+
+    /**
+     * Spin up a dust devil (`share` 1: a twist; less: a twist that cleared nothing, or the
+     * weather's own): the funnel, and a few grains flung round its foot.
+     */
+    raiseDevil(u01, rgb, share = 1) {
+        const p = this.devilSite(u01);
+        if (!p) return false;
         const r = this.random;
-        const scale = clamp(p.distance / 200, 0.8, 5) * (0.6 + 0.4 * share);
-        // Never more than a share of the pigment ring, so the devil leaves the puffs around it be.
-        const count = Math.min(Math.round(520 * share), Math.floor(this.motes.pigmentSlots * 0.45 * share));
+        const height = clamp(p.distance * 0.2, 60, 260) * (0.55 + 0.45 * share);
+        this.devils.spawn({
+            x: p.x,
+            y: p.y - 1,
+            z: p.z,
+            time: this.time,
+            rgb,
+            height,
+            strength: 0.62 + 0.38 * share,
+            driftX: 3 + r() * 3.5,
+            driftZ: (r() - 0.5) * 2.4,
+            seed: r(),
+        });
+        if (!this.motes) return true;
+        const scale = height / 110;
+        // Never more than a small share of the pigment ring: the devil leaves the puffs be.
+        const count = Math.min(Math.round(64 * share), Math.floor(this.motes.pigmentSlots * 0.08 * share));
         this.motes.now = this.time;
         for (let i = 0; i < count; i++) {
-            const tint = r() * 0.55;
+            const tint = 0.3 + r() * 0.5;
             this.motes.spawn({
                 x: p.x,
                 y: p.y + r() * 2,
                 z: p.z,
                 vx: 0,
-                vy: (6 + r() * 12) * scale,
+                vy: (5 + r() * 9) * scale,
                 vz: 0,
-                born: this.time + r() * 2.4 * (0.5 + 0.5 * share),
-                life: (4 + r() * 4) * (0.6 + 0.4 * share),
-                rgb: [rgb[0] * (1 - tint) + DUST[0] * tint, rgb[1] * (1 - tint) + DUST[1] * tint, rgb[2] * (1 - tint) + DUST[2] * tint],
-                size: (1.6 + r() * 2.4) * scale,
+                born: this.time + 0.6 + r() * 3.2,
+                life: 3 + r() * 2.5,
+                rgb: [(rgb[0] * (1 - tint) + DUST[0] * tint) * 0.6, (rgb[1] * (1 - tint) + DUST[1] * tint) * 0.6, (rgb[2] * (1 - tint) + DUST[2] * tint) * 0.6],
+                size: (0.7 + r() * 0.9) * scale,
                 kind: MOTE_KIND.devil,
                 seed: r(),
-                swirl: (3 + r() * 7) * scale,
+                swirl: (2.5 + r() * 5) * scale,
             });
         }
+        return true;
+    }
+
+    onTwist(context = {}, share = 1) {
+        this.counts.twists++;
+        // On the valley floor at a middle distance, on the side the T locked on.
+        const rgb = this.pigment(context.color || PIECE_COLORS[1]).slice();
+        this.raiseDevil(context.u ?? (this.random() < 0.5 ? 0.2 : 0.8), rgb, share);
     }
 
     /**
-     * The crown: the clouds take the mineral colours, seven bands climb every bed, a double bow.
-     * Layered on whatever is still playing: a painted sky or a bow already up carries on from
-     * where it stands. `counted`: the clear that carried it already told the surge.
+     * The crown: an age in a breath. The whole day wheels round once (the sun arcs over and
+     * sets, the stars turn, dawn breaks: update() reads `spinAt`), the clouds take the land's
+     * strata, seven bands climb every bed, and as the light returns a double bow stands over
+     * the valley. Layered on whatever is still playing: a painted sky or a bow already up
+     * carries on from where it stands, and a day already wheeling is not begun again.
+     * `counted`: the clear that carried it already told the surge.
      */
     onPerfect({ counted = false } = {}) {
         this.counts.perfects++;
@@ -822,7 +943,14 @@ export class PaintedAgesWorld {
                 g0: -420 - k * 20, climb: 170, time: this.time + k * 0.22, power: 1.6, rgb: PIECE_LINEAR[k].slice(), half: 3.6, life: 5,
             });
         }
-        this.raiseBow(1, 1);
+        const wheeling = this.time - this.spinAt < SPIN_SECONDS;
+        if (this.reducedMotion) {
+            // No sweep of the light under reduced motion: the bow rises at once.
+            this.raiseBow(1, 1);
+        } else if (!wheeling) {
+            this.spinAt = this.time;
+            this.bowDueAt = this.time + SPIN_SECONDS - 1.4;
+        }
         this.flash.hit(0.3 * this.flashRoom(this.time), this.time);
         if (!counted) this.surge.crown(this.time);
     }
@@ -830,7 +958,7 @@ export class PaintedAgesWorld {
     /** A twist that cleared nothing: a small dust devil on the valley floor. */
     onSpin(context = {}) {
         if (this.disposed) return;
-        this.onTwist(context || {}, 0.3);
+        this.onTwist(context || {}, 0.35);
         this.surge.spin(this.time);
     }
 
@@ -872,6 +1000,11 @@ export class PaintedAgesWorld {
         const n = clamp(Math.round(value) || 0, 0, 1000);
         if (n === this.combo) return;
         if (n > this.combo && n >= 2) this.counts.chainSteps++;
+        // Deep in a chain the storm answers each step: lightning far inside a bank.
+        if (n > this.combo && n >= 4) {
+            this.stormFlickerAt = this.time;
+            this.stormFlickerSeed = (n * 0.381966) % 1;
+        }
         if (n === 0 && this.peak >= 4) {
             this.counts.releases++;
             // The shower passes: a rainbow over the valley, doubled after a long chain.
@@ -892,9 +1025,18 @@ export class PaintedAgesWorld {
         if (n === this.level) return;
         const up = n > this.level;
         this.wheel.levelUp(n, time, silent || this.reducedMotion);
+        if (up) {
+            // New ages are laid down: the column slides on under the land (eased; at once when
+            // silent), from wherever the last slide stands.
+            this.shiftFrom = this.shiftSteps(time);
+            this.shiftTo = Math.max(this.shiftTo, this.shiftFrom) + (n - this.level);
+            this.shiftAt = silent || this.reducedMotion ? -1e6 : time;
+        }
         this.level = n;
         if (up && !silent) {
             this.counts.levelUps++;
+            // The lamps flare in turn up the stair to the pavilion.
+            this.lampRunAt = time;
             // A pale marker bed of light climbs the land.
             this.tables.addWave({
                 g0: -460, climb: 150, time, power: 1.5, rgb: [1.25, 1.05, 0.72], half: 1.8, life: 5.4,
@@ -905,11 +1047,52 @@ export class PaintedAgesWorld {
         }
     }
 
+    /** How many levels' ages the column has slid by `time` (eased through a level-up's slide). */
+    shiftSteps(time) {
+        return this.shiftFrom + (this.shiftTo - this.shiftFrom) * smoother((time - this.shiftAt) / SHIFT_SECONDS);
+    }
+
+    /**
+     * Sky lanterns leave the pavilion's terrace one after another and drift up over the valley
+     * on the evening air (a run's end). Written once: they move in closed form (the motes).
+     */
+    releaseLanterns(time) {
+        if (!this.motes || !this.fields) return;
+        const r = this.random;
+        const ground = groundHeight(this.fields, PAVILION.x, PAVILION.z, true);
+        const count = Math.min(LANTERNS, Math.floor(this.motes.pigmentSlots * 0.06));
+        this.motes.now = time;
+        for (let i = 0; i < count; i++) {
+            const a = r() * TAU;
+            const d = 2 + r() * 9;
+            this.motes.spawn({
+                x: PAVILION.x + Math.cos(a) * d,
+                y: ground + 2.5 + r() * 4,
+                z: PAVILION.z + Math.sin(a) * d,
+                vx: 1.1 + r() * 1.7,
+                vy: 1.7 + r() * 1.5,
+                vz: (r() - 0.5) * 1.3,
+                born: time + 1.8 + i * 0.4 + r() * 0.3,
+                life: 27 + r() * 10,
+                rgb: LANTERN_LIGHT,
+                size: 1.7 + r() * 0.9,
+                kind: MOTE_KIND.lantern,
+                seed: r(),
+                swirl: 0.5,
+                rise: 0,
+            });
+        }
+    }
+
     onGameOver() {
         this.counts.gameOvers++;
         this.duskFrom = this.dusk;
         this.duskTarget = 1;
         this.duskAt = this.time;
+        if (this.time - this.lanternsAt > 20) {
+            this.lanternsAt = this.time;
+            this.releaseLanterns(this.time);
+        }
         this.record.deposit(null, { time: this.time, tuff: true });
         this.deposited(1, this.time);
     }
@@ -964,9 +1147,34 @@ export class PaintedAgesWorld {
         // Dusk at game over, morning after.
         this.dusk = this.duskFrom + (this.duskTarget - this.duskFrom)
             * smooth(0, this.duskTarget ? TIMING.dusk : TIMING.dawn, time - this.duskAt);
+        // A perfect clear's age: the day wheels round once (a whole turn of the wheel is the
+        // same hour again, so nothing is left to undo), swept evenly through the hours' rests.
+        if (time >= this.bowDueAt) {
+            this.bowDueAt = Infinity;
+            this.raiseBow(1, 1);
+        }
+        const spinAge = time - this.spinAt;
+        const spinning = spinAge >= 0 && spinAge < SPIN_SECONDS;
+        // (A finished turn is counted once, so the stars stay where the sweep left them.)
+        if (this.spinAt > -1e5 && spinAge >= SPIN_SECONDS && this.spinCounted !== this.spinAt) {
+            this.spinCounted = this.spinAt;
+            this.spinsDone += 1;
+        }
+        const turn = spinning ? smoother(spinAge / SPIN_SECONDS) : 0;
+        const sweep = spinning ? smooth(0, 0.7, spinAge) * (1 - smooth(SPIN_SECONDS - 0.7, SPIN_SECONDS, spinAge)) : 0;
+        this.spinning = spinning;
         // The light of the hour.
         const place = this.overrides.hour !== null ? this.overrides.hour : this.wheel.place(time);
-        lightAt(place, this._hourLight);
+        lightAt(place + HOUR_COUNT * turn, this._hourLight, sweep);
+        // The sky turns about the pole: slowly by the clock, and in one sweep with the age.
+        u.starTurn.value = (time * 0.0016 + SPIN_TURN * (this.spinsDone + turn)) % TAU;
+        // The ages laid down: a level's slide, and one more with every new day of the clock.
+        const days = place / HOUR_COUNT;
+        const dawn = Math.max(0, Math.floor(days) - 1 + smooth(0, 0.012, days - Math.floor(days)));
+        u.strataShift.value = thereAndBack((this.shiftSteps(time) + (this.overrides.hour !== null ? 0 : dawn)) * LEVEL_SHIFT, SHIFT_RANGE);
+        // A level-up's flare runs the lamps up the stair.
+        const lampAge = time - this.lampRunAt;
+        u.lampRun.value.set(lampAge >= 0 && lampAge < LAMP_RUN_LIFE ? (lampAge / LAMP_RUN) * 1.15 - 0.05 : -1, lampAge >= 0 && lampAge < LAMP_RUN_LIFE ? 1 - smooth(LAMP_RUN_LIFE - 1, LAMP_RUN_LIFE, lampAge) : 0, 1);
         const L = this.dusk > 0.001 ? blendLight(this._hourLight, this._duskLight, this.dusk * 0.85, this.light) : copyLight(this._hourLight, this.light);
         u.sunDir.value.set(L.dir[0], L.dir[1], L.dir[2]);
         u.sunUp.value = L.sunUp;
@@ -990,17 +1198,39 @@ export class PaintedAgesWorld {
         const storm = 1 - 0.55 * this.showerPower - 0.18 * fever;
         u.cloudShade.value.set(L.cloudShade[0] * storm, L.cloudShade[1] * storm, L.cloudShade[2] * (storm + 0.08));
         u.snow.value.set(L.snow[0], L.snow[1], L.snow[2]);
-        u.hazeDensity.value = L.hazeDensity;
-        u.mistDensity.value = L.mistDensity;
+        // The air of the hour: the weather's wheel turns beside the light's.
+        const A = airAt(this.overrides.air !== null ? this.overrides.air : airPlace(time), this.air);
+        const day = L.sunUp * (1 - this.dusk);
+        // A warm wind's dust tints the haze and takes the valley layer for itself (by day).
+        const dusty = A.dust * day;
+        this.dustTint(u.haze.value, 0.5 * dusty);
+        this.dustTint(u.mist.value, 0.85 * dusty);
+        u.hazeDensity.value = L.hazeDensity * A.haze;
+        // The weather's mist joins the hour's own rather than piling on it (a sea of mist at
+        // first light would otherwise bury the whole valley and the far range with it).
+        u.mistDensity.value = Math.max(L.mistDensity, 0.5 * L.mistDensity + A.mist * (1 - 0.35 * A.dust * (1 - day)));
+        u.mistHeight.value = 38 * A.mistRise;
+        u.cloudDepth.value = A.shade;
+        u.towerGrow.value = Math.min(1, A.towers + 0.3 * this.showerPower);
+        u.boil.value = time;
+        u.cirrus.value = A.cirrus * (1 - 0.6 * this.showerPower);
         u.stars.value = L.stars;
+        // The moon rises as the dark deepens, and lays a soft silver light on the land.
+        const moonUp = smooth(0.22, 0.75, L.stars);
+        const moonEl = (3.5 + 7 * moonUp) * DEG;
+        u.moonDir.value.set(Math.sin(MOON_AZ) * Math.cos(moonEl), Math.sin(moonEl), -Math.cos(MOON_AZ) * Math.cos(moonEl));
+        u.moonUp.value = moonUp;
+        u.moon.value.set(MOON_LIGHT[0] * moonUp, MOON_LIGHT[1] * moonUp, MOON_LIGHT[2] * moonUp);
         u.lamps.value = Math.max(1 - smooth(-2, 10, L.el), this.dusk);
         u.dusk.value = this.dusk;
         u.time.value = time;
         // The deck drifts with the wind: the clock times a constant, plus what play adds (a quick
         // hand raises a breeze, a fever a gale: the clouds' shadows race across the land).
-        this.windDrift += dt * (1.4 * warmth + 2.4 * fever) * (this.reducedMotion ? 0.3 : 1);
+        this.windDrift += dt * ((A.wind - 1) + (1.4 * warmth + 2.4 * fever) * (this.reducedMotion ? 0.3 : 1));
         const drift = time + this.windDrift;
         u.wind.value.set(drift * 9.5, drift * -3.2);
+        // The deck's finer field takes another heading: the two slide through each other.
+        u.wind2.value.set(drift * 5.2, drift * 6.3);
 
         // The chain's shower: it walks in from the horizon as the chain grows, and passes when it breaks.
         const asked = this.combo >= 2 ? clamp(0.18 + (this.combo - 2) * 0.17, 0, 1) : 0;
@@ -1015,16 +1245,26 @@ export class PaintedAgesWorld {
         u.showerFront.value = this.showerFront;
         u.showerPower.value = this.showerPower;
         // The storm closes the sky over the chain.
-        u.cloudCover.value = 0.32 + 0.45 * this.showerPower + 0.08 * fever;
+        u.cloudCover.value = Math.min(0.92, A.cover + 0.45 * this.showerPower + 0.08 * fever);
+        // The weather's far shower: curtains on one side, and by day a shard of rainbow in them.
+        const virgaAz = virgaBearing(A.place);
+        u.virga.value.set(virgaAz, A.virga * (1 - 0.7 * this.showerPower), Math.sign(virgaAz) * 0.2);
+        const shard = 0.5 * smooth(0.35, 0.9, A.virga) * day * (1 - this.showerPower);
         // The bow (its age counts from when it first showed: a bow carried on never re-fades).
+        // A chain's bow or a perfect clear's stands whole and takes over from the shard.
         this.bowSecondShown += (this.bowSecond - this.bowSecondShown) * approach(0.9, dt);
-        u.bow.value.set(this.bowStrength * this.bowLive(time - this.bowAt), this.bowSecondShown, time - this.bowSince);
+        const bow = this.bowStrength * this.bowLive(time - this.bowAt);
+        u.bow.value.set(Math.max(bow, shard), this.bowSecondShown, shard > 0.01 ? Math.max(1.5, time - this.bowSince) : time - this.bowSince);
+        u.bowLeg.value = shard > 0.01 ? Math.sign(virgaAz) * clamp(1 - bow / shard, 0, 1) : 0;
+        this.happen(time, L, A, day);
         // Perfect clear: the painted sky; a fever lets the clouds catch some of the land's colours.
         this.perfectPaint = this.paintAt(time);
         u.paint.value = Math.max(this.perfectPaint, 0.22 * fever);
         // Back-to-back: the rock glints (a b2b clear flares it); a fever sets the mica glittering.
         this.sheenLevel += (this.b2b / 4 - this.sheenLevel) * approach(1.5, dt);
-        u.sheen.value = Math.min(1.6, this.sheenLevel + this.sheenKick.valueAt(time) + 0.25 * fever);
+        const veinFlare = this.sheenKick.valueAt(time);
+        u.sheen.value = Math.min(1.6, this.sheenLevel + veinFlare + 0.25 * fever);
+        u.veins.value.set(veinFlare, Math.min(60000, (time - this.veinAt) * 950));
         // The river: four lines' flood, or a fever swelling it with the latest rows' paint. Its
         // front runs down the course while there is water to carry and returns to the source
         // only once the river has drained; its pigments ease toward the latest rows' (a new quad
@@ -1094,6 +1334,55 @@ export class PaintedAgesWorld {
         for (const part of this.partList) part.update?.(time, dt);
     }
 
+    /** Lean a uniform's colour toward the dust the wind carries, keeping its brightness. */
+    dustTint(v, k) {
+        if (!(k > 0)) return;
+        const lum = (v.x * 0.2126 + v.y * 0.7152 + v.z * 0.0722) * 1.12;
+        v.set(v.x + (DUST_TINT[0] * lum - v.x) * k, v.y + (DUST_TINT[1] * lum - v.y) * k, v.z + (DUST_TINT[2] * lum - v.z) * k);
+    }
+
+    /**
+     * The clock's small happenings (painted-ages-weather.js `happeningAt`): a meteor while the
+     * stars are out, a flicker of lightning inside a far bank in the dim hours or under a
+     * storm. Pure functions of the time; `overrides.happen` (a capture) plays one from the
+     * world's own start.
+     */
+    happen(time, L, A, day) {
+        const { u } = this;
+        const h = happeningAt(time, this._happening);
+        const forced = this.overrides.happen;
+        if (forced) {
+            h.kind = forced;
+            h.age = time - (this.overrides.happenAt ?? 0);
+        }
+        const on = this.overrides.happenings !== false || Boolean(forced);
+        const meteor = on && h.kind === 'meteor' ? swellOver(h.age, 0.07, 1.25) * smooth(0.4, 0.8, L.stars) : 0;
+        u.meteor.value.set(h.side * (0.3 + 0.22 * h.seed), 0.2 + 0.07 * ((h.seed * 7.3) % 1), Math.max(0, h.age), meteor);
+        // One stroke and its echo; a single soft swell when flashing is reduced.
+        const scale = flashScale();
+        const stroke = (age) => swellOver(age, 0.06, 0.6) + (scale < 1 ? 0 : 0.7 * swellOver(age - 0.42, 0.05, 0.5));
+        let flicker = 0;
+        let { seed } = h;
+        if (on && h.kind === 'flicker') {
+            const dim = Math.max(smooth(0.95, 1.5, L.exposure), this.showerPower);
+            flicker = stroke(h.age) * dim * smooth(0.45, 0.8, u.towerGrow.value) * scale;
+        }
+        // A deep chain's storm answers its steps (onCombo).
+        const storm = stroke(time - this.stormFlickerAt) * scale;
+        if (storm > flicker) {
+            flicker = storm;
+            seed = this.stormFlickerSeed;
+        }
+        u.flicker.value.set(Math.floor(seed * 4) % 4, flicker, seed);
+        // The wind's own dust devil: pale, by day, when none stands already (one a slot).
+        if (on && h.kind === 'gust' && h.slot !== this._gustSlot && h.age >= 0 && h.age < 1.2) {
+            this._gustSlot = h.slot;
+            if (day > 0.5 && !this.reducedMotion && this.devils.standing(time) === 0) {
+                this.raiseDevil(h.side < 0 ? 0.12 + 0.2 * h.seed : 0.68 + 0.2 * h.seed, GUST_DUST, 0.5 + 0.3 * A.dust);
+            }
+        }
+    }
+
     /** Ease the river's pigments toward its four lanes by `k` (1: at once, the river was dry). */
     easeRiver(k) {
         const lanes = this.floodLanes;
@@ -1147,7 +1436,9 @@ export class PaintedAgesWorld {
     /** GPU work that must precede the frame: the land's and the trees' shadows, when the sun has moved. */
     prerender(renderer) {
         if (this.disposed || !this.shadowPass) return;
-        this.shadowPass.render(renderer, this.u.sunDir.value);
+        // While an age wheels by, the sun crosses the sky in seconds: the land's shadows follow
+        // in coarser steps (about a degree) instead of re-marching a field every frame.
+        this.shadowPass.render(renderer, this.u.sunDir.value, { threshold: this.spinning ? 0.018 : 0.0018 });
         this.parts.poplars?.prerender?.(renderer, this.u.sunDir.value);
     }
 
@@ -1161,6 +1452,9 @@ export class PaintedAgesWorld {
             level: this.level,
             hour: {
                 place: this.light.place, from: this.light.from, to: this.light.to, mix: this.light.mix, az: this.light.az, el: this.light.el, name: HOURS[this.light.from].name,
+            },
+            air: {
+                place: this.air.place, from: this.air.from, to: this.air.to, mix: this.air.mix, name: this.air.name,
             },
             counts: { ...this.counts },
             combo: this.combo,
