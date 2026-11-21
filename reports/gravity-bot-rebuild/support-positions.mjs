@@ -25,6 +25,12 @@ export const examples = {
         rows: receivingFloor, pieces: queue, locks: 1, ceilingOpponent: true,
     },
     fourDeep: { rows: shaft, pieces: ['I', 'I', 'O', 'L'], locks: 3 },
+    parkedSquare: {
+        rows: ['....KKKK..', '..CDEFGHIJ', '..CDEFGHIJ'], pieces: ['I', 'O', 'J', 'L'], locks: 3,
+    },
+    parkedElbow: {
+        rows: ['....KKKK..', '..CDEFGHIJ', 'A.CDEFGHIJ', 'A.CDEFGHIJ'], pieces: ['I', 'L', 'O', 'L'], locks: 3,
+    },
     extend: { ...nearRelease, locks: 3 },
     triggerUnderPressure: { ...nearRelease, locks: 1, pending: 17 },
 };

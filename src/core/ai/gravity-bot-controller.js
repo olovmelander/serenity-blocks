@@ -15,7 +15,7 @@ const FIRE_WAVES = [2, 2, 2, 2, 3, 3, 3, 4, 4, 4];
 const SURVIVAL_MARGIN = [0, 0, 0, 11, 8, 0, 8, 0, 0, 0];
 
 export function gravityPlanningRate(count = 1, tier = 0) {
-    if (count === 2 && tier === 10) return 1.25;
+    if (count === 2 && tier >= 9) return 1.25;
     return (count >= 3 ? 0.65 : 1.4) / Math.max(1, count);
 }
 

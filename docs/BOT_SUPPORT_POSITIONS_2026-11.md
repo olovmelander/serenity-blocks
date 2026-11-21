@@ -28,6 +28,28 @@ The release clears floor row 3. The parked I and surviving J fragment settle, fl
 
 On the loaded two-row board, exhaustive checks of reachable landings distinguish the release from a covered hole. The ready J has a two-wave trigger. If the next piece is another I, every one of its 34 reachable poses clears zero rows on that lock. The bot cannot count the J payoff until the requisite piece is visible. That conclusion concerns the current lock and does not rule out a later release.
 
+## A square and an elbow on the shelf
+
+The receiving rows determine which piece belongs on the shelf. Widening both gaps to two cells makes room for an O. Widening only the upper gap leaves an L-shaped cavity. In both cases the expert chooses the horizontal I and forecasts the parked piece and the trigger before making that first placement. These are constructed Serenity positions.
+
+| Board | Previous expert, same three pieces | Candidate expert, live result |
+| --- | --- | --- |
+| Two rectangular gaps, I then O then J | Sends the I vertically into the left gap, then places O in the middle. Three locks, 150 points, zero lines or attack. | Parks O on the left shelf. J clears floor row 3 from the right. The whole O falls and completes floor rows 1 and 2. Three locks, 1,195 points, two outgoing rows. |
+| Stepped gap, I then L then O | Stands I vertically against the left wall above A, then adds L on the left. Three locks, 150 points, zero lines or attack. | Rotates L so its foot fits the wide upper gap and its long leg fits the two lower gaps. O clears floor row 4 from the right. Floor rows 1, 2 and 3 clear together. Three locks, 1,745 points, three outgoing rows. |
+
+The stepped case below uses `p` for the parked L and `t` for its O trigger. Two cells from the O remain after the clear.
+
+```text
+Before        I makes shelf   L parked       O locks         Settled
+                              pp........     pp........
+                              .p........     .p........
+                              .p........     .p......tt
+....KKKK..    rrrrKKKK..      rrrrKKKK..     rrrrKKKKtt
+..CDEFGHIJ    ..CDEFGHIJ      ..CDEFGHIJ     ..CDEFGHIJ
+A.CDEFGHIJ    A.CDEFGHIJ      A.CDEFGHIJ     A.CDEFGHIJ
+A.CDEFGHIJ    A.CDEFGHIJ      A.CDEFGHIJ     A.CDEFGHIJ      ........tt
+```
+
 ## One board, two reasons to fire
 
 This position already has a roof and a single fragment resting on its outside end. The active J can trigger immediately. It can also extend the setup, leaving room for the two I pieces in the preview. The visible preview is I, I, L in both runs.

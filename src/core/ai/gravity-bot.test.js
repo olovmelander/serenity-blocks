@@ -344,6 +344,9 @@ describe('live gravity policy', () => {
     });
 
     it('shares a bounded aggregate amount of planning among local slots', () => {
+        expect(gravityPlanningRate(2, 9)).toBe(gravityPlanningRate(2, 10));
+        expect(gravityPlanningRate(2, 9)).toBeGreaterThan(gravityPlanningRate(2, 7));
+        expect(gravityPlanningRate(3, 9)).toBe(gravityPlanningRate(3, 7));
         expect(gravityPlanningRate(4) * 4).toBeLessThanOrEqual(gravityPlanningRate(1));
         expect(gravityPlanningRate(3) * 3).toBeCloseTo(gravityPlanningRate(4) * 4);
     });

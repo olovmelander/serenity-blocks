@@ -31,6 +31,40 @@ describe('visible support and release choices', () => {
         expect(fire.lost).toBe(false);
     });
 
+    it.each([
+        {
+            name: 'parkedSquare',
+            parked: ['##........', '##........'],
+            floor: [1, 2],
+            settled: ['.........#', '.........#'],
+            score: 1195,
+        },
+        {
+            name: 'parkedElbow',
+            parked: ['##........', '.#........', '.#........'],
+            floor: [1, 2, 3],
+            settled: ['........##'],
+            score: 1745,
+        },
+    ])('forecasts the parked shape and fits it into the receiving rows on $name', async ({
+        name, parked, floor, settled, score,
+    }) => {
+        const [roof, load, trigger] = await playPosition(examples[name]);
+        expect(roof.actual).toEqual([]);
+        expect(load.actual).toEqual([]);
+        expect(load.board).toEqual([...parked, ...roof.board]);
+        expect(roof.board[0]).toBe('########..');
+        expect(roof.forecast).toHaveLength(2);
+        expect(load).toMatchObject(roof.forecast[0]);
+        expect(trigger).toMatchObject(roof.forecast[1]);
+        expect(trigger.predicted).toEqual(trigger.actual);
+        expect(trigger.actual).toEqual([1, floor.length]);
+        expect(trigger.clearedFloorRows).toEqual([[floor.length + 1], floor]);
+        expect(trigger.attack).toBe(floor.length);
+        expect(trigger.board).toEqual(settled);
+        expect(roof.score + load.score + trigger.score).toBe(score);
+    });
+
     it('extends a live release in safety and takes the smaller shot before a lethal rise', async () => {
         const [extension, , payoff] = await playPosition(examples.extend);
         const [shot] = await playPosition(examples.triggerUnderPressure);
