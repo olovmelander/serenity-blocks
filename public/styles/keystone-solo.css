@@ -104,13 +104,12 @@
     --sp-wall: #249597;
 }
 
-/* Lunara's queue and ledger pick up the mint light from the lake. */
-:where(body:has(#lunara-theme.active)) .single-player-stage[data-board='well']:not(:where(.infinity-mode-active, [data-odyssey-board], [data-stillfall])) {
+/* The mint lake lights the ledger and the violet shore frames the ordinary solo well. */
+:where(body:has(#lunara-theme.active)) .single-player-stage[data-board='well']:where(:not(
+    .infinity-mode-active, [data-odyssey-board], [data-stillfall], [data-danger], [data-still-air]
+)) {
     --sp-hue: #a0e1df;
     --sp-hue-rgb: 160, 225, 223;
-}
-
-:where(body:has(#lunara-theme.active)) .single-player-stage[data-board='well']:not(:where(.infinity-mode-active, [data-odyssey-board], [data-stillfall], [data-danger], [data-still-air])) {
     --sp-wall: #967ccb;
     --sp-wall-glow: rgb(112 120 204 / 28%);
 }
