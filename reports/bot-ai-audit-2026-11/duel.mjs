@@ -133,7 +133,8 @@ export async function duel(low, seed, swap, seconds = 150, options = {}) {
                     const lost = mp.players.flatMap((s, i) => s.isAlive && s.isGameOver ? [i] : []);
                     if (lost.length) mp.handlePlayerDeaths(lost).forEach(i => { mp.players[i].currentPiece = null; });
                 }
-                options.afterFixedTick?.(manager, runtime.simFrame);
+                options.afterFixedTick?.(manager, runtime.simFrame, stats);
+                if (options.stopAfterTick?.()) { ticksPlayed++; break; }
                 continue;
             }
             manager.update(frame, clock.now);

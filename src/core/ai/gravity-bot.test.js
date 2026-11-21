@@ -220,6 +220,52 @@ describe('live gravity policy', () => {
         expect(decisions[0]).toEqual(decisions[1]);
     });
 
+    it.each(['field', 'pending'])('waits for the %s blind veil to lift before observing the board', (veil) => {
+        const state = deal(1006);
+        const bot = controller(state);
+        bot.update(1, 1);
+        const grid = state.boardGrid;
+        state.blindTimers[veil] = 1;
+        if (veil === 'pending') {
+            expect(bot.plan()?.actions.at(-1)?.type).toBe('hardDrop');
+            state.lockedPieces.push({ type: 'GARBAGE' });
+        }
+        Object.defineProperty(state, 'boardGrid', {
+            configurable: true,
+            get() { throw new Error('Read a veiled board'); },
+        });
+        expect(bot.plan()).toBeNull();
+        bot.update(17, 18);
+        expect(bot.precomputeSearch(6, 17)).toBe(0);
+        expect(bot.proof).toEqual([]);
+        Object.defineProperty(state, 'boardGrid', { configurable: true, writable: true, value: grid });
+        state.blindTimers[veil] = 0;
+        expect(bot.plan()?.actions.at(-1)?.type).toBe('hardDrop');
+        state.reset();
+    });
+
+    it('only reads visible opponent height for an applicable local duel attack', () => {
+        const players = [deal(1), deal(1)];
+        const match = { numPlayers: 2, players, matchConfig: {} };
+        const manager = new LocalBotManager({ multiplayerState: match, actionFactory: () => ({}) });
+        manager.configure([{ kind: 'bot', difficulty: 10 }, { kind: 'human' }]);
+        const observed = manager.controllers.get(0).finishingRoom;
+        players[1].boardGrid[HIDDEN_ROWS + 1][0] = { id: 1 };
+        expect(observed()).toBe(1);
+        players[1].blindTimers.field = 1;
+        expect(observed()).toBe(Infinity);
+        players[1].blindTimers.field = 0;
+        players[1].handicap++;
+        expect(observed()).toBe(Infinity);
+        players[1].handicap--;
+        match.matchConfig.attackRules = { disableAttacks: true };
+        expect(observed()).toBe(Infinity);
+        manager.configure([{ kind: 'bot', difficulty: 10 }, { kind: 'human' }]);
+        expect(manager.controllers.get(0).versus).toBe(false);
+        manager.destroy();
+        players.forEach((state) => state.reset());
+    });
+
     it('invalidates a proved route as soon as a real incoming burst changes', () => {
         const state = deal(1001);
         let pending = 0;
