@@ -100,25 +100,47 @@ const SHOULDER = 0.78;
 const CORNERS = [1.0, 0.86, 1.04, 0.9, 1.0, 0.84];
 const NEVER = 1e9;
 
-function unitCrystal() {
+function unitCrystal(bevel) {
     const positions = [];
     const facets = [];
-    const corner = (k, y, taper) => {
-        const a = (k % 6) * (Math.PI / 3);
-        const r = CORNERS[k % 6] * taper;
-        return [Math.cos(a) * r, y, Math.sin(a) * r];
-    };
+    const outline = [];
     for (let k = 0; k < 6; k++) {
-        const a0 = corner(k, 0, 1);
-        const a1 = corner(k + 1, 0, 1);
-        const b0 = corner(k, SHOULDER, 0.84);
-        const b1 = corner(k + 1, SHOULDER, 0.84);
-        // The side: two triangles; aFacet.x runs −1..1 across it, aFacet.y is the height.
-        positions.push(...a0, ...b0, ...a1, ...a1, ...b0, ...b1);
-        facets.push(-1, 0, -1, SHOULDER, 1, 0, 1, 0, -1, SHOULDER, 1, SHOULDER);
-        // The point.
-        positions.push(...b0, 0, 1, 0, ...b1);
-        facets.push(-1, SHOULDER, 0, 1, 1, SHOULDER);
+        const a = k * (Math.PI / 3);
+        const x = Math.cos(a) * CORNERS[k];
+        const z = Math.sin(a) * CORNERS[k];
+        const corners = bevel ? [-1, 1] : [0];
+        for (const side of corners) {
+            const j = (k + side + 6) % 6;
+            const b = j * (Math.PI / 3);
+            outline.push([x * 0.92 + Math.cos(b) * CORNERS[j] * 0.08, z * 0.92 + Math.sin(b) * CORNERS[j] * 0.08]);
+        }
+    }
+    // A buried heel, a swollen lower girdle and a sloping termination. The narrow arrises
+    // reflect a second plane of sky between the broad faces of the showcase stones.
+    const vertex = ([x, z], y, r) => [x * r, y + (y === SHOULDER ? x * 0.09 - z * 0.035 : 0), z * r];
+    for (let i = 0; i < outline.length; i++) {
+        const a = outline[i];
+        const b = outline[(i + 1) % outline.length];
+        const rootA = vertex(a, 0, 0.72);
+        const rootB = vertex(b, 0, 0.72);
+        const waistA = vertex(a, 0.22, 1.05);
+        const waistB = vertex(b, 0.22, 1.05);
+        const capA = vertex(a, SHOULDER, 0.79);
+        const capB = vertex(b, SHOULDER, 0.79);
+        const quad = (p, q, r, s) => {
+            positions.push(...p, ...r, ...q, ...q, ...r, ...s);
+            const face = (v, x, cap) => facets.push(x, v[1], v[1] - cap[1]);
+            face(p, -1, capA);
+            face(r, -1, capA);
+            face(q, 1, capB);
+            face(q, 1, capB);
+            face(r, -1, capA);
+            face(s, 1, capB);
+        };
+        quad(rootA, rootB, waistA, waistB);
+        quad(waistA, waistB, capA, capB);
+        positions.push(...capA, 0, 1, 0, ...capB);
+        facets.push(-1, capA[1], 0, 0, 1, 1 - SHOULDER, 1, capB[1], 0);
     }
     return { positions, facets };
 }
@@ -126,7 +148,7 @@ function unitCrystal() {
 /** World position of a crystal's vertex from the instance attributes (vertex stage). */
 function crystalVertex(root, base, axis, look) {
     const g = positionGeometry;
-    // Each spire has its own shoulder height, girth and an off-centre point.
+    // Each spire has its own shoulder height and girth; its point is the gameplay target.
     const s1 = fractHash(look.z, 1.7);
     const s2 = fractHash(look.z, 5.3);
     const shoulder = s1.mul(0.26).add(0.6);
@@ -135,12 +157,11 @@ function crystalVertex(root, base, axis, look) {
         shoulder.add(g.y.sub(SHOULDER).div(1 - SHOULDER).mul(float(1.0).sub(shoulder))),
         step(SHOULDER, g.y),
     );
-    const apex = step(0.999, g.y);
     const cy = cos(look.x);
     const sy = sin(look.x);
     const squash = s2.mul(0.3).add(0.82);
-    const lx = g.x.mul(cy).sub(g.z.mul(sy)).mul(squash).add(apex.mul(s1.sub(0.5)).mul(0.55));
-    const lz = g.x.mul(sy).add(g.z.mul(cy)).add(apex.mul(s2.sub(0.5)).mul(0.55));
+    const lx = g.x.mul(cy).sub(g.z.mul(sy)).mul(squash);
+    const lz = g.x.mul(sy).add(g.z.mul(cy));
     const up = axis.xyz;
     const side = normalize(cross(up, vec3(0.0, 0.0, 1.0)));
     const fwd = cross(side, up);
@@ -157,11 +178,12 @@ function fractHash(seed, k) {
 
 /** The stone's own colour for a hue index: the palette's crystal, leaning rose, teal or pale. */
 function stoneTint(u, hue) {
-    const rose = mix(u.crystal, u.companionCol, 0.6);
-    const teal = mix(u.crystal, u.auroraLow, 0.62);
-    const pale = mix(u.crystal, u.moonCol, 0.4);
-    const a = mix(u.crystal, rose, clamp(hue.mul(2.0), 0.0, 1.0));
-    const b = mix(a, teal, clamp(hue.mul(2.0).sub(1.0), 0.0, 1.0));
+    const violet = mix(vec3(0.26, 0.07, 0.92), u.crystal, 0.36);
+    const rose = mix(vec3(0.96, 0.085, 0.37), u.companionCol, 0.24);
+    const blue = mix(vec3(0.038, 0.32, 0.98), u.auroraLow, 0.23);
+    const pale = mix(blue, u.moonCol, 0.55);
+    const a = mix(violet, rose, clamp(hue.mul(2.0), 0.0, 1.0));
+    const b = mix(a, blue, clamp(hue.mul(2.0).sub(1.0), 0.0, 1.0));
     return mix(b, pale, clamp(hue.mul(2.0).sub(2.0), 0.0, 1.0));
 }
 
@@ -253,10 +275,10 @@ export function createCrystals(u, plan, { count, dispersion = true, pillars = tr
     const pulseEnv = () => exp(max(pulseAge(), 0.0).div(-PULSE_FADE)).mul(step(0.0, pulseAge()));
 
     // ── The spires ──
-    const unit = unitCrystal();
+    const unit = unitCrystal(dispersion);
     const geometry = share(new THREE.InstancedBufferGeometry());
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(unit.positions, 3));
-    geometry.setAttribute('aFacet', new THREE.Float32BufferAttribute(unit.facets, 2));
+    geometry.setAttribute('aFacet', new THREE.Float32BufferAttribute(unit.facets, 3));
 
     const material = new THREE.MeshBasicNodeMaterial();
     material.name = 'LunaraCrystals';
@@ -270,7 +292,7 @@ export function createCrystals(u, plan, { count, dispersion = true, pillars = tr
     // Gameplay light travelling over the flats, decided once per spire at its root.
     const vRing = varying(luLockLight(u, root), 'luRingAt');
     const vClear = varying(luClearLight(u, root), 'luClearAt');
-    const facet = attribute('aFacet', 'vec2');
+    const facet = attribute('aFacet', 'vec3');
 
     material.colorNode = Fn(() => {
         const p = positionWorld;
@@ -321,7 +343,7 @@ export function createCrystals(u, plan, { count, dispersion = true, pillars = tr
         const front = tint.mul(u.moonCol.mul(key.mul(0.85)).add(u.companionCol.mul(kick.mul(0.3)))
             .add(vec3(0.8, 0.72, 1.0).mul(sun.mul(sun).mul(0.24)))
             .add(luSkyBase(u, vec3(N.x, abs(N.y).mul(0.5).add(0.5), N.z)).mul(1.1)))
-            .mul(cut.mul(0.7).add(0.45)).mul(growth);
+            .mul(cut.mul(0.84).add(0.24)).mul(growth);
         const back = pow(max(dot(V, u.moonDir), 0.0), 2.5);
         const thick = mix(float(1.0), float(0.3), t).mul(ndv.mul(0.6).add(0.4));
         const glowThrough = mix(tint, u.moonCol, 0.2).mul(tint.add(0.12)).mul(back).mul(exp(thick.mul(-2.2)))
@@ -344,9 +366,20 @@ export function createCrystals(u, plan, { count, dispersion = true, pillars = tr
         // Inclusions that glitter as the eye moves, and the light gathered at the root.
         const grit = u.noise(vec2(inside.x.mul(2.3).add(inside.z), inside.y.mul(2.1)).add(V.xy.mul(0.7))).a;
         const specks = smoothstep(0.72, 0.9, grit).mul(sin(u.time.mul(1.9).add(grit.mul(60.0))).mul(0.5).add(0.5));
-        const rootGlow = mix(tint, vec3(1.0), 0.2).mul(exp(t.mul(-8.0))).mul(breathe).mul(0.8);
-        const within = tint.mul(planes).mul(moonKey).mul(u.moonCol).mul(0.16)
-            .add(core.mul(fr.b.mul(0.8).add(0.6)))
+        const rootGlow = mix(tint, vec3(1.0), 0.14).mul(exp(t.mul(-8.0))).mul(breathe).mul(0.55);
+        // Phantom quartz: older terminations buried inside later growth. Their bright upper
+        // faces and dark undersides slide behind the outer face with the refracted ray.
+        const insideX = facet.x.mul(0.66).add(Tg.x.mul(0.75)).add(rnd.sub(0.5).mul(0.9));
+        const zoning = t.mul(3.35).add(abs(insideX).mul(0.8)).add(insideX.mul(0.23))
+            .add(fr.g.sub(0.5).mul(0.16))
+            .add(rnd)
+            .fract()
+            .toVar();
+        const facetBand = smoothstep(0.52, 0.86, zoning).mul(float(1).sub(smoothstep(0.90, 0.98, zoning)));
+        const cleft = float(1).sub(smoothstep(0.0, 0.32, zoning));
+        const bodyTone = mix(tint.mul(tint), mix(tint, u.moonCol, 0.44), facetBand);
+        const within = bodyTone.mul(planes.mul(0.45).add(facetBand.mul(0.34))).mul(moonKey)
+            .add(core.mul(fr.b.mul(0.8).add(0.4)).mul(0.68))
             .add(mix(tint, vec3(1.0), 0.55).mul(specks).mul(moonKey).mul(0.55))
             .add(rootGlow);
 
@@ -359,16 +392,17 @@ export function createCrystals(u, plan, { count, dispersion = true, pillars = tr
 
         // ── Edges: every arris and the shoulder catch the light ──
         const ew = fwidth(facet.x).mul(1.1).add(0.016);
-        const sw = fwidth(facet.y).mul(1.3).add(0.002);
+        const sw = fwidth(facet.z).mul(1.3).add(0.002);
         const arris = max(
             smoothstep(float(1.0).sub(ew.mul(2.2)), float(1.0).sub(ew.mul(0.5)), abs(facet.x)),
-            float(1.0).sub(smoothstep(sw.mul(0.5), sw.mul(2.0), abs(facet.y.sub(SHOULDER)))).mul(0.7),
+            float(1.0).sub(smoothstep(sw.mul(0.5), sw.mul(2.0), abs(facet.z))).mul(0.7),
         );
         const edgeLight = luSkyBase(u, vec3(N.x, abs(N.y).mul(0.5).add(0.5), N.z)).mul(2.5)
             .add(u.moonCol.mul(max(dot(N, u.moonDir), 0.0).mul(0.35).add(0.08)))
             .add(vHeld.add(vPulse.rgb).mul(0.9));
 
-        const col = mix(front.add(glowThrough).add(through.mul(0.7)).add(within), mirror, fres).toVar();
+        const col = mix(front.add(glowThrough).add(through.mul(0.7)).mul(float(1).sub(cleft.mul(0.38)))
+            .add(within), mirror, fres).toVar();
         col.addAssign(edgeLight.mul(arris).mul(1.25));
         col.mulAssign(u.breath);
         col.addAssign(heldLight.mul(u.breath).add(flash));
@@ -434,7 +468,7 @@ export function createCrystals(u, plan, { count, dispersion = true, pillars = tr
         const right = normalize(cross(vec3(0.0, 1.0, 0.0), toCam));
         const dist = length(cameraPosition.sub(tip));
         // Wide enough to read at any distance.
-        const width = max(axis.w.mul(1.3).add(0.12), dist.mul(0.0024)).mul(live);
+        const width = max(axis.w.mul(1.9).add(0.12), dist.mul(0.003)).mul(live);
         const world = tip.add(vec3(0.0, 1.0, 0.0).mul(along.mul(tall))).add(right.mul(positionGeometry.x.mul(width).mul(2.0)));
         pillarMaterial.vertexNode = cameraProjectionMatrix.mul(cameraViewMatrix).mul(vec4(world, 1.0));
         const fade = float(1.0).sub(luFogAmount(dist, tip.y).mul(0.8));
@@ -451,11 +485,12 @@ export function createCrystals(u, plan, { count, dispersion = true, pillars = tr
             // Clamped: with MSAA a pixel above the column's top extrapolates st.y past 1, and pow of a
             // negative base is NaN.
             const height = pow(max(float(1.0).sub(st.y), 0.0), 1.6);
-            const env = exp(a.mul(-1.6)).mul(smoothstep(0.0, 0.05, a));
-            const flicker = sin(st.y.mul(60.0).sub(a.mul(34.0))).mul(0.12).add(0.88);
-            return vec4(vPillar.rgb.mul(across.mul(0.4).add(core.mul(1.5))).mul(shot).mul(height).mul(env)
-                .mul(flicker)
-                .mul(1.5), 0.0);
+            const env = exp(max(a, 0).mul(-1.35)).mul(smoothstep(0.0, 0.08, a));
+            const twist = sin(st.y.mul(23).sub(a.mul(4))).mul(st.y.mul(0.24).add(0.085));
+            const thread = luBell(st.x.sub(0.5).sub(twist).div(0.115));
+            const ribs = mix(u.auroraLow, u.auroraHigh, st.y).mul(thread).mul(0.85);
+            const light = vPillar.rgb.mul(across.mul(0.32).add(core.mul(1.4)).add(ribs));
+            return vec4(light.mul(shot).mul(height).mul(env).mul(1.5), 0.0);
         })();
         pillarPart = luPart('LunaraPillars', pillarGeometry, pillarMaterial, 26);
     }

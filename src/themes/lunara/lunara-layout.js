@@ -34,10 +34,10 @@ function noiseAt(field, size, x, y, channel) {
  */
 export const CRYSTAL_CLUSTERS = Object.freeze([
     {
-        x: -10.6, z: -17.5, count: 9, height: 10.8, spread: 2.6, hero: true, hue: 0.5,
+        x: -11.4, z: -17.5, count: 9, height: 9.4, spread: 2.9, hero: true, hue: 0.5,
     },
     {
-        x: 10.6, z: -16.5, count: 8, height: 9.6, spread: 2.4, hero: true, hue: 0,
+        x: 10.9, z: -16.5, count: 8, height: 8.5, spread: 2.7, hero: true, hue: 0,
     },
     {
         x: -5.9, z: -7.6, count: 5, height: 2.3, spread: 1.2, hero: true,
@@ -217,7 +217,7 @@ export function buildPlan(noise, noiseSize, seed = 20261005) {
     const hues = [0, 0, 0, 0, 0.5, 0.5, 1, 1, 0.25, 0.75, 0.15, 1.25];
     const addCrystal = (x, z, height, lean, leanDir, cluster, hero, main, hue = null) => {
         const ground = heightAt(x, z);
-        const radius = height * (main ? 0.056 : 0.06 + rand() * 0.045) + 0.03;
+        const radius = height * (main ? 0.084 : 0.072 + rand() * 0.054) + 0.03;
         // Buried in proportion: a small spire must not sink under the water it stands in.
         const y = ground - Math.min(0.25, height * 0.2) - radius * 0.4;
         const tx = Math.sin(leanDir) * Math.sin(lean);

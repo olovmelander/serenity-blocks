@@ -17,6 +17,8 @@ import {
     Fn,
     If,
     abs,
+    asin,
+    atan,
     cameraPosition,
     clamp,
     dot,
@@ -53,8 +55,28 @@ import {
     luClearLight,
     luMoonDiscs,
     luPart,
+    luSeams,
     luSkyBase,
 } from './lunara-tsl.js';
+import { lunarSurface } from './lunara-moons.js';
+
+/** Resolve the same globe in the analytic mirror without rendering the valley a second time. */
+function reflectMoon(u, sky, ray, radius, direction, turn, face, companion) {
+    const facing = dot(ray, direction).toVar();
+    const discEdge = radius.cos();
+    If(facing.greaterThan(discEdge), () => {
+        const offset = ray.sub(direction.mul(facing)).div(radius.sin());
+        const z = float(1).sub(dot(offset, offset)).max(0).sqrt();
+        const normal = normalize(offset.sub(direction.mul(z))).toVar();
+        const st = vec2(
+            atan(normal.z, normal.x.negate()).div(2 * Math.PI).add(turn).fract(),
+            asin(clamp(normal.y, -1, 1)).div(Math.PI).add(0.5),
+        );
+        const surface = lunarSurface(u, normal, z, face.map.sample(st).level(1.5), face.fade, companion, false);
+        const edge = smoothstep(discEdge, discEdge.add(radius.sin().mul(0.0025)), facing);
+        sky.assign(mix(sky, surface.mul(u.breath).mul(0.85), edge));
+    });
+}
 
 /**
  * @param {object} u  shared valley uniforms
@@ -92,9 +114,9 @@ export function createWater(u, opts = {}) {
         // ── The water's slope: a breath of wind ──
         const w1 = u.noise(st.mul(0.027).add(vec2(u.time.mul(0.0042), u.time.mul(0.0025)))).toVar();
         const w2 = u.noise(st.mul(0.115).sub(vec2(u.time.mul(0.0105), u.time.mul(-0.0062)))).toVar();
-        const wind = u.power.mul(0.5).add(1.0);
+        const wind = u.night.w.mul(0.48).add(0.72).add(u.power.mul(0.4));
         const slope = w1.rg.sub(0.5).mul(0.7).add(w2.ba.sub(0.5).mul(0.2)).mul(wind)
-            .mul(0.05)
+            .mul(0.024)
             .toVar();
 
         // ── Lock rings: a crisp front with a soft wake, and the slope they give the surface ──
@@ -143,7 +165,7 @@ export function createWater(u, opts = {}) {
             const reach = float(1.0).div(dist.mul(0.035).add(1.0));
             const ruv = screenUV.flipX().add(vec2(slope.x, slope.y.mul(1.7)).mul(reach).mul(0.5));
             // A breath of blur near the eye, where the ripples are larger than a pixel.
-            mirror.assign(reflection.sample(ruv).level(reach.mul(1.6)).rgb);
+            mirror.assign(reflection.sample(ruv).level(reach.mul(0.76)).rgb);
         } else {
             // No second render: the water returns the sky and the moons along its own mirror ray,
             // and the dark of the far shore where that ray runs low.
@@ -151,27 +173,44 @@ export function createWater(u, opts = {}) {
             const Rs = reflect(V, normalize(vec3(slope.x.mul(-0.5), 1.0, slope.y.mul(-1.1))));
             const Rup = vec3(Rs.x, abs(Rs.y), Rs.z);
             const shore = float(1.0).sub(smoothstep(0.012, 0.075, Rup.y));
-            mirror.assign(luSkyBase(u, Rup).add(luMoonDiscs(u, Rup).mul(w1.b.mul(0.3).add(0.22))).mul(mix(float(1.0), float(0.22), shore)));
+            mirror.assign(luSkyBase(u, Rup).mul(mix(float(1.0), float(0.22), shore)));
+            if (opts.faces) {
+                reflectMoon(u, mirror, Rup, u.discs.x, u.moonDir, opts.faces.moonTurn, opts.faces, false);
+                reflectMoon(u, mirror, Rup, u.discs.y, u.companionDir, opts.faces.companionTurn, opts.faces, true);
+            } else {
+                mirror.addAssign(luMoonDiscs(u, Rup).mul(0.4));
+            }
         }
 
         // ── The bed: veins of light under the water ──
         const down = max(V.y.negate(), 0.14);
         const bedP = st.add(V.xz.div(down).mul(clamp(depth, 0.0, 1.0)).mul(0.7));
-        const v1 = u.noise(bedP.mul(0.043)).r;
-        const v2 = u.noise(bedP.mul(0.151).add(vec2(0.3, 0.6))).g;
-        const veins = luBell(v1.sub(0.5).mul(15.0)).add(luBell(v2.sub(0.5).mul(22.0)).mul(0.5));
-        const throb = sin(u.time.mul(0.8).add(v1.mul(22.0))).mul(0.25).add(0.75);
+        const veinUV = bedP.mul(vec2(0.036, 0.051));
+        const v1 = u.noise(veinUV).toVar();
+        const v2 = u.noise(veinUV.mul(2.83).add(vec2(0.3, 0.6))).toVar();
+        const seam = luSeams(v1, v2).toVar();
+        const veins = seam.x.add(seam.y.mul(0.19));
+        // A moving bead of colour runs along a stationary fault, also visible in calm water.
+        const phase = bedP.x.mul(0.38).sub(bedP.y.mul(0.22)).add(v1.b.mul(5.0)).sub(u.auroraDrift.mul(2.9));
+        const bead = smoothstep(0.52, 0.99, sin(phase));
+        const throb = bead.mul(0.86).add(0.32);
         const wakeUp = u.power.mul(0.45).add(clear.w.mul(0.45)).add(wake.mul(1.4)).add(u.surge.mul(0.25))
-            .add(0.1);
+            .add(0.22);
         const seeThrough = float(1.0).sub(fres).mul(exp(dist.mul(-0.011)));
         const sand = vec3(0.022, 0.015, 0.045).add(u.moonCol.mul(0.012)).mul(shelf);
-        const bed = u.bed.mul(veins).mul(throb).mul(wakeUp).mul(u.breath)
+        const mineral = mix(u.bed, u.crystal, smoothstep(0.31, 0.75, v1.a).mul(0.60));
+        const bed = mineral.mul(veins).mul(throb).mul(wakeUp).mul(u.breath)
             .add(sand)
             .mul(seeThrough);
         // A ring is the piece's colour running through the veins.
         const ringBed = ring.mul(veins.mul(1.6).add(0.2)).mul(seeThrough);
 
         const col = bed.add(ringBed).add(mirror.mul(fres)).toVar();
+        // At game over, the last light drains down the lake in a quiet moonlit path.
+        const lane = exp(abs(Rw.x.sub(u.moonDir.x)).mul(-6.5));
+        col.addAssign(mix(u.moonCol, u.auroraLow, 0.45).mul(lane).mul(seam.x.mul(0.45).add(0.065))
+            .mul(u.afterglow)
+            .mul(seeThrough));
 
         // ── Moon glitter: the surface's finest facets, where its mirror ray finds the moon ──
         if (glitter) {
@@ -190,8 +229,8 @@ export function createWater(u, opts = {}) {
         col.addAssign(u.bed.mul(shoreLine).mul(u.power.mul(0.8).add(0.32)).mul(u.breath));
 
         // ── Gameplay light riding the water itself ──
-        col.addAssign(ring.mul(1.5));
-        col.addAssign(clear.rgb.mul(0.42));
+        col.addAssign(ring.mul(0.94));
+        col.addAssign(clear.rgb.mul(seam.x.mul(0.24).add(0.27)));
         return luAtmosphere(u, col, p);
     })();
 

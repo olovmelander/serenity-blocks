@@ -6,11 +6,11 @@
  * motes        spores of light in the air
  * shards       crystal-dust pool
  * meteors      shooting-star pool
- * curtains     aurora curtains (two noise fetches each)
- * nebula       the band of lit dust across the sky (two fetches)
+ * curtains     aurora curtains (two strand reads and a coarse density read per sheet)
+ * nebula       the band of lit dust across the sky (three noise reads)
  * reflection   planar reflector resolution scale for the flats (0 = mirror the sky function)
  * dispersion   the moons' refracted image splits per colour channel inside the spires
- * relief       the moons' terminator shows relief (two more fetches of the moon map)
+ * relief       shade the great moon with the local slopes packed into its albedo sample
  * glitter      sparkle on the water under the great moon
  */
 export const QUALITY = Object.freeze({
