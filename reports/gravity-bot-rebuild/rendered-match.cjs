@@ -93,6 +93,9 @@ async function sample() {
         return init(round === firstRound ? (focus?.seed ?? 83101) : seed);
     };
     const times = [], activeUpdates = [], lateness = [], recoveries = [], intervals = [], inputs = [], checks = [], stalls = [];
+    // The fixed runtime skips eliminated seats, but still ticks through cascades and hit stop.
+    const seatPlay = Array.from({ length: botCount }, () => ({ playingMs: 0, hardDrops: 0 }));
+    let measuring = false;
     const byTick = new Map();
     for (const item of replayTape || []) {
         const key = item.slice(0, 3).join('/');
@@ -151,6 +154,7 @@ async function sample() {
             const advance = bots.advanceFixedInput.bind(bots);
             bots.advanceFixedInput = (index, context) => {
                 inputTick = context.tick;
+                if (measuring) seatPlay[index].playingMs += context.tickMs;
                 if (profileWindows) {
                     const emit = context.emit;
                     context = { ...context, emit: command => {
@@ -161,12 +165,17 @@ async function sample() {
                         }
                     } };
                 }
+                const emit = command => {
+                    const applied = context.emit(command);
+                    if (measuring && applied && command.action === 'hardDrop') seatPlay[index].hardDrops++;
+                    return applied;
+                };
                 if (replayTape) {
-                    for (const command of byTick.get([round, index, context.tick].join('/')) || []) context.emit(command);
+                    for (const command of byTick.get([round, index, context.tick].join('/')) || []) emit(command);
                 } else {
                     advance(index, { ...context, emit: command => {
                         inputs.push([round, index, context.tick, command]);
-                        return context.emit(command);
+                        return emit(command);
                     } });
                 }
                 if (index === 0 && context.tick % 300 === 0) {
@@ -223,6 +232,7 @@ async function sample() {
     await mode.handleConfigurationComplete(config);
     await until(() => mode.isRunning && mode.botManager?.controllers.size === botCount, 'active bot seats');
     const start = performance.now();
+    measuring = true;
     await new Promise(resolveSample => {
         function frame(now) {
             const simTick = roundTick();
@@ -260,7 +270,8 @@ async function sample() {
         }
         requestAnimationFrame(frame);
     });
-    return { frames, actions, times, activeUpdates, lateness, recoveries, intervals, inputs, checks, stalls, replay: Boolean(replayTape),
+    measuring = false;
+    return { frames, actions, times, activeUpdates, lateness, recoveries, intervals, inputs, checks, stalls, seatPlay, replay: Boolean(replayTape),
         elapsed: performance.now() - start, rounds: round - firstRound + 1, maxExecutionUpdate, executionOverFrame, overBudget, nearTwoFrames,
         idleCalls, idleUnits, idleFrames, idleMs, idleSchedule, planningTickFrames, botCount, tickPlanningCosts, idlePlanningCosts,
         idleScheduleClock: 'round',

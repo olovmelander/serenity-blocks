@@ -28,7 +28,8 @@ export class BotInputScheduler {
 
         const action = this.queue.shift();
         const performed = this.perform(action);
-        const interval = Math.max(20, this.config?.actionIntervalMs || 120);
+        // A fixed tick can emit only one input, even when the configured interval is shorter.
+        const interval = this.config?.actionIntervalMs > 0 ? this.config.actionIntervalMs : 120;
         this.cooldownMs = action?.type === 'hardDrop'
             ? Math.max(45, interval * 0.65)
             : interval;
