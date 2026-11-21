@@ -1,5 +1,40 @@
 # Kaleidosonic — a new theme in Singing Bowl's place (2026-10-13)
 
+## The travelling crystal gallery · 21 November 2026
+
+At rest, the old temple held the eye between the same two columns. The palette drifted and the shadows turned, but the player only travelled down the hall on a four-line clear. At normal board size the heart was a small pink disc with bright patches. The other lights were soft dots, and large pearls often took most of their shape from green outlines. An ordinary lock and a hard drop produced much the same flower. Single, double and triple clears shared a shell whose density was difficult to read in peripheral vision.
+
+The pearl lattice, the shafts cast by the jewel, the placement of the heart beside the well and the way a chain unfolds the mirrors were worth keeping. The revised scene moves the eye down the lattice's open diagonal. A quiet passage takes 84 seconds and eases past each opening. A four-line dive adds one period of travel. The six-colour wheel follows its own 100-second rhythm and level changes, so returning to the same column brings different light. Reduced motion holds the passage where it is.
+
+![Kaleidosonic at ten seconds before and after the revision](kaleidosonic-captures/gallery-comparison-2026-11.jpg)
+
+The heart has twelve planar faces. The shader finds the entry and exit faces of each ray, then uses the adjoining pentagons to lay a table and five sloping cuts into the visible face. Their ruby, champagne and violet reflections stay visible inside the pink corona. The same facet axes cast the shafts. Curved banks of cool and rose light give the pearls volume. Two families of wire cross their lacquer, and points of light run along their braided strings. Smaller lanterns have a shaded crescent, a slanted arc and an orbiting spark. Their casts and reflections share their glass colour. In the distance, cooler air separates the receding arches from the deep magenta haze.
+
+![Four of the six moods rendered through the same lens](kaleidosonic-captures/gallery-moods-2026-11.jpg)
+
+| Gameplay cue | What appears |
+| --- | --- |
+| Lock and hard drop | A piece-coloured flower with a petal count set by the piece, or a pair of tapering impact trails whose length follows the drop distance. Both originate beside the player's board. |
+| Single, double and triple | A halo, a two-lobed figure and a trefoil around the crystal. Their colour comes from the cleared cells. |
+| Four lines and cascades | A four-lobed figure accompanies the dive. Later cascade waves add five-lobed figures to the chord already ringing. |
+| Twist | A winding three-armed figure and a full camera turn on a clear. A zero-line twist gives a smaller figure with a brief rocking motion. The figure also works with the camera still. |
+| Combo and release | The lens opens in stages at 2, 5 and 8. Breaking a chain draws a sixfold figure back into the heart as the mirrors let go. |
+| Back-to-back | A delayed, curling answer to the clear. Two interrupted rings turn in opposite directions while the drone is held. |
+| Perfect clear | A twelvefold figure repeats through the aligned mirrors. The passage slows and the crown holds. A late perfect-clear notification crowns the existing chord. |
+| Level change and game over | A sevenfold figure announces the incoming palette. At game over, the petals close around a smaller ember and the far haze settles into blue-violet. |
+
+![Gameplay figures captured separately at fixed event ages](kaleidosonic-captures/gallery-events-2026-11.jpg)
+
+The standard solo well has rose-quartz walls and a dark plum ledger. The seven tested piece colours keep their identities, with stronger face highlights and edge shading. The scene measures the card and HUD to keep the strongest light outside them. The picker icon uses a square render of the actual rose-cut heart.
+
+![The solo board during a keyboard hard drop and a staged major event](kaleidosonic-captures/gallery-game-2026-11.jpg)
+
+The new details fit inside the existing temple pass and reuse its bounded strike and harmonic tables. The facet intersection and the lantern engraving run inside small regions around their lights. The light map is reused during quiet travel and as a refold spring settles below its precision. On Minimal and Low, the last few steps of a ray fade distant wire into the fog so it can end softly within its existing budget. The WGSL and GLSL checks cover Minimal, High and Extreme, including the existing 64 KiB shader-stage limit. The visual checks use fixed-time playground frames and the real single-player board.
+
+At 1120 × 700 on NVIDIA Blackwell WebGPU, High held a median frame interval of 33.3 ms at a 30 fps cap. The 95th percentile was 33.7 ms at rest and 34.2 ms with an eight-link chain, four locks and a Clean canvas replay. The busy capture had one 64.5 ms frame. These are five-second, fixed-scene measurements. Keyboard input in the live board independently confirmed the lock and hard-drop routing. Forced WebGL2, a 390 × 844 portrait viewport, reduced motion and all event variants were also captured.
+
+## Original rebuild
+
 The owner asked for a total visual overhaul of Singing Bowl ("this theme just feels like a
 demo"), built on three r186 and made a trippy, psychedelic visual masterpiece with amazing
 lock-piece and combo effects, researched, unique, and renamed to fit its new style, starting from

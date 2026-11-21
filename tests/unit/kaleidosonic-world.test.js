@@ -20,7 +20,7 @@ import {
     REFOLDS, TAU, TEMPLE, TIMING, foldSplit, hexToLinear, marchTemple, moodMix, templeDistance,
 } from '../../src/themes/kaleidosonic/kaleidosonic-core.js';
 import {
-    HARMONICS, HARMONIC_ROWS, STRIKES, STRIKE_ROWS,
+    CHIME, HARMONICS, HARMONIC_ROWS, STRIKES, STRIKE_ROWS,
 } from '../../src/themes/kaleidosonic/kaleidosonic-tsl.js';
 import { tierFor } from '../../src/themes/kaleidosonic/kaleidosonic-quality.js';
 import { SCOUT_TILE } from '../../src/themes/kaleidosonic/kaleidosonic-temple.js';
@@ -490,6 +490,52 @@ describe('KaleidosonicWorld: locks strike notes', () => {
 });
 
 describe('KaleidosonicWorld: clears sound harmonics and refold the temple', () => {
+    it('keeps each event’s figure independent of its overtone, even with camera motion disabled', () => {
+        withWorld((w) => {
+            const { world } = w;
+            world.setReducedMotion(true);
+            const figure = (fire) => {
+                begin(w);
+                fire();
+                stepTo(w, START + 0.3);
+                const live = world.u.counts.value.y;
+                return Array.from({ length: live }, (_, k) => world.u.tables.harmonics[k * HARMONIC_ROWS + 1].w);
+            };
+            for (let lines = 1; lines <= 4; lines++) {
+                expect(figure(() => world.onClear({ lines, combo: 8 }))).toEqual([lines]);
+            }
+            expect(figure(() => world.onClear({ lines: 2, cascade: 3 }))).toEqual([CHIME.cascade]);
+            expect(figure(() => world.onClear({ lines: 0, twist: true }))).toEqual([CHIME.twist]);
+            expect(figure(() => world.onClear({ lines: 2, twist: true, b2b: true })))
+                .toEqual([CHIME.twist, CHIME.answer]);
+            expect(figure(() => world.onClear({ lines: 0, perfect: true, crown: true }))).toEqual([CHIME.crown]);
+            expect(figure(() => world.levelUp(2))).toEqual([CHIME.level]);
+            expect(figure(() => world.levelUp(1))).toEqual([]);
+            expect(figure(() => {
+                world.onCombo(5);
+                world.onCombo(0);
+            })).toEqual([CHIME.release]);
+            expect(figure(() => {
+                world.onCombo(5);
+                world.onCombo(0, false);
+            })).toEqual([]);
+        });
+    });
+
+    it('sets the drop trail length from distance, including a hard drop already on the floor', () => {
+        withWorld((w) => {
+            const { world } = w;
+            for (const distance of [0, 7, 20, 99]) {
+                begin(w);
+                world.onLock({
+                    shape: 'I', rows: [19], hardDrop: true, distance,
+                });
+                stepTo(w, START + 0.1);
+                expect(world.u.tables.strikes[2].w).toBeCloseTo(Math.min(distance / 20, 1), 12);
+            }
+        });
+    });
+
     it('writes a harmonic in the colour the cleared rows were made of, more lines stronger', () => {
         withWorld((w) => {
             const { world } = w;
@@ -621,20 +667,20 @@ describe('KaleidosonicWorld: clears sound harmonics and refold the temple', () =
                 clearance.push(templeDistance(x + dive[0], y + dive[1], z + dive[2], s, TEMPLE.detailDeep));
             });
             expect(Math.min(...clearance)).toBeGreaterThan(0.05);
-            // Just before landing it is a whole number of periods on, the lattice the same as at the start.
+            // Relative to the ongoing quiet passage, the dive lands one full period on.
             const landing = world.diveOffset();
             expect(world.diveTravel).toBeCloseTo(DIVE_LENGTH, 4);
             for (const axis of [0, 2]) {
-                expect(Math.abs(landing[axis] / P - Math.round(landing[axis] / P)), `axis ${axis}`).toBeLessThan(1e-4);
-                expect(Math.round(landing[axis] / P)).not.toBe(0);
+                const extra = (landing[axis] - EYE.dir[axis] * world.passage) / P;
+                expect(extra, `axis ${axis}`).toBeCloseTo(-1, 4);
             }
             const [x, y, z] = [EYE.x, EYE.y, EYE.z];
             const exact = EYE.dir.map((v) => Math.round((v * DIVE_LENGTH) / P) * P);
             expect(templeDistance(x + exact[0], y + exact[1], z + exact[2])).toBeCloseTo(templeDistance(x, y, z), 9);
-            // Then the flight is over and the offset is back to none.
+            // The additive flight has ended while the passage carries on.
             stepTo(w, at + TIMING.dive + 0.1);
             expect(world.diveTravel).toBe(0);
-            expect(world.u.dive.value.toArray().map(Math.abs)).toEqual([0, 0, 0]);
+            expect(world.u.dive.value.toArray()).toEqual(EYE.dir.map((v) => v * world.passage));
         });
     });
 
@@ -782,13 +828,14 @@ describe('KaleidosonicWorld: the chain folds the lens', () => {
             const { world, camera } = w;
             begin(w);
             world.setReducedMotion(true);
+            const restingOffset = [...world.diveOffset()];
             world.onClear({ lines: 4, combo: 1, twist: true });
             expect(world.counts).toMatchObject({ quads: 1, twists: 1, dives: 0 });
             stepTo(w, START + TIMING.dive, 1 / 30, () => {
                 expect(world.diveTravel).toBe(0);
                 expect(camera.rotation.z).toBe(0);
             });
-            expect(world.u.dive.value.toArray().map(Math.abs)).toEqual([0, 0, 0]);
+            expect(world.u.dive.value.toArray()).toEqual(restingOffset);
             expect(world.counts.clears).toBe(1);
             world.setReducedMotion(false);
         });
@@ -808,8 +855,10 @@ describe('KaleidosonicWorld: the chain folds the lens', () => {
             expect(world.diveTravel).toBeGreaterThan(0);
             expect(world.diveQueue).toBe(1);
             expect(Math.abs(camera.rotation.z)).toBeGreaterThan(0.1);
+            const seen = (world.passage + world.diveTravel) % DIVE_LENGTH;
             world.setReducedMotion(true);
             stepTo(w, world.time + 1 / 30);
+            expect(world.passage).toBeCloseTo(seen, 8);
             expect(world.diveTravel).toBe(0);
             expect(world.diveQueue).toBe(0);
             expect(world.kick.x).toBe(0);
@@ -1028,6 +1077,27 @@ describe('KaleidosonicWorld: moods, the drone and the sinking light', () => {
 });
 
 describe('KaleidosonicWorld: the composition round the card', () => {
+    it.each(Object.keys(FRAMES))('travels at rest with a clear view of the heart along the route at %s', (label) => {
+        withWorld((w) => {
+            const { world } = w;
+            const [origin, direction] = world.restRay(world.heartScreen.x, world.heartScreen.y);
+            const reach = world.heartWorld.distanceTo(world.restCam.position);
+            const positions = [];
+            for (let t = 0; t < 90; t += 3) {
+                begin(w, t);
+                const offset = world.u.dive.value.toArray();
+                positions.push(world.passage);
+                const eye = origin.map((v, i) => v + offset[i]);
+                for (const shape of [TEMPLE.sMin, TEMPLE.s, TEMPLE.sMax]) {
+                    expect(marchTemple(eye, direction, {
+                        far: reach, s: shape, folds: TEMPLE.detailDeep,
+                    })).toBeNull();
+                }
+            }
+            expect(Math.max(...positions) - Math.min(...positions)).toBeGreaterThan(DIVE_LENGTH * 0.9);
+        }, 'Minimal', FRAMES[label]);
+    });
+
     it.each(Object.keys(FRAMES))('hangs the core in open air at %s, beside the card and in sight', (label) => {
         const frame = FRAMES[label];
         withWorld(({ world }) => {
@@ -1431,7 +1501,7 @@ describe('KaleidosonicWorld: the light (the light map and the gem\'s beams)', ()
     it('lets the core\'s shadows go while the dive carries it off its jewel, and holds them as it lands', () => {
         withWorld((w) => {
             const { world } = w;
-            begin(w);
+            begin(w, 0);
             expect(world.u.light.value.y).toBe(1);
             const at = world.time;
             world.onClear({ lines: 4, combo: 1 });

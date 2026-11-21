@@ -3,9 +3,8 @@
  * Kaleidosonic — the full world + post stack, mounted in isolation.
  *
  * Mounts the SAME KaleidosonicWorld and KaleidosonicPost the theme ships, with the theme's eye,
- * so composition and grade are judged exactly as they will look in game. Events go through a
- * real KaleidosonicDirector fed the game's own payloads, so what the effect shows is what the
- * theme's sink hands the world.
+ * so composition and grade are judged exactly as they will look in game. Replays deliver the
+ * resolved gameplay contexts the theme's director hands the world.
  *
  * URL params:
  *   quality=High|Ultra|...   content tier (default High)
@@ -23,7 +22,7 @@
  *   scout=0                  march every pixel from the eye (no scout pass): the A/B for the scout
  *   px=-1..1&py=-1..1        hold a pointer-parallax offset
  *   reduce=1                 reduced motion
- *   event=lock|drop|clear|quad|twist|perfect|levelUp|release|over   fire a gameplay event...
+ *   event=lock|drop|clear|quad|cascade|twist|spin|b2b|perfect|crown|levelUp|release|over
  *   eventAge=<s>             ...and show it <s> seconds later (u=<0..1> column, row=<0..19>,
  *                            lines=<1..4>, color=<hex>, piece=<I|O|T|S|Z|J|L>, peak=<n> for release)
  *   combo=<n>                hold a chain of n (the trance; the kaleidoscope opens at 2, 5 and 8)
@@ -212,14 +211,24 @@ export function create({
             lockAt({
                 rows: [row, row - 1], u, hardDrop: true, distance: 16,
             });
-        } else if (eventName === 'clear') {
-            world.onClear({ lines, rowCodes: codes(lines), combo: Math.max(1, holdCombo) });
+        } else if (eventName === 'clear' || eventName === 'cascade' || eventName === 'b2b') {
+            const count = eventName === 'b2b' ? 4 : lines;
+            world.onClear({
+                lines: count,
+                rowCodes: codes(count),
+                combo: Math.max(1, holdCombo),
+                cascade: eventName === 'cascade' ? 2 : 1,
+                b2b: eventName === 'b2b',
+            });
+            if (eventName === 'b2b') world.onB2B(Math.max(1, holdB2B));
         } else if (eventName === 'quad') world.onClear({ lines: 4, rowCodes: codes(4), combo: Math.max(1, holdCombo) });
         else if (eventName === 'twist') {
             world.onClear({
                 lines: 2, rowCodes: codes(2), twist: true, combo: Math.max(1, holdCombo),
             });
-        } else if (eventName === 'perfect') world.onClear({ lines: 4, rowCodes: codes(4), perfect: true });
+        } else if (eventName === 'spin') world.onClear({ lines: 0, twist: true });
+        else if (eventName === 'crown') world.onClear({ lines: 0, perfect: true, crown: true });
+        else if (eventName === 'perfect') world.onClear({ lines: 4, rowCodes: codes(4), perfect: true });
         else if (eventName === 'levelUp') world.levelUp(num(params, 'eventLevel', level + 1));
         else if (eventName === 'release') {
             const peak = Math.max(3, Math.round(num(params, 'peak', 6)));
@@ -332,18 +341,21 @@ export function create({
 
     return {
         cameraRadius: 1,
-        camera(time, cam) {
-            world?.updateCamera(cam, sim(time, 0));
-            if (world && icon) aimIcon();
+        camera() {
+            // frame() moves the eye before copying its matrices into the march.
+            // Suppress the playground orbit, including on a cached fixed frame.
         },
         update(time, dt) {
             simTime = time;
+            lastSeek = null;
             if (world && demo) runDemo(time);
             frame(time, dt);
         },
         seek(time) {
             demoLoop = -1;
-            seekTo(time);
+            // The harness calls seek on every fixed-time frame. A burst of eight
+            // clears only needs replaying once; resize explicitly rebuilds the pose.
+            if (time !== lastSeek) seekTo(time);
         },
         render() {
             if (!world) {
