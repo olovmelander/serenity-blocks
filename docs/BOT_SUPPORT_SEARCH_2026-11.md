@@ -2,6 +2,8 @@
 
 The comparison starts at `11ee1ca099819cdcaeb770b9fb6baf922ea54fcc`. The recorded expert openings showed a piece placed across air, a second piece parked above it, and a trigger several columns away. Serenity's original expert could already reproduce the four-deep straight-piece example. It missed shorter shelves with differently shaped triggers and sometimes planned a discharge after an incoming burst that would already have ended the game. [Annotated player recordings](BOT_PLAYER_RECORDINGS_2026-11.md) · [Replay positions and before-and-after boards](BOT_SUPPORT_POSITIONS_2026-11.md)
 
+The subsequent local hand-speed change brought tier 10 to 171.66 accepted drops/minute over 16 matched bags. Its shared placements and settled wave sequences reproduced the release studied here. [Current speed, timing and difficulty measurements](../reports/gravity-bot-rebuild/expert-pace.md)
+
 ## What the controller knows and does
 
 The local manager supplies the own-board state, visible incoming row count, and, in a standard duel with equal handicaps, the opponent's visible headroom. Only the current piece and up to three previews enter the search. The seed supplies the deal and individual timing variation. The planner never draws the bag to predict a fourth preview, reads future garbage holes, or predicts an opponent's placement. When a blind effect obscures locked cells, it pauses board-based decisions until the view returns. A partial blind on a pristine board leaves the controller active.

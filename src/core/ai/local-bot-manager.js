@@ -4,20 +4,26 @@ import { GravityBotController, gravityPlanningRate } from './gravity-bot-control
 import { normalizeDifficultyTier } from './bot-difficulty.js';
 import { seededRandom } from '../../utils/helpers.js';
 
-// Fitted against both the first KO and the three-frag finish on 4,480 local
-// matches. A seat's board reading and hand speed persist through the series.
-const LOCAL_PRACTICE_CHANCE = [0.75, 0.6, 0.45, 0.3, 0.25, 0.25, 0, 0.3, 0.5];
+// The original 4,480-match fit sets ordinary local styles. The faster expert's
+// upper neighbours are calibrated in side-swapped native frag series.
+const LOCAL_PRACTICE_CHANCE = [0.75, 0.6, 0.45, 0.3, 0.25, 0.25, 0, 0.3, 0.65];
 const LOCAL_ACTION_RATE = [108, 126, 133, 218, 292, 290, 350, 515, 760];
+// Practiced seats can execute a known route quickly. Their nominal tier keeps
+// its own reading time above the 170 ms needed for expert search.
+const EXPERT_REACTION_MAX_MS = { 8: 230, 9: 200, 10: 200 };
 
 function localPace(nominalTier, seed, index) {
     if (nominalTier === 10) return null;
     const random = seededRandom((Math.imul(seed, 0x9e3779b1) ^ Math.imul(index + 1, 0x27d4eb2d)) >>> 0);
     const reading = seededRandom((Math.imul(seed, 0x85ebca6b) ^ Math.imul(index + 1, 0x9e3779b1)) >>> 0);
+    const judgmentTier = reading() < LOCAL_PRACTICE_CHANCE[nominalTier - 1] ? Math.min(10, nominalTier + 2) : nominalTier;
+    const scale = Math.exp((2 * random() - 1) * 1.65);
+    const handTier = nominalTier === 7 && scale <= 1 ? 8 : nominalTier;
     return {
         nominalTier,
-        judgmentTier: reading() < LOCAL_PRACTICE_CHANCE[nominalTier - 1] ? Math.min(10, nominalTier + 2) : nominalTier,
-        apm: LOCAL_ACTION_RATE[nominalTier - 1],
-        scale: Math.exp((2 * random() - 1) * 1.65),
+        judgmentTier,
+        apm: LOCAL_ACTION_RATE[handTier - 1],
+        scale,
     };
 }
 
@@ -55,6 +61,9 @@ export class LocalBotManager {
             const difficulty = normalizeDifficultyTier(slot.difficulty ?? slot.botDifficulty);
             const pace = this.useLocalStyles && !playerState.isInfinityMode
                 ? localPace(difficulty, seriesSeed ?? seed, index) : null;
+            const judgmentTier = pace?.judgmentTier ?? difficulty;
+            const expertPace = judgmentTier === 10 && !playerState.isInfinityMode
+                ? { reactionMs: [170, EXPERT_REACTION_MAX_MS[difficulty]], maxApm: 3750 } : undefined;
 
             const input = (name, action, value) => () => (this.tickInput
                 ? this.tickInput.emit({
@@ -71,8 +80,9 @@ export class LocalBotManager {
                     softDrop: input('softDrop', 'softDrop', null),
                     hardDrop: input('hardDrop', 'hardDrop', null),
                 },
-                difficulty: pace?.judgmentTier ?? difficulty,
-                localPace: pace,
+                difficulty: judgmentTier,
+                configOverrides: expertPace,
+                localPace: expertPace ? null : pace,
                 playerIndex: index,
                 playerState,
                 pendingRows: () => this.multiplayerState.getGarbageQueue?.(index)?.getTotalLines() || 0,
@@ -93,7 +103,7 @@ export class LocalBotManager {
                 },
                 sharedSearch,
                 precomputeBetweenTicks: true,
-                planUnitsPerMs: gravityPlanningRate(botCount, difficulty),
+                planUnitsPerMs: gravityPlanningRate(botCount, judgmentTier),
                 rng: seededRandom((seed ^ Math.imul(index + 1, 0x85ebca6b)) >>> 0),
                 timingRng: seededRandom((seed ^ Math.imul(index + 1, 0xc2b2ae35)) >>> 0),
             }));
