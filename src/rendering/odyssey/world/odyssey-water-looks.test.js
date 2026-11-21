@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
     LAKE_WATER, SEA_HORIZON_DOWN, SEA_SURF, WATER_SHORE_DEPTH_BIAS,
-    SEA_AIR, SEA_BEACH, SEA_CAPS, SEA_WET, SEA_WINDROWS, depthStepAlongRay, lakeClearAt, seaAirOwn, seaCapLife, swashMemory01, swashRise01, lakeShoreOpacity, lakeShoreWidth, seaBodyAt, seaFilmOpacity,
+    SEA_AIR, SEA_BEACH, SEA_CAPS, SEA_WET, SEA_WINDROWS, depthStepAlongRay, lakeClearAt, seaAirOwn, seaCapLife, seaSunRoad, swashMemory01, swashRise01, lakeShoreOpacity, lakeShoreWidth, seaBodyAt, seaFilmOpacity,
     seaHorizonKeep, seaSurfLine, shoreFightBand,
 } from './odyssey-water-looks.js';
 
@@ -329,5 +329,36 @@ describe('the windrows keep to their cells (2026-11-21)', () => {
         const W = SEA_WINDROWS;
         const slope = (W.wander[0] * W.wanderK[0]) + (W.wander[1] * W.wanderK[1]);
         expect(Math.atan(slope) * (180 / Math.PI)).toBeLessThan(5);
+    });
+});
+
+// THE SUN ROAD FROM FACET STATISTICS (2026-11-21 sea audit, item 18): a band to the horizon under
+// the sun, narrow there, and nothing well off its bearing.
+describe('the sea\'s sun road (2026-11-21)', () => {
+    const sunEl = (15 * Math.PI) / 180;
+    const L = [0, Math.sin(sunEl), -Math.cos(sunEl)]; // the sun ahead (-z), 15 degrees up
+    const view = (downDeg, offDeg) => {
+        // V points from the water to the eye: the eye looks down `downDeg` and `offDeg` off the sun.
+        const d = (downDeg * Math.PI) / 180;
+        const o = (offDeg * Math.PI) / 180;
+        return [-Math.cos(d) * Math.sin(o), Math.sin(d), Math.cos(d) * Math.cos(o)];
+    };
+    const s2 = 0.0142 + 0.004; // the far sea: the swell's variance handed back
+
+    it('reaches the horizon under the sun', () => {
+        const near = seaSunRoad({ V: view(1, 0), L, s2 });
+        expect(near.odds).toBeGreaterThan(0.3);
+        expect(near.band).toBeGreaterThan(0.5);
+    });
+
+    it('is gone well off the sun\'s bearing, and finite everywhere', () => {
+        expect(seaSunRoad({ V: view(3, 30), L, s2 }).odds).toBeLessThan(0.01);
+        [0.5, 5, 20, 60].forEach((down) => {
+            [0, 10, 40, 120].forEach((off) => {
+                const r = seaSunRoad({ V: view(down, off), L, s2: 0.0028 });
+                expect(Number.isFinite(r.band)).toBe(true);
+                expect(r.band).toBeLessThan(1 / 0.05 + 1e-9);
+            });
+        });
     });
 });

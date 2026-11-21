@@ -54,7 +54,7 @@ import { CLOUD_FIELD_ANCHOR, ODYSSEY_CLOUD_FIELD_SPECS } from './odyssey-cloud-f
 import { WATER_CLOUD_SLOTS, buildWaterCloudProxies, selectWaterClouds } from './odyssey-water-clouds.js';
 import { buildNorthLakeSurface, buildTarnSurface, tarnOpenWater } from './odyssey-tarn-surface.js';
 import {
-    LAKE_WATER, SEA_ABSORB_GAIN, SEA_AIR, SEA_BEACH, SEA_CAPS, SEA_CREST_GLOW, SEA_SURF_BREAK, SEA_WET, SEA_FILM, SEA_HORIZON_DOWN, SEA_RAMP, SEA_SURF,
+    LAKE_WATER, SEA_ABSORB_GAIN, SEA_AIR, SEA_BEACH, SEA_CAPS, SEA_CREST_GLOW, SEA_SUN_GLITTER, SEA_SURF_BREAK, SEA_WET, SEA_FILM, SEA_HORIZON_DOWN, SEA_RAMP, SEA_SURF,
     SEA_SWELL_TILT, SEA_TROUGH, SEA_WINDROWS, WATER_SHORE_DEPTH_BIAS,
 } from './odyssey-water-looks.js';
 import {
@@ -3689,17 +3689,6 @@ export function createOdysseyWorld({
         a: texture(detailTex, xz.mul(0.021).add(vec2(uTime.mul(0.010), uTime.mul(-0.014)))),
         b: texture(detailTex, xz.mul(0.047).add(vec2(uTime.mul(-0.018), uTime.mul(0.008)))),
     });
-    /**
-     * Twinkling glitter where the two ripple fields coincide, toward grazing, faded with range, and
-     * only round the sun's road (`R` the mirrored ray): glitter is the sun's, sparse and slow, never
-     * a field of flecks over the whole water (2026-11-20; the owner's rule for water, gotcha #1313).
-     */
-    const waterSparkle = (rip, fb, dist, R) => smoothstep(float(0.70), float(0.80), rip.b.b)
-        .mul(smoothstep(float(0.78), float(0.96), clamp(dot(R, uSunDir), 0, 1)))
-        .mul(smoothstep(float(0.62), float(0.74), rip.a.b))
-        .mul(fb)
-        .mul(clamp(float(1).sub(dist.div(420)), 0, 1))
-        .mul(0.34);
     // ── WIND ON THE WATER (water pass step 4) ──────────────────────────────────────────────
     // The water rides the same wind as the land (`gustFront`, ONE WIND: the meadow lightens and the
     // crowns lean as a front passes): where the front is up, drifting patches of rougher water (a
@@ -4879,7 +4868,6 @@ export function createOdysseyWorld({
                 .add(vec3(chop.x.negate(), 0, chop.y.negate())));
             // FRESNEL TWO-TONE, then the sun glint over the baked sun visibility. painterly
             // water is not a mirror: the sky arrives as a colour wash, never an image.
-            const fb = float(1).sub(max(dot(wN, viewDir), 0));
             const fres = waterFresnel(reflN, viewDir, 0.62, 0.05).mul(mix(float(1), float(0.78), seaGust));
             const wVis = texture(sunVisTex, wUv).r;
             // THE SKY IN THE REFLECTED DIRECTION, not one constant (`skyColourFor(0.22)` was
@@ -4990,15 +4978,8 @@ export function createOdysseyWorld({
                 .mul(float(1).sub(fres))
                 .mul(wVis);
             const bodyShoal = bodyLive.add(vec3(1, 0.97, 0.84).mul(shoalLight).mul(0.22));
-            // SUN ROAD: a broad lobe on the reflected ray (the hairline `spec` stays for the
-            // tight core). Act II mostly flies away from the sun, so this is quiet there and
-            // lights only when a camera turns toward it.
-            const road = waterSunRoad(reflDir);
-            // GLITTER: two scrolled value fields that only coincide in small, short-lived
-            // patches, so the sparks TWINKLE as the layers slide past each other. Weighted to
-            // grazing water (where real glints live) and faded with range before they can
-            // alias into shimmer.
-            const sparkle = waterSparkle(seaRipples, fb, wFragDist, reflDir).mul(mix(float(0.55), float(1.7), seaGust));
+            // (The sea's sun road, its sparkle and its core are one term since 2026-11-21: the sun in
+            // a sea of facets, SEA_SUN_GLITTER, added after the horizon dissolve below.)
             // CLOUD SHADOWS ON THE SEA (masterpiece pass, 2026-11-17): the shadows that cross the
             // land stopped at the waterline, so the sea, half of every shore orb's frame, never
             // changed. The same field now lies on the water: under a cloud the body sinks a step
@@ -5006,9 +4987,6 @@ export function createOdysseyWorld({
             // from the sea and on over the beach as one shadow. High tier, as on the land.
             const seaSun = q.cloudShadows ? cloudShadowLight(positionWorld.xz).toVar() : float(1);
             const wl = mix(bodyShoal.mul(chopFacet).mul(mix(float(SEA_CLOUD_SHADE), float(1), seaSun)), seaMirror, fres)
-                // (The core on the settled normal: the root `spec` rides the mip-less ripple and
-                // flickered across the far band; the underside keeps it.)
-                .add(vec3(...WATER_GLINT).mul(waterSunCore(reflN, viewDir).add(road).add(sparkle)).mul(wVis.mul(seaSun).mul(seaSun)))
                 .mul(wVis.mul(0.18).add(0.82))
                 .toVar();
             // WHITECAPS — The Witness reference: opaque flat white with a drawn edge, so
@@ -5160,6 +5138,39 @@ export function createOdysseyWorld({
                 .mul(float(1).sub(smoothstep(float(SEA_HORIZON_DOWN[0]), float(SEA_HORIZON_DOWN[1]), viewDir.y)));
             const seaLine = skyAirAt(vec3(viewDir.x.negate(), float(0), viewDir.z.negate()));
             wl.assign(mix(wl, seaLine, wHorizon));
+            // THE SUN ROAD (SEA_SUN_GLITTER, 2026-11-21 sea audit, item 18): the sun seen in a sea of
+            // facets. The facet the sun needs (the half vector's slope) against the surface's own
+            // (the settled reflection normal); their spread is the chop's plus the swell's that the
+            // distance fade took from the normal, so the band runs to the horizon, narrow there.
+            // HDR, eased by a knee; near the eye a broad sheen instead of whole lit wave faces.
+            // After the dissolve: only the air takes it, as light through air.
+            const SG = SEA_SUN_GLITTER;
+            const sunH = normalize(ODYSSEY_EVENING_U.sunDir.add(viewDir)).toVar();
+            const sunHy = max(sunH.y, float(0.08));
+            const sunMiss = sunH.xz.negate().div(sunHy).sub(reflN.xz.negate().div(max(reflN.y, float(0.2))));
+            const sunM2 = dot(sunMiss, sunMiss).toVar();
+            const roadKeep = clamp(float(1).sub(wFragDist.div(520)), 0, 1);
+            const roadS2 = mix(float(SG.floorVar[0]), float(SG.floorVar[1]), seaGust)
+                .add(float(SG.waveVar).mul(vSwellFade.mul(vSwellFade)).mul(float(1).sub(roadKeep.mul(roadKeep))))
+                .toVar();
+            const roadVh = clamp(dot(viewDir, sunH), 0, 1);
+            const roadFb = float(1).sub(roadVh);
+            const roadFb2 = roadFb.mul(roadFb);
+            const roadFres = roadFb2.mul(roadFb2).mul(roadFb).mul(0.98).add(0.02);
+            const roadHy = max(sunHy, float(SG.hyFloor));
+            const roadHy2 = roadHy.mul(roadHy);
+            const roadLight = roadFres.div(max(viewDir.y, float(SG.vyFloor)).mul(roadHy2.mul(roadHy2)).mul(8 * Math.PI));
+            const kneeOf = (x) => x.div(x.mul(SG.knee).add(1));
+            const roadBand = kneeOf(exp(sunM2.div(roadS2.mul(-2))).div(roadS2).mul(roadLight));
+            const roadSheenS2 = roadS2.add(SG.sheenVar);
+            const roadSheen = kneeOf(exp(sunM2.div(roadSheenS2.mul(-2))).div(roadSheenS2).mul(roadLight));
+            const roadNear = float(1).sub(smoothstep(float(SG.glintFoot[0]), float(SG.glintFoot[1]), seaFoot));
+            const seaRoad = mix(roadBand, roadSheen.mul(SG.sheenShare), roadNear).mul(SG.gain).toVar('wSeaRoad');
+            wl.assign(wl.add(mix(uSunColour, vec3(1, 0.98, 0.94), 0.3)
+                .mul(seaRoad)
+                .mul(wVis.mul(seaSun).mul(seaSun))
+                .mul(float(1).sub(clamp(capA.add(rows).add(shoreFoam), 0, 1)))
+                .mul(smoothstep(float(0), float(0.03), ODYSSEY_EVENING_U.sunDir.y))));
             wl.assign(wl.add(vec3(0.92, 0.97, 0.99).mul(
                 smoothstep(float(2.6), float(0.15), depth)
                     .mul(smoothstep(float(-0.4), float(0.5), depth)).mul(0.10)

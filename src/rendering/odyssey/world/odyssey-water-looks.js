@@ -197,6 +197,52 @@ export const SEA_WET = Object.freeze({
     glare: Object.freeze([0.55, 0.06]),
 });
 /**
+ * THE SUN ROAD FROM FACET STATISTICS (2026-11-21 sea audit, item 18). Facing the sun the sea had no
+ * glitter path: a milky veil (a lobe on a mirror ray whose far normal had been faded flat) and a
+ * few opaque white dabs (a hairline core lighting whole swell faces). The road is now the sun seen
+ * in a sea of facets whose slopes spread by `floorVar` (the unresolved chop, calm to gust) plus
+ * `waveVar` (the swell's own, handed back where the distance fade drops it from the normal), so
+ * the band reaches the horizon, narrow there and wider near the eye, HDR (`gain`, eased by
+ * `knee`) and coloured by the sun; near the eye, where one facet spans pixels, a broad sheen
+ * (`sheenVar`, `sheenShare`) instead of white dabs (`glintFoot`: u a pixel, the near-to-far hand-over).
+ */
+export const SEA_SUN_GLITTER = Object.freeze({
+    waveVar: 0.0142,
+    floorVar: Object.freeze([0.0028, 0.0060]),
+    sheenVar: 0.006,
+    gain: 0.55,
+    knee: 0.05,
+    vyFloor: 0.045,
+    hyFloor: 0.35,
+    sheenShare: 0.2,
+    glintFoot: Object.freeze([0.75, 2.0]),
+});
+
+/**
+ * The road's light (SEA_SUN_GLITTER) for a view `V` (surface -> eye), a sun `L` (surface -> sun),
+ * the surface's mean slope `slope` [sx, sz] and the slope variance `s2` per axis: `odds`, the
+ * share of facets turned to send the sun to the eye, and `band` (before the gain), knee'd.
+ */
+export function seaSunRoad({
+    V, L, slope = [0, 0], s2,
+}) {
+    const G = SEA_SUN_GLITTER;
+    const h = [V[0] + L[0], V[1] + L[1], V[2] + L[2]];
+    const hl = Math.hypot(...h) || 1;
+    const H = h.map((v) => v / hl);
+    const hy = Math.max(H[1], 0.08);
+    const mx = (-H[0] / hy) - slope[0];
+    const mz = (-H[2] / hy) - slope[1];
+    const m2 = (mx * mx) + (mz * mz);
+    const odds = Math.exp(m2 / (-2 * s2));
+    const vh = Math.max((V[0] * H[0]) + (V[1] * H[1]) + (V[2] * H[2]), 0);
+    const fres = 0.02 + (0.98 * ((1 - vh) ** 5));
+    const light = fres / (4 * Math.max(V[1], G.vyFloor) * (Math.max(hy, G.hyFloor) ** 4) * 2 * Math.PI);
+    const raw = (odds / s2) * light;
+    return { odds, band: raw / (1 + (G.knee * raw)) };
+}
+
+/**
  * THE SURF (2026-11-21 sea audit, item 16). The sea stopped at the sand as a lake does: a 1-2 px
  * pencil rim and hairline rings offshore, every shore term a band of DEPTH on a bed that drops
  * 0.35-0.87 per unit, so 10 m of water was 12-16 u of sea and a pixel. The surf is measured in
