@@ -6,7 +6,7 @@ Read boards from the top down. Each letter identifies a locked body. A dot is an
 
 ## Lock 1 · L
 
-Column 4, rotation 2. Inputs were rotate flip (tick 16), hardDrop (tick 20).
+Column 4, rotation 2. Inputs were rotate flip (tick 13), hardDrop (tick 14).
 
 ```text
 ......A...
@@ -15,7 +15,7 @@ Column 4, rotation 2. Inputs were rotate flip (tick 16), hardDrop (tick 20).
 
 ## Lock 2 · O
 
-Column 7, rotation 0. Inputs were move 1 (tick 35), move 1 (tick 39), move 1 (tick 43), hardDrop (tick 47).
+Column 7, rotation 0. Inputs were move 1 (tick 28), move 1 (tick 29), move 1 (tick 30), hardDrop (tick 31).
 
 ```text
 ......ABB.
@@ -24,7 +24,7 @@ Column 7, rotation 0. Inputs were move 1 (tick 35), move 1 (tick 39), move 1 (ti
 
 ## Lock 3 · J
 
-Column 0, rotation 1. Inputs were move -1 (tick 62), move -1 (tick 66), move -1 (tick 70), move -1 (tick 74), rotate right (tick 78), hardDrop (tick 82).
+Column 0, rotation 1. Inputs were move -1 (tick 44), move -1 (tick 45), move -1 (tick 46), move -1 (tick 47), rotate right (tick 48), hardDrop (tick 49).
 
 ```text
 .C........
@@ -34,7 +34,7 @@ CC..AAABB.
 
 ## Lock 4 · I
 
-Column 7, rotation 1. Inputs were move 1 (tick 98), move 1 (tick 102), move 1 (tick 106), rotate right (tick 110), move 1 (tick 114), hardDrop (tick 118).
+Column 7, rotation 1. Inputs were move 1 (tick 63), move 1 (tick 64), move 1 (tick 65), rotate right (tick 66), move 1 (tick 67), hardDrop (tick 68).
 
 ```text
 .........D
@@ -45,7 +45,7 @@ CC..AAABBD
 
 ## Lock 5 · S
 
-Column 2, rotation 3. Inputs were move -1 (tick 131), move -1 (tick 135), rotate left (tick 139), hardDrop (tick 143).
+Column 2, rotation 3. Inputs were move -1 (tick 81), move -1 (tick 82), rotate left (tick 83), hardDrop (tick 84).
 
 ```text
 .........D
@@ -56,7 +56,7 @@ CC.EAAABBD
 
 ## Lock 6 · Z
 
-Column 3, rotation 0. Inputs were move -1 (tick 160), hardDrop (tick 164).
+Column 3, rotation 0. Inputs were move -1 (tick 98), hardDrop (tick 99).
 
 ```text
 .........D
@@ -67,7 +67,7 @@ CC.EAAABBD
 
 ## Lock 7 · T
 
-Column -1, rotation 3. Inputs were move -1 (tick 178), move -1 (tick 182), move -1 (tick 186), move -1 (tick 190), rotate left (tick 194), move -1 (tick 198), hardDrop (tick 202).
+Column -1, rotation 3. Inputs were move -1 (tick 112), move -1 (tick 113), move -1 (tick 114), move -1 (tick 115), rotate left (tick 116), move -1 (tick 117), hardDrop (tick 118).
 
 ```text
 G.........
@@ -79,7 +79,7 @@ CC.EAAABBD
 
 ## Lock 8 · Z
 
-Column 1, rotation 0. Inputs were move -1 (tick 216), move -1 (tick 220), move -1 (tick 224), hardDrop (tick 228).
+Column 1, rotation 0. Inputs were move -1 (tick 131), move -1 (tick 132), move -1 (tick 133), hardDrop (tick 134).
 
 ```text
 GHH.......
@@ -91,7 +91,7 @@ CC.EAAABBD
 
 ## Lock 9 · T
 
-Column 4, rotation 0. Inputs were hardDrop (tick 243).
+Column 4, rotation 0. Inputs were hardDrop (tick 148).
 
 ```text
 GHH.......
@@ -103,7 +103,7 @@ CC.EAAABBD
 
 ## Lock 10 · J
 
-Column 7, rotation 1. Inputs were move 1 (tick 260), move 1 (tick 264), move 1 (tick 268), rotate right (tick 272), hardDrop (tick 276).
+Column 7, rotation 1. Inputs were move 1 (tick 162), move 1 (tick 163), move 1 (tick 164), rotate right (tick 165), hardDrop (tick 166).
 
 Before locking, the bot forecast 4 waves in 3 more pieces.
 
@@ -117,7 +117,7 @@ CC.EAAABBD
 
 ## Lock 11 · O
 
-Column 3, rotation 0. Inputs were move -1 (tick 290), hardDrop (tick 294).
+Column 3, rotation 0. Inputs were move -1 (tick 179), hardDrop (tick 180).
 
 Before locking, the bot forecast 4 waves in 2 more pieces.
 
@@ -132,7 +132,7 @@ CC.EAAABBD
 
 ## Lock 12 · L
 
-Column 5, rotation 2. Inputs were move 1 (tick 309), rotate flip (tick 313), hardDrop (tick 317).
+Column 5, rotation 2. Inputs were move 1 (tick 193), rotate flip (tick 194), hardDrop (tick 195).
 
 Before locking, the bot forecast 4 waves in 1 more piece.
 
@@ -147,7 +147,7 @@ CC.EAAABBD
 
 ## Lock 13 · I
 
-Column 7, rotation 1. Inputs were move 1 (tick 334), move 1 (tick 338), move 1 (tick 342), rotate right (tick 346), move 1 (tick 350), hardDrop (tick 354).
+Column 7, rotation 1. Inputs were move 1 (tick 209), move 1 (tick 210), move 1 (tick 211), rotate right (tick 212), move 1 (tick 213), hardDrop (tick 214).
 
 Wave 1 clears row 5.
 
@@ -204,7 +204,7 @@ After the fragments settle
 .C.FFI.JJD
 ```
 
-At the end of the fire the score was 4647 and cumulative outgoing garbage was 3 rows.
+At the end of the fire the score was 4719 and cumulative outgoing garbage was 3 rows.
 
 Reproduce the walkthrough from the repository root.
 
