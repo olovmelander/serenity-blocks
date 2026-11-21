@@ -113,6 +113,8 @@ export function isUsableStoredWorldBake(stored, request) {
     const watersOk = ['tarn', 'lake']
         .every((water) => isTyped(textures.summit[water]?.data) && textures.summit[water].data.length > 0);
     if (!watersOk) return false;
+    // The sea's lace rides on the detail record (2026-11-21): a copy kept before it has none.
+    if (!isTyped(textures.detail.lace?.data) || textures.detail.lace.data.length === 0) return false;
     if (!!request.cloudField && Array.isArray(request.cloudSpecs)) {
         if (!field || !isTyped(field.position) || field.masses !== request.cloudSpecs.length) return false;
     } else if (field !== null) {

@@ -124,6 +124,38 @@ export const SEA_TROUGH = Object.freeze({
 });
 export const SEA_SWELL_TILT = Object.freeze({ near: 0.4, range: Object.freeze([60, 260]) });
 /**
+ * WHITECAPS WITH A LIFE (2026-11-21 sea audit, item 11). The caps were the swell's stacked height
+ * at that instant cut in a narrow band: opaque paper-white blobs that switched on and off within a
+ * tenth of a second as crests passed. A cap now has an AGE, worked out per pixel with no stored
+ * state: the seconds since the long swell's crest last passed this water. It is born where the
+ * three waves stood stacked at that moment (`birth`, shares of their summed amplitude, broken by
+ * `gate` of a per-crest pattern and `gust` of the wind), flashes white for `flashT` s, then
+ * thins as a sheet (`sheetT`, `sheetShare` of it) and a lace (`laceT`), coming in over `rise` s
+ * and gone `tail` s before the next crest. Within `range` (u: whole, gone) of the eye. The lace
+ * is the foam-lace tile, `tile` u across the wind and `streak` times that along it, drifting
+ * `drift` u/s downwind and bent `bend` by the ripples; its threads `width` (tile shares: thin
+ * young, wide when the cover is whole), its alpha `alpha` [lace, flash], its colour `colour`.
+ */
+export const SEA_CAPS = Object.freeze({
+    birth: Object.freeze([0.80, 1.05]),
+    gate: 0.45,
+    gust: 0.10,
+    flashT: 0.45,
+    sheetT: 0.9,
+    laceT: 3.0,
+    sheetShare: 0.55,
+    rise: 0.30,
+    tail: 1.5,
+    range: Object.freeze([260, 720]),
+    tile: 9,
+    streak: 1.8,
+    drift: 0.3,
+    bend: 0.18,
+    width: Object.freeze([0.12, 0.85]),
+    alpha: Object.freeze([0.38, 0.85]),
+    colour: Object.freeze([0.90, 0.95, 0.98]),
+});
+/**
  * A REAL BEACH (2026-11-21 sea audit, item 9). The south beach read as an ochre-olive bank darker
  * than the water: the whole of it sat on the palette's damp sand pole, grass cross-faded down to
  * the waterline over 13 u of height, and the only wetting was a matte strip 1 u high.
@@ -257,6 +289,18 @@ export function swashRise01(f) {
  */
 export function swashMemory01(f) {
     return smoothstepGpu(0, 0.32, f) * Math.sqrt(Math.sqrt(clamp01(1 - smoothstepGpu(0.32, 1, f))));
+}
+
+/**
+ * A whitecap's life at `age` seconds after its crest (SEA_CAPS): in over `rise`, a sheet and a lace
+ * thinning, gone before the next crest (`period`, the long swell's, s).
+ */
+export function seaCapLife(age, period) {
+    const C = SEA_CAPS;
+    const rise = smoothstepGpu(0, C.rise, age);
+    const tail = 1 - smoothstepGpu(period - C.tail, period, age);
+    return ((Math.exp(-age / C.sheetT) * C.sheetShare) + (Math.exp(-age / C.laceT) * (1 - C.sheetShare)))
+        * rise * tail;
 }
 
 /** How much of the lake's bed shows through `depth` units of its water (its clear-water film). */

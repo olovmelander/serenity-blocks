@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
     LAKE_WATER, SEA_HORIZON_DOWN, SEA_SURF, WATER_SHORE_DEPTH_BIAS,
-    SEA_AIR, SEA_BEACH, SEA_WET, depthStepAlongRay, lakeClearAt, seaAirOwn, swashMemory01, swashRise01, lakeShoreOpacity, lakeShoreWidth, seaBodyAt, seaFilmOpacity,
+    SEA_AIR, SEA_BEACH, SEA_CAPS, SEA_WET, depthStepAlongRay, lakeClearAt, seaAirOwn, seaCapLife, swashMemory01, swashRise01, lakeShoreOpacity, lakeShoreWidth, seaBodyAt, seaFilmOpacity,
     seaHorizonKeep, seaSurfLine, shoreFightBand,
 } from './odyssey-water-looks.js';
 
@@ -290,5 +290,26 @@ describe('the beach and its wet sand (2026-11-21)', () => {
         expect(ratio).toBeLessThan(0.62);
         const sat = (c) => (Math.max(...c) - Math.min(...c)) / Math.max(...c);
         expect(sat(wet)).toBeGreaterThan(sat(SEA_BEACH.dry));
+    });
+});
+
+// WHITECAPS WITH A LIFE (2026-11-21 sea audit, item 11): born on the crest, a flash and a lace
+// thinning, gone before the next crest; never a pop from one frame to the next.
+describe('the whitecaps\' life (2026-11-21)', () => {
+    const period = (Math.PI * 2) / 0.85; // the long swell's
+    it('comes in, thins and is gone before the next crest', () => {
+        expect(seaCapLife(0, period)).toBe(0);
+        expect(seaCapLife(SEA_CAPS.rise, period)).toBeGreaterThan(0.7);
+        expect(seaCapLife(2, period)).toBeLessThan(seaCapLife(1, period));
+        expect(seaCapLife(period, period)).toBe(0);
+        expect(seaCapLife(period - 0.01, period)).toBeLessThan(0.01);
+    });
+
+    it('never jumps more than a little in one frame at 30 fps', () => {
+        let worst = 0;
+        for (let t = 0; t < period - (1 / 30); t += 1 / 30) {
+            worst = Math.max(worst, Math.abs(seaCapLife(t + (1 / 30), period) - seaCapLife(t, period)));
+        }
+        expect(worst).toBeLessThan(0.15);
     });
 });

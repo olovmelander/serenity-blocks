@@ -31,7 +31,7 @@ import {
 } from './odyssey-ground-bakes.js';
 import {
     RELIEF_EXTENT, bakeDetailNormalData, bakeMacroData, bakeOdysseyCloudField, bakeReliefData,
-    bakeNorthLakePlateData, bakeSculptPlateData, bakeTarnPlateData, makeReliefSampler,
+    bakeNorthLakePlateData, bakeSculptPlateData, bakeSeaLaceData, bakeTarnPlateData, makeReliefSampler,
 } from './odyssey-world-bake-data.js';
 import {
     ODYSSEY_GROUND_DISTANCE,
@@ -43,7 +43,7 @@ import {
     ODYSSEY_GROUND_STRATA,
 } from './odyssey-ground-palette.js';
 import { buildHeroCloudGeometry } from './odyssey-hero-clouds.js';
-import { noise2 } from '../chapter-environments/shared/odyssey-tsl-noise.js';
+import { hash21, noise2 } from '../chapter-environments/shared/odyssey-tsl-noise.js';
 import { buildKelpGeometry, buildSpireGeometry, planOceanForms } from './odyssey-ocean-forms.js';
 import { buildCloudFieldGeometry } from './odyssey-cloud-field.js';
 import {
@@ -54,7 +54,7 @@ import { CLOUD_FIELD_ANCHOR, ODYSSEY_CLOUD_FIELD_SPECS } from './odyssey-cloud-f
 import { WATER_CLOUD_SLOTS, buildWaterCloudProxies, selectWaterClouds } from './odyssey-water-clouds.js';
 import { buildNorthLakeSurface, buildTarnSurface, tarnOpenWater } from './odyssey-tarn-surface.js';
 import {
-    LAKE_WATER, SEA_ABSORB_GAIN, SEA_AIR, SEA_BEACH, SEA_CREST_GLOW, SEA_WET, SEA_FILM, SEA_HORIZON_DOWN, SEA_RAMP, SEA_SURF,
+    LAKE_WATER, SEA_ABSORB_GAIN, SEA_AIR, SEA_BEACH, SEA_CAPS, SEA_CREST_GLOW, SEA_WET, SEA_FILM, SEA_HORIZON_DOWN, SEA_RAMP, SEA_SURF,
     SEA_SWELL_TILT, SEA_TROUGH, SEA_WINDROWS, WATER_SHORE_DEPTH_BIAS,
 } from './odyssey-water-looks.js';
 import {
@@ -1466,6 +1466,17 @@ export function createOdysseyWorld({
     const groundTex = groundAtlas.tex;
     const atlasAvg = groundAtlas.avg;
     const detailTex = bakeDetailNormal(undefined, preTex.detail ?? null);
+    // THE SEA'S LACE (SEA_CAPS, 2026-11-21): the foam-lace tile the whitecaps thin into. Tiling, no
+    // mips: it is read at level 0 inside a per-pixel branch.
+    const seaLace = preTex.detail?.lace ?? bakeSeaLaceData();
+    const seaLaceTex = new THREE.DataTexture(seaLace.data, seaLace.res, seaLace.res, THREE.RGBAFormat, THREE.UnsignedByteType);
+    seaLaceTex.wrapS = THREE.RepeatWrapping;
+    seaLaceTex.wrapT = THREE.RepeatWrapping;
+    seaLaceTex.magFilter = THREE.LinearFilter;
+    seaLaceTex.minFilter = THREE.LinearFilter;
+    seaLaceTex.generateMipmaps = false;
+    seaLaceTex.colorSpace = THREE.NoColorSpace;
+    seaLaceTex.needsUpdate = true;
     const macroTex = bakeMacroTexture(undefined, preTex.macro ?? null);
     const heightTex = relief.tex;
     // THE SCULPT PLATE (bakeSculptPlateData): ~1.8 u of form over the hero's top and the tarn,
@@ -4627,7 +4638,6 @@ export function createOdysseyWorld({
     const wFragDist = length(positionWorld.xz.sub(cameraPosition.xz)).toVar();
     const wFragFade = clamp(float(1).sub(wFragDist.div(520)), 0, 1).mul(vSwellFade).toVar();
     const wFrag = waveField(positionWorld.xz);
-    const waveH = wFrag.h.mul(wFragFade).toVar();
     const waveSlope = vec2(wFrag.dx, wFrag.dz).mul(wFragFade).toVar();
     // The wind's patches roughen the chop (water pass step 4): calm lanes hold the mirror, gusts
     // break it and glitter.
@@ -4773,7 +4783,7 @@ export function createOdysseyWorld({
             // shore eye a pixel took a different random tilt of the mip-less ripple every frame,
             // and the far sea crawled. Settled by the pixel's own footprint, the far sea mirrors
             // the swell (and the clouds and the sky plates steadily) instead of noise.
-            const seaFoot = max(length(dFdx(positionWorld.xz)), length(dFdy(positionWorld.xz)));
+            const seaFoot = max(length(dFdx(positionWorld.xz)), length(dFdy(positionWorld.xz))).toVar('wSeaFoot');
             const reflRipple = float(1).sub(max(
                 smoothstep(float(1.5), float(8.0), seaFoot),
                 smoothstep(float(SEA_HORIZON_DOWN[0]), float(SEA_HORIZON_DOWN[1]), viewDir.y)
@@ -4948,32 +4958,85 @@ export function createOdysseyWorld({
             // normalised against the real summed amplitude so the threshold means what it
             // says; high-frequency noise breaks the crest lines into separate caps without
             // out-voting them.
-            const crestNorm = clamp(waveH.div(WAVE_AMP_SUM), -1, 1);
-            // LACE, NOT PAPER (item 2). The caps were one opaque flat white over a 0.06 band of
-            // `crest + simplex`: broad sine tops cut into big smooth blobs with no inside, which
-            // read as paper cut-outs laid on the sea. Now the break-up is the two ripple fetches'
-            // scalar channels (free: already sampled, and ~100 ALU of simplex gone), the drive
-            // threshold sits higher so caps live only where the three waves stack, the body is
-            // translucent and holed by the finer field, and the brightest white is a drawn lip
-            // just inside the cap's edge — the painted-foam profile.
-            const capBreak = rippleTexA.b.sub(0.5).mul(0.30).add(rippleTexB.b.sub(0.5).mul(0.34));
-            // BREAKERS, NOT CREST-TOPS (2026-11-20). The crest stack alone painted flat white blotches
-            // 12-20 u across wherever the three waves met; a crest now breaks only where it crosses a
-            // rough patch of the coarse ripple (its ~6 u cells), more of them in a gust, so a cap
-            // flares for a second as a crest runs through and the calm lanes stay clear.
-            const capBreaks = smoothstep(float(0.55), float(0.68), rippleTexA.b).mul(mix(float(0.45), float(1), seaGust));
-            // (The mask RAISES the threshold rather than scaling the body, so every cap keeps its
-            // drawn lip.)
-            const capBody = smoothstep(float(0.64), float(0.72), crestNorm.add(capBreak).sub(float(1).sub(capBreaks).mul(0.45)))
-                .mul(smoothstep(float(0.4), float(2.5), depth))
+            // WHITECAPS WITH A LIFE (SEA_CAPS, 2026-11-21 sea audit, item 11). They were the swell's
+            // stacked height at that instant cut in a narrow band: paper-white blobs that switched on
+            // and off within a tenth of a second. Now each has an AGE, worked out here with no stored
+            // state: the seconds since the long swell's crest last passed this water (`capAge`), and
+            // how high the three waves stood together at that moment (`capStack`, the breaking
+            // strength). It flashes, thins as a sheet and a lace, and is gone before the next crest.
+            const C = SEA_CAPS;
+            const [cW0, cW1, cW2] = WAVES;
+            const capPhase = (wv) => positionWorld.x.mul((wv.dirX * Math.PI * 2) / wv.len)
+                .add(positionWorld.z.mul((wv.dirZ * Math.PI * 2) / wv.len))
+                .add(uTime.mul(wv.speed));
+            const capPeriod = (Math.PI * 2) / cW0.speed;
+            const crestCyc = capPhase(cW0).mul(1 / (Math.PI * 2)).sub(0.25).toVar();
+            const crestN = floor(crestCyc).toVar();
+            const capAge = crestCyc.sub(crestN).mul(capPeriod).toVar();
+            const capStack = float(cW0.amp)
+                .add(sin(capPhase(cW1).sub(capAge.mul(cW1.speed))).mul(cW1.amp))
+                .add(sin(capPhase(cW2).sub(capAge.mul(cW2.speed))).mul(cW2.amp))
+                .mul(vSwellFade)
+                .div(WAVE_AMP_SUM)
+                .add(seaGust.sub(0.5).mul(C.gust))
                 .toVar();
-            const capLace = smoothstep(float(0.38), float(0.62), rippleTexB.b);
-            const capLip = capBody.mul(float(1).sub(capBody)).mul(4);
-            const cap = capBody.mul(mix(float(0.12), float(0.80), capLace)).add(capLip.mul(0.22));
+            const capRise = smoothstep(float(0), float(C.rise), capAge).toVar();
+            const capLife = exp(capAge.mul(-1 / C.sheetT)).mul(C.sheetShare)
+                .add(exp(capAge.mul(-1 / C.laceT)).mul(1 - C.sheetShare))
+                .mul(capRise)
+                .mul(float(1).sub(smoothstep(float(capPeriod - C.tail), float(capPeriod), capAge)))
+                .toVar();
+            const capRange = float(1).sub(smoothstep(float(C.range[0]), float(C.range[1]), wFragDist))
+                .mul(smoothstep(float(0.4), float(2.5), depth)).toVar();
+            // The lace's pixel footprint (in tiles) and the ripple values it bends by, pinned here:
+            // nothing in the per-pixel branch below may take a derivative or an implicit mip.
+            const capFoot = seaFoot.div(C.tile).toVar();
+            const capRipA = rippleTexA.b.toVar('wCapRipA');
+            const capRipB = rippleTexB.b.toVar('wCapRipB');
+            const capA = float(0).toVar('wCapA');
+            // (An upper bound on the breaking strength: the per-crest pattern adds at most C.gate/2.)
+            If(smoothstep(float(C.birth[0]), float(C.birth[1]), capStack.add(C.gate / 2))
+                .mul(capLife).mul(capRange).greaterThan(0.002), () => {
+                // A new 2-D pattern for each crest, still while that crest's foam lives.
+                const capG = texture(
+                    detailTex,
+                    positionWorld.xz.mul(0.011).add(hash21(vec2(crestN.add(4096), 17)).mul(vec2(7.13, 3.71))),
+                ).level(0).b;
+                const brk = smoothstep(float(C.birth[0]), float(C.birth[1]), capStack.add(capG.sub(0.5).mul(C.gate)))
+                    .mul(capRange);
+                const cov = brk.mul(capLife).toVar();
+                const flash = brk.mul(exp(capAge.mul(-1 / C.flashT))).mul(capRise).toVar();
+                const laceUv = vec2(
+                    dot(positionWorld.xz, WATER_WIND).sub(uTime.mul(C.drift)).div(C.tile * C.streak),
+                    positionWorld.x.mul(WATER_WIND.y).sub(positionWorld.z.mul(WATER_WIND.x)).div(C.tile),
+                ).add(vec2(capRipA, capRipB).sub(0.5).mul(C.bend));
+                const L = texture(seaLaceTex, laceUv).level(0).toVar();
+                // The threads thicken with the cover until the cells close, then the cells tear out;
+                // never thinner than ~0.7 px (fainter instead), and their mean where cells are tiny.
+                // FOAM, NOT A NET: a translucent sheet that opens into holes as it thins. The cover is
+                // shaped (most of a cap's life is spent thin), the threads fall off softly, whole cells
+                // stay filled while it is fresh and whole cells drop out as it goes.
+                const covS = sqrt(cov).toVar();
+                const capW = mix(float(C.width[0]), float(C.width[1]), covS).mul(capRipB.mul(0.9).add(0.55)).toVar();
+                const wB = max(capW, capFoot.mul(15.75));
+                const wS = max(capW, capFoot.mul(36.75));
+                const wall = float(1).sub(smoothstep(float(0), wB, L.r)).mul(clamp(capW.div(wB), 0.35, 1));
+                const fine = float(1).sub(smoothstep(wS.mul(0.2), wS, L.g))
+                    .mul(smoothstep(float(0.30), float(0.70), covS))
+                    .mul(clamp(capW.div(wS), 0.35, 1));
+                const raft = smoothstep(float(0.45), float(0.75), L.b).mul(smoothstep(float(0.45), float(0.85), covS));
+                const torn = smoothstep(L.b.sub(0.15), L.b.add(0.15), covS.mul(1.5));
+                // (Torn at its edge, where the cover is thinnest: a ragged outline, not a pill.)
+                const sheet = covS.mul(0.42).mul(torn);
+                const lace = clamp(max(max(wall, fine), raft).mul(torn).add(sheet).add(L.a.mul(flash).mul(0.3)), 0, 1);
+                const keep = float(1).sub(smoothstep(float(0.25), float(0.5), capFoot.mul(21)));
+                capA.assign(mix(covS.mul(0.55), lace, keep).mul(cov.greaterThan(0.002).select(float(1), float(0)))
+                    .mul(mix(float(C.alpha[0]), float(C.alpha[1]), flash)));
+            });
             // FOAM IS LIT (2026-11-20): in the island's shadow or a cloud's it is a shaded blue-grey,
             // not paper white (the caps, the windrows and the shore's foam alike).
             const foamLight = mix(float(0.64), float(1), wVis.mul(seaSun)).toVar();
-            wl.assign(mix(wl, vec3(0.94, 0.98, 1.0).mul(foamLight), clamp(cap, 0, 0.80)));
+            wl.assign(mix(wl, vec3(...C.colour).mul(foamLight), capA));
             // WINDROWS (water pass step 5): the foam a wind leaves on open water lies in long thin
             // streaks along it. The detail bake's value noise read in the wind's frame, drawn out
             // 4:1 along it and cut thin, in deep water only, stronger in a gust, gone by ~520 u
@@ -8233,7 +8296,7 @@ export function createOdysseyWorld({
             if (dolphinPod) dolphinPod.dispose();
             if (moteMesh) moteMesh.geometry.dispose();
             if (rayMesh) rayMesh.geometry.dispose();
-            [heightTex, sunVisTex, groundTex, detailTex, macroTex, summitTex, tarnTex, lakeTex, forestShadeTex, leafAtlasTex,
+            [heightTex, sunVisTex, groundTex, detailTex, seaLaceTex, macroTex, summitTex, tarnTex, lakeTex, forestShadeTex, leafAtlasTex,
                 valleyMistTex].forEach((t) => t.dispose());
             // When the mesh is in the group, group.traverse above already disposed it.
             if (!heroes) heroBuild.geometry.dispose();
