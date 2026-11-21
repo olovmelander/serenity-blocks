@@ -4642,8 +4642,8 @@ export function createOdysseyWorld({
     // The wind's patches roughen the chop (water pass step 4): calm lanes hold the mirror, gusts
     // break it and glitter.
     const seaGust = waterGust(positionWorld.xz).toVar();
-    const wSlope = waveSlope
-        .add(ripple.mul(vSwellFade).mul(mix(float(0.70), float(1.45), seaGust)).mul(uSeaChop)).toVar();
+    const rippleSlope = ripple.mul(vSwellFade).mul(mix(float(0.70), float(1.45), seaGust)).mul(uSeaChop).toVar();
+    const wSlope = waveSlope.add(rippleSlope).toVar();
     const wN = normalize(vec3(wSlope.x.negate(), 1, wSlope.y.negate())).toVar();
     const viewDir = normalize(cameraPosition.sub(positionWorld));
     const spec = waterSunCore(wN, viewDir);
@@ -5126,9 +5126,19 @@ export function createOdysseyWorld({
             // out; the rim keeps its ripple where the surface is near (the breach), by 3-D eye
             // distance (the column looks straight up: the horizontal range overhead is ~0).
             const ceilDist = length(positionWorld.sub(cameraPosition)).toVar();
-            const ceilN = normalize(mix(wN, vec3(0, 1, 0), smoothstep(float(40), float(180), ceilDist))).toVar();
+            const ceilFar = smoothstep(float(40), float(180), ceilDist).toVar();
+            const ceilN = normalize(mix(wN, vec3(0, 1, 0), ceilFar)).toVar();
             const ceilIn = viewDir.negate().toVar();
-            const upCos = clamp(dot(ceilIn, ceilN), 0, 1);
+            // THE WINDOW'S OWN SURFACE (SNELL_WINDOW.surface, 2026-11-21): a level sea tipped by a
+            // slow share of the swell and crinkled by the ripple, the tilt capped, so the rim moves
+            // at most ~3.4 degrees and holds still instead of lurching; within ~6 u of the surface
+            // (the breach) it is the water's own normal again. The mirror outside keeps `ceilN`.
+            const SWS = SNELL_WINDOW.surface;
+            const winTilt = waveSlope.mul(SWS.swellShare).add(rippleSlope.mul(SWS.rippleShare))
+                .mul(float(1).sub(ceilFar)).toVar();
+            const winTiltC = winTilt.mul(min(float(1), float(SWS.tiltCap).div(max(length(winTilt), float(1e-5)))));
+            const winN = normalize(mix(vec3(winTiltC.x.negate(), 1, winTiltC.y.negate()), ceilN, uBreachNear)).toVar();
+            const upCos = clamp(dot(ceilIn, winN), 0, 1);
             const snellWindow = smoothstep(float(0.60), float(0.72), upCos);
             // THE CAUSTIC WEB ON THE CEILING (item 4). Seen from below, a rippled surface is a
             // net of bright refracted lines, not a mottle. The lines are where the two ripple
@@ -5184,7 +5194,8 @@ export function createOdysseyWorld({
             const windowFlat = skyColourSubmergedUp.mul(1.30).toVar();
             const windowWorld = snellWindowWorld({
                 incident: ceilIn,
-                normal: ceilN,
+                normal: winN,
+                wobble: mix(float(SNELL_WINDOW.surface.imageWobble), float(2), uBreachNear),
                 at: positionWorld,
                 flat: windowFlat,
                 presence: uSnellWorld,
