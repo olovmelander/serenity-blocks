@@ -18,7 +18,7 @@ The board establishes the order of placements and supports. Choosing to preserve
 
 ## Pressure on two fields
 
-The 3:57 competitive compilation credits Polly in the closing titles. In a January 2008 discussion, a commenter identifying themself as Polly describes playing human opponents online on level one, with the players controlling the drops. Both boards are visible in the following passage. I refer to the boards by screen position because the individual player labels are difficult to resolve. [Original gameplay mirror](https://www.youtube.com/watch?v=4u0BY7msnEg) · [Polly's account](https://racketboy.com/retro/tetris-mastery-video-clips-to-make-you-feel-inadequate)
+The 3:57 competitive compilation credits Polly in the closing titles. Both boards are visible in the following passage. I refer to the boards by screen position because the individual player labels are difficult to resolve. [Original gameplay mirror](https://www.youtube.com/watch?v=4u0BY7msnEg)
 
 | Recording position | Visible board change | Interpretation for the Serenity tests |
 | --- | --- | --- |
@@ -40,8 +40,6 @@ Jonas Kajs uploaded a direct recording credited to [qz]-fawk- and dated the perf
 ## Player diagrams and saved games
 
 DAC and roncli's illustrated single-player FAQ gives an example with an explicit intended result. In §3.3, panels 1–4 show the set board, a square completing one support row, stacked straights falling into the shaft, and ten further lines clearing. The steps distinguish eleven lines from two clearing waves. In §3.4 the authors describe switching to survival as piece speed increases. The developers' player manual shows the preview and explains the timing of incoming multiplayer rows. These are observations about what a player can see in that game. Serenity supplies its own queue, movement and pressure timing. [Illustrated sequence](https://roncli.com/quadra/faq/3/single-player) · [Remz and Dada's player manual](https://quadra-game.github.io/old/)
-
-The annotated community diagram gives another way to ask whether a release is accessible. A projecting J carries two vertical straights above the right wall. The diagram labels a Z or a T as possible middle triggers. A Serenity test can vary the loaded piece, mirror the board and change the available trigger independently. [Illustrated cascade](https://tetris.wiki/Cascade_mode#Clearing_over_four_lines)
 
 In an October 2000 account, HELLFIRE player spindizzy describes practicing recursive line attacks and preferring vertical Z placements. That preference suggests another orientation to test for a useful supported group. Whether any given move works depends on the visible pieces and the actual release. [Player account](https://synt4x.org/tgm/hellfire/quadra/)
 
