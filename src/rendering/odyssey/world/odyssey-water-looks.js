@@ -197,6 +197,31 @@ export const SEA_WET = Object.freeze({
     glare: Object.freeze([0.55, 0.06]),
 });
 /**
+ * THE SURF (2026-11-21 sea audit, item 16). The sea stopped at the sand as a lake does: a 1-2 px
+ * pencil rim and hairline rings offshore, every shore term a band of DEPTH on a bed that drops
+ * 0.35-0.87 per unit, so 10 m of water was 12-16 u of sea and a pixel. The surf is measured in
+ * HORIZONTAL units now and clocked by the long swell already aimed at the beach: its crests
+ * whiten as they shoal, break where the water is `breakDepth` m deep (`breakX` u out at most and
+ * least), and run in as bores at `boreSpeed` u/s (shore-parallel inside the break), each a
+ * tapered, segmented `lip` (a share of its cycle) leaving a lace band (`trail` cycle, its holes
+ * opening `lace` as it ages) that `feather`s in from the crest; within `reach` u of the shore,
+ * up close (the far surf line takes over by footprint), strongest at the points (`exposure` the
+ * least share in a bay), at `gain`.
+ */
+export const SEA_SURF_BREAK = Object.freeze({
+    boreSpeed: 2.6,
+    breakDepth: 4.5,
+    breakX: Object.freeze([10, 36]),
+    slopeMin: 0.03,
+    lip: 0.075,
+    trail: Object.freeze([0.08, 0.42]),
+    lace: Object.freeze([0.28, 0.70]),
+    feather: 8,
+    reach: 44,
+    exposure: 0.55,
+    gain: 1.15,
+});
+/**
  * THE SURF LINE FROM AFAR (2026-11-02): the soft white line on the waterline once a pixel spans
  * more depth than the swash front. Its width in pixels (calm, at the top of a run-up), how much of
  * it a broken stretch keeps, the scale of the drifting field that breaks it (per unit), and its

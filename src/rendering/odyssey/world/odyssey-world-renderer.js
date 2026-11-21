@@ -54,7 +54,7 @@ import { CLOUD_FIELD_ANCHOR, ODYSSEY_CLOUD_FIELD_SPECS } from './odyssey-cloud-f
 import { WATER_CLOUD_SLOTS, buildWaterCloudProxies, selectWaterClouds } from './odyssey-water-clouds.js';
 import { buildNorthLakeSurface, buildTarnSurface, tarnOpenWater } from './odyssey-tarn-surface.js';
 import {
-    LAKE_WATER, SEA_ABSORB_GAIN, SEA_AIR, SEA_BEACH, SEA_CAPS, SEA_CREST_GLOW, SEA_WET, SEA_FILM, SEA_HORIZON_DOWN, SEA_RAMP, SEA_SURF,
+    LAKE_WATER, SEA_ABSORB_GAIN, SEA_AIR, SEA_BEACH, SEA_CAPS, SEA_CREST_GLOW, SEA_SURF_BREAK, SEA_WET, SEA_FILM, SEA_HORIZON_DOWN, SEA_RAMP, SEA_SURF,
     SEA_SWELL_TILT, SEA_TROUGH, SEA_WINDROWS, WATER_SHORE_DEPTH_BIAS,
 } from './odyssey-water-looks.js';
 import {
@@ -4692,20 +4692,8 @@ export function createOdysseyWorld({
         // applied (same clock, same gate), so the foam front sits exactly on the drawn waterline.
         depthLive.assign(depth
             .add(swashRise(positionWorld.xz).mul(float(1).sub(smoothstep(float(1.0), float(6.0), depth)))));
-        const ringCoord = depthLive.div(3.2).add(uTime.mul(0.26));
-        const ringF = fract(ringCoord);
-        const ringLine = smoothstep(float(0.0), float(0.06), ringF)
-            .mul(float(1).sub(smoothstep(float(0.06), float(0.30), ringF)));
-        const ringAA = clamp(float(1).sub(abs(dFdx(ringCoord)).add(abs(dFdy(ringCoord))).mul(0.9)), 0, 1);
-        const ringBand = smoothstep(float(0.05), float(0.45), depthLive)
-            .mul(float(1).sub(smoothstep(float(6.0), float(10.0), depthLive)));
-        const ringBreak = smoothstep(float(0.28), float(0.52), rippleTexA.b.add(ringF.mul(0.12)));
-        const rings = mix(float(0.08), ringLine.mul(ringBreak), ringAA)
-            .mul(ringBand)
-            .mul(float(1).sub(clamp(depthLive.div(10), 0, 1)).mul(0.55).add(0.45));
-        const swashFront = smoothstep(float(-0.03), float(0.10), depthLive)
-            .mul(float(1).sub(smoothstep(float(0.18), float(0.75), depthLive)))
-            .mul(mix(float(0.6), float(1), smoothstep(float(0.30), float(0.60), rippleTexB.b)));
+        // (The iso-depth rings and the 0.75 m swash front are gone, 2026-11-21: on this steep bed
+        // they were hairlines and a pencil rim. The surf below is measured across the water.)
         // THE SURF LINE FROM AFAR (2026-11-02, "a soft white line of foam"). The front lives in
         // the last 0.75 m of depth and the rings collapse to their faint mean with range, so a
         // coast seen from the climb had no white line at all. Once a pixel spans more than ~0.3 m
@@ -4729,7 +4717,71 @@ export function createOdysseyWorld({
             .mul(float(1).sub(smoothstep(float(SEA_SURF.thinPx[0]), float(SEA_SURF.thinPx[1]), depthPx)
                 .mul(1 - SEA_SURF.thinKeep)))
             .mul(SEA_SURF.gain);
-        shoreFoam.assign(clamp(max(rings.mul(0.80).add(swashFront.mul(0.90)), surfLine), 0, 1));
+        // THE SURF, BREAKING (SEA_SURF_BREAK, 2026-11-21 sea audit, item 16): across the water, on
+        // the long swell's own clock. The bed's slope and the way out to sea come from texels
+        // already fetched; `xs` is the way (u) from the still waterline out to this water.
+        const SB = SEA_SURF_BREAK;
+        const sW0 = WAVES[0];
+        const sK1 = (Math.PI * 2) / sW0.len;
+        const sKS = sW0.speed / SB.boreSpeed;
+        const bedRel = texture(heightTex, wUv).level(0);
+        const bedGrad = vec2(bedRel.g.mul(bedTex.g).add(bedTex.b), bedRel.b.mul(bedTex.g).add(bedTex.a)).toVar();
+        const bedSlope = max(length(bedGrad), float(SB.slopeMin)).toVar();
+        const nSea = bedGrad.negate().div(bedSlope).toVar();
+        const xs = min(depth.div(bedSlope), float(200)).toVar();
+        const xb = clamp(float(SB.breakDepth).div(bedSlope), SB.breakX[0], SB.breakX[1]).toVar();
+        // Seaward of the break: the swell's crest itself. Inside it: shore-parallel, slowed to the
+        // bores' speed (the refraction comes by construction). Whole numbers on the crests.
+        const surfC = dot(positionWorld.xz, vec2(sW0.dirX, sW0.dirZ)).mul(sK1)
+            .add(uTime.mul(sW0.speed))
+            .add(float(sKS).sub(dot(nSea, vec2(sW0.dirX, sW0.dirZ)).mul(sK1)).mul(min(xs.sub(xb), float(0))))
+            .sub(Math.PI / 2)
+            .div(Math.PI * 2)
+            .toVar();
+        const surfCPx = fwidth(surfC).toVar();
+        // Strongest at the points, calmer in the bays (the relief here: above 0 a point).
+        const surfStr = mix(float(SB.exposure), float(1), smoothstep(float(-0.3), float(0.7), dot(nSea, vec2(sW0.dirX, sW0.dirZ))))
+            .mul(mix(float(0.75), float(1.2), smoothstep(float(-4), float(5), bedRel.r.mul(bedTex.g))))
+            .mul(SB.gain)
+            .toVar();
+        const surfNear = float(1).sub(smoothstep(float(0.3), float(1.2), depthPx)).toVar();
+        const surfLaceB = rippleTexB.b.toVar('wSurfLaceB');
+        const bores = float(0).toVar('wSurfBores');
+        // (Per pixel: only explicit-LOD reads and ALU in here.)
+        If(xs.lessThan(SB.reach).and(surfNear.greaterThan(0.001)), () => {
+            const u = fract(surfC).toVar();
+            const seed = fract(floor(surfC).mul(vec2(0.618, 0.414)));
+            // Each bore its own world-anchored field: the foam it leaves stays where it was left.
+            const boreTex = texture(detailTex, positionWorld.xz.mul(0.022).add(seed)).level(0);
+            const seg = smoothstep(float(0.30), float(0.48), boreTex.b).toVar();
+            const laceN = surfLaceB.mul(0.6).add(clamp(boreTex.a.sub(0.42).mul(3.57), 0, 1).mul(0.4)).toVar();
+            const age = clamp(xb.sub(xs).div(xb), 0, 1);
+            const surfZone = float(1).sub(smoothstep(xb.sub(1.5), xb.add(2), xs)).mul(smoothstep(float(-0.3), float(0.5), xs));
+            const lipW = max(mix(float(SB.lip * 0.35), float(SB.lip), seg), surfCPx.mul(1.5));
+            const lip = float(1).sub(smoothstep(lipW.mul(0.4), lipW, u)).mul(smoothstep(float(0), surfCPx.add(1e-4), u));
+            const tk = clamp(u.div(mix(float(SB.trail[0]), float(SB.trail[1]), age)), 0, 1);
+            const th = mix(float(SB.lace[0]), float(SB.lace[1]), tk);
+            const lace = smoothstep(th, th.add(0.12), laceN);
+            const trail = float(1).sub(smoothstep(float(0.55), float(1), tk));
+            // The crest whitens as it shoals, on the real swell crest.
+            const feather = float(1).sub(smoothstep(xb.add(0.5), xb.add(SB.feather), xs))
+                .mul(float(1).sub(smoothstep(float(0), float(0.035), u)))
+                .mul(smoothstep(float(0), surfCPx.add(1e-4), u))
+                .mul(0.45)
+                .mul(seg);
+            // White water lying along the edge of the live water, about a unit across.
+            const xl = depthLive.div(bedSlope);
+            const edge = float(1).sub(smoothstep(float(0.1), float(1.1), xl))
+                .mul(smoothstep(float(-0.3), float(0.1), xl))
+                .mul(smoothstep(float(0.35), float(0.5), laceN))
+                .mul(0.7);
+            const crisp = surfZone.mul(max(lip.mul(mix(float(0.6), float(1), seg)), trail.mul(lace).mul(0.85))).add(feather);
+            bores.assign(mix(surfZone.mul(0.2), crisp, float(1).sub(smoothstep(float(0.06), float(0.16), surfCPx)))
+                .add(edge)
+                .mul(surfStr)
+                .mul(surfNear));
+        });
+        shoreFoam.assign(clamp(max(bores, surfLine), 0, 1));
     };
     // ── THE REGIME BRANCH (MEASURED, and it pays for the whole painterly package) ────────
     // The cold-machine sweep priced waves 1+2 at +2.36 ms on the deep station — OVER its
