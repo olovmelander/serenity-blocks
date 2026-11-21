@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
     LAKE_WATER, SEA_HORIZON_DOWN, SEA_SURF, WATER_SHORE_DEPTH_BIAS,
-    SEA_AIR, depthStepAlongRay, lakeClearAt, seaAirOwn, lakeShoreOpacity, lakeShoreWidth, seaBodyAt, seaFilmOpacity,
+    SEA_AIR, SEA_BEACH, SEA_WET, depthStepAlongRay, lakeClearAt, seaAirOwn, swashMemory01, swashRise01, lakeShoreOpacity, lakeShoreWidth, seaBodyAt, seaFilmOpacity,
     seaHorizonKeep, seaSurfLine, shoreFightBand,
 } from './odyssey-water-looks.js';
 
@@ -256,5 +256,39 @@ describe('the sea\'s own air from above (2026-11-21)', () => {
             expect(v - prev).toBeLessThan(0.06);
             prev = v;
         }
+    });
+});
+
+// A REAL BEACH (2026-11-21 sea audit, item 9): pale dry sand, a darker wet band the run-up keeps,
+// and the wet line receding slower than the water.
+describe('the beach and its wet sand (2026-11-21)', () => {
+    it('keeps the wet line behind the water and back at the base at the wrap', () => {
+        expect(swashMemory01(0)).toBe(0);
+        expect(swashMemory01(1)).toBe(0);
+        expect(swashMemory01(0.32)).toBeCloseTo(1, 9);
+        let prev = 1;
+        for (let f = 0; f <= 1.0001; f += 0.01) {
+            expect(swashMemory01(f)).toBeGreaterThanOrEqual(swashRise01(f) - 1e-12);
+            if (f >= 0.32) {
+                expect(swashMemory01(f)).toBeLessThanOrEqual(prev + 1e-12);
+                prev = swashMemory01(f);
+            }
+        }
+        expect(swashMemory01(0.7)).toBeGreaterThan(swashRise01(0.7) * 1.5);
+    });
+
+    it('never lets the wet band reach the turf', () => {
+        const wetMax = SEA_WET.top + SEA_WET.wobble + SEA_WET.breathe + SEA_WET.edge[0];
+        const beachMin = SEA_BEACH.top - SEA_BEACH.topWobble - SEA_BEACH.topBreak - SEA_BEACH.topEdge[0];
+        expect(wetMax).toBeLessThan(beachMin);
+    });
+
+    it('darkens wet sand by a third and warms it (not grey)', () => {
+        const wet = SEA_BEACH.dry.map((v, i) => v * SEA_WET.dark[i]);
+        const ratio = luma(wet) / luma(SEA_BEACH.dry);
+        expect(ratio).toBeGreaterThan(0.40);
+        expect(ratio).toBeLessThan(0.62);
+        const sat = (c) => (Math.max(...c) - Math.min(...c)) / Math.max(...c);
+        expect(sat(wet)).toBeGreaterThan(sat(SEA_BEACH.dry));
     });
 });

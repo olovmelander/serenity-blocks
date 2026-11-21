@@ -124,6 +124,47 @@ export const SEA_TROUGH = Object.freeze({
 });
 export const SEA_SWELL_TILT = Object.freeze({ near: 0.4, range: Object.freeze([60, 260]) });
 /**
+ * A REAL BEACH (2026-11-21 sea audit, item 9). The south beach read as an ochre-olive bank darker
+ * than the water: the whole of it sat on the palette's damp sand pole, grass cross-faded down to
+ * the waterline over 13 u of height, and the only wetting was a matte strip 1 u high.
+ * - `SEA_BEACH`: the beach is pure sand from the water up to `top` (u over the sea, wandering by
+ *   `topWobble` on a `topCell` noise and `topBreak` of the grain), its edge as soft as `topEdge`
+ *   (u, widened by the pixel's height footprint); its dry sand `dry` (linear) with a broad `tone`
+ *   swell (`toneCell` u), a finer grain (`tooth`), and eased `farKeep` back toward the palette's
+ *   sand from afar so the coast gets no pale outline.
+ * - `SEA_WET`: the sand the sea wets: up to `top` (u) wandering `wobble` on `cells`, its edge
+ *   `edge` (u, by footprint), breathing `breathe` with the run-up; `dark` its albedo factor,
+ *   `filmDark` under the thin film the backwash leaves, `toothKeep`; `absorb` the first units of
+ *   water over it (rgb per u); `gloss` [damp, film] its sky sheen floor, `glare` [core, skirt] the
+ *   sun's lobe on it (High).
+ */
+export const SEA_BEACH = Object.freeze({
+    dry: Object.freeze([0.93, 0.83, 0.60]),
+    tone: 0.10,
+    toneCell: 70,
+    top: 5.0,
+    topWobble: 1.4,
+    topCell: 55,
+    topBreak: 0.7,
+    topEdge: Object.freeze([0.25, 2.5]),
+    tooth: 0.05,
+    farKeep: 0.4,
+});
+export const SEA_WET = Object.freeze({
+    top: 1.6,
+    wobble: 0.7,
+    cells: Object.freeze([7.5, 23]),
+    edge: Object.freeze([0.16, 0.6]),
+    breathe: 0.12,
+    // (Warm: wet sand is darker AND more saturated; a neutral factor read as grey concrete.)
+    dark: Object.freeze([0.62, 0.52, 0.42]),
+    filmDark: 0.85,
+    toothKeep: 0.3,
+    absorb: Object.freeze([0.50, 0.14, 0.09]),
+    gloss: Object.freeze([0.05, 0.24]),
+    glare: Object.freeze([0.55, 0.06]),
+});
+/**
  * THE SURF LINE FROM AFAR (2026-11-02): the soft white line on the waterline once a pixel spans
  * more depth than the swash front. Its width in pixels (calm, at the top of a run-up), how much of
  * it a broken stretch keeps, the scale of the drifting field that breaks it (per unit), and its
@@ -200,6 +241,22 @@ export function waterRampColour(t, ramp, bands = ODYSSEY_WATER_RAMP.bands) {
         ramp.deep,
         clamp01(seg - 2),
     );
+}
+
+/**
+ * The swash's run-up at phase `f` (0..1 of its cycle), as a share of its reach: up over the first
+ * third, back down over the rest (the water's shoreline vertices and the foam front ride it).
+ */
+export function swashRise01(f) {
+    return smoothstepGpu(0, 0.32, f) * (1 - smoothstepGpu(0.32, 1, f));
+}
+/**
+ * The wet line the run-up leaves (SEA_WET, 2026-11-21): it rises with the water and recedes about
+ * three times slower, so the sand stays dark and glossy after the backwash; at the cycle's wrap it
+ * is back at the base with the water (no step).
+ */
+export function swashMemory01(f) {
+    return smoothstepGpu(0, 0.32, f) * Math.sqrt(Math.sqrt(clamp01(1 - smoothstepGpu(0.32, 1, f))));
 }
 
 /** How much of the lake's bed shows through `depth` units of its water (its clear-water film). */

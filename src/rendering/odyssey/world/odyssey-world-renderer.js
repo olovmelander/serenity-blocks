@@ -54,7 +54,7 @@ import { CLOUD_FIELD_ANCHOR, ODYSSEY_CLOUD_FIELD_SPECS } from './odyssey-cloud-f
 import { WATER_CLOUD_SLOTS, buildWaterCloudProxies, selectWaterClouds } from './odyssey-water-clouds.js';
 import { buildNorthLakeSurface, buildTarnSurface, tarnOpenWater } from './odyssey-tarn-surface.js';
 import {
-    LAKE_WATER, SEA_ABSORB_GAIN, SEA_AIR, SEA_CREST_GLOW, SEA_FILM, SEA_HORIZON_DOWN, SEA_RAMP, SEA_SURF,
+    LAKE_WATER, SEA_ABSORB_GAIN, SEA_AIR, SEA_BEACH, SEA_CREST_GLOW, SEA_WET, SEA_FILM, SEA_HORIZON_DOWN, SEA_RAMP, SEA_SURF,
     SEA_SWELL_TILT, SEA_TROUGH, SEA_WINDROWS, WATER_SHORE_DEPTH_BIAS,
 } from './odyssey-water-looks.js';
 import {
@@ -1743,13 +1743,17 @@ export function createOdysseyWorld({
     };
     const SWASH_RUN = 0.62;
     const SWASH_BASE = -0.14;
+    const swashPhase = (xz) => fract(uTime.mul(0.085).add(xz.x.mul(0.0021)).add(xz.y.mul(0.0013)));
     const swashRise = (xz) => {
-        const f = fract(uTime.mul(0.085).add(xz.x.mul(0.0021)).add(xz.y.mul(0.0013)));
+        const f = swashPhase(xz);
         return smoothstep(float(0.0), float(0.32), f)
             .mul(float(1).sub(smoothstep(float(0.32), float(1.0), f)))
             .mul(SWASH_RUN)
             .add(SWASH_BASE);
     };
+    // The wet line the run-up leaves (twin: swashMemory01): up with the water, back ~3x slower.
+    const swashMemory01 = (f) => smoothstep(float(0.0), float(0.32), f)
+        .mul(sqrt(sqrt(clamp(float(1).sub(smoothstep(float(0.32), float(1.0), f)), 0, 1))));
 
     // THE SKY ABOVE 28 DEGREES — where this function used to return a constant.
     //
@@ -2500,11 +2504,30 @@ export function createOdysseyWorld({
         // the grass palette by 38% moved that plain's screen luma by 1.6% — it was barely grass.
         // 11 u of height on this shore is a beach a person could walk across; the swing stays
         // under the band width, per the dissolve law.
-        const wSandShore = float(1).sub(smoothstep(
-            float(ODYSSEY_SEA_LEVEL - 2),
-            float(ODYSSEY_SEA_LEVEL + 11),
-            height.add(edgeBreak.mul(4)),
-        ));
+        // A DECIDED BEACH (SEA_BEACH, 2026-11-21 sea audit, item 9): the 13 u cross-fade above
+        // ran grass strokes down to the water and put the whole beach half-way to turf. Now pure
+        // sand from the water up to a lobed top 2.6-6.7 u over the sea, turf above it, the edge as
+        // soft as the pixel's height footprint (root terms only: no derivative in a branch).
+        const beachTanSlope = sqrt(max(float(1).sub(baseNormal.y.mul(baseNormal.y)), float(0)))
+            .div(max(baseNormal.y, float(0.05)));
+        const heightPx = footprint.mul(beachTanSlope).toVar();
+        const beachNoise = Fn(() => {
+            const o = vec2(0, 1).toVar();
+            If(height.greaterThan(ODYSSEY_SEA_LEVEL - 6).and(height.lessThan(ODYSSEY_SEA_LEVEL + 9)), () => {
+                o.assign(vec2(
+                    noise2(positionWorld.xz.div(float(SEA_BEACH.topCell)).add(vec2(6.1, 2.7))).sub(0.5)
+                        .mul(2 * SEA_BEACH.topWobble),
+                    noise2(positionWorld.xz.div(float(SEA_BEACH.toneCell)).add(vec2(3.3, 8.1))).sub(0.5)
+                        .mul(2 * SEA_BEACH.tone)
+                        .add(1),
+                ));
+            });
+            return o;
+        })().toVar();
+        const beachTop = float(ODYSSEY_SEA_LEVEL + SEA_BEACH.top).add(beachNoise.x)
+            .add(edgeBreak.mul(SEA_BEACH.topBreak).mul(detailMelt));
+        const beachEdge = clamp(heightPx.mul(1.5), SEA_BEACH.topEdge[0], SEA_BEACH.topEdge[1]);
+        const wSandShore = float(1).sub(smoothstep(beachTop.sub(beachEdge), beachTop.add(beachEdge), height));
         /**
          * THE NORTH BEACH (2026-11-02): the bay of `odysseyNorthBeachAt`, in its own frame (`u`
          * along the chord, `s` inland of the waterline). Sand from the water up through the
@@ -2557,6 +2580,11 @@ export function createOdysseyWorld({
         const tarnD = fTarn.b.div(drawnScale).toVar();
         const tarnNear = float(1).sub(smoothstep(float(TARN_SHORE.near[0]), float(TARN_SHORE.near[1]), tarnD))
             .mul(drawnIn)
+            .toVar();
+        // The sea's own beach (SEA_BEACH): not the north beach's bay, not the tarn's or the lake's
+        // shore, and the shelf only down to a few units under the water.
+        const seaBeachIn = float(1).sub(tarnNear).mul(float(1).sub(nbBelt))
+            .mul(smoothstep(float(ODYSSEY_SEA_LEVEL - 6), float(ODYSSEY_SEA_LEVEL - 3), height))
             .toVar();
         // Which stretches of shore are beach (1) and which are turf down to the water (0): one
         // low noise, split short, so a stretch is one or the other.
@@ -2844,6 +2872,28 @@ export function createOdysseyWorld({
         const kRock = wRockCrisp.mul(float(1).sub(kSnow)).toVar();
         const kSand = wSand.mul(float(1).sub(wRockCrisp)).mul(float(1).sub(kSnow)).toVar();
         const kGrass = clamp(float(1).sub(kSnow).sub(kRock).sub(kSand), 0, 1).toVar();
+        // THE WET SAND (SEA_WET, 2026-11-21): x the sand the sea keeps damp (up to a wandering top
+        // ~1.6 u over the water), y the thin film the backwash leaves (on the run-up's memory: it
+        // recedes ~3x slower than the water), z the depth of the live water over it.
+        const wetField = Fn(() => {
+            const o = vec3(0).toVar();
+            If(height.lessThan(ODYSSEY_SEA_LEVEL + 3.0).and(seaBeachIn.greaterThan(0.001)), () => {
+                const f = swashPhase(positionWorld.xz).toVar();
+                const live = float(ODYSSEY_SEA_LEVEL + SWASH_BASE).add(smoothstep(float(0.0), float(0.32), f)
+                    .mul(float(1).sub(smoothstep(float(0.32), float(1.0), f))).mul(SWASH_RUN));
+                const mem01 = swashMemory01(f).toVar();
+                const memY = float(ODYSSEY_SEA_LEVEL + SWASH_BASE).add(mem01.mul(SWASH_RUN));
+                const rag = noise2(positionWorld.xz.div(float(SEA_WET.cells[0])).add(vec2(2.3, 9.1))).sub(0.5).mul(1.2)
+                    .add(noise2(positionWorld.xz.div(float(SEA_WET.cells[1])).add(vec2(7.7, 0.4))).sub(0.5).mul(0.8));
+                const top = float(ODYSSEY_SEA_LEVEL + SEA_WET.top).add(rag.mul(SEA_WET.wobble)).add(mem01.mul(SEA_WET.breathe));
+                const e = clamp(heightPx.mul(0.9), SEA_WET.edge[0], SEA_WET.edge[1]);
+                const damp = float(1).sub(smoothstep(top.sub(e), top.add(e), height));
+                const film = float(1).sub(smoothstep(memY.sub(0.08), memY.add(0.10), height));
+                const under = clamp(live.sub(height), 0, 3);
+                o.assign(vec3(damp.mul(kSand).mul(seaBeachIn), film.mul(kSand).mul(seaBeachIn), under.mul(seaBeachIn)));
+            });
+            return o;
+        })().toVar('wetField');
 
         /**
          * MOISTURE picks the point on each material's two-pole axis. The baked field carries
@@ -2910,12 +2960,23 @@ export function createOdysseyWorld({
         // stands in the turning shade, and whether its light is already the afternoon's.
         const gTurn = dayTurnOf(positionWorld.xz).toVar();
         const grassPole = mix(poles('grass').mul(meadowTint), vec3(...NORTH_BEACH_PAINT.grass), nbBelt.mul(nbDune));
+        // The sea's beach is pale dry sand (SEA_BEACH.dry) with a broad tonal swell, eased back
+        // toward the palette's sand from afar so the coast seen from the climb has no pale outline.
+        const beachSand = mix(
+            vec3(...SEA_BEACH.dry).mul(beachNoise.y),
+            vec3(...ODYSSEY_GROUND_PALETTE.sand.dry),
+            smoothstep(float(6), float(24), footprint).mul(SEA_BEACH.farKeep),
+        );
         const sandPole = mix(
             mix(
-                poles('sand'),
-                vec3(...NORTH_BEACH_PAINT.pale).mul(mix(float(1), float(0.86), dryness.oneMinus())),
-                nbBelt.mul(NORTH_BEACH_PAINT.paleMix),
-            ).mul(mix(float(1), nbTufts.y, nbBelt)),
+                mix(
+                    poles('sand'),
+                    vec3(...NORTH_BEACH_PAINT.pale).mul(mix(float(1), float(0.86), dryness.oneMinus())),
+                    nbBelt.mul(NORTH_BEACH_PAINT.paleMix),
+                ).mul(mix(float(1), nbTufts.y, nbBelt)),
+                beachSand,
+                seaBeachIn,
+            ),
             // By the tarn the "sand" is its gravel (TARN_SHORE.gravel).
             vec3(...TARN_SHORE.gravel),
             tarnNear,
@@ -2955,7 +3016,8 @@ export function createOdysseyWorld({
             .add(tooth.mul(kSnow));
         const toothAmt = float(GROUND_TOOTH.grass).mul(kGrass)
             .add(float(GROUND_TOOTH.rock).mul(kRock))
-            .add(float(GROUND_TOOTH.sand).mul(kSand))
+            .add(mix(float(GROUND_TOOTH.sand), float(SEA_BEACH.tooth), seaBeachIn)
+                .mul(float(1).sub(wetField.x.mul(1 - SEA_WET.toothKeep))).mul(kSand))
             .add(float(GROUND_TOOTH.snow).mul(kSnow));
         albedo = albedo.mul(mix(float(1), toothMat, detailMelt.mul(toothAmt)));
 
@@ -3005,14 +3067,29 @@ export function createOdysseyWorld({
             .mul(FOREST_SHADE_PLATE.colourScale * FOREST_FAR_TONE);
         albedo = mix(albedo, canopyMean, clamp(farForest.mul(1.6), 0, 1));
 
+        // THE WET SAND'S ALBEDO (SEA_WET): darker where the sea keeps it damp, a little more under
+        // the backwash's film, and the first units of water over it taking red first (from above;
+        // under water the haze owns it). Replaces the old 1 u matte strip.
+        const albedoBeforeWet = albedo;
+        albedo = Fn(() => {
+            const a = albedoBeforeWet.toVar();
+            If(wetField.x.add(wetField.z).greaterThan(0.001), () => {
+                a.assign(a
+                    .mul(mix(vec3(1), vec3(...SEA_WET.dark), wetField.x))
+                    .mul(mix(float(1), float(SEA_WET.filmDark), wetField.y))
+                    .mul(mix(
+                        vec3(1),
+                        exp(vec3(...SEA_WET.absorb).negate().mul(min(wetField.z, float(2)))),
+                        float(1).sub(smoothstep(float(2), float(3), wetField.z)).mul(float(1).sub(uSubmerged)),
+                    )));
+            });
+            return a;
+        })();
         const SHORE_TOP = ODYSSEY_SEA_LEVEL + 1.2;
         const albedoInland = albedo;
         albedo = Fn(() => {
             const a = albedoInland.toVar();
             If(height.lessThan(SHORE_TOP), () => {
-                const wetReach = float(ODYSSEY_SEA_LEVEL + SWASH_BASE + SWASH_RUN + 0.22);
-                const wetSand = smoothstep(wetReach.add(0.30), wetReach, height).mul(kSand);
-                a.assign(a.mul(mix(vec3(1), vec3(0.70, 0.66, 0.66), wetSand.mul(0.85))));
                 // THE SEABED (item 4). Everything under the shelf is weighted "sand", so the ocean
                 // floor wore the BEACH palette — warm khaki under a blue column, which the water's
                 // red-first extinction turned into grey murk. Below a few metres it leans to a cool
@@ -3177,14 +3254,39 @@ export function createOdysseyWorld({
                     .mul(smoothstep(sin(uTime.mul(0.7)).mul(0.04).add(0.52), float(0.80), causticWeb))
                     // Projected surface light cannot paint a cliff wall or the underside of a ledge.
                     .mul(clamp(normal.y, 0, 1));
-                // The backwash sheen: wet sand just above the LIVE waterline mirrors a little sky,
-                // riding the same `swashRise` clock as the water's shoreline vertices.
-                const swashHere = float(ODYSSEY_SEA_LEVEL).add(swashRise(positionWorld.xz));
-                const wetGlisten = smoothstep(swashHere.add(0.55), swashHere.add(0.04), height)
-                    .mul(smoothstep(swashHere.sub(0.10), swashHere.add(0.04), height))
-                    .mul(kSand);
-                c.assign(vec3(0.55, 0.85, 0.90).mul(caustic).mul(sunVis.mul(0.7).add(0.3)).mul(0.5)
-                    .add(mix(uSkyHorizon, uSkyZenith, float(0.35)).mul(wetGlisten).mul(0.12)));
+                c.assign(vec3(0.55, 0.85, 0.90).mul(caustic).mul(sunVis.mul(0.7).add(0.3)).mul(0.5));
+            });
+            return c;
+        })();
+        // THE WET SAND'S SHEEN (SEA_WET, 2026-11-21; replaces the constant glisten strip): wet sand
+        // is a weak mirror, so it takes the sky by a Fresnel share (more under the backwash's film),
+        // and on High the reflected sky itself and a narrow lobe of the sun's glare. Only where
+        // the sand is out of the water (the sea's film draws the rest).
+        const wetSheen = Fn(() => {
+            const c = vec3(0).toVar();
+            If(wetField.x.add(wetField.y).greaterThan(0.002), () => {
+                const wN = normalize(mix(baseNormal, normal, 0.3));
+                const wV = normalize(cameraPosition.sub(positionWorld));
+                const wFb = float(1).sub(clamp(dot(wN, wV), 0, 1));
+                const wFb2 = wFb.mul(wFb);
+                const wFres = wFb2.mul(wFb2).mul(wFb).mul(0.98).add(0.02);
+                const exposed = float(1).sub(smoothstep(float(0.0), float(0.25), wetField.z));
+                const gloss = mix(float(SEA_WET.gloss[0]), float(SEA_WET.gloss[1]), wetField.y).add(wFres.mul(0.6))
+                    .mul(max(wetField.x, wetField.y)).mul(exposed);
+                if (q.waterReflections) {
+                    const wR = reflect(wV.negate(), wN);
+                    const wHv = normalize(ODYSSEY_EVENING_U.sunDir.add(wV).add(vec3(0, 1e-4, 0)));
+                    const wNh = clamp(dot(wN, wHv), 0, 1);
+                    const lobe = smoothstep(float(0.985), float(0.9985), wNh).mul(SEA_WET.glare[0])
+                        .add(smoothstep(float(0.94), float(0.985), wNh).mul(SEA_WET.glare[1]));
+                    c.assign(skyAirAt(vec3(wR.x, max(wR.y, float(0.02)), wR.z), false).mul(gloss)
+                        .add(landSunOf(gTurn).mul(lobe)
+                            .mul(wetField.y.add(wetField.x.mul(0.3)))
+                            .mul(sunVis.mul(treeSun).mul(exposed))
+                            .mul(float(1).sub(smoothstep(float(1), float(4), footprint)))));
+                } else {
+                    c.assign(mix(uSkyHorizon, uSkyZenith, float(0.45)).mul(gloss));
+                }
             });
             return c;
         })();
@@ -3214,7 +3316,8 @@ export function createOdysseyWorld({
             ? mix(
                 float(1),
                 cloudShadowLight(positionWorld.xz, gTurn),
-                smoothstep(float(ODYSSEY_SEA_LEVEL + 1), float(ODYSSEY_SEA_LEVEL + 6), height),
+                // (From SEA + 0.2, 2026-11-21: the dry beach shades with the land.)
+                smoothstep(float(ODYSSEY_SEA_LEVEL + 0.2), float(ODYSSEY_SEA_LEVEL + 1.6), height),
             )
             : float(1);
         // Lambert, S-shaped. The shoulders group the terminator into masses (the painted law);
@@ -3308,6 +3411,7 @@ export function createOdysseyWorld({
         // measured 0.27-0.32 band, and dimmed sunlit hollows that the sun plainly reaches.
         groundColour = surface.mul(lightCol).mul(value).mul(cavity)
             .add(shoreLight)
+            .add(wetSheen)
             // ALPENGLOW: high snow takes a warm kiss, riding the same kSnow the albedo uses so it
             // can never bleed onto rock or meadow, and multiplied by the baked sun visibility so
             // a shadowed crown stays cold. ⚠️ ON THE TURN OF THE FORM ONLY (item 6): it rode
@@ -3741,10 +3845,15 @@ export function createOdysseyWorld({
             H.xz.sub(vec2(FOREST_SHADE_PLATE.x, FOREST_SHADE_PLATE.z)).div(FOREST_SHADE_PLATE.extent).add(0.5),
         ).level(0).g;
         const meadow = mix(vec3(...ODYSSEY_GROUND_PALETTE.grass.damp), vec3(0.075, 0.13, 0.05), cover);
+        // (The sea's beach as the ground paints it, SEA_BEACH and SEA_WET, 2026-11-21.)
         const beach = mix(
-            vec3(...ODYSSEY_GROUND_PALETTE.sand.dry),
+            mix(
+                vec3(...SEA_BEACH.dry).mul(vec3(...SEA_WET.dark)),
+                vec3(...SEA_BEACH.dry),
+                smoothstep(float(ODYSSEY_SEA_LEVEL + 1.2), float(ODYSSEY_SEA_LEVEL + 2.0), H.y),
+            ),
             meadow,
-            smoothstep(float(ODYSSEY_SEA_LEVEL + 2), float(ODYSSEY_SEA_LEVEL + 9), H.y),
+            smoothstep(float(ODYSSEY_SEA_LEVEL + 3.5), float(ODYSSEY_SEA_LEVEL + 5.5), H.y),
         );
         const rock = vec3(...ODYSSEY_GROUND_PALETTE.rock.dry);
         const snow = vec3(...ODYSSEY_GROUND_PALETTE.snow.dry);
