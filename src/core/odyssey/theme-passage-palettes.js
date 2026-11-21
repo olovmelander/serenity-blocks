@@ -26,7 +26,7 @@ export const ODYSSEY_THEME_PASSAGE_PALETTES = Object.freeze({
     galaxy: ['#fce7f0', '#855aa3', '#cb81be', '#201134', 0.41],
     geode: ['#fedca2', '#f28c46', '#8e4adf', '#8737a5', 0.52],
     'golden-forest': ['#fffce5', '#cc851b', '#e3bb76', '#944b01', 0.59],
-    grainfields: ['#f6cfd0', '#e69e39', '#aca5ec', '#776450', 0.63],
+    grainfields: ['#d8aa78', '#c78530', '#cf9650', '#514a41', 0.5],
     'halcyon-apex': ['#fef8cd', '#dcc6a1', '#73f2eb', '#777271', 0.7],
     'high-coast': ['#fff4ce', '#5f6bb2', '#a77329', '#1e1b20', 0.4],
     'himalayan-peak': ['#fff7b3', '#8673ae', '#d66e3c', '#3e2a46', 0.48],
