@@ -1,3 +1,5 @@
+import { HIDDEN_ROWS } from '../constants.js';
+import { hasObscuredStack } from '../blind.js';
 import { GravityBotController, gravityPlanningRate } from './gravity-bot-controller.js';
 import { normalizeDifficultyTier } from './bot-difficulty.js';
 import { seededRandom } from '../../utils/helpers.js';
@@ -5,7 +7,7 @@ import { seededRandom } from '../../utils/helpers.js';
 // Fitted against both the first KO and the three-frag finish on 4,480 local
 // matches. A seat's board reading and hand speed persist through the series.
 const LOCAL_PRACTICE_CHANCE = [0.75, 0.6, 0.45, 0.3, 0.25, 0.25, 0, 0.3, 0.5];
-const LOCAL_ACTION_RATE = [108, 126, 133, 218, 292, 290, 350, 460, 620];
+const LOCAL_ACTION_RATE = [108, 126, 133, 218, 292, 290, 350, 515, 760];
 
 function localPace(nominalTier, seed, index) {
     if (nominalTier === 10) return null;
@@ -74,9 +76,24 @@ export class LocalBotManager {
                 playerIndex: index,
                 playerState,
                 pendingRows: () => this.multiplayerState.getGarbageQueue?.(index)?.getTotalLines() || 0,
+                versus: !this.multiplayerState.matchConfig?.attackRules?.disableAttacks,
+                finishingRoom: () => {
+                    const match = this.multiplayerState;
+                    const opponent = match.players[1 - index];
+                    const rules = match.matchConfig?.attackRules;
+                    // Only a standard head-to-head duel sends the gross attack
+                    // directly. Team targeting, scaled damage and handicaps differ.
+                    if (match.numPlayers !== 2 || !opponent?.isAlive || hasObscuredStack(opponent)
+                        || playerState.isInfinityMode || match.matchConfig?.isTeamMode || match._isHotPotatoEnabled?.()
+                        || rules?.disableAttacks || (rules?.forceAttackType && rules.forceAttackType !== 'lines')
+                        || playerState.handicap !== opponent.handicap) return Infinity;
+                    const grid = opponent.boardGrid;
+                    const top = grid.findIndex((row, y) => y >= HIDDEN_ROWS && row.some(Boolean));
+                    return (top < 0 ? grid.length : top) - HIDDEN_ROWS;
+                },
                 sharedSearch,
                 precomputeBetweenTicks: true,
-                planUnitsPerMs: gravityPlanningRate(botCount),
+                planUnitsPerMs: gravityPlanningRate(botCount, difficulty),
                 rng: seededRandom((seed ^ Math.imul(index + 1, 0x85ebca6b)) >>> 0),
                 timingRng: seededRandom((seed ^ Math.imul(index + 1, 0xc2b2ae35)) >>> 0),
             }));

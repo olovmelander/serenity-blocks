@@ -675,7 +675,14 @@ export function createHerdSim({ count = 9, seed = 0x40e5, view = DEFAULT_VIEW } 
                     h.spotX = sx;
                     h.spotZ = sz;
                 }
-                if (h.business === 'look') h.lookYaw = (rng() - 0.5) * 1.6;
+                if (h.business === 'look') {
+                    // A foal checks its dam; the band looks towards the lead mare between bites.
+                    const scan = (rng() - 0.5) * 1.6;
+                    const companion = horses[h.mother >= 0 ? h.mother : 0];
+                    const bearing = Math.atan2(companion.x - h.x, companion.z - h.z);
+                    const turn = clamp(wrapAngle(bearing - h.heading), -0.82, 0.82);
+                    h.lookYaw = h === companion ? scan : turn * 0.76 + scan * 0.24;
+                }
             }
             const mother = h.mother >= 0 ? horses[h.mother] : null;
             const { creeping } = h;

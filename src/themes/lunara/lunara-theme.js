@@ -364,7 +364,10 @@ export default class LunaraTheme extends BaseTheme {
             }),
         );
         this.registerEventListener(window, 'settingsChanged', (p) => this.handleSettingsChanged(p));
-        this.registerEventListener(window, 'gameOver', () => this.resetSession());
+        this.registerEventListener(window, 'gameOver', () => {
+            this.resetSession();
+            if (playing() && this.director?.enabled) this.world?.onGameOver();
+        });
 
         const resetPointer = () => {
             this.pointer.x = 0;
@@ -507,7 +510,7 @@ export default class LunaraTheme extends BaseTheme {
         this.modeManager = manager;
         const relayout = () => this.scheduleLayoutReads();
         this.eventUnsubscribers.push(
-            manager.on('modeStarted', relayout),
+            manager.on('modeStarted', () => this.resetSession()),
             manager.on('modeActivated', relayout),
             manager.on('modeStopped', () => this.resetSession()),
         );

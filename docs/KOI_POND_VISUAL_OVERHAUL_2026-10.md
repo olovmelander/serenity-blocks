@@ -11,6 +11,28 @@ playground. It supersedes `KOI_POND_MASTERPIECE_PLAN_2026-07.md`.
 | --- | --- |
 | ![before](koi-pond-overhaul/before.jpg) | ![after](koi-pond-overhaul/idle.jpg) |
 
+## Garden and gameplay pass, 21 November 2026
+
+The opening frame already had a clear composition. Moonlit water and fish occupied the left reach, the lantern anchored the right bank, and the deep basin gave the playfield a quiet background. This pass kept the camera, schooling, swimming shadows and simulated water. The comparison uses the same camera, seed, quality and time on both sides. [Opening frame before and after](koi-pond-overhaul/november-comparison.jpg)
+
+| What the audit found | What changed in play |
+| --- | --- |
+| Scale markings formed a hard grid, the paired fins spread like fans, and a small school could miss orange altogether. | Six contrasting varieties appear on every tier. Curved gill covers, barbels, staggered scale edges, independently rowing pectorals and a forked tail distinguish the fish in motion. |
+| Equally dense gravel covered much of the shelf. Bright patches of caustic light obscured markings near the moon. | Sand breaks up the gravel bars, some larger stones carry mineral veins, and the bed falls into dark silt. Finer caustic folds and a shorter colour split let the backs of swimming koi remain visible under the shimmer. |
+| The lantern roof hid most of its light. A straight band of mist crossed the bank, and the mossy boulders shared a similar silhouette. | Taller amber windows sit beneath the carved roof. Rock ledges catch the light through openings in the mist. Fireflies answer each other along the bank and retain their reflections. |
+| Most tiers allocated no pads to the two foreground rafts. The lilies read as pointed stars and the detached maple leaves already lay on the surface. | Both near rafts receive pads. Pink, cupped flowers have two rings of gold stamens. Leaves tumble from the canopy, tap the wave simulation on landing and drift into the feeding paths of the koi. |
+| The six nights changed colour, while the reflected moon kept the same shape and the surface stayed similarly busy. | Each night has a lunar phase and wind strength. The frost moon makes quieter reflections, and passing showers on the moss-rain night dimple the water. Level changes and the clock still turn the same six-night cycle. [Four nights at the pond](koi-pond-overhaul/november-nights.jpg) |
+| The first three clears mainly differed in how many fish leapt. The larger events could wash into broad glowing rings, and the dragon read as a bright tube. | A single clear throws a pearl crescent, a double breaks water on opposite banks, and a triple skips along one shore. Twists spiral, cascades carry an answering crest and hard drops respond to fall distance. Four lines wake a sculpted jade dragon. A perfect clear adds a delayed procession from lily to lily. [Gameplay event captures](koi-pond-overhaul/november-events.jpg) |
+| Two piece colours were nearly the same gold. The old preview placed the stats panel to the right even on an upright screen, and the far bank above the queue was bare. | Seven distinct piece colours use the live Phaser rim and gloss settings. The solo well picks up jade and lantern gold. In portrait, a crimson maple bough frames the queue and the stats sit below the board. [Portrait layout](koi-pond-overhaul/november-portrait.jpg) |
+
+At the end of a run, an amber ripple draws inward toward the lily nearest the lantern. The blossom opens, holds the light briefly, then settles. Starting a new run clears the farewell.
+
+The wave field processes the live wakes and plungers, illuminated rings expire independently, and spray uploads contain only living droplets. Reduced motion suppresses the leaf flights and drizzle. Reduce flashing also softens the four-line dip in light. The shader tests build the pond's materials and both simulation passes to WGSL and GLSL.
+
+Three keyboard hard drops in a live solo game exercised the real input, event director, board, score panel and renderer together. Continuing to a 13-piece top-out confirmed that the game-over event selected the lantern-side lily and started its fade beneath the results screen. The real game and the isolated WebGPU and WebGL2 captures reported zero shader validation errors. [Solo play](koi-pond-overhaul/november-solo.jpg)
+
+On an NVIDIA Blackwell desktop, the High playground at 1280 × 800 recorded 178 frame intervals over six seconds of the demo, including the four-line clear and dragon emergence. With the cap set to 30 fps, the median interval was 33.3 ms and the 95th percentile was 37.1 ms. CPU submission took 5.7 ms median and 9.9 ms at the 95th percentile. The portrait check used desktop Chrome's WebGL2 backend at an emulated 390 × 844. Physical phone performance remains unmeasured. [Capture measurements](koi-pond-overhaul/november-profile.json)
+
 ## What the player sees
 
 The camera leans over a garden pond at night and looks steeply down past the board card into

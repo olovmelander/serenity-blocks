@@ -67,11 +67,14 @@ import { LANTERN_FLAME_DROP, palmCrownCentre, planGarden } from './moonlit-green
 import {
     REST_RIG, aimLanding, aimLeave, boardFor, boardPoint, cardFor, fallbackLayout, fovForAspect, frameFor,
 } from './moonlit-greenhouse-composition.js';
-import { createGardenNoise, createNight, tune } from './moonlit-greenhouse-tsl.js';
+import {
+    createGardenNoise, createMoonFace, createNight, tune,
+} from './moonlit-greenhouse-tsl.js';
 import { createGlass } from './moonlit-greenhouse-glass.js';
 import { createIronSteps } from './moonlit-greenhouse-iron.js';
 import { createFloor } from './moonlit-greenhouse-floor.js';
 import { createLanterns } from './moonlit-greenhouse-lanterns.js';
+import { createOrchids } from './moonlit-greenhouse-orchids.js';
 import {
     createFernsSteps, createLeavesSteps, createPalmsSteps, createVinesSteps,
 } from './moonlit-greenhouse-flora.js';
@@ -90,7 +93,7 @@ export { REST_RIG, fovForAspect };
 
 /** The parts a capture can show alone. */
 export const MOONLIT_GREENHOUSE_PARTS = Object.freeze([
-    'glass', 'iron', 'floor', 'lanterns', 'palms', 'ferns', 'leaves', 'vines', 'water', 'pads', 'reeds',
+    'glass', 'iron', 'floor', 'lanterns', 'palms', 'ferns', 'leaves', 'vines', 'orchids', 'water', 'pads', 'reeds',
     'fireflies', 'moths', 'motes', 'dew', 'blooms', 'queen', 'glows',
 ]);
 
@@ -248,6 +251,11 @@ export class MoonlitGreenhouseWorld {
             stars: uniform(1),
             cloud: uniform(0.35),
             cloudDrift: uniform(new THREE.Vector2(0, 0)),
+            // Drifting cloud cover, low canal mist, lunar terminator and air movement.
+            weather: uniform(new THREE.Vector4()),
+            // Start times for a double, a triple, a broken chain and a level change.
+            aisleCues: uniform(new THREE.Vector4(-100, -100, -100, -100)),
+            cueLight: uniform(1),
             lanternRows: uniformArray(this.lanternRowsV, 'vec4'),
             lanternCount: uniform(0),
             lanternGain: uniform(1),
@@ -286,6 +294,20 @@ export class MoonlitGreenhouseWorld {
         this.fliers = [];
         /** Pollen rising from released blooms: { x, y, z, t0, rgb, seed, fadeAt }. */
         this.pollen = [];
+        // The Queen sheds individual tepals over the two banks. Stable paths make the crown
+        // seekable and reuse the existing glow upload, including on the lowest tier.
+        const petalRand = mulberry32(seed ^ 0x641a);
+        this.crownFall = Array.from({ length: this.tier.queenPetals * 2 }, (_, i) => ({
+            side: i % 2 ? 1 : -1,
+            x: 1.8 + petalRand() * 1.25,
+            z: -0.65 - petalRand() * 9.2,
+            height: 3.1 + petalRand() * 2.9,
+            delay: petalRand() * 2.6,
+            life: 3.3 + petalRand() * 1.8,
+            phase: petalRand() * Math.PI * 2,
+            shade: petalRand(),
+            size: 0.035 + petalRand() * 0.042,
+        }));
         /** The turns of the air in flight (twists): when each began and what share of a turn. */
         this.turns = Array.from({ length: TURN_SLOTS }, () => ({ at: -100, amp: 0 }));
         /**
@@ -386,6 +408,7 @@ export class MoonlitGreenhouseWorld {
     * buildSteps() {
         const { tier, U } = this;
         this.noise = createGardenNoise(tier.noise);
+        U.moonFace = createMoonFace();
         this.plan = planGarden(tier, this.seed);
         yield 'plan';
         const ctx = {
@@ -402,6 +425,7 @@ export class MoonlitGreenhouseWorld {
             ferns: createFernsSteps,
             leaves: createLeavesSteps,
             vines: createVinesSteps,
+            orchids: createOrchids,
             water: createWater,
             pads: createPadsSteps,
             reeds: createReedsSteps,
@@ -525,6 +549,7 @@ export class MoonlitGreenhouseWorld {
         s.combo = 0;
         s.level = 1;
         s.lanternKick = 0;
+        this.U.aisleCues.value.set(-100, -100, -100, -100);
         s.gust = 0;
         s.hushAt = -100;
         s.hushDepth = 1;
@@ -935,6 +960,14 @@ export class MoonlitGreenhouseWorld {
         const pace = TIMING.paneWave * (1 + 0.07 * Math.min(depth - 1, 6));
         const deep = Math.min(1, 0.25 * (depth - 1));
         const tint = this._tint;
+        // A single drops a pearl into the near canal. Cascades step down alternate banks.
+        // A double answers in the lamp strings and a triple opens the glass fans.
+        if (!big && (lines === 1 || depth > 1)) {
+            const bank = (s.clears % 2 ? -1 : 1) * 1.56;
+            this.addRing(bank, -1.4 - Math.min(depth - 1, 6) * 0.8, this.clock + 0.12, 0.76, night.glow, 0.9);
+        }
+        if (!big && lines === 2) this.U.aisleCues.value.x = this.clock;
+        if (!big && lines === 3) this.U.aisleCues.value.y = this.clock;
         for (let i = 0; i < lines; i += 1) {
             const at = this.clock + i * 0.24 + delay;
             const base = i % 2 === 0 ? night.moonlight : night.glow;
@@ -1097,6 +1130,7 @@ export class MoonlitGreenhouseWorld {
 
     /** The longest chain any board is holding (0 = it broke). */
     onCombo(combo) {
+        if (this.state.combo > 1 && combo === 0) this.U.aisleCues.value.z = this.clock;
         this.state.combo = Math.max(0, combo | 0);
     }
 
@@ -1113,6 +1147,7 @@ export class MoonlitGreenhouseWorld {
         // The new night announces itself: a slow wave of its own glow runs across the glazing from
         // the ridge above the card.
         if (!silent) {
+            this.U.aisleCues.value.w = this.clock;
             const next = nightAt(night.to + this.clock / NIGHT_SECONDS, {});
             this.addWave(-24, ARC.length, this.clock + 0.4, 1.4, next.glow, TIMING.paneWave * 0.55);
             this.surge.levelUp(this.clock);
@@ -1136,15 +1171,22 @@ export class MoonlitGreenhouseWorld {
     /** Hand the night's colours to the shaders. */
     applyNight() {
         const { U } = this;
-        const light = nightAt(this.nightPlace(), this.light);
+        const place = this.nightPlace();
+        const light = nightAt(place, this.light);
         for (let i = 0; i < NIGHT_COLOURS.length; i += 1) {
             const colour = light[NIGHT_COLOURS[i]];
             this.nightRows[i].set(colour[0], colour[1], colour[2], 0);
         }
         // A fever clears the sky: the cloud thins and the stars come out over the glass.
         const { fever } = this.heat;
-        U.stars.value = light.stars * (1 + 0.8 * fever);
-        U.cloud.value = light.cloud * (1 - 0.7 * fever);
+        const t = this.clock;
+        const cloud = 0.5 + 0.32 * Math.sin(t * 0.083 - 0.8) + 0.18 * Math.sin(t * 0.043 + 1.9);
+        const mist = 0.5 + 0.32 * Math.sin(t * 0.107 + 1.2) + 0.18 * Math.sin(t * 0.057 - 1.4);
+        const draft = this.reducedMotion ? 0.2 : 0.59 + 0.41 * Math.sin(t * 0.114 - 1.1);
+        const lunarAngle = place * (Math.PI / 3) + 0.5;
+        U.weather.value.set(cloud, mist, 0.34 + 0.34 * Math.sin(lunarAngle), draft);
+        U.stars.value = light.stars * (1 + 0.8 * fever) * (1.14 - 0.3 * cloud);
+        U.cloud.value = light.cloud * (1 - 0.7 * fever) * (0.52 + 1.18 * cloud);
     }
 
     /** Point the moon where the frame wants it (through the rest lens) plus the clock's drift. */
@@ -1240,6 +1282,7 @@ export class MoonlitGreenhouseWorld {
         this.clock += dt;
         const t = this.clock;
         U.time.value = t;
+        U.cueLight.value = flashScale();
         // How hot play runs (src/themes/shared/gameplay-surge.js): the acts the house plays.
         const heat = this.surge.sample(t);
         this.heat = heat;
@@ -1466,11 +1509,11 @@ export class MoonlitGreenhouseWorld {
                     this._seedP.x,
                     this._seedP.y,
                     this._seedP.z,
-                    j === 0 ? 0.13 : 0.07 * fade + 0.02,
+                    j === 0 ? 0.15 : 0.07 * fade + 0.02,
                     sd.rgb[0] * k,
                     sd.rgb[1] * k,
                     sd.rgb[2] * k,
-                    0,
+                    j === 0 ? 3 : 0,
                 );
             }
         }
@@ -1507,6 +1550,27 @@ export class MoonlitGreenhouseWorld {
                 ff[2] * k,
                 0,
             );
+        }
+        if (this.state.queenPerfect && t >= this.state.perfectAt && t - this.state.perfectAt < 7.8) {
+            const age = t - this.state.perfectAt;
+            const motion = this.reducedMotion ? 0.24 : 1;
+            for (const flower of this.crownFall) {
+                const life = (age - flower.delay) / flower.life;
+                if (life <= 0 || life >= 1) continue;
+                const angle = flower.phase + life * 8 * motion;
+                const fade = smooth(0, 0.14, life) * (1 - smooth(0.75, 1, life));
+                const tint = flower.shade;
+                glows.push(
+                    flower.side * (flower.x + Math.sin(angle) * 0.43 * motion),
+                    flower.height * (1 - life * life),
+                    flower.z + Math.cos(angle) * 0.38 * motion,
+                    flower.size * (0.6 + 0.4 * Math.abs(Math.cos(angle))),
+                    fade * (0.9 + tint),
+                    fade * (0.37 + tint * 0.65),
+                    fade * (0.58 + 0.59 * (1 - tint)),
+                    4 + ((flower.phase / (Math.PI * 2) + life * 1.65 * motion) % 1),
+                );
+            }
         }
         // Pollen rising from closing blooms toward the glass, drifting, glittering in the beams.
         const rise = TIMING.pollenRise;
@@ -1632,6 +1696,7 @@ export class MoonlitGreenhouseWorld {
         this.updating = [];
         this.group.removeFromParent();
         this.noise?.dispose();
+        this.U.moonFace?.dispose();
         this.noise = null;
         this.camera = null;
     }

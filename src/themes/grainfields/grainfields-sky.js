@@ -71,6 +71,26 @@ export function createSky(u, t, tier) {
                 .mul(0.9));
         });
 
+        // The harvest moon hangs above the gate as dusk gives way to blue hour.
+        // Put the limb in the image plane so the disc stays round off-axis.
+        If(u.moon.w.greaterThan(0.001).and(dot(dir, u.moon.xyz).greaterThan(0.985)), () => {
+            const facing = max(dot(u.moon.xyz, u.camFwd), 0.05).toVar();
+            const delta = dir.mul(facing.div(max(dot(dir, u.camFwd), 0.05))).sub(u.moon.xyz);
+            const p = vec2(dot(delta, u.camRight), dot(delta, u.camUp)).div(0.01).toVar();
+            const r2 = dot(p, p).toVar();
+            const halo = exp(r2.mul(-0.14)).mul(0.14).add(exp(r2.mul(-0.018)).mul(0.042));
+            sky.addAssign(vec3(0.8, 0.67, 0.46).mul(halo).mul(u.moon.w));
+            If(r2.lessThan(1.55), () => {
+                const edge = u.pixelAngle.mul(facing).div(0.01).clamp(0.025, 0.24);
+                const disc = float(1.0).sub(smoothstep(float(1.0).sub(edge), float(1.0).add(edge), r2.sqrt()));
+                const depth = float(1.0).sub(r2).max(0.0).sqrt();
+                const seas = texture(t.noise, p.mul(0.13).add(vec2(0.37, 0.63))).level(1.5).r;
+                const face = smoothstep(0.34, 0.68, seas).mul(0.19).add(0.78)
+                    .mul(depth.mul(0.36).add(p.x.mul(0.12)).add(0.61));
+                sky.assign(mix(sky, vec3(1.8, 1.42, 0.93).mul(face), disc.mul(u.moon.w)));
+            });
+        });
+
         // ── High cirrus through the gaps ──
         if (tier.clouds > 1) {
             If(dir.y.greaterThan(0.02), () => {
@@ -136,7 +156,7 @@ export function createSky(u, t, tier) {
             const m2 = m.mul(m);
             const m4 = m2.mul(m2);
             const m8 = m4.mul(m4);
-            const forward = m8.mul(m8).mul(m8).mul(3.2).add(m4.mul(0.5));
+            const forward = m8.mul(m8).mul(m8).mul(2.1).add(m4.mul(0.35));
             under.addAssign(u.cloudLit.mul(thin).mul(forward).mul(u.sunUp).mul(1.1));
             under.addAssign(u.cloudLit.mul(rimBand).mul(forward.mul(1.6).add(0.12)).mul(u.sunUp).mul(lump.oneMinus().mul(0.6).add(0.4)));
             // A torn edge is thin cloud lit through: never darker than the sky behind it, so a gap

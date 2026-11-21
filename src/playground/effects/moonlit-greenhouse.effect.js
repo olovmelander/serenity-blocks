@@ -16,7 +16,7 @@
  *                            clock say: 0 silver moon, 1 lavender night, 2 jade dream, 3 harvest
  *                            moon, 4 rose nocturne, 5 blue hour; 2.5 is half-way from jade to harvest
  *   locks=<n>                before anything else, open n blooms in the garden
- *   event=lock|drop|clear|quad|twist|perfect|levelUp|break   fire a gameplay event...
+ *   event=lock|drop|clear|cascade|quad|spin|twist|b2b|perfect|levelUp|break   fire a gameplay event...
  *   eventAge=<s>             ...and show it <s> seconds later (lines=<n>, row=<r>, u=<0..1>,
  *                            color=<hex>, eventLevel=<n>). A lock's seed is in flight for its
  *                            first 0.85 s (0.6 s on a hard drop): 0.95 shows the landing, 1.5 the
@@ -64,8 +64,8 @@ function mountBoardOverlay(withHud) {
         'position:absolute', 'left:50%', 'top:50%',
         `width:calc(${BOARD_PX} * 1.19)`,
         `height:calc(2 * ${BOARD_PX} + 158px)`,
-        'transform:translate(-50%, -50%)', 'background:rgba(21,26,35,0.866)',
-        'border:1px solid rgba(139,92,246,0.45)', 'border-radius:20px',
+        'transform:translate(-50%, -50%)', 'background:rgba(13,27,30,0.92)',
+        'border:1px solid rgba(97,156,141,0.68)', 'border-radius:10px',
     ].join(';');
     const board = document.createElement('div');
     board.id = 'single-player-game-canvas';
@@ -82,7 +82,8 @@ function mountBoardOverlay(withHud) {
             'position:absolute', 'top:25%', 'height:50%',
             'left:calc(50% + min(max(300px, min(35vw, 400px)), (100vh - 200px) / 2) / 2 + 60px)',
             'width:140px',
-            'background:rgba(14,11,26,0.8)', 'border:1px solid rgba(150,110,255,0.25)', 'border-radius:10px',
+            'background:linear-gradient(152deg,#15302df7,#0c1721f7)',
+            'border:1px solid #be995f70', 'border-radius:10px',
         ].join(';');
         root.append(hud);
     }
@@ -220,8 +221,11 @@ export function create({
                 rows: [row, row - 1], u, hardDrop: true, color: eventColor,
             });
         } else if (eventName === 'clear') world.onClear({ rows: bottom(lines), lines });
+        else if (eventName === 'cascade') world.onClear({ rows: bottom(lines), lines, cascade: 3 });
         else if (eventName === 'quad') world.onClear({ rows: bottom(4), lines: 4 });
+        else if (eventName === 'spin') world.onClear({ lines: 0, twist: true });
         else if (eventName === 'twist') world.onClear({ rows: bottom(2), lines: 2, twist: true });
+        else if (eventName === 'b2b') world.onClear({ lines: 0, b2b: true });
         else if (eventName === 'perfect') world.onClear({ rows: bottom(4), lines: 4, perfect: true });
         else if (eventName === 'levelUp') world.levelUp(num(params, 'eventLevel', level + 1));
         else if (eventName === 'break') world.onCombo(0);
@@ -301,6 +305,10 @@ export function create({
         if (local > 32 && world.combo > 0) world.onCombo(0);
     };
 
+    const render = () => {
+        if (post) post.render();
+        else renderer.render(scene, camera);
+    };
     return {
         cameraRadius: 1,
         camera(time) {
@@ -315,9 +323,12 @@ export function create({
         seek(time) {
             seekTo(time);
         },
-        render() {
-            if (post) post.render();
-            else renderer.render(scene, camera);
+        render,
+        async renderAsync() {
+            // Prepare the same graded frame the next tick will draw. A raw first draw compiles
+            // a second set of pipelines and reports ready while the glass and mist are still loading.
+            render();
+            await renderer.backend?.device?.queue?.onSubmittedWorkDone?.();
         },
         resize() {
             syncViewport();

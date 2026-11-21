@@ -114,7 +114,7 @@ describe('moonlit greenhouse director: intake', () => {
         // The greenhouse's own palette: lantern, lavender, leaf, petal, indigo, candle, dew; the
         // garbage row is the house's silhouette.
         expect(SHAPES.map((shape) => themePieceColor(shape))).toEqual([
-            '#ffda9e', '#d7b3ff', '#82f5b8', '#ff9ecf', '#5b7ba7', '#ffd76a', '#a8ffd8',
+            '#ffda9e', '#d7b3ff', '#78e79f', '#ff91b8', '#829be8', '#ff9f60', '#60ddd8',
         ]);
         expect(themePieceColor('GARBAGE')).toBe('#112021');
     });

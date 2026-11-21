@@ -50,8 +50,8 @@ export const PALMS = Object.freeze({
     backHeight: [15, 21],
     backTilt: [0, 9],
     /** A frond's length (metres) and its leaflets' half-span at their longest. */
-    frond: [3.8, 5.4],
-    span: [1.0, 1.35],
+    frond: [3.7, 6.2],
+    span: [1.05, 1.56],
 });
 
 /**
@@ -338,7 +338,7 @@ export function createPalms({
         const v = aPalm.y;
         const kind = aPalm.z;
         const phase = aPalm.w.mul(6.2832);
-        const gust = sin(U.time.mul(0.55).add(phase)).mul(0.5).add(0.5)
+        const gust = sin(U.time.mul(0.55).add(phase).add(positionLocal.z.mul(0.031))).mul(0.5).add(0.5)
             .mul(sin(U.time.mul(0.23).add(phase.mul(0.37))).mul(0.3).add(0.7));
         const bend = mix(v.mul(v), float(1.0), kind).mul(0.22).mul(gust);
         const tip = v.mul(v).mul(kind);
@@ -387,12 +387,16 @@ export function createPalms({
             kind,
         );
         const tone = seedP.mul(0.5).add(0.75);
-        const albedo = mix(vec3(...TRUNK), vec3(...FROND), kind).mul(shade).mul(tone);
+        const scars = sin(v.mul(180).add(u.mul(1.7)).add(seedP.mul(15))).mul(0.13)
+            .mul(float(1).sub(smoothstep(0.014, 0.04, fwidth(v)))).add(1);
+        const bladeLight = smoothstep(0.15, 0.78, v).mul(mix(float(0.17), float(0.64), seedP)).toVar();
+        const frond = mix(vec3(...FROND), vec3(0.35, 0.32, 0.14), bladeLight);
+        const albedo = mix(vec3(...TRUNK).mul(scars), frond, kind).mul(shade).mul(tone);
         // The sky wraps a trunk's edges; a frond is thin and faces up, all of it "edge" to a level
         // sight line, so it keeps only a breath of that (the sky shows through it instead).
         const lit = landLight(N, V, albedo, lift, s.negate(), mix(float(0.5), float(0.1), kind), U);
         // Thin leaves let a little of the sky behind them through.
-        const through = skyBase(V.negate(), U).mul(U.squallDim).mul(kind.mul(0.08));
+        const through = skyBase(V.negate(), U).mul(U.squallDim).mul(kind).mul(bladeLight.mul(0.27).add(0.055));
         const air = horizonHaze(V.negate(), U);
         const colour = mix(lit.add(through), air, landHaze(dist, U));
         return vec4(colour.mul(alpha), alpha);

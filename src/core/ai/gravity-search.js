@@ -208,7 +208,7 @@ function stamp(board, form, x, y, id, target) {
     return cells;
 }
 
-function value(board, weights, pending, virtual, probe) {
+function value(board, weights, pending, virtual, probe, supportPlanning) {
     const height = board.height - board.top;
     const pressure = Math.max(0, height + pending - (board.height - board.first - 6));
     if (board.garbage > 0) {
@@ -238,6 +238,13 @@ function value(board, weights, pending, virtual, probe) {
             const missing = FULL ^ board.rows[y];
             const gaps = bits[missing];
             if (!gaps || gaps > 3) continue;
+            // A roofed row cannot be triggered by dropping filler into it. The
+            // support above it can still release it. Real tucks get scored at lock.
+            if (supportPlanning && board.holes) {
+                let open = false;
+                for (let x = 0; x < COLS && !open; x++) open = Boolean(missing & (1 << x)) && board.tops[x] >= y;
+                if (!open) continue;
+            }
             tested++;
             // Gravity preserves columns. Every cleared line consumes one cell
             // from each. Filling these gaps guarantees the first line.
@@ -392,10 +399,11 @@ function triggerAlignments(missing) {
     return result;
 }
 
-function* triggerSteps(board, known, weights, allowUnknown, probe, sliced) {
+function* triggerSteps(board, known, weights, allowUnknown, probe, sliced, observe, node) {
     let best = 0;
     const high = board.top <= board.first + 3;
     const reachable = new Map();
+    let previewShots;
     for (let y = Math.max(board.top, board.first); y < board.height; y++) {
         const missing = FULL ^ board.rows[y];
         if (!missing || bits[missing] > 4) continue;
@@ -424,7 +432,16 @@ function* triggerSteps(board, known, weights, allowUnknown, probe, sliced) {
             }
             const maximum = maxLines ** 2 * Math.max(0, weights.triggerWaves)
                 + maxLines * Math.max(0, weights.triggerLines);
-            if (discount > 0 && best >= discount * maximum) continue;
+            const nextPreview = observe && key === known[0] && maxLines > 1;
+            if (!nextPreview && discount > 0 && best >= discount * maximum) continue;
+            if (nextPreview) {
+                // One landing can fill several rows. Inspect it once, even when
+                // a later preview already owns the positional upper bound.
+                previewShots ??= new Set();
+                const position = footprintPosition(form, x, py);
+                if (previewShots.has(position)) continue;
+                previewShots.add(position);
+            }
             if (maxLines === 1) {
                 best = Math.max(best, discount * (weights.triggerWaves + weights.triggerLines));
                 continue;
@@ -433,6 +450,7 @@ function* triggerSteps(board, known, weights, allowUnknown, probe, sliced) {
             const waves = settleLabelledBoard(probe, board.first, Math.max(0, Math.min(board.top, py + form.top)));
             const lines = waves.reduce((sum, n) => sum + n, 0);
             best = Math.max(best, discount * (waves.length ** 2 * weights.triggerWaves + lines * weights.triggerLines));
+            if (observe && key === known[0] && waves.length >= 2) observe(node, key, form, x, py, waves, lines);
         }
     }
     return best;
@@ -477,6 +495,18 @@ function route(node) {
 
 const descending = (a, b) => b.quality - a.quality;
 
+// Two nearly full floors can accept material falling through a common gap.
+// This only allocates attention. An actual reachable lock must prove the payout.
+function hasReceivingRows(board) {
+    let previous = FULL;
+    for (let y = Math.max(board.top, board.first); y < board.height; y++) {
+        const gap = FULL ^ board.rows[y];
+        if ((gap & previous) && bits[gap] <= 2 && bits[previous] <= 2) return true;
+        previous = gap;
+    }
+    return false;
+}
+
 /** A yield is one bounded batch. No shared solver buffer survives it. */
 export function* searchGravity(state, config, pending, weights = GRAVITY_WEIGHTS, checkpoint = null, observed = null) {
     const grid = state.boardGrid || state.board;
@@ -496,12 +526,47 @@ export function* searchGravity(state, config, pending, weights = GRAVITY_WEIGHTS
     let attackFire = null;
     let dig = null;
     let bestRoot = null;
+    let release = null;
+    let finish = null;
+    let recovery = null;
+    let overflowPossible = false;
     let alternatives = [];
     const danger = start.top - start.first - pending < (config.safetyMargin || 6);
+    const studyRelease = config.supportPlanning && hasReceivingRows(start);
     const safeFloor = start.garbage ? 2 : config.fireWaves;
     const fireFloor = danger ? 1 : safeFloor;
     const sustained = state.lines >= 8;
+    const scoreMode = config.supportPlanning && !config.versus;
+    const payout = (move) => (config.versus ? move.attack : move.score);
+    const qualifiesRelease = (waves, lines, perfect) => waves.length >= 2
+        && ((studyRelease && lines - waves[0] >= 2) || perfect);
+    const observePreview = (node, key, shape, x, y, waves, lines) => {
+        const perfect = node.board.stock + 4 === lines * COLS;
+        const strongerFire = waves.length >= fireFloor && (!fire || waves.length > fire.move.waves.length);
+        const eligible = qualifiesRelease(waves, lines, perfect);
+        if (!strongerFire && !eligible) return;
+        const paid = gravityReward(waves, perfect, node.context);
+        if (!strongerFire && release && payout(paid) <= payout(release.move)) return;
+        const topIndex = scratch.probe.findIndex((id) => id !== 0);
+        const top = topIndex < 0 ? start.height : Math.floor(topIndex / COLS);
+        const shot = {
+            parent: node,
+            move: {
+                shapeKey: key, x, y, rotation: shape.rotation, waves, ...paid,
+            },
+            roomAfter: top - start.first,
+            quality: node.quality,
+        };
+        if (strongerFire) fire = shot;
+        if (eligible && (!release || payout(paid) > payout(release.move))) release = shot;
+    };
     const result = (best) => {
+        if (overflowPossible || finish) {
+            const choice = finish && (!overflowPossible || finish.roomAfter >= pending) ? finish : recovery;
+            return {
+                route: route(choice), start, danger, pending, alternatives,
+            };
+        }
         if (config.protectSpawn && best?.move) {
             return {
                 route: route(best), start, danger, pending, alternatives,
@@ -510,9 +575,14 @@ export function* searchGravity(state, config, pending, weights = GRAVITY_WEIGHTS
         const ordinaryAttack = config.minAttack ?? (pending || state.lines >= 4 ? 2 : 3);
         const minAttack = sustained ? config.sustainedAttack ?? ordinaryAttack : ordinaryAttack;
         const stock = config.attackStock && (sustained ? config.sustainedStock ?? 24 : config.attackStock);
-        const attack = stock && start.stock >= stock && attackFire?.move.attack >= minAttack
+        const attack = !scoreMode && stock && start.stock >= stock && attackFire?.move.attack >= minAttack
             ? attackFire : null;
-        const chosen = dig || attack || (fire && fire.move.waves.length >= fireFloor ? fire : best);
+        let chosen = dig || attack || (fire && fire.move.waves.length >= fireFloor ? fire : best);
+        // Compare a demonstrated second clear with the planned discharge. Both
+        // candidates have been settled; a hypothetical trigger cannot win here.
+        if (release && !dig && !danger) {
+            if (payout(release.move) > payout(chosen.move)) chosen = release;
+        }
         return chosen?.move ? {
             route: route(chosen), start, danger, pending, alternatives,
         } : null;
@@ -553,7 +623,7 @@ export function* searchGravity(state, config, pending, weights = GRAVITY_WEIGHTS
                     comboCount,
                     comboMultiplier: 1 + comboCount * 0.5,
                 } : quietContext;
-                const reward = parent.reward + paid.score * weights.score + paid.attack * weights.attack
+                const reward = parent.reward + paid.score * weights.score + (scoreMode ? 0 : paid.attack * weights.attack)
                     + waves.length ** 2 * weights.waves;
                 const move = {
                     shapeKey: key, x, y, rotation: form.rotation, actions: landing.actions, waves, ...paid,
@@ -573,7 +643,7 @@ export function* searchGravity(state, config, pending, weights = GRAVITY_WEIGHTS
                     quality = Math.min(8, room) * weights.virtualWaves - board.holes * weights.holes
                         - (board.height - board.top) * weights.danger + reward;
                 } else {
-                    quality = value(board, weights, pending, config.virtual, scratch.probe) + reward;
+                    quality = value(board, weights, pending, config.virtual, scratch.probe, studyRelease) + reward;
                 }
                 const node = {
                     parent,
@@ -583,9 +653,24 @@ export function* searchGravity(state, config, pending, weights = GRAVITY_WEIGHTS
                     form,
                     label,
                     garbage: board.garbage,
+                    roomAfter: board.top - board.first,
                     quality: quality - (landing.pathCost || 0) * weights.effort,
                 };
                 siblings.push(node);
+                if (config.supportPlanning) {
+                    if (!ply && pending && danger) {
+                        const room = node.roomAfter - pending;
+                        if (room < 0) overflowPossible = true;
+                        // Local bursts enter together after the lock. The public
+                        // row count proves overflow without revealing the holes.
+                        if (!recovery || Math.min(0, room) > Math.min(0, recovery.roomAfter - pending)
+                            || (Math.min(0, room) === Math.min(0, recovery.roomAfter - pending) && node.quality > recovery.quality)) {
+                            recovery = node;
+                        }
+                    }
+                    if (!ply && paid.attack >= config.finishRows && (!finish || node.quality > finish.quality)) finish = node;
+                    if (qualifiesRelease(waves, paid.lines, !board.stock) && (!release || payout(move) > payout(release.move))) release = node;
+                }
                 if (paid.attack && (!attackFire || paid.attack > attackFire.move.attack
                     || (paid.attack === attackFire.move.attack && paid.score > attackFire.move.score))) {
                     attackFire = node;
@@ -603,6 +688,7 @@ export function* searchGravity(state, config, pending, weights = GRAVITY_WEIGHTS
             } else if (fire || dig || attackFire) {
                 checkpoint?.(result(beam[0]));
             }
+            if (!ply && (overflowPossible || finish)) return result(siblings[0]);
             next.push(...siblings.slice(0, Math.max(6, Math.ceil(config.width / 2))));
         }
         if (!next.length) break;
@@ -619,7 +705,10 @@ export function* searchGravity(state, config, pending, weights = GRAVITY_WEIGHTS
             }
             node.board = describe(cells, start.first);
             if (config.trigger) {
-                const trigger = triggerSteps(node.board, known, weights, true, scratch.probe, config.sliceRoofProbes);
+                // A probe for the *next* preview is also a playable continuation.
+                // Other shapes only contribute discounted positional value.
+                const witness = config.supportPlanning && !pending && known.length ? observePreview : null;
+                const trigger = triggerSteps(node.board, known, weights, true, scratch.probe, config.sliceRoofProbes, witness, node);
                 node.quality += yield* trigger;
                 yield;
             }

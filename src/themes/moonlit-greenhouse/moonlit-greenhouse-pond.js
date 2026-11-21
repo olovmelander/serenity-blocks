@@ -52,7 +52,7 @@
  */
 import * as THREE from 'three/webgpu';
 import {
-    Fn, Loop, abs, atan, attribute, cameraPosition, clamp, cos, dot, exp, float, floor, fract, frontFacing, fwidth,
+    Fn, If, Loop, abs, atan, attribute, cameraPosition, clamp, cos, dot, exp, float, floor, fract, frontFacing, fwidth,
     int, length, log2, max, min, mix, normalGeometry, normalize, positionGeometry, positionWorld, reflect, select,
     sin, smoothstep, sqrt, texture, uniformArray, vec2, vec3, vec4,
 } from 'three/tsl';
@@ -75,7 +75,7 @@ export const POND_LOOK = {
     ripple: 0.0025,
     rippleScale: 0.3,
     // The water's own colour (black-green) and the moonlight its murk scatters under the beams.
-    body: Object.freeze([0.0018, 0.0052, 0.0046]),
+    body: Object.freeze([0.0018, 0.014, 0.018]),
     murk: 0.014,
     // The lanterns' and the blooms' images in the water.
     lanternImage: 1.5,
@@ -350,7 +350,11 @@ export function buildVictoriaGeometry(pads, segments = 96) {
             const phi = (j / segments) * Math.PI * 2;
             const c = Math.cos(phi);
             const s = Math.sin(phi);
-            const section = victoriaSection(pad.radius, victoriaTop(rimTop, phi));
+            const scallop = Math.sin(phi * 9 + pad.seed * 7) * 0.014 + Math.sin(phi * 23 - pad.seed * 11) * 0.006;
+            const section = victoriaSection(
+                pad.radius * (1 + scallop),
+                victoriaTop(rimTop * (1 + 5 * scallop), phi),
+            );
             const ids = section.map((q, i) => {
                 // The section's left normal (−dy, dρ), from its neighbours.
                 const a = section[Math.max(0, i - 1)];
@@ -421,10 +425,10 @@ export function buildLilyPadGeometry(pads, segments = 24) {
  * closed bud, a half-open or an open flower. Returns [{ pad, state, x, z, size, seed }].
  */
 export function residentLilies(pads, count) {
-    const states = ['half', 'bud', 'open', 'bud', 'half', 'open', 'bud', 'half'];
+    const states = ['open', 'half', 'bud', 'open', 'half', 'open', 'bud', 'half'];
     const candidates = pads
         .filter((p) => p.kind === 'lily' && p.radius >= 0.19 && p.z < 0.2 && p.z > -18)
-        .map((p) => ({ p, score: Math.abs(p.z + 5) + (Math.abs(p.x) < 0.5 ? 3 : 0) }))
+        .map((p) => ({ p, score: p.specimen ? -20 - p.z : Math.abs(p.z + 5) + (Math.abs(p.x) < 0.5 ? 3 : 0) }))
         .sort((a, b) => a.score - b.score);
     const out = [];
     for (let i = 0; i < candidates.length && out.length < count; i += 1) {
@@ -436,7 +440,7 @@ export function residentLilies(pads, count) {
             state: states[out.length % states.length],
             x: p.x - Math.cos(p.yaw) * off,
             z: p.z - Math.sin(p.yaw) * off,
-            size: lerp(0.1, 0.135, (p.seed * 5.17) % 1),
+            size: p.specimen ? p.radius * 0.94 : lerp(0.135, 0.21, (p.seed * 5.17) % 1),
             seed: (p.seed * 13.7) % 1,
         });
     }
@@ -840,7 +844,7 @@ const mgPondRing = Fn(([dist, age, strength]) => {
  * (a big pad less: it spans the wavelets), turning a hair about its centre and drifting a few
  * centimetres on the slow current. The resident lilies carry their pad's centre and ride with it.
  */
-function padPosition(U) {
+function padPosition(U, petals = false) {
     return Fn(() => {
         const P = attribute('aPad', 'vec4');
         const g = positionGeometry;
@@ -867,10 +871,22 @@ function padPosition(U) {
         const a = sin(t.mul(0.13).add(seed.mul(6.283))).mul(0.05);
         const ca = cos(a);
         const sa = sin(a);
-        const rel = g.xz.sub(c);
+        let rel = g.xz.sub(c);
+        let height = g.y;
+        if (petals) {
+            // Each flower cups and relaxes on its own clock. Its base stays on the leaf;
+            // when the Queen opens, the little lilies open with her.
+            const tip = clamp(attribute('aPetal', 'vec4').x, 0, 1);
+            const cup = sin(t.mul(0.084).add(seed.mul(23))).mul(0.5).add(0.5)
+                .mul(float(1).sub(U.queen.x))
+                .mul(tip)
+                .mul(0.48);
+            height = height.add(length(rel).mul(cup).mul(0.72));
+            rel = rel.mul(float(1).sub(cup.mul(0.53)));
+        }
         const turned = vec2(rel.x.mul(ca).sub(rel.y.mul(sa)), rel.x.mul(sa).add(rel.y.mul(ca)));
         const drift = vec2(sin(t.mul(0.051).add(seed.mul(10.0))), cos(t.mul(0.043).add(seed.mul(7.0)))).mul(0.022);
-        const y = g.y.add(lift).add(turned.x.mul(slope.x)).add(turned.y.mul(slope.y));
+        const y = height.add(lift).add(turned.x.mul(slope.x)).add(turned.y.mul(slope.y));
         return vec3(c.x.add(turned.x).add(drift.x), y, c.y.add(turned.y).add(drift.y));
     })();
 }
@@ -1023,6 +1039,14 @@ export function createWater({
         const house = sky.mul(glassTint).add(veil).add(flood).mul(pass)
             .add(ironDark.mul(float(1.0).sub(pass)))
             .toVar();
+        If(atEnd, () => {
+            // The fanlight reflected in the moving surface, softened at this distance.
+            const q = vec2(endHit.x, max(endHit.y.sub(3.18), 0));
+            const radius = length(q);
+            const glow = float(1).sub(smoothstep(2.15, 2.85, radius));
+            const hue = mix(night.lantern, night.glow, smoothstep(3.1, 5.1, endHit.y).mul(0.56));
+            house.addAssign(hue.mul(U.lanternGain).mul(glow).mul(float(1).sub(endIron.mul(0.63))).mul(0.32));
+        });
         // ── What stands in the house, along the same ray, all dark as reflections are.
         // The palms' crowns: the canopy read along the mirrored ray.
         const crowns = mgCanopy(p, r, U);
@@ -1156,7 +1180,7 @@ export function createWater({
             const e = mh.mul(mh).div(bh.mul(bh)).add(mv.mul(mv).div(bv.mul(bv)));
             pale.addAssign(exp(e.negate()).mul(sqrt(bh.div(bv))));
         });
-        const lilyImages = mix(night.moonDisc, vec3(0.9, 0.95, 1.0), 0.5).mul(pale).mul(0.05);
+        const lilyImages = mix(night.moonDisc, vec3(0.93, 0.61, 0.86), 0.5).mul(pale).mul(0.12);
         // ── Fresnel: steeply down mostly the water's own body, toward the far end all mirror.
         const cosI = clamp(dot(n, v.negate()), 0.0, 1.0);
         const g1 = float(1.0).sub(cosI);
@@ -1189,7 +1213,12 @@ export function createWater({
         // At rest a faint glitter; a chain wakes more of it, pulsing with the fireflies' light (in
         // step, the canal flashes with the swarm), and in the hush before the Queen of the Night
         // the dark house lets it show.
-        const restShare = U.sync.mul(0.11).add(U.hush.mul(0.1)).add(0.075);
+        // Bioluminescence collects in slow, broken currents between the pads. An active
+        // wake still excites the water at its actual impact point.
+        const current = sin(p.z.mul(0.64).add(t.mul(0.26))).mul(0.65)
+            .add(sin(p.z.mul(1.08).sub(t.mul(0.18))).mul(0.27));
+        const channel = float(1).sub(smoothstep(0.06, 0.68, abs(p.x.sub(current))));
+        const restShare = U.sync.mul(0.11).add(U.hush.mul(0.1)).add(channel.mul(0.20)).add(0.032);
         const answer = U.fireflyGlow.mul(1.6).add(U.hush.mul(1.5)).add(1.0);
         const rest = smoothstep(restShare, restShare.sub(0.015), pick).mul(flick).mul(hc.y.mul(0.7).add(0.3))
             .mul(answer);
@@ -1197,7 +1226,8 @@ export function createWater({
         const woken = smoothstep(energy.mul(0.38), energy.mul(0.38).sub(0.04), pick).mul(flick.mul(0.7).add(0.3))
             .mul(hc.y.mul(hc.y).mul(0.8).add(0.2));
         const plankton = night.glow.mul(spot).mul(rest.mul(L.glitter).add(woken.mul(L.plankton)));
-        const colour = body.mul(float(1.0).sub(mirror))
+        const currentLight = night.glow.mul(channel.pow2()).mul(U.weather.y.mul(0.013).add(0.004)).mul(vis);
+        const colour = body.add(currentLight).mul(float(1.0).sub(mirror))
             .add(house.add(lampImages).add(bloomImages).add(lilyImages).add(queenImage)
                 .mul(mirror))
             .add(band.mul(L.ringBand))
@@ -1246,14 +1276,14 @@ export function* createPadsSteps({
     group.name = 'moonlit-greenhouse-pads';
     const position = padPosition(U);
     const meshes = [];
-    const add = (geometry, material, name, order) => {
+    const add = (geometry, material, name, order, motion = position) => {
         // A plan without pads of a kind (or a pad without a lily) leaves nothing to draw.
         if (!geometry.getAttribute('position').count) {
             geometry.dispose();
             material.dispose();
             return null;
         }
-        material.positionNode = position;
+        material.positionNode = motion;
         const mesh = new THREE.Mesh(geometry, material);
         mesh.name = name;
         mesh.frustumCulled = false;
@@ -1341,8 +1371,8 @@ export function* createPadsSteps({
         // set with spines.
         const mottle = texture(noise, local.mul(0.9).add(seed.mul(5.0))).level(1.0).x;
         // A living green, light enough that the moonlight's grey does not swallow it.
-        const green = mix(vec3(0.06, 0.15, 0.04), vec3(0.1, 0.2, 0.05), mottle).mul(seed.mul(0.3).add(0.85));
-        const floorCol = mix(green.mul(cellShade), vec3(0.17, 0.24, 0.08), veins.mul(0.85))
+        const green = mix(vec3(0.045, 0.17, 0.08), vec3(0.11, 0.27, 0.11), mottle).mul(seed.mul(0.3).add(0.85));
+        const floorCol = mix(green.mul(cellShade), vec3(0.21, 0.32, 0.14), veins.mul(0.85))
             .add(vec3(0.05, -0.02, 0.0).mul(smoothstep(0.85, 1.0, k)));
         // The rim's crimson is weathered: darker in patches, browner where it has aged.
         const age = texture(noise, vec2(phi.mul(R).mul(0.7), hRim.mul(0.6)).add(seed.mul(3.0))).level(1.0).z;
@@ -1394,7 +1424,9 @@ export function* createPadsSteps({
         const beads = dew(local, seed, vis, foot, p).mul(select(part.lessThan(0.5), float(1.0), float(0.0)));
         // Under a puddle the leaf is darker (wet), and no dew stands on the water.
         const under = float(1.0).sub(puddle.mul(0.35));
-        return vec4(lit.mul(under).add(ruby).add(sheen).add(beads.mul(float(1.0).sub(puddle))), 1.0);
+        const bounce = floorCol.mul(0.14).mul(float(1).sub(puddle)).mul(select(part.lessThan(0.5), 1, 0));
+        return vec4(lit.add(bounce).mul(under).add(ruby).add(sheen)
+            .add(beads.mul(float(1.0).sub(puddle))), 1.0);
     })();
     add(buildVictoriaGeometry(plan.pads, detail.victoria), victoria, 'moonlit-greenhouse-pads-victoria', 4);
     if (clock.due()) {
@@ -1475,10 +1507,10 @@ export function* createPadsSteps({
         const isStamen = kind.greaterThan(1.5);
         // White petals flushed pink at the foot on some; the sepals green outside, pale inside;
         // the stamens gold.
-        const pink = fract(seed.mul(3.3)).mul(0.6);
+        const pink = fract(seed.mul(3.3)).mul(0.66).add(0.32);
         const foot2 = float(1.0).sub(s);
-        const white = mix(vec3(0.6, 0.6, 0.57), vec3(0.62, 0.42, 0.5), foot2.mul(foot2).mul(pink));
-        const sepal = select(inside, vec3(0.42, 0.46, 0.38), vec3(0.06, 0.11, 0.045));
+        const white = mix(vec3(0.83, 0.78, 0.93), vec3(0.64, 0.14, 0.38), foot2.mul(pink));
+        const sepal = select(inside, vec3(0.48, 0.45, 0.39), vec3(0.13, 0.18, 0.083));
         const gold = vec3(0.85, 0.58, 0.14);
         const albedo = select(isStamen, gold, select(isSepal, sepal, white)).toVar();
         const vis = mgMoonVis(p, U, foot).toVar();
@@ -1487,9 +1519,10 @@ export function* createPadsSteps({
         // slowly; the heart's gold glows; the moon behind a petal lights it through.
         const breathe = sin(U.time.mul(0.6).add(seed.mul(30.0))).mul(0.2).add(0.8);
         const coolWhite = mix(night.moonDisc, vec3(0.9, 0.95, 1.0), 0.5);
-        const petalGlow = coolWhite.mul(float(1.0).sub(s.mul(0.55))).mul(float(1.0).sub(abs(c).mul(0.3))).mul(0.065);
+        const petalGlow = mix(white, coolWhite, s.mul(0.42)).mul(float(1.0).sub(s.mul(0.38)))
+            .mul(float(1.0).sub(abs(c).mul(0.35))).mul(0.28);
         const sepalGlow = coolWhite.mul(0.012).mul(select(inside, float(1.0), float(0.0)));
-        const heart = gold.mul(0.22);
+        const heart = gold.mul(0.56);
         const glow = select(isStamen, heart, select(isSepal, sepalGlow, petalGlow)).mul(breathe);
         const through = clamp(dot(v, U.moon), 0.0, 1.0);
         const lightThrough = albedo.mul(night.moonlight).mul(vis).mul(U.moonLight)
@@ -1498,7 +1531,7 @@ export function* createPadsSteps({
             .mul(select(isStamen, float(0.0), float(1.0)));
         return vec4(lit.add(glow).add(lightThrough), 1.0);
     })();
-    add(buildLilyGeometry(lilies), flowers, 'moonlit-greenhouse-pads-lilies', 5);
+    add(buildLilyGeometry(lilies), flowers, 'moonlit-greenhouse-pads-lilies', 5, padPosition(U, true));
 
     return {
         mesh: group,
@@ -1620,7 +1653,7 @@ export function* createReedsSteps({ tier, U, plan }) {
         const velvet = float(1.0).sub(facing);
         const sheen = moon.mul(vec3(0.6, 0.5, 0.4)).mul(velvet.mul(velvet).mul(0.06)).mul(gate(isHead));
         // The plumes: the moon through their fine strands, a silvery haze.
-        const feather = moon.mul(vec3(0.9, 0.82, 0.75)).mul(backlit.mul(0.045).add(0.004)).mul(gate(isPlume));
+        const feather = moon.mul(vec3(0.94, 0.78, 0.61)).mul(backlit.mul(0.14).add(0.023)).mul(gate(isPlume));
         return vec4(lit.add(rim).add(sheen).add(feather), 1.0);
     })();
     const mesh = new THREE.Mesh(geometry, material);

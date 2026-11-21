@@ -1,0 +1,15 @@
+{
+  "registered": "2026-11-21T14:15:36+01:00",
+  "baseline": "11ee1ca099819cdcaeb770b9fb6baf922ea54fcc",
+  "candidate": "0bc5f83225cac53342773e94faa8eb4be5867bcc",
+  "firstSeed": 22180000,
+  "bags": 800,
+  "seatOrders": 2,
+  "tier": 10,
+  "secondsPerGame": 150,
+  "metric": "Candidate first-top-out match points, 1 for a win, 0 for a loss, 0.5 for simultaneous losses, timeouts or nonterminal natural-lock censoring.",
+  "controls": "Matched bags and fixed-tick hard-drop barrier. 170–250 ms reaction and 850 inputs/min for both seats.",
+  "interval": "Whole-bag percentile bootstrap, 5000 draws, random seed 277159, 95% interval.",
+  "criterion": "Lower interval endpoint above 0.5 on this cohort.",
+  "analysis": "Compute the confirmatory result once after all 1600 games. Retain both earlier 200-bag panels. No interim analysis, tuning or outcome-dependent repetition."
+}

@@ -84,7 +84,9 @@ export function skyColour(u, dir, { withSun = true } = {}) {
     const m4 = m.mul(m).mul(m).mul(m);
     const m16 = m4.mul(m4).mul(m4).mul(m4);
     const m64 = m16.mul(m16).mul(m16).mul(m16);
-    const aureole = m4.mul(0.07).add(m16.mul(0.18)).add(m64.mul(1.15));
+    // The bright aureole hugs the disc. A restrained broad lobe leaves room for blue
+    // between the sunlit cloud edges, especially when the storm opens into evening.
+    const aureole = m4.mul(0.035).add(m16.mul(0.13)).add(m64.mul(m64).mul(0.92));
     const glow = aureole.mul(u.glow).mul(smoothstep(-0.12, 0.02, up)).mul(exp(e.mul(-2.6)).mul(0.5).add(0.5));
     base.addAssign(glow.mul(mix(float(1.0), float(0.45), u.day.oneMinus())));
     // The twilight wedge: the sun below the horizon still lights the band above where it set.
@@ -96,7 +98,7 @@ export function skyColour(u, dir, { withSun = true } = {}) {
         const cos = float(0.0047);
         const disc = float(1.0).sub(smoothstep(cos.mul(0.82), cos, r));
         const limb = float(0.55).add(float(0.45).mul(float(1.0).sub(r.div(cos)).clamp(0.0, 1.0).sqrt()));
-        base.addAssign(u.sun.mul(disc).mul(limb).mul(9.0).mul(u.sunUp));
+        base.addAssign(u.sun.mul(disc).mul(limb).mul(5.2).mul(u.sunUp));
     }
     return base;
 }

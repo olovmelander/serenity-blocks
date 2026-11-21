@@ -251,3 +251,11 @@ export function isBlindActive(gameState) {
     const bt = gameState && gameState.blindTimers;
     return !!bt && ((bt.field || 0) > 0 || (bt.pending || 0) > 0);
 }
+
+// Partial blind draws its veil only on locked garbage. A pristine stack is still readable.
+export function hasObscuredStack(state) {
+    const timers = state?.blindTimers;
+    return Boolean(timers?.field > 0 || (timers?.pending > 0 && state.lockedPieces?.some((body) => (
+        body.type === 'GARBAGE' || body.type === 'CLEAN_GARBAGE'
+    ))));
+}

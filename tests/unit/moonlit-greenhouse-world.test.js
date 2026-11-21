@@ -10,6 +10,7 @@ import {
     describe, expect, it, vi,
 } from 'vitest';
 import * as THREE from 'three/webgpu';
+import { holdFlashing, REDUCED_FLASH_SCALE } from '../../src/utils/photosensitivity.js';
 import {
     MOONLIT_GREENHOUSE_PARTS, MoonlitGreenhouseWorld,
 } from '../../src/themes/moonlit-greenhouse/moonlit-greenhouse-world.js';
@@ -216,6 +217,50 @@ describe('moonlit greenhouse world', () => {
         expect(seed.to.x).toBeCloseTo(lily.heart.x, 6);
         expect(seed.to.y).toBeCloseTo(lily.heart.y, 6);
         expect(seed.to.z).toBeCloseTo(lily.heart.z, 6);
+    });
+
+    it('gives singles, doubles, triples, broken chains and level changes independent cues', () => {
+        const { world, step } = makeWorld();
+        const cues = world.U.aisleCues.value;
+        const dormant = cues.toArray();
+        const rings = world.ringCount;
+        world.onClear({ lines: 1 });
+        expect(world.ringCount).toBe(rings + 1);
+        expect(cues.toArray()).toEqual(dormant);
+
+        step(0.25);
+        const double = world.clock;
+        world.onClear({ lines: 2 });
+        expect(cues.toArray()).toEqual([double, dormant[1], dormant[2], dormant[3]]);
+        step(0.25);
+        const triple = world.clock;
+        world.onClear({ lines: 3 });
+        expect(cues.toArray()).toEqual([double, triple, dormant[2], dormant[3]]);
+        try {
+            holdFlashing(true);
+            step(0.1);
+            expect(world.U.cueLight.value).toBe(REDUCED_FLASH_SCALE);
+        } finally {
+            holdFlashing(false);
+        }
+        step(0.1);
+        expect(world.U.cueLight.value).toBe(1);
+
+        world.onCombo(1);
+        world.onCombo(0);
+        expect(cues.z).toBe(dormant[2]);
+        world.onCombo(3);
+        step(0.25);
+        const broken = world.clock;
+        world.onCombo(0);
+        world.levelUp(2, { silent: true });
+        expect(cues.toArray()).toEqual([double, triple, broken, dormant[3]]);
+        step(0.25);
+        world.levelUp(3);
+        expect(cues.toArray()).toEqual([double, triple, broken, world.clock]);
+        world.resetSession();
+        expect(cues.toArray()).toEqual(dormant);
+        world.dispose();
     });
 
     it('turns back to the first night the short way round after a long run', () => {

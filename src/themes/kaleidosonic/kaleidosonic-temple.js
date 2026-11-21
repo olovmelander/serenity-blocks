@@ -25,15 +25,14 @@
  *             flowing outward with the breath, broken into twelve petals
  *   strings   the resonant light the threads carry: beads of it running along every string from
  *             its knot, in the string's own measure (so every arc of every image carries them)
- *   mandala   on the knots' pearls, each pearl's own nodal figure: circles round each string's
- *             hole crossed by twelve meridians (the smaller pearls strung between the knots keep
- *             the source's rings)
+ *   mandala   two families of crossing wires envelop the great knot pearls; their polished
+ *             engraving rises in a mandala. The small pearls between knots keep the source's rings.
  *   strikes   each lock's wavefront: a band of the piece's light where the shell crosses the
  *             stone, ripples at the note's wavelength behind it, a faint shell in the air
  *   harmonic  each clear's spherical standing wave about the core: nodal shells cut the stone in
  *             concentric lines, as many as the clear's lines ask
- *   core      the hero: a white-hot heart, a twelve-petal corona that turns with the pulse, and
- *             sound rings running out of it
+ *   core      a cut twelve-faced crystal with a coloured pavilion seen through its table, a
+ *             twelve-petal corona that turns with the pulse, and sound rings running out of it
  *   beams     the gem's twelve facets each throw a narrow beam, and the gem turns: the core and
  *             every jewel (its image) light the air in shafts, integrated along the ray in closed
  *             form and cut by the light map where pearls stand in them; a dim even glow round
@@ -54,11 +53,11 @@
  */
 import * as THREE from 'three/webgpu';
 import {
-    Break, Fn, If, Loop, abs, acos, atan, clamp, cos, dot, exp, float, floor, fwidth, int, length, max, min, mix,
+    Break, Fn, If, Loop, abs, acos, atan, clamp, cos, cross, dot, exp, float, floor, fwidth, int, length, max, min, mix,
     normalize, positionGeometry, select, sign, sin, smoothstep, sqrt, tan, texture, varying, vec2, vec3, vec4,
 } from 'three/tsl';
 import {
-    BEAM_AXES, HARMONIC_ROWS, MOOD_COLOURS, NET, STRIKE_ROWS, TAU, TEMPLE, createTempleField, createTempleTrap,
+    BEAM_AXES, CHIME, HARMONIC_ROWS, MOOD_COLOURS, NET, STRIKE_ROWS, TAU, TEMPLE, createTempleField, createTempleTrap,
     ksHash31, ksLensFold, moodColour,
 } from './kaleidosonic-tsl.js';
 import {
@@ -75,8 +74,8 @@ const VEIN_REST = 0.17;
  * A knot pearl's nodal figure: its circles' wavenumber (radians per radian from a string's hole) and
  * how far from its source a pearl still shows it (1/e, units).
  */
-const FIGURE_K = 14;
-const FIGURE_REACH = 0.6;
+const FIGURE_K = 15;
+const FIGURE_REACH = 1.1;
 /** The beads of light on a string: radians per unit of its length (five beads from knot to mid-thread). */
 const STRING_K = TAU * 5;
 /**
@@ -298,6 +297,9 @@ export function createTemple(u, tier, { scout: useScout = true } = {}) {
     material.vertexNode = vec4(positionGeometry.xy, 0.0, 1.0);
 
     const at = (p) => field(p.add(u.dive), u.shape);
+    // Equivalent cells across the diagonal travel seam share a lantern. Include the
+    // floor and the transverse aisle in its identity so adjacent lanterns differ.
+    const lanternSeed = (c) => ksHash31(vec3(c.x.sub(c.z).add(32), c.y.add(32), 19));
 
     material.fragmentNode = Fn(() => {
         const mk = u.moodMix;
@@ -374,7 +376,15 @@ export function createTemple(u, tier, { scout: useScout = true } = {}) {
         const col = vec3(0).toVar();
         const fogK = u.air.x;
         // far air is lit by the countless jewels beyond sight: a faint glow in the haze
-        const airGlow = haze.mul(1.3).add(glowCol.mul(0.02)).mul(float(1).sub(sink.mul(0.55))).toVar();
+        // Broad bands of coloured air give the far arches depth. Their elevation
+        // bends across the hall and through the folded lens. Fog distance already
+        // keeps this out of the near pearls' blacks.
+        const vault = rd.y.add(rd.x.mul(rd.z).mul(0.75)).add(sin(breath.mul(0.125)).mul(0.13));
+        const seam = vault.add(0.11).mul(4.3).toVar();
+        const afterglow = float(1).div(seam.mul(seam).add(1)).toVar();
+        const coolAir = mix(neonC1, neonC2, mk).mul(0.011);
+        const farColour = haze.mul(1.45).add(mix(coolAir, glowCol.mul(0.083), afterglow));
+        const airGlow = mix(farColour, vec3(0.005, 0.007, 0.024), sink).toVar();
         If(hit.greaterThan(0.5), () => {
             const p = ro.add(rd.mul(t)).toVar();
             const e = max(t.mul(u.pixelAngle).mul(0.6), 2e-5);
@@ -439,7 +449,7 @@ export function createTemple(u, tier, { scout: useScout = true } = {}) {
             const dJ = length(toJ).toVar();
             const LJ = toJ.div(max(dJ, 1e-4)).toVar();
             const away = smoothstep(0.04, 0.4, length(J.sub(heartPos)));
-            const twinkle = sin(u.pulse.mul(0.7).add(ksHash31(cellJ.add(17.0)).mul(TAU))).mul(0.25).add(0.75);
+            const twinkle = sin(u.pulse.mul(0.7).add(lanternSeed(cellJ).mul(TAU))).mul(0.25).add(0.75);
             const visJ = lightVis(map, lifted.sub(J), dJ.mul(0.02).add(0.008));
             // every jewel is the core's image: its facets throw the same beams
             const beamJ = stoneBeams ? beamOn(LJ) : float(1);
@@ -518,7 +528,7 @@ export function createTemple(u, tier, { scout: useScout = true } = {}) {
                         const aJ = float(GLOSS.jewelSize).div(dJr);
                         const aJ2 = aJ.mul(aJ);
                         const wJ = aJ2.add(GLOSS.rough2);
-                        const twR = sin(u.pulse.mul(0.7).add(ksHash31(cellR.add(17.0)).mul(TAU))).mul(0.25).add(0.75);
+                        const twR = sin(u.pulse.mul(0.7).add(lanternSeed(cellR).mul(TAU))).mul(0.25).add(0.75);
                         gloss.addAssign(jewelCol.mul(exp(angJ.div(wJ).negate()).mul(aJ2.div(wJ)).mul(GLOSS.jewel)
                             .mul(twR)
                             .mul(onJr)
@@ -536,7 +546,15 @@ export function createTemple(u, tier, { scout: useScout = true } = {}) {
                     });
                 });
             }
-            // the film's colours at the turning edges, lit by the mood's glow (the old nacre sheen)
+            // A wide reflection of the lit vault gives the pearls a curved shoulder, including
+            // the ones in the long dark gaps between lights. Its hue follows the nacre.
+            const band = dot(refl, vec3(0.31, 0.83, -0.46)).sub(0.32).toVar();
+            const shoulder = exp(band.mul(band).mul(-10.0)).toVar();
+            const foil = mix(mix(neonC1, neonC2, mk), glowCol, smoothstep(-0.17, 0.16, band));
+            const crest = shoulder.mul(shoulder).mul(shoulder).mul(shoulder);
+            const lacquer = foil.mul(shoulder.mul(0.26)).mul(tint)
+                .add(glowCol.mul(crest.mul(0.14))).add(albedo.mul(0.85));
+            col.addAssign(lacquer.mul(part).mul(ao.add(0.35)).mul(lightK));
             gloss.addAssign(glowCol.mul(film).mul(GLOSS.edge));
             // (occluded as the old glint was: the net's deep crevices stay dark)
             col.addAssign(gloss.mul(fres).add(lustre).mul(tint).mul(ao)
@@ -576,21 +594,30 @@ export function createTemple(u, tier, { scout: useScout = true } = {}) {
             const swell = cos(clamp(off.mul(squeeze), -Math.PI, Math.PI)).mul(0.5).add(0.5).toVar();
             const swell2 = swell.mul(swell);
             const bead = swell2.mul(swell2).mul(swell2).mul(float(1).sub(smoothstep(0.5, 1.6, fwRun)));
-            vein.assign(mix(max(vein, bead.mul(0.8)), vein, part));
+            // Two twisted strands are visible in the nearby strings. Their broad polish and
+            // the bright travelling bead have different scales; fine wire resolves as one strand.
+            const twist = cos(turn.mul(4.0)).mul(cos(run.mul(0.5))).mul(0.5).add(0.5);
+            const braid = twist.mul(twist).mul(0.14).mul(float(1).sub(smoothstep(0.18, 0.8, fwRun)));
+            vein.assign(mix(max(vein, bead.mul(0.85).add(braid)), vein, part));
 
             // ── on the knots' pearls: each pearl's own nodal figure ──
-            // A struck sphere's mode, read in the pearl's own cell: nodal circles round each
-            // string's hole crossed by twelve meridians, flowing with the breath, brightest near
-            // the pearl's source. The net's own pearls carry it (the great ones, one on every
-            // knot); the smaller pearls strung between them keep the source's rings.
-            const polar = acos(clamp(along.div(NET.pearl), 0.0, 1.0));
-            const wm = cos(polar.mul(FIGURE_K).sub(breath.mul(1.5))).mul(cos(turn.mul(12.0))).toVar();
-            const aaM = max(fwidth(wm), 0.015);
-            const figure = exp(abs(wm).div(aaM).mul(-1.4)).mul(float(1).sub(smoothstep(0.35, 1.1, aaM)))
-                .mul(exp(dSrc.div(-FIGURE_REACH))).mul(float(1.1).add(mandala.mul(2.0)));
+            // Each great pearl is set in a double basket of curved wire. The two families of
+            // lines cross where their cosines coincide; eight turns close across the cell mirrors.
+            // Rolled into each setting is a moving highlight, stronger as the light reaches it.
+            const polar = acos(clamp(along.div(NET.pearl), 0.0, 1.0)).toVar();
+            const latitude = polar.mul(FIGURE_K).add(cos(breath.mul(0.25)).mul(0.52)).toVar();
+            const longitude = turn.mul(8.0);
+            const tracks = vec2(latitude.add(longitude), latitude.sub(longitude)).mul(0.5).toVar();
+            const widths = max(fwidth(tracks), vec2(0.012)).toVar();
+            const strands = vec2(1).sub(smoothstep(vec2(0.0), widths.mul(0.86).add(0.012), abs(sin(tracks))))
+                .mul(vec2(1).sub(smoothstep(vec2(0.45), vec2(1.3), widths))).toVar();
+            const wire = max(strands.x, strands.y);
+            const running = cos(latitude.sub(breath)).mul(0.25).add(0.75);
+            const figure = wire.mul(running).mul(exp(dSrc.div(-FIGURE_REACH)).mul(0.77).add(0.33))
+                .mul(float(1.15).add(mandala.mul(2.0)));
             const bearer = part.mul(float(1).sub(clamp(depth, 0.0, 1.0))).toVar();
-            vein.assign(mix(vein, figure.add(vein.mul(0.25)), bearer));
-            veinGain.assign(mix(veinGain, veinGain.add(0.1), bearer));
+            vein.assign(mix(vein, figure.add(vein.mul(0.15)), bearer));
+            veinGain.addAssign(bearer.mul(0.25));
             col.addAssign(neon.mul(vein).mul(veinGain).mul(ao.mul(0.55).add(0.45)).mul(veinTier));
 
             // ── strikes: each lock's wavefront crossing the stone (their light gathered, then
@@ -655,7 +682,11 @@ export function createTemple(u, tier, { scout: useScout = true } = {}) {
             // fog thickens with distance (the first half unit is clear)
             const evPeak = max(evCol.x, max(evCol.y, evCol.z));
             col.addAssign(evCol.div(evPeak.mul(0.35).add(1.0)));
-            col.assign(mix(col, airGlow, float(1).sub(exp(max(t.sub(0.5), 0.0).mul(fogK).negate()))));
+            const transmission = exp(max(t.sub(0.5), 0.0).mul(fogK).negate());
+            // On short marches, distant threads can reach the final step before
+            // the ray converges. Ease their contrast into the same air a miss sees.
+            const detail = steps <= 46 ? smoothstep(0.0, 0.28, occ) : float(1);
+            col.assign(mix(airGlow, col, transmission.mul(detail)));
         }).Else(() => {
             col.assign(airGlow);
         });
@@ -675,6 +706,9 @@ export function createTemple(u, tier, { scout: useScout = true } = {}) {
         const airGain = u.light.z.mul(lightK).toVar();
         // the ray in the gem's own (turned) frame: the beams' axes are fixed in it
         const rdG = ksGemFrame(rd, gemRot).toVar();
+        const lanternRight = u.camWorld.mul(vec4(1, 0, 0, 0)).xyz.toVar();
+        const lanternUp = u.camWorld.mul(vec4(0, 1, 0, 0)).xyz.toVar();
+        const lanternGlass = mix(neonC1, neonC2, mk).toVar();
         /**
          * A light's beams along the ray between a and b (ksBeamLobe: each facet's beam in closed
          * form), per unit of the light's strength over h. `oc` and `tc` place the light (from the
@@ -721,7 +755,8 @@ export function createTemple(u, tier, { scout: useScout = true } = {}) {
             const d2 = max(dot(oc, oc).sub(tc.mul(tc)), 0.0).toVar();
             const onCore = smoothstep(0.02, 0.12, length(image.sub(heartPos))).toVar();
             const seen = smoothstep(0.0, 0.04, tEnd.sub(tc)).mul(smoothstep(0.0, 0.04, tc)).mul(onCore);
-            const tw = sin(u.pulse.mul(0.7).add(ksHash31(cell.add(17.0)).mul(TAU))).mul(0.25).add(0.75).toVar();
+            const seed = lanternSeed(cell).toVar();
+            const tw = sin(u.pulse.mul(0.7).add(seed.mul(TAU))).mul(0.25).add(0.75).toVar();
 
             // ── this cell's jewel lights the air the ray crosses inside the cell (the cells are
             // centred on their jewels, so where one jewel's air ends the next one's matches it):
@@ -749,15 +784,33 @@ export function createTemple(u, tier, { scout: useScout = true } = {}) {
                 const light = span.mul(carried).mul(BEAM.airBase).add(beams.mul(BEAM.airGain)).div(hj);
                 airLight.addAssign(jewelCol.mul(light.mul(tw).mul(onCore).mul((2.2 / 3) * AIR.jewel)));
             });
-            const glow = exp(d2.div(0.0012).negate()).mul(3.2).add(exp(sqrt(d2).mul(-11.0)).mul(0.3));
-            // sympathetic resonance: a passing wavefront rings the jewel in its own colour
-            const xs = length(image.sub(u.pingStrike.xyz)).sub(u.pingStrike.w).div(0.14);
-            const ringS = exp(xs.mul(xs).negate()).mul(u.pingStrikeCol.w);
-            const xh = length(image.sub(heartPos)).sub(u.pingHarm.x).div(0.16);
-            const ringH = exp(xh.mul(xh).negate()).mul(u.pingHarm.y);
-            const tint = jewelCol.add(u.pingStrikeCol.xyz.mul(ringS.mul(5.0)))
-                .add(u.pingHarmCol.xyz.mul(ringH.mul(4.0)));
-            jewels.addAssign(tint.mul(glow.mul(seen).mul(tw).mul(exp(tc.mul(fogK).mul(-0.85)))));
+            // The beams above account for long-range scatter. Only rays close to the
+            // light need the glass sphere, its inclined orbit, or an event's colour.
+            If(d2.lessThan(0.09).and(seen.greaterThan(0.001)), () => {
+                const size = seed.mul(0.014).add(0.021).toVar();
+                const q = rd.mul(tc).sub(oc).div(size).toVar();
+                const px = dot(q, lanternRight).toVar();
+                const py = dot(q, lanternUp).toVar();
+                const r = sqrt(d2).div(size).toVar();
+                const aa = max(tc.mul(u.pixelAngle).div(size), 0.045).toVar();
+                const disc = float(1).sub(smoothstep(float(1).sub(aa), float(1).add(aa), r));
+                const shell = float(1).sub(smoothstep(0.055, aa.add(0.21), abs(r.sub(0.85))));
+                const slope = seed.sub(0.5).mul(1.3);
+                const ey = py.sub(px.mul(slope)).mul(2.6);
+                const ellipse = length(vec2(px, ey));
+                const orbit = float(1).sub(smoothstep(0.035, aa.mul(1.8).add(0.11), abs(ellipse.sub(1.8))))
+                    .mul(smoothstep(-1.2, 0.5, ey).mul(0.7).add(0.3));
+                const foil = mix(jewelCol.mul(0.5), lanternGlass, seed.mul(0.55).add(0.35));
+                const light = foil.mul(disc.mul(0.58).add(orbit.mul(1.1)))
+                    .add(jewelCol.mul(exp(r.mul(r).mul(-2.4)).mul(2.5).add(shell.mul(disc).mul(0.9))))
+                    .add(foil.mul(exp(r.mul(-0.82)).mul(0.63))).toVar();
+                const xs = length(image.sub(u.pingStrike.xyz)).sub(u.pingStrike.w).div(0.14);
+                const xh = length(image.sub(heartPos)).sub(u.pingHarm.x).div(0.16);
+                const response = u.pingStrikeCol.xyz.mul(exp(xs.mul(xs).negate()).mul(u.pingStrikeCol.w))
+                    .add(u.pingHarmCol.xyz.mul(exp(xh.mul(xh).negate()).mul(u.pingHarm.y)));
+                light.addAssign(response.mul(disc.add(orbit).mul(3.2)));
+                jewels.addAssign(light.mul(seen).mul(tw).mul(exp(tc.mul(fogK).mul(-0.85))));
+            });
             // the next cell: across whichever wall the ray reaches first
             If(tMax.x.lessThan(tMax.y).and(tMax.x.lessThan(tMax.z)), () => {
                 tEnter.assign(tMax.x);
@@ -823,24 +876,35 @@ export function createTemple(u, tier, { scout: useScout = true } = {}) {
                 .mul(exp(sqrt(dc2).div(-STRIKE_AIR.reach)));
             const flashS = exp(A.w.mul(-STRIKE_AIR.decay)).mul(B.w).mul(C.z.mul(STRIKE_AIR.hard).add(1.0));
             strikeAir.addAssign(B.xyz.mul(glowS.mul(flashS).mul(exp(max(tc.sub(0.5), 0.0).mul(fogK).negate()))));
-            // the struck point itself: a lotus of eight petals in the piece's colour that opens,
-            // turns a little and closes (a new jewel born), round a white-hot first instant
+            // A soft note opens its own petal count. A hard drop cleaves the air above impact
+            // with two tapering rails; their separation grows upward to the ends of the trails.
             const age = A.w;
             const pc = ro.add(rd.mul(tc)).sub(A.xyz);
             const dS = sqrt(dc2);
             const right = u.camWorld.mul(vec4(1.0, 0.0, 0.0, 0.0)).xyz;
             const up = u.camWorld.mul(vec4(0.0, 1.0, 0.0, 0.0)).xyz;
-            const bloomR = float(0.009).add(age.mul(0.03)).mul(C.z.mul(0.5).add(1.0));
-            const xs = dS.div(bloomR);
-            const ang = atan(dot(pc, up), dot(pc, right).add(1e-7));
-            const lobe = cos(ang.mul(8.0).add(age.mul(2.5))).mul(0.5).add(0.5);
-            const xr = xs.div(lobe.mul(1.1).add(0.7));
-            const petals = exp(xr.mul(xr).negate()).mul(2.2);
-            const bud = exp(xs.mul(xs).mul(-6.0)).mul(3.0);
-            const lotus = petals.add(bud).mul(exp(age.mul(-3.4)));
-            const whiteHot = exp(xs.mul(xs).mul(-9.0)).mul(exp(age.mul(-14.0))).mul(5.0);
+            const px = dot(pc, right).toVar();
+            const py = dot(pc, up).toVar();
+            const bloomR = float(0.009).add(age.mul(0.025)).toVar();
+            const xs = dS.div(bloomR).toVar();
+            const mark = float(0).toVar();
+            If(C.z.greaterThan(0.5), () => {
+                const trail = float(0.045).add(C.w.mul(0.27)).mul(exp(age.mul(-1.7)));
+                const v = clamp(py.div(max(trail, 0.003)), 0, 1).toVar();
+                const taper = float(1).sub(v);
+                const rail = abs(abs(px).sub(v.mul(0.028))).div(taper.mul(0.004).add(0.0015));
+                const streak = exp(rail.negate()).mul(taper).mul(smoothstep(0, 0.006, py));
+                const cut = abs(px).mul(0.52).add(abs(py).mul(2.3)).div(bloomR);
+                mark.assign(streak.mul(3.1).add(exp(cut.negate()).mul(2.7)));
+            }).Else(() => {
+                const ang = atan(py, px.add(1e-7));
+                const lobe = cos(ang.mul(C.w).add(age.mul(2.5))).mul(0.5).add(0.5);
+                const xr = xs.div(lobe.mul(1.1).add(0.7));
+                mark.assign(exp(xr.mul(xr).negate()).mul(2.2));
+            });
             const sparkSeen = smoothstep(0.0, 0.03, tEnd.sub(tc)).mul(smoothstep(0.0, 0.03, tc));
-            col.addAssign(B.xyz.mul(lotus).add(vec3(whiteHot)).mul(sparkSeen).mul(B.w));
+            const hot = exp(xs.mul(xs).mul(-5.0).sub(age.mul(10))).mul(3.5);
+            col.addAssign(B.xyz.mul(mark.mul(exp(age.mul(-2.8)))).add(vec3(hot)).mul(sparkSeen).mul(B.w));
         });
 
         // the strikes' light in the mist, gathered and capped softly (several at once must not
@@ -848,91 +912,148 @@ export function createTemple(u, tier, { scout: useScout = true } = {}) {
         strikeAir.mulAssign(STRIKE_AIR.gain);
         col.addAssign(strikeAir.div(max(strikeAir.x, max(strikeAir.y, strikeAir.z)).mul(STRIKE_AIR.cap).add(1.0)));
 
-        // ── the clears' standing waves leave the core as shells of light in the air ──
-        Loop({
-            start: int(0), end: int(u.counts.y), type: 'int', condition: '<', name: 'ha',
-        }, ({ ha }) => {
-            const H0 = u.harmonics.element(ha.mul(HARMONIC_ROWS));
-            const H1 = u.harmonics.element(ha.mul(HARMONIC_ROWS).add(1));
-            const r = H0.x;
-            const oc = heartPos.sub(ro);
-            const tc = dot(oc, rd);
-            const inside = r.mul(r).sub(max(dot(oc, oc).sub(tc.mul(tc)), 0.0));
-            const reach = sqrt(max(inside, 0.0));
-            const tn = tc.sub(reach);
-            const seen = smoothstep(0.0, 0.05, tEnd.sub(tn)).mul(smoothstep(0.0, 0.05, tn))
-                .mul(smoothstep(0.0, 0.0004, inside));
-            const graze = exp(reach.div(max(r, 0.05)).mul(-24.0));
-            col.addAssign(H1.xyz.mul(graze.mul(seen).mul(H0.w).mul(0.6)));
+        // The gem etches the standing wave in the air. A single clear leaves a clean halo;
+        // larger intervals resolve into paired arcs, a trefoil and a four-petal cross. The
+        // negative orders curl into spirals and a broken chain contracts toward the gem.
+        // Only the small disc around each visible jewel image evaluates these curves.
+        If(u.counts.y.greaterThan(0).and(d2C.lessThan(0.105)).and(tEnd.greaterThan(tcC)), () => {
+            const q = rd.mul(tcC).sub(ocC).toVar();
+            const horizontal = u.camWorld.mul(vec4(1, 0, 0, 0)).xyz;
+            const vertical = u.camWorld.mul(vec4(0, 1, 0, 0)).xyz;
+            const thetaH = atan(dot(q, vertical), dot(q, horizontal).add(1e-7)).toVar();
+            const radiusH = sqrt(d2C).toVar();
+            const ink = vec3(0).toVar();
+            Loop({
+                start: int(0), end: int(u.counts.y), type: 'int', condition: '<', name: 'ha',
+            }, ({ ha }) => {
+                const H0 = u.harmonics.element(ha.mul(HARMONIC_ROWS)).toVar();
+                const H1 = u.harmonics.element(ha.mul(HARMONIC_ROWS).add(1)).toVar();
+                const k = min(H0.y, 1.55).toVar();
+                const outward = float(0.038).add(k.mul(0.103));
+                const outer = select(H1.w.equal(CHIME.release), float(0.19).sub(k.mul(0.093)), outward).toVar();
+                const rr = radiusH.div(outer).toVar();
+                const order = abs(H1.w);
+                const winding = select(H1.w.lessThan(0), rr.mul(3.9), H0.y.mul(-0.65));
+                const lobe = cos(thetaH.mul(order).add(winding).add(H0.y.mul(1.35)));
+                const contour = lobe.mul(smoothstep(1, 2, order).mul(0.30)).add(1);
+                const width = max(tcC.mul(u.pixelAngle).mul(1.2).div(outer), 0.026);
+                const line = exp(abs(rr.sub(contour)).div(width).negate());
+                const lace = exp(abs(rr.mul(1.42).sub(float(2).sub(contour))).div(width).negate());
+                ink.addAssign(H1.xyz.mul(line.add(lace.mul(0.55))).mul(H0.w));
+            });
+            const crest = max(ink.x, max(ink.y, ink.z));
+            col.addAssign(ink.div(crest.mul(0.65).add(0.64)));
         });
 
-        // ── the core: a white-hot heart, a turning corona of twelve petals, sound rings ──
-        const toC = heartPos.sub(ro);
-        const tcH = max(dot(toC, rd), 0.0);
-        const off = ro.add(rd.mul(tcH)).sub(heartPos).toVar();
+        // The heart hangs in a corona of alternating long and short rose petals.
+        const tcH = max(tcC, 0.0).toVar();
+        const off = rd.mul(tcH).sub(ocC).toVar();
         const dcH = length(off).toVar();
-        const visible = smoothstep(0.0, 0.03, tEnd.sub(tcH));
-        const radius = u.heart.w;
-        const camRight = u.camWorld.mul(vec4(1.0, 0.0, 0.0, 0.0)).xyz;
-        const camUp = u.camWorld.mul(vec4(0.0, 1.0, 0.0, 0.0)).xyz;
-        const theta = atan(dot(off, camUp), dot(off, camRight).add(1e-7));
+        const visible = smoothstep(0.0, 0.03, tEnd.sub(tcH)).toVar();
+        // At the end of a run the petals close around the last ember. Starting
+        // again opens them on the same envelope as the light returning to the hall.
+        const radius = u.heart.w.mul(float(1).sub(sink.mul(0.46))).toVar();
         const x = dcH.div(radius).toVar();
-        // a lotus of twelve lobes: the corona's reach swells and narrows round the gem
-        const lobes = cos(theta.mul(12.0).add(u.pulse.mul(0.25))).mul(0.5).add(0.5);
-        const reachC = lobes.mul(1.1).add(1.7);
-        const xc = x.div(reachC);
-        const corona = exp(xc.mul(xc).mul(-1.0)).mul(0.55).add(exp(xc.mul(-2.4)).mul(0.18));
-        const soundRings = cos(x.mul(1.4).sub(u.pulse.mul(1.6))).mul(0.5).add(0.5);
-        const rings = soundRings.mul(soundRings).mul(soundRings).mul(exp(x.mul(-0.5))).mul(0.25);
-        const halo = exp(dcH.mul(-16.0)).mul(0.07);
-        const drone = u.heartState.y;
-        col.addAssign(jewelCol.mul(corona.add(rings).add(halo).add(drone.mul(halo).mul(2.0))).mul(visible).mul(coreK));
+        const pixel = max(u.pixelAngle.mul(tcH).div(radius), 0.005).toVar();
+        const halo = exp(dcH.mul(-16.0)).mul(0.055).mul(u.heartState.y.mul(1.5).add(1.0));
+        col.addAssign(jewelCol.mul(halo).mul(visible).mul(coreK));
+        If(x.lessThan(12.0).and(visible.greaterThan(0.001)), () => {
+            const right = u.camWorld.mul(vec4(1, 0, 0, 0)).xyz;
+            const up = u.camWorld.mul(vec4(0, 1, 0, 0)).xyz;
+            const angle = atan(dot(off, up), dot(off, right).add(1e-7));
+            const petalPhase = angle.mul(6.0).add(u.pulse.mul(0.25)).toVar();
+            const blade = cos(petalPhase.mul(2.0)).mul(0.5).add(0.5).toVar();
+            const petal = blade.mul(blade).mul(cos(petalPhase).mul(0.5).add(1.55)).add(2.8).toVar();
+            const s = x.div(petal);
+            const veil = exp(s.mul(s).mul(-1.65)).mul(blade.mul(0.3).add(0.14));
+            const lip = abs(x.sub(petal)).div(pixel.mul(0.65).add(0.065));
+            const filigree = exp(lip.mul(lip).negate()).mul(blade.mul(0.25).add(0.11));
+            const ring = cos(x.mul(1.4).sub(u.pulse.mul(1.6))).mul(0.5).add(0.5).toVar();
+            const sound = ring.mul(ring).mul(ring).mul(exp(x.mul(-0.48))).mul(0.24);
+            col.addAssign(jewelCol.mul(veil.add(filigree).add(sound)).mul(visible).mul(coreK));
+            // A held back-to-back note hangs two concentric arcs outside the
+            // petals; the small gaps turn slowly in opposite directions.
+            If(u.heartState.y.greaterThan(0.025), () => {
+                const drone = u.heartState.y;
+                const clock = u.pulse.mul(0.25);
+                const cantor = abs(x.sub(5.3).sub(drone.mul(0.6)))
+                    .add(float(1).sub(smoothstep(-0.7, -0.3, cos(angle.mul(3).add(clock)))).mul(2));
+                const echo = abs(x.sub(6.45))
+                    .add(float(1).sub(smoothstep(-0.45, 0.1, cos(angle.mul(3).sub(clock)))).mul(2));
+                const setting = exp(min(cantor, echo).div(pixel.add(0.07)).negate());
+                col.addAssign(mix(lanternGlass, jewelCol, 0.38).mul(setting).mul(drone).mul(visible));
+            });
+        });
 
-        // the gem itself: a sphere cut into twelve facets (the icosahedron's vertices), lit from
-        // within in the core's colour and its neons, its facet edges sparkling white
-        const gemR = radius.mul(1.35);
-        const og = ro.sub(heartPos);
-        const bq = dot(og, rd);
-        const disc = bq.mul(bq).sub(dot(og, og).sub(gemR.mul(gemR)));
-        const tg = bq.negate().sub(sqrt(max(disc, 0.0)));
-        const onGem = smoothstep(0.0, gemR.mul(gemR).mul(0.02), disc).mul(smoothstep(0.0, 0.02, tEnd.sub(tg)))
-            .mul(visible)
-            .toVar();
-        // a facet edge's width in the facets' own measure: one pixel turns the gem's normal by about
-        // pixelAngle · distance / radius (worked out here, not by derivatives inside the branch)
-        const edgeW = max(u.pixelAngle.mul(max(tg, 0.01)).div(gemR).mul(1.2), 1e-4).toVar();
-        If(onGem.greaterThan(0.001), () => {
-            // in the gem's own (turned) frame: its facets are the beams' axes
-            const ns = ksGemFrame(normalize(ro.add(rd.mul(tg)).sub(heartPos)), gemRot).toVar();
-            const best = float(-1).toVar();
-            const second = float(-1).toVar();
-            const facetN = vec3(0, 1, 0).toVar();
-            const facetK = float(0).toVar();
-            BEAM_AXES.forEach((a, j) => {
-                const d = dot(ns, vec3(a[0], a[1], a[2]));
-                const ad = abs(d).toVar();
-                If(ad.greaterThan(best), () => {
-                    second.assign(best);
-                    best.assign(ad);
-                    facetN.assign(vec3(a[0], a[1], a[2]).mul(sign(d)));
-                    facetK.assign(float(j).add(sign(d).mul(0.5).add(0.5).mul(6.0)));
-                }).ElseIf(ad.greaterThan(second), () => {
-                    second.assign(ad);
+        // Intersect six pairs of facet planes. The entry and exit faces make different
+        // polygons in the eye, so the stone has a cut silhouette and a pavilion visible through
+        // the table. Only rays in its tiny circumscribed disc pay for the cut.
+        const cutRadius = 2.25;
+        If(x.lessThan(cutRadius).and(visible.greaterThan(0.001)), () => {
+            const gemR = radius.mul(cutRadius);
+            const local = ksGemFrame(off.div(gemR), gemRot).toVar();
+            const enter = float(-100.0).toVar();
+            const leave = float(100.0).toVar();
+            const frontN = vec3(0, 1, 0).toVar();
+            const backN = vec3(0, -1, 0).toVar();
+            Loop(BEAM_AXES.length, ({ i }) => {
+                const axis = u.beamAxes.element(i).xyz.toVar();
+                const across = dot(rdG, axis).toVar();
+                const side = select(across.greaterThanEqual(0.0), 1.0, -1.0).toVar();
+                const invSlope = float(1).div(max(abs(across), 1e-6)).toVar();
+                const origin = dot(local, axis).mul(side).toVar();
+                // The dodecahedron's inradius / circumradius.
+                const near = float(-0.794654).sub(origin).mul(invSlope).toVar();
+                const far = float(0.794654).sub(origin).mul(invSlope).toVar();
+                If(near.greaterThan(enter), () => {
+                    enter.assign(near);
+                    frontN.assign(axis.mul(side.negate()));
+                });
+                If(far.lessThan(leave), () => {
+                    leave.assign(far);
+                    backN.assign(axis.mul(side));
                 });
             });
-            // facet colours: the core's own and its neons, by facet
-            const k3 = facetK.sub(floor(facetK.div(3.0)).mul(3.0));
-            const facetA = mix(jewelCol, neonNow.mul(1.4), smoothstep(0.5, 1.5, k3));
-            const facetCol = mix(facetA, mix(neonB1, neonB2, mk).mul(1.4), smoothstep(1.5, 2.5, k3));
-            const face = clamp(dot(facetN, rdG.negate()), 0.0, 1.0);
-            // bright enough to glow, held under white so every facet keeps its colour
-            const inner = float(0.32).add(face.mul(face).mul(0.55));
-            const edge = exp(best.sub(second).div(edgeW).mul(-1.5));
-            const glint = face.mul(face).mul(face).mul(face).mul(face)
-                .mul(face)
-                .mul(1.4);
-            const gem = facetCol.mul(inner).add(vec3(1.0, 0.95, 1.0).mul(edge.mul(1.2).add(glint)));
-            col.assign(mix(col, gem.mul(coreK), onGem));
+            const footprint = max(pixel.div(cutRadius), 0.002).toVar();
+            const coverage = smoothstep(0.0, footprint.mul(1.6), leave.sub(enter));
+            // Each pentagonal face is itself rose-cut. Its adjacent planes pick out five
+            // wedge directions exactly, including where the crystal turns through a silhouette.
+            const tangent = local.add(rdG.mul(enter)).sub(frontN.mul(0.794654)).toVar();
+            const extent = float(-1.0).toVar();
+            const sideN = vec3(1, 0, 0).toVar();
+            Loop(BEAM_AXES.length, ({ i }) => {
+                const candidate = u.beamAxes.element(i).xyz.toVar();
+                const alignment = dot(candidate, frontN).toVar();
+                const neighbour = candidate.mul(sign(alignment)).toVar();
+                const outwards = dot(tangent, neighbour).toVar();
+                If(abs(alignment).lessThan(0.9).and(outwards.greaterThan(extent)), () => {
+                    extent.assign(outwards);
+                    sideN.assign(neighbour);
+                });
+            });
+            const acrossFace = clamp(extent.div(0.43927), 0.0, 1.0).toVar();
+            const shoulderN = sideN.sub(frontN.mul(0.447214)).mul(1.118034).toVar();
+            const alongEdge = dot(tangent, cross(frontN, shoulderN)).toVar();
+            const star = smoothstep(0.58, 0.58 + 0.055, acrossFace.add(abs(alongEdge).mul(2.5)));
+            const table = smoothstep(0.19, 0.28, acrossFace);
+            const cutN = normalize(frontN.add(shoulderN.mul(mix(-0.73, 0.64, star).mul(table)))).toVar();
+            const mirror = rdG.sub(cutN.mul(dot(rdG, cutN).mul(2.0))).toVar();
+            const key = ksGemFrame(vec3(-0.46, 0.79, 0.40), gemRot).toVar();
+            const returnLight = dot(mirror, key).toVar();
+            const flame = smoothstep(0.42, 0.91, returnLight);
+            const violet = smoothstep(0.56, 0.94, dot(mirror, ksGemFrame(vec3(0.92, 0.33, -0.20), gemRot)));
+            // Light returned through the far facets forms a dark ruby and a second, smaller
+            // bright star inside the table. Sloping crown facets catch champagne and violet.
+            const pavilion = dot(shoulderN, key).negate().mul(0.8).add(dot(backN, key).mul(-0.35));
+            const fire = smoothstep(0.25, 0.9, pavilion).mul(float(1).sub(star).mul(0.72).add(0.22));
+            const ruby = jewelCol.mul(float(0.05).add(smoothstep(-0.68, 0.50, returnLight).mul(0.30)));
+            const champagne = vec3(1.0, 0.64, 0.28).mul(flame.mul(1.5).add(fire.mul(0.95)));
+            const cool = vec3(0.19, 0.055, 0.82).mul(violet.mul(0.85));
+            const ridgeLight = smoothstep(float(1).sub(footprint.mul(1.6)), 1.0, acrossFace)
+                .mul(smoothstep(-0.15, 0.8, returnLight)).mul(0.42);
+            const gem = ruby.add(champagne).add(cool).add(vec3(1.0, 0.78, 0.85).mul(ridgeLight))
+                .mul(min(coreK, 1.65));
+            col.assign(mix(col, gem, coverage.mul(visible)));
         });
         // a four-line or perfect flash, coloured by the core
         col.addAssign(heartCol.mul(u.state.w.mul(0.08)));

@@ -25,12 +25,12 @@ import {
     Fn, abs, attribute, cameraPosition, cameraProjectionMatrix, cameraViewMatrix, clamp, dot, exp, float, fract, length,
     max, min, mix, normalWorldGeometry, normalize, positionGeometry, positionWorld, reflect, select, sin, smoothstep,
     texture, vec2,
-    vec3, vec4,
+    varyingProperty, vec3, vec4,
 } from 'three/tsl';
 import { mgSurface } from './moonlit-greenhouse-tsl.js';
 import { LANTERN_FLAME_DROP } from './moonlit-greenhouse-plan.js';
 import {
-    HouseMesh, footprint, glassGlow, lathe,
+    HouseMesh, footprint, glassGlow, lathe, sweep,
 } from './moonlit-greenhouse-iron.js';
 
 // ── Numbers ─────────────────────────────────────────────────────────────────────────────────
@@ -68,6 +68,43 @@ export const LANTERN = Object.freeze({
 });
 
 const SIX = 6;
+const PEARLS_PER_SPAN = 5;
+
+// Each bulb hangs off the same sagging wire the viewer sees. Both wires are
+// merged into the lantern frames and the pearls share the candle halo draw.
+function addFestoons(body, halos, lanterns) {
+    let count = 0;
+    for (const side of [-1, 1]) {
+        const lamps = lanterns.filter((l) => Math.sign(l.x) === side).sort((a, b) => b.z - a.z);
+        for (let i = 1; i < lamps.length; i += 1) {
+            const a = lamps[i - 1];
+            const b = lamps[i];
+            const path = [];
+            for (let j = 0; j <= PEARLS_PER_SPAN + 1; j += 1) {
+                const u = j / (PEARLS_PER_SPAN + 1);
+                const sag = 4 * u * (1 - u);
+                const x = a.x + (b.x - a.x) * u;
+                const y = a.y + (b.y - a.y) * u + 0.58 - sag * (0.64 + 0.14 * a.seed);
+                const z = a.z + (b.z - a.z) * u;
+                const seed = (j * 0.38 + a.seed + i * 0.23) % 1;
+                const values = { aLamp: [x, y - 0.15, z, seed], aKind: [0, 0, 0, 0] };
+                path.push({
+                    o: [x, y, z], ea: [1, 0, 0], eb: [0, 1, 0], values,
+                });
+                if (j === 0 || j === PEARLS_PER_SPAN + 1) continue;
+                bar(body, x, z, y - 0.12, y, 0.012, seed, values);
+                const ids = [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([cx, cy]) => {
+                    const bulb = { aLamp: values.aLamp, aCorner: [cx, cy, 1, 0] };
+                    return halos.vertex(values.aLamp, [0, 0, 1], bulb);
+                });
+                halos.index.push(ids[0], ids[1], ids[2], ids[0], ids[2], ids[3]);
+                count += 1;
+            }
+            sweep(body, path, [[-0.009, 0], [0, -0.012], [0.009, 0], [0, 0.012]]);
+        }
+    }
+    return count;
+}
 
 /** The flame's centre for a plan lantern. */
 export function flameOf(l) {
@@ -211,7 +248,10 @@ export function buildLanternMeshes(plan) {
         }));
         halos.index.push(ids[0], ids[1], ids[2], ids[0], ids[2], ids[3]);
     });
-    return { body, panes, halos };
+    const pearls = addFestoons(body, halos, plan.lanterns);
+    return {
+        body, panes, halos, pearls,
+    };
 }
 
 // ── Shading ─────────────────────────────────────────────────────────────────────────────────
@@ -339,7 +379,12 @@ export function createLanterns({ U, noise, plan }) {
             const level = exp(P.y.sub(0.55).div(0.32).mul(P.y.sub(0.55).div(0.32)).negate()).mul(0.55).add(0.16);
             const rim = smoothstep(0.42, 0.5, abs(P.x.sub(0.5))).add(smoothstep(0.42, 0.5, abs(P.y.sub(0.5))));
             const edge = min(rim, 1.0);
-            const glass = warm.mul(level.mul(ripple.mul(0.5).add(0.75)).add(edge.mul(0.25))).mul(0.55);
+            // An amber bevel and a claret lozenge are set into each lantern pane.
+            const diamond = abs(P.x.sub(0.5)).mul(1.6).add(abs(P.y.sub(0.56)).mul(1.15));
+            const bevel = float(1).sub(smoothstep(0.012, 0.055, abs(diamond.sub(0.51))));
+            const glass = warm.mul(level.mul(ripple.mul(0.5).add(0.75)).add(edge.mul(0.38))).mul(0.55)
+                .mul(mix(vec3(1), vec3(0.86, 0.5, 0.38), smoothstep(0.5, 0.55, diamond)))
+                .add(warm.mul(bevel).mul(0.34));
             // A trace of the night on the glass's face: the vault's glow at grazing angles.
             const n = normalWorldGeometry;
             const cosV = clamp(dot(n, d).negate(), 0.0, 1.0);
@@ -370,13 +415,26 @@ export function createLanterns({ U, noise, plan }) {
         });
         material.name = 'moonlit-greenhouse-lantern-halos';
         const C = attribute('aCorner', 'vec4');
+        const light = varyingProperty('vec3', 'mgAisleLight');
         material.vertexNode = Fn(() => {
             const view = cameraViewMatrix.mul(vec4(positionGeometry, 1.0)).toVar();
             const depth = max(view.z.negate(), 0.05);
+            const pearl = C.z;
+            const along = clamp(flame.z.negate().div(44), 0, 1);
+            const chase = (at, phase) => float(1).sub(smoothstep(0.07, 0.52, abs(U.time.sub(at).sub(phase))))
+                .mul(U.cueLight);
+            const twin = chase(U.aisleCues.x, along.mul(2.3).add(select(flame.x.lessThan(0), 0.15, 0.48)));
+            const ebb = chase(U.aisleCues.z, float(1).sub(along).mul(1.9)).mul(0.75);
+            const pearlHue = mix(night.lantern, mix(night.glow, vec3(1.0, 0.81, 0.59), 0.62), seed.mul(0.8));
+            const pearlLight = pearlHue.mul(float(0.88).add(U.sync.mul(0.38)).add(twin.mul(2.4)).sub(ebb));
+            light.assign(mix(night.lantern, pearlLight, pearl).mul(U.lanternGain).mul(flickerOf(U, seed)));
             const swell = clamp(U.lanternGain, 0.2, 2.2).mul(0.25).add(0.75);
-            const radius = max(swell.mul(LANTERN.halo), depth.mul(U.pixelAngle).mul(9.0));
+            const radius = max(
+                swell.mul(mix(float(LANTERN.halo), float(0.145), pearl)),
+                depth.mul(U.pixelAngle).mul(mix(float(9), float(2.6), pearl)),
+            );
             // Toward the camera, so the glow lies over the lantern's own glass.
-            const at = vec3(view.xy.add(C.xy.mul(radius)), view.z.add(0.26));
+            const at = vec3(view.xy.add(C.xy.mul(radius)), view.z.add(mix(float(0.26), float(0.018), pearl)));
             return cameraProjectionMatrix.mul(vec4(at, 1.0));
         })();
         material.colorNode = vec4(0.0, 0.0, 0.0, 1.0);
@@ -384,8 +442,10 @@ export function createLanterns({ U, noise, plan }) {
             const r2 = dot(C.xy, C.xy);
             const glow = exp(r2.mul(-4.5)).mul(0.5).add(exp(r2.mul(-26.0)).mul(0.9))
                 .mul(float(1.0).sub(smoothstep(0.75, 1.0, r2)));
-            const warm = night.lantern.mul(U.lanternGain).mul(flickerOf(U, seed));
-            return vec4(warm.mul(glow).mul(0.3).mul(float(1.0).sub(U.hush.mul(0.6))), 0.0);
+            const bulb = dot(C.xy.mul(vec2(1.22, 0.83)), C.xy.mul(vec2(1.22, 0.83)));
+            const wick = float(1).sub(smoothstep(0.024, 0.066, bulb));
+            const emission = mix(glow.mul(0.26), glow.mul(0.27).add(wick.mul(2.5)), C.z);
+            return vec4(light.mul(emission).mul(float(1.0).sub(U.hush.mul(0.6))), 0.0);
         })();
         const mesh = new THREE.Mesh(geometry, material);
         mesh.name = 'moonlit-greenhouse-lantern-halos';

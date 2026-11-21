@@ -3049,6 +3049,22 @@ body.serenity-hub-open .theme-container.active {
     overflow: hidden;
 }
 
+body:has(#moonlit-greenhouse-theme.active) .single-player-stage[data-board='well']:not(:where(.infinity-mode-active, [data-odyssey-board], [data-stillfall])) {
+    --sp-hue: #a9e4cd;
+    --sp-hue-rgb: 169, 228, 205;
+}
+
+body:has(#moonlit-greenhouse-theme.active) .single-player-stage[data-board='well']:not(:where(.infinity-mode-active, [data-odyssey-board], [data-stillfall], [data-danger], [data-still-air])) {
+    --sp-wall: #619c8d;
+    --sp-wall-glow: rgb(75 150 138 / 24%);
+}
+
+body:has(#moonlit-greenhouse-theme.active) .single-player-stage[data-board='well']:not(:where(.infinity-mode-active, [data-odyssey-board], [data-stillfall])) .single-player-stats-bar {
+    --sb-text-faint: #b9cec6;
+    border-color: rgb(190 153 95 / 44%);
+    background: linear-gradient(152deg, rgb(21 48 45 / 97%), rgb(12 23 33 / 97%) 72%);
+}
+
 /* --- Thermal Bloom Theme (a steaming hydrothermal basin: a WebGPU canvas, src/themes/thermal-bloom/) --- */
 #thermal-bloom-theme {
     background: #7e97a8;

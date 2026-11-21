@@ -80,8 +80,8 @@ export const CLOUD_CRISP = Object.freeze({ near: 220, far: 700, margin: Object.f
  * where the march's steps are too long to see them; the sun's rays through the cloud do not need
  * them).
  */
-export function cloudThickness(u, noise, xz, { billows = null } = {}) {
-    const c = deckCover(u, noise, xz, { edge: CLOUD_EDGE });
+export function cloudThickness(u, noise, xz, { billows = null, sunOffset = null } = {}) {
+    const c = deckCover(u, noise, xz, { edge: CLOUD_EDGE, sunOffset });
     const q = deckPoint(u, noise, xz);
     const heads = float(1.0).sub(smoothstep(0.06, 0.95, gfCells(q.div(1500.0)).x));
     const lump = texture(noise, q.div(3300.0).add(vec2(0.37, 0.61))).b;
@@ -108,7 +108,10 @@ function phase(mu) {
         const denom = float(1 + g2).sub(mu.mul(2 * g)).max(1e-3);
         return float(1 - g2).div(denom.mul(denom.sqrt()));
     };
-    return hg(0.6).mul(0.7).add(hg(-0.2).mul(0.3));
+    const lobe = hg(0.6).mul(0.7).add(hg(-0.2).mul(0.3)).toVar();
+    // Light scatters through the thin rim, with headroom for variation even when
+    // the sun sits directly behind it. Away from the sun the two lobes are intact.
+    return lobe.div(max(lobe.sub(1.0), 0.0).mul(0.16).add(1.0));
 }
 
 /**
@@ -143,8 +146,9 @@ export function createCloudMarch(u, t, { steps = 18, scale = 0.5 } = {}) {
         const clear = float(1.0).toVar();
         If(dir.y.greaterThan(0.004), () => {
             const depth = cloudDepth(u).toVar();
-            const near = float(DECK.base).sub(u.eye.y).div(dir.y).toVar();
-            const span = min(depth.div(dir.y), float(CLOUD_RANGE)).toVar();
+            const near = float(DECK.base).sub(depth.mul(0.1)).sub(u.eye.y).div(dir.y)
+                .toVar();
+            const span = min(depth.mul(1.1).div(dir.y), float(CLOUD_RANGE)).toVar();
             const stride = span.div(float(u.cloudSteps)).toVar();
             // Crisp edges and billows only where the steps are short enough to draw them: steps a
             // kilometre long through a sharp edge band into stripes (the far deck stays soft).
@@ -157,9 +161,14 @@ export function createCloudMarch(u, t, { steps = 18, scale = 0.5 } = {}) {
             const strength = u.sunUp.mul(0.85).add(float(1.0).sub(u.day).mul(0.45)).add(0.15).toVar();
             const scatter = phase(clamp(dot(dir, L), -1.0, 1.0)).toVar();
             // Far away the cloud goes into the air in front of it.
-            const air = mix(u.horizon, u.haze, 0.35).toVar();
+            const air = mix(u.horizon, u.haze, 0.56).toVar();
             // Under a heavy overcast the deck is slate: little of the sky's light comes through it.
             const overcast = smoothstep(0.7, 0.95, u.cover).toVar();
+            const broken = overcast.oneMinus().toVar();
+            const shear = u.windDir.mul(depth.mul(broken.mul(0.40).add(0.08))).toVar();
+            const sunSlope = u.sunDir.xz.mul(depth.div(max(u.sunDir.y, 0.065))).sub(shear).toVar();
+            const baseAt = (cloud) => cloud.lump.mul(0.32).add(0.045).sub(cloud.thick.mul(0.31)).mul(broken.mul(0.45).add(0.55))
+                .add(cloud.lump.mul(0.055).sub(0.035));
             Loop({
                 start: int(0), end: u.cloudSteps, type: 'int', condition: '<', name: 'cs',
             }, () => {
@@ -168,11 +177,12 @@ export function createCloudMarch(u, t, { steps = 18, scale = 0.5 } = {}) {
                 });
                 const P = u.eye.add(dir.mul(reach)).toVar();
                 const h = P.y.sub(DECK.base).div(depth).toVar();
-                const cloud = cloudThickness(u, t.noise, P.xz, { billows: crisp });
-                // Inside under the heap's top (its crown lumpy), above a soft flat base; the margin a
-                // few tens of metres deep where the steps can see it, so a heap has an edge.
+                // Wind displaces the top of a heap from its foot. The dense heart
+                // hangs below its curling fringes; each bank has its own lower contour.
+                const cloud = cloudThickness(u, t.noise, P.xz.sub(shear.mul(h)), { billows: crisp, sunOffset: sunSlope.mul(h) });
+                const base = baseAt(cloud).toVar();
                 const dens = smoothstep(0.0, margin, cloud.thick.sub(h.mul(cloud.lump.mul(0.3).add(0.85))))
-                    .mul(smoothstep(-0.04, 0.08, h)).toVar();
+                    .mul(smoothstep(-0.055, margin.mul(0.60), h.sub(base))).toVar();
                 If(dens.greaterThan(0.004), () => {
                     // Toward the light: the layer half-way along its ray through what is left of the
                     // cloud above (or below, for a light from under the horizon).
@@ -184,9 +194,10 @@ export function createCloudMarch(u, t, { steps = 18, scale = 0.5 } = {}) {
                         start: int(1), end: int(3), type: 'int', condition: '<', name: 'ls',
                     }, ({ ls }) => {
                         const k = float(ls).mul(0.36).sub(0.08);
-                        const aside = cloudThickness(u, t.noise, P.xz.add(L.xz.mul(run.mul(k)))).thick;
-                        const hAt = h.add(L.y.mul(run.mul(k)).div(depth));
-                        inside.addAssign(clamp(aside.sub(hAt), 0.0, 1.0).mul(depth).mul(0.6));
+                        const hAt = h.add(L.y.mul(run.mul(k)).div(depth)).toVar();
+                        const aside = cloudThickness(u, t.noise, P.xz.add(L.xz.mul(run.mul(k))).sub(shear.mul(hAt)), { sunOffset: sunSlope.mul(hAt) });
+                        const inBase = smoothstep(-0.08, 0.12, hAt.sub(baseAt(aside)));
+                        inside.addAssign(clamp(aside.thick.sub(hAt), 0.0, 1.0).mul(inBase).mul(depth).mul(0.6));
                     });
                     inside.addAssign(dens.mul(rise).mul(0.6));
                     const od = inside.mul(SIGMA_SUN);
@@ -206,7 +217,10 @@ export function createCloudMarch(u, t, { steps = 18, scale = 0.5 } = {}) {
                     ).add(skylight.mul(0.5))
                         .mul(float(1.0).sub(cloud.thick.mul(overcast).mul(0.3)));
                     // (The storm's torn walls catch the sun the brighter for the dark around them.)
-                    const lit = u.cloudLit.mul(direct).mul(strength).mul(overcast.mul(0.35).add(0.62));
+                    const belly = smoothstep(0.30, 0.84, cloud.thick).mul(broken)
+                        .mul(float(1.0).sub(smoothstep(0.02, 0.32, h.sub(base))));
+                    const lit = u.cloudLit.mul(direct).mul(strength).mul(overcast.mul(0.35).add(0.62))
+                        .mul(float(1.0).sub(belly.mul(0.43)));
                     const veil = exp(reach.div(-34000.0));
                     const sample = mix(air, shade.add(lit), veil);
                     const cover = float(1.0).sub(exp(dens.mul(stride).mul(SIGMA_VIEW).negate()));

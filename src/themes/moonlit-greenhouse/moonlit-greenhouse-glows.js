@@ -10,14 +10,15 @@
  */
 import * as THREE from 'three/webgpu';
 import {
-    Fn, attribute, cameraProjectionMatrix, cameraViewMatrix, exp, float, max, mix, positionGeometry, smoothstep, uv,
+    Fn, If, abs, attribute, cameraProjectionMatrix, cameraViewMatrix, cos, dot, exp, float, max, mix, positionGeometry,
+    sin, smoothstep, uv, vec2,
     vec3, vec4,
 } from 'three/tsl';
 
 /**
  * A light: aGlowA = (position, radius in metres), aGlowB = (colour, shape). Shape 0 is a soft
  * point with a hot core (a seed, a firefly); 1 a wide soft halo with no core (a flame's glow in
- * the air); 2 a fine sharp spark (pollen, dew catching the light).
+ * the air); 2 a fine sharp spark, 3 a winged seed, and 4..5 a falling petal and its rotation.
  */
 export function createGlows({ capacity, U, minPixels = 2.2 }) {
     const geometry = new THREE.PlaneGeometry(2, 2);
@@ -56,7 +57,18 @@ export function createGlows({ capacity, U, minPixels = 2.2 }) {
         const spark = exp(r2.mul(-26.0)).mul(1.6);
         const point = halo.mul(0.55).add(core);
         const shape = B.w;
-        const glow = mix(mix(point, soft, smoothstep(0.5, 1.0, shape)), spark, smoothstep(1.5, 2.0, shape));
+        const glow = mix(mix(point, soft, smoothstep(0.5, 1.0, shape)), spark, smoothstep(1.5, 2.0, shape)).toVar();
+        If(shape.greaterThan(3.5), () => {
+            const angle = shape.sub(4).mul(Math.PI * 2);
+            const q = vec2(dot(d, vec2(cos(angle), sin(angle))), dot(d, vec2(sin(angle).negate(), cos(angle))));
+            const outline = vec2(q.x.mul(q.y.mul(0.43).add(1.57)), q.y.add(0.06)).length();
+            const silk = float(1).sub(smoothstep(0.74, 0.94, outline));
+            const fold = float(1).sub(smoothstep(0.02, 0.19, abs(q.x.add(q.y.pow2().mul(0.18)))));
+            glow.assign(silk.mul(fold.mul(0.36).add(q.y.mul(0.23)).add(0.56)).add(halo.mul(0.08)));
+        }).ElseIf(shape.greaterThan(2.5), () => {
+            const wings = vec2(abs(d.x).sub(0.30).mul(2.5), d.y.sub(abs(d.x).mul(0.58)).mul(4.8));
+            glow.assign(exp(dot(wings, wings).negate()).mul(0.92).add(core).add(halo.mul(0.28)));
+        });
         return B.xyz.mul(glow).mul(float(1.0).sub(U.hush.mul(0.6)));
     });
     material.colorNode = vec4(0.0, 0.0, 0.0, 1.0);

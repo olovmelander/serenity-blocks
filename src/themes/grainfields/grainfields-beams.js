@@ -27,7 +27,9 @@ import {
     normalize,
     positionGeometry,
     positionWorld,
+    texture,
     varying,
+    vec2,
     vec3,
     vec4,
 } from 'three/tsl';
@@ -36,7 +38,7 @@ import { groundHeight } from './grainfields-plan.js';
 import { MAX_GAPS, GrainfieldsReactions } from './grainfields-reactions.js';
 
 /** How high the dust stands in a beam (metres: its glow falls off over this). */
-const DUST_HEIGHT = 30;
+const DUST_HEIGHT = 24;
 
 export function createBeams(u, t, reactions) {
     const geometry = new THREE.CylinderGeometry(1, 1, 1, 24, 6, true);
@@ -75,7 +77,10 @@ export function createBeams(u, t, reactions) {
         const p = positionGeometry;
         vFoot.assign(aFoot);
         vLook.assign(aLook);
-        return aFoot.xyz.add(A.mul(p.y.mul(len).sub(2.0))).add(side.mul(p.x.mul(aFoot.w))).add(other.mul(p.z.mul(aFoot.w)));
+        const rise = p.y.mul(len).sub(2.0);
+        // A finite solar disc spreads the penumbra as the shaft rises out of the dust.
+        const width = aFoot.w.mul(1.65).add(max(rise.mul(A.y), 0.0).mul(0.018));
+        return aFoot.xyz.add(A.mul(rise)).add(side.mul(p.x.mul(width))).add(other.mul(p.z.mul(width)));
     })();
     material.colorNode = Fn(() => {
         const P = positionWorld;
@@ -85,29 +90,34 @@ export function createBeams(u, t, reactions) {
         const n = cross(V, A);
         const nn = max(length(n), 1e-3);
         const d = dot(vFoot.xyz.sub(u.eye), n).abs().div(nn);
-        const r = max(vFoot.w, 0.5);
-        const heart = exp(d.mul(d).div(r.mul(r)).mul(-2.2));
-        const chord = clamp(float(1.0).sub(d.div(r).mul(d.div(r))), 0.0, 1.0).sqrt().mul(r).div(nn)
-            .min(r.mul(6.0));
-        // The dust thins with height over the field.
         const up = max(P.y.sub(vFoot.y), 0.0);
+        const r = max(vFoot.w, 0.5).mul(1.65).add(up.mul(0.018));
+        const radial = d.div(r).clamp(0.0, 1.0).toVar();
+        const radius2 = radial.mul(radial);
+        const falloff = radius2.oneMinus();
+        const heart = exp(radius2.mul(-4.2)).mul(falloff.mul(falloff));
+        // The dust thins with height over the field.
         // (Little of it reaches far up: a column standing in the barley, not a searchlight from the
         // sky; ten beams at once in play, each one's long upper reach summed into one pale haze.)
         const dust = exp(up.div(-DUST_HEIGHT)).mul(0.9).add(exp(up.div(-200.0)).mul(0.03));
-        // (No glinting texture on the column: its noise cells, a few metres across, shrank to a pixel
-        // along a beam and aliased into regular bands, which the beams converging on the sun drew as
-        // rings. The motes in the beam are its glints.)
+        // Broad dust layers drift along the shaft. Filter them as field-scale
+        // detail, so only the loose chaff makes individual glints.
+        const veil = texture(t.noise, vFoot.xz.mul(0.0021).add(vec2(up.mul(0.0018), u.time.mul(0.0025)))).level(2).g;
         // Light scattered toward the eye: strongest looking up the beam toward the sun.
         const mu = clamp(dot(V, A), 0.0, 1.0);
         const m2 = mu.mul(mu);
-        const phase = m2.mul(m2).mul(1.3).add(m2.mul(0.4)).add(0.45);
+        const phase = m2.mul(m2).mul(0.34).add(m2.mul(0.23)).add(0.45);
         // Sunlight first, the piece's pigment a breath in it (its motes carry the colour).
         const tint = mix(vec3(1.0, 0.96, 0.88), vLook.xyz.mul(1.3).add(0.15), 0.16);
-        const glow = u.sun.mul(u.sunUp).mul(tint).mul(heart).mul(chord)
-            .mul(dust)
-            .mul(phase)
+        // Looking along a broad beam reveals more dust, but the light scattered by
+        // a thick column levels off. At twilight a little afterglow reaches the dust.
+        const column = vFoot.w.mul(0.028).add(0.12).min(0.46);
+        const opticalDepth = column.mul(dust).mul(veil.mul(0.65).add(0.45)).div(nn.mul(0.45).add(0.55));
+        const scattered = float(1.0).sub(exp(opticalDepth.negate()));
+        const source = u.sun.mul(u.sunUp).add(u.glow.mul(u.day.oneMinus()).mul(0.18));
+        const glow = source.mul(tint).mul(heart).mul(scattered).mul(phase)
             .mul(vLook.w)
-            .mul(0.015);
+            .mul(0.72);
         return vec4(glow, 0.0);
     })();
     // The light is added and the target's alpha left as it is.

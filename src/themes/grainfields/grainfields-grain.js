@@ -249,8 +249,9 @@ function grainMaterial(u, t, { coverage = false, stems = false } = {}) {
         const gate = gustFrontAt(u, iA.xz);
         // Where the herd has gone through: parted, and laid over in its wake.
         const tramp = t.trample ? trampleAt(t, iA.xz) : { push: vec2(0.0), lay: float(0.0) };
-        const flutter = sin(u.time.mul(3.1).add(h3.mul(40.0)).add(iA.x.mul(0.6))).mul(0.06);
-        const bendWind = clamp(float(0.1).add(gust.mul(0.42)).add(flutter), 0.0, 1.3);
+        const flutter = sin(u.time.mul(2.8).add(h3.mul(40.0)).add(iA.x.mul(0.6)))
+            .mul(gust.mul(0.06).add(u.windStrength.min(1.0).mul(0.025)));
+        const bendWind = clamp(float(0.065).add(gust.mul(0.57)).add(flutter), 0.0, 1.3);
         const stray = h3.sub(0.5).mul(0.8);
         const windD = normalize(vec2(u.windDir.x.add(stray), u.windDir.y.sub(stray.mul(0.6))));
         // A pulse pushes the stalks its own way (out from a hard drop, round a twist's whirl).
@@ -267,7 +268,10 @@ function grainMaterial(u, t, { coverage = false, stems = false } = {}) {
         const tangent = normalize(vec3(D.x.mul(bend), float(1.0).sub(bend.mul(bend).mul(0.36)), D.y.mul(bend))).toVar();
         // The ear leans off its neck toward its own side and the wind's (a heavy one leans more).
         const nodDir = normalize(vec3(D.x.add(sin(angle).mul(0.7)), 0.0, D.y.add(sin(angle.add(1.5708)).mul(0.7))));
-        const nod = mix(float(0.12), float(0.62), h1.mul(h1)).add(bend.mul(0.35));
+        // The heavy ear lags the stiffer straw, then dips over it on the following half-beat.
+        const rebound = sin(u.time.mul(2.8).add(h3.mul(40.0)).add(iA.x.mul(0.6)).sub(1.1))
+            .mul(gust.mul(0.085));
+        const nod = mix(float(0.12), float(0.64), h1.mul(h1)).add(bend.mul(0.32)).add(rebound);
         const earAxis = normalize(tangent.mul(cos(nod)).add(nodDir.mul(sin(nod)))).toVar();
         // The neck: over the stem's last stretch its direction turns from its own line onto the
         // ear's (the turn's share grows linearly, so the offset is its integral: quadratic), and
@@ -332,7 +336,7 @@ function grainMaterial(u, t, { coverage = false, stems = false } = {}) {
         // it stands upright in its own shade: the waves running over the field read as light and dark.
         const laid = clamp(gust.add(trail.lay).add(pulse.lay).add(tramp.lay.mul(0.6)).add(gate.lay.mul(0.3)), 0.0, 1.2);
         const lull = u.windStrength.min(1.0).mul(float(1.0).sub(smoothstep(0.0, 0.5, laid))).mul(0.13);
-        vTone.assign(vec4(tone, laid.mul(0.58).add(1.0).sub(lull)));
+        vTone.assign(vec4(tone, laid.mul(0.39).add(0.98).sub(lull)));
         const shade = mix(float(0.16), float(1.0), inStand);
         // A clear's trail glints with its rows' colours; a gust's sheen: the laid stand's backs
         // catch the sky.
@@ -410,7 +414,7 @@ function grainMaterial(u, t, { coverage = false, stems = false } = {}) {
         const round = clamp(nl.mul(0.6).add(0.4), 0.0, 1.0);
         const leaf = abs(nl).mul(0.55).add(0.3);
         const diffuse = mix(round, leaf, thin);
-        const passed = clamp(nl.negate(), 0.0, 1.0).mul(mix(float(0.4), float(0.62), thin));
+        const passed = clamp(nl.negate(), 0.0, 1.0).mul(mix(float(0.28), float(0.47), thin));
         // Under the deck the overcast sky is a broad soft light: the stand keeps its gold in the shade.
         const sky = u.fill.mul(N.y.mul(0.35).add(0.65)).mul(shade).mul(1.9);
         const deepened = albedo.mul(vec3(1.12, 1.0, 0.6));
@@ -422,11 +426,12 @@ function grainMaterial(u, t, { coverage = false, stems = false } = {}) {
         const a2 = ahead.mul(ahead);
         const a4 = a2.mul(a2);
         const a16 = a4.mul(a4).mul(a4).mul(a4);
-        const through = a4.mul(0.5).add(a16.mul(1.35)).add(a2.mul(0.12));
+        const through = a4.mul(0.26).add(a16.mul(1.28)).add(a2.mul(0.06));
         const rim = smoothstep(0.35, 1.0, abs(vInfo.z));
-        const passes = select(isEar, mix(rim.mul(0.5).add(0.2), float(1.0), awn), mix(float(0.22), rim.mul(0.5).add(0.2), neck))
+        const huskEdge = rim.mul(0.48).add(0.14);
+        const passes = select(isEar, mix(huskEdge, float(1.0), awn), mix(float(0.13), huskEdge, neck))
             .mul(mix(float(1.0), float(0.55), vShape.y));
-        const warm = albedo.mul(vec3(1.45, 1.15, 0.6));
+        const warm = albedo.mul(vec3(1.26, 1.16, 0.74));
         col.addAssign(warm.mul(u.sun).mul(through).mul(passes).mul(sunlit)
             .mul(shade.mul(shade)));
         // After sunset the ears keep a rose-gold glow toward the afterglow in the west.

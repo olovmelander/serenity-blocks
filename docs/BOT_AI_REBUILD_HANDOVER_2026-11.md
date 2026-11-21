@@ -1,5 +1,7 @@
 # Gravity-first opponents
 
+The November 21 follow-up measures how the expert creates a shelf, parks a piece on it and decides when to release it. It includes the same-speed expert comparison, native timing and level calibration. [Support-release implementation and results](BOT_SUPPORT_SEARCH_2026-11.md)
+
 Feature branch `feature/gravity-bots`, measured against `8dc68d825db61bc04e1cfb4e4c5a1f580ea3e138`. The live policy uses public pieces, body connectivity, real wave score and outgoing garbage. The campaign measuring instrument has its own pinned entry point. [Audit](BOT_AI_AUDIT_2026-11.md) · [Approved plan](BOT_AI_REBUILD_PLAN_2026-11.md)
 
 ## Release checks
@@ -36,7 +38,7 @@ On November 20 the owner approved deployment when CI and the planning budgets pa
 | Cleared half the marked six-row attack within 24 locks | 4/16 | 13/16 |
 | Cleared the entire marked attack within 24 locks | 4/16 | 12/16 |
 
-On seed **1006**, the expert builds from an empty board and fires four waves with lock 13. The live local seat earns 4,628 cumulative points and sends three rows. The replay shows the tick of every accepted command, the forecast before the trigger, and each intervening wave. The 40 audit and 40 sealed openings reproduced their construction counts at native pace with zero rejected commands in 1,280 locks. [Board-by-board replay and reproduction command](BOT_AI_CHAIN_REPLAY_2026-11.md)
+On seed **1006**, the expert builds from an empty board and fires four waves with lock 13. The November 20 seat earned 4,628 cumulative points and sent three rows. The November 21 replay reaches the same boards at the faster local pace, earning 4,647 points and sending three rows. The replay shows the tick of every accepted command, the forecast before the trigger, and each intervening wave. The 40 audit and 40 sealed openings reproduced their construction counts at native pace with zero rejected commands in 1,280 locks. [Board-by-board replay and reproduction command](BOT_AI_CHAIN_REPLAY_2026-11.md)
 
 The original 13/40 mark includes three-wave fires. Under the four-wave rule the frozen expert reached 2/40 and the slow offline search demonstrated 20/40 on the same audit deals. The live planner recovered 14 of that observed 18-bag gap. [Offline ceiling and original chain spread](BOT_AI_AUDIT_2026-11.md)
 

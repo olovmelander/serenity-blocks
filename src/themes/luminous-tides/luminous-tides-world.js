@@ -16,21 +16,20 @@
  *   lock        a drop of the piece's colour falls out of the night into the surf beside the card
  *               (lower pieces nearer, higher pieces further out) and bursts in a crown of glowing
  *               droplets; the water round it flares blue and its sparks die away.
- *   hard drop   the drop falls from higher and lands hard: a taller crown, a wider flare.
+ *   hard drop   a higher fall, a taller crown and a coloured pair of pressure rings.
  *   clear       the sea throws a wave of light for every line: it stands up glowing beside the card,
  *               breaks, the break running along the shore both ways, and its bore and swash run in
  *               and up the sand toward the eye.
  *   twist      a shoal of fish darts through the shallows, each streaking light behind it.
  *   four lines  a great set wave stands up out in the bay, glowing from within, breaks along the
  *               whole shore and floods the beach to the eye's feet.
- *   perfect     the same, and the whole bay lights to the horizon for a while.
+ *   perfect     the bay lights up from sandbar to sandbar and a train of meteors crosses the sky.
  *   combo       a chain brings rain: a sprinkle, a shower, a downpour, every drop a spark on the sea.
- *   level up    the night turns on (the wheel below), and the bay shimmers once.
- *   cascade     each wave of a cascade throws a bigger, brighter, faster wave than the last; one
- *               right on the heels of the last feeds the wave still standing up instead.
- *   back-to-back  the wave peels along the shore half again as fast and the whole bay shimmers,
- *               more for every back-to-back in a row.
- *   twist, no lines  a small school of fish darts through the shallows.
+ *   level up    the island beacon sweeps the harbour as the night turns.
+ *   cascade     a bead skips across a rising set, leaving a pearl ring at each landing.
+ *   back-to-back  twin amber-edged wakes open beside a faster peel.
+ *   twist, no lines  a small school turns in a circle in the shallows.
+ *   game over   one last band of light ebbs out to sea.
  *
  * Nothing the board does restarts what is already lit: a full table of waves makes room by
  * fading out the faintest (one that has run up the sand and is draining), never a great set wave
@@ -58,7 +57,7 @@ import { GameplaySurge, Swell } from '../shared/gameplay-surge.js';
 import { flashScale } from '../../utils/photosensitivity.js';
 import {
     DEG, EYE, NIGHTS, NIGHT_COLOURS, NIGHT_SECONDS, SURF, TURN_SECONDS, approach, clamp, clamp01, fromShore, lerp,
-    lightAt, mulberry32, pieceLight, runup, sandHeight, smooth, surfHeight, toShore, turnOffset,
+    lightAt, meteorAt, mulberry32, pieceLight, runup, sandHeight, smooth, surfHeight, toShore, turnOffset,
 } from './luminous-tides-core.js';
 import { tierFor } from './luminous-tides-quality.js';
 import {
@@ -193,6 +192,12 @@ export class LuminousTidesWorld {
             haze: uniform(0.15),
             /** How far the night sky has turned (radians). */
             starTurn: uniform(0),
+            // Tangent-plane moon position, moonlight, and the island beacon's sweep.
+            moon: uniform(new THREE.Vector4()),
+            // The head, signed length of its tail and live radiance.
+            meteor: uniform(new THREE.Vector4()),
+            // Strength of the drifting plankton beds, age of the perfect clear's incoming tide.
+            plankton: uniform(new THREE.Vector3(0, -1, -1)),
             drift: uniform(new THREE.Vector2(0, 0)),
             /** 1 clear; under rain the sky and the air dim. */
             squallDim: uniform(1),
@@ -213,9 +218,11 @@ export class LuminousTidesWorld {
         const breakerRows = (this.tier.breakers + SPARE_BREAKERS) * 2;
         this.splashRows = Array.from({ length: splashRows }, () => new THREE.Vector4(0, 0, -100, 0));
         this.breakerRows = Array.from({ length: breakerRows }, () => new THREE.Vector4(0, 0, -100, 0));
+        this.wakeRows = Array.from({ length: breakerRows / 2 }, () => new THREE.Vector4(-100, -100, 0, 0));
         this.rows = {
             splashes: uniformArray(this.splashRows, 'vec4'),
             breakers: uniformArray(this.breakerRows, 'vec4'),
+            wakes: uniformArray(this.wakeRows, 'vec4'),
         };
         /** Splashes: { x, y, z, t0 (impact), strength, radius, rgb, height (of the fall), retireAt }. */
         this.splashes = [];
@@ -257,6 +264,9 @@ export class LuminousTidesWorld {
         this.kick = 0;
         /** Back-to-backs in a row. */
         this.b2bRun = 0;
+        this.perfectAt = -Infinity;
+        this.signalAt = -Infinity;
+        this.ebbAt = -Infinity;
         this.state = {
             combo: 0,
             level: 1,
@@ -277,8 +287,8 @@ export class LuminousTidesWorld {
         this._jitter = [0, 0];
         this._rgb = [0.2, 0.62, 1];
         this._sprayCount = 0;
-        this._pushSpray = (x, y, z, r, red, green, blue, vx, vy, vz) => {
-            this.parts.glows.push(x, y, z, r, red, green, blue, 0, vx, vy, vz, 0.03);
+        this._pushSpray = (x, y, z, r, red, green, blue, vx, vy, vz, mist = false) => {
+            this.parts.glows.push(x, y, z, r, red, green, blue, mist ? 1 : 0, vx, vy, vz, mist ? 0.034 : 0.009);
         };
         this.applyNight();
     }
@@ -296,7 +306,7 @@ export class LuminousTidesWorld {
         // Glows: every droplet, a falling drop's streak and flash per splash, the schools (a head and
         // a tail a fish, each school grown to its fullest), the spray.
         const glowCapacity = tier.drops + (tier.splashes + SPARE_SPLASHES) * 3 + tier.fish * 2 * SCHOOL_GROWTH * SCHOOLS
-            + tier.spray;
+            + tier.spray + (tier.breakers + SPARE_BREAKERS) * 3 * Math.max(6, Math.round(tier.fish * 0.75));
         this.parts.glows = createGlows({ capacity: glowCapacity, U });
         this.parts.rain = createRain({ count: tier.streaks, U, seed: this.seed + 5 });
         Object.values(this.parts).forEach((part) => this.group.add(part.mesh));
@@ -355,6 +365,7 @@ export class LuminousTidesWorld {
     seek(time) {
         this.time = Math.max(0, time);
         this.clock = this.time;
+        this.rand = mulberry32(this.seed);
         this.resetSession();
         this.restoreWheel(0);
         this.state.pitch = null;
@@ -392,6 +403,13 @@ export class LuminousTidesWorld {
         this.clearing = 0;
         this.kick = 0;
         this.b2bRun = 0;
+        this.perfectAt = -Infinity;
+        this.signalAt = -Infinity;
+        this.ebbAt = -Infinity;
+        this.U.meteor.value.w = 0;
+        this.U.plankton.value.y = -1;
+        this.U.plankton.value.z = -1;
+        this.parts.rain?.setIntensity(0);
         this.U.rain.value = 0;
         this.U.bayBloom.value = 0;
         this.U.stir.value = 0;
@@ -793,6 +811,7 @@ export class LuminousTidesWorld {
         }
         const hit = this.castShore(x, y, 8, 120);
         const a0 = hit.a;
+        const wakeS = clamp(hit.s, -0.4, 8.5);
         const { clock } = this;
         // A back-to-back throws harder, more for every one in a row; the deeper the cascade and the
         // hotter the play, the bigger, brighter and faster the waves.
@@ -803,38 +822,52 @@ export class LuminousTidesWorld {
         const pace = 1 + 0.06 * (depth - 1);
         const peel = (c.b2b ? 1.5 : 1) * (1 + 0.08 * (depth - 1));
         const host = big ? null : this.joinable(a0);
+        let lead = host;
         if (host) {
             // Right on the heels of the last wave (a cascade's next): it feeds the wave still
             // coming in, which stands up taller and burns brighter for it.
             this.feedBreaker(host, FEED_SHARE * lines * strength, 0.06 * lines + 0.05 * (depth - 1));
             this.flash.hit(0.03 + lines * 0.02, clock);
         } else if (big) {
-            this.addBreaker(a0, 16, clock, 1.6 * strength, {
+            lead = this.addBreaker(a0, 16, clock, 1.6 * strength, {
                 H: 2.6 * (1 + 0.05 * level), speed: 4.2, sBreak: 9.5, peel: 30 * peel, great: true,
             });
             s.waves += 1;
             this.flash.hit(0.3, clock);
             // The whole bay lights: a frame-wide flash, so Reduce flashing scales it (ADR-0021).
-            if (c.perfect) s.bloom = Math.max(s.bloom, flashScale());
+            if (c.perfect) this.lightBay();
         } else {
             for (let i = 0; i < lines; i += 1) {
-                this.addBreaker(a0 - i * 3, 13 + i * 2.2, clock + (i * 0.5) / pace, strength, {
+                const wave = this.addBreaker(a0 - i * 3, 13 + i * 2.2, clock + (i * 0.5) / pace, strength, {
                     H: Math.min(WAVE_H_CAP, 0.85 * grow), speed: 4.2 * pace, sBreak: 10.8 + i * 2.2, peel: 22 * peel,
                 });
+                if (i === 0) lead = wave;
                 s.waves += 1;
             }
             this.flash.hit(0.04 + lines * 0.03, clock);
         }
         // A back-to-back: the whole bay shimmers, brighter for every one in a row.
         if (c.b2b) s.bloom = Math.max(s.bloom, (0.3 + 0.08 * run) * flashScale());
-        if (c.twist) this.sendShoal(1);
+        if (lead && c.b2b) lead.echoAt = clock;
+        if (lead && (c.b2b || depth > 1)) lead.wakeS = wakeS;
+        if (lead && depth > 1) {
+            lead.skipAt = clock;
+            lead.skips = Math.min(5, depth + 1);
+        }
+        if (c.twist) this.sendShoal(1, c);
     }
 
-    /**
-     * A perfect clear that settled after its clear (the game sends it a moment after the last
-     * wave): the crown on the great wave still running, not a second one. It swells taller and
-     * burns brighter, and the whole bay lights.
-     */
+    /** A run's last wash draws back into the bay behind the results. */
+    ebb() {
+        this.ebbAt = this.clock;
+    }
+
+    lightBay() {
+        this.perfectAt = this.clock;
+        this.state.bloom = Math.max(this.state.bloom, flashScale());
+    }
+
+    /** Let a late perfect clear crown the wave still running. */
     onPerfect() {
         if (!this.camera) return;
         const { clock } = this;
@@ -850,7 +883,7 @@ export class LuminousTidesWorld {
             return;
         }
         this.surge.crown(clock);
-        this.state.bloom = Math.max(this.state.bloom, flashScale());
+        this.lightBay();
         this.flash.hit(0.22, clock);
         const grow = host.great ? 0.25 : Math.max(0.6, GREAT_H - host.Hto);
         host.great = true;
@@ -858,18 +891,18 @@ export class LuminousTidesWorld {
     }
 
     /** A twist that cleared nothing: a small school darts through the shallows. */
-    onSpin() {
+    onSpin(c) {
         if (!this.camera) return;
         this.surge.spin(this.clock);
         this.flash.hit(0.03, this.clock);
-        this.sendShoal(0.45);
+        this.sendShoal(0.45, c);
     }
 
     /**
      * A school of fish darts through the shallows; `size` of a twist's full school. While every
      * school is still running, more fish set off after the youngest from where it started.
      */
-    sendShoal(size = 1) {
+    sendShoal(size = 1, cue = {}) {
         const s = this.state;
         const { clock } = this;
         s.shoals += 1;
@@ -891,12 +924,15 @@ export class LuminousTidesWorld {
             return;
         }
         const layout = this.aimLayout();
-        const card = layout?.cards?.[0];
+        const board = boardFor(layout, cue.player || 0);
+        const card = cardFor(layout, board);
         const inner = card ? Math.max(0.06, card.x0 - 0.04) : 0.36;
-        const from = this.castShore(0.02, 0.78 + this.rand() * 0.06, 2.5, 30);
+        const startX = cue.screen ? clamp(cue.screen.x - 0.10, 0.02, 0.90) : Math.max(0.02, inner - 0.33);
+        const endX = cue.screen ? clamp(cue.screen.x + 0.10, 0.08, 0.98) : inner;
+        const from = this.castShore(startX, 0.76 + this.rand() * 0.05, 2.5, 30);
         const fromA = from.a;
         const fromS = clamp(from.s, 2, 9);
-        const to = this.castShore(inner, 0.9, 2.5, 30);
+        const to = this.castShore(endX, 0.86, 2.5, 30);
         sh.at = clock;
         sh.until = clock + SCHOOL_LIFE;
         sh.seed = this.rand();
@@ -907,6 +943,7 @@ export class LuminousTidesWorld {
         sh.n = Math.min(sh.start.length, count);
         sh.start.fill(clock, 0, sh.n);
         sh.glow = 1;
+        sh.circle = size < 1;
     }
 
     /**
@@ -931,6 +968,7 @@ export class LuminousTidesWorld {
         if (silent) {
             this.restoreWheel(next - 1);
         } else if (next > s.level) {
+            this.signalAt = this.clock;
             turn.from = this.turnOffset();
             turn.to += next - s.level;
             turn.at = this.clock;
@@ -991,6 +1029,28 @@ export class LuminousTidesWorld {
         U.warmth.value = light.warmth * (1 - squall * 0.3);
         U.glowPower.value = light.glowPower * (1 + 0.05 * level + 0.1 * fever);
         U.squallDim.value = 1 - squall * 0.32;
+        const t = this.clock;
+        const signalAge = t - this.signalAt;
+        const signal = signalAge < 5 ? Math.sin(Math.PI * (signalAge / 5)) ** 2 : 0;
+        U.moon.value.set(
+            -0.39 + 0.09 * Math.sin(t * 0.009),
+            0.145 + 0.055 * Math.cos(t * 0.012),
+            light.moon * (1 - 0.65 * squall),
+            signal,
+        );
+        const perfectAge = t - this.perfectAt;
+        const ebbAge = t - this.ebbAt;
+        U.plankton.value.set(
+            0.5 + 0.27 * Math.sin(t * 0.058) + 0.23 * Math.sin(t * 0.147 + 1.7),
+            perfectAge < 9 ? perfectAge : -1,
+            ebbAge < 6 ? ebbAge : -1,
+        );
+        if (this.reducedMotion) U.meteor.value.w = 0;
+        else {
+            const halfWidth = this.aspect * Math.tan(fovForAspect(this.aspect) * DEG * 0.5);
+            meteorAt(t, this.seed, perfectAge, halfWidth, Math.tan(this.frame.yaw * DEG), U.meteor.value);
+            U.meteor.value.w *= (perfectAge < 5 ? 1 : 0.28 + 0.72 * U.stars.value) * (1 - squall * 0.7);
+        }
     }
 
     // ── frame ───────────────────────────────────────────────────────────────────
@@ -1015,6 +1075,7 @@ export class LuminousTidesWorld {
         s.rain += (want - s.rain) * approach(want > s.rain ? 0.9 : 0.32, dt);
         if (s.rain < 1e-3) s.rain = 0;
         U.rain.value = s.rain;
+        this.parts.rain.setIntensity(s.rain);
         if (this.camera && s.rain > 0.15) {
             s.rainClock += dt * s.rain * 9 * (1 + 0.5 * level + 1.1 * fever);
             const hard = 0.32 * (1 + 0.6 * fever);
@@ -1072,6 +1133,7 @@ export class LuminousTidesWorld {
             breakers[m] = b;
             this.breakerRows[m * 2].set(b.a0, b.s0, b.t0, b.strength * b.fade);
             this.breakerRows[m * 2 + 1].set(b.H, b.speed, b.sBreak, b.peel);
+            this.wakeRows[m].set(b.echoAt ?? -100, b.skipAt ?? -100, b.wakeS ?? 0, b.skips ?? 0);
             m += 1;
         }
         breakers.length = m;
@@ -1139,10 +1201,48 @@ export class LuminousTidesWorld {
         // The spray off every breaking lip, and off the board's waves along their peel.
         const { glow } = this.light;
         this._sprayCount = writeSpray(clock, glow, power, this.breakers, this.tier.spray, this._pushSpray);
+        this.breakers.forEach((wave) => this.drawWakes(wave, glows, power));
         // The schools: each fish a streak of light just under the surface, darting along the
         // shallows from when it set off (fish that joined a running school chase it from its start).
         for (let k = 0; k < this.schools.length; k += 1) this.drawSchool(this.schools[k], glows, power, glow);
         glows.end();
+    }
+
+    /** Amber-tipped wakes part on a back-to-back. A cascade skips a bead from crest to crest. */
+    drawWakes(wave, glows, power) {
+        if (wave.echoAt !== undefined) {
+            this.drawWake(wave, glows, power, this.clock - wave.echoAt, -1, 0);
+            this.drawWake(wave, glows, power, this.clock - wave.echoAt, 1, 0);
+        }
+        if (wave.skipAt !== undefined) this.drawWake(wave, glows, power, this.clock - wave.skipAt, 1, wave.skips);
+    }
+
+    drawWake(wave, glows, power, age, side, hops) {
+        const life = hops ? 0.40 * hops : 2.5;
+        if (age < 0 || age >= life + 0.5) return;
+        const { glow } = this.light;
+        const count = Math.max(6, Math.round(this.tier.fish * 0.75));
+        for (let j = 0; j < count; j += 1) {
+            const lag = j / count;
+            const t = age - lag * 0.5;
+            if (t < 0 || t > life) continue;
+            const a = wave.a0 + side * (hops ? t * 4.5 : 1.1 + t * 4.0);
+            const s = wave.wakeS + Math.sin(t * 2.3) * 0.55;
+            fromShore(a, s, worldTmp);
+            const leap = hops ? 0.65 * Math.abs(Math.sin((t / 0.4) * Math.PI)) * (1 - 0.55 * (t / life)) : 0;
+            const y = Math.max(surfHeight(a, s, this.clock), sandHeight(s)) + 0.08 + leap;
+            const f = (1 - lag) ** 1.8 * (1 - smooth(life - 0.3, life, t)) * wave.fade * power;
+            const gold = hops ? 0 : (1 - lag) ** 4;
+            glows.push(
+                worldTmp.x,
+                y,
+                worldTmp.z,
+                0.058 + 0.027 * (1 - lag),
+                lerp(glow[0], 1.8, gold) * f,
+                lerp(glow[1], 0.95, gold) * f,
+                lerp(glow[2], 0.21, gold) * f,
+            );
+        }
     }
 
     /** One school's fish into the glows. */
@@ -1159,14 +1259,16 @@ export class LuminousTidesWorld {
             const pace = SHOAL_SECONDS * (0.75 + r(2) * 0.5);
             const u = clamp01((clock - sh.start[i] - lag) / pace);
             if (u <= 0 || u >= 1) continue;
-            const along = (r(3) - 0.5) * 6;
-            const across = (r(4) - 0.5) * 3.2;
+            const along = (r(3) - 0.5) * 2.3;
+            const across = (r(4) - 0.5) * 1.35;
             const wiggle = 0.9 + r(5) * 1.6;
             const phase = r(6) * 6.28;
             const at = (q) => {
                 const e = q * q * (3 - 2 * q);
-                shoalTmp.a = lerp(sh.a0, sh.a1, e) + along + Math.sin(e * 9 * wiggle + phase) * 0.35;
-                shoalTmp.s = lerp(sh.s0, sh.s1, e) + across + Math.sin(e * 5 * wiggle + phase) * 0.9;
+                const turn = e * Math.PI * (sh.circle ? 2 : 1.45);
+                shoalTmp.a = lerp(sh.a0, sh.a1, e) + along + Math.sin(turn) * (sh.circle ? 1.8 : 1.2)
+                    + Math.sin(e * 8 * wiggle + phase) * 0.17;
+                shoalTmp.s = lerp(sh.s0, sh.s1, e) + across + Math.cos(turn) * (sh.circle ? 1.3 : 0.8);
                 return shoalTmp;
             };
             const here = at(u);
@@ -1183,8 +1285,8 @@ export class LuminousTidesWorld {
             const fade = smooth(0, 0.06, u) * (1 - smooth(0.8, 1, u));
             const head = 2.2 * fade * bright;
             const tail = 1.0 * fade * bright;
-            glows.push(hx, yy, hz, 0.035, glow[0] * head, glow[1] * head, glow[2] * head);
-            glows.push(hx, yy, hz, 0.02, glow[0] * tail, glow[1] * tail, glow[2] * tail, 0, vx, 0, vz, -0.16);
+            glows.push(hx, yy + 0.012, hz, 0.048, 0.20 * head, 0.92 * head, 0.87 * head, 2, vx, 0, vz, -0.065);
+            glows.push(hx, yy, hz, 0.041, glow[0] * tail, glow[1] * tail, glow[2] * tail, 2, vx, 0, vz, -0.24);
         }
     }
 

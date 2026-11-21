@@ -1472,7 +1472,12 @@ function queenMaterial(U, Q) {
             vec3(0.86, 0.93, 1.0),
             smoothstep(0.45, 1.0, s),
         );
-        const whorl = select(kind.lessThan(1.5), white, vec3(1.0, 0.93, 0.78));
+        // The rib casts a soft shadow into its neighbouring pleat. A silver petal has
+        // a coloured shadow even while its thin edge is transmitting white moonlight.
+        const pleat = smoothstep(-0.82, 0.64, c.add(sin(s.mul(7.2).add(h.mul(6))).mul(0.17)));
+        const shaded = mix(vec3(0.39, 0.34, 0.62), white, pleat.mul(0.68).add(facing.mul(0.25)));
+        const pearl = mix(vec3(0.73, 0.31, 0.58), vec3(1.0, 0.86, 0.63), pleat.mul(0.68).add(s.mul(0.26)));
+        const whorl = select(kind.lessThan(1.5), shaded, pearl);
         const petal = select(isOuter, outerTint, whorl).mul(petalLevel);
         // The stamens: golden filaments, glowing anthers; the stigma cream; the heart blazing.
         const anther = smoothstep(0.84, 0.92, s);

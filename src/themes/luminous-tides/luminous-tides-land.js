@@ -16,7 +16,7 @@
 import * as THREE from 'three/webgpu';
 import {
     Fn, attribute, cameraPosition, dot, exp, float, floor, fwidth, length, max, mix, normalize, positionWorld,
-    select, sign, smoothstep, sqrt, texture, vec2, vec3, vec4,
+    select, sign, sin, smoothstep, sqrt, texture, vec2, vec3, vec4,
 } from 'three/tsl';
 import {
     EYE, SHORE, fromShore, sandHeight, smooth,
@@ -25,6 +25,7 @@ import {
     TUNE, hash22, horizonHaze, landHaze, landLight, shoreOf,
 } from './luminous-tides-tsl.js';
 import { createPalms } from './luminous-tides-palms.js';
+import { createRocks } from './luminous-tides-rocks.js';
 
 /** The strips run from FROM to TO metres along the shore. */
 export const LAND = Object.freeze({
@@ -239,7 +240,8 @@ function landMaterial({ U, skyNoise, far }) {
         // Mist pools in the foot of the trees, lit by the air and a breath of the sea's light.
         const air = horizonHaze(V.negate(), U).toVar();
         const mistColour = air.mul(1.1).add(U.light.glow.mul(U.glowPower).mul(0.012));
-        const mist = exp(h.div(far ? -6.5 : -2.4)).mul(TUNE.landMist * (far ? 1.15 : 0.8)).min(0.9);
+        const veil = sin(w.mul(0.085).sub(U.time.mul(0.093))).mul(0.25).add(0.85);
+        const mist = exp(h.div(far ? -6.5 : -2.4)).mul(veil).mul(TUNE.landMist * (far ? 1.15 : 0.8)).min(0.9);
         const misted = mix(lit, mistColour, mist);
         const haze = landHaze(dist, U);
         const aired = far ? float(1.0).sub(float(1.0).sub(haze).mul(0.72)) : haze;
@@ -277,12 +279,17 @@ export function createLand({ tier, U, skyNoise }) {
         tier, U, lineAt: landLine, lineKey: `dune${LAND.line}`,
     });
     mesh.add(palms.mesh);
+    const rocks = createRocks(U, skyNoise);
+    mesh.add(rocks);
 
     return {
         mesh,
         palms: palms.plan,
         dispose() {
             palms.dispose();
+            rocks.removeFromParent();
+            rocks.geometry.dispose();
+            rocks.material.dispose();
             back.removeFromParent();
             backGeometry.dispose();
             backMaterial.dispose();

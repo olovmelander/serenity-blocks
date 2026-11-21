@@ -1,3 +1,4 @@
+import { hasObscuredStack } from '../blind.js';
 import { PuzzleBotController } from './puzzle-bot-controller.js';
 import { canPlaceCandidate } from './reachability-pathfinder.js';
 import { evaluateCandidate } from './board-evaluator.js';
@@ -9,11 +10,12 @@ const PREVIEWS = [0, 1, 1, 1, 1, 2, 2, 2, 3, 3];
 const WIDTH = [1, 1, 2, 3, 3, 4, 5, 8, 10, 16];
 const REACTION = [[520, 850], [460, 730], [360, 620], [310, 530], [270, 450],
     [240, 380], [215, 330], [200, 335], [185, 319], [170, 250]];
-const ACTION_RATE = [95, 120, 133, 210, 265, 300, 325, 480, 570, 850];
+const ACTION_RATE = [95, 120, 133, 210, 265, 300, 325, 550, 680, 1050];
 const FIRE_WAVES = [2, 2, 2, 2, 3, 3, 3, 4, 4, 4];
 const SURVIVAL_MARGIN = [0, 0, 0, 11, 8, 0, 8, 0, 0, 0];
 
-export function gravityPlanningRate(count = 1) {
+export function gravityPlanningRate(count = 1, tier = 0) {
+    if (count === 2 && tier >= 9) return 1.25;
     return (count >= 3 ? 0.65 : 1.4) / Math.max(1, count);
 }
 
@@ -68,9 +70,10 @@ function* searchWithinBudget(state, config, pending, weights, root, allowance) {
     }
     if (!ready) return null;
     const moves = ready.route.map((node) => node.move);
-    const proof = moves.length > 1 && moves.at(-1).waves.length >= 2 ? ready.route.slice(1).map((node) => ({
+    const proof = !pending && moves.length > 1 && moves.at(-1).waves.length >= 2 ? ready.route.slice(1).map((node) => ({
         move: node.move,
         before: gravityBoardKey(node.parent.board.cells),
+        roomAfter: node.roomAfter,
         rewardContext: rewardContextKey(node.parent.context),
     })) : [];
     return { moves, proof, alternatives: ready.alternatives.map((node) => node.move) };
@@ -142,6 +145,8 @@ export class GravityBotController extends PuzzleBotController {
         super(options);
         this.pendingRows = options.pendingRows;
         this.opponentRoom = options.opponentRoom;
+        this.finishingRoom = options.finishingRoom;
+        this.versus = options.versus ?? Boolean(this.opponentRoom || this.finishingRoom);
         this.judgment = options.judgment;
         const i = this.config.tier - 1;
         this.sharedSearch = i === 9 ? options.sharedSearch : null;
@@ -179,7 +184,7 @@ export class GravityBotController extends PuzzleBotController {
             this.config.reactionMs = [...REACTION[nominalTier - 1]];
             this.localPace = {
                 scale,
-                interval: Math.max(65, Math.min(950, (60000 / apm) * scale)),
+                interval: Math.max(nominalTier === 9 ? 50 : 65, Math.min(950, (60000 / apm) * scale)),
             };
             // Practiced movement gets the piece into place while gravity runs.
             // A slower seat spends the rest of its deliberation lined up to drop.
@@ -301,6 +306,7 @@ export class GravityBotController extends PuzzleBotController {
 
     * planSteps(observed) {
         const state = this.playerState;
+        if (hasObscuredStack(state)) return null;
         const pending = this.getPendingGarbage();
         const { tier } = this.config;
         const root = state.isInfinityMode ? null : observed || readGravityBoard(state.boardGrid || state.board);
@@ -338,13 +344,17 @@ export class GravityBotController extends PuzzleBotController {
         }
         const tactics = { pending, danger: root.top - root.first - pending < 6 };
         const pressing = this.judgment?.pressAtRows !== undefined && this.opponentRoom?.() <= this.judgment.pressAtRows;
+        const supportPlanning = tier >= 8;
+        const room = supportPlanning ? this.finishingRoom?.() : undefined;
+        const finishRows = room < this.searchConfig.safetyMargin ? Math.max(1, room + 1) : Infinity;
         const first = this.proof[0];
         const visible = [state.currentPiece.shapeKey, ...this.nextShapeKeys(state)];
         // A burst enters after this piece locks. A previously proved discharge
         // can still fire on this board. Later steps cross the insertion boundary.
-        const fireBeforeGarbage = tier >= 8 && first && pending > first.pending && first.move.waves.length >= 2;
+        const fireBeforeGarbage = supportPlanning && first && pending > first.pending && first.move.waves.length >= 2
+            && first.roomAfter >= pending;
         const proof = fireBeforeGarbage ? [first] : this.proof;
-        if (first && (fireBeforeGarbage || (first.pending === pending && first.pressing === pressing))
+        if (first && (fireBeforeGarbage || (first.pending === pending && first.pressing === pressing && first.finishRows === finishRows))
             && first.rewardContext === rewardContextKey(state)
             && proof.every((step, i) => step.move.shapeKey === visible[i])
             && first.before === gravityBoardKey(root.cells)) {
@@ -377,6 +387,9 @@ export class GravityBotController extends PuzzleBotController {
                 attackStock: 4, sustainedStock: 4, minAttack: 1, sustainedAttack: 1,
             }),
             protectSpawn,
+            supportPlanning,
+            versus: this.versus,
+            finishRows,
             virtual: this.searchConfig.virtual && !protectSpawn,
             trigger: this.searchConfig.trigger && !protectSpawn,
             sliceRoofProbes: tier >= 8 && root.garbage > 0 && workRate >= 0.35,
@@ -397,13 +410,19 @@ export class GravityBotController extends PuzzleBotController {
             forecast = [];
         }
         if (forecast.length) {
-            this.proof = forecast.map((step) => ({ ...step, pending, pressing }));
+            this.proof = forecast.map((step) => ({
+                ...step, pending, pressing, finishRows,
+            }));
             this.machinePlan = { steps: this.proof.map((step) => step.move) };
         }
         return asPlan(moves, moves[0].actions, tactics);
     }
 
     update(delta, time) {
+        if (hasObscuredStack(this.playerState)) {
+            if (this.currentSpawnToken != null || this.planJob) this.reset();
+            return;
+        }
         const pending = this.getPendingGarbage();
         if (this.scheduler.rejected || pending !== this.queueAtPlan) {
             this.replanInterrupted = this.queueAtPlan !== null && this.currentSpawnToken != null;
@@ -461,7 +480,7 @@ export class GravityBotController extends PuzzleBotController {
 
     precomputeSearch(elapsedMs, tickMs) {
         const entry = this.activeSearch;
-        if (!this.planJob || !entry?.job || !(elapsedMs > 0)) return 0;
+        if (!this.planJob || !entry?.job || !(elapsedMs > 0) || hasObscuredStack(this.playerState)) return 0;
         const dueNextTick = this.nextSearchUnit + Math.ceil(this.sliceRate * tickMs);
         const allowance = Math.max(1, Math.floor(this.sliceRate * elapsedMs));
         let advanced = 0;

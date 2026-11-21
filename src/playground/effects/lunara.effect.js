@@ -13,7 +13,8 @@
  *   combo=<n>                hold a combo of n (the valley's charge)
  *   level=<n>                level n's step on top of the clock's palette
  *   locks=<n>                before anything else, play n locks (the valley holding their light)
- *   event=lock|drop|clear|quad|twist|perfect|levelUp   fire a gameplay event...
+ *   event=lock|drop|clear|cascade|quad|combo|break|twist|turn|b2b|perfect|crown|levelUp|over
+ *                            fire a gameplay event...
  *   eventAge=<s>             ...and show it <s> seconds later (lines=<n>, row=<r>, u=<0..1>,
  *                            color=<hex>)
  *   demo=1                   live only: play a looping gameplay script
@@ -31,6 +32,7 @@ import * as THREE from 'three/webgpu';
 import { LunaraWorld } from '../../themes/lunara/lunara-world.js';
 import { LunaraPost, POST_LOOK } from '../../themes/lunara/lunara-post.js';
 import { readLayoutRects } from '../../themes/lunara/lunara-composition.js';
+import { LUNARA_TETROMINOS } from '../../themes/lunara/lunara-tetrominos.js';
 
 export const meta = {
     id: 'lunara',
@@ -83,10 +85,10 @@ function mountBoardOverlay(withHud) {
 }
 
 /** The game's piece colours (lunara-tetrominos.js). */
-const PIECE_COLORS = ['#ffd4a8', '#d8a8ff', '#a8ffe8', '#ffa8d0', '#8090e0', '#ffc050', '#a8e0ff'];
+const PIECE_COLORS = ['I', 'O', 'T', 'S', 'Z', 'J', 'L'].map((key) => LUNARA_TETROMINOS.colors[key]);
 
 /** A looping script of locks and clears for the live demo (seconds into the loop). */
-const DEMO_LOOP = 34;
+const DEMO_LOOP = 56;
 const DEMO_SCRIPT = [
     [1.0, 'lock', { rows: [19], u: 0.2 }], [2.1, 'lock', { rows: [19, 18], u: 0.75 }],
     [3.2, 'lock', { rows: [18, 17], u: 0.4, hardDrop: true }], [4.3, 'lock', { rows: [17], u: 0.85 }],
@@ -96,23 +98,42 @@ const DEMO_SCRIPT = [
     [7.8, 'clear', { rows: [19, 18], lines: 2, combo: 3 }], [9.0, 'lock', { rows: [19], u: 0.1 }],
     [9.0, 'clear', { rows: [19], lines: 1, combo: 4 }], [10.2, 'lock', { rows: [19, 18], u: 0.6 }],
     [10.2, 'clear', { rows: [19, 18, 17], lines: 3, combo: 5 }], [11.6, 'lock', { rows: [19], u: 0.5 }],
+    [11.6, 'break'],
     [12.6, 'lock', { rows: [19, 18], u: 0.15 }], [13.6, 'lock', { rows: [18, 17], u: 0.85 }],
     [14.6, 'lock', { rows: [17, 16], u: 0.35 }], [15.6, 'lock', { rows: [16, 15], u: 0.6, hardDrop: true }],
     [16.6, 'lock', { rows: [15, 14], u: 0.9 }], [17.6, 'lock', { rows: [14, 13], u: 0.05 }],
     [18.6, 'lock', { rows: [19, 18, 17, 16], u: 0.95, hardDrop: true }],
     [18.6, 'clear', { rows: [19, 18, 17, 16], lines: 4, combo: 1 }],
+    [20.0, 'break'],
     [26.0, 'lock', { rows: [19], u: 0.45 }], [27.0, 'lock', { rows: [19, 18], u: 0.7 }],
     [28.0, 'lock', { rows: [18], u: 0.25, hardDrop: true }],
     [28.0, 'clear', {
         rows: [19, 18], lines: 2, twist: true, combo: 1,
     }],
-    [30.0, 'lock', { rows: [19], u: 0.5 }],
+    [30.0, 'lock', { rows: [19], u: 0.5 }], [30.0, 'break'], [30.0, 'clear', { lines: 0, twist: true }],
+    [32.8, 'lock', { rows: [18, 17], u: 0.23, hardDrop: true }],
+    [32.8, 'clear', {
+        rows: [19, 18], lines: 2, twist: true, b2b: true, combo: 1,
+    }],
+    [36.1, 'lock', { rows: [19, 18], u: 0.84 }],
+    [36.1, 'clear', { rows: [19], lines: 1, combo: 2 }],
+    [36.5, 'clear', {
+        rows: [18], lines: 1, cascade: 2, combo: 2,
+    }],
+    [36.9, 'clear', {
+        rows: [17, 16], lines: 2, cascade: 3, combo: 2,
+    }],
+    [40.4, 'lock', { rows: [19, 18, 17, 16], u: 0.67, hardDrop: true }],
+    [40.4, 'clear', { rows: [19, 18, 17, 16], lines: 4, combo: 3 }],
+    [40.76, 'clear', { lines: 0, perfect: true, crown: true }],
+    [45.0, 'levelUp'], [50.0, 'over'],
 ];
 
 export function create({
     scene, camera, renderer, params,
 }) {
     const quality = params.get('quality') || 'High';
+    const counters = { drawCalls: 0, triangles: 0 };
     const saved = {
         fov: camera.fov, near: camera.near, far: camera.far, toneMapping: renderer.toneMapping,
     };
@@ -195,10 +216,20 @@ export function create({
                 rows: [row, row - 1], u, hardDrop: true, color: eventColor,
             });
         } else if (eventName === 'clear') world.onClear({ rows: bottom(lines), lines });
+        else if (eventName === 'cascade') world.onClear({ rows: bottom(lines), lines, cascade: 3 });
         else if (eventName === 'quad') world.onClear({ rows: bottom(4), lines: 4 });
         else if (eventName === 'twist') world.onClear({ rows: bottom(2), lines: 2, twist: true });
+        else if (eventName === 'turn') world.onClear({ lines: 0, twist: true });
+        else if (eventName === 'b2b') world.onClear({ rows: bottom(2), lines: 2, b2b: true });
+        else if (eventName === 'combo') world.onCombo(holdCombo || 4);
+        else if (eventName === 'break') world.onCombo(0);
         else if (eventName === 'perfect') world.onClear({ rows: bottom(4), lines: 4, perfect: true });
+        else if (eventName === 'crown') world.onClear({ lines: 0, perfect: true, crown: true });
         else if (eventName === 'levelUp') world.levelUp(num(params, 'eventLevel', level + 1));
+        else if (eventName === 'over') {
+            world.resetSession();
+            world.onGameOver();
+        }
     };
 
     const seekTo = (time) => {
@@ -206,7 +237,8 @@ export function create({
         const start = Math.max(0, time - lead);
         world.seek(start);
         if (level > 1) world.levelUp(level, { silent: true });
-        if (holdCombo > 0) world.onCombo(holdCombo);
+        if (eventName === 'break') world.onCombo(holdCombo || 4);
+        else if (holdCombo > 0 && eventName !== 'combo') world.onCombo(holdCombo);
         frame(start, 0);
         // Locks played before the event: the valley holding their light.
         let cursor = start;
@@ -222,6 +254,17 @@ export function create({
             });
         }
         const eventTime = eventName ? time - eventAge : time;
+        if ((eventName === 'crown' || eventName === 'cascade') && eventTime - cursor > 0.72) {
+            const prior = eventTime - (eventName === 'crown' ? 0.36 : 0.72);
+            stepTo(cursor, prior, 0.1);
+            world.onClear({ lines: eventName === 'crown' ? 4 : 1 });
+            cursor = prior;
+            if (eventName === 'cascade') {
+                stepTo(cursor, cursor + 0.36, 1 / 60);
+                world.onClear({ lines: 1, cascade: 2 });
+                cursor += 0.36;
+            }
+        }
         if (eventTime > cursor) stepTo(cursor, eventTime, 0.1);
         if (eventName) {
             fireEvent();
@@ -248,16 +291,17 @@ export function create({
             if (verb === 'lock') {
                 demoPiece += 1;
                 world.onLock({ ...detail, color: PIECE_COLORS[demoPiece % PIECE_COLORS.length] });
-            } else {
+            } else if (verb === 'clear') {
                 world.onClear(detail);
-                world.onCombo(detail.combo);
+                if (detail.combo !== undefined) world.onCombo(detail.combo);
+            } else if (verb === 'break') world.onCombo(0);
+            else if (verb === 'levelUp') world.levelUp(2);
+            else if (verb === 'over') {
+                world.resetSession();
+                world.onGameOver();
             }
             demoCursor += 1;
         }
-        // A chain that is not continued breaks on the next lock that clears nothing.
-        if (local > 11.6 && local < 18.6 && world.combo > 0) world.onCombo(0);
-        if (local > 20 && local < 28 && world.combo > 0) world.onCombo(0);
-        if (local > 30 && world.combo > 0) world.onCombo(0);
     };
 
     return {
@@ -276,15 +320,24 @@ export function create({
         render() {
             if (post) post.render();
             else renderer.render(scene, camera);
+            // three resets its counters on every RAF, including ticks skipped by the frame cap.
+            counters.drawCalls = renderer.info.render.drawCalls;
+            counters.triangles = renderer.info.render.triangles;
         },
         resize() {
             syncViewport();
         },
+        getRendererCounters() {
+            return { ...counters };
+        },
+        getCaptureMeta() {
+            return { tier: quality, event: eventName, eventAge: eventName ? eventAge : null };
+        },
         getDiagnostics() {
             return {
                 backend: renderer.backend?.isWebGPUBackend ? 'WebGPU' : 'WebGL2',
-                calls: renderer.info?.render?.calls ?? null,
-                triangles: renderer.info?.render?.triangles ?? null,
+                calls: counters.drawCalls,
+                triangles: counters.triangles,
                 ...world.getState(),
             };
         },

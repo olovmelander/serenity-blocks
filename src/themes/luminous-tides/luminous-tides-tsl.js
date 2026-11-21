@@ -14,7 +14,7 @@
  */
 import * as THREE from 'three/webgpu';
 import {
-    Fn, abs, atan, clamp, cos, dot, exp, float, floor, fract, max, min, mix, normalize, select, sin, smoothstep, sqrt,
+    Fn, If, abs, atan, clamp, cos, dot, exp, float, floor, fract, length, max, min, mix, normalize, select, sin, smoothstep, sqrt,
     texture, vec2, vec3,
 } from 'three/tsl';
 import {
@@ -34,7 +34,7 @@ export const TUNE = {
     warmFall: 10,
     // The far coast: where it runs on the horizon (degrees right of the view line) and how high.
     coast: [-60, -4],
-    coastHeight: 0.5,
+    coastHeight: 1.0,
     // Its lamps: how many to a degree, how bright.
     lampsPerDegree: 1.7,
     lamps: 3.0,
@@ -53,8 +53,8 @@ export const TUNE = {
     deckFog: 0.16,
     // The stars: a spot's radius in buffer pixels, and how bright each layer's stars are (the
     // bright few, the many, the faint dust).
-    starSpot: 0.62,
-    starGain: [18.0, 0.75, 0.16],
+    starSpot: 0.47,
+    starGain: [8.0, 0.50, 0.065],
     // The lamps' roads on the water (drawn by the water, not mirrored): how far a road follows the
     // resolved ripples sideways (0: straight down from its lamp), how rough the sea is to them
     // beyond what the water resolves, how bright, and how fast a glint comes and goes (per second).
@@ -251,10 +251,13 @@ export function coastHeight(bearing, noise) {
     const [from, to] = TUNE.coast;
     const t = bearing.sub(from).div(to - from).toVar();
     const ends = smoothstep(0.0, 0.06, t).mul(float(1.0).sub(smoothstep(0.9, 1.0, t)));
-    const hills = texture(noise, vec2(t.mul(1.7), 0.37), 0.0).r.mul(0.7).add(texture(noise, vec2(t.mul(5.3), 0.61), 0.0).a.mul(0.3));
-    const bluff = smoothstep(0.7, 0.9, t).mul(float(1.0).sub(smoothstep(0.93, 0.995, t))).mul(0.55);
-    return hills.mul(0.8).add(0.35).add(bluff).mul(ends)
-        .mul(TUNE.coastHeight);
+    const hills = texture(noise, vec2(t.mul(1.7), 0.37), 0.0).r.toVar();
+    // Two eroded volcanic peaks above a low harbour, and a smaller promontory at its mouth.
+    const ridge = (at, width) => max(float(1).sub(abs(t.sub(at)).div(width)), 0);
+    const peaks = max(ridge(0.55, 0.235).pow(1.55).mul(3.6), ridge(0.67, 0.16).pow(1.35).mul(2.45));
+    const skyline = hills.mul(0.55).add(0.21).add(peaks.mul(hills.mul(0.32).add(0.83)))
+        .add(ridge(0.842, 0.16).mul(0.9));
+    return mix(skyline, float(1.16), smoothstep(0.95, 0.12, abs(bearing.add(12.8)))).mul(ends).mul(TUNE.coastHeight);
 }
 
 /**
@@ -321,6 +324,7 @@ export function skyColour(dir, U, noise, o) {
     const sky = base.toVar();
     const level = normalize(vec3(dir.x, 0.0, dir.z).add(vec3(0.0, 0.0, -1e-4)));
     const toward = dot(level, U.warmDir).toVar();
+    const direct = o.lamps !== false;
 
     // ── Stars and the Milky Way: behind everything ──
     if (o.stars) {
@@ -347,26 +351,55 @@ export function skyColour(dir, U, noise, o) {
             return tint.mul(exp(dot(off, off).mul(fall)).mul(bright).mul(twinkle).mul(gain));
         };
         // The bright few, the many, and a dust of faint ones that gives the dark its depth.
-        const stars = starLayer(44.0, 9.0, TUNE.starGain[0], 0.4)
-            .add(starLayer(105.0, 6.0, TUNE.starGain[1], 0.4))
-            .add(starLayer(190.0, 4.0, TUNE.starGain[2], 0.3))
-            .toVar();
+        const stars = starLayer(44.0, 10.0, TUNE.starGain[0], 0.53).toVar();
+        if (direct) {
+            stars.addAssign(starLayer(105.0, 8.0, TUNE.starGain[1], 0.59));
+            if (o.milky) stars.addAssign(starLayer(190.0, 6.0, TUNE.starGain[2], 0.58));
+        }
         if (o.milky) {
-            const pole = vec3(0.42, -0.70, -0.58);
+            const pole = vec3(-0.55, 0.78, 0.30);
             const off = dot(q, pole).toVar();
             const along = atan(dot(q, vec3(0.62, 0.66, -0.35)), dot(q, vec3(-0.66, 0.27, -0.70))).toVar();
             const core = exp(along.sub(0.25).pow2().mul(-1.8));
             const clot = texture(noise, vec2(along.mul(0.42), off.mul(1.6).add(0.31))).toVar();
             const lane = smoothstep(0.42, 0.78, texture(noise, vec2(along.mul(0.83).add(0.2), off.mul(2.4))).b);
-            const width = core.mul(9.0).sub(17.0);
-            const band = exp(off.mul(off).mul(width)).mul(clot.r.mul(1.1).add(0.25)).mul(core.mul(1.6).add(0.55))
-                .mul(float(1.0).sub(lane.mul(exp(off.mul(off).mul(-70.0))).mul(0.85)));
-            const coreLight = exp(off.mul(off).mul(-90.0)).mul(clot.b).add(core.mul(0.4));
-            const glow = mix(vec3(0.28, 0.34, 0.6), vec3(0.7, 0.58, 0.48), coreLight);
-            sky.addAssign(glow.mul(band).mul(0.09).mul(dark).mul(U.milky));
-            stars.mulAssign(band.mul(U.milky).mul(2.2).add(1.0));
+            const ribbon = off.add(clot.r.sub(0.5).mul(0.105)).toVar();
+            const band = exp(ribbon.mul(ribbon).mul(-54)).mul(clot.b.mul(1.05).add(0.25)).toVar();
+            const spine = exp(ribbon.add(lane.sub(0.45).mul(0.07)).pow2().mul(-680));
+            const rift = float(1).sub(spine.mul(lane.mul(0.65).add(0.33)));
+            const glow = mix(vec3(0.15, 0.24, 0.52), vec3(0.72, 0.41, 0.31), clot.r.mul(core).mul(1.3).min(1));
+            sky.addAssign(glow.mul(band).mul(rift).mul(0.27).mul(dark)
+                .mul(U.milky));
+            stars.mulAssign(band.mul(rift).mul(U.milky).mul(2.8).add(0.8));
         }
         sky.addAssign(stars.mul(dark));
+    }
+
+    if (direct) {
+        const plane = dir.xy.div(max(dir.z.negate(), 0.1)).toVar();
+        const moon = plane.sub(U.moon.xy).toVar();
+        const radius = 0.014;
+        const d = length(moon).toVar();
+        const aa = U.pixelAngle.mul(0.8).toVar();
+        const disc = float(1).sub(smoothstep(float(radius).sub(aa), float(radius).add(aa), d));
+        const bite = smoothstep(
+            float(radius * 0.96).sub(aa),
+            float(radius * 0.96).add(aa),
+            length(moon.sub(vec2(0.0052, 0.0036))),
+        );
+        const limb = disc.mul(bite);
+        const aureole = exp(d.mul(-30)).mul(0.075).add(exp(d.mul(-110)).mul(0.16));
+        sky.addAssign(vec3(1, 0.77, 0.52).mul(limb.mul(3.1).add(aureole)).mul(U.moon.z));
+        If(U.meteor.w.greaterThan(0.001), () => {
+            const offset = plane.sub(U.meteor.xy).toVar();
+            const tail = vec2(U.meteor.z, abs(U.meteor.z).mul(0.34)).toVar();
+            const k = clamp(dot(offset, tail).div(max(dot(tail, tail), 1e-7)), 0, 1).toVar();
+            const miss = offset.sub(tail.mul(k));
+            const width = max(U.pixelAngle.mul(0.68), 0.00055);
+            const filament = exp(dot(miss, miss).div(width.mul(width)).negate()).mul(float(1).sub(k).pow2());
+            const head = exp(dot(offset, offset).div(width.mul(width).mul(-5))).mul(1.8);
+            sky.addAssign(vec3(0.57, 0.88, 1).mul(filament.mul(1.5)).add(vec3(1, 0.86, 0.65).mul(head)).mul(U.meteor.w));
+        });
     }
 
     // ── The cloud deck, lit from beneath by the far coast's glow ──
@@ -403,7 +436,9 @@ export function skyColour(dir, U, noise, o) {
             const heart = smoothstep(edge0.add(0.1), edge0.add(0.42), d);
             // Lit from beneath: the lowest slices take the glow, the tops stand dark.
             const lit = reach.mul(1.0 - 0.7 * f).mul(facing.mul(0.6).add(0.4)).mul(float(1.0).sub(heart.mul(0.45)));
-            const colour = mix(light.cloudShade, light.cloudLit, clamp(lit, 0.0, 1.4));
+            const lining = float(1).sub(heart).mul(facing).mul(reach)
+                .mul(0.35);
+            const colour = mix(light.cloudShade, light.cloudLit, clamp(lit, 0.0, 1.4)).add(light.warm.mul(lining));
             cloud.addAssign(colour.mul(a).mul(transmit));
             transmit.mulAssign(float(1.0).sub(a));
         }
@@ -421,10 +456,29 @@ export function skyColour(dir, U, noise, o) {
         const elevation = dir.y.mul(1 / DEG).toVar();
         const height = coastHeight(bearing, noise).toVar();
         const land = float(1.0).sub(smoothstep(height.sub(0.03), height.add(0.03), elevation)).mul(step0(height));
-        const shade = horizonHaze(dir, U).mul(0.42);
+        const air = horizonHaze(dir, U).toVar();
+        const fold = sin(bearing.mul(0.74).add(height.mul(1.85))).mul(0.5).add(0.5).toVar();
+        const foothill = height.mul(fold.mul(0.21).add(0.19)).add(sin(bearing.mul(0.56)).mul(0.18)).add(0.24);
+        const slope = smoothstep(foothill.sub(0.22), foothill.add(0.2), elevation);
+        const flank = sin(bearing.mul(1.3).sub(elevation.mul(2.8))).mul(0.5).add(0.5);
+        const shade = mix(air.mul(0.16).add(light.sea), air.mul(flank.mul(0.065).add(0.30)).add(light.mid.mul(0.17)), slope);
         sky.assign(mix(sky, shade, land));
         if (o.lamps !== false) {
-            sky.addAssign(coastLamps(bearing, elevation, U, height, float(0.0)).mul(land.mul(0.85).add(0.15)));
+            If(elevation.lessThan(height.add(0.5)), () => {
+                sky.addAssign(coastLamps(bearing, elevation, U, height, float(0.0)).mul(land.mul(0.85).add(0.15)));
+            });
+            // A harbour light stands on the low spit. The arc opens out over the water on a level turn.
+            const dx = bearing.add(12.8).toVar();
+            const beamY = elevation.sub(1.16 * TUNE.coastHeight + 0.51).toVar();
+            const tower = smoothstep(0.12, 0.045, abs(dx)).mul(smoothstep(-0.55, -0.46, beamY)).mul(smoothstep(0.05, -0.025, beamY));
+            sky.assign(mix(sky, air.mul(0.27), tower));
+            const sweep = sin(U.time.mul(0.46)).toVar();
+            const range = dx.mul(sweep).toVar();
+            const width = abs(dx).mul(0.045).add(0.085);
+            const shaft = exp(beamY.sub(range.mul(0.036)).div(width).pow2().negate())
+                .mul(smoothstep(0, 0.7, range)).mul(exp(abs(dx).mul(-0.24))).mul(abs(sweep));
+            const source = exp(dx.pow2().add(beamY.pow2()).mul(-120));
+            sky.addAssign(light.town.mul(shaft.mul(U.moon.w.mul(1.25).add(0.10)).add(source.mul(sweep.pow2().mul(1.8).add(0.8)))));
         }
     }
     return sky.mul(U.squallDim.mul(0.4).add(0.6));
@@ -458,7 +512,7 @@ export function landLight(N, V, albedo, lift, reach, rim, U) {
     const fire = light.glow.mul(U.glowPower).mul(facing)
         .mul(exp(lift.mul(-0.11)))
         .mul(exp(max(reach, 0.0).mul(-0.045)))
-        .mul(U.bayBloom.mul(3.0).add(1.0));
+        .mul(U.bayBloom.mul(3.0).add(U.plankton.x.mul(0.45)).add(0.8));
     const lit = sky.mul(TUNE.landSky).add(warm.mul(TUNE.landWarm)).add(fire.mul(TUNE.landFire));
     const edge = float(1.0).sub(abs(dot(N, V))).toVar();
     const wrap = skyBase(V.negate(), U).mul(U.squallDim).mul(edge.mul(edge).mul(edge)).mul(rim.mul(TUNE.landRim));

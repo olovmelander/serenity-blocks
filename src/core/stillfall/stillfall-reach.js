@@ -15,7 +15,7 @@
  * caves and overhangs where tucks and spins matter.
  */
 
-import { COLS } from '../constants.js';
+import { COLS, SHAPES } from '../constants.js';
 import {
     I_KICKS, JLSTZ_KICKS, LEGACY_WALL_KICKS, ROTATION_NAMES, rotateShapeMatrix,
 } from '../game.js';
@@ -179,6 +179,15 @@ function searchLandings(boardGrid, piece, visit) {
     };
     if (!fits(startRotation, piece.x, piece.y)) return [];
 
+    // From a high central spawn in an empty standard well, every landing has
+    // an open-air rotation and translation. Removing a soft drop preserves that
+    // endpoint. Reaching a floor kick costs more than crossing the entire well.
+    const canonical = SHAPES[piece.shapeKey];
+    const openSpawn = !visit && startRotation === 0 && Array.isArray(canonical) && piece.y >= 0
+        && height - piece.y >= 2 * COLS && piece.x === Math.floor(COLS / 2) - Math.floor(canonical[0].length / 2)
+        && piece.shape.length === canonical.length && piece.shape.every((row, y) => row.length === canonical[y].length
+            && row.every((cell, x) => cell === canonical[y][x]))
+        && boardGrid.every((row) => row.length === COLS && row.every((cell) => cell === null) && !row.includes(undefined));
     const isO = piece.shapeKey === 'O';
     const kicksByTurn = piece.shapeKey === 'I' ? I_TURN_KICKS : JLSTZ_TURN_KICKS;
 
@@ -277,7 +286,7 @@ function searchLandings(boardGrid, piece, visit) {
             turn(cursor, ROTATE_RIGHT, 1, x, y, rotation);
         }
         turn(cursor, FLIP, 2, x, y, rotation);
-        if (fits(rotation, x, y + 1)) push(cursor, SOFT_DROP, x, y + 1, rotation);
+        if (!openSpawn && fits(rotation, x, y + 1)) push(cursor, SOFT_DROP, x, y + 1, rotation);
     }
 
     return [...best.values()].map((landing) => {

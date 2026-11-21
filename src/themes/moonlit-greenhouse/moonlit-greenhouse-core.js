@@ -449,16 +449,16 @@ const night = (name, colours, scalars) => Object.freeze({ name, ...colours, ...s
  */
 export const NIGHTS = Object.freeze([
     night('silver moon', {
-        moonlight: [0.6, 0.74, 1.0],
+        moonlight: [0.47, 0.72, 1.0],
         moonDisc: [1.0, 0.97, 0.9],
-        zenith: [0.003, 0.007, 0.02],
-        horizon: [0.012, 0.022, 0.044],
-        glassFog: [0.3, 0.42, 0.56],
+        zenith: [0.005, 0.009, 0.032],
+        horizon: [0.014, 0.037, 0.067],
+        glassFog: [0.23, 0.39, 0.59],
         mist: [0.1, 0.16, 0.23],
         firefly: [0.74, 1.0, 0.26],
         glow: [0.12, 0.92, 0.72],
         lantern: [1.0, 0.56, 0.2],
-        leafLit: [0.34, 0.72, 0.2],
+        leafLit: [0.21, 0.71, 0.34],
         gradeShadow: [0.0, 0.012, 0.022],
         gradeLight: [1.0, 0.985, 0.95],
     }, {

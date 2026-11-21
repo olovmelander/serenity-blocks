@@ -16,7 +16,7 @@
  *                            4 blue hour, 5 sea mist; fractions are on the way). Unset, t= is the
  *                            clock: the night turns by itself, one step every 100 s
  *   locks=<n>                before anything else, drop n pieces into the surf
- *   event=lock|drop|clear|quad|twist|perfect|levelUp   fire a gameplay event...
+ *   event=lock|drop|clear|quad|twist|spin|b2b|cascade|perfect|latePerfect|levelUp|gameOver
  *   eventAge=<s>             ...and show it <s> seconds later (lines=<n>, row=<r>, u=<0..1>,
  *                            color=<hex>)
  *   demo=1                   live only: play a looping gameplay script
@@ -32,6 +32,7 @@
  *                            iconPitch adjust it
  */
 import * as THREE from 'three/webgpu';
+import { sceneSamples } from '../../themes/shared/scene-antialias.js';
 import { LuminousTidesWorld } from '../../themes/luminous-tides/luminous-tides-world.js';
 import { LuminousTidesPost, POST_LOOK } from '../../themes/luminous-tides/luminous-tides-post.js';
 import { readLayoutRects } from '../../themes/luminous-tides/luminous-tides-composition.js';
@@ -149,6 +150,8 @@ export function create({
     const noPost = params.get('noPost') === '1';
     const post = noPost ? null : new LuminousTidesPost(renderer, scene, camera, {
         look,
+        samples: sceneSamples(quality, params.get('antialias') !== '0'),
+        antialias: params.get('antialias') !== '0',
         falseColor: params.get('falseColor') === '1',
     });
     if (noPost) renderer.toneMapping = THREE.AgXToneMapping;
@@ -217,8 +220,15 @@ export function create({
         } else if (eventName === 'clear') world.onClear({ rows: bottom(lines), lines });
         else if (eventName === 'quad') world.onClear({ rows: bottom(4), lines: 4 });
         else if (eventName === 'twist') world.onClear({ rows: bottom(2), lines: 2, twist: true });
+        else if (eventName === 'spin') world.onSpin();
+        else if (eventName === 'b2b') world.onClear({ rows: bottom(4), lines: 4, b2b: true });
+        else if (eventName === 'cascade') world.onClear({ rows: bottom(lines), lines, cascade: 3 });
         else if (eventName === 'perfect') world.onClear({ rows: bottom(4), lines: 4, perfect: true });
-        else if (eventName === 'levelUp') world.levelUp(num(params, 'eventLevel', level + 1));
+        else if (eventName === 'latePerfect') world.onPerfect();
+        else if (eventName === 'gameOver') {
+            world.resetSession();
+            world.ebb();
+        } else if (eventName === 'levelUp') world.levelUp(num(params, 'eventLevel', level + 1));
     };
 
     /** How long the world is played before a capture: the eased state settles. */
@@ -252,6 +262,7 @@ export function create({
             })]);
         }
         if (eventName) actions.push([time - eventAge, fireEvent]);
+        if (eventName === 'latePerfect') actions.push([time - eventAge - 0.36, () => world.onClear({ rows: [19], lines: 1 })]);
         actions.sort((a, b) => a[0] - b[0]);
         actions.forEach(([at, act]) => {
             if (at > cursor) {

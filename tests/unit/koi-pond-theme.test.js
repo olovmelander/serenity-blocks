@@ -14,6 +14,7 @@ import { QUALITY_NAMES } from '../../src/themes/koi-pond/koi-pond-quality.js';
 import { THEME_REGISTRY } from '../../src/themes/theme-registry.js';
 import { THEME_URL_PARAMETERS } from '../../src/ui/url-parameters/theme-parameters.js';
 import { eventBus, EVENTS } from '../../src/events/event-bus.js';
+import { relativeLuminance } from '../../src/rendering/board-look.js';
 
 vi.setConfig({ testTimeout: 30_000 }); // every start builds a whole pond, on a machine that may be busy
 
@@ -196,6 +197,21 @@ const PIXEL_RATIO_CAPS = [
 ];
 
 describe('Koi Pond theme: one node renderer on both backends', () => {
+    it('keeps all seven playing pieces distinct and legible on the dark solo well', () => {
+        const well = relativeLuminance(0x0d0c1e);
+        const colors = [...'IOTZSLJ'].map((piece) => KOI_POND_TETROMINOS.colors[piece]);
+        for (const hex of colors) {
+            const luminance = relativeLuminance(Number.parseInt(hex.slice(1), 16));
+            expect((luminance + 0.05) / (well + 0.05)).toBeGreaterThan(4.5);
+        }
+        const linear = colors.map((hex) => new THREE.Color(hex));
+        linear.forEach((color, i) => {
+            for (const other of linear.slice(i + 1)) {
+                expect(Math.hypot(color.r - other.r, color.g - other.g, color.b - other.b)).toBeGreaterThan(0.24);
+            }
+        });
+    });
+
     beforeEach(() => {
         mocks.initialize = null;
         mocks.instances.length = 0;
@@ -602,6 +618,22 @@ describe('Koi Pond theme: one node renderer on both backends', () => {
         eventBus.emit(EVENTS.LINE_CLEAR, { lineCount: 1, clearedRows: [23], cascadeCount: 1 });
         theme.stepFrame(64);
         expect(theme.world.combo).toBe(1);
+    });
+
+    it('plays the lantern farewell for an active run and cancels it if reactions are switched off', async () => {
+        const { theme, listeners } = await startTheme({ quality: 'Minimal' });
+        const farewell = vi.spyOn(theme.world, 'gameOver');
+        listeners.get('gameOver')();
+        expect(farewell).toHaveBeenCalledOnce();
+        expect(theme.world.runEndLily).toBeGreaterThanOrEqual(0);
+        theme.handleSettingsChanged({ detail: { backgroundComboEffects: false } });
+        expect(theme.world.runEndLily).toBe(-1);
+        listeners.get('gameOver')();
+        expect(farewell).toHaveBeenCalledOnce();
+        theme.handleSettingsChanged({ detail: { backgroundComboEffects: true } });
+        theme.isPaused = true;
+        listeners.get('gameOver')();
+        expect(farewell).toHaveBeenCalledOnce();
     });
 
     it('rebuilds on a quality change and not on an unrelated setting', async () => {

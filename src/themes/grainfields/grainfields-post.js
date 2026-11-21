@@ -135,7 +135,7 @@ const roundBoxSdf = /* @__PURE__ */ Fn(([p, rect, radius]) => {
  * the golden hour) went to one flat gold and every gust, patch of ripeness and depth in the stand
  * with it. The rational one spreads 1–4 over the top of the range.
  */
-export const FILMIC_KNEE = 0.6;
+export const FILMIC_KNEE = 0.54;
 const gfFilmic = /* @__PURE__ */ Fn(([cIn]) => {
     const c = max(cIn, vec3(0.0));
     const peak = max(max(c.x, max(c.y, c.z)), 1e-5);
@@ -144,7 +144,7 @@ const gfFilmic = /* @__PURE__ */ Fn(([cIn]) => {
     const shoulder = k.add(float(1.0).sub(k).mul(z.div(z.add(1.0))));
     const mapped = select(peak.greaterThan(k), shoulder, peak);
     const toned = c.mul(mapped.div(peak));
-    const w = smoothstep(2.4, 9.0, peak).mul(0.9);
+    const w = smoothstep(3.2, 12.0, peak).mul(0.55);
     return mix(toned, vec3(mapped, mapped, mapped), w);
 }).setLayout({ name: 'gf_filmic', type: 'vec3', inputs: [{ name: 'cIn', type: 'vec3' }] });
 
@@ -298,7 +298,7 @@ export class GrainfieldsPost {
             T.assign(max(mix(vec3(gfLuma(T)), T, vib), vec3(0.0)));
             // A gentle contrast curve (clamped first: a polynomial folds values above 1 back down).
             const C = clamp(T, 0.0, 1.0);
-            T.assign(mix(C, C.mul(C).mul(float(3.0).sub(C.mul(2.0))), 0.38));
+            T.assign(mix(C, C.mul(C).mul(float(3.0).sub(C.mul(2.0))), 0.3));
             // Vignette, measured from the frame.
             const cv = screenUV.sub(0.5).mul(vec2(this.uAspect.div(1.778), 1.0));
             const vig = smoothstep(0.45, 1.15, length(cv.mul(1.45)));
@@ -353,12 +353,12 @@ export class GrainfieldsPost {
             const dir = normalize(ray).toVar();
             // To the land, or up to the deck's base (the sky behind is the dome's), or the range.
             const toDeck = select(dir.y.greaterThan(0.002), float(DECK.base).sub(this.uEye.y).div(dir.y), float(1e6));
-            const toLand = select(depth.lessThan(0.99999), length(ray).mul(viewZ.negate()), float(1e6));
+            const toLand = length(ray).mul(viewZ.negate());
             const reach = min(min(toLand, toDeck), float(AIR_RANGE)).toVar();
             // Steps crowd near the eye (the shafts close by are the sharpest): t = reach · (i/N)^1.6.
             const jitter = interleavedGradientNoise(screenCoordinate.xy).toVar();
             const sum = float(0.0).toVar();
-            const tau = float(0.0).toVar();
+            const transmission = float(1.0).toVar();
             const tauRain = float(0.0).toVar();
             const prevT = float(0.0).toVar();
             const hazeA = u.hazeDensity.mul(1.0 / 15000);
@@ -380,28 +380,34 @@ export class GrainfieldsPost {
                     .mul(smoothstep(R.near * 0.5, R.near, along));
             };
             Loop(steps, ({ i }) => {
-                const f = float(i).add(jitter).div(steps);
-                // Pinned as vars BEFORE prevT moves: an expression node is emitted where it is used,
-                // and used after the assignment it would read the new prevT (ds = 0).
+                // Integrate the full interval even at low step counts. Jitter only the
+                // density sample inside it, so opaque geometry always bounds the light.
+                const f = float(i).add(1.0).div(steps);
                 const tt = reach.mul(f.mul(f).mul(0.4).add(f.mul(0.6))).toVar();
                 const ds = tt.sub(prevT).toVar();
+                const sampleAt = prevT.add(jitter.mul(ds)).toVar();
                 prevT.assign(tt);
-                const X = this.uEye.add(dir.mul(tt)).toVar();
+                const X = this.uEye.add(dir.mul(sampleAt)).toVar();
                 const haze = hazeA.mul(exp(X.y.div(-HAZE_HEIGHT)));
                 // The vale's mist: low, in banks that drift.
                 const bank = texture(t.noise, X.xz.add(u.drift.mul(0.05)).div(2600.0)).g;
                 const mist = mistA.mul(exp(max(X.y.sub(MIST_FLOOR), 0.0).div(-MIST_HEIGHT))).mul(bank.mul(1.6).add(0.2));
-                const rainSigma = rainAt(X, tt);
-                const sigma = haze.add(mist);
+                const rainSigma = float(0.0).toVar();
+                If(u.rain.greaterThan(0.001), () => { rainSigma.assign(rainAt(X, sampleAt)); });
+                const sigma = haze.add(mist).toVar();
                 // Under thick cloud the air gets no direct sun at all (the sky's diffuse light in the
                 // haze is the land's aerial term): only the gaps light it, so the shafts stand alone.
-                const open = float(1.0).sub(deckCover(u, t.noise, deckPointAbove(u, X), { locks: false }));
+                const open = float(1.0).sub(deckCover(u, t.noise, deckPointAbove(u, X), { locks: false, edge: 1.5 })).toVar();
                 // The eye's own shaft (it stands in the sun's gap) is left out near it, so the air
                 // toward the sun is not one glare and the shafts before the fells stand alone.
-                const sunVis = open.mul(open).mul(smoothstep(500.0, 3200.0, tt));
+                const sunVis = open.mul(open.mul(0.45).add(0.55)).mul(smoothstep(500.0, 3200.0, sampleAt));
                 // Rain the sun reaches through a gap shines (the drops scatter much of it forward).
-                sum.addAssign(sunVis.mul(sigma.add(rainSigma.mul(R.shine))).mul(exp(tau.negate())).mul(ds));
-                tau.addAssign(sigma.add(rainSigma).mul(ds));
+                // A long step through a mist bank can only scatter the light it intercepts.
+                const extinction = sigma.add(rainSigma).toVar();
+                const segment = exp(extinction.mul(ds).negate()).toVar();
+                const albedo = sigma.add(rainSigma.mul(R.shine)).div(max(extinction, 1e-8));
+                sum.addAssign(sunVis.mul(albedo).mul(transmission).mul(segment.oneMinus()));
+                transmission.mulAssign(segment);
             });
             // The rain's veil, on its own finer steps: the curtains are a kilometre or two across and
             // the march's steps nearly as long, which dithered them into a mesh. Texture reads only.
@@ -417,8 +423,8 @@ export class GrainfieldsPost {
             const mu = clamp(dot(dir, u.sunDir), 0.0, 1.0);
             const mu2 = mu.mul(mu);
             const mu4 = mu2.mul(mu2);
-            const phase = mu4.mul(mu4).mul(1.4).add(mu4.mul(0.6)).add(mu2.mul(0.2))
-                .add(0.05);
+            const phase = mu4.mul(mu4).mul(1.12).add(mu4.mul(0.46)).add(mu2.mul(0.19))
+                .add(0.065);
             const lit = u.sun.mul(u.sunUp).mul(sum).mul(phase).mul(0.95);
             // The rain's veil over what lies behind it (its own grey is laid in by the output).
             return vec4(lit, exp(tauRain.negate()));
@@ -447,11 +453,15 @@ export class GrainfieldsPost {
         const { camera, renderer } = this;
         if (!camera?.isPerspectiveCamera) return;
         camera.updateMatrixWorld();
-        const tanV = Math.tan(THREE.MathUtils.degToRad(camera.fov * 0.5));
+        const lens = camera.projectionMatrix.elements;
         this.uEye.value.setFromMatrixPosition(camera.matrixWorld);
-        this.uRight.value.setFromMatrixColumn(camera.matrixWorld, 0).normalize().multiplyScalar(tanV * camera.aspect);
-        this.uUp.value.setFromMatrixColumn(camera.matrixWorld, 1).normalize().multiplyScalar(tanV);
-        this.uForward.value.setFromMatrixColumn(camera.matrixWorld, 2).normalize().negate();
+        this.uRight.value.setFromMatrixColumn(camera.matrixWorld, 0).normalize().multiplyScalar(1 / lens[0]);
+        this.uUp.value.setFromMatrixColumn(camera.matrixWorld, 1).normalize().multiplyScalar(1 / lens[5]);
+        // In portrait the image plane shifts vertically to keep the gate above the board.
+        // Its centre ray must shift with it for the shafts to meet their openings.
+        this.uForward.value.setFromMatrixColumn(camera.matrixWorld, 2).normalize().negate()
+            .addScaledVector(this.uRight.value, lens[8])
+            .addScaledVector(this.uUp.value, lens[9]);
         this.uNear.value = camera.near;
         this.uFar.value = camera.far;
         if (this.airNode) {

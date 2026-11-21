@@ -1203,13 +1203,15 @@ export const PLAYGROUND_URL_PARAMETERS = [
             + 'spin, perfect, level, over or festival. Rainbow Terraces: lock, drop, clear, quad, twist, '
             + 'b2b, perfect, levelUp, newRun, gameOver or break. Rainbark: lock, drop, clear, quad, '
             + 'twist, perfect, levelUp, release (the chain held by peak breaks), b2b (the sunshower '
-            + 'starts) or gameOver (Mistfall). Kaleidosonic: lock, drop, clear, quad, twist, perfect, '
+            + 'starts) or gameOver (Mistfall). Kaleidosonic: lock, drop, clear, quad, cascade, twist, '
+            + 'spin (a twist without lines), b2b, perfect, crown (a delayed Clean canvas), '
             + 'levelUp, release (the chain held by peak breaks) or over (the light sinks). Synthwave '
             + 'Sunset: lock, clear, quad, chain (the coaster lifted chain=<n> notches), ride (a chain '
             + 'of chain=<n> breaks and the coaster goes once round its circuit) or levelUp. Nimbus Veil: '
             + 'lock, hard, clear, quad, combo (a cascade of combo=<n> waves), chain, chainEnd, twist, twist0 '
             + '(a twist with no lines), b2b, perfect, levelUp, over (the run ends), dawn (it ends and the '
-            + 'next begins) or fever.',
+            + 'next begins) or fever. Lunara accepts lock, drop, clear, cascade, quad, combo, break, '
+            + 'twist, turn (lineless twist), b2b, perfect, crown (a delayed Clean canvas), levelUp or over.',
         defaultValue: 'Idle in most previews; Lunar Sigil uses lock.',
         example: 'event=lock',
         notes: 'Use on playground.html with effect=<the matching effect ID>. For deterministic replay, '
@@ -6538,7 +6540,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
         [
             'hour',
             'Hold the light at a place on the wheel of the day.',
-            '0 storm break, 1 golden hour, 2 dusk, 3 dawn mist, 4 morning; fractions run the day between them.',
+            '0 storm break, 1 golden hour, 2 dusk, 2.5 harvest moon, 3 dawn mist, 4 morning. Fractions blend the light.',
             'The clock’s.',
             '1',
         ],
@@ -6594,7 +6596,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
         [
             'event',
             'Replay one gameplay reaction before the frame.',
-            'lock, drop, clear, quad, twist, spin, perfect, levelUp or over.',
+            'lock, drop, clear, quad, twist, spin, cascade, b2b, perfect (quad then crown), crown, levelUp or over.',
             'Idle.',
             'quad',
         ],

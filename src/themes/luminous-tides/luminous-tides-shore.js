@@ -20,12 +20,12 @@
  */
 import * as THREE from 'three/webgpu';
 import {
-    Fn, Loop, abs, atan, cameraPosition, clamp, dot, exp, float, floor, fract, int, length, max, min, mix, normalize,
+    Fn, If, Loop, abs, atan, attribute, cameraPosition, clamp, dot, exp, float, floor, fract, int, length, max, min, mix, normalize,
     positionGeometry, positionWorld, select, sin, smoothstep, sqrt, texture, vec2, vec3, vec4,
-    dFdx, dFdy,
+    dFdx, dFdy, varying,
 } from 'three/tsl';
 import {
-    DEG, SHORE_FRAME, SURF, SWASH, TAU,
+    BASALT, DEG, SHORE_FRAME, SURF, SWASH, TAU, fromShore, smooth,
 } from './luminous-tides-core.js';
 import {
     TUNE, breakOf, coastHeight, coastLamps, crestOf, glintLobe, hash22, horizonHaze, sandOf, shoreOf, skyColour,
@@ -37,21 +37,41 @@ export const SHORE_FAN = Object.freeze({ near: 0.6, far: 9000, half: 88 });
 
 /** The radius of ring `i` of `rings` (0 the nearest). */
 export function fanRadius(i, rings) {
-    return SHORE_FAN.near * (SHORE_FAN.far / SHORE_FAN.near) ** (i / Math.max(1, rings - 1));
+    const u = i / Math.max(1, rings - 1);
+    const q = u / 0.65;
+    if (q <= 1) return SHORE_FAN.near + (34 - SHORE_FAN.near) * q * (0.66 + 0.34 * q);
+    const outer = (u - 0.65) / 0.35;
+    // Match the inner spacing where the outer fan starts, then open it out beyond the bay.
+    const tangent = (34 - SHORE_FAN.near) * 1.34 * (0.35 / 0.65);
+    return 34 + tangent * outer + (SHORE_FAN.far - 34 - tangent) * outer ** 6;
 }
 
 /** The fan of rings round the eye's foot (positions, an upward normal, the indices). */
 export function buildShoreFan(rings, spokes) {
     const half = SHORE_FAN.half * DEG;
     const positions = new Float32Array(rings * spokes * 3);
+    const contact = new Float32Array(rings * spokes);
+    const stones = BASALT.map(([a, s, radius]) => ({ ...fromShore(a, s), radius }));
     for (let i = 0; i < rings; i += 1) {
         const r = fanRadius(i, rings);
         for (let j = 0; j < spokes; j += 1) {
-            const a = -half + (2 * half * j) / (spokes - 1);
+            const u = (2 * j) / (spokes - 1) - 1;
+            const a = half * u * (0.68 + 0.32 * u * u);
             const at = (i * spokes + j) * 3;
             positions[at] = r * Math.sin(a);
             positions[at + 1] = 0;
             positions[at + 2] = -r * Math.cos(a);
+            if (r < 48) {
+                let shade = 0;
+                for (let k = 0; k < stones.length; k += 1) {
+                    const stone = stones[k];
+                    const dx = positions[at] - stone.x - stone.radius * 0.28;
+                    const dz = positions[at + 2] - stone.z - stone.radius * 0.08;
+                    const d2 = (dx * dx + dz * dz * 1.8) / (stone.radius * stone.radius);
+                    shade = Math.max(shade, 1 - smooth(0.5, 2.8, d2));
+                }
+                contact[at / 3] = shade;
+            }
         }
     }
     const indices = new Uint32Array((rings - 1) * (spokes - 1) * 6);
@@ -68,7 +88,7 @@ export function buildShoreFan(rings, spokes) {
             indices[k++] = b;
         }
     }
-    return { positions, indices };
+    return { positions, indices, contact };
 }
 
 const { along: ALONG, out: SEAWARD } = SHORE_FRAME;
@@ -83,7 +103,7 @@ const step01 = (v) => smoothstep(0.0, 0.001, v);
 
 /**
  * One of the board's waves of light at (a, s) and time t (rows ra, rb: a0, s0, t0, strength / H,
- * speed, sBreak, peel): vec2(its lift, d(lift)/ds). It stands up as it comes in, taller in the
+ * speed, sBreak, peel): vec3(lift, d(lift)/ds, shoreward throw). It stands up as it comes in, taller in the
  * middle of its length and tapering at its ends, its height wandering along it, and lies down as
  * it breaks, the break running along the peel.
  */
@@ -99,16 +119,20 @@ const waveLift = /* @__PURE__ */ Fn(([a, s, t, ra, rb]) => {
     const wander = sin(a.mul(0.23).add(ra.z.mul(3.1))).mul(0.26).add(sin(a.mul(0.61).add(1.3)).mul(0.12)).add(1.0);
     const front = mix(float(0.6), rb.x.mul(0.22).add(0.3), standing);
     const back = mix(float(0.9), rb.x.mul(1.4).add(1.2), standing);
-    const w = select(across.lessThan(0.0), front, back);
+    const w = select(across.lessThan(0.0), front, back).add(smoothstep(16, 52, off).mul(0.9));
     const amp = rb.x.mul(wander).mul(mix(float(0.35), float(1.0), standing)).mul(along).mul(ra.w.min(1.0))
         .mul(smoothstep(0.0, 0.4, age))
         .mul(smoothstep(-0.5, 1.5, sE))
         .mul(smoothstep(-0.4, 1.4, s));
-    const lift = amp.mul(exp(across.div(w).pow2().negate()));
-    return vec2(lift, lift.mul(across.mul(-2.0).div(w.mul(w))));
+    const lift = amp.mul(exp(across.div(w).pow2().negate())).toVar();
+    // The great lip pitches ahead of its foot just before the peel reaches this stretch.
+    const atBreak = sE.sub(rb.z.sub(late)).toVar();
+    const curl = smoothstep(1.3, 2.4, rb.x).mul(smoothstep(6, 0.7, atBreak)).mul(smoothstep(-3, 0, atBreak));
+    const throwLip = amp.mul(curl).mul(-0.47).mul(exp(across.div(0.88).pow2().negate()));
+    return vec3(lift, lift.mul(across.mul(-2.0).div(w.mul(w))), throwLip);
 }).setLayout({
     name: 'lt_waveLift',
-    type: 'vec2',
+    type: 'vec3',
     inputs: [
         { name: 'a', type: 'float' }, { name: 's', type: 'float' }, { name: 't', type: 'float' },
         { name: 'ra', type: 'vec4' }, { name: 'rb', type: 'vec4' },
@@ -253,13 +277,15 @@ const sparkLayer = /* @__PURE__ */ Fn(([xz, A, foot, t, cs, seed]) => {
     const d = xz.sub(pt);
     const rd = cs.mul(0.1);
     const reff = max(rd, foot.mul(0.5)).toVar();
-    const point = exp(dot(d, d).div(reff.mul(reff)).negate()).mul(rd.div(reff).pow2());
-    const mean = rd.mul(rd).mul(Math.PI).div(cs.mul(cs));
-    const v = mix(point, mean, smoothstep(cs.mul(0.3), cs.mul(0.8), reff)).div(mean);
+    const point = exp(dot(d, d).div(reff.mul(reff)).negate()).mul(rd.div(reff).pow2()).div(Math.PI * 0.01);
     const bright = h2.y.mul(h2.y).mul(h2.y).mul(3.0).add(0.25);
     const on = smoothstep(h2.x.mul(1.6), h2.x.mul(1.6).add(0.35), A);
     const flick = sin(t.mul(h.y.mul(12.0).add(5.0)).add(h.x.mul(40.0))).mul(0.5).add(0.5);
-    return v.mul(on).mul(bright).mul(flick.mul(flick).mul(0.75).add(0.25));
+    const resolved = point.mul(on).mul(bright).mul(flick.mul(flick).mul(0.75).add(0.25));
+    // Below a pixel even a cell's brightness is unresolved. Keeping its random seed here
+    // painted rectangular tiles all over steep wave faces and the distant wash.
+    const mean = clamp(A.sub(0.12).div(1.6), 0, 1).mul(0.53);
+    return mix(resolved, mean, smoothstep(cs.mul(0.34), cs.mul(0.95), foot));
 }).setLayout({
     name: 'lt_sparkLayer',
     type: 'float',
@@ -291,14 +317,17 @@ const rainLayer = /* @__PURE__ */ Fn(([xz, t, rate, foot, sc, period, seed]) => 
     const n = floor(ph);
     const age = fract(ph).mul(period).toVar();
     const hh = hash22(cell.add(vec2(n.mul(1.37), n.mul(0.71)))).toVar();
-    const on = smoothstep(hh.x.sub(0.02), hh.x, rate);
+    const chance = fract(hh.x.mul(17.17).add(h.y));
+    const on = smoothstep(chance.sub(0.025), chance, rate.mul(0.72));
     const pt = cell.add(hh.mul(0.6).add(0.2)).mul(sc);
     const d = length(xz.sub(pt)).toVar();
-    const r = age.mul(0.42).add(0.02);
-    const w = max(foot.mul(0.6), float(0.025));
-    const flash = exp(age.div(-0.09)).mul(exp(d.div(max(foot, float(0.05))).pow2().negate()));
-    const ring = exp(d.sub(r).div(w).pow2().negate()).mul(exp(age.div(-0.26))).mul(0.35);
-    return on.mul(flash.add(ring));
+    const r = age.mul(h.y.mul(0.15).add(0.29)).add(0.014);
+    const w = foot.mul(0.48).clamp(0.013, 0.065);
+    const flash = exp(age.div(-0.075)).mul(exp(d.div(max(w, float(0.04))).pow2().negate()));
+    const ring = exp(d.sub(r).div(w).pow2().negate()).mul(exp(age.div(-0.28))).mul(0.33);
+    // A distant pixel covers many drops. Their aggregate is a faint sheen on the water.
+    const detail = smoothstep(0.47, 0.045, foot.div(sc));
+    return mix(rate.mul(0.0025).div(sc.mul(sc)), on.mul(flash.add(ring)), detail);
 }).setLayout({
     name: 'lt_rainLayer',
     type: 'float',
@@ -315,6 +344,7 @@ export function createShore({
     const fan = buildShoreFan(tier.rings, tier.spokes);
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.BufferAttribute(fan.positions, 3));
+    geometry.setAttribute('aRockContact', new THREE.BufferAttribute(fan.contact, 1));
     const normals = new Float32Array(fan.positions.length);
     for (let i = 1; i < normals.length; i += 3) normals[i] = 1;
     geometry.setAttribute('normal', new THREE.BufferAttribute(normals, 3));
@@ -332,29 +362,33 @@ export function createShore({
         const s = sh.y;
         const sand = sandOf(s).toVar();
         const water = surfAt(a, s, U.time, false).h.toVar();
+        const pitch = float(0).toVar();
         // The board's waves of light stand up too while they come in.
         Loop({
             start: int(0), end: int(U.counts.y), type: 'int', condition: '<', name: 'wv',
         }, ({ wv }) => {
             const ra = rows.breakers.element(wv.mul(2));
             const rb = rows.breakers.element(wv.mul(2).add(1));
-            water.addAssign(waveLift(a, s, U.time, ra, rb).x);
+            const profile = waveLift(a, s, U.time, ra, rb).toVar();
+            water.addAssign(profile.x);
+            pitch.addAssign(profile.z);
         });
         const wetSheet = smoothstep(0.6, -0.6, s).mul(0.012);
-        return vec3(rest.x, max(sand.add(wetSheet), water), rest.y);
+        return vec3(rest.x.add(pitch.mul(SEAWARD.x)), max(sand.add(wetSheet), water), rest.y.add(pitch.mul(SEAWARD.z)));
     })();
 
     // ── The fragment ──
     const ripples = Math.min(3, Math.max(1, tier.ripples));
+    const surfaceXZ = varying(positionGeometry.xz, 'ltShoreRest');
     material.colorNode = Fn(() => {
         const P = positionWorld.toVar();
         const toEye = cameraPosition.sub(P);
         const dist = max(length(toEye), 1e-3).toVar();
         const V = toEye.div(dist).toVar();
-        const grazing = max(V.y, 0.012);
-        // A pixel's footprint along the view, metres: what the surface can still resolve.
-        const foot = dist.mul(U.pixelAngle).div(grazing).toVar();
-        const xz = P.xz.toVar();
+        // Measure on the displaced mesh. A towering face can be above the eye but still fill
+        // hundreds of pixels, and its foam must travel with the material as the lip pitches.
+        const xz = surfaceXZ.toVar();
+        const foot = max(length(dFdx(xz)), length(dFdy(xz))).max(0.0001).toVar();
         const t = U.time;
         const { light } = U;
         const sh = shoreOf(xz).toVar();
@@ -407,8 +441,11 @@ export function createShore({
         const laceFine = texture(seaNoise, laceAt.mul(2.3).add(vec2(0.31, 0.57))).b;
         // Foam gathers in patches: where the broad field is high the net is dense, elsewhere torn open.
         const patches = smoothstep(0.35, 0.75, texture(seaNoise, laceBase.mul(0.11).add(vec2(0.61, 0.07))).a);
-        const threads = lace.pow(1.6).mul(0.75).add(laceFine.pow(2.0).mul(0.5)).mul(patches.mul(0.8).add(0.2))
+        const threads = lace.pow(1.15).mul(0.83).add(laceFine.pow(2.0).mul(0.42)).mul(patches.mul(0.78).add(0.22))
             .toVar();
+        // Slow ribbons of plankton drift along the sandbar. Passing surf reveals their density.
+        const bed = texture(seaNoise, vec2(a.mul(0.014).sub(t.mul(0.005)), s.mul(0.042).add(t.mul(0.0018)))).a.toVar();
+        const richness = smoothstep(0.24, 0.76, bed.add(U.plankton.x.sub(0.5).mul(0.22))).toVar();
 
         // ── How hard the water is shaken (the sea's light, in units of a mean breaker) ──
         // The play shakes it too (U.stir, 0 calm): the surf's own breakers burn brighter, and the
@@ -421,8 +458,13 @@ export function createShore({
         // The swash: its leading edge, and the lace on the sheet behind it.
         const behindEdge = exp(sw.front.sub(x).max(0.0).div(-1.6));
         const draining = float(1.0).sub(sw.rising).mul(exp(sw.tau.sub(sw.top).div(-2.4)));
-        const sheetLight = sheet.mul(threads).mul(behindEdge.mul(0.7).add(draining.mul(0.55)).add(0.06)).mul(TUNE.lace);
-        agitation.addAssign(edge.mul(TUNE.edge).mul(onLand.mul(0.8).add(0.2)).add(sheetLight));
+        const sheetLight = sheet.mul(threads).mul(behindEdge.mul(1.25).add(draining.mul(1.08)).add(0.13)).mul(TUNE.lace);
+        const fray = threads.mul(1.5).add(patches.mul(0.46)).add(0.20);
+        const fringe = exp(x.sub(sw.front).add(warp.x.mul(0.65)).div(0.12).pow2()
+            .negate());
+        agitation.addAssign(edge.mul(TUNE.edge).mul(fray).mul(onLand.mul(0.8).add(0.2))
+            .add(fringe.mul(edge).mul(richness))
+            .add(sheetLight));
         // Calm water keeps a faint fire where its ripples tip; shaken by the play, it sparks.
         const ripple = length(slope).toVar();
         agitation.addAssign(smoothstep(0.06, 0.24, ripple).mul(stirred.mul(TUNE.calm * 4).add(TUNE.calm))
@@ -435,6 +477,8 @@ export function createShore({
         // ── The board: drops and waves of light ──
         const tint = vec3(0.0).toVar();
         const sparkBoost = float(0.0).toVar();
+        const waveGlass = vec3(0).toVar();
+        const steepFace = float(0).toVar();
         Loop({
             start: int(0), end: int(U.counts.x), type: 'int', condition: '<', name: 'sp',
         }, ({ sp }) => {
@@ -453,14 +497,16 @@ export function createShore({
             const burst = exp(ag.div(-0.18)).mul(1.8).add(exp(ag.div(-1.6)).mul(0.7)).add(exp(ag.div(-5.0)).mul(0.12));
             const ringAt = sqrt(ag).mul(rb.w.mul(1.3)).add(0.06);
             const ring = exp(d.sub(ringAt).div(rb.w.mul(0.1).add(0.02)).pow2().negate()).mul(exp(ag.div(-0.45))).mul(0.6);
-            const splash = patch.mul(burst).add(ring.mul(threads.mul(1.5).min(1.0).mul(0.7).add(0.3))).mul(ra.w)
+            const pressure = exp(d.sub(ringAt.mul(1.65)).div(rb.w.mul(0.095).add(0.016)).pow2().negate())
+                .mul(smoothstep(1.36, 1.73, ra.w)).mul(exp(ag.div(-0.9)));
+            const splash = patch.mul(burst).add(ring.add(pressure).mul(threads.mul(1.5).min(1.0).mul(0.7).add(0.3))).mul(ra.w)
                 .mul(live)
                 .mul(wet.mul(0.85).add(0.15))
                 .toVar();
             agitation.addAssign(splash.mul(0.3));
             sparkBoost.addAssign(splash.mul(1.1));
             const core = exp(d.div(rb.w.mul(0.3)).pow2().negate()).mul(exp(ag.div(-0.4)));
-            tint.addAssign(rb.xyz.mul(core).mul(ra.w).mul(live));
+            tint.addAssign(rb.xyz.mul(core.add(pressure.mul(0.48))).mul(ra.w).mul(live));
         });
         Loop({
             start: int(0), end: int(U.counts.y), type: 'int', condition: '<', name: 'wv',
@@ -487,11 +533,56 @@ export function createShore({
                 .mul(threads.mul(1.3).add(0.08));
             const inSea = float(1.0).sub(onLand).mul(smoothstep(-1.0, 0.5, sE));
             const wl = waveLift(a, s, U.time, ra, rb).toVar();
-            const face = clamp(wl.x.div(max(rb.x, 0.1)), 0.0, 1.0).pow(3.0).mul(float(1.0).sub(broken)).mul(1.2);
-            const sea = crest.add(burst).add(trail).mul(lit.add(front.mul(broken).mul(0.8))).add(face)
+            const face = clamp(wl.x.div(max(rb.x, 0.1)), 0.0, 1.0).toVar();
+            const great = smoothstep(1.3, 2.4, rb.x).toVar();
+            const crestSkin = mix(float(1), smoothstep(0.54, 0.98, face).mul(0.95).add(0.05), great);
+            const sea = crest.mul(crestSkin).add(burst.mul(crestSkin)).add(trail)
+                .mul(lit.add(front.mul(broken).mul(0.8)))
                 .mul(inSea)
                 .mul(threads.mul(1.6).min(1.0).mul(0.6).add(0.4));
+            // Light comes through the thin curling shoulder. Water streaming down the dark
+            // face breaks the light into veins; the last centimetres of the lip carry white foam.
+            const faceUV = vec2(a.mul(0.30).add(P.y.mul(0.28)), P.y.mul(0.14).sub(ag.mul(0.16)));
+            const skin = texture(seaNoise, faceUV.add(warp.mul(0.36))).toVar();
+            const veins = skin.b.mul(smoothstep(0.27, 0.68, skin.a)).toVar();
+            const inside = face.mul(float(1).sub(broken.mul(0.73))).mul(inSea).mul(lit).mul(live)
+                .toVar();
+            const through = mix(vec3(0.002, 0.24, 0.19), light.glow, face.mul(0.55))
+                .mul(face.mul(0.48).add(veins.mul(0.52))).mul(ra.w);
+            const lip = smoothstep(0.68, 1.05, face).mul(veins.mul(1.06).add(0.12));
+            waveGlass.addAssign(through.add(light.glowHot.mul(lip)).mul(inside));
+            steepFace.assign(max(steepFace, smoothstep(0.12, 0.55, wl.x)));
             slope.addAssign(vec2(SEAWARD.x, SEAWARD.z).mul(wl.y));
+            const cue = rows.wakes.element(wv);
+            const echo = t.sub(cue.x).toVar();
+            const da = a.sub(ra.x);
+            const ds = s.sub(cue.z);
+            const ground = watered.max(wet.mul(0.78)).mul(ra.w.min(1));
+            const wavelet = slope.x.mul(0.23).clamp(-0.1, 0.1).add(lace.sub(0.5).mul(0.055));
+            If(echo.lessThan(3.1), () => {
+                // Two amber-edged bow waves spread across the near water, opening towards the bay.
+                const rr = length(vec2(da.mul(0.68), ds)).toVar();
+                const bowFront = rr.sub(echo.mul(2.72)).sub(0.75).add(wavelet);
+                const width = max(0.11, foot.mul(0.75));
+                const wing = smoothstep(0.22, 0.74, abs(da).mul(0.68).div(rr.max(0.1)));
+                const envelope = wing.mul(smoothstep(3.1, 1.9, echo)).mul(ground).mul(threads.mul(0.8).add(0.55));
+                const rim = exp(bowFront.div(width).pow2().negate());
+                const wash = exp(bowFront.add(0.37).div(0.25).pow2().negate());
+                tint.addAssign(vec3(1.18, 0.55, 0.13).mul(rim).add(light.glow.mul(wash.mul(0.48))).mul(envelope));
+            });
+            const skip = t.sub(cue.y).toVar();
+            If(skip.lessThan(3.5), () => {
+                // Each landing leaves a broken pearl ring while the bead flies on to the next.
+                const landing = floor(da.div(1.8).add(0.5)).clamp(0, cue.w.sub(1).max(0)).toVar();
+                const elapsed = skip.sub(landing.mul(0.4)).toVar();
+                const along = da.sub(landing.mul(1.8));
+                const rr = length(vec2(along, ds.sub(sin(landing.mul(0.92)).mul(0.55))));
+                const ringFront = rr.sub(elapsed.mul(1.15)).sub(0.08).add(wavelet);
+                const ring = exp(ringFront.div(max(0.075, foot.mul(0.68))).pow2().negate());
+                const fade = smoothstep(-0.03, 0.08, elapsed).mul(smoothstep(1.45, 0.35, elapsed)).mul(smoothstep(0.9, 0.65, abs(along)));
+                tint.addAssign(vec3(0.35, 0.72, 1.21).mul(ring).mul(fade).mul(ground)
+                    .mul(threads.mul(0.92).add(0.58)));
+            });
             // Over the waterline it runs on up the sand as a swash.
             const tauE = sE.negate().div(rb.y).toVar();
             const frontE = swashOf(rb.x.mul(1.6), tauE).mul(cusp).toVar();
@@ -506,10 +597,12 @@ export function createShore({
         });
 
         // Rain.
-        const rain = rainLayer(xz, t, U.rain, foot, float(0.55), float(0.5), float(31.7))
-            .add(rainLayer(xz, t, U.rain, foot, float(1.9), float(0.75), float(37.0)))
-            .mul(U.rain.mul(4.0).min(1.0)).toVar();
-        agitation.addAssign(rain.mul(2.2).mul(max(watered, wet.mul(0.7))));
+        If(U.rain.greaterThan(0.001), () => {
+            const skew = vec2(xz.x.mul(0.866).add(xz.y.mul(0.5)), xz.y.mul(0.866).sub(xz.x.mul(0.5)));
+            const rain = rainLayer(skew, t, U.rain, foot, float(0.55), float(0.5), float(31.7))
+                .add(rainLayer(xz, t, U.rain, foot, float(1.9), float(0.75), float(37.0)));
+            agitation.addAssign(rain.mul(U.rain.mul(4.0).min(1.0)).mul(richness.mul(1.3).add(1)).mul(max(watered, wet.mul(0.7))));
+        });
 
         // ── The surface ──
         const N = normalize(vec3(slope.x.negate(), 1.0, slope.y.negate())).toVar();
@@ -555,7 +648,14 @@ export function createShore({
         // Torn water and foam mirror nothing: the road breaks off over a breaking wave.
         const mirror = float(1.0).sub(smoothstep(0.15, 1.1, agitation)).mul(float(1.0).sub(surf.foam.min(1.0)));
         const streaks = road.mul(lobe).mul(glint).mul(TUNE.lampRoad).mul(mirror)
+            .mul(float(1).sub(steepFace))
             .mul(float(1.0).sub(smoothstep(0.05, 0.16, V.y)));
+        const moonOffset = brgLevel.sub(atan(U.moon.x)).toVar();
+        const moonPath = exp(moonOffset.div(V.y.max(0).mul(0.16).add(0.052)).pow2().negate())
+            .mul(exp(V.y.sub(U.moon.y.mul(0.55)).div(0.15).pow2().negate())).mul(mirror).mul(U.moon.z)
+            .mul(float(1).sub(steepFace));
+        const facet = exp(R.y.sub(U.moon.y).div(0.048).pow2().negate());
+        const moonGlints = vec3(1, 0.79, 0.56).mul(moonPath).mul(facet.mul(glint.mul(0.042).add(0.49)).add(0.008));
 
         // The sea's fire in its own mirror. A breaking wave stands up out of the water, so the water
         // in front of it mirrors its lit lip and the wall of its bore: the mirror ray from here climbs
@@ -585,7 +685,11 @@ export function createShore({
         // The water: dark looked into; the night in its mirror, and the surf's fire; the lamps'
         // roads of glints.
         const seaBody = light.sea.mul(float(1.0).add(surf.foam.mul(0.4))).toVar();
-        const water = seaBody.mul(float(1.0).sub(fresnel)).add(mirrored.mul(fresnel)).add(streaks).add(fireMirror)
+        const shallow = exp(s.max(0).mul(-0.135)).mul(richness.mul(0.75).add(0.25)).mul(float(1).sub(fresnel));
+        const water = seaBody.mul(float(1.0).sub(fresnel)).add(light.glow.mul(shallow).mul(0.035))
+            .add(mirrored.mul(fresnel)).add(streaks)
+            .add(moonGlints)
+            .add(fireMirror)
             .toVar();
 
         // The sand: dry, its grain and wind ripples, a wrack line of dark weed along the top of the
@@ -599,30 +703,55 @@ export function createShore({
         const wrackAt = wetTop.add(3.2).add(texture(seaNoise, vec2(a.mul(0.035), 0.71)).a.sub(0.5).mul(2.4));
         const wrack = exp(x.sub(wrackAt).div(0.55).pow2().negate())
             .mul(smoothstep(0.45, 0.7, texture(seaNoise, vec2(a.mul(0.41), x.mul(0.9))).b.add(grain.mul(0.3))));
-        const dry = light.sand.mul(grainSeen.mul(0.5).add(0.75)).mul(ripplesDry.mul(0.25).add(0.88))
-            .mul(broad.mul(0.5).add(0.75)).mul(float(1.0).sub(wrack.mul(0.75)));
-        const rills = smoothstep(0.42, 0.7, texture(seaNoise, vec2(a.mul(0.9), x.mul(0.12)).add(vec2(0.11, 0.37))).a);
+        const ridges = sin(x.mul(5.3).add(a.mul(0.65)).add(broad.mul(5)).add(ripplesDry.mul(1.4)));
+        const dry = light.sand.mul(vec3(1.27, 1.03, 0.89)).mul(grainSeen.mul(0.6).add(0.68))
+            .mul(ridges.mul(0.12).mul(float(1).sub(smoothstep(0.08, 0.5, foot))).add(1))
+            .mul(broad.mul(0.5).add(0.75))
+            .mul(float(1.0).sub(wrack.mul(0.75)));
+        const rillUV = vec2(a.mul(0.21).add(x.mul(0.18)), x.mul(0.34).add(a.mul(0.09))).add(warp.mul(0.36));
+        const rills = texture(seaNoise, rillUV).b.mul(patches.mul(0.6).add(0.4));
         const wetSand = light.wetSand.mul(grainSeen.mul(0.3).add(0.75)).mul(float(1.0).sub(rills.mul(0.45)));
         const glints = smoothstep(0.38, 0.78, texture(seaNoise, xz.mul(vec2(0.85, 1.7)).add(vec2(0.53, 0.19))).b
             .add(texture(seaNoise, xz.mul(0.31)).a.mul(0.5)));
-        const gloss = mix(glints.mul(0.16).add(0.03), float(0.5), sheet).mul(fresnel.mul(4.0).min(1.0))
-            .mul(float(1.0).sub(rills.mul(0.6)));
-        const sandLit = mix(dry, wetSand, wet).mul(float(1.0).sub(gloss.mul(0.6))).add(mirrored.mul(gloss).mul(wet)).toVar();
+        const gloss = mix(glints.mul(0.14).add(0.045), float(0.41), sheet).mul(fresnel.mul(4.0).min(1.0))
+            .mul(float(1.0).sub(rills.mul(0.32)));
+        const sandLit = mix(dry, wetSand, wet).mul(float(1.0).sub(gloss.mul(0.6)))
+            .add(mirrored.mul(gloss).mul(wet)).add(moonGlints.mul(wet).mul(0.22))
+            .toVar();
         const surface = mix(water, sandLit, onLand).toVar();
 
         // ── The sea's light: sparks, and a fainter glow along the foam's threads ──
-        const A = agitation.max(0.0).toVar();
-        const sparks = sparkField(xz, A.add(sparkBoost), foot, t, tier.sparkle).toVar();
+        If(U.plankton.y.greaterThanEqual(0), () => {
+            // The perfect clear kindles successive sandbars from offshore to the eye's feet.
+            const age = U.plankton.y;
+            const wake = s.add(age.mul(8.5)).sub(29).add(bed.sub(0.5).mul(3.2));
+            const bars = exp(wake.div(2.2).pow2().negate()).add(exp(wake.sub(7).div(2.8).pow2().negate()).mul(0.62));
+            agitation.addAssign(bars.mul(watered).mul(U.bayBloom).mul(threads.mul(1.3).add(1.1)));
+        });
+        // A passing swell combs through a dense bed between breakers; the troughs stay glassy.
+        const slick = exp(s.sub(sin(a.mul(0.23).add(t.mul(0.085))).mul(2.6).add(4.4)).div(1.05).pow2().negate())
+            .mul(richness.pow2()).mul(U.plankton.x).mul(smoothstep(0.035, 0.16, ripple));
+        If(U.plankton.z.greaterThanEqual(0), () => {
+            const age = U.plankton.z;
+            const retreat = exp(s.sub(age.mul(2.6)).add(2.6).add(bed.mul(0.65)).div(0.8)
+                .pow2()
+                .negate());
+            agitation.addAssign(retreat.mul(threads.mul(0.9).add(0.2)).mul(smoothstep(0, 0.8, age)).mul(smoothstep(6, 3, age)));
+        });
+        const A = agitation.add(slick.mul(threads.mul(0.9).add(0.29))).max(0.0).mul(richness.mul(0.72).add(0.69)).toVar();
+        const sparkUV = xz.add(vec2(SEAWARD.x, SEAWARD.z).mul(P.y).mul(steepFace));
+        const sparks = sparkField(sparkUV, A.add(sparkBoost), foot, t, tier.sparkle).toVar();
         const hot = smoothstep(2.0, 6.0, A);
         const hue = mix(light.glow, light.glowHot, hot.mul(0.7));
         const foamLight = clamp(threads.mul(1.4), 0.0, 1.0).mul(0.65).add(0.35);
         const diffuse = A.mul(foamLight).mul(0.3).div(A.mul(0.1).add(1.0));
-        const emission = hue.mul(diffuse.add(sparks.mul(TUNE.sparkle))).mul(U.glowPower).toVar();
+        const emission = hue.mul(diffuse.add(sparks.mul(TUNE.sparkle))).add(waveGlass).mul(U.glowPower).toVar();
         emission.addAssign(tint.mul(1.6));
         // The swash's light falls on the sand round it, faintly.
         const lapping = exp(x.div(0.35).pow2().negate()).mul(threads.mul(0.8).add(0.2)).mul(0.06);
         const spill = edge.mul(0.1).add(sheet.mul(0.025)).mul(onLand).add(lapping);
-        const lit = surface.add(light.glow.mul(spill).mul(U.glowPower)).add(emission);
+        const lit = surface.mul(float(1).sub(attribute('aRockContact', 'float').mul(0.66)))
+            .add(light.glow.mul(spill).mul(U.glowPower)).add(emission);
 
         // ── The air over the far sea ──
         const reachHaze = float(1.0).sub(exp(dist.div(-TUNE.hazeReach)));

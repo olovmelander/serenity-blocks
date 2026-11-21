@@ -211,19 +211,23 @@ export function planGarden(tier, seed = 1861) {
     // Lily pads: a few great Victoria pads near the eye with their turned-up rims, and clusters
     // of small water-lily pads down the canal. No pad overlaps another.
     const pads = [];
-    const tryPad = (x, z, radius, kind) => {
+    const tryPad = (x, z, radius, kind, specimen = false) => {
         if (Math.abs(x) + radius > FLOOR.canal.half - 0.12) return false;
         if (pads.some((q) => Math.hypot(q.x - x, q.z - z) < q.radius + radius + 0.05)) return false;
         pads.push({
-            x, z, radius, kind, yaw: rand() * Math.PI * 2, seed: rand(),
+            x, z, radius, kind, specimen, yaw: rand() * Math.PI * 2, seed: rand(),
         });
         return true;
     };
     const victoria = Math.min(4, Math.max(2, Math.round(tier.pads / 16)));
     for (let i = 0, tries = 0; i < victoria && tries < 60; tries += 1) {
         const z = lerp(-1.6, -11, (i + rand()) / victoria);
-        if (tryPad((rand() - 0.5) * 2.4, z, lerp(0.62, 0.92, rand()), 'victoria')) i += 1;
+        const bank = i % 2 ? -1 : 1;
+        if (tryPad(bank * lerp(0.62, 1.3, rand()), z, lerp(0.62, 0.92, rand()), 'victoria')) i += 1;
     }
+    // An open night lily and its smaller sister frame the first giant leaf.
+    tryPad(-1.04, -1.6, 0.37, 'lily', true);
+    tryPad(1.38, -5.15, 0.32, 'lily', true);
     for (let tries = 0; pads.length < tier.pads && tries < tier.pads * 30; tries += 1) {
         const z = lerp(0.9, -40, rand() ** 1.5);
         const x = (rand() - 0.5) * 2 * (FLOOR.canal.half - 0.3);

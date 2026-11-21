@@ -77,6 +77,7 @@ function createSlot() {
         // lock intake
         lock: false,
         hardDrop: false,
+        distance: null,
         lockRows: new Int16Array(MAX_ROWS),
         lockRowCount: 0,
         lockU: 0.5,
@@ -104,6 +105,7 @@ function clearPending(slot) {
     slot.pending = false;
     slot.lock = false;
     slot.hardDrop = false;
+    slot.distance = null;
     slot.lockRowCount = 0;
     slot.lockColor = null;
     slot.lines = 0;
@@ -300,6 +302,7 @@ export class KoiPondDirector {
         if (!slot) return false;
         slot.pending = true;
         slot.hardDrop = this.lockRipple;
+        slot.distance = Number.isFinite(payload.distance) ? Math.max(0, payload.distance) : null;
         captureLock(slot, payload);
         return true;
     }
@@ -384,6 +387,7 @@ export class KoiPondDirector {
     }
 
     onLevelUp(event) {
+        if (!this.enabled) return false;
         const level = finite((event || EMPTY).level, this.level + 1);
         this.level = Math.max(1, Math.round(level));
         this.levelPending = true;
@@ -425,6 +429,7 @@ export class KoiPondDirector {
                 for (let r = 0; r < slot.lockRowCount; r += 1) c.rows.push(slot.lockRows[r]);
                 c.u = slot.lockU;
                 c.hardDrop = slot.hardDrop;
+                c.distance = slot.distance;
                 c.color = slot.lockColor;
                 c.screen = null;
                 sink.lock(c);

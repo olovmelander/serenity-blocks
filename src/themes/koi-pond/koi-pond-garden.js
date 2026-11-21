@@ -55,6 +55,19 @@ const MAPLES = [
     },
 ];
 
+// A smaller maple grows well beyond the lantern. The tall lens sees this branch above the queue.
+const FAR_MAPLE = [{
+    band: 0,
+    share: 1,
+    limbs: [
+        [[-5.5, 0.83, -10.4, 0.21], [-5.0, 1.57, -10.48, 0.17], [-4.2, 2.21, -10.12, 0.135]],
+        [[-4.2, 2.21, -10.12, 0.13], [-3.15, 2.39, -9.7, 0.09],
+            [-2.03, 2.18, -9.08, 0.065], [-0.8, 2.04, -8.95, 0.035], [0.14, 1.78, -8.58, 0.018]],
+        [[-3.15, 2.39, -9.7, 0.06], [-2.4, 2.73, -10.2, 0.045], [-1.22, 2.67, -10.8, 0.022]],
+        [[-2.03, 2.18, -9.08, 0.048], [-1.8, 2.06, -8.45, 0.032], [-1.62, 1.8, -8.17, 0.018]],
+    ],
+}];
+
 /**
  * Decide where everything in the garden stands. Pure data.
  * @returns {{ rocks: Array, standing: Array, lantern: {x:number,y:number,z:number,flame:number[]}, iris: Array }}
@@ -111,7 +124,7 @@ export function planGarden(seed = 1873) {
     });
     const ly = groundHeight(lx, lz) + 0.07;
     const lantern = {
-        x: lx, y: ly, z: lz, flame: [lx, ly + 0.6, lz],
+        x: lx, y: ly, z: lz, flame: [lx, ly + 0.72, lz],
     };
 
     // Iris and rush in clumps where the bank meets the water.
@@ -165,7 +178,10 @@ function buildRockShape(variant) {
             + 0.07 * (noise(x * 6.5 + 3, y * 6.5 + 3, z * 6.5 + 3) - 0.5);
         // Flatter underneath than on top.
         const settle = y < 0 ? 0.72 : 1;
-        pos.setXYZ(i, x * lump, y * lump * settle, z * lump);
+        // A split face and a tilted crown break the river-worn outline into ledges.
+        const face = Math.max(0, x * 0.85 + y * 0.25 + z * 0.46 - (0.63 + variant * 0.06));
+        const crown = Math.min(y * lump * settle, 0.79 + x * (0.12 - variant * 0.11) + z * 0.08);
+        pos.setXYZ(i, x * lump - face * 0.72, crown, z * lump - face * 0.33);
     }
     geometry.computeVertexNormals();
     return geometry;
@@ -186,22 +202,25 @@ function buildLanternPieces(lantern) {
         const leg = new THREE.CylinderGeometry(0.045, 0.07, 0.4, 6);
         piece(leg, Math.cos(a) * 0.24, 0.19, Math.sin(a) * 0.24, Math.sin(a) * 0.42, 0, -Math.cos(a) * 0.42);
     }
-    piece(new THREE.CylinderGeometry(0.3, 0.33, 0.07, 6), 0, 0.42, 0);
+    piece(new THREE.CylinderGeometry(0.32, 0.36, 0.08, 6), 0, 0.42, 0);
+    piece(new THREE.CylinderGeometry(0.3, 0.32, 0.04, 6), 0, 0.48, 0);
     // The light box: six posts and a lintel; the windows between them are drawn separately.
     for (let k = 0; k < 6; k += 1) {
         const a = (k / 6) * TAU;
-        piece(new THREE.BoxGeometry(0.045, 0.24, 0.045), Math.cos(a) * 0.19, 0.575, Math.sin(a) * 0.19, 0, -a, 0);
+        piece(new THREE.BoxGeometry(0.044, 0.43, 0.044), Math.sin(a) * 0.272, 0.7, Math.cos(a) * 0.272, 0, a, 0);
     }
-    piece(new THREE.CylinderGeometry(0.23, 0.22, 0.04, 6), 0, 0.715, 0);
+    piece(new THREE.CylinderGeometry(0.29, 0.27, 0.055, 6), 0, 0.92, 0);
     // The roof: a wide shallow umbrella that turns up at the eaves.
     // (A lathe faces outward when its profile climbs: underside first, then up to the peak.)
-    const roof = [new THREE.Vector2(0.2, -0.02), new THREE.Vector2(0.6, -0.02)];
+    const roof = [new THREE.Vector2(0.24, -0.03), new THREE.Vector2(0.51, -0.015)];
     for (let i = 8; i >= 0; i -= 1) {
         const t = i / 8;
-        roof.push(new THREE.Vector2(0.02 + t * 0.6, 0.2 * (1 - t) ** 1.7 + 0.035 * t * t * t));
+        roof.push(new THREE.Vector2(0.025 + t * 0.51, 0.205 * (1 - t) ** 1.6 + 0.03 * t ** 4));
     }
-    piece(new THREE.LatheGeometry(roof, 6), 0, 0.745, 0, 0, TAU / 12, 0);
-    piece(new THREE.SphereGeometry(0.06, 8, 6), 0, 0.985, 0);
+    piece(new THREE.LatheGeometry(roof, 8), 0, 0.97, 0, 0, TAU / 16, 0);
+    const finial = [[0.09, 0], [0.1, 0.022], [0.06, 0.048], [0.048, 0.062], [0.078, 0.09],
+        [0.084, 0.115], [0.055, 0.16], [0.018, 0.191], [0, 0.22]].map(([r, h]) => new THREE.Vector2(r, h));
+    piece(new THREE.LatheGeometry(finial, 12), 0, 1.135, 0);
     return pieces;
 }
 
@@ -295,7 +314,7 @@ export function createStones(light, plan) {
         const upward = smoothstep(0.1, 0.7, normal.y.add(grain.r.sub(0.5).mul(0.6)));
         // (The lantern's dressed stone holds less of it than the rough rocks.)
         const mossy = upward.mul(smoothstep(0.03, 0.16, point.y)).mul(vStone.y.mul(0.5).add(0.5))
-            .mul(smoothstep(0.12, 0.4, grain.b.add(vStone.y.mul(0.45)).add(hollow.mul(0.15))))
+            .mul(smoothstep(0.31, 0.78, grain.r.mul(0.65).add(speck.r.mul(0.22)).add(vStone.y.mul(0.24)).add(hollow.mul(0.11))))
             .mul(float(1.0).sub(vStone.z.mul(0.55)))
             .toVar();
         const tufts = fine.g.mul(0.6).add(speck.b.mul(0.4));
@@ -360,20 +379,26 @@ export function createStones(light, plan) {
 export function createLanternGlow(light, plan) {
     const { u } = light;
     const { lantern } = plan;
-    const geometry = new THREE.CylinderGeometry(0.17, 0.17, 0.2, 6, 1, true);
+    const geometry = new THREE.CylinderGeometry(0.265, 0.265, 0.40, 6, 1, true);
     const flicker = uniform(1);
     const material = new THREE.MeshBasicNodeMaterial({ fog: false, side: THREE.DoubleSide });
     material.name = 'Koi Pond — lantern windows';
     material.fragmentNode = Fn(() => {
-        // Brightest at the flame's height, with the paper's weave across it.
+        // Honey-coloured paper around a pale flame, framed by the crossbars of the six windows.
         const v = uv().y;
-        const core = float(1.0).sub(abs(v.sub(0.42)).mul(1.5)).max(0.2);
-        const weave = sin(uv().x.mul(180.0)).mul(0.06).add(0.94);
-        return vec4(u.lanternColor.mul(core.mul(weave).mul(flicker).mul(5.2)).mul(u.breath.mul(0.7).add(0.3)), 1.0);
+        const panel = fract(uv().x.mul(6)).sub(0.5);
+        const sway = sin(u.time.mul(2.7)).mul(0.035);
+        const distance = vec2(panel.sub(sway).mul(1.5), v.sub(0.38).mul(1.25)).length();
+        const core = smoothstep(0.03, 0.68, distance).oneMinus();
+        const crossbar = smoothstep(0.018, 0.047, abs(v.sub(0.72)));
+        const frame = smoothstep(0.005, 0.048, float(0.5).sub(abs(panel))).mul(crossbar);
+        const flame = mix(u.lanternColor.mul(vec3(1.0, 0.58, 0.35)), vec3(1, 0.8, 0.47), core);
+        return vec4(flame.mul(core.mul(3.1).add(0.8)).mul(frame.mul(0.94).add(0.06)).mul(flicker)
+            .mul(u.breath.mul(0.7).add(0.3)), 1.0);
     })();
     const mesh = new THREE.Mesh(geometry, material);
     mesh.name = 'Koi Pond — lantern windows';
-    mesh.position.set(lantern.x, lantern.y + 0.575, lantern.z);
+    mesh.position.set(lantern.x, lantern.y + 0.7, lantern.z);
     mesh.castShadow = false;
     mesh.matrixAutoUpdate = false;
     mesh.updateMatrix();
@@ -409,7 +434,7 @@ function sampleLimb(control, perSpan = 5) {
  * Grow the maples: tubes of wood, and a list of leaves (8 floats each: x, y, z, size, yaw,
  * pitch, roll, tone — tone's whole part is the tree's colour band).
  */
-export function growMaples(leafBudget, seed = 613) {
+export function growMaples(leafBudget, seed = 613, trees = MAPLES) {
     const rand = mulberry32(seed);
     const wood = { positions: [], normals: [], indices: [] };
     const candidates = [];
@@ -443,7 +468,7 @@ export function growMaples(leafBudget, seed = 613) {
                 const b = start + i * sides + ((k + 1) % sides);
                 const c = a + sides;
                 const d = b + sides;
-                wood.indices.push(a, b, c, b, d, c);
+                wood.indices.push(a, c, b, b, c, d);
             }
         }
     };
@@ -461,7 +486,7 @@ export function growMaples(leafBudget, seed = 613) {
         }
     };
 
-    MAPLES.forEach((tree) => {
+    trees.forEach((tree) => {
         tree.limbs.forEach((control, limbIndex) => {
             const points = sampleLimb(control, 5);
             tube(points, limbIndex === 0 ? 8 : 6);
@@ -531,12 +556,23 @@ export function createMaples(light, grown) {
     const { u } = light;
     /** The breeze in the boughs: 1 at rest, more in a gust. */
     const gust = uniform(1);
+    const far = growMaples(280 + Math.min(200, Math.round(grown.count * 0.035)), 1738, FAR_MAPLE);
+    // At this distance small leaves disappear into the twigs on a phone. Keep individual
+    // silhouettes and a scattering of dark leaves between the sunward vermilion sprays.
+    for (let o = 0; o < far.leaves.length; o += 8) {
+        const tone = far.leaves[o + 7];
+        far.leaves[o + 3] *= 2.55;
+        far.leaves[o + 7] = tone < 0.1 ? tone + 0.13 : 0.42 + Math.sqrt(tone) * 0.57;
+    }
+    const baseVertex = grown.wood.positions.length / 3;
+    const nearWoodIndices = grown.wood.indices.length;
+    const nearLeafCount = grown.count;
 
     // ── Wood ──
     const woodGeometry = new THREE.BufferGeometry();
-    woodGeometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(grown.wood.positions), 3));
-    woodGeometry.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(grown.wood.normals), 3));
-    woodGeometry.setIndex(grown.wood.indices);
+    woodGeometry.setAttribute('position', new THREE.Float32BufferAttribute(grown.wood.positions.concat(far.wood.positions), 3));
+    woodGeometry.setAttribute('normal', new THREE.Float32BufferAttribute(grown.wood.normals.concat(far.wood.normals), 3));
+    woodGeometry.setIndex(grown.wood.indices.concat(far.wood.indices.map((index) => baseVertex + index)));
     const woodMaterial = new THREE.MeshBasicNodeMaterial({ fog: false });
     woodMaterial.name = 'Koi Pond — maple wood';
     woodMaterial.fragmentNode = Fn(() => {
@@ -567,7 +603,10 @@ export function createMaples(light, grown) {
     leafGeometry.setIndex(base.getIndex());
     ['position', 'normal', 'uv'].forEach((name) => leafGeometry.setAttribute(name, base.getAttribute(name)));
     leafGeometry.instanceCount = grown.count;
-    const buffer = new THREE.InstancedInterleavedBuffer(grown.leaves, 8);
+    const canopy = new Float32Array(grown.leaves.length + far.leaves.length);
+    canopy.set(grown.leaves);
+    canopy.set(far.leaves, grown.leaves.length);
+    const buffer = new THREE.InstancedInterleavedBuffer(canopy, 8);
     leafGeometry.setAttribute('aLeaf', new THREE.InterleavedBufferAttribute(buffer, 4, 0));
     leafGeometry.setAttribute('aLeafTurn', new THREE.InterleavedBufferAttribute(buffer, 4, 4));
     const aLeaf = attribute('aLeaf', 'vec4');
@@ -649,6 +688,12 @@ export function createMaples(light, grown) {
             mesh: leaves, geometry: leafGeometry, material: leafMaterial, count: grown.count, dispose: () => base.dispose(),
         },
         gust,
+        frameForAspect(aspect) {
+            // Once its lowest twig is above the frame, even the shadow pass can skip this tree.
+            const farBankVisible = aspect < 1.25;
+            woodGeometry.setDrawRange(0, farBankVisible ? woodGeometry.index.count : nearWoodIndices);
+            leafGeometry.instanceCount = farBankVisible ? buffer.count : nearLeafCount;
+        },
     };
 }
 

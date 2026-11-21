@@ -79,6 +79,22 @@ function randomBoardRun(seed, shapeKey) {
 }
 
 describe('Stillfall reachability', () => {
+    it('matches every full-search route and its order from an empty high spawn', () => {
+        const fields = ({
+            x, y, rotation, shape, actions, pathCost,
+        }) => ({
+            x, y, rotation, shape, actions, pathCost,
+        });
+        for (const height of [2 * COLS, 2 * COLS + 4]) {
+            const grid = Array.from({ length: height }, () => Array(COLS).fill(null));
+            for (const key of PIECE_KEYS) {
+                const piece = { ...spawnPiece(key, grid), y: height - 2 * COLS };
+                const full = findReachablePlacements({ boardGrid: grid, currentPiece: piece });
+                expect(reachableLandings(grid, piece)).toEqual(full.map(fields));
+            }
+        }
+    });
+
     it('keeps landing discovery order when a trigger stops the movement search early', () => {
         for (const key of PIECE_KEYS) {
             const grid = boardFor(randomBoardRun(7919, key).lockedPieces);

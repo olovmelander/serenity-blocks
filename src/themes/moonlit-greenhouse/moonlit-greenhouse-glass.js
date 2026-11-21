@@ -22,8 +22,9 @@
  */
 import * as THREE from 'three/webgpu';
 import {
-    Fn, Loop, abs, attribute, cameraPosition, cameraProjectionMatrix, cameraViewMatrix, clamp, dot, exp, float, floor,
-    fract, fwidth, int, length, max, mix, normalize, positionWorld, select, smoothstep, texture, vec2, vec3, vec4,
+    Fn, If, Loop, abs, atan, attribute, cameraPosition, cameraProjectionMatrix, cameraViewMatrix, clamp, cos, dot, exp,
+    float, floor, fract, fwidth, int, length, max, mix, normalize, positionWorld, select, sin, smoothstep, texture,
+    vec2, vec3, vec4,
 } from 'three/tsl';
 import {
     ARC, GLAZING, HOUSE,
@@ -272,13 +273,75 @@ export function createGlass({ tier, U, noise }) {
             images.addAssign(vec3(row.w.mul(exp(q.mul(q).negate())).mul(smoothstep(0.2, 1.0, reach))));
         });
         const mirrored = night.lantern.mul(images).mul(U.lanternGain).mul(fresnel).mul(2.2);
-        const glassLit = through.add(veil).add(beads).add(paneLight.mul(float(0.35).add(filmAmount))).add(mirrored);
+        const glassLit = through.add(veil).add(beads).add(paneLight.mul(float(0.35).add(filmAmount)))
+            .add(mirrored.mul(select(isEnd, float(0.26), float(1))))
+            .toVar();
+        // Paired leaves in bottle-green and honey glass, fitted between the iron bays. A
+        // three-line clear lights the fans one bay after another, from the far screen forward.
+        If(kind.lessThan(0.5).and(s.greaterThan(0.12)).and(s.lessThan(5.3)).and(moonsBay.not()), () => {
+            const bayX = abs(fract(along.div(g.ribEvery)).sub(0.5)).mul(2);
+            const height = s.sub(0.12).div(5.15);
+            const leaf = length(vec2(bayX.sub(height.mul(0.78)).add(0.04).mul(3.3), height.sub(0.46).mul(2.13)));
+            const bud = length(vec2(bayX.sub(0.79).mul(6.0), height.sub(0.73).mul(5.4)));
+            const aa = clamp(foot.mul(0.75), 0.012, 0.14);
+            const cut = (distance) => float(1).sub(smoothstep(float(1).sub(aa), float(1).add(aa), distance));
+            const enamel = cut(leaf).toVar();
+            const honey = cut(bud).toVar();
+            const lead = max(
+                float(1).sub(smoothstep(0.012, aa.add(0.042), abs(leaf.sub(1)))),
+                float(1).sub(smoothstep(0.018, aa.add(0.066), abs(bud.sub(1)))),
+            );
+            const wash = mix(vec3(0.038, 0.23, 0.195), night.glow.mul(0.42), height.mul(0.42));
+            const age = U.time.sub(U.aisleCues.y).sub(along.add(46).mul(0.047)).sub(height.mul(0.44));
+            const fan = float(1).sub(smoothstep(0.16, 0.88, abs(age))).mul(U.cueLight);
+            const transmitted = film.x.mul(0.09).add(0.068).add(halo.mul(0.13)).add(fan.mul(1.75))
+                .mul(U.moonLight);
+            glassLit.assign(mix(glassLit, glassLit.mul(vec3(0.32, 0.71, 0.67)).add(wash.mul(transmitted)), enamel));
+            glassLit.assign(mix(glassLit, glassLit.mul(vec3(0.7, 0.48, 0.28))
+                .add(night.lantern.mul(transmitted).mul(0.29)), honey));
+            glassLit.assign(mix(glassLit, night.lantern.mul(0.031).add(paneLight.mul(0.14)), lead.mul(0.83)));
+        });
         // ── The iron: near black, a cold line of moonlight on the edge facing the moon.
         const edge = smoothstep(0.35, 1.0, iron).mul(float(1.0).sub(smoothstep(0.85, 1.0, iron)));
         const ironLit = night.zenith.mul(0.25)
             .add(night.moonlight.mul(edge.mul(halo).mul(0.14)))
             .add(paneLight.mul(0.04));
-        return vec4(mix(glassLit, ironLit, iron), 1.0);
+        const finished = mix(glassLit, ironLit, iron).toVar();
+        If(isEnd, () => {
+            // A semicircular peacock fanlight over the double door and two side lights.
+            const q = vec2(p.x, max(p.y.sub(3.18), 0));
+            const radius = length(q);
+            const opening = float(1).sub(smoothstep(2.45, 2.54, radius));
+            const frame = float(1).sub(smoothstep(0.045, 0.13, abs(radius.sub(2.49))));
+            const fan = smoothstep(3.05, 3.32, p.y);
+            const angle = atan(q.x, max(q.y, 0.001));
+            const spoke = abs(sin(angle.mul(7))).mul(radius);
+            const tracery = max(
+                float(1).sub(smoothstep(0.05, 0.18, spoke)),
+                float(1).sub(smoothstep(0.045, 0.12, abs(radius.sub(1.65)))),
+            );
+            const glassTone = mix(
+                night.glow.mul(vec3(0.37, 0.74, 0.68)),
+                night.lantern,
+                clamp(cos(angle.mul(14)).mul(0.22).add(0.42).add(float(1).sub(fan).mul(0.4)), 0, 1),
+            );
+            const doorBars = max(
+                mgLine(p.x, float(1.23), float(0.105), foot),
+                mgLine(p.y, float(1.54), float(0.085), foot),
+            );
+            const wake = float(1).sub(smoothstep(0.2, 2, abs(U.time.sub(U.aisleCues.w).sub(radius.mul(0.8)))))
+                .mul(U.cueLight);
+            const aura = night.lantern.mul(exp(abs(radius.sub(2.1)).mul(-1.6))).mul(0.13);
+            const panel = abs(fract(p.x.div(1.23)).sub(0.5)).mul(2)
+                .add(abs(fract(p.y.div(1.54)).sub(0.5)).mul(1.7));
+            const bevel = float(1).sub(smoothstep(0.05, 0.18, abs(panel.sub(0.72))));
+            const behind = exp(abs(p.x).mul(-0.68)).mul(smoothstep(0.12, 3.4, p.y)).mul(0.33);
+            const litDoor = glassTone.mul(film.x.mul(0.17).add(0.14).add(behind).add(wake.mul(0.58)))
+                .mul(float(1).sub(bevel.mul(float(1).sub(fan)).mul(0.43)))
+                .mul(float(1).sub(mix(doorBars, tracery, fan).mul(0.85))).mul(U.lanternGain);
+            finished.assign(mix(finished.add(aura), litDoor, opening).add(night.lantern.mul(frame).mul(0.27)));
+        });
+        return vec4(finished, 1.0);
     })();
 
     const mesh = new THREE.Mesh(geometry, material);

@@ -35,7 +35,7 @@ import {
     DECK, DEG, EYE, PIECE_COLORS, PLACES, RIG, TAU, TIMING, clamp, hexToLinear, rigFor, smooth,
 } from './grainfields-core.js';
 import {
-    HOURS, HourWheel, blendLight, copyLight, createLight, lightAt,
+    HOURS, HourWheel, applyHarvestNight, blendLight, copyLight, createLight, lightAt,
 } from './grainfields-hours.js';
 import { tierFor } from './grainfields-quality.js';
 import {
@@ -64,7 +64,7 @@ import { createHerd } from './grainfields-herd.js';
 import { createTrample } from './grainfields-trample.js';
 import { createHerdShadow } from './grainfields-herd-shadow.js';
 
-import { GUST, GrainfieldsReactions } from './grainfields-reactions.js';
+import { GUST, GrainfieldsReactions, freeColumn } from './grainfields-reactions.js';
 import { cardUnion, fallbackLayout } from './grainfields-composition.js';
 
 export const GRAINFIELDS_PARTS = Object.freeze([
@@ -254,7 +254,9 @@ export class GrainfieldsWorld {
         this.overrides = { hour: null };
         this.aspect = 16 / 9;
         this.viewportHeight = 1080;
-        this.layout = fallbackLayout(1920, 1080);
+        this.cssWidth = 1920;
+        this.cssHeight = 1080;
+        this.layout = fallbackLayout(this.cssWidth, this.cssHeight);
         this.layoutLive = false;
         this._camera = null;
         this._ray = [0, 0, 0];
@@ -456,11 +458,13 @@ export class GrainfieldsWorld {
     /** The post marches the light in the air: the land then leaves the sunlit air to it. */
     setAirMarch(on) { this.u.airMarch.value = on ? 1 : 0; }
 
-    setViewport(width, height, aspect) {
+    setViewport(bufferWidth, bufferHeight, aspect, cssWidth = bufferWidth, cssHeight = bufferHeight) {
         if (aspect > 0) this.aspect = aspect;
         this.u.aspect.value = this.aspect;
-        this.viewportHeight = Math.max(1, height);
-        if (!this.layoutLive) this.layout = fallbackLayout(width, height);
+        this.viewportHeight = Math.max(1, bufferHeight);
+        this.cssWidth = cssWidth;
+        this.cssHeight = cssHeight;
+        if (!this.layoutLive) this.layout = fallbackLayout(this.cssWidth, this.cssHeight);
         this.parts.herd?.setView(this.herdView());
         this.warmTakeoffs();
         // Only the portrait lens looks down into the clearing round the eye.
@@ -470,7 +474,7 @@ export class GrainfieldsWorld {
     setLayout(rects, aspect) {
         if (aspect > 0) this.aspect = aspect;
         this.layoutLive = Boolean(rects);
-        this.layout = rects || fallbackLayout(1920, 1920 / Math.max(0.2, this.aspect));
+        this.layout = rects || fallbackLayout(this.cssWidth, this.cssHeight);
         this.parts.herd?.setView(this.herdView());
         this.warmTakeoffs();
     }
@@ -493,9 +497,9 @@ export class GrainfieldsWorld {
         const tanH = Math.tan(rig.fov * DEG * 0.5) * this.aspect;
         const bearingAt = (x) => rig.yaw + Math.atan((x * 2 - 1) * tanH) / DEG;
         const blocked = [];
-        const card = cardUnion(this.layout);
+        const card = this.layoutLive ? cardUnion(this.layout) : null;
         if (card) blocked.push([bearingAt(card.x0), bearingAt(card.x1)]);
-        const hud = this.layout?.hud;
+        const hud = this.layoutLive ? this.layout?.hud : null;
         if (hud) blocked.push([bearingAt(hud.x0), bearingAt(hud.x1)]);
         return { left: bearingAt(0), right: bearingAt(1), blocked };
     }
@@ -609,11 +613,10 @@ export class GrainfieldsWorld {
         if (lines >= 4) this.counts.quads += 1;
         if (c?.twist) this.counts.twists += 1;
         if (c?.perfect) this.counts.perfects += 1;
-        const before = this.reactions.trails.length;
         const aim = (x, y, d) => this.aim(x, y, d);
         // A tear still open over the gate keeps its place (it is fed, not moved).
         const tearOpen = this.reactions.tear(this.time) > 0.05;
-        this.reactions.clear({ ...c, palette: PIECE_LINEAR }, this.time, { layout: this.layout, aim });
+        const added = this.reactions.clear({ ...c, palette: PIECE_LINEAR }, this.time, { layout: this.layout, aim });
         this.surge.clear(c, this.time);
         if (c?.perfect) this.launchSkein(this.time);
         if ((lines >= 4 || c?.b2b) && !tearOpen) {
@@ -630,7 +633,6 @@ export class GrainfieldsWorld {
         if (c?.twist) this.devilChaff(this.reactions.devils[this.reactions.devils.length - 1]);
         if (lines >= 4) this.gustChaff(this.reactions.rowColour({ ...c, palette: PIECE_LINEAR }));
         if (c?.perfect) this.stillChaff();
-        this.reactions.trails.slice(before).forEach((tr) => this.laneChaff(tr, lines, depth));
         if (c?.twist && whirl?.kind === 1) {
             this.parts.motes?.burst({
                 x: whirl.x,
@@ -647,7 +649,10 @@ export class GrainfieldsWorld {
             });
         }
         // Chaff of the rows' colours thrown up where each new lane starts (more for each wave).
-        this.reactions.trails.slice(before).forEach((tr) => {
+        const { trails } = this.reactions;
+        for (let lane = trails.length - added; lane < trails.length; lane++) {
+            const tr = trails[lane];
+            this.laneChaff(tr, lines, depth, c?.b2b);
             for (let k = 0; k < 3; k++) {
                 this.parts.motes?.burst({
                     x: tr.x + tr.hx * (8 + k * 9),
@@ -663,7 +668,7 @@ export class GrainfieldsWorld {
                     time: tr.at + k * 0.25,
                 });
             }
-        });
+        }
     }
 
     // ── What the events throw into the air (grainfields-chaff.js) ───────────────────
@@ -749,57 +754,110 @@ export class GrainfieldsWorld {
         }
     }
 
-    /** A clear's lane of wind carries the rows' chaff out along it as its head runs out. */
-    laneChaff(tr, lines, depth) {
+    /** Husks trace the wind in the air above the lane. Their arrangement and rhythm carry the clear. */
+    laneChaff(tr, lines, depth, backToBack) {
         const { chaff } = this.parts;
         if (!chaff) return;
         const r = () => this.draw();
         const rgb = this.flakeColour(tr.rgb, 0.7);
-        const n = Math.round((18 + 9 * lines + 5 * Math.min(depth, 5)) * chaff.share);
+        const n = Math.round((22 + 12 * lines + 6 * Math.min(depth, 5)) * chaff.share);
         const sideX = -tr.hz;
         const sideZ = tr.hx;
         for (let i = 0; i < n; i++) {
-            const along = 5 + r() * r() * 55;
-            const across = (r() - 0.5) * tr.width * 1.4;
+            const run = r();
+            let along = 5 + run * run * 40;
+            let across = (r() - 0.5) * tr.width * 0.48;
+            let lift = 1.8 + r() * 2.8;
+            let outward = 0;
+            let beat = 0;
+            if (backToBack) {
+                // A second difficult clear folds two crescents of straw up the same flank in succession.
+                const arc = run * Math.PI;
+                const second = i % 2;
+                along = 8 + (1 - Math.cos(arc)) * 9 + second * 7;
+                across += tr.side * Math.sin(arc) * (4 + second * 1.8);
+                lift += Math.sin(arc) * 5;
+                outward = tr.side * Math.cos(arc) * 2;
+                beat = second * 0.72;
+            } else if (lines === 2) {
+                // The wind divides round a patch of standing barley. The husks mark both banks.
+                const bank = i % 2 ? 1 : -1;
+                across += bank * (0.4 + 0.105 * along);
+                outward = bank * (1.9 + 2 * run);
+                lift += 0.9;
+            } else if (lines === 3) {
+                // Three successively taller, slanting breakers, near to far.
+                const rank = i % 3;
+                along = 7 + rank * 7.5 + run * 5;
+                across += (run - 0.5) * (5 + rank * 3);
+                lift += rank * 1.7 + 2 * Math.sin(run * Math.PI);
+                beat = rank * 0.19;
+            }
+            if (depth > 0) {
+                // Debris from a cascade arrives in separate, rising pulses within the clear.
+                const echo = i % Math.min(4, depth + 1);
+                beat += 0.32 * echo;
+                lift += 1.6 * echo;
+            }
             const x = tr.x + tr.hx * along + sideX * across;
             const z = tr.z + tr.hz * along + sideZ * across;
             const speed = 5 + r() * 7;
+            const sideSpeed = outward + (r() - 0.5) * 1.8;
             chaff.fly({
                 x,
                 y: groundHeight(x, z) + 0.95,
                 z,
-                vx: tr.hx * speed + sideX * (r() - 0.5) * 2,
-                vy: 1.8 + r() * 3.2,
-                vz: tr.hz * speed + sideZ * (r() - 0.5) * 2,
+                vx: tr.hx * speed + sideX * sideSpeed,
+                vy: lift,
+                vz: tr.hz * speed + sideZ * sideSpeed,
                 life: 2.6 + r() * 1.6,
                 size: 0.07 * (0.7 + r() * 0.8),
                 rgb,
                 seed: r(),
                 // Thrown as the lane's head passes: nearest first.
-                time: tr.at + along / 70 + r() * 0.3,
+                time: tr.at + along / 70 + beat + r() * 0.14,
             });
         }
-        if (lines < 3) return;
-        const puffs = Math.max(2, Math.round((lines - 1) * 2 * chaff.share));
+        if (lines === 1 && depth === 0 && !backToBack) return;
+        // The dust follows the same fork, cross-wind ridges, or double crescent. At a full-field
+        // distance the individual husks can fall below a pixel; the translucent banks still read.
+        const bands = backToBack ? 2 : Math.min(lines, 3);
+        const puffs = bands * Math.max(2, Math.round(4 * chaff.share));
         for (let i = 0; i < puffs; i++) {
-            const along = 8 + r() * 26;
-            const x = tr.x + tr.hx * along;
-            const z = tr.z + tr.hz * along;
+            const band = i % bands;
+            const run = (i + r()) / puffs;
+            let along = 7 + run * 22;
+            let across = 0;
+            let beat = 0;
+            if (backToBack) {
+                along = 8 + (1 - Math.cos(Math.PI * run)) * 9 + band * 7;
+                across = tr.side * Math.sin(Math.PI * run) * (4 + band * 1.8);
+                beat = band * 0.72;
+            } else if (lines === 2) {
+                across = (band ? 1 : -1) * (0.6 + 0.14 * along);
+            } else if (lines === 3) {
+                along = 7 + band * 7.5 + run * 5;
+                across = (run - 0.5) * (5 + band * 3);
+                beat = band * 0.19;
+            }
+            const x = tr.x + tr.hx * along + sideX * across;
+            const z = tr.z + tr.hz * along + sideZ * across;
+            const birth = tr.at + along / 70 + beat + 0.07 * r();
             chaff.fly({
                 x,
-                y: groundHeight(x, z) + 0.7,
+                y: groundHeight(x, z) + 1.05,
                 z,
                 vx: tr.hx * (3 + r() * 3),
-                vy: 1.4 + r() * 1.6,
+                vy: 2.1 + band * 0.8 + r() * 1.5,
                 vz: tr.hz * (3 + r() * 3),
                 life: 2.8 + r() * 1.2,
-                size: 0.45 + r() * 0.3,
-                grow: 1.4 + r() * 0.9,
+                size: 0.32 + r() * 0.27,
+                grow: 0.95 + 0.024 * along + r() * 0.6,
                 kind: CHAFF_KIND.puff,
                 rgb: tr.rgb,
                 pigment: 0.35,
                 seed: r(),
-                time: tr.at + along / 70 + r() * 0.2,
+                time: birth + (depth > 0 ? 0.32 * (i % Math.min(4, depth + 1)) : 0),
             });
         }
     }
@@ -916,33 +974,36 @@ export class GrainfieldsWorld {
     }
 
     /**
-     * A perfect clear: in the stilled air the field's gold dust rises, turning slowly, all over
-     * the near stand (the wound kind with a wide slow turn: a mote that climbs on its own).
+     * As the field falls still the seeds let go along two sweeping drifts. The far ends rise first,
+     * then the nearer ears open and the slower cream-coloured seed down follows the geese into the sky.
      */
     stillChaff() {
         const { chaff } = this.parts;
         if (!chaff) return;
         const r = () => this.draw();
-        const n = Math.round(150 * chaff.share);
+        const n = Math.round(180 * chaff.share);
         for (let i = 0; i < n; i++) {
-            const bearing = (r() - 0.5) * 84 * DEG;
-            const distance = 11 + r() * 64;
-            const x = EYE.x + Math.sin(bearing) * distance;
-            const z = EYE.z - Math.cos(bearing) * distance;
+            const along = r();
+            const side = i % 2 === 0 ? -1 : 1;
+            const arch = Math.sin(along * Math.PI);
+            const column = 0.08 + 0.31 * along + (r() - 0.5) * 0.09;
+            const u = freeColumn(this.layout, 0, side < 0 ? column : 1 - column);
+            const distance = 13 + 30 * (1 - along) + 4 * arch + r() * 5;
+            const [x, y, z] = this.aim(u, 0.72, distance);
             chaff.fly({
                 x,
-                y: groundHeight(x, z) + 0.9,
+                y: y + 0.88,
                 z,
                 kind: CHAFF_KIND.wound,
-                radius: 0.25 + r() * 0.9,
-                climb: 0.4 + r() * 0.8,
-                turn: (r() < 0.5 ? -1 : 1) * (0.3 + r() * 0.6),
-                open: 0,
-                life: 6.5 + r() * 4,
-                size: 0.05 * (0.7 + r() * 0.8),
-                rgb: [1.3, 1.15, 0.72],
+                radius: 0.3 + r() * 0.55,
+                climb: 0.54 + 0.53 * arch + 0.36 * r(),
+                turn: side * (0.26 + r() * 0.42),
+                open: 0.16,
+                life: 7 + r() * 3,
+                size: (0.042 + r() * 0.036) * (1 + distance / 80),
+                rgb: i % 3 === 0 ? [0.92, 0.62, 0.24] : [1.18, 1.04, 0.72],
                 seed: r(),
-                time: this.time + 0.6 + r() * 3.4,
+                time: this.time + 0.25 + along * 2.15 + (side + 1) * 0.22 + 0.32 * r(),
             });
         }
     }
@@ -1098,6 +1159,14 @@ export class GrainfieldsWorld {
         const L = this.dusk > 0.001
             ? blendLight(this._hourLight, this._duskLight, this.dusk * 0.85, this.light)
             : copyLight(this._hourLight, this.light);
+        applyHarvestNight(L, u.moon.value, this.dusk);
+        // A bank of damp air crosses the valley on a different clock from the sun. The
+        // hollows fill first. Behind it the ridgelines separate again in the clearer air.
+        const front = 0.64 * Math.sin(time * 0.032) + 0.36 * Math.sin(time * 0.071 + 1.6);
+        const humid = smooth(-0.7, 0.85, front);
+        L.cover = clamp(L.cover + 0.09 * front * (1 - this.dusk), 0.08, 0.96);
+        L.hazeDensity *= 0.65 + 0.28 * humid;
+        L.mistDensity *= 0.60 + 0.72 * humid;
         // How hot play runs (once a frame, on the world's clock): see the header.
         const heat = this.surge.sample(time);
         this.heat = heat;
@@ -1164,6 +1233,11 @@ export class GrainfieldsWorld {
         const b2b = this.reactions.b2bShown(time);
         const blow = 1 + 0.55 * open + 0.06 * b2b + 0.22 * gale + 0.12 * fever;
         u.windStrength.value = L.wind * blow * (1 - 0.85 * fx.still);
+        // The breeze veers independently of the long cloud deck. Keep the gust texture's own
+        // frame fixed so a slow turn never swings a distant weather front across the horizon.
+        const veer = Math.sin(time * 0.061) * 0.21 + Math.sin(time * 0.023) * 0.16;
+        const windBearing = 0.6075 + veer * motion * (1 - fx.still);
+        u.windDir.value.set(Math.cos(windBearing), Math.sin(windBearing));
         // The beams stand in thicker dust the hotter play runs; under a perfect clear's open sky
         // (no deck for them to come through) they pale.
         this.beamGlow = (1 + 0.08 * level + 0.12 * fever) * (1 - 0.35 * fx.clearSky);
@@ -1272,22 +1346,23 @@ export class GrainfieldsWorld {
         // The quads' light: the front's first moments flash over the frame; the rest is the front.
         const frontAge = this.time - this.reactions.flareAt;
         const kick = fx.flare * (1 - smooth(0.3, 1.6, frontAge));
-        // A chain's break lifts the light; four lines flare; a perfect clear's sky is the clearest.
-        // The iris closes as the fever's sun pours in and under a clear sky, so the gold stays gold.
-        // (And as the gate tears open: its light is in the air, so the land need not brighten.)
-        const iris = 1 - 0.07 * fever - 0.1 * fx.clearSky - 0.05 * fx.tear;
-        post.exposure = L.exposure * (1 + 0.05 * fx.breaking + 0.03 * fx.flare) * iris;
+        // Hold the hour's shadows while reserving highlight room for the direct sun,
+        // newly exposed field, and light concentrated in an opening over the gate.
+        const sunlight = L.sunUp * smooth(0.6, 3.5, L.sun[0]);
+        const opening = 0.06 * fx.breaking + 0.11 * fx.clearSky + 0.055 * fx.tear;
+        const iris = 1 / (1 + sunlight * (0.07 + opening + 0.11 * fever) + 0.025 * fx.flare);
+        post.exposure = L.exposure * iris;
         // (A perfect clear's air is rain-washed: crisp, and the colours with it.)
-        post.saturation = 1.12 + 0.06 * fx.breaking + 0.04 * level + 0.06 * fever + 0.06 * fx.clearSky;
+        post.saturation = 1.10 + 0.03 * fx.breaking + 0.025 * level + 0.035 * fever + 0.035 * fx.clearSky;
         // A clear sky lights all the air at once: hold the veil back so the gate stays crisp. The
         // fever's stronger sun is not let into the air (the gold is the land's, not a haze).
-        post.air = ((1 + 0.1 * fx.breaking + 0.06 * fx.tear) * (1 - 0.75 * fx.clearSky)) / (1 + 0.13 * this.blaze);
+        post.air = (1 - 0.72 * fx.clearSky) / (1 + 0.16 * this.blaze + 0.09 * fx.breaking);
         // Each event's kick rides on the light a moment (on a floor under rapid play); held low, so
         // the glare round the sun never veils the fells.
-        post.bloomBoost = (0.22 * fx.breaking + (0.2 * fx.flare + 0.12 * punch) * flashing) * (1 - 0.4 * fx.clearSky);
+        post.bloomBoost = (0.085 * fx.breaking + (0.14 * fx.flare + 0.08 * punch) * flashing) * (1 - 0.4 * fx.clearSky);
         // The flash is added after the exposure: scaled with it, it stays the same share of the
         // picture in a darker-exposed hour (the post scales it for Reduce flashing).
-        post.flash = 0.18 * kick * Math.min(1, L.exposure / 0.92);
+        post.flash = 0.095 * kick * Math.min(1, L.exposure / 0.92);
         post.flashColour = L.glow;
     }
 

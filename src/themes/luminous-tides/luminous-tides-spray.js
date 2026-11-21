@@ -11,7 +11,7 @@
  * the wave was thrown, the later its lip comes over.
  */
 import {
-    DEG, SHORE_FRAME, SURF, TAU, breakLine, clamp01, crestHeight, fract, fromShore, surfPhase, surfTime,
+    DEG, SHORE_FRAME, SURF, TAU, breakLine, clamp01, crestHeight, fract, fromShore, smooth, surfHeight, surfPhase, surfTime,
 } from './luminous-tides-core.js';
 
 /**
@@ -79,7 +79,8 @@ export function writeSpray(clock, glow, power, waves, limit, push) {
     const fx = -out.x - along.x * LEAN * 0.5;
     const fz = -out.z - along.z * LEAN * 0.5;
     const cells = Math.floor((SPRAY.to - SPRAY.from) / SPRAY.cell);
-    for (let j = 0; j < cells && n < limit; j += 1) {
+    const surfBudget = waves.length ? Math.ceil(limit * 0.45) : limit;
+    for (let j = 0; j < cells && n < surfBudget; j += 1) {
         const a = SPRAY.from + (j + 0.5) * SPRAY.cell;
         // The crest that last crossed its break line here, and the one before it.
         const sNow = breakLine(SURF.height, a);
@@ -122,24 +123,45 @@ export function writeSpray(clock, glow, power, waves, limit, push) {
             const a = SPRAY.from + (j + 0.5) * SPRAY.cell;
             const off = Math.abs(a - wave.a0);
             const age = clock - (breakAt + off / Math.max(1, wave.peel));
-            if (age < 0 || age > SPRAY.life * 1.3) continue;
+            const lead = wave.great ? 0.38 : 0.04;
+            if (age < -lead || age > SPRAY.life * 1.3) continue;
             const drops = SPRAY.drops * 2;
             for (let i = 0; i < drops && n < limit; i += 1) {
                 const seed = wave.t0 * 37.1 + j * 17.31 + i * 3.7;
-                const delay = hash(seed + 1.3) * 0.22;
+                const delay = hash(seed + 1.3) * (lead + 0.22) - lead;
                 const t = age - delay;
                 if (t < 0) continue;
-                fromShore(a + (hash(seed) - 0.5) * SPRAY.cell, wave.sBreak - 0.8, at);
+                const strip = a + (hash(seed) - 0.5) * SPRAY.cell;
+                const birth = clock - t;
+                const crest = wave.s0 - wave.speed * (birth - wave.t0);
+                if (crest < 0.6) continue;
+                const standing = smooth(-3, 1, -wave.speed * delay);
+                const wander = 1 + 0.26 * Math.sin(strip * 0.23 + wave.t0 * 3.1) + 0.12 * Math.sin(strip * 0.61 + 1.3);
+                const lip = wave.H * wander * (0.35 + 0.65 * standing) * smooth(60, 22, off);
+                fromShore(strip, crest - lip * (wave.great ? 0.41 : 0.08), at);
                 const v = SPRAY.speed * (0.7 + 0.9 * hash(seed + 2.9)) * Math.sqrt(scale);
-                const up = SPRAY.lift * (0.6 + 0.8 * hash(seed + 4.1)) * Math.sqrt(scale);
+                const up = (0.65 + 1.25 * hash(seed + 4.1)) * Math.min(1.55, Math.sqrt(scale));
                 const side = (hash(seed + 5.7) - 0.5) * 1.2;
                 const vx = fx * v + along.x * side;
                 const vz = fz * v + along.z * side;
-                const y = wave.H * 0.75 + up * t - 0.5 * G * t * t;
+                const y = surfHeight(strip, crest, birth) + lip + up * t - 0.5 * G * t * t;
                 if (y < -0.05) continue;
                 const fade = (1 - clamp01((t - SPRAY.life * 0.5) / (SPRAY.life * 0.8))) * Math.exp(-t * 1.2);
-                const c = power * 1.1 * fade * wave.strength * (wave.fade ?? 1);
-                push(at.x + vx * t, y, at.z + vz * t, 0.016, glow[0] * c, glow[1] * c, glow[2] * c, vx, up - G * t, vz);
+                const mist = wave.great && i % 4 === 0;
+                const c = power * (mist ? 0.065 : 0.51) * fade * wave.strength * (wave.fade ?? 1);
+                push(
+                    at.x + vx * t,
+                    y,
+                    at.z + vz * t,
+                    mist ? 0.10 + t * 0.055 : 0.010 + 0.009 * hash(seed),
+                    (glow[0] * 0.82 + 0.18) * c,
+                    (glow[1] * 0.84 + 0.16) * c,
+                    glow[2] * c,
+                    vx,
+                    up - G * t,
+                    vz,
+                    mist,
+                );
                 n += 1;
             }
         }

@@ -25,7 +25,7 @@ import {
     PLACES, TIMING, bearingOf, mulberry32,
 } from '../../src/themes/grainfields/grainfields-core.js';
 import {
-    DAY_HEIGHTS, DECLINATION, HOURS, HOUR_COUNT, HourWheel, LATITUDE, SUN, TIMETABLE, blendLight, chroma, copyLight,
+    DAY_HEIGHTS, DECLINATION, HOURS, HOUR_COUNT, HourWheel, LATITUDE, SUN, TIMETABLE, applyHarvestNight, blendLight, chroma, copyLight,
     countedHourAt, createLight, dayAt, dayHourAt, hourMix, hourPlace, lightAt, sunBearingAt, sunClear, sunHeightAt,
     sunStrength,
 } from '../../src/themes/grainfields/grainfields-hours.js';
@@ -130,6 +130,34 @@ function firstTime(from, to, test) {
 }
 
 describe('Grainfields day: the stations', () => {
+    it('reserves the harvest moon for blue hour and keeps skylight on the field', () => {
+        const moon = {
+            x: 0, y: 0, z: -1, w: 0,
+        };
+        for (const place of [0, 1, DUSK, DAWN, MORNING, DAWN + HOUR_COUNT]) {
+            const light = lightAt(place);
+            applyHarvestNight(light, moon);
+            expect(moon.w).toBe(0);
+            expect(distance(light, lightAt(place))).toBe(0);
+        }
+        let lastStrength = 0;
+        for (let step = 0; step <= 100; step++) {
+            const light = lightAt(DUSK + step / 100);
+            applyHarvestNight(light, moon);
+            expect(Math.abs(moon.w - lastStrength)).toBeLessThan(0.04);
+            if (moon.w > 0) {
+                expect(Math.hypot(moon.x, moon.y, moon.z)).toBeCloseTo(1);
+                expect(moon.y).toBeGreaterThan(0.15);
+            }
+            if (step === 50) {
+                expect(moon.w).toBe(1);
+                expect(light.horizon[2]).toBeGreaterThan(light.horizon[0]);
+                expect(luminance(light.fill)).toBeGreaterThan(0.12);
+            }
+            lastStrength = moon.w;
+        }
+    });
+
     it('is a day of five stations, each with every colour and scalar the world reads', () => {
         expect(HOUR_COUNT).toBe(5);
         expect(HOURS.map((hour) => hour.name)).toEqual(['storm break', 'golden hour', 'dusk', 'dawn mist', 'morning']);
@@ -262,7 +290,16 @@ describe('Grainfields day: the clock alone (the house rule)', () => {
             expect(first.place).toBeCloseTo(level - 1, 9);
             expect(distance(at(60), first), `level ${level}`).toBeGreaterThan(0.05);
             const later = at(TIMING.hour);
-            expect(isHour(later, level % HOUR_COUNT), `level ${level}`).toBe(true);
+            const stationLight = lightAt(level % HOUR_COUNT);
+            for (const key of [...COLOUR_KEYS, 'dir', 'hour', 'sunUp', 'day', 'exposure', 'stars', 'wind']) {
+                expect(later[key], `level ${level}, ${key}`).toEqual(stationLight[key]);
+            }
+            // The passing weather bank modulates the station's visibility and cloud cover.
+            expect(Math.abs(later.cover - stationLight.cover)).toBeLessThan(0.12);
+            for (const key of ['hazeDensity', 'mistDensity']) {
+                expect(later[key]).toBeGreaterThan(stationLight[key] * 0.4);
+                expect(later[key]).toBeLessThan(stationLight[key] * 1.6);
+            }
             expect(world.getState().level).toBe(level);
             // The uniforms follow the light.
             expect(world.u.sun.value.toArray()).toEqual(later.sun);
