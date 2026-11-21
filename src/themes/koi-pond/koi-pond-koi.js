@@ -16,7 +16,7 @@
  */
 import * as THREE from 'three/webgpu';
 import {
-    Fn, abs, attribute, cameraPosition, clamp, cos, dot, float, floor, fract, length, max, mix, normalize,
+    Fn, abs, attribute, cameraPosition, clamp, cos, dot, float, floor, fract, fwidth, length, max, mix, normalize,
     positionGeometry, positionWorld, pow, sign, sin, smoothstep, step, varying, vec2, vec3, vec4,
 } from 'three/tsl';
 import { CHAIN_GOLD } from './koi-pond-light.js';
@@ -34,9 +34,9 @@ const WAVE_NUMBER = 5.6;
 const PROFILE = [
     // s,     width,  up,     down
     [0.0, 0.0, 0.0, 0.0],
-    [0.012, 0.022, 0.016, 0.014],
-    [0.04, 0.046, 0.034, 0.03],
-    [0.09, 0.07, 0.056, 0.05],
+    [0.012, 0.028, 0.016, 0.017],
+    [0.04, 0.053, 0.034, 0.032],
+    [0.09, 0.075, 0.056, 0.05],
     [0.16, 0.088, 0.078, 0.07],
     [0.25, 0.099, 0.094, 0.084],
     [0.34, 0.102, 0.099, 0.088],
@@ -69,7 +69,7 @@ function profileAt(s) {
  * The koi, one unit long: nose at x = +0.5, tail tip at x = −0.5, y up, z to its right.
  * Attributes: position, normal, aBody (s along the spine, around/fan coordinate −1..1, part,
  * flex 0 at a fin's root → 1 at its tip) and aFin (offset from the fin's root; zero on the body).
- * Parts: 0 body, 1 tail, 2 pectoral, 3 pelvic, 4 dorsal.
+ * Parts: 0 body, 1 tail, 2 pectoral, 3 pelvic, 4 dorsal, 5 barbel.
  */
 export function buildKoiGeometry() {
     const positions = [];
@@ -123,15 +123,20 @@ export function buildKoiGeometry() {
             const r = j / ringsN;
             for (let i = 0; i <= raysN; i += 1) {
                 const f = (i / raysN) * 2 - 1; // −1..1 across the fan
-                const theta = heading + f * halfAngle;
-                const reach = radius(f) * r;
+                // Each ray curves on its way out of the shoulder. The narrower trailing
+                // membrane curls back further, while the two tail lobes sweep away from the fork.
+                const bend = part === 1 ? -f * 0.18 : 0.34 + f * 0.12;
+                const theta = heading + f * halfAngle + bend * r * r;
+                const reach = radius(f) * r * (1 - 0.018 * (i % 2) * r * r);
                 // In the fin's own plane (x back/forward, z out), then tilted about the x axis.
                 const fx = Math.cos(theta) * reach;
                 const out = Math.sin(theta) * reach;
-                const fy = Math.sin(tilt) * out;
+                const cup = part === 1 ? 0.012 : 0.025;
+                const fy = Math.sin(tilt) * out + (1 - f * f) * r * (1 - r) * cup * 3.8
+                    + f * Math.sin(Math.PI * r * 0.75) * r * cup;
                 const fz = Math.cos(tilt) * out * mirror;
                 const x = root[0] + fx;
-                const y = root[1] + fy * (mirror < 0 && part !== 1 ? 1 : 1);
+                const y = root[1] + fy;
                 const z = root[2] * (part === 1 ? 1 : mirror) + fz;
                 vertex(x, y, z, sAt(x), f, part, r, fx, fy, fz);
             }
@@ -153,16 +158,20 @@ export function buildKoiGeometry() {
         part: 1,
         heading: Math.PI,
         tilt: 0,
-        halfAngle: 0.74,
-        radius: (f) => 0.112 + 0.13 * Math.abs(Math.sin(Math.abs(f) * 1.5)) ** 1.15 - 0.012 * (1 - Math.abs(f)),
-        raysN: 12,
+        halfAngle: 0.9,
+        radius: (f) => {
+            const lobe = Math.abs(f);
+            const crest = lobe < 0.64 ? lobe / 0.64 : (1 - lobe) / 0.36;
+            return 0.105 - 0.042 * lobe + 0.202 * crest ** 1.22;
+        },
+        raysN: 24,
         ringsN: 6,
         sAt: sOf,
     });
     // Give the tail its dihedral: the lobes rise away from the middle.
     for (let i = 0; i < positions.length / 3; i += 1) {
         if (body[i * 4 + 2] === 1) {
-            const rise = Math.abs(positions[i * 3 + 2]) * 0.34;
+            const rise = Math.abs(positions[i * 3 + 2]) * 0.49;
             positions[i * 3 + 1] += rise;
             fin[i * 3 + 1] += rise;
         }
@@ -170,13 +179,13 @@ export function buildKoiGeometry() {
     // Pectorals: broad paddles from behind the gill plates, swept back and a little down.
     [1, -1].forEach((mirror) => {
         fan({
-            root: [0.5 - 0.215, -0.034, 0.078],
+            root: [0.5 - 0.224, -0.025, 0.068],
             part: 2,
-            heading: 2.08,
-            tilt: -0.3,
-            halfAngle: 0.56,
-            radius: (f) => 0.168 * (0.82 + 0.18 * Math.cos(f * 1.4)) * (1 - 0.1 * Math.max(0, -f)),
-            raysN: 8,
+            heading: 1.98,
+            tilt: -0.39,
+            halfAngle: 0.78,
+            radius: (f) => 0.028 + 0.169 * (1 - f * f) ** 0.76 * (1 - f * 0.14),
+            raysN: 14,
             ringsN: 5,
             sAt: sOf,
             mirror,
@@ -188,8 +197,8 @@ export function buildKoiGeometry() {
             heading: 2.5,
             tilt: -0.5,
             halfAngle: 0.42,
-            radius: (f) => 0.105 * (0.85 + 0.15 * Math.cos(f * 1.5)),
-            raysN: 5,
+            radius: (f) => 0.018 + 0.089 * (1 - f * f) ** 0.76,
+            raysN: 8,
             ringsN: 3,
             sAt: sOf,
             mirror,
@@ -199,7 +208,7 @@ export function buildKoiGeometry() {
     {
         const start = positions.length / 3;
         const s0 = 0.31;
-        const s1 = 0.66;
+        const s1 = 0.62;
         const cols = 12;
         const rows = 2;
         for (let j = 0; j <= rows; j += 1) {
@@ -208,10 +217,11 @@ export function buildKoiGeometry() {
                 const s = s0 + (s1 - s0) * f;
                 const [, up, down] = profileAt(s);
                 const baseY = up + (up - down) * 0.2 - 0.004;
-                const tall = 0.062 * Math.sin(Math.min(1, f * 3.2) * Math.PI * 0.5) * (1 - f * 0.72);
+                const tall = 0.048 * Math.sin(Math.min(1, f * 5) * Math.PI * 0.5) * (1 - f) ** 1.15
+                    * (0.91 + 0.09 * Math.cos(i * Math.PI));
                 const h = (j / rows) * tall;
-                // The ridge leans back as it rises.
-                vertex(0.5 - s - h * 0.5, baseY + h, 0, s, f * 2 - 1, 4, j / rows, -h * 0.5, h, 0);
+                const lean = h * (0.24 + 0.16 * Math.sin(f * Math.PI * 1.5));
+                vertex(0.5 - s - h * 0.65, baseY + h, lean, s, f * 2 - 1, 4, j / rows, -h * 0.65, h, lean);
             }
         }
         for (let j = 0; j < rows; j += 1) {
@@ -219,6 +229,24 @@ export function buildKoiGeometry() {
                 const a = start + j * (cols + 1) + i;
                 const b = a + cols + 1;
                 indices.push(a, a + 1, b, b, a + 1, b + 1);
+            }
+        }
+    }
+
+    // The barbels sweep back from the corners of a carp's mouth.
+    for (const side of [-1, 1]) {
+        const start = positions.length / 3;
+        for (let i = 0; i <= 5; i += 1) {
+            const t = i / 5;
+            const s = 0.032 + 0.046 * t * t;
+            const z = side * (0.035 + 0.055 * t - 0.014 * t * t);
+            const y = -0.009 - 0.008 * t + 0.004 * t * t;
+            const width = 0.0036 * (1 - 0.9 * t);
+            vertex(0.5 - s - width, y, z, s, side * 0.44, 5, 0);
+            vertex(0.5 - s + width, y, z, s, side * 0.44, 5, 0);
+            if (i > 0) {
+                const a = start + 2 * (i - 1);
+                indices.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
             }
         }
     }
@@ -233,7 +261,10 @@ export function buildKoiGeometry() {
     const normals = geometry.getAttribute('normal');
     for (let i = 0; i < normals.count; i += 1) {
         const part = body[i * 4 + 2];
-        if (part !== 0 && part !== 4 && normals.getY(i) < 0) {
+        // The duplicated point at each fan root and the very tip of the nose have zero area.
+        if (normals.getX(i) === 0 && normals.getY(i) === 0 && normals.getZ(i) === 0) {
+            normals.setXYZ(i, part === 0 ? 1 : 0, part === 0 ? 0 : 1, 0);
+        } else if (part !== 0 && part !== 4 && normals.getY(i) < 0) {
             normals.setXYZ(i, -normals.getX(i), -normals.getY(i), -normals.getZ(i));
         }
     }
@@ -242,11 +273,11 @@ export function buildKoiGeometry() {
 
 // ── Varieties ───────────────────────────────────────────────────────────────────────────────
 
-const WHITE = [0.86, 0.86, 0.82];
-const HI = [0.86, 0.085, 0.02]; // the red of a kohaku
-const BENI = [0.95, 0.2, 0.025]; // orange-red
-const SUMI = [0.012, 0.012, 0.016];
-const GOLD = [0.95, 0.56, 0.07];
+const WHITE = [0.9, 0.85, 0.76];
+const HI = [0.86, 0.046, 0.016]; // the vermilion of a kohaku
+const BENI = [1, 0.245, 0.027]; // persimmon orange
+const SUMI = [0.01, 0.014, 0.026];
+const GOLD = [0.98, 0.54, 0.075];
 const PLATINUM = [0.82, 0.86, 0.9];
 const SLATE = [0.16, 0.26, 0.4];
 const LEMON = [0.95, 0.74, 0.16];
@@ -371,11 +402,15 @@ export function createKoi(light, count) {
 
         // Fins hinge at their roots: longer on a long-finned fish, and the pectorals scull.
         const root = positionGeometry.sub(aFin);
-        const spread = aState.z.mul(0.7).add(sin(phase.mul(0.5).add(side.mul(0.9))).mul(amp).mul(0.2)).mul(isPectoral);
+        const stroke = phase.mul(0.43).add(aTrait.x.mul(5.1)).add(side.mul(1.28)).sub(flex.mul(0.85))
+            .toVar();
+        const rowing = sin(stroke).mul(amp.mul(0.27).add(0.22));
+        const spread = aState.z.mul(0.48).add(rowing).add(side.mul(curve).mul(0.22)).mul(isPectoral);
         const mirrored = aFin.z.mul(side);
         const finX = aFin.x.mul(cos(spread)).add(mirrored.mul(sin(spread)));
         const finZ = mirrored.mul(cos(spread)).sub(aFin.x.mul(sin(spread))).mul(side);
-        const flap = flex.mul(sin(phase.add(side.mul(0.5))).mul(0.03).mul(amp)).mul(isPectoral);
+        const lift = cos(stroke).mul(amp.mul(0.025).add(0.021)).mul(isPectoral).toVar();
+        const flap = flex.mul(flex).mul(lift);
         const grown = mix(float(1.0), aBuild.x, step(0.5, part).mul(isDorsal.oneMinus()));
         const p = root.add(vec3(finX, aFin.y.add(flap), finZ).mul(grown)).toVar();
         const girth = mix(float(1.0), aBuild.y, isBody);
@@ -399,6 +434,7 @@ export function createKoi(light, count) {
         ).add(curve.mul(abs(bend)).mul(1.24));
         const n = attribute('normal', 'vec3').toVar();
         n.x.addAssign(n.z.mul(dzds));
+        n.z.subAssign(side.mul(lift).mul(flex).mul(7.0));
 
         // Roll into the turn, take its length, pitch (a leap), then its heading and place.
         const roll = aState.x;
@@ -430,12 +466,14 @@ export function createKoi(light, count) {
         const flex = vBody.w;
         const isBody = step(part, 0.5).toVar();
         const isFin = isBody.oneMinus().toVar();
+        const dorsal = step(3.5, part).mul(step(part, 4.5));
         const style = floor(aTrait.w.add(0.5)).toVar();
         const isCrowned = step(0.5, style).mul(step(style, 1.5));
         const isNetted = step(1.5, style);
 
         // ── Markings: islands of colour from the pond's noise field, each fish its own ──
-        const st = vec2(s.mul(1.5).add(aTrait.x), around.mul(0.34).add(aTrait.y));
+        const pigmentAround = mix(around, float(0), dorsal);
+        const st = vec2(s.mul(1.5).add(aTrait.x), pigmentAround.mul(0.34).add(aTrait.y));
         const broad = light.noise.sample(st);
         const second = light.noise.sample(st.mul(2.3).add(vec2(0.37, 0.61)));
         const flank = float(1.0).sub(smoothstep(0.5, 0.93, abs(around))).mul(isBody).add(isFin.mul(float(1.0).sub(flex.mul(0.75))));
@@ -449,25 +487,49 @@ export function createKoi(light, count) {
             .mul(float(1.0).sub(smoothstep(0.72, 1.0, abs(around)).mul(isBody)));
 
         const skin = mix(mix(aBase.rgb, aMark.rgb, marked), aInk.rgb, inked).toVar();
-        // Scales: a net of soft-edged plates along the back.
-        const row = around.mul(8.0);
-        const plate = vec2(fract(s.mul(31.0).add(floor(row).mul(0.5))), fract(row));
-        const plateLight = smoothstep(0.0, 0.34, plate.x).mul(smoothstep(0.0, 0.3, plate.y));
-        const scaled = smoothstep(0.17, 0.24, s).mul(isBody);
-        skin.mulAssign(mix(float(1.0), plateLight.mul(0.2).add(0.82), scaled));
+        // Each row overlaps its neighbour by half a scale. The curved trailing edge catches
+        // the moon. Once a plate is smaller than a pixel the scales read as a satin surface.
+        const row = around.mul(8.5).toVar();
+        const across = fract(row).sub(0.5).toVar();
+        const along = s.mul(24.0).add(floor(row).mul(0.5));
+        const arch = along.sub(across.mul(across).mul(1.65)).toVar();
+        const seam = abs(fract(arch.add(0.5)).sub(0.5));
+        const footprint = fwidth(s).mul(24.0).add(fwidth(around).mul(8.5)).toVar();
+        const aa = clamp(footprint.mul(0.42), 0.025, 0.32);
+        const lip = smoothstep(0.015, aa.add(0.085), seam).oneMinus();
+        const resolved = smoothstep(0.32, 0.86, footprint).oneMinus();
+        const scaled = smoothstep(0.15, 0.23, s).mul(isBody).toVar();
+        const scallop = resolved.mul(scaled).toVar();
+        const plateLight = lip.oneMinus().toVar();
+        skin.mulAssign(float(1.0).sub(lip.mul(scallop).mul(0.22)));
         // Asagi: the net IS the pattern — pale blue plates edged in slate, a red belly.
-        const netted = mix(aBase.rgb.mul(0.42), aBase.rgb.mul(1.9).add(vec3(0.05, 0.08, 0.12)), plateLight);
+        const netted = mix(aBase.rgb.mul(1.4).add(vec3(0.045, 0.07, 0.1)), aBase.rgb.mul(0.37), lip.mul(resolved));
         const redBelly = smoothstep(0.52, 0.8, abs(around)).mul(isBody).add(isFin.mul(float(1.0).sub(flex.mul(0.6))));
         skin.assign(mix(skin, mix(netted, aMark.rgb, redBelly), isNetted.mul(scaled.mul(isBody).add(isFin))));
-        // A pale belly, a dark eye either side of the head.
+        // Pearly gill covers and a short crease curve away from the eye toward the shoulder.
         const belly = smoothstep(0.62, 0.98, abs(around)).mul(isBody).mul(isNetted.oneMinus());
         skin.assign(mix(skin, skin.mul(0.5).add(0.36), belly.mul(0.55)));
-        const eye = float(1.0).sub(smoothstep(0.011, 0.019, length(vec2(s.sub(0.07), abs(around).sub(0.43).mul(0.22))))).mul(isBody);
-        skin.assign(mix(skin, vec3(0.006, 0.006, 0.008), eye));
-        // Fins: a thin membrane, paler toward its edge, ribbed with rays.
-        const rays = cos(around.mul(21.0)).mul(0.12).add(0.88);
-        const membrane = mix(skin, skin.mul(0.6).add(vec3(0.035, 0.07, 0.075)), flex.mul(0.7)).mul(rays);
-        skin.assign(mix(skin, membrane, isFin));
+        const cheek = abs(around).toVar();
+        const gill = s.sub(float(0.182).sub(cheek.sub(0.35).pow2().mul(0.25))).toVar();
+        const cover = smoothstep(0.1, 0.31, cheek).mul(smoothstep(0.6, 0.75, cheek).oneMinus()).mul(isBody);
+        const crease = smoothstep(0.001, 0.011, abs(gill)).oneMinus().mul(cover);
+        skin.mulAssign(crease.mul(-0.47).add(1.0));
+        const cheekPearl = smoothstep(0.0, 0.021, abs(gill.add(0.018))).oneMinus().mul(cover);
+        skin.addAssign(vec3(0.18, 0.125, 0.085).mul(cheekPearl));
+        const eyeUv = vec2(s.sub(0.078), cheek.sub(0.40).mul(0.205)).toVar();
+        const eyeRadius = length(eyeUv).toVar();
+        const eye = smoothstep(0.018, 0.025, eyeRadius).oneMinus().mul(isBody);
+        const pupil = smoothstep(0.011, 0.017, eyeRadius).oneMinus();
+        const glint = smoothstep(0.002, 0.007, length(eyeUv.add(vec2(0.005, 0.006)))).oneMinus();
+        skin.assign(mix(skin, mix(vec3(0.29, 0.16, 0.055), vec3(0.007, 0.01, 0.017), pupil).add(glint.mul(0.85)), eye));
+        // Light between the fin rays picks up the cool water. Their fan is widest toward the
+        // tips, where a soft ivory edge shows against the bed even on a white fish.
+        const rayWave = cos(around.mul(24.0).add(flex.mul(flex).mul(1.9)));
+        const ray = smoothstep(0.57, 0.98, rayWave).mul(smoothstep(0.18, 0.54, flex));
+        const veil = mix(skin.mul(0.71), vec3(0.29, 0.39, 0.37), flex.mul(0.64));
+        const tip = smoothstep(0.71, 0.98, flex).mul(0.26);
+        const membrane = mix(veil, skin.mul(0.7).add(vec3(0.19, 0.15, 0.09)), ray.mul(0.58).add(tip));
+        skin.assign(mix(skin, membrane, isFin.mul(smoothstep(0.02, 0.59, flex))));
 
         // ── Light ──
         const under = smoothstep(0.012, -0.012, point.y).toVar();
@@ -477,7 +539,8 @@ export function createKoi(light, count) {
         const toMoon = normalize(mix(u.moonDir, normalize(vec3(u.underSlope.x, 1.0, u.underSlope.y)), under)).toVar();
         const ndl = dot(normal, toMoon).toVar();
         // The body wraps the light round its back; a fin is lit from either face.
-        const wrapped = mix(clamp(ndl.mul(0.72).add(0.28), 0.0, 1.0), abs(ndl).mul(0.42).add(0.3), isFin);
+        const finLight = abs(ndl).mul(0.35).add(0.48).add(dorsal.mul(0.19));
+        const wrapped = mix(clamp(ndl.mul(0.72).add(0.28), 0.0, 1.0), finLight, isFin);
         const lit = light.moonlight().toVar();
         // (Held below the bed's brightest lines: a white koi must keep its markings.)
         const gathered = mix(float(1.0), light.caustic(point).min(2.2), under).toVar();
@@ -494,6 +557,9 @@ export function createKoi(light, count) {
         const half = normalize(toMoon.add(view));
         const gloss = clamp(dot(normal, half), 0.0, 1.0);
         const metal = aTrait.z;
+        const rear = fract(arch).toVar();
+        const facet = smoothstep(0.035, 0.18, rear).mul(smoothstep(0.18, 0.46, rear).oneMinus());
+        const scaleFlash = facet.mul(scallop).mul(plateLight).mul(pow(gloss, 9.0));
         const sheen = pow(gloss, mix(float(26.0), float(60.0), metal)).mul(mix(float(0.22), float(1.0), metal))
             .mul(isBody.mul(0.85).add(0.15)).mul(lit)
             .mul(gathered)
@@ -503,8 +569,11 @@ export function createKoi(light, count) {
         const fire = vec3(...CHAIN_GOLD).mul(aState.y).mul(marked.mul(0.2).add(rim.mul(rim).mul(1.1)).add(0.03))
             .add(skin.mul(aState.y).mul(0.28));
 
+        const silver = mix(vec3(0.93, 0.85, 0.7), skin.add(0.07), metal)
+            .mul(scaleFlash).mul(metal.mul(0.4).add(0.085));
         const colour = skin.mul(moon.add(ambient).add(lamp).add(band))
             .add(mix(u.moonColor, skin.add(0.2), metal.mul(0.7)).mul(sheen).mul(sink))
+            .add(silver.mul(lit).mul(sink).mul(u.breath))
             .add(fire);
         return vec4(colour, 1.0);
     });

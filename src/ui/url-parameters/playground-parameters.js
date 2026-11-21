@@ -1210,7 +1210,8 @@ export const PLAYGROUND_URL_PARAMETERS = [
             + 'of chain=<n> breaks and the coaster goes once round its circuit) or levelUp. Nimbus Veil: '
             + 'lock, hard, clear, quad, combo (a cascade of combo=<n> waves), chain, chainEnd, twist, twist0 '
             + '(a twist with no lines), b2b, perfect, levelUp, over (the run ends), dawn (it ends and the '
-            + 'next begins) or fever.',
+            + 'next begins) or fever. Lunara accepts lock, drop, clear, cascade, quad, combo, break, '
+            + 'twist, turn (lineless twist), b2b, perfect, crown (a delayed Clean canvas), levelUp or over.',
         defaultValue: 'Idle in most previews; Lunar Sigil uses lock.',
         example: 'event=lock',
         notes: 'Use on playground.html with effect=<the matching effect ID>. For deterministic replay, '

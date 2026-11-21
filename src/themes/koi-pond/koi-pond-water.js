@@ -14,9 +14,9 @@
  */
 import * as THREE from 'three/webgpu';
 import {
-    Break, Fn, If, Loop, cameraFar, cameraNear, cameraPosition, cameraProjectionMatrix, cameraProjectionMatrixInverse, cameraViewMatrix,
+    Break, Fn, If, Loop, cameraFar, cameraNear, cameraPosition, cameraProjectionMatrix, cameraProjectionMatrixInverse, cameraViewMatrix, cross,
     cameraWorldMatrix, clamp, dot, exp, float, floor, fract, getScreenPosition, getViewPosition, length, linearDepth, max, mix, normalize,
-    positionWorld, pow, reflect, refract, screenUV, sin, smoothstep, step, vec2, vec3, vec4, viewportDepthTexture, viewportLinearDepth,
+    positionView, positionWorld, pow, reflect, refract, screenUV, sin, smoothstep, step, vec2, vec3, vec4, viewportDepthTexture, viewportLinearDepth,
     viewportSharedTexture,
 } from 'three/tsl';
 
@@ -25,6 +25,7 @@ const BEND = 0.42;
 /** The moon in the water: its (generous) angular radius, as cosines of the rim and the core. */
 const MOON_RIM = Math.cos(2.1 * (Math.PI / 180));
 const MOON_CORE = Math.cos(1.55 * (Math.PI / 180));
+const MOON_RADIUS = Math.sin(2.1 * (Math.PI / 180));
 /** How far the pond's finest facets spread their slopes (rms): how wide the moon's path is. */
 const GLITTER_SPREAD = 0.06;
 /** Metres the mirrored ray is walked looking for the garden, and the least share it is shown at. */
@@ -64,10 +65,11 @@ export function createWater(light, tier) {
         const edge = float(0.0).toVar();
         if (tier.refraction) {
             const span = cameraFar.sub(cameraNear);
-            const thickness = max(viewportLinearDepth.sub(linearDepth()).mul(span), 0.0).toVar();
+            const eyeDepth = max(positionView.z.negate(), 0.001);
+            const thickness = max(viewportLinearDepth.sub(linearDepth()).mul(span), 0.0).mul(distance.div(eyeDepth)).toVar();
             // Where this ray lands unbent, then where the tilted surface really sends it.
             const landed = point.sub(view.mul(thickness));
-            const push = slope.mul(thickness.min(2.4)).mul(BEND);
+            const push = clamp(slope, -0.18, 0.18).mul(thickness.min(2.4)).mul(BEND);
             const bent = vec3(landed.x.add(push.x), landed.y, landed.z.add(push.y));
             const bentUV = getScreenPosition(cameraViewMatrix.mul(vec4(bent, 1.0)).xyz, cameraProjectionMatrix).toVar();
             const there = getViewPosition(bentUV, viewportDepthTexture(bentUV).r, cameraProjectionMatrixInverse);
@@ -127,8 +129,15 @@ export function createWater(light, tier) {
         const toMoon = clamp(dot(bounce, u.moonDir), 0.0, 1.0).toVar();
         // The finer facets cut dark gaps through the disc, which wander as the water moves.
         const gaps = smoothstep(0.38, 0.62, g1.b.mul(0.6).add(g2.a.mul(0.4)));
-        const disc = smoothstep(MOON_RIM, MOON_CORE, toMoon).mul(gaps.mul(0.75).add(0.25));
-        const halo = pow(toMoon, 320.0).mul(0.09).add(pow(toMoon, 60.0).mul(0.008));
+        const east = normalize(cross(u.moonDir, vec3(0, 1, 0)));
+        // Each facet reflects its own point on the lunar sphere. The terminator breaks
+        // into the same moving ribbons as the bright limb when a ripple crosses it.
+        const discX = dot(bounce, east).div(MOON_RADIUS);
+        const discZ = max(float(1).sub(toMoon.mul(toMoon).oneMinus().div(MOON_RADIUS * MOON_RADIUS)), 0.0).sqrt();
+        const daylight = smoothstep(-0.08, 0.22, discX.mul(u.lunarPhase.x).add(discZ.mul(u.lunarPhase.y)));
+        const disc = smoothstep(MOON_RIM, MOON_CORE, toMoon).mul(daylight.mul(0.94).add(0.06)).mul(gaps.mul(0.74).add(0.26));
+        const moonlight = u.lunarPhase.y.mul(0.25).add(0.75);
+        const halo = pow(toMoon, 320.0).mul(0.068).add(pow(toMoon, 60.0).mul(0.006)).mul(moonlight);
         // The moon's path: the share of facets tilted just so as to send its light to the eye
         // (the slope the half vector asks for, against how far this water's slopes spread), a
         // column stretched toward the viewer. Its light is in glints: points on a fine lattice
@@ -137,16 +146,16 @@ export function createWater(light, tier) {
         const asked = vec2(half.x.negate(), half.z.negate()).div(max(half.y, 0.05)).sub(slope);
         const column = exp(dot(asked, asked).mul(-1.0 / (2 * GLITTER_SPREAD * GLITTER_SPREAD))).toVar();
         const lattice = point.xz.add(micro.mul(0.05)).div(GLINT_CELL).toVar();
-        const cell = floor(lattice);
+        const cell = floor(lattice).add(1024);
         const hashed = vec3(dot(cell, vec2(127.1, 311.7)), dot(cell, vec2(269.5, 183.3)), dot(cell, vec2(419.2, 371.9)))
             .toVar();
         const seed = fract(sin(hashed).mul(43758.5453)).toVar();
         const spot = fract(lattice).sub(seed.xy.mul(0.6).add(0.2));
-        const point2 = exp(dot(spot, spot).mul(-60.0));
+        const point2 = exp(dot(spot.mul(vec2(0.72, 1.7)), spot).mul(-50.0));
         const lit2 = step(seed.z, column.mul(column).mul(0.7));
         const twinkle = sin(t.mul(seed.x.mul(5.0).add(2.5)).add(seed.y.mul(40.0))).mul(0.5).add(0.5);
         const sparkle = column.mul(0.03).add(point2.mul(lit2).mul(twinkle.mul(twinkle)).mul(14.0));
-        const moon = u.moonColor.mul(disc.mul(9.0).add(halo.mul(20.0)).add(sparkle)).mul(u.breath);
+        const moon = u.moonColor.mul(disc.mul(11.5).add(halo.mul(20.0)).add(sparkle.mul(moonlight))).mul(u.breath);
 
         const toLamp = u.lantern.xyz.sub(point);
         const lampDist = max(length(toLamp), 0.1);
@@ -178,7 +187,7 @@ export function createWater(light, tier) {
                 const atUV = getScreenPosition(eyeAt, cameraProjectionMatrix).toVar();
                 // Off the frame (the ray rises up the picture, so it leaves by the top or a side):
                 // nothing more can be found.
-                If(atUV.y.lessThan(0.0).or(atUV.x.lessThan(0.0)).or(atUV.x.greaterThan(1.0)), () => {
+                If(atUV.y.lessThan(0.0).or(atUV.y.greaterThan(1.0)).or(atUV.x.lessThan(0.0)).or(atUV.x.greaterThan(1.0)), () => {
                     Break();
                 });
                 const depthThere = viewportDepthTexture(atUV).r;
@@ -195,7 +204,7 @@ export function createWater(light, tier) {
             });
             // Fade it out where the frame's edge cuts it off, and the further it travelled.
             const edgeFade = smoothstep(0.0, 0.07, hitUV.y).mul(smoothstep(0.0, 0.05, hitUV.x))
-                .mul(smoothstep(1.0, 0.95, hitUV.x));
+                .mul(smoothstep(0.95, 1.0, hitUV.x).oneMinus()).mul(smoothstep(0.95, 1.0, hitUV.y).oneMinus());
             caught.assign(found.mul(edgeFade).mul(float(1.0).sub(smoothstep(MIRROR_REACH * 0.5, MIRROR_REACH, reach))));
             garden.assign(viewportSharedTexture(hitUV).rgb);
         }

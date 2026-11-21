@@ -1,0 +1,37 @@
+{
+  "quality": "High",
+  "backend": "WebGPU · nvidia blackwell",
+  "viewport": {
+    "width": 1280,
+    "height": 800,
+    "cssWidth": 1280,
+    "cssHeight": 800,
+    "pixelRatio": 1
+  },
+  "capFps": 30,
+  "sampleSeconds": 6,
+  "scenario": "Playground demo through the four-line clear at 21 seconds",
+  "endTime": 23.556299999999812,
+  "quadsAtEnd": 1,
+  "cpuMs": {
+    "samples": 179,
+    "p50": 5.7000000001862645,
+    "p95": 9.899999999441206,
+    "p99": 10.799999999813735,
+    "max": 11.599999999627471
+  },
+  "frameMs": {
+    "samples": 178,
+    "p50": 33.299999999813735,
+    "p95": 37.10000000055879,
+    "p99": 37.799999999813735,
+    "max": 37.80000000074506
+  },
+  "gpuMs": {
+    "samples": 5,
+    "p50": 0.458752,
+    "p95": 0.589824,
+    "p99": 0.589824,
+    "max": 0.589824
+  }
+}

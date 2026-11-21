@@ -94,6 +94,19 @@ export const luBell = (x) => {
     return k.mul(k);
 };
 
+/** Mineral seams in a warped layer of rock. Small fractures join the main seam and peter out. */
+export const luSeams = /* @__PURE__ */ Fn(([coarse, fine]) => {
+    const trunkDist = abs(coarse.r.add(coarse.g.sub(0.5).mul(0.36)).sub(0.5)).toVar();
+    const branchDist = abs(fine.g.add(coarse.b.sub(0.5).mul(0.64)).sub(0.49)).toVar();
+    const trunk = float(1).sub(smoothstep(0.004, 0.030, trunkDist));
+    const branch = float(1).sub(smoothstep(0.004, 0.026, branchDist))
+        .mul(float(1).sub(smoothstep(0.05, 0.16, trunkDist)));
+    const spill = float(1).sub(smoothstep(0.012, 0.105, trunkDist));
+    return vec2(max(trunk, branch.mul(0.72)), spill.mul(spill));
+}).setLayout({
+    name: 'lu_seams', type: 'vec2', inputs: [{ name: 'coarse', type: 'vec4' }, { name: 'fine', type: 'vec4' }],
+});
+
 // ── The noise texture ───────────────────────────────────────────────────────────
 
 export const NOISE_SIZE = 256;
@@ -253,8 +266,14 @@ export function createHeightTexture(heights, size = TERRAIN.size) {
 
 /** A 1×1 mid-grey stand-in for the moon map until it arrives. */
 export function createPlaceholderTexture() {
-    const tex = new THREE.DataTexture(new Uint8Array([150, 150, 150, 255]), 1, 1, THREE.RGBAFormat);
-    tex.colorSpace = THREE.SRGBColorSpace;
+    const tex = new THREE.DataTexture(new Uint8Array([128, 128, 128, 128]), 1, 1, THREE.RGBAFormat);
+    // The sky can compile on this image before the atlas arrives; the sampler must already
+    // cross the date line as the real texture does when the globe turns.
+    tex.wrapS = THREE.RepeatWrapping;
+    tex.magFilter = THREE.LinearFilter;
+    tex.minFilter = THREE.LinearMipmapLinearFilter;
+    tex.anisotropy = 4;
+    tex.colorSpace = THREE.NoColorSpace;
     tex.name = 'lunara-placeholder';
     tex.needsUpdate = true;
     return tex;
@@ -299,6 +318,12 @@ export function createValleyUniforms(textures) {
         /** Curtain gain (≈ 0.3 at rest, → 2 in a storm) and how far the curtains have drifted. */
         aurora: uniform(0.3),
         auroraDrift: uniform(0),
+        /** Sidereal rotation (cos, sin), curtain lift and tide, each on a separate slow clock. */
+        night: uniform(new THREE.Vector4(1, 0, 0.5, 0.5)),
+        /** Local sky responses: curtain twist, companion bridge, perfect-clear corona, level dawn. */
+        skyEvent: uniform(new THREE.Vector4()),
+        /** The last light settling on the flats at the end of a run. */
+        afterglow: uniform(0),
         /** How far the motes have been carried up (the valley's charge lifts them faster). */
         moteLift: uniform(0),
         /**
@@ -360,8 +385,8 @@ export const luSkyBase = (u, dir) => {
     const cm = max(dot(dir, u.moonDir), 0.0);
     const cm2 = cm.mul(cm);
     const cm8 = cm2.mul(cm2).mul(cm2).mul(cm2);
-    const scatter = u.glow.mul(cm8.mul(0.035).add(cm8.mul(cm8).mul(cm8).mul(0.16)));
-    const band = u.horizon.mul(exp(up.mul(-9.0))).mul(cm2.mul(1.1).add(0.35));
+    const scatter = mix(u.glow, u.moonCol, 0.14).mul(cm8.mul(0.025).add(cm8.mul(cm8).mul(cm8).mul(0.12)));
+    const band = u.horizon.mul(0.76).add(u.bed.mul(0.019)).mul(exp(up.mul(-12))).mul(cm2.mul(1.0).add(0.48));
     return grad.add(scatter).add(band).mul(u.breath.mul(0.6).add(0.4));
 };
 
@@ -428,12 +453,12 @@ export const luAtmosphere = (u, col, p) => {
     const banks = u.noise(p.xz.mul(0.0032).add(drift)).b;
     const wisps = u.noise(p.xz.mul(0.013).sub(drift.mul(2.1))).a;
     const patch = smoothstep(0.36, 0.78, banks.mul(0.72).add(wisps.mul(0.28)));
-    const lying = exp(y.mul(-0.11)).mul(float(1.0).sub(exp(dist.mul(-1 / 320)))).mul(patch).mul(0.85);
+    const lying = exp(y.mul(-0.073)).mul(float(1.0).sub(exp(dist.mul(-1 / 300)))).mul(patch).mul(0.94);
     const toward = max(dot(dir, u.moonDir), 0.0);
     const t2 = toward.mul(toward);
     const mistCol = luSkyBase(u, vec3(dir.x, 0.05, dir.z)).mul(1.35)
         .add(u.moonCol.mul(t2.mul(t2).mul(0.05).add(0.01)))
-        .add(u.bed.mul(u.power.mul(2.0).add(1.0)).mul(0.005))
+        .add(u.bed.mul(u.power.mul(0.9).add(0.6)).mul(0.053))
         .mul(u.breath.mul(0.6).add(0.4));
     return mix(hazed, mistCol, lying);
 };

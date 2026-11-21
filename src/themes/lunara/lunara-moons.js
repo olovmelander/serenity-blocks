@@ -3,8 +3,8 @@
  *
  * The great moon and its rose companion are spheres on a far shell that follows the camera; the
  * companion circles the great moon, passing in front of it and behind. Both are lit by the same
- * unseen sun, so they show the same phase, with relief along the terminator (two extra taps of
- * the moon map give the slope), a dark side that still stands against the sky, and a thin rim of
+ * unseen sun, so they show the same phase, with terraced impact relief on the great moon,
+ * iron plains on the companion, earthshine on the dark side and a thin rim of
  * lit atmosphere.
  *
  * The great moon answers the board: as a chain of clears builds, veins of light open across its
@@ -17,6 +17,8 @@ import {
     clamp,
     cameraPosition,
     cross,
+    dFdx,
+    dFdy,
     dot,
     float,
     max,
@@ -32,19 +34,54 @@ import {
     vec3,
 } from 'three/tsl';
 import {
-    luBell, luLuma, luPart, luSkyGradient,
+    luBell, luPart, luSkyGradient,
 } from './lunara-tsl.js';
 
 /** Distance of the shell the moons hang on (inside the sky dome, beyond every mountain). */
 export const MOON_DISTANCE = 5200;
 
+/** The same surface sample lights the sphere and its reflection on the lean tiers. */
+export function lunarSurface(u, N, ndv, packed, fade, companion, relief) {
+    const own = companion ? u.companionCol : u.moonCol;
+    const elevation = mix(float(0.5), companion ? packed.a : packed.r, fade).toVar();
+    const sun = dot(N, u.sunDir).toVar();
+    let diffuse = sun;
+    if (relief && !companion) {
+        const eastAxis = cross(vec3(0, 1, 0), N);
+        const east = eastAxis.div(max(eastAxis.length(), 0.001));
+        const slope = packed.gb.sub(0.5).mul(fade).mul(1.65);
+        const reliefNormal = normalize(N.sub(east.mul(slope.x)).sub(cross(N, east).mul(slope.y)));
+        diffuse = dot(reliefNormal, u.sunDir);
+    }
+    const daylight = smoothstep(-0.10, 0.18, sun).mul(max(diffuse, 0).mul(0.82).add(0.18));
+    let ground;
+    if (companion) {
+        // Cold skylight colours the limb while iron oxide keeps the plains red in every phase.
+        const cool = max(own.g, own.b);
+        const oxide = vec3(1.0, 0.18, 0.14).mul(max(own.r, cool));
+        const soil = mix(own.mul(vec3(1.0, 0.49, 0.38)), oxide, clamp(cool.sub(own.r).mul(1.25), 0, 1));
+        const plain = mix(vec3(0.13, 0.023, 0.036), soil, smoothstep(0.15, 0.62, elevation));
+        ground = mix(plain, vec3(1.0, 0.45, 0.27), smoothstep(0.55, 0.92, elevation).mul(0.75));
+    } else {
+        const basalt = own.mul(vec3(0.29, 0.28, 0.40));
+        const feldspar = mix(own, vec3(1.0, 0.90, 0.84), 0.52);
+        ground = mix(basalt, feldspar, smoothstep(0.25, 0.72, elevation)).mul(elevation.mul(0.95).add(0.35));
+    }
+    const limb = float(1).sub(ndv).toVar();
+    const earthshine = mix(vec3(0.065, 0.074, 0.15), own.mul(0.1), 0.25);
+    const col = ground.mul(daylight.mul(companion ? 1.3 : 1.16).add(earthshine)).toVar();
+    const air = pow(limb, companion ? 3.8 : 5.5).mul(smoothstep(-0.46, 0.42, sun));
+    col.addAssign(mix(own, companion ? vec3(1.0, 0.32, 0.18) : vec3(0.71, 0.8, 1.0), 0.55).mul(air).mul(0.62));
+    return col;
+}
+
 /**
  * @param {object} u       shared valley uniforms
- * @param {object} map     texture node of the moon map (a placeholder until it arrives)
+ * @param {object} map     packed albedo, tangent slopes and companion terrain
  * @param {object} mapFade uniform 0..1: how much of the map has faded in
  * @param {object} opts
  * @param {boolean} opts.companion  the rose moon: no veins, its own colour and face
- * @param {boolean} [opts.relief=true]  two more taps for the terminator's relief
+ * @param {boolean} [opts.relief=true]  apply the baked tangent slopes
  */
 export function createMoon(u, map, mapFade, { companion = false, relief = true } = {}) {
     const uniforms = {
@@ -61,49 +98,10 @@ export function createMoon(u, map, mapFade, { companion = false, relief = true }
         const N = normalize(positionWorld.sub(uniforms.place.xyz)).toVar();
         const toCam = normalize(cameraPosition.sub(positionWorld)).toVar();
         const ndv = clamp(dot(N, toCam), 0.0, 1.0).toVar();
-        const st = uv().add(vec2(uniforms.turn, 0.0)).toVar();
-        const tone = (at) => luLuma(map.sample(at).rgb);
-        const lum = mix(float(0.5), tone(st), mapFade).toVar();
-        // The albedo reads the map a little softer (four taps round the point): maria and
-        // highlands, not a speckle of rims. (A biased read of this texture node leaves its
-        // sampler undeclared in WGSL; tests/unit/lunara-shaders.test.js gates that.)
-        const b = 1.6 / 1024;
-        const blurred = tone(st.add(vec2(b, b))).add(tone(st.add(vec2(-b, b))))
-            .add(tone(st.add(vec2(b, -b)))).add(tone(st.add(vec2(-b, -b))))
-            .mul(0.25);
-        const soft = mix(float(0.5), blurred, mapFade).toVar();
-
-        // Relief: the map's own slope tilts the normal, so craters throw shade near the terminator
-        // (where the light grazes) and the face under a high sun stays smooth.
-        const Nb = N.toVar();
-        if (relief) {
-            const e = 1 / 900;
-            const du = tone(st.add(vec2(e, 0.0))).sub(lum);
-            const dv = tone(st.add(vec2(0.0, e))).sub(lum);
-            const east = normalize(cross(vec3(0.0, 1.0, 0.0), N));
-            const north = cross(N, east);
-            const grazing = float(1.0).sub(smoothstep(0.08, 0.62, dot(N, u.sunDir))).mul(0.85).add(0.15);
-            Nb.assign(normalize(N.sub(east.mul(du).add(north.mul(dv)).mul(mapFade).mul(grazing)
-                .mul(companion ? 1.6 : 2.2))));
-        }
-        const ndl = dot(Nb, u.sunDir);
-        // A crisp terminator: the relief reads where the light grazes.
-        const day = smoothstep(-0.02, 0.2, ndl).mul(max(ndl, 0.0).mul(0.6).add(0.4)).toVar();
-
-        const own = companion ? u.companionCol : u.moonCol;
-        // The map with its contrast restored: dark maria, bright highlands and crater rims.
-        const lc = clamp(soft.sub(0.42).mul(1.8).add(0.5), 0.0, 1.0).toVar();
-        // Low ground keeps the moon's hue, high ground pales toward white.
-        const ground = mix(own.mul(own).mul(0.55), mix(own, vec3(1.0), 0.2), smoothstep(0.15, 0.85, lc));
-        const body = ground.mul(lc.mul(1.15).add(0.1));
-        const limb = pow(ndv, 0.5);
-        const col = body.mul(day.mul(limb).mul(companion ? 1.25 : 1.0)).toVar();
-        // Light thrown back by the valley: the night side is faint, never flat black.
-        col.addAssign(body.mul(own).mul(float(1.0).sub(day)).mul(0.01));
-
-        // A thin atmosphere: a lit rim, brighter on the day side.
-        const rim = pow(float(1.0).sub(ndv), 3.2);
-        col.addAssign((companion ? own : u.glow.add(own.mul(0.4))).mul(rim).mul(day.mul(0.7).add(0.1)).mul(0.6));
+        const st = vec2(uv().x.add(uniforms.turn).fract(), uv().y).toVar();
+        // Keep the mip footprint continuous where the rotating longitude wraps from one to zero.
+        const packed = map.sample(st).grad(dFdx(uv()), dFdy(uv())).toVar();
+        const col = lunarSurface(u, N, ndv, packed, mapFade, companion, relief);
 
         if (!companion) {
             // Veins of light: iso-lines of the noise, opening from the centre of the face outward.
@@ -117,8 +115,8 @@ export function createMoon(u, map, mapFade, { companion = false, relief = true }
                 .mul(u.veins.mul(4.2));
             col.addAssign(fire);
             // The ground beside an open vein is lit by it.
-            col.addAssign(body.mul(u.auroraLow).mul(luBell(n1.sub(0.5).mul(7.0))).mul(open).mul(u.veins)
-                .mul(0.7));
+            col.addAssign(u.moonCol.mul(u.auroraLow).mul(luBell(n1.sub(0.5).mul(7.0))).mul(open).mul(u.veins)
+                .mul(0.28));
         }
 
         // The air in front of the moon: a little of the sky's colour, so the night side stands

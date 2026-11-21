@@ -15,7 +15,7 @@
  */
 import * as THREE from 'three/webgpu';
 import {
-    Loop, clamp, dot, exp, float, length, max, min, mix, normalize, shadow, smoothstep, texture, uniform, uniformArray,
+    If, Loop, clamp, dot, exp, float, length, max, min, mix, normalize, shadow, smoothstep, texture, uniform, uniformArray,
     vec2, vec3, vec4,
 } from 'three/tsl';
 import {
@@ -95,6 +95,7 @@ export class PondLight {
         this.u = {
             time: uniform(0),
             moonDir: uniform(this.moonDirection.clone()),
+            lunarPhase: uniform(new THREE.Vector2()),
             moonColor: uniform(new THREE.Vector3(...MOON_COLOR)),
             /** Horizontal offset toward the moon per metre of water above a point. */
             underSlope: uniform(underwaterSlope(this.moonDirection)),
@@ -122,14 +123,18 @@ export class PondLight {
             glow: uniform(0),
             /** Everything holds its breath (four lines): 1 at rest, near 0 in the hush. */
             breath: uniform(1),
-            ringsLive: uniform(0),
+            ringsLive: uniform(0, 'int'),
             viewport: uniform(new THREE.Vector2(1920, 1080)),
         };
         // Bands of light. A: x, z, birth, strength. C: rgb, reach (metres).
         this.ringA = Array.from({ length: RING_SLOTS }, () => new THREE.Vector4(0, 0, -1000, 0));
         this.ringC = Array.from({ length: RING_SLOTS }, () => new THREE.Vector4(1, 1, 1, 12));
-        this.ringANode = uniformArray(this.ringA, 'vec4');
-        this.ringCNode = uniformArray(this.ringC, 'vec4');
+        // One extra live row lets the run's last ripple close around the lantern-side flower
+        // while any ripples already travelling across the pond finish their course.
+        this.liveRingA = [...this.ringA.map((row) => row.clone()), new THREE.Vector4()];
+        this.liveRingC = [...this.ringC.map((row) => row.clone()), new THREE.Vector4()];
+        this.ringANode = uniformArray(this.liveRingA, 'vec4');
+        this.ringCNode = uniformArray(this.liveRingC, 'vec4');
         this.ringCursor = 0;
         // The maple's leaves: rows 0..5 are this night's two ramps, rows 6..11 the next night's.
         this.leafRamp = Array.from({ length: LEAF_ROWS * 2 }, () => new THREE.Vector4(0, 0, 0, 0));
@@ -192,6 +197,7 @@ export class PondLight {
     setMood(mood, flicker = 1) {
         const { u } = this;
         u.moonColor.value.fromArray(mood.moon);
+        u.lunarPhase.value.set(Math.sin(mood.lunarAngle), Math.cos(mood.lunarAngle));
         u.skyAmbient.value.fromArray(mood.sky);
         u.zenith.value.fromArray(mood.zenith);
         u.waterAmbient.value.fromArray(mood.water);
@@ -274,7 +280,9 @@ export class PondLight {
     gather(curve, depth) {
         const lens = min(depth.mul(1.9).add(0.2), 1.5);
         const focus = float(1.0).add(curve.mul(lens));
-        const gathered = float(0.66).div(max(focus, 0.12));
+        // A finite-width fold: the focus peaks briefly, then spreads again on its far side.
+        // Clamping all negative curvature to the peak painted broad white islands on the bed.
+        const gathered = float(0.42).add(float(0.51).div(focus.abs().add(0.18)));
         return mix(gathered, float(1.0), smoothstep(1.15, 2.6, depth));
     }
 
@@ -283,7 +291,7 @@ export class PondLight {
         const { u } = this;
         const depth = max(point.y.negate(), 0.0);
         const entry = point.xz.add(u.underSlope.mul(depth));
-        const spread = normalize(u.underSlope.add(vec2(1e-4, 0))).mul(depth.mul(0.011).add(0.004));
+        const spread = normalize(u.underSlope.add(vec2(1e-4, 0))).mul(depth.mul(0.005).add(0.002));
         const one = (offset) => this.gather(this.surfaceAt(entry.add(offset)).z, depth);
         return vec3(one(spread), one(vec2(0, 0)), one(spread.negate()));
     }
@@ -315,20 +323,26 @@ export class PondLight {
     ringLight(xz) {
         const { u } = this;
         const sum = vec3(0.0).toVar();
-        Loop(RING_SLOTS, ({ i }) => {
-            const a = this.ringANode.element(i);
-            const c = this.ringCNode.element(i);
-            const age = max(u.time.sub(a.z), 0.0);
-            const dist = length(xz.sub(a.xy));
-            const front = dist.sub(age.mul(WAVE_SPEED));
-            const width = age.mul(0.05).add(0.13);
-            const band = exp(front.div(width).pow2().negate());
-            // Light lingers a moment in the wake behind the front.
-            const wake = smoothstep(-1.2, 0.0, front).mul(float(1.0).sub(smoothstep(-0.1, 0.25, front))).mul(0.03);
-            const life = exp(age.mul(-0.55)).mul(smoothstep(0.0, 0.12, age)).mul(smoothstep(c.w, c.w.mul(0.6), dist));
-            sum.addAssign(c.xyz.mul(band.add(wake).mul(life).mul(a.w)));
+        const pos = xz.toVar();
+        If(u.ringsLive.greaterThan(0), () => {
+            const surface = this.surfaceAt(pos).toVar();
+            const focus = smoothstep(-1.8, 1.2, surface.z).mul(0.64).add(0.36).toVar();
+            Loop(u.ringsLive, ({ i }) => {
+                const a = this.ringANode.element(i);
+                const c = this.ringCNode.element(i);
+                const age = max(u.time.sub(a.z), 0.0).toVar();
+                const off = pos.sub(a.xy).toVar();
+                const dist = length(off).toVar();
+                const bend = clamp(dot(surface.xy, off).div(max(dist, 0.05)), -0.2, 0.2).mul(0.46);
+                const front = dist.sub(age.mul(WAVE_SPEED)).add(bend).toVar();
+                const width = age.mul(0.025).add(0.045).toVar();
+                const crest = exp(front.div(width).pow2().negate());
+                const echo = exp(front.add(width.mul(3.1)).div(width.mul(0.72)).pow2().negate()).mul(0.31);
+                const life = exp(age.mul(-0.55)).mul(smoothstep(0.0, 0.12, age)).mul(smoothstep(c.w.mul(0.6), c.w, dist).oneMinus());
+                sum.addAssign(c.xyz.mul(crest.add(echo)).mul(focus).mul(life).mul(a.w));
+            });
         });
-        return sum.mul(u.ringsLive);
+        return sum;
     }
 
     /**
@@ -364,6 +378,7 @@ export class PondLight {
 
     resetRings() {
         this.ringCursor = 0;
+        this.u.ringsLive.value = 0;
         for (let i = 0; i < RING_SLOTS; i += 1) this.ringA[i].set(0, 0, -1000, 0);
     }
 
@@ -372,9 +387,21 @@ export class PondLight {
         u.time.value = time;
         let live = 0;
         for (let i = 0; i < RING_SLOTS; i += 1) {
-            if (time - this.ringA[i].z < RING_LIFE && this.ringA[i].w > 0) live = 1;
+            const age = time - this.ringA[i].z;
+            if (age < 0 || age >= RING_LIFE || this.ringA[i].w <= 0) continue;
+            this.liveRingA[live].copy(this.ringA[i]);
+            this.liveRingC[live].copy(this.ringC[i]);
+            live += 1;
         }
         u.ringsLive.value = live;
+    }
+
+    /** Append a returning amber crest to this frame's packed rows, using the radius it has now. */
+    closingRipple(x, z, radius, strength) {
+        const slot = this.u.ringsLive.value;
+        this.liveRingA[slot].set(x, z, this.u.time.value - radius / WAVE_SPEED, strength);
+        this.liveRingC[slot].set(1.18, 0.66, 0.27, 3.5);
+        this.u.ringsLive.value += 1;
     }
 
     dispose() {

@@ -120,6 +120,8 @@ export class PondSurface {
             time: uniform(0),
             gust: uniform(1), // the breeze's strength (1 at rest)
             still: uniform(0), // 1 = the pond holds its breath: the ruffle dies
+            plungerCount: uniform(0, 'int'),
+            wakeCount: uniform(0, 'int'),
         };
         this.source = texture(this.targets[0].texture);
         this.heights = texture(this.targets[0].texture);
@@ -157,8 +159,8 @@ export class PondSurface {
             // Light left in the water spreads like ink and fades.
             const ink = mix(here.a, sum.a, 0.2).mul(0.9875).toVar();
 
-            const world = vec2(mix(POND.minX, POND.maxX, st.x), mix(POND.minZ, POND.maxZ, st.y));
-            Loop(PLUNGER_SLOTS, ({ i }) => {
+            const world = vec2(mix(POND.minX, POND.maxX, st.x), mix(POND.minZ, POND.maxZ, st.y)).toVar();
+            Loop(this.u.plungerCount, ({ i }) => {
                 const p = plungers.element(i);
                 const off = world.sub(p.xy);
                 const disc = exp(dot(off, off).div(p.w.mul(p.w)).negate());
@@ -168,7 +170,7 @@ export class PondSurface {
                 const reach = dot(off, off).sqrt().sub(f.y).div(f.y.mul(0.45));
                 foam.addAssign(f.x.mul(exp(reach.mul(reach).negate())));
             });
-            Loop(this.wakeSlots, ({ i }) => {
+            Loop(this.u.wakeCount, ({ i }) => {
                 const w = wakes.element(i);
                 const off = world.sub(w.xy);
                 const d2 = dot(off, off);
@@ -287,18 +289,13 @@ export class PondSurface {
      * it. `list` holds WAKE_STRIDE floats each: x, z, push (m), radius (m), light, light radius.
      */
     setWakes(list, count) {
-        for (let i = 0; i < this.wakeSlots; i += 1) {
-            const w = this.wakeData[i];
-            const g = this.wakeGlow[i];
-            if (i < count) {
-                const o = i * WAKE_STRIDE;
-                w.set(list[o], list[o + 1], list[o + 2], Math.max(0.05, list[o + 3]));
-                g.set(list[o + 4], Math.max(0.05, list[o + 5]), 0, 0);
-            } else {
-                w.set(0, 0, 0, 0.2);
-                g.set(0, 0.2, 0, 0);
-            }
+        const live = Math.min(this.wakeSlots, count);
+        for (let i = 0; i < live; i += 1) {
+            const o = i * WAKE_STRIDE;
+            this.wakeData[i].set(list[o], list[o + 1], list[o + 2], Math.max(0.05, list[o + 3]));
+            this.wakeGlow[i].set(list[o + 4], Math.max(0.05, list[o + 5]), 0, 0);
         }
+        this.u.wakeCount.value = live;
     }
 
     /** Still water, no rings in flight (captures, a new run). */
@@ -307,6 +304,7 @@ export class PondSurface {
         this.simTime = time;
         this.steps = 0;
         this.plungerCursor = 0;
+        this.u.plungerCount.value = 0;
         this.plungers.forEach((p) => {
             p.birth = -100;
             p.amp = 0;
@@ -351,22 +349,20 @@ export class PondSurface {
     /** One fixed step of the wave equation. */
     stepOnce(renderer) {
         const t = this.simTime;
+        let live = 0;
         for (let i = 0; i < PLUNGER_SLOTS; i += 1) {
             const p = this.plungers[i];
             const age = t - p.birth;
-            const data = this.plungerData[i];
-            const foam = this.plungerFoam[i];
             if (age >= 0 && age < PLUNGER_LIFE && p.amp !== 0) {
                 // Down first, then a few fading bobs: the push is the bob's speed.
                 const envelope = Math.exp(-age * 3.4);
                 const push = -p.amp * PLUNGE_GAIN * envelope * Math.cos(age * p.rate) * p.rate * SIM_STEP;
-                data.set(p.x, p.z, push, p.radius);
-                foam.set(age < 0.22 ? p.foam * 0.13 : 0, p.radius * (0.7 + age * 2.2), 0, 0);
-            } else {
-                data.set(0, 0, 0, 0.2);
-                foam.set(0, 0.2, 0, 0);
+                this.plungerData[live].set(p.x, p.z, push, p.radius);
+                this.plungerFoam[live].set(age < 0.22 ? p.foam * 0.13 : 0, p.radius * (0.7 + age * 2.2), 0, 0);
+                live += 1;
             }
         }
+        this.u.plungerCount.value = live;
         const src = this.targets[this.read];
         const dst = this.targets[1 - this.read];
         this.source.value = src.texture;

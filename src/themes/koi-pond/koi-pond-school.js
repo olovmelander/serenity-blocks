@@ -66,6 +66,10 @@ const MODE_RUNUP = 1;
 const MODE_AIR = 2;
 const MODE_DIVE = 3;
 
+// These six fish live in every pond, including the ten-fish Minimal school.
+const FEATURED_VARIETIES = ['kohaku', 'showa', 'ogon', 'benigoi', 'tancho', 'asagi']
+    .map((name) => KOI_VARIETIES.findIndex((variety) => variety.name === name));
+
 function pickVariety(rand) {
     let total = 0;
     for (let i = 0; i < KOI_VARIETIES.length; i += 1) total += KOI_VARIETIES[i].weight;
@@ -153,8 +157,9 @@ export class KoiSchool {
             if (i < 2) length = 1.3 + rand() * 0.18;
             else if (i % 5 === 4) length = 0.48 + rand() * 0.14;
             const longFinned = rand() < 0.38;
+            const drawnVariety = i === 0 ? 0 : pickVariety(rand);
             this.fish.push({
-                variety: i === 0 ? 0 : pickVariety(rand),
+                variety: FEATURED_VARIETIES[i] ?? drawnVariety,
                 length,
                 seedU: rand(),
                 seedV: rand(),
@@ -352,6 +357,10 @@ export class KoiSchool {
     /** The gap from koi `i`'s mouth to the rim of food `j` (m), and the direction to it. */
     mealGap(i, j, out) {
         const { food } = this;
+        if (food.airborne?.[j]) {
+            out.gap = Infinity;
+            return out;
+        }
         const f = this.fish[i];
         const mouthX = this.x[i] + Math.cos(this.heading[i]) * f.length * 0.45;
         const mouthZ = this.z[i] + Math.sin(this.heading[i]) * f.length * 0.45;

@@ -54,10 +54,11 @@
  * the waves), so seek(t) plus a replay reproduces any frame.
  */
 import * as THREE from 'three/webgpu';
+import { flashScale } from '../../utils/photosensitivity.js';
 import { applyCameraBreath } from '../shared/camera-breath.js';
 import { GameplaySurge, Swell } from '../shared/gameplay-surge.js';
 import {
-    DEG, POND, approach, clamp, clamp01, hash2, pieceLight, smooth, waterDepth,
+    DEG, POND, TAU, approach, clamp, clamp01, hash2, pieceLight, shoreZ, smooth, waterDepth,
 } from './koi-pond-core.js';
 import { CHAIN_GOLD, PondLight, WAVE_SPEED } from './koi-pond-light.js';
 import {
@@ -78,7 +79,7 @@ import {
     createIris, createLanternGlow, createMaples, createStones, growMaples, planGarden,
 } from './koi-pond-garden.js';
 import { createFireflies, createLightPools, createMist } from './koi-pond-air.js';
-import { DROP_GRAVITY, Spray } from './koi-pond-fx.js';
+import { DROP_DRAG, DROP_GRAVITY, Spray } from './koi-pond-fx.js';
 import { Dragon } from './koi-pond-dragon.js';
 import { tierFor } from './koi-pond-quality.js';
 import {
@@ -107,6 +108,9 @@ const ROSE = Object.freeze([1.0, 0.5, 0.36]);
 const MOONWHITE = Object.freeze([0.7, 0.86, 1.0]);
 /** The deep end of a cascade: each wave's ring turns from gold toward the vermilion of the koi. */
 const VERMILION = Object.freeze([1.0, 0.4, 0.13]);
+const PEARL = Object.freeze([0.64, 1.05, 1.25]);
+const LOTUS_PINK = Object.freeze([1.5, 0.30, 0.53]);
+const AMBER = Object.freeze([1.55, 0.75, 0.19]);
 /** The lantern's reach at rest (metres); a fever lets it burn further over the water. */
 const LANTERN_REACH = 5.5;
 /** Callbacks waiting on the clock: past this, the earliest runs at once (never dropped). */
@@ -243,6 +247,7 @@ export class KoiPondWorld {
     /** Everything the choreography remembers. */
     resetState(time) {
         this.time = time;
+        this.cancelRunEnd();
         this.accumulator = 0;
         this.combo = 0;
         this.power = 0;
@@ -322,7 +327,9 @@ export class KoiPondWorld {
         yield 'stones';
         this.lantern = createLanternGlow(light, garden);
         this.addPart('lantern', this.lantern);
-        this.maples = createMaples(light, growMaples(tier.leaves));
+        const canopy = growMaples(tier.leaves);
+        this.maples = createMaples(light, canopy);
+        this.maples.frameForAspect(this.aspect);
         this.addPart('wood', this.maples.wood);
         this.addPart('leaves', this.maples.leaves);
         this.iris = createIris(light, garden);
@@ -336,7 +343,7 @@ export class KoiPondWorld {
         this.addPart('pads', this.pads);
         this.lilies = createLilies(light, flora);
         this.addPart('lilies', this.lilies);
-        const leaves = planFloaters(tier.floaters, { pads: flora.pads });
+        const leaves = planFloaters(tier.floaters, { pads: flora.pads, canopy, rocks: garden.standing });
         this.floaters = createFloaters(light, leaves);
         this.addPart('floaters', this.floaters);
         this.drift = new FloatDrift({
@@ -346,7 +353,7 @@ export class KoiPondWorld {
         const lilyCount = flora.lilies.length;
         this.lily = {
             count: lilyCount,
-            rest: Float32Array.from({ length: lilyCount }, (_, i) => 0.3 + hash2(i, 91) * 0.2),
+            rest: Float32Array.from({ length: lilyCount }, (_, i) => 0.33 + hash2(i, 91) * 0.39),
             open: new Float32Array(lilyCount),
             heart: new Float32Array(lilyCount),
             until: new Float32Array(lilyCount).fill(-1),
@@ -389,7 +396,7 @@ export class KoiPondWorld {
             this.addPart('fireflies', this.fireflies.air);
         }
         if (tier.mist > 0) {
-            this.mist = createMist(light, tier.mist);
+            this.mist = createMist(light, tier.mist, garden.rocks);
             this.addPart('mist', this.mist);
         }
         this.spray = new Spray(light, tier.droplets);
@@ -437,6 +444,7 @@ export class KoiPondWorld {
     /** The screen changed shape: the moon moves to where it can be seen, the koi to where they can. */
     reframe(aspect) {
         this.aspect = aspect;
+        this.maples?.frameForAspect(aspect);
         this.composeMoon();
         this.school?.setReach(reachForAspect(aspect));
     }
@@ -466,6 +474,7 @@ export class KoiPondWorld {
      * and the level is the first again: the night turns back to where the clock alone has it.
      */
     resetSession() {
+        this.cancelRunEnd();
         this.level = 1;
         this.combo = 0;
         this.school?.setChain(0);
@@ -474,6 +483,46 @@ export class KoiPondWorld {
         this.hushDepth = 1;
         this.dragonUntil = -1;
         this.rearUntil = -1;
+    }
+
+    cancelRunEnd() {
+        this.runEndAt = null;
+        this.runEndLily = -1;
+        this.runEndWarmth = 0;
+    }
+
+    /** The last ring folds back into the flower nearest the stone lantern, as the school settles. */
+    gameOver() {
+        const flame = this.garden?.lantern.flame;
+        if (!flame || !this.lily?.count) return;
+        let nearest = Infinity;
+        for (let i = 0; i < this.lily.count; i += 1) {
+            const at = this.drift.lilyAt(i, this._lilyAt);
+            const distance = Math.hypot(at.x - flame[0], at.z - flame[2]);
+            if (distance < nearest) {
+                nearest = distance;
+                this.runEndLily = i;
+            }
+        }
+        this.surge.reset();
+        this.runEndAt = this.time;
+        this.runEndWarmth = 0;
+    }
+
+    /** Sampled solely from pond time: pausing holds the ring and restarting cancels it immediately. */
+    updateRunEnd() {
+        if (this.runEndAt === null) return;
+        const age = this.time - this.runEndAt;
+        if (age >= 8) {
+            this.cancelRunEnd();
+            return;
+        }
+        this.runEndWarmth = smooth(0.55, 2.6, age) * (1 - smooth(4, 8, age));
+        if (this.reducedMotion || age <= 0 || age >= 2.6) return;
+        const flower = this.drift.lilyAt(this.runEndLily, this._lilyAt);
+        const radius = lerp(2.12, 0.19, smooth(0, 2.6, age));
+        const strength = 0.94 * smooth(0, 0.36, age) * (1 - smooth(2.05, 2.6, age));
+        this.light.closingRipple(flower.x, flower.z, radius, strength);
     }
 
     bindCamera(camera) {
@@ -507,7 +556,7 @@ export class KoiPondWorld {
         // (On a tall screen the card leaves open water only at the foot of the picture.)
         const tall = clamp01((1.25 - this.aspect) / 0.6);
         const sx = 0.2 + (0.5 - 0.2) * tall;
-        const sy = 0.5 + (0.885 - 0.5) * tall;
+        const sy = 0.5 + (0.985 - 0.5) * tall;
         const cam = this.restCamera();
         this._ray.set(sx * 2 - 1, 1 - sy * 2, 0.5).unproject(cam).sub(cam.position).normalize();
         this._ray.y = -this._ray.y;
@@ -548,7 +597,9 @@ export class KoiPondWorld {
         this._ray.set(sx * 2 - 1, 1 - sy * 2, 0.5).unproject(camera).sub(camera.position);
         const t = this._ray.y < -1e-4 ? -camera.position.y / this._ray.y : 12;
         out.x = clamp(camera.position.x + this._ray.x * t, POND.minX + 0.5, POND.maxX - 0.5);
-        out.z = clamp(camera.position.z + this._ray.z * t, POND.minZ + 0.4, POND.maxZ - 0.6);
+        // High rows can project onto dry stone, particularly above a tall well. Let their
+        // ripples enter the water at the near edge of that same bank.
+        out.z = clamp(camera.position.z + this._ray.z * t, shoreZ(out.x) + 0.68, POND.maxZ - 0.6);
         return out;
     }
 
@@ -610,11 +661,13 @@ export class KoiPondWorld {
      * rows it covers, `color` = the piece's colour; `screen` (fractions) replaces the board point.
      */
     onLock({
-        u = 0.5, rows = null, hardDrop = false, color = null, player = 0, screen = null,
+        u = 0.5, rows = null, hardDrop = false, distance = null, color = null, player = 0, screen = null,
     } = {}) {
         const { light, school } = this;
         if (!light) return;
+        if (this.runEndAt !== null) this.cancelRunEnd();
         const rgb = pieceLight(color, this._rgb);
+        const fall = hardDrop && Number.isFinite(distance) ? 0.72 + 0.36 * clamp01(distance / 18) : 1;
         let px = 0.5;
         let py = 0.6;
         let ex = 0.5;
@@ -649,7 +702,7 @@ export class KoiPondWorld {
         this.lastLockX = under.x;
         this.lastLockZ = under.z;
         this.plunge(under.x, under.z, {
-            amp: hardDrop ? 0.085 : 0.045, radius: hardDrop ? 0.34 : 0.26, rate: hardDrop ? 8 : 9.5, foam: hardDrop ? 0.9 : 0.3,
+            amp: hardDrop ? 0.085 * fall : 0.045, radius: hardDrop ? 0.34 : 0.26, rate: hardDrop ? 8 : 9.5, foam: hardDrop ? 0.9 : 0.3,
         });
         const lit = [rgb[0] * 1.7, rgb[1] * 1.7, rgb[2] * 1.7];
         light.ring(under.x, under.z, this.time, hardDrop ? 0.6 : 0.4, lit, hardDrop ? 12 : 8);
@@ -678,8 +731,8 @@ export class KoiPondWorld {
             const swing = (k - (pebbles - 1) / 2) * 0.62 + (((this.counts.locks * 7 + k * 3) % 5) - 2) * 0.07;
             const dirX = side * Math.cos(swing);
             const dirZ = Math.sin(swing);
-            const out = (hardDrop ? 1.75 : 1.45) + k * 0.2;
-            const up = (hardDrop ? 3.3 : 2.7) + k * 0.15;
+            const out = (hardDrop ? 1.75 * fall : 1.45) + k * 0.2;
+            const up = (hardDrop ? 3.3 * fall : 2.7) + k * 0.15;
             const flight = this.reducedMotion ? 0.05 : (up + Math.sqrt(up * up + 2 * DROP_GRAVITY * lift)) / DROP_GRAVITY;
             let landX = edgeX + dirX * out * flight;
             let landZ = edgeZ + dirZ * out * flight;
@@ -688,7 +741,7 @@ export class KoiPondWorld {
                 landX = edgeX + (landX - edgeX) * 0.7;
                 landZ = edgeZ + (landZ - edgeZ) * 0.7 + 0.25;
             }
-            const travel = Math.hypot(landX - edgeX, landZ - edgeZ) / Math.max(flight, 0.05);
+            const travel = (Math.hypot(landX - edgeX, landZ - edgeZ) * DROP_DRAG) / -Math.expm1(-DROP_DRAG * flight);
             if (!this.reducedMotion) {
                 this.spray?.emit({
                     x: edgeX,
@@ -779,6 +832,92 @@ export class KoiPondWorld {
         return this.screenToWater(hx, hy, out);
     }
 
+    /** Seat a splash in the open reach beside the card, or beyond its foot on a tall screen. */
+    bankWater(side, sy) {
+        const card = cardUnion(this.layout);
+        let edge = side < 0 ? card?.x0 ?? 0.4 : card?.x1 ?? 0.6;
+        const hud = this.layout?.hud;
+        if (hud && sy > hud.y0 - 0.04 && sy < hud.y1 + 0.04) {
+            if (side > 0 && hud.x0 >= edge - 0.04) edge = Math.max(edge, hud.x1);
+            if (side < 0 && hud.x1 <= edge + 0.04) edge = Math.min(edge, hud.x0);
+        }
+        const room = side < 0 ? edge : 1 - edge;
+        if (room < 0.08 && card) {
+            const bottom = hud && hud.y0 >= card.y1 ? hud.y1 : card.y1;
+            const above = card.y0 > 1 - bottom;
+            const y = above ? Math.max(0.05, card.y0 - 0.05) : Math.min(0.97, bottom + 0.04);
+            return this.screenToWater(0.5 + side * 0.19, y, this._hit2);
+        }
+        return this.screenToWater(clamp(edge + side * room * 0.52, 0.035, 0.965), sy, this._hit2);
+    }
+
+    /** A crescent of spray catches the light above a brief disturbance in the water beneath it. */
+    breakWater(point, shape) {
+        const { x, z } = point;
+        const lift = this.reducedMotion ? shape.lift * 0.42 : shape.lift;
+        this.spray?.crest(x, z, { ...shape, lift });
+        this.flashAt(x, z, shape.radius * 1.5, 0.16 + shape.lift * 0.07, shape.rgb);
+        this.plunge(x, z, {
+            amp: 0.012 + lift * 0.007, radius: shape.radius * 0.52, rate: 9, foam: 0.25,
+        });
+    }
+
+    /** Silver sip, two opposing fins, then three skips running down one reach. */
+    clearCrests(lines, side, twist, deeper) {
+        const lat = 0.56 + (hash2(this.counts.clears, 57) - 0.5) * 0.14;
+        if (twist) {
+            this.breakWater(this.bankWater(side, lat), {
+                radius: 0.55, bearing: side, sweep: side * TAU * 1.24, lift: 2.0, curl: side * 1.45, rgb: LOTUS_PINK,
+            });
+        } else if (lines === 1) {
+            this.breakWater(this.bankWater(side, lat), {
+                radius: 0.28, bearing: side - 1.2, sweep: 2.35, lift: 1.55, rgb: PEARL,
+            });
+        } else if (lines === 2) {
+            [-1, 1].forEach((bank) => {
+                this.breakWater(this.bankWater(bank, lat), {
+                    radius: 0.43,
+                    bearing: bank < 0 ? -1.35 : 1.8,
+                    sweep: 2.65,
+                    lift: 2.25,
+                    rgb: bank === side ? PEARL : LOTUS_PINK,
+                });
+            });
+        } else {
+            for (let k = 0; k < 3; k += 1) {
+                this.at(this.time + k * 0.19, () => this.breakWater(this.bankWater(side, lat - 0.13 + k * 0.14), {
+                    radius: 0.27 + 0.095 * k,
+                    bearing: -0.8 + k * 0.7,
+                    sweep: Math.PI * 1.25,
+                    lift: 1.7 + k * 0.45,
+                    rgb: k === 2 ? AMBER : VERMILION,
+                }));
+            }
+        }
+        if (deeper > 0) {
+            const wave = Math.min(deeper, 4);
+            this.at(this.time + 0.24, () => this.breakWater(this.bankWater(-side, 0.70 - wave * 0.045), {
+                radius: 0.25 + wave * 0.13, bearing: 0, sweep: TAU, lift: 1.7 + wave * 0.25, lobes: 3 + wave, rgb: AMBER,
+            }));
+        }
+    }
+
+    /** A perfect clear travels flower to flower. Each living blossom throws a five-pointed water crown. */
+    crownLilies() {
+        if (!this.lily?.count) return;
+        const order = this.flora.lilies.map((at, i) => ({ i, angle: Math.atan2(at.z, at.x) }))
+            .sort((a, b) => a.angle - b.angle);
+        order.forEach(({ i }, k) => {
+            this.at(this.time + 0.12 + k * 0.17, () => {
+                const at = this.drift ? this.drift.lilyAt(i, this._lilyAt) : this.flora.lilies[i];
+                this.breakWater(at, {
+                    radius: 0.49, bearing: 0, sweep: TAU, lift: 2.85, lobes: 5, rgb: k % 2 ? LOTUS_PINK : AMBER,
+                });
+                this.lily.heart[i] = Math.max(2.2, this.lily.heart[i]);
+            });
+        });
+    }
+
     /**
      * Lines cleared. `lines` 1..4; `twist`, `perfect`, `b2b`; `cascade` the wave (1 = the clear
      * itself); `combo` the true chain. Two clears carry no lines (koi-pond-director.js): `crown`
@@ -790,6 +929,7 @@ export class KoiPondWorld {
     } = {}) {
         const { light, school } = this;
         if (!light) return;
+        if (this.runEndAt !== null) this.cancelRunEnd();
         if (crown === true) {
             this.crownClear(rows, player, screen);
             return;
@@ -853,16 +993,15 @@ export class KoiPondWorld {
             this.rearUntil = birth + DRAGON_REAR;
             this.rearHeight = 1;
             // The card itself throws water from both its sides, and every koi takes fire.
-            const card = cardUnion(this.layout) || { x0: 0.4, x1: 0.6 };
             this.at(birth, () => {
                 const share = this.spray ? this.spray.count / 640 : 0;
                 [-1, 1].forEach((side) => {
                     for (let k = 0; k < 3; k += 1) {
-                        const at = this.screenToWater(side < 0 ? card.x0 - 0.02 : card.x1 + 0.02, 0.3 + k * 0.2, this._hit2);
+                        const at = this.bankWater(side, 0.41 + k * 0.17);
                         this.spray?.emit({
                             x: at.x,
                             z: at.z,
-                            n: Math.round(26 * share),
+                            n: Math.round(18 * share),
                             out: [0.6, 3.0],
                             up: [2.0, 5.2],
                             dirX: side,
@@ -874,14 +1013,26 @@ export class KoiPondWorld {
                         this.plunge(at.x, at.z, {
                             amp: 0.05, radius: 0.3, rate: 9, foam: 0.8,
                         });
+                        if (k === 1) {
+                            this.spray?.crest(at.x, at.z, {
+                                radius: 0.74,
+                                bearing: side,
+                                sweep: TAU,
+                                lobes: 8,
+                                lift: this.reducedMotion ? 1.3 : 3.65,
+                                rgb: AMBER,
+                            });
+                        }
                     }
                 });
                 school?.shine(1.2);
+                if (perfect) this.crownLilies();
                 // (Its second ring is the koi's vermilion-rose, not cream: the payoff in colour.)
                 light.ring(hx0, hz0, this.time + 0.22, strength * 0.7, [1.45, 0.8, 0.45], 20);
             });
             this.counts.quads += 1;
         } else {
+            this.at(birth, () => this.clearCrests(n, first, twist, deeper));
             // A cascade's later waves leap higher, and from the third on they turn in the air.
             const up = 0.12 * deeper;
             this.sendLeap(first, 0.9 + 0.12 * n + up, twist || deeper >= 2);
@@ -901,6 +1052,9 @@ export class KoiPondWorld {
             this.light?.ring(x, z, this.time, 1.35, [ROSE[0] * 1.8, ROSE[1] * 1.5, ROSE[2] * 1.7], 22);
             this.sendLeap(side, 1.5, true);
             this.sendLeap(-side, 1.5, true);
+            [-1, 1].forEach((bank) => this.breakWater(this.bankWater(bank, 0.48), {
+                radius: 0.43, bearing: bank, sweep: bank * TAU * 0.88, lift: 2.3, curl: -bank, rgb: LOTUS_PINK,
+            }));
             this.lanternFlare(0.8);
             this.swell('glow', 0.3);
         });
@@ -924,6 +1078,7 @@ export class KoiPondWorld {
         // of them another would burn to cream. The lantern answers in amber from the bank.)
         light.ring(x, z, now + 0.15, 1.35, [ROSE[0] * 1.6, ROSE[1] * 1.25, ROSE[2] * 1.5], 26);
         if (this.lily) this.wakeLilies(this.lily.count, 2.2);
+        this.crownLilies();
         school?.shine(1.6);
         this.dragonUntil = Math.max(this.dragonUntil, now + DRAGON_VISIT);
         this.rearUntil = Math.max(this.rearUntil, now + DRAGON_REAR);
@@ -951,6 +1106,9 @@ export class KoiPondWorld {
             amp: 0.05, radius: 0.3, rate: 11, foam: 0.3,
         });
         light.ring(x, z, this.time, 0.85, [ROSE[0] * 1.5, ROSE[1] * 1.3, ROSE[2] * 1.9], 9);
+        this.breakWater(this.bankWater(x < 0 ? -1 : 1, 0.59), {
+            radius: 0.38, bearing: 0, sweep: TAU * 1.3, lift: 1.45, curl: 1.4, rgb: LOTUS_PINK,
+        });
         this.sendLeap(x < 0 ? -1 : 1, 0.7, true);
         this.swell('glow', 0.15);
         this.swell('stir', 0.3);
@@ -1062,6 +1220,23 @@ export class KoiPondWorld {
         }
         spray?.step(SIM_STEP);
         if (surface) {
+            // The moss-rain night has passing showers. Each drop uses the same wave field
+            // as the fish; it dimples the moon and nudges leaves without lighting up the board.
+            const shower = this._mood.drizzle;
+            if (shower > 0 && now >= this.hushUntil && !this.reducedMotion) {
+                const beat = Math.floor(now * 2.4);
+                if (beat !== Math.floor((now - SIM_STEP) * 2.4)) {
+                    const curtain = 0.61 + 0.38 * Math.sin(now * 0.16);
+                    if (hash2(beat, 273) < shower * curtain) {
+                        const z = -1.9 + hash2(beat, 95) * 4.2;
+                        const width = Math.min(5.2, school.viewHalfAt(z) * 0.91);
+                        const x = width * (0.42 + hash2(beat, 81) * 0.56) * (beat % 2 ? 1 : -1);
+                        this.plunge(x, z, {
+                            amp: 0.013, radius: 0.092, rate: 15, foam: 0.035, time: now,
+                        });
+                    }
+                }
+            }
             surface.setWakes(this._wakes, wakes);
             surface.stepOnce(this.renderer);
         }
@@ -1098,6 +1273,9 @@ export class KoiPondWorld {
             env.swirl = clamp01(Math.max(school.charge, school.rally));
         }
         drift.step(SIM_STEP);
+        for (const i of drift.landings) {
+            this.surface?.plunge(drift.x[i], drift.z[i], { amp: 0.0045, radius: 0.085, rate: 13 });
+        }
     }
 
     /** Where the drift has carried what floats: into the pads', the leaves' and the lilies' buffers. */
@@ -1212,15 +1390,18 @@ export class KoiPondWorld {
         const feverLit = Math.ceil(smooth(0.3, 0.9, fever) * lily.count);
         for (let i = 0; i < lily.count; i += 1) {
             const awake = this.time < lily.until[i] || i < chainLit || i < feverLit;
-            const target = awake ? 1 : lily.rest[i];
+            const breathing = this.reducedMotion ? 0 : Math.sin(this.time * 0.047 + i * 2.4) * 0.09;
+            const target = awake ? 1 : lily.rest[i] + breathing;
             lily.open[i] += (target - lily.open[i]) * (snap ? 1 : approach(target > lily.open[i] ? 2.4 : 0.5, dt));
             const floor = Math.max(i < chainLit ? 0.5 + this.power * 0.4 : 0, i < feverLit ? 0.3 + fever * 0.6 : 0);
             lily.heart[i] = Math.max(floor, lily.heart[i] * Math.exp(-dt / 2.4));
-            lilies.openness[i] = lily.open[i];
-            lilies.heart[i] = lily.heart[i];
+            const warm = i === this.runEndLily ? this.runEndWarmth : 0;
+            lilies.openness[i] = lerp(lily.open[i], 1, warm);
+            lilies.heart[i] = Math.max(lily.heart[i], warm * 1.28);
             // (Its pool of light goes where its pad has carried it.)
             const at = this.drift ? this.drift.lilyAt(i, this._lilyAt) : flora.lilies[i];
-            pools?.set(i, at.x, at.z, 0.8 + lily.heart[i] * 0.2, lily.open[i] * 0.03 + lily.heart[i] * 0.26, ROSE);
+            const heart = lilies.heart[i];
+            pools?.set(i, at.x, at.z, 0.8 + heart * 0.2, lilies.openness[i] * 0.03 + heart * 0.26, warm ? AMBER : ROSE);
         }
     }
 
@@ -1265,12 +1446,13 @@ export class KoiPondWorld {
         // The hush: from cold the light sinks to HUSH_LEAST; the hotter play runs, the shallower.
         const hush = this.time < this.hushUntil ? 1 : 0;
         const held = hush * this.hushDepth;
-        const breathTarget = 1 - (1 - HUSH_LEAST) * held;
+        const breathTarget = 1 - (1 - HUSH_LEAST) * held * flashScale();
         this.breath += (breathTarget - this.breath) * approach(hush ? 12 + 28 * this.hushDepth : 12, dt);
         if (dt === 0) this.breath = breathTarget;
 
         const { u } = light;
         light.update(this.time);
+        this.updateRunEnd();
         // The gold in the water: the chain's charge (a fever without a chain lends it a little).
         u.power.value = Math.min(1, this.power + fever * 0.25);
         // What of the swell of light reaches what lies over the whole pond (the gold dust in the
@@ -1294,7 +1476,7 @@ export class KoiPondWorld {
         // The flame gutters a little, leaps with the pond and burns higher the hotter play runs.
         const flicker = this.lantern
             ? 1 + Math.sin(this.time * 11.3) * 0.035 + Math.sin(this.time * 4.7 + 1.3) * 0.05 + this.glow * 0.25
-                + level * 0.15 + fever * 0.3 + H.punch * 0.12
+                + level * 0.15 + fever * 0.3 + H.punch * 0.12 + this.runEndWarmth * 0.17
             : 1;
         if (this.lantern) {
             this.lantern.flicker.value = flicker;
@@ -1319,7 +1501,8 @@ export class KoiPondWorld {
         this.spray?.commit();
         if (this.surface) {
             this.surface.u.still.value = held;
-            this.surface.u.gust.value = 1 + this.gust * 0.8 + level * 0.35;
+            const wind = 0.91 + Math.sin(this.time * 0.093) * 0.16 + Math.sin(this.time * 0.23 + 0.4) * 0.08;
+            this.surface.u.gust.value = mood.breeze * wind + this.gust * 0.8 + level * 0.35;
             this.surface.derive(renderer, this.time);
         }
         if (renderer) renderer.setRenderTarget(previous);
@@ -1381,6 +1564,7 @@ export class KoiPondWorld {
             joined,
             liliesOpen: open,
             lilies: lily ? lily.count : 0,
+            lanternLilyWarmth: Math.round(this.runEndWarmth * 1000) / 1000,
             // What floats: fronts felt, things a koi mouthed, how far a pad swings and a leaf strays.
             floating: this.drift ? this.drift.state() : null,
             dragon: this.dragon ? this.dragon.presence : 0,
