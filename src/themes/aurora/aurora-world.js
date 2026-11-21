@@ -11,6 +11,7 @@ import { applyCameraBreath } from '../shared/camera-breath.js';
 import { drainSteps } from '../shared/build-steps.js';
 import { ThemeCameraRig } from '../shared/camera-rig.js';
 import { AuroraAir } from './aurora-air.js';
+import { AuroraIceFissures } from './aurora-ice-fissures.js';
 import { AuroraAtmosphere } from './aurora-atmosphere.js';
 import { AuroraCurtains } from './aurora-curtains.js';
 import { AuroraDirector } from './aurora-director.js';
@@ -157,6 +158,7 @@ export class AuroraWorld {
         };
         this.landscape = new AuroraLandscape({ ...land, build: false });
         yield* this.landscape.buildSteps(land);
+        this.ice = new AuroraIceFissures(this.group, this.uniforms);
         yield 'landscape';
         this.air = new AuroraAir({
             parent: this.group,
@@ -208,6 +210,7 @@ export class AuroraWorld {
         const halfFov = THREE.MathUtils.degToRad(camera.fov / 2);
         this.pitch = Math.atan((1 - 2 * horizon) * Math.tan(halfFov));
         this.tangentX = Math.tan(halfFov) * aspect;
+        this.landscape?.setAspect?.(aspect);
         // The crown's rays meet just over the board's top edge; curls and falling stars keep
         // under the top of the view.
         this.director.setSkyFrame(this.pitch + halfFov, this.pitch + Math.atan(Math.tan(halfFov) * CROWN_HEIGHT));
@@ -241,6 +244,7 @@ export class AuroraWorld {
     setReducedMotion(reduced) {
         this.reducedMotion = reduced === true;
         this.director.setReducedMotion(this.reducedMotion);
+        this.landscape?.spruces?.setReducedMotion?.(this.reducedMotion);
         this.rig.breathe = !this.reducedMotion;
         this.rig.pointer = !this.reducedMotion;
     }
@@ -306,6 +310,7 @@ export class AuroraWorld {
         const { director, time } = this;
         for (let i = 0; i < director.rippleCount; i += 1) {
             const ripple = director.ripples[i];
+            this.ice.followRipple(time, ripple, this.tangentX, this.reducedMotion);
             const reach = RIPPLE_NEAR + (RIPPLE_FAR - RIPPLE_NEAR) * ripple.range;
             this.landscape.ripple(
                 time,
@@ -401,6 +406,7 @@ export class AuroraWorld {
         // The world's clock turns the hour of the night (the director's own restarts with it).
         this.director.update(dt, time);
         this.drainDirector();
+        this.ice.update(time);
         this.applyDirector();
         if (pointer && !this.reducedMotion) this.rig.setPointer(pointer.x, pointer.y);
         this.rig.apply(dt, this.rest);
@@ -425,6 +431,7 @@ export class AuroraWorld {
         this.lastMeteorAt = -Infinity;
         this.sky.resetMeteors();
         this.landscape.resetRipples();
+        this.ice.reset();
         this.spindrift.reset();
         this.rig.reset();
         this.curtains.lastRefresh = -Infinity;
@@ -448,6 +455,7 @@ export class AuroraWorld {
         this.disposed = true;
         // A world stopped part-way through its steps has only some of its parts.
         this.spindrift?.dispose();
+        this.ice?.dispose();
         this.air?.dispose();
         this.landscape?.dispose();
         this.sky?.dispose();

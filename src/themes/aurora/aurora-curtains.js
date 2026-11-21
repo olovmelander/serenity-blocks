@@ -29,7 +29,7 @@ import {
 } from './aurora-field.js';
 import { AURORA_COLORS } from './aurora-palette.js';
 import {
-    addCrown, addCurls, addPillars, createFormTable,
+    addCrown, addCurls, addPillars, addRedArcs, createFormTable,
 } from './aurora-forms.js';
 
 const { resetRendererState, restoreRendererState } = THREE.RendererUtils;
@@ -53,7 +53,7 @@ const FLAME_GAIN = 0.8;
 /** Pulsating patches: km of the shell per noise tile, seconds per beat, radiance when on. */
 const PATCH_TILE_KM = 420;
 const PULSE_SECONDS = 7;
-const PULSATING_GAIN = 0.6;
+const PULSATING_GAIN = 0.34;
 
 const triple = (rgb) => vec3(rgb[0], rgb[1], rgb[2]);
 
@@ -146,6 +146,7 @@ export class AuroraCurtains {
             tangent: uniform(new THREE.Vector2(1, 0.6)),
             pixelAngle: uniform(0.002),
             tau: uniform(0),
+            cloudWind: uniform(new THREE.Vector4()),
             rayPhase: uniform(0),
             sway: uniform(1),
             height: uniform(1),
@@ -230,6 +231,7 @@ export class AuroraCurtains {
                 u.forward.add(u.right.mul(ndc.x.mul(u.tangent.x))).add(u.up.mul(ndc.y.mul(u.tangent.y))),
             ).toVar();
             const light = vec3(0).toVar();
+            const cloud = float(0).toVar();
             If(rd.y.greaterThan(0.01), () => {
                 // Distance along the ray to an altitude above a curved Earth:
                 // h(t) = t·sinθ + t²·cos²θ / 2R, solved in the form that stays stable at zenith.
@@ -245,10 +247,29 @@ export class AuroraCurtains {
                     });
                 });
 
+                // A near crossing resolves the shape of a ray, but the long march spans at a
+                // grazing fold average out its finest strands. Each magnetic field line
+                // projects along a great circle through the magnetic zenith. Resolve these
+                // last few arcminutes in that frame, once per lit pixel, outside the march.
+                if (this.preset.arcCount >= 3) {
+                    If(max(light.g, light.b).greaterThan(0.018), () => {
+                        const az = atan(rd.x, rd.z.negate().sub(rd.y.mul(0.2)));
+                        const strandUV = vec2(
+                            az.mul(2.7).add(u.tau.mul(0.0021)),
+                            rd.y.mul(0.075).add(u.tau.mul(0.0011)),
+                        );
+                        const fibres = texture(noiseTexture, strandUV).level(0).toVar();
+                        const strands = smoothstep(0.38, 0.7, fibres.r);
+                        const gaps = smoothstep(0.28, 0.76, fibres.a);
+                        light.mulAssign(mix(1, strands.mul(0.86).add(0.57), gaps));
+                    });
+                }
+
                 // The rarer forms: the crown's rays, a twist's curl, a level's pillars.
                 addCrown(light, rd, u.forms, noiseTexture, u.tau);
                 addCurls(light, rd, u.forms);
                 addPillars(light, rd, u.forms, noiseTexture, u.tau);
+                addRedArcs(light, rd, u.forms, noiseTexture);
 
                 // Diffuse aurora: a broad, slowly drifting veil between the arcs, and the
                 // glow of displays beyond the horizon.
@@ -282,11 +303,31 @@ export class AuroraCurtains {
                 const airmass = float(1).div(rd.y.add(exp(rd.y.mul(-11)).mul(0.025)));
                 light.mulAssign(exp(airmass.mul(vec3(-0.05, -0.042, -0.085))));
                 light.mulAssign(smoothstep(0.01, 0.05, rd.y));
+
+                // Look across a wind-sheared layer close to Earth. Texture coordinates
+                // converge toward the horizon. Large drifting banks and finer filaments
+                // travel independently, so gaps open and close on their own.
+                const wind = u.cloudWind;
+                const plane = rd.xz.div(rd.y.add(0.12)).toVar();
+                const axis = vec2(
+                    plane.x.add(plane.y.mul(0.32)),
+                    plane.y.sub(plane.x.mul(0.32)),
+                ).toVar();
+                const banks = texture(noiseTexture, axis.mul(0.085).add(vec2(wind.x, 0.28))).level(1).toVar();
+                const fibresAt = axis.mul(vec2(0.075, 0.28))
+                    .add(vec2(wind.y, banks.a.mul(0.1).add(wind.w)));
+                const fibres = texture(noiseTexture, fibresAt).level(1).toVar();
+                const body = smoothstep(0.36, 0.77, banks.b.add(wind.z))
+                    .mul(smoothstep(0.38, 0.78, fibres.b.mul(0.78).add(fibres.g.mul(0.22))));
+                const lowBank = smoothstep(0.21, 0.39, rd.y).oneMinus()
+                    .mul(smoothstep(0.28, 0.66, banks.a.add(wind.z)))
+                    .mul(smoothstep(0.48, 0.79, fibres.a));
+                cloud.assign(max(body.mul(0.62), lowBank.mul(0.78)).mul(smoothstep(0.035, 0.13, rd.y)));
             });
             // Compress highlights along their own hue, so the brightest folds saturate
             // toward their colour instead of clipping to white further down the chain.
             light.divAssign(dot(light, vec3(LUMA[0], LUMA[1], LUMA[2])).mul(this.uniforms.compress).add(1));
-            return vec4(this.encode(min(light, 16)), 1);
+            return vec4(this.encode(min(light, 16)), cloud);
         })();
     }
 
@@ -492,7 +533,11 @@ export class AuroraCurtains {
                                 min(awake.z.add(life.mul(0.3)).add(0.35), 1.7).mul(arc.violet),
                                 float(1),
                             );
-                            const hemGain = select(weathered, min(life.mul(0.5).add(0.55), 1.25).mul(arc.fringe), float(1));
+                            const hemGain = select(
+                                weathered,
+                                min(life.mul(0.5).add(0.55), 1.25).mul(arc.fringe),
+                                float(1),
+                            );
                             // A near arc is close enough to show the threads inside each ray (the
                             // read is skipped for the others: the branch is the same for every pixel).
                             const threads = fine.g.toVar();
@@ -500,11 +545,13 @@ export class AuroraCurtains {
                                 threads.assign(texture(noiseTexture, rayUV.mul(THREAD_SCALE).add(0.37))
                                     .level(log2(max(max(texelsPerPixel, stride).mul(THREAD_SCALE), 1))).r);
                             });
-                            const striation = mix(mix(0.16, 1, rays), mix(0.62, 1, rays), calm)
-                                .mul(mix(0.6, 1, smoothstep(0.25, 0.75, threads)));
+                            const filament = smoothstep(0.39, 0.78, threads).toVar();
+                            const striation = mix(mix(0.1, 1.06, rays), mix(0.54, 1, rays), calm)
+                                .mul(mix(0.48, 1.12, filament));
                             const patch = mix(0.3, 1.35, smoothstep(0.18, 0.82, broad.a));
                             // A few rays stand far taller than the rest; bright ones reach higher.
-                            const tall = pow(clamp(fine.b.mul(0.5).add(broad.b.mul(0.62)).sub(0.14), 0, 1), 2.6).toVar();
+                            const heightNoise = fine.b.mul(0.5).add(broad.b.mul(0.62)).sub(0.14);
+                            const tall = pow(clamp(heightNoise, 0, 1), 2.6).toVar();
 
                             // Vertical profile above a border that undulates, and dips where
                             // an energetic pulse digs deeper into the atmosphere.
@@ -514,7 +561,8 @@ export class AuroraCurtains {
                             const xh = hs.sub(border).toVar();
                             const above = max(xh, 0).toVar();
                             const rise = smoothstep(-1, 3.2, xh);
-                            const scale = tall.mul(74).add(rays.mul(9)).add(10)
+                            const shafts = rays.mul(filament).toVar();
+                            const scale = tall.mul(65).add(shafts.mul(27)).add(9)
                                 .mul(arc.height)
                                 .mul(u.height)
                                 .mul(excited.mul(0.45).add(1))
@@ -530,8 +578,11 @@ export class AuroraCurtains {
                                 .mul(exp(max(above.sub(crownStart.mul(1.7)), 0).div(crownScale).negate()))
                                 .mul(u.crown).mul(tall.mul(0.7).add(0.3))
                                 .mul(redTops);
-                            const fringe = smoothstep(-2, 0.6, xh).mul(exp(above.div(-8)))
-                                .mul(u.fringe).mul(rays.mul(0.55).add(0.45))
+                            // Thin nitrogen lower edge. It flickers into view where an active
+                            // group of fine rays arrives, even during a quiet green display.
+                            const fringe = smoothstep(-3.7, -0.4, xh).mul(exp(above.div(-4.7)))
+                                .mul(u.fringe.add(smoothstep(0.4, 0.79, broad.b).mul(0.38)))
+                                .mul(rays.mul(0.55).add(0.45))
                                 .mul(hemGain);
                             const violet = smoothstep(scale.mul(1.4), scale.mul(3.4), above)
                                 .mul(exp(max(above.sub(scale.mul(3.4)), 0).div(crownScale.mul(1.3)).negate()))
@@ -551,8 +602,11 @@ export class AuroraCurtains {
                                     clamp(broad.a.add(arc.cool), 0, 1),
                                 ),
                             );
+                            // Nitrogen softens the very highest active shafts to polar blue,
+                            // while the narrow luminous edge still carries oxygen green.
+                            const upper = smoothstep(scale.mul(0.75), scale.mul(3.2), above).mul(shafts);
                             const body = mix(
-                                mix(resting, u.tint.rgb, u.tint.a),
+                                mix(mix(resting, vec3(0.035, 0.65, 0.98), upper.mul(0.65)), u.tint.rgb, u.tint.a),
                                 hue,
                                 excited.mul(0.85),
                             );
@@ -574,7 +628,7 @@ export class AuroraCurtains {
                             // its colour: an emerald wave under a pink hem would sum toward white.
                             const yields = excited.mul(-0.55).add(1);
                             const emission = body.mul(green.mul(excited.mul(0.4).add(1)))
-                                .add(mix(vec3(0.5, 0.36, 0.24), hue, excited.mul(0.6)).mul(hem.mul(0.55)))
+                                .add(mix(vec3(0.83, 0.47, 0.22), hue, excited.mul(0.6)).mul(hem.mul(0.55)))
                                 .add(triple(AURORA_COLORS.crown).mul(crown.mul(excited.mul(-0.35).add(1))))
                                 .add(triple(AURORA_COLORS.fringe).mul(fringe.mul(yields)))
                                 .add(triple(AURORA_COLORS.violet).mul(violet.mul(yields)))
@@ -603,10 +657,11 @@ export class AuroraCurtains {
     }
 
     /**
-     * Aurora radiance seen along a world direction. Zero outside the buffered frustum
+     * Curtain radiance (RGB) and tropospheric cloud opacity (alpha) along a world direction.
+     * Zero outside the buffered frustum
      * and behind the camera. Safe in non-uniform control flow (explicit mip level).
      */
-    sample(direction) {
+    sampleSky(direction) {
         const u = this.uniforms;
         const depth = dot(direction, u.forward);
         const safeDepth = max(depth, 1e-4);
@@ -617,7 +672,11 @@ export class AuroraCurtains {
         const edge = max(abs(coord.x), abs(coord.y));
         const inside = smoothstep(0.96, 1, edge).oneMinus().mul(smoothstep(0, 0.02, depth));
         const stored = texture(this.renderTarget.texture, coord.mul(0.5).add(0.5)).level(0);
-        return this.decode(stored.rgb).mul(inside);
+        return vec4(this.decode(stored.rgb), stored.a).mul(inside);
+    }
+
+    sample(direction) {
+        return this.sampleSky(direction).rgb;
     }
 
     setSize(width, height) {
@@ -648,6 +707,12 @@ export class AuroraCurtains {
         const tangentY = Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2) * (1 + BUFFER_MARGIN);
         u.tangent.value.set(tangentY * camera.aspect, tangentY);
         u.pixelAngle.value = (2 * tangentY) / this.renderTarget.height;
+        u.cloudWind.value.set(
+            (time * 0.0008) % 1,
+            (time * 0.0017) % 1,
+            0.1 * Math.sin(time * 0.041 + 0.7) + 0.045 * Math.sin(time * 0.077),
+            (time * 0.00022) % 1,
+        );
         if (this.excitation.commit()) this.excitationTexture.needsUpdate = true;
         this.lastRefresh = time;
 

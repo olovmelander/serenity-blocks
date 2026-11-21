@@ -387,6 +387,28 @@ portrait 390 × 844, console clean throughout; and in the real game at High on W
 drops, then a twist, a level, a quad, a perfect clear and a game over sent through the real event
 bus, no console message and no frame gap over 9 ms while the perfect clear played.
 
+## November 21, 2026 artwork and gameplay audit
+
+The original frame at 20 seconds had a clear folded green curtain above the saddle. The near spruces had nearly continuous black skirts, the rock faces lost their relief, and waves ran through the center of the lake. The solo preview's empty rectangle hid the pieces and translucent board glass, so gameplay readability was checked in the live well. The comparison uses the same clock, lens and High preset. The original is on the left. [Before and after](aurora-overhaul/winter-canopy-before-after.jpg)
+
+| Surface | Change |
+| --- | --- |
+| Spruce and pine | Two original Blender models distinguish a spruce's drooping whorls from the open, forked crown of a Scots pine. Powder rests on individual boughs with needles visible beneath the overhang. Cold sky light fills the snow and green light grazes its edges. Trunks enter snow collars and cast soft shadows onto the sloping banks. Each crown sways, and occasional powder falls start at modeled branch tips. |
+| Curtains, stars and clouds | Finer magnetic filaments and a narrow rose hem give the large folds structure. A dust rift divides two arms of the Milky Way through the opening beside the spruce. Thin cirrus drifts across the stars and curtains. The sky buffer carries the cloud opacity to the lake. The existing six hours still change the light on both shores, with an independent cloud clock and weather along each arc. |
+| Range and distant forest | Glacial horns have notched ridges, snow-filled gullies and thin lit cornices. Groups of three different crowns break up the far shore. The central saddle stays open behind the playfield. |
+| Lake and snow banks | Clear black ice holds the reflection between narrow moving leads. Broken stress lines have a dark surface edge and a displaced lighter edge beneath it. Wind-combed snow covers the banks. The analytic mirror on Low and Minimal now fills the bearings between projected mountain vertices, fixing stripes formerly visible on the waterline. |
+| Board and HUD | The ordinary solo well picks up the lake's green edge, with a dark teal score ledger. The seven piece colors remain distinct. Narrower halos and trails keep neighboring cells separate, and blue-slate garbage squares stay visible on the dark floor. |
+
+**Event timing.** A soft lock plucks the curtain in the piece's color. A hard drop throws ice dust and sends a branching stress line out across the lake. A single opens one seam, a double answers across the board, and a triple sends a third, slower band up the sky. Four lines open the violet crown. A spin winds one small curl, while a two-line twist winds an answering curl on the other side. Cascade waves alternate sides of the ice, and a streak carries color along the sky. A back-to-back opens a detached pair of red arcs. A level raises shore pillars under a long fireball. A perfect clear opens the gold crown, then sends amber light away along the curtain while the lake holds its reflection. The final meteor at game over now reaches the sky on the following simulation frame. [Gameplay event gallery](aurora-overhaul/winter-canopy-events.jpg)
+
+The conifer asset is 870 KB. High draws five detailed trees and 25 lighter specimens, totaling 170,153 triangles on the near banks per scene pass. The far-forest mesh has 291 triangles per three-tree planting. The new event cracks share one prebuilt mesh that parks between strikes. Cloud rendering shares the existing curtain pass. Tree placement, contact shadows and snow banks follow the camera aspect together. [Four hours of the night](aurora-overhaul/winter-canopy-hours.jpg) · [Low WebGL2 at 390 × 844](aurora-overhaul/winter-canopy-portrait.jpg)
+
+**Verification.** Captures cover all event families, High and Minimal on WebGL2, reduced motion, portrait, and the real single-player board on WebGPU. In the game capture, a four-line clear and perfect clear went through the gameplay event bus. Both shader backends passed the offline shader gate, including the loaded Blender meshes. [Perfect clear in single player](aurora-overhaul/winter-canopy-game.jpg)
+
+The production bundle includes the authored GLB. The Electron validator selected and reloaded Aurora through the game and reported zero lifecycle failures, console errors or process failures. All 296 Aurora and shared-theme checks passed. [Shipped scene](theme-screenshots/aurora.png) · [Lifecycle result](theme-screenshots/results/aurora.json)
+
+Two High runs on the NVIDIA Blackwell adapter at 1280 × 720 used the playground's 30 fps cap and timestamp profiler. Each ran through locks, clears, a twist, a quad, a back-to-back and a perfect clear. CPU time per frame at the 95th percentile was 3.4 and 2.2 ms. GPU time at the same percentile was 0.92 and 0.88 ms across 16 resolved timestamp samples per run. The 95th-percentile interval between rendered frames was 34.3 and 33.7 ms. These measurements cover this desktop configuration. Integrated-GPU and physical phone frame times remain unmeasured.
+
 ## Reproducible preview
 
 Run `npm run dev:playground` and open:
@@ -419,21 +441,7 @@ apart into a fever, a rush as twelve quick locks that clear nothing. Other param
 
 ### Theme icon
 
-`src/themes/aurora/aurora-theme-icon.png` (and its copy under `public/assets/themes/`) is a
-frame of the scene itself, 2.4 s after a four-line clear, when the pink has spread through
-the curtains and the lake ring has gone:
-
-- `/playground.html?effect=aurora&quality=Extreme&t=20&icon=1&event=quad&eventAge=2.4`
-
-`icon=1` selects a tighter lens — 48° field of view, turned 7° toward the fold of the
-leading arc, horizon at 0.29 of the frame — so the ribbon, the peaks and the mirrored lake
-all sit inside the circle the theme picker cuts (`iconFov`, `iconYaw` and `iconHorizon`
-override it). The frame was captured at 1400 × 1400 on WebGPU and reduced to 512 × 512;
-two captures were byte-identical. The file follows the house style of the other theme
-icons (`scripts/process_icons.py`): a circle touching all four edges on a transparent
-ground, with an anti-aliased rim. Inside the circle the pixels are the capture's,
-untouched. Checked in the real theme picker: the Aurora card loads the 512 px file and
-shows it in its 80 px circle. Not checked on an Odyssey level orb.
+The registry's `src/themes/aurora/aurora-theme-icon.png` shows the open-crowned pine beside the leading fold, 2.4 seconds after a four-line clear. The November 21 capture used High on WebGPU at 1024 × 1024. A circular crop on a transparent background was reduced to 512 × 512. Reproduce it with `/playground.html?effect=aurora&quality=High&t=20&icon=1&event=quad&eventAge=2.4&hud=0&maxFps=30`.
 
 ## Acceptance evidence
 
@@ -477,7 +485,7 @@ repeated. Local `node_modules` still held phaser 4.1.0; CI installs 4.2.1 from t
 - Production build with the boot-closure guard, the IP-string gate, the Pages artifact
   check, the release gates and the structural performance-budget gate pass.
 
-## Not done, not measured
+## Limitations recorded through November 16
 
 - **No performance measurement.** No frame time, GPU time or battery figure is claimed
   (ADR-0016). The integrated GPU and physical phones were not exercised.

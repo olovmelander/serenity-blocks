@@ -1,13 +1,13 @@
 /**
- * The ground the aurora stands over: a range of snow peaks baked from ridged noise, a
- * lake that mirrors the whole sky, two snow banks with spruces framing the near corners,
+ * The ground the aurora stands over: glacial horns rising from eroded foothills, a frozen
+ * lake that mirrors the whole sky, two snow banks with conifers framing the near corners,
  * and a far forest along the foot of the range.
  *
  * The lake is the second hero. On the upper tiers it is a true planar mirror (the scene
  * rendered once more from below the water); on the cheapest tiers it mirrors analytically:
  * the sky gradient, the curtain buffer read along the reflected ray, and the skyline from a
- * baked ridge profile. Both paths bend the mirror with the same ripples, so gameplay rings
- * travel through the reflected curtains on every tier. Shore ice rims the snow banks.
+ * baked ridge profile. Clear ice carries stationary pressure cracks over the reflection.
+ * Narrow leads and gameplay rings bend that reflection on every tier.
  *
  * Every surface takes its light from the display itself: snow facing the sky glows with
  * the colour of the curtain standing above it (a magenta pulse turns the snow under it
@@ -15,17 +15,18 @@
  */
 import * as THREE from 'three/webgpu';
 import {
-    Fn, abs, atan, attribute, cameraPosition, clamp, dot, exp, float, floor, fract, length, max, mix,
-    normalWorld, normalize, positionGeometry, positionWorld, pow, reflector, screenUV, sin, smoothstep, step,
-    texture, uniformArray, vec2, vec3,
+    Fn, If, Loop, abs, atan, attribute, cameraPosition, clamp, dot, exp, float, floor, fract, int, length, max, mix,
+    normalWorld, normalize, positionGeometry, positionWorld, pow, reflector, screenUV, select, sin, smoothstep, step,
+    texture, uniform, uniformArray, vec2, vec3,
     pow3,
 } from 'three/tsl';
 import { fbm2 } from './aurora-noise.js';
+import { createAuroraConifers, createConiferShade } from './aurora-conifers.js';
 import {
     SHORE_ICE, SHORE_Z, bakeShoreIce, bankHeight, forestCover, rangeHeight, smooth,
 } from './aurora-terrain.js';
 import { AURORA_COLORS } from './aurora-palette.js';
-import { moonPath, moonRadiance } from './aurora-sky.js';
+import { cloudedSky, moonPath, moonRadiance } from './aurora-sky.js';
 import { sessionRangeGrid, sessionShoreIce } from './aurora-bakes.js';
 import { prepareSessionGeometry, sessionGeometry } from '../shared/session-geometry.js';
 import { drainSteps, stepClock } from '../shared/build-steps.js';
@@ -98,25 +99,37 @@ function buildGridFrom(columns, rows, positions) {
 }
 
 /** Skyline elevation by azimuth as seen from below the water: the low tiers' mirror mask. */
-export function bakeRidgeProfile(positions, eyeHeight) {
+export function bakeRidgeProfile(positions, eyeHeight, columns = 1) {
     const profile = new Float32Array(PROFILE_BINS);
+    let previousBin = 0;
+    let previousElevation = 0;
     for (let i = 0; i < positions.length; i += 3) {
         const x = positions[i];
         const y = positions[i + 1];
         const z = positions[i + 2];
-        if (y <= 0) continue;
-        const bin = Math.round((Math.atan2(x, -z) / Math.PI + 0.5) * (PROFILE_BINS - 1));
-        if (bin < 0 || bin >= PROFILE_BINS) continue;
-        const elevation = Math.atan2(y + eyeHeight, Math.hypot(x, z));
-        if (elevation > profile[bin]) profile[bin] = elevation;
+        const bin = (Math.atan2(x, -z) / Math.PI + 0.5) * (PROFILE_BINS - 1);
+        const elevation = y > 0 ? Math.atan2(y + eyeHeight, Math.hypot(x, z)) : 0;
+        const nearest = Math.round(bin);
+        if (nearest >= 0 && nearest < PROFILE_BINS) profile[nearest] = Math.max(profile[nearest], elevation);
+        // Project the connected row, not just its vertices. On Minimal a single triangle
+        // spans several bins; empty bins reflected as straight black bars down the lake.
+        if ((i / 3) % columns !== 0 && bin > previousBin) {
+            const first = Math.max(0, Math.ceil(previousBin));
+            const last = Math.min(PROFILE_BINS - 1, Math.floor(bin));
+            for (let b = first; b <= last; b += 1) {
+                const t = (b - previousBin) / (bin - previousBin);
+                profile[b] = Math.max(profile[b], previousElevation + (elevation - previousElevation) * t);
+            }
+        }
+        previousBin = bin;
+        previousElevation = elevation;
     }
     const data = new Uint8Array(PROFILE_BINS * 4);
     for (let bin = 0; bin < PROFILE_BINS; bin += 1) {
-        // Close single-bin gaps between grid columns, then quantise.
-        const before = profile[Math.max(0, bin - 1)];
-        const after = profile[Math.min(PROFILE_BINS - 1, bin + 1)];
-        const elevation = Math.max(profile[bin], Math.min(before, after));
-        data[bin * 4] = Math.round(Math.min(1, elevation / PROFILE_MAX_ELEVATION) * 255);
+        const before = profile[Math.max(0, bin - 2)];
+        const after = profile[Math.min(PROFILE_BINS - 1, bin + 2)];
+        data[bin * 4] = Math.round(Math.min(1, profile[bin] / PROFILE_MAX_ELEVATION) * 255);
+        data[bin * 4 + 1] = Math.round(255 * smooth(-0.016, 0.026, after - before));
         data[bin * 4 + 3] = 255;
     }
     return data;
@@ -134,7 +147,13 @@ function* rangeMeshSteps(columns, rows, seed, eyeHeight) {
     const clock = stepClock(RANGE_SLICE_MS);
     const positions = built.attributes.position.array;
     const normals = built.attributes.normal.array;
-    const cover = new Float32Array(columns * rows * 2);
+    const cover = new Float32Array(columns * rows * 4);
+    const horizon = new Float32Array(columns);
+    for (let i = 0; i < positions.length; i += 3) {
+        const column = (i / 3) % columns;
+        const elevation = (positions[i + 1] - eyeHeight) / Math.max(1, -positions[i + 2]);
+        horizon[column] = Math.max(horizon[column], elevation);
+    }
     for (let row = 0; row < rows; row += 1) {
         for (let column = 0; column < columns; column += 1) {
             const i = row * columns + column;
@@ -144,18 +163,30 @@ function* rangeMeshSteps(columns, rows, seed, eyeHeight) {
             const flatness = normals[i * 3 + 1];
             // Snow lies on gentle ground and thins on steep faces, which stay bare rock.
             // Dark spruce forest fills the low slopes in patches.
-            const snow = smooth(0.6, 0.86, flatness) * (0.7 + 0.3 * smooth(40, 220, y))
-                + 0.16 * fbm2(x / 90, z / 90, { seed: seed + 411, octaves: 2 });
-            cover[i * 2] = Math.max(0, Math.min(1, snow));
-            cover[i * 2 + 1] = Math.max(0, Math.min(1, forestCover(x, y, z, seed)));
+            const snow = smooth(0.37, 0.86, flatness) * (0.73 + 0.27 * smooth(40, 220, y))
+                + 0.13 * fbm2(x / 90, z / 90, { seed: seed + 411, octaves: 2 });
+            cover[i * 4] = Math.max(0, Math.min(1, snow));
+            cover[i * 4 + 1] = Math.max(0, Math.min(1, forestCover(x, y, z, seed)));
+            // A snow bowl sees less of the luminous western sky than a cornice. Look toward
+            // that sky at three distances in the already-baked grid, once per vertex.
+            let shelter = 0;
+            for (let stride = 1; stride <= 9; stride *= 3) {
+                const west = Math.max(0, column - stride);
+                const north = Math.min(rows - 1, row + stride);
+                const n = (north * columns + west) * 3;
+                const span = Math.hypot(positions[n] - x, positions[n + 2] - z);
+                shelter = Math.max(shelter, (positions[n + 1] - y) / Math.max(1, span));
+            }
+            cover[i * 4 + 2] = 1 - smooth(0.08, 0.9, shelter);
+            cover[i * 4 + 3] = horizon[column] - (y - eyeHeight) / Math.max(1, -z);
         }
         if (clock.due()) {
             yield 'range cover';
             clock.restart();
         }
     }
-    built.setAttribute('cover', new THREE.BufferAttribute(cover, 2));
-    return { geometry: built, ridgeProfile: bakeRidgeProfile(positions, eyeHeight) };
+    built.setAttribute('cover', new THREE.BufferAttribute(cover, 4));
+    return { geometry: built, ridgeProfile: bakeRidgeProfile(positions, eyeHeight, columns) };
 }
 
 /** a + Σ vᵢ·kᵢ over (v, k) pairs, for the spruce builder's small vectors. */
@@ -410,6 +441,48 @@ export function placeForest(count, random, seed = 0) {
     return trees;
 }
 
+/** One adult spruce and two younger neighbours, small enough across the lake to share a
+ * continuous crown mesh. Sparse skirt edges shape the silhouette; upper rows catch snow. */
+function farGroveGeometry() {
+    const positions = [];
+    const loads = [];
+    const indices = [];
+    const grow = (x, z, height, girth, tiers, sides, phase) => {
+        const base = positions.length / 3;
+        const ringCount = tiers * 2 + 1;
+        for (let ring = 0; ring < ringCount; ring += 1) {
+            const edge = ring % 2 === 0;
+            const level = ring / (ringCount - 1);
+            for (let side = 0; side < sides; side += 1) {
+                const a = (side / sides) * Math.PI * 2 + phase + Math.floor(ring / 2) * 0.24;
+                const lobe = Math.sin(a * 3.4 + ring * 1.18);
+                const radius = girth * (1 - level) ** 0.84 * (edge ? 0.94 + 0.21 * lobe : 0.49);
+                const y = 0.07 + level * 0.93 + (edge ? lobe * 0.04 * (1 - level) : 0);
+                positions.push(
+                    x + Math.cos(a) * radius + level * level * girth * 0.13,
+                    y * height,
+                    z + Math.sin(a) * radius,
+                );
+                loads.push(edge ? 0.15 + 0.1 * lobe : 0.87);
+                if (ring === 0) continue;
+                const here = base + ring * sides + side;
+                const next = base + ring * sides + ((side + 1) % sides);
+                indices.push(here - sides, here, next - sides);
+                if (ring < ringCount - 1) indices.push(next - sides, here, next);
+            }
+        }
+    };
+    grow(0, 0, 1, 0.19, 6, 7, 0.8);
+    grow(-0.22, 0.18, 0.64, 0.15, 4, 5, 1.6);
+    grow(0.36, -0.12, 0.48, 0.085, 3, 5, 2.1);
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    geometry.setAttribute('snow', new THREE.Float32BufferAttribute(loads, 1));
+    geometry.setIndex(indices);
+    geometry.computeVertexNormals();
+    return geometry;
+}
+
 export class AuroraLandscape {
     /**
      * @param {object} options
@@ -443,11 +516,14 @@ export class AuroraLandscape {
         this.materials = new Set();
         this.textures = new Set();
         this.reflection = null;
+        this.bankInverseWidth = uniform(1);
         this.forest = null;
         this.forestCount = 0;
 
         const slots = Math.max(1, preset.rippleSlots);
         this.rippleSlots = slots;
+        this.rippleCount = uniform(0, 'int');
+        this.rippleUntil = uniform(-1);
         // x, z, birth time, strength — and tint with the ring's travel speed in w.
         this.rippleData = Array.from({ length: slots }, () => new THREE.Vector4(0, 0, -1000, 0));
         this.rippleTint = Array.from({ length: slots }, () => new THREE.Vector4(0.3, 1, 0.6, 26));
@@ -530,20 +606,18 @@ export class AuroraLandscape {
         material.name = 'Aurora — snow range';
         material.colorNode = Fn(() => {
             const normal = normalize(normalWorld).toVar();
-            const mask = attribute('cover', 'vec2').toVar();
+            const mask = attribute('cover', 'vec4').toVar();
             const p = positionWorld.xz.toVar();
             // Three world-space reads of the shared tile: snowfields, gullies and grain.
             const broad = texture(noiseTexture, p.div(2300)).toVar();
             const mid = texture(noiseTexture, p.div(760).add(vec2(0.31, 0.17))).toVar();
             const fine = texture(noiseTexture, p.div(190).add(vec2(0.53, 0.29))).toVar();
             const steep = smoothstep(0.16, 0.5, normal.y.oneMinus()).toVar();
-            // Face space: across the fall line and up the face. Streaks read along this pair
-            // run straight down the slope, as snow does in a gully. (The tiny offset keeps the
-            // direction defined on flat ground, where `steep` is 0 anyway.)
-            const fall = normalize(vec2(normal.z.negate(), normal.x).add(vec2(1e-4, 1e-5)));
-            const across = dot(p, fall);
-            const gully = texture(noiseTexture, vec2(across.div(170), positionWorld.y.div(1400)).add(vec2(0.71, 0.23)));
-            const streaks = smoothstep(0.56, 0.72, gully.r.mul(0.7).add(fine.g.mul(0.3)));
+            // Descending couloirs, sampled in a common oblique rock plane. Using the same
+            // coordinates on neighbouring triangles keeps the chute together across a ridge.
+            const across = p.x.add(p.y.mul(0.26)).add(positionWorld.y.mul(0.37)).add(broad.a.mul(39));
+            const gully = texture(noiseTexture, vec2(across.div(550), positionWorld.y.add(p.y.mul(0.15)).div(2300)));
+            const streaks = smoothstep(0.36, 0.69, gully.r.mul(0.72).add(fine.g.mul(0.28)));
             // Rock ribs: thin crests of the mid noise, bared on steep faces only; snow fills
             // the gullies between them, which is what makes a face read as a mountain.
             const rib = pow(float(1).sub(abs(mid.r.mul(2).sub(1))), 5);
@@ -551,19 +625,28 @@ export class AuroraLandscape {
                 .add(broad.b.sub(0.5).mul(0.3))
                 .add(mid.b.sub(0.5).mul(0.42))
                 .add(fine.g.sub(0.5).mul(0.24))
-                .add(streaks.mul(steep).mul(0.55))
-                .sub(rib.mul(steep).mul(0.62));
-            const snow = smoothstep(0.42, 0.6, field).toVar();
+                .add(streaks.mul(steep).mul(0.7))
+                .sub(rib.mul(steep).mul(0.5));
+            const snow = smoothstep(0.35, 0.64, field).toVar();
             // Strata in the bare rock, warped so they never rule a straight line.
             const strata = sin(positionWorld.y.mul(0.13).add(mid.a.mul(9)).add(broad.a.mul(4))).mul(0.5).add(0.5);
-            const rock = triple(AURORA_COLORS.rock).mul(mix(0.55, 1.3, strata.mul(fine.r.mul(0.6).add(0.4))));
+            const rock = triple(AURORA_COLORS.rock).mul(mix(0.45, 1.4, strata.mul(fine.r.mul(0.6).add(0.4))));
             // Wind has worked the open snow into drifts: broad mottling, never flat white.
             const drifts = mix(0.72, 1.04, smoothstep(0.2, 0.8, mid.g.mul(0.6).add(broad.a.mul(0.4))));
             const snowAlbedo = triple(AURORA_COLORS.snow).mul(mix(0.82, 1.0, fine.r)).mul(drifts);
-            const forest = vec3(0.008, 0.015, 0.014);
-            const albedo = mix(mix(rock, snowAlbedo, snow), forest, mask.y.mul(0.85));
+            const forest = vec3(0.013, 0.029, 0.037);
+            const albedo = mix(mix(rock, snowAlbedo, snow), forest, mask.y.mul(0.82));
             const aurora = atmosphere.auroraAbove(positionWorld).toVar();
-            const lit = this.litSurface(albedo, normal, { aurora, backlit: snow });
+            const west = smoothstep(-0.24, 0.84, dot(normal, vec3(-0.72, 0.53, 0.44))).mul(mask.z);
+            const striations = mix(0.64, 1.16, gully.r);
+            const crest = smoothstep(0.0008, 0.014, mask.w.add(mid.a.sub(0.5).mul(0.005))).oneMinus()
+                .mul(snow).mul(west.mul(0.76).add(0.24))
+                .mul(mask.y.oneMinus());
+            const crestLight = vec3(0.082, 0.12, 0.145).add(aurora.mul(0.31)).add(this.uniforms.moonLight.mul(0.8));
+            const lit = this.litSurface(albedo, normal, { aurora, backlit: snow }).mul(0.76)
+                .add(albedo.mul(vec3(0.017, 0.031, 0.077)))
+                .add(albedo.mul(vec3(0.114, 0.168, 0.22)).mul(west).mul(striations))
+                .add(crestLight.mul(crest));
             return atmosphere.apply(lit, positionWorld, { aurora });
         })();
         const mesh = new THREE.Mesh(geometry, material);
@@ -576,7 +659,9 @@ export class AuroraLandscape {
     }
 
     createBanks() {
-        const { seed, atmosphere, eyeHeight } = this;
+        const {
+            seed, atmosphere, eyeHeight, noiseTexture,
+        } = this;
         const u = this.uniforms;
         const geometry = buildGrid(84, 40, (gu, gv) => {
             const x = (gu * 2 - 1) * 190;
@@ -588,14 +673,21 @@ export class AuroraLandscape {
         const density = 120 + Math.min(260, this.preset.sparkCount);
         const material = new THREE.MeshBasicNodeMaterial({ fog: false });
         material.name = 'Aurora — snow banks';
+        this.coniferShade = createConiferShade();
+        this.textures.add(this.coniferShade);
         material.colorNode = Fn(() => {
             const normal = normalize(normalWorld).toVar();
-            // Wind-packed snow: faint sastrugi in the hollows, none of it flat white.
-            const drift = sin(positionWorld.x.mul(0.31).add(positionWorld.z.mul(0.23)))
-                .mul(sin(positionWorld.z.mul(0.47).sub(positionWorld.x.mul(0.11))))
-                .mul(0.07).add(0.93);
+            // Wind-raked ledges: broad drifts break into swept lines in the same direction.
+            const grain = texture(noiseTexture, positionWorld.xz.div(68)).toVar();
+            const wind = vec2(positionWorld.x.add(positionWorld.z.mul(0.43)), positionWorld.z);
+            const comb = texture(noiseTexture, wind.div(vec2(58, 166)).add(grain.ab.mul(0.11))).toVar();
+            const grains = texture(noiseTexture, positionWorld.xz.div(14)).r;
+            const grainMix = mix(grain.g, comb.r, grain.b.mul(0.65)).add(grains.sub(0.5).mul(0.17));
+            const ridge = smoothstep(0.32, 0.76, grainMix);
+            const drift = mix(0.81, 1.02, ridge);
             const aurora = atmosphere.auroraAbove(positionWorld).toVar();
             const lit = this.litSurface(triple(AURORA_COLORS.snow).mul(drift).mul(0.82), normal, { aurora })
+                .add(vec3(0.006, 0.013, 0.029).mul(ridge).mul(normal.y.max(0)))
                 .toVar();
             if (glints) {
                 // Frost glints: a crystal here and there turns a face to the sky for a moment.
@@ -615,7 +707,9 @@ export class AuroraLandscape {
                 const tint = mix(vec3(0.75, 0.9, 1.0), u.auroraLight.mul(7).add(aurora.mul(0.6)), 0.45);
                 lit.addAssign(tint.mul(sparkle).mul(0.5));
             }
-            return atmosphere.apply(lit, positionWorld, { aurora });
+            const shadeUv = positionGeometry.xz.add(vec2(190, 182)).div(vec2(380, 200));
+            const shade = texture(this.coniferShade, shadeUv).r;
+            return atmosphere.apply(lit.mul(shade.mul(-0.72).add(1)), positionWorld, { aurora });
         })();
         const mesh = new THREE.Mesh(geometry, material);
         mesh.name = 'Aurora — snow banks';
@@ -646,6 +740,11 @@ export class AuroraLandscape {
     }
 
     createSpruces(random) {
+        const conifers = createAuroraConifers(this, random);
+        if (conifers) {
+            this.spruces = conifers;
+            return;
+        }
         const count = Math.max(2, this.preset.treeCount);
         const geometry = buildSpruceGeometry(random);
         const material = this.spruceMaterial('Aurora — spruces');
@@ -681,10 +780,7 @@ export class AuroraLandscape {
         const trees = placeForest(Math.max(0, this.preset.forestCount ?? 0), random, this.seed);
         this.forestCount = trees.length;
         if (trees.length === 0) return;
-        // A far tree is a few dozen pixels tall: one segment a bough is enough.
-        const geometry = buildSpruceGeometry(random, {
-            whorls: 8, segments: 1, teeth: false, branches: 6, coreSides: 7, coreRings: 4,
-        });
+        const geometry = farGroveGeometry();
         const material = this.spruceMaterial('Aurora — far forest');
         const mesh = new THREE.InstancedMesh(geometry, material, trees.length);
         mesh.name = 'Aurora — far forest';
@@ -744,7 +840,8 @@ export class AuroraLandscape {
         );
         this.iceTexture.name = 'Aurora — shore ice';
         this.iceTexture.magFilter = THREE.LinearFilter;
-        this.iceTexture.minFilter = THREE.LinearFilter;
+        this.iceTexture.minFilter = THREE.LinearMipmapLinearFilter;
+        this.iceTexture.generateMipmaps = true;
         this.iceTexture.wrapS = THREE.ClampToEdgeWrapping;
         this.iceTexture.wrapT = THREE.ClampToEdgeWrapping;
         this.iceTexture.colorSpace = THREE.NoColorSpace;
@@ -759,36 +856,40 @@ export class AuroraLandscape {
 
             // Shore ice along the banks: it stills the water under it.
             const iceRead = texture(iceTexture, vec2(
-                point.x.add(SHORE_ICE.half).div(SHORE_ICE.half * 2),
+                point.x.mul(this.bankInverseWidth).add(SHORE_ICE.half).div(SHORE_ICE.half * 2),
                 point.y.sub(SHORE_ICE.near).div(SHORE_ICE.far - SHORE_ICE.near),
             )).toVar();
             const ice = smoothstep(0.42, 0.58, iceRead.r).toVar();
             const open = ice.oneMinus().toVar();
 
-            // Wind works the water in patches: glassy lanes between ruffled ones.
-            const ruffle = smoothstep(0.34, 0.72, texture(noiseTexture, point.mul(0.0017).add(u.time.mul(0.0006))).b);
-            const fine = texture(noiseTexture, point.mul(0.021).add(vec2(u.time.mul(0.011), u.time.mul(0.007))));
-            const chop = texture(noiseTexture, point.mul(0.0058).add(vec2(u.time.mul(-0.004), u.time.mul(0.0052))));
-            const slope = fine.rg.sub(0.5).mul(0.6).add(chop.rg.sub(0.5))
-                .mul(ruffle.mul(0.78).add(0.22))
-                .toVar();
+            // Clear black ice carries the reflection in one piece. Only narrow leads still move
+            // with the wind; stationary grain is visible beneath the surrounding sheet.
+            const frozen = texture(noiseTexture, point.mul(vec2(0.0021, 0.00094))).toVar();
+            const ruffle = smoothstep(0.57, 0.79, frozen.b).toVar();
+            const fine = texture(noiseTexture, point.mul(0.021).add(vec2(0.13, 0.37))).toVar();
+            const chop = texture(noiseTexture, point.mul(0.0058)
+                .add(vec2(u.time.mul(-0.002), u.time.mul(0.0032)))).toVar();
+            const slope = fine.rg.sub(0.5).mul(0.022).add(chop.rg.sub(0.5).mul(ruffle).mul(0.62)).toVar();
             const glint = vec3(0).toVar();
-            for (let slot = 0; slot < this.rippleSlots; slot += 1) {
+            const rings = select(u.time.lessThan(this.rippleUntil), this.rippleCount, int(0));
+            Loop(rings, ({ i }) => {
                 // A ring: a short wave packet riding an expanding front, fading as it goes.
-                const ring = ripples.element(slot);
-                const tint = tints.element(slot);
-                const offsetFromRing = point.sub(ring.xy);
-                const radius = max(length(offsetFromRing), 0.001);
-                const age = u.time.sub(ring.z);
-                const front = radius.sub(age.mul(tint.w));
-                const packet = exp(front.mul(front).mul(-0.012))
-                    .mul(ring.w).mul(exp(age.mul(-RIPPLE_FADE))).mul(smoothstep(0, 0.12, age));
-                slope.addAssign(offsetFromRing.div(radius).mul(sin(front.mul(0.52)).mul(packet).mul(0.8)));
-                // Light rides the crests: a few thin bright rings, not a lit disc.
-                const crest = max(sin(front.mul(0.52).add(1.1)), 0);
-                const crest2 = crest.mul(crest);
-                glint.addAssign(tint.rgb.mul(packet.mul(crest2.mul(crest2).mul(crest2)).mul(1.2)));
-            }
+                const ring = ripples.element(i).toVar();
+                const tint = tints.element(i).toVar();
+                const offsetFromRing = point.sub(ring.xy).toVar();
+                const radius = max(length(offsetFromRing), 0.001).toVar();
+                const age = u.time.sub(ring.z).toVar();
+                const front = radius.sub(age.mul(tint.w)).toVar();
+                If(abs(front).lessThan(30), () => {
+                    const packet = exp(front.mul(front).mul(-0.012))
+                        .mul(ring.w).mul(exp(age.mul(-RIPPLE_FADE))).mul(smoothstep(0, 0.12, age))
+                        .toVar();
+                    slope.addAssign(offsetFromRing.div(radius).mul(sin(front.mul(0.52)).mul(packet).mul(0.8)));
+                    const crest = max(sin(front.mul(0.52).add(1.1)), 0);
+                    const crest2 = crest.mul(crest);
+                    glint.addAssign(tint.rgb.mul(packet.mul(crest2.mul(crest2).mul(crest2)).mul(1.2)));
+                });
+            });
             slope.mulAssign(open);
 
             // A tilted facet throws the mirrored ray mostly up or down, hardly sideways:
@@ -796,27 +897,38 @@ export class AuroraLandscape {
             const grazing = clamp(view.y, 0.02, 1);
             let mirror;
             if (reflection) {
-                const coord = screenUV.flipX().add(vec2(slope.x.mul(0.035), slope.y.mul(0.2)));
-                const smear = vec2(0, ruffle.mul(0.012).add(0.004).add(ice.mul(0.02)));
+                const coord = screenUV.flipX().add(clamp(vec2(slope.x.mul(0.033), slope.y.mul(0.13)), -0.06, 0.06));
+                const smear = vec2(0, ruffle.mul(0.008).add(0.0008).add(ice.mul(0.013)));
                 mirror = reflection.sample(coord).rgb.mul(0.5)
                     .add(reflection.sample(coord.add(smear)).rgb.mul(0.25))
                     .add(reflection.sample(coord.sub(smear)).rgb.mul(0.25));
             } else {
                 const bounced = normalize(vec3(
-                    view.x.negate().add(slope.x.mul(0.1)),
-                    abs(view.y).add(slope.y.mul(0.32)).max(0.004),
+                    view.x.negate().add(clamp(slope.x.mul(0.045), -0.018, 0.018)),
+                    abs(view.y).add(clamp(slope.y.mul(0.16), -0.035, 0.035)).max(0.004),
                     view.z.negate(),
                 )).toVar();
                 const up = clamp(bounced.y, 0, 1);
-                const sky = mix(u.skyZenith, u.skyHorizon, exp(up.mul(-5.2)))
+                const sheet = curtains.sampleSky(bounced).toVar();
+                const baseSky = mix(u.skyZenith, u.skyHorizon, exp(up.mul(-5.2)))
                     .add(u.airglow.mul(exp(up.mul(-13))))
                     .mul(u.activity.mul(0.35).add(1))
                     .add(moonRadiance(u, bounced, noiseTexture))
-                    .add(curtains.sample(bounced));
+                    .add(sheet.rgb);
+                const sky = cloudedSky(baseSky, sheet, u);
                 const azimuth = atan(bounced.x, bounced.z.negate()).div(Math.PI).add(0.5);
-                const skyline = texture(profileTexture, vec2(azimuth, 0.5)).level(0).r.mul(PROFILE_MAX_ELEVATION);
-                const land = smoothstep(skyline.sub(0.006), skyline.add(0.004), bounced.y).oneMinus();
-                mirror = mix(sky, vec3(0.0035, 0.007, 0.013).add(u.auroraLight.mul(0.03)), land);
+                const profile = texture(profileTexture, vec2(azimuth, 0.5)).level(0).rg.toVar();
+                const skyline = sin(profile.x.mul(PROFILE_MAX_ELEVATION)).toVar();
+                const depth = skyline.sub(bounced.y).toVar();
+                const width = ruffle.mul(0.014).add(0.009);
+                const land = smoothstep(width.negate(), width, depth);
+                // A dim lit face beneath its crest blends into the mist at the waterline.
+                // A single dark cutout made the tilted mirror look like two flat colours.
+                const face = profile.y.mul(0.57).add(0.43)
+                    .mul(smoothstep(0.005, 0.065, depth).mul(-0.78).add(1));
+                const rock = u.skyHorizon.mul(0.53).add(u.auroraLight.mul(0.046));
+                const snow = u.skylight.mul(0.48).add(u.moonLight.mul(0.21)).add(vec3(0.008, 0.016, 0.031));
+                mirror = mix(sky, rock.add(snow.mul(face)), land);
             }
             mirror = mirror.toVar();
 
@@ -828,14 +940,15 @@ export class AuroraLandscape {
             // the wavelets. The taps climb the sky along the mirrored ray's own bearing.
             const heading = normalize(vec2(view.x.negate(), view.z.negate()).add(vec2(1e-5, 0))).toVar();
             const mirrorSlope = grazing.div(max(length(view.xz), 0.05)).toVar();
-            const flecks = mix(0.55, 1.6, smoothstep(0.3, 0.74, fine.b.mul(0.6).add(chop.b.mul(0.4)))).toVar();
+            const flecks = mix(0.78, 1.18, smoothstep(0.3, 0.74, fine.b.mul(0.6).add(chop.b.mul(0.4)))).toVar();
             const columns = vec3(0).toVar();
             LAKE_STREAKS.slice(0, this.preset.lakeStreaks ?? 2).forEach(([lift, weight, glassy], k) => {
                 // The wavelets under each pixel are tilted a little differently: the lift wanders.
-                const tilt = float(Math.tan(lift * DEG)).mul(mix(0.72, 1.3, k % 2 === 0 ? fine.a : chop.a));
+                const facet = k % 2 === 0 ? fine.a : mix(frozen.a, chop.a, ruffle);
+                const tilt = float(Math.tan(lift * DEG)).mul(mix(0.72, 1.3, facet));
                 const raised = mirrorSlope.add(tilt).div(max(mirrorSlope.mul(tilt).oneMinus(), 0.2));
                 const skyward = normalize(vec3(heading.x, raised, heading.y));
-                columns.addAssign(curtains.sample(skyward).mul(mix(glassy, 1, ruffle).mul(weight)));
+                columns.addAssign(curtains.sample(skyward).mul(mix(glassy + 0.12, 0.92, ruffle).mul(weight)));
             });
             columns.mulAssign(flecks.mul(open));
             // The same facets throw the moon down the water: its path toward the eye, as glitter.
@@ -863,18 +976,28 @@ export class AuroraLandscape {
             const water = mix(body, mirror, fresnel).add(columns)
                 .add(glint.mul(0.5).mul(fresnel).mul(open)).toVar();
 
-            // The ice: frosted, cracked, a dim and blurred mirror, with snow blown over it.
-            const crackRead = texture(noiseTexture, point.div(23).add(vec2(0.13, 0.61))).toVar();
-            const cracks = pow(float(1).sub(abs(crackRead.r.mul(2).sub(1))), 14)
-                .add(pow(float(1).sub(abs(crackRead.g.mul(2).sub(1))), 22).mul(0.6));
+            // Snow settles into combs across the rougher plates. The two edges of a pressure
+            // crack sit at different depths: a dark top lip and a pale wall seen through ice.
+            const reach = max(point.y.negate(), 1);
+            const fracture = texture(iceTexture, vec2(
+                point.x.div(reach.mul(SHORE_ICE.tangentWidth)).add(0.5),
+                float(1).div(reach.mul(SHORE_ICE.maxInverseDepth)),
+            )).ba.toVar();
             const frost = smoothstep(0.35, 0.85, iceRead.g).toVar();
-            const iceAlbedo = mix(vec3(0.15, 0.21, 0.29), triple(AURORA_COLORS.snow).mul(0.78), frost)
-                .mul(float(1).sub(cracks.mul(0.55).mul(frost.oneMinus().mul(0.7).add(0.3))));
+            const mottled = frost.mul(frozen.b.mul(0.36).add(0.73)).add(fine.g.sub(0.5).mul(0.09));
+            const iceAlbedo = mix(vec3(0.14, 0.24, 0.35), triple(AURORA_COLORS.snow).mul(0.78), mottled);
             const iceLit = this.litSurface(iceAlbedo, vec3(0, 1, 0), { aurora, backlit: 0 }).toVar();
             const iceColor = iceLit.add(mirror.mul(fresnel.mul(0.35).add(0.03)).mul(frost.oneMinus()));
             // A thin bright lip where the ice ends at open water.
             const lip = smoothstep(0.3, 0.46, iceRead.r).mul(float(1).sub(smoothstep(0.5, 0.62, iceRead.r)));
             water.assign(mix(water, iceColor, ice).add(iceLit.mul(lip).mul(0.8)));
+            const dust = smoothstep(0.48, 0.76, frozen.a.add(fine.r.sub(0.5).mul(0.31))).mul(fine.b.mul(0.6).add(0.45));
+            water.addAssign(vec3(0.022, 0.039, 0.061).mul(dust).mul(open).mul(ruffle.oneMinus()));
+            const clearIce = ice.mul(frost).mul(0.85).oneMinus();
+            const seamLight = vec3(0.031, 0.062, 0.094).add(u.auroraLight.mul(0.29))
+                .add(aurora.mul(0.08)).add(glint.mul(0.5));
+            water.mulAssign(float(1).sub(fracture.x.mul(clearIce).mul(0.38)));
+            water.addAssign(seamLight.mul(fracture.y).mul(clearIce));
             return atmosphere.apply(water, positionWorld, { aurora });
         })();
         const mesh = new THREE.Mesh(geometry, material);
@@ -884,6 +1007,14 @@ export class AuroraLandscape {
         this.geometries.add(geometry);
         this.materials.add(material);
         this.group.add(mesh);
+    }
+
+    setAspect(aspect) {
+        const width = this.spruces?.setAspect?.(aspect) ?? 1;
+        if (!this.banks) return;
+        this.banks.scale.x = width;
+        this.banks.updateMatrix();
+        this.bankInverseWidth.value = 1 / width;
     }
 
     /**
@@ -906,11 +1037,15 @@ export class AuroraLandscape {
         }
         this.rippleData[slot].set(x, z, time, Math.min(1.5, strength));
         this.rippleTint[slot].set(tint[0], tint[1], tint[2], speed);
+        this.rippleCount.value = Math.max(this.rippleCount.value, slot + 1);
+        this.rippleUntil.value = time + 15;
         return true;
     }
 
     resetRipples() {
         for (const ring of this.rippleData) ring.set(0, 0, -1000, 0);
+        this.rippleCount.value = 0;
+        this.rippleUntil.value = -1;
     }
 
     getDiagnostics() {

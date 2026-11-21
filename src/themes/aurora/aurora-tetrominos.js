@@ -16,14 +16,15 @@ export const AURORA_TETROMINOS = {
         Z: '#ff88ee', // Combo magenta flare
         J: '#62ffbf', // Emerald ribbon
         L: '#ff6f86', // Crown rose: the red of the tall rays (it was an aqua a hair from T's cyan)
-        GARBAGE: '#030713', // Night sky shadow
+        GARBAGE: '#536875', // Blue slate ice, visible in the wells at night
+        CLEAN_GARBAGE: '#a7bcc6',
     },
 
     renderMode: 'glow',
 
     effects: {
-        glowRadius: 16,
-        glowIntensity: 0.9,
+        glowRadius: 10,
+        glowIntensity: 0.68,
         glowColor: 'auto',
 
         outline: true,
@@ -32,26 +33,26 @@ export const AURORA_TETROMINOS = {
 
         pulse: true,
         pulseSpeed: 0.038,
-        pulseAmplitude: 0.3,
+        pulseAmplitude: 0.12,
 
         shimmer: true,
         shimmerSpeed: 0.065,
-        shimmerIntensity: 0.24,
+        shimmerIntensity: 0.16,
 
         trails: true,
-        trailLength: 0.26,
-        trailOpacity: 0.36,
+        trailLength: 0.20,
+        trailOpacity: 0.24,
     },
 
     rendererOverrides: {
         canvas: {
-            glowRadius: 13,
-            glowIntensity: 0.82,
+            glowRadius: 8,
+            glowIntensity: 0.62,
             outlineWidth: 1.7,
         },
         phaser: {
-            glowRadius: 18,
-            glowIntensity: 0.94,
+            glowRadius: 11,
+            glowIntensity: 0.72,
             outlineWidth: 2.3,
         },
     },

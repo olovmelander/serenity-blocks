@@ -51,10 +51,27 @@ const pillarGains = (director) => Array.from(
 );
 
 describe('Aurora forms: the table the march reads', () => {
+    it('raises detached red arcs only for an active back-to-back, then extinguishes them', () => {
+        for (const active of [false, true]) {
+            const director = create({ ambient: false });
+            director.setBoard(0, -0.27, 0.16);
+            director.onPieceLock(lock());
+            director.onLineClear(clear(4));
+            director.onBackToBack({ active });
+            advance(director, 0.8);
+            const [bearing, , , gain] = row(director, FORMS.redArc);
+            expect(gain > 0).toBe(active);
+            if (active) expect(bearing).toBeCloseTo(-0.27);
+            advance(director, 4);
+            expect(row(director, FORMS.redArc)[3]).toBe(0);
+        }
+    });
+
     it('lays the crown, the curls and the pillars out without overlap, all at rest on a quiet sky', () => {
         expect(FORMS.curls).toBe(FORMS.crown + 5);
         expect(FORMS.pillars).toBe(FORMS.curls + CURL.slots * FORMS.curlRows);
-        expect(FORMS.rows).toBe(FORMS.pillars + PILLARS.slots * 2);
+        expect(FORMS.redArc).toBe(FORMS.pillars + PILLARS.slots * 2);
+        expect(FORMS.rows).toBe(FORMS.redArc + 1);
         expect(FORMS.curlRows).toBe(2 + CURL.rays);
         const director = create({ ambient: false });
         expect(director.forms).toHaveLength(FORMS.rows * 4);
@@ -247,8 +264,11 @@ describe('Aurora events: each its own', () => {
         const resting = director.arcGain[0];
         const light = director.light[1];
         director.onGameOver();
+        director.update(1 / 60);
         expect(director.meteorCount).toBe(1);
         expect(director.meteors[0].duration).toBeGreaterThan(1.2);
+        director.update(1 / 60);
+        expect(director.meteorCount).toBe(0);
         advance(director, 1.6);
         expect(director.hush).toBeGreaterThan(0.6);
         expect(director.arcGain[0]).toBeLessThan(resting * 0.7);
