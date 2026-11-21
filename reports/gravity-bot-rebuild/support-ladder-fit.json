@@ -1,0 +1,13 @@
+{
+  "tiers": [9, 8],
+  "comparisons": { "rate125": [9, 8, 7], "promoted8": [9, 8, 7] },
+  "variants": {
+    "judgment": { "9": { "rate": "judgment" } },
+    "rate105": { "9": { "rate": 1.05 } },
+    "rate125": { "9": { "rate": 1.25 } },
+    "middle105": { "9": { "rate": 1.05, "apm": 800, "spread": 1.4 } },
+    "middle125": { "9": { "rate": 1.25, "apm": 820, "spread": 1.45 } },
+    "pace": { "9": { "rate": 1.25, "apm": 950, "spread": 0.85 } },
+    "promoted8": { "9": { "rate": 1.25 }, "8": { "rate": "judgment" } }
+  }
+}

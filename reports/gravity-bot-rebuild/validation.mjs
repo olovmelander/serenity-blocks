@@ -25,6 +25,21 @@ async function perform(task) {
             || task.practicedSlots || mode === 'common');
         const styleDraw = slot => seededRandom((Math.imul(seed, 0x85ebca6b) ^ Math.imul(slot + 1, 0x9e3779b1)) >>> 0)();
         const configure = (bot, selectedTier) => {
+            // Unspecified neighbours retain the pre-calibration two-seat rate when
+            // replaying the training fits against the subsequently selected policy.
+            const fit = task.supportFit && (task.supportFit[selectedTier]
+                ?? ([8, 9].includes(selectedTier) ? { rate: 0.7 } : null));
+            if (fit) {
+                const judgmentRate = bot.config.tier === 10 ? 1.25 : 0.7;
+                bot.planUnitsPerMs = fit.rate === 'judgment' ? judgmentRate : fit.rate;
+                if (fit.apm !== undefined) {
+                    const scale = bot.localPace.scale ** ((fit.spread ?? 1.65) / 1.65);
+                    const minimum = selectedTier === 9 ? 50 : 65;
+                    const interval = Math.max(minimum, Math.min(950, (60_000 / fit.apm) * scale));
+                    bot.localPace = { scale, interval };
+                    bot.config.actionIntervalMs = Math.min(60000 / bot.config.maxApm, interval);
+                }
+            }
             const practicedInterval = bot.config.actionIntervalMs;
             if (task.nativeApm?.[selectedTier]) bot.config.actionIntervalMs = 60000 / task.nativeApm[selectedTier];
             if (task.reactionMaxAdd?.[selectedTier]) {
