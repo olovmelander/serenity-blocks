@@ -88,32 +88,46 @@ function toFractions(r, W, H) {
 }
 
 /**
- * The solo layout from the stylesheet's own formulas (public/styles/main.css), used before a card
- * is on screen: board = min(clamp(220, 22vw, 300), (100vh − 250)/2), card ≈ 1.19·board wide and
- * 2·board + 158 tall with the playfield seated at its foot, the stats bar 60 px right of the stage.
+ * The open solo well before its DOM is mounted. public/styles/keystone-solo.css sets the board
+ * from the available height and room for the ledger. In portrait the ledger moves below the well.
  */
 export function fallbackLayout(width, height) {
     const W = Math.max(1, width || 1);
     const H = Math.max(1, height || 1);
-    const board = Math.max(120, Math.min(Math.max(220, Math.min(0.22 * W, 300)), (H - 250) / 2));
-    const cw = 1.19 * board;
-    const ch = 2 * board + 158;
-    const stage = Math.min(Math.max(300, Math.min(0.35 * W, 400)), (H - 200) / 2);
-    const hx0 = W / 2 + stage / 2 + 60;
-    const hh = Math.min(385, H * 0.5);
-    const cardBottom = H / 2 + ch / 2;
+    const portrait = W <= H;
+    const head = W <= 640 ? 64 : 74;
+    const next = Math.min(62, Math.max(30, H * 0.062));
+    const side = Math.min(240, Math.max(196, W * 0.15));
+    const gap = Math.min(40, Math.max(20, W * 0.024));
+    const strip = portrait ? Math.min(66, Math.max(52, H * 0.07)) : 0;
+    const below = portrait ? strip + 12 : 0;
+    const room = H - head - next - 10 - below - 22;
+    const heightBudget = portrait ? room : Math.min(room, Math.max(520, room * 0.85));
+    const widthBudget = portrait ? W - 32 : W - 2 * (16 + side + gap);
+    const board = Math.max(140, Math.min(640, heightBudget / 2, widthBudget));
+    const column = next + 10 + board * 2 + below;
+    const top = Math.max(head, Math.min((H - column) / 2, H - 22 - column));
+    const boardTop = top + next + 10;
+    const boardBottom = boardTop + 2 * board;
+    const left = (W - board) / 2;
+    const right = left + board;
+    const hud = portrait
+        ? {
+            left, right, top: boardBottom + 12, bottom: boardBottom + 12 + strip,
+        }
+        : {
+            left: right + gap, right: right + gap + side, top: boardTop, bottom: boardTop + Math.min(280, board * 2),
+        };
     const boards = new Array(PLAYER_SLOTS).fill(null);
     boards[0] = toFractions({
-        left: W / 2 - board / 2, right: W / 2 + board / 2, top: cardBottom - 24 - 2 * board, bottom: cardBottom - 24,
+        left, right, top: boardTop, bottom: boardBottom,
     }, W, H);
     return {
         cardCount: 0,
         cards: [toFractions({
-            left: W / 2 - cw / 2, right: W / 2 + cw / 2, top: H / 2 - ch / 2, bottom: cardBottom,
+            left: left - 3, right: right + 3, top, bottom: boardBottom + 3,
         }, W, H)],
-        hud: toFractions({
-            left: hx0, right: hx0 + 140, top: H / 2 - hh / 2, bottom: H / 2 + hh / 2,
-        }, W, H),
+        hud: toFractions(hud, W, H),
         boards,
     };
 }

@@ -106,6 +106,16 @@
     --sp-wall-glow: rgb(176 78 153 / 25%);
 }
 
+/* Jade at the waterline and the lantern's paper around the queue and ledger. */
+:where(body:has(#koi-pond-theme.active)) .single-player-stage[data-board='well']:not(:where(
+    .infinity-mode-active, [data-odyssey-board], [data-stillfall], [data-still-air], [data-danger]
+)) {
+    --sp-hue: #e8c58b;
+    --sp-hue-rgb: 232, 197, 139;
+    --sp-wall: #72a69b;
+    --sp-wall-glow: rgb(71 137 122 / 25%);
+}
+
 /* Infinity's walls: its aqua deepened, boardWallColor('#9ee8ed') (src/ui/board-walls.js), so
    the dark field never wears a light-blue frame; the HUD keeps the aqua. Odyssey borrows this
    layout and keeps its gold (keystone-overlays.css); :where() leaves Still Air and danger,

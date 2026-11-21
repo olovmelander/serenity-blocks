@@ -42,13 +42,13 @@ export function stubRenderer() {
 }
 
 /** Build `mesh` with a node builder class: its shaders and anything it said, or what it threw. */
-export function build(Builder, mesh) {
+export function build(Builder, mesh, renderer = stubRenderer()) {
     const heard = [];
     const listen = (...args) => heard.push(args.map(String).join(' ').slice(0, 300));
     const warn = vi.spyOn(console, 'warn').mockImplementation(listen);
     const error = vi.spyOn(console, 'error').mockImplementation(listen);
     try {
-        const builder = new Builder(mesh, stubRenderer());
+        const builder = new Builder(mesh, renderer);
         builder.scene = new THREE.Scene();
         builder.camera = new THREE.PerspectiveCamera();
         builder.context.material = mesh.material;

@@ -48,13 +48,13 @@ describe('koi pond: generated meshes', () => {
         expect(wrong).toEqual([]);
     });
 
-    it('keeps the koi within its unit length and gives every vertex a finite normal', () => {
+    it('keeps the koi within its unit length and gives every vertex a unit normal, including fan roots', () => {
         const geometry = buildKoiGeometry();
         const position = geometry.getAttribute('position');
         const normal = geometry.getAttribute('normal');
         for (let i = 0; i < position.count; i++) {
             expect(Math.abs(position.getX(i))).toBeLessThanOrEqual(0.62);
-            expect(Number.isFinite(normal.getX(i) + normal.getY(i) + normal.getZ(i))).toBe(true);
+            expect(Math.hypot(normal.getX(i), normal.getY(i), normal.getZ(i))).toBeCloseTo(1, 5);
         }
         expect(geometry.getIndex().count % 3).toBe(0);
     });

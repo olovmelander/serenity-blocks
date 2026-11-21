@@ -406,6 +406,105 @@ describe('koi pond world: locks', () => {
 });
 
 describe('koi pond world: clears, chains and the four-line clear', () => {
+    it('returns the last ripple to the lantern-side flower and settles without a flash or a delayed cue', () => {
+        const { world, camera } = makeWorld();
+        const ripple = vi.spyOn(world.light, 'closingRipple');
+        const flare = vi.spyOn(world, 'swell');
+        world.resetSession();
+        world.gameOver();
+        const { runEndLily } = world;
+        const { flame } = world.garden.lantern;
+        const distances = world.flora.lilies.map((_, i) => {
+            const at = world.drift.lilyAt(i, {});
+            return Math.hypot(at.x - flame[0], at.z - flame[2]);
+        });
+        expect(distances[runEndLily]).toBe(Math.min(...distances));
+        run(world, camera, 1.8);
+        const radii = ripple.mock.calls.map(([, , radius]) => radius);
+        expect(radii.at(-1)).toBeLessThan(radii[0] * 0.5);
+        run(world, camera, 1.3);
+        expect(world.lilies.openness[runEndLily]).toBe(1);
+        expect(world.lilies.heart[runEndLily]).toBeGreaterThan(1);
+        expect(world.queue).toHaveLength(0);
+        expect(flare).not.toHaveBeenCalled();
+        run(world, camera, 5);
+        expect(world.runEndLily).toBe(-1);
+        expect(world.getState().lanternLilyWarmth).toBe(0);
+    });
+
+    it('honors reduced motion at run end and cancels a new farewell even before its first frame', () => {
+        const { world, camera } = makeWorld();
+        const ripple = vi.spyOn(world.light, 'closingRipple');
+        world.setReducedMotion(true);
+        world.gameOver();
+        run(world, camera, 3);
+        expect(ripple).not.toHaveBeenCalled();
+        expect(world.runEndWarmth).toBe(1);
+        world.resetSession();
+        world.gameOver();
+        world.onLock({ rows: [18] });
+        run(world, camera, 3);
+        expect(world.getState().lanternLilyWarmth).toBe(0);
+        expect(world.runEndLily).toBe(-1);
+    });
+
+    it('stages a sip, paired fans and three travelling skips beside the well', () => {
+        const { world, camera } = makeWorld();
+        const crest = vi.spyOn(world.spray, 'crest');
+        for (const lines of [1, 2, 3]) {
+            world.onClear({ lines });
+            run(world, camera, 0.55);
+            const lips = crest.mock.calls;
+            expect(lips).toHaveLength(lines);
+            if (lines === 2) {
+                expect(lips[0][0] * lips[1][0]).toBeLessThan(0);
+                expect(lips[0][2].rgb).not.toEqual(lips[1][2].rgb);
+            }
+            if (lines === 3) {
+                expect(lips[2][1]).toBeGreaterThan(lips[0][1] + 0.5);
+                expect(lips[2][2].lift).toBeGreaterThan(lips[0][2].lift);
+            }
+            crest.mockClear();
+        }
+    });
+
+    it('keeps the four-line hush gentle when flashing is reduced, with both water crowns intact', () => {
+        const { world, camera } = makeWorld();
+        vi.stubGlobal('window', { settings: { reduceFlashing: true } });
+        try {
+            const crest = vi.spyOn(world.spray, 'crest');
+            world.onClear({ lines: 4 });
+            run(world, camera, HUSH_HOLD * 0.8);
+            expect(world.light.u.breath.value).toBeGreaterThan(0.92);
+            run(world, camera, 0.3);
+            expect(crest.mock.calls.filter(([, , shape]) => shape.lobes === 8)).toHaveLength(2);
+        } finally {
+            vi.unstubAllGlobals();
+        }
+    });
+
+    it('draws and uploads only living droplets, including emissions before the next simulation tick', () => {
+        const { world } = makeWorld();
+        const { spray } = world;
+        const { version } = spray.buffer;
+        spray.commit();
+        expect(spray.geometry.instanceCount).toBe(0);
+        expect(spray.buffer.version).toBe(version);
+        spray.emit({
+            x: 1, z: 0, n: 3, life: [0.05, 0.05],
+        });
+        spray.emit({
+            x: 2, z: 0, n: 2, life: [1.0, 1.0],
+        });
+        spray.commit();
+        expect(spray.geometry.instanceCount).toBe(5);
+        spray.step(0.08);
+        spray.commit();
+        expect(spray.geometry.instanceCount).toBe(2);
+        expect(spray.buffer.updateRanges[0].count).toBe(2 * spray.buffer.stride);
+        expect(spray.data[0]).toBeCloseTo(spray.px[3]);
+    });
+
     const LINES = [[1, 1], [2, 2], [3, 3]];
     it.each(LINES)('sends %s koi over the water for %s lines, a lily a line, more light', (lines, flights) => {
         const { camera, world } = makeWorld('High');
@@ -1242,9 +1341,13 @@ describe('koi pond tiers', () => {
         const wakes = new Float32Array((surface.wakeSlots + 4) * WAKE_STRIDE).fill(0.5);
         expect(() => surface.setWakes(wakes, surface.wakeSlots + 4)).not.toThrow();
         expect(surface.wakeData).toHaveLength(surface.wakeSlots);
+        expect(surface.u.wakeCount.value).toBe(surface.wakeSlots);
+        surface.setWakes(wakes, 2);
+        expect(surface.u.wakeCount.value).toBe(2);
         // One step: source one target, draw the other, swap, advance the clock by a sixtieth.
         surface.stepOnce(renderer);
         expect(drawn).toEqual([[surface.stepQuad, surface.targets[1]]]);
+        expect(surface.u.plungerCount.value).toBe(PLUNGER_SLOTS);
         expect(surface.read).toBe(1);
         expect(surface.steps).toBe(1);
         expect(surface.simTime).toBeCloseTo(5 + SIM_STEP, 12);
@@ -1437,6 +1540,7 @@ describe('koi pond world: play builds instead of popping', () => {
         const leap = vi.spyOn(world.school, 'leap');
         const ring = vi.spyOn(world.light, 'ring');
         // As the director hands it on: a crown, no lines.
+        const water = vi.spyOn(world.spray, 'crest');
         world.onClear({
             rows: [], lines: 0, perfect: true, crown: true, combo: 1,
         });
@@ -1458,6 +1562,9 @@ describe('koi pond world: play builds instead of popping', () => {
         // ...under a rose ring (not one more gold one), and every lily blazes.
         expect(ring.mock.calls.some(([, , , , rgb]) => rgb[2] / rgb[0] > 0.3)).toBe(true);
         expect(world.getState().liliesOpen).toBe(world.getState().lilies);
+        const corollas = water.mock.calls.filter(([, , shape]) => shape.lobes === 5);
+        expect(corollas).toHaveLength(world.lily.count);
+        expect(new Set(corollas.map(([x]) => x.toFixed(3))).size).toBe(world.lily.count);
     });
 
     it('shows a twist that cleared nothing: one koi turns over at the surface under a rose swirl', () => {

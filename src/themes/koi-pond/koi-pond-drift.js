@@ -26,7 +26,7 @@
  * (writePads, writeLeaves, writeLilies).
  */
 import {
-    POND, approach, clamp, clamp01, groundHeight, hash2, waterDepth,
+    POND, TAU, approach, clamp, clamp01, groundHeight, hash2, waterDepth,
 } from './koi-pond-core.js';
 
 export const KIND_PAD = 0;
@@ -145,6 +145,9 @@ export class FloatDrift {
         const f32 = () => new Float32Array(n);
         // What each thing is.
         this.kind = new Uint8Array(n);
+        this.falls = [];
+        this.airborne = new Uint8Array(n);
+        this.landings = [];
         this.radius = f32();
         this.anchorX = f32();
         this.anchorZ = f32();
@@ -185,6 +188,11 @@ export class FloatDrift {
         });
         leaves.forEach((leaf, k) => {
             const i = this.padCount + k;
+            if (leaf.fall) {
+                this.falls.push({
+                    ...leaf.fall, i, slot: k, age: 0,
+                });
+            }
             this.kind[i] = KIND_LEAF;
             this.radius[i] = leaf.size * 0.5;
             this.anchorX[i] = leaf.x;
@@ -240,6 +248,11 @@ export class FloatDrift {
                 this.homeZ[i] = this.anchorZ[i];
                 this.x[i] = this.anchorX[i] + at.x;
                 this.z[i] = this.anchorZ[i] + at.z;
+                // A loop near the curved bank can start on land. Its planted anchor is in water.
+                if (waterDepth(this.x[i], this.z[i]) < FEEL[KIND_LEAF].depth) {
+                    this.x[i] = this.anchorX[i];
+                    this.z[i] = this.anchorZ[i];
+                }
                 // (The turn it had drifted to under the old clock-driven loop.)
                 this.turn[i] = this.baseTurn[i] + time * 0.05 * (this.rate[i] - 0.85);
             } else {
@@ -265,6 +278,7 @@ export class FloatDrift {
         });
         this.pulseCursor = 0;
         this.counts = { pulses: 0, nibbles: 0 };
+        this.updateFalls(0);
         // A leaf whose loop starts it under a pad or against a rock is settled at its rim now,
         // so the first frame after a seek shows nothing jump.
         for (let k = 0; k < 6; k += 1) this.keepApart(true);
@@ -275,6 +289,21 @@ export class FloatDrift {
     /** Reduced motion calms every jolt (the drift itself is slow enough to keep). */
     setMotion(motion = 1) {
         this.motion = clamp01(Number.isFinite(motion) ? motion : 1);
+        this.updateFalls(0);
+    }
+
+    /** Each flight and its landing are on the drift's clock, including after a seek. */
+    updateFalls(dt) {
+        this.landings.length = 0;
+        for (const fall of this.falls) {
+            fall.age = (this.time + fall.offset) % fall.period;
+            this.airborne[fall.i] = this.motion > 0 && fall.age < fall.duration ? 1 : 0;
+            if (this.motion > 0 && fall.age >= fall.duration && fall.age - dt < fall.duration) {
+                this.landings.push(fall.i);
+                this.dipV[fall.i] = -0.06;
+                this.wet[fall.i] = 0.57;
+            }
+        }
     }
 
     /** The front of plunge `p` still carries this much push at `time` (0 once spent). */
@@ -344,6 +373,7 @@ export class FloatDrift {
         let best = -1;
         let bestGap = 0.12 + length * 0.06;
         for (let i = 0; i < this.count; i += 1) {
+            if (this.airborne[i]) continue;
             const dx = this.x[i] - x;
             const dz = this.z[i] - z;
             if (Math.abs(dx) > 1 || Math.abs(dz) > 1) continue;
@@ -418,6 +448,7 @@ export class FloatDrift {
     step(dt) {
         if (!(dt > 0) || this.count === 0) return;
         this.time += dt;
+        this.updateFalls(dt);
         const t = this.time;
         const { env } = this;
         const calm = 1 - clamp01(env.still);
@@ -749,6 +780,24 @@ export class FloatDrift {
     /** Each fallen leaf or petal, the same eight numbers. */
     writeLeaves(out, stride = 8) {
         for (let k = 0; k < this.leafCount; k += 1) this.writeBody(out, k * stride, this.padCount + k);
+        if (this.motion === 0) return;
+        for (const fall of this.falls) {
+            const { i, age, duration } = fall;
+            const o = fall.slot * stride;
+            if (age < duration) {
+                const t = age / duration;
+                const sail = Math.sin(t * Math.PI);
+                const phase = t * TAU * 1.4 + this.phase[i];
+                out[o] = fall.startX + (this.x[i] - fall.startX) * t + sail * Math.sin(phase) * 0.21;
+                out[o + 1] = fall.startZ + (this.z[i] - fall.startZ) * t + sail * Math.cos(phase) * 0.15;
+                out[o + 2] += (1 - t) * TAU * 1.2;
+                out[o + 3] += fall.height * (1 - t ** 1.15) + sail * Math.cos(phase) * 0.09;
+                out[o + 7] = sail * Math.sin(phase * 1.3) * 1.48;
+            } else if (age > fall.period - 1.6) {
+                // The waterlogged leaf sinks out of sight before its slot returns to the canopy.
+                out[o + 3] -= 0.5 * ((age - fall.period + 1.6) / 1.6) ** 2;
+            }
+        }
     }
 
     writeBody(out, o, i) {
