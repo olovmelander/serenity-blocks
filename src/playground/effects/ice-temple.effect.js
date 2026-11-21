@@ -12,7 +12,7 @@
  *   statsHud=0               with board=1: board only, no HUD mock
  *   combo=<n>                hold a combo of n (the temple's resonance)
  *   level=<n>                level n's step on top of the clock's aurora
- *   event=lock|drop|clear|quad|twist|perfect|levelUp   fire a gameplay event...
+ *   event=lock|drop|clear|quad|spin|twist|cascade|b2b|perfect|crown|levelUp|gameOver   fire a gameplay event...
  *   eventAge=<s>             ...and show it <s> seconds later (lines=<n>, row=<r>, u=<0..1>,
  *                            color=<hex>)
  *   demo=1                   live only: play a looping gameplay script
@@ -30,6 +30,11 @@ import { IceTempleWorld } from '../../themes/ice-temple/ice-temple-world.js';
 import { IceTemplePost, POST_LOOK } from '../../themes/ice-temple/ice-temple-post.js';
 import { readLayoutRects } from '../../themes/ice-temple/ice-temple-composition.js';
 
+import { ICE_TEMPLE_TETROMINOS } from '../../themes/ice-temple/ice-temple-tetrominos.js';
+import { mountSoloWellPreview } from '../solo-well-preview.js';
+
+const PIECE_COLORS = ['S', 'O', 'T', 'I', 'Z', 'L', 'J'].map((key) => ICE_TEMPLE_TETROMINOS.colors[key]);
+
 export const meta = {
     id: 'ice-temple',
     title: 'Ice Temple (full world)',
@@ -40,48 +45,6 @@ function num(params, key, fallback = 0) {
     const v = Number.parseFloat(params.get(key));
     return Number.isFinite(v) ? v : fallback;
 }
-
-const BOARD_PX = 'min(clamp(220px, 22vw, 300px), (100vh - 250px) / 2)';
-
-/** A stand-in for the real solo layout (public/styles/main.css) with the real class names. */
-function mountBoardOverlay(withHud) {
-    const root = document.createElement('div');
-    root.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:5';
-    const card = document.createElement('div');
-    card.className = 'player-card';
-    card.dataset.player = 'solo';
-    card.style.cssText = [
-        'position:absolute', 'left:50%', 'top:50%',
-        `width:calc(${BOARD_PX} * 1.19)`,
-        `height:calc(2 * ${BOARD_PX} + 158px)`,
-        'transform:translate(-50%, -50%)', 'background:rgba(21,26,35,0.866)',
-        'border:1px solid rgba(139,92,246,0.45)', 'border-radius:20px',
-    ].join(';');
-    const board = document.createElement('div');
-    board.id = 'single-player-game-canvas';
-    board.style.cssText = [
-        'position:absolute', 'left:50%', 'bottom:24px', `width:calc(${BOARD_PX})`, `height:calc(2 * ${BOARD_PX})`,
-        'transform:translateX(-50%)', 'border:1px solid rgba(255,255,255,0.08)',
-    ].join(';');
-    card.append(board);
-    root.append(card);
-    if (withHud) {
-        const hud = document.createElement('div');
-        hud.className = 'single-player-stats-bar';
-        hud.style.cssText = [
-            'position:absolute', 'top:25%', 'height:50%',
-            'left:calc(50% + min(max(300px, min(35vw, 400px)), (100vh - 200px) / 2) / 2 + 60px)',
-            'width:140px',
-            'background:rgba(14,11,26,0.8)', 'border:1px solid rgba(150,110,255,0.25)', 'border-radius:10px',
-        ].join(';');
-        root.append(hud);
-    }
-    document.body.appendChild(root);
-    return root;
-}
-
-/** The game's piece colours (ice-temple-tetrominos.js). */
-const PIECE_COLORS = [0x7fe8ff, 0xe8fcff, 0xb5c7ff, 0x7cf3c9, 0xc0a7ff, 0x5ba8dd, 0xf2d5b0];
 
 /** A looping script of locks and clears for the live demo (seconds into the loop). */
 const DEMO_LOOP = 34;
@@ -130,8 +93,10 @@ export function create({
         falseColor: params.get('falseColor') === '1',
     });
     if (noPost) renderer.toneMapping = THREE.AgXToneMapping;
-    const overlay = params.get('board') === '1' ? mountBoardOverlay(params.get('statsHud') !== '0') : null;
+    const overlay = params.get('board') === '1'
+        ? mountSoloWellPreview('ice-temple', ICE_TEMPLE_TETROMINOS, params.get('statsHud') !== '0') : null;
 
+    world.setReducedMotion(params.get('reducedMotion') === '1');
     const pointer = { x: num(params, 'px'), y: num(params, 'py') };
     const iconPose = params.get('icon') === '1';
     const size = new THREE.Vector2(1, 1);
@@ -147,6 +112,14 @@ export function create({
         post?.setCalmRects(rects ? [...rects.cards, rects.hud].filter(Boolean) : [], rects ? 1 : 0);
     };
     syncViewport();
+    // The solo stylesheet may arrive after the first DOM measurement on a cold visit.
+    const styleLink = overlay?.querySelector('link');
+    const layoutReady = styleLink && !styleLink.sheet ? new Promise((resolve) => {
+        styleLink.addEventListener('load', resolve, { once: true });
+        styleLink.addEventListener('error', resolve, { once: true });
+    }).then(() => {
+        if (overlay.isConnected) syncViewport();
+    }) : null;
 
     const sim = (time, delta) => ({
         time, delta, pointerX: pointer.x, pointerY: pointer.y,
@@ -191,6 +164,11 @@ export function create({
                 rows: [row, row - 1], u, hardDrop: true, color: eventColor,
             });
         } else if (eventName === 'clear') world.onClear({ rows: bottom(lines), lines });
+        else if (eventName === 'spin') world.onSpin();
+        else if (eventName === 'cascade') world.onClear({ rows: bottom(lines), lines, cascade: 3 });
+        else if (eventName === 'b2b') world.onClear({ rows: bottom(lines), lines, b2b: true });
+        else if (eventName === 'crown') world.onCrown();
+        else if (eventName === 'gameOver') world.onGameOver();
         else if (eventName === 'quad') world.onClear({ rows: bottom(4), lines: 4 });
         else if (eventName === 'twist') world.onClear({ rows: bottom(2), lines: 2, twist: true });
         else if (eventName === 'perfect') world.onClear({ rows: bottom(4), lines: 4, perfect: true });
@@ -255,6 +233,13 @@ export function create({
         },
         seek(time) {
             seekTo(time);
+        },
+        async renderAsync() {
+            if (layoutReady) {
+                await layoutReady;
+                if (params.has('t')) seekTo(num(params, 't'));
+            }
+            this.render();
         },
         render() {
             if (post) post.render();

@@ -238,7 +238,8 @@ export default class IceTempleTheme extends BaseTheme {
                 lock: (c) => this.world?.onLock(c),
                 clear: (c) => this.world?.onClear(c),
                 combo: (n, player) => this.reportCombo(n, player),
-                levelUp: (level) => this.world?.levelUp(level),
+                levelUp: (level, options) => this.world?.levelUp(level, options),
+                echo: () => this.world?.onEcho(),
                 crown: (c) => this.world?.onCrown(c),
                 spin: (c) => this.world?.onSpin(c),
             },
@@ -353,7 +354,10 @@ export default class IceTempleTheme extends BaseTheme {
             }),
         );
         this.registerEventListener(window, 'settingsChanged', (p) => this.handleSettingsChanged(p));
-        this.registerEventListener(window, 'gameOver', () => this.resetSession());
+        this.registerEventListener(window, 'gameOver', () => {
+            this.resetSession();
+            if (playing() && this.director?.enabled) this.world?.onGameOver();
+        });
 
         const resetPointer = () => {
             this.pointer.x = 0;
@@ -496,7 +500,7 @@ export default class IceTempleTheme extends BaseTheme {
         this.modeManager = manager;
         const relayout = () => this.scheduleLayoutReads();
         this.eventUnsubscribers.push(
-            manager.on('modeStarted', relayout),
+            manager.on('modeStarted', () => this.resetSession()),
             manager.on('modeActivated', relayout),
             manager.on('modeStopped', () => this.resetSession()),
         );

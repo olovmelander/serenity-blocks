@@ -8,21 +8,21 @@ export const ICE_TEMPLE_TETROMINOS = {
     version: 1,
 
     colors: {
-        I: '#7cf3c9', // Jade frost
-        O: '#e8fcff', // Snow halo
-        T: '#b5c7ff', // Moonlit indigo
-        S: '#7fe8ff', // Glacier vein
-        Z: '#c0a7ff', // Aurora violet
-        J: '#f2d5b0', // Lantern gold
-        L: '#5ba8dd', // Deep icewall
+        I: '#67e7b5', // Jade frost
+        O: '#e8f5ff', // Snow halo
+        T: '#9faaff', // Moonlit indigo
+        S: '#56d8ee', // Glacier vein
+        Z: '#df9edc', // Rose fluorite
+        J: '#f0c28a', // Lantern gold
+        L: '#669ddd', // Deep icewall
         GARBAGE: '#0f1b27', // Frozen basalt
     },
 
     renderMode: 'glow',
 
     effects: {
-        glowRadius: 13,
-        glowIntensity: 0.85,
+        glowRadius: 8,
+        glowIntensity: 0.58,
         glowColor: '#b4f5ff',
 
         outline: true,
@@ -31,26 +31,26 @@ export const ICE_TEMPLE_TETROMINOS = {
 
         pulse: true,
         pulseSpeed: 0.035,
-        pulseAmplitude: 0.26,
+        pulseAmplitude: 0.09,
 
         shimmer: true,
         shimmerSpeed: 0.055,
-        shimmerIntensity: 0.23,
+        shimmerIntensity: 0.12,
 
         trails: true,
         trailLength: 0.22,
-        trailOpacity: 0.34,
+        trailOpacity: 0.19,
     },
 
     rendererOverrides: {
         canvas: {
-            glowRadius: 10,
-            glowIntensity: 0.78,
+            glowRadius: 7,
+            glowIntensity: 0.55,
             outlineWidth: 1.5,
         },
         phaser: {
-            glowRadius: 15,
-            glowIntensity: 0.92,
+            glowRadius: 9,
+            glowIntensity: 0.64,
             outlineWidth: 2.1,
         },
     },

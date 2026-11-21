@@ -195,6 +195,7 @@ export function createTempleUniforms(textures) {
          * so the curtains fold, flow and ripple faster the longer the hands stay quick.
          */
         auroraClock: uniform(0),
+        polarWeather: uniform(new THREE.Vector4()),
         /**
          * The Great Crystal: where it stands, and its own glow (the crystal itself, and its image in
          * every facet and in the lake): colour and power (1 at rest).

@@ -54,6 +54,7 @@
  */
 
 import * as THREE from 'three/webgpu';
+import { flashScale } from '../../utils/photosensitivity.js';
 import { applyCameraBreath } from '../shared/camera-breath.js';
 import { GameplaySurge, Swell, softCeiling } from '../shared/gameplay-surge.js';
 import { easeStep, wheelAt } from '../shared/mood-clock.js';
@@ -91,10 +92,12 @@ import { buildPlan } from './ice-temple-plan.js';
 import { tierFor } from './ice-temple-quality.js';
 import { createArchitecture } from './ice-temple-architecture.js';
 import { createFloor } from './ice-temple-floor.js';
-import { createAurora, createMountains, createSky } from './ice-temple-sky.js';
+import {
+    createAurora, createMountains, createSky, setPolarWeather,
+} from './ice-temple-sky.js';
 import { createDust, createMist, createSnow } from './ice-temple-atmosphere.js';
 import {
-    createChips, createCrown, createRowBeams, createSnowflake,
+    createCeremonialIce, createChips, createCrown, createRowBeams, createSnowflake,
 } from './ice-temple-fx.js';
 import {
     boardFor, boardPoint, cardUnion, fallbackLayout,
@@ -154,7 +157,8 @@ const DIAMOND = Object.freeze([0.86, 0.95, 1.0]);
 const lerp = (a, b, k) => a + (b - a) * k;
 
 const PARTS = [
-    'sky', 'mountains', 'aurora', 'architecture', 'floor', 'crown', 'flake', 'mist', 'snow', 'dust', 'chips', 'beams',
+    'sky', 'mountains', 'aurora', 'architecture', 'floor', 'crown', 'flake',
+    'mist', 'snow', 'dust', 'chips', 'beams', 'ceremony',
 ];
 
 const paletteRGB = (palette) => ({
@@ -317,6 +321,7 @@ export class IceTempleWorld {
         this.crown?.reset();
         this.beams?.reset();
         this.flake?.reset();
+        this.ceremony?.reset();
         if (this.u) {
             for (let i = 0; i < LOCK_SLOTS; i++) this.u.lockA[i].value.set(0, 0, -100, 0);
             for (let i = 0; i < CLEAR_SLOTS; i++) this.u.clearA[i].value.set(-100, 1, 0, 0);
@@ -331,7 +336,7 @@ export class IceTempleWorld {
         this.u = u;
         const { tier, plan } = this;
 
-        this.addPart('sky', createSky(u));
+        this.addPart('sky', createSky(u, tier.curtains >= 3));
         this.addPart('mountains', createMountains(u));
         this.addPart('aurora', createAurora(u, tier.curtains));
         this.addPart('architecture', createArchitecture(u, plan, {
@@ -363,6 +368,10 @@ export class IceTempleWorld {
         this.addPart('chips', this.chips, { reflected: false });
         this.beams = createRowBeams(u);
         this.addPart('beams', this.beams, { reflected: false });
+
+        this.ceremony = createCeremonialIce(u);
+        this.addPart('ceremony', this.ceremony, { reflected: false });
+        this.ceremony.setLayout(this.layout);
 
         this.applyPalette(1);
         this.scene.add(this.root);
@@ -398,6 +407,7 @@ export class IceTempleWorld {
         if (Number.isFinite(aspect) && aspect > 0) this.aspect = aspect;
         this.layoutLive = Boolean(rects);
         this.layout = rects || fallbackLayout(this.aspect * 1000, 1000);
+        this.ceremony?.setLayout(this.layout);
     }
 
     setReducedMotion(reduced) {
@@ -694,7 +704,8 @@ export class IceTempleWorld {
      * wave burns whiter and brighter, rings with one more front and flares the crystal harder.
      */
     onClear({
-        rows = null, lines = 1, twist = false, perfect = false, b2b = false, cascade = 1, combo = 0, player = 0,
+        rows = null, lines = 1, twist = false, perfect = false, b2b = false,
+        cascade = 1, combo = 0, player = 0, screen = null,
     } = {}) {
         const { u: uniforms } = this;
         if (!uniforms) return;
@@ -735,6 +746,13 @@ export class IceTempleWorld {
         this.kickSwell.hit(kick, birth + CLEAR_TRAVEL * 0.93);
         this.flashSwell.hit(kick * 0.5 * (1 - 0.5 * this.heat.level), birth + CLEAR_TRAVEL * 0.93);
         this.arriveSwell.hit(0.45 + 0.2 * n + 0.1 * Math.min(4, deeper), birth + ARRIVE_LEAD);
+        // Each side aisle has room for one figure. The most significant accent owns its silhouette.
+        let figure;
+        if (perfect) figure = 'perfect';
+        else if (twist) figure = 'twist';
+        else if (deeper > 0) figure = 'cascade';
+        else if (n === 3) figure = 'triple';
+        if (figure) this.ceremony.fire(figure, birth, strength, this.reducedMotion);
         if (b2b) this.echo(birth, fronts, strength, n);
         if (quad) {
             // The temple holds its breath: fully from cold; the hotter play already runs, the
@@ -752,6 +770,21 @@ export class IceTempleWorld {
             lines: n, cascade: depth, combo, twist, perfect, b2b,
         }, birth);
         this.counts.clears += 1;
+        // In Serenity the clear can originate from a touch anywhere over the lake.
+        if (screen && Number.isFinite(screen.x) && Number.isFinite(screen.y)) {
+            const strike = this.screenToIce(clamp01(screen.x), Math.max(clamp01(screen.y), this.horizonY() + 0.08));
+            this.chips.emit({
+                x: strike.x,
+                z: strike.z,
+                n: Math.max(4, Math.round(this.chips.count / 26)),
+                rgb,
+                time: this.time,
+                spread: [2, 6],
+                up: [1, 3.5],
+                life: [0.65, 1.3],
+                size: 0.04,
+            });
+        }
 
         // The cleared rows fire out of the board.
         const board = boardFor(this.layout, player);
@@ -816,6 +849,7 @@ export class IceTempleWorld {
     onCrown() {
         if (!this.u) return;
         const at = this.time;
+        this.ceremony.fire('perfect', at, 1.35, this.reducedMotion);
         const leaves = at + CROWN_DELAY;
         this.stillSwell.hit(1, at);
         this.callFlake(at + 0.05, true);
@@ -834,10 +868,20 @@ export class IceTempleWorld {
     /** A twist that cleared nothing: the air gives a small turn and the Great Crystal glints. */
     onSpin() {
         if (!this.u) return;
+        this.ceremony.fire('twist', this.time, 0.6, this.reducedMotion);
         if (!this.reducedMotion) this.swirlRate = Math.max(this.swirlRate, 1.1);
         this.flareSwell.hit(0.3, this.time);
         this.kickSwell.hit(0.12, this.time);
         this.surge.spin(this.time);
+    }
+
+    /** A back-to-back reported without a simultaneous clear, including Serenity's gestures. */
+    onEcho() {
+        if (this.u) this.echo(this.time, 2, 0.9, 2);
+    }
+
+    onGameOver() {
+        this.ceremony?.fire('ending', this.time, 0.82, this.reducedMotion);
     }
 
     /** The true combo changed (0 = the chain broke). */
@@ -859,6 +903,7 @@ export class IceTempleWorld {
             this.flareSwell.hit(0.7, this.time);
             this.flashSwell.hit(0.16, this.time);
             this.surge.levelUp(this.time);
+            this.ceremony?.fire('level', this.time, 1, this.reducedMotion);
         }
     }
 
@@ -926,9 +971,10 @@ export class IceTempleWorld {
         const still = Math.min(1, this.stillSwell.valueAt(t));
         // The hush: in over a breath, held, let go; as deep as play was cold when the quad came.
         const hushAge = t - this.hushAt;
-        const hush = hushAge >= 0 && hushAge < HUSH_HOLD + 0.1
+        const breath = hushAge >= 0 && hushAge < HUSH_HOLD + 0.1
             ? smooth(0, 0.04, hushAge) * (1 - smooth(HUSH_HOLD - 0.02, HUSH_HOLD + 0.08, hushAge)) * this.hushDepth
             : 0;
+        const hush = breath * flashScale();
         this.applyPalette(approach(0.9, dt));
 
         // ── The snow ──
@@ -941,7 +987,7 @@ export class IceTempleWorld {
         // The lift's mean over this frame (exact for the approach), so any frame rate falls alike.
         const meanLift = dt > 0 ? liftTarget + (this.lift - liftTarget) * (eased / (liftRate * dt)) : this.lift;
         this.lift += (liftTarget - this.lift) * eased;
-        const held = (1 - hush) * (1 - still);
+        const held = (1 - breath) * (1 - still);
         const fall = this.reducedMotion ? SNOW_FALL : SNOW_FALL * (1 - meanLift) * held;
         this.snowFall += fall * dt;
         this.snowDrift += (0.42 + this.overdrive * 0.5 + F * 0.25 * calm) * held * dt;
@@ -957,6 +1003,7 @@ export class IceTempleWorld {
 
         // ── Uniforms ──
         u.time.value = t;
+        setPolarWeather(u.polarWeather.value, t);
         u.auroraClock.value = this.auroraClock;
         u.ambient.value = 1 - hush * 0.84;
         // The heat is spent on colour, not on white: the aurora blazes, the colonnade's standing
@@ -1129,6 +1176,7 @@ export class IceTempleWorld {
             counts: { ...this.counts },
             hush: this.time < this.hushUntil,
             flake: this.time < this.flakeUntil,
+            weather: this.u?.polarWeather.value.toArray(),
             snowFall: this.snowFall,
             swirl: this.swirl,
             frost: this.frost,
@@ -1162,6 +1210,7 @@ export class IceTempleWorld {
         this.crown = null;
         this.beams = null;
         this.flake = null;
+        this.ceremony = null;
         this.noise = null;
         this.u = null;
         this._camera = null;

@@ -2,6 +2,7 @@ import {
     describe, expect, it, vi,
 } from 'vitest';
 import * as THREE from 'three/webgpu';
+import { holdFlashing } from '../../src/utils/photosensitivity.js';
 import {
     CROWN_RADIUS_MAX, ECHO_DELAY, FLAKE_DISTANCE, ICE_TEMPLE_PARTS, IceTempleWorld, RESONANCE_STEP, REST_RIG,
     SNOW_FALL, SNOW_TURN, fovForAspect,
@@ -293,6 +294,60 @@ describe('ice temple world: locks', () => {
 });
 
 describe('ice temple world: clears, resonance and the four-line hush', () => {
+    it('reserves the side-aisle figures for their gameplay accents and carries the motion preference', () => {
+        const { world } = makeWorld();
+        const fire = vi.spyOn(world.parts.ceremony, 'fire');
+        const now = world.time;
+        try {
+            world.levelUp(3, { silent: true });
+            world.onClear({ lines: 1 });
+            world.onClear({ lines: 2 });
+            world.onClear({ lines: 4 });
+            expect(fire).not.toHaveBeenCalled();
+
+            world.onClear({ lines: 3 });
+            world.onClear({ lines: 3, cascade: 2 });
+            world.onClear({ lines: 3, cascade: 2, twist: true });
+            world.onSpin();
+            world.onClear({ lines: 3, cascade: 2, twist: true, perfect: true });
+            world.setReducedMotion(true);
+            world.onCrown();
+            world.levelUp(4);
+            world.onGameOver();
+            const cues = fire.mock.calls.map(([figure, time, , reducedMotion]) => [figure, time, reducedMotion]);
+            expect(cues).toEqual([
+                ['triple', now, false], ['cascade', now, false], ['twist', now, false], ['twist', now, false],
+                ['perfect', now + HUSH_HOLD, false], ['perfect', now, true], ['level', now, true], ['ending', now, true],
+            ]);
+        } finally {
+            fire.mockRestore();
+            world.dispose();
+        }
+    });
+
+    it('keeps the snow suspended during a reduced-flashing hush and falling under Reduce motion', () => {
+        const { world, camera } = makeWorld();
+        holdFlashing(true);
+        try {
+            world.onClear({ lines: 4 });
+            run(world, camera, HUSH_HOLD * 0.3);
+            const snow = world.snowFall;
+            run(world, camera, HUSH_HOLD * 0.25);
+            expect(world.getState().hush).toBe(true);
+            expect(world.u.ambient.value).toBeGreaterThan(0.9);
+            expect(world.u.heartPower.value).toBeGreaterThan(0.9);
+            expect(world.snowFall).toBe(snow);
+
+            world.setReducedMotion(true);
+            run(world, camera, HUSH_HOLD * 0.2);
+            expect(world.getState().hush).toBe(true);
+            expect(world.snowFall - snow).toBeCloseTo(HUSH_HOLD * 0.2 * SNOW_FALL, 6);
+        } finally {
+            holdFlashing(false);
+            world.dispose();
+        }
+    });
+
     it('sends a wave with one front per line and fires the cleared rows out of the card', () => {
         const { world } = makeWorld('High');
         world.onClear({ rows: [19, 18], lines: 2 });
@@ -548,6 +603,25 @@ describe('ice temple world: the aurora turns by the clock', () => {
         world.seek(time);
         world.update({ time, delta: 0 }, camera);
     };
+
+    it('changes the weather during a single palette and restores its exact phase on seek', () => {
+        const { world, camera } = makeWorld();
+        try {
+            seekTo(world, camera, 2);
+            const early = world.getState();
+            seekTo(world, camera, 30);
+            const later = world.getState();
+            expect(later.palette).toBe(early.palette);
+            expect(distance(later.weather, early.weather)).toBeGreaterThan(0.25);
+            expect([...early.weather, ...later.weather].every((v) => v >= 0 && v <= 1)).toBe(true);
+            world.onClear({ lines: 4 });
+            run(world, camera, 2);
+            seekTo(world, camera, 2);
+            expect(world.getState().weather).toEqual(early.weather);
+        } finally {
+            world.dispose();
+        }
+    });
 
     it('walks through every palette with no level-up, each seen pure for its hold', () => {
         const { camera, world } = makeWorld('Minimal');

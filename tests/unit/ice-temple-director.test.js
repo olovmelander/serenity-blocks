@@ -149,6 +149,22 @@ describe('ice temple director: intake', () => {
         expect(old.sink.clear).toHaveBeenCalledWith(expect.objectContaining({ lines: 1, perfect: true }));
     });
 
+    it('consumes a separately delivered back-to-back in its own frame', () => {
+        const sink = { echo: vi.fn(), clear: vi.fn() };
+        const director = new IceTempleDirector({ sink });
+        director.onB2B({ player: 2 });
+        director.flush();
+        expect(sink.echo).toHaveBeenCalledExactlyOnceWith({ player: 2 });
+        director.onLineClear({ player: 2, lineCount: 1 });
+        director.flush();
+        expect(sink.clear).toHaveBeenCalledWith(expect.objectContaining({ b2b: false }));
+        director.onB2B({ player: 2 });
+        director.onLineClear({ player: 2, lineCount: 4 });
+        director.flush();
+        expect(sink.echo).toHaveBeenCalledTimes(1);
+        expect(sink.clear).toHaveBeenLastCalledWith(expect.objectContaining({ b2b: true }));
+    });
+
     it('answers a twist that cleared nothing with a spin, not a clear', () => {
         const { director, calls } = makeDirector();
         director.onPieceLock({ piece: T });
@@ -242,6 +258,14 @@ describe('ice temple director: settings and resets', () => {
         director.flush();
         director.flush();
         expect(calls.levelUp).toEqual([4]);
+    });
+
+    it('advances the palette silently when reactions are disabled', () => {
+        const sink = { levelUp: vi.fn() };
+        const director = new IceTempleDirector({ sink, enabled: false });
+        director.onLevelUp({ level: 3 });
+        director.flush();
+        expect(sink.levelUp).toHaveBeenCalledExactlyOnceWith(3, { silent: true });
     });
 
     it('starts a new run with every slot free', () => {
