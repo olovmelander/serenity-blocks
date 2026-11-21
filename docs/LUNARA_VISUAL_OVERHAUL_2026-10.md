@@ -1,5 +1,7 @@
 # Lunara — the valley of twin moons
 
+The current artwork and its behaviour in play are documented in the [November 2026 audit and gallery](#november-2026-audit).
+
 Implemented 2026-10-05 on `feature/lunara-masterpiece`, with Three.js 0.186.1. A from-scratch
 rebuild: it replaces the earlier theme in full (the 2,900-line theme class, its fourteen
 material pairs with their GLSL twins, the compute motes, the pooled reaction particles, the post
@@ -270,3 +272,48 @@ four-tap blur. Captured on WebGPU at High at rest, through a held chain of five
 ([chain](lunara-captures/night-chain.jpg)) and a four-line clear; on WebGL2 at
 [Low](lunara-captures/night-low-webgl2.jpg) and Minimal; and upright at 430 × 852 on Medium: no
 console errors or warnings. Not measured: frame time. The theme icon still shows the earlier sky.
+
+## November 2026 audit
+
+The most successful part of the original frame was its composition. The oversized moon and its companion balance the smaller ringed planet across the board. The lake doubles those silhouettes, and a lock visibly carries the piece’s colour from the well into the landscape. The revision keeps those landmarks. All captures below use the game’s Lunara scene and post-processing. [Matched before and after at 20 seconds](lunara-captures/comparison-2026-11.jpg) · [Full valley](lunara-captures/valley-2026-11.jpg)
+
+| In the original frame | In the revised valley |
+| --- | --- |
+| At board size the great moon’s night side broke into speckles. The red companion repeated its terrain. | Broad highlands, terraced basins and ejecta carry through the lunar terminator into blue earthshine. The companion has iron-red plains of its own. Both turn under one sun. A single Blender-baked texture holds the two terrains and the lunar slopes. |
+| The gas giant admitted background stars through its shadow, and its rings looked painted on. | An opaque, banded globe cuts off the starfield. The near ring crosses the disc, a gap separates the ring bands, and the rings and globe cast shadows on each other. |
+| The purple starfield and repeated vertical bars of aurora gave few clues that time was passing. | The stars and dust belt turn together. The brighter stars have fine diffraction spikes. Mint and lavender curtains lean in different directions, with bright lower borders, deep folds and fine rays gathering along them. |
+| The mountains had a strong outline, but their facets and the spire bases shared one surface treatment. | Frost picks out planes on the upper ridges. Mineral seams run through darker facets and answer the passing waves. Broken shale around the spires gives the foreground shore weight. |
+| The tallest pink and violet spires read as long, uniformly lit rods. | Leaning rose quartz, amethyst and sapphire spires have uneven shoulders, bevelled edges, internal growth bands and a few sharp glints. Wider stones bracket the celestial bodies. A charged pillar releases light from its actual tip. |
+| Idle ripples blurred the reflected scene. At the two leanest tiers the moons became smooth discs on the water. | The still surface holds the skyline at rest. Ripples bend the reflected image around landings. Points of light travel along the stationary branching lakebed. Low and Minimal sample the actual globe colours and phases inside each reflected silhouette. |
+| Most nearby lights read as round particles. Bright grain and coloured fringes competed with the piece edges. | Shore flowers have petals and leaves. Teal spores have tilted seed bodies and paired filaments and drift in shared currents. The solo well, next queue and score use violet and mint edges around a dark field. Fine grain, lens fringe and piece glow are restrained. |
+
+The original five palettes still pass through amethyst, rose quartz, glacier, ember and ultraviolet. Each step lasts 100 seconds at rest, and gaining a level shifts the destination. Stars, moon longitudes, the companion’s orbit, curtains and water all have different periods. A sustained chain accelerates the orbit and air currents. Changing reduced motion mid-run preserves the current sky position. [The five phases in one run](lunara-captures/night-cycle-2026-11.jpg)
+
+### How the valley answers play
+
+| Moment | Visible response |
+| --- | --- |
+| Lock | A ring begins below the landing column. A wisp in the piece’s colour travels from its side of the well to a shoreline spire, which stores the light. |
+| Hard drop | A fan of splinters breaks the water at the impact. Three wisps carry the strike to neighbouring stones. |
+| Single, double and triple | A single sends one wave and a blade from the cleared row. A double sends two fronts and sprays from opposite shores in succession. A triple opens the moon’s veins and sends three staggered meteors across the sky. |
+| Cascade | Successive waves cross the water in different colours as older fronts fade. Deeper cascades extend the train and send a ring across the sky. |
+| Combo and chain break | An additional broken orbital arc marks each step past the first, up to the ring limit. The moon’s veins open as momentum builds. When the chain breaks the arcs fall away and the stones release their stored colours in a slow wave. |
+| Twist | A lineless twist turns the aurora and sends a small ring off the moon. A twist clear adds a stronger fold, a brighter ring and the cleared rows’ own light. |
+| Back-to-back | Two coral strands bridge the companion and the great moon. The companion brightens, advances along its orbit and sheds rose meteors. |
+| Four-line clear | A brief hush precedes the moonfire wave, a split-colour ring and braided pillars over the charged crystals. |
+| Perfect clear | A pearl-and-gold corona opens around the great moon, long streamers extend into the sky and a meteor shower crosses the valley. A perfect clear delivered after the last cascade crowns the existing wave once. |
+| Level up and game over | A new level lights the aurora’s edge as the palette crosses over. At game over the spores settle toward the lake, leaving a strip of moonlit water that fades over several seconds. |
+
+The real board drives the placement of lock wisps and row beams. The board and score panel also mask glare and grain. Frame-wide impulses respect Reduce Flashing. [Single-player game](lunara-captures/game-2026-11.jpg) · [Event gallery](lunara-captures/events-2026-11.jpg) · [Perfect-clear corona](lunara-captures/corona-2026-11.jpg)
+
+For a moving preview, use `/playground.html?effect=lunara&demo=1&hud=0&maxFps=30`. The 56-second sequence includes a back-to-back at 33 seconds, a perfect clear at 41 seconds and a level change at 45 seconds. To hold the corona, use `/playground.html?effect=lunara&t=20&event=perfect&locks=6&eventAge=1.28&hud=0&maxFps=30`. The picker artwork comes from the same scene through the icon lens. [Moon attribution and Blender bake](../src/themes/lunara/assets/ATTRIBUTION.md)
+
+### Render and gameplay checks
+
+The desktop captures cover all six quality tiers, WebGPU, forced WebGL2 and the individual event cues. A 390 × 844 browser viewport covers portrait framing. Two real single-player sessions exercised keyboard drops on High WebGPU and Low WebGL2. For the peak-brightness check, a test well had four rows each missing one cell. The final hard drop cleared all four, raised the score to 7,786 and triggered one clear and one corona. The next queue, score and “Clean canvas” message remained readable. [Perfect clear in the game](lunara-captures/game-perfect-2026-11.jpg)
+
+The Infinity run registered three keyboard hard drops beside its height ledger and tower map. A two-player local bot match registered both playfields and twenty locks, with no dropped background events. [Infinity and local multiplayer](lunara-captures/modes-2026-11.jpg)
+
+The game packaged the moon atlas and new picker icon, and the material tests built the shaders with both the WGSL and GLSL builders. The capture consoles recorded no shader warnings or GPU validation errors. Chrome on Windows reported its standard adapter-preference warning in the High in-game run. Device coverage was a desktop NVIDIA Blackwell GPU and emulated portrait dimensions.
+
+At High, the 1280 × 720 playground ran for 63 seconds with a 30 FPS cap and seed 13. Across the final 1,200 stored frame intervals, the median was **33.3 ms**, the 95th percentile was **34.5 ms** and the longest interval was **47.9 ms**. The 95th percentile for CPU update and render submission was **3.4 ms**. The renderer reported **0.35 ms** at the 95th percentile across 61 resolved GPU timestamp queries. The resting and perfect-clear frames both submitted **40 draws and 198,007 triangles**, including the mirror and post-processing. Fixed-time captures replay their lead-in on the CPU for every sample. The live sequence measures the normal update path. [Profile settings and measurements](lunara-captures/profile-2026-11.json)

@@ -241,13 +241,15 @@ describe('lunara world: the moon map', () => {
         vi.spyOn(THREE.TextureLoader.prototype, 'load').mockImplementation((url, onLoad) => onLoad(map));
         const { camera, world } = makeWorld('Low', { capture: false });
         const placeholder = world.moonMap.value;
+        expect(placeholder.wrapS).toBe(THREE.RepeatWrapping);
         expect(world.getState().mapReady).toBe(false);
         expect(world.mapFade.value).toBe(0);
         await expect(world.loadTextures()).resolves.toBe(true);
         expect(world.getState().mapReady).toBe(true);
         expect(world.moonMap.value).toBe(map);
         expect(world.moonMap.value).not.toBe(placeholder);
-        expect(map.colorSpace).toBe(THREE.SRGBColorSpace);
+        expect(map.colorSpace).toBe(THREE.NoColorSpace); // packed albedos and signed terrain slopes
+        expect(map.wrapS).toBe(placeholder.wrapS);
         expect(world.textures).toContain(map); // the world owns it now and disposes it
         let previous = world.mapFade.value;
         for (let i = 0; i < 600 && world.mapFade.value < 1; i++) {
@@ -628,8 +630,12 @@ describe('lunara world: locks', () => {
     it('hits harder and sends more wisps on a hard drop, and kicks the camera', () => {
         const soft = makeWorld('Low');
         const hard = makeWorld('Low');
+        const softSplinters = vi.spyOn(soft.world.shards, 'emit');
+        const hardSplinters = vi.spyOn(hard.world.shards, 'emit');
         soft.world.onLock({ u: 0.3 });
         hard.world.onLock({ u: 0.3, hardDrop: true });
+        expect(softSplinters).not.toHaveBeenCalledWith(expect.objectContaining({ time: soft.world.time }));
+        expect(hardSplinters).toHaveBeenCalledWith(expect.objectContaining({ time: hard.world.time }));
         expect(ringBornAt(hard.world, hard.world.time).place.w)
             .toBeGreaterThan(ringBornAt(soft.world, soft.world.time).place.w);
         expect(hard.world.kick).toBeGreaterThan(soft.world.kick);
@@ -1491,6 +1497,71 @@ describe('lunara world: the build-up', () => {
         expect(plain.world.getState().held).toBeGreaterThan(0);
         world.dispose();
         plain.world.dispose();
+    });
+
+    it('reserves the corona for a perfect clear delivered with or after its lines', () => {
+        const { world, camera } = makeWorld('Low');
+        for (const delayed of [true, false]) {
+            world.seek(10);
+            world.onClear({ lines: 4, perfect: !delayed });
+            run(world, camera, 0.36);
+            if (delayed) {
+                expect(world.u.skyEvent.value.z).toBe(0);
+                world.onClear({ lines: 0, perfect: true, crown: true });
+            }
+            run(world, camera, 0.6);
+            expect(world.u.skyEvent.value.z).toBeGreaterThan(0.5);
+            expect(world.counts.clears).toBe(1);
+            world.resetSession();
+            expect(world.u.skyEvent.value.lengthSq()).toBe(0);
+        }
+        world.dispose();
+    });
+
+    it('restores the sidereal sky, tides and both moon longitudes on a time seek', () => {
+        const { world, camera } = makeWorld('Minimal');
+        const pose = () => [
+            ...world.u.night.value.toArray(),
+            world.parts.moon.uniforms.turn.value,
+            world.parts.companion.uniforms.turn.value,
+        ];
+        const lens = (time) => {
+            world.seek(time);
+            world.update({ time, delta: 0 }, camera);
+            return pose();
+        };
+        const early = lens(20);
+        const late = lens(226);
+        expect(late).not.toEqual(early);
+        expect(late.slice(4).every((longitude) => longitude >= 0 && longitude < 1)).toBe(true);
+        expect(lens(20)).toEqual(early);
+        world.setReducedMotion(true);
+        world.update({ time: 20, delta: 0 }, camera);
+        expect(pose()).toEqual(early);
+        world.update({ time: 21, delta: 1 }, camera);
+        expect(world.u.night.value.toArray().slice(0, 2)).toEqual(early.slice(0, 2));
+        world.resetSession();
+        expect(world.weatherTime).toBeCloseTo(20.3);
+        expect(lens(226).slice(0, 2)).toEqual([1, 0]);
+        world.dispose();
+    });
+
+    it('answers a double from opposite shores and sends a trio of meteors on a triple', () => {
+        const { world } = makeWorld('Minimal');
+        const sprays = vi.spyOn(world.shards, 'emit');
+        const meteors = vi.spyOn(world.meteors, 'emit');
+        world.onClear({ lines: 1 });
+        expect(sprays).not.toHaveBeenCalled();
+        expect(meteors).not.toHaveBeenCalled();
+        world.onClear({ lines: 2 });
+        expect(sprays).toHaveBeenCalledTimes(2);
+        const [left, right] = sprays.mock.calls.map(([burst]) => burst);
+        expect(left.x).toBeLessThan(0);
+        expect(right.x).toBeGreaterThan(0);
+        expect(left.time).not.toBe(right.time);
+        world.onClear({ lines: 3 });
+        expect(meteors).toHaveBeenCalledWith(expect.objectContaining({ n: 3 }));
+        world.dispose();
     });
 
     it('builds each wave of a cascade on the last: brighter, in the next colour', () => {
