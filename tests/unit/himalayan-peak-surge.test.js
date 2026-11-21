@@ -12,6 +12,7 @@ import { HimalayanPeakWorld } from '../../src/themes/himalayan-peak/himalayan-pe
 import { HimalayanPeakDirector } from '../../src/themes/himalayan-peak/himalayan-peak-director.js';
 import { planMassif } from '../../src/themes/himalayan-peak/himalayan-peak-assets.js';
 import { GALE_REST, HUSH_HOLD, LUNG_TA } from '../../src/themes/himalayan-peak/himalayan-peak-core.js';
+import { holdFlashing } from '../../src/utils/photosensitivity.js';
 
 let massif;
 beforeAll(() => {
@@ -240,6 +241,62 @@ describe('himalayan peak: what plays on builds', () => {
         // Three slots: a quick chain's waves all still run down the face together.
         const born = world.u.waveA.map((slot) => slot.value.x);
         expect(born.filter((x) => x > 1.2)).toHaveLength(3);
+        world.dispose();
+    });
+
+    it('keeps the upper tangent arc for a perfect clear, including a separately settled crown', () => {
+        const { world, camera } = makeWorld();
+        step(world, camera, 0, 1);
+        world.onClear({ lines: 4 });
+        step(world, camera, 1, 3);
+        expect(world.u.crown.value).toBe(0);
+        world.onCrown();
+        step(world, camera, 3, 4.6);
+        expect(world.u.crown.value).toBeGreaterThan(0.6);
+        step(world, camera, 4.6, 10);
+        expect(world.u.crown.value).toBe(0);
+        world.onClear({ lines: 2, perfect: true });
+        step(world, camera, 10, 12);
+        expect(world.u.crown.value).toBeGreaterThan(0.6);
+        world.seek(11);
+        expect(world.u.crown.value).toBe(0);
+        world.dispose();
+    });
+
+    it('keeps the snow and sky lit through the four-line hush with Reduce flashing on', () => {
+        const { world, camera } = makeWorld();
+        holdFlashing(true);
+        try {
+            step(world, camera, 0, 1);
+            world.onClear({ lines: 4 });
+            step(world, camera, 1, 1 + HUSH_HOLD * 0.85, () => {
+                expect(world.u.breath.value).toBeGreaterThan(0.92);
+            });
+            // The downhill avalanche is still scheduled.
+            expect(world.slides.some((slide) => slide.target > 0)).toBe(true);
+        } finally {
+            holdFlashing(false);
+            world.dispose();
+        }
+    });
+
+    it('throws a ballistic fan of ice on an impact and scales it by drop distance', () => {
+        const { world } = makeWorld();
+        const births = world.papers.geometry.getAttribute('aBirth').array;
+        const ice = () => Array.from(world.papers.geometry.getAttribute('aTurn').array)
+            .filter((value, i) => i % 4 === 3 && births[i] >= 0 && value < 0).length;
+        world.onLock({ rows: [19], u: 0.2 });
+        expect(ice()).toBe(0);
+        world.onLock({
+            rows: [19], u: 0.2, hardDrop: true, distance: 1,
+        });
+        const shallow = ice();
+        expect(shallow).toBeGreaterThan(0);
+        world.seek(3);
+        world.onLock({
+            rows: [19], u: 0.2, hardDrop: true, distance: 18,
+        });
+        expect(ice()).toBeGreaterThan(shallow);
         world.dispose();
     });
 

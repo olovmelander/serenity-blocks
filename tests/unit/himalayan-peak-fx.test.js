@@ -106,7 +106,7 @@ describe('himalayan peak flags: stringing the lines', () => {
             expect(anchor[o + 3]).toBeCloseTo(flag.along, 4);
             // The cord's direction there (unit), and the flag's size.
             expect(Math.hypot(axis[o], axis[o + 1], axis[o + 2])).toBeCloseTo(1, 5);
-            expect(axis[o + 3]).toBeCloseTo(lines[flag.line].size, 6);
+            expect(axis[o + 3]).toBeCloseTo(lines[flag.line].size * (0.82 + 0.14 * kind[o + 1]), 6);
             // (colour, phase, line, how far the wind pushes the cord there)
             expect(kind[o]).toBe(flag.tint);
             expect(kind[o + 1]).toBeGreaterThanOrEqual(0);
@@ -372,13 +372,11 @@ describe('himalayan peak flags: the light a lock leaves', () => {
         const distant = freed.find((f) => f.index === other.index);
         expect(distant.time).toBeGreaterThan(3.02);
         expect(distant.rgb[2]).toBeGreaterThan(distant.rgb[0]);
-        // The faint ones were not worth letting go, and keep the little they have.
-        const kept = flagsOn(flags, far).filter((flag) => flags.heldAt(flag.index, 20) > 0);
-        expect(kept.length).toBeGreaterThan(0);
+        // The faint ones empty at their turn, too, without throwing a paper.
+        expect(flagsOn(flags, far).every((flag) => flags.heldAt(flag.index, 20) === 0)).toBe(true);
         expect(freed.some((f) => flags.info[f.index].line === far)).toBe(false);
         const last = Math.max(...freed.map((f) => f.time));
-        expect(flags.totalHeld(last + 0.01)).toBeLessThan(0.05 * kept.length);
-        expect(flags.totalHeld(last + 0.01)).toBeGreaterThan(0);
+        expect(flags.totalHeld(last + 1)).toBe(0);
         // A second clear finds nothing to let go, and uploads nothing.
         const after = uploads(flags, ['aHeld', 'aWhen']);
         expect(flags.release(last + 1, from, stagger)).toEqual([]);

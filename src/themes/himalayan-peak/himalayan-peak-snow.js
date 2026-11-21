@@ -65,7 +65,9 @@ const billboard = (u, p, metres, drawn = 1) => {
     const clip = hpClip(u, p);
     const half = u.viewport.mul(0.5);
     const px = metres.mul(u.pxScale).div(max(clip.w, 1.0));
-    const offset = positionGeometry.xy.mul(px).mul(vec2(u.squeeze.mul(drawn), 1 / Math.sqrt(drawn)));
+    const local = positionGeometry.xy;
+    const offset = vec2(local.x.mul(u.squeeze.mul(drawn)), local.y.div(Math.sqrt(drawn))
+        .add(local.x.mul((drawn - 1) * 0.12))).mul(px);
     return vec4(clip.xy.add(offset.div(half).mul(clip.w)), clip.z, clip.w);
 };
 
@@ -109,21 +111,34 @@ export function createSpindrift(u, field, count) {
     const reach = mix(float(240.0), float(560.0), seed.y).mul(u.gale.mul(0.9).add(0.45)).mul(banner.mul(3.4).add(1.0));
     const run = age.pow(0.8);
     const wind = vec3(ALOFT.x, ALOFT.y, ALOFT.z);
-    const rise = age.mul(banner.mul(50.0).add(30.0)).add(sin(age.mul(7.0).add(seed.x.mul(30.0))).mul(10.0).mul(age));
+    // The standing eddy behind the summit curls consecutive filaments into the same wake.
+    const rotor = sin(run.mul(8.7).sub(u.windRun.mul(0.005))).mul(0.65)
+        .add(sin(run.mul(17.0).add(u.windRun.mul(0.0026))).mul(0.35));
+    const rise = age.mul(banner.mul(56.0).add(30.0))
+        .add(rotor.mul(age).mul(banner.mul(58.0).add(11.0)))
+        .add(sin(age.mul(7.0).add(seed.x.mul(30.0))).mul(9.0).mul(age));
     const p = emit.xyz
         .add(wind.mul(reach.mul(run)))
         .add(vec3(0.0, 1.0, 0.0).mul(rise))
         .add(vec3(0.0, 0.0, 1.0).mul(seed.z.sub(0.5).mul(reach).mul(banner.mul(-0.1).add(0.22)).mul(age)));
     const metres = mix(float(26.0), float(64.0), seed.y).mul(age.mul(2.3).add(0.85)).mul(banner.mul(0.9).add(1.0));
-    material.vertexNode = billboard(u, p, metres, 2.3);
+    material.vertexNode = billboard(u, p, metres, 2.55);
     const thin = float(1.0).sub(age);
     // (It gathers before it shows: a sprite that pops in at full strength reads as a dot.)
     const cover = emit.w.mul(smoothstep(0.0, 0.22, age)).mul(thin.mul(thin)).mul(u.gale.mul(0.8).add(0.22));
     const vLight = varying(vec4(snowLight(u, p, 120), clamp(cover, 0.0, 1.0)), 'hpDriftLight');
-    const vShape = varying(seed.xyz, 'hpDriftShape');
+    const vShape = varying(vec3(seed.xy, age), 'hpDriftShape');
     material.colorNode = Fn(() => {
-        const a = puff(u, vShape).mul(vLight.a);
-        return vec4(vLight.rgb.mul(a).mul(0.8), a.mul(0.42));
+        const q = uv().sub(0.5).mul(2);
+        const inside = vec2(q.x.mul(0.29).sub(vShape.z.mul(0.24)), q.y.mul(0.62));
+        const grain = u.noise(inside.add(vShape.xy.mul(4.1)));
+        const offset = q.y.add(grain.w.sub(0.5).mul(0.37));
+        const thickness = q.x.mul(0.21).add(0.68);
+        const distance = length(vec2(q.x, offset.div(thickness)));
+        const outline = smoothstep(1, 0.12, distance);
+        const threads = smoothstep(0.25, 0.69, grain.x.add(outline.mul(0.18)));
+        const a = outline.mul(threads).mul(vLight.a);
+        return vec4(vLight.rgb.mul(a).mul(0.79), a.mul(0.51));
     })();
     const part = hpPart('HimalayanPeakSpindrift', geometry, material, 36);
     part.count = n;

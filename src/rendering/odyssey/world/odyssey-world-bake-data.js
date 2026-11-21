@@ -13,6 +13,7 @@
  */
 
 import { DataUtils } from 'three';
+import { bakeFoamLace } from '../../../themes/shared/foam-lace-bake.js';
 import {
     ODYSSEY_NORTH_LAKE,
     ODYSSEY_NORTH_LAKE_PLATE,
@@ -483,6 +484,15 @@ export function bakeOdysseyCloudField(res = 256) {
     return { field, stats };
 }
 
+/**
+ * THE SEA'S LACE (2026-11-21 sea audit, item 11): the foam-lace tile (cells, walls, bubbles; see
+ * foam-lace-bake.js) the whitecaps thin into. RGBA8, 256 texels, tiling. Rides on the detail
+ * record (`detail.lace`).
+ */
+export function bakeSeaLaceData(res = 256) {
+    return { res, data: bakeFoamLace(res) };
+}
+
 export function bakeDetailNormalData(res = 256) {
     // THE NOISE MUST TILE, and until 2026-08-13 this one did not — see odyssey-tiling-noise.js
     // for the mechanism and the measured 48x seam step it put across the cloud silhouette.
@@ -639,6 +649,7 @@ export function bakeWorldTextureData({ reliefRes, shadowRes }) {
     const atlas = bakeGroundAtlasData();
     const t3 = now();
     const detail = bakeDetailNormalData();
+    detail.lace = bakeSeaLaceData();
     const t4 = now();
     const macro = bakeMacroData();
     const t5 = now();
@@ -668,6 +679,7 @@ export function worldTextureDataBuffers(baked) {
         baked.sunFields.data.buffer,
         baked.atlas.data.buffer, ...baked.atlas.fields.map((f) => f.buffer),
         baked.detail.data.buffer,
+        baked.detail.lace.data.buffer,
         baked.macro.data.buffer,
         baked.summit.data.buffer,
         baked.summit.tarn.data.buffer,

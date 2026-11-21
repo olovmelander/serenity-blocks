@@ -206,8 +206,9 @@ describe('clipmap stage discipline in the water material', () => {
         });
         // The whitecap break-up, and the crest term the underside's SSS rides. The break-up was
         // a per-pixel simplex on positionWorld; it is now the ripple fetches' scalar channel,
-        // which inherits their positionWorld.xz coordinate (pinned above) at no ALU.
-        expect(source).toMatch(/const capBreak = rippleTexA\.b/);
+        // which inherits their positionWorld.xz coordinate (pinned above) at no ALU. (Since
+        // 2026-11-21 the caps have a life and a lace, bent by that same scalar, pinned.)
+        expect(source).toMatch(/const capRipA = rippleTexA\.b/);
         expect(source).toContain("varying(swell, 'vSwell')");
         expect(source).toMatch(/const crestMask = clamp\(vSwell\./);
     });

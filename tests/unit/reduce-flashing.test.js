@@ -169,6 +169,7 @@ describe('every world that writes a frame-wide flash scales it', () => {
     });
 
     it.each([
+        ['src/themes/himalayan-peak/himalayan-peak-world.js', /this\.hushDepth \* flashScale\(\)/],
         ['src/themes/crystal-cave/crystal-cave-world.js', /u\.flash\.value = .*flashScale\(\)/],
         ['src/themes/solar-eclipse/solar-eclipse-world.js', /u\.flash\.value = this\.flash \* flashScale\(\)/],
         ['src/themes/starlight/starlight-world.js', /power \* flashScale\(\)/],

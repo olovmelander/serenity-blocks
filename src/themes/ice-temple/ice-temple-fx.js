@@ -74,6 +74,8 @@ import {
     mulberry32,
 } from './ice-temple-tsl.js';
 
+export { createCeremonialIce } from './ice-temple-ceremony.js';
+
 const viewProjection = (world) => cameraProjectionMatrix.mul(cameraViewMatrix).mul(vec4(world, 1.0));
 
 // ── Chips ───────────────────────────────────────────────────────────────────────
@@ -210,7 +212,8 @@ export function crownRise(age) {
 /** A ring of ice spikes for each of CROWN_SLOTS hard drops. */
 export function createCrown(u) {
     const count = CROWN_SLOTS * CROWN_SPIKES;
-    // A unit spike: six faces from a hexagon (radius 1 on the ice) to a point at y = 1.
+    // A long prism and a separate termination. The break in slope gives each spike a shoulder
+    // where the moon and the lake can reflect in adjacent faces at different angles.
     const position = [];
     const normal = [];
     const across = [];
@@ -219,13 +222,16 @@ export function createCrown(u) {
         const a1 = ((i + 1) / 6) * TAU;
         const A = [Math.cos(a0), 0, Math.sin(a0)];
         const B = [Math.cos(a1), 0, Math.sin(a1)];
+        const shoulderA = [A[0] * 0.72, 0.61, A[2] * 0.72];
+        const shoulderB = [B[0] * 0.72, 0.61, B[2] * 0.72];
         const am = (a0 + a1) / 2;
-        const n = [Math.cos(am), 0.22, Math.sin(am)];
-        const nl = Math.hypot(n[0], n[1], n[2]);
-        position.push(...A, 0, 1, 0, ...B);
-        // Across the face: 0 and 1 at its two arrises.
-        across.push(0, 0.5, 1);
-        for (let k = 0; k < 3; k++) normal.push(n[0] / nl, n[1] / nl, n[2] / nl);
+        position.push(...A, ...shoulderA, ...B, ...B, ...shoulderA, ...shoulderB, ...shoulderA, 0, 1, 0, ...shoulderB);
+        across.push(0, 0, 1, 1, 0, 1, 0, 0.5, 1);
+        for (let k = 0; k < 9; k++) {
+            const ny = k < 6 ? 0.06 : 0.36;
+            const inv = 1 / Math.hypot(1, ny);
+            normal.push(Math.cos(am) * inv, ny * inv, Math.sin(am) * inv);
+        }
     }
     const rand = mulberry32(0xc207);
     const aSpike = new Float32Array(count * 4);
@@ -268,8 +274,9 @@ export function createCrown(u) {
         place = mix(place, uniforms.place[s], on);
         tintNode = mix(tintNode, uniforms.color[s], on);
     }
-    const age = u.time.sub(place.z).sub(shape.z);
-    const live = step(0.0, age).mul(step(age, CROWN_LIFE));
+    const elapsed = u.time.sub(place.z).sub(shape.z);
+    const live = step(0.0, elapsed).mul(step(elapsed, CROWN_LIFE));
+    const age = clamp(elapsed, 0, CROWN_LIFE);
     const up = float(1.0).sub(exp(age.mul(-34.0)));
     const settle = exp(age.mul(-9.0)).mul(sin(age.mul(38.0))).mul(0.16).add(1.0);
     const sink = smoothstep(CROWN_LIFE * 0.58, CROWN_LIFE, age);
@@ -396,7 +403,10 @@ export function createRowBeams(u) {
         colour = mix(colour, uniforms.color[s], on);
     }
     const rowY = mix(mix(rows.x, rows.y, step(0.5, row.x)), mix(rows.z, rows.w, step(2.5, row.x)), step(1.5, row.x));
-    const used = step(0.0, rowY).mul(step(0.001, frame.w));
+    // Once the last afterglow is below a display code, collapse the strip in the vertex stage.
+    const ageAtVertex = u.time.sub(frame.z);
+    const used = step(0.0, rowY).mul(step(0.001, frame.w))
+        .mul(step(0.0, ageAtVertex)).mul(step(ageAtVertex, BEAM_TRAVEL + BEAM_FADE * 6));
     const along = positionGeometry.x.add(0.5);
     // From the card's edge out to the edge of the frame.
     const edge = mix(frame.x, frame.y, step(0.0, row.y));
@@ -423,12 +433,20 @@ export function createRowBeams(u) {
         // the further it has travelled.
         const split = exp(abs(dy).mul(-0.11)).mul(float(1.0).sub(core)).mul(vAlong.mul(0.8).add(0.2));
         const prism = itSpectrum(dy.div(thicknessPx).mul(1.4).add(0.5));
+        // Two fine caustics peel off the central ray, like the light divided by a prism.
+        // Their broken edges remain legible where a second cleared row runs alongside.
+        const fork = abs(dy).sub(vAlong.mul(5.8).add(1.4));
+        const facets = smoothstep(0.05, 0.7, sin(vAlong.mul(77).sub(age.mul(4.5)).add(dy.mul(0.07))));
+        const lines = exp(fork.mul(fork).mul(-0.85)).mul(facets.mul(0.68).add(0.32)).mul(vAlong);
         const k = core.add(glow).mul(reached).mul(env).add(core.add(glow).mul(tip).mul(2.0))
             .mul(strength)
             .mul(mix(float(1.0), float(0.55), vAlong));
-        const col = mix(vColour, vec3(1.0), core.mul(0.75)).mul(k).mul(2.5)
+        const col = mix(vColour, vec3(1.0), core.mul(0.65)).mul(k).mul(2.0)
             .add(prism.mul(split).mul(reached).mul(env).mul(strength)
-                .mul(0.5));
+                .mul(0.32))
+            .add(mix(vColour, prism, 0.5).mul(lines).mul(reached).mul(env)
+                .mul(strength)
+                .mul(0.85));
         return vec4(col, 0.0);
     })();
     const part = itPart('IceTempleRowBeams', geometry, material, 60, false);
@@ -549,7 +567,7 @@ export function createSnowflake(u) {
     const vLayer = varying(layer, 'itFlakeLayer');
     const vPx = varying(radiusPx, 'itFlakePx');
 
-    material.colorNode = Fn(() => {
+    material.fragmentNode = Fn(() => {
         const q0 = uv().sub(0.5).mul(2.0).toVar();
         const grow = clamp(age.div(FLAKE_GROW), 0.0, 1.0);
         const grown = float(1.0).sub(pow(float(1.0).sub(grow), 3.0)).mul(ARM_LENGTH);
@@ -618,21 +636,22 @@ export function createSnowflake(u) {
         const tip = exp(abs(r.sub(grown)).mul(-26.0)).mul(float(1.0).sub(grow)).mul(1.6);
         const appear = smoothstep(0.0, 0.12, age);
         const fade = float(1.0).sub(gone).mul(appear);
-        // A solid arm of ice: its body lit, its edges brighter, a soft ridge down its spine.
-        const col = mix(uniforms.tint, vec3(1.0), 0.45).mul(core.mul(0.42))
-            .add(prism.mul(pane).mul(0.06))
-            .add(vec3(1.0).mul(spine.mul(0.3)))
-            .add(mix(uniforms.tint, vec3(1.0), 0.65).mul(rimBand.mul(0.45)))
-            .add(uniforms.tint.mul(sheen.mul(0.3).add(glass).add(wedge)))
+        // A solid crystal absorbs the bright lake behind its body. One bevel faces the moon,
+        // the opposite bevel takes the aurora; only an arris stays silver from every angle.
+        const face = smoothstep(-0.3, 0.4, sin(a.mul(6.0))).toVar();
+        const glassTint = mix(vec3(0.075, 0.23, 0.48), mix(uniforms.tint, u.auroraB, 0.31), face.mul(0.68));
+        const col = glassTint.mul(core.mul(0.64))
+            .add(prism.mul(pane).mul(0.13))
+            .add(vec3(0.46, 0.78, 1.0).mul(spine).mul(0.42))
+            .add(mix(uniforms.tint, vec3(1.0), 0.56).mul(rimBand.mul(1.05)))
+            .add(uniforms.tint.mul(sheen.mul(0.31).add(glass).add(wedge)))
             .add(prism.mul(fringe).mul(0.22))
             .add(vec3(1.0).mul(glint.mul(core.mul(0.7).add(0.3))))
-            .add(uniforms.tint.mul(tip).mul(core.add(sheen)))
-            .mul(fade)
-            .mul(uniforms.state.y)
-            .mul(float(1.0).sub(vLayer.mul(0.68)))
-            .mul(mix(float(1.0), halo, vLayer));
+            .add(uniforms.tint.mul(tip).mul(core.add(sheen)));
         // The quad's own edge must never show.
-        return vec4(col.mul(float(1.0).sub(smoothstep(0.94, 1.0, length(q0)))), 0.0);
+        const level = fade.mul(uniforms.state.y).mul(float(1.0).sub(vLayer.mul(0.68)))
+            .mul(mix(float(1.0), halo, vLayer)).mul(float(1.0).sub(smoothstep(0.94, 1.0, length(q0))));
+        return vec4(col.mul(level), clamp(core.mul(level).mul(0.38), 0, 0.6));
     })();
 
     const part = itPart('IceTempleSnowflake', geometry, material, 25, true);

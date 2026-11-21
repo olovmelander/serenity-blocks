@@ -276,7 +276,10 @@ export function createFloor(u, opts = {}) {
         // ── What lies under the surface ──
         const plateTone = plates.z.mul(0.5).add(0.75);
         const deep = vec3(0.012, 0.085, 0.14).mul(plateTone).mul(nA.b.mul(0.8).add(0.6));
-        const walls = curtain.mul(0.85).add(bubble.mul(0.3));
+        // The distant fracture lips collapse below one pixel. Let their broad silver
+        // underside give way to uninterrupted, dark reflections down the nave.
+        const resolved = float(1.0).sub(smoothstep(0.08, 0.64, pixel)).toVar();
+        const walls = curtain.mul(0.68).add(bubble.mul(0.37)).mul(resolved);
         const under = deep.mul(ambient.mul(2.2).add(pulse.mul(0.5)))
             .add(vec3(0.62, 0.86, 1.0).mul(walls).mul(ambient.mul(1.5).add(pulse.mul(2.6))))
             .toVar();
@@ -293,7 +296,26 @@ export function createFloor(u, opts = {}) {
         const snowLight = moon.mul(1.05).add(heart.mul(0.35)).add(sky.mul(1.4)).add(pulse.mul(0.8));
         const snowCol = snowLight.mul(vec3(0.84, 0.92, 1.0)).mul(nC.b.mul(0.3).add(0.8))
             .mul(spark.mul(6.0).add(1.0));
-        const lip = cracks.mul(float(1.0).sub(snow));
+        const lip = cracks.mul(float(1.0).sub(snow)).mul(resolved);
+
+        // Light refracted through each pier splits into two coloured caustic folds.
+        // They fall obliquely across the sides of the aisle, and fracture walls catch
+        // their light below the surface even where the mirror above them is unbroken.
+        const sideReach = float(NAVE.halfWidth).sub(st.x.abs()).toVar();
+        const bay = clamp(floor(float(NAVE.firstZ).sub(st.y).div(NAVE.bay).add(0.5)), 0, NAVE.pairs - 1);
+        const along = st.y.sub(float(NAVE.firstZ).sub(bay.mul(NAVE.bay))).toVar();
+        const beam = sideReach.mul(sideReach).mul(0.027).add(sideReach.mul(0.24)).sub(1.9);
+        const track = along.sub(beam).add(nB.r.sub(0.5).mul(1.2)).add(nC.g.sub(0.5).mul(0.12)).toVar();
+        const width = pixel.mul(0.55).add(0.14);
+        const split = itBell(track.div(width)).mul(0.52);
+        const outer = itBell(track.sub(sideReach.mul(0.063)).sub(0.09).div(width.mul(1.55))).mul(0.38);
+        const spill = smoothstep(-0.5, 1.6, sideReach).mul(float(1).sub(smoothstep(5.5, 10.0, sideReach)))
+            .mul(float(1).sub(smoothstep(3.6, 4.9, along.abs()))).mul(resolved)
+            .mul(smoothstep(0.23, 0.73, nB.b))
+            .mul(0.70);
+        const caustic = u.auroraB.mul(split).add(u.auroraC.mul(outer))
+            .mul(spill).mul(ambient.add(0.18))
+            .mul(u.ambient);
 
         // ── The mirror ──
         const fres = float(0.02).add(float(0.98).mul(pow(float(1.0).sub(cosI), 5.0)));
@@ -312,8 +334,10 @@ export function createFloor(u, opts = {}) {
             .add(mirror.mul(fres))
             .toVar();
         col.assign(mix(col, snowCol, snow.mul(0.92)));
+        col.addAssign(caustic.mul(float(1).sub(snow.mul(0.8))).mul(curtain.mul(0.9).add(0.72)));
         // The crack's lip is white where the light finds it, and burns with every pulse.
-        col.addAssign(vec3(0.7, 0.9, 1.0).mul(lip).mul(ambient.mul(1.1).add(pulse.mul(3.2))));
+        const seamTint = mix(vec3(0.57, 0.86, 1.0), u.auroraB, nA.r.mul(0.45));
+        col.addAssign(seamTint.mul(lip).mul(ambient.mul(0.90).add(pulse.mul(3.2))));
         col.addAssign(star.mul(float(1.0).sub(snow.mul(0.5))));
         col.addAssign(powder.mul(ambient.mul(1.4).add(0.35)));
         return itAtmosphere(u, col, p);

@@ -26,7 +26,8 @@
  * window is the flat glow it always was, at no cost.
  */
 import {
-    If, clamp, dot, exp, float, max, mix, normalize, reflect, refract, smoothstep, texture, vec2, vec3,
+    If, clamp, dot, exp, float, length, max, min, mix, normalize, reflect, refract, select, smoothstep, sqrt, texture,
+    vec2, vec3,
 } from 'three/tsl';
 
 export const SNELL_WINDOW = Object.freeze({
@@ -44,7 +45,30 @@ export const SNELL_WINDOW = Object.freeze({
         height: 380, scale: 0.0013, drift: Object.freeze([0.0021, 0.0013]), edge: Object.freeze([0.50, 0.78]),
     }),
     /** The sun through the surface: a glare lobe and a core, in units of the sun's colour. */
-    sun: Object.freeze({ glare: 0.55, core: 3.2 }),
+    // (glare 0.55 -> 0.8, 2026-11-21: the window is the light source of the water under it.)
+    sun: Object.freeze({ glare: 0.8, core: 3.2 }),
+    /**
+     * THE WINDOW IS THE LIGHT (2026-11-21 sea audit, item 4). Near the surface the window (the sky
+     * seen through the water) was darker than the water round it (r132: ~132 against ~169), so
+     * the surface read as a dim lens in a bright fog. The window now stands `overWater` times the
+     * level water's light (a lift between `min`, the sky's n^2 gain entering water, and `max`),
+     * fading to none from the window's reach down; clouds take at most `cloudLift`.
+     */
+    light: Object.freeze({
+        overWater: 1.6, min: 1.5, max: 2.4, cloudLift: 1.4,
+    }),
+    /**
+     * A STEADY WINDOW (2026-11-21 sea audit, item 5). The window was cut, and its picture aimed,
+     * by the full swell's normal: faces tens of metres wide tilted 10-22 degrees pushed whole
+     * patches across the critical angle, so its outline jumped by a third of the frame between
+     * frames and the island and clouds in it changed every frame. It is now cut through a normal
+     * of its own, a level sea tipped by `swellShare` of the swell and `rippleShare` of the ripple,
+     * the tilt capped at `tiltCap` (the rim moves at most ~3.4 degrees); the picture is a level
+     * sea's refraction moved at most `imageWobble` by the crinkled one.
+     */
+    surface: Object.freeze({
+        swellShare: 0.10, rippleShare: 0.6, tiltCap: 0.06, imageWobble: 0.03,
+    }),
 });
 
 /**
@@ -69,6 +93,22 @@ export function snellWindowRimCos(spec = SNELL_WINDOW) {
 }
 
 /**
+ * The window's lift (SNELL_WINDOW.light): how much brighter than the sky's own zenith it is drawn
+ * so it stands `overWater` times the water a level look ends in (`hazeY`, its luma), clamped, and
+ * none deeper than the window's reach (the deep is unchanged).
+ * @param {number} hazeY luma of the level water's colour (linear)
+ * @param {number} zenithY luma of the sky's zenith (linear)
+ * @param {number} depthU the eye's depth (u)
+ * @returns {number} >= 1
+ */
+export function snellWindowLift(hazeY, zenithY, depthU, spec = SNELL_WINDOW) {
+    const L = spec.light;
+    const want = (L.overWater * Math.max(hazeY, 0)) / Math.max(zenithY, 1e-3);
+    const lift = Math.min(Math.max(Number.isFinite(want) ? want : L.min, L.min), L.max);
+    return 1 + ((lift - 1) * snellWindowPresence(depthU, spec));
+}
+
+/**
  * The window's picture for one fragment of the sea's underside.
  * @param {object} ctx TSL nodes and builders from the world's renderer
  * @param {*} ctx.incident unit vec3, from the eye to the surface
@@ -86,17 +126,41 @@ export function snellWindowRimCos(spec = SNELL_WINDOW) {
  * @returns {*} vec3 node (a var; built at the caller's Fn root)
  */
 export function snellWindowWorld(ctx, spec = SNELL_WINDOW) {
-    const out = vec3(ctx.flat).toVar('wSnellWorld');
+    const lift = ctx.lift ?? float(1);
+    const flatLit = vec3(ctx.flat).mul(lift);
+    const out = vec3(flatLit).toVar('wSnellWorld');
     If(ctx.presence.greaterThan(0.001), () => {
-        // Water to air: refract() returns the zero vector past the critical angle.
-        const refr = refract(ctx.incident, ctx.normal.negate(), float(spec.eta)).toVar();
-        const through = smoothstep(float(0.02), float(0.20), dot(refr, refr));
-        const airDir = normalize(vec3(refr.x, max(refr.y, float(0.012)), refr.z).add(vec3(0, 1e-4, 0))).toVar();
-        const sky = ctx.skyAt(airDir).toVar();
+        // THE PICTURE, ANCHORED (SNELL_WINDOW.surface, 2026-11-21): where a LEVEL sea refracts the
+        // ray (past the rim it lies on the horizon, never zero), moved by the crinkled surface's
+        // own refraction at most `ctx.wobble`: near the rim the refracted ray swings far faster
+        // than the surface tilts, and a few degrees of swell threw the picture 10-20 degrees.
+        const rimCos = snellWindowRimCos(spec);
+        const I = ctx.incident;
+        const horiz = max(length(I.xz), float(1e-5)).toVar();
+        const sinT = min(horiz.mul(spec.eta), float(0.9995)).toVar();
+        const levelDir = vec3(
+            I.x.div(horiz).mul(sinT),
+            sqrt(float(1).sub(sinT.mul(sinT))),
+            I.z.div(horiz).mul(sinT),
+        ).toVar();
+        const refr = refract(I, ctx.normal.negate(), float(spec.eta)).toVar();
+        const dv = select(dot(refr, refr).greaterThan(0.5), refr.sub(levelDir), vec3(0, 0, 0)).toVar();
+        const wobble = ctx.wobble ?? float(spec.surface.imageWobble);
+        const wob = dv.mul(min(float(1), wobble.div(max(length(dv), float(1e-5)))));
+        const airDir = normalize(vec3(
+            levelDir.x.add(wob.x),
+            max(levelDir.y.add(wob.y), float(0.012)),
+            levelDir.z.add(wob.z),
+        )).toVar();
+        // A soft rim edge on the window's own normal (not a switch on |refr|^2).
+        const through = smoothstep(float(rimCos - 0.002), float(rimCos + 0.006), dot(I, ctx.normal));
+        const skyRaw = ctx.skyAt(airDir).toVar();
+        const sky = skyRaw.mul(lift).toVar();
         // Cloud: one drifting layer, read where the refracted ray meets it. Two scales of the
         // tile's value noise, so the puffs have lobes; lit from above, cool beneath.
         const cl = spec.cloud;
-        const reachXZ = airDir.xz.div(max(airDir.y, float(0.06))).mul(cl.height);
+        // (By the level ray's height: the wobble then shifts a cloud ~60 u, not swaps it.)
+        const reachXZ = airDir.xz.div(max(levelDir.y, float(0.06))).mul(cl.height);
         const cUv = ctx.at.xz.add(reachXZ).mul(cl.scale)
             .add(vec2(ctx.time.mul(cl.drift[0]), ctx.time.mul(cl.drift[1])));
         // THREE octaves, each on its own turned lattice. The tile's value noise has square cells:
@@ -112,22 +176,24 @@ export function snellWindowWorld(ctx, spec = SNELL_WINDOW) {
             .add(texture(ctx.noiseTex, turned(cUv, 0.292, 0.956, 2.9, 0.71, 0.53)).b.mul(0.24));
         // (Softer with depth: the water between blurs a cloud into a paler patch of sky.)
         const cover = smoothstep(float(cl.edge[0]), float(cl.edge[1]), cN)
-            .mul(smoothstep(float(0.03), float(0.16), airDir.y))
+            .mul(smoothstep(float(0.03), float(0.16), levelDir.y))
             .mul(ctx.presence.mul(0.75).add(0.25));
         const cloudLit = mix(
             vec3(0.80, 0.86, 0.95),
             mix(ctx.sunColour, vec3(1, 1, 1), 0.5).mul(1.06),
             smoothstep(float(cl.edge[0]), float(cl.edge[1] + 0.16), cN),
         );
-        const world = mix(sky, cloudLit, cover.mul(0.9)).toVar();
+        const world = mix(sky, cloudLit.mul(min(lift, float(spec.light.cloudLift))), cover.mul(0.9)).toVar();
         if (ctx.march && ctx.landLit) {
             // The island, where the refracted ray runs into it: a band along the rim on its side.
             // Only where a level sea would let the ray out: a lone facet tilted into the window
             // far outside it shows sky (a glint), never a dark piece of land (a stain on the lid).
             const { tLand, landW } = ctx.march(ctx.at, airDir);
             const H = ctx.at.add(airDir.mul(tLand));
-            const inWindow = smoothstep(float(snellWindowRimCos(spec) - 0.02), float(snellWindowRimCos(spec) + 0.04), ctx.incident.y);
-            world.assign(mix(world, ctx.landLit(H, tLand, sky), landW.mul(inWindow)));
+            // (The level picture puts the island in the window's outer ~2 degrees: full weight across
+            // the rim and the crinkle's reach.)
+            const inWindow = smoothstep(float(rimCos - 0.045), float(rimCos - 0.01), ctx.incident.y);
+            world.assign(mix(world, ctx.landLit(H, tLand, skyRaw).mul(lift), landW.mul(inWindow)));
         }
         // The sun: its glare on the side of the window it stands, a hot core where a facet lines
         // the ray up with it (the ripples shatter it and it dances).
@@ -137,7 +203,7 @@ export function snellWindowWorld(ctx, spec = SNELL_WINDOW) {
         const s32 = s8.mul(s8).mul(s8.mul(s8));
         const s256 = s32.mul(s32).mul(s32.mul(s32));
         world.addAssign(ctx.sunColour.mul(s8.mul(spec.sun.glare).add(s256.mul(s256).mul(spec.sun.core))));
-        out.assign(mix(ctx.flat, world, through.mul(ctx.presence)));
+        out.assign(mix(flatLit, world, through.mul(ctx.presence)));
     });
     return out;
 }

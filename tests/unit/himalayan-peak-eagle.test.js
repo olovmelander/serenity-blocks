@@ -6,7 +6,7 @@ import * as THREE from 'three/webgpu';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { DEG, EYE, GALE_REST } from '../../src/themes/himalayan-peak/himalayan-peak-core.js';
 import {
-    EAGLE_BEAT, EAGLE_BONES, EAGLE_BOUTS, EAGLE_ROUND, EAGLE_SPAN, beatHeight, createEaglePose, eagleBout,
+    EAGLE_BONES, EAGLE_SPAN, createEaglePose, createEagleRoute, eagleBout,
     eagleFlight, eaglePath,
 } from '../../src/themes/himalayan-peak/himalayan-peak-eagle-flight.js';
 import { createEagle } from '../../src/themes/himalayan-peak/himalayan-peak-eagle.js';
@@ -28,46 +28,42 @@ function seen(at) {
 const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 
 describe('himalayan peak eagle: its round', () => {
-    it('comes round to the same place every round', () => {
-        for (const time of [0, 3.7, 20, 51.3, 73.9]) {
-            const now = eaglePath(time);
-            const later = eaglePath(time + EAGLE_ROUND);
-            const much = eaglePath(time + EAGLE_ROUND * 40);
-            for (const key of ['x', 'y', 'z', 'hx', 'hy', 'hz', 'lean']) {
-                expect(later[key], key).toBeCloseTo(now[key], 7);
-                expect(much[key], key).toBeCloseTo(now[key], 5);
-            }
+    it('reconstructs a seek from its seed while each session and successive pass vary', () => {
+        const route = createEagleRoute(43);
+        const replay = createEagleRoute(43);
+        const other = createEagleRoute(420);
+        for (const t of [0, 31.3, 225, 15000]) {
+            const at = eaglePath(t, undefined, route);
+            expect(eaglePath(t, undefined, replay)).toEqual(at);
+            const next = eaglePath(t + 84, undefined, route);
+            const elsewhere = eaglePath(t, undefined, other);
+            expect(Math.hypot(at.x - next.x, at.z - next.z)).toBeGreaterThan(4);
+            expect(Math.hypot(at.x - elsewhere.x, at.z - elsewhere.z)).toBeGreaterThan(4);
         }
-        // And it does move in between.
-        const a = eaglePath(0);
-        const b = eaglePath(EAGLE_ROUND / 6);
-        expect(Math.hypot(a.x - b.x, a.z - b.z)).toBeGreaterThan(60);
     });
 
-    it('stays in the open sky right of the board, over the ridge and toward the sun', () => {
-        const bearings = [];
-        for (let time = 0; time < EAGLE_ROUND; time += 0.25) {
-            const at = eaglePath(time);
-            const { bearing, elevation, distance } = seen(at);
-            bearings.push(bearing);
-            // Right of the HUD (≈ 22°) for most of the round, and off the frame's right edge
-            // (38° in 16:9) only briefly; never in the board's column.
-            expect(bearing).toBeGreaterThan(15);
-            expect(bearing).toBeLessThan(45);
-            // Over the skyline behind it (the ridges stand under 8° there), under the frame's top.
-            expect(elevation).toBeGreaterThan(10);
-            expect(elevation).toBeLessThan(21);
-            expect(distance).toBeGreaterThan(190);
-            expect(distance).toBeLessThan(420);
+    it('sweeps close then climbs back offshore, always in the sky beside the board', () => {
+        for (const seed of [3187, 99, 6, 43]) {
+            const route = createEagleRoute(seed);
+            const distances = [];
+            for (let time = 0; time < 360; time += 0.5) {
+                const at = seen(eaglePath(time, undefined, route));
+                distances.push(at.distance);
+                expect(at.bearing).toBeGreaterThan(14);
+                expect(at.bearing).toBeLessThan(47);
+                expect(at.elevation).toBeGreaterThan(10);
+                expect(at.elevation).toBeLessThan(21);
+                const calm = seen(eaglePath(time, undefined, route, true));
+                expect(calm.distance).toBeGreaterThan(169);
+            }
+            expect(Math.min(...distances)).toBeGreaterThan(50);
+            expect(Math.min(...distances)).toBeLessThan(90);
+            expect(Math.max(...distances)).toBeGreaterThan(340);
         }
-        // About two thirds of the round in the clear sky between the HUD and the edge of a 16:9
-        // frame; the rest it slips behind the HUD or out of the frame for a while, as a bird does.
-        const inFrame = bearings.filter((b) => b > 22 && b < 38).length / bearings.length;
-        expect(inFrame).toBeGreaterThan(0.6);
     });
 
     it('heads the way it flies, leans into every turn and never more than a soaring bird does', () => {
-        for (let time = 0; time < EAGLE_ROUND; time += 0.37) {
+        for (let time = 0; time < 120; time += 0.37) {
             const at = eaglePath(time);
             expect(Math.hypot(at.hx, at.hy, at.hz)).toBeCloseTo(1, 9);
             const next = eaglePath(time + 0.01);
@@ -76,7 +72,7 @@ describe('himalayan peak eagle: its round', () => {
             const along = (vx * at.hx + vz * at.hz) / (Math.hypot(vx, vz) * Math.hypot(at.hx, at.hz));
             expect(along).toBeGreaterThan(0.9999);
             // It climbs and sinks on its turns, never steeply.
-            expect(Math.abs(at.hy)).toBeLessThan(0.2);
+            expect(Math.abs(at.hy)).toBeLessThan(0.47);
             // The turn: + to its left. It leans the same way, as steeply as a thermalling eagle
             // (25° to 45°), never further.
             const turn = at.hz * (next.hx - at.hx) - at.hx * (next.hz - at.hz);
@@ -100,7 +96,7 @@ describe('himalayan peak eagle: how it holds itself', () => {
         // The old bird took its frame from setFromUnitVectors(+z, heading), which turns the
         // model over each time the heading swings through −z: once a round, belly up.
         const pose = createEaglePose();
-        for (let time = 0; time < EAGLE_ROUND; time += 0.05) {
+        for (let time = 0; time < 120; time += 0.05) {
             eagleFlight(time, { gale: GALE_REST + 1.4 }, pose);
             // Steep in its turns (with the air's rolls on top), never past ~53°.
             expect(pose.up[1], `t=${time}`).toBeGreaterThan(0.6);
@@ -119,7 +115,7 @@ describe('himalayan peak eagle: how it holds itself', () => {
     it('puts the wing on the inside of a turn down', () => {
         const pose = createEaglePose();
         let checked = 0;
-        for (let time = 0; time < EAGLE_ROUND; time += 0.5) {
+        for (let time = 0; time < 120; time += 0.5) {
             eagleFlight(time, { reduced: true }, pose);
             if (Math.abs(pose.path.lean) < 0.1) continue;
             // Its left wing is down (left vector below level) exactly when it turns left.
@@ -129,33 +125,30 @@ describe('himalayan peak eagle: how it holds itself', () => {
         expect(checked).toBeGreaterThan(50);
     });
 
-    it('glides most of the round and flaps in short bouts of whole beats', () => {
-        let flapping = 0;
+    it('glides most of the time and varies bouts without a phase jump even after a long seek', () => {
         const step = 1 / 60;
-        for (let time = 0; time < EAGLE_ROUND; time += step) {
-            if (eagleBout(time).amount > 0) flapping += step;
-        }
-        const scheduled = EAGLE_BOUTS.reduce((sum, [, beats]) => sum + beats / EAGLE_BEAT, 0);
-        expect(flapping).toBeCloseTo(scheduled, 0);
-        expect(flapping / EAGLE_ROUND).toBeLessThan(0.12);
-        // A bout ends where it began: wings at the top of the beat, eased out.
-        EAGLE_BOUTS.forEach(([start, beats]) => {
-            const end = eagleBout(start + beats / EAGLE_BEAT - 1e-6);
-            expect(end.amount).toBeLessThan(1e-3);
-            // The downstroke is the quicker, stronger part: the bottom comes at 55 % of the beat.
-            expect(beatHeight(eagleBout(start + 0.55 / EAGLE_BEAT).phase)).toBeCloseTo(-1, 6);
-        });
-    });
-
-    it('beats at one pace however long the game has run (no clock × changing rate)', () => {
-        const [start, beats] = EAGLE_BOUTS[2];
-        for (const round of [0, 1, 7, 40]) {
-            const base = round * EAGLE_ROUND + start + 1 / EAGLE_BEAT;
-            const a = eagleBout(base);
-            const b = eagleBout(base + 1 / 60);
-            const advance = (b.phase - a.phase + 1) % 1;
-            expect(advance, `round ${round}`).toBeCloseTo(EAGLE_BEAT / 60, 6);
-            expect(beats).toBeGreaterThan(1);
+        for (const start of [0, 39241]) {
+            let flapping = 0;
+            let bouts = 0;
+            let last = eagleBout(start);
+            const rates = new Set();
+            for (let i = 1; i <= 160 * 60; i++) {
+                const current = eagleBout(start + i * step);
+                if (current.amount > 0) {
+                    flapping += step;
+                    if (last.amount === 0) bouts++;
+                    else {
+                        const frequency = ((current.phase - last.phase + 1) % 1) / step;
+                        expect(frequency).toBeGreaterThan(1.09);
+                        expect(frequency).toBeLessThan(1.47);
+                        rates.add(frequency.toFixed(2));
+                    }
+                }
+                last = current;
+            }
+            expect(bouts).toBeGreaterThan(2);
+            expect(rates.size).toBeGreaterThan(2);
+            expect(flapping / 160).toBeLessThan(0.15);
         }
     });
 
@@ -165,7 +158,7 @@ describe('himalayan peak eagle: how it holds itself', () => {
         let gale = GALE_REST;
         const most = { any: 0, glide: 0 };
         const step = 1 / 60;
-        for (let i = 0; i < EAGLE_ROUND * 60; i++) {
+        for (let i = 0; i < 120 * 60; i++) {
             const time = 600 + i * step;
             // The world eases its gale toward what is asked (GALE_EASE); ask hard, then let go.
             const asked = Math.sin(time * 0.3) > 0.6 ? GALE_REST + 1.5 : GALE_REST;
@@ -192,14 +185,14 @@ describe('himalayan peak eagle: how it holds itself', () => {
 
     it('only glides under reduced motion, and the air hardly moves it', () => {
         const pose = createEaglePose();
-        EAGLE_BOUTS.forEach(([start, beats]) => {
-            eagleFlight(start + beats / EAGLE_BEAT / 2, { reduced: true, gale: GALE_REST + 1.5 }, pose);
+        for (const t of [29.75, 31.25, 50, 6000]) {
+            eagleFlight(t, { reduced: true, gale: GALE_REST + 1.5 }, pose);
             expect(pose.bout.amount).toBe(0);
             expect(Math.abs(pose.heave)).toBe(0);
-        });
+        }
     });
 
-    it('holds a shallow V when it soars, and sweeps through a deep beat when it flaps', () => {
+    it('holds a shallow V when it soars', () => {
         const pose = createEaglePose();
         eagleFlight(20, {}, pose);
         expect(pose.bout.amount).toBe(0);
@@ -208,16 +201,6 @@ describe('himalayan peak eagle: how it holds itself', () => {
         expect(dihedral).toBeLessThan(12);
         // Mirrored: the right wing's angles about y and z are the left's, negated.
         expect(pose.joints.armR[2]).toBeCloseTo(-pose.joints.armL[2], 0);
-        const [start, beats] = EAGLE_BOUTS[0];
-        let top = -Infinity;
-        let bottom = Infinity;
-        for (let t = start; t < start + beats / EAGLE_BEAT; t += 1 / 120) {
-            eagleFlight(t, {}, pose);
-            top = Math.max(top, pose.joints.armL[2] / DEG);
-            bottom = Math.min(bottom, pose.joints.armL[2] / DEG);
-        }
-        expect(top).toBeGreaterThan(35);
-        expect(bottom).toBeLessThan(-25);
     });
 });
 
@@ -237,8 +220,9 @@ describe('himalayan peak eagle: the model', () => {
             if (child.isMesh) triangles += child.geometry.index.count / 3;
         });
         expect(skinned).toBeTruthy();
-        expect(triangles).toBeLessThan(4000);
-        expect(gltf.animations).toHaveLength(0);
+        expect(triangles).toBeLessThan(16000);
+        expect(gltf.animations.map((clip) => clip.name)).toEqual(['Ridge Wingbeat']);
+        expect(gltf.animations[0].duration).toBeCloseTo(1);
         const names = skinned.skeleton.bones.map((b) => b.name);
         expect([...names].sort()).toEqual([...EAGLE_BONES].sort());
         skinned.skeleton.bones.forEach((bone) => {
@@ -249,8 +233,15 @@ describe('himalayan peak eagle: the model', () => {
         expect(colour.itemSize).toBe(4);
         let thin = 0;
         for (let i = 0; i < colour.count; i++) thin += colour.getW(i) > 0.5 ? 1 : 0;
-        expect(thin / colour.count).toBeGreaterThan(0.3);
+        expect(thin / colour.count).toBeGreaterThan(0.25);
         expect(thin / colour.count).toBeLessThan(0.95);
+        // Feather-local UVs distinguish inscribed vanes, rows of short contour feathers,
+        // and bare skin. All three survive the Blender export without an image texture.
+        const uv = skinned.geometry.getAttribute('uv');
+        const u = Array.from({ length: uv.count }, (_, i) => uv.getX(i));
+        expect(u.some((x) => x < 0)).toBe(true);
+        expect(u.some((x) => x > 0.3 && x < 0.7)).toBe(true);
+        expect(u.some((x) => x > 2)).toBe(true);
     });
 
     it('is built at an eagle\'s size, wings out along x, and drawn at the theme\'s span', () => {
@@ -276,6 +267,33 @@ describe('himalayan peak eagle: the model', () => {
         expect(forward.z).toBeCloseTo(at.hz, 6);
         const wing = model.getObjectByName('armL');
         expect(wing.quaternion.angleTo(new THREE.Quaternion())).toBeGreaterThan(0.02);
+        // Sample the shipped GLB through the same blend used in the game. A strong
+        // downstroke leads the wrist, with splayed and individually flexing primaries.
+        const euler = new THREE.Euler(0, 0, 0, 'ZYX');
+        const hand = model.getObjectByName('handL');
+        let top = -Infinity;
+        let bottom = Infinity;
+        let atBottom = 0;
+        let wristBottom = Infinity;
+        let wristAtBottom = 0;
+        const last = new THREE.Quaternion();
+        for (let i = 0; i <= 360; i++) {
+            const t = 29.75 + i / 120;
+            eagle.update(t);
+            if (i > 0) expect(wing.quaternion.angleTo(last)).toBeLessThan(0.072);
+            last.copy(wing.quaternion);
+            // The first complete cycle, clear of the blend at either end of the bout.
+            if (t < 30.30 || t > 31.06) continue;
+            const armZ = euler.setFromQuaternion(wing.quaternion, 'ZYX').z / DEG;
+            const handZ = euler.setFromQuaternion(hand.quaternion, 'ZYX').z / DEG;
+            top = Math.max(top, armZ);
+            if (armZ < bottom) { bottom = armZ; atBottom = t; }
+            if (handZ < wristBottom) { wristBottom = handZ; wristAtBottom = t; }
+        }
+        expect(top).toBeGreaterThan(34);
+        expect(bottom).toBeLessThan(-26);
+        expect(wristAtBottom - atBottom).toBeGreaterThan(0.035);
+        expect(wristAtBottom - atBottom).toBeLessThan(0.13);
         eagle.dispose();
         world.dispose();
     });

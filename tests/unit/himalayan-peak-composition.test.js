@@ -36,7 +36,7 @@ describe('himalayan peak composition: the module', () => {
         expect(BOARD_SELECTOR).toBe('.player-card[data-player]');
         expect(HUD_SELECTOR).toBe('.single-player-stats-bar');
         expect(SOLO_CANVAS_SELECTORS).toEqual([
-            '#phaser-game-container canvas', '#main-game-canvas', '#single-player-game-canvas',
+            '#phaser-game-container canvas', '#main-game-canvas', '#single-player-game-canvas', '#online-main-board canvas',
         ]);
         expect(playerCanvasSelector(3)).toBe('#p3-phaser-container canvas');
     });

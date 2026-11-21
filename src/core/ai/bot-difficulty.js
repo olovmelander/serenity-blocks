@@ -154,9 +154,8 @@ export function normalizeDifficultyTier(value) {
 }
 
 /**
- * A tier's config with an Odyssey rival's caps on top (level design audit 2026-11, R8): the rival keeps
- * its tier's judgement, lookahead and mistakes but acts no faster than a strong person. Only the action
- * rate and the reaction window can be capped; versus mode passes no overrides and is unchanged.
+ * Apply the caller's hand speed and reaction window while preserving the tier's placement policy.
+ * Odyssey supplies the authored human pace. Local versus can supply a competitive seat's timing.
  */
 export function applyBotConfigOverrides(config, overrides) {
     if (!overrides) return config;

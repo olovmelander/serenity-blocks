@@ -50,6 +50,7 @@ import * as THREE from 'three/webgpu';
 import { applyCameraBreath } from '../shared/camera-breath.js';
 import { drainSteps } from '../shared/build-steps.js';
 import { GameplaySurge, Swell } from '../shared/gameplay-surge.js';
+import { flashScale } from '../../utils/photosensitivity.js';
 import {
     AVALANCHE_SLOTS,
     BLESS_MAX,
@@ -91,7 +92,7 @@ import {
 } from './himalayan-peak-assets.js';
 import { sampleField } from './himalayan-peak-field.js';
 import {
-    BOOTS, anchors, flagLines, linePoint,
+    BOOTS, anchors, flagLines, linePoint, passHeight,
 } from './himalayan-peak-layout.js';
 import { tierFor } from './himalayan-peak-quality.js';
 import { SUN_RADIUS, createSky } from './himalayan-peak-sky.js';
@@ -99,6 +100,7 @@ import { createMassif } from './himalayan-peak-terrain.js';
 import { createCloudSea } from './himalayan-peak-clouds.js';
 import { createPassSnowSteps, createShrine } from './himalayan-peak-pass.js';
 import { createCords, createFlags } from './himalayan-peak-flags.js';
+import { createWindHorsePrint } from './himalayan-peak-woodcut.js';
 import { createDust, createPapers, createRowBeams } from './himalayan-peak-fx.js';
 import { createAvalanche, createSpindrift } from './himalayan-peak-snow.js';
 import { createEagle, loadEagle } from './himalayan-peak-eagle.js';
@@ -277,6 +279,7 @@ export class HimalayanPeakWorld {
         this.spark = 0;
         this.halo = 0;
         this.hushUntil = -1;
+        this.crownAt = -100;
         /** How deep the hush under way holds the light (1 from cold; shallower in hot play). */
         this.hushDepth = 1;
         this.elevation = SUN_ELEVATION.rest;
@@ -318,6 +321,7 @@ export class HimalayanPeakWorld {
             for (let i = 0; i < this.u.gustA.length; i++) this.u.gustA[i].value.set(0, 0, -100, 0);
             this.u.avalanche.value.set(-100, 0, -100, 0);
             this.u.spark.value.set(1, 1, 1, 0);
+            this.u.crown.value = 0;
         }
     }
 
@@ -366,6 +370,8 @@ export class HimalayanPeakWorld {
         const maps = createFieldTextures(field);
         this.textures.push(maps.shade, maps.horizon, maps.volume, maps.ground);
         const u = createPeakUniforms({ noise, ...maps });
+        u.windHorse = createWindHorsePrint();
+        this.textures.push(u.windHorse);
         this.u = u;
 
         // The ground's skyline from the eye along the sun's bearing: when the disc shows.
@@ -411,7 +417,8 @@ export class HimalayanPeakWorld {
         // The eagle comes when it comes: nothing waits for it (a capture may: `eagleReady`).
         this.eagleReady = !this.wantsEagle ? Promise.resolve(false) : loadEagle().then((gltf) => {
             if (!gltf || this.disposed || !this.u) return false;
-            this.eagle = createEagle(this.u, gltf);
+            const routeSeed = this.seed ?? (this.capture ? undefined : Math.floor(Math.random() * 0x100000000));
+            this.eagle = createEagle(this.u, gltf, routeSeed);
             // Its place is squeezed with the world on upright screens, its shape is not.
             this.eagle.space = 'free';
             this.parts.eagle = this.eagle;
@@ -820,7 +827,7 @@ export class HimalayanPeakWorld {
      * rows it covers, `color` = the piece's colour; `screen` (fractions) replaces the board point.
      */
     onLock({
-        u = 0.5, rows = null, hardDrop = false, color = null, player = 0, screen = null,
+        u = 0.5, rows = null, hardDrop = false, distance = 8, color = null, player = 0, screen = null,
     } = {}) {
         const { u: uniforms } = this;
         if (!uniforms || !this.papers) return;
@@ -863,7 +870,7 @@ export class HimalayanPeakWorld {
         this.counts.papers += this.papers.emit({
             from,
             toward: [side * 0.9, 0.55, -0.35],
-            n: this.handful(hardDrop ? 44 : 22),
+            n: this.handful(hardDrop ? 16 : 12),
             rgb,
             time: this.time,
             speed: hardDrop ? [3.5, 10] : [2.2, 6.5],
@@ -873,6 +880,27 @@ export class HimalayanPeakWorld {
             glow: hardDrop ? 1.5 : 1.1,
             stagger: 0.05,
         });
+        if (hardDrop) {
+            // The falling block drives a low fan of ice out of the actual snow at the
+            // exposed foot of its card. Its fragments fall back before the papers rise.
+            const foot = this.screenToSnow(clamp01(wx + side * 0.025), fy);
+            const impact = clamp01(distance / 16);
+            this.counts.papers += this.papers.emit({
+                crystal: true,
+                from: [foot.x, passHeight(this.field, foot.x, foot.z) + 0.09, foot.z],
+                toward: [side * 0.8, 0.95, -0.18],
+                n: this.handful(18 + 32 * impact),
+                speed: [2.5, 5.0 + 4.0 * impact],
+                cone: 0.86,
+                life: [0.62, 1.28],
+                rgb: rgb.map((channel, index) => [0.56, 0.67, 0.80][index] + channel * 0.35),
+                size: 0.049,
+                time: this.time,
+                side,
+                glow: 0.8,
+                stagger: 0.045,
+            });
+        }
 
         // ── The gust: out along the nearest line, and the flags it passes take the colour ──
         // (The hotter play runs, the farther along the line a lock's colour reaches and the
@@ -938,6 +966,14 @@ export class HimalayanPeakWorld {
         let rgb = quad || b2b ? [...SUNFIRE] : [0, 1, 2].map((c) => p.sun[c] * 0.6 + p.glow[c] * 0.6);
         const peak = Math.max(rgb[0], rgb[1], rgb[2], 1e-4);
         rgb = rgb.map((c) => (c / peak) * 0.92 + 0.08);
+        if (!quad && !b2b) {
+            // The first cut is glacier blue, a pair catches lilac sky, and three expose
+            // warm rock before a quad lights the whole slope. The hour colours each.
+            const tint = [[0.54, 0.82, 1.0], [0.84, 0.72, 1.0], [1.0, 0.61, 0.44]][n - 1];
+            rgb = rgb.map((c, i) => 0.53 * c + 0.47 * tint[i]);
+            const brightest = Math.max(...rgb);
+            rgb = rgb.map((c) => c / brightest);
+        }
         const burn = Math.min(1, deeper * 0.3);
         rgb = rgb.map((c, k) => c + (SUNFIRE[k] - c) * burn);
         const strength = Math.min(1.5, 0.55 + 0.16 * n + (quad ? 0.3 : 0)) * (1 + 0.14 * deeper);
@@ -968,17 +1004,20 @@ export class HimalayanPeakWorld {
         if (board && card && !screen) {
             const ys = list.map((row) => boardPoint(board, 0.5, row, this._point).y);
             if (this.layoutLive) {
-                this.beams.fire(ys, card.x0, card.x1, rgb, this.time, Math.min(1.4, 0.7 + 0.18 * n + 0.1 * deeper));
+                this.beams.fire(ys, card.x0, card.x1, rgb, this.time, Math.min(1.4, 0.7 + 0.18 * n + 0.1 * deeper) * flashScale());
             }
             ys.forEach((y, k) => {
                 [-1, 1].forEach((side) => {
                     const from = this.screenToWorld(side < 0 ? card.x0 : card.x1, y, PAPER_DEPTH);
+                    // A pair trades the lead from bank to bank. On later cascade waves
+                    // each bank answers the echo at a different distance down the basin.
+                    const reply = n === 2 && side === ((k + this.counts.clears) % 2 ? 1 : -1);
                     this.counts.papers += this.papers.emit({
                         from,
-                        toward: [side, 0.5, -0.3],
-                        n: this.handful((quad ? 34 : 22) * (1 + 0.25 * deeper)),
-                        rgb: null,
-                        time: birth + k * 0.03,
+                        toward: [side, reply ? 0.94 : 0.4 + k * 0.12, -0.3 - deeper * 0.1],
+                        n: this.handful((quad ? 15 : 11) * (1 + 0.18 * deeper)),
+                        rgb: n === 1 ? rgb : null,
+                        time: birth + k * 0.045 + (reply ? 0.17 : 0),
                         speed: [3.5, (quad ? 13 : 9.5) + deeper],
                         cone: 0.5,
                         life: [3, 5.2],
@@ -1009,6 +1048,21 @@ export class HimalayanPeakWorld {
                     });
                 });
             }
+        } else if (screen) {
+            // Meditation has no card. A touch must still put its response under the hand.
+            const side = screen.x < 0.5 ? -1 : 1;
+            this.counts.papers += this.papers.emit({
+                from: this.screenToWorld(screen.x, screen.y, PAPER_DEPTH),
+                toward: [side * 0.42, 1.0, -0.4],
+                n: this.handful(12 + n * 6),
+                rgb: n === 1 ? rgb : null,
+                time: birth,
+                side,
+                size: 0.095,
+                speed: [2.0, 5.5],
+                cone: 0.66,
+                stagger: 0.16,
+            });
         }
 
         // ── Every line snaps (harder with every wave of a cascade), and the flags let go ──
@@ -1033,6 +1087,7 @@ export class HimalayanPeakWorld {
             this.slide(birth + 0.35, perfect ? 1.2 : 1);
             this.haloSwell.hit(perfect ? 1 : 0.55, birth + 0.2);
             this.counts.quads += 1;
+            if (perfect) this.crownAt = birth;
         } else if (n === 3) {
             this.slide(birth + 0.25, 0.55);
         }
@@ -1041,7 +1096,26 @@ export class HimalayanPeakWorld {
             // spire and the pole answer in gold.
             this.haloSwell.hit(0.42, birth + 0.15);
             this.lightSpire(LUNG_TA[4], 1);
-            this.sendPrayers(birth + 0.1, 18, { speed: [3, 9], glow: 1.4, stagger: 0.25 });
+            // Two separate answers, one from each real landmark. Prism facets fall in the
+            // gold from the spire first, then a colder fan answers across the pass.
+            [this.anchors.spire, this.anchors.pole].forEach((anchor, i) => {
+                const side = i ? 1 : -1;
+                this.counts.papers += this.papers.emit({
+                    crystal: true,
+                    from: anchor,
+                    toward: [-side * 0.35, 1, -0.1],
+                    n: this.handful(32),
+                    speed: [3.8, 9],
+                    cone: 0.4,
+                    life: [1.1, 1.9],
+                    rgb: i ? [0.62, 0.84, 1.0] : SUNFIRE,
+                    size: 0.083,
+                    time: birth + 0.10 + i * 0.34,
+                    side,
+                    glow: 1.25,
+                    stagger: 0.23,
+                });
+            });
             this.gust(-1, 0, birth + 0.3, 0.9);
         }
         if (twist) {
@@ -1064,19 +1138,22 @@ export class HimalayanPeakWorld {
 
     /** A wheel of `spokes` handfuls of `each` papers spinning up round the card. */
     wheel(birth, card, screen, spokes, each) {
-        if (!card || screen) return;
-        const cx = (card.x0 + card.x1) * 0.5;
-        const cy = (card.y0 + card.y1) * 0.5;
+        if (!card && !screen) return;
+        const cx = screen?.x ?? (card.x0 + card.x1) * 0.5;
+        const cy = screen?.y ?? (card.y0 + card.y1) * 0.5;
+        const rx = screen ? 0.14 / this.aspect : (card.x1 - card.x0) * 0.62;
+        const ry = screen ? 0.14 : (card.y1 - card.y0) * 0.56;
         const centre = this.screenToWorld(cx, cy, PAPER_DEPTH, [0, 0, 0]);
         for (let k = 0; k < spokes; k++) {
-            const a = (k / spokes) * Math.PI * 2;
+            const a = (k / spokes) * Math.PI * 2 + Math.sin(birth) * 0.35;
             // Round the card's rim, each thrown along the rim: a wheel.
-            const sx = cx + Math.cos(a) * (card.x1 - card.x0) * 0.62;
-            const sy = cy + Math.sin(a) * (card.y1 - card.y0) * 0.56;
+            const sx = cx + Math.cos(a) * rx;
+            const sy = cy + Math.sin(a) * ry;
             const from = this.screenToWorld(sx, sy, PAPER_DEPTH);
             const out = [from[0] - centre[0], from[1] - centre[1], from[2] - centre[2]];
             this.counts.papers += this.papers.emit({
                 from,
+                curl: !this.reducedMotion,
                 toward: [out[1] + out[0] * 0.25, -out[0] + out[1] * 0.25, -0.2],
                 n: this.handful(each),
                 rgb: null,
@@ -1103,6 +1180,7 @@ export class HimalayanPeakWorld {
         const { u } = this;
         if (!u || !this.papers) return;
         const t = this.time;
+        this.crownAt = t;
         this.haloSwell.hit(1, t + 0.1);
         this.releaseLines(t, 0, true);
         this.sendPrayers(t, 46, { speed: [3, 10], glow: 1.5, stagger: 0.5 });
@@ -1124,7 +1202,7 @@ export class HimalayanPeakWorld {
     onSpin({ player = 0 } = {}) {
         if (!this.u || !this.papers) return;
         const t = this.time;
-        const card = player === 0 ? cardUnion(this.layout) : null;
+        const card = boardFor(this.layout, player) ? cardUnion(this.layout) : null;
         this.gust(-1, 0, t + 0.05, 0.7);
         this.storm = Math.max(this.storm, 0.5);
         this.wheel(t, card, null, 8, 4);
@@ -1160,14 +1238,42 @@ export class HimalayanPeakWorld {
         if (!this.u || !this.papers || !this.anchors) return;
         // New prayers from the spire and the pole, and every line snaps.
         this.gust(-1, 0, this.time, 1.1);
-        this.sendPrayers(this.time, 40);
+        // A new hour travels rope by rope from the summit knot. The colours still present
+        // from play mix into this wave, and later clears can release the newly lit cloth.
+        this.lines.forEach((line, i) => {
+            const length = Math.hypot(line.b[0] - line.a[0], line.b[1] - line.a[1], line.b[2] - line.a[2]);
+            const dye = LUNG_TA[(i + this.level - 1) % LUNG_TA.length];
+            const color = dye.map((c, channel) => c * 0.7 + SUNFIRE[channel] * 0.22);
+            const arrival = this.time + i * 0.19;
+            this.gust(i, 0, arrival, 1.05);
+            this.counts.blessed += this.flags.bless(i, 0, color, arrival, 0.46, length * 1.25, this.blessCeiling());
+        });
+        this.sendPrayers(this.time + 0.27, 23, { speed: [2.5, 6.6], glow: 0.85, stagger: 0.85 });
         this.lightSpire(LUNG_TA[4], 1);
     }
 
     /** The run is over: the light goes back under the wall. */
     onGameOver() {
         this.combo = 0;
-        this.dip = Math.max(this.dip, 0.4);
+        this.dip = Math.max(this.dip, 0.4 * flashScale());
+        if (!this.anchors || !this.papers) return;
+        // The last sliver of light falls from the spire in a quiet shower as the sun sets.
+        this.counts.papers += this.papers.emit({
+            crystal: true,
+            from: this.anchors.spire,
+            toward: [-0.46, -0.8, -0.1],
+            n: this.handful(22),
+            speed: [0.65, 2.3],
+            cone: 1.0,
+            life: [1.1, 1.9],
+            rgb: [0.49, 0.63, 0.82],
+            size: 0.075,
+            time: this.time,
+            side: -1,
+            glow: 0.35,
+            stagger: 1.05,
+            jitter: 0.36,
+        });
     }
 
     /** How far the mountain is from waiting (0) to lit (1), for the hour's colours. */
@@ -1245,7 +1351,7 @@ export class HimalayanPeakWorld {
         const first = this.slides[0];
         const second = this.slides[1];
         u.avalanche.value.set(first.birth, first.strength, second.birth, second.strength);
-        const hush = t < this.hushUntil ? this.hushDepth : 0;
+        const hush = t < this.hushUntil ? this.hushDepth * flashScale() : 0;
         const breathTarget = hush > 0 ? 1 - (1 - HUSH_BREATH) * hush : 1 - this.dip;
         this.breath += (breathTarget - this.breath) * approach(hush > 0 ? 40 : 12, dt);
         if (dt === 0) this.breath = breathTarget;
@@ -1295,6 +1401,8 @@ export class HimalayanPeakWorld {
         u.prayer.value = clamp01(level * 0.6 + fever * 0.55);
         // (The ring needs a sun that has cleared the wall to hang on; a fever holds it up.)
         u.halo.value = Math.max(this.halo, fever * 0.62) * seen;
+        const crownAge = t - this.crownAt;
+        u.crown.value = smooth(0, 0.86, crownAge) * (1 - smooth(2.1, 6.2, crownAge)) * (0.62 + 0.38 * seen);
         const p = this._hour;
         const fire = clamp01(this.surge * 0.5);
         const warm = (key, node, gain = 1) => {

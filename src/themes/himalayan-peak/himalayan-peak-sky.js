@@ -11,11 +11,12 @@
 
 import * as THREE from 'three/webgpu';
 import {
-    Fn,
+    Fn, If,
     abs,
     atan,
     cameraPosition,
     clamp,
+    cos,
     dot,
     exp,
     float,
@@ -31,9 +32,11 @@ import {
     smoothstep,
     sqrt,
     step,
+    texture,
     vec2,
     vec3,
 } from 'three/tsl';
+import { halfBits } from '../../rendering/half-float.js';
 import {
     hpHash33, hpPart, hpPow4, hpSky, hpSq,
 } from './himalayan-peak-tsl.js';
@@ -42,7 +45,7 @@ export const SKY_RADIUS = 46000;
 /** The sun's disc as drawn: larger than life, as a long lens over a ridge shows it. */
 export const SUN_RADIUS = 0.021;
 
-const MILKY_NORMAL = new THREE.Vector3(0.52, 0.5, 0.69).normalize();
+const MILKY_NORMAL = new THREE.Vector3(0.64, 0.75, 0.17).normalize();
 
 /**
  * The far range, 40 to 80 km beyond the headwall: its giants as [bearing, summit elevation,
@@ -64,21 +67,61 @@ export const FAR_PEAKS = Object.freeze([
 /** The range's own foot (degrees): everything under it is hidden by the headwall. */
 const FAR_FOOT = 5.2;
 
-/** The far range's skyline (elevation, radians) at bearing `az` (radians). */
-const farSkyline = (u, az) => {
-    const deg = az.mul(180 / Math.PI);
-    // A smooth maximum of the giants' pyramids, so the saddles between them are rounded.
-    let h = float(FAR_FOOT);
-    FAR_PEAKS.forEach(([b, top, k]) => {
-        const peak = float(top).sub(abs(deg.sub(b)).mul(k));
-        const m = clamp(peak.sub(h).mul(0.5).div(0.7).add(0.5), 0.0, 1.0);
-        h = mix(h, peak, m).add(m.mul(float(1.0).sub(m)).mul(0.7));
+// Cold summits in a second basin show through the first range's cols.
+const BACK_PEAKS = [[-8.9, 11.6, 0.8], [-2.1, 10.9, 0.64], [5.0, 11.2, 0.73], [14.8, 10.45, 0.72], [20, 8.85, 0.75]];
+const PROFILE_SAMPLES = 2048;
+const RAD = Math.PI / 180;
+let skylineData;
+
+function ridgeAt(degrees, peaks) {
+    let height = FAR_FOOT;
+    let summit = degrees;
+    peaks.forEach(([bearing, top, slope], i) => {
+        const x = degrees - bearing;
+        const side = x >= 0 ? 1 : -1;
+        // Each spur breaks slope at its shoulder. Some summits are blades, some have a hanging shelf.
+        const asymmetry = 1 + side * ((i % 3) - 1) * 0.18;
+        const run = Math.abs(x);
+        const shoulder = Math.min(run, 0.7 + (i % 3) * 0.34);
+        const ledge = Math.min(Math.max(run - shoulder, 0), 0.7 + (i % 2) * 0.35);
+        const face = top - (run + shoulder * 0.27 - ledge * 0.55) * slope * asymmetry;
+        if (face > height) {
+            height = face;
+            summit = bearing;
+        }
     });
-    // Aretes, gendarmes and a ragged crest.
-    const r1 = float(1.0).sub(abs(u.noise(vec2(deg.mul(0.11), 0.37)).x.mul(2.0).sub(1.0)));
-    const r2 = float(1.0).sub(abs(u.noise(vec2(deg.mul(0.43), 0.71)).w.mul(2.0).sub(1.0)));
-    return h.add(r1.mul(0.42)).add(r2.mul(0.16)).sub(0.3).mul(Math.PI / 180);
-};
+    const exposure = 0.49 + 0.35 * Math.sin(degrees * 0.74 + 0.86 * Math.sin(degrees * 1.27));
+    const crest = Math.sin(degrees * 2.6 + Math.sin(degrees * 1.3)) * 0.10
+        + exposure * (Math.sin(degrees * 8.2 + Math.sin(degrees * 5.4)) * 0.075 + Math.sin(degrees * 21.7) * 0.03);
+    return [height + crest, summit];
+}
+
+/** The two crest elevations and their summit bearings, in degrees, at a viewing angle. */
+export function farRidgesAt(degrees) {
+    return [...ridgeAt(degrees, FAR_PEAKS), ...ridgeAt(degrees, BACK_PEAKS)];
+}
+
+/** One angular sample gives both skylines and the bearing of the spine below each summit. */
+function createSkylineTexture() {
+    if (!skylineData) {
+        skylineData = new Uint16Array(PROFILE_SAMPLES * 4);
+        for (let i = 0; i < PROFILE_SAMPLES; i++) {
+            const deg = ((i + 0.5) / PROFILE_SAMPLES - 0.5) * 100;
+            const [front, frontSpine, back, backSpine] = farRidgesAt(deg);
+            const offset = i * 4;
+            skylineData[offset] = halfBits(front * RAD);
+            skylineData[offset + 1] = halfBits(frontSpine * RAD);
+            skylineData[offset + 2] = halfBits(back * RAD);
+            skylineData[offset + 3] = halfBits(backSpine * RAD);
+        }
+    }
+    const map = new THREE.DataTexture(skylineData, PROFILE_SAMPLES, 1, THREE.RGBAFormat, THREE.HalfFloatType);
+    map.name = 'HimalayanPeakFarSkylines';
+    map.minFilter = THREE.LinearFilter;
+    map.magFilter = THREE.LinearFilter;
+    map.needsUpdate = true;
+    return map;
+}
 
 /**
  * @param {object} u  shared uniforms
@@ -92,13 +135,23 @@ export function createSky(u, { cirrus = true } = {}) {
     material.side = THREE.BackSide;
     material.depthWrite = false;
     material.depthTest = true;
+    const skylineTexture = createSkylineTexture();
+    material.addEventListener('dispose', () => skylineTexture.dispose());
 
     material.colorNode = Fn(() => {
         const seen = normalize(positionWorld.sub(cameraPosition));
         // The direction in the amphitheatre as it was planned (upright screens draw it narrower).
         const dir = normalize(vec3(seen.x.div(u.squeeze), seen.y, seen.z)).toVar();
         const up = clamp(dir.y, 0.0, 1.0);
-        const col = hpSky(u, dir).toVar();
+        const az = atan(dir.x, dir.z.negate()).toVar();
+        const el = atan(dir.y, length(dir.xz)).toVar();
+        const blueHeight = smoothstep(0.14, 0.81, up).mul(0.56);
+        // Only the air just above the sun's pass turns apricot. Violet dusk survives over the
+        // snow peak on the other side of the valley, including while the sun is out of view.
+        const lowSun = exp(hpSq(az.sub(0.52).div(0.42)).add(hpSq(el.sub(0.135).div(0.18))).negate());
+        const afterglow = u.glow.mul(vec3(0.80, 1.04, 0.27)).mul(lowSun.mul(0.31)).mul(u.breath);
+        const clearAir = mix(hpSky(u, dir), u.zenith.mul(1.3).mul(u.breath), blueHeight).add(afterglow).toVar();
+        const col = clearAir.toVar();
         const cs = dot(dir, u.sunDir);
         // Angle from the sun, squared (small angles): no acos, no cancellation at the disc.
         const a2 = max(float(1.0).sub(cs).mul(2.0), 0.0);
@@ -108,67 +161,130 @@ export function createSky(u, { cirrus = true } = {}) {
         const veil = hpSq(max(cs, 0.0));
         const night = u.stars.mul(smoothstep(0.02, 0.3, up)).mul(float(1.0).sub(veil.mul(0.8)));
         const layer = (scale, cut, size) => {
-            const g = dir.mul(scale);
+            const g = dir.mul(scale).add(512);
             const h = hpHash33(floor(g));
             const f = fract(g).sub(0.5).sub(h.sub(0.5).mul(0.6));
-            const twinkle = sin(u.time.mul(h.z.mul(3.0).add(1.2)).add(h.x.mul(40.0))).mul(0.25).add(0.75);
-            const tint = mix(vec3(1.0, 0.82, 0.66), vec3(0.72, 0.84, 1.0), h.y);
-            return tint.mul(exp(dot(f, f).mul(-size)).mul(step(cut, h.x)).mul(twinkle));
+            const twinkle = sin(u.time.mul(h.z.mul(1.3).add(0.65)).add(h.x.mul(40.0))).mul(0.12).add(0.88);
+            const tint = mix(vec3(1.0, 0.90, 0.77), vec3(0.76, 0.86, 1.0), h.y);
+            const magnitude = hpPow4(h.z).mul(2.15).add(0.22);
+            return tint.mul(exp(dot(f, f).mul(-size)).mul(step(cut, h.x)).mul(twinkle).mul(magnitude));
         };
-        const band = exp(hpSq(dot(dir, vec3(MILKY_NORMAL.x, MILKY_NORMAL.y, MILKY_NORMAL.z)).div(0.2)).negate());
-        const dust = u.noise(dir.xz.mul(1.7).add(dir.y)).x;
+        const dust = u.noise(vec2(az.mul(1.45), el.mul(1.75)).add(0.62));
+        const across = dot(dir, vec3(MILKY_NORMAL.x, MILKY_NORMAL.y, MILKY_NORMAL.z));
+        const band = exp(hpSq(across.add(dust.w.sub(0.5).mul(0.09)).div(0.115)).negate());
+        const rift = smoothstep(0.008, 0.041, abs(across.add(dust.x.sub(0.48).mul(0.17))));
         const deep = smoothstep(0.55, 1.0, u.stars);
-        const stars = layer(150.0, 0.9, 130.0).mul(1.6)
-            .add(layer(310.0, float(0.93).sub(band.mul(deep).mul(0.25)), 150.0).mul(0.8));
+        const clusters = band.mul(rift.mul(0.8).add(0.2)).mul(smoothstep(0.28, 0.72, dust.x));
+        const stars = layer(112.0, 0.92, 90.0).mul(1.85)
+            .add(layer(218.0, float(0.96).sub(clusters.mul(deep).mul(0.42)), 110.0).mul(1.05));
         col.addAssign(stars.mul(night));
-        col.addAssign(vec3(0.16, 0.2, 0.34).mul(band.mul(deep).mul(night).mul(smoothstep(0.32, 0.72, dust)).mul(0.4)));
+        col.addAssign(mix(vec3(0.23, 0.27, 0.42), vec3(0.35, 0.27, 0.29), dust.w)
+            .mul(clusters.mul(deep).mul(night).mul(0.27)));
+
+        // Moonrise has a separate body above the west shoulder. The night palette both places
+        // it in the sky and blends out the low solar disc as the last twilight recedes.
+        const moonlight = smoothstep(0.70, 0.845, u.stars)
+            .mul(smoothstep(-0.30, 0.15, u.sunCol.b.sub(u.sunCol.r))).toVar();
+        const pixelAngle = max(fwidth(el), 1e-5).toVar();
+        If(moonlight.greaterThan(0.001), () => {
+            const travel = u.windRun.mul(0.00030);
+            const moonAz = sin(travel.add(0.68)).mul(0.060).sub(0.29);
+            const moonEl = sin(travel.mul(0.77)).mul(0.054).add(0.332);
+            const radius = 0.0135;
+            const q = vec2(az.sub(moonAz).mul(cos(moonEl)).mul(u.squeeze), el.sub(moonEl)).div(radius).toVar();
+            const d2 = dot(q, q).toVar();
+            If(d2.lessThan(12), () => {
+                const d = sqrt(d2);
+                const aa = pixelAngle.div(radius);
+                const limb = smoothstep(aa.add(1), float(1).sub(aa), d);
+                const z = sqrt(max(float(1).sub(d2), 0));
+                const incidence = dot(q, vec2(0.72, -0.35)).sub(z.mul(0.60));
+                const crescent = smoothstep(aa.negate(), aa.add(0.06), incidence)
+                    .mul(clamp(incidence, 0, 1).mul(0.60).add(0.55));
+                const mare = u.noise(q.mul(0.29).add(0.37)).level(1);
+                const albedo = mare.w.mul(0.20).add(mare.x.mul(0.12)).add(0.76);
+                const earthshine = vec3(0.083, 0.110, 0.158).mul(albedo);
+                const silver = earthshine.add(vec3(3.3, 3.15, 2.88).mul(crescent).mul(albedo));
+                const aureole = exp(d2.mul(-0.75)).mul(smoothstep(12, 8, d2)).mul(0.033);
+                col.assign(mix(col, silver, limb.mul(moonlight)));
+                col.addAssign(vec3(0.75, 0.85, 1).mul(aureole).mul(moonlight));
+            });
+        });
 
         // ── Cirrus: streaks drawn out along the wind, lit from below at dawn ──
         if (cirrus) {
-            const plane = dir.xz.div(max(dir.y, 0.0).add(0.17)).mul(0.1).add(vec2(u.windRun.mul(1.6e-6), 0.0));
-            const n1 = u.noise(plane.mul(vec2(1.0, 2.7)));
-            const n2 = u.noise(plane.mul(vec2(2.6, 7.3)).add(0.41));
-            const streak = smoothstep(0.5, 0.8, n1.x.mul(0.6).add(n2.w.mul(0.4)).add(0.03));
-            const fade = smoothstep(0.015, 0.2, dir.y).mul(float(1.0).sub(smoothstep(0.6, 1.0, dir.y).mul(0.6)));
-            // Six thousand metres over the summits: the sun reaches them first.
+            const run = u.windRun;
+            const plane = dir.xz.div(max(dir.y, 0.0).add(0.12)).toVar();
+            const field = u.noise(plane.mul(vec2(0.095, 0.115)).sub(vec2(run.mul(1.8e-5), 0.17)));
+            const flow = plane.y.add(plane.x.mul(0.16)).add(field.w.sub(0.5).mul(0.76));
+            const fibre = u.noise(vec2(plane.x.mul(0.21).sub(run.mul(4.2e-5)), flow.mul(0.96)).add(0.41));
+            const threads = u.noise(vec2(plane.x.mul(0.69).sub(run.mul(9.0e-5)), flow.mul(3.6).add(fibre.w.mul(0.32))));
+            const streak = smoothstep(0.39, 0.68, fibre.x.mul(0.46).add(field.x.mul(0.35)).add(threads.w.mul(0.19)));
+            const wisp = smoothstep(0.29, 0.73, field.x).mul(streak).toVar();
+            const fade = smoothstep(0.035, 0.21, dir.y);
             const high = smoothstep(-0.24, -0.04, u.sunTan);
             const forward = hpPow4(max(cs, 0.0));
-            const lit = u.sunCol.mul(forward.mul(0.9).add(0.24)).mul(high);
-            const cloud = u.shade.mul(1.2).add(u.horizon.mul(0.8)).add(u.zenith.mul(0.6)).add(lit);
-            // (Thinner once the day is up: high cloud burns off.)
-            const cover = streak.mul(fade).mul(float(0.66).sub(u.power.mul(0.2)));
+            const thin = float(1).sub(wisp.mul(0.69));
+            const lit = u.sunCol.mul(forward.mul(0.73).add(0.16)).mul(high).mul(thin);
+            const cloud = u.shade.mul(0.73).add(u.horizon.mul(0.42)).add(u.zenith.mul(0.45)).add(lit);
+            const cover = wisp.mul(fade).mul(float(0.69).sub(u.power.mul(0.18)));
             col.assign(mix(col, cloud.mul(u.breath.mul(0.65).add(0.35)), cover));
+
+            // Two lenticular shelves condense downstream of the eastern ridge. Their underside
+            // catches the last light as the thin crowns dissolve into the cirrus.
+            const weather = sin(run.mul(0.0015).add(0.6)).mul(0.32)
+                .add(sin(run.mul(0.00227).add(1.6)).mul(0.18)).add(0.5)
+                .toVar();
+            const lensX = az.sub(0.32).sub(sin(run.mul(0.00063)).mul(0.042));
+            const level = float(0.30).add(lensX.mul(0.10)).add(weather.mul(0.025))
+                .add(field.w.sub(0.5).mul(0.016))
+                .add(fibre.w.sub(0.5).mul(0.008));
+            const lens = (x, y, radius, thickness) => {
+                const shape = max(float(1).sub(hpSq(x.div(radius))), 0).toVar();
+                const half = shape.mul(thickness).add(0.004);
+                return smoothstep(1.40, 0.04, abs(y).div(half)).mul(smoothstep(0.03, 0.64, shape));
+            };
+            const y = el.sub(level);
+            const base = lens(lensX, y, 0.195, 0.014);
+            const crown = lens(lensX.add(0.032), y.sub(0.031), 0.115, 0.008);
+            const lamina = max(base, crown.mul(0.7)).mul(smoothstep(0.26, 0.91, weather));
+            const under = smoothstep(0.012, -0.013, y).mul(base).add(crown.mul(0.52));
+            const shelf = u.shade.mul(0.78).add(u.horizon.mul(0.32))
+                .add(u.sunCol.mul(under.mul(0.45).add(0.07)).mul(high));
+            col.assign(mix(col, shelf.mul(u.breath), lamina.mul(fibre.w.mul(0.27).add(0.20))));
         }
 
         // ── The far range: giants beyond the headwall, blue with distance ──
         {
-            const az = atan(dir.x, dir.z.negate());
-            const el = atan(dir.y, length(dir.xz));
-            const top = farSkyline(u, az).toVar();
+            const profiles = texture(skylineTexture, vec2(az.div(100 * RAD).add(0.5), 0.5)).toVar();
+            const top = profiles.r;
             const w = max(fwidth(el), 1e-5);
             const cover = smoothstep(w.negate(), w, top.sub(el)).toVar();
-            // Which side of its peak a point is on: the skyline falling to the right faces the sun.
-            const d = 0.0035;
-            const fall = farSkyline(u, az.add(d)).sub(farSkyline(u, az.sub(d))).div(2 * d);
-            const depth = clamp(top.sub(el).div((5.0 * Math.PI) / 180), 0.0, 1.0);
-            // Flutings and ribs run down the fall line: noise stretched tall, fanning out under
-            // each summit; the light's edge follows them, so no face is lit along a ruled line.
-            const flute = u.noise(vec2(az.mul(170.0), el.mul(44.0))).toVar();
-            const rib = u.noise(vec2(az.mul(46.0), el.mul(7.0)).add(0.53)).toVar();
-            const sunward = smoothstep(0.35, -0.75, fall.add(rib.x.sub(0.5).mul(0.9)));
-            // Snow plastered down the faces; rock shows lower down and on the ribs.
-            const rock = smoothstep(0.5, 0.78, rib.w.mul(0.55).add(flute.x.mul(0.3)).add(depth.mul(0.42)));
-            const snow = float(1.0).sub(rock.mul(0.85));
-            const fluted = flute.w.mul(0.3).add(0.85);
-            // The light comes down the giants as the sun rises: at rest only their summits glow.
-            const reach = smoothstep(-0.26, 0.24, u.sunTan).mul(1.25).add(0.1);
-            const edge = depth.add(rib.x.sub(0.5).mul(0.16));
-            const lit = smoothstep(edge.sub(0.05), edge.add(0.05), reach).mul(sunward.mul(0.85).add(0.15));
-            const shade = mix(u.shade.mul(1.05), u.zenith.mul(1.6), 0.35).mul(snow.mul(0.75).add(0.25)).mul(fluted);
-            const glow = u.sunCol.mul(lit).mul(snow.mul(0.8).add(0.2)).mul(fluted).mul(0.58);
-            // Forty kilometres of air: the shaded faces sink toward the sky behind them.
-            const far = mix(shade, col, 0.3).add(glow.mul(u.breath));
-            col.assign(mix(col, far, cover));
+            const backCover = smoothstep(w.negate(), w, profiles.b.sub(el));
+            const below = max(top.sub(el), 0.0).toVar();
+            const depth = clamp(below.div(5.0 * RAD), 0.0, 1.0);
+            const spine = az.sub(profiles.g).add(below.mul(0.52)).toVar();
+            // The spurs fall diagonally away from a broken snow arête. Its edge comes in and
+            // out of shadow independently of the gullies that cut across its lower slopes.
+            const flank = smoothstep(-0.006, 0.009, spine);
+            const along = az.add(below.mul(mix(float(-0.85), float(1.05), flank)));
+            const rib = u.noise(vec2(along.mul(17.0), el.mul(4.3)).add(0.53)).toVar();
+            const flute = u.noise(vec2(along.mul(52.0), el.mul(13.0))).toVar();
+            const facing = smoothstep(-0.017, 0.011, spine.add(rib.x.sub(0.5).mul(below).mul(1.2)));
+            const spur = smoothstep(0.34, 0.67, rib.w.mul(0.72).add(flute.x.mul(0.28)));
+            const rock = smoothstep(0.48, 0.80, spur.mul(0.48).add(depth.mul(0.45)).add(flute.w.mul(0.21)));
+            const snow = float(1).sub(rock.mul(0.64));
+            const reach = smoothstep(-0.26, 0.24, u.sunTan).mul(1.24).add(0.13);
+            const edge = depth.add(rib.x.sub(0.5).mul(0.31));
+            const lit = smoothstep(edge.sub(0.085), edge.add(0.085), reach)
+                .mul(facing.mul(0.64).add(spur.mul(0.24)).add(0.1));
+            const shade = u.shade.mul(0.92).add(u.horizon.mul(0.19)).mul(spur.mul(0.24).add(0.76)).mul(snow);
+            const glow = u.sunCol.mul(lit).mul(snow).mul(0.32);
+            const front = mix(shade.add(glow).mul(u.breath), clearAir, depth.mul(0.19).add(0.16));
+            const backFacing = smoothstep(-0.015, 0.02, az.sub(profiles.a).sub(profiles.b.sub(el).mul(0.7)));
+            const back = mix(u.shade.mul(1.45), clearAir, 0.61)
+                .add(u.sunCol.mul(backFacing.mul(0.14).add(0.04)).mul(rib.w.mul(0.28).add(0.72)).mul(u.breath));
+            col.assign(mix(mix(col, back, backCover), front, cover));
         }
 
         // ── The sun: a limb-darkened disc in a corona ──
@@ -177,7 +293,8 @@ export function createSky(u, { cirrus = true } = {}) {
         const disc = u.sunCol.mul(edge.mul(limb).mul(9.0));
         const corona = u.sunCol.mul(exp(a2.div(-r2 * 7.0)).mul(0.6).add(exp(sqrt(a2).mul(-13.0)).mul(0.14)));
         // (Nothing of it below the horizon: the cloud sea is not always opaque down there.)
-        col.addAssign(disc.add(corona).mul(u.breath).mul(smoothstep(-0.03, 0.0, dir.y)));
+        const sun = disc.mul(float(1).sub(moonlight)).add(corona);
+        col.addAssign(sun.mul(u.breath).mul(smoothstep(-0.03, 0.0, dir.y)));
         // Twenty-two degrees out, the ring that ice in the air draws round a low sun: red on
         // its inner edge, fading outward. Four lines call it up; a board cleared whole, fully;
         // a back-to-back marks it, and a fever holds it up.
@@ -207,6 +324,38 @@ export function createSky(u, { cirrus = true } = {}) {
         };
         const mock = mockSun(1).add(mockSun(-1)).mul(u.halo.mul(0.6));
         col.addAssign(u.sunCol.mul(mock).mul(smoothstep(0.0, 0.08, dir.y)));
+        // A cold column of suspended ice answers a perfect clear. Horizontal plate ice
+        // catches the low sun in a pillar; the tangent arc opens in two wings above it.
+        If(u.crown.greaterThan(0.001).and(a2.lessThan(0.48)), () => {
+            const lateral = dot(dir, right).toVar();
+            const rise = dir.y.sub(sinEl).toVar();
+            const span = abs(lateral).toVar();
+            const pillarWidth = max(float(0.015).sub(max(rise, 0.0).mul(0.026)), 0.004);
+            const pillar = exp(hpSq(lateral.div(pillarWidth)).negate())
+                .mul(smoothstep(-0.08, 0.015, rise)).mul(exp(max(rise, 0.0).mul(-8.5)));
+            const tangent = rise.sub(cosEl.mul(0.365)).sub(span.mul(0.55)).add(span.mul(span).mul(1.15));
+            const spanFade = smoothstep(0.37, 0.035, span);
+            const amber = exp(hpSq(tangent.div(0.009)).negate());
+            const opal = exp(hpSq(tangent.sub(0.015).div(0.018)).negate());
+            const arc = vec3(1.0, 0.56, 0.28).mul(amber.mul(0.34))
+                .add(vec3(0.58, 0.82, 1.0).mul(opal.mul(0.26))).mul(spanFade);
+            col.addAssign(u.sunCol.mul(pillar.mul(0.57).add(arc)).mul(u.crown));
+            // When a hot sun climbs, its 22° arc can crest above the lens. Fine ice
+            // in the cirrus also diffracts a close, opalescent corona round the disc.
+            // The scattered colour is broad, and breaks up where the veil thins.
+            If(a2.lessThan(0.04), () => {
+                const radius = sqrt(a2).toVar();
+                const patch = sin(lateral.mul(53.0).add(rise.mul(27.0))).mul(0.24).add(0.74);
+                const coronaBand = radius.sub(0.084).add(lateral.mul(rise).mul(0.56));
+                const violet = exp(hpSq(coronaBand.add(0.018).div(0.022)).negate());
+                const honey = exp(hpSq(coronaBand.sub(0.026).div(0.017)).negate());
+                const iceTint = vec3(0.38, 0.64, 1.0).mul(violet)
+                    .add(vec3(1.0, 0.49, 0.29).mul(honey));
+                const strength = patch.mul(u.crown).mul(u.nearSun);
+                col.mulAssign(float(1.0).sub(violet.mul(strength).mul(0.24)));
+                col.addAssign(iceTint.mul(strength).mul(0.55));
+            });
+        });
         return col;
     })();
 

@@ -167,8 +167,8 @@ describe('relief + macro + detail bakes (pure halves)', () => {
         expect(Object.keys(baked.ms)).toEqual(['relief', 'sunFields', 'atlas', 'detail', 'macro', 'total']);
         const buffers = worldTextureDataBuffers(baked);
         // (12 since 2026-11-20: the tarn's own plate rides on the sculpt plate's record; 13 since
-        // 2026-11-21: the north lake's too.)
-        expect(buffers.length).toBe(13);
+        // 2026-11-21: the north lake's too; 14 with the sea's lace on the detail record.)
+        expect(buffers.length).toBe(14);
         buffers.forEach((b) => expect(b).toBeInstanceOf(ArrayBuffer));
         // Detail bake is the pinned cloud silhouette's host: same field, same stats.
         expect(sha(baked.detail.data)).toBe(sha(bakeDetailNormalData().data));

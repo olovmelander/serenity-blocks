@@ -72,6 +72,7 @@ function createSlot() {
         // lock intake
         lock: false,
         hardDrop: false,
+        distance: 0,
         lockRows: new Int16Array(MAX_ROWS),
         lockRowCount: 0,
         lockU: 0.5,
@@ -98,6 +99,7 @@ function clearPending(slot) {
     slot.pending = false;
     slot.lock = false;
     slot.hardDrop = false;
+    slot.distance = 0;
     slot.lockRowCount = 0;
     slot.lockColor = null;
     slot.lines = 0;
@@ -209,7 +211,7 @@ export class HimalayanPeakDirector {
         this.levelPending = false;
         this.slots = Array.from({ length: PLAYER_SLOTS }, createSlot);
         this._lock = {
-            player: 0, rows: [], u: 0.5, hardDrop: false, color: null, screen: null,
+            player: 0, rows: [], u: 0.5, hardDrop: false, distance: 0, color: null, screen: null,
         };
         this._clear = {
             player: 0, rows: [], lines: 1, combo: 1, cascade: 1, twist: false, perfect: false, b2b: false, screen: null,
@@ -285,6 +287,7 @@ export class HimalayanPeakDirector {
         if (!slot) return false;
         slot.pending = true;
         slot.hardDrop = this.lockRipple;
+        slot.distance = Math.max(0, Math.min(BOARD_GRID.rows, finite(payload.distance, 8)));
         captureLock(slot, payload);
         return true;
     }
@@ -426,6 +429,7 @@ export class HimalayanPeakDirector {
                 for (let r = 0; r < slot.lockRowCount; r += 1) c.rows.push(slot.lockRows[r]);
                 c.u = slot.lockU;
                 c.hardDrop = slot.hardDrop;
+                c.distance = slot.hardDrop ? slot.distance : 0;
                 c.color = slot.lockColor;
                 c.screen = null;
                 sink.lock(c);

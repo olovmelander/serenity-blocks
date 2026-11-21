@@ -96,6 +96,16 @@
     --sp-wall: #ab6adc;
 }
 
+/* The brass finial against dusk-blue slate on the Himalayan pass. */
+:where(body:has(#himalayan-peak-theme.active)) .single-player-stage[data-board='well']:not(:where(
+    .infinity-mode-active, [data-odyssey-board], [data-stillfall], [data-still-air], [data-danger]
+)) {
+    --sp-hue: #ecd29b;
+    --sp-hue-rgb: 236, 210, 155;
+    --sp-wall: #8ea2bb;
+    --sp-wall-glow: rgb(135 171 202 / 24%);
+}
+
 /* Harvest brass at the lip of the well and a slate ledger like the distant fells. */
 :where(body:has(#grainfields-theme.active)) .single-player-stage[data-board='well']:not(:where(
     .infinity-mode-active, [data-odyssey-board], [data-still-air], [data-danger], [data-stillfall]
@@ -151,6 +161,16 @@
     --sp-hue-rgb: 160, 225, 223;
     --sp-wall: #967ccb;
     --sp-wall-glow: rgb(112 120 204 / 28%);
+}
+
+/* Cut blue ice on the wall, moon silver on the queue and score ledger. */
+:where(body:has(#ice-temple-theme.active)) .single-player-stage[data-board='well']:not(:where(
+    .infinity-mode-active, [data-odyssey-board], [data-stillfall], [data-still-air], [data-danger]
+)) {
+    --sp-hue: #c5d6db;
+    --sp-hue-rgb: 197, 214, 219;
+    --sp-wall: #4f90aa;
+    --sp-wall-glow: rgb(107 183 211 / 24%);
 }
 
 /* ---- The column: the queue over the well ------------------------------------------- */
@@ -385,6 +405,13 @@
     background: linear-gradient(180deg, rgba(25, 21, 56, 0.92) 0%, rgba(12, 10, 30, 0.94) 100%);
     box-shadow: 0 14px 34px rgba(0, 0, 0, 0.34), inset 0 1px 0 rgba(var(--sb-cream-rgb), 0.05);
     transform: none;
+}
+
+:where(body:has(#himalayan-peak-theme.active)) .single-player-stage[data-board='well']:not(:where(
+    .infinity-mode-active, [data-odyssey-board], [data-stillfall], [data-still-air], [data-danger]
+)) .single-player-stats-bar {
+    border-color: rgb(207 182 134 / 33%);
+    background: linear-gradient(148deg, rgb(40 47 65 / 97%), rgb(19 26 42 / 96%) 76%);
 }
 
 :where(body:has(#grainfields-theme.active)) .single-player-stage[data-board='well']:not(:where(

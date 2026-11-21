@@ -1,8 +1,14 @@
-import { describe, expect, it } from 'vitest';
+import {
+    describe, expect, it, vi,
+} from 'vitest';
 import { COLS, HIDDEN_ROWS } from '../constants.js';
 import { rebuildBoardGridFromPieces } from '../board.js';
 import { resolveCascade } from '../cascade-resolver.js';
 import { calculateGarbage } from '../garbage.js';
+import { FIXED_TICK_HZ } from '../fixed-tick-clock.js';
+import { INPUT_DISPOSITIONS } from '../simulation-tick.js';
+import { OdysseyBotMatch } from '../odyssey/OdysseyBotMatch.js';
+import { getLevelById } from '../odyssey/data/levels.js';
 import { restoreBoardState } from '../game.js';
 import { findConnectedComponents } from '../cascade-helpers.js';
 import { settleLabelledBoard } from '../stillfall/stillfall-cascade.js';
@@ -14,6 +20,7 @@ import {
     gravityBoardKey, gravityReward, reachableTrigger, readGravityBoard,
 } from './gravity-search.js';
 import { deal, replay, spawn } from '../../../reports/bot-ai-audit-2026-11/solo.mjs';
+import { recordedSeat } from '../../../reports/gravity-bot-rebuild/recorded-seat.mjs';
 
 function controller(state, rows = () => 0) {
     return new GravityBotController({
@@ -27,6 +34,36 @@ function restorePieces(state, lockedPieces, targetGrid) {
 }
 
 describe('live gravity policy', () => {
+    it('applies at least 150 expert hard drops in one minute of local play', () => {
+        const seat = recordedSeat(10, 21420200);
+        const debug = vi.spyOn(console, 'debug').mockImplementation(() => {});
+        let drops = 0;
+        try {
+            for (let tick = 0; tick < 60 * FIXED_TICK_HZ; tick++) {
+                const { input } = seat.step();
+                for (const { command, disposition } of input) {
+                    if (command.action === 'hardDrop' && disposition === INPUT_DISPOSITIONS.APPLIED) drops++;
+                }
+            }
+            expect(seat.state.isGameOver).toBe(false);
+            expect(drops).toBeGreaterThanOrEqual(150);
+        } finally {
+            debug.mockRestore();
+            seat.close();
+        }
+    });
+
+    it('uses the authored pace when the same game runs an Odyssey rival', () => {
+        const levelConfig = getLevelById(56);
+        const duel = new OdysseyBotMatch({ gameState: deal(1006), levelConfig }, { seed: 1006 });
+        try {
+            expect(duel.bot.config).toMatchObject(levelConfig.mechanics.versus.botOverrides);
+        } finally {
+            duel.stop();
+            duel.players.forEach((state) => state.reset());
+        }
+    });
+
     it('keeps each local seat’s pace across round resets, including series seed zero', () => {
         const players = [deal(0), deal(0), deal(0)];
         const match = { numPlayers: players.length, sharedPieceSeed: 0, players };
@@ -44,8 +81,10 @@ describe('live gravity policy', () => {
         manager.configure(slots, match.sharedPieceSeed);
         expect(styles()[0][1]).not.toBe(opening[0][1]);
         players[1].isInfinityMode = true;
+        players[2].isInfinityMode = true;
         manager.configure(slots, 0);
         expect(styles()[1]).toEqual([4, undefined]);
+        expect(manager.controllers.get(2).config).toMatchObject({ maxApm: 1050, reactionMs: [170, 250] });
         manager.destroy();
         players.forEach((state) => state.reset());
     });
