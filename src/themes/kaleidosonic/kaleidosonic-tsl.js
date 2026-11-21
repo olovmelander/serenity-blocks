@@ -26,6 +26,10 @@ export const STRIKES = 12;
 export const STRIKE_ROWS = 3;
 export const HARMONICS = 8;
 export const HARMONIC_ROWS = 2;
+/** A harmonic's signed symmetry order. Negative orders wind back into the motif. */
+export const CHIME = Object.freeze({
+    twist: -3, answer: -2, release: -6, cascade: 5, level: 7, crown: 12,
+});
 
 // ── Small helpers ─────────────────────────────────────────────────────────────────
 

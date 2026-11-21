@@ -930,7 +930,7 @@ describe('Kaleidosonic theme: one node renderer on both backends', () => {
         expect(rowCodes.slice(6, 10)).toEqual([0, 0, 0, 0]);
         // The back-to-back run steps up; the level is announced, not silenced.
         expect(theme.world.b2b).toBe(1);
-        expect(theme.world.levels).toEqual([[3, undefined]]);
+        expect(theme.world.levels).toEqual([[3, { silent: false }]]);
         expect(theme.world.combo).toBe(1);
         expect(theme.getDiagnostics().world).toMatchObject({
             level: 3, combo: 1, b2b: 1, counts: { locks: 1, clears: 1 },
@@ -1027,6 +1027,32 @@ describe('Kaleidosonic theme: one node renderer on both backends', () => {
         expect(theme.world.reducedMotion).toBe(false);
         eventBus.emit(EVENTS.SETTINGS_CHANGED, { type: 'reducedMotion', value: 'true' });
         expect(theme.world.reducedMotion).toBe(true);
+    });
+
+    it('keeps the level and clears the held chain quietly when reactions are disabled', async () => {
+        const { theme } = await startTheme({ quality: 'Low' });
+        const combo = vi.spyOn(theme.world, 'onCombo');
+        const clear = () => {
+            eventBus.emit(EVENTS.PIECE_LOCK, { piece: I });
+            eventBus.emit(EVENTS.LINE_CLEAR, { lineCount: 1, clearedRows: [23] });
+            stepFrames(theme, 1);
+        };
+        clear();
+        clear();
+        expect(combo).toHaveBeenLastCalledWith(2, true);
+        theme.handleSettingsChanged({ detail: { backgroundComboEffects: false } });
+        expect(combo).toHaveBeenLastCalledWith(0, false);
+        eventBus.emit(EVENTS.LEVEL_UP, { level: 2 });
+        stepFrames(theme, 1);
+        expect(theme.world.levels).toEqual([[2, { silent: true }]]);
+        theme.handleSettingsChanged({ detail: { backgroundComboEffects: true } });
+        clear();
+        clear();
+        eventBus.emit(EVENTS.PIECE_LOCK, { piece: I });
+        eventBus.emit(EVENTS.LEVEL_UP, { level: 3 });
+        stepFrames(theme, 1);
+        expect(combo).toHaveBeenLastCalledWith(0, true);
+        expect(theme.world.levels[1]).toEqual([3, { silent: false }]);
     });
 
     it('starts with the settings already saved, and with the system\'s reduced-motion preference', async () => {
@@ -1199,7 +1225,7 @@ describe('Kaleidosonic theme: one node renderer on both backends', () => {
         const { theme, win, listeners } = await startTheme({ quality: 'High' });
         eventBus.emit(EVENTS.LEVEL_UP, { level: 4 });
         theme.stepFrame(16);
-        expect(theme.world.levels).toEqual([[4, undefined]]); // announced: the wheel turns
+        expect(theme.world.levels).toEqual([[4, { silent: false }]]); // announced: the wheel turns
         const rebuildAs = async (quality) => {
             mocks.log.length = 0;
             win.settings.effectQuality = quality;
@@ -1600,7 +1626,7 @@ describe('Kaleidosonic theme: one node renderer on both backends', () => {
         const b2b = vi.spyOn(theme.world, 'onB2B');
         eventBus.emit(EVENTS.PIECE_LOCK, { piece: I });
         stepFrames(theme, 1);
-        expect(combo).toHaveBeenCalledWith(0);
+        expect(combo).toHaveBeenCalledWith(0, true);
         expect(theme.combos.size).toBe(0);
         eventBus.emit(EVENTS.PIECE_LOCK, { piece: T });
         eventBus.emit(EVENTS.LINE_CLEAR, { lineCount: 1, clearedRows: [23] });
