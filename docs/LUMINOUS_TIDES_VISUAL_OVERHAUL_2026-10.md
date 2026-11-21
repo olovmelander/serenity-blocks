@@ -9,6 +9,51 @@ bioluminescent plankton, and takes it ashore: the owner's reference photographs 
 surf on a night beach, so that is the picture. This document records the shipped design and what
 was verified. It is a reference, not a backlog.
 
+## Coast and gameplay revision, 21 November 2026
+
+The original diagonal surf line makes the board feel like a window onto the beach. Its warm harbour lights, dark palm silhouettes and piece-coloured splashes survived the audit particularly well. Comparing the same simulation frames at dusk and on a four-line clear exposed the largest problems in the water and the distant coast. The revision uses Three.js r187. [Before and after at the same time and camera](luminous-tides-overhaul/coast-2026-11.jpg)
+
+| Surface | What the captures showed | What changed |
+| --- | --- | --- |
+| Breaking surf | On the great wave, individual plankton cells expanded into bright tiles. Spray could hang beyond the lip. | The crest pitches shoreward and peels along the beach. Its jade face darkens towards the foot, with fine streams of light under a pale, translucent lip. Plankton too small to resolve merge into their average brightness. Droplets and windblown mist launch from the moving crest. |
+| Calm sea and wet beach | Straight bands cut across the wet sand. The closest stretch had little to establish the scale of the water. | Moonlight breaks into glints on the ripples alongside the harbour reflections. Short drainage channels, silica grain and irregular strands of backwash lead around eleven wet basalt outcrops. The wash catches their bases as the water reaches them. |
+| Palms and island | The palms framed the shore, but the fronds were alike and the far town read as lamps on a nearly flat strip. | The canopy has broader, weathered blades and a breeze that runs through it. Two volcanic ridges, foothills, scattered town lights, a coastal beacon and drifting mist give the horizon depth. |
+| Sky and passage of time | A uniformly bright starfield obscured the Milky Way. The water was doing most of the work of distinguishing one night from another. | Coral afterglow gives way to harbour cloud, a starfield with a dark dust lane, deep night, blue hour and sea mist. The six phases crossfade over a ten-minute circuit in idle play. Moonlight follows the phase, occasional meteors pass beneath cloud cover, and beds of plankton drift independently of the surf. |
+| Board and picker | Bright crests competed with the ghost piece behind the glass. The picker showed a quiet beach. | The post pass attenuates direct glare and bloom at the measured board and HUD bounds. The ordinary solo well has a sea-glass edge and dark ledger. The seven piece colours retain their identities with a pearl highlight. The picker shows the crest, crescent and shore together. |
+
+### What plays beside the board
+
+| Play | Motion and light |
+| --- | --- |
+| Lock and hard drop | A lock drops a bead of the piece's colour and throws a small crown. A hard drop adds an expanding pair of pressure rings at the landing. |
+| Single, double and triple | One, two or three staggered crests arrive from different distances. Each can be followed from its rise through the break to the run-up. |
+| Four lines | One large, forward-pitching breaker crosses the bay with a bright lip and airborne spray. |
+| Twist | A no-line twist turns a small school in a circle. A twist clear sends a larger school banking through the shallows beside the player's waves. |
+| Cascade and back-to-back | A cascade skips a bright bead across the water, leaving a trail of pearl rings at successive landings. A back-to-back sends two amber-edged wakes out from the clear as the main crest peels faster. |
+| Combo and fever | A held chain draws in a squall. Individual drops light close water and merge into a distant sheen. Fever lights more of the bay and opens the cloud over it. |
+| Perfect clear | Sandbars kindle towards the beach and three shooting stars cross in succession. A delayed perfect clear crowns the wave already travelling. |
+| Level up and game over | On a level up the island beacon sweeps the harbour as the sky turns. At game over a band of light draws back out to sea. Starting a run clears that ebb. |
+
+The event frames were replayed at a fixed time and seed. The solo screenshots use the real input, physics and renderer. Three hard drops built the first stack. A prepared four-row well and a final hard drop produced the in-game perfect clear. [Event frames](luminous-tides-overhaul/events-2026-11.jpg) · [Live solo board](luminous-tides-overhaul/game-2026-11.jpg) · [Six night phases](luminous-tides-overhaul/phases-2026-11.jpg) · [Night sky at full size](luminous-tides-overhaul/night-2026-11.jpg)
+
+The eight-second replay uses a prepared eight-row well. The first four-line clear raises a great wave. The second earns a back-to-back and a perfect clear while the first wave is still travelling. [Watch the gameplay replay](luminous-tides-overhaul/great-wave-in-play.webm)
+
+The two basalt forms were baked in Blender and share one draw across all placements. The water uses its existing triangle budget with more of the shore fan near the break. Rain draws only active streaks. High and above use four-sample scene antialiasing when enabled. The lower tiers keep their own foam density, geometry and post settings. Reduced motion suppresses the meteors and the camera kick. [Blender source](../scripts/blender/luminous_tides_basalt.py)
+
+### Verification on the November revision
+
+The Windows desktop used an NVIDIA Blackwell adapter. The playground rendered the production shaders on WebGPU and WebGL2, including a rainy cascade and the Minimal tier. The captured playground consoles were clean. A second real solo game at 390 × 844 used the Low tier's 0.85 render scale on WebGL2 and recorded a four-line perfect clear with the HUD beneath the board. [Portrait gameplay](luminous-tides-overhaul/portrait-2026-11.jpg)
+
+Selecting the theme in a fresh Electron process, switching away and returning passed all 107 lifecycle checks with zero console errors or process failures. The production bundle, boot-closure check, theme lint and 325 targeted tests passed. These exercised the shader generation, event routing, layout, accessibility and theme picker.
+
+| Measurement at 1280 × 720, High | Median | 95th percentile | Sampling |
+| --- | --- | --- | --- |
+| Original four-line wave, playground GPU timestamp | 0.41 ms | 0.50 ms | 7 readings, 30 FPS cap |
+| Revised four-line wave, playground GPU timestamp | 0.69 ms | 1.12 ms | 19 readings, same seed, camera, night and wave age |
+| Revised theme, interval between live solo frames | 16.7 ms | 16.8 ms | 742 intervals over 12 seconds at the 60 FPS setting, including a perfect clear's aftermath and two more hard drops |
+
+The four-line capture held a 33.3 ms median frame interval in both versions. The extra surface detail and four-sample antialiasing raised the measured GPU cost. The separate Electron performance comparison flagged inconsistent draw counters across its two visits, so the live-game figures above come from timestamps on the theme's own frame callback. Portrait coverage used a desktop viewport. Physical handset performance remains unmeasured.
+
 ## The picture
 
 A night beach, seen standing on wet sand at the edge of the swash. The sea in front of the eye is

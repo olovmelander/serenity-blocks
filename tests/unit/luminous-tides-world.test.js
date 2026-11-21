@@ -158,8 +158,51 @@ describe('luminous tides world: the board', () => {
         step(0.5);
         const lit = world.getState().bloom;
         expect(lit).toBeGreaterThan(0.8);
+        expect(world.U.plankton.value.y).toBeCloseTo(0.5);
+        expect(world.U.meteor.value.w).toBeGreaterThan(0);
+        world.setReducedMotion(true);
+        step(0.1);
+        expect(world.U.meteor.value.w).toBe(0);
         step(15);
         expect(world.getState().bloom).toBeLessThan(lit * 0.1);
+        expect(world.U.plankton.value.y).toBe(-1);
+    });
+
+    it('parts a back-to-back wake and skips a cascade across the same live breaker', () => {
+        const { world, step } = makeWorld();
+        world.onClear({ rows: [19], lines: 1 });
+        const wave = world.breakers[0];
+        expect(wave.echoAt).toBeUndefined();
+        expect(wave.skipAt).toBeUndefined();
+        step(0.3);
+        world.onClear({
+            rows: [19], lines: 1, b2b: true, cascade: 3,
+        });
+        expect(world.breakers).toEqual([wave]);
+        expect(wave.echoAt).toBe(world.clock);
+        expect(wave.skipAt).toBe(world.clock);
+        expect(wave.skips).toBe(4);
+        step(1 / 30);
+        expect(world.wakeRows[0].toArray()).toEqual([wave.echoAt, wave.skipAt, wave.wakeS, wave.skips]);
+        world.resetSession();
+        expect(world.breakers).toHaveLength(0);
+    });
+
+    it('reserves the beacon for a played level and clears the outgoing tide on restart', () => {
+        const { world, step } = makeWorld();
+        world.levelUp(2, { silent: true });
+        step(1);
+        expect(world.U.moon.value.w).toBe(0);
+        world.levelUp(3);
+        step(2.5);
+        expect(world.U.moon.value.w).toBeCloseTo(1);
+        world.ebb();
+        step(1);
+        expect(world.U.plankton.value.z).toBeCloseTo(1);
+        world.resetSession();
+        step(0.1);
+        expect(world.U.plankton.value.z).toBe(-1);
+        expect(world.U.moon.value.w).toBe(0);
     });
 
     it('brings rain with a chain, harder the longer it is, and lets it ease off when the chain breaks', () => {
@@ -168,10 +211,13 @@ describe('luminous tides world: the board', () => {
         expect(rainForCombo(5)).toBeGreaterThan(rainForCombo(3));
         expect(rainForCombo(40)).toBeLessThanOrEqual(1);
         const { world, step } = makeWorld();
+        expect(world.parts.rain.mesh.count).toBe(0);
         world.onCombo(6);
         step(6);
         const wet = world.getState().rain;
         expect(wet).toBeGreaterThan(0.5);
+        expect(world.parts.rain.mesh.count).toBeGreaterThan(0);
+        expect(world.parts.rain.mesh.count).toBeLessThanOrEqual(tierFor('Low').streaks);
         world.onCombo(0);
         step(20);
         expect(world.getState().rain).toBeLessThan(0.05);

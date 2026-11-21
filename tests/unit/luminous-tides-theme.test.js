@@ -131,7 +131,10 @@ vi.mock('../../src/themes/luminous-tides/luminous-tides-world.js', () => ({
 
         seek(time) { this.time = time; }
 
+        ebb() { this.ebbing = true; }
+
         resetSession() {
+            this.ebbing = false;
             this.combo = 0;
             this.level = 1;
             this.counts = { locks: 0, clears: 0, quads: 0 };
@@ -393,12 +396,12 @@ describe('Luminous Tides theme: one node renderer on both backends', () => {
             expect(source).not.toMatch(/getContext\(\s*['"`](webgl|experimental-webgl)/);
             expect(source).not.toMatch(/gl\.(createProgram|createShader|bindFramebuffer)\(/);
         }
-        // Nothing is loaded: every texture is baked.
+        // Textures are baked and the basalt mesh ships with the module.
         for (const source of sources) {
             expect(source).not.toMatch(/\b(TextureLoader|GLTFLoader|fetch)\s*\(|new\s+\w*Loader\s*\(/);
         }
         const others = readdirSync(themeDir).filter((name) => !name.endsWith('.js'));
-        expect(others).toEqual(['luminous-tides-theme-icon.png']);
+        expect(others.sort()).toEqual(['luminous-tides-basalt.json', 'luminous-tides-theme-icon.png']);
     });
 
     it('leaves nothing of the renderer it replaces: no composer, no second scene state, no raw context', () => {
@@ -549,6 +552,7 @@ describe('Luminous Tides theme: one node renderer on both backends', () => {
         expect(mocks.posts[0].scene).toBe(theme.scene);
         expect(mocks.posts[0].camera).toBe(theme.camera);
         expect(mocks.posts[0].params.look).toBe(POST_LOOK.High);
+        expect(mocks.posts[0].params.samples).toBe(4);
         expect(mocks.posts[0].params.falseColor).toBe(false);
         // The camera stands on the rig the shore is composed for, and the world is handed it.
         expect(bind).toHaveBeenCalledOnce();
@@ -588,6 +592,18 @@ describe('Luminous Tides theme: one node renderer on both backends', () => {
         expect(theme.renderer.render).not.toHaveBeenCalled();
     });
 
+    it('rebuilds the scene pass once when antialiasing is switched off during play', async () => {
+        const { theme } = await startTheme({ quality: 'High' });
+        vi.spyOn(theme, 'getAntialiasEnabled').mockReturnValue(false);
+        const change = { detail: { enableAntialiasing: false } };
+        theme.handleSettingsChanged(change);
+        await vi.waitFor(() => expect(mocks.posts.at(-1).params).toMatchObject({ samples: 0, antialias: false }));
+        const rebuilt = mocks.posts.length;
+        theme.handleSettingsChanged(change);
+        await Promise.resolve();
+        expect(mocks.posts).toHaveLength(rebuilt);
+    });
+
     it.each(PIXEL_RATIO_CAPS)('builds the %s tier and caps its pixel ratio at %s', async (quality, cap) => {
         stubBrowser({ quality });
         const theme = createTheme();
@@ -597,6 +613,7 @@ describe('Luminous Tides theme: one node renderer on both backends', () => {
         expect(mocks.worlds[0].quality).toBe(quality);
         expect(theme.world.getState().quality).toBe(quality);
         expect(mocks.posts[0].params.look).toBe(POST_LOOK[quality]);
+        expect(mocks.posts[0].params.samples).toBe(['High', 'Ultra', 'Extreme'].includes(quality) ? 4 : 0);
         expect(ratio).toHaveBeenCalledWith(cap, 'theme');
         expect(theme.renderer.setPixelRatio).toHaveBeenCalledWith(ratio.mock.results[0].value);
         expect(theme.renderer.getPixelRatio()).toBeLessThanOrEqual(cap);
@@ -845,6 +862,7 @@ describe('Luminous Tides theme: one node renderer on both backends', () => {
         const reset = vi.spyOn(theme.world, 'resetSession');
         listeners.get('gameOver')();
         expect(reset).toHaveBeenCalledOnce();
+        expect(theme.world.ebbing).toBe(true);
         expect(theme.world.getState()).toMatchObject({
             combo: 0, counts: { locks: 0, clears: 0, quads: 0 },
         });

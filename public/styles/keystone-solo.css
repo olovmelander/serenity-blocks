@@ -96,6 +96,15 @@
     --sp-wall: #ab6adc;
 }
 
+/* Sea glass around the ordinary solo well. The mode and danger cues own their own walls. */
+:where(body:has(#luminous-tides-theme.active)) .single-player-stage[data-board='well']:not(:where(
+    .infinity-mode-active, [data-odyssey-board], [data-stillfall], [data-still-air], [data-danger]
+)) {
+    --sp-hue: #88deda;
+    --sp-hue-rgb: 136, 222, 218;
+    --sp-wall: #3b989c;
+}
+
 /* Infinity's walls: its aqua deepened, boardWallColor('#9ee8ed') (src/ui/board-walls.js), so
    the dark field never wears a light-blue frame; the HUD keeps the aqua. Odyssey borrows this
    layout and keeps its gold (keystone-overlays.css); :where() leaves Still Air and danger,
@@ -336,6 +345,12 @@
     background: linear-gradient(180deg, rgba(25, 21, 56, 0.92) 0%, rgba(12, 10, 30, 0.94) 100%);
     box-shadow: 0 14px 34px rgba(0, 0, 0, 0.34), inset 0 1px 0 rgba(var(--sb-cream-rgb), 0.05);
     transform: none;
+}
+
+:where(body:has(#luminous-tides-theme.active)) .single-player-stage[data-board='well']:not(:where(
+    .infinity-mode-active, [data-odyssey-board], [data-stillfall]
+)) .single-player-stats-bar {
+    background: linear-gradient(160deg, rgba(18, 41, 52, 0.95), rgba(12, 18, 37, 0.95) 74%);
 }
 
 /* The mode's hue as the ledger's left edge, like a seat's plate in local versus. */

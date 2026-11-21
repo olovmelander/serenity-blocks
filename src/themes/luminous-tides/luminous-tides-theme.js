@@ -35,13 +35,14 @@
  * drawn from what it wrote), and once when the scene is built.
  *
  * Warm: none (the world parks nothing for the manager to compile, and the scene pass has one
- * output). Nothing is loaded: the sea, the sand, the sky and the light in the water are
- * generated.
+ * output). The sea, sand, palms, sky and plankton are generated. The two basalt forms travel
+ * with the module and share one shore draw.
  */
 
 import * as THREE from 'three/webgpu';
 
 import { BaseTheme } from '../base-theme.js';
+import { sceneSamples } from '../shared/scene-antialias.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { registerGpuSurface } from '../../utils/gpu-loss-coordinator.js';
 import { normalizeQuality } from '../../utils/quality.js';
@@ -340,11 +341,14 @@ export default class LuminousTidesTheme extends BaseTheme {
 
     setupPost() {
         const look = POST_LOOK[this.quality] || POST_LOOK.High;
+        this.sceneAntialias = this.getAntialiasEnabled();
         this.post = null;
         this.passThrough = null;
         try {
             this.post = new LuminousTidesPost(this.renderer, this.scene, this.camera, {
                 look,
+                samples: sceneSamples(this.quality, this.sceneAntialias),
+                antialias: this.sceneAntialias,
                 falseColor: this.flags.falseColor,
             });
         } catch (error) {
@@ -379,7 +383,10 @@ export default class LuminousTidesTheme extends BaseTheme {
             }),
         );
         this.registerEventListener(window, 'settingsChanged', (p) => this.handleSettingsChanged(p));
-        this.registerEventListener(window, 'gameOver', () => this.resetSession());
+        this.registerEventListener(window, 'gameOver', () => {
+            this.resetSession();
+            if (playing() && this.director?.enabled) this.world?.ebb();
+        });
 
         const resetPointer = () => {
             this.pointer.x = 0;
@@ -451,6 +458,8 @@ export default class LuminousTidesTheme extends BaseTheme {
             return;
         }
         this.applyReactionSettings(payload);
+        const antialias = readSettingUpdate(payload, 'enableAntialiasing');
+        if (antialias.present && boolSetting(antialias.value, true) !== this.sceneAntialias) this.queueRebuild();
         // renderScale (incl. the adaptive PERFORMANCE_DOWNSCALE re-emit) = pixel ratio only;
         // deferred a microtask so main.js has applied setGlobalRenderScale() first. resize()
         // compares the ratio, so only a real change resizes: every save carries all the settings,
@@ -524,7 +533,7 @@ export default class LuminousTidesTheme extends BaseTheme {
         this.modeManager = manager;
         const relayout = () => this.scheduleLayoutReads();
         this.eventUnsubscribers.push(
-            manager.on('modeStarted', relayout),
+            manager.on('modeStarted', () => this.resetSession()),
             manager.on('modeActivated', relayout),
             manager.on('modeStopped', () => this.resetSession()),
         );
