@@ -132,7 +132,10 @@ describe('the cull removes the invisible and only the invisible', () => {
      */
     it('never takes a hero tree, and barely touches mid', () => {
         expect(CULLED.stats.byLod.hero).toBe(FULL.stats.byLod.hero);
-        expect(CULLED.stats.byLod.mid / FULL.stats.byLod.mid).toBeGreaterThan(0.90);
+        // (0.90 -> 0.88, 2026-11-21: the north lake's new gentle bank grows trees where the old bowl's
+        // wall stood bare, and of the mid trees the mask takes, 291 of 329 stand there, behind the
+        // massif from every rail eye: new hidden trees, not visible ones taken. Measured 0.893.)
+        expect(CULLED.stats.byLod.mid / FULL.stats.byLod.mid).toBeGreaterThan(0.88);
         // Rebased with the thinning overlap above — the mask's own behaviour is unchanged.
         // (0.70 -> 0.78 at the archipelago carve, measured 0.754, same overlap mechanism.)
         // Same rebase: the high vantage exposes far ground the ridges used to hide.

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
-    LAKE_RAMP, LAKE_WATER, SEA_HORIZON_DOWN, SEA_SURF, WATER_SHORE_DEPTH_BIAS,
-    depthStepAlongRay, lakeBodyAt, lakeShoreOpacity, lakeShoreWidth, lakeWetLip, seaBodyAt, seaFilmOpacity,
+    LAKE_WATER, SEA_HORIZON_DOWN, SEA_SURF, WATER_SHORE_DEPTH_BIAS,
+    depthStepAlongRay, lakeClearAt, lakeShoreOpacity, lakeShoreWidth, seaBodyAt, seaFilmOpacity,
     seaHorizonKeep, seaSurfLine, shoreFightBand,
 } from './odyssey-water-looks.js';
 
@@ -9,7 +9,7 @@ const luma = (c) => (0.2126 * c[0]) + (0.7152 * c[1]) + (0.0722 * c[2]);
 const depths = Array.from({ length: 481 }, (_, i) => i * 0.25); // 0..120 u
 
 describe('the waters\' depth colour (2026-11-02)', () => {
-    [['lake', lakeBodyAt], ['sea', seaBodyAt]].forEach(([name, bodyAt]) => {
+    [['sea', seaBodyAt]].forEach(([name, bodyAt]) => {
         it(`${name}: darkens and turns bluer with depth, never back`, () => {
             let prev = bodyAt(0);
             depths.slice(1).forEach((d) => {
@@ -21,25 +21,29 @@ describe('the waters\' depth colour (2026-11-02)', () => {
         });
     });
 
-    it('lake: turquoise over the shelf, deep blue in the middle of the basin', () => {
-        const shore = lakeBodyAt(1);
-        expect(shore).toEqual([...LAKE_RAMP.shore]);
-        expect(shore[1]).toBeGreaterThan(shore[2]); // green over blue: turquoise
-        const middle = lakeBodyAt(40); // the main basin
-        expect(middle[2]).toBeGreaterThan(middle[1]); // blue over green
-        expect(luma(middle)).toBeLessThan(luma(shore) * 0.6);
+    // THE LAKE IS CLEAR WATER (2026-11-21): its bed shows through by its depth, and its own colour
+    // goes from turquoise over the shelf to deep blue in the basins (the owner's "turquoise-to-
+    // blue"), the tarn's form.
+    it('lake: the bed shows through the shelf and is gone in the basins', () => {
+        expect(lakeClearAt(0)).toBe(1);
+        expect(lakeClearAt(1)).toBeGreaterThan(0.5);
+        expect(lakeClearAt(10)).toBeLessThan(0.02);
+        expect(lakeClearAt(-3)).toBe(1);
+        let prev = 1;
+        depths.forEach((d) => {
+            const c = lakeClearAt(d);
+            expect(c).toBeLessThanOrEqual(prev);
+            prev = c;
+        });
     });
 
-    it('lake: the plates step at ~3, 10 and 22 u of depth (turquoise, teal, blue, deep blue)', () => {
-        // The first plate (the shore colour) holds to ~3 u of depth and the teal to ~10 u, so the
-        // shelf's colour is several pixels wide from the climb, not a sub-pixel line.
-        expect(lakeBodyAt(2.5)).toEqual([...LAKE_RAMP.shore]);
-        expect(lakeBodyAt(3.4)).not.toEqual([...LAKE_RAMP.shore]);
-        const step = (a, b) => luma(lakeBodyAt(a)) - luma(lakeBodyAt(b));
-        expect(step(9.5, 11.5)).toBeGreaterThan(0.02);
-        expect(step(20.5, 23)).toBeGreaterThan(0.02);
-        expect(step(12, 20)).toBeCloseTo(0, 9); // flat inside a plate
-        expect(LAKE_WATER.absorb).toBeGreaterThan(0);
+    it('lake: its own colour is turquoise in the shallows and a deep blue past the blend', () => {
+        const [s, d] = [LAKE_WATER.shallow, LAKE_WATER.deep];
+        expect(s[1]).toBeGreaterThan(s[0] * 3); // green-blue, not grey
+        expect(s[2]).toBeGreaterThan(s[0] * 3);
+        expect(d[2]).toBeGreaterThan(d[1]); // blue over green in the deep
+        expect(luma(d)).toBeLessThan(luma(s));
+        expect(LAKE_WATER.blend[0]).toBeLessThan(LAKE_WATER.blend[1]);
     });
 });
 
@@ -129,19 +133,12 @@ describe('the lake\'s soft shore (2026-11-02)', () => {
         });
     });
 
-    it('fades over at least three pixels from afar', () => {
+    it('fades over at least two pixels from afar, and draws no pale line on its edge', () => {
+        // (2 px since 2026-11-21: the drawn lake's shelf is gentle, so its depth is what fades it;
+        // the pale wet line is gone, an outline round the water from the climb.)
         expect(lakeShoreWidth(2)).toBeCloseTo(2 * LAKE_WATER.shorePx, 9);
-        expect(LAKE_WATER.shorePx).toBeGreaterThanOrEqual(3);
-    });
-
-    it('draws its pale wet line on the thin film only', () => {
-        [0.2, 2, 8].forEach((depthPx) => {
-            const w = lakeShoreWidth(depthPx);
-            expect(lakeWetLip(w * 0.6, depthPx)).toBe(0);
-            expect(lakeWetLip(w * 3, depthPx)).toBe(0);
-            expect(lakeWetLip(w * 0.2, depthPx)).toBeGreaterThan(0);
-            expect(lakeWetLip(w * 0.2, depthPx)).toBeLessThanOrEqual(LAKE_WATER.lip);
-        });
+        expect(LAKE_WATER.shorePx).toBeGreaterThanOrEqual(2);
+        expect(LAKE_WATER.lip).toBeUndefined();
     });
 });
 
@@ -150,9 +147,9 @@ describe('no NaN anywhere in the waters\' terms', () => {
         const ds = [-1e6, -50, -1, 0, 1e-9, 0.5, 3, 47, 207, 1e6];
         const pxs = [0, 1e-9, 1e-3, 0.3, 1, 7, 1e4];
         ds.forEach((d) => {
-            [...lakeBodyAt(Math.max(d, 0)), ...seaBodyAt(Math.max(d, 0))].forEach((v) => expect(Number.isFinite(v)).toBe(true));
+            [lakeClearAt(d), ...seaBodyAt(Math.max(d, 0))].forEach((v) => expect(Number.isFinite(v)).toBe(true));
             pxs.forEach((px) => {
-                [seaSurfLine(d, px, 0.5, 0.5), lakeShoreOpacity(d, px), lakeWetLip(d, px)]
+                [seaSurfLine(d, px, 0.5, 0.5), lakeShoreOpacity(d, px)]
                     .forEach((v) => expect(Number.isFinite(v), `${d} ${px}`).toBe(true));
             });
         });

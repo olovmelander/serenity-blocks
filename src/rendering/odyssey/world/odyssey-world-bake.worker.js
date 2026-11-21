@@ -92,7 +92,7 @@ self.onmessage = (event) => {
             const t4 = now();
             post('macro', { macro }, [macro.data.buffer], t4 - t3);
             const summit = bakeSculptPlateData();
-            post('summit', { summit }, [summit.data.buffer, summit.tarn.data.buffer], now() - t4);
+            post('summit', { summit }, [summit.data.buffer, summit.tarn.data.buffer, summit.lake.data.buffer], now() - t4);
         }
         if ((lane === 'cloudField' || lane === 'all') && Array.isArray(cloudSpecs)) {
             const t1 = now();

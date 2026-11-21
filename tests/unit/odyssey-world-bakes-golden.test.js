@@ -135,7 +135,9 @@ describe('relief + macro + detail bakes (pure halves)', () => {
         // PLAIN_SWELLS): the macro gains the bay and the swells, the detail weight drops on the beach.
         // ...and 2026-11-20 with the tarn redrawn (a drawn shore and a profile across it,
         // odysseyTarnProfile): the total height under and round the tarn changes, nothing else.
-        expect(sha(a.total)).toBe('329ebeea55845f06c1a2fcaf0d72900f');
+        // ...and 2026-11-21 with the north lake redrawn the same way (odysseyNorthLakeProfile): the
+        // total height in the lake's box changes, nothing else.
+        expect(sha(a.total)).toBe('9d6f23563eeeec195b97a589996e1df6');
         expect(a.data.length).toBe(96 * 96 * 4);
         expect(a.total.length).toBe(96 * 96);
         const sample = makeReliefSampler(a);
@@ -148,8 +150,9 @@ describe('relief + macro + detail bakes (pure halves)', () => {
         const m = bakeMacroData(64);
         expect(m.data.length).toBe(64 * 64 * 4);
         // Moved 2026-10-18 with the outer isles (see the relief pin above), and 2026-11-02 with
-        // the north beach and the plain's swells (the same note).
-        expect(sha(m.data)).toBe('85c56ad6b8aba54c9533f7d14d885d7f');
+        // the north beach and the plain's swells (the same note), and 2026-11-21 when the north
+        // lake's bowl left the macro (it is a drawn water now, laid over the whole field).
+        expect(sha(m.data)).toBe('317fe862184e872510686f2bd994a674');
     });
 
     it('bakeWorldTextureData returns every plate with transferable buffers and per-stage timings', () => {
@@ -163,8 +166,9 @@ describe('relief + macro + detail bakes (pure halves)', () => {
         expect(baked.summit.res).toBe(640);
         expect(Object.keys(baked.ms)).toEqual(['relief', 'sunFields', 'atlas', 'detail', 'macro', 'total']);
         const buffers = worldTextureDataBuffers(baked);
-        // (12 since 2026-11-20: the tarn's own plate rides on the sculpt plate's record.)
-        expect(buffers.length).toBe(12);
+        // (12 since 2026-11-20: the tarn's own plate rides on the sculpt plate's record; 13 since
+        // 2026-11-21: the north lake's too.)
+        expect(buffers.length).toBe(13);
         buffers.forEach((b) => expect(b).toBeInstanceOf(ArrayBuffer));
         // Detail bake is the pinned cloud silhouette's host: same field, same stats.
         expect(sha(baked.detail.data)).toBe(sha(bakeDetailNormalData().data));

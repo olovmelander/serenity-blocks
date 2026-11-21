@@ -286,3 +286,89 @@ climb (orbs 29-33, p 0.65), the underwater ceiling (p 0.10-0.135). Console clean
 deprecation, not ours). Cost not measured on the GPU this pass: the tarn's march reads one more
 texel a step on its own pixels; the ground pays one compare a fragment outside the tarn's box and
 one texel a vertex; the sea gains a fetch (the chop, High) and the dome's air in its sky wash.
+
+## §9. The north lake drawn (2026-11-21)
+
+Olov: *"Now we can continue with the water work!"* The north lake's redraw left open in §8, built
+the tarn's way (§7).
+
+### What was wrong with the lake
+
+Seen from where the player sees it (the climb: orbs 29-34 and the rail at p 0.55-0.69, 600-1000 u
+off and 300-500 u above it):
+
+- **Three ellipses.** Three lobes (the largest with half-axes of 348 and 280 u) carved into the
+  macro as one bowl: a bean whose outline was its ellipses, with the same wall all the way round.
+- **A painted pool.** A pigment in four flat plates (`LAKE_RAMP`), bright aqua at the shore: the
+  plates' steps ran as contour rings round each lobe, and a pale wet line drew an outline round
+  the water.
+- **Three stacked discs.** The water was an ellipse mesh per lobe, stacked 0.02 u apart and never
+  culled.
+- **A bare ring.** The bowl's wall stood past the scatter's slope limit, so no tree came down to
+  the water.
+
+### The new form
+
+- **A drawn shore** (`ODYSSEY_NORTH_LAKE.outline`, odyssey-world-height.js) on the site the owner
+  approved, the size kept: a closed curve through 65 points with two islets, 810 x 609 u, 262k u^2
+  of water (the bean was 228-250k). A long west arm with an islet in it; a point out from the east
+  shore with an islet off its tip; a southern basin with bays of different sizes. Its shore is
+  1.56 times a circle's of the same area (the bean's 1.29).
+- **The tarn's machinery, made general** (`makeDrawnWater`): the outline and its signed distance,
+  the profile across it, the plate and the sheet are one function each, and the tarn and the lake
+  are two specs of them. The tarn's heights are unchanged to the bit (compared over its whole box),
+  and it looks as it did (captured beside main's).
+- **Its profile**: a shelf 6 u wide under a rising bank to 30 u on the flats, its width varied
+  along the shore by a slow noise (so the turquoise band is not one width), 1.3-3.6 u deep at its
+  lip; a drop over 60 u; a floor ~28 u deep that rolls by 5 u. Above the water a beach rising
+  2.5 u, and a bank easing over 110 u into the plateau's own ground. A quarter of the water is
+  under 3 u, a third 20-30 u; the deepest 32 u.
+- **Its own plate** (`ODYSSEY_NORTH_LAKE_PLATE`, 448 x 362 over its box, ~2.3 u), baked beside the
+  tarn's on the sculpt plate's bake record and applied the same way (`ground * (1 - w) +
+  waterY * w + R`): the bowl is gone from the macro. The ground's lattice is seated against
+  whichever water's plate it touches; the fragment takes its plate texel and gradient in a branch
+  per box.
+- **One sheet** of water cut to the shore (`buildNorthLakeSurface`: 6 u cells reaching 12 u under
+  the bank, 8k vertices), frustum-culled: at most one draw where there were three.
+
+### The new look
+
+- **Clear water** (`LAKE_WATER`): the bed shows through by its depth (`clarity` 0.5: 61 % through
+  1 u, 1 % through 10 u), and past it the water's own colour, turquoise over the shelf to a deep
+  blue in the basins (`shallow`, `deep`, blended over 2-12 u of depth: the owner's
+  "turquoise-to-blue" of 2026-11-02). That colour is self-lit, as a pigment is: lit sand alone,
+  under the low evening sun and through ~1 km of haze, read as a pale lilac ring from the climb.
+- **The sky in it** at a lower Fresnel floor (0.24 to 0.15): over clear water the bright evening
+  sky swamped the water's own colour, and the lake read as a pale lilac sheet.
+- **The bed** is the tarn's paint in the lake's units (`DRAWN_PAINT`): dark wet sand with some
+  gravel on the shelf, silt in the basins, a shore of gravel stretches and turf. No pale wet line.
+- **Trees down to the water**: the bank is gentle now, and the scatter decides where the water is
+  by the drawn distance (`inNorthLakeWater`; the forest's tests scatter over a height model without
+  the sculpt, so a rule on the ground's height there let trees stand in the lake). The autumn grove
+  and the subalpine firs reach the shore (+252 trees).
+
+### Tests
+
+- odyssey-world-height.test.js: the lake's contract rewritten (the sheet's edge buried under the
+  bank, one body round its islets, no dry specks, the waterline the drawn line, 190-320k u^2, a
+  shore development over 1.5). odyssey-north-land.test.js: the bank stays over the water, the north
+  beach stays off it. odyssey-water-looks.test.js: the clear water and its colours.
+  odyssey-water-shaders.test.js: one lake mesh, built clean on both backends.
+- Rebased, each with a note: the relief and macro golden hashes; the bake record's buffers (13);
+  the forest's draw ceiling 40 to 41 at p 0.397 (97 subalpine firs on the new bank); the forest's
+  visibility mask re-baked (its mid-tier ratio 0.90 to 0.88: 291 of the 329 culled mids are bank
+  trees the massif hides).
+
+### Cost and checks
+
+The lake's plate bakes in ~0.3 s in the bake worker, once (a stored bake without it is rebuilt).
+The ground's vertex reads two plate texels; its fragment takes one branch by box. The water is
+0-1 draws where it was 3; the forest gains one bucket at the climb's p 0.397 (about 79 of Lane A's
+90 world draws). GPU time not measured this pass.
+
+Real game, headless Chrome, WebGPU and WebGL2, High, 1920 x 1080, 30 fps cap: the lake from orbs
+31-33 and the rail (p 0.63, 0.65); the tarn from orbs 21-22 beside main's (the same but for the
+drifting cloud shadows). Console clean (the THREE.Clock deprecation, not ours).
+
+Owner's calls: the lake's new outline; its turquoise, quieter than the old aqua (a shelf band
+under clear water, not a pigment).

@@ -208,6 +208,11 @@ describe('the draw budget holds — draw calls are the rebuild structural claim'
         // tree is inside 1650 — the centre test let ~500 trees as close as ~830 u pop together.
         // At these stations that admits 39-40 of the 40 buckets before frustum culling (was
         // 30): about 78 of Lane A's 90 world draws, for about +3% forest vertices.
+        //
+        // ⚠️ CEILING 40 -> 41 (2026-11-21, the north lake redrawn): its bank is gentle now where the
+        // old bowl's wall (past the scatter's slope limit) stood bare, and subalpine firs grow down
+        // it by the conifer point: one more (chunk, species, LOD) bucket in range at p 0.397 (97
+        // firs, +252 trees in all). About 79 of Lane A's 90.
         [0.2127, 0.2836, 0.3970].forEach((p) => {
             const rp = getOdysseyPathPointAt(p);
             let visible = 0;
@@ -218,7 +223,7 @@ describe('the draw budget holds — draw calls are the rebuild structural claim'
                 );
                 if (Math.hypot(b.centre.x - rp.x, b.centre.z - rp.z) - radius < 1650) visible += 1;
             });
-            expect(visible, `station p=${p}`).toBeLessThanOrEqual(40);
+            expect(visible, `station p=${p}`).toBeLessThanOrEqual(41);
             expect(visible, `station p=${p}`).toBeGreaterThan(0);
         });
     });

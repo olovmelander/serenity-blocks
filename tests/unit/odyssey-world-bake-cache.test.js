@@ -126,7 +126,11 @@ class ReplyingWorker {
                     reply({ stage, [stage]: { data: new Uint16Array(4) }, ms: 1 });
                 }
                 // (The sculpt plate carries the tarn's own plate, 2026-11-20.)
-                reply({ stage: 'summit', summit: { data: new Uint16Array(4), tarn: { data: new Uint16Array(4) } }, ms: 1 });
+                reply({
+                    stage: 'summit',
+                    summit: { data: new Uint16Array(4), tarn: { data: new Uint16Array(4) }, lake: { data: new Uint16Array(4) } },
+                    ms: 1,
+                });
             }
             reply({ stage: 'done', lane: job.lane, ms: 1 });
         });
@@ -152,7 +156,7 @@ function keptCopy() {
             atlas: { data: new Uint16Array(4) },
             detail: { data: new Uint16Array(4) },
             macro: { data: new Uint16Array(4) },
-            summit: { data: new Uint16Array(4), tarn: { data: new Uint16Array(4) } },
+            summit: { data: new Uint16Array(4), tarn: { data: new Uint16Array(4) }, lake: { data: new Uint16Array(4) } },
         },
         cloudField: null,
         scatter: null,
@@ -406,6 +410,15 @@ describe('the IndexedDB store', () => {
         };
         expect(isUsableStoredWorldBake(withForest, { ...request, scatter: { spacing: 24 } })).toBe(true);
         expect(isUsableStoredWorldBake(null, request)).toBe(false);
+        // A copy kept before the drawn waters' plates rode on the sculpt plate's record (the tarn's
+        // 2026-11-20, the north lake's 2026-11-21) reads as a miss, so the board never draws a
+        // water it has no plate for.
+        ['tarn', 'lake'].forEach((water) => {
+            const summitWithout = { ...copy.textures.summit };
+            delete summitWithout[water];
+            const older = { ...copy, textures: { ...copy.textures, summit: summitWithout } };
+            expect(isUsableStoredWorldBake(older, request), `no ${water} plate`).toBe(false);
+        });
     });
 
     it('is kept only where there is IndexedDB and memory to spare', () => {

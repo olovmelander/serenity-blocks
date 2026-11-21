@@ -1,38 +1,28 @@
 /**
- * ODYSSEY ACT II — THE WATERS' LOOKS (2026-11-02): the sea's and the north lake's pigments and
- * the settings of the terms the world renderer shades them with, plus CPU twins of the formulas
+ * ODYSSEY ACT II — THE WATERS' LOOKS (2026-11-02): the sea's pigments, the north lake's colours
+ * and the settings of the terms the world renderer shades them with, plus CPU twins of the formulas
  * the tests hold (the depth colour, the sea's horizon dissolve from above, its surf line from afar,
- * the lake's soft shore). Three-free.
+ * the lake's clear water and soft shore). Three-free.
  *
  * The twins mirror the shader in odyssey-world-renderer.js line for line (`waterRampBody`, the
- * dissolve, `buildShoreFoam`'s surf line, the lake's opacity and wet lip). Change both together.
+ * dissolve, `buildShoreFoam`'s surf line, the lake's clear film and opacity). Change both together.
  */
 import { ODYSSEY_WATER_RAMP } from '../odyssey-colour-script.js';
 
 /**
  * THE NORTH LAKE'S WATER (2026-11-02, Olov: "Real water for the lake ... reflections of the sky
  * and clouds, a turquoise-to-blue depth colour, and a soft shoreline instead of a hard dark
- * edge"). The lake is now the island's one water, like the sea and the tarn: the shared `water*`
- * terms with a few lake settings.
+ * edge"; clear since 2026-11-21, the tarn's kind). The lake is the island's one water, like the
+ * sea and the tarn: the shared `water*` terms with a few lake settings.
  *
- * `LAKE_RAMP` is its pigment: turquoise over the shelf, teal, then a deep blue in the middle. It is
- * bluer than the tarn's glacial jade (a big lowland lake, not a snow-fed pool) and greener than
- * the sea. Authored in the world's linear working space, before `toOutput` (x0.82, saturation
- * 0.72) and the land aerial, so it is deeper and more saturated than the pixel it lands on.
- */
-export const LAKE_RAMP = Object.freeze({
-    shore: Object.freeze([0.20, 0.70, 0.68]),
-    shelf: Object.freeze([0.08, 0.52, 0.62]),
-    open: Object.freeze([0.04, 0.34, 0.56]),
-    deep: Object.freeze([0.03, 0.20, 0.44]),
-});
-/**
- * The lake's settings for the shared water terms:
- * - `absorb`: the ramp's depth driver, t = 1 - 2^(-depth * absorb). The bowl's walls are steep
- *   (the carve reaches ~11 u of depth 9 u inside the rim), so a quick absorption would leave the
- *   turquoise a sub-pixel line from the climb. At 0.065 the plates step at ~3, 10 and 22 u of
- *   depth: the first ~3 u are turquoise, the arms (4-11 u deep) teal, and only the main basin
- *   (to ~45 u) turns deep blue.
+ * - `clarity`: how fast its water takes the bed (per unit of depth): the sand shows 61 % through
+ *   1 u, 22 % through 3 u, 1 % through 10 u. The ground draws the bed (the tarn's bed in the
+ *   lake's units, a sand shelf).
+ * - `shallow`, `deep`: the water's own colour where the bed no longer shows (linear), turquoise
+ *   in the first units and a deep blue past `blend` (u of depth): the owner's "turquoise-to-blue".
+ *   It is the water's, self-lit as a pigment is: the bed is lit by the low evening sun like any
+ *   ground, and from the climb, through ~1 km of the evening's haze, a lit sand shelf alone read
+ *   as a pale lilac ring.
  * - `calm`: the sea's ripple slope scaled for a big sheltered lake, between the tarn and the sea;
  *   `rippleFade`: the range (u) over which that fine ripple gives way, because it is finer than a
  *   pixel from the climb; `swell`, `swellScale`: the broad undulation that bends the reflection
@@ -41,19 +31,23 @@ export const LAKE_RAMP = Object.freeze({
  *   adds almost nothing, so the floor is what shows the sky and the clouds in the water. Higher
  *   and the big cumulus over the lake turn it milky.
  * - `shore`, `shorePx`: the soft shoreline. The water thins to nothing over this many units of
- *   depth, or this many pixels' worth of it from afar, whichever is wider.
- * - `lip`: the pale wet line along the shore (its strength).
+ *   depth, or this many pixels' worth of it from afar, whichever is wider. (No pale wet line any
+ *   more: on the drawn lake's gentle shelf it would have been a ring 7-14 px wide, an outline.)
  */
 export const LAKE_WATER = Object.freeze({
-    absorb: 0.065,
+    clarity: 0.50,
+    shallow: Object.freeze([0.06, 0.36, 0.40]),
+    deep: Object.freeze([0.02, 0.12, 0.26]),
+    blend: Object.freeze([2, 12]),
     calm: 0.5,
     rippleFade: Object.freeze([300, 900]),
     swell: 0.5,
     swellScale: 0.0042,
-    fresnel: Object.freeze([0.62, 0.24]),
-    shore: 1.6,
-    shorePx: 3.0,
-    lip: 0.22,
+    // (Floor 0.15 since 2026-11-21: over clear water the bright evening sky at 0.24 swamped the
+    // water's own colour, and from the climb the lake read as a pale lilac sheet.)
+    fresnel: Object.freeze([0.62, 0.15]),
+    shore: 0.5,
+    shorePx: 2.0,
 });
 /**
  * The sea turns blue sooner (2026-10-31, "can we improve the water in the ocean"): a gain on the
@@ -70,7 +64,9 @@ export const SEA_ABSORB_GAIN = 2.6;
  * script's turquoise for the sand and steps through teal to a blue-green deep. The tarn under the
  * horn is fed by its snow: the milky jade-turquoise of glacial flour, brighter and less saturated
  * than the sea and nearly opaque, so it reads as an alpine lake rather than a pool. Both keep the
- * script's four plates (`bands`) and every other water term in common.
+ * script's four plates (`bands`) and every other water term in common. (Since then the tarn is
+ * clear water, 2026-11-20, `TARN_MIRROR`, and so is the north lake, 2026-11-21, `LAKE_WATER`: the
+ * sea is the one water left on a ramp.)
  */
 export const SEA_RAMP = Object.freeze({
     // (2026-11-20: its own shore, clearer and less milky than the colour script's viridian, which
@@ -165,9 +161,9 @@ export function waterRampColour(t, ramp, bands = ODYSSEY_WATER_RAMP.bands) {
     );
 }
 
-/** The lake's body colour over `depth` units of water. */
-export function lakeBodyAt(depth) {
-    return waterRampColour(clamp01(1 - (2 ** (-depth * LAKE_WATER.absorb))), LAKE_RAMP);
+/** How much of the lake's bed shows through `depth` units of its water (its clear-water film). */
+export function lakeClearAt(depth) {
+    return Math.exp(-Math.max(depth, 0) * LAKE_WATER.clarity);
 }
 
 /** The sea's body colour over `depth` units of water. */
@@ -228,10 +224,4 @@ export function lakeShoreWidth(depthPx) {
 /** The lake film's opacity over `depth` units of water. */
 export function lakeShoreOpacity(depth, depthPx) {
     return smoothstepGpu(0, lakeShoreWidth(depthPx), depth);
-}
-
-/** The lake's pale wet line (its mix weight toward the lip colour). */
-export function lakeWetLip(depth, depthPx) {
-    const w = lakeShoreWidth(depthPx);
-    return (1 - smoothstepGpu(0, w * 0.6, depth)) * smoothstepGpu(w * -0.1, w * 0.15, depth) * LAKE_WATER.lip;
 }

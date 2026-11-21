@@ -1,7 +1,8 @@
 // @ts-check
 /**
- * THE TARN'S SURFACE (2026-11-20): the flat sheet the tarn's water is drawn on, and the places on
- * it where a ring may rise. Three-free: the world renderer wraps the arrays, the tests read them.
+ * THE DRAWN WATERS' SURFACES (2026-11-20 the tarn, 2026-11-21 the north lake): the flat sheet a
+ * drawn water is drawn on, and the places on the tarn where a ring may rise. Three-free: the world
+ * renderer wraps the arrays, the tests read them.
  *
  * The shore is a drawn line now (ODYSSEY_TARN.outline, odyssey-world-height.js), not ellipses, so
  * the water is no longer a disc a lobe. It is one sheet cut to the shore: the cells of a grid over
@@ -9,24 +10,32 @@
  * the bank stands over the sheet and the depth test hides it; the waterline itself is drawn by the
  * water's own depth (its film thins to nothing there), never by the sheet's edge.
  */
-import { ODYSSEY_TARN, ODYSSEY_TARN_BOX, odysseyTarnDistance } from './odyssey-world-height.js';
+import {
+    ODYSSEY_NORTH_LAKE, ODYSSEY_NORTH_LAKE_BOX, ODYSSEY_TARN, ODYSSEY_TARN_BOX, odysseyNorthLakeDistance,
+    odysseyTarnDistance,
+} from './odyssey-world-height.js';
 
-/** The sheet's grid cell (u) and how far past the waterline it reaches (u). */
+/** The tarn's sheet: its grid cell (u) and how far past the waterline it reaches (u). */
 export const TARN_SURFACE = Object.freeze({ cell: 3, margin: 5 });
+/** The north lake's sheet (seen from 600-1000 u: a coarser grid, a wider margin under its bank). */
+export const NORTH_LAKE_SURFACE = Object.freeze({ cell: 6, margin: 12 });
 
 /**
- * The sheet: vertex positions (x, y, z; y = the water's level) and triangle indices, wound to face
- * up.
+ * A drawn water's sheet: vertex positions (x, y, z; y = the water's level) and triangle indices,
+ * wound to face up. The cells of a grid over the water's `box` with a corner within `margin` of
+ * the water (`distance` < margin).
+ * @param {{box: readonly number[], distance: (x: number, z: number) => number, waterY: number}} water
+ * @param {{cell: number, margin: number}} grid
  * @returns {{positions: Float32Array, indices: Uint32Array}}
  */
-export function buildTarnSurface({ cell = TARN_SURFACE.cell, margin = TARN_SURFACE.margin } = {}) {
-    const [x0, x1, z0, z1] = ODYSSEY_TARN_BOX;
+export function buildDrawnWaterSurface({ box, distance, waterY }, { cell, margin }) {
+    const [x0, x1, z0, z1] = box;
     const nx = Math.ceil((x1 - x0) / cell);
     const nz = Math.ceil((z1 - z0) / cell);
     const wet = new Uint8Array((nx + 1) * (nz + 1));
     for (let j = 0; j <= nz; j += 1) {
         for (let i = 0; i <= nx; i += 1) {
-            wet[(j * (nx + 1)) + i] = odysseyTarnDistance(x0 + (i * cell), z0 + (j * cell)) < margin ? 1 : 0;
+            wet[(j * (nx + 1)) + i] = distance(x0 + (i * cell), z0 + (j * cell)) < margin ? 1 : 0;
         }
     }
     const slot = new Int32Array((nx + 1) * (nz + 1)).fill(-1);
@@ -36,7 +45,7 @@ export function buildTarnSurface({ cell = TARN_SURFACE.cell, margin = TARN_SURFA
         const k = (j * (nx + 1)) + i;
         if (slot[k] < 0) {
             slot[k] = positions.length / 3;
-            positions.push(x0 + (i * cell), ODYSSEY_TARN.waterY, z0 + (j * cell));
+            positions.push(x0 + (i * cell), waterY, z0 + (j * cell));
         }
         return slot[k];
     };
@@ -54,6 +63,22 @@ export function buildTarnSurface({ cell = TARN_SURFACE.cell, margin = TARN_SURFA
         }
     }
     return { positions: new Float32Array(positions), indices: new Uint32Array(indices) };
+}
+
+/** The tarn's sheet. */
+export function buildTarnSurface({ cell = TARN_SURFACE.cell, margin = TARN_SURFACE.margin } = {}) {
+    return buildDrawnWaterSurface(
+        { box: ODYSSEY_TARN_BOX, distance: odysseyTarnDistance, waterY: ODYSSEY_TARN.waterY },
+        { cell, margin },
+    );
+}
+
+/** The north lake's sheet. */
+export function buildNorthLakeSurface({ cell = NORTH_LAKE_SURFACE.cell, margin = NORTH_LAKE_SURFACE.margin } = {}) {
+    return buildDrawnWaterSurface(
+        { box: ODYSSEY_NORTH_LAKE_BOX, distance: odysseyNorthLakeDistance, waterY: ODYSSEY_NORTH_LAKE.waterY },
+        { cell, margin },
+    );
 }
 
 /**
