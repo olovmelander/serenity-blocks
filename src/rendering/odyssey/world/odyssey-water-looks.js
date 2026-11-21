@@ -197,6 +197,15 @@ export const SEA_WET = Object.freeze({
     glare: Object.freeze([0.55, 0.06]),
 });
 /**
+ * THE FAR SEA'S GLOSS (2026-11-21 sea audit, item 19). Far off the sea's normal is settled (the
+ * ripple and the swell taken out, so it does not crawl) and it mirrored each far cloud as a crisp
+ * round disc. The slope it stopped carrying becomes the width of the reflection's lobe instead:
+ * `slopeGain` of the swell's RMS slope per axis; a far cloud's image is drawn out into a soft
+ * vertical streak and grows fainter by `keepPow` (1 conserves its light; 0.5 keeps a column).
+ */
+export const SEA_GLOSS = Object.freeze({ slopeGain: 1.0, keepPow: 0.5 });
+
+/**
  * THE SUN ROAD FROM FACET STATISTICS (2026-11-21 sea audit, item 18). Facing the sun the sea had no
  * glitter path: a milky veil (a lobe on a mirror ray whose far normal had been faded flat) and a
  * few opaque white dabs (a hairline core lighting whole swell faces). The road is now the sun seen

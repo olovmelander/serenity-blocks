@@ -54,7 +54,7 @@ import { CLOUD_FIELD_ANCHOR, ODYSSEY_CLOUD_FIELD_SPECS } from './odyssey-cloud-f
 import { WATER_CLOUD_SLOTS, buildWaterCloudProxies, selectWaterClouds } from './odyssey-water-clouds.js';
 import { buildNorthLakeSurface, buildTarnSurface, tarnOpenWater } from './odyssey-tarn-surface.js';
 import {
-    LAKE_WATER, SEA_ABSORB_GAIN, SEA_AIR, SEA_BEACH, SEA_CAPS, SEA_CREST_GLOW, SEA_SUN_GLITTER, SEA_SURF_BREAK, SEA_WET, SEA_FILM, SEA_HORIZON_DOWN, SEA_RAMP, SEA_SURF,
+    LAKE_WATER, SEA_ABSORB_GAIN, SEA_AIR, SEA_BEACH, SEA_CAPS, SEA_CREST_GLOW, SEA_GLOSS, SEA_SUN_GLITTER, SEA_SURF_BREAK, SEA_WET, SEA_FILM, SEA_HORIZON_DOWN, SEA_RAMP, SEA_SURF,
     SEA_SWELL_TILT, SEA_TROUGH, SEA_WINDROWS, WATER_SHORE_DEPTH_BIAS,
 } from './odyssey-water-looks.js';
 import {
@@ -3714,11 +3714,16 @@ export function createOdysseyWorld({
     const uWaterCloudCount = uniform(0);
     const waterCloudTop = mix(uSunColour, vec3(1.0, 1.0, 1.0), float(0.55)).mul(1.02);
     const waterCloudBase = mix(skyColourFor(float(0.30)), vec3(0.86, 0.88, 0.93), float(0.5));
-    const waterCloudsAlong = (O, R, skyIn) => {
+    // `gloss` (the sea only, SEA_GLOSS): { v, h, on } the reflection's lobe along the view's vertical
+    // and across it (slope spreads the mirrored ray by 2 sigma up and down, by 2 sigma sin(dip)
+    // sideways), and whether it is drawn here; null builds the mirror as before (the tarn, the lake).
+    const waterCloudsAlong = (O, R, skyIn, gloss = null) => {
         if (!q.waterReflections) return skyIn;
         const sky = vec3(skyIn).toVar();
         const col = vec3(sky).toVar();
         const rise = smoothstep(float(0.0), float(0.03), R.y).toVar();
+        const eH = gloss ? normalize(vec3(R.z.add(1e-5), 0, R.x.negate())).toVar() : null;
+        const eV = gloss ? cross(eH, R).toVar() : null;
         Loop({
             start: int(0), end: int(uWaterCloudCount), type: 'int', condition: '<', name: 'wcl',
         }, ({ wcl }) => {
@@ -3742,11 +3747,46 @@ export function createOdysseyWorld({
                 .add(sin(qc.z.mul(5.3).add(r2.y.mul(1.7))))
                 .add(sin(qc.x.add(qc.z).mul(4.3).add(r2.y.mul(0.6))))
                 .mul(0.045);
-            const cov = float(1).sub(smoothstep(float(0.66), float(1.0), length(qc).add(lobes)))
-                .mul(smoothstep(r2.x, r2.x.add(0.18), qc.y))
-                .mul(tslStep(float(0), tStar))
-                .mul(rise)
-                .toVar();
+            let cov;
+            if (gloss) {
+                // THE GLOSS (SEA_GLOSS): the disc convolved with the lost slope's lobe, in the mass's
+                // unit frame. Its outline grows along the view's vertical and across it, its peak
+                // falls, its lobes and its flat base blur. At no gloss it is the mirror's own disc.
+                const rho2 = dot(qc, qc).toVar();
+                const keep = float(1).toVar();
+                const baseSoft = float(0).toVar();
+                If(gloss.on, () => {
+                    const toUnit = (e) => vec3(
+                        e.x.mul(r0.w).add(e.z.mul(r1.w)),
+                        e.y,
+                        e.z.mul(r0.w).sub(e.x.mul(r1.w)),
+                    ).mul(r1.xyz);
+                    const span = max(tStar, float(0));
+                    const ldn = normalize(ld);
+                    const flatOf = (gv) => gv.sub(ldn.mul(dot(gv, ldn)));
+                    const gV = flatOf(toUnit(eV).mul(span.mul(gloss.v))).toVar();
+                    const gH = flatOf(toUnit(eH).mul(span.mul(gloss.h))).toVar();
+                    const nV = dot(gV, gV).add(1).toVar();
+                    const nH = dot(gH, gH).add(1).toVar();
+                    const qv = dot(qc, gV);
+                    const qh = dot(qc, gH);
+                    rho2.assign(max(rho2.sub(qv.mul(qv).div(nV)).sub(qh.mul(qh).div(nH)), float(0)));
+                    keep.assign(exp2(log2(nV.mul(nH)).mul(-0.5 * SEA_GLOSS.keepPow)));
+                    baseSoft.assign(abs(gV.y));
+                });
+                cov = float(1).sub(smoothstep(float(0.66), float(1.0), sqrt(rho2).add(lobes.mul(keep))))
+                    .mul(smoothstep(r2.x.sub(baseSoft), r2.x.add(0.18).add(baseSoft), qc.y))
+                    .mul(tslStep(float(0), tStar))
+                    .mul(rise)
+                    .mul(keep)
+                    .toVar();
+            } else {
+                cov = float(1).sub(smoothstep(float(0.66), float(1.0), length(qc).add(lobes)))
+                    .mul(smoothstep(r2.x, r2.x.add(0.18), qc.y))
+                    .mul(tslStep(float(0), tStar))
+                    .mul(rise)
+                    .toVar();
+            }
             If(cov.greaterThan(0.002), () => {
                 const up = smoothstep(r2.x, float(0.75), qc.y);
                 const lit = mix(waterCloudBase, waterCloudTop, up);
@@ -4832,11 +4872,14 @@ export function createOdysseyWorld({
             // and the far sea crawled. Settled by the pixel's own footprint, the far sea mirrors
             // the swell (and the clouds and the sky plates steadily) instead of noise.
             const seaFoot = max(length(dFdx(positionWorld.xz)), length(dFdy(positionWorld.xz))).toVar('wSeaFoot');
-            const reflRipple = float(1).sub(max(
+            // (The settle pinned, 2026-11-21: the far gloss reads it too, SEA_GLOSS.)
+            const seaSettle = max(
                 smoothstep(float(1.5), float(8.0), seaFoot),
                 smoothstep(float(SEA_HORIZON_DOWN[0]), float(SEA_HORIZON_DOWN[1]), viewDir.y)
                     .mul(smoothstep(float(250), float(900), wFragDist)),
-            ).mul(0.95));
+            ).toVar();
+            const reflRipple = float(1).sub(seaSettle.mul(0.95));
+            const seaGloss = seaSettle.mul((WAVE_RMS_SLOPE / Math.SQRT2) * SEA_GLOSS.slopeGain).toVar();
             // FINE CHOP UNDER THE EYE (2026-11-20; gotcha #210): the near sea read as gel, the
             // two ripple fetches a tenth of the swell's slope and nothing finer than ~1 u. A third,
             // finer fetch (~0.33 u cells) is kept only where its cells span ~4 px or more (so it
@@ -4883,7 +4926,11 @@ export function createOdysseyWorld({
             // mid-distance sea to milk in the first capture. Painted seas hold their blue to the
             // haze line; the horizon dissolve below still owns the far convergence.
             // ...and the clouds above it (water pass step 2).
-            const skyRefl = waterCloudsAlong(positionWorld, reflDir, waterSkyWash(reflDir)).toVar();
+            const skyRefl = waterCloudsAlong(positionWorld, reflDir, waterSkyWash(reflDir), {
+                v: seaGloss.mul(2).toVar(),
+                h: seaGloss.mul(2).mul(clamp(viewDir.y, 0.02, 1)).toVar(),
+                on: seaSettle.greaterThan(0.01),
+            }).toVar();
             // THE WORLD IN THE SEA (water pass step 3): the beach, the hills and the massif stand
             // upside down in the water near the eye. High tier only; past `reach` the sky's.
             const seaMirror = vec3(skyRefl).toVar();
