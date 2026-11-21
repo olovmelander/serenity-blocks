@@ -6539,7 +6539,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
         [
             'hour',
             'Hold the light at a place on the wheel of the day.',
-            '0 storm break, 1 golden hour, 2 dusk, 3 dawn mist, 4 morning; fractions run the day between them.',
+            '0 storm break, 1 golden hour, 2 dusk, 2.5 harvest moon, 3 dawn mist, 4 morning. Fractions blend the light.',
             'The clock’s.',
             '1',
         ],
@@ -6595,7 +6595,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
         [
             'event',
             'Replay one gameplay reaction before the frame.',
-            'lock, drop, clear, quad, twist, spin, perfect, levelUp or over.',
+            'lock, drop, clear, quad, twist, spin, cascade, b2b, perfect (quad then crown), crown, levelUp or over.',
             'Idle.',
             'quad',
         ],

@@ -241,11 +241,15 @@ function herdMaterial(u, t, rig, landmarks, bones, info) {
         // Hair scatters the light round the terminator: a softened Lambert.
         const ndl = clamp(dot(N, u.sunDir).add(0.3).div(1.3), 0.0, 1.0);
         const direct = u.sun.mul(ndl.mul(ndl)).mul(sunlit).mul(mix(float(1.0), ao, 0.5));
-        const sky = u.fill.mul(N.y.mul(0.4).add(0.6)).mul(1.4).add(u.bounce.mul(float(1.0).sub(N.y).mul(0.4)))
-            .mul(ao.mul(ao));
+        // Broad skylight describes the barrel against backlit barley; light reflected by the
+        // ears reaches the flanks too. Reserve the deepest occlusion for the folded legs and jaw.
+        const sky = u.fill.mul(N.y.mul(0.39).add(0.68)).mul(1.72)
+            .add(u.bounce.mul(float(1.25).sub(N.y).mul(0.58)))
+            .mul(ao.mul(0.75).add(0.25));
         const col = albedo.mul(direct.add(sky)).toVar();
         // A sheen on the coat (less on the hair), and the wet glint of an eye.
-        const H = normalize(u.sunDir.sub(V));
+        const halfVector = u.sunDir.sub(V).toVar();
+        const H = halfVector.div(max(length(halfVector), 1e-4));
         const nh = clamp(dot(N, H), 0.0, 1.0);
         // (A dark coat shines the more: what little it gives back is mostly sheen.)
         const gloss = float(0.05).add(float(0.06).mul(float(1.0).sub(smoothstep(0.05, 0.2, body.g))));
@@ -283,9 +287,10 @@ export function createHerd(u, t, count, horse, { seed, dust: dustCount = 384 } =
     const sim = createHerdSim({ count, seed });
     const n = sim.horses.length;
     const landmarks = horse.landmarks || {};
-    const motions = sim.horses.map((h) => createHorseMotion(h.foal ? foalRig : rig, {
+    const motionFor = (h) => createHorseMotion(h.foal ? foalRig : rig, {
         seed: h.seed, lead: h.seed < 0.5 ? 1 : -1, landmarks,
-    }));
+    });
+    const motions = sim.horses.map(motionFor);
     const instanced = new THREE.InstancedBufferGeometry();
     ['position', 'normal', 'color', '_mask'].forEach((name) => {
         instanced.setAttribute(name, horse.geometry.attributes[name]);
@@ -498,9 +503,12 @@ export function createHerd(u, t, count, horse, { seed, dust: dustCount = 384 } =
             dust.reset();
             rand = mulberry32(dustSeed);
             pulls.fill(0);
-            motions.forEach((m) => {
-                m.started = false;
-                m.events.length = 0;
+            // Replay from the horse's own seed. Feet, head and tail springs and the clocks for
+            // browsing and ear turns all belong to the previous point in time.
+            wind.windX = 0;
+            wind.windZ = 0;
+            sim.horses.forEach((h, i) => {
+                motions[i] = motionFor(h);
             });
             move(time - warm, 0);
             for (let at = time - warm; at < time - 1e-6;) {
@@ -511,6 +519,7 @@ export function createHerd(u, t, count, horse, { seed, dust: dustCount = 384 } =
                 writeMuzzles(step);
             }
             write();
+            writeMuzzles(0);
         },
         update(time, dt, world) {
             const w = world?.u;
@@ -519,8 +528,10 @@ export function createHerd(u, t, count, horse, { seed, dust: dustCount = 384 } =
                 wind.windX = w.windDir.value.x * strength * 3;
                 wind.windZ = w.windDir.value.y * strength * 3;
             }
-            sim.update(time, dt);
-            const step = Math.max(0, Math.min(0.25, dt || time - clock));
+            // A zero-step render may follow a replay ending a few ulps before this time.
+            // Differentiating the horse's height over that residue stretches its mane sky-high.
+            const step = Math.max(0, Math.min(0.25, dt ?? (time - clock)));
+            sim.update(time, step);
             move(time, step);
             write();
             writeMuzzles(step);

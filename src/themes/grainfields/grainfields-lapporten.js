@@ -435,6 +435,14 @@ export function* createLapportenSteps(u, t, tier, clock = stepClock(GATE_SLICE_M
         const crevice = mix(float(1.0), float(0.62), gully.mul(rocky).mul(snow.oneMinus()))
             .mul(mix(float(1.0), float(1.15), rib.mul(rocky)));
         col.mulAssign(crevice);
+        // The recessed walls receive the cool upper sky; the projecting ribs of the sunward
+        // wall catch a narrow warmer plane. Use the same relief as the snow and ledges.
+        const faceSun = clamp(N.dot(u.sunDir), 0.0, 1.0);
+        const recess = gully.mul(0.52).add(cirque.mul(0.48)).mul(rocky);
+        col.mulAssign(mix(vec3(1.0), vec3(0.81, 0.94, 1.17), recess.mul(faceSun.oneMinus())));
+        const ribLight = rib.mul(0.18).add(ledge.mul(0.28)).mul(rocky);
+        col.addAssign(albedo.mul(u.sun).mul(faceSun).mul(lit.sunlit)
+            .mul(ribLight));
         // Ledges, the plateau and the shoulders face the bright overcast; the steep faces turn from
         // it: the relief reads even when the sun is behind the fells.
         col.mulAssign(mix(float(0.55), float(1.35), N.y.mul(N.y)));

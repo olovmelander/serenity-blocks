@@ -20,7 +20,7 @@ import {
 import { BLAZE_CAP, CLOSE_BAND, createGrain } from '../../src/themes/grainfields/grainfields-grain.js';
 import { LENS_BLUR, LENS_EARS, createLensEars } from '../../src/themes/grainfields/grainfields-lens.js';
 import { QUALITY, QUALITY_NAMES } from '../../src/themes/grainfields/grainfields-quality.js';
-import { RAIN } from '../../src/themes/grainfields/grainfields-post.js';
+import { GrainfieldsPost, POST_LOOK, RAIN } from '../../src/themes/grainfields/grainfields-post.js';
 import { WALL } from '../../src/themes/grainfields/grainfields-lapporten.js';
 import { createNoiseTexture, createUniforms } from '../../src/themes/grainfields/grainfields-tsl.js';
 import { EYE } from '../../src/themes/grainfields/grainfields-core.js';
@@ -99,6 +99,53 @@ describe('Grainfields atmosphere: the world', () => {
     });
 
     afterAll(() => world?.dispose());
+
+    it('aims the atmospheric march through the same shifted portrait lens as the clouds and terrain', () => {
+        const aspect = 390 / 844;
+        world.setViewport(390, 844, aspect);
+        camera.aspect = aspect;
+        world.updateCamera(camera, { time: 10, delta: 0 });
+        expect(Math.abs(camera.projectionMatrix.elements[9])).toBeGreaterThan(0.1);
+        const post = new GrainfieldsPost({}, world.scene, camera, { look: POST_LOOK.Minimal });
+        try {
+            post.aim();
+            for (const [x, y] of [[0, 0], [-0.92, 0.86], [0.81, -0.71]]) {
+                const actual = post.uForward.value.clone().addScaledVector(post.uRight.value, x)
+                    .addScaledVector(post.uUp.value, y).normalize();
+                const projected = new THREE.Vector3(x, y, 0.5).unproject(camera).sub(camera.position).normalize();
+                expect(actual.distanceTo(projected)).toBeLessThan(1e-6);
+            }
+        } finally {
+            post.dispose();
+            camera.aspect = 16 / 9;
+            world.setViewport(1600, 900, camera.aspect);
+            world.updateCamera(camera, { time: 10, delta: 0 });
+        }
+    });
+
+    it('reserves exposure headroom through a stack of clears at every hour', () => {
+        try {
+            for (let hour = 0; hour < HOURS.length; hour += 0.5) {
+                world.seek(10);
+                world.setCaptureOverrides({ hour });
+                world.update({ time: 10, delta: 0 }, camera);
+                const resting = world.getPostState().exposure;
+                for (let n = 1; n <= 4; n++) {
+                    world.onCombo(n);
+                    world.onClear({
+                        lines: 4, combo: n, twist: n === 3, perfect: n === 4,
+                    });
+                    step(world.time, world.time + 0.4, 0.1);
+                    const post = world.getPostState();
+                    expect(post.exposure).toBeGreaterThan(resting * 0.65);
+                    expect(post.exposure).toBeLessThanOrEqual(resting + 1e-8);
+                }
+            }
+        } finally {
+            world.setCaptureOverrides({ hour: null });
+            world.seek(10);
+        }
+    });
 
     it('hangs rain under the storm\'s core at the storm break, none in the golden hour, and a chain stops it', () => {
         world.setCaptureOverrides({ hour: STORM });

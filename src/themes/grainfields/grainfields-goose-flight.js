@@ -475,6 +475,13 @@ function* routeSteps(layout, aspect, clock = stepClock(ROUTE_SLICE_MS)) {
     const project = restProjector(aspect);
     const rig = rigFor(aspect);
     const half = Math.atan(Math.tan(rig.fov * DEG * 0.5) * aspect) / DEG;
+    // A tall well can leave just two narrow vertical strips. Follow the bearing of the launch
+    // field through one of them while the flock forms, then bank towards the gate.
+    const portrait = aspect < 0.75;
+    const headings = portrait ? [-12, -6, -3, 0, 3, 6, 12] : [-60, -40, -20, 0, 20, 40, 60];
+    const inset = portrait ? Math.min(1.4, half * 0.08) : 3;
+    const d1 = portrait ? FLIGHT_OUT.cruise * 12 : 25;
+    const obstacles = [...(layout?.cards || []), layout?.hud].filter(Boolean);
     const routes = [];
     const margin = { x: 0.014, y: 0.02 };
     const p = { x: 0, y: 0 };
@@ -484,7 +491,7 @@ function* routeSteps(layout, aspect, clock = stepClock(ROUTE_SLICE_MS)) {
         if (!s || s.x < 0.03 || s.x > 0.97 || s.y < 0.04 || s.y > 0.96) return false;
         return !layout || outsideKeepOut(layout, s, margin);
     };
-    for (let bearing = rig.yaw - half + 3; bearing <= rig.yaw + half - 3; bearing += 2) {
+    for (let bearing = rig.yaw - half + inset; bearing <= rig.yaw + half - inset; bearing += 2) {
         for (const distance of TAKEOFF_DISTANCES) {
             if (clock.due()) {
                 yield 'routes';
@@ -496,9 +503,25 @@ function* routeSteps(layout, aspect, clock = stepClock(ROUTE_SLICE_MS)) {
             if (nearField(sx, sz).behind > 0) continue;
             const ground = groundHeight(sx, sz);
             const psiGate = Math.atan2(PLACES.gate.x - sx, -(PLACES.gate.z - sz));
-            for (const turn of [-60, -40, -20, 0, 20, 40, 60]) {
+            // The birds scattered across a narrow verge launch in a longer file. Measure the
+            // visible field at the site's depth before scoring the shoulders of that group.
+            let spread = FLIGHT_OUT.spread[0];
+            if (portrait && project(sx, ground, sz, p)) {
+                let left = 0;
+                let right = 1;
+                for (const rect of obstacles) {
+                    if (p.y < rect.y0 || p.y > rect.y1) continue;
+                    if (p.x < rect.x0) right = Math.min(right, rect.x0);
+                    if (p.x > rect.x1) left = Math.max(left, rect.x1);
+                }
+                const visibleMetres = (right - left) * 2 * distance * Math.tan(half * DEG);
+                spread = clamp(visibleMetres * 0.3, 1.4, spread);
+            }
+            for (const offset of headings) {
+                const psi0 = (portrait ? bearing * DEG : psiGate) + offset * DEG;
+                const turn = (psi0 - psiGate) / DEG;
                 const route = {
-                    x: sx, z: sz, ground, psi0: psiGate + turn * DEG, psiGate, d1: 25, d2: 25 + 2.2 * Math.abs(turn),
+                    x: sx, z: sz, ground, psi0, psiGate, d1, d2: d1 + 2.2 * Math.abs(turn), spread,
                 };
                 const track = layTrack(route, 520);
                 let score = 0;
@@ -508,16 +531,23 @@ function* routeSteps(layout, aspect, clock = stepClock(ROUTE_SLICE_MS)) {
                     const y = ground + FLIGHT_OUT.sit + rise(s);
                     const w = scoreWeight(t);
                     if (seen(at[0], y, at[1])) score += w;
-                    if (t < 5) {
-                        // The flock's spread across its line, early on (a few birds either side).
-                        const cx = Math.cos(at[2]) * FLIGHT_OUT.spread[0] * 0.8;
-                        const cz = Math.sin(at[2]) * FLIGHT_OUT.spread[0] * 0.8;
-                        if (seen(at[0] + cx, y, at[1] + cz)) score += w * 0.4;
-                        if (seen(at[0] - cx, y, at[1] - cz)) score += w * 0.4;
+                    if (t < 5 || portrait) {
+                        // The flock's sides spread back into a V as it joins. On a portrait
+                        // verge keep those birds clear of the well through the whole turn.
+                        const join = portrait ? smooth(FLIGHT_OUT.join[0], FLIGHT_OUT.join[1], t) : 0;
+                        const across = spread * 0.8 * (1 - join) + GOOSE_SPAN * V_SHAPE.out * 4 * join;
+                        const back = GOOSE_SPAN * V_SHAPE.back * 4 * join;
+                        const c = Math.cos(at[2]);
+                        const d = Math.sin(at[2]);
+                        const x = at[0] - d * back;
+                        const z = at[1] + c * back;
+                        if (seen(x + c * across, y, z + d * across)) score += w * 0.4;
+                        if (seen(x - c * across, y, z - d * across)) score += w * 0.4;
                     }
                 }
-                // A turn shows the flock side on and banking; a nearer site shows it larger.
-                score += 0.03 * Math.min(Math.abs(turn), 40) - 0.02 * distance;
+                // In open landscape a near bank shows the wings at their largest. Along a narrow
+                // verge the room for the followers matters more than how sharp the turn looks.
+                if (!portrait) score += 0.03 * Math.min(Math.abs(turn), 40) - 0.02 * distance;
                 routes.push({
                     ...route, bearing, distance, turn, score,
                 });
@@ -553,10 +583,12 @@ class FlightOut {
         const slots = vSlots(n, random);
         // Where each sits in the barley: scattered over the field, the first ones up toward the front.
         const spots = [];
+        const spread = route.spread ?? FLIGHT_OUT.spread[0];
+        const depth = FLIGHT_OUT.spread[1] + (FLIGHT_OUT.spread[0] - spread) * 0.8;
         for (let i = 0; i < n; i += 1) {
             const r = Math.sqrt(random());
             const a = random() * TAU;
-            spots.push([Math.cos(a) * r * FLIGHT_OUT.spread[0], 0, Math.sin(a) * r * FLIGHT_OUT.spread[1]]);
+            spots.push([Math.cos(a) * r * spread, 0, Math.sin(a) * r * depth]);
         }
         spots.sort((p, q) => q[2] - p[2]);
         this.birds = delays.map((delay, i) => ({
@@ -662,9 +694,11 @@ export class GooseSkies {
         if (run < -CROSSING_LEAD || run > c.dir[2] + CROSSING_LEAD) return null;
         const [amp, wave] = c.sway;
         const k = (run / wave) * TAU;
-        const across = amp * Math.sin(k + c.seed);
+        // A slow change of flight level and crosswind carries returning skeins through a
+        // different part of the sky. The heading along the run still follows its local turns.
+        const across = amp * Math.sin(k + c.seed) + 48 * Math.sin(time * 0.011 + c.seed);
         out[0] = c.from[0] + c.dir[0] * run - c.dir[1] * across;
-        out[1] = c.y + 6 * Math.sin(run / 700 + c.seed * 0.3);
+        out[1] = c.y + 18 * Math.sin(time * 0.019 + c.seed * 0.17) + 6 * Math.sin(run / 700 + c.seed * 0.3);
         out[2] = c.from[1] + c.dir[1] * run + c.dir[0] * across;
         return run;
     }
@@ -791,9 +825,11 @@ export class GooseSkies {
             this.crossingBird(c, i, time - h, scale, before);
             this.crossingBird(c, i, time + h, scale, after);
             const bird = c.birds[i];
-            // Steady beats; now and then the wings set for a short glide.
+            // Alongside each bird's own glide, a patch of rising air briefly carries the
+            // whole skein. The ranks behind the lead encounter it a little later.
             const g = Math.sin(time * 0.13 + bird.glide) * Math.sin(time * 0.071 + bird.glide * 0.37);
-            const flap = 1 - 0.9 * smooth(0.86, 0.95, g);
+            const lift = Math.sin(time * 0.081 + c.seed - Math.abs(c.slots[i][2]) * 0.04);
+            const flap = 1 - Math.max(0.9 * smooth(0.86, 0.95, g), 0.88 * smooth(0.92, 0.995, lift));
             const theta = time * TAU * bird.hz + bird.phase;
             const pose = wingPose(theta, 0, flap, this._pose);
             const { fwd, up } = this.frame(before, p, after, h, 0);

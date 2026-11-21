@@ -255,6 +255,26 @@ describe('Grainfields events: the chaff ring', () => {
         expect(Math.hypot(...DEVIL_WALK)).toBeGreaterThan(0.5);
         expect(Math.hypot(...DEVIL_WALK)).toBeLessThan(3);
     });
+
+    it('draws just the occupied part of the pool and retires it after the last scheduled birth has lived', () => {
+        const chaff = createChaff(u, t, 900);
+        const { geometry } = chaff.mesh;
+        expect(geometry.instanceCount).toBe(1);
+        for (let i = 0; i < 5; i++) {
+            chaff.fly({
+                x: i, y: 1, z: 0, time: 10 + i, life: 3,
+            });
+        }
+        chaff.update(15);
+        expect(geometry.instanceCount).toBe(5);
+        chaff.update(17.01);
+        expect(geometry.instanceCount).toBe(1);
+        chaff.fly({
+            x: 99, y: 1, z: 0, time: 20,
+        });
+        expect(chaff.records.from[0]).toBe(99);
+        chaff.dispose();
+    });
 });
 
 describe('Grainfields events: the world', () => {
@@ -527,6 +547,30 @@ describe('Grainfields events: the world', () => {
             expect(p.born).toBeGreaterThanOrEqual(lane.at);
         });
         expect(records(world, CHAFF_KIND.puff).length).toBeGreaterThan(0);
+    });
+
+    it('throws chaff from each newly cleared lane after the wind table has filled', () => {
+        const { world } = shared;
+        begin(shared);
+        for (let i = 0; i < 12; i++) world.onClear({ lines: 1 });
+        const before = world.parts.chaff.thrown;
+        world.onClear({ lines: 2, cascade: 2 });
+        expect(world.parts.chaff.thrown).toBeGreaterThan(before);
+    });
+
+    it('starts a Serenity touch in the tapped column and higher touches farther into the field', () => {
+        const reactions = new GrainfieldsReactions();
+        const screen = { x: 0.16, y: 0.88 };
+        clearAt(reactions, { lines: 1, screen });
+        clearAt(reactions, { lines: 1, screen: { ...screen, y: 0.3 } });
+        const [near, far] = reactions.trails;
+        const expected = makeAim()(screen.x, screen.y, 1);
+        for (const lane of [near, far]) {
+            expect(Math.atan2(lane.x - EYE.x, EYE.z - lane.z))
+                .toBeCloseTo(Math.atan2(expected[0] - EYE.x, EYE.z - expected[2]), 8);
+        }
+        expect(Math.hypot(far.x - EYE.x, far.z - EYE.z))
+            .toBeGreaterThan(Math.hypot(near.x - EYE.x, near.z - EYE.z) + 10);
     });
 
     it('turns the day in time-lapse on a level-up: the deck races on, never back, and not under reduced motion', () => {

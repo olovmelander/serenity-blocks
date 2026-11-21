@@ -199,6 +199,7 @@ export function createUniforms() {
         pixelAngle: uniform(0.0007),
 
         sunDir: uniform(new THREE.Vector3(-0.42, 0.38, -0.82)),
+        moon: uniform(new THREE.Vector4(0, 0.2, -0.98, 0)),
         /** The herd's shadow window over the field (grainfields-herd-shadow.js): middle x, z, span (0 none). */
         herdShadow: uniform(new THREE.Vector3(0, 0, 0)),
         /** How much of the disc stands clear of the far hills: the direct light's last gate. */
@@ -351,15 +352,18 @@ export function deckThreshold(cover) {
  * ends tens of kilometres out, so the horizon is bright under it), a chain's break and a
  * perfect clear. 0 open sky … 1 thick cloud.
  */
-export function deckCover(u, noise, xz, { locks = true, edge = 1 } = {}) {
+export function deckCover(u, noise, xz, { locks = true, edge = 1, sunOffset = null } = {}) {
     // Every gap as a hole's depth (0..1): the sun's own (held on the sun's line from the eye), the
     // shafts before the fells, the four-line tear, the locks' (deck-fixed: they drift with the cloud they
     // were torn in).
     const gauss = (d, r) => exp(dot(d, d).div(r.mul(r)).negate());
-    const hole = gauss(xz.sub(u.sunGap.xy), max(u.sunGap.z, 1.0)).mul(u.sunGap.w).toVar();
+    // These apertures are aimed at the sun from the ground. In the volume their
+    // upper mouths lie farther sunward than their footprints on the cloud base.
+    const litXZ = sunOffset ? xz.sub(sunOffset).toVar() : xz;
+    const hole = gauss(litXZ.sub(u.sunGap.xy), max(u.sunGap.z, 1.0)).mul(u.sunGap.w).toVar();
     for (let k = 0; k < RAYS; k += 1) {
         const row = u.rays.element(k);
-        hole.assign(max(hole, gauss(xz.sub(row.xy), max(row.z, 1.0)).mul(row.w)));
+        hole.assign(max(hole, gauss(litXZ.sub(row.xy), max(row.z, 1.0)).mul(row.w)));
     }
     hole.assign(max(hole, gauss(xz.add(u.drift).sub(u.tear.xy), max(u.tear.z, 1.0)).mul(u.tear.w)));
     // The locks' gaps are metres wide: the march of the light in the air leaves them out (its steps

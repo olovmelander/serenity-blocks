@@ -429,6 +429,39 @@ export function copyLight(src, dst) {
     return dst;
 }
 
+// Indirect light after twilight: an indigo ceiling, a silver bank of mist, and
+// enough skylight falling on the amber stubble to see the herd against it.
+const NIGHT_COLOURS = Object.freeze({
+    fill: [0.19, 0.215, 0.31],
+    bounce: [0.11, 0.083, 0.065],
+    zenith: [0.018, 0.033, 0.092],
+    horizon: [0.25, 0.26, 0.37],
+    glow: [0.23, 0.24, 0.39],
+    haze: [0.15, 0.18, 0.27],
+    mist: [0.33, 0.36, 0.46],
+    cloudLit: [0.42, 0.48, 0.65],
+    cloudShade: [0.06, 0.079, 0.135],
+});
+const NIGHT_KEYS = Object.keys(NIGHT_COLOURS);
+
+/** Grade the dusk-to-dawn interval and write its moon direction and visibility. */
+export function applyHarvestNight(light, moon, dusk = 0) {
+    const phase = (((light.place % HOUR_COUNT) + HOUR_COUNT) % HOUR_COUNT) - 2;
+    const night = smooth(0, 0.50, phase) * (1 - smooth(0.50, 1, phase)) * (1 - 0.8 * dusk);
+    moon.w = night;
+    if (night === 0) return;
+    for (const key of NIGHT_KEYS) {
+        const colour = light[key];
+        for (let i = 0; i < 3; i++) colour[i] = lerp(colour[i], NIGHT_COLOURS[key][i], night);
+    }
+    light.stars = lerp(light.stars, 0.46, night);
+    const az = (-28 + 12 * phase) * DEG;
+    const el = (12 + 3.4 * Math.sin(Math.PI * phase)) * DEG;
+    moon.x = Math.sin(az) * Math.cos(el);
+    moon.y = Math.sin(el);
+    moon.z = -Math.cos(az) * Math.cos(el);
+}
+
 export function createLight() {
     const light = {
         az: 0, el: 0, sunUp: 1, dir: [0, 0, -1], from: 0, to: 1, mix: 0, hour: HOURS[0].at, place: 0,

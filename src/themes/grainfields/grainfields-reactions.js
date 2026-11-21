@@ -349,22 +349,26 @@ export class GrainfieldsReactions {
 
     /**
      * A clear: its lane of wind from the eye's feet out over the field. A cascade's waves each blow
-     * a stronger, wider lane than the one before. A back-to-back clear tears the sky over the gate.
+     * a stronger, wider lane than the one before. Returns the number of lanes appended, including
+     * those that replaced an older lane in a full table.
      */
     clear(c, time, { layout, aim }) {
         const lines = clamp(Math.round(Number(c?.lines) || 1), 1, 4);
         const depth = clamp(Math.round(Number(c?.cascade) || 1), 1, 10) - 1;
         const rgb = this.rowColour(c);
         const lanes = lines >= 4 ? 2 : 1;
+        const touch = Number.isFinite(c?.screen?.x) && Number.isFinite(c?.screen?.y) ? c.screen : null;
+        let added = 0;
         for (let k = 0; k < lanes; k++) {
-            this.trailSide = -this.trailSide;
+            if (touch && k === 0) this.trailSide = touch.x < 0.5 ? -1 : 1;
+            else this.trailSide = -this.trailSide;
             const side = this.trailSide;
-            const card = cardUnion(layout) || { x0: 0.4, x1: 0.6 };
-            const x = side < 0 ? Math.max(0.06, card.x0 - 0.06) : Math.min(0.94, card.x1 + 0.06);
+            const x = touch && k === 0 ? clamp01(touch.x) : freeColumn(layout, c?.player || 0, 0.5 + side * 0.145);
             // (From the eye's own feet: the stand a few metres out fills the lower half of the frame,
             // and a lane that began farther out was a strip a few pixels high under the horizon.)
-            const start = aim(x, 0.92, LANE_START);
-            const far = aim(x + side * 0.08, 0.5, 600);
+            const distance = touch ? LANE_START + 40 * (1 - clamp01(touch.y)) ** 2 : LANE_START;
+            const start = aim(x, touch?.y ?? 0.92, distance);
+            const far = aim(clamp01(x + side * 0.048), 0.5, 600);
             if (!start || !far) continue;
             const hx = far[0] - start[0];
             const hz = far[2] - start[2];
@@ -383,6 +387,7 @@ export class GrainfieldsReactions {
                 side,
                 fadeAt: Infinity,
             });
+            added += 1;
         }
         // The gale: more lines, and each deeper wave, blow harder.
         this.galeSwell.hit(0.06 * lines + 0.07 * depth, time);
@@ -400,6 +405,7 @@ export class GrainfieldsReactions {
         if (lines >= 4) this.quad(time);
         if (c?.b2b) this.gate(time, Math.max(1, this.b2b));
         if (c?.perfect) this.perfect(time);
+        return added;
     }
 
     /**
