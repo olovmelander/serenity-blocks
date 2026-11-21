@@ -128,9 +128,9 @@
 :where(body:has(#luminous-tides-theme.active)) .single-player-stage[data-board='well']:not(:where(
     .infinity-mode-active, [data-odyssey-board], [data-stillfall], [data-still-air], [data-danger]
 )) {
-    --sp-hue: #88deda;
-    --sp-hue-rgb: 136, 222, 218;
-    --sp-wall: #3b989c;
+    --sp-hue: #89dfc7;
+    --sp-hue-rgb: 137, 223, 199;
+    --sp-wall: #3a9498;
 }
 
 /* The mint lake lights the ledger and the violet shore frames the ordinary solo well. */
