@@ -208,9 +208,11 @@ export function createLightMap(u, field, tier) {
     })();
     const quad = new THREE.QuadMesh(material);
     quad.name = 'KaleidosonicLightMap';
-    /** What the map was last drawn for: the shape and the core's place. */
-    const drawnFor = new Float32Array(7).fill(Number.NaN);
-    const wanted = new Float32Array(7);
+    // A spring may spend many frames settling by fractions of a map texel.
+    // Compare against the last successful draw so those changes accumulate.
+    const lastShape = new THREE.Vector4(Infinity, Infinity, Infinity, Infinity);
+    const lastHeart = new THREE.Vector3(Infinity, Infinity, Infinity);
+    const tolerance = 0.09 / size;
     return {
         target,
         material,
@@ -220,10 +222,8 @@ export function createLightMap(u, field, tier) {
         render(renderer) {
             const s = u.shape.value;
             const h = u.heart.value;
-            wanted.set([s.x, s.y, s.z, s.w, h.x, h.y, h.z]);
-            let same = true;
-            for (let i = 0; i < 7; i++) if (wanted[i] !== drawnFor[i]) same = false;
-            if (same) return;
+            if (Math.abs(s.x - lastShape.x) < tolerance && Math.abs(s.w - lastShape.w) < tolerance
+                && s.z === lastShape.z && h.x === lastHeart.x && h.y === lastHeart.y && h.z === lastHeart.z) return;
             const previous = renderer.getRenderTarget();
             const { autoClear } = renderer;
             // the quad covers the whole map: no clear (a clear that lands while the draw is
@@ -234,7 +234,8 @@ export function createLightMap(u, field, tier) {
             renderer.setRenderTarget(previous);
             renderer.autoClear = autoClear;
             if (!drew) return;
-            drawnFor.set(wanted);
+            lastShape.copy(s);
+            lastHeart.set(h.x, h.y, h.z);
             u.light.value.x = 1;
         },
         dispose() {
