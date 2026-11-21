@@ -96,13 +96,14 @@
     --sp-wall: #ab6adc;
 }
 
-/* Sea glass around the ordinary solo well. The mode and danger cues own their own walls. */
-:where(body:has(#luminous-tides-theme.active)) .single-player-stage[data-board='well']:not(:where(
+/* The pink crystal reflected in the well, with pale rose quartz at the queue. */
+:where(body:has(#kaleidosonic-theme.active)) .single-player-stage[data-board='well']:not(:where(
     .infinity-mode-active, [data-odyssey-board], [data-stillfall], [data-still-air], [data-danger]
 )) {
-    --sp-hue: #88deda;
-    --sp-hue-rgb: 136, 222, 218;
-    --sp-wall: #3b989c;
+    --sp-hue: #f1b9d9;
+    --sp-hue-rgb: 241, 185, 217;
+    --sp-wall: #b76caa;
+    --sp-wall-glow: rgb(176 78 153 / 25%);
 }
 
 /* Infinity's walls: its aqua deepened, boardWallColor('#9ee8ed') (src/ui/board-walls.js), so
@@ -111,6 +112,15 @@
    below, winning. */
 .single-player-stage[data-board='well'].infinity-mode-active:not(:where([data-odyssey-board])) {
     --sp-wall: #249597;
+}
+
+/* Sea glass around the ordinary solo well. The mode and danger cues own their own walls. */
+:where(body:has(#luminous-tides-theme.active)) .single-player-stage[data-board='well']:not(:where(
+    .infinity-mode-active, [data-odyssey-board], [data-stillfall], [data-still-air], [data-danger]
+)) {
+    --sp-hue: #88deda;
+    --sp-hue-rgb: 136, 222, 218;
+    --sp-wall: #3b989c;
 }
 
 /* ---- The column: the queue over the well ------------------------------------------- */
@@ -347,10 +357,12 @@
     transform: none;
 }
 
-:where(body:has(#luminous-tides-theme.active)) .single-player-stage[data-board='well']:not(:where(
+:where(body:has(#kaleidosonic-theme.active)) .single-player-stage[data-board='well']:not(:where(
     .infinity-mode-active, [data-odyssey-board], [data-stillfall]
 )) .single-player-stats-bar {
-    background: linear-gradient(160deg, rgba(18, 41, 52, 0.95), rgba(12, 18, 37, 0.95) 74%);
+    --sb-text-faint: #cab9d2;
+    border-color: rgb(201 145 188 / 31%);
+    background: linear-gradient(145deg, rgb(43 23 54 / 97%), rgb(18 15 37 / 96%) 65%, rgb(18 27 40 / 96%));
 }
 
 /* The mode's hue as the ledger's left edge, like a seat's plate in local versus. */
@@ -360,6 +372,12 @@
     inset: 0 auto 0 0;
     width: 3px;
     background: var(--sp-hue);
+}
+
+:where(body:has(#luminous-tides-theme.active)) .single-player-stage[data-board='well']:not(:where(
+    .infinity-mode-active, [data-odyssey-board], [data-stillfall]
+)) .single-player-stats-bar {
+    background: linear-gradient(160deg, rgba(18, 41, 52, 0.95), rgba(12, 18, 37, 0.95) 74%);
 }
 
 .single-player-stage[data-board='well'] .single-player-stats-bar .single-player-stat {
