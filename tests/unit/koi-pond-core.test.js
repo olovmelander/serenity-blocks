@@ -454,7 +454,14 @@ describe('koi pond composition', () => {
             expect(((board.y1 - board.y0) * height) / BOARD_GRID.rows).toBeCloseTo(cell, 6);
             // The playfield sits nearer the card's foot than its head.
             expect(card.y1 - board.y1).toBeLessThan(board.y0 - card.y0);
-            expect(layout.hud.x0).toBeGreaterThan(card.x1);
+            if (width > height) {
+                expect(layout.hud.x0).toBeGreaterThan(card.x1);
+                expect(layout.hud.y0).toBe(board.y0);
+            } else {
+                expect(layout.hud.y0).toBeGreaterThan(card.y1);
+                expect(layout.hud.x0).toBe(board.x0);
+                expect(layout.hud.x1).toBe(board.x1);
+            }
         }
         // A degenerate size still gives finite rects.
         const tiny = fallbackLayout(0, NaN);

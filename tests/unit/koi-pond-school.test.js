@@ -216,6 +216,28 @@ describe('koi school: who lives in the pond', () => {
         few.fish.forEach((fish, i) => expect(fish.length, `koi ${i}`).toBe(school.fish[i].length));
     });
 
+    it.each([7411, 99])('keeps the contrasting coats in even the smallest school, seed %i', (seed) => {
+        const school = make(QUALITY.Minimal.koi, seed);
+        const coats = school.fish.map((fish) => KOI_VARIETIES[fish.variety].name);
+        expect(coats).toEqual(expect.arrayContaining(['kohaku', 'showa', 'ogon', 'benigoi', 'tancho', 'asagi']));
+    });
+
+    it('waits for a falling leaf to touch the water before trying to feed on it', () => {
+        const school = make(1);
+        const reach = school.fish[0].length * 0.45 + 0.1;
+        const food = {
+            count: 1,
+            x: [school.x[0] + Math.cos(school.heading[0]) * reach],
+            z: [school.z[0] + Math.sin(school.heading[0]) * reach],
+            radius: [0.06],
+            airborne: [true],
+        };
+        school.setFood(food);
+        expect(school.findMeal(0)).toBe(-1);
+        food.airborne[0] = false;
+        expect(school.findMeal(0)).toBe(0);
+    });
+
     it.each(QUALITY_NAMES)('gives every koi of the %s tier a loop in water, off the card and the rocks', (name) => {
         const school = make(QUALITY[name].koi);
         const faults = [];

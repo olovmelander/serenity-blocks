@@ -15,6 +15,7 @@ import { TAU, mulberry32 } from './koi-pond-core.js';
 // ── Spray ───────────────────────────────────────────────────────────────────────────────────
 
 export const DROP_GRAVITY = 7.2;
+export const DROP_DRAG = 0.6;
 const DROP_STRIDE = 12;
 
 export class Spray {
@@ -52,7 +53,7 @@ export class Spray {
         geometry.setAttribute('aDrop', new THREE.InterleavedBufferAttribute(this.buffer, 4, 0));
         geometry.setAttribute('aDropVel', new THREE.InterleavedBufferAttribute(this.buffer, 4, 4));
         geometry.setAttribute('aDropTint', new THREE.InterleavedBufferAttribute(this.buffer, 4, 8));
-        geometry.instanceCount = n;
+        geometry.instanceCount = 0;
         this.geometry = geometry;
         const aDrop = attribute('aDrop', 'vec4');
         const aVel = attribute('aDropVel', 'vec4');
@@ -84,8 +85,12 @@ export class Spray {
         material.outputNode = Fn(() => {
             const p = uv().sub(0.5).mul(2.0);
             const d = length(p);
-            const bead = exp(d.mul(d).mul(-5.5)).mul(float(1.0).sub(smoothstep(0.8, 1.0, d)));
-            return vec4(aTint.rgb.mul(bead.mul(aVel.w)).mul(light.u.breath), 0.0);
+            const edge = float(1.0).sub(smoothstep(0.74, 1.0, d));
+            const bead = exp(d.mul(d).mul(-2.8)).mul(0.65);
+            const glint = p.sub(vec2(-0.18, 0.30)).mul(vec2(1.3, 2));
+            const shine = exp(glint.dot(glint).mul(-10)).mul(0.8);
+            return vec4(aTint.rgb.mul(bead).add(shine).mul(edge).mul(aVel.w)
+                .mul(light.u.breath), 0.0);
         })();
         this.material = material;
         this.mesh = new THREE.Mesh(geometry, material);
@@ -102,8 +107,7 @@ export class Spray {
         this.life.fill(1);
         this.cursor = 0;
         this.alive = 0;
-        this.data.fill(0);
-        this.buffer.needsUpdate = true;
+        this.geometry.instanceCount = 0;
     }
 
     /**
@@ -126,6 +130,7 @@ export class Spray {
         for (let k = 0; k < n; k += 1) {
             const i = this.cursor;
             this.cursor = (this.cursor + 1) % this.count;
+            if (this.age[i] >= this.life[i]) this.alive += 1;
             const a = lean > 0 ? heading + (rand() - 0.5) * stray : rand() * TAU;
             const speed = out[0] + (out[1] - out[0]) * rand();
             const r = Math.sqrt(rand()) * radius;
@@ -146,12 +151,13 @@ export class Spray {
     }
 
     step(dt) {
+        if (!this.alive) return;
         let alive = 0;
+        const drag = Math.exp(-dt * DROP_DRAG);
         for (let i = 0; i < this.count; i += 1) {
             if (this.age[i] >= this.life[i]) continue;
             this.age[i] += dt;
             this.vy[i] -= DROP_GRAVITY * dt;
-            const drag = Math.exp(-dt * 0.6);
             this.vx[i] *= drag;
             this.vz[i] *= drag;
             this.px[i] += this.vx[i] * dt;
@@ -159,21 +165,21 @@ export class Spray {
             this.pz[i] += this.vz[i] * dt;
             // A drop is gone when it meets the water again.
             if (this.py[i] < 0 && this.vy[i] < 0) this.age[i] = this.life[i];
-            else alive += 1;
+            else if (this.age[i] < this.life[i]) alive += 1;
         }
         this.alive = alive;
     }
 
     commit() {
+        this.geometry.instanceCount = this.alive;
+        if (!this.alive) return;
         const { data } = this;
+        let written = 0;
         for (let i = 0; i < this.count; i += 1) {
-            const o = i * DROP_STRIDE;
             const f = this.age[i] / this.life[i];
-            if (f >= 1) {
-                data[o + 3] = 0;
-                data[o + 7] = 0;
-                continue;
-            }
+            if (f >= 1) continue;
+            const o = written * DROP_STRIDE;
+            written += 1;
             data[o] = this.px[i];
             data[o + 1] = this.py[i];
             data[o + 2] = this.pz[i];
@@ -186,7 +192,45 @@ export class Spray {
             data[o + 9] = this.tint[i * 3 + 1];
             data[o + 10] = this.tint[i * 3 + 2];
         }
+        this.buffer.clearUpdateRanges();
+        this.buffer.addUpdateRange(0, written * DROP_STRIDE);
         this.buffer.needsUpdate = true;
+    }
+
+    /**
+     * A curved lip of water breaking into droplets. Give the lip a tangential push to curl it
+     * into a whirl, or a scalloped rim to throw the pointed lobes of a water crown.
+     */
+    crest(x, z, {
+        radius, bearing, sweep, lift, curl = 0, lobes = 0, rgb,
+    }) {
+        const samples = Math.max(9, Math.round((8 + Math.abs(sweep) * radius * 7) * Math.sqrt(this.count / 640)));
+        for (let i = 0; i < samples; i += 1) {
+            const f = i / (Math.abs(sweep) >= TAU ? samples : samples - 1);
+            const a = bearing + sweep * f;
+            const dx = Math.cos(a);
+            const dz = Math.sin(a);
+            const rise = lift * (lobes
+                ? 0.45 + 0.55 * (0.5 + 0.5 * Math.cos(lobes * a)) ** 2
+                : 0.48 + 0.52 * Math.sin(Math.PI * f));
+            const r = radius * (1 - Math.min(1, Math.abs(curl)) * (1 - f) * 0.72);
+            this.emit({
+                x: x + dx * r,
+                z: z + dz * r,
+                y: 0.035,
+                radius: 0.018,
+                n: 1,
+                dirX: dx - dz * curl,
+                dirZ: dz + dx * curl,
+                lean: 1,
+                fan: 0.045,
+                up: [rise, rise + 0.13],
+                out: [0.24, 0.48],
+                size: 0.072 + rise * 0.012,
+                life: [0.8, 1.35],
+                rgb,
+            });
+        }
     }
 
     dispose() {

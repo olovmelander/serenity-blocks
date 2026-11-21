@@ -32,6 +32,9 @@ import { smooth } from './koi-pond-core.js';
 export const KOI_POND_MOODS = Object.freeze([
     Object.freeze({
         name: 'jade night',
+        lunarAngle: 0.32,
+        breeze: 0.92,
+        drizzle: 0,
         moon: [0.62, 0.78, 1.0],
         sky: [0.034, 0.058, 0.098],
         zenith: [0.008, 0.016, 0.04],
@@ -49,6 +52,9 @@ export const KOI_POND_MOODS = Object.freeze([
     }),
     Object.freeze({
         name: 'frost moon',
+        lunarAngle: -0.92,
+        breeze: 0.55,
+        drizzle: 0,
         moon: [0.8, 0.88, 1.0],
         sky: [0.03, 0.044, 0.115],
         zenith: [0.008, 0.012, 0.05],
@@ -66,6 +72,9 @@ export const KOI_POND_MOODS = Object.freeze([
     }),
     Object.freeze({
         name: 'blossom night',
+        lunarAngle: -1.92,
+        breeze: 0.76,
+        drizzle: 0,
         moon: [0.86, 0.76, 1.0],
         sky: [0.05, 0.04, 0.105],
         zenith: [0.014, 0.01, 0.046],
@@ -83,6 +92,9 @@ export const KOI_POND_MOODS = Object.freeze([
     }),
     Object.freeze({
         name: 'rose hour',
+        lunarAngle: -0.8,
+        breeze: 1.08,
+        drizzle: 0,
         moon: [1.0, 0.78, 0.8],
         sky: [0.08, 0.04, 0.072],
         zenith: [0.028, 0.012, 0.04],
@@ -100,6 +112,9 @@ export const KOI_POND_MOODS = Object.freeze([
     }),
     Object.freeze({
         name: 'harvest moon',
+        lunarAngle: 0.06,
+        breeze: 0.64,
+        drizzle: 0,
         moon: [1.0, 0.82, 0.52],
         sky: [0.085, 0.058, 0.026],
         zenith: [0.03, 0.02, 0.012],
@@ -117,6 +132,9 @@ export const KOI_POND_MOODS = Object.freeze([
     }),
     Object.freeze({
         name: 'moss rain',
+        lunarAngle: 1.74,
+        breeze: 1.18,
+        drizzle: 1,
         moon: [0.72, 1.0, 0.84],
         sky: [0.03, 0.075, 0.05],
         zenith: [0.008, 0.026, 0.02],
@@ -185,6 +203,9 @@ export function moodAt(phase, out = {}) {
     moodMix(phase, o);
     const a = KOI_POND_MOODS[o.from];
     const b = KOI_POND_MOODS[o.to];
+    o.lunarAngle = a.lunarAngle + (b.lunarAngle - a.lunarAngle) * o.mix;
+    o.breeze = a.breeze + (b.breeze - a.breeze) * o.mix;
+    o.drizzle = a.drizzle + (b.drizzle - a.drizzle) * o.mix;
     for (let i = 0; i < MOOD_KEYS.length; i += 1) {
         const key = MOOD_KEYS[i];
         const colour = o[key] || (o[key] = [0, 0, 0]);
