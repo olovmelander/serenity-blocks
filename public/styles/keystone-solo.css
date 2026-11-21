@@ -96,16 +96,6 @@
     --sp-wall: #ab6adc;
 }
 
-/* The lake's green edge around the well and a frosted silver queue. */
-:where(body:has(#aurora-theme.active)) .single-player-stage[data-board='well']:not(:where(
-    .infinity-mode-active, [data-odyssey-board], [data-stillfall], [data-still-air], [data-danger]
-)) {
-    --sp-hue: #badfda;
-    --sp-hue-rgb: 186, 223, 218;
-    --sp-wall: #69ad9c;
-    --sp-wall-glow: rgb(85 173 150 / 22%);
-}
-
 /* Harvest brass at the lip of the well and a slate ledger like the distant fells. */
 :where(body:has(#grainfields-theme.active)) .single-player-stage[data-board='well']:not(:where(
     .infinity-mode-active, [data-odyssey-board], [data-still-air], [data-danger], [data-stillfall]
@@ -151,6 +141,16 @@
     --sp-hue: #89dfc7;
     --sp-hue-rgb: 137, 223, 199;
     --sp-wall: #3a9498;
+}
+
+/* The lake's green edge around the well and a frosted silver queue. */
+:where(body:has(#aurora-theme.active)) .single-player-stage[data-board='well']:not(:where(
+    .infinity-mode-active, [data-odyssey-board], [data-stillfall], [data-still-air], [data-danger]
+)) {
+    --sp-hue: #badfda;
+    --sp-hue-rgb: 186, 223, 218;
+    --sp-wall: #69ad9c;
+    --sp-wall-glow: rgb(85 173 150 / 22%);
 }
 
 /* The mint lake lights the ledger and the violet shore frames the ordinary solo well. */
