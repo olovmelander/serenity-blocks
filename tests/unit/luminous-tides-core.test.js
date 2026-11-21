@@ -5,9 +5,25 @@
 import { describe, expect, it } from 'vitest';
 import {
     EYE, EYE_OVER_SAND, NIGHTS, NIGHT_COLOURS, NIGHT_REST, NIGHT_SECONDS, SHORE, SHORE_FRAME, SURF, WAVE_LENGTH,
-    bakeSeaNoise, bakeSkyNoise, breakLine, crestHeight, fromShore, lightAt, nightAt, pieceLight, runup, runupSeconds,
+    bakeSeaNoise, bakeSkyNoise, breakLine, crestHeight, fromShore, lightAt, meteorAt, nightAt, pieceLight, runup, runupSeconds,
     sandHeight, surfAt, surfHeight, surfPhase, swashFront, toShore, turnOffset,
 } from '../../src/themes/luminous-tides/luminous-tides-core.js';
+
+describe('luminous tides meteor paths', () => {
+    it('keeps the three medal trails in frame at wide and portrait aspect ratios', () => {
+        for (const halfWidth of [0.17, 0.69]) {
+            const visitors = [0.8, 2.4, 4].map((age) => meteorAt(24, 15, age, halfWidth, -0.3, {}));
+            for (const trail of visitors) {
+                expect(trail.w).toBeGreaterThan(1);
+                expect(Math.abs(trail.x + 0.3)).toBeLessThan(halfWidth);
+                expect(Math.abs(trail.x + trail.z + 0.3)).toBeLessThan(halfWidth);
+            }
+            expect(Math.sign(visitors[0].z)).toBe(-Math.sign(visitors[1].z));
+            expect(visitors[1]).toEqual(meteorAt(24, 15, 2.4, halfWidth, -0.3, {}));
+        }
+        expect(meteorAt(0, 15, -1, 0.69, 0, {}).w).toBe(0);
+    });
+});
 
 const hueOf = ([r, g, b]) => {
     const mx = Math.max(r, g, b);

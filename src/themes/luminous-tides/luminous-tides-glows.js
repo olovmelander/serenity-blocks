@@ -70,7 +70,12 @@ export function createGlows({ capacity, U, minPixels = 2.2 }) {
         const core = exp(r2.mul(-60.0)).mul(2.2);
         const rim = float(1.0).sub(smoothstep(0.55, 1.0, r2));
         const glow = mix(halo.add(core), halo.mul(rim), vShape.greaterThan(0.5).select(1.0, 0.0));
-        return vec4(vLight.mul(glow), 0.0);
+        // A swimming body has a rounded nose and a narrowing, gently curved wake.
+        const tail = vLocal.x.div(vLocal.z.max(0.5).mul(2)).add(0.5).clamp(0, 1);
+        const bow = tail.mul(float(1).sub(tail)).mul(1.4);
+        const cross = vLocal.y.sub(bow).div(float(1).sub(tail.mul(0.7)));
+        const fish = exp(cross.pow2().add(along.pow2()).mul(-3.4)).mul(float(1).sub(tail).pow2()).mul(2.65);
+        return vec4(vLight.mul(select(vShape.greaterThan(1.5), fish, glow)), 0.0);
     })();
 
     const mesh = new THREE.InstancedMesh(geometry, material, capacity);
@@ -132,7 +137,7 @@ export function createRain({ count, U, seed = 7 }) {
         seeds[i * 4] = rand();
         seeds[i * 4 + 1] = rand();
         seeds[i * 4 + 2] = rand();
-        seeds[i * 4 + 3] = rand();
+        seeds[i * 4 + 3] = (i + rand()) / count;
     }
     geometry.setAttribute('aRain', new THREE.InstancedBufferAttribute(seeds, 4));
     const material = new THREE.MeshBasicNodeMaterial({
@@ -180,8 +185,12 @@ export function createRain({ count, U, seed = 7 }) {
     mesh.name = 'luminous-tides-rain';
     mesh.frustumCulled = false;
     mesh.renderOrder = 70;
+    mesh.count = 0;
     return {
         mesh,
+        setIntensity(rain) {
+            mesh.count = Math.min(count, Math.ceil(count * (rain / 0.97)));
+        },
         dispose() {
             mesh.removeFromParent();
             geometry.dispose();

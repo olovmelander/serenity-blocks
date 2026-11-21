@@ -100,7 +100,7 @@ export class LuminousTidesPost {
         const look = params.look || POST_LOOK.High;
         this.look = look;
         this.pipeline = new THREE.RenderPipeline(renderer);
-        this.scenePass = pass(scene, camera, { samples: 0 });
+        this.scenePass = pass(scene, camera, { samples: params.samples ?? 0 });
         const sceneColor = this.scenePass.getTextureNode('output');
 
         this.uAspect = uniform(16 / 9);
@@ -169,8 +169,8 @@ export class LuminousTidesPost {
             const S = vec3(sceneColor.sample(st).rgb).toVar();
             // What shows through the card is soft-clipped (hue-preserving).
             const m = max(max3(S), 1e-5);
-            const clipped = S.mul(min(m, float(0.16).add(m.mul(0.18))).div(m));
-            S.assign(mix(S, clipped, calm.mul(0.9)));
+            const clipped = S.mul(min(m, float(0.105).add(m.mul(0.13))).div(m));
+            S.assign(mix(S, clipped, calm.mul(0.94)));
 
             // ── Bloom ──
             const glare = vec3(0.0).toVar();
@@ -225,7 +225,8 @@ export class LuminousTidesPost {
         });
 
         this.pipeline.outputColorTransform = false;
-        this.pipeline.outputNode = look.fxaa && !falseColor ? fxaa(outputFn()) : outputFn();
+        this.pipeline.outputNode = look.fxaa && params.antialias !== false && !params.samples && !falseColor
+            ? fxaa(outputFn()) : outputFn();
         this.pipeline.needsUpdate = true;
     }
 

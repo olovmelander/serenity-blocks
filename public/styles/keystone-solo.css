@@ -134,6 +134,15 @@
     --sp-wall: #249597;
 }
 
+/* Sea glass around the ordinary solo well. The mode and danger cues own their own walls. */
+:where(body:has(#luminous-tides-theme.active)) .single-player-stage[data-board='well']:not(:where(
+    .infinity-mode-active, [data-odyssey-board], [data-stillfall], [data-still-air], [data-danger]
+)) {
+    --sp-hue: #89dfc7;
+    --sp-hue-rgb: 137, 223, 199;
+    --sp-wall: #3a9498;
+}
+
 /* The mint lake lights the ledger and the violet shore frames the ordinary solo well. */
 :where(body:has(#lunara-theme.active)) .single-player-stage[data-board='well']:where(:not(
     .infinity-mode-active, [data-odyssey-board], [data-stillfall], [data-danger], [data-still-air]
@@ -400,6 +409,12 @@
     inset: 0 auto 0 0;
     width: 3px;
     background: var(--sp-hue);
+}
+
+:where(body:has(#luminous-tides-theme.active)) .single-player-stage[data-board='well']:not(:where(
+    .infinity-mode-active, [data-odyssey-board], [data-stillfall]
+)) .single-player-stats-bar {
+    background: linear-gradient(160deg, rgba(18, 41, 52, 0.95), rgba(12, 18, 37, 0.95) 74%);
 }
 
 .single-player-stage[data-board='well'] .single-player-stats-bar .single-player-stat {

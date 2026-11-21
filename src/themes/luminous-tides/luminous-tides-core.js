@@ -54,6 +54,25 @@ export function hash1(n) {
     return fract(Math.sin(n * 12.9898 + 4.1414) * 43758.5453);
 }
 
+/** One trail in angular coordinates. A perfect clear brings three successive visitors. */
+export function meteorAt(clock, seed, perfectAge, halfWidth, centre, out) {
+    const slot = Math.floor(clock / 27);
+    const shower = perfectAge >= 0 && perfectAge < 4.8;
+    const index = shower ? Math.floor(perfectAge / 1.6) : slot;
+    const key = seed + index * 17 + (shower ? 83 : 0);
+    const age = shower ? perfectAge - index * 1.6 - 0.24 : clock - slot * 27 - 3 - hash1(key) * 19;
+    out.w = 0;
+    if (age <= 0 || age >= 1.25) return out;
+    const side = index % 3 === 1 ? 1 : -1;
+    const run = Math.min(halfWidth * 0.45, 0.33);
+    const travel = smooth(0, 1.25, age);
+    out.x = centre + side * (halfWidth * (0.76 - 0.16 * hash1(key + 1)) - run * travel);
+    out.y = 0.24 + 0.045 * hash1(key + 2) - run * 0.34 * travel;
+    out.z = side * run * 0.48 * smooth(0, 0.43, age);
+    out.w = smooth(0, 0.16, age) * (1 - smooth(0.67, 1.25, age)) * (shower ? 1.8 : 1);
+    return out;
+}
+
 const srgbToLinear = (c) => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
 
 /**
@@ -172,6 +191,16 @@ export function sandHeight(s) {
 
 /** Where the eye is (world). */
 export const EYE = Object.freeze({ x: 0, y: sandHeight(SHORE.eyeS) + EYE_OVER_SAND, z: 0 });
+
+// Along and across the beach, radius, height scale, rotation. The first two beds sit in the
+// swash; the offshore stones are submerged as each breaker passes.
+export const BASALT = Object.freeze([
+    [6.2, -2.62, 0.55, 0.48, 1.1], [6.62, -2.43, 0.30, 0.24, 2.7], [5.64, -2.79, 0.19, 0.15, 0.4],
+    [8.9, -3.03, 0.24, 0.20, 0.8], [9.38, -3.20, 0.13, 0.11, 1.7],
+    [13.2, 6.46, 1.02, 0.98, 1.3], [14, 6.73, 0.62, 0.75, 2.9],
+    [20.5, -4.25, 0.69, 0.46, 0.8], [21.3, -4.12, 0.45, 0.37, 2.4],
+    [42.6, -4.8, 1.14, 0.73, 1.4], [43.9, -4.65, 0.75, 0.51, 0.1],
+]);
 
 // ── The surf ────────────────────────────────────────────────────────────────────────────────
 
@@ -361,20 +390,21 @@ const night = (values) => Object.freeze(values);
 export const NIGHTS = Object.freeze([
     night({
         name: 'afterglow',
-        zenith: [0.010, 0.018, 0.060],
-        mid: [0.040, 0.050, 0.120],
-        horizon: [0.090, 0.090, 0.150],
-        warm: [0.50, 0.18, 0.055],
-        cloudLit: [0.30, 0.13, 0.06],
-        cloudShade: [0.040, 0.034, 0.060],
-        glow: [0.10, 0.80, 1.00],
+        zenith: [0.009, 0.014, 0.073],
+        mid: [0.065, 0.048, 0.162],
+        horizon: [0.180, 0.082, 0.143],
+        warm: [0.76, 0.255, 0.070],
+        cloudLit: [0.46, 0.164, 0.086],
+        cloudShade: [0.038, 0.027, 0.078],
+        glow: [0.024, 0.75, 0.95],
         glowHot: [0.80, 1.00, 1.00],
         sand: [0.060, 0.050, 0.060],
         wetSand: [0.030, 0.034, 0.050],
         sea: [0.006, 0.012, 0.022],
         mist: [0.060, 0.060, 0.100],
         town: [1.00, 0.62, 0.28],
-        stars: 0.35,
+        moon: 1,
+        stars: 0.16,
         milky: 0,
         cover: 0.55,
         haze: 0.18,
@@ -397,7 +427,8 @@ export const NIGHTS = Object.freeze([
         sea: [0.004, 0.008, 0.016],
         mist: [0.050, 0.036, 0.040],
         town: [1.00, 0.55, 0.20],
-        stars: 0.25,
+        moon: 0.34,
+        stars: 0.22,
         milky: 0,
         cover: 0.82,
         haze: 0.2,
@@ -420,6 +451,7 @@ export const NIGHTS = Object.freeze([
         sea: [0.003, 0.006, 0.014],
         mist: [0.020, 0.024, 0.044],
         town: [1.00, 0.66, 0.34],
+        moon: 0,
         stars: 1,
         milky: 1,
         cover: 0.16,
@@ -443,6 +475,7 @@ export const NIGHTS = Object.freeze([
         sea: [0.002, 0.004, 0.012],
         mist: [0.018, 0.016, 0.030],
         town: [1.00, 0.58, 0.26],
+        moon: 0.07,
         stars: 0.45,
         milky: 0.4,
         cover: 0.62,
@@ -466,6 +499,7 @@ export const NIGHTS = Object.freeze([
         sea: [0.008, 0.016, 0.034],
         mist: [0.080, 0.096, 0.170],
         town: [1.00, 0.70, 0.40],
+        moon: 0.83,
         stars: 0.2,
         milky: 0,
         cover: 0.4,
@@ -489,6 +523,7 @@ export const NIGHTS = Object.freeze([
         sea: [0.005, 0.012, 0.016],
         mist: [0.090, 0.100, 0.120],
         town: [1.00, 0.68, 0.36],
+        moon: 0.38,
         stars: 0.1,
         milky: 0,
         cover: 0.5,
@@ -552,6 +587,7 @@ export function lightAt(wheel, out = null) {
         mixRow(A[name], B[name], t, o[name]);
     }
     o.stars = lerp(A.stars, B.stars, trail);
+    o.moon = lerp(A.moon, B.moon, trail);
     o.milky = lerp(A.milky, B.milky, trail);
     o.cover = lerp(A.cover, B.cover, trail);
     o.haze = lerp(A.haze, B.haze, trail);
