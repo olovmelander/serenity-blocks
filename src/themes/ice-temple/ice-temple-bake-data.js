@@ -8,7 +8,7 @@
  * mesh are made over them in ice-temple-tsl.js and ice-temple-architecture.js.
  */
 import {
-    REST_RIG, TAU, mulberry32,
+    NAVE, REST_RIG, TAU, mulberry32,
 } from './ice-temple-core.js';
 import { buildPlan } from './ice-temple-plan.js';
 import { toHalfFloat } from '../shared/half-float.js';
@@ -135,7 +135,7 @@ const norm = (a) => {
 
 /**
  * Collects flat-shaded triangles with the per-vertex data the ice material reads:
- * `aSmooth` (radial normal), `aInfo` (chord radius, seed, kind, 0) and `aSt` (metres round the
+ * `aSmooth` (radial normal), `aInfo` (chord radius, seed, kind, tracery) and `aSt` (metres round the
  * piece and along it; the seam of `s` faces away from the camera).
  */
 class IceBuilder {
@@ -164,7 +164,7 @@ class IceBuilder {
             this.position.push(v.p[0], v.p[1], v.p[2]);
             this.normal.push(n[0], n[1], n[2]);
             this.smooth.push(v.n[0], v.n[1], v.n[2]);
-            this.info.push(piece.radius, piece.seed, piece.kind, 0);
+            this.info.push(piece.radius, piece.seed, piece.kind, piece.tracery ?? 0);
             this.st.push(v.s, v.t);
         }
         this.triangles += 1;
@@ -312,12 +312,15 @@ function addCrystal(builder, crystal, rand) {
     // The seam faces away from the camera, measured in the crystal's own frame.
     const toCam = norm([REST_RIG.x - base[0], REST_RIG.height - base[1], REST_RIG.z - base[2]]);
     const seam = Math.atan2(dotV(toCam, e2), dotV(toCam, e1)) - twist;
+    // A cleaved blade keeps six strong faces. Only the thicker prisms need bevels.
+    const blade = crystal.kind === 'shard' && r < 0.7 && crystal.seed < 0.6;
+    const profile = blade ? polygon(6) : HEX_PROFILE;
     const at = (d, radius, slope = 0) => builder.ring(
         [base[0] + axis[0] * d, base[1] + axis[1] * d, base[2] + axis[2] * d],
         e1,
         e2,
         radius,
-        HEX_PROFILE,
+        profile,
         twist,
         d,
         seam + twist,
@@ -325,7 +328,28 @@ function addCrystal(builder, crystal, rand) {
         axis,
     );
     const shoulder = len * (0.74 + rand() * 0.12);
-    const rings = [at(0, r * 1.04), at(len * 0.4, r), at(shoulder, r * 0.93)];
+    // Some shards cleave to a single blade. A widened middle and a slanting shoulder
+    // distinguish these from the heavy, regular prisms around the altar.
+    // On a straight shard, base to shoulder is one unbroken crystal face.
+    const rings = [at(0, r * (blade ? 0.7 : 1.04))];
+    if (blade || crystal.kind === 'heart') rings.push(at(len * 0.4, r));
+    rings.push(at(shoulder, r * 0.93));
+    if (blade) {
+        for (const [j, ring] of rings.entries()) {
+            for (const v of ring) {
+                const offset = sub(v.p, base);
+                const width = dotV(offset, e1);
+                const narrow = dotV(offset, e2);
+                const nx = dotV(v.n, e1) / 1.36;
+                const ny = dotV(v.n, e2) / 0.54;
+                v.n = norm(e1.map((c, k) => c * nx + e2[k] * ny));
+                for (let k = 0; k < 3; k++) {
+                    v.p[k] += width * e1[k] * 0.36 - narrow * e2[k] * 0.46;
+                    if (j === 2) v.p[k] += axis[k] * width * 0.65;
+                }
+            }
+        }
+    }
     builder.sweep(rings, piece);
     // The termination: six faces to an off-centre point, as a real crystal's is.
     const off = r * 0.22;
@@ -345,8 +369,10 @@ function addCrystal(builder, crystal, rand) {
 /** A rib: a six-sided section swept along a polyline. */
 function addRib(builder, rib) {
     const { points, radius: r } = rib;
-    const piece = { radius: r, seed: rib.seed, kind: KIND.structure };
-    const profile = polygon(6);
+    const piece = {
+        radius: r, seed: rib.seed, kind: KIND.structure, tracery: rib.tracery,
+    };
+    const profile = polygon(rib.tracery ? 4 : 6);
     const planeNormal = norm(rib.normal);
     const rings = [];
     let run = 0;
@@ -370,12 +396,110 @@ function addIcicle(builder, icicle) {
     const piece = { radius: icicle.radius, seed: icicle.seed, kind: KIND.icicle };
     const profile = polygon(5);
     const spin = icicle.seed * TAU;
-    const top = builder.ring([icicle.x, icicle.y + 0.15, icicle.z], X, Z, icicle.radius, profile, spin, 0, 0);
-    const mid = builder.ring([icicle.x, icicle.y - icicle.length * 0.35, icicle.z], X, Z, icicle.radius * 0.62, profile, spin, icicle.length * 0.35, 0);
+    const lean = icicle.radius * 1.1;
+    const dx = Math.cos(spin) * lean;
+    const dz = Math.sin(spin) * lean;
+    const top = builder.ring([icicle.x, icicle.y + 0.15, icicle.z], X, Z, icicle.radius * 1.23, profile, spin, 0, 0);
+    const mid = builder.ring(
+        [icicle.x + dx, icicle.y - icicle.length * 0.35, icicle.z + dz],
+        X,
+        Z,
+        icicle.radius * 0.62,
+        profile,
+        spin + 0.16,
+        icicle.length * 0.35,
+        0,
+    );
     builder.sweep([mid, top], piece);
     builder.cone(mid, {
-        p: [icicle.x, icicle.y - icicle.length, icicle.z], n: [0, -1, 0], s: 0, t: icicle.length,
+        p: [icicle.x + dx * 1.6, icicle.y - icicle.length, icicle.z + dz * 1.6],
+        n: [0, -1, 0],
+        s: 0,
+        t: icicle.length,
     }, piece);
+}
+
+/** Cusped inner moulding beneath the crown of alternate transverse arches. */
+function addArchCusps(builder, arch) {
+    const centre = (arch.points.length - 1) / 2;
+    const [x, y, z] = arch.points[centre];
+    const left = arch.points[centre - 4];
+    const right = arch.points[centre + 4];
+    const lower = [
+        [-5.0, -2.25], [-3.45, -2.45], [-2.48, -3.35], [-2.34, -2.30],
+        [-1.63, -1.53], [0, -0.27], [1.63, -1.53], [2.34, -2.30],
+        [2.48, -3.35], [3.45, -2.45], [5.0, -2.25],
+    ].map(([dx, dy]) => [x + dx, y + dy, z]);
+    addRib(builder, {
+        points: [left, ...lower, right], radius: 0.19, seed: arch.seed, normal: Z, tracery: 0.72,
+    });
+}
+
+/** Raised lancets on the four faces of a nave pier. Their folded shoulders catch the
+ * side light. The little double-ended stone stands clear of the pier inside each one. */
+function addPierTracery(builder, column) {
+    const {
+        x, z, radius: r, height: h, twist, seed,
+    } = column;
+    const bay = Math.round((NAVE.firstZ - z) / NAVE.bay);
+    for (let i = 0; i < 4; i++) {
+        const a = twist + (TAU * (i + 0.5)) / 4;
+        const front = [Math.cos(a), 0, Math.sin(a)];
+        const tangent = [-front[2], 0, front[0]];
+        const place = (s, y, outset = 1.08) => {
+            const angle = a + s;
+            return [x + r * outset * Math.cos(angle), y, z + r * outset * Math.sin(angle)];
+        };
+        const shoulder = h * (bay % 2 ? 0.20 : 0.27);
+        const tip = h * (bay % 2 ? 0.33 : 0.42);
+        const points = [
+            place(-0.54, 0.88, 1.41), place(-0.49, 1.82), place(-0.49, shoulder),
+            place(-0.40, shoulder + 0.55), place(-0.18, tip - 1.15), place(0, tip, 1.02),
+            place(0.18, tip - 1.15), place(0.40, shoulder + 0.55), place(0.49, shoulder),
+            place(0.49, 1.82), place(0.54, 0.88, 1.41),
+        ];
+        addRib(builder, {
+            points, radius: r * 0.077, seed, normal: front, tracery: 0.52,
+        });
+        // One little votive stone faces the nave on each major pier. The minor
+        // piers carry shorter, empty lancets, leaving their dark ice exposed.
+        if (bay % 2 || i !== (x > 0 ? 1 : 0)) continue;
+        const jewel = {
+            radius: r * (bay % 4 ? 0.16 : 0.20), seed, kind: KIND.shard, tracery: 1,
+        };
+        const waist = place(0, shoulder, 1.18);
+        const middle = builder.ring(waist, tangent, front, jewel.radius, polygon(6), 0, 0, 0);
+        builder.cone(middle, {
+            p: place(0, shoulder + 0.65, 1.1), n: UP, s: 0, t: 0.65,
+        }, jewel);
+        builder.cone(middle, {
+            p: place(0, shoulder - 0.94, 1.08), n: [0, -1, 0], s: 0, t: -0.94,
+        }, jewel);
+    }
+}
+
+/** A wheel of six pointed lights above the altar, cut from solid ice. The sky is visible
+ * through its openings and the great crystal occludes its centre from the nave. */
+function addApseRose(builder) {
+    const z = NAVE.heartZ - 5.7;
+    const height = NAVE.heartY + 7.0;
+    const radius = 11.7;
+    const point = (a, d, side = 0) => [
+        Math.sin(a) * d + Math.cos(a) * side, height + Math.cos(a) * d - Math.sin(a) * side, z,
+    ];
+    const rim = Array.from({ length: 37 }, (_, i) => point((TAU * i) / 36, radius));
+    addRib(builder, {
+        points: rim, radius: 0.32, seed: 0.58, normal: Z, tracery: 0.86,
+    });
+    for (let i = 0; i < 6; i++) {
+        const a = (TAU * i) / 6;
+        const outline = [[2.3, 0], [3.9, -1.3], [6.7, -2.18], [8.9, -1.65], [radius, 0],
+            [8.9, 1.65], [6.7, 2.18], [3.9, 1.3], [2.3, 0]];
+        const points = outline.map(([d, s]) => point(a, d, s));
+        addRib(builder, {
+            points, radius: 0.22, seed: i / 6, normal: Z, tracery: 1,
+        });
+    }
 }
 
 /**
@@ -387,7 +511,14 @@ export function architectureArrays(plan) {
     const builder = new IceBuilder();
     const rand = mulberry32(0x1ce7e);
     plan.columns.forEach((column) => addColumn(builder, column, rand));
-    plan.ribs.forEach((rib) => addRib(builder, rib));
+    plan.columns.filter((column) => column.kind === 'nave').forEach((column) => addPierTracery(builder, column));
+    addApseRose(builder);
+    plan.ribs.forEach((rib) => {
+        addRib(builder, rib);
+        if (rib.kind === 'transverse' && Math.round((NAVE.firstZ - rib.points[0][2]) / NAVE.bay) % 2 === 0) {
+            addArchCusps(builder, rib);
+        }
+    });
     plan.crystals.forEach((crystal) => addCrystal(builder, crystal, rand));
     plan.icicles.forEach((icicle) => addIcicle(builder, icicle));
     return builder.data();

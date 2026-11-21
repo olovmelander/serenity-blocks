@@ -10,7 +10,8 @@
  *   sink.lock({ player, rows, u, hardDrop, color, screen })
  *   sink.clear({ player, rows, lines, combo, cascade, twist, perfect, b2b, screen })
  *   sink.combo(n, player)      the true combo, whenever it changes (0 = the chain broke)
- *   sink.levelUp(level)
+ *   sink.levelUp(level, options?)  with { silent: true } when reactions are off
+ *   sink.echo({ player })      a back-to-back delivered apart from its clear
  *   sink.crown({ player })     a perfect clear settled after its clear (physics sends it ~360 ms
  *                              after the last wave, in a frame of its own): the crown on the
  *                              clear still playing, never a new clear
@@ -191,7 +192,7 @@ export class IceTempleDirector {
     /**
      * @param {{
      *   sink?: { lock?: Function, clear?: Function, combo?: Function, levelUp?: Function,
-     *     crown?: Function, spin?: Function },
+     *     crown?: Function, spin?: Function, echo?: Function },
      *   enabled?: boolean, lockRipple?: boolean,
      * }} [options]
      */
@@ -351,6 +352,7 @@ export class IceTempleDirector {
         if (payload.active === false) return false;
         const slot = this.slotFor(payload);
         if (!slot) return false;
+        slot.pending = true;
         slot.b2b = true;
         return true;
     }
@@ -383,7 +385,8 @@ export class IceTempleDirector {
         const { sink } = this;
         if (this.levelPending) {
             this.levelPending = false;
-            sink?.levelUp?.(this.level);
+            if (this.enabled) sink?.levelUp?.(this.level);
+            else sink?.levelUp?.(this.level, { silent: true });
         }
         for (let i = 0; i < this.slots.length; i += 1) {
             const slot = this.slots[i];
@@ -423,6 +426,10 @@ export class IceTempleDirector {
             } else if (alone && slot.twist && sink?.spin) {
                 this._moment.player = slot.player;
                 sink.spin(this._moment);
+            }
+            if (alone && slot.b2b && sink?.echo) {
+                this._moment.player = slot.player;
+                sink.echo(this._moment);
             }
             if (slot.lines > 0 && sink?.clear) {
                 const c = this._clear;

@@ -68,7 +68,10 @@ function seeds(count, seed) {
 function flakePosition(u, seed, fallScale, driftScale, wander) {
     const speed = seed.w.mul(0.8).add(0.6);
     const sway = sin(u.time.mul(speed.mul(0.55)).add(seed.x.mul(40.0))).mul(wander);
-    const x = fract(seed.x.add(u.snowDrift.mul(speed).mul(driftScale / SNOW_BOX[0])).add(sway));
+    // Wind crosses the nave in sheets. Flakes at similar depths lean into a gust together.
+    const gust = sin(u.snowDrift.mul(0.19).sub(seed.z.mul(8.0))).mul(u.polarWeather.x);
+    const x = fract(seed.x.add(u.snowDrift.mul(speed).mul(driftScale / SNOW_BOX[0])).add(sway)
+        .add(gust.mul(0.093 * driftScale)));
     const y = fract(seed.y.sub(u.snowFall.mul(speed).mul(fallScale / SNOW_BOX[1])));
     const z = fract(seed.z.add(sin(u.time.mul(0.31).add(seed.z.mul(31.0))).mul(wander * 0.6)));
     const local = vec3(
@@ -119,22 +122,40 @@ export function createSnow(u, count) {
     // Flakes close to the lens are out of focus: bigger and fainter.
     const near = float(1.0).sub(smoothstep(1.5, 7.0, air.dist));
     const blur = near.mul(1.9).add(1.0);
-    const sizeM = seed.w.mul(0.03).add(0.022).mul(blur);
+    const sizeM = seed.w.mul(seed.w).mul(0.039).add(0.018).mul(blur);
     const sizePx = max(sizeM.mul(pxPerMetre), 1.5);
-    material.vertexNode = vec4(clip.xy.add(positionGeometry.xy.mul(sizePx.mul(2.0)).div(half).mul(clip.w)), clip.z, clip.w);
+    // A plate turns over in the draft. Its silhouette narrows as it catches the moon,
+    // and dissolves into round bokeh close to the lens.
+    const tumble = seed.y.mul(28).add(u.snowFall.mul(seed.w.mul(0.82).add(0.5)));
+    const aspect = mix(sin(tumble).abs().mul(0.68).add(0.32), float(1), near);
+    const spin = seed.z.mul(17).add(u.snowDrift.mul(seed.x.mul(0.7).add(0.28)));
+    const c = cos(spin);
+    const s = sin(spin);
+    const xx = positionGeometry.x;
+    const yy = positionGeometry.y.mul(aspect);
+    const corner = vec2(xx.mul(c).sub(yy.mul(s)), xx.mul(s).add(yy.mul(c)));
+    material.vertexNode = vec4(clip.xy.add(corner.mul(sizePx.mul(2.0)).div(half).mul(clip.w)), clip.z, clip.w);
     // (Out of focus, a flake's light is spread over a disc many times its area: it is faint,
     // falling faster than the disc grows so a half-blurred flake is no brighter orb.)
     const gain = float(1.0).sub(air.fog).div(blur.mul(blur).mul(blur))
         // A flake smaller than the pixel floor carries less light, not the same light.
         .mul(itSaturate(sizeM.mul(pxPerMetre).div(1.5)));
-    const vLight = varying(air.light.mul(gain), 'itSnowLight');
+    const storm = u.polarWeather.x;
+    const cohort = fract(seed.z.mul(13).add(seed.w.mul(7)));
+    const active = smoothstep(cohort.sub(0.16), cohort.add(0.16), storm.mul(0.51).add(0.55));
+    const vLight = varying(air.light.mul(gain).mul(active).mul(aspect.mul(0.5).add(0.65)), 'itSnowLight');
     const vNear = varying(near, 'itSnowNear');
+    const vResolved = varying(smoothstep(2.7, 7.0, sizePx), 'itSnowResolved');
     material.colorNode = Fn(() => {
-        const d = length(uv().sub(0.5)).mul(2.0);
+        const q = uv().sub(0.5).mul(2.0).abs()
+            .toVar();
+        const d = length(q);
         const soft = float(1.0).sub(smoothstep(0.25, 1.0, d));
-        // A flake at the lens is a bokeh disc: flat, with a brighter rim.
+        const hex = max(q.y, dot(q, vec2(0.866, 0.5)));
+        const rim = float(1.0).sub(smoothstep(0.05, 0.23, hex.sub(0.7).abs()));
+        const plate = float(1.0).sub(smoothstep(0.72, 0.94, hex)).mul(rim.mul(0.45).add(0.49));
         const bokeh = float(1.0).sub(smoothstep(0.82, 0.95, d)).mul(smoothstep(0.55, 0.9, d).mul(0.55).add(0.45));
-        const shape = mix(soft.mul(soft), bokeh, smoothstep(0.2, 0.7, vNear));
+        const shape = mix(mix(soft.mul(soft), plate, vResolved), bokeh, smoothstep(0.2, 0.7, vNear));
         return vec4(vLight.mul(shape).mul(vec3(0.9, 0.96, 1.0)).mul(1.15), 0.0);
     })();
     const part = itPart('IceTempleSnow', geometry, material, 40, false);
@@ -161,12 +182,14 @@ export function createDust(u, count) {
     const flash = pow(turn, 22.0);
     const pxPerMetre = u.viewport.y.mul(u.projScale).div(max(clip.w, 0.3));
     const sizePx = max(float(0.02).mul(pxPerMetre), 1.3).mul(flash.mul(1.6).add(0.6));
-    material.vertexNode = vec4(clip.xy.add(positionGeometry.xy.mul(sizePx.mul(2.0)).div(half).mul(clip.w)), clip.z, clip.w);
+    const corner = positionGeometry.xy.mul(sizePx.mul(2.0)).div(half).mul(clip.w);
+    material.vertexNode = vec4(clip.xy.add(corner), clip.z, clip.w);
     const hue = itSpectrum(seed.y.add(u.time.mul(0.03)));
-    const tint = mix(vec3(1.0), hue, 0.6);
+    const tint = mix(vec3(0.86, 0.95, 1), hue, 0.34);
     const vLight = varying(
         air.light.add(0.02).mul(tint).mul(flash.mul(9.0).add(0.05)).mul(float(1.0).sub(air.fog))
-            .mul(u.dustGain),
+            .mul(u.dustGain)
+            .mul(u.polarWeather.y.mul(0.72).add(0.53)),
         'itDustLight',
     );
     material.colorNode = Fn(() => {
@@ -195,7 +218,7 @@ export function createMist(u, count) {
     const span = 84;
     const x = fract(seed.x.add(u.snowDrift.mul(seed.w.mul(0.5).add(0.5)).div(span))).sub(0.5).mul(span);
     const z = seed.z.mul(-74.0).add(1.0);
-    const y = seed.y.mul(1.9).add(0.5);
+    const y = seed.y.mul(1.6).add(0.36);
     const centre = vec3(x, y, z);
     // A sheet facing the nave: wide, low, a little taller further off.
     const w = seed.w.mul(9.0).add(11.0);
@@ -213,13 +236,14 @@ export function createMist(u, count) {
     );
     material.colorNode = Fn(() => {
         const st = uv();
-        const n = u.noise(vec2(st.x.mul(1.3).add(vSeed.x.mul(7.0)).add(u.time.mul(0.008)), st.y.mul(0.6).add(vSeed.z.mul(3.0))));
+        const offset = st.x.mul(1.3).add(vSeed.x.mul(7.0)).add(u.time.mul(0.008));
+        const n = u.noise(vec2(offset, st.y.mul(0.6).add(vSeed.z.mul(3.0))));
         const edge = smoothstep(0.0, 0.3, st.x).mul(float(1.0).sub(smoothstep(0.7, 1.0, st.x)))
             .mul(smoothstep(0.0, 0.35, st.y)).mul(float(1.0).sub(smoothstep(0.45, 1.0, st.y)));
         const body = smoothstep(0.3, 0.8, n.r.mul(0.8).add(n.g.mul(0.4))).mul(edge);
         const light = u.moonColor.mul(u.ambient).mul(itMoonShadow(vWorld)).mul(0.5).add(vLight);
         // Never a wall in front of the lens, never a card in the far haze.
-        const a = body.mul(vFade).mul(0.2);
+        const a = body.mul(vFade).mul(u.polarWeather.x.mul(0.16).add(u.polarWeather.y.mul(0.065)).add(0.105));
         return vec4(light.mul(a), a.mul(0.35));
     })();
     const part = itPart('IceTempleMist', geometry, material, 20, false);

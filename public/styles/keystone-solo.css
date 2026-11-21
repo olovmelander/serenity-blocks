@@ -163,6 +163,16 @@
     --sp-wall-glow: rgb(112 120 204 / 28%);
 }
 
+/* Cut blue ice on the wall, moon silver on the queue and score ledger. */
+:where(body:has(#ice-temple-theme.active)) .single-player-stage[data-board='well']:not(:where(
+    .infinity-mode-active, [data-odyssey-board], [data-stillfall], [data-still-air], [data-danger]
+)) {
+    --sp-hue: #c5d6db;
+    --sp-hue-rgb: 197, 214, 219;
+    --sp-wall: #4f90aa;
+    --sp-wall-glow: rgb(107 183 211 / 24%);
+}
+
 /* ---- The column: the queue over the well ------------------------------------------- */
 .single-player-stage[data-board='well'] #single-player-container {
     --board-width: inherit;

@@ -273,3 +273,36 @@ cropped to a 640 px square around (600, 470), given a colour lift (contrast 1.14
 ![Minimal, Low on WebGL2, and the rose aurora](ice-temple-overhaul/tiers.jpg)
 
 ![Portrait: at rest, a hard drop, a combo, four lines](ice-temple-overhaul/portrait.jpg)
+
+## The polar night, November 2026
+
+The strongest parts of the original were its perspective, the open vault and the reflection that doubles the apparent height of the columns. At playing distance, the near pillars had little carving to distinguish one bay from the next. The heart's cyan glow obscured its cut faces, and the uniformly bright crack lips competed with its reflection. Beyond the columns, a nearly level band of aurora, a pale lunar disc and similarly sized stars and snowflakes flattened the distance. Twists and level changes were difficult to recognize in a still frame, while game over simply cleared the effects.
+
+![The same view at 20 seconds before and after the November changes](ice-temple-overhaul/november-comparison.jpg)
+
+**The nave and lake.** Tall and short lancets alternate down the aisle. The major piers carry a small silver-blue stone, the arches have cusps, and icicles of different lengths lean away from the stonework. A six-petal rose of open tracery stands behind the heart. Light concentrates in its core and along one shoulder, leaving dark facets and growth lines visible around it. The floor keeps its planar reflection on Medium and above. Narrow fans of refracted colour fall beside the columns, while the crack edges pick up light unevenly. The scattered shards have asymmetric cuts that catch the moon at different angles.
+
+**The changing night.** The palette still turns with time and advances on a level. A separate weather clock changes the folds of the aurora, clarity of the stars, amount of diamond haze and character of the snowfall. Curtains fold back over themselves and gather into bright knots, opening pockets of sky between bays. Lunar seas show through the lit disc. A sparse star field and distant star clouds sit behind the striated ridges, while nearby snow plates tumble in the wind.
+
+![Six fixed views of the aurora, architecture, lake and weather](ice-temple-overhaul/november-nights.jpg)
+
+| Play | What appears around the well |
+| --- | --- |
+| Lock and hard drop | A piece-coloured fracture and chips mark the strike. A hard drop adds a crown of split ice spikes on tiers that draw the crown. |
+| One, two and three lines | Prismatic blades leave the cleared rows, followed by one travelling front per line. Three lines also open glass fans beside the board. |
+| Twist, cascade and back-to-back | A spin draws paired spirals. A clearing twist winds them more strongly. Cascades send a staircase of shards forward. A back-to-back sends a delayed echo through the columns, including when Serenity reports it separately. |
+| Sustained combo | Resonance climbs the piers, lights cracks farther across the lake and eventually lifts the snow. Corner frost frames the chain. |
+| Four lines and perfect clear | The four-line hush gives way to the Great Snowflake, with silver spines and translucent faces. A perfect clear crowns the snowflake and opens two rose windows in the side aisles. A late perfect clear joins the display already in progress. |
+| Level and game over | Ranks of luminous ice pipes rise as the palette changes. At game over, loose splinters settle toward the lake. |
+
+![Nine gameplay moments around the solo well](ice-temple-overhaul/november-events.jpg)
+
+The ordinary solo well now takes its blue edge from the ice and its silver lettering from the moon. The pieces carry less glow, with more separation between jade, cyan, indigo and rose. The theme picker uses a close view of the revised crystal and openwork. The background suppresses glare under the measured board and ledger. On narrow layouts the new glass figures can use the space above the well. Reduce motion softens their travel. Reduce flashing also limits the temporary dimming of the nave during the four-line hush. [Portrait perfect clear](ice-temple-overhaul/november-portrait.jpg)
+
+![Production solo play after keyboard hard drops and during a staged perfect clear](ice-temple-overhaul/november-solo.jpg)
+
+**Verification.** Two keyboard hard drops produced two crowns in a running solo game. The right-hand image uses the game's event bus to stage a quad and a perfect clear 350 ms later. Fixed-time captures covered fifteen event states, High on both rendering backends, Minimal on WebGL2, and portrait layouts. All seven Ice Temple test suites passed, including every scene material emitted to WGSL and GLSL at High and Minimal.
+
+The default architecture is one draw with **50,801 triangles**, down from 54,729. The new event figures share one instanced mesh and a fixed pool. At High, with a 1441 × 900 drawing buffer and a 30 FPS cap on the NVIDIA Blackwell adapter, the median frame interval was 33.4 ms in the original resting scene, 33.3 ms in the revised resting scene and 33.3 ms during a revised perfect clear with a seven-link combo. The revised GPU timestamp samples had medians of 0.46 ms at rest and 0.52 ms during that clear, with nine resolved samples in each ten-second window. Physical phone and integrated-GPU frame pacing were not measured.
+
+For the matched view, run the playground at `?effect=ice-temple&t=20&quality=High&maxFps=30&hud=0`. Use `t=106` for amethyst, `t=185` for silver ice or `t=310` for rose. Add `board=1&event=perfect&eventAge=1.55` to inspect the largest event with the solo layout.

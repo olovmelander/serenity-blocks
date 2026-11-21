@@ -18,6 +18,7 @@
 import * as THREE from 'three/webgpu';
 import {
     Fn,
+    If,
     attribute,
     cameraPosition,
     cross,
@@ -25,6 +26,7 @@ import {
     exp,
     float,
     floor,
+    fract,
     length,
     max,
     mix,
@@ -98,6 +100,7 @@ export function createArchitecture(u, plan, opts = {}) {
         const kind = info.z;
         const isHeart = step(1.5, kind).mul(step(kind, 2.5));
         const isIcicle = step(2.5, kind);
+        const isShard = step(0.5, kind).mul(step(kind, 1.5));
 
         const rel = p.sub(cameraPosition);
         const dist = length(rel);
@@ -160,7 +163,16 @@ export function createArchitecture(u, plan, opts = {}) {
         const wisp = u.noise(c0.add(slide.mul(info.x.mul(0.7))).mul(vec2(0.47, 0.04)).add(3.1)).toVar();
         const cloud = smoothstep(0.36, 0.82, wisp.a).mul(ndvS.mul(ndvS));
         const strata = smoothstep(0.9, 1.0, sin(st.y.mul(2.3).add(wisp.b.mul(5.0)).add(info.y.mul(40.0)))).mul(0.12);
-        const inner = veil.mul(0.75).add(cloud.mul(0.55)).add(strata).toVar();
+        // A cleavage plane breaks across the long, vertical fracture veils. The fine
+        // grain interrupts its edge, leaving bright filaments that end inside the ice.
+        const fault = float(1).sub(smoothstep(
+            0.009,
+            0.047,
+            wisp.r.add(grainIn.g.mul(0.14)).sub(0.59).abs(),
+        ))
+            .mul(smoothstep(0.42, 0.71, wisp.b)).toVar();
+        const inner = veil.mul(0.82).add(cloud.mul(0.37)).add(strata).add(fault.mul(0.55))
+            .toVar();
 
         // ── Compose the ice ──
         const tint = vec3(0.34, 0.72, 1.0);
@@ -226,12 +238,16 @@ export function createArchitecture(u, plan, opts = {}) {
             .add(mirror.mul(fres))
             .add(glint.mul(fres.mul(4.0).add(0.2)))
             .toVar();
+        const coldLight = mix(u.auroraC, u.auroraB, smoothstep(-0.56, 0.72, N.x))
+            .mul(u.ambient).toVar();
+        col.addAssign(coldLight.mul(fault).mul(rim.mul(0.14).add(0.042)));
 
         // ── Frost at the foot, snow on every ledge ──
         const grain = u.noise(p.xz.mul(0.29).add(vec2(p.y.mul(0.17), p.y.mul(0.11)))).toVar();
         const cap = smoothstep(0.46, 0.8, N.y.add(grain.r.mul(0.3)).sub(0.12));
         const foot = float(1.0).sub(smoothstep(0.1, grain.g.mul(2.6).add(1.3), p.y)).mul(0.7);
-        const frost = max(cap, foot).mul(float(1.0).sub(isHeart)).mul(float(1.0).sub(isIcicle.mul(0.7)));
+        const frost = max(cap, foot).mul(float(1.0).sub(isHeart)).mul(float(1.0).sub(isIcicle.mul(0.7)))
+            .mul(float(1.0).sub(isShard.mul(0.5)));
         const frostLight = moon.mul(itSaturate(dot(N, moonDir).mul(0.8).add(0.2))).mul(0.6)
             .add(heart.mul(itSaturate(dot(N, heartDir).mul(0.7).add(0.3))).mul(0.55))
             .add(sky.mul(1.6))
@@ -243,9 +259,49 @@ export function createArchitecture(u, plan, opts = {}) {
             .mul(pow(sin(dot(Vd, vec3(41.0, 23.0, 37.0)).add(itHash21(cell.xy)).mul(6.283)).mul(0.5).add(0.5), 6.0));
         col.assign(mix(col, frostLight.mul(vec3(0.82, 0.92, 1.0)).mul(spark.mul(6.0).add(0.85)), frost));
 
-        // ── The Great Crystal burns from within ──
-        const core = u.heartColor.mul(u.heartPower).mul(ndvS.mul(ndvS).mul(1.3).add(inner.mul(1.8)).add(0.28));
-        col.addAssign(core.mul(isHeart).mul(clear.w.mul(0.35).add(1.0)));
+        // The mouldings are clear at their edges and milky on their cut faces. Their
+        // rose and lancets conduct the same wave that lights the ice of the pier.
+        const cut = smoothstep(-0.64, 0.7, dot(N, vec3(-0.62, 0.42, 0.64))).toVar();
+        const silver = mix(coldLight, u.moonColor.mul(u.ambient), 0.78);
+        col.addAssign(silver.mul(cut.mul(0.18).add(0.035)).add(pulse.mul(0.34)).mul(info.w));
+        col.addAssign(u.moonColor.mul(u.ambient).mul(isIcicle).mul(arris.mul(0.20).add(rim.mul(0.085))));
+
+        // Phantom crystals: successive hexagonal growth fronts, trapped inside a gem.
+        // The face turned to the moon and the facet behind it transmit different colours.
+        If(kind.greaterThan(0.5).and(kind.lessThan(2.5)), () => {
+            const thickness = max(info.x, 0.16);
+            const front = st.y.mul(0.57).add(st.x.add(slide.x.mul(thickness).mul(0.4)).abs().mul(0.72))
+                .div(thickness).add(info.y.mul(3.2))
+                .add(wisp.g.mul(0.11));
+            const band = fract(front).sub(0.5).abs();
+            const phantom = float(1.0).sub(smoothstep(0.016, 0.085, band))
+                .mul(grainIn.b.mul(0.56).add(0.28)).toVar();
+            const bodyHue = mix(u.auroraC, u.heartColor, cut.mul(0.68).add(0.14));
+            const brightCut = cut.mul(cut).mul(0.50).add(rim.mul(0.27)).add(inner.mul(0.60))
+                .add(0.035);
+            // Light rises through the individual growth fronts over a thirty-second cycle.
+            const rise = sin(st.y.mul(0.37).sub(u.auroraClock.mul(0.21)).add(info.y.mul(5.1))).mul(0.20).add(0.82);
+            const core = bodyHue.mul(brightCut).add(u.heartColor.mul(phantom).mul(rise))
+                .mul(u.heartPower).mul(clear.w.mul(0.35).add(1.0));
+            // A darker face makes the inclusion legible even as the core flares.
+            col.mulAssign(float(1).sub(isHeart.mul(0.55)));
+            col.addAssign(core.mul(isHeart));
+            col.addAssign(coldLight.mul(cut.mul(0.048).add(phantom.mul(0.13)).add(rim.mul(0.10))).mul(isShard));
+            If(isHeart.greaterThan(0.5), () => {
+                const x = p.x.sub(p.y.mul(0.02));
+                const y = p.y.sub(u.heartPos.y);
+                const ember = exp(x.mul(x).mul(-0.78)).mul(exp(y.mul(y).mul(-0.009)).mul(1.9).add(0.13));
+                const arrisGlow = arris.mul(smoothstep(0.05, 0.57, N.x)).mul(0.80);
+                const source = mix(u.heartColor, vec3(0.9, 0.98, 1.0), 0.25);
+                col.addAssign(source.mul(u.heartPower).mul(ember.add(arrisGlow).add(ndvS.mul(0.18))));
+            });
+            // The small pier stones are cut silver-blue diamonds. At this scale their
+            // individual facets read better in moonlight than their internal veils.
+            If(info.w.greaterThan(0.95), () => {
+                col.assign(silver.mul(cut.mul(cut).mul(0.52).add(0.08))
+                    .add(moon.mul(rim).mul(0.15)).add(pulse.mul(0.48)));
+            });
+        });
 
         return itAtmosphere(u, col, p);
     })();
