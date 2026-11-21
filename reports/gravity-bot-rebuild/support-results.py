@@ -48,8 +48,12 @@ def rendered(data):
         raise ValueError('Expected an actively rendered game')
     elapsed = data['elapsed'] / 60000
     times = data['times']
-    drops = sum(event['action'] == 'hardDrop' for _, _, _, event in data['inputs'])
-    return dict(seats=data['botCount'], requestedHz=data['requestedHz'], deliveredHz=data['frames'] / (elapsed * 60),
+    if 'seatPlay' in data:
+        drops = sum(seat['hardDrops'] for seat in data['seatPlay'])
+    else:
+        # Older tapes recorded attempts and have no acceptance field.
+        drops = sum(event['action'] == 'hardDrop' for _, _, _, event in data['inputs'])
+    result = dict(seats=data['botCount'], requestedHz=data['requestedHz'], deliveredHz=data['frames'] / (elapsed * 60),
                 actions=len(data['inputs']), drops=drops, hardDropsPerSeatMinute=drops / (elapsed * data['botCount']),
                 activeFrames=len(times), p95=percentile(times, .95), p99=percentile(times, .99),
                 max=max(times), planningOver=len(data['overBudget']),
@@ -57,6 +61,13 @@ def rendered(data):
                 intervalP95=percentile(data['intervals'], .95), intervalP99=percentile(data['intervals'], .99),
                 intervalMax=max(data['intervals']), rounds=data['rounds'], manifest=data['buildManifestSha256'],
                 firstPlanLatenessP95=percentile(data['lateness'], .95), planningGates=planning_gates(data))
+    if 'seatPlay' in data:
+        result['acceptedHardDropsPerSeat'] = [
+            dict(drops=seat['hardDrops'], perWallMinute=seat['hardDrops'] / elapsed,
+                 perPlayingMinute=seat['hardDrops'] * 60000 / seat['playingMs'] if seat['playingMs'] else None)
+            for seat in data['seatPlay']
+        ]
+    return result
 
 
 def speed(rows):
