@@ -196,7 +196,8 @@ export class HimalayanPeakPost {
             const S = vec3(sceneColor.sample(st).rgb).toVar();
             if (look.fringe) {
                 const r2 = fromCentre.dot(fromCentre);
-                const fringe = r2.mul(0.004).add(this.uKick.mul(0.005)).mul(float(1.0).sub(calm));
+                // Keep icy crests and the eagle's primaries clean through the camera dip.
+                const fringe = r2.mul(0.0016).add(this.uKick.mul(0.0019)).mul(float(1.0).sub(calm));
                 If(fringe.greaterThan(2e-4), () => {
                     const spread = fromCentre.mul(fringe);
                     S.assign(vec3(

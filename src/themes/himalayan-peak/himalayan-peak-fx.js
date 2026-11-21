@@ -17,6 +17,7 @@
 import * as THREE from 'three/webgpu';
 import {
     Fn,
+    If,
     abs,
     attribute,
     cameraPosition,
@@ -31,12 +32,14 @@ import {
     fract,
     length,
     max,
+    min,
     mix,
     normalize,
     positionGeometry,
     sin,
     smoothstep,
     step,
+    texture,
     uniform,
     uv,
     varying,
@@ -92,7 +95,7 @@ export function createPapers(u, count) {
     const tau = u.time.sub(birth.w);
     const lasts = vel.w;
     const alive = step(0.0, tau).mul(step(tau, lasts));
-    const t = max(tau, 0.0);
+    const t = clamp(tau, 0.0, lasts);
     const h = float(1.0).sub(exp(t.mul(-PAPER_DRAG))).div(PAPER_DRAG);
     const carried = max(t.sub(h), 0.0).mul(u.gale.add(0.7));
     const seed = turn.x;
@@ -102,10 +105,31 @@ export function createPapers(u, count) {
         sin(t.mul(seed.mul(1.6).add(3.1)).add(seed.mul(17.0))).mul(0.7),
         cos(t.mul(seed.mul(2.4).add(1.9)).add(seed.mul(29.0))),
     ).mul(smoothstep(0.1, 1.2, t).mul(0.32));
-    const centre = birth.xyz
-        .add(vel.xyz.mul(h))
+    const launch = Fn(() => {
+        const offset = vel.xyz.mul(h).toVar();
+        If(turn.y.lessThan(0.0), () => {
+            // The paper caught by a twist follows its original tangent into the turn.
+            const angle = min(t, 2.1).mul(seed.mul(0.6).add(1.2));
+            const x = offset.x.toVar();
+            const y = offset.y.toVar();
+            offset.assign(vec3(
+                x.mul(cos(angle)).add(y.mul(sin(angle))),
+                y.mul(cos(angle)).sub(x.mul(sin(angle))),
+                offset.z,
+            ));
+        });
+        return offset;
+    })();
+    const paperCentre = birth.xyz
+        .add(launch)
         .add(vec3(turn.z.mul(PAPER_WIND[0]), PAPER_WIND[1], PAPER_WIND[2]).mul(carried))
         .add(wander);
+    // Snow crystals fall through the air in short ballistic fans. Papers catch the thermal.
+    // A negative glow time tags the ice in the same pool, with no additional vertex buffer.
+    const ice = step(turn.w, -0.0001);
+    const crystalCentre = birth.xyz.add(vel.xyz.mul(h))
+        .add(vec3(turn.z.mul(0.36), -1.75, -0.12).mul(t.mul(t)));
+    const centre = mix(paperCentre, crystalCentre, ice);
     // It tumbles: a frame that turns about a leaning axis.
     const angle = t.mul(turn.y).mul(TAU).add(seed.mul(53.0));
     const lean = seed.mul(TAU);
@@ -122,25 +146,36 @@ export function createPapers(u, count) {
     const vWorld = varying(centre, 'hpPaperP');
     const fade = smoothstep(0.0, 0.05, t).mul(float(1.0).sub(smoothstep(lasts.mul(0.72), lasts, t))).mul(alive);
     // It leaves the board still lit and cools to plain paper.
-    const vTint = varying(vec4(tint.rgb, exp(t.div(max(turn.w, 0.05)).negate()).mul(alive)), 'hpPaperTint');
+    const vTint = varying(vec4(tint.rgb, exp(t.div(max(abs(turn.w), 0.05)).negate()).mul(alive)), 'hpPaperTint');
+    const vIce = varying(ice, 'hpPaperIce');
     const vFade = varying(fade, 'hpPaperFade');
     material.colorNode = Fn(() => {
-        const st = uv();
-        const N = normalize(vNormal);
+        const st = uv().toVar();
+        const N = normalize(vNormal).toVar();
         const V = normalize(cameraPosition.sub(vWorld));
-        // The print: a darker block in the middle of the square.
-        const block = smoothstep(0.3, 0.27, max(abs(st.x.sub(0.5)), abs(st.y.sub(0.5))))
-            .mul(float(1.0).sub(smoothstep(0.2, 0.17, max(abs(st.x.sub(0.5)), abs(st.y.sub(0.5))))));
-        const paper = vTint.rgb.mul(float(1.0).sub(block.mul(0.4)));
-        const facing = abs(dot(N, V));
-        const through = smoothstep(-0.3, 0.9, dot(V.negate(), u.sunDir));
-        const lit = u.sunCol.mul(abs(dot(N, u.sunDir)).mul(0.6).add(through.mul(0.7)).mul(u.nearSun));
-        const ambient = u.shade.mul(1.3).add(u.zenith.mul(1.0)).add(u.horizon.mul(0.3));
-        // It flashes as it turns its face to the eye.
-        const col = paper.mul(lit.add(ambient)).mul(facing.mul(0.6).add(0.5))
-            .add(vTint.rgb.mul(vTint.a.mul(1.9)));
-        const a = vFade.mul(0.96);
-        return vec4(col.mul(u.breath.mul(0.85).add(0.15)).mul(a), a);
+        const facing = abs(dot(N, V)).toVar();
+        // Sample before the per-particle branch so the print's mip derivatives stay defined.
+        const ink = u.windHorse ? texture(u.windHorse, st).r.toVar() : float(0);
+        const out = vec4(0).toVar();
+        If(vIce.greaterThan(0.5), () => {
+            const flake = abs(st.sub(0.5)).mul(2.0);
+            const grain = max(flake.y, flake.x.mul(0.87).add(flake.y.mul(0.5)));
+            const crystal = smoothstep(1.0, 0.7, grain);
+            const gleam = smoothstep(0.45, 0.96, facing);
+            const iceColor = mix(u.shade.mul(1.6), vTint.rgb, gleam.mul(0.66).add(0.28));
+            const emission = iceColor.mul(float(0.26).add(gleam.mul(1.8))).mul(vFade).mul(crystal);
+            out.assign(vec4(emission, crystal.mul(vFade).mul(0.36)));
+        }).Else(() => {
+            const paper = vTint.rgb.mul(float(1.0).sub(ink.mul(0.56)));
+            const through = smoothstep(-0.3, 0.9, dot(V.negate(), u.sunDir));
+            const lit = u.sunCol.mul(abs(dot(N, u.sunDir)).mul(0.6).add(through.mul(0.7)).mul(u.nearSun));
+            const ambient = u.shade.mul(1.3).add(u.zenith).add(u.horizon.mul(0.3));
+            const col = paper.mul(lit.add(ambient)).mul(facing.mul(0.6).add(0.5))
+                .add(paper.mul(vTint.a.mul(0.96)));
+            const a = vFade.mul(0.96);
+            out.assign(vec4(col.mul(u.breath.mul(0.85).add(0.15)).mul(a), a));
+        });
+        return out;
     })();
 
     const part = hpPart('HimalayanPeakPapers', geometry, material, 44);
@@ -178,7 +213,7 @@ export function createPapers(u, count) {
      */
     part.emit = ({
         from, toward = [0, 1, 0], n, rgb = null, time, speed = [2.5, 7], cone = 0.5, life = [2.6, 4.6], size = 0.085,
-        side = 1, glow = 0.9, stagger = 0, jitter = 0.12,
+        side = 1, glow = 0.9, stagger = 0, jitter = 0.12, crystal = false, curl = false,
     }) => {
         const rand = mulberry32(0x7a31 + bursts * 7919);
         bursts += 1;
@@ -205,7 +240,10 @@ export function createPapers(u, count) {
             const c = rgb || LUNG_TA[Math.floor(rand() * 5) % 5];
             const g = 0.8 + rand() * 0.4;
             aTint.set([c[0] * g, c[1] * g, c[2] * g, size * (0.7 + rand() * 0.6)], i * 4);
-            aTurn.set([rand(), 0.6 + rand() * 1.5, side, glow * (0.6 + rand() * 0.8)], i * 4);
+            aTurn.set([
+                rand(), (curl ? -1 : 1) * (0.6 + rand() * 1.5), side,
+                (crystal ? -1 : 1) * glow * (0.6 + rand() * 0.8),
+            ], i * 4);
         }
         ['aBirth', 'aVel', 'aTint', 'aTurn'].forEach((name) => {
             geometry.getAttribute(name).needsUpdate = true;
@@ -226,15 +264,21 @@ export function createPapers(u, count) {
 
 export const BEAM_ROWS = 4;
 /** Seconds a beam's head takes from the card to the edge of the frame, and its afterglow. */
-export const BEAM_TRAVEL = 0.14;
-export const BEAM_FADE = 0.17;
+export const BEAM_TRAVEL = 0.44;
+export const BEAM_FADE = 0.28;
 
 /** Eight screen-space strips: one from each side of the card for up to four cleared rows. */
 export function createRowBeams(u) {
     const count = BEAM_ROWS * 2;
     const aRow = new Float32Array(count * 2);
     for (let i = 0; i < count; i++) aRow.set([Math.floor(i / 2), i % 2 ? 1 : -1], i * 2);
-    const geometry = hpQuadGeometry(count, { aRow: [aRow, 2] });
+    const strip = new THREE.PlaneGeometry(1, 1, 28, 1);
+    const geometry = new THREE.InstancedBufferGeometry();
+    geometry.setIndex(strip.index);
+    geometry.setAttribute('position', strip.getAttribute('position'));
+    geometry.setAttribute('uv', strip.getAttribute('uv'));
+    geometry.setAttribute('aRow', new THREE.InstancedBufferAttribute(aRow, 2));
+    geometry.instanceCount = count;
     const row = attribute('aRow', 'vec2');
     const uniforms = {
         /** Screen y (fractions, y down) of up to four rows; < 0 = unused. */
@@ -249,33 +293,44 @@ export function createRowBeams(u) {
         mix(uniforms.rows.z, uniforms.rows.w, step(2.5, row.x)),
         step(1.5, row.x),
     );
-    const used = step(0.0, rowY).mul(step(0.001, uniforms.frame.w));
+    const age = u.time.sub(uniforms.frame.z);
+    const used = step(0.0, rowY).mul(step(0.001, uniforms.frame.w)).mul(step(age, 1.8));
     const along = positionGeometry.x.add(0.5);
     // From the card's edge out to the edge of the frame.
     const edge = mix(uniforms.frame.x, uniforms.frame.y, step(0.0, row.y));
     const end = step(0.0, row.y);
+    // Ice lifted from the cleared row scuds out into the pass, then catches the updraft.
+    // Successive rows peel off steeper and later. The wind chooses a new bend on each clear.
     const sx = mix(edge, end, along);
-    const thicknessPx = float(46.0);
-    const sy = rowY.add(positionGeometry.y.mul(thicknessPx).div(u.viewport.y));
+    const direction = row.x.mul(0.073).add(0.03);
+    const phase = sin(uniforms.frame.z.mul(0.83).add(row.y)).mul(1.7);
+    const arc = along.mul(along).mul(direction)
+        .add(sin(along.mul(6.8).add(phase)).mul(along).mul(0.04));
+    const thicknessPx = clamp(u.viewport.y.mul(0.038), 13.0, 48.0);
+    const sy = rowY.sub(arc).add(positionGeometry.y.mul(thicknessPx).div(u.viewport.y));
     material.vertexNode = vec4(sx.mul(2.0).sub(1.0).mul(used), float(1.0).sub(sy.mul(2.0)).mul(used), 0.0, 1.0);
     const vAlong = varying(along, 'hpBeamT');
+    const vPhase = varying(phase.add(row.x.mul(1.7)), 'hpBeamPhase');
+    const vDelay = varying(row.x.mul(0.042), 'hpBeamDelay');
     material.colorNode = Fn(() => {
-        const age = u.time.sub(uniforms.frame.z);
-        const head = age.div(BEAM_TRAVEL);
-        const reached = step(vAlong, head);
-        const dy = uv().y.sub(0.5).mul(thicknessPx);
-        // A blade: a hairline core in a soft sheath that widens as it leaves the card.
-        const taper = mix(float(2.2), float(0.8), vAlong);
-        const core = exp(dy.mul(dy).div(taper.mul(taper)).negate()).mul(float(1.0).sub(vAlong.mul(0.8)));
-        const sheath = exp(abs(dy).mul(-0.17)).mul(0.34);
-        const tip = exp(vAlong.sub(head).mul(vAlong.sub(head)).mul(-150.0)).mul(step(head, 1.25));
-        const env = exp(max(age.sub(vAlong.mul(BEAM_TRAVEL)), 0.0).div(-BEAM_FADE)).mul(step(0.0, age));
-        const k = core.add(sheath).mul(reached).mul(env).add(core.add(sheath).mul(tip).mul(2.2))
-            .mul(uniforms.frame.w)
-            .mul(float(1.0).sub(vAlong).mul(float(1.0).sub(vAlong)).mul(0.9)
-                .add(0.1));
-        const col = mix(uniforms.color, vec3(1.0), core.mul(0.3));
-        return vec4(col.mul(k).mul(2.4), 0.0);
+        const s = clamp(vAlong, 0.0, 1.0).toVar();
+        const timeHere = age.sub(vDelay).sub(s.mul(BEAM_TRAVEL));
+        const envelope = smoothstep(-0.07, 0.03, timeHere)
+            .mul(exp(max(timeHere, 0.0).div(-BEAM_FADE)));
+        const dy = uv().y.sub(0.5).mul(2.0);
+        const wind = sin(s.mul(19.0).add(vPhase)).mul(0.13).add(sin(s.mul(8.0).sub(vPhase)).mul(0.2));
+        const across = dy.sub(wind.mul(s)).toVar();
+        const core = exp(abs(across).mul(-19.0));
+        const split = sin(s.mul(7.0).add(vPhase)).mul(s).mul(0.56);
+        const filament = exp(abs(across.sub(split)).mul(-25.0));
+        const spray = exp(across.mul(across).mul(-6.0)).mul(0.17);
+        const fade = smoothstep(1.0, 0.48, s).mul(smoothstep(0.0, 0.035, s).mul(0.6).add(0.4));
+        const light = core.mul(0.6).add(filament.mul(0.34)).add(spray)
+            .mul(envelope)
+            .mul(fade)
+            .mul(uniforms.frame.w);
+        const col = mix(uniforms.color, vec3(0.63, 0.85, 1.0), min(0.66, s.mul(0.78)));
+        return vec4(col.mul(light).mul(1.24), 0.0);
     })();
     const part = hpPart('HimalayanPeakRowBeams', geometry, material, 60);
     part.uniforms = uniforms;

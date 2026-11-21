@@ -30,6 +30,8 @@ import {
     cameraViewMatrix,
     clamp,
     cross,
+    dFdx,
+    dFdy,
     dot,
     exp,
     float,
@@ -41,6 +43,7 @@ import {
     sin,
     smoothstep,
     step,
+    texture,
     uniformArray,
     uv,
     varying,
@@ -99,8 +102,8 @@ export function createFlags(u, { flags = 180 } = {}) {
     for (let i = 0; i < count; i++) aWhen.set([-1000, 1e6, 0, 0], i * 4);
     const geometry = new THREE.InstancedBufferGeometry();
     {
-        // A flag: 6 × 4 cells, x across the cord, y down from it (0 at the cord).
-        const nx = 6;
+        // The free edge has enough cuts for a worn notch between two surviving threads.
+        const nx = 10;
         const ny = 4;
         const position = [];
         const uvs = [];
@@ -155,23 +158,32 @@ export function createFlags(u, { flags = 180 } = {}) {
     const wave2 = sin(down.mul(9.7).sub(u.flutter.mul(FLAG_SECOND)).add(phase.mul(1.9)).sub(across.mul(4.1)));
     const ripple = wave.mul(0.62).add(wave2.mul(0.38)).mul(down).mul(float(0.07).add(min(blow, FLAG_SPREAD).mul(0.09)));
     const size = axis.w;
+    const hemNotch = smoothstep(0.13, 0.0, abs(across.sub(kind.y.mul(0.68).sub(0.34))))
+        .mul(smoothstep(0.58, 0.98, kind.y)).mul(0.2);
+    const freeEdge = down.mul(down);
     const world = anchor.xyz
         .add(cordSway(u, kind.w, kind.z))
         .add(axis.xyz.mul(across.mul(size)))
-        .add(fall.mul(down.mul(size).mul(1.16)))
+        // Distinct cuts of cotton; the wind wears the two free corners at different rates.
+        .add(fall.mul(down.mul(size).mul(kind.y.mul(0.27).add(1.07)
+            .add(across.mul(down).mul(sin(phase).mul(0.15)))
+            .sub(down.mul(abs(across)).mul(0.11))
+            .sub(freeEdge.mul(hemNotch)))))
         .add(face.mul(ripple.mul(size).mul(2.2)))
+        // Slack moves through the fold and lifts a corner independently of the whole flag.
+        .add(vec3(0, 1, 0).mul(wave2.mul(across).mul(freeEdge).mul(size).mul(0.21)))
         // The free corners curl in a little.
         .add(axis.xyz.mul(across.mul(down).mul(ripple).mul(size).mul(-1.4)));
     material.vertexNode = cameraProjectionMatrix.mul(cameraViewMatrix).mul(vec4(world, 1.0));
     const vTint = varying(palette.element(kind.x.add(0.5).toInt()), 'hpFlagTint');
     const vFold = varying(wave.mul(0.62).add(wave2.mul(0.38)).mul(down), 'hpFlagFold');
-    const vFace = varying(face, 'hpFlagFace');
+    const vWear = varying(kind.y, 'hpFlagWear');
     const vWorld = varying(world, 'hpFlagWorld');
     // What the flag holds: the piece's light from the moment its gust arrived, until a clear.
     const since = u.time.sub(when.x);
     // Until a new gust arrives the flag shows what it held before (`when.w`).
     const kept = mix(when.w, exp(max(since, 0.0).div(-BLESS_HOLD)).mul(held.w), step(0.0, since)).mul(step(u.time, when.y));
-    const struck = exp(max(since, 0.0).div(-0.4)).mul(step(0.0, since)).mul(when.z);
+    const struck = exp(max(since, 0.0).div(-0.4)).mul(step(0.0, since)).mul(when.z).mul(step(u.time, when.y));
     const gone = u.time.sub(when.y);
     // What it lets go of is what it had left at that moment.
     // (Released while a gust was still on its way, that is what it held before.)
@@ -183,23 +195,21 @@ export function createFlags(u, { flags = 180 } = {}) {
     const vGlow = varying(vec4(glowing, gust), 'hpFlagGlow');
 
     material.colorNode = Fn(() => {
-        const st = uv();
-        // A block print: a frame, and lines of script inside it.
-        const frame = smoothstep(0.34, 0.37, max(abs(st.x.sub(0.5)), abs(st.y.sub(0.5)).mul(0.92)))
-            .mul(smoothstep(0.43, 0.4, max(abs(st.x.sub(0.5)), abs(st.y.sub(0.5)).mul(0.92))));
-        const script = smoothstep(0.55, 0.75, u.noise(vec2(st.x.mul(2.6), st.y.mul(0.09).add(vTint.x))).w)
-            .mul(sin(st.y.mul(62.0)).mul(0.5).add(0.5))
-            .mul(step(abs(st.x.sub(0.5)), 0.3)).mul(step(abs(st.y.sub(0.5)), 0.32));
-        const ink = clamp(frame.add(script.mul(0.8)), 0.0, 1.0);
-        const cloth = vTint.mul(float(1.0).sub(ink.mul(0.5)));
-        const N = normalize(vFace);
+        const st = clamp(uv(), 0, 1);
+        const ink = u.windHorse ? texture(u.windHorse, st).r : float(0);
+        const bleached = vWear.mul(vWear).mul(0.23).add(st.y.mul(0.07));
+        const dye = mix(vTint, vec3(0.76, 0.68, 0.54), bleached);
+        const hem = smoothstep(0.043, 0.024, st.y);
+        const cloth = dye.mul(float(1).sub(ink.mul(0.72)).sub(hem.mul(0.22)));
+        const clothNormal = cross(dFdx(vWorld), dFdy(vWorld));
+        const N = clothNormal.div(max(dot(clothNormal, clothNormal), 1e-12).sqrt());
         const V = normalize(cameraPosition.sub(vWorld));
         const sun = u.nearSun;
         // Thin cotton: lit from either side, and it burns when the sun is behind it.
         const through = smoothstep(-0.2, 0.9, dot(V.negate(), u.sunDir));
-        const lit = u.sunCol.mul(abs(dot(N, u.sunDir)).mul(0.55).add(through.mul(0.6)).mul(sun));
+        const lit = u.sunCol.mul(abs(dot(N, u.sunDir)).mul(0.56).add(through.mul(0.39)).mul(sun));
         const ambient = u.shade.mul(1.25).add(u.zenith.mul(0.9)).add(u.horizon.mul(0.25));
-        const fold = vFold.mul(0.3).add(0.82);
+        const fold = vFold.mul(0.46).add(0.89);
         const col = cloth.mul(lit.add(ambient)).mul(fold);
         // Held light glows from inside the weave, strongest where the print is not.
         const glow = vGlow.rgb.mul(float(1.0).sub(ink.mul(0.35))).mul(mix(float(0.8), float(1.25), st.y));
@@ -239,7 +249,8 @@ export function createFlags(u, { flags = 180 } = {}) {
                 const t = [q[0] - p[0], q[1] - p[1], q[2] - p[2]];
                 const len = Math.hypot(t[0], t[1], t[2]) || 1;
                 aAnchor.set([p[0], p[1], p[2], s * length], n * 4);
-                aAxis.set([t[0] / len, t[1] / len, t[2] / len, line.size], n * 4);
+                const wear = (k * 0.618 + id * 0.37) % 1;
+                aAxis.set([t[0] / len, t[1] / len, t[2] / len, line.size * (0.82 + 0.14 * wear)], n * 4);
                 aKind.set([k % 5, ((k * 0.618 + id * 0.37) % 1), id, Math.sin(Math.PI * s) * (0.3 * line.sag + 0.12)], n * 4);
                 aHeld.set([1, 1, 1, 0], n * 4);
                 aWhen.set([-1000, 1e6, 0, 0], n * 4);
@@ -317,6 +328,7 @@ export function createFlags(u, { flags = 180 } = {}) {
      */
     part.release = (time, from = null, stagger = 0.012, keep = 0) => {
         const out = [];
+        let changed = false;
         const share = Math.max(0, Math.min(1, keep));
         for (let i = 0; i < part.live; i++) {
             const f = part.info[i];
@@ -325,6 +337,12 @@ export function createFlags(u, { flags = 180 } = {}) {
             // (Keeping: a gust still on its way to the flag lands before the flag lets go.)
             if (share > 0 && aWhen[o + 1] > at && aWhen[o] > at) at = aWhen[o];
             const amount = part.heldAt(i, at);
+            // A complete release also clears faint and still-arriving blessings. Only
+            // amounts visible as flying papers contribute to the emitted handfuls.
+            if (share === 0 && aHeld[o + 3] > 0 && aWhen[o + 1] > at) {
+                aWhen[o + 1] = at;
+                changed = true;
+            }
             if (amount < 0.05) continue;
             let letGo = amount;
             if (share > 0) {
@@ -335,14 +353,12 @@ export function createFlags(u, { flags = 180 } = {}) {
                 // as it lets the rest go. Its colour stays.
                 aHeld[o + 3] = holds;
                 aWhen.set([at, 1e6, letGo * 0.6, amount], o);
-            } else {
-                aWhen[o + 1] = at;
             }
             out.push({
                 index: i, time: at, amount: letGo, x: f.x, y: f.y, z: f.z, rgb: [aHeld[o], aHeld[o + 1], aHeld[o + 2]],
             });
         }
-        if (out.length) dirty('aHeld', 'aWhen');
+        if (changed || out.length) dirty('aHeld', 'aWhen');
         return out;
     };
 
