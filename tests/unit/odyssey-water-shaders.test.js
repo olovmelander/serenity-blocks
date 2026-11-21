@@ -2,12 +2,11 @@ import { describe, expect, it } from 'vitest';
 import * as THREE from 'three/webgpu';
 import { build, unassignedReads } from './helpers/tsl-node-build.js';
 import { createOdysseyWorld } from '../../src/rendering/odyssey/world/odyssey-world-renderer.js';
-import { ODYSSEY_NORTH_LAKE } from '../../src/rendering/odyssey/world/odyssey-world-height.js';
 import { WATER_SHORE_DEPTH_BIAS } from '../../src/rendering/odyssey/world/odyssey-water-looks.js';
 
 /**
  * The north lake's real water and the sea's look from above (2026-11-02), and the tarn's clear
- * water (2026-11-20), build clean on both backends and both tiers: no throw, nothing said, no NaN
+ * water (2026-11-20) and the north lake's clear, drawn water (2026-11-21), build clean on both backends and both tiers: no throw, nothing said, no NaN
  * or Infinity in the source, and no var read before it is certainly assigned (the lake's and the
  * tarn's depth is shared by their colour and their opacity; the sea's shore foam is refined inside
  * the topside branch and read by its opacity). The ground, which reads the tarn's plate in a
@@ -19,7 +18,7 @@ describe('the waters build clean (2026-11-02, the tarn 2026-11-20)', () => {
             const world = createOdysseyWorld({
                 quality, forest: false, cloudField: false,
             });
-            const lake = world.group.getObjectByName('odyssey-world-north-lake-0');
+            const lake = world.group.getObjectByName('odyssey-world-north-lake');
             const tarn = world.group.getObjectByName('odyssey-world-tarn');
             const sea = world.group.getObjectByName('odyssey-world-water');
             const ground = world.group.getObjectByName('odyssey-world-ground');
@@ -39,9 +38,6 @@ describe('the waters build clean (2026-11-02, the tarn 2026-11-20)', () => {
                 expect(mesh.material.polygonOffset, mesh.name).toBe(true);
                 expect(mesh.material.polygonOffsetUnits, mesh.name).toBe(-WATER_SHORE_DEPTH_BIAS);
                 expect(mesh.material.polygonOffsetFactor, mesh.name).toBe(0);
-            });
-            ODYSSEY_NORTH_LAKE.lobes.forEach((_, i) => {
-                expect(world.group.getObjectByName(`odyssey-world-north-lake-${i}`)?.material).toBe(lake.material);
             });
             const marks = new Map([[lake, /lakeRootDepth/], [tarn, /tarnRootDepth/], [sea, /wShoreFoam/], [ground, /fTarnGrad/]]);
             [lake, tarn, sea, ground].forEach((mesh) => {

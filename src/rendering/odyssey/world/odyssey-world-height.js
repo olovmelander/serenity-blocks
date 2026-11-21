@@ -186,134 +186,87 @@ const BASIN_RZ = 330;
 const BASIN_DEPTH = 42;
 
 /**
- * THE NORTH LAKE (north-island plan Wave 1, owner-directed 2026-08-16). The 1C flyby made
- * the plateau behind the hero massif primary real estate — the climb's bank looks down
- * across it at p ≈ 0.55–0.68 — and the owner marked this shelf for a lake.
+ * THE NORTH LAKE (north-island plan Wave 1, owner-directed 2026-08-16; redrawn 2026-11-21). The
+ * 1C flyby made the plateau behind the hero massif primary real estate (the climb looks down
+ * across it at p 0.55-0.68), and the owner marked this shelf for a lake: "the lake on the edge of
+ * the orange autumn trees, significantly larger." The SITE is the owner's: the hollow at the
+ * massif's north-east foot, the west shore in green meadow under the massif's skirt, the east and
+ * north shores under the autumn birch and maple, the main body in the pocket the climb's rail
+ * camera sees, the water at 354 (below every rim), some 230k u^2 of it (the owner approved
+ * 228-250k).
  *
- * A COMPACT bowl, not a Gaussian like the Ch3 basin: the world-height suite pins the bare
- * plateau at (−220, −1500) to 0.05 u, and a Gaussian's tail still moves that probe by
- * −1.7 u from 300 u away. This profile is EXACTLY zero at rn ≥ 1 (the closing-taper law
- * the north coast paid for, enforced by construction), so the pin — at rn 1.35 — is
- * untouched by arithmetic, not by tolerance.
- *
- * `waterY` is the painted surface's seat (renderer-side). The floor carves to ~366–374
- * under relief; the rim stays at the plateau's own 384–390, so the waterline is drawn by
- * the DEPTH BUFFER where terrain rises through the disc — an organic shoreline for free,
- * with relief supplying the irregularity.
+ * A DRAWN SHORE (2026-11-21, after the tarn's redraw; Olov: "The ponds needs to have a better
+ * shape also"). It was three ellipse lobes joined (a main body, a north-west arm and a waist)
+ * with a noise inset on the rim, carved into the macro field: from the climb it read as a rounded
+ * bean, a swimming-pool cyan blot in a pale ring of rock (the carve's wall, the same steep drop all
+ * round). It is a drawn water now, the tarn's kind (see THE DRAWN WATERS below): an outline drawn
+ * by hand, clockwise from the west end, and a profile across it.
+ *   - the main open water in the rail-visible pocket, a wide shallow beach bay at its near (south)
+ *     end beside a blunt point, a cove on the west shore under the massif's skirt;
+ *   - a peninsula of autumn birch and maple running west from the east shore, an islet off its
+ *     tip, lying across the climb's view, and a north bay behind it;
+ *   - the north-west arm (the owner's) tapering round the conifer point, an islet midway, a far
+ *     basin at its end;
+ *   - the east shore under the gold and red trees, with a promontory and a bay.
+ * Its bank is long and gentle (`bank` 110 u): from 600-1000 u off, the ground eases into the
+ * water instead of dropping (the old wall painted as rock, a pale ring 50 px wide).
  */
-// waterY 374, not the first draft's 378: the plateau's own west edge sits at ~377, and a
-// waterline above it SPILLS — the flat disc would hang past the bowl over lower ground.
-// 374 tucks the surface under every rim azimuth (probed at rn 1.05: 36/36 above water).
-//
-// ⚠️ THE SITE IS OWNER-DIRECTED (2026-08-16, from the capture frames): "the lake on the
-// edge of the orange autumn trees, significantly larger." The autumn birch/maple mass
-// lives on the plateau's north-east (the region divide crosses ~(-435,-1500) to
-// (-537,-1700) up here, autumn to its east), which is ALSO the one plateau band the
-// settled rail camera provably frames — a pure-red debug disc at the earlier
-// circle-site (-450,-1790) never entered ANY 0.63-0.69 frame, while the drift mass
-// shows in all of them. West shore in green meadow, east shore under the orange trees.
-// Three earlier sites and two lying probe cameras are recorded in git history; the
-// lesson that survives: site set-pieces from capture pixels and owner direction, never
-// from a reimplemented camera.
-// FINAL SITE, triangulated with colour-coded debug discs through the DENSE-station rail
-// capture (sparse station lists leave sequence-dependent residual camera lag — see the
-// capture-harness traps): the disc at (100, 400, −1300) is the one that shows, in the
-// hollow at the massif's NE foot, at the west edge of the big autumn drift mass. The
-// lake fills that hollow: massif and conifers over the west shore, the orange birch and
-// maple mass at the east and north shores.
-// The pocket is real terrain: the probed shelf floor runs 343-356 here (the massif skirt
-// stands high over the west shore, the plateau rolls at the north and east), so the
-// water sits at 354 — below every natural rim azimuth — and the bowls only deepen the
-// middle rather than fighting a slope.
-//
-// TRIPLED AND SCULPTED (owner direction 2026-08-16): two overlapping lobes joined by the
-// module's own smoothMax make a bean — the main body in the rail-visible pocket, a
-// north-west arm bending around the conifer point toward the deep plateau (its far end
-// slips over the visual horizon from the rail, which is exactly how a big lake reads).
-// `odysseyNorthLakeRn` below is THE lake metric: the scatter's underwater kill, the
-// lakeshore ring, the contrast-gate exclusion and the tests all call it, so the
-// geometry has one owner and the calibrate-script mirror can no longer drift.
 export const ODYSSEY_NORTH_LAKE = Object.freeze({
     waterY: 354,
-    // Radii are the DISC extents. The shore meander below insets the carve within them,
-    // so the water body averages ~0.64 of these — and the margin that leaves is what
-    // buries the painted disc's own edge under terrain at every azimuth.
-    lobes: Object.freeze([
-        Object.freeze({
-            x: 280, z: -1500, rx: 348, rz: 280, depth: 48,
-        }),
-        Object.freeze({
-            x: -30, z: -1770, rx: 336, rz: 264, depth: 42,
-        }),
-        // The WAIST: the first two-lobe build read as two separate lakes — the neck's
-        // floor stood 6 u above the water (per-lobe rn-0.4 probes never sample it).
-        // This small lobe carves the neck itself, so the bean is one body of water.
-        Object.freeze({
-            x: 130, z: -1640, rx: 202, rz: 168, depth: 36,
-        }),
+    floorY: 320,
+    /** The shore, clockwise from the west end (world x, z). */
+    outline: Object.freeze([
+        [-238, -1858], [-232, -1893], [-200, -1915], [-150, -1925], [-105, -1905], [-60, -1888],
+        [-20, -1890], [18, -1910], [55, -1900], [95, -1876], [135, -1845], [180, -1852],
+        [212, -1880], [250, -1903], [300, -1912], [352, -1905], [395, -1885], [420, -1850],
+        [428, -1808], [426, -1778], [412, -1766], [365, -1764], [318, -1752], [278, -1730],
+        [284, -1702], [330, -1688], [385, -1690], [440, -1700], [490, -1712], [528, -1698],
+        [560, -1672], [566, -1630], [540, -1600], [505, -1588], [522, -1560], [555, -1535],
+        [568, -1495], [556, -1452], [538, -1415], [540, -1380], [520, -1342], [485, -1318],
+        [440, -1322], [395, -1360], [350, -1335], [310, -1345], [275, -1370], [240, -1400],
+        [222, -1440], [195, -1455], [165, -1475], [155, -1510], [178, -1545], [180, -1582],
+        [172, -1612], [160, -1640], [135, -1650], [100, -1655], [60, -1670], [20, -1695],
+        [-25, -1712], [-48, -1738], [-75, -1752], [-125, -1772], [-180, -1808],
+    ].map((p) => Object.freeze(p))),
+    /** Islets: one off the peninsula's tip, one midway along the north-west arm. */
+    islets: Object.freeze([
+        Object.freeze([[205, -1742], [215, -1757], [240, -1761], [254, -1749], [248, -1733], [224, -1729]]
+            .map((p) => Object.freeze(p))),
+        Object.freeze([[-64, -1803], [-54, -1816], [-30, -1819], [-16, -1806], [-26, -1792], [-50, -1791]]
+            .map((p) => Object.freeze(p))),
     ]),
+    isletRise: 4,
+    isletReach: 14,
+    ragged: Object.freeze([6, 2.5]),
+    raggedCells: Object.freeze([70, 26]),
+    // (A broad shelf, stepping down quickly: from the climb, 600-1000 u off, the turquoise is the
+    // water over the shelf, 1-4 u deep, and a narrow shelf left it a pixel wide; on a gentler one the
+    // first unit of water, where the sand shows through, read as a pale ring 15-30 u wide.)
+    shelf: Object.freeze([6, 30]),
+    // (Broad turquoise flats in some bays, a quick drop off others: a band of one width round the
+    // whole shore read as an outline.)
+    shelfVary: 1.3,
+    shelfSlope: Object.freeze([0.22, 0.12]),
+    shelfBank: Object.freeze([3, 14]),
+    drop: 60,
+    floor: 28,
+    roll: 5,
+    bank: 110,
+    beachRise: 2.5,
+    /** One unit of `odysseyNorthLakeRn` beyond the shore, in world units (the lakeshore ring's band). */
+    rnUnit: 300,
+    /** The drawn curve's pieces a span (shore, islets), and the profile's noise scales (u). */
+    curve: Object.freeze({ per: 8, isletPer: 6 }),
+    noise: Object.freeze({ shelfCell: 90, rollCells: Object.freeze([140, 50]), fineRoll: 1.5 }),
 });
 
 /**
- * THE SHORE MEANDER — why the waterline is not an ellipse.
- *
- * Measured on the first tripled build: the painted disc's edge was buried at every
- * azimuth, and the east shore STILL read as a hard geometric arc (the owner's report).
- * The reason is that the carve's own smoothstep reaches zero exactly at rn = 1, so on
- * flat ground — the east shelf is flat to ±2 u — the terrain crosses the water plane
- * within a hair of rn = 1 and the waterline traces the ellipse. Relief cannot break
- * that: it is ±1 u where the carve is ±40 u.
- *
- * So the CARVE BOUNDARY itself meanders, two octaves of the module's own value noise,
- * and the visible waterline is wherever that meandering bowl crosses the water plane —
- * bays, points, and a curvature that has nothing to do with an ellipse.
- *
- * ⚠️ ONE-SIDED BY CONSTRUCTION, and this is the invariant that keeps the paint honest.
- * The renderer draws plain ellipse discs at rn = 1 and knows nothing about this noise;
- * if the meander could push the carve OUTSIDE rn = 1 it would dig ground below the water
- * plane that no disc covers — a dry pit at lake level. The inset is therefore always
- * POSITIVE, so the carve stays strictly inside the disc, and the 0.06 floor keeps a
- * terrain margin (≈ 20 u on the main lobe) that buries the disc edge.
- */
-const NORTH_LAKE_SHORE_MIN_INSET = 0.06;
-const NORTH_LAKE_SHORE_MEANDER = 0.28;
-/** Where the bowl's wall begins, and how hard it cuts the water plane (see the carve). */
-const NORTH_LAKE_WALL_START = 0.74;
-const NORTH_LAKE_WALL_POW = 0.6;
-function northLakeShoreInset(x, z) {
-    const broad = valueNoise((x / 205) + 37.4, (z / 205) - 11.8);
-    const fine = valueNoise((x / 84) - 8.6, (z / 84) + 51.2);
-    return NORTH_LAKE_SHORE_MIN_INSET
-        + (((broad * 0.7) + (fine * 0.3)) * NORTH_LAKE_SHORE_MEANDER);
-}
-
-/**
- * Normalized lake distance, shore meander included: < 1 is inside the carve, and the
- * boundary is the meandering waterline rather than an ellipse. Every consumer — the
- * carve, the scatter's underwater kill, the lakeshore ring, the contrast-gate exclusion
- * and the tests — reads THIS function, so the organic outline is shared by construction
- * instead of by four copies agreeing.
- */
-export function odysseyNorthLakeRn(x, z) {
-    let best = Infinity;
-    const { lobes } = ODYSSEY_NORTH_LAKE;
-    for (let i = 0; i < lobes.length; i += 1) {
-        const lb = lobes[i];
-        const lx = (x - lb.x) / lb.rx;
-        const lz = (z - lb.z) / lb.rz;
-        best = Math.min(best, Math.sqrt((lx * lx) + (lz * lz)));
-    }
-    return best + northLakeShoreInset(x, z);
-}
-
-/**
  * THE NORTH HILLS (north-island plan Wave 2). Three soft swells that break the plateau's
- * pancake horizon behind the lake — the owner's "add hills". Same COMPACT profile as the
- * lake bowl (exactly zero at rn >= 1), for the same reason: the plateau pin and the lake's
- * own rim/water contract must be untouched by arithmetic. Sited so no swell reaches the
- * lake's waterline ring (H2's edge stops 20 u short of the north rim — a shore that RISES
- * beyond the water without lifting it), and all complete well south of the coast taper's
- * release at z = -2600.
+ * pancake horizon behind the lake — the owner's "add hills". A COMPACT profile (exactly zero
+ * at rn >= 1), so the plateau pin is untouched by arithmetic. They were sited so no swell
+ * reached the old lake bowl's waterline ring; the drawn lake (2026-11-21) is applied over the
+ * ground with its own profile, so its waterline and bank are its own whatever a swell adds
+ * under them. All complete well south of the coast taper's release at z = -2600.
  */
 const NORTH_HILLS = Object.freeze([
     Object.freeze({
@@ -674,57 +627,8 @@ export function odysseyWorldMacro(x, z) {
     const bz = (z - BASIN_Z) / BASIN_RZ;
     const basin = Math.exp(-((bx * bx) + (bz * bz))) * -BASIN_DEPTH;
 
-    // The north lake's bowls: flat-ish floors, feathered rims, EXACT zero outside rn=1
-    // per lobe (the compact profile is what keeps the plateau pin honest). The lobes join
-    // through smoothMax so the shoreline waist is a smooth curve, not a crease — and the
-    // shore MEANDER is added to every lobe's radius, so the carve boundary (and therefore
-    // the waterline the depth buffer draws) wanders inside the disc instead of tracing an
-    // ellipse. One noise evaluation per sample, shared by the lobes.
-    //
-    // ⚠️ THE REJECT TEST COMES FIRST, AND IT IS WHY THE BAKE IS STILL FAST. This function
-    // runs once per texel of the macro plate (589k-1M samples at boot) and the shore noise
-    // is two value-noise octaves — by far the most expensive term here. Only 2.0% of the
-    // ±4500 plate is within any lobe, so the noise is evaluated only where it can matter.
-    // The rejection is EXACT rather than a heuristic: the inset is strictly positive
-    // (floor 0.06), so raw rn >= 1 gives rn_eff > 1, and the wall ramp is exactly 0 there.
-    // Squared radii, so the far case costs no sqrt either.
-    let lakeBowl = 0;
-    let nearestLobeRn2 = Infinity;
-    for (let i = 0; i < ODYSSEY_NORTH_LAKE.lobes.length; i += 1) {
-        const lb = ODYSSEY_NORTH_LAKE.lobes[i];
-        const lx = (x - lb.x) / lb.rx;
-        const lz = (z - lb.z) / lb.rz;
-        const rn2 = (lx * lx) + (lz * lz);
-        if (rn2 < nearestLobeRn2) nearestLobeRn2 = rn2;
-    }
-    if (nearestLobeRn2 < 1) {
-        const lakeInset = northLakeShoreInset(x, z);
-        let lakeCarve = 0;
-        for (let i = 0; i < ODYSSEY_NORTH_LAKE.lobes.length; i += 1) {
-            const lb = ODYSSEY_NORTH_LAKE.lobes[i];
-            const lx = (x - lb.x) / lb.rx;
-            const lz = (z - lb.z) / lb.rz;
-            const rn = Math.sqrt((lx * lx) + (lz * lz)) + lakeInset;
-            // ⚠️ A POWER RAMP, NOT A SMOOTHSTEP, AND THAT IS THE WHOLE SHORELINE.
-            //
-            // smoothstep has ZERO derivative at both ends, so a smoothstep bowl approaches its
-            // rim tangentially: measured on the previous build, 9 u inside the boundary the
-            // carve was only 1.3 u deep — a 0.15 slope. The lake floor therefore met the flat
-            // water plane at a grazing angle, and the intersection of two near-parallel
-            // surfaces snaps to whatever the terrain MESH does — straight triangle-edge
-            // segments and hard corners. That is the "sharp edge to the right" the owner saw,
-            // and no amount of shore meander fixes it, because the meander moves the boundary
-            // while the grazing crossing follows the mesh either way.
-            //
-            // `t^0.6` instead: 9 u inside the rim the carve is 10.7 u deep (slope 1.2), so the
-            // floor CUTS the water plane and the waterline lands where the field says it does
-            // — the meander, not the triangulation. The inner crease where the ramp meets the
-            // flat floor sits well under water. Compactness is unchanged: t is 0 at rn >= 1.
-            const wall = Math.max(0, Math.min(1, (1 - rn) / (1 - NORTH_LAKE_WALL_START)));
-            lakeCarve = smoothMax(lakeCarve, (wall ** NORTH_LAKE_WALL_POW) * lb.depth, 8);
-        }
-        lakeBowl = -lakeCarve;
-    }
+    // (The north lake's bowl lived here until 2026-11-21: it is a drawn water now, applied over
+    // the whole field with the tarn's, odysseyNorthLakeProfile.)
 
     // The north hills: the same compact grammar, positive — and the same exact reject,
     // since smoothstep01(0.25, 1, hn) is 1 (contribution 0) for every hn >= 1.
@@ -760,7 +664,7 @@ export function odysseyWorldMacro(x, z) {
     }
 
     // The north beach is drawn over everything else there (it replaces the steep coast).
-    const ground = northBeachBlend(x, z, land + basin + lakeBowl + hills + isles);
+    const ground = northBeachBlend(x, z, land + basin + hills + isles);
 
     // THE PEAKS RISE FROM THE GROUND, they do not replace it.
     //
@@ -1042,6 +946,8 @@ export const ODYSSEY_TARN = Object.freeze({
      * meadow's height over the water at which a bank counts as flat or as rising (u).
      */
     shelf: Object.freeze([3, 14]),
+    /** How much a low noise widens and narrows the shelf along the shore (its share either way, doubled). */
+    shelfVary: 0.5,
     shelfSlope: Object.freeze([0.16, 0.07]),
     shelfBank: Object.freeze([1.5, 6.5]),
     /** The drop from the shelf to the floor (u across), the floor's depth and its roll (u). */
@@ -1055,6 +961,11 @@ export const ODYSSEY_TARN = Object.freeze({
     rnUnit: 48,
     /** The meadow kept open round it (tarn distance): no tree stands nearer, so its banks show. */
     clearing: 1.55,
+    /** How far in from its shore the islet's back is risen whole (u). */
+    isletReach: 4.5,
+    /** The drawn curve's pieces a span (shore, islet), and the profile's noise scales (u). */
+    curve: Object.freeze({ per: 6, isletPer: 5 }),
+    noise: Object.freeze({ shelfCell: 27, rollCells: Object.freeze([38, 15]), fineRoll: 0.25 }),
 });
 
 /** A closed curve through `points` (Catmull-Rom), as a dense polyline: `per` pieces a span. */
@@ -1139,25 +1050,129 @@ function polylineDistance(line, x, z) {
     return inside ? -Math.sqrt(best) : Math.sqrt(best);
 }
 
-const TARN_SHORE = chunkedPolyline(closedCurve(ODYSSEY_TARN.outline, 6));
-const TARN_ISLET = chunkedPolyline(closedCurve(ODYSSEY_TARN.islet, 5));
-/** How far the ragged line can stand from the drawn one (u). */
-const TARN_RAGGED_REACH = ODYSSEY_TARN.ragged[0] + ODYSSEY_TARN.ragged[1];
-/** Beyond this distance from the drawn line nothing of the tarn is left (u). */
-const TARN_REACH = ODYSSEY_TARN.bank + TARN_RAGGED_REACH;
+/** Smootherstep on 0..1: no kink in the slope at either end. */
+function drawnEase(v) {
+    const t = Math.max(0, Math.min(1, v));
+    return t * t * t * ((t * ((t * 6) - 15)) + 10);
+}
 
 /**
- * The square the tarn's profile lives in, [x0, x1, z0, z1]: outside it the ground is the
- * meadow's own. (The sculpt plate's bake, the water's mesh and the ground's paint read it.)
+ * THE DRAWN WATERS (2026-11-20 the tarn, 2026-11-21 the north lake): a water whose shore is drawn
+ * by hand (`outline`, a closed curve through its points, and `islets`), moved a few units in and
+ * out by a low noise (`ragged`), with the ground across the shore a profile of the distance to
+ * that line:
+ *   - under the water a SHELF (the shallows, a gentle slope; wide where the bank lies flat by the
+ *     water, narrow under a rising bank), then a `drop` to a floor that rolls (`floor`, `roll`);
+ *   - above it a low beach on the same slope, easing over `bank` units into the ground's own;
+ *   - on an islet, a low back risen from its shore (`isletRise` over `isletReach`).
+ * The profile sets the ground ABSOLUTELY in the water (the waterline is the drawn line itself,
+ * whatever the ground there was), and it is exactly the ground's own beyond `bank`. Each water
+ * has its own plate (bakeDrawnWaterPlateData), which the shader takes the water from exactly.
+ * Built once per water from its frozen spec.
  */
-export const ODYSSEY_TARN_BOX = Object.freeze(TARN_SHORE.poly.reduce((box, [x, z]) => [
-    Math.min(box[0], x - TARN_REACH), Math.max(box[1], x + TARN_REACH),
-    Math.min(box[2], z - TARN_REACH), Math.max(box[3], z + TARN_REACH),
-], [Infinity, -Infinity, Infinity, -Infinity]));
+function makeDrawnWater(W) {
+    const shore = chunkedPolyline(closedCurve(W.outline, W.curve.per));
+    const islets = (W.islets ?? (W.islet ? [W.islet] : []))
+        .map((points) => chunkedPolyline(closedCurve(points, W.curve.isletPer)));
+    /** How far the ragged line can stand from the drawn one (u). */
+    const raggedReach = W.ragged[0] + W.ragged[1];
+    /** Beyond this distance from the drawn line nothing of the water is left (u). */
+    const reach = W.bank + raggedReach;
+    /** The square the profile lives in, [x0, x1, z0, z1]: outside it the ground is its own. */
+    const box = Object.freeze(shore.poly.reduce((b, [x, z]) => [
+        Math.min(b[0], x - reach), Math.max(b[1], x + reach),
+        Math.min(b[2], z - reach), Math.max(b[3], z + reach),
+    ], [Infinity, -Infinity, Infinity, -Infinity]));
+    const ragged = (x, z) => ((valueNoise((x / W.raggedCells[0]) + 13.1, (z / W.raggedCells[0]) - 41.7) - 0.5) * 2 * W.ragged[0])
+        + ((valueNoise((x / W.raggedCells[1]) - 27.4, (z / W.raggedCells[1]) + 8.3) - 0.5) * 2 * W.ragged[1]);
+    /**
+     * Distance (u) to the waterline, the ragged noise included: negative in the water, positive on
+     * land (an islet is land). Outside the box it is the reach plus the way to the box, a lower
+     * bound that keeps growing (so a threshold on it can never cover the rest of the island).
+     */
+    const distance = (x, z) => {
+        if (x <= box[0] || x >= box[1] || z <= box[2] || z >= box[3]) {
+            return reach + Math.hypot(Math.max(box[0] - x, 0, x - box[1]), Math.max(box[2] - z, 0, z - box[3]));
+        }
+        const n = ragged(x, z);
+        let d = polylineDistance(shore, x, z) + n;
+        if (d > 0) return d;
+        // In the water: an islet's shore is a waterline too.
+        for (let i = 0; i < islets.length; i += 1) d = Math.max(d, -(polylineDistance(islets[i], x, z) + n));
+        return d;
+    };
+    /**
+     * The water at (x, z), over the `ground` the rest of the field draws there: the drawn height is
+     * `ground * (1 - weight) + target * weight`. In the water and on an islet the weight is 1 and
+     * the target is the profile's own height; on the bank the target is the beach and the weight
+     * eases from 1 at the waterline to 0 at `bank` units out. Also `d`, the distance to the
+     * waterline, and `flat`, how flat the bank lies by the water there (1 on the flats).
+     */
+    const profile = (x, z, ground) => {
+        const d = distance(x, z);
+        if (d >= W.bank) {
+            return {
+                target: ground, weight: 0, d, flat: 0,
+            };
+        }
+        const flat = 1 - smoothstepRange(W.shelfBank[0], W.shelfBank[1], ground - W.waterY);
+        const slope = W.shelfSlope[0] + ((W.shelfSlope[1] - W.shelfSlope[0]) * flat);
+        const N = W.noise;
+        if (d <= 0) {
+            const s = -d;
+            const shelf = (W.shelf[0] + ((W.shelf[1] - W.shelf[0]) * flat))
+                * ((1 - (W.shelfVary / 2)) + (W.shelfVary * valueNoise((x / N.shelfCell) + 3.9, (z / N.shelfCell) - 6.2)));
+            const floor = W.floor
+                + ((valueNoise((x / N.rollCells[0]) + 5.3, (z / N.rollCells[0]) - 2.1) - 0.5) * 2 * W.roll)
+                + ((valueNoise((x / N.rollCells[1]) - 9.7, (z / N.rollCells[1]) + 4.4) - 0.5) * 2 * N.fineRoll);
+            const lip = slope * shelf;
+            const depth = (slope * Math.min(s, shelf)) + (Math.max(floor - lip, 0) * drawnEase((s - (shelf * 0.7)) / W.drop));
+            return {
+                target: Math.max(W.waterY - depth, W.floorY), weight: 1, d, flat,
+            };
+        }
+        let target = W.waterY + Math.min(slope * d, W.beachRise);
+        let weight = 1 - drawnEase(d / W.bank);
+        for (let i = 0; i < islets.length; i += 1) {
+            const inIslet = -polylineDistance(islets[i], x, z);
+            if (inIslet > -raggedReach) {
+                const back = W.waterY + (W.isletRise * smoothstepRange(0, W.isletReach, inIslet + ragged(x, z)));
+                if (back > (ground * (1 - weight)) + (target * weight)) {
+                    target = back;
+                    weight = 1;
+                }
+            }
+        }
+        return {
+            target, weight, d, flat,
+        };
+    };
+    return {
+        shore, islets, reach, box, distance, profile,
+    };
+}
+
+/** A water's plate: its box at about `texel` u, `resX` across. */
+function drawnWaterPlate(box, resX) {
+    return Object.freeze({
+        box,
+        resX,
+        resZ: Math.round(resX * ((box[3] - box[2]) / (box[1] - box[0]))),
+    });
+}
+
+const TARN = makeDrawnWater(ODYSSEY_TARN);
+const NORTH_LAKE = makeDrawnWater(ODYSSEY_NORTH_LAKE);
+
+/**
+ * The square the tarn's profile lives in, [x0, x1, z0, z1]: outside it the meadow is its own.
+ * (The tarn's plate, the water's mesh and the ground's paint read it.)
+ */
+export const ODYSSEY_TARN_BOX = TARN.box;
 
 /** The drawn shore and the islet's, as dense closed polylines of [x, z] (before the ragged noise). */
 export function odysseyTarnLines() {
-    return { shore: TARN_SHORE.poly, islet: TARN_ISLET.poly };
+    return { shore: TARN.shore.poly, islet: TARN.islets[0].poly };
 }
 
 /**
@@ -1168,17 +1183,7 @@ export function odysseyTarnLines() {
  * the analytic ground, and the plates the shader rebuilds that ground from stand up to a unit off
  * it, which on a shelf sloping 1 in 10 moved the waterline by several units, in teeth.
  */
-export const ODYSSEY_TARN_PLATE = Object.freeze({
-    box: ODYSSEY_TARN_BOX,
-    resX: 512,
-    resZ: Math.round(512 * ((ODYSSEY_TARN_BOX[3] - ODYSSEY_TARN_BOX[2]) / (ODYSSEY_TARN_BOX[1] - ODYSSEY_TARN_BOX[0]))),
-});
-
-function tarnRagged(x, z) {
-    const T = ODYSSEY_TARN;
-    return ((valueNoise((x / T.raggedCells[0]) + 13.1, (z / T.raggedCells[0]) - 41.7) - 0.5) * 2 * T.ragged[0])
-        + ((valueNoise((x / T.raggedCells[1]) - 27.4, (z / T.raggedCells[1]) + 8.3) - 0.5) * 2 * T.ragged[1]);
-}
+export const ODYSSEY_TARN_PLATE = drawnWaterPlate(ODYSSEY_TARN_BOX, 512);
 
 /**
  * Distance (u) from (x, z) to the tarn's waterline, the ragged noise included: negative in the
@@ -1188,17 +1193,7 @@ function tarnRagged(x, z) {
  * @param {number} z
  */
 export function odysseyTarnDistance(x, z) {
-    const B = ODYSSEY_TARN_BOX;
-    // Outside the box: at least the reach, growing with the way out (so a threshold on the
-    // distance, or on odysseyTarnRn, can never cover the rest of the island).
-    if (x <= B[0] || x >= B[1] || z <= B[2] || z >= B[3]) {
-        return TARN_REACH + Math.hypot(Math.max(B[0] - x, 0, x - B[1]), Math.max(B[2] - z, 0, z - B[3]));
-    }
-    const n = tarnRagged(x, z);
-    const d = polylineDistance(TARN_SHORE, x, z) + n;
-    if (d > 0) return d;
-    // In the water: the islet's shore is a waterline too.
-    return Math.max(d, -(polylineDistance(TARN_ISLET, x, z) + n));
+    return TARN.distance(x, z);
 }
 
 /**
@@ -1206,65 +1201,19 @@ export function odysseyTarnDistance(x, z) {
  * beyond it (the measure the forest's clearing reads; see odysseyTarnDistance outside the box).
  */
 export function odysseyTarnRn(x, z) {
-    return 1 + (odysseyTarnDistance(x, z) / ODYSSEY_TARN.rnUnit);
-}
-
-/** Smootherstep on 0..1: no kink in the slope at either end. */
-function tarnEase(v) {
-    const t = Math.max(0, Math.min(1, v));
-    return t * t * t * ((t * ((t * 6) - 15)) + 10);
+    return 1 + (TARN.distance(x, z) / ODYSSEY_TARN.rnUnit);
 }
 
 /**
- * THE TARN AT (x, z), over the `ground` the rest of the field draws there: the drawn height is
- * `ground * (1 - weight) + target * weight`. In the water and on the islet the weight is 1 and the
- * target is the profile's own height (shelf, drop and rolling floor under the water; ODYSSEY_TARN);
- * on the bank the target is the beach and the weight eases from 1 at the waterline to 0 at
- * `bank` units into the meadow. Also `d`, the distance to the waterline (odysseyTarnDistance),
- * and `flat`, how flat the meadow lies by the water there (1 on the flats).
+ * THE TARN AT (x, z), over the `ground` the rest of the field draws there (the drawn waters'
+ * profile; ODYSSEY_TARN's numbers).
  * @param {number} x
  * @param {number} z
  * @param {number} ground
  * @returns {{target: number, weight: number, d: number, flat: number}}
  */
 export function odysseyTarnProfile(x, z, ground) {
-    const T = ODYSSEY_TARN;
-    const d = odysseyTarnDistance(x, z);
-    if (d >= T.bank) {
-        return {
-            target: ground, weight: 0, d, flat: 0,
-        };
-    }
-    // How flat the meadow lies by the water here: 1 on the flats, 0 under a rising bank.
-    const flat = 1 - smoothstepRange(T.shelfBank[0], T.shelfBank[1], ground - T.waterY);
-    const slope = T.shelfSlope[0] + ((T.shelfSlope[1] - T.shelfSlope[0]) * flat);
-    if (d <= 0) {
-        const s = -d;
-        const shelf = (T.shelf[0] + ((T.shelf[1] - T.shelf[0]) * flat))
-            * (0.75 + (0.5 * valueNoise((x / 27) + 3.9, (z / 27) - 6.2)));
-        const floor = T.floor
-            + ((valueNoise((x / 38) + 5.3, (z / 38) - 2.1) - 0.5) * 2 * T.roll)
-            + ((valueNoise((x / 15) - 9.7, (z / 15) + 4.4) - 0.5) * 0.5);
-        const lip = slope * shelf;
-        const depth = (slope * Math.min(s, shelf)) + (Math.max(floor - lip, 0) * tarnEase((s - (shelf * 0.7)) / T.drop));
-        return {
-            target: Math.max(T.waterY - depth, T.floorY), weight: 1, d, flat,
-        };
-    }
-    let target = T.waterY + Math.min(slope * d, T.beachRise);
-    let weight = 1 - tarnEase(d / T.bank);
-    // The islet's back: the ground rises from its shore toward its middle.
-    const inIslet = -polylineDistance(TARN_ISLET, x, z);
-    if (inIslet > -TARN_RAGGED_REACH) {
-        const back = T.waterY + (T.isletRise * smoothstepRange(0, 4.5, inIslet + tarnRagged(x, z)));
-        if (back > (ground * (1 - weight)) + (target * weight)) {
-            target = back;
-            weight = 1;
-        }
-    }
-    return {
-        target, weight, d, flat,
-    };
+    return TARN.profile(x, z, ground);
 }
 
 /**
@@ -1276,7 +1225,63 @@ export function odysseyTarnProfile(x, z, ground) {
  * @returns {number}
  */
 export function odysseyTarnCarve(x, z, ground) {
-    const p = odysseyTarnProfile(x, z, ground);
+    const p = TARN.profile(x, z, ground);
+    return (p.target - ground) * p.weight;
+}
+
+/** The square the north lake's profile lives in, [x0, x1, z0, z1]. */
+export const ODYSSEY_NORTH_LAKE_BOX = NORTH_LAKE.box;
+
+/** The north lake's drawn shore and its islets', as dense closed polylines of [x, z]. */
+export function odysseyNorthLakeLines() {
+    return { shore: NORTH_LAKE.shore.poly, islets: NORTH_LAKE.islets.map((l) => l.poly) };
+}
+
+/** The north lake's plate (bakeNorthLakePlateData): ~2.3 u over its box, the tarn's layout. */
+export const ODYSSEY_NORTH_LAKE_PLATE = drawnWaterPlate(ODYSSEY_NORTH_LAKE_BOX, 448);
+
+/**
+ * Distance (u) from (x, z) to the north lake's waterline: negative in the water, positive on land
+ * (the islets are land); outside its box, the reach plus the way to the box.
+ * @param {number} x
+ * @param {number} z
+ */
+export function odysseyNorthLakeDistance(x, z) {
+    return NORTH_LAKE.distance(x, z);
+}
+
+/**
+ * Normalized lake distance: < 1 in the water, 1 on the waterline, `rnUnit` (300) world units a
+ * step beyond it. THE lake metric: the forest scatter's underwater kill (rn <= 1) and its
+ * lakeshore ring (rn 0.95-1.30, from 15 u in the water to 90 u up the bank) read it.
+ * @param {number} x
+ * @param {number} z
+ */
+export function odysseyNorthLakeRn(x, z) {
+    return 1 + (NORTH_LAKE.distance(x, z) / ODYSSEY_NORTH_LAKE.rnUnit);
+}
+
+/**
+ * THE NORTH LAKE AT (x, z), over the `ground` the rest of the field draws there (the drawn
+ * waters' profile; ODYSSEY_NORTH_LAKE's numbers).
+ * @param {number} x
+ * @param {number} z
+ * @param {number} ground
+ * @returns {{target: number, weight: number, d: number, flat: number}}
+ */
+export function odysseyNorthLakeProfile(x, z, ground) {
+    return NORTH_LAKE.profile(x, z, ground);
+}
+
+/**
+ * The north lake's carve at (x, z) over a `ground` height there (0 beyond its bank).
+ * @param {number} x
+ * @param {number} z
+ * @param {number} ground
+ * @returns {number}
+ */
+export function odysseyNorthLakeCarve(x, z, ground) {
+    const p = NORTH_LAKE.profile(x, z, ground);
     return (p.target - ground) * p.weight;
 }
 
@@ -1295,14 +1300,16 @@ export const ODYSSEY_SCULPT_PLATE = Object.freeze({
 
 /**
  * The sculpted part of the drawn height at (x, z), over the `ground` the macro and relief draw
- * there: the summit's sculpt (the sculpt plate) and the tarn's carve (the tarn's plate).
+ * there: the summit's sculpt (the sculpt plate), the tarn's carve and the north lake's (each
+ * water's own plate). The waters' boxes lie apart; the lake is laid over the summit's sculpt.
  * @param {number} x
  * @param {number} z
  * @param {number} ground
  * @returns {number}
  */
 export function odysseySculptDelta(x, z, ground) {
-    return odysseySummitSculpt(x, z) + odysseyTarnCarve(x, z, ground);
+    const summit = odysseySummitSculpt(x, z);
+    return summit + odysseyTarnCarve(x, z, ground) + odysseyNorthLakeCarve(x, z, ground + summit);
 }
 
 /**

@@ -6,15 +6,16 @@ import {
     ODYSSEY_NORTH_LAKE,
     ODYSSEY_SEA_LEVEL,
     massifTerm,
-    odysseyNorthLakeRn,
+    ODYSSEY_NORTH_LAKE_BOX,
+    odysseyNorthLakeDistance,
+    odysseyNorthLakeLines,
     odysseyWaterDepth,
-    odysseyWorldDetailWeight,
     odysseyWorldHeight,
     odysseyWorldMacro,
-    odysseyWorldRelief,
     smoothMax,
 } from './odyssey-world-height.js';
 import { ODYSSEY_PEAK_SPECS, PEAK_CONE_RADIUS_FRAC } from './odyssey-peak-specs.js';
+import { buildNorthLakeSurface } from './odyssey-tarn-surface.js';
 import { deriveOdysseyChapterPositions } from '../../../core/odyssey/data/odyssey-layout.js';
 import {
     getActiveOdysseyChapterPositions,
@@ -244,71 +245,52 @@ describe('the landmass is an island', () => {
     });
 
     /**
-     * THE NORTH LAKE'S REAL CONTRACT — and why it is not "open water at every azimuth".
-     *
-     * The first version of this test walked each lobe's own ellipse and demanded water at
-     * rn 0.4 and dry rim at rn 1.05. That is the shape of an ellipse sitting in a bowl,
-     * and the lake stopped being one the moment the shore got its noise meander and the
-     * body grew west into the massif's skirt: 13% of the disc interior is now dry MOUNTAIN
-     * — the shoreline there is drawn by the mountainside, which is precisely the natural
-     * form the owner asked for. A per-azimuth interior assertion fails on that and would
-     * have to be "fixed" by flattening the mountain back out of the lake.
-     *
-     * So this asserts what the picture actually depends on:
-     *   1. the paint never shows its own geometry — the disc edge is buried everywhere;
-     *   2. the water is ONE body, not a chain of ponds;
-     *   3. no isolated dry specks — the stipple a shoal at water level would produce;
+     * THE NORTH LAKE, DRAWN (2026-11-21). Its shore is an outline drawn by hand with islets, and the
+     * ground across it a profile of the distance to that line (shelf, drop, rolling floor; beach and
+     * a long bank), applied over the field like the tarn's. What the picture depends on:
+     *   1. the water's sheet never shows its own edge: every sheet vertex on dry ground stands
+     *      under the bank (its margin is buried);
+     *   2. the water is ONE body round its islets, with no isolated dry specks in it;
+     *   3. the waterline is the drawn line: water a unit inside it, dry ground a unit outside;
      *   4. the body is the size the owner approved, within a band;
-     *   5. the waterline MEANDERS — revert the shore noise and this fails.
+     *   5. the shore is a drawn shore, not an ellipse (its length against a circle's of the same
+     *      area), and no bank stands under the water (no spill, no pit).
      */
-    it('holds the north lake: one body, buried paint, meandering shore, no stipple', () => {
+    it('holds the north lake: one body round its islets, a buried sheet, the drawn waterline, no stipple', () => {
         const L = ODYSSEY_NORTH_LAKE;
-        const height = (x, z) => odysseyWorldMacro(x, z)
-            + (odysseyWorldRelief(x, z) * odysseyWorldDetailWeight(x, z));
+        // 1. THE SHEET'S EDGE IS BURIED.
+        const { positions } = buildNorthLakeSurface();
+        let worstDry = Infinity;
+        for (let k = 0; k < positions.length; k += 3) {
+            const x = positions[k];
+            const z = positions[k + 2];
+            if (odysseyNorthLakeDistance(x, z) < 0.5) continue;
+            worstDry = Math.min(worstDry, odysseyWorldHeight(x, z) - L.waterY);
+        }
+        expect(worstDry, 'every dry sheet vertex stands over the water').toBeGreaterThan(0);
 
-        // 1. THE DISC EDGE IS BURIED. Each painted disc ends at raw rn = 1; where the
-        // terrain there sits below the water plane the disc's own arc becomes the
-        // waterline — a hard geometric edge (the owner reported exactly that, and it
-        // measured -0.8 u before the banks went in). Points inside another lobe are
-        // interior water, not outline, and are skipped.
-        let worstBurial = Infinity;
-        L.lobes.forEach((lb, li) => {
-            for (let a = 0; a < 360; a += 6) {
-                const x = lb.x + Math.cos((a * Math.PI) / 180) * lb.rx;
-                const z = lb.z + Math.sin((a * Math.PI) / 180) * lb.rz;
-                const insideOther = L.lobes.some((ob, oi) => {
-                    if (oi === li) return false;
-                    const ox = (x - ob.x) / ob.rx;
-                    const oz = (z - ob.z) / ob.rz;
-                    return Math.sqrt((ox * ox) + (oz * oz)) < 1;
-                });
-                if (insideOther) continue;
-                worstBurial = Math.min(worstBurial, height(x, z) - L.waterY);
-            }
-        });
-        expect(worstBurial, 'disc edge must sit under terrain at every outline azimuth')
-            .toBeGreaterThan(1);
-
-        // Rasterise the water once for 2-4: inside a disc AND under the water plane.
+        // Rasterise the water for 2-4: under the water plane.
         const S = 10;
-        const X0 = -700; const X1 = 900; const Z0 = -2300; const Z1 = -1000;
+        const [X0, X1, Z0, Z1] = ODYSSEY_NORTH_LAKE_BOX;
         const NX = Math.floor((X1 - X0) / S) + 1;
         const NZ = Math.floor((Z1 - Z0) / S) + 1;
-        const inDisc = (x, z) => L.lobes.some((lb) => {
-            const lx = (x - lb.x) / lb.rx;
-            const lz = (z - lb.z) / lb.rz;
-            return Math.sqrt((lx * lx) + (lz * lz)) <= 1;
-        });
         const water = new Uint8Array(NX * NZ);
         for (let i = 0; i < NX; i += 1) {
             for (let j = 0; j < NZ; j += 1) {
                 const x = X0 + (i * S); const z = Z0 + (j * S);
-                water[(j * NX) + i] = (inDisc(x, z) && height(x, z) < L.waterY) ? 1 : 0;
+                const h = odysseyWorldHeight(x, z);
+                const d = odysseyNorthLakeDistance(x, z);
+                // (Within the lake's bank: the plain north-east of it has a dry hollow under 354.)
+                water[(j * NX) + i] = h < L.waterY && d < L.bank ? 1 : 0;
+                // 3. The waterline is the drawn line.
+                if (d < -1) expect(h, `water at (${x}, ${z})`).toBeLessThan(L.waterY);
+                // (On its bank: the plain north-east of the lake has hollows under 354 of its own,
+                // far past the bank, where no water is drawn.)
+                if (d > 1 && d < L.bank) expect(h, `bank at (${x}, ${z})`).toBeGreaterThanOrEqual(L.waterY);
             }
         }
 
-        // 2. ONE BODY. A two-lobe union once read as TWO lakes because the neck stood
-        // above water; the waist lobe fixed it, and this is the guard that keeps it fixed.
+        // 2. ONE BODY, round its islets.
         const seen = new Uint8Array(NX * NZ);
         const sizes = [];
         for (let k = 0; k < NX * NZ; k += 1) {
@@ -332,10 +314,14 @@ describe('the landmass is an island', () => {
         }
         sizes.sort((a, b) => b - a);
         const totalWater = sizes.reduce((s, v) => s + v, 0);
-        expect(sizes[0] / totalWater, 'the lake must be ONE connected body').toBeGreaterThan(0.98);
-
-        // 3. NO STIPPLE: dry cells ringed by water are shoals at water level, which relief
-        // turns into a scatter of specks across the surface.
+        expect(sizes[0] / totalWater, 'the lake must be ONE connected body').toBeGreaterThan(0.99);
+        // The islets stand out of it.
+        L.islets.forEach((pts) => {
+            const cx = pts.reduce((a, p) => a + p[0], 0) / pts.length;
+            const cz = pts.reduce((a, p) => a + p[1], 0) / pts.length;
+            expect(odysseyWorldHeight(cx, cz), `islet at (${cx.toFixed(0)}, ${cz.toFixed(0)})`).toBeGreaterThan(L.waterY + 1);
+        });
+        // No stipple: dry cells ringed by water (an islet is many cells, not one).
         let specks = 0;
         for (let i = 1; i < NX - 1; i += 1) {
             for (let j = 1; j < NZ - 1; j += 1) {
@@ -352,41 +338,22 @@ describe('the landmass is an island', () => {
         }
         expect(specks, 'isolated dry specks inside the water').toBe(0);
 
-        // 4. SIZE, as a band around what the owner approved (228k u^2 for the bean, then
-        // the sculpt pass measured 250k). Collapse and runaway both fail.
+        // 4. SIZE, as a band around what the owner approved (228k u^2 for the bean, then 250k).
         const areaK = (totalWater * S * S) / 1000;
         expect(areaK).toBeGreaterThan(190);
         expect(areaK).toBeLessThan(320);
 
-        // 5. THE SHORE MEANDERS — asserted on the METRIC, not on the picture.
-        //
-        // ⚠️ This was first written as "the waterline crossing radius varies across
-        // azimuths", and a mutation check (delete the inset, re-run) showed it PASSED:
-        // the body reaches into the massif's skirt, so the crossing radius varies plenty
-        // from base terrain alone. The assertion that actually bites reads the lake
-        // metric along a ring of CONSTANT raw ellipse radius: a pure ellipse returns the
-        // same value at every azimuth, the meander returns a spread. Deleting
-        // `northLakeShoreInset` now fails HERE, which is what a guard is for.
-        const lb0 = L.lobes[0];
-        const onRing = [];
-        for (let a = 0; a < 360; a += 4) {
-            const c = Math.cos((a * Math.PI) / 180); const s = Math.sin((a * Math.PI) / 180);
-            const x = lb0.x + (c * lb0.rx * 0.9);
-            const z = lb0.z + (s * lb0.rz * 0.9);
-            // Only where lobe 0 is the nearest lobe, or the min() would read a sibling.
-            const nearestIsLobe0 = L.lobes.every((ob, oi) => {
-                if (oi === 0) return true;
-                const ox = (x - ob.x) / ob.rx;
-                const oz = (z - ob.z) / ob.rz;
-                return Math.sqrt((ox * ox) + (oz * oz)) >= 0.9;
-            });
-            if (nearestIsLobe0) onRing.push(odysseyNorthLakeRn(x, z));
+        // 5. A DRAWN SHORE: its length well past a circle's of the same area (an ellipse's is
+        // ~1.0-1.1, the old three-lobe bean's 1.29).
+        const { shore } = odysseyNorthLakeLines();
+        let length = 0;
+        for (let k = 0; k < shore.length; k += 1) {
+            const [px, pz] = shore[k];
+            const [qx, qz] = shore[(k + 1) % shore.length];
+            length += Math.hypot(qx - px, qz - pz);
         }
-        const metricSpread = Math.max(...onRing) - Math.min(...onRing);
-        expect(metricSpread, 'lake metric must vary along a constant-radius ring')
-            .toBeGreaterThan(0.08);
-        // ...and that spread is real shoreline travel, not a rounding wobble.
-        expect(metricSpread * lb0.rx, 'shoreline travel across azimuths (u)').toBeGreaterThan(30);
+        const development = length / (2 * Math.sqrt(Math.PI * areaK * 1000));
+        expect(development).toBeGreaterThan(1.5);
     });
 
     it('has a real north shore, not a cliff — the coast slope stays under the mesh bar', () => {

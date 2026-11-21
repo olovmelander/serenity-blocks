@@ -7,11 +7,13 @@ import {
     ODYSSEY_SEA_LEVEL,
     odysseyNorthBeachAt,
     odysseyNorthBeachWeight,
+    ODYSSEY_NORTH_LAKE_BOX,
+    odysseyNorthLakeDistance,
+    odysseyNorthLakeLines,
     odysseyNorthLakeRn,
     odysseyWorldDetailWeight,
     odysseyWorldHeight,
     odysseyWorldMacro,
-    odysseyWorldRelief,
 } from './odyssey-world-height.js';
 import {
     FOREST_PINE_GROVES, forestPineGroveValue, scatterZonedForest, siteOnNorthBeach,
@@ -104,8 +106,11 @@ describe('the north beach', () => {
         // ...and nowhere near the plateau pins, the lake or the rail.
         expect(odysseyNorthBeachWeight(-700, -1900)).toBe(0);
         expect(odysseyNorthBeachWeight(-220, -2400)).toBe(0);
-        ODYSSEY_NORTH_LAKE.lobes.forEach((lb) => {
-            expect(odysseyNorthBeachWeight(lb.x, lb.z)).toBe(0);
+        // (Nowhere on the north lake's drawn shore, 2026-11-21.)
+        // (The drawn lake's north bay comes within the bay blend's farthest tail, a few hundredths at
+        // most; the lake's profile sets its water absolutely over it.)
+        odysseyNorthLakeLines().shore.forEach(([x, z]) => {
+            expect(odysseyNorthBeachWeight(x, z)).toBeLessThan(0.05);
         });
     });
 
@@ -128,19 +133,19 @@ describe('the plain behind the mountain', () => {
         expect(odysseyWorldMacro(-220, -2400)).toBeCloseTo(385.0, 1);
     });
 
-    it('keeps the lake in its bowl: every rim stays above the water', () => {
-        const height = (x, z) => odysseyWorldMacro(x, z)
-            + (odysseyWorldRelief(x, z) * odysseyWorldDetailWeight(x, z));
+    it('keeps the lake in its bowl: its whole bank stays above the water', () => {
+        // The drawn lake's bank (2026-11-21): the ground from a few units off the waterline out to
+        // the bank's reach never dips under the water (no spill over a low rim, no pit by it).
         let worst = Infinity;
-        ODYSSEY_NORTH_LAKE.lobes.forEach((lb) => {
-            for (let a = 0; a < 360; a += 3) {
-                const x = lb.x + (Math.cos((a * Math.PI) / 180) * lb.rx);
-                const z = lb.z + (Math.sin((a * Math.PI) / 180) * lb.rz);
-                if (odysseyNorthLakeRn(x, z) < 1) continue;
-                worst = Math.min(worst, height(x, z) - ODYSSEY_NORTH_LAKE.waterY);
+        const [x0, x1, z0, z1] = ODYSSEY_NORTH_LAKE_BOX;
+        for (let x = x0; x <= x1; x += 6) {
+            for (let z = z0; z <= z1; z += 6) {
+                const d = odysseyNorthLakeDistance(x, z);
+                if (d < 3 || d > ODYSSEY_NORTH_LAKE.bank) continue;
+                worst = Math.min(worst, odysseyWorldHeight(x, z) - ODYSSEY_NORTH_LAKE.waterY);
             }
-        });
-        expect(worst).toBeGreaterThan(1);
+        }
+        expect(worst).toBeGreaterThan(0.2);
     });
 
     it('has real swells and hollows north-east of the lake', () => {

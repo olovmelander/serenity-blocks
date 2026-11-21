@@ -7,7 +7,7 @@ import {
 } from './odyssey-forest-species.js';
 import { railSeesForestSite } from './odyssey-forest-visibility.js';
 import {
-    ODYSSEY_NORTH_BEACH, ODYSSEY_NORTH_LAKE, ODYSSEY_TARN, odysseyNorthBeachAt, odysseyNorthLakeRn, odysseyTarnDistance,
+    ODYSSEY_NORTH_BEACH, ODYSSEY_TARN, odysseyNorthBeachAt, odysseyNorthLakeDistance, odysseyNorthLakeRn, odysseyTarnDistance,
     odysseyTarnRn,
 } from './odyssey-world-height.js';
 import { ODYSSEY_MEADOW_CLEARING, odysseyMeadowOpenness } from './odyssey-meadow-clearing.js';
@@ -23,33 +23,39 @@ export function siteOnNorthBeach(x, z) {
 }
 
 /**
- * A site standing IN the north lake (north-island plan Wave 1). The sea rejection below
- * is `y < seaLevel + 3`, which knows nothing about a lake far above it — without this,
- * the scatter plants trees on the carved basin floor and they stand hip-deep in the
- * painted surface. Inside the lake's lobed footprint, dry ground is ground ABOVE the
- * waterline (+1.5 for the trunk flare); shore ground that rises through the discs
- * keeps its trees. The lobe metric is the lake's own export, so this can never
- * disagree with the carve.
+ * In the north lake's water by its DRAWN SHORE (2026-11-21): the waterline is the drawn line
+ * itself, so the lake's own distance says where the water is, whatever height model the caller
+ * scatters over (the old lobes' metric reached past the waterline, so it needed the ground under
+ * the water too). Half a unit up the bank for the trunk's flare.
  */
+function inNorthLakeWater(x, z) {
+    return odysseyNorthLakeDistance(x, z) < 0.5;
+}
+
 /**
  * Where an AUTHORED framing tree may not stand: in water (the north beach, the tarn and a few
  * units of its shore, the north lake). Unlike the grid's sites it ignores the tarn's open meadow,
  * which only thins the scatter: a framing tree stands where it was authored (2026-11-20: the
  * redrawn tarn's clearing had silently dropped the autumn pair's maple).
  */
-function framingSiteWet(x, z, y) {
+function framingSiteWet(x, z) {
     if (siteOnNorthBeach(x, z)) return true;
     if (odysseyTarnDistance(x, z) < 4) return true;
-    return y <= ODYSSEY_NORTH_LAKE.waterY + 1.5 && odysseyNorthLakeRn(x, z) <= 1;
+    return inNorthLakeWater(x, z);
 }
 
+/**
+ * A site standing IN the north lake (north-island plan Wave 1), on the north beach, or in the
+ * tarn's water or open meadow. The sea rejection below is `y < seaLevel + 3`, which knows
+ * nothing about water far above it: without this the scatter plants trees on the lake's floor,
+ * hip-deep in its surface.
+ */
 function siteInNorthLake(x, z, y) {
     if (siteOnNorthBeach(x, z)) return true;
     // ...and the tarn in the meadow (2026-10-26): no tree stands in its water, nor in the open
     // meadow round it (`clearing`), which is what lets the eye see its banks over the forest.
     if (y <= ODYSSEY_TARN.waterY + 30 && odysseyTarnRn(x, z) <= ODYSSEY_TARN.clearing) return true;
-    if (y > ODYSSEY_NORTH_LAKE.waterY + 1.5) return false;
-    return odysseyNorthLakeRn(x, z) <= 1;
+    return inNorthLakeWater(x, z);
 }
 
 /**
@@ -1219,7 +1225,7 @@ export function scatterZonedForest(heightAt, {
         if (!spec) return;
         const y = heightAt(f.x, f.z);
         if (y < seaLevel + 3) return;
-        if (framingSiteWet(f.x, f.z, y)) return;
+        if (framingSiteWet(f.x, f.z)) return;
         const stage = spec.stages.find((st) => st.id === 'old') ?? spec.stages[0];
         const jitter = 1 + ((hash2(fi, 977, 9) - 0.5) * 0.10);
         const hueT = spec.crownAlt ? hash2(fi, 977, 11) ** 1.7 : 0;

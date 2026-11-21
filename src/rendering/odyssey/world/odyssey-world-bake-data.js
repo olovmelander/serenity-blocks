@@ -14,9 +14,12 @@
 
 import { DataUtils } from 'three';
 import {
+    ODYSSEY_NORTH_LAKE,
+    ODYSSEY_NORTH_LAKE_PLATE,
     ODYSSEY_SCULPT_PLATE,
     ODYSSEY_TARN,
     ODYSSEY_TARN_PLATE,
+    odysseyNorthLakeProfile,
     odysseySculptDelta,
     odysseySummitSculpt,
     odysseyTarnProfile,
@@ -526,10 +529,10 @@ export function bakeDetailNormalData(res = 256) {
  * differences), A its curvature. The curvature is taken over a ~6 u stencil and divided by the
  * relief plate's own step, so the shading that reads the two can add them (a couloir 27 u across
  * is what it shows). The square's border is outside the sculpt's reach, so a clamped sampler
- * reads 0 beyond it. It carries the tarn's own plate along (`tarn`, bakeTarnPlateData): one stage
- * of the bake, one record in the kept copy.
+ * reads 0 beyond it. It carries the drawn waters' own plates along (`tarn`, bakeTarnPlateData;
+ * `lake`, bakeNorthLakePlateData): one stage of the bake, one record in the kept copy.
  * @param {number} [res]
- * @returns {{data: Uint16Array, res: number, extent: number, x: number, z: number, tarn: object}}
+ * @returns {{data: Uint16Array, res: number, extent: number, x: number, z: number, tarn: object, lake: object}}
  */
 export function bakeSculptPlateData(res = ODYSSEY_SCULPT_PLATE.res) {
     const S = ODYSSEY_SCULPT_PLATE;
@@ -558,24 +561,27 @@ export function bakeSculptPlateData(res = ODYSSEY_SCULPT_PLATE.res) {
         }
     }
     return {
-        data, res, extent: S.extent, x: S.x, z: S.z, tarn: bakeTarnPlateData(),
+        data, res, extent: S.extent, x: S.x, z: S.z, tarn: bakeTarnPlateData(), lake: bakeNorthLakePlateData(),
     };
 }
 
 /**
- * THE TARN'S PLATE (2026-11-20): the tarn's form over ODYSSEY_TARN_PLATE, texel centres on the
- * box's grid (texel i's centre is at x0 + (i + 0.5) * width / resX, as a sampler reads it):
- *   R = weight * (target - waterY), G = weight (odysseyTarnProfile), so the shader's height is
+ * A DRAWN WATER'S PLATE (2026-11-20 the tarn, 2026-11-21 the north lake): the water's form over
+ * its plate, texel centres on the box's grid (texel i's centre is at x0 + (i + 0.5) * width /
+ * resX, as a sampler reads it):
+ *   R = weight * (target - waterY), G = weight (the water's profile), so the shader's height is
  *       `ground * (1 - G) + waterY * G + R`: exact in the water, whatever the other plates draw;
  *   B = the distance to the waterline (u, + on land, - in the water), clamped to the bank;
- *   A = how flat the meadow lies by the water (1 on the flats).
+ *   A = how flat the bank lies by the water (1 on the flats).
  * Its border is past the bank's reach (weight 0, R 0), so a clamped sampler adds nothing outside.
- * Only texels within the bank pay for the ground under them.
+ * Only texels within the bank pay for the ground under them (macro + relief + the summit's
+ * sculpt, which the CPU height lays the water over too).
+ * @param {{waterY: number, bank: number}} T the water's spec
+ * @param {{box: readonly number[], resX: number, resZ: number}} P its plate
+ * @param {(x: number, z: number, ground: number) => {target: number, weight: number, d: number, flat: number}} profileAt
  * @returns {{data: Uint16Array, resX: number, resZ: number, box: readonly number[]}}
  */
-export function bakeTarnPlateData() {
-    const P = ODYSSEY_TARN_PLATE;
-    const T = ODYSSEY_TARN;
+export function bakeDrawnWaterPlateData(T, P, profileAt) {
     const [x0, x1, z0, z1] = P.box;
     const dx = (x1 - x0) / P.resX;
     const dz = (z1 - z0) / P.resZ;
@@ -587,14 +593,14 @@ export function bakeTarnPlateData() {
             const x = x0 + ((i + 0.5) * dx);
             const idx = ((j * P.resX) + i) * 4;
             // Far from the water the profile does not read the ground: skip its cost.
-            const p = odysseyTarnProfile(x, z, NaN);
+            const p = profileAt(x, z, NaN);
             if (p.weight === 0) {
                 data[idx + 2] = bank;
                 continue;
             }
             const ground = odysseyWorldMacro(x, z) + (odysseyWorldRelief(x, z) * odysseyWorldDetailWeight(x, z))
                 + odysseySummitSculpt(x, z);
-            const q = odysseyTarnProfile(x, z, ground);
+            const q = profileAt(x, z, ground);
             data[idx] = DataUtils.toHalfFloat(q.weight * (q.target - T.waterY));
             data[idx + 1] = DataUtils.toHalfFloat(q.weight);
             data[idx + 2] = DataUtils.toHalfFloat(Math.max(-T.bank, Math.min(T.bank, q.d)));
@@ -604,6 +610,16 @@ export function bakeTarnPlateData() {
     return {
         data, resX: P.resX, resZ: P.resZ, box: P.box,
     };
+}
+
+/** THE TARN'S PLATE (2026-11-20): ODYSSEY_TARN_PLATE, the drawn waters' layout. */
+export function bakeTarnPlateData() {
+    return bakeDrawnWaterPlateData(ODYSSEY_TARN, ODYSSEY_TARN_PLATE, odysseyTarnProfile);
+}
+
+/** THE NORTH LAKE'S PLATE (2026-11-21): ODYSSEY_NORTH_LAKE_PLATE, the drawn waters' layout. */
+export function bakeNorthLakePlateData() {
+    return bakeDrawnWaterPlateData(ODYSSEY_NORTH_LAKE, ODYSSEY_NORTH_LAKE_PLATE, odysseyNorthLakeProfile);
 }
 
 /**
@@ -655,5 +671,6 @@ export function worldTextureDataBuffers(baked) {
         baked.macro.data.buffer,
         baked.summit.data.buffer,
         baked.summit.tarn.data.buffer,
+        baked.summit.lake.data.buffer,
     ];
 }
