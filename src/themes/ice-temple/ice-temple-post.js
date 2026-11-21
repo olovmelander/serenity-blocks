@@ -231,7 +231,8 @@ export class IceTemplePost {
             const S = vec3(sceneColor.sample(view).rgb).toVar();
             if (look.fringe) {
                 const r2 = fromCentre.dot(fromCentre);
-                const fringe = r2.mul(0.005).add(this.uKick.mul(0.007)).add(rime.mul(0.004)).mul(float(1.0).sub(calm));
+                const fringe = r2.mul(0.0018).add(this.uKick.mul(0.0038)).add(rime.mul(0.004))
+                    .mul(float(1.0).sub(calm));
                 If(fringe.greaterThan(2e-4), () => {
                     const spread = fromCentre.mul(fringe);
                     S.assign(vec3(
@@ -305,7 +306,7 @@ export class IceTemplePost {
             const pxi = floor(screenCoordinate);
             const frame = floor(this.uTime.mul(24.0));
             const grain = itHash21(pxi.add(vec2(frame.mul(1.7), frame.mul(-2.3)))).sub(0.5);
-            D.addAssign(grain.mul(0.018).mul(float(1.0).sub(calm.mul(0.7))));
+            D.addAssign(grain.mul(0.011).mul(float(1.0).sub(calm.mul(0.7))));
             const dth = itHash21(pxi).add(itHash21(pxi.add(vec2(17.17, 17.17)))).sub(1.0);
             D.addAssign(dth.div(255.0));
 
@@ -339,7 +340,11 @@ export class IceTemplePost {
         if (flash !== undefined) this.uFlash.value = flash * flashScale();
         if (kick !== undefined) this.uKick.value = kick;
         if (bloomBoost !== undefined) this.uBloomBoost.value = bloomBoost;
-        if (exposure !== undefined) this.uExposure.value = exposure;
+        if (exposure !== undefined) {
+            this.uExposure.value = exposure;
+            // As the iris closes on a clear, only its luminous edges should spill into the nave.
+            if (this.bloomNode) this.bloomNode.threshold.value = BLOOM_THRESHOLD / Math.max(0.45, exposure);
+        }
         if (rays !== undefined) this.uRays.value = rays;
         if (streak !== undefined) this.uStreak.value = streak;
         if (time !== undefined) this.uTime.value = time;

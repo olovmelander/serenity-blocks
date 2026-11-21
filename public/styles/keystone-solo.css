@@ -96,6 +96,16 @@
     --sp-wall: #ab6adc;
 }
 
+/* Cut blue ice on the wall, moon silver on the queue and score ledger. */
+:where(body:has(#ice-temple-theme.active)) .single-player-stage[data-board='well']:not(:where(
+    .infinity-mode-active, [data-odyssey-board], [data-stillfall], [data-still-air], [data-danger]
+)) {
+    --sp-hue: #b5e2ef;
+    --sp-hue-rgb: 181, 226, 239;
+    --sp-wall: #6ca4bb;
+    --sp-wall-glow: rgb(107 183 211 / 24%);
+}
+
 /* Harvest brass at the lip of the well and a slate ledger like the distant fells. */
 :where(body:has(#grainfields-theme.active)) .single-player-stage[data-board='well']:not(:where(
     .infinity-mode-active, [data-odyssey-board], [data-still-air], [data-danger], [data-stillfall]
