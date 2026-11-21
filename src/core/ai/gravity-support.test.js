@@ -107,13 +107,20 @@ describe('visible support and release choices', () => {
                 if (piece.y === state.boardGrid.length - 1) piece.type = 'GARBAGE';
             }
             const bot = new GravityBotController({
-                playerState: state, difficulty: 10, actions: {}, rng: () => 0.5,
+                playerState: state,
+                difficulty: 10,
+                actions: {},
+                rng: () => 0.5,
                 // Stop before the beam independently expands the next piece.
                 planUnitsPerMs: 0.075,
             });
             const { candidate } = bot.plan();
-            expect(candidate).toMatchObject({ shapeKey: 'I', x: 0, rotation: 0, waves: [] });
-            expect(candidate.futurePlan?.candidate).toMatchObject({ shapeKey: first, x: 8, rotation, waves: [1, 1] });
+            expect(candidate).toMatchObject({
+                shapeKey: 'I', x: 0, rotation: 0, waves: [],
+            });
+            expect(candidate.futurePlan?.candidate).toMatchObject({
+                shapeKey: first, x: 8, rotation, waves: [1, 1],
+            });
         } finally {
             state.reset();
         }
