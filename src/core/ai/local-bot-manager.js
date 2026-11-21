@@ -16,7 +16,8 @@ function localPace(nominalTier, seed, index) {
     if (nominalTier === 10) return null;
     const random = seededRandom((Math.imul(seed, 0x9e3779b1) ^ Math.imul(index + 1, 0x27d4eb2d)) >>> 0);
     const reading = seededRandom((Math.imul(seed, 0x85ebca6b) ^ Math.imul(index + 1, 0x9e3779b1)) >>> 0);
-    const judgmentTier = reading() < LOCAL_PRACTICE_CHANCE[nominalTier - 1] ? Math.min(10, nominalTier + 2) : nominalTier;
+    const judgmentTier = reading() < LOCAL_PRACTICE_CHANCE[nominalTier - 1]
+        ? Math.min(10, nominalTier + 2) : nominalTier;
     const scale = Math.exp((2 * random() - 1) * 1.65);
     const handTier = nominalTier === 7 && scale <= 1 ? 8 : nominalTier;
     return {
