@@ -50,6 +50,18 @@ A.CDEFGHIJ    A.CDEFGHIJ      A.CDEFGHIJ     A.CDEFGHIJ
 A.CDEFGHIJ    A.CDEFGHIJ      A.CDEFGHIJ     A.CDEFGHIJ      ........tt
 ```
 
+The previous expert's three boards are below. Each `#` is a locked cell. Both experts place the final O at the right wall. The first two placements determine whether that O releases the three lower rows.
+
+```text
+Old I         Old L         Old O, settled     New O, settled
+#.........    ##........    ##........
+#.........    ##........    ##......##
+#...####..    ###.####..    ###.######
+#.########    #.########    #.########
+#.########    #.########    #.########
+#.########    #.########    #.########         ........##
+```
+
 ## One board, two reasons to fire
 
 This position already has a roof and a single fragment resting on its outside end. The active J can trigger immediately. It can also extend the setup, leaving room for the two I pieces in the preview. The visible preview is I, I, L in both runs.
