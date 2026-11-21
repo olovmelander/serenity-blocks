@@ -29,7 +29,7 @@ describe('Aurora keeps its land for the session and bakes a first visit in a wor
         expect(source('aurora-terrain.js')).not.toMatch(/from 'three/);
         expect(source('aurora-noise.js')).not.toMatch(/from 'three/);
         expect(source('aurora-bake.worker.js')).toMatch(/noise: bakeAuroraNoise, range: rangeGridPositions, ice: bakeShoreIce/);
-        expect(source('aurora-theme.js')).toContain('const baking = auroraBakes(this.quality);');
+        expect(source('aurora-theme.js')).toContain('Promise.all([auroraBakes(this.quality), preloadAuroraConifers()])');
         expect(source('aurora-theme.js')).toContain('await baking;');
     });
 

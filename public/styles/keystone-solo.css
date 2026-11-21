@@ -153,6 +153,16 @@
     --sp-wall: #3a9498;
 }
 
+/* The lake's green edge around the well and a frosted silver queue. */
+:where(body:has(#aurora-theme.active)) .single-player-stage[data-board='well']:not(:where(
+    .infinity-mode-active, [data-odyssey-board], [data-stillfall], [data-still-air], [data-danger]
+)) {
+    --sp-hue: #badfda;
+    --sp-hue-rgb: 186, 223, 218;
+    --sp-wall: #69ad9c;
+    --sp-wall-glow: rgb(85 173 150 / 22%);
+}
+
 /* The mint lake lights the ledger and the violet shore frames the ordinary solo well. */
 :where(body:has(#lunara-theme.active)) .single-player-stage[data-board='well']:where(:not(
     .infinity-mode-active, [data-odyssey-board], [data-stillfall], [data-danger], [data-still-air]
@@ -427,6 +437,14 @@
     --sb-text-faint: #cab9d2;
     border-color: rgb(201 145 188 / 31%);
     background: linear-gradient(145deg, rgb(43 23 54 / 97%), rgb(18 15 37 / 96%) 65%, rgb(18 27 40 / 96%));
+}
+
+:where(body:has(#aurora-theme.active)) .single-player-stage[data-board='well']:not(:where(
+    .infinity-mode-active, [data-odyssey-board], [data-stillfall], [data-still-air], [data-danger]
+)) .single-player-stats-bar {
+    --sb-text-faint: #b4caca;
+    border-color: rgb(136 197 183 / 31%);
+    background: linear-gradient(150deg, #1a363bfa, #101c2aef 72%);
 }
 
 /* The mode's hue as the ledger's left edge, like a seat's plate in local versus. */

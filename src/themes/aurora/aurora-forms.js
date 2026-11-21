@@ -23,7 +23,7 @@
  */
 import * as THREE from 'three/webgpu';
 import {
-    If, Loop, atan, clamp, cross, dot, exp, float, int, length, max, mix, normalize, sin, smoothstep, texture,
+    If, Loop, abs, atan, clamp, cos, cross, dot, exp, float, int, length, max, mix, normalize, sin, smoothstep, texture,
     uniformArray, vec2, vec3,
 } from 'three/tsl';
 import { CURL, FORMS, PILLARS } from './aurora-field.js';
@@ -34,6 +34,28 @@ const triple = (rgb) => vec3(rgb[0], rgb[1], rgb[2]);
 /** The forms' table as a uniform array (the world copies the director's rows into it). */
 export function createFormTable() {
     return uniformArray(Array.from({ length: FORMS.rows }, () => new THREE.Vector4(0, 0, 0, 0)), 'vec4');
+}
+
+/** The crimson echo of a back-to-back. Two detached arcs spread above the ridges,
+ * the upper, softer band catching up to its pink lower hem. */
+export function addRedArcs(light, rd, forms, noiseTexture) {
+    const arc = forms.element(FORMS.redArc).toVar();
+    If(arc.w.greaterThan(0.002), () => {
+        const x = atan(rd.x, rd.z.negate()).sub(arc.x).toVar();
+        const travel = arc.z.sub(abs(x).mul(0.8)).toVar();
+        const fringe = texture(noiseTexture, vec2(x.mul(0.9), arc.z.mul(0.018).add(0.47))).level(1).toVar();
+        const edge = arc.y.add(cos(x.mul(3.2)).mul(0.046)).add(x.mul(0.085))
+            .add(sin(x.mul(7.1).sub(arc.z.mul(0.3))).mul(0.012));
+        const height = rd.y.sub(edge).toVar();
+        const upper = height.sub(0.05).sub(fringe.g.mul(0.012)).mul(42).toVar();
+        const lower = height.mul(91).toVar();
+        const reach = exp(x.mul(x).mul(-1.6)).mul(arc.w);
+        const red = exp(upper.mul(upper).negate()).mul(smoothstep(0.18, 0.68, travel));
+        const pink = exp(lower.mul(lower).negate()).mul(smoothstep(0.02, 0.40, travel));
+        light.addAssign(vec3(0.64, 0.032, 0.086).mul(red)
+            .add(vec3(0.85, 0.07, 0.29).mul(pink)).mul(fringe.b.mul(0.55).add(0.45))
+            .mul(reach));
+    });
 }
 
 /**
@@ -54,14 +76,14 @@ export function addCrown(light, rd, forms, noiseTexture, tau) {
             const broad = texture(noiseTexture, vec2(turn, r.mul(0.05).add(tau.mul(0.003)))).level(0).toVar();
             const fine = texture(noiseTexture, vec2(turn.mul(4).add(0.37), r.mul(0.09).sub(tau.mul(0.004)).add(0.61)))
                 .level(0).toVar();
-            const bundles = smoothstep(0.22, 0.78, broad.g).toVar();
+            const bundles = smoothstep(0.31, 0.79, broad.g).toVar();
             // Where the rays meet they are one light: the pattern only opens out along them, so the
             // hub is a soft glow and never a wheel of dark spokes. It stands behind the board, whose
             // dark field shows a little of the sky through it, so the hub itself is kept dim (`hub`
             // below): the light is in the rays round the board, never a wash over the play.
             const rays = mix(
                 float(0.62),
-                mix(0.3, 1, smoothstep(0.3, 0.72, fine.r)).mul(mix(0.12, 1.25, bundles)),
+                mix(0.14, 1.13, smoothstep(0.35, 0.70, fine.r)).mul(mix(0.05, 1.26, bundles)),
                 smoothstep(0.03, 0.34, r),
             );
             // Each bundle runs its own length; the light streams out along it.
@@ -75,7 +97,7 @@ export function addCrown(light, rd, forms, noiseTexture, tau) {
             const tint = forms.element(FORMS.crown + 4).rgb;
             const colour = mix(mix(inner, tint, smoothstep(0.02, 0.38, along)), tips, smoothstep(0.5, 1, along));
             // A soft glow under the rays, so the crown is light and not a drawing of lines.
-            const glow = exp(r.div(crown.y.mul(0.75)).negate()).mul(0.2);
+            const glow = exp(r.div(crown.y.mul(0.75)).negate()).mul(0.14);
             const hub = smoothstep(0.03, 0.3, r).mul(0.86).add(0.14);
             light.addAssign(colour.mul(rays.mul(body).mul(stream).add(glow).mul(hub)
                 .mul(crown.x)));

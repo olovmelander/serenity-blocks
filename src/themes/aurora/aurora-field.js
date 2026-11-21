@@ -207,13 +207,15 @@ export const PILLARS = Object.freeze({ slots: 9 });
  *   curls      per curl, curlRows rows: [its centre's direction, gain], [1 / ray width, reach],
  *              then CURL.rays rays as [foot x, foot y, gain, 1 / height] in tangents of view
  *   pillars    per pillar, two rows: [azimuth, 1 / half-width, height, gain], [colour]
+ *   redArc     [board bearing, elevation, age, gain] for a back-to-back's detached red arcs
  */
 export const FORMS = (() => {
     const curlRows = 2 + CURL.rays;
     const curls = 5;
     const pillars = curls + CURL.slots * curlRows;
+    const redArc = pillars + PILLARS.slots * 2;
     return Object.freeze({
-        crown: 0, curls, curlRows, pillars, rows: pillars + PILLARS.slots * 2,
+        crown: 0, curls, curlRows, pillars, redArc, rows: redArc + 1,
     });
 })();
 

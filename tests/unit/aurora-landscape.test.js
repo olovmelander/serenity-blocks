@@ -5,7 +5,8 @@ import {
 import { AIR_BOX, buildAirSeeds } from '../../src/themes/aurora/aurora-air.js';
 import { HAZE, MIST, layerDepthCpu } from '../../src/themes/aurora/aurora-atmosphere.js';
 import {
-    SHORE_ICE, SHORE_Z, bakeShoreIce, bankHeight, buildSpruceGeometry, orientTriangles, placeForest, rangeHeight,
+    SHORE_ICE, SHORE_Z, bakeRidgeProfile, bakeShoreIce, bankHeight, buildSpruceGeometry, orientTriangles,
+    placeForest, rangeHeight,
 } from '../../src/themes/aurora/aurora-landscape.js';
 import { createRandom } from '../../src/themes/aurora/aurora-noise.js';
 import { QUALITY_PRESETS } from '../../src/themes/aurora/aurora-quality.js';
@@ -106,6 +107,19 @@ describe('Aurora spruces', () => {
 });
 
 describe('Aurora far forest and shore ice', () => {
+    it('mirrors a connected low-detail ridge continuously between widely spaced vertices', () => {
+        const row = new Float32Array([-500, 120, -1000, 500, 140, -1000]);
+        const mask = bakeRidgeProfile(row, 8, 2);
+        const span = Math.atan(0.5) / Math.PI;
+        const bins = mask.length / 4;
+        const first = Math.ceil((0.5 - span) * (bins - 1));
+        const last = Math.floor((0.5 + span) * (bins - 1));
+        for (let i = first; i <= last; i += 1) {
+            expect(mask[i * 4]).toBeGreaterThan(60);
+            if (i > first) expect(Math.abs(mask[i * 4] - mask[(i - 1) * 4])).toBeLessThanOrEqual(1);
+        }
+    });
+
     it('plants groves on the land beyond the shore, the same for the same seed', () => {
         const trees = placeForest(400, createRandom(11), RANGE_SEED);
         expect(trees).toEqual(placeForest(400, createRandom(11), RANGE_SEED));
@@ -157,6 +171,22 @@ describe('Aurora far forest and shore ice', () => {
             }
         }
         expect(rim).toBeGreaterThan(20);
+
+        // The other two channels are a separate view of transparent ice: sparsely marked
+        // sheet with distinguishable top and sunken lips, even away from the opaque shore.
+        let surface = 0;
+        let submerged = 0;
+        let marked = 0;
+        for (let i = 0; i < data.length; i += 4) {
+            const upper = data[i + 2];
+            const lower = data[i + 3];
+            if (upper > 24 && lower < 12) surface += 1;
+            if (lower > 24 && upper < 12) submerged += 1;
+            if (Math.max(upper, lower) > 24) marked += 1;
+        }
+        expect(surface).toBeGreaterThan(100);
+        expect(submerged).toBeGreaterThan(100);
+        expect(marked / (width * height)).toBeLessThan(0.03);
     });
 });
 

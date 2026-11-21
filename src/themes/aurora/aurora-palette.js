@@ -14,7 +14,7 @@ export const AURORA_COLORS = Object.freeze({
     skyHorizon: Object.freeze([0.0085, 0.019, 0.047]),
     airglow: Object.freeze([0.008, 0.022, 0.018]),
     snow: Object.freeze([0.58, 0.66, 0.8]),
-    rock: Object.freeze([0.035, 0.045, 0.07]),
+    rock: Object.freeze([0.105, 0.131, 0.225]),
     water: Object.freeze([0.003, 0.009, 0.018]),
 });
 
