@@ -36,8 +36,8 @@
     },
     {
       "file": "birch-hero.glb",
-      "bytes": 715044,
-      "sha256": "aaa06d10bd3f3c23df75c68101de6862b081064b5af8955a4a9abd9ca44cd7d7",
+      "bytes": 715040,
+      "sha256": "448eca227339a2f9e982386170e3f723c94e4d42a5395680cf10ef2032063ef8",
       "kind": "tree",
       "species": "birch",
       "role": "hero",

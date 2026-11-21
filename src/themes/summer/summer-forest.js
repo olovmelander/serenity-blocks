@@ -231,7 +231,9 @@ export class SummerForest {
         const treePhase = fract(tree.x.mul(0.37).add(tree.z.mul(0.71)));
         const t = light.uTime;
         const force = light.uWind.add(light.uGust);
-        const flutter = sin(t.mul(paint.g.mul(3).add(5)).add(paint.g.mul(41)).add(crown.z.mul(13)))
+        // Each spray's leaves keep their own beat from its hue seed: the phase is the branch's, so
+        // that a spray sways with the wood it hangs from (the hero birch's sprays share it exactly).
+        const flutter = sin(t.mul(paint.g.mul(3).add(5)).add(paint.g.mul(41)).add(crown.w.mul(13)))
             .mul(paint.r).mul(paint.a).mul(force.mul(look.flutter[0]).add(look.flutter[1]));
         material.positionNode = positionLocal
             .add(light.wind({

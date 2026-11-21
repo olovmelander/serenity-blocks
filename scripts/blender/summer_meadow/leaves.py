@@ -72,6 +72,8 @@ def birch_spray(seed, leaves=17, length=1.0, leaf_size=0.128):
         heading = normalize(heading + np.array([rng.uniform(-0.1, 0.1), 0.0, rng.uniform(-0.1, 0.1)]))
         twig.append(twig[-1] + heading * (length / segments))
     twig = np.array(twig)
+    # The twig's centre line, so a tree can lay the spray along the shoot it hangs from.
+    builder.axis = twig
     builder.twig(twig, 0.0065, sides=3, shade=0.5)
     start = rng.uniform(0, math.tau)
     for index in range(leaves):
