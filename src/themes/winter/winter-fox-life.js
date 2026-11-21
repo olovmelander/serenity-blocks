@@ -1,18 +1,17 @@
 /**
  * Winter — the arctic fox's own life. Three-free and renderer-free.
  *
- * What every fox does is the mind the themes share (../shared/fox-mind.js) and how it wanders
- * (../shared/fox-wander.js). This is what is the arctic fox's own, on whatever course it is given,
- * so the fox on its round (winter-fox-mind.js) and the visitor (winter-fox-visitor.js) are both
- * this animal:
+ * What every fox does is the mind the themes share (../shared/fox-mind.js). This is what is the
+ * arctic fox's own, on whatever course it is given, so the plain fox on its round (FoxMind in
+ * winter-fox-mind.js), the fox that roams the snowfield (winter-fox-roam.js) and the visitor
+ * (winter-fox-visitor.js) are all this animal:
  *
  *  - its paces. It does not only trot: it walks slowly with its nose to the snow, lopes, and
- *    bounds through the snow in arcs, a spell of each, more of the quick ones when it is restless;
+ *    bounds through the snow in arcs (which it is in is the roaming fox's to say);
  *  - what it does when it stops. Beside every fox's acts it has its own (winter-fox-rig.js): it
  *    scratches behind an ear, rolls in the snow, lies like a sphinx, stands up on its hind legs,
- *    goes round after its tail, leaps high for a mouse and misses, bows and tears round in a
- *    circle. What it chooses leans on the night: under a strong aurora it sits and watches more,
- *    after a chain it lies down;
+ *    goes round after its tail, leaps high for a mouse and misses, bows and tears about. Which
+ *    it does, and why, is the roaming fox's (FOX_WANDER_STOPS is the table it draws on);
  *  - what it answers the board with, beside its dash and its pounce: a leap with a turn in it
  *    (`twirl`), a long look at the sky (`gaze`), three bounces on stiff legs (`rejoice`);
  *  - its prints, pressed where its paws are put down.
@@ -27,52 +26,25 @@ import {
 import { MOUSING } from '../shared/fox-mind.js';
 import { WanderingFoxMind } from '../shared/fox-wander.js';
 
-const TAU = Math.PI * 2;
-
 /** Its paces (m/s). */
 export const FOX_TROT = 1.5;
 export const foxRunSpeed = (power, surge = 0) => 2.7 + 4.1 * clamp01(power) + 1.4 * Math.min(1.4, Math.max(0, surge));
 
 /**
- * Its paces at rest: how fast each is (m/s), how likely it is to fall into it when it is calm and
- * when it is restless, how long a spell of it lasts (s, shortest and longest), and how much
- * further than its trot's each cycle of it carries it.
+ * Its paces at rest: how fast each is (m/s), and how much further than its trot's each cycle of it
+ * carries it.
  */
 export const FOX_PACES = Object.freeze({
-    walk: Object.freeze({
-        speed: 0.58, calm: 1.1, restless: 0.25, spell: Object.freeze([7, 16]), stretch: 1,
-    }),
-    trot: Object.freeze({
-        speed: FOX_TROT, calm: 1.3, restless: 1, spell: Object.freeze([8, 22]), stretch: 1,
-    }),
-    lope: Object.freeze({
-        speed: 2.7, calm: 0.25, restless: 1, spell: Object.freeze([5, 11]), stretch: 1.3,
-    }),
-    bound: Object.freeze({
-        speed: 2.05, calm: 0.2, restless: 0.7, spell: Object.freeze([4, 9]), stretch: 1.5,
-    }),
+    walk: Object.freeze({ speed: 0.58, stretch: 1 }),
+    trot: Object.freeze({ speed: FOX_TROT, stretch: 1 }),
+    lope: Object.freeze({ speed: 2.7, stretch: 1.3 }),
+    bound: Object.freeze({ speed: 2.05, stretch: 1.5 }),
 });
-const PACE_NAMES = Object.freeze(Object.keys(FOX_PACES));
 
-/** How it wanders when it is let. */
+/** How its trot and its mood drift as it roams (the shared wandering mind's own numbers). */
 export const FOX_WANDER = Object.freeze({
-    /** Metres it strays either side of its round (where its round is drawn as planned: less nearer the eye). */
-    stray: 0.9,
-    /** Metres it keeps from a framing tree where its round lets it (it never strays nearer than its round goes). */
-    treeRoom: 2.4,
     /** Its trot, as a share of FOX_TROT, slowest and quickest. */
     pace: Object.freeze([0.8, 1.22]),
-    /** Seconds before it next stops (drawn skewed toward short). */
-    rest: Object.freeze([4, 26]),
-    /** Odds it stops where it is (on an open side) rather than going on to one of its places. */
-    anywhere: 0.55,
-    /** Odds it turns back the way it came as it pulls up (never twice within this many seconds). */
-    turnBack: 0.3,
-    turnGap: 20,
-    /** Where it may stop: fractions of the half width either side of the board, the open snow. */
-    open: Object.freeze([0.4, 0.86]),
-    /** Metres ahead it looks for a place to stop. */
-    reach: 26,
     /** How slowly its restlessness drifts (seconds), and how far. */
     restlessTime: 70,
     restlessSpread: 0.32,
@@ -83,11 +55,12 @@ export const MOUSE_MISS = Object.freeze(['Listen', 'MouseLeap', 'HeadTilt']);
 export const MOUSE_HIT = Object.freeze(['Listen', 'MouseLeap', 'Dig', 'Shake']);
 
 /**
- * What it may do when it stops, as it wanders: [acts, how likely, what sways that].
+ * What it may do when it stops, as it roams: [acts, how likely, what sways that]. Which of them
+ * it may do at a stop is what it stopped for (STOP_GROUPS in winter-fox-roam.js).
  *  sky     more likely by this much under a strong aurora (it watches the sky)
  *  rest    more likely by this much when it has just run with a chain (it rests)
  *  lively  1: likelier when it is restless, −1: when it is calm
- *  then    'zoom': when it has done it, it tears round in a circle and skids to a stop
+ *  then    'zoom': when it has done it, it tears about this way and that and skids to a stop
  */
 export const FOX_WANDER_STOPS = Object.freeze([
     [['LookAround'], 0.8],
@@ -118,14 +91,12 @@ export const FOX_WANDER_STOPS = Object.freeze([
     [['HeadTilt', 'Listen'], 0.25],
 ].map(([acts, odds, sways = {}]) => Object.freeze([Object.freeze([...acts]), odds, Object.freeze({ ...sways })])));
 
-/** How much less likely what it did at its last stops is now: the last, the one before, and so on. */
-const SEEN_BEFORE = Object.freeze([0.05, 0.3, 0.55, 0.8]);
-/** What it does once it has skidded to a stop out of its circle (one of these, by chance). */
+/** What it does once it has skidded to a stop out of its romp (one of these, by chance). */
 export const AFTER_ZOOM = Object.freeze([
     Object.freeze(['Shake']), Object.freeze(['LookAround']), Object.freeze(['Sit']),
 ]);
-/** How fast it tears round its circle (m/s), how hard it brakes out of it (m/s²), and the circles it tries (m). */
-export const ZOOM = Object.freeze({ speed: 4.4, brake: 6.5, radii: Object.freeze([2.3, 1.9, 1.5]) });
+/** How fast it tears about in a romp (m/s), and how hard it brakes out of it (m/s²). */
+export const ZOOM = Object.freeze({ speed: 4.4, brake: 6.5 });
 
 /** What it answers the board with: a twist, a new level, a perfect clear. */
 const TWIRL = Object.freeze(['Twirl']);
@@ -152,56 +123,6 @@ export const treesFor = (aspect) => FRAME_TREES.filter(([, dist]) => dist < 31).
 });
 
 /**
- * Let a walk take a circle on its way: from a distance run, once or twice round a circle that
- * touches its way there, and on from where it left. A distance run inside a circle is a place on
- * it; the distances beyond are that much further on along its course.
- */
-export function withLoops(walk) {
-    const along = walk.along.bind(walk);
-    const at = walk.at.bind(walk);
-    /** The circles it has taken and not yet forgotten: { at, length, radius, side (+1 to its left) }. */
-    walk.loops = [];
-    /** Metres of circles behind it that it has forgotten. */
-    walk.looped = 0;
-    /** How much of a distance run was circles. */
-    walk.circled = (distance) => {
-        let sum = walk.looped;
-        for (let i = 0; i < walk.loops.length; i++) {
-            const loop = walk.loops[i];
-            sum += Math.max(0, Math.min(loop.length, distance - loop.at));
-        }
-        return sum;
-    };
-    walk.along = (distance) => along(distance - walk.circled(distance));
-    walk.turn = (distance) => {
-        const on = distance - walk.circled(distance);
-        const [q, dir] = along(on);
-        walk.turns.push({ at: on, q, dir: -dir });
-        if (walk.turns.length > 48) walk.turns.splice(0, walk.turns.length - 48);
-    };
-    walk.at = (distance, out = [0, 0, 0]) => {
-        at(distance, out);
-        for (let i = 0; i < walk.loops.length; i++) {
-            const loop = walk.loops[i];
-            const into = distance - loop.at;
-            if (into > 0 && into < loop.length) {
-                const a = into / loop.radius;
-                const sin = Math.sin(out[2]);
-                const cos = Math.cos(out[2]);
-                const aside = loop.side * loop.radius * (1 - Math.cos(a));
-                const ahead = loop.radius * Math.sin(a);
-                out[0] += cos * aside + sin * ahead;
-                out[1] += -sin * aside + cos * ahead;
-                out[2] += loop.side * a;
-                break;
-            }
-        }
-        return out;
-    };
-    return walk;
-}
-
-/**
  * The arctic fox's own life, on whatever course it is given: its paces, its acts, what it answers
  * the board with, its prints. The fox on its round (FoxMind) and the visitor (VisitorMind) are
  * both this animal.
@@ -209,12 +130,10 @@ export function withLoops(walk) {
 export class ArcticFoxMind extends WanderingFoxMind {
     /**
      * @param {object} options  the shared mind's (course, seed, start, paces)
-     * @param {object|null} wander  how it wanders, or null for the plain fox on its course
-     * @param {object} [plan]   where it may go: { roam(x, z), centre [x, z] }
+     * @param {object|null} wander  how it roams (winter-fox-roam.js), or null for the plain fox on its course
      */
-    constructor(options, wander, plan = null) {
+    constructor(options, wander) {
         super({ rig: FOX_RIG, ...options }, wander);
-        this.plan = plan;
         if (this.walk) {
             // (Its prints are pressed where its paws are put down, not counted off along its way.)
             this.paces.printStep = 0;
@@ -249,20 +168,15 @@ export class ArcticFoxMind extends WanderingFoxMind {
         /** Whether what it is doing is an answer to the board (it finishes it), and one waiting its turn. */
         this.stunting = false;
         this.queued = null;
-        /** What its last stops were (indices into its stops), what follows this one, and one it must make next. */
-        this.recent = [];
+        /** What follows this stop, and one it must make next. */
         this.then = null;
         this.forced = null;
-        /** The circle it is tearing round: { end (distance run where it is round) }. */
+        /** The romp it is tearing about in: { end (distance run where it skids to a stop) }. */
         this.zooming = null;
-        if (this.walk?.loops) {
-            this.walk.loops.length = 0;
-            this.walk.looped = 0;
-        }
         super.reset(time);
     }
 
-    /** Stop where it is, bow, and tear round in a circle (captures, tuning). */
+    /** Stop where it is, bow, and tear about (captures, tuning). */
     playZoom(time) {
         this.rehearse(['PlayBow'], time);
         this.then = 'zoom';
@@ -274,42 +188,11 @@ export class ArcticFoxMind extends WanderingFoxMind {
         if (this.heldPace) this.going = this.heldPace;
     }
 
-    /** Fall into another pace for a spell: by its odds, calm or restless, and not the one it is in. */
-    choosePace(time) {
-        if (this.heldPace) {
-            this.going = this.heldPace;
-            this.goingUntil = Infinity;
-            return;
-        }
-        const restless = this.restless ?? 0.45;
-        let total = 0;
-        for (let i = 0; i < PACE_NAMES.length; i++) total += this.paceOdds(PACE_NAMES[i], restless);
-        let r = this.wanderRand() * total;
-        let pick = 'trot';
-        for (let i = 0; i < PACE_NAMES.length; i++) {
-            r -= this.paceOdds(PACE_NAMES[i], restless);
-            if (r <= 0) {
-                pick = PACE_NAMES[i];
-                break;
-            }
-        }
-        const [least, most] = FOX_PACES[pick].spell;
-        this.going = pick;
-        this.goingUntil = time + least + (most - least) * this.wanderRand();
-    }
-
-    paceOdds(name, restless) {
-        const pace = FOX_PACES[name];
-        let odds = pace.calm + (pace.restless - pace.calm) * restless;
-        if (name === this.going) odds *= 0.35;
-        // (Tired, it walks more and bounds less.)
-        if (name === 'walk') odds *= 1 + this.tired;
-        else if (name !== 'trot') odds *= 1 - 0.7 * this.tired;
-        return odds;
-    }
+    /** Its pace at rest is the roaming fox's to choose (winter-fox-roam.js): the plain fox only trots. */
+    choosePace() {}
 
     /**
-     * Its pace now (m/s): the pace it is in, drifting a little; flat out round its circle. It
+     * Its pace now (m/s): the pace it is in, drifting a little; flat out in a romp. It
      * does not set off at speed while it still stands turned to whoever was watching: it comes
      * round to its way first.
      */
@@ -320,48 +203,6 @@ export class ArcticFoxMind extends WanderingFoxMind {
         if (this.going === 'trot') return super.trotAt(time);
         const drift = 0.5 + 0.3 * Math.sin(time / 17.3 + 0.7) + 0.2 * Math.sin(time / 6.9 + 2.1);
         return FOX_PACES[this.going].speed * (0.92 + 0.16 * drift) * (this.going === 'walk' ? 1 : round);
-    }
-
-    /**
-     * What it stops for: by its odds, swayed by the night (under a strong aurora it watches the
-     * sky; after a chain it rests; restless, it plays), and seldom what it has lately done.
-     */
-    chooseStop() {
-        if (!this.walk) return super.chooseStop();
-        if (this.forced) {
-            const { forced } = this;
-            this.forced = null;
-            this.then = null;
-            return forced;
-        }
-        const { stops } = this.wander;
-        const lead = this.recent.length ? stops[this.recent[0]][0][0] : null;
-        let total = 0;
-        for (let i = 0; i < stops.length; i++) total += this.stopOdds(i, lead);
-        let r = this.wanderRand() * total;
-        let pick = stops.length - 1;
-        for (let i = 0; i < stops.length; i++) {
-            r -= this.stopOdds(i, lead);
-            if (r <= 0) {
-                pick = i;
-                break;
-            }
-        }
-        this.recent.unshift(pick);
-        if (this.recent.length > SEEN_BEFORE.length) this.recent.length = SEEN_BEFORE.length;
-        this.then = stops[pick][2].then ?? null;
-        return this.stops[pick];
-    }
-
-    stopOdds(i, lead) {
-        const [acts, odds, sways] = this.wander.stops[i];
-        let k = odds * (1 + (sways.sky ?? 0) * this.sky + (sways.rest ?? 0) * this.tired);
-        if (sways.lively) k *= 1 + 0.8 * sways.lively * (((this.restless ?? 0.45) - 0.45) / 0.45);
-        const seen = this.recent.indexOf(i);
-        if (seen >= 0) k *= SEEN_BEFORE[seen];
-        // (Nor what begins as its last stop began: two stops that open alike look alike.)
-        else if (acts[0] === lead) k *= 0.35;
-        return Math.max(0, k);
     }
 
     /** A hunt it begins as it stands, along its way: its leap carries it the way it is facing. */
@@ -480,98 +321,16 @@ export class ArcticFoxMind extends WanderingFoxMind {
         super.sleep(time);
     }
 
-    // ── Its circle ──
+    // ── Its romp ──
 
-    /** It has done what it stopped for: it falls into a pace — or tears round in a circle first. */
-    onward(time) {
-        if (!this.walk) return;
-        const { then } = this;
-        this.then = null;
-        if (then === 'zoom' && this.zoom(time)) return;
-        this.choosePace(time);
-        // (Standing, no step shows which pace it is in: it sets off in the new one from its first.)
-        if (this.speed < 0.05) this.pose.pace.walk = this.going === 'walk' ? 1 : 0;
-    }
-
-    /** A circle it has room for here: once or twice round, to the side its round lies on. */
-    circleHere() {
-        const laps = this.wanderRand() < 0.4 ? 2 : 1;
-        if (!this.plan?.roam) return null;
-        const [x, z, heading] = this.course.at(this.s, this._spot);
-        const sin = Math.sin(heading);
-        const cos = Math.cos(heading);
-        const [cx, cz] = this.plan.centre;
-        const inner = (cx - x) * cos - (cz - z) * sin >= 0 ? 1 : -1;
-        for (let r = 0; r < ZOOM.radii.length; r++) {
-            const radius = ZOOM.radii[r];
-            for (let k = 0; k < 2; k++) {
-                const side = k === 0 ? inner : -inner;
-                let fits = true;
-                for (let i = 1; i < 24 && fits; i++) {
-                    const a = (i / 24) * TAU;
-                    const aside = side * radius * (1 - Math.cos(a));
-                    const ahead = radius * Math.sin(a);
-                    fits = this.plan.roam(x + cos * aside + sin * ahead, z - sin * aside + cos * ahead);
-                }
-                if (fits) {
-                    return {
-                        at: this.s, length: TAU * radius * laps, radius, side,
-                    };
-                }
-            }
-        }
-        return null;
-    }
-
-    /** Tear round in a circle from here and skid to a stop where it began. False when there is no room. */
-    zoom(time) {
-        if (!this.walk?.loops) return false;
-        const { walk } = this;
-        // (Circles behind it are forgotten: only how far they took it is kept.)
-        for (let i = walk.loops.length - 1; i >= 0; i--) {
-            if (this.s >= walk.loops[i].at + walk.loops[i].length) {
-                walk.looped += walk.loops[i].length;
-                walk.loops.splice(i, 1);
-            }
-        }
-        const loop = this.circleHere();
-        if (!loop) return false;
-        walk.loops.push(loop);
-        this.zooming = { end: loop.at + loop.length };
-        this.paces.brake = ZOOM.brake;
-        this.nextStop = time;
-        this.stopAt = this.zooming.end + 0.45;
-        this.stopAtStation = false;
-        this.forced = AFTER_ZOOM[Math.floor(this.wanderRand() * AFTER_ZOOM.length) % AFTER_ZOOM.length];
-        return true;
+    /** Tear about from here and skid to a stop. The roaming fox does (winter-fox-roam.js): no room here. */
+    zoom() {
+        return false;
     }
 
     endZoom() {
         this.zooming = null;
         this.paces.brake = this._brake;
-    }
-
-    stopped(time) {
-        if (this.zooming) {
-            // It skids to a stop where it began (and does not turn back there: it has just been round).
-            this.endZoom();
-            this.stopAt = null;
-            this.emit({ type: 'skid' });
-            return;
-        }
-        super.stopped(time);
-    }
-
-    setBase(base, plan, course) {
-        if (this.walk?.loops) {
-            // (Its circles are not part of its course: its place along it is kept without them.)
-            this.s -= this.walk.circled(this.s);
-            this.walk.loops.length = 0;
-            this.walk.looped = 0;
-            if (this.zooming) this.endZoom();
-        }
-        this.plan = plan;
-        super.setBase(base, plan, course);
     }
 
     // ── Its prints ──

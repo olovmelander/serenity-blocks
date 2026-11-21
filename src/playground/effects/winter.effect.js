@@ -37,16 +37,16 @@
  *                            looks at from the middle of the fox toward its head)
  *   foxAct=<acts>            stop the fox <foxActAge> seconds before the frame and have it do
  *                            these (comma-separated: Sit, or Listen,Pounce,Dig,Shake — `hunt` is that)
- *   foxTurn=<s>              have the fox pull up and turn back the way it came <s> seconds before
- *                            the frame (as it does now and then on its own)
+ *   foxTurn=<s>              have the fox pull up, look about, and go back the way it came <s>
+ *                            seconds before the frame (the visitor does when the fox is in its way)
  *   foxAct=...               also its own acts: Scratch, SnowBath, Sphinx, StandTall, TailChase, PlayBow,
  *                            MouseLeap, HeadTilt, SkyGaze, Twirl, Pronk; `miss` is Listen,MouseLeap,HeadTilt;
- *                            `zoom` is a play bow and a tear round in a circle
+ *                            `zoom` is a play bow and a romp (a few dashes this way and that)
  *   foxDo=twirl|gaze|rejoice have the fox answer the board (a twist, a new level, a perfect clear)
  *                            <foxActAge> seconds before the frame
  *   foxPace=walk|trot|lope|bound   hold the fox to one of its paces at rest
- *   visitor=<s>              have the second fox set out across the frame <s> seconds before the frame
- *                            (about 5 s later it comes into sight on the left)
+ *   visitor=<s>              have the second fox come in from beyond the left of the frame <s> seconds
+ *                            before the frame (a few seconds later it is in sight)
  *   foxWho=visitor           foxCam, foxAct, foxDo and foxPace are the second fox's
  *   bear=0                   do not fetch the polar bear's body
  *   bearAt=<s>               put the bear <s> seconds into its own course at the frame (its walk is

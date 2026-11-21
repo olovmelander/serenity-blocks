@@ -3,8 +3,8 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-    AFTER_ZOOM, FOX_BLEND, FOX_CLIPS, FOX_TROT, FOX_WANDER, FOX_WANDER_STOPS, FoxMind, MOUSING, POUNCE_AIR, SLEEP_HOLD,
-    foxGaitAmp, foxRunSpeed, foxStride,
+    AFTER_ZOOM, FOX_BLEND, FOX_CLIPS, FOX_RANGE, FOX_TROT, FOX_WANDER_STOPS, FoxMind, MOUSE_MISS, MOUSING, POUNCE_AIR,
+    RoamingFoxMind, SLEEP_HOLD, foxGaitAmp, foxRunSpeed, foxStride,
 } from '../../src/themes/winter/winter-fox-mind.js';
 import {
     FOOT, FOX_ACTS, FOX_BONES, FOX_BONE_INDEX, FOX_LEGS, FOX_MARKS, FOX_RIG, SPEC, SPEC_SIZE, createFoxPosture,
@@ -180,10 +180,11 @@ describe('winter fox mind: the module', () => {
         const imports = [...source.matchAll(/from\s+'([^']+)'/g)].map((m) => m[1]);
         expect(imports).toEqual([
             './winter-core.js', './winter-fox-rig.js', './winter-fox-life.js', '../shared/fox-mind.js',
-            '../shared/fox-wander.js', './winter-fox-visitor.js',
+            './winter-fox-roam.js', './winter-fox-visitor.js',
         ]);
-        // (Its own life and the visitor's way are files of their own, as free of them as it is.)
-        const own = ['winter-fox-life.js', 'winter-fox-visitor.js'];
+        // (Its own life, how it roams, the way it lays and the visitor are files of their own, as
+        // free of them as it is.)
+        const own = ['winter-fox-life.js', 'winter-fox-roam.js', 'winter-fox-trail.js', 'winter-fox-visitor.js'];
         const all = own.reduce((text, file) => text + themeSource('winter', file), source);
         expect(all).not.toMatch(/\bTHREE\b|\bdocument\b|\bwindow\b|performance\.now|Date\.now|Math\.random/);
         expect(all).not.toMatch(/from\s+'three/);
@@ -1909,194 +1910,303 @@ describe('winter fox mind: the frame changes shape', () => {
     });
 });
 
-describe('winter fox mind: as it wanders (the game\'s fox)', () => {
+describe('winter fox mind: as it roams (the game\'s fox)', () => {
     const ASPECTS = [16 / 9, 4 / 3, 1, 430 / 932];
     /** Where a place stands across the frame: a fraction of the half width (+ right). */
     const fractionOf = (x, z, aspect = 16 / 9) => (x / -z) / Math.tan(bearingFor(1, aspect));
+    const treesAt = (aspect) => FRAME_TREES.map(([fraction, dist]) => {
+        const az = bearingFor(fraction, aspect);
+        return [Math.sin(az) * dist, -Math.cos(az) * dist];
+    });
+    const KNOWN = [...FOX_WANDER_STOPS.map(([acts]) => acts), ...AFTER_ZOOM].map((acts) => acts.join('+'));
 
-    /** A quarter hour of a wandering fox at rest: where it stopped, what for, its turns and its trot. */
-    function wander(seed, aspect = 16 / 9, seconds = 900) {
-        const mind = new FoxMind(foxRound(aspect), seed, { wander: true, aspect });
+    /**
+     * A stretch of a roaming fox's night: where and what it stopped for, what it set out to do,
+     * where it went (every half second under way), and how near it came to the frame's edge and
+     * the trees.
+     */
+    function roam(seed, { aspect = 16 / 9, seconds = 900, env = REST } = {}) {
+        const mind = new RoamingFoxMind({ aspect, seed });
+        const trees = treesAt(aspect);
         const stops = [];
-        const turns = [];
+        const errands = [];
+        const track = [];
+        const cells = new Set();
         let { mode } = mind;
+        let errand = null;
         let worstFace = 0;
         let worstFraction = 0;
-        run(mind, 0, seconds, REST, (m, time) => {
-            if (m.walk.turns.length > turns.length) turns.push(time);
-            if (m.mode === 'idle' && mode !== 'idle') {
+        let nearestTree = Infinity;
+        let sideways = 0;
+        let heading = null;
+        run(mind, 0, seconds, env, (m, time) => {
+            const { pose } = m;
+            if (m.errand !== errand) {
+                ({ errand } = m);
+                errands.push(errand);
+            }
+            if (m.mode === 'idle' && mode !== 'idle' && m.next) {
                 stops.push({
-                    time, fraction: fractionOf(m.pose.x, m.pose.z, aspect), what: m.next.join('+'), gap: stationGap(m),
+                    time, fraction: fractionOf(pose.x, pose.z, aspect), what: m.next.join('+'), x: pose.x, z: pose.z,
                 });
             }
             if (m.mode === 'gait' && m.speed > 0.6) worstFace = Math.max(worstFace, Math.abs(m.face));
-            worstFraction = Math.max(worstFraction, Math.abs(fractionOf(m.pose.x, m.pose.z, aspect)));
+            worstFraction = Math.max(worstFraction, Math.abs(fractionOf(pose.x, pose.z, aspect)));
+            trees.forEach(([x, z]) => {
+                nearestTree = Math.min(nearestTree, Math.hypot(pose.x - x, pose.z - z));
+            });
+            if (heading !== null && m.mode === 'gait') {
+                sideways = Math.max(sideways, (m.speed * Math.abs(wrap(pose.heading - heading))) / DT);
+            }
+            ({ heading } = pose);
+            cells.add(`${Math.round(pose.x)},${Math.round(pose.z)}`);
+            if (Math.round(time * 60) % 30 === 0 && m.mode === 'gait' && m.speed > 0.4) {
+                track.push([time, pose.x, pose.z, pose.heading]);
+            }
             ({ mode } = m);
         });
         return {
-            mind, stops, turns, worstFace, worstFraction,
+            mind, stops, errands, track, cells: cells.size, worstFace, worstFraction, nearestTree, sideways,
         };
     }
 
-    it('stops anywhere on the open snow either side of the board, not only at its two places', () => {
+    /** The share of its way under way that it had gone before, the same way, 20 s and more earlier. */
+    function retraced(track) {
+        let again = 0;
+        for (let i = 0; i < track.length; i++) {
+            const [t, x, z, h] = track[i];
+            for (let j = 0; j < i && track[j][0] <= t - 20; j++) {
+                const [, xj, zj, hj] = track[j];
+                if (Math.hypot(x - xj, z - zj) < 0.6 && Math.abs(wrap(h - hj)) < 0.35) {
+                    again += 1;
+                    break;
+                }
+            }
+        }
+        return again / Math.max(1, track.length);
+    }
+
+    it('goes round no ring: it covers the snowfield and seldom goes the same way over the same snow', () => {
         for (const seed of [0xf0c5, 7, 12345]) {
-            const { stops } = wander(seed);
-            expect(stops.length, `seed ${seed}`).toBeGreaterThan(20);
-            stops.forEach(({ fraction }) => {
-                // (Its stray takes it a little either side of where its round is open.)
-                expect(Math.abs(fraction)).toBeGreaterThan(FOX_WANDER.open[0] - 0.08);
-                expect(Math.abs(fraction)).toBeLessThan(FOX_WANDER.open[1] + 0.08);
-            });
-            expect(stops.filter((stop) => stop.fraction < 0).length, `seed ${seed} left`).toBeGreaterThan(5);
-            expect(stops.filter((stop) => stop.fraction > 0).length, `seed ${seed} right`).toBeGreaterThan(5);
-            // Most of them away from its two places.
-            expect(stops.filter((stop) => stop.gap > 1.5).length / stops.length).toBeGreaterThan(0.4);
+            const { track, cells, mind } = roam(seed);
+            // (On its old round, wandering a metre either side of it, it covered some 90 square metres
+            // and was going the same way over the same snow nine tenths of the time.)
+            expect(cells, `seed ${seed}`).toBeGreaterThan(125);
+            expect(retraced(track), `seed ${seed}`).toBeLessThan(0.5);
+            expect(mind.trail.end - mind.s, `seed ${seed}`).toBeLessThan(25);
         }
     });
 
-    it('does many different things when it stops, and seldom the same thing twice running', () => {
+    it('stops on the open snow either side of the board, and does many different things there', () => {
         let repeats = 0;
         let count = 0;
         for (const seed of [0xf0c5, 7, 12345, 99]) {
-            const { stops } = wander(seed);
-            expect(new Set(stops.map((stop) => stop.what)).size, `seed ${seed}`).toBeGreaterThanOrEqual(8);
-            // (Each is one of its stops, or what it does when it has skidded out of its circle.)
-            const known = [...FOX_WANDER_STOPS.map(([acts]) => acts), ...AFTER_ZOOM].map((acts) => acts.join('+'));
-            stops.forEach((stop) => expect(known, stop.what).toContain(stop.what));
+            const { stops } = roam(seed);
+            const label = `seed ${seed}`;
+            expect(stops.length, label).toBeGreaterThan(45);
+            stops.forEach(({ fraction, what }) => {
+                expect(Math.abs(fraction), `${label}: ${what}`).toBeGreaterThan(FOX_RANGE.open[0] - 0.08);
+                expect(Math.abs(fraction), `${label}: ${what}`).toBeLessThan(FOX_RANGE.open[1] + 0.08);
+                expect(KNOWN, what).toContain(what);
+            });
+            expect(stops.filter((stop) => stop.fraction < 0).length, `${label} left`).toBeGreaterThan(10);
+            expect(stops.filter((stop) => stop.fraction > 0).length, `${label} right`).toBeGreaterThan(10);
+            expect(new Set(stops.map((stop) => stop.what)).size, label).toBeGreaterThanOrEqual(15);
             repeats += stops.filter((stop, i) => i > 0 && stop.what === stops[i - 1].what).length;
             count += stops.length;
         }
-        expect(repeats / count).toBeLessThan(0.12);
+        expect(repeats / count).toBeLessThan(0.08);
     });
 
-    it('trots on between stops for a few seconds or for a long while, so its stops come in spells', () => {
-        const gaps = [];
-        for (const seed of [0xf0c5, 7, 12345]) {
-            const { stops } = wander(seed);
-            for (let i = 1; i < stops.length; i++) gaps.push(stops[i].time - stops[i - 1].time);
-        }
-        gaps.sort((a, b) => a - b);
-        expect(gaps[Math.floor(gaps.length * 0.15)]).toBeLessThan(20);
-        expect(gaps[Math.floor(gaps.length * 0.9)]).toBeGreaterThan(35);
-    });
-
-    it('turns back the way it came now and then, never twice close together, and trots head first', () => {
-        for (const seed of [0xf0c5, 7, 12345]) {
-            const { turns, worstFace } = wander(seed);
-            expect(turns.length, `seed ${seed}`).toBeGreaterThanOrEqual(4);
-            for (let i = 1; i < turns.length; i++) expect(turns[i] - turns[i - 1]).toBeGreaterThan(FOX_WANDER.turnGap);
-            // Once under way again it faces where it goes (its half turn is stepped round before it sets off).
-            expect(worstFace, `seed ${seed}`).toBeLessThan(0.7);
-        }
-    });
-
-    it('goes the other way round after a turn: back over the ground it came by', () => {
-        const mind = new FoxMind(WIDE, 7, { wander: true });
-        let time = run(mind, 0, 5);
-        expect(mind.turnHere(time)).toBe(true);
-        const before = mind.s;
-        time = runUntil(mind, time, (m) => m.walk.turns.length === 1, 10);
-        const [q0] = mind.walk.along(mind.s);
-        time = runUntil(mind, time, (m) => m.mode === 'gait' && m.speed > 1, 60);
-        run(mind, time, 4);
-        const [q1, dir] = mind.walk.along(mind.s);
-        expect(dir).toBe(-1);
-        expect(q1).toBeLessThan(q0 - 3);
-        // (The ground it covers still counts up: only its way round has turned.)
-        expect(mind.s).toBeGreaterThan(before);
-    });
-
-    it('trots quicker and slower, within its paces', () => {
-        const mind = new FoxMind(WIDE, 7, { wander: true });
-        const paces = [];
-        for (let t = 0; t < 600; t += 0.5) paces.push(mind.trotAt(t) / FOX_TROT);
-        expect(Math.min(...paces)).toBeGreaterThanOrEqual(FOX_WANDER.pace[0] - 1e-9);
-        expect(Math.max(...paces)).toBeLessThanOrEqual(FOX_WANDER.pace[1] + 1e-9);
-        const [slowest, quickest] = FOX_WANDER.pace;
-        expect(Math.max(...paces) - Math.min(...paces)).toBeGreaterThan(0.5 * (quickest - slowest));
-    });
-
-    it('strays either side of its round, smoothly, and never nearer a framing tree than its round goes', () => {
-        for (const aspect of ASPECTS) {
-            const round = foxRound(aspect);
-            const { walk } = new FoxMind(round, 7, { wander: true, aspect });
-            const trees = FRAME_TREES.map(([fraction, dist]) => {
-                const az = bearingFor(fraction, aspect);
-                return [Math.sin(az) * dist, -Math.cos(az) * dist];
-            });
-            const clearance = (x, z) => Math.min(...trees.map(([tx, tz]) => Math.hypot(tx - x, tz - z)));
-            const strayed = [0, 0, 0];
-            const plain = [0, 0, 0];
-            const ahead = [0, 0, 0];
-            const plainAhead = [0, 0, 0];
-            let left = 0;
-            let right = 0;
-            // (Its stray is different every lap: eight of them.)
-            for (let q = 0; q < round.length * 8; q += 0.1) {
-                walk.at(q, strayed);
-                foxAt(round, q, plain);
-                const dx = strayed[0] - plain[0];
-                const dz = strayed[1] - plain[1];
-                expect(Math.hypot(dx, dz)).toBeLessThanOrEqual(FOX_WANDER.stray + 1e-6);
-                const edge = Math.max(FOX_WANDER.open[1], Math.abs(fractionOf(plain[0], plain[1], aspect)));
-                expect(Math.abs(fractionOf(strayed[0], strayed[1], aspect)), `${aspect.toFixed(2)} at ${q.toFixed(1)}`)
-                    .toBeLessThan(edge + 0.01);
-                const side = Math.cos(plain[2]) * dx - Math.sin(plain[2]) * dz;
-                left = Math.min(left, side);
-                right = Math.max(right, side);
-                const want = Math.min(FOX_WANDER.treeRoom, clearance(plain[0], plain[1]));
-                expect(clearance(strayed[0], strayed[1]), `${aspect.toFixed(2)} at ${q.toFixed(1)}`)
-                    .toBeGreaterThan(want - 0.05);
-                // Its heading follows its stray, and turns hardly more sharply than its round does (0.35 rad/m).
-                walk.at(q + 0.1, ahead);
-                foxAt(round, q + 0.1, plainAhead);
-                const turn = Math.abs(wrap(ahead[2] - strayed[2]));
-                expect(turn, `${aspect.toFixed(2)} at ${q.toFixed(1)}`)
-                    .toBeLessThan(Math.abs(wrap(plainAhead[2] - plain[2])) + 0.035);
+    it('works one side of the board a while before it crosses to the other', () => {
+        let switches = 0;
+        let pairs = 0;
+        for (const seed of [0xf0c5, 7, 12345, 99]) {
+            const { stops, errands } = roam(seed);
+            for (let i = 1; i < stops.length; i++) {
+                if (Math.sign(stops[i].fraction) !== Math.sign(stops[i - 1].fraction)) switches += 1;
+                pairs += 1;
             }
-            if (aspect >= 1) {
-                expect(right, aspect.toFixed(2)).toBeGreaterThan(0.35);
-                expect(left, aspect.toFixed(2)).toBeLessThan(-0.35);
-            } else {
-                // (An upright screen's round is drawn near the eye, by the board's foot: less room to stray.)
-                expect(Math.max(right, -left), aspect.toFixed(2)).toBeGreaterThan(0.3);
+            expect(errands.filter((name) => name === 'cross').length, `seed ${seed}`).toBeGreaterThan(3);
+        }
+        // (Stopping where it liked on its round, it was on the other side every other stop.)
+        expect(switches / pairs).toBeLessThan(0.35);
+    });
+
+    it('has a reason for what it does: it hunts when it is hungry, tries again after a miss, digs in a catch', () => {
+        const mind = new RoamingFoxMind({ seed: 7 });
+        const share = (odds, names) => names.reduce((sum, name) => sum + (odds[name] ?? 0), 0)
+            / Object.values(odds).reduce((sum, w) => sum + w, 0);
+        mind.recentErrands = [];
+        mind.hunger = 0.1;
+        const fed = share(mind.errandOdds(0), ['forage', 'hunt']);
+        mind.hunger = 0.95;
+        const hungry = share(mind.errandOdds(0), ['forage', 'hunt']);
+        expect(hungry).toBeGreaterThan(fed * 1.5);
+        // Under a strong aurora it goes up to watch more; tired by a chain, it rests more.
+        mind.hunger = 0.5;
+        const calm = mind.errandOdds(0);
+        mind.sky = 1;
+        expect(share(mind.errandOdds(0), ['lookout'])).toBeGreaterThan(share(calm, ['lookout']) * 2);
+        mind.sky = 0;
+        mind.tired = 0.8;
+        expect(share(mind.errandOdds(0), ['rest'])).toBeGreaterThan(share(calm, ['rest']) * 3);
+        // What follows what, over an hour of nights: a miss is tried again a step or two on, and a
+        // catch is carried off and dug in.
+        let misses = 0;
+        let retries = 0;
+        let catches = 0;
+        let cached = 0;
+        for (const seed of [0xf0c5, 7, 12345, 99]) {
+            const { stops } = roam(seed);
+            for (let i = 0; i + 1 < stops.length; i++) {
+                const [now, next] = [stops[i], stops[i + 1]];
+                const apart = Math.hypot(next.x - now.x, next.z - now.z);
+                if (now.what === MOUSE_MISS.join('+')) {
+                    misses += 1;
+                    if (next.what.includes('Leap') || next.what.includes('Pounce')) retries += apart < 5 ? 1 : 0;
+                }
+                if (now.what.includes('Dig') && (now.what.includes('Pounce') || now.what.includes('MouseLeap'))) {
+                    catches += 1;
+                    if (next.what === 'Dig+Shake') cached += 1;
+                }
             }
         }
+        expect(misses).toBeGreaterThan(8);
+        expect(retries / misses).toBeGreaterThan(0.3);
+        expect(catches).toBeGreaterThan(8);
+        expect(cached / catches).toBeGreaterThan(0.2);
     });
 
-    it('stays in the frame, at any width', () => {
+    /** Ten minutes of its stops: how many, how many it set off from another way than it came, how it faced under way. */
+    function turnsOf(seed) {
+        const mind = new RoamingFoxMind({ seed });
+        let { mode } = mind;
+        let arrived = null;
+        let coming = mind.pose.heading;
+        const out = { turned: 0, stops: 0, worstFace: 0 };
+        run(mind, 0, 600, REST, (m) => {
+            // (The way it came: its heading the step before it pulled up.)
+            if (m.mode === 'idle' && mode !== 'idle') arrived = coming;
+            coming = m.pose.heading;
+            if (m.mode === 'gait' && mode === 'idle' && arrived !== null) {
+                // (Where its way now leads from where it stood, against the way it came.)
+                const [, , way] = m.trail.at(m.s, [0, 0, 0]);
+                if (Math.abs(wrap(way - arrived)) > 1) out.turned += 1;
+                out.stops += 1;
+            }
+            if (m.mode === 'gait' && m.speed > 0.6) out.worstFace = Math.max(out.worstFace, Math.abs(m.face));
+            ({ mode } = m);
+        });
+        return out;
+    }
+
+    it('turns where it stands to wherever it goes next, and goes head first', () => {
+        let turned = 0;
+        let stops = 0;
+        for (const seed of [0xf0c5, 7, 12345]) {
+            const seen = turnsOf(seed);
+            turned += seen.turned;
+            stops += seen.stops;
+            expect(seen.worstFace, `seed ${seed}`).toBeLessThan(0.7);
+        }
+        // It often sets off another way than the way it came.
+        expect(turned / stops).toBeGreaterThan(0.3);
+    });
+
+    it('stays in the frame and clear of the trees, at any width, at rest and at a run', () => {
         for (const aspect of ASPECTS) {
-            const { worstFraction } = wander(7, aspect, 600);
-            expect(worstFraction, aspect.toFixed(2)).toBeLessThan(0.95);
+            for (const env of [REST, { power: 0.7, surge: 0 }]) {
+                const label = `${aspect.toFixed(2)} at ${env.power ? 'a run' : 'rest'}`;
+                const { worstFraction, nearestTree, mind } = roam(7, { aspect, seconds: 300, env });
+                expect(worstFraction, label).toBeLessThan(0.95);
+                expect(nearestTree, label).toBeGreaterThan(1.4);
+                expect(Number.isFinite(mind.pose.x + mind.pose.z + mind.pose.heading), label).toBe(true);
+            }
         }
     });
 
-    it('wanders the same way again from the same seed, and another way from another', () => {
-        const a = wander(7, 16 / 9, 300);
-        const b = wander(7, 16 / 9, 300);
-        const c = wander(8, 16 / 9, 300);
+    it('at a run it races about its snow, not round a ring, and slows to take a tight turn', () => {
+        for (const seed of [7, 12345]) {
+            const { cells, sideways, mind } = roam(seed, { seconds: 120, env: { power: 0.7, surge: 0 } });
+            // (Round its old ring at a run it covered 80 square metres in two minutes, and swung
+            // round its ends at over 55 m/s².)
+            expect(cells, `seed ${seed}`).toBeGreaterThan(90);
+            expect(sideways, `seed ${seed}`).toBeLessThan(30);
+            expect(mind.speed, `seed ${seed}`).toBeGreaterThan(2);
+        }
+    });
+
+    it('roams the same way again from the same seed, and another way from another', () => {
+        const a = roam(7, { seconds: 300 });
+        const b = roam(7, { seconds: 300 });
+        const c = roam(8, { seconds: 300 });
         expect(b.stops).toEqual(a.stops);
+        expect(b.errands).toEqual(a.errands);
         expect(b.mind.pose.x).toBe(a.mind.pose.x);
         expect(b.mind.pose.z).toBe(a.mind.pose.z);
         expect(c.stops.map((stop) => stop.what)).not.toEqual(a.stops.map((stop) => stop.what));
+        // After a reset it is the same night again.
+        a.mind.reset(0);
+        let first = null;
+        runUntil(a.mind, 0, (m) => {
+            if (m.mode === 'idle' && m.next) first = m.next.join('+');
+            return first !== null;
+        }, 60);
+        expect(first).toBe(b.stops[0].what);
     });
 
-    it('keeps its place and its way round when the frame changes shape', () => {
-        const mind = new FoxMind(WIDE, 7, { wander: true });
-        let time = run(mind, 0, 5);
-        mind.turnHere(time);
-        time = runUntil(mind, time, (m) => m.mode === 'gait' && m.walk.turns.length === 1 && m.speed > 1, 60);
-        const [q, dir] = mind.walk.along(mind.s);
-        const tall = foxRound(9 / 16);
-        mind.setRound(tall, 9 / 16);
-        const [qTall, dirTall] = mind.walk.along(mind.s);
-        expect(dirTall).toBe(dir);
-        expect(qTall / tall.length).toBeCloseTo(q / WIDE.length, 9);
-        // It goes on from there without a jump.
+    it('goes on from where it is, without a jump, when the frame changes shape', () => {
+        const mind = new RoamingFoxMind({ seed: 7 });
+        let time = runUntil(mind, 0, (m) => m.mode === 'gait' && m.speed > 1, 60);
+        time = run(mind, time, 3);
+        const before = { x: mind.pose.x, z: mind.pose.z, heading: mind.pose.heading };
+        mind.setAspect(9 / 16);
+        expect(mind.range.aspect).toBe(9 / 16);
         mind.resolve(time);
-        const before = { x: mind.pose.x, z: mind.pose.z };
+        expect(mind.pose.x).toBeCloseTo(before.x, 9);
+        expect(mind.pose.z).toBeCloseTo(before.z, 9);
         mind.step(DT, time + DT, REST);
         expect(Math.hypot(mind.pose.x - before.x, mind.pose.z - before.z)).toBeLessThan(0.1);
+        // (Its snow is drawn nearer on an upright screen: from where the wide frame left it, it makes
+        // its way into the new frame's, and keeps to it.)
+        time = run(mind, time + DT, 45);
+        let worst = 0;
+        run(mind, time, 120, REST, (m) => {
+            worst = Math.max(worst, Math.abs(fractionOf(m.pose.x, m.pose.z, 9 / 16)));
+        });
+        expect(worst).toBeLessThan(0.95);
+    });
+
+    it('pulls up and goes back the way it came when it is asked to (captures, the visitor)', () => {
+        const mind = new RoamingFoxMind({ seed: 7 });
+        let time = runUntil(mind, 0, (m) => m.mode === 'gait' && m.speed > 1, 60);
+        time = run(mind, time, 1);
+        const came = mind.pose.heading;
+        expect(mind.turnHere(time)).toBe(true);
+        time = runUntil(mind, time, (m) => m.mode === 'idle', 10);
+        // (What it set out to do from there: back the way it came, and on.)
+        expect(mind.recentErrands).toContain('back');
+        time = runUntil(mind, time, (m) => m.mode === 'gait' && m.speed > 1, 30);
+        run(mind, time, 1);
+        expect(Math.abs(wrap(mind.pose.heading - came))).toBeGreaterThan(Math.PI / 2);
+    });
+
+    it('goes over to watch what it has noticed, and looks at it there', () => {
+        // (The bear out on the ice, beyond the left of its snow.)
+        const bear = [-14, -40];
+        let watched = 0;
+        for (const seed of [0xf0c5, 7, 12345]) {
+            const mind = new RoamingFoxMind({ seed });
+            let looked = false;
+            run(mind, 0, 420, REST, (m, time) => {
+                if (Math.round(time * 60) % 300 === 0) m.notice(bear[0], bear[1], time, 'bear');
+                if (m.errand === 'watch' && m.mode === 'idle' && m.attending
+                    && m.attending.x === bear[0] && m.attending.z === bear[1]) looked = true;
+            });
+            if (looked) watched += 1;
+        }
+        expect(watched).toBeGreaterThanOrEqual(2);
     });
 
     it('leaves the plain fox (and every other theme\'s) as it was', () => {
@@ -2105,5 +2215,6 @@ describe('winter fox mind: as it wanders (the game\'s fox)', () => {
         expect(plain.trotAt(10)).toBe(FOX_TROT);
         expect(plain.faceTime(10)).toBe(1.8);
         expect(plain.turnHere(1)).toBe(false);
+        expect(plain.range).toBeUndefined();
     });
 });
