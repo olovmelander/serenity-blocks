@@ -285,7 +285,7 @@ export class AuroraDirector {
             blue: 0,
         }));
         this.ripples = Array.from({ length: MAX_RIPPLES }, () => ({
-            azimuth: 0, range: 0, strength: 0, speed: 26, color: [0, 0, 0],
+            azimuth: 0, range: 0, strength: 0, speed: 26, fracture: 0, color: [0, 0, 0],
         }));
         this.meteors = Array.from({ length: MAX_METEORS }, () => ({
             fromAzimuth: 0,
@@ -375,6 +375,8 @@ export class AuroraDirector {
         this.stormTint = 0;
         this.stormTarget = 0;
         this.b2bCount = 0;
+        this.redArcBorn = -Infinity;
+        this.redArcBearing = 0;
         this.heat.reset();
         this.heatPunch = 0;
         this.heatLevel = 0;
@@ -410,6 +412,7 @@ export class AuroraDirector {
         this.crownPhase = 0;
         this.hush = 0;
         this.hushHold = 0;
+        this.farewellPending = false;
         this.fireballs = 0;
         this.meteorSlot = null;
         this.substormKey = null;
@@ -517,8 +520,9 @@ export class AuroraDirector {
     }
 
     onBackToBack(payload) {
-        this.boardFor(payload).b2b = true;
-        return true;
+        const active = payload?.active !== false;
+        this.boardFor(payload).b2b = active;
+        return active;
     }
 
     onPerfectClear(payload) {
@@ -577,6 +581,11 @@ export class AuroraDirector {
         this.calm();
         this.hushHold = HUSH_HOLD;
         this.goldHold = 0;
+        this.farewellPending = true;
+        return true;
+    }
+
+    queueFarewell() {
         if (this.meteorCount < MAX_METEORS) {
             const meteor = this.meteors[this.meteorCount];
             const side = this.random() < 0.5 ? -1 : 1;
@@ -590,7 +599,6 @@ export class AuroraDirector {
             meteor.kind = 0;
             this.meteorCount += 1;
         }
-        return true;
     }
 
     /**
@@ -705,7 +713,7 @@ export class AuroraDirector {
         this.wake(arc, board.azimuth + reach, width, amount * (1 + lean), 0.02, 0, tops);
     }
 
-    queueRipple(azimuth, range, strength, speed, color) {
+    queueRipple(azimuth, range, strength, speed, color, fracture = 0) {
         let ripple = null;
         if (this.rippleCount < MAX_RIPPLES) {
             ripple = this.ripples[this.rippleCount];
@@ -719,6 +727,7 @@ export class AuroraDirector {
         ripple.range = clamp01(range);
         ripple.strength = strength;
         ripple.speed = speed;
+        ripple.fracture = fracture;
         [ripple.color[0], ripple.color[1], ripple.color[2]] = color;
     }
 
@@ -870,7 +879,15 @@ export class AuroraDirector {
         this.wakeBeside(AURORA_ARCS[0], board, 0.1, 0.2 * strength);
         if (RESTING_ARCS[1]) this.wakeBeside(RESTING_ARCS[1], board, 0.1, 0.15 * strength);
         const azimuth = board.azimuth + (board.column - 0.5) * 2 * board.halfWidth;
-        this.queueRipple(azimuth, 0.25 + drop * 0.2, (0.42 + drop * 0.3) * strength, 24 + drop * 8, color);
+        const side = board.column < 0.5 ? -1 : 1;
+        this.queueRipple(
+            azimuth,
+            0.25 + drop * 0.2,
+            (0.42 + drop * 0.3) * strength,
+            24 + drop * 8,
+            color,
+            drop > BURST_DROP ? side * drop * 0.7 : 0,
+        );
         // A hard drop lands on the lake: ice dust rides its ring out across the water.
         if (drop > BURST_DROP) this.queueBurst(azimuth, 0.25 + drop * 0.2, 0.45 + drop * 0.55, 24 + drop * 8, color);
         this.activity = Math.min(1, this.activity + 0.012);
@@ -930,6 +947,8 @@ export class AuroraDirector {
         const flame = (0.35 + lines * 0.15) * (1 + (depth - 1) * 0.2);
         this.launchSweep(flame, SWEEP.seconds / pace, SWEEP.width * (1 + (depth - 1) * 0.18));
         if (lines >= 2) this.launchSweep(flame * 0.6, SWEEP.seconds / pace, SWEEP.width, 0.22);
+        // The third note climbs last and slowest, leaving a gap of dark sky below it.
+        if (lines === 3) this.launchSweep(flame * 0.46, (SWEEP.seconds * 1.3) / pace, SWEEP.width * 0.72, 0.54);
         this.surge = Math.min(0.8, this.surge + (0.18 + lines * 0.07) * boost);
         this.heightKick = Math.min(0.9, this.heightKick + 0.14 + lines * 0.07);
         this.fringeKick = Math.min(1.2, this.fringeKick + lines * 0.22);
@@ -941,9 +960,10 @@ export class AuroraDirector {
             Math.max(0.12 + lines * 0.05, streak) + (lines - 1) * 0.04 + (depth - 1) * 0.07 + (quad ? 0.18 : 0),
             1.7 + lines * 0.15,
         );
-        this.queueRipple(azimuth, 0.45, (0.7 + lines * 0.15) * boost, 34, tint);
-        if (lines >= 2) this.queueRipple(azimuth - board.halfWidth * 1.4, 0.2, 0.4 + lines * 0.08, 28, tint);
-        if (lines >= 3) this.queueRipple(azimuth + board.halfWidth * 1.4, 0.62, 0.4 + lines * 0.08, 30, tint);
+        const fractureSide = lines > 1 || board.column >= 0.5 ? 1 : -1;
+        this.queueRipple(azimuth, 0.45, (0.7 + lines * 0.15) * boost, 34, tint, fractureSide * (0.48 + lines * 0.13));
+        if (lines >= 2) this.queueRipple(azimuth - board.halfWidth * 1.4, 0.2, 0.4 + lines * 0.08, 28, tint, -0.72);
+        if (lines >= 3) this.queueRipple(azimuth + board.halfWidth * 1.4, 0.62, 0.4 + lines * 0.08, 30, tint, 0.86);
         if (lines === 3) this.queueMeteors(1, 1.4);
         // From the third wave on, a meteor more each wave.
         if (depth >= 3) this.queueMeteors(Math.min(3, depth - 2), 1.3 + Math.min(depth, 8) * 0.08);
@@ -1016,7 +1036,14 @@ export class AuroraDirector {
         }
         this.heightKick = Math.min(0.9, this.heightKick + 0.06 * step);
         this.crownKick = Math.min(1.2, this.crownKick + 0.06 * step);
-        this.queueRipple(board.azimuth, 0.3 + 0.08 * step, 0.5 + 0.15 * step, 30 + 4 * step, blend);
+        this.queueRipple(
+            board.azimuth,
+            0.3 + 0.08 * step,
+            0.5 + 0.15 * step,
+            30 + 4 * step,
+            blend,
+            (step % 2 ? -1 : 1) * Math.min(1.2, 0.64 + step * 0.12),
+        );
     }
 
     /**
@@ -1026,6 +1053,8 @@ export class AuroraDirector {
      */
     cueBackToBack(board) {
         const count = this.b2bCount;
+        this.redArcBorn = this.time;
+        this.redArcBearing = board.azimuth;
         for (const arc of RESTING_ARCS) {
             const near = arc.index === 0 ? 1 : 0.8;
             this.pluck(
@@ -1045,7 +1074,7 @@ export class AuroraDirector {
         this.launchSweep(0.3 + count * 0.12, SWEEP.seconds, SWEEP.width, 0.18);
         this.crownKick = Math.min(1.2, this.crownKick + 0.25 + count * 0.08);
         this.heightKick = Math.min(0.9, this.heightKick + 0.08 * count);
-        this.queueRipple(board.azimuth, 0.55, 0.6 + count * 0.12, 32, CRIMSON);
+        this.queueRipple(board.azimuth, 0.55, 0.6 + count * 0.12, 32, CRIMSON, -1.05);
         if (count >= 2) this.queueMeteors(Math.min(3, count - 1), 1.6);
     }
 
@@ -1106,9 +1135,12 @@ export class AuroraDirector {
             this.wake(arc, board.azimuth, 0.5, 1.2, 0.6, 0, 0.9);
         }
         this.launch(CORONA_ARC, board.azimuth, 0, 0, 2.8, 0.9, 1, 0, AMBER);
+        // After the gold crown opens, its light peels away along the two edges of
+        // the board. This second movement still reads once the meteor shower passes.
+        this.pluck(AURORA_ARCS[0], board, 0.28, 2.5, 0.11, 0.86, 0, AMBER, 0.9);
         this.queueMeteors(6, 2);
-        this.queueRipple(board.azimuth, 0.4, 1.2, 38, AMBER);
-        this.queueRipple(board.azimuth, 0.62, 0.9, 30, AMBER);
+        this.queueRipple(board.azimuth, 0.4, 1.2, 38, AMBER, -1.45);
+        this.queueRipple(board.azimuth, 0.62, 0.9, 30, AMBER, 1.45);
         for (let i = 0; i < 3; i += 1) this.pulseLight[i] += AMBER[i] * 2.4;
         this.lastClearAt = this.time;
         this.requestShake(0.0307, 190);
@@ -1198,6 +1230,10 @@ export class AuroraDirector {
         this.burstCount = 0;
         this.shakeAmount = 0;
         this.shakeDuration = 0;
+        if (this.farewellPending) {
+            this.queueFarewell();
+            this.farewellPending = false;
+        }
         for (const board of this.boards) {
             if (board.pending) {
                 this.resolve(board);
@@ -1459,7 +1495,8 @@ export class AuroraDirector {
                 const base = pulse.row * BILLOW.slots * 4;
                 let weakest = base;
                 for (let slot = 1; slot < BILLOW.slots; slot += 1) {
-                    if (Math.abs(billows[base + slot * 4 + 1]) < Math.abs(billows[weakest + 1])) weakest = base + slot * 4;
+                    const offset = base + slot * 4;
+                    if (Math.abs(billows[offset + 1]) < Math.abs(billows[weakest + 1])) weakest = offset;
                 }
                 if (Math.abs(amplitude) > Math.abs(billows[weakest + 1])) {
                     billows[weakest] = centre;
@@ -1577,6 +1614,15 @@ export class AuroraDirector {
     /** The crown, the curls and the pillars, written into the forms' table (FORMS). */
     deriveForms() {
         const { forms, gold } = this;
+        // Two detached red arcs during the echo of a difficult clear. Kept in the
+        // same form table as the crown so both the sky and the ice see them.
+        const red = FORMS.redArc * 4;
+        const redAge = clamp(this.time - this.redArcBorn, 0, 3.4);
+        forms[red] = this.redArcBearing;
+        forms[red + 1] = Math.sin(this.skyTop * 0.47);
+        forms[red + 2] = redAge;
+        forms[red + 3] = smoothstep(0, 0.42, redAge) * (1 - smoothstep(1.1, 3.4, redAge))
+            * (this.reducedMotion ? 0.58 : 1);
         const open = this.corona;
         let o = FORMS.crown * 4;
         // A wide light that comes up quickly: Reduce flashing halves it (ADR-0021).

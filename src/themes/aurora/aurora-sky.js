@@ -11,7 +11,7 @@
  */
 import * as THREE from 'three/webgpu';
 import {
-    Fn, abs, atan, cameraPosition, cameraProjectionMatrix, cameraViewMatrix, clamp, cross, dot, exp, float,
+    Fn, If, abs, atan, cameraPosition, cameraProjectionMatrix, cameraViewMatrix, clamp, cross, dot, exp, float,
     instanceIndex, instancedBufferAttribute, length, max, mix, normalize, positionGeometry,
     positionWorld, select, sin, smoothstep, sqrt, texture, uniformArray, uv, varying, vec2, vec3, vec4,
 } from 'three/tsl';
@@ -57,11 +57,24 @@ const direction = (azimuth, elevation) => new THREE.Vector3(
 );
 
 /** The Milky Way crosses the frame on the diagonal the main arc leaves open. */
-const GALAXY_A = direction(-50 * DEG, 3 * DEG);
-const GALAXY_B = direction(14 * DEG, 64 * DEG);
+const GALAXY_A = direction(-45 * DEG, 3 * DEG);
+const GALAXY_B = direction(17 * DEG, 54 * DEG);
 export const GALAXY_NORMAL = new THREE.Vector3().crossVectors(GALAXY_A, GALAXY_B).normalize();
 const GALAXY_U = GALAXY_A.clone();
 const GALAXY_V = new THREE.Vector3().crossVectors(GALAXY_NORMAL, GALAXY_U).normalize();
+
+/** Mix the polar cirrus over a sky which already includes the display and the moon.
+ * `sheet` carries linear curtain radiance and the cloud opacity along the same sightline.
+ */
+export function cloudedSky(sky, sheet, u) {
+    const thin = sheet.a.mul(-1.25).add(1);
+    const scattered = u.skyHorizon.mul(0.85)
+        .add(vec3(0.028, 0.042, 0.065).mul(thin))
+        .add(u.auroraLight.mul(0.11))
+        .add(u.moonLight.mul(0.45))
+        .add(sheet.rgb.mul(thin.mul(0.34).add(0.08)));
+    return mix(sky, scattered, sheet.a);
+}
 
 /** Radiance of the full moon's face: bright against the night, never a blinding disc. */
 const MOON_BRIGHTNESS = 0.85;
@@ -145,8 +158,13 @@ export function buildStarCatalogue(count, random) {
         const x = SKY_POLE[0] * cosPole + POLE_X[0] * ax + POLE_Y[0] * ay;
         const y = SKY_POLE[1] * cosPole + POLE_X[1] * ax + POLE_Y[1] * ay;
         const z = SKY_POLE[2] * cosPole + POLE_X[2] * ax + POLE_Y[2] * ay;
-        const plane = (x * GALAXY_NORMAL.x + y * GALAXY_NORMAL.y + z * GALAXY_NORMAL.z) / 0.2;
-        if (random() > (0.34 + Math.exp(-plane * plane)) / 1.34) continue;
+        const latitude = x * GALAXY_NORMAL.x + y * GALAXY_NORMAL.y + z * GALAXY_NORMAL.z;
+        const v = x * GALAXY_V.x + y * GALAXY_V.y + z * GALAXY_V.z;
+        // The rift in the galactic bulge blocks both the glow and the catalogue behind it.
+        const rift = v * (0.12 - 0.16 * v * v);
+        const lane = Math.max(0, 1 - Math.abs(latitude - rift) * 27);
+        const plane = latitude / 0.155;
+        if (random() > (0.28 + Math.exp(-plane * plane) * (1 - lane * 0.89)) / 1.28) continue;
         const rank = random() ** 6;
         // The first few are the named stars: larger, with diffraction spikes.
         const hero = placed < Math.min(38, Math.ceil(count / 260));
@@ -196,14 +214,14 @@ export class AuroraSky {
         this.geometries = new Set();
         this.materials = new Set();
         this.createDome(curtains, noiseTexture);
-        this.createStars(random);
+        this.createStars(random, curtains);
         this.createMeteors();
     }
 
     createDome(curtains, noiseTexture) {
         const u = this.uniforms;
         const material = new THREE.MeshBasicNodeMaterial({
-            side: THREE.BackSide, depthWrite: false, depthTest: false, fog: false,
+            side: THREE.BackSide, depthWrite: false, depthTest: true, fog: false,
         });
         material.name = 'Aurora — sky dome';
         material.colorNode = Fn(() => {
@@ -220,34 +238,37 @@ export class AuroraSky {
             // first hour.
             const fixed = turnSky(rd, u.skyTurn, -1).toVar();
             const plane = dot(fixed, vec3(GALAXY_NORMAL.x, GALAXY_NORMAL.y, GALAXY_NORMAL.z));
-            const along = atan(
-                dot(fixed, vec3(GALAXY_V.x, GALAXY_V.y, GALAXY_V.z)),
-                dot(fixed, vec3(GALAXY_U.x, GALAXY_U.y, GALAXY_U.z)),
-            );
-            const galaxyUV = vec2(along.mul(0.62), plane.mul(1.5).add(0.5));
-            const broad = texture(noiseTexture, galaxyUV);
-            // The finer reads are isotropic: stretched along the band they comb into streaks.
-            const iso = vec2(along, plane).mul(1.5);
-            const detail = texture(noiseTexture, iso.mul(1.45).add(0.31));
-            // Star clouds: a finer read that breaks the band into knots of unresolved stars.
-            const knots = texture(noiseTexture, iso.mul(3.4).add(vec2(0.67, 0.19)));
-            const band = exp(plane.mul(plane).mul(-34));
-            const clouds = smoothstep(0.22, 0.92, broad.b.mul(0.55).add(detail.r.mul(0.3)).add(knots.g.mul(0.15)));
-            const lane = smoothstep(0.42, 0.78, broad.a.mul(0.6).add(detail.g.mul(0.4)))
-                .mul(exp(plane.mul(plane).mul(-190)));
-            const glow = band.mul(clouds).mul(knots.r.mul(0.45).add(0.78));
-            const galaxy = vec3(0.5, 0.6, 0.86).mul(glow)
-                .add(vec3(0.95, 0.74, 0.52).mul(band.mul(band).mul(clouds).mul(0.55)))
-                .add(vec3(0.42, 0.5, 0.72).mul(exp(plane.mul(plane).mul(-8)).mul(0.1)))
-                .mul(lane.mul(0.85).oneMinus())
-                .mul(smoothstep(0.02, 0.3, rd.y).mul(u.galaxyGain.mul(0.12)));
-            sky.addAssign(galaxy);
+            If(abs(plane).lessThan(0.46), () => {
+                const v = dot(fixed, vec3(GALAXY_V.x, GALAXY_V.y, GALAXY_V.z)).toVar();
+                const along = atan(v, dot(fixed, vec3(GALAXY_U.x, GALAXY_U.y, GALAXY_U.z)));
+                const at = vec2(along, plane).toVar();
+                const broad = texture(noiseTexture, at.mul(0.64).add(0.31)).level(1).toVar();
+                const detail = texture(noiseTexture, at.mul(1.65).add(0.67)).level(0).toVar();
+                const knots = texture(noiseTexture, at.mul(4.4).add(vec2(0.24, 0.57))).level(1).toVar();
+                const rift = v.mul(v.mul(v).mul(-0.16).add(0.12))
+                    .add(broad.a.sub(0.5).mul(0.056)).add(detail.b.sub(0.5).mul(0.018));
+                const lat = plane.sub(rift).toVar();
+                const dust = exp(lat.mul(lat).mul(-990)).toVar();
+                const band = exp(plane.mul(plane).mul(-42)).toVar();
+                const clouds = smoothstep(0.12, 0.92, broad.b.mul(0.75).add(detail.b.mul(0.25)));
+                const granular = detail.g.mul(0.52).add(knots.r.mul(0.48));
+                const density = band.mul(clouds.mul(0.82).add(0.17))
+                    .mul(granular.mul(0.45).add(0.74))
+                    .mul(dust.mul(-0.88).add(1));
+                const bulge = smoothstep(-0.08, 0.13, lat).mul(broad.b);
+                const stars = mix(vec3(0.48, 0.61, 0.92), vec3(1.0, 0.73, 0.51), bulge);
+                const outer = smoothstep(0.29, 0.46, abs(plane)).oneMinus();
+                sky.addAssign(stars.mul(density).mul(outer)
+                    .mul(smoothstep(0.02, 0.25, rd.y).mul(u.galaxyGain.mul(0.23))));
+            });
 
             // A bright display lifts the whole sky a little, as it does to the eye.
             sky.mulAssign(u.activity.mul(0.35).add(1));
             // The moon stands behind the display: the curtains' light adds over it.
             sky.addAssign(moonRadiance(u, rd, noiseTexture));
-            sky.addAssign(curtains.sample(rd));
+            const sheet = curtains.sampleSky(rd).toVar();
+            sky.addAssign(sheet.rgb);
+            sky.assign(cloudedSky(sky, sheet, u));
             // Below the horizon only the lake and the shore are ever drawn.
             sky.mulAssign(smoothstep(-0.06, 0.0, rd.y).mul(0.75).add(0.25));
             // The same air every surface sees: low arcs sink into the mist over the water.
@@ -259,14 +280,14 @@ export class AuroraSky {
         const geometry = new THREE.SphereGeometry(DOME_RADIUS, 48, 24);
         this.dome = new THREE.Mesh(geometry, material);
         this.dome.name = 'Aurora — sky dome';
-        this.dome.renderOrder = -1000;
+        this.dome.renderOrder = 900;
         this.dome.frustumCulled = false;
         this.geometries.add(geometry);
         this.materials.add(material);
         this.group.add(this.dome);
     }
 
-    createStars(random) {
+    createStars(random, curtains) {
         const u = this.uniforms;
         const catalogue = buildStarCatalogue(Math.round(this.preset.starCount * STAR_RING), random);
         this.starCount = catalogue.count;
@@ -311,10 +332,14 @@ export class AuroraSky {
         const horizon = smoothstep(0.0, 0.13, dir.y);
         const reddened = mix(vec3(1.0, 0.78, 0.6), vec3(1), smoothstep(0.02, 0.3, dir.y));
         // A moonlit or a twilit sky hides the faint stars: the hour scales them all.
+        const display = varying(curtains.sampleSky(dir), 'auroraStarSky');
+        const glare = smoothstep(0.06, 0.85, dot(display.rgb, vec3(0.22, 0.66, 0.12)));
+        const transmission = display.a.mul(-0.93).add(1).mul(glare.mul(-0.78).add(1));
         material.colorNode = tint.mul(reddened).mul(data.y.mul(u.starGain)).mul(core.add(spikes))
             .mul(twinkle)
             .mul(energy)
-            .mul(horizon);
+            .mul(horizon)
+            .mul(transmission);
         const mesh = new THREE.InstancedMesh(geometry, material, catalogue.count);
         mesh.name = 'Aurora — star catalogue';
         mesh.frustumCulled = false;

@@ -1,4 +1,5 @@
 import * as THREE from 'three/webgpu';
+import { preloadAuroraConifers } from '../../themes/aurora/aurora-conifers.js';
 import { AuroraPost } from '../../themes/aurora/aurora-post.js';
 import { AuroraWorld } from '../../themes/aurora/aurora-world.js';
 
@@ -45,11 +46,9 @@ export function create({
     scene, camera, renderer, params,
 }) {
     const quality = params.get('quality') || 'High';
-    const world = new AuroraWorld({ scene, camera, quality });
-    const post = new AuroraPost({
-        renderer, scene, camera, preset: world.preset,
-    });
-    world.setReducedMotion(params.get('reduce') === '1');
+    let world;
+    let post;
+    let disposed = false;
     const size = new THREE.Vector2();
     let board = null;
     if (params.get('board') === '1') {
@@ -80,6 +79,7 @@ export function create({
         rig.apply(0, rest);
     };
     const syncViewport = () => {
+        if (!world) return;
         renderer.getDrawingBufferSize(size);
         world.prepareCamera(window.innerWidth / window.innerHeight);
         if (iconPose) aimIcon();
@@ -90,7 +90,6 @@ export function create({
             world.setBoardSpan(0, rect.left / window.innerWidth, rect.right / window.innerWidth);
         }
     };
-    syncViewport();
 
     const piece = (color = params.get('color') || '#6cf5ff') => ({
         x: number('column', 4.5) - 1.5,
@@ -135,7 +134,9 @@ export function create({
     };
 
     let sought = null;
+    let pendingSeek = null;
     const seek = (time) => {
+        if (!world) { pendingSeek = time; return; }
         if (!Number.isFinite(time) || time === sought) return;
         sought = Math.max(0, time);
         world.reset();
@@ -171,21 +172,35 @@ export function create({
         }
     };
 
-    window.__AURORA_ART__ = { world, post, fire };
+    const ready = preloadAuroraConifers().then(() => {
+        if (disposed) return;
+        world = new AuroraWorld({ scene, camera, quality });
+        post = new AuroraPost({
+            renderer, scene, camera, preset: world.preset,
+        });
+        world.setReducedMotion(params.get('reduce') === '1');
+        syncViewport();
+        if (pendingSeek !== null) seek(pendingSeek);
+        window.__AURORA_ART__ = { world, post, fire };
+    });
+    const render = () => {
+        if (!world || disposed) return;
+        world.renderBuffers(renderer);
+        post.render();
+    };
     return {
         cameraRadius: 1,
         camera() {},
         seek,
-        update(time, dt) { if (!params.has('t')) frame(time, Math.min(0.05, Math.max(0, dt))); },
-        render() {
-            world.renderBuffers(renderer);
-            post.render();
-        },
+        update(time, dt) { if (world && !params.has('t')) frame(time, Math.min(0.05, Math.max(0, dt))); },
+        render,
+        async renderAsync() { await ready; render(); },
         resize: syncViewport,
-        getDiagnostics() { return { ...world.getDiagnostics(), post: post.getDiagnostics() }; },
+        getDiagnostics() { return world ? { ...world.getDiagnostics(), post: post.getDiagnostics() } : null; },
         dispose() {
-            post.dispose();
-            world.dispose();
+            disposed = true;
+            post?.dispose();
+            world?.dispose();
             board?.remove();
             delete window.__AURORA_ART__;
         },
