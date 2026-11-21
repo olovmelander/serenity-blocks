@@ -287,11 +287,15 @@ describe('himalayan peak: what plays on builds', () => {
             .filter((value, i) => i % 4 === 3 && births[i] >= 0 && value < 0).length;
         world.onLock({ rows: [19], u: 0.2 });
         expect(ice()).toBe(0);
-        world.onLock({ rows: [19], u: 0.2, hardDrop: true, distance: 1 });
+        world.onLock({
+            rows: [19], u: 0.2, hardDrop: true, distance: 1,
+        });
         const shallow = ice();
         expect(shallow).toBeGreaterThan(0);
         world.seek(3);
-        world.onLock({ rows: [19], u: 0.2, hardDrop: true, distance: 18 });
+        world.onLock({
+            rows: [19], u: 0.2, hardDrop: true, distance: 18,
+        });
         expect(ice()).toBeGreaterThan(shallow);
         world.dispose();
     });
