@@ -212,15 +212,30 @@ export const SEA_SURF = Object.freeze({
     thinKeep: 0.4,
 });
 /**
- * THE WINDROWS (2026-11-20): long foam lines across the wind every `spacing` u, wandering
- * `wander` u, `halfWidth` u half wide (or ~0.7 px, whichever is wider), kept off the near water
- * (gone under the first distance, whole past the second, u) and at `gain`.
+ * THE WINDROWS (2026-11-20; rebuilt 2026-11-21, sea audit item 12): long foam streaks parallel to
+ * the wind. They read as scratches on glass: round noise cut them into 4-9 u dashes, they wandered
+ * off the wind and hooked, a hard stroke, and their dash mask scrolled across them so they blinked.
+ * Now each row is a cell of its own every `spacing` u across the wind, jittered `jitter` of it, its
+ * course wandering by two sines along the wind only (`wander` u at `wanderK` rad/u), so a row can
+ * never fold or meet a neighbour; it rides the swell's orbit sideways (`ride`), is lit in long
+ * stretches by a break field stretched along it (`alongScale`, `lit`), drifts downwind `drift`
+ * u/s and re-forms (`evolve`). Half-width `halfWidth` u by its strength, its edge `soft`; kept
+ * off the near water (`near`, u) and gone where its cells fall under `footprint` (rows a pixel).
  */
 export const SEA_WINDROWS = Object.freeze({
-    spacing: 17,
-    wander: 26,
-    halfWidth: 0.22,
+    spacing: 23,
+    jitter: 0.36,
+    wander: Object.freeze([2.2, 1.0]),
+    wanderK: Object.freeze([0.019, 0.043]),
+    ride: 4.0,
+    alongScale: 0.0012,
+    drift: 0.4,
+    evolve: 0.0009,
+    lit: Object.freeze([0.40, 0.66]),
+    halfWidth: Object.freeze([0.10, 0.30]),
+    soft: 0.3,
     near: Object.freeze([45, 120]),
+    footprint: Object.freeze([0.05, 0.10]),
     gain: 0.16,
 });
 /** The sea film's opacity over the water's depth: clear at the first, whole at the second (u). */

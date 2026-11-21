@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
     LAKE_WATER, SEA_HORIZON_DOWN, SEA_SURF, WATER_SHORE_DEPTH_BIAS,
-    SEA_AIR, SEA_BEACH, SEA_CAPS, SEA_WET, depthStepAlongRay, lakeClearAt, seaAirOwn, seaCapLife, swashMemory01, swashRise01, lakeShoreOpacity, lakeShoreWidth, seaBodyAt, seaFilmOpacity,
+    SEA_AIR, SEA_BEACH, SEA_CAPS, SEA_WET, SEA_WINDROWS, depthStepAlongRay, lakeClearAt, seaAirOwn, seaCapLife, swashMemory01, swashRise01, lakeShoreOpacity, lakeShoreWidth, seaBodyAt, seaFilmOpacity,
     seaHorizonKeep, seaSurfLine, shoreFightBand,
 } from './odyssey-water-looks.js';
 
@@ -311,5 +311,23 @@ describe('the whitecaps\' life (2026-11-21)', () => {
             worst = Math.max(worst, Math.abs(seaCapLife(t + (1 / 30), period) - seaCapLife(t, period)));
         }
         expect(worst).toBeLessThan(0.15);
+    });
+});
+
+// THE WINDROWS, ONE ROW A CELL (2026-11-21 sea audit, item 12): a row's jitter and wander jump at
+// its cell's edges, so its line and its anti-aliased edge must stay inside the cell, or the jump
+// draws a seam across the sea.
+describe('the windrows keep to their cells (2026-11-21)', () => {
+    it('holds every line inside its own row cell', () => {
+        const W = SEA_WINDROWS;
+        const room = ((0.5 - (W.jitter / 2)) * W.spacing) - (W.wander[0] + W.wander[1]);
+        const need = Math.max(W.halfWidth[1], 0.7 * W.footprint[1] * W.spacing) + (W.footprint[1] * W.spacing);
+        expect(room).toBeGreaterThan(need);
+    });
+
+    it('never runs more than ~5 degrees off the wind', () => {
+        const W = SEA_WINDROWS;
+        const slope = (W.wander[0] * W.wanderK[0]) + (W.wander[1] * W.wanderK[1]);
+        expect(Math.atan(slope) * (180 / Math.PI)).toBeLessThan(5);
     });
 });

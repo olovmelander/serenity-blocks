@@ -5037,31 +5037,37 @@ export function createOdysseyWorld({
             // not paper white (the caps, the windrows and the shore's foam alike).
             const foamLight = mix(float(0.64), float(1), wVis.mul(seaSun)).toVar();
             wl.assign(mix(wl, vec3(...C.colour).mul(foamLight), capA));
-            // WINDROWS (water pass step 5): the foam a wind leaves on open water lies in long thin
-            // streaks along it. The detail bake's value noise read in the wind's frame, drawn out
-            // 4:1 along it and cut thin, in deep water only, stronger in a gust, gone by ~520 u
-            // (before it can shimmer) and never on the shallows' lit band.
-            const along = dot(positionWorld.xz, WATER_WIND);
-            const across = positionWorld.x.mul(WATER_WIND.y).sub(positionWorld.z.mul(WATER_WIND.x));
-            // ON A COURSE, NOT A CONTOUR (2026-11-20; gotchas #1302, #1319): the rows were an iso-line
-            // of a stretched noise, so they came out as closed loops and scribbles 1-9 u wide, and
-            // under the eye as soft milky bands. Now they are long lines across the wind every
-            // `spacing` u, wandering `wander` u, a constant width in pixels at any range, broken
-            // into dashes by the rough patches, stronger in a gust and kept off the near water.
+            // WINDROWS (water pass step 5; rebuilt 2026-11-21, SEA_WINDROWS): long foam streaks
+            // parallel to the wind, a row a cell, each wandering along the wind only (it can never
+            // fold or meet a neighbour), riding the swell's orbit sideways, lit in long stretches by
+            // a break field drawn out along it, drifting downwind; deep water only, off the near
+            // water, gone before a row is a pixel wide (no moire).
             const W_ROWS = SEA_WINDROWS;
-            const rowWander = texture(detailTex, vec2(along.mul(0.0021), across.mul(0.0032))
-                .add(vec2(uTime.mul(0.004), 0))).b.sub(0.5).mul(W_ROWS.wander);
-            const rowC = across.add(rowWander).div(W_ROWS.spacing);
-            const rowPx = fwidth(rowC).mul(W_ROWS.spacing);
-            const rowD = abs(fract(rowC).sub(0.5)).mul(W_ROWS.spacing);
-            const rowHalf = max(float(W_ROWS.halfWidth), rowPx.mul(0.7));
-            const rowLine = float(1).sub(smoothstep(rowHalf, rowHalf.add(rowPx), rowD))
-                .mul(clamp(float(W_ROWS.halfWidth).div(rowHalf), 0.35, 1));
-            const rows = rowLine
-                .mul(smoothstep(float(0.40), float(0.66), rippleTexA.b))
+            const along = dot(positionWorld.xz, WATER_WIND).sub(uTime.mul(W_ROWS.drift));
+            const acrossLive = positionWorld.x.mul(WATER_WIND.y).sub(positionWorld.z.mul(WATER_WIND.x))
+                .sub(dot(waveSlope, vec2(WATER_WIND.y, WATER_WIND.x.negate())).mul(W_ROWS.ride)).toVar();
+            const rowPx = fwidth(acrossLive);
+            const rowC = acrossLive.div(W_ROWS.spacing);
+            const rowCell = floor(rowC);
+            // (A positive seed: the hash of a negative integer is undefined.)
+            const rowH = hash(rowCell.add(4096));
+            const rowWander = sin(along.mul(W_ROWS.wanderK[0]).add(rowH.mul(6.2832))).mul(W_ROWS.wander[0])
+                .add(sin(along.mul(W_ROWS.wanderK[1]).add(fract(rowH.mul(7.31)).mul(6.2832))).mul(W_ROWS.wander[1]));
+            const rowStrength = smoothstep(float(W_ROWS.lit[0]), float(W_ROWS.lit[1]), texture(detailTex, vec2(
+                along.mul(W_ROWS.alongScale),
+                rowCell.mul(0.173).add(0.31).add(uTime.mul(W_ROWS.evolve)),
+            )).level(0).b);
+            const rowOff = rowC.sub(rowCell).sub(0.5).sub(rowH.sub(0.5).mul(W_ROWS.jitter));
+            const rowD = abs(rowOff.mul(W_ROWS.spacing).sub(rowWander));
+            const rowHalfW = mix(float(W_ROWS.halfWidth[0]), float(W_ROWS.halfWidth[1]), rowStrength);
+            const rowHalf = max(rowHalfW, rowPx.mul(0.7));
+            const rowLine = float(1).sub(smoothstep(rowHalf.mul(W_ROWS.soft), rowHalf.add(rowPx), rowD))
+                .mul(clamp(rowHalfW.div(rowHalf), 0.35, 1));
+            const rows = rowLine.mul(rowStrength)
                 .mul(smoothstep(float(8), float(20), depth))
                 .mul(smoothstep(float(W_ROWS.near[0]), float(W_ROWS.near[1]), wFragDist))
                 .mul(float(1).sub(smoothstep(float(300), float(520), wFragDist)))
+                .mul(float(1).sub(smoothstep(float(W_ROWS.footprint[0]), float(W_ROWS.footprint[1]), rowPx.div(W_ROWS.spacing))))
                 .mul(mix(float(0.35), float(1), seaGust))
                 .mul(W_ROWS.gain);
             wl.assign(mix(wl, vec3(0.93, 0.97, 1.0).mul(foamLight), rows));
