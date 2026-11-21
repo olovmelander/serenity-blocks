@@ -325,6 +325,7 @@ export function createPeakUniforms(textures) {
         spark: uniform(new THREE.Vector4(1, 1, 1, 0)),
         /** The ring of ice-light round the sun that a perfect clear draws (0..1). */
         halo: uniform(0),
+        crown: uniform(0),
         /**
          * How hot play runs, as the prayer lines show it (0 at rest .. 1 in a fever): the light
          * the flags hold glows brighter the longer the hands stay quick.

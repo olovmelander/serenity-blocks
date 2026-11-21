@@ -16,7 +16,7 @@ import math
 
 import numpy as np
 
-from fall_grove.skeleton import GOLDEN, UP, Envelope, Site, Tree, grow_curve, normalize
+from fall_grove.skeleton import GOLDEN, UP, Envelope, Site, Tree, grow_curve, normalize, perpendicular
 # The scaffold helpers are private to the Fall recipes but are exactly what these trees need.
 from fall_grove.species import _add_roots, _direction
 from fall_grove.wood import MeshData, buttress_profile, catmull_refine, fbm, tube
@@ -55,6 +55,68 @@ def _hang_strands(tree, carriers, spacing, length, floor, level, start=0.3, radi
             strands.append(tree.add_branch(points, min(parent_radius * 0.5, radius), 0.004, level, parent=carrier,
                                            attach_t=t, flex=0.85, sides=3, power=0.8, kind="strand"))
     return strands
+
+
+def _rotation_between(a, b):
+    """The shortest rotation (3 x 3) that turns unit vector `a` onto unit vector `b`."""
+    axis = np.cross(a, b)
+    sine, cosine = float(np.linalg.norm(axis)), float(np.dot(a, b))
+    if sine < 1e-9:
+        return np.eye(3)
+    k = axis / sine
+    cross = np.array([[0.0, -k[2], k[1]], [k[2], 0.0, -k[0]], [-k[1], k[0], 0.0]])
+    return np.eye(3) + sine * cross + (1.0 - cosine) * cross @ cross
+
+
+def _seat_sprays(seats, foliage):
+    """Hang every spray from its wood, and lay a hanging shoot's sprays along the shoot itself.
+
+    A spray carries its own metre of twig. Placed like any other site (jittered up to a hand's
+    breadth off the wood, and on a hanging shoot turned a little away from it), the twigs came
+    out as straight pieces that started in mid-air beside the limbs, and as pieces beside each
+    shoot with the last one, hanging on past the shoot's end, set off to one side: against the
+    open sky the curtain read as broken threads. Here each site moves onto its branch and takes
+    the branch's wind there. A shoot's sprays also turn so each twig runs to the point of the
+    shoot one twig-length further down (past the end, straight on along the shoot's last
+    stretch). Every random draw was made before this, so the crown keeps exactly the sprays it
+    had.
+    """
+    from . import leaves  # (leaves reads this module's spray names, so it is imported late)
+    chords = {}
+    curves = {}
+    for site, branch in seats:
+        if id(branch) not in curves:
+            share = np.linspace(0.0, 1.0, max(2, int(branch.length / 0.01)) + 1)
+            curves[id(branch)] = (share, np.array([branch.sample(t)[0] for t in share]))
+        share, curve = curves[id(branch)]
+        start = float(share[int(np.argmin(np.linalg.norm(curve - site.position, axis=1)))])
+        point = branch.sample(start)[0]
+        site.position = point
+        # The wind moves a spray as it moves the wood where the spray leaves it, so the joint
+        # holds in a gust (the bark stores the same sway, clipped at 1, and the same phase).
+        site.sway = min(1.0, branch.sway_at(start))
+        site.phase = branch.phase
+        if branch.kind != "strand":
+            continue
+        strand = branch
+        if site.variant not in chords:
+            axis = leaves.SPRAY_BUILDERS[foliage](site.variant).axis
+            chords[site.variant] = axis[-1] - axis[0]
+        chord = chords[site.variant]
+        reach = float(np.linalg.norm(chord)) * site.scale
+        end = start + reach / strand.length
+        if end <= 1.0:
+            target = strand.sample(end)[0]
+        else:
+            last = normalize(strand.points[-1] - strand.points[-2])
+            target = strand.points[-1] + last * (end - 1.0) * strand.length
+        down = normalize(target - point)
+        top = site.top - down * float(np.dot(site.top, down))
+        top = normalize(top) if np.linalg.norm(top) > 1e-5 else perpendicular(down)
+        # Columns as the site frames have them: X across, Y along the twig, Z the lit side.
+        frame = np.stack([np.cross(down, top), down, top], axis=1) @ _rotation_between(UP, normalize(chord)).T
+        site.forward = frame[:, 1]
+        site.top = frame[:, 2]
 
 
 def hero_birch(seed, name="birch-hero", height=16.5):
@@ -126,19 +188,27 @@ def hero_birch(seed, name="birch-hero", height=16.5):
     # The curtains: shoots that hang up to six metres and stop well clear of the ground, so
     # the white trunk stands in the open beneath them.
     strands = _hang_strands(tree, limbs + ribs, 0.6, (3.0, 6.0), (3.5, 6.0), 4)
+    hung = {}
+
+    def sites(branch, *args, **kwargs):
+        first = len(tree.sites)
+        tree.add_sites(branch, *args, **kwargs)
+        hung.update((id(site), (site, branch)) for site in tree.sites[first:])
+
     for strand in strands:
-        tree.add_sites(strand, max(2, int(round(strand.length / 0.8))), span=(0.04, 1.0), scale=(0.9, 1.25),
-                       droop=0.0, spread=0.14, variants=2, jitter=0.07)
+        sites(strand, max(2, int(round(strand.length / 0.8))), span=(0.04, 1.0), scale=(0.9, 1.25), droop=0.0,
+              spread=0.14, variants=2, jitter=0.07)
     for rib in ribs:
-        tree.add_sites(rib, max(2, int(round(rib.length / 0.7))), span=(0.35, 1.0), scale=(0.85, 1.15), droop=1.1,
-                       spread=0.25, variants=2, jitter=0.1)
+        sites(rib, max(2, int(round(rib.length / 0.7))), span=(0.35, 1.0), scale=(0.85, 1.15), droop=1.1, spread=0.25,
+              variants=2, jitter=0.1)
     for carrier in limbs:
-        tree.add_sites(carrier, 2, span=(0.8, 1.0), scale=(0.85, 1.15), droop=1.0, spread=0.3, variants=2, jitter=0.1)
+        sites(carrier, 2, span=(0.8, 1.0), scale=(0.85, 1.15), droop=1.0, spread=0.3, variants=2, jitter=0.1)
     for leader in leaders:
-        tree.add_sites(leader, 4, span=(0.82, 1.0), scale=(0.85, 1.1), droop=0.8, spread=0.4, variants=2, jitter=0.12)
+        sites(leader, 4, span=(0.82, 1.0), scale=(0.85, 1.1), droop=0.8, spread=0.4, variants=2, jitter=0.12)
     # Nothing hangs into the space under the crown: a spray is a metre long below its site.
     tree.sites = [site for site in tree.sites if site.position[1] > 3.6]
     tree.thin_sites(0.3)
+    _seat_sprays([hung[id(site)] for site in tree.sites], "birch_spray")
     tree.meta = dict(species="birch", role="hero", height=height, trunkRadius=radius, foliage="birch_spray",
                      crownBase=float(min(carrier.points[0][1] for carrier in limbs)), fork=fork)
     tree.trunk_profile = buttress_profile(radius, lobes, flare=0.36, flare_height=0.45, lobe_gain=0.5,

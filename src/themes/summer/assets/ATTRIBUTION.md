@@ -105,6 +105,12 @@ pack, three runs in a row produced all twelve files (and the manifest) byte for 
 Re-run the tests after regenerating. The whole pack takes about fifteen seconds on a
 laptop CPU; `--preview` adds a few minutes of stills.
 
+`birch-hero.glb` alone was rebuilt on 2026-11-21 with Blender 5.2.2 LTS
+(`--only trees --recipes birch-hero`), when its sprays were seated on their wood
+(`_seat_sprays` in `species.py`): every twig now leaves a branch, and a hanging shoot's sprays
+run down the shoot instead of beside it. Built from the unchanged recipe, 5.2.2 matches the
+4.5.9 file except in the baked bark occlusion (367 of 82,000 colour bytes).
+
 ## The swans (beside the theme's code, not in this folder)
 
 `src/themes/summer/summer-swan-model.js` (added 2026-11-17) holds the lake's mute swans: an

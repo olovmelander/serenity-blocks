@@ -21,7 +21,7 @@ export const BOOTS = EYE.y - EYE_HEIGHT;
 
 /** The chorten (its foot, metres from the eye) and the cairn with the flag pole. */
 export const CHORTEN = Object.freeze({ x: -9.2, z: -19.5, height: 4.6 });
-export const CAIRN = Object.freeze({ x: 11.4, z: -15.5, pole: 4.3 });
+export const CAIRN = Object.freeze({ x: 9.65, z: -15.5, pole: 4.3 });
 
 /**
  * The pass's own mesh reaches this far. Between the two PASS_MARRY radii it goes over from the

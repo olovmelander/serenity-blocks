@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { FAR_PEAKS } from '../../src/themes/himalayan-peak/himalayan-peak-sky.js';
+import { FAR_PEAKS, farRidgesAt } from '../../src/themes/himalayan-peak/himalayan-peak-sky.js';
 import { planHeight } from '../../src/themes/himalayan-peak/himalayan-peak-massif.js';
 import { EYE, SUN_AZIMUTH } from '../../src/themes/himalayan-peak/himalayan-peak-core.js';
 
@@ -21,22 +21,26 @@ function skyline(bearing) {
     return best;
 }
 
-/** The far range's envelope (degrees) without its crest noise: the highest giant's pyramid. */
-const envelope = (bearing) => Math.max(...FAR_PEAKS.map(([b, top, k]) => top - Math.abs(bearing - b) * k));
-/** The crest noise adds at most this much (two ridged reads, 0.42 + 0.16, less 0.3). */
-const NOISE_MAX = 0.28;
-
 describe('Himalayan Peak far range', () => {
     it('rises over the headwall where each giant stands', () => {
-        for (const [bearing, top] of FAR_PEAKS) {
+        for (const [bearing] of FAR_PEAKS) {
+            const [top] = farRidgesAt(bearing);
             expect(top - skyline(bearing)).toBeGreaterThan(0.8);
+        }
+    });
+
+    it('shows the second range through the intervening cols', () => {
+        for (const col of [-8.9, -2.1, 5, 14.8, 20]) {
+            const [front, , back] = farRidgesAt(col);
+            expect(back - Math.max(front, skyline(col))).toBeGreaterThan(0.25);
         }
     });
 
     it('stays under the near skyline round the sunrise', () => {
         const sun = SUN_AZIMUTH / DEG;
         for (let b = sun - 5; b <= sun + 5; b += 1) {
-            expect(envelope(b) + NOISE_MAX).toBeLessThan(skyline(b));
+            const [front, , back] = farRidgesAt(b);
+            expect(Math.max(front, back)).toBeLessThan(skyline(b));
         }
     });
 });

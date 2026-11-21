@@ -2,13 +2,14 @@
 
 ## Golden eagle (`eagle.glb`) — the bird
 
-The soaring adult golden eagle is generated, not captured: `scripts/blender/himalayan_eagle.py`
-builds it in headless Blender from the theme's own measurements (a lofted body and hooked bill,
-cambered wings with an S-curved trailing edge, seven fingered primaries, a twelve-feather tail),
-paints its plumage into vertex colours (alpha marks thin feather for the light that shines
-through it), skins it to 26 axis-aligned bones and writes a 2,300-triangle GLB with no animation:
-`himalayan-peak-eagle-flight.js` poses every joint in code. No photograph, scan or third-party
-model is involved, so there is nothing to attribute. Regenerate with
+`scripts/blender/himalayan_eagle.py` builds this original golden eagle in Blender. Its wing
+has overlapping secondaries and coverts on both sides, with seven articulated primary feathers.
+The head has a hooked bill, amber eyes and golden hackles. Feathered legs and curled toes tuck
+against the belly. Vertex colours describe the plumage and their alpha records feather translucency.
+Each vane has its own UV coordinates for its shaft and barbs. The GLB contains a single
+15,316-triangle mesh, 26 bones and a keyed wingbeat. The flight
+controller blends the stroke with live banking, wingtip adjustments, head stabilization and
+tail trim on a seeded route. Regenerate with
 
     blender --background --factory-startup --python scripts/blender/himalayan_eagle.py -- \
         --out src/themes/himalayan-peak/assets/eagle.glb [--preview <dir>]
