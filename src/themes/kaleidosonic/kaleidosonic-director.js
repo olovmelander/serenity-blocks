@@ -523,8 +523,9 @@ export class KaleidosonicDirector {
         }
         if (options.enabled !== undefined) {
             const enabled = options.enabled !== false;
-            if (this.enabled && !enabled) this.reset();
+            const turningOff = this.enabled && !enabled;
             this.enabled = enabled;
+            if (turningOff) this.reset();
         }
     }
 

@@ -262,7 +262,7 @@ export default class KaleidosonicTheme extends BaseTheme {
                 b2b: (level, player) => this.reportB2B(level, player),
                 levelUp: (level) => {
                     this.level = level;
-                    this.sendWorld('levelUp', level);
+                    this.sendWorld('levelUp', level, { silent: !this.director.enabled });
                 },
             },
         });
@@ -444,7 +444,7 @@ export default class KaleidosonicTheme extends BaseTheme {
 
     /** The trance answers the longest chain any board is holding. */
     reportCombo(combo, player = 0) {
-        this.sendWorld('onCombo', this.bestOf(this.combos, combo, player));
+        this.sendWorld('onCombo', this.bestOf(this.combos, combo, player), this.director.enabled);
     }
 
     /** The drone answers the deepest back-to-back run any board is holding. */

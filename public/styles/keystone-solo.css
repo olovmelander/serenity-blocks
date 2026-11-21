@@ -96,6 +96,16 @@
     --sp-wall: #ab6adc;
 }
 
+/* The pink crystal reflected in the well, with pale rose quartz at the queue. */
+:where(body:has(#kaleidosonic-theme.active)) .single-player-stage[data-board='well']:not(:where(
+    .infinity-mode-active, [data-odyssey-board], [data-stillfall], [data-still-air], [data-danger]
+)) {
+    --sp-hue: #f1b9d9;
+    --sp-hue-rgb: 241, 185, 217;
+    --sp-wall: #b76caa;
+    --sp-wall-glow: rgb(176 78 153 / 25%);
+}
+
 /* Jade at the waterline and the lantern's paper around the queue and ledger. */
 :where(body:has(#koi-pond-theme.active)) .single-player-stage[data-board='well']:not(:where(
     .infinity-mode-active, [data-odyssey-board], [data-stillfall], [data-still-air], [data-danger]
@@ -346,6 +356,14 @@
     background: linear-gradient(180deg, rgba(25, 21, 56, 0.92) 0%, rgba(12, 10, 30, 0.94) 100%);
     box-shadow: 0 14px 34px rgba(0, 0, 0, 0.34), inset 0 1px 0 rgba(var(--sb-cream-rgb), 0.05);
     transform: none;
+}
+
+:where(body:has(#kaleidosonic-theme.active)) .single-player-stage[data-board='well']:not(:where(
+    .infinity-mode-active, [data-odyssey-board], [data-stillfall]
+)) .single-player-stats-bar {
+    --sb-text-faint: #cab9d2;
+    border-color: rgb(201 145 188 / 31%);
+    background: linear-gradient(145deg, rgb(43 23 54 / 97%), rgb(18 15 37 / 96%) 65%, rgb(18 27 40 / 96%));
 }
 
 /* The mode's hue as the ledger's left edge, like a seat's plate in local versus. */
