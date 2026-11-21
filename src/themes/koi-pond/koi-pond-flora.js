@@ -54,8 +54,10 @@ export function buildPadGeometry(segments = 30, rings = 4) {
             const theta = notch * 0.5 + f * (TAU - notch);
             // The rim is scalloped and curls up; the notch's lips curl most.
             const lip = Math.exp(-Math.min(f, 1 - f) * 14);
-            const radius = r * (1 + 0.035 * Math.sin(theta * 6) * r);
-            positions.push(Math.cos(theta) * radius, 0.035 * r ** 3 + 0.05 * lip * r * r, Math.sin(theta) * radius);
+            const ripple = Math.sin(theta * 5 + 0.45) * 0.027 + Math.sin(theta * 9 - 0.5) * 0.014;
+            const radius = r * (1 + ripple * r);
+            positions.push(Math.cos(theta) * radius, (0.046 + 0.025 * Math.sin(theta * 4)) * r ** 3
+                + 0.05 * lip * r * r, Math.sin(theta) * radius * 0.91);
             uvs.push(r, f);
         }
     }
@@ -76,16 +78,17 @@ export function buildPadGeometry(segments = 30, rings = 4) {
 }
 
 /** A water-lily petal, one unit long along +x: pointed, cupped across its width. uv = along, across. */
-export function buildPetalGeometry(along = 6, across = 4) {
+export function buildPetalGeometry(along = 9, across = 5) {
     const positions = [];
     const uvs = [];
     const indices = [];
     for (let j = 0; j <= along; j += 1) {
         const t = j / along;
-        const half = 0.2 * Math.sin(Math.PI * t ** 0.72) ** 0.9 * (1 - t * 0.15) + 0.012 * (1 - t);
+        // Broad shoulders near the lip, where the petal rolls gently over the outer whorl.
+        const half = 0.244 * Math.sin(Math.PI * t ** 1.13) ** 0.54 + 0.014 * (1 - t);
         for (let i = 0; i <= across; i += 1) {
             const s = (i / across) * 2 - 1;
-            positions.push(t, 0.1 * s * s * (half / 0.2), s * half);
+            positions.push(t, 0.059 * s * s * (half / 0.244) + 0.05 * Math.sin(t * Math.PI), s * half);
             uvs.push(t, s);
         }
     }
@@ -191,7 +194,7 @@ export function planFlora({
     ];
     const out = [];
     const fits = (x, z, r) => {
-        if (shoreDistance(x, z) < r * 0.6 + 0.12 || waterDepth(x, z) < 0.12) return false;
+        if (shoreDistance(x, z) < r + 0.045 || waterDepth(x, z) < 0.12) return false;
         if (Math.abs(x) < 1.75 + r) return false;
         for (let i = 0; i < rocks.length; i += 1) {
             if (Math.hypot(rocks[i].x - x, rocks[i].z - z) < rocks[i].radius + r * 0.8) return false;
@@ -202,9 +205,14 @@ export function planFlora({
         }
         return true;
     };
-    rafts.forEach((raft) => {
-        // (Never more than the tier's budget, however the shares round.)
-        const want = Math.min(pads - out.length, Math.max(1, Math.round(pads * raft.share)));
+    const totalShare = rafts.reduce((sum, raft) => sum + raft.share, 0);
+    let share = 0;
+    const minimum = pads >= rafts.length ? 1 : 0;
+    rafts.forEach((raft, index) => {
+        // Apportion cumulative shares so the far rafts cannot consume the foreground's budget.
+        share += raft.share;
+        const room = pads - out.length - minimum * (rafts.length - index - 1);
+        const want = Math.min(room, Math.max(minimum, Math.round(pads * (share / totalShare)) - out.length));
         let placed = 0;
         for (let tries = 0; tries < want * 30 && placed < want; tries += 1) {
             const a = rand() * TAU;
@@ -220,9 +228,20 @@ export function planFlora({
             }
         }
     });
-    // Lilies stand among the larger pads, one or two to a raft.
+    // Each reach has a flower, including the near shelves that frame a tall screen.
     const lilies = [];
-    const hosts = [...out].sort((a, b) => b.radius - a.radius);
+    const focal = [[4.55, 0.7], [-3.15, 2.5], [3.1, -2.5], [-2.65, 4.45], [-5.1, -1.5], [3.0, 4.8]];
+    const hosts = [];
+    for (const [x, z] of focal) {
+        let host = null;
+        let best = Infinity;
+        for (const pad of out) {
+            const score = Math.hypot(pad.x - x, pad.z - z) - 1.4 * pad.radius;
+            if (score < best && !hosts.includes(pad)) { best = score; host = pad; }
+        }
+        if (host) hosts.push(host);
+    }
+    hosts.push(...out.filter((p) => !hosts.includes(p)).sort((a, b) => b.radius - a.radius));
     for (let i = 0; i < hosts.length && lilies.length < lotus; i += 1) {
         const pad = hosts[i];
         const a = rand() * TAU;
@@ -232,7 +251,7 @@ export function planFlora({
         if (!crowded && waterDepth(x, z) > 0.14 && Math.abs(x) > 2) {
             // (`pad`: the pad it stands on, which carries it wherever the water takes the pad.)
             lilies.push({
-                x, z, scale: 0.4 + rand() * 0.13, turn: rand() * TAU, pink: rand(), pad: out.indexOf(pad),
+                x, z, scale: 0.35 + pad.radius * 0.35 + rand() * 0.05, turn: rand() * TAU, pink: rand(), pad: out.indexOf(pad),
             });
         }
     }
@@ -245,7 +264,9 @@ export function planFlora({
  * stem; `rate` and `phase` set the slow loop each one wanders.
  * @returns {Array<{x:number, z:number, size:number, turn:number, tone:number, petal:number, phase:number, rate:number}>}
  */
-export function planFloaters(count, { seed = 5021, pads = [] } = {}) {
+export function planFloaters(count, {
+    seed = 5021, pads = [], canopy, rocks = [],
+} = {}) {
     const rand = mulberry32(seed);
     const out = [];
     for (let tries = 0; tries < count * 40 && out.length < count; tries += 1) {
@@ -266,6 +287,28 @@ export function planFloaters(count, { seed = 5021, pads = [] } = {}) {
         };
         if (pads.some((pad) => Math.hypot(pad.x - x, pad.z - z) < pad.radius + leaf.size * 0.5)) continue;
         out.push(leaf);
+    }
+    // Give a few of the existing leaf slots a journey from an actual twig to open water.
+    const falling = Math.min(out.length, Math.max(2, Math.round(count / 15)));
+    for (let slot = 0, tries = 0; canopy?.count && slot < falling && tries < falling * 80; tries += 1) {
+        const o = Math.floor(rand() * canopy.count) * 8;
+        const [startX, height, startZ] = canopy.leaves.subarray(o, o + 3);
+        const x = startX - Math.sign(startX) * (0.5 + rand() * 1.2);
+        const z = startZ + 0.55 + rand() * 1.35;
+        if (Math.abs(x) < 1.8 || Math.abs(x) > 5.2 || waterDepth(x, z) < 0.25) continue;
+        if (pads.some((pad) => Math.hypot(pad.x - x, pad.z - z) < pad.radius + 0.15)
+            || rocks.some((rock) => Math.hypot(rock.x - x, rock.z - z) < rock.radius + 0.2)) continue;
+        const period = 13 + rand() * 8;
+        Object.assign(out[out.length - 1 - slot], {
+            x,
+            z,
+            petal: 0,
+            size: 0.13 + rand() * 0.045,
+            fall: {
+                startX, startZ, height, period, duration: 3.3 + rand() * 1.55, offset: (slot + rand() * 0.6) * (period / falling),
+            },
+        });
+        slot += 1;
     }
     return out;
 }
@@ -326,12 +369,13 @@ export function createPads(light, plan) {
         const normal = normalize(vNormal).toVar();
         const view = normalize(cameraPosition.sub(point)).toVar();
         // Veins fan out from where the stalk joins, opposite the notch.
-        const veins = pow(abs(cos(f.mul(Math.PI * 11.0))), 22.0).mul(smoothstep(0.08, 0.5, r)).mul(float(1.0).sub(smoothstep(0.86, 1.0, r)));
-        const fresh = mix(vec3(0.03, 0.125, 0.045), vec3(0.075, 0.2, 0.05), aLook.x);
+        const fan = f.mul(Math.PI * 10.0).add(sin(r.mul(5).add(f.mul(8))).mul(0.32));
+        const veins = pow(abs(cos(fan)), 19.0).mul(smoothstep(0.03, 0.35, r)).mul(smoothstep(0.79, 1.0, r).oneMinus());
+        const fresh = mix(vec3(0.018, 0.104, 0.072), vec3(0.1, 0.22, 0.064), aLook.x);
         const old = vec3(0.16, 0.13, 0.035);
         const grain = light.noise.sample(point.xz.mul(0.9)).b;
         const leaf = mix(fresh, old, aLook.y.mul(smoothstep(0.35, 1.0, r.add(grain.mul(0.35))))).toVar();
-        leaf.mulAssign(veins.mul(0.55).add(1.0));
+        leaf.mulAssign(veins.mul(0.75).add(0.8).add(grain.mul(0.35)));
         // The rim is a shade redder and catches the light.
         leaf.assign(mix(leaf, vec3(0.13, 0.07, 0.04), smoothstep(0.9, 1.0, r).mul(0.6)));
         // A pad a splash or a koi has just wetted is darker, and glossy with a film of water.
@@ -345,7 +389,9 @@ export function createPads(light, plan) {
         // (A pad that mirrors the moon must glint, not turn white: a small sharp lobe.)
         const sheen = pow(facing, 20.0).mul(wet.mul(2.5).add(1.0).mul(0.035)).add(pow(facing, 400.0).mul(0.2))
             .add(pow(facing, 60.0).mul(wet.mul(0.12)));
-        const cell = point.xz.mul(34.0);
+        // Dew stays on the leaf as it rotates and drifts.
+        const theta = f.mul(TAU - 0.3).add(0.15);
+        const cell = vec2(cos(theta), sin(theta)).mul(r.mul(aLook.z).mul(30)).add(aLook.x.mul(23)).add(64);
         const bead = smoothstep(0.955, 1.0, fract(sin(dot(floor(cell), vec2(12.9898, 78.233))).mul(43758.5453)))
             .mul(float(1.0).sub(smoothstep(0.1, 0.34, fract(cell).sub(0.5).length())));
         const beads = bead.mul(pow(facing, 6.0)).mul(wet.mul(1.5).add(1.5));
@@ -384,10 +430,11 @@ export function createPads(light, plan) {
 /** Petals per flower: three whorls, then the stamens at the heart. */
 const WHORLS = [
     // count, open elevation (rad), closed, length, base radius, kind (0 petal, 1 stamen)
-    [9, 0.2, 1.38, 1.0, 0.07, 0],
-    [8, 0.62, 1.47, 0.86, 0.045, 0],
-    [6, 1.02, 1.52, 0.68, 0.02, 0],
-    [11, 1.22, 1.5, 0.3, 0.0, 1],
+    [12, 0.32, 1.20, 0.89, 0.088, 0],
+    [10, 0.63, 1.38, 0.76, 0.066, 0],
+    [7, 0.96, 1.46, 0.57, 0.045, 0],
+    [13, 1.09, 1.37, 0.44, 0.061, 1],
+    [7, 1.45, 1.51, 0.47, 0.016, 1],
 ];
 export const PETALS_PER_LILY = WHORLS.reduce((sum, w) => sum + w[0], 0);
 
@@ -395,7 +442,7 @@ export function createLilies(light, plan) {
     const { u } = light;
     const flowers = plan.lilies.length;
     const count = Math.max(1, flowers * PETALS_PER_LILY);
-    const base = buildPetalGeometry();
+    const base = light.tier?.shadows ? buildPetalGeometry() : buildPetalGeometry(7, 4);
     const geometry = new THREE.InstancedBufferGeometry();
     geometry.setIndex(base.getIndex());
     ['position', 'normal', 'uv'].forEach((name) => geometry.setAttribute(name, base.getAttribute(name)));
@@ -409,7 +456,7 @@ export function createLilies(light, plan) {
                 data.set([
                     lily.x, lily.z, lily.scale, angle,
                     open + (hash2(k, flower * 7 + whorl) - 0.5) * 0.14, closed, length, ring,
-                    flower, kind, lily.pink, whorl / 3,
+                    flower, kind, lily.pink, whorl / 4,
                 ], at * 12);
                 at += 1;
             }
@@ -446,7 +493,7 @@ export function createLilies(light, plan) {
         const src = wantNormal ? attribute('normal', 'vec3') : positionGeometry;
         // A petal curls back toward its tip as the flower opens.
         const t = uv().x;
-        const curl = elevation.sub(t.mul(t).mul(open).mul(0.5));
+        const curl = elevation.sub(t.mul(t).mul(open).mul(0.31));
         const lifted = vec3(
             src.x.mul(cos(curl)).sub(src.y.mul(sin(curl))),
             src.x.mul(sin(curl)).add(src.y.mul(cos(curl))),
@@ -472,10 +519,15 @@ export function createLilies(light, plan) {
         const stamen = aKind.y;
         // White at the base, the night's colour toward the tip (rose on the jade night); the
         // inner whorls are the deepest.
-        const rose = mix(u.petal, u.petalPale, aKind.z);
-        const petal = mix(vec3(0.92, 0.88, 0.82), rose, smoothstep(0.1, 0.95, t).mul(aKind.w.mul(0.45).add(0.5)));
-        const rib = float(1.0).sub(abs(across).mul(0.16));
-        const skin = mix(petal.mul(rib), vec3(1.0, 0.72, 0.16), stamen).toVar();
+        const rose = mix(u.petal, u.petalPale, aKind.z.mul(0.63));
+        const pigment = rose.mul(mix(vec3(1.0, 0.5, 0.72), vec3(1.0, 0.79, 0.88), aKind.z));
+        const lip = smoothstep(0.42, 1, abs(across));
+        const mantle = aKind.w.mul(0.48).add(0.64);
+        const petal = mix(vec3(0.99, 0.87, 0.73), pigment, smoothstep(0.18, 0.88, t).mul(mantle).add(lip.mul(0.16)));
+        const striae = cos(across.mul(13.0).add(t.mul(2.3))).mul(0.045).mul(smoothstep(0.03, 0.5, t));
+        const rib = float(1.0).sub(abs(across).mul(0.18)).add(striae);
+        const pollen = mix(vec3(0.92, 0.42, 0.035), vec3(1.0, 0.78, 0.18), smoothstep(0.48, 0.84, t));
+        const skin = mix(petal.mul(rib), pollen, stamen).toVar();
         const normal = normalize(vNormal);
         const ndl = dot(normal, u.moonDir);
         // Thin petals pass the light: lit from either face.
@@ -487,7 +539,7 @@ export function createLilies(light, plan) {
         const glow = vec3(1.0, 0.5, 0.3).mul(inner.mul(0.5).add(stamen.mul(1.6)))
             .mul(burn.mul(1.5).add(open.mul(0.16)).add(u.glow.mul(0.25))).mul(u.breath);
         const colour = skin.mul(moon.add(u.skyAmbient.mul(1.6)).add(light.lantern(point, normal).mul(1.4))
-            .add(light.ringLight(point.xz).mul(0.5))).add(skin.mul(glow));
+            .add(light.ringLight(point.xz).mul(0.5))).add(skin.mul(glow)).add(pollen.mul(stamen).mul(0.46).mul(u.breath));
         return vec4(colour, 1.0);
     });
 
@@ -518,6 +570,16 @@ export function createFloaters(light, leaves) {
     const geometry = new THREE.InstancedBufferGeometry();
     geometry.setIndex(base.getIndex());
     ['position', 'normal', 'uv'].forEach((name) => geometry.setAttribute(name, base.getAttribute(name)));
+    // Reuse the fan's triangles for fallen petals, rounding the maple's notched outline.
+    const shape = base.getAttribute('position');
+    const petal = new Float32Array(shape.count * 3);
+    for (let i = 0; i < shape.count; i += 1) {
+        const a = Math.atan2(shape.getZ(i), shape.getX(i) - 0.26);
+        const s = Math.sin(a);
+        const c = Math.cos(a);
+        petal.set(i ? [0.49 + c * 0.49, s * s * 0.095, s * (0.26 + c * 0.055)] : [0.48, 0.01, 0], i * 3);
+    }
+    geometry.setAttribute('aPetalShape', new THREE.BufferAttribute(petal, 3));
     geometry.instanceCount = count;
     // What never changes: tone, petal or leaf, its own moment in the maple's turn, its size.
     // What the drift writes each frame: where it floats, how it is turned, rocked and dipped.
@@ -540,11 +602,19 @@ export function createFloaters(light, leaves) {
 
     const place = Fn(() => {
         // (Turned about its middle, not its stem: a leaf set spinning spins in place.)
-        const local = rotateY(positionGeometry.sub(vec3(LEAF_MIDDLE, 0.0, 0.0)).mul(aLook.w), aLive.z);
+        const shapeAt = mix(positionGeometry, attribute('aPetalShape', 'vec3'), aLook.y)
+            .sub(vec3(LEAF_MIDDLE, 0.0, 0.0)).mul(aLook.w).mul(smoothstep(-0.48, -0.18, aLive.w));
+        // The last drift value carries the bank angle of a tumbling leaf.
+        const rolled = vec3(
+            shapeAt.x,
+            shapeAt.y.mul(cos(aRock.w)).sub(shapeAt.z.mul(sin(aRock.w))),
+            shapeAt.z.mul(cos(aRock.w)).add(shapeAt.y.mul(sin(aRock.w))),
+        );
+        const local = rotateY(rolled, aLive.z);
         const slope = light.surfaceAt(aLive.xy).xy.add(aRock.xy);
         const lift = slope.x.mul(local.x).add(slope.y.mul(local.z));
         // `w`: how far it is pushed under (a splash on it, a koi mouthing it) or lifted.
-        const y = local.y.mul(0.5).add(lift).add(FLOAT_Y * 0.7).add(aLive.w);
+        const y = local.y.add(lift).add(FLOAT_Y * 0.7).add(aLive.w);
         return vec3(aLive.x.add(local.x), y, aLive.y.add(local.z));
     })();
 
@@ -559,7 +629,8 @@ export function createFloaters(light, leaves) {
             light.leafColour(1, float(1.0), vTurned),
             pow(aLook.x, 4.0),
         );
-        const skin = mix(maple.mul(edge.mul(0.3).add(0.75)), mix(u.petal, u.petalPale, 0.5).mul(0.76), aLook.y)
+        const backlight = abs(sin(aRock.w));
+        const skin = mix(maple.mul(edge.mul(0.3).add(0.75)).mul(backlight.mul(0.65).add(1)), mix(u.petal, u.petalPale, 0.5).mul(0.76), aLook.y)
             .mul(float(1.0).sub(soaked.mul(0.18)));
         const lit = light.moonlight();
         const normal = normalize(vec3(light.surfaceAt(point.xz).xy.add(aRock.xy).negate(), 1.0).xzy);

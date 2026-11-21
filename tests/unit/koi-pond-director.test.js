@@ -64,6 +64,10 @@ describe('koi pond director: intake', () => {
         expect(calls.lock).toHaveLength(1);
         expect(calls.lock[0].hardDrop).toBe(true);
         expect(calls.lock[0].rows).toEqual([19]);
+        expect(calls.lock[0].distance).toBe(14);
+        director.onPieceLock({ piece: I });
+        director.flush();
+        expect(calls.lock[1].distance).toBeNull();
     });
 
     it('prefers the piece\'s own hex colour and falls back to the theme\'s colour for its shape', () => {
@@ -190,8 +194,10 @@ describe('koi pond director: settings and resets', () => {
         director.configure({ enabled: false });
         expect(calls.combo[calls.combo.length - 1]).toEqual([0, 0]);
         expect(director.onPieceLock({ piece: I })).toBe(false);
+        expect(director.onLevelUp({ level: 3 })).toBe(false);
         director.flush();
         expect(calls.lock).toHaveLength(1);
+        expect(calls.levelUp).toEqual([]);
         // Re-enabling never replays what was dropped.
         director.configure({ enabled: true });
         director.flush();
@@ -256,6 +262,15 @@ describe('koi pond composition', () => {
         expect(foot.y).toBeCloseTo(0.9 - 0.7 * (0.5 / BOARD_GRID.rows), 9);
         // Out-of-range input is clamped onto the board.
         expect(boardPoint(board, 7, 99).x).toBeCloseTo(0.6, 9);
+    });
+
+    it('places the portrait ledger below the open well and keeps room for the next queue', () => {
+        const { cards: [card], boards: [board], hud } = fallbackLayout(390, 844);
+        expect((board.y0 - card.y0) * 844).toBeCloseTo(844 * 0.062 + 10, 4);
+        expect((hud.y0 - board.y1) * 844).toBeCloseTo(12, 4);
+        expect(hud.x0).toBe(board.x0);
+        expect(hud.x1).toBe(board.x1);
+        expect(hud.y1).toBeLessThan(1);
     });
 
     it('reads the live card, board and HUD rects, and nothing when no board is on screen', () => {

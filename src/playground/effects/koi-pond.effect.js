@@ -18,7 +18,8 @@
  *   from=<s>                 replay every frame from <s> (instead of a fixed lead before t), so a
  *                            run of t= frames is one continuous take (the event, if any, still
  *                            fires at t - eventAge)
- *   event=lock|drop|clear|quad|twist|perfect|levelUp   fire a gameplay event...
+ *   event=lock|drop|clear|quad|twist|spin|b2b|cascade|combo|break|perfect|crown|levelUp|gameOver
+ *                            perfect plays a quad and its delayed crown; crown plays the crown alone
  *   eventAge=<s>             ...and show it <s> seconds later (lines=<n>, row=<r>, u=<0..1>,
  *                            color=<hex>)
  *   demo=1                   live only: play a looping gameplay script
@@ -37,7 +38,10 @@
 import * as THREE from 'three/webgpu';
 import { KoiPondWorld } from '../../themes/koi-pond/koi-pond-world.js';
 import { KoiPondPost, POST_LOOK } from '../../themes/koi-pond/koi-pond-post.js';
-import { readLayoutRects } from '../../themes/koi-pond/koi-pond-composition.js';
+import { fallbackLayout, readLayoutRects } from '../../themes/koi-pond/koi-pond-composition.js';
+import { KOI_POND_TETROMINOS } from '../../themes/koi-pond/koi-pond-tetrominos.js';
+import { SHAPES } from '../../core/constants.js';
+import { drawLandingShadowCanvas, drawPieceSolid, trimShape } from '../../rendering/canvas/canvas-drawing-utils.js';
 
 export const meta = {
     id: 'koi-pond',
@@ -50,47 +54,90 @@ function num(params, key, fallback = 0) {
     return Number.isFinite(v) ? v : fallback;
 }
 
-const BOARD_PX = 'min(clamp(220px, 22vw, 300px), (100vh - 250px) / 2)';
-
-/** A stand-in for the real solo layout (public/styles/main.css) with the real class names. */
+/** The real solo well's dimensions and piece drawing, without starting a playable board. */
 function mountBoardOverlay(withHud) {
     const root = document.createElement('div');
-    root.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:5';
+    root.className = 'single-player-stage';
+    root.dataset.board = 'well';
+    root.setAttribute('aria-hidden', 'true');
+    root.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:5;overflow:hidden';
     const card = document.createElement('div');
-    card.className = 'player-card';
+    card.id = 'single-player-card';
+    card.className = 'player-card single-player-card';
     card.dataset.player = 'solo';
-    card.style.cssText = [
-        'position:absolute', 'left:50%', 'top:50%',
-        `width:calc(${BOARD_PX} * 1.19)`,
-        `height:calc(2 * ${BOARD_PX} + 158px)`,
-        'transform:translate(-50%, -50%)', 'background:rgba(21,26,35,0.866)',
-        'border:1px solid rgba(139,92,246,0.45)', 'border-radius:20px',
-    ].join(';');
-    const board = document.createElement('div');
+    const queue = document.createElement('div');
+    queue.className = 'player-next-pieces';
+    queue.style.cssText = 'display:flex;align-items:end;justify-content:center;gap:8px';
+    const board = document.createElement('canvas');
     board.id = 'single-player-game-canvas';
-    board.style.cssText = [
-        'position:absolute', 'left:50%', 'bottom:24px', `width:calc(${BOARD_PX})`, `height:calc(2 * ${BOARD_PX})`,
-        'transform:translateX(-50%)', 'border:1px solid rgba(255,255,255,0.08)',
-    ].join(';');
-    card.append(board);
+    board.width = 360;
+    board.height = 720;
+    board.style.borderRadius = '0 0 10px 10px';
+    board.style.background = 'linear-gradient(rgba(9,8,24,.3),rgba(9,8,24,.84) 16%,rgba(9,8,24,.9))';
+    const wall = document.createElement('div');
+    wall.id = 'single-player-border';
+    wall.style.cssText = 'border:3px solid #72a69b;border-top:0;border-radius:0 0 13px 13px';
+    wall.style.maskImage = 'linear-gradient(transparent,#000 24%)';
+    const hud = document.createElement('div');
+    hud.className = 'single-player-stats-bar';
+    hud.style.cssText = 'border:1px solid #52605e;border-left:3px solid #e8c58b;border-radius:16px';
+    hud.style.background = 'linear-gradient(160deg,rgba(24,39,42,.94),rgba(13,20,29,.94))';
+    card.append(queue, board, wall);
     root.append(card);
-    if (withHud) {
-        const hud = document.createElement('div');
-        hud.className = 'single-player-stats-bar';
-        hud.style.cssText = [
-            'position:absolute', 'top:25%', 'height:50%',
-            'left:calc(50% + min(max(300px, min(35vw, 400px)), (100vh - 200px) / 2) / 2 + 60px)',
-            'width:140px',
-            'background:rgba(14,11,26,0.8)', 'border:1px solid rgba(150,110,255,0.25)', 'border-radius:10px',
-        ].join(';');
-        root.append(hud);
-    }
+    if (withHud) root.append(hud);
     document.body.appendChild(root);
-    return root;
+    const ctx = board.getContext('2d');
+    const paint = (context, key, x, y, size) => drawPieceSolid(context, trimShape(SHAPES[key]), x, y, size, {
+        ...KOI_POND_TETROMINOS,
+        color: KOI_POND_TETROMINOS.colors[key],
+        effects: { ...KOI_POND_TETROMINOS.effects, pulse: false },
+    });
+    const pieces = [['I', 0, 19], ['S', 0, 17], ['O', 4, 18], ['J', 6, 18], ['T', 3, 3]];
+    pieces.forEach(([key, x, y]) => paint(ctx, key, x * 36, y * 36, 36));
+    drawLandingShadowCanvas(ctx, trimShape(SHAPES.T), 108, 16 * 36, 36, KOI_POND_TETROMINOS.colors.T);
+    ['L', 'Z', 'O'].forEach((key, i) => {
+        const preview = document.createElement('canvas');
+        preview.className = 'player-next-piece';
+        preview.width = 96;
+        preview.height = 60;
+        preview.style.cssText = 'width:auto;background:rgba(12,18,26,.86);border-radius:7px';
+        preview.style.height = i ? '76%' : '95%';
+        preview.style.border = `1px solid ${i ? '#435051' : '#a68960'}`;
+        const shape = trimShape(SHAPES[key]);
+        paint(preview.getContext('2d'), key, (96 - shape[0].length * 19) / 2, (60 - shape.length * 19) / 2, 19);
+        queue.append(preview);
+    });
+    const place = (el, x, y, width, height) => Object.assign(el.style, {
+        position: 'absolute',
+        boxSizing: 'border-box',
+        left: `${x}px`,
+        top: `${y}px`,
+        width: `${width}px`,
+        height: `${height}px`,
+    });
+    return {
+        remove: () => root.remove(),
+        resize() {
+            const w = window.innerWidth;
+            const h = window.innerHeight;
+            const layout = fallbackLayout(w, h);
+            const c = layout.cards[0];
+            const b = layout.boards[0];
+            const rail = layout.hud;
+            const bw = (b.x1 - b.x0) * w;
+            const bh = (b.y1 - b.y0) * h;
+            const by = (b.y0 - c.y0) * h;
+            place(card, c.x0 * w, c.y0 * h, (c.x1 - c.x0) * w, (c.y1 - c.y0) * h);
+            place(queue, 3, 0, bw, by - 10);
+            place(board, 3, by, bw, bh);
+            place(wall, 0, by, bw + 6, bh + 3);
+            place(hud, rail.x0 * w, rail.y0 * h, (rail.x1 - rail.x0) * w, (rail.y1 - rail.y0) * h);
+        },
+    };
 }
 
 /** The game's piece colours (koi-pond-tetrominos.js). */
-const PIECE_COLORS = ['#ffc852', '#ffadd2', '#7dffb8', '#ff7b52', '#7b94ff', '#ffe48a', '#7eeeff'];
+const PIECE_COLORS = ['I', 'O', 'T', 'S', 'Z', 'J', 'L'].map((piece) => KOI_POND_TETROMINOS.colors[piece]);
 
 /** A looping script of locks and clears for the live demo (seconds into the loop). */
 const DEMO_LOOP = 36;
@@ -152,11 +199,12 @@ export function create({
     if (iconStage && world.flora.lilies.length) {
         const near = world.flora.lilies.reduce((best, at) => (Math.hypot(at.x - stage.x, at.z - stage.z)
             < Math.hypot(best.x - stage.x, best.z - stage.z) ? at : best));
-        stage.x = near.x - Math.sign(near.x) * 0.98;
-        stage.z = near.z + 0.32;
+        stage.x = near.x - Math.sign(near.x) * 1.22;
+        stage.z = near.z + 0.42;
     }
     const size = new THREE.Vector2(1, 1);
     const syncViewport = () => {
+        overlay?.resize();
         const aspect = window.innerWidth / Math.max(1, window.innerHeight);
         camera.aspect = aspect;
         camera.updateProjectionMatrix();
@@ -241,7 +289,7 @@ export function create({
         });
         if (nearest >= 0) {
             lily.open[nearest] = 1;
-            lily.heart[nearest] = 0.9;
+            lily.heart[nearest] = 0.32;
             lily.until[nearest] = world.time + 100;
         }
     };
@@ -256,7 +304,7 @@ export function create({
     };
 
     const eventName = params.get('event');
-    const eventAge = num(params, 'eventAge', 0.6);
+    const eventAge = Math.max(0, num(params, 'eventAge', 0.6));
     const holdCombo = Math.max(0, Math.round(num(params, 'combo', 0)));
     const level = Math.max(1, Math.round(num(params, 'level', 1)));
     const warmLocks = Math.max(0, Math.round(num(params, 'locks', 0)));
@@ -267,16 +315,38 @@ export function create({
         const u = num(params, 'u', 0.3);
         const lines = Math.max(1, Math.min(4, Math.round(num(params, 'lines', 2))));
         const bottom = (n) => Array.from({ length: n }, (_, i) => 19 - i);
-        if (eventName === 'lock') world.onLock({ rows: [row, row - 1], u, color: eventColor });
+        const lock = { rows: [row, row - 1], u, color: eventColor };
+        const crown = () => world.onClear({ lines: 0, perfect: true, crown: true });
+        if (eventName === 'lock') world.onLock(lock);
         else if (eventName === 'drop') {
             world.onLock({
-                rows: [row, row - 1], u, hardDrop: true, color: eventColor,
+                ...lock, hardDrop: true, distance: num(params, 'distance', 16),
             });
         } else if (eventName === 'clear') world.onClear({ rows: bottom(lines), lines });
         else if (eventName === 'quad') world.onClear({ rows: bottom(4), lines: 4 });
-        else if (eventName === 'twist') world.onClear({ rows: bottom(2), lines: 2, twist: true });
-        else if (eventName === 'perfect') world.onClear({ rows: bottom(4), lines: 4, perfect: true });
+        else if (eventName === 'twist') world.onClear({ rows: bottom(lines), lines, twist: true });
+        else if (eventName === 'spin') {
+            world.onLock(lock);
+            world.onClear({ lines: 0, twist: true });
+        } else if (eventName === 'b2b') {
+            world.onClear({
+                rows: bottom(lines), lines, twist: lines < 4, b2b: true,
+            });
+        } else if (eventName === 'cascade') {
+            world.onClear({ rows: bottom(lines), lines, cascade: Math.max(2, num(params, 'cascade', 3)) });
+        } else if (eventName === 'combo') world.onCombo(holdCombo || 7);
+        else if (eventName === 'break') {
+            if (!world.combo) world.onCombo(7);
+            world.onCombo(0);
+        } else if (eventName === 'perfect') {
+            world.onClear({ rows: bottom(4), lines: 4 });
+            world.at(world.time + 0.36, crown);
+        } else if (eventName === 'crown') crown();
         else if (eventName === 'levelUp') world.levelUp(num(params, 'eventLevel', level + 1));
+        else if (eventName === 'gameOver') {
+            world.resetSession();
+            world.gameOver();
+        }
     };
 
     // ?probe=1: read the wave simulation back after a seek (diagnostics().probe).
@@ -306,15 +376,16 @@ export function create({
         if (level > 1) world.levelUp(level, { silent: true });
         frame(start, 0);
         let cursor = start;
-        if (holdCombo > 0) {
+        const eventTime = eventName ? Math.max(start, time - eventAge) : time;
+        if (holdCombo > 0 && eventName !== 'combo') {
             // A chain builds: one clear after another, not all at once.
-            const settle = Math.min(4, lead * 0.3);
+            const settle = Math.min(4, eventTime - cursor);
             stepTo(cursor, start + settle, 1 / 60);
             cursor = start + settle;
             world.onCombo(holdCombo);
         }
         for (let i = 0; i < warmLocks; i++) {
-            const at = cursor + 0.5;
+            const at = Math.min(eventTime, cursor + 0.5);
             stepTo(cursor, at, 1 / 60);
             cursor = at;
             world.onLock({
@@ -324,7 +395,6 @@ export function create({
                 hardDrop: i % 4 === 3,
             });
         }
-        const eventTime = eventName ? time - eventAge : time;
         if (eventTime > cursor) stepTo(cursor, eventTime, 1 / 60);
         if (eventName) {
             fireEvent();
@@ -337,6 +407,7 @@ export function create({
     };
 
     const demo = params.get('demo') === '1';
+    let liveEventFired = false;
     let demoCursor = 0;
     let demoLoop = -1;
     let demoPiece = 0;
@@ -373,6 +444,10 @@ export function create({
         update(time, dt) {
             sought = null;
             if (demo) runDemo(time);
+            if (eventName && !liveEventFired) {
+                liveEventFired = true;
+                fireEvent();
+            }
             frame(time, dt);
             pushPost(time);
         },

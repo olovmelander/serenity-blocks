@@ -422,7 +422,11 @@ export default class KoiPondTheme extends BaseTheme {
             }),
         );
         this.registerEventListener(window, 'settingsChanged', (p) => this.handleSettingsChanged(p));
-        this.registerEventListener(window, 'gameOver', () => this.resetSession());
+        this.registerEventListener(window, 'gameOver', () => {
+            const showFarewell = playing() && this.director?.enabled;
+            this.resetSession();
+            if (showFarewell) this.world?.gameOver();
+        });
 
         const resetPointer = () => {
             this.pointer.x = 0;
@@ -480,6 +484,7 @@ export default class KoiPondTheme extends BaseTheme {
             enabled: boolSetting(readSetting(payload, 'backgroundComboEffects'), true),
             lockRipple: boolSetting(readSetting(payload, 'pieceLockRipple'), true),
         });
+        if (this.director && !this.director.enabled) this.world?.cancelRunEnd();
         this.world?.setReducedMotion(this.reducedMotion);
     }
 
@@ -565,7 +570,10 @@ export default class KoiPondTheme extends BaseTheme {
         this.modeManager = manager;
         const relayout = () => this.scheduleLayoutReads();
         this.eventUnsubscribers.push(
-            manager.on('modeStarted', relayout),
+            manager.on('modeStarted', () => {
+                this.world?.cancelRunEnd();
+                relayout();
+            }),
             manager.on('modeActivated', relayout),
             manager.on('modeStopped', () => this.resetSession()),
         );

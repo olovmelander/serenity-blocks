@@ -15,7 +15,7 @@ import {
 import { CHAIN_RING, KoiSchool, MEAL_REACH } from '../../src/themes/koi-pond/koi-pond-school.js';
 import { WAVE_SPEED } from '../../src/themes/koi-pond/koi-pond-light.js';
 import { POND, mulberry32, waterDepth } from '../../src/themes/koi-pond/koi-pond-core.js';
-import { planGarden } from '../../src/themes/koi-pond/koi-pond-garden.js';
+import { growMaples, planGarden } from '../../src/themes/koi-pond/koi-pond-garden.js';
 import { QUALITY, QUALITY_NAMES } from '../../src/themes/koi-pond/koi-pond-quality.js';
 import { KoiPondWorld, REST_RIG, fovForAspect } from '../../src/themes/koi-pond/koi-pond-world.js';
 import { fallbackLayout } from '../../src/themes/koi-pond/koi-pond-composition.js';
@@ -81,6 +81,9 @@ describe('koi pond: where things float', () => {
     it.each(QUALITY_NAMES)('lays the %s tier\'s fallen leaves in water, none on a pad, the same every time', (name) => {
         const tier = QUALITY[name];
         const flora = planFlora({ pads: tier.pads, lotus: tier.lotus, rocks: ROCKS });
+        const foreground = flora.pads.filter((pad) => pad.raft.z > 4);
+        expect(foreground.some((pad) => pad.x < 0)).toBe(true);
+        expect(foreground.some((pad) => pad.x > 0)).toBe(true);
         const leaves = planFloaters(tier.floaters, { pads: flora.pads });
         expect(leaves.length).toBe(tier.floaters);
         leaves.forEach((leaf) => {
@@ -112,6 +115,65 @@ describe('koi pond: where things float', () => {
             expect(at.z).toBeCloseTo(lily.z, 6);
             expect(at.turn).toBe(0);
         });
+    });
+});
+
+describe('maple leaves falling onto the pond', () => {
+    const canopy = growMaples(QUALITY.Minimal.leaves);
+    const planned = planFloaters(QUALITY.Minimal.floaters, { canopy, rocks: ROCKS });
+    const leaf = planned.find((entry) => entry.fall);
+
+    it('starts on a real twig and settles into the same floating leaf, rippling once on each landing', () => {
+        expect(leaf).toBeDefined();
+        const { fall } = leaf;
+        let onTwig = false;
+        for (let k = 0; k < canopy.count; k++) {
+            const i = k * 8;
+            if (canopy.leaves[i] === fall.startX && canopy.leaves[i + 1] === fall.height
+                && canopy.leaves[i + 2] === fall.startZ) onTwig = true;
+        }
+        expect(onTwig).toBe(true);
+        const drift = new FloatDrift({ leaves: [leaf] });
+        drift.reset(fall.period - fall.offset + 0.00001);
+        const row = new Float32Array(FLOATER_LIVE_STRIDE);
+        drift.writeLeaves(row);
+        expect(row[0]).toBeCloseTo(fall.startX, 3);
+        expect(row[1]).toBeCloseTo(fall.startZ, 3);
+        expect(row[3]).toBeCloseTo(fall.height, 3);
+        let landings = 0;
+        for (let k = 0; k < Math.ceil((fall.period + fall.duration + 0.2) / DT); k++) {
+            const x = row[0];
+            const z = row[1];
+            const y = row[3];
+            drift.step(DT);
+            drift.writeLeaves(row);
+            if (drift.landings.length) {
+                expect(drift.landings).toEqual([0]);
+                expect(drift.airborne[0]).toBe(0);
+                expect(Math.hypot(row[0] - x, row[1] - z, row[3] - y)).toBeLessThan(0.07);
+                expect(row[0]).toBe(drift.x[0]);
+                expect(row[1]).toBe(drift.z[0]);
+                expect(row[3]).toBeCloseTo(0, 2);
+                landings++;
+            }
+        }
+        expect(landings).toBe(2);
+    });
+
+    it('keeps those leaves on the surface throughout the cycle under reduced motion', () => {
+        const drift = new FloatDrift({ leaves: [leaf] });
+        drift.setMotion(0);
+        const row = new Float32Array(FLOATER_LIVE_STRIDE);
+        let landings = 0;
+        let lift = 0;
+        for (let k = 0; k < Math.ceil(leaf.fall.period / DT); k++) {
+            drift.step(DT);
+            drift.writeLeaves(row);
+            landings += drift.landings.length;
+            lift = Math.max(lift, Math.abs(row[3]), drift.airborne[0]);
+        }
+        expect(landings).toBe(0);
+        expect(lift).toBe(0);
     });
 });
 

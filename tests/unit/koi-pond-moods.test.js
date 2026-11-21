@@ -229,6 +229,24 @@ describe('koi pond moods: the light', () => {
 });
 
 describe('koi pond moods: the pond', () => {
+    it('moves the lunar terminator and wind continuously into a shower and back to clear water', () => {
+        const harvest = moodAt(4);
+        const transition = moodAt(4.5);
+        const rain = moodAt(5);
+        const jade = moodAt(6);
+        for (const key of ['lunarAngle', 'breeze', 'drizzle']) {
+            expect(transition[key]).toBeCloseTo((harvest[key] + rain[key]) / 2);
+        }
+        expect(harvest.drizzle).toBe(0);
+        expect(rain.drizzle).toBe(1);
+        expect(jade.drizzle).toBe(0);
+        expect(moodAt(1).breeze).toBeLessThan(rain.breeze);
+        const { world } = makeWorld();
+        world.light.setMood(rain);
+        expect(world.light.u.lunarPhase.value.x).toBeCloseTo(Math.sin(rain.lunarAngle));
+        expect(world.light.u.lunarPhase.value.length()).toBeCloseTo(1);
+    });
+
     it('drifts from night to night with the clock alone, level or no level', () => {
         const { world, camera } = makeWorld();
         expect(world.getState()).toMatchObject({ night: 'jade night', nextNight: 'frost moon', nightMix: 0 });
