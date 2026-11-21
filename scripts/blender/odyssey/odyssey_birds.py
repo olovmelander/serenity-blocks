@@ -421,33 +421,74 @@ def build_gull():
 
 # =================================================================================================
 # THE BARN SWALLOW (Hirundo rustica): 0.33 m span, 0.18 m long with its streamers. Glossy steel
-# blue-black above, a rust-red forehead and throat over a dark breast band, pale buff below; long
-# swept wings; a deeply forked tail with long outer streamers.
+# blue above, a rust-red forehead and throat over a blue-black breast band, cream-buff below; long
+# swept wings; a deeply forked tail with long outer streamers and a row of white spots across it.
+#
+# REBUILT FOR THE NEAR VIEW (2026-11-21, the owner: "they need to be modelled better"): the meadow's
+# hunting parties pass the rail and the map's camera close (on a phone in portrait they come to
+# 30-60 px), and the first swallow, a six-sided prism under navy that read black, drew flat black
+# chevrons. Now: a rounded body (ten sides) with a domed head, a short wide bill and the eye; the
+# back and the coverts a glossy steel blue that reads blue in the sun, the flight feathers a
+# blackish brown told one from the next; the rust face and throat, the dark breast band, the cream
+# belly; the tail's white spots and its streamers wide enough to show.
 # =================================================================================================
 
 SWALLOW_PLUMAGE = {
-    "back": lin("#1c2846"),
-    "sheen": lin("#26386a"),
-    "flight": lin("#1a1d2a"),
-    "rust": lin("#8c3420"),
-    "band": lin("#1e2640"),
-    "belly": lin("#e3d2bf"),
-    "underwing": lin("#b6aa98"),
-    "underFlight": lin("#5d5852"),
-    "tailUnder": lin("#3c3b44"),
+    "back": lin("#23397a"),
+    "sheen": lin("#3c62b4"),
+    "crown": lin("#2a4590"),
+    "flight": lin("#1b1d27"),
+    "rib": lin("#2b2e3c"),
+    "covert": lin("#2d4a92"),
+    "rust": lin("#a8442a"),
+    "band": lin("#1f2c55"),
+    "belly": lin("#efe2cd"),
+    "vent": lin("#f3ebde"),
+    "underwing": lin("#d9cfbf"),
+    "underFlight": lin("#7a797f"),
+    "tail": lin("#1d2540"),
+    "tailUnder": lin("#3e3d46"),
+    "spot": lin("#f2efe8"),
+    "eye": lin("#0b0b0e"),
     "bill": lin("#101012"),
 }
+
+# The body's rings (z, half width, top, bottom, centre height), tail to face: slim behind, deep in
+# the chest, a short neck and a domed head a little wider than it.
+SWALLOW_BODY = [
+    (-0.046, 0.0050, 0.0040, 0.0040, 0.0030),
+    (-0.036, 0.0085, 0.0068, 0.0076, 0.0024),
+    (-0.022, 0.0120, 0.0098, 0.0112, 0.0014),
+    (-0.006, 0.0158, 0.0120, 0.0138, 0.0004),
+    (0.010, 0.0164, 0.0126, 0.0142, 0.0006),
+    (0.024, 0.0130, 0.0118, 0.0124, 0.0018),
+    (0.034, 0.0112, 0.0106, 0.0102, 0.0030),
+    (0.043, 0.0118, 0.0116, 0.0098, 0.0040),
+    (0.052, 0.0114, 0.0112, 0.0090, 0.0044),
+    (0.060, 0.0086, 0.0082, 0.0066, 0.0040),
+    (0.066, 0.0050, 0.0048, 0.0038, 0.0034),
+]
 
 
 def swallow_body_colour(z, ca, sa):
     P = SWALLOW_PLUMAGE
-    back = mix(P["back"], P["sheen"], 0.5 * smooth(0.6, 1.0, sa) * smooth(-0.03, 0.0, z) * smooth(0.03, 0.0, z))
-    # Underneath: the pale belly, the dark breast band, the rust throat; the rust forehead.
-    under = mix(P["belly"], P["band"], smooth(0.012, 0.022, z))
-    under = mix(under, P["rust"], smooth(0.030, 0.038, z))
-    col = mix(under, back, smooth(-0.35, 0.15, sa))
-    forehead = smooth(0.050, 0.058, z) * smooth(-0.6, 0.2, sa)
-    return mix(col, P["rust"], forehead)
+    # Above: the steel-blue back with its gloss along the crown of the back, the crown of the head.
+    back = mix(P["back"], P["sheen"], 0.6 * smooth(0.45, 0.95, sa) * smooth(-0.030, -0.010, z) * smooth(0.040, 0.020, z))
+    back = mix(back, P["crown"], smooth(0.036, 0.046, z))
+    # Underneath: the cream belly and vent, the dark breast band, the rust throat.
+    under = mix(P["vent"], P["belly"], smooth(-0.036, -0.016, z))
+    under = mix(under, P["band"], smooth(0.016, 0.022, z))
+    under = mix(under, P["rust"], smooth(0.027, 0.033, z))
+    # On the head the blue cap comes down to the eye (the rust is the throat and the forehead only,
+    # not the whole face): the line between them drops from the body's flank to below the eye.
+    head = smooth(0.034, 0.044, z)
+    col = mix(under, back, smooth(-0.30 - 0.32 * head, 0.20 - 0.45 * head, sa))
+    # The rust forehead: a small patch over the bill.
+    col = mix(col, P["rust"], smooth(0.061, 0.065, z) * smooth(-0.5, 0.3, sa))
+    # The eye: the head's widest ring, on each side, a little above the middle.
+    if abs(z - 0.052) < 1e-6 and abs(ca) > 0.75 and sa > -0.1:
+        col = P["eye"]
+    return col
 
 
 SWALLOW = {
@@ -457,14 +498,18 @@ SWALLOW = {
     "armBand": (0.008, 0.030), "armBandTE": (0.004, 0.044),
     "handBand": (0.036, 0.050), "handBandTE": (0.012, 0.068),
     "tipBand": (0.100, 0.165),
-    # A short arm and a long sickle of a hand: the tip lies far behind the shoulder.
+    # A short broad arm and a long sickle of a hand: the tip lies far behind the shoulder. The arm's
+    # four stations as before (closer, the swept glide crushes the skin it tucks in by the body);
+    # the sickle finer, so it holds near.
     "planform": [
         (0.008, 0.022, -0.020), (0.020, 0.025, -0.022), (0.032, 0.027, -0.022), (0.042, 0.028, -0.022),
-        (0.060, 0.023, -0.024), (0.080, 0.013, -0.028), (0.100, 0.001, -0.033), (0.120, -0.013, -0.040),
-        (0.140, -0.029, -0.048),
+        (0.052, 0.026, -0.024), (0.064, 0.021, -0.028), (0.077, 0.014, -0.031),
+        (0.090, 0.006, -0.035), (0.104, -0.004, -0.040), (0.118, -0.015, -0.045), (0.132, -0.027, -0.051),
+        (0.146, -0.040, -0.057), (0.156, -0.050, -0.061),
     ],
-    "tip": (0.164, -0.064),
-    "chord": [0.0, 0.35, 0.7, 1.0],
+    "tip": (0.165, -0.068),
+    # Across the chord: the leading edge, the glossy coverts, their edge, the flight feathers.
+    "chord": [0.0, 0.18, 0.36, 0.48, 0.72, 1.0],
     "camber": 0.03,
     "wingY": lambda s: 0.006,
     "tailY": 0.003,
@@ -473,32 +518,65 @@ SWALLOW = {
 
 def swallow_wing_colour(s, c):
     P = SWALLOW_PLUMAGE
-    top = mix(P["back"], P["flight"], smooth(0.25, 0.6, c) + smooth(0.05, 0.09, s))
-    under = mix(P["underwing"], P["underFlight"], max(smooth(0.25, 0.6, c), smooth(0.045, 0.08, s)))
+    hand = smooth(0.046, 0.066, s)
+    # The feathers told one from the next: every other station a shade lighter down the flight
+    # feathers (the secondaries on the arm, the primaries along the sickle).
+    k = min(range(len(SWALLOW["planform"])), key=lambda i: abs(SWALLOW["planform"][i][0] - s))
+    rib = 1.0 if k % 2 == 0 else 0.0
+    flight = mix(P["flight"], P["rib"], 0.7 * rib)
+    # Above: glossy steel-blue coverts over the front of the arm and the hand's base, the blackish
+    # flight feathers behind and along the hand.
+    coverts = mix(P["covert"], P["sheen"], 0.35 * smooth(0.10, 0.0, c))
+    top = mix(coverts, flight, smooth(0.36, 0.50, c) * (1 - hand) + hand * smooth(0.10, 0.36, c))
+    top = mix(top, flight, smooth(0.08, 0.12, s))
+    # Below: buff coverts, grey-brown flight feathers.
+    under_flight = mix(P["underFlight"], P["underwing"], 0.18 * rib)
+    under = mix(P["underwing"], under_flight, max(smooth(0.30, 0.48, c), smooth(0.05, 0.085, s)))
     return top, under
+
+
+# The forked tail (x >= 0; mirrored): the root under the body, the central feathers ending at the
+# fork's notch, the outer pair drawn out into the streamers; two points on each half carry the row
+# of white spots across the tail.
+SWALLOW_TAIL = [
+    (0.0, -0.030), (0.0110, -0.030),
+    (0.0, -0.045), (0.0060, -0.046), (0.0130, -0.046),
+    (0.0, -0.053), (0.0062, -0.054), (0.0148, -0.055),
+    (0.0, -0.057), (0.0090, -0.062), (0.0168, -0.064),
+    (0.0150, -0.071), (0.0205, -0.072),
+    (0.0262, -0.104), (0.0300, -0.105),
+    (0.0315, -0.132),
+]
+SWALLOW_TAIL_TRIS = [
+    (0, 1, 4), (0, 4, 3), (0, 3, 2),
+    (2, 3, 6), (2, 6, 5), (3, 4, 7), (3, 7, 6),
+    (5, 6, 9), (5, 9, 8), (6, 7, 10), (6, 10, 9),
+    (9, 10, 12), (9, 12, 11),
+    (11, 12, 14), (11, 14, 13),
+    (13, 14, 15),
+]
+
+
+def swallow_tail_colour(p):
+    P = SWALLOW_PLUMAGE
+    x, z = abs(p[0]), p[2]
+    spot = (1 - smooth(0.0008, 0.0030, abs(x - 0.0061))) * (1 - smooth(0.001, 0.005, abs(z + 0.050)))
+    # (Faint from above, clear from below, as on the bird: a white wedge on top read as a rump.)
+    return mix(P["tail"], P["spot"], 0.3 * spot), mix(P["tailUnder"], P["spot"], spot)
 
 
 def build_swallow():
     b = Builder("swallow")
     P = SWALLOW_PLUMAGE
-    shell(b, "body", [
-        (-0.045, 0.006, 0.005, 0.006, 0.003),
-        (-0.030, 0.011, 0.009, 0.011, 0.002),
-        (-0.008, 0.0145, 0.012, 0.014, 0.000),
-        (0.014, 0.0145, 0.012, 0.014, 0.001),
-        (0.032, 0.0115, 0.011, 0.011, 0.003),
-        (0.046, 0.0105, 0.010, 0.009, 0.005),
-        (0.057, 0.0060, 0.006, 0.005, 0.004),
-    ], 6, swallow_body_colour,
-        tail=((0.0, 0.003, -0.050), P["back"]), nose=((0.0, 0.003, 0.068), P["bill"]))
+    shell(b, "body", SWALLOW_BODY, 10, swallow_body_colour,
+          tail=((0.0, 0.003, -0.050), P["back"]), nose=((0.0, 0.0034, 0.068), P["rust"]), power=0.9)
+    # The bill: short and wide (the gape a swallow hunts with).
+    cone(b, "bill", 0.064, (0.0, 0.0030, 0.0745), 0.0034, 0.0036, 0.0022, lambda t: P["bill"], count=6)
     for side in (1, -1):
         build_wing(b, SWALLOW, side, swallow_wing_colour)
-    # The forked tail: a notch at the centre, the outer feathers drawn out into long streamers.
-    pts, mirror = mirrored([(0.0, 0.004, -0.030), (0.011, 0.004, -0.030), (0.0, 0.003, -0.060),
-                            (0.018, 0.003, -0.057), (0.013, 0.003, -0.066), (0.022, 0.003, -0.072),
-                            (0.027, 0.003, -0.127)])
-    build_sheet(b, "tail", pts, tail_tris([(0, 1, 3), (0, 3, 2), (2, 3, 4), (3, 5, 4), (4, 5, 6)], mirror),
-                lambda p: (P["back"], P["tailUnder"]), lambda p: smooth(0.030, 0.110, -p[2]))
+    pts, mirror = mirrored([(x, SWALLOW["tailY"] + 0.0008 * smooth(-0.03, -0.06, z), z) for x, z in SWALLOW_TAIL])
+    build_sheet(b, "tail", pts, tail_tris(SWALLOW_TAIL_TRIS, mirror), swallow_tail_colour,
+                lambda p: smooth(0.030, 0.110, -p[2]))
     return b
 
 

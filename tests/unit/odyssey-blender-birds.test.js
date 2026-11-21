@@ -119,7 +119,10 @@ describe('the Blender birds (models)', () => {
             expect(m.triangleCount).toBeGreaterThanOrEqual(100);
             // (The goose is seen 100-220 px across since the skein flies the foot of the wall,
             // 2026-11-20, and is built finer for it; the others for some tens of pixels.)
-            expect(m.triangleCount).toBeLessThanOrEqual(name === 'goose' ? 900 : 400);
+            // (The goose and the swallow were rebuilt for the near view: 2026-11-20 the goose, 2026-11-21
+            // the swallow, which the meadow's parties bring close to the rail and the map's camera.)
+            const budget = { goose: 900, swallow: 600 };
+            expect(m.triangleCount).toBeLessThanOrEqual(budget[name] ?? 400);
             expect(m.index.length).toBe(m.triangleCount * 3);
             expect(m.positions.length).toBe(m.vertexCount * 3);
             ['normals', 'top', 'under'].forEach((k) => expect(m[k].length, k).toBe(m.vertexCount * 3));
@@ -194,12 +197,14 @@ describe('the Blender birds (models)', () => {
         expect(luminance(vec(gull.top, gullTip))).toBeLessThan(0.05);
         expect(luminance(vec(gull.top, gullArm))).toBeLessThan(luminance(vec(gull.under, gullArm)));
         expect(luminance(vec(gull.under, gullArm))).toBeGreaterThan(0.6);
-        // Swallow: a blue-black back, a pale belly, a rust throat.
+        // Swallow: a glossy steel-blue back (dark, and plainly blue: since 2026-11-21, when a navy
+        // back drew flat black chevrons in the sun), a pale belly, a rust throat.
         const back = vec(swallow.top, nearest(swallow, [0, 0.013, 0.0]));
         const belly = vec(swallow.top, nearest(swallow, [0, -0.014, -0.01]));
         const throat = vec(swallow.top, nearest(swallow, [0, -0.008, 0.036]));
-        expect(luminance(back)).toBeLessThan(0.04);
-        expect(back[2]).toBeGreaterThan(back[0]);
+        expect(luminance(back)).toBeLessThan(0.15);
+        expect(back[2]).toBeGreaterThan(back[0] * 2.5);
+        expect(back[2]).toBeGreaterThan(back[1] * 1.4);
         expect(luminance(belly)).toBeGreaterThan(0.6);
         expect(throat[0]).toBeGreaterThan(throat[1] * 2);
         // Vulture: sandy coverts over blackish flight feathers, a pale head.

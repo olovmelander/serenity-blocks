@@ -636,3 +636,48 @@ Scratch tools of the session (recipes, not files in the repo):
   the butterflies were not touched.
 - Gulls are still small birds in a big picture at most moments (30-60 px seen obliquely); the
   biggest moments (150-200 px) happen at the frame's edges.
+
+## The swallow, rebuilt for the near view (2026-11-21)
+
+The owner, from a phone, of birds "flying up from below quite close to the pond": "They need to
+be modelled better." They were the meadow's barn swallows: the fly-by (which comes in at the left
+edge of every seat from L16 to L24, 35-45 u off, 25-35 px across at 1080p, over the tarn at L17)
+and the two hunting parties further off. The old model was a six-sided prism under a navy that
+read black, so from above, which is how a seat sees them over the meadow, they were flat black
+cut-outs.
+
+`odyssey_birds.py` builds a new one (514 triangles, was 196; the swallow's budget in the test is
+now 600, like the goose's 900):
+
+- **The body**: ten sides (was six), deep in the chest, a short neck and a domed head a little
+  wider than it; a short wide bill; the eye on each side.
+- **The colours**: a steel blue above that reads blue in the sun, with a gloss along the back;
+  the blue cap comes down to the eye, and the rust is the throat and a small forehead patch, not
+  the whole face; the dark breast band; the cream belly and vent.
+- **The wings**: glossy blue coverts over blackish-brown flight feathers told one from the next
+  (every other station a shade lighter); below, buff coverts and grey flight feathers.
+- **The tail**: the fork, streamers wide enough to show, and the row of white spots (faint from
+  above, full from below, so it never reads as a martin's white rump).
+
+The hinges and their bands are as they were, so the keyed beat fits as before (worst stretch
+1.33, squash 0.21). The gull, the goose, the vulture and the beats are byte for byte what they
+were.
+
+![The swallow in the Blender previews, before (top) and after](images/odyssey-swallow-2026-11-21/swallow-model.jpg)
+
+![Up close in the bird playground, before (left) and after](images/odyssey-swallow-2026-11-21/swallow-near.jpg)
+
+![The fly-by from the L17 and L20 seats, x2.5, before (left) and after](images/odyssey-swallow-2026-11-21/swallow-flyby-in-game.jpg)
+
+**How it was checked.** Close-ups in the bird playground (`?effect=odyssey-birds&bird=swallow`,
+five views, WebGPU and WebGL2, console clean), then the real game in a private headless Chrome:
+the board clock frozen by a getter on `boardController.time`, set just before a pass starts (so
+the fly-by arms at the seat), then to chosen moments of the pass. The seat-by-seat numbers above
+come from projecting `swallowFlybyPositionAt` with each seat's live camera.
+
+**Not changed:** where the swallows fly, their size, the beat, the shader. On a phone the fly-by
+is still a small bird (about 30 px as it comes in); this pass changes what it looks like, not
+how big it is.
+
+**Cost:** the same one draw; 13 swallows (12 and the fly-by) x 514 triangles, about 6.7 k
+(were 2.5 k). No new material, pipeline, texture or pass.
