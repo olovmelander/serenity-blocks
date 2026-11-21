@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import * as THREE from 'three/webgpu';
 import LunaraTheme from '../../src/themes/lunara/lunara-theme.js';
 import { LUNARA_TETROMINOS } from '../../src/themes/lunara/lunara-tetrominos.js';
-import { REST_RIG, fovForAspect } from '../../src/themes/lunara/lunara-world.js';
+import { MOON_MAP_URL, REST_RIG, fovForAspect } from '../../src/themes/lunara/lunara-world.js';
 import { LUNARA_PALETTES } from '../../src/themes/lunara/lunara-core.js';
 import { QUALITY_NAMES } from '../../src/themes/lunara/lunara-quality.js';
 import { THEME_REGISTRY } from '../../src/themes/theme-registry.js';
@@ -376,7 +376,7 @@ describe('Lunara theme: one node renderer on both backends', () => {
         const { theme } = await startTheme({ quality: 'Low' });
         await nextTask();
         expect(load).toHaveBeenCalledOnce();
-        expect(load.mock.calls[0][0]).toBe('./textures/2k_moon.jpg');
+        expect(load.mock.calls[0][0]).toBe(MOON_MAP_URL);
         expect(theme.world.mapReady).toBe(true);
         expect(console.warn).not.toHaveBeenCalled();
 

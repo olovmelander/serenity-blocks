@@ -30,7 +30,7 @@ import {
     pow4,
 } from 'three/tsl';
 import {
-    TERRAIN, luAtmosphere, luBell, luClearLight, luLockLight, luMoonDiscs, luPart, luSkyBase, mulberry32,
+    TERRAIN, luAtmosphere, luClearLight, luLockLight, luMoonDiscs, luPart, luSeams, luSkyBase, mulberry32,
 } from './lunara-tsl.js';
 
 /**
@@ -48,8 +48,12 @@ function facetColor(u, { frostLine, glints = true, veins = 0 }) {
         const n = u.noise(p.xz.mul(0.013)).toVar();
         const frost = smoothstep(frostLine * 0.55, frostLine * 1.25, p.y.add(n.r.sub(0.5).mul(frostLine * 0.8)))
             .mul(smoothstep(0.25, 0.75, N.y));
-        const rock = mix(vec3(0.016, 0.012, 0.032), vec3(0.042, 0.026, 0.072), n.g);
-        const albedo = mix(rock, vec3(0.27, 0.23, 0.44), frost).toVar();
+        // The same folded strata cross neighbouring triangles. They give a ridge a geological
+        // direction all the way from the scree to the moonlit ice on its upper faces.
+        const strata = sin(p.y.mul(0.54).add(p.x.mul(0.13)).add(p.z.mul(0.19)).add(n.g.mul(9))).mul(0.5).add(0.5);
+        const rock = mix(vec3(0.013, 0.018, 0.048), vec3(0.074, 0.045, 0.098), n.g.mul(0.62).add(strata.mul(0.38)));
+        const snow = mix(vec3(0.17, 0.21, 0.36), vec3(0.47, 0.50, 0.64), n.b.mul(0.63).add(strata.mul(0.37)));
+        const albedo = mix(rock, snow, frost).toVar();
 
         // The great moon is the key, its companion a rose kicker, the sky fills from above.
         const key = max(dot(N, u.moonDir), 0.0);
@@ -77,12 +81,14 @@ function facetColor(u, { frostLine, glints = true, veins = 0 }) {
         // Crystal veins in the bare rock: thin seams of the palette's light, as in a split geode.
         // They wake with the valley's charge and burn bright as a clear's wave runs past.
         if (veins) {
-            const vn = u.noise(p.xz.mul(veins).add(vec2(p.y.mul(veins * 0.9), p.y.mul(veins * -0.4)))).toVar();
-            const seam = luBell(vn.r.sub(0.5).mul(18.0)).add(luBell(vn.g.sub(0.5).mul(24.0)).mul(0.5));
-            const pulse = sin(u.time.mul(0.7).add(vn.b.mul(19.0))).mul(0.3).add(0.7);
-            const glow = mix(u.crystal, u.bed, smoothstep(0.35, 0.65, vn.a));
-            col.addAssign(glow.mul(seam).mul(pulse).mul(float(1.0).sub(frost)).mul(u.power.mul(0.9).add(0.22))
-                .mul(0.3)
+            const rockUV = p.xz.add(vec2(p.y.mul(0.9), p.y.mul(-0.4))).mul(veins);
+            const vn = u.noise(rockUV).toVar();
+            const seams = luSeams(vn, n).toVar();
+            const pulse = sin(u.auroraDrift.mul(1.6).sub(p.y.mul(0.074)).add(vn.b.mul(7))).mul(0.5).add(0.5);
+            const ore = mix(u.crystal, u.bed, smoothstep(0.33, 0.67, vn.a));
+            const bare = float(1).sub(frost.mul(0.82));
+            col.addAssign(ore.mul(seams.x.mul(0.78).add(seams.y.mul(0.11))).mul(pulse.mul(pulse).mul(0.75).add(0.25))
+                .mul(bare).mul(u.power.mul(0.58).add(0.31))
                 .mul(u.breath));
         }
 
@@ -134,8 +140,47 @@ export function createBanks(u, plan) {
             else index.push(a, c, d, a, d, b);
         }
     }
+    // Fallen plates surround the near mineral beds. They share the banks' material, depth
+    // and reflection, and give the emergence of a tall gem a scale at the waterline.
+    const talus = [];
+    for (const crystal of plan.crystals) {
+        if (!crystal.main || crystal.cluster < 0 || crystal.z < -65) continue;
+        const count = crystal.hero ? 11 : 5;
+        for (let k = 0; k < count; k++) {
+            const bearing = rand() * Math.PI * 2;
+            const scatter = crystal.radius * (0.66 + rand() * 3.0);
+            const x = crystal.x + Math.cos(bearing) * scatter;
+            const z = crystal.z + Math.sin(bearing) * scatter;
+            const ground = plan.heightAt(x, z);
+            const radius = crystal.radius * (0.28 + rand() * 0.75);
+            const rise = radius * (0.32 + rand() * 0.48);
+            const base = (positions.length + talus.length) / 3;
+            for (let side = 0; side < 5; side++) {
+                const angle = bearing + (side + rand() * 0.23) * ((2 * Math.PI) / 5);
+                const dx = Math.cos(angle) * radius;
+                const dz = Math.sin(angle) * radius * 0.77;
+                talus.push(
+                    x + dx,
+                    ground - rise * 0.38,
+                    z + dz,
+                    x + dx * 0.64 + radius * 0.17,
+                    ground + rise * (0.62 + rand() * 0.4),
+                    z + dz * 0.66,
+                );
+            }
+            for (let side = 0; side < 5; side++) {
+                const a = base + side * 2;
+                const b = base + ((side + 1) % 5) * 2;
+                index.push(a, a + 1, b, b, a + 1, b + 1);
+                if (side > 0 && side < 4) index.push(base + 1, b + 1, a + 1);
+            }
+        }
+    }
+    const bankPositions = new Float32Array(positions.length + talus.length);
+    bankPositions.set(positions);
+    bankPositions.set(talus, positions.length);
     const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geometry.setAttribute('position', new THREE.BufferAttribute(bankPositions, 3));
     geometry.setIndex(index);
     const material = new THREE.MeshBasicNodeMaterial();
     material.name = 'LunaraBanks';
