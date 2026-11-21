@@ -116,6 +116,8 @@ export function fovForAspect(aspect) {
 /** The companion's orbit: radians per second at rest, and where it starts. */
 export const ORBIT_RATE = TAU / 320;
 export const ORBIT_START = -1.3;
+/** Angular speed of the starfield relative to the mountains, in radians per second. */
+const SIDEREAL_RATE = 0.0022;
 /** Seconds the overdrive after a four-line clear takes to cool to 1/e. */
 export const SURGE_COOL = 3.2;
 /** The lowest tip (metres over the water) a wisp is sent to. */
@@ -136,8 +138,8 @@ export const METEOR_BEAT = 19;
 /** Where the moons' light comes from: off to the right, a little behind the viewer, so the great
  * moon stands gibbous with its terminator (and its relief) on the side away from the board. */
 const SUN = new THREE.Vector3(0.95, 0.3, -0.15).normalize();
-/** The moon map every moon in the fleet shares (Solar System Scope, CC BY 4.0: see CREDITS.md). */
-export const MOON_MAP_URL = './textures/2k_moon.jpg';
+/** Lunara’s albedo, relief and companion terrain, derived from Solar System Scope (see CREDITS.md). */
+export const MOON_MAP_URL = './textures/lunara/twin-moons.png';
 /** Seconds the moons' faces take to fade in once the map has arrived. */
 const MAP_FADE = 1.6;
 const WHEEL = { a: 0, b: 0, melt: 0 };
@@ -241,6 +243,9 @@ export class LunaraWorld {
             companion: new Swell({
                 attack: 0.08, release: 1.6, ceiling: 1.6, knee: 1,
             }),
+            corona: new Swell({ attack: 0.4, release: 3.1, ceiling: 1.2 }),
+            dawn: new Swell({ attack: 0.55, release: 2.6, ceiling: 1.1 }),
+            afterglow: new Swell({ attack: 0.65, release: 3.8, ceiling: 1 }),
         };
         /** How hot play runs, and its reading this frame (src/themes/shared/gameplay-surge.js). */
         this.play = new GameplaySurge();
@@ -312,6 +317,8 @@ export class LunaraWorld {
         // The slow clocks are functions of the world clock until gameplay bends them.
         const motion = this.reducedMotion ? 0.3 : 1;
         this.orbit = ORBIT_START + time * ORBIT_RATE;
+        this.siderealAngle = this.reducedMotion ? 0 : time * SIDEREAL_RATE;
+        this.weatherTime = time * motion;
         this.auroraDrift = time * 0.05 * motion;
         this.moteLift = time * motion;
         this.meteorBeat = Math.floor(time / METEOR_BEAT);
@@ -324,6 +331,8 @@ export class LunaraWorld {
             for (let i = 0; i < LOCK_SLOTS; i++) this.u.lockA[i].value.set(0, 0, -100, 0);
             for (let i = 0; i < CLEAR_SLOTS; i++) this.u.clearA[i].value.set(-100, 1, 0, 0);
             this.u.shock.value.set(-100, 0);
+            this.u.skyEvent.value.set(0, 0, 0, 0);
+            this.u.afterglow.value = 0;
         }
     }
 
@@ -361,7 +370,16 @@ export class LunaraWorld {
 
         this.addPart('ranges', createRanges(u, plan));
         this.addPart('banks', createBanks(u, plan));
-        const water = createWater(u, { reflectionScale: tier.reflection, glitter: tier.glitter });
+        const water = createWater(u, {
+            reflectionScale: tier.reflection,
+            glitter: tier.glitter,
+            faces: {
+                map: this.moonMap,
+                fade: this.mapFade,
+                moonTurn: this.parts.moon.uniforms.turn,
+                companionTurn: this.parts.companion.uniforms.turn,
+            },
+        });
         this.addPart('water', water);
         if (water.reflectorTarget) this.root.add(water.reflectorTarget);
         this.reflection = water.reflection;
@@ -400,8 +418,7 @@ export class LunaraWorld {
     }
 
     /**
-     * Fetch the moon map. Never awaited by the first frame: the moons stand as smooth lit
-     * spheres until it arrives, then their faces fade in.
+     * Fetch the packed atlas after the first frame can draw. The two faces fade into their lighting.
      * @returns {Promise<boolean>} true when the map is in
      */
     loadTextures() {
@@ -412,7 +429,7 @@ export class LunaraWorld {
                     resolve(false);
                     return;
                 }
-                tex.colorSpace = THREE.SRGBColorSpace;
+                tex.colorSpace = THREE.NoColorSpace;
                 tex.wrapS = THREE.RepeatWrapping;
                 tex.wrapT = THREE.ClampToEdgeWrapping;
                 tex.anisotropy = 4;
@@ -488,11 +505,11 @@ export class LunaraWorld {
      */
     resetSession() {
         const {
-            time, orbit, auroraDrift, moteLift, meteorBeat,
+            time, orbit, siderealAngle, weatherTime, auroraDrift, moteLift, meteorBeat,
         } = this;
         this.resetState(time);
         Object.assign(this, {
-            orbit, auroraDrift, moteLift, meteorBeat,
+            orbit, siderealAngle, weatherTime, auroraDrift, moteLift, meteorBeat,
         });
         this.applyPalette(1);
     }
@@ -862,6 +879,21 @@ export class LunaraWorld {
         }
         const strike = this.screenToFlats(fx, fy);
         this.ring(strike.x, strike.z, this.time, hardDrop ? 1.25 : 0.8, rgb, 1);
+        if (hardDrop) {
+            // Drops lift a fan of wet crystal splinters at the waterline below the landing.
+            this.shards.emit({
+                x: strike.x,
+                y: 0.06,
+                z: strike.z,
+                rgb,
+                time: this.time,
+                n: Math.ceil(this.shards.count / 24),
+                out: [1.4, 4.6],
+                up: this.reducedMotion ? [0.3, 1.0] : [1.3, 3.6],
+                life: [0.35, 0.85],
+                size: 0.038,
+            });
+        }
 
         // ── The wisp: the piece's light flies into a spire ──
         const from = this.screenToWorld(wx, wy, 6.5);
@@ -1008,6 +1040,7 @@ export class LunaraWorld {
             this.hushUntil = this.time + HUSH_HOLD;
             this.hushDepth = Math.max(0, 1 - 0.8 * level) * flashScale();
             this.env.overdrive.hit(perfect ? 1.3 : 1, this.time);
+            if (perfect) this.env.corona.hit(1, birth);
             this.veinsFlare = 1.5;
             this.shockRing(this.reducedMotion ? 0.5 : 1, birth);
             this.meteors?.emit({
@@ -1015,6 +1048,25 @@ export class LunaraWorld {
             });
             this.counts.quads += 1;
             this.quadBirth = birth;
+        } else if (n === 2) {
+            // Two shores answer each other. The sprays arrive with the wave at the
+            // visible spires, even on an empty valley that has no stored light to release.
+            for (const side of [-1, 1]) {
+                const index = this.pickTarget(side, this.counts.clears + 3);
+                if (index < 0) continue;
+                const stone = this.plan.crystals[index];
+                this.shards.emit({
+                    x: stone.tip[0] + stone.x * (this.squeeze - 1),
+                    y: stone.tip[1],
+                    z: stone.tip[2],
+                    rgb: side < 0 ? p.glow : p.bed,
+                    time: passes[index] + (side > 0 ? 0.15 : 0),
+                    n: Math.ceil(this.shards.count / 22),
+                    out: [0.5, 2.4],
+                    up: [0.6, 2.5],
+                    size: 0.045,
+                });
+            }
         } else if (n === 3) {
             this.veinsFlare = Math.max(this.veinsFlare, 0.7);
             this.meteors?.emit({
@@ -1060,6 +1112,7 @@ export class LunaraWorld {
         const { u } = this;
         // Land on the fire, never before it (a perfect clear inside the hush waits for the breath).
         const at = Math.max(this.time, this.quadBirth);
+        this.env.corona.hit(1, at);
         let live = -1;
         for (let i = 0; i < CLEAR_SLOTS; i++) {
             const A = u.clearA[i].value;
@@ -1097,6 +1150,10 @@ export class LunaraWorld {
         this.play.level.hit(SURGE_WEIGHTS.heat.twist * 0.5, this.time);
     }
 
+    onGameOver() {
+        this.env.afterglow.hit(1, this.time);
+    }
+
     /** The true combo changed (0 = the chain broke). */
     onCombo(combo) {
         const n = Math.max(0, Math.round(Number(combo) || 0));
@@ -1122,6 +1179,7 @@ export class LunaraWorld {
         if (silent) this.applyPalette(1);
         else {
             this.storm = Math.max(this.storm, 0.75);
+            this.env.dawn.hit(1, this.time);
             this.env.flash.hit(0.14, this.time);
             this.shockRing(0.36, this.time);
             this.meteors?.emit({
@@ -1205,6 +1263,20 @@ export class LunaraWorld {
             + level * 0.14 + fever * 0.3);
         this.moteLift += dt * motion * (1 + this.power * 4 + surge * 5 + this.storm * 2 + level * 3 + fever * 4);
         this.placeCompanion();
+        // A motion preference change slows the night from its current position.
+        this.siderealAngle += dt * SIDEREAL_RATE * lean;
+        this.weatherTime += dt * motion;
+        const { weatherTime } = this;
+        u.night.value.set(
+            Math.cos(this.siderealAngle),
+            Math.sin(this.siderealAngle),
+            0.5 + 0.33 * Math.sin(weatherTime * 0.078) + 0.17 * Math.sin(weatherTime * 0.041 + 0.6),
+            0.5 + 0.5 * Math.sin(weatherTime * 0.117 - 1.2),
+        );
+        u.skyEvent.value.set(twist, answer, this.env.corona.valueAt(t), this.env.dawn.valueAt(t));
+        u.afterglow.value = this.env.afterglow.valueAt(t);
+        this.parts.moon.uniforms.turn.value = (0.5 + weatherTime / 2450) % 1;
+        this.parts.companion.uniforms.turn.value = (0.21 + weatherTime / 380) % 1;
 
         // A shooting star now and then, on the valley's own clock.
         const beat = Math.floor(t / METEOR_BEAT);
