@@ -82,7 +82,6 @@ import {
     createShadowTexture,
     createWinterUniforms,
     fovForAspect,
-    foxRound,
     glowDirection,
     groundHeight,
     halfWidthFor,
@@ -114,7 +113,7 @@ import { createMist } from './winter-mist.js';
 import {
     NowAndThen, SNOW_HEADROOM, auroraSwell, formAt, formDrift, formName, weatherAt, weatherDrift, weatherName,
 } from './winter-weather.js';
-import { FoxMind, VisitorMind } from './winter-fox-mind.js';
+import { RoamingFoxMind, VisitorMind } from './winter-fox-mind.js';
 import { VISITOR_RIG } from './winter-fox-rig.js';
 import {
     FOX_COATS, createFox, createSpiritFox, loadFox, spiritPath,
@@ -233,9 +232,10 @@ export class WinterWorld {
         this.layoutLive = false;
         /** The moon on screen (fractions, y down): where the post's glare hangs. */
         this.heart = { x: 0.9, y: 0.14 };
-        // It wanders: off its round a little, at its own pace, stopping where it likes, turning back.
-        this.mind = new FoxMind(foxRound(this.aspect), seed, { wander: true, aspect: this.aspect });
+        // It roams the snowfield with a mind of its own: hunts, crosses, sits and watches, rests, romps.
+        this.mind = new RoamingFoxMind({ aspect: this.aspect, seed });
         this.visitorMind = new VisitorMind(this.aspect, ((seed ?? 0xf0c5) ^ 0xb1ce) >>> 0);
+        this._bearSeen = -Infinity;
         this._camera = null;
         this._look = new THREE.Vector3();
         this._ray = new THREE.Vector3();
@@ -387,6 +387,8 @@ export class WinterWorld {
             this.mind.reset(time);
             this.visitorMind.reset(time);
             this.bearMind.reset(time);
+            /** When the fox last had sight of the bear. */
+            this._bearSeen = -Infinity;
         }
         this.sparks?.reset();
         this.beams?.reset();
@@ -553,6 +555,7 @@ export class WinterWorld {
             this.compose();
         } else if (this.u) this.fitGlints();
         if (!this.layoutLive) this.layout = fallbackLayout(this.aspect * 1000, 1000);
+        this.showFoxes();
     }
 
     /**
@@ -566,6 +569,43 @@ export class WinterWorld {
         }
         this.layoutLive = Boolean(rects);
         this.layout = rects || fallbackLayout(this.aspect * 1000, 1000);
+        this.showFoxes();
+    }
+
+    /**
+     * Tell the foxes where on the snow they are seen as the board sits now: in the frame, and not
+     * behind a card or the HUD. They stop only there. (Laid out anew only when the frame or the
+     * board moves.)
+     */
+    showFoxes() {
+        const key = `${this.aspect}|${JSON.stringify(this.layout?.cards ?? null)}|${JSON.stringify(this.layout?.hud ?? null)}`;
+        if (key === this._sightKey) return;
+        this._sightKey = key;
+        const cam = this.restCamera();
+        const view = new THREE.Matrix4().multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse);
+        const card = cardUnion(this.layout);
+        const { hud } = this.layout ?? {};
+        const at = new THREE.Vector3();
+        const beside = new THREE.Vector3();
+        const behind = (r, x, y, pad) => Boolean(r)
+            && x > r.x0 - pad && x < r.x1 + pad && y > r.y0 - pad * 0.6 && y < r.y1 + pad * 0.6;
+        const sight = (x, z) => {
+            const y = groundHeight(x, z) + 0.35;
+            at.set(x, y, z).applyMatrix4(view);
+            const sx = at.x * 0.5 + 0.5;
+            const sy = 0.5 - at.y * 0.5;
+            // How wide half a fox is there on screen (it is drawn larger than life, and nearer the
+            // eye on an upright screen): most of it must be clear (on a phone the card leaves no
+            // room for all of it).
+            const r = Math.hypot(x, z) || 1;
+            beside.set(x - (z / r) * 0.55, y, z + (x / r) * 0.55).applyMatrix4(view);
+            const half = Math.abs(beside.x * 0.5 + 0.5 - sx);
+            const pad = 0.4 * half + 0.01;
+            if (sx < half || sx > 1 - half || sy > 0.97) return false;
+            return !behind(card, sx, sy, pad) && !behind(hud, sx, sy, pad);
+        };
+        this.mind.setSight(sight);
+        this.visitorMind.setSight(sight);
     }
 
     setReducedMotion(reduced) {
@@ -666,9 +706,10 @@ export class WinterWorld {
     compose() {
         const moon = moonDirection(this.aspect);
         const glow = glowDirection(this.aspect);
-        this.mind.setRound(foxRound(this.aspect), this.aspect);
+        this.mind.setAspect(this.aspect);
         this.visitorMind.setAspect(this.aspect);
         this.bearMind.setAspect(this.aspect, this.time);
+        this.showFoxes();
         if (!this.u) return;
         this.u.moonDir.value.set(moon[0], moon[1], moon[2]);
         this.u.glowDir.value.set(glow[0], glow[1]);
@@ -1987,6 +2028,8 @@ export class WinterWorld {
         const { pose } = mind;
         if (here && !this.mind.asleep && dt > 0) {
             const every = Math.floor(t / 3) !== Math.floor((t - dt) / 3);
+            // (The fox knows where the other is, and may go over to watch it.)
+            if (!was || every) this.mind.notice(pose.x, pose.z, t, 'fox');
             if (!was || (every && (met || (this.mind.mode === 'idle' && mind.mode === 'idle')))) {
                 this.mind.attend(pose.x, pose.y + 0.5, pose.z, t + 2.4, 0.85);
                 mind.attend(fox.x, fox.y + 0.5, fox.z, t + 2.4, 0.85);
@@ -2001,6 +2044,12 @@ export class WinterWorld {
     stepBear(t) {
         const pose = this.bearMind.step(t);
         this.bear?.update(pose);
+        // The fox has sight of the bear out on the ice while it is in the frame (and may go to the
+        // edge of its snow to watch it).
+        if (t - this._bearSeen > 8 && pose.z < -5 && Math.abs(this.mind.range.fraction(pose.x, pose.z)) < 0.95) {
+            this._bearSeen = t;
+            this.mind.notice(pose.x, pose.z, t, 'bear');
+        }
         const { u } = this;
         if (!u) return;
         // The moon is 22.5° up: a bear's shadow runs away from it about two and a half times as far
@@ -2070,7 +2119,7 @@ export class WinterWorld {
                 glow: pose.glow,
                 speed: pose.speed,
                 act: this.mind.act ? this.mind.act.join('+') : null,
-                turns: this.mind.walk?.turns.length ?? 0,
+                errand: this.mind.errand,
                 restless: this.mind.restless ?? null,
                 going: this.mind.going,
                 heading: pose.heading,
@@ -2082,6 +2131,7 @@ export class WinterWorld {
                 z: this.visitorMind.pose.z,
                 act: this.visitorMind.act ? this.visitorMind.act.join('+') : null,
                 going: this.visitorMind.going,
+                errand: this.visitorMind.errand,
             },
             spirit: this.spiritGlow,
             bear: {

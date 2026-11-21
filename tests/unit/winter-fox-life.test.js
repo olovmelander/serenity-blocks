@@ -1,6 +1,6 @@
 /**
  * Winter — the arctic fox's own life: its paces at rest, the acts no other fox has, what it
- * chooses when it stops, its circle, what it answers the board with, and its prints. No three,
+ * chooses when it stops, its romp, what it answers the board with, and its prints. No three,
  * no GPU. (What every fox does, on this fox, is winter-fox-mind.test.js and winter-fox-rig.test.js;
  * the visitor is winter-fox-visitor.test.js.)
  *
@@ -13,7 +13,7 @@
 
 import { describe, expect, it } from 'vitest';
 import {
-    AFTER_ZOOM, FOX_PACES, FOX_TROT, FOX_WANDER_STOPS, FoxMind, ZOOM,
+    AFTER_ZOOM, FOX_PACES, FOX_RANGE, FOX_TROT, FOX_WANDER_STOPS, FoxMind, RoamingFoxMind, ZOOM,
 } from '../../src/themes/winter/winter-fox-mind.js';
 import {
     BATH_WRIGGLE, FOOT, FOX_ACTS, FOX_LEGS, FOX_MARKS, FOX_RIG, MOUSE_AIR, PRONK_AIRS, SPEC, TWIRL_AIR,
@@ -70,7 +70,8 @@ function runUntil(mind, from, done, limit = 120, env = REST, each = null) {
     throw new Error(`not within ${limit} s (mode ${mind.mode}, clip ${mind.clip})`);
 }
 
-const wandering = (seed = 0xf0c5, aspect = 16 / 9) => new FoxMind(foxRound(aspect), seed, { wander: true, aspect });
+/** The game's fox: the arctic fox as it roams the snowfield. */
+const wandering = (seed = 0xf0c5, aspect = 16 / 9) => new RoamingFoxMind({ aspect, seed });
 
 describe('winter fox paces: the gait at a walk, a lope and a bound', () => {
     it('leaves its trot as it was when its pace says nothing', () => {
@@ -382,14 +383,15 @@ describe('winter fox at rest: its paces and what it stops for', () => {
         };
     }
 
-    it('walks, trots, lopes and bounds, a spell of each, easing from one into the next', () => {
+    it('walks, trots, lopes and bounds as what it is about asks, easing from one into the next', () => {
         for (const seed of [0xf0c5, 7, 12345]) {
             const { paces, speeds, fastestChange } = night(seed, 900);
+            // It walks with its nose down to cast about and to creep up on what it hears, trots to
+            // get somewhere, and lopes and bounds when it goes further or is restless.
             Object.entries(paces).forEach(([name, seconds]) => {
-                expect(seconds, `${name}, seed ${seed}`).toBeGreaterThan(25);
+                expect(seconds, `${name}, seed ${seed}`).toBeGreaterThan(name === 'walk' || name === 'trot' ? 60 : 4);
             });
-            // Its trot is still what it does most.
-            expect(paces.trot, `seed ${seed}`).toBeGreaterThan(Math.max(paces.lope, paces.bound));
+            expect(Math.min(paces.walk, paces.trot), `seed ${seed}`).toBeGreaterThan(Math.max(paces.lope, paces.bound));
             // Each pace at about its own speed.
             const middle = (list) => [...list].sort((a, b) => a - b)[Math.floor(list.length / 2)];
             expect(middle(speeds.walk)).toBeLessThan(0.8);
@@ -417,8 +419,7 @@ describe('winter fox at rest: its paces and what it stops for', () => {
     it('keeps to its trot and its gallop while the fires burn, whatever pace it was in', () => {
         const mind = wandering(7);
         mind.keepPace('bound');
-        const time = run(mind, 0, 6);
-        expect(mind.pose.pace.bound).toBeGreaterThan(0.9);
+        const time = runUntil(mind, 0, (m) => m.mode === 'gait' && m.pose.pace.bound > 0.9, 60);
         run(mind, time, 2, { power: 0.8, surge: 0 });
         expect(mind.pose.pace.bound).toBeLessThan(0.05);
         expect(mind.pose.pace.stretch).toBeLessThan(1.03);
@@ -560,30 +561,28 @@ describe('winter fox at rest: its paces and what it stops for', () => {
     });
 });
 
-describe('winter fox: its circle', () => {
+describe('winter fox: its romp', () => {
     const fractionOf = (x, z) => Math.abs(x / -z) / Math.tan(bearingFor(1, 16 / 9));
     const trees = FRAME_TREES.map(([fraction, dist]) => {
         const az = bearingFor(fraction, 16 / 9);
         return [Math.sin(az) * dist, -Math.cos(az) * dist];
     });
 
-    it('bows, tears once or twice round a circle, and skids to a stop where it began', () => {
-        let circles = 0;
+    it('bows, tears about this way and that — not round a ring — and skids to a stop on the open snow', () => {
+        let romps = 0;
         for (const seed of [0xf0c5, 7, 12345, 99]) {
             const mind = wandering(seed);
-            // (From an open place on its round: where its stops are.)
+            // (From a place it stopped at on the open snow, as it bows there.)
             let time = runUntil(mind, 0, (m) => m.mode === 'idle', 120);
             time = runUntil(mind, time, (m) => m.mode === 'gait', 60);
             mind.playZoom(time);
-            const from = [mind.pose.x, mind.pose.z];
             time = runUntil(mind, time, (m) => m.mode === 'gait', 10);
-            if (!mind.zooming) continue; // (No room here for a circle: it trots on.)
-            circles += 1;
-            const { end } = mind.zooming;
-            let turned = 0;
+            if (!mind.zooming) continue; // (No room here for a romp: it goes on.)
+            romps += 1;
+            let net = 0;
+            let swung = 0;
             let { heading } = mind.pose;
             let fastest = 0;
-            let furthest = 0;
             let widest = 0;
             let nearestTree = Infinity;
             let last = [mind.pose.x, mind.pose.z];
@@ -591,10 +590,13 @@ describe('winter fox: its circle', () => {
             const events = [];
             time = runUntil(mind, time, (m) => m.mode === 'idle', 30, REST, (m) => {
                 const { pose } = m;
-                turned += wrap(pose.heading - heading);
+                const turn = wrap(pose.heading - heading);
+                if (m.speed > 1) {
+                    net += turn;
+                    swung += Math.abs(turn);
+                }
                 ({ heading } = pose);
                 fastest = Math.max(fastest, m.speed);
-                furthest = Math.max(furthest, Math.hypot(pose.x - from[0], pose.z - from[1]));
                 widest = Math.max(widest, fractionOf(pose.x, pose.z));
                 trees.forEach(([x, z]) => {
                     nearestTree = Math.min(nearestTree, Math.hypot(pose.x - x, pose.z - z));
@@ -604,16 +606,17 @@ describe('winter fox: its circle', () => {
                 m.events.forEach((event) => events.push(event.type));
             });
             const label = `seed ${seed}`;
-            // Round at least once, at a run, out to the far side of its circle and back.
-            // (Less whatever it was still turned toward the viewer by as it set off.)
-            expect(Math.abs(turned) / TAU, label).toBeGreaterThan(0.75);
+            // Flat out, swerving one way and the other — and never once right round.
             expect(fastest, label).toBeGreaterThan(ZOOM.speed * 0.85);
-            expect(furthest, label).toBeGreaterThan(ZOOM.radii[ZOOM.radii.length - 1] * 1.8);
-            expect(Math.hypot(mind.pose.x - from[0], mind.pose.z - from[1]), label).toBeLessThan(1.2);
-            expect(mind.s, label).toBeGreaterThan(end);
-            // In the frame, clear of the trees, and its way never jumps under it.
+            expect(swung, label).toBeGreaterThan(1.5);
+            expect(Math.abs(net) / TAU, label).toBeLessThan(0.75);
+            // It skids to a stop where it is seen, in the frame, clear of the trees, its way never
+            // jumping under it.
+            const end = fractionOf(mind.pose.x, mind.pose.z);
+            expect(end, label).toBeGreaterThan(FOX_RANGE.open[0] - 0.05);
+            expect(end, label).toBeLessThan(FOX_RANGE.open[1] + 0.05);
             expect(widest, label).toBeLessThan(0.95);
-            expect(nearestTree, label).toBeGreaterThan(1.8);
+            expect(nearestTree, label).toBeGreaterThan(1.6);
             expect(longestStep, label).toBeLessThan(0.02);
             // It skids (the world throws the snow up) and then does one of three things.
             expect(events, label).toContain('skid');
@@ -621,21 +624,29 @@ describe('winter fox: its circle', () => {
             expect(mind.zooming, label).toBeNull();
             expect(mind.paces.brake, label).toBe(1.5);
         }
-        expect(circles).toBeGreaterThanOrEqual(2);
+        expect(romps).toBeGreaterThanOrEqual(2);
     });
 
-    it('keeps its place on its round when the frame changes shape in the middle of a circle', () => {
-        const mind = wandering(7);
-        let time = runUntil(mind, 0, (m) => m.mode === 'idle', 120);
-        time = runUntil(mind, time, (m) => m.mode === 'gait', 60);
-        mind.playZoom(time);
+    it('goes on from where it is when the frame changes shape in the middle of a romp', () => {
+        // (The first of its nights that has room for a romp where it first stops.)
+        let mind = null;
+        let time = 0;
+        for (let seed = 1; seed < 20 && !mind?.zooming; seed++) {
+            mind = wandering(seed);
+            time = runUntil(mind, 0, (m) => m.mode === 'idle', 120);
+            time = runUntil(mind, time, (m) => m.mode === 'gait', 60);
+            mind.playZoom(time);
+            time = runUntil(mind, time, (m) => m.mode === 'gait', 10);
+        }
         time = runUntil(mind, time, (m) => Boolean(m.zooming) && m.speed > 3, 20);
-        mind.setRound(foxRound(4 / 3), 4 / 3);
+        const before = [mind.pose.x, mind.pose.z];
+        mind.setAspect(4 / 3);
         expect(mind.zooming).toBeNull();
-        expect(mind.walk.loops).toHaveLength(0);
-        run(mind, time, 20);
+        mind.step(DT, time + DT, REST);
+        expect(Math.hypot(mind.pose.x - before[0], mind.pose.z - before[1])).toBeLessThan(0.15);
+        run(mind, time + DT, 20);
         expect(Number.isFinite(mind.pose.x + mind.pose.z + mind.pose.heading)).toBe(true);
-        expect(fractionOf(mind.pose.x, mind.pose.z)).toBeLessThan(1.2);
+        expect(fractionOf(mind.pose.x, mind.pose.z)).toBeLessThan(1);
     });
 });
 

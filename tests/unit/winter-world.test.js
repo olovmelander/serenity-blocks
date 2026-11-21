@@ -16,7 +16,7 @@ import { planGhosts } from '../../src/themes/winter/winter-ghosts.js';
 import {
     EYE, FRAME_TREES, GUST_SLOTS, HOURS, HOUR_KEYS, HUSH_HOLD, REST_RIG, RING_SLOTS, SKY_LET_GO, SKY_SLOTS, SPARK_RISE,
     SPIRIT_RUN, STRUM_SLOTS,
-    bearingFor, fovForAspect, moonDirection, pieceColor, powerForCombo,
+    bearingFor, fovForAspect, groundHeight, moonDirection, pieceColor, powerForCombo,
 } from '../../src/themes/winter/winter-core.js';
 import { SHADOW_RECT } from '../../src/themes/winter/winter-field.js';
 import { BEAM_ROWS, BEAM_SETS } from '../../src/themes/winter/winter-fx.js';
@@ -1499,6 +1499,52 @@ describe('WinterWorld: the fox on the snow', () => {
     });
 });
 
+describe('WinterWorld: where the foxes are seen', () => {
+    it('lets the foxes stop only where they are seen: beside the card, in the frame, on any screen', () => {
+        for (const size of [LANDSCAPE, PORTRAIT]) {
+            const { world } = makeWorld(TIER, size);
+            const card = cardUnion(world.layout);
+            const eye = world.restCamera();
+            const onScreen = (x, z) => {
+                const v = new THREE.Vector3(x, groundHeight(x, z) + 0.35, z).project(eye);
+                return [v.x * 0.5 + 0.5, 0.5 - v.y * 0.5];
+            };
+            let open = 0;
+            let hidden = 0;
+            const { mind, visitorMind } = world;
+            [mind, visitorMind].forEach((fox) => {
+                const { range } = fox;
+                for (let f = -0.9; f <= 0.9; f += 0.05) {
+                    for (let d = range.near; d <= range.far; d += 0.5) {
+                        const [x, z] = range.place(f, d);
+                        if (!range.open(x, z)) continue;
+                        if (!fox.openAt(x, z)) {
+                            hidden += 1;
+                            continue;
+                        }
+                        open += 1;
+                        // (Most of it: the card may hide no more than a little of the fox's half either side.)
+                        const r = Math.hypot(x, z);
+                        const [sx, sy] = onScreen(x, z);
+                        const [ex] = onScreen(x - (z / r) * 0.55, z + (x / r) * 0.55);
+                        const half = Math.abs(ex - sx);
+                        const label = `${size.join('x')} at ${f.toFixed(2)}, ${d.toFixed(1)} m`;
+                        const overCard = sx > card.x0 - 0.4 * half && sx < card.x1 + 0.4 * half && sy > card.y0 && sy < card.y1;
+                        expect(overCard, label).toBe(false);
+                        expect(sx - half, label).toBeGreaterThan(0);
+                        expect(sx + half, label).toBeLessThan(1);
+                    }
+                }
+            });
+            // Somewhere to stop on every screen; and on the upright one, the board hides some of
+            // what would be open snow on a wide one.
+            expect(open, size.join('x')).toBeGreaterThan(20);
+            if (size === PORTRAIT) expect(hidden).toBeGreaterThan(0);
+            world.dispose();
+        }
+    });
+});
+
 describe('WinterWorld: the frame\'s shape', () => {
     /** The instanced mesh the first framing tree is drawn by, and its matrix there. */
     function firstTree(world) {
@@ -1512,14 +1558,14 @@ describe('WinterWorld: the frame\'s shape', () => {
         };
     }
 
-    it('re-plants for an upright screen: the trees, their shadows, the moon and the fox\'s round', () => {
+    it('re-plants for an upright screen: the trees, their shadows, the moon and the fox\'s snow', () => {
         for (const quality of ['Minimal', TIER]) {
             const { world, camera } = makeWorld(quality);
             const wide = {
                 trees: world.trees,
                 x: world.trees[0].x,
                 moon: world.u.moonDir.value.x,
-                round: world.mind.round.length,
+                snow: world.mind.range.far,
                 shadow: world.u.shadowTex.version,
                 mask: Array.from(world.u.shadowTex.image.data),
                 heart: world.heart.x,
@@ -1548,8 +1594,8 @@ describe('WinterWorld: the frame\'s shape', () => {
             expect(world.u.moonDir.value.toArray()).toEqual(moonDirection(world.aspect));
             expect(world.u.shadowTex.version).toBeGreaterThan(wide.shadow);
             expect(Array.from(world.u.shadowTex.image.data)).not.toEqual(wide.mask);
-            // ...the fox's round is narrower, and the events still have a board to aim at.
-            expect(world.mind.round.length).toBeLessThan(wide.round);
+            // ...the snow the fox roams is drawn nearer, and the events still have a board to aim at.
+            expect(world.mind.range.far).toBeLessThan(wide.snow);
             expect(world.layout.boards[0]).toBeTruthy();
             frame(world, camera, 1, 0);
             world.onLock({ u: 0.5, rows: [19], color: '#5df2a6' });
@@ -1576,7 +1622,7 @@ describe('WinterWorld: the frame\'s shape', () => {
             expect(firstTree(world).x).toBeCloseTo(wide.x, 4);
             expect(Array.from(world.u.shadowTex.image.data)).toEqual(wide.mask);
             expect(world.u.moonDir.value.x).toBeCloseTo(wide.moon, 12);
-            expect(world.mind.round.length).toBeCloseTo(wide.round, 6);
+            expect(world.mind.range.far).toBeCloseTo(wide.snow, 6);
             world.dispose();
         }
     });

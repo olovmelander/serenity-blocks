@@ -1,6 +1,6 @@
 /**
  * Winter — the visitor: the second arctic fox, of the other coat, that comes and goes at the back
- * of the snowfield (VisitorMind in winter-fox-mind.js; its body is createFox(…, { second: true })
+ * of the snowfield (VisitorMind in winter-fox-visitor.js; its body is createFox(…, { second: true })
  * in winter-fox.js, in the blue coat).
  *
  * Its mind and its way need no GPU. Its body's three materials (its skin, its coat of fur and the
@@ -18,12 +18,12 @@ import { context } from 'three/tsl';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { FOX_COATS, createFox } from '../../src/themes/winter/winter-fox.js';
 import {
-    FOX_WANDER_STOPS, FoxMind, VISITOR_AWAY, VISITOR_MEET, VISITOR_STOPS, VISITOR_WAY, VisitorMind, visitorWay,
+    FOX_WANDER_STOPS, RoamingFoxMind, VISITOR_AWAY, VISITOR_ERRANDS, VISITOR_MEET, VISITOR_STOPS, VisitorMind,
 } from '../../src/themes/winter/winter-fox-mind.js';
 import { FOX_BONES, FOX_RIG, VISITOR_RIG } from '../../src/themes/winter/winter-fox-rig.js';
 import {
     FOX_SCALE, FRAME_TREES, bakeNoise, bearingFor, createNoiseTexture, createShadowTexture, createWinterUniforms,
-    foxRound, groundHeight, landDistance,
+    groundHeight, landDistance,
 } from '../../src/themes/winter/winter-tsl.js';
 import { materialXNoiseFunctions } from './helpers/materialx-noise.js';
 
@@ -47,57 +47,82 @@ function run(mind, from, seconds, each = null) {
     return time;
 }
 
-describe('winter visitor: its way', () => {
-    it('is a lane across the back of the snowfield, out of the frame at both ends and closed behind the viewer', () => {
-        ASPECTS.forEach((aspect) => {
-            const way = visitorWay(aspect);
-            const trees = treesFor(aspect);
-            const round = foxRound(aspect);
-            let furthestRound = 0;
-            for (let i = 0; i < round.count; i++) {
-                furthestRound = Math.max(furthestRound, Math.hypot(round.points[i * 3], round.points[i * 3 + 1]));
+/** Step until `done(mind)`; the time it came true (fails the test if it never does). */
+function runUntilTrue(mind, from, done, limit, each = null) {
+    const steps = Math.round(limit / DT);
+    for (let i = 1; i <= steps; i++) {
+        const time = from + i * DT;
+        each?.(mind, time);
+        mind.step(DT, time, REST);
+        if (done(mind)) return time;
+    }
+    throw new Error(`not within ${limit} s (mode ${mind.mode}, errand ${mind.errand})`);
+}
+const wrapAngle = (a) => Math.atan2(Math.sin(a), Math.cos(a));
+
+describe('winter visitor: its comings and goings', () => {
+    /** Its visits over a night: the side of the frame it came in by and went out by, and where it was then. */
+    function comings(seed, seconds = 1800, aspect = 16 / 9) {
+        const mind = new VisitorMind(aspect, seed);
+        const visits = [];
+        let visit = null;
+        let last = null;
+        run(mind, 0, seconds, (m) => {
+            if (!m.away && !visit) {
+                visit = { in: Math.sign(m.pose.x), at: fractionOf(m.pose.x, m.pose.z, aspect), path: [] };
             }
-            let seen = 0;
-            let behind = 0;
-            let nearestTree = Infinity;
-            let widest = 0;
-            for (let i = 0; i < way.count; i++) {
-                const x = way.points[i * 3];
-                const z = way.points[i * 3 + 1];
-                const next = ((i + 1) % way.count) * 3;
-                // Sampled evenly: one closed line.
-                const step = Math.hypot(way.points[next] - x, way.points[next + 1] - z);
-                expect(step).toBeLessThan((way.length / way.count) * 1.05);
-                if (z > 0) behind += 1;
-                if (z < 0 && fractionOf(x, z, aspect) < 1) {
-                    seen += 1;
-                    // In sight it is on the snow, beyond the fox's round, clear of every framing tree.
-                    expect(landDistance(x, z), `aspect ${aspect}`).toBeGreaterThan(3);
-                    expect(Math.hypot(x, z), `aspect ${aspect}`).toBeGreaterThan(furthestRound - 2.5);
-                    for (let k = 0; k < trees.length; k++) {
-                        nearestTree = Math.min(nearestTree, Math.hypot(trees[k][0] - x, trees[k][1] - z));
-                    }
-                }
-                if (z < 0) widest = Math.max(widest, fractionOf(x, z, aspect));
+            if (m.away && visit) {
+                visit.out = Math.sign(last[0]);
+                visit.left = fractionOf(last[0], last[1], aspect);
+                visits.push(visit);
+                visit = null;
             }
-            expect(seen, `aspect ${aspect}`).toBeGreaterThan(way.count * 0.15);
-            expect(behind, `aspect ${aspect}`).toBeGreaterThan(way.count * 0.15);
-            expect(nearestTree, `aspect ${aspect}`).toBeGreaterThan(1.9);
-            expect(widest, `aspect ${aspect}`).toBeGreaterThan(1.3);
-            // Where it waits is behind the viewer; where it likes to stop is in sight.
-            const at = (distance) => {
-                const i = Math.round((distance / way.length) * way.count) % way.count;
-                return [way.points[i * 3], way.points[i * 3 + 1]];
-            };
-            expect(at(way.gate)[1], `aspect ${aspect}`).toBeGreaterThan(5);
-            way.stations.forEach((station) => {
-                const [x, z] = at(station);
-                expect(z).toBeLessThan(0);
-                expect(fractionOf(x, z, aspect)).toBeLessThan(0.95);
-            });
+            if (!m.away) {
+                last = [m.pose.x, m.pose.z];
+                if (m.present) visit.path.push([m.pose.x, m.pose.z]);
+            }
         });
-        expect(VISITOR_WAY[0][0]).toBeLessThan(-1.3);
-        expect(VISITOR_WAY[VISITOR_WAY.length - 1][0]).toBeGreaterThan(1.3);
+        return visits;
+    }
+
+    it('comes in from beyond either side of the frame and leaves by either: never by one way', () => {
+        const all = [];
+        for (const seed of [0xb1ce, 5, 777]) {
+            const visits = comings(seed);
+            expect(visits.length, `seed ${seed}`).toBeGreaterThanOrEqual(8);
+            all.push(...visits);
+        }
+        // From beyond the frame, out of sight, and away again beyond it.
+        all.forEach((visit) => {
+            expect(visit.at).toBeGreaterThan(1.1);
+            expect(visit.left).toBeGreaterThan(1.1);
+        });
+        // In by the left and by the right; out by the left and by the right; across and back.
+        expect(all.some((visit) => visit.in < 0) && all.some((visit) => visit.in > 0)).toBe(true);
+        expect(all.some((visit) => visit.out < 0) && all.some((visit) => visit.out > 0)).toBe(true);
+        expect(all.filter((visit) => visit.out !== visit.in).length).toBeGreaterThan(all.length * 0.2);
+        expect(all.filter((visit) => visit.out === visit.in).length).toBeGreaterThan(all.length * 0.2);
+        // No two visits go the same way: where each spends its time differs.
+        const middles = all.filter((visit) => visit.path.length > 60).map((visit) => [
+            visit.path.reduce((sum, [x]) => sum + x, 0) / visit.path.length,
+            visit.path.reduce((sum, [, z]) => sum + z, 0) / visit.path.length,
+        ]);
+        const spread = Math.max(...middles.map(([x]) => x)) - Math.min(...middles.map(([x]) => x));
+        expect(spread).toBeGreaterThan(6);
+    });
+
+    it('roams the back of the snowfield, behind the fox\'s snow and in front of the shore', () => {
+        const visitor = new VisitorMind();
+        const fox = new RoamingFoxMind();
+        expect(visitor.range.near).toBeGreaterThan(fox.range.far - 3);
+        expect(visitor.range.far).toBeGreaterThan(fox.range.far + 3);
+        ASPECTS.forEach((aspect) => {
+            const { range } = new VisitorMind(aspect);
+            for (let f = -0.85; f <= 0.85; f += 0.1) {
+                const [x, z] = range.place(f, range.far);
+                expect(landDistance(x, z), `${aspect.toFixed(2)} at ${f.toFixed(1)}`).toBeGreaterThan(1);
+            }
+        });
     });
 });
 
@@ -134,11 +159,10 @@ describe('winter visitor: its mind', () => {
         };
     }
 
-    it('is the arctic fox, a little smaller, with a seed and a way of its own', () => {
+    it('is the arctic fox, a little smaller, roaming as the fox does, with a seed of its own', () => {
         const visitor = new VisitorMind();
-        const fox = new FoxMind(foxRound(16 / 9), 0xf0c5, { wander: true });
-        const kind = (mind) => Object.getPrototypeOf(Object.getPrototypeOf(mind));
-        expect(kind(visitor)).toBe(kind(fox));
+        const fox = new RoamingFoxMind();
+        expect(visitor).toBeInstanceOf(RoamingFoxMind);
         expect(visitor.rig).toBe(VISITOR_RIG);
         expect(VISITOR_RIG.bones).toBe(FOX_BONES);
         expect(VISITOR_RIG.scale).toBeLessThan(FOX_RIG.scale);
@@ -152,7 +176,9 @@ describe('winter visitor: its mind', () => {
             expect(FOX_WANDER_STOPS).toContain(stop);
             expect(stop[2].then).toBeUndefined();
         });
-        // It begins behind the viewer, out of sight, and leaves no prints.
+        // It sets out to do less of what the fox does, and never romps.
+        expect(Object.keys(VISITOR_ERRANDS)).not.toContain('play');
+        // It begins away, out of sight, and leaves no prints.
         expect(visitor.away).toBe(true);
         expect(visitor.present).toBe(false);
         expect(visitor.paces.pawPrints).toBe(0);
@@ -164,16 +190,16 @@ describe('winter visitor: its mind', () => {
                 inSight, comings, seconds, stops, nearestTree, offSnow, mind,
             } = visits(seed);
             const label = `seed ${seed}`;
-            expect(inSight / seconds, label).toBeGreaterThan(0.2);
-            expect(inSight / seconds, label).toBeLessThan(0.65);
-            expect(comings, label).toBeGreaterThanOrEqual(6);
+            expect(inSight / seconds, label).toBeGreaterThan(0.25);
+            expect(inSight / seconds, label).toBeLessThan(0.7);
+            expect(comings, label).toBeGreaterThanOrEqual(8);
             // It stops where it can be seen, on the open snow, and for many kinds of thing.
-            expect(stops.length, label).toBeGreaterThanOrEqual(6);
+            expect(stops.length, label).toBeGreaterThanOrEqual(20);
             stops.forEach((stop) => {
                 expect(stop.here, `${label}: ${stop.what}`).toBe(true);
-                expect(stop.fraction, `${label}: ${stop.what}`).toBeLessThan(1);
+                expect(Math.abs(stop.fraction), `${label}: ${stop.what}`).toBeLessThan(1);
             });
-            expect(new Set(stops.map((stop) => stop.what)).size, label).toBeGreaterThanOrEqual(5);
+            expect(new Set(stops.map((stop) => stop.what)).size, label).toBeGreaterThanOrEqual(10);
             // Clear of the trees and on the snow all the while it is in sight.
             expect(nearestTree, label).toBeGreaterThan(1.3);
             expect(offSnow, label).toBe(0);
@@ -212,39 +238,40 @@ describe('winter visitor: its mind', () => {
     it('keeps off the fox: pulls up short of one in its way, makes a stop of the wait, and turns back', () => {
         const mind = new VisitorMind(16 / 9, 5);
         mind.arrive(0, 0);
-        let time = run(mind, 0, 8);
-        expect(mind.mode).toBe('gait');
-        const goingRight = Math.sin(mind.pose.heading) > 0;
+        let time = 0;
+        const under = (m) => m.mode === 'gait' && m.speed > 1 && m.present && !m.away;
+        time = runUntilTrue(mind, time, under, 30);
+        // (The way it was going when it pulled up before the fox.)
+        let came = null;
         // A fox standing on its way, six metres on.
         const [x, z] = mind.course.at(mind.s + 6, [0, 0, 0]);
         let nearest = Infinity;
         const seen = new Set();
-        const turnsBefore = mind.walk.turns.length;
-        const meet = (m, now) => {
-            expect(m.keepOff(x, z, now) || now >= m.heedFrom - 15).toBe(true);
-            nearest = Math.min(nearest, Math.hypot(m.pose.x - x, m.pose.z - z));
-            if (m.mode === 'idle' && m.act) seen.add(m.act.join('+'));
-        };
         const steps = Math.round(40 / DT);
-        for (let i = 1; i <= steps && mind.walk.turns.length === turnsBefore; i++) {
+        for (let i = 1; i <= steps && mind.errand !== 'back'; i++) {
             time += DT;
-            meet(mind, time);
+            expect(mind.keepOff(x, z, time) || time >= mind.heedFrom - 15).toBe(true);
+            if (came === null && mind.blockedSince !== null) came = mind.pose.heading;
+            nearest = Math.min(nearest, Math.hypot(mind.pose.x - x, mind.pose.z - z));
+            if (mind.mode === 'idle' && mind.act) seen.add(mind.act.join('+'));
             mind.step(DT, time, REST);
         }
         // It stopped short of it (a body's length and more), did something there, and then turned back.
         expect(nearest).toBeGreaterThan(VISITOR_MEET.room - 0.8);
         expect(nearest).toBeLessThan(VISITOR_MEET.room + 1.5);
         expect([...seen].some((what) => VISITOR_MEET.stops.some((acts) => acts.join('+') === what))).toBe(true);
-        expect(mind.walk.turns.length).toBe(turnsBefore + 1);
+        expect(mind.errand).toBe('back');
         // On its way back the fox behind it is nothing to it.
-        time = run(mind, time, 12, (m, now) => m.keepOff(x, z, now));
-        expect(Math.sin(mind.pose.heading) > 0).toBe(!goingRight);
-        expect(mind.speed).toBeGreaterThan(0.4);
+        time = runUntilTrue(mind, time, (m) => m.mode === 'gait' && m.speed > 1, 20, (m, now) => m.keepOff(x, z, now));
+        run(mind, time, 1, (m, now) => m.keepOff(x, z, now));
+        // (Back across the frame the way it came: the other way along it, turned well round.)
+        expect(Math.sign(Math.sin(mind.pose.heading))).toBe(-Math.sign(Math.sin(came)));
+        expect(Math.abs(wrapAngle(mind.pose.heading - came))).toBeGreaterThan(1.2);
         expect(mind.ahead).toBe(Infinity);
         // A fox off to one side of its way, or behind it, is not in its way at all.
         const free = new VisitorMind(16 / 9, 5);
         free.arrive(0, 0);
-        time = run(free, 0, 8);
+        time = runUntilTrue(free, 0, under, 30);
         const { pose } = free;
         const side = [pose.x + Math.cos(pose.heading) * 4, pose.z - Math.sin(pose.heading) * 4];
         expect(free.keepOff(side[0], side[1], time)).toBe(false);
@@ -271,9 +298,9 @@ describe('winter visitor: its mind', () => {
         expect(came).not.toBeNull();
         expect(came).toBeLessThan(10);
         expect(mind.pose.x).toBeLessThan(0);
-        // A frame that changes shape lays its way out anew and keeps it going.
+        // A frame that changes shape lays its snow out anew and keeps it going.
         mind.setAspect(3 / 4);
-        expect(mind.way.length).not.toBe(a.mind.way.length);
+        expect(mind.range.aspect).toBe(3 / 4);
         run(mind, 12, 20);
         expect(Number.isFinite(mind.pose.x + mind.pose.z + mind.pose.heading)).toBe(true);
     });

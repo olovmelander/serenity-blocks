@@ -980,3 +980,113 @@ was judged: two frames 2.8 s apart, differenced).
 Tests: `tests/unit/winter-sway-opening.test.js` (the bend from foot to top, every tree's own
 numbers, the sway clock under seek, reduced motion and a new run, the reach; the closed and the
 open opening, a fresh seed per start and the fixed one for captures).
+
+## The foxes roam: no ring under them (2026-11-21)
+
+The ask: "it feels like one of the arctic foxes just running in circles, this must be much more
+varied and random and better implemented, it should feel real and random and varied but with a
+thought."
+
+It was. The fox walked one closed round, 42 m long, 9.8 to 20.5 m from the eye, and only strayed
+0.9 m either side of it, so lap after lap it went the same way over the same snow (over a quarter
+hour it was on ground it had already covered, going the same way, nine tenths of the time). Its
+play was a bow and a tear round a perfect circle. The visitor's way was a loop too: across the
+back of the snowfield, left to right, out of the frame and round behind the viewer, so it always
+crossed the same way on nearly the same line.
+
+**What the fox does now** (`winter-fox-roam.js`, `RoamingFoxMind`; the game's fox). It goes round
+no ring: it sets out to do something, goes there by a way it lays as it goes, does it, and decides
+what next. What it sets out to do (`FOX_ERRANDS`) follows what it wants:
+
+- **Hungry** (its hunger rises over minutes; a catch takes most of it away), it forages, casting
+  to and fro with its nose to the snow across its way to a place, and stops there to listen; or
+  it hears something further off, goes near and creeps the last two metres.
+- **What follows what** (`FOX_FOLLOW`): after a miss it tries again a step or two on (55 %);
+  after a catch it carries it off a few metres and digs it in (40 %); having listened, it often
+  heard something and stalks it (45 %).
+- **It works one side of the board a while,** then crosses to the other for fresh snow, at a trot
+  or, further and when restless, a lope or bounds; sometimes going straight on into the next
+  thing without a stop.
+- **It goes up to where it sees far** (higher ground, further out) and sits or gazes, more under a
+  strong aurora; **rests** (more when the chain has tired it, and the longer it has been on its
+  feet); **grooms** (scratches, rolls, chases its tail); **plays** (a bow and a romp: three to five
+  quick dashes this way and that, swerving back the other way more often than not, skidding to a
+  stop on the open snow; never round a ring).
+- **It watches what it notices:** the world tells it where the other fox is and where the bear is
+  while it is in sight on the ice (`notice`), and now and then (not twice within 90 s) it goes
+  over to the edge of its snow nearest it and stands up or sits and looks at it.
+- **When it stops it turns where it stands** to wherever it goes next (pulling up first, stepping
+  a big turn round no faster than a few steps carry it), so it often sets off another way than
+  it came. Where it means to go lies behind it while it is under way, it pulls up and turns there
+  rather than looping round.
+- **Its leaps are seen side on:** a hunt's way goes on across the viewer's line of sight for a
+  metre and a half, and the leap goes along it (every one of 67 to 74 leaps in four simulated
+  quarter hours, against about a third facing away before this was added).
+- **At a run** (the chain, a dash) it goes nowhere in particular: it races about its snow making
+  for one place and then another (so it cuts across the middle and back), looks a turn ahead,
+  swings away from the frame's edge and the trees toward whichever way is open (keeping to the
+  way it began to swing, so it never dithers into a corner), and slows to take a tight turn
+  (`cornerSpeed`: what its way just ahead allows at 16 m/s² across it).
+
+**Where it goes** (`FoxTrail`, `winter-fox-trail.js`; `steerTo`): its way is laid only a few
+metres ahead of it, by a walker steered toward each place it has in mind, turning no tighter than a
+fox turns at that pace (`FOX_STEER`), wavering a little, never nearer a framing tree than 1.6 m
+nor further out than its band of snow (`snowRange`: 9.3 to 20.8 m from the eye as planned, drawn
+nearer on an upright screen by the round's old pull; inside 0.9 of the half width, 0.78 on an
+upright screen near the eye, where the flat reckoning of a fraction understates how far out a
+place shows). A place it could only reach by going round and round is no place to go: the walker
+gives up and it tries another, bears off and comes round, or (hemmed in) pulls up and turns.
+
+**Where it stops is where it is seen.** On the open snow beside the board (0.4 to 0.86 of the half
+width), and since the world knows where the card and the HUD are, it tells both foxes
+(`showFoxes` in `winter-world.js`, `setSight`): a place counts only if most of a fox standing
+there would show, beside the card and in the frame, at the camera's rest pose. A way that ends
+short of its place out of sight makes no stop there.
+
+**The visitor** (`winter-fox-visitor.js`) is the same mind on the back of the snowfield (18.5 to
+25 m, 3.5 m inland). It comes in from beyond either side of the frame (by a way it can be seen to
+take all the way in), works the back of the snowfield for 18 to 70 s (forages, hunts, crosses,
+sits and looks; no romp), and leaves by the far side or back the way it came, out of sight, and
+is away 15 to 90 s. It keeps off the fox as before; kept waiting, it goes back the way it came,
+and if there is no room behind it, back out of the frame.
+
+**What is gone:** the fox's ring as the game's course (`FoxMind` on its round stays as the plain
+fox for the tests and captures that pin an act), its stray (`fox-wander.js`'s `foxWalk` is
+Sakura's now), its circles (`withLoops`), and the visitor's lane (`VISITOR_WAY`, `visitorWay`).
+
+Measured in node over simulated quarter hours (seeds 0xf0c5, 7, 12345), the old fox against the
+new: snow covered 74 to 91 m² against 154 to 169; the share of its way going over snow it had gone
+over the same way 20 s and more before, 0.90 against 0.26 to 0.33; stops 28 to 38 against 61 to
+66; stops on the other side of the board from the one before, 0.54 to 0.59 against 0.18 to 0.25.
+At a run for two minutes: 80 m² against 96 to 115, and the sideways pull at most 56 m/s² against
+23. Over every width (16:9, 4:3, 1:1, 21:9, 430 × 932), at rest and at a run: never out of frame
+(at most 0.89 of the half width, 0.78 upright), never nearer a framing tree than 1.6 m (2.2 m at a
+run); the visitor never nearer than 1.36 m. Paws on the snow slide 0.06 to 0.08 mm a frame on
+average (0.02 to 0.03 before: it now steps round on the spot at most stops, and its romp ends in
+a skid that is meant to slide); the worst single frame 12 to 20 mm (36 to 43 before). Its way is
+never run past.
+
+Verification: films in the playground (a private Vite and headless Chrome, WebGPU on the RTX, 30
+fps), a frame every few seconds with the fox's own diagnostics: 1280 × 720 with the board for
+95 s (rolling in the snow, crossing to stand up and look about, casting nose down, a pounce and a
+dig, loping off; the visitor in from the right, hunting, sitting, leaving by the far side), a
+chain at power 0.7 (racing over both sides and the middle, its sparks trailing), and 430 × 932
+with the board (stops beside the card on both sides, on screen in every frame). No console warning
+or error in any. Not run in the real game. Tests: `winter-fox-mind.test.js` (the roaming fox: no
+ring, stops on the open snow, one side a while, a reason for what it does, turning where it stands,
+the frame and the trees at four widths at rest and at a run, its run, the same night from the same
+seed, a change of width, turning back when asked, watching what it notices),
+`winter-fox-life.test.js` (its paces by what it is about, its romp), `winter-fox-visitor.test.js`
+(in and out by either side), `winter-world.test.js` (where the foxes are seen); 638 tests in the
+Winter, shared-fox and Sakura files, all green. Gates: typecheck, lint and TypeScript ratchets,
+architecture fitness, dependency boundaries, theme lifecycle audit, IP strings, performance
+budgets, release gates, the build and its boot closure.
+
+Playground: `foxTurn=<s>` now has the fox pull up and go back the way it came; `foxAct=zoom` is a
+bow and a romp; `visitor=<s>` brings the visitor in from beyond the left; the diagnostics name each
+fox's errand (`fox.errand`, `visitor.errand`).
+
+**Open:** on a phone the card leaves little snow beside it, so the fox stops with a little of
+itself behind the card's edge at times. The fox walks more than it used to (casting and creeping
+are at a walk); if it should trot more, `FOX_ERRANDS` and `travelPace` are where. Not yet seen in
+a real game session.
