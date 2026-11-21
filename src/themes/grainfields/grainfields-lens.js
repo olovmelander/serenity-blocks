@@ -162,10 +162,11 @@ export function createLensEars(u, t, { count = LENS_EARS.length } = {}) {
             .add(u.camRight.mul(iPlace.x.mul(tanV).mul(u.aspect).mul(depth)))
             .add(u.camUp.mul(iPlace.y.sub(shift).mul(tanV).mul(depth)));
         // The wind sways the head over its stem (more on a long stem, its own phase).
-        const gust = u.windStrength.add(0.2).mul(swayGain);
-        const sway = sin(u.time.mul(1.25).add(seed.mul(17.0))).mul(0.6)
-            .add(sin(u.time.mul(2.7).add(seed.mul(41.0))).mul(0.25))
-            .add(sin(u.time.mul(0.45).add(seed.mul(5.0))).mul(0.4));
+        const gust = u.windStrength.mul(swayGain);
+        // The clump bends together as a ripple reaches the eye, with the loose tips
+        // catching up at slightly different times.
+        const sway = sin(u.gust.mul(0.17).sub(seed.mul(1.7))).mul(0.72)
+            .add(sin(u.time.mul(2.7).add(seed.mul(41.0))).mul(0.20));
         const nodSway = sin(u.time.mul(1.9).add(seed.mul(23.0))).mul(0.06).mul(gust);
         const head = head0.add(u.camRight.mul(sway.mul(gust).mul(0.012).mul(depth.add(0.4))))
             .add(u.camFwd.mul(sin(u.time.mul(0.9).add(seed.mul(9.0))).mul(gust).mul(0.03)));
@@ -241,9 +242,9 @@ export function createLensEars(u, t, { count = LENS_EARS.length } = {}) {
         const col = albedo.mul(u.sun.mul(sunlit).mul(0.55).mul(shade)
             .add(u.fill.mul(1.9).mul(shade))
             .add(u.bounce.mul(0.6))).mul(LENS_BLUR.light).toVar();
-        const through = a4.mul(0.55).add(a4.mul(a4).mul(1.2)).add(a2.mul(0.1));
+        const through = a4.mul(0.38).add(a4.mul(a4).mul(0.75)).add(a2.mul(0.08));
         col.addAssign(albedo.mul(vec3(1.45, 1.15, 0.6)).mul(u.sun).mul(through).mul(sunlit)
-            .mul(select(isEar, awny.mul(0.6).add(0.5), mix(float(0.25), float(0.5), neck)))
+            .mul(select(isEar, awny.mul(0.78).add(0.25), mix(float(0.16), float(0.25), neck)))
             .mul(LENS_BLUR.light));
         // After sunset the ears keep a little of the afterglow.
         col.addAssign(albedo.mul(u.glow).mul(u.day.oneMinus()).mul(0.06));

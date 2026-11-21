@@ -93,7 +93,7 @@ function chaffMaterial(u, t) {
     const aLook = attribute('aLook', 'vec4'); // size at birth, size grown, kind, seed (+ a puff's pigment, tenths, as its integer part)
     const aTint = attribute('aTint', 'vec4'); // colour rgb; wound: how fast the spiral opens (per metre)
     const vColour = varying(vec4(0.0), 'gfChaffColour'); // rgb (already times its cover), cover
-    const vShape = varying(vec4(0.0), 'gfChaffShape'); // softness, seed, billow (1 a puff), unused
+    const vShape = varying(vec4(0.0), 'gfChaffShape'); // softness, seed, dust puff, drifting seed down
     material.positionNode = Fn(() => {
         const age = u.time.sub(aFrom.w).toVar();
         const life = max(aGo.w, 0.1);
@@ -101,6 +101,9 @@ function chaffMaterial(u, t) {
         const a = max(age, 0.0).toVar();
         const isPuff = aLook.z.lessThan(0.5);
         const isWound = aLook.z.greaterThan(1.5);
+        // The light seed down in a perfect clear turns less than once per second. A devil's husks
+        // spin several times faster round their column; both use the same spiral flight record.
+        const down = isWound.and(aGo.z.abs().lessThan(1.0)).toVar();
         const h = gfHash21(vec2(float(instanceIndex), aLook.w.fract().mul(97.0))).toVar();
         // A throw slowing in the air, the rise (or the fall), the wind, a flake's flutter.
         const drag = select(isPuff, float(FLIGHT.puff.drag), float(FLIGHT.flake.drag));
@@ -131,8 +134,8 @@ function chaffMaterial(u, t) {
         const p = positionGeometry;
         // A flake is a fleck of straw or husk, longer than it is wide, tumbling as it flies (the
         // quad is squeezed and turned in the screen's plane); a puff is round.
-        const tumble = h.mul(6.2832).add(a.mul(mix(float(2.5), float(7.0), h)));
-        const squeezed = vec2(p.x, p.y.mul(select(isPuff, float(1.0), float(0.34))));
+        const tumble = h.mul(6.2832).add(a.mul(select(down, h.mul(0.7).add(0.42), h.mul(4.5).add(2.5))));
+        const squeezed = vec2(p.x, p.y.mul(select(down, float(0.67), float(0.34))));
         const turned = vec2(
             squeezed.x.mul(cos(tumble)).sub(squeezed.y.mul(sin(tumble))),
             squeezed.x.mul(sin(tumble)).add(squeezed.y.mul(cos(tumble))),
@@ -154,8 +157,9 @@ function chaffMaterial(u, t) {
         // A flake: a fleck of its own colour, lit as a leaf is (either face, more with the sun
         // beyond it), lighter and darker as it turns. Under a pixel it thins instead of standing
         // as a dot.
-        const glint = sin(a.mul(mix(float(7.0), float(15.0), h)).add(h.mul(60.0))).mul(0.35).add(0.9);
-        const cover = size.div(s).mul(size.div(s));
+        const glint = sin(tumble.mul(1.6)).mul(select(down, float(0.12), float(0.29))).add(0.92);
+        const area = size.div(s.max(1e-4)).clamp(0.0, 1.0);
+        const cover = area.mul(area);
         const flakeLight = u.sun.mul(sunlit.mul(phase.mul(0.5).add(0.38))).add(u.fill.mul(1.3)).add(u.bounce.mul(0.5))
             .add(u.glow.mul(u.day.oneMinus().mul(0.25)));
         const flakeCover = live.mul(cover.mul(0.8).add(0.2)).mul(0.92);
@@ -175,7 +179,9 @@ function chaffMaterial(u, t) {
         const puffCover = live.mul(thin.mul(0.6).add(0.4)).mul(0.42);
         const puff = dustTone.mul(dustLight).mul(puffCover);
         vColour.assign(select(isPuff, vec4(puff, puffCover), vec4(flake, flakeCover)));
-        vShape.assign(vec4(select(isPuff, float(2.0), float(7.0)), h, select(isPuff, float(1.0), float(0.0)), 0.0));
+        const dust = select(isPuff, float(1.0), float(0.0));
+        const silk = select(down, float(1.0), float(0.0));
+        vShape.assign(vec4(select(isPuff, float(2.0), float(7.0)), h, dust, silk));
         // A dead record's quad collapses onto its spawn point at no size.
         return mix(aFrom.xyz, at, select(live.greaterThan(0.0), float(1.0), float(0.0)));
     })();
@@ -185,13 +191,17 @@ function chaffMaterial(u, t) {
         // A flake is a crisp fleck (the squeezed quad makes it long); a puff is a soft ragged
         // cloudlet: a Gaussian, so it has no edge at all, bitten into bays and thinned in patches
         // by the noise (each puff reads its own patch of it).
-        const fleck = float(1.0).sub(smoothstep(0.45, 1.0, r2));
+        const fleck = float(1.0).sub(smoothstep(0.42, 1.0, r2.add(q.x.abs().mul(q.y.abs()))));
+        // A dry seed with a silky fan: slim at the dark kernel, open and translucent toward its tip.
+        const fanWidth = smoothstep(-0.72, 0.78, q.x).mul(0.86).add(0.12);
+        const fan = smoothstep(-0.9, -0.52, q.x).mul(smoothstep(0.06, 0.36, float(1.0).sub(r2)))
+            .mul(float(1.0).sub(smoothstep(fanWidth.mul(0.48), fanWidth, q.y.abs())));
         const soft = exp(r2.mul(vShape.x.negate()));
         const at = uv().mul(0.3).add(vec2(vShape.y, vShape.y.mul(7.3)));
         const billow = texture(t.noise, at).g;
         const wisp = texture(t.noise, at.mul(2.7).add(0.41)).b;
         const body = soft.mul(smoothstep(0.34, 0.64, billow.add(soft.mul(0.22)))).mul(wisp.mul(0.7).add(0.5));
-        const shape = mix(fleck, body, vShape.z);
+        const shape = mix(mix(fleck, fan, vShape.w), body, vShape.z);
         return vec4(vColour.xyz.mul(shape), vColour.w.mul(shape));
     })();
     material.outputNode = material.colorNode;
@@ -233,7 +243,8 @@ export function createChaff(u, t, count = 900) {
         a.setUsage(THREE.DynamicDrawUsage);
         geometry.setAttribute(name, a);
     });
-    geometry.instanceCount = ring;
+    // Draw one collapsed quad at rest so this pipeline warms with the scene.
+    geometry.instanceCount = 1;
     const material = chaffMaterial(u, t);
     const mesh = new THREE.Mesh(geometry, material);
     mesh.name = 'GrainfieldsChaff';
@@ -242,6 +253,7 @@ export function createChaff(u, t, count = 900) {
     let next = 0;
     let dirty = false;
     let thrown = 0;
+    let lastExpiry = -Infinity;
 
     return {
         mesh,
@@ -276,11 +288,17 @@ export function createChaff(u, t, count = 900) {
             tint[o + 1] = rgb[1];
             tint[o + 2] = rgb[2];
             tint[o + 3] = wound ? open : 0;
+            geometry.instanceCount = Math.max(geometry.instanceCount, next + 1);
+            lastExpiry = Math.max(lastExpiry, time + life);
             next = (next + 1) % ring;
             thrown += 1;
             dirty = true;
         },
-        update() {
+        update(time) {
+            if (geometry.instanceCount > 1 && time >= lastExpiry) {
+                geometry.instanceCount = 1;
+                next = 0;
+            }
             if (!dirty) return;
             Object.values(attrs).forEach((a) => { a.needsUpdate = true; });
             dirty = false;
@@ -289,6 +307,8 @@ export function createChaff(u, t, count = 900) {
             empty();
             next = 0;
             thrown = 0;
+            lastExpiry = -Infinity;
+            geometry.instanceCount = 1;
             dirty = true;
         },
         dispose() {

@@ -22,6 +22,7 @@ import {
     DECK, DEG, EYE, PIECE_COLORS, PLACES, TIMING, hexToLinear,
 } from '../../src/themes/grainfields/grainfields-core.js';
 import { HOURS } from '../../src/themes/grainfields/grainfields-hours.js';
+import { fallbackLayout } from '../../src/themes/grainfields/grainfields-composition.js';
 import { deckThreshold } from '../../src/themes/grainfields/grainfields-tsl.js';
 import { PULSE } from '../../src/themes/grainfields/grainfields-reactions.js';
 
@@ -156,6 +157,28 @@ afterAll(() => {
 });
 
 describe('GrainfieldsWorld build', () => {
+    it('uses phone CSS pixels for fallback layout and buffer pixels for grain detail after the live well closes', () => {
+        const { world, camera } = makeWorld({ withAssets: false });
+        const aspect = 390 / 844;
+        const phone = fallbackLayout(390, 844);
+        try {
+            world.setViewport(780, 1688, aspect, 390, 844);
+            expect(world.layout).toEqual(phone);
+            world.updateCamera(camera, sim(0, 0));
+            world.update(sim(0, 0), camera);
+            expect(world.u.pixelAngle.value).toBeCloseTo((2 * world.u.tanHalfFov.value) / 1688, 12);
+
+            const board = fallbackLayout(1600, 900);
+            world.setLayout(board);
+            world.setViewport(780, 1688, aspect, 390, 844);
+            expect(world.layout).toBe(board);
+            world.setLayout(null);
+            expect(world.layout).toEqual(phone);
+        } finally {
+            world.dispose();
+        }
+    });
+
     it('builds every named part into one root in the scene, the trees with their assets, and hands itself back', () => {
         const { world, scene, built } = shared;
         expect(built).toBe(world);
@@ -797,6 +820,22 @@ describe('GrainfieldsWorld state', () => {
         world.seek(Number.NaN);
         expect(world.time).toBe(0);
         begin(shared);
+    });
+
+    it('replays the horses and their manes at the same pose after a backward seek', () => {
+        const sample = () => {
+            // The 4 s warm-up can finish a few ulps before 8.5. The next frame has zero delta.
+            begin(shared, 8.5);
+            stepTo(shared, 9, 0.05);
+            return shared.world.parts.herd.motions.map(({ flow, pose }) => {
+                expect(Math.abs(flow[1])).toBeLessThan(1);
+                return [flow.slice(), pose.at.slice(), pose.rot.slice()];
+            });
+        };
+        const first = sample();
+        begin(shared, 19.5);
+        stepTo(shared, 20, 0.05);
+        expect(sample()).toEqual(first);
     });
 
     it('seeks deterministically: a seek and the same events write the same uniforms and the same post', () => {

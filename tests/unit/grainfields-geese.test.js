@@ -278,8 +278,31 @@ describe('where a flight out goes up', () => {
                 total += 1;
                 if (s && s.x > 0 && s.x < 1 && s.y > 0 && s.y < 1 && outsideKeepOut(layout, s, 0.01)) seen += 1;
             }
-            // Portrait leaves only the strip over the card: the flock climbs into it.
+            // In portrait the launch follows the narrow verge beside the well.
             expect(seen / total, `${W}x${H}`).toBeGreaterThan(aspect < 0.75 ? 0.7 : 0.9);
+        }
+    });
+
+    it('gives the followers room beside a phone well as they gather into the V', () => {
+        const aspect = 390 / 844;
+        const layout = fallbackLayout(390, 844);
+        const project = restProjector(aspect);
+        for (const seed of [3, 8]) {
+            const skies = new GooseSkies(26);
+            skies.launch(0, planTakeoff({ layout, aspect, seed }));
+            let visible = 0;
+            let airborne = 0;
+            for (let t = 0.6; t <= 20; t += 0.4) {
+                const flight = skies.flightOut(t);
+                for (let i = 0; i < flight.birds.length; i++) {
+                    const placement = skies.place('out', i, t);
+                    if (!placement) continue;
+                    airborne++;
+                    const p = project(...placement.position);
+                    if (p && p.x > 0 && p.x < 1 && p.y > 0 && p.y < 1 && outsideKeepOut(layout, p, 0.01)) visible++;
+                }
+            }
+            expect(visible / airborne).toBeGreaterThan(0.7);
         }
     });
 

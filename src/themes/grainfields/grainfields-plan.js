@@ -43,32 +43,33 @@ export const PATH_POINTS = Object.freeze([
 /** Half-widths (metres): the trodden track, and the seam of white flowers beside it. */
 export const PATH = Object.freeze({ track: 1.1, flowers: 4.6 });
 
+// Every candidate barley clump is tested against this same track while planting.
+const PATH_SEGMENTS = PATH_POINTS.slice(1).map(([bx, bz], i) => {
+    const [ax, az] = PATH_POINTS[i];
+    const vx = bx - ax;
+    const vz = bz - az;
+    return {
+        ax, az, vx, vz, len2: vx * vx + vz * vz, length: Math.hypot(vx, vz),
+    };
+});
+const PATH_LENGTH = PATH_SEGMENTS.reduce((sum, segment) => sum + segment.length, 0);
+
 /** Distance from a point to the path's centre line, and how far along it (0..1). */
 export function pathDistance(x, z) {
     let best = Infinity;
     let along = 0;
-    let total = 0;
-    const lengths = [];
-    for (let i = 0; i + 1 < PATH_POINTS.length; i++) {
-        const [ax, az] = PATH_POINTS[i];
-        const [bx, bz] = PATH_POINTS[i + 1];
-        lengths.push(Math.hypot(bx - ax, bz - az));
-        total += lengths[i];
-    }
     let run = 0;
-    for (let i = 0; i + 1 < PATH_POINTS.length; i++) {
-        const [ax, az] = PATH_POINTS[i];
-        const [bx, bz] = PATH_POINTS[i + 1];
-        const vx = bx - ax;
-        const vz = bz - az;
-        const len2 = vx * vx + vz * vz;
+    for (let i = 0; i < PATH_SEGMENTS.length; i++) {
+        const {
+            ax, az, vx, vz, len2, length,
+        } = PATH_SEGMENTS[i];
         const t = Math.max(0, Math.min(1, ((x - ax) * vx + (z - az) * vz) / len2));
         const d = Math.hypot(x - (ax + vx * t), z - (az + vz * t));
         if (d < best) {
             best = d;
-            along = (run + lengths[i] * t) / total;
+            along = (run + length * t) / PATH_LENGTH;
         }
-        run += lengths[i];
+        run += length;
     }
     return { distance: best, along };
 }
@@ -339,10 +340,9 @@ export function treeSites(seed = 0x7ee5, density = 1) {
             }
         }
     }
-    // A few lone trees in the fields (a birch by the path, an old larch on the ridge).
-    const singles = [[-34, -150, 1], [96, -620, 0], [-640, -1160, 1], [420, -1180, 0], [-180, -880, 1]];
-    singles.forEach(([x, z, kind]) => {
-        const height = kind === 1 ? 17 : 24;
+    // A wind-grown Ezo spruce beside the track, with larches and birches on the far ridges.
+    const singles = [[-34, -150, 2, 19], [96, -620, 0, 24], [-640, -1160, 1, 17], [420, -1180, 0, 24], [-180, -880, 1, 17]];
+    singles.forEach(([x, z, kind, height]) => {
         out.push(x, groundHeight(x, z), z, height, kind, random(), height * (kind === 1 ? 0.46 : 0.38), 0.02);
     });
     RUIN_TREES.forEach(([lx, lz, kind, height]) => {

@@ -42,6 +42,7 @@ import {
 import { DEG, EYE, clamp01 } from './grainfields-core.js';
 import { groundHeight } from './grainfields-plan.js';
 import { aerial } from './grainfields-light.js';
+import { windCrestAt } from './grainfields-land.js';
 import { deckShadow } from './grainfields-tsl.js';
 import { drainSteps, stepClock } from '../shared/build-steps.js';
 
@@ -174,9 +175,9 @@ function treeSway(u, {
 }) {
     const treePhase = fract(base.x.mul(0.37).add(base.z.mul(0.71)));
     const up = clamp(positionLocal.y.sub(base.y).div(height.max(1.0)), 0.0, 1.2);
-    const rock = sin(u.time.mul(0.85).add(treePhase.mul(6.283))).mul(0.6)
-        .add(sin(u.time.mul(2.1).add(treePhase.mul(17.0)).add(phase.mul(6.283))).mul(0.25));
-    const lean = up.mul(up).mul(height).mul(u.windStrength).mul(rock.mul(0.012).add(0.006))
+    const crest = windCrestAt(u, base.xz);
+    const rock = sin(u.time.mul(1.7).add(treePhase.mul(17.0)).add(phase.mul(6.283))).mul(0.26);
+    const lean = up.mul(up).mul(height).mul(u.windStrength).mul(crest.mul(0.018).add(rock.mul(0.011)).add(0.002))
         .mul(sway.mul(0.6).add(0.4));
     return vec3(u.windDir.x.mul(lean), 0.0, u.windDir.y.mul(lean));
 }
@@ -278,7 +279,11 @@ function foliageMaterial(u, t, kind, buffers) {
             .mul(through.mul(look.through).add(clamp(facing.negate(), 0.0, 1.0).mul(0.3)))
             .mul(crown.x.mul(0.6).add(0.4));
         const occlusion = crown.x.mul(0.8).add(0.2);
-        const sky = u.fill.mul(normal.y.mul(0.35).add(0.65)).add(u.bounce.mul(float(1.0).sub(normal.y).mul(0.3)));
+        // The outward, sky-facing tips catch a cooler highlight over the warm shaded boughs.
+        const tipSky = crown.x.mul(paint.r).mul(clamp(normal.y.mul(0.55).add(0.45), 0.0, 1.0));
+        const sky = u.fill.mul(normal.y.mul(0.35).add(0.65))
+            .mul(vec3(1.0).add(vec3(0.06, 0.17, 0.3).mul(tipSky)))
+            .add(u.bounce.mul(float(1.0).sub(normal.y).mul(0.3)));
         const lit = front.add(back).mul(u.sun).mul(sunlit).mul(look.sun)
             .add(albedo.mul(sky).mul(occlusion).mul(look.ambient).mul(1.3));
         return vec4(aerial(u, P, lit), 1.0);

@@ -357,17 +357,32 @@ export function gustFrontAt(u, xz) {
 }
 
 /**
+ * Short gusts curl across the stand before the longer weather front arrives. Their travel stays
+ * in the prevailing wind's frame even as the stems and crowns veer in the local breeze.
+ */
+export function windCrestAt(u, xz) {
+    const travel = dot(xz, vec2(0.82, 0.57)).sub(u.gust);
+    const flank = dot(xz, vec2(-0.57, 0.82));
+    return sin(travel.mul(0.17).add(sin(flank.mul(0.065)).mul(1.15))).mul(0.5).add(0.5);
+}
+
+/**
  * The wind's gusts at a ground point (0 still … ~1.4 a strong gust): two reads of the noise
  * running along the wind (the gust's phase is integrated on the CPU), banded. The land reads it
  * per pixel; the barley in its vertex stage (`vertex`: an explicit mip, no derivatives there).
  */
 export function gustAt(u, noise, xz, vertex = false) {
-    const along = dot(xz, u.windDir);
-    const across = xz.x.mul(u.windDir.y).sub(xz.y.mul(u.windDir.x));
+    const along = dot(xz, vec2(0.82, 0.57));
+    const across = dot(xz, vec2(0.57, -0.82));
     const read = (st) => (vertex ? texture(noise, st).level(1) : texture(noise, st));
     const g1 = read(vec2(along.sub(u.gust).div(700.0), across.div(1600.0))).r;
     const g2 = read(vec2(along.sub(u.gust.mul(1.35)).div(260.0), across.div(620.0)).add(0.37)).g;
-    return smoothstep(0.4, 0.78, g1.mul(0.55).add(g2.mul(0.45))).mul(u.windStrength.min(1.4));
+    const broad = smoothstep(0.36, 0.77, g1.mul(0.55).add(g2.mul(0.45)));
+    const crest = windCrestAt(u, xz);
+    // Beyond the fields the small crests are finer than the land pixels.
+    const resolved = vertex ? float(1.0) : float(1.0).sub(smoothstep(160000.0, 1440000.0, dot(xz, xz)));
+    const rolls = mix(float(0.88), crest.mul(0.6).add(0.52), resolved);
+    return broad.mul(rolls).add(crest.mul(0.17).mul(resolved)).mul(u.windStrength.min(1.4));
 }
 
 const PLOT_COS = Math.cos(PLOT.angle * DEG);

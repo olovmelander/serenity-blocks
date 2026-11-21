@@ -14,7 +14,7 @@
  *   level=<n>                level n's station of the day (the light also turns with the clock
  *                            alone, one station every 100 s of `t` and never resting)
  *   hour=<place>             hold the light at a wheel place (0 storm break, 1 golden hour, 2 dusk,
- *                            3 dawn mist, 4 morning; fractions run the day between them)
+ *                            2.5 harvest moon, 3 dawn mist, 4 morning; fractions blend the light)
  *   parts=land,sky           draw only these parts
  *   falseColor=1             post debug view: band the pre-tone-map max channel
  *   noPost=1                 raw scene (no bloom/grade, no light in the air)
@@ -27,7 +27,8 @@
  *   look=x,y,z,fov           inspection lens: from the eye, look at a world point with this fov
  *   cam=x,y,z,tx,ty,tz,fov   a free camera: from one world point, look at another (inside the stand,
  *                            a plant against the sky)
- *   event=lock|drop|clear|quad|twist|spin|perfect|levelUp|over   fire a gameplay event...
+ *   event=lock|drop|clear|quad|twist|spin|cascade|b2b|perfect|crown|levelUp|over
+ *                            replay a gameplay event (perfect includes the preceding quad)
  *   eventAge=<s>             ...and show it <s> seconds later (u=<0..1> column, row=<0..19>,
  *                            lines=<1..4>, color=<hex>). `twist` locks a piece and clears two
  *                            lines with it; `spin` is the twist that clears nothing
@@ -50,6 +51,9 @@
  *                            its heading toward its left (90 its left side, 180 behind), h over it
  */
 import * as THREE from 'three/webgpu';
+import { SHAPES } from '../../core/constants.js';
+import { drawPieceSolid, trimShape } from '../../rendering/canvas/canvas-drawing-utils.js';
+import { GRAINFIELDS_TETROMINOS } from '../../themes/grainfields/grainfields-tetrominos.js';
 import { GrainfieldsWorld } from '../../themes/grainfields/grainfields-world.js';
 import { GrainfieldsPost, POST_LOOK } from '../../themes/grainfields/grainfields-post.js';
 import { readLayoutRects } from '../../themes/grainfields/grainfields-composition.js';
@@ -87,40 +91,58 @@ function num(params, key, fallback = 0) {
     return Number.isFinite(v) ? v : fallback;
 }
 
-const BOARD_PX = 'min(clamp(220px, 22vw, 300px), (100vh - 250px) / 2)';
-
-/** A stand-in for the real solo layout (public/styles/main.css) with the real class names. */
+/** Use the solo well's own sizing and glass in composition checks, including its portrait ledger. */
 function mountBoardOverlay(withHud) {
     const root = document.createElement('div');
+    root.id = 'grainfields-theme';
+    root.className = 'active';
+    root.setAttribute('aria-hidden', 'true');
     root.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:5';
-    const card = document.createElement('div');
-    card.className = 'player-card';
-    card.dataset.player = 'solo';
-    card.style.cssText = [
-        'position:absolute', 'left:50%', 'top:50%',
-        `width:calc(${BOARD_PX} * 1.19)`,
-        `height:calc(2 * ${BOARD_PX} + 158px)`,
-        'transform:translate(-50%, -50%)', 'background:rgba(21,26,35,0.866)',
-        'border:1px solid rgba(139,92,246,0.45)', 'border-radius:20px',
-    ].join(';');
-    const board = document.createElement('div');
-    board.id = 'single-player-game-canvas';
-    board.style.cssText = [
-        'position:absolute', 'left:50%', 'bottom:24px', `width:calc(${BOARD_PX})`, `height:calc(2 * ${BOARD_PX})`,
-        'transform:translateX(-50%)', 'border:1px solid rgba(255,255,255,0.08)',
-    ].join(';');
-    card.append(board);
-    root.append(card);
+    root.innerHTML = `
+        <link rel="stylesheet" href="./styles/keystone-solo.css">
+        <div class="single-player-stage" data-board="well"
+            style="display:flex;--sb-board-fill:.85;--sb-board-floor:520px;color:#efe9dc;font:14px system-ui">
+          <div id="single-player-container">
+            <div class="single-player-card player-card" id="single-player-card" data-player="solo">
+              <div class="single-player-piece-previews"><div class="player-next-pieces" style="display:flex"></div></div>
+              <div class="player-board-section">
+                <div id="phaser-game-container"><canvas width="240" height="480" style="width:100%;height:100%"></canvas></div>
+                <div id="single-player-border"></div>
+              </div>
+            </div>
+          </div>
+        </div>`;
+    const paint = (canvas, key, x, y, cell) => drawPieceSolid(
+        canvas.getContext('2d'),
+        trimShape(SHAPES[key]),
+        x,
+        y,
+        cell,
+        { ...GRAINFIELDS_TETROMINOS, color: GRAINFIELDS_TETROMINOS.colors[key] },
+    );
+    const queue = root.querySelector('.player-next-pieces');
+    ['J', 'O', 'L'].forEach((key, index) => {
+        const tile = document.createElement('canvas');
+        tile.width = 80;
+        tile.height = 48;
+        tile.className = `player-next-piece${index === 0 ? ' highlight' : ''}`;
+        const shape = trimShape(SHAPES[key]);
+        paint(tile, key, (80 - shape[0].length * 15) / 2, (48 - shape.length * 15) / 2, 15);
+        queue.append(tile);
+    });
+    const board = root.querySelector('#phaser-game-container canvas');
+    [['S', 0, 18], ['I', 3, 19], ['O', 7, 18], ['T', 3, 3]].forEach(([key, x, y]) => paint(board, key, x * 24, y * 24, 24));
     if (withHud) {
         const hud = document.createElement('div');
         hud.className = 'single-player-stats-bar';
-        hud.style.cssText = [
-            'position:absolute', 'top:25%', 'height:50%',
-            'left:calc(50% + min(max(300px, min(35vw, 400px)), (100vh - 200px) / 2) / 2 + 60px)',
-            'width:140px',
-            'background:rgba(14,11,26,0.8)', 'border:1px solid rgba(150,110,255,0.25)', 'border-radius:10px',
-        ].join(';');
-        root.append(hud);
+        hud.style.display = 'flex';
+        for (const [label, value] of [['Score', '2,400'], ['Level', '1'], ['Lines', '8']]) {
+            const stat = document.createElement('div');
+            stat.className = 'single-player-stat';
+            stat.innerHTML = `<span class="single-player-stat-label">${label}</span><span class="single-player-stat-value">${value}</span>`;
+            hud.append(stat);
+        }
+        root.querySelector('.single-player-stage').append(hud);
     }
     document.body.appendChild(root);
     return root;
@@ -183,13 +205,14 @@ export function create({
     let simTime = 0;
 
     const syncViewport = () => {
-        const aspect = window.innerWidth / Math.max(1, window.innerHeight);
+        const { innerWidth: width, innerHeight: height } = window;
+        const aspect = width / Math.max(1, height);
         camera.aspect = aspect;
         camera.updateProjectionMatrix();
         renderer.getDrawingBufferSize(size);
         if (!world) return;
-        world.setViewport(size.x, size.y, aspect);
-        post?.setSize(window.innerWidth, window.innerHeight, size.x, size.y);
+        world.setViewport(size.x, size.y, aspect, width, height);
+        post?.setSize(width, height, size.x, size.y);
         const rects = overlay ? readLayoutRects() : null;
         world.setLayout(rects, aspect);
         post?.setCalmRects(rects ? [...rects.cards, rects.hud].filter(Boolean) : [], rects ? 1 : 0);
@@ -279,7 +302,13 @@ export function create({
         } else if (eventName === 'spin') {
             world.onLock({ rows: [row, row - 1], u, color: params.get('color') ? eventColor : PIECE_COLORS[1] });
             world.onSpin({ u });
-        } else if (eventName === 'perfect') world.onClear({ lines: 4, perfect: true });
+        } else if (eventName === 'cascade') world.onClear({ lines, cascade: 3 });
+        else if (eventName === 'b2b') {
+            world.onClear({
+                lines: 2, twist: true, b2b: true, u,
+            });
+            world.onB2B(1);
+        } else if (eventName === 'perfect' || eventName === 'crown') world.onClear({ perfect: true, crown: true });
         else if (eventName === 'levelUp') world.levelUp(num(params, 'eventLevel', level + 1));
         else if (eventName === 'over') world.onGameOver();
     };
@@ -293,7 +322,8 @@ export function create({
         simTime = asked;
         if (!world) return;
         // Events fire inside a short replay before the asked frame (a chain needs time to build).
-        const lead = (eventName ? eventAge : 0) + (holdCombo ? 6 : 0) + warmLocks * 0.6 + 0.5;
+        const crownDelay = eventName === 'perfect' ? 0.55 : 0;
+        const lead = (eventName ? eventAge : 0) + crownDelay + (holdCombo ? 6 : 0) + warmLocks * 0.6 + 0.5;
         const time = Math.max(asked, lead);
         const start = time - lead;
         world.seek(start);
@@ -318,6 +348,12 @@ export function create({
             });
         }
         const eventTime = eventName ? time - eventAge : time;
+        if (crownDelay) {
+            const quadTime = eventTime - crownDelay;
+            stepTo(cursor, quadTime, 0.05);
+            world.onClear({ lines: 4, combo: Math.max(1, holdCombo) });
+            cursor = quadTime;
+        }
         if (eventTime > cursor) stepTo(cursor, eventTime, 0.05);
         if (eventName) {
             fireEvent();
@@ -403,12 +439,13 @@ export function create({
         },
         update(time, dt) {
             simTime = time;
+            lastSeek = null;
             if (world && demo) runDemo(time);
             frame(time, dt);
         },
         seek(time) {
             demoLoop = -1;
-            seekTo(time);
+            if (time !== lastSeek) seekTo(time);
         },
         render() {
             if (!world) {

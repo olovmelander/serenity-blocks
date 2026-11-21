@@ -96,6 +96,16 @@
     --sp-wall: #ab6adc;
 }
 
+/* Harvest brass at the lip of the well and a slate ledger like the distant fells. */
+:where(body:has(#grainfields-theme.active)) .single-player-stage[data-board='well']:not(:where(
+    .infinity-mode-active, [data-odyssey-board], [data-still-air], [data-danger], [data-stillfall]
+)) {
+    --sp-hue: #eac587;
+    --sp-hue-rgb: 234, 197, 135;
+    --sp-wall: #ad8a59;
+    --sp-wall-glow: rgb(171 132 73 / 23%);
+}
+
 /* The pink crystal reflected in the well, with pale rose quartz at the queue. */
 :where(body:has(#kaleidosonic-theme.active)) .single-player-stage[data-board='well']:not(:where(
     .infinity-mode-active, [data-odyssey-board], [data-stillfall], [data-still-air], [data-danger]
@@ -366,6 +376,13 @@
     background: linear-gradient(180deg, rgba(25, 21, 56, 0.92) 0%, rgba(12, 10, 30, 0.94) 100%);
     box-shadow: 0 14px 34px rgba(0, 0, 0, 0.34), inset 0 1px 0 rgba(var(--sb-cream-rgb), 0.05);
     transform: none;
+}
+
+:where(body:has(#grainfields-theme.active)) .single-player-stage[data-board='well']:not(:where(
+    .infinity-mode-active, [data-odyssey-board], [data-still-air], [data-danger], [data-stillfall]
+)) .single-player-stats-bar {
+    background: linear-gradient(157deg, rgb(43 45 47 / 97%), rgb(20 26 32 / 96%) 72%);
+    border-color: rgb(205 171 113 / 35%);
 }
 
 :where(body:has(#kaleidosonic-theme.active)) .single-player-stage[data-board='well']:not(:where(
