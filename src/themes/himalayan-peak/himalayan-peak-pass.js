@@ -136,19 +136,19 @@ export function* createPassSnowSteps(u, field, { glints = true } = {}, clock = s
         // as it laid them, so their run wanders and bends; it scoured some patches smooth and
         // left others rippled; and under it all the drift rolls in low dunes.
         const sway = u.noise(near.mul(1 / 75).add(0.17));
-        const bend = sway.x.sub(0.5).mul(0.42);
+        const bend = sway.x.sub(0.5).mul(1.15).add(0.31);
         const q = vec2(
             near.x.mul(cos(bend)).sub(near.y.mul(sin(bend))),
             near.x.mul(sin(bend)).add(near.y.mul(cos(bend))),
         ).add(vec2(sway.w.sub(0.5), sway.x.sub(0.5)).mul(2.5));
-        const drift = u.noise(q.mul(vec2(1 / 7.5, 1 / 2.1)));
+        const drift = u.noise(q.mul(vec2(1 / 15.5, 1 / 5.3)));
         const crust = u.noise(near.mul(1 / 0.9).add(0.31));
         const rough = smoothstep(0.32, 0.68, u.noise(near.mul(1 / 21).add(0.61)).w).mul(0.8).add(0.2);
         const dune = u.noise(near.mul(1 / 17).add(0.83));
         const N = normalize(normalLocal.add(vec3(
-            drift.y.mul(0.4).mul(rough).add(crust.y.mul(0.3)).add(dune.y.mul(0.28)),
+            drift.y.mul(0.21).mul(rough).add(crust.y.mul(0.035)).add(dune.y.mul(0.16)),
             0.0,
-            drift.z.mul(1.1).mul(rough).add(crust.z.mul(0.3)).add(dune.z.mul(0.28)),
+            drift.z.mul(0.46).mul(rough).add(crust.z.mul(0.045)).add(dune.z.mul(0.16)),
         ).negate())).toVar();
         const V = normalize(cameraPosition.sub(P));
         // The chorten, the cairn and its pole throw long shadows once the sun is over the wall.
@@ -163,16 +163,17 @@ export function* createPassSnowSteps(u, field, { glints = true } = {}, clock = s
         // Stones stand out of the drift where the wind keeps it thin.
         const stone = smoothstep(0.69, 0.74, crust.w.mul(0.35).add(u.noise(near.mul(1 / 5.3)).w.mul(0.65)))
             .mul(smoothstep(0.985, 0.93, N.y).add(0.25));
-        const albedo = mix(vec3(...SNOW), vec3(0.07, 0.06, 0.06), clamp(stone, 0.0, 1.0));
-        const hollow = drift.x.mul(0.5).add(0.6);
-        const ambient = u.shade.mul(N.y.mul(0.5).add(0.62)).mul(hollow).add(u.zenith.mul(0.5));
+        const albedo = mix(vec3(...SNOW), vec3(0.14, 0.15, 0.16), clamp(stone, 0.0, 0.82));
+        const hollow = drift.x.mul(0.32).add(0.78);
+        const ambient = u.shade.mul(N.y.mul(0.42).add(0.69)).mul(hollow)
+            .add(u.horizon.mul(0.26)).add(u.zenith.mul(0.29));
         // The crust mirrors the sky at a grazing angle.
         const facing = clamp(dot(N, V), 0.0, 1.0);
-        const fresnel = hpPow4(float(1.0).sub(facing)).mul(0.75).add(0.03);
+        const fresnel = hpPow4(float(1.0).sub(facing)).mul(rough.mul(-0.16).add(0.41)).add(0.018);
         const R = reflect(V.negate(), N);
         const mirrored = hpSky(u, normalize(vec3(R.x, max(R.y, 0.02), R.z))).mul(fresnel).mul(float(1.0).sub(stone));
         const Hv = normalize(V.add(u.sunDir));
-        const sheen = u.sunCol.mul(hpPow4(hpSq(clamp(dot(N, Hv), 0.0, 1.0))).mul(sun).mul(0.8));
+        const sheen = u.sunCol.mul(hpPow4(hpSq(clamp(dot(N, Hv), 0.0, 1.0))).mul(sun).mul(0.42));
         const col = albedo.mul(direct.add(ambient)).add(mirrored).add(sheen).toVar();
         // A lock's ring of lifted powder.
         const ring = hpRingLight(u, P);
@@ -196,13 +197,13 @@ export function* createPassSnowSteps(u, field, { glints = true } = {}, clock = s
 
 // ── The shrine ──────────────────────────────────────────────────────────────────
 
-const WHITEWASH = [0.74, 0.72, 0.68];
-const OCHRE = [0.5, 0.2, 0.07];
-const GOLD = [0.95, 0.62, 0.2];
-const STONE = [0.1, 0.09, 0.085];
-const WOOD = [0.11, 0.075, 0.05];
+const WHITEWASH = [0.92, 0.88, 0.76];
+const OCHRE = [0.55, 0.135, 0.052];
+const GOLD = [0.98, 0.64, 0.21];
+const STONE = [0.23, 0.21, 0.2];
+const WOOD = [0.28, 0.15, 0.072];
 
-/** Give a geometry one colour for all its vertices: rgb = albedo, a = how much it is metal. */
+/** RGB is pigment. Alpha is gilding for surfaces and -1 for the butter lamp's flame. */
 function tinted(geometry, rgb, metal = 0) {
     const g = geometry.index ? geometry.toNonIndexed() : geometry;
     const n = g.getAttribute('position').count;
@@ -215,58 +216,106 @@ function tinted(geometry, rgb, metal = 0) {
 
 function chortenGeometry() {
     const parts = [];
-    const box = (w, h, y, rgb) => {
-        const g = new THREE.BoxGeometry(w, h, w);
-        g.translate(0, y + h / 2, 0);
-        parts.push(tinted(g, rgb));
+    const box = (w, h, y, rgb, depth = w, z = 0, metal = 0) => {
+        const g = new THREE.BoxGeometry(w, h, depth);
+        g.translate(0, y + h / 2, z);
+        parts.push(tinted(g, rgb, metal));
     };
     const lathe = (profile, rgb, metal, segments = 20) => {
         parts.push(tinted(new THREE.LatheGeometry(profile.map(([r, y]) => new THREE.Vector2(r, y)), segments), rgb, metal));
     };
-    // The throne: three steps.
-    box(2.7, 0.36, 0, WHITEWASH);
-    box(2.25, 0.3, 0.36, WHITEWASH);
-    box(1.8, 0.3, 0.66, OCHRE);
-    // The vase.
-    lathe([[0.0, 0.96], [0.56, 0.96], [0.62, 1.06], [0.8, 1.46], [0.85, 1.72], [0.76, 1.93], [0.52, 2.06], [0.0, 2.1]], WHITEWASH, 0);
-    box(0.52, 0.28, 2.08, OCHRE);
+    // Slate footing, whitewashed terraces, projecting ochre eave.
+    box(2.74, 0.21, 0, STONE);
+    box(2.57, 0.26, 0.19, WHITEWASH);
+    box(2.62, 0.075, 0.43, OCHRE);
+    box(2.2, 0.21, 0.50, WHITEWASH);
+    box(1.87, 0.2, 0.70, WHITEWASH);
+    box(1.95, 0.08, 0.88, OCHRE);
+    lathe([[0, 0.95], [0.74, 0.95], [0.82, 1.02], [0.8, 1.1], [0.69, 1.12],
+        [0.72, 1.21], [0.85, 1.44], [0.89, 1.65], [0.86, 1.8], [0.73, 1.99],
+        [0.5, 2.09], [0.32, 2.12], [0, 2.12]], WHITEWASH, 0, 32);
+    // A dark offering niche, edged in vermilion, with brass in its shade.
+    const niche = (w, h, front, rgb, metal) => {
+        const shape = new THREE.Shape();
+        shape.moveTo(-w, 0);
+        shape.lineTo(w, 0);
+        shape.lineTo(w, h * 0.52);
+        shape.quadraticCurveTo(w, h * 0.78, 0, h);
+        shape.quadraticCurveTo(-w, h * 0.78, -w, h * 0.52);
+        shape.closePath();
+        const g = new THREE.ExtrudeGeometry(shape, { depth: 0.045, bevelEnabled: false, curveSegments: 6 });
+        g.translate(0, 1.3, front);
+        parts.push(tinted(g, rgb, metal));
+    };
+    niche(0.28, 0.58, 0.86, OCHRE, 0);
+    niche(0.21, 0.48, 0.902, [0.072, 0.054, 0.047], 0);
+    box(0.58, 0.055, 1.27, GOLD, 0.20, 0.89, 0.65);
+    const bowl = new THREE.LatheGeometry([[0.04, 0], [0.05, 0.04], [0.036, 0.055],
+        [0.105, 0.09], [0.105, 0.108]].map(([r, h]) => new THREE.Vector2(r, h)), 16);
+    bowl.translate(0, 1.315, 0.95);
+    parts.push(tinted(bowl, GOLD, 0.87));
+    const wick = new THREE.LatheGeometry([[0, 0], [0.045, 0.021], [0.038, 0.07],
+        [0.011, 0.124], [0, 0.16]].map(([r, h]) => new THREE.Vector2(r, h)), 10);
+    wick.translate(0, 1.42, 0.955);
+    parts.push(tinted(wick, [1, 0.42, 0.09], -1));
+    box(0.58, 0.24, 2.1, WHITEWASH);
+    box(0.67, 0.065, 2.32, OCHRE);
     // The thirteen rings.
     const rings = [];
-    for (let i = 0; i <= 13; i++) {
-        const y = 2.36 + (i / 13) * 1.5;
-        const r = 0.27 - (i / 13) * 0.19;
-        rings.push([r * 0.8, y], [r, y + 0.035], [r * 0.8, y + 0.07]);
+    for (let i = 0; i < 13; i++) {
+        const y = 2.38 + (i / 13) * 1.5;
+        const r = 0.34 - (i / 13) * 0.23;
+        rings.push([r * 0.81, y], [r, y + 0.025], [r * 0.83, y + 0.066]);
     }
     lathe([[0, 2.36], ...rings, [0, 3.94]], GOLD, 1, 14);
     // Parasol, moon, sun and flame.
-    lathe([[0, 3.92], [0.25, 3.96], [0.22, 4.02], [0.05, 4.06], [0, 4.06]], GOLD, 1, 14);
-    const orb = new THREE.SphereGeometry(0.1, 12, 8);
-    orb.translate(0, 4.2, 0);
-    parts.push(tinted(orb, GOLD, 1));
-    const flame = new THREE.ConeGeometry(0.05, 0.34, 8);
-    flame.translate(0, 4.43, 0);
-    parts.push(tinted(flame, GOLD, 1));
-    return mergeGeometries(parts);
+    lathe([[0, 3.86], [0.06, 3.86], [0.06, 3.94], [0.32, 3.95], [0.32, 3.99],
+        [0.25, 4.04], [0.08, 4.1], [0.045, 4.16], [0.045, 4.26], [0, 4.27]], GOLD, 1);
+    const moon = new THREE.TorusGeometry(0.145, 0.035, 6, 18, Math.PI * 1.08);
+    moon.rotateZ(Math.PI * 0.96);
+    moon.translate(0, 4.28, 0);
+    parts.push(tinted(moon, GOLD, 1));
+    lathe([[0, 4.2], [0.076, 4.24], [0.08, 4.31], [0.045, 4.37], [0.036, 4.43],
+        [0, 4.6]], GOLD, 1);
+    return mergeGeometries(parts).rotateY(0.24);
 }
 
 function cairnGeometry(rand) {
     const parts = [];
-    // Flat stones, laid in rough courses.
-    for (let i = 0; i < 34; i++) {
-        const level = Math.floor(i / 7);
-        const ring = 0.95 - level * 0.19;
-        const a = rand() * Math.PI * 2;
-        const w = 0.28 + rand() * 0.42;
-        const g = new THREE.BoxGeometry(w, 0.09 + rand() * 0.1, w * (0.6 + rand() * 0.5));
-        g.rotateY(rand() * Math.PI);
-        g.rotateZ((rand() - 0.5) * 0.24);
-        g.translate(Math.cos(a) * ring * rand(), 0.08 + level * 0.19 + rand() * 0.05, Math.sin(a) * ring * rand());
-        const tone = 0.7 + rand() * 0.6;
-        parts.push(tinted(g, [STONE[0] * tone, STONE[1] * tone, STONE[2] * tone]));
+    // Interlocking, water-rounded schist slabs. Each tier supports the one above it.
+    for (let level = 0; level < 5; level++) {
+        const count = 8 - level;
+        const radius = 0.83 - 0.145 * level;
+        for (let i = 0; i < count; i++) {
+            const angle = ((i + 0.34 * level + rand() * 0.22) / count) * Math.PI * 2;
+            const w = 0.38 + rand() * 0.19 - 0.03 * level;
+            const g = new THREE.DodecahedronGeometry(1);
+            g.rotateZ(rand() * 2);
+            g.rotateY(rand() * 3);
+            g.scale(w, 0.14 + 0.07 * rand(), w * (0.72 + rand() * 0.32));
+            g.rotateY(-angle + rand());
+            g.rotateZ((rand() - 0.5) * 0.3);
+            g.translate(Math.cos(angle) * radius, 0.08 + level * 0.205 + rand() * 0.045, Math.sin(angle) * radius);
+            const tone = 0.58 + rand() * 0.92;
+            parts.push(tinted(g, STONE.map((c) => c * tone)));
+        }
     }
-    const pole = new THREE.CylinderGeometry(0.03, 0.045, CAIRN.pole + 0.5, 7);
+    const cap = new THREE.DodecahedronGeometry(1);
+    cap.rotateY(0.44);
+    cap.scale(0.43, 0.17, 0.4);
+    cap.translate(-0.05, 0.93, 0);
+    parts.push(tinted(cap, STONE));
+    const pole = new THREE.CylinderGeometry(0.043, 0.087, CAIRN.pole + 0.5, 10);
     pole.translate(0, 0.4 + (CAIRN.pole + 0.5) / 2, 0);
     parts.push(tinted(pole, WOOD));
+    const bindings = [[1.10, OCHRE], [1.21, WHITEWASH], [3.76, OCHRE],
+        [4.98, WHITEWASH], [5.06, OCHRE], [5.14, GOLD]];
+    bindings.forEach(([y, colour]) => {
+        const r = 0.097 - 0.006 * y;
+        const binding = new THREE.CylinderGeometry(r, r + 0.003, 0.072, 10);
+        binding.translate(0, y, 0);
+        parts.push(tinted(binding, colour, colour === GOLD ? 0.8 : 0));
+    });
     return mergeGeometries(parts);
 }
 
@@ -297,13 +346,17 @@ export function createShrine(u, field) {
         const sun = u.nearSun;
         // Rime and blown snow lie on everything that faces up.
         const grain = u.noise(P.xz.mul(1.3).add(P.y.mul(0.7)));
-        const snow = smoothstep(0.5, 0.82, N.y.add(grain.x.sub(0.5).mul(0.5))).mul(float(1.0).sub(paint.a.mul(0.6)));
+        const metal = max(paint.a, 0);
+        const snow = smoothstep(0.44, 0.91, N.y.add(grain.x.sub(0.5).mul(0.7)))
+            .mul(float(1.0).sub(metal.mul(0.6)));
         // Weather runs down the whitewash.
         const streak = u.noise(vec2(P.x.add(P.z).mul(2.3), P.y.mul(0.35))).w;
         const albedo = mix(paint.rgb.mul(streak.mul(0.45).add(0.7)), vec3(...SNOW), snow);
         const ndl = dot(N, u.sunDir);
         const ground = smoothstep(0.0, 1.3, P.y.sub(BOOTS - 1.0)).mul(0.5).add(0.5);
-        const ambient = u.shade.mul(N.y.mul(0.45).add(0.62)).add(u.zenith.mul(0.45))
+        const towardLight = dot(N, u.sunDir).mul(0.5).add(0.5);
+        const ambient = u.shade.mul(N.y.mul(0.4).add(0.72)).add(u.zenith.mul(0.35))
+            .add(u.horizon.mul(towardLight.mul(0.53).add(0.15)))
             // The snow all round throws light back up.
             .add(u.shade.mul(max(N.y.negate(), 0.0)).mul(0.5))
             .mul(ground);
@@ -312,10 +365,13 @@ export function createShrine(u, field) {
         const R = reflect(V.negate(), N);
         const sky = hpSky(u, normalize(vec3(R.x, max(R.y, 0.02), R.z)));
         const hot = hpPow4(hpPow4(clamp(dot(R, u.sunDir), 0.0, 1.0))).mul(sun).mul(6.0);
-        const gilt = paint.rgb.mul(sky.mul(1.6).add(u.sunCol.mul(hot)).add(u.shade.mul(0.35)));
-        const col = mix(matte, gilt, paint.a.mul(float(1.0).sub(snow))).toVar();
+        const gilt = paint.rgb.mul(sky.mul(1.24).add(u.sunCol.mul(hot))
+            .add(u.horizon.mul(towardLight.mul(0.72))).add(u.shade.mul(0.42)));
+        const col = mix(matte, gilt, metal.mul(float(1.0).sub(snow))).toVar();
         // A gust leaving the spire lights it in the piece's colour.
-        col.addAssign(u.spark.rgb.mul(u.spark.a).mul(paint.a.mul(1.8).add(0.12)).mul(smoothstep(BOOTS + 1.0, BOOTS + 5.0, P.y)));
+        col.addAssign(u.spark.rgb.mul(u.spark.a).mul(metal.mul(1.8).add(0.12)).mul(smoothstep(BOOTS + 1.0, BOOTS + 5.0, P.y)));
+        const flame = max(paint.a.negate(), 0).mul(sin(u.time.mul(4.1)).mul(0.065).add(1));
+        col.addAssign(vec3(4.1, 1.55, 0.29).mul(flame));
         return col.mul(u.breath.mul(0.85).add(0.15));
     })();
     return hpPart('HimalayanPeakShrine', geometry, material, -8);

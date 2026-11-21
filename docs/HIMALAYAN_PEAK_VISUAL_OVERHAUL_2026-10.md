@@ -1,5 +1,7 @@
 # Himalayan Peak — the chain raises the sun
 
+The November revision includes the current eagle, gameplay choreography, pass artwork and in-game captures. [Read the November visual audit](HIMALAYAN_PEAK_PASS_2026-11.md).
+
 Implemented 2026-10-08 on `feature/himalayan-peak-masterpiece`, with Three.js 0.186.1. A
 from-scratch rebuild: it replaces the earlier theme in full (the noise-plane terrain, the dome,
 the altitude and camera directors, the point-sprite spindrift, the flag cards and the post
