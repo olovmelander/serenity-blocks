@@ -25,6 +25,7 @@ import {
 import {
     ARC, BLINDS, DEG, GLAZING, HOUSE, MOON_RADIUS, NIGHT_COLOURS, bakeGardenNoise,
 } from './moonlit-greenhouse-core.js';
+import { LUNAR_FACE } from './moonlit-greenhouse-specimens.js';
 
 /**
  * The look's numbers, in one place. The playground can override any of them from the URL
@@ -33,7 +34,7 @@ import {
 export const TUNE = {
     // The moon: its disc's brightness, its tight aureole and its wide glow in the air.
     moonDisc: 1.7,
-    moonAureole: 0.9,
+    moonAureole: 0.48,
     moonGlow: 0.1,
     // The condensation's halo round the moon on the panes, and in everything that mirrors them
     // (the iron, the wet floor, the lanterns' glass, the canal).
@@ -118,6 +119,17 @@ export function createGardenNoise(size = 256) {
     map.colorSpace = THREE.NoColorSpace;
     map.needsUpdate = true;
     map.name = 'moonlit-greenhouse-noise';
+    return map;
+}
+
+export function createMoonFace() {
+    const { size, pixels } = LUNAR_FACE;
+    const data = Uint8Array.from(atob(pixels), (c) => c.charCodeAt(0));
+    const map = new THREE.DataTexture(data, size, size, THREE.RedFormat);
+    map.magFilter = THREE.LinearFilter;
+    map.minFilter = THREE.LinearFilter;
+    map.name = 'moonlit-greenhouse-lunar-albedo';
+    map.needsUpdate = true;
     return map;
 }
 
@@ -353,18 +365,22 @@ export function mgSky(dir, disc, U, noise, { stars = 2, clouds = true, trees = t
     let colour = air.add(glow);
     // A perfect clear rings the moon with a corona: the coloured rings that a veil of fine droplets
     // draws a few degrees round it, blue-white inside, red on each ring's outer edge.
-    const deg = acos(clamp(toMoon, -1.0, 1.0)).mul(180 / Math.PI);
-    const band = (r, w) => exp(deg.sub(r).div(w).mul(deg.sub(r).div(w)).negate());
-    const corona = vec3(
-        band(4.6, 0.55).add(band(8.4, 0.8).mul(0.55)),
-        band(4.1, 0.5).add(band(7.8, 0.75).mul(0.5)),
-        band(3.6, 0.5).add(band(7.2, 0.7).mul(0.45)),
-    ).add(vec3(0.7, 0.8, 1.0).mul(exp(deg.negate().div(1.6))));
-    colour = colour.add(night.moonlight.mul(corona).mul(U.queen.w.mul(U.queen.y)).mul(0.45));
+    const haloed = colour.toVar();
+    If(U.queen.w.greaterThan(0.001).and(toMoon.greaterThan(0.976)), () => {
+        const deg = acos(clamp(toMoon, -1.0, 1.0)).mul(180 / Math.PI).toVar();
+        const band = (r, w) => exp(deg.sub(r).div(w).pow2().negate());
+        const corona = vec3(
+            band(4.6, 0.55).add(band(8.4, 0.8).mul(0.55)),
+            band(4.1, 0.5).add(band(7.8, 0.75).mul(0.5)),
+            band(3.6, 0.5).add(band(7.2, 0.7).mul(0.45)),
+        );
+        haloed.addAssign(corona.mul(U.queen.w).mul(U.queen.x).mul(0.76));
+    });
+    colour = haloed;
     // Cloud: a thin deck drifting, lit from the moon's side.
     let cloudDensity = float(0.0);
     if (clouds) {
-        const plane = vec2(dir.x, dir.z).div(dir.y.add(0.16)).mul(TUNE.cloudScale).add(U.cloudDrift);
+        const plane = vec2(dir.x, dir.z).div(max(dir.y.add(0.16), 0.04)).mul(TUNE.cloudScale).add(U.cloudDrift);
         const n1 = texture(noise, plane).level(1.0);
         const n2 = texture(noise, plane.mul(2.7).add(vec2(0.31, 0.17))).level(1.0);
         const shape = n1.x.mul(0.65).add(n2.w.mul(0.35)).add(n1.z.mul(0.3)).sub(0.15);
@@ -386,19 +402,18 @@ export function mgSky(dir, disc, U, noise, { stars = 2, clouds = true, trees = t
         }
         colour = colour.add(vec3(0.85, 0.9, 1.0).mul(light).mul(sky).mul(TUNE.starGain));
     }
-    // The disc: limb-darkened, its dark seas and bright-rimmed craters from the noise, kept
-    // under the tone curve's shoulder so its face survives the grade (the bloom gives the glow).
-    const r = length(disc);
-    const inside = float(1.0).sub(smoothstep(0.97, 1.03, r)).mul(smoothstep(0.0, 0.05, toMoon));
-    const maria = texture(noise, disc.mul(0.3).add(vec2(0.37, 0.61))).level(0.0);
-    const seas = smoothstep(0.44, 0.66, maria.x.mul(0.65).add(maria.z.mul(0.35)));
-    const pits = texture(noise, disc.mul(1.15).add(vec2(0.13, 0.29))).level(0.0).y;
-    const rims = smoothstep(0.08, 0.26, pits).mul(float(1.0).sub(smoothstep(0.32, 0.7, pits)));
-    const floors = smoothstep(0.62, 0.92, pits);
-    const limb = sqrt(max(float(1.0).sub(r.mul(r)), 0.0)).mul(0.4).add(0.6);
-    const albedo = float(1.0).sub(seas.mul(0.46)).add(rims.mul(0.12)).sub(floors.mul(0.14));
-    const face = night.moonDisc.mul(albedo).mul(limb).mul(TUNE.moonDisc);
-    colour = mix(colour, face.mul(veil.mul(veil)), inside.mul(float(1.0).sub(cloudDensity.mul(0.8))));
+    // The glass and the water see the same cratered face. Only the disc pays for the map.
+    const sky = colour.toVar();
+    const r2 = dot(disc, disc).toVar();
+    If(r2.lessThan(1.065).and(toMoon.greaterThan(0.05)), () => {
+        const face = texture(U.moonFace, disc.mul(0.5).add(0.5)).level(0).r;
+        const nz = sqrt(max(float(1).sub(r2), 0));
+        const light = clamp(nz.mul(0.84).add(disc.y.mul(0.17)).sub(disc.x.mul(U.weather.z)), 0, 1);
+        const rock = face.mul(0.94).add(0.22).mul(light.mul(0.79).add(0.21));
+        const coverage = float(1).sub(smoothstep(0.94, 1.06, r2)).mul(float(1).sub(cloudDensity.mul(0.8)));
+        sky.assign(mix(sky, night.moonDisc.mul(rock).mul(TUNE.moonDisc).mul(veil.pow2()), coverage));
+    });
+    colour = sky;
     // The garden's trees outside, low through the side walls: a broad line of woods, crowns
     // rounded as canopies are (cells of the bead field read along the bearing) and a few tall
     // poplars and cypresses standing out of it.
@@ -663,7 +678,7 @@ export function mgSurface(pIn, nIn, albedoIn, U, {
     const vis = given || mgMoonVis(p, U, soft, { canopy });
     const ndl = dot(n, moon);
     const wrap = clamp(ndl.mul(0.78).add(0.22), 0.0, 1.0);
-    const grey = mgDesaturate(albedo, 0.55);
+    const grey = mgDesaturate(albedo, 0.31);
     const moonlight = night.moonlight.mul(U.moonLight).mul(vis);
     let colour = grey.mul(moonlight).mul(wrap).mul(0.62 * TUNE.moonKey);
     if (translucency) {

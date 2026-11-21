@@ -232,7 +232,7 @@ export class MoonlitGreenhousePost {
             const L = luma(T);
             // The night's grade: a cool lift in the darks (never flat black), its tint in the lights.
             const lo = float(1.0).sub(smoothstep(0.0, 0.28, L));
-            T.assign(T.add(this.uGradeShadow.mul(lo).mul(0.3)));
+            T.assign(T.add(this.uGradeShadow.mul(lo).mul(0.22)));
             const hi = smoothstep(0.4, 1.0, L);
             T.mulAssign(mix(vec3(1.0), this.uGradeLight, hi.mul(0.7)));
             T.assign(mix(vec3(luma(T)), T, 1.1));
@@ -246,7 +246,7 @@ export class MoonlitGreenhousePost {
             const pxi = floor(screenCoordinate);
             const frame = floor(this.uTime.mul(24.0));
             const grain = hash21(pxi.add(vec2(frame.mul(1.7), frame.mul(-2.3)))).sub(0.5);
-            D.addAssign(grain.mul(0.014).mul(float(1.0).sub(calm.mul(0.7))));
+            D.addAssign(grain.mul(0.006).mul(float(1.0).sub(calm.mul(0.7))));
             const dth = hash21(pxi).add(hash21(pxi.add(vec2(17.17, 17.17)))).sub(1.0);
             D.addAssign(dth.div(255.0));
 
@@ -336,11 +336,16 @@ export class MoonlitGreenhousePost {
             const cosMoon = dot(dir, U.moon);
             const phase = mgPhase(float(TUNE.airForward), cosMoon).mul(0.85).add(0.15).mul(TUNE.airBeam);
             // Pinned before the loop: the phase is the same at every step of the ray.
-            const moonCol = night.moonlight.mul(U.moonLight).mul(phase).mul(this.uShafts).toVar();
+            const moonCol = night.moonlight.mul(U.moonLight).mul(phase).mul(this.uShafts)
+                .mul(float(1.12).sub(U.weather.x.mul(0.45)))
+                .toVar();
+            const waterMist = U.weather.y.mul(1.4).add(0.34).mul(TUNE.airLow).toVar();
+            const toClerestory = U.moon.xz.div(max(U.moon.y, 0.16)).toVar();
             Loop(steps, () => {
                 const p = eye.add(dir.mul(t)).toVar();
                 const drift = vec2(U.time.mul(0.004), U.time.mul(-0.002));
-                const billow = texture(noise, p.xz.mul(0.045).add(drift)).level(1.0).x;
+                const mistUv = p.xz.mul(0.045).add(drift).add(vec2(0.014, -0.010).mul(p.y));
+                const billow = texture(noise, mistUv).level(1.0).x;
                 // The low mist lies over the canal and thins out over the beds.
                 const overWater = float(1.0).sub(smoothstep(2.2, 4.2, abs(p.x))).mul(0.8).add(0.2);
                 const low = exp(max(p.y.sub(0.1), 0.0).negate().div(TUNE.airLowFall))
@@ -349,11 +354,17 @@ export class MoonlitGreenhousePost {
                     ? mix(float(1.0), billow.mul(2.0), TUNE.airBillow).mul(TUNE.airHaze)
                     : float(TUNE.airHaze);
                 if (TUNE.airTop !== 1) haze = haze.mul(mix(float(1.0), float(TUNE.airTop), smoothstep(3.0, 11.0, p.y)));
-                const density = haze.add(low.mul(TUNE.airLow));
+                const density = haze.add(low.mul(waterMist));
                 // Pinned: read again inside the canopy's If (a node first built in a branch reads zero outside it).
                 const soft = stepLen.mul(TUNE.airSoft).toVar();
                 let lit = mgMoonlightBay(p, U.moon, soft, U.moonBay).mul(mgCanopy(p, U.moon, U, soft));
                 if (TUNE.airContrast !== 1) lit = lit.pow(TUNE.airContrast);
+                // Two clear strips among the leaf-shaped panes send narrow, oblique
+                // shafts through the haze. The existing iron and canopy still occlude them.
+                const aperture = p.xz.add(toClerestory.mul(float(8).sub(p.y)));
+                const shaft = float(1).sub(smoothstep(0.24, 1.45, abs(abs(aperture.x.add(5.6)).sub(0.96))));
+                const bay = float(1).sub(smoothstep(5, 18, abs(aperture.y.add(15))));
+                lit = lit.mul(shaft.mul(bay).mul(1.27).add(0.76));
                 // The lanterns' glow in the mist.
                 const warm = vec3(0.0).toVar();
                 Loop({

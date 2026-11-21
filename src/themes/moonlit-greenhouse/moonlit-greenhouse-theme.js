@@ -42,10 +42,8 @@
  * rebuilt scene comes back on the night it had.
  *
  * Warm: none (every pool is always drawn with zero-size dormant slots, so the first frame
- * compiles every render pipeline; the scene pass has one output). Nothing is downloaded either:
- * the scene uses no texture or model files (its noise is baked on the CPU and its plants grown in
- * code when the world is built), so there is no load step and nothing arrives after the first
- * frame.
+ * compiles every render pipeline; the scene pass has one output). The orchid mesh and lunar
+ * albedo travel in the theme chunk. The world builds the remaining plants from its garden plan.
  */
 
 import * as THREE from 'three/webgpu';
@@ -150,7 +148,9 @@ export function moonlitGreenhouseBakes(quality) {
     return bakeInWorker({
         jobs: [{ kind: 'noise', args: [tierFor(quality).noise, GARDEN_NOISE_SEED] }],
         keyOf: ({ args }) => gardenNoiseKey(...args),
-        createWorker: () => new Worker(new URL('./moonlit-greenhouse-bake.worker.js', import.meta.url), { type: 'module' }),
+        createWorker: () => new Worker(new URL('./moonlit-greenhouse-bake.worker.js', import.meta.url), {
+            type: 'module',
+        }),
     });
 }
 

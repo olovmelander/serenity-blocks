@@ -10,19 +10,19 @@ export const MOONLIT_GREENHOUSE_TETROMINOS = {
     colors: {
         I: '#ffda9e', // Lantern glow
         O: '#d7b3ff', // Lavender bloom
-        T: '#82f5b8', // Lush leaf
-        S: '#ff9ecf', // Petal pink
-        Z: '#5b7ba7', // Night indigo
-        J: '#ffd76a', // Warm candlelight
-        L: '#a8ffd8', // Dewdrop mint
+        T: '#78e79f', // New fern leaf
+        S: '#ff91b8', // Orchid lip
+        Z: '#829be8', // Moonlit indigo
+        J: '#ff9f60', // Copper lantern
+        L: '#60ddd8', // Canal glass
         GARBAGE: '#112021', // Greenhouse silhouette
     },
 
     renderMode: 'glow',
 
     effects: {
-        glowRadius: 10,
-        glowIntensity: 0.7,
+        glowRadius: 7,
+        glowIntensity: 0.52,
         glowColor: 'auto',
 
         outline: true,
@@ -31,11 +31,11 @@ export const MOONLIT_GREENHOUSE_TETROMINOS = {
 
         pulse: true,
         pulseSpeed: 0.035,
-        pulseAmplitude: 0.2,
+        pulseAmplitude: 0.07,
 
         shimmer: true,
         shimmerSpeed: 0.05,
-        shimmerIntensity: 0.15,
+        shimmerIntensity: 0.08,
 
         trails: true,
         trailLength: 0.14,
@@ -44,14 +44,14 @@ export const MOONLIT_GREENHOUSE_TETROMINOS = {
 
     rendererOverrides: {
         canvas: {
-            glowRadius: 8,
-            glowIntensity: 0.65,
+            glowRadius: 6,
+            glowIntensity: 0.48,
             outlineWidth: 1.5,
         },
         phaser: {
-            glowRadius: 12,
-            glowIntensity: 0.75,
-            outlineWidth: 1.9,
+            glowRadius: 8,
+            glowIntensity: 0.54,
+            outlineWidth: 1.6,
         },
     },
 };

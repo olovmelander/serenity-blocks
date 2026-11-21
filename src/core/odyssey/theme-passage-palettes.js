@@ -35,7 +35,7 @@ export const ODYSSEY_THEME_PASSAGE_PALETTES = Object.freeze({
     'koi-pond': ['#fbe8e2', '#286367', '#c96455', '#19383b', 0.43],
     'luminous-tides': ['#49bde1', '#2d7396', '#3c385f', '#1f2c4b', 0.28],
     lunara: ['#90b8f0', '#714eaf', '#6288c4', '#46287e', 0.38],
-    'moonlit-greenhouse': ['#c1ddeb', '#586f89', '#3c624b', '#24303b', 0.36],
+    'moonlit-greenhouse': ['#8a99a4', '#495f71', '#667988', '#28333c', 0.32],
     murmuration: ['#5df8fa', '#119ad9', '#5851cd', '#010968', 0.44],
     'nebula-flow': ['#ccaf9e', '#4f6786', '#b28369', '#353344', 0.37],
     'neon-district': ['#b1dba2', '#c77033', '#54619b', '#3f324b', 0.4],
