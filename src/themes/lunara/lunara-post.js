@@ -188,7 +188,7 @@ export class LunaraPost {
             const S = vec3(sceneColor.sample(st).rgb).toVar();
             if (look.fringe) {
                 const r2 = fromCentre.dot(fromCentre);
-                const fringe = r2.mul(0.005).add(this.uKick.mul(0.005)).mul(float(1.0).sub(calm));
+                const fringe = r2.mul(0.0018).add(this.uKick.mul(0.0028)).mul(float(1.0).sub(calm));
                 If(fringe.greaterThan(2e-4), () => {
                     const spread = fromCentre.mul(fringe);
                     S.assign(vec3(
@@ -247,7 +247,7 @@ export class LunaraPost {
             const pxi = floor(screenCoordinate);
             const frame = floor(this.uTime.mul(24.0));
             const grain = luHash21(pxi.add(vec2(frame.mul(1.7), frame.mul(-2.3)))).sub(0.5);
-            D.addAssign(grain.mul(0.018).mul(float(1.0).sub(calm.mul(0.7))));
+            D.addAssign(grain.mul(0.007).mul(float(1.0).sub(calm.mul(0.7))));
             const dth = luHash21(pxi).add(luHash21(pxi.add(vec2(17.17, 17.17)))).sub(1.0);
             D.addAssign(dth.div(255.0));
 

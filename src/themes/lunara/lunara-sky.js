@@ -18,6 +18,7 @@
 import * as THREE from 'three/webgpu';
 import {
     Fn,
+    If,
     abs,
     acos,
     atan,
@@ -58,7 +59,7 @@ export const SKY_RADIUS = 7000;
 /** The most halo rings the great moon wears. */
 export const MAX_RINGS = 6;
 
-const BAND_NORMAL = new THREE.Vector3(0.46, 0.62, 0.63).normalize();
+const BAND_NORMAL = new THREE.Vector3(-0.34, 0.88, 0.36).normalize();
 const BAND_ALONG = new THREE.Vector3().crossVectors(BAND_NORMAL, new THREE.Vector3(0, 0, -1)).normalize();
 
 /**
@@ -85,10 +86,15 @@ export function createSky(u, { curtains = 3, nebula = true } = {}) {
         const clearSky = smoothstep(0.02, 0.3, up).mul(float(1.0).sub(smoothstep(0.86, 0.995, cm).mul(0.85))).toVar();
 
         // ── Nebula: a band of lit dust across the sky ──
-        const b = dot(dir, vec3(BAND_NORMAL.x, BAND_NORMAL.y, BAND_NORMAL.z)).toVar();
-        const band = exp(b.mul(b).mul(-14.0)).toVar();
+        const nightDir = vec3(
+            dir.x.mul(u.night.x).sub(dir.z.mul(u.night.y)),
+            dir.y,
+            dir.z.mul(u.night.x).add(dir.x.mul(u.night.y)),
+        ).toVar();
+        const b = dot(nightDir, vec3(BAND_NORMAL.x, BAND_NORMAL.y, BAND_NORMAL.z)).toVar();
+        const band = exp(b.mul(b).mul(-32.0)).toVar();
         if (nebula) {
-            const st = vec2(dot(dir, vec3(BAND_ALONG.x, BAND_ALONG.y, BAND_ALONG.z)), b).toVar();
+            const st = vec2(dot(nightDir, vec3(BAND_ALONG.x, BAND_ALONG.y, BAND_ALONG.z)), b).toVar();
             const c1 = u.noise(st.mul(0.55).add(vec2(0.13, 0.31))).toVar();
             const c2 = u.noise(st.mul(1.7).add(vec2(0.52, 0.07))).toVar();
             const c3 = u.noise(st.mul(4.6).add(vec2(0.29, 0.83))).toVar();
@@ -101,7 +107,7 @@ export function createSky(u, { curtains = 3, nebula = true } = {}) {
                 .add(u.auroraLow.mul(smoothstep(0.6, 0.85, c2.b)).mul(0.5));
             const lit = cloud.mul(0.8).add(filaments.mul(0.55));
             col.addAssign(tint.mul(lit).mul(band).mul(float(1.0).sub(lanes.mul(0.85)))
-                .mul(0.15)
+                .mul(0.28)
                 .mul(clearSky)
                 .mul(u.breath));
         }
@@ -109,11 +115,12 @@ export function createSky(u, { curtains = 3, nebula = true } = {}) {
         // ── Stars: one per cell of a lattice the sphere of directions cuts through ──
         const pixel = length(fwidth(dir)).toVar();
         const starLayer = (scale, density, size, gain) => {
-            const p = dir.mul(scale);
+            const p = nightDir.mul(scale);
             const id = floor(p);
-            const h = luHash33(id);
+            const h = luHash33(id.add(256.0));
             const f = fract(p).sub(h.xyz.mul(0.6).add(0.2));
-            const d = length(f.sub(dir.mul(dot(f, dir))));
+            const offset = f.sub(nightDir.mul(dot(f, nightDir)));
+            const d = length(offset);
             // Never smaller than a pixel: a sub-pixel star would shimmer as the camera drifts.
             const r = max(float(size), pixel.mul(scale).mul(0.8));
             const core = exp(d.mul(d).div(r.mul(r)).mul(-3.0)).mul(float(size).div(r).mul(float(size).div(r)));
@@ -121,7 +128,15 @@ export function createSky(u, { curtains = 3, nebula = true } = {}) {
                 .add(0.08);
             const twinkle = sin(u.time.mul(h.y.mul(3.0).add(0.8)).add(h.x.mul(40.0))).mul(0.22).add(0.78);
             const warm = mix(vec3(0.72, 0.82, 1.0), vec3(1.0, 0.82, 0.7), smoothstep(0.55, 1.0, h.y));
-            return warm.mul(core.mul(mag).mul(twinkle).mul(step(h.x, density)).mul(gain));
+            let shape = core;
+            if (scale === 64) {
+                // Only the brightest first-magnitude stars resolve a tiny diffraction cross.
+                const q = offset.xy.div(r);
+                const spike = exp(abs(q.x).mul(-7.0).sub(abs(q.y).mul(1.4)))
+                    .add(exp(abs(q.y).mul(-7.0).sub(abs(q.x).mul(1.4))));
+                shape = core.add(spike.mul(smoothstep(0.90, 1.0, h.z)).mul(0.42));
+            }
+            return warm.mul(shape.mul(mag).mul(twinkle).mul(step(h.x, density)).mul(gain));
         };
         const stars = starLayer(64.0, 0.45, 0.034, 6.5)
             .add(starLayer(170.0, band.mul(0.5).add(0.34), 0.03, 2.4));
@@ -134,28 +149,38 @@ export function createSky(u, { curtains = 3, nebula = true } = {}) {
         const ang = u.discs.z;
         const lx = dot(dir, ex).div(ang).toVar();
         const ly = dot(dir, ey).div(ang).toVar();
-        const facing = step(0.0, dot(dir, pd));
         const r2 = lx.mul(lx).add(ly.mul(ly)).toVar();
         const aa = pixel.div(ang).mul(1.5);
-        const disc = float(1.0).sub(smoothstep(float(1.0).sub(aa), float(1.0).add(aa), sqrt(r2))).mul(facing).toVar();
-        const nz = sqrt(max(float(1.0).sub(r2), 0.0));
-        const nWorld = ex.mul(lx).add(ey.mul(ly)).sub(pd.mul(nz));
-        const lit = smoothstep(-0.08, 0.5, dot(nWorld, u.sunDir));
-        const tilt = float(0.42);
-        const lat = ly.mul(tilt.cos()).sub(lx.mul(tilt.sin()));
-        const bands = sin(lat.mul(8.0).add(sin(lat.mul(21.0)).mul(0.7))).mul(0.5).add(0.5);
-        const body = mix(u.glow.mul(0.6).add(u.auroraLow.mul(0.25)), u.companionCol.mul(0.7).add(vec3(0.25)), bands)
-            .mul(lit.mul(0.62).add(0.02)).mul(nz.mul(0.5).add(0.5));
-        col.assign(mix(col, body.mul(u.breath).add(col.mul(0.6)), disc));
-        // Its rings: an ellipse in front of the lower half, behind the upper.
-        const rx = lx.mul(tilt.cos()).add(ly.mul(tilt.sin()));
-        const ry = ly.mul(tilt.cos()).sub(lx.mul(tilt.sin())).div(0.3);
-        const rho = sqrt(rx.mul(rx).add(ry.mul(ry)));
-        const grooves = sin(rho.mul(31.0)).mul(0.25).add(0.75).mul(sin(rho.mul(7.0).add(1.0)).mul(0.2).add(0.8));
-        const ring = smoothstep(1.32, 1.4, rho).mul(float(1.0).sub(smoothstep(2.2, 2.3, rho))).mul(grooves)
-            .mul(facing)
-            .mul(mix(float(1.0).sub(disc), float(1.0), step(ry, 0.0)));
-        col.addAssign(mix(u.moonCol, u.companionCol, 0.35).mul(ring).mul(0.2).mul(u.breath));
+        If(r2.lessThan(6.25).and(dot(dir, pd).greaterThan(0)), () => {
+            const disc = float(1).sub(smoothstep(float(1).sub(aa), float(1).add(aa), sqrt(r2))).toVar();
+            const nz = sqrt(max(float(1).sub(r2), 0)).toVar();
+            const normal = ex.mul(lx).add(ey.mul(ly)).sub(pd.mul(nz));
+            const sunlight = dot(normal, u.sunDir).toVar();
+            const tilt = 0.38;
+            const rx = lx.mul(Math.cos(tilt)).add(ly.mul(Math.sin(tilt))).toVar();
+            const lat = ly.mul(Math.cos(tilt)).sub(lx.mul(Math.sin(tilt))).toVar();
+            const ry = lat.div(0.34).toVar();
+            const rho = length(vec2(rx, ry)).toVar();
+            const belts = lat.add(nz.mul(0.26)).add(sin(rx.mul(6).add(lat.mul(8))).mul(0.035));
+            const bands = sin(belts.mul(19).add(sin(belts.mul(9)))).mul(0.17).add(0.55);
+            const cloud = mix(vec3(0.13, 0.22, 0.4), vec3(1.0, 0.65, 0.39), bands);
+            const ringShade = luBell(lat.add(nz.mul(0.37)).sub(0.12).div(0.17)).mul(0.57);
+            const body = cloud.mul(max(sunlight, 0).mul(0.9).add(0.045)).mul(float(1).sub(ringShade))
+                .add(u.moonCol.mul(float(1).sub(nz)).mul(smoothstep(-0.1, 0.66, sunlight)).mul(0.38));
+            col.assign(mix(col, body.mul(u.breath), disc));
+            const gap = smoothstep(0.025, 0.075, abs(rho.sub(1.86)));
+            const grooves = sin(rho.mul(52)).mul(0.10).add(0.9).mul(gap);
+            const opacity = smoothstep(1.18, 1.32, rho).mul(float(1).sub(smoothstep(2.19, 2.32, rho)))
+                .mul(grooves).mul(mix(float(1).sub(disc), float(1), step(ry, 0)));
+            // The globe casts a shadow into the far ring; its front arc crosses the opaque globe.
+            const ringPos = ex.mul(lx).add(ey.mul(ly)).add(pd.mul(ry.mul(0.94)));
+            const alongSun = dot(ringPos, u.sunDir);
+            const shadow = smoothstep(0.76, 1.03, length(ringPos.sub(u.sunDir.mul(alongSun))));
+            const transmission = mix(float(1), shadow.mul(0.88).add(0.12), step(alongSun, 0));
+            const ice = mix(vec3(0.44, 0.31, 0.43), vec3(0.97, 0.78, 0.65), smoothstep(1.28, 1.83, rho))
+                .mul(transmission).mul(u.breath).mul(0.78);
+            col.assign(mix(col, ice, opacity.mul(0.88)));
+        });
 
         // ── Aurora ──
         if (curtains > 0) {
@@ -169,9 +194,9 @@ export function createSky(u, { curtains = 3, nebula = true } = {}) {
             const acc = vec3(0.0).toVar();
             const CURTAINS = [
                 // distance, lower border, height, wave amplitude, wave frequency, drift speed, seed, gain
-                [30, 5.2, 9.5, 2.3, 0.105, 1.0, 0.0, 1.0],
-                [17, 5.8, 9.0, 1.5, 0.19, -1.4, 3.7, 0.8],
-                [60, 7.0, 14.0, 6.5, 0.05, 0.7, 8.1, 0.8],
+                [30, 8.6, 9.5, 4.8, 0.10, 0.72, 0.0, 1.0],
+                [22, 11.2, 10.4, 4.5, 0.13, -0.9, 3.7, 0.78],
+                [60, 10.8, 13.0, 9.2, 0.05, 0.5, 8.1, 0.55],
             ];
             for (let i = 0; i < Math.min(curtains, CURTAINS.length); i++) {
                 const [D, base, tall, amp, freq, speed, seed, gain] = CURTAINS[i];
@@ -183,58 +208,103 @@ export function createSky(u, { curtains = 3, nebula = true } = {}) {
                 const h1 = float(D).add(wave(qx.mul(h0))).div(ahead);
                 const h = float(D).add(wave(qx.mul(h1))).div(ahead).toVar();
                 const x = qx.mul(h).toVar();
-                const hh = h.sub(base).div(tall).toVar();
+                const sweep = x.mul(0.068 + 0.012 * i).add(drift.mul(0.43 * speed)).add(seed);
+                const gather = sin(sweep.add(sin(sweep.mul(1.84).sub(seed)).mul(0.69)))
+                    .add(sin(sweep.mul(2.14).add(seed)).mul(0.37));
+                const twistFold = sin(sweep.mul(3.6).add(h.mul(0.18))).mul(u.skyEvent.x).mul(2.0);
+                const foot = gather.mul(u.night.z.mul(2.75).add(2.2)).add(base).add(twistFold)
+                    .add(x.mul(i === 1 ? -0.085 : 0.073));
+                const hh = h.sub(foot).div(tall).toVar();
                 const above = max(hh, 0.0);
                 // A sharp, bright lower border (the hem), a body that thins upward.
-                const hem = luBell(hh.sub(0.035).div(0.07));
-                const profile = smoothstep(0.0, 0.05, hh).mul(exp(above.mul(-3.4)).add(exp(above.mul(-16.0)).mul(0.6)))
-                    .add(hem.mul(0.55));
+                const hem = exp(abs(hh.sub(0.015)).mul(-34.0));
+                const profile = smoothstep(-0.035, 0.055, hh).mul(exp(above.mul(-2.6)));
                 // Rays at two scales, with dark sky between them: a curtain, not a veil.
-                const rays = u.noise(vec2(x.mul(0.1).add(seed), drift.mul(0.27).add(seed))).g;
-                const threads = u.noise(vec2(x.mul(0.43).add(seed * 2.3), drift.mul(0.61).add(seed))).r;
+                const lean = x.add(above.mul(sin(sweep).mul(2.8).add(2.1)));
+                const rays = u.noise(vec2(lean.mul(0.085).add(seed), drift.mul(0.27).add(seed))).g;
+                const threads = u.noise(vec2(lean.mul(0.34).add(seed * 2.3), drift.mul(0.61).add(seed))).r;
                 const patches = u.noise(vec2(x.mul(0.011).add(drift.mul(0.04 * speed)), seed * 0.37)).r;
                 const strands = smoothstep(0.42, 0.82, rays.mul(0.68).add(threads.mul(0.32)));
                 // The tallest rays reach highest: a ray's own brightness lifts its top.
                 const reachUp = exp(above.mul(-1.6).div(strands.mul(1.4).add(0.35)));
-                const fabric = smoothstep(0.28, 0.7, patches).mul(strands.mul(1.5).add(0.06)).mul(reachUp);
+                const patch = smoothstep(0.22, 0.79, patches).mul(0.82).add(0.18);
+                const foldLight = gather.mul(0.26).add(0.73);
+                const fabric = strands.mul(1.55).add(0.23).mul(reachUp);
                 // Low colour in the body; the high colour only in the rays' upper reaches.
-                const tone = mix(u.auroraLow, u.auroraHigh, smoothstep(0.22, 0.85, hh));
-                acc.addAssign(tone.mul(profile.mul(fabric).mul(gain)));
+                const lower = i === 1 ? mix(u.auroraLow, u.auroraHigh, 0.57) : u.auroraLow;
+                const tone = mix(lower, u.auroraHigh, smoothstep(0.035, 0.54, hh).mul(0.94));
+                const edge = mix(lower, u.moonCol, u.skyEvent.w.mul(0.65).add(0.10));
+                acc.addAssign(tone.mul(profile.mul(fabric)).add(edge.mul(hem).mul(0.7))
+                    .mul(patch).mul(foldLight)
+                    .mul(gain));
             }
             // The curtains stand ahead of the viewer, and give way round the great moon.
             const reach = step(0.0, dir.z.negate()).mul(float(1.0).sub(smoothstep(0.9, 0.985, cm).mul(0.75)));
-            col.addAssign(acc.mul(reach).mul(u.aurora).mul(u.breath).mul(1.5));
+            col.addAssign(acc.mul(reach).mul(u.aurora).mul(u.breath).mul(1.82));
         }
 
         // ── Halo rings round the great moon: one for every step of the chain ──
-        const theta = acos(clamp(cm, -1.0, 1.0)).div(u.discs.x).toVar();
+        const skyAngle = acos(clamp(cm, -1.0, 1.0)).toVar();
+        const theta = skyAngle.div(u.discs.x).toVar();
         // The angle round the moon: each ring is lit in arcs that turn slowly, alternately.
         const mx = normalize(cross(vec3(0.0, 1.0, 0.0), u.moonDir));
         const my = cross(u.moonDir, mx);
         const round = atan(dot(dir, my), dot(dir, mx)).toVar();
-        const halo = vec3(0.0).toVar();
-        for (let k = 0; k < MAX_RINGS; k++) {
-            const lit2 = clamp(u.rings.sub(k), 0.0, 1.0);
-            const at = 1.3 + k * 0.21;
-            const turn = (k % 2 === 0 ? 1 : -1) * (0.22 + k * 0.04);
-            const arcs = sin(round.mul(k % 3 === 0 ? 2.0 : 3.0).add(u.time.mul(turn)).add(k * 1.7)).mul(0.42).add(0.58);
-            // A hairline with a soft sheath; the newest ring is still drawing itself.
-            const line = luBell(theta.sub(at).div(0.022)).add(luBell(theta.sub(at).div(0.11)).mul(0.2));
-            const tone = k % 2 === 0 ? u.glow.add(u.moonCol.mul(0.5)) : u.auroraLow.add(u.moonCol.mul(0.3));
-            halo.addAssign(tone.mul(line).mul(arcs).mul(lit2).mul(1.0 - k * 0.09));
-        }
-        col.addAssign(halo.mul(1.25).mul(u.breath));
+        If(u.rings.greaterThan(0.002).and(theta.lessThan(2.62)), () => {
+            const halo = vec3(0).toVar();
+            for (let k = 0; k < MAX_RINGS; k++) {
+                const lit = clamp(u.rings.sub(k), 0, 1);
+                const at = 1.28 + k * 0.21;
+                const turn = (k % 2 === 0 ? 1 : -1) * (0.22 + k * 0.04);
+                const phase = round.mul(k % 3 === 0 ? 2 : 3).add(u.auroraDrift.mul(turn * 4)).add(k * 1.7);
+                const arcs = smoothstep(-0.85, 0.65, sin(phase));
+                const jewel = smoothstep(0.91, 1, sin(phase.add(1.2)));
+                const shoulder = luBell(theta.sub(at).div(0.076)).mul(jewel.mul(0.7).add(0.12));
+                const line = luBell(theta.sub(at).div(0.018)).add(shoulder);
+                const tone = k % 2 === 0 ? u.glow.add(u.moonCol.mul(0.5)) : u.auroraLow.add(u.moonCol.mul(0.3));
+                halo.addAssign(tone.mul(line).mul(arcs).mul(lit).mul(1.0 - k * 0.09));
+            }
+            col.addAssign(halo.mul(u.breath));
+        });
+
+        // Back-to-back: two strands of rose plasma connect the bodies in their orbital plane.
+        If(u.skyEvent.y.greaterThan(0.012).and(theta.lessThan(2.75)), () => {
+            const delta = vec2(dot(u.companionDir, mx), dot(u.companionDir, my)).div(u.discs.x).toVar();
+            const length2 = max(dot(delta, delta), 0.001);
+            const point = vec2(dot(dir, mx), dot(dir, my)).div(u.discs.x);
+            const along = clamp(dot(point, delta).div(length2), 0, 1).toVar();
+            const across = dot(point, vec2(delta.y.negate(), delta.x)).div(sqrt(length2));
+            const arch = along.mul(float(1).sub(along)).mul(4);
+            const spine = across.sub(arch.mul(0.46)).toVar();
+            const braid = sin(along.mul(12).sub(u.auroraDrift.mul(1.3))).mul(arch).mul(0.12);
+            const strand = luBell(spine.sub(braid).div(0.035)).add(luBell(spine.add(braid).div(0.026)).mul(0.6));
+            col.addAssign(u.companionCol.mul(strand.add(luBell(spine.div(0.22)).mul(0.18)))
+                .mul(arch).mul(u.skyEvent.y).mul(1.8));
+        });
+        // A perfect clear uncovers the great moon's corona. A pearly inner limb separates
+        // the stone from long, torn streamers, each brightest at a different bearing.
+        If(u.skyEvent.z.greaterThan(0.014).and(theta.lessThan(2.5)), () => {
+            const h = max(theta.sub(1), 0).toVar();
+            const azimuth = round.add(sin(round.mul(3).add(u.auroraDrift.mul(0.18))).mul(h).mul(0.34));
+            const filament = sin(azimuth.mul(19).add(sin(azimuth.mul(7)).mul(3.4))).mul(0.5).add(0.5);
+            const fan = sin(round.mul(3).add(0.8)).mul(0.5).add(0.5);
+            const stream = exp(h.mul(-6.2).div(fan.mul(1.3).add(0.22))).mul(filament.mul(filament));
+            const pearl = exp(h.mul(-45)).mul(1.5).add(exp(h.mul(-13)).mul(0.38));
+            const corona = mix(u.moonCol, vec3(1.0, 0.74, 0.44), 0.62).mul(pearl)
+                .add(mix(u.glow, u.moonCol, fan).mul(stream).mul(0.82));
+            col.addAssign(corona.mul(u.skyEvent.z));
+        });
 
         // ── A four-line clear's ring across the sky, split like light through a prism ──
         const age = u.time.sub(u.shock.x);
         const front = age.mul(1.5);
-        const sky = acos(clamp(cm, -1.0, 1.0));
-        const prism = vec3(
-            luBell(sky.sub(front).div(0.032)),
-            luBell(sky.sub(front.mul(0.975)).div(0.032)),
-            luBell(sky.sub(front.mul(0.95)).div(0.032)),
-        ).add(luBell(sky.sub(front.mul(0.975)).div(0.12)).mul(0.12));
-        col.addAssign(prism.mul(exp(age.mul(-1.3))).mul(step(0.0, age)).mul(u.shock.y).mul(1.1));
+        If(age.greaterThanEqual(0).and(age.lessThan(2.8)), () => {
+            const rim = skyAngle.sub(front);
+            const prism = u.auroraLow.mul(luBell(rim.add(0.019).div(0.031)))
+                .add(u.companionCol.mul(luBell(rim.sub(0.019).div(0.033))))
+                .add(u.moonCol.mul(luBell(rim.div(0.012)).mul(0.9).add(luBell(rim.div(0.11)).mul(0.16))));
+            col.addAssign(prism.mul(exp(age.mul(-1.3))).mul(u.shock.y));
+        });
 
         return vec4(col, 1.0);
     })();

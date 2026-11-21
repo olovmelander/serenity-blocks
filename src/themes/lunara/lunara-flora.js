@@ -11,6 +11,7 @@
 
 import {
     Fn,
+    abs,
     attribute,
     cameraPosition,
     cameraProjectionMatrix,
@@ -41,6 +42,7 @@ import {
 
 /** Width of a flower's quad as a fraction of its height. */
 const FLOWER_ASPECT = 0.62;
+const dot2 = (v) => v.dot(v);
 
 /**
  * @param {object} u
@@ -94,8 +96,12 @@ export function createFlowers(u, plan, count) {
         const stem = exp(dx.mul(dx).mul(-9000.0)).mul(step(st.y, 0.8)).mul(smoothstep(0.0, 0.08, st.y));
         const head = vec2(st.x.sub(float(0.5).add(vBend.mul(0.64))).mul(FLOWER_ASPECT), st.y.sub(0.82));
         const d = length(head);
-        const bulb = exp(d.mul(d).mul(-520.0)).mul(1.6).add(exp(d.mul(-17.0)).mul(0.5));
-        return vec4(vLight.mul(bulb.add(stem.mul(0.14))), 0.0);
+        const petal = vec2(abs(head.x).sub(0.047).add(head.y.mul(0.25)), head.y.add(0.021));
+        const calyx = exp(dot2(petal.mul(vec2(23, 14))).negate());
+        const bulb = exp(d.mul(d).mul(-760)).mul(1.7).add(exp(d.mul(-20)).mul(0.34));
+        const blade = exp(abs(abs(dx).sub(st.y.mul(0.22))).mul(-110)).mul(smoothstep(0.02, 0.13, st.y))
+            .mul(float(1).sub(smoothstep(0.22, 0.46, st.y)));
+        return vec4(vLight.mul(bulb.add(calyx.mul(0.57)).add(stem.mul(0.18)).add(blade.mul(0.14))), 0.0);
     })();
 
     const part = luPart('LunaraFlowers', geometry, material, 12);
@@ -133,30 +139,39 @@ export function createMotes(u, count, seed = 0x10ae) {
         sin(u.time.mul(s.mul(0.2).add(0.13)).add(s.mul(41.0))),
         cos(u.time.mul(s.mul(0.17).add(0.11)).add(s.mul(23.0))),
     ).mul(s.mul(1.6).add(0.8));
+    const eddy = sin(home.z.mul(0.16).add(u.moteLift.mul(0.073))).mul(u.night.w.mul(1.8).add(0.55));
     const world = vec3(
-        home.x.add(wander.x),
-        climb.mul(MOTE_BOX.height).add(0.15),
+        home.x.add(wander.x).add(eddy.mul(climb)),
+        climb.mul(MOTE_BOX.height).mul(float(1).sub(u.afterglow.mul(0.53))).add(0.15),
         home.z.add(wander.y),
     );
     const clip = cameraProjectionMatrix.mul(cameraViewMatrix).mul(vec4(world, 1.0));
     const half = u.viewport.mul(0.5);
     const pxPerMetre = u.viewport.y.mul(1.05).div(max(clip.w, 0.3));
-    const px = clamp(s.mul(0.05).add(0.03).mul(pxPerMetre), u.viewport.y.mul(0.0016), u.viewport.y.mul(0.012));
+    const px = clamp(s.mul(0.074).add(0.036).mul(pxPerMetre), u.viewport.y.mul(0.0017), u.viewport.y.mul(0.012));
     material.vertexNode = vec4(clip.xy.add(positionGeometry.xy.mul(px.mul(2.0)).div(half).mul(clip.w)), clip.z, clip.w);
 
     const twinkle = sin(u.time.mul(s.mul(2.3).add(0.9)).add(s.mul(77.0))).mul(0.5).add(0.5);
     const life = sin(climb.mul(Math.PI));
-    const tone = mix(u.bed, mix(u.glow, u.moonCol, 0.5), step(0.6, fract(s.mul(7.7))));
+    const tone = mix(vec3(0.065, 0.9, 0.77), u.bed, 0.38);
     const dist = length(cameraPosition.sub(world));
     const gain = twinkle.mul(twinkle).mul(0.9).add(0.12).mul(life)
         .mul(u.power.mul(1.4).add(0.75))
         .mul(float(1.0).sub(luFogAmount(dist, world.y).mul(0.9)))
         .mul(u.breath);
-    const vLight = varying(tone.mul(gain), 'luMote');
+    const vLight = varying(mix(tone, u.moonCol, s.mul(s).mul(0.32)).mul(gain), 'luMote');
+    const tilt = sin(s.mul(61).add(u.moteLift.mul(0.46))).mul(0.82);
+    const vTilt = varying(vec2(cos(tilt), sin(tilt)), 'luSporeTilt');
     material.colorNode = Fn(() => {
         const q = uv().sub(0.5).mul(2.0);
         const d = length(q);
-        return vec4(vLight.mul(exp(d.mul(d).mul(-5.5))).mul(smoothstep(1.0, 0.7, d)).mul(1.3), 0.0);
+        const local = vec2(q.dot(vTilt), q.y.mul(vTilt.x).sub(q.x.mul(vTilt.y)));
+        const kernel = exp(dot2(local.mul(vec2(4.9, 2.9))).negate());
+        const barb = abs(local.x).sub(local.y.mul(0.58));
+        const silk = exp(barb.mul(barb).mul(-95)).mul(smoothstep(-0.06, 0.18, local.y))
+            .mul(float(1).sub(smoothstep(0.22, 0.78, local.y)));
+        const aura = exp(d.mul(d).mul(-5.4)).mul(0.47);
+        return vec4(vLight.mul(kernel.mul(1.7).add(silk.mul(0.45)).add(aura)).mul(smoothstep(1.0, 0.7, d)), 0.0);
     })();
 
     const part = luPart('LunaraMotes', geometry, material, 18);

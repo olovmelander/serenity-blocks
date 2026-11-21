@@ -8,13 +8,13 @@ export const LUNARA_TETROMINOS = {
     version: 1,
 
     colors: {
-        I: '#ffd4a8', // Warm Lantern Amber
-        O: '#d8a8ff', // Vivid Amethyst Glow
-        T: '#a8ffe8', // Bright Aurora Teal
-        S: '#ffa8d0', // Vibrant Alpine Rose
-        Z: '#8090e0', // Deep Twilight Indigo
-        J: '#ffc050', // Radiant Sunrise Gold
-        L: '#a8e0ff', // Brilliant Moonlit Glacier
+        I: '#ffad89', // Copper in the companion's light
+        O: '#be97ff', // Amethyst
+        T: '#65efd0', // Aurora mint
+        S: '#ff83b7', // Rose quartz
+        Z: '#889eff', // Blue-violet feldspar
+        J: '#ffda72', // Moonfire gold
+        L: '#8ddcff', // Ice blue
         GARBAGE: '#252840', // Deep Mountain Shadow
     },
 
@@ -22,7 +22,7 @@ export const LUNARA_TETROMINOS = {
 
     effects: {
         glowRadius: 9,
-        glowIntensity: 0.65,
+        glowIntensity: 0.48,
         glowColor: 'auto',
 
         outline: true,
@@ -31,11 +31,11 @@ export const LUNARA_TETROMINOS = {
 
         pulse: true,
         pulseSpeed: 0.03,
-        pulseAmplitude: 0.18,
+        pulseAmplitude: 0.09,
 
         shimmer: true,
         shimmerSpeed: 0.05,
-        shimmerIntensity: 0.15,
+        shimmerIntensity: 0.09,
 
         trails: true,
         trailLength: 0.12,
@@ -45,12 +45,12 @@ export const LUNARA_TETROMINOS = {
     rendererOverrides: {
         canvas: {
             glowRadius: 7,
-            glowIntensity: 0.6,
+            glowIntensity: 0.43,
             outlineWidth: 1.4,
         },
         phaser: {
-            glowRadius: 11,
-            glowIntensity: 0.7,
+            glowRadius: 8,
+            glowIntensity: 0.5,
             outlineWidth: 1.8,
         },
     },
