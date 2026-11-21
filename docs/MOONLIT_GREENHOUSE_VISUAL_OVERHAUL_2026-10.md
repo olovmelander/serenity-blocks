@@ -295,3 +295,81 @@ events still lift the moonlight from the new rest (the four-line flood lights th
 glazing). Checked in the playground at High (silver moon, harvest moon, blue hour, four lines at
 1.2 s) and at Low on the RTX 5080, with no WebGPU errors in the console; the 14
 `tests/unit/moonlit-greenhouse-*` files pass (228 tests).
+
+## The conservatory, 2026-11-21
+
+The original vault, the iron silhouettes against the moon and the long view down the canal
+were worth keeping. At playing distance the moon had little surface detail, the rear doors
+disappeared into two orange reflections, and many plants shared the same grey-green value.
+Ordinary clears also sent the eye to the same part of the roof. These captures use the same
+camera, seed, quality and clock for the before and after.
+
+![The greenhouse at the same moment before and after the November pass](moonlit-greenhouse-overhaul/november-comparison.jpg)
+
+| Area | What changed |
+| --- | --- |
+| Vault and moon | The lunar maria show through a clear bay, with a soft terminator that shifts across the six nights. Layers of condensation still catch the moon. Adjacent bays contain paired leaves of bottle-green and honey glass. Brass collars and bosses pick out the joints of the dark ironwork. Cut shafts of light reach the beds through a slowly rising and falling bank of canal mist. |
+| Lanterns and doorway | Two sagging strings of small pearl lamps hang between the larger lanterns. At the vanishing point a radial fanlight, beveled panes, brass surround and paired doors make a single warm destination. The shape of the fanlight breaks up in the water below it. |
+| Plants and pond | Cool light across the fern pinnae, palm fronds and broad banana leaves separates the layers of greenery. Sprays of modeled moth orchids hang from the upper and lower beds. Giant Victoria pads alternate along the banks and have scalloped, weathered rims. Pink water lilies have a visible heart and open to different rhythms. Warm reed heads and drifting bioluminescent currents break up the dark foreground. |
+| Insects and weather | Fireflies change colour with height. Moths alternate between flapping and gliding close to the flames and venture down the aisle at a level change. Cloud cover, ground mist and the breeze rise and fall at different rates while the night palette turns. |
+| Board and HUD | The well has a patinated jade edge. The score panel uses dark green glass, a brass rule and lighter lettering. Copper, amber, aqua and green pieces are easier to distinguish, and quieter piece glow leaves the landing outline visible. Danger and still-air states keep their own wall treatment. |
+
+### How the house answers play
+
+| Play | Where to look |
+| --- | --- |
+| Piece lock and hard drop | A winged seed in the piece colour flies from its row to a flower beside the board. A hard landing shakes dew from the foliage. A seed that lands in the canal rings the water at the lily's heart. |
+| Single, double and triple | A single drops a pearl on the near water. A double sends a chase down the hanging lights. A triple illuminates pairs of glass leaves from the far end toward the player. Each also releases the cleared rows' fireflies. |
+| Cascade | Ripples step down alternating banks. Each successive wave crosses the glazing faster and picks up more of the canal colour. |
+| Combo and break | Fireflies blink into step and moss climbs the columns. Breaking a held chain sends darkness down the string lights as the insects scatter out of time. |
+| Spin and back-to-back | A spin stirs the air. Clearing rows in a spin sets the insects and pollen wheeling more widely. Back-to-back sends a ring from the moon's own pane and strengthens the slanting beams. |
+| Level change | The next night arrives over seven seconds. The fanlight catches the new light and the moths sweep out in staggered flights. The colours also drift on their own during a quiet run. |
+| Four lines and perfect clear | The house briefly goes quiet before the Queen of the Night unfolds beyond the board and the pond lilies open with her. A perfect clear adds a counter-turning pink and champagne whorl, a lunar corona and a delayed fall of orchid petals on both banks. |
+
+![Small clears, cascading light and the two Queen events](moonlit-greenhouse-overhaul/november-events.jpg)
+
+![Silver moon, lavender night, jade dream, harvest moon, rose nocturne and blue hour](moonlit-greenhouse-overhaul/november-nights.jpg)
+
+### In play
+
+On a 1440 × 900 single-player board, five hard drops opened five flowers without covering
+the stack or the landing outline. The perfect clear was triggered through the game's event
+bus while that same board kept running. In a 390 × 844 browser viewport the score moved below
+the well and the Queen's outer petals remained visible on either side. The theme reported no
+dropped gameplay events in either capture. The lamp chase and glass illumination read the
+player's Reduce flashing setting live.
+
+[Full-size greenhouse](moonlit-greenhouse-overhaul/november-house.jpg) · [Single-player board](moonlit-greenhouse-overhaul/november-game.jpg) · [Perfect clear on the same board](moonlit-greenhouse-overhaul/november-perfect.jpg) · [Portrait play with reduced flashing](moonlit-greenhouse-overhaul/november-portrait.jpg)
+
+The orchid is original Blender geometry with 1,892 vertices and 2,764 triangles per spray.
+Six to ten sprays share one instanced draw. The pearl lamps share the lanterns' frame and glow
+meshes, and the falling petals use the existing particle pool. The playground now draws the
+graded scene on its first frame and waits for that submission before signalling readiness.
+Dropping the redundant raw draw took the revised scene from 15 render targets and 64.30 MiB
+to 14 targets and 52.54 MiB at 1280 × 800. The phase-locked screenshot was pixel-identical.
+
+### Frame timing
+
+High on native WebGPU, NVIDIA Blackwell, at a 30 fps cap. Playground timing began as soon as
+the graded scene signalled ready. The resting scene ran for 20 seconds and the animated
+sequence for 42 seconds. The live game was observed for 17 seconds after its loading overlay
+closed. It included hard drops, the four-line reward and the perfect-clear crown.
+
+| Run | Frame interval, median / 95th percentile | Theme CPU, median / 95th percentile | GPU render time, median / 95th percentile |
+| --- | --- | --- | --- |
+| Resting greenhouse, 1280 × 800 | 33.3 / 33.9 ms | 1.2 / 1.8 ms | 0.95 / 0.96 ms (20 samples) |
+| Animated event sequence, 1280 × 800 | 33.3 / 34.5 ms | 1.4 / 1.9 ms | 1.11 / 1.24 ms (41 samples) |
+| Single player, 1440 × 900 | 33.3 / 33.6 ms | 1.7 / 2.2 ms | GPU timestamps collected in the playground |
+
+The live game had one 138 ms interval among 511. The longest measured CPU call to draw the
+theme in that run was 3.4 ms. In the fresh standalone event run, the browser reached the
+graded scene about eight seconds after navigation. A physical phone and an integrated GPU
+remain unmeasured. [Timing samples and method](moonlit-greenhouse-overhaul/november-profile.json)
+
+The playground captures covered all six nights, every gameplay reaction, all six quality
+settings, reduced motion and reduced flashing. Medium was also checked on the forced
+WebGL2 backend. The captures produced no console warnings or errors. The live game's only
+browser warning concerned Windows ignoring the adapter power preference. The 14 greenhouse
+test files passed (230 tests), including both shader builders and a regression check for
+independent cues, reduced flashing and new-run reset. The production build and its boot-closure
+check passed.

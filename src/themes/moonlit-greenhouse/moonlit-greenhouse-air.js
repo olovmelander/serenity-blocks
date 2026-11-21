@@ -102,7 +102,7 @@ export const FIREFLY = Object.freeze({
  *   picks        which lanterns (nearest first) the moths are given, in turn: the near ones most
  */
 export const MOTH = Object.freeze({
-    span: Object.freeze([0.11, 0.13]),
+    span: Object.freeze([0.12, 0.155]),
     least: 4.0,
     orbit: Object.freeze([0.36, 0.7]),
     speed: Object.freeze([1.2, 2.1]),
@@ -540,7 +540,9 @@ export function createFireflies({ tier, U, seed = 1861 }) {
         const coreDrawn = max(corePx, FIREFLY.coreLeast);
         const coreQ = coreDrawn.div(max(pxDrawn, 1e-3));
         const corePaid = clamp(corePx.div(coreDrawn), 0.5, 1.0);
-        vLight.assign(night.firefly.mul(lit));
+        // Cool fen sparks close to the water, honey-gold as they rise among the lamps.
+        const gold = smoothstep(1.4, 4.1, where.y).mul(0.58);
+        vLight.assign(mix(night.firefly, night.lantern, gold).mul(lit));
         vShape.assign(vec3(
             float(1.0).div(max(coreQ.mul(coreQ), 1e-3)),
             halo.mul(clamp(spread.mul(spread), 0.3, 1.0)),
@@ -676,11 +678,16 @@ export function createMoths({
             const v = smoothstep(0.0, 1.0, clamp(u.div(0.3), 0.0, 1.0));
             const lobe = sin(v.mul(Math.PI));
             const roam = vec3(
-                awaySide.mul(lobe.mul(lobe).mul(0.7)),
+                awaySide.mul(lobe.mul(lobe).mul(U.weather.w.mul(0.75).add(0.55))),
                 lobe.mul(lobe).mul(1.1).add(sin(v.mul(TAU)).mul(0.35)),
                 sin(v.mul(TAU)).mul(-3.2),
             );
-            return lamp.add(orbit).add(flutter).add(roam);
+            // The new light at a level change draws moths out from under the eaves.
+            // Each visits the aisle at a different moment, then banks back to its flame.
+            const visit = clamp(tau.sub(U.aisleCues.w).sub(B.z.mul(1.8)).div(5.8), 0, 1);
+            const visitLift = sin(visit.mul(Math.PI)).pow2().mul(U.weather.w.mul(0.65).add(0.35));
+            const sortie = vec3(awaySide.mul(1.46), 0.72, sin(visit.mul(TAU)).mul(1.62)).mul(visitLift);
+            return lamp.add(orbit).add(flutter).add(roam).add(sortie);
         };
         const body = turnOfTheAir(path(t), U).toVar();
         const ahead = turnOfTheAir(path(t.add(0.035)), U);
@@ -782,10 +789,11 @@ export function createMoths({
         const lamp = flame.mul(albedo.mul(max(nl, 0.0)).mul(0.8)
             .add(mix(albedo.mul(1.6), vec3(0.9), 0.2).mul(transmit).mul(max(nl.negate(), 0.0)).mul(0.55)));
         const through = clamp(dot(v, U.moon), 0.0, 1.0);
-        const glowMoon = night.moonlight.mul(U.moonLight).mul(vis).mul(through.mul(through)).mul(0.3)
+        const glowMoon = night.moonlight.mul(U.moonLight).mul(vis).mul(through.mul(through)).mul(0.36)
             .mul(transmit)
             .mul(albedo);
-        return vec4(lit.add(lamp).add(glowMoon), alpha);
+        const velvet = mix(vec3(0.23, 0.38, 0.30), vec3(0.47, 0.27, 0.40), C.w);
+        return vec4(lit.add(lamp).add(glowMoon).add(velvet.mul(transmit).mul(0.12)), alpha);
     })();
 
     const mesh = airMesh(geometry, material, 'moonlit-greenhouse-moths', 7);

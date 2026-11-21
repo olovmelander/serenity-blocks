@@ -52,7 +52,7 @@ export const FLORA_LOOK = {
     // The lanterns' light through the leaves near them (warm gold-green), the open blooms' (in
     // the piece's colour: a lock lights the leaves round where its flower opens), and the
     // fireflies' (a chain warms the whole garden).
-    lanternThrough: 0.9,
+    lanternThrough: 0.76,
     bloomThrough: 0.18,
     fireflyThrough: 0.014,
     // The moon's sheen on glossy leaves.
@@ -567,14 +567,19 @@ export function createLeafMaterial({
         // The lanterns' light through the leaf, from behind it: filtered gold-green by the leaf,
         // so the leaves round a lantern glow warm. (mgSurface's lantern term is the light the
         // leaf's face reflects.)
-        const filter = mix(vec3(0.2, 0.5, 0.12), vec3(0.42, 0.3, 0.1), clamp(o.dry.add(q.age.mul(0.25)), 0.0, 1.0));
+        const filter = mix(vec3(0.23, 0.51, 0.20), vec3(0.48, 0.32, 0.12), clamp(o.dry.add(q.age.mul(0.25)), 0.0, 1.0));
         const lampThrough = lamps.back.mul(filter).mul(transl).mul(FLORA_LOOK.lanternThrough);
         // The open blooms' light through the leaves round them keeps most of its hue.
         const bloomThrough = blooms.back.mul(vec3(0.7, 0.85, 0.6))
             .mul(transl).mul(FLORA_LOOK.bloomThrough);
         const flyThrough = night.firefly.mul(U.fireflyGlow).mul(transl).mul(FLORA_LOOK.fireflyThrough);
         // A little of the night's leaf-light caught along the margins even out of the moon.
-        const rim = night.leafLit.mul(o.edge.mul(g3).mul(0.004));
+        // Skylight in the folds separates the overlapping fans even in the unlit bed.
+        // The broad paddles keep their blue wax bloom and the thinner ferns pick up celadon.
+        const wax = mix(vec3(0.034, 0.15, 0.087), vec3(0.026, 0.15, 0.16), o.gloss);
+        const fold = clamp(n.y.mul(0.39).add(0.52), 0, 1).mul(q.mottle.mul(0.45).add(0.68));
+        const fill = wax.mul(fold).mul(o.transl).mul(0.32).mul(U.moonLight);
+        const rim = night.leafLit.mul(o.edge.mul(g3).mul(0.012)).add(fill);
         const alpha = coverage ? smoothstep(0.5, max(dCover, 0.02).add(0.5), o.cover) : float(1.0);
         return vec4(lit.add(lampThrough).add(bloomThrough).add(flyThrough).add(rim), alpha);
     })();

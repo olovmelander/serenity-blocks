@@ -243,7 +243,8 @@ describe('the lanterns', () => {
         const n = plan.lanterns.length;
         expect(n).toBeGreaterThan(4);
         expect(built.panes.triangleCount).toBe(n * 6 * 2);
-        expect(built.halos.triangleCount).toBe(n * 2);
+        expect(built.pearls).toBe((n - 2) * 5);
+        expect(built.halos.triangleCount).toBe((n + built.pearls) * 2);
         expect(built.body.triangleCount).toBeGreaterThan(n * 100);
         expect(windingFaults(built.body)).toBe(0);
         expect(windingFaults(built.panes)).toBe(0);

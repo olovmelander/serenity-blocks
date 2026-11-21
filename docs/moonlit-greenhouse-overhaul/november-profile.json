@@ -1,0 +1,96 @@
+{
+  "date": "2026-11-21",
+  "adapter": "NVIDIA Blackwell, native WebGPU in Chrome on Windows",
+  "quality": "High",
+  "capFps": 30,
+  "method": "Playground samples begin after the graded first frame. Frame and CPU percentiles retain the last 1200 samples. GPU timestamps are read every 30 drawn frames. Game intervals are between theme frames after the single-player loading overlay closes.",
+  "playgroundRest20s": {
+    "viewport": [
+      1280,
+      800
+    ],
+    "fixedTime": 18,
+    "cpuMs": {
+      "samples": 600,
+      "p50": 1.2,
+      "p95": 1.8,
+      "p99": 2.4,
+      "max": 3.2
+    },
+    "frameMs": {
+      "samples": 599,
+      "p50": 33.3,
+      "p95": 33.9,
+      "p99": 34.9,
+      "max": 37.6
+    },
+    "gpuMs": {
+      "samples": 20,
+      "p50": 0.948,
+      "p95": 0.963,
+      "p99": 0.966,
+      "max": 0.966
+    },
+    "gpuMemoryMiB": 52.545,
+    "renderTargets": 14,
+    "viewportPollSawReadyAtMs": 8507,
+    "animationFrameGapsOver120MsAfterReady": []
+  },
+  "playgroundAnimated42s": {
+    "viewport": [
+      1280,
+      800
+    ],
+    "fixedTime": null,
+    "cpuMs": {
+      "samples": 1200,
+      "p50": 1.4,
+      "p95": 1.9,
+      "p99": 2.2,
+      "max": 2.8
+    },
+    "frameMs": {
+      "samples": 1200,
+      "p50": 33.3,
+      "p95": 34.5,
+      "p99": 37.6,
+      "max": 42.2
+    },
+    "gpuMs": {
+      "samples": 41,
+      "p50": 1.111,
+      "p95": 1.244,
+      "p99": 1.762,
+      "max": 1.762
+    },
+    "gpuMemoryMiB": 52.545,
+    "renderTargets": 14,
+    "viewportPollSawReadyAtMs": 8034,
+    "animationFrameGapsOver120MsAfterReady": []
+  },
+  "singlePlayer": {
+    "viewport": [
+      1440,
+      900
+    ],
+    "elapsedMs": 16953.5,
+    "events": "Piece movement, five hard drops, event-bus four-line and perfect clear, then the bloom fading.",
+    "frameMs": {
+      "n": 511,
+      "p50": 33.3,
+      "p95": 33.6,
+      "p99": 41.7,
+      "max": 137.7,
+      "over100": 1
+    },
+    "themeCpuMs": {
+      "n": 512,
+      "p50": 1.7,
+      "p95": 2.2,
+      "p99": 2.9,
+      "max": 3.4,
+      "over100": 0
+    },
+    "droppedThemeEvents": 0
+  }
+}

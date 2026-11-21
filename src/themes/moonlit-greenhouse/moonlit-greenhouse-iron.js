@@ -853,9 +853,12 @@ export function* createIronSteps({
             const moss = mossAt(vec2(p.x.add(p.z.mul(0.61)), p.y), A.w, U, noise);
             const albedo = mix(paint, vec3(0.02, 0.05, 0.03), moss.cover.mul(0.8));
             const lit = ironLight(p, n, albedo, foot, U, { gloss: float(1.0).sub(moss.cover.mul(0.8)) });
+            const collars = min(abs(p.y.sub(COLUMN.capitalFrom)), abs(p.y.sub(COLUMN.abacusTo)));
+            const gilding = float(1).sub(smoothstep(0.025, foot.add(0.054), collars))
+                .mul(smoothstep(6.45, 6.68, abs(p.x))).mul(float(1).sub(moss.cover));
             const night = U.night.zenith.mul(1.6).add(U.night.moonlight.mul(U.moonLight).mul(0.006));
             const louvre = select(isLouvre, night.mul(gap), vec3(0.0));
-            return vec4(lit.add(moss.glow).add(louvre), 1.0);
+            return vec4(lit.add(moss.glow).add(louvre).add(U.night.lantern.mul(gilding).mul(0.11)), 1.0);
         })();
         const mesh = new THREE.Mesh(geometry, material);
         mesh.name = 'moonlit-greenhouse-iron-solid';
@@ -907,7 +910,9 @@ export function* createIronSteps({
             const moss = mossAt(vec2(p.x.add(p.z.mul(0.61)), p.y), L.w, U, noise);
             const albedo = mix(paint, vec3(0.02, 0.05, 0.03), moss.cover.mul(0.8));
             const lit = ironLight(p, n, albedo, foot, U, { gloss: float(0.7) });
-            return vec4(lit.add(moss.glow), 1.0);
+            const boss = length(vec2(fract(L.x).sub(0.5).mul(L.z), L.y.sub(L.z.mul(0.5))));
+            const bead = float(1).sub(smoothstep(0.015, foot.add(0.032), boss)).mul(smoothstep(0.28, 0.38, L.z));
+            return vec4(lit.add(moss.glow).add(U.night.lantern.mul(bead).mul(0.32)), 1.0);
         })();
         material.maskNode = alpha.greaterThan(0.5);
         const mesh = new THREE.Mesh(geometry, material);
