@@ -6,7 +6,7 @@
  */
 
 export const HIMALAYAN_PEAK_TETROMINOS = {
-    version: 1,
+    version: 2,
 
     colors: {
         I: '#f0f5ff', // Snow cap white - pristine peak snow
@@ -19,43 +19,20 @@ export const HIMALAYAN_PEAK_TETROMINOS = {
         GARBAGE: '#3c465a', // Mountain shadow - deep rocky depths
     },
 
-    renderMode: 'glow',
-
+    // A cool bevel catches light at the edge of each dyed block. The face stays steady.
+    renderMode: 'solid',
     effects: {
-        glowRadius: 11,
-        glowIntensity: 0.75,
-        glowColor: 'auto',
-
-        outline: true,
-        outlineWidth: 2.0,
-        outlineColor: 'rgba(240, 245, 255, 0.4)', // Subtle icy outline like snow
-
-        // Pulse like prayer flags waving in high-altitude winds
-        pulse: true,
-        pulseSpeed: 0.04, // Gentle, rhythmic movement
-        pulseAmplitude: 0.22, // Noticeable wave
-
-        // Shimmer like thin air and mystical atmosphere
-        shimmer: true,
-        shimmerSpeed: 0.05,
-        shimmerIntensity: 0.2,
-
-        // Trails like prayer flags leaving spiritual traces
-        trails: true,
-        trailLength: 0.15,
-        trailOpacity: 0.3,
-    },
-
-    rendererOverrides: {
-        canvas: {
-            glowRadius: 9,
-            glowIntensity: 0.7,
-            outlineWidth: 1.8,
-        },
+        premium: true,
         phaser: {
-            glowRadius: 13,
-            glowIntensity: 0.8,
-            outlineWidth: 2.2,
+            gradient: true,
+            highlight: 0.19,
+            shadow: 0.17,
+            rim: true,
+            rimAlpha: 0.44,
+            rimWidthFactor: 0.055,
+            gloss: true,
+            glossAlpha: 0.12,
         },
     },
+    rendererOverrides: {},
 };

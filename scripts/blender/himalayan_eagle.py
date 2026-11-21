@@ -5,16 +5,10 @@ Run headless (nothing in an open Blender session is touched):
     blender --background --factory-startup --python scripts/blender/himalayan_eagle.py -- \
         --out src/themes/himalayan-peak/assets/eagle.glb [--preview <dir>]
 
-A soaring adult golden eagle built for the one job it has in the theme: a bird circling the
-updraft far out over the cloud sea, 15 to 60 px across in a game frame and a few hundred in the
-playground's long lens. So the shape is the silhouette that names the bird at a distance: long,
-broad wings with an S-curved trailing edge, seven primaries splayed as fingers, a fanned tail, a
-short heavy head with a hooked bill, legs tucked into the body. About 3,000 triangles.
-
-The rig is posed in code, never by a baked clip (himalayan-peak-eagle.js): every bone is an
-axis-aligned stub, so in the GLB each joint's rest rotation is the identity and a rotation set in
-code reads in the bird's own frame (x to its left, y up, z forward): about z is the wing's
-dihedral and wingbeat, about y its sweep, about x its twist.
+A soaring adult golden eagle with layered coverts, overlapping secondaries, slotted primaries,
+golden hackles and a barred tail. One skinned mesh serves distant thermals and near passes.
+The GLB includes one wingbeat. In the theme it blends with a procedural glide and tail trim.
+Each joint's local axes match the bird's (x left, y up, z forward).
 
 Vertex colours are scene-linear RGB plumage; alpha marks thin feather (1) against body (0), which
 the theme's shader lets the sun shine through when the bird is between the eye and the light.
@@ -38,12 +32,12 @@ def lin(hex_colour):
 
 
 PLUMAGE = {
-    "body": lin("#3b2a1e"),
-    "belly": lin("#30231a"),
-    "trousers": lin("#4a3626"),
+    "body": lin("#563b2b"),
+    "belly": lin("#614636"),
+    "trousers": lin("#785b43"),
     "nape": lin("#c48c38"),
     "crown": lin("#9c7034"),
-    "face": lin("#3e2e22"),
+    "face": lin("#72523a"),
     "cere": lin("#d9a93a"),
     "bill": lin("#3a3c44"),
     "billTip": lin("#202126"),
@@ -51,12 +45,12 @@ PLUMAGE = {
     "wingUp": lin("#3a2b1f"),
     "flightUp": lin("#33291f"),
     "flightTip": lin("#1f1812"),
-    "wingDown": lin("#2b2019"),
-    "flightDown": lin("#514840"),   # grey, faintly barred flight feathers under the wing
+    "wingDown": lin("#664b37"),
+    "flightDown": lin("#a28e78"),   # grey, faintly barred flight feathers under the wing
     "fingerUp": lin("#2a2019"),
-    "fingerDown": lin("#3d352f"),
+    "fingerDown": lin("#88735f"),
     "tail": lin("#5a4b3e"),
-    "tailUnder": lin("#6a5c4f"),
+    "tailUnder": lin("#98826c"),
     "tailBand": lin("#261d17"),
 }
 
@@ -91,12 +85,14 @@ class Builder:
         self.faces = []
         self.weights = []   # per vertex: {bone: weight}
         self.colours = []   # per vertex: (r, g, b, thin)
+        self.vanes = []     # local feather coordinates (length, across the web); -1 isolates bare parts
 
-    def vert(self, p, weights, colour, thin):
+    def vert(self, p, weights, colour, thin, vane=(-1, 0.5)):
         self.verts.append(tuple(p))
         total = sum(weights.values()) or 1.0
         self.weights.append({k: v / total for k, v in weights.items() if v > 1e-4})
         self.colours.append((colour[0], colour[1], colour[2], thin))
+        self.vanes.append(vane)
         return len(self.verts) - 1
 
     def loft(self, rings, close_start=None, close_end=None):
@@ -240,6 +236,11 @@ def wing_weights(s):
                  ("fore", smooth(0.50, 0.60, s)), ("hand", 0))
 
 
+def sided_weights(s, side):
+    sfx = "L" if side > 0 else "R"
+    return {(k + sfx if k != "root" else k): v for k, v in wing_weights(s).items()}
+
+
 def wing_colour(s, x, upper):
     """x: chord fraction 0 LE .. 1 TE."""
     flight = smooth(0.42, 0.62, x)
@@ -262,8 +263,6 @@ def airfoil(c, t, x):
 
 def build_wing(b, side):
     """side = 1 left (+x), -1 right."""
-    sfx = "L" if side > 0 else "R"
-    rename = lambda w: {(k + sfx if k in ("arm", "fore", "hand") else k): v for k, v in w.items()}
     rings = []
     for s in STATIONS:
         le = interp(LEADING, s)
@@ -271,37 +270,38 @@ def build_wing(b, side):
         c = le - te
         cy = wing_centre(s)
         t = thickness(s)
-        w = rename(wing_weights(s))
+        w = sided_weights(s, side)
         ring = []
         # Loop: LE, upper surface to TE, lower surface back toward the LE.
         order = [(x, True) for x in CHORD] + [(x, False) for x in reversed(CHORD[1:-1])]
         for x, upper in order:
+            # The closed leading wing ends in the roots of the overlapping secondaries.
+            x = x * (0.68 + 0.32 * smooth(0.56, 0.74, s))
             camber, up, down = airfoil(c, t, x)
             y = cy + camber + (up if upper else -down)
             z = le - x * c
             thin = smooth(0.40, 0.65, x)
-            ring.append(b.vert((side * s, y, z), w, wing_colour(s, x, upper or x in (0.0, 1.0)), thin))
+            # On exposed mantle skin the small contour feathers continue the adjacent rows.
+            ring.append(b.vert((side * s, y, z), w, wing_colour(s, x, upper), thin,
+                               (2 + x, s * 24 - x * 0.58)))
         if side < 0:
             ring.reverse()
         rings.append(ring)
     # The ring order runs one way round on the left wing, so the loft's normals face out; the
     # right wing's mirrored rings are reversed above to keep them facing out too.
-    root_cap = b.vert((side * STATIONS[0], wing_centre(0), -0.04), rename(wing_weights(0.0)), PLUMAGE["body"], 0.0)
+    root_cap = b.vert((side * STATIONS[0], wing_centre(0), -0.04), sided_weights(0.0, side), PLUMAGE["body"], 0.0)
     tip_cap = b.vert((side * (STATIONS[-1] + 0.01), wing_centre(0.75) + 0.004, -0.02),
-                     rename(wing_weights(0.75)), PLUMAGE["flightUp"], 0.5)
-    if side > 0:
-        b.loft(rings, close_start=root_cap, close_end=tip_cap)
-    else:
-        b.loft(rings, close_start=root_cap, close_end=tip_cap)
+                     sided_weights(0.75, side), PLUMAGE["flightUp"], 0.5)
+    b.loft(rings, close_start=root_cap, close_end=tip_cap)
 
 
 # The seven fingered primaries, leading (0) to trailing (6): angle back from the span axis
 # (degrees) and length (m). Their roots lie on a line across the hand.
-FINGERS = [(-6, 0.360), (1, 0.430), (8, 0.450), (15, 0.440), (22, 0.385), (30, 0.330), (39, 0.270)]
+FINGERS = [(-3, 0.307), (0.5, 0.391), (5, 0.440), (12.5, 0.448), (17, 0.422), (26, 0.371), (34, 0.292)]
 FINGER_ROOT_A = (0.600, 0.118)   # (s, z) of the leading finger's root, deep in the hand
 FINGER_ROOT_B = (0.580, -0.150)  # and the trailing one's
-FINGER_U = [0.0, 0.2, 0.42, 0.62, 0.8, 0.92, 1.0]
-FINGER_W = [0.072, 0.072, 0.066, 0.046, 0.037, 0.027, 0.0]
+FINGER_U = [0.0, 0.20, 0.42, 0.62, 0.80, 0.90, 0.95, 0.982, 0.996, 1.0]
+FINGER_W = [0.080, 0.086, 0.085, 0.076, 0.058, 0.048, 0.039, 0.026, 0.014, 0.0]
 
 
 def finger_root(j):
@@ -322,7 +322,9 @@ def build_fingers(b, side):
         bone = f"f{j}{sfx}"
         rings = []
         for u, w in zip(FINGER_U[:-1], FINGER_W[:-1]):
-            cx, cz = s0 + dx * length * u, z0 + dz * length * u
+            cx = s0 + dx * length * u
+            cz = z0 + dz * length * u + 0.032 * math.sin(math.pi * u) * (0.5 + j * 0.09)
+            cy = y0 + 0.016 * u * u
             t = 0.009 * (1 - u) + 0.003
             weights = {f"hand{sfx}": 1 - smooth(0.0, 0.3, u), bone: smooth(0.0, 0.3, u)}
             # The leading vane is narrow, the trailing one wide (as on a real primary).
@@ -330,35 +332,207 @@ def build_fingers(b, side):
             tip_dark = smooth(0.6, 1.0, u)
             up = mix(PLUMAGE["fingerUp"], PLUMAGE["flightTip"], tip_dark)
             down = mix(PLUMAGE["fingerDown"], PLUMAGE["flightTip"], tip_dark * 0.8)
+            shaft = mix(up, PLUMAGE["covert"], 0.30 * (1 - 0.7 * tip_dark))
             pts = [
-                ((cx + nx * lead) * 1, y0, cz + nz * lead, up),
-                (cx, y0 + t, cz, up),
-                (cx - nx * trail, y0 - 0.001, cz - nz * trail, up),
-                (cx, y0 - t * 0.5, cz, down),
+                (cx + nx * lead, cy, cz + nz * lead, up),
+                (cx + nx * w * 0.1, cy + t * 0.92, cz + nz * w * 0.1, up),
+                (cx, cy + t, cz, shaft),
+                (cx - nx * w * 0.11, cy + t * 0.86, cz - nz * w * 0.11, up),
+                (cx - nx * trail, cy - 0.001, cz - nz * trail, up),
+                (cx, cy - t * 0.5, cz, down),
             ]
-            ring = [b.vert((side * px, py, pz), weights, col, 1.0) for px, py, pz, col in pts]
+            ring = [b.vert((side * px, py, pz), weights, col, 1.0, (u, across))
+                    for (px, py, pz, col), across in zip(pts, (1.0, 0.66, 0.5, 0.41, 0.0, 0.5))]
             if side < 0:
                 ring.reverse()
             rings.append(ring)
         tipx, tipz = s0 + dx * length, z0 + dz * length
-        tip = b.vert((side * tipx, y0, tipz), {bone: 1}, PLUMAGE["flightTip"], 1.0)
-        base = b.vert((side * (s0 - dx * 0.01), y0, z0 - dz * 0.01), {f"hand{sfx}": 1}, PLUMAGE["fingerUp"], 1.0)
+        tip = b.vert((side * tipx, y0 + 0.016, tipz), {bone: 1}, PLUMAGE["flightTip"], 1.0, (1, 0.5))
+        base = b.vert((side * (s0 - dx * 0.01), y0, z0 - dz * 0.01), {f"hand{sfx}": 1},
+                      PLUMAGE["fingerUp"], 1.0, (0, 0.5))
         b.loft(rings, close_start=base, close_end=tip)
 
+    # Primary coverts run with the hand, crossing the change in direction from the
+    # forearm's secondaries. Their tips travel with the primary they cover as it flexes.
+    for under in (False, True):
+        for j, (angle, length) in enumerate(FINGERS):
+            s0, z0 = finger_root(j)
+            a = math.radians(angle + 4.5)
+            dx, dz = math.cos(a), -math.sin(a)
+            nx, nz = -dz, dx
+            depth = -1 if under else 1
+            colours = (PLUMAGE["wingDown"], PLUMAGE["fingerDown"]) if under else (PLUMAGE["wingUp"], PLUMAGE["covert"])
+            col = mix(*colours, 0.17 + 0.11 * math.sin(j * 2.4 + 0.3))
 
-# ── Tail ──────────────────────────────────────────────────────────────────────
+            def covert(u, v, h):
+                dist = -0.087 + (0.104 + length * (0.46 + 0.07 * math.cos(j))) * u
+                s = s0 + dx * dist + nx * v
+                z = z0 + dz * dist + nz * v
+                le = interp(LEADING, s)
+                chord = le - interp(TRAILING, s)
+                camber, top, bottom = airfoil(chord, thickness(s), max(0, min(1, (le - z) / chord)))
+                cy = wing_centre(s) + camber + (-bottom if under else top)
+                feather_y = wing_centre(s0) + 0.004 + 0.0025 * (j - 3) + depth * 0.01
+                hand = smooth(0.66, 0.85, s)
+                cy += (feather_y - cy) * hand + depth * (-0.005 + 0.011 * smooth(0.05, 0.60, u) + h)
+                finger = smooth(0.61, 0.85, s) * smooth(0.32, 0.90, u)
+                weights = {k: w * (1 - finger) for k, w in sided_weights(s, side).items()}
+                weights[f"f{j}{sfx}"] = finger
+                edge = smooth(0.61, 1.0, u) * (0.12 if under else 0.18)
+                return b.vert((side * s, cy, z), weights, mix(col, colours[1], edge), 0.36,
+                              (max(0, u), 0.5 + v / 0.076))
+
+            rings = []
+            for u, width in [(0, 0.005), (0.26, 0.055), (0.62, 0.079), (0.86, 0.070), (0.97, 0.034)]:
+                rings.append([covert(u, -width * 0.55, 0), covert(u, 0, 0.002),
+                              covert(u, width * 0.45, -0.0008), covert(u, 0, -0.0015)])
+            b.loft(rings, close_start=covert(-0.01, 0, 0), close_end=covert(1, 0, -0.001))
+
+
+# A secondary is anchored along the forearm, reaches back toward the tail, and turns
+# into a rounded scallop at the trailing edge. The smaller coverts tile its upper half.
+def build_wing_layers(b, side):
+    rows = (
+        # count, first/last span station, root/tip chord fraction, width, relief, underside
+        (15, 0.074, 0.681, 0.30, 1.015, 0.080, 0.0025, False),
+        (16, 0.077, 0.720, 0.14, 0.73, 0.079, 0.0048, False),
+        (17, 0.082, 0.741, 0.02, 0.49, 0.072, 0.0041, False),
+        (17, 0.080, 0.710, 0.10, 0.62, 0.077, 0.0035, True),
+    )
+    profile = [(0.0, 0.06), (0.30, 0.72), (0.63, 1.0), (0.84, 0.94), (0.96, 0.61)]
+    for row, (count, first, last, root, end, breadth, relief, under) in enumerate(rows):
+        for j in range(count):
+            origin = first + (last - first) * j / (count - 1)
+            length = end + math.sin(j * 3.81 + row) * 0.017 - (0.12 if row else 0) * smooth(0.48, 0.73, origin)
+            sweep = 0.165 * smooth(0.26, 0.71, origin) - 0.066
+            # A broad warm shoulder merges into the dark hand; each vane has a pale outer edge.
+            tawny = (1 - smooth(0.38, 0.71, origin)) * (0.31 if row == 1 else 0.12)
+            upper = mix(PLUMAGE["wingUp"], PLUMAGE["covert"], tawny + 0.12 * (1 + math.sin(j * 1.9)))
+            lower = PLUMAGE["flightDown"]
+            if under:
+                upper = mix(PLUMAGE["wingDown"], PLUMAGE["trousers"], 0.32 + 0.15 * math.cos(j * 2.3))
+
+            def feather_vertex(u, across, height, colour):
+                s = max(0.036, origin + sweep * u * (0.65 + 0.35 * u) + across)
+                x = root + (length - root) * u - across * 1.10
+                le = interp(LEADING, s)
+                chord = le - interp(TRAILING, s)
+                camber, top, bottom = airfoil(chord, thickness(s), min(1, max(0, x)))
+                # Root and rachis emerge from the skin. Exposed pointed roots read as scales.
+                emergence = smooth(0.24, 0.70 if row == 2 else 0.54, u)
+                offset = -0.014 * (1 - emergence) + (relief + height) * emergence
+                y = wing_centre(s) + camber + (-bottom - offset if under else top + offset)
+                return b.vert((side * s, y, le - chord * x), sided_weights(s, side),
+                              colour, 0.78 if row == 0 else 0.32,
+                              (max(0, u), 0.5 + across / breadth))
+
+            rings = []
+            for u, width in profile:
+                dark_bar = (0.35 + 0.31 * math.cos(u * 20 + origin * 6)) if row == 0 else 0
+                vane = mix(upper, PLUMAGE["flightTip"], dark_bar)
+                edge = mix(vane, PLUMAGE["covert"], 0.10 + 0.14 * u)
+                shaft = mix(vane, PLUMAGE["covert"], 0.25)
+                w = width * breadth
+                ring = [feather_vertex(u, -0.46 * w, 0, edge),
+                        feather_vertex(u, -0.05 * w, 0.0037, vane),
+                        feather_vertex(u, 0, 0.0042, shaft),
+                        feather_vertex(u, 0.09 * w, 0.0032, vane),
+                        feather_vertex(u, 0.54 * w, -0.0015, vane)]
+                underside = mix(lower, PLUMAGE["wingDown"], dark_bar)
+                if row == 0:
+                    ring.extend([feather_vertex(u, 0.40 * w, -0.0035, underside),
+                                 feather_vertex(u, -0.32 * w, -0.0045, underside)])
+                else:
+                    ring.append(feather_vertex(u, 0, -0.005, underside))
+                rings.append(ring)
+            b.loft(rings, close_start=feather_vertex(-0.018, 0, 0, upper),
+                   close_end=feather_vertex(1, 0.001, -0.002, edge))
+
+
+def oval(b, centre, radii, bone, colour, segments=10):
+    cx, cy, cz = centre
+    rx, ry, rz = radii
+    rings = []
+    for fraction in (-0.83, -0.42, 0, 0.42, 0.83):
+        r = math.sqrt(1 - fraction * fraction)
+        rings.append([b.vert((cx + rx * math.cos(i * math.tau / segments) * r, cy + fraction * ry,
+                              cz + rz * math.sin(i * math.tau / segments) * r), {bone: 1}, colour, 0)
+                      for i in range(segments)])
+    b.loft(rings, close_start=b.vert((cx, cy - ry, cz), {bone: 1}, colour, 0),
+           close_end=b.vert((cx, cy + ry, cz), {bone: 1}, colour, 0))
+
+
+def build_details(b):
+    for side in (1, -1):
+        # Supraorbital ridge, amber iris, pupil and the nares in the cere.
+        for x, y, z, radii, key in [
+            (0.034, 0.046, 0.218, (0.006, 0.009, 0.012), "face"),
+            (0.039, 0.046, 0.218, (0.0028, 0.0065, 0.0068), "nape"),
+            (0.041, 0.046, 0.219, (0.0019, 0.0042, 0.0045), "billTip"),
+            (0.034, 0.054, 0.218, (0.008, 0.0042, 0.017), "crown"),
+            (0.014, 0.034, 0.265, (0.0016, 0.0021, 0.004), "billTip"),
+        ]:
+            oval(b, (side * x, y, z), radii, "head", PLUMAGE[key])
+        # Feathered tarsi lie close to the belly, toes curled back under them.
+        oval(b, (side * 0.047, -0.061, -0.113), (0.031, 0.035, 0.081), "root", PLUMAGE["trousers"])
+        for i in range(3):
+            x = side * (0.041 + i * 0.006)
+            oval(b, (x, -0.077, -0.184 + i * 0.002), (0.005, 0.006, 0.024), "root", PLUMAGE["crown"], 7)
+            oval(b, (x, -0.072, -0.199 + i * 0.002), (0.0034, 0.006, 0.009), "root", PLUMAGE["billTip"], 6)
+
+    # Pointed golden hackles laid over the nape. The tips part at the neck when the head turns.
+    for row in range(3):
+        for j in range(11):
+            a = (j - 5) * 0.23 + (row % 2) * 0.10
+            z = 0.202 - row * 0.030
+            def surface(z_at, angle, raise_by, col):
+                wx, top, cy = [interp(sorted((p[0], p[k]) for p in BODY), z_at) for k in (1, 2, 4)]
+                x = math.copysign(abs(math.sin(angle)) ** 0.85, math.sin(angle)) * (wx + raise_by)
+                y = cy + (top + raise_by) * math.cos(angle) ** 0.9
+                return b.vert((x, y, z_at), body_weights(z_at), col, 0)
+            gold = mix(PLUMAGE["crown"], PLUMAGE["nape"], 0.30 + 0.38 * (1 + math.sin(j * 2 + row)))
+            base = surface(z, a, 0.001, PLUMAGE["crown"])
+            l = surface(z - 0.018, a - 0.12, 0.0022, gold)
+            r = surface(z - 0.018, a + 0.12, 0.0022, PLUMAGE["crown"])
+            mid = surface(z - 0.021, a, 0.0046, gold)
+            tip = surface(z - 0.047, a * 1.045, 0.004, PLUMAGE["nape"])
+            b.faces.extend([(base, mid, l), (mid, tip, l), (base, r, mid), (mid, r, tip)])
+
+    # Scapulars cloak the wing roots. Short breast feathers wrap round the breast rather
+    # than sitting on a flat card; each follows the same skin weights as the torso below.
+    sections = [sorted((p[0], p[k]) for p in BODY) for k in (1, 2, 3, 4)]
+    for row in range(6):
+        z = 0.113 - row * 0.046
+        for j in range(16):
+            a = (j + (row % 2) * 0.5) * math.tau / 16
+            if abs(math.sin(a)) > 0.90 and row < 3:
+                continue
+            base_col = PLUMAGE["belly"] if math.cos(a) < 0 else PLUMAGE["body"]
+            tip_col = mix(base_col, PLUMAGE["covert"], 0.09 + 0.08 * (1 + math.sin(j * 2.8 + row)))
+            def shell(z_at, angle, h, col):
+                wx, top, bottom, cy = [interp(section, z_at) for section in sections]
+                ca, sa = math.cos(angle), math.sin(angle)
+                x = math.copysign(abs(sa) ** 0.85, sa) * (wx + h)
+                y = cy + math.copysign(abs(ca) ** 0.90, ca) * ((top if ca > 0 else bottom) + h)
+                return b.vert((x, y, z_at), body_weights(z_at), col, 0)
+            base = shell(z, a, -0.003, base_col)
+            l = shell(z - 0.035, a - 0.20, 0.0009, base_col)
+            r = shell(z - 0.035, a + 0.20, 0.0009, base_col)
+            mid = shell(z - 0.040, a, 0.0023, tip_col)
+            tip = shell(z - 0.067 - 0.006 * math.sin(j), a, 0.002, tip_col)
+            b.faces.extend([(base, mid, l), (mid, tip, l), (base, r, mid), (mid, r, tip)])
 
 TAIL_FEATHERS = 12
 TAIL_SPREAD = math.radians(15)    # half the fan's opening at rest; the rig opens it further
 TAIL_BASE = (0.0, 0.013, -0.235)
-TAIL_U = [0.0, 0.25, 0.5, 0.75, 0.9, 1.0]
+TAIL_U = [0.0, 0.25, 0.36, 0.49, 0.62, 0.74, 0.85, 0.94, 0.977, 0.994, 1.0]
 
 
 def build_tail(b):
     for k in range(TAIL_FEATHERS):
         f = k / (TAIL_FEATHERS - 1) * 2 - 1        # -1 right .. 1 left
         phi = f * TAIL_SPREAD
-        length = 0.315 - 0.03 * f * f               # gently rounded
+        length = 0.335 - 0.058 * f * f + 0.007 * math.sin(k * 2.13)               # gently rounded
         dx, dz = math.sin(phi), -math.cos(phi)
         nx, nz = math.cos(phi), math.sin(phi)
         x0 = TAIL_BASE[0] + f * 0.022
@@ -368,9 +542,9 @@ def build_tail(b):
         rings = []
         for u in TAIL_U[:-1]:
             cx, cz = x0 + dx * length * u, TAIL_BASE[2] + dz * length * u
-            w = 0.052 - 0.006 * u
+            w = (0.058 - 0.009 * u) * math.sqrt(max(0, 1 - smooth(0.925, 1, u)))
             t = 0.006 * (1 - u) + 0.002
-            band = smooth(0.78, 0.86, u)
+            band = max(0.82 * smooth(0.76 + 0.07 * f * f, 0.91, u), 0.57 * (0.5 + 0.5 * math.cos(37 * u + abs(f))))
             up = mix(PLUMAGE["tail"], PLUMAGE["tailBand"], band)
             down = mix(PLUMAGE["tailUnder"], PLUMAGE["tailBand"], band * 0.85)
             weights = {"tail": 1 - side, bone: side}
@@ -416,8 +590,9 @@ def to_blender(p):
     return (p[0], -p[2], p[1])
 
 
-def build_scene(builder, bones):
-    bpy.ops.wm.read_factory_settings(use_empty=True)
+def build_scene(builder, bones, empty=True):
+    if empty:
+        bpy.ops.wm.read_factory_settings(use_empty=True)
     scene = bpy.context.scene
 
     arm_data = bpy.data.armatures.new("EagleRig")
@@ -448,6 +623,11 @@ def build_scene(builder, bones):
         colour.data[i].color = c
     mesh.color_attributes.active_color = colour
 
+    vane_uv = mesh.uv_layers.new(name="Feather")
+    for loop in mesh.loops:
+        along, across = builder.vanes[loop.vertex_index]
+        vane_uv.data[loop.index].uv = (along, 1 - across)
+
     groups = {name: obj.vertex_groups.new(name=name) for name, _, _ in bones}
     for i, weights in enumerate(builder.weights):
         for bone, w in weights.items():
@@ -476,10 +656,13 @@ def export(path):
         export_format="GLB",
         export_yup=True,
         export_skins=True,
-        export_animations=False,
+        use_active_scene=True,
+        export_animations=True,
+        export_animation_mode="ACTIONS",
+        export_optimize_animation_keep_anim_armature=False,
         export_morph=False,
         export_normals=True,
-        export_texcoords=False,
+        export_texcoords=True,
         export_tangents=False,
         export_materials="NONE",
         export_vertex_color="ACTIVE",
@@ -527,6 +710,35 @@ def flap_pose(beat):
         for j in range(len(FINGERS)):
             angles[f"f{j}{sfx}"] = (0, sign * -(j - 3) * 2 * up, sign * (8 - 10 * beat) * 0.7)
     return angles
+
+
+def animate(arm):
+    """One fully articulated power stroke. The theme samples it only during a bout."""
+    scene = bpy.context.scene
+    scene.render.fps = 24
+    scene.frame_start, scene.frame_end = 0, 24
+    def height(p):
+        p %= 1
+        return math.cos(math.pi * p / 0.44) if p < 0.44 else -math.cos(math.pi * (p - 0.44) / 0.56)
+    for frame in range(25):
+        p = frame / 24
+        recovery = math.sin(math.pi * max(0, p - 0.44) / 0.56) ** 2
+        push = math.sin(math.pi * min(p, 0.44) / 0.44)
+        angles = {}
+        for sfx, sign in (("L", 1), ("R", -1)):
+            angles[f"arm{sfx}"] = (0, sign * (-5 * push + 13 * recovery), sign * (4 + 38 * height(p)))
+            angles[f"fore{sfx}"] = (0, sign * 15 * recovery, sign * (-3 + 7 * height(p - 0.045)))
+            angles[f"hand{sfx}"] = (7 * push - 17 * recovery, sign * (26 * recovery - 4),
+                                    sign * (17 * height(p - 0.10)))
+            for j in range(len(FINGERS)):
+                lag = p - 0.10 - j * 0.006
+                angles[f"f{j}{sfx}"] = (recovery * (j - 2), sign * (j - 3) * (1.2 + 1.9 * recovery),
+                                        sign * ((8 + j * 0.9) * push - 5 * height(lag)))
+        pose(arm, angles)
+        for name in angles:
+            arm.pose.bones[name].keyframe_insert(data_path="rotation_euler", frame=frame, group=name)
+    arm.animation_data.action.name = "Ridge Wingbeat"
+    scene.frame_set(0)
 
 
 def previews(arm, obj, out_dir):
@@ -584,8 +796,10 @@ def main():
     b = Builder()
     face_ring = build_body(b)
     build_bill(b, face_ring)
+    build_details(b)
     for side in (1, -1):
         build_wing(b, side)
+        build_wing_layers(b, side)
         build_fingers(b, side)
     build_tail(b)
     bones = skeleton()
@@ -594,6 +808,7 @@ def main():
     print(f"{TAG} {len(b.verts)} vertices, {tris} triangles, {len(bones)} bones")
     if opts.get("preview"):
         previews(arm, obj, Path(opts["preview"]))
+    animate(arm)
     export(out)
     print(f"{TAG} wrote {out}")
 

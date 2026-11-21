@@ -1048,13 +1048,14 @@ export const PLAYGROUND_URL_PARAMETERS = [
     {
         name: 'dist',
         category: 'Playground',
-        scope: 'playground.html — rainbark',
-        description: 'Set how many rows the previewed hard drop fell (the Knock is harder for a longer fall).',
+        scope: 'playground.html — himalayan-peak, rainbark',
+        description: 'Set how many rows the previewed hard drop fell. Longer drops throw a wider fan of ice in Himalayan Peak and strengthen the Rainbark Knock.',
         values: 'Whole rows, 0 or more; requires event=drop.',
         defaultValue: '14.',
         example: 'dist=18',
-        notes: 'Use on playground.html with effect=rainbark.',
+        notes: 'Use on playground.html with event=drop.',
         sources: [
+            'src/playground/effects/himalayan-peak.effect.js',
             'src/playground/effects/rainbark.effect.js',
         ],
     },
@@ -1211,7 +1212,8 @@ export const PLAYGROUND_URL_PARAMETERS = [
             + 'lock, hard, clear, quad, combo (a cascade of combo=<n> waves), chain, chainEnd, twist, twist0 '
             + '(a twist with no lines), b2b, perfect, levelUp, over (the run ends), dawn (it ends and the '
             + 'next begins) or fever. Lunara accepts lock, drop, clear, cascade, quad, combo, break, '
-            + 'twist, turn (lineless twist), b2b, perfect, crown (a delayed Clean canvas), levelUp or over.',
+            + 'twist, turn (lineless twist), b2b, perfect, crown (a delayed Clean canvas), levelUp or over. '
+            + 'Himalayan Peak accepts lock, drop, clear, quad, cascade, spin, twist, b2b, perfect, crown, chain, break, levelUp and over.',
         defaultValue: 'Idle in most previews; Lunar Sigil uses lock.',
         example: 'event=lock',
         notes: 'Use on playground.html with effect=<the matching effect ID>. For deterministic replay, '
@@ -4109,13 +4111,14 @@ export const PLAYGROUND_URL_PARAMETERS = [
     {
         name: 'cascade',
         category: 'Playground',
-        scope: 'playground.html — rainbark',
-        description: 'Set the cascade waves of the previewed Rainbark clear (each later wave drops a second sheet).',
-        values: 'Whole waves, 1 or more; requires event=clear.',
-        defaultValue: '1.',
+        scope: 'playground.html — himalayan-peak, rainbark',
+        description: 'Set the cascade depth of the previewed clear. Each wave travels farther down the Himalayan face or drops a second sheet in Rainbark.',
+        values: 'Whole waves, 1 or more.',
+        defaultValue: '3 in Himalayan Peak and 1 in Rainbark.',
         example: 'cascade=2',
-        notes: 'Use on playground.html with effect=rainbark.',
+        notes: 'Use event=cascade in Himalayan Peak and event=clear in Rainbark.',
         sources: [
+            'src/playground/effects/himalayan-peak.effect.js',
             'src/playground/effects/rainbark.effect.js',
         ],
     },
@@ -4954,7 +4957,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
         description: 'Make procedural preview randomness repeatable.',
         values: 'Integer; the playground clock seed is converted to unsigned 32-bit.',
         defaultValue: 'Harness: 1470239127; Blood Moon 724461, Golden Forest 271, Koi Pond '
-            + '7411 (its school of koi), Luminous Tides 31 (its world), Moonlit Greenhouse 1861 (the '
+            + '7411 (its school of koi), Himalayan Peak 3187 (eagle flight), Luminous Tides 31 (its world), Moonlit Greenhouse 1861 (the '
             + 'garden\'s seed), Rainbow Terraces 33 (its world), Summer 624, Verdant Hills 1107, Wolfhour '
             + '73013.',
         example: 'seed=12345',
@@ -4963,6 +4966,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/blood-moon.effect.js',
             'src/playground/effects/forest.effect.js',
             'src/playground/effects/golden-forest.effect.js',
+            'src/playground/effects/himalayan-peak.effect.js',
             'src/playground/effects/koi-pond.effect.js',
             'src/playground/effects/luminous-tides.effect.js',
             'src/playground/effects/moonlit-greenhouse.effect.js',

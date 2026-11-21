@@ -5,7 +5,7 @@
  * One golden eagle working the updraft off the pass, out in the open sky right of the board where
  * the sun comes up. The model is the theme's own, built in Blender by
  * scripts/blender/himalayan_eagle.py: a soaring adult with splayed primaries and a fanned tail,
- * every joint posed here from the flight in himalayan-peak-eagle-flight.js (no baked clip). It
+ * its Blender wingbeat blending with live trim from himalayan-peak-eagle-flight.js. It
  * loads off the frame and simply appears on its round when it has arrived; nothing waits for it.
  *
  * Its light is the amphitheatre's: the hour's shade and sky from above, the cloud sea from below,
@@ -15,18 +15,18 @@
 
 import * as THREE from 'three/webgpu';
 import {
-    Fn, abs, attribute, cameraPosition, clamp, dot, exp, float, max, mix, normalWorld, normalize,
-    positionWorld, uniform, vec3,
+    Fn, abs, attribute, cameraPosition, clamp, cos, dot, exp, float, fract, fwidth, max, mix, normalWorld, normalize,
+    positionWorld, smoothstep, step, uniform, uv, vec3,
 } from 'three/tsl';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { GALE_REST } from './himalayan-peak-core.js';
 import { hpAirLight, hpPow8, hpSky } from './himalayan-peak-tsl.js';
 import {
-    EAGLE_BONES, EAGLE_SPAN, createEaglePose, eagleFlight,
+    EAGLE_BONES, EAGLE_SPAN, createEaglePose, createEagleRoute, eagleFlight,
 } from './himalayan-peak-eagle-flight.js';
 
 export {
-    EAGLE_ROUND, EAGLE_SPAN, eagleFlight, eaglePath,
+    EAGLE_SPAN, eagleFlight, eaglePath,
 } from './himalayan-peak-eagle-flight.js';
 
 export const EAGLE_URL = new URL('./assets/eagle.glb', import.meta.url).href;
@@ -49,7 +49,27 @@ function eagleMaterial(u, at) {
     material.fog = false;
     material.colorNode = Fn(() => {
         const plumage = attribute('color', 'vec4');
-        const albedo = plumage.rgb;
+        // Unwrap each vane from root to tip and across its rachis. The mantle uses the same
+        // coordinates across a continuous row of short contour feathers. The body is unmarked.
+        const feather = uv().toVar();
+        const mantle = step(1.5, feather.x);
+        const along = clamp(feather.x.sub(mantle.mul(2)), 0, 1).toVar();
+        const across = abs(fract(feather.y).mul(2).sub(1)).toVar();
+        const width = max(fwidth(feather.y).mul(2), 0.006).toVar();
+        const shaftWidth = float(0.056).sub(along.mul(0.033));
+        const shaft = float(1).sub(smoothstep(0, shaftWidth.add(width), across))
+            .mul(shaftWidth.div(shaftWidth.add(width)));
+        // A curved herringbone on each side of the shaft. Filter by pixel footprint, so a
+        // distant eagle resolves to the feather's average colour as it crosses the sky.
+        const barb = along.mul(18).sub(across.mul(float(4.6).sub(along.mul(1.7)))).toVar();
+        const resolved = float(1).sub(smoothstep(0.20, 0.52, fwidth(barb)));
+        const ribs = cos(barb.mul(6.28318)).mul(resolved).mul(0.14);
+        const bars = cos(along.mul(19.4).sub(across.mul(1.2))).mul(0.105)
+            .mul(float(1).sub(smoothstep(0.07, 0.20, fwidth(along))));
+        const edgeWear = smoothstep(0.68, 1.0, across).mul(smoothstep(0.48, 0.96, along)).mul(0.12);
+        const marked = step(0, feather.x).mul(mix(1, 0.60, mantle));
+        const albedo = plumage.rgb.mul(ribs.add(bars).add(edgeWear).mul(marked).add(1))
+            .add(vec3(0.120, 0.083, 0.051).mul(shaft).mul(marked));
         const thin = plumage.a;
         const N = normalize(normalWorld).toVar();
         const toEye = cameraPosition.sub(positionWorld);
@@ -60,7 +80,8 @@ function eagleMaterial(u, at) {
         const ndl = clamp(facing, 0.0, 1.0);
         const ambient = u.shade.mul(N.y.mul(0.45).add(0.62)).add(u.zenith.mul(max(N.y, 0.0).mul(0.35).add(0.12)))
             // The cloud sea under it throws its light back up.
-            .add(u.cloudCol.mul(max(N.y.negate(), 0.0)).mul(0.3));
+            .add(u.cloudCol.mul(max(N.y.negate(), 0.0).mul(0.78).add(0.56)))
+            .add(u.glow.mul(0.14));
         const lit = albedo.mul(u.sunCol.mul(ndl.mul(sun)).add(ambient)).toVar();
         // Sun on the far side of a thin vane comes through it, warmer than it went in and more
         // toward the sun (a few per cent of it: the wings glow, the bird stays darker than the
@@ -88,7 +109,8 @@ function eagleMaterial(u, at) {
  * @param {object} u     shared uniforms
  * @param {object} gltf  what loadEagle() resolved
  */
-export function createEagle(u, gltf) {
+export function createEagle(u, gltf, seed) {
+    const route = createEagleRoute(seed);
     const model = gltf.scene;
     const box = new THREE.Box3().setFromObject(model);
     const size = box.getSize(new THREE.Vector3());
@@ -103,11 +125,24 @@ export function createEagle(u, gltf) {
         if (!child.isMesh) return;
         (Array.isArray(child.material) ? child.material : [child.material]).forEach((m) => replaced.push(m));
         child.material = material;
-        child.frustumCulled = false;
+        // The widest pose is the open glide. Leave room for the tips to curl or lag a beat.
+        child.geometry.computeBoundingSphere();
+        child.boundingSphere = child.geometry.boundingSphere.clone();
+        child.boundingSphere.radius *= 1.25;
     });
     replaced.forEach((m) => m?.dispose?.());
 
-    const bones = EAGLE_BONES.map((name) => [name, model.getObjectByName(name)]).filter(([, bone]) => bone);
+    const wingbeat = gltf.animations.find((clip) => clip.name === 'Ridge Wingbeat');
+    const strokes = new Map();
+    for (const track of wingbeat?.tracks ?? []) {
+        const { nodeName, propertyName } = THREE.PropertyBinding.parseTrackName(track.name);
+        if (propertyName === 'quaternion' && /^(arm|fore|hand|f\d)[LR]$/.test(nodeName)) {
+            strokes.set(nodeName, track.createInterpolant());
+        }
+    }
+    const strokeRotation = new THREE.Quaternion();
+    const bones = EAGLE_BONES.map((name) => [name, model.getObjectByName(name), strokes.get(name)])
+        .filter(([, bone]) => bone);
     const pivot = new THREE.Group();
     pivot.name = 'HimalayanPeakEagle';
     pivot.add(model);
@@ -126,7 +161,7 @@ export function createEagle(u, gltf) {
          * @param {{ gale?: number, reduced?: boolean, squeeze?: number }} [air]
          */
         update(time, { gale = GALE_REST, reduced = false, squeeze = 1 } = {}) {
-            eagleFlight(time, { gale, reduced }, pose);
+            eagleFlight(time, { gale, reduced, route }, pose);
             const { path } = pose;
             // Upright screens draw the world narrower about the view axis: the bird's PLACE
             // follows, its shape does not.
@@ -139,14 +174,21 @@ export function createEagle(u, gltf) {
             pivot.quaternion.setFromRotationMatrix(basis);
             model.position.set(0, pose.heave * scale, 0);
             for (let i = 0; i < bones.length; i++) {
-                const [name, bone] = bones[i];
+                const [name, bone, stroke] = bones[i];
                 const j = pose.joints[name];
                 bone.quaternion.setFromEuler(euler.set(j[0], j[1], j[2], 'ZYX'));
+                if (pose.bout.amount > 0 && stroke) {
+                    const sampled = stroke.evaluate(pose.bout.phase * wingbeat.duration);
+                    bone.quaternion.slerp(strokeRotation.fromArray(sampled), pose.bout.amount);
+                }
             }
             pivot.updateMatrixWorld(true);
         },
         dispose() {
-            model.traverse((child) => child.geometry?.dispose?.());
+            model.traverse((child) => {
+                child.geometry?.dispose?.();
+                child.skeleton?.dispose?.();
+            });
             material.dispose();
         },
     };

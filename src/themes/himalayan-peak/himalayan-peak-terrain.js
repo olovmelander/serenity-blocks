@@ -41,7 +41,7 @@ const ROCK_BROWN = [0.15, 0.115, 0.095];
 const ROCK_PALE = [0.27, 0.235, 0.2];
 const ROCK_OCHRE = [0.36, 0.24, 0.11];
 const SNOW = [0.84, 0.88, 0.95];
-const ICE = [0.42, 0.62, 0.8];
+const ICE = [0.34, 0.66, 0.82];
 
 /**
  * @param {object} u       shared uniforms
@@ -87,7 +87,7 @@ export function createMassif(u, field, { stride = 2, air = 4 } = {}) {
         );
         // Buttresses and snowfields: bands a few hundred metres wide down each face.
         const big = face(620, 0.13, 0.2).toVar();
-        const buttress = smoothstep(0.5, 0.6, big.x.add(big.w.sub(0.5).mul(0.25))).mul(steep).toVar();
+        const buttress = smoothstep(0.49, 0.67, big.x.add(big.w.sub(0.5).mul(0.35))).mul(steep).toVar();
         const stria = face(320, 0.0, 0.13).toVar();
         const flute = face(52, 0.37, 0.16).toVar();
         const grain = u.noise(P.xz.mul(1 / 61)).toVar();
@@ -99,7 +99,8 @@ export function createMassif(u, field, { stride = 2, air = 4 } = {}) {
             .add(flute.x.mul(0.38))
             .toVar();
         // The striations lean the surface across the face (their gradient along the horizontal).
-        const lean = stria.y.mul(ribGain).mul(1.05).add(flute.y.mul(0.7)).mul(steep);
+        // Deep rock has ribs; on soft névé the fine ripples change tone before they change a normal.
+        const lean = stria.y.mul(ribGain).mul(0.91).add(flute.y.mul(buttress.mul(0.26).add(0.25))).mul(steep);
         const N = normalize(vec3(
             N0.x.sub(lean.mul(float(1.0).sub(along))).sub(grain.y.mul(0.22)),
             N0.y,
@@ -129,7 +130,18 @@ export function createMassif(u, field, { stride = 2, air = 4 } = {}) {
             .sub(smoothstep(0.55, 0.78, slope).mul(0.7));
         // (The snow line is never thinner than a pixel and a bit: a threshold has no other edge.)
         const blur = fwidth(cover).mul(1.3);
-        const snow = smoothstep(float(-0.04).sub(blur), float(0.3).add(blur), cover).mul(smoothstep(-260.0, 120.0, P.y)).toVar();
+        const powder = smoothstep(float(-0.04).sub(blur), float(0.3).add(blur), cover)
+            .mul(smoothstep(-260.0, 120.0, P.y));
+        // A tongue of old ice spills from the shelf below the south shoulder. Its margins
+        // converge at the snout and split round the exposed ribs at the head of the icefall.
+        const down = clamp(P.x.add(3950).div(1570), 0, 1).toVar();
+        const centre = float(-6880).add(down.mul(150)).sub(down.mul(float(1).sub(down)).mul(760));
+        const acrossIce = P.z.sub(centre).add(big.w.sub(0.5).mul(80));
+        const width = smoothstep(0, 0.20, down).mul(smoothstep(1, 0.71, down)).mul(255);
+        const glacier = smoothstep(42, -28, abs(acrossIce).sub(width))
+            .mul(smoothstep(8, 90, width)).mul(float(1).sub(smoothstep(0.46, 0.79, slope).mul(buttress)))
+            .toVar();
+        const snow = max(powder, glacier).toVar();
         // Strata: bands across the rock, tilted, and bent by the grain.
         const bed = P.y.add(P.x.mul(0.21)).sub(P.z.mul(0.09)).add(grain.x.mul(120.0));
         const strata = u.noise(vec2(bed.mul(1 / 1900), 0.31));
@@ -144,8 +156,16 @@ export function createMassif(u, field, { stride = 2, air = 4 } = {}) {
         // Rime and last night's dusting cling to the rock itself.
         rock.assign(mix(rock, vec3(...SNOW).mul(0.82), smoothstep(0.4, 0.8, grain.w).mul(0.26)));
         // Old ice shows blue where the snow hangs steep.
-        const ice = smoothstep(0.34, 0.56, slope).mul(smoothstep(0.3, 0.7, flute.w)).mul(0.55);
-        const white = mix(vec3(...SNOW), vec3(...ICE), ice);
+        const oldFirn = smoothstep(0.025, 0.24, hollow).mul(smoothstep(0.32, 0.63, big.w));
+        const ice = smoothstep(0.26, 0.55, slope)
+            .mul(smoothstep(0.34, 0.68, stria.w).mul(0.44).add(oldFirn.mul(0.5)));
+        // Crevasses open across the fall and arch across the stream. Their shaded seams
+        // break and disappear under new snow; the ice bridges still take the sunlight.
+        const fracture = crossing.x.add(hpSq(clamp(acrossIce.div(255), -1, 1)).mul(0.10));
+        const crack = smoothstep(0.073, 0.012, abs(fracture.sub(0.57)))
+            .mul(smoothstep(0.33, 0.69, crossing.w)).mul(smoothstep(0.12, 0.49, slope));
+        const oldIce = mix(vec3(0.76, 0.85, 0.91), vec3(0.23, 0.49, 0.64), crack);
+        const white = mix(mix(vec3(...SNOW), vec3(...ICE), ice), oldIce, glacier);
         const albedo = mix(rock, white, snow);
 
         // ── Light ──
@@ -158,24 +178,39 @@ export function createMassif(u, field, { stride = 2, air = 4 } = {}) {
         // buttresses most; on the snowfields only the flutings show).
         const rakeGain = steep.mul(buttress.mul(0.35).add(0.3));
         const raked = mix(float(1.0), smoothstep(0.0, 0.8, rib.add(ndl.mul(0.9))), rakeGain);
-        const direct = u.sunCol.mul(diffuse.mul(sun).mul(raked));
+        let opening = float(1);
+        if (air > 0) {
+            // Slow, kilometre-wide openings in the cirrus cross the lower faces. The crown
+            // keeps its last light as the hollows under it fall in and out of cloud shadow.
+            const coverUv = P.xz.sub(vec2(u.windRun.mul(2.4), u.windRun.mul(0.74))).div(14500);
+            const gap = smoothstep(0.27, 0.73, u.noise(coverUv).w);
+            opening = mix(gap.mul(0.36).add(0.64), float(1), smoothstep(2400, 3400, P.y).mul(0.68));
+        }
+        const direct = u.sunCol.mul(diffuse.mul(sun).mul(raked)).mul(opening);
         const openSky = open.mul(open);
         const facing = max(dot(normalize(N.xz.add(vec2(1e-4, 0.0))), u.sunFlat), 0.0);
         // Snow in shade stays luminous: it is lit by the whole sky and passes light within itself.
         const skyLit = openSky.mul(0.75).add(0.25).mul(snow.mul(0.55).add(1.0));
-        const ambient = u.shade.mul(N.y.mul(0.55).add(0.5)).mul(skyLit)
+        const highSnow = snow.mul(smoothstep(620, 2600, P.y)).mul(openSky.mul(0.68).add(0.32));
+        const ambient = u.shade.mul(N.y.mul(0.51).add(0.54)).mul(skyLit)
             .add(u.glow.mul(facing.mul(0.07).mul(openSky)))
+            // Powder on the broad intact faces takes the colour of the entire eastern sky.
+            // A blue skylight core and a lilac bounce give it thickness against the dark slate.
+            .add(u.shade.mul(vec3(1.0, 1.3, 1.03)).add(u.horizon.mul(0.72)).mul(highSnow.mul(0.42)))
             // The cloud sea gives a little of its light back to whatever leans over it.
             .add(u.cloudCol.mul(float(1.0).sub(N.y).mul(0.07)).mul(smoothstep(1500.0, 100.0, P.y)));
         const eye = vec3(cameraPosition.x.div(u.squeeze), cameraPosition.y, cameraPosition.z);
         const V = normalize(eye.sub(P));
         const Hv = normalize(V.add(u.sunDir));
-        const sheen = hpPow4(hpSq(clamp(dot(N, Hv), 0.0, 1.0))).mul(snow).mul(sun).mul(0.55);
+        const sheen = hpPow4(hpSq(clamp(dot(N, Hv), 0.0, 1.0))).mul(snow).mul(sun).mul(0.46);
+        const grazing = float(1).sub(clamp(dot(N, V), 0, 1));
+        const rime = smoothstep(-0.09, 0.38, ndl).mul(stria.w.mul(0.50).add(0.50)).mul(0.52);
+        const cornice = hpPow4(grazing).mul(highSnow).mul(sun).mul(rime);
         // A clear's light running down the mountain.
         // (It follows the ground: sooner down the gullies, later over the ribs.)
         const wave = hpWaveLight(u, P.y.add(grain.x.sub(0.5).mul(240.0)).sub(hollow.mul(380.0)));
         const answered = wave.rgb.mul(1.9).add(u.sunCol.mul(wave.a.mul(0.07))).mul(snow.mul(0.75).add(0.25));
-        const lit = albedo.mul(direct.add(ambient).add(answered)).add(u.sunCol.mul(sheen));
+        const lit = albedo.mul(direct.add(ambient).add(answered)).add(u.sunCol.mul(sheen.add(cornice)).mul(opening));
         return vec4(hpAtmosphere(u, lit.mul(u.breath.mul(0.85).add(0.15)), P, { steps: air }), 1.0);
     })();
 
