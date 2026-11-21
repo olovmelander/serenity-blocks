@@ -24,6 +24,7 @@ import {
 import {
     OCEAN_REEF, buildReefKelpGeometry, buildReefRockGeometry, planOceanReef,
 } from './odyssey-ocean-reef.js';
+import { OCEAN_EXTINCTION, OCEAN_SHAFT_EXTINCTION } from './odyssey-ocean-depth.js';
 
 export const OCEAN_SCENERY_LOOK = Object.freeze({
     /** The lamp: how dark a downward face is against an upward one, and how the deep dims both. */
@@ -75,7 +76,8 @@ export const OCEAN_SHAFTS = Object.freeze({
     turn: 0.16,
     turnS: 131,
     wander: 4.5,
-    gain: 0.36,
+    // (0.36 -> 0.48, 2026-11-21: the water's extinction now takes them along the view ray.)
+    gain: 0.48,
 });
 
 /**
@@ -291,6 +293,10 @@ export function createOdysseyOceanScenery({
         const sideDir = side.div(max(sideLen, float(1e-3)));
         shaftMat.positionNode = axisAt.add(sideDir.mul(positionLocal.x.mul(wide)));
         const vAxisOn = varying(sideLen.div(max(length(toEye), float(1e-3))), 'vShaftAxisOn');
+        // THE HEAD DISSOLVES (2026-11-21 sea audit, item 6): a 3-7 u feather at the head of a blade
+        // 5-16 u wide rounded into a cap, a bar ending in open water. Over one or two widths
+        // (at most a third of its length) the light melts in from the surface instead.
+        const vHeadIn = varying(min(wide.mul(2.0), len.mul(0.35)).div(len), 'vShaftHeadIn');
         const vBeat = varying(
             sin(uTime.mul(seed.mul(0.31).add(0.17)).add(seed2.mul(40))).mul(0.5).add(0.5)
                 .mul(sin(uTime.mul(seed2.mul(0.23).add(0.09)).add(seed.mul(23))).mul(0.3).add(0.7)),
@@ -300,18 +306,27 @@ export function createOdysseyOceanScenery({
         const across = sin(clamp(sUv.x, 0, 1).mul(Math.PI));
         const down = clamp(float(1).sub(sUv.y), 0, 1);
         const body = across.mul(across)
-            .mul(smoothstep(float(0.0), float(0.07), down))
+            .mul(smoothstep(float(0.0), vHeadIn, down))
             .mul(float(1).sub(down).pow(1.6));
         // The shimmer that runs down it: the ripples' focus, drawn out along the shaft.
         const shimmer = texture(noiseTex, vec2(seed.mul(7.31).add(sUv.x.mul(0.11)), down.mul(0.55).sub(uTime.mul(0.027)))).b;
-        const near = smoothstep(float(5), float(34), length(positionWorld.sub(cameraPosition)));
+        const shaftDist = length(positionWorld.sub(cameraPosition)).toVar();
+        const near = smoothstep(float(5), float(34), shaftDist);
         const underSea = smoothstep(float(seaLevel + 0.4), float(seaLevel - 2.5), positionWorld.y);
-        shaftMat.colorNode = gradeLight(mix(sunColour, vec3(0.62, 0.96, 1.0), 0.6));
+        // The water's extinction along the view ray (OCEAN_SHAFT_EXTINCTION), split so no factor
+        // exceeds 1: the blue share in the opacity (so alphaTest drops the faintest far ones), the
+        // rest in the hue.
+        const xK = OCEAN_SHAFT_EXTINCTION;
+        const xB = OCEAN_EXTINCTION[2];
+        const shaftSeen = exp(shaftDist.mul(-xK * xB));
+        const shaftHue = exp(shaftDist.mul(vec3(OCEAN_EXTINCTION[0] - xB, OCEAN_EXTINCTION[1] - xB, 0).mul(-xK)));
+        shaftMat.colorNode = gradeLight(mix(sunColour, vec3(0.62, 0.96, 1.0), 0.6).mul(shaftHue));
         shaftMat.opacityNode = body
             .mul(shimmer.mul(1.1).add(0.25))
             .mul(vBeat.mul(0.85).add(0.15))
             .mul(smoothstep(float(0.10), float(0.42), vAxisOn))
             .mul(near)
+            .mul(shaftSeen)
             .mul(underSea)
             .mul(uShafts)
             .mul(uLife)

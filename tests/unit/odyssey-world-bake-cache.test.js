@@ -123,7 +123,9 @@ class ReplyingWorker {
             }
             if (job.lane === 'plates') {
                 for (const stage of ['atlas', 'detail', 'macro']) {
-                    reply({ stage, [stage]: { data: new Uint16Array(4) }, ms: 1 });
+                    // (The detail record carries the sea's lace, 2026-11-21.)
+                    const plate = stage === 'detail' ? { data: new Uint16Array(4), lace: { data: new Uint8Array(4) } } : { data: new Uint16Array(4) };
+                    reply({ stage, [stage]: plate, ms: 1 });
                 }
                 // (The sculpt plate carries the tarn's own plate, 2026-11-20.)
                 reply({
@@ -154,7 +156,7 @@ function keptCopy() {
         textures: {
             sunFields: { data: new Uint16Array(SMALL.shadowRes ** 2 * 4), res: SMALL.shadowRes },
             atlas: { data: new Uint16Array(4) },
-            detail: { data: new Uint16Array(4) },
+            detail: { data: new Uint16Array(4), lace: { data: new Uint8Array(4) } },
             macro: { data: new Uint16Array(4) },
             summit: { data: new Uint16Array(4), tarn: { data: new Uint16Array(4) }, lake: { data: new Uint16Array(4) } },
         },

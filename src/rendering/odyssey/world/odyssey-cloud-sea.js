@@ -68,7 +68,9 @@ export const ODYSSEY_CLOUD_SEA = Object.freeze({
     res: 256,
     /** The floor's flat base (y) and how high its tallest top stands over it (u). */
     base: 540,
-    amp: 380,
+    // (380 until 2026-11-21: mesa lobes with near-vertical creased rims, 16 % of the floor steeper
+    // than 45 degrees, read as snow dunes; at 200 no top stands over the L29 eye.)
+    amp: 200,
     /** Downwind (the summit's wind, toward west-north-west) and how fast the floor flows (u/s). */
     wind: Object.freeze([-0.928, -0.373]),
     speed: 6.5,
@@ -91,28 +93,34 @@ export const ODYSSEY_CLOUD_SEA = Object.freeze({
     grid: Object.freeze({ high: Object.freeze([288, 96]), low: Object.freeze([176, 60]) }),
     /** It gathers from the horizon inward: the floor is whole beyond `gatherFar` first. */
     gatherFar: Object.freeze([1400, 7000]),
-    /** The most of the plate the cover ever shows (the rest stays open lanes), and its breath. */
-    cover: 0.97,
+    /**
+     * The most of the plate the cover ever shows, and (2026-11-21 sea audit, item 8) the least, in
+     * the lanes between the clusters: the floor hid all but a 100-250 px moat of the sea from the
+     * climb (cover 0.88-0.99 everywhere); lanes of open sea now part it, by the plate's regions.
+     */
+    cover: 0.80,
+    laneCover: 0.42,
     breath: 0.05,
     breathPeriod: 47,
     /** The paint (the field's Witness grammar): how the light term is weighed and stepped. */
     paint: Object.freeze({
-        // (Round two: more of the light term is the turn to the sun. Lit by height alone, a
-        // top seen from above was one flat white plate; each head now has a sunlit side and a
-        // shaded one, which is what makes it round.)
-        height: 0.56,
-        facing: 0.62,
-        shadow: 0.50,
-        fold: 0.34,
-        bias: -0.07,
-        /** The lit band's step, and the step from the deep tone to the shade under it. */
-        tone: Object.freeze([0.38, 0.64]),
-        deep: Object.freeze([0.10, 0.30]),
-        shadeLift: 0.80,
-        shadeSky: 0.50,
-        deepLift: 0.55,
-        deepSky: 0.72,
-        litGain: 1.10,
+        // THE CUMULUS FIELD'S SOFT PAINT (2026-11-21 sea audit, item 8). The floor was painted in
+        // the snow's language: lit by height (a snowline along every contour), three hard tones
+        // with drawn borders and lavender hollows, read from the climb as snow dunes or pack ice.
+        // Now a WRAPPED sun term (`wrap`) carries the light, height only a little, one wide tone
+        // ramp between the shade and the lit, softer shadows, and normals `normalBias` mips soft.
+        wrap: 0.45,
+        sun: 0.72,
+        height: 0.18,
+        lift: 0.20,
+        shadow: 0.22,
+        wedge: 0.45,
+        fold: 0.10,
+        tone: Object.freeze([0.08, 0.92]),
+        shadeLift: 0.90,
+        shadeSky: 0.35,
+        litGain: 1.14,
+        normalBias: 1.5,
     }),
     /** Cast shadows: the distances toward the sun the plate is read at (u), near to far. */
     shadowReach: Object.freeze([150, 420, 950]),
@@ -484,7 +492,7 @@ export function createOdysseyCloudSea({
     /** How far the eye has climbed out over the floor (0..1): see `soften`. */
     const fromHigh = smoothstep(float(S.soften[0]), float(S.soften[1]), climb);
     /** The soft bright sheet the floor becomes from very high: mostly its lit tone. */
-    const softSheet = (slateIn, litIn) => mix(slateIn, litIn, float(0.72));
+    const softSheet = (slateIn, litIn) => mix(slateIn, litIn, float(0.80));
 
     // (The helpers' parameters carry names of their own, `place`, `regionIn`, ...: the world's
     // source lint follows a positionNode's identifiers through same-file consts by NAME, and a
@@ -508,7 +516,19 @@ export function createOdysseyCloudSea({
         // Regions: the plate's own wide blur read far larger and turned, so which masses stand
         // where never repeats with the plate; and the breath, a slow wave across the floor.
         const breath = sin(uBreath.add(place.x.mul(0.0011)).add(place.y.mul(0.0007))).mul(S.breath);
-        const whole = float(S.cover).mul(regionIn.mul(0.30).add(0.84)).add(breath);
+        // Lanes of open sea between the clusters (by the regions), the far floor filling in, and
+        // cloud kept round the antisolar point (the glory stands on cloud); whole from very high.
+        const lanes = mix(float(S.laneCover), float(S.cover), smoothstep(float(0.30), float(0.47), regionIn));
+        const glory = smoothstep(
+            float(0.80),
+            float(0.95),
+            dot(rel.div(max(r, float(1))), vec2(-SUN_FLAT[0], -SUN_FLAT[1])),
+        ).mul(smoothstep(float(3000), float(4200), r)).mul(0.25);
+        const whole = mix(
+            lanes.add(smoothstep(float(4500), float(8000), r).mul(0.15)).add(glory),
+            float(0.95),
+            fromHigh,
+        ).add(breath);
         return ring.mul(rim).mul(gathered).mul(whole).clamp(0, 1);
     };
     const plateUv = (place) => place.div(S.tile).add(uDrift);
@@ -522,7 +542,8 @@ export function createOdysseyCloudSea({
      * still gathering) it ends as haze thinning away, and the tops come up out of that haze
      * further in: never a plate with a cut edge standing over open sea.
      */
-    const topsCover = (coverIn) => coverIn.mul(smoothstep(float(0.38), float(0.72), coverIn));
+    // (From 0.04 since 2026-11-21: at a lane's low cover the tall heads stand alone, outlying puffs.)
+    const topsCover = (coverIn) => coverIn.mul(smoothstep(float(0.04), float(0.20), coverIn));
     /** The relief (0..1) left standing above the cover's cut. */
     const standing = (hIn, coverIn) => max(hIn.sub(float(1).sub(coverIn)), 0).div(max(coverIn, float(0.05)));
 
@@ -530,10 +551,12 @@ export function createOdysseyCloudSea({
      * The bed's colour: the floor's deep and shade tones, turning slowly with the plate's wide
      * blur read large (`regionIn`), so the haze between the tops has soft light and dark of its own.
      */
-    const bedColour = (regionIn, skyMidIn) => mix(
-        mix(cloudWhite.mul(P.deepLift), skyMidIn, float(P.deepSky)),
+    // (Since 2026-11-21 the tops' foot tone, a third of the way from the shade to the lit, so a
+    // top's foot melts into a bed of its own colour, and a little lighter where the regions swell.)
+    const bedColour = (regionIn, skyMidIn, litIn) => mix(
         mix(cloudWhite.mul(P.shadeLift), skyMidIn, float(P.shadeSky)),
-        smoothstep(float(0.22), float(0.50), regionIn).mul(0.75),
+        litIn,
+        smoothstep(float(0.22), float(0.50), regionIn).mul(0.10).add(0.30),
     );
 
     const material = new THREE.MeshBasicNodeMaterial();
@@ -561,7 +584,8 @@ export function createOdysseyCloudSea({
         const wp = vWorld.toVar();
         const xz = wp.xz.toVar();
         const uv = plateUv(xz).toVar();
-        const tex = texture(plate, uv).toVar();
+        // (Normals ~1.5 mips soft: read at full resolution every crease of a rim was shaded.)
+        const tex = texture(plate, uv).bias(P.normalBias).toVar();
         const region = texture(plate, regionUv(xz)).a.toVar();
         const cover = topsCover(coverAt(xz, region)).toVar();
         const h = standing(tex.r, cover).toVar();
@@ -583,7 +607,7 @@ export function createOdysseyCloudSea({
                 const there = standing(texture(plate, plateUv(at)).level(i + 1).r, cover).mul(cover).mul(S.amp);
                 const over = there.sub(here).sub(tanSun.mul(reach));
                 // (softer and a little weaker with reach: a long shadow's edge is wide)
-                shadow.assign(max(shadow, smoothstep(float(0), float(26 + (i * 30)), over).mul(1 - (i * 0.14))));
+                shadow.assign(max(shadow, smoothstep(float(-30), float(90 + (i * 70)), over).mul(1 - (i * 0.20))));
             });
         }
         // The mountain's shadow: a wedge from the summit's axis toward the antisolar point, as
@@ -608,35 +632,33 @@ export function createOdysseyCloudSea({
         if (cloudShadowLight && !lean) {
             shadow.assign(max(shadow, float(1).sub(cloudShadowLight(xz)).mul(1.6).clamp(0, 1)));
         }
-        const facing = clamp(dot(nrm, sunDir).mul(1.5).add(0.10), 0, 1);
+        // The WRAPPED sun (a cumulus is lit round its turn, not by a contour of its height).
+        const wrapSun = clamp(dot(nrm, sunDir).add(P.wrap).div(1 + P.wrap), 0, 1);
         // A fold: a place lower than the floor round it (the plate's wide blur against itself).
         const fold = smoothstep(float(0.02), float(0.16), tex.a.sub(tex.r));
         const lightT = clamp(
-            h.mul(P.height)
-                .add(facing.mul(P.facing))
-                .sub(max(shadow, wedge).mul(P.shadow))
-                .sub(fold.mul(P.fold))
-                .add(P.bias),
+            wrapSun.mul(P.sun)
+                .add(h.mul(P.height))
+                .add(P.lift)
+                .sub(shadow.mul(P.shadow))
+                .sub(wedge.mul(P.wedge))
+                .sub(fold.mul(P.fold)),
             0,
             1,
         ).toVar();
         const tone = smoothstep(float(P.tone[0]), float(P.tone[1]), lightT).toVar();
-        // Three painted tones: the sun's on what stands up into it, the sky's own blue (the
-        // clear sky opposite the sun, a third of the way up) on the level floor, and a deeper
-        // step of it in the folds and the cast shadows.
+        // One wide ramp from the shade (the clear sky opposite the sun, a third of the way up,
+        // over the cloud's white) to the lit: soft forms, no drawn borders.
         const skyMid = skyAirAt(vec3(...MID_SKY)).toVar();
         const slate = mix(cloudWhite.mul(P.shadeLift), skyMid, float(P.shadeSky));
-        const deep = mix(cloudWhite.mul(P.deepLift), skyMid, float(P.deepSky));
         const lit = mix(sunColour, cloudWhite, eveningCloudLitShare(0.70)).mul(P.litGain);
-        const painted = mix(
-            mix(deep, slate, smoothstep(float(P.deep[0]), float(P.deep[1]), lightT)),
-            lit,
-            tone,
-        );
+        const painted = mix(slate, lit, tone);
         // A top's foot melts into the bed it stands in (the bed's own colour here), so no top
         // has an outline: from above the floor is tops rising out of haze, not plates.
-        const footed = mix(bedColour(region, skyMid), painted, smoothstep(float(0.0), float(S.bed.melt), h));
-        const body = mix(footed, softSheet(slate, lit), fromHigh.mul(S.softTops)).toVar();
+        const footed = mix(bedColour(region, skyMid, lit), painted, smoothstep(float(0.0), float(S.bed.melt), h));
+        // ...and far off it eases toward the soft sheet (its forms are pixels there).
+        const farSoft = smoothstep(float(1800), float(6500), dist.div(climb)).mul(0.80);
+        const body = mix(footed, softSheet(slate, lit), max(fromHigh.mul(S.softTops), farSoft)).toVar();
         // Seen from below (the floor's base, from the lower climb): the flat base in the sky's
         // shade, warmed where the low sun reaches under it.
         const under = mix(slate.mul(0.90), lit, E.dusk.mul(0.35));
@@ -667,7 +689,7 @@ export function createOdysseyCloudSea({
         // (the field's own share of the haze, so far tops stay cloud; `climb` takes the far fade
         // back to the scene's distances while the world is shrunk under the climbing eye)
         const hazeW = clamp(float(1).sub(exp(dist.mul(aerialK).negate())), 0, 0.82).mul(0.34);
-        const farW = smoothstep(float(5200), float(8600), dist.div(climb));
+        const farW = smoothstep(float(6000), float(8600), dist.div(climb));
         return mix(col, skyAirAt(dir), max(hazeW, farW));
     })();
     material.colorNode = toCloudOutput(shade);
@@ -706,12 +728,12 @@ export function createOdysseyCloudSea({
         const lit = mix(sunColour, cloudWhite, eveningCloudLitShare(0.70)).mul(P.litGain);
         const slateB = mix(cloudWhite.mul(P.shadeLift), skyMid, float(P.shadeSky));
         const col = mix(
-            mix(bedColour(regionB, skyMid), lit, smoothstep(float(0.34), float(0.58), swell).mul(0.16)),
+            mix(bedColour(regionB, skyMid, lit), lit, smoothstep(float(0.34), float(0.58), swell).mul(0.16)),
             softSheet(slateB, lit),
             fromHigh.mul(S.softBed),
         ).toVar();
         const hazeW = clamp(float(1).sub(exp(dist.mul(aerialK).negate())), 0, 0.82).mul(0.34);
-        const farW = smoothstep(float(5200), float(8600), dist.div(climb));
+        const farW = smoothstep(float(6000), float(8600), dist.div(climb));
         return mix(col, skyAirAt(dir), max(hazeW, farW));
     })();
     bedMaterial.colorNode = toCloudOutput(bedShade);
@@ -719,11 +741,17 @@ export function createOdysseyCloudSea({
     // (the lanes are hollows of haze). A slow fade everywhere, never a contour.
     const bedRegion = texture(plate, regionUv(vBed.xz)).a;
     const bedSwell = texture(plate, plateUv(vBed.xz)).a;
-    // (the lanes hold a little less haze from near; from very high the sheet is whole)
-    const laneFloor = mix(float(0.84), float(1.0), fromHigh);
-    bedMaterial.opacityNode = smoothstep(float(0.06), float(0.80), coverAt(vBed.xz, bedRegion))
-        .mul(mix(laneFloor, float(1.0), smoothstep(float(0.10), float(0.36), bedSwell)))
-        .mul(S.bed.alpha);
+    // A SKIRT ROUND EACH CLUSTER (2026-11-21 sea audit, item 8): the bed was a sheet over the whole
+    // floor, so the lanes would have been lilac haze; it now lies only just round the tops' own
+    // cut (the plate's relief a little under it), so the lanes are clear and a top's opaque cut is
+    // inside a translucent edge. From very high it is the whole sheet again.
+    const bedCover = coverAt(vBed.xz, bedRegion);
+    const bedCut = float(1).sub(topsCover(bedCover));
+    const bedRelief = texture(plate, plateUv(vBed.xz)).r;
+    const skirt = smoothstep(bedCut.sub(0.12), bedCut.sub(0.01), bedRelief).mul(smoothstep(float(0.02), float(0.15), bedCover));
+    const sheetBed = smoothstep(float(0.06), float(0.80), bedCover)
+        .mul(mix(float(0.84), float(1.0), smoothstep(float(0.10), float(0.36), bedSwell)));
+    bedMaterial.opacityNode = mix(skirt, sheetBed, fromHigh).mul(S.bed.alpha * 0.93);
     bedMaterial.alphaTest = 0.004;
     const bed = new THREE.Mesh(geometry, bedMaterial);
     bed.name = 'odyssey-world-cloud-sea-bed';

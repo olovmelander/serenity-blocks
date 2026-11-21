@@ -21,7 +21,7 @@
 
 import {
     bakeReliefData, bakeReliefBand, bakeGroundSunFieldsData, bakeGroundAtlasData, bakeDetailNormalData,
-    bakeMacroData, bakeSculptPlateData, makeReliefSampler,
+    bakeMacroData, bakeSculptPlateData, bakeSeaLaceData, makeReliefSampler,
 } from './odyssey-world-bake-data.js';
 import { buildCloudFieldGeometryData, cloudFieldGeometryDataBuffers } from './odyssey-cloud-field.js';
 import { scatterZonedForest } from './odyssey-forest-scatter.js';
@@ -86,8 +86,10 @@ self.onmessage = (event) => {
             const t2 = now();
             post('atlas', { atlas }, [atlas.data.buffer, ...atlas.fields.map((f) => f.buffer)], t2 - t1);
             const detail = bakeDetailNormalData();
+            // (The sea's lace rides on the detail record, 2026-11-21.)
+            detail.lace = bakeSeaLaceData();
             const t3 = now();
-            post('detail', { detail }, [detail.data.buffer], t3 - t2);
+            post('detail', { detail }, [detail.data.buffer, detail.lace.data.buffer], t3 - t2);
             const macro = bakeMacroData();
             const t4 = now();
             post('macro', { macro }, [macro.data.buffer], t4 - t3);

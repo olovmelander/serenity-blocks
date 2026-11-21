@@ -83,6 +83,200 @@ export const SEA_RAMP = Object.freeze({
  */
 export const SEA_HORIZON_DOWN = Object.freeze([0.015, 0.18]);
 /**
+ * THE SEA'S OWN AIR FROM ABOVE (2026-11-21 sea audit, item 1). Seen from the climb the open sea
+ * read as a pale peach-lavender wash as bright as the sky: it took 1.6x the land's haze at the same
+ * range, every downward ray took the palest horizon colour, and the ground mist lay over it too.
+ * Where the sea is seen from above and not far (`seaAirOwn` 1), it takes the land's haze weight,
+ * the dome's colour `up` (the elevation's sine) instead of the horizon's, and `mistAbove` of its
+ * mist share, so it keeps a blue value of its own under the eye.
+ * - `far`: range (u) over which the far band keeps the water's own convergence on the horizon;
+ * - `graze`: sines below the horizon over which a grazing ray keeps the horizon's air;
+ * - `sunSide`: the cosine toward the sun (flat) over which the warm forward air is kept;
+ * - `eyeAbove`: the eye's height over the sea (u) over which the share comes in (shore orbs 0).
+ */
+export const SEA_AIR = Object.freeze({
+    up: 0.5,
+    far: Object.freeze([4500, 8500]),
+    graze: Object.freeze([0.03, 0.12]),
+    sunSide: Object.freeze([0.25, 0.85]),
+    eyeAbove: Object.freeze([120, 300]),
+    mistAbove: 0.15,
+});
+/**
+ * A STEADY NEAR SEA (2026-11-21 sea audit, item 2). The body's tint followed the swell's height at
+ * each instant across the whole stacked amplitude, so at the shore orbs every patch of the near sea
+ * swung from deep blue to jade and back once a wave (~45 levels within a second), and the full swell
+ * tilt swung the reflection's share and the land mirror across it. The wave speeds were right.
+ * - `SEA_CREST_GLOW`: jade only on the crest tops (`top`, shares of the stacked amplitude), on the
+ *   face turned to the eye (`face`, the slope toward it), with the sun behind it, at most `gain`;
+ * - `SEA_TROUGH`: the troughs (`window`, shares below) take `tint`, a slight deepening;
+ * - `SEA_SWELL_TILT`: the reflection rides `near` of the swell's tilt by the eye, all of it past
+ *   `range` (u, 3-D, so the climb's sea is unchanged).
+ */
+export const SEA_CREST_GLOW = Object.freeze({
+    top: Object.freeze([0.42, 0.82]),
+    face: Object.freeze([0.03, 0.12]),
+    gain: 0.30,
+});
+export const SEA_TROUGH = Object.freeze({
+    window: Object.freeze([0.25, 0.85]),
+    tint: Object.freeze([0.96, 0.975, 0.99]),
+});
+export const SEA_SWELL_TILT = Object.freeze({ near: 0.4, range: Object.freeze([60, 260]) });
+/**
+ * WHITECAPS WITH A LIFE (2026-11-21 sea audit, item 11). The caps were the swell's stacked height
+ * at that instant cut in a narrow band: opaque paper-white blobs that switched on and off within a
+ * tenth of a second as crests passed. A cap now has an AGE, worked out per pixel with no stored
+ * state: the seconds since the long swell's crest last passed this water. It is born where the
+ * three waves stood stacked at that moment (`birth`, shares of their summed amplitude, broken by
+ * `gate` of a per-crest pattern and `gust` of the wind), flashes white for `flashT` s, then
+ * thins as a sheet (`sheetT`, `sheetShare` of it) and a lace (`laceT`), coming in over `rise` s
+ * and gone `tail` s before the next crest. Within `range` (u: whole, gone) of the eye. The lace
+ * is the foam-lace tile, `tile` u across the wind and `streak` times that along it, drifting
+ * `drift` u/s downwind and bent `bend` by the ripples; its threads `width` (tile shares: thin
+ * young, wide when the cover is whole), its alpha `alpha` [lace, flash], its colour `colour`.
+ */
+export const SEA_CAPS = Object.freeze({
+    birth: Object.freeze([0.80, 1.05]),
+    gate: 0.45,
+    gust: 0.10,
+    flashT: 0.45,
+    sheetT: 0.9,
+    laceT: 3.0,
+    sheetShare: 0.55,
+    rise: 0.30,
+    tail: 1.5,
+    range: Object.freeze([260, 720]),
+    tile: 9,
+    streak: 1.8,
+    drift: 0.3,
+    bend: 0.18,
+    width: Object.freeze([0.12, 0.85]),
+    alpha: Object.freeze([0.38, 0.85]),
+    colour: Object.freeze([0.90, 0.95, 0.98]),
+});
+/**
+ * A REAL BEACH (2026-11-21 sea audit, item 9). The south beach read as an ochre-olive bank darker
+ * than the water: the whole of it sat on the palette's damp sand pole, grass cross-faded down to
+ * the waterline over 13 u of height, and the only wetting was a matte strip 1 u high.
+ * - `SEA_BEACH`: the beach is pure sand from the water up to `top` (u over the sea, wandering by
+ *   `topWobble` on a `topCell` noise and `topBreak` of the grain), its edge as soft as `topEdge`
+ *   (u, widened by the pixel's height footprint); its dry sand `dry` (linear) with a broad `tone`
+ *   swell (`toneCell` u), a finer grain (`tooth`), and eased `farKeep` back toward the palette's
+ *   sand from afar so the coast gets no pale outline.
+ * - `SEA_WET`: the sand the sea wets: up to `top` (u) wandering `wobble` on `cells`, its edge
+ *   `edge` (u, by footprint), breathing `breathe` with the run-up; `dark` its albedo factor,
+ *   `filmDark` under the thin film the backwash leaves, `toothKeep`; `absorb` the first units of
+ *   water over it (rgb per u); `gloss` [damp, film] its sky sheen floor, `glare` [core, skirt] the
+ *   sun's lobe on it (High).
+ */
+export const SEA_BEACH = Object.freeze({
+    dry: Object.freeze([0.93, 0.83, 0.60]),
+    tone: 0.10,
+    toneCell: 70,
+    top: 5.0,
+    topWobble: 1.4,
+    topCell: 55,
+    topBreak: 0.7,
+    topEdge: Object.freeze([0.25, 2.5]),
+    tooth: 0.05,
+    farKeep: 0.4,
+});
+export const SEA_WET = Object.freeze({
+    top: 1.6,
+    wobble: 0.7,
+    cells: Object.freeze([7.5, 23]),
+    edge: Object.freeze([0.16, 0.6]),
+    breathe: 0.12,
+    // (Warm: wet sand is darker AND more saturated; a neutral factor read as grey concrete.)
+    dark: Object.freeze([0.62, 0.52, 0.42]),
+    filmDark: 0.85,
+    toothKeep: 0.3,
+    absorb: Object.freeze([0.50, 0.14, 0.09]),
+    gloss: Object.freeze([0.05, 0.24]),
+    glare: Object.freeze([0.55, 0.06]),
+});
+/**
+ * THE FAR SEA'S GLOSS (2026-11-21 sea audit, item 19). Far off the sea's normal is settled (the
+ * ripple and the swell taken out, so it does not crawl) and it mirrored each far cloud as a crisp
+ * round disc. The slope it stopped carrying becomes the width of the reflection's lobe instead:
+ * `slopeGain` of the swell's RMS slope per axis; a far cloud's image is drawn out into a soft
+ * vertical streak and grows fainter by `keepPow` (1 conserves its light; 0.5 keeps a column).
+ */
+export const SEA_GLOSS = Object.freeze({ slopeGain: 1.0, keepPow: 0.5 });
+
+/**
+ * THE SUN ROAD FROM FACET STATISTICS (2026-11-21 sea audit, item 18). Facing the sun the sea had no
+ * glitter path: a milky veil (a lobe on a mirror ray whose far normal had been faded flat) and a
+ * few opaque white dabs (a hairline core lighting whole swell faces). The road is now the sun seen
+ * in a sea of facets whose slopes spread by `floorVar` (the unresolved chop, calm to gust) plus
+ * `waveVar` (the swell's own, handed back where the distance fade drops it from the normal), so
+ * the band reaches the horizon, narrow there and wider near the eye, HDR (`gain`, eased by
+ * `knee`) and coloured by the sun; near the eye, where one facet spans pixels, a broad sheen
+ * (`sheenVar`, `sheenShare`) instead of white dabs (`glintFoot`: u a pixel, the near-to-far hand-over).
+ */
+export const SEA_SUN_GLITTER = Object.freeze({
+    waveVar: 0.0142,
+    floorVar: Object.freeze([0.0028, 0.0060]),
+    sheenVar: 0.006,
+    gain: 0.55,
+    knee: 0.05,
+    vyFloor: 0.045,
+    hyFloor: 0.35,
+    sheenShare: 0.2,
+    glintFoot: Object.freeze([0.75, 2.0]),
+});
+
+/**
+ * The road's light (SEA_SUN_GLITTER) for a view `V` (surface -> eye), a sun `L` (surface -> sun),
+ * the surface's mean slope `slope` [sx, sz] and the slope variance `s2` per axis: `odds`, the
+ * share of facets turned to send the sun to the eye, and `band` (before the gain), knee'd.
+ */
+export function seaSunRoad({
+    V, L, slope = [0, 0], s2,
+}) {
+    const G = SEA_SUN_GLITTER;
+    const h = [V[0] + L[0], V[1] + L[1], V[2] + L[2]];
+    const hl = Math.hypot(...h) || 1;
+    const H = h.map((v) => v / hl);
+    const hy = Math.max(H[1], 0.08);
+    const mx = (-H[0] / hy) - slope[0];
+    const mz = (-H[2] / hy) - slope[1];
+    const m2 = (mx * mx) + (mz * mz);
+    const odds = Math.exp(m2 / (-2 * s2));
+    const vh = Math.max((V[0] * H[0]) + (V[1] * H[1]) + (V[2] * H[2]), 0);
+    const fres = 0.02 + (0.98 * ((1 - vh) ** 5));
+    const light = fres / (4 * Math.max(V[1], G.vyFloor) * (Math.max(hy, G.hyFloor) ** 4) * 2 * Math.PI);
+    const raw = (odds / s2) * light;
+    return { odds, band: raw / (1 + (G.knee * raw)) };
+}
+
+/**
+ * THE SURF (2026-11-21 sea audit, item 16). The sea stopped at the sand as a lake does: a 1-2 px
+ * pencil rim and hairline rings offshore, every shore term a band of DEPTH on a bed that drops
+ * 0.35-0.87 per unit, so 10 m of water was 12-16 u of sea and a pixel. The surf is measured in
+ * HORIZONTAL units now and clocked by the long swell already aimed at the beach: its crests
+ * whiten as they shoal, break where the water is `breakDepth` m deep (`breakX` u out at most and
+ * least), and run in as bores at `boreSpeed` u/s (shore-parallel inside the break), each a
+ * tapered, segmented `lip` (a share of its cycle) leaving a lace band (`trail` cycle, its holes
+ * opening `lace` as it ages) that `feather`s in from the crest; within `reach` u of the shore,
+ * up close (the far surf line takes over by footprint), strongest at the points (`exposure` the
+ * least share in a bay), at `gain`.
+ */
+export const SEA_SURF_BREAK = Object.freeze({
+    boreSpeed: 2.6,
+    breakDepth: 4.5,
+    breakX: Object.freeze([10, 36]),
+    slopeMin: 0.03,
+    lip: 0.075,
+    trail: Object.freeze([0.08, 0.42]),
+    lace: Object.freeze([0.28, 0.70]),
+    feather: 8,
+    reach: 44,
+    exposure: 0.55,
+    gain: 1.15,
+});
+/**
  * THE SURF LINE FROM AFAR (2026-11-02): the soft white line on the waterline once a pixel spans
  * more depth than the swash front. Its width in pixels (calm, at the top of a run-up), how much of
  * it a broken stretch keeps, the scale of the drifting field that breaks it (per unit), and its
@@ -98,15 +292,30 @@ export const SEA_SURF = Object.freeze({
     thinKeep: 0.4,
 });
 /**
- * THE WINDROWS (2026-11-20): long foam lines across the wind every `spacing` u, wandering
- * `wander` u, `halfWidth` u half wide (or ~0.7 px, whichever is wider), kept off the near water
- * (gone under the first distance, whole past the second, u) and at `gain`.
+ * THE WINDROWS (2026-11-20; rebuilt 2026-11-21, sea audit item 12): long foam streaks parallel to
+ * the wind. They read as scratches on glass: round noise cut them into 4-9 u dashes, they wandered
+ * off the wind and hooked, a hard stroke, and their dash mask scrolled across them so they blinked.
+ * Now each row is a cell of its own every `spacing` u across the wind, jittered `jitter` of it, its
+ * course wandering by two sines along the wind only (`wander` u at `wanderK` rad/u), so a row can
+ * never fold or meet a neighbour; it rides the swell's orbit sideways (`ride`), is lit in long
+ * stretches by a break field stretched along it (`alongScale`, `lit`), drifts downwind `drift`
+ * u/s and re-forms (`evolve`). Half-width `halfWidth` u by its strength, its edge `soft`; kept
+ * off the near water (`near`, u) and gone where its cells fall under `footprint` (rows a pixel).
  */
 export const SEA_WINDROWS = Object.freeze({
-    spacing: 17,
-    wander: 26,
-    halfWidth: 0.22,
+    spacing: 23,
+    jitter: 0.36,
+    wander: Object.freeze([2.2, 1.0]),
+    wanderK: Object.freeze([0.019, 0.043]),
+    ride: 4.0,
+    alongScale: 0.0012,
+    drift: 0.4,
+    evolve: 0.0009,
+    lit: Object.freeze([0.40, 0.66]),
+    halfWidth: Object.freeze([0.10, 0.30]),
+    soft: 0.3,
     near: Object.freeze([45, 120]),
+    footprint: Object.freeze([0.05, 0.10]),
     gain: 0.16,
 });
 /** The sea film's opacity over the water's depth: clear at the first, whole at the second (u). */
@@ -161,9 +370,52 @@ export function waterRampColour(t, ramp, bands = ODYSSEY_WATER_RAMP.bands) {
     );
 }
 
+/**
+ * The swash's run-up at phase `f` (0..1 of its cycle), as a share of its reach: up over the first
+ * third, back down over the rest (the water's shoreline vertices and the foam front ride it).
+ */
+export function swashRise01(f) {
+    return smoothstepGpu(0, 0.32, f) * (1 - smoothstepGpu(0.32, 1, f));
+}
+/**
+ * The wet line the run-up leaves (SEA_WET, 2026-11-21): it rises with the water and recedes about
+ * three times slower, so the sand stays dark and glossy after the backwash; at the cycle's wrap it
+ * is back at the base with the water (no step).
+ */
+export function swashMemory01(f) {
+    return smoothstepGpu(0, 0.32, f) * Math.sqrt(Math.sqrt(clamp01(1 - smoothstepGpu(0.32, 1, f))));
+}
+
+/**
+ * A whitecap's life at `age` seconds after its crest (SEA_CAPS): in over `rise`, a sheet and a lace
+ * thinning, gone before the next crest (`period`, the long swell's, s).
+ */
+export function seaCapLife(age, period) {
+    const C = SEA_CAPS;
+    const rise = smoothstepGpu(0, C.rise, age);
+    const tail = 1 - smoothstepGpu(period - C.tail, period, age);
+    return ((Math.exp(-age / C.sheetT) * C.sheetShare) + (Math.exp(-age / C.laceT) * (1 - C.sheetShare)))
+        * rise * tail;
+}
+
 /** How much of the lake's bed shows through `depth` units of its water (its clear-water film). */
 export function lakeClearAt(depth) {
     return Math.exp(-Math.max(depth, 0) * LAKE_WATER.clarity);
+}
+
+/**
+ * The sea's own-air share (SEA_AIR): 1 where the sea is seen from above and near, away from the
+ * sun; 0 at the horizon, in the far band, toward the sun, from a shore eye and while the Earth is
+ * there. `downSine` is the sine of the ray's angle below the horizon, `toSun` the cosine of its
+ * flat bearing to the sun's, `eyeAbove` the eye's height over the sea.
+ */
+export function seaAirOwn(range, downSine, toSun, eyeAbove, earth = 0) {
+    const keep = Math.max(
+        smoothstepGpu(SEA_AIR.far[0], SEA_AIR.far[1], range),
+        1 - smoothstepGpu(SEA_AIR.graze[0], SEA_AIR.graze[1], downSine),
+        smoothstepGpu(SEA_AIR.sunSide[0], SEA_AIR.sunSide[1], toSun),
+    );
+    return (1 - keep) * smoothstepGpu(SEA_AIR.eyeAbove[0], SEA_AIR.eyeAbove[1], eyeAbove) * (1 - earth);
 }
 
 /** The sea's body colour over `depth` units of water. */

@@ -372,3 +372,63 @@ drifting cloud shadows). Console clean (the THREE.Clock deprecation, not ours).
 
 Owner's calls: the lake's new outline; its turquoise, quieter than the old aqua (a shelf band
 under clear water, not a pigment).
+
+## §10. The sea, judged from the pixels (2026-11-21)
+
+Olov: *"How can we improve the overall ocean sea water look and feel? Be objective and do not look
+in to much how it was described to be created previously!"*, then *"Do whatever recommended and
+start the improvements and implementation! I want the most beautiful water!!!"*
+
+### How it was judged
+
+65 real-game captures of the three places the sea appears (under water, orbs 5-10; the shore,
+orbs 11-14 and the low rail; the climb, orbs 29-33), WebGPU High, WebGL2 and Low, with motion
+strips. Seven critics judged the pictures only (no docs, no code); three sceptics tried to refute
+each of their 30 findings (25 survived); only then were causes traced in code and fixes designed.
+Refuted and left alone: a hard horizon line, a featureless far sea, the coast's contour-like bands
+from the climb, the far surf line's beads, the shallowest water's milky edge.
+
+### What changed, in the order built
+
+- **The far sea from the climb is water** (`SEA_AIR`): near and away from the sun it takes the
+  land's haze weight and the dome's colour higher up, not the palest horizon's. Twin `seaAirOwn`.
+- **A steady near sea** (`SEA_CREST_GLOW`, `SEA_TROUGH`, `SEA_SWELL_TILT`): jade only on backlit
+  crest tops facing the eye; the reflection rides 0.4 of the swell's tilt near the eye. The shore
+  orbs' foreground no longer flips blue/turquoise every second.
+- **The land mirror is a soft share** (`SEA_MIRROR` swell/blur/lift/gain): no khaki pills.
+- **Light shafts rooted at the surface**, soft at their edges, taken by the water's extinction
+  along the view ray (`OCEAN_EXTINCTION`, shared with the haze).
+- **No rainbow under water.**
+- **A real beach** (`SEA_BEACH`, `SEA_WET`): pale dry sand to a lobed top, turf above; a warm dark
+  wet band on the run-up's memory (`swashMemory01`), a sky sheen and a sun glare on High.
+- **Whitecaps with a life** (`SEA_CAPS`): an analytic age since the long swell's crest passed;
+  a flash, then a foam sheet that opens into holes and tears away (the foam-lace tile, moved to
+  `src/themes/shared/foam-lace-bake.js`, baked on the detail record).
+- **Windrows** (`SEA_WINDROWS`): long wind-parallel streaks, one row a cell, riding the swell.
+- **The cloud floor reads as cloud** (`ODYSSEY_CLOUD_SEA`): a wrapped sun, one wide tone ramp,
+  relief 200, lanes of open sea between the clusters, a bed that skirts each cluster.
+- **A steady Snell window** (`SNELL_WINDOW.surface`): cut through a level surface of its own,
+  its picture a level sea's refraction moved at most ~1.7 degrees.
+- **The window is the light under water** (`SNELL_WINDOW.light`, `snellWindowLift`): 1.6x the
+  level water; the water round it glows less (level plate 1.25 -> 0.90, lid 1.18 -> 0.72).
+- **Surf that breaks** (`SEA_SURF_BREAK`): measured across the water, on the long swell's clock;
+  crests whiten as they shoal, bores run in at 2.6 u/s, a lip and a lace band; the iso-depth
+  rings and the pencil rim are gone.
+- **A sun road** (`SEA_SUN_GLITTER`, twin `seaSunRoad`): the sun in a sea of facets, HDR, to the
+  horizon; the old veil, dabs and sparkle field are gone.
+- **The far gloss** (`SEA_GLOSS`): far cloud reflections are soft vertical streaks, not discs.
+- **Dolphins leave ripples**, not white target rings.
+
+### Checks and cost
+
+Real game, headless Chrome, WebGPU High at every step, WebGL2 and Low for the whole set; consoles
+clean. The breach seam's step is ~32 levels (main ~26). Cost is not measured on a GPU: all ALU but
+the lace (one 256 px RGBA8 texture, two fetches inside foam), the window and the gloss's loop terms
+on High. Rebased: the bake record's buffers (14).
+
+### Left from the audit
+
+The wind texture in the foreground (item 7: weigh it against the no-grain rule on a motion strip),
+the crossing-wave lattice (item 15: it changes the second wave train), the dark mirror beyond the
+window, caustics, the emergence collage, the shore's land reflection phases 2-3, the cloud floor's
+coast-fit clear air, the sea's cloud shade by the sun's height, the sand-side swash foam.

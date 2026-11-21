@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
     LAKE_WATER, SEA_HORIZON_DOWN, SEA_SURF, WATER_SHORE_DEPTH_BIAS,
-    depthStepAlongRay, lakeClearAt, lakeShoreOpacity, lakeShoreWidth, seaBodyAt, seaFilmOpacity,
+    SEA_AIR, SEA_BEACH, SEA_CAPS, SEA_WET, SEA_WINDROWS, depthStepAlongRay, lakeClearAt, seaAirOwn, seaCapLife, seaSunRoad, swashMemory01, swashRise01, lakeShoreOpacity, lakeShoreWidth, seaBodyAt, seaFilmOpacity,
     seaHorizonKeep, seaSurfLine, shoreFightBand,
 } from './odyssey-water-looks.js';
 
@@ -222,6 +222,143 @@ describe('the shore depth fight (2026-11-03)', () => {
             expect(lo).toBeGreaterThan(0);
             expect(lakeShoreOpacity(-lo, 1)).toBe(0);
             expect(lakeShoreOpacity(-hi, 1)).toBe(0);
+        });
+    });
+});
+
+// THE SEA'S OWN AIR FROM ABOVE (2026-11-21 sea audit, item 1): seen from the climb the near sea
+// keeps a value of its own; the far band, grazing rays, the sun's side, the shore eyes and the
+// Earth's departure keep the horizon's air.
+describe('the sea\'s own air from above (2026-11-21)', () => {
+    it('is whole for the climb looking down on the sea away from the sun', () => {
+        // c31: 2-4 km, 9-20 degrees down, the eye ~1 km over the sea.
+        [2000, 3000, 4000].forEach((range) => {
+            [0.16, 0.25, 0.34].forEach((down) => {
+                expect(seaAirOwn(range, down, -0.3, 1000)).toBeGreaterThan(0.99);
+            });
+        });
+    });
+
+    it('leaves the shore orbs, the horizon, the far band, the sun side and the Earth alone', () => {
+        expect(seaAirOwn(500, 0.3, -0.3, 12)).toBe(0); // a shore orb's eye
+        expect(seaAirOwn(3000, 0.02, -0.3, 1000)).toBe(0); // grazing, within ~1.7 degrees
+        expect(seaAirOwn(9000, 0.3, -0.3, 1000)).toBe(0); // the far band meets the dome
+        expect(seaAirOwn(3000, 0.3, 0.9, 1000)).toBe(0); // toward the low sun: its warm air
+        expect(seaAirOwn(3000, 0.3, -0.3, 1000, 1)).toBe(0); // the departure's Earth
+        expect(SEA_AIR.mistAbove).toBeLessThan(1);
+    });
+
+    it('comes in smoothly with each of its gates', () => {
+        let prev = 0;
+        for (let eye = 100; eye <= 320; eye += 5) {
+            const v = seaAirOwn(3000, 0.3, -0.3, eye);
+            expect(v).toBeGreaterThanOrEqual(prev);
+            expect(v - prev).toBeLessThan(0.06);
+            prev = v;
+        }
+    });
+});
+
+// A REAL BEACH (2026-11-21 sea audit, item 9): pale dry sand, a darker wet band the run-up keeps,
+// and the wet line receding slower than the water.
+describe('the beach and its wet sand (2026-11-21)', () => {
+    it('keeps the wet line behind the water and back at the base at the wrap', () => {
+        expect(swashMemory01(0)).toBe(0);
+        expect(swashMemory01(1)).toBe(0);
+        expect(swashMemory01(0.32)).toBeCloseTo(1, 9);
+        let prev = 1;
+        for (let f = 0; f <= 1.0001; f += 0.01) {
+            expect(swashMemory01(f)).toBeGreaterThanOrEqual(swashRise01(f) - 1e-12);
+            if (f >= 0.32) {
+                expect(swashMemory01(f)).toBeLessThanOrEqual(prev + 1e-12);
+                prev = swashMemory01(f);
+            }
+        }
+        expect(swashMemory01(0.7)).toBeGreaterThan(swashRise01(0.7) * 1.5);
+    });
+
+    it('never lets the wet band reach the turf', () => {
+        const wetMax = SEA_WET.top + SEA_WET.wobble + SEA_WET.breathe + SEA_WET.edge[0];
+        const beachMin = SEA_BEACH.top - SEA_BEACH.topWobble - SEA_BEACH.topBreak - SEA_BEACH.topEdge[0];
+        expect(wetMax).toBeLessThan(beachMin);
+    });
+
+    it('darkens wet sand by a third and warms it (not grey)', () => {
+        const wet = SEA_BEACH.dry.map((v, i) => v * SEA_WET.dark[i]);
+        const ratio = luma(wet) / luma(SEA_BEACH.dry);
+        expect(ratio).toBeGreaterThan(0.40);
+        expect(ratio).toBeLessThan(0.62);
+        const sat = (c) => (Math.max(...c) - Math.min(...c)) / Math.max(...c);
+        expect(sat(wet)).toBeGreaterThan(sat(SEA_BEACH.dry));
+    });
+});
+
+// WHITECAPS WITH A LIFE (2026-11-21 sea audit, item 11): born on the crest, a flash and a lace
+// thinning, gone before the next crest; never a pop from one frame to the next.
+describe('the whitecaps\' life (2026-11-21)', () => {
+    const period = (Math.PI * 2) / 0.85; // the long swell's
+    it('comes in, thins and is gone before the next crest', () => {
+        expect(seaCapLife(0, period)).toBe(0);
+        expect(seaCapLife(SEA_CAPS.rise, period)).toBeGreaterThan(0.7);
+        expect(seaCapLife(2, period)).toBeLessThan(seaCapLife(1, period));
+        expect(seaCapLife(period, period)).toBe(0);
+        expect(seaCapLife(period - 0.01, period)).toBeLessThan(0.01);
+    });
+
+    it('never jumps more than a little in one frame at 30 fps', () => {
+        let worst = 0;
+        for (let t = 0; t < period - (1 / 30); t += 1 / 30) {
+            worst = Math.max(worst, Math.abs(seaCapLife(t + (1 / 30), period) - seaCapLife(t, period)));
+        }
+        expect(worst).toBeLessThan(0.15);
+    });
+});
+
+// THE WINDROWS, ONE ROW A CELL (2026-11-21 sea audit, item 12): a row's jitter and wander jump at
+// its cell's edges, so its line and its anti-aliased edge must stay inside the cell, or the jump
+// draws a seam across the sea.
+describe('the windrows keep to their cells (2026-11-21)', () => {
+    it('holds every line inside its own row cell', () => {
+        const W = SEA_WINDROWS;
+        const room = ((0.5 - (W.jitter / 2)) * W.spacing) - (W.wander[0] + W.wander[1]);
+        const need = Math.max(W.halfWidth[1], 0.7 * W.footprint[1] * W.spacing) + (W.footprint[1] * W.spacing);
+        expect(room).toBeGreaterThan(need);
+    });
+
+    it('never runs more than ~5 degrees off the wind', () => {
+        const W = SEA_WINDROWS;
+        const slope = (W.wander[0] * W.wanderK[0]) + (W.wander[1] * W.wanderK[1]);
+        expect(Math.atan(slope) * (180 / Math.PI)).toBeLessThan(5);
+    });
+});
+
+// THE SUN ROAD FROM FACET STATISTICS (2026-11-21 sea audit, item 18): a band to the horizon under
+// the sun, narrow there, and nothing well off its bearing.
+describe('the sea\'s sun road (2026-11-21)', () => {
+    const sunEl = (15 * Math.PI) / 180;
+    const L = [0, Math.sin(sunEl), -Math.cos(sunEl)]; // the sun ahead (-z), 15 degrees up
+    const view = (downDeg, offDeg) => {
+        // V points from the water to the eye: the eye looks down `downDeg` and `offDeg` off the sun.
+        const d = (downDeg * Math.PI) / 180;
+        const o = (offDeg * Math.PI) / 180;
+        return [-Math.cos(d) * Math.sin(o), Math.sin(d), Math.cos(d) * Math.cos(o)];
+    };
+    const s2 = 0.0142 + 0.004; // the far sea: the swell's variance handed back
+
+    it('reaches the horizon under the sun', () => {
+        const near = seaSunRoad({ V: view(1, 0), L, s2 });
+        expect(near.odds).toBeGreaterThan(0.3);
+        expect(near.band).toBeGreaterThan(0.5);
+    });
+
+    it('is gone well off the sun\'s bearing, and finite everywhere', () => {
+        expect(seaSunRoad({ V: view(3, 30), L, s2 }).odds).toBeLessThan(0.01);
+        [0.5, 5, 20, 60].forEach((down) => {
+            [0, 10, 40, 120].forEach((off) => {
+                const r = seaSunRoad({ V: view(down, off), L, s2: 0.0028 });
+                expect(Number.isFinite(r.band)).toBe(true);
+                expect(r.band).toBeLessThan(1 / 0.05 + 1e-9);
+            });
         });
     });
 });

@@ -31,7 +31,7 @@ import {
 } from './odyssey-ground-bakes.js';
 import {
     RELIEF_EXTENT, bakeDetailNormalData, bakeMacroData, bakeOdysseyCloudField, bakeReliefData,
-    bakeNorthLakePlateData, bakeSculptPlateData, bakeTarnPlateData, makeReliefSampler,
+    bakeNorthLakePlateData, bakeSculptPlateData, bakeSeaLaceData, bakeTarnPlateData, makeReliefSampler,
 } from './odyssey-world-bake-data.js';
 import {
     ODYSSEY_GROUND_DISTANCE,
@@ -43,7 +43,7 @@ import {
     ODYSSEY_GROUND_STRATA,
 } from './odyssey-ground-palette.js';
 import { buildHeroCloudGeometry } from './odyssey-hero-clouds.js';
-import { noise2 } from '../chapter-environments/shared/odyssey-tsl-noise.js';
+import { hash21, noise2 } from '../chapter-environments/shared/odyssey-tsl-noise.js';
 import { buildKelpGeometry, buildSpireGeometry, planOceanForms } from './odyssey-ocean-forms.js';
 import { buildCloudFieldGeometry } from './odyssey-cloud-field.js';
 import {
@@ -54,8 +54,8 @@ import { CLOUD_FIELD_ANCHOR, ODYSSEY_CLOUD_FIELD_SPECS } from './odyssey-cloud-f
 import { WATER_CLOUD_SLOTS, buildWaterCloudProxies, selectWaterClouds } from './odyssey-water-clouds.js';
 import { buildNorthLakeSurface, buildTarnSurface, tarnOpenWater } from './odyssey-tarn-surface.js';
 import {
-    LAKE_WATER, SEA_ABSORB_GAIN, SEA_FILM, SEA_HORIZON_DOWN, SEA_RAMP, SEA_SURF, SEA_WINDROWS,
-    WATER_SHORE_DEPTH_BIAS,
+    LAKE_WATER, SEA_ABSORB_GAIN, SEA_AIR, SEA_BEACH, SEA_CAPS, SEA_CREST_GLOW, SEA_GLOSS, SEA_SUN_GLITTER, SEA_SURF_BREAK, SEA_WET, SEA_FILM, SEA_HORIZON_DOWN, SEA_RAMP, SEA_SURF,
+    SEA_SWELL_TILT, SEA_TROUGH, SEA_WINDROWS, WATER_SHORE_DEPTH_BIAS,
 } from './odyssey-water-looks.js';
 import {
     FOREST_LEAF_CARD, FOREST_TRUNK_PACK, buildForestTreeGeometry, packForestTrunkW,
@@ -89,10 +89,11 @@ import {
     ODYSSEY_WATER_RAMP,
 } from '../odyssey-colour-script.js';
 import {
-    applyOceanClock, createOceanClock, createOceanLook, oceanClockAt, oceanDepthLook,
+    OCEAN_EXTINCTION, OCEAN_SHAFT_EXTINCTION, applyOceanClock, createOceanClock, createOceanLook, oceanClockAt,
+    oceanDepthLook, oceanHazeColour,
 } from './odyssey-ocean-depth.js';
 import {
-    SNELL_WINDOW, snellDepthLight, snellMirror, snellWindowPresence, snellWindowWorld,
+    SNELL_WINDOW, snellDepthLight, snellMirror, snellWindowLift, snellWindowPresence, snellWindowWorld,
 } from './odyssey-ocean-window.js';
 import { createOdysseyOceanScenery } from './odyssey-ocean-scenery.js';
 import { createOdysseyBreachBurst } from '../composition/odyssey-breach-burst.js';
@@ -469,6 +470,17 @@ const SEA_MIRROR = Object.freeze({
     soft: 3.0,
     ceiling: 1150,
     reach: 1000,
+    // A SOFT SHARE, NOT A HIT TEST (2026-11-21 sea audit, item 3). The land ray followed the whole
+    // swell, so on its back faces it dipped under the horizon, a 0.02 clamp re-aimed those rays into
+    // the sunlit beach and the binary hit drew hard khaki pills with dark rims across the shelf.
+    // The ray now follows `swell` of the swell's slope; how much land it takes is a smoothstep of
+    // how far the land rises over it (radians), as soft as `blur`: [a floor, a share of the swell's
+    // RMS slope the ray no longer follows, pixels of the ray's own footprint]. `lift`: rays this
+    // close to level fade in (a grazing ray meets the next wave); `gain`: the land's share.
+    swell: 0.35,
+    blur: Object.freeze([0.02, 0.33, 1.5]),
+    lift: 0.05,
+    gain: 0.8,
 });
 /**
  * THE SWANS' WAKES on the tarn (life at the pond, 2026-11-02): the V's spread (tan of ~19.5 deg),
@@ -1454,6 +1466,17 @@ export function createOdysseyWorld({
     const groundTex = groundAtlas.tex;
     const atlasAvg = groundAtlas.avg;
     const detailTex = bakeDetailNormal(undefined, preTex.detail ?? null);
+    // THE SEA'S LACE (SEA_CAPS, 2026-11-21): the foam-lace tile the whitecaps thin into. Tiling, no
+    // mips: it is read at level 0 inside a per-pixel branch.
+    const seaLace = preTex.detail?.lace ?? bakeSeaLaceData();
+    const seaLaceTex = new THREE.DataTexture(seaLace.data, seaLace.res, seaLace.res, THREE.RGBAFormat, THREE.UnsignedByteType);
+    seaLaceTex.wrapS = THREE.RepeatWrapping;
+    seaLaceTex.wrapT = THREE.RepeatWrapping;
+    seaLaceTex.magFilter = THREE.LinearFilter;
+    seaLaceTex.minFilter = THREE.LinearFilter;
+    seaLaceTex.generateMipmaps = false;
+    seaLaceTex.colorSpace = THREE.NoColorSpace;
+    seaLaceTex.needsUpdate = true;
     const macroTex = bakeMacroTexture(undefined, preTex.macro ?? null);
     const heightTex = relief.tex;
     // THE SCULPT PLATE (bakeSculptPlateData): ~1.8 u of form over the hero's top and the tarn,
@@ -1640,6 +1663,12 @@ export function createOdysseyWorld({
     const uShaftGain = uniform(1);
     const uCeilAbsorb = uniform(0);
     const uSnellWorld = uniform(0);
+    // The window's lift (snellWindowLift, 2026-11-21): written each frame from the level water's light.
+    const uWindowLift = uniform(1);
+    // The window's sun is the AIR's (the colour script's first air keyframe), not the water's
+    // dim steel-blue one: the sun seen through the surface is the sun.
+    const WINDOW_SUN = sampleColourScript(0.18).sun;
+    const windowHazeScratch = [0, 0, 0];
     // ALIVE ON THE CLOCK (odyssey-ocean-depth.js `oceanClockAt`): the light a passing cloud leaves
     // the column, the surface's state (calm .. choppy; 1 out of the water, so the island's sea is
     // its own), and the wandering plankton bloom (xyz, strength).
@@ -1731,13 +1760,17 @@ export function createOdysseyWorld({
     };
     const SWASH_RUN = 0.62;
     const SWASH_BASE = -0.14;
+    const swashPhase = (xz) => fract(uTime.mul(0.085).add(xz.x.mul(0.0021)).add(xz.y.mul(0.0013)));
     const swashRise = (xz) => {
-        const f = fract(uTime.mul(0.085).add(xz.x.mul(0.0021)).add(xz.y.mul(0.0013)));
+        const f = swashPhase(xz);
         return smoothstep(float(0.0), float(0.32), f)
             .mul(float(1).sub(smoothstep(float(0.32), float(1.0), f)))
             .mul(SWASH_RUN)
             .add(SWASH_BASE);
     };
+    // The wet line the run-up leaves (twin: swashMemory01): up with the water, back ~3x slower.
+    const swashMemory01 = (f) => smoothstep(float(0.0), float(0.32), f)
+        .mul(sqrt(sqrt(clamp(float(1).sub(smoothstep(float(0.32), float(1.0), f)), 0, 1))));
 
     // THE SKY ABOVE 28 DEGREES — where this function used to return a constant.
     //
@@ -1930,6 +1963,8 @@ export function createOdysseyWorld({
         perFragmentMedium = false,
         // GROUND_MIST: true (all of it), false, or the share of it this surface takes.
         groundMist = valleyMist,
+        // JS flag, the sea only: its own air where it is seen from above (SEA_AIR).
+        seaAir = false,
     ) => {
         const to = wp.sub(cameraPosition);
         const d = length(to);
@@ -1960,8 +1995,36 @@ export function createOdysseyWorld({
         // (Mirrored about the Earth's limb, THE HORIZON IS THE LIMB.)
         const mirroredAir = vec3(toDir.x, limbMirror(toDir.y), toDir.z);
         const lookDown = ORBIT_EARTH_SEAM.presence.mul(smoothstep(float(0), float(0.05), dirY.negate()));
-        const airCol = mix(skyAirAt(toDir), skyAirAt(mirroredAir), lookDown);
-        const airW = clamp(float(1).sub(exp(airDepth.negate())).mul(float(rate)), 0, ceil);
+        // THE SEA'S OWN AIR FROM ABOVE (SEA_AIR, 2026-11-21): seen from the climb, near and away
+        // from the sun, the sea takes the land's haze weight and the dome's colour higher up, not
+        // the palest horizon's, so it keeps a value of its own. Plain expressions (no toVar): the
+        // mist branch inlines its own copy. The far band, the grazing rays, the sun's side, the
+        // shore eyes and the Earth's departure keep today's air.
+        const seaOwn = seaAir
+            ? float(1).sub(max(max(
+                smoothstep(float(SEA_AIR.far[0]), float(SEA_AIR.far[1]), d),
+                float(1).sub(smoothstep(float(SEA_AIR.graze[0]), float(SEA_AIR.graze[1]), dirY.negate())),
+            ), smoothstep(
+                float(SEA_AIR.sunSide[0]),
+                float(SEA_AIR.sunSide[1]),
+                dot(normalize(toDir.xz.add(vec2(1e-4, 0))), skySunFlat),
+            )))
+                .mul(smoothstep(
+                    float(SEA_AIR.eyeAbove[0]),
+                    float(SEA_AIR.eyeAbove[1]),
+                    cameraPosition.y.sub(ODYSSEY_SEA_LEVEL),
+                ))
+                .mul(float(1).sub(ORBIT_EARTH_SEAM.presence))
+            : null;
+        const airHere = seaOwn ? mix(skyAirAt(toDir), skyColourFor(float(SEA_AIR.up)), seaOwn) : skyAirAt(toDir);
+        const airCol = mix(airHere, skyAirAt(mirroredAir), lookDown);
+        const airW = seaOwn
+            ? clamp(
+                float(1).sub(exp(airDepth.negate())).mul(mix(float(rate), float(AERIAL_RATE_LAND), seaOwn)),
+                0,
+                mix(float(ceil), float(AERIAL_CEIL_LAND), seaOwn),
+            )
+            : clamp(float(1).sub(exp(airDepth.negate())).mul(float(rate)), 0, ceil);
         const airBase = mix(lit, airCol, airW);
         // VALLEY MIST (item 7) — height haze for LAND seen from the climb. Aerial perspective
         // here is a function of range only, so from 600 u up the forest at the massif's feet
@@ -2019,7 +2082,9 @@ export function createOdysseyWorld({
                     cameraPosition.y,
                 )))
                 // (`uMist.y`: late in the day it may veil a little more than at noon.)
-                .mul(uMist.y.mul(GROUND_MIST.gain * gmStrength));
+                .mul(uMist.y.mul(GROUND_MIST.gain).mul(seaOwn
+                    ? mix(float(gmStrength), float(SEA_AIR.mistAbove), seaOwn)
+                    : float(gmStrength)));
             const gmSun = texture(sunVisTex, gmUv).level(0).r;
             const gmGlow = max(dot(toDir, uSunDir), 0).pow(6).mul(GROUND_MIST.forward);
             const gmCol = mix(
@@ -2039,7 +2104,7 @@ export function createOdysseyWorld({
             // removing the steam veil exposed a frame with 97.5% of its pixels in ONE luma band.
             // 0.995 keeps a floor of the fragment's own colour so the far field converges without
             // ever fully degenerating to the plate.
-            const wRGBBase = clamp(float(1).sub(exp(d.mul(vec3(-0.0160, -0.0082, -0.0046)))), 0, 0.995);
+            const wRGBBase = clamp(float(1).sub(exp(d.mul(vec3(...OCEAN_EXTINCTION).negate()))), 0, 0.995);
             const wRGB = hazeFloor ? max(wRGBBase, vec3(hazeFloor)) : wRGBBase;
             // The up-lift is a DOWNWELLING cone (pow-concentrated overhead), and grazing rays
             // converge to the DEEP plate: from 100+ u down the whole up-hemisphere is the water
@@ -2065,7 +2130,8 @@ export function createOdysseyWorld({
             // breach sat a 34-luma step below the daylight frame above it (2->3 seam gate).
             const convergePlate = mix(
                 mix(uWaterMid, deepIndigo, uEyeDepth),
-                uWaterLum.mul(1.25),
+                // (1.25 -> 0.90, 2026-11-21: the window is the light; the water round it glows less.)
+                uWaterLum.mul(0.90),
                 float(1).sub(smoothstep(float(0.0), float(0.18), uEyeDepth)).mul(0.8),
             );
             const bandedDir = mix(banded, convergePlate, grazing);
@@ -2456,11 +2522,30 @@ export function createOdysseyWorld({
         // the grass palette by 38% moved that plain's screen luma by 1.6% — it was barely grass.
         // 11 u of height on this shore is a beach a person could walk across; the swing stays
         // under the band width, per the dissolve law.
-        const wSandShore = float(1).sub(smoothstep(
-            float(ODYSSEY_SEA_LEVEL - 2),
-            float(ODYSSEY_SEA_LEVEL + 11),
-            height.add(edgeBreak.mul(4)),
-        ));
+        // A DECIDED BEACH (SEA_BEACH, 2026-11-21 sea audit, item 9): the 13 u cross-fade above
+        // ran grass strokes down to the water and put the whole beach half-way to turf. Now pure
+        // sand from the water up to a lobed top 2.6-6.7 u over the sea, turf above it, the edge as
+        // soft as the pixel's height footprint (root terms only: no derivative in a branch).
+        const beachTanSlope = sqrt(max(float(1).sub(baseNormal.y.mul(baseNormal.y)), float(0)))
+            .div(max(baseNormal.y, float(0.05)));
+        const heightPx = footprint.mul(beachTanSlope).toVar();
+        const beachNoise = Fn(() => {
+            const o = vec2(0, 1).toVar();
+            If(height.greaterThan(ODYSSEY_SEA_LEVEL - 6).and(height.lessThan(ODYSSEY_SEA_LEVEL + 9)), () => {
+                o.assign(vec2(
+                    noise2(positionWorld.xz.div(float(SEA_BEACH.topCell)).add(vec2(6.1, 2.7))).sub(0.5)
+                        .mul(2 * SEA_BEACH.topWobble),
+                    noise2(positionWorld.xz.div(float(SEA_BEACH.toneCell)).add(vec2(3.3, 8.1))).sub(0.5)
+                        .mul(2 * SEA_BEACH.tone)
+                        .add(1),
+                ));
+            });
+            return o;
+        })().toVar();
+        const beachTop = float(ODYSSEY_SEA_LEVEL + SEA_BEACH.top).add(beachNoise.x)
+            .add(edgeBreak.mul(SEA_BEACH.topBreak).mul(detailMelt));
+        const beachEdge = clamp(heightPx.mul(1.5), SEA_BEACH.topEdge[0], SEA_BEACH.topEdge[1]);
+        const wSandShore = float(1).sub(smoothstep(beachTop.sub(beachEdge), beachTop.add(beachEdge), height));
         /**
          * THE NORTH BEACH (2026-11-02): the bay of `odysseyNorthBeachAt`, in its own frame (`u`
          * along the chord, `s` inland of the waterline). Sand from the water up through the
@@ -2513,6 +2598,11 @@ export function createOdysseyWorld({
         const tarnD = fTarn.b.div(drawnScale).toVar();
         const tarnNear = float(1).sub(smoothstep(float(TARN_SHORE.near[0]), float(TARN_SHORE.near[1]), tarnD))
             .mul(drawnIn)
+            .toVar();
+        // The sea's own beach (SEA_BEACH): not the north beach's bay, not the tarn's or the lake's
+        // shore, and the shelf only down to a few units under the water.
+        const seaBeachIn = float(1).sub(tarnNear).mul(float(1).sub(nbBelt))
+            .mul(smoothstep(float(ODYSSEY_SEA_LEVEL - 6), float(ODYSSEY_SEA_LEVEL - 3), height))
             .toVar();
         // Which stretches of shore are beach (1) and which are turf down to the water (0): one
         // low noise, split short, so a stretch is one or the other.
@@ -2800,6 +2890,28 @@ export function createOdysseyWorld({
         const kRock = wRockCrisp.mul(float(1).sub(kSnow)).toVar();
         const kSand = wSand.mul(float(1).sub(wRockCrisp)).mul(float(1).sub(kSnow)).toVar();
         const kGrass = clamp(float(1).sub(kSnow).sub(kRock).sub(kSand), 0, 1).toVar();
+        // THE WET SAND (SEA_WET, 2026-11-21): x the sand the sea keeps damp (up to a wandering top
+        // ~1.6 u over the water), y the thin film the backwash leaves (on the run-up's memory: it
+        // recedes ~3x slower than the water), z the depth of the live water over it.
+        const wetField = Fn(() => {
+            const o = vec3(0).toVar();
+            If(height.lessThan(ODYSSEY_SEA_LEVEL + 3.0).and(seaBeachIn.greaterThan(0.001)), () => {
+                const f = swashPhase(positionWorld.xz).toVar();
+                const live = float(ODYSSEY_SEA_LEVEL + SWASH_BASE).add(smoothstep(float(0.0), float(0.32), f)
+                    .mul(float(1).sub(smoothstep(float(0.32), float(1.0), f))).mul(SWASH_RUN));
+                const mem01 = swashMemory01(f).toVar();
+                const memY = float(ODYSSEY_SEA_LEVEL + SWASH_BASE).add(mem01.mul(SWASH_RUN));
+                const rag = noise2(positionWorld.xz.div(float(SEA_WET.cells[0])).add(vec2(2.3, 9.1))).sub(0.5).mul(1.2)
+                    .add(noise2(positionWorld.xz.div(float(SEA_WET.cells[1])).add(vec2(7.7, 0.4))).sub(0.5).mul(0.8));
+                const top = float(ODYSSEY_SEA_LEVEL + SEA_WET.top).add(rag.mul(SEA_WET.wobble)).add(mem01.mul(SEA_WET.breathe));
+                const e = clamp(heightPx.mul(0.9), SEA_WET.edge[0], SEA_WET.edge[1]);
+                const damp = float(1).sub(smoothstep(top.sub(e), top.add(e), height));
+                const film = float(1).sub(smoothstep(memY.sub(0.08), memY.add(0.10), height));
+                const under = clamp(live.sub(height), 0, 3);
+                o.assign(vec3(damp.mul(kSand).mul(seaBeachIn), film.mul(kSand).mul(seaBeachIn), under.mul(seaBeachIn)));
+            });
+            return o;
+        })().toVar('wetField');
 
         /**
          * MOISTURE picks the point on each material's two-pole axis. The baked field carries
@@ -2866,12 +2978,23 @@ export function createOdysseyWorld({
         // stands in the turning shade, and whether its light is already the afternoon's.
         const gTurn = dayTurnOf(positionWorld.xz).toVar();
         const grassPole = mix(poles('grass').mul(meadowTint), vec3(...NORTH_BEACH_PAINT.grass), nbBelt.mul(nbDune));
+        // The sea's beach is pale dry sand (SEA_BEACH.dry) with a broad tonal swell, eased back
+        // toward the palette's sand from afar so the coast seen from the climb has no pale outline.
+        const beachSand = mix(
+            vec3(...SEA_BEACH.dry).mul(beachNoise.y),
+            vec3(...ODYSSEY_GROUND_PALETTE.sand.dry),
+            smoothstep(float(6), float(24), footprint).mul(SEA_BEACH.farKeep),
+        );
         const sandPole = mix(
             mix(
-                poles('sand'),
-                vec3(...NORTH_BEACH_PAINT.pale).mul(mix(float(1), float(0.86), dryness.oneMinus())),
-                nbBelt.mul(NORTH_BEACH_PAINT.paleMix),
-            ).mul(mix(float(1), nbTufts.y, nbBelt)),
+                mix(
+                    poles('sand'),
+                    vec3(...NORTH_BEACH_PAINT.pale).mul(mix(float(1), float(0.86), dryness.oneMinus())),
+                    nbBelt.mul(NORTH_BEACH_PAINT.paleMix),
+                ).mul(mix(float(1), nbTufts.y, nbBelt)),
+                beachSand,
+                seaBeachIn,
+            ),
             // By the tarn the "sand" is its gravel (TARN_SHORE.gravel).
             vec3(...TARN_SHORE.gravel),
             tarnNear,
@@ -2911,7 +3034,8 @@ export function createOdysseyWorld({
             .add(tooth.mul(kSnow));
         const toothAmt = float(GROUND_TOOTH.grass).mul(kGrass)
             .add(float(GROUND_TOOTH.rock).mul(kRock))
-            .add(float(GROUND_TOOTH.sand).mul(kSand))
+            .add(mix(float(GROUND_TOOTH.sand), float(SEA_BEACH.tooth), seaBeachIn)
+                .mul(float(1).sub(wetField.x.mul(1 - SEA_WET.toothKeep))).mul(kSand))
             .add(float(GROUND_TOOTH.snow).mul(kSnow));
         albedo = albedo.mul(mix(float(1), toothMat, detailMelt.mul(toothAmt)));
 
@@ -2961,14 +3085,29 @@ export function createOdysseyWorld({
             .mul(FOREST_SHADE_PLATE.colourScale * FOREST_FAR_TONE);
         albedo = mix(albedo, canopyMean, clamp(farForest.mul(1.6), 0, 1));
 
+        // THE WET SAND'S ALBEDO (SEA_WET): darker where the sea keeps it damp, a little more under
+        // the backwash's film, and the first units of water over it taking red first (from above;
+        // under water the haze owns it). Replaces the old 1 u matte strip.
+        const albedoBeforeWet = albedo;
+        albedo = Fn(() => {
+            const a = albedoBeforeWet.toVar();
+            If(wetField.x.add(wetField.z).greaterThan(0.001), () => {
+                a.assign(a
+                    .mul(mix(vec3(1), vec3(...SEA_WET.dark), wetField.x))
+                    .mul(mix(float(1), float(SEA_WET.filmDark), wetField.y))
+                    .mul(mix(
+                        vec3(1),
+                        exp(vec3(...SEA_WET.absorb).negate().mul(min(wetField.z, float(2)))),
+                        float(1).sub(smoothstep(float(2), float(3), wetField.z)).mul(float(1).sub(uSubmerged)),
+                    )));
+            });
+            return a;
+        })();
         const SHORE_TOP = ODYSSEY_SEA_LEVEL + 1.2;
         const albedoInland = albedo;
         albedo = Fn(() => {
             const a = albedoInland.toVar();
             If(height.lessThan(SHORE_TOP), () => {
-                const wetReach = float(ODYSSEY_SEA_LEVEL + SWASH_BASE + SWASH_RUN + 0.22);
-                const wetSand = smoothstep(wetReach.add(0.30), wetReach, height).mul(kSand);
-                a.assign(a.mul(mix(vec3(1), vec3(0.70, 0.66, 0.66), wetSand.mul(0.85))));
                 // THE SEABED (item 4). Everything under the shelf is weighted "sand", so the ocean
                 // floor wore the BEACH palette — warm khaki under a blue column, which the water's
                 // red-first extinction turned into grey murk. Below a few metres it leans to a cool
@@ -3133,14 +3272,39 @@ export function createOdysseyWorld({
                     .mul(smoothstep(sin(uTime.mul(0.7)).mul(0.04).add(0.52), float(0.80), causticWeb))
                     // Projected surface light cannot paint a cliff wall or the underside of a ledge.
                     .mul(clamp(normal.y, 0, 1));
-                // The backwash sheen: wet sand just above the LIVE waterline mirrors a little sky,
-                // riding the same `swashRise` clock as the water's shoreline vertices.
-                const swashHere = float(ODYSSEY_SEA_LEVEL).add(swashRise(positionWorld.xz));
-                const wetGlisten = smoothstep(swashHere.add(0.55), swashHere.add(0.04), height)
-                    .mul(smoothstep(swashHere.sub(0.10), swashHere.add(0.04), height))
-                    .mul(kSand);
-                c.assign(vec3(0.55, 0.85, 0.90).mul(caustic).mul(sunVis.mul(0.7).add(0.3)).mul(0.5)
-                    .add(mix(uSkyHorizon, uSkyZenith, float(0.35)).mul(wetGlisten).mul(0.12)));
+                c.assign(vec3(0.55, 0.85, 0.90).mul(caustic).mul(sunVis.mul(0.7).add(0.3)).mul(0.5));
+            });
+            return c;
+        })();
+        // THE WET SAND'S SHEEN (SEA_WET, 2026-11-21; replaces the constant glisten strip): wet sand
+        // is a weak mirror, so it takes the sky by a Fresnel share (more under the backwash's film),
+        // and on High the reflected sky itself and a narrow lobe of the sun's glare. Only where
+        // the sand is out of the water (the sea's film draws the rest).
+        const wetSheen = Fn(() => {
+            const c = vec3(0).toVar();
+            If(wetField.x.add(wetField.y).greaterThan(0.002), () => {
+                const wN = normalize(mix(baseNormal, normal, 0.3));
+                const wV = normalize(cameraPosition.sub(positionWorld));
+                const wFb = float(1).sub(clamp(dot(wN, wV), 0, 1));
+                const wFb2 = wFb.mul(wFb);
+                const wFres = wFb2.mul(wFb2).mul(wFb).mul(0.98).add(0.02);
+                const exposed = float(1).sub(smoothstep(float(0.0), float(0.25), wetField.z));
+                const gloss = mix(float(SEA_WET.gloss[0]), float(SEA_WET.gloss[1]), wetField.y).add(wFres.mul(0.6))
+                    .mul(max(wetField.x, wetField.y)).mul(exposed);
+                if (q.waterReflections) {
+                    const wR = reflect(wV.negate(), wN);
+                    const wHv = normalize(ODYSSEY_EVENING_U.sunDir.add(wV).add(vec3(0, 1e-4, 0)));
+                    const wNh = clamp(dot(wN, wHv), 0, 1);
+                    const lobe = smoothstep(float(0.985), float(0.9985), wNh).mul(SEA_WET.glare[0])
+                        .add(smoothstep(float(0.94), float(0.985), wNh).mul(SEA_WET.glare[1]));
+                    c.assign(skyAirAt(vec3(wR.x, max(wR.y, float(0.02)), wR.z), false).mul(gloss)
+                        .add(landSunOf(gTurn).mul(lobe)
+                            .mul(wetField.y.add(wetField.x.mul(0.3)))
+                            .mul(sunVis.mul(treeSun).mul(exposed))
+                            .mul(float(1).sub(smoothstep(float(1), float(4), footprint)))));
+                } else {
+                    c.assign(mix(uSkyHorizon, uSkyZenith, float(0.45)).mul(gloss));
+                }
             });
             return c;
         })();
@@ -3170,7 +3334,8 @@ export function createOdysseyWorld({
             ? mix(
                 float(1),
                 cloudShadowLight(positionWorld.xz, gTurn),
-                smoothstep(float(ODYSSEY_SEA_LEVEL + 1), float(ODYSSEY_SEA_LEVEL + 6), height),
+                // (From SEA + 0.2, 2026-11-21: the dry beach shades with the land.)
+                smoothstep(float(ODYSSEY_SEA_LEVEL + 0.2), float(ODYSSEY_SEA_LEVEL + 1.6), height),
             )
             : float(1);
         // Lambert, S-shaped. The shoulders group the terminator into masses (the painted law);
@@ -3264,6 +3429,7 @@ export function createOdysseyWorld({
         // measured 0.27-0.32 band, and dimmed sunlit hollows that the sun plainly reaches.
         groundColour = surface.mul(lightCol).mul(value).mul(cavity)
             .add(shoreLight)
+            .add(wetSheen)
             // ALPENGLOW: high snow takes a warm kiss, riding the same kSnow the albedo uses so it
             // can never bleed onto rock or meadow, and multiplied by the baked sun visibility so
             // a shadowed crown stays cold. ⚠️ ON THE TURN OF THE FORM ONLY (item 6): it rode
@@ -3523,17 +3689,6 @@ export function createOdysseyWorld({
         a: texture(detailTex, xz.mul(0.021).add(vec2(uTime.mul(0.010), uTime.mul(-0.014)))),
         b: texture(detailTex, xz.mul(0.047).add(vec2(uTime.mul(-0.018), uTime.mul(0.008)))),
     });
-    /**
-     * Twinkling glitter where the two ripple fields coincide, toward grazing, faded with range, and
-     * only round the sun's road (`R` the mirrored ray): glitter is the sun's, sparse and slow, never
-     * a field of flecks over the whole water (2026-11-20; the owner's rule for water, gotcha #1313).
-     */
-    const waterSparkle = (rip, fb, dist, R) => smoothstep(float(0.70), float(0.80), rip.b.b)
-        .mul(smoothstep(float(0.78), float(0.96), clamp(dot(R, uSunDir), 0, 1)))
-        .mul(smoothstep(float(0.62), float(0.74), rip.a.b))
-        .mul(fb)
-        .mul(clamp(float(1).sub(dist.div(420)), 0, 1))
-        .mul(0.34);
     // ── WIND ON THE WATER (water pass step 4) ──────────────────────────────────────────────
     // The water rides the same wind as the land (`gustFront`, ONE WIND: the meadow lightens and the
     // crowns lean as a front passes): where the front is up, drifting patches of rougher water (a
@@ -3559,11 +3714,16 @@ export function createOdysseyWorld({
     const uWaterCloudCount = uniform(0);
     const waterCloudTop = mix(uSunColour, vec3(1.0, 1.0, 1.0), float(0.55)).mul(1.02);
     const waterCloudBase = mix(skyColourFor(float(0.30)), vec3(0.86, 0.88, 0.93), float(0.5));
-    const waterCloudsAlong = (O, R, skyIn) => {
+    // `gloss` (the sea only, SEA_GLOSS): { v, h, on } the reflection's lobe along the view's vertical
+    // and across it (slope spreads the mirrored ray by 2 sigma up and down, by 2 sigma sin(dip)
+    // sideways), and whether it is drawn here; null builds the mirror as before (the tarn, the lake).
+    const waterCloudsAlong = (O, R, skyIn, gloss = null) => {
         if (!q.waterReflections) return skyIn;
         const sky = vec3(skyIn).toVar();
         const col = vec3(sky).toVar();
         const rise = smoothstep(float(0.0), float(0.03), R.y).toVar();
+        const eH = gloss ? normalize(vec3(R.z.add(1e-5), 0, R.x.negate())).toVar() : null;
+        const eV = gloss ? cross(eH, R).toVar() : null;
         Loop({
             start: int(0), end: int(uWaterCloudCount), type: 'int', condition: '<', name: 'wcl',
         }, ({ wcl }) => {
@@ -3587,11 +3747,46 @@ export function createOdysseyWorld({
                 .add(sin(qc.z.mul(5.3).add(r2.y.mul(1.7))))
                 .add(sin(qc.x.add(qc.z).mul(4.3).add(r2.y.mul(0.6))))
                 .mul(0.045);
-            const cov = float(1).sub(smoothstep(float(0.66), float(1.0), length(qc).add(lobes)))
-                .mul(smoothstep(r2.x, r2.x.add(0.18), qc.y))
-                .mul(tslStep(float(0), tStar))
-                .mul(rise)
-                .toVar();
+            let cov;
+            if (gloss) {
+                // THE GLOSS (SEA_GLOSS): the disc convolved with the lost slope's lobe, in the mass's
+                // unit frame. Its outline grows along the view's vertical and across it, its peak
+                // falls, its lobes and its flat base blur. At no gloss it is the mirror's own disc.
+                const rho2 = dot(qc, qc).toVar();
+                const keep = float(1).toVar();
+                const baseSoft = float(0).toVar();
+                If(gloss.on, () => {
+                    const toUnit = (e) => vec3(
+                        e.x.mul(r0.w).add(e.z.mul(r1.w)),
+                        e.y,
+                        e.z.mul(r0.w).sub(e.x.mul(r1.w)),
+                    ).mul(r1.xyz);
+                    const span = max(tStar, float(0));
+                    const ldn = normalize(ld);
+                    const flatOf = (gv) => gv.sub(ldn.mul(dot(gv, ldn)));
+                    const gV = flatOf(toUnit(eV).mul(span.mul(gloss.v))).toVar();
+                    const gH = flatOf(toUnit(eH).mul(span.mul(gloss.h))).toVar();
+                    const nV = dot(gV, gV).add(1).toVar();
+                    const nH = dot(gH, gH).add(1).toVar();
+                    const qv = dot(qc, gV);
+                    const qh = dot(qc, gH);
+                    rho2.assign(max(rho2.sub(qv.mul(qv).div(nV)).sub(qh.mul(qh).div(nH)), float(0)));
+                    keep.assign(exp2(log2(nV.mul(nH)).mul(-0.5 * SEA_GLOSS.keepPow)));
+                    baseSoft.assign(abs(gV.y));
+                });
+                cov = float(1).sub(smoothstep(float(0.66), float(1.0), sqrt(rho2).add(lobes.mul(keep))))
+                    .mul(smoothstep(r2.x.sub(baseSoft), r2.x.add(0.18).add(baseSoft), qc.y))
+                    .mul(tslStep(float(0), tStar))
+                    .mul(rise)
+                    .mul(keep)
+                    .toVar();
+            } else {
+                cov = float(1).sub(smoothstep(float(0.66), float(1.0), length(qc).add(lobes)))
+                    .mul(smoothstep(r2.x, r2.x.add(0.18), qc.y))
+                    .mul(tslStep(float(0), tStar))
+                    .mul(rise)
+                    .toVar();
+            }
             If(cov.greaterThan(0.002), () => {
                 const up = smoothstep(r2.x, float(0.75), qc.y);
                 const lit = mix(waterCloudBase, waterCloudTop, up);
@@ -3624,14 +3819,18 @@ export function createOdysseyWorld({
     // climbed over every summit. Returns the hit distance (or the closest pass) and how much of
     // the land the ray takes.
     const waterPlateUv = (xz) => xz.div(float(RELIEF_EXTENT)).add(0.5);
+    // `blur` (a node, the sea only): return a SOFT share, smoothstep(-blur, blur) of the most the
+    // land rises over the ray (radians, its gap over the distance run), marching on past the first
+    // hit until the share is whole; null builds the hit test as before (the tarn, the window).
     const waterMarchLand = (P, R, {
-        heightAt, steps, firstStep, stepGrowth, soft, ceiling = null,
+        heightAt, steps, firstStep, stepGrowth, soft, ceiling = null, blur = null,
     }) => {
         const tHit = float(-1).toVar();
         const tPrev = float(0).toVar();
         const tCur = float(firstStep).toVar();
         const gapMin = float(1e6).toVar();
         const tClose = float(firstStep).toVar();
+        const rise = blur ? float(-1).toVar() : null;
         Loop({
             start: int(0), end: int(steps), type: 'int', condition: '<',
         }, () => {
@@ -3646,23 +3845,38 @@ export function createOdysseyWorld({
                 gapMin.assign(gap);
                 tClose.assign(tCur);
             });
-            If(gap.lessThan(0), () => {
-                // One halving between the last two steps.
-                const tMid = tPrev.add(tCur).mul(0.5).toVar();
-                const qm = P.add(R.mul(tMid)).toVar();
-                tHit.assign(select(heightAt(qm.xz).greaterThan(qm.y), tMid, tCur));
-                Break();
-            });
+            if (blur) {
+                rise.assign(max(rise, gap.negate().div(tCur)));
+                If(gap.lessThan(0).and(tHit.lessThan(0)), () => {
+                    // The secant between the last two steps: the reflected shore stops stepping.
+                    const gPrev = P.add(R.mul(tPrev)).toVar();
+                    const gapPrev = max(gPrev.y.sub(heightAt(gPrev.xz)), float(0));
+                    tHit.assign(mix(tPrev, tCur, gapPrev.div(max(gapPrev.sub(gap), float(1e-3)))));
+                });
+                If(rise.greaterThan(blur), () => {
+                    Break();
+                });
+            } else {
+                If(gap.lessThan(0), () => {
+                    // One halving between the last two steps.
+                    const tMid = tPrev.add(tCur).mul(0.5).toVar();
+                    const qm = P.add(R.mul(tMid)).toVar();
+                    tHit.assign(select(heightAt(qm.xz).greaterThan(qm.y), tMid, tCur));
+                    Break();
+                });
+            }
             tPrev.assign(tCur);
             tCur.assign(tCur.mul(stepGrowth).add(firstStep));
         });
         const hit = tHit.greaterThan(0);
         const tLand = select(hit, tHit, tClose).toVar();
-        const landW = select(
-            hit,
-            float(1),
-            float(1).sub(smoothstep(float(0), max(float(soft), tClose.mul(0.02)), gapMin)),
-        ).toVar();
+        const landW = blur
+            ? smoothstep(blur.negate(), blur, rise).toVar()
+            : select(
+                hit,
+                float(1),
+                float(1).sub(smoothstep(float(0), max(float(soft), tClose.mul(0.02)), gapMin)),
+            ).toVar();
         return { tLand, landW };
     };
     /**
@@ -3678,10 +3892,15 @@ export function createOdysseyWorld({
             H.xz.sub(vec2(FOREST_SHADE_PLATE.x, FOREST_SHADE_PLATE.z)).div(FOREST_SHADE_PLATE.extent).add(0.5),
         ).level(0).g;
         const meadow = mix(vec3(...ODYSSEY_GROUND_PALETTE.grass.damp), vec3(0.075, 0.13, 0.05), cover);
+        // (The sea's beach as the ground paints it, SEA_BEACH and SEA_WET, 2026-11-21.)
         const beach = mix(
-            vec3(...ODYSSEY_GROUND_PALETTE.sand.dry),
+            mix(
+                vec3(...SEA_BEACH.dry).mul(vec3(...SEA_WET.dark)),
+                vec3(...SEA_BEACH.dry),
+                smoothstep(float(ODYSSEY_SEA_LEVEL + 1.2), float(ODYSSEY_SEA_LEVEL + 2.0), H.y),
+            ),
             meadow,
-            smoothstep(float(ODYSSEY_SEA_LEVEL + 2), float(ODYSSEY_SEA_LEVEL + 9), H.y),
+            smoothstep(float(ODYSSEY_SEA_LEVEL + 3.5), float(ODYSSEY_SEA_LEVEL + 5.5), H.y),
         );
         const rock = vec3(...ODYSSEY_GROUND_PALETTE.rock.dry);
         const snow = vec3(...ODYSSEY_GROUND_PALETTE.snow.dry);
@@ -4302,6 +4521,8 @@ export function createOdysseyWorld({
     // wave clear of the 13 m geometric floor while roughly doubling the crest count in view.
     /** Summed amplitude — the normaliser the whitecap threshold is expressed against. */
     const WAVE_AMP_SUM = 2.36;
+    /** The wave field's RMS slope (~0.168): what the sea's land mirror softens by (SEA_MIRROR.blur). */
+    const WAVE_RMS_SLOPE = Math.sqrt(WAVES.reduce((s, wv) => s + ((((2 * Math.PI * wv.amp) / wv.len) ** 2) / 2), 0));
     // Shallow-water taper: waves must not saw through the beach. The bed comes from the same
     // macro bake the fragment stage uses; a vertex-stage fetch REQUIRES .level(0) (WGSL forbids
     // implicit-derivative sampling outside the fragment stage — this file's own header note).
@@ -4453,13 +4674,12 @@ export function createOdysseyWorld({
     const wFragDist = length(positionWorld.xz.sub(cameraPosition.xz)).toVar();
     const wFragFade = clamp(float(1).sub(wFragDist.div(520)), 0, 1).mul(vSwellFade).toVar();
     const wFrag = waveField(positionWorld.xz);
-    const waveH = wFrag.h.mul(wFragFade).toVar();
     const waveSlope = vec2(wFrag.dx, wFrag.dz).mul(wFragFade).toVar();
     // The wind's patches roughen the chop (water pass step 4): calm lanes hold the mirror, gusts
     // break it and glitter.
     const seaGust = waterGust(positionWorld.xz).toVar();
-    const wSlope = waveSlope
-        .add(ripple.mul(vSwellFade).mul(mix(float(0.70), float(1.45), seaGust)).mul(uSeaChop)).toVar();
+    const rippleSlope = ripple.mul(vSwellFade).mul(mix(float(0.70), float(1.45), seaGust)).mul(uSeaChop).toVar();
+    const wSlope = waveSlope.add(rippleSlope).toVar();
     const wN = normalize(vec3(wSlope.x.negate(), 1, wSlope.y.negate())).toVar();
     const viewDir = normalize(cameraPosition.sub(positionWorld));
     const spec = waterSunCore(wN, viewDir);
@@ -4501,20 +4721,8 @@ export function createOdysseyWorld({
         // applied (same clock, same gate), so the foam front sits exactly on the drawn waterline.
         depthLive.assign(depth
             .add(swashRise(positionWorld.xz).mul(float(1).sub(smoothstep(float(1.0), float(6.0), depth)))));
-        const ringCoord = depthLive.div(3.2).add(uTime.mul(0.26));
-        const ringF = fract(ringCoord);
-        const ringLine = smoothstep(float(0.0), float(0.06), ringF)
-            .mul(float(1).sub(smoothstep(float(0.06), float(0.30), ringF)));
-        const ringAA = clamp(float(1).sub(abs(dFdx(ringCoord)).add(abs(dFdy(ringCoord))).mul(0.9)), 0, 1);
-        const ringBand = smoothstep(float(0.05), float(0.45), depthLive)
-            .mul(float(1).sub(smoothstep(float(6.0), float(10.0), depthLive)));
-        const ringBreak = smoothstep(float(0.28), float(0.52), rippleTexA.b.add(ringF.mul(0.12)));
-        const rings = mix(float(0.08), ringLine.mul(ringBreak), ringAA)
-            .mul(ringBand)
-            .mul(float(1).sub(clamp(depthLive.div(10), 0, 1)).mul(0.55).add(0.45));
-        const swashFront = smoothstep(float(-0.03), float(0.10), depthLive)
-            .mul(float(1).sub(smoothstep(float(0.18), float(0.75), depthLive)))
-            .mul(mix(float(0.6), float(1), smoothstep(float(0.30), float(0.60), rippleTexB.b)));
+        // (The iso-depth rings and the 0.75 m swash front are gone, 2026-11-21: on this steep bed
+        // they were hairlines and a pencil rim. The surf below is measured across the water.)
         // THE SURF LINE FROM AFAR (2026-11-02, "a soft white line of foam"). The front lives in
         // the last 0.75 m of depth and the rings collapse to their faint mean with range, so a
         // coast seen from the climb had no white line at all. Once a pixel spans more than ~0.3 m
@@ -4538,7 +4746,71 @@ export function createOdysseyWorld({
             .mul(float(1).sub(smoothstep(float(SEA_SURF.thinPx[0]), float(SEA_SURF.thinPx[1]), depthPx)
                 .mul(1 - SEA_SURF.thinKeep)))
             .mul(SEA_SURF.gain);
-        shoreFoam.assign(clamp(max(rings.mul(0.80).add(swashFront.mul(0.90)), surfLine), 0, 1));
+        // THE SURF, BREAKING (SEA_SURF_BREAK, 2026-11-21 sea audit, item 16): across the water, on
+        // the long swell's own clock. The bed's slope and the way out to sea come from texels
+        // already fetched; `xs` is the way (u) from the still waterline out to this water.
+        const SB = SEA_SURF_BREAK;
+        const sW0 = WAVES[0];
+        const sK1 = (Math.PI * 2) / sW0.len;
+        const sKS = sW0.speed / SB.boreSpeed;
+        const bedRel = texture(heightTex, wUv).level(0);
+        const bedGrad = vec2(bedRel.g.mul(bedTex.g).add(bedTex.b), bedRel.b.mul(bedTex.g).add(bedTex.a)).toVar();
+        const bedSlope = max(length(bedGrad), float(SB.slopeMin)).toVar();
+        const nSea = bedGrad.negate().div(bedSlope).toVar();
+        const xs = min(depth.div(bedSlope), float(200)).toVar();
+        const xb = clamp(float(SB.breakDepth).div(bedSlope), SB.breakX[0], SB.breakX[1]).toVar();
+        // Seaward of the break: the swell's crest itself. Inside it: shore-parallel, slowed to the
+        // bores' speed (the refraction comes by construction). Whole numbers on the crests.
+        const surfC = dot(positionWorld.xz, vec2(sW0.dirX, sW0.dirZ)).mul(sK1)
+            .add(uTime.mul(sW0.speed))
+            .add(float(sKS).sub(dot(nSea, vec2(sW0.dirX, sW0.dirZ)).mul(sK1)).mul(min(xs.sub(xb), float(0))))
+            .sub(Math.PI / 2)
+            .div(Math.PI * 2)
+            .toVar();
+        const surfCPx = fwidth(surfC).toVar();
+        // Strongest at the points, calmer in the bays (the relief here: above 0 a point).
+        const surfStr = mix(float(SB.exposure), float(1), smoothstep(float(-0.3), float(0.7), dot(nSea, vec2(sW0.dirX, sW0.dirZ))))
+            .mul(mix(float(0.75), float(1.2), smoothstep(float(-4), float(5), bedRel.r.mul(bedTex.g))))
+            .mul(SB.gain)
+            .toVar();
+        const surfNear = float(1).sub(smoothstep(float(0.3), float(1.2), depthPx)).toVar();
+        const surfLaceB = rippleTexB.b.toVar('wSurfLaceB');
+        const bores = float(0).toVar('wSurfBores');
+        // (Per pixel: only explicit-LOD reads and ALU in here.)
+        If(xs.lessThan(SB.reach).and(surfNear.greaterThan(0.001)), () => {
+            const u = fract(surfC).toVar();
+            const seed = fract(floor(surfC).mul(vec2(0.618, 0.414)));
+            // Each bore its own world-anchored field: the foam it leaves stays where it was left.
+            const boreTex = texture(detailTex, positionWorld.xz.mul(0.022).add(seed)).level(0);
+            const seg = smoothstep(float(0.30), float(0.48), boreTex.b).toVar();
+            const laceN = surfLaceB.mul(0.6).add(clamp(boreTex.a.sub(0.42).mul(3.57), 0, 1).mul(0.4)).toVar();
+            const age = clamp(xb.sub(xs).div(xb), 0, 1);
+            const surfZone = float(1).sub(smoothstep(xb.sub(1.5), xb.add(2), xs)).mul(smoothstep(float(-0.3), float(0.5), xs));
+            const lipW = max(mix(float(SB.lip * 0.35), float(SB.lip), seg), surfCPx.mul(1.5));
+            const lip = float(1).sub(smoothstep(lipW.mul(0.4), lipW, u)).mul(smoothstep(float(0), surfCPx.add(1e-4), u));
+            const tk = clamp(u.div(mix(float(SB.trail[0]), float(SB.trail[1]), age)), 0, 1);
+            const th = mix(float(SB.lace[0]), float(SB.lace[1]), tk);
+            const lace = smoothstep(th, th.add(0.12), laceN);
+            const trail = float(1).sub(smoothstep(float(0.55), float(1), tk));
+            // The crest whitens as it shoals, on the real swell crest.
+            const feather = float(1).sub(smoothstep(xb.add(0.5), xb.add(SB.feather), xs))
+                .mul(float(1).sub(smoothstep(float(0), float(0.035), u)))
+                .mul(smoothstep(float(0), surfCPx.add(1e-4), u))
+                .mul(0.45)
+                .mul(seg);
+            // White water lying along the edge of the live water, about a unit across.
+            const xl = depthLive.div(bedSlope);
+            const edge = float(1).sub(smoothstep(float(0.1), float(1.1), xl))
+                .mul(smoothstep(float(-0.3), float(0.1), xl))
+                .mul(smoothstep(float(0.35), float(0.5), laceN))
+                .mul(0.7);
+            const crisp = surfZone.mul(max(lip.mul(mix(float(0.6), float(1), seg)), trail.mul(lace).mul(0.85))).add(feather);
+            bores.assign(mix(surfZone.mul(0.2), crisp, float(1).sub(smoothstep(float(0.06), float(0.16), surfCPx)))
+                .add(edge)
+                .mul(surfStr)
+                .mul(surfNear));
+        });
+        shoreFoam.assign(clamp(max(bores, surfLine), 0, 1));
     };
     // ── THE REGIME BRANCH (MEASURED, and it pays for the whole painterly package) ────────
     // The cold-machine sweep priced waves 1+2 at +2.36 ms on the deep station — OVER its
@@ -4599,12 +4871,15 @@ export function createOdysseyWorld({
             // shore eye a pixel took a different random tilt of the mip-less ripple every frame,
             // and the far sea crawled. Settled by the pixel's own footprint, the far sea mirrors
             // the swell (and the clouds and the sky plates steadily) instead of noise.
-            const seaFoot = max(length(dFdx(positionWorld.xz)), length(dFdy(positionWorld.xz)));
-            const reflRipple = float(1).sub(max(
+            const seaFoot = max(length(dFdx(positionWorld.xz)), length(dFdy(positionWorld.xz))).toVar('wSeaFoot');
+            // (The settle pinned, 2026-11-21: the far gloss reads it too, SEA_GLOSS.)
+            const seaSettle = max(
                 smoothstep(float(1.5), float(8.0), seaFoot),
                 smoothstep(float(SEA_HORIZON_DOWN[0]), float(SEA_HORIZON_DOWN[1]), viewDir.y)
                     .mul(smoothstep(float(250), float(900), wFragDist)),
-            ).mul(0.95));
+            ).toVar();
+            const reflRipple = float(1).sub(seaSettle.mul(0.95));
+            const seaGloss = seaSettle.mul((WAVE_RMS_SLOPE / Math.SQRT2) * SEA_GLOSS.slopeGain).toVar();
             // FINE CHOP UNDER THE EYE (2026-11-20; gotcha #210): the near sea read as gel, the
             // two ripple fetches a tenth of the swell's slope and nothing finer than ~1 u. A third,
             // finer fetch (~0.33 u cells) is kept only where its cells span ~4 px or more (so it
@@ -4618,11 +4893,24 @@ export function createOdysseyWorld({
                     .mul(mix(float(2.2), float(3.6), seaGust)).mul(chopKeep));
             }
             const chopFacet = clamp(chop.x.mul(SEA_SUN_FLAT[0]).add(chop.y.mul(SEA_SUN_FLAT[1])).mul(-1.6), -0.16, 0.16).add(1).toVar();
-            const reflN = normalize(mix(vec3(waveSlope.x.negate(), 1, waveSlope.y.negate()), wN, reflRipple)
+            // A STEADY NEAR SEA (SEA_SWELL_TILT, 2026-11-21): near the eye the reflection rides only
+            // part of the swell's tilt (the ripple's whole), so the sky's share and the mirrored shore
+            // stop swinging across the foreground once a wave; past the range it is today's normal.
+            const swellTilt = mix(
+                float(SEA_SWELL_TILT.near),
+                float(1),
+                smoothstep(float(SEA_SWELL_TILT.range[0]), float(SEA_SWELL_TILT.range[1]), length(positionWorld.sub(cameraPosition))),
+            );
+            const waveSlopeTop = waveSlope.mul(swellTilt).toVar();
+            const wNTop = normalize(vec3(
+                waveSlopeTop.x.add(wSlope.x.sub(waveSlope.x)).negate(),
+                1,
+                waveSlopeTop.y.add(wSlope.y.sub(waveSlope.y)).negate(),
+            ));
+            const reflN = normalize(mix(vec3(waveSlopeTop.x.negate(), 1, waveSlopeTop.y.negate()), wNTop, reflRipple)
                 .add(vec3(chop.x.negate(), 0, chop.y.negate())));
             // FRESNEL TWO-TONE, then the sun glint over the baked sun visibility. painterly
             // water is not a mirror: the sky arrives as a colour wash, never an image.
-            const fb = float(1).sub(max(dot(wN, viewDir), 0));
             const fres = waterFresnel(reflN, viewDir, 0.62, 0.05).mul(mix(float(1), float(0.78), seaGust));
             const wVis = texture(sunVisTex, wUv).r;
             // THE SKY IN THE REFLECTED DIRECTION, not one constant (`skyColourFor(0.22)` was
@@ -4638,24 +4926,31 @@ export function createOdysseyWorld({
             // mid-distance sea to milk in the first capture. Painted seas hold their blue to the
             // haze line; the horizon dissolve below still owns the far convergence.
             // ...and the clouds above it (water pass step 2).
-            const skyRefl = waterCloudsAlong(positionWorld, reflDir, waterSkyWash(reflDir)).toVar();
+            const skyRefl = waterCloudsAlong(positionWorld, reflDir, waterSkyWash(reflDir), {
+                v: seaGloss.mul(2).toVar(),
+                h: seaGloss.mul(2).mul(clamp(viewDir.y, 0.02, 1)).toVar(),
+                on: seaSettle.greaterThan(0.01),
+            }).toVar();
             // THE WORLD IN THE SEA (water pass step 3): the beach, the hills and the massif stand
             // upside down in the water near the eye. High tier only; past `reach` the sky's.
             const seaMirror = vec3(skyRefl).toVar();
             if (q.waterReflections) {
-                If(wFragDist.lessThan(SEA_MIRROR.reach), () => {
+                // The land ray and its softness, pinned here in uniform control flow: a derivative
+                // first met inside the per-pixel If below is a WebGPU validation error (gotcha #300).
+                // A distant shore is mirrored by a calm normal, a share of the swell and a third of
+                // the ripple; a ray under the horizon meets the next wave (the sky's) and skips.
+                const landSlope = waveSlope.mul(SEA_MIRROR.swell).add(ripple.mul(vSwellFade).mul(0.3));
+                const landDir = reflect(viewDir.negate(), normalize(vec3(landSlope.x.negate(), 1, landSlope.y.negate())))
+                    .toVar('wLandRay');
+                const landBlur = max(
+                    wFragFade.mul(SEA_MIRROR.blur[1] * (1 - SEA_MIRROR.swell) * WAVE_RMS_SLOPE).add(SEA_MIRROR.blur[0]),
+                    fwidth(landDir.y).mul(SEA_MIRROR.blur[2]),
+                ).toVar('wLandBlur');
+                If(wFragDist.lessThan(SEA_MIRROR.reach).and(landDir.y.greaterThan(0)), () => {
                     const seaHeightAt = (xz) => {
                         const m = texture(macroTex, waterPlateUv(xz)).level(0);
                         return m.r.add(texture(heightTex, waterPlateUv(xz)).level(0).r.mul(m.g));
                     };
-                    // A distant shore is mirrored by the swell, not the chop: the fine ripple sends
-                    // neighbouring rays to the shore and to the sky by turns (dark dashes across the
-                    // sea), so the land is marched along a smoother normal, the swell and a third of
-                    // the ripple, and its rays held a little off the water.
-                    const landSlope = waveSlope.add(ripple.mul(vSwellFade).mul(0.3));
-                    const landN = normalize(vec3(landSlope.x.negate(), 1, landSlope.y.negate()));
-                    const landRaw = reflect(viewDir.negate(), landN);
-                    const landDir = normalize(vec3(landRaw.x, max(landRaw.y, float(0.02)), landRaw.z)).toVar();
                     const { tLand, landW } = waterMarchLand(positionWorld, landDir, {
                         heightAt: seaHeightAt,
                         steps: SEA_MIRROR.steps,
@@ -4663,31 +4958,47 @@ export function createOdysseyWorld({
                         stepGrowth: SEA_MIRROR.stepGrowth,
                         soft: SEA_MIRROR.soft,
                         ceiling: SEA_MIRROR.ceiling,
+                        blur: landBlur,
                     });
                     const H = positionWorld.add(landDir.mul(tLand));
                     const near = float(1)
                         .sub(smoothstep(float(SEA_MIRROR.reach * 0.7), float(SEA_MIRROR.reach), wFragDist));
-                    seaMirror.assign(mix(skyRefl, waterLandLit(H, tLand, skyRefl), landW.mul(near).mul(0.8)));
+                    // Fading in off the level, and a hit under the sea is water, not land.
+                    const keep = smoothstep(float(0), max(float(SEA_MIRROR.lift), landBlur), landDir.y)
+                        .mul(smoothstep(float(ODYSSEY_SEA_LEVEL - 0.3), float(ODYSSEY_SEA_LEVEL + 0.6), H.y));
+                    seaMirror.assign(mix(
+                        skyRefl,
+                        waterLandLit(H, tLand, skyRefl),
+                        landW.mul(keep).mul(near).mul(SEA_MIRROR.gain),
+                    ));
                 });
             }
             // JADE WAVE BACKS — the topside twin of the underside's crest SSS. Thin crests
             // transmit light and go jade; troughs sink a step deeper. Driven by the displaced
             // height the triangle actually carries (vSwell), so the colour rides the moving
             // geometry and the sea gains value structure that travels.
-            // ...and only as much as the sun stands behind the wave (2026-11-20): a crest glows by
-            // the light it lets through, so looking away from the sun (the shore orbs) it keeps
-            // two fifths of its jade, and the deep near sea reads cobalt-teal, not milky green.
+            // ...and only as much as the sun stands behind the wave (2026-11-20).
+            // ...and only on the crest TOPS, on the face turned to the eye (SEA_CREST_GLOW, 2026-11-21):
+            // keyed to the whole stacked height, every patch of the near sea swung from deep blue to
+            // jade and back once a wave, the shore orbs' foreground flipping within a second.
             const backlit = smoothstep(float(-0.2), float(0.8), dot(
                 normalize(viewDir.xz.negate().add(vec2(1e-4, 0))),
                 normalize(uSunDir.xz.add(vec2(1e-4, 0))),
             ));
-            const crestGlow = smoothstep(float(0.10), float(1.50), vSwell).mul(vSwellFade)
-                .mul(mix(float(0.40), float(1), backlit));
-            const troughDeep = smoothstep(float(-0.20), float(-1.50), vSwell).mul(vSwellFade);
+            const swellN = vSwell.div(WAVE_AMP_SUM).toVar();
+            const faceToEye = smoothstep(
+                float(SEA_CREST_GLOW.face[0]),
+                float(SEA_CREST_GLOW.face[1]),
+                dot(waveSlope, normalize(viewDir.xz.add(vec2(1e-4, 0)))).negate(),
+            );
+            const crestGlow = smoothstep(float(SEA_CREST_GLOW.top[0]), float(SEA_CREST_GLOW.top[1]), swellN)
+                .mul(faceToEye).mul(backlit).mul(vSwellFade);
+            const troughDeep = smoothstep(float(SEA_TROUGH.window[0]), float(SEA_TROUGH.window[1]), swellN.negate())
+                .mul(vSwellFade);
             const bodyLive = mix(
-                mix(body, body.mul(vec3(0.78, 0.87, 0.94)), troughDeep.mul(0.70)),
+                mix(body, body.mul(vec3(...SEA_TROUGH.tint)), troughDeep),
                 vec3(...WATER_JADE),
-                crestGlow.mul(0.50),
+                crestGlow.mul(SEA_CREST_GLOW.gain),
             );
             // SUNLIT SHALLOWS (2026-10-31, "can we improve the water in the ocean"). Over the sand,
             // a clear sea shows the light its ripples focus on the bed: the underside's caustic
@@ -4714,15 +5025,8 @@ export function createOdysseyWorld({
                 .mul(float(1).sub(fres))
                 .mul(wVis);
             const bodyShoal = bodyLive.add(vec3(1, 0.97, 0.84).mul(shoalLight).mul(0.22));
-            // SUN ROAD: a broad lobe on the reflected ray (the hairline `spec` stays for the
-            // tight core). Act II mostly flies away from the sun, so this is quiet there and
-            // lights only when a camera turns toward it.
-            const road = waterSunRoad(reflDir);
-            // GLITTER: two scrolled value fields that only coincide in small, short-lived
-            // patches, so the sparks TWINKLE as the layers slide past each other. Weighted to
-            // grazing water (where real glints live) and faded with range before they can
-            // alias into shimmer.
-            const sparkle = waterSparkle(seaRipples, fb, wFragDist, reflDir).mul(mix(float(0.55), float(1.7), seaGust));
+            // (The sea's sun road, its sparkle and its core are one term since 2026-11-21: the sun in
+            // a sea of facets, SEA_SUN_GLITTER, added after the horizon dissolve below.)
             // CLOUD SHADOWS ON THE SEA (masterpiece pass, 2026-11-17): the shadows that cross the
             // land stopped at the waterline, so the sea, half of every shore orb's frame, never
             // changed. The same field now lies on the water: under a cloud the body sinks a step
@@ -4730,9 +5034,6 @@ export function createOdysseyWorld({
             // from the sea and on over the beach as one shadow. High tier, as on the land.
             const seaSun = q.cloudShadows ? cloudShadowLight(positionWorld.xz).toVar() : float(1);
             const wl = mix(bodyShoal.mul(chopFacet).mul(mix(float(SEA_CLOUD_SHADE), float(1), seaSun)), seaMirror, fres)
-                // (The core on the settled normal: the root `spec` rides the mip-less ripple and
-                // flickered across the far band; the underside keeps it.)
-                .add(vec3(...WATER_GLINT).mul(waterSunCore(reflN, viewDir).add(road).add(sparkle)).mul(wVis.mul(seaSun).mul(seaSun)))
                 .mul(wVis.mul(0.18).add(0.82))
                 .toVar();
             // WHITECAPS — The Witness reference: opaque flat white with a drawn edge, so
@@ -4741,57 +5042,116 @@ export function createOdysseyWorld({
             // normalised against the real summed amplitude so the threshold means what it
             // says; high-frequency noise breaks the crest lines into separate caps without
             // out-voting them.
-            const crestNorm = clamp(waveH.div(WAVE_AMP_SUM), -1, 1);
-            // LACE, NOT PAPER (item 2). The caps were one opaque flat white over a 0.06 band of
-            // `crest + simplex`: broad sine tops cut into big smooth blobs with no inside, which
-            // read as paper cut-outs laid on the sea. Now the break-up is the two ripple fetches'
-            // scalar channels (free: already sampled, and ~100 ALU of simplex gone), the drive
-            // threshold sits higher so caps live only where the three waves stack, the body is
-            // translucent and holed by the finer field, and the brightest white is a drawn lip
-            // just inside the cap's edge — the painted-foam profile.
-            const capBreak = rippleTexA.b.sub(0.5).mul(0.30).add(rippleTexB.b.sub(0.5).mul(0.34));
-            // BREAKERS, NOT CREST-TOPS (2026-11-20). The crest stack alone painted flat white blotches
-            // 12-20 u across wherever the three waves met; a crest now breaks only where it crosses a
-            // rough patch of the coarse ripple (its ~6 u cells), more of them in a gust, so a cap
-            // flares for a second as a crest runs through and the calm lanes stay clear.
-            const capBreaks = smoothstep(float(0.55), float(0.68), rippleTexA.b).mul(mix(float(0.45), float(1), seaGust));
-            // (The mask RAISES the threshold rather than scaling the body, so every cap keeps its
-            // drawn lip.)
-            const capBody = smoothstep(float(0.64), float(0.72), crestNorm.add(capBreak).sub(float(1).sub(capBreaks).mul(0.45)))
-                .mul(smoothstep(float(0.4), float(2.5), depth))
+            // WHITECAPS WITH A LIFE (SEA_CAPS, 2026-11-21 sea audit, item 11). They were the swell's
+            // stacked height at that instant cut in a narrow band: paper-white blobs that switched on
+            // and off within a tenth of a second. Now each has an AGE, worked out here with no stored
+            // state: the seconds since the long swell's crest last passed this water (`capAge`), and
+            // how high the three waves stood together at that moment (`capStack`, the breaking
+            // strength). It flashes, thins as a sheet and a lace, and is gone before the next crest.
+            const C = SEA_CAPS;
+            const [cW0, cW1, cW2] = WAVES;
+            const capPhase = (wv) => positionWorld.x.mul((wv.dirX * Math.PI * 2) / wv.len)
+                .add(positionWorld.z.mul((wv.dirZ * Math.PI * 2) / wv.len))
+                .add(uTime.mul(wv.speed));
+            const capPeriod = (Math.PI * 2) / cW0.speed;
+            const crestCyc = capPhase(cW0).mul(1 / (Math.PI * 2)).sub(0.25).toVar();
+            const crestN = floor(crestCyc).toVar();
+            const capAge = crestCyc.sub(crestN).mul(capPeriod).toVar();
+            const capStack = float(cW0.amp)
+                .add(sin(capPhase(cW1).sub(capAge.mul(cW1.speed))).mul(cW1.amp))
+                .add(sin(capPhase(cW2).sub(capAge.mul(cW2.speed))).mul(cW2.amp))
+                .mul(vSwellFade)
+                .div(WAVE_AMP_SUM)
+                .add(seaGust.sub(0.5).mul(C.gust))
                 .toVar();
-            const capLace = smoothstep(float(0.38), float(0.62), rippleTexB.b);
-            const capLip = capBody.mul(float(1).sub(capBody)).mul(4);
-            const cap = capBody.mul(mix(float(0.12), float(0.80), capLace)).add(capLip.mul(0.22));
+            const capRise = smoothstep(float(0), float(C.rise), capAge).toVar();
+            const capLife = exp(capAge.mul(-1 / C.sheetT)).mul(C.sheetShare)
+                .add(exp(capAge.mul(-1 / C.laceT)).mul(1 - C.sheetShare))
+                .mul(capRise)
+                .mul(float(1).sub(smoothstep(float(capPeriod - C.tail), float(capPeriod), capAge)))
+                .toVar();
+            const capRange = float(1).sub(smoothstep(float(C.range[0]), float(C.range[1]), wFragDist))
+                .mul(smoothstep(float(0.4), float(2.5), depth)).toVar();
+            // The lace's pixel footprint (in tiles) and the ripple values it bends by, pinned here:
+            // nothing in the per-pixel branch below may take a derivative or an implicit mip.
+            const capFoot = seaFoot.div(C.tile).toVar();
+            const capRipA = rippleTexA.b.toVar('wCapRipA');
+            const capRipB = rippleTexB.b.toVar('wCapRipB');
+            const capA = float(0).toVar('wCapA');
+            // (An upper bound on the breaking strength: the per-crest pattern adds at most C.gate/2.)
+            If(smoothstep(float(C.birth[0]), float(C.birth[1]), capStack.add(C.gate / 2))
+                .mul(capLife).mul(capRange).greaterThan(0.002), () => {
+                // A new 2-D pattern for each crest, still while that crest's foam lives.
+                const capG = texture(
+                    detailTex,
+                    positionWorld.xz.mul(0.011).add(hash21(vec2(crestN.add(4096), 17)).mul(vec2(7.13, 3.71))),
+                ).level(0).b;
+                const brk = smoothstep(float(C.birth[0]), float(C.birth[1]), capStack.add(capG.sub(0.5).mul(C.gate)))
+                    .mul(capRange);
+                const cov = brk.mul(capLife).toVar();
+                const flash = brk.mul(exp(capAge.mul(-1 / C.flashT))).mul(capRise).toVar();
+                const laceUv = vec2(
+                    dot(positionWorld.xz, WATER_WIND).sub(uTime.mul(C.drift)).div(C.tile * C.streak),
+                    positionWorld.x.mul(WATER_WIND.y).sub(positionWorld.z.mul(WATER_WIND.x)).div(C.tile),
+                ).add(vec2(capRipA, capRipB).sub(0.5).mul(C.bend));
+                const L = texture(seaLaceTex, laceUv).level(0).toVar();
+                // The threads thicken with the cover until the cells close, then the cells tear out;
+                // never thinner than ~0.7 px (fainter instead), and their mean where cells are tiny.
+                // FOAM, NOT A NET: a translucent sheet that opens into holes as it thins. The cover is
+                // shaped (most of a cap's life is spent thin), the threads fall off softly, whole cells
+                // stay filled while it is fresh and whole cells drop out as it goes.
+                const covS = sqrt(cov).toVar();
+                const capW = mix(float(C.width[0]), float(C.width[1]), covS).mul(capRipB.mul(0.9).add(0.55)).toVar();
+                const wB = max(capW, capFoot.mul(15.75));
+                const wS = max(capW, capFoot.mul(36.75));
+                const wall = float(1).sub(smoothstep(float(0), wB, L.r)).mul(clamp(capW.div(wB), 0.35, 1));
+                const fine = float(1).sub(smoothstep(wS.mul(0.2), wS, L.g))
+                    .mul(smoothstep(float(0.30), float(0.70), covS))
+                    .mul(clamp(capW.div(wS), 0.35, 1));
+                const raft = smoothstep(float(0.45), float(0.75), L.b).mul(smoothstep(float(0.45), float(0.85), covS));
+                const torn = smoothstep(L.b.sub(0.15), L.b.add(0.15), covS.mul(1.5));
+                // (Torn at its edge, where the cover is thinnest: a ragged outline, not a pill.)
+                const sheet = covS.mul(0.42).mul(torn);
+                const lace = clamp(max(max(wall, fine), raft).mul(torn).add(sheet).add(L.a.mul(flash).mul(0.3)), 0, 1);
+                const keep = float(1).sub(smoothstep(float(0.25), float(0.5), capFoot.mul(21)));
+                capA.assign(mix(covS.mul(0.55), lace, keep).mul(cov.greaterThan(0.002).select(float(1), float(0)))
+                    .mul(mix(float(C.alpha[0]), float(C.alpha[1]), flash)));
+            });
             // FOAM IS LIT (2026-11-20): in the island's shadow or a cloud's it is a shaded blue-grey,
             // not paper white (the caps, the windrows and the shore's foam alike).
             const foamLight = mix(float(0.64), float(1), wVis.mul(seaSun)).toVar();
-            wl.assign(mix(wl, vec3(0.94, 0.98, 1.0).mul(foamLight), clamp(cap, 0, 0.80)));
-            // WINDROWS (water pass step 5): the foam a wind leaves on open water lies in long thin
-            // streaks along it. The detail bake's value noise read in the wind's frame, drawn out
-            // 4:1 along it and cut thin, in deep water only, stronger in a gust, gone by ~520 u
-            // (before it can shimmer) and never on the shallows' lit band.
-            const along = dot(positionWorld.xz, WATER_WIND);
-            const across = positionWorld.x.mul(WATER_WIND.y).sub(positionWorld.z.mul(WATER_WIND.x));
-            // ON A COURSE, NOT A CONTOUR (2026-11-20; gotchas #1302, #1319): the rows were an iso-line
-            // of a stretched noise, so they came out as closed loops and scribbles 1-9 u wide, and
-            // under the eye as soft milky bands. Now they are long lines across the wind every
-            // `spacing` u, wandering `wander` u, a constant width in pixels at any range, broken
-            // into dashes by the rough patches, stronger in a gust and kept off the near water.
+            wl.assign(mix(wl, vec3(...C.colour).mul(foamLight), capA));
+            // WINDROWS (water pass step 5; rebuilt 2026-11-21, SEA_WINDROWS): long foam streaks
+            // parallel to the wind, a row a cell, each wandering along the wind only (it can never
+            // fold or meet a neighbour), riding the swell's orbit sideways, lit in long stretches by
+            // a break field drawn out along it, drifting downwind; deep water only, off the near
+            // water, gone before a row is a pixel wide (no moire).
             const W_ROWS = SEA_WINDROWS;
-            const rowWander = texture(detailTex, vec2(along.mul(0.0021), across.mul(0.0032))
-                .add(vec2(uTime.mul(0.004), 0))).b.sub(0.5).mul(W_ROWS.wander);
-            const rowC = across.add(rowWander).div(W_ROWS.spacing);
-            const rowPx = fwidth(rowC).mul(W_ROWS.spacing);
-            const rowD = abs(fract(rowC).sub(0.5)).mul(W_ROWS.spacing);
-            const rowHalf = max(float(W_ROWS.halfWidth), rowPx.mul(0.7));
-            const rowLine = float(1).sub(smoothstep(rowHalf, rowHalf.add(rowPx), rowD))
-                .mul(clamp(float(W_ROWS.halfWidth).div(rowHalf), 0.35, 1));
-            const rows = rowLine
-                .mul(smoothstep(float(0.40), float(0.66), rippleTexA.b))
+            const along = dot(positionWorld.xz, WATER_WIND).sub(uTime.mul(W_ROWS.drift));
+            const acrossLive = positionWorld.x.mul(WATER_WIND.y).sub(positionWorld.z.mul(WATER_WIND.x))
+                .sub(dot(waveSlope, vec2(WATER_WIND.y, WATER_WIND.x.negate())).mul(W_ROWS.ride)).toVar();
+            const rowPx = fwidth(acrossLive);
+            const rowC = acrossLive.div(W_ROWS.spacing);
+            const rowCell = floor(rowC);
+            // (A positive seed: the hash of a negative integer is undefined.)
+            const rowH = hash(rowCell.add(4096));
+            const rowWander = sin(along.mul(W_ROWS.wanderK[0]).add(rowH.mul(6.2832))).mul(W_ROWS.wander[0])
+                .add(sin(along.mul(W_ROWS.wanderK[1]).add(fract(rowH.mul(7.31)).mul(6.2832))).mul(W_ROWS.wander[1]));
+            const rowStrength = smoothstep(float(W_ROWS.lit[0]), float(W_ROWS.lit[1]), texture(detailTex, vec2(
+                along.mul(W_ROWS.alongScale),
+                rowCell.mul(0.173).add(0.31).add(uTime.mul(W_ROWS.evolve)),
+            )).level(0).b);
+            const rowOff = rowC.sub(rowCell).sub(0.5).sub(rowH.sub(0.5).mul(W_ROWS.jitter));
+            const rowD = abs(rowOff.mul(W_ROWS.spacing).sub(rowWander));
+            const rowHalfW = mix(float(W_ROWS.halfWidth[0]), float(W_ROWS.halfWidth[1]), rowStrength);
+            const rowHalf = max(rowHalfW, rowPx.mul(0.7));
+            const rowLine = float(1).sub(smoothstep(rowHalf.mul(W_ROWS.soft), rowHalf.add(rowPx), rowD))
+                .mul(clamp(rowHalfW.div(rowHalf), 0.35, 1));
+            const rows = rowLine.mul(rowStrength)
                 .mul(smoothstep(float(8), float(20), depth))
                 .mul(smoothstep(float(W_ROWS.near[0]), float(W_ROWS.near[1]), wFragDist))
                 .mul(float(1).sub(smoothstep(float(300), float(520), wFragDist)))
+                .mul(float(1).sub(smoothstep(float(W_ROWS.footprint[0]), float(W_ROWS.footprint[1]), rowPx.div(W_ROWS.spacing))))
                 .mul(mix(float(0.35), float(1), seaGust))
                 .mul(W_ROWS.gain);
             wl.assign(mix(wl, vec3(0.93, 0.97, 1.0).mul(foamLight), rows));
@@ -4825,6 +5185,39 @@ export function createOdysseyWorld({
                 .mul(float(1).sub(smoothstep(float(SEA_HORIZON_DOWN[0]), float(SEA_HORIZON_DOWN[1]), viewDir.y)));
             const seaLine = skyAirAt(vec3(viewDir.x.negate(), float(0), viewDir.z.negate()));
             wl.assign(mix(wl, seaLine, wHorizon));
+            // THE SUN ROAD (SEA_SUN_GLITTER, 2026-11-21 sea audit, item 18): the sun seen in a sea of
+            // facets. The facet the sun needs (the half vector's slope) against the surface's own
+            // (the settled reflection normal); their spread is the chop's plus the swell's that the
+            // distance fade took from the normal, so the band runs to the horizon, narrow there.
+            // HDR, eased by a knee; near the eye a broad sheen instead of whole lit wave faces.
+            // After the dissolve: only the air takes it, as light through air.
+            const SG = SEA_SUN_GLITTER;
+            const sunH = normalize(ODYSSEY_EVENING_U.sunDir.add(viewDir)).toVar();
+            const sunHy = max(sunH.y, float(0.08));
+            const sunMiss = sunH.xz.negate().div(sunHy).sub(reflN.xz.negate().div(max(reflN.y, float(0.2))));
+            const sunM2 = dot(sunMiss, sunMiss).toVar();
+            const roadKeep = clamp(float(1).sub(wFragDist.div(520)), 0, 1);
+            const roadS2 = mix(float(SG.floorVar[0]), float(SG.floorVar[1]), seaGust)
+                .add(float(SG.waveVar).mul(vSwellFade.mul(vSwellFade)).mul(float(1).sub(roadKeep.mul(roadKeep))))
+                .toVar();
+            const roadVh = clamp(dot(viewDir, sunH), 0, 1);
+            const roadFb = float(1).sub(roadVh);
+            const roadFb2 = roadFb.mul(roadFb);
+            const roadFres = roadFb2.mul(roadFb2).mul(roadFb).mul(0.98).add(0.02);
+            const roadHy = max(sunHy, float(SG.hyFloor));
+            const roadHy2 = roadHy.mul(roadHy);
+            const roadLight = roadFres.div(max(viewDir.y, float(SG.vyFloor)).mul(roadHy2.mul(roadHy2)).mul(8 * Math.PI));
+            const kneeOf = (x) => x.div(x.mul(SG.knee).add(1));
+            const roadBand = kneeOf(exp(sunM2.div(roadS2.mul(-2))).div(roadS2).mul(roadLight));
+            const roadSheenS2 = roadS2.add(SG.sheenVar);
+            const roadSheen = kneeOf(exp(sunM2.div(roadSheenS2.mul(-2))).div(roadSheenS2).mul(roadLight));
+            const roadNear = float(1).sub(smoothstep(float(SG.glintFoot[0]), float(SG.glintFoot[1]), seaFoot));
+            const seaRoad = mix(roadBand, roadSheen.mul(SG.sheenShare), roadNear).mul(SG.gain).toVar('wSeaRoad');
+            wl.assign(wl.add(mix(uSunColour, vec3(1, 0.98, 0.94), 0.3)
+                .mul(seaRoad)
+                .mul(wVis.mul(seaSun).mul(seaSun))
+                .mul(float(1).sub(clamp(capA.add(rows).add(shoreFoam), 0, 1)))
+                .mul(smoothstep(float(0), float(0.03), ODYSSEY_EVENING_U.sunDir.y))));
             wl.assign(wl.add(vec3(0.92, 0.97, 0.99).mul(
                 smoothstep(float(2.6), float(0.15), depth)
                     .mul(smoothstep(float(-0.4), float(0.5), depth)).mul(0.10)
@@ -4850,9 +5243,19 @@ export function createOdysseyWorld({
             // out; the rim keeps its ripple where the surface is near (the breach), by 3-D eye
             // distance (the column looks straight up: the horizontal range overhead is ~0).
             const ceilDist = length(positionWorld.sub(cameraPosition)).toVar();
-            const ceilN = normalize(mix(wN, vec3(0, 1, 0), smoothstep(float(40), float(180), ceilDist))).toVar();
+            const ceilFar = smoothstep(float(40), float(180), ceilDist).toVar();
+            const ceilN = normalize(mix(wN, vec3(0, 1, 0), ceilFar)).toVar();
             const ceilIn = viewDir.negate().toVar();
-            const upCos = clamp(dot(ceilIn, ceilN), 0, 1);
+            // THE WINDOW'S OWN SURFACE (SNELL_WINDOW.surface, 2026-11-21): a level sea tipped by a
+            // slow share of the swell and crinkled by the ripple, the tilt capped, so the rim moves
+            // at most ~3.4 degrees and holds still instead of lurching; within ~6 u of the surface
+            // (the breach) it is the water's own normal again. The mirror outside keeps `ceilN`.
+            const SWS = SNELL_WINDOW.surface;
+            const winTilt = waveSlope.mul(SWS.swellShare).add(rippleSlope.mul(SWS.rippleShare))
+                .mul(float(1).sub(ceilFar)).toVar();
+            const winTiltC = winTilt.mul(min(float(1), float(SWS.tiltCap).div(max(length(winTilt), float(1e-5)))));
+            const winN = normalize(mix(vec3(winTiltC.x.negate(), 1, winTiltC.y.negate()), ceilN, uBreachNear)).toVar();
+            const upCos = clamp(dot(ceilIn, winN), 0, 1);
             const snellWindow = smoothstep(float(0.60), float(0.72), upCos);
             // THE CAUSTIC WEB ON THE CEILING (item 4). Seen from below, a rippled surface is a
             // net of bright refracted lines, not a mottle. The lines are where the two ripple
@@ -4908,13 +5311,15 @@ export function createOdysseyWorld({
             const windowFlat = skyColourSubmergedUp.mul(1.30).toVar();
             const windowWorld = snellWindowWorld({
                 incident: ceilIn,
-                normal: ceilN,
+                normal: winN,
+                wobble: mix(float(SNELL_WINDOW.surface.imageWobble), float(2), uBreachNear),
                 at: positionWorld,
                 flat: windowFlat,
                 presence: uSnellWorld,
                 time: uTime,
                 sunDir: uSunDir,
-                sunColour: uSunColour,
+                sunColour: vec3(...WINDOW_SUN),
+                lift: uWindowLift,
                 skyAt: skyAirAt,
                 noiseTex: detailTex,
                 march: q.waterReflections ? (P, R) => waterMarchLand(P, R, {
@@ -4926,9 +5331,13 @@ export function createOdysseyWorld({
                 }) : null,
                 landLit: waterLandLit,
             });
+            // (2026-11-21: the filaments are the window's own light, ~1.3x it, a crossing capped at
+            // ~1.6x; and the whole window is pre-lifted against the water's filter that the medium
+            // lays over every underside fragment, so it keeps the air's colour, not a cyan cast.)
             const windowSky = windowWorld
                 .add(vec3(1, 0.96, 0.88).mul(spec).mul(1.2))
-                .add(uWaterLum.mul(0.6).add(vec3(0.26, 0.32, 0.30)).mul(ceilLines.mul(0.5)));
+                .add(windowWorld.mul(0.8).add(vec3(0.10, 0.12, 0.12)).mul(min(ceilLines, float(0.6))))
+                .mul(vec3(1 / 0.42, 1 / 0.86, 1));
             // THE SURFACE FLOODS WITH LIGHT AS YOU REACH IT (2->3 seam). Seen from deep below, the
             // ceiling outside Snell's window is the dark total-internal-reflection body; over the
             // last ~25 u it becomes a bright, wavering lid — and without that the breach was a 37-luma
@@ -4942,7 +5351,8 @@ export function createOdysseyWorld({
                 // (A calmer normal than the window's: a steep facet would show the deep plate as a
                 // dark stain on the lid.)
                 normal: normalize(mix(ceilN, vec3(0, 1, 0), 0.55)),
-                near: uWaterLum.mul(1.18).add(windowFlat.mul(0.16)),
+                // (1.18 -> 0.72, 2026-11-21: the lid stays under the window it mirrors.)
+                near: uWaterLum.mul(0.72).add(windowFlat.mul(0.16)),
                 mid: uWaterMid.mul(1.05),
                 deep: uWaterDeep.mul(1.2),
             }).add(uWaterLum.mul(0.6).add(vec3(0.26, 0.32, 0.30)).mul(ceilLines.mul(0.35)));
@@ -4970,7 +5380,7 @@ export function createOdysseyWorld({
         });
         return col.add(vec3(0.95, 0.99, 1.0).mul(meniscus));
     })();
-    const waterAired = applyAerial(waterShaded, positionWorld, AERIAL_CEIL_WATER, 1, ...MIST_SEA);
+    const waterAired = applyAerial(waterShaded, positionWorld, AERIAL_CEIL_WATER, 1, ...MIST_SEA, true);
     waterMat.colorNode = meltIntoSky(toOutputSurface(waterAired), positionWorld);
     // The film thins toward the LIVE waterline (the swash), and foam is opaque where the
     // film under it is not — otherwise the lapping front would be drawn at ~20 % alpha.
@@ -6005,7 +6415,12 @@ export function createOdysseyWorld({
         // where the floor cut it, and the shafts read as glass rods standing on the bed.
         // (Clamped: with MSAA the tip's pixel is shaded past it, at uv.y over 1, and pow of a negative
         // base is NaN. Today the floor hides the tips.)
-        const vFade = clamp(float(1).sub(rUv.y), 0.0, 1.0).pow(2.4).mul(smoothstep(float(0.0), float(0.14), rUv.y));
+        // ROOTED AT THE SURFACE (2026-11-21 sea audit, item 6): the head feather blanked the first
+        // 34 u of the axis, so the light began ~25 u under the lid as a rounded top hanging in
+        // mid-water. The cones now reach up through the surface and are cut by it in world height
+        // (the water writes no depth, so the clip is the shader's): full strength 16 u down.
+        const vFade = clamp(float(1).sub(rUv.y), 0.0, 1.0).pow(2.4)
+            .mul(float(1).sub(smoothstep(float(ODYSSEY_SEA_LEVEL - 16), float(ODYSSEY_SEA_LEVEL + 0.5), positionWorld.y)));
         // FACING fade, not a uv.x feather. On a ConeGeometry uv.x runs around the
         // CIRCUMFERENCE, so the ported `abs(uv.x - 0.5)` lit one side of the cone and left a
         // hard seam on the other — in-game that read as solid triangular wedges, not light.
@@ -6016,10 +6431,22 @@ export function createOdysseyWorld({
         // Steeper than the shipped 0.85 (item 4): with the shafts finally bright enough to
         // read, the cone silhouettes drew hard straight edges; a faster fall toward edge-on
         // leaves a soft-edged shaft.
-        const eFade = abs(dot(normalWorld, rayView)).pow(1.25).toVar();
+        // ...and cubed (2026-11-21): ^1.25 still left 84 % at half the radius and fell off a cliff at
+        // the silhouette, a straight hard edge (a slab); cubed the cross-section has zero slope there.
+        const eN = clamp(abs(dot(normalWorld, rayView)), 0, 1);
+        const eFade = eN.mul(eN).mul(eN).toVar();
         // NEAR fade: the rail passes THROUGH these shafts, and a 220 u cone a few metres from
         // the eye fills the frame with one flat wedge. Same lesson as the cloud deck.
-        const rayNear = smoothstep(float(14), float(85), length(positionWorld.sub(cameraPosition)));
+        const rayDist = length(positionWorld.sub(cameraPosition)).toVar();
+        const rayNear = smoothstep(float(14), float(85), rayDist);
+        // The water's extinction along the view ray (OCEAN_SHAFT_EXTINCTION, split as the blades'):
+        // a cone 150 u off kept its full gain in front of a haze that had taken most of the rest.
+        const raySeen = exp(rayDist.mul(-OCEAN_SHAFT_EXTINCTION * OCEAN_EXTINCTION[2]));
+        const rayHue = exp(rayDist.mul(vec3(
+            OCEAN_EXTINCTION[0] - OCEAN_EXTINCTION[2],
+            OCEAN_EXTINCTION[1] - OCEAN_EXTINCTION[2],
+            0,
+        ).mul(-OCEAN_SHAFT_EXTINCTION)));
         // FROM ABOVE: light pouring down is seen looking UP it (the climb's hero read). Looked
         // down on — an orb close-up, the arrival orbit — a shell has no volume to sell, so it
         // steps back to a quarter instead of standing as a lit tube.
@@ -6048,7 +6475,7 @@ export function createOdysseyWorld({
         // a dim steel blue (0x4080a0 at mid-water), and ADDED onto a blue column it carried no
         // contrast at all — the shafts were present in every capture and readable in none.
         rayMat.colorNode = mix(
-            mix(uSunColour, vec3(0.62, 0.96, 1.0), 0.65).mul(uOutputScale),
+            mix(uSunColour, vec3(0.62, 0.96, 1.0), 0.65).mul(rayHue).mul(uOutputScale),
             uWorldFadeColour,
             uWorldFade,
         );
@@ -6065,14 +6492,15 @@ export function createOdysseyWorld({
             .mul(sin(uTime.mul(0.29).add(rayPhase.mul(17.0))).mul(0.25).add(0.75))
             .mul(0.7)
             .add(0.3);
-        rayMat.opacityNode = vFade.mul(eFade).mul(rayNear).mul(rayAbove)
+        rayMat.opacityNode = vFade.mul(eFade).mul(rayNear).mul(raySeen).mul(rayAbove)
             .mul(rayShimmerSafe)
             .mul(rayBreath)
             .mul(uSubmerged)
             .mul(uLife)
             .mul(uShaftGain)
             // 0.52 -> 0.62: the streaked shimmer's mean sits ~a quarter under the simplex's.
-            .mul(0.62)
+            // 0.62 -> 0.80 (2026-11-21): the extinction and the soft edge take their share.
+            .mul(0.80)
             .toVar();
         // THE BLEND-BANDWIDTH FLOOR (the cloud deck's lesson): most of a wall's area sits at
         // near-zero opacity (depth feather, edge-on fade, near fade) and each of those fragments
@@ -6101,6 +6529,7 @@ export function createOdysseyWorld({
         const fullTilt = new THREE.Quaternion()
             .setFromUnitVectors(new THREE.Vector3(0, 1, 0), sunDirV);
         const tilt = new THREE.Quaternion().slerp(fullTilt, 0.35);
+        const rayCosT = new THREE.Vector3(0, 1, 0).applyQuaternion(tilt).y;
         // Radius 7 again (the masterpiece pass's 10 doubled each cone's end-on fill — see rayCount).
         const rayGeo = new THREE.ConeGeometry(7, 240, 14, 1, true);
         // WAVE 4: RIGHT WAY UP. ConeGeometry seats the wide base (uv.y=0, where vFade is
@@ -6123,7 +6552,9 @@ export function createOdysseyWorld({
             const r = 18 + (hash01(i * 3 + 2) * 46);
             // Base (wide, bright end) just above the surface; the apex feathers down to
             // ~SEA-236, dark before it can meet the deepest floor (~SEA-207).
-            rPos.set(pt.x + (Math.cos(a) * r), ODYSSEY_SEA_LEVEL - 116, pt.z + (Math.sin(a) * r));
+            // (2026-11-21: re-seated so the wide end reaches 12 u over the surface along the lean,
+            // its rim's lowest point still above it; the shader cuts it at the surface.)
+            rPos.set(pt.x + (Math.cos(a) * r), ODYSSEY_SEA_LEVEL + 12 - (120 * rayCosT), pt.z + (Math.sin(a) * r));
             const sc = 0.75 + (hash01(i * 3 + 3) * 0.7);
             rScl.set(sc, 1, sc);
             rayMesh.setMatrixAt(i, rm4.compose(rPos, tilt, rScl));
@@ -7784,8 +8215,12 @@ export function createOdysseyWorld({
             // (+ the weather: more cloud over the land for a while, then less.)
             uCloudCover.value = Math.min(Math.max(shadowPlan.cover + weather.cover, 0), 1);
             const optics = antisolarSchedule(actP);
-            uBow.value = optics.bow * (1 - uSubmerged.value);
-            uShowerVeil.value = optics.veil * (1 - uSubmerged.value);
+            // Only with the eye over the water (2026-11-21 sea audit, item 10): from under the surface
+            // sky light reaches the eye only through Snell's window, which the bow never reaches,
+            // and the 14 u breach band let it draw on the underside of the surface at grazing angles.
+            const aboveSea = smooth01(ODYSSEY_SEA_LEVEL + 0.5, ODYSSEY_SEA_LEVEL + 3, submergedRefY);
+            uBow.value = optics.bow * aboveSea;
+            uShowerVeil.value = optics.veil * aboveSea;
             // THE DEPTH ARC: the column's plates, its light and its darkness are the eye's depth's
             // (odyssey-ocean-depth.js), so the abyss is blue-black and the shallows turquoise.
             oceanDepthLook(ODYSSEY_SEA_LEVEL - submergedRefY, oceanLook);
@@ -7803,6 +8238,17 @@ export function createOdysseyWorld({
             uShaftGain.value = oceanLook.shafts;
             uCeilAbsorb.value = oceanLook.overhead;
             uSnellWorld.value = uSubmerged.value > 0.001 ? snellWindowPresence(oceanLook.depth) : 0;
+            if (uSubmerged.value > 0.001) {
+                const hz = oceanHazeColour(oceanLook.depth, windowHazeScratch);
+                const zen = cs.skyZenith;
+                uWindowLift.value = snellWindowLift(
+                    (0.2126 * hz[0]) + (0.7152 * hz[1]) + (0.0722 * hz[2]),
+                    (0.2126 * zen[0]) + (0.7152 * zen[1]) + (0.0722 * zen[2]),
+                    oceanLook.depth,
+                );
+            } else {
+                uWindowLift.value = 1;
+            }
             uDeepDim.value = oceanLook.dim;
             // Scene fog (the rail, the orbs) dims with the water it stands in, or the far rail
             // would fade to a brighter blue than the deep around it.
@@ -8001,7 +8447,7 @@ export function createOdysseyWorld({
             if (dolphinPod) dolphinPod.dispose();
             if (moteMesh) moteMesh.geometry.dispose();
             if (rayMesh) rayMesh.geometry.dispose();
-            [heightTex, sunVisTex, groundTex, detailTex, macroTex, summitTex, tarnTex, lakeTex, forestShadeTex, leafAtlasTex,
+            [heightTex, sunVisTex, groundTex, detailTex, seaLaceTex, macroTex, summitTex, tarnTex, lakeTex, forestShadeTex, leafAtlasTex,
                 valleyMistTex].forEach((t) => t.dispose());
             // When the mesh is in the group, group.traverse above already disposed it.
             if (!heroes) heroBuild.geometry.dispose();

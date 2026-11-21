@@ -393,8 +393,9 @@ export function createOdysseyDolphins({
         const toEye = cameraPosition.sub(vec3(s.x, float(seaLevel), s.y));
         const side = normalize(cross(vec3(0, 1, 0), toEye).add(vec3(1e-4, 0, 0)));
         const grow = life.pow(0.5);
-        const burstW = grow.mul(4.2).add(1.4);
-        const burstH = grow.mul(3.6).add(1.2);
+        // (Lower and narrower since 2026-11-21, sea audit item 20: the tall V read as a whale's blow.)
+        const burstW = grow.mul(3.0).add(1.1);
+        const burstH = grow.mul(2.2).add(0.8);
         const burst = vec3(s.x, float(seaLevel + 0.1), s.y)
             .add(side.mul(q.x.mul(burstW)))
             .add(vec3(0, 1, 0).mul(q.y.add(0.5).mul(burstH)));
@@ -408,14 +409,18 @@ export function createOdysseyDolphins({
         const drops = smoothstep(float(0.42), float(0.70), texture(noiseTex, vec2(sUv.x.mul(0.9).add(seed), sUv.y.mul(0.5).sub(life.mul(0.35)))).b);
         const burstA = fan.mul(drops.mul(0.75).add(0.25))
             .mul(float(1).sub(smoothstep(float(0.45), float(1.0), sUv.y)))
-            .mul(float(1).sub(smoothstep(float(0.30), float(0.62), life)));
-        // The ring: foam running out from where it went through, breaking up as it goes.
+            .mul(float(1).sub(smoothstep(float(0.25), float(0.48), life)));
+        // RIPPLES, NOT A TARGET (2026-11-21, sea audit item 20): one opaque white band of constant
+        // width read as a target ring laid on the sea. Now a few thin crests running out from where
+        // it went through, the outer the strongest, broken by a lace, in the water's own pale sky
+        // tone rather than paper white, and gone sooner.
         const rr = length(sUv.sub(vec2(0.5))).mul(2);
-        const foam = smoothstep(float(0.60), float(0.80), rr).mul(float(1).sub(smoothstep(float(0.84), float(1.0), rr)));
-        const lace = smoothstep(float(0.36), float(0.62), texture(noiseTex, sUv.mul(0.7).add(vec2(seed, life.mul(0.2)))).b);
-        const ringA = foam.mul(lace.mul(0.7).add(0.3)).mul(float(1).sub(life).pow(1.5));
-        splashMat.colorNode = gradeLight(vec3(0.95, 0.98, 1.0).mul(1.05));
-        splashMat.opacityNode = mix(burstA.mul(0.85), ringA.mul(0.75), ring)
+        const crestAt = (c, w) => smoothstep(float(c - w), float(c), rr).mul(float(1).sub(smoothstep(float(c), float(c + w), rr)));
+        const crests = crestAt(0.90, 0.06).add(crestAt(0.66, 0.06).mul(0.55)).add(crestAt(0.42, 0.05).mul(0.3));
+        const lace = smoothstep(float(0.40), float(0.66), texture(noiseTex, sUv.mul(0.7).add(vec2(seed, life.mul(0.2)))).b);
+        const ringA = crests.mul(lace.mul(0.85).add(0.15)).mul(float(1).sub(life).pow(1.6));
+        splashMat.colorNode = gradeLight(mix(vec3(0.95, 0.98, 1.0).mul(1.05), vec3(0.80, 0.91, 0.97), ring));
+        splashMat.opacityNode = mix(burstA.mul(0.85), ringA.mul(0.55), ring)
             .mul(float(1).sub(smoothstep(float(0.985), float(1.0), life)))
             .mul(uEyeAbove);
         splashMat.alphaTest = 0.01;
