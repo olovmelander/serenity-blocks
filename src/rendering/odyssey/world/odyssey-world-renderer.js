@@ -90,10 +90,10 @@ import {
 } from '../odyssey-colour-script.js';
 import {
     OCEAN_EXTINCTION, OCEAN_SHAFT_EXTINCTION, applyOceanClock, createOceanClock, createOceanLook, oceanClockAt,
-    oceanDepthLook,
+    oceanDepthLook, oceanHazeColour,
 } from './odyssey-ocean-depth.js';
 import {
-    SNELL_WINDOW, snellDepthLight, snellMirror, snellWindowPresence, snellWindowWorld,
+    SNELL_WINDOW, snellDepthLight, snellMirror, snellWindowLift, snellWindowPresence, snellWindowWorld,
 } from './odyssey-ocean-window.js';
 import { createOdysseyOceanScenery } from './odyssey-ocean-scenery.js';
 import { createOdysseyBreachBurst } from '../composition/odyssey-breach-burst.js';
@@ -1663,6 +1663,12 @@ export function createOdysseyWorld({
     const uShaftGain = uniform(1);
     const uCeilAbsorb = uniform(0);
     const uSnellWorld = uniform(0);
+    // The window's lift (snellWindowLift, 2026-11-21): written each frame from the level water's light.
+    const uWindowLift = uniform(1);
+    // The window's sun is the AIR's (the colour script's first air keyframe), not the water's
+    // dim steel-blue one: the sun seen through the surface is the sun.
+    const WINDOW_SUN = sampleColourScript(0.18).sun;
+    const windowHazeScratch = [0, 0, 0];
     // ALIVE ON THE CLOCK (odyssey-ocean-depth.js `oceanClockAt`): the light a passing cloud leaves
     // the column, the surface's state (calm .. choppy; 1 out of the water, so the island's sea is
     // its own), and the wandering plankton bloom (xyz, strength).
@@ -2124,7 +2130,8 @@ export function createOdysseyWorld({
             // breach sat a 34-luma step below the daylight frame above it (2->3 seam gate).
             const convergePlate = mix(
                 mix(uWaterMid, deepIndigo, uEyeDepth),
-                uWaterLum.mul(1.25),
+                // (1.25 -> 0.90, 2026-11-21: the window is the light; the water round it glows less.)
+                uWaterLum.mul(0.90),
                 float(1).sub(smoothstep(float(0.0), float(0.18), uEyeDepth)).mul(0.8),
             );
             const bandedDir = mix(banded, convergePlate, grazing);
@@ -5201,7 +5208,8 @@ export function createOdysseyWorld({
                 presence: uSnellWorld,
                 time: uTime,
                 sunDir: uSunDir,
-                sunColour: uSunColour,
+                sunColour: vec3(...WINDOW_SUN),
+                lift: uWindowLift,
                 skyAt: skyAirAt,
                 noiseTex: detailTex,
                 march: q.waterReflections ? (P, R) => waterMarchLand(P, R, {
@@ -5213,9 +5221,13 @@ export function createOdysseyWorld({
                 }) : null,
                 landLit: waterLandLit,
             });
+            // (2026-11-21: the filaments are the window's own light, ~1.3x it, a crossing capped at
+            // ~1.6x; and the whole window is pre-lifted against the water's filter that the medium
+            // lays over every underside fragment, so it keeps the air's colour, not a cyan cast.)
             const windowSky = windowWorld
                 .add(vec3(1, 0.96, 0.88).mul(spec).mul(1.2))
-                .add(uWaterLum.mul(0.6).add(vec3(0.26, 0.32, 0.30)).mul(ceilLines.mul(0.5)));
+                .add(windowWorld.mul(0.8).add(vec3(0.10, 0.12, 0.12)).mul(min(ceilLines, float(0.6))))
+                .mul(vec3(1 / 0.42, 1 / 0.86, 1));
             // THE SURFACE FLOODS WITH LIGHT AS YOU REACH IT (2->3 seam). Seen from deep below, the
             // ceiling outside Snell's window is the dark total-internal-reflection body; over the
             // last ~25 u it becomes a bright, wavering lid — and without that the breach was a 37-luma
@@ -5229,7 +5241,8 @@ export function createOdysseyWorld({
                 // (A calmer normal than the window's: a steep facet would show the deep plate as a
                 // dark stain on the lid.)
                 normal: normalize(mix(ceilN, vec3(0, 1, 0), 0.55)),
-                near: uWaterLum.mul(1.18).add(windowFlat.mul(0.16)),
+                // (1.18 -> 0.72, 2026-11-21: the lid stays under the window it mirrors.)
+                near: uWaterLum.mul(0.72).add(windowFlat.mul(0.16)),
                 mid: uWaterMid.mul(1.05),
                 deep: uWaterDeep.mul(1.2),
             }).add(uWaterLum.mul(0.6).add(vec3(0.26, 0.32, 0.30)).mul(ceilLines.mul(0.35)));
@@ -8115,6 +8128,17 @@ export function createOdysseyWorld({
             uShaftGain.value = oceanLook.shafts;
             uCeilAbsorb.value = oceanLook.overhead;
             uSnellWorld.value = uSubmerged.value > 0.001 ? snellWindowPresence(oceanLook.depth) : 0;
+            if (uSubmerged.value > 0.001) {
+                const hz = oceanHazeColour(oceanLook.depth, windowHazeScratch);
+                const zen = cs.skyZenith;
+                uWindowLift.value = snellWindowLift(
+                    (0.2126 * hz[0]) + (0.7152 * hz[1]) + (0.0722 * hz[2]),
+                    (0.2126 * zen[0]) + (0.7152 * zen[1]) + (0.0722 * zen[2]),
+                    oceanLook.depth,
+                );
+            } else {
+                uWindowLift.value = 1;
+            }
             uDeepDim.value = oceanLook.dim;
             // Scene fog (the rail, the orbs) dims with the water it stands in, or the far rail
             // would fade to a brighter blue than the deep around it.

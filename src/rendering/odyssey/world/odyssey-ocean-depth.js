@@ -211,7 +211,7 @@ export function oceanHazeColour(depthU, out = [0, 0, 0]) {
     const near = (1 - smooth(clamp01(eye01 / 0.18))) * 0.8;
     for (let c = 0; c < 3; c += 1) {
         const column = look.mid[c] + ((look.deep[c] - look.mid[c]) * eye01);
-        out[c] = (column + (((look.luminous[c] * 1.25) - column) * near)) * look.dim;
+        out[c] = (column + (((look.luminous[c] * 0.90) - column) * near)) * look.dim;
     }
     return out;
 }
