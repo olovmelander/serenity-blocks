@@ -14,22 +14,22 @@ export const KOI_POND_TETROMINOS = {
     version: 1,
 
     colors: {
-        I: '#ffc852', // Lantern gold - warm amber glow
-        O: '#ffadd2', // Blossom pink - soft sakura
-        T: '#7dffb8', // Lily pad green - fresh and bright
-        S: '#ff7b52', // Koi orange - vivid scales
-        Z: '#7b94ff', // Twilight indigo - evening reflection
-        J: '#ffe48a', // Candle glow - soft warm light
-        L: '#7eeeff', // Crystal pond cyan - clearer, more vibrant
-        GARBAGE: '#0f1f1a', // Deep pond shadow
+        I: '#f5bd58', // Amber lantern
+        O: '#f3a4c5', // Lotus pink
+        T: '#76ce87', // New lily leaf
+        S: '#f27850', // Vermilion koi
+        Z: '#9899ee', // Twilight iris
+        J: '#e1ece2', // Platinum koi
+        L: '#58ccd0', // Reflected water
+        GARBAGE: '#465c60', // Wet slate against the dark board
     },
 
     renderMode: 'glow',
 
     effects: {
         // Soft water-like glow
-        glowRadius: 11,
-        glowIntensity: 0.7,
+        glowRadius: 6,
+        glowIntensity: 0.42,
         glowColor: 'auto',
 
         // Subtle water ripple outline
@@ -40,7 +40,7 @@ export const KOI_POND_TETROMINOS = {
         // Gentle floating pulse
         pulse: true,
         pulseSpeed: 0.03,
-        pulseAmplitude: 0.22,
+        pulseAmplitude: 0.07,
 
         // Water shimmer effect
         shimmer: true,
@@ -60,16 +60,17 @@ export const KOI_POND_TETROMINOS = {
 
     rendererOverrides: {
         canvas: {
-            glowRadius: 9,
-            glowIntensity: 0.65,
+            glowRadius: 5,
+            glowIntensity: 0.38,
             outlineWidth: 1.5,
-            pulseAmplitude: 0.18,
+            pulseAmplitude: 0.06,
         },
         phaser: {
-            glowRadius: 13,
-            glowIntensity: 0.75,
-            outlineWidth: 2.0,
-            pulseAmplitude: 0.25,
+            highlight: 0.19,
+            shadow: 0.26,
+            rimAlpha: 0.48,
+            rimWidthFactor: 0.04,
+            glossAlpha: 0.16,
         },
     },
 };

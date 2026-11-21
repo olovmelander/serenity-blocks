@@ -10,7 +10,7 @@
  */
 import * as THREE from 'three/webgpu';
 import {
-    Fn, clamp, dot, float, max, mix, normalWorld, normalize, positionWorld, smoothstep, texture, vec3, vec4,
+    Fn, clamp, dot, float, max, mix, normalWorld, normalize, positionWorld, sin, smoothstep, texture, vec3, vec4,
 } from 'three/tsl';
 import { groundHeight } from './koi-pond-core.js';
 import { bakePebbles } from './koi-pond-pebbles.js';
@@ -97,19 +97,22 @@ export function createBed(light, tier) {
 
         // ── Pebbles ──
         const st = point.xz.div(tile);
-        const stone = texture(colourTex, st);
-        const relief = texture(reliefTex, st);
+        const stone = texture(colourTex, st).toVar();
+        const relief = texture(reliefTex, st).toVar();
         const broad = light.noise.sample(point.xz.mul(0.043)).toVar();
-        const fine = light.noise.sample(point.xz.mul(0.31));
-        // Patches of algae on the shelf, pale sand between them, silt in the basin.
-        const algae = smoothstep(0.52, 0.8, broad.r.add(fine.g.mul(0.25)));
-        const sand = smoothstep(0.6, 0.9, broad.g);
-        const pebble = stone.rgb.mul(0.74).mul(mix(vec3(1.0), vec3(0.62, 0.95, 0.6), algae.mul(0.6)))
-            .mul(mix(vec3(1.0), vec3(1.3, 1.2, 1.0), sand.mul(0.45))).toVar();
-        const silt = vec3(0.045, 0.062, 0.058).mul(fine.b.mul(0.5).add(0.75));
-        const deep = smoothstep(1.05, 2.3, depth);
-        const bedColour = mix(pebble, silt, deep);
-        const tilt = relief.xy.sub(0.5).mul(mix(1.7, 0.2, deep));
+        const fine = light.noise.sample(point.xz.mul(0.31)).toVar();
+        // Gravel bars open into sandy channels on the shelf. Silt settles first in the
+        // crevices; the crowns of the larger cobbles still show through the deposit.
+        const algae = smoothstep(0.52, 0.88, broad.r.add(fine.g.mul(0.25)));
+        const gravel = stone.rgb.mul(0.66).mul(mix(vec3(1.0), vec3(0.58, 0.91, 0.61), algae.mul(0.72)));
+        const deposit = smoothstep(0.37, 0.74, broad.g.mul(0.73).add(fine.r.mul(0.27))).toVar();
+        const buried = smoothstep(0.16, 0.68, deposit.sub(stone.a.mul(0.79))).toVar();
+        const ripple = sin(point.x.mul(12.0).add(point.z.mul(20.0)).add(fine.r.mul(3.8)));
+        const sand = vec3(0.188, 0.161, 0.113).mul(fine.a.mul(0.29).add(ripple.mul(0.045)).add(0.83));
+        const silt = vec3(0.031, 0.049, 0.049).mul(fine.b.mul(0.46).add(0.77));
+        const deep = smoothstep(0.96, 2.22, depth.add(broad.r.sub(0.5).mul(0.23))).toVar();
+        const bedColour = mix(mix(gravel, sand, buried), silt, deep);
+        const tilt = relief.xy.sub(0.5).mul(mix(1.5, 0.12, deep)).mul(buried.mul(-0.82).add(1.0));
         const bedNormal = normalize(geoNormal.add(vec3(tilt.x, 0, tilt.y)));
 
         const toMoonUnder = normalize(vec3(u.underSlope.x, 1.0, u.underSlope.y));
@@ -117,7 +120,8 @@ export function createBed(light, tier) {
         const gathered = tier.prism ? light.causticRGB(point) : vec3(light.caustic(point));
         const moon = u.moonColor.mul(gathered).mul(light.downwelling(depth)).mul(facing.mul(lit)).mul(1.3);
         const hush = u.breath.mul(0.75).add(0.25);
-        const ambient = u.waterAmbient.mul(relief.z.mul(0.55).add(0.45)).mul(light.downwelling(depth.mul(0.6)));
+        const occlusion = mix(relief.z.mul(0.55).add(0.45), 0.94, buried);
+        const ambient = u.waterAmbient.mul(occlusion).mul(light.downwelling(depth.mul(0.6)));
         const lamp = light.lantern(point, bedNormal);
         const band = light.ringLight(point.xz).mul(light.downwelling(depth.mul(0.5)));
         const under = bedColour.mul(moon.mul(hush).add(ambient).add(lamp)).add(band.mul(bedColour.add(0.06)).mul(1.6));
@@ -130,7 +134,7 @@ export function createBed(light, tier) {
         const tuft = light.noise.sample(point.xz.mul(4.1));
         const mound = broad.r.mul(0.35).add(clump.g.mul(0.5)).add(fine.g.mul(0.15)).toVar();
         const mossy = smoothstep(0.3, 0.5, mound);
-        const gravel = smoothstep(0.66, 0.82, clump.r.mul(0.6).add(broad.b.mul(0.4))).mul(mossy.oneMinus());
+        const exposed = smoothstep(0.66, 0.82, clump.r.mul(0.6).add(broad.b.mul(0.4))).mul(mossy.oneMinus());
         const earth = vec3(0.03, 0.024, 0.018).mul(fine.b.mul(0.4).add(0.8));
         // Each cushion is darker at its edge and brighter on its crown, its nap catching the light.
         const crown = smoothstep(0.42, 0.7, mound);
@@ -138,7 +142,7 @@ export function createBed(light, tier) {
             .mul(tuft.a.mul(0.25).add(0.85));
         const wet = smoothstep(0.16, 0.0, point.y);
         const shoreStone = stone.rgb.mul(0.5);
-        const dry = mix(mix(earth, moss, mossy), stone.rgb.mul(0.3), gravel.mul(0.8));
+        const dry = mix(mix(earth, moss, mossy), stone.rgb.mul(0.3), exposed.mul(0.8));
         const recede = float(1.0).sub(smoothstep(0.35, 1.5, point.y).mul(0.72))
             .mul(smoothstep(-10.5, -5.2, point.z).mul(0.86).add(0.14));
         const bankColour = mix(dry, shoreStone, wet.mul(0.85)).mul(mix(1.0, 0.55, wet)).mul(recede);
