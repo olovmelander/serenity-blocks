@@ -11,11 +11,14 @@
  * NaN/Infinity literal, a stringified node (`[object Object]`) and MaterialX noise. The harness
  * is tests/unit/sunbraid-shaders.test.js's; the WGSL and GLSL are not compiled here.
  */
+import { readFileSync } from 'node:fs';
 import {
     afterAll, beforeAll, describe, expect, it, vi,
 } from 'vitest';
 import * as THREE from 'three/webgpu';
 import { context } from 'three/tsl';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { preloadAuroraConifers } from '../../src/themes/aurora/aurora-conifers.js';
 import { AuroraWorld } from '../../src/themes/aurora/aurora-world.js';
 import { hasMaterialXNoise } from './helpers/materialx-noise.js';
 
@@ -119,7 +122,17 @@ describe.each(TIERS)('aurora shaders at %s', (quality) => {
     let world;
     const built = [];
 
-    beforeAll(() => {
+    beforeAll(async () => {
+        const load = vi.spyOn(GLTFLoader.prototype, 'loadAsync').mockImplementation(async () => {
+            const bytes = readFileSync(new URL('../../src/themes/aurora/assets/winter-conifers.glb', import.meta.url));
+            const buffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+            return new GLTFLoader().parseAsync(buffer, '');
+        });
+        try {
+            await preloadAuroraConifers();
+        } finally {
+            load.mockRestore();
+        }
         const scene = new THREE.Scene();
         const camera = new THREE.PerspectiveCamera(55, 16 / 9, 0.5, 12000);
         world = new AuroraWorld({ scene, camera, quality });
@@ -150,9 +163,29 @@ describe.each(TIERS)('aurora shaders at %s', (quality) => {
 
     afterAll(() => world?.dispose());
 
+    it('keeps each planted trunk on its shadow when the banks reframe for portrait', () => {
+        const { landscape } = world;
+        const tree = landscape.group.getObjectByName('Aurora — pine_near');
+        const matrix = new THREE.Matrix4();
+        tree.getMatrixAt(0, matrix);
+        const [x, , z] = new THREE.Vector3().setFromMatrixPosition(matrix).toArray();
+        const { data, width, height } = landscape.coniferShade.image;
+        const row = Math.floor(((z + 182) / 200) * height);
+        const col = Math.floor(((x + 190) / 380) * width);
+        expect(data[row * width + col]).toBeGreaterThan(190);
+        world.prepareCamera(390 / 844);
+        tree.getMatrixAt(0, matrix);
+        expect(matrix.elements[12]).toBeCloseTo(x * landscape.banks.scale.x, 4);
+        expect(landscape.banks.scale.x).toBeLessThan(0.55);
+        world.prepareCamera(16 / 9);
+        tree.getMatrixAt(0, matrix);
+        expect(matrix.elements[12]).toBeCloseTo(x, 4);
+    });
+
     it('builds every part on both backends without a warning', () => {
         const names = new Set(built.map((entry) => entry.name));
-        for (const part of ['sky dome', 'snow range', 'snow banks', 'spruces', 'far forest', 'mirror lake',
+        for (const part of ['sky dome', 'snow range', 'snow banks', 'spruce_near', 'pine_near',
+            'powder falling from boughs', 'far forest', 'mirror lake',
             'diamond dust', 'curtain march']) {
             expect([...names].some((name) => name.includes(part)), part).toBe(true);
         }

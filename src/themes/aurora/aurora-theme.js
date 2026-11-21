@@ -18,6 +18,7 @@ import { QUALITY_PRESETS, normalizeAuroraQuality } from './aurora-quality.js';
 import { AURORA_TETROMINOS } from './aurora-tetrominos.js';
 import { AuroraWorld } from './aurora-world.js';
 import { auroraBakes } from './aurora-bakes.js';
+import { preloadAuroraConifers } from './aurora-conifers.js';
 import { buildWorldBreathing } from '../shared/build-steps.js';
 
 export { QUALITY_PRESETS } from './aurora-quality.js';
@@ -107,7 +108,7 @@ export default class AuroraTheme extends BaseTheme {
 
         // The noise, the range's grid and the shore ice (~60 ms on a first visit) bake in a worker
         // while the renderer comes up; the build below finds them kept.
-        const baking = auroraBakes(this.quality);
+        const baking = Promise.all([auroraBakes(this.quality), preloadAuroraConifers()]);
         const renderer = await this.createRenderer(ownerGeneration);
         if (!renderer) return;
         await baking;

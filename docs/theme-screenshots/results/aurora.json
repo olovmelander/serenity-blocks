@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-10-25T10:30:46.200Z",
-  "runId": "2026-10-25T10-30-11-102Z",
+  "generatedAt": "2026-11-21T17:50:09.798Z",
+  "runId": "2026-11-21T17-49-33-798Z",
   "theme": "aurora",
   "themeMeta": {
     "displayName": "Aurora",
@@ -10,12 +10,12 @@
     "performanceClass": "heavy"
   },
   "anchorTheme": "forest",
-  "targetUrl": "http://127.0.0.1:5261/?skipIntro=1&noThemeWarm=1&themeValidation=1&unlockAll=1&captureBust=2026-10-25T10-30-11-102Z",
+  "targetUrl": "http://127.0.0.1:5386/?skipIntro=1&noThemeWarm=1&themeValidation=1&unlockAll=1&captureBust=2026-11-21T17-49-33-798Z",
   "passed": true,
   "config": {
     "width": 1920,
     "height": 1080,
-    "settleMs": 2000,
+    "settleMs": 900,
     "bootstrapTimeoutMs": 180000,
     "switchTimeoutMs": 90000,
     "readyTimeoutMs": 30000,
@@ -30,7 +30,6 @@
         "dx12FeatureLevel": "Not supported",
         "glImplementationParts": "(gl=none,angle=none)",
         "glResetNotificationStrategy": 0,
-        "hardwareSupportsVulkan": false,
         "inProcessGpu": true,
         "initializationTime": 0,
         "isAsan": false,
@@ -61,20 +60,10 @@
       "gpuDevice": [
         {
           "active": false,
-          "deviceId": 5056,
-          "deviceString": "AMD Radeon(TM) 610M",
-          "driverVersion": "32.0.13062.9003",
-          "gpuPreference": 2,
-          "revision": 212,
-          "subSysId": -2141841494,
-          "vendorId": 4098
-        },
-        {
-          "active": false,
           "deviceId": 11353,
           "deviceString": "NVIDIA GeForce RTX 5080 Laptop GPU",
           "driverVersion": "32.0.15.7324",
-          "gpuPreference": 3,
+          "gpuPreference": 0,
           "revision": 161,
           "subSysId": -2141841494,
           "vendorId": 4318
@@ -83,7 +72,7 @@
           "active": false,
           "deviceId": 140,
           "deviceString": "Microsoft Basic Render Driver",
-          "driverVersion": "10.0.26100.9711",
+          "driverVersion": "10.0.26100.9818",
           "gpuPreference": 0,
           "revision": 0,
           "subSysId": 0,
@@ -92,21 +81,19 @@
       ]
     },
     "featureStatus": {
-      "2d_canvas": "enabled",
+      "2d_canvas": "disabled_software",
       "direct_rendering_display_compositor": "disabled_off_ok",
-      "gpu_compositing": "enabled",
+      "gpu_compositing": "disabled_software",
       "multiple_raster_threads": "enabled_on",
-      "opengl": "enabled_on",
-      "rasterization": "enabled",
+      "opengl": "disabled_off",
+      "rasterization": "disabled_software",
       "raw_draw": "disabled_off_ok",
       "skia_graphite": "disabled_off",
       "trees_in_viz": "disabled_off",
-      "video_decode": "enabled",
-      "video_encode": "enabled",
-      "vulkan": "disabled_off",
-      "webgl": "enabled",
-      "webgl2": "enabled",
-      "webgpu": "enabled",
+      "video_decode": "disabled_software",
+      "video_encode": "disabled_software",
+      "webgl": "disabled_off",
+      "webgpu": "disabled_off",
       "webnn": "disabled_off"
     }
   },
@@ -1494,10 +1481,10 @@
       }
     ],
     "timings": {
-      "initial-anchor": 0.20000000018626451,
-      "firstTargetSelection": 384.90000000037253,
-      "cleanup-anchor": 2046.5,
-      "secondTargetSelection": 12765.899999999907
+      "initial-anchor": 0.30000000074505806,
+      "firstTargetSelection": 299.19999999925494,
+      "cleanup-anchor": 523.3000000007451,
+      "secondTargetSelection": 15773.099999997765
     },
     "mode": {
       "modeId": "single",
@@ -1581,22 +1568,22 @@
   "screenshot": {
     "path": "docs\\theme-screenshots\\aurora.png",
     "passed": true,
-    "width": 2538,
+    "width": 2540,
     "height": 1506,
-    "byteLength": 15288912,
-    "samples": 20012,
+    "byteLength": 15300960,
+    "samples": 20028,
     "luminance": {
-      "min": 10.017199999999999,
+      "min": 9.5844,
       "max": 246.9748,
-      "mean": 37.062675454727795,
-      "range": 236.95759999999999,
-      "variance": 414.8264385031532
+      "mean": 36.697787197922324,
+      "range": 237.3904,
+      "variance": 420.9924753656139
     }
   },
   "console": {
     "ok": true,
-    "entryCount": 137,
-    "warningCount": 4,
+    "entryCount": 138,
+    "warningCount": 5,
     "errorCount": 0,
     "processFailureCount": 0,
     "shaderPipelineFailureCount": 0,
@@ -1604,32 +1591,39 @@
     "errorSamples": [],
     "warningSamples": [
       {
-        "timestamp": "2026-10-25T10:30:19.829Z",
+        "timestamp": "2026-11-21T17:49:42.647Z",
         "level": 2,
         "message": "The powerPreference option is currently ignored when calling requestAdapter() on Windows. See https://crbug.com/369219127",
-        "line": 45905,
-        "sourceId": "http://127.0.0.1:5261/@fs/C:/Users/olovm/AppData/Local/Temp/claude/c--Users-olovm-repos-serenity-blocks/f5a3a0f4-714b-4434-ab6d-3976e65ab4d4/scratchpad/vite-cache-5261/deps/chunk-VNXNK5DP.js?v=69a6966e"
+        "line": 4806,
+        "sourceId": "http://127.0.0.1:5386/assets/three-DTwfRQzb.js"
       },
       {
-        "timestamp": "2026-10-25T10:30:22.772Z",
+        "timestamp": "2026-11-21T17:49:42.873Z",
         "level": 2,
         "message": "The powerPreference option is currently ignored when calling requestAdapter() on Windows. See https://crbug.com/369219127",
-        "line": 45905,
-        "sourceId": "http://127.0.0.1:5261/@fs/C:/Users/olovm/AppData/Local/Temp/claude/c--Users-olovm-repos-serenity-blocks/f5a3a0f4-714b-4434-ab6d-3976e65ab4d4/scratchpad/vite-cache-5261/deps/chunk-VNXNK5DP.js?v=69a6966e"
+        "line": 152,
+        "sourceId": "http://127.0.0.1:5386/assets/main-BY_F0vBC.js"
       },
       {
-        "timestamp": "2026-10-25T10:30:26.040Z",
+        "timestamp": "2026-11-21T17:49:47.823Z",
         "level": 2,
         "message": "The powerPreference option is currently ignored when calling requestAdapter() on Windows. See https://crbug.com/369219127",
-        "line": 45905,
-        "sourceId": "http://127.0.0.1:5261/@fs/C:/Users/olovm/AppData/Local/Temp/claude/c--Users-olovm-repos-serenity-blocks/f5a3a0f4-714b-4434-ab6d-3976e65ab4d4/scratchpad/vite-cache-5261/deps/chunk-VNXNK5DP.js?v=69a6966e"
+        "line": 4806,
+        "sourceId": "http://127.0.0.1:5386/assets/three-DTwfRQzb.js"
       },
       {
-        "timestamp": "2026-10-25T10:30:38.800Z",
+        "timestamp": "2026-11-21T17:49:49.580Z",
         "level": 2,
-        "message": "[ThemeManager] Swapping to \"aurora\" with 0 pipeline(s) in flight and builds still deferred: false",
-        "line": 1486,
-        "sourceId": "http://127.0.0.1:5261/src/themes/theme-manager.js"
+        "message": "The powerPreference option is currently ignored when calling requestAdapter() on Windows. See https://crbug.com/369219127",
+        "line": 152,
+        "sourceId": "http://127.0.0.1:5386/assets/main-BY_F0vBC.js"
+      },
+      {
+        "timestamp": "2026-11-21T17:50:03.582Z",
+        "level": 2,
+        "message": "[ThemeManager] Swapping to \"aurora\" with 1 pipeline(s) in flight and builds still deferred: true",
+        "line": 206,
+        "sourceId": "http://127.0.0.1:5386/assets/main-BY_F0vBC.js"
       }
     ],
     "processFailures": []
