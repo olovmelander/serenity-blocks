@@ -85,7 +85,8 @@ async function panel(version, directory, supportFit) {
                     version, tier, seed, swap, mode: 'frags', limit: 600, fragTarget: 7, displayHz: 165, supportFit,
                 };
                 const record = done.get(key(task));
-                if (record && (record.policy !== policy || record.reachability !== reachability || record.blind !== blind)) {
+                if (record && (record.policy !== policy
+                    || record.reachability !== reachability || record.blind !== blind)) {
                     throw Error('Saved row has missing or different source fingerprints. Start a fresh output file.');
                 }
                 if (!record) tasks.push(task);
