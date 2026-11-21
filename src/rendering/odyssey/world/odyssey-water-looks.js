@@ -83,6 +83,47 @@ export const SEA_RAMP = Object.freeze({
  */
 export const SEA_HORIZON_DOWN = Object.freeze([0.015, 0.18]);
 /**
+ * THE SEA'S OWN AIR FROM ABOVE (2026-11-21 sea audit, item 1). Seen from the climb the open sea
+ * read as a pale peach-lavender wash as bright as the sky: it took 1.6x the land's haze at the same
+ * range, every downward ray took the palest horizon colour, and the ground mist lay over it too.
+ * Where the sea is seen from above and not far (`seaAirOwn` 1), it takes the land's haze weight,
+ * the dome's colour `up` (the elevation's sine) instead of the horizon's, and `mistAbove` of its
+ * mist share, so it keeps a blue value of its own under the eye.
+ * - `far`: range (u) over which the far band keeps the water's own convergence on the horizon;
+ * - `graze`: sines below the horizon over which a grazing ray keeps the horizon's air;
+ * - `sunSide`: the cosine toward the sun (flat) over which the warm forward air is kept;
+ * - `eyeAbove`: the eye's height over the sea (u) over which the share comes in (shore orbs 0).
+ */
+export const SEA_AIR = Object.freeze({
+    up: 0.5,
+    far: Object.freeze([4500, 8500]),
+    graze: Object.freeze([0.03, 0.12]),
+    sunSide: Object.freeze([0.25, 0.85]),
+    eyeAbove: Object.freeze([120, 300]),
+    mistAbove: 0.15,
+});
+/**
+ * A STEADY NEAR SEA (2026-11-21 sea audit, item 2). The body's tint followed the swell's height at
+ * each instant across the whole stacked amplitude, so at the shore orbs every patch of the near sea
+ * swung from deep blue to jade and back once a wave (~45 levels within a second), and the full swell
+ * tilt swung the reflection's share and the land mirror across it. The wave speeds were right.
+ * - `SEA_CREST_GLOW`: jade only on the crest tops (`top`, shares of the stacked amplitude), on the
+ *   face turned to the eye (`face`, the slope toward it), with the sun behind it, at most `gain`;
+ * - `SEA_TROUGH`: the troughs (`window`, shares below) take `tint`, a slight deepening;
+ * - `SEA_SWELL_TILT`: the reflection rides `near` of the swell's tilt by the eye, all of it past
+ *   `range` (u, 3-D, so the climb's sea is unchanged).
+ */
+export const SEA_CREST_GLOW = Object.freeze({
+    top: Object.freeze([0.42, 0.82]),
+    face: Object.freeze([0.03, 0.12]),
+    gain: 0.30,
+});
+export const SEA_TROUGH = Object.freeze({
+    window: Object.freeze([0.25, 0.85]),
+    tint: Object.freeze([0.96, 0.975, 0.99]),
+});
+export const SEA_SWELL_TILT = Object.freeze({ near: 0.4, range: Object.freeze([60, 260]) });
+/**
  * THE SURF LINE FROM AFAR (2026-11-02): the soft white line on the waterline once a pixel spans
  * more depth than the swash front. Its width in pixels (calm, at the top of a run-up), how much of
  * it a broken stretch keeps, the scale of the drifting field that breaks it (per unit), and its
@@ -164,6 +205,21 @@ export function waterRampColour(t, ramp, bands = ODYSSEY_WATER_RAMP.bands) {
 /** How much of the lake's bed shows through `depth` units of its water (its clear-water film). */
 export function lakeClearAt(depth) {
     return Math.exp(-Math.max(depth, 0) * LAKE_WATER.clarity);
+}
+
+/**
+ * The sea's own-air share (SEA_AIR): 1 where the sea is seen from above and near, away from the
+ * sun; 0 at the horizon, in the far band, toward the sun, from a shore eye and while the Earth is
+ * there. `downSine` is the sine of the ray's angle below the horizon, `toSun` the cosine of its
+ * flat bearing to the sun's, `eyeAbove` the eye's height over the sea.
+ */
+export function seaAirOwn(range, downSine, toSun, eyeAbove, earth = 0) {
+    const keep = Math.max(
+        smoothstepGpu(SEA_AIR.far[0], SEA_AIR.far[1], range),
+        1 - smoothstepGpu(SEA_AIR.graze[0], SEA_AIR.graze[1], downSine),
+        smoothstepGpu(SEA_AIR.sunSide[0], SEA_AIR.sunSide[1], toSun),
+    );
+    return (1 - keep) * smoothstepGpu(SEA_AIR.eyeAbove[0], SEA_AIR.eyeAbove[1], eyeAbove) * (1 - earth);
 }
 
 /** The sea's body colour over `depth` units of water. */

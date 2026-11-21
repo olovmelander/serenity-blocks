@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
     LAKE_WATER, SEA_HORIZON_DOWN, SEA_SURF, WATER_SHORE_DEPTH_BIAS,
-    depthStepAlongRay, lakeClearAt, lakeShoreOpacity, lakeShoreWidth, seaBodyAt, seaFilmOpacity,
+    SEA_AIR, depthStepAlongRay, lakeClearAt, seaAirOwn, lakeShoreOpacity, lakeShoreWidth, seaBodyAt, seaFilmOpacity,
     seaHorizonKeep, seaSurfLine, shoreFightBand,
 } from './odyssey-water-looks.js';
 
@@ -223,5 +223,38 @@ describe('the shore depth fight (2026-11-03)', () => {
             expect(lakeShoreOpacity(-lo, 1)).toBe(0);
             expect(lakeShoreOpacity(-hi, 1)).toBe(0);
         });
+    });
+});
+
+// THE SEA'S OWN AIR FROM ABOVE (2026-11-21 sea audit, item 1): seen from the climb the near sea
+// keeps a value of its own; the far band, grazing rays, the sun's side, the shore eyes and the
+// Earth's departure keep the horizon's air.
+describe('the sea\'s own air from above (2026-11-21)', () => {
+    it('is whole for the climb looking down on the sea away from the sun', () => {
+        // c31: 2-4 km, 9-20 degrees down, the eye ~1 km over the sea.
+        [2000, 3000, 4000].forEach((range) => {
+            [0.16, 0.25, 0.34].forEach((down) => {
+                expect(seaAirOwn(range, down, -0.3, 1000)).toBeGreaterThan(0.99);
+            });
+        });
+    });
+
+    it('leaves the shore orbs, the horizon, the far band, the sun side and the Earth alone', () => {
+        expect(seaAirOwn(500, 0.3, -0.3, 12)).toBe(0); // a shore orb's eye
+        expect(seaAirOwn(3000, 0.02, -0.3, 1000)).toBe(0); // grazing, within ~1.7 degrees
+        expect(seaAirOwn(9000, 0.3, -0.3, 1000)).toBe(0); // the far band meets the dome
+        expect(seaAirOwn(3000, 0.3, 0.9, 1000)).toBe(0); // toward the low sun: its warm air
+        expect(seaAirOwn(3000, 0.3, -0.3, 1000, 1)).toBe(0); // the departure's Earth
+        expect(SEA_AIR.mistAbove).toBeLessThan(1);
+    });
+
+    it('comes in smoothly with each of its gates', () => {
+        let prev = 0;
+        for (let eye = 100; eye <= 320; eye += 5) {
+            const v = seaAirOwn(3000, 0.3, -0.3, eye);
+            expect(v).toBeGreaterThanOrEqual(prev);
+            expect(v - prev).toBeLessThan(0.06);
+            prev = v;
+        }
     });
 });

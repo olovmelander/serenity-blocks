@@ -45,6 +45,15 @@
  *   of path (0 in the shallows: the surface is right there; the abyss sees it as a far well)
  */
 
+/**
+ * The water's extinction per unit of path (rgb): red dies first, blue last. The haze over every
+ * surface under water takes it whole (submergedOf); the light shafts take `OCEAN_SHAFT_EXTINCTION`
+ * of it along the view ray (2026-11-21 sea audit, item 6), so a far shaft sits back in the water
+ * like everything else at its range instead of standing at full strength in front of the haze.
+ */
+export const OCEAN_EXTINCTION = Object.freeze([0.0160, 0.0082, 0.0046]);
+export const OCEAN_SHAFT_EXTINCTION = 0.6;
+
 /** @type {readonly OceanZone[]} shallowest first */
 export const OCEAN_ZONES = Object.freeze([
     Object.freeze({
