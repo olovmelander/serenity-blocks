@@ -8,7 +8,11 @@ import { SteamNetworking } from '../steam/steam-networking.js';
 import steamService from '../steam/steam-service.js';
 import { FFAGameStateP2P } from '../multiplayer/ffa-p2p-game-state.js';
 import { readMatchLevelRule } from '../multiplayer/match-level-rule.js';
-import { RESPAWN_AFTER_MS, readVersusGameType } from '../multiplayer/versus-rules.js';
+import { readVersusGameType } from '../multiplayer/versus-rules.js';
+import {
+    clearDeathState, enterDeadSpectate, exitDeadSpectate, hideDropInWaitingBanner, reconcileDeathOverlay,
+    showDeathAnimation, showDropInWaitingBanner,
+} from '../../ui/online-knockout-screens.js';
 import { predatesRespawn } from '../multiplayer/ffa/respawn.js';
 import { readMinAttackLines } from '../garbage.js';
 import {
@@ -25,9 +29,6 @@ import {
 import { OpponentWatchManager, wireSpectatorSpotlight } from '../../ui/opponent-watch-manager.js';
 import { OnlineScoreboard } from '../../ui/online-scoreboard.js';
 import { OnlineKillFeed } from '../../ui/online-kill-feed.js';
-import {
-    createOutCard, createStatusCard, showOutCard, showStatusCard,
-} from '../../ui/keystone/out-card.js';
 import { OnlineChat } from '../../ui/online-chat.js';
 import { setChatLobbyType } from '../../ui/chat-moderation.js';
 import { ensureOnlinePlayNotice, hasSeenOnlinePlayNotice } from '../../ui/online-play-notice.js';
@@ -2056,136 +2057,33 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         if (isYou) this.mainBoardScene?.sharedEffects?.playRoundWin?.({ color });
     }
 
-    /**
-     * Your knock-out on the main board: the stack goes dark, loses its colour and
-     * comes apart (shared-effects.js playKnockout), then the Out card rises naming
-     * who did it (ui/keystone/out-card.js).
-     */
+    // Knock-out and drop-in screens (ui/online-knockout-screens.js).
     _showDeathAnimation(killerName = null) {
-        const boardContainer = document.getElementById('online-main-board');
-        if (!boardContainer) return;
-
-        // Idempotent: a single death can be signalled by both PLAYER_TOPPED_OUT and
-        // _handlePlayerDeath — only animate once per death until the next clear.
-        if (this._deathShown) return;
-        this._deathShown = true;
-
-        // Free-for-all: out only until a key brings you back (ffa/respawn.js), so your board
-        // stays in front of you, dark, with the prompt; the card rises when a key works.
-        const freeForAll = this._isFreeForAll();
-
-        // B5: eliminated → keep watching. Expand to the full-roster watch view so a dead
-        // player can follow everyone still playing (not just the 4-up beside their now-dead
-        // board) until the round resolves. Reverted on revive in _clearDeathState.
-        if (!freeForAll) this._enterDeadSpectate();
-
-        this.mainBoardScene?.sharedEffects?.playKnockout?.();
-
-        // The card after the board has gone dark. Tracked so _clearDeathState can cancel
-        // a still-pending card (a round-ending death emits ROUND_RESTART BEFORE this fires).
-        if (this._deathOverlayTimer) clearTimeout(this._deathOverlayTimer);
-        this._deathOverlayTimer = setTimeout(() => {
-            this._deathOverlayTimer = null;
-            // If we were revived/cleared while the timer was pending, don't show it.
-            if (!this._deathShown) return;
-            showOutCard(boardContainer, createOutCard(document, {
-                cause: killerName ? `By ${killerName}` : 'Topped out',
-                note: freeForAll ? 'Press any key to play again' : 'Watching until the round ends',
-            }));
-            boardContainer.classList.add('eliminated');
-        }, freeForAll ? RESPAWN_AFTER_MS : 600);
+        return showDeathAnimation(this, killerName);
     }
 
-    /**
-     * Clear death state from the main board (for rematch/new game)
-     */
     _clearDeathState() {
-        // Cancel any still-pending death animation so it can't be born after the
-        // round already reset (the orphaned-timeout bug that stuck "ELIMINATED").
-        if (this._deathOverlayTimer) {
-            clearTimeout(this._deathOverlayTimer);
-            this._deathOverlayTimer = null;
-        }
-        this._deathShown = false;
-
-        const boardContainer = document.getElementById('online-main-board');
-        if (!boardContainer) return;
-
-        boardContainer.classList.remove('eliminated');
-        boardContainer.querySelector('.death-overlay')?.remove();
-        this.mainBoardScene?.sharedEffects?.clearKnockout?.();
-
-        // B5: revived (round restart) → back to the normal watch-while-playing view.
-        this._exitDeadSpectate();
+        return clearDeathState(this);
     }
 
-    /**
-     * B5 — spectate-after-death: when the LOCAL player is eliminated but the match
-     * continues, expand the opponent watch grid to the full roster so they can watch
-     * everyone still alive. (A pure spectator is already full-roster, so skip.) Reverted
-     * by _exitDeadSpectate on revive.
-     */
     _enterDeadSpectate() {
-        if (this._deadSpectating || this.ffaGameState?.isSpectator) return;
-        if (!this.opponentWatchManager) return;
-        this._deadSpectating = true;
-        this._preDeathMaxVisible = this.opponentWatchManager.maxVisible;
-        // setMaxVisible widens the CSS grid (full-roster class) so all alive players fit.
-        this.opponentWatchManager.setMaxVisible(8);
-        document.getElementById('online-multiplayer-container')?.classList.add('dead-spectating');
-        // A DROP-IN joiner (waiting, no elimination animation) gets a clear "you'll spawn
-        // next round" banner over its empty board. An ELIMINATED player (_deathShown) already
-        // has the "ELIMINATED" overlay, so don't add the join banner for them.
-        if (!this._deathShown) {
-            this._showDropInWaitingBanner();
-        }
+        return enterDeadSpectate(this);
     }
 
     _exitDeadSpectate() {
-        if (!this._deadSpectating) return;
-        this._deadSpectating = false;
-        this.opponentWatchManager?.setMaxVisible(this._preDeathMaxVisible || 4);
-        document.getElementById('online-multiplayer-container')?.classList.remove('dead-spectating');
-        this._hideDropInWaitingBanner();
+        return exitDeadSpectate(this);
     }
 
-    /**
-     * A mid-match drop-in joiner's empty board: the aqua "Next round" card, the one the
-     * others see on this player's tile (ui/keystone/out-card.js).
-     */
     _showDropInWaitingBanner() {
-        const container = document.getElementById('online-main-board');
-        if (!container || container.querySelector('.dropin-waiting-banner')) return;
-        // A free-for-all has no next round: a key brings you in (ffa/respawn.js).
-        showStatusCard(container, createStatusCard(document, this._isFreeForAll() ? {
-            title: 'Join in',
-            cause: 'Joined mid-match',
-            note: 'Press any key to play',
-            tone: 'aqua',
-            marker: 'dropin-waiting-banner',
-        } : {
-            title: 'Next round',
-            cause: 'Joined mid-match',
-            note: 'You play from the next round',
-            tone: 'aqua',
-            marker: 'dropin-waiting-banner',
-        }));
+        return showDropInWaitingBanner(this);
     }
 
     _hideDropInWaitingBanner() {
-        document.getElementById('online-main-board')?.querySelector('.dropin-waiting-banner')?.remove();
+        return hideDropInWaitingBanner();
     }
 
-    /**
-     * Reconcile the death overlay against authoritative liveness. Driven from
-     * state updates so the overlay is torn down the instant the local player is
-     * revived (round restart), independent of event ordering/timeouts.
-     */
     _reconcileDeathOverlay(isAlive) {
-        // A free-for-all drop-in watching until its key (no death shown) comes back too.
-        if (isAlive === true && (this._deathShown || (this._deadSpectating && this._isFreeForAll()))) {
-            this._clearDeathState();
-        }
+        return reconcileDeathOverlay(this, isAlive);
     }
 
     /**

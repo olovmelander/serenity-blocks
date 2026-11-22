@@ -16,7 +16,6 @@ import {
     softDrop,
     hardDrop,
     canPlacePiece,
-    applyGarbage,
     restoreBoardState,
 } from '../game.js';
 import { InputValidator } from '../validation/input-validator.js';
@@ -29,7 +28,7 @@ import { paintCountdown } from '../../ui/countdown-light.js';
 import { unifiedLoop } from './unified-game-loop.js';
 import { emitMultiplayerEvent, MULTIPLAYER_EVENTS } from '../../events/multiplayer-events.js';
 import { InputJitterBuffer } from '../network/input-jitter-buffer.js';
-import { clearBlind, restoreBlindSnapshot, takeSpawnBlinds } from '../blind.js';
+import { clearBlind, restoreBlindSnapshot } from '../blind.js';
 import { normalizeHotPotatoState } from './hot-potato.js';
 import { readFlag as readNetFlag } from '../flags.js';
 import { FIXED_TICK_HZ, FIXED_TICK_MS } from '../fixed-tick-clock.js';
@@ -103,10 +102,11 @@ import {
     sanitizeFfaNetEventData,
     stableFfaRuleHash,
 } from './ffa/net-diagnostics.js';
-import { garbageBurstKey, drainAllLineBursts, cancelIncomingLines } from './ffa/garbage-helpers.js';
+import { garbageBurstKey, cancelIncomingLines } from './ffa/garbage-helpers.js';
+import { insertLocalGarbagePrediction, insertPendingGarbage as insertPendingGarbageFor } from './ffa/garbage-insert.js';
 import { clearEmptiesBoard, serializeBoardGrid } from './ffa/board-helpers.js';
 import {
-    DEFAULT_VERSUS_GAME_TYPE, VERSUS_GARBAGE_OPTIONS, createVersusGarbageQueue, ensureAttackCredit,
+    DEFAULT_VERSUS_GAME_TYPE, createVersusGarbageQueue, ensureAttackCredit,
     forgetsSpentCredit, resetVersusCredit, stepCrowdStamps,
 } from './versus-rules.js';
 import {
@@ -1630,129 +1630,9 @@ export class FFAGameStateP2P {
         }
     }
 
-    /**
-    * Insert pending garbage for a player (after piece spawns)
-    * HOST ONLY
-    */
+    /** Insert pending garbage for a player before its next piece (HOST ONLY; ffa/garbage-insert.js). */
     insertPendingGarbage(steamId) {
-        if (!this.isHost) return;
-
-        const player = this.players.get(steamId);
-        if (!player || !player.isAlive) return;
-
-        const { garbageQueue } = player;
-
-        // Blind attacks at the head of the queue (blind.js), exactly as the peer takes them on
-        // its own board: a full blind hides the board now, a blind piece hides the piece
-        // spawning now once it lands. Rows behind them still go in below.
-        takeSpawnBlinds(player.gameState, garbageQueue);
-
-        const totalLines = garbageQueue.getTotalLines();
-
-        if (totalLines === 0) return;
-
-        this._logGarbage(`💥 Inserting ${totalLines} garbage lines for ${player.name}`);
-        this._logGarbage(`💥 Queue has ${garbageQueue.entries.length} total entries before dequeue`);
-
-        // Take lines from queue — DRAIN-ALL to match local (one dump), else one burst.
-        const burst = this._garbageDrainAll
-            ? drainAllLineBursts(garbageQueue)
-            : garbageQueue.dequeueLineBurst();
-
-        if (!burst || burst.length === 0) return;
-
-        this._logGarbage(`💥 Dequeued ${burst.length} entries from garbage queue`);
-
-        // Log all entries in burst to debug attackerId
-        burst.forEach((entry, idx) => {
-            this._logGarbage(`  Entry ${idx}: type=${entry.type}, attackerId=${entry.attackerId || 'MISSING'}, color=${entry.color}`);
-        });
-
-        // Whose rows these are (logs only). The frag goes to the holder of the player's frag
-        // credit, fed as each attack arrives (FFAAttackRouter.sendGarbageToPlayer).
-        const attackerId = burst[burst.length - 1].attackerId
-            || burst.find((entry) => entry.attackerId)?.attackerId || null;
-        const killerId = player.lastAttackerId || null;
-        const killerName = killerId ? (this.players.get(killerId)?.name || null) : null;
-        const isSelfKill = !killerId || killerId === steamId;
-
-        // Board mutation + grid/cache repair live in the ONE boundary (§5.1). Versus garbage
-        // never tops a player out (only a blocked spawn does), and rows its settle completes
-        // count as the player's own clear (versus-rules.js).
-        const result = applyGarbage(player.gameState, burst, {
-            ...VERSUS_GARBAGE_OPTIONS,
-            debug: this.debugGarbage,
-        });
-
-        if (!result || result.topOut) {
-            this._logGarbage(`💀 ${player.name} topped out from garbage insertion!`);
-            player.isAlive = false;
-            player.gameState.isGameOver = true;
-            this._recordNetEvent?.('garbage_inserted', {
-                targetSteamId: steamId,
-                targetName: player.name,
-                lines: burst.length,
-                attackerId,
-                topOut: true,
-            });
-
-            this.fragTracker.recordDeath(steamId, killerId, killerName);
-            this._recordNetEvent?.('death', {
-                deadSteamId: steamId,
-                deadName: player.name,
-                killerSteamId: killerId,
-                killerName,
-                reason: 'garbage_insert',
-            });
-
-            emitMultiplayerEvent(MULTIPLAYER_EVENTS.PLAYER_TOPPED_OUT, {
-                steamId,
-                playerName: player.name,
-                killer: killerId,
-                killerId,
-                killerName,
-                isSelfKill,
-                isLocal: steamId === this.localPlayerId,
-            });
-            return;
-        }
-
-        // PHASE 3.2: Dispatch garbage insertion event for visual effects
-        emitMultiplayerEvent(MULTIPLAYER_EVENTS.GARBAGE_INSERTED, {
-            steamId,
-            playerName: player.name,
-            linesInserted: burst.length,
-            isLocal: steamId === this.localPlayerId,
-        });
-        this._recordNetEvent?.('garbage_inserted', {
-            targetSteamId: steamId,
-            targetName: player.name,
-            lines: burst.length,
-            attackerId,
-            topOut: false,
-        });
-
-        if (result.settleSummary) this._routeSettleAttack(steamId, result.settleSummary);
-    }
-
-    /**
-     * Send the attack of rows a garbage settle completed, the way this player's own clears are
-     * sent: the host routes its own (and, with authoritative attacks, everyone's); otherwise a
-     * peer reports its own and the host's copy only notes the clear it will check that against.
-     * @param {string} steamId
-     * @param {Object} summary cascade summary from applyGarbage (settleSummary)
-     */
-    _routeSettleAttack(steamId, summary) {
-        if (this.isHost) {
-            if (steamId === this.localPlayerId || this._authoritativeAttacksEnabled) {
-                this._recordNetEvent?.('attack_ready', { attackerSteamId: steamId, cascadeSummary: summary });
-                this.attackRouter.routeAttack(steamId, summary);
-            } else {
-                noteCopyClear(this, steamId, summary);
-            }
-        } else if (steamId === this.localPlayerId) {
-            this.sendGarbageAttack(summary);
-        }
+        insertPendingGarbageFor(this, steamId);
     }
 
     /**
@@ -3373,67 +3253,9 @@ export class FFAGameStateP2P {
         return callbacks;
     }
 
-    /**
-     * Insert garbage locally for visual prediction (peers only)
-     * Host's broadcast will overwrite with authoritative state
-     */
-    // Stable identity for a garbage line across the peer's predicted consume and the
-    // host's serialized queue. attackId is `r{round}-a{seq}` (always non-empty for routed
-    // attacks); lineIndex disambiguates lines within one attack. Falls back to attackSeq.
+    /** Peers: insert our own pending garbage before our next piece (ffa/garbage-insert.js). */
     _insertLocalGarbagePrediction(steamId) {
-        if (this.isHost) return; // Host uses _spawnNextPieceForPlayer
-
-        const player = this.players.get(steamId);
-        if (!player || !player.isAlive) return;
-
-        const { garbageQueue, gameState } = player;
-        // Blind attacks at the head of the queue, on our own board exactly as the host takes
-        // them on its copy (blind.js takeSpawnBlinds); the host's snapshot no longer lists them
-        // once it has too.
-        const blinds = takeSpawnBlinds(gameState, garbageQueue);
-        if (this._garbageIdempotentEnabled) blinds.forEach((e) => this._peerConsumedBursts?.add(garbageBurstKey(e)));
-        const totalLines = garbageQueue.getTotalLines();
-
-        if (totalLines > 0) {
-            // Take lines from queue and insert locally — DRAIN-ALL to match local (one
-            // dump), else one burst. Both host and peer flip together via the flag.
-            const burst = this._garbageDrainAll
-                ? drainAllLineBursts(garbageQueue)
-                : garbageQueue.dequeueLineBurst();
-            if (burst && burst.length > 0) {
-                // Idempotent-adopt: remember these bursts so the next host snapshot (which
-                // still lists them until the host consumes them ~½RTT later) does NOT re-add
-                // them in _applySnapshotState → no double-insert / meter rebound.
-                if (this._garbageIdempotentEnabled && this._peerConsumedBursts) {
-                    for (const entry of burst) this._peerConsumedBursts.add(garbageBurstKey(entry));
-                }
-                const normalizedBurst = burst.map((entry) => ({
-                    ...entry,
-                    holeMask: typeof entry.holeMask === 'number' ? entry.holeMask : 0,
-                    variant: entry.variant || 'normal',
-                }));
-
-                // Board mutation + grid/cache repair live in the ONE boundary (§5.1), by the
-                // same versus rules as the host. Death is host-authoritative; the attack of
-                // rows the settle completed is reported like any other clear of ours.
-                const result = applyGarbage(gameState, normalizedBurst, {
-                    ...VERSUS_GARBAGE_OPTIONS,
-                    debug: this.debugGarbage,
-                });
-                if (result?.settleSummary) this._routeSettleAttack(steamId, result.settleSummary);
-
-                // Dispatch event for UI feedback
-                emitMultiplayerEvent(MULTIPLAYER_EVENTS.GARBAGE_INSERTED, {
-                    steamId,
-                    playerName: player.name,
-                    linesInserted: burst.length,
-                    isLocal: true,
-                });
-            }
-        }
-
-        // Trigger render to show the garbage
-        this.renderAllPlayers();
+        insertLocalGarbagePrediction(this, steamId);
     }
 
     _spawnNextPieceForPlayer(steamId) {
