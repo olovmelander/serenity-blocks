@@ -135,13 +135,10 @@ describe('buildLocalMatchConfig — config contract', () => {
         expect(config.boringRules).toBe(true);
         expect(config.playerTeams).toEqual([0, 0, 1, 1]);
         expect(config.hotPotato).toBe(true);
-        expect(config.potatoDurationMs).toBe(12000);
-        expect(config.potatoPenaltyLines).toBe(6);
-        expect(config.attackRules).toEqual({
-            forceAttackType: 'potato',
-            potatoDurationMs: 12000,
-            potatoPenaltyLines: 6,
-        });
+        // The potato routes ordinary rows: no timer, no penalty rows, no attack rules of its own.
+        expect(config).not.toHaveProperty('potatoDurationMs');
+        expect(config).not.toHaveProperty('potatoPenaltyLines');
+        expect(config.attackRules).toBe(null);
     });
 
     it('derives team vs FFA from the team distribution', () => {
@@ -213,5 +210,17 @@ describe('buildLocalMatchConfig — config contract', () => {
         expect(ruleFor('blind')).toEqual({ forceAttackType: 'blind' });
         expect(ruleFor('full_blind')).toEqual({ forceAttackType: 'full_blind' });
         expect(ruleFor('peaceful')).toEqual({ disableAttacks: true });
+        expect(ruleFor('hot_potato')).toBe(null);
+    });
+
+    it('carries the smallest attacking clear, 2 to 5, 2 when unset', () => {
+        const minFor = (minAttackLines) => buildLocalMatchConfig({
+            numPlayers: '2', matchMode: 'ffa', endCondition: 'never', startLevel: '1', minAttackLines,
+        }).minAttackLines;
+        expect(minFor(undefined)).toBe(2);
+        expect(minFor('3')).toBe(3);
+        expect(minFor('5')).toBe(5);
+        expect(minFor('9')).toBe(2);
+        expect(minFor('1')).toBe(2);
     });
 });

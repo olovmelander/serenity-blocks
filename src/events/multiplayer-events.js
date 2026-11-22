@@ -22,6 +22,8 @@ export const MULTIPLAYER_EVENTS = {
     GARBAGE_INSERTED: 'ffa:garbage-inserted',
     GARBAGE_COUNTERED: 'ffa:garbage-countered',
     GARBAGE_SENT: 'ffa:garbage-sent', // local echo so the AUTHORING node logs its own attacks
+    // The hot potato changed hands or counted rows (host echo + peers on GAME_POTATO_UPDATE).
+    HOT_POTATO_UPDATED: 'ffa:hot-potato-updated',
 
     RENDER_FRAME: 'ffa:render-frame',
     COUNTDOWN: 'ffa:countdown',

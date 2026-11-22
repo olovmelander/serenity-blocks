@@ -6,19 +6,52 @@
 import { COLS, ROWS, HIDDEN_ROWS } from './constants.js';
 import { rebuildBoardGridFromPieces, isPartOfPiece, findCompleteLines } from './board.js';
 import { removeClearedLines, findConnectedComponents } from './cascade-helpers.js';
+import { BLIND_PIECE_TICKS, fullBlindTicks } from './blind.js';
 
+/**
+ * What an attack's rows become on the target (versus attack styles):
+ * - LINES: garbage rows.
+ * - BLIND: no rows. Each normal row hides one of the target's next placed pieces (a 'blind'
+ *   entry), and the clean bonus is a full blind of cleanRows x combo x FULL_BLIND_FACTOR.
+ * - FULL_BLIND: no rows. Every cell on the target's board is hidden for
+ *   rows x combo x FULL_BLIND_FACTOR blind ticks (rows: normal plus clean).
+ */
 export const ATTACK_TYPES = {
     LINES: 'lines',
     CLEAN: 'clean',
     BLIND: 'blind',
     FULL_BLIND: 'full_blind',
-    POTATO: 'potato',
 };
 
 // Handicap / clean-garbage tuning constants
 export const STAMP_PER_HANDICAP = 3; // Stamps needed to reduce 1 garbage line
-export const DEFAULT_POTATO_DURATION_MS = 12000;
-export const DEFAULT_POTATO_PENALTY_LINES = 6;
+
+/** Smallest attacking clear (matchConfig.minAttackLines): clears below it send no normal rows. */
+export const MIN_ATTACK_LINES_DEFAULT = 2;
+export const MIN_ATTACK_LINES_CHOICES = Object.freeze([2, 3, 4, 5]);
+
+/**
+ * The smallest clear that attacks, from a match config value (2 when unset or invalid).
+ * @param {unknown} value
+ * @returns {number}
+ */
+export function readMinAttackLines(value) {
+    const lines = Number(value);
+    return MIN_ATTACK_LINES_CHOICES.includes(lines) ? lines : MIN_ATTACK_LINES_DEFAULT;
+}
+
+/**
+ * The rules calculateGarbage plays a versus match by, local and online: the attack style's
+ * rules (matchConfig.attackRules) and the smallest attacking clear.
+ * @param {{ attackRules?: Object|null, minAttackLines?: unknown }|null|undefined} matchConfig
+ * @returns {Object}
+ */
+export function versusAttackRules(matchConfig) {
+    return {
+        ...(matchConfig?.attackRules || {}),
+        minAttackLines: readMinAttackLines(matchConfig?.minAttackLines),
+    };
+}
 
 // Clean-garbage column patterns (deterministic, alternating even/odd rows)
 // Even rows: holes at columns [3, 6]
@@ -116,28 +149,11 @@ function normalizeMaskRow(row, manualColumns) {
     return safeFallback;
 }
 
-function determineAttackType(depth, complexity, cleanRowBonus, rules = {}) {
-    if (rules && rules.forceAttackType) {
-        return rules.forceAttackType;
-    }
-    // Placeholder: default to line-based attack
-    return ATTACK_TYPES.LINES;
-}
-
-function determineAttackParam(attackType, depth, complexity, rules = {}) {
-    if (rules && typeof rules.attackParam === 'number') {
-        return rules.attackParam;
-    }
-    if (attackType === ATTACK_TYPES.BLIND) {
-        return Math.max(0, (rules.blindBaseDuration || 3) + complexity);
-    }
-    if (attackType === ATTACK_TYPES.FULL_BLIND) {
-        return Math.max(0, depth * (rules.fullBlindMultiplier || 2));
-    }
-    if (attackType === ATTACK_TYPES.POTATO) {
-        return Math.max(1000, rules.potatoDurationMs || DEFAULT_POTATO_DURATION_MS);
-    }
-    return 0;
+function determineAttackType(rules = {}) {
+    const forced = rules?.forceAttackType;
+    return forced === ATTACK_TYPES.BLIND || forced === ATTACK_TYPES.FULL_BLIND
+        ? forced
+        : ATTACK_TYPES.LINES;
 }
 
 function cloneEntry(entry) {
@@ -180,6 +196,11 @@ export class GarbageAttack {
         return (this.cleanMasks?.length || 0) + (this.holeMasks?.length || 0);
     }
 
+    /**
+     * The queue entries this attack puts on one target (see ATTACK_TYPES): garbage rows, or
+     * for the blind styles one 'blind' entry per hidden piece and a 'full_blind' entry with
+     * its blind ticks.
+     */
     expandEntries(context = {}) {
         const entries = [];
         const attackId = this.id || 'attack';
@@ -187,16 +208,29 @@ export class GarbageAttack {
         const team = context.team || null;
         const attackerId = context.attackerId || null; // Track attacker for frag attribution
         const attackerName = context.attackerName || null; // Track attacker name directly
+        const normalRows = this.holeMasks?.length || 0;
+        const cleanRows = this.cleanMasks?.length || 0;
+        const blindEntry = (type, ticks) => ({
+            type,
+            attackId,
+            ticks,
+            color,
+            team,
+            attackerId,
+            attackerName,
+            combo: this.complexity,
+            depth: this.depth,
+        });
 
-        if (this.attackType === ATTACK_TYPES.BLIND && this.param > 0) {
-            entries.push({
-                type: 'blind',
-                attackId,
-                duration: this.param,
-                combo: this.complexity,
-                depth: this.depth,
-                attackerId,
-            });
+        if (this.attackType === ATTACK_TYPES.BLIND) {
+            for (let i = 0; i < normalRows; i++) entries.push(blindEntry('blind', BLIND_PIECE_TICKS));
+            if (cleanRows > 0) entries.push(blindEntry('full_blind', fullBlindTicks(cleanRows, this.complexity)));
+            return entries;
+        }
+        if (this.attackType === ATTACK_TYPES.FULL_BLIND) {
+            const rows = normalRows + cleanRows;
+            if (rows > 0) entries.push(blindEntry('full_blind', fullBlindTicks(rows, this.complexity)));
+            return entries;
         }
 
         const totalLines = this.getTotalLines();
@@ -212,7 +246,6 @@ export class GarbageAttack {
                 team,
                 attackerId, // Store who sent this garbage line
                 attackerName,
-                blindTime: 0,
                 connectAbove: ordinal > 0,
                 connectBelow: ordinal < totalLines - 1,
                 isLastInBurst: ordinal === totalLines - 1,
@@ -224,17 +257,6 @@ export class GarbageAttack {
 
         (this.cleanMasks || []).forEach((maskBits) => pushLineEntry(maskBits, 'clean'));
         (this.holeMasks || []).forEach((maskBits) => pushLineEntry(maskBits, 'normal'));
-
-        if (this.attackType === ATTACK_TYPES.FULL_BLIND && this.param > 0) {
-            entries.push({
-                type: 'full_blind',
-                attackId,
-                attackerId,
-                duration: this.param,
-                combo: this.complexity,
-                depth: this.depth,
-            });
-        }
 
         return entries;
     }
@@ -375,8 +397,9 @@ export function accumulateHandicapStamps(playerState, opponents) {
  * Calculate garbage attack from cascade summary
  *
  * Attack formula:
- * 1. Base attack lines:  depth - 1
- * 2. Clean bonus:        (1 + depth) / 2  (integer division)
+ * 1. Base attack lines:  depth - 1, or none when depth is below rules.minAttackLines
+ *    (the smallest attacking clear, 2 by default)
+ * 2. Clean bonus:        (1 + depth) / 2  (integer division), always sent
  * 3. Total attack:       base + clean_bonus (if clean)
  *
  * EXAMPLES:
@@ -402,8 +425,8 @@ export function calculateGarbage(summary, rules = {}) {
     const manualColumns = summary.manualColumns || [];
     const maskMatrix = rawMask.map((row) => normalizeMaskRow(row, manualColumns));
 
-    // Base attack = depth - 1
-    const rowsToSend = Math.max(0, depth - 1);
+    // Base attack = depth - 1, from the smallest attacking clear up.
+    const rowsToSend = depth >= readMinAttackLines(rules?.minAttackLines) ? Math.max(0, depth - 1) : 0;
     const holeMasks = maskMatrix.slice(0, rowsToSend).map(maskArrayToBits);
 
     const sendForPerfectClear = !!summary.sendForPerfectClear;
@@ -417,8 +440,7 @@ export function calculateGarbage(summary, rules = {}) {
         cleanMasks.push(maskArrayToBits(columnsToMask(pattern)));
     }
 
-    const attackType = determineAttackType(depth, complexity, cleanRowBonus, rules);
-    const param = determineAttackParam(attackType, depth, complexity, rules);
+    const attackType = determineAttackType(rules);
 
     return new GarbageAttack({
         depth,
@@ -429,7 +451,6 @@ export function calculateGarbage(summary, rules = {}) {
         cleanMasks,
         sendForPerfectClear,
         attackType,
-        param,
         metadata: {
             manualColumns: manualColumns.slice(),
             sourceColor: summary.sourceColor || null,
@@ -863,7 +884,9 @@ export class GarbageQueue {
     }
 
     _push(entry) {
-        if (entry?.type === 'line' && this.getTotalLines() >= this.maxLines) {
+        const capped = entry?.type === 'line' || entry?.type === 'blind';
+        if (capped && this.getCappedCount() >= this.maxLines) {
+            if (entry.type !== 'line') return;
             // The burst this row belonged to now ends at the last of its rows that got in.
             const last = this.entries[this.entries.length - 1];
             if (last?.type === 'line' && last.attackId === entry.attackId && !last.isLastInBurst) {
@@ -885,52 +908,41 @@ export class GarbageQueue {
         return this.entries.reduce((sum, entry) => (entry.type === 'line' ? sum + 1 : sum), 0);
     }
 
+    /** Pending blind pieces ('blind' entries). */
+    getBlindPieceCount() {
+        return this.entries.reduce((sum, entry) => (entry.type === 'blind' ? sum + 1 : sum), 0);
+    }
+
+    /** Entries that count toward maxLines: rows and blind pieces (full blinds do not). */
+    getCappedCount() {
+        return this.entries.reduce(
+            (sum, entry) => (entry.type === 'line' || entry.type === 'blind' ? sum + 1 : sum),
+            0,
+        );
+    }
+
     isEmpty() {
         return this.entries.length === 0;
     }
 
-    takePendingBlindEntries() {
-        const blinds = [];
-        while (this.entries.length > 0 && this.entries[0].type === 'blind') {
-            blinds.push(this.entries.shift());
-        }
-        return blinds;
-    }
-
     /**
-     * Drain any leading blind / full_blind entries. Unlike takePendingBlindEntries
-     * (which only matches 'blind'), this also takes 'full_blind' so a blind attack
-     * at the head of the queue is consumed and no longer blocks the line burst
-     * behind it. Returns the drained entries (each still carries its `duration`).
+     * Take the first burst of rows waiting. Blind entries ahead of it never hold it back: they
+     * wait for placed pieces (blind.js takeSpawnBlinds), the rows go in at the next spawn.
      */
-    takePendingBlindBurst() {
-        const blinds = [];
-        while (
-            this.entries.length > 0
-            && (this.entries[0].type === 'blind' || this.entries[0].type === 'full_blind')
-        ) {
-            blinds.push(this.entries.shift());
-        }
-        return blinds;
-    }
-
     dequeueLineBurst() {
-        if (this.entries.length === 0) {
-            return [];
-        }
-        if (this.entries[0].type !== 'line') {
+        const start = this.entries.findIndex((entry) => entry.type === 'line');
+        if (start < 0) {
             return [];
         }
 
-        const burst = [];
-        while (this.entries.length > 0 && this.entries[0].type === 'line') {
-            const entry = this.entries.shift();
-            burst.push(entry);
-            if (entry.isLastInBurst) {
+        let end = start;
+        while (end < this.entries.length && this.entries[end].type === 'line') {
+            end++;
+            if (this.entries[end - 1].isLastInBurst) {
                 break;
             }
         }
-        return burst;
+        return this.entries.splice(start, end - start);
     }
 
     clear() {

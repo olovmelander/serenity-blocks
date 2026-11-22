@@ -146,12 +146,16 @@ describe('waiting garbage', () => {
         expect(last.connectBelow).toBe(false);
     });
 
-    it('still queues effects that are not rows once full', () => {
+    it('counts blind pieces toward the twenty; a full blind still queues once full', () => {
         const queue = createVersusGarbageQueue();
-        queue.enqueue(rows(25, [0]));
-        queue.enqueue({ type: 'blind', attackId: 'b', duration: 3 });
-        expect(queue.getTotalLines()).toBe(20);
-        expect(queue.entries.at(-1).type).toBe('blind');
+        queue.enqueue(rows(15, [0]));
+        queue.enqueue(Array.from({ length: 8 }, () => ({ type: 'blind', attackId: 'b', ticks: 30 })));
+        expect(queue.getTotalLines()).toBe(15);
+        expect(queue.getBlindPieceCount()).toBe(5);
+        queue.enqueue({ type: 'full_blind', attackId: 'f', ticks: 24 });
+        expect(queue.entries.at(-1).type).toBe('full_blind');
+        queue.enqueue(rows(1, [0]));
+        expect(queue.getTotalLines()).toBe(15);
     });
 
     it('a plain queue has no limit', () => {

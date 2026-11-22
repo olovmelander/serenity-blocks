@@ -58,8 +58,7 @@ export const MessageTypes = Object.freeze(/** @type {const} */ ({
     GAME_CHAT: 'game:chat', // Peer → Host submission, Host → Peer relay
     GAME_REMATCH_VOTE: 'game:rematch:vote', // Peer → Host
     GAME_REMATCH_STATUS: 'game:rematch:status', // Host → All
-    GAME_POTATO_UPDATE: 'game:potato:update', // Host → All
-    GAME_POTATO_DETONATE: 'game:potato:detonate', // Host → All
+    GAME_POTATO_UPDATE: 'game:potato:update', // Host → All (the potato's holder, target and rows sent)
 
     // Host Migration
     GAME_HOST_MIGRATION_ELECT: 'game:host:elect', // Peer → All
@@ -162,7 +161,6 @@ export const PROTOCOL_CATALOG = Object.freeze({
     [MessageTypes.GAME_REMATCH_VOTE]: supported(PEER_TO_HOST),
     [MessageTypes.GAME_REMATCH_STATUS]: supported(HOST_TO_PEER),
     [MessageTypes.GAME_POTATO_UPDATE]: supported(HOST_TO_PEER),
-    [MessageTypes.GAME_POTATO_DETONATE]: supported(HOST_TO_PEER),
 
     [MessageTypes.GAME_HOST_MIGRATION_ELECT]: unsupported('Election is local; CLAIM is the wire event'),
     [MessageTypes.GAME_HOST_MIGRATION_CLAIM]: supported(PEER_TO_PEER, 'migration-claim'),

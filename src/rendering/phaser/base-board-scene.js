@@ -26,6 +26,9 @@ const DEFAULT_PIECE_EFFECTS = {
     glossAlpha: 0.22,
 };
 const MATTE_PIECE_EFFECTS = { gradient: false, rim: false, gloss: false };
+// A hidden cell (blind attacks, core/blind.js) that shows again fades in over this long.
+const BLIND_REVEAL_MS = 280;
+const BLIND_REVEAL_VEIL = 0x05070d;
 
 let cachedBaseClass = null;
 let cachedPhaserRef = null;
@@ -129,7 +132,7 @@ export function createBaseBoardScene(
             this._animatedPieces = [];
             this._animatedPiecesState = null;
             this._animatedPiecesDirty = true;
-            this._blindOverlayCache = null;
+            this._resetBlindPresentation();
             this._invalidatePresentation = () => { this._boardDirty = true; };
             this._reducedMotionQuery = null;
             // Whether the board sits in a well (setWellStyle). Every board draws the same
@@ -170,7 +173,7 @@ export function createBaseBoardScene(
                 this._animatedPieces.length = 0;
                 this._animatedPiecesState = null;
                 this._animatedPiecesDirty = true;
-                this._blindOverlayCache = null;
+                this._resetBlindPresentation();
                 this._ensureStyleManager();
                 this._reducedMotionQuery = typeof window !== 'undefined'
                     ? window.matchMedia?.('(prefers-reduced-motion: reduce)') ?? null : null;
@@ -229,8 +232,8 @@ export function createBaseBoardScene(
                 // Dynamic layer (pieceGraphics): always clear for current piece/ghost updates
                 this.pieceGraphics?.clear();
                 this.effectsGraphics?.clear();
-                // The blind layer owns its invalidation: only its last quarter
-                // fades, so the opaque plateau can keep the same commands.
+                // The blind layer owns its invalidation: it redraws only while a
+                // hidden cell fades in.
 
                 performanceMonitor.updateEnd();
                 performanceMonitor.renderStart();
@@ -297,12 +300,17 @@ export function createBaseBoardScene(
         _checkBoardDirty() {
             const currentGrid = this.gameState?.boardGrid;
             const currentVersion = this.gameState?.boardVersion ?? 0;
+            // Cells hidden or shown by blind attacks (core/blind.js) bump this instead.
+            const blindVersion = this.gameState?.blind?.version ?? 0;
 
             // Check if grid reference changed or version bumped
-            if (currentGrid !== this._lastBoardGridRef || currentVersion !== this._lastBoardVersion) {
+            if (currentGrid !== this._lastBoardGridRef || currentVersion !== this._lastBoardVersion
+                || blindVersion !== this._lastBlindVersion) {
                 this._boardDirty = true;
+                this._animatedPiecesDirty = true;
                 this._lastBoardGridRef = currentGrid;
                 this._lastBoardVersion = currentVersion;
+                this._lastBlindVersion = blindVersion;
             }
         }
 
@@ -435,8 +443,8 @@ export function createBaseBoardScene(
 
             try {
                 this.graphicsLayers.board = this.add.graphics();
-                // Blind veil sits ABOVE the locked stack but BELOW the active
-                // piece/ghost, so a blinded board stays playable.
+                // The fade-in of cells that show again after a blind attack sits ABOVE
+                // the locked stack but BELOW the active piece/ghost.
                 this.graphicsLayers.blind = this.add.graphics();
                 this.graphicsLayers.piece = this.add.graphics();
                 this.graphicsLayers.fx = this.add.graphics();
@@ -876,94 +884,61 @@ export function createBaseBoardScene(
                 this.drawCurrentPiece();
             }
 
-            // Blind veil — refreshed when its effective alpha changes; the blind layer
-            // sits below the piece layer so the active piece/ghost stay visible.
-            this.drawBlindOverlay();
+            // Cells that show again after a blind attack fade in; the blind layer sits
+            // below the piece layer so the active piece/ghost stay on top.
+            this.drawBlindReveal();
         }
 
         /**
-         * Eases the veil alpha toward 0 over the last ~25% of the timer for a
-         * smooth reveal. Full opacity otherwise.
-         * @param {number} ratio - remaining/original duration (0..1)
+         * Note the hidden cells of this static draw: a piece hidden last time and drawn now
+         * starts fading in (core/blind.js: its blind time ran out, or the hot potato cleared
+         * it). A replaced grid (a new round, an adopted board) starts afresh.
+         * @param {Array<Array<any>>} grid
+         * @param {Set<string|number>} hiddenNow piece ids hidden in this draw
+         * @param {Array<{x: number, y: number, id: string|number}>} shown cells drawn in this draw
          */
-        _blindFade(ratio) {
-            if (ratio <= 0) return 0;
-            if (ratio >= 0.25) return 1;
-            return ratio / 0.25;
-        }
-
-        /**
-         * Draws the blind blackout from gameState.blindTimers onto the
-         * dedicated blind layer. Identical effective alpha/geometry retains its commands.
-         *   - full blind (field):   veil the whole visible locked stack
-         *   - partial blind (pending): veil only the garbage rows
-         * Render-only: never touches board/collision state.
-         */
-        drawBlindOverlay() {
-            const layer = this.blindGraphics;
-            const gs = this.gameState;
-            const bt = gs?.blindTimers;
-            if (!layer) return;
-
-            const fieldActive = (bt?.field || 0) > 0;
-            const pendingActive = (bt?.pending || 0) > 0;
-            if (!fieldActive && !pendingActive) {
-                if (this._blindOverlayCache) layer.clear();
-                this._blindOverlayCache = null;
-                return;
-            }
-
-            const { startRow, endRow } = this.getVisibleRowRange();
-            const isInfinity = !!gs.isInfinityMode;
-            const minRow = isInfinity ? startRow : Math.max(startRow, this.hiddenRows);
-            const bs = this.blockSize;
-            const VEIL = 0x05070d; // near-black with a faint cool tint
-            const MAX_ALPHA = 0.92;
-            const mode = fieldActive ? 'field' : 'pending';
-            const remaining = fieldActive ? bt.field : bt.pending;
-            const maximum = fieldActive ? bt.fieldMax : bt.pendingMax;
-            const ratio = maximum > 0 ? remaining / maximum : 1;
-            const alpha = MAX_ALPHA * this._blindFade(ratio);
-            const grid = gs.boardGrid;
-            const version = gs.boardVersion ?? 0;
-            const cached = this._blindOverlayCache;
-            if (cached && cached.layer === layer && cached.mode === mode && cached.alpha === alpha
-                && cached.minRow === minRow && cached.endRow === endRow
-                && cached.bs === bs && cached.cols === this.cols
-                && (fieldActive || (cached.grid === grid && cached.version === version && !this._boardDirty))) return;
-
-            layer.clear();
-            this._blindOverlayCache = {
-                layer, mode, alpha, minRow, endRow, bs, cols: this.cols, grid, version,
-            };
-            if (alpha <= 0) return;
-
-            if (fieldActive) {
-                // FULL BLIND: one rect over the whole visible play area.
-                const y = Math.round(minRow * bs);
-                const h = Math.round(endRow * bs) - y;
-                layer.fillStyle(VEIL, alpha);
-                layer.fillRect(0, y, Math.round(this.cols * bs), h);
-                return;
-            }
-
-            // PARTIAL BLIND: veil only garbage cells in the locked stack.
-            if (!grid) return;
-            layer.fillStyle(VEIL, alpha);
-            for (let worldY = minRow; worldY < endRow; worldY++) {
-                const row = grid[worldY];
-                if (!row) continue;
-                for (let worldX = 0; worldX < this.cols; worldX++) {
-                    const cell = row[worldX];
-                    if (!cell) continue;
-                    if (cell.type !== 'GARBAGE' && cell.type !== 'CLEAN_GARBAGE') continue;
-                    const px = Math.round(worldX * bs);
-                    const py = Math.round(worldY * bs);
-                    const w = Math.round((worldX + 1) * bs) - px;
-                    const h = Math.round((worldY + 1) * bs) - py;
-                    layer.fillRect(px, py, w, h);
+        _noteBlindCells(grid, hiddenNow, shown) {
+            if (this._hiddenGridRef === grid && this._hiddenPieceIds.size > 0) {
+                const reduced = this._reducedMotionQuery?.matches === true;
+                const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+                if (!reduced) {
+                    shown.forEach((cell) => {
+                        if (this._hiddenPieceIds.has(cell.id)) {
+                            this._blindReveals.push({ x: cell.x, y: cell.y, startedAt: now });
+                        }
+                    });
                 }
             }
+            this._hiddenGridRef = grid;
+            this._hiddenPieceIds = hiddenNow;
+        }
+
+        /**
+         * Fade in the cells that just showed again: a veil over each that clears over
+         * BLIND_REVEAL_MS. Render-only; hidden cells themselves are simply not drawn
+         * (drawBoardFromGrid).
+         */
+        drawBlindReveal() {
+            const layer = this.blindGraphics;
+            if (!layer) return;
+            if (this._blindReveals.length === 0) {
+                if (this._blindRevealDrawn) layer.clear();
+                this._blindRevealDrawn = false;
+                return;
+            }
+            const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+            this._blindReveals = this._blindReveals.filter((reveal) => now - reveal.startedAt < BLIND_REVEAL_MS);
+            layer.clear();
+            this._blindRevealDrawn = this._blindReveals.length > 0;
+            const bs = this.blockSize;
+            this._blindReveals.forEach((reveal) => {
+                const alpha = 0.92 * (1 - (now - reveal.startedAt) / BLIND_REVEAL_MS);
+                if (!(alpha > 0)) return;
+                const px = Math.round(reveal.x * bs);
+                const py = Math.round(reveal.y * bs);
+                layer.fillStyle(BLIND_REVEAL_VEIL, alpha);
+                layer.fillRect(px, py, Math.round((reveal.x + 1) * bs) - px, Math.round((reveal.y + 1) * bs) - py);
+            });
         }
 
         drawGrid() {
@@ -1035,12 +1010,21 @@ export function createBaseBoardScene(
             };
 
             // ---- Body: per-cell overlapping rects (seamless, topology-proof) ----
+            // A hidden cell (blind attacks, core/blind.js) is solid but not drawn.
+            const hiddenIds = new Set();
+            const shownCells = [];
+            const tracksBlind = this._hiddenPieceIds.size > 0;
             for (let worldY = minRow; worldY < endRow; worldY++) {
                 const row = grid[worldY];
                 if (!row) continue;
                 for (let worldX = 0; worldX < this.cols; worldX++) {
                     const cell = row[worldX];
                     if (!cell) continue;
+                    if (cell.blind > 0) {
+                        hiddenIds.add(cell.id);
+                        continue;
+                    }
+                    if (tracksBlind) shownCells.push({ x: worldX, y: worldY, id: cell.id });
                     const { colorInt, isGarbage } = resolveColor(cell);
                     const px = Math.round(worldX * bs);
                     const py = Math.round(worldY * bs);
@@ -1057,6 +1041,7 @@ export function createBaseBoardScene(
                     staticLayer.fillRect(px - 0.25, py - 0.25, w + 0.5, h + 0.5);
                 }
             }
+            this._noteBlindCells(grid, hiddenIds, shownCells);
 
             // ---- Rim: outer perimeter of each fused same-color region only ----
             const rimFx = this._pieceFx('T');
@@ -1071,7 +1056,7 @@ export function createBaseBoardScene(
                 if (!row) continue;
                 for (let worldX = 0; worldX < this.cols; worldX++) {
                     const cell = row[worldX];
-                    if (!cell) continue;
+                    if (!cell || cell.blind > 0) continue;
                     const key = `${worldX},${worldY}`;
                     if (visited.has(key)) continue;
                     visited.add(key);
@@ -1095,7 +1080,7 @@ export function createBaseBoardScene(
                             const nk = `${nx},${ny}`;
                             if (visited.has(nk)) continue;
                             const ncell = grid[ny]?.[nx];
-                            if (!ncell) continue;
+                            if (!ncell || ncell.blind > 0) continue;
                             const nc = resolveColor(ncell);
                             if (nc.isGarbage || nc.colorInt !== colorInt) continue;
                             visited.add(nk);
@@ -1275,6 +1260,7 @@ export function createBaseBoardScene(
                 if (!piece.isAnimating) continue;
                 this._animatedPieces[activeCount++] = piece;
                 if (typeof piece.animationOffset !== 'number' || piece.animationOffset === 0) continue;
+                if (piece.blindTicks > 0) continue; // hidden (blind attacks): solid, never drawn
                 const isGarbage = piece.type === 'GARBAGE' || piece.type === 'CLEAN_GARBAGE';
                 const colorInt = isGarbage
                     ? this.garbageColorInt(piece.type, piece.color)
@@ -2075,7 +2061,16 @@ export function createBaseBoardScene(
             this._animatedPieces.length = 0;
             this._animatedPiecesState = null;
             this._animatedPiecesDirty = true;
-            this._blindOverlayCache = null;
+            this._resetBlindPresentation();
+        }
+
+        /** Forget the hidden cells last drawn and any fade-in under way. */
+        _resetBlindPresentation() {
+            this._lastBlindVersion = -1;
+            this._hiddenPieceIds = new Set();
+            this._hiddenGridRef = null;
+            this._blindReveals = [];
+            this._blindRevealDrawn = false;
         }
 
         _emitFirstRender() {

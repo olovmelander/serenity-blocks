@@ -44,7 +44,9 @@ export function isPartOfPiece(boardX, boardY, piece) {
 
 /**
  * Splits the board into connected components (individual blocks or clusters)
- * Uses flood fill algorithm to find connected blocks with the same ID
+ * Uses flood fill algorithm to find connected blocks with the same ID. A hidden cell's blind
+ * time (cell.blind, blind.js) goes with it onto its new piece; only cells with the same blind
+ * time join (one piece's cells always share it, so this never splits a piece in play).
  * @param {Array<Array>} boardData - The current board state
  * @returns {Array<Object>} Array of piece objects representing connected components
  */
@@ -92,6 +94,7 @@ export function findConnectedComponents(boardData) {
                             && !visited[nr][nc]
                             && boardData[nr][nc] !== null
                             && boardData[nr][nc].id === cellData.id
+                            && (boardData[nr][nc].blind || 0) === (cellData.blind || 0)
                         ) {
                             visited[nr][nc] = true;
                             queue.push([nr, nc]);
@@ -109,7 +112,7 @@ export function findConnectedComponents(boardData) {
                 // Preserve attacker's player color for garbage blocks
                 // Check cellData.color first before falling back to COLORS lookup
                 const baseColor = cellData.color || COLORS[shapeKey] || '#808080';
-                pieces.push({
+                const piece = {
                     x: minC,
                     y: minR,
                     shape,
@@ -117,7 +120,9 @@ export function findConnectedComponents(boardData) {
                     type: shapeKey,
                     color: baseColor,
                     pieceId: cellData.id,
-                });
+                };
+                if (cellData.blind > 0) piece.blindTicks = cellData.blind;
+                pieces.push(piece);
             }
         }
     }

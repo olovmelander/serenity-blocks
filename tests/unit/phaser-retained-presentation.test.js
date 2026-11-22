@@ -198,7 +198,8 @@ describe('retained Phaser presentation preserves real command buffers', () => {
         scene.shutdown();
         expect(scene._activePieceBodyCache).toBeNull();
         expect(scene._animatedPieces).toEqual([]);
-        expect(scene._blindOverlayCache).toBeNull();
+        expect(scene._blindReveals).toEqual([]);
+        expect(scene._hiddenPieceIds.size).toBe(0);
     });
 
     it('scans 1,000 settled pieces once across 120 unchanged frames', () => {
@@ -289,79 +290,83 @@ describe('retained Phaser presentation preserves real command buffers', () => {
         expect(scene._animatedPieces).toEqual([]);
     });
 
-    it('retains partial-blind plateau, preserves the exact fade, and clears once on expiry/removal', () => {
+    /** A board with a hidden T cell (blind attacks, core/blind.js) beside a visible one. */
+    function blindBoard() {
         const gs = state();
         gs.currentPiece = null;
-        for (let y = 19; y < 24; y++) {
-            for (let x = 0; x < 10; x++) gs.boardGrid[y][x] = { type: 'GARBAGE', color: '#808080' };
-        }
-        gs.blindTimers = { field: 0, pending: 6000, pendingMax: 6000 };
+        gs.blind = { clockMs: 0, pieceTicks: 0, version: 0 };
+        gs.boardGrid[23][0] = { type: 'T', color: '#0000ff', id: 1, blind: 5 };
+        gs.boardGrid[23][1] = { type: 'T', color: '#0000ff', id: 2 };
+        return gs;
+    }
+    const cellRect = (scene, x, y) => [
+        Math.round(x * scene.blockSize) - 0.25, Math.round(y * scene.blockSize) - 0.25,
+        Math.round((x + 1) * scene.blockSize) - Math.round(x * scene.blockSize) + 0.5,
+        Math.round((y + 1) * scene.blockSize) - Math.round(y * scene.blockSize) + 0.5,
+    ];
+
+    it('never draws a hidden cell, and draws it once the blind version says it shows', () => {
+        const gs = blindBoard();
         const scene = board(gs);
-        const rect = vi.spyOn(scene.blindGraphics, 'fillRect');
-        let original;
-        for (let frame = 0; frame < 120; frame++) {
-            gs.blindTimers.pending = 6000 - frame * 1000 / 120;
-            scene.update(0, 16);
-            original ??= [...scene.blindGraphics.commandBuffer];
-            expect(scene.blindGraphics.commandBuffer).toEqual(original);
-        }
-        expect(scene.blindGraphics.clearCount).toBe(1);
-        expect(rect).toHaveBeenCalledTimes(50);
-        for (const remaining of [1500, 1000, 10]) {
-            gs.blindTimers.pending = remaining;
+        const rect = vi.spyOn(scene.boardGraphics, 'fillRect');
+        scene.update(0, 16);
+        expect(rect.mock.calls).toEqual([cellRect(scene, 1, 23)]);
+
+        // Its time runs out: the cell loses its blind and the version moves on.
+        delete gs.boardGrid[23][0].blind;
+        scene.update(0, 16);
+        expect(rect).toHaveBeenCalledTimes(1); // no redraw without the version
+        gs.blind.version += 1;
+        scene.update(0, 16);
+        expect(rect.mock.calls.slice(1)).toEqual([cellRect(scene, 0, 23), cellRect(scene, 1, 23)]);
+    });
+
+    it('fades a cell that shows again in over 280 ms, then clears the blind layer once', () => {
+        const now = vi.spyOn(performance, 'now').mockReturnValue(1000);
+        const gs = blindBoard();
+        const scene = board(gs);
+        scene.update(0, 16);
+        expect(scene.blindGraphics.commandBuffer).toEqual([]);
+
+        delete gs.boardGrid[23][0].blind;
+        gs.blind.version += 1;
+        for (const elapsed of [0, 70, 210]) {
+            now.mockReturnValue(1000 + elapsed);
             scene.update(0, 16);
             const reference = graphics();
-            reference.fillStyle(0x05070d, 0.92 * Math.min(1, remaining / 1500));
-            for (let y = 19; y < 24; y++) {
-                for (let x = 0; x < 10; x++) reference.fillRect(x * scene.blockSize, y * scene.blockSize, scene.blockSize, scene.blockSize);
-            }
+            reference.fillStyle(0x05070d, 0.92 * (1 - elapsed / 280));
+            const px = Math.round(0 * scene.blockSize);
+            const py = Math.round(23 * scene.blockSize);
+            reference.fillRect(px, py, Math.round(scene.blockSize) - px, Math.round(24 * scene.blockSize) - py);
             expect(scene.blindGraphics.commandBuffer).toEqual(reference.commandBuffer);
         }
-        gs.blindTimers.pending = 0;
+        now.mockReturnValue(1280);
         scene.update(0, 16);
         expect(scene.blindGraphics.commandBuffer).toEqual([]);
         const clears = scene.blindGraphics.clearCount;
         scene.update(0, 16);
         expect(scene.blindGraphics.clearCount).toBe(clears);
-        gs.blindTimers.pending = 3000;
+    });
+
+    it('fades nothing in when the board is replaced (a new round or an adopted board)', () => {
+        const gs = blindBoard();
+        const scene = board(gs);
         scene.update(0, 16);
-        scene._invalidatePresentation();
-        delete gs.blindTimers;
+        gs.boardGrid = createBoardGrid();
+        gs.boardGrid[23][0] = { type: 'T', color: '#0000ff', id: 1 };
         scene.update(0, 16);
+        expect(scene._blindReveals).toEqual([]);
         expect(scene.blindGraphics.commandBuffer).toEqual([]);
     });
 
-    it('invalidates blind geometry on mutations, full/partial changes, dimensions, camera band and snapshot replacement', () => {
+    it('leaves a hidden piece out of the rising-garbage animation', () => {
         const gs = state();
-        gs.currentPiece = null;
-        gs.boardGrid[20][1] = { type: 'CLEAN_GARBAGE' };
-        gs.blindTimers = { pending: 4000, pendingMax: 6000, field: 0, fieldMax: 6000 };
+        gs.lockedPieces.push({ type: 'GARBAGE', color: '#808080', x: 2, y: 18,
+            shape: [[1, 1, 0, 1]], isAnimating: true, animationOffset: 1, blindTicks: 12 });
         const scene = board(gs);
-        scene.update(0, 16);
-        const initial = [...scene.blindGraphics.commandBuffer];
-        gs.boardGrid[20][2] = { type: 'GARBAGE' };
-        markBoardDirty(gs);
-        scene.update(0, 16);
-        expect(scene.blindGraphics.commandBuffer.length).toBe(initial.length + 5);
-        gs.blindTimers.field = 4000;
-        scene.update(0, 16);
-        const reference = graphics();
-        reference.fillStyle(0x05070d, 0.92);
-        reference.fillRect(0, scene.hiddenRows * scene.blockSize, scene.cols * scene.blockSize, scene.rows * scene.blockSize);
-        expect(scene.blindGraphics.commandBuffer).toEqual(reference.commandBuffer);
-        scene.cameraSettings = { activeTopRow: 8, visibleRows: 12, renderPadding: 0 };
-        scene.blockSize = 25.25;
-        scene.cols = 8;
-        scene.update(0, 16);
-        reference.clear();
-        reference.fillStyle(0x05070d, 0.92);
-        reference.fillRect(0, 202, 202, 303);
-        expect(scene.blindGraphics.commandBuffer).toEqual(reference.commandBuffer);
-        gs.blindTimers.field = 0;
-        gs.boardGrid = createBoardGrid();
-        scene.update(0, 16);
-        reference.clear(); reference.fillStyle(0x05070d, 0.92);
-        expect(scene.blindGraphics.commandBuffer).toEqual(reference.commandBuffer);
+        const draw = vi.spyOn(scene, 'drawFusedPiece');
+        scene.drawAnimatedPieces();
+        expect(draw).not.toHaveBeenCalled();
     });
 
     it('samples a 200-cell stack shade once per color/row boundary with unchanged numeric commands', () => {

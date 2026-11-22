@@ -28,7 +28,7 @@ function makePlayer(overrides = {}) {
         dropInterval: 1000,
         garbageEntries: [],
         lockedPieces: [],
-        blindTimers: null,
+        blind: null,
         lastInputSeq: 0,
         ...overrides,
     };

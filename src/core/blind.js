@@ -1,261 +1,410 @@
+// @ts-check
 /**
- * @fileoverview "Blind" attack effects — a timed obscuring of a
- * target board. Two flavours:
- *   - partial blind  ("blind"):       obscure the incoming garbage rows
- *   - full blind     ("full_blind"):  obscure the whole locked stack
+ * @fileoverview Blind attacks: hidden cells (versus attack styles 'blind' and 'full_blind').
  *
- * These helpers are render-only: they only touch `gameState.blindTimers` and
- * never modify the board, collision, gravity, or line-clear logic, so the board
- * stays fully playable while obscured (hidden but still solid).
+ * Blind hides cells and never removes them: a hidden cell is still solid for collision, line
+ * clears and cascades; only drawing skips it (the falling piece and its landing shadow stay
+ * visible). Blind time belongs to each cell. It is kept on the locked piece that owns the cell
+ * (`piece.blindTicks`) and mirrored onto the piece's grid cells (`cell.blind`), so it travels
+ * with the cell when a clear splits its piece (the grid rebuild and the split carry it), when a
+ * cascade drops it and when garbage lifts it, and it leaves with the cell when a clear removes
+ * the cell. Every cell of one piece always holds the same blind time.
  *
- * Durations are in SECONDS of real time and decremented with real `dt` in the
- * logic loop (NOT per-frame), so local and online behave identically.
+ * Time counts in blind ticks of BLIND_TICK_MS of the player's own game time. Each board has a
+ * blind clock (`gameState.blind.clockMs`) that its simulation advances; every whole blind tick
+ * takes one off each hidden cell, and a cell shows again when its time reaches 0. The clock is
+ * a plain accumulator of simulation milliseconds, so every copy of a board that runs the same
+ * ticks (the online host and the predicting peer) hides and shows the same cells.
+ *
+ * - A blind piece ('blind' queue entry, one per piece): the board's next placed piece is hidden
+ *   for BLIND_PIECE_TICKS from the moment it locks.
+ * - A full blind ('full_blind' queue entry): every cell on the board gains `ticks` more blind
+ *   time, at most BLIND_MAX_TICKS in all. Pieces placed afterwards are visible.
+ *
+ * Both arrive through the garbage queue and are taken when the board's next piece spawns
+ * (takeSpawnBlinds), the moment rows go in, on every copy of the board alike.
  */
 
-import { durationMsToTicks, FIXED_TICK_MS } from './fixed-tick-clock.js';
+import { COLS } from './constants.js';
 
-const FIELD_TICKS = 'fieldTicks';
-const FIELD_MAX_TICKS = 'fieldMaxTicks';
-const PENDING_TICKS = 'pendingTicks';
-const PENDING_MAX_TICKS = 'pendingMaxTicks';
+/** One blind tick, in milliseconds of the player's game time. */
+export const BLIND_TICK_MS = 160;
+/** How long a blind piece stays hidden after it is placed (4.8 s). */
+export const BLIND_PIECE_TICKS = 30;
+/** A full blind hides the board for rows × combo × FULL_BLIND_FACTOR blind ticks. */
+export const FULL_BLIND_FACTOR = 12;
+/** The most blind time one cell can hold. */
+export const BLIND_MAX_TICKS = 255;
+const CLOCK_EPSILON_MS = 1e-6;
 
-function resolveTickMs(gameState, requestedTickMs) {
-    const explicitTickMs = Number(requestedTickMs);
-    if (Number.isFinite(explicitTickMs) && explicitTickMs > 0) return explicitTickMs;
-
-    const stateTickMs = Number(gameState?.simTickMs);
-    return Number.isFinite(stateTickMs) && stateTickMs > 0
-        ? stateTickMs
-        : FIXED_TICK_MS;
-}
-
-function secondsToTicks(seconds, tickMs) {
-    return durationMsToTicks(Number(seconds) * 1000, tickMs);
-}
-
-function ticksToSeconds(ticks, tickMs) {
-    return (ticks * tickMs) / 1000;
-}
-
-function setTickSources(bt, tickMs) {
-    bt._blindTickSourceField = bt.field;
-    bt._blindTickSourceFieldMax = bt.fieldMax;
-    bt._blindTickSourcePending = bt.pending;
-    bt._blindTickSourcePendingMax = bt.pendingMax;
-    bt._blindTickDurationMs = tickMs;
-}
-
-function synchronizeTickMirrors(bt, tickMs) {
-    bt[FIELD_TICKS] = secondsToTicks(bt.field, tickMs);
-    bt[FIELD_MAX_TICKS] = Math.max(
-        bt[FIELD_TICKS],
-        secondsToTicks(bt.fieldMax, tickMs),
-    );
-    bt[PENDING_TICKS] = secondsToTicks(bt.pending, tickMs);
-    bt[PENDING_MAX_TICKS] = Math.max(
-        bt[PENDING_TICKS],
-        secondsToTicks(bt.pendingMax, tickMs),
-    );
-    setTickSources(bt, tickMs);
-}
-
-function hasSynchronizedTickMirrors(bt, tickMs) {
-    return Number.isInteger(bt[FIELD_TICKS])
-        && bt[FIELD_TICKS] >= 0
-        && Number.isInteger(bt[FIELD_MAX_TICKS])
-        && bt[FIELD_MAX_TICKS] >= bt[FIELD_TICKS]
-        && Number.isInteger(bt[PENDING_TICKS])
-        && bt[PENDING_TICKS] >= 0
-        && Number.isInteger(bt[PENDING_MAX_TICKS])
-        && bt[PENDING_MAX_TICKS] >= bt[PENDING_TICKS]
-        && bt.field === bt._blindTickSourceField
-        && bt.fieldMax === bt._blindTickSourceFieldMax
-        && bt.pending === bt._blindTickSourcePending
-        && bt.pendingMax === bt._blindTickSourcePendingMax
-        && tickMs === bt._blindTickDurationMs;
-}
-
-function normalizeSnapshotSeconds(value) {
-    const numeric = Number(value);
-    return Number.isFinite(numeric) && numeric > 0 ? numeric : 0;
-}
-
-function hasExactTickSnapshot(snapshot, tickMs) {
-    return snapshot
-        && Number(snapshot._blindTickDurationMs) === tickMs
-        && snapshot.field === snapshot._blindTickSourceField
-        && snapshot.fieldMax === snapshot._blindTickSourceFieldMax
-        && snapshot.pending === snapshot._blindTickSourcePending
-        && snapshot.pendingMax === snapshot._blindTickSourcePendingMax
-        && Number.isInteger(snapshot[FIELD_TICKS])
-        && snapshot[FIELD_TICKS] >= 0
-        && Number.isInteger(snapshot[FIELD_MAX_TICKS])
-        && snapshot[FIELD_MAX_TICKS] >= snapshot[FIELD_TICKS]
-        && Number.isInteger(snapshot[PENDING_TICKS])
-        && snapshot[PENDING_TICKS] >= 0
-        && Number.isInteger(snapshot[PENDING_MAX_TICKS])
-        && snapshot[PENDING_MAX_TICKS] >= snapshot[PENDING_TICKS];
+/**
+ * The blind ticks of a full blind: rows × combo × FULL_BLIND_FACTOR, at most BLIND_MAX_TICKS.
+ * @param {number} rows the attack's rows (normal and clean)
+ * @param {number} combo the clear's cascade waves (at least 1)
+ * @returns {number}
+ */
+export function fullBlindTicks(rows, combo) {
+    const count = Math.max(0, Math.floor(Number(rows) || 0));
+    const waves = Math.max(1, Math.floor(Number(combo) || 0));
+    return Math.min(BLIND_MAX_TICKS, count * waves * FULL_BLIND_FACTOR);
 }
 
 /**
- * @returns {{field:number, fieldMax:number, pending:number, pendingMax:number}}
- *   field/pending are seconds remaining; *Max are the original durations used
- *   only for render fade ratios.
+ * @typedef {{ clockMs: number, pieceTicks: number, version: number }} BlindState
+ *   clockMs: game time into the current blind tick; pieceTicks: the blind the piece in play
+ *   takes when it locks (0: none); version: bumped whenever a cell is hidden or shown, so a
+ *   renderer knows to redraw.
  */
-export function createBlindTimers() {
+
+/** @returns {BlindState} */
+export function createBlindState() {
+    return { clockMs: 0, pieceTicks: 0, version: 0 };
+}
+
+/** @param {unknown} value */
+function clampTicks(value) {
+    const ticks = Math.floor(Number(value));
+    if (!Number.isFinite(ticks) || ticks <= 0) return 0;
+    return Math.min(BLIND_MAX_TICKS, ticks);
+}
+
+/** @param {unknown} value */
+function clampClock(value) {
+    const clock = Number(value);
+    if (!Number.isFinite(clock) || clock <= 0) return 0;
+    return clock % BLIND_TICK_MS;
+}
+
+/**
+ * A blind state in canonical form (any input, legacy or damaged, gives a valid one).
+ * @param {unknown} value
+ * @returns {BlindState}
+ */
+export function normalizeBlindState(value) {
+    const source = /** @type {Record<string, unknown>} */ (
+        value && typeof value === 'object' ? value : {}
+    );
+    const version = Math.floor(Number(source.version));
     return {
-        field: 0,
-        fieldMax: 0,
-        pending: 0,
-        pendingMax: 0,
+        clockMs: clampClock(source.clockMs),
+        pieceTicks: clampTicks(source.pieceTicks),
+        version: Number.isSafeInteger(version) && version >= 0 ? version : 0,
     };
 }
 
-function ensureTimers(gameState) {
+/**
+ * @param {any} gameState
+ * @returns {BlindState|null}
+ */
+function ensureState(gameState) {
     if (!gameState) return null;
-    if (!gameState.blindTimers) gameState.blindTimers = createBlindTimers();
-    const bt = gameState.blindTimers;
-    // Tolerate the legacy 2-field shape by backfilling the *Max fields.
-    if (bt.fieldMax === undefined) bt.fieldMax = bt.field || 0;
-    if (bt.pendingMax === undefined) bt.pendingMax = bt.pending || 0;
-    return bt;
-}
-
-/**
- * Partial blind — obscure the incoming garbage rows for `duration` seconds.
- * Stacks by extending (never shortening) the existing timer.
- */
-export function applyBlindEffect(gameState, duration) {
-    const bt = ensureTimers(gameState);
-    if (!bt || !(duration > 0)) return;
-    bt.pending = Math.max(bt.pending || 0, duration);
-    bt.pendingMax = Math.max(bt.pendingMax || 0, bt.pending);
-    synchronizeTickMirrors(bt, resolveTickMs(gameState));
-}
-
-/**
- * Full blind — obscure the whole locked stack for `duration` seconds.
- * The active piece and ghost remain visible so the board stays playable.
- */
-export function applyFullBlindEffect(gameState, duration) {
-    const bt = ensureTimers(gameState);
-    if (!bt || !(duration > 0)) return;
-    bt.field = Math.max(bt.field || 0, duration);
-    bt.fieldMax = Math.max(bt.fieldMax || 0, bt.field);
-    synchronizeTickMirrors(bt, resolveTickMs(gameState));
-}
-
-/**
- * Decrement blind timers by real elapsed seconds. Call once per logic tick for
- * each (alive, unpaused) player. Clears the corresponding *Max when a timer
- * reaches 0 so fade math resets cleanly.
- */
-export function decrementBlindTimers(gameState, dtSeconds) {
-    const bt = gameState && gameState.blindTimers;
-    if (!bt || !(dtSeconds > 0)) return;
-    if (bt.field > 0) {
-        bt.field = Math.max(0, bt.field - dtSeconds);
-        if (bt.field === 0) bt.fieldMax = 0;
+    const state = gameState.blind;
+    if (!state || typeof state !== 'object') {
+        gameState.blind = createBlindState();
+        return gameState.blind;
     }
-    if (bt.pending > 0) {
-        bt.pending = Math.max(0, bt.pending - dtSeconds);
-        if (bt.pending === 0) bt.pendingMax = 0;
+    if (!Number.isFinite(state.clockMs) || state.clockMs < 0) state.clockMs = 0;
+    if (!Number.isInteger(state.pieceTicks) || state.pieceTicks < 0) state.pieceTicks = 0;
+    if (!Number.isSafeInteger(state.version)) state.version = 0;
+    return state;
+}
+
+/** @param {any} gameState */
+function bumpVersion(gameState) {
+    const state = ensureState(gameState);
+    if (state) state.version += 1;
+}
+
+/**
+ * Blind ticks left on a locked piece's cells (0: visible).
+ * @param {{ blindTicks?: unknown }|null|undefined} piece
+ */
+export function pieceBlindTicks(piece) {
+    return clampTicks(piece?.blindTicks);
+}
+
+/**
+ * Whether a grid cell is hidden.
+ * @param {{ blind?: unknown }|null|undefined} cell
+ */
+export function isCellBlind(cell) {
+    return Boolean(cell) && Number(cell?.blind) > 0;
+}
+
+/**
+ * @param {any} piece
+ * @param {(x: number, y: number) => void} visit
+ */
+function forEachPieceCell(piece, visit) {
+    const shape = piece?.shape;
+    if (!Array.isArray(shape)) return;
+    for (let localY = 0; localY < shape.length; localY += 1) {
+        const row = shape[localY];
+        if (!Array.isArray(row)) continue;
+        for (let localX = 0; localX < row.length; localX += 1) {
+            if (row[localX] > 0) visit(piece.x + localX, Math.floor(piece.y + localY));
+        }
     }
-    // Keep the integer clock dark on legacy paths: the public seconds above
-    // retain their historical arithmetic and remain the source of truth.
-    synchronizeTickMirrors(bt, resolveTickMs(gameState));
+}
+
+/** @param {any} piece @param {number} ticks */
+function setPieceBlind(piece, ticks) {
+    if (ticks > 0) piece.blindTicks = ticks;
+    else delete piece.blindTicks;
 }
 
 /**
- * Consume exactly one canonical blind-timer tick. Direct writes to any public
- * seconds field, or a changed tick duration, invalidate the integer mirror and
- * are re-quantized before consumption. The public fields remain compatibility
- * mirrors for renderers and the current network protocol.
- *
- * @param {object} gameState
- * @param {number} [requestedTickMs]
- * @returns {boolean} true when at least one blind timer was active for this tick
+ * Copy each locked piece's blind time onto its grid cells (the grid mirrors lockedPieces).
+ * @param {any} gameState
  */
-export function advanceBlindTimersTick(gameState, requestedTickMs) {
-    const bt = ensureTimers(gameState);
-    if (!bt) return false;
-
-    const tickMs = resolveTickMs(gameState, requestedTickMs);
-    if (!hasSynchronizedTickMirrors(bt, tickMs)) synchronizeTickMirrors(bt, tickMs);
-
-    const wasActive = bt[FIELD_TICKS] > 0 || bt[PENDING_TICKS] > 0;
-    if (bt[FIELD_TICKS] > 0) bt[FIELD_TICKS] -= 1;
-    if (bt[PENDING_TICKS] > 0) bt[PENDING_TICKS] -= 1;
-
-    if (bt[FIELD_TICKS] === 0) bt[FIELD_MAX_TICKS] = 0;
-    if (bt[PENDING_TICKS] === 0) bt[PENDING_MAX_TICKS] = 0;
-
-    bt.field = ticksToSeconds(bt[FIELD_TICKS], tickMs);
-    bt.fieldMax = bt[FIELD_TICKS] > 0
-        ? ticksToSeconds(bt[FIELD_MAX_TICKS], tickMs)
-        : 0;
-    bt.pending = ticksToSeconds(bt[PENDING_TICKS], tickMs);
-    bt.pendingMax = bt[PENDING_TICKS] > 0
-        ? ticksToSeconds(bt[PENDING_MAX_TICKS], tickMs)
-        : 0;
-    setTickSources(bt, tickMs);
-    return wasActive;
-}
-
-/**
- * Restore blind timers in place. Snapshots carrying a complete integer clock
- * at the target tick duration retain their counters exactly. Historical two-
- * or four-field snapshots are upgraded from their public seconds instead.
- *
- * @param {object} gameState
- * @param {object|null|undefined} snapshot
- * @param {number} [requestedTickMs]
- * @returns {object|null} the restored timer object, or null without a target
- */
-export function restoreBlindTimers(gameState, snapshot, requestedTickMs) {
-    if (!gameState) return null;
-
-    const source = snapshot && typeof snapshot === 'object' ? snapshot : {};
-    const bt = gameState.blindTimers && typeof gameState.blindTimers === 'object'
-        ? gameState.blindTimers
-        : createBlindTimers();
-    gameState.blindTimers = bt;
-
-    bt.field = normalizeSnapshotSeconds(source.field);
-    bt.fieldMax = source.fieldMax === undefined
-        ? bt.field
-        : normalizeSnapshotSeconds(source.fieldMax);
-    bt.pending = normalizeSnapshotSeconds(source.pending);
-    bt.pendingMax = source.pendingMax === undefined
-        ? bt.pending
-        : normalizeSnapshotSeconds(source.pendingMax);
-
-    const tickMs = resolveTickMs(gameState, requestedTickMs);
-    if (hasExactTickSnapshot(source, tickMs)) {
-        bt[FIELD_TICKS] = source[FIELD_TICKS];
-        bt[FIELD_MAX_TICKS] = source[FIELD_MAX_TICKS];
-        bt[PENDING_TICKS] = source[PENDING_TICKS];
-        bt[PENDING_MAX_TICKS] = source[PENDING_MAX_TICKS];
-        setTickSources(bt, tickMs);
-    } else {
-        synchronizeTickMirrors(bt, tickMs);
+export function syncBlindGrid(gameState) {
+    const grid = gameState?.boardGrid;
+    if (!Array.isArray(grid)) return;
+    for (const piece of gameState.lockedPieces || []) {
+        const ticks = pieceBlindTicks(piece);
+        forEachPieceCell(piece, (x, y) => {
+            const cell = grid[y]?.[x];
+            if (!cell || typeof cell !== 'object') return;
+            if (ticks > 0) cell.blind = ticks;
+            else delete cell.blind;
+        });
     }
-
-    return bt;
 }
 
 /**
- * @returns {boolean} true if any blind overlay should currently render.
+ * Whether any locked cell of the board is hidden.
+ * @param {any} gameState
  */
-export function isBlindActive(gameState) {
-    const bt = gameState && gameState.blindTimers;
-    return !!bt && ((bt.field || 0) > 0 || (bt.pending || 0) > 0);
+export function hasBlindCells(gameState) {
+    return (gameState?.lockedPieces || []).some((piece) => pieceBlindTicks(piece) > 0);
 }
 
-// Partial blind draws its veil only on locked garbage. A pristine stack is still readable.
-export function hasObscuredStack(state) {
-    const timers = state?.blindTimers;
-    return Boolean(timers?.field > 0 || (timers?.pending > 0 && state.lockedPieces?.some((body) => (
-        body.type === 'GARBAGE' || body.type === 'CLEAN_GARBAGE'
-    ))));
+/**
+ * Take `ticks` blind ticks off every hidden cell.
+ * @param {any} gameState
+ * @param {number} ticks
+ * @returns {boolean} true when a cell showed again
+ */
+function tickBlindCells(gameState, ticks) {
+    let changed = false;
+    let revealed = false;
+    for (const piece of gameState.lockedPieces || []) {
+        const before = pieceBlindTicks(piece);
+        if (before <= 0) continue;
+        const after = Math.max(0, before - ticks);
+        setPieceBlind(piece, after);
+        changed = true;
+        if (after === 0) revealed = true;
+    }
+    if (changed) syncBlindGrid(gameState);
+    if (revealed) bumpVersion(gameState);
+    return revealed;
+}
+
+/**
+ * Advance a board's blind clock by `dtMs` of its game time. Call wherever the board's
+ * simulation advances (once per fixed tick, or per frame on the variable-step loops).
+ * @param {any} gameState
+ * @param {number} dtMs
+ * @returns {boolean} true when a cell showed again
+ */
+export function advanceBlindClock(gameState, dtMs) {
+    const state = ensureState(gameState);
+    const step = Number(dtMs);
+    if (!state || !Number.isFinite(step) || step <= 0) return false;
+    state.clockMs += step;
+    // Fixed ticks of 1000/60 ms add up to 160 ms only within rounding: a tick boundary
+    // reached within CLOCK_EPSILON_MS counts as reached.
+    if (state.clockMs + CLOCK_EPSILON_MS < BLIND_TICK_MS) return false;
+    const ticks = Math.floor((state.clockMs + CLOCK_EPSILON_MS) / BLIND_TICK_MS);
+    state.clockMs = Math.max(0, state.clockMs - ticks * BLIND_TICK_MS);
+    return tickBlindCells(gameState, ticks);
+}
+
+/**
+ * The piece in play is locking: hand it the blind a blind piece left for it.
+ * lockPiece calls this once per lock.
+ * @param {any} gameState
+ * @returns {number} blind ticks for the locking piece (0: it stays visible)
+ */
+export function takePieceBlind(gameState) {
+    const state = gameState?.blind;
+    if (!state || typeof state !== 'object') return 0;
+    const ticks = clampTicks(state.pieceTicks);
+    state.pieceTicks = 0;
+    if (ticks > 0) bumpVersion(gameState);
+    return ticks;
+}
+
+/**
+ * Full blind: every cell now on the board gains `ticks` more blind time, at most
+ * BLIND_MAX_TICKS in all.
+ * @param {any} gameState
+ * @param {number} ticks
+ * @returns {number} pieces hidden
+ */
+export function applyFullBlind(gameState, ticks) {
+    const add = clampTicks(ticks);
+    if (!gameState || add <= 0) return 0;
+    let hidden = 0;
+    for (const piece of gameState.lockedPieces || []) {
+        let solid = false;
+        forEachPieceCell(piece, () => { solid = true; });
+        if (!solid) continue;
+        setPieceBlind(piece, Math.min(BLIND_MAX_TICKS, pieceBlindTicks(piece) + add));
+        hidden += 1;
+    }
+    if (hidden > 0) {
+        syncBlindGrid(gameState);
+        bumpVersion(gameState);
+    }
+    return hidden;
+}
+
+/**
+ * Show every hidden cell at once and forget a blind piece that has not landed yet
+ * (a team that gets rid of the hot potato).
+ * @param {any} gameState
+ * @returns {boolean} true when anything was hidden
+ */
+export function clearBlind(gameState) {
+    const state = ensureState(gameState);
+    if (!state) return false;
+    let cleared = state.pieceTicks > 0;
+    state.pieceTicks = 0;
+    for (const piece of gameState.lockedPieces || []) {
+        if (pieceBlindTicks(piece) <= 0) continue;
+        setPieceBlind(piece, 0);
+        cleared = true;
+    }
+    if (cleared) {
+        syncBlindGrid(gameState);
+        bumpVersion(gameState);
+    }
+    return cleared;
+}
+
+/**
+ * A board's next piece is about to spawn: take the blind entries at the head of its garbage
+ * queue. Every full blind there hides the whole board now; the first blind piece marks the
+ * piece that spawns now, which is hidden when it locks. A second blind piece waits for the
+ * piece after. Rows are never taken here, and blind entries never hold rows back
+ * (GarbageQueue.dequeueLineBurst takes the first rows wherever they wait).
+ * @param {any} gameState
+ * @param {{ entries?: Array<any> }|null|undefined} queue
+ * @returns {Array<any>} the entries taken, in queue order
+ */
+export function takeSpawnBlinds(gameState, queue) {
+    /** @type {Array<any>} */
+    const taken = [];
+    const state = ensureState(gameState);
+    const entries = queue?.entries;
+    if (!state || !Array.isArray(entries)) return taken;
+    let pieceTaken = false;
+    while (entries.length > 0) {
+        const head = entries[0];
+        if (head?.type === 'full_blind') {
+            entries.shift();
+            applyFullBlind(gameState, head.ticks);
+            taken.push(head);
+        } else if (head?.type === 'blind' && !pieceTaken) {
+            entries.shift();
+            state.pieceTicks = clampTicks(head.ticks ?? BLIND_PIECE_TICKS);
+            pieceTaken = true;
+            taken.push(head);
+        } else {
+            break;
+        }
+    }
+    return taken;
+}
+
+/**
+ * @typedef {{ clockMs: number, pieceTicks: number, cells: Array<[number, number]> }} BlindSnapshot
+ *   cells: every hidden cell as [y * COLS + x, blind ticks], in board order.
+ */
+
+/**
+ * A board's blind for the wire.
+ * @param {any} gameState
+ * @returns {BlindSnapshot}
+ */
+export function captureBlindSnapshot(gameState) {
+    /** @type {Array<[number, number]>} */
+    const cells = [];
+    for (const piece of gameState?.lockedPieces || []) {
+        const ticks = pieceBlindTicks(piece);
+        if (ticks <= 0) continue;
+        forEachPieceCell(piece, (x, y) => {
+            if (y >= 0 && x >= 0 && x < COLS) cells.push([y * COLS + x, ticks]);
+        });
+    }
+    cells.sort((left, right) => left[0] - right[0]);
+    const state = gameState?.blind;
+    return {
+        clockMs: clampClock(state?.clockMs),
+        pieceTicks: clampTicks(state?.pieceTicks),
+        cells,
+    };
+}
+
+/**
+ * Whether two wire blinds hide the same cells for the same time (the clock aside).
+ * @param {BlindSnapshot|null|undefined} left
+ * @param {BlindSnapshot|null|undefined} right
+ */
+export function sameBlindCells(left, right) {
+    if (left === right) return true;
+    if (!left || !right) return false;
+    if ((left.pieceTicks || 0) !== (right.pieceTicks || 0)) return false;
+    const a = left.cells || [];
+    const b = right.cells || [];
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i += 1) {
+        if (a[i][0] !== b[i][0] || a[i][1] !== b[i][1]) return false;
+    }
+    return true;
+}
+
+/**
+ * Adopt a board's blind from the wire, onto the board adopted with it: the listed cells are
+ * hidden for their time, every other cell shows. A piece whose cells disagree takes the
+ * longest time among them.
+ * @param {any} gameState
+ * @param {unknown} snapshot
+ */
+export function restoreBlindSnapshot(gameState, snapshot) {
+    const state = ensureState(gameState);
+    if (!state) return;
+    const source = /** @type {Record<string, any>} */ (
+        snapshot && typeof snapshot === 'object' ? snapshot : {}
+    );
+    state.clockMs = clampClock(source.clockMs);
+    state.pieceTicks = clampTicks(source.pieceTicks);
+    /** @type {Map<number, number>} */
+    const byIndex = new Map();
+    if (Array.isArray(source.cells)) {
+        for (const cell of source.cells) {
+            if (!Array.isArray(cell)) continue;
+            const index = Math.floor(Number(cell[0]));
+            const ticks = clampTicks(cell[1]);
+            if (Number.isSafeInteger(index) && index >= 0 && ticks > 0) byIndex.set(index, ticks);
+        }
+    }
+    for (const piece of gameState.lockedPieces || []) {
+        let ticks = 0;
+        forEachPieceCell(piece, (x, y) => {
+            if (y < 0 || x < 0 || x >= COLS) return;
+            ticks = Math.max(ticks, byIndex.get(y * COLS + x) || 0);
+        });
+        setPieceBlind(piece, ticks);
+    }
+    const grid = gameState.boardGrid;
+    if (Array.isArray(grid)) {
+        grid.forEach((row) => row?.forEach?.((cell) => {
+            if (cell && typeof cell === 'object') delete cell.blind;
+        }));
+    }
+    syncBlindGrid(gameState);
+    bumpVersion(gameState);
 }

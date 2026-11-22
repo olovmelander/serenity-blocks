@@ -133,7 +133,7 @@ describe('restorable replay checkpoints are kept', () => {
         const saved = checkpoint();
         for (const key of [
             'lockedPieces', 'boardGrid', 'board', 'pieceCounts', 'lineClearCounts',
-            'comboState', 'handicaps', 'lastPlacedPieceX', 'inputQueue', 'playerInput', 'blindTimers',
+            'comboState', 'handicaps', 'lastPlacedPieceX', 'inputQueue', 'playerInput', 'blind',
         ]) {
             delete saved.state[key];
         }

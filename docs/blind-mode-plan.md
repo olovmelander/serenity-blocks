@@ -1,5 +1,9 @@
 # Quadra Blind Mode — Implementation Plan
 
+> **Superseded (2026-11-22):** blind and full blind no longer use timed overlays; they hide cells
+> per cell (`src/core/blind.js`). The rules are in [ADR 0025](adr/0025-versus-attack-styles.md);
+> this plan is kept for history only.
+
 > Status: Blind is **broken end-to-end** in the current build. Garbage lines arrive, but the blackout never appears, the timer never counts down, and in online FFA the blind entries silently jam (or get dropped) in the queue. This plan diagnoses each broken link with file:line, sets Quadra as the quality bar, and lays out a phased fix that delivers a visible win fast.
 
 ---

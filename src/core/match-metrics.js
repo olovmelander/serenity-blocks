@@ -21,8 +21,7 @@ export function createEmptyMatchMetrics() {
         maxComboDepth: 0,
         maxComboComplexity: 0,
         potatoPasses: 0,
-        potatoDetonations: 0,
-        potatoLinesReceived: 0,
+        potatoRowsSent: 0,
     };
 }
 
@@ -30,7 +29,7 @@ export function createEmptyMatchMetrics() {
 const ADDITIVE_FIELDS = [
     'attacksSent', 'attackLinesSent', 'attacksReceived', 'attackLinesReceived',
     'cleanLinesSent', 'cleanLinesReceived',
-    'potatoPasses', 'potatoDetonations', 'potatoLinesReceived',
+    'potatoPasses', 'potatoRowsSent',
 ];
 const MAX_FIELDS = ['maxCombo', 'maxComboDepth', 'maxComboComplexity'];
 

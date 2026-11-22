@@ -995,7 +995,7 @@
     font: 700 max(9px, calc(10px * var(--lv-u))) / 1 var(--sb-font-text);
 }
 
-/* ---- Hot potato: the holder's plate glows, a chip on its top edge counts down -------- */
+/* ---- Hot potato: the holder's plate glows, a chip on its top edge counts its rows ----- */
 #multiplayer-container .player-card.hot-potato-holder {
     border: 0;
     box-shadow: none;
@@ -1008,7 +1008,7 @@
 
 /* Over the deciding number's corner, clear of the queue under the plate. */
 #multiplayer-container .player-card.hot-potato-holder::after {
-    content: 'Hot potato  ' attr(data-potato-time);
+    content: 'Hot potato  ' attr(data-potato-progress);
     top: -11px;
     right: calc(12px * var(--lv-u));
     left: auto;

@@ -246,7 +246,7 @@ export const GENERAL_URL_PARAMETERS = [
         'src/core/game-modes/SinglePlayerMode.js',
         'Online multiplayer falls back to simTickNetcode when this flag has no URL or saved override. '
         + 'Standard local matches with bot seats default to fixed 60 Hz. '
-        + 'Infinity LMS, Hot Potato and timed matches use the legacy clock.',
+        + 'Infinity LMS and timed matches use the legacy clock.',
     ),
     sharedFlag(
         'cascadeShadow',

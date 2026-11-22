@@ -5,7 +5,7 @@
  */
 
 import { processAutoDrop } from '../game.js';
-import { decrementBlindTimers } from '../blind.js';
+import { advanceBlindClock } from '../blind.js';
 import { advanceTick } from '../simulation-tick.js';
 import { FIXED_TICK_MS } from '../fixed-tick-clock.js';
 
@@ -273,8 +273,8 @@ export class UnifiedMultiplayerLoop {
                 continue;
             }
 
-            // Tick down active blind blackout timers (delta is in ms, we need seconds)
-            decrementBlindTimers(state, delta / 1000);
+            // The board's blind clock runs on its game time (blind.js).
+            advanceBlindClock(state, delta);
 
             // Handle hit-stop decrement and freeze
             if (state.hitStopRemaining > 0) {

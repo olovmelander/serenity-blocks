@@ -39,7 +39,7 @@ function makeSnapshot() {
             nextPieces: ['I', 'O', 'T'],
             garbageEntries: [],
             lockedPieces: [],
-            blindTimers: null,
+            blind: null,
             lastInputSeq: 7,
         }],
         gamePhase: 'playing',

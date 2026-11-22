@@ -440,6 +440,12 @@ export class LocalMultiplayerMode extends BaseGameMode {
         if (!this.matchConfig?.isInfinityLMS) this.multiplayerState.players.forEach(applyVersusFeel);
         // Attacks are drawn between the boards (local-versus-hud.js).
         this.multiplayerState.onAttack = (from, targets, lines) => this.versusHud?.showAttack(from, targets, lines);
+        // The hot potato lands on a team, or a team gets rid of it.
+        this.multiplayerState.onPotatoEvent = (event) => {
+            const sfx = this.deps.soundManager?.sfxPlayer;
+            if (event.type === 'take') sfx?.playGarbageReceived?.();
+            else sfx?.playGarbageSend?.();
+        };
         this.multiplayerState.setMatchConfig(this.matchConfig);
         this.multiplayerState.reset();
         configureLocalMultiplayerSimulationClock(this);
@@ -537,11 +543,11 @@ export class LocalMultiplayerMode extends BaseGameMode {
         this._setupInputWrappers();
         this._setupLocalBots();
 
-        // The match clock and the Hot Potato start at "Go", not before the countdown.
+        // The match clock starts at "Go", not before the countdown (the hot potato's clock runs
+        // on game time, in the loop).
         const playStartedAt = this._wallNow();
         this.matchStartTime = playStartedAt;
         this.roundStartTime = playStartedAt;
-        this.multiplayerState.startHotPotatoClock(playStartedAt);
         // A pause taken during the countdown (Settings, a focus loss) still holds: the loop
         // runs but waits, and onResume releases it. Play once resumed under the open sheet.
         this.multiplayerState.isPaused = this.isPaused === true;
@@ -598,8 +604,8 @@ export class LocalMultiplayerMode extends BaseGameMode {
     }
 
     /**
-     * A pause stops the match's wall clocks: the time limit, the round's duration (results,
-     * BPM/PPM) and the Hot Potato's countdown.
+     * A pause stops the match's wall clocks: the time limit and the round's duration (results,
+     * BPM/PPM).
      * @param {number} pausedMs
      * @private
      */
@@ -608,7 +614,6 @@ export class LocalMultiplayerMode extends BaseGameMode {
         const now = this._wallNow();
         if (Number.isFinite(this.matchStartTime)) this.matchStartTime = resumeClock(this.matchStartTime, pausedMs, now);
         if (Number.isFinite(this.roundStartTime)) this.roundStartTime = resumeClock(this.roundStartTime, pausedMs, now);
-        this.multiplayerState?.shiftHotPotatoClock(pausedMs, now);
     }
 
     /**
@@ -781,34 +786,18 @@ export class LocalMultiplayerMode extends BaseGameMode {
 
         const { numPlayers } = this.multiplayerState;
 
-        // Update Hot Potato UI indicators (runs every frame for smooth timer)
-        if (this.multiplayerState.hotPotato?.enabled) {
-            const potatoState = this.multiplayerState.getHotPotatoState(this._wallNow());
-            const { holderIndex } = potatoState;
-            const { timeRemainingMs } = potatoState;
-            const formattedTime = `${(timeRemainingMs / 1000).toFixed(1)}s`;
-
-            for (let i = 0; i < numPlayers; i++) {
-                const card = document.getElementById(`player-${i + 1}-card`);
-                if (card) {
-                    if (i === holderIndex && !this.multiplayerState.players[i].isGameOver) {
-                        card.classList.add('hot-potato-holder');
-                        card.setAttribute('data-potato-time', formattedTime);
-                    } else {
-                        card.classList.remove('hot-potato-holder');
-                        card.removeAttribute('data-potato-time');
-                    }
-                }
-            }
-        } else {
-            // Ensure classes are cleared when disabled
-            for (let i = 0; i < numPlayers; i++) {
-                const card = document.getElementById(`player-${i + 1}-card`);
-                if (card) {
-                    card.classList.remove('hot-potato-holder');
-                    card.removeAttribute('data-potato-time');
-                }
-            }
+        // Hot potato: the holding team's plates glow and show its rows sent of its target.
+        const potato = this.multiplayerState.hotPotato?.enabled
+            ? this.multiplayerState.getHotPotatoState()
+            : null;
+        for (let i = 0; i < numPlayers; i++) {
+            const card = document.getElementById(`player-${i + 1}-card`);
+            if (!card) continue;
+            const holds = Boolean(potato?.holderIndices.includes(i))
+                && !this.multiplayerState.players[i].isGameOver;
+            card.classList.toggle('hot-potato-holder', holds);
+            if (holds) card.setAttribute('data-potato-progress', `${potato.sent} / ${potato.target} rows`);
+            else card.removeAttribute('data-potato-progress');
         }
 
         // Skip DOM updates most frames (run at ~6fps for text stats)
@@ -2209,14 +2198,14 @@ export class LocalMultiplayerMode extends BaseGameMode {
                 maxCombo: metrics.maxComboComplexity,
                 maxDepth: metrics.maxComboDepth,
                 potatoPasses: metrics.potatoPasses,
-                potatoHits: metrics.potatoDetonations,
+                potatoRowsSent: metrics.potatoRowsSent,
                 pieces,
                 clears,
             });
         }
 
         // Only show Hot Potato rows if the mode was actually played this match
-        const potatoPlayed = players.some((p) => ((p.potatoPasses || 0) + (p.potatoHits || 0)) > 0);
+        const potatoPlayed = players.some((p) => ((p.potatoPasses || 0) + (p.potatoRowsSent || 0)) > 0);
         const ownsResult = () => this.isActive && this._startGeneration === resultGeneration;
         showLocalMatchEnd({
             title: winner === 'draw' ? 'A draw' : `${players[winnerIndex]?.name || winnerName} wins`,

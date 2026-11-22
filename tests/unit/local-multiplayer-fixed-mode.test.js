@@ -401,9 +401,21 @@ describe('Local Multiplayer fixed mode integration', () => {
         expect(mode.multiplayerState.players.every((player) => !player.useFixedCascade)).toBe(true);
     });
 
+    it('plays the hot potato on the fixed clock: its hand-off runs on fixed ticks', () => {
+        const mode = createMode({ attackStyle: 'hot_potato', hotPotato: true });
+        expect(configureLocalMultiplayerSimulationClock(mode)).toBe(DEMO_FIXED_SIMULATION_CLOCK);
+        startLocalMultiplayerModeLoop(mode);
+        mode.multiplayerState.potatoRandom = () => 0;
+
+        for (let frame = 0; frame < 119; frame += 1) mode.deps.frameRateController.updateCallback(0, 1000 / 60);
+        expect(mode.multiplayerState.getHotPotatoState().holderTeam).toBeNull();
+        mode.deps.frameRateController.updateCallback(0, 1000 / 60); // 120 ticks: two seconds
+        expect(mode.multiplayerState.getHotPotatoState().holderTeam).not.toBeNull();
+        stopLocalMultiplayerModeLoop(mode);
+    });
+
     it.each([
         ['Infinity LMS', { isInfinityLMS: true }],
-        ['Hot Potato', { attackStyle: 'hot_potato', hotPotato: true }],
         ['time limit', { endCondition: 'time' }],
     ])('falls back completely for unsupported %s matches', (_label, config) => {
         const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});

@@ -214,6 +214,18 @@ export class OnlineVersusHud {
         set('ov-match-alive', standing);
     }
 
+    /**
+     * The hot potato chip on the match bar: who holds it and its rows sent of its target
+     * (empty hides it).
+     * @param {string} text
+     */
+    updateHotPotato(text) {
+        const el = this._el('ov-match-potato');
+        if (!el) return;
+        if (el.textContent !== text) el.textContent = text;
+        el.hidden = !text;
+    }
+
     /** The round banner, created on first use. */
     _banner() {
         const stage = this._stage();

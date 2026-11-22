@@ -18,7 +18,7 @@ function makeBody(kind = SnapshotFrameKind.DELTA, playerCount = 2, length = 44) 
     const body = Uint8Array.from({ length }, (_, index) => index);
     const view = new DataView(body.buffer, body.byteOffset, body.byteLength);
     view.setUint32(0, kind === SnapshotFrameKind.FULL ? 0x5342_4e45 : 0x5342_4e44, false);
-    view.setUint8(4, 7);
+    view.setUint8(4, 8); // binary-encoding.js FORMAT_VERSION
     view.setUint8(5, playerCount);
     return body;
 }
@@ -150,10 +150,10 @@ describe('snapshot frame bounds and malformed input rejection', () => {
         expect(() => decodeSnapshotFrameV2(crossedInput)).toThrow(/channel/);
     });
 
-    it('rejects a non-v7 body and a positional ACK/player mismatch', () => {
+    it('rejects a body of another binary format and a positional ACK/player mismatch', () => {
         const wrongVersion = makeBody();
         wrongVersion[4] = 6;
-        expect(() => makeFrame({ body: wrongVersion })).toThrow(/format v7/);
+        expect(() => makeFrame({ body: wrongVersion })).toThrow(/format v8/);
         expect(() => makeFrame({ acknowledgements: [1], body: makeBody() }))
             .toThrow(/does not match player count/);
 
@@ -163,7 +163,7 @@ describe('snapshot frame bounds and malformed input rejection', () => {
         malformedInputs[1][bodyOffset + 4] = 6;
         malformedInputs[2][bodyOffset + 5] = 1;
         expect(() => decodeSnapshotFrameV2(malformedInputs[0])).toThrow(/magic/);
-        expect(() => decodeSnapshotFrameV2(malformedInputs[1])).toThrow(/format v7/);
+        expect(() => decodeSnapshotFrameV2(malformedInputs[1])).toThrow(/format v8/);
         expect(() => decodeSnapshotFrameV2(malformedInputs[2])).toThrow(/does not match player count/);
     });
 

@@ -46,7 +46,7 @@ describe('Steam P2P packet body decoding', () => {
         const body = new Uint8Array(44);
         const bodyView = new DataView(body.buffer);
         bodyView.setUint32(0, 0x5342_4e44, false); // "SBND"
-        bodyView.setUint8(4, 7);
+        bodyView.setUint8(4, 8);
         bodyView.setUint8(5, 2);
         const frame = encodeSnapshotFrameV2({
             kind: SnapshotFrameKind.DELTA,

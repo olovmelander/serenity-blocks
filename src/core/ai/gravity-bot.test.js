@@ -259,28 +259,21 @@ describe('live gravity policy', () => {
         expect(decisions[0]).toEqual(decisions[1]);
     });
 
-    it.each(['field', 'pending'])('waits for the %s blind veil to lift before observing the board', (veil) => {
+    it('keeps playing through blind attacks: hidden cells are solid, and it plans on them', () => {
         const state = deal(1006);
         const bot = controller(state);
         bot.update(1, 1);
-        const grid = state.boardGrid;
-        state.blindTimers[veil] = 1;
-        if (veil === 'pending') {
-            expect(bot.plan()?.actions.at(-1)?.type).toBe('hardDrop');
-            state.lockedPieces.push({ type: 'GARBAGE' });
-        }
-        Object.defineProperty(state, 'boardGrid', {
-            configurable: true,
-            get() { throw new Error('Read a veiled board'); },
-        });
-        expect(bot.plan()).toBeNull();
-        bot.update(17, 18);
-        expect(bot.precomputeSearch(6, 17)).toBe(0);
-        expect(bot.proof).toEqual([]);
-        Object.defineProperty(state, 'boardGrid', { configurable: true, writable: true, value: grid });
-        state.blindTimers[veil] = 0;
-        expect(bot.plan()?.actions.at(-1)?.type).toBe('hardDrop');
+        const seen = bot.plan()?.actions;
         state.reset();
+        const blinded = deal(1006);
+        const blindedBot = controller(blinded);
+        blindedBot.update(1, 1);
+        blinded.lockedPieces.forEach((piece) => { piece.blindTicks = 40; });
+        blinded.boardGrid.forEach((row) => row.forEach((cell) => { if (cell) cell.blind = 40; }));
+        blinded.blind.pieceTicks = 30;
+
+        expect(blindedBot.plan()?.actions).toEqual(seen);
+        blinded.reset();
     });
 
     it('only reads visible opponent height for an applicable local duel attack', () => {
@@ -291,9 +284,9 @@ describe('live gravity policy', () => {
         const observed = manager.controllers.get(0).finishingRoom;
         players[1].boardGrid[HIDDEN_ROWS + 1][0] = { id: 1 };
         expect(observed()).toBe(1);
-        players[1].blindTimers.field = 1;
+        match.matchConfig.attackRules = { forceAttackType: 'blind' }; // no rows to finish with
         expect(observed()).toBe(Infinity);
-        players[1].blindTimers.field = 0;
+        match.matchConfig.attackRules = null;
         players[1].handicap++;
         expect(observed()).toBe(Infinity);
         players[1].handicap--;

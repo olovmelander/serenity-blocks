@@ -8,6 +8,7 @@ import { SteamNetworking } from '../steam/steam-networking.js';
 import steamService from '../steam/steam-service.js';
 import { FFAGameStateP2P } from '../multiplayer/ffa-p2p-game-state.js';
 import { readMatchLevelRule } from '../multiplayer/match-level-rule.js';
+import { readMinAttackLines } from '../garbage.js';
 import {
     LOBBY_TYPE_KEY, chatLobbyType, createdLobbyType, joinedLobbyType, lobbyOffersJoinToFriends,
 } from '../multiplayer/lobby-type.js';
@@ -472,9 +473,9 @@ export class OnlineMultiplayerMode extends BaseGameMode {
                 garbageCancellation: config.garbageCancellation || 'disabled',
                 attackStyle: config.attackStyle || 'standard',
                 attackRules: config.attackRules || null,
+                // Clears smaller than this send no normal rows (garbage.js readMinAttackLines).
+                minAttackLines: readMinAttackLines(config.minAttackLines),
                 hotPotato: config.hotPotato || false,
-                potatoDurationMs: config.potatoDurationMs || 12000,
-                potatoPenaltyLines: config.potatoPenaltyLines || 6,
                 maxPlayers: config.maxPlayers,
             };
 
@@ -1160,6 +1161,11 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         // itself anyone on the host's screen.
         const chatHandler = (detail) => this.chat?.addMessage(detail);
         const chatUnsub = onMultiplayerEvent(MULTIPLAYER_EVENTS.CHAT_MESSAGE, chatHandler);
+        // The hot potato (host echo and GAME_POTATO_UPDATE): its holder and rows on the match bar.
+        const potatoUnsub = onMultiplayerEvent(
+            MULTIPLAYER_EVENTS.HOT_POTATO_UPDATED,
+            ({ state } = {}) => this.hud?.updateHotPotato(this._describeHotPotato(state)),
+        );
 
         // A4d: the host returned everyone to the lobby (manual or idle auto-advance).
         // Peers follow without re-broadcasting (host is the sole initiator).
@@ -1179,6 +1185,8 @@ export class OnlineMultiplayerMode extends BaseGameMode {
             this.steamNetworking.off(MessageTypes.GAME_PLAYER_DIED, deathHandler);
             this.steamNetworking.off(MessageTypes.GAME_GARBAGE_SENT, garbageHandler);
             chatUnsub();
+            potatoUnsub();
+            this.hud?.updateHotPotato('');
             this.steamNetworking.off(MessageTypes.RETURN_TO_LOBBY, returnToLobbyHandler);
         });
 
@@ -1709,7 +1717,7 @@ export class OnlineMultiplayerMode extends BaseGameMode {
                         boardGrid: p.grid,
                         currentPiece: p.currentPiece,
                         nextPieces: p.nextPieces,
-                        blindTimers: p.blindTimers,
+                        blind: p.blind,
                     },
                 };
             }
@@ -1837,7 +1845,7 @@ export class OnlineMultiplayerMode extends BaseGameMode {
                 slot.grid = gs.boardGrid || gs.grid;
                 slot.currentPiece = gs.currentPiece;
                 slot.nextPieces = gs.nextPieces;
-                slot.blindTimers = gs.blindTimers;
+                slot.blind = gs.blind;
 
                 // Apply interpolation if available
                 const interpolated = this.snapshotInterpolator.getInterpolatedState(p.steamId, renderTime);
@@ -2269,6 +2277,21 @@ export class OnlineMultiplayerMode extends BaseGameMode {
             bar.classList.remove(className);
             delete this.garbageFlashTimers[className];
         }, durationMs);
+    }
+
+    /**
+     * The hot potato as the match bar shows it: who holds it and its rows sent of its target
+     * ('' when the match plays without it).
+     * @param {{ enabled?: boolean, holder?: string|null, sent?: number, target?: number }|null|undefined} state
+     * @returns {string}
+     */
+    _describeHotPotato(state) {
+        if (!state?.enabled) return '';
+        if (!state.holder) return 'Hot potato: passing';
+        const holder = state.holder === this.ffaGameState?.localPlayerId
+            ? 'You'
+            : (this.ffaGameState?.players?.get(state.holder)?.name || 'Someone');
+        return `Hot potato: ${holder} ${state.sent || 0} / ${state.target || 0} rows`;
     }
 
     /** The match bar: the goal, the round, and who is still in (online-versus-hud.js). */

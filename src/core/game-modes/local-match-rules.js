@@ -32,8 +32,8 @@ export function resolveLocalMatchEnd(config, standings, elapsedMs) {
 
 /**
  * Where a clock that started at `startedAt` stands after a pause of `pausedMs` that ended at
- * `now`: moved on by the part of the pause after it started (a round can begin, or a Hot
- * Potato be passed, while the game is paused).
+ * `now`: moved on by the part of the pause after it started (a round can begin while the
+ * game is paused).
  * @param {number} startedAt
  * @param {number} pausedMs
  * @param {number} now
