@@ -58,7 +58,7 @@ import {
     SEA_SWELL_TILT, SEA_TROUGH, SEA_WINDROWS, WATER_SHORE_DEPTH_BIAS,
 } from './odyssey-water-looks.js';
 import {
-    FOREST_LEAF_CARD, FOREST_TRUNK_PACK, buildForestTreeGeometry, packForestTrunkW,
+    FOREST_LEAF_CARD, FOREST_TRUNK_PACK, buildForestTreeGeometry, packForestTrunkW, setForestTreeSource,
 } from './odyssey-forest-geometry.js';
 import { forestLeafCardFragment, forestLeafCardUv, forestLeafCardVertex } from './odyssey-forest-cards.js';
 import { bakeForestLeafAtlas } from './odyssey-forest-leaf-atlas.js';
@@ -217,6 +217,66 @@ const GROUND_EDGE_TINT = Object.freeze([0.80, 0.72, 0.55]);
 const GROUND_EDGE_AMT = 0.55;
 /** Wind-swept lighter bands. Deliberately small: this is a painted stroke, not a strobe. */
 const GROUND_WIND_LIFT = 0.055;
+/**
+ * THE MEADOW (2026-11-22). Tussocks and flower clumps modelled and photographed from straight above
+ * in Blender (scripts/blender/odyssey/odyssey_meadow.py -> assets/ground/meadow.png: R the turf's
+ * value, G flower coverage). From the rail the grass was felt: the ground's own stroke field is
+ * finer than a pixel at 50-150 u and quiet by design. The photograph is `tile` u a side, mipmapped,
+ * so it melts to its mean with distance by itself; `turf` is how far its value field moves the
+ * grass (Wolfire's mean-transparent ratio: `mean` is the bake's own mean, so the painted colour
+ * never shifts), off on steep ground (`slope`: a tussock does not hang on a cliff).
+ *
+ * FLOWERS IN DRIFTS: the photograph's clumps are everywhere; a drift field `driftCell` u across
+ * (two noises) lets them through only in patches, never in deep forest shade, and a species field
+ * `speciesCell` u across gives each patch its flower: buttercup, ox-eye daisy, red clover or
+ * harebell. Authored for the world's output contract (paler and greyer than the screen result).
+ *
+ * TONES: the chapter 3-4 meadows were one green; three soft tones in patches `toneCell` u across
+ * (a lusher blue-green, a fresh yellow-green, a sun-dried olive), as the north plain has.
+ *
+ * UNDER THE TREES: the litter of their own leaves and long, darker grass round the trunks, from the
+ * forest's cover plate (`litter`, `litterTone`, `rough`).
+ *
+ * WIND YOU CAN SEE: bands of bent grass, paler, running across the meadow with the gust (`waveLen`
+ * u apart, `waveSpeed` u/s, along the one wind's heading, their phase bent by a bounded noise so
+ * they are not ruled lines), only while a gust is on (the front's envelope): `waveLift` brightens
+ * and `waveFlatten` smooths the turf where a band lies.
+ */
+const MEADOW = Object.freeze({
+    tile: 16,
+    mean: 0.282,
+    turf: 0.42,
+    slope: Object.freeze([0.16, 0.34]),
+    driftCell: 95,
+    drift: Object.freeze([0.56, 0.74]),
+    speciesCell: 140,
+    flowers: 1.1,
+    shadeKeep: 0.15,
+    buttercup: Object.freeze([0.60, 0.47, 0.06]),
+    daisy: Object.freeze([0.60, 0.60, 0.54]),
+    clover: Object.freeze([0.50, 0.17, 0.30]),
+    harebell: Object.freeze([0.25, 0.28, 0.60]),
+    toneCell: 120,
+    lush: Object.freeze([0.90, 1.02, 1.06]),
+    fresh: Object.freeze([1.10, 1.12, 0.62]),
+    dry: Object.freeze([1.32, 1.05, 0.74]),
+    toneEdge: 0.07,
+    // The 2026-11-22 audit measured the sunlit lowland lawn at value ~0.25, saturation ~0.75 on
+    // screen: darker than the leaves of the trees on it, a billiard table. The chapter 3-4 meadows
+    // (not the north plain, which has its own greens) are lifted and warmed, a touch less saturated.
+    lift: Object.freeze([1.26, 1.2, 1.4]),
+    // Under the crowns (the forest's cover plate): the litter of their own leaves, in the crowns'
+    // mean colour dimmed (`litterTone`), up to `litter` of the ground; long, darker grass round the
+    // trunks (`rough` deepens the turf there).
+    litter: 0.38,
+    litterTone: 0.62,
+    rough: 0.35,
+    waveLen: 26,
+    waveSpeed: 9,
+    waveLift: 0.085,
+    waveFlatten: 0.5,
+});
+const ODYSSEY_MEADOW_URL = new URL('../assets/ground/meadow.png', import.meta.url).href;
 /**
  * THE NORTH BEACH'S PAINT (2026-11-02; the landform is ODYSSEY_NORTH_BEACH). The sand there is
  * paler than the island's golden shore sand (`pale`, mixed in by `paleMix`), wet only in a thin
@@ -538,12 +598,14 @@ const LAKE_TEXEL = plateTexel(ODYSSEY_NORTH_LAKE_PLATE);
  *   - `near`: the band (u) the shore's paint is computed in at all.
  */
 const TARN_SHORE = Object.freeze({
-    beach: Object.freeze([-0.45, 3.0]),
+    // (2026-11-22 land audit: the bank read as a kerb of one width all round, so the gravel stretches
+    // are now rarer, narrower and shorter, and most of the shore is turf down to the water.)
+    beach: Object.freeze([-0.45, 1.7]),
     /** Where the reach's noise turns from the narrow to the wide (a short band: one or the other). */
-    beachSplit: Object.freeze([0.45, 0.55]),
+    beachSplit: Object.freeze([0.62, 0.7]),
     /** The beach's own stone: a cool grey gravel, not the sea's warm sand (linear albedo). */
     gravel: Object.freeze([0.40, 0.37, 0.31]),
-    beachCell: 21,
+    beachCell: 13,
     beachEdge: 0.35,
     beachBreak: 0.5,
     lush: Object.freeze([1.5, 9]),
@@ -1380,6 +1442,9 @@ export function createOdysseyWorld({
     // `?odysseyWorldForestV1=1`: builders, scatter and material all stay, one flag from
     // restoration, so a failure of the new forest is attributable rather than unfalsifiable.
     forestV2 = true,
+    // THE GROWN BROADLEAVES (2026-11-22, scripts/blender/odyssey/odyssey_trees.py) ship; the puff
+    // crowns built in code stay one flag from restoration (ADR-0015): `?odysseyWorldProceduralTrees=1`.
+    proceduralTrees = false,
     // The rail-visibility cull: drop trees the journey's camera can never see. Ships ON — it
     // was measured at 0.00% of pixels changed across four rail stations, for 0.20 ms p50 — and
     // `?odysseyWorldNoVisCull=1` restores every tree (ADR-0015).
@@ -1555,6 +1620,32 @@ export function createOdysseyWorld({
     leafAtlasTex.wrapT = THREE.ClampToEdgeWrapping;
     leafAtlasTex.generateMipmaps = true;
     leafAtlasTex.needsUpdate = true;
+    // THE MEADOW (MEADOW; scripts/blender/odyssey/odyssey_meadow.py): the Blender bake of tussocks and
+    // flowers, data not colour, mipmapped. It arrives a moment after the world is built: until then
+    // three binds a 1x1 placeholder and `uMeadowOn` keeps the ground as it was. No browser (the unit
+    // tests build this world in node): no fetch, and the ground stays as it was.
+    const meadowTex = new THREE.Texture();
+    meadowTex.colorSpace = THREE.NoColorSpace;
+    meadowTex.wrapS = THREE.RepeatWrapping;
+    meadowTex.wrapT = THREE.RepeatWrapping;
+    meadowTex.minFilter = THREE.LinearMipmapLinearFilter;
+    meadowTex.magFilter = THREE.LinearFilter;
+    meadowTex.generateMipmaps = true;
+    meadowTex.anisotropy = 4;
+    const uMeadowOn = uniform(0);
+    let meadowDisposed = false;
+    if (typeof createImageBitmap === 'function' && typeof fetch === 'function' && typeof document !== 'undefined') {
+        fetch(ODYSSEY_MEADOW_URL)
+            .then((res) => (res.ok ? res.blob() : Promise.reject(new Error(`meadow ${res.status}`))))
+            .then((blob) => createImageBitmap(blob, { colorSpaceConversion: 'none', premultiplyAlpha: 'none' }))
+            .then((bitmap) => {
+                if (meadowDisposed) { bitmap.close?.(); return; }
+                meadowTex.image = bitmap;
+                meadowTex.needsUpdate = true;
+                uMeadowOn.value = 1;
+            })
+            .catch((error) => console.warn('[OdysseyWorld] meadow bake not loaded:', error?.message || error));
+    }
     // THE MIST PLATE (GROUND_MIST; odyssey-valley-mist.js): R = the hollows' mist top over the
     // sea, G = the pool's depth, both in u, read at `xz / RELIEF_EXTENT + 0.5`.
     const valleyMistPlate = bakeValleyMist(relief.sample, ODYSSEY_SEA_LEVEL);
@@ -3199,11 +3290,67 @@ export function createOdysseyWorld({
         })();
 
         /**
+         * THE MEADOW (MEADOW): the Blender turf over the grass, its tones, its flower drifts and the
+         * wind's bands through it. Sampled on the root path (the hardware's own mip, no branch).
+         */
+        const gust = gustFront(positionWorld.xz);
+        const meadowXZ = positionWorld.xz;
+        const meadowTexel = texture(meadowTex, meadowXZ.div(float(MEADOW.tile))).toVar();
+        const meadowOn = kGrass.mul(uMeadowOn)
+            .mul(float(1).sub(smoothstep(float(MEADOW.slope[0]), float(MEADOW.slope[1]), slope))).toVar();
+        // Bands of bent grass running with the gust: a fixed heading and length, the phase bent by a
+        // bounded noise, on only while the front's envelope is up.
+        const waveBend = noise2(meadowXZ.div(float(MEADOW.waveLen * 3.1)).add(vec2(4.2, 9.7)))
+            .sub(0.5)
+            .mul(2.4);
+        const wavePhase = meadowXZ.x.mul(0.8)
+            .add(meadowXZ.y.mul(0.6))
+            .div(float(MEADOW.waveLen))
+            .sub(uTime.mul(MEADOW.waveSpeed / MEADOW.waveLen))
+            .add(waveBend)
+            .mul(Math.PI * 2);
+        const meadowWave = smoothstep(float(0.35), float(0.95), sin(wavePhase))
+            .mul(smoothstep(float(0.52), float(0.85), gust.mul(0.5).add(0.5))).mul(meadowOn).toVar();
+        const turfRatio = meadowTexel.r.div(float(MEADOW.mean));
+        const underCrowns = clamp(forestShade.g.mul(1.4), 0, 1).toVar();
+        albedo = albedo.mul(mix(float(1), turfRatio, meadowOn.mul(MEADOW.turf)
+            .mul(underCrowns.mul(MEADOW.rough).add(1))
+            .mul(float(1).sub(meadowWave.mul(MEADOW.waveFlatten)))));
+        // Three soft tones in patches (the chapter 3-4 meadows; the north plain has its own).
+        const toneField = noise2(meadowXZ.div(float(MEADOW.toneCell)).add(vec2(21.7, 3.9))).mul(0.7)
+            .add(noise2(meadowXZ.div(float(MEADOW.toneCell * 0.37)).add(vec2(8.3, 14.1))).mul(0.3));
+        const toneLush = smoothstep(float(0.42).add(MEADOW.toneEdge), float(0.42).sub(MEADOW.toneEdge), toneField);
+        const toneFresh = smoothstep(float(0.58).sub(MEADOW.toneEdge), float(0.58).add(MEADOW.toneEdge), toneField);
+        const toneDryField = noise2(meadowXZ.div(float(MEADOW.toneCell * 1.6)).add(vec2(2.9, 30.3)));
+        const toneDry = smoothstep(float(0.66), float(0.74), toneDryField);
+        const toneLushFresh = mix(mix(vec3(1), vec3(...MEADOW.lush), toneLush), vec3(...MEADOW.fresh), toneFresh);
+        const tone = mix(toneLushFresh, vec3(...MEADOW.dry), toneDry.mul(0.7));
+        albedo = albedo.mul(mix(vec3(1), tone, meadowOn.mul(float(1).sub(plainW))));
+        // The sunlit lowland meadow, lighter and warmer (MEADOW.lift).
+        albedo = albedo.mul(mix(vec3(1), vec3(...MEADOW.lift), meadowOn.mul(float(1).sub(plainW))
+            .mul(float(1).sub(underCrowns.mul(0.6)))));
+        // Under the crowns, the litter of their own leaves (the cover plate's mean crown colour).
+        albedo = mix(albedo, canopyMean.mul(MEADOW.litterTone), underCrowns.mul(meadowOn).mul(MEADOW.litter));
+        // Flowers, in drifts, each drift its own flower; never in deep forest shade.
+        const driftField = noise2(meadowXZ.div(float(MEADOW.driftCell)).add(vec2(17.1, 5.3))).mul(0.65)
+            .add(noise2(meadowXZ.div(float(MEADOW.driftCell * 0.31)).add(vec2(2.4, 11.8))).mul(0.35));
+        const drift = smoothstep(float(MEADOW.drift[0]), float(MEADOW.drift[1]), driftField)
+            .mul(mix(float(1), float(MEADOW.shadeKeep), forestShade.g));
+        const pick = noise2(meadowXZ.div(float(MEADOW.speciesCell)).add(vec2(40.1, 7.7)));
+        const flowerColour = mix(
+            mix(vec3(...MEADOW.buttercup), vec3(...MEADOW.daisy), smoothstep(float(0.36), float(0.46), pick)),
+            mix(vec3(...MEADOW.clover), vec3(...MEADOW.harebell), smoothstep(float(0.70), float(0.78), pick)),
+            smoothstep(float(0.56), float(0.64), pick),
+        );
+        albedo = mix(albedo, flowerColour, clamp(meadowTexel.g.mul(drift).mul(meadowOn).mul(MEADOW.flowers), 0, 1));
+        // The bent grass shows its paler side.
+        albedo = albedo.mul(meadowWave.mul(MEADOW.waveLift).add(1));
+
+        /**
          * WIND, at no cost. The painted meadow signature is lighter stroke bands sweeping across
          * a slope; the forest's travelling gust line proved the mechanism here — a static field
          * plus a time-varying PHASE, so motion is a sine and not a second texture.
          */
-        const gust = gustFront(positionWorld.xz);
         const sweep = smoothstep(float(0.30), float(0.92), tooth.mul(0.52).add(gust.mul(0.5).add(0.5).mul(0.48)));
         albedo = albedo.mul(sweep.mul(kGrass).mul(detailMelt).mul(GROUND_WIND_LIFT).add(1));
 
@@ -7536,6 +7683,7 @@ export function createOdysseyWorld({
     // forest whichever one is mounted, or `?odysseyWorldNoForest=1` prices a half-empty world
     // and the differential silently means something else.
     if (forest && forestV2) {
+        setForestTreeSource(proceduralTrees ? 'procedural' : 'grown');
         // The scatter is pure arithmetic over the height mirror and the rail, so the world-bake
         // worker runs it while this thread builds clipmaps and material graphs (item 2.1
         // follow-up). `prebaked.scatter` is trusted only when the bake was asked for THIS tree
@@ -8465,7 +8613,9 @@ export function createOdysseyWorld({
             if (moteMesh) moteMesh.geometry.dispose();
             if (rayMesh) rayMesh.geometry.dispose();
             [heightTex, sunVisTex, groundTex, detailTex, seaLaceTex, macroTex, summitTex, tarnTex, lakeTex, forestShadeTex, leafAtlasTex,
-                valleyMistTex].forEach((t) => t.dispose());
+                valleyMistTex, meadowTex].forEach((t) => t.dispose());
+            meadowDisposed = true;
+            if (meadowTex.image && typeof meadowTex.image.close === 'function') meadowTex.image.close();
             // When the mesh is in the group, group.traverse above already disposed it.
             if (!heroes) heroBuild.geometry.dispose();
             treeGeo.dispose();

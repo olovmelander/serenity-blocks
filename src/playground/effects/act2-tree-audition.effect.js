@@ -9,7 +9,7 @@ import {
     FOREST_VALUE_ROLES, ODYSSEY_FOREST_SPECIES,
 } from '../../rendering/odyssey/world/odyssey-forest-species.js';
 import {
-    FOREST_LEAF_CARD, buildForestTreeGeometry, forestRosterBudget, setForestBroadleafStyle,
+    FOREST_LEAF_CARD, buildForestTreeGeometry, forestRosterBudget, setForestBroadleafStyle, setForestTreeSource,
 } from '../../rendering/odyssey/world/odyssey-forest-geometry.js';
 import {
     forestLeafCardFragment, forestLeafCardUv, forestLeafCardVertex,
@@ -42,6 +42,8 @@ import { ODYSSEY_WORLD_SUN } from '../../rendering/odyssey/chapter-environments/
  *   ?species=S2         audition ONE species across its stages, filling the board
  *   ?broadleaf=traced   the smooth-min broadleaf crown the puffs replaced, for an A/B
  *   ?broadleaf=solid    the solid puffs the leaf cards replaced, for an A/B
+ *   ?trees=procedural   the puff crowns built in code instead of the broadleaves grown in Blender
+ *                       (scripts/blender/odyssey/odyssey_trees.py), for an A/B
  *   ?spin=0             stop the slow turntable (silhouette review wants motion; a still
  *                       capture wants it off, and `?t=` freezes update() dt anyway)
  */
@@ -67,6 +69,7 @@ export function create({
     // puffs the leaf cards replaced (2026-10-26). Both for an A/B.
     const style = params?.get?.('broadleaf');
     setForestBroadleafStyle(['traced', 'solid'].includes(style) ? style : 'leafy');
+    setForestTreeSource(params?.get?.('trees') === 'procedural' ? 'procedural' : 'grown');
     const atlas = bakeForestLeafAtlas();
     const atlasTex = new THREE.DataTexture(
         atlas.data,

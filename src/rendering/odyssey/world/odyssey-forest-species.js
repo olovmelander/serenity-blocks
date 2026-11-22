@@ -167,9 +167,12 @@ export const ODYSSEY_FOREST_SPECIES = Object.freeze([
         trunk: Object.freeze([0.115, 0.058, 0.034]),
         tiers: 6,
         crownW: 1.00,
-        crownH: 1.00,
+        // The crown comes down the trunk (2026-11-22 land audit: "conifers on stilts", a tiered
+        // crown on a long bare stem): a shorter bare trunk and a longer crown, the same total height
+        // (trunkH + crownH x 3.4 x the six-tier apex share, 4.457).
+        crownH: 1.13,
         trunkR: 0.055,
-        trunkH: 1.00,
+        trunkH: 0.55,
         droop: 0.30,
         weight: 1.0,
         stages: Object.freeze([
@@ -195,9 +198,10 @@ export const ODYSSEY_FOREST_SPECIES = Object.freeze([
         trunk: Object.freeze([0.088, 0.052, 0.040]),
         tiers: 7,
         crownW: 0.76,
-        crownH: 1.12,
+        // As the pine's: the crown further down the trunk, the same height (4.869).
+        crownH: 1.239,
         trunkR: 0.048,
-        trunkH: 0.92,
+        trunkH: 0.50,
         droop: 0.20,
         snow: true,
         weight: 0.9,

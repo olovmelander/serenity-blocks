@@ -1353,6 +1353,9 @@ export class OdysseyBoardController {
                     // `odysseyWorldForestV2` is deliberately NO LONGER READ — a dead lever
                     // reports innocence, not absence (the odysseyWorldNoHeroes lesson).
                     forestV2: !readBooleanUrlFlag('odysseyWorldForestV1'),
+                    // The grown broadleaves ship (scripts/blender/odyssey/odyssey_trees.py);
+                    // `?odysseyWorldProceduralTrees=1` restores the puff crowns (ADR-0015).
+                    proceduralTrees: readBooleanUrlFlag('odysseyWorldProceduralTrees'),
                     // Ground plan Wave 0a — the ground's own pricing lever, opt-IN and
                     // shipping nothing: ?odysseyWorldFlatGround=1 keeps every triangle and
                     // every draw and withholds only the ground's fragment mesostructure, so
