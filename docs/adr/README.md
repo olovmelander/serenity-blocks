@@ -33,6 +33,7 @@ an agent will happily re-add a forbidden pattern unless the constraint is loadab
 | [0021](0021-photosensitivity-warning-and-reduce-flashing.md) | The photosensitivity warning is the first screen of every launch; flashing has its own setting | accepted |
 | [0022](0022-retire-the-old-chapter-worlds.md) | Retire the old chapter 2–5 worlds | accepted |
 | [0023](0023-online-play-is-relay-only.md) | Online play goes through Steam's relays, or not at all | accepted |
+| [0024](0024-versus-rules.md) | Versus play has one rule set, local and online | accepted |
 
 Format per record: **Status / Date / Context / Decision / Consequences / Enforcement.**
 New records: next number, kebab-case slug, add a row here.

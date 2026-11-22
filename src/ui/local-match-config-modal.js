@@ -362,13 +362,6 @@ export class LocalMatchConfigModal {
                       </span>
                       <input type="checkbox" class="sb-toggle" id="level-progression" name="levelProgression" />
                     </label>
-                    <label class="sb-mp-switch form-group" id="boring-rules-group">
-                      <span class="sb-mp-field__text">
-                        <span class="sb-mp-field__label">No attack scaling</span>
-                        <span class="sb-mp-help">Attacks keep full strength with three or four players.</span>
-                      </span>
-                      <input type="checkbox" class="sb-toggle" id="boring-rules" name="boringRules" />
-                    </label>
                   </div>
                 </details>
               </section>

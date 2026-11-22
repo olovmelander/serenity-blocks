@@ -28,6 +28,7 @@ import {
     softDrop as coreSoftDrop,
 } from './core/game.js';
 import { applyBlindEffect, applyFullBlindEffect } from './core/blind.js';
+import { VERSUS_GARBAGE_OPTIONS } from './core/multiplayer/versus-rules.js';
 import { initPieceSystem } from './core/pieces.js';
 import { GameModeManager } from './core/game-modes/GameModeManager.js';
 import { createBoardEffectHandlers } from './core/game-modes/board-effect-callbacks.js';
@@ -4464,9 +4465,9 @@ class SerenityBlocks {
                 effectHandlers.lockBeat(piece);
                 currentMode?._infinityCameraEvent?.(playerNum - 1, 'lock', piece);
 
-                // Handicap: accumulate per-opponent stamps on each placement
-                // (no-op unless players have differing handicap levels).
-                multiplayerState?.accumulateHandicap?.(playerNum - 1);
+                // Each placement earns handicap and crowd stamps and fades the frag
+                // credit of whoever has attacked this player (versus-rules.js).
+                multiplayerState?.notePiecePlaced?.(playerNum - 1);
 
                 // Emit event for theme reactions
                 emitPieceLock({ piece, player: playerNum });
@@ -4524,9 +4525,15 @@ class SerenityBlocks {
                         `[Garbage] Inserting ${queuedEntries.length} garbage lines into Player ${playerNum}'s board`,
                     );
 
-                    const result = applyGarbage(playerState, queuedEntries);
+                    // Versus garbage never tops out (Infinity keeps its roof): only a blocked
+                    // spawn below ends the player. Rows it closes count as this player's clear.
+                    const result = applyGarbage(playerState, queuedEntries, VERSUS_GARBAGE_OPTIONS);
                     if (result?.rowsAdded > 0) {
                         currentMode?._compensatePlayerGridExpansion?.(playerState, sceneRef(), result.rowsAdded);
+                    }
+                    if (result?.settleSummary) {
+                        callbacks.onScoreAdd?.();
+                        callbacks.onGarbageReady?.(result.settleSummary);
                     }
 
                     if (result?.topOut) {

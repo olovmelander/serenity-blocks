@@ -202,15 +202,15 @@ export class MatchConfigModal {
                   <div class="sb-mp-field">
                     <span class="sb-mp-field__label">Garbage cancelling</span>
                     <select id="garbage-cancellation" name="garbageCancellation" aria-label="Garbage cancelling">
-                      <option value="full" selected>On</option>
-                      <option value="disabled">Off</option>
+                      <option value="disabled" selected>Off</option>
+                      <option value="full">On</option>
                     </select>
-                    <p class="sb-mp-help" id="garbage-cancellation-help">Lines you send cancel garbage on its way to you, one for one.</p>
+                    <p class="sb-mp-help" id="garbage-cancellation-help">Garbage always arrives in full.</p>
                   </div>
                   <label class="sb-mp-switch">
                     <span class="sb-mp-field__text">
                       <span class="sb-mp-field__label">No attack scaling</span>
-                      <span class="sb-mp-help">Attacks keep full strength with three or more players.</span>
+                      <span class="sb-mp-help">Attacks keep full strength even with more than four players alive.</span>
                     </span>
                     <input type="checkbox" class="sb-toggle" id="online-boring-rules" name="boringRules" />
                   </label>
@@ -393,7 +393,7 @@ export class MatchConfigModal {
             endCondition: formData.get('endCondition'),
             endConditionValue: parseInt(formData.get('endConditionValue'), 10) || 0,
             boringRules: formData.get('boringRules') === 'on',
-            garbageCancellation: formData.get('garbageCancellation') || 'full',
+            garbageCancellation: formData.get('garbageCancellation') || 'disabled',
             attackStyle: formData.get('attackStyle') || 'standard',
             attackRules: this._attackRulesFor(formData.get('attackStyle') || 'standard'),
             // The level rule (match-level-rule.js): a fixed level unless levelling up is on.

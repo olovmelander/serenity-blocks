@@ -18,6 +18,7 @@ import { applyMatchLevelRule } from './multiplayer/match-level-rule.js';
 import {
     INFINITY_WELL_ROWS_DEFAULT, infinityWellOpeningRows, readInfinityWellRows,
 } from './multiplayer/infinity-well-rule.js';
+import { AttackCredit, stepCrowdStamps, takeCrowdCut } from './multiplayer/versus-rules.js';
 
 /**
  * Player color scheme for visual distinction
@@ -63,7 +64,12 @@ export const TEAM_COLORS = PLAYER_COLORS;
  * Multi-player game state that manages 2-4 players
  */
 export class MultiPlayerState {
-    constructor(numPlayers = 2) {
+    /**
+     * @param {number} [numPlayers]
+     * @param {{ maxPendingLines?: number }} [options] maxPendingLines: most rows that may wait
+     *   for one player (local versus: VERSUS_MAX_PENDING_LINES; Odyssey duels keep no limit).
+     */
+    constructor(numPlayers = 2, { maxPendingLines = Infinity } = {}) {
         this.numPlayers = numPlayers;
 
         // Player game states (array-based for scalability)
@@ -73,7 +79,7 @@ export class MultiPlayerState {
 
         for (let i = 0; i < numPlayers; i++) {
             this.players.push(new GameState());
-            this.garbageQueues.push(new GarbageQueue());
+            this.garbageQueues.push(new GarbageQueue({ maxLines: maxPendingLines }));
         }
 
         // Match configuration (set by LocalMultiplayerMode)
@@ -99,7 +105,12 @@ export class MultiPlayerState {
         // Frag tracking (kills) and deaths tracking
         this.frags = new Array(numPlayers).fill(0);
         this.deaths = new Array(numPlayers).fill(0); // Deaths per player
-        this.lastAttackerIds = new Array(numPlayers).fill(null); // Track who last attacked each player
+        // Who gets the frag if each player dies: kept by attackCredit (versus-rules.js) and
+        // mirrored here, where the round logic reads it.
+        this.lastAttackerIds = new Array(numPlayers).fill(null);
+        this.attackCredit = Array.from({ length: numPlayers }, () => new AttackCredit());
+        // Crowd stamps: with more than four players alive they shrink each player's attacks.
+        this.crowdStamps = new Array(numPlayers).fill(0);
         // Presentation listener: (attackerIndex, targetIndices, lines) for each attack that
         // sends garbage (local versus draws it between the boards). Never alters the sim.
         this.onAttack = null;
@@ -341,6 +352,54 @@ export class MultiPlayerState {
     }
 
     /**
+     * Everything one placed piece counts for in versus play: handicap stamps, a crowd stamp
+     * (only while more than four players are alive), and fading the credit of whoever has
+     * attacked this player. Call once per piece lock.
+     * @param {number} playerIndex
+     */
+    notePiecePlaced(playerIndex) {
+        if (!this.players[playerIndex]) return;
+        this.accumulateHandicap(playerIndex);
+        const alive = this.players.filter((state) => state?.isAlive).length;
+        this.crowdStamps[playerIndex] = stepCrowdStamps(this.crowdStamps[playerIndex], alive);
+        this.attackCredit[playerIndex]?.notePiecePlaced();
+    }
+
+    /**
+     * An attack of `lines` rows from `attackerIndex` reached `targetIndex`.
+     * @param {number} targetIndex
+     * @param {number} attackerIndex
+     * @param {number} lines
+     */
+    _noteAttack(targetIndex, attackerIndex, lines) {
+        const credit = this.attackCredit[targetIndex];
+        if (!credit) return;
+        credit.noteAttack(attackerIndex, lines);
+        this.lastAttackerIds[targetIndex] = credit.killer;
+    }
+
+    /**
+     * Take the crowd cut off an attack's normal rows, spending the sender's crowd stamps.
+     * A move that empties the board keeps its full size, and boring rules turn the cut off.
+     * @param {number} playerIndex
+     * @param {GarbageAttack} attack
+     * @returns {GarbageAttack}
+     */
+    _applyCrowdCut(playerIndex, attack) {
+        const normal = attack.holeMasks?.length || 0;
+        const { lines, stamps } = takeCrowdCut(normal, this.crowdStamps[playerIndex], {
+            clean: attack.sendForPerfectClear,
+            boringRules: this.matchConfig?.boringRules,
+        });
+        this.crowdStamps[playerIndex] = stamps;
+        if (lines >= normal) return attack;
+        return GarbageAttack.fromJSON({
+            ...attack.toJSON(),
+            holeMasks: attack.holeMasks.slice(0, lines),
+        }).withId(attack.id);
+    }
+
+    /**
      * Apply the per-opponent handicap to an attack for one target. Reduces the
      * number of normal garbage lines (clean lines bypass handicap) by consuming
      * the attacker's accumulated stamps for that opponent. Returns the original
@@ -424,6 +483,8 @@ export class MultiPlayerState {
             this.frags[i] = 0;
             this.deaths[i] = 0;
             this.lastAttackerIds[i] = null;
+            this.attackCredit[i].reset();
+            this.crowdStamps[i] = 0;
             this.playerPaused[i] = false;
         }
 
@@ -557,7 +618,9 @@ export class MultiPlayerState {
             });
         });
 
+        // The potato's own rows are nobody's attack: dying under them earns no frag.
         this.lastAttackerIds[holderIndex] = null;
+        this.attackCredit[holderIndex].holder = null;
         this._recordIncomingAttack(holderIndex, {
             lines: entries.filter((entry) => entry.type === 'line').length,
             countAttack: true,
@@ -667,12 +730,12 @@ export class MultiPlayerState {
             `[MultiPlayerState] Player ${playerIndex + 1} cascade resolved → depth=${attack.depth}, combo=${attack.complexity}`,
         );
 
-        // Apply attack scaling based on player count
-        const totalLines = this._scaleAttackForPlayerCount(unscaledLines);
-        const scaledAttack = this._attackWithLines(attack, totalLines);
+        // Full size until more than four players are alive (versus-rules.js, crowd cut).
+        const scaledAttack = this._applyCrowdCut(playerIndex, attack);
+        const totalLines = scaledAttack.getTotalLines();
 
         console.debug(
-            `[MultiPlayerState]   Total attack rows: ${totalLines} (scaled from ${unscaledLines})`,
+            `[MultiPlayerState]   Total attack rows: ${totalLines} (before the crowd cut ${unscaledLines})`,
         );
 
         // Blind / Full Blind attacks carry an effect even when they add no garbage
@@ -708,9 +771,6 @@ export class MultiPlayerState {
 
         let countedOutgoingPacket = false;
         targets.forEach((targetIndex) => {
-            // Track last attacker for frag attribution
-            this.lastAttackerIds[targetIndex] = playerIndex;
-
             const targetQueue = this.garbageQueues[targetIndex];
 
             // The per-opponent handicap reduces this attack's normal garbage
@@ -724,6 +784,8 @@ export class MultiPlayerState {
             const countsAsAttack = entries.length > 0;
 
             if (countsAsAttack) {
+                // Frag credit counts the rows sent, before the target's pending cap drops any.
+                this._noteAttack(targetIndex, playerIndex, lineEntries.length);
                 this._recordOutgoingAttack(playerIndex, {
                     lines: lineEntries.length,
                     cleanLines,
@@ -800,44 +862,6 @@ export class MultiPlayerState {
         }
 
         return targets;
-    }
-
-    /**
-     * Apply attack scaling based on number of players
-     * (the matchConfig.boringRules option turns it off)
-     *
-     * Without boring rules:
-     * - 2 players: 100% damage (no scaling)
-     * - 3 players: 75% damage
-     * - 4 players: 50% damage
-     */
-    _scaleAttackForPlayerCount(totalLines) {
-        if (this.matchConfig.boringRules) {
-            return totalLines; // No scaling with boring rules
-        }
-
-        // Count alive players
-        const alivePlayers = this.players.filter((p) => p.isAlive).length;
-
-        if (alivePlayers <= 2) {
-            return totalLines; // Full damage for 2 players
-        } if (alivePlayers === 3) {
-            return Math.ceil(totalLines * 0.75); // 75% damage for 3 players
-        }
-        return Math.ceil(totalLines * 0.5); // 50% damage for 4+ players
-    }
-
-    /**
-     * The same attack, cut to its first `lines` rows: clean rows first, as online trims its own.
-     * @param {GarbageAttack} attack
-     * @param {number} lines
-     * @returns {GarbageAttack}
-     */
-    _attackWithLines(attack, lines) {
-        if (lines >= attack.getTotalLines()) return attack;
-        const cleanMasks = attack.cleanMasks.slice(0, lines);
-        const holeMasks = attack.holeMasks.slice(0, lines - cleanMasks.length);
-        return GarbageAttack.fromJSON({ ...attack.toJSON(), cleanMasks, holeMasks }).withId(attack.id);
     }
 
     /**

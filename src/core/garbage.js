@@ -568,12 +568,28 @@ function followSettledPieces(marks, lockedPieces, startY) {
     return moved;
 }
 
+/** Mark the cells of every piece the settle moved, at the place it came to rest. */
+function markMovedCells(lockedPieces, startY, totalRows) {
+    const moved = Array.from({ length: totalRows }, () => Array(COLS).fill(false));
+    for (const piece of lockedPieces) {
+        if ((startY.get(piece) ?? piece.y) === piece.y) continue;
+        piece.shape.forEach((row, localY) => {
+            row.forEach((cell, localX) => {
+                const x = piece.x + localX;
+                const toRow = moved[Math.floor(piece.y + localY)];
+                if (cell > 0 && toRow && x >= 0 && x < COLS) toRow[x] = true;
+            });
+        });
+    }
+    return moved;
+}
+
 /**
  * Settle the stack over fresh garbage, then clear every row that settle completed and settle
- * again, until a settle completes nothing (owner decision 2026-11-18). A body dropping into the
- * holes of incoming garbage is something done to the player, so the rows it closes go at once
- * and award nothing: no lines, score, level, combo, line-clear count or attack. Left on the
- * board, the player's next lock would clear them as its own clear.
+ * again, until a settle completes nothing. A body dropping into the holes of incoming garbage
+ * can close rows; they go at once. Each pass is one wave of that clear: `waves` lists its rows
+ * and, per row, the cells that fell into it (the holes such a clear would send). Whether the
+ * player is credited for them is the caller's rule (applyGarbage, creditSettleClears).
  *
  * A row that was already full before the settle (solid garbage) is not the settle's doing and
  * stays for the next lock, as it always has. Its cells keep that mark as they fall, so it is
@@ -585,13 +601,15 @@ function followSettledPieces(marks, lockedPieces, startY) {
  * @param {Array<Object>} lockedPieces - Current locked pieces (contents replaced in place)
  * @param {number} totalRows - Current playfield height
  * @param {number} firstPlayableRow - First row a line clear may take
- * @returns {{settledSteps: number, clearedRows: number[]}}
+ * @returns {{settledSteps: number, clearedRows: number[],
+ *   waves: Array<{rows: number[], holeMasks: boolean[][]}>}}
  */
 function settleAndClearCompletedRows(lockedPieces, totalRows, firstPlayableRow) {
     // Cells that sat in a full row before the first settle; the marks travel with their pieces.
     let alreadyFull = markFullRowCells(generateGarbageBoard(lockedPieces, totalRows));
     let settledSteps = 0;
     const clearedRows = [];
+    const waves = [];
 
     for (;;) {
         const startY = new Map(lockedPieces.map((piece) => [piece, piece.y]));
@@ -604,6 +622,8 @@ function settleAndClearCompletedRows(lockedPieces, totalRows, firstPlayableRow) 
             .filter((y) => carried[y].some((marked) => !marked));
         if (completed.length === 0) break;
 
+        const moved = markMovedCells(lockedPieces, startY, totalRows);
+        waves.push({ rows: completed.slice(), holeMasks: completed.map((y) => moved[y].slice()) });
         clearedRows.push(...completed);
         const survivors = removeClearedLines(lockedPieces, completed);
         const fragments = findConnectedComponents(generateGarbageBoard(survivors, totalRows));
@@ -611,7 +631,41 @@ function settleAndClearCompletedRows(lockedPieces, totalRows, firstPlayableRow) 
         lockedPieces.splice(0, lockedPieces.length, ...fragments);
     }
 
-    return { settledSteps, clearedRows };
+    return { settledSteps, clearedRows, waves };
+}
+
+/**
+ * Drop every cell the rise lifted above the board's top row (versus overflow). Pieces that
+ * lose cells are split again, so what is left of each falls as its own body.
+ * @param {Array<Object>} lockedPieces - Current locked pieces (contents replaced in place)
+ * @param {number} totalRows - Current playfield height
+ * @returns {number} cells dropped
+ */
+function dropCellsAboveTop(lockedPieces, totalRows) {
+    let dropped = 0;
+    const kept = [];
+    const cut = [];
+    for (const piece of lockedPieces) {
+        let lost = 0;
+        const shape = piece.shape.map((row, localY) => {
+            if (Math.floor(piece.y + localY) >= 0) return row;
+            lost += row.filter((cell) => cell > 0).length;
+            return row.map(() => 0);
+        });
+        if (lost === 0) {
+            kept.push(piece);
+            continue;
+        }
+        dropped += lost;
+        if (shape.some((row) => row.some((cell) => cell > 0))) cut.push({ ...piece, shape });
+    }
+    if (dropped === 0) return 0;
+    const fragments = cut.length > 0
+        ? findConnectedComponents(generateGarbageBoard(cut, totalRows))
+        : [];
+    // Callers hold lockedPieces by alias: replace the contents, never the array.
+    lockedPieces.splice(0, lockedPieces.length, ...kept, ...fragments);
+    return dropped;
 }
 
 /**
@@ -622,15 +676,22 @@ function settleAndClearCompletedRows(lockedPieces, totalRows, firstPlayableRow) 
  * - Bit 9 → column 0, Bit 8 → column 1, ..., Bit 0 → column 9
  * - 1 bit = HOLE (empty cell), 0 bit = SOLID (garbage block)
  *
+ * Overflow: by default ('refuse') a burst that would lift any cell above the visible rows is
+ * not inserted and reports topOut. Versus play passes overflowPolicy 'spill': the burst always
+ * goes in, cells lifted past the board's top row are lost, and only a blocked spawn ends the
+ * player (Infinity keeps its own roof rule either way).
+ *
  * @param {Array<Object>} lockedPieces - Array of locked pieces (modified)
  * @param {Array<Object>} entries - Garbage entries to insert
- * @param {Object} options - Optional animation settings
+ * @param {Object} options - Optional animation settings and overflowPolicy ('refuse' | 'spill')
  * @returns {Object} Result with success, topOut flags, and animation data. linesAfterInsertion
  *   lists the full rows left on the board; settleClearedRows lists the rows the settle
- *   completed and that were cleared, without credit, before returning.
+ *   completed and cleared before returning, and settleWaves the same rows wave by wave with
+ *   their hole masks; overflowCells counts the cells a spill dropped.
  */
 export function insertGarbageEntries(lockedPieces, entries, options = {}) {
     const { boardGrid, isInfinityMode = false, debug = false } = options;
+    const spill = options.overflowPolicy === 'spill' && !isInfinityMode;
     const log = debug ? console.log : () => { };
     const warn = debug ? console.warn : () => { };
     const lineEntries = entries.filter((entry) => entry.type === 'line');
@@ -642,6 +703,8 @@ export function insertGarbageEntries(lockedPieces, entries, options = {}) {
             settledSteps: 0,
             linesAfterInsertion: [],
             settleClearedRows: [],
+            settleWaves: [],
+            overflowCells: 0,
         };
     }
 
@@ -659,7 +722,7 @@ export function insertGarbageEntries(lockedPieces, entries, options = {}) {
         `[insertGarbageEntries] Highest row: ${highestOccupiedRow}, New highest: ${newHighestRow}, Hidden rows: ${HIDDEN_ROWS}, Total rows: ${totalRows}`,
     );
 
-    if (isInfinityMode ? newHighestRow <= 0 : newHighestRow < HIDDEN_ROWS) {
+    if (!spill && (isInfinityMode ? newHighestRow <= 0 : newHighestRow < HIDDEN_ROWS)) {
         log('[insertGarbageEntries] TOP OUT detected while inserting garbage burst');
         return {
             success: false,
@@ -668,6 +731,8 @@ export function insertGarbageEntries(lockedPieces, entries, options = {}) {
             settledSteps: 0,
             linesAfterInsertion: [],
             settleClearedRows: [],
+            settleWaves: [],
+            overflowCells: 0,
         };
     }
 
@@ -675,6 +740,10 @@ export function insertGarbageEntries(lockedPieces, entries, options = {}) {
     lockedPieces.forEach((piece) => {
         piece.y -= lineEntries.length;
     });
+    const overflowCells = spill && newHighestRow < 0 ? dropCellsAboveTop(lockedPieces, totalRows) : 0;
+    if (overflowCells > 0) {
+        log(`[insertGarbageEntries] Spill dropped ${overflowCells} cell(s) lifted past the top`);
+    }
 
     const baseY = totalRows - lineEntries.length;
     const garbagePieces = [];
@@ -739,8 +808,9 @@ export function insertGarbageEntries(lockedPieces, entries, options = {}) {
     const firstPlayableRow = isInfinityMode ? 0 : HIDDEN_ROWS;
     let settledSteps = 0;
     let settleClearedRows = [];
+    let settleWaves = [];
     if (options.settleFloatingBlocks !== false) {
-        ({ settledSteps, clearedRows: settleClearedRows } = settleAndClearCompletedRows(
+        ({ settledSteps, clearedRows: settleClearedRows, waves: settleWaves } = settleAndClearCompletedRows(
             lockedPieces,
             totalRows,
             firstPlayableRow,
@@ -752,7 +822,7 @@ export function insertGarbageEntries(lockedPieces, entries, options = {}) {
         }
         if (settleClearedRows.length > 0) {
             log(
-                `[insertGarbageEntries] Cleared ${settleClearedRows.length} settle-completed row(s), no credit`,
+                `[insertGarbageEntries] Cleared ${settleClearedRows.length} settle-completed row(s)`,
             );
         }
     }
@@ -768,21 +838,41 @@ export function insertGarbageEntries(lockedPieces, entries, options = {}) {
         settledSteps,
         linesAfterInsertion,
         settleClearedRows,
+        settleWaves,
+        overflowCells,
     };
 }
 
 export class GarbageQueue {
-    constructor() {
+    /**
+     * @param {{ maxLines?: number }} [options] maxLines: most rows that may wait at once; rows
+     *   sent past it are dropped (versus play: VERSUS_MAX_PENDING_LINES).
+     */
+    constructor({ maxLines = Infinity } = {}) {
         this.entries = [];
+        this.maxLines = maxLines > 0 ? maxLines : Infinity;
     }
 
     enqueue(entries) {
         if (!entries) return;
         if (Array.isArray(entries)) {
-            entries.forEach((entry) => this.entries.push(cloneEntry(entry)));
+            entries.forEach((entry) => this._push(entry));
             return;
         }
-        this.entries.push(cloneEntry(entries));
+        this._push(entries);
+    }
+
+    _push(entry) {
+        if (entry?.type === 'line' && this.getTotalLines() >= this.maxLines) {
+            // The burst this row belonged to now ends at the last of its rows that got in.
+            const last = this.entries[this.entries.length - 1];
+            if (last?.type === 'line' && last.attackId === entry.attackId && !last.isLastInBurst) {
+                last.isLastInBurst = true;
+                last.connectBelow = false;
+            }
+            return;
+        }
+        this.entries.push(cloneEntry(entry));
     }
 
     enqueueAttack(attack, context = {}) {
@@ -851,8 +941,8 @@ export class GarbageQueue {
         return this.entries.map((entry) => cloneEntry(entry));
     }
 
-    static fromSerialized(payload) {
-        const queue = new GarbageQueue();
+    static fromSerialized(payload, options) {
+        const queue = new GarbageQueue(options);
         if (Array.isArray(payload)) {
             payload.forEach((entry) => queue.enqueue(entry));
         }

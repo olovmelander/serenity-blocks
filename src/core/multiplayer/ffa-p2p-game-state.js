@@ -19,7 +19,6 @@ import {
     applyGarbage,
     restoreBoardState,
 } from '../game.js';
-import { GarbageQueue } from '../garbage.js';
 import { InputValidator } from '../validation/input-validator.js';
 import { PLAYER_COLORS } from '../constants.js';
 import { FFAAttackRouter } from './ffa-attack-router.js';
@@ -106,7 +105,11 @@ import {
     stableFfaRuleHash,
 } from './ffa/net-diagnostics.js';
 import { garbageBurstKey, drainAllLineBursts, cancelIncomingLines } from './ffa/garbage-helpers.js';
-import { checkTopOut, clearEmptiesBoard, serializeBoardGrid } from './ffa/board-helpers.js';
+import { clearEmptiesBoard, serializeBoardGrid } from './ffa/board-helpers.js';
+import {
+    VERSUS_GARBAGE_OPTIONS, createVersusGarbageQueue, ensureAttackCredit, resetVersusCredit,
+    stepCrowdStamps,
+} from './versus-rules.js';
 import {
     buildStateSnapshot as buildFfaStateSnapshot,
     calculateStateDigest as calculateFfaStateDigest,
@@ -167,7 +170,8 @@ export class FFAGameStateP2P {
             levelProgression: false,
             allowHandicap: true,
             boringRules: false,
-            garbageCancellation: 'full', // 'full' (outgoing lines cancel incoming first) | 'disabled' (classic)
+            // Versus rules never cancel incoming garbage ('full' lets outgoing lines cancel it first).
+            garbageCancellation: 'disabled',
             attackStyle: 'standard',
             attackRules: null,
             hotPotato: false,
@@ -571,7 +575,7 @@ export class FFAGameStateP2P {
             color: playerColor, // NEW: Assign unique player color
             isLocal,
             gameState: new GameState({ lockBonusPolicy: 'legacy-max' }),
-            garbageQueue: new GarbageQueue(),
+            garbageQueue: createVersusGarbageQueue(),
             isAlive: !midMatchJoin, // mid-match joiner waits (dead) until the next round
             // Distinguishes a late joiner WAITING to spawn next round from a player who was
             // alive and got ELIMINATED — both are isAlive:false, but the UI must show them
@@ -579,7 +583,10 @@ export class FFAGameStateP2P {
             awaitingSpawn: midMatchJoin,
             isReady: false,
             frags: 0,
-            lastAttackerId: null, // Track who last sent garbage to this player (for kill attribution)
+            // Who gets the frag if this player dies: the holder of fragCredit (host side,
+            // versus-rules.js), mirrored here for the snapshot and the death paths.
+            lastAttackerId: null,
+            crowdStamps: 0, // with more than four players alive, these shrink this player's attacks
             isDisconnected: false, // Reconnection tracking
             lastInputSeq: 0, // Last processed input sequence number
         };
@@ -1163,7 +1170,7 @@ export class FFAGameStateP2P {
             player.isAlive = !isDeparted(player); // everyone still here plays the round
             player.awaitingSpawn = false; // a waiting late-joiner spawns this round
             player.garbageQueue.clear();
-            player.lastAttackerId = null;
+            resetVersusCredit(player);
 
             if (isFullReset) {
                 player.frags = 0;
@@ -1616,30 +1623,21 @@ export class FFAGameStateP2P {
             this._logGarbage(`  Entry ${idx}: type=${entry.type}, attackerId=${entry.attackerId || 'MISSING'}, color=${entry.color}`);
         });
 
-        // Track who sent the garbage for kill attribution
-        // Use the last garbage entry's attacker (most recent attacker gets the frag)
-        const attackerId = burst.length > 0
-            ? (burst[burst.length - 1].attackerId || burst.find((entry) => entry.attackerId)?.attackerId || null)
-            : null;
-        const attackerName = burst.length > 0
-            ? (burst[burst.length - 1].attackerName || burst.find((entry) => entry.attackerName)?.attackerName || null)
-            : null;
-
-        if (attackerId) {
-            const attacker = this.players.get(attackerId);
-            this._logGarbage(`💥 ✅ Garbage from ${attacker?.name || attackerId} is being inserted into ${player.name}'s board`);
-            // Track this attacker as the last one who sent garbage to this player
-            player.lastAttackerId = attackerId;
-        } else {
-            this._logGarbage('💥 ❌ NO ATTACKER FOUND in garbage burst! This will be a self-kill.');
-        }
-
-        const killerId = attackerId || null;
-        const killerName = attackerName || (killerId ? this.players.get(killerId)?.name : null);
+        // Whose rows these are (logs only). The frag goes to the holder of the player's frag
+        // credit, fed as each attack arrives (FFAAttackRouter.sendGarbageToPlayer).
+        const attackerId = burst[burst.length - 1].attackerId
+            || burst.find((entry) => entry.attackerId)?.attackerId || null;
+        const killerId = player.lastAttackerId || null;
+        const killerName = killerId ? (this.players.get(killerId)?.name || null) : null;
         const isSelfKill = !killerId || killerId === steamId;
 
-        // Board mutation + grid/cache repair live in the ONE boundary (§5.1).
-        const result = applyGarbage(player.gameState, burst, { debug: this.debugGarbage });
+        // Board mutation + grid/cache repair live in the ONE boundary (§5.1). Versus garbage
+        // never tops a player out (only a blocked spawn does), and rows its settle completes
+        // count as the player's own clear (versus-rules.js).
+        const result = applyGarbage(player.gameState, burst, {
+            ...VERSUS_GARBAGE_OPTIONS,
+            debug: this.debugGarbage,
+        });
 
         if (!result || result.topOut) {
             this._logGarbage(`💀 ${player.name} topped out from garbage insertion!`);
@@ -1653,18 +1651,11 @@ export class FFAGameStateP2P {
                 topOut: true,
             });
 
-            if (attackerId) {
-                const attacker = this.players.get(attackerId);
-                this._logGarbage(`🏆 Kill attributed to: ${attacker?.name || attackerId}`);
-            } else {
-                this._logGarbage('💀 Self-kill (no attacker found in garbage entries)');
-            }
-
-            this.fragTracker.recordDeath(steamId, attackerId, attackerName);
+            this.fragTracker.recordDeath(steamId, killerId, killerName);
             this._recordNetEvent?.('death', {
                 deadSteamId: steamId,
                 deadName: player.name,
-                killerSteamId: attackerId,
+                killerSteamId: killerId,
                 killerName,
                 reason: 'garbage_insert',
             });
@@ -1696,38 +1687,26 @@ export class FFAGameStateP2P {
             topOut: false,
         });
 
-        // Check if player topped out
-        if (checkTopOut(player.gameState)) {
-            this._logGarbage(`💀 ${player.name} topped out!`);
-            player.isAlive = false;
-            player.gameState.isGameOver = true;
-            this._recordNetEvent?.('death', {
-                deadSteamId: steamId,
-                deadName: player.name,
-                killerSteamId: attackerId,
-                killerName,
-                reason: 'topout_after_garbage',
-            });
+        if (result.settleSummary) this._routeSettleAttack(steamId, result.settleSummary);
+    }
 
-            // Award frag to the player who sent the garbage
-            if (attackerId) {
-                const attacker = this.players.get(attackerId);
-                this._logGarbage(`🏆 Kill attributed to: ${attacker?.name || attackerId}`);
+    /**
+     * Send the attack of rows a garbage settle completed, the way this player's own clears are
+     * sent: the host routes its own (and, with authoritative attacks, everyone's); otherwise a
+     * peer reports its own and the host's copy only notes the clear it will check that against.
+     * @param {string} steamId
+     * @param {Object} summary cascade summary from applyGarbage (settleSummary)
+     */
+    _routeSettleAttack(steamId, summary) {
+        if (this.isHost) {
+            if (steamId === this.localPlayerId || this._authoritativeAttacksEnabled) {
+                this._recordNetEvent?.('attack_ready', { attackerSteamId: steamId, cascadeSummary: summary });
+                this.attackRouter.routeAttack(steamId, summary);
             } else {
-                this._logGarbage('💀 Self-kill (no attacker found in garbage entries)');
+                noteCopyClear(this, steamId, summary);
             }
-            this.fragTracker.recordDeath(steamId, attackerId, attackerName);
-
-            // Dispatch top-out event
-            emitMultiplayerEvent(MULTIPLAYER_EVENTS.PLAYER_TOPPED_OUT, {
-                steamId,
-                playerName: player.name,
-                killer: killerId,
-                killerId,
-                killerName,
-                isSelfKill,
-                isLocal: steamId === this.localPlayerId,
-            });
+        } else if (steamId === this.localPlayerId) {
+            this.sendGarbageAttack(summary);
         }
     }
 
@@ -1910,7 +1889,7 @@ export class FFAGameStateP2P {
         // Reset game state, onto the match's level rule (host and peers alike: match-level-rule.js)
         player.gameState.reset();
         applyMatchLevelRule(player.gameState, this.matchConfig);
-        player.garbageQueue = new GarbageQueue();
+        player.garbageQueue = createVersusGarbageQueue();
         player.isAlive = !isDeparted(player);
         player.awaitingSpawn = false; // they're spawning now — no longer a waiting late-joiner
         // DO NOT reset frags here - they persist across rounds until full game reset
@@ -3239,6 +3218,14 @@ export class FFAGameStateP2P {
                     this._lastLocalLockTime = Date.now();
                 }
 
+                // Host: the placement earns a crowd stamp and fades the frag credit of
+                // whoever has attacked this player (versus-rules.js).
+                if (this.isHost) {
+                    const alive = Array.from(this.players.values()).filter((p) => p.isAlive).length;
+                    player.crowdStamps = stepCrowdStamps(player.crowdStamps, alive);
+                    ensureAttackCredit(player).notePiecePlaced();
+                }
+
                 emitMultiplayerEvent(MULTIPLAYER_EVENTS.PIECE_LOCK, {
                     steamId,
                     playerName: player.name,
@@ -3369,9 +3356,14 @@ export class FFAGameStateP2P {
                     variant: entry.variant || 'normal',
                 }));
 
-                // Board mutation + grid/cache repair live in the ONE boundary (§5.1).
-                // Peer prediction ignores topOut — death is host-authoritative.
-                applyGarbage(gameState, normalizedBurst, { debug: this.debugGarbage });
+                // Board mutation + grid/cache repair live in the ONE boundary (§5.1), by the
+                // same versus rules as the host. Death is host-authoritative; the attack of
+                // rows the settle completed is reported like any other clear of ours.
+                const result = applyGarbage(gameState, normalizedBurst, {
+                    ...VERSUS_GARBAGE_OPTIONS,
+                    debug: this.debugGarbage,
+                });
+                if (result?.settleSummary) this._routeSettleAttack(steamId, result.settleSummary);
 
                 // Dispatch event for UI feedback
                 emitMultiplayerEvent(MULTIPLAYER_EVENTS.GARBAGE_INSERTED, {
@@ -3810,7 +3802,7 @@ export class FFAGameStateP2P {
             player.awaitingSpawn = false; // a waiting late-joiner spawns this round
             // DO NOT RESET FRAGS - they accumulate across rounds!
             player.garbageQueue.clear();
-            player.lastAttackerId = null; // Clear last attacker for new round
+            resetVersusCredit(player); // a new round's frags start uncredited
 
             // Reset board/pieces/flags in place but keep score and lines across rounds, and the
             // level only when the match levels up (match-level-rule.js), at that level's speed.
@@ -4102,7 +4094,7 @@ export class FFAGameStateP2P {
             player.awaitingSpawn = false; // a waiting late-joiner spawns this game
             player.frags = 0; // RESET FRAGS for new game
             player.garbageQueue.clear();
-            player.lastAttackerId = null; // Clear last attacker for new game
+            resetVersusCredit(player);
 
             // Complete reset (startMatch puts every board on the match's level rule)
             player.gameState.reset();

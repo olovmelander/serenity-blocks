@@ -6,7 +6,7 @@ import {
 } from '../../demo/demo-state.js';
 import { restoreBlindTimers } from '../../blind.js';
 import { COLS, HIDDEN_ROWS, ROWS } from '../../constants.js';
-import { GarbageQueue } from '../../garbage.js';
+import { createVersusGarbageQueue } from '../versus-rules.js';
 import { durationMsToTicks } from '../../fixed-tick-clock.js';
 import { PLAYER_INPUT_EDGE_CAPACITY } from '../../player-input-state.js';
 import { normalizeSfc32RandomState, restoreSfc32Random } from '../../rng.js';
@@ -1002,7 +1002,7 @@ export function applyFfaResyncSidecar(game, validated, options = {}) {
         invariant(player?.gameState, `target player ${playerState.steamId} is missing`);
 
         const randomGenerator = createRandomGenerator(playerState.rng);
-        const garbageQueue = new GarbageQueue();
+        const garbageQueue = createVersusGarbageQueue();
         garbageQueue.enqueue(clonePlain(playerState.garbageEntries));
         return {
             player,
@@ -1039,6 +1039,8 @@ export function applyFfaResyncSidecar(game, validated, options = {}) {
         staged.player._lastAppliedClearSeq = wrapper.lastAppliedClearSeq;
         staged.player._lastLockHostTick = wrapper.lastLockHostTick;
         staged.player.lastAttackerId = wrapper.attackCredit.lastAttackerId;
+        // This host's credit for the player restarts from the holder the old host named.
+        staged.player.fragCredit?.reset();
         staged.player.garbageQueue = staged.garbageQueue;
     });
 

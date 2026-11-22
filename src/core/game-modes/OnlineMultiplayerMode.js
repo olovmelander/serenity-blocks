@@ -469,7 +469,7 @@ export class OnlineMultiplayerMode extends BaseGameMode {
                 ...readMatchLevelRule(config),
                 allowHandicap: true,
                 boringRules: config.boringRules || false,
-                garbageCancellation: config.garbageCancellation || 'full',
+                garbageCancellation: config.garbageCancellation || 'disabled',
                 attackStyle: config.attackStyle || 'standard',
                 attackRules: config.attackRules || null,
                 hotPotato: config.hotPotato || false,

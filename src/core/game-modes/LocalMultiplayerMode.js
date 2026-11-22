@@ -1,6 +1,7 @@
 import { BaseGameMode } from './BaseGameMode.js';
 import { BoardJuice } from '../../rendering/phaser/board-juice.js';
 import { MultiPlayerState, PLAYER_COLORS, TEAM_COLORS } from '../multi-player-state.js';
+import { VERSUS_MAX_PENDING_LINES } from '../multiplayer/versus-rules.js';
 import { InfinityMinimap } from '../../ui/infinity/InfinityMinimap.js';
 import { LocalVersusCameras } from '../../ui/infinity/local-versus-cameras.js';
 import { GAME_MODES, BLOCK_SIZE } from '../constants.js';
@@ -433,7 +434,8 @@ export class LocalMultiplayerMode extends BaseGameMode {
         this.versusHud?.mount();
 
         const numPlayers = this.matchConfig?.numPlayers || 2;
-        this.multiplayerState = new MultiPlayerState(numPlayers);
+        // Versus rules (versus-rules.js): at most twenty rows wait for a player.
+        this.multiplayerState = new MultiPlayerState(numPlayers, { maxPendingLines: VERSUS_MAX_PENDING_LINES });
         // Attacks are drawn between the boards (local-versus-hud.js).
         this.multiplayerState.onAttack = (from, targets, lines) => this.versusHud?.showAttack(from, targets, lines);
         this.multiplayerState.setMatchConfig(this.matchConfig);

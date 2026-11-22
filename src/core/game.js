@@ -18,6 +18,7 @@ import {
     generateBoard, createBoardGrid, rebuildBoardGridFromPieces, markBoardDirty, invalidateGhostCache,
 } from './board.js';
 import { insertGarbageEntries } from './garbage.js';
+import { calculateLineClearScore } from './scoring.js';
 import {
     cancelFixedCascade, processPhysics, startFixedCascade, tryProcessNoClearSync,
 } from './physics.js';
@@ -500,15 +501,19 @@ export function restoreBoardState(gameState, snapshot = {}, policy = {}) {
  * a possibly-stale boardGrid; afterwards boardGrid is rebuilt and the cache
  * invalidated in ONE place. Callers must not touch the arrays.
  *
- * Rows the garbage settle completes are cleared here, on every caller, and
- * award nothing (settleClearedRows reports them; owner decision 2026-11-18).
+ * Rows the garbage settle completes are cleared here, on every caller
+ * (settleClearedRows reports them). With creditSettleClears they count as the
+ * player's own clear, as versus play rules: lines, score and level move here and
+ * settleSummary is the attack the clear sends, for the caller to route. Without
+ * it they award nothing (Odyssey).
  *
  * @param {Object} gameState
  * @param {Array<Object>} entries - Garbage entries (see garbage.js)
- * @param {{debug?: boolean, settleFloatingBlocks?: boolean}} [options]
+ * @param {{debug?: boolean, settleFloatingBlocks?: boolean,
+ *   overflowPolicy?: 'refuse'|'spill', creditSettleClears?: boolean}} [options]
  * @returns {{success: boolean, topOut: boolean, garbagePieces: Array,
  *   settledSteps: number, linesAfterInsertion: number[], settleClearedRows: number[],
- *   rowsAdded: number} | null}
+ *   settleSummary: Object|null, rowsAdded: number} | null}
  */
 export function applyGarbage(gameState, entries, options = {}) {
     if (!gameState || !Array.isArray(gameState.lockedPieces)) return null;
@@ -548,7 +553,12 @@ export function applyGarbage(gameState, entries, options = {}) {
         isInfinityMode: gameState.isInfinityMode,
         debug: options.debug,
         settleFloatingBlocks: options.settleFloatingBlocks,
+        overflowPolicy: options.overflowPolicy,
     });
+
+    const settleSummary = options.creditSettleClears && result.success
+        ? creditSettleClears(gameState, result.settleWaves)
+        : null;
 
     if (gameState.boardGrid) {
         rebuildBoardGridFromPieces(gameState.lockedPieces, gameState.boardGrid);
@@ -556,7 +566,54 @@ export function applyGarbage(gameState, entries, options = {}) {
     markBoardDirty(gameState);
     synchronizeInfinitySimulationCamera(gameState);
 
-    return { ...result, rowsAdded };
+    return { ...result, settleSummary, rowsAdded };
+}
+
+/**
+ * Count the rows a garbage settle cleared as the player's own clear, wave by wave the way
+ * a lock's cascade counts them: lines, level and score, plus the perfect-clear bonus when
+ * nothing is left. Returns the cascade summary of the attack the clear sends, or null.
+ * @param {Object} gameState
+ * @param {Array<{rows: number[], holeMasks: boolean[][]}>} waves
+ */
+function creditSettleClears(gameState, waves) {
+    if (!Array.isArray(waves) || waves.length === 0) return null;
+    let depth = 0;
+    const holeMask = [];
+    waves.forEach((wave, index) => {
+        const count = wave.rows.length;
+        depth += count;
+        holeMask.push(...wave.holeMasks.map((mask) => mask.slice()));
+        if (gameState.lineClearCounts) {
+            gameState.lineClearCounts[count] = (gameState.lineClearCounts[count] || 0) + 1;
+        }
+        gameState.lines = (gameState.lines || 0) + count;
+        gameState.linesUntilNextLevel = (gameState.linesUntilNextLevel ?? 15) - count;
+        if (gameState.linesUntilNextLevel <= 0) {
+            gameState.linesUntilNextLevel += 15;
+            if (!gameState.disableLevelProgression) {
+                gameState.level += 1;
+                gameState.dropInterval = LEVEL_SPEEDS[Math.min(gameState.level - 1, LEVEL_SPEEDS.length - 1)];
+                if (gameState.speedMultiplier) gameState.dropInterval /= gameState.speedMultiplier;
+            }
+        }
+        gameState.score += calculateLineClearScore(count, gameState.level, index + 1, false);
+    });
+    const perfectClear = !gameState.isInfinityMode && gameState.lockedPieces.length === 0;
+    if (perfectClear) {
+        gameState.score += calculateLineClearScore(depth, gameState.level, waves.length, true)
+            - calculateLineClearScore(depth, gameState.level, waves.length, false);
+    }
+    return {
+        totalLines: depth,
+        depth,
+        comboStages: waves.length,
+        complexity: waves.length,
+        holeMask,
+        manualColumns: [],
+        sendForPerfectClear: perfectClear,
+        source: 'garbage-settle',
+    };
 }
 
 export function getGhostLandingY(gameState) {

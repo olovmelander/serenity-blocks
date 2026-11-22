@@ -1,12 +1,12 @@
 /**
- * Rows the garbage settle completes are cleared inside applyGarbage, with no credit
- * (owner decision 2026-11-18, audit A18-CORE-2).
+ * Rows the garbage settle completes are cleared inside applyGarbage, at once, on every caller
+ * of the shared boundary (audit A18-CORE-2). Rows that were already full before the settle
+ * (solid garbage) keep their old behaviour.
  *
  * When garbage rises, a body standing over a garbage hole drops into it. A row that drop
- * fills used to sit on the board until the victim's next lock, which cleared it as the
- * victim's own clear: lines, score, level and an outgoing attack. Such rows now go at once,
- * on every caller of the shared boundary, and award nothing. Rows that were already full
- * before the settle (solid garbage) keep their old behaviour.
+ * fills used to sit on the board until the victim's next lock. Without the versus credit
+ * (these tests, and Odyssey) the cleared rows award nothing; versus play credits them as the
+ * player's own clear (ADR-0024, tests/unit/versus-rules.test.js).
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {

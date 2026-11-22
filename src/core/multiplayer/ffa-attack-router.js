@@ -1,19 +1,22 @@
 /**
  * FFA Attack Router - All-vs-All Combat System
  *
- * Routes garbage attacks from one player to ALL opponents (Free-For-All)
- * Implements attack scaling based on player count
+ * Routes garbage attacks from one player to ALL opponents (Free-For-All), each receiving the
+ * full attack. The size rules are the versus rules (versus-rules.js): the crowd cut once more
+ * than four players are alive, and no cancelling unless the match turns it on.
  */
 
 import {
     ATTACK_TYPES,
     DEFAULT_POTATO_DURATION_MS,
     DEFAULT_POTATO_PENALTY_LINES,
+    GarbageAttack,
     calculateGarbage,
     createGarbageAttackFromColumns,
 } from '../garbage.js';
 import { emitMultiplayerEvent, MULTIPLAYER_EVENTS } from '../../events/multiplayer-events.js';
 import { MessageTypes } from '../network/message-types.js';
+import { ensureAttackCredit, takeCrowdCut } from './versus-rules.js';
 
 export class FFAAttackRouter {
     constructor(ffaGameState) {
@@ -161,7 +164,9 @@ export class FFAAttackRouter {
             });
         });
 
+        // The potato's own rows are nobody's attack: dying under them earns no frag.
         holder.lastAttackerId = null;
+        ensureAttackCredit(holder).holder = null;
         this.gameState.network?.broadcastToAll?.(MessageTypes.GAME_POTATO_DETONATE, {
             holderId: holder.steamId,
             holderName: holder.name,
@@ -221,9 +226,8 @@ export class FFAAttackRouter {
    * Route garbage attack from one player to ALL opponents
    * (HOST ONLY - only host can route attacks)
    *
-   * PHASE 3.5: Implements garbage cancellation
-   * Outgoing lines first cancel any pending incoming garbage,
-   * then only the remainder is sent to opponents.
+   * The crowd cut comes off first. Cancelling (matchConfig.garbageCancellation 'full', off
+   * by default) lets outgoing lines cancel pending incoming garbage before the rest is sent.
    */
     routeAttack(attackerSteamId, cascadeSummary) {
         if (!this.isHost) {
@@ -241,8 +245,10 @@ export class FFAAttackRouter {
             return;
         }
 
-        // Calculate the garbage attack (calculateGarbage in garbage.js)
-        const attack = calculateGarbage(cascadeSummary, rules);
+        // Calculate the garbage attack (calculateGarbage in garbage.js), less the crowd cut.
+        const rawAttack = calculateGarbage(cascadeSummary, rules);
+        const rawLines = rawAttack.getTotalLines();
+        const attack = this.applyCrowdCut(attacker, rawAttack);
         const attackMeta = this.gameState._createAttackMetadata?.(attackerSteamId, cascadeSummary) || {};
         if (attackMeta.attackId) {
             attack.withId(attackMeta.attackId);
@@ -290,12 +296,8 @@ export class FFAAttackRouter {
             return;
         }
 
-        // Apply attack scaling based on opponent count
-        const scaledLines = this.applyAttackScaling(
-            effectiveLines,
-            opponents.length,
-            this.gameState.matchConfig.boringRules,
-        );
+        // Every opponent receives the whole attack (the crowd cut above is the only size rule).
+        const scaledLines = effectiveLines;
 
         // Distribute garbage to all opponents
         opponents.forEach((opponent) => {
@@ -311,7 +313,7 @@ export class FFAAttackRouter {
             attackSeq: attackMeta.attackSeq,
             from: attacker.steamId,
             fromName: attacker.name,
-            rawLines: totalLines,
+            rawLines,
             cancelledLines,
             totalLines: scaledLines,
             targetCount: opponents.length,
@@ -325,7 +327,7 @@ export class FFAAttackRouter {
             attackSeq: attackMeta.attackSeq,
             from: attackerSteamId,
             fromName: attacker.name,
-            rawLines: totalLines,
+            rawLines,
             cancelledLines,
             totalLines: scaledLines,
             targets: opponents.map((o) => o.steamId),
@@ -401,6 +403,11 @@ export class FFAAttackRouter {
             };
         });
 
+        // Frag credit counts the rows sent, before the opponent's pending cap drops any.
+        const credit = ensureAttackCredit(opponent);
+        credit.noteAttack(attacker.steamId, entries.filter((entry) => entry.type === 'line').length);
+        opponent.lastAttackerId = credit.killer;
+
         // Verify attackerId is set
         this._logGarbage(`📦 Generated ${entries.length} entries, checking attackerId...`);
         entries.forEach((entry, idx) => {
@@ -422,51 +429,25 @@ export class FFAAttackRouter {
     }
 
     /**
-     * Scale outgoing garbage by opponent count (FFA balance).
-     *
-     * LIVE BEHAVIOR (the previous comment claimed this was removed — it is not):
-     * - boringRules (classic) enabled: no scaling, base lines returned unmodified.
-     * - Otherwise: garbage power is reduced 10% per extra opponent, floored at 25%.
-     *     1 opponent  -> 100%
-     *     2 opponents -> 90%
-     *     ...
-     *     7 opponents -> 40% (floor 25%)
-     *   The scaled value is rounded and clamped to >= 1 line whenever baseLines > 0.
-     *
-     * Pinned by the "applyAttackScaling" table test — keep this comment in sync
-     * with both the code and that test.
+     * Take the crowd cut off an attack's normal rows, spending the attacker's crowd stamps
+     * (earned per placed piece while more than four players are alive; versus-rules.js).
+     * A move that empties the board keeps its full size, and boring rules turn the cut off.
+     * @param {{ crowdStamps?: number }} attacker
+     * @param {GarbageAttack} attack
+     * @returns {GarbageAttack}
      */
-    applyAttackScaling(baseLines, opponentCount, boringRules) {
-        // If boring rules (classic) enabled, no scaling
-        if (boringRules) {
-            return baseLines;
-        }
-
-        // Standard FFA scaling: Reduce garbage power as player count increases
-        // 1 opponent: 100%
-        // 2 opponents: 90%
-        // 3 opponents: 80%
-        // ...
-        // 7 opponents: 40% (floor at 25%)
-
-        if (opponentCount <= 1) return baseLines;
-
-        const reductionPerOpponent = 0.10; // 10% reduction per extra opponent
-        let multiplier = 1.0 - ((opponentCount - 1) * reductionPerOpponent);
-
-        // Cap minimum multiplier at 0.25 (25% power)
-        multiplier = Math.max(0.25, multiplier);
-
-        // return Math.ceil(baseLines * multiplier);
-        // Better to round normally or use stochastic rounding?
-        // Using ceil ensures at least some garbage is sent for small attacks
-        // But for < 1 it becomes 1?
-        // Base lines is integer.
-        // If lines=4, opp=7 (scale=0.4) -> 1.6 -> 2 lines.
-        const scaled = Math.round(baseLines * multiplier);
-
-        // Ensure at least 1 line if original was > 0
-        return baseLines > 0 ? Math.max(1, scaled) : 0;
+    applyCrowdCut(attacker, attack) {
+        const normal = attack.holeMasks?.length || 0;
+        const { lines, stamps } = takeCrowdCut(normal, attacker.crowdStamps, {
+            clean: attack.sendForPerfectClear,
+            boringRules: this.gameState.matchConfig?.boringRules,
+        });
+        attacker.crowdStamps = stamps;
+        if (lines >= normal) return attack;
+        return GarbageAttack.fromJSON({
+            ...attack.toJSON(),
+            holeMasks: attack.holeMasks.slice(0, lines),
+        }).withId(attack.id);
     }
 
     /**
