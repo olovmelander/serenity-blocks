@@ -574,7 +574,8 @@ export class FFAGameStateP2P {
             name,
             color: playerColor, // NEW: Assign unique player color
             isLocal,
-            gameState: new GameState({ lockBonusPolicy: 'legacy-max' }),
+            // Versus feel (versus-rules.js): pieces drawn one by one, locked at the next gravity step.
+            gameState: new GameState({ lockBonusPolicy: 'legacy-max', pieceRandomizer: 'random', lockStyle: 'gravity' }),
             garbageQueue: createVersusGarbageQueue(),
             isAlive: !midMatchJoin, // mid-match joiner waits (dead) until the next round
             // Distinguishes a late joiner WAITING to spawn next round from a player who was
@@ -1196,7 +1197,7 @@ export class FFAGameStateP2P {
             this.gamePhase = 'playing';
             this.players.forEach((player) => {
                 player.gameState.randomGenerator = this.createSeededRNG(roundSeed);
-                fillBag(player.gameState.nextPieces, player.gameState.randomGenerator);
+                fillBag(player.gameState.nextPieces, player.gameState.randomGenerator, player.gameState.pieceRandomizer);
                 spawnPiece(player.gameState, null, null);
             });
             this.startGameLoop();
@@ -1899,7 +1900,7 @@ export class FFAGameStateP2P {
         player.gameState.randomGenerator = this.createSeededRNG(roundSeed);
 
         // Fill initial bag with deterministic pieces
-        fillBag(player.gameState.nextPieces, player.gameState.randomGenerator);
+        fillBag(player.gameState.nextPieces, player.gameState.randomGenerator, player.gameState.pieceRandomizer);
 
         // Spawn first piece (no game over callback needed at start)
         spawnPiece(player.gameState, null, null);
@@ -3877,7 +3878,7 @@ export class FFAGameStateP2P {
                 player.gameState.randomGenerator = this.createSeededRNG(newSeed);
 
                 // Fill bag and spawn first piece
-                fillBag(player.gameState.nextPieces, player.gameState.randomGenerator);
+                fillBag(player.gameState.nextPieces, player.gameState.randomGenerator, player.gameState.pieceRandomizer);
                 spawnPiece(player.gameState, null, null);
             });
             this.attackRouter.resetHotPotato(); // a fresh potato and timer every round

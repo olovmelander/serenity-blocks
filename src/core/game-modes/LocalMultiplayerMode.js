@@ -1,7 +1,7 @@
 import { BaseGameMode } from './BaseGameMode.js';
 import { BoardJuice } from '../../rendering/phaser/board-juice.js';
 import { MultiPlayerState, PLAYER_COLORS, TEAM_COLORS } from '../multi-player-state.js';
-import { VERSUS_MAX_PENDING_LINES } from '../multiplayer/versus-rules.js';
+import { VERSUS_MAX_PENDING_LINES, applyVersusFeel } from '../multiplayer/versus-rules.js';
 import { InfinityMinimap } from '../../ui/infinity/InfinityMinimap.js';
 import { LocalVersusCameras } from '../../ui/infinity/local-versus-cameras.js';
 import { GAME_MODES, BLOCK_SIZE } from '../constants.js';
@@ -434,8 +434,10 @@ export class LocalMultiplayerMode extends BaseGameMode {
         this.versusHud?.mount();
 
         const numPlayers = this.matchConfig?.numPlayers || 2;
-        // Versus rules (versus-rules.js): at most twenty rows wait for a player.
+        // Versus rules (versus-rules.js): at most twenty rows wait for a player, and the
+        // standard well plays with the versus feel (Last Standing keeps its own).
         this.multiplayerState = new MultiPlayerState(numPlayers, { maxPendingLines: VERSUS_MAX_PENDING_LINES });
+        if (!this.matchConfig?.isInfinityLMS) this.multiplayerState.players.forEach(applyVersusFeel);
         // Attacks are drawn between the boards (local-versus-hud.js).
         this.multiplayerState.onAttack = (from, targets, lines) => this.versusHud?.showAttack(from, targets, lines);
         this.multiplayerState.setMatchConfig(this.matchConfig);
@@ -560,7 +562,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
         this.multiplayerState.sharedPieceSeed = rngDescriptor.seed;
         players.forEach((player) => {
             player.rngDescriptor = rngDescriptor;
-            fillBag(player.nextPieces, player.randomGenerator);
+            fillBag(player.nextPieces, player.randomGenerator, player.pieceRandomizer);
         });
         return rngDescriptor;
     }

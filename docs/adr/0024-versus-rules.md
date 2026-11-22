@@ -42,6 +42,10 @@ reference game the owner wants versus to play like (Quadra's multiplayer, judged
   each placed piece earns a crowd stamp (up to three per extra living player) and every three
   stamps take one row off a normal attack. A move that empties the board is never cut; boring
   rules turn the cut off.
+- **Feel** (`applyVersusFeel`; the standard well, local and online, not Last Standing): every
+  piece is drawn on its own from the shared seed, not from a bag of seven, and a resting piece
+  locks at the next gravity step it cannot take (a soft drop takes it at once) instead of after
+  a lock delay that sliding and turning could reset.
 - **Frag credit:** each attack adds two per row to its sender's credit with the victim; each
   piece the victim places takes one off every sender. The credit passes to an attacker when one
   of its attacks brings its total level with the holder's or above. In round play the last
@@ -51,7 +55,8 @@ reference game the owner wants versus to play like (Quadra's multiplayer, judged
 
 - A tall side stack is no longer fatal; players dig out of situations that used to end a round.
 - Bots still weigh pending rows and stack height as before, so they play more cautiously than
-  the rule needs. A bot re-fit is separate work.
+  the rule needs, and their weights were fitted on bag-of-seven pieces with a lock delay. A bot
+  re-fit is separate work.
 - The local "No attack scaling" switch was removed: a local match has at most four players, so
   attacks never shrink there.
 - The hidden buffer stays at four rows, so cells lifted more than four rows above the top are

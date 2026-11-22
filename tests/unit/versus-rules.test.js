@@ -7,14 +7,18 @@
 import {
     afterEach, describe, expect, it, vi,
 } from 'vitest';
-import { COLS, HIDDEN_ROWS, ROWS } from '../../src/core/constants.js';
-import { applyGarbage, GameState, spawnPiece } from '../../src/core/game.js';
+import {
+    COLS, HIDDEN_ROWS, PIECE_KEYS, ROWS,
+} from '../../src/core/constants.js';
+import {
+    applyGarbage, fillBag, GameState, move, processAutoDrop, softDrop, spawnPiece,
+} from '../../src/core/game.js';
 import { GarbageQueue, maskArrayToBits, columnsToMask } from '../../src/core/garbage.js';
 import { MultiPlayerState } from '../../src/core/multi-player-state.js';
 import { FFAGameStateP2P } from '../../src/core/multiplayer/ffa-p2p-game-state.js';
 import {
     AttackCredit, CREDIT_MAX, VERSUS_GARBAGE_OPTIONS, VERSUS_MAX_PENDING_LINES,
-    createVersusGarbageQueue, stepCrowdStamps, takeCrowdCut,
+    applyVersusFeel, createVersusGarbageQueue, stepCrowdStamps, takeCrowdCut,
 } from '../../src/core/multiplayer/versus-rules.js';
 
 afterEach(() => vi.restoreAllMocks());
@@ -229,6 +233,58 @@ describe('frag credit', () => {
 
         expect(state.lastAttackerIds[2]).toBe(0);
         expect(state.attackCredit[2].weights.get(0)).toBe(8);
+    });
+});
+
+describe('versus feel', () => {
+    function restingO() {
+        const gameState = new GameState();
+        applyVersusFeel(gameState);
+        gameState.nextPieces = ['O'];
+        spawnPiece(gameState);
+        gameState.currentPiece.y = BOTTOM - 1; // resting on the floor
+        gameState.dropInterval = 1000;
+        gameState.dropCounter = 0;
+        return gameState;
+    }
+
+    it('draws every piece on its own instead of from a bag of seven', () => {
+        const always = () => 0;
+        const random = [];
+        fillBag(random, always, 'random');
+        expect(random).toEqual(Array(10).fill(PIECE_KEYS[0]));
+
+        const bag = [];
+        fillBag(bag, always);
+        expect(new Set(bag.slice(0, 7)).size).toBe(7);
+    });
+
+    it('locks a resting piece at the next gravity step, not after a lock delay', () => {
+        const gameState = restingO();
+
+        processAutoDrop(gameState, 600, null, {});
+        expect(gameState.currentPiece).not.toBeNull();
+
+        move(gameState, -1); // sliding along the floor buys no time
+        processAutoDrop(gameState, 400, null, {});
+        expect(gameState.currentPiece).toBeNull();
+    });
+
+    it('a soft drop on a resting piece locks it at once', () => {
+        const gameState = restingO();
+        softDrop(gameState, null, {});
+        expect(gameState.currentPiece).toBeNull();
+    });
+
+    it('every online board plays with it', () => {
+        vi.spyOn(console, 'log').mockImplementation(() => {});
+        const game = Object.assign(Object.create(FFAGameStateP2P.prototype), {
+            isHost: false, players: new Map(), network: {}, matchConfig: {},
+        });
+        game.addPlayer('76561198000000001', 'One');
+        const { gameState } = game.players.get('76561198000000001');
+        expect(gameState.pieceRandomizer).toBe('random');
+        expect(gameState.lockStyle).toBe('gravity');
     });
 });
 

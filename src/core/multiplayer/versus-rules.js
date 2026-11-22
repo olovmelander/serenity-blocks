@@ -13,6 +13,8 @@
  *   living player), and every STAMPS_PER_LINE stamps take one line off a normal attack.
  *   A move that empties the board is never reduced, and boring rules turn the cut off.
  * - The frag goes to the player whose recent attacks on you weigh most (AttackCredit).
+ * - Feel (applyVersusFeel): pieces are drawn one by one, not from a bag, and a resting piece
+ *   locks at the next gravity step instead of after a lock delay.
  */
 
 import { GarbageQueue, STAMP_PER_HANDICAP } from '../garbage.js';
@@ -120,6 +122,19 @@ export class AttackCredit {
         this.weights.clear();
         this.holder = null;
     }
+}
+
+/**
+ * The versus feel for one board: every piece drawn on its own from the shared seed (no bag
+ * of seven), and a resting piece locked at the next gravity step it cannot take, with no lock
+ * delay to slide or turn in (a soft drop takes that step at once). Set once per board; a
+ * board's reset() keeps it.
+ * @param {{ pieceRandomizer?: string, lockStyle?: string }} gameState
+ */
+export function applyVersusFeel(gameState) {
+    if (!gameState) return;
+    gameState.pieceRandomizer = 'random';
+    gameState.lockStyle = 'gravity';
 }
 
 /** A garbage queue that holds at most VERSUS_MAX_PENDING_LINES rows. */

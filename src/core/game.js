@@ -706,6 +706,13 @@ export class GameState {
         this.lockDelay = options.lockDelay ?? LOCK_DELAY_MS;
         this.lockDelayTicks = durationMsToTicks(this.lockDelay, this.simTickMs);
         this.lockResetLimit = options.lockResetLimit ?? LOCK_RESET_LIMIT;
+        // Versus feel (versus-rules.js, applyVersusFeel). 'random' deals every piece on its
+        // own (no bag of seven); 'gravity' locks a resting piece at the next gravity step it
+        // cannot take (a soft drop takes that step at once), with no lock delay to slide in.
+        /** @type {'bag' | 'random'} */
+        this.pieceRandomizer = options.pieceRandomizer === 'random' ? 'random' : 'bag';
+        /** @type {'delay' | 'gravity'} */
+        this.lockStyle = options.lockStyle === 'gravity' ? 'gravity' : 'delay';
         // Puzzle rules (Stillfall), off for every other mode. A finite supply deals
         // only the queued pieces, never a fresh bag; waiting gravity never pulls the
         // piece down or locks it, so only a hard drop places it.
@@ -908,7 +915,23 @@ function shuffleBag(rng) {
     return bag;
 }
 
-export function fillBag(nextPieces, rng = Math.random) {
+/**
+ * Top the preview queue up to ten pieces.
+ * @param {string[]} nextPieces
+ * @param {Function|Object} [rng]
+ * @param {'bag'|'random'} [randomizer] 'bag' deals shuffled bags of all seven; 'random'
+ *   draws each piece on its own (versus feel)
+ */
+export function fillBag(nextPieces, rng = Math.random, randomizer = 'bag') {
+    if (randomizer === 'random') {
+        while (nextPieces.length < 10) {
+            const index = typeof rng?.nextInt === 'function'
+                ? rng.nextInt(PIECE_KEYS.length)
+                : Math.floor((typeof rng === 'function' ? rng() : Math.random()) * PIECE_KEYS.length);
+            nextPieces.push(PIECE_KEYS[Math.max(0, Math.min(PIECE_KEYS.length - 1, index))]);
+        }
+        return;
+    }
     while (nextPieces.length < 10) {
         const bag = shuffleBag(rng);
         nextPieces.push(...bag);
@@ -950,7 +973,7 @@ export function spawnPiece(gameState, drawNextPiecesCallback, gameOverCallback) 
     gameState.dropCounter = 0;
 
     const rng = typeof gameState.randomGenerator === 'function' ? gameState.randomGenerator : Math.random;
-    if (!gameState.finiteSupply) fillBag(gameState.nextPieces, rng);
+    if (!gameState.finiteSupply) fillBag(gameState.nextPieces, rng, gameState.pieceRandomizer);
     if (drawNextPiecesCallback) drawNextPiecesCallback();
     gameState.piecesPlaced++;
 
@@ -1159,7 +1182,10 @@ export function softDrop(gameState, playDropCallback, physicsCallbacks, options 
     }
 
     updateGroundedState(gameState, 0);
-    if (!gameState.gravityWaits && shouldLockGroundedPiece(gameState, fixedTick)) {
+    if (
+        !gameState.gravityWaits
+        && (gameState.lockStyle === 'gravity' || shouldLockGroundedPiece(gameState, fixedTick))
+    ) {
         lockPiece(gameState, playDropCallback, physicsCallbacks, { fixedTick, inputPhase });
     }
     return false;
@@ -1197,6 +1223,15 @@ export function processAutoDrop(gameState, delta, playDropCallback, physicsCallb
     const MAX_DROP_STEPS_PER_UPDATE = 32;
 
     if (updateGroundedState(gameState, simulationDelta, elapsedTicks)) {
+        if (gameState.lockStyle === 'gravity') {
+            // A resting piece waits for the next gravity step; failing it locks the piece.
+            gameState.dropCounter += simulationDelta;
+            if (gameState.dropCounter >= dropInterval && !gameState.gravityWaits) {
+                lockPiece(gameState, playDropCallback, physicsCallbacks, { fixedTick });
+                gameState.dropCounter = 0;
+            }
+            return;
+        }
         if (shouldLockGroundedPiece(gameState, fixedTick)) {
             lockPiece(gameState, playDropCallback, physicsCallbacks, { fixedTick });
             gameState.dropCounter = 0;
