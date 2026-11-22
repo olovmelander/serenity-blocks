@@ -33,11 +33,12 @@ vi.mock('../../src/core/game.js', async () => ({
     spawnPiece: moduleMocks.spawnPiece,
 }));
 
+/** A survivor match (rounds) on the fixed clock; free-for-all is local-ffa-respawn.test.js. */
 function createFixedBatchMode(numPlayers = 2) {
     const mode = Object.create(LocalMultiplayerMode.prototype);
     mode.isRunning = true;
     mode.matchConfig = {
-        endCondition: 'frags', endConditionValue: 7, isInfinityLMS: false, numPlayers,
+        endCondition: 'frags', endConditionValue: 7, isInfinityLMS: false, numPlayers, gameType: 'survivor',
     };
     mode.multiplayerState = new MultiPlayerState(numPlayers);
     mode.multiplayerState.setMatchConfig(mode.matchConfig);

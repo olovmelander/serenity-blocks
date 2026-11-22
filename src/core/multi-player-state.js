@@ -18,7 +18,9 @@ import { applyMatchLevelRule } from './multiplayer/match-level-rule.js';
 import {
     INFINITY_WELL_ROWS_DEFAULT, infinityWellOpeningRows, readInfinityWellRows,
 } from './multiplayer/infinity-well-rule.js';
-import { AttackCredit, stepCrowdStamps, takeCrowdCut } from './multiplayer/versus-rules.js';
+import {
+    AttackCredit, forgetsSpentCredit, respawnVersusBoard, stepCrowdStamps, takeCrowdCut,
+} from './multiplayer/versus-rules.js';
 
 /**
  * Player color scheme for visual distinction
@@ -354,7 +356,10 @@ export class MultiPlayerState {
     /**
      * Everything one placed piece counts for in versus play: handicap stamps, a crowd stamp
      * (only while more than four players are alive), and fading the credit of whoever has
-     * attacked this player. Call once per piece lock.
+     * attacked this player. In free-for-all a holder whose credit has faded to nothing is
+     * forgotten, so a player left alone for a while dies uncredited; survivor rounds and
+     * Infinity's Last Standing keep the last holder. Call once per piece lock (local versus
+     * only: Odyssey's duels never call it).
      * @param {number} playerIndex
      */
     notePiecePlaced(playerIndex) {
@@ -362,7 +367,31 @@ export class MultiPlayerState {
         this.accumulateHandicap(playerIndex);
         const alive = this.players.filter((state) => state?.isAlive).length;
         this.crowdStamps[playerIndex] = stepCrowdStamps(this.crowdStamps[playerIndex], alive);
-        this.attackCredit[playerIndex]?.notePiecePlaced();
+        const credit = this.attackCredit[playerIndex];
+        if (!credit) return;
+        const forgetSpent = forgetsSpentCredit(this.matchConfig) && !this.matchConfig?.isInfinityLMS;
+        credit.notePiecePlaced({ forgetSpent });
+        this.lastAttackerIds[playerIndex] = credit.killer;
+    }
+
+    /**
+     * Put a dead player back in play (free-for-all): an empty well at the match's start level
+     * that keeps their score, lines and piece stream (respawnVersusBoard), no garbage waiting,
+     * and no frag credit, crowd stamps or handicap stamps carried over. Frags and deaths stand.
+     * @param {number} playerIndex
+     * @returns {boolean} false when there is no such player or they are alive
+     */
+    respawnPlayer(playerIndex) {
+        const player = this.players[playerIndex];
+        if (!player || player.isAlive) return false;
+        respawnVersusBoard(player, this.matchConfig);
+        player.handicaps = {};
+        this.garbageQueues[playerIndex]?.clear();
+        this.attackCredit[playerIndex]?.reset();
+        this.lastAttackerIds[playerIndex] = null;
+        this.crowdStamps[playerIndex] = 0;
+        this.playerPaused[playerIndex] = false;
+        return true;
     }
 
     /**

@@ -40,8 +40,13 @@ describe('local versus: what each match counts', () => {
     it('words the goal for players and for teams', () => {
         expect(versusGoal({ endCondition: 'frags', endConditionValue: 7 })).toBe('First to 7 frags');
         expect(versusGoal({ endCondition: 'frags', endConditionValue: 1 })).toBe('First to 1 frag');
-        // A team's frag goal counts the rounds it wins.
-        expect(versusGoal({ endCondition: 'frags', endConditionValue: 7, isTeamMode: true })).toBe('First team to 7 rounds');
+        // A survivor team's frag goal counts the rounds it wins...
+        expect(versusGoal({
+            endCondition: 'frags', endConditionValue: 7, isTeamMode: true, gameType: 'survivor',
+        })).toBe('First team to 7 rounds');
+        // ...in free-for-all (the default) its players' kills.
+        expect(versusGoal({ endCondition: 'frags', endConditionValue: 7, isTeamMode: true })).toBe('First team to 7 frags');
+        expect(versusGoal({ endCondition: 'frags', endConditionValue: 7, gameType: 'survivor' })).toBe('First to 7 frags');
         expect(versusGoal({ endCondition: 'time', endConditionValue: 3 })).toBe('Highest score in 3 min');
         expect(versusGoal({ endCondition: 'points', endConditionValue: 10 })).toBe(`First to ${(10000).toLocaleString()} points`);
         expect(versusGoal({ isInfinityLMS: true })).toBe('Last one standing');
@@ -49,6 +54,7 @@ describe('local versus: what each match counts', () => {
         expect(versusMode({ attackStyle: 'hot_potato' })).toBe('Hot potato');
         expect(versusMode({ isTeamMode: true })).toBe('Teams');
         expect(versusMode({})).toBe('Free-for-all');
+        expect(versusMode({ gameType: 'survivor' })).toBe('Survivor');
     });
 
     it('ranks like a sports table: ties share a place', () => {
@@ -64,6 +70,10 @@ describe('local versus: what each match counts', () => {
         expect(versusMetaStats(entry, 'score').map(([label]) => label)).toEqual(['Level', 'Lines', 'Frags']);
         expect(versusMetaStats(entry, 'toRoof').map(([label]) => label)).toEqual(['Level', 'Lines']);
         expect(versusMetaStats(entry, 'frags')[2][1]).toBe((4200).toLocaleString());
+        // Free-for-all: players die and play on, so kills and deaths lead the line.
+        const ffa = { ...entry, deaths: 3 };
+        expect(versusMetaStats(ffa, 'frags', { respawns: true })).toEqual([['Deaths', '3'], ['Lines', '12'], ['Score', (4200).toLocaleString()]]);
+        expect(versusMetaStats(ffa, 'score', { respawns: true }).map(([label]) => label)).toEqual(['Frags', 'Deaths', 'Lines']);
         expect(formatClock(170000)).toBe('2:50');
         expect(formatClock(-5)).toBe('0:00');
     });
@@ -179,7 +189,9 @@ describe('local versus HUD', () => {
     it('shows ranks only once someone leads, and the goal bar fills toward the target', () => {
         const { nodes, doc } = fakeDom(3);
         const hud = new LocalVersusHud({
-            config: { endCondition: 'frags', endConditionValue: 4, numPlayers: 3 },
+            config: {
+                endCondition: 'frags', endConditionValue: 4, numPlayers: 3, gameType: 'survivor',
+            },
             numPlayers: 3,
             colorFor: () => ({ primary: '#3B82F6' }),
             doc,
@@ -202,7 +214,7 @@ describe('local versus HUD', () => {
         const { nodes, doc } = fakeDom(2);
         const hud = new LocalVersusHud({
             config: {
-                endCondition: 'frags', endConditionValue: 5, isTeamMode: true, playerTeams: [0, 1],
+                endCondition: 'frags', endConditionValue: 5, isTeamMode: true, playerTeams: [0, 1], gameType: 'survivor',
             },
             numPlayers: 2,
             colorFor: (i) => ({ primary: i ? '#EF4444' : '#3B82F6' }),
@@ -218,19 +230,35 @@ describe('local versus HUD', () => {
         expect(nodes['p1-plate'].parts['.lv-plate__rank'].hidden).toBe(true);
 
         const timed = new LocalVersusHud({
-            config: { endCondition: 'time', endConditionValue: 3 }, numPlayers: 2, colorFor: () => ({}), doc,
+            config: { endCondition: 'time', endConditionValue: 3, gameType: 'survivor' }, numPlayers: 2, colorFor: () => ({}), doc,
         });
         timed.update([entry(), entry()], { clockMs: 61000 });
         expect(nodes['lv-match-bar'].innerHTML).toContain('>1:01<');
+        expect(nodes['lv-match-bar'].innerHTML).toContain('Round 1');
         timed.update([entry(), entry()], { clockMs: -200 });
         expect(nodes['lv-match-bar'].innerHTML).toContain('Last round');
+
+        // Free-for-all is one long match: no rounds to count or wait for.
+        const ffa = new LocalVersusHud({
+            config: { endCondition: 'time', endConditionValue: 3 }, numPlayers: 2, colorFor: () => ({}), doc,
+        });
+        ffa.update([entry(), entry()], { clockMs: 61000 });
+        expect(nodes['lv-match-bar'].innerHTML).not.toContain('Round');
+        ffa.update([entry(), entry()], { clockMs: -200 });
+        expect(nodes['lv-match-bar'].innerHTML).toContain('>0:00<');
+        expect(nodes['lv-match-bar'].innerHTML).not.toContain('Last round');
     });
 
     it('pops a frag, turns a well coral near the top, and names who knocked a player out', () => {
         vi.useFakeTimers();
         const { nodes, doc } = fakeDom(2);
         const hud = new LocalVersusHud({
-            config: { endCondition: 'frags', endConditionValue: 5, playerSlots: [{ name: 'Ada' }, { name: 'Bot 2', kind: 'bot' }] },
+            config: {
+                endCondition: 'frags',
+                endConditionValue: 5,
+                gameType: 'survivor',
+                playerSlots: [{ name: 'Ada' }, { name: 'Bot 2', kind: 'bot' }],
+            },
             numPlayers: 2,
             colorFor: (i) => ({ primary: i ? '#EF4444' : '#3B82F6' }),
             doc,
@@ -278,6 +306,35 @@ describe('local versus HUD', () => {
         expect(card).toContain('By Ada');
         expect(card).toContain('Out for this match');
         expect(card).not.toContain('next round');
+    });
+
+    it('tells a free-for-all player how to play again, and a bot comes back on its own', () => {
+        vi.useFakeTimers();
+        const { nodes, doc } = fakeDom(2);
+        const hud = new LocalVersusHud({
+            config: {
+                endCondition: 'frags', endConditionValue: 5, playerSlots: [{ name: 'Ada' }, { name: 'Bot 2', kind: 'bot' }],
+            },
+            numPlayers: 2,
+            colorFor: () => ({ primary: '#3B82F6' }),
+            doc,
+        });
+        hud.showKnockout(0, 1);
+        const card = nodes['p1-section'].children[0];
+        expect(card.innerHTML).toContain('By Bot 2');
+        expect(card.innerHTML).toContain('<span class="lv-ko__note is-respawn">Press any key to play again</span>');
+        expect(card.innerHTML).not.toContain('next round');
+        hud.showKnockout(1, null);
+        const botCard = nodes['p2-section'].children[0];
+        expect(botCard.innerHTML).toContain('Topped out');
+        expect(botCard.innerHTML).toContain('Back in a moment');
+        expect(botCard.innerHTML).not.toContain('is-respawn');
+
+        // One player plays again: only their card goes.
+        hud.clearKnockout(0);
+        expect(card.remove).toHaveBeenCalled();
+        expect(botCard.remove).not.toHaveBeenCalled();
+        vi.useRealTimers();
     });
 
     it('crowns each winner\'s well with a Victory crest in their colour, then clears it', () => {

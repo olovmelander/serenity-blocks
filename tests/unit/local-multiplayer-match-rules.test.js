@@ -47,12 +47,17 @@ afterEach(() => {
     moduleMocks.showLocalMatchEnd.mockReset();
 });
 
-/** A mode mid-match on the legacy (rAF) loop, with the result screens stubbed. */
+/**
+ * A survivor (round) match mid-round on the legacy (rAF) loop, with the result screens stubbed.
+ * Free-for-all deaths and respawns: local-ffa-respawn.test.js.
+ */
 function matchMode(numPlayers, config) {
     const mode = Object.create(LocalMultiplayerMode.prototype);
     mode.isRunning = true;
     mode.isPaused = false;
-    mode.matchConfig = { isInfinityLMS: false, numPlayers, ...config };
+    mode.matchConfig = {
+        isInfinityLMS: false, numPlayers, gameType: 'survivor', ...config,
+    };
     mode.multiplayerState = new MultiPlayerState(numPlayers);
     mode.multiplayerState.setMatchConfig(mode.matchConfig);
     mode.multiplayerState.reset();

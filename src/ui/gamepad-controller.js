@@ -215,6 +215,10 @@ export class GamepadController {
         this.fixedTickInputAdapter = null;
         this.fixedTickTouchedStates = Array.from({ length: 4 }, () => new Set());
         this.fixedTickHeldActions = Array.from({ length: 4 }, () => new Map());
+        // Told (slot, action) after a pad's gameplay button goes down and has been handled,
+        // whether or not its board took it (local versus: a dead player's button brings them
+        // back in free-for-all).
+        this.seatPressListener = null;
 
         // Serenity Mode support
         this.serenityModeActive = false;
@@ -508,6 +512,20 @@ export class GamepadController {
             && typeof adapter.resolveGameState === 'function'
             ? adapter
             : null;
+    }
+
+    /** @param {((slot: number, action: string) => void) | null} listener */
+    setSeatPressListener(listener = null) {
+        this.seatPressListener = typeof listener === 'function' ? listener : null;
+    }
+
+    /** A pad's gameplay button went down (after the press was handled). */
+    notifySeatPress(slot, action) {
+        try {
+            this.seatPressListener?.(slot, action);
+        } catch (error) {
+            console.error('[Gamepad] Seat press listener failed:', error);
+        }
     }
 
     resolveFixedTickOwnership(slot) {
@@ -2607,6 +2625,8 @@ export class GamepadController {
         }
 
         const fixedTickClaimed = this.isFixedTickPlayerClaimed(slot);
+        // The last gameplay button this poll pressed, told to the seat listener at the end.
+        let seatPress = null;
 
         // Process movement (D-pad left/right or left stick X)
         const leftPressed = this.isButtonPressed(gamepad, config.moveLeft)
@@ -2619,6 +2639,7 @@ export class GamepadController {
 
         // Handle left movement
         if (leftPressed && !prevLeft) {
+            seatPress = 'moveLeft';
             // Initial press
             if (fixedTickClaimed) {
                 const result = this.pressFixedTickAction(slot, 'left', 'move', -1);
@@ -2639,6 +2660,7 @@ export class GamepadController {
 
         // Handle right movement
         if (rightPressed && !prevRight) {
+            seatPress = 'moveRight';
             // Initial press
             if (fixedTickClaimed) {
                 const result = this.pressFixedTickAction(slot, 'right', 'move', 1);
@@ -2666,6 +2688,7 @@ export class GamepadController {
         const prevDown = prevState.softDrop || false;
 
         if (downPressed && !prevDown) {
+            seatPress = 'softDrop';
             if (fixedTickClaimed) {
                 const result = this.pressFixedTickAction(slot, 'down', 'softDrop', null);
                 if (result.accepted) performanceMonitor.recordInputAction();
@@ -2686,6 +2709,7 @@ export class GamepadController {
 
         // Process rotation buttons (edge-triggered)
         if (this.isButtonJustPressed(gamepad, config.rotateRight, prevState, 'rotateRight')) {
+            seatPress = 'rotateRight';
             if (fixedTickClaimed) {
                 const result = this.pressFixedTickAction(slot, null, 'rotate', 'right');
                 if (result.accepted) performanceMonitor.recordInputAction();
@@ -2696,6 +2720,7 @@ export class GamepadController {
         }
 
         if (this.isButtonJustPressed(gamepad, config.rotateLeft, prevState, 'rotateLeft')) {
+            seatPress = 'rotateLeft';
             if (fixedTickClaimed) {
                 const result = this.pressFixedTickAction(slot, null, 'rotate', 'left');
                 if (result.accepted) performanceMonitor.recordInputAction();
@@ -2706,6 +2731,7 @@ export class GamepadController {
         }
 
         if (this.isButtonJustPressed(gamepad, config.flip, prevState, 'flip')) {
+            seatPress = 'flip';
             if (fixedTickClaimed) {
                 const result = this.pressFixedTickAction(slot, null, 'rotate', 'flip');
                 if (result.accepted) performanceMonitor.recordInputAction();
@@ -2717,6 +2743,7 @@ export class GamepadController {
 
         // Process hard drop (edge-triggered)
         if (this.isButtonJustPressed(gamepad, config.hardDrop, prevState, 'hardDrop')) {
+            seatPress = 'hardDrop';
             if (fixedTickClaimed) {
                 const result = this.pressFixedTickAction(slot, null, 'hardDrop', null);
                 if (result.accepted) performanceMonitor.recordInputAction();
@@ -2725,6 +2752,7 @@ export class GamepadController {
                 performanceMonitor.recordInputAction();
             }
         }
+        if (seatPress) this.notifySeatPress(slot, seatPress);
 
         // Process pause (edge-triggered)
         if (this.waitingForStartRelease[slot]) {
@@ -3323,6 +3351,7 @@ export class GamepadController {
         this.disable();
         this.clearFixedTickInput({ dropPhysicalLatches: true });
         this.fixedTickInputAdapter = null;
+        this.seatPressListener = null;
         this.disableSerenityMode();
         this.bindingConfigCache.fill(null);
         this.serenityBindingCache = null;

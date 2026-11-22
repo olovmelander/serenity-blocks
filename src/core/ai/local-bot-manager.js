@@ -138,6 +138,16 @@ export class LocalBotManager {
         return this.controllers.has(playerIndex);
     }
 
+    /**
+     * A bot plays again on an empty well (free-for-all respawn): its plan for the old board is
+     * dropped and it reads the new one from its first piece. The controller sleeps while its
+     * board is dead and drives it again as soon as the board is alive with a piece.
+     * @param {number} playerIndex
+     */
+    resetPlayer(playerIndex) {
+        this.controllers.get(playerIndex)?.reset();
+    }
+
     destroy() {
         for (const controller of this.controllers.values()) {
             controller.reset();

@@ -1,7 +1,7 @@
 import { BaseGameMode } from './BaseGameMode.js';
 import { BoardJuice } from '../../rendering/phaser/board-juice.js';
 import { MultiPlayerState, PLAYER_COLORS, TEAM_COLORS } from '../multi-player-state.js';
-import { VERSUS_MAX_PENDING_LINES, applyVersusFeel } from '../multiplayer/versus-rules.js';
+import { VERSUS_MAX_PENDING_LINES, applyVersusFeel, readVersusGameType } from '../multiplayer/versus-rules.js';
 import { InfinityMinimap } from '../../ui/infinity/InfinityMinimap.js';
 import { LocalVersusCameras } from '../../ui/infinity/local-versus-cameras.js';
 import { GAME_MODES, BLOCK_SIZE } from '../constants.js';
@@ -42,11 +42,20 @@ import {
     startLocalMultiplayerModeLoop,
     stopLocalMultiplayerModeLoop,
 } from './local-multiplayer-loop.js';
-import { resolveLocalMatchEnd, resumeClock } from './local-match-rules.js';
+import { localMatchRespawns, resolveLocalMatchEnd, resumeClock } from './local-match-rules.js';
 
 const MATCH_START_LOADING_MIN_VISIBLE_MS = 2000;
 /** How long a knock-out and a round won hold the boards before the round ends. */
 export const ROUND_OUTCOME_MS = 1500;
+/**
+ * Free-for-all: how long after a death a person's keys start to bring them back. A key still
+ * held, or mashed, as they topped out must not put them straight back on an empty well.
+ */
+export const RESPAWN_KEY_HOLD_MS = 1000;
+/** Free-for-all: how long a bot stays out before it plays again on its own. */
+export const BOT_RESPAWN_MS = 1750;
+/** A bot's return that fell in a pause is tried again this often until play resumes. */
+const RESPAWN_RETRY_MS = 250;
 /** The match won, on the boards, before the results. */
 const VICTORY_BEAT_MS = 2400;
 
@@ -104,6 +113,8 @@ export class LocalMultiplayerMode extends BaseGameMode {
         // Keyed by team id (0..3); missing keys read as 0, so this supports any team count.
         this.teamRoundWins = {};
         this.lastMatchResultClock = null;
+        // Free-for-all: the players who are out, until they play again (_handleFreeForAllDeaths).
+        this._downPlayers = new Map();
 
         // Cumulative match stats (preserved across rounds)
         this.matchStats = {
@@ -305,7 +316,10 @@ export class LocalMultiplayerMode extends BaseGameMode {
     _getMatchStartLoadingTitle(config = this.matchConfig) {
         const parts = ['LOCAL VERSUS'];
         if (config?.isInfinityLMS) parts.push('INFINITY');
-        parts.push(config?.isTeamMode ? 'TEAMS' : 'FREE-FOR-ALL');
+        const survivor = !config?.isInfinityLMS && readVersusGameType(config) === 'survivor';
+        if (config?.isTeamMode) parts.push('TEAMS');
+        if (survivor) parts.push('SURVIVOR');
+        else if (!config?.isTeamMode) parts.push('FREE-FOR-ALL');
         if (config?.hotPotato || config?.attackStyle === 'hot_potato') parts.push('HOT POTATO');
         return parts.join(' · ');
     }
@@ -407,6 +421,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
         );
 
         this.deps.modalManager.hideAll();
+        this._forgetDownPlayers();
         this._clearDeathAnimations();
 
         // Reset match stats for new game
@@ -519,18 +534,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
         this.multiplayerState.lastTime = performance.now();
 
         // Spawn pieces for all configured players
-        for (let i = 0; i < numPlayers; i++) {
-            const playerNum = i + 1;
-            const nextCanvases = this.playerNextCanvases.get(playerNum);
-            const playerState = this.multiplayerState.players[i];
-
-            spawnPiece(playerState, () => {
-                if (nextCanvases) {
-                    drawNextPieces(nextCanvases, playerState.nextPieces);
-                }
-                this._syncBoardScenes();
-            }, () => this._handleGameOver(i));
-        }
+        for (let i = 0; i < numPlayers; i++) this._spawnFirstPiece(i);
 
         this._syncBoardScenes();
 
@@ -617,6 +621,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
     async onStop() {
         this._startGeneration += 1;
         const retiredRound = retireLocalMultiplayerRound(this);
+        this._forgetDownPlayers();
         await super.onStop();
 
         console.log('[LocalMultiplayer] Stopping game...');
@@ -641,6 +646,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
         // Retire in-flight board creation before the first teardown await.
         this._boardCreationGeneration += 1;
         await super.onDeactivate();
+        this._forgetDownPlayers();
         this._destroySeparatePhaserGames();
 
         console.log('[LocalMultiplayer] Deactivating...');
@@ -880,13 +886,15 @@ export class LocalMultiplayerMode extends BaseGameMode {
                 team: this._getResolvedTeamId(i),
             };
         });
-        // Teams race by their rule: rounds won for a frag goal, the team's sum otherwise.
+        // Teams race by their rule: rounds won for a survivor frag goal, the team's sum
+        // otherwise (in free-for-all a team's frags are its players' kills).
         let teamTotals = null;
         if (this.matchConfig?.isTeamMode) {
             const { key } = this.versusHud.metric;
+            const roundWins = key === 'frags' && !localMatchRespawns(this.matchConfig);
             teamTotals = {};
             new Set(entries.map((e) => e.team)).forEach((teamId) => {
-                teamTotals[teamId] = key === 'frags'
+                teamTotals[teamId] = roundWins
                     ? (this.teamRoundWins[teamId] || 0)
                     : (this._getTeamAggregateStats(teamId)[key] || 0);
             });
@@ -902,16 +910,20 @@ export class LocalMultiplayerMode extends BaseGameMode {
     }
 
     /**
-     * Each player's match so far: the rounds played plus this one.
+     * Each player's match so far: the rounds played plus this one. Frags are kills (a
+     * free-for-all match is one long round, so this round is the whole match).
      * @private
      */
     _matchTotals() {
-        const { numPlayers, players, frags } = this.multiplayerState;
+        const {
+            numPlayers, players, frags, deaths,
+        } = this.multiplayerState;
         return Array.from({ length: numPlayers }, (_, i) => {
             const totals = this.matchStats?.[`player${i + 1}`] || {};
             const playerState = players[i] || {};
             return {
                 frags: (totals.frags || 0) + (frags[i] ?? 0),
+                deaths: (totals.deaths || 0) + (deaths?.[i] ?? 0),
                 score: (totals.score || 0) + (playerState.score || 0),
                 lines: (totals.lines || 0) + (playerState.totalLinesCleared || 0),
             };
@@ -1065,6 +1077,11 @@ export class LocalMultiplayerMode extends BaseGameMode {
         const lastAttackers = this.multiplayerState.lastAttackerIds.slice();
         const eliminated = this.multiplayerState.handlePlayerDeaths(playerIndices);
         if (eliminated.length === 0) return false;
+        // Free-for-all: the dead play on, nobody else stops, and the round never ends.
+        if (this._respawns()) {
+            await this._handleFreeForAllDeaths(eliminated, lastAttackers, roundOwner);
+            return true;
+        }
         eliminated.forEach((playerIndex) => {
             const player = this.multiplayerState.players[playerIndex];
             if (player?.currentPiece) player.currentPiece = null;
@@ -1139,6 +1156,12 @@ export class LocalMultiplayerMode extends BaseGameMode {
 
         // Mark player as dead and handle frag attribution
         this.multiplayerState.handlePlayerDeath(playerIndex);
+
+        // Free-for-all: the player plays on after a key (a bot by itself); the round goes on.
+        if (this._respawns()) {
+            await this._handleFreeForAllDeaths([playerIndex], this.multiplayerState.lastAttackerIds.slice(), roundOwner);
+            return;
+        }
 
         // Clear the eliminated player's current piece so it stops dropping
         const playerState = this.multiplayerState.players[playerIndex];
@@ -1292,6 +1315,155 @@ export class LocalMultiplayerMode extends BaseGameMode {
                 if (matchEnd !== null) await this._endMatchMidRound(matchEnd, roundOwner);
             }
         }
+    }
+
+    // ===== Free-for-all: death and respawn =====
+
+    /** Whether this match plays on after a death (free-for-all, not Last Standing). @private */
+    _respawns() {
+        return localMatchRespawns(this.matchConfig);
+    }
+
+    /** The free-for-all players who are out, until they play again. @private */
+    _down() {
+        if (!this._downPlayers) this._downPlayers = new Map();
+        return this._downPlayers;
+    }
+
+    /** A seat played by a bot (it comes back on its own; keys never bring it back). @private */
+    _isBotSeat(playerIndex) {
+        return this._isBotPlayer(playerIndex) || isBotSlot(this.matchConfig?.playerSlots?.[playerIndex]);
+    }
+
+    /** Forget one player's way back (and its timer). @private */
+    _forgetDownPlayer(playerIndex) {
+        const down = this._downPlayers?.get(playerIndex);
+        if (down) clearTimeout(down.timer);
+        this._downPlayers?.delete(playerIndex);
+    }
+
+    /** Forget every way back: the match or round they belong to is over. @private */
+    _forgetDownPlayers() {
+        this._downPlayers?.forEach((down) => clearTimeout(down.timer));
+        this._downPlayers = new Map();
+    }
+
+    /**
+     * Free-for-all deaths, already counted by MultiPlayerState (a death each, and the frag to
+     * whoever held the frag credit, never to the player themselves). Each board shows its
+     * knock-out and drops the garbage waiting for it; nobody else stops and the round goes
+     * on. The match goal is checked at once, and the match ends when it is met. A person plays
+     * again with any of their keys RESPAWN_KEY_HOLD_MS after dying (_onSeatPress); a bot
+     * comes back on its own after BOT_RESPAWN_MS.
+     * @param {number[]} playerIndices the players who just died
+     * @param {Array<number|null>} creditHolders each player's frag credit holder at death
+     * @param {object} roundOwner the round the deaths belong to (local-multiplayer-loop.js)
+     * @returns {Promise<boolean>} false when none of them was a new death
+     * @private
+     */
+    async _handleFreeForAllDeaths(playerIndices, creditHolders, roundOwner) {
+        const state = this.multiplayerState;
+        const diedAt = this._wallNow();
+        let anyNew = false;
+        playerIndices.forEach((playerIndex) => {
+            const player = state.players[playerIndex];
+            // One death, one card: the legacy path can report it twice (main.js counts it,
+            // then calls _handleGameOver).
+            if (!player || player.isAlive || this._down().has(playerIndex)) return;
+            anyNew = true;
+            if (player.currentPiece) player.currentPiece = null;
+            state.garbageQueues[playerIndex]?.clear();
+            const killer = creditHolders?.[playerIndex];
+            this._showPlayerDeathAnimation(
+                playerIndex,
+                Number.isInteger(killer) && killer !== playerIndex ? killer : null,
+            );
+            this._down().set(playerIndex, { at: diedAt, roundOwner, timer: null });
+            if (this._isBotSeat(playerIndex)) this._scheduleBotRespawn(playerIndex, BOT_RESPAWN_MS);
+        });
+        if (!anyNew) return false;
+
+        const matchEnd = this._resolveMatchEnd();
+        if (matchEnd !== null) await this._endMatchMidRound(matchEnd, roundOwner);
+        return true;
+    }
+
+    /**
+     * A key of a seat went down (controls.js, gamepad-controller.js). A person who is out
+     * plays again, once RESPAWN_KEY_HOLD_MS have passed since the death.
+     * @param {number} playerIndex
+     * @returns {boolean} whether the player came back
+     * @private
+     */
+    _onSeatPress(playerIndex) {
+        const down = this._downPlayers?.get(playerIndex);
+        if (!down || this._isBotSeat(playerIndex)) return false;
+        if (this._wallNow() - down.at < RESPAWN_KEY_HOLD_MS) return false;
+        return this._respawnPlayer(playerIndex) === 'respawned';
+    }
+
+    /**
+     * A bot plays again after `delayMs`; tried again shortly while the game is paused.
+     * @private
+     */
+    _scheduleBotRespawn(playerIndex, delayMs) {
+        const down = this._downPlayers?.get(playerIndex);
+        if (!down) return;
+        clearTimeout(down.timer);
+        down.timer = setTimeout(() => {
+            down.timer = null;
+            if (this._downPlayers?.get(playerIndex) !== down) return;
+            if (this._respawnPlayer(playerIndex) === 'held') this._scheduleBotRespawn(playerIndex, RESPAWN_RETRY_MS);
+        }, delayMs);
+    }
+
+    /**
+     * Put a player who is out back in play: an empty well at the match's start level, their
+     * score, lines and piece stream kept (MultiPlayerState.respawnPlayer), the knock-out
+     * cleared, their bot (if any) reset, and their first piece spawned the way a new round
+     * spawns it. Only within the round the death belongs to, never while the match ends.
+     * @param {number} playerIndex
+     * @returns {'respawned'|'held'|'gone'} 'held' while the game is paused
+     * @private
+     */
+    _respawnPlayer(playerIndex) {
+        const down = this._downPlayers?.get(playerIndex);
+        if (!down) return 'gone';
+        const state = this.multiplayerState;
+        if (
+            !state
+            || state.isGameOver
+            || this._matchEnding
+            || !ownsLocalMultiplayerRound(this, down.roundOwner)
+        ) {
+            this._forgetDownPlayer(playerIndex);
+            return 'gone';
+        }
+        if (this.isPaused || state.isPaused) return 'held';
+        this._forgetDownPlayer(playerIndex);
+        if (!state.respawnPlayer(playerIndex)) return 'gone';
+
+        this._clearPlayerDeathAnimation(playerIndex);
+        this.botManager?.resetPlayer?.(playerIndex);
+        this.deps?.soundManager?.sfxPlayer?.playDrop?.();
+        this._spawnFirstPiece(playerIndex);
+        this._syncBoardScenes();
+        console.log(`[LocalMultiplayer] Player ${playerIndex + 1} plays again`);
+        return 'respawned';
+    }
+
+    /**
+     * A player's first piece, of a round or after a respawn; their preview redrawn.
+     * @param {number} playerIndex
+     * @private
+     */
+    _spawnFirstPiece(playerIndex) {
+        const playerState = this.multiplayerState.players[playerIndex];
+        const nextCanvases = this.playerNextCanvases?.get(playerIndex + 1);
+        return spawnPiece(playerState, () => {
+            if (nextCanvases) drawNextPieces(nextCanvases, playerState.nextPieces);
+            this._syncBoardScenes();
+        }, () => this._handleGameOver(playerIndex));
     }
 
     /**
@@ -1512,6 +1684,12 @@ export class LocalMultiplayerMode extends BaseGameMode {
                 if (original || (playerNum === 1 && kind !== 'softDrop')) window[name] = wrap(playerNum, original);
             });
         }
+
+        // Free-for-all: a dead player's own key (keyboard or their controller) brings them
+        // back. The controllers tell every seat press, on either clock, after handling it.
+        this._seatPressListener = (playerIndex) => { this._onSeatPress(playerIndex); };
+        this.deps?.inputController?.setSeatPressListener?.(this._seatPressListener);
+        this.deps?.gamepadController?.setSeatPressListener?.(this._seatPressListener);
     }
 
     /**
@@ -1519,6 +1697,12 @@ export class LocalMultiplayerMode extends BaseGameMode {
      * @private
      */
     _removeInputWrappers() {
+        if (this._seatPressListener) {
+            [this.deps?.inputController, this.deps?.gamepadController].forEach((controller) => {
+                if (controller?.seatPressListener === this._seatPressListener) controller.setSeatPressListener?.(null);
+            });
+            this._seatPressListener = null;
+        }
         if (!this._originalInputs) return;
 
         Object.entries(this._originalInputs).forEach(([name, original]) => {
@@ -1749,10 +1933,12 @@ export class LocalMultiplayerMode extends BaseGameMode {
         return this.teamRoundWins[teamId];
     }
 
+    /** A team's match so far: its players' score, lines and kills summed. */
     _getTeamAggregateStats(teamId) {
         const numPlayers = this.multiplayerState?.numPlayers || 0;
         let score = 0;
         let lines = 0;
+        let frags = 0;
 
         for (let i = 0; i < numPlayers; i++) {
             if (this._getResolvedTeamId(i) !== teamId) {
@@ -1765,12 +1951,13 @@ export class LocalMultiplayerMode extends BaseGameMode {
 
             score += (matchTotals.score || 0) + (playerState?.score || 0);
             lines += (matchTotals.lines || 0) + (playerState?.totalLinesCleared || 0);
+            frags += (matchTotals.frags || 0) + (this.multiplayerState?.frags?.[i] || 0);
         }
 
-        return { score, lines };
+        return { score, lines, frags };
     }
 
-    /** A team frag goal, or a match with no rule set, counts rounds won (seven by default). */
+    /** A survivor team frag goal, or a match with no rule set, counts rounds won (seven by default). */
     _checkTeamMatchWinCondition(teamId) {
         const config = this.matchConfig;
         if (['points', 'lines', 'time', 'never'].includes(config?.endCondition)) return false;
@@ -1914,15 +2101,16 @@ export class LocalMultiplayerMode extends BaseGameMode {
     /**
      * Whether the match is over by its rule, and who won it (local-match-rules.js), from match
      * totals: every round so far plus this one (MultiPlayerState counts only the round).
-     * Teams sum their players. A team frag goal counts rounds won and is judged as a round
-     * ends (_handleTeamRoundEnd); Last Standing (Infinity) ends by elimination.
+     * Teams sum their players. A survivor team frag goal counts rounds won and is judged as a
+     * round ends (_handleTeamRoundEnd); in free-for-all a team's frags are its players' kills.
+     * Last Standing (Infinity) ends by elimination.
      * @returns {string | {type: 'team', teamId: number} | null} 'playerN', 'draw', a team, or null
      * @private
      */
     _resolveMatchEnd() {
         const config = this.matchConfig;
         if (!config || config.isInfinityLMS || !this.multiplayerState) return null;
-        if (config.isTeamMode && config.endCondition === 'frags') return null;
+        if (config.isTeamMode && config.endCondition === 'frags' && !localMatchRespawns(config)) return null;
         const standings = config.isTeamMode
             ? [...new Set(this.multiplayerState.players.map((_, i) => this._getResolvedTeamId(i)))]
                 .map((teamId) => ({ ...this._getTeamAggregateStats(teamId), result: { type: 'team', teamId } }))
@@ -1970,6 +2158,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
         if (!await drainLocalMultiplayerRound(this, retiredRound) || !this.isRunning) return;
 
         // Clear death animations from previous round
+        this._forgetDownPlayers();
         this._clearDeathAnimations();
         this.versusHud?.announceRound(this.versusRound || 1, this._roundOutcome || null);
         this._roundOutcome = null;
@@ -2069,24 +2258,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
         this.deps.soundManager.sfxPlayer.playDrop?.();
 
         // Spawn initial pieces for all configured players
-        for (let i = 0; i < numPlayers; i++) {
-            const playerNum = i + 1;
-            const nextCanvases = this.playerNextCanvases.get(playerNum);
-
-            console.log(`[LocalMultiplayer] Spawning initial piece for Player ${playerNum}...`);
-            spawnPiece(
-                this.multiplayerState.players[i],
-                () => {
-                    if (nextCanvases) {
-                        drawNextPieces(nextCanvases, this.multiplayerState.players[i].nextPieces);
-                    }
-                    this._syncBoardScenes();
-                },
-                () => this._handleGameOver(i),
-            );
-
-            console.log(`[LocalMultiplayer] Spawned piece for Player ${playerNum} in new round`);
-        }
+        for (let i = 0; i < numPlayers; i++) this._spawnFirstPiece(i);
 
         this._syncBoardScenes();
         this._setupLocalBots();
@@ -2268,6 +2440,20 @@ export class LocalMultiplayerMode extends BaseGameMode {
         });
         this.knockedOut = new Set();
         this.versusHud?.clearKnockouts();
+    }
+
+    /**
+     * One board's knock-out cleared: its colour and light come back and its card goes (a
+     * free-for-all player plays again).
+     * @param {number} playerIndex
+     * @private
+     */
+    _clearPlayerDeathAnimation(playerIndex) {
+        const scene = this.boardScenes?.[playerIndex];
+        if (this.knockedOut?.has(playerIndex)) scene?.sharedEffects?.clearKnockout?.();
+        scene?.cameras?.main?.setAlpha?.(1.0);
+        this.knockedOut?.delete(playerIndex);
+        this.versusHud?.clearKnockout?.(playerIndex);
     }
 
     /**

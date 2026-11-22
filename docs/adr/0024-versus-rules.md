@@ -50,6 +50,13 @@ reference game the owner wants versus to play like (Quadra's multiplayer, judged
   piece the victim places takes one off every sender. The credit passes to an attacker when one
   of its attacks brings its total level with the holder's or above. In round play the last
   holder keeps it even when spent; a respawning game type forgets a spent holder.
+- **Game type (local versus):** free-for-all is the default (`readVersusGameType`). A player
+  whose next piece cannot appear counts a death, the frag goes to the credit holder, and nobody
+  else stops: the dead player plays on with any of their own keys from one second after the
+  death (a bot comes back on its own), on an empty well at the start level that keeps their
+  score and lines. The frag goal counts kills, a team's being its players' kills. Survivor keeps
+  rounds: the last player or team alive takes the round, then everyone restarts. Infinity's Last
+  Standing has no game type and keeps its elimination rules.
 
 ## Consequences
 
@@ -70,3 +77,5 @@ reference game the owner wants versus to play like (Quadra's multiplayer, judged
   attack size rule.
 - `tests/unit/garbage-settle-clears.test.js` keeps the no-credit behaviour for callers that do
   not opt in.
+- `tests/unit/local-ffa-respawn.test.js` pins the local free-for-all death, respawn and goal,
+  and that survivor keeps its rounds.

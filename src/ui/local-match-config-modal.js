@@ -26,6 +26,7 @@ import {
     INFINITY_WELL_ROWS_FINE_STEP, INFINITY_WELL_ROWS_MAX, INFINITY_WELL_ROWS_MIN,
     readInfinityWellRows,
 } from '../core/multiplayer/infinity-well-rule.js';
+import { readVersusGameType } from '../core/multiplayer/versus-rules.js';
 
 const DEFAULT_BOT_SKILL = 5;
 const LAST_SETUP_KEY = 'serenity.localMatch.lastSetup';
@@ -77,6 +78,12 @@ const CONDITION_COPY = {
         max: 0,
         help: 'The match runs until you end it.',
     },
+};
+
+// Versus game types (core/multiplayer/versus-rules.js); free-for-all is the default.
+const GAME_TYPE_HELP = {
+    ffa: 'Frag your opponents. When you die, press any of your keys to play again.',
+    survivor: 'The last player or team standing takes the round, then everybody restarts.',
 };
 
 const ATTACK_HELP = {
@@ -165,6 +172,8 @@ export function buildLocalMatchConfig(values = {}) {
     }
 
     if (!isInfinityLMS) {
+        // Infinity's Last Standing keeps its own elimination rules and has no game type.
+        config.gameType = readVersusGameType({ gameType: get('gameType') });
         config.endConditionValue = parseInt(get('endConditionValue'), 10) || 0;
         config.startLevel = parseInt(get('startLevel'), 10) || 1;
         config.levelProgression = get('levelProgression') === 'on';
@@ -293,6 +302,15 @@ export class LocalMatchConfigModal {
                     <p class="sb-mp-help" id="match-mode-help"></p>
                   </div>
 
+                  <div class="sb-mp-field" id="game-type-group">
+                    <span class="sb-mp-field__label" id="game-type-label">Game type</span>
+                    <select id="game-type" name="gameType" aria-label="Game type">
+                      <option value="ffa" selected>Free-for-all</option>
+                      <option value="survivor">Survivor</option>
+                    </select>
+                    <p class="sb-mp-help" id="game-type-help"></p>
+                  </div>
+
                   <div class="sb-mp-field" id="attack-style-group">
                     <span class="sb-mp-field__label" id="attack-style-label">Attacks</span>
                     <select id="attack-style" name="attackStyle" aria-label="Attacks">
@@ -390,7 +408,7 @@ export class LocalMatchConfigModal {
     }
 
     enhanceStaticControls() {
-        ['#num-players', '#match-mode', '#end-condition', '#attack-style'].forEach((sel) => {
+        ['#num-players', '#match-mode', '#game-type', '#end-condition', '#attack-style'].forEach((sel) => {
             const el = this.container.querySelector(sel);
             if (el) this._enhancers.push(enhanceSegmented(el));
         });
@@ -406,6 +424,9 @@ export class LocalMatchConfigModal {
             this.updateEndConditionUI(e.target.value);
         });
         this.container.querySelector('#match-mode')?.addEventListener('change', () => this.refreshFormState());
+        this.container.querySelector('#game-type')?.addEventListener('change', (e) => {
+            this.updateGameTypeUI(e.target.value);
+        });
         this.container.querySelector('#attack-style')?.addEventListener('change', (e) => {
             this.updateAttackStyleUI(e.target.value);
         });
@@ -661,6 +682,7 @@ export class LocalMatchConfigModal {
     refreshFormState() {
         const matchMode = this.container.querySelector('#match-mode');
         const modeHelp = this.container.querySelector('#match-mode-help');
+        const gameTypeGroup = this.container.querySelector('#game-type-group');
         const endConditionGroup = this.container.querySelector('#end-condition-group');
         const endCondition = this.container.querySelector('#end-condition');
         const valueGroup = this.container.querySelector('#end-value-group');
@@ -675,6 +697,8 @@ export class LocalMatchConfigModal {
                 ? 'A well up to 1,000 rows tall. The last player standing wins.'
                 : 'Win by frags, time, score or lines — you choose below.';
         }
+        // Last Standing is played to the last one alive: no game type to choose.
+        if (gameTypeGroup) gameTypeGroup.hidden = isInfinity;
         if (endConditionGroup) endConditionGroup.hidden = isInfinity;
         if (valueGroup) valueGroup.hidden = isInfinity || endCondition?.value === 'never';
         if (infinityRowsGroup) infinityRowsGroup.hidden = !isInfinity;
@@ -686,6 +710,12 @@ export class LocalMatchConfigModal {
         const help = this.container.querySelector('#attack-style-help');
         if (!help) return;
         help.textContent = ATTACK_HELP[style] || ATTACK_HELP.standard;
+    }
+
+    updateGameTypeUI(gameType) {
+        const help = this.container.querySelector('#game-type-help');
+        if (!help) return;
+        help.textContent = GAME_TYPE_HELP[readVersusGameType({ gameType })];
     }
 
     readFormValues() {
@@ -725,6 +755,7 @@ export class LocalMatchConfigModal {
         this.renderSlotCards(seats);
 
         setSelect('#match-mode', saved.matchMode);
+        setSelect('#game-type', saved.gameType);
         setSelect('#attack-style', saved.attackStyle);
         setSelect('#end-condition', saved.endCondition);
         setNumber('#end-condition-value', saved.endConditionValue);
@@ -806,6 +837,8 @@ export class LocalMatchConfigModal {
         this.restoreSetup(readLastSetup());
         const attackStyle = this.container.querySelector('#attack-style');
         if (attackStyle) this.updateAttackStyleUI(attackStyle.value);
+        const gameType = this.container.querySelector('#game-type');
+        if (gameType) this.updateGameTypeUI(gameType.value);
         this.refreshFormState();
         this.clearError();
 

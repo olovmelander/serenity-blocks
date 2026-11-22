@@ -135,6 +135,10 @@ export class InputController {
         this.handleWindowBlur = null;
         this.handleClick = null;
         this.fixedTickInputAdapter = null;
+        // Told (seatIndex, action) after a seat's own gameplay key goes down and has been
+        // handled, whether or not its board took it (local versus: a dead player's key
+        // brings them back in free-for-all).
+        this.seatPressListener = null;
         this.fixedTickHeldKeys = new Map();
         this.fixedTickTouchedStates = new Set();
         // The key each physical key (KeyboardEvent.code) gave when it went down. Its keyup
@@ -211,6 +215,20 @@ export class InputController {
             && typeof adapter.resolveGameState === 'function'
             ? adapter
             : null;
+    }
+
+    /** @param {((seatIndex: number, action: string) => void) | null} listener */
+    setSeatPressListener(listener = null) {
+        this.seatPressListener = typeof listener === 'function' ? listener : null;
+    }
+
+    /** A seat's gameplay key went down (after the press was handled). */
+    notifySeatPress(seatIndex, action) {
+        try {
+            this.seatPressListener?.(seatIndex, action);
+        } catch (error) {
+            console.error('[Keyboard] Seat press listener failed:', error);
+        }
     }
 
     resolveFixedTickOwnership(playerIndex) {
@@ -472,6 +490,7 @@ export class InputController {
         this.clearTimers();
         this.clearFixedTickInput({ dropPhysicalLatches: true });
         this.fixedTickInputAdapter = null;
+        this.seatPressListener = null;
         this.heldKeyCodes.clear();
         this.keyMap = {};
         this.gameActions = null;
@@ -747,6 +766,7 @@ export function setupKeyboardControls(inputController, settings, gameActions) {
                 } else {
                     handlePlayer2Action(actionP2, gameActions, inputController);
                 }
+                inputController.notifySeatPress(1, actionP2);
             }
 
             // Then handle player 1 input
@@ -763,6 +783,7 @@ export function setupKeyboardControls(inputController, settings, gameActions) {
             if (fixedResult.handled) {
                 if (action === 'hardDrop') e.preventDefault();
                 if (fixedResult.accepted) performanceMonitor.recordInputAction();
+                inputController.notifySeatPress(0, action);
                 return;
             }
 
@@ -832,6 +853,7 @@ export function setupKeyboardControls(inputController, settings, gameActions) {
                 // No action for unrecognized key binding
                 break;
             }
+            inputController.notifySeatPress(0, action);
         } catch (error) {
             console.error('[Keyboard] Error in keydown handler:', error);
         }

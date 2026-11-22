@@ -19,6 +19,7 @@
  */
 import { escapeHtml, sanitizeCssColor } from '../utils/dom-safety.js';
 import { versusCoachRows, versusControls } from './local-seat-controls.js';
+import { localMatchRespawns } from '../core/game-modes/local-match-rules.js';
 
 const COACH_MS = 6000;
 const BANNER_MS = 1700;
@@ -80,8 +81,9 @@ export function versusGoal(config = {}) {
     case 'lines': return `${first} ${value} lines`;
     case 'time': return `${team ? 'Highest team score' : 'Highest score'} in ${value} min`;
     case 'never': return 'Endless';
-    // A team's frag goal counts the rounds it wins (LocalMultiplayerMode).
-    default: return team
+    // A survivor team's frag goal counts the rounds it wins; in free-for-all a team's frags
+    // are its players' kills (LocalMultiplayerMode).
+    default: return team && !localMatchRespawns(config)
         ? `${first} ${value} ${value === 1 ? 'round' : 'rounds'}`
         : `${first} ${value} ${value === 1 ? 'frag' : 'frags'}`;
     }
@@ -92,7 +94,7 @@ export function versusMode(config = {}) {
     if (config.isInfinityLMS) return 'Infinity';
     if (config.hotPotato || config.attackStyle === 'hot_potato') return 'Hot potato';
     if (config.isTeamMode) return 'Teams';
-    return 'Free-for-all';
+    return localMatchRespawns(config) ? 'Free-for-all' : 'Survivor';
 }
 
 /**
@@ -118,17 +120,21 @@ export function formatClock(ms) {
 }
 
 const STAT_LABELS = {
-    level: 'Level', lines: 'Lines', score: 'Score', frags: 'Frags',
+    level: 'Level', lines: 'Lines', score: 'Score', frags: 'Frags', deaths: 'Deaths',
 };
 
 /**
- * The stats line under a board: what does not decide the match.
- * @param {{ level?: number, lines?: number, score?: number, frags?: number }} entry
+ * The stats line under a board: what does not decide the match. In free-for-all, where
+ * players die and play on, the kills and deaths lead it.
+ * @param {{ level?: number, lines?: number, score?: number, frags?: number, deaths?: number }} entry
  * @param {string} metricKey
+ * @param {{ respawns?: boolean }} [options]
  * @returns {Array<[string, string]>}
  */
-export function versusMetaStats(entry, metricKey) {
-    const order = metricKey === 'toRoof' ? ['level', 'lines'] : ['level', 'lines', 'score', 'frags']
+export function versusMetaStats(entry, metricKey, { respawns = false } = {}) {
+    let keys = ['level', 'lines', 'score', 'frags'];
+    if (respawns) keys = ['frags', 'deaths', 'lines', 'score', 'level'];
+    const order = metricKey === 'toRoof' ? ['level', 'lines'] : keys
         .filter((key) => key !== metricKey)
         .slice(0, 3);
     return order.map((key) => {
@@ -140,6 +146,7 @@ export function versusMetaStats(entry, metricKey) {
 /**
  * @typedef {object} VersusEntry
  * @property {number} frags
+ * @property {number} [deaths]
  * @property {number} score
  * @property {number} lines
  * @property {number} level
@@ -169,6 +176,8 @@ export class LocalVersusHud {
         this.settings = settings || {};
         this.doc = doc;
         this.metric = versusMetric(this.config);
+        // Free-for-all: one long match, a dead player plays on (no rounds to show).
+        this.respawns = localMatchRespawns(this.config);
         this.round = 1;
         this._plateSigs = [];
         this._barSig = '';
@@ -286,7 +295,7 @@ export class LocalVersusHud {
             this._meter(i, Number(entry.incoming) || 0);
             const value = values[i];
             const out = entry.isAlive === false;
-            const meta = versusMetaStats(entry, key);
+            const meta = versusMetaStats(entry, key, { respawns: this.respawns });
             // A teammate's bar shows the team's progress: the goal is the team's.
             const toward = teamMode && teamTotals ? (teamTotals[entry.team ?? i] ?? value) : value;
             const rank = showRanks ? ranks[i] : 0;
@@ -332,9 +341,9 @@ export class LocalVersusHud {
         if (!bar) return;
         const teams = this.config.isTeamMode ? this._teamTotals(entries, values) : [];
         const timed = clockMs !== null && clockMs !== undefined;
-        // Time's up ends the match when this round ends.
+        // Time's up ends a survivor match when this round ends; free-for-all has no rounds.
         let clock = '';
-        if (timed) clock = clockMs > 0 ? formatClock(clockMs) : 'Last round';
+        if (timed) clock = clockMs > 0 || this.respawns ? formatClock(clockMs) : 'Last round';
         const sig = `${this.round}|${clock}|${teams.map((t) => `${t.id}:${t.total}`).join(',')}`;
         if (sig === this._barSig) return;
         this._barSig = sig;
@@ -348,10 +357,11 @@ export class LocalVersusHud {
             + `<span class="lv-match-bar__team-name">${escapeHtml(t.label)}</span>`
             + `<span class="lv-match-bar__team-total">${escapeHtml(this._format(t.total))}</span></span>`
         )).join('');
+        const roundHtml = this.respawns ? '' : `<span class="lv-match-bar__round">Round ${this.round}</span>`;
         bar.innerHTML = `
             <span class="lv-match-bar__mode">${escapeHtml(versusMode(this.config))}</span>
             <span class="lv-match-bar__goal">${escapeHtml(versusGoal(this.config))}</span>
-            <span class="lv-match-bar__round">Round ${this.round}</span>
+            ${roundHtml}
             ${clockHtml}
             ${teamHtml ? `<span class="lv-match-bar__teams">${teamHtml}</span>` : ''}`;
     }
@@ -389,8 +399,9 @@ export class LocalVersusHud {
     }
 
     /**
-     * The knock-out card over a board (3–4 players, until the round ends; in Infinity's
-     * Last Standing, until the match ends), naming who did it.
+     * The knock-out card over a board, naming who did it: in free-for-all until the player
+     * plays again (a person presses a key, a bot comes back on its own); in survivor until the
+     * round ends; in Infinity's Last Standing until the match ends.
      * @param {number} index the player out
      * @param {number|null} [by] who knocked them out (null or themselves: topped out)
      */
@@ -404,15 +415,28 @@ export class LocalVersusHud {
         const knockedBy = Number.isInteger(by) && by !== index;
         const cause = knockedBy ? `By ${this._name(by)}` : 'Topped out';
         const byColor = knockedBy ? ` style="--by-color:${this._color(by)}"` : '';
+        const isBot = this.config.playerSlots?.[index]?.kind === 'bot';
         // Last Standing in Infinity is one round: there is no next one to come back for.
-        const note = this.config.isInfinityLMS ? 'Out for this match' : 'Back next round';
+        let note = 'Back next round';
+        if (this.config.isInfinityLMS) note = 'Out for this match';
+        else if (this.respawns) note = isBot ? 'Back in a moment' : 'Press any key to play again';
+        const noteClass = this.respawns && !isBot ? 'lv-ko__note is-respawn' : 'lv-ko__note';
         card.innerHTML = '<span class="lv-ko__title">Out</span>'
             + `<span class="lv-ko__cause"${byColor}>${escapeHtml(cause)}</span>`
-            + `<span class="lv-ko__note">${note}</span>`;
+            + `<span class="${noteClass}">${note}</span>`;
         section.appendChild(card);
         this._knockouts.set(index, card);
         // Let the board fade first, then the card rises.
         setTimeout(() => card.classList.add('is-shown'), 600);
+    }
+
+    /**
+     * One player's knock-out card goes (free-for-all: they play again).
+     * @param {number} index
+     */
+    clearKnockout(index) {
+        this._knockouts.get(index)?.remove();
+        this._knockouts.delete(index);
     }
 
     clearKnockouts() {

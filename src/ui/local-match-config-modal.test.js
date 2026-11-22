@@ -22,6 +22,8 @@ describe('buildLocalMatchConfig — config contract', () => {
 
         expect(config.numPlayers).toBe(2);
         expect(config.isInfinityLMS).toBe(false);
+        // Free-for-all (respawn on a key) is the default game type.
+        expect(config.gameType).toBe('ffa');
         expect(config.endCondition).toBe('frags');
         expect(config.endConditionValue).toBe(7);
         expect(config.startLevel).toBe(1);
@@ -70,6 +72,8 @@ describe('buildLocalMatchConfig — config contract', () => {
         expect(config.isInfinityLMS).toBe(true);
         expect(config.endCondition).toBe('infinity-lms');
         expect(config.infinityMaxRows).toBe(250);
+        // Last Standing keeps its elimination rules: no game type.
+        expect(config).not.toHaveProperty('gameType');
         expect(config).not.toHaveProperty('endConditionValue');
         expect(config).not.toHaveProperty('startLevel');
         expect(config).not.toHaveProperty('levelProgression');
@@ -203,6 +207,16 @@ describe('buildLocalMatchConfig — config contract', () => {
         expect(nextStepperValue(7, 1, {
             min: 1, max: 100, step: 1, fineStep: NaN, fineBelow: NaN,
         })).toBe(8);
+    });
+
+    it('carries the game type, reading anything unknown as free-for-all', () => {
+        const typeFor = (gameType) => buildLocalMatchConfig({
+            numPlayers: '2', matchMode: 'ffa', endCondition: 'frags', endConditionValue: '7', startLevel: '1', gameType,
+        }).gameType;
+        expect(typeFor('ffa')).toBe('ffa');
+        expect(typeFor('survivor')).toBe('survivor');
+        expect(typeFor(undefined)).toBe('ffa');
+        expect(typeFor('rounds')).toBe('ffa');
     });
 
     it('maps each attack style to the correct garbage rules', () => {
