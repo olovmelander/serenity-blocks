@@ -1,4 +1,5 @@
-"""Odyssey's lowland birds: a herring gull, a barn swallow and a greylag goose (chapters 3-4).
+"""Odyssey's lowland birds: a herring gull, a barn swallow and a greylag goose (chapters 3-4), the
+griffon vultures of the summit kettle and the fieldfares the turn's gust lifts out of the trees.
 
 Run headless (nothing in an open Blender session is touched):
 
@@ -855,8 +856,188 @@ def build_vulture():
     return b
 
 
-SPECS = {"gull": GULL, "swallow": SWALLOW, "goose": GOOSE, "vulture": VULTURE}
-BUILDERS = {"gull": build_gull, "swallow": build_swallow, "goose": build_goose, "vulture": build_vulture}
+# =================================================================================================
+# THE FIELDFARE (Turdus pilaris): 0.40 m span, 0.26 m long - the parties the turn's gust lifts out
+# of the broadleaf crowns between the island and the mountains (world/odyssey-turn-wake.js). They
+# are drawn large (about ten times life, to read 150-300 u off), so on a phone a near one is 60-100
+# px across, seen from above and from the side as it climbs out of a crown and drops into another.
+#
+# A thrush: a plump body, a round grey head with a yellow bill, broad wings with a pointed hand, a
+# square black tail. What names it in flight: the chestnut-brown back between the wings against
+# the blue-grey head and the pale grey rump over the black tail; from below, the white underwing
+# that flashes with every beat; the breast washed rust-orange and spotted black, the belly white.
+# (They were flat dark cut-outs, two wings and a body cut by an alpha test: 2026-11-22, the owner:
+# "they need to be modelled better in Blender".)
+# =================================================================================================
+
+FIELDFARE_PLUMAGE = {
+    "head": lin("#8b939b"),
+    "crown": lin("#7d858e"),
+    "lore": lin("#3b3735"),
+    "brow": lin("#b9bcbd"),
+    "eye": lin("#100d0c"),
+    "mantle": lin("#6f452c"),
+    "scapular": lin("#7c5034"),
+    "rump": lin("#a2a8ae"),
+    "throat": lin("#dcb478"),
+    "breast": lin("#cf8f45"),
+    "spot": lin("#2a1f1a"),
+    "flank": lin("#d8c6ad"),
+    "belly": lin("#eeeae3"),
+    "covert": lin("#6c4a33"),
+    "covertEdge": lin("#8a6a4e"),
+    "flight": lin("#3a322d"),
+    "rib": lin("#4b423b"),
+    "underwing": lin("#f1efec"),
+    "underFlight": lin("#a7a29c"),
+    "tail": lin("#1c1918"),
+    "tailUnder": lin("#2c2826"),
+    "bill": lin("#dcb43c"),
+    "billTip": lin("#3a3122"),
+}
+
+# The body's rings (z, half width, top, bottom, centre height), tail to face: plump and deep in the
+# breast, a short neck, a round head with the eye on its widest ring.
+FIELDFARE_BODY = [
+    (-0.062, 0.010, 0.008, 0.008, 0.006),
+    (-0.050, 0.017, 0.013, 0.015, 0.004),
+    (-0.034, 0.024, 0.018, 0.022, 0.002),
+    (-0.016, 0.029, 0.022, 0.028, 0.000),
+    (0.002, 0.031, 0.024, 0.030, -0.001),
+    (0.020, 0.030, 0.024, 0.030, 0.000),
+    (0.036, 0.026, 0.022, 0.026, 0.003),
+    (0.048, 0.021, 0.020, 0.021, 0.007),
+    (0.058, 0.020, 0.020, 0.018, 0.011),
+    (0.067, 0.019, 0.019, 0.016, 0.012),
+    (0.076, 0.014, 0.014, 0.011, 0.011),
+    (0.083, 0.008, 0.008, 0.006, 0.010),
+]
+FIELDFARE_SIDES = 12
+
+
+def fieldfare_body_colour(z, ca, sa):
+    P = FIELDFARE_PLUMAGE
+    # Which ring and which point round it: the spots sit on every other point, ring by ring offset,
+    # so they read as rows of dark drops, not stripes.
+    k = min(range(len(FIELDFARE_BODY)), key=lambda i: abs(FIELDFARE_BODY[i][0] - z))
+    j = round(((math.atan2(sa, ca) - math.pi / 2) % (2 * math.pi)) / (2 * math.pi / FIELDFARE_SIDES)) % FIELDFARE_SIDES
+    dot_here = 1.0 if (j + k) % 2 == 0 else 0.0
+    # Above: the grey rump over the tail, the chestnut mantle and scapulars between the wings, the
+    # blue-grey nape and crown.
+    back = mix(P["rump"], P["mantle"], smooth(-0.036, -0.020, z))
+    back = mix(back, P["scapular"], smooth(0.4, 0.1, abs(sa)) * smooth(-0.02, 0.0, z) * smooth(0.04, 0.02, z))
+    back = mix(back, P["head"], smooth(0.034, 0.046, z))
+    back = mix(back, P["crown"], smooth(0.056, 0.064, z) * smooth(0.6, 0.9, sa))
+    # Below: the white belly and vent, the rust-orange breast and the buff throat, spotted; the
+    # flanks buff-white with dark drops.
+    under = mix(P["belly"], P["breast"], smooth(-0.020, 0.004, z))
+    under = mix(under, P["throat"], smooth(0.046, 0.058, z))
+    # (the middle of the belly stays white back from the breast: the wash is widest at the sides)
+    under = mix(under, P["belly"], smooth(-0.004, -0.020, z) * smooth(-0.6, -0.9, sa))
+    spotted = smooth(-0.022, -0.004, z) * smooth(0.068, 0.054, z) * smooth(-0.99, -0.75, sa)
+    flank = mix(P["flank"], P["breast"], 0.5 * smooth(0.0, 0.03, z))
+    flanked = smooth(-0.75, -0.35, sa) * smooth(0.10, -0.25, sa)
+    under = mix(under, flank, flanked * smooth(-0.045, -0.020, z) * smooth(0.040, 0.020, z))
+    spots = dot_here * max(spotted, 0.85 * flanked * smooth(-0.040, -0.020, z) * smooth(0.036, 0.016, z))
+    under = mix(under, P["spot"], 0.8 * spots)
+    col = mix(under, back, smooth(-0.20, 0.25, sa))
+    # The head: grey down to below the eye, a dark lore from the eye to the bill, a pale brow.
+    head = smooth(0.050, 0.060, z)
+    col = mix(col, P["head"], head * smooth(-0.55, -0.15, sa))
+    col = mix(col, P["lore"], smooth(0.070, 0.078, z) * smooth(0.55, 0.2, abs(sa)) * smooth(0.3, 0.6, abs(ca)))
+    if abs(z - 0.067) < 1e-6 and abs(ca) > 0.75 and 0.0 < sa < 0.6:
+        col = P["eye"]
+    elif abs(z - 0.067) < 1e-6 and abs(ca) > 0.45 and sa >= 0.6:
+        col = mix(col, P["brow"], 0.55)
+    return col
+
+
+FIELDFARE = {
+    "span": 0.40,
+    "shoulder": (0.014, 0.010, 0.026),
+    "wrist": (0.070, 0.010, 0.034),
+    "armBand": (0.012, 0.040), "armBandTE": (0.006, 0.058),
+    "handBand": (0.062, 0.080), "handBandTE": (0.020, 0.112),
+    "tipBand": (0.125, 0.200),
+    # A thrush's wing: broad in the arm, the wrist the forward-most point, the hand tapering to a
+    # rounded point made by the longest primaries.
+    "planform": [
+        (0.012, 0.034, -0.032), (0.026, 0.037, -0.038), (0.040, 0.039, -0.041), (0.054, 0.040, -0.042),
+        (0.066, 0.041, -0.042), (0.078, 0.041, -0.041), (0.092, 0.039, -0.039), (0.108, 0.035, -0.037),
+        (0.124, 0.031, -0.035), (0.140, 0.026, -0.033), (0.155, 0.020, -0.031), (0.169, 0.013, -0.028),
+        (0.181, 0.006, -0.024), (0.191, 0.000, -0.019),
+    ],
+    "tip": (0.198, -0.010),
+    # Across the chord: the leading edge, the coverts, the greater coverts' pale edge (two points
+    # close together: a line), the flight feathers to the trailing edge.
+    "chord": [0.0, 0.18, 0.38, 0.46, 0.70, 1.0],
+    "camber": 0.04,
+    "wingY": lambda s: 0.010 + 0.003 * (s / 0.2),
+    "tailY": 0.006,
+}
+
+
+def fieldfare_wing_colour(s, c):
+    P = FIELDFARE_PLUMAGE
+    hand = smooth(0.074, 0.096, s)
+    # The flight feathers told one from the next: every other station a shade paler.
+    k = min(range(len(FIELDFARE["planform"])), key=lambda i: abs(FIELDFARE["planform"][i][0] - s))
+    rib = 1.0 if k % 2 == 0 else 0.0
+    flight = mix(P["flight"], P["rib"], 0.65 * rib)
+    # Above: brown coverts over the arm and the base of the hand, their pale edge, the dark
+    # grey-brown flight feathers behind and along the hand.
+    coverts = mix(P["covert"], P["covertEdge"], (1 - smooth(0.0, 0.05, abs(c - 0.40))) * (1 - hand))
+    top = mix(coverts, flight, smooth(0.42, 0.52, c) * (1 - hand) + hand * smooth(0.10, 0.34, c))
+    top = mix(top, flight, smooth(0.13, 0.16, s))
+    # Below: the white coverts and axillaries (the flash of a fieldfare's beat), grey flight feathers.
+    under_flight = mix(P["underFlight"], P["underwing"], 0.15 * rib)
+    under = mix(P["underwing"], under_flight, max(smooth(0.40, 0.56, c), smooth(0.11, 0.15, s)))
+    return top, under
+
+
+# The tail (x >= 0; mirrored): a square-ended fan, a little rounded, rows of three points so it
+# fans evenly; the rump's grey coverts lie over its root.
+FIELDFARE_TAIL = [
+    (0.0, -0.050), (0.0060, -0.050), (0.0120, -0.050),
+    (0.0, -0.085), (0.0088, -0.085), (0.0172, -0.085),
+    (0.0, -0.120), (0.0112, -0.120), (0.0222, -0.120),
+    (0.0, -0.148), (0.0130, -0.148), (0.0262, -0.147),
+    (0.0, -0.160), (0.0134, -0.158), (0.0262, -0.153),
+]
+FIELDFARE_TAIL_TRIS = [
+    (r * 3 + c, r * 3 + c + 1, (r + 1) * 3 + c + 1) for r in range(4) for c in range(2)
+] + [
+    (r * 3 + c, (r + 1) * 3 + c + 1, (r + 1) * 3 + c) for r in range(4) for c in range(2)
+]
+
+
+def fieldfare_tail_colour(p):
+    P = FIELDFARE_PLUMAGE
+    z = p[2]
+    top = mix(P["rump"], P["tail"], smooth(-0.056, -0.080, z))
+    under = mix(P["belly"], P["tailUnder"], smooth(-0.060, -0.084, z))
+    return top, under
+
+
+def build_fieldfare():
+    b = Builder("fieldfare")
+    P = FIELDFARE_PLUMAGE
+    shell(b, "body", FIELDFARE_BODY, FIELDFARE_SIDES, fieldfare_body_colour,
+          tail=((0.0, 0.006, -0.066), P["rump"]), nose=((0.0, 0.010, 0.087), P["lore"]), power=0.9)
+    # The bill: yellow, dark at the tip.
+    cone(b, "bill", 0.080, (0.0, 0.0085, 0.103), 0.0098, 0.0046, 0.0036,
+         lambda t: mix(P["bill"], P["billTip"], smooth(0.55, 1.0, t)), count=6)
+    for side in (1, -1):
+        build_wing(b, FIELDFARE, side, fieldfare_wing_colour)
+    pts, mirror = mirrored([(x, FIELDFARE["tailY"] + 0.0010 * smooth(-0.05, -0.15, z), z) for x, z in FIELDFARE_TAIL])
+    build_sheet(b, "tail", pts, tail_tris(FIELDFARE_TAIL_TRIS, mirror), fieldfare_tail_colour,
+                lambda p: smooth(0.050, 0.160, -p[2]))
+    return b
+
+
+SPECS = {"gull": GULL, "swallow": SWALLOW, "goose": GOOSE, "vulture": VULTURE, "fieldfare": FIELDFARE}
+BUILDERS = {"gull": build_gull, "swallow": build_swallow, "goose": build_goose, "vulture": build_vulture,
+            "fieldfare": build_fieldfare}
 
 # -- the wingbeat: keyframed in Blender ------------------------------------------------------------
 #
@@ -926,6 +1107,16 @@ BEATS = {
         "curl": [(0.046, 0.14), (0.22, 0.28), (0.422, 0.20), (0.612, 0.04), (0.849, 0.08)],
         "heave": [(0.055, -0.02), (0.537, 0.02)],
     }},
+    # Fieldfare: quick, full beats in bursts between short glides; the broad hand folds on the
+    # upstroke, less than a swallow's sickle.
+    "fieldfare": {"rate": 5.2, "down": 0.42, "keys": {
+        "lift": [(0.0, 0.66), (0.42, -0.50)],
+        "bend": [(0.0, 0.06), (0.13, 0.15), (0.42, 0.02), (0.53, -0.16), (0.69, -0.44), (0.87, -0.18)],
+        "fold": [(0.0, 0.10), (0.26, 0.04), (0.42, 0.08), (0.58, 0.42), (0.73, 0.50), (0.91, 0.24)],
+        "sweep": [(0.0, 0.08), (0.22, -0.02), (0.42, 0.02), (0.66, 0.20)],
+        "curl": [(0.04, 0.02), (0.20, 0.13), (0.37, 0.06), (0.58, -0.04), (0.85, -0.01)],
+        "heave": [(0.05, -0.006), (0.52, 0.006)],
+    }},
 }
 # The golden eagle (composition/odyssey-eagle-flight.js poses its 26 joints in code): the shapes
 # its joints are driven by, over one beat. height 1 at the top .. -1 at the bottom; fold 0..1 the
@@ -941,7 +1132,12 @@ GLIDE = {
     "swallow": {"lift": 0.06, "sweep": 0.34, "bend": -0.06, "fold": 0.44, "curl": 0.02},
     "vulture": {"lift": 0.10, "sweep": 0.02, "bend": 0.05, "fold": 0.02, "curl": 0.12},
     "goose": {"lift": 0.08, "sweep": 0.0, "bend": -0.06, "fold": 0.06, "curl": 0.03},
+    "fieldfare": {"lift": 0.08, "sweep": 0.10, "bend": -0.04, "fold": 0.16, "curl": 0.02},
 }
+# The fieldfare's bound (world/odyssey-turn-wake.js): between bursts a thrush draws its wings in
+# for a moment and dips. The game blends the glide toward this by the bound's weight; the stretch
+# check folds it in too.
+BOUND = {"fieldfare": {"lift": -0.04, "sweep": 0.48, "bend": -0.10, "fold": 0.45, "curl": 0.0}}
 # The tail's spread (x widened by 1 + spread at its tip) and twist (radians about the long axis at
 # its tip) the game asks for at most (odyssey-flights.js, odyssey-summit-birds.js).
 TAIL_LIMITS = {"spread": 0.34, "twist": 0.30}
@@ -1036,6 +1232,14 @@ def wing_pose(kind, phi, weight):
     return out
 
 
+def bound_pose(kind, share):
+    """The glide drawn toward the bound (wings in) by `share` (0..1)."""
+    g, d = GLIDE[kind], BOUND[kind]
+    out = {n: g[n] + (d[n] - g[n]) * share for n in g}
+    out["heave"] = 0.0
+    return out
+
+
 def tail_pose(spec, p, tail, spread, twist):
     """The tail fanned (x widened toward its tip) and twisted about the body's long axis."""
     if tail <= 0.0:
@@ -1091,18 +1295,23 @@ def stretch(b, spec, kind):
     worst_hi, worst_lo = 1.0, 1.0
     tails = ((0.0, 0.0), (TAIL_LIMITS["spread"], TAIL_LIMITS["twist"]),
              (TAIL_LIMITS["spread"], -TAIL_LIMITS["twist"]))
+    poses = []
     for k in range(24):
         for weight in (0.0, 0.5, 1.0):
-            pose = wing_pose(kind, 2 * math.pi * k / 24, weight)
-            for spread, twist in (tails if k % 6 == 0 else tails[:1]):
-                moved = [fold(spec, tail_pose(spec, v, tl, spread, twist), w, pose)
-                         for v, w, tl in zip(b.verts, b.hinge, b.tail)]
-                for e, r0 in rest.items():
-                    if r0 < 1e-6:
-                        continue
-                    r = math.dist(moved[e[0]], moved[e[1]]) / r0
-                    worst_hi = max(worst_hi, r)
-                    worst_lo = min(worst_lo, r)
+            poses.append((wing_pose(kind, 2 * math.pi * k / 24, weight), tails if k % 6 == 0 else tails[:1]))
+    # (A bird that bounds draws its wings in between bursts: those poses too.)
+    for share in ((0.5, 1.0) if kind in BOUND else ()):
+        poses.append((bound_pose(kind, share), tails))
+    for pose, tail_set in poses:
+        for spread, twist in tail_set:
+            moved = [fold(spec, tail_pose(spec, v, tl, spread, twist), w, pose)
+                     for v, w, tl in zip(b.verts, b.hinge, b.tail)]
+            for e, r0 in rest.items():
+                if r0 < 1e-6:
+                    continue
+                r = math.dist(moved[e[0]], moved[e[1]]) / r0
+                worst_hi = max(worst_hi, r)
+                worst_lo = min(worst_lo, r)
     return worst_hi, worst_lo
 
 
@@ -1122,7 +1331,8 @@ def record(kind, b, normals):
     zs = [v[2] for v in b.verts]
     hi, lo = stretch(b, spec, kind)
     species = {"gull": "herring gull (Larus argentatus)", "swallow": "barn swallow (Hirundo rustica)",
-               "goose": "greylag goose (Anser anser)", "vulture": "griffon vulture (Gyps fulvus)"}[kind]
+               "goose": "greylag goose (Anser anser)", "vulture": "griffon vulture (Gyps fulvus)",
+               "fieldfare": "fieldfare (Turdus pilaris)"}[kind]
     return {
         "species": species,
         "span": round(max(xs) - min(xs), 4),
@@ -1205,6 +1415,8 @@ def write_beats_module(path):
         lines.append(f"        rate: {spec['rate']},")
         lines.append(f"        down: {spec['down']},")
         lines.append(f"        glide: Object.freeze({json.dumps(GLIDE[kind], separators=(', ', ': '))}),")
+        if kind in BOUND:
+            lines.append(f"        bound: Object.freeze({json.dumps(BOUND[kind], separators=(', ', ': '))}),")
         lines.append("        cycle: Object.freeze({")
         for ch in CHANNELS:
             lines.append(f"            {ch}: Object.freeze({json.dumps([r6(c) for c in CYCLES[kind][ch]], separators=(', ', ': '))}),")
@@ -1301,8 +1513,11 @@ def previews(built_meshes, out_dir):
         spec = SPECS[kind]
         ortho = spec["span"] * 1.15
         tiles = {}
-        for pname, (phi, weight) in PREVIEW_POSES.items():
-            pose = wing_pose(kind, phi, weight)
+        rows = dict(PREVIEW_POSES)
+        if kind in BOUND:
+            rows["bound"] = None
+        for pname, row in rows.items():
+            pose = bound_pose(kind, 1.0) if row is None else wing_pose(kind, *row)
             verts = [fold(spec, v, w, pose) for v, w in zip(b.verts, b.hinge)]
             objs = [make_object(scene, f"{kind}-{pname}", b, verts),
                     make_object(scene, f"{kind}-{pname}-under", b, verts, under=True)]
@@ -1317,7 +1532,7 @@ def previews(built_meshes, out_dir):
                 mesh = o.data
                 bpy.data.objects.remove(o, do_unlink=True)
                 bpy.data.meshes.remove(mesh)
-        pnames, vnames = list(PREVIEW_POSES), list(views)
+        pnames, vnames = list(rows), list(views)
         for mode, (tw, th), scale in (("big", (300, 200), 1), ("game", (64, 43), 4)):
             sheet = np.zeros((len(pnames) * th * scale, len(vnames) * tw * scale, 4), dtype=np.float32)
             for r, p in enumerate(pnames):
@@ -1347,7 +1562,7 @@ def main():
     author_beats()
     for kind, fit in FIT_ERROR.items():
         print(f"{TAG} {kind} beat: worst fit " + ", ".join(f"{ch} {e:.4f}" for ch, e in fit.items()))
-    for kind in ("gull", "swallow", "goose", "vulture"):
+    for kind in ("gull", "swallow", "goose", "vulture", "fieldfare"):
         b = BUILDERS[kind]()
         b.orient()
         normals = b.normals()

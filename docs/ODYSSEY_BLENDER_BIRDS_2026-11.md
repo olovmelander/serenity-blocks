@@ -681,3 +681,84 @@ how big it is.
 
 **Cost:** the same one draw; 13 swallows (12 and the fly-by) x 514 triangles, about 6.7 k
 (were 2.5 k). No new material, pipeline, texture or pass.
+
+## The gust's fieldfares (2026-11-22)
+
+The owner, from a phone, of "brown colored birds or flying animals flying up from below and then
+down to the trees" in the mountains: "They need to be modelled better in Blender." They were not
+the swallows. They were the birds of the turn's wake (`world/odyssey-turn-wake.js`): as the
+cloud shade crosses the rail between the island's last orb and the mountains' first, a gust lifts
+three parties of eleven birds out of the broadleaf crowns, and they rise over the forest, wheel
+once and settle into trees downwind. Each bird was one quad in the leaves' draw, cut by the alpha
+test into two wings and a body in one flat dark brown, always facing the camera: from the rail
+camera they read as brown boomerangs, 40-80 px across on a phone, beside the Blender gulls,
+swallows and geese.
+
+**The bird.** `odyssey_birds.py` builds a fifth bird, a **fieldfare** (*Turdus pilaris*), 602
+triangles: a flock thrush that lifts out of autumn trees in loose parties, brown as the owner
+saw them. A plump body of twelve sides, a round grey head with a yellow bill tipped dark; the
+chestnut back and scapulars between the wings, the blue-grey crown and nape, the pale grey rump
+over a black square tail; the rust-orange breast spotted black (the spots on every other point of
+each ring, offset ring by ring), the spotted buff flanks, the white belly; brown coverts over dark
+grey-brown flight feathers above, and below the white underwing a fieldfare flashes with every
+beat. A keyed beat (5.2 a second, the broad hand folding on the upstroke) and a new pose, the
+**bound**: between bursts a thrush draws its wings in for a moment. The script checks the bound
+with the beat and the glide (worst stretch 1.33, squash 0.22, like the swallow's swept glide).
+The other birds and their beats are byte for byte what they were.
+
+![The fieldfare in the Blender previews: glide, top, down, bottom, up and the bound, from above,
+below, the front, the side and three quarters](images/odyssey-fieldfares-2026-11-22/fieldfare-model.jpg)
+
+**The draw.** `world/odyssey-wake-fieldfares.js`: one instanced opaque draw of the Blender bird,
+a child of the wake's leaf mesh (shown, hidden and compiled with it; the world's prewarm reveals
+every descendant). The leaves keep their draw, now leaves only. Each bird flies the route it
+always flew (`turnWakeBirdAt`), and the rest follows from that route in closed form:
+
+- it faces along its velocity (the route's derivative), leaning toward the hop where the route
+  rises straight out of the crown; its climb and dive are held softly (toward 0.85 and -0.6 rad,
+  never reached, so the body never stops turning with a corner);
+- it banks by its sideways acceleration (the route's second derivative), but only once it has the
+  speed to turn on its wings (8-22 u/s): a bird lifting out of a crown or dropping into one is
+  level;
+- it beats hard as it climbs out, then flies in bursts of four or five beats and half-second
+  bounds with the body dipping; it glides in on spread wings and flutters into the next crown. The
+  reasons to beat are joined as 1 - (1 - a)(1 - b)(1 - c) on C2 ramps, not by a max, so the wings
+  never change pace with a corner;
+- its tail spreads as it lifts and brakes and twists with the bank.
+
+Lit by the land's own light (the world renderer's `lightAt`: the sun as it falls on that place
+under the drifting and the turning shade), the sky above, the forest bounced up under the wings,
+then the world's own air. Same size in world units as the cut-outs (3.6-4.8 u across).
+
+![Up close in the bird playground (?effect=odyssey-birds&bird=fieldfare): three quarters, the
+side (in a bound), from below, from above over the forest](images/odyssey-fieldfares-2026-11-22/fieldfare-near.jpg)
+
+![The real game, the rail scrolled from L18 across the seam: main (top) and this pass (bottom),
+the same moments of the wake](images/odyssey-fieldfares-2026-11-22/fieldfare-in-game.jpg)
+
+![The same frame near the L19 orb, x2: the cut-outs and the fieldfares](images/odyssey-fieldfares-2026-11-22/fieldfare-in-game-near.jpg)
+
+**How it was checked.** The Blender previews; the bird playground (four views on WebGPU and one on
+WebGL2, console clean); then the real game in a private headless Chrome, 600 x 1300 portrait at 30 fps:
+boot with `?skipIntro=1&unlockAll=1&odysseyDebug=1`, close the journey card, `settleAt(0.232)` on
+the rail camera and move its `targetPosition` to 0.262 over five seconds, as a scroll does; the
+gust lets go at p ~0.25 and the wake is in the air for ~16 s. The same run on a main build gives
+the before. Console: only `THREE.Clock` deprecated, which main prints too.
+
+**Tests.** `odyssey-wake-fieldfares.test.js`: the route and its true velocity and acceleration,
+the frame (right-handed, never flipping, climb and dive and bank within their limits, level at
+lift-off), no corner in the turn, the bank or any wing channel, the rhythm (beats out of the
+crown, bursts and bounds on the way, the glide in, the flutter), and the draw built clean for
+WGSL and GLSL. `odyssey-blender-birds.test.js` now holds the fieldfare with the other four
+(budget 650, facing, hinge weights, its plumage, its skin over every pose it flies).
+
+**Cost.** 33 birds x 602 triangles, about 20 k, one more draw and pipeline, drawn only while a
+wake is in the air (~16 s a crossing); the leaves' draw lost 33 quads. Not GPU-timed.
+
+**Left for the owner.**
+- They read smaller than the cut-outs although their span is the same: a flat chevron always
+  showed its whole span to the eye, a bird seen from behind with its wings up or drawn in shows
+  less. Larger is one number (`WAKE_FIELDFARES.span`); they are already about ten times life
+  beside the trees.
+- The species is my choice (a fieldfare: brown, a flock bird of autumn trees).
+- The leaves the same gust throws are unchanged; against the bright sky some read as dark flecks.

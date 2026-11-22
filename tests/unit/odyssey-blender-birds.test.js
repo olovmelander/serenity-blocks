@@ -1,9 +1,10 @@
 /**
  * THE BLENDER BIRDS (2026-11, docs/ODYSSEY_BLENDER_BIRDS_2026-11.md): the herring gull, barn
- * swallow, greylag goose and griffon vulture the Blender script (scripts/blender/odyssey/
- * odyssey_birds.py) writes into odyssey-bird-models.js (and their keyframed wingbeats into
+ * swallow, greylag goose, griffon vulture and fieldfare the Blender script (scripts/blender/
+ * odyssey/odyssey_birds.py) writes into odyssey-bird-models.js (and their keyframed wingbeats into
  * odyssey-bird-beats.js), folded by odyssey-bird-rig.js, and what draws them: the lowland flights
- * (odyssey-flights.js) and the summit kettle (odyssey-summit-birds.js).
+ * (odyssey-flights.js), the summit kettle (odyssey-summit-birds.js) and the turn's gust
+ * (world/odyssey-wake-fieldfares.js, its own test: odyssey-wake-fieldfares.test.js).
  *
  *  - THE MODELS: sizes and triangle budgets for the pixels they cover, shells facing out and
  *    sheets facing up, hinge weights where the joints are, the plumage each species is named by.
@@ -37,6 +38,7 @@ import {
 import {
     createEaglePose, eagleBout, eagleFlight, EAGLE_BOUTS, EAGLE_BEAT, ODYSSEY_EAGLE,
 } from '../../src/rendering/odyssey/composition/odyssey-eagle-flight.js';
+import { wakeFieldfarePoseAt } from '../../src/rendering/odyssey/world/odyssey-wake-fieldfares.js';
 
 vi.setConfig({ testTimeout: 60_000 });
 afterEach(() => { vi.restoreAllMocks(); });
@@ -47,8 +49,23 @@ const KINDS = [
     ['swallow', FLIGHT_KIND.SWALLOW, 0.33],
     ['goose', FLIGHT_KIND.GOOSE, 1.60],
 ];
-/** Every Blender bird: the lowland kinds and the summit kettle's vulture (no flight kind). */
-const BIRDS = [...KINDS, ['vulture', null, 2.60]];
+/** The turn's gust's fieldfares fly their own way ('wake'). */
+const WAKE = 'wake';
+/** Every Blender bird: the lowland kinds, the summit kettle's vulture (no flight kind) and the
+ * gust's fieldfare. */
+const BIRDS = [...KINDS, ['vulture', null, 2.60], ['fieldfare', WAKE, 0.40]];
+/** A few of the gust's birds (a hop, an arc, a wheel), for the poses a fieldfare flies. */
+const WAKE_BIRDS = [
+    {
+        x: 0, y: 0, z: 0, tx: 210, ty: -6, tz: -70, rise: 44, life: 11.2, s1: 0.21, s2: 0.44, wait: 0,
+    },
+    {
+        x: 0, y: 0, z: 0, tx: 170, ty: 8, tz: 40, rise: 36, life: 9.6, s1: 0.67, s2: 0.12, wait: 0,
+    },
+    {
+        x: 0, y: 0, z: 0, tx: 280, ty: -12, tz: -20, rise: 58, life: 12.8, s1: 0.93, s2: 0.81, wait: 0,
+    },
+];
 const HINGES = ['lift', 'sweep', 'bend', 'fold', 'curl'];
 const luminance = (c) => (0.2126 * c[0]) + (0.7152 * c[1]) + (0.0722 * c[2]);
 const vec = (a, i) => [a[i * 3], a[(i * 3) + 1], a[(i * 3) + 2]];
@@ -72,6 +89,12 @@ function nearest(model, target) {
 /** Every pose a bird flies in `seconds` of clock, for a few birds (the vulture: the kettle's). */
 function posesFlown(kind, seconds = 12, step = 1 / 30) {
     const out = [];
+    if (kind === WAKE) {
+        WAKE_BIRDS.forEach((b) => {
+            for (let t = 0; t <= b.life; t += step) out.push(wakeFieldfarePoseAt(b, t));
+        });
+        return out;
+    }
     if (kind === null) {
         [0.07, 0.31, 0.58, 0.93].forEach((seed) => {
             for (let t = 0; t < seconds; t += step) out.push(summitWingPose(t, seed));
@@ -120,8 +143,9 @@ describe('the Blender birds (models)', () => {
             // (The goose is seen 100-220 px across since the skein flies the foot of the wall,
             // 2026-11-20, and is built finer for it; the others for some tens of pixels.)
             // (The goose and the swallow were rebuilt for the near view: 2026-11-20 the goose, 2026-11-21
-            // the swallow, which the meadow's parties bring close to the rail and the map's camera.)
-            const budget = { goose: 900, swallow: 600 };
+            // the swallow, which the meadow's parties bring close to the rail and the map's camera.
+            // The fieldfare, 2026-11-22, comes to 60-100 px on a phone as the gust lifts it.)
+            const budget = { goose: 900, swallow: 600, fieldfare: 650 };
             expect(m.triangleCount).toBeLessThanOrEqual(budget[name] ?? 400);
             expect(m.index.length).toBe(m.triangleCount * 3);
             expect(m.positions.length).toBe(m.vertexCount * 3);
@@ -178,7 +202,9 @@ describe('the Blender birds (models)', () => {
                 }
             }
             // The wingtips are carried all the way; the tail's tip is carried, its root is not.
-            const tipL = nearest(m, [m.span / 2, m.wrist[1], -m.length]);
+            // (The outermost point: a fieldfare's long tail lies nearer (span / 2, -length) than its tip.)
+            let tipL = 0;
+            for (let i = 1; i < m.vertexCount; i += 1) if (m.positions[i * 3] > m.positions[tipL * 3]) tipL = i;
             expect(m.hinge[tipL * 4]).toBeCloseTo(1, 2);
             expect(m.hinge[(tipL * 4) + 1]).toBeCloseTo(1, 2);
             expect(Math.max(...m.tail)).toBeGreaterThan(0.95);
@@ -219,6 +245,24 @@ describe('the Blender birds (models)', () => {
         const fore = vec(goose.top, nearest(goose, [0.2, 0.04, 0.11]));
         const flightF = vec(goose.top, nearest(goose, [0.2, 0.04, -0.19]));
         expect(luminance(fore)).toBeGreaterThan(luminance(flightF) * 2);
+        // Fieldfare: a chestnut back between a blue-grey head and a pale grey rump over a black
+        // tail; the white underwing; a rust breast; a yellow bill.
+        const ff = decodeBirdModel('fieldfare');
+        const mantle = vec(ff.top, nearest(ff, [0, 0.024, 0.005]));
+        const head = vec(ff.top, nearest(ff, [0, 0.031, 0.062]));
+        const rump = vec(ff.top, nearest(ff, [0, 0.020, -0.042]));
+        const tail = vec(ff.top, nearest(ff, [0, 0.007, -0.150]));
+        expect(mantle[0]).toBeGreaterThan(mantle[2] * 2.5);
+        expect(luminance(head)).toBeGreaterThan(luminance(mantle) * 1.5);
+        expect(head[2]).toBeGreaterThanOrEqual(head[0]); // blue-grey, not brown
+        expect(luminance(rump)).toBeGreaterThan(luminance(mantle) * 2);
+        expect(luminance(tail)).toBeLessThan(0.02);
+        const underwing = vec(ff.under, nearest(ff, [0.06, 0.012, 0.03]));
+        expect(luminance(underwing)).toBeGreaterThan(0.75);
+        const breast = vec(ff.top, nearest(ff, [0.02, -0.022, 0.024]));
+        expect(breast[0]).toBeGreaterThan(breast[2] * 2);
+        const ffBill = vec(ff.top, nearest(ff, [0, 0.0134, 0.080]));
+        expect(ffBill[0]).toBeGreaterThan(ffBill[2] * 3);
     });
 
     it('writes the modules the script measured (the record it carries matches the arrays)', () => {
@@ -293,9 +337,11 @@ describe('the Blender birds\' wingbeat (CPU twin of the vertex stage)', () => {
             // the upstroke (the hinge bands widen toward it so it bunches gently instead of
             // crumpling), and the tail's fan opens (its feathers slide apart). The swallow's swept
             // glide tucks its short arm's trailing edge in by the body for good — a shape it
-            // holds, not a crease that flickers with the beat.
+            // holds, not a crease that flickers with the beat. The fieldfare's bound draws its hand
+            // in behind the wrist the same way, for half a second between bursts.
             expect(stretch, `${name} stretch`).toBeLessThan(1.4);
-            expect(squash, `${name} squash`).toBeGreaterThan(kind === FLIGHT_KIND.SWALLOW ? 0.18 : 0.45);
+            const floor = { [FLIGHT_KIND.SWALLOW]: 0.18, [WAKE]: 0.2 }[kind] ?? 0.45;
+            expect(squash, `${name} squash`).toBeGreaterThan(floor);
             expect(turned / (poses.length * m.triangleCount), `${name} turned faces`).toBeLessThan(0.002);
         });
 
