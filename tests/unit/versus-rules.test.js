@@ -18,7 +18,8 @@ import { MultiPlayerState } from '../../src/core/multi-player-state.js';
 import { FFAGameStateP2P } from '../../src/core/multiplayer/ffa-p2p-game-state.js';
 import {
     AttackCredit, CREDIT_MAX, VERSUS_GARBAGE_OPTIONS, VERSUS_MAX_PENDING_LINES,
-    applyVersusFeel, createVersusGarbageQueue, stepCrowdStamps, takeCrowdCut,
+    applyVersusFeel, createVersusGarbageQueue, forgetsSpentCredit, readVersusGameType,
+    respawnVersusBoard, stepCrowdStamps, takeCrowdCut,
 } from '../../src/core/multiplayer/versus-rules.js';
 
 afterEach(() => vi.restoreAllMocks());
@@ -285,6 +286,42 @@ describe('versus feel', () => {
         const { gameState } = game.players.get('76561198000000001');
         expect(gameState.pieceRandomizer).toBe('random');
         expect(gameState.lockStyle).toBe('gravity');
+    });
+});
+
+describe('free-for-all respawn', () => {
+    it('is the default game type; survivor must be asked for', () => {
+        expect(readVersusGameType(undefined)).toBe('ffa');
+        expect(readVersusGameType({ gameType: 'nonsense' })).toBe('ffa');
+        expect(readVersusGameType({ gameType: 'survivor' })).toBe('survivor');
+        expect(forgetsSpentCredit({})).toBe(true);
+        expect(forgetsSpentCredit({ gameType: 'survivor' })).toBe(false);
+    });
+
+    it('gives a dead player an empty well and keeps their totals and piece stream', () => {
+        const gameState = board([block('stack', 0, 10, HIDDEN_ROWS + 2)]);
+        applyVersusFeel(gameState);
+        Object.assign(gameState, {
+            score: 4321, lines: 37, piecesPlaced: 90, handicap: 4, garbageAttackSequence: 12,
+            simFrame: 5000, level: 7, isGameOver: true, isAlive: false,
+        });
+        gameState.pieceCounts.T = 9;
+        const rng = () => 0.5;
+        gameState.randomGenerator = rng;
+        gameState.nextPieces = ['S', 'Z'];
+
+        respawnVersusBoard(gameState, { startLevel: 2, levelProgression: false });
+
+        expect(gameState.lockedPieces).toEqual([]);
+        expect(gameState.boardGrid.every((row) => row.every((cell) => cell === null))).toBe(true);
+        expect(gameState).toMatchObject({
+            score: 4321, lines: 37, piecesPlaced: 90, handicap: 4, garbageAttackSequence: 12,
+            simFrame: 5000, level: 2, isGameOver: false, isAlive: true, lockStyle: 'gravity',
+        });
+        expect(gameState.pieceCounts.T).toBe(9);
+        expect(gameState.randomGenerator).toBe(rng);
+        expect(gameState.nextPieces.slice(0, 2)).toEqual(['S', 'Z']);
+        expect(gameState.nextPieces.length).toBeGreaterThanOrEqual(10);
     });
 });
 

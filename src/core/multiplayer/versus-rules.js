@@ -18,6 +18,68 @@
  */
 
 import { GarbageQueue, STAMP_PER_HANDICAP } from '../garbage.js';
+import { fillBag } from '../game.js';
+import { applyMatchLevelRule } from './match-level-rule.js';
+
+/**
+ * Versus game types. 'ffa' (free-for-all, the default): a player who dies presses a key and
+ * plays on at once on an empty well, keeping score and lines, and the match goes on until its
+ * goal (frags by default). 'survivor': rounds; the last player or team alive takes the round,
+ * then everyone restarts on an empty well.
+ */
+export const VERSUS_GAME_TYPES = Object.freeze(['ffa', 'survivor']);
+export const DEFAULT_VERSUS_GAME_TYPE = 'ffa';
+
+/**
+ * @param {{ gameType?: unknown } | null | undefined} config
+ * @returns {'ffa' | 'survivor'}
+ */
+export function readVersusGameType(config) {
+    return config?.gameType === 'survivor' ? 'survivor' : DEFAULT_VERSUS_GAME_TYPE;
+}
+
+/**
+ * Whether a frag credit that has faded to nothing is forgotten (AttackCredit.notePiecePlaced):
+ * in free-for-all a player who has not been attacked for a while dies uncredited; in survivor
+ * the last holder keeps it for the round.
+ * @param {{ gameType?: unknown } | null | undefined} config
+ */
+export function forgetsSpentCredit(config) {
+    return readVersusGameType(config) === 'ffa';
+}
+
+/**
+ * Put a dead player's board back in play (free-for-all respawn): an empty well at the match's
+ * start level and speed, no piece, no lock, blind or combo state. Score, lines, piece and clear
+ * counts, the piece stream (same generator, preview topped up), the player's handicap level,
+ * the attack sequence and the simulation clock carry on. The caller clears the player's garbage
+ * queue, frag credit and stamps, and marks the player alive.
+ * @param {import('../game.js').GameState} gameState
+ * @param {{ startLevel?: unknown, levelProgression?: unknown } | null | undefined} matchConfig
+ */
+export function respawnVersusBoard(gameState, matchConfig) {
+    const kept = {
+        score: gameState.score,
+        lines: gameState.lines,
+        piecesPlaced: gameState.piecesPlaced,
+        pieceCounts: { ...gameState.pieceCounts },
+        lineClearCounts: { ...gameState.lineClearCounts },
+        randomGenerator: gameState.randomGenerator,
+        rngDescriptor: gameState.rngDescriptor,
+        nextPieces: gameState.nextPieces.slice(),
+        handicap: gameState.handicap,
+        garbageAttackSequence: gameState.garbageAttackSequence,
+        simFrame: gameState.simFrame,
+        simTimeMs: gameState.simTimeMs,
+        lastTime: gameState.lastTime,
+    };
+    gameState.reset();
+    Object.assign(gameState, kept);
+    fillBag(gameState.nextPieces, gameState.randomGenerator, gameState.pieceRandomizer);
+    applyMatchLevelRule(gameState, matchConfig);
+    gameState.isAlive = true;
+    gameState.isGameOver = false;
+}
 
 export const VERSUS_MAX_PENDING_LINES = 20;
 
