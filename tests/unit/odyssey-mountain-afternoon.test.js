@@ -311,7 +311,8 @@ describe("the turn's wake", () => {
                 toOutput: (c) => c,
             })).toBeNull();
             expect(wake.mesh.visible).toBe(false);
-            expect(wake.mesh.geometry.instanceCount).toBe(plan.leaves.length + plan.birds.length);
+            // (The leaves: the birds are the fieldfares' own draw, odyssey-wake-fieldfares.test.js.)
+            expect(wake.mesh.geometry.instanceCount).toBe(plan.leaves.length);
             expect(wake.update(10, along - 500, true, x, z)).toBe(0);
             expect(wake.mesh.visible).toBe(false);
         });

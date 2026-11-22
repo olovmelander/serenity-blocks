@@ -76,6 +76,7 @@ import { createOdysseyHollowMist } from './odyssey-hollow-mist.js';
 import {
     ODYSSEY_TURN_WAKE, createOdysseyTurnWake, inTurnWakeReach, turnWakeSheds,
 } from './odyssey-turn-wake.js';
+import { createWakeFieldfares } from './odyssey-wake-fieldfares.js';
 import { prefersReducedMotion } from '../../../themes/shared/reduced-motion.js';
 import {
     ODYSSEY_BOULDERS, boulderMatrix, buildBoulderGeometry, buildBoulderSites,
@@ -7669,8 +7670,17 @@ export function createOdysseyWorld({
         geoCache.forEach((cached) => cached.dispose());
     }
     // THE TURN'S WAKE (odyssey-turn-wake.js): as the turning shade's edge passes the rail, leaves
-    // let go of the crowns along it and birds lift out of them. One alpha-tested draw, drawn only
-    // while a wake is in the air.
+    // let go of the crowns along it and birds lift out of them. One alpha-tested draw of leaves and
+    // the fieldfares' own draw (the Blender bird, odyssey-wake-fieldfares.js) as its child, so they
+    // are shown, hidden and compiled with it; drawn only while a wake is in the air.
+    const wakeLightAt = (xz) => {
+        const turn = dayTurnOf(xz).toVar();
+        return {
+            sun: landSunOf(turn),
+            direct: q.cloudShadows ? cloudShadowLight(xz, turn) : float(1).sub(turn.x.mul(uTurn.w)),
+        };
+    };
+    const wakeToOutput = (c, at) => toOutputSurface(applyAerial(c, at, AERIAL_CEIL_LAND, AERIAL_RATE_LAND));
     const turnWake = wakeTrees.length
         ? createOdysseyTurnWake({
             trees: wakeTrees,
@@ -7679,18 +7689,24 @@ export function createOdysseyWorld({
             leaves: q.cloudShadows ? ODYSSEY_TURN_WAKE.leaves.count : Math.round(ODYSSEY_TURN_WAKE.leaves.count * 0.4),
             // The summer's greens (a leaf in the air is lit through).
             tints: [[0.36, 0.46, 0.12], [0.50, 0.54, 0.15], [0.30, 0.40, 0.10], [0.58, 0.56, 0.18]],
-            lightAt: (xz) => {
-                const turn = dayTurnOf(xz).toVar();
-                return {
-                    sun: landSunOf(turn),
-                    direct: q.cloudShadows ? cloudShadowLight(xz, turn) : float(1).sub(turn.x.mul(uTurn.w)),
-                };
-            },
+            lightAt: wakeLightAt,
             skyColour: uSkyHorizon,
-            toOutput: (c, at) => toOutputSurface(applyAerial(c, at, AERIAL_CEIL_LAND, AERIAL_RATE_LAND)),
+            toOutput: wakeToOutput,
+        })
+        : null;
+    const wakeFieldfares = turnWake
+        ? createWakeFieldfares({
+            birds: turnWake.plan.birds,
+            time: uTime,
+            uWake: turnWake.uniforms.uWake,
+            lightAt: wakeLightAt,
+            skyColour: uSkyHorizon,
+            sunDir: uSunDir,
+            toOutput: wakeToOutput,
         })
         : null;
     if (turnWake) group.add(turnWake.mesh);
+    if (wakeFieldfares) turnWake.mesh.add(wakeFieldfares.mesh);
 
     // ── BOULDERS AND OUTCROPS (Act II leftovers, 2026-11-02; odyssey-boulders.js) ─────────────
     // Rocks for scale on the meadows and slopes, sited on the rail camera. Three shapes at two
@@ -8432,6 +8448,7 @@ export function createOdysseyWorld({
             if (cloudSeaLayer) cloudSeaLayer.dispose();
             if (summitCap) summitCap.dispose();
             if (hollowMist) hollowMist.dispose();
+            if (wakeFieldfares) wakeFieldfares.dispose();
             if (turnWake) turnWake.dispose();
             if (wallGusts) wallGusts.dispose();
             if (rayMat) rayMat.dispose();

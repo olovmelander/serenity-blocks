@@ -9,7 +9,9 @@
  *     thrown downwind by the gust, tumbles, sways across the wind and sinks to the grass where
  *     the land is (its landing is worked out here, on the island's own height);
  *   - BIRDS lift out of the crowns in three small parties, rise over the forest, wheel once and
- *     settle into trees further downwind;
+ *     settle into trees further downwind (fieldfares, the Blender bird: odyssey-wake-fieldfares.js
+ *     draws them, as a child of this mesh; they were alpha-cut silhouettes in this draw until
+ *     2026-11-22);
  *   - the forest's own sway answers (the gust's envelope, returned by `update`).
  *
  * WORLD-ANCHORED AND CONTINUOUS. Every leaf and bird has a tree it leaves and a place it ends:
@@ -21,14 +23,14 @@
  *
  * REDUCED MOTION: no shade travels, so no gust does either (the caller passes `sweeping`).
  *
- * COST: one instanced draw of alpha-tested quads (no blending, no sorting), drawn only for the
- * ~20 s a wake lasts; at rest the mesh is hidden. Built with the world, so its pipeline compiles
- * with the world's.
+ * COST: one instanced draw of alpha-tested quads for the leaves (no blending, no sorting) and the
+ * fieldfares' own draw under it, drawn only for the ~20 s a wake lasts; at rest the mesh is hidden.
+ * Built with the world, so their pipelines compile with the world's.
  */
 import * as THREE from 'three/webgpu';
 import {
     Fn, abs, attribute, cameraProjectionMatrix, cameraViewMatrix, clamp, cos, exp, float, length, max, min, mix,
-    modelWorldMatrix, positionGeometry, select, sin, smoothstep, uniform, varying, vec2, vec3, vec4,
+    modelWorldMatrix, positionGeometry, sin, smoothstep, uniform, varying, vec2, vec3, vec4,
 } from 'three/tsl';
 import { ODYSSEY_DAY_TURN } from './odyssey-day-turn.js';
 
@@ -73,8 +75,6 @@ export const ODYSSEY_TURN_WAKE = Object.freeze({
     birds: Object.freeze({
         parties: 3,
         each: 11,
-        /** Half the wingspan (u): small birds drawn large enough to read at 150-300 u. */
-        size: Object.freeze([1.9, 2.6]),
         /** A party lifts this long after the one before it; each bird within `stagger` of its party. */
         partyGap: 0.9,
         stagger: 1.1,
@@ -86,13 +86,12 @@ export const ODYSSEY_TURN_WAKE = Object.freeze({
         rise: Object.freeze([34, 60]),
         wheel: Object.freeze([8, 24]),
         turns: 1.0,
-        /** Wingbeats (rad/s). */
-        rate: Object.freeze([15, 20]),
         /** Seconds to come out of the crown and to go into one. */
         grow: 0.45,
         settle: 0.6,
         /** Clear of the ground by at least this (u) all the way. */
         clear: 7,
+        // (Their size, beat and look: WAKE_FIELDFARES in odyssey-wake-fieldfares.js.)
     }),
     /** The forest's sway under the gust: added share of the wind, its rise and its dying (s). */
     gust: Object.freeze({ gain: 0.9, rise: 0.4, fall: 4.5 }),
@@ -314,26 +313,27 @@ export function createOdysseyTurnWake({
     trees, heightAt, time, leaves, tints, lightAt = null, skyColour, toOutput,
 }, cfg = ODYSSEY_TURN_WAKE) {
     const plan = planTurnWake(trees, heightAt, { leaves: leaves ?? cfg.leaves.count }, cfg);
+    // (Everything in the air, for when the wake is over; the leaves are this draw's.)
     const items = [...plan.leaves, ...plan.birds];
     if (!items.length) return null;
     const L = cfg.leaves;
-    const B = cfg.birds;
 
     const plane = new THREE.PlaneGeometry(1, 1);
     const geometry = new THREE.InstancedBufferGeometry();
     geometry.index = plane.index;
     geometry.setAttribute('position', plane.getAttribute('position'));
-    geometry.instanceCount = items.length;
+    geometry.instanceCount = plan.leaves.length;
     // aHome: where it sat (xyz) and how long it waits after the gust (s).
-    // aGo: a leaf's throw, breeze, lift and sinking; a bird's landing place (xyz) and arc height.
-    // aMeta: seconds in the air, kind (0 leaf, 1 bird), two seeds.
-    const aHome = new Float32Array(items.length * 4);
-    const aGo = new Float32Array(items.length * 4);
-    const aMeta = new Float32Array(items.length * 4);
-    items.forEach((it, i) => {
+    // aGo: its throw, breeze, lift and sinking.
+    // aMeta: seconds in the air, spare, two seeds.
+    const n = Math.max(plan.leaves.length, 1);
+    const aHome = new Float32Array(n * 4);
+    const aGo = new Float32Array(n * 4);
+    const aMeta = new Float32Array(n * 4);
+    plan.leaves.forEach((it, i) => {
         aHome.set([it.x, it.y, it.z, it.wait], i * 4);
-        aGo.set(it.bird ? [it.tx, it.ty, it.tz, it.rise] : [it.burst, it.drift, it.lift, it.fall], i * 4);
-        aMeta.set([it.life, it.bird ? 1 : 0, it.s1, it.s2], i * 4);
+        aGo.set([it.burst, it.drift, it.lift, it.fall], i * 4);
+        aMeta.set([it.life, 0, it.s1, it.s2], i * 4);
     });
     geometry.setAttribute('aHome', new THREE.InstancedBufferAttribute(aHome, 4));
     geometry.setAttribute('aGo', new THREE.InstancedBufferAttribute(aGo, 4));
@@ -347,8 +347,6 @@ export function createOdysseyTurnWake({
     material.fog = false;
     material.side = THREE.DoubleSide;
     material.alphaTest = 0.5;
-    // x kind, y the bird's wing (-1 down .. 1 up), z a seed
-    const vMeta = varying(vec3(0.0), 'twMeta');
     const vTint = varying(vec3(0.0), 'twTint');
     const vLight = varying(vec3(0.0), 'twLight');
     const vAt = varying(vec3(0.0), 'twAt');
@@ -357,7 +355,6 @@ export function createOdysseyTurnWake({
         const go = attribute('aGo', 'vec4');
         const meta = attribute('aMeta', 'vec4');
         const life = meta.x;
-        const birdF = select(meta.y.greaterThan(0.5), float(1), float(0)).toVar();
         const s1 = meta.z;
         const s2 = meta.w;
         // Seconds since the gust reached this one's tree and it let go.
@@ -380,47 +377,31 @@ export function createOdysseyTurnWake({
             rise.add(bob),
             run.mul(HZ).add(sway.mul(PZ)),
         ));
-        // ── a bird: out of its crown, over the forest on an arc with one wheel, into another ──
-        const u = a.div(life).toVar();
-        const ease = u.mul(u).mul(float(3).sub(u.mul(2)));
-        const arc = u.mul(float(1).sub(u)).mul(4).toVar();
-        const wheelPhase = u.mul(TAU * B.turns).add(s1.mul(TAU)).toVar();
-        const wheel = sin(wheelPhase).mul(arc).mul(mix(float(B.wheel[0]), float(B.wheel[1]), s2));
-        const birdAt = mix(home.xyz, go.xyz, ease).add(vec3(wheel.mul(PX), arc.mul(go.w), wheel.mul(PZ)));
-        const centre = mix(leafAt, birdAt, birdF).toVar();
+        const centre = leafAt.toVar();
 
-        // ── how much of it: it grows out of the crown and ends in the grass or a crown ──
-        const growS = mix(float(L.grow), float(B.grow), birdF);
-        const settleS = mix(float(L.settle), float(B.settle), birdF);
-        const shown = smoothstep(float(0), growS, age)
-            .mul(float(1).sub(smoothstep(life.sub(settleS), life, age)))
+        // ── how much of it: it grows out of the crown and ends in the grass ──
+        const shown = smoothstep(float(0), float(L.grow), age)
+            .mul(float(1).sub(smoothstep(life.sub(L.settle), life, age)))
             .toVar();
 
         // ── its shape on screen ──
-        // A leaf tumbles: it turns in the view plane and its width follows the flip. A bird banks
-        // with its wheel and beats its wings (the fragment draws them at the beat's angle).
+        // A leaf tumbles: it turns in the view plane and its width follows the flip.
         const flip = cos(a.mul(mix(float(3.0), float(7.0), s2)).add(s1.mul(50.0))).toVar();
-        const spin = a.mul(mix(float(1.6), float(4.2), s1)).add(s2.mul(30.0));
-        const roll = mix(spin, cos(wheelPhase).mul(0.4), birdF);
-        const width = mix(max(abs(flip), float(0.16)).mul(0.6), float(1), birdF);
-        const local = vec2(positionGeometry.x.mul(width), positionGeometry.y.mul(mix(float(1), float(0.8), birdF)));
+        const roll = a.mul(mix(float(1.6), float(4.2), s1)).add(s2.mul(30.0));
+        const width = max(abs(flip), float(0.16)).mul(0.6);
+        const local = vec2(positionGeometry.x.mul(width), positionGeometry.y);
         const c = cos(roll);
         const s = sin(roll);
         const turned = vec2(local.x.mul(c).sub(local.y.mul(s)), local.x.mul(s).add(local.y.mul(c)));
-        const size = mix(
-            mix(float(L.size[0]), float(L.size[1]), s1),
-            mix(float(B.size[0]), float(B.size[1]), s2),
-            birdF,
-        ).mul(shown);
+        const size = mix(float(L.size[0]), float(L.size[1]), s1).mul(shown);
         // (`centre` is in the world's own frame: through the world group's matrix to the scene.)
         const view = cameraViewMatrix.mul(modelWorldMatrix.mul(vec4(centre, 1.0)));
         const lifted = view.add(vec4(turned.mul(size.mul(2.0)), 0.0, 0.0));
 
         // ── its light and colour ──
         const land = lightAt ? lightAt(centre.xz) : { sun: vec3(1.0, 0.93, 0.80), direct: float(1) };
-        // A leaf catches the sun by how squarely it faces it (never black: it glows through);
-        // a small dark bird takes a little of it on its back.
-        const facing = mix(abs(flip).mul(0.45).add(0.55), float(0.5), birdF).mul(land.direct);
+        // A leaf catches the sun by how squarely it faces it (never black: it glows through).
+        const facing = abs(flip).mul(0.45).add(0.55).mul(land.direct);
         vLight.assign(mix(skyColour.mul(0.62), land.sun.mul(1.12), facing));
         const pick = s2.mul(4);
         const leafTint = mix(
@@ -428,32 +409,21 @@ export function createOdysseyTurnWake({
             mix(vec3(...tints[2]), vec3(...tints[3]), smoothstep(2.98, 3.02, pick)),
             smoothstep(1.98, 2.02, pick),
         );
-        vTint.assign(mix(leafTint, vec3(0.105, 0.09, 0.085), birdF));
-        const beat = sin(a.mul(mix(float(B.rate[0]), float(B.rate[1]), s2)).add(s1.mul(40.0)));
-        vMeta.assign(vec3(birdF, beat, s1));
+        vTint.assign(leafTint);
         vAt.assign(centre);
         return shown.greaterThan(0.002).select(cameraProjectionMatrix.mul(lifted), vec4(0.0, 0.0, -2.0, 1.0));
     })();
-    // The shapes, cut by the alpha test: a leaf is a pointed oval; a bird is two wings at the
-    // beat's angle (thick at the shoulder, fine at the tip) either side of a small body.
+    // The shape, cut by the alpha test: a pointed oval.
     material.opacityNode = Fn(() => {
         const p = positionGeometry.xy.mul(2.0); // -1..1 over the quad
-        const ax = abs(p.x);
         const half = float(1).sub(p.y.mul(p.y)).mul(0.92);
-        const leafIn = float(1).sub(smoothstep(half.sub(0.08), half.add(0.08), ax));
-        const wingY = vMeta.y.mul(ax).mul(0.72).mul(float(1).sub(ax.mul(0.3)));
-        const thick = float(1).sub(ax).mul(0.21).add(0.045);
-        const wings = float(1).sub(smoothstep(thick.sub(0.03), thick.add(0.03), abs(p.y.sub(wingY))))
-            .mul(float(1).sub(smoothstep(0.9, 0.98, ax)));
-        const body = float(1).sub(smoothstep(0.8, 1.0, length(vec2(p.x.div(0.17), p.y.add(0.03).div(0.30)))));
-        return mix(leafIn, max(wings, body), vMeta.x);
+        return float(1).sub(smoothstep(half.sub(0.08), half.add(0.08), abs(p.x)));
     })();
     material.colorNode = Fn(() => {
         const p = positionGeometry.xy.mul(2.0);
-        // A leaf: its midrib a little deeper.
+        // Its midrib a little deeper.
         const rib = mix(float(0.84), float(1.0), smoothstep(0.03, 0.16, abs(p.x)));
-        const albedo = vTint.mul(mix(rib, float(1), vMeta.x));
-        return toOutput(albedo.mul(vLight), vAt);
+        return toOutput(vTint.mul(rib).mul(vLight), vAt);
     })();
 
     const mesh = new THREE.Mesh(geometry, material);
