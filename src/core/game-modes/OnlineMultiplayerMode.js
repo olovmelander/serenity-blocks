@@ -8,6 +8,8 @@ import { SteamNetworking } from '../steam/steam-networking.js';
 import steamService from '../steam/steam-service.js';
 import { FFAGameStateP2P } from '../multiplayer/ffa-p2p-game-state.js';
 import { readMatchLevelRule } from '../multiplayer/match-level-rule.js';
+import { RESPAWN_AFTER_MS, readVersusGameType } from '../multiplayer/versus-rules.js';
+import { predatesRespawn } from '../multiplayer/ffa/respawn.js';
 import {
     LOBBY_TYPE_KEY, chatLobbyType, createdLobbyType, joinedLobbyType, lobbyOffersJoinToFriends,
 } from '../multiplayer/lobby-type.js';
@@ -464,6 +466,7 @@ export class OnlineMultiplayerMode extends BaseGameMode {
 
             // Set match configuration (the level rule: a fixed start level unless levelling up is on)
             this.ffaGameState.matchConfig = {
+                gameType: readVersusGameType(config), // free-for-all unless survivor was chosen
                 endCondition: config.endCondition,
                 endConditionValue: config.endConditionValue,
                 ...readMatchLevelRule(config),
@@ -699,7 +702,7 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         // Drop-in mid-match: we joined as a dead/waiting roster member, so show the full-
         // roster watch view immediately (reusing the spectate-after-death view). The next
         // round restart revives us (shared seed) and _clearDeathState → _exitDeadSpectate
-        // returns us to normal play.
+        // returns us to normal play. In a free-for-all a key brings us in (ffa/respawn.js).
         const localPlayer = this.ffaGameState?.getLocalPlayer?.();
         if (!this.ffaGameState?.isSpectator && localPlayer && localPlayer.isAlive === false) {
             console.log('[OnlineMultiplayer] Joined mid-match as waiting — spectating until next round');
@@ -1531,6 +1534,23 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         );
         this.cleanupHandlers.push(this.roundOverUnsub);
 
+        // Free-for-all: a player is back in play (ffa/respawn.js). Yours: the Out card goes
+        // and the board is yours again. An opponent's: their tile comes back, from the fresh
+        // board rather than frames of the old one still in the interpolator.
+        this.playerRespawnedUnsub = onMultiplayerEvent(
+            MULTIPLAYER_EVENTS.PLAYER_RESPAWNED,
+            (detail) => {
+                if (!detail?.steamId) return;
+                if (detail.steamId === localSteamId) {
+                    this._clearDeathState();
+                    return;
+                }
+                this.snapshotInterpolator?.reset?.(detail.steamId);
+                this.opponentWatchManager?.reviveOpponent?.(detail.steamId);
+            },
+        );
+        this.cleanupHandlers.push(this.playerRespawnedUnsub);
+
         console.log('[OnlineMultiplayer] Visual effect handlers registered');
     }
 
@@ -1541,10 +1561,15 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         if (!state || !state.players) return;
         const receivedAt = Date.now();
 
-        const normalizedPlayers = state.players.map((player) => ({
-            ...player,
-            id: player.id ?? player.steamId,
-        }));
+        // A frame built before a player's free-for-all respawn still shows them out; the game
+        // state skips it for them (ffa/respawn.js), and so do the boards drawn from it here.
+        const roster = this.ffaGameState?.players;
+        const normalizedPlayers = state.players
+            .filter((player) => !predatesRespawn(roster?.get?.(player.steamId), state))
+            .map((player) => ({
+                ...player,
+                id: player.id ?? player.steamId,
+            }));
 
         // SPECTATOR render driver reads the freshest snapshot each animation frame (a
         // spectator has no game loop / RENDER_FRAME, so this is its only data source). The
@@ -1574,17 +1599,27 @@ export class OnlineMultiplayerMode extends BaseGameMode {
             // Update stats display
             this._updateLocalStats(myState);
 
+            // Liveness as the game state took it: in a free-for-all only the host's respawn
+            // brings us back, never a frame that overtook it (ffa/respawn.js).
+            const freeForAll = this._isFreeForAll();
+            const me = freeForAll ? this.ffaGameState?.getLocalPlayer?.() : null;
+            const isAlive = me ? me.isAlive : myState.isAlive;
+            const awaitingSpawn = me ? me.awaitingSpawn === true : myState.awaitingSpawn === true;
+
             // Tear down the ELIMINATED overlay the moment we're revived (round reset).
             // Strict === true: a missing/undefined isAlive must never clear it early.
-            this._reconcileDeathOverlay(myState.isAlive === true);
+            this._reconcileDeathOverlay(isAlive === true);
 
             // Drop-in mid-match joiner observed as dead/waiting with NO elimination animation
             // (a fresh joiner doesn't get _showDeathAnimation): enter the full-roster watch
             // view from the snapshot — robust to the join-time race where isAlive flips to
             // false only after _activateMatch ran. Idempotent (eliminated players enter via
             // _showDeathAnimation); revived/exit is handled by _clearDeathState on round restart.
-            if (!this.ffaGameState?.isSpectator && myState.isAlive === false
-                && !this._deadSpectating && !this._deathShown) {
+            // In a free-for-all only the drop-in watches: a knock-out keeps its own board, and
+            // its Out card comes with the death message, which names who did it.
+            if (!this.ffaGameState?.isSpectator && isAlive === false
+                && !this._deadSpectating && !this._deathShown
+                && (!freeForAll || awaitingSpawn)) {
                 this._enterDeadSpectate();
             }
         }
@@ -1930,6 +1965,11 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         }
     }
 
+    /** Whether this match is a free-for-all: a knocked-out player plays again at a key. */
+    _isFreeForAll() {
+        return readVersusGameType(this.ffaGameState?.matchConfig) === 'ffa';
+    }
+
     /**
      * Handle player death event
      */
@@ -1963,7 +2003,8 @@ export class OnlineMultiplayerMode extends BaseGameMode {
                 // roundNumber is in lock-step on host + peer. So the host's local
                 // PLAYER_TOPPED_OUT and the peer's network game:player:died produce the
                 // SAME eventId → both nodes show one identical row (no clock-skewed dedup).
-                eventId: victimId ? `death:${victimId}:${this.roundNumber}` : undefined,
+                // A free-for-all is one long round: its respawn count names the life.
+                eventId: victimId ? this._deathEventId(victimId) : undefined,
             });
         }
 
@@ -1977,6 +2018,17 @@ export class OnlineMultiplayerMode extends BaseGameMode {
             // round's last knock-out never arrives as a snapshot.
             this.opponentWatchManager?.knockOutOpponent?.(victimId, killerName);
         }
+    }
+
+    /**
+     * One death's kill-feed identity, the same on every client: the round, and in a
+     * free-for-all the life it ended (each client has applied the same respawns by then:
+     * the respawn and the death message travel the host's one reliable lane, in order).
+     * @param {string} victimId
+     */
+    _deathEventId(victimId) {
+        const life = Number(this.ffaGameState?.players?.get?.(victimId)?._respawnSeq) || 0;
+        return life > 0 ? `death:${victimId}:${this.roundNumber}:${life}` : `death:${victimId}:${this.roundNumber}`;
     }
 
     /**
@@ -2010,10 +2062,14 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         if (this._deathShown) return;
         this._deathShown = true;
 
+        // Free-for-all: out only until a key brings you back (ffa/respawn.js), so your board
+        // stays in front of you, dark, with the prompt; the card rises when a key works.
+        const freeForAll = this._isFreeForAll();
+
         // B5: eliminated → keep watching. Expand to the full-roster watch view so a dead
         // player can follow everyone still playing (not just the 4-up beside their now-dead
         // board) until the round resolves. Reverted on revive in _clearDeathState.
-        this._enterDeadSpectate();
+        if (!freeForAll) this._enterDeadSpectate();
 
         this.mainBoardScene?.sharedEffects?.playKnockout?.();
 
@@ -2026,10 +2082,10 @@ export class OnlineMultiplayerMode extends BaseGameMode {
             if (!this._deathShown) return;
             showOutCard(boardContainer, createOutCard(document, {
                 cause: killerName ? `By ${killerName}` : 'Topped out',
-                note: 'Watching until the round ends',
+                note: freeForAll ? 'Press any key to play again' : 'Watching until the round ends',
             }));
             boardContainer.classList.add('eliminated');
-        }, 600);
+        }, freeForAll ? RESPAWN_AFTER_MS : 600);
     }
 
     /**
@@ -2092,7 +2148,14 @@ export class OnlineMultiplayerMode extends BaseGameMode {
     _showDropInWaitingBanner() {
         const container = document.getElementById('online-main-board');
         if (!container || container.querySelector('.dropin-waiting-banner')) return;
-        showStatusCard(container, createStatusCard(document, {
+        // A free-for-all has no next round: a key brings you in (ffa/respawn.js).
+        showStatusCard(container, createStatusCard(document, this._isFreeForAll() ? {
+            title: 'Join in',
+            cause: 'Joined mid-match',
+            note: 'Press any key to play',
+            tone: 'aqua',
+            marker: 'dropin-waiting-banner',
+        } : {
             title: 'Next round',
             cause: 'Joined mid-match',
             note: 'You play from the next round',
@@ -2111,7 +2174,8 @@ export class OnlineMultiplayerMode extends BaseGameMode {
      * revived (round restart), independent of event ordering/timeouts.
      */
     _reconcileDeathOverlay(isAlive) {
-        if (isAlive === true && this._deathShown) {
+        // A free-for-all drop-in watching until its key (no death shown) comes back too.
+        if (isAlive === true && (this._deathShown || (this._deadSpectating && this._isFreeForAll()))) {
             this._clearDeathState();
         }
     }
@@ -2363,6 +2427,8 @@ export class OnlineMultiplayerMode extends BaseGameMode {
             send: (type, data) => this.ffaGameState?.sendInput(type, data),
             gameState: () => this.ffaGameState?.getLocalPlayer?.()?.gameState || this.mainBoardScene?.gameState,
             juice: () => this.boardJuice,
+            // Out of a free-for-all match, a key asks to play again (ffa/respawn.js).
+            respawn: () => this.ffaGameState?.pressToRespawn?.() === true,
         });
         Object.assign(window, hooks);
     }

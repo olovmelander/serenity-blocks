@@ -36,6 +36,7 @@ export const MessageTypes = Object.freeze(/** @type {const} */ ({
     GAME_INPUT_BATCH: 'game:input:batch', // Peer → Host (batched inputs)
     GAME_INPUT_ACK: 'game:input:ack', // Host → Peer (input acknowledgement)
     GAME_ATTACK_REQUEST: 'game:attack:request', // Peer → Host
+    GAME_RESPAWN_REQUEST: 'game:respawn:request', // Peer → Host (free-for-all: a knocked-out player asks to play again; its own player only)
 
     // Game state (broadcast from host to all peers)
     GAME_STATE_FULL: 'game:state:full', // Host → All (full sync)
@@ -51,6 +52,7 @@ export const MessageTypes = Object.freeze(/** @type {const} */ ({
     GAME_PLAYER_DIED: 'game:player:died', // Host → All
     GAME_PLAYER_FRAG: 'game:player:frag', // Host → All
     GAME_PLAYER_LOCK: 'game:player:lock', // Host → All (reliable per-lock authoritative board snap; anchors opponent boards)
+    GAME_PLAYER_RESPAWN: 'game:player:respawn', // Host → All (free-for-all: a player is back in play on an empty well)
     GAME_MATCH_END: 'game:match:end', // Host → All
     GAME_ROUND_RESTART: 'game:round:restart', // Host → All (restart round with countdown)
     GAME_ROUND_READY: 'game:round:ready', // Peer → Host (peer has reset and is ready for the next round — ready-barrier syncpoint)
@@ -140,6 +142,7 @@ export const PROTOCOL_CATALOG = Object.freeze({
     [MessageTypes.GAME_INPUT_BATCH]: supported(PEER_TO_HOST),
     [MessageTypes.GAME_INPUT_ACK]: unsupported('Superseded by snapshot acknowledgement fields'),
     [MessageTypes.GAME_ATTACK_REQUEST]: supported(PEER_TO_HOST),
+    [MessageTypes.GAME_RESPAWN_REQUEST]: supported(PEER_TO_HOST),
 
     [MessageTypes.GAME_STATE_FULL]: supported(HOST_TO_PEER),
     [MessageTypes.GAME_STATE_DELTA]: unsupported('Binary deltas use GAME_STATE_FULL envelopes'),
@@ -154,6 +157,7 @@ export const PROTOCOL_CATALOG = Object.freeze({
     [MessageTypes.GAME_PLAYER_DIED]: supported(HOST_TO_PEER),
     [MessageTypes.GAME_PLAYER_FRAG]: supported(HOST_TO_PEER),
     [MessageTypes.GAME_PLAYER_LOCK]: supported(HOST_TO_PEER),
+    [MessageTypes.GAME_PLAYER_RESPAWN]: supported(HOST_TO_PEER),
     [MessageTypes.GAME_MATCH_END]: supported(HOST_TO_PEER),
     [MessageTypes.GAME_ROUND_RESTART]: supported(HOST_TO_PEER),
     [MessageTypes.GAME_ROUND_READY]: supported(PEER_TO_HOST),

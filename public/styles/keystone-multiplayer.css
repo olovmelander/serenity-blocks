@@ -1390,6 +1390,11 @@
     gap: 22px 28px;
 }
 
+/* The game type spans the grid: it decides how the rest of the rules play. */
+#match-config-modal .mc-grid__wide {
+    grid-column: 1 / -1;
+}
+
 #match-config-modal .sb-mp-more {
     margin-top: 0;
 }

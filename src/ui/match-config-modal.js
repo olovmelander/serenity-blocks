@@ -65,6 +65,12 @@ export const LOBBY_TYPE_HELP = {
     private: 'Invite only. Invite friends from the Steam overlay.',
 };
 
+// The game types (core/multiplayer/versus-rules.js readVersusGameType).
+export const GAME_TYPE_HELP = {
+    ffa: 'Frag your opponents. When you die, press any of your keys to play again.',
+    survivor: 'The last player standing takes the round, then everybody restarts.',
+};
+
 const ATTACK_HELP = {
     standard: 'Clearing two or more lines sends garbage lines to an opponent.',
     blind: 'Garbage lines plus a short blackout of the target board.',
@@ -73,7 +79,10 @@ const ATTACK_HELP = {
     peaceful: 'No attacks are sent in this match.',
 };
 
-const SEGMENTED = ['#max-players', '#lobby-type', '#online-end-condition', '#online-attack-style', '#garbage-cancellation'];
+const SEGMENTED = [
+    '#online-game-type', '#max-players', '#lobby-type', '#online-end-condition', '#online-attack-style',
+    '#garbage-cancellation',
+];
 
 export class MatchConfigModal {
     /**
@@ -119,6 +128,15 @@ export class MatchConfigModal {
               </div>
 
               <div class="mc-grid">
+                <div class="sb-mp-field mc-grid__wide">
+                  <span class="sb-mp-field__label">Game type</span>
+                  <select id="online-game-type" name="gameType" aria-label="Game type">
+                    <option value="ffa" selected>Free-for-all</option>
+                    <option value="survivor">Survivor</option>
+                  </select>
+                  <p class="sb-mp-help" id="online-game-type-help">${GAME_TYPE_HELP.ffa}</p>
+                </div>
+
                 <div class="sb-mp-field">
                   <span class="sb-mp-field__label">Players</span>
                   <select id="max-players" name="maxPlayers" aria-label="Most players">
@@ -256,6 +274,9 @@ export class MatchConfigModal {
         this.container.querySelector('#online-end-condition').addEventListener('change', (e) => {
             this.updateEndConditionUI(e.target.value);
         });
+        this.container.querySelector('#online-game-type')?.addEventListener('change', (e) => {
+            this.updateGameTypeUI(e.target.value);
+        });
         this.container.querySelector('#online-attack-style')?.addEventListener('change', (e) => {
             this.updateAttackStyleUI(e.target.value);
         });
@@ -338,6 +359,11 @@ export class MatchConfigModal {
         }
     }
 
+    updateGameTypeUI(type) {
+        const help = this.container.querySelector('#online-game-type-help');
+        if (help) help.textContent = GAME_TYPE_HELP[type] || GAME_TYPE_HELP.ffa;
+    }
+
     updateAttackStyleUI(style) {
         const help = this.container.querySelector('#online-attack-style-help');
         if (!help) return;
@@ -390,6 +416,7 @@ export class MatchConfigModal {
             gameName: (formData.get('matchName') || '').trim() || 'Unnamed Match',
             maxPlayers: parseInt(formData.get('maxPlayers'), 10),
             lobbyType: formData.get('lobbyType'),
+            gameType: formData.get('gameType') === 'survivor' ? 'survivor' : 'ffa',
             endCondition: formData.get('endCondition'),
             endConditionValue: parseInt(formData.get('endConditionValue'), 10) || 0,
             boringRules: formData.get('boringRules') === 'on',
@@ -480,6 +507,7 @@ export class MatchConfigModal {
         this._enhancers.forEach((enhancer) => enhancer?.refresh?.());
 
         // Reset to default end condition UI
+        this.updateGameTypeUI('ffa');
         this.updateEndConditionUI('frags');
         this.updateAttackStyleUI('standard');
         this.updateLobbyTypeUI(DEFAULT_LOBBY_TYPE);

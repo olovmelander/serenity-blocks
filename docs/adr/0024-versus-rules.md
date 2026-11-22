@@ -50,6 +50,16 @@ reference game the owner wants versus to play like (Quadra's multiplayer, judged
   piece the victim places takes one off every sender. The credit passes to an attacker when one
   of its attacks brings its total level with the holder's or above. In round play the last
   holder keeps it even when spent; a respawning game type forgets a spent holder.
+- **Game types** (`readVersusGameType`): **free-for-all** is the default. A knock-out ends no
+  round: the frag counts, the player's waiting garbage is dropped, and a key pressed a second
+  or more later (`RESPAWN_AFTER_MS`) puts them back on an empty well at the match's start
+  level, keeping score, lines and frags (`respawnVersusBoard`). The match runs until its goal,
+  or until one player is left. **Survivor** keeps rounds: the last player standing takes the
+  round, then everyone restarts. Online, the host decides a respawn
+  (`src/core/multiplayer/ffa/respawn.js`, ADR-0004): a peer asks for its own player only
+  (`GAME_RESPAWN_REQUEST`), and the host's event (`GAME_PLAYER_RESPAWN`) is round-fenced,
+  numbered per player, carries the board's piece stream, and fences off the snapshots sent
+  before it, so a late frame cannot put the player back out.
 
 ## Consequences
 
@@ -70,3 +80,8 @@ reference game the owner wants versus to play like (Quadra's multiplayer, judged
   attack size rule.
 - `tests/unit/garbage-settle-clears.test.js` keeps the no-credit behaviour for callers that do
   not opt in.
+- `tests/unit/ffa-respawn.test.js` pins the online free-for-all (no round end, the goal, the
+  request's checks, the host's respawn and every client's, the snapshot fence, the piece stream
+  in step, a drop-in joining at a key, a respawn after host migration) and that survivor keeps
+  its rounds; `tests/unit/online-game-type.test.js` pins the create sheet, the waiting room and
+  the knock-out screens.

@@ -107,9 +107,13 @@ import {
 import { garbageBurstKey, drainAllLineBursts, cancelIncomingLines } from './ffa/garbage-helpers.js';
 import { clearEmptiesBoard, serializeBoardGrid } from './ffa/board-helpers.js';
 import {
-    VERSUS_GARBAGE_OPTIONS, createVersusGarbageQueue, ensureAttackCredit, resetVersusCredit,
-    stepCrowdStamps,
+    DEFAULT_VERSUS_GAME_TYPE, VERSUS_GARBAGE_OPTIONS, createVersusGarbageQueue, ensureAttackCredit,
+    forgetsSpentCredit, resetVersusCredit, stepCrowdStamps,
 } from './versus-rules.js';
+import {
+    handleFfaPlayerRespawn, handleFfaRespawnRequest, keepsOwnPlayerOut, predatesRespawn,
+    requestFfaRespawn, waitsToRespawn,
+} from './ffa/respawn.js';
 import {
     buildStateSnapshot as buildFfaStateSnapshot,
     calculateStateDigest as calculateFfaStateDigest,
@@ -164,6 +168,8 @@ export class FFAGameStateP2P {
         this.gamePhase = 'waiting';
         this.sharedSeed = 0; // Deterministic RNG seed (same pieces for all)
         this.matchConfig = {
+            // 'ffa': a knocked-out player plays again at a key (ffa/respawn.js); 'survivor': rounds.
+            gameType: DEFAULT_VERSUS_GAME_TYPE,
             endCondition: 'frags', // 'frags', 'time', 'points', 'lines', 'never'
             endConditionValue: 10,
             startLevel: 1,
@@ -927,6 +933,11 @@ export class FFAGameStateP2P {
 
         registry.register(MessageTypes.GAME_ROUND_RESTART, (msg) => handleFfaRoundRestart(this, msg));
 
+        // Free-for-all respawn (ffa/respawn.js): a peer asks for its own player, the host
+        // decides and tells everyone; round-fenced and idempotent per player.
+        registry.register(MessageTypes.GAME_RESPAWN_REQUEST, (msg) => handleFfaRespawnRequest(this, msg));
+        registry.register(MessageTypes.GAME_PLAYER_RESPAWN, (msg) => handleFfaPlayerRespawn(this, msg));
+
         // Ready-barrier: HOST collects per-player readies for the pending round.
         registry.register(MessageTypes.GAME_ROUND_READY, (msg) => {
             this._handleRoundReady(msg);
@@ -1544,6 +1555,21 @@ export class FFAGameStateP2P {
 
             this._applyLocalPrediction(inputType, data);
         }
+    }
+
+    /**
+     * Free-for-all: whether the local player is out and their keys ask to play again.
+     */
+    waitsToRespawn() {
+        return waitsToRespawn(this);
+    }
+
+    /**
+     * Free-for-all: one of the local player's keys, while they are out, asks to play again
+     * (ffa/respawn.js). Returns whether the key went to that (and so plays nothing else).
+     */
+    pressToRespawn() {
+        return requestFfaRespawn(this);
     }
 
     /**
@@ -2446,6 +2472,12 @@ export class FFAGameStateP2P {
         // Update all player states from host
         state.players.forEach((playerData) => {
             const player = this.players.get(playerData.steamId);
+            // A frame built before this player's last respawn shows them still out
+            // (ffa/respawn.js): none of it is theirs any more. A resync is exact and passes.
+            if (player && !forceLocal && predatesRespawn(player, state)) {
+                if (this._netDiagEnabled) this._netDiag.genDrops += 1;
+                return;
+            }
             if (player) {
                 const isLocalPlayer = playerData.steamId === this.localPlayerId;
 
@@ -2540,14 +2572,18 @@ export class FFAGameStateP2P {
                     statsMode = (ownsLocalPiece && this._holdStatsEnabled) ? 'monotonic' : 'adopt';
                 }
                 player.frags = playerData.frags;
-                player.isAlive = playerData.isAlive;
+                // Free-for-all: only the host's respawn event brings our own player back; a frame
+                // showing them in play can overtake it, and our board is still the knocked-out one.
+                const staysOut = isLocalPlayer && !forceLocal && keepsOwnPlayerOut(this, playerData);
+                if (player.isAlive !== false && playerData.isAlive === false) player._outAt = Date.now();
+                if (!staysOut) player.isAlive = playerData.isAlive;
                 // Adopt the late-joiner waiting flag from the host (≠ eliminated). Without this the
                 // peer's player object keeps a stale value, so renderAllPlayers feeds the UI the
                 // wrong state and a late joiner renders as 💀 ELIMINATED instead of ⏳ NEXT ROUND.
-                if (playerData.awaitingSpawn !== undefined) {
+                if (playerData.awaitingSpawn !== undefined && !staysOut) {
                     player.awaitingSpawn = playerData.awaitingSpawn === true;
                 }
-                player.gameState.isGameOver = !playerData.isAlive;
+                player.gameState.isGameOver = !player.isAlive;
                 if (playerData.lastAttackerId !== undefined) player.lastAttackerId = playerData.lastAttackerId;
                 if (playerData.lockSeq !== undefined) player._lockSeq = playerData.lockSeq;
 
@@ -3220,11 +3256,14 @@ export class FFAGameStateP2P {
                 }
 
                 // Host: the placement earns a crowd stamp and fades the frag credit of
-                // whoever has attacked this player (versus-rules.js).
+                // whoever has attacked this player (versus-rules.js). In free-for-all a
+                // credit that fades out is forgotten: that player now dies uncredited.
                 if (this.isHost) {
                     const alive = Array.from(this.players.values()).filter((p) => p.isAlive).length;
                     player.crowdStamps = stepCrowdStamps(player.crowdStamps, alive);
-                    ensureAttackCredit(player).notePiecePlaced();
+                    const credit = ensureAttackCredit(player);
+                    credit.notePiecePlaced({ forgetSpent: forgetsSpentCredit(this.matchConfig) });
+                    player.lastAttackerId = credit.killer;
                 }
 
                 emitMultiplayerEvent(MULTIPLAYER_EVENTS.PIECE_LOCK, {

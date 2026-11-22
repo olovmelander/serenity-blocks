@@ -615,6 +615,27 @@ export class OpponentWatchManager {
         this._showOpponentDeathAnimation(board, killerName);
     }
 
+    /**
+     * Free-for-all: a knocked-out opponent is back in play (multiplayer/ffa/respawn.js). Their
+     * knock-out is forgotten and their tile lights up again. Idempotent.
+     * @param {string|number} playerId
+     */
+    reviveOpponent(playerId) {
+        const id = this._normalizeId(playerId);
+        if (!id) return;
+        this._knockedOut?.delete(id);
+        const board = this.playerBoards.get(id);
+        if (!board) return;
+        if (board.isWaiting) {
+            board.isWaiting = false;
+            this._setBoardClass(board, 'waiting', false);
+            this._clearOpponentWaitingOverlay(board);
+        }
+        board.isEliminated = false;
+        this._setBoardClass(board, 'dead', false);
+        this._clearOpponentDeathState(board);
+    }
+
     /** Whether the field's stations are small enough to show the frag count as a number. */
     _compactPlates() {
         const block = Number(this._fieldLayout?.block) || 0;

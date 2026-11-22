@@ -39,6 +39,20 @@ export function readVersusGameType(config) {
 }
 
 /**
+ * The game type in a word, for the waiting room and the match bar.
+ * @param {{ gameType?: unknown } | null | undefined} config
+ */
+export function describeVersusGameType(config) {
+    return readVersusGameType(config) === 'survivor' ? 'Survivor' : 'Free-for-all';
+}
+
+/**
+ * In free-for-all, a knocked-out player's keys bring them back only this long after the
+ * knock-out, so the key they were pressing as they went out does not.
+ */
+export const RESPAWN_AFTER_MS = 1000;
+
+/**
  * Whether a frag credit that has faded to nothing is forgotten (AttackCredit.notePiecePlaced):
  * in free-for-all a player who has not been attacked for a while dies uncredited; in survivor
  * the last holder keeps it for the round.

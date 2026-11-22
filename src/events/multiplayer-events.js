@@ -19,6 +19,8 @@ export const MULTIPLAYER_EVENTS = {
     OPPONENT_CLEAR: 'ffa:opponent-clear',
     PIECE_LOCK: 'ffa:piece-lock',
     PLAYER_TOPPED_OUT: 'ffa:player-topped-out',
+    // Free-for-all: a knocked-out player is back in play on an empty well (ffa/respawn.js).
+    PLAYER_RESPAWNED: 'ffa:player-respawned',
     GARBAGE_INSERTED: 'ffa:garbage-inserted',
     GARBAGE_COUNTERED: 'ffa:garbage-countered',
     GARBAGE_SENT: 'ffa:garbage-sent', // local echo so the AUTHORING node logs its own attacks

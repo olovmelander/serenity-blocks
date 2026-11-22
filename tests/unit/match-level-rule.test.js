@@ -139,7 +139,10 @@ describe('online free-for-all', () => {
     it('gives every board the host\'s starting level, and keeps it fixed round after round', async () => {
         session = await buildSession(vi, { peerIds: ['P1'] });
         const { host, peers: [peer] } = session;
-        host.matchConfig = { ...host.matchConfig, startLevel: 5, levelProgression: false };
+        // Rounds: a survivor match (a free-for-all has none).
+        host.matchConfig = {
+            ...host.matchConfig, gameType: 'survivor', startLevel: 5, levelProgression: false,
+        };
         host.startMatch();
         session.wire.drain();
         await step(vi, session.wire, 6000);
@@ -157,7 +160,9 @@ describe('online free-for-all', () => {
     it('with levelling on, carries each player\'s level into the next round at its speed', async () => {
         session = await buildSession(vi, { peerIds: ['P1'] });
         const { host } = session;
-        host.matchConfig = { ...host.matchConfig, startLevel: 2, levelProgression: true };
+        host.matchConfig = {
+            ...host.matchConfig, gameType: 'survivor', startLevel: 2, levelProgression: true,
+        };
         host.startMatch();
         session.wire.drain();
         await step(vi, session.wire, 6000);

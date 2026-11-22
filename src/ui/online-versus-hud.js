@@ -13,6 +13,7 @@ import { readVersusViewport, versusParts } from './local-versus-layout.js';
 import { primaryMetric } from './scoreboard-metrics.js';
 import { describeGoal } from './components/mp-sheet.js';
 import { COLS, ROWS } from '../core/constants.js';
+import { describeVersusGameType, readVersusGameType } from '../core/multiplayer/versus-rules.js';
 import { applyPlayerColor } from './board-walls.js';
 
 /** How long a round's outcome stays up (the host's beat is ROUND_OVER_BEAT_MS). */
@@ -182,10 +183,11 @@ export class OnlineVersusHud {
     }
 
     /**
-     * The match bar: the goal, the round, and who is still in.
+     * The match bar: the goal, the round (a free-for-all has none: it names the game type),
+     * and who is still in.
      * @param {Array<any>} players
      * @param {number} count
-     * @param {{ endCondition?: string, endConditionValue?: unknown }} config
+     * @param {{ endCondition?: string, endConditionValue?: unknown, gameType?: unknown }} config
      * @param {number} round
      */
     updateMatchBar(players, count, config = {}, round = 1) {
@@ -197,8 +199,10 @@ export class OnlineVersusHud {
             playing += 1;
             if (p.isAlive !== false) alive += 1;
         }
-        const goal = describeGoal(config.endCondition || 'frags', config.endConditionValue);
-        const roundText = `Round ${round || 1}`;
+        const goal = describeGoal(config?.endCondition || 'frags', config?.endConditionValue);
+        const roundText = readVersusGameType(config) === 'ffa'
+            ? describeVersusGameType(config)
+            : `Round ${round || 1}`;
         const standing = playing > 1 ? `${alive} of ${playing} in` : '';
         const sig = `${goal}|${roundText}|${standing}`;
         if (sig === this._barSig) return;

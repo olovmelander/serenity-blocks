@@ -18,6 +18,7 @@ import {
     closeLayer, conditionLabel, confirmSheet, describeGoal, mpIcon, openLayer,
 } from './components/mp-sheet.js';
 import { describeMatchLevelRule } from '../core/multiplayer/match-level-rule.js';
+import { describeVersusGameType } from '../core/multiplayer/versus-rules.js';
 import { warnHostIfRelayUnreachable } from '../core/steam/relay-network.js';
 import {
     appendChatMessage, chatIcon, chatModerationNote, createSteamProfileButton, isChatOn, isMuted,
@@ -78,6 +79,10 @@ export class LobbyWaitingRoom {
               <div class="info-item">
                 <dt class="info-label">Players</dt>
                 <dd class="info-value" id="max-players-value">–</dd>
+              </div>
+              <div class="info-item">
+                <dt class="info-label">Game type</dt>
+                <dd class="info-value" id="game-type-value">–</dd>
               </div>
               <div class="info-item">
                 <dt class="info-label">Win condition</dt>
@@ -442,6 +447,9 @@ export class LobbyWaitingRoom {
         // Max players
         this.setText('max-players-value', `Up to ${config.maxPlayers}`);
         this.setText('max-players-count', config.maxPlayers);
+
+        // Game type: free-for-all (play again at a key) or survivor (rounds)
+        this.setText('game-type-value', describeVersusGameType(config));
 
         // Win condition
         this.setText('win-condition-value', this.getConditionText(config.endCondition));

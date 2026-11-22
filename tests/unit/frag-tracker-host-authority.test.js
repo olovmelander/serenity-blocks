@@ -25,7 +25,8 @@ function makeGameState(overrides = {}) {
         isHost: false,
         gamePhase: 'playing',
         matchStartTime: Date.now(),
-        matchConfig: { endCondition: 'never', endConditionValue: 0 },
+        // Rounds: a survivor match (a free-for-all knock-out ends no round).
+        matchConfig: { gameType: 'survivor', endCondition: 'never', endConditionValue: 0 },
         players: new Map([
             ['A', makePlayer('A')],
             ['B', makePlayer('B')],
