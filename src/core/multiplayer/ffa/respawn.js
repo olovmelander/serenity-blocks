@@ -40,6 +40,7 @@ import {
     RESPAWN_AFTER_MS, readVersusGameType, resetVersusCredit, respawnVersusBoard,
 } from '../versus-rules.js';
 import { isDeparted } from './presence.js';
+import { wallClockNow } from '../frag-tracker.js';
 
 /** A player out of play asks at most this often, however fast the keys come. */
 export const RESPAWN_REQUEST_EVERY_MS = 250;
@@ -201,7 +202,7 @@ export function respawnRefusal(game, steamId, request = {}) {
     if (isCount(askedAfter) && /** @type {number} */ (askedAfter) < (Number(player._respawnSeq) || 0)) {
         return 'already_respawned';
     }
-    const now = request.now ?? Date.now();
+    const now = request.now ?? wallClockNow();
     if (Number.isFinite(player._outAt) && now - player._outAt < RESPAWN_AFTER_MS) return 'too_soon';
     for (const transfer of game.resyncTransfers?.values?.() || []) {
         if (transfer?.steamId === steamId) return 'resync_on_the_way';
@@ -350,7 +351,7 @@ export function handleFfaPlayerRespawn(game, msg) {
  * @param {number} [now]
  * @returns {boolean} whether the key went to the respawn
  */
-export function requestFfaRespawn(game, now = Date.now()) {
+export function requestFfaRespawn(game, now = wallClockNow()) {
     if (!waitsToRespawn(game)) return false;
     const player = game.players.get(game.localPlayerId);
     if (game.resyncInputFrozen) return true;

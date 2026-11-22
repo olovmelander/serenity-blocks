@@ -901,13 +901,18 @@ export class GameState {
  * Fills the next pieces bag using 7-bag randomizer
  * @param {Array<string>} nextPieces - Next pieces array to fill
  */
+/** A whole number in [0, n) from a seeded generator (nextInt or a [0,1) function), clamped. */
+function randomIndex(rng, n) {
+    const j = typeof rng?.nextInt === 'function'
+        ? rng.nextInt(n)
+        : Math.floor((typeof rng === 'function' ? rng() : Math.random()) * n);
+    return Math.max(0, Math.min(n - 1, j));
+}
+
 function shuffleBag(rng) {
     const bag = [...PIECE_KEYS];
     for (let i = bag.length - 1; i > 0; i--) {
-        const j = typeof rng?.nextInt === 'function'
-            ? rng.nextInt(i + 1)
-            : Math.floor((typeof rng === 'function' ? rng() : Math.random()) * (i + 1));
-        const swapIndex = Math.max(0, Math.min(i, j));
+        const swapIndex = randomIndex(rng, i + 1);
         const temp = bag[i];
         bag[i] = bag[swapIndex];
         bag[swapIndex] = temp;
@@ -924,12 +929,7 @@ function shuffleBag(rng) {
  */
 export function fillBag(nextPieces, rng = Math.random, randomizer = 'bag') {
     if (randomizer === 'random') {
-        while (nextPieces.length < 10) {
-            const index = typeof rng?.nextInt === 'function'
-                ? rng.nextInt(PIECE_KEYS.length)
-                : Math.floor((typeof rng === 'function' ? rng() : Math.random()) * PIECE_KEYS.length);
-            nextPieces.push(PIECE_KEYS[Math.max(0, Math.min(PIECE_KEYS.length - 1, index))]);
-        }
+        while (nextPieces.length < 10) nextPieces.push(PIECE_KEYS[randomIndex(rng, PIECE_KEYS.length)]);
         return;
     }
     while (nextPieces.length < 10) {

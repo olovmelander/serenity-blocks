@@ -22,7 +22,7 @@ import {
 import { InputValidator } from '../validation/input-validator.js';
 import { PLAYER_COLORS } from '../constants.js';
 import { FFAAttackRouter } from './ffa-attack-router.js';
-import { FragTracker } from './frag-tracker.js';
+import { FragTracker, wallClockNow } from './frag-tracker.js';
 import { HostMigration } from '../network/host-migration.js';
 import { InGameChat } from '../../ui/ingame-chat.js';
 import { paintCountdown } from '../../ui/countdown-light.js';
@@ -2575,7 +2575,7 @@ export class FFAGameStateP2P {
                 // Free-for-all: only the host's respawn event brings our own player back; a frame
                 // showing them in play can overtake it, and our board is still the knocked-out one.
                 const staysOut = isLocalPlayer && !forceLocal && keepsOwnPlayerOut(this, playerData);
-                if (player.isAlive !== false && playerData.isAlive === false) player._outAt = Date.now();
+                if (player.isAlive !== false && playerData.isAlive === false) player._outAt = wallClockNow();
                 if (!staysOut) player.isAlive = playerData.isAlive;
                 // Adopt the late-joiner waiting flag from the host (≠ eliminated). Without this the
                 // peer's player object keeps a stale value, so renderAllPlayers feeds the UI the
