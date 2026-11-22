@@ -4465,8 +4465,7 @@ class SerenityBlocks {
                 effectHandlers.lockBeat(piece);
                 currentMode?._infinityCameraEvent?.(playerNum - 1, 'lock', piece);
 
-                // Each placement earns handicap and crowd stamps and fades the frag
-                // credit of whoever has attacked this player (versus-rules.js).
+                // Handicap and crowd stamps, and the attackers' fading frag credit (versus-rules.js).
                 multiplayerState?.notePiecePlaced?.(playerNum - 1);
 
                 // Emit event for theme reactions
@@ -4521,20 +4520,14 @@ class SerenityBlocks {
                 const queuedEntries = drainGarbageEntries(garbageQueue, !!multiplayerState.players);
 
                 if (queuedEntries.length > 0) {
-                    console.log(
-                        `[Garbage] Inserting ${queuedEntries.length} garbage lines into Player ${playerNum}'s board`,
-                    );
+                    console.log(`[Garbage] Inserting ${queuedEntries.length} rows into Player ${playerNum}'s board`);
 
-                    // Versus garbage never tops out (Infinity keeps its roof): only a blocked
-                    // spawn below ends the player. Rows it closes count as this player's clear.
+                    // Versus garbage never tops out; rows its settle closes are this player's clear.
                     const result = applyGarbage(playerState, queuedEntries, VERSUS_GARBAGE_OPTIONS);
                     if (result?.rowsAdded > 0) {
                         currentMode?._compensatePlayerGridExpansion?.(playerState, sceneRef(), result.rowsAdded);
                     }
-                    if (result?.settleSummary) {
-                        callbacks.onScoreAdd?.();
-                        callbacks.onGarbageReady?.(result.settleSummary);
-                    }
+                    if (result?.settleSummary) callbacks.onGarbageReady?.(result.settleSummary);
 
                     if (result?.topOut) {
                         console.log(`[Garbage] Player ${playerNum} topped out from garbage!`);

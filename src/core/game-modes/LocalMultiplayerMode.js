@@ -5,14 +5,8 @@ import { VERSUS_MAX_PENDING_LINES, applyVersusFeel, readVersusGameType } from '.
 import { InfinityMinimap } from '../../ui/infinity/InfinityMinimap.js';
 import { LocalVersusCameras } from '../../ui/infinity/local-versus-cameras.js';
 import { GAME_MODES, BLOCK_SIZE } from '../constants.js';
-import {
-    spawnPiece,
-    fillBag,
-    move as coreMove,
-    rotate as coreRotate,
-    softDrop as coreSoftDrop,
-    hardDrop as coreHardDrop,
-} from '../game.js';
+import { spawnPiece, fillBag } from '../game.js';
+import { createLocalBotActions } from './local-bot-actions.js';
 import { createEmptyMatchMetrics, accumulateMatchMetrics } from '../match-metrics.js';
 import { isBotSlot, LocalBotManager, localBotRoundSeed } from '../ai/local-bot-manager.js';
 
@@ -43,19 +37,12 @@ import {
     stopLocalMultiplayerModeLoop,
 } from './local-multiplayer-loop.js';
 import { localMatchRespawns, resolveLocalMatchEnd, resumeClock } from './local-match-rules.js';
+import { forgetDownPlayers, handleFreeForAllDeaths, onSeatPress } from './local-ffa-respawn.js';
 
 const MATCH_START_LOADING_MIN_VISIBLE_MS = 2000;
 /** How long a knock-out and a round won hold the boards before the round ends. */
 export const ROUND_OUTCOME_MS = 1500;
-/**
- * Free-for-all: how long after a death a person's keys start to bring them back. A key still
- * held, or mashed, as they topped out must not put them straight back on an empty well.
- */
-export const RESPAWN_KEY_HOLD_MS = 1000;
-/** Free-for-all: how long a bot stays out before it plays again on its own. */
-export const BOT_RESPAWN_MS = 1750;
-/** A bot's return that fell in a pause is tried again this often until play resumes. */
-const RESPAWN_RETRY_MS = 250;
+export { BOT_RESPAWN_MS, RESPAWN_KEY_HOLD_MS } from './local-ffa-respawn.js';
 /** The match won, on the boards, before the results. */
 const VICTORY_BEAT_MS = 2400;
 
@@ -113,8 +100,6 @@ export class LocalMultiplayerMode extends BaseGameMode {
         // Keyed by team id (0..3); missing keys read as 0, so this supports any team count.
         this.teamRoundWins = {};
         this.lastMatchResultClock = null;
-        // Free-for-all: the players who are out, until they play again (_handleFreeForAllDeaths).
-        this._downPlayers = new Map();
 
         // Cumulative match stats (preserved across rounds)
         this.matchStats = {
@@ -421,7 +406,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
         );
 
         this.deps.modalManager.hideAll();
-        this._forgetDownPlayers();
+        forgetDownPlayers(this);
         this._clearDeathAnimations();
 
         // Reset match stats for new game
@@ -621,7 +606,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
     async onStop() {
         this._startGeneration += 1;
         const retiredRound = retireLocalMultiplayerRound(this);
-        this._forgetDownPlayers();
+        forgetDownPlayers(this);
         await super.onStop();
 
         console.log('[LocalMultiplayer] Stopping game...');
@@ -646,7 +631,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
         // Retire in-flight board creation before the first teardown await.
         this._boardCreationGeneration += 1;
         await super.onDeactivate();
-        this._forgetDownPlayers();
+        forgetDownPlayers(this);
         this._destroySeparatePhaserGames();
 
         console.log('[LocalMultiplayer] Deactivating...');
@@ -1078,8 +1063,8 @@ export class LocalMultiplayerMode extends BaseGameMode {
         const eliminated = this.multiplayerState.handlePlayerDeaths(playerIndices);
         if (eliminated.length === 0) return false;
         // Free-for-all: the dead play on, nobody else stops, and the round never ends.
-        if (this._respawns()) {
-            await this._handleFreeForAllDeaths(eliminated, lastAttackers, roundOwner);
+        if (localMatchRespawns(this.matchConfig)) {
+            await handleFreeForAllDeaths(this, eliminated, lastAttackers, roundOwner);
             return true;
         }
         eliminated.forEach((playerIndex) => {
@@ -1158,8 +1143,8 @@ export class LocalMultiplayerMode extends BaseGameMode {
         this.multiplayerState.handlePlayerDeath(playerIndex);
 
         // Free-for-all: the player plays on after a key (a bot by itself); the round goes on.
-        if (this._respawns()) {
-            await this._handleFreeForAllDeaths([playerIndex], this.multiplayerState.lastAttackerIds.slice(), roundOwner);
+        if (localMatchRespawns(this.matchConfig)) {
+            await handleFreeForAllDeaths(this, [playerIndex], this.multiplayerState.lastAttackerIds.slice(), roundOwner);
             return;
         }
 
@@ -1317,139 +1302,9 @@ export class LocalMultiplayerMode extends BaseGameMode {
         }
     }
 
-    // ===== Free-for-all: death and respawn =====
-
-    /** Whether this match plays on after a death (free-for-all, not Last Standing). @private */
-    _respawns() {
-        return localMatchRespawns(this.matchConfig);
-    }
-
-    /** The free-for-all players who are out, until they play again. @private */
-    _down() {
-        if (!this._downPlayers) this._downPlayers = new Map();
-        return this._downPlayers;
-    }
-
-    /** A seat played by a bot (it comes back on its own; keys never bring it back). @private */
-    _isBotSeat(playerIndex) {
-        return this._isBotPlayer(playerIndex) || isBotSlot(this.matchConfig?.playerSlots?.[playerIndex]);
-    }
-
-    /** Forget one player's way back (and its timer). @private */
-    _forgetDownPlayer(playerIndex) {
-        const down = this._downPlayers?.get(playerIndex);
-        if (down) clearTimeout(down.timer);
-        this._downPlayers?.delete(playerIndex);
-    }
-
-    /** Forget every way back: the match or round they belong to is over. @private */
-    _forgetDownPlayers() {
-        this._downPlayers?.forEach((down) => clearTimeout(down.timer));
-        this._downPlayers = new Map();
-    }
-
-    /**
-     * Free-for-all deaths, already counted by MultiPlayerState (a death each, and the frag to
-     * whoever held the frag credit, never to the player themselves). Each board shows its
-     * knock-out and drops the garbage waiting for it; nobody else stops and the round goes
-     * on. The match goal is checked at once, and the match ends when it is met. A person plays
-     * again with any of their keys RESPAWN_KEY_HOLD_MS after dying (_onSeatPress); a bot
-     * comes back on its own after BOT_RESPAWN_MS.
-     * @param {number[]} playerIndices the players who just died
-     * @param {Array<number|null>} creditHolders each player's frag credit holder at death
-     * @param {object} roundOwner the round the deaths belong to (local-multiplayer-loop.js)
-     * @returns {Promise<boolean>} false when none of them was a new death
-     * @private
-     */
-    async _handleFreeForAllDeaths(playerIndices, creditHolders, roundOwner) {
-        const state = this.multiplayerState;
-        const diedAt = this._wallNow();
-        let anyNew = false;
-        playerIndices.forEach((playerIndex) => {
-            const player = state.players[playerIndex];
-            // One death, one card: the legacy path can report it twice (main.js counts it,
-            // then calls _handleGameOver).
-            if (!player || player.isAlive || this._down().has(playerIndex)) return;
-            anyNew = true;
-            if (player.currentPiece) player.currentPiece = null;
-            state.garbageQueues[playerIndex]?.clear();
-            const killer = creditHolders?.[playerIndex];
-            this._showPlayerDeathAnimation(
-                playerIndex,
-                Number.isInteger(killer) && killer !== playerIndex ? killer : null,
-            );
-            this._down().set(playerIndex, { at: diedAt, roundOwner, timer: null });
-            if (this._isBotSeat(playerIndex)) this._scheduleBotRespawn(playerIndex, BOT_RESPAWN_MS);
-        });
-        if (!anyNew) return false;
-
-        const matchEnd = this._resolveMatchEnd();
-        if (matchEnd !== null) await this._endMatchMidRound(matchEnd, roundOwner);
-        return true;
-    }
-
-    /**
-     * A key of a seat went down (controls.js, gamepad-controller.js). A person who is out
-     * plays again, once RESPAWN_KEY_HOLD_MS have passed since the death.
-     * @param {number} playerIndex
-     * @returns {boolean} whether the player came back
-     * @private
-     */
+    /** A seat's key went down: a free-for-all player who is out may play again. @private */
     _onSeatPress(playerIndex) {
-        const down = this._downPlayers?.get(playerIndex);
-        if (!down || this._isBotSeat(playerIndex)) return false;
-        if (this._wallNow() - down.at < RESPAWN_KEY_HOLD_MS) return false;
-        return this._respawnPlayer(playerIndex) === 'respawned';
-    }
-
-    /**
-     * A bot plays again after `delayMs`; tried again shortly while the game is paused.
-     * @private
-     */
-    _scheduleBotRespawn(playerIndex, delayMs) {
-        const down = this._downPlayers?.get(playerIndex);
-        if (!down) return;
-        clearTimeout(down.timer);
-        down.timer = setTimeout(() => {
-            down.timer = null;
-            if (this._downPlayers?.get(playerIndex) !== down) return;
-            if (this._respawnPlayer(playerIndex) === 'held') this._scheduleBotRespawn(playerIndex, RESPAWN_RETRY_MS);
-        }, delayMs);
-    }
-
-    /**
-     * Put a player who is out back in play: an empty well at the match's start level, their
-     * score, lines and piece stream kept (MultiPlayerState.respawnPlayer), the knock-out
-     * cleared, their bot (if any) reset, and their first piece spawned the way a new round
-     * spawns it. Only within the round the death belongs to, never while the match ends.
-     * @param {number} playerIndex
-     * @returns {'respawned'|'held'|'gone'} 'held' while the game is paused
-     * @private
-     */
-    _respawnPlayer(playerIndex) {
-        const down = this._downPlayers?.get(playerIndex);
-        if (!down) return 'gone';
-        const state = this.multiplayerState;
-        if (
-            !state
-            || state.isGameOver
-            || this._matchEnding
-            || !ownsLocalMultiplayerRound(this, down.roundOwner)
-        ) {
-            this._forgetDownPlayer(playerIndex);
-            return 'gone';
-        }
-        if (this.isPaused || state.isPaused) return 'held';
-        this._forgetDownPlayer(playerIndex);
-        if (!state.respawnPlayer(playerIndex)) return 'gone';
-
-        this._clearPlayerDeathAnimation(playerIndex);
-        this.botManager?.resetPlayer?.(playerIndex);
-        this.deps?.soundManager?.sfxPlayer?.playDrop?.();
-        this._spawnFirstPiece(playerIndex);
-        this._syncBoardScenes();
-        console.log(`[LocalMultiplayer] Player ${playerIndex + 1} plays again`);
-        return 'respawned';
+        return onSeatPress(this, playerIndex);
     }
 
     /**
@@ -1526,7 +1381,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
         if (!this.multiplayerState) return;
 
         this.botManager ??= new LocalBotManager({
-            actionFactory: (playerIndex) => this._createBotActions(playerIndex),
+            actionFactory: (playerIndex) => createLocalBotActions(this, playerIndex),
             multiplayerState: this.multiplayerState,
         });
         this.botManager.configure(this.matchConfig?.playerSlots || [], this.botSeriesSeed);
@@ -1534,61 +1389,6 @@ export class LocalMultiplayerMode extends BaseGameMode {
 
     _isBotPlayer(playerIndex) {
         return Boolean(this.botManager?.isBotPlayer(playerIndex));
-    }
-
-    _createBotActions(playerIndex) {
-        const playerNum = playerIndex + 1;
-        const getPlayerState = () => this.multiplayerState?.players?.[playerIndex];
-        // main.js injects the ONE live callback builder. The mode's former local
-        // fallback builder was dead code that fixes kept landing in — deleted.
-        const getPhysicsCallbacks = () => this.deps.getMultiplayerPhysicsCallbacks?.(playerNum) || {};
-        const playMove = () => this.deps.soundManager?.sfxPlayer?.playMove?.();
-        const playRotate = () => this.deps.soundManager?.sfxPlayer?.playRotate?.();
-        const playDrop = () => this.deps.soundManager?.sfxPlayer?.playDrop?.();
-
-        return {
-            moveLeft: () => {
-                const playerState = getPlayerState();
-                const moved = coreMove(playerState, -1, playMove);
-                if (moved) this._applyBotBoardJuice(playerNum, 'move', -1);
-                return moved;
-            },
-            moveRight: () => {
-                const playerState = getPlayerState();
-                const moved = coreMove(playerState, 1, playMove);
-                if (moved) this._applyBotBoardJuice(playerNum, 'move', 1);
-                return moved;
-            },
-            rotateLeft: () => {
-                const playerState = getPlayerState();
-                const rotated = coreRotate(playerState, 'left', playRotate);
-                if (rotated) this._applyBotBoardJuice(playerNum, 'rotate', 'left');
-                return rotated;
-            },
-            rotateRight: () => {
-                const playerState = getPlayerState();
-                const rotated = coreRotate(playerState, 'right', playRotate);
-                if (rotated) this._applyBotBoardJuice(playerNum, 'rotate', 'right');
-                return rotated;
-            },
-            rotateFlip: () => {
-                const playerState = getPlayerState();
-                const rotated = coreRotate(playerState, 'flip', playRotate);
-                if (rotated) this._applyBotBoardJuice(playerNum, 'rotate', 'flip');
-                return rotated;
-            },
-            softDrop: () => {
-                const playerState = getPlayerState();
-                return coreSoftDrop(playerState, playDrop, getPhysicsCallbacks());
-            },
-            hardDrop: () => {
-                const playerState = getPlayerState();
-                if (!playerState?.currentPiece) return false;
-                coreHardDrop(playerState, playDrop, getPhysicsCallbacks());
-                this._applyBotBoardJuice(playerNum, 'hardDrop');
-                return true;
-            },
-        };
     }
 
     _applyBotBoardJuice(playerNum, action, value = null) {
@@ -2158,7 +1958,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
         if (!await drainLocalMultiplayerRound(this, retiredRound) || !this.isRunning) return;
 
         // Clear death animations from previous round
-        this._forgetDownPlayers();
+        forgetDownPlayers(this);
         this._clearDeathAnimations();
         this.versusHud?.announceRound(this.versusRound || 1, this._roundOutcome || null);
         this._roundOutcome = null;
