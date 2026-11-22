@@ -84,6 +84,21 @@ export function syncBoardGridForRender(gameState) {
     gameState._renderGridVersion = version;
 }
 
+/**
+ * One grid cell of a locked piece. A hidden cell (blind.js) also carries its blind time, so a
+ * split rebuilt from the grid (findConnectedComponents) keeps it.
+ * @param {{ blindTicks?: number }} piece
+ * @param {string|number} pieceId
+ * @param {string} color
+ * @param {string} type
+ * @returns {BoardCell}
+ */
+function gridCell(piece, pieceId, color, type) {
+    const cell = { color, id: pieceId, type };
+    if (piece.blindTicks > 0) cell.blind = piece.blindTicks;
+    return /** @type {BoardCell} */ (cell);
+}
+
 export function rebuildBoardGridFromPieces(pieces, targetGrid = createBoardGrid()) {
     clearBoardGrid(targetGrid);
 
@@ -105,11 +120,7 @@ export function rebuildBoardGridFromPieces(pieces, targetGrid = createBoardGrid(
                             console.warn(`[Board] Row ${boardY} is undefined in targetGrid (length=${targetGrid.length}). Creating row.`);
                             targetGrid[boardY] = Array(COLS).fill(null);
                         }
-                        targetGrid[boardY][boardX] = {
-                            color,
-                            id: pieceId,
-                            type, // Add piece type for themed colors
-                        };
+                        targetGrid[boardY][boardX] = gridCell(piece, pieceId, color, type);
                     }
                 }
             });
@@ -165,11 +176,7 @@ export function addPieceToGrid(piece, targetGrid) {
                 const boardY = piece.y + y;
 
                 if (boardY >= 0 && boardY < targetGrid.length && boardX >= 0 && boardX < COLS) {
-                    targetGrid[boardY][boardX] = {
-                        color,
-                        id: pieceId,
-                        type,
-                    };
+                    targetGrid[boardY][boardX] = gridCell(piece, pieceId, color, type);
                 }
             }
         });
@@ -214,11 +221,7 @@ export function updatePiecePositionInGrid(piece, oldY, targetGrid) {
                 const boardY = piece.y + y;
 
                 if (boardY >= 0 && boardY < targetGrid.length && boardX >= 0 && boardX < COLS) {
-                    targetGrid[boardY][boardX] = {
-                        color,
-                        id: pieceId,
-                        type,
-                    };
+                    targetGrid[boardY][boardX] = gridCell(piece, pieceId, color, type);
                 }
             }
         });

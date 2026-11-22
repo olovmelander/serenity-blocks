@@ -4,9 +4,9 @@ import {
     captureGameStateSnapshot,
     restoreGameStateSnapshot,
 } from '../../demo/demo-state.js';
-import { restoreBlindTimers } from '../../blind.js';
+import { BLIND_MAX_TICKS, BLIND_TICK_MS, normalizeBlindState } from '../../blind.js';
 import { COLS, HIDDEN_ROWS, ROWS } from '../../constants.js';
-import { GarbageQueue } from '../../garbage.js';
+import { createVersusGarbageQueue } from '../versus-rules.js';
 import { durationMsToTicks } from '../../fixed-tick-clock.js';
 import { PLAYER_INPUT_EDGE_CAPACITY } from '../../player-input-state.js';
 import { normalizeSfc32RandomState, restoreSfc32Random } from '../../rng.js';
@@ -36,7 +36,7 @@ const GAME_STATE_SNAPSHOT_FIELDS = [
     'boardVersion', 'isGameOver', 'isPaused', 'isProcessingPhysics', 'isStopped',
     'isAlive', 'hitStopEnabled', 'hitStopRemaining', 'hitStopTicks',
     'lastMoveWasRotation', 'b2bActive', 'inputQueue', 'playerInput', 'isInfinityMode',
-    'currentTopRow', 'cameraRow', 'lastPlacedPieceX', 'comboState', 'blindTimers',
+    'currentTopRow', 'cameraRow', 'lastPlacedPieceX', 'comboState', 'blind',
     'garbageAttackSequence', 'handicap', 'handicaps', 'goalComplete',
     'victoryLapActive', 'victoryLapStartTime', 'rngState',
 ];
@@ -201,6 +201,10 @@ function validatePiece(piece, label, { active = false } = {}) {
         invariant((typeof value.pieceId === 'string' && value.pieceId.length <= 128)
             || Number.isSafeInteger(value.pieceId), `${label}.pieceId is invalid`);
     }
+    if (value.blindTicks !== undefined) {
+        invariant(Number.isInteger(value.blindTicks) && value.blindTicks > 0
+            && value.blindTicks <= BLIND_MAX_TICKS, `${label}.blindTicks is invalid`);
+    }
 }
 
 /** @param {unknown} grid @param {string} label */
@@ -318,8 +322,8 @@ function validateGarbageEntry(entry, label) {
             && entry.holeMask < (2 ** COLS), `${label}.holeMask is invalid`);
     } else {
         invariant(
-            Number.isFinite(entry.duration) && entry.duration >= 0,
-            `${label}.duration is invalid`,
+            Number.isInteger(entry.ticks) && entry.ticks > 0 && entry.ticks <= BLIND_MAX_TICKS,
+            `${label}.ticks is invalid`,
         );
     }
     ['attackId', 'attackerId', 'targetId'].forEach((field) => {
@@ -337,57 +341,19 @@ function validateCounterRecord(value, keys, label) {
     keys.forEach((key) => assertCounter(value[key], `${label}.${key}`));
 }
 
-/** @param {Record<string, any>} timers @param {number} simTickMs @param {string} label */
-function validateBlindTimerSnapshot(timers, simTickMs, label) {
-    invariant(isRecord(timers), `${label} is required`);
-    const publicFields = ['field', 'fieldMax', 'pending', 'pendingMax'];
-    publicFields.forEach((field) => invariant(
-        Number.isFinite(timers[field]) && timers[field] >= 0,
-        `${label}.${field} must be a non-negative finite number`,
-    ));
-    invariant(timers.fieldMax >= timers.field, `${label}.fieldMax is below field`);
-    invariant(timers.pendingMax >= timers.pending, `${label}.pendingMax is below pending`);
-
-    const tickFields = ['fieldTicks', 'fieldMaxTicks', 'pendingTicks', 'pendingMaxTicks'];
-    const sourceFields = [
-        '_blindTickSourceField', '_blindTickSourceFieldMax',
-        '_blindTickSourcePending', '_blindTickSourcePendingMax', '_blindTickDurationMs',
-    ];
-    const exactFields = [...tickFields, ...sourceFields];
-    const present = exactFields.filter((field) => Object.hasOwn(timers, field));
-    invariant(present.length === exactFields.length, `${label} requires a fixed-tick mirror`);
-    assertExactKeys(timers, [...publicFields, ...exactFields], label);
-
-    tickFields.forEach((field) => assertCounter(timers[field], `${label}.${field}`));
+/** @param {Record<string, any>} blind @param {string} label */
+function validateBlindState(blind, label) {
+    invariant(isRecord(blind), `${label} is required`);
+    assertExactKeys(blind, ['clockMs', 'pieceTicks', 'version'], label);
     invariant(
-        timers.fieldMaxTicks >= timers.fieldTicks,
-        `${label}.fieldMaxTicks is below fieldTicks`,
+        Number.isFinite(blind.clockMs) && blind.clockMs >= 0 && blind.clockMs < BLIND_TICK_MS,
+        `${label}.clockMs is invalid`,
     );
     invariant(
-        timers.pendingMaxTicks >= timers.pendingTicks,
-        `${label}.pendingMaxTicks is below pendingTicks`,
+        Number.isInteger(blind.pieceTicks) && blind.pieceTicks >= 0 && blind.pieceTicks <= BLIND_MAX_TICKS,
+        `${label}.pieceTicks is invalid`,
     );
-    invariant(
-        timers._blindTickSourceField === timers.field
-        && timers._blindTickSourceFieldMax === timers.fieldMax
-        && timers._blindTickSourcePending === timers.pending
-        && timers._blindTickSourcePendingMax === timers.pendingMax,
-        `${label} fixed-tick source mirrors are stale`,
-    );
-    invariant(
-        timers._blindTickDurationMs === simTickMs,
-        `${label} fixed-tick duration is stale`,
-    );
-}
-
-/** @param {unknown} timers @param {number} simTickMs */
-function canonicalizeBlindTimerSnapshot(timers, simTickMs) {
-    const holder = {
-        simTickMs,
-        blindTimers: {},
-    };
-    restoreBlindTimers(holder, isRecord(timers) ? timers : {}, simTickMs);
-    return clonePlain(holder.blindTimers);
+    assertCounter(blind.version, `${label}.version`);
 }
 
 /** @param {Record<string, any>} gameState @param {string} steamId */
@@ -444,7 +410,7 @@ function validateGameStateSnapshot(gameState, steamId) {
         );
         assertCounter(value, `${label}.handicaps.${opponentId}`);
     });
-    validateBlindTimerSnapshot(gameState.blindTimers, gameState.simTickMs, `${label}.blindTimers`);
+    validateBlindState(gameState.blind, `${label}.blind`);
     const numericFields = [
         'simTickMs', 'simTimeMs', 'simFrame', 'lastTime', 'dropInterval', 'dropCounter',
         'pieceSpawnTime', 'piecesPlaced', 'lockDelay', 'lockDelayTicks', 'lockResetLimit',
@@ -626,10 +592,7 @@ export function captureFfaResyncSidecar(game, joinSyncpoint) {
         if (gameState.currentPiece && !Object.hasOwn(gameState.currentPiece, 'color')) {
             gameState.currentPiece.color = null;
         }
-        gameState.blindTimers = canonicalizeBlindTimerSnapshot(
-            gameState.blindTimers,
-            gameState.simTickMs,
-        );
+        gameState.blind = normalizeBlindState(gameState.blind);
         const rng = captureRngDescriptor(player.gameState);
 
         return {
@@ -646,6 +609,9 @@ export function captureFfaResyncSidecar(game, joinSyncpoint) {
                 lastAppliedLockSeq: player._lastAppliedLockSeq ?? 0,
                 lastAppliedClearSeq: player._lastAppliedClearSeq ?? 0,
                 lastLockHostTick: player._lastLockHostTick ?? null,
+                // Free-for-all respawns so far (ffa/respawn.js): a resynced client, or a host
+                // that takes over, counts on from here.
+                respawnSeq: player._respawnSeq ?? 0,
                 attackCredit: {
                     model: 'last-attacker-v1',
                     lastAttackerId: normalizeOptionalId(player.lastAttackerId),
@@ -791,6 +757,10 @@ function validatePlayerPayload(player) {
     ].forEach((field) => {
         assertCounter(player.wrapper[field], `player ${steamId} ${field}`);
     });
+    // Checked when present: a host on an older build sends none.
+    if (player.wrapper.respawnSeq !== undefined) {
+        assertCounter(player.wrapper.respawnSeq, `player ${steamId} respawnSeq`);
+    }
     invariant(
         player.wrapper.lastLockHostTick === null
             || (Number.isSafeInteger(player.wrapper.lastLockHostTick)
@@ -1002,7 +972,7 @@ export function applyFfaResyncSidecar(game, validated, options = {}) {
         invariant(player?.gameState, `target player ${playerState.steamId} is missing`);
 
         const randomGenerator = createRandomGenerator(playerState.rng);
-        const garbageQueue = new GarbageQueue();
+        const garbageQueue = createVersusGarbageQueue();
         garbageQueue.enqueue(clonePlain(playerState.garbageEntries));
         return {
             player,
@@ -1038,7 +1008,14 @@ export function applyFfaResyncSidecar(game, validated, options = {}) {
         staged.player._lastAppliedLockSeq = wrapper.lastAppliedLockSeq;
         staged.player._lastAppliedClearSeq = wrapper.lastAppliedClearSeq;
         staged.player._lastLockHostTick = wrapper.lastLockHostTick;
+        // Never back: a capture older than a respawn this client already applied counts fewer.
+        staged.player._respawnSeq = Math.max(
+            normalizeCounter(staged.player._respawnSeq),
+            normalizeCounter(wrapper.respawnSeq),
+        );
         staged.player.lastAttackerId = wrapper.attackCredit.lastAttackerId;
+        // This host's credit for the player restarts from the holder the old host named.
+        staged.player.fragCredit?.reset();
         staged.player.garbageQueue = staged.garbageQueue;
     });
 

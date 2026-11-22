@@ -143,43 +143,54 @@ describe('Garbage Logic', () => {
         it('defaults to a line attack when no rules are given', () => {
             const attack = calculateGarbage(doubleClear());
             expect(attack.attackType).toBe(ATTACK_TYPES.LINES);
-            expect(attack.param).toBe(0);
         });
 
-        it('forces a Blind attack when rules.forceAttackType=blind', () => {
+        it('forces a Blind attack when rules.forceAttackType=blind: a blind piece per row, no rows', () => {
             const attack = calculateGarbage(doubleClear(), { forceAttackType: ATTACK_TYPES.BLIND });
             expect(attack.attackType).toBe(ATTACK_TYPES.BLIND);
-            // Blind param = blindBaseDuration(3) + complexity(1)
-            expect(attack.param).toBe(4);
-            // A blind attack still carries its blackout entry on expansion
             const entries = attack.expandEntries();
-            expect(entries.some((e) => e.type === 'blind')).toBe(true);
+            expect(entries.map((e) => e.type)).toEqual(['blind']);
+            expect(entries[0].ticks).toBe(30);
         });
 
-        it('forces a Full Blind attack when rules.forceAttackType=full_blind', () => {
-            const attack = calculateGarbage(doubleClear(), { forceAttackType: ATTACK_TYPES.FULL_BLIND });
-            expect(attack.attackType).toBe(ATTACK_TYPES.FULL_BLIND);
-            // Full blind param = depth(2) * fullBlindMultiplier(2)
-            expect(attack.param).toBe(4);
-            const entries = attack.expandEntries();
-            expect(entries.some((e) => e.type === 'full_blind')).toBe(true);
-        });
-
-        it('honours custom blind tuning params', () => {
-            const attack = calculateGarbage(doubleClear(), {
+        it('a Blind attack that empties the board adds a full blind of cleanRows x combo x 12', () => {
+            const attack = calculateGarbage({ ...doubleClear(), complexity: 2, sendForPerfectClear: true }, {
                 forceAttackType: ATTACK_TYPES.BLIND,
-                blindBaseDuration: 5,
             });
-            expect(attack.param).toBe(6); // 5 + complexity(1)
+            const entries = attack.expandEntries();
+            // One normal row (depth 2) and a clean bonus of (1 + 2) / 2 = 1 row.
+            expect(entries.map((e) => e.type)).toEqual(['blind', 'full_blind']);
+            expect(entries[1].ticks).toBe(1 * 2 * 12);
         });
 
-        it('forces a Hot Potato attack with a timer param', () => {
-            const attack = calculateGarbage(doubleClear(), {
-                forceAttackType: ATTACK_TYPES.POTATO,
-                potatoDurationMs: 9000,
-            });
-            expect(attack.attackType).toBe(ATTACK_TYPES.POTATO);
-            expect(attack.param).toBe(9000);
+        it('forces a Full Blind attack when rules.forceAttackType=full_blind: rows x combo x 12, no rows', () => {
+            const quad = { ...doubleClear(), depth: 4, complexity: 3 };
+            quad.holeMask = [...quad.holeMask, ...quad.holeMask];
+            const attack = calculateGarbage(quad, { forceAttackType: ATTACK_TYPES.FULL_BLIND });
+            expect(attack.attackType).toBe(ATTACK_TYPES.FULL_BLIND);
+            const entries = attack.expandEntries();
+            expect(entries).toEqual([expect.objectContaining({ type: 'full_blind', ticks: 3 * 3 * 12 })]);
+        });
+
+        it('a Full Blind counts the clean bonus as rows and caps at 255 ticks', () => {
+            const quad = {
+                ...doubleClear(), depth: 4, complexity: 6, sendForPerfectClear: true,
+            };
+            quad.holeMask = [...quad.holeMask, ...quad.holeMask];
+            const attack = calculateGarbage(quad, { forceAttackType: ATTACK_TYPES.FULL_BLIND });
+            // 3 normal + 2 clean rows, six waves: 5 x 6 x 12 = 360, capped.
+            expect(attack.expandEntries()[0].ticks).toBe(255);
+        });
+
+        it('a clear too small to attack sends no blind either', () => {
+            const attack = calculateGarbage({ ...doubleClear(), depth: 1 }, { forceAttackType: ATTACK_TYPES.BLIND });
+            expect(attack.expandEntries()).toEqual([]);
+        });
+
+        it('has no hot potato attack type: the hot potato routes ordinary rows', () => {
+            expect(ATTACK_TYPES).not.toHaveProperty('POTATO');
+            const attack = calculateGarbage(doubleClear(), { forceAttackType: 'potato' });
+            expect(attack.attackType).toBe(ATTACK_TYPES.LINES);
         });
     });
 

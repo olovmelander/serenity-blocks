@@ -40,7 +40,7 @@ function fallingPlayer(overrides = {}) {
         lockedPieces: [],
         dropCounter: 0,
         dropInterval: 1000,
-        blindTimers: null,
+        blind: null,
         ...overrides,
     };
 }
@@ -94,13 +94,18 @@ describe('Local Multiplayer legacy loop frame clamp', () => {
 
     it('expires wall-clock timers on the real elapsed time', () => {
         const stopped = fallingPlayer({ hitStopRemaining: 70 });
-        const blinded = fallingPlayer({ blindTimers: { field: 1, fieldMax: 1, pending: 0, pendingMax: 0 } });
+        // A hidden cell whose blind clock stands 100 ms into a 160 ms blind tick.
+        const blinded = fallingPlayer({
+            blind: { clockMs: 100, pieceTicks: 0, version: 0 },
+            lockedPieces: [{ pieceId: 1, x: 0, y: 23, shape: [[1]], blindTicks: 2 }],
+        });
         const mode = startLoop([stopped, blinded]);
 
         frame(1108);
 
         expect(stopped.hitStopRemaining).toBe(0);
-        expect(blinded.blindTimers.field).toBeCloseTo(1 - 0.108, 6);
+        expect(blinded.lockedPieces[0].blindTicks).toBe(1); // 208 ms: one blind tick passed
+        expect(blinded.blind.clockMs).toBeCloseTo(48, 6);
         expect(mode.botManager.update).toHaveBeenCalledExactlyOnceWith(108, 1108);
     });
 });

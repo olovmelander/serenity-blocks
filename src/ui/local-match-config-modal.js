@@ -26,6 +26,8 @@ import {
     INFINITY_WELL_ROWS_FINE_STEP, INFINITY_WELL_ROWS_MAX, INFINITY_WELL_ROWS_MIN,
     readInfinityWellRows,
 } from '../core/multiplayer/infinity-well-rule.js';
+import { readVersusGameType } from '../core/multiplayer/versus-rules.js';
+import { MIN_ATTACK_LINES_CHOICES, MIN_ATTACK_LINES_DEFAULT, readMinAttackLines } from '../core/garbage.js';
 
 const DEFAULT_BOT_SKILL = 5;
 const LAST_SETUP_KEY = 'serenity.localMatch.lastSetup';
@@ -79,13 +81,21 @@ const CONDITION_COPY = {
     },
 };
 
+// Versus game types (core/multiplayer/versus-rules.js); free-for-all is the default.
+const GAME_TYPE_HELP = {
+    ffa: 'Frag your opponents. When you die, press any of your keys to play again.',
+    survivor: 'The last player or team standing takes the round, then everybody restarts.',
+};
+
 const ATTACK_HELP = {
-    standard: 'Clearing two or more lines sends garbage lines to an opponent.',
-    blind: 'Garbage lines plus a short blackout of the target board.',
-    full_blind: 'A heavier attack with a longer blackout.',
-    hot_potato: 'Hold the potato too long and it goes off — clear lines to pass it on.',
+    standard: 'Clearing lines sends garbage rows to your opponents.',
+    blind: 'No garbage: each row you send hides one of the target’s next pieces for a few seconds. Clearing the board hides their whole stack.',
+    full_blind: 'No garbage: each attack hides the target’s whole stack for a while — longer for bigger clears and combos.',
+    hot_potato: 'Teams take the potato in turn. Its holder takes every attack — send enough rows to pass it on.',
     peaceful: 'No attacks are sent — a calm, side-by-side match.',
 };
+
+const MIN_ATTACK_HELP = 'Clears smaller than this send nothing (a cleared board always attacks).';
 
 function readLastSetup() {
     try {
@@ -105,7 +115,8 @@ function writeLastSetup(values) {
 
 /**
  * Map an attack-style selection to a garbage `rules` object understood by
- * core/garbage.js `calculateGarbage`. Values match ATTACK_TYPES in that module.
+ * core/garbage.js `calculateGarbage`. Values match ATTACK_TYPES in that module. The hot
+ * potato sends ordinary rows; `hotPotato` in the config routes them (multiplayer/hot-potato.js).
  */
 function attackRulesFor(style) {
     switch (style) {
@@ -113,14 +124,16 @@ function attackRulesFor(style) {
         return { forceAttackType: 'blind' };
     case 'full_blind':
         return { forceAttackType: 'full_blind' };
-    case 'hot_potato':
-        return { forceAttackType: 'potato', potatoDurationMs: 12000, potatoPenaltyLines: 6 };
     case 'peaceful':
         return { disableAttacks: true };
     default:
         return null;
     }
 }
+
+const minAttackOptions = () => MIN_ATTACK_LINES_CHOICES
+    .map((lines) => `<option value="${lines}"${lines === MIN_ATTACK_LINES_DEFAULT ? ' selected' : ''}>${lines}</option>`)
+    .join('');
 
 /**
  * Pure config assembler — takes a plain object of form values (as produced by
@@ -144,6 +157,7 @@ export function buildLocalMatchConfig(values = {}) {
         boringRules: get('boringRules') === 'on',
         attackStyle,
         attackRules: attackRulesFor(attackStyle),
+        minAttackLines: readMinAttackLines(get('minAttackLines')),
     };
 
     // Every slot always carries a team; default is the player's OWN team
@@ -159,12 +173,10 @@ export function buildLocalMatchConfig(values = {}) {
     const distinctTeams = new Set(config.playerTeams).size;
     config.isTeamMode = distinctTeams >= 2 && distinctTeams < numPlayers;
     config.hotPotato = config.attackStyle === 'hot_potato';
-    if (config.hotPotato) {
-        config.potatoDurationMs = 12000;
-        config.potatoPenaltyLines = 6;
-    }
 
     if (!isInfinityLMS) {
+        // Infinity's Last Standing keeps its own elimination rules and has no game type.
+        config.gameType = readVersusGameType({ gameType: get('gameType') });
         config.endConditionValue = parseInt(get('endConditionValue'), 10) || 0;
         config.startLevel = parseInt(get('startLevel'), 10) || 1;
         config.levelProgression = get('levelProgression') === 'on';
@@ -293,6 +305,15 @@ export class LocalMatchConfigModal {
                     <p class="sb-mp-help" id="match-mode-help"></p>
                   </div>
 
+                  <div class="sb-mp-field" id="game-type-group">
+                    <span class="sb-mp-field__label" id="game-type-label">Game type</span>
+                    <select id="game-type" name="gameType" aria-label="Game type">
+                      <option value="ffa" selected>Free-for-all</option>
+                      <option value="survivor">Survivor</option>
+                    </select>
+                    <p class="sb-mp-help" id="game-type-help"></p>
+                  </div>
+
                   <div class="sb-mp-field" id="attack-style-group">
                     <span class="sb-mp-field__label" id="attack-style-label">Attacks</span>
                     <select id="attack-style" name="attackStyle" aria-label="Attacks">
@@ -355,19 +376,17 @@ export class LocalMatchConfigModal {
         min: 1, max: 9, value: 1, label: 'the starting level',
     })}
                     </div>
+                    <div class="sb-mp-field form-group" id="min-attack-lines-group">
+                      <span class="sb-mp-field__label" id="min-attack-lines-label">Smallest attacking clear</span>
+                      <select id="min-attack-lines" name="minAttackLines" aria-label="Smallest attacking clear">${minAttackOptions()}</select>
+                      <p class="sb-mp-help">${MIN_ATTACK_HELP}</p>
+                    </div>
                     <label class="sb-mp-switch form-group" id="level-progression-group">
                       <span class="sb-mp-field__text">
                         <span class="sb-mp-field__label">Level up as you clear</span>
                         <span class="sb-mp-help">One level for every 15 lines.</span>
                       </span>
                       <input type="checkbox" class="sb-toggle" id="level-progression" name="levelProgression" />
-                    </label>
-                    <label class="sb-mp-switch form-group" id="boring-rules-group">
-                      <span class="sb-mp-field__text">
-                        <span class="sb-mp-field__label">No attack scaling</span>
-                        <span class="sb-mp-help">Attacks keep full strength with three or four players.</span>
-                      </span>
-                      <input type="checkbox" class="sb-toggle" id="boring-rules" name="boringRules" />
                     </label>
                   </div>
                 </details>
@@ -397,7 +416,7 @@ export class LocalMatchConfigModal {
     }
 
     enhanceStaticControls() {
-        ['#num-players', '#match-mode', '#end-condition', '#attack-style'].forEach((sel) => {
+        ['#num-players', '#match-mode', '#game-type', '#end-condition', '#attack-style', '#min-attack-lines'].forEach((sel) => {
             const el = this.container.querySelector(sel);
             if (el) this._enhancers.push(enhanceSegmented(el));
         });
@@ -413,6 +432,9 @@ export class LocalMatchConfigModal {
             this.updateEndConditionUI(e.target.value);
         });
         this.container.querySelector('#match-mode')?.addEventListener('change', () => this.refreshFormState());
+        this.container.querySelector('#game-type')?.addEventListener('change', (e) => {
+            this.updateGameTypeUI(e.target.value);
+        });
         this.container.querySelector('#attack-style')?.addEventListener('change', (e) => {
             this.updateAttackStyleUI(e.target.value);
         });
@@ -668,6 +690,7 @@ export class LocalMatchConfigModal {
     refreshFormState() {
         const matchMode = this.container.querySelector('#match-mode');
         const modeHelp = this.container.querySelector('#match-mode-help');
+        const gameTypeGroup = this.container.querySelector('#game-type-group');
         const endConditionGroup = this.container.querySelector('#end-condition-group');
         const endCondition = this.container.querySelector('#end-condition');
         const valueGroup = this.container.querySelector('#end-value-group');
@@ -682,6 +705,8 @@ export class LocalMatchConfigModal {
                 ? 'A well up to 1,000 rows tall. The last player standing wins.'
                 : 'Win by frags, time, score or lines — you choose below.';
         }
+        // Last Standing is played to the last one alive: no game type to choose.
+        if (gameTypeGroup) gameTypeGroup.hidden = isInfinity;
         if (endConditionGroup) endConditionGroup.hidden = isInfinity;
         if (valueGroup) valueGroup.hidden = isInfinity || endCondition?.value === 'never';
         if (infinityRowsGroup) infinityRowsGroup.hidden = !isInfinity;
@@ -693,6 +718,12 @@ export class LocalMatchConfigModal {
         const help = this.container.querySelector('#attack-style-help');
         if (!help) return;
         help.textContent = ATTACK_HELP[style] || ATTACK_HELP.standard;
+    }
+
+    updateGameTypeUI(gameType) {
+        const help = this.container.querySelector('#game-type-help');
+        if (!help) return;
+        help.textContent = GAME_TYPE_HELP[readVersusGameType({ gameType })];
     }
 
     readFormValues() {
@@ -732,7 +763,9 @@ export class LocalMatchConfigModal {
         this.renderSlotCards(seats);
 
         setSelect('#match-mode', saved.matchMode);
+        setSelect('#game-type', saved.gameType);
         setSelect('#attack-style', saved.attackStyle);
+        setSelect('#min-attack-lines', saved.minAttackLines);
         setSelect('#end-condition', saved.endCondition);
         setNumber('#end-condition-value', saved.endConditionValue);
         setNumber('#infinity-max-rows', saved.infinityMaxRows);
@@ -813,6 +846,8 @@ export class LocalMatchConfigModal {
         this.restoreSetup(readLastSetup());
         const attackStyle = this.container.querySelector('#attack-style');
         if (attackStyle) this.updateAttackStyleUI(attackStyle.value);
+        const gameType = this.container.querySelector('#game-type');
+        if (gameType) this.updateGameTypeUI(gameType.value);
         this.refreshFormState();
         this.clearError();
 

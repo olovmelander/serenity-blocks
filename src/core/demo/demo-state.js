@@ -1,5 +1,5 @@
 import { createBoardGrid } from '../board.js';
-import { restoreBlindTimers } from '../blind.js';
+import { normalizeBlindState } from '../blind.js';
 import { durationMsToTicks, elapsedMsToTicks } from '../fixed-tick-clock.js';
 import { clearPlayerInput, restorePlayerInputState } from '../player-input-state.js';
 import {
@@ -184,7 +184,7 @@ export function captureGameStateSnapshot(gameState) {
         cameraRow: gameState.cameraRow,
         lastPlacedPieceX: clonePlain(gameState.lastPlacedPieceX),
         comboState: clonePlain(gameState.comboState),
-        blindTimers: clonePlain(gameState.blindTimers),
+        blind: normalizeBlindState(gameState.blind),
         garbageAttackSequence: gameState.garbageAttackSequence,
         handicap: gameState.handicap,
         handicaps: clonePlain(gameState.handicaps),
@@ -351,7 +351,8 @@ export function restoreGameStateSnapshot(gameState, snapshot, options = {}) {
     synchronizeInfinitySimulationCamera(gameState);
     gameState.lastPlacedPieceX = clonePlain(snapshot.lastPlacedPieceX) || [];
     gameState.comboState = clonePlain(snapshot.comboState) || {};
-    restoreBlindTimers(gameState, snapshot.blindTimers);
+    // Hidden cells come back with lockedPieces/boardGrid (blind.js keeps their time there).
+    gameState.blind = normalizeBlindState(snapshot.blind);
     gameState.garbageAttackSequence = snapshot.garbageAttackSequence || 0;
     gameState.handicap = snapshot.handicap ?? 2;
     gameState.handicaps = clonePlain(snapshot.handicaps) || {};

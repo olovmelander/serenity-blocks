@@ -14,6 +14,7 @@ import {
     closeLayer, focusSoon, mpIcon, openLayer,
 } from './components/mp-sheet.js';
 import { HOST_IP_NOTE } from './online-play-notice.js';
+import { MIN_ATTACK_LINES_CHOICES, MIN_ATTACK_LINES_DEFAULT, readMinAttackLines } from '../core/garbage.js';
 
 const CONDITIONS = {
     frags: {
@@ -65,15 +66,26 @@ export const LOBBY_TYPE_HELP = {
     private: 'Invite only. Invite friends from the Steam overlay.',
 };
 
+// The game types (core/multiplayer/versus-rules.js readVersusGameType).
+export const GAME_TYPE_HELP = {
+    ffa: 'Frag your opponents. When you die, press any of your keys to play again.',
+    survivor: 'The last player standing takes the round, then everybody restarts.',
+};
+
 const ATTACK_HELP = {
-    standard: 'Clearing two or more lines sends garbage lines to an opponent.',
-    blind: 'Garbage lines plus a short blackout of the target board.',
-    full_blind: 'A heavier attack with a longer blackout.',
-    hot_potato: 'Hold the potato too long and it goes off — clear lines to pass it on.',
+    standard: 'Clearing lines sends garbage rows to your opponents.',
+    blind: 'No garbage: each row you send hides one of the target’s next pieces for a few seconds. Clearing the board hides their whole stack.',
+    full_blind: 'No garbage: each attack hides the target’s whole stack for a while — longer for bigger clears and combos.',
+    hot_potato: 'Players take the potato in turn. Its holder takes every attack — send enough rows to pass it on.',
     peaceful: 'No attacks are sent in this match.',
 };
 
-const SEGMENTED = ['#max-players', '#lobby-type', '#online-end-condition', '#online-attack-style', '#garbage-cancellation'];
+const MIN_ATTACK_HELP = 'Clears smaller than this send nothing (a cleared board always attacks).';
+
+const SEGMENTED = [
+    '#online-game-type', '#max-players', '#lobby-type', '#online-end-condition', '#online-attack-style',
+    '#online-min-attack-lines', '#garbage-cancellation',
+];
 
 export class MatchConfigModal {
     /**
@@ -119,6 +131,15 @@ export class MatchConfigModal {
               </div>
 
               <div class="mc-grid">
+                <div class="sb-mp-field mc-grid__wide">
+                  <span class="sb-mp-field__label">Game type</span>
+                  <select id="online-game-type" name="gameType" aria-label="Game type">
+                    <option value="ffa" selected>Free-for-all</option>
+                    <option value="survivor">Survivor</option>
+                  </select>
+                  <p class="sb-mp-help" id="online-game-type-help">${GAME_TYPE_HELP.ffa}</p>
+                </div>
+
                 <div class="sb-mp-field">
                   <span class="sb-mp-field__label">Players</span>
                   <select id="max-players" name="maxPlayers" aria-label="Most players">
@@ -200,17 +221,24 @@ export class MatchConfigModal {
                     <p class="sb-mp-help" id="online-attack-style-help">${ATTACK_HELP.standard}</p>
                   </div>
                   <div class="sb-mp-field">
+                    <span class="sb-mp-field__label">Smallest attacking clear</span>
+                    <select id="online-min-attack-lines" name="minAttackLines" aria-label="Smallest attacking clear">
+                      ${MIN_ATTACK_LINES_CHOICES.map((lines) => `<option value="${lines}"${lines === MIN_ATTACK_LINES_DEFAULT ? ' selected' : ''}>${lines}</option>`).join('')}
+                    </select>
+                    <p class="sb-mp-help">${MIN_ATTACK_HELP}</p>
+                  </div>
+                  <div class="sb-mp-field">
                     <span class="sb-mp-field__label">Garbage cancelling</span>
                     <select id="garbage-cancellation" name="garbageCancellation" aria-label="Garbage cancelling">
-                      <option value="full" selected>On</option>
-                      <option value="disabled">Off</option>
+                      <option value="disabled" selected>Off</option>
+                      <option value="full">On</option>
                     </select>
-                    <p class="sb-mp-help" id="garbage-cancellation-help">Lines you send cancel garbage on its way to you, one for one.</p>
+                    <p class="sb-mp-help" id="garbage-cancellation-help">Garbage always arrives in full.</p>
                   </div>
                   <label class="sb-mp-switch">
                     <span class="sb-mp-field__text">
                       <span class="sb-mp-field__label">No attack scaling</span>
-                      <span class="sb-mp-help">Attacks keep full strength with three or more players.</span>
+                      <span class="sb-mp-help">Attacks keep full strength even with more than four players alive.</span>
                     </span>
                     <input type="checkbox" class="sb-toggle" id="online-boring-rules" name="boringRules" />
                   </label>
@@ -255,6 +283,9 @@ export class MatchConfigModal {
 
         this.container.querySelector('#online-end-condition').addEventListener('change', (e) => {
             this.updateEndConditionUI(e.target.value);
+        });
+        this.container.querySelector('#online-game-type')?.addEventListener('change', (e) => {
+            this.updateGameTypeUI(e.target.value);
         });
         this.container.querySelector('#online-attack-style')?.addEventListener('change', (e) => {
             this.updateAttackStyleUI(e.target.value);
@@ -319,23 +350,23 @@ export class MatchConfigModal {
         valueHelp.textContent = config.help;
     }
 
+    /** The hot potato sends ordinary rows; `hotPotato` in the config routes them. */
     _attackRulesFor(style) {
         switch (style) {
         case 'blind':
             return { forceAttackType: 'blind' };
         case 'full_blind':
             return { forceAttackType: 'full_blind' };
-        case 'hot_potato':
-            return {
-                forceAttackType: 'potato',
-                potatoDurationMs: 12000,
-                potatoPenaltyLines: 6,
-            };
         case 'peaceful':
             return { disableAttacks: true };
         default:
             return null;
         }
+    }
+
+    updateGameTypeUI(type) {
+        const help = this.container.querySelector('#online-game-type-help');
+        if (help) help.textContent = GAME_TYPE_HELP[type] || GAME_TYPE_HELP.ffa;
     }
 
     updateAttackStyleUI(style) {
@@ -390,21 +421,19 @@ export class MatchConfigModal {
             gameName: (formData.get('matchName') || '').trim() || 'Unnamed Match',
             maxPlayers: parseInt(formData.get('maxPlayers'), 10),
             lobbyType: formData.get('lobbyType'),
+            gameType: formData.get('gameType') === 'survivor' ? 'survivor' : 'ffa',
             endCondition: formData.get('endCondition'),
             endConditionValue: parseInt(formData.get('endConditionValue'), 10) || 0,
             boringRules: formData.get('boringRules') === 'on',
-            garbageCancellation: formData.get('garbageCancellation') || 'full',
+            garbageCancellation: formData.get('garbageCancellation') || 'disabled',
             attackStyle: formData.get('attackStyle') || 'standard',
             attackRules: this._attackRulesFor(formData.get('attackStyle') || 'standard'),
+            minAttackLines: readMinAttackLines(formData.get('minAttackLines')),
             // The level rule (match-level-rule.js): a fixed level unless levelling up is on.
             startLevel: parseInt(formData.get('startLevel'), 10),
             levelProgression: formData.get('levelProgression') === 'on',
         };
         config.hotPotato = config.attackStyle === 'hot_potato';
-        if (config.hotPotato) {
-            config.potatoDurationMs = 12000;
-            config.potatoPenaltyLines = 6;
-        }
 
         // Validation
         if (!(config.startLevel >= MATCH_START_LEVEL_MIN && config.startLevel <= MATCH_START_LEVEL_MAX)) {
@@ -480,6 +509,7 @@ export class MatchConfigModal {
         this._enhancers.forEach((enhancer) => enhancer?.refresh?.());
 
         // Reset to default end condition UI
+        this.updateGameTypeUI('ffa');
         this.updateEndConditionUI('frags');
         this.updateAttackStyleUI('standard');
         this.updateLobbyTypeUI(DEFAULT_LOBBY_TYPE);

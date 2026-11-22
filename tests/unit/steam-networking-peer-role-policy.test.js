@@ -22,6 +22,7 @@ const PEER_TO_HOST_MESSAGE_TYPES = Object.freeze([
     MessageTypes.GAME_INPUT_BATCH,
     MessageTypes.LOBBY_PLAYER_READY,
     MessageTypes.GAME_ROUND_READY,
+    MessageTypes.GAME_RESPAWN_REQUEST,
     MessageTypes.NET_PING,
 ]);
 

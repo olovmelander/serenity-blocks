@@ -23,6 +23,8 @@ interface BoardCell {
   shapeKey?: string;
   color?: string;
   id?: string | number;
+  /** Blind ticks left on a hidden cell (core/blind.js); absent when visible. */
+  blind?: number;
 }
 
 /** A queued garbage entry mirrored over the wire. */
@@ -38,7 +40,8 @@ interface GarbageEntrySnapshot {
   color?: string;
   holeMask?: number | null;
   variant?: string;
-  duration?: number;
+  /** A blind piece's or a full blind's blind ticks ('blind' / 'full_blind' entries). */
+  ticks?: number;
   isLastInBurst?: boolean;
   targetId?: string;
   createdSimTick?: number;
@@ -50,11 +53,12 @@ interface GarbageEntrySnapshot {
   clearSummary?: unknown;
 }
 
-interface BlindTimersSnapshot {
-  field: number;
-  fieldMax: number;
-  pending: number;
-  pendingMax: number;
+/** A board's hidden cells (core/blind.js captureBlindSnapshot). */
+interface BlindSnapshot {
+  clockMs: number;
+  pieceTicks: number;
+  /** Every hidden cell as [y * 10 + x, blind ticks], in board order. */
+  cells: Array<[number, number]>;
 }
 
 interface InputHandlingConfig {
@@ -167,6 +171,7 @@ interface LockedPieceSnapshot {
   x: number;
   y: number;
   pieceId?: string | number;
+  blindTicks?: number;
 }
 
 /**
@@ -193,7 +198,7 @@ interface PackedPlayerSnapshotV7 {
   dropInterval: number;
   garbageEntries: GarbageEntrySnapshot[];
   lockedPieces: LockedPieceSnapshot[];
-  blindTimers: BlindTimersSnapshot | null;
+  blind: BlindSnapshot | null;
 }
 
 /** Hydrated player shape accepted by the live snapshot consumer. */
@@ -210,15 +215,17 @@ interface AuthoritativePlayerSnapshot extends PlayerSnapshot {
   lockSeq: number;
 }
 
+/** The host's hot potato (core/multiplayer/hot-potato.js); online every player is a team. */
 interface HotPotatoStateSnapshot {
   enabled: boolean;
-  holderId: string | null;
-  previousHolderId: string | null;
-  expiresAt: number;
-  durationMs: number;
-  penaltyLines: number;
+  holder: string | null;
+  sent: number;
+  target: number;
+  targets: Record<string, number>;
+  order: string[];
+  lastHolder: string | null;
+  waitMs: number;
   generation: number;
-  lastEvent: unknown | null;
 }
 
 interface SnapshotWinner {

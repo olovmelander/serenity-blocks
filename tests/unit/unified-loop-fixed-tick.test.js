@@ -17,6 +17,18 @@ function createFallingState() {
     return state;
 }
 
+/**
+ * One hidden cell (blind attacks) whose next blind tick is due within the next fixed tick:
+ * the blind clock stands 10 ms short of a 160 ms boundary.
+ */
+function hideACell(state) {
+    state.lockedPieces = [{
+        pieceId: 99, shapeKey: 'O', color: '#fff', x: 0, y: 23, shape: [[1]], blindTicks: 5,
+    }];
+    state.blind.clockMs = 150;
+}
+const blindLeft = (state) => state.lockedPieces[0].blindTicks;
+
 function fixedLoopWith(state) {
     const loop = new UnifiedMultiplayerLoop();
     loop.players = [{
@@ -58,8 +70,7 @@ describe('UnifiedMultiplayerLoop fixed-tick player adapter', () => {
     it('consumes hit-stop without advancing gravity', () => {
         const state = createFallingState();
         state.hitStopRemaining = 30;
-        state.blindTimers.pending = 1;
-        state.blindTimers.pendingMax = 1;
+        hideACell(state);
         const loop = fixedLoopWith(state);
 
         loop.updatePlayersFixedTick();
@@ -67,13 +78,12 @@ describe('UnifiedMultiplayerLoop fixed-tick player adapter', () => {
         expect(state.simFrame).toBe(1);
         expect(state.currentPiece.y).toBe(0);
         expect(state.hitStopTicks).toBe(1);
-        expect(state.blindTimers.pendingTicks).toBe(59);
+        expect(blindLeft(state)).toBe(4); // the blind clock runs through hit-stop
     });
 
     it('advances held input inside the tick after blind decay and before physics', () => {
         const state = createFallingState();
-        state.blindTimers.pending = 1;
-        state.blindTimers.pendingMax = 1;
+        hideACell(state);
         const loop = fixedLoopWith(state);
         const observed = [];
 
@@ -81,7 +91,7 @@ describe('UnifiedMultiplayerLoop fixed-tick player adapter', () => {
             observed.push({
                 playerId,
                 tick: context.tick,
-                blindTicks: state.blindTimers.pendingTicks,
+                blindTicks: blindLeft(state),
                 y: state.currentPiece.y,
             });
         });
@@ -89,7 +99,7 @@ describe('UnifiedMultiplayerLoop fixed-tick player adapter', () => {
         expect(observed).toEqual([{
             playerId: 'player',
             tick: 1,
-            blindTicks: 59,
+            blindTicks: 4,
             y: 0,
         }]);
         expect(state.currentPiece.y).toBe(1);
@@ -97,15 +107,14 @@ describe('UnifiedMultiplayerLoop fixed-tick player adapter', () => {
 
     it('applies commands inside the tick and reports their dispositions', () => {
         const state = createFallingState();
-        state.blindTimers.pending = 1;
-        state.blindTimers.pendingMax = 1;
+        hideACell(state);
         const loop = fixedLoopWith(state);
         const order = [];
         let tickResult = null;
 
         loop.updatePlayersFixedTick({
             advanceInput: (playerId, context) => {
-                order.push(`advance:${playerId}:${state.simFrame}:${state.blindTimers.pendingTicks}`);
+                order.push(`advance:${playerId}:${state.simFrame}:${blindLeft(state)}`);
                 context.emit({
                     tick: context.tick,
                     subframe: 0,
@@ -127,7 +136,7 @@ describe('UnifiedMultiplayerLoop fixed-tick player adapter', () => {
         });
 
         expect(order).toEqual([
-            'advance:player:1:59',
+            'advance:player:1:4',
             'apply:player:move:0',
             'result:player:applied:1',
         ]);

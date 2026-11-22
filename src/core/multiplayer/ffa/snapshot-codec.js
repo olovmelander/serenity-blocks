@@ -14,6 +14,8 @@
  * live state and carries more risk than this read-only build side.
  */
 
+import { captureBlindSnapshot } from '../../blind.js';
+
 /**
  * Build the authoritative multi-player snapshot broadcast by the host.
  * @param {any} game - the FFAGameStateP2P instance
@@ -45,7 +47,7 @@ export function buildStateSnapshot(game) {
             color: entry.color,
             holeMask: entry.holeMask,
             variant: entry.variant,
-            duration: entry.duration,
+            ticks: entry.ticks,
             isLastInBurst: entry.isLastInBurst === true,
             attackId: entry.attackId,
             attackSeq: entry.attackSeq,
@@ -66,12 +68,9 @@ export function buildStateSnapshot(game) {
             color: piece.color,
             shapeKey: piece.shapeKey,
         })),
-        blindTimers: player.gameState.blindTimers ? {
-            field: player.gameState.blindTimers.field,
-            fieldMax: player.gameState.blindTimers.fieldMax,
-            pending: player.gameState.blindTimers.pending,
-            pendingMax: player.gameState.blindTimers.pendingMax,
-        } : null,
+        // Hidden cells (blind.js): the board's blind clock, the blind waiting for its piece in
+        // play and every hidden cell with its time.
+        blind: captureBlindSnapshot(player.gameState),
         lastInputSeq: player.lastInputSeq,
     }));
     // Phase 4: Calculate state digest for desync detection

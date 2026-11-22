@@ -16,6 +16,7 @@ describe('match-metrics — end-of-match aggregation', () => {
             attackLinesSent: 7,
             cleanLinesSent: 2,
             potatoPasses: 1,
+            potatoRowsSent: 4,
             maxComboComplexity: 4,
             maxComboDepth: 3,
         });
@@ -33,6 +34,7 @@ describe('match-metrics — end-of-match aggregation', () => {
         expect(total.attackLinesSent).toBe(12);
         expect(total.cleanLinesSent).toBe(3);
         expect(total.potatoPasses).toBe(3);
+        expect(total.potatoRowsSent).toBe(4);
         // max
         expect(total.maxComboComplexity).toBe(4); // max(4, 2)
         expect(total.maxComboDepth).toBe(6); // max(3, 6)

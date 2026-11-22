@@ -130,8 +130,8 @@ describe('lock-delay timing characterization', () => {
         const state = createGroundedState({ lockDelay: 500 });
         state.lastTime = 100;
         state.hitStopRemaining = 70;
-        state.blindTimers.field = 4;
-        state.blindTimers.fieldMax = 4;
+        state.lockedPieces.push({ pieceId: 99, x: 0, y: 23, shape: [[1]], blindTicks: 4 });
+        state.blind.clockMs = 150;
 
         advanceGravity(state, 200);
         pauseGame(state);
@@ -139,7 +139,8 @@ describe('lock-delay timing characterization', () => {
 
         expect(state.lockTimer).toBe(200);
         expect(state.hitStopRemaining).toBe(70);
-        expect(state.blindTimers.field).toBe(4);
+        expect(state.lockedPieces.at(-1).blindTicks).toBe(4);
+        expect(state.blind.clockMs).toBe(150);
 
         const now = vi.spyOn(performance, 'now').mockReturnValue(1000);
         resumeGame(state);
@@ -148,7 +149,8 @@ describe('lock-delay timing characterization', () => {
 
         expect(state.lockTimer).toBe(200);
         expect(state.hitStopRemaining).toBe(70);
-        expect(state.blindTimers.field).toBe(4);
+        expect(state.lockedPieces.at(-1).blindTicks).toBe(4);
+        expect(state.blind.clockMs).toBe(150);
     });
 });
 

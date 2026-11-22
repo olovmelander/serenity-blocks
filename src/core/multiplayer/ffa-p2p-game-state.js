@@ -16,23 +16,20 @@ import {
     softDrop,
     hardDrop,
     canPlacePiece,
-    applyGarbage,
     restoreBoardState,
 } from '../game.js';
-import { GarbageQueue } from '../garbage.js';
 import { InputValidator } from '../validation/input-validator.js';
 import { PLAYER_COLORS } from '../constants.js';
 import { FFAAttackRouter } from './ffa-attack-router.js';
-import { FragTracker } from './frag-tracker.js';
+import { FragTracker, wallClockNow } from './frag-tracker.js';
 import { HostMigration } from '../network/host-migration.js';
 import { InGameChat } from '../../ui/ingame-chat.js';
 import { paintCountdown } from '../../ui/countdown-light.js';
 import { unifiedLoop } from './unified-game-loop.js';
 import { emitMultiplayerEvent, MULTIPLAYER_EVENTS } from '../../events/multiplayer-events.js';
 import { InputJitterBuffer } from '../network/input-jitter-buffer.js';
-import {
-    applyBlindEffect, applyFullBlindEffect, createBlindTimers, restoreBlindTimers,
-} from '../blind.js';
+import { clearBlind, restoreBlindSnapshot } from '../blind.js';
+import { normalizeHotPotatoState } from './hot-potato.js';
 import { readFlag as readNetFlag } from '../flags.js';
 import { FIXED_TICK_HZ, FIXED_TICK_MS } from '../fixed-tick-clock.js';
 import { hasActiveHitStop } from '../simulation-tick.js';
@@ -105,8 +102,17 @@ import {
     sanitizeFfaNetEventData,
     stableFfaRuleHash,
 } from './ffa/net-diagnostics.js';
-import { garbageBurstKey, drainAllLineBursts, cancelIncomingLines } from './ffa/garbage-helpers.js';
-import { checkTopOut, clearEmptiesBoard, serializeBoardGrid } from './ffa/board-helpers.js';
+import { garbageBurstKey, cancelIncomingLines } from './ffa/garbage-helpers.js';
+import { insertLocalGarbagePrediction, insertPendingGarbage as insertPendingGarbageFor } from './ffa/garbage-insert.js';
+import { clearEmptiesBoard, serializeBoardGrid } from './ffa/board-helpers.js';
+import {
+    DEFAULT_VERSUS_GAME_TYPE, createVersusGarbageQueue, ensureAttackCredit,
+    forgetsSpentCredit, resetVersusCredit, stepCrowdStamps,
+} from './versus-rules.js';
+import {
+    handleFfaPlayerRespawn, handleFfaRespawnRequest, keepsOwnPlayerOut, predatesRespawn,
+    requestFfaRespawn, waitsToRespawn,
+} from './ffa/respawn.js';
 import {
     buildStateSnapshot as buildFfaStateSnapshot,
     calculateStateDigest as calculateFfaStateDigest,
@@ -161,18 +167,21 @@ export class FFAGameStateP2P {
         this.gamePhase = 'waiting';
         this.sharedSeed = 0; // Deterministic RNG seed (same pieces for all)
         this.matchConfig = {
+            // 'ffa': a knocked-out player plays again at a key (ffa/respawn.js); 'survivor': rounds.
+            gameType: DEFAULT_VERSUS_GAME_TYPE,
             endCondition: 'frags', // 'frags', 'time', 'points', 'lines', 'never'
             endConditionValue: 10,
             startLevel: 1,
             levelProgression: false,
             allowHandicap: true,
             boringRules: false,
-            garbageCancellation: 'full', // 'full' (outgoing lines cancel incoming first) | 'disabled' (classic)
+            // Versus rules never cancel incoming garbage ('full' lets outgoing lines cancel it first).
+            garbageCancellation: 'disabled',
             attackStyle: 'standard',
             attackRules: null,
+            // Clears smaller than this send no normal rows (garbage.js readMinAttackLines).
+            minAttackLines: 2,
             hotPotato: false,
-            potatoDurationMs: 12000,
-            potatoPenaltyLines: 6,
             simulationClock: 'legacy-variable-v1',
         };
         this.winner = null;
@@ -360,7 +369,7 @@ export class FFAGameStateP2P {
         // So when ON, the peer FULLY OWNS its grid/piece/nextPieces/dropCounter/score/lines/
         // level/dropInterval as a local sim — NEVER re-based per-frame. The host snapshot for
         // the local player supplies ONLY: incoming garbage (the queue), frags/isAlive/win
-        // (host verdicts), lastInputSeq (input pruning) and blindTimers — plus the existing
+        // (host verdicts), lastInputSeq (input pruning) — plus the existing
         // score/lines/garbage DESYNC DIGEST as the backstop: on a genuine (rare) divergence
         // — e.g. gravity-lock timing under frame-cadence skew, or a host-dropped input — the
         // digest triggers ONE clean forceLocal resync instead of a continuous soft glitch.
@@ -570,8 +579,9 @@ export class FFAGameStateP2P {
             name,
             color: playerColor, // NEW: Assign unique player color
             isLocal,
-            gameState: new GameState({ lockBonusPolicy: 'legacy-max' }),
-            garbageQueue: new GarbageQueue(),
+            // Versus feel (versus-rules.js): pieces drawn one by one, locked at the next gravity step.
+            gameState: new GameState({ lockBonusPolicy: 'legacy-max', pieceRandomizer: 'random', lockStyle: 'gravity' }),
+            garbageQueue: createVersusGarbageQueue(),
             isAlive: !midMatchJoin, // mid-match joiner waits (dead) until the next round
             // Distinguishes a late joiner WAITING to spawn next round from a player who was
             // alive and got ELIMINATED — both are isAlive:false, but the UI must show them
@@ -579,7 +589,10 @@ export class FFAGameStateP2P {
             awaitingSpawn: midMatchJoin,
             isReady: false,
             frags: 0,
-            lastAttackerId: null, // Track who last sent garbage to this player (for kill attribution)
+            // Who gets the frag if this player dies: the holder of fragCredit (host side,
+            // versus-rules.js), mirrored here for the snapshot and the death paths.
+            lastAttackerId: null,
+            crowdStamps: 0, // with more than four players alive, these shrink this player's attacks
             isDisconnected: false, // Reconnection tracking
             lastInputSeq: 0, // Last processed input sequence number
         };
@@ -913,11 +926,42 @@ export class FFAGameStateP2P {
             console.log(`💥 ${msg.data.fromName} sent ${msg.data.totalLines} lines to ${msg.data.targetCount} players`);
         });
 
+        // The host's hot potato (hot-potato.js): its holder, target and rows sent. When our own
+        // board got rid of it, its hidden cells show (the host drops its garbage and clears its
+        // copy of our board the same way).
+        registry.register(MessageTypes.GAME_POTATO_UPDATE, (msg) => {
+            if (this._disposed || this.isHost) return;
+            if (!this._isFromHost(msg)) {
+                this._rejectSpoof?.('GAME_POTATO_UPDATE', msg);
+                return;
+            }
+            const generation = msg.data?.roundGeneration;
+            if (Number.isInteger(generation) && Number.isInteger(this.roundGeneration)
+                && generation !== this.roundGeneration) return;
+            const state = normalizeHotPotatoState(msg.data?.state);
+            if (!state) return;
+            this.hotPotatoState = state;
+            const event = msg.data?.event;
+            if (event?.type === 'pass' && event.team === this.localPlayerId) {
+                const local = this.players.get(this.localPlayerId);
+                if (local?.gameState) clearBlind(local.gameState);
+            }
+            emitMultiplayerEvent(MULTIPLAYER_EVENTS.HOT_POTATO_UPDATED, {
+                state,
+                event: event && typeof event === 'object' ? { type: event.type, team: event.team } : null,
+            });
+        });
+
         // Peer attack requests are untrusted wire data: validated, round-fenced and
         // rate-limited in ffa/attack-request.js before the host routes them.
         registry.register(MessageTypes.GAME_ATTACK_REQUEST, (msg) => handleFfaAttackRequest(this, msg));
 
         registry.register(MessageTypes.GAME_ROUND_RESTART, (msg) => handleFfaRoundRestart(this, msg));
+
+        // Free-for-all respawn (ffa/respawn.js): a peer asks for its own player, the host
+        // decides and tells everyone; round-fenced and idempotent per player.
+        registry.register(MessageTypes.GAME_RESPAWN_REQUEST, (msg) => handleFfaRespawnRequest(this, msg));
+        registry.register(MessageTypes.GAME_PLAYER_RESPAWN, (msg) => handleFfaPlayerRespawn(this, msg));
 
         // Ready-barrier: HOST collects per-player readies for the pending round.
         registry.register(MessageTypes.GAME_ROUND_READY, (msg) => {
@@ -1163,7 +1207,7 @@ export class FFAGameStateP2P {
             player.isAlive = !isDeparted(player); // everyone still here plays the round
             player.awaitingSpawn = false; // a waiting late-joiner spawns this round
             player.garbageQueue.clear();
-            player.lastAttackerId = null;
+            resetVersusCredit(player);
 
             if (isFullReset) {
                 player.frags = 0;
@@ -1189,7 +1233,7 @@ export class FFAGameStateP2P {
             this.gamePhase = 'playing';
             this.players.forEach((player) => {
                 player.gameState.randomGenerator = this.createSeededRNG(roundSeed);
-                fillBag(player.gameState.nextPieces, player.gameState.randomGenerator);
+                fillBag(player.gameState.nextPieces, player.gameState.randomGenerator, player.gameState.pieceRandomizer);
                 spawnPiece(player.gameState, null, null);
             });
             this.startGameLoop();
@@ -1539,6 +1583,21 @@ export class FFAGameStateP2P {
     }
 
     /**
+     * Free-for-all: whether the local player is out and their keys ask to play again.
+     */
+    waitsToRespawn() {
+        return waitsToRespawn(this);
+    }
+
+    /**
+     * Free-for-all: one of the local player's keys, while they are out, asks to play again
+     * (ffa/respawn.js). Returns whether the key went to that (and so plays nothing else).
+     */
+    pressToRespawn() {
+        return requestFfaRespawn(this);
+    }
+
+    /**
      * Flush pending inputs to host (called per tick/frame)
      */
     flushInputBatch() {
@@ -1571,164 +1630,9 @@ export class FFAGameStateP2P {
         }
     }
 
-    /**
-    * Insert pending garbage for a player (after piece spawns)
-    * HOST ONLY
-    */
+    /** Insert pending garbage for a player before its next piece (HOST ONLY; ffa/garbage-insert.js). */
     insertPendingGarbage(steamId) {
-        if (!this.isHost) return;
-
-        const player = this.players.get(steamId);
-        if (!player || !player.isAlive) return;
-
-        const { garbageQueue } = player;
-
-        // Apply blind attacks FIRST. This both triggers the blackout
-        // and removes leading blind/full_blind entries that would otherwise
-        // block dequeueLineBurst() (which bails on a non-'line' head).
-        const blindBurst = garbageQueue.takePendingBlindBurst?.() || [];
-        blindBurst.forEach((entry) => {
-            if (entry.type === 'full_blind') {
-                applyFullBlindEffect(player.gameState, entry.duration);
-            } else {
-                applyBlindEffect(player.gameState, entry.duration);
-            }
-        });
-
-        const totalLines = garbageQueue.getTotalLines();
-
-        if (totalLines === 0) return;
-
-        this._logGarbage(`💥 Inserting ${totalLines} garbage lines for ${player.name}`);
-        this._logGarbage(`💥 Queue has ${garbageQueue.entries.length} total entries before dequeue`);
-
-        // Take lines from queue — DRAIN-ALL to match local (one dump), else one burst.
-        const burst = this._garbageDrainAll
-            ? drainAllLineBursts(garbageQueue)
-            : garbageQueue.dequeueLineBurst();
-
-        if (!burst || burst.length === 0) return;
-
-        this._logGarbage(`💥 Dequeued ${burst.length} entries from garbage queue`);
-
-        // Log all entries in burst to debug attackerId
-        burst.forEach((entry, idx) => {
-            this._logGarbage(`  Entry ${idx}: type=${entry.type}, attackerId=${entry.attackerId || 'MISSING'}, color=${entry.color}`);
-        });
-
-        // Track who sent the garbage for kill attribution
-        // Use the last garbage entry's attacker (most recent attacker gets the frag)
-        const attackerId = burst.length > 0
-            ? (burst[burst.length - 1].attackerId || burst.find((entry) => entry.attackerId)?.attackerId || null)
-            : null;
-        const attackerName = burst.length > 0
-            ? (burst[burst.length - 1].attackerName || burst.find((entry) => entry.attackerName)?.attackerName || null)
-            : null;
-
-        if (attackerId) {
-            const attacker = this.players.get(attackerId);
-            this._logGarbage(`💥 ✅ Garbage from ${attacker?.name || attackerId} is being inserted into ${player.name}'s board`);
-            // Track this attacker as the last one who sent garbage to this player
-            player.lastAttackerId = attackerId;
-        } else {
-            this._logGarbage('💥 ❌ NO ATTACKER FOUND in garbage burst! This will be a self-kill.');
-        }
-
-        const killerId = attackerId || null;
-        const killerName = attackerName || (killerId ? this.players.get(killerId)?.name : null);
-        const isSelfKill = !killerId || killerId === steamId;
-
-        // Board mutation + grid/cache repair live in the ONE boundary (§5.1).
-        const result = applyGarbage(player.gameState, burst, { debug: this.debugGarbage });
-
-        if (!result || result.topOut) {
-            this._logGarbage(`💀 ${player.name} topped out from garbage insertion!`);
-            player.isAlive = false;
-            player.gameState.isGameOver = true;
-            this._recordNetEvent?.('garbage_inserted', {
-                targetSteamId: steamId,
-                targetName: player.name,
-                lines: burst.length,
-                attackerId,
-                topOut: true,
-            });
-
-            if (attackerId) {
-                const attacker = this.players.get(attackerId);
-                this._logGarbage(`🏆 Kill attributed to: ${attacker?.name || attackerId}`);
-            } else {
-                this._logGarbage('💀 Self-kill (no attacker found in garbage entries)');
-            }
-
-            this.fragTracker.recordDeath(steamId, attackerId, attackerName);
-            this._recordNetEvent?.('death', {
-                deadSteamId: steamId,
-                deadName: player.name,
-                killerSteamId: attackerId,
-                killerName,
-                reason: 'garbage_insert',
-            });
-
-            emitMultiplayerEvent(MULTIPLAYER_EVENTS.PLAYER_TOPPED_OUT, {
-                steamId,
-                playerName: player.name,
-                killer: killerId,
-                killerId,
-                killerName,
-                isSelfKill,
-                isLocal: steamId === this.localPlayerId,
-            });
-            return;
-        }
-
-        // PHASE 3.2: Dispatch garbage insertion event for visual effects
-        emitMultiplayerEvent(MULTIPLAYER_EVENTS.GARBAGE_INSERTED, {
-            steamId,
-            playerName: player.name,
-            linesInserted: burst.length,
-            isLocal: steamId === this.localPlayerId,
-        });
-        this._recordNetEvent?.('garbage_inserted', {
-            targetSteamId: steamId,
-            targetName: player.name,
-            lines: burst.length,
-            attackerId,
-            topOut: false,
-        });
-
-        // Check if player topped out
-        if (checkTopOut(player.gameState)) {
-            this._logGarbage(`💀 ${player.name} topped out!`);
-            player.isAlive = false;
-            player.gameState.isGameOver = true;
-            this._recordNetEvent?.('death', {
-                deadSteamId: steamId,
-                deadName: player.name,
-                killerSteamId: attackerId,
-                killerName,
-                reason: 'topout_after_garbage',
-            });
-
-            // Award frag to the player who sent the garbage
-            if (attackerId) {
-                const attacker = this.players.get(attackerId);
-                this._logGarbage(`🏆 Kill attributed to: ${attacker?.name || attackerId}`);
-            } else {
-                this._logGarbage('💀 Self-kill (no attacker found in garbage entries)');
-            }
-            this.fragTracker.recordDeath(steamId, attackerId, attackerName);
-
-            // Dispatch top-out event
-            emitMultiplayerEvent(MULTIPLAYER_EVENTS.PLAYER_TOPPED_OUT, {
-                steamId,
-                playerName: player.name,
-                killer: killerId,
-                killerId,
-                killerName,
-                isSelfKill,
-                isLocal: steamId === this.localPlayerId,
-            });
-        }
+        insertPendingGarbageFor(this, steamId);
     }
 
     /**
@@ -1910,7 +1814,7 @@ export class FFAGameStateP2P {
         // Reset game state, onto the match's level rule (host and peers alike: match-level-rule.js)
         player.gameState.reset();
         applyMatchLevelRule(player.gameState, this.matchConfig);
-        player.garbageQueue = new GarbageQueue();
+        player.garbageQueue = createVersusGarbageQueue();
         player.isAlive = !isDeparted(player);
         player.awaitingSpawn = false; // they're spawning now — no longer a waiting late-joiner
         // DO NOT reset frags here - they persist across rounds until full game reset
@@ -1920,7 +1824,7 @@ export class FFAGameStateP2P {
         player.gameState.randomGenerator = this.createSeededRNG(roundSeed);
 
         // Fill initial bag with deterministic pieces
-        fillBag(player.gameState.nextPieces, player.gameState.randomGenerator);
+        fillBag(player.gameState.nextPieces, player.gameState.randomGenerator, player.gameState.pieceRandomizer);
 
         // Spawn first piece (no game over callback needed at start)
         spawnPiece(player.gameState, null, null);
@@ -2466,6 +2370,12 @@ export class FFAGameStateP2P {
         // Update all player states from host
         state.players.forEach((playerData) => {
             const player = this.players.get(playerData.steamId);
+            // A frame built before this player's last respawn shows them still out
+            // (ffa/respawn.js): none of it is theirs any more. A resync is exact and passes.
+            if (player && !forceLocal && predatesRespawn(player, state)) {
+                if (this._netDiagEnabled) this._netDiag.genDrops += 1;
+                return;
+            }
             if (player) {
                 const isLocalPlayer = playerData.steamId === this.localPlayerId;
 
@@ -2560,14 +2470,18 @@ export class FFAGameStateP2P {
                     statsMode = (ownsLocalPiece && this._holdStatsEnabled) ? 'monotonic' : 'adopt';
                 }
                 player.frags = playerData.frags;
-                player.isAlive = playerData.isAlive;
+                // Free-for-all: only the host's respawn event brings our own player back; a frame
+                // showing them in play can overtake it, and our board is still the knocked-out one.
+                const staysOut = isLocalPlayer && !forceLocal && keepsOwnPlayerOut(this, playerData);
+                if (player.isAlive !== false && playerData.isAlive === false) player._outAt = wallClockNow();
+                if (!staysOut) player.isAlive = playerData.isAlive;
                 // Adopt the late-joiner waiting flag from the host (≠ eliminated). Without this the
                 // peer's player object keeps a stale value, so renderAllPlayers feeds the UI the
                 // wrong state and a late joiner renders as 💀 ELIMINATED instead of ⏳ NEXT ROUND.
-                if (playerData.awaitingSpawn !== undefined) {
+                if (playerData.awaitingSpawn !== undefined && !staysOut) {
                     player.awaitingSpawn = playerData.awaitingSpawn === true;
                 }
-                player.gameState.isGameOver = !playerData.isAlive;
+                player.gameState.isGameOver = !player.isAlive;
                 if (playerData.lastAttackerId !== undefined) player.lastAttackerId = playerData.lastAttackerId;
                 if (playerData.lockSeq !== undefined) player._lockSeq = playerData.lockSeq;
 
@@ -2623,6 +2537,11 @@ export class FFAGameStateP2P {
                 if (adoptBoard && ownsLocalPiece) {
                     this._reconcileLocalPiece(player.gameState, playerData.currentPiece);
                 }
+                // Hidden cells come with an adopted board (blind.js); a board we own keeps
+                // its own, which it takes from the same queue entries as the host.
+                if (adoptBoard && playerData.blind !== undefined) {
+                    restoreBlindSnapshot(player.gameState, playerData.blind);
+                }
 
                 // Reconstruct the garbage queue from the host snapshot (drives the GARBAGE
                 // meter + the peer's predicted insertion). The peer NEVER enqueues locally
@@ -2662,7 +2581,7 @@ export class FFAGameStateP2P {
                         color: peerColor(e.color) ?? undefined,
                         holeMask: e.holeMask,
                         variant: e.variant,
-                        duration: e.duration,
+                        ticks: e.ticks,
                         attackerName: e.attackerName,
                         isLastInBurst: e.isLastInBurst, // needed for correct burst grouping on peers
                         attackId: e.attackId,
@@ -2678,19 +2597,12 @@ export class FFAGameStateP2P {
                         clearSummary: e.clearSummary,
                     }));
                 }
-
-                // Sync blind timers
-                if (playerData.blindTimers !== undefined) {
-                    restoreBlindTimers(player.gameState, playerData.blindTimers);
-                } else if (!player.gameState.blindTimers) {
-                    player.gameState.blindTimers = createBlindTimers();
-                }
             }
         });
 
         this.gamePhase = state.gamePhase;
         if (state.hotPotatoState !== undefined) {
-            this.hotPotatoState = state.hotPotatoState ? { ...state.hotPotatoState } : null;
+            this.hotPotatoState = normalizeHotPotatoState(state.hotPotatoState);
         }
         this.winner = state.winner;
 
@@ -3239,6 +3151,17 @@ export class FFAGameStateP2P {
                     this._lastLocalLockTime = Date.now();
                 }
 
+                // Host: the placement earns a crowd stamp and fades the frag credit of
+                // whoever has attacked this player (versus-rules.js). In free-for-all a
+                // credit that fades out is forgotten: that player now dies uncredited.
+                if (this.isHost) {
+                    const alive = Array.from(this.players.values()).filter((p) => p.isAlive).length;
+                    player.crowdStamps = stepCrowdStamps(player.crowdStamps, alive);
+                    const credit = ensureAttackCredit(player);
+                    credit.notePiecePlaced({ forgetSpent: forgetsSpentCredit(this.matchConfig) });
+                    player.lastAttackerId = credit.killer;
+                }
+
                 emitMultiplayerEvent(MULTIPLAYER_EVENTS.PIECE_LOCK, {
                     steamId,
                     playerName: player.name,
@@ -3330,61 +3253,9 @@ export class FFAGameStateP2P {
         return callbacks;
     }
 
-    /**
-     * Insert garbage locally for visual prediction (peers only)
-     * Host's broadcast will overwrite with authoritative state
-     */
-    // Stable identity for a garbage line across the peer's predicted consume and the
-    // host's serialized queue. attackId is `r{round}-a{seq}` (always non-empty for routed
-    // attacks); lineIndex disambiguates lines within one attack. Falls back to attackSeq.
+    /** Peers: insert our own pending garbage before our next piece (ffa/garbage-insert.js). */
     _insertLocalGarbagePrediction(steamId) {
-        if (this.isHost) return; // Host uses _spawnNextPieceForPlayer
-
-        const player = this.players.get(steamId);
-        if (!player || !player.isAlive) return;
-
-        const { garbageQueue, gameState } = player;
-        // Leading blind attacks first, as on the host, so the lines behind them land. Their
-        // blackout arrives with the host's timers; a local one would flicker against them.
-        const blinds = garbageQueue.takePendingBlindBurst?.() || [];
-        if (this._garbageIdempotentEnabled) blinds.forEach((e) => this._peerConsumedBursts?.add(garbageBurstKey(e)));
-        const totalLines = garbageQueue.getTotalLines();
-
-        if (totalLines > 0) {
-            // Take lines from queue and insert locally — DRAIN-ALL to match local (one
-            // dump), else one burst. Both host and peer flip together via the flag.
-            const burst = this._garbageDrainAll
-                ? drainAllLineBursts(garbageQueue)
-                : garbageQueue.dequeueLineBurst();
-            if (burst && burst.length > 0) {
-                // Idempotent-adopt: remember these bursts so the next host snapshot (which
-                // still lists them until the host consumes them ~½RTT later) does NOT re-add
-                // them in _applySnapshotState → no double-insert / meter rebound.
-                if (this._garbageIdempotentEnabled && this._peerConsumedBursts) {
-                    for (const entry of burst) this._peerConsumedBursts.add(garbageBurstKey(entry));
-                }
-                const normalizedBurst = burst.map((entry) => ({
-                    ...entry,
-                    holeMask: typeof entry.holeMask === 'number' ? entry.holeMask : 0,
-                    variant: entry.variant || 'normal',
-                }));
-
-                // Board mutation + grid/cache repair live in the ONE boundary (§5.1).
-                // Peer prediction ignores topOut — death is host-authoritative.
-                applyGarbage(gameState, normalizedBurst, { debug: this.debugGarbage });
-
-                // Dispatch event for UI feedback
-                emitMultiplayerEvent(MULTIPLAYER_EVENTS.GARBAGE_INSERTED, {
-                    steamId,
-                    playerName: player.name,
-                    linesInserted: burst.length,
-                    isLocal: true,
-                });
-            }
-        }
-
-        // Trigger render to show the garbage
-        this.renderAllPlayers();
+        insertLocalGarbagePrediction(this, steamId);
     }
 
     _spawnNextPieceForPlayer(steamId) {
@@ -3810,7 +3681,7 @@ export class FFAGameStateP2P {
             player.awaitingSpawn = false; // a waiting late-joiner spawns this round
             // DO NOT RESET FRAGS - they accumulate across rounds!
             player.garbageQueue.clear();
-            player.lastAttackerId = null; // Clear last attacker for new round
+            resetVersusCredit(player); // a new round's frags start uncredited
 
             // Reset board/pieces/flags in place but keep score and lines across rounds, and the
             // level only when the match levels up (match-level-rule.js), at that level's speed.
@@ -3885,7 +3756,7 @@ export class FFAGameStateP2P {
                 player.gameState.randomGenerator = this.createSeededRNG(newSeed);
 
                 // Fill bag and spawn first piece
-                fillBag(player.gameState.nextPieces, player.gameState.randomGenerator);
+                fillBag(player.gameState.nextPieces, player.gameState.randomGenerator, player.gameState.pieceRandomizer);
                 spawnPiece(player.gameState, null, null);
             });
             this.attackRouter.resetHotPotato(); // a fresh potato and timer every round
@@ -4102,7 +3973,7 @@ export class FFAGameStateP2P {
             player.awaitingSpawn = false; // a waiting late-joiner spawns this game
             player.frags = 0; // RESET FRAGS for new game
             player.garbageQueue.clear();
-            player.lastAttackerId = null; // Clear last attacker for new game
+            resetVersusCredit(player);
 
             // Complete reset (startMatch puts every board on the match's level rule)
             player.gameState.reset();

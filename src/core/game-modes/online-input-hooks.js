@@ -29,17 +29,23 @@ export function localMoveOutcome(gameState, dx, dy) {
  * or soft drop the local board cannot make changes nothing, so it is neither sent nor
  * repeated. One made while no piece falls is sent once (both sides defer it) and stops
  * the repeat for that frame.
+ *
+ * Out of a free-for-all match, any of these keys asks to play again instead (`respawn`
+ * says whether it took the key: ffa/respawn.js), and nothing repeats.
  * @param {{
  *   send: (type: string, data: Record<string, unknown>) => void,
  *   gameState: () => Record<string, any>|null|undefined,
  *   juice: () => Record<string, any>|null|undefined,
+ *   respawn?: () => boolean,
  * }} options
  */
-export function createOnlineInputHooks({ send, gameState, juice }) {
+export function createOnlineInputHooks({
+    send, gameState, juice, respawn = () => false,
+}) {
     const inHitStop = () => gameState()?.hitStopRemaining > 0;
     /** @param {string} type @param {Record<string, unknown>} data @param {number} dx @param {number} dy */
     const step = (type, data, dx, dy) => {
-        if (inHitStop()) return false;
+        if (respawn() || inHitStop()) return false;
         const outcome = localMoveOutcome(gameState(), dx, dy);
         if (outcome === 'blocked') return false;
         send(type, data);
@@ -57,13 +63,13 @@ export function createOnlineInputHooks({ send, gameState, juice }) {
         },
         /** @param {string} dir */
         rotate: (dir) => {
-            if (inHitStop()) return;
+            if (respawn() || inHitStop()) return;
             send('rotate', { direction: dir });
             juice()?.tilt?.(dir === 'left' ? -0.3 : 0.3);
         },
         softDrop: () => step('drop', { type: 'soft' }, 0, 1),
         hardDrop: () => {
-            if (inHitStop()) return;
+            if (respawn() || inHitStop()) return;
             send('drop', { type: 'hard' });
             juice()?.dip?.(3);
             juice()?.bounce?.();

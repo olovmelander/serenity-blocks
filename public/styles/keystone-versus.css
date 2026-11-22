@@ -674,6 +674,29 @@
     font: 600 calc(12px * var(--lv-u)) / 1.3 var(--sb-font-text);
 }
 
+/* Free-for-all: a person plays again with any of their keys. The hint comes up as the keys
+   start to count (LocalMultiplayerMode RESPAWN_KEY_HOLD_MS, one second after the death). */
+#multiplayer-container .lv-ko__note.is-respawn {
+    margin-top: calc(4px * var(--lv-u));
+    padding: calc(5px * var(--lv-u)) calc(12px * var(--lv-u));
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--player-primary, var(--sb-lavender)) 22%, rgba(9, 8, 24, 0.55));
+    color: var(--sb-text);
+    font: 700 calc(13px * var(--lv-u)) / 1.3 var(--sb-font-text);
+    text-align: center;
+    animation: lv-ko-ready 360ms ease 1s both, lv-ko-breathe 2.4s ease-in-out 1.4s infinite;
+}
+
+@keyframes lv-ko-ready {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes lv-ko-breathe {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.72; }
+}
+
 /* ---- Victory: the match won, over the winner's well (until the results) -------------- */
 #multiplayer-container .lv-victory {
     --win-color: var(--sb-gold);
@@ -995,7 +1018,7 @@
     font: 700 max(9px, calc(10px * var(--lv-u))) / 1 var(--sb-font-text);
 }
 
-/* ---- Hot potato: the holder's plate glows, a chip on its top edge counts down -------- */
+/* ---- Hot potato: the holder's plate glows, a chip on its top edge counts its rows ----- */
 #multiplayer-container .player-card.hot-potato-holder {
     border: 0;
     box-shadow: none;
@@ -1008,7 +1031,7 @@
 
 /* Over the deciding number's corner, clear of the queue under the plate. */
 #multiplayer-container .player-card.hot-potato-holder::after {
-    content: 'Hot potato  ' attr(data-potato-time);
+    content: 'Hot potato  ' attr(data-potato-progress);
     top: -11px;
     right: calc(12px * var(--lv-u));
     left: auto;
@@ -1031,7 +1054,8 @@
     #multiplayer-container .player-card .garbage-indicator.is-hit,
     #multiplayer-container .lv-coach,
     #multiplayer-container .player-card.lv-danger .lv-well,
-    #multiplayer-container .player-card .garbage-indicator.is-heavy .garbage-fill {
+    #multiplayer-container .player-card .garbage-indicator.is-heavy .garbage-fill,
+    #multiplayer-container .lv-ko__note.is-respawn {
         animation: none;
     }
 

@@ -96,6 +96,7 @@ describe('the lobby listing', () => {
         session = await buildSession(vi, { peerIds: ['P1', 'P2'] });
         const { host, wire } = session;
         const status = () => host.network.setLobbyStatus.mock.calls.at(-1)?.[0];
+        host.matchConfig.gameType = 'survivor'; // rounds and the beats between them
 
         host.startMatch();
         wire.drain();

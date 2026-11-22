@@ -8,7 +8,7 @@ import {
     rotate as coreRotate,
     softDrop as coreSoftDrop,
 } from '../game.js';
-import { decrementBlindTimers } from '../blind.js';
+import { advanceBlindClock } from '../blind.js';
 import { isBotSlot } from '../ai/local-bot-manager.js';
 import { retireFixedCascade } from '../physics.js';
 import { checkInfinityGameOver } from '../infinity-grid.js';
@@ -19,6 +19,7 @@ import {
 } from '../fixed-hit-stop-policy.js';
 import { updateInputHandlingConfig } from '../player-input-state.js';
 import { INPUT_DISPOSITIONS } from '../simulation-tick.js';
+import { FIXED_TICK_MS } from '../fixed-tick-clock.js';
 import {
     DEMO_FIXED_SIMULATION_CLOCK,
     DEMO_LEGACY_SIMULATION_CLOCK,
@@ -103,7 +104,6 @@ function getUnsupportedFixedConfigReasons(mode) {
         || typeof gamepadController?.clearFixedTickInput !== 'function'
     ) reasons.push('fixed-tick gamepad input unavailable');
     if (config.isInfinityLMS) reasons.push('Infinity LMS fixed-tick rules are not yet supported');
-    if (config.hotPotato || config.attackStyle === 'hot_potato') reasons.push('Hot Potato uses wall time');
     if (config.endCondition === 'time') reasons.push('time-limit matches use wall time');
     if (
         players.length < 2
@@ -410,7 +410,10 @@ function startFixedLoop(mode) {
                     getPhysicsCallbacks: (playerIndex) => physicsCallbacks[playerIndex],
                     shouldContinue: ownsRound,
                     afterTick: () => {
-                        if (!ownsRound() || pendingTopOuts.size === 0) return;
+                        if (!ownsRound()) return;
+                        // The hot potato's hand-off clock runs on the match's fixed ticks.
+                        multiplayerState.updateHotPotato?.(ownership.players[0]?.simTickMs || FIXED_TICK_MS);
+                        if (pendingTopOuts.size === 0) return;
                         const playerIndices = Array.from(pendingTopOuts).sort(
                             (left, right) => left - right,
                         );
@@ -519,15 +522,8 @@ function startLegacyLoop(mode) {
         // compile is not replayed as a burst of moves (audit INPUT-11). Wall-clock
         // timers (hit-stop, blind effects, bot pacing) keep the raw delta.
         const steppedDelta = Math.min(Math.max(0, delta), MAX_SIMULATION_DELTA_MS);
-        if (mode.multiplayerState.hotPotato?.enabled) {
-            const previousHolder = mode.multiplayerState.hotPotato.holderIndex;
-            const event = mode.multiplayerState.updateHotPotato(Date.now());
-            const currentHolder = mode.multiplayerState.hotPotato.holderIndex;
-            if (previousHolder !== currentHolder && currentHolder !== null) {
-                if (event?.type === 'detonate') mode.deps.soundManager?.playGarbageReceived();
-                else mode.deps.soundManager?.playGarbageSend();
-            }
-        }
+        // The hot potato's hand-off clock runs on game time: a pause or a stall never counts.
+        mode.multiplayerState.updateHotPotato?.(steppedDelta);
         const globalWindow = /** @type {any} */ (window);
         globalWindow.inputController?.updateDAS(steppedDelta);
         globalWindow.gamepadController?.advanceGameplayInput(currentTime);
@@ -541,7 +537,7 @@ function startLegacyLoop(mode) {
             // player updateGame advances it; this loop calls processAutoDrop instead, so the clock
             // stood at 0 and every piece took the full bonus, as if locked at once.
             playerState.simTimeMs = (Number(playerState.simTimeMs) || 0) + Math.max(0, delta);
-            decrementBlindTimers(playerState, delta / 1000);
+            advanceBlindClock(playerState, delta);
             if (mode.matchConfig?.isInfinityLMS && !playerState.isProcessingPhysics) {
                 mode._maybeExpandPlayerGrid(playerState, mode.boardScenes[playerIndex]);
             }

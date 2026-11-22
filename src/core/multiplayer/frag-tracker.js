@@ -3,11 +3,24 @@
  *
  * Tracks player deaths, awards frags (kills), and checks win conditions
  * Implements all 5 end conditions: frags, time, points, lines, never
+ *
+ * Survivor: the last player standing takes the round, then everyone restarts.
+ * Free-for-all: a knock-out ends nothing (the player comes back, ffa/respawn.js); the
+ * match runs until its goal.
  */
 
 import { emitMultiplayerEvent, MULTIPLAYER_EVENTS } from '../../events/multiplayer-events.js';
 import { MessageTypes } from '../network/message-types.js';
 import { scheduleFfaRoundRestart } from './ffa-round-policy.js';
+import { readVersusGameType } from './versus-rules.js';
+
+/**
+ * The wall clock online versus reads kill times, the match clock and the free-for-all respawn
+ * wait by, in one place.
+ */
+export function wallClockNow() {
+    return Date.now();
+}
 
 /** The stat that decides a match by its end condition (as the scoreboard reads it). */
 function decidingStat(endCondition) {
@@ -26,6 +39,11 @@ export class FragTracker {
 
         // Death tracking (who killed who)
         this.deathLog = [];
+    }
+
+    /** The wall clock kill times and the match clock are read by (wallClockNow). */
+    _wallNow() {
+        return wallClockNow();
     }
 
     /**
@@ -54,7 +72,10 @@ export class FragTracker {
 
         // Mark player as dead
         deadPlayer.isAlive = false;
+        deadPlayer._outAt = this._wallNow(); // free-for-all: their keys bring them back a beat later (ffa/respawn.js)
         console.log(`💀 ${deadPlayer.name} has died`);
+        // Free-for-all: the rows waiting for a knocked-out board go with it; it comes back empty.
+        if (this.isFreeForAll()) deadPlayer.garbageQueue?.clear?.();
 
         // Award frag to killer (if not self-kill)
         if (killerSteamId && killerSteamId !== deadPlayerSteamId) {
@@ -70,7 +91,7 @@ export class FragTracker {
                     killerSteamId: killer.steamId,
                     victim: deadPlayer.name,
                     victimSteamId: deadPlayer.steamId,
-                    timestamp: Date.now(),
+                    timestamp: this._wallNow(),
                 });
 
                 // Broadcast frag event
@@ -89,7 +110,7 @@ export class FragTracker {
                 killerSteamId: null,
                 victim: deadPlayer.name,
                 victimSteamId: deadPlayer.steamId,
-                timestamp: Date.now(),
+                timestamp: this._wallNow(),
             });
         }
 
@@ -121,7 +142,7 @@ export class FragTracker {
             victimName: deadPlayer.name,
             killer: killerSteamId,
             killerName,
-            timestamp: Date.now(),
+            timestamp: this._wallNow(),
         });
 
         // Check if match should end
@@ -157,12 +178,25 @@ export class FragTracker {
         }
     }
 
+    /** Whether the match is a free-for-all: knocked-out players come back (versus-rules.js). */
+    isFreeForAll() {
+        return readVersusGameType(this.gameState.matchConfig) === 'ffa';
+    }
+
     /**
    * Check win condition based on match config
    * Returns winning player or null
    */
     checkWinCondition(alivePlayers) {
         const config = this.gameState.matchConfig;
+
+        // Free-for-all: knock-outs end nothing, since every player comes back. Only the goal
+        // ends the match, or a match left with one player: they win it (ffa/presence.js).
+        if (this.isFreeForAll()) {
+            const present = Array.from(this.gameState.players.values()).filter((p) => p && !p.isDisconnected);
+            if (present.length < 2) return present[0] || { steamId: null, name: 'Draw' };
+            return this.checkGoal(config);
+        }
 
         // Last player standing always wins (if only 1 alive)
         if (alivePlayers.length === 1) {
@@ -176,6 +210,14 @@ export class FragTracker {
             return { steamId: null, name: 'Draw' }; // Special draw case
         }
 
+        return this.checkGoal(config);
+    }
+
+    /**
+     * The player who reached the match's goal, or null.
+     * @param {{ endCondition?: string, endConditionValue?: number }} config
+     */
+    checkGoal(config) {
         // Check specific end conditions
         switch (config.endCondition) {
         case 'frags': {
@@ -192,7 +234,7 @@ export class FragTracker {
 
         case 'time': {
             // Highest score after X minutes
-            const elapsed = (Date.now() - this.gameState.matchStartTime) / 1000 / 60; // minutes
+            const elapsed = (this._wallNow() - this.gameState.matchStartTime) / 1000 / 60; // minutes
 
             if (elapsed >= config.endConditionValue) {
                 const topPlayer = Array.from(this.gameState.players.values())
@@ -251,8 +293,9 @@ export class FragTracker {
         console.log(`🏆 WINNER: ${winner?.name || 'Draw'}`);
 
         const config = this.gameState.matchConfig;
-        const duration = Date.now() - this.gameState.matchStartTime;
-        const isGameOver = this.checkIfGameIsOver(winner);
+        const duration = this._wallNow() - this.gameState.matchStartTime;
+        // A free-for-all has no rounds: whatever ends it ends the match.
+        const isGameOver = this.isFreeForAll() || this.checkIfGameIsOver(winner);
 
         // Stop state sync + loop
         this.gameState.stopStateSyncLoop();
@@ -419,7 +462,7 @@ export class FragTracker {
         case 'lines':
             return winner && winner.gameState && winner.gameState.lines >= config.endConditionValue;
         case 'time':
-            const elapsed = (Date.now() - this.gameState.matchStartTime) / 1000 / 60;
+            const elapsed = (this._wallNow() - this.gameState.matchStartTime) / 1000 / 60;
             return elapsed >= config.endConditionValue;
         default:
             return false;

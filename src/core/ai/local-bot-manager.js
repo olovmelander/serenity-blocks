@@ -1,5 +1,4 @@
 import { HIDDEN_ROWS } from '../constants.js';
-import { hasObscuredStack } from '../blind.js';
 import { GravityBotController, gravityPlanningRate } from './gravity-bot-controller.js';
 import { normalizeDifficultyTier } from './bot-difficulty.js';
 import { seededRandom } from '../../utils/helpers.js';
@@ -94,7 +93,7 @@ export class LocalBotManager {
                     const rules = match.matchConfig?.attackRules;
                     // Only a standard head-to-head duel sends the gross attack
                     // directly. Team targeting, scaled damage and handicaps differ.
-                    if (match.numPlayers !== 2 || !opponent?.isAlive || hasObscuredStack(opponent)
+                    if (match.numPlayers !== 2 || !opponent?.isAlive
                         || playerState.isInfinityMode || match.matchConfig?.isTeamMode || match._isHotPotatoEnabled?.()
                         || rules?.disableAttacks || (rules?.forceAttackType && rules.forceAttackType !== 'lines')
                         || playerState.handicap !== opponent.handicap) return Infinity;
@@ -136,6 +135,16 @@ export class LocalBotManager {
 
     isBotPlayer(playerIndex) {
         return this.controllers.has(playerIndex);
+    }
+
+    /**
+     * A bot plays again on an empty well (free-for-all respawn): its plan for the old board is
+     * dropped and it reads the new one from its first piece. The controller sleeps while its
+     * board is dead and drives it again as soon as the board is alive with a piece.
+     * @param {number} playerIndex
+     */
+    resetPlayer(playerIndex) {
+        this.controllers.get(playerIndex)?.reset();
     }
 
     destroy() {

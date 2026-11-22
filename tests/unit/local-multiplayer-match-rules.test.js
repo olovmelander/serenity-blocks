@@ -47,12 +47,17 @@ afterEach(() => {
     moduleMocks.showLocalMatchEnd.mockReset();
 });
 
-/** A mode mid-match on the legacy (rAF) loop, with the result screens stubbed. */
+/**
+ * A survivor (round) match mid-round on the legacy (rAF) loop, with the result screens stubbed.
+ * Free-for-all deaths and respawns: local-ffa-respawn.test.js.
+ */
 function matchMode(numPlayers, config) {
     const mode = Object.create(LocalMultiplayerMode.prototype);
     mode.isRunning = true;
     mode.isPaused = false;
-    mode.matchConfig = { isInfinityLMS: false, numPlayers, ...config };
+    mode.matchConfig = {
+        isInfinityLMS: false, numPlayers, gameType: 'survivor', ...config,
+    };
     mode.multiplayerState = new MultiPlayerState(numPlayers);
     mode.multiplayerState.setMatchConfig(mode.matchConfig);
     mode.multiplayerState.reset();
@@ -210,22 +215,24 @@ describe('a pause stops the match', () => {
         expect(mode.multiplayerState.isPaused).toBe(true);
         expect(mode.roundStartTime).toBeGreaterThanOrEqual(beforeGo);
         expect(mode.matchStartTime).toBe(mode.roundStartTime);
+        // The potato's hand-off clock runs on game time in the loop: nobody holds it at "Go".
         const potato = mode.multiplayerState.hotPotato;
         expect(potato.enabled).toBe(true);
-        expect(potato.expiresAt - potato.durationMs).toBeGreaterThanOrEqual(beforeGo);
+        expect(potato.holder).toBeNull();
+        expect(potato.waitMs).toBe(2000);
 
         mode.onResume();
         expect(mode.multiplayerState.isPaused).toBe(false);
     });
 
-    it('moves the match clock, the round clock and the Hot Potato on by the pause', () => {
+    it('moves the match clock and the round clock on by the pause; the Hot Potato waits on game time', () => {
         vi.useFakeTimers();
         vi.setSystemTime(100000);
         const mode = matchMode(2, { endCondition: 'time', endConditionValue: 3, hotPotato: true });
         mode.matchStartTime = 40000;
         mode.roundStartTime = 90000;
-        mode.multiplayerState.startHotPotatoClock(95000);
-        const { expiresAt } = mode.multiplayerState.hotPotato;
+        mode.multiplayerState.updateHotPotato(1500); // 1.5 s of play
+        const { waitMs } = mode.multiplayerState.hotPotato;
 
         mode.onPause();
         vi.setSystemTime(130000); // 30 s in Settings
@@ -233,8 +240,8 @@ describe('a pause stops the match', () => {
 
         expect(mode.matchStartTime).toBe(70000);
         expect(mode.roundStartTime).toBe(120000);
-        expect(mode.multiplayerState.hotPotato.expiresAt).toBe(expiresAt + 30000);
-        expect(mode.multiplayerState.updateHotPotato(130000)).toBeNull(); // not detonated
+        expect(mode.multiplayerState.hotPotato.waitMs).toBe(waitMs); // a pause never counts
+        expect(mode.multiplayerState.hotPotato.holder).toBeNull();
     });
 
     it('a round that began during the pause is timed from the resume', () => {

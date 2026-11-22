@@ -8,6 +8,13 @@ import { SteamNetworking } from '../steam/steam-networking.js';
 import steamService from '../steam/steam-service.js';
 import { FFAGameStateP2P } from '../multiplayer/ffa-p2p-game-state.js';
 import { readMatchLevelRule } from '../multiplayer/match-level-rule.js';
+import { readVersusGameType } from '../multiplayer/versus-rules.js';
+import {
+    clearDeathState, enterDeadSpectate, exitDeadSpectate, hideDropInWaitingBanner, reconcileDeathOverlay,
+    showDeathAnimation, showDropInWaitingBanner,
+} from '../../ui/online-knockout-screens.js';
+import { predatesRespawn } from '../multiplayer/ffa/respawn.js';
+import { readMinAttackLines } from '../garbage.js';
 import {
     LOBBY_TYPE_KEY, chatLobbyType, createdLobbyType, joinedLobbyType, lobbyOffersJoinToFriends,
 } from '../multiplayer/lobby-type.js';
@@ -22,9 +29,6 @@ import {
 import { OpponentWatchManager, wireSpectatorSpotlight } from '../../ui/opponent-watch-manager.js';
 import { OnlineScoreboard } from '../../ui/online-scoreboard.js';
 import { OnlineKillFeed } from '../../ui/online-kill-feed.js';
-import {
-    createOutCard, createStatusCard, showOutCard, showStatusCard,
-} from '../../ui/keystone/out-card.js';
 import { OnlineChat } from '../../ui/online-chat.js';
 import { setChatLobbyType } from '../../ui/chat-moderation.js';
 import { ensureOnlinePlayNotice, hasSeenOnlinePlayNotice } from '../../ui/online-play-notice.js';
@@ -464,17 +468,18 @@ export class OnlineMultiplayerMode extends BaseGameMode {
 
             // Set match configuration (the level rule: a fixed start level unless levelling up is on)
             this.ffaGameState.matchConfig = {
+                gameType: readVersusGameType(config), // free-for-all unless survivor was chosen
                 endCondition: config.endCondition,
                 endConditionValue: config.endConditionValue,
                 ...readMatchLevelRule(config),
                 allowHandicap: true,
                 boringRules: config.boringRules || false,
-                garbageCancellation: config.garbageCancellation || 'full',
+                garbageCancellation: config.garbageCancellation || 'disabled',
                 attackStyle: config.attackStyle || 'standard',
                 attackRules: config.attackRules || null,
+                // Clears smaller than this send no normal rows (garbage.js readMinAttackLines).
+                minAttackLines: readMinAttackLines(config.minAttackLines),
                 hotPotato: config.hotPotato || false,
-                potatoDurationMs: config.potatoDurationMs || 12000,
-                potatoPenaltyLines: config.potatoPenaltyLines || 6,
                 maxPlayers: config.maxPlayers,
             };
 
@@ -699,7 +704,7 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         // Drop-in mid-match: we joined as a dead/waiting roster member, so show the full-
         // roster watch view immediately (reusing the spectate-after-death view). The next
         // round restart revives us (shared seed) and _clearDeathState → _exitDeadSpectate
-        // returns us to normal play.
+        // returns us to normal play. In a free-for-all a key brings us in (ffa/respawn.js).
         const localPlayer = this.ffaGameState?.getLocalPlayer?.();
         if (!this.ffaGameState?.isSpectator && localPlayer && localPlayer.isAlive === false) {
             console.log('[OnlineMultiplayer] Joined mid-match as waiting — spectating until next round');
@@ -1160,6 +1165,11 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         // itself anyone on the host's screen.
         const chatHandler = (detail) => this.chat?.addMessage(detail);
         const chatUnsub = onMultiplayerEvent(MULTIPLAYER_EVENTS.CHAT_MESSAGE, chatHandler);
+        // The hot potato (host echo and GAME_POTATO_UPDATE): its holder and rows on the match bar.
+        const potatoUnsub = onMultiplayerEvent(
+            MULTIPLAYER_EVENTS.HOT_POTATO_UPDATED,
+            ({ state } = {}) => this.hud?.updateHotPotato(this._describeHotPotato(state)),
+        );
 
         // A4d: the host returned everyone to the lobby (manual or idle auto-advance).
         // Peers follow without re-broadcasting (host is the sole initiator).
@@ -1179,6 +1189,8 @@ export class OnlineMultiplayerMode extends BaseGameMode {
             this.steamNetworking.off(MessageTypes.GAME_PLAYER_DIED, deathHandler);
             this.steamNetworking.off(MessageTypes.GAME_GARBAGE_SENT, garbageHandler);
             chatUnsub();
+            potatoUnsub();
+            this.hud?.updateHotPotato('');
             this.steamNetworking.off(MessageTypes.RETURN_TO_LOBBY, returnToLobbyHandler);
         });
 
@@ -1531,6 +1543,23 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         );
         this.cleanupHandlers.push(this.roundOverUnsub);
 
+        // Free-for-all: a player is back in play (ffa/respawn.js). Yours: the Out card goes
+        // and the board is yours again. An opponent's: their tile comes back, from the fresh
+        // board rather than frames of the old one still in the interpolator.
+        this.playerRespawnedUnsub = onMultiplayerEvent(
+            MULTIPLAYER_EVENTS.PLAYER_RESPAWNED,
+            (detail) => {
+                if (!detail?.steamId) return;
+                if (detail.steamId === localSteamId) {
+                    this._clearDeathState();
+                    return;
+                }
+                this.snapshotInterpolator?.reset?.(detail.steamId);
+                this.opponentWatchManager?.reviveOpponent?.(detail.steamId);
+            },
+        );
+        this.cleanupHandlers.push(this.playerRespawnedUnsub);
+
         console.log('[OnlineMultiplayer] Visual effect handlers registered');
     }
 
@@ -1541,10 +1570,15 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         if (!state || !state.players) return;
         const receivedAt = Date.now();
 
-        const normalizedPlayers = state.players.map((player) => ({
-            ...player,
-            id: player.id ?? player.steamId,
-        }));
+        // A frame built before a player's free-for-all respawn still shows them out; the game
+        // state skips it for them (ffa/respawn.js), and so do the boards drawn from it here.
+        const roster = this.ffaGameState?.players;
+        const normalizedPlayers = state.players
+            .filter((player) => !predatesRespawn(roster?.get?.(player.steamId), state))
+            .map((player) => ({
+                ...player,
+                id: player.id ?? player.steamId,
+            }));
 
         // SPECTATOR render driver reads the freshest snapshot each animation frame (a
         // spectator has no game loop / RENDER_FRAME, so this is its only data source). The
@@ -1574,17 +1608,27 @@ export class OnlineMultiplayerMode extends BaseGameMode {
             // Update stats display
             this._updateLocalStats(myState);
 
+            // Liveness as the game state took it: in a free-for-all only the host's respawn
+            // brings us back, never a frame that overtook it (ffa/respawn.js).
+            const freeForAll = this._isFreeForAll();
+            const me = freeForAll ? this.ffaGameState?.getLocalPlayer?.() : null;
+            const isAlive = me ? me.isAlive : myState.isAlive;
+            const awaitingSpawn = me ? me.awaitingSpawn === true : myState.awaitingSpawn === true;
+
             // Tear down the ELIMINATED overlay the moment we're revived (round reset).
             // Strict === true: a missing/undefined isAlive must never clear it early.
-            this._reconcileDeathOverlay(myState.isAlive === true);
+            this._reconcileDeathOverlay(isAlive === true);
 
             // Drop-in mid-match joiner observed as dead/waiting with NO elimination animation
             // (a fresh joiner doesn't get _showDeathAnimation): enter the full-roster watch
             // view from the snapshot — robust to the join-time race where isAlive flips to
             // false only after _activateMatch ran. Idempotent (eliminated players enter via
             // _showDeathAnimation); revived/exit is handled by _clearDeathState on round restart.
-            if (!this.ffaGameState?.isSpectator && myState.isAlive === false
-                && !this._deadSpectating && !this._deathShown) {
+            // In a free-for-all only the drop-in watches: a knock-out keeps its own board, and
+            // its Out card comes with the death message, which names who did it.
+            if (!this.ffaGameState?.isSpectator && isAlive === false
+                && !this._deadSpectating && !this._deathShown
+                && (!freeForAll || awaitingSpawn)) {
                 this._enterDeadSpectate();
             }
         }
@@ -1709,7 +1753,7 @@ export class OnlineMultiplayerMode extends BaseGameMode {
                         boardGrid: p.grid,
                         currentPiece: p.currentPiece,
                         nextPieces: p.nextPieces,
-                        blindTimers: p.blindTimers,
+                        blind: p.blind,
                     },
                 };
             }
@@ -1837,7 +1881,7 @@ export class OnlineMultiplayerMode extends BaseGameMode {
                 slot.grid = gs.boardGrid || gs.grid;
                 slot.currentPiece = gs.currentPiece;
                 slot.nextPieces = gs.nextPieces;
-                slot.blindTimers = gs.blindTimers;
+                slot.blind = gs.blind;
 
                 // Apply interpolation if available
                 const interpolated = this.snapshotInterpolator.getInterpolatedState(p.steamId, renderTime);
@@ -1930,6 +1974,11 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         }
     }
 
+    /** Whether this match is a free-for-all: a knocked-out player plays again at a key. */
+    _isFreeForAll() {
+        return readVersusGameType(this.ffaGameState?.matchConfig) === 'ffa';
+    }
+
     /**
      * Handle player death event
      */
@@ -1963,7 +2012,8 @@ export class OnlineMultiplayerMode extends BaseGameMode {
                 // roundNumber is in lock-step on host + peer. So the host's local
                 // PLAYER_TOPPED_OUT and the peer's network game:player:died produce the
                 // SAME eventId → both nodes show one identical row (no clock-skewed dedup).
-                eventId: victimId ? `death:${victimId}:${this.roundNumber}` : undefined,
+                // A free-for-all is one long round: its respawn count names the life.
+                eventId: victimId ? this._deathEventId(victimId) : undefined,
             });
         }
 
@@ -1977,6 +2027,17 @@ export class OnlineMultiplayerMode extends BaseGameMode {
             // round's last knock-out never arrives as a snapshot.
             this.opponentWatchManager?.knockOutOpponent?.(victimId, killerName);
         }
+    }
+
+    /**
+     * One death's kill-feed identity, the same on every client: the round, and in a
+     * free-for-all the life it ended (each client has applied the same respawns by then:
+     * the respawn and the death message travel the host's one reliable lane, in order).
+     * @param {string} victimId
+     */
+    _deathEventId(victimId) {
+        const life = Number(this.ffaGameState?.players?.get?.(victimId)?._respawnSeq) || 0;
+        return life > 0 ? `death:${victimId}:${this.roundNumber}:${life}` : `death:${victimId}:${this.roundNumber}`;
     }
 
     /**
@@ -1996,124 +2057,33 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         if (isYou) this.mainBoardScene?.sharedEffects?.playRoundWin?.({ color });
     }
 
-    /**
-     * Your knock-out on the main board: the stack goes dark, loses its colour and
-     * comes apart (shared-effects.js playKnockout), then the Out card rises naming
-     * who did it (ui/keystone/out-card.js).
-     */
+    // Knock-out and drop-in screens (ui/online-knockout-screens.js).
     _showDeathAnimation(killerName = null) {
-        const boardContainer = document.getElementById('online-main-board');
-        if (!boardContainer) return;
-
-        // Idempotent: a single death can be signalled by both PLAYER_TOPPED_OUT and
-        // _handlePlayerDeath — only animate once per death until the next clear.
-        if (this._deathShown) return;
-        this._deathShown = true;
-
-        // B5: eliminated → keep watching. Expand to the full-roster watch view so a dead
-        // player can follow everyone still playing (not just the 4-up beside their now-dead
-        // board) until the round resolves. Reverted on revive in _clearDeathState.
-        this._enterDeadSpectate();
-
-        this.mainBoardScene?.sharedEffects?.playKnockout?.();
-
-        // The card after the board has gone dark. Tracked so _clearDeathState can cancel
-        // a still-pending card (a round-ending death emits ROUND_RESTART BEFORE this fires).
-        if (this._deathOverlayTimer) clearTimeout(this._deathOverlayTimer);
-        this._deathOverlayTimer = setTimeout(() => {
-            this._deathOverlayTimer = null;
-            // If we were revived/cleared while the timer was pending, don't show it.
-            if (!this._deathShown) return;
-            showOutCard(boardContainer, createOutCard(document, {
-                cause: killerName ? `By ${killerName}` : 'Topped out',
-                note: 'Watching until the round ends',
-            }));
-            boardContainer.classList.add('eliminated');
-        }, 600);
+        return showDeathAnimation(this, killerName);
     }
 
-    /**
-     * Clear death state from the main board (for rematch/new game)
-     */
     _clearDeathState() {
-        // Cancel any still-pending death animation so it can't be born after the
-        // round already reset (the orphaned-timeout bug that stuck "ELIMINATED").
-        if (this._deathOverlayTimer) {
-            clearTimeout(this._deathOverlayTimer);
-            this._deathOverlayTimer = null;
-        }
-        this._deathShown = false;
-
-        const boardContainer = document.getElementById('online-main-board');
-        if (!boardContainer) return;
-
-        boardContainer.classList.remove('eliminated');
-        boardContainer.querySelector('.death-overlay')?.remove();
-        this.mainBoardScene?.sharedEffects?.clearKnockout?.();
-
-        // B5: revived (round restart) → back to the normal watch-while-playing view.
-        this._exitDeadSpectate();
+        return clearDeathState(this);
     }
 
-    /**
-     * B5 — spectate-after-death: when the LOCAL player is eliminated but the match
-     * continues, expand the opponent watch grid to the full roster so they can watch
-     * everyone still alive. (A pure spectator is already full-roster, so skip.) Reverted
-     * by _exitDeadSpectate on revive.
-     */
     _enterDeadSpectate() {
-        if (this._deadSpectating || this.ffaGameState?.isSpectator) return;
-        if (!this.opponentWatchManager) return;
-        this._deadSpectating = true;
-        this._preDeathMaxVisible = this.opponentWatchManager.maxVisible;
-        // setMaxVisible widens the CSS grid (full-roster class) so all alive players fit.
-        this.opponentWatchManager.setMaxVisible(8);
-        document.getElementById('online-multiplayer-container')?.classList.add('dead-spectating');
-        // A DROP-IN joiner (waiting, no elimination animation) gets a clear "you'll spawn
-        // next round" banner over its empty board. An ELIMINATED player (_deathShown) already
-        // has the "ELIMINATED" overlay, so don't add the join banner for them.
-        if (!this._deathShown) {
-            this._showDropInWaitingBanner();
-        }
+        return enterDeadSpectate(this);
     }
 
     _exitDeadSpectate() {
-        if (!this._deadSpectating) return;
-        this._deadSpectating = false;
-        this.opponentWatchManager?.setMaxVisible(this._preDeathMaxVisible || 4);
-        document.getElementById('online-multiplayer-container')?.classList.remove('dead-spectating');
-        this._hideDropInWaitingBanner();
+        return exitDeadSpectate(this);
     }
 
-    /**
-     * A mid-match drop-in joiner's empty board: the aqua "Next round" card, the one the
-     * others see on this player's tile (ui/keystone/out-card.js).
-     */
     _showDropInWaitingBanner() {
-        const container = document.getElementById('online-main-board');
-        if (!container || container.querySelector('.dropin-waiting-banner')) return;
-        showStatusCard(container, createStatusCard(document, {
-            title: 'Next round',
-            cause: 'Joined mid-match',
-            note: 'You play from the next round',
-            tone: 'aqua',
-            marker: 'dropin-waiting-banner',
-        }));
+        return showDropInWaitingBanner(this);
     }
 
     _hideDropInWaitingBanner() {
-        document.getElementById('online-main-board')?.querySelector('.dropin-waiting-banner')?.remove();
+        return hideDropInWaitingBanner();
     }
 
-    /**
-     * Reconcile the death overlay against authoritative liveness. Driven from
-     * state updates so the overlay is torn down the instant the local player is
-     * revived (round restart), independent of event ordering/timeouts.
-     */
     _reconcileDeathOverlay(isAlive) {
-        if (isAlive === true && this._deathShown) {
-            this._clearDeathState();
-        }
+        return reconcileDeathOverlay(this, isAlive);
     }
 
     /**
@@ -2271,6 +2241,21 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         }, durationMs);
     }
 
+    /**
+     * The hot potato as the match bar shows it: who holds it and its rows sent of its target
+     * ('' when the match plays without it).
+     * @param {{ enabled?: boolean, holder?: string|null, sent?: number, target?: number }|null|undefined} state
+     * @returns {string}
+     */
+    _describeHotPotato(state) {
+        if (!state?.enabled) return '';
+        if (!state.holder) return 'Hot potato: passing';
+        const holder = state.holder === this.ffaGameState?.localPlayerId
+            ? 'You'
+            : (this.ffaGameState?.players?.get(state.holder)?.name || 'Someone');
+        return `Hot potato: ${holder} ${state.sent || 0} / ${state.target || 0} rows`;
+    }
+
     /** The match bar: the goal, the round, and who is still in (online-versus-hud.js). */
     _updateMatchBar(players, count = players?.length || 0) {
         this.hud?.updateMatchBar(players, count, this.ffaGameState?.matchConfig, this.roundNumber);
@@ -2363,6 +2348,8 @@ export class OnlineMultiplayerMode extends BaseGameMode {
             send: (type, data) => this.ffaGameState?.sendInput(type, data),
             gameState: () => this.ffaGameState?.getLocalPlayer?.()?.gameState || this.mainBoardScene?.gameState,
             juice: () => this.boardJuice,
+            // Out of a free-for-all match, a key asks to play again (ffa/respawn.js).
+            respawn: () => this.ffaGameState?.pressToRespawn?.() === true,
         });
         Object.assign(window, hooks);
     }

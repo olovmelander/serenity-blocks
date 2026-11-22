@@ -72,39 +72,36 @@ describe('MultiPlayerState — handicap & attack rules', () => {
         expect(mps.garbageQueues[1].entries.length).toBe(0);
     });
 
-    it('hot potato holder passes the potato instead of sending normal garbage', () => {
+    const potatoMatch = () => {
         const mps = newMatch([2, 2]);
-        mps.setMatchConfig({
-            attackStyle: 'hot_potato',
-            hotPotato: true,
-            attackRules: { forceAttackType: 'potato', potatoDurationMs: 1000, potatoPenaltyLines: 4 },
-            potatoDurationMs: 1000,
-            potatoPenaltyLines: 4,
-        });
+        mps.setMatchConfig({ attackStyle: 'hot_potato', hotPotato: true });
+        mps.potatoRandom = () => 0;
+        return mps;
+    };
 
-        expect(mps.getHotPotatoState().holderIndex).toBe(0);
-        mps.handleGarbageSummary(0, tripleClear(), null);
+    it('an attack by the hot potato holder counts toward its target instead of sending garbage', () => {
+        const mps = potatoMatch();
+        mps.updateHotPotato(2000); // the first holder is chosen two seconds in
+        const holder = mps.getHotPotatoState().holderIndices[0];
+        const other = 1 - holder;
 
-        expect(mps.getHotPotatoState().holderIndex).toBe(1);
-        expect(mps.garbageQueues[1].getTotalLines()).toBe(0);
-        expect(mps.getPlayerMetrics(0).potatoPasses).toBe(1);
+        mps.handleGarbageSummary(holder, tripleClear(), null); // two rows: the first target
+
+        expect(mps.garbageQueues[other].getTotalLines()).toBe(0);
+        expect(mps.getHotPotatoState().holderTeam).toBeNull(); // passed on
+        expect(mps.getPlayerMetrics(holder).potatoPasses).toBe(1);
+        expect(mps.getPlayerMetrics(holder).potatoRowsSent).toBe(2);
     });
 
-    it('hot potato detonation queues penalty garbage for the holder', () => {
-        const mps = newMatch([2, 2]);
-        mps.setMatchConfig({
-            attackStyle: 'hot_potato',
-            hotPotato: true,
-            attackRules: { forceAttackType: 'potato', potatoDurationMs: 1000, potatoPenaltyLines: 4 },
-            potatoDurationMs: 1000,
-            potatoPenaltyLines: 4,
-        });
+    it('hot potato: an attack on the holder goes through with the handicap rules as usual', () => {
+        const mps = potatoMatch();
+        mps.updateHotPotato(2000);
+        const holder = mps.getHotPotatoState().holderIndices[0];
+        const other = 1 - holder;
 
-        const holder = mps.getHotPotatoState().holderIndex;
-        mps.updateHotPotato(mps.getHotPotatoState().expiresAt);
+        mps.handleGarbageSummary(other, tripleClear(), null);
 
-        expect(mps.garbageQueues[holder].getTotalLines()).toBe(4);
-        expect(mps.getPlayerMetrics(holder).potatoDetonations).toBe(1);
-        expect(mps.getHotPotatoState().holderIndex).toBe(1);
+        expect(mps.garbageQueues[holder].getTotalLines()).toBe(2);
+        expect(mps.getHotPotatoState().holderIndices).toEqual([holder]);
     });
 });

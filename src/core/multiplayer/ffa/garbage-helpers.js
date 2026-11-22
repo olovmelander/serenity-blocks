@@ -22,9 +22,10 @@ export function garbageBurstKey(e) {
 
 /**
  * DRAIN-ALL (match local): consume EVERY pending line-burst from the queue in one
- * go and return them as a single combined array. `dequeueLineBurst()` bails on a
- * non-'line' head, so this naturally stops at a blind entry (same boundary as a
- * single dequeue) and can never loop forever (guarded at 64 bursts).
+ * go and return them as a single combined array. `dequeueLineBurst()` takes the first
+ * rows wherever they wait (blind entries wait for placed pieces instead, blind.js), so
+ * this takes every row and leaves the blind entries; it can never loop forever (guarded
+ * at 64 bursts).
  * @param {{ dequeueLineBurst: () => Array<any>|null|undefined }} garbageQueue
  * @returns {Array<any>}
  */

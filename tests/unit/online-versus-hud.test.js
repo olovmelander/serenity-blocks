@@ -88,7 +88,8 @@ function makeDom() {
     ['ov-plate-name', 'ov-plate-value', 'ov-plate-unit', 'ov-meta-a-label', 'ov-meta-a',
         'ov-meta-b-label', 'ov-meta-b'].forEach((id) => card.appendChild(el('span', { id })));
     const bar = stage.appendChild(el('div', { id: 'ov-match-bar' }));
-    ['ov-match-goal', 'ov-match-round', 'ov-match-alive'].forEach((id) => bar.appendChild(el('span', { id })));
+    ['ov-match-goal', 'ov-match-round', 'ov-match-alive', 'ov-match-potato']
+        .forEach((id) => bar.appendChild(el('span', { id })));
     const field = stage.appendChild(el('div', { id: 'watch-grid' }));
     const tile = field.appendChild(el('div', { className: 'opponent-mini-board' }));
     const frame = tile.appendChild(el('div', { className: 'opponent-grid-frame' }));
@@ -163,7 +164,9 @@ describe('online versus HUD: your numbers', () => {
         const players = [
             { isAlive: true }, { isAlive: false }, { isAlive: true }, { isAlive: false, awaitingSpawn: true },
         ];
-        hud.updateMatchBar(players, players.length, { endCondition: 'frags', endConditionValue: 5 }, 2);
+        hud.updateMatchBar(players, players.length, {
+            gameType: 'survivor', endCondition: 'frags', endConditionValue: 5,
+        }, 2);
         expect(byId(dom, 'ov-match-goal').textContent).toBe(describeGoal('frags', 5));
         expect(byId(dom, 'ov-match-round').textContent).toBe('Round 2');
         // A late joiner waiting for the next round is not counted either way.
@@ -173,6 +176,24 @@ describe('online versus HUD: your numbers', () => {
         hud.updateMatchBar([{ isAlive: true }], 1, { endCondition: 'lines', endConditionValue: 40 }, 1);
         expect(byId(dom, 'ov-match-goal').textContent).toBe(describeGoal('lines', 40));
         expect(byId(dom, 'ov-match-alive').hidden).toBe(true);
+    });
+
+    it('names a free-for-all instead of a round: it has none', () => {
+        const dom = makeDom();
+        const hud = new OnlineVersusHud(dom.doc);
+        hud.updateMatchBar([{ isAlive: true }, { isAlive: false }], 2, { endCondition: 'frags', endConditionValue: 5 }, 1);
+        expect(byId(dom, 'ov-match-round').textContent).toBe('Free-for-all');
+        expect(byId(dom, 'ov-match-alive').textContent).toBe('1 of 2 in');
+    });
+
+    it('shows who holds the hot potato and its rows, and hides the chip without it', () => {
+        const dom = makeDom();
+        const hud = new OnlineVersusHud(dom.doc);
+        hud.updateHotPotato('Hot potato: Ada 1 / 3 rows');
+        expect(byId(dom, 'ov-match-potato').textContent).toBe('Hot potato: Ada 1 / 3 rows');
+        expect(byId(dom, 'ov-match-potato').hidden).toBe(false);
+        hud.updateHotPotato('');
+        expect(byId(dom, 'ov-match-potato').hidden).toBe(true);
     });
 });
 

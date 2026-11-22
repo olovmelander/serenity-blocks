@@ -46,7 +46,7 @@ const GROUPS = [
 
 const POTATO_GROUP = ['Hot potato', [
     ['Passes', 'potato', (p) => p.potatoPasses],
-    ['Hits', 'bomb', (p) => p.potatoHits],
+    ['Rows while holding', 'crossed-swords', (p) => p.potatoRowsSent],
 ]];
 
 function rowIcon(icon) {

@@ -27,7 +27,8 @@ import {
     hardDrop as coreHardDrop,
     softDrop as coreSoftDrop,
 } from './core/game.js';
-import { applyBlindEffect, applyFullBlindEffect } from './core/blind.js';
+import { takeSpawnBlinds } from './core/blind.js';
+import { VERSUS_GARBAGE_OPTIONS } from './core/multiplayer/versus-rules.js';
 import { initPieceSystem } from './core/pieces.js';
 import { GameModeManager } from './core/game-modes/GameModeManager.js';
 import { createBoardEffectHandlers } from './core/game-modes/board-effect-callbacks.js';
@@ -4464,9 +4465,8 @@ class SerenityBlocks {
                 effectHandlers.lockBeat(piece);
                 currentMode?._infinityCameraEvent?.(playerNum - 1, 'lock', piece);
 
-                // Handicap: accumulate per-opponent stamps on each placement
-                // (no-op unless players have differing handicap levels).
-                multiplayerState?.accumulateHandicap?.(playerNum - 1);
+                // Handicap and crowd stamps, and the attackers' fading frag credit (versus-rules.js).
+                multiplayerState?.notePiecePlaced?.(playerNum - 1);
 
                 // Emit event for theme reactions
                 emitPieceLock({ piece, player: playerNum });
@@ -4504,30 +4504,23 @@ class SerenityBlocks {
             // Insert any pending garbage before spawning next piece
             const garbageQueue = multiplayerState.getGarbageQueue(playerIdentifier);
 
-            // Apply blind attacks FIRST. This both triggers the blackout
-            // and removes leading blind/full_blind entries that would otherwise
-            // block dequeueLineBurst() (which bails on a non-'line' head).
-            const blindBurst = garbageQueue.takePendingBlindBurst?.() || [];
-            blindBurst.forEach((entry) => {
-                if (entry.type === 'full_blind') {
-                    applyFullBlindEffect(playerState, entry.duration);
-                } else {
-                    applyBlindEffect(playerState, entry.duration);
-                }
-            });
+            // Blind attacks at the head of the queue (blind.js): a full blind hides the board
+            // now, a blind piece hides the piece spawning now once it lands. Rows behind them
+            // still go in below.
+            takeSpawnBlinds(playerState, garbageQueue);
 
             if (!garbageQueue.isEmpty()) {
                 const queuedEntries = drainGarbageEntries(garbageQueue, !!multiplayerState.players);
 
                 if (queuedEntries.length > 0) {
-                    console.log(
-                        `[Garbage] Inserting ${queuedEntries.length} garbage lines into Player ${playerNum}'s board`,
-                    );
+                    console.log(`[Garbage] Inserting ${queuedEntries.length} rows into Player ${playerNum}'s board`);
 
-                    const result = applyGarbage(playerState, queuedEntries);
+                    // Versus garbage never tops out; rows its settle closes are this player's clear.
+                    const result = applyGarbage(playerState, queuedEntries, VERSUS_GARBAGE_OPTIONS);
                     if (result?.rowsAdded > 0) {
                         currentMode?._compensatePlayerGridExpansion?.(playerState, sceneRef(), result.rowsAdded);
                     }
+                    if (result?.settleSummary) callbacks.onGarbageReady?.(result.settleSummary);
 
                     if (result?.topOut) {
                         console.log(`[Garbage] Player ${playerNum} topped out from garbage!`);

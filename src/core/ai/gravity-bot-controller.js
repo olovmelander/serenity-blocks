@@ -1,4 +1,3 @@
-import { hasObscuredStack } from '../blind.js';
 import { PuzzleBotController } from './puzzle-bot-controller.js';
 import { canPlaceCandidate } from './reachability-pathfinder.js';
 import { evaluateCandidate } from './board-evaluator.js';
@@ -305,8 +304,9 @@ export class GravityBotController extends PuzzleBotController {
     }
 
     * planSteps(observed) {
+        // Hidden cells (blind attacks) are still solid, and a bot reads the board it collides
+        // with: blind never stops a bot from planning.
         const state = this.playerState;
-        if (hasObscuredStack(state)) return null;
         const pending = this.getPendingGarbage();
         const { tier } = this.config;
         const root = state.isInfinityMode ? null : observed || readGravityBoard(state.boardGrid || state.board);
@@ -419,10 +419,6 @@ export class GravityBotController extends PuzzleBotController {
     }
 
     update(delta, time) {
-        if (hasObscuredStack(this.playerState)) {
-            if (this.currentSpawnToken != null || this.planJob) this.reset();
-            return;
-        }
         const pending = this.getPendingGarbage();
         if (this.scheduler.rejected || pending !== this.queueAtPlan) {
             this.replanInterrupted = this.queueAtPlan !== null && this.currentSpawnToken != null;
@@ -480,7 +476,7 @@ export class GravityBotController extends PuzzleBotController {
 
     precomputeSearch(elapsedMs, tickMs) {
         const entry = this.activeSearch;
-        if (!this.planJob || !entry?.job || !(elapsedMs > 0) || hasObscuredStack(this.playerState)) return 0;
+        if (!this.planJob || !entry?.job || !(elapsedMs > 0)) return 0;
         const dueNextTick = this.nextSearchUnit + Math.ceil(this.sliceRate * tickMs);
         const allowance = Math.max(1, Math.floor(this.sliceRate * elapsedMs));
         let advanced = 0;

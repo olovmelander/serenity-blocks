@@ -29,9 +29,7 @@ function makePackedSnapshot() {
             dropInterval: 1000,
             garbageEntries: [{ type: 'line', holeMask: 1, clearSummary: { lines: [1] } }],
             lockedPieces: [{ type: 'O', shape: [[1, 1], [1, 1]], x: 4, y: 20 }],
-            blindTimers: {
-                field: 1, fieldMax: 2, pending: 3, pendingMax: 4,
-            },
+            blind: { clockMs: 40, pieceTicks: 30, cells: [[230, 12]] },
         }],
         gamePhase: 'playing',
         winner: null,
@@ -78,7 +76,8 @@ describe('binary snapshot hydration contract', () => {
         hydrated.players[0].garbageEntries[0].holeMask = 2;
         hydrated.players[0].garbageEntries[0].clearSummary.lines.push(2);
         hydrated.players[0].lockedPieces[0].shape[0][0] = 0;
-        hydrated.players[0].blindTimers.field = 99;
+        hydrated.players[0].blind.pieceTicks = 99;
+        hydrated.players[0].blind.cells[0][1] = 99;
 
         expect(packed.players[0].grid[23][0].color).toBe('#00ffff');
         expect(packed.players[0].currentPiece.shape[0][0]).toBe(1);
@@ -88,7 +87,7 @@ describe('binary snapshot hydration contract', () => {
             clearSummary: { lines: [1] },
         });
         expect(packed.players[0].lockedPieces[0].shape[0][0]).toBe(1);
-        expect(packed.players[0].blindTimers.field).toBe(1);
+        expect(packed.players[0].blind).toEqual({ clockMs: 40, pieceTicks: 30, cells: [[230, 12]] });
     });
 
     it('keeps a retained baseline intact for a later hydrate after the prior payload is mutated (P0-8)', () => {

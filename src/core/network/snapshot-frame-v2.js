@@ -51,7 +51,8 @@ const MAX_UINT32 = 0xffff_ffff;
 const MAX_UINT64 = 0xffff_ffff_ffff_ffffn;
 const BINARY_V7_FULL_MAGIC = 0x5342_4e45; // "SBNE"
 const BINARY_V7_DELTA_MAGIC = 0x5342_4e44; // "SBND"
-const BINARY_V7_FORMAT_VERSION = 7;
+// The binary body's format (binary-encoding.js FORMAT_VERSION): v8 since hidden cells.
+const BINARY_V7_FORMAT_VERSION = 8;
 const BINARY_V7_PREFIX_BYTES = 6;
 const FNV64_OFFSET_BASIS = 0xcbf2_9ce4_8422_2325n;
 const FNV64_PRIME = 0x0000_0100_0000_01b3n;

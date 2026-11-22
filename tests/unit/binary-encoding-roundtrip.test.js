@@ -43,7 +43,7 @@ function makePlayer(overrides = {}) {
         nextPieces: ['I', 'O', 'T'],
         garbageEntries: [],
         lockedPieces: [],
-        blindTimers: null,
+        blind: null,
         lastInputSeq: 7,
         ...overrides,
     };
@@ -467,7 +467,6 @@ describe('binary snapshot encoding', () => {
                     attackerId: '2000',
                     color: '#3b82f6', // attacker's player color — must survive the wire
                     holeMask,
-                    duration: 0,
                     variant: 'clean',
                     isLastInBurst: true,
                     attackId: 'r3-a42',
@@ -482,7 +481,6 @@ describe('binary snapshot encoding', () => {
                     type: 'line',
                     attackerId: '2000',
                     holeMask: 0x0F,
-                    duration: 0,
                     variant: 'normal',
                     isLastInBurst: false,
                     attackId: 'r3-a42',
@@ -520,6 +518,41 @@ describe('binary snapshot encoding', () => {
         expect(entries[0].color).toBe('#3b82f6');
         // entry[1] had no color → all-zero RGB decodes back to undefined (renderer greys it).
         expect(entries[1].color).toBeUndefined();
+    });
+
+    it('round-trips hidden cells and blind ticks on queue entries (v8)', () => {
+        const encoder = getBinaryEncoder();
+        const decoder = getBinaryDecoder();
+        const blind = { clockMs: 37.25, pieceTicks: 30, cells: [[230, 12], [231, 255]] };
+        const snapshot = makeSnapshot([makePlayer({
+            steamId: '1000',
+            blind,
+            garbageEntries: [
+                { type: 'blind', attackerId: '2000', ticks: 30, attackId: 'a1', lineIndex: 0 },
+                { type: 'full_blind', attackerId: '2000', ticks: 255, attackId: 'a1', lineIndex: 1 },
+            ],
+        })]);
+
+        const decoded = decoder.decodeSnapshot(encoder.encodeSnapshot(snapshot)).players[0];
+
+        expect(decoded.blind).toEqual(blind);
+        expect(decoded.garbageEntries.map((entry) => [entry.type, entry.ticks, entry.lineIndex]))
+            .toEqual([['blind', 30, 0], ['full_blind', 255, 1]]);
+    });
+
+    it('sends hidden cells in a delta only when a cell or the waiting piece blind changed', () => {
+        const encoder = getBinaryEncoder();
+        const decoder = getBinaryDecoder();
+        const blind = (clockMs, ticks) => ({ clockMs, pieceTicks: 0, cells: [[230, ticks]] });
+        const baseline = makeSnapshot([makePlayer({ steamId: '1000', blind: blind(10, 12) })]);
+        const clockOnly = makeSnapshot([makePlayer({ steamId: '1000', blind: blind(90, 12) })]);
+        const ticked = makeSnapshot([makePlayer({ steamId: '1000', blind: blind(4, 11) })]);
+
+        const quiet = encoder.encodeDeltaSnapshot(clockOnly, baseline);
+        expect(decoder.decodeDeltaSnapshot(quiet, baseline).players[0].blind).toEqual(blind(10, 12));
+        const sent = encoder.encodeDeltaSnapshot(ticked, baseline);
+        expect(sent.byteLength).toBeGreaterThan(quiet.byteLength);
+        expect(decoder.decodeDeltaSnapshot(sent, baseline).players[0].blind).toEqual(blind(4, 11));
     });
 
     it('lowercases and zero-pads odd garbage colors through the 3-byte RGB field', () => {

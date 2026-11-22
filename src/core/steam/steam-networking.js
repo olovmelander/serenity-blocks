@@ -85,7 +85,9 @@ function freezeSnapshotBaseline(snapshot) {
             nextPieces: Array.isArray(player.nextPieces) ? player.nextPieces.slice() : player.nextPieces,
             garbageEntries: Array.isArray(player.garbageEntries)
                 ? player.garbageEntries.map(copyCell) : player.garbageEntries,
-            blindTimers: player.blindTimers ? { ...player.blindTimers } : player.blindTimers,
+            blind: player.blind
+                ? { ...player.blind, cells: (player.blind.cells || []).map(([index, ticks]) => /** @type {[number, number]} */ ([index, ticks])) }
+                : player.blind,
         })),
     };
 }

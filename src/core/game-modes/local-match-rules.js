@@ -1,5 +1,18 @@
 // @ts-check
 
+import { readVersusGameType } from '../multiplayer/versus-rules.js';
+
+/**
+ * Whether a local match plays on after a death. Free-for-all (the default game type,
+ * versus-rules.js) puts the player back on an empty well; survivor rounds and Infinity's Last
+ * Standing (played to the last one alive) take the player out until the round or match ends.
+ * @param {{ gameType?: unknown, isInfinityLMS?: unknown } | null | undefined} config
+ * @returns {boolean}
+ */
+export function localMatchRespawns(config) {
+    return Boolean(config) && !config?.isInfinityLMS && readVersusGameType(config) === 'ffa';
+}
+
 /** What leads a local versus match by its rule: frags, or score for points and time, or lines. */
 const MEASURE = Object.freeze({
     frags: 'frags', points: 'score', lines: 'lines', time: 'score',
@@ -9,7 +22,7 @@ const MEASURE = Object.freeze({
  * Whether a local versus match is over by its rule, and who won it. The standings are match
  * totals (every round so far plus this one), one per player or team. The winner leads by the
  * rule's measure, not necessarily whoever crossed the line; a tie at the top is a draw.
- * Round-win rules (a team frag goal, a match with no rule set) are not judged here.
+ * Round-win rules (a survivor team's frag goal, a match with no rule set) are not judged here.
  * @param {{ endCondition?: string, endConditionValue?: number | string }} config
  * @param {Array<{ result: any, frags?: number, score?: number, lines?: number }>} standings
  * @param {number} elapsedMs how long the match has run (a pause does not count)
@@ -32,8 +45,8 @@ export function resolveLocalMatchEnd(config, standings, elapsedMs) {
 
 /**
  * Where a clock that started at `startedAt` stands after a pause of `pausedMs` that ended at
- * `now`: moved on by the part of the pause after it started (a round can begin, or a Hot
- * Potato be passed, while the game is paused).
+ * `now`: moved on by the part of the pause after it started (a round can begin while the
+ * game is paused).
  * @param {number} startedAt
  * @param {number} pausedMs
  * @param {number} now

@@ -18,6 +18,7 @@ import {
     generateBoard, createBoardGrid, rebuildBoardGridFromPieces, markBoardDirty, invalidateGhostCache,
 } from './board.js';
 import { insertGarbageEntries } from './garbage.js';
+import { calculateLineClearScore } from './scoring.js';
 import {
     cancelFixedCascade, processPhysics, startFixedCascade, tryProcessNoClearSync,
 } from './physics.js';
@@ -32,7 +33,7 @@ import {
     synchronizeInfinitySimulationCamera,
     findHighestOccupiedInfinityRow,
 } from './infinity-spawn-policy.js';
-import { createBlindTimers } from './blind.js';
+import { createBlindState, takePieceBlind } from './blind.js';
 import { cascadeShadowEnabled, armCascadeShadow, settleCascadeShadow } from './cascade-shadow.js';
 import { durationMsToTicks, elapsedMsToTicks } from './fixed-tick-clock.js';
 import { createPlayerInputState, resetPlayerInputState } from './player-input-state.js';
@@ -500,15 +501,19 @@ export function restoreBoardState(gameState, snapshot = {}, policy = {}) {
  * a possibly-stale boardGrid; afterwards boardGrid is rebuilt and the cache
  * invalidated in ONE place. Callers must not touch the arrays.
  *
- * Rows the garbage settle completes are cleared here, on every caller, and
- * award nothing (settleClearedRows reports them; owner decision 2026-11-18).
+ * Rows the garbage settle completes are cleared here, on every caller
+ * (settleClearedRows reports them). With creditSettleClears they count as the
+ * player's own clear, as versus play rules: lines, score and level move here and
+ * settleSummary is the attack the clear sends, for the caller to route. Without
+ * it they award nothing (Odyssey).
  *
  * @param {Object} gameState
  * @param {Array<Object>} entries - Garbage entries (see garbage.js)
- * @param {{debug?: boolean, settleFloatingBlocks?: boolean}} [options]
+ * @param {{debug?: boolean, settleFloatingBlocks?: boolean,
+ *   overflowPolicy?: 'refuse'|'spill', creditSettleClears?: boolean}} [options]
  * @returns {{success: boolean, topOut: boolean, garbagePieces: Array,
  *   settledSteps: number, linesAfterInsertion: number[], settleClearedRows: number[],
- *   rowsAdded: number} | null}
+ *   settleSummary: Object|null, rowsAdded: number} | null}
  */
 export function applyGarbage(gameState, entries, options = {}) {
     if (!gameState || !Array.isArray(gameState.lockedPieces)) return null;
@@ -548,7 +553,12 @@ export function applyGarbage(gameState, entries, options = {}) {
         isInfinityMode: gameState.isInfinityMode,
         debug: options.debug,
         settleFloatingBlocks: options.settleFloatingBlocks,
+        overflowPolicy: options.overflowPolicy,
     });
+
+    const settleSummary = options.creditSettleClears && result.success
+        ? creditSettleClears(gameState, result.settleWaves)
+        : null;
 
     if (gameState.boardGrid) {
         rebuildBoardGridFromPieces(gameState.lockedPieces, gameState.boardGrid);
@@ -556,7 +566,54 @@ export function applyGarbage(gameState, entries, options = {}) {
     markBoardDirty(gameState);
     synchronizeInfinitySimulationCamera(gameState);
 
-    return { ...result, rowsAdded };
+    return { ...result, settleSummary, rowsAdded };
+}
+
+/**
+ * Count the rows a garbage settle cleared as the player's own clear, wave by wave the way
+ * a lock's cascade counts them: lines, level and score, plus the perfect-clear bonus when
+ * nothing is left. Returns the cascade summary of the attack the clear sends, or null.
+ * @param {Object} gameState
+ * @param {Array<{rows: number[], holeMasks: boolean[][]}>} waves
+ */
+function creditSettleClears(gameState, waves) {
+    if (!Array.isArray(waves) || waves.length === 0) return null;
+    let depth = 0;
+    const holeMask = [];
+    waves.forEach((wave, index) => {
+        const count = wave.rows.length;
+        depth += count;
+        holeMask.push(...wave.holeMasks.map((mask) => mask.slice()));
+        if (gameState.lineClearCounts) {
+            gameState.lineClearCounts[count] = (gameState.lineClearCounts[count] || 0) + 1;
+        }
+        gameState.lines = (gameState.lines || 0) + count;
+        gameState.linesUntilNextLevel = (gameState.linesUntilNextLevel ?? 15) - count;
+        if (gameState.linesUntilNextLevel <= 0) {
+            gameState.linesUntilNextLevel += 15;
+            if (!gameState.disableLevelProgression) {
+                gameState.level += 1;
+                gameState.dropInterval = LEVEL_SPEEDS[Math.min(gameState.level - 1, LEVEL_SPEEDS.length - 1)];
+                if (gameState.speedMultiplier) gameState.dropInterval /= gameState.speedMultiplier;
+            }
+        }
+        gameState.score += calculateLineClearScore(count, gameState.level, index + 1, false);
+    });
+    const perfectClear = !gameState.isInfinityMode && gameState.lockedPieces.length === 0;
+    if (perfectClear) {
+        gameState.score += calculateLineClearScore(depth, gameState.level, waves.length, true)
+            - calculateLineClearScore(depth, gameState.level, waves.length, false);
+    }
+    return {
+        totalLines: depth,
+        depth,
+        comboStages: waves.length,
+        complexity: waves.length,
+        holeMask,
+        manualColumns: [],
+        sendForPerfectClear: perfectClear,
+        source: 'garbage-settle',
+    };
 }
 
 export function getGhostLandingY(gameState) {
@@ -649,6 +706,13 @@ export class GameState {
         this.lockDelay = options.lockDelay ?? LOCK_DELAY_MS;
         this.lockDelayTicks = durationMsToTicks(this.lockDelay, this.simTickMs);
         this.lockResetLimit = options.lockResetLimit ?? LOCK_RESET_LIMIT;
+        // Versus feel (versus-rules.js, applyVersusFeel). 'random' deals every piece on its
+        // own (no bag of seven); 'gravity' locks a resting piece at the next gravity step it
+        // cannot take (a soft drop takes that step at once), with no lock delay to slide in.
+        /** @type {'bag' | 'random'} */
+        this.pieceRandomizer = options.pieceRandomizer === 'random' ? 'random' : 'bag';
+        /** @type {'delay' | 'gravity'} */
+        this.lockStyle = options.lockStyle === 'gravity' ? 'gravity' : 'delay';
         // Puzzle rules (Stillfall), off for every other mode. A finite supply deals
         // only the queued pieces, never a fresh bag; waiting gravity never pulls the
         // piece down or locks it, so only a hard drop places it.
@@ -741,8 +805,9 @@ export class GameState {
         // Combo tracking state for deterministic garbage payloads
         this.comboState = createComboState();
 
-        // Store ongoing blind timers for attacks that affect visibility
-        this.blindTimers = createBlindTimers();
+        // Blind attacks (blind.js): the board's blind clock and the blind the piece in play
+        // takes when it locks. Hidden cells keep their time on their locked piece.
+        this.blind = createBlindState();
 
         // Deterministic sequence counter for outbound garbage attacks
         this.garbageAttackSequence = 0;
@@ -818,7 +883,7 @@ export class GameState {
         }
         this.lastPlacedPieceX = [];
         this.comboState = createComboState();
-        this.blindTimers = createBlindTimers();
+        this.blind = createBlindState();
         this.garbageAttackSequence = 0;
         this.handicap = 2;
         this.handicaps = {};
@@ -837,13 +902,18 @@ export class GameState {
  * Fills the next pieces bag using 7-bag randomizer
  * @param {Array<string>} nextPieces - Next pieces array to fill
  */
+/** A whole number in [0, n) from a seeded generator (nextInt or a [0,1) function), clamped. */
+function randomIndex(rng, n) {
+    const j = typeof rng?.nextInt === 'function'
+        ? rng.nextInt(n)
+        : Math.floor((typeof rng === 'function' ? rng() : Math.random()) * n);
+    return Math.max(0, Math.min(n - 1, j));
+}
+
 function shuffleBag(rng) {
     const bag = [...PIECE_KEYS];
     for (let i = bag.length - 1; i > 0; i--) {
-        const j = typeof rng?.nextInt === 'function'
-            ? rng.nextInt(i + 1)
-            : Math.floor((typeof rng === 'function' ? rng() : Math.random()) * (i + 1));
-        const swapIndex = Math.max(0, Math.min(i, j));
+        const swapIndex = randomIndex(rng, i + 1);
         const temp = bag[i];
         bag[i] = bag[swapIndex];
         bag[swapIndex] = temp;
@@ -851,7 +921,18 @@ function shuffleBag(rng) {
     return bag;
 }
 
-export function fillBag(nextPieces, rng = Math.random) {
+/**
+ * Top the preview queue up to ten pieces.
+ * @param {string[]} nextPieces
+ * @param {Function|Object} [rng]
+ * @param {'bag'|'random'} [randomizer] 'bag' deals shuffled bags of all seven; 'random'
+ *   draws each piece on its own (versus feel)
+ */
+export function fillBag(nextPieces, rng = Math.random, randomizer = 'bag') {
+    if (randomizer === 'random') {
+        while (nextPieces.length < 10) nextPieces.push(PIECE_KEYS[randomIndex(rng, PIECE_KEYS.length)]);
+        return;
+    }
     while (nextPieces.length < 10) {
         const bag = shuffleBag(rng);
         nextPieces.push(...bag);
@@ -893,7 +974,7 @@ export function spawnPiece(gameState, drawNextPiecesCallback, gameOverCallback) 
     gameState.dropCounter = 0;
 
     const rng = typeof gameState.randomGenerator === 'function' ? gameState.randomGenerator : Math.random;
-    if (!gameState.finiteSupply) fillBag(gameState.nextPieces, rng);
+    if (!gameState.finiteSupply) fillBag(gameState.nextPieces, rng, gameState.pieceRandomizer);
     if (drawNextPiecesCallback) drawNextPiecesCallback();
     gameState.piecesPlaced++;
 
@@ -1102,7 +1183,10 @@ export function softDrop(gameState, playDropCallback, physicsCallbacks, options 
     }
 
     updateGroundedState(gameState, 0);
-    if (!gameState.gravityWaits && shouldLockGroundedPiece(gameState, fixedTick)) {
+    if (
+        !gameState.gravityWaits
+        && (gameState.lockStyle === 'gravity' || shouldLockGroundedPiece(gameState, fixedTick))
+    ) {
         lockPiece(gameState, playDropCallback, physicsCallbacks, { fixedTick, inputPhase });
     }
     return false;
@@ -1140,6 +1224,15 @@ export function processAutoDrop(gameState, delta, playDropCallback, physicsCallb
     const MAX_DROP_STEPS_PER_UPDATE = 32;
 
     if (updateGroundedState(gameState, simulationDelta, elapsedTicks)) {
+        if (gameState.lockStyle === 'gravity') {
+            // A resting piece waits for the next gravity step; failing it locks the piece.
+            gameState.dropCounter += simulationDelta;
+            if (gameState.dropCounter >= dropInterval && !gameState.gravityWaits) {
+                lockPiece(gameState, playDropCallback, physicsCallbacks, { fixedTick });
+                gameState.dropCounter = 0;
+            }
+            return;
+        }
         if (shouldLockGroundedPiece(gameState, fixedTick)) {
             lockPiece(gameState, playDropCallback, physicsCallbacks, { fixedTick });
             gameState.dropCounter = 0;
@@ -1284,6 +1377,9 @@ export function lockPiece(gameState, playDropCallback, physicsCallbacks, timing 
         pieceId: ++gameState._pieceIdCounter,
         color: themedColor,
     };
+    // A blind piece waiting for this one hides it from the moment it lands (blind.js).
+    const blindTicks = takePieceBlind(gameState);
+    if (blindTicks > 0) lockedPieceSnapshot.blindTicks = blindTicks;
 
     if (physicsCallbacks && physicsCallbacks.onPieceLock) {
         physicsCallbacks.onPieceLock(lockedPieceSnapshot);

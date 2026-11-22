@@ -500,7 +500,9 @@ describe('FFA scripted two-peer serialized event golden', () => {
                     migrationEpoch: 0,
                     acknowledgements: { HOST: 0, PEER: 1 },
                     digest: '8a2bf791',
-                    encodedSize: 389,
+                    // Versus pieces are drawn one by one (ADR-0024): a different preview queue.
+                    // Format v8: per board a 4-byte empty hidden-cell block, not 8 bytes of blind timers.
+                    encodedSize: 375,
                 },
             },
         ]);
