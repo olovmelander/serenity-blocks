@@ -46,6 +46,7 @@ describe('joining while a match is on', () => {
     it('during the start countdown: waits out the round, then plays the next', async () => {
         session = await buildSession(vi, { peerIds: ['P1'] });
         const { host, wire } = session;
+        host.matchConfig.gameType = 'survivor'; // rounds (a free-for-all joins in at a key)
         host.startMatch();
         wire.drain();
         expect(host.gamePhase).toBe('waiting'); // counting down
@@ -68,6 +69,7 @@ describe('joining while a match is on', () => {
     it('during the beat between rounds: plays from the round that follows', async () => {
         session = await buildSession(vi, { peerIds: ['P1'] });
         const { host, wire } = session;
+        host.matchConfig.gameType = 'survivor';
         host.startMatch();
         wire.drain();
         await step(vi, wire, 6000);

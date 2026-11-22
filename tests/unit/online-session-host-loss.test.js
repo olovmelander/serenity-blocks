@@ -135,6 +135,7 @@ describe('host loss in a match', () => {
 
     it('a host lost during the round-over beat: the successor starts the next round', async () => {
         session = await buildSession(vi);
+        session.host.matchConfig.gameType = 'survivor'; // rounds: a free-for-all has no beat
         await startSessionMatch(vi, session);
         const { host, wire } = session;
         const [p1, p2] = session.peers;

@@ -31,7 +31,10 @@ function isOnlineFixedInputEnabled(mode, game, playerIndex) {
         && mode.ffaGameState === game
         && game.isSpectator !== true
         && game._fixedTickEnabled === true
-        && game.gamePhase === 'playing';
+        && game.gamePhase === 'playing'
+        // Out of a free-for-all match, the keys go to the window hooks, which ask to play
+        // again (game-modes/online-input-hooks.js, ffa/respawn.js).
+        && game.waitsToRespawn?.() !== true;
 }
 
 function acceptOnlineFixedInputDevice(mode, device) {

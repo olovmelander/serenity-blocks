@@ -50,13 +50,18 @@ reference game the owner wants versus to play like (Quadra's multiplayer, judged
   piece the victim places takes one off every sender. The credit passes to an attacker when one
   of its attacks brings its total level with the holder's or above. In round play the last
   holder keeps it even when spent; a respawning game type forgets a spent holder.
-- **Game type (local versus):** free-for-all is the default (`readVersusGameType`). A player
-  whose next piece cannot appear counts a death, the frag goes to the credit holder, and nobody
-  else stops: the dead player plays on with any of their own keys from one second after the
-  death (a bot comes back on its own), on an empty well at the start level that keeps their
-  score and lines. The frag goal counts kills, a team's being its players' kills. Survivor keeps
-  rounds: the last player or team alive takes the round, then everyone restarts. Infinity's Last
-  Standing has no game type and keeps its elimination rules.
+- **Game types** (`readVersusGameType`): **free-for-all** is the default. A knock-out ends no
+  round: the frag goes to the credit holder, the player's waiting garbage is dropped, and a key
+  of their own pressed a second or more later puts them back on an empty well at the match's
+  start level, keeping score, lines and frags (`respawnVersusBoard`); a local bot comes back on
+  its own. The frag goal counts kills, a team's being its players' kills. The match runs until
+  its goal (online, also until one player is left). **Survivor** keeps rounds: the last player
+  or team standing takes the round, then everyone restarts. Infinity's Last Standing has no
+  game type and keeps its elimination rules. Online, the host decides a respawn
+  (`src/core/multiplayer/ffa/respawn.js`, ADR-0004): a peer asks for its own player only
+  (`GAME_RESPAWN_REQUEST`), and the host's event (`GAME_PLAYER_RESPAWN`) is round-fenced,
+  numbered per player, carries the board's piece stream, and fences off the snapshots sent
+  before it, so a late frame cannot put the player back out.
 
 ## Consequences
 
@@ -79,3 +84,8 @@ reference game the owner wants versus to play like (Quadra's multiplayer, judged
   not opt in.
 - `tests/unit/local-ffa-respawn.test.js` pins the local free-for-all death, respawn and goal,
   and that survivor keeps its rounds.
+- `tests/unit/ffa-respawn.test.js` pins the online free-for-all (no round end, the goal, the
+  request's checks, the host's respawn and every client's, the snapshot fence, the piece stream
+  in step, a drop-in joining at a key, a respawn after host migration) and that survivor keeps
+  its rounds; `tests/unit/online-game-type.test.js` pins the create sheet, the waiting room and
+  the knock-out screens.

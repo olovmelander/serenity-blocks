@@ -22,6 +22,7 @@ const HOST_TO_PEER_MESSAGE_TYPES = Object.freeze([
     MessageTypes.GAME_STATE_FULL,
     MessageTypes.GAME_SYNCPOINT,
     MessageTypes.GAME_PLAYER_LOCK,
+    MessageTypes.GAME_PLAYER_RESPAWN,
     MessageTypes.GAME_LINES_CLEAR,
     MessageTypes.GAME_GARBAGE_SENT,
     MessageTypes.GAME_PLAYER_DIED,

@@ -137,6 +137,7 @@ describe('departures mid-match', () => {
     it('a duel whose other player leaves during the round-over beat ends there', async () => {
         session = await buildSession(vi, { peerIds: ['P1'] });
         const { wire, host, peers: [p1] } = session;
+        host.matchConfig.gameType = 'survivor'; // rounds: a free-for-all has no round-over beat
         await startSessionMatch(vi, session);
         host.matchConfig.endConditionValue = 99;
         const overs = [];

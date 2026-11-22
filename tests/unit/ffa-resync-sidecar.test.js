@@ -202,6 +202,7 @@ function configureNonDefaultState(player) {
     player._lastAppliedLockSeq = 11;
     player._lastAppliedClearSeq = 7;
     player._lastLockHostTick = 84;
+    player._respawnSeq = 6;
     player.garbageQueue.enqueue({
         type: 'line',
         attackerId: 'B',
@@ -252,6 +253,7 @@ describe('FFA versioned resync sidecar', () => {
         expect(targetPlayer._lastAppliedLockSeq).toBe(11);
         expect(targetPlayer._lastAppliedClearSeq).toBe(7);
         expect(targetPlayer._lastLockHostTick).toBe(84);
+        expect(targetPlayer._respawnSeq).toBe(6);
     });
 
     it('preserves clustered locked-piece identity through the next cascade', () => {
@@ -504,6 +506,33 @@ describe('FFA versioned resync sidecar', () => {
         const malformed = JSON.parse(JSON.stringify(older));
         malformed.players[0].gameState.handicapCrowd = -1;
         expect(() => validateFfaResyncSidecar(malformed, makeEnvelope(malformed))).toThrow(/handicapCrowd/);
+    });
+
+    it('carries the free-for-all respawn count, never back, and takes a host that sends none', () => {
+        const sourcePlayer = makePlayer('A', 17);
+        configureNonDefaultState(sourcePlayer);
+        const source = makeGame([sourcePlayer]);
+        const current = captureFfaResyncSidecar(source, makeSyncpoint(source));
+        expect(current.players[0].wrapper.respawnSeq).toBe(6);
+
+        // A client that already applied a later respawn keeps its count (an older capture).
+        const ahead = makePlayer('A', 999);
+        ahead._respawnSeq = 9;
+        applyFfaResyncSidecar(makeGame([ahead]), validateCaptured(current), { restorePlayerInput: true });
+        expect(ahead._respawnSeq).toBe(9);
+
+        // A host on an older build sends no count: the sidecar still applies.
+        const older = JSON.parse(JSON.stringify(current));
+        delete older.players[0].wrapper.respawnSeq;
+        const fresh = makePlayer('A', 999);
+        applyFfaResyncSidecar(makeGame([fresh]), validateFfaResyncSidecar(older, makeEnvelope(older)), {
+            restorePlayerInput: true,
+        });
+        expect(fresh._respawnSeq).toBe(0);
+
+        const malformed = JSON.parse(JSON.stringify(current));
+        malformed.players[0].wrapper.respawnSeq = -1;
+        expect(() => validateFfaResyncSidecar(malformed, makeEnvelope(malformed))).toThrow(/respawnSeq/);
     });
 
     it('rejects malformed, unsafe, mismatched, and non-exact-roster payloads before apply', () => {

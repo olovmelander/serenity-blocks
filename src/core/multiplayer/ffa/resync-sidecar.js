@@ -646,6 +646,9 @@ export function captureFfaResyncSidecar(game, joinSyncpoint) {
                 lastAppliedLockSeq: player._lastAppliedLockSeq ?? 0,
                 lastAppliedClearSeq: player._lastAppliedClearSeq ?? 0,
                 lastLockHostTick: player._lastLockHostTick ?? null,
+                // Free-for-all respawns so far (ffa/respawn.js): a resynced client, or a host
+                // that takes over, counts on from here.
+                respawnSeq: player._respawnSeq ?? 0,
                 attackCredit: {
                     model: 'last-attacker-v1',
                     lastAttackerId: normalizeOptionalId(player.lastAttackerId),
@@ -791,6 +794,10 @@ function validatePlayerPayload(player) {
     ].forEach((field) => {
         assertCounter(player.wrapper[field], `player ${steamId} ${field}`);
     });
+    // Checked when present: a host on an older build sends none.
+    if (player.wrapper.respawnSeq !== undefined) {
+        assertCounter(player.wrapper.respawnSeq, `player ${steamId} respawnSeq`);
+    }
     invariant(
         player.wrapper.lastLockHostTick === null
             || (Number.isSafeInteger(player.wrapper.lastLockHostTick)
@@ -1038,6 +1045,11 @@ export function applyFfaResyncSidecar(game, validated, options = {}) {
         staged.player._lastAppliedLockSeq = wrapper.lastAppliedLockSeq;
         staged.player._lastAppliedClearSeq = wrapper.lastAppliedClearSeq;
         staged.player._lastLockHostTick = wrapper.lastLockHostTick;
+        // Never back: a capture older than a respawn this client already applied counts fewer.
+        staged.player._respawnSeq = Math.max(
+            normalizeCounter(staged.player._respawnSeq),
+            normalizeCounter(wrapper.respawnSeq),
+        );
         staged.player.lastAttackerId = wrapper.attackCredit.lastAttackerId;
         // This host's credit for the player restarts from the holder the old host named.
         staged.player.fragCredit?.reset();
