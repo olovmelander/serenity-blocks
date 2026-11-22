@@ -10,11 +10,12 @@
  */
 
 import { COLORS, SHAPES } from '../constants.js';
+import { BLIND_TICK_MS, sameBlindCells } from '../blind.js';
 
 // Magic bytes for format identification
 const BINARY_MAGIC = 0x5342_4E45; // "SBNE" - Serenity Blocks Network Encoding
 const DELTA_MAGIC = 0x5342_4E44; // "SBND" - Serenity Blocks Network Delta
-const FORMAT_VERSION = 7; // v7: per-garbage-ROW attacker color appended after the grid (placed garbage shows attacker color, not grey); v6: per-player awaitingSpawn byte (late-joiner ≠ eliminated); v5: per-garbage-entry attacker color (3-byte RGB); v4: sim/snapshot ids + ordered garbage provenance metadata
+const FORMAT_VERSION = 8; // v8: hidden cells (blind attacks) replace the blind timers, and a blind entry's byte carries blind ticks; v7: per-garbage-ROW attacker color appended after the grid (placed garbage shows attacker color, not grey); v6: per-player awaitingSpawn byte (late-joiner ≠ eliminated); v5: per-garbage-entry attacker color (3-byte RGB); v4: sim/snapshot ids + ordered garbage provenance metadata
 
 // Delta Change Flags (Bitmask)
 const DELTA_FLAGS = {
@@ -24,7 +25,7 @@ const DELTA_FLAGS = {
     NEXT: 1 << 3, // Next pieces
     GARBAGE: 1 << 4, // Garbage queue
     DROPS: 1 << 5, // Drop counters
-    BLIND: 1 << 6, // Blind timers state
+    BLIND: 1 << 6, // Hidden cells (blind attacks)
 };
 
 // Cell types mapping (4 bits = 16 values)
@@ -133,7 +134,7 @@ function isGarbageEntry(value) {
     if (!isRecord(value) || typeof value.type !== 'string') return false;
     const nullableStringFields = ['attackerId', 'attackerName'];
     const numericFields = [
-        'attackSeq', 'lineIndex', 'duration', 'createdSimTick', 'sourceSimTick',
+        'attackSeq', 'lineIndex', 'ticks', 'createdSimTick', 'sourceSimTick',
         'sourceLockSeq', 'applyAfterLockSeq', 'applySimTick',
     ];
     const attackIdValid = value.attackId === undefined
@@ -174,10 +175,14 @@ function isPackedPlayerSnapshot(value) {
     const numericFields = [
         'score', 'lines', 'level', 'frags', 'garbagePending', 'dropCounter', 'dropInterval',
     ];
-    const blindTimersValid = value.blindTimers === null
-        || (isRecord(value.blindTimers)
-            && ['field', 'fieldMax', 'pending', 'pendingMax']
-                .every((field) => Number.isFinite(value.blindTimers[field])));
+    const blindValid = value.blind === null
+        || (isRecord(value.blind)
+            && Number.isFinite(value.blind.clockMs)
+            && Number.isFinite(value.blind.pieceTicks)
+            && Array.isArray(value.blind.cells)
+            && value.blind.cells.length <= GRID_ROWS * GRID_COLS
+            && value.blind.cells.every((cell) => Array.isArray(cell)
+                && cell.length === 2 && cell.every(Number.isFinite)));
     return typeof value.steamId === 'string'
         && typeof value.name === 'string'
         && typeof value.color === 'string'
@@ -195,7 +200,7 @@ function isPackedPlayerSnapshot(value) {
         && Array.isArray(value.lockedPieces)
         && value.lockedPieces.length <= MAX_LOCKED_PIECES
         && value.lockedPieces.every(isLockedPiece)
-        && blindTimersValid;
+        && blindValid;
 }
 
 /** @param {PackedPlayerSnapshotV7} player @returns {PackedPlayerSnapshotV7} */
@@ -218,7 +223,7 @@ function copyPackedPlayerSnapshot(player) {
         dropInterval: player.dropInterval,
         garbageEntries: player.garbageEntries,
         lockedPieces: player.lockedPieces,
-        blindTimers: player.blindTimers,
+        blind: player.blind,
     };
 }
 
@@ -410,11 +415,9 @@ export class BinaryEncoder {
             mask |= DELTA_FLAGS.GRID;
         }
 
-        // Blind check
-        if (current.blindTimers?.field !== baseline.blindTimers?.field
-            || current.blindTimers?.fieldMax !== baseline.blindTimers?.fieldMax
-            || current.blindTimers?.pending !== baseline.blindTimers?.pending
-            || current.blindTimers?.pendingMax !== baseline.blindTimers?.pendingMax) {
+        // Hidden cells: sent when a cell's blind time or the waiting piece blind changed (the
+        // clock alone rides along then, it never forces a send).
+        if (!sameBlindCells(current.blind, baseline.blind)) {
             mask |= DELTA_FLAGS.BLIND;
         }
 
@@ -466,7 +469,7 @@ export class BinaryEncoder {
         }
 
         if (mask & DELTA_FLAGS.BLIND) {
-            offset = this._encodeBlindTimers(view, offset, current.blindTimers);
+            offset = this._encodeBlind(view, offset, current.blind);
         }
 
         return offset;
@@ -571,8 +574,8 @@ export class BinaryEncoder {
         // to save ~200+ bytes per player
         view.setUint8(offset++, 0); // lockedPieces count = 0
 
-        // === BLIND TIMERS (8 bytes) ===
-        offset = this._encodeBlindTimers(view, offset, player.blindTimers);
+        // === HIDDEN CELLS (v8, 4 + 2 bytes per hidden cell) ===
+        offset = this._encodeBlind(view, offset, player.blind);
 
         return offset;
     }
@@ -675,19 +678,29 @@ export class BinaryEncoder {
         return offset;
     }
 
-    _encodeBlindTimers(view, offset, blindTimers) {
-        const bt = blindTimers || {};
-        const fieldCentis = Math.min(65535, Math.round((bt.field || 0) * 100));
-        const fieldMaxCentis = Math.min(65535, Math.round((bt.fieldMax || 0) * 100));
-        const pendingCentis = Math.min(65535, Math.round((bt.pending || 0) * 100));
-        const pendingMaxCentis = Math.min(65535, Math.round((bt.pendingMax || 0) * 100));
+    /**
+     * v8: a board's hidden cells (core/blind.js captureBlindSnapshot). Layout: blind clock
+     * (uint16, 1/256 ms), the piece blind waiting for the piece in play (uint8), the count of
+     * hidden cells (uint8), then per cell its index y * 10 + x (uint8) and blind ticks (uint8).
+     */
+    _encodeBlind(view, offset, blind) {
+        const source = blind || {};
+        const clock = Math.min(65535, Math.max(0, Math.round((Number(source.clockMs) || 0) * 256)));
+        const pieceTicks = this._clampUint(source.pieceTicks, 255);
+        const cells = (Array.isArray(source.cells) ? source.cells : [])
+            .filter((cell) => Array.isArray(cell)
+                && Number.isInteger(cell[0]) && cell[0] >= 0 && cell[0] < GRID_ROWS * GRID_COLS
+                && Number(cell[1]) > 0)
+            .slice(0, GRID_ROWS * GRID_COLS);
 
-        view.setUint16(offset, fieldCentis, true); offset += 2;
-        view.setUint16(offset, fieldMaxCentis, true); offset += 2;
-        view.setUint16(offset, pendingCentis, true); offset += 2;
-        view.setUint16(offset, pendingMaxCentis, true); offset += 2;
-
-        return offset;
+        view.setUint16(offset, clock, true);
+        view.setUint8(offset + 2, pieceTicks);
+        view.setUint8(offset + 3, cells.length);
+        cells.forEach(([index, ticks], i) => {
+            view.setUint8(offset + 4 + i * 2, index);
+            view.setUint8(offset + 5 + i * 2, this._clampUint(ticks, 255));
+        });
+        return offset + 4 + cells.length * 2;
     }
 
     _clampUint(value, max = 0xFFFFFFFF) {
@@ -741,9 +754,8 @@ export class BinaryEncoder {
         // Hole mask low 8 bits (the high 2 are in the type byte above).
         view.setUint8(offset++, holeMask & 0xFF);
 
-        // Duration (1 byte) - encoded in deciseconds (Math.round(entry.duration * 10))
-        const durationVal = Math.min(255, Math.round((entry.duration || 0) * 10));
-        view.setUint8(offset++, durationVal);
+        // Blind ticks (1 byte): a blind piece's or a full blind's time (v8); 0 for rows.
+        view.setUint8(offset++, this._clampUint(entry.ticks, 255));
 
         view.setUint32(offset, this._attackSeqFromEntry(entry), true); offset += 4;
         view.setUint8(offset++, this._clampUint(entry.lineIndex, 255));
@@ -1138,10 +1150,10 @@ export class BinaryDecoder {
             p.garbageEntries = garbageEntries;
         }
 
-        // Blind
+        // Hidden cells
         if (mask & DELTA_FLAGS.BLIND) {
-            const result = this._decodeBlindTimers(view, offset);
-            p.blindTimers = result.timers;
+            const result = this._decodeBlind(view, offset);
+            p.blind = result.blind;
             offset = result.offset;
         }
 
@@ -1227,9 +1239,9 @@ export class BinaryDecoder {
         }
         const lockedPieces = this._reconstructLockedPiecesFromGrid(grid);
 
-        // === BLIND TIMERS (8 bytes) ===
-        const blindResult = this._decodeBlindTimers(view, offset);
-        const blindTimers = blindResult.timers;
+        // === HIDDEN CELLS (v8) ===
+        const blindResult = this._decodeBlind(view, offset);
+        const { blind } = blindResult;
         offset = blindResult.offset;
 
         return {
@@ -1251,7 +1263,7 @@ export class BinaryDecoder {
                 nextPieces,
                 garbageEntries,
                 lockedPieces,
-                blindTimers,
+                blind,
             },
             offset,
         };
@@ -1361,18 +1373,28 @@ export class BinaryDecoder {
         };
     }
 
-    _decodeBlindTimers(view, offset) {
-        this._assertAvailable(view, offset, 8, 'blind timers');
-        const field = view.getUint16(offset, true) / 100; offset += 2;
-        const fieldMax = view.getUint16(offset, true) / 100; offset += 2;
-        const pending = view.getUint16(offset, true) / 100; offset += 2;
-        const pendingMax = view.getUint16(offset, true) / 100; offset += 2;
-
+    _decodeBlind(view, offset) {
+        this._assertAvailable(view, offset, 4, 'hidden cells');
+        const clockMs = Math.min(view.getUint16(offset, true) / 256, BLIND_TICK_MS);
+        const pieceTicks = view.getUint8(offset + 2);
+        const count = view.getUint8(offset + 3);
+        if (count > GRID_ROWS * GRID_COLS) {
+            throw new Error(`Malformed binary snapshot: hidden-cell count ${count} exceeds ${GRID_ROWS * GRID_COLS}`);
+        }
+        this._assertAvailable(view, offset + 4, count * 2, 'hidden cell list');
+        /** @type {Array<[number, number]>} */
+        const cells = [];
+        for (let i = 0; i < count; i++) {
+            const index = view.getUint8(offset + 4 + i * 2);
+            const ticks = view.getUint8(offset + 5 + i * 2);
+            if (index >= GRID_ROWS * GRID_COLS) {
+                throw new Error(`Malformed binary snapshot: hidden cell ${index} is off the board`);
+            }
+            if (ticks > 0) cells.push([index, ticks]);
+        }
         return {
-            timers: {
-                field, fieldMax, pending, pendingMax,
-            },
-            offset,
+            blind: { clockMs: clockMs >= BLIND_TICK_MS ? 0 : clockMs, pieceTicks, cells },
+            offset: offset + 4 + count * 2,
         };
     }
 
@@ -1397,8 +1419,7 @@ export class BinaryDecoder {
         const attackerHash = view.getUint32(offset, true); offset += 4;
         const holeMask = view.getUint8(offset++) | (holeHi << 8); // recombine the 10-bit mask
 
-        const durationVal = view.getUint8(offset++);
-        const duration = durationVal / 10;
+        const ticks = view.getUint8(offset++);
 
         let attackSeq = 0;
         let lineIndex = 0;
@@ -1431,7 +1452,7 @@ export class BinaryDecoder {
                 type,
                 attackerId,
                 holeMask,
-                duration,
+                ticks,
                 variant,
                 isLastInBurst,
                 attackSeq,

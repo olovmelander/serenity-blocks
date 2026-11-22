@@ -14,6 +14,7 @@ import {
     closeLayer, focusSoon, mpIcon, openLayer,
 } from './components/mp-sheet.js';
 import { HOST_IP_NOTE } from './online-play-notice.js';
+import { MIN_ATTACK_LINES_CHOICES, MIN_ATTACK_LINES_DEFAULT, readMinAttackLines } from '../core/garbage.js';
 
 const CONDITIONS = {
     frags: {
@@ -72,16 +73,18 @@ export const GAME_TYPE_HELP = {
 };
 
 const ATTACK_HELP = {
-    standard: 'Clearing two or more lines sends garbage lines to an opponent.',
-    blind: 'Garbage lines plus a short blackout of the target board.',
-    full_blind: 'A heavier attack with a longer blackout.',
-    hot_potato: 'Hold the potato too long and it goes off — clear lines to pass it on.',
+    standard: 'Clearing lines sends garbage rows to your opponents.',
+    blind: 'No garbage: each row you send hides one of the target’s next pieces for a few seconds. Clearing the board hides their whole stack.',
+    full_blind: 'No garbage: each attack hides the target’s whole stack for a while — longer for bigger clears and combos.',
+    hot_potato: 'Players take the potato in turn. Its holder takes every attack — send enough rows to pass it on.',
     peaceful: 'No attacks are sent in this match.',
 };
 
+const MIN_ATTACK_HELP = 'Clears smaller than this send nothing (a cleared board always attacks).';
+
 const SEGMENTED = [
     '#online-game-type', '#max-players', '#lobby-type', '#online-end-condition', '#online-attack-style',
-    '#garbage-cancellation',
+    '#online-min-attack-lines', '#garbage-cancellation',
 ];
 
 export class MatchConfigModal {
@@ -218,6 +221,13 @@ export class MatchConfigModal {
                     <p class="sb-mp-help" id="online-attack-style-help">${ATTACK_HELP.standard}</p>
                   </div>
                   <div class="sb-mp-field">
+                    <span class="sb-mp-field__label">Smallest attacking clear</span>
+                    <select id="online-min-attack-lines" name="minAttackLines" aria-label="Smallest attacking clear">
+                      ${MIN_ATTACK_LINES_CHOICES.map((lines) => `<option value="${lines}"${lines === MIN_ATTACK_LINES_DEFAULT ? ' selected' : ''}>${lines}</option>`).join('')}
+                    </select>
+                    <p class="sb-mp-help">${MIN_ATTACK_HELP}</p>
+                  </div>
+                  <div class="sb-mp-field">
                     <span class="sb-mp-field__label">Garbage cancelling</span>
                     <select id="garbage-cancellation" name="garbageCancellation" aria-label="Garbage cancelling">
                       <option value="disabled" selected>Off</option>
@@ -340,18 +350,13 @@ export class MatchConfigModal {
         valueHelp.textContent = config.help;
     }
 
+    /** The hot potato sends ordinary rows; `hotPotato` in the config routes them. */
     _attackRulesFor(style) {
         switch (style) {
         case 'blind':
             return { forceAttackType: 'blind' };
         case 'full_blind':
             return { forceAttackType: 'full_blind' };
-        case 'hot_potato':
-            return {
-                forceAttackType: 'potato',
-                potatoDurationMs: 12000,
-                potatoPenaltyLines: 6,
-            };
         case 'peaceful':
             return { disableAttacks: true };
         default:
@@ -423,15 +428,12 @@ export class MatchConfigModal {
             garbageCancellation: formData.get('garbageCancellation') || 'disabled',
             attackStyle: formData.get('attackStyle') || 'standard',
             attackRules: this._attackRulesFor(formData.get('attackStyle') || 'standard'),
+            minAttackLines: readMinAttackLines(formData.get('minAttackLines')),
             // The level rule (match-level-rule.js): a fixed level unless levelling up is on.
             startLevel: parseInt(formData.get('startLevel'), 10),
             levelProgression: formData.get('levelProgression') === 'on',
         };
         config.hotPotato = config.attackStyle === 'hot_potato';
-        if (config.hotPotato) {
-            config.potatoDurationMs = 12000;
-            config.potatoPenaltyLines = 6;
-        }
 
         // Validation
         if (!(config.startLevel >= MATCH_START_LEVEL_MIN && config.startLevel <= MATCH_START_LEVEL_MAX)) {

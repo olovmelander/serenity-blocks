@@ -43,7 +43,7 @@ function makePlayer(steamId, lastInputSeq, overrides = {}) {
         dropInterval: 1000,
         garbageEntries: [],
         lockedPieces: [],
-        blindTimers: null,
+        blind: null,
         lastInputSeq,
         ...overrides,
     };

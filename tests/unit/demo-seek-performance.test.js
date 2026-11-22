@@ -90,11 +90,34 @@ function makePlayer(demo = makeDemo()) {
 }
 
 // The baseline was recorded while snapshots still carried the crowd handicap (always 0), removed
-// on 2026-11-18. Put it back at its old place so the recorded hash keeps pinning every other field.
-function baselineHash(snapshot) {
+// on 2026-11-18, and the render-only blind timers (never set in these demos), replaced by the blind
+// state of hidden cells (blind.js) on 2026-11-22. Put back what each scenario recorded at its old
+// place so the recorded hash keeps pinning every other field.
+const RECORDED_BLIND_TIMERS = {
+    plain: {
+        field: 0, fieldMax: 0, pending: 0, pendingMax: 0,
+    },
+    clear: {
+        field: 0,
+        fieldMax: 0,
+        pending: 0,
+        pendingMax: 0,
+        fieldTicks: 0,
+        fieldMaxTicks: 0,
+        pendingTicks: 0,
+        pendingMaxTicks: 0,
+        _blindTickSourceField: 0,
+        _blindTickSourceFieldMax: 0,
+        _blindTickSourcePending: 0,
+        _blindTickSourcePendingMax: 0,
+        _blindTickDurationMs: 1000 / 60,
+    },
+};
+function baselineHash(snapshot, kind) {
     const recordedShape = {};
     for (const [key, value] of Object.entries(snapshot)) {
-        recordedShape[key] = value;
+        if (key === 'blind') recordedShape.blindTimers = RECORDED_BLIND_TIMERS[kind];
+        else recordedShape[key] = value;
         if (key === 'handicaps') recordedShape.handicapCrowd = 0;
     }
     return createHash('sha256').update(JSON.stringify(recordedShape)).digest('hex');
@@ -116,8 +139,9 @@ describe('DemoPlayer explicit seek responsiveness and ownership', () => {
         const checkpoints = vi.spyOn(player, '_captureRuntimeCheckpoint');
         await player.seek(5000);
 
-        const hash = baselineHash(captureGameStateSnapshot(state));
-        expect(hash).toBe(baseline.canonicalHash);
+        const snapshot = captureGameStateSnapshot(state);
+        expect(snapshot.blind).toEqual({ clockMs: 0, pieceTicks: 0, version: 0 });
+        expect(baselineHash(snapshot, baseline.kind)).toBe(baseline.canonicalHash);
         expect(log).toEqual(baseline.log);
         expect(state.randomGenerator.getState()).toBe(baseline.rngState);
         expect(player.currentInputIndex).toBe(baseline.currentInputIndex);
@@ -433,7 +457,7 @@ describe('DemoPlayer explicit seek responsiveness and ownership', () => {
 
         const snapshot = captureGameStateSnapshot(state);
         snapshot.isPaused = false;
-        const hash = baselineHash(snapshot);
+        const hash = baselineHash(snapshot, 'plain');
         expect(hash).toBe(golden.scenarios.find(scenario => scenario.kind === 'plain').canonicalHash);
         expect(state.simFrame).toBe(300);
         expect(player.isPaused).toBe(action === 'pause');

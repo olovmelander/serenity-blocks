@@ -27,6 +27,7 @@ import {
     readInfinityWellRows,
 } from '../core/multiplayer/infinity-well-rule.js';
 import { readVersusGameType } from '../core/multiplayer/versus-rules.js';
+import { MIN_ATTACK_LINES_CHOICES, MIN_ATTACK_LINES_DEFAULT, readMinAttackLines } from '../core/garbage.js';
 
 const DEFAULT_BOT_SKILL = 5;
 const LAST_SETUP_KEY = 'serenity.localMatch.lastSetup';
@@ -87,12 +88,14 @@ const GAME_TYPE_HELP = {
 };
 
 const ATTACK_HELP = {
-    standard: 'Clearing two or more lines sends garbage lines to an opponent.',
-    blind: 'Garbage lines plus a short blackout of the target board.',
-    full_blind: 'A heavier attack with a longer blackout.',
-    hot_potato: 'Hold the potato too long and it goes off — clear lines to pass it on.',
+    standard: 'Clearing lines sends garbage rows to your opponents.',
+    blind: 'No garbage: each row you send hides one of the target’s next pieces for a few seconds. Clearing the board hides their whole stack.',
+    full_blind: 'No garbage: each attack hides the target’s whole stack for a while — longer for bigger clears and combos.',
+    hot_potato: 'Teams take the potato in turn. Its holder takes every attack — send enough rows to pass it on.',
     peaceful: 'No attacks are sent — a calm, side-by-side match.',
 };
+
+const MIN_ATTACK_HELP = 'Clears smaller than this send nothing (a cleared board always attacks).';
 
 function readLastSetup() {
     try {
@@ -112,7 +115,8 @@ function writeLastSetup(values) {
 
 /**
  * Map an attack-style selection to a garbage `rules` object understood by
- * core/garbage.js `calculateGarbage`. Values match ATTACK_TYPES in that module.
+ * core/garbage.js `calculateGarbage`. Values match ATTACK_TYPES in that module. The hot
+ * potato sends ordinary rows; `hotPotato` in the config routes them (multiplayer/hot-potato.js).
  */
 function attackRulesFor(style) {
     switch (style) {
@@ -120,14 +124,16 @@ function attackRulesFor(style) {
         return { forceAttackType: 'blind' };
     case 'full_blind':
         return { forceAttackType: 'full_blind' };
-    case 'hot_potato':
-        return { forceAttackType: 'potato', potatoDurationMs: 12000, potatoPenaltyLines: 6 };
     case 'peaceful':
         return { disableAttacks: true };
     default:
         return null;
     }
 }
+
+const minAttackOptions = () => MIN_ATTACK_LINES_CHOICES
+    .map((lines) => `<option value="${lines}"${lines === MIN_ATTACK_LINES_DEFAULT ? ' selected' : ''}>${lines}</option>`)
+    .join('');
 
 /**
  * Pure config assembler — takes a plain object of form values (as produced by
@@ -151,6 +157,7 @@ export function buildLocalMatchConfig(values = {}) {
         boringRules: get('boringRules') === 'on',
         attackStyle,
         attackRules: attackRulesFor(attackStyle),
+        minAttackLines: readMinAttackLines(get('minAttackLines')),
     };
 
     // Every slot always carries a team; default is the player's OWN team
@@ -166,10 +173,6 @@ export function buildLocalMatchConfig(values = {}) {
     const distinctTeams = new Set(config.playerTeams).size;
     config.isTeamMode = distinctTeams >= 2 && distinctTeams < numPlayers;
     config.hotPotato = config.attackStyle === 'hot_potato';
-    if (config.hotPotato) {
-        config.potatoDurationMs = 12000;
-        config.potatoPenaltyLines = 6;
-    }
 
     if (!isInfinityLMS) {
         // Infinity's Last Standing keeps its own elimination rules and has no game type.
@@ -373,6 +376,11 @@ export class LocalMatchConfigModal {
         min: 1, max: 9, value: 1, label: 'the starting level',
     })}
                     </div>
+                    <div class="sb-mp-field form-group" id="min-attack-lines-group">
+                      <span class="sb-mp-field__label" id="min-attack-lines-label">Smallest attacking clear</span>
+                      <select id="min-attack-lines" name="minAttackLines" aria-label="Smallest attacking clear">${minAttackOptions()}</select>
+                      <p class="sb-mp-help">${MIN_ATTACK_HELP}</p>
+                    </div>
                     <label class="sb-mp-switch form-group" id="level-progression-group">
                       <span class="sb-mp-field__text">
                         <span class="sb-mp-field__label">Level up as you clear</span>
@@ -408,7 +416,7 @@ export class LocalMatchConfigModal {
     }
 
     enhanceStaticControls() {
-        ['#num-players', '#match-mode', '#game-type', '#end-condition', '#attack-style'].forEach((sel) => {
+        ['#num-players', '#match-mode', '#game-type', '#end-condition', '#attack-style', '#min-attack-lines'].forEach((sel) => {
             const el = this.container.querySelector(sel);
             if (el) this._enhancers.push(enhanceSegmented(el));
         });
@@ -757,6 +765,7 @@ export class LocalMatchConfigModal {
         setSelect('#match-mode', saved.matchMode);
         setSelect('#game-type', saved.gameType);
         setSelect('#attack-style', saved.attackStyle);
+        setSelect('#min-attack-lines', saved.minAttackLines);
         setSelect('#end-condition', saved.endCondition);
         setNumber('#end-condition-value', saved.endConditionValue);
         setNumber('#infinity-max-rows', saved.infinityMaxRows);

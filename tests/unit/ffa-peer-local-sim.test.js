@@ -111,21 +111,32 @@ describe('peer-owns-board (?peerLocalSim)', () => {
         expect(player.garbageQueue.entries[0].attackId).toBe('g1');
     });
 
-    it('treats an explicit null blind snapshot as an authoritative clear', () => {
+    it('keeps its own hidden cells: the host\'s copy of them never overwrites the board it owns', () => {
         const player = localPlayer();
-        player.gameState.blindTimers = {
-            field: 2, fieldMax: 2, pending: 1, pendingMax: 1,
-        };
-        const timers = player.gameState.blindTimers;
+        player.gameState.lockedPieces = [{ pieceId: 1, x: 0, y: 23, shape: [[1]], blindTicks: 20 }];
+        player.gameState.blind = { clockMs: 30, pieceTicks: 30, version: 4 };
         const snapshot = staleSnapshot();
-        snapshot.players[0].blindTimers = null;
+        snapshot.players[0].blind = { clockMs: 0, pieceTicks: 0, cells: [] };
         const stub = makeStub(true, { players: new Map([['P1', player]]) });
 
         apply(stub, snapshot, { forceLocal: false, reconcileLocal: true });
 
-        expect(player.gameState.blindTimers).toBe(timers);
-        expect(player.gameState.blindTimers.field).toBe(0);
-        expect(player.gameState.blindTimers.pending).toBe(0);
+        expect(player.gameState.lockedPieces[0].blindTicks).toBe(20);
+        expect(player.gameState.blind).toEqual({ clockMs: 30, pieceTicks: 30, version: 4 });
+    });
+
+    it('a forceLocal resync adopts the host\'s hidden cells with its board', () => {
+        const player = localPlayer();
+        const snapshot = staleSnapshot();
+        snapshot.players[0].lockedPieces = [{ x: 0, y: 23, shape: [[1]], shapeKey: 'g' }];
+        snapshot.players[0].blind = { clockMs: 12, pieceTicks: 30, cells: [[230, 9]] };
+        const stub = makeStub(true, { players: new Map([['P1', player]]) });
+
+        apply(stub, snapshot, { forceLocal: true, reconcileLocal: true });
+
+        expect(player.gameState.lockedPieces[0].blindTicks).toBe(9);
+        expect(player.gameState.boardGrid[23][0].blind).toBe(9);
+        expect(player.gameState.blind).toMatchObject({ clockMs: 12, pieceTicks: 30 });
     });
 
     it('a forceLocal digest-resync DOES hard re-base everything (the single correction path)', () => {

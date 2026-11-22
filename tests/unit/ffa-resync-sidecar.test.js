@@ -1,7 +1,7 @@
 import {
     describe, expect, it,
 } from 'vitest';
-import { restoreBlindTimers } from '../../src/core/blind.js';
+import { applyFullBlind } from '../../src/core/blind.js';
 import { rebuildBoardGridFromPieces } from '../../src/core/board.js';
 import { resolveCascade } from '../../src/core/cascade-resolver.js';
 import { fillBag, GameState } from '../../src/core/game.js';
@@ -51,13 +51,14 @@ function makeGame(players) {
         _attackSeq: 19,
         hotPotatoState: {
             enabled: true,
-            holderId: players[0]?.steamId ?? null,
-            previousHolderId: null,
-            expiresAt: 123456,
-            durationMs: 12000,
-            penaltyLines: 6,
+            holder: players[0]?.steamId ?? null,
+            sent: 1,
+            target: 3,
+            targets: { [players[0]?.steamId ?? 'A']: 3 },
+            order: [],
+            lastHolder: null,
+            waitMs: 0,
             generation: 4,
-            lastEvent: { reason: 'transfer' },
         },
         attackRouter: {
             attackHistory: [{
@@ -179,12 +180,11 @@ function configureNonDefaultState(player) {
         twist: true,
         sequence: 9,
     };
-    restoreBlindTimers(gameState, {
-        field: 1.25,
-        fieldMax: 3,
-        pending: 0.5,
-        pendingMax: 2,
-    });
+    // Hidden cells (blind attacks): the locked I piece, a part-run clock and a blind piece
+    // waiting for the piece in play.
+    applyFullBlind(gameState, 37);
+    gameState.blind.clockMs = 48.5;
+    gameState.blind.pieceTicks = 30;
     gameState.garbageAttackSequence = 13;
     gameState.handicap = 3;
     gameState.handicaps = { A: 2, B: 3 };
@@ -210,7 +210,6 @@ function configureNonDefaultState(player) {
         color: '#123456',
         holeMask: 0b1000000001,
         variant: 'clean',
-        duration: 1.234,
         isLastInBurst: true,
         attackId: 'r3-a19',
         attackSeq: 19,
@@ -234,9 +233,14 @@ describe('FFA versioned resync sidecar', () => {
     it('deeply round-trips non-default sim, wrapper, queue, and match state', () => {
         const sourcePlayer = makePlayer('A', 17);
         configureNonDefaultState(sourcePlayer);
+        sourcePlayer.garbageQueue.enqueue({ type: 'blind', attackId: 'r3-a20', lineIndex: 0, ticks: 30 });
+        sourcePlayer.garbageQueue.enqueue({ type: 'full_blind', attackId: 'r3-a20', lineIndex: 1, ticks: 24 });
         const source = makeGame([sourcePlayer]);
         const sidecar = captureFfaResyncSidecar(source, makeSyncpoint(source));
         const validated = validateCaptured(sidecar);
+        expect(validated.players[0].gameState.blind).toMatchObject({ clockMs: 48.5, pieceTicks: 30 });
+        expect(validated.players[0].gameState.lockedPieces[0].blindTicks).toBe(37);
+        expect(validated.players[0].gameState.boardGrid[21][2].blind).toBe(37);
 
         // Validation returns a detached value suitable for delayed application.
         sidecar.players[0].gameState.score = 999999;
@@ -250,6 +254,8 @@ describe('FFA versioned resync sidecar', () => {
 
         const recaptured = captureFfaResyncSidecar(target, makeSyncpoint(target));
         expect(recaptured).toEqual(validated);
+        expect(targetPlayer.gameState.lockedPieces[0].blindTicks).toBe(37);
+        expect(targetPlayer.garbageQueue.entries.map((entry) => entry.type)).toEqual(['line', 'blind', 'full_blind']);
         expect(targetPlayer._lastAppliedLockSeq).toBe(11);
         expect(targetPlayer._lastAppliedClearSeq).toBe(7);
         expect(targetPlayer._lastLockHostTick).toBe(84);
@@ -416,7 +422,7 @@ describe('FFA versioned resync sidecar', () => {
         expect(targetPlayer.gameState.playerInput.das.moveLeft.active).toBe(false);
     });
 
-    it('canonicalizes default blind timers so a fresh state round-trips structurally', () => {
+    it('canonicalizes the default blind state so a fresh state round-trips structurally', () => {
         const sourcePlayer = makePlayer('A');
         const source = makeGame([sourcePlayer]);
         const validated = validateCaptured(captureFfaResyncSidecar(source, makeSyncpoint(source)));
@@ -426,13 +432,7 @@ describe('FFA versioned resync sidecar', () => {
         applyFfaResyncSidecar(target, validated);
 
         expect(captureFfaResyncSidecar(target, makeSyncpoint(target))).toEqual(validated);
-        expect(validated.players[0].gameState.blindTimers).toMatchObject({
-            fieldTicks: 0,
-            fieldMaxTicks: 0,
-            pendingTicks: 0,
-            pendingMaxTicks: 0,
-            _blindTickDurationMs: 1000 / 60,
-        });
+        expect(validated.players[0].gameState.blind).toEqual({ clockMs: 0, pieceTicks: 0, version: 0 });
     });
 
     it('keeps exact garbage provenance instead of accepting hash-only attacker identity', () => {
@@ -448,7 +448,6 @@ describe('FFA versioned resync sidecar', () => {
             holeMask: 0b1010000101,
             color: '#fedcba',
             variant: 'clean',
-            duration: 1.237,
             createdSimTick: 900,
             sourceSimTick: 899,
             sourceLockSeq: 70,
@@ -654,10 +653,24 @@ describe('FFA versioned resync sidecar', () => {
         expect(() => validateFfaResyncSidecar(stalePieceCounter, envelope))
             .toThrow(/below a locked piece id/);
 
-        const partialBlindClock = JSON.parse(JSON.stringify(sidecar));
-        delete partialBlindClock.players[0].gameState.blindTimers.pendingTicks;
-        expect(() => validateFfaResyncSidecar(partialBlindClock, envelope))
-            .toThrow(/requires a fixed-tick mirror/);
+        const partialBlindState = JSON.parse(JSON.stringify(sidecar));
+        delete partialBlindState.players[0].gameState.blind.pieceTicks;
+        expect(() => validateFfaResyncSidecar(partialBlindState, envelope))
+            .toThrow(/blind fields are not canonical/);
+
+        const runawayBlindClock = JSON.parse(JSON.stringify(sidecar));
+        runawayBlindClock.players[0].gameState.blind.clockMs = 400;
+        expect(() => validateFfaResyncSidecar(runawayBlindClock, envelope)).toThrow(/blind.clockMs/);
+
+        const overlongHiddenCell = JSON.parse(JSON.stringify(sidecar));
+        overlongHiddenCell.players[0].gameState.lockedPieces = [{
+            type: 'O', shapeKey: 'O', shape: [[1]], x: 4, y: 20, blindTicks: 900,
+        }];
+        expect(() => validateFfaResyncSidecar(overlongHiddenCell, envelope)).toThrow(/blindTicks/);
+
+        const blindWithoutTime = JSON.parse(JSON.stringify(sidecar));
+        blindWithoutTime.players[0].garbageEntries = [{ type: 'blind', attackId: 'a' }];
+        expect(() => validateFfaResyncSidecar(blindWithoutTime, envelope)).toThrow(/entry 0.ticks/);
 
         const oversizedGarbage = JSON.parse(JSON.stringify(sidecar));
         oversizedGarbage.players[0].garbageEntries = Array.from({ length: 2049 }, () => ({}));

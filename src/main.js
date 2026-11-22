@@ -27,7 +27,7 @@ import {
     hardDrop as coreHardDrop,
     softDrop as coreSoftDrop,
 } from './core/game.js';
-import { applyBlindEffect, applyFullBlindEffect } from './core/blind.js';
+import { takeSpawnBlinds } from './core/blind.js';
 import { VERSUS_GARBAGE_OPTIONS } from './core/multiplayer/versus-rules.js';
 import { initPieceSystem } from './core/pieces.js';
 import { GameModeManager } from './core/game-modes/GameModeManager.js';
@@ -4504,17 +4504,10 @@ class SerenityBlocks {
             // Insert any pending garbage before spawning next piece
             const garbageQueue = multiplayerState.getGarbageQueue(playerIdentifier);
 
-            // Apply blind attacks FIRST. This both triggers the blackout
-            // and removes leading blind/full_blind entries that would otherwise
-            // block dequeueLineBurst() (which bails on a non-'line' head).
-            const blindBurst = garbageQueue.takePendingBlindBurst?.() || [];
-            blindBurst.forEach((entry) => {
-                if (entry.type === 'full_blind') {
-                    applyFullBlindEffect(playerState, entry.duration);
-                } else {
-                    applyBlindEffect(playerState, entry.duration);
-                }
-            });
+            // Blind attacks at the head of the queue (blind.js): a full blind hides the board
+            // now, a blind piece hides the piece spawning now once it lands. Rows behind them
+            // still go in below.
+            takeSpawnBlinds(playerState, garbageQueue);
 
             if (!garbageQueue.isEmpty()) {
                 const queuedEntries = drainGarbageEntries(garbageQueue, !!multiplayerState.players);

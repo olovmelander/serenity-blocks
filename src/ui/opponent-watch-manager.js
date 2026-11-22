@@ -25,6 +25,55 @@ const fragLabel = (n, compact = false) => {
 /** Stations this small (block px) show the frag count as the number alone. */
 const COMPACT_PLATE_BLOCK = 13;
 
+/**
+ * Whether a board cell is hidden by a blind attack (core/blind.js): its own `blind` time, or
+ * its index (y * 10 + x) among a wire snapshot's hidden cells.
+ * @param {any} cell
+ * @param {number} index
+ * @param {Set<number>|null} hidden
+ */
+const isHiddenCell = (cell, index, hidden) => Boolean(cell) && (
+    Number(cell.blind) > 0 || Boolean(hidden?.has(index))
+);
+
+/** @param {{ cells?: Array<[number, number]> }|null|undefined} blind */
+const hiddenIndexSet = (blind) => (Array.isArray(blind?.cells) && blind.cells.length > 0
+    ? new Set(blind.cells.map((cell) => cell[0]))
+    : null);
+
+/**
+ * The grid as a watcher sees it: hidden cells are left out (the grid itself when none is).
+ * @param {Array<Array<any>>} grid
+ * @param {{ cells?: Array<[number, number]> }|null|undefined} blind
+ */
+function visibleGrid(grid, blind) {
+    if (!Array.isArray(grid)) return grid;
+    const hidden = hiddenIndexSet(blind);
+    const anyHidden = grid.some((row, y) => row?.some?.((cell, x) => isHiddenCell(cell, y * 10 + x, hidden)));
+    if (!anyHidden) return grid;
+    return grid.map((row, y) => (Array.isArray(row)
+        ? row.map((cell, x) => (isHiddenCell(cell, y * 10 + x, hidden) ? null : cell))
+        : row));
+}
+
+/**
+ * A signature of a grid's hidden cells, for the repaint check.
+ * @param {Array<Array<any>>} grid
+ * @param {{ cells?: Array<[number, number]> }|null|undefined} blind
+ */
+function hiddenCellSignature(grid, blind) {
+    if (!Array.isArray(grid)) return '';
+    const hidden = hiddenIndexSet(blind);
+    let count = 0;
+    let sum = 0;
+    grid.forEach((row, y) => row?.forEach?.((cell, x) => {
+        if (!isHiddenCell(cell, y * 10 + x, hidden)) return;
+        count += 1;
+        sum += y * 10 + x;
+    }));
+    return count ? `${count}:${sum}` : '';
+}
+
 /** A cleared wave's rows hold ~130–160 ms (physics LINE_CLEAR_HOLD_MS); the clean canvas lands as they go. */
 const CLEAN_CANVAS_LAND_MS = 200;
 
@@ -881,18 +930,16 @@ export class OpponentWatchManager {
             if (!(player && board && player.grid)) return;
 
             if (this._opponentDirtyCheck) {
-                // Repaint only when the board/piece/blind actually changed. A blind veil
-                // counts down continuously, so fold its (rounded) value into the signature
-                // to keep animating it; everything else is event-driven (≈30Hz snapshots),
-                // not per-frame. The separate clear-FLASH overlay canvas is unaffected.
-                const bt = player.blindTimers;
-                const blindSig = bt ? `${Math.round((bt.field || 0) * 5)}:${Math.round((bt.pending || 0) * 5)}` : '';
+                // Repaint only when the board/piece/hidden cells actually changed; everything
+                // is event-driven (≈30Hz snapshots), not per-frame. The separate clear-FLASH
+                // overlay canvas is unaffected.
+                const blindSig = hiddenCellSignature(player.grid, player.blind);
                 const sig = `${this._computeBoardHash(player.grid)}|${this._computePieceHash(player.currentPiece)}|${blindSig}`;
                 if (this._renderSigs.get(playerId) === sig) return;
                 this._renderSigs.set(playerId, sig);
             }
 
-            this._renderMiniBoard(board.ctx, player.grid, player.currentPiece, player.blindTimers);
+            this._renderMiniBoard(board.ctx, player.grid, player.currentPiece, player.blind);
         });
 
         // Spectator main board: render the selected player full-size each frame.
@@ -1240,14 +1287,13 @@ export class OpponentWatchManager {
         if (!player.grid) return;
 
         if (this._opponentDirtyCheck) {
-            const bt = player.blindTimers;
-            const blindSig = bt ? `${Math.round((bt.field || 0) * 5)}:${Math.round((bt.pending || 0) * 5)}` : '';
+            const blindSig = hiddenCellSignature(player.grid, player.blind);
             const sig = `${this._computeBoardHash(player.grid)}|${this._computePieceHash(player.currentPiece)}|${blindSig}`;
             if (this._spotlightSig === sig) return;
             this._spotlightSig = sig;
         }
 
-        this._renderMiniBoard(this.spotlightCtx, player.grid, player.currentPiece, player.blindTimers);
+        this._renderMiniBoard(this.spotlightCtx, player.grid, player.currentPiece, player.blind);
     }
 
     /**
@@ -1423,7 +1469,7 @@ export class OpponentWatchManager {
             // Initial render
             if (player.grid) {
                 // Use the map entry we just created (using player.id)
-                this._renderMiniBoard(this.playerBoards.get(playerKey).ctx, player.grid, player.currentPiece, player.blindTimers);
+                this._renderMiniBoard(this.playerBoards.get(playerKey).ctx, player.grid, player.currentPiece, player.blind);
             }
             if (player.nextPieces && this.playerBoards.get(playerKey).nextCtxs) {
                 this._renderNextQueue(this.playerBoards.get(playerKey).nextCtxs, player.nextPieces);
@@ -2036,7 +2082,7 @@ export class OpponentWatchManager {
      * Render a mini-board to canvas
      * Uses 8px block size for compact display
      */
-    _renderMiniBoard(ctx, grid, currentPiece, blindTimers) {
+    _renderMiniBoard(ctx, grid, currentPiece, blind) {
         if (!ctx || !grid) return;
 
         // Dynamically get the parent frame's actual dimensions or the element's client dimensions
@@ -2070,34 +2116,9 @@ export class OpponentWatchManager {
         ctx.fillStyle = 'rgba(10, 15, 25, 0.6)';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-        // Render cohesive opponent grid blocks
-        this._drawCohesiveGrid(ctx, grid, blockSize, this._colorCache);
-
-        // Render blind blackout veils
-        if (blindTimers) {
-            if (blindTimers.field > 0) {
-                const ratio = blindTimers.field / (blindTimers.fieldMax || 4.0);
-                const alpha = Math.max(0, Math.min(0.95, ratio * 1.25));
-                ctx.fillStyle = `rgba(10, 15, 25, ${alpha})`;
-                ctx.fillRect(0, 0, canvas.width, canvas.height);
-            } else if (blindTimers.pending > 0) {
-                const ratio = blindTimers.pending / (blindTimers.pendingMax || 4.0);
-                const alpha = Math.max(0, Math.min(0.95, ratio * 1.25));
-                ctx.fillStyle = `rgba(10, 15, 25, ${alpha})`;
-                for (let r = 4; r < grid.length; r++) {
-                    const gridRow = grid[r];
-                    if (!gridRow) continue;
-                    const hasGarbage = gridRow.some((cell) => {
-                        if (!cell) return false;
-                        const type = typeof cell === 'object' ? cell.type : cell;
-                        return type === 'garbage' || type === 'clean_garbage';
-                    });
-                    if (hasGarbage) {
-                        ctx.fillRect(0, (r - 4) * blockSize, canvas.width, blockSize);
-                    }
-                }
-            }
-        }
+        // Render cohesive opponent grid blocks; hidden cells (blind attacks) stay hidden here
+        // too, as on that player's own board.
+        this._drawCohesiveGrid(ctx, visibleGrid(grid, blind), blockSize, this._colorCache);
 
         if (currentPiece && currentPiece.shape) {
             const ghostY = this._calculateGhostY(currentPiece, grid);

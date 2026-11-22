@@ -7,12 +7,11 @@
 
 import { GameState } from './game.js';
 import {
-    GarbageQueue, GarbageAttack, calculateGarbage, insertGarbageEntries, ATTACK_TYPES,
-    applyHandicap, accumulateHandicapStamps, createGarbageAttackFromColumns,
-    DEFAULT_POTATO_DURATION_MS, DEFAULT_POTATO_PENALTY_LINES,
+    GarbageQueue, GarbageAttack, calculateGarbage, versusAttackRules,
+    applyHandicap, accumulateHandicapStamps,
 } from './garbage.js';
-import { processPhysics } from './physics.js';
-import { COLS, ROWS } from './constants.js';
+import { ROWS } from './constants.js';
+import { clearBlind } from './blind.js';
 import { INFINITY_SPAWN_POLICY_BOARD_ANCHOR_V1 } from './infinity-spawn-policy.js';
 import { applyMatchLevelRule } from './multiplayer/match-level-rule.js';
 import {
@@ -21,6 +20,9 @@ import {
 import {
     AttackCredit, forgetsSpentCredit, respawnVersusBoard, stepCrowdStamps, takeCrowdCut,
 } from './multiplayer/versus-rules.js';
+import {
+    countHolderRows, createHotPotatoState, isHotPotatoConfig, potatoRoute, stepHotPotato,
+} from './multiplayer/hot-potato.js';
 
 /**
  * Player color scheme for visual distinction
@@ -135,8 +137,13 @@ export class MultiPlayerState {
         // cumulative match stats between rounds.
         this.playerMetrics = this._createPlayerMetrics();
 
-        // Hot Potato variant state. Disabled unless enabled by match config.
-        this.hotPotato = this._createHotPotatoState();
+        // Hot potato (multiplayer/hot-potato.js). Disabled unless the match config plays it.
+        this.hotPotato = createHotPotatoState(false);
+        // Randomness for the potato's turn order (tests pin it).
+        this.potatoRandom = Math.random;
+        // Presentation listener: each potato event ({type: 'take'|'pass', team, ...}). Never
+        // alters the sim.
+        this.onPotatoEvent = null;
     }
 
     /**
@@ -167,8 +174,7 @@ export class MultiPlayerState {
             maxComboDepth: 0,
             maxComboComplexity: 0,
             potatoPasses: 0,
-            potatoDetonations: 0,
-            potatoLinesReceived: 0,
+            potatoRowsSent: 0,
         };
     }
 
@@ -184,105 +190,81 @@ export class MultiPlayerState {
         return this.playerMetrics[playerIndex] || this._createEmptyMetrics();
     }
 
-    _createHotPotatoState() {
-        return {
-            enabled: false,
-            holderIndex: null,
-            previousHolderIndex: null,
-            expiresAt: 0,
-            durationMs: DEFAULT_POTATO_DURATION_MS,
-            penaltyLines: DEFAULT_POTATO_PENALTY_LINES,
-            generation: 0,
-            lastEvent: null,
-        };
-    }
-
     _isHotPotatoEnabled() {
-        const rules = this.matchConfig?.attackRules || {};
-        return !!(
-            this.matchConfig?.hotPotato
-            || this.matchConfig?.attackStyle === 'hot_potato'
-            || rules.forceAttackType === ATTACK_TYPES.POTATO
-        );
+        return isHotPotatoConfig(this.matchConfig);
     }
 
-    _resetHotPotatoState(now = Date.now()) {
-        const enabled = this._isHotPotatoEnabled();
-        const rules = this.matchConfig?.attackRules || {};
-        const durationMs = Math.max(
-            1000,
-            Number(this.matchConfig?.potatoDurationMs || rules.potatoDurationMs || DEFAULT_POTATO_DURATION_MS),
-        );
-        const penaltyLines = Math.max(
-            1,
-            Number(this.matchConfig?.potatoPenaltyLines || rules.potatoPenaltyLines || DEFAULT_POTATO_PENALTY_LINES),
-        );
-        const holderIndex = enabled ? this._chooseHotPotatoHolder(null) : null;
-
-        this.hotPotato = {
-            enabled,
-            holderIndex,
-            previousHolderIndex: null,
-            expiresAt: holderIndex === null ? 0 : now + durationMs,
-            durationMs,
-            penaltyLines,
-            generation: 0,
-            lastEvent: null,
-        };
+    /** A fresh potato: nobody holds it, the first holder is chosen two seconds in. */
+    _resetHotPotatoState() {
+        this.hotPotato = createHotPotatoState(this._isHotPotatoEnabled());
     }
 
-    getHotPotatoState(now = Date.now()) {
-        const state = this.hotPotato || this._createHotPotatoState();
-        return {
-            ...state,
-            timeRemainingMs: state.enabled && state.expiresAt
-                ? Math.max(0, state.expiresAt - now)
-                : 0,
-        };
+    /**
+     * The potato's team of a player: its team in a team match, else the player alone.
+     * @param {number} playerIndex
+     * @returns {string}
+     */
+    potatoTeamOf(playerIndex) {
+        const team = this.matchConfig?.isTeamMode
+            ? (this.matchConfig?.playerTeams?.[playerIndex] ?? playerIndex)
+            : playerIndex;
+        return String(team);
     }
 
-    _getAlivePlayerIndexes() {
-        const alive = [];
+    /** @returns {Array<{ key: string, alive: boolean }>} every team, with whether it has a living player */
+    _potatoTeams() {
+        /** @type {Map<string, boolean>} */
+        const teams = new Map();
         this.players.forEach((player, index) => {
-            if (player?.isAlive) alive.push(index);
+            const key = this.potatoTeamOf(index);
+            teams.set(key, (teams.get(key) || false) || player?.isAlive === true);
         });
-        return alive;
+        return Array.from(teams, ([key, alive]) => ({ key, alive }));
     }
 
-    _chooseHotPotatoHolder(previousIndex = null, preferredTargets = []) {
-        const alive = this._getAlivePlayerIndexes();
-        if (alive.length === 0) return null;
-
-        const preferred = preferredTargets.find((index) => alive.includes(index) && index !== previousIndex);
-        if (preferred !== undefined) return preferred;
-
-        if (previousIndex === null || previousIndex === undefined || !alive.includes(previousIndex)) {
-            return alive[0];
-        }
-
-        const sorted = alive.slice().sort((a, b) => a - b);
-        const next = sorted.find((index) => index > previousIndex);
-        return next ?? sorted[0];
-    }
-
-    _transferHotPotato(fromIndex, toIndex, reason = 'pass', now = Date.now()) {
-        if (!this.hotPotato?.enabled || toIndex === null || toIndex === undefined) {
-            return null;
-        }
-
-        this.hotPotato.previousHolderIndex = fromIndex ?? this.hotPotato.holderIndex;
-        this.hotPotato.holderIndex = toIndex;
-        this.hotPotato.expiresAt = now + this.hotPotato.durationMs;
-        this.hotPotato.generation++;
-        this.hotPotato.lastEvent = {
-            type: reason,
-            fromIndex,
-            toIndex,
-            timestamp: now,
-            generation: this.hotPotato.generation,
+    /**
+     * The potato as the HUD shows it: the holding team's players, its rows sent and its target.
+     * @returns {{ enabled: boolean, holderTeam: string|null, holderIndices: number[], sent: number, target: number }}
+     */
+    getHotPotatoState() {
+        const state = this.hotPotato || createHotPotatoState(false);
+        const holderIndices = state.holder === null ? [] : this.players
+            .map((_, index) => index)
+            .filter((index) => this.potatoTeamOf(index) === state.holder);
+        return {
+            enabled: state.enabled,
+            holderTeam: state.holder,
+            holderIndices,
+            sent: state.sent,
+            target: state.target,
         };
+    }
 
-        return this.hotPotato.lastEvent;
+    /**
+     * Run the potato's clock by `dtMs` of game time (the match loop calls this each step while
+     * the match runs, so a pause or the countdown never counts).
+     * @param {number} dtMs
+     * @returns {Object|null} the potato event ('take' or 'pass'), if one happened
+     */
+    updateHotPotato(dtMs) {
+        if (!this.hotPotato?.enabled || this.isGameOver) return null;
+        const event = stepHotPotato(this.hotPotato, dtMs, this._potatoTeams(), this.potatoRandom);
+        if (event?.type === 'pass') this._potatoPassed(event);
+        if (event) this.onPotatoEvent?.(event);
+        return event;
+    }
+
+    /**
+     * A team got rid of the potato: its players' waiting garbage is dropped and their hidden
+     * cells show.
+     * @param {{ team: string }} event
+     */
+    _potatoPassed(event) {
+        this.players.forEach((player, index) => {
+            if (this.potatoTeamOf(index) !== event.team) return;
+            this.garbageQueues[index]?.clear();
+            clearBlind(player);
+        });
     }
 
     _recordCascadeMetrics(playerIndex, summary = {}) {
@@ -304,18 +286,12 @@ export class MultiPlayerState {
         metrics.cleanLinesSent += Math.max(0, cleanLines);
     }
 
-    _recordIncomingAttack(playerIndex, {
-        lines = 0, cleanLines = 0, countAttack = false, potato = false,
-    } = {}) {
+    _recordIncomingAttack(playerIndex, { lines = 0, cleanLines = 0, countAttack = false } = {}) {
         const metrics = this.playerMetrics[playerIndex];
         if (!metrics) return;
         if (countAttack) metrics.attacksReceived++;
         metrics.attackLinesReceived += Math.max(0, lines);
         metrics.cleanLinesReceived += Math.max(0, cleanLines);
-        if (potato) {
-            metrics.potatoDetonations++;
-            metrics.potatoLinesReceived += Math.max(0, lines);
-        }
     }
 
     /**
@@ -527,31 +503,8 @@ export class MultiPlayerState {
         this.sharedPieceSeed = 0;
         this.rngDescriptor = null;
         this.matchStartTime = Date.now();
-        this._resetHotPotatoState(this.matchStartTime);
-    }
-
-    /**
-     * Start the Hot Potato's countdown now. reset() arms it, but a match's first round
-     * begins only after its countdown: armed at reset, the first holder lost most of its
-     * time to the countdown.
-     * @param {number} now
-     */
-    startHotPotatoClock(now) {
-        if (!this.hotPotato?.enabled || this.hotPotato.holderIndex === null) return;
-        this.hotPotato.expiresAt = now + this.hotPotato.durationMs;
-    }
-
-    /**
-     * Push the Hot Potato's deadline back by the part of a pause that fell inside its
-     * countdown, so a pause never detonates it on resume.
-     * @param {number} pausedMs how long the game was paused
-     * @param {number} now when it resumed
-     */
-    shiftHotPotatoClock(pausedMs, now) {
-        const potato = this.hotPotato;
-        if (!potato?.enabled || !(potato.expiresAt > 0) || !(pausedMs > 0)) return;
-        const armedAt = potato.expiresAt - potato.durationMs;
-        potato.expiresAt += Math.max(0, Math.min(pausedMs, now - armedAt));
+        // Each round starts a fresh potato; its first holder is chosen two seconds into play.
+        this._resetHotPotatoState();
     }
 
     /**
@@ -601,131 +554,13 @@ export class MultiPlayerState {
         return this.playerColors[playerIndex] || PLAYER_COLORS[0];
     }
 
-    _buildHotPotatoPenaltyAttack(holderIndex) {
-        const columnsByRow = Array.from({ length: this.hotPotato.penaltyLines }, (_, rowIndex) => {
-            const col = (holderIndex * 3 + rowIndex * 2) % COLS;
-            return [col];
-        });
-
-        return createGarbageAttackFromColumns({
-            rows: this.hotPotato.penaltyLines,
-            columnsByRow,
-            attackType: ATTACK_TYPES.POTATO,
-            metadata: {
-                source: 'hot_potato',
-                holderIndex,
-                generation: this.hotPotato.generation,
-            },
-        }).withId(`POTATO-${this.hotPotato.generation + 1}`);
-    }
-
-    _detonateHotPotato(holderIndex, now = Date.now()) {
-        if (!this.hotPotato?.enabled || holderIndex === null || holderIndex === undefined) {
-            return null;
-        }
-
-        const holder = this.players[holderIndex];
-        if (!holder?.isAlive) {
-            const nextHolder = this._chooseHotPotatoHolder(holderIndex);
-            return this._transferHotPotato(holderIndex, nextHolder, 'holder_eliminated', now);
-        }
-
-        const attack = this._buildHotPotatoPenaltyAttack(holderIndex);
-        const color = this.getPlayerColor(holderIndex)?.primary || '#f97316';
-        const entries = attack.expandEntries({
-            color,
-            attackerId: null,
-            attackerName: 'Hot Potato',
-        });
-
-        entries.forEach((entry) => {
-            this.garbageQueues[holderIndex].enqueue({
-                ...entry,
-                sourcePlayerId: null,
-                attackId: attack.id,
-                isHotPotato: true,
-            });
-        });
-
-        // The potato's own rows are nobody's attack: dying under them earns no frag.
-        this.lastAttackerIds[holderIndex] = null;
-        this.attackCredit[holderIndex].holder = null;
-        this._recordIncomingAttack(holderIndex, {
-            lines: entries.filter((entry) => entry.type === 'line').length,
-            countAttack: true,
-            potato: true,
-        });
-
-        const nextHolder = this._chooseHotPotatoHolder(holderIndex);
-        return this._transferHotPotato(holderIndex, nextHolder, 'detonate', now);
-    }
-
-    updateHotPotato(now = Date.now()) {
-        if (!this.hotPotato?.enabled || this.isGameOver) {
-            return null;
-        }
-
-        const holderIndex = this.hotPotato.holderIndex;
-        const holder = holderIndex === null || holderIndex === undefined
-            ? null
-            : this.players[holderIndex];
-
-        if (!holder?.isAlive) {
-            const nextHolder = this._chooseHotPotatoHolder(holderIndex);
-            return this._transferHotPotato(holderIndex, nextHolder, 'holder_eliminated', now);
-        }
-
-        if (this.hotPotato.expiresAt > 0 && now >= this.hotPotato.expiresAt) {
-            return this._detonateHotPotato(holderIndex, now);
-        }
-
-        return null;
-    }
-
-    _handleHotPotatoAttack(playerIndex, attack, onGarbageSend) {
-        if (!this.hotPotato?.enabled) {
-            return false;
-        }
-
-        const targets = this._getAttackTargets(playerIndex);
-        const lineCount = attack.getTotalLines();
-        if (lineCount <= 0 || targets.length === 0) {
-            return true;
-        }
-
-        const holderIndex = this.hotPotato.holderIndex;
-        if (holderIndex === null || holderIndex === undefined) {
-            this._transferHotPotato(null, this._chooseHotPotatoHolder(null), 'start');
-            return true;
-        }
-
-        if (playerIndex === holderIndex) {
-            const nextHolder = this._chooseHotPotatoHolder(playerIndex, targets);
-            if (nextHolder !== null && nextHolder !== playerIndex) {
-                this._transferHotPotato(playerIndex, nextHolder, 'pass');
-                const metrics = this.playerMetrics[playerIndex];
-                if (metrics) metrics.potatoPasses++;
-            }
-        }
-
-        this._recordOutgoingAttack(playerIndex, {
-            lines: 0,
-            cleanLines: 0,
-            countAttack: true,
-        });
-
-        if (onGarbageSend) {
-            onGarbageSend(playerIndex, targets, 0, { type: ATTACK_TYPES.POTATO, holderIndex: this.hotPotato.holderIndex });
-        }
-
-        return true;
-    }
-
     /**
      * Handle garbage summary and route to opponents
      *
-     * For 2 players: Send to other player
-     * For 3+ players: Distribute to all other players
+     * Every other living player (not a team mate) receives the whole attack, less the crowd
+     * cut and the per-opponent handicap. What the attack's rows become depends on the attack
+     * style (garbage.js ATTACK_TYPES: rows, blind pieces or a full blind). In a hot potato match
+     * the potato decides where it goes (multiplayer/hot-potato.js).
      */
     handleGarbageSummary(playerIndex, summary, onGarbageSend) {
         // Attack ruleset from match config (standard/blind/full_blind/peaceful).
@@ -737,13 +572,8 @@ export class MultiPlayerState {
             return;
         }
 
-        const attack = calculateGarbage(summary, attackRules || {});
+        const attack = calculateGarbage(summary, versusAttackRules(this.matchConfig));
         const attackerState = this.players[playerIndex];
-
-        if (this._isHotPotatoEnabled()) {
-            this._handleHotPotatoAttack(playerIndex, attack, onGarbageSend);
-            return;
-        }
 
         const sequence = typeof summary.sequence === 'number'
             ? summary.sequence
@@ -767,14 +597,32 @@ export class MultiPlayerState {
             `[MultiPlayerState]   Total attack rows: ${totalLines} (before the crowd cut ${unscaledLines})`,
         );
 
-        // Blind / Full Blind attacks carry an effect even when they add no garbage
-        // lines, so they must not be short-circuited by the line-count guard.
-        if (
-            totalLines <= 0
-            && attack.attackType !== ATTACK_TYPES.BLIND
-            && attack.attackType !== ATTACK_TYPES.FULL_BLIND
-        ) {
+        if (totalLines <= 0) {
             return;
+        }
+
+        // Route garbage to all opponents
+        let targets = this._getAttackTargets(playerIndex);
+
+        if (this._isHotPotatoEnabled()) {
+            const team = this.potatoTeamOf(playerIndex);
+            const { route, holder } = potatoRoute(this.hotPotato, team);
+            if (route === 'none') return;
+            if (route === 'count') {
+                // The holding team's attacks deal nothing: they count toward its target.
+                const metrics = this.playerMetrics[playerIndex];
+                if (metrics) metrics.potatoRowsSent += totalLines;
+                this._recordOutgoingAttack(playerIndex, { countAttack: true });
+                const passed = countHolderRows(this.hotPotato, team, totalLines);
+                if (passed) {
+                    if (metrics) metrics.potatoPasses++;
+                    this._potatoPassed(passed);
+                    this.onPotatoEvent?.(passed);
+                }
+                onGarbageSend?.(playerIndex, [], 0, { type: 'potato', passed: Boolean(passed) });
+                return;
+            }
+            targets = targets.filter((index) => this.potatoTeamOf(index) === holder);
         }
 
         // Get attacker's color for garbage blocks. The garbage cell is stamped
@@ -790,9 +638,6 @@ export class MultiPlayerState {
             team: resolvedTeamId,
         };
 
-        // Route garbage to all opponents
-        const targets = this._getAttackTargets(playerIndex);
-
         if (targets.length === 0) {
             console.log(`[MultiPlayerState] No valid targets for Player ${playerIndex + 1}`);
             return;
@@ -802,69 +647,46 @@ export class MultiPlayerState {
         targets.forEach((targetIndex) => {
             const targetQueue = this.garbageQueues[targetIndex];
 
-            // The per-opponent handicap reduces this attack's normal garbage
-            // lines for stronger players; entries are expanded per target so the
-            // reduction can differ per opponent.
+            // The per-opponent handicap reduces this attack's normal rows for stronger players;
+            // entries are expanded per target so the reduction can differ per opponent.
             const targetAttack = this._applyHandicapForTarget(scaledAttack, attackerState, targetIndex);
             const entries = targetAttack.expandEntries(context);
-            const queueableEntries = [];
-            const lineEntries = entries.filter((entry) => entry.type === 'line');
-            const cleanLines = lineEntries.filter((entry) => entry.variant === 'clean').length;
-            const countsAsAttack = entries.length > 0;
+            // The attack's rows, whatever they become (rows, blind pieces or a full blind).
+            const rows = targetAttack.getTotalLines();
+            const cleanLines = targetAttack.cleanMasks?.length || 0;
 
-            if (countsAsAttack) {
+            if (entries.length > 0) {
                 // Frag credit counts the rows sent, before the target's pending cap drops any.
-                this._noteAttack(targetIndex, playerIndex, lineEntries.length);
+                this._noteAttack(targetIndex, playerIndex, rows);
                 this._recordOutgoingAttack(playerIndex, {
-                    lines: lineEntries.length,
+                    lines: rows,
                     cleanLines,
                     countAttack: !countedOutgoingPacket,
                 });
                 this._recordIncomingAttack(targetIndex, {
-                    lines: lineEntries.length,
+                    lines: rows,
                     cleanLines,
                     countAttack: true,
                 });
                 countedOutgoingPacket = true;
             }
 
+            // Queued for the target's next spawn: rows go in then, blind entries wait for the
+            // pieces they hide (blind.js takeSpawnBlinds).
             entries.forEach((entry) => {
-                if (entry.type === 'full_blind') {
-                    targetQueue.enqueue({
-                        type: 'full_blind',
-                        duration: entry.duration,
-                        sourcePlayerId: playerIndex,
-                        attackId,
-                    });
-                } else if (entry.type === 'blind') {
-                    targetQueue.enqueue({
-                        type: 'blind',
-                        duration: entry.duration,
-                        sourcePlayerId: playerIndex,
-                        attackId,
-                    });
-                } else {
-                    queueableEntries.push(entry);
-                }
+                targetQueue.enqueue({
+                    ...entry,
+                    sourcePlayerId: playerIndex,
+                    attackId,
+                });
             });
 
-            if (queueableEntries.length > 0) {
-                // Add to garbage queue - will be inserted when next piece locks
-                queueableEntries.forEach((entry) => {
-                    targetQueue.enqueue({
-                        ...entry,
-                        sourcePlayerId: playerIndex,
-                        attackId,
-                    });
-                });
-            }
-
             console.debug(
-                `[MultiPlayerState] Player ${playerIndex + 1} → Player ${targetIndex + 1}: ${targetAttack.getTotalLines()} lines`,
+                `[MultiPlayerState] Player ${playerIndex + 1} → Player ${targetIndex + 1}: ${rows} rows`,
             );
         });
 
-        if (totalLines > 0) this.onAttack?.(playerIndex, targets, totalLines);
+        this.onAttack?.(playerIndex, targets, totalLines);
         if (onGarbageSend) {
             onGarbageSend(playerIndex, targets, totalLines);
         }

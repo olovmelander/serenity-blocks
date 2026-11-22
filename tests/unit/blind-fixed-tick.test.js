@@ -1,177 +1,103 @@
+/**
+ * The blind clock on the fixed simulation tick (core/blind.js): hidden cells count down one
+ * blind tick (160 ms) per 160 ms of the board's own game time, the same at any render cadence,
+ * on the variable-step loops and across a demo checkpoint (the online resync sidecar captures
+ * the same state).
+ */
 import { describe, expect, it } from 'vitest';
 import {
-    advanceBlindTimersTick,
-    applyBlindEffect,
-    applyFullBlindEffect,
-    createBlindTimers,
-    decrementBlindTimers,
-    restoreBlindTimers,
+    BLIND_PIECE_TICKS, BLIND_TICK_MS, advanceBlindClock, applyFullBlind, captureBlindSnapshot,
 } from '../../src/core/blind.js';
 import { FIXED_TICK_MS, planFixedTicks } from '../../src/core/fixed-tick-clock.js';
 import { captureGameStateSnapshot, restoreGameStateSnapshot } from '../../src/core/demo/demo-state.js';
 import { GameState } from '../../src/core/game.js';
+import { rebuildBoardGridFromPieces } from '../../src/core/board.js';
+import { advanceTick } from '../../src/core/simulation-tick.js';
 
-function createState() {
-    return {
-        blindTimers: createBlindTimers(),
-        simTickMs: FIXED_TICK_MS,
-    };
+/** A board with one locked O piece on the floor. */
+function boardWithPiece(extra = {}) {
+    const gameState = new GameState();
+    gameState.lockedPieces = [{
+        pieceId: 1, shapeKey: 'O', color: '#fff', x: 0, y: 22, shape: [[1, 1], [1, 1]], ...extra,
+    }];
+    rebuildBoardGridFromPieces(gameState.lockedPieces, gameState.boardGrid);
+    return gameState;
 }
 
-describe('fixed-tick blind timer migration', () => {
-    it('keeps legacy public-second arithmetic unchanged while refreshing tick mirrors', () => {
-        const state = createState();
-        applyBlindEffect(state, 1);
-        applyFullBlindEffect(state, 1);
+const ticksLeft = (gameState) => gameState.lockedPieces[0].blindTicks || 0;
 
-        decrementBlindTimers(state, 0.4);
+describe('the blind clock on fixed ticks', () => {
+    it('advances with every fixed simulation tick', () => {
+        const gameState = boardWithPiece();
+        applyFullBlind(gameState, 3);
 
-        expect(state.blindTimers.field).toBeCloseTo(0.6, 12);
-        expect(state.blindTimers.pending).toBeCloseTo(0.6, 12);
-        expect(state.blindTimers.fieldMax).toBe(1);
-        expect(state.blindTimers.pendingMax).toBe(1);
-        expect(state.blindTimers.fieldTicks).toBe(36);
-        expect(state.blindTimers.pendingTicks).toBe(36);
+        // 160 ms is 9.6 ticks of 60 Hz: the first blind tick passes on the tenth sim tick.
+        for (let tick = 0; tick < 9; tick++) advanceTick(gameState);
+        expect(ticksLeft(gameState)).toBe(3);
+        advanceTick(gameState);
+        expect(ticksLeft(gameState)).toBe(2);
     });
 
-    it('quantizes upward and consumes the final active canonical tick', () => {
-        const state = createState();
-        applyBlindEffect(state, 1.01);
-
-        expect(state.blindTimers.pendingTicks).toBe(61);
-        for (let tick = 0; tick < 60; tick++) {
-            expect(advanceBlindTimersTick(state)).toBe(true);
-        }
-        expect(state.blindTimers.pendingTicks).toBe(1);
-        expect(state.blindTimers.pending).toBeCloseTo(FIXED_TICK_MS / 1000, 12);
-
-        expect(advanceBlindTimersTick(state)).toBe(true);
-        expect(state.blindTimers.pendingTicks).toBe(0);
-        expect(state.blindTimers.pending).toBe(0);
-        expect(state.blindTimers.pendingMax).toBe(0);
-        expect(advanceBlindTimersTick(state)).toBe(false);
-    });
-
-    it.each([30, 60, 144])('expires after 180 ticks at %i Hz render cadence', (renderHz) => {
-        const state = createState();
-        applyFullBlindEffect(state, 3);
+    it.each([30, 60, 144])('shows a blind piece after exactly 30 blind ticks (288 sim ticks) at %i Hz', (renderHz) => {
+        const gameState = boardWithPiece({ blindTicks: BLIND_PIECE_TICKS });
         let accumulatorMs = 0;
         let advancedTicks = 0;
+        let shownAt = null;
 
-        for (let frame = 0; frame < renderHz * 3; frame++) {
+        for (let frame = 0; frame < renderHz * 6 && shownAt === null; frame++) {
             const plan = planFixedTicks(accumulatorMs, 1000 / renderHz);
             accumulatorMs = plan.remainderMs;
-            for (let step = 0; step < plan.steps; step++) {
-                advanceBlindTimersTick(state, plan.tickMs);
+            for (let step = 0; step < plan.steps && shownAt === null; step++) {
+                advanceTick(gameState);
                 advancedTicks += 1;
+                if (ticksLeft(gameState) === 0) shownAt = advancedTicks;
             }
         }
 
-        expect(advancedTicks).toBe(180);
-        expect(state.blindTimers.fieldTicks).toBe(0);
-        expect(state.blindTimers.field).toBe(0);
+        expect(shownAt).toBe(Math.ceil((BLIND_PIECE_TICKS * BLIND_TICK_MS) / FIXED_TICK_MS - 1e-9));
+        expect(shownAt).toBe(288);
     });
 
-    it('resynchronizes direct public writes before consuming a fixed tick', () => {
-        const state = createState();
-        applyBlindEffect(state, 1);
-        advanceBlindTimersTick(state);
+    it('the variable-step loops count the same game time', () => {
+        const fixed = boardWithPiece({ blindTicks: 10 });
+        const variable = boardWithPiece({ blindTicks: 10 });
+        for (let tick = 0; tick < 60; tick++) advanceBlindClock(fixed, FIXED_TICK_MS);
+        [250, 333, 417].forEach((dt) => advanceBlindClock(variable, dt));
 
-        state.blindTimers.pending = 2;
-        state.blindTimers.pendingMax = 2;
-        advanceBlindTimersTick(state);
-
-        expect(state.blindTimers.pendingTicks).toBe(119);
-        expect(state.blindTimers.pendingMaxTicks).toBe(120);
-        expect(state.blindTimers.pending).toBeCloseTo(119 / 60, 12);
-        expect(state.blindTimers.pendingMax).toBeCloseTo(2, 12);
+        expect(ticksLeft(fixed)).toBe(ticksLeft(variable));
+        expect(ticksLeft(fixed)).toBe(10 - Math.floor(1000 / BLIND_TICK_MS));
     });
+});
 
-    it('restores a compatible integer-clock snapshot exactly and in place', () => {
-        const source = createState();
-        applyFullBlindEffect(source, 1.01);
-        for (let tick = 0; tick < 17; tick++) advanceBlindTimersTick(source);
-        const snapshot = structuredClone(source.blindTimers);
-
-        const target = createState();
-        const originalTimers = target.blindTimers;
-        const restored = restoreBlindTimers(target, snapshot);
-
-        expect(restored).toBe(originalTimers);
-        expect(target.blindTimers.fieldTicks).toBe(44);
-        expect(target.blindTimers.fieldMaxTicks).toBe(61);
-
-        advanceBlindTimersTick(source);
-        advanceBlindTimersTick(target);
-        expect(target.blindTimers.fieldTicks).toBe(source.blindTimers.fieldTicks);
-        expect(target.blindTimers.field).toBe(source.blindTimers.field);
-        expect(target.blindTimers.fieldMax).toBe(source.blindTimers.fieldMax);
-    });
-
-    it('upgrades legacy two-field snapshots at the target tick duration', () => {
-        const state = createState();
-        const originalTimers = state.blindTimers;
-
-        restoreBlindTimers(state, { field: 1, pending: 0.5 });
-
-        expect(state.blindTimers).toBe(originalTimers);
-        expect(state.blindTimers.fieldMax).toBe(1);
-        expect(state.blindTimers.pendingMax).toBe(0.5);
-        expect(state.blindTimers.fieldTicks).toBe(60);
-        expect(state.blindTimers.pendingTicks).toBe(30);
-        advanceBlindTimersTick(state);
-        expect(state.blindTimers.fieldTicks).toBe(59);
-        expect(state.blindTimers.pendingTicks).toBe(29);
-    });
-
-    it('re-quantizes exact snapshots when the target tick duration differs', () => {
-        const source = createState();
-        applyBlindEffect(source, 1);
-        advanceBlindTimersTick(source);
-        const snapshot = structuredClone(source.blindTimers);
-        snapshot.pendingTicks = 7;
-        snapshot.pendingMaxTicks = 7;
-
-        const target = createState();
-        target.simTickMs = 10;
-        restoreBlindTimers(target, snapshot);
-
-        expect(target.blindTimers.pendingTicks).toBe(99);
-        expect(target.blindTimers.pendingMaxTicks).toBe(100);
-        expect(target.blindTimers._blindTickDurationMs).toBe(10);
-    });
-
-    it('round-trips an arbitrary canonical tick through demo state', () => {
-        const source = new GameState();
-        applyFullBlindEffect(source, 3);
-        for (let tick = 0; tick < 37; tick++) advanceBlindTimersTick(source);
+describe('blind across a checkpoint', () => {
+    it('round-trips hidden cells, the clock and a waiting blind piece through demo state', () => {
+        const source = boardWithPiece();
+        applyFullBlind(source, 40);
+        for (let tick = 0; tick < 37; tick++) advanceTick(source);
+        source.blind.pieceTicks = BLIND_PIECE_TICKS;
         const snapshot = captureGameStateSnapshot(source);
         const target = new GameState();
 
         restoreGameStateSnapshot(target, snapshot);
 
-        expect(target.blindTimers.fieldTicks).toBe(143);
-        expect(target.blindTimers.fieldMaxTicks).toBe(180);
-        advanceBlindTimersTick(source);
-        advanceBlindTimersTick(target);
-        expect(target.blindTimers.fieldTicks).toBe(source.blindTimers.fieldTicks);
-        expect(target.blindTimers.field).toBe(source.blindTimers.field);
+        expect(captureBlindSnapshot(target)).toEqual(captureBlindSnapshot(source));
+        expect(target.boardGrid[22][0].blind).toBe(source.lockedPieces[0].blindTicks);
+        for (let tick = 0; tick < 50; tick++) {
+            advanceTick(source);
+            advanceTick(target);
+        }
+        expect(captureBlindSnapshot(target)).toEqual(captureBlindSnapshot(source));
     });
 
-    it('re-derives stale counters after a direct public write is checkpointed', () => {
-        const source = new GameState();
-        applyBlindEffect(source, 1);
-        advanceBlindTimersTick(source);
-        source.blindTimers.pending = 5;
-        source.blindTimers.pendingMax = 5;
+    it('a checkpoint from before hidden cells restores a visible board', () => {
+        const source = boardWithPiece();
         const snapshot = captureGameStateSnapshot(source);
+        delete snapshot.blind;
         const target = new GameState();
 
         restoreGameStateSnapshot(target, snapshot);
 
-        expect(target.blindTimers.pendingTicks).toBe(300);
-        advanceBlindTimersTick(target);
-        expect(target.blindTimers.pendingTicks).toBe(299);
-        expect(target.blindTimers.pending).toBeCloseTo(299 / 60, 12);
+        expect(target.blind).toMatchObject({ clockMs: 0, pieceTicks: 0 });
+        expect(target.lockedPieces[0].blindTicks).toBeUndefined();
     });
 });

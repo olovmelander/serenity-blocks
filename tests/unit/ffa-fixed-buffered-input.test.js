@@ -83,11 +83,14 @@ describe('FFA fixed buffered input adapter', () => {
         const {
             game, gameState, order, player, playerId,
         } = createHarness({ local: true });
-        gameState.blindTimers.pending = 1;
-        gameState.blindTimers.pendingMax = 1;
+        // One hidden cell whose next blind tick falls in this fixed tick.
+        gameState.lockedPieces = [{
+            pieceId: 99, shapeKey: 'O', color: '#fff', x: 0, y: 23, shape: [[1]], blindTicks: 5,
+        }];
+        gameState.blind.clockMs = 150;
         player.lastInputSeq = 8;
         game._applyInputToPlayer.mockImplementation((_id, inputType, data) => {
-            order.push(`apply:${gameState.simFrame}:${gameState.blindTimers.pendingTicks}:${gameState.currentPiece.y}`);
+            order.push(`apply:${gameState.simFrame}:${gameState.lockedPieces[0].blindTicks}:${gameState.currentPiece.y}`);
             gameState.currentPiece.x += data.direction;
             return inputType === 'move';
         });
@@ -103,7 +106,7 @@ describe('FFA fixed buffered input adapter', () => {
 
         const result = runAdapterTick(game, gameState, playerId, adapter, advancePhysics);
 
-        expect(order).toEqual(['apply:1:59:0', 'held', 'physics:3']);
+        expect(order).toEqual(['apply:1:4:0', 'held', 'physics:3']);
         expect(result.input.map((entry) => entry.disposition)).toEqual([
             INPUT_DISPOSITIONS.APPLIED,
         ]);

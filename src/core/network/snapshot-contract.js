@@ -65,7 +65,7 @@ function copyPiece(piece) {
  * every receive (~1 MB/s churn on peers → GC tail). This does the SAME deep
  * isolation with a targeted hand-rolled copy: only the per-player mutable
  * containers are cloned (grid to the cell level, `lockedPieces`/`currentPiece`
- * to the shape level, `nextPieces`, `blindTimers`), the immutable top-level
+ * to the shape level, `nextPieces`, `blind`), the immutable top-level
  * fields are shared by reference, and `structuredClone` is used only for the
  * small variable-depth `garbageEntries` (whose `clearSummary` nesting is not
  * fixed). Isolation is byte-equivalent to the old clone — pinned by the contract
@@ -91,7 +91,9 @@ export function hydrateBinarySnapshot(snapshot, metadata = {}) {
             lockedPieces: Array.isArray(player.lockedPieces)
                 ? player.lockedPieces.map(copyPiece)
                 : player.lockedPieces,
-            blindTimers: player.blindTimers ? { ...player.blindTimers } : player.blindTimers,
+            blind: player.blind
+                ? { ...player.blind, cells: (player.blind.cells || []).map(([index, ticks]) => /** @type {[number, number]} */ ([index, ticks])) }
+                : player.blind,
             lastInputSeq: acknowledgements[player.steamId],
             lastAttackerId: undefined,
             lockSeq: undefined,

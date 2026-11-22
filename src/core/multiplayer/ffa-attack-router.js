@@ -3,20 +3,24 @@
  *
  * Routes garbage attacks from one player to ALL opponents (Free-For-All), each receiving the
  * full attack. The size rules are the versus rules (versus-rules.js): the crowd cut once more
- * than four players are alive, and no cancelling unless the match turns it on.
+ * than four players are alive, and no cancelling unless the match turns it on. What the rows
+ * become (rows, blind pieces or a full blind) is the attack style's (garbage.js ATTACK_TYPES).
+ * In a hot potato match the host's potato decides where attacks go (hot-potato.js); every
+ * player is a team of one online.
  */
 
 import {
-    ATTACK_TYPES,
-    DEFAULT_POTATO_DURATION_MS,
-    DEFAULT_POTATO_PENALTY_LINES,
     GarbageAttack,
     calculateGarbage,
-    createGarbageAttackFromColumns,
+    versusAttackRules,
 } from '../garbage.js';
+import { clearBlind } from '../blind.js';
 import { emitMultiplayerEvent, MULTIPLAYER_EVENTS } from '../../events/multiplayer-events.js';
 import { MessageTypes } from '../network/message-types.js';
 import { ensureAttackCredit, takeCrowdCut } from './versus-rules.js';
+import {
+    countHolderRows, createHotPotatoState, isHotPotatoConfig, potatoRoute, stepHotPotato,
+} from './hot-potato.js';
 
 export class FFAAttackRouter {
     constructor(ffaGameState) {
@@ -36,35 +40,26 @@ export class FFAAttackRouter {
     }
 
     isHotPotatoEnabled() {
-        const config = this.gameState.matchConfig || {};
-        const rules = config.attackRules || {};
-        return !!(
-            config.hotPotato
-            || config.attackStyle === 'hot_potato'
-            || rules.forceAttackType === ATTACK_TYPES.POTATO
-        );
+        return isHotPotatoConfig(this.gameState.matchConfig);
     }
 
+    /**
+     * A fresh potato for a new match or round: nobody holds it, the first holder is chosen
+     * two seconds in. Every node resets its own copy at the round start; afterwards peers take
+     * the host's from GAME_POTATO_UPDATE.
+     * @param {number} [now]
+     */
     resetHotPotato(now = Date.now()) {
-        const config = this.gameState.matchConfig || {};
-        const rules = config.attackRules || {};
         const enabled = this.isHotPotatoEnabled();
-        const durationMs = Math.max(1000, Number(config.potatoDurationMs || rules.potatoDurationMs || DEFAULT_POTATO_DURATION_MS));
-        const penaltyLines = Math.max(1, Number(config.potatoPenaltyLines || rules.potatoPenaltyLines || DEFAULT_POTATO_PENALTY_LINES));
-        // Each round starts with the next seat after the last round's first holder.
-        const holderId = enabled ? this._chooseHotPotatoHolder(this._lastPotatoStarter ?? null) : null;
-        this._lastPotatoStarter = holderId;
-
-        this.gameState.hotPotatoState = {
-            enabled,
-            holderId,
-            previousHolderId: null,
-            expiresAt: holderId ? now + durationMs : 0,
-            durationMs,
-            penaltyLines,
-            generation: 0,
-            lastEvent: null,
-        };
+        this.gameState.hotPotatoState = createHotPotatoState(enabled);
+        this._potatoClockAt = now;
+        if (!enabled) return;
+        if (this.isHost) {
+            this._broadcastHotPotato(null);
+        } else {
+            const state = this.gameState.hotPotatoState;
+            emitMultiplayerEvent(MULTIPLAYER_EVENTS.HOT_POTATO_UPDATED, { state, event: null });
+        }
     }
 
     _getHotPotatoState() {
@@ -74,152 +69,86 @@ export class FFAAttackRouter {
         return this.gameState.hotPotatoState;
     }
 
-    _getAliveOpponentIds(attackerSteamId) {
+    /** @returns {Array<{ key: string, alive: boolean }>} every player is a team of one online */
+    _potatoTeams() {
         return Array.from(this.gameState.players.values())
-            .filter((player) => player.steamId !== attackerSteamId && player.isAlive)
-            .map((player) => player.steamId);
+            .map((player) => ({ key: player.steamId, alive: player.isAlive === true }))
+            .sort((left, right) => (left.key < right.key ? -1 : Number(left.key > right.key)));
     }
 
-    _chooseHotPotatoHolder(previousHolderId = null, preferredTargets = []) {
-        const aliveIds = Array.from(this.gameState.players.values())
-            .filter((player) => player.isAlive)
-            .map((player) => player.steamId)
-            .sort();
-
-        if (aliveIds.length === 0) return null;
-
-        const preferred = preferredTargets.find((steamId) => aliveIds.includes(steamId) && steamId !== previousHolderId);
-        if (preferred) return preferred;
-
-        if (!previousHolderId || !aliveIds.includes(previousHolderId)) {
-            return aliveIds[0];
-        }
-
-        return aliveIds.find((steamId) => steamId > previousHolderId) || aliveIds[0];
-    }
-
-    _transferHotPotato(fromId, toId, reason = 'pass', now = Date.now()) {
-        const state = this._getHotPotatoState();
-        if (!state.enabled || !toId) return null;
-
-        state.previousHolderId = fromId || state.holderId;
-        state.holderId = toId;
-        state.expiresAt = now + state.durationMs;
-        state.generation++;
-        state.lastEvent = {
-            type: reason,
-            fromId,
-            toId,
-            timestamp: now,
-            generation: state.generation,
-        };
-
-        this.gameState.network?.broadcastToAll?.(MessageTypes.GAME_POTATO_UPDATE, state.lastEvent);
-        return state.lastEvent;
-    }
-
-    _buildPotatoPenaltyAttack(holderId) {
-        const state = this._getHotPotatoState();
-        const playerIds = Array.from(this.gameState.players.keys()).sort();
-        const holderOffset = Math.max(0, playerIds.indexOf(holderId));
-        const columnsByRow = Array.from({ length: state.penaltyLines }, (_, rowIndex) => [
-            (holderOffset * 3 + rowIndex * 2) % 10,
-        ]);
-
-        return createGarbageAttackFromColumns({
-            rows: state.penaltyLines,
-            columnsByRow,
-            attackType: ATTACK_TYPES.POTATO,
-            metadata: {
-                source: 'hot_potato',
-                holderId,
-                generation: state.generation,
-            },
-        }).withId(`POTATO-${state.generation + 1}`);
-    }
-
-    detonateHotPotato(now = Date.now()) {
-        const state = this._getHotPotatoState();
-        if (!state.enabled || !state.holderId) return null;
-
-        const holder = this.gameState.players.get(state.holderId);
-        if (!holder?.isAlive) {
-            const nextHolder = this._chooseHotPotatoHolder(state.holderId);
-            return this._transferHotPotato(state.holderId, nextHolder, 'holder_eliminated', now);
-        }
-
-        const attack = this._buildPotatoPenaltyAttack(holder.steamId);
-        const entries = attack.expandEntries({
-            color: holder.color || '#f97316',
-            attackerId: null,
-            attackerName: 'Hot Potato',
+    /**
+     * Tell every peer the host's potato (HUD state) and what just happened to it.
+     * @param {Object|null} event
+     */
+    _broadcastHotPotato(event) {
+        const state = this.gameState.hotPotatoState;
+        if (!state) return;
+        const copy = { ...state, targets: { ...state.targets }, order: state.order.slice() };
+        this.gameState.network?.broadcastToAll?.(MessageTypes.GAME_POTATO_UPDATE, {
+            state: copy,
+            event,
+            roundGeneration: this.gameState.roundGeneration,
         });
-
-        entries.forEach((entry) => {
-            holder.garbageQueue.enqueue({
-                ...entry,
-                attackerId: null,
-                attackerName: 'Hot Potato',
-                isHotPotato: true,
-            });
+        // The host never receives its own broadcast: echo it for the host's HUD.
+        emitMultiplayerEvent(MULTIPLAYER_EVENTS.HOT_POTATO_UPDATED, {
+            state: copy,
+            event: event ? { type: event.type, team: event.team } : null,
         });
-
-        // The potato's own rows are nobody's attack: dying under them earns no frag.
-        holder.lastAttackerId = null;
-        ensureAttackCredit(holder).holder = null;
-        this.gameState.network?.broadcastToAll?.(MessageTypes.GAME_POTATO_DETONATE, {
-            holderId: holder.steamId,
-            holderName: holder.name,
-            lines: entries.filter((entry) => entry.type === 'line').length,
-        });
-
-        const nextHolder = this._chooseHotPotatoHolder(holder.steamId);
-        return this._transferHotPotato(holder.steamId, nextHolder, 'detonate', now);
     }
 
+    /**
+     * A player got rid of the potato (host): its waiting garbage is dropped and its hidden
+     * cells show. The peer does the same to its own board on GAME_POTATO_UPDATE.
+     * @param {{ team: string }} event
+     */
+    _potatoPassed(event) {
+        const player = this.gameState.players.get(event.team);
+        if (!player) return;
+        player.garbageQueue?.clear?.();
+        clearBlind(player.gameState);
+    }
+
+    /**
+     * Run the host's potato clock to `now` (host only; every fixed tick).
+     * @param {number} [now]
+     * @returns {Object|null} the potato event, if one happened
+     */
     updateHotPotato(now = Date.now()) {
         if (!this.isHost || !this.isHotPotatoEnabled()) return null;
         const state = this._getHotPotatoState();
-        const holder = state.holderId ? this.gameState.players.get(state.holderId) : null;
-
-        if (!holder?.isAlive) {
-            const nextHolder = this._chooseHotPotatoHolder(state.holderId);
-            return this._transferHotPotato(state.holderId, nextHolder, 'holder_eliminated', now);
-        }
-
-        if (state.expiresAt > 0 && now >= state.expiresAt) {
-            return this.detonateHotPotato(now);
-        }
-
-        return null;
+        const last = Number.isFinite(this._potatoClockAt) ? this._potatoClockAt : now;
+        this._potatoClockAt = now;
+        const event = stepHotPotato(state, Math.max(0, now - last), this._potatoTeams());
+        if (event?.type === 'pass') this._potatoPassed(event);
+        if (event) this._broadcastHotPotato(event);
+        return event;
     }
 
+    /**
+     * Route one attack in a hot potato match (host). The holder's attack counts toward its
+     * target; anyone else's goes only to the holder; with nobody holding it nothing is sent.
+     * @param {string} attackerSteamId
+     * @param {GarbageAttack} attack
+     * @returns {{ handled: boolean, targetId: string|null }} handled: nothing more to send
+     */
     routeHotPotatoAttack(attackerSteamId, attack) {
         const state = this._getHotPotatoState();
-        const lineCount = attack.getTotalLines();
-        if (!state.enabled || lineCount <= 0) return true;
-
-        const targets = this._getAliveOpponentIds(attackerSteamId);
-        if (targets.length === 0) return true;
-
-        if (!state.holderId) {
-            this._transferHotPotato(null, this._chooseHotPotatoHolder(null), 'start');
-        } else if (state.holderId === attackerSteamId) {
-            // To the next seat. Passing to the first opponent in roster order bounced the
-            // potato between the first two players.
-            this._transferHotPotato(attackerSteamId, this._chooseHotPotatoHolder(attackerSteamId), 'pass');
+        const { route, holder } = potatoRoute(state, attackerSteamId);
+        if (route === 'holder') return { handled: false, targetId: holder };
+        if (route === 'count') {
+            const event = countHolderRows(state, attackerSteamId, attack.getTotalLines());
+            if (event) this._potatoPassed(event);
+            this._broadcastHotPotato(event);
         }
-
         this.recordAttack({
             from: attackerSteamId,
             fromName: this.gameState.players.get(attackerSteamId)?.name || attackerSteamId,
             totalLines: 0,
             targetCount: 0,
-            attackType: ATTACK_TYPES.POTATO,
+            attackType: 'potato',
             timestamp: Date.now(),
         });
-
-        return true;
+        return { handled: true, targetId: null };
     }
 
     /**
@@ -240,7 +169,7 @@ export class FFAAttackRouter {
             return; // Attacker doesn't exist or is dead
         }
 
-        const rules = this.gameState.matchConfig?.attackRules || {};
+        const rules = versusAttackRules(this.gameState.matchConfig);
         if (rules.disableAttacks) {
             return;
         }
@@ -255,19 +184,15 @@ export class FFAAttackRouter {
         }
         const totalLines = attack.getTotalLines();
 
-        if (this.isHotPotatoEnabled()) {
-            this.routeHotPotatoAttack(attackerSteamId, attack);
-            return;
+        if (totalLines <= 0) {
+            return; // No attack (too small)
         }
 
-        // Blind / Full Blind carry a visual effect even with zero garbage lines,
-        // so they must bypass the line-count guard (parity with local mode).
-        if (
-            totalLines <= 0
-            && attack.attackType !== ATTACK_TYPES.BLIND
-            && attack.attackType !== ATTACK_TYPES.FULL_BLIND
-        ) {
-            return; // No attack (too small)
+        let potatoTargetId = null;
+        if (this.isHotPotatoEnabled()) {
+            const potato = this.routeHotPotatoAttack(attackerSteamId, attack);
+            if (potato.handled) return;
+            potatoTargetId = potato.targetId;
         }
 
         this._logGarbage(`💥 ${attacker.name} cleared lines → ${totalLines} garbage lines`);
@@ -287,9 +212,11 @@ export class FFAAttackRouter {
             return;
         }
 
-        // Get all living opponents (everyone except attacker)
+        // Get all living opponents (everyone except attacker; only the potato's holder in a
+        // hot potato match)
         const opponents = Array.from(this.gameState.players.values())
-            .filter((p) => p.steamId !== attackerSteamId && p.isAlive);
+            .filter((p) => p.steamId !== attackerSteamId && p.isAlive)
+            .filter((p) => potatoTargetId === null || p.steamId === potatoTargetId);
 
         if (opponents.length === 0) {
             this._logGarbage('  ⚠️ No opponents alive - attack wasted');
@@ -365,7 +292,8 @@ export class FFAAttackRouter {
 
         // Expand garbage into actual entries
         const attackMeta = options.attackMeta || {};
-        const garbageAttack = options.attack || calculateGarbage(cascadeSummary, this.gameState.matchConfig?.attackRules || {});
+        const garbageAttack = options.attack
+            || calculateGarbage(cascadeSummary, versusAttackRules(this.gameState.matchConfig));
         if (attackMeta.attackId && typeof garbageAttack.withId === 'function') {
             garbageAttack.withId(attackMeta.attackId);
         }
@@ -381,10 +309,14 @@ export class FFAAttackRouter {
         });
 
         let lineIndex = 0;
-        const lastLineIndex = entries.filter((entry) => entry.type === 'line').length - 1;
+        const lineCount = entries.filter((entry) => entry.type === 'line').length;
+        const lastLineIndex = lineCount - 1;
+        // Blind entries are numbered after the rows, so each has its own attackId:lineIndex
+        // (the peer's idempotent adopt keys on it: garbageBurstKey).
+        let blindIndex = lineCount;
         entries = entries.map((entry) => {
             const isLine = entry.type === 'line';
-            const currentLineIndex = isLine ? lineIndex++ : 0;
+            const currentLineIndex = isLine ? lineIndex++ : blindIndex++;
             return {
                 ...entry,
                 attackId: attackMeta.attackId || entry.attackId,
@@ -393,7 +325,7 @@ export class FFAAttackRouter {
                 createdSimTick: attackMeta.createdSimTick ?? attackMeta.sourceSimTick,
                 sourceLockSeq: attackMeta.sourceLockSeq,
                 targetId: opponent.steamId,
-                lineIndex: isLine ? currentLineIndex : undefined,
+                lineIndex: currentLineIndex,
                 applyAfterLockSeq: opponent._lockSeq || 0,
                 rulesHash: attackMeta.rulesHash,
                 clearSummary: attackMeta.clearSummary,
@@ -403,9 +335,10 @@ export class FFAAttackRouter {
             };
         });
 
-        // Frag credit counts the rows sent, before the opponent's pending cap drops any.
+        // Frag credit counts the attack's rows (whatever they become), before the opponent's
+        // pending cap drops any.
         const credit = ensureAttackCredit(opponent);
-        credit.noteAttack(attacker.steamId, entries.filter((entry) => entry.type === 'line').length);
+        credit.noteAttack(attacker.steamId, Math.min(lineLimit, garbageAttack.getTotalLines()));
         opponent.lastAttackerId = credit.killer;
 
         // Verify attackerId is set

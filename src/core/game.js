@@ -33,7 +33,7 @@ import {
     synchronizeInfinitySimulationCamera,
     findHighestOccupiedInfinityRow,
 } from './infinity-spawn-policy.js';
-import { createBlindTimers } from './blind.js';
+import { createBlindState, takePieceBlind } from './blind.js';
 import { cascadeShadowEnabled, armCascadeShadow, settleCascadeShadow } from './cascade-shadow.js';
 import { durationMsToTicks, elapsedMsToTicks } from './fixed-tick-clock.js';
 import { createPlayerInputState, resetPlayerInputState } from './player-input-state.js';
@@ -805,8 +805,9 @@ export class GameState {
         // Combo tracking state for deterministic garbage payloads
         this.comboState = createComboState();
 
-        // Store ongoing blind timers for attacks that affect visibility
-        this.blindTimers = createBlindTimers();
+        // Blind attacks (blind.js): the board's blind clock and the blind the piece in play
+        // takes when it locks. Hidden cells keep their time on their locked piece.
+        this.blind = createBlindState();
 
         // Deterministic sequence counter for outbound garbage attacks
         this.garbageAttackSequence = 0;
@@ -882,7 +883,7 @@ export class GameState {
         }
         this.lastPlacedPieceX = [];
         this.comboState = createComboState();
-        this.blindTimers = createBlindTimers();
+        this.blind = createBlindState();
         this.garbageAttackSequence = 0;
         this.handicap = 2;
         this.handicaps = {};
@@ -1376,6 +1377,9 @@ export function lockPiece(gameState, playDropCallback, physicsCallbacks, timing 
         pieceId: ++gameState._pieceIdCounter,
         color: themedColor,
     };
+    // A blind piece waiting for this one hides it from the moment it lands (blind.js).
+    const blindTicks = takePieceBlind(gameState);
+    if (blindTicks > 0) lockedPieceSnapshot.blindTicks = blindTicks;
 
     if (physicsCallbacks && physicsCallbacks.onPieceLock) {
         physicsCallbacks.onPieceLock(lockedPieceSnapshot);

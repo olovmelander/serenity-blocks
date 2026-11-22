@@ -123,13 +123,15 @@ describe('attack size in a local match', () => {
         expect(entries.at(-1).connectBelow).toBe(false);
     });
 
-    it('leaves a blind attack\'s effect alone', () => {
+    it('turns each row of a blind attack into a blind piece for every opponent', () => {
         const state = match(4, { attackRules: { forceAttackType: ATTACK_TYPES.BLIND } });
 
         state.handleGarbageSummary(0, clearOf(4), null);
 
-        const blinds = state.garbageQueues[1].entries.filter((entry) => entry.type === 'blind');
-        expect(blinds).toHaveLength(1);
-        expect(blinds[0].duration).toBeGreaterThan(0);
+        // Each of the three rows is a blind piece (versus-attack-modes.test.js has the rules).
+        const entries = state.garbageQueues[1].entries;
+        expect(entries.map((entry) => entry.type)).toEqual(['blind', 'blind', 'blind']);
+        expect(entries.every((entry) => entry.ticks === 30)).toBe(true);
+        expect(state.getPlayerMetrics(1).attackLinesReceived).toBe(3);
     });
 });

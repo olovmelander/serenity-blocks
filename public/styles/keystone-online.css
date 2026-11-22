@@ -155,6 +155,11 @@
     color: var(--sb-aqua);
 }
 
+/* The hot potato: who holds it and its rows sent of its target (online-versus-hud.js). */
+#online-multiplayer-container .ov-match-bar > .ov-match-bar__potato {
+    color: var(--sb-coral);
+}
+
 /* ---- Your station ------------------------------------------------------------------ */
 /* The plate over both columns, the queue over the board, the meter and the well, the
    stats under the board. The first column is the meter and the air to the well. */

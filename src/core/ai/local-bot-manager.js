@@ -1,5 +1,4 @@
 import { HIDDEN_ROWS } from '../constants.js';
-import { hasObscuredStack } from '../blind.js';
 import { GravityBotController, gravityPlanningRate } from './gravity-bot-controller.js';
 import { normalizeDifficultyTier } from './bot-difficulty.js';
 import { seededRandom } from '../../utils/helpers.js';
@@ -94,7 +93,7 @@ export class LocalBotManager {
                     const rules = match.matchConfig?.attackRules;
                     // Only a standard head-to-head duel sends the gross attack
                     // directly. Team targeting, scaled damage and handicaps differ.
-                    if (match.numPlayers !== 2 || !opponent?.isAlive || hasObscuredStack(opponent)
+                    if (match.numPlayers !== 2 || !opponent?.isAlive
                         || playerState.isInfinityMode || match.matchConfig?.isTeamMode || match._isHotPotatoEnabled?.()
                         || rules?.disableAttacks || (rules?.forceAttackType && rules.forceAttackType !== 'lines')
                         || playerState.handicap !== opponent.handicap) return Infinity;

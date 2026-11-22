@@ -29,9 +29,8 @@ import { paintCountdown } from '../../ui/countdown-light.js';
 import { unifiedLoop } from './unified-game-loop.js';
 import { emitMultiplayerEvent, MULTIPLAYER_EVENTS } from '../../events/multiplayer-events.js';
 import { InputJitterBuffer } from '../network/input-jitter-buffer.js';
-import {
-    applyBlindEffect, applyFullBlindEffect, createBlindTimers, restoreBlindTimers,
-} from '../blind.js';
+import { clearBlind, restoreBlindSnapshot, takeSpawnBlinds } from '../blind.js';
+import { normalizeHotPotatoState } from './hot-potato.js';
 import { readFlag as readNetFlag } from '../flags.js';
 import { FIXED_TICK_HZ, FIXED_TICK_MS } from '../fixed-tick-clock.js';
 import { hasActiveHitStop } from '../simulation-tick.js';
@@ -180,9 +179,9 @@ export class FFAGameStateP2P {
             garbageCancellation: 'disabled',
             attackStyle: 'standard',
             attackRules: null,
+            // Clears smaller than this send no normal rows (garbage.js readMinAttackLines).
+            minAttackLines: 2,
             hotPotato: false,
-            potatoDurationMs: 12000,
-            potatoPenaltyLines: 6,
             simulationClock: 'legacy-variable-v1',
         };
         this.winner = null;
@@ -370,7 +369,7 @@ export class FFAGameStateP2P {
         // So when ON, the peer FULLY OWNS its grid/piece/nextPieces/dropCounter/score/lines/
         // level/dropInterval as a local sim — NEVER re-based per-frame. The host snapshot for
         // the local player supplies ONLY: incoming garbage (the queue), frags/isAlive/win
-        // (host verdicts), lastInputSeq (input pruning) and blindTimers — plus the existing
+        // (host verdicts), lastInputSeq (input pruning) — plus the existing
         // score/lines/garbage DESYNC DIGEST as the backstop: on a genuine (rare) divergence
         // — e.g. gravity-lock timing under frame-cadence skew, or a host-dropped input — the
         // digest triggers ONE clean forceLocal resync instead of a continuous soft glitch.
@@ -925,6 +924,32 @@ export class FFAGameStateP2P {
 
         registry.register(MessageTypes.GAME_GARBAGE_SENT, (msg) => {
             console.log(`💥 ${msg.data.fromName} sent ${msg.data.totalLines} lines to ${msg.data.targetCount} players`);
+        });
+
+        // The host's hot potato (hot-potato.js): its holder, target and rows sent. When our own
+        // board got rid of it, its hidden cells show (the host drops its garbage and clears its
+        // copy of our board the same way).
+        registry.register(MessageTypes.GAME_POTATO_UPDATE, (msg) => {
+            if (this._disposed || this.isHost) return;
+            if (!this._isFromHost(msg)) {
+                this._rejectSpoof?.('GAME_POTATO_UPDATE', msg);
+                return;
+            }
+            const generation = msg.data?.roundGeneration;
+            if (Number.isInteger(generation) && Number.isInteger(this.roundGeneration)
+                && generation !== this.roundGeneration) return;
+            const state = normalizeHotPotatoState(msg.data?.state);
+            if (!state) return;
+            this.hotPotatoState = state;
+            const event = msg.data?.event;
+            if (event?.type === 'pass' && event.team === this.localPlayerId) {
+                const local = this.players.get(this.localPlayerId);
+                if (local?.gameState) clearBlind(local.gameState);
+            }
+            emitMultiplayerEvent(MULTIPLAYER_EVENTS.HOT_POTATO_UPDATED, {
+                state,
+                event: event && typeof event === 'object' ? { type: event.type, team: event.team } : null,
+            });
         });
 
         // Peer attack requests are untrusted wire data: validated, round-fenced and
@@ -1617,17 +1642,10 @@ export class FFAGameStateP2P {
 
         const { garbageQueue } = player;
 
-        // Apply blind attacks FIRST. This both triggers the blackout
-        // and removes leading blind/full_blind entries that would otherwise
-        // block dequeueLineBurst() (which bails on a non-'line' head).
-        const blindBurst = garbageQueue.takePendingBlindBurst?.() || [];
-        blindBurst.forEach((entry) => {
-            if (entry.type === 'full_blind') {
-                applyFullBlindEffect(player.gameState, entry.duration);
-            } else {
-                applyBlindEffect(player.gameState, entry.duration);
-            }
-        });
+        // Blind attacks at the head of the queue (blind.js), exactly as the peer takes them on
+        // its own board: a full blind hides the board now, a blind piece hides the piece
+        // spawning now once it lands. Rows behind them still go in below.
+        takeSpawnBlinds(player.gameState, garbageQueue);
 
         const totalLines = garbageQueue.getTotalLines();
 
@@ -2639,6 +2657,11 @@ export class FFAGameStateP2P {
                 if (adoptBoard && ownsLocalPiece) {
                     this._reconcileLocalPiece(player.gameState, playerData.currentPiece);
                 }
+                // Hidden cells come with an adopted board (blind.js); a board we own keeps
+                // its own, which it takes from the same queue entries as the host.
+                if (adoptBoard && playerData.blind !== undefined) {
+                    restoreBlindSnapshot(player.gameState, playerData.blind);
+                }
 
                 // Reconstruct the garbage queue from the host snapshot (drives the GARBAGE
                 // meter + the peer's predicted insertion). The peer NEVER enqueues locally
@@ -2678,7 +2701,7 @@ export class FFAGameStateP2P {
                         color: peerColor(e.color) ?? undefined,
                         holeMask: e.holeMask,
                         variant: e.variant,
-                        duration: e.duration,
+                        ticks: e.ticks,
                         attackerName: e.attackerName,
                         isLastInBurst: e.isLastInBurst, // needed for correct burst grouping on peers
                         attackId: e.attackId,
@@ -2694,19 +2717,12 @@ export class FFAGameStateP2P {
                         clearSummary: e.clearSummary,
                     }));
                 }
-
-                // Sync blind timers
-                if (playerData.blindTimers !== undefined) {
-                    restoreBlindTimers(player.gameState, playerData.blindTimers);
-                } else if (!player.gameState.blindTimers) {
-                    player.gameState.blindTimers = createBlindTimers();
-                }
             }
         });
 
         this.gamePhase = state.gamePhase;
         if (state.hotPotatoState !== undefined) {
-            this.hotPotatoState = state.hotPotatoState ? { ...state.hotPotatoState } : null;
+            this.hotPotatoState = normalizeHotPotatoState(state.hotPotatoState);
         }
         this.winner = state.winner;
 
@@ -3371,9 +3387,10 @@ export class FFAGameStateP2P {
         if (!player || !player.isAlive) return;
 
         const { garbageQueue, gameState } = player;
-        // Leading blind attacks first, as on the host, so the lines behind them land. Their
-        // blackout arrives with the host's timers; a local one would flicker against them.
-        const blinds = garbageQueue.takePendingBlindBurst?.() || [];
+        // Blind attacks at the head of the queue, on our own board exactly as the host takes
+        // them on its copy (blind.js takeSpawnBlinds); the host's snapshot no longer lists them
+        // once it has too.
+        const blinds = takeSpawnBlinds(gameState, garbageQueue);
         if (this._garbageIdempotentEnabled) blinds.forEach((e) => this._peerConsumedBursts?.add(garbageBurstKey(e)));
         const totalLines = garbageQueue.getTotalLines();
 
