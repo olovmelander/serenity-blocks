@@ -48,9 +48,13 @@ describe('every live builder consumes the shared factory', () => {
 
     it('the dead LocalMultiplayerMode builder stays deleted', () => {
         const src = read('src/core/game-modes/LocalMultiplayerMode.js');
+        // The bots' moves live beside the mode (local-bot-actions.js), which it hands its bots.
+        const botActions = read('src/core/game-modes/local-bot-actions.js');
         expect(src).not.toMatch(/_getPhysicsCallbacks\(playerNum\)\s*\{/);
+        expect(botActions).not.toMatch(/_getPhysicsCallbacks\(playerNum\)\s*\{/);
+        expect(src).toMatch(/createLocalBotActions\(this, playerIndex\)/);
         // The mode consumes ONLY the injected builder.
-        expect(src).toMatch(/deps\.getMultiplayerPhysicsCallbacks/);
+        expect(botActions).toMatch(/deps\.getMultiplayerPhysicsCallbacks/);
     });
 });
 
