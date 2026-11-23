@@ -3,6 +3,7 @@ import * as THREE from 'three/webgpu';
 import {
     FOREST_LOD_BUDGET, FOREST_VALUE_ROLES,
 } from './odyssey-forest-species.js';
+import { decodeGrownForestTier, grownForestVariantCount, hasGrownForestModel } from './odyssey-forest-models-decode.js';
 
 /**
  * ACT II FOREST — the species sculptor (forest plan Wave 1).
@@ -1459,6 +1460,25 @@ function buildBroadleafPuffs(spec, stage, lod, seed) {
 }
 
 /**
+ * WHERE THE BROADLEAVES COME FROM (2026-11-22). 'grown' (the default): the specimens
+ * scripts/blender/odyssey/odyssey_trees.py grows in Blender, three a species, decoded from
+ * odyssey-forest-models.js. 'procedural': the puff crowns this file builds. Conifers and the cypress
+ * are built here either way. One switch from restoration (ADR-0015): `?odysseyWorldProceduralTrees=1`
+ * in the game, `?trees=procedural` on the audition board.
+ */
+const treeSource = { source: 'grown' };
+export function setForestTreeSource(source) {
+    treeSource.source = source === 'procedural' ? 'procedural' : 'grown';
+}
+export function getForestTreeSource() {
+    return treeSource.source;
+}
+function usesGrownTree(spec) {
+    return treeSource.source === 'grown' && broadleafState.style === 'leafy'
+        && spec.builder === 'broadleaf' && hasGrownForestModel(spec.id);
+}
+
+/**
  * Which broadleaf builder the roster uses: 'leafy' (the default: leaf cards at every tier),
  * 'solid' (the solid puffs of §7-§10) or 'traced' (the smooth-min hull the puffs replaced), one
  * switch from restoration (ADR-0015) and the audition board's A/B lever.
@@ -1475,7 +1495,11 @@ export function setForestBroadleafStyle(style) {
  */
 export function buildForestTreeGeometry(spec, stage, lod, seed = 1) {
     let built;
-    if (spec.builder === 'conifer') {
+    if (usesGrownTree(spec)) {
+        // The grown broadleaves (odyssey-forest-models-decode.js): a specimen per seed, of three.
+        const n = grownForestVariantCount(spec.id);
+        built = decodeGrownForestTier(spec.id, stage, lod, ((Math.trunc(seed) % n) + n) % n, FOREST_LEAF_CARD);
+    } else if (spec.builder === 'conifer') {
         built = broadleafState.style === 'leafy' && lod !== 'far'
             ? buildConiferNeedles(spec, stage, lod, seed)
             : buildConifer(spec, stage, lod, seed);
@@ -1522,6 +1546,8 @@ export function buildForestTreeGeometry(spec, stage, lod, seed = 1) {
         crownW: built.crownW,
         // The crown is drawn as leaf cards (FOREST_LEAF_CARD), which need the card material.
         cards: built.cards === true,
+        // Grown in Blender (odyssey-forest-models.js) rather than built here.
+        grown: built.grown === true,
         // Exposed so a test can check for the cloud sculptor's collapse-to-centre defect,
         // which is a collapse toward THIS point and not toward the world origin.
         centreY: built.centreY,

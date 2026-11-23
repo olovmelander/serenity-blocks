@@ -499,6 +499,11 @@ export const ODYSSEY_URL_PARAMETERS = Object.freeze([
         { scope: WORLD_SCOPE },
     ),
     toggle(
+        'odysseyWorldProceduralTrees',
+        'Draws the broadleaves with the puff crowns built in code instead of the specimens grown in Blender.',
+        { scope: WORLD_SCOPE },
+    ),
+    toggle(
         'odysseyWorldFlatGround',
         'Removes detailed ground shading while preserving terrain geometry.',
         { scope: WORLD_SCOPE },

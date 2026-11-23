@@ -15,8 +15,10 @@ import {
     icosahedronFaces,
     packForestTrunkW,
     setForestBroadleafStyle,
+    setForestTreeSource,
     smoothMin,
 } from './odyssey-forest-geometry.js';
+import { ODYSSEY_FOREST_MODELS } from './odyssey-forest-models.js';
 import { FOREST_LEAF_ATLAS, bakeForestLeafAtlas } from './odyssey-forest-leaf-atlas.js';
 
 /**
@@ -245,6 +247,90 @@ describe('the sculptor produces sane geometry', () => {
      * positive size riding on its flag.
      */
     it('builds every broadleaf crown from leaf cards, first in the buffer, six vertices a card', () => {
+        // The puff crowns' own layout (the procedural source, one flag from restoration).
+        setForestTreeSource('procedural');
+        try {
+            assertPuffCardLayout();
+        } finally {
+            setForestTreeSource('grown');
+        }
+    });
+
+    /**
+     * THE GROWN BROADLEAVES (2026-11-22): every broadleaf crown is a specimen grown in Blender
+     * (scripts/blender/odyssey/odyssey_trees.py), drawn in the same card contract: its cards first,
+     * six vertices a card at one centre, a unit crown normal, a real size, a depth in 0..1 — and
+     * as many cards as the specimen was grown with. Three specimens a species, picked by the seed,
+     * so a stand is not one tree turned round.
+     */
+    it('draws every broadleaf from a grown specimen, in the card contract, three a species', () => {
+        ODYSSEY_FOREST_SPECIES.filter((spec) => spec.builder === 'broadleaf').forEach((spec) => {
+            const specimens = ODYSSEY_FOREST_MODELS.species[spec.id];
+            expect(specimens, spec.id).toBeDefined();
+            expect(specimens.length).toBe(3);
+            const heroes = [0, 1, 2].map((seed) => buildForestTreeGeometry(spec, spec.stages[1], 'hero', seed));
+            const signatures = new Set(heroes.map((g) => attr(g, 'position').count));
+            const firstX = new Set(heroes.map((g) => attr(g, 'position').getX(0).toFixed(4)));
+            expect(signatures.size + firstX.size, `${spec.id} specimens differ`).toBeGreaterThan(2);
+            ['hero', 'mid', 'far'].forEach((lod) => {
+                [0, 1, 2].forEach((seed) => {
+                    const g = buildForestTreeGeometry(spec, spec.stages[1], lod, seed);
+                    const label = `${spec.id} ${lod} #${seed}`;
+                    const count = specimens[seed][lod].cardCount;
+                    expect(g.userData.forest.grown, label).toBe(true);
+                    expect(g.userData.forest.cards, label).toBe(true);
+                    expect(g.userData.forest.hullTriangles, label).toBe(count * 2);
+                    expect(count, label).toBeGreaterThanOrEqual(lod === 'far' ? 4 : 6);
+                    const p = attr(g, 'position');
+                    const n = attr(g, 'normal');
+                    const v = attr(g, 'aVert');
+                    for (let i = 0; i < p.count; i += 1) {
+                        expect(onCard(g, i), `${label} vertex ${i}`).toBe(i < count * 6);
+                    }
+                    for (let i = 0; i < count * 6; i += 6) {
+                        for (let k = 1; k < 6; k += 1) {
+                            expect(p.getX(i + k)).toBe(p.getX(i));
+                            expect(p.getY(i + k)).toBe(p.getY(i));
+                            expect(p.getZ(i + k)).toBe(p.getZ(i));
+                            expect(v.getZ(i + k)).toBe(v.getZ(i));
+                        }
+                        expect(Math.hypot(n.getX(i), n.getY(i), n.getZ(i))).toBeCloseTo(1, 5);
+                        const size = (v.getZ(i) - FOREST_LEAF_CARD.flag) * FOREST_LEAF_CARD.sizeMax;
+                        expect(size, label).toBeGreaterThan(0.05);
+                        expect(v.getZ(i)).toBeLessThan(FOREST_LEAF_CARD.flag + 1);
+                        expect(v.getX(i)).toBeGreaterThanOrEqual(0);
+                        expect(v.getX(i)).toBeLessThanOrEqual(1);
+                    }
+                });
+            });
+        });
+    });
+
+    /**
+     * The puff crowns stay a working forest (they are the restoration path), so they keep the
+     * invariants every tree must hold: inside the budget, finite, seated, wound outward.
+     */
+    it('keeps the procedural broadleaves sound, one flag from restoration', () => {
+        setForestTreeSource('procedural');
+        try {
+            const roster = buildForestRoster(ODYSSEY_FOREST_SPECIES.filter((s) => s.builder === 'broadleaf'));
+            expect(roster.some((g) => g.userData.forest.grown)).toBe(false);
+            expect(forestRosterBudget(roster).withinBudget).toBe(true);
+            roster.forEach((g) => {
+                const p = attr(g, 'position');
+                let minY = Infinity;
+                for (let i = 0; i < p.count; i += 1) {
+                    expect(Number.isFinite(p.getX(i) + p.getY(i) + p.getZ(i))).toBe(true);
+                    minY = Math.min(minY, p.getY(i));
+                }
+                expect(minY).toBeGreaterThanOrEqual(-1e-6);
+            });
+        } finally {
+            setForestTreeSource('grown');
+        }
+    });
+
+    function assertPuffCardLayout() {
         const H = FOREST_LEAF_CARD.hero;
         ODYSSEY_FOREST_SPECIES.filter((spec) => spec.builder === 'broadleaf').forEach((spec) => {
             [
@@ -279,7 +365,7 @@ describe('the sculptor produces sane geometry', () => {
                 }
             });
         });
-    });
+    }
 
     /**
      * NEEDLE CARDS (2026-10-26): the leafy conifers. A spray conifer's hero and mid crowns are
