@@ -79,6 +79,10 @@ export const CLOUD_LANES = Object.freeze([
     lane({
         id: 'fair-w4', role: 'fair', shapes: FAIR, at: [3500, -900], half: 1700, count: 2, speed: 4.0, w: [620, 960], base: [890, 940], jitter: 240,
     }),
+    // ... over the sea toward the sun, whose shadows cross the island ...
+    lane({
+        id: 'fair-sun', role: 'fair', shapes: FAIR, at: [1900, -1500], half: 2300, count: 4, speed: 4.0, w: [520, 900], base: [890, 950], jitter: 330,
+    }),
     // ... north of it, and east (the climb's)
     lane({
         id: 'fair-n1', role: 'fair', shapes: FAIR, at: [-200, 3000], half: 2600, count: 4, speed: 4.0, w: [680, 1120], base: [880, 940], jitter: 240,

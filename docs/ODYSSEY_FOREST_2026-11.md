@@ -120,7 +120,7 @@ nothing pops. Low keeps 58 % of the trees. Without MSAA a leaf's edge is cut at 
 
 - **The floor** on top of that (same measure): High +0.15-0.17 ms for its plants (31,700 cards against the trees'
   315,000, nine more draws) and about +0.03 ms for the ground's two fetches; Medium 1.06 ms the whole frame; Low
-  0.83 ms. The ground's fragment shader now binds 15 of WebGPU's 16 textures (a test holds the limit).
+  0.83 ms. The ground's fragment shader comes near WebGPU's 16 textures (a test holds the limit).
 - The scatter takes ~0.5-0.7 s and the shade plate ~0.3 s in the bake worker (0.26 s together before), beside a
   1.3 s plates lane, and both are kept in the bake cache.
 - Download: `far.png` 5.4 MB, `leaves.png` 1.9 MB, `floor.png` 0.29 MB, the models 0.47 MB (the old models were 0.1 MB).

@@ -3,7 +3,7 @@ import { ODYSSEY_CLOUD_VOLUMES } from './odyssey-cloud-volumes.js';
 
 /**
  * THE CLOUDS' VOLUMES (2026-11-24): sculpted and lit by scripts/blender/odyssey/odyssey_clouds.py, one gzip
- * file of raw 3D grids. Four 3D textures come out of it:
+ * file of predicted planes (clouds/pack.py). Four 3D textures come out of it:
  *   sdf     every shape's distance field, stacked along y (R8)
  *   sun     the sun's light inside each shape, for four turns of it (RGBA8)
  *   air     the sky's light, the ground's, and how deep in the body a place is (RGBA8)
@@ -52,14 +52,84 @@ function volume([x, y, z, c], repeat) {
     return tex;
 }
 
+/** What lies between two yields of the decoder, in slices of a grid (a few milliseconds' work). */
+const SLICES = 12;
+
+/**
+ * One plane out of the file (clouds/pack.py): the residuals summed back along x, y and z, and its levels spread
+ * over a byte. Yields now and then, so the caller can let a frame through.
+ * @param {Uint8Array} bytes
+ * @param {number} from where the plane begins
+ * @param {number[]} size [x, y, z]
+ * @param {number} levels
+ * @param {Uint8Array} out where it goes
+ * @param {number} channel its place in `out`'s texels
+ * @param {number} channels how many a texel has
+ */
+export function* unpackPlane(bytes, from, [nx, ny, nz], levels, out, channel, channels) {
+    const slice = nx * ny;
+    const spread = Uint8Array.from({ length: levels }, (_, v) => Math.round((v * 255) / (levels - 1)));
+    let before = new Uint8Array(slice);
+    let here = new Uint8Array(slice);
+    for (let z = 0; z < nz; z += 1) {
+        const at = from + (z * slice);
+        for (let y = 0; y < ny; y += 1) {
+            const row = y * nx;
+            let run = 0;
+            for (let x = 0; x < nx; x += 1) {
+                run = (run + bytes[at + row + x]) & 255;
+                here[row + x] = y > 0 ? (run + here[(row - nx) + x]) & 255 : run;
+            }
+        }
+        for (let k = 0; k < slice; k += 1) {
+            here[k] = (here[k] + before[k]) & 255;
+            out[(((z * slice) + k) * channels) + channel] = spread[here[k]];
+        }
+        const swap = before;
+        before = here;
+        here = swap;
+        if (z % SLICES === SLICES - 1) yield;
+    }
+}
+
+/**
+ * Every grid out of the file's bytes, a step at a time.
+ * @param {Uint8Array} bytes
+ * @returns {Generator<void, Record<string, Uint8Array>>}
+ */
+export function* unpackVolumes(bytes) {
+    if (bytes.length !== CLOUD_VOLUMES.bytes) throw new Error(`clouds.dat is ${bytes.length} bytes, its index says ${CLOUD_VOLUMES.bytes}`);
+    const grids = cloudGrids();
+    const out = {};
+    let from = 0;
+    for (let i = 0; i < CLOUD_VOLUMES.planes.length; i += 1) {
+        const [name, kept, levels] = CLOUD_VOLUMES.planes[i];
+        const [x, y, z, channels] = grids[name];
+        out[name] = new Uint8Array(x * y * z * channels);
+        for (let c = 0; c < kept; c += 1) {
+            yield* unpackPlane(bytes, from, [x, y, z], levels, out[name], c, channels);
+            from += x * y * z;
+        }
+    }
+    return out;
+}
+
 async function readVolumes(url) {
     const res = await fetch(url);
     if (!res.ok) throw new Error(`${url} ${res.status}`);
-    const bytes = new Uint8Array(await res.arrayBuffer());
+    let bytes = new Uint8Array(await res.arrayBuffer());
     // A server may have undone the gzip on the way (Content-Encoding): the magic tells.
-    if (bytes[0] !== 0x1f || bytes[1] !== 0x8b) return bytes;
-    const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'));
-    return new Uint8Array(await new Response(stream).arrayBuffer());
+    if (bytes[0] === 0x1f && bytes[1] === 0x8b) {
+        const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'));
+        bytes = new Uint8Array(await new Response(stream).arrayBuffer());
+    }
+    const work = unpackVolumes(bytes);
+    for (;;) {
+        const step = work.next();
+        if (step.done) return step.value;
+        // eslint-disable-next-line no-await-in-loop
+        await new Promise((resolve) => { setTimeout(resolve, 0); });
+    }
 }
 
 /**
@@ -76,20 +146,23 @@ export function createCloudTextures({ load = true, onReady = null } = {}) {
         air: volume(grids.air, false),
         billow: volume(grids.billow, true),
     };
-    const state = { ready: false, disposed: false, error: null };
+    const state = {
+        ready: false, disposed: false, error: null, sdf: null,
+    };
     if (load && typeof fetch === 'function' && typeof DecompressionStream === 'function' && typeof document !== 'undefined') {
-        readVolumes(URL_DATA).then((bytes) => {
+        readVolumes(URL_DATA).then((volumes) => {
             if (state.disposed) return;
-            if (bytes.length !== CLOUD_VOLUMES.bytes) throw new Error(`clouds.dat is ${bytes.length} bytes, its index says ${CLOUD_VOLUMES.bytes}`);
-            Object.entries(CLOUD_VOLUMES.spans).forEach(([name, [from, size]]) => {
+            Object.entries(volumes).forEach(([name, data]) => {
                 const tex = out[name];
                 const [x, y, z] = tex.userData.full;
                 tex.dispose();
                 tex.image = {
-                    data: bytes.subarray(from, from + size), width: x, height: y, depth: z,
+                    data, width: x, height: y, depth: z,
                 };
                 tex.needsUpdate = true;
             });
+            // (The shadows read the shapes themselves: odyssey-cloud-shadows.js.)
+            state.sdf = volumes.sdf;
             state.ready = true;
             onReady?.();
         }).catch((error) => {
@@ -102,7 +175,7 @@ export function createCloudTextures({ load = true, onReady = null } = {}) {
         state,
         dispose() {
             state.disposed = true;
-            Object.values(out).forEach((t) => t.dispose());
+            Object.values(out).forEach((tex) => tex.dispose());
         },
     };
 }

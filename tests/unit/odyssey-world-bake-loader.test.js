@@ -36,20 +36,19 @@ describe('world bake loader — synchronous twin', () => {
         const out = bakeWorldSync({ reliefRes: 64, shadowRes: 32 });
         expect(sha(out.relief.data)).toBe(sha(bakeReliefData(64).data));
         expect(sha(out.textures.macro.data)).toBe(sha(bakeMacroData().data));
-        expect(Object.keys(out.ms)).toEqual(['relief', 'sunFields', 'atlas', 'detail', 'macro', 'cloudField', 'scatter', 'total']);
+        expect(Object.keys(out.ms)).toEqual(['relief', 'sunFields', 'atlas', 'detail', 'macro', 'scatter', 'total']);
     });
 
     it('startWorldBake without a Worker resolves its stages lazily, on the first await', async () => {
         expect(typeof Worker).toBe('undefined'); // vitest node environment
         const handle = startWorldBake({
-            reliefRes: 48, shadowRes: 24, cloudField: false, forceSync: true,
+            reliefRes: 48, shadowRes: 24, forceSync: true,
         });
         expect(handle.viaWorker).toBe(false);
         const relief = await handle.relief;
         expect(relief.res).toBe(48);
         const all = await awaitWorldBake(handle);
         expect(all.viaWorker).toBe(false);
-        expect(all.cloudField).toBeNull();
         expect(all.textures.sunFields.res).toBe(24);
         expect(sha(all.relief.data)).toBe(sha(relief.data)); // one bake, shared by every stage
         expect(makeReliefSampler(all.relief)(0, 0)).toBeTypeOf('number');
@@ -62,7 +61,7 @@ describe('forest scatter lane', () => {
             spacing: 24, seaLevel: 0, rail: RAIL, visibilityCull: true, forceLod: null, lodDistance: { hero: 200, mid: 520 },
         };
         const out = bakeWorldSync({
-            reliefRes: 96, shadowRes: 32, cloudField: false, scatter: scatterOptions,
+            reliefRes: 96, shadowRes: 32, scatter: scatterOptions,
         });
         const direct = scatterZonedForest(makeReliefSampler(out.relief), scatterOptions);
         expect(out.scatter.stats).toEqual(direct.stats);
@@ -72,7 +71,7 @@ describe('forest scatter lane', () => {
     });
 
     it('is skipped (null) when the world does not build a forest', () => {
-        const out = bakeWorldSync({ reliefRes: 64, shadowRes: 24, cloudField: false });
+        const out = bakeWorldSync({ reliefRes: 64, shadowRes: 24 });
         expect(out.scatter).toBeNull();
     });
 });
@@ -213,7 +212,7 @@ describe('parallel band lanes', () => {
 
     it('?odysseyBakeBands=1 finishes: the host survives the scatter it also ran', async () => {
         const out = await bakeOrStall(startWorldBake({
-            reliefRes: 32, shadowRes: 16, cloudField: false, bandCount: 1, scatter: { spacing: 24, seaLevel: 0 },
+            reliefRes: 32, shadowRes: 16, bandCount: 1, scatter: { spacing: 24, seaLevel: 0 },
         }));
         expect(out).not.toBe('stalled'); // retiring the host on 'scatter' terminated it mid sun march
         expect(out.viaWorker).toBe(true); // and it was the worker path, not abort()'s synchronous twin
@@ -228,7 +227,7 @@ describe('parallel band lanes', () => {
 
     it('two bands still hand the scatter to band 1 and the sun march to the host', async () => {
         const out = await bakeOrStall(startWorldBake({
-            reliefRes: 32, shadowRes: 16, cloudField: false, bandCount: 2, scatter: { spacing: 24, seaLevel: 0 },
+            reliefRes: 32, shadowRes: 16, bandCount: 2, scatter: { spacing: 24, seaLevel: 0 },
         }));
         expect(out).not.toBe('stalled');
         expect(spawnedWorkers.map((w) => w.lanesRun)).toEqual([

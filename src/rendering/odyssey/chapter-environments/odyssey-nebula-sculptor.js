@@ -1,54 +1,12 @@
 /**
- * ACT II CLOUD FIELD — THE SCULPTOR (cloud-field plan Wave 1).
+ * THE NEBULA'S SCULPTOR: chapter 6's gas and dust hulls (odyssey-nebula-field.js, the ch6 painted-cosmos effect).
  *
- * Wave 0 settled two things with measurements: opaque cloud geometry is cheap on Lane B
- * (~0.131 ms fixed + ~0.0094 ms per mass, gate F1 passed at 0.393 ms for 28 masses), and the
- * Witness paint stack clears the reference bar (shade/lit 0.676 against a 0.63-0.72 band). It
- * also settled what was still WRONG: the probe's masses are a bag of balls wearing good paint.
- * You can count the spheres. This module exists to fix exactly that, and nothing else.
+ * A mass is lobes (a few primaries, secondaries on their rims, scallops over them) melted by a smooth minimum,
+ * cut flat below by a smooth maximum, and crinkled. It is star-shaped about its own centre, so its surface is
+ * found by marching an icosphere's directions inward: a closed hull with an even, predictable mesh and normals
+ * from the field's gradient. Its vertices carry the mass's centre, an occlusion, a height and a random.
  *
- * WHY NOT MARCHING CUBES. The design named marching cubes (three.js addon, isolation sign
- * flip) as the polygoniser. It is not needed here and it costs more than it returns: a cumulus
- * mass is STAR-SHAPED about its own centre — every ray from the centre crosses the surface
- * exactly once, including straight down, where the flat base is simply the first crossing.
- * So the surface can be found by RAY-MARCHING an icosphere's directions outward-in, which
- * gives, for free, three things a marching-cubes mesh has to be repaired into having:
- *   - a closed watertight hull with no isolated shells or stray fragments,
- *   - an even, predictable vertex distribution (an icosphere's) with an exact triangle count
- *     per LOD, which is what the measured per-mass price is budgeted against,
- *   - normals taken from the SDF GRADIENT, which is continuous ACROSS a smooth-min join by
- *     construction. That gradient is the "melting": where two lobes merge, the normal turns
- *     smoothly through the joint instead of creasing, and no amount of shader-side normal
- *     blending can manufacture that from per-lobe radial normals (which is precisely what the
- *     retired heroes had, and precisely why they read as separate balls).
- * The one thing this trades away is overhangs. Cumulus in the reference images have none that
- * read at silhouette scale, so the trade is free here — and it is written down so a future
- * mass that NEEDS an overhang knows it must change polygoniser, not fight this one.
- *
- * WHAT THE SHAPE IS MADE OF, in the order it is assembled:
- *   1. LOBES — the hero grammar, kept because it was owner-approved as composition: 2-4
- *      primaries sharing one centre height, 4-6 secondaries seated on their rims, 6-9 crown
- *      scallops above the waist. Here they are DATA (centre, radius, squash), not geometry.
- *   2. SMOOTH-MIN UNION — the melt. `k` scales with the mass so a big cloud melts as much,
- *      proportionally, as a small one.
- *   3. SMOOTH-MAX AGAINST THE BASE PLANE — the flat condensation line every reference cumulus
- *      sits on, filleted rather than sliced. NOT a vertex clamp: clamping collapses the bottom
- *      cap to zero-area triangles and, under FrontSide culling, opens a hole (the trap the
- *      retired builder documents at its `place()`).
- *   4. A NOISE CRINKLE on the field, so the outline is cauliflower rather than a smooth blob.
- *      All high-frequency detail belongs in the SILHOUETTE (the look rules); interiors stay
- *      flat, which is why this perturbs the surface and never the shading.
- *
- * WHAT IS BAKED INTO THE VERTICES (all free at runtime):
- *   - `normal`: the SDF gradient (see above).
- *   - `aMassCentre`: the mass's own centre, for the shader's Witness centroid bend. Baked here
- *     rather than derived, because after the merge the per-mass vertex mapping is gone.
- *   - `color.r`: analytic ambient occlusion, so crevices between lobes darken and the mass
- *     reads as grouped rather than as one smooth potato. Consumed as a BAND-THRESHOLD shift,
- *     never as a colour multiply (the look rules: interiors stay flat).
- *   - `color.g`: normalised height within the mass (0 at the base, 1 at the crown).
- *   - `color.b`: a per-mass random, so sibling masses can be de-synchronised without a second
- *     attribute.
+ * (It came from the Act II cloud field, retired 2026-11-24 for traced volumes: world/odyssey-clouds.js.)
  */
 import * as THREE from 'three';
 
@@ -110,45 +68,6 @@ const MARCH_SAFETY = 0.75;
  * near 6 -> 980, mid 3 -> 320, far 1 -> 80 faces.
  */
 export const CLOUD_FIELD_LOD_DETAIL = Object.freeze({ near: 6, mid: 4, far: 3 });
-
-/**
- * ⚠️ THE FLOOR IS NOT AN OPTIMISATION KNOB. `far` was detail 1 — EIGHTY faces — and at 80
- * faces a hull's facets span ~25 degrees of its own sphere, so the SILHOUETTE is a visible
- * polygon however smooth its normals are (and ours are smooth: they come from the field
- * gradient, not from the triangles). The owner photographed the result: a small mass reading
- * as a flat angular shard with a hard crease down it, "sharp" where every other cloud was
- * round. Detail 3 (320 faces) is the floor at which a hull stops showing straight edges at the
- * sizes this field actually renders.
- *
- * The deeper rule, learnt twice now — first on the zenith masses, then here — is that detail
- * must follow ANGULAR size, not world distance. A 300 u mass at 1500 u still covers ~11
- * degrees, which is ~250 px at 720p; calling it "far" because of its distance and handing it
- * 80 faces is how a cloud becomes a shard. `assignCloudFieldLod` below does that arithmetic
- * rather than trusting the label in the spec table.
- */
-
-/**
- * Choose a LOD tier from a mass's worst-case ANGULAR size against the rail.
- *
- * @param {object} spec
- * @param {ReadonlyArray<{x:number,y:number,z:number}>} railSamples
- * @returns {'near'|'mid'|'far'}
- */
-export function assignCloudFieldLod(spec, railSamples) {
-    let nearest = Infinity;
-    railSamples.forEach((pt) => {
-        const d = Math.hypot(spec.x - pt.x, (spec.base - pt.y), spec.z - pt.z);
-        if (d < nearest) nearest = d;
-    });
-    if (!Number.isFinite(nearest) || nearest <= 0) return 'near';
-    // Radians subtended at closest approach. The thresholds are where a hull of each tier
-    // stops resolving: ~1280 faces carries a 20-degree mass, ~500 carries 8, below that the
-    // 320-face floor applies and nothing goes coarser.
-    const subtended = spec.w / nearest;
-    if (subtended > 0.35) return 'near';
-    if (subtended > 0.14) return 'mid';
-    return 'far';
-}
 
 function hash3(x, y, z) {
     let h = ((x | 0) * 374761393) + ((y | 0) * 668265263) + ((z | 0) * 2147483647);
@@ -507,84 +426,36 @@ export function sculptCloudMass(spec, detail) {
 }
 
 /**
- * Sculpt a whole field and hand-merge it into ONE geometry.
- *
+ * Sculpt masses and merge them into one geometry.
  * @param {ReadonlyArray<object>} specs each with a `lod` key naming a CLOUD_FIELD_LOD_DETAIL entry
  * @returns {{ geometry: THREE.BufferGeometry, triangles: number, masses: number }}
  */
-/**
- * Pure half of {@link buildCloudFieldGeometry}: the sculpted field as plain typed arrays (no
- * BufferGeometry), so the bake can run in the world-bake Worker and be transferred. Same maths,
- * same order; the wrapper adds the attributes and the bounding sphere.
- * @param {object[]} specs
- * @param {Array<{x:number,y:number,z:number}>|null} [railSamples]
- * @returns {{position: Float32Array, normal: Float32Array, centre: Float32Array, colour: Float32Array, lobeInfo: Float32Array, triangles: number, masses: number}}
- */
-export function buildCloudFieldGeometryData(specs, railSamples = null) {
-    const parts = specs.map((spec) => {
-        // The spec's `lod` is a floor the author can raise, never a ceiling: when the rail is
-        // known, a mass that subtends MORE than its label claims is promoted. A hand-authored
-        // table cannot keep this correct as placements move, and getting it wrong is visible
-        // (see the note on CLOUD_FIELD_LOD_DETAIL).
-        const measured = railSamples ? assignCloudFieldLod(spec, railSamples) : spec.lod;
-        const rank = { far: 0, mid: 1, near: 2 };
-        const tier = (rank[measured] ?? 0) > (rank[spec.lod] ?? 0) ? measured : spec.lod;
-        return sculptCloudMass(spec, CLOUD_FIELD_LOD_DETAIL[tier] ?? CLOUD_FIELD_LOD_DETAIL.mid);
-    });
-    let verts = 0;
-    parts.forEach((p) => { verts += p.position.length / 3; });
-
-    const position = new Float32Array(verts * 3);
-    const normal = new Float32Array(verts * 3);
-    const centre = new Float32Array(verts * 3);
-    const colour = new Float32Array(verts * 3);
-    const lobeInfo = new Float32Array(verts * 4);
-    let off = 0;
-    let off4 = 0;
-    parts.forEach((p) => {
-        position.set(p.position, off);
-        normal.set(p.normal, off);
-        centre.set(p.centre, off);
-        colour.set(p.colour, off);
-        lobeInfo.set(p.lobeInfo, off4);
-        off += p.position.length;
-        off4 += p.lobeInfo.length;
-    });
-
-    return {
-        position, normal, centre, colour, lobeInfo, triangles: verts / 3, masses: specs.length,
-    };
-}
-
-/** The ArrayBuffers of a {@link buildCloudFieldGeometryData} result, for a transfer list. */
-export function cloudFieldGeometryDataBuffers(d) {
-    return [d.position.buffer, d.normal.buffer, d.centre.buffer, d.colour.buffer, d.lobeInfo.buffer];
-}
-
-/** Wrap sculpted arrays as the cloud-field BufferGeometry (attributes + bounding sphere). */
-export function wrapCloudFieldGeometry(d) {
+export function buildCloudFieldGeometry(specs) {
+    const parts = specs.map((spec) => sculptCloudMass(spec, CLOUD_FIELD_LOD_DETAIL[spec.lod] ?? CLOUD_FIELD_LOD_DETAIL.mid));
     const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute('position', new THREE.BufferAttribute(d.position, 3));
-    geometry.setAttribute('normal', new THREE.BufferAttribute(d.normal, 3));
-    geometry.setAttribute('aMassCentre', new THREE.BufferAttribute(d.centre, 3));
-    geometry.setAttribute('color', new THREE.BufferAttribute(d.colour, 3));
-    geometry.setAttribute('aLobe', new THREE.BufferAttribute(d.lobeInfo, 4));
+    const merged = (key, size) => {
+        const total = parts.reduce((n, p) => n + p[key].length, 0);
+        const out = new Float32Array(total);
+        let at = 0;
+        parts.forEach((p) => {
+            out.set(p[key], at);
+            at += p[key].length;
+        });
+        return new THREE.BufferAttribute(out, size);
+    };
+    geometry.setAttribute('position', merged('position', 3));
+    geometry.setAttribute('normal', merged('normal', 3));
+    geometry.setAttribute('aMassCentre', merged('centre', 3));
+    geometry.setAttribute('color', merged('colour', 3));
+    geometry.setAttribute('aLobe', merged('lobeInfo', 4));
     geometry.computeBoundingSphere();
-    return { geometry, triangles: d.triangles, masses: d.masses };
-}
-
-export function buildCloudFieldGeometry(specs, railSamples = null, baked = null) {
-    return wrapCloudFieldGeometry(baked ?? buildCloudFieldGeometryData(specs, railSamples));
+    return { geometry, triangles: geometry.getAttribute('position').count / 3, masses: specs.length };
 }
 
 /**
  * Smallest signed distance from a point to ANY mass in the field.
- *
- * This is the clearance instrument Wave 1 owes the plan, and it replaces the retired heroes'
- * CENTRE-DISTANCE rule, which could not do the job: a mass 700 u away by centre distance but
- * 900 u wide still swallows the camera. Distance to the SURFACE is the quantity that actually
- * answers "can the rail enter this cloud", and it is the same field the sculptor used, so the
- * answer cannot drift from the geometry.
+ * The distance to the SURFACE (never to a centre) is what says whether the rail can enter a mass,
+ * and it is the same field the sculptor used, so the answer cannot drift from the geometry.
  */
 export function cloudFieldSdf(specs, x, y, z, lobeCache = null) {
     let d = Infinity;
@@ -594,43 +465,4 @@ export function cloudFieldSdf(specs, x, y, z, lobeCache = null) {
         d = Math.min(d, cloudMassSdf(spec, lobes, x, y, z, false));
     });
     return d;
-}
-
-/**
- * Validate that the rail clears every mass by its role's margin.
- *
- * @param {ReadonlyArray<object>} specs
- * @param {ReadonlyArray<{x:number,y:number,z:number}>} railSamples
- * @param {Record<string, number>} margins per-`role` surface clearance in world units
- * @returns {Array<{id:string, problem:string}>} empty when the field is legal
- */
-export function validateCloudFieldClearance(specs, railSamples, margins, driftAmplitude = 0, breathFraction = 0) {
-    const problems = [];
-    specs.forEach((spec) => {
-        const lobes = buildCloudLobes(spec);
-        // ⚠️ DRIFT EATS CLEARANCE. A mass validated where the spec table places it can still
-        // reach the rail once it is animated, because the drift swings it about that point.
-        // The margin therefore has to cover the WORST excursion, not the authored position —
-        // otherwise raising the drift amplitude for visibility silently spends the safety
-        // budget the clearance rules exist to protect.
-        // Breathing extends the surface OUTWARD as well: a lobe swelling by `breathFraction`
-        // of its own radius pushes the hull out by roughly that fraction of a lobe radius,
-        // which for this grammar is ~0.25 of the half-width. Small next to the drift term, but
-        // it is the same class of mistake to leave it out — an animated surface must clear the
-        // rail at its largest, not at the size the bake happened to produce.
-        const swell = breathFraction * 0.25 * (spec.w / 2);
-        const margin = (margins[spec.role] ?? margins.default ?? 0) + driftAmplitude + swell;
-        let worst = Infinity;
-        railSamples.forEach((pt) => {
-            const d = cloudMassSdf(spec, lobes, pt.x, pt.y, pt.z, false);
-            if (d < worst) worst = d;
-        });
-        if (worst < margin) {
-            problems.push({
-                id: spec.id,
-                problem: `surface clearance ${worst.toFixed(0)} < ${margin} for role ${spec.role}`,
-            });
-        }
-    });
-    return problems;
 }

@@ -90,7 +90,8 @@ export function createOdysseyClouds({
         gather = evening?.sea ?? 0;
         shown = visible && uOn.value > 0;
         mesh.visible = shown;
-        if (!shown || !camera) return;
+        // (Where they are is asked for even when none is drawn: their shadows and reflections are.)
+        if (!visible || !camera) return;
         camera.getWorldPosition(eye);
         if (inFrame) inFrame(eye);
         projView.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);

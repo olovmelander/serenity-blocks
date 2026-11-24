@@ -105,6 +105,7 @@ import {
 } from './odyssey-evening.js';
 import { createOdysseyCloudSea } from './odyssey-cloud-sea.js';
 import { createOdysseyClouds } from './odyssey-clouds.js';
+import { createCloudShadows } from './odyssey-cloud-shadows.js';
 import { createHighClouds } from './odyssey-high-clouds.js';
 import { createOdysseyWallGusts, wallGustsRevealAt } from './odyssey-wall-gusts.js';
 import { findHeroSummit } from '../composition/odyssey-summit-spindrift.js';
@@ -420,34 +421,12 @@ const SNOW_CRISP = Object.freeze({
     edge: Object.freeze([0.055, 0.3]),
 });
 /**
- * CLOUD SHADOWS ON THE MASSIF (2026-10-03). The world's sun stands BEHIND the chapter-5 camera,
- * so the face it climbs is front-lit and carried no shadow shapes at all. Soft shadows of the
- * cumulus now drift across the upper mountain: the cloud noise the deck reads (detail texture,
- * alpha), sampled at `world` units per tile and scrolled downwind, takes `depth` of the direct
- * light where it is dense (`window`, set against the channel's measured p50 0.55 / p90 0.71).
- * Snow in that shade takes its ice-blue from the shade model, so the white cone gets large,
- * slow blue shapes. Above `from` only — the lowlands, chapters 3-4's subject, are untouched —
- * and on the high tier only (ODYSSEY_WORLD_QUALITY.cloudShadows): one extra fetch per fragment.
+ * CLOUD SHADOWS ON THE LAND AND THE SEA: the sky's own clouds' (odyssey-cloud-shadows.js), on the high tier only
+ * (ODYSSEY_WORLD_QUALITY.cloudShadows). Strength and cover are uniforms the update drives (`cloudShadowSchedule`).
  */
-// REWORKED 2026-10-20 (Act II overhaul). At 400 u a tile, a 0.60..0.67 window and 0.55 depth the
-// shadows were 100-200 u blobs with hard rims on the upper cone only — from the chapter 3-4 shore
-// they read as a dark STAIN on the summit's face (raycast-confirmed: the "dark smudge" every ch3/ch4
-// frame showed was this field), and the lowlands under them never moved. Now they are fair-weather
-// cumulus shadows: a few hundred metres across (`world` per tile), soft-rimmed (`soft` wide), shallower,
-// broken into irregular regions by a second, rotated read of the slow value-noise channel
-// (`region`, so the 900 u tile never repeats visibly), drifting downwind at ~8 u/s over ALL dry land
-// — the shore, the meadows, the forest (the trees read the same field) and the massif.
-// Strength and cover are uniforms the update drives (`cloudShadowSchedule`).
-// `offset` (tiles) sets where the pattern stands at clock 0 — chosen so the frozen-clock captures
-// (clock 9) show shadow over the shore orbs' mid-ground; in play the field sweeps on regardless.
 const GROUND_CLOUD_SHADOW = Object.freeze({
-    world: 1150,
-    region: 2700,
-    soft: 0.14,
-    depth: 0.46,
-    drift: Object.freeze([0.0070, 0.0031]),
-    offset: Object.freeze([0.5, 0.5]),
-    regionWindow: Object.freeze([0.28, 0.58]),
+    /** How much of the sun the thickest cloud takes. */
+    depth: 0.50,
 });
 /**
  * How dark the sea's body stands where a cloud's shadow is deepest, against its sunlit self: the
@@ -1369,30 +1348,17 @@ export function createOdysseyWorld({
     const uBow = uniform(0);
     const uShowerVeil = uniform(0);
     /**
-     * Direct-light factor under the drifting cloud shadows at world `xz` (1 = open sun). Two
-     * fetches of the detail texture: the clustered cumulus silhouette (`.a`, the deck's own
-     * field) for the shapes, and a rotated, 3.4x larger read of the value-noise channel (`.b`)
-     * for which regions of sky are cloudy at all. Plain (inline) — it samples a texture.
+     * Direct-light factor under the clouds' shadows at world `xz` (1 = open sun): the sky's own
+     * clouds' (odyssey-cloud-shadows.js), one fetch. The weather's cover deepens or lightens them.
+     * Plain (inline): it samples a texture, at level 0, so any stage may ask.
      */
     // `turn` (optional): the caller's own `dayTurnOf(xz)`, so the turning shade is read once.
-    // `inVertex`: the caller is a vertex stage, which has no derivatives to pick a mip with.
-    const cloudShadowLight = (xz, turn = null, inVertex = false) => {
-        const cs = GROUND_CLOUD_SHADOW;
-        const read = (at) => (inVertex ? texture(detailTex, at).level(1) : texture(detailTex, at));
-        const shapes = read(xz.div(cs.world)
-            .add(vec2(uTime.mul(cs.drift[0]).add(cs.offset[0]), uTime.mul(cs.drift[1]).add(cs.offset[1])))).a;
-        const turned = vec2(xz.x.mul(0.8).sub(xz.y.mul(0.6)), xz.x.mul(0.6).add(xz.y.mul(0.8)));
-        const regions = read(turned.div(cs.region)
-            .add(vec2(uTime.mul(cs.drift[0] * 0.27), uTime.mul(cs.drift[1] * 0.27)))).b;
-        const lo = mix(float(0.66), float(0.53), uCloudCover);
-        const cover = smoothstep(lo, lo.add(cs.soft), shapes)
-            .mul(smoothstep(
-                float(cs.regionWindow[0]),
-                float(cs.regionWindow[1]),
-                regions.add(uCloudCover.sub(0.5).mul(0.3)),
-            ));
+    const skyCloudField = { sdf: null };
+    const cloudShadows = createCloudShadows({ field: () => skyCloudField.sdf });
+    const cloudShadowLight = (xz, turn = null) => {
+        const cloudTaken = cloudShadows.at(xz).mul(mix(float(0.72), float(1.18), uCloudCover));
         // ...and the one great shadow the day turns behind (odyssey-day-turn.js).
-        return float(1).sub(cover.mul(cs.depth).mul(uCloudShadow))
+        return float(1).sub(clamp(cloudTaken, 0, 1).mul(GROUND_CLOUD_SHADOW.depth).mul(uCloudShadow))
             .mul(float(1).sub((turn || dayTurnOf(xz)).x.mul(uTurn.w)));
     };
     const SWASH_RUN = 0.62;
@@ -5880,7 +5846,7 @@ export function createOdysseyWorld({
         dayTurnOf,
         gustFront,
         // Read once a vertex: a crown is several cards deep on screen.
-        cloudLight: (xz, turn) => (q.cloudShadows ? cloudShadowLight(xz, turn, true) : float(1).sub(turn.x.mul(uTurn.w))),
+        cloudLight: (xz, turn) => (q.cloudShadows ? cloudShadowLight(xz, turn) : float(1).sub(turn.x.mul(uTurn.w))),
         reachSink: forestReachSink,
         hourGold: { gain: ODYSSEY_HOUR_LOOK.capGold / ODYSSEY_HOUR_LOOK.alpenglow, tint: ODYSSEY_HOUR_LOOK.capGoldTint },
         silver: ODYSSEY_DAY_TURN.silver * 0.6,
@@ -6588,6 +6554,7 @@ export function createOdysseyWorld({
             // ground obeyed it (they have no per-frame write) while the clouds and the forest
             // never did. Found while trying to isolate one forest LOD tier for a wind capture.
             const authored = (mesh) => mesh.userData.filterVisible !== false;
+            skyCloudField.sdf = skyClouds.volumes.state.sdf;
             skyClouds.update(
                 time,
                 viewCamera,
@@ -6597,6 +6564,8 @@ export function createOdysseyWorld({
                 sphereToWorld,
                 uClimb.value,
             );
+            // (Where the sky's clouds are this frame, their shadows on the land and the sea.)
+            if (q.cloudShadows && clouds && uClimb.value === 1) cloudShadows.update(skyClouds.states, time);
             if (cloudSeaLayer) {
                 cloudSeaLayer.update(
                     time,
@@ -6687,6 +6656,7 @@ export function createOdysseyWorld({
             forestMats.near.dispose();
             forestMats.far?.dispose();
             skyClouds.dispose();
+            cloudShadows.dispose();
             highSky.dispose();
             if (cloudSeaLayer) cloudSeaLayer.dispose();
             if (hollowMist) hollowMist.dispose();

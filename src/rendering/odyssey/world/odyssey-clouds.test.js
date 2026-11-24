@@ -8,8 +8,12 @@ import {
 
 import { build, unassignedReads } from '../../../../tests/unit/helpers/tsl-node-build.js';
 import {
-    CLOUD_SHAPES, CLOUD_VOLUMES, cloudGrids, cloudShapeIndex,
+    CLOUD_SHAPES, CLOUD_VOLUMES, cloudGrids, cloudShapeIndex, unpackPlane, unpackVolumes,
 } from './odyssey-cloud-data.js';
+import {
+    CLOUD_SHADOWS, cloudFootprint, createCloudShadows, footprintBounds,
+} from './odyssey-cloud-shadows.js';
+import { ODYSSEY_WORLD_SUN } from '../chapter-environments/shared/chapter-profile.js';
 import {
     CLOUD_CAP, CLOUD_LANES, CLOUD_WALL, CloudState, SKY_CLOUDS, cloudAt, cloudExtent,
 } from './odyssey-cloud-composition.js';
@@ -36,26 +40,62 @@ const eveningOf = (p) => ({
 });
 const TIMES = Array.from({ length: 60 }, (_, i) => i * 131);
 
+/** The file unpacked, as the game does it. */
+const VOLUMES = (() => {
+    const work = unpackVolumes(new Uint8Array(gunzipSync(asset('clouds.dat'))));
+    for (;;) {
+        const step = work.next();
+        if (step.done) return step.value;
+    }
+})();
+
 describe('the volumes', () => {
-    it('are what their index says: every grid there, every byte', () => {
+    it('are what their index says: every plane there, every byte, and small', () => {
         const raw = gunzipSync(asset('clouds.dat'));
         expect(raw.length).toBe(CLOUD_VOLUMES.bytes);
         const grids = cloudGrids();
-        let end = 0;
-        Object.entries(CLOUD_VOLUMES.spans).forEach(([name, [from, size]]) => {
-            const [x, y, z, c] = grids[name];
-            expect(size, name).toBe(x * y * z * c);
-            expect(from, name).toBe(end);
-            end += size;
-        });
-        expect(end).toBe(raw.length);
+        const planes = CLOUD_VOLUMES.planes.reduce((n, [name, kept]) => n + ((grids[name][0] * grids[name][1] * grids[name][2]) * kept), 0);
+        expect(planes).toBe(raw.length);
         // Within what every WebGL2 and WebGPU device holds in one 3D texture.
         Object.entries(grids).forEach(([name, [x, y, z]]) => expect(Math.max(x, y, z), name).toBeLessThanOrEqual(2048));
-        expect(asset('clouds.dat').length).toBeLessThan(9 * 1024 * 1024);
+        // Every cloud of the sky, the high sky and the floor: what a player downloads.
+        const total = ['clouds.dat', 'high.png', 'sea.png'].reduce((n, f) => n + asset(f).length, 0);
+        expect(total).toBeLessThan(5 * 1024 * 1024);
+    });
+
+    it('unpack as they were packed: the predictor undone, the levels spread, a wrong length refused', () => {
+        // A small plane packed by hand: a ramp along each axis.
+        const size = [3, 2, 2];
+        const at = (x, y, z) => x + (2 * y) + (3 * z);
+        const packed = new Uint8Array(12);
+        for (let z = 0; z < 2; z += 1) {
+            for (let y = 0; y < 2; y += 1) {
+                for (let x = 0; x < 3; x += 1) {
+                    let r = 0;
+                    for (let k = 0; k < 8; k += 1) {
+                        const [dx, dy, dz] = [k & 1, (k >> 1) & 1, (k >> 2) & 1];
+                        if (x - dx < 0 || y - dy < 0 || z - dz < 0) continue;
+                        r += ((dx + dy + dz) % 2 ? -1 : 1) * at(x - dx, y - dy, z - dz);
+                    }
+                    packed[(((z * 2) + y) * 3) + x] = r & 255;
+                }
+            }
+        }
+        const out = new Uint8Array(24);
+        Array.from(unpackPlane(packed, 0, size, 9, out, 1, 2));
+        for (let z = 0; z < 2; z += 1) {
+            for (let y = 0; y < 2; y += 1) {
+                for (let x = 0; x < 3; x += 1) {
+                    const k = (((z * 2) + y) * 3) + x;
+                    expect(out[(k * 2) + 1]).toBe(Math.round((at(x, y, z) * 255) / 8));
+                    expect(out[k * 2]).toBe(0);
+                }
+            }
+        }
+        expect(() => unpackVolumes(new Uint8Array(10)).next()).toThrow(/10 bytes/);
     });
 
     it('hold each cloud whole: none is cut by its box, and its base is down in it', () => {
-        const raw = gunzipSync(asset('clouds.dat'));
         const [nx, ny, nz] = CLOUD_VOLUMES.sdf;
         const total = ny * CLOUD_SHAPES.length;
         CLOUD_SHAPES.forEach((s, i) => {
@@ -64,7 +104,7 @@ describe('the volumes', () => {
             for (let z = 0; z < nz; z += 1) {
                 for (let y = 0; y < ny; y += 1) {
                     for (let x = 0; x < nx; x += 1) {
-                        const inside = raw[CLOUD_VOLUMES.spans.sdf[0] + (((z * total) + (i * ny) + y) * nx) + x] < 128;
+                        const inside = VOLUMES.sdf[(((z * total) + (i * ny) + y) * nx) + x] < 128;
                         solid += inside ? 1 : 0;
                         const edge = x === 0 || x === nx - 1 || z === 0 || z === nz - 1 || y === 0 || y === ny - 1;
                         open += inside && edge ? 1 : 0;
@@ -78,7 +118,6 @@ describe('the volumes', () => {
     });
 
     it('are lit: each cloud has a bright side and a dark one, for every turn of it', () => {
-        const raw = gunzipSync(asset('clouds.dat'));
         const [nx, ny, nz] = CLOUD_VOLUMES.light;
         const total = ny * CLOUD_SHAPES.length;
         CLOUD_SHAPES.forEach((s, i) => {
@@ -88,11 +127,10 @@ describe('the volumes', () => {
                 for (let z = 0; z < nz; z += 1) {
                     for (let y = 0; y < ny; y += 1) {
                         for (let x = 0; x < nx; x += 1) {
-                            const at = (((z * total) + (i * ny) + y) * nx) + x;
-                            if (raw[CLOUD_VOLUMES.spans.air[0] + (at * 4) + 2] < 60) continue;
-                            const v = raw[CLOUD_VOLUMES.spans.sun[0] + (at * 4) + q];
-                            lo = Math.min(lo, v);
-                            hi = Math.max(hi, v);
+                            const k = (((z * total) + (i * ny) + y) * nx) + x;
+                            if (VOLUMES.air[(k * 4) + 2] < 60) continue;
+                            lo = Math.min(lo, VOLUMES.sun[(k * 4) + q]);
+                            hi = Math.max(hi, VOLUMES.sun[(k * 4) + q]);
                         }
                     }
                 }
@@ -100,6 +138,109 @@ describe('the volumes', () => {
                 expect(lo, `${s.id} turn ${q}`).toBeLessThan(120);
             }
         });
+    });
+});
+
+describe('the clouds\' shadows', () => {
+    const C = CLOUD_SHADOWS;
+    const len = Math.hypot(...ODYSSEY_WORLD_SUN);
+    const sun = ODYSSEY_WORLD_SUN.map((v) => v / len);
+    const heap = (extra = {}) => Object.assign(new CloudState(), {
+        shape: cloudShapeIndex('heap-a'), x: -2000, y: 920, z: 300, w: 900, tall: 1, yaw: 0.7, eaten: 0.05, cover: 1, role: 'fair', ...extra,
+    });
+    const centroid = (data) => {
+        let n = 0;
+        let cx = 0;
+        let cz = 0;
+        for (let j = 0; j < C.res; j += 1) {
+            for (let i = 0; i < C.res; i += 1) {
+                const v = data[(j * C.res) + i];
+                n += v;
+                cx += v * (C.x - (C.extent / 2) + (((i + 0.5) / C.res) * C.extent));
+                cz += v * (C.z - (C.extent / 2) + (((j + 0.5) / C.res) * C.extent));
+            }
+        }
+        return { n, x: cx / n, z: cz / n };
+    };
+
+    it('fall where the sun lays them: away from it, as far out as the cloud is high', () => {
+        const shadows = createCloudShadows({ field: () => VOLUMES.sdf });
+        const s = heap();
+        expect(shadows.update([s], 1)).toBe(true);
+        const got = centroid(shadows.data);
+        // From the middle of its body along the sun to the ground.
+        const body = s.y + (0.22 * s.w);
+        const run = (body - C.level) / sun[1];
+        expect(Math.hypot(got.x - (s.x - (sun[0] * run)), got.z - (s.z - (sun[2] * run)))).toBeLessThan(s.w * 0.45);
+        shadows.dispose();
+    });
+
+    it('are the shape\'s own: a tower\'s is longer than a puff\'s, and each facing its own outline', () => {
+        const area = (id, turn) => cloudFootprint(cloudShapeIndex(id), turn, VOLUMES.sdf).reduce((n, v) => n + v, 0);
+        const b = (id) => footprintBounds(cloudShapeIndex(id));
+        expect(b('tower-a').to - b('tower-a').from).toBeGreaterThan((b('puff-c').to - b('puff-c').from) * 1.3);
+        expect(area('heap-a', 0)).toBeGreaterThan(20);
+        const a = cloudFootprint(cloudShapeIndex('heap-a'), 0, VOLUMES.sdf);
+        const q = cloudFootprint(cloudShapeIndex('heap-a'), 6, VOLUMES.sdf);
+        expect(a.some((v, k) => Math.abs(v - q[k]) > 0.3)).toBe(true);
+        [a, q].forEach((f) => f.forEach((v) => { if (!(v >= 0 && v <= 1)) throw new Error(`footprint ${v}`); }));
+    });
+
+    it('slide with their cloud, never a step, and thin as it thins', () => {
+        const shadows = createCloudShadows({ field: () => VOLUMES.sdf });
+        shadows.update([heap()], 1);
+        const before = Uint8Array.from(shadows.data);
+        const a = centroid(shadows.data);
+        shadows.update([heap({ x: -2002 })], 2);
+        const b = centroid(shadows.data);
+        expect(b.x - a.x).toBeLessThan(-1);
+        expect(b.x - a.x).toBeGreaterThan(-3);
+        let worst = 0;
+        shadows.data.forEach((v, k) => { worst = Math.max(worst, Math.abs(v - before[k])); });
+        expect(worst).toBeLessThan(12);
+        shadows.update([heap({ eaten: 0.6 })], 3);
+        expect(centroid(shadows.data).n).toBeLessThan(a.n * 0.6);
+        shadows.update([heap({ cover: 0 })], 4);
+        expect(shadows.data.every((v) => v === 0)).toBe(true);
+        shadows.dispose();
+    });
+
+    it('cost little: redrawn a few times a second, in a couple of milliseconds', () => {
+        const shadows = createCloudShadows({ field: () => VOLUMES.sdf });
+        const states = SKY_CLOUDS.map((c) => cloudAt(c, 500, new CloudState(), eveningOf(0.2)));
+        expect(shadows.update(states, 10)).toBe(true);
+        expect(shadows.update(states, 10 + (C.every / 2))).toBe(false);
+        expect(shadows.update(states, 10 + (C.every * 1.01))).toBe(true);
+        const t0 = performance.now();
+        for (let k = 0; k < 10; k += 1) shadows.update(states, 20 + k);
+        expect((performance.now() - t0) / 10).toBeLessThan(30);
+        shadows.dispose();
+    });
+
+    it('cross the island: over two hours most of the meadow\'s minutes hold some, and none is all shade', () => {
+        const shadows = createCloudShadows({ field: () => VOLUMES.sdf });
+        const states = SKY_CLOUDS.map(() => new CloudState());
+        let shaded = 0;
+        let seen = 0;
+        for (let t = 0; t < 7200; t += 60) {
+            SKY_CLOUDS.forEach((c, k) => cloudAt(c, t, states[k], eveningOf(0.2)));
+            shadows.update(states, t);
+            let here = 0;
+            let n = 0;
+            for (let x = -700; x <= 400; x += 50) {
+                for (let z = -600; z <= -220; z += 50) {
+                    const i = Math.floor(((x - (C.x - (C.extent / 2))) / C.extent) * C.res);
+                    const j = Math.floor(((z - (C.z - (C.extent / 2))) / C.extent) * C.res);
+                    here += shadows.data[(j * C.res) + i] > 60 ? 1 : 0;
+                    n += 1;
+                }
+            }
+            seen += 1;
+            shaded += here > n * 0.04 ? 1 : 0;
+        }
+        expect(shaded / seen).toBeGreaterThan(0.4);
+        expect(shaded / seen).toBeLessThan(1);
+        shadows.dispose();
     });
 });
 
@@ -270,12 +411,21 @@ describe('the tracer', () => {
         camera.lookAt(-800, 700, -2500);
         camera.updateMatrixWorld(true);
         camera.updateProjectionMatrix();
-        // (Until the volumes land there are none.)
+        // Until the volumes land none is drawn, though where they are is known (their shadows, the water).
         sky.update(100, camera, true);
         expect(sky.mesh.visible).toBe(false);
-        sky.material.userData = {};
-        const before = sky.drawn;
-        expect(before).toBe(0);
+        expect(sky.drawn).toBeGreaterThan(8);
+        expect(sky.drawn).toBeLessThan(sky.clouds.length);
+        const { array } = sky.mesh.geometry.getAttribute('aAt').data;
+        const distances = Array.from({ length: sky.drawn }, (_, k) => {
+            const o = k * CLOUD_INSTANCE.stride;
+            return Math.hypot(array[o] + 76, array[o + 1] - 339, array[o + 2] + 111);
+        });
+        distances.slice(1).forEach((d, k) => expect(d).toBeLessThan(distances[k] + 1400));
+        expect(distances[0]).toBeGreaterThan(distances.at(-1));
+        // Under water there is no asking.
+        sky.update(200, camera, false);
+        expect(sky.mesh.visible).toBe(false);
         sky.dispose();
         expect(CLOUD_INSTANCE.layout.length * 4).toBe(CLOUD_INSTANCE.stride);
     });

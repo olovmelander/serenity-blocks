@@ -22,7 +22,7 @@ import {
     attribute, cameraPosition, clamp, color, dot, float, mix, mx_noise_float,
     normalWorld, normalize, positionWorld, smoothstep, uniform, vec3,
 } from 'three/tsl';
-import { buildCloudFieldGeometry } from '../../rendering/odyssey/world/odyssey-cloud-field.js';
+import { buildCloudFieldGeometry } from '../../rendering/odyssey/chapter-environments/odyssey-nebula-sculptor.js';
 
 export const meta = {
     id: 'ch6-painted-cosmos',

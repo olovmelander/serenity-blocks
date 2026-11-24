@@ -1,9 +1,9 @@
 /* eslint-disable no-restricted-globals -- `self` is the Worker global scope */
 /**
  * One World boot-bake Worker (plan item 2.1, 2026-08-21). Runs the five texture bakes and the
- * cloud-field sculpt — all deterministic typed-array work — off the main thread and posts each
+ * forest's scatter — all deterministic typed-array work — off the main thread and posts each
  * stage as it lands (relief first: every terrain consumer hangs off its height mirror) with the
- * buffers in the transfer list. Imports 'three' CORE only (DataUtils, IcosahedronGeometry), never
+ * buffers in the transfer list. Imports 'three' CORE only (DataUtils), never
  * 'three/webgpu'. The main-thread twin is odyssey-world-bake-loader.js's synchronous fallback,
  * which runs the very same functions, so both paths are one code path (golden suite).
  *
@@ -11,10 +11,10 @@
  * longer costing ~1 s of yield latency, a single serial worker (~1.8 s) became the critical path
  * and the world step waited on it. The loader now starts three lanes in parallel —
  * `terrain` (relief → sunFields, the only real dependency), `plates` (atlas, detail, macro) and
- * `cloudField` — so the wall time is the longest lane, not the sum.
+ * `scatter` — so the wall time is the longest lane, not the sum.
  *
- * Protocol: main → { lane, reliefRes, shadowRes, cloudSpecs, railSamples }.
- *           worker → { stage: 'relief'|'sunFields'|'atlas'|'detail'|'macro'|'cloudField', … , ms }
+ * Protocol: main → { lane, reliefRes, shadowRes, scatter }.
+ *           worker → { stage: 'relief'|'sunFields'|'atlas'|'detail'|'macro'|'scatter', … , ms }
  *                    then { stage: 'done', lane, ms }.
  *           errors → { stage: 'error', lane, message }.
  */
@@ -23,7 +23,6 @@ import {
     bakeReliefData, bakeReliefBand, bakeGroundSunFieldsData, bakeGroundAtlasData, bakeDetailNormalData,
     bakeMacroData, bakeSculptPlateData, bakeSeaLaceData, makeReliefSampler,
 } from './odyssey-world-bake-data.js';
-import { buildCloudFieldGeometryData, cloudFieldGeometryDataBuffers } from './odyssey-cloud-field.js';
 import { scatterZonedForest } from './odyssey-forest-scatter.js';
 import { bakeForestShadeData } from './odyssey-forest-shade.js';
 
@@ -36,7 +35,7 @@ function post(stage, payload, transfer, ms) {
 
 self.onmessage = (event) => {
     const {
-        lane = 'all', reliefRes, shadowRes, cloudSpecs = null, railSamples = null,
+        lane = 'all', reliefRes, shadowRes,
         jStart = 0, jEnd = 0, relief: reliefIn = null, scatter: scatterOptions = null,
     } = event.data || {};
     const t0 = now();
@@ -95,11 +94,6 @@ self.onmessage = (event) => {
             post('macro', { macro }, [macro.data.buffer], t4 - t3);
             const summit = bakeSculptPlateData();
             post('summit', { summit }, [summit.data.buffer, summit.tarn.data.buffer, summit.lake.data.buffer], now() - t4);
-        }
-        if ((lane === 'cloudField' || lane === 'all') && Array.isArray(cloudSpecs)) {
-            const t1 = now();
-            const field = buildCloudFieldGeometryData(cloudSpecs, railSamples);
-            post('cloudField', { field }, cloudFieldGeometryDataBuffers(field), now() - t1);
         }
         self.postMessage({ stage: 'done', lane, ms: +(now() - t0).toFixed(1) });
     } catch (error) {

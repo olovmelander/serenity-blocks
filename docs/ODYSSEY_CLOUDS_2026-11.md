@@ -57,6 +57,15 @@ The sun, the hour's and the evening's colours, the air and the departure are the
 peach, rose and violet with the land. Bright crowns, cool undersides, a burning edge toward the sun, and the last of them
 standing in the horizon's own haze. The waters reflect them (`world/odyssey-water-clouds.js`).
 
+### Their shadows (`world/odyssey-cloud-shadows.js`)
+
+The shadows on the land and the sea are the clouds' own. Each shape has a footprint for each of 24 facings: its shadow on
+the level of its own foot, summed toward the sun through its distance field, worked out the first time it is needed.
+Every 0.12 s each heap and giant stamps its footprint where it stands into one 192 px picture of the light over 9 km,
+between cells, so a shadow slides and never steps; it thins as its cloud does. Plain arithmetic on the CPU (no pass, no
+pipeline), one fetch where it is read. At this sun a cloud's shadow falls some 2 km from it, so a lane of heaps
+(`fair-sun`) drifts over the sea toward the sun and carries its shadows across the island.
+
 ## Tiers and cost (`CLOUD_TIERS`)
 
 The same clouds on every tier; a tier walks fewer steps, drops the finest billows below High, and on the lowest two draws
@@ -73,21 +82,21 @@ the same state are compared; **the integrated GPU was not measured**):
 | climb (p 0.60) | 0.63 ms | 0.30 ms | about 0.3 ms |
 | departure (p 0.68) | 0.76 ms | 0.65 ms | about 0.4 ms |
 
-(The last two on Low are estimates: no round of both kinds fell in the fast state.) Download: `clouds.dat` 8.1 MB,
-`sea.png` 2.3 MB, `high.png` 0.6 MB. GPU memory: 17 MB of 3D textures.
+(The last two on Low are estimates: no round of both kinds fell in the fast state.) Download: 4.7 MB (`clouds.dat` 3.6,
+`high.png` 0.6, `sea.png` 0.4). The volumes are stored as what a 3D predictor gets wrong (`clouds/pack.py`: 11.3 MB of
+files became 4.7) and unpacked a few slices at a time, so no frame waits for them. GPU memory: 17 MB of 3D textures.
+The ground's fragment shader binds 16 of WebGPU's 16 textures (a test holds the limit).
 
 ## Checks
 
 WebGPU at High, Medium and Low, WebGL2 at High and a portrait frame: no validation error, no TSL warning. New suite
-`odyssey-clouds.test.js` (21 tests); the evening, climb, act-gate, shower, lint and bake suites were fitted to it.
+`odyssey-clouds.test.js` (27 tests); the evening, climb, act-gate, shower, lint and bake suites were fitted to it.
 
 ## Left open (owner's calls)
 
 - High on the integrated GPU is unmeasured; `CLOUD_TIERS` is the dial (`steps`, `floor`).
-- The ground's drifting cloud shadows are still the old noise field: they share the wind, not the clouds' own shapes.
-- `clouds.dat` is 8 MB; halving the SDF grid would halve it at some cost to the near clouds' edges.
-- Chapter 6's nebula still uses the old sculptor (`odyssey-cloud-field.js`), and the bake loader keeps its unrequested
-  cloud-field lane and that sculptor's old spec table (its own tests read them): a clean-up, not a cost.
+- The ground's fragment shader binds all 16 textures WebGPU allows: whatever it reads next must share one.
+- The shadows are drawn for one level (the meadows'): high on the massif they lie a little off their true place.
 
 ## Changing it
 

@@ -36,7 +36,7 @@ export const ODYSSEY_CLOUD_SEA = Object.freeze({
     /** The plate: its side in world units and texels (sea.py TILE), and how far its heights stand up (a soft bed:
      * what rises out of it is the floor's own clouds, odyssey-cloud-composition.js). */
     tile: 5200,
-    res: 1024,
+    res: 512,
     amp: 120,
     base: 486,
     /** Downwind, and how fast the floor flows (u/s). */
@@ -61,11 +61,12 @@ export const ODYSSEY_CLOUD_SEA = Object.freeze({
     laneCover: 0.52,
     breath: 0.05,
     breathPeriod: 61,
-    /** How softly it ends (shares of firmness), and how far it sinks as it does. */
+    /** How softly it ends (shares of firmness), and from very high. */
     edge: 0.17,
+    edgeHigh: 0.34,
     /** From very high it eases into one soft bright sheet, as the Earth's own weather looks. */
     soften: Object.freeze([1.5, 4.6]),
-    softTops: 0.82,
+    softTops: 0.94,
     /** How far its own light is drawn toward its mean: a bed is calm. */
     calm: 0.46,
     /** The small billows read on it up close: how much finer, how strong, to what range (u). */
@@ -220,10 +221,11 @@ export function createOdysseyCloudSea({
         const whole = mix(lanes.add(smoothstep(float(4500), float(8000), r).mul(0.15)), float(0.96), fromHigh).add(breath);
         return ring.mul(rim).mul(gathered).mul(whole).clamp(0, 1);
     };
-    /** How much of the plate stands at a cover: the firmest last. */
+    /** How much of the plate stands at a cover: the firmest last. (From very high its shore is a wide thinning.) */
+    const shoreWide = mix(float(S.edge), float(S.edgeHigh), fromHigh);
     const standing = (firmIn, coverIn) => smoothstep(
-        float(-S.edge),
-        float(S.edge),
+        shoreWide.negate(),
+        shoreWide,
         firmIn.sub(float(1).sub(coverIn)),
     ).mul(smoothstep(float(0.0), float(0.08), coverIn));
 
@@ -241,9 +243,9 @@ export function createOdysseyCloudSea({
     const vertXZ = positionLocal.xz;
     const vertMip = aSpacing.div(texel).mul(1.4).max(1.9).log2()
         .clamp(0, 7);
-    const vertRegion = texture(plate, regionUv(vertXZ)).level(4).a;
+    const vertRegion = texture(plate, regionUv(vertXZ)).level(3).a;
     const vertPlate = texture(plate, plateUv(vertXZ)).level(vertMip);
-    const vertStand = standing(texture(plate, plateUv(vertXZ)).level(2).a, coverAt(vertXZ, vertRegion));
+    const vertStand = standing(texture(plate, plateUv(vertXZ)).level(1).a, coverAt(vertXZ, vertRegion));
     const lifted = () => vec3(
         positionLocal.x,
         float(S.base).add(vertPlate.r.mul(S.amp).mul(vertStand.mul(0.75).add(0.25))),
@@ -255,11 +257,11 @@ export function createOdysseyCloudSea({
     material.outputNode = Fn(() => {
         const wp = vWorld.toVar();
         const xz = wp.xz.toVar();
-        // (A bed is soft: read two mips down, so what is drawn of it is swells and not ripples.)
-        const tex = texture(plate, plateUv(xz)).bias(2.2).toVar();
+        // (A bed is soft: read a mip down, three from high, so what is drawn of it is swells and not ripples.)
+        const tex = texture(plate, plateUv(xz)).bias(fromHigh.mul(1.8).add(1.2)).toVar();
         const fine = texture(plate, plateUv(xz).mul(S.detail.scale).add(vec2(0.31, 0.17))).toVar();
-        const region = texture(plate, regionUv(xz)).level(4).a.toVar();
-        const firm = texture(plate, plateUv(xz)).level(1).a.toVar();
+        const region = texture(plate, regionUv(xz)).level(3).a.toVar();
+        const firm = texture(plate, plateUv(xz)).level(fromHigh.mul(2)).a.toVar();
         const cover = coverAt(xz, region).toVar();
         const stand = standing(firm, cover).toVar();
         const to = wp.sub(cameraPosition).toVar();
@@ -328,8 +330,8 @@ export function createOdysseyCloudSea({
     })();
     material.colorNode = vec3(0);
     material.opacityNode = standing(
-        texture(plate, plateUv(vWorld.xz)).level(1).a,
-        coverAt(vWorld.xz, texture(plate, regionUv(vWorld.xz)).level(4).a),
+        texture(plate, plateUv(vWorld.xz)).level(fromHigh.mul(2)).a,
+        coverAt(vWorld.xz, texture(plate, regionUv(vWorld.xz)).level(3).a),
     );
 
     const mesh = new THREE.Mesh(geometry, material);

@@ -25,7 +25,7 @@ import { getLevelRegistry } from '../../src/core/odyssey/LevelRegistry.js';
 const here = path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1'));
 const read = (file) => readFileSync(path.resolve(here, '../../src', file), 'utf8');
 
-const SMALL = { reliefRes: 32, shadowRes: 16, cloudField: false };
+const SMALL = { reliefRes: 32, shadowRes: 16 };
 
 beforeEach(() => { forgetWorldBake(); });
 afterEach(() => {
@@ -53,11 +53,6 @@ describe('the session keeps its bake', () => {
         const sameInputs = startWorldBake({ ...SMALL, forceSync: false, bandCount: 3 });
         expect(sameInputs.reused).toBe(true);
         expect(worldBakeKey({ ...SMALL, bandCount: 1, forceSync: true })).toBe(worldBakeKey(SMALL));
-        // The cloud specs and rail only count when the field is baked.
-        const unbakedField = {
-            ...SMALL, cloudSpecs: [{ id: 'x' }], railSamples: [{ x: 1, y: 2, z: 3 }],
-        };
-        expect(worldBakeKey(unbakedField)).toBe(worldBakeKey(SMALL));
         expect(worldBakeKey({ ...SMALL, shadowRes: 24 })).not.toBe(worldBakeKey(SMALL));
         expect(worldBakeKey({ ...SMALL, scatter: { spacing: 24 } })).not.toBe(worldBakeKey(SMALL));
 
@@ -81,9 +76,7 @@ describe('the session keeps its bake', () => {
 
     it('forgets a bake that failed, so the next request bakes again', async () => {
         vi.spyOn(console, 'warn').mockImplementation(() => {});
-        const broken = {
-            ...SMALL, cloudField: true, cloudSpecs: [null], forceSync: true,
-        };
+        const broken = { ...SMALL, scatter: { rail: null }, forceSync: true };
         const failed = startWorldBake(broken);
         await expect(failed.done).rejects.toBeTruthy();
         expect(startWorldBake(broken).reused).toBeUndefined();
@@ -160,7 +153,6 @@ function keptCopy() {
             macro: { data: new Uint16Array(4) },
             summit: { data: new Uint16Array(4), tarn: { data: new Uint16Array(4) }, lake: { data: new Uint16Array(4) } },
         },
-        cloudField: null,
         scatter: null,
     };
 }
@@ -401,9 +393,6 @@ describe('the IndexedDB store', () => {
         const shortMirror = { ...copy, relief: { ...copy.relief, total: new Float32Array(3) } };
         expect(isUsableStoredWorldBake(shortMirror, request)).toBe(false);
         expect(isUsableStoredWorldBake(copy, { ...request, reliefRes: 64 })).toBe(false);
-        expect(isUsableStoredWorldBake(copy, { ...request, cloudField: true, cloudSpecs: [{}] })).toBe(false);
-        const withField = { ...copy, cloudField: { position: new Float32Array(9), masses: 1 } };
-        expect(isUsableStoredWorldBake(withField, { ...request, cloudField: true, cloudSpecs: [{}] })).toBe(true);
         const withForest = {
             ...copy,
             scatter: {
@@ -498,7 +487,9 @@ describe('the lake noise kept beside the world (perf audit 2026-10-28)', () => {
         const back = await readStoredLakeBake('L1', { res: 4 }, opts);
         expect(back.data).toBeInstanceOf(Uint16Array);
         expect(back.data[7]).toBe(7);
-        expect(back).toMatchObject({ res: 4, k: 2, periodP: 6, crc32: 123 });
+        expect(back).toMatchObject({
+            res: 4, k: 2, periodP: 6, crc32: 123,
+        });
         expect(await readStoredLakeBake('L2', { res: 4 }, opts)).toBeNull();
         expect(await readStoredLakeBake('L1', { res: 8 }, opts)).toBeNull();
         // The world's copy is untouched by the lake's.
