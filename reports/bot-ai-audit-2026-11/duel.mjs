@@ -28,8 +28,8 @@ export async function duel(low, seed, swap, seconds = 150, options = {}) {
     if (fragTarget && (rules !== 'shipped' || !options.fixed || !options.live)) {
         throw Error('Free-for-all needs the shipped rules, live bots and the fixed clock');
     }
-    const mp = versusMatch(tiers.length, { rules, matchConfig: fragTarget
-        ? { gameType: 'ffa', endCondition: 'frags', endConditionValue: fragTarget } : { gameType: 'survivor' } });
+    const mp = versusMatch(tiers.length, { rules, matchConfig: { ...(fragTarget
+        ? { gameType: 'ffa', endCondition: 'frags', endConditionValue: fragTarget } : { gameType: 'survivor' }), ...options.matchConfig } });
     if (options.live) mp.sharedPieceSeed = seed;
     const frame = 1000 / 60;
     // For a pressure decision, count the queue when the planner runs.
@@ -51,8 +51,15 @@ export async function duel(low, seed, swap, seconds = 150, options = {}) {
                 // The normal-motion local presentation applies the same 70 ms on a four-row wave.
                 onLineClearImpact: lines => applyFixedLineImpactHitStop(state, lines),
                 onPerfectClear: options.fixed ? () => applyFixedPerfectClearHitStop(state) : undefined,
-                onPieceLock: () => { stats[i].locks++; beforeLock = garbageCells(state); notePlaced(mp, i, rules); },
-                onGarbageReady: (summary) => mp.handleGarbageSummary(i, summary),
+                onPieceLock: (piece) => {
+                    stats[i].locks++; beforeLock = garbageCells(state);
+                    options.observe?.lock?.(i, piece, state, mp);
+                    notePlaced(mp, i, rules);
+                },
+                onGarbageReady: (summary) => {
+                    options.observe?.summary?.(i, summary, state, mp);
+                    return mp.handleGarbageSummary(i, summary);
+                },
                 spawnPiece: () => {
                     const after = garbageCells(state);
                     if (beforeLock > after) {
@@ -61,6 +68,7 @@ export async function duel(low, seed, swap, seconds = 150, options = {}) {
                     }
                     const taken = takeGarbage(state, mp.getGarbageQueue(i), { rules, onGarbageReady: own.onGarbageReady });
                     stats[i].incoming += taken.rows;
+                    options.observe?.rows?.(i, taken, state, mp);
                     if (taken.topOut) { state.isGameOver = true; return; }
                     stats[i].applied += taken.rows;
                     spawn(state);
@@ -134,6 +142,7 @@ export async function duel(low, seed, swap, seconds = 150, options = {}) {
                 mp.players[i].currentPiece = null;
                 mp.getGarbageQueue(i).clear();
                 stats[i].deaths++;
+                options.observe?.death?.(i, mp.players[i], mp);
                 downSince.set(i, ticksPlayed);
             }
             if (Math.max(...mp.frags) >= fragTarget) return;
