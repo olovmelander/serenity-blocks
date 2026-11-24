@@ -209,7 +209,8 @@ It includes respawns and random pieces. Nothing here measures a slow machine or 
 | Rows completed by a rise count and attack | yes | same |
 | With more than four alive, each extra player takes one row off | yes: with 5 alive one row off (63 of 69 fires), with 6, 7 and 8 alive two, three and four off (42 of 47) | stamps that come to the same for usual play |
 | Frag credit of two per row, one off per placed piece | 129 of 129 frags in five crowd games; the other rules tried miscount 18 to 60 | same |
-| Rows of one attack hold together; rows of separate attacks do not | yes: one body per attack leaves no impossible placement, one body per row leaves 437 | **differs**: every row is its own body |
+| Rows of one attack hold together; rows of separate attacks do not | yes, but it seldom shows: one body per row leaves another board in 18 of 20,003 placements | same since 24 November (`joinAttackRows`): 2,138 of 2,138 recorded rises reproduced, 2,129 before |
+| Parts of a cut body that touch again stay two bodies | yes: joining them again leaves another board in 32 of 20,003 placements | **differs**: they join at the next clear |
 | Cells above the visible 20 | stacks up to 31 | **differs**: 24 |
 | Waiting rows limited to 20 | not testable (the largest pile that another placement follows is 17; larger ones, up to 24, came with the last piece before a death) | 20 |
 | Blind times, potato targets | not in any recording | from the source reading |

@@ -1,6 +1,8 @@
 import { PuzzleBotController } from './puzzle-bot-controller.js';
 import { canPlaceCandidate } from './reachability-pathfinder.js';
 import { evaluateCandidate } from './board-evaluator.js';
+import { COLS } from '../constants.js';
+import { isCellBlind } from '../blind.js';
 import {
     gravityBoardKey, gravityLandings, gravityReward, GRAVITY_WEIGHTS, readGravityBoard, searchGravity,
 } from './gravity-search.js';
@@ -12,10 +14,26 @@ const REACTION = [[520, 850], [460, 730], [360, 620], [310, 530], [270, 450],
 const ACTION_RATE = [95, 120, 133, 210, 265, 300, 325, 550, 680, 1050];
 const FIRE_WAVES = [2, 2, 2, 2, 3, 3, 3, 4, 4, 4];
 const SURVIVAL_MARGIN = [0, 0, 0, 11, 8, 0, 8, 0, 0, 0];
+// Blind attacks: nobody remembers a hidden stack for long. With every column's top hidden, this
+// share of a tier's pieces lands a column or a turn off, like its ordinary mistakes.
+const BLIND_SLIP = [0.55, 0.5, 0.45, 0.4, 0.36, 0.32, 0.28, 0.24, 0.2, 0.16];
 
-export function gravityPlanningRate(count = 1, tier = 0) {
+export function gravityPlanningRate(count = 1, tier = 0, fairShare = false) {
     if (count === 2 && tier >= 9) return 1.25;
+    // A versus room of three or four shares what two bots get (the standard well).
+    if (fairShare && count >= 3) return (tier >= 9 ? 2.5 : 1.4) / count;
     return (count >= 3 ? 0.65 : 1.4) / Math.max(1, count);
+}
+
+/** How much of the stack's surface a blind attack hides, 0 to 1. */
+function hiddenSurface(grid) {
+    let hidden = 0;
+    for (let x = 0; x < COLS; x++) {
+        let y = 0;
+        while (y < grid.length && !grid[y][x]) y++;
+        if (y < grid.length && isCellBlind(grid[y][x])) hidden++;
+    }
+    return hidden / COLS;
 }
 
 function candidate(move) {
@@ -146,6 +164,10 @@ export class GravityBotController extends PuzzleBotController {
         this.opponentRoom = options.opponentRoom;
         this.finishingRoom = options.finishingRoom;
         this.versus = options.versus ?? Boolean(this.opponentRoom || this.finishingRoom);
+        // Versus play (versus-evaluation.js): the weights it builds and fires by, and what its
+        // match says right now (attackOutlook). Without them the search plays as it always has.
+        this.versusWeights = options.versusWeights ?? null;
+        this.versusOutlook = options.versusOutlook;
         this.judgment = options.judgment;
         const i = this.config.tier - 1;
         this.sharedSearch = i === 9 ? options.sharedSearch : null;
@@ -286,7 +308,10 @@ export class GravityBotController extends PuzzleBotController {
     }
 
     chooseGravityMove(preferred, alternatives) {
-        if (!this.config.mistakeChance || this.rng() >= this.config.mistakeChance) return preferred;
+        const state = this.playerState;
+        const hidden = this.versusWeights ? hiddenSurface(state.boardGrid || state.board) : 0;
+        const chance = Math.max(this.config.mistakeChance || 0, hidden * BLIND_SLIP[this.config.tier - 1]);
+        if (!chance || this.rng() >= chance) return preferred;
         const nearby = alternatives.filter((move) => Math.abs(move.x - preferred.x) <= 1
             && (move.x !== preferred.x || move.rotation !== preferred.rotation)).slice(0, 4);
         return nearby.length ? nearby[Math.floor(this.rng() * nearby.length)] : preferred;
@@ -345,7 +370,8 @@ export class GravityBotController extends PuzzleBotController {
         const tactics = { pending, danger: root.top - root.first - pending < 6 };
         const pressing = this.judgment?.pressAtRows !== undefined && this.opponentRoom?.() <= this.judgment.pressAtRows;
         const supportPlanning = tier >= 8;
-        const room = supportPlanning ? this.finishingRoom?.() : undefined;
+        const versusPlay = this.versusWeights ? { weights: this.versusWeights, ...this.versusOutlook?.() } : null;
+        const room = supportPlanning && !versusPlay ? this.finishingRoom?.() : undefined;
         const finishRows = room < this.searchConfig.safetyMargin ? Math.max(1, room + 1) : Infinity;
         const first = this.proof[0];
         const visible = [state.currentPiece.shapeKey, ...this.nextShapeKeys(state)];
@@ -378,7 +404,7 @@ export class GravityBotController extends PuzzleBotController {
         const allowance = Math.max(1, Math.floor(Math.min(ideal, this.retryAllowance ?? Infinity)));
         // Shorter previews need two extra rows to clear the centre before a spawn is blocked.
         const retreatRows = this.searchConfig.previews < 3 ? 10 : 8;
-        const protectSpawn = tier >= 8 && workRate >= 0.35 && !root.garbage
+        const protectSpawn = !versusPlay && tier >= 8 && workRate >= 0.35 && !root.garbage
             && root.top - root.first <= retreatRows;
         tactics.protectSpawn = protectSpawn;
         const config = {
@@ -388,6 +414,7 @@ export class GravityBotController extends PuzzleBotController {
             }),
             protectSpawn,
             supportPlanning,
+            versusPlay,
             versus: this.versus,
             finishRows,
             virtual: this.searchConfig.virtual && !protectSpawn,

@@ -213,6 +213,8 @@ describe('live gravity policy', () => {
             sharedPieceSeed: 1006,
             playerPaused: [],
             getGarbageQueue: () => ({ getTotalLines: () => pending }),
+            attackOutlook: (index) => ({ route: 'attack', targets: [1 - index] }),
+            sendsRows: () => true,
         };
         const manager = new LocalBotManager({ multiplayerState: match, actionFactory: () => ({}) });
         manager.configure([0, 1].map(() => ({ kind: 'bot', difficulty: 10 })));

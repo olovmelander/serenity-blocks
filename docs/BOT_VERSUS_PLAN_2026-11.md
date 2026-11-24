@@ -51,7 +51,7 @@ Say yes, no, or another choice. My recommendation is marked.
 
 **3. Equal planning in rooms of three and four?** *Yes.* It costs tier 10 about 17 pieces a minute there (170 to 153) and it stays above 150.
 
-**4. Rows of one attack hold together, as in the game you want to match?** *Yes, before the bots are fitted.* It is measured from the recordings, not from source: with each row a body of its own the rebuild has 437 impossible placements, with one body per attack none. It makes digging harder for everybody and cuts the extra lines that a rise gives. It is a rules change for people too, so it is yours. Estimate: a day with tests, plus online (both sides must agree).
+**4. Rows of one attack hold together, as in the game you want to match?** *Yes, before the bots are fitted.* **Approved and done 24 November.** It is measured from the recordings, not from source. Correction: I first wrote that separate rows give 437 impossible placements and that the change makes digging harder. Those were mostly knock-on errors of one wrong board. Counted afresh after each difference, separate rows give another board in 18 of 20,003 placements, so the change is right and rare.
 
 **5. The numbers that came from the source reading** (ADR-0024 says they are due to be replaced):
 - Attack sizes, the crowd cut, settle credit and frag credit are confirmed by the recordings. *Keep.* The crowd cut can be written simply: each player alive above four takes one row off. Rows sent, frags and play stay the same; only online rooms with more than four are touched.
@@ -70,12 +70,15 @@ Say yes, no, or another choice. My recommendation is marked.
 
 **11. The two open checks.** The five-person playtest: these bots change enough that the playtest should wait for this work and be done on it; before that it would judge the wrong bots. The whole-display stalls: planning grows by about two times in a duel and four times in a four-bot room, still under 1.5 ms at the 99% on this machine. It does not close the stalls, and it must be re-measured on a slow machine before we call it done.
 
+**12. Halves of a cut body that touch again** (new, measured while doing 4). In the recordings they stay two bodies; in ours they join at the next clear. It changes one board in 625 placements. *Leave it*: the same gravity code serves solo, Odyssey and the puzzles, and their levels were tuned on it.
+
+**Answers, 24 November 2026.** Yes to 1 (as part of 2), 2 (B, the shelf: "keep the 151-171 pieces speed but should have Stephen's way of playing"), 4, 6, 9 and 10. Not answered: 3, 5, 7, 8, 11 and 12. Their recommendations are kept (5, 7, 11, 12 change nothing; 3 and 8 are part of the bots' work and reported when done).
+
 ## What would make me stop and ask
 
 - A change costs tier 10's 150 pieces a minute, or the shelf share you choose in decision 2.
 - The campaign gates or the rival outcomes move in any way.
 - The ladder cannot be made even without changing speeds.
-- Rows holding together (decision 4) makes free-for-all rooms endless.
 
 ## Not in this plan
 

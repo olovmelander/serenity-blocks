@@ -49,6 +49,7 @@ for (let seed = Number(first); seed < Number(first) + Number(count); seed++) {
         if (change?.weights) bot.weights = { ...bot.weights, ...change.weights };
         if (change?.search) Object.assign(bot.searchConfig, change.search);
         if (change?.units) bot.planUnitsPerMs *= change.units;
+        if (change && 'versusWeights' in change) bot.versusWeights = change.versusWeights;
         const perform = bot.scheduler.perform.bind(bot.scheduler);
         bot.scheduler.perform = (action) => {
             const done = perform(action);

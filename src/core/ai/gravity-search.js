@@ -4,6 +4,9 @@ import { calculateLineClearScore } from '../scoring.js';
 import { settleLabelledBoard } from '../stillfall/stillfall-cascade.js';
 import { reachableLandings, visitReachableLandings } from '../stillfall/stillfall-reach.js';
 import { computeProjectedAttack } from './cascade-simulator.js';
+import {
+    versusCalm, versusReward, versusTrigger, versusValue,
+} from './versus-evaluation.js';
 
 // Joint fit on 77201–77208; both score and attack selected this vector on
 // 78401–78412. All values are for this game's cascade and reward rules.
@@ -399,7 +402,7 @@ function triggerAlignments(missing) {
     return result;
 }
 
-function* triggerSteps(board, known, weights, allowUnknown, probe, sliced, observe, node) {
+function* triggerSteps(board, known, weights, allowUnknown, probe, sliced, observe, node, play = null) {
     let best = 0;
     const high = board.top <= board.first + 3;
     const reachable = new Map();
@@ -433,7 +436,7 @@ function* triggerSteps(board, known, weights, allowUnknown, probe, sliced, obser
             const maximum = maxLines ** 2 * Math.max(0, weights.triggerWaves)
                 + maxLines * Math.max(0, weights.triggerLines);
             const nextPreview = observe && key === known[0] && maxLines > 1;
-            if (!nextPreview && discount > 0 && best >= discount * maximum) continue;
+            if (!play && !nextPreview && discount > 0 && best >= discount * maximum) continue;
             if (nextPreview) {
                 // One landing can fill several rows. Inspect it once, even when
                 // a later preview already owns the positional upper bound.
@@ -443,13 +446,14 @@ function* triggerSteps(board, known, weights, allowUnknown, probe, sliced, obser
                 previewShots.add(position);
             }
             if (maxLines === 1) {
-                best = Math.max(best, discount * (weights.triggerWaves + weights.triggerLines));
+                if (!play) best = Math.max(best, discount * (weights.triggerWaves + weights.triggerLines));
                 continue;
             }
             stamp(board, form, x, py, board.cells.length + 1, probe);
             const waves = settleLabelledBoard(probe, board.first, Math.max(0, Math.min(board.top, py + form.top)));
             const lines = waves.reduce((sum, n) => sum + n, 0);
-            best = Math.max(best, discount * (waves.length ** 2 * weights.triggerWaves + lines * weights.triggerLines));
+            best = Math.max(best, discount * (play ? versusTrigger(play, lines)
+                : waves.length ** 2 * weights.triggerWaves + lines * weights.triggerLines));
             if (observe && key === known[0] && waves.length >= 2) observe(node, key, form, x, py, waves, lines);
         }
     }
@@ -537,6 +541,10 @@ export function* searchGravity(state, config, pending, weights = GRAVITY_WEIGHTS
     const fireFloor = danger ? 1 : safeFloor;
     const sustained = state.lines >= 8;
     const scoreMode = config.supportPlanning && !config.versus;
+    // Versus play (versus-evaluation.js): the whole plan is chosen by rows sent and by what the
+    // board has put by. The rules below for digging, firing and finishing are not consulted.
+    const play = config.versusPlay || null;
+    const calm = play ? versusCalm(start, pending, play) : 0;
     const payout = (move) => (config.versus ? move.attack : move.score);
     const qualifiesRelease = (waves, lines, perfect) => waves.length >= 2
         && ((studyRelease && lines - waves[0] >= 2) || perfect);
@@ -561,7 +569,7 @@ export function* searchGravity(state, config, pending, weights = GRAVITY_WEIGHTS
         if (eligible && (!release || payout(paid) > payout(release.move))) release = shot;
     };
     const result = (best) => {
-        if (overflowPossible || finish) {
+        if (!play && (overflowPossible || finish)) {
             const choice = finish && (!overflowPossible || finish.roomAfter >= pending) ? finish : recovery;
             return {
                 route: route(choice), start, danger, pending, alternatives,
@@ -571,6 +579,11 @@ export function* searchGravity(state, config, pending, weights = GRAVITY_WEIGHTS
             return {
                 route: route(best), start, danger, pending, alternatives,
             };
+        }
+        if (play) {
+            return best?.move ? {
+                route: route(best), start, danger, pending, alternatives,
+            } : null;
         }
         const ordinaryAttack = config.minAttack ?? (pending || state.lines >= 4 ? 2 : 3);
         const minAttack = sustained ? config.sustainedAttack ?? ordinaryAttack : ordinaryAttack;
@@ -623,8 +636,9 @@ export function* searchGravity(state, config, pending, weights = GRAVITY_WEIGHTS
                     comboCount,
                     comboMultiplier: 1 + comboCount * 0.5,
                 } : quietContext;
-                const reward = parent.reward + paid.score * weights.score + (scoreMode ? 0 : paid.attack * weights.attack)
-                    + waves.length ** 2 * weights.waves;
+                const reward = parent.reward + (play ? versusReward(play, paid.lines, waves.length > 0 && !board.stock, calm)
+                    : paid.score * weights.score + (scoreMode ? 0 : paid.attack * weights.attack)
+                    + waves.length ** 2 * weights.waves);
                 const move = {
                     shapeKey: key, x, y, rotation: form.rotation, actions: landing.actions, waves, ...paid,
                 };
@@ -643,7 +657,8 @@ export function* searchGravity(state, config, pending, weights = GRAVITY_WEIGHTS
                     quality = Math.min(8, room) * weights.virtualWaves - board.holes * weights.holes
                         - (board.height - board.top) * weights.danger + reward;
                 } else {
-                    quality = value(board, weights, pending, config.virtual, scratch.probe, studyRelease) + reward;
+                    quality = (play ? versusValue(board, play, pending, scratch.probe)
+                        : value(board, weights, pending, config.virtual, scratch.probe, studyRelease)) + reward;
                 }
                 const node = {
                     parent,
@@ -688,7 +703,7 @@ export function* searchGravity(state, config, pending, weights = GRAVITY_WEIGHTS
             } else if (fire || dig || attackFire) {
                 checkpoint?.(result(beam[0]));
             }
-            if (!ply && (overflowPossible || finish)) return result(siblings[0]);
+            if (!play && !ply && (overflowPossible || finish)) return result(siblings[0]);
             next.push(...siblings.slice(0, Math.max(6, Math.ceil(config.width / 2))));
         }
         if (!next.length) break;
@@ -707,8 +722,8 @@ export function* searchGravity(state, config, pending, weights = GRAVITY_WEIGHTS
             if (config.trigger) {
                 // A probe for the *next* preview is also a playable continuation.
                 // Other shapes only contribute discounted positional value.
-                const witness = config.supportPlanning && !pending && known.length ? observePreview : null;
-                const trigger = triggerSteps(node.board, known, weights, true, scratch.probe, config.sliceRoofProbes, witness, node);
+                const witness = !play && config.supportPlanning && !pending && known.length ? observePreview : null;
+                const trigger = triggerSteps(node.board, known, weights, true, scratch.probe, config.sliceRoofProbes, witness, node, play);
                 node.quality += yield* trigger;
                 yield;
             }

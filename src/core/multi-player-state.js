@@ -716,6 +716,26 @@ export class MultiPlayerState {
     }
 
     /**
+     * Whom a player's attack would reach now, and how: 'attack' deals it; with the hot potato,
+     * 'count' adds it to the holding team's target and 'none' deals nothing.
+     * @param {number} playerIndex
+     * @returns {{ route: 'attack'|'count'|'none', targets: number[] }}
+     */
+    attackOutlook(playerIndex) {
+        const targets = this._getAttackTargets(playerIndex);
+        if (!this._isHotPotatoEnabled()) return { route: 'attack', targets };
+        const { route, holder } = potatoRoute(this.hotPotato, this.potatoTeamOf(playerIndex));
+        if (route !== 'holder') return { route, targets: [] };
+        return { route: 'attack', targets: targets.filter((i) => this.potatoTeamOf(i) === holder) };
+    }
+
+    /** Whether an attack in this match sends garbage rows (not blind attacks, not peace). */
+    sendsRows() {
+        const rules = this.matchConfig?.attackRules;
+        return !rules?.disableAttacks && (!rules?.forceAttackType || rules.forceAttackType === 'lines');
+    }
+
+    /**
      * Mark one player as dead. Legacy callers retain their one-callback-at-a-time behavior.
      */
     handlePlayerDeath(playerIndex) {

@@ -1,6 +1,8 @@
 import { HIDDEN_ROWS } from '../constants.js';
+import { VERSUS_WEIGHTS, rowsToBlockSpawn } from './versus-evaluation.js';
 import { GravityBotController, gravityPlanningRate } from './gravity-bot-controller.js';
 import { normalizeDifficultyTier } from './bot-difficulty.js';
+import { readMinAttackLines } from '../garbage.js';
 import { seededRandom } from '../../utils/helpers.js';
 
 // The original 4,480-match fit sets ordinary local styles. The faster expert's
@@ -103,11 +105,37 @@ export class LocalBotManager {
                 },
                 sharedSearch,
                 precomputeBetweenTicks: true,
-                planUnitsPerMs: gravityPlanningRate(botCount, judgmentTier),
+                planUnitsPerMs: gravityPlanningRate(botCount, judgmentTier, !playerState.isInfinityMode),
+                versusWeights: this.playsVersus(playerState, judgmentTier) ? VERSUS_WEIGHTS : null,
+                versusOutlook: () => this.versusOutlook(index),
                 rng: seededRandom((seed ^ Math.imul(index + 1, 0x85ebca6b)) >>> 0),
                 timingRng: seededRandom((seed ^ Math.imul(index + 1, 0xc2b2ae35)) >>> 0),
             }));
         }
+    }
+
+    /** Versus play: attacks are on, in the standard well (Last Standing and peaceful matches keep theirs). */
+    playsVersus(playerState, judgmentTier) {
+        return this.useLocalStyles && judgmentTier >= 8 && !playerState.isInfinityMode
+            && !this.multiplayerState.matchConfig?.attackRules?.disableAttacks;
+    }
+
+    /**
+     * What a versus seat's next clear is worth: the match's smallest attacking clear, whether an
+     * attack counts at all now (hot potato), and the fewest rows that would end some opponent.
+     * @param {number} index
+     */
+    versusOutlook(index) {
+        const match = this.multiplayerState;
+        const { route, targets } = match.attackOutlook(index);
+        const rows = match.sendsRows() ? targets.map((i) => (
+            rowsToBlockSpawn(match.players[i].boardGrid, match.getGarbageQueue(i).getTotalLines()))) : [];
+        return {
+            minAttackLines: readMinAttackLines(match.matchConfig?.minAttackLines),
+            worth: route === 'none' ? 0 : 1,
+            flat: route === 'count',
+            killRows: Math.min(Infinity, ...rows),
+        };
     }
 
     advanceFixedInput(index, context) {

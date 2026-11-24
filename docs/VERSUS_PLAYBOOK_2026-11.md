@@ -17,7 +17,7 @@ The writer read player pages, player-facing texts, our own code and the decoded 
 - He passes up small clears (41% of two-row clears against 30%), takes fewer single lines (12% against 17%), and stands lower (11.5 against 12.3) at the same speed. [measured]
 - High after a rise he fires in three pieces; low he waits six and gets larger fires than his rivals (30% of 5+ against 11%). Most of his deaths are with a loaded shaft under a blocked centre. [measured, inferred]
 - Big fires seldom kill strong players. They are dug and sent back. [measured]
-- Our rows of one attack do not hold together as theirs do, our hidden rows stop at 24, and our pieces fall much slower by default. [measured in our code]
+- Our hidden rows stop at 24, and our pieces fall much slower by default. [measured in our code]
 
 ## 1. The evidence
 
@@ -378,7 +378,8 @@ The second column is [seen] or [measured] in sections 4, 5 and 9 unless marked o
 | Point | Recordings and pages | Ours (file) | Does the tactic carry? |
 | --- | --- | --- | --- |
 | Falling groups | Cells cleared split a piece; parts fall on their own | Same (`findConnectedComponents`, by piece id) | Yes |
-| Rows of one attack | One solid mass that stays together; rows of separate attacks do not [measured in the rebuild: with every row a body of its own, 437 placements are impossible; with all rows that enter together as one body, 78; with one body per attack, none. The drawings cannot show it: none of their 10,434 garbage segments hangs unsupported] | Each row is its own body (`insertGarbageEntries` gives every row its own id; nothing acts on the connectAbove and connectBelow flags). Its left and right parts stay joined until the next clear anywhere, then `findConnectedComponents` splits them | Chains are longer and different in ours. I ran two rows of one attack with holes in columns 9 over 10: nothing on arrival, but after one clear elsewhere the lone cell fell and cleared the lower row as a second wave. Forecast with our resolver only |
+| Rows of one attack | One solid mass that stays together; rows of separate attacks do not [measured in the rebuild: with every row a body of its own, 18 of 20,003 placements leave another board than the recording; with one body per attack, none. The difference is rare, and the drawings cannot show it: none of their 10,434 garbage segments hangs unsupported] | When this was written each row was its own body. Since 24 November the rows of one attack hold together in versus (`joinAttackRows`), and the game's own insertion gives 2,138 of 2,138 recorded rises | Yes |
+| Parts of a cut body that touch again | Stay two bodies [measured: otherwise 32 of 20,003 placements leave another board] | Join again at the next clear, as they keep the piece's id | Rare: once per 625 placements. Forecast with our resolver |
 | When rows enter | After the piece has locked and its chain has finished; several attacks can enter together [inferred: 183k, 70 s, eight rows at once when no rival attack in the seconds before was over 4] | All waiting rows at the next spawn (`main.js`, `spawnPiece`) | Yes |
 | Waiting limit | Not seen | 20 rows (`VERSUS_MAX_PENDING_LINES`) | Test the cap |
 | Rows sent | Lines minus one, waves do not matter; single lines send nothing (850 of 916 in the duels; the rest show rows booked late); rows completed by a settle are credited [measured] | Same, two lines smallest by default, settle clears credited | Yes |
