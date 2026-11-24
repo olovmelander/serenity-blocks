@@ -2,11 +2,9 @@
 // gravity, attack router, spawn-boundary insertion and fixed virtual animation clock.
 import { appendFileSync, writeFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
-import { MultiPlayerState } from '../../src/core/multi-player-state.js';
 import { LocalBotManager } from '../../src/core/ai/local-bot-manager.js';
 import { PuzzleBotController } from '../../src/core/ai/puzzle-bot-controller.js';
-import { applyGarbage, fillBag, processAutoDrop } from '../../src/core/game.js';
-import { bindLegacySessionRng } from '../../src/core/session-rng.js';
+import { processAutoDrop } from '../../src/core/game.js';
 import { applyFixedLineImpactHitStop, applyFixedPerfectClearHitStop } from '../../src/core/fixed-hit-stop-policy.js';
 import { retireFixedCascade } from '../../src/core/physics.js';
 import { createLocalMultiplayerFixedTickRuntime, startLocalMultiplayerFixedTickRuntime,
@@ -15,12 +13,15 @@ import { applyLocalMultiplayerFixedCommand } from '../../src/core/game-modes/loc
 import { seededRandom } from '../../src/utils/helpers.js';
 import { createVirtualClock } from '../../scripts/odyssey-benchmark/virtual-clock.mjs';
 import { controls, spawn } from './solo.mjs';
+import { dealVersus, notePlaced, takeGarbage, versusMatch, versusRules } from '../gravity-bot-rebuild/shipped-versus.mjs';
 
 export async function duel(low, seed, swap, seconds = 150, options = {}) {
     if (!Number.isInteger(low) || low < 1 || low > 9) throw new RangeError('Expected the lower tier 1 through 9');
     const clock = createVirtualClock().install();
     const tiers = options.tiers ?? (swap ? [low + 1, low] : [low, low + 1]);
-    const mp = new MultiPlayerState(tiers.length);
+    const rules = versusRules(options.rules);
+    // One round to its first top-out: the survivor game type, whichever rules are played.
+    const mp = versusMatch(tiers.length, { rules, matchConfig: { gameType: 'survivor' } });
     if (options.live) mp.sharedPieceSeed = seed;
     const frame = 1000 / 60;
     // For a pressure decision, count the queue when the planner runs.
@@ -34,15 +35,14 @@ export async function duel(low, seed, swap, seconds = 150, options = {}) {
             let beforeLock;
             state.disableLevelProgression = true;
             state.useFixedCascade = Boolean(options.fixed);
-            bindLegacySessionRng(state, seed);
-            fillBag(state.nextPieces, state.randomGenerator);
+            dealVersus(state, seed);
             spawn(state);
-            return {
+            const own = {
                 onHardDrop: () => { state.hitStopRemaining = Math.max(state.hitStopRemaining || 0, 30); },
                 // The normal-motion local presentation applies the same 70 ms on a four-row wave.
                 onLineClearImpact: lines => applyFixedLineImpactHitStop(state, lines),
                 onPerfectClear: options.fixed ? () => applyFixedPerfectClearHitStop(state) : undefined,
-                onPieceLock: () => { stats[i].locks++; beforeLock = garbageCells(state); },
+                onPieceLock: () => { stats[i].locks++; beforeLock = garbageCells(state); notePlaced(mp, i, rules); },
                 onGarbageReady: (summary) => mp.handleGarbageSummary(i, summary),
                 spawnPiece: () => {
                     const after = garbageCells(state);
@@ -50,18 +50,14 @@ export async function duel(low, seed, swap, seconds = 150, options = {}) {
                         stats[i].dugLocks++;
                         stats[i].dugCells += beforeLock - after;
                     }
-                    const queue = mp.getGarbageQueue(i);
-                    const entries = [];
-                    for (let burst = queue.dequeueLineBurst(); burst.length; burst = queue.dequeueLineBurst()) entries.push(...burst);
-                    if (entries.length) {
-                        stats[i].incoming += entries.length;
-                        const result = applyGarbage(state, entries);
-                        if (result.topOut) { state.isGameOver = true; return; }
-                        stats[i].applied += entries.length;
-                    }
+                    const taken = takeGarbage(state, mp.getGarbageQueue(i), { rules, onGarbageReady: own.onGarbageReady });
+                    stats[i].incoming += taken.rows;
+                    if (taken.topOut) { state.isGameOver = true; return; }
+                    stats[i].applied += taken.rows;
                     spawn(state);
                 },
             };
+            return own;
         });
         mp.onAttack = (from, _to, lines) => { stats[from].sent += lines; };
         const oldRng = seededRandom((seed ^ 0x85ebca6b) >>> 0);

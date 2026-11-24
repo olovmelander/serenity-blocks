@@ -2,9 +2,10 @@
 import { pathToFileURL } from 'node:url';
 import { resolve } from 'node:path';
 import { findConnectedComponents } from '../../src/core/cascade-helpers.js';
-import { applyGarbage, restoreBoardState } from '../../src/core/game.js';
-import { calculateGarbage } from '../../src/core/garbage.js';
+import { restoreBoardState } from '../../src/core/game.js';
+import { GarbageQueue, calculateGarbage } from '../../src/core/garbage.js';
 import { deal, replay, spawn } from '../bot-ai-audit-2026-11/solo.mjs';
+import { prepareVersusBoard, rowsEndPlayer, takeGarbage, versusRules } from './shipped-versus.mjs';
 import { GravityBotController } from '../../src/core/ai/gravity-bot-controller.js';
 
 export const receivingFloor = ['....KKKK..', '.BCDEFGHIJ', '.BCDEFGHIJ'];
@@ -35,8 +36,8 @@ export const examples = {
     triggerUnderPressure: { ...nearRelease, locks: 1, pending: 17 },
 };
 
-export function position(rows, pieces, mirror = false) {
-    const state = deal(7481);
+export function position(rows, pieces, mirror = false, rules = versusRules()) {
+    const state = deal(7481, (board) => prepareVersusBoard(board, rules));
     rows.forEach((source, i) => {
         const row = [...source];
         if (mirror) row.reverse();
@@ -67,12 +68,12 @@ function describeMove({
 
 export async function playPosition({
     rows, pieces, locks, pending = 0, holeMask = 1, mirror, ceilingOpponent,
-    Controller = GravityBotController, options = {},
+    Controller = GravityBotController, options = {}, rules = versusRules(),
 }) {
-    const state = position(rows, pieces, mirror);
+    const state = position(rows, pieces, mirror, rules);
     const incoming = Array.from({ length: pending }, () => ({ type: 'line', holeMask }));
     // Five vertical straight pieces against the wall leave no room for the next rise.
-    const opponent = ceilingOpponent && position([...'ABCDE'].flatMap((id) => Array(4).fill(`${id}.........`)), queue);
+    const opponent = ceilingOpponent && position([...'ABCDE'].flatMap((id) => Array(4).fill(`${id}.........`)), queue, false, rules);
     const bot = new Controller({
         playerState: state,
         difficulty: 10,
@@ -114,14 +115,16 @@ export async function playPosition({
                     if (opponent) outgoing.push(...attack.expandEntries());
                 },
                 spawnPiece: () => {
-                    if (incoming.length && applyGarbage(state, incoming.splice(0)).topOut) {
+                    const waiting = new GarbageQueue();
+                    waiting.enqueue(incoming.splice(0));
+                    if (takeGarbage(state, waiting, { rules }).topOut) {
                         state.isGameOver = true;
                         return;
                     }
                     spawn(state);
                 },
             });
-            if (opponent) step.receiverTopOut = outgoing.length > 0 && applyGarbage(opponent, outgoing).topOut;
+            if (opponent) step.receiverTopOut = rowsEndPlayer(opponent, outgoing, rules);
             steps.push({
                 ...step, score: state.score - before, board: boardRows(state), lost: Boolean(state.isGameOver),
             });
