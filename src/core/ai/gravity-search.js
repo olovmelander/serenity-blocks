@@ -344,8 +344,18 @@ function futurePiece(board, key) {
     };
 }
 
-function futureLandings(board, key) {
-    if (board.top > board.first + 3) return skylineLandings(board, key);
+/**
+ * Whether pieces may have to steer near the top. Versus play stands towers on an edge column,
+ * which nothing steers past, so only the columns between the edges count there.
+ */
+export function nearRoof(board, versus) {
+    if (!versus) return board.top <= board.first + 3;
+    for (let x = 1; x < COLS - 1; x++) if (board.tops[x] <= board.first + 3) return true;
+    return false;
+}
+
+function futureLandings(board, key, versus) {
+    if (!nearRoof(board, versus)) return skylineLandings(board, key);
     return actualLandings(movementGrid(board), futurePiece(board, key));
 }
 
@@ -404,7 +414,7 @@ function triggerAlignments(missing) {
 
 function* triggerSteps(board, known, weights, allowUnknown, probe, sliced, observe, node, play = null) {
     let best = 0;
-    const high = board.top <= board.first + 3;
+    const high = nearRoof(board, Boolean(play));
     const reachable = new Map();
     let previewShots;
     for (let y = Math.max(board.top, board.first); y < board.height; y++) {
@@ -604,7 +614,7 @@ export function* searchGravity(state, config, pending, weights = GRAVITY_WEIGHTS
         const next = [];
         const key = keys[ply];
         for (const parent of beam) {
-            const landings = ply ? futureLandings(parent.board, key) : actualLandings(grid, state.currentPiece);
+            const landings = ply ? futureLandings(parent.board, key, Boolean(play)) : actualLandings(grid, state.currentPiece);
             yield;
             const siblings = [];
             // All non-clearing siblings have identical reward and reset the combo.

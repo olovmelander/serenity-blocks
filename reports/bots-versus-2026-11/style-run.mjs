@@ -22,7 +22,7 @@ export async function styleRun(seed, {
     const queue = new GarbageQueue({ maxLines: 20 });
     let state = deal(seed, (s) => prepareVersusBoard(s, 'shipped'));
     const make = () => {
-        const bot = new GravityBotController({ playerState: state, playerIndex: 0, difficulty: tier, actions: {}, rng: () => 0.5, versus: true, versusWeights, pendingRows: () => queue.getTotalLines() });
+        const bot = new GravityBotController({ playerState: state, playerIndex: 0, difficulty: tier, actions: {}, rng: seededRandom((seed ^ 0x85ebca6b) >>> 0), versus: true, versusWeights, pendingRows: () => queue.getTotalLines() });
         if (search) Object.assign(bot.searchConfig, search);
         bot.planUnitsPerMs *= units;
         return bot;

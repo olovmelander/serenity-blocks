@@ -4,7 +4,7 @@ import { evaluateCandidate } from './board-evaluator.js';
 import { COLS } from '../constants.js';
 import { isCellBlind } from '../blind.js';
 import {
-    gravityBoardKey, gravityLandings, gravityReward, GRAVITY_WEIGHTS, readGravityBoard, searchGravity,
+    gravityBoardKey, gravityLandings, gravityReward, GRAVITY_WEIGHTS, nearRoof, readGravityBoard, searchGravity,
 } from './gravity-search.js';
 
 const PREVIEWS = [0, 1, 1, 1, 1, 2, 2, 2, 3, 3];
@@ -62,11 +62,12 @@ function actionsTo(state, target) {
         .find((p) => p.x === target.x && p.y === target.y && p.rotation === target.rotation)?.actions;
 }
 
-function sliceRate(rate, board, tier, infinity) {
+function sliceRate(rate, board, tier, infinity, versus = false) {
     if (infinity) return Math.min(rate, 0.3);
-    const nearRoof = board.top - board.first <= 3;
-    if (tier === 3 && nearRoof && !board.garbage) return Math.min(rate, 1.05);
-    if ((tier >= 8 && nearRoof) || (tier <= 3 && (nearRoof || board.garbage))) return Math.min(rate, 0.35);
+    const high = nearRoof(board, versus);
+    if (versus) return high ? Math.min(rate, 0.35) : rate;
+    if (tier === 3 && high && !board.garbage) return Math.min(rate, 1.05);
+    if ((tier >= 8 && high) || (tier <= 3 && (high || board.garbage))) return Math.min(rate, 0.35);
     return rate;
 }
 
@@ -354,7 +355,8 @@ export class GravityBotController extends PuzzleBotController {
         const survivalMargin = SURVIVAL_MARGIN[tier - 1];
         const useSurvival = root && tier <= 7 && !root.garbage && root.top - root.first < survivalMargin;
         this.boundedRanking = state.isInfinityMode;
-        if (state.isInfinityMode || tier <= 3 || useSurvival) {
+        const versusPlay = this.versusWeights && root ? { weights: this.versusWeights, ...this.versusOutlook?.() } : null;
+        if (state.isInfinityMode || (!versusPlay && (tier <= 3 || useSurvival))) {
             // With zero or one preview the established survival judgement protects
             // novices from cavities they cannot plan their way out of.
             const plan = yield* super.planSteps();
@@ -370,7 +372,6 @@ export class GravityBotController extends PuzzleBotController {
         const tactics = { pending, danger: root.top - root.first - pending < 6 };
         const pressing = this.judgment?.pressAtRows !== undefined && this.opponentRoom?.() <= this.judgment.pressAtRows;
         const supportPlanning = tier >= 8;
-        const versusPlay = this.versusWeights ? { weights: this.versusWeights, ...this.versusOutlook?.() } : null;
         const room = supportPlanning && !versusPlay ? this.finishingRoom?.() : undefined;
         const finishRows = room < this.searchConfig.safetyMargin ? Math.max(1, room + 1) : Infinity;
         const first = this.proof[0];
@@ -399,7 +400,7 @@ export class GravityBotController extends PuzzleBotController {
         // rate. Keep the last completed ply if the next one cannot fit. A pressure
         // change forces a new observation and can invalidate a previously ready move.
         const workRate = this.planUnitsPerMs || gravityPlanningRate();
-        const rate = sliceRate(workRate, root, tier, false);
+        const rate = sliceRate(workRate, root, tier, false, Boolean(versusPlay));
         const ideal = this.config.reactionMs[0] * rate;
         const allowance = Math.max(1, Math.floor(Math.min(ideal, this.retryAllowance ?? Infinity)));
         // Shorter previews need two extra rows to clear the centre before a spawn is blocked.
@@ -419,7 +420,7 @@ export class GravityBotController extends PuzzleBotController {
             finishRows,
             virtual: this.searchConfig.virtual && !protectSpawn,
             trigger: this.searchConfig.trigger && !protectSpawn,
-            sliceRoofProbes: tier >= 8 && root.garbage > 0 && workRate >= 0.35,
+            sliceRoofProbes: tier >= 8 && (Boolean(versusPlay) || root.garbage > 0) && workRate >= 0.35,
             width: Math.min(
                 this.searchConfig.width,
                 Math.max(4, Math.round(allowance / 15)),
@@ -473,7 +474,7 @@ export class GravityBotController extends PuzzleBotController {
             this.planBoardKey = gravityBoardKey(board.cells);
             this.planGrid = state.boardGrid || state.board;
             this.planBoardVersion = state.boardVersion;
-            this.sliceRate = sliceRate(this.planUnitsPerMs, board, this.config.tier, state.isInfinityMode);
+            this.sliceRate = sliceRate(this.planUnitsPerMs, board, this.config.tier, state.isInfinityMode, Boolean(this.versusWeights));
             this.planStartPose = [state.currentPiece.x, state.currentPiece.y, state.currentPiece.rotation];
             this.planUnitCredit = 0;
             this.retryAllowance = this.replanInterrupted && this.planUnitsPerMs <= gravityPlanningRate(3)

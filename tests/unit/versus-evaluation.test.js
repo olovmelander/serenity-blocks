@@ -5,15 +5,15 @@
 import {
     describe, expect, it, vi,
 } from 'vitest';
-import { COLS, HIDDEN_ROWS, ROWS } from '../constants.js';
-import { GameState } from '../game.js';
-import { MultiPlayerState } from '../multi-player-state.js';
-import { GravityBotController, gravityPlanningRate } from './gravity-bot-controller.js';
-import { readGravityBoard } from './gravity-search.js';
-import { LocalBotManager } from './local-bot-manager.js';
+import { COLS, HIDDEN_ROWS, ROWS } from '../../src/core/constants.js';
+import { GameState } from '../../src/core/game.js';
+import { MultiPlayerState } from '../../src/core/multi-player-state.js';
+import { GravityBotController, gravityPlanningRate } from '../../src/core/ai/gravity-bot-controller.js';
+import { readGravityBoard } from '../../src/core/ai/gravity-search.js';
+import { LocalBotManager } from '../../src/core/ai/local-bot-manager.js';
 import {
     VERSUS_WEIGHTS, rowsToBlockSpawn, versusAttack, versusCalm, versusReward, versusTrigger, versusValue,
-} from './versus-evaluation.js';
+} from '../../src/core/ai/versus-evaluation.js';
 
 const HEIGHT = ROWS + HIDDEN_ROWS;
 const PLAY = { weights: VERSUS_WEIGHTS };
@@ -59,7 +59,7 @@ describe('rows a clear sends', () => {
 
     it('that end somebody earn the kill', () => {
         const kill = { ...PLAY, killRows: 3 };
-        expect(versusReward(kill, 4, false) - versusReward(PLAY, 4, false)).toBe(VERSUS_WEIGHTS.kill);
+        expect(versusReward(kill, 4, false) - versusReward(PLAY, 4, false)).toBeCloseTo(VERSUS_WEIGHTS.kill);
         expect(versusReward(kill, 3, false)).toBe(versusReward(PLAY, 3, false));
     });
 
@@ -133,8 +133,8 @@ describe('rows that keep a next piece from appearing', () => {
 });
 
 describe('where versus play applies', () => {
-    const manager = (match, options = {}) => {
-        const bots = new LocalBotManager({ multiplayerState: match, actionFactory: () => ({}), ...options });
+    const manager = (match) => {
+        const bots = new LocalBotManager({ multiplayerState: match, actionFactory: () => ({}) });
         bots.configure(match.players.map(() => ({ kind: 'bot', difficulty: 10 })), 1);
         return bots;
     };
@@ -179,7 +179,9 @@ describe('what the match tells a versus seat', () => {
         const { match, read } = outlook({ minAttackLines: 3 });
         match.players[1].boardGrid = grid(Array.from({ length: 12 }, () => '....A.....'));
         match.players[2].boardGrid = grid(Array.from({ length: 17 }, () => '....A.....'));
-        expect(read()).toMatchObject({ minAttackLines: 3, worth: 1, flat: false, killRows: 4 });
+        expect(read()).toMatchObject({
+            minAttackLines: 3, worth: 1, flat: false, killRows: 4,
+        });
         match.players[2].isAlive = false;
         expect(read().killRows).toBe(9);
     });

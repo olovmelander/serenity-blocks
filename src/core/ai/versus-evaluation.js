@@ -10,31 +10,31 @@ import { settleLabelledBoard } from '../stillfall/stillfall-cascade.js';
  */
 export const VERSUS_WEIGHTS = Object.freeze({
     vTests: 3,
-    vLines: 14,
-    vSquare: 1,
-    vGap: 4,
-    fill: 3,
-    ready: 2,
-    roof: 4,
-    lowRoof: 20,
-    roofGap: 3,
-    parked: 8,
-    tower: 1,
-    material: 0.5,
-    density: 0.1,
-    bump: 2,
-    holes: 12,
-    height: 2,
-    room: 5,
-    danger: 2.5,
-    attack: 20,
-    attackSquare: 4,
-    single: 4,
-    small: 12,
-    patience: 4,
-    calm: 14,
-    tLines: 8,
-    tSquare: 2,
+    vLines: 11.36,
+    vSquare: 13.97,
+    vGap: 21.66,
+    fill: 15.11,
+    ready: 50.97,
+    roof: 8.241,
+    lowRoof: 18.67,
+    roofGap: 0.3175,
+    parked: 0.7984,
+    tower: 24.38,
+    material: 0.2824,
+    density: 0.1582,
+    bump: 12.47,
+    holes: 82.53,
+    height: 4.952,
+    room: 3.775,
+    danger: 2.254,
+    attack: 40.25,
+    attackSquare: 28.42,
+    single: 4.996,
+    small: 2.541,
+    patience: 7.848,
+    calm: 5.113,
+    tLines: 40.36,
+    tSquare: 2.414,
     kill: 150,
 });
 
@@ -153,7 +153,7 @@ export function versusValue(board, play, pending, probe) {
         previous = x;
     }
     // Cells kept empty in the edge column are the shelf's, not holes.
-    const height = board.height;
+    const { height } = board;
     const edgeHoles = height - tops[edge] - board.counts[edge];
     const centre = spawnColumnsTop(board);
     const squeeze = Math.max(0, (height - centre) + pending - (height - board.first - w.room));
