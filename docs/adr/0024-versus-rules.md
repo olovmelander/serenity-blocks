@@ -43,6 +43,11 @@ What differed:
 - **Settle clears:** rows a garbage settle completes count as the player's own clear (lines,
   score, level, an attack; `creditSettleClears`). This replaces the 2026-11-18 no-credit
   decision for versus; Odyssey still awards nothing.
+- **Bodies:** the rows of one attack enter as one solid wherever their cells touch; rows of
+  different attacks, and an attack's clean and normal rows, do not join (`joinAttackRows`; owner,
+  2026-11-24; the standard well). Measured in recordings of people playing: with this rule the
+  game's own insertion reproduces all 2,138 recorded rises that fit its 24 rows, with separate
+  rows 2,129. Odyssey and Infinity keep one body per row.
 - **Waiting garbage:** at most 20 rows (`VERSUS_MAX_PENDING_LINES`); rows past that are dropped.
   Odyssey's bot duels keep their uncapped queue.
 - **Cancelling:** off by default online (`garbageCancellation: 'disabled'`); a host may still
@@ -87,8 +92,9 @@ What differed:
 
 ## Enforcement
 
-- `tests/unit/versus-rules.test.js` pins the death rule, the overflow, the settle credit, the
-  cap, the crowd stamps and the frag credit, locally and on the online host.
+- `tests/unit/versus-rules.test.js` pins the death rule, the overflow, the bodies of an attack's
+  rows, the settle credit, the cap, the crowd stamps and the frag credit, locally and on the
+  online host.
 - `tests/unit/local-attack-scaling.test.js` and `tests/unit/ffa-attack-scaling.test.js` pin the
   attack size rule.
 - `tests/unit/garbage-settle-clears.test.js` keeps the no-credit behaviour for callers that do

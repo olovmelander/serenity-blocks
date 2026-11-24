@@ -13,6 +13,8 @@
  *   living player), and every STAMPS_PER_LINE stamps take one line off a normal attack.
  *   A move that empties the board is never reduced, and boring rules turn the cut off.
  * - The frag goes to the player whose recent attacks on you weigh most (AttackCredit).
+ * - The rows of one attack hold together as one solid, rows of different attacks do not
+ *   (garbage.js, joinAttackRows; the standard well).
  * - Feel (applyVersusFeel): pieces are drawn one by one, not from a bag, and a resting piece
  *   locks at the next gravity step instead of after a lock delay.
  */
@@ -100,11 +102,13 @@ export const VERSUS_MAX_PENDING_LINES = 20;
 /**
  * How versus garbage goes in (applyGarbage options): it never tops a player out, and rows its
  * settle completes count as the player's own clear (applyGarbage returns that clear's attack
- * as settleSummary, for the caller to route like any other).
+ * as settleSummary, for the caller to route like any other). The rows of one attack hold
+ * together as one solid, rows of different attacks do not (the standard well).
  */
 export const VERSUS_GARBAGE_OPTIONS = Object.freeze({
     overflowPolicy: 'spill',
     creditSettleClears: true,
+    joinAttackRows: true,
 });
 export const CROWD_FREE_PLAYERS = 4;
 export const STAMPS_PER_LINE = STAMP_PER_HANDICAP;
