@@ -80,11 +80,9 @@ What differed:
 ## Consequences
 
 - A tall side stack is no longer fatal; players dig out of situations that used to end a round.
-- Bots were not updated with these rules (corrected 2026-11-24: an earlier version said they only
-  play more cautiously). They model the old death rule: they send rows to finish an opponent
-  whose tallest column reaches the top, which no longer ends anyone, and fire early at waiting
-  rows that no longer kill. Their weights were fitted on bag-of-seven pieces with a lock delay.
-  A bot re-fit is separate work.
+- The bots of the time were not updated with these rules: they modelled the old death rule and were
+  fitted on bag-of-seven pieces with a lock delay. Local versus bots were re-fitted on these rules
+  on 2026-11-24 (`src/core/ai/versus-evaluation.js`, docs/BOT_VERSUS_HANDOVER_2026-11.md).
 - The local "No attack scaling" switch was removed: a local match has at most four players, so
   attacks never shrink there.
 - The hidden buffer stays at four rows, so cells lifted more than four rows above the top are

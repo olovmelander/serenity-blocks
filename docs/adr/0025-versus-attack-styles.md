@@ -36,7 +36,9 @@ All of it is versus rules, local and online alike (`src/core/garbage.js`, `src/c
   cleared cell takes it away. Each board counts it down on its own blind clock, advanced with its
   simulation (fixed ticks and the variable-step loops alike). Only drawing skips a hidden cell;
   the falling piece and its landing shadow stay visible, and a cell that shows again fades in.
-  Bots read the board they collide with, hidden cells included.
+  Local versus bots plan on the board they collide with, but nobody remembers a hidden stack for
+  long: the more of its surface is hidden, the more often a piece lands a column or a turn off
+  (`BLIND_SLIP`, by tier; owner, 2026-11-24).
 - **Online:** blind entries reach the target through the garbage queue the peer already adopts;
   host and peer take them at the same spawn with the same function (`takeSpawnBlinds`). A board
   adopted from the host brings its hidden cells (binary format v8 carries them per cell, the
@@ -49,7 +51,9 @@ All of it is versus rules, local and online alike (`src/core/garbage.js`, `src/c
   attacks deal nothing. It passes on when the target is reached or the holding team has nobody
   alive; that team's waiting garbage is dropped and its hidden cells show. The online host owns
   it and tells peers the holder, target and rows sent (`GAME_POTATO_UPDATE`); locally it runs on
-  game time, so the fixed-tick local clock now plays it too.
+  game time, so the fixed-tick local clock now plays it too, and its turns are drawn from the
+  match seed so a match can be replayed. Bots know who holds it: nothing they send counts while
+  nobody does, a holder counts rows rather than size, the rest aim at the holder.
 
 ## Consequences
 
@@ -58,7 +62,7 @@ All of it is versus rules, local and online alike (`src/core/garbage.js`, `src/c
 - The timer-bomb fields (`potatoDurationMs`, `potatoPenaltyLines`), the countdown chip and the
   `GAME_POTATO_DETONATE` message are gone; the end-of-match table counts passes and rows sent
   while holding.
-- A blind attack no longer slows a bot down.
+- A blind attack no longer slows a bot down; it makes a local bot slip.
 
 ## Enforcement
 

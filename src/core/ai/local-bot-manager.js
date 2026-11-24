@@ -5,10 +5,10 @@ import { normalizeDifficultyTier } from './bot-difficulty.js';
 import { readMinAttackLines } from '../garbage.js';
 import { seededRandom } from '../../utils/helpers.js';
 
-// The original 4,480-match fit sets ordinary local styles. The faster expert's
-// upper neighbours are calibrated in side-swapped native frag series.
-const LOCAL_PRACTICE_CHANCE = [0.75, 0.6, 0.5, 0.3, 0.25, 0.25, 0, 0.32, 0.5];
-const LOCAL_ACTION_RATE = [108, 126, 140, 218, 285, 300, 372, 515, 760];
+// Fitted with versus play on the shipped rules: free-for-all to seven frags, both seat orders
+// (reports/bots-versus-2026-11/ladder.mjs), so that each tier beats the next by a similar margin.
+const LOCAL_PRACTICE_CHANCE = [0.75, 0.6, 0.5, 0.3, 0.25, 0.25, 0, 0.36, 0.66];
+const LOCAL_ACTION_RATE = [108, 126, 140, 218, 285, 312, 415, 515, 760];
 // Practiced seats can execute a known route quickly. Their nominal tier keeps
 // its own reading time above the 170 ms needed for expert search.
 const EXPERT_REACTION_MAX_MS = { 8: 230, 9: 200, 10: 200 };

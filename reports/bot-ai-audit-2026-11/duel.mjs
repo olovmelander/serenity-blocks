@@ -31,8 +31,6 @@ export async function duel(low, seed, swap, seconds = 150, options = {}) {
     const mp = versusMatch(tiers.length, { rules, matchConfig: { ...(fragTarget
         ? { gameType: 'ffa', endCondition: 'frags', endConditionValue: fragTarget } : { gameType: 'survivor' }), ...options.matchConfig } });
     if (options.live) mp.sharedPieceSeed = seed;
-    // The game draws the potato's turns unseeded; a measured match must repeat.
-    mp.potatoRandom = seededRandom((seed ^ 0x6d2b79f5) >>> 0);
     const frame = 1000 / 60;
     // For a pressure decision, count the queue when the planner runs.
     const stats = tiers.map(() => ({ locks: 0, plans: 0, queuedPlans: 0, queueSeen: 0, dangerQueued: 0,

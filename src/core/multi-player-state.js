@@ -23,6 +23,7 @@ import {
 import {
     countHolderRows, createHotPotatoState, isHotPotatoConfig, potatoRoute, stepHotPotato,
 } from './multiplayer/hot-potato.js';
+import { seededRandom } from '../utils/helpers.js';
 
 /**
  * Player color scheme for visual distinction
@@ -140,7 +141,8 @@ export class MultiPlayerState {
         // Hot potato (multiplayer/hot-potato.js). Disabled unless the match config plays it.
         this.hotPotato = createHotPotatoState(false);
         // Randomness for the potato's turn order (tests pin it).
-        this.potatoRandom = Math.random;
+        // The order is drawn from the match seed (updateHotPotato), so a match can be replayed.
+        this.potatoRandom = null;
         // Presentation listener: each potato event ({type: 'take'|'pass', team, ...}). Never
         // alters the sim.
         this.onPotatoEvent = null;
@@ -248,6 +250,8 @@ export class MultiPlayerState {
      */
     updateHotPotato(dtMs) {
         if (!this.hotPotato?.enabled || this.isGameOver) return null;
+        this.potatoRandom ??= Number.isFinite(this.sharedPieceSeed)
+            ? seededRandom((this.sharedPieceSeed ^ 0x6d2b79f5) >>> 0) : Math.random;
         const event = stepHotPotato(this.hotPotato, dtMs, this._potatoTeams(), this.potatoRandom);
         if (event?.type === 'pass') this._potatoPassed(event);
         if (event) this.onPotatoEvent?.(event);
@@ -501,6 +505,7 @@ export class MultiPlayerState {
         this.winner = null;
         this.lastTime = 0;
         this.sharedPieceSeed = 0;
+        this.potatoRandom = null;
         this.rngDescriptor = null;
         this.matchStartTime = Date.now();
         // Each round starts a fresh potato; its first holder is chosen two seconds into play.

@@ -647,3 +647,24 @@ describe('blind online: the host and the predicting peer hide the same cells', (
         expect(seen.boardGrid[23][0].blind).toBe(72);
     });
 });
+
+describe('the hot potato turns', () => {
+    const turns = (seed) => {
+        const match = new MultiPlayerState(4);
+        match.sharedPieceSeed = seed;
+        match.setMatchConfig({ ...match.matchConfig, hotPotato: true });
+        const holders = [];
+        for (let step = 0; step < 40; step++) {
+            const event = match.updateHotPotato(POTATO_HANDOFF_MS);
+            if (event?.type === 'take') holders.push(event.team);
+            if (match.hotPotato.holder !== null) countHolderRows(match.hotPotato, match.hotPotato.holder, 99);
+        }
+        return holders;
+    };
+
+    it('are drawn from the match seed, so a local match can be replayed', () => {
+        expect(turns(77).length).toBeGreaterThan(8);
+        expect(turns(77)).toEqual(turns(77));
+        expect(turns(77)).not.toEqual(turns(78));
+    });
+});
