@@ -11,7 +11,7 @@ const LOCAL_PRACTICE_CHANCE = [0.75, 0.6, 0.5, 0.3, 0.25, 0.25, 0, 0.36, 0.66];
 const LOCAL_ACTION_RATE = [108, 126, 140, 218, 285, 312, 415, 515, 760];
 // Practiced seats can execute a known route quickly. Their nominal tier keeps
 // its own reading time above the 170 ms needed for expert search.
-const EXPERT_REACTION_MAX_MS = { 8: 230, 9: 200, 10: 200 };
+const EXPERT_REACTION_MS = { 8: [170, 230], 9: [170, 200], 10: [158, 178] };
 
 function localPace(nominalTier, seed, index) {
     if (nominalTier === 10) return null;
@@ -65,7 +65,7 @@ export class LocalBotManager {
                 ? localPace(difficulty, seriesSeed ?? seed, index) : null;
             const judgmentTier = pace?.judgmentTier ?? difficulty;
             const expertPace = judgmentTier === 10 && !playerState.isInfinityMode
-                ? { reactionMs: [170, EXPERT_REACTION_MAX_MS[difficulty]], maxApm: 3750 } : undefined;
+                ? { reactionMs: EXPERT_REACTION_MS[difficulty], maxApm: 3750 } : undefined;
 
             const input = (name, action, value) => () => (this.tickInput
                 ? this.tickInput.emit({
