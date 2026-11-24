@@ -6,7 +6,16 @@
 ## Context
 
 Local and online versus had drifted into three different rule sets, and none matched the
-reference game the owner wants versus to play like (Quadra's multiplayer, judged by how it plays):
+reference game the owner wants versus to play like (Quadra's multiplayer).
+
+**Where these rules came from (corrected 2026-11-24).** An earlier version said they were judged
+by how that game plays. That was wrong. With the owner's permission the session that wrote them
+read the reference game's published source on 2026-11-22. The code here was written for this
+repo, but these numbers were taken from that reading: the frag credit weights and cap, the crowd
+stamps, the 20-row limit, and in ADR-0025 the hidden-cell times and the hot potato's targets.
+They are due to be replaced by values tuned in this project's own simulator.
+
+What differed:
 
 - Incoming garbage killed a player on arrival when it lifted any cell, in any column, above the
   visible rows. Online, the host also killed a player whose piece's bounding box touched the top
@@ -66,9 +75,11 @@ reference game the owner wants versus to play like (Quadra's multiplayer, judged
 ## Consequences
 
 - A tall side stack is no longer fatal; players dig out of situations that used to end a round.
-- Bots still weigh pending rows and stack height as before, so they play more cautiously than
-  the rule needs, and their weights were fitted on bag-of-seven pieces with a lock delay. A bot
-  re-fit is separate work.
+- Bots were not updated with these rules (corrected 2026-11-24: an earlier version said they only
+  play more cautiously). They model the old death rule: they send rows to finish an opponent
+  whose tallest column reaches the top, which no longer ends anyone, and fire early at waiting
+  rows that no longer kill. Their weights were fitted on bag-of-seven pieces with a lock delay.
+  A bot re-fit is separate work.
 - The local "No attack scaling" switch was removed: a local match has at most four players, so
   attacks never shrink there.
 - The hidden buffer stays at four rows, so cells lifted more than four rows above the top are

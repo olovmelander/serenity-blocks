@@ -14,6 +14,10 @@ files, functions or line numbers in code, comments, tests or docs. Describe a me
 plays and by this repo's own code. Libraries the game uses under their licences (three.js, Phaser,
 steamworks.js, …) are fine to read.
 
+**Exception (owner, 24 Nov 2026):** a session may read Quadra's recording format to decode demos,
+outside this repo. Its rules, tactics, timings and formulas stay off limits. Nothing is copied, and
+no source file is named in this repo.
+
 ## WebGPU / Three.js visual work: validate before "done" (required)
 
 This project's visual surfaces are WebGPU/TSL. When you create or change a **theme**
