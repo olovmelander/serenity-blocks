@@ -326,6 +326,19 @@ function actualLandings(grid, piece) {
     return result;
 }
 
+/**
+ * Where a versus seat may set its piece down now: nothing above the spawn rows, and nothing higher
+ * than the piece already is (kicks can climb a tower a row at a time, and a piece that keeps
+ * climbing never lands). dropHere leaves only where it would fall without another key.
+ */
+function steadyLandings(landings, piece, first, dropHere) {
+    const steady = landings.filter(({ form, y }) => y + form.top >= first - 2 && y >= Math.floor(piece.y) - 1);
+    const kept = dropHere
+        ? landings.filter(({ actions }) => !actions.some(({ type }) => type === 'move' || type === 'rotate'))
+        : steady;
+    return kept.length ? kept : landings;
+}
+
 function movementGrid(board) {
     board.movementGrid ??= Array.from({ length: board.height }, (_, y) => (
         Array.from(board.cells.subarray(y * COLS, (y + 1) * COLS), (id) => id || null)
@@ -614,7 +627,10 @@ export function* searchGravity(state, config, pending, weights = GRAVITY_WEIGHTS
         const next = [];
         const key = keys[ply];
         for (const parent of beam) {
-            const landings = ply ? futureLandings(parent.board, key, Boolean(play)) : actualLandings(grid, state.currentPiece);
+            let landings;
+            if (ply) landings = futureLandings(parent.board, key, Boolean(play));
+            else landings = actualLandings(grid, state.currentPiece);
+            if (!ply && play) landings = steadyLandings(landings, state.currentPiece, start.first, play.dropHere);
             yield;
             const siblings = [];
             // All non-clearing siblings have identical reward and reset the combo.

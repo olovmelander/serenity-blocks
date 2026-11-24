@@ -5,8 +5,10 @@
 import {
     describe, expect, it, vi,
 } from 'vitest';
-import { COLS, HIDDEN_ROWS, ROWS } from '../../src/core/constants.js';
-import { GameState } from '../../src/core/game.js';
+import {
+    COLS, HIDDEN_ROWS, ROWS, SHAPES,
+} from '../../src/core/constants.js';
+import { GameState, rotateShapeMatrix } from '../../src/core/game.js';
 import { MultiPlayerState } from '../../src/core/multi-player-state.js';
 import { GravityBotController, gravityPlanningRate } from '../../src/core/ai/gravity-bot-controller.js';
 import { readGravityBoard } from '../../src/core/ai/gravity-search.js';
@@ -202,6 +204,40 @@ describe('what the match tells a versus seat', () => {
         match.hotPotato.holder = match.potatoTeamOf(2);
         match.players[2].boardGrid = grid(Array.from({ length: 17 }, () => '....A.....'));
         expect(read()).toMatchObject({ worth: 1, flat: false, killRows: 4 });
+    });
+});
+
+describe('a tower at the side', () => {
+    // Seen live: a seat kept trying to kick its piece up onto this tower, and it never landed.
+    const board = () => [
+        '.........#', '.........#', '.........#', '##.......#', '###....#.#', '###....###', '####...###', '.#########',
+        '#.########', '#########.', '#########.', '#######...', '.#########', '.#########',
+    ].map((line) => line.replaceAll('#', 'A'));
+    const seat = (pieceY) => {
+        const state = new GameState();
+        let shape = SHAPES.J;
+        for (let i = 0; i < 2; i++) shape = rotateShapeMatrix(shape, 'right');
+        const rows = grid([...board(), ...Array.from({ length: 10 }, () => 'AAAAAAAAA.')]);
+        state.boardGrid.forEach((row, y) => row.forEach((_, x) => { row[x] = rows[y][x]; }));
+        state.currentPiece = { shapeKey: 'J', shape, rotation: 2, x: 6, y: pieceY };
+        state.nextPieces = ['T', 'O', 'I'];
+        return new GravityBotController({
+            playerState: state, playerIndex: 0, difficulty: 10, actions: {}, rng: () => 0.5, versus: true, versusWeights: VERSUS_WEIGHTS,
+        });
+    };
+
+    it('is never climbed: the piece lands no higher than it is, and never above the spawn rows', () => {
+        for (const y of [1, 2]) {
+            const { candidate } = seat(y).plan();
+            expect(candidate.y).toBeGreaterThanOrEqual(y - 1);
+        }
+    });
+
+    it('after three refused inputs on a piece, it goes down where it is', () => {
+        const bot = seat(1);
+        bot.refusals = { piece: bot.playerState.piecesPlaced, count: 3 };
+        const { actions } = bot.plan();
+        expect(actions.some(({ type }) => type === 'move' || type === 'rotate')).toBe(false);
     });
 });
 

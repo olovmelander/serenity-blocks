@@ -229,6 +229,7 @@ export class GravityBotController extends PuzzleBotController {
         if (options.timingRng) this.scheduler.variation = () => options.timingRng() * (0.03 + (9 - i) * 0.018);
         this.proof = [];
         this.queueAtPlan = null;
+        this.refusals = { piece: -1, count: 0 };
     }
 
     setSpawnTiming(now) {
@@ -327,6 +328,7 @@ export class GravityBotController extends PuzzleBotController {
         this.waitingToExecute = false;
         this.replanInterrupted = false;
         this.retryAllowance = null;
+        this.refusals = { piece: -1, count: 0 };
     }
 
     * planSteps(observed) {
@@ -355,7 +357,12 @@ export class GravityBotController extends PuzzleBotController {
         const survivalMargin = SURVIVAL_MARGIN[tier - 1];
         const useSurvival = root && tier <= 7 && !root.garbage && root.top - root.first < survivalMargin;
         this.boundedRanking = state.isInfinityMode;
-        const versusPlay = this.versusWeights && root ? { weights: this.versusWeights, ...this.versusOutlook?.() } : null;
+        const versusPlay = this.versusWeights && root ? {
+            weights: this.versusWeights,
+            ...this.versusOutlook?.(),
+            // Hands that keep being refused let the piece fall where it is.
+            dropHere: this.refusals.piece === state.piecesPlaced && this.refusals.count >= 3,
+        } : null;
         if (state.isInfinityMode || (!versusPlay && (tier <= 3 || useSurvival))) {
             // With zero or one preview the established survival judgement protects
             // novices from cavities they cannot plan their way out of.
@@ -448,6 +455,10 @@ export class GravityBotController extends PuzzleBotController {
 
     update(delta, time) {
         const pending = this.getPendingGarbage();
+        if (this.scheduler.rejected) {
+            const piece = this.playerState.piecesPlaced;
+            this.refusals = { piece, count: this.refusals.piece === piece ? this.refusals.count + 1 : 1 };
+        }
         if (this.scheduler.rejected || pending !== this.queueAtPlan) {
             this.replanInterrupted = this.queueAtPlan !== null && this.currentSpawnToken != null;
             const rising = this.config.tier >= 8 && !this.scheduler.rejected
