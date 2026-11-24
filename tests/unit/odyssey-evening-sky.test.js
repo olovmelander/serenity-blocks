@@ -29,20 +29,8 @@ import {
     updateOdysseyEvening,
 } from '../../src/rendering/odyssey/world/odyssey-evening.js';
 import {
-    CLOUD_SEA_LOBE_STRIDE,
-    CLOUD_SEA_SLOPE_RANGE,
-    ODYSSEY_CLOUD_SEA,
-    bakeCloudSeaField,
-    cloudSeaBakeCount,
-    cloudSeaCover,
-    createOdysseyCloudSea,
-    planCloudSeaLobes,
+    ODYSSEY_CLOUD_SEA, cloudSeaCover, createOdysseyCloudSea, seaFloorAt,
 } from '../../src/rendering/odyssey/world/odyssey-cloud-sea.js';
-import {
-    ODYSSEY_SUMMIT_CAP,
-    createOdysseySummitCap,
-    summitCapLife,
-} from '../../src/rendering/odyssey/world/odyssey-summit-cap.js';
 import {
     ODYSSEY_WALL_GUSTS,
     createOdysseyWallGusts,
@@ -50,7 +38,6 @@ import {
 } from '../../src/rendering/odyssey/world/odyssey-wall-gusts.js';
 import { ODYSSEY_WORLD_SUN } from '../../src/rendering/odyssey/chapter-environments/shared/chapter-profile.js';
 import { ODYSSEY_MASSIFS, odysseyWorldHeight } from '../../src/rendering/odyssey/world/odyssey-world-height.js';
-import { findHeroSummit } from '../../src/rendering/odyssey/composition/odyssey-summit-spindrift.js';
 import { getOdysseyPathPointAt } from '../../src/rendering/odyssey/path-utils.js';
 import { getLevelRegistry } from '../../src/core/odyssey/LevelRegistry.js';
 import { orbitEarthAt } from '../../src/rendering/odyssey/composition/odyssey-orbit-earth.js';
@@ -265,34 +252,11 @@ describe('the evening: the moon, against the real camera', () => {
 });
 
 describe('the sea of clouds', () => {
-    it('bakes one plate, the same bytes every time, that tiles', () => {
-        const a = bakeCloudSeaField(64);
-        const b = bakeCloudSeaField(64);
-        expect(a.data).toEqual(b.data);
-        expect(a.cover).toBeGreaterThan(0.9);
-        expect(planCloudSeaLobes().length / CLOUD_SEA_LOBE_STRIDE).toBeGreaterThan(400);
-        // Tiling: the height across the wrap is as smooth as it is anywhere else.
-        const res = 128;
-        const plate = bakeCloudSeaField(res);
-        const h = (i, j) => plate.data[((j * res) + i) * 4];
-        let inner = 0;
-        let seam = 0;
-        for (let j = 0; j < res; j += 1) {
-            inner = Math.max(inner, Math.abs(h(res / 2, j) - h((res / 2) - 1, j)));
-            seam = Math.max(seam, Math.abs(h(0, j) - h(res - 1, j)), Math.abs(h(j, 0) - h(j, res - 1)));
-        }
-        expect(seam).toBeLessThanOrEqual(inner + 40);
-        // A floor with relief: most of it mid-height, some of it standing tall, lanes left open.
-        let tall = 0;
-        let open = 0;
-        for (let k = 0; k < res * res; k += 1) {
-            if (plate.data[k * 4] > 150) tall += 1;
-            if (plate.data[k * 4] < 8) open += 1;
-        }
-        expect(tall / (res * res)).toBeGreaterThan(0.02);
-        expect(open / (res * res)).toBeGreaterThan(0.004);
-        expect(open / (res * res)).toBeLessThan(0.10);
-        expect(CLOUD_SEA_SLOPE_RANGE).toBeGreaterThan(4);
+    it('has its plate: a square of data, as large as the shader says', () => {
+        const png = readFileSync(new URL('../../src/rendering/odyssey/assets/clouds/sea.png', import.meta.url));
+        expect([png.readUInt32BE(16), png.readUInt32BE(20), png[24], png[25]]).toEqual([ODYSSEY_CLOUD_SEA.res, ODYSSEY_CLOUD_SEA.res, 8, 6]);
+        const bake = readFileSync(new URL('../../scripts/blender/odyssey/clouds/sea.py', import.meta.url), 'utf8');
+        expect(Number(bake.match(/^TILE = ([\d.]+)/m)[1])).toBe(ODYSSEY_CLOUD_SEA.tile);
     });
 
     it('is not there until the evening gathers it, and gathers from the horizon inward', () => {
@@ -332,188 +296,65 @@ describe('the sea of clouds', () => {
         expect(S.base + S.amp).toBeLessThan(getOdysseyPathPointAt(ORBS[6]).y + 30);
     });
 
+    it('asks for a wide cloud\'s nearest edge: none of the floor\'s reaches over the rail', () => {
+        const S = ODYSSEY_CLOUD_SEA;
+        const floorAt = (r, reach) => seaFloorAt(S.centre.x - (S.open[0] * r), S.centre.z - (S.open[1] * r), reach, 1);
+        expect(floorAt(1900, 0)).toBeGreaterThan(0.5);
+        expect(floorAt(1900, 1000)).toBeLessThan(0.001);
+    });
+
     it('builds within its triangle budget and compiles on both backends', () => {
         const kit = {
             cameraPosition,
             skyAirAt: (dir) => eveningAir(vec3(0.6, 0.7, 0.9), dir, uniform(new THREE.Color(1, 0.7, 0.5))),
             toCloudOutput: (c) => c,
-            sunColour: uniform(new THREE.Color(1, 0.7, 0.5)),
-            cloudWhite: eveningCloudWhite(vec3(0.97, 0.975, 0.99), uniform(new THREE.Color(1, 0.7, 0.5))),
+            light: {
+                prepare: (rd) => ({ up: rd.y }),
+                light: (k, s) => vec3(s.sun).add(s.sky.mul(k.up)).add(s.relief.mul(s.lit)).mul(s.body.add(s.h).add(s.dens).add(s.eaten)),
+            },
             aerialK: uniform(0.00025),
             cloudShadowLight: () => float(0.8),
+            load: false,
         };
         const high = createOdysseyCloudSea({ ...kit, quality: 'high' });
         const low = createOdysseyCloudSea({ ...kit, quality: 'low' });
-        // (the tops and the bed, on one ring)
-        expect(high.triangles).toBeLessThanOrEqual(120000);
-        expect(low.triangles).toBeLessThanOrEqual(44000);
-        // The bed is a blended sheet under the opaque tops, drawn with the sea.
-        expect(high.bed.material.transparent).toBe(true);
-        expect(high.bed.material.depthWrite).toBe(false);
-        expect(high.tops.material.transparent).toBe(false);
-        // After the sea (1) by order, not by a sort tie: at a tie the water drew over it from high up.
-        expect(high.bed.renderOrder).toBeGreaterThan(1);
-        expect(high.mesh.visible).toBe(false);
+        expect(high.triangles).toBeLessThanOrEqual(80000);
+        expect(low.triangles).toBeLessThanOrEqual(22000);
+        // One blended sheet that hides what lies behind its own tops: after the sea (1), before the clouds (2).
+        expect(high.mesh.material.transparent).toBe(true);
+        expect(high.mesh.material.depthWrite).toBe(true);
+        expect(high.mesh.renderOrder).toBeGreaterThan(1);
+        expect(high.mesh.renderOrder).toBeLessThan(2);
+        // Until its plate has landed, and until the evening gathers it, there is none.
         high.update(30, 0.6, true);
-        expect(high.mesh.visible).toBe(true);
-        high.update(30, 0.6, false);
         expect(high.mesh.visible).toBe(false);
-        high.update(30, 0, true);
-        expect(high.mesh.visible).toBe(false);
-        // The drift is wrapped to one tile however long the session.
+        // The drift stays small however long the session.
         high.update(1e6, 1, true);
-        expect(Math.abs(high.uniforms.uDrift.value.x)).toBeLessThan(1);
-        expect(Math.abs(high.uniforms.uDrift.value.y)).toBeLessThan(1);
+        expect(Math.abs(high.uniforms.uDrift.value.x)).toBeLessThan(100);
+        // Its far triangles come first (it is drawn far to near).
+        const ix = high.mesh.geometry.index.array;
+        const pos = high.mesh.geometry.getAttribute('position');
+        const far = (k) => Math.hypot(pos.getX(ix[k]) - ODYSSEY_CLOUD_SEA.centre.x, pos.getZ(ix[k]) - ODYSSEY_CLOUD_SEA.centre.z);
+        expect(far(0)).toBeGreaterThan(far(ix.length - 1) * 5);
         [high, low].forEach((sea) => {
-            [sea.tops, sea.bed].forEach((layer) => {
-                BACKENDS.forEach(([label, Builder]) => {
-                    const result = build(Builder, layer);
-                    expectClean(result, `${layer.name} ${label}`);
-                    if (label === 'WGSL') expect(unassignedReads(result.fragment)).toEqual([]);
-                });
+            BACKENDS.forEach(([label, Builder]) => {
+                const result = build(Builder, sea.mesh);
+                expectClean(result, `${sea.mesh.name} ${label}`);
+                if (label === 'WGSL') expect(unassignedReads(result.fragment)).toEqual([]);
             });
             sea.dispose();
         });
     });
 });
 
-describe('the sea of clouds: a second build costs what the first did', () => {
-    // 2026-11-17, measured by the lead: every world build AFTER the first took ~2.5 s longer.
-    // Cause: the plan made its lobes as `{ x, z, r, top }` objects, whose hidden class the
-    // world's own whole-number `{ x, z, .. }` data shares; fractions in it deprecated that class
-    // and de-optimised the world's bakes from the second build on (see planCloudSeaLobes).
-    it('plans its lobes as numbers in a typed array, never as objects', () => {
-        const rows = planCloudSeaLobes();
-        expect(rows).toBeInstanceOf(Float64Array);
-        expect(rows.length % CLOUD_SEA_LOBE_STRIDE).toBe(0);
-        expect(rows.every(Number.isFinite)).toBe(true);
-        // The same plan every time (the plate's bytes are pinned by it).
-        expect(planCloudSeaLobes()).toEqual(rows);
-        // ...and nothing in the sky pass's world modules builds an array of object literals at
-        // run time (the shape of the trap): rows go into typed arrays.
-        const modules = [
-            'odyssey-cloud-sea.js', 'odyssey-evening.js', 'odyssey-summit-cap.js', 'odyssey-wall-gusts.js',
-        ];
-        modules.forEach((file) => {
+describe('the sky\'s modules make no object rows at run time', () => {
+    // 2026-11-17: `{ x, z, r, top }` literals with fractions share a hidden class with the world's own
+    // whole-number `{ x, z, .. }` data and de-optimised its bakes from the second build on.
+    it('keeps its rows in typed arrays and classes', () => {
+        ['odyssey-cloud-sea.js', 'odyssey-evening.js', 'odyssey-wall-gusts.js', 'odyssey-cloud-composition.js'].forEach((file) => {
             const source = readFileSync(new URL(`../../src/rendering/odyssey/world/${file}`, import.meta.url), 'utf8');
             expect(source, file).not.toMatch(/\.push\(\s*\{/);
         });
-    });
-
-    it('bakes its plate once a session: a rebuild takes the same plate and does no bake', () => {
-        const first = bakeCloudSeaField(ODYSSEY_CLOUD_SEA.res);
-        const bakes = cloudSeaBakeCount();
-        expect(bakeCloudSeaField(ODYSSEY_CLOUD_SEA.res)).toBe(first);
-        expect(Object.isFrozen(first)).toBe(true);
-        const kit = {
-            cameraPosition,
-            skyAirAt: () => vec3(0.6, 0.7, 0.9),
-            toCloudOutput: (c) => c,
-            sunColour: uniform(new THREE.Color(1, 0.7, 0.5)),
-            cloudWhite: vec3(0.97, 0.975, 0.99),
-            aerialK: uniform(0.00025),
-        };
-        const a = createOdysseyCloudSea(kit);
-        const snapshot = Uint8Array.from(first.data);
-        a.dispose();
-        const b = createOdysseyCloudSea(kit);
-        // The second build: no new bake, the very same bytes (untouched by the first's dispose),
-        // and a ring of the same size.
-        expect(cloudSeaBakeCount()).toBe(bakes);
-        expect(a.plate.image.data).toBe(first.data);
-        expect(b.plate.image.data).toBe(first.data);
-        expect(first.data).toEqual(snapshot);
-        expect(b.triangles).toBe(a.triangles);
-        expect(b.tops.geometry.getAttribute('position').count).toBe(a.tops.geometry.getAttribute('position').count);
-        expect(b.plate).not.toBe(a.plate);
-        b.dispose();
-    });
-});
-
-describe('the summit\'s cap', () => {
-    const hero = ODYSSEY_MASSIFS.find((m) => m.id === 'hero');
-    const summit = findHeroSummit(odysseyWorldHeight, hero);
-
-    it('forms and thins on the clock: never the same stack for long, never empty for long', () => {
-        const C = ODYSSEY_SUMMIT_CAP;
-        let some = 0;
-        let all = 0;
-        let none = 0;
-        const N = 4000;
-        for (let i = 0; i < N; i += 1) {
-            const t = i * 1.7;
-            const lives = C.lenses.map((l) => summitCapLife(t, l));
-            lives.forEach((v) => {
-                expect(v).toBeGreaterThanOrEqual(0);
-                expect(v).toBeLessThanOrEqual(1);
-            });
-            if (lives.some((v) => v > 0.6)) some += 1;
-            if (lives.every((v) => v > 0.6)) all += 1;
-            if (lives.every((v) => v < 0.05)) none += 1;
-        }
-        expect(some / N).toBeGreaterThan(0.85);
-        expect(all / N).toBeGreaterThan(0.08);
-        expect(all / N).toBeLessThan(0.6);
-        expect(none / N).toBeLessThan(0.05);
-        // Continuous in time.
-        C.lenses.forEach((l) => {
-            for (let t = 0; t < 300; t += 0.25) {
-                expect(Math.abs(summitCapLife(t + 0.25, l) - summitCapLife(t, l))).toBeLessThan(0.03);
-            }
-        });
-    });
-
-    it('stands in the lee, clear of the rail', () => {
-        const C = ODYSSEY_SUMMIT_CAP;
-        const foot = {
-            x: summit.x + (C.wind[0] * C.lee),
-            y: summit.y + C.lift,
-            z: summit.z + (C.wind[1] * C.lee),
-        };
-        const gaps = [];
-        for (let p = 0.25; p <= 0.78; p += 0.002) {
-            const pt = getOdysseyPathPointAt(p);
-            C.lenses.forEach((l) => {
-                const cx = foot.x + (C.wind[0] * l.y * C.lean);
-                const cz = foot.z + (C.wind[1] * l.y * C.lean);
-                gaps.push(Math.hypot(pt.x - cx, pt.y - (foot.y + l.y), pt.z - cz) - (l.radius * C.stretch));
-            });
-        }
-        const nearest = Math.min(...gaps);
-        expect(nearest).toBeGreaterThan(110);
-        // Above the tip, not on it.
-        expect(foot.y - C.lenses[0].half).toBeGreaterThan(summit.y + 60);
-    });
-
-    it('is closed hulls in one draw, and compiles on both backends', () => {
-        const sun = uniform(new THREE.Color(1, 0.7, 0.5));
-        const cap = createOdysseySummitCap({
-            summit,
-            cameraPosition,
-            skyAirAt: (dir) => eveningAir(vec3(0.6, 0.7, 0.9), dir, sun),
-            toCloudOutput: (c) => c,
-            sunColour: sun,
-            cloudWhite: eveningCloudWhite(vec3(0.97, 0.975, 0.99), sun),
-        });
-        const pos = cap.mesh.geometry.getAttribute('position');
-        expect(cap.mesh.geometry.instanceCount).toBe(ODYSSEY_SUMMIT_CAP.lenses.length);
-        expect(cap.mesh.geometry.index.count / 3).toBeLessThan(2000);
-        // The rim closes: the outermost ring of each side has no thickness.
-        let rim = 0;
-        for (let i = 0; i < pos.count; i += 1) {
-            if (Math.hypot(pos.getX(i), pos.getZ(i)) > 0.9999) {
-                rim += 1;
-                expect(Math.abs(pos.getY(i))).toBeLessThan(1e-6);
-            }
-        }
-        expect(rim).toBe(ODYSSEY_SUMMIT_CAP.segments * 2);
-        expect(cap.mesh.visible).toBe(false);
-        cap.update(10, 1, true);
-        expect(cap.mesh.visible).toBe(true);
-        cap.update(10, 0, true);
-        expect(cap.mesh.visible).toBe(false);
-        BACKENDS.forEach(([label, Builder]) => expectClean(build(Builder, cap.mesh), `summit cap ${label}`));
-        cap.dispose();
     });
 });
 

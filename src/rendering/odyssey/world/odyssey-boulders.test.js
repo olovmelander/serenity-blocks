@@ -67,6 +67,8 @@ describe('the boulders and outcrops', () => {
             const radius = Math.max(r.sx, r.sz);
             let nearest = Infinity;
             forest.placements.forEach((t) => {
+                // (The islet's bent pine grows among its own rocks: that is the picture.)
+                if (t.framing && t.id === 'bent-pine' && r.kind === 'tarn') return;
                 nearest = Math.min(nearest, Math.hypot(t.x - r.x, t.z - r.z));
             });
             expect(nearest, `${r.kind} rock at (${r.x.toFixed(0)}, ${r.z.toFixed(0)})`)

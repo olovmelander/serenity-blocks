@@ -34,10 +34,8 @@ import { getOdysseyPathPointAt, getOdysseyWorldRailPointAt } from '../path-utils
 const heightAt = (x, z) => odysseyWorldMacro(x, z)
     + (odysseyWorldRelief(x, z) * odysseyWorldDetailWeight(x, z));
 const RAIL = Array.from({ length: 48 }, (_, i) => getOdysseyWorldRailPointAt(i / 47));
-// The forest the mask was measured on: the treeline's krummholz (2026-10-25) stands mostly on
-// flanks the rail never sees, so it would move every ratio below without the mask changing.
-const CULLED = scatterZonedForest(heightAt, { rail: RAIL, krummholz: false });
-const FULL = scatterZonedForest(heightAt, { rail: RAIL, visibilityCull: false, krummholz: false });
+const CULLED = scatterZonedForest(heightAt, { rail: RAIL });
+const FULL = scatterZonedForest(heightAt, { rail: RAIL, visibilityCull: false });
 
 describe('the baked mask still matches the world it was baked from', () => {
     /**
@@ -91,80 +89,28 @@ describe('the baked mask still matches the world it was baked from', () => {
 });
 
 describe('the cull removes the invisible and only the invisible', () => {
-    /**
-     * ⚠️ THE RATIOS HERE MOVED WHEN THE EDGE THINNING LANDED, AND THE CULL DID NOT CHANGE.
-     *
-     * Both this bound and the `far` bound below are shares of the composition set, and the
-     * owner-directed edge thinning now removes its trees from the same far, rail-distant ground
-     * the mask was already condemning. The two overlap, so the cull has less left to take and its
-     * SHARE falls (0.66 -> 0.72) while the work it does is identical in kind. Rebased with the
-     * reason recorded rather than left as a mystery for whoever next sees this number drift.
-     */
-    it('removes a large share of the forest', () => {
-        // Rebased again at the archipelago carve (0.76 -> 0.82, measured 0.793): every
-        // authored reduction removes trees from the same far, rail-distant ground this mask
-        // already condemns, so the mask's SHARE keeps shrinking while its behaviour is
-        // unchanged. The pattern above now has three data points.
-    // ⚠️ REBASED BY WAVE 1A'S ASCENT (2026-08-16), and this is a REAL COST, not a nudge.
-    // Raising the rail through the cloud deck so it flies PAST the mountain gives the camera a
-    // high vantage over the whole island, and an occlusion mask can only cull what terrain
-    // HIDES. Measured: 94.1% of cells are now visible where the mask used to condemn far more,
-    // so the cull removes ~4.6% of the forest instead of ~21%. That is ~1200 more trees
-    // standing in the act whose Lane B p95 is already closest to its ceiling. The floors below
-    // move to the measured truth rather than being left failing — but the number to watch is
-    // the PERF measurement, not this assertion.
-        expect(CULLED.stats.trees).toBeLessThan(FULL.stats.trees * 0.97);
-        expect(CULLED.stats.trees).toBeGreaterThan(FULL.stats.trees * 0.40);
+    it('takes only sites the rail can never see', () => {
+        const key = (p) => `${p.x}|${p.z}`;
+        const kept = new Set(CULLED.placements.map(key));
+        let taken = 0;
+        FULL.placements.forEach((p) => {
+            if (kept.has(key(p))) return;
+            taken += 1;
+            if (railSeesForestSite(p.x, p.z)) throw new Error(`${p.id} at (${p.x}, ${p.z}) is in sight`);
+        });
+        // The ascent looks over most of the island (Wave 1A, 2026-08-16): the mask takes a few per cent.
+        expect(taken / FULL.stats.trees).toBeGreaterThan(0.01);
+        expect(taken / FULL.stats.trees).toBeLessThan(0.3);
     });
 
-    /**
-     * THE HERO TIER IS UNTOUCHED, EXACTLY — and the mid tier nearly so.
-     *
-     * A first version of this test asserted that hero AND mid were both untouched, because an
-     * early analysis said every never-seen tree was `far`. Measured against the corrected mask
-     * that is not true: 92 mid trees (5%) are culled too. They are legitimately invisible —
-     * a mid tree is one whose CHUNK centre is near the rail, which says nothing about whether a
-     * ridge stands between them — so the claim was wrong, not the cull. Recorded rather than
-     * quietly relaxed, because "all far" was the reassurance the plan was sold on.
-     *
-     * Hero stays an equality: the expensive tier is the foreground, and a mask that started
-     * eating it would be culling what the player is looking at.
-     */
-    it('never takes a hero tree, and barely touches mid', () => {
+    it('never takes a tree the eye comes near', () => {
         expect(CULLED.stats.byLod.hero).toBe(FULL.stats.byLod.hero);
-        // (0.90 -> 0.88, 2026-11-21: the north lake's new gentle bank grows trees where the old bowl's
-        // wall stood bare, and of the mid trees the mask takes, 291 of 329 stand there, behind the
-        // massif from every rail eye: new hidden trees, not visible ones taken. Measured 0.893.)
         expect(CULLED.stats.byLod.mid / FULL.stats.byLod.mid).toBeGreaterThan(0.88);
-        // Rebased with the thinning overlap above — the mask's own behaviour is unchanged.
-        // (0.70 -> 0.78 at the archipelago carve, measured 0.754, same overlap mechanism.)
-        // Same rebase: the high vantage exposes far ground the ridges used to hide.
-        expect(CULLED.stats.byLod.far).toBeLessThan(FULL.stats.byLod.far * 0.96);
+        const heroes = (f) => f.placements.filter((p) => p.framing).length;
+        expect(heroes(CULLED)).toBe(heroes(FULL));
     });
 
-    /**
-     * The composition species survive. The shore greens and the blossom grove are what the
-     * camera actually stands in, and the grove is the island's showpiece — measured, the cull
-     * keeps 100% of the blossoms, 100% of the shore broadleaf and 98% of the pine.
-     *
-     * The red maple sits at 80%, and that is honest rather than alarming: it is scattered
-     * island-wide, so a fifth of it stands in ground no camera reaches. The floor is set where
-     * it would catch the mask eating the FOREGROUND, not where it pretends nothing was removed.
-     */
-    it('keeps the composition species the camera stands in', () => {
-        for (const id of ['S1-shore-broadleaf', 'S2-workhorse-pine', 'S7-pink-blossom']) {
-            const full = FULL.stats.bySpecies[id] || 0;
-            const kept = CULLED.stats.bySpecies[id] || 0;
-            expect(kept / Math.max(1, full), id).toBeGreaterThan(0.95);
-        }
-        const maple = (CULLED.stats.bySpecies['S6-red-maple'] || 0)
-            / Math.max(1, FULL.stats.bySpecies['S6-red-maple'] || 0);
-        expect(maple).toBeGreaterThan(0.70);
-    });
-
-    it('is restorable in one flag, per ADR-0015', () => {
+    it('is restorable in one flag (`?odysseyWorldNoVisCull=1`)', () => {
         expect(FULL.stats.trees).toBeGreaterThan(CULLED.stats.trees);
-        // ...and the restored forest is the composition the tests elsewhere assert against.
-        expect(FULL.stats.bySpecies['S7-pink-blossom']).toBeGreaterThan(60);
     });
 });

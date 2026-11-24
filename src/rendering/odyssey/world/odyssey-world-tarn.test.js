@@ -164,16 +164,18 @@ describe('the tarn in the meadow', () => {
         expect(ny).toBeGreaterThan(0);
     });
 
-    it('keeps its meadow open: no tree stands in the water or its clearing (but the authored framing trees)', () => {
+    it('keeps its near meadow open: no tree in the water, and only the authored clumps on its banks', () => {
         const rail = Array.from({ length: 48 }, (_, i) => getOdysseyWorldRailPointAt(i / 47));
         const forest = scatterZonedForest(odysseyWorldHeight, { rail, visibilityCull: false });
         forest.placements.forEach((p) => {
             const at = `${p.speciesId} at (${p.x.toFixed(0)}, ${p.z.toFixed(0)})`;
-            // An authored framing tree stands where it was authored, refusing only the water and a
-            // few units of its shore (2026-11-20: the autumn pair's maple north of the tarn, the
-            // gold birch on its south-east shore).
-            if (p.framing) expect(odysseyTarnDistance(p.x, p.z), at).toBeGreaterThan(4);
-            else expect(odysseyTarnRn(p.x, p.z), at).toBeGreaterThan(ODYSSEY_TARN.clearing - 1e-6);
+            // Nothing stands in the water (the islet's pine is on the islet).
+            expect(odysseyTarnDistance(p.x, p.z), at).toBeGreaterThan(1.1);
+            if (p.framing || odysseyTarnRn(p.x, p.z) > ODYSSEY_TARN.clearing - 1e-6) return;
+            // Inside the clearing only the waterside clumps (FOREST_MASSES) stand, and on the bank the
+            // rail looks over (the south) only the two low ones at its ends.
+            expect(p.wood, at).toBe('waterside');
+            if (p.z > -400 && p.x > -282 && p.x < -176) throw new Error(`${at} stands between the rail and the water`);
         });
     });
 

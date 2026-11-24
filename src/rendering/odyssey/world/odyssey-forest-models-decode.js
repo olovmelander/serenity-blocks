@@ -2,140 +2,212 @@
 import { ODYSSEY_FOREST_MODELS } from './odyssey-forest-models.js';
 
 /**
- * THE GROWN BROADLEAVES (2026-11-22), decoded. scripts/blender/odyssey/odyssey_trees.py grows three
- * specimens of each broadleaf species in Blender (a trunk that leans, scaffold limbs that fork, the
- * foliage gathered where the branches end) and writes them, tier by tier, into
- * odyssey-forest-models.js. This turns one tier of one specimen back into the record the forest
- * builder hands to `buildForestTreeGeometry`: the forest's own vertex contract (FOREST_LEAF_CARD),
- * leaf cards first, six vertices a card at its centre, then the bark, three vertices a triangle.
+ * THE FOREST'S TREES, decoded (2026-11-24). scripts/blender/odyssey/odyssey_forest.py grows every
+ * specimen in Blender and writes it here at two tiers: `hero` (near the rail) and `mid` (the middle
+ * distance). A third tier is a photograph (assets/forest/far.png), whose frames are in `far`.
  *
- * `aVert` per vertex, as the procedural crown writes it:
- *   card  (depth in the crown, height in crown, flag + size / sizeMax, height / total height)
- *   bark  (the sky the wood sees, 0, 0, height / total height)
- * with the last lane 0 on the far tier (distant trees do not shimmer).
+ * A tier is
+ *   cards  the foliage: one card a spray (hero) or a bough (mid). A card is its centre, its half
+ *          length along the way the twig grows and half width, that growth axis, the normal of the
+ *          foliage mass it belongs to, where it sits in the crown (-1..1 on each axis, 1 the crown's
+ *          skin), the sky it sees through the other cards, its atlas tile and a random of its own.
+ *          They are ordered so that any first part of them covers the whole crown evenly.
+ *   bark   the wood, as triangles.
+ * in the specimen's own metres: x across, y up, z across, its foot at the origin.
  *
- * A growth stage is a proportion change (the species table's `h` and `w`), so a stage scales the
- * specimen: x and z by `w`, y by `h`, normals by the inverse, a card's radius by `w`.
+ * THE PULL TEXTURE. A grove mixes every specimen in one draw, so the vertex shader does not read a
+ * tree's shape from vertex attributes: it pulls it out of one small texture, at the place its instance
+ * names. Four texels a card, two a bark vertex (three bark vertices a triangle):
+ *   card  (centre xyz, half length) (axis xyz, half width) (mass normal xyz, tile + random * 0.5)
+ *         (crown direction xyz, sky)
+ *   bark  (position xyz, sky) (normal xyz, round + up * 32: where on its bark tile, 0..31 each)
  */
 
-function decodeBase64(text, Type) {
-    const binary = atob(text);
-    const bytes = new Uint8Array(binary.length);
+/** @typedef {{id: string, species: string, stage: string, bark: number, height: number, reach: number, trunkR: number, shade: number[][], fam: string, hero: any, mid: any}} ForestSpecimen */
+
+export const FOREST_ATLAS = Object.freeze(ODYSSEY_FOREST_MODELS.atlas);
+export const FOREST_BARKS = Object.freeze(ODYSSEY_FOREST_MODELS.barks);
+/** The atlas tile a specimen's bark wears. @param {ForestSpecimen} spec */
+export function forestBarkTile(spec) {
+    return /** @type {any} */ (ODYSSEY_FOREST_MODELS.barkTiles)[FOREST_BARKS[spec.bark]];
+}
+/** @type {any} */
+export const FOREST_FAR = ODYSSEY_FOREST_MODELS.far ? Object.freeze(ODYSSEY_FOREST_MODELS.far) : null;
+/** @type {ReadonlyArray<ForestSpecimen>} */
+export const FOREST_SPECIMENS = Object.freeze(/** @type {any} */ (ODYSSEY_FOREST_MODELS.specimens));
+
+const byId = new Map(FOREST_SPECIMENS.map((s, i) => [s.id, i]));
+/** The specimen's index, or -1. @param {string} id */
+export function forestSpecimenIndex(id) {
+    return byId.get(id) ?? -1;
+}
+
+const farById = new Map((FOREST_FAR?.specimens ?? []).map((/** @type {any} */ s, /** @type {number} */ i) => [s.name, i]));
+/** The specimen's place among the far views, or -1 when it has none. @param {string} id */
+export function forestFarIndex(id) {
+    return farById.get(id) ?? -1;
+}
+
+/** @type {Uint8Array | null} */
+let bytes = null;
+function blob() {
+    if (bytes) return bytes;
+    const binary = atob(ODYSSEY_FOREST_MODELS.data);
+    bytes = new Uint8Array(binary.length);
     for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
-    return new Type(bytes.buffer);
+    return bytes;
 }
-
-/** Whether `speciesId` has grown specimens. */
-export function hasGrownForestModel(speciesId) {
-    return Boolean(ODYSSEY_FOREST_MODELS.species[speciesId]);
-}
-
-/** How many specimens a species has (the world uses three variants a bucket). */
-export function grownForestVariantCount(speciesId) {
-    return ODYSSEY_FOREST_MODELS.species[speciesId]?.length ?? 0;
-}
-
-const raw = new Map();
-
-/** One tier of one specimen, decoded once to plain typed arrays in the specimen's own units. */
-function rawTier(speciesId, lod, variant) {
-    const key = `${speciesId}|${lod}|${variant}`;
-    const hit = raw.get(key);
-    if (hit) return hit;
-    const specimens = ODYSSEY_FOREST_MODELS.species[speciesId];
-    if (!specimens) throw new Error(`[OdysseyForest] no grown model for "${speciesId}"`);
-    const tier = specimens[variant % specimens.length][lod];
-    if (!tier) throw new Error(`[OdysseyForest] no "${lod}" tier for "${speciesId}"`);
-    const { quant } = ODYSSEY_FOREST_MODELS;
-    const decoded = {
-        tier,
-        cardPositions: Float32Array.from(decodeBase64(tier.cardPositions, Int16Array), (v) => v * quant),
-        cardNormals: Float32Array.from(decodeBase64(tier.cardNormals, Int8Array), (v) => v / 127),
-        cardData: decodeBase64(tier.cardData, Uint8Array),
-        barkPositions: Float32Array.from(decodeBase64(tier.barkPositions, Int16Array), (v) => v * quant),
-        barkNormals: Float32Array.from(decodeBase64(tier.barkNormals, Int8Array), (v) => v / 127),
-        barkAo: decodeBase64(tier.barkAo, Uint8Array),
-        barkIndex: decodeBase64(tier.barkIndex, Uint16Array),
-    };
-    raw.set(key, decoded);
-    return decoded;
-}
-
-const unit = (x, y, z) => {
-    const l = Math.hypot(x, y, z);
-    return l > 1e-9 ? [x / l, y / l, z / l] : [0, 1, 0];
-};
 
 /**
- * The builder's record for one tier of one grown specimen at one growth stage.
- * @param {string} speciesId
- * @param {{h: number, w: number}} stage
- * @param {'hero'|'mid'|'far'} lod
- * @param {number} variant which specimen (taken modulo the species' count)
- * @param {{flag: number, sizeMax: number}} card FOREST_LEAF_CARD's flag and size range
+ * One tier of one specimen as plain arrays (the tests and the pull texture read this).
+ * @param {number} index the specimen's place in FOREST_SPECIMENS
+ * @param {'hero'|'mid'} lod
  */
-export function decodeGrownForestTier(speciesId, stage, lod, variant, card) {
-    const r = rawTier(speciesId, lod, Math.abs(Math.trunc(variant)));
-    const sw = stage?.w ?? 1;
-    const sh = stage?.h ?? 1;
-    const totalH = r.tier.totalH * sh;
-    const far = lod === 'far';
-    const cards = r.tier.cardCount;
-    // The bark is stored indexed; the forest draws it unindexed (three vertices a triangle).
-    const barkVerts = r.tier.barkIndices;
-    const count = (cards * 6) + barkVerts;
-    const positions = new Float32Array(count * 3);
-    const normals = new Float32Array(count * 3);
-    const vert = new Float32Array(count * 4);
-    let o = 0;
-    for (let c = 0; c < cards; c += 1) {
-        const x = r.cardPositions[c * 3] * sw;
-        const y = r.cardPositions[(c * 3) + 1] * sh;
-        const z = r.cardPositions[(c * 3) + 2] * sw;
-        const [nx, ny, nz] = unit(
-            r.cardNormals[c * 3] / sw,
-            r.cardNormals[(c * 3) + 1] / sh,
-            r.cardNormals[(c * 3) + 2] / sw,
-        );
-        const depth = r.cardData[c * 3] / 255;
-        const along = r.cardData[(c * 3) + 1] / 255;
-        const size = Math.min((r.cardData[(c * 3) + 2] / 255) * ODYSSEY_FOREST_MODELS.sizeMax * sw, card.sizeMax * 0.999);
-        const kind = card.flag + (Math.max(size, 0.06) / card.sizeMax);
-        const wind = far ? 0 : Math.max(0, Math.min(1, y / (totalH || 1)));
-        for (let k = 0; k < 6; k += 1) {
-            positions[o * 3] = x; positions[(o * 3) + 1] = y; positions[(o * 3) + 2] = z;
-            normals[o * 3] = nx; normals[(o * 3) + 1] = ny; normals[(o * 3) + 2] = nz;
-            vert[o * 4] = depth; vert[(o * 4) + 1] = along; vert[(o * 4) + 2] = kind; vert[(o * 4) + 3] = wind;
-            o += 1;
+export function decodeForestTier(index, lod) {
+    const tier = FOREST_SPECIMENS[index][lod];
+    const b = blob();
+    const view = new DataView(b.buffer, b.byteOffset, b.byteLength);
+    const { quant: q, cardBytes, barkBytes } = ODYSSEY_FOREST_MODELS;
+    const n = tier.cards;
+    const cards = {
+        count: n,
+        centre: new Float32Array(n * 3),
+        half: new Float32Array(n * 2),
+        axis: new Float32Array(n * 3),
+        normal: new Float32Array(n * 3),
+        dir: new Float32Array(n * 3),
+        sky: new Float32Array(n),
+        tile: new Uint8Array(n),
+        random: new Float32Array(n),
+    };
+    for (let i = 0; i < n; i += 1) {
+        const at = tier.cardAt + (i * cardBytes);
+        for (let k = 0; k < 3; k += 1) {
+            cards.centre[(i * 3) + k] = view.getInt16(at + (k * 2), true) * q;
+            cards.axis[(i * 3) + k] = view.getInt8(at + 10 + k) / 127;
+            cards.normal[(i * 3) + k] = view.getInt8(at + 13 + k) / 127;
+            cards.dir[(i * 3) + k] = view.getInt8(at + 16 + k) / 127;
+        }
+        cards.half[i * 2] = view.getInt16(at + 6, true) * q;
+        cards.half[(i * 2) + 1] = view.getInt16(at + 8, true) * q;
+        cards.sky[i] = b[at + 19] / 255;
+        cards.tile[i] = b[at + 20];
+        cards.random[i] = b[at + 21] / 255;
+    }
+    const v = tier.barkVerts;
+    const bark = {
+        verts: v,
+        position: new Float32Array(v * 3),
+        normal: new Float32Array(v * 3),
+        sky: new Float32Array(v),
+        uv: new Uint8Array(v * 2),
+        index: new Uint16Array(tier.barkIndices),
+    };
+    for (let i = 0; i < v; i += 1) {
+        const at = tier.barkAt + (i * barkBytes);
+        for (let k = 0; k < 3; k += 1) {
+            bark.position[(i * 3) + k] = view.getInt16(at + (k * 2), true) * q;
+            bark.normal[(i * 3) + k] = view.getInt8(at + 6 + k) / 127;
+        }
+        bark.sky[i] = b[at + 9] / 255;
+        bark.uv[i * 2] = b[at + 10];
+        bark.uv[(i * 2) + 1] = b[at + 11];
+    }
+    for (let i = 0; i < tier.barkIndices; i += 1) bark.index[i] = view.getUint16(tier.indexAt + (i * 2), true);
+    return { cards, bark };
+}
+
+/** @type {number[]} */
+const skirts = [];
+/**
+ * How far from the trunk a specimen's foliage or wood stands below a deer's back (2.2 m), in its own
+ * metres: what walks past a tree keeps out of this, whatever its crown does overhead.
+ * @param {number} index
+ */
+export function forestSkirt(index) {
+    if (skirts[index] !== undefined) return skirts[index];
+    const { cards } = decodeForestTier(index, 'hero');
+    let r = FOREST_SPECIMENS[index].trunkR * 1.5;
+    for (let i = 0; i < cards.count; i += 1) {
+        const y = cards.centre[(i * 3) + 1];
+        const reach = Math.max(cards.half[i * 2], cards.half[(i * 2) + 1]);
+        if (y - (reach * 0.7) < 2.2) {
+            r = Math.max(r, Math.hypot(cards.centre[i * 3], cards.centre[(i * 3) + 2]) + (reach * 0.35));
         }
     }
-    for (let i = 0; i < barkVerts; i += 1) {
-        const v = r.barkIndex[i];
-        const x = r.barkPositions[v * 3] * sw;
-        const y = Math.max(0, r.barkPositions[(v * 3) + 1] * sh);
-        const z = r.barkPositions[(v * 3) + 2] * sw;
-        const [nx, ny, nz] = unit(
-            r.barkNormals[v * 3] / sw,
-            r.barkNormals[(v * 3) + 1] / sh,
-            r.barkNormals[(v * 3) + 2] / sw,
-        );
-        positions[o * 3] = x; positions[(o * 3) + 1] = y; positions[(o * 3) + 2] = z;
-        normals[o * 3] = nx; normals[(o * 3) + 1] = ny; normals[(o * 3) + 2] = nz;
-        vert[o * 4] = r.barkAo[v] / 255;
-        vert[(o * 4) + 1] = 0;
-        vert[(o * 4) + 2] = 0;
-        vert[(o * 4) + 3] = far ? 0 : Math.max(0, Math.min(1, y / (totalH || 1)));
-        o += 1;
-    }
-    return {
-        positions,
-        normals,
-        vert,
-        totalH,
-        crownW: r.tier.crownW * sw,
-        centreY: r.tier.centreY * sh,
-        hullTriangles: cards * 2,
-        cards: true,
-        grown: true,
+    skirts[index] = r;
+    return r;
+}
+
+export const FOREST_PULL_WIDTH = 512;
+
+/** @type {any} */
+let pull = null;
+/**
+ * Every tier of every specimen laid out for the vertex shader (see the header), once.
+ * @returns {{data: Float32Array, width: number, height: number,
+ *   ranges: {hero: Array<{cardAt: number, cards: number, barkAt: number, barkVerts: number}>,
+ *            mid: Array<{cardAt: number, cards: number, barkAt: number, barkVerts: number}>}}}
+ *   `ranges` in texels (bark in vertices of the unindexed wood)
+ */
+export function buildForestPull() {
+    if (pull) return pull;
+    /** @type {any} */
+    const ranges = { hero: [], mid: [] };
+    /** @type {Array<{index: number, lod: 'hero'|'mid', at: number}>} */
+    const tiers = [];
+    let texels = 0;
+    FOREST_SPECIMENS.forEach((spec, index) => {
+        (/** @type {Array<'hero'|'mid'>} */ (['hero', 'mid'])).forEach((lod) => {
+            const { cards, barkIndices } = spec[lod];
+            ranges[lod].push({
+                cardAt: texels, cards, barkAt: texels + (cards * 4), barkVerts: barkIndices,
+            });
+            tiers.push({ index, lod, at: texels });
+            texels += (cards * 4) + (barkIndices * 2);
+        });
+    });
+    const width = FOREST_PULL_WIDTH;
+    const height = Math.ceil(texels / width);
+    const data = new Float32Array(width * height * 4);
+    tiers.forEach(({ index, lod, at }) => {
+        const { cards, bark } = decodeForestTier(index, lod);
+        let o = at * 4;
+        for (let i = 0; i < cards.count; i += 1) {
+            data[o] = cards.centre[i * 3];
+            data[o + 1] = cards.centre[(i * 3) + 1];
+            data[o + 2] = cards.centre[(i * 3) + 2];
+            data[o + 3] = cards.half[i * 2];
+            data[o + 4] = cards.axis[i * 3];
+            data[o + 5] = cards.axis[(i * 3) + 1];
+            data[o + 6] = cards.axis[(i * 3) + 2];
+            data[o + 7] = cards.half[(i * 2) + 1];
+            data[o + 8] = cards.normal[i * 3];
+            data[o + 9] = cards.normal[(i * 3) + 1];
+            data[o + 10] = cards.normal[(i * 3) + 2];
+            // The tile whole, the card's random in the fraction's lower half (a half float holds both).
+            data[o + 11] = cards.tile[i] + (Math.round(cards.random[i] * 7) / 16);
+            data[o + 12] = cards.dir[i * 3];
+            data[o + 13] = cards.dir[(i * 3) + 1];
+            data[o + 14] = cards.dir[(i * 3) + 2];
+            data[o + 15] = cards.sky[i];
+            o += 16;
+        }
+        for (let i = 0; i < bark.index.length; i += 1) {
+            const v = bark.index[i];
+            data[o] = bark.position[v * 3];
+            data[o + 1] = bark.position[(v * 3) + 1];
+            data[o + 2] = bark.position[(v * 3) + 2];
+            data[o + 3] = bark.sky[v];
+            data[o + 4] = bark.normal[v * 3];
+            data[o + 5] = bark.normal[(v * 3) + 1];
+            data[o + 6] = bark.normal[(v * 3) + 2];
+            data[o + 7] = bark.uv[v * 2] + (bark.uv[(v * 2) + 1] * 32);
+            o += 8;
+        }
+    });
+    pull = {
+        data, width, height, ranges,
     };
+    return pull;
 }

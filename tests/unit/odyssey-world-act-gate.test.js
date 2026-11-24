@@ -12,7 +12,9 @@ import {
     worldClimbScale,
     worldDepartureFade,
 } from '../../src/rendering/odyssey/world/odyssey-world-act-gate.js';
-import { ODYSSEY_CLOUD_FIELD_SPECS } from '../../src/rendering/odyssey/world/odyssey-cloud-field-specs.js';
+import {
+    CloudState, SKY_CLOUDS, cloudAt, cloudExtent,
+} from '../../src/rendering/odyssey/world/odyssey-cloud-composition.js';
 import { ODYSSEY_SEA_LEVEL } from '../../src/rendering/odyssey/world/odyssey-world-height.js';
 import { createOdysseyCameraRig } from './helpers/odyssey-camera-rig.js';
 import {
@@ -188,9 +190,13 @@ describe('the eye climbs above the clouds (2026-10-24)', () => {
     });
 
     it('takes the eye above every cumulus top by orb 34, on the real camera', () => {
-        // The cloud field's tallest masses stand ~1.7 km over the sea; the rail itself only
-        // rises ~150 u through this stretch, so without the climb the eye stays among them.
-        const tops = ODYSSEY_CLOUD_FIELD_SPECS.map((c) => c.base + c.h);
+        // The towers stand well over the rail, which only rises ~150 u through this stretch: without the climb
+        // the eye stays among them.
+        const s = new CloudState();
+        const tops = SKY_CLOUDS.map((c) => {
+            cloudAt(c, 0, s);
+            return s.y + cloudExtent(s).up;
+        });
         const highest = Math.max(...tops) - ODYSSEY_SEA_LEVEL;
         const rig = createOdysseyCameraRig();
         const orb34 = rig.layout.levelPositionsById[34];

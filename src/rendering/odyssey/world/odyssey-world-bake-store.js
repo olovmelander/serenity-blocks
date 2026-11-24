@@ -93,13 +93,11 @@ function isTyped(value, length = -1) {
  * Whether a stored copy has the shape the board consumes for this request. The bytes are the
  * bake's; this catches a copy from an older format or a damaged record, which read as a miss.
  * @param {any} stored
- * @param {{reliefRes: number, shadowRes: number, cloudField?: boolean, cloudSpecs?: unknown[]|null, scatter?: object|null}} request
+ * @param {{reliefRes: number, shadowRes: number, scatter?: object|null}} request
  * @returns {boolean}
  */
 export function isUsableStoredWorldBake(stored, request) {
-    const {
-        relief, textures, cloudField: field, scatter: zoned,
-    } = stored || {};
+    const { relief, textures, scatter: zoned } = stored || {};
     const { reliefRes: res, shadowRes } = request;
     if (!relief || relief.res !== res || !isTyped(relief.data, res * res * 4) || !isTyped(relief.total, res * res)
         || !Number.isFinite(relief.step) || !Number.isFinite(relief.origin)) return false;
@@ -115,14 +113,9 @@ export function isUsableStoredWorldBake(stored, request) {
     if (!watersOk) return false;
     // The sea's lace rides on the detail record (2026-11-21): a copy kept before it has none.
     if (!isTyped(textures.detail.lace?.data) || textures.detail.lace.data.length === 0) return false;
-    if (!!request.cloudField && Array.isArray(request.cloudSpecs)) {
-        if (!field || !isTyped(field.position) || field.masses !== request.cloudSpecs.length) return false;
-    } else if (field !== null) {
-        return false;
-    }
     if (request.scatter) {
         return !!zoned && Array.isArray(zoned.placements) && zoned.buckets instanceof Map && !!zoned.stats
-            && isTyped(zoned.shade?.data);
+            && isTyped(zoned.shade?.data) && isTyped(zoned.floor?.data);
     }
     return zoned === null;
 }
@@ -133,7 +126,7 @@ export function isUsableStoredWorldBake(stored, request) {
  * @param {Parameters<typeof isUsableStoredWorldBake>[1]} request
  * @param {BakeStoreOptions & {onMeta?: (match: boolean) => void}} [options]
  *   `onMeta` hears, before the arrays are read, whether a copy for this key exists
- * @returns {Promise<{relief: object, textures: object, cloudField: object|null, scatter: object|null}|null>}
+ * @returns {Promise<{relief: object, textures: object, scatter: object|null}|null>}
  */
 export async function readStoredWorldBake(key, request, { onMeta, ...options } = {}) {
     let told = false;
@@ -154,7 +147,7 @@ export async function readStoredWorldBake(key, request, { onMeta, ...options } =
             return null;
         }
         return {
-            relief: stored.relief, textures: stored.textures, cloudField: stored.cloudField, scatter: stored.scatter,
+            relief: stored.relief, textures: stored.textures, scatter: stored.scatter,
         };
     } catch (error) {
         tell(false);
@@ -166,7 +159,7 @@ export async function readStoredWorldBake(key, request, { onMeta, ...options } =
 /**
  * Keep `bake` for `key`, replacing whatever was kept. Resolves once it is on disk.
  * @param {string} key
- * @param {{relief: object, textures: object, cloudField: object|null, scatter: object|null}} bake
+ * @param {{relief: object, textures: object, scatter: object|null}} bake
  * @param {BakeStoreOptions} [options]
  * @returns {Promise<boolean>} whether it was kept
  */
@@ -180,7 +173,7 @@ export async function storeWorldBake(key, bake, options = {}) {
             transaction.onerror = () => resolve(false);
             const store = transaction.objectStore(STORE);
             store.put({
-                relief: bake.relief, textures: bake.textures, cloudField: bake.cloudField, scatter: bake.scatter,
+                relief: bake.relief, textures: bake.textures, scatter: bake.scatter,
             }, 'data');
             store.put({ key, savedAt: Date.now() }, 'meta');
         });

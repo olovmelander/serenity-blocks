@@ -14,8 +14,6 @@ import { OdysseyCameraController } from './OdysseyCameraController.js';
 import { ODYSSEY_WORLD_QUALITY, createOdysseyWorld } from './world/odyssey-world-renderer.js';
 import { awaitWorldBake, startWorldBake } from './world/odyssey-world-bake-loader.js';
 import { makeReliefSampler } from './world/odyssey-world-bake-data.js';
-import { ODYSSEY_CLOUD_FIELD_SPECS } from './world/odyssey-cloud-field-specs.js';
-import { cloudFieldSpecsForLook, resolveCloudLook } from './world/odyssey-cloud-looks.js';
 import { forestLodDistanceForTier } from './world/odyssey-forest-species.js';
 import {
     ONE_WORLD_APPLY_EXPOSURE,
@@ -335,30 +333,20 @@ function readGlideCompileHeadStartMs() {
 
 /**
  * Everything the One World's boot bakes and its build read, for a board at `qualityName`: the
- * world lane, the cloud field and the forest scatter, from the URL levers and the active path
+ * world lane and the forest scatter, from the URL levers and the active path
  * layout (the rail samples).
  */
 function readWorldBuildOptions(qualityName) {
     const weakLane = qualityName === 'Minimal' || qualityName === 'Low';
     const q = ODYSSEY_WORLD_QUALITY[weakLane ? 'low' : 'high'] || ODYSSEY_WORLD_QUALITY.high;
-    const cloudField = !readBooleanUrlFlag('odysseyWorldNoCloudField');
-    const cloudFieldCount = Number.parseInt(readUrlValue('odysseyWorldCloudFieldCount'), 10) || 0;
     const railSamples = Array.from({ length: 48 }, (_, i) => {
         const pt = getOdysseyWorldRailPointAt(i / 47);
         return { x: pt.x, y: pt.y, z: pt.z }; // plain points: structured-clone friendly
     });
-    // `?odysseyCloudLook=today|light|banks` (odyssey-cloud-looks.js). The look's layout decides
-    // the specs here, once, so the bake worker and the world sculpt and expect the same masses.
-    const cloudLook = resolveCloudLook(readUrlValue('odysseyCloudLook'));
-    const cloudSpecs = cloudFieldSpecsForLook(
-        cloudLook,
-        cloudFieldCount > 0 ? ODYSSEY_CLOUD_FIELD_SPECS.slice(0, cloudFieldCount) : ODYSSEY_CLOUD_FIELD_SPECS,
-        railSamples,
-    );
     // The forest scatter runs in the bake worker (it needs only the height mirror and the
     // rail); createOdysseyWorld builds the same options object and uses the landed result.
     const forestLodValue = readUrlValue('odysseyForestLod');
-    const scatter = readBooleanUrlFlag('odysseyWorldNoForest') || readBooleanUrlFlag('odysseyWorldForestV1')
+    const scatter = readBooleanUrlFlag('odysseyWorldNoForest')
         ? null
         : {
             spacing: q.treeSpacing,
@@ -370,7 +358,7 @@ function readWorldBuildOptions(qualityName) {
             lodDistance: forestLodDistanceForTier(qualityName),
         };
     return {
-        weakLane, q, cloudField, cloudFieldCount, cloudLook, cloudSpecs, railSamples, scatter,
+        weakLane, q, railSamples, scatter,
     };
 }
 
@@ -383,9 +371,6 @@ function worldBakeRequest(options) {
     return {
         reliefRes: options.q.reliefRes,
         shadowRes: options.q.shadowRes,
-        cloudSpecs: options.cloudSpecs,
-        railSamples: options.railSamples,
-        cloudField: options.cloudField,
         bandCount: Number.parseInt(readUrlValue('odysseyBakeBands'), 10) || undefined,
         scatter: options.scatter,
         forceSync: readBooleanUrlFlag('odysseyWorldBakeSync'),
@@ -1289,11 +1274,11 @@ export class OdysseyBoardController {
                 this.oneWorld = createOdysseyWorld({
                     prebaked,
                     quality: weakLane ? 'low' : 'high',
-                    // The forest's hero band rides FOREST_LOD_DISTANCE_BY_TIER. Flattened to
-                    // 200 on every tier by owner direction 2026-08-15 (post-carve, the island
-                    // is 26% smaller than when 200 measured over-budget on the integrated
-                    // lane); the plumbing stays so a tier split is a table edit, not a rewire.
+                    // The forest's tiers (FOREST_TIERS): where its near trees hand over to pictures,
+                    // and how many cards each draws.
                     qualityTier: this.qualityName,
+                    // ...and whether its leaves' edges can be softened by MSAA coverage.
+                    sceneMultisampled: this._builtQuality?.sceneSamples !== 0,
                     // The post stack owns exposure and applies ACES after it, so the world
                     // must not apply exposure a second time, and must hand over scene-linear
                     // values rather than the display-referred palette the playground wants.
@@ -1307,25 +1292,8 @@ export class OdysseyBoardController {
                     // so a session does not start on the last one's weather. The playgrounds leave
                     // it at the world's 0, where a pinned `?t=` shot repeats.
                     weatherPhase: (Date.now() / 1000) % 7200,
-                    // Bisect lever for the boot-stall investigation (see the plan's BLOCKER
-                    // note): the sheet's pipeline stays out of the in-game compile when it is
-                    // not mounted.
-                    // ⚠️ POLARITY FLIPPED 2026-08-14 — the owner retired the flat sheet in
-                    // favour of the sculpted field. It is opt-IN now, so the old
-                    // `?odysseyWorldNoClouds` lever no longer has anything to switch off and
-                    // is deliberately NOT read here: a flag that silently does nothing is how
-                    // the `odysseyWorldNoHeroes` bisect produced a wrong conclusion. Use
-                    // `?odysseyWorldCloudSheet=1` to bring the sheet back, and
-                    // `?odysseyWorldNoCloudField=1` to remove the field.
-                    clouds: readBooleanUrlFlag('odysseyWorldCloudSheet'),
-                    // HEROES RETIRED BY THE OWNER, 2026-08-14 — an art-direction call, not a
-                    // perf one (they measured 1-2 timer ticks). Two cloud MODELS in one sky do
-                    // not cohere: the smooth lobed icosphere masses read as a different object
-                    // class next to the deck's flat painted bands, and the owner circled them
-                    // in live play twice. Retired per the ADR-0015 pattern (module + tests +
-                    // this lever retained, mounting stops): ?odysseyWorldHeroes=1 restores the meshes
-                    // AND the deck's hero clearings, which ride the same option.
-                    heroes: readBooleanUrlFlag('odysseyWorldHeroes'),
+                    // BISECT LEVER: ?odysseyWorldNoClouds=1 takes the sky's clouds away (world/odyssey-clouds.js).
+                    clouds: !readBooleanUrlFlag('odysseyWorldNoClouds'),
                     // Bisect lever for the painted-water plan's Wave 0: ?odysseyWorldNoWater=1
                     // removes the sea plate entirely. The water is one ungated DoubleSide
                     // transparent clipmap drawing across the whole act window and NOTHING in
@@ -1340,22 +1308,6 @@ export class OdysseyBoardController {
                     // ships), so `no-forest` REMOVES and forestMs is baseline minus
                     // configuration. docs/ODYSSEY_ACT2_FOREST_PLAN_2026-08.md §5 Wave 0a.
                     forest: !readBooleanUrlFlag('odysseyWorldNoForest'),
-                    // Forest plan Wave 0b — the PAINT PROBE, opt-in and shipping nothing:
-                    // ?odysseyWorldForestPaint=1 swaps the incumbent facet-normal forest for
-                    // blob normals + the banded ramp. Here as well as on the graded playground
-                    // rig because owner decision D0 may want the verdict taken in the real
-                    // game, and a probe only reachable from a rig invites "but does it hold
-                    // up in-game" as an unanswerable question.
-                    forestPaint: readBooleanUrlFlag('odysseyWorldForestPaint'),
-                    // The zoned species roster is the SHIPPED forest since the 2026-08-14
-                    // swap. `?odysseyWorldForestV1=1` restores the incumbent cone forest
-                    // (ADR-0015: retained, one flag from restoration). The migration flag
-                    // `odysseyWorldForestV2` is deliberately NO LONGER READ — a dead lever
-                    // reports innocence, not absence (the odysseyWorldNoHeroes lesson).
-                    forestV2: !readBooleanUrlFlag('odysseyWorldForestV1'),
-                    // The grown broadleaves ship (scripts/blender/odyssey/odyssey_trees.py);
-                    // `?odysseyWorldProceduralTrees=1` restores the puff crowns (ADR-0015).
-                    proceduralTrees: readBooleanUrlFlag('odysseyWorldProceduralTrees'),
                     // Ground plan Wave 0a — the ground's own pricing lever, opt-IN and
                     // shipping nothing: ?odysseyWorldFlatGround=1 keeps every triangle and
                     // every draw and withholds only the ground's fragment mesostructure, so
@@ -1379,26 +1331,9 @@ export class OdysseyBoardController {
                         const v = readUrlValue('odysseyForestLod');
                         return ['hero', 'mid', 'far'].includes(v) ? v : null;
                     })(),
-                    // Diagnostic re-shades of the deck, for the "keyed to something other than
-                    // the camera" defect class: ?odysseyWorldCloudDebug=lattice draws the
-                    // clipmap's ring structure over the shipped deck, =alpha draws the opacity
-                    // graph alone, =flat leaves only geometry. See createOdysseyWorld.
-                    cloudDebug: readUrlValue('odysseyWorldCloudDebug') || null,
-                    // The shipped Act II sky since 2026-08-14. `?odysseyWorldNoCloudField=1`
-                    // removes it for bisects; `?odysseyWorldCloudSheet=1` brings the retired
-                    // flat sheet back alongside or instead.
-                    // (Same reads as _readWorldBuildOptions — the bake and the build agree.)
-                    cloudField: !readBooleanUrlFlag('odysseyWorldNoCloudField'),
                     // THE SEA OF CLOUDS under chapter 5's evening (world/odyssey-cloud-sea.js).
                     // BISECT LEVER: ?odysseyNoCloudSea=1.
                     cloudSea: !readBooleanUrlFlag('odysseyNoCloudSea'),
-                    // `?odysseyForestGreens=` (odyssey-forest-greens.js): the broadleaf palette.
-                    forestGreens: readUrlValue('odysseyForestGreens') || '',
-                    cloudFieldCount: Number.parseInt(readUrlValue('odysseyWorldCloudFieldCount'), 10) || 0,
-                    // `?odysseyCloudLook=` (odyssey-cloud-looks.js): the paint, and the specs the
-                    // bake sculpted, so the landed field matches the masses this build expects.
-                    cloudLook: this._worldBakeOptions?.cloudLook ?? null,
-                    cloudSpecs: this._worldBakeOptions?.cloudSpecs ?? null,
                     // Seat the Ch2 god-ray shafts along the real rail's submerged stretch — the
                     // SAME 48 plain points the bake used (item 2.1), so the worker's cloud LOD
                     // promotion and the main thread's seating agree.

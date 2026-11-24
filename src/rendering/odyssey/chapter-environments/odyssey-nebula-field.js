@@ -48,7 +48,7 @@ import {
     normalWorld, normalize, oneMinus, positionLocal, positionWorld, pow, smoothstep, sqrt, uniform,
     uniformArray, varying, vec3, vec4,
 } from 'three/tsl';
-import { cloudFieldSdf } from '../world/odyssey-cloud-field.js';
+import { cloudFieldSdf } from './odyssey-nebula-sculptor.js';
 import { fbm3, noise3, ridged3 } from './shared/odyssey-tsl-noise.js';
 import { latticeNoise3 } from './shared/odyssey-lattice-noise.js';
 import { resolveQualityTier } from './shared/odyssey-quality-tier.js';

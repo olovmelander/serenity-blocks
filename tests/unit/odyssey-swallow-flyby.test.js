@@ -72,7 +72,7 @@ describe('the swallow fly-by: where it flies', () => {
             ground = Math.min(ground, q.y - odysseyWorldHeight(q.x, q.z));
             trees.forEach((t) => {
                 // A generous crown: 5 u x its spread across, 28 u x its height tall.
-                if (Math.hypot(t.x - q.x, t.z - q.z) < (5 * t.scaleXZ) + 3) crowns = Math.min(crowns, q.y - (t.y + (28 * t.scaleY)));
+                if (Math.hypot(t.x - q.x, t.z - q.z) < t.crownR + 2) crowns = Math.min(crowns, q.y - (t.y + t.height));
             });
         });
         expect(ground).toBeGreaterThan(30);

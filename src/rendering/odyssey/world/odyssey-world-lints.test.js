@@ -150,24 +150,6 @@ describe('every world material opts out of scene fog', () => {
     // a few tens of world units — three attempts to prove the cloud drift that way measured
     // nothing but that floor. Until the harness can capture two times in ONE session, the
     // wiring is asserted here and the amplitude is asserted by the arithmetic in the constants.
-    it('the cloud field actually applies its drift to the vertex position', () => {
-        const source = readFileSync(path.join(WORLD_DIR, 'odyssey-world-renderer.js'), 'utf8');
-        expect(source).toMatch(/fieldMat\.positionNode\s*=\s*positionLocal\.add\(cfOffset\)/);
-        // ...and that the colour graph reads the DRIFTED position, not the original one. A
-        // positionNode moves the vertex while `positionWorld` still resolves to where it used
-        // to be, so a graph reading `positionWorld` would shade and fade the mass at its old
-        // place — silently, and only visibly once the drift amplitude grew.
-        expect(source).toMatch(/const cfWorld = varying\(positionLocal\.add\(cfOffset\)/);
-        // The aerial grades the painted colour at the drifted cfWorld (`fieldAerial` is the hero
-        // aerial, or a cloud look's lighter share of it: odyssey-cloud-looks.js).
-        expect(source).toMatch(/fieldAerial\(fieldCol, cfWorld\)/);
-        expect(source).toMatch(/: heroAerial;/);
-        // The offset is a plain expression of the drift and the breath, so the vertex position
-        // and the cfWorld varying stay in the agreement this lint enforces. (The departure no
-        // longer shrinks the masses in place: the eye climbs above them, 2026-10-24.)
-        expect(source).toMatch(/const cfOffset = cfDrift\.add\(cfBreath\);/);
-    });
-
     it('every material reads positions and the eye in the climb frame (2026-10-24)', () => {
         // The world shrinks beneath the eye at the end of chapter 5 (setClimb). A material that
         // read three's raw positionWorld or cameraPosition would measure its haze, detail and

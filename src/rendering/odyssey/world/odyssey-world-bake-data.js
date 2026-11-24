@@ -468,7 +468,7 @@ function bakeCloudSilhouette(res, vn) {
 /**
  * The deck's silhouette field, baked and calibrated — the `.a` channel of the detail texture.
  *
- * EXPORTED FOR ITS UNIT GUARD (odyssey-cloud-field.test.js), because this field shipped two
+ * EXPORTED FOR ITS UNIT GUARD (odyssey-world-bakes-golden.test.js), because this field shipped two
  * defects that a screenshot could only show as "a straight line in the sky at ch5" and that
  * cost three bisect sessions between them: a value noise that did not tile, and a rank remap
  * that gave 42,172 tied texels 42,172 different values in texel order. Both are properties of
@@ -516,7 +516,7 @@ export function bakeDetailNormalData(res = 256) {
     // Rebake calibration guard: the sum the thresholds actually see must land back on the
     // measured p10/p50/p90 = 0.42/0.58/0.70, or 0.63/0.40 and the gate bands silently change
     // meaning. Logged rather than thrown — a sky that is a little off is a tuning note, not a
-    // reason to refuse to boot — and asserted in odyssey-cloud-field.test.js.
+    // reason to refuse to boot — and asserted in odyssey-world-bakes-golden.test.js.
     const { field: coarse, stats: cloudStats } = bakeOdysseyCloudField(res);
     const data = new Uint16Array(res * res * 4);
     for (let j = 0; j < res; j += 1) {

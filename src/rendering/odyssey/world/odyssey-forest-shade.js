@@ -1,5 +1,5 @@
 import { ODYSSEY_WORLD_SUN } from '../chapter-environments/shared/chapter-profile.js';
-import { getForestSpecies } from './odyssey-forest-species.js';
+import { FOREST_SPECIMENS } from './odyssey-forest-models-decode.js';
 
 /**
  * THE FOREST'S SHADE ON THE GROUND (Act II pass, step 3, 2026-10-25).
@@ -9,8 +9,8 @@ import { getForestSpecies } from './odyssey-forest-species.js';
  * bright as the meadow. The trees are static (their sway is a few units at the crown), so their
  * shade is baked once from the scatter into one plate the ground reads:
  *
- *   R  the SUN SHADOW. Each crown is a few spheres along its axis (a cone's taper for a conifer,
- *      one ellipsoid for a broadleaf); each sphere's shadow is an ellipse on the ground,
+ *   R  the SUN SHADOW. Each crown is a few ellipsoids, measured from the grown specimen's own foliage
+ *      (odyssey-forest-models.js `shade`); each one's shadow is an ellipse on the ground,
  *      stretched along the sun's bearing by 1 / sin(elevation) and set where the ray from its
  *      centre meets the terrain. Under the side sun of §1 (15° up) a 20 u pine throws a shadow
  *      ~60 u long, so the forest edge rakes long shade across the meadow.
@@ -24,9 +24,6 @@ import { getForestSpecies } from './odyssey-forest-species.js';
  * Pure arithmetic over the scatter's placements, no three.js, so it can run wherever the
  * scatter runs. Union by `max`, not a sum: two shadows over one patch of ground are one shadow.
  */
-
-/** The world scale of a roster tree (1 u = 1 m); the renderer's instance matrices use it too. */
-export const FOREST_WORLD_SCALE = 4.6;
 
 /**
  * The plate: a square over the scatter's disc (centre -220, -620, radius 1750) and the shadow
@@ -42,10 +39,11 @@ export const FOREST_SHADE_PLATE = Object.freeze({
 });
 
 /**
- * How much sun a crown stops, by builder (a broadleaf's open crown lets more through than a
- * fir's), and how soft each shadow's rim is.
+ * How much sun a crown stops (a broadleaf's open crown lets more through than a fir's needles), and
+ * how soft each shadow's rim is.
  */
-const SHADOW_OPACITY = Object.freeze({ conifer: 0.86, broadleaf: 0.78 });
+const NEEDLES = new Set(['spruce', 'fir', 'cypress', 'juniper']);
+const SHADOW_OPACITY = Object.freeze({ needles: 0.86, leaves: 0.78 });
 const SHADOW_SOFT = 0.5;
 /**
  * A BROADLEAF'S SHADOW IS LEAFY. Drawn as a clean ellipse, a lone oak's shade on open meadow
@@ -64,33 +62,9 @@ const COVER_REACH = 1.15;
 const COVER_PEAK = 1.0;
 
 /**
- * A crown as spheres in the tree's local units (mature stage, before the instance scale),
- * measured from the two builders' own formulas (odyssey-forest-geometry.js):
- *   conifer   a cone from ~0.6 of the trunk to the apex, base radius 1.2 x crownW;
- *   broadleaf one ellipsoid, horizontal radius 0.85 x the built crown width (1.55 x crownW),
- *             centred at trunk + 0.52 of the built crown height (1.65 x crownH).
- * Each entry is [height of centre, horizontal radius, vertical semi-axis].
- */
-function crownSpheres(spec) {
-    if (spec.builder === 'conifer') {
-        const base = spec.trunkH * 0.6;
-        const top = spec.trunkH + (spec.crownH * 3.4);
-        const rBase = spec.crownW * 1.2;
-        const span = top - base;
-        return [0.12, 0.36, 0.6, 0.82].map((t) => {
-            const r = rBase * (1 - t) * 1.05;
-            return [base + (span * t), r, Math.max(r, span * 0.13)];
-        });
-    }
-    const builtW = spec.crownW * 1.55;
-    const builtH = spec.crownH * 1.65;
-    return [[spec.trunkH + (builtH * 0.52), builtW * 0.85, builtH * 0.63]];
-}
-
-/**
  * Bake the forest's shade plate.
- * @param {Array<{x:number,y:number,z:number,speciesId:string,scaleXZ:number,scaleY:number,
- *   crown:number[]}>} placements
+ * @param {Array<{x:number,y:number,z:number,specimen:number,scale:number,scaleY:number,rot:number,
+ *   leanX:number,leanZ:number,crown:number[]}>} placements
  * @param {(x:number, z:number) => number} heightAt the terrain the shadows land on
  * @param {{res?: number, sun?: ArrayLike<number>}} [opts]
  * @returns {{data: Uint8Array, res: number, extent: number, x: number, z: number}} RGBA8, row j = +z
@@ -117,19 +91,12 @@ export function bakeForestShadeData(placements, heightAt, {
     const cotE = (flat / len) / sinE;
     const cosE = flat / len;
 
-    const spheresBy = new Map();
-    const spheresOf = (id) => {
-        if (!spheresBy.has(id)) {
-            const spec = getForestSpecies(id);
-            spheresBy.set(id, spec ? {
-                spheres: crownSpheres(spec),
-                opacity: SHADOW_OPACITY[spec.builder] ?? SHADOW_OPACITY.broadleaf,
-                leafy: spec.builder !== 'conifer',
-                trunkR: spec.trunkR ?? 0.06,
-            } : null);
-        }
-        return spheresBy.get(id);
-    };
+    const trees = FOREST_SPECIMENS.map((spec) => {
+        const needles = NEEDLES.has(spec.species);
+        return {
+            spheres: spec.shade, opacity: needles ? SHADOW_OPACITY.needles : SHADOW_OPACITY.leaves, leafy: !needles, trunkR: spec.trunkR,
+        };
+    });
 
     // A smooth value noise from a wrapped lattice table, in world units so it does not change
     // with the plate's resolution (the leafy outline and the dapple read it).
@@ -201,17 +168,27 @@ export function bakeForestShadeData(placements, heightAt, {
 
     for (let n = 0; n < placements.length; n += 1) {
         const p = placements[n];
-        const tree = spheresOf(p.speciesId);
-        if (!tree) continue;
-        const { spheres, opacity, leafy } = tree;
-        const sxz = p.scaleXZ * FOREST_WORLD_SCALE;
-        const sy = p.scaleY * FOREST_WORLD_SCALE;
+        // A fern's shade is under a texel.
+        if (p.role === 'floor') continue;
+        const {
+            spheres, opacity, leafy, trunkR,
+        } = trees[p.specimen];
+        // A far tree's shadow is a few texels: every other part of its crown, a little larger, no leaf edge.
+        const far = p.lod === 'far';
+        const step = far && spheres.length > 2 ? 2 : 1;
+        const sxz = p.scale;
+        const sy = p.scaleY;
+        const turnC = Math.cos(p.rot);
+        const turnS = Math.sin(p.rot);
         let crownR = 0;
         let firstReach = Infinity;
-        for (let k = 0; k < spheres.length; k += 1) {
-            const [hy, r, ry] = spheres[k];
+        for (let k = 0; k < spheres.length; k += step) {
+            const [ox, hy, oz, r, ry] = spheres[k];
             const R = r * sxz;
-            const RY = ry * sy;
+            const RY = ry * sy * (step > 1 ? 1.5 : 1);
+            // Where this part of the crown stands: turned with the tree, leaned with its height.
+            const px = p.x + (((ox * turnC) + (oz * turnS)) * sxz) + (p.leanX * hy * sy);
+            const pz = p.z + (((oz * turnC) - (ox * turnS)) * sxz) + (p.leanZ * hy * sy);
             crownR = Math.max(crownR, R);
             const cy = p.y + (hy * sy);
             // Where the ray from the sphere's centre meets the ground: two passes over the
@@ -222,13 +199,13 @@ export function bakeForestShadeData(placements, heightAt, {
             const flatReach = (cy - p.y) * cotE;
             let s = flatReach;
             for (let it = 0; it < 2; it += 1) {
-                const yg = heightAt(p.x + (s * dx), p.z + (s * dz));
+                const yg = heightAt(px + (s * dx), pz + (s * dz));
                 s = Math.min(flatReach * 1.8, Math.max(0, (cy - yg) * cotE));
             }
             // An ellipsoid (R across, RY up) seen along a ray at elevation e throws an ellipse
             // R wide and sqrt(R² sin²e + RY² cos²e) / sin e long.
             const along = Math.sqrt((R * R * sinE * sinE) + (RY * RY * cosE * cosE)) / sinE;
-            splat(shadow, p.x + (s * dx), p.z + (s * dz), along, R, opacity, SHADOW_SOFT, leafy);
+            splat(shadow, px + (s * dx), pz + (s * dz), along, R, opacity, SHADOW_SOFT, leafy && !far);
             firstReach = Math.min(firstReach, s - (along * 0.6));
         }
         // The trunk's shadow joins the foot to the crown's, so a lone tree's shade starts at it.
@@ -239,11 +216,13 @@ export function bakeForestShadeData(placements, heightAt, {
                 p.x + (half * dx),
                 p.z + (half * dz),
                 half,
-                Math.max(tree.trunkR * sxz * 1.6, texel * 0.75),
+                Math.max(trunkR * sxz * 1.6, texel * 0.75),
                 TRUNK_SHADOW,
                 0.6,
             );
         }
+        // A snag has no crown to lay over the ground.
+        if (!spheres.length) continue;
         const cr = Math.min(1, (p.crown?.[0] ?? 0.15) / P.colourScale);
         const cg = Math.min(1, (p.crown?.[1] ?? 0.25) / P.colourScale);
         splat(cover, p.x, p.z, crownR * COVER_REACH, crownR * COVER_REACH, COVER_PEAK, 0.7, false, (k, o) => {

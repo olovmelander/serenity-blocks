@@ -3,14 +3,14 @@
  * stage to the board as a promise (plan item 2.1, 2026-08-21).
  *
  * WHY. The world bucket was 1.74 s of the cold Odyssey startup on every cell, 1.08–1.14 s of it
- * the five texture bakes and ~0.3–0.6 s the cloud-field sculpt — deterministic, input-free CPU
+ * the five texture bakes — deterministic, input-free CPU
  * inside ONE long task, the largest frame in every cell (AGGREGATE.md r185p1live). Every input
  * (quality, flags, the 48 rail samples) is known before `renderer.init()` is awaited, and
  * `nodes` needs only the height mirror, so the bakes can run in a Worker while the renderer,
  * chapter 1, the path and the nodes are built, and the world itself (clipmaps, materials, forest)
  * is assembled afterwards from the landed arrays.
  *
- * Contract: {@link startWorldBake} returns `{ relief, textures, cloudField, done, viaWorker }`
+ * Contract: {@link startWorldBake} returns `{ relief, textures, scatter, done, viaWorker }`
  * promises. With no Worker (vitest, a CSP that forbids it, a spawn error) the same pure functions
  * run synchronously on the caller's thread at the first await — the exact code path the goldens
  * pin — so the result is byte-identical either way.
@@ -32,7 +32,6 @@ import {
     bakeReliefData, bakeGroundSunFieldsData, bakeGroundAtlasData, bakeDetailNormalData, bakeMacroData, bakeSculptPlateData,
     makeReliefSampler, mergeReliefBands, reliefBandRanges,
 } from './odyssey-world-bake-data.js';
-import { buildCloudFieldGeometryData } from './odyssey-cloud-field.js';
 import { scatterZonedForest } from './odyssey-forest-scatter.js';
 import { bakeForestShadeData } from './odyssey-forest-shade.js';
 import { readStoredWorldBake, storeWorldBake, worldBakeStoreAvailable } from './odyssey-world-bake-store.js';
@@ -46,7 +45,7 @@ function deferred() {
 const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
 
 /** The stages a handle carries. */
-const STAGE_KEYS = ['relief', 'textures', 'cloudField', 'scatter', 'done'];
+const STAGE_KEYS = ['relief', 'textures', 'scatter', 'done'];
 
 /**
  * How long the kept copy may take to say whether it has this bake before the workers start
@@ -74,16 +73,13 @@ const KEPT_COPY_STORE = { read: readStoredWorldBake, write: storeWorldBake };
 /**
  * The key two requests share one bake under: everything the bakes read, nothing that only
  * changes how they run (the band count, the synchronous lever, the cache lever).
- * @param {{reliefRes: number, shadowRes: number, cloudSpecs?: object[]|null, railSamples?: object[]|null, cloudField?: boolean, scatter?: object|null}} request
+ * @param {{reliefRes: number, shadowRes: number, scatter?: object|null}} request
  * @returns {string}
  */
 export function worldBakeKey(request) {
-    const field = !!request.cloudField && Array.isArray(request.cloudSpecs);
     return JSON.stringify({
         reliefRes: request.reliefRes,
         shadowRes: request.shadowRes,
-        cloudSpecs: field ? request.cloudSpecs : null,
-        railSamples: field ? (request.railSamples ?? null) : null,
         scatter: request.scatter ?? null,
     });
 }
@@ -123,7 +119,7 @@ function whenPageIdle(task) {
  * tests; the stages resolve immediately.
  */
 export function bakeWorldSync({
-    reliefRes, shadowRes, cloudSpecs = null, railSamples = null, cloudField = false, scatter = null,
+    reliefRes, shadowRes, scatter = null,
 }) {
     const t0 = now();
     const relief = bakeReliefData(reliefRes);
@@ -137,8 +133,6 @@ export function bakeWorldSync({
     const macro = bakeMacroData();
     const summit = bakeSculptPlateData();
     const t5 = now();
-    const field = cloudField && Array.isArray(cloudSpecs) ? buildCloudFieldGeometryData(cloudSpecs, railSamples) : null;
-    const t6 = now();
     const zoned = scatter ? scatterZonedForest(makeReliefSampler(relief), scatter) : null;
     if (zoned) zoned.shade = bakeForestShadeData(zoned.placements, makeReliefSampler(relief));
     const t7 = now();
@@ -147,7 +141,6 @@ export function bakeWorldSync({
         textures: {
             sunFields, atlas, detail, macro, summit,
         },
-        cloudField: field,
         scatter: zoned,
         ms: {
             relief: +(t1 - t0).toFixed(1),
@@ -155,8 +148,7 @@ export function bakeWorldSync({
             atlas: +(t3 - t2).toFixed(1),
             detail: +(t4 - t3).toFixed(1),
             macro: +(t5 - t4).toFixed(1),
-            cloudField: +(t6 - t5).toFixed(1),
-            scatter: +(t7 - t6).toFixed(1),
+            scatter: +(t7 - t5).toFixed(1),
             total: +(t7 - t0).toFixed(1),
         },
     };
@@ -167,12 +159,12 @@ export function bakeWorldSync({
  * still be in flight). Prefer module Workers, after the copy kept across launches if a production
  * build has one; otherwise (or on any worker failure) the synchronous twin runs on the first await
  * of any stage.
- * @param {{reliefRes: number, shadowRes: number, cloudSpecs?: object[]|null, railSamples?: object[]|null, cloudField?: boolean, forceSync?: boolean, cache?: boolean}} request
+ * @param {{reliefRes: number, shadowRes: number, forceSync?: boolean, cache?: boolean}} request
  *   `cache: false` bakes afresh and keeps nothing
  * @param {{store?: {read: Function, write: Function}|null, fingerprint?: string|null, graceMs?: number, whenIdle?: Function}} [env]
  *   seams for tests: the kept copy (null for none), what it is keyed by, how long its answer is
  *   waited for, and when a fresh bake is written to it
- * @returns {{relief: Promise<object>, textures: Promise<object>, cloudField: Promise<object|null>, done: Promise<object>, viaWorker: boolean, startedAt: number, reused?: boolean}}
+ * @returns {{relief: Promise<object>, textures: Promise<object>, done: Promise<object>, viaWorker: boolean, startedAt: number, reused?: boolean}}
  */
 export function startWorldBake(request, env = {}) {
     const key = request.cache === false ? null : worldBakeKey(request);
@@ -185,21 +177,19 @@ export function startWorldBake(request, env = {}) {
 function bakeWorld(request, key, env) {
     const relief = deferred();
     const textures = deferred();
-    const cloudField = deferred();
     const scatter = deferred();
     const done = deferred();
     const startedAt = now();
     const handle = {
         relief: relief.promise,
         textures: textures.promise,
-        cloudField: cloudField.promise,
         scatter: scatter.promise,
         done: done.promise,
         viaWorker: false,
         startedAt,
     };
     // Promises nobody awaits must not surface as unhandled rejections (the fallback re-runs).
-    [relief, textures, cloudField, scatter, done].forEach((d) => d.promise.catch(() => {}));
+    [relief, textures, scatter, done].forEach((d) => d.promise.catch(() => {}));
     // A bake that failed outright is not kept: the next request bakes again.
     done.promise.catch(() => { if (sessionBake?.handle === handle) sessionBake = null; });
 
@@ -211,11 +201,10 @@ function bakeWorld(request, key, env) {
             const out = bakeWorldSync(request);
             relief.resolve(out.relief);
             textures.resolve(out.textures);
-            cloudField.resolve(out.cloudField);
             scatter.resolve(out.scatter);
             done.resolve({ ms: out.ms, viaWorker: false, source: 'sync' });
         } catch (error) {
-            [relief, textures, cloudField, scatter, done].forEach((d) => d.reject(error));
+            [relief, textures, scatter, done].forEach((d) => d.reject(error));
         }
     };
 
@@ -228,7 +217,7 @@ function bakeWorld(request, key, env) {
         // old synchronous build did. (An overridden `.then` would not work — `await` on a native
         // promise bypasses it.)
         const stages = [
-            ['relief', relief], ['textures', textures], ['cloudField', cloudField],
+            ['relief', relief], ['textures', textures],
             ['scatter', scatter], ['done', done],
         ];
         for (const [stage, d] of stages) {
@@ -396,20 +385,7 @@ function bakeWorld(request, key, env) {
             resolveTexturesWhenComplete();
         });
 
-        // Lane N+2 — the cloud-field sculpt (rail samples only).
-        if (request.cloudField && Array.isArray(request.cloudSpecs)) {
-            spawn({
-                lane: 'cloudField', cloudSpecs: request.cloudSpecs, railSamples: request.railSamples ?? null,
-            }, undefined, (msg) => {
-                if (msg.stage !== 'cloudField') return;
-                ms.cloudField = msg.ms;
-                cloudField.resolve(msg.field);
-            });
-        } else {
-            cloudField.resolve(null);
-        }
-
-        Promise.all([relief.promise, textures.promise, cloudField.promise, scatter.promise]).then(() => {
+        Promise.all([relief.promise, textures.promise, scatter.promise]).then(() => {
             if (failed || settled) return;
             settled = true;
             ms.total = Math.round(now() - startedAt);
@@ -456,7 +432,6 @@ function bakeWorld(request, key, env) {
         handle.viaWorker = false;
         relief.resolve(kept.relief);
         textures.resolve(kept.textures);
-        cloudField.resolve(kept.cloudField);
         scatter.resolve(kept.scatter);
         done.resolve({ ms: { kept: Math.round(now() - startedAt) }, viaWorker: false, source: 'kept' });
     }, bakeInstead);
@@ -465,10 +440,8 @@ function bakeWorld(request, key, env) {
         (env.whenIdle ?? whenPageIdle)(() => {
             // Replaced (another lane was asked for since): the bake now kept writes its own.
             if (sessionBake?.handle !== handle) return;
-            Promise.all([relief.promise, textures.promise, cloudField.promise, scatter.promise])
-                .then(([r, t, c, z]) => store.write(storeKey, {
-                    relief: r, textures: t, cloudField: c, scatter: z,
-                }))
+            Promise.all([relief.promise, textures.promise, scatter.promise])
+                .then(([r, t, z]) => store.write(storeKey, { relief: r, textures: t, scatter: z }))
                 .catch(() => { /* never kept: the next launch bakes */ });
         });
     }, () => { /* failed: nothing to keep */ });
@@ -480,10 +453,10 @@ function bakeWorld(request, key, env) {
  * @param {ReturnType<typeof startWorldBake>} handle
  */
 export async function awaitWorldBake(handle) {
-    const [relief, textures, cloudField, scatter, done] = await Promise.all([
-        handle.relief, handle.textures, handle.cloudField, handle.scatter, handle.done,
+    const [relief, textures, scatter, done] = await Promise.all([
+        handle.relief, handle.textures, handle.scatter, handle.done,
     ]);
     return {
-        relief, textures, cloudField, scatter, ms: done.ms, viaWorker: done.viaWorker, source: done.source,
+        relief, textures, scatter, ms: done.ms, viaWorker: done.viaWorker, source: done.source,
     };
 }

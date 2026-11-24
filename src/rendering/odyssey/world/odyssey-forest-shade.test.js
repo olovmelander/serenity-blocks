@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { FOREST_SHADE_PLATE, FOREST_WORLD_SCALE, bakeForestShadeData } from './odyssey-forest-shade.js';
+import { FOREST_SHADE_PLATE, bakeForestShadeData } from './odyssey-forest-shade.js';
+import { FOREST_SPECIMENS, forestSpecimenIndex } from './odyssey-forest-models-decode.js';
 import { ODYSSEY_WORLD_SUN } from '../chapter-environments/shared/chapter-profile.js';
 
 /**
@@ -9,12 +10,21 @@ import { ODYSSEY_WORLD_SUN } from '../chapter-environments/shared/chapter-profil
  * cover sits under the tree, and the plate is empty where no tree stands.
  */
 
-const RES = 512;
+const RES = 2048;
 const P = FOREST_SHADE_PLATE;
 const texel = P.extent / RES;
 const flat = () => 300;
-const tree = (speciesId, x = P.x, z = P.z) => ({
-    x, y: 300, z, speciesId, scaleXZ: 1, scaleY: 1, crown: [0.2, 0.3, 0.1],
+const tree = (id, x = P.x, z = P.z) => ({
+    x,
+    y: 300,
+    z,
+    specimen: forestSpecimenIndex(id),
+    scale: 1,
+    scaleY: 1,
+    rot: 0,
+    leanX: 0,
+    leanZ: 0,
+    crown: [0.2, 0.3, 0.1],
 });
 const at = (bake, x, z, ch) => {
     const i = Math.floor(((x - (P.x - (P.extent / 2))) / texel));
@@ -27,6 +37,18 @@ const away = [-sun[0] / Math.hypot(sun[0], sun[2]), -sun[2] / Math.hypot(sun[0],
 const cotE = Math.hypot(sun[0], sun[2]) / sun[1];
 
 describe('the forest shade plate', () => {
+    it('knows every crown by its own foliage: a few ellipsoids inside the tree', () => {
+        FOREST_SPECIMENS.forEach((spec) => {
+            if (spec.species === 'snag') return;
+            expect(spec.shade.length, spec.id).toBeGreaterThan(0);
+            spec.shade.forEach(([x, y, z, across, up]) => {
+                expect(Math.hypot(x, z) + across, spec.id).toBeLessThan(spec.reach * 1.35);
+                expect(y, spec.id).toBeGreaterThan(0);
+                expect(y + up, spec.id).toBeLessThan(spec.height * 1.25);
+            });
+        });
+    });
+
     it('is empty where no tree stands', () => {
         const bake = bakeForestShadeData([], flat, { res: RES });
         expect(bake.data.every((v) => v === 0)).toBe(true);
@@ -34,9 +56,9 @@ describe('the forest shade plate', () => {
     });
 
     it('throws a fir\'s shadow away from the sun, a sun-height cotangent out, and none toward it', () => {
-        const bake = bakeForestShadeData([tree('S2-workhorse-pine')], flat, { res: RES });
-        // The pine's crown middle stands ~2.5 local units up: its shadow lies ~cot(e) x that out.
-        const reach = 2.5 * FOREST_WORLD_SCALE * cotE;
+        const bake = bakeForestShadeData([tree('spruce-broad')], flat, { res: RES });
+        // Its crown's middle stands about a third of the way up: its shadow lies ~cot(e) x that out.
+        const reach = FOREST_SPECIMENS[forestSpecimenIndex('spruce-broad')].height * 0.35 * cotE;
         expect(at(bake, P.x + (away[0] * reach), P.z + (away[1] * reach), 0)).toBeGreaterThan(0.5);
         expect(at(bake, P.x - (away[0] * reach), P.z - (away[1] * reach), 0)).toBe(0);
         // Off to the side of the shadow's axis, well past the crown's width: clear.
@@ -45,9 +67,9 @@ describe('the forest shade plate', () => {
     });
 
     it('lays the canopy cover under the tree, with its colour premultiplied by it', () => {
-        const bake = bakeForestShadeData([tree('S1-shore-broadleaf')], flat, { res: RES });
+        const bake = bakeForestShadeData([tree('oak-great')], flat, { res: RES });
         const cover = at(bake, P.x, P.z, 1);
-        expect(cover).toBeGreaterThan(0.6); // (the sampled texel centre is half a 7 u texel off the trunk)
+        expect(cover).toBeGreaterThan(0.6); // (the sampled texel's centre is off the trunk)
         // B / G and A / G give the crown's red and green back (stored over `colourScale`).
         expect((at(bake, P.x, P.z, 2) / cover) * P.colourScale).toBeCloseTo(0.2, 1);
         expect((at(bake, P.x, P.z, 3) / cover) * P.colourScale).toBeCloseTo(0.3, 1);
@@ -55,8 +77,8 @@ describe('the forest shade plate', () => {
     });
 
     it('lets light through a broadleaf\'s shadow, and not through a fir\'s', () => {
-        const mean = (speciesId) => {
-            const bake = bakeForestShadeData([tree(speciesId)], flat, { res: RES });
+        const mean = (id) => {
+            const bake = bakeForestShadeData([tree(id)], flat, { res: RES });
             let sum = 0;
             let n = 0;
             for (let k = 0; k < RES * RES; k += 1) {
@@ -65,6 +87,6 @@ describe('the forest shade plate', () => {
             }
             return sum / n / 255;
         };
-        expect(mean('S1-shore-broadleaf')).toBeLessThan(mean('S2-workhorse-pine'));
+        expect(mean('oak-wide')).toBeLessThan(mean('spruce-broad'));
     });
 });
