@@ -5,13 +5,13 @@
    10
   ],
   "seed": 91001,
-  "locks": 593,
+  "locks": 629,
   "frags": [
-   0,
-   0
+   2,
+   2
   ],
   "ticks": 7200,
-  "sha256": "100824040cf71b3afc81f861ec5d5011e79439cdb6306cdd227c70d11beba8a5"
+  "sha256": "726ad540cf61fa8488849dc5174c4e204e6d0a0fa5d5d54cd16a29a936251841"
  },
  {
   "tiers": [
@@ -19,13 +19,13 @@
    10
   ],
   "seed": 91002,
-  "locks": 603,
+  "locks": 630,
   "frags": [
-   0,
-   0
+   2,
+   1
   ],
   "ticks": 7200,
-  "sha256": "096c3f682af8015a033fde89bd0b9beb8a2fd2a8335c848f7ff3103ace7f39d2"
+  "sha256": "ff5e7af7ab125c3c065f920cbf85724ae9cc68ac577ae3ef56234a36ad810818"
  },
  {
   "tiers": [
@@ -33,13 +33,13 @@
    8
   ],
   "seed": 91003,
-  "locks": 401,
+  "locks": 606,
   "frags": [
-   3,
-   0
+   2,
+   2
   ],
   "ticks": 7200,
-  "sha256": "e3daa4479a66ead37f0add17145a51cb9238bd206f9ba001c98a02d3ff018af4"
+  "sha256": "bd0a4b099853abcbede82efce9177be3a559b1987bc8ea6f362533d7cd34aae4"
  },
  {
   "tiers": [
@@ -47,13 +47,13 @@
    6
   ],
   "seed": 91004,
-  "locks": 226,
+  "locks": 265,
   "frags": [
    0,
-   1
+   2
   ],
   "ticks": 7200,
-  "sha256": "e1b3146d1dc177dbcb2d52485d536cbbd35a50e35587ffd80f0c46b7c13b950a"
+  "sha256": "2bce308aed13af196cd34553d70e0e84273f3655b8d334462c071f29fdfa756c"
  },
  {
   "tiers": [
@@ -61,13 +61,13 @@
    4
   ],
   "seed": 91005,
-  "locks": 100,
+  "locks": 104,
   "frags": [
    0,
    0
   ],
   "ticks": 7200,
-  "sha256": "9e2738bb3ccac7353a07854fd8ffe561a978f7c5bc2a04837e16d34a106c6e4e"
+  "sha256": "bfd7d4551f600afc7a22aed0ad4a675ff13212660b26be58e2afdece8d83c85e"
  },
  {
   "tiers": [
@@ -75,13 +75,13 @@
    1
   ],
   "seed": 91006,
-  "locks": 62,
+  "locks": 51,
   "frags": [
    0,
    0
   ],
   "ticks": 7200,
-  "sha256": "f630b6edaed78ef9f1faa7fb8ed64f97fcfa208ab7b8f47d5dd87475cbf7c55e"
+  "sha256": "c2fc1adc4e616adfe39de660d0c940faa844d3229efd627a5665940ab811cbde"
  },
  {
   "tiers": [
@@ -90,14 +90,14 @@
    10
   ],
   "seed": 91007,
-  "locks": 915,
+  "locks": 577,
   "frags": [
    4,
-   3,
-   4
+   2,
+   7
   ],
-  "ticks": 7200,
-  "sha256": "e1258eff02c4d7d6600a1f1fff0f7f0cf7fba03175bd61811274b284328b24fd"
+  "ticks": 4968,
+  "sha256": "6758cca27e21bb56d5d74c71ff4c3111e55a330853d867b34d8886d0647cc190"
  },
  {
   "tiers": [
@@ -107,15 +107,15 @@
    7
   ],
   "seed": 91008,
-  "locks": 776,
+  "locks": 474,
   "frags": [
-   6,
-   3,
    7,
-   1
+   3,
+   3,
+   0
   ],
-  "ticks": 6200,
-  "sha256": "aaeb2a2450bdbcf3764779b741a6312becfb245135f4e07e0123f0ed4ada3718"
+  "ticks": 4068,
+  "sha256": "660e0a45b888ebc3033c3380cb0dfef4da9c4800b6b9848ee7563dc658ecec5f"
  },
  {
   "tiers": [
@@ -125,15 +125,15 @@
    10
   ],
   "seed": 91009,
-  "locks": 773,
+  "locks": 602,
   "frags": [
-   2,
+   7,
    5,
-   1,
-   7
+   4,
+   6
   ],
-  "ticks": 4407,
-  "sha256": "3a07bd489a6504371d62e21d6f23adfd16a371f7c38e40d72ab2fb019d6b48ce"
+  "ticks": 3784,
+  "sha256": "ed0749053aa1361376895e81cc9401ffdfb22490d51bb44b74152cb3675fcf68"
  },
  {
   "tiers": [
@@ -146,13 +146,13 @@
     "forceAttackType": "blind"
    }
   },
-  "locks": 690,
+  "locks": 758,
   "frags": [
    0,
    0
   ],
   "ticks": 7200,
-  "sha256": "2fd799da4a3a11fc2813ac9ad0013f8db8e7e02b3737b839efe1b8d24aecb4f3"
+  "sha256": "aa0ff1dd005eaad375185a4844648a375b9eb72e53c3e3e1c1201d34419673ca"
  },
  {
   "tiers": [
@@ -165,13 +165,13 @@
     "forceAttackType": "full_blind"
    }
   },
-  "locks": 688,
+  "locks": 752,
   "frags": [
    0,
    0
   ],
   "ticks": 7200,
-  "sha256": "63388bd9abba2c50dffebe946a3aff32da08545c31081db063d9a32a3eada399"
+  "sha256": "06002d57891a13ecec7875e8f41532b0f4c3664d27071bdb14facf3703b307ec"
  },
  {
   "tiers": [
@@ -183,14 +183,14 @@
   "matchConfig": {
    "hotPotato": true
   },
-  "locks": 1021,
+  "locks": 1092,
   "frags": [
-   0,
-   3,
-   1
+   1,
+   1,
+   0
   ],
   "ticks": 7200,
-  "sha256": "72f485348a09d10a3da61c478f09dcb859b7202e3d2071a103464e343cca9070"
+  "sha256": "8838b457290f39ab10d164d1e1116d576c46320cb3817fad23eb89573231579d"
  },
  {
   "tiers": [
@@ -201,12 +201,12 @@
   "matchConfig": {
    "minAttackLines": 4
   },
-  "locks": 679,
+  "locks": 686,
   "frags": [
    1,
-   0
+   5
   ],
   "ticks": 7200,
-  "sha256": "4fb8790fb411b46086a1a617e052bfea715ba8fb4d57bbc4e8508e7db6dc9896"
+  "sha256": "6f9e042472305f59a6db6a8148f74a62ca01b63ff2758217de816bd8eba856f0"
  }
 ]
