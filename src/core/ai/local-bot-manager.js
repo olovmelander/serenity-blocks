@@ -7,8 +7,8 @@ import { seededRandom } from '../../utils/helpers.js';
 
 // Fitted with versus play on the shipped rules: free-for-all to seven frags, both seat orders
 // (reports/bots-versus-2026-11/ladder.mjs), so that each tier beats the next by a similar margin.
-const LOCAL_PRACTICE_CHANCE = [0.75, 0.6, 0.5, 0.3, 0.25, 0.32, 0.12, 0.48, 0.74];
-const LOCAL_ACTION_RATE = [108, 126, 140, 218, 285, 318, 435, 515, 760];
+const LOCAL_PRACTICE_CHANCE = [0.75, 0.6, 0.5, 0.3, 0.25, 0.32, 0.14, 0.33, 0.72];
+const LOCAL_ACTION_RATE = [108, 138, 150, 232, 300, 400, 585, 600, 760];
 // Practiced seats can execute a known route quickly. Their nominal tier keeps
 // its own reading time above the 170 ms needed for expert search.
 const EXPERT_REACTION_MS = { 8: [170, 230], 9: [170, 200], 10: [158, 178] };
@@ -20,11 +20,10 @@ function localPace(nominalTier, seed, index) {
     const judgmentTier = reading() < LOCAL_PRACTICE_CHANCE[nominalTier - 1]
         ? Math.min(10, nominalTier + 2) : nominalTier;
     const scale = Math.exp((2 * random() - 1) * 1.65);
-    const handTier = nominalTier === 7 && scale <= 1 ? 8 : nominalTier;
     return {
         nominalTier,
         judgmentTier,
-        apm: LOCAL_ACTION_RATE[handTier - 1],
+        apm: LOCAL_ACTION_RATE[nominalTier - 1],
         scale,
     };
 }
