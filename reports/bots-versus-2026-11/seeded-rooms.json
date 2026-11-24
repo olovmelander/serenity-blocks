@@ -1,0 +1,212 @@
+[
+ {
+  "tiers": [
+   10,
+   10
+  ],
+  "seed": 91001,
+  "locks": 593,
+  "frags": [
+   0,
+   0
+  ],
+  "ticks": 7200,
+  "sha256": "100824040cf71b3afc81f861ec5d5011e79439cdb6306cdd227c70d11beba8a5"
+ },
+ {
+  "tiers": [
+   10,
+   10
+  ],
+  "seed": 91002,
+  "locks": 603,
+  "frags": [
+   0,
+   0
+  ],
+  "ticks": 7200,
+  "sha256": "096c3f682af8015a033fde89bd0b9beb8a2fd2a8335c848f7ff3103ace7f39d2"
+ },
+ {
+  "tiers": [
+   9,
+   8
+  ],
+  "seed": 91003,
+  "locks": 401,
+  "frags": [
+   3,
+   0
+  ],
+  "ticks": 7200,
+  "sha256": "e3daa4479a66ead37f0add17145a51cb9238bd206f9ba001c98a02d3ff018af4"
+ },
+ {
+  "tiers": [
+   7,
+   6
+  ],
+  "seed": 91004,
+  "locks": 226,
+  "frags": [
+   0,
+   1
+  ],
+  "ticks": 7200,
+  "sha256": "e1b3146d1dc177dbcb2d52485d536cbbd35a50e35587ffd80f0c46b7c13b950a"
+ },
+ {
+  "tiers": [
+   5,
+   4
+  ],
+  "seed": 91005,
+  "locks": 100,
+  "frags": [
+   0,
+   0
+  ],
+  "ticks": 7200,
+  "sha256": "9e2738bb3ccac7353a07854fd8ffe561a978f7c5bc2a04837e16d34a106c6e4e"
+ },
+ {
+  "tiers": [
+   3,
+   1
+  ],
+  "seed": 91006,
+  "locks": 62,
+  "frags": [
+   0,
+   0
+  ],
+  "ticks": 7200,
+  "sha256": "f630b6edaed78ef9f1faa7fb8ed64f97fcfa208ab7b8f47d5dd87475cbf7c55e"
+ },
+ {
+  "tiers": [
+   10,
+   10,
+   10
+  ],
+  "seed": 91007,
+  "locks": 915,
+  "frags": [
+   4,
+   3,
+   4
+  ],
+  "ticks": 7200,
+  "sha256": "e1258eff02c4d7d6600a1f1fff0f7f0cf7fba03175bd61811274b284328b24fd"
+ },
+ {
+  "tiers": [
+   10,
+   9,
+   8,
+   7
+  ],
+  "seed": 91008,
+  "locks": 776,
+  "frags": [
+   6,
+   3,
+   7,
+   1
+  ],
+  "ticks": 6200,
+  "sha256": "aaeb2a2450bdbcf3764779b741a6312becfb245135f4e07e0123f0ed4ada3718"
+ },
+ {
+  "tiers": [
+   10,
+   10,
+   10,
+   10
+  ],
+  "seed": 91009,
+  "locks": 773,
+  "frags": [
+   2,
+   5,
+   1,
+   7
+  ],
+  "ticks": 4407,
+  "sha256": "3a07bd489a6504371d62e21d6f23adfd16a371f7c38e40d72ab2fb019d6b48ce"
+ },
+ {
+  "tiers": [
+   10,
+   10
+  ],
+  "seed": 91010,
+  "matchConfig": {
+   "attackRules": {
+    "forceAttackType": "blind"
+   }
+  },
+  "locks": 690,
+  "frags": [
+   0,
+   0
+  ],
+  "ticks": 7200,
+  "sha256": "2fd799da4a3a11fc2813ac9ad0013f8db8e7e02b3737b839efe1b8d24aecb4f3"
+ },
+ {
+  "tiers": [
+   10,
+   10
+  ],
+  "seed": 91011,
+  "matchConfig": {
+   "attackRules": {
+    "forceAttackType": "full_blind"
+   }
+  },
+  "locks": 688,
+  "frags": [
+   0,
+   0
+  ],
+  "ticks": 7200,
+  "sha256": "63388bd9abba2c50dffebe946a3aff32da08545c31081db063d9a32a3eada399"
+ },
+ {
+  "tiers": [
+   10,
+   10,
+   10
+  ],
+  "seed": 91012,
+  "matchConfig": {
+   "hotPotato": true
+  },
+  "locks": 1021,
+  "frags": [
+   0,
+   3,
+   1
+  ],
+  "ticks": 7200,
+  "sha256": "72f485348a09d10a3da61c478f09dcb859b7202e3d2071a103464e343cca9070"
+ },
+ {
+  "tiers": [
+   10,
+   10
+  ],
+  "seed": 91013,
+  "matchConfig": {
+   "minAttackLines": 4
+  },
+  "locks": 679,
+  "frags": [
+   1,
+   0
+  ],
+  "ticks": 7200,
+  "sha256": "4fb8790fb411b46086a1a617e052bfea715ba8fb4d57bbc4e8508e7db6dc9896"
+ }
+]

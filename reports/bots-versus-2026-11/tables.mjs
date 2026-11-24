@@ -31,6 +31,8 @@ for (const file of process.argv.slice(2)) {
         const big = fires.filter((x) => x[0] >= 5);
         const roofed = big.filter((x) => x[8]?.[2]);
         console.log(`fires of 5+: ${big.length}; main column roofed ${f(100 * roofed.length / big.length, 0)}%, of those an edge column ${f(100 * roofed.filter((x) => x[8][0] === 0 || x[8][0] === 9).length / roofed.length, 0)}%, rows in it ${f(mean(roofed.map((x) => x[8][1])), 1)}, straights parked ${f(mean(roofed.map((x) => x[8][3])))}`);
+        const wave = big.filter((x) => x[9]);
+        if (wave.length) console.log(`chain fires (5+ lines, biggest wave 1 or 2 rows): ${f(100 * wave.filter((x) => x[9] <= 2).length / locks)} per 100 pieces; shaft fires (biggest wave 4 or more): ${f(100 * wave.filter((x) => x[9] >= 4).length / locks)}`);
         const b = seats.map((s) => s.boards);
         const n = b.reduce((t, x) => t + x.n, 0);
         console.log(`any board: tallest ${f(b.reduce((t, x) => t + x.max, 0) / n, 1)}, above 20 rows ${f(100 * b.reduce((t, x) => t + x.over20, 0) / n, 1)}%, roofed column with 3+ rows ${f(100 * b.reduce((t, x) => t + x.roofed3, 0) / n, 0)}%, straight parked on it ${f(100 * b.reduce((t, x) => t + x.parked, 0) / n, 0)}%, two or more ${f(100 * b.reduce((t, x) => t + x.parked2, 0) / n, 0)}%; heights ${Array.from({ length: 10 }, (_, c) => f(b.reduce((t, x) => t + x.heights[c], 0) / n, 1)).join(' ')}`);

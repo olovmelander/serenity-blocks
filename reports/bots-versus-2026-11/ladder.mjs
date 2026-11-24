@@ -34,7 +34,7 @@ for (let hi = 10; hi > 1; hi--) {
 
 console.log('\nOne round, five-minute limit: last one standing. Shipped rules against the rules before the versus merge, same seeds');
 console.log('pair | rules | games | higher won | lower won | both out | time limit | points % (95%) | decided only % | mean s | rows sent/min higher, lower | pieces/min higher, lower');
-for (const hi of [10, 9, 8, 7]) {
+for (const hi of [10, 9, 8, 7, 6, 5, 4, 3, 2]) {
     const lo = hi - 1;
     for (const rules of ['pre-versus', 'shipped']) {
         const games = [...read(`s${hi}v${lo}a-${rules}-`), ...read(`s${hi}v${lo}b-${rules}-`)];

@@ -101,8 +101,11 @@ for (let seed = Number(first); seed < Number(first) + Number(count); seed++) {
                 s.boards.parked2 += Number(shaft.straights >= 2);
             }
             open[i] = { key: piece.shapeKey, max, mean: mean(h), covered: covered(board), garbage: garbageRows(board), shaft,
-                offer: bestClear(board, piece.shapeKey), lines: 0, waves: 0 };
+                offer: bestClear(board, piece.shapeKey), lines: 0, waves: 0, biggest: 0 };
             if (s.waiting) s.waiting.pieces++;
+        },
+        wave(i, lines) {
+            if (open[i]) open[i].biggest = Math.max(open[i].biggest, Number(lines) || lines?.length || 0);
         },
         summary(i, summary) {
             const s = seats[i];
@@ -118,7 +121,7 @@ for (let seed = Number(first); seed < Number(first) + Number(count); seed++) {
             o.waves = summary.complexity ?? summary.comboStages ?? 0;
             if (lines < 2) return;
             const shaft = o.shaft ? [o.shaft.col, o.shaft.rows, Number(o.shaft.roofed), o.shaft.straights] : null;
-            s.fires.push([lines, o.waves, o.max, Math.round(o.mean * 10) / 10, o.covered, o.garbage, s.sinceFire, o.key, shaft]);
+            s.fires.push([lines, o.waves, o.max, Math.round(o.mean * 10) / 10, o.covered, o.garbage, s.sinceFire, o.key, shaft, o.biggest]);
             s.sinceFire = 0;
             if (s.waiting) { s.reaction.push([s.waiting.rows, s.waiting.pieces, lines]); s.waiting = null; }
         },
