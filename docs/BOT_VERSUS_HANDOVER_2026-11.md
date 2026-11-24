@@ -85,6 +85,7 @@ Blind is a slip, not a memory model: rows a piece do not measure it. It is the p
 - Planning, real game in headless Chrome (30 fps target, machine otherwise idle), per animation frame: 0.13 ms mean and 2.0 ms at 99% in a duel of tier 10s; 0.15 and 2.2 ms with four. Before, on the same machine headless only: 0.12 ms mean per tick.
 - Nine of nine campaign gates, 280 of 280 rival games and 4,500 of 4,500 campaign attempts identical to before this work, on commit `0568fe096`. (A first run had one attempt differ: an innocent regrouping of a floating-point sum in the old path. The sum order is now kept, with a comment.) After that commit only the ladder levers in `local-bot-manager.js` changed, which Odyssey does not use.
 - Our insertion of attack rows reproduces 2,138 of 2,138 recorded rises.
+- The unit suite passes (28,157 tests) except `local-versus-cameras` "watches a clear out of sight until its cascade settles", which passes alone and fails the same way in a full run on clean main `adfe5199e` on this machine. Types, lint ratchet, architecture fitness, boundaries, build and the other CI gates pass.
 
 ## How to repeat and re-fit
 
