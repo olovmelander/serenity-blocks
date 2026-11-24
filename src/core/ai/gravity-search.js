@@ -646,9 +646,11 @@ export function* searchGravity(state, config, pending, weights = GRAVITY_WEIGHTS
                     comboCount,
                     comboMultiplier: 1 + comboCount * 0.5,
                 } : quietContext;
-                const reward = parent.reward + (play ? versusReward(play, paid.lines, waves.length > 0 && !board.stock, calm)
-                    : paid.score * weights.score + (scoreMode ? 0 : paid.attack * weights.attack)
-                    + waves.length ** 2 * weights.waves);
+                // Summed in this order: Odyssey's rivals replay to the last rounding.
+                const reward = play
+                    ? parent.reward + versusReward(play, paid.lines, waves.length > 0 && !board.stock, calm)
+                    : parent.reward + paid.score * weights.score + (scoreMode ? 0 : paid.attack * weights.attack)
+                        + waves.length ** 2 * weights.waves;
                 const move = {
                     shapeKey: key, x, y, rotation: form.rotation, actions: landing.actions, waves, ...paid,
                 };
