@@ -11,7 +11,7 @@ import {
 import { GameState, rotateShapeMatrix } from '../../src/core/game.js';
 import { MultiPlayerState } from '../../src/core/multi-player-state.js';
 import { GravityBotController, gravityPlanningRate } from '../../src/core/ai/gravity-bot-controller.js';
-import { readGravityBoard } from '../../src/core/ai/gravity-search.js';
+import { readGravityBoard, steadyLandings } from '../../src/core/ai/gravity-search.js';
 import { LocalBotManager } from '../../src/core/ai/local-bot-manager.js';
 import {
     VERSUS_WEIGHTS, rowsToBlockSpawn, versusAttack, versusCalm, versusReward, versusTrigger, versusValue,
@@ -213,28 +213,31 @@ describe('a tower at the side', () => {
         '.........#', '.........#', '.........#', '##.......#', '###....#.#', '###....###', '####...###', '.#########',
         '#.########', '#########.', '#########.', '#######...', '.#########', '.#########',
     ].map((line) => line.replaceAll('#', 'A'));
-    const seat = (pieceY) => {
+    const seat = () => {
         const state = new GameState();
         let shape = SHAPES.J;
         for (let i = 0; i < 2; i++) shape = rotateShapeMatrix(shape, 'right');
         const rows = grid([...board(), ...Array.from({ length: 10 }, () => 'AAAAAAAAA.')]);
         state.boardGrid.forEach((row, y) => row.forEach((_, x) => { row[x] = rows[y][x]; }));
-        state.currentPiece = { shapeKey: 'J', shape, rotation: 2, x: 6, y: pieceY };
+        state.currentPiece = { shapeKey: 'J', shape, rotation: 2, x: 6, y: 1 };
         state.nextPieces = ['T', 'O', 'I'];
         return new GravityBotController({
             playerState: state, playerIndex: 0, difficulty: 10, actions: {}, rng: () => 0.5, versus: true, versusWeights: VERSUS_WEIGHTS,
         });
     };
 
-    it('is never climbed: the piece lands no higher than it is, and never above the spawn rows', () => {
-        for (const y of [1, 2]) {
-            const { candidate } = seat(y).plan();
-            expect(candidate.y).toBeGreaterThanOrEqual(y - 1);
-        }
+    it('is never climbed: nothing above the spawn rows, nothing higher than the piece already is', () => {
+        const landing = (y, top = 0) => ({ y, form: { top }, actions: [] });
+        const kept = (landings, y) => steadyLandings(landings, { y }, HIDDEN_ROWS, false).map((l) => l.y);
+        // Row 2 is the top spawn row; y counts from the piece's box, top is its first filled row.
+        expect(kept([landing(-2), landing(1), landing(1, 1), landing(8)], 1)).toEqual([1, 8]);
+        expect(kept([landing(4), landing(6), landing(7)], 8)).toEqual([7]);
+        // Nowhere else to go: better any landing than none.
+        expect(kept([landing(-2)], 1)).toEqual([-2]);
     });
 
     it('after three refused inputs on a piece, it goes down where it is', () => {
-        const bot = seat(1);
+        const bot = seat();
         bot.refusals = { piece: bot.playerState.piecesPlaced, count: 3 };
         const { actions } = bot.plan();
         expect(actions.some(({ type }) => type === 'move' || type === 'rotate')).toBe(false);

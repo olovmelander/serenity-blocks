@@ -331,7 +331,7 @@ function actualLandings(grid, piece) {
  * than the piece already is (kicks can climb a tower a row at a time, and a piece that keeps
  * climbing never lands). dropHere leaves only where it would fall without another key.
  */
-function steadyLandings(landings, piece, first, dropHere) {
+export function steadyLandings(landings, piece, first, dropHere) {
     const steady = landings.filter(({ form, y }) => y + form.top >= first - 2 && y >= Math.floor(piece.y) - 1);
     const kept = dropHere
         ? landings.filter(({ actions }) => !actions.some(({ type }) => type === 'move' || type === 'rotate'))
