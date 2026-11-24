@@ -143,7 +143,7 @@ export function versusValue(board, play, pending, probe) {
         let lines = 0;
         for (const n of waves) lines += n;
         const sent = versusAttack(lines, false, play.minAttackLines);
-        best = Math.max(best, sent * w.vLines + sent * sent * w.vSquare - gaps * w.vGap);
+        best = Math.max(best, sent * w.vLines + (play.flat ? 0 : sent * sent * w.vSquare) - gaps * w.vGap);
     }
     let bump = 0;
     let previous = -1;
@@ -182,12 +182,14 @@ export function versusCalm(board, pending, play) {
  * cashing in under five lines while there is no hurry.
  */
 export function versusReward(play, lines, perfect, calm = 0) {
-    if (!lines) return 0;
+    // Nothing sent counts now: a clear is neither earned nor held back.
+    if (!lines || play.worth === 0) return 0;
     const w = play.weights;
     const sent = versusAttack(lines, perfect, play.minAttackLines);
-    const worth = play.worth ?? 1;
-    let reward = (sent * w.attack + (play.flat ? 0 : sent * sent * w.attackSquare)) * worth;
-    if (worth > 0 && sent >= (play.killRows ?? Infinity)) reward += w.kill;
+    // A hot potato's holder wants rows now: no bonus for size, no cost for small change.
+    if (play.flat) return sent * w.attack * 2;
+    let reward = sent * w.attack + sent * sent * w.attackSquare;
+    if (sent >= (play.killRows ?? Infinity)) reward += w.kill;
     if (lines === 1) reward -= w.single;
     else if (lines <= 3) reward -= w.small;
     if (lines < 5) reward -= calm * w.patience * (5 - lines);
@@ -198,5 +200,5 @@ export function versusReward(play, lines, perfect, calm = 0) {
 export function versusTrigger(play, lines) {
     const w = play.weights;
     const sent = versusAttack(lines, false, play.minAttackLines);
-    return sent * w.tLines + sent * sent * w.tSquare;
+    return sent * w.tLines + (play.flat ? 0 : sent * sent * w.tSquare);
 }

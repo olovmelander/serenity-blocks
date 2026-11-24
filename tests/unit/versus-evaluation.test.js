@@ -48,7 +48,8 @@ describe('rows a clear sends', () => {
         const each = [2, 4, 8].map((n) => versusReward(PLAY, n, false) / (n - 1));
         expect(each[1]).toBeGreaterThan(each[0]);
         expect(each[2]).toBeGreaterThan(each[1]);
-        expect(versusReward({ ...PLAY, worth: 0 }, 8, false)).toBeLessThanOrEqual(0);
+        expect(versusReward({ ...PLAY, worth: 0 }, 8, false)).toBe(0);
+        expect(versusReward({ ...PLAY, worth: 0 }, 1, false, 1)).toBe(0);
         expect(versusReward(PLAY, 0, false)).toBe(0);
     });
 
