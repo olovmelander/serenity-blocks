@@ -8,7 +8,9 @@ import { deal, replay, spawn } from '../bot-ai-audit-2026-11/solo.mjs';
 import { prepareVersusBoard, takeGarbage } from '../gravity-bot-rebuild/shipped-versus.mjs';
 import { bestClear, garbageRows, heights, readBoard, shafts } from './board-measures.mjs';
 
-const ATTACKS = process.env.VERSUS_ATTACKS || 'C:/Users/olovm/serenity-blocks-private/quadra-demos/data/attacks-in-duels.json';
+// The attacks to play against: [{ n, holes: [10-bit rows] }], recorded and kept outside this repo.
+const ATTACKS = process.env.VERSUS_ATTACKS;
+if (!ATTACKS) throw Error('Set VERSUS_ATTACKS to the file of recorded attacks (see docs/BOT_VERSUS_HANDOVER_2026-11.md)');
 const pool = JSON.parse(readFileSync(ATTACKS, 'utf8'));
 const meanRows = pool.reduce((t, a) => t + a.n, 0) / pool.length;
 console.debug = () => {};
