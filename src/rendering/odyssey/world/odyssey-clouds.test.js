@@ -205,15 +205,37 @@ describe('the clouds\' shadows', () => {
         shadows.dispose();
     });
 
-    it('cost little: redrawn a few times a second, in a couple of milliseconds', () => {
+    it('cost little: redrawn a few times a second, a few clouds a frame, and no frame lays much of it', () => {
+        // (Counted in cells laid, never in milliseconds: a clock tells what else the machine is doing.)
         const shadows = createCloudShadows({ field: () => VOLUMES.sdf });
-        const states = SKY_CLOUDS.map((c) => cloudAt(c, 500, new CloudState(), eveningOf(0.2)));
-        expect(shadows.update(states, 10)).toBe(true);
-        expect(shadows.update(states, 10 + (C.every / 2))).toBe(false);
-        expect(shadows.update(states, 10 + (C.every * 1.01))).toBe(true);
-        const t0 = performance.now();
-        for (let k = 0; k < 10; k += 1) shadows.update(states, 20 + k);
-        expect((performance.now() - t0) / 10).toBeLessThan(30);
+        const states = SKY_CLOUDS.map(() => new CloudState());
+        const at = (t) => SKY_CLOUDS.forEach((c, k) => cloudAt(c, t, states[k], eveningOf(0.2)));
+        at(500);
+        expect(shadows.update(states, 500)).toBe(true);
+        const whole = shadows.spent;
+        expect(whole).toBeGreaterThan(10000);
+        expect(whole).toBeLessThan(45000);
+        for (const fps of [30, 60]) {
+            let redraws = 0;
+            let most = 0;
+            let t = 500;
+            for (let k = 0; k < fps * 4; k += 1) {
+                t = 500 + (fps * 4) + (k / fps);
+                at(t);
+                redraws += shadows.update(states, t) ? 1 : 0;
+                if (k > 0) most = Math.max(most, shadows.spent);
+            }
+            expect(redraws / 4, `${fps} fps`).toBeGreaterThan(3);
+            expect(redraws / 4, `${fps} fps`).toBeLessThan(9);
+            expect(most, `${fps} fps`).toBeLessThan(C.slice + 8000);
+            // What the slices add up to is the picture a single go draws.
+            const once = createCloudShadows({ field: () => VOLUMES.sdf });
+            once.update(states, t);
+            let off = 0;
+            for (let k = 0; k < once.data.length; k += 1) off = Math.max(off, Math.abs(once.data[k] - shadows.data[k]));
+            expect(off, `${fps} fps`).toBeLessThan(20);
+            once.dispose();
+        }
         shadows.dispose();
     });
 
