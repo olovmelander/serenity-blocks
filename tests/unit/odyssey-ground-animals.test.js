@@ -210,7 +210,7 @@ describe('the herd on the ground', () => {
                 const x = state.x + (fx * f * deer.k);
                 const z = state.z + (fz * f * deer.k);
                 for (const tree of trees) {
-                    m.clear = Math.min(m.clear, Math.hypot(tree.x - x, tree.z - z) - (0.6 * 4.6 * tree.scaleXZ));
+                    m.clear = Math.min(m.clear, Math.hypot(tree.x - x, tree.z - z) - (0.6 * tree.skirt));
                 }
             }
             const e = 1.5;

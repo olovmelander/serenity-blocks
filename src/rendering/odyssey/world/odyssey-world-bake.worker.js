@@ -56,7 +56,7 @@ self.onmessage = (event) => {
             // ...and the forest's shade on the ground, from the same placements (Act II pass,
             // step 3): ~60 ms, off the critical path, since the world is assembled after the nodes.
             zoned.shade = bakeForestShadeData(zoned.placements, sampler);
-            post('scatter', { zoned }, [zoned.shade.data.buffer], now() - t0);
+            post('scatter', { zoned }, [zoned.shade.data.buffer, zoned.floor.data.buffer], now() - t0);
         }
         if (lane === 'sunFields') {
             // The sun march needs the WHOLE plate (and normalises over it), so it stays one job;

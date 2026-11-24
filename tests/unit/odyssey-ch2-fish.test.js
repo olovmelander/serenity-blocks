@@ -351,7 +351,7 @@ describe('the world draws the schools by the sea\'s rules', () => {
         return { x: pt.x, y: pt.y, z: pt.z };
     });
     const world = createOdysseyWorld({
-        quality: 'low', forest: false, cloudField: false, railSamples,
+        quality: 'low', forest: false, clouds: false, railSamples,
     });
     const mesh = world.group.getObjectByName('odyssey-world-fish');
 

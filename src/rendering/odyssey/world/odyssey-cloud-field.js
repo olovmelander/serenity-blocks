@@ -51,7 +51,16 @@
  *     attribute.
  */
 import * as THREE from 'three';
-import { makeRng } from './odyssey-hero-clouds.js';
+
+/** A small deterministic generator. */
+export function makeRng(seed) {
+    let s = Math.floor((seed * 2654435761) % 2147483647) || 1;
+    return () => {
+        s = Math.imul(s ^ (s >>> 15), 2246822519);
+        s = (s + 0x6d2b79f5) >>> 0;
+        return ((s ^ (s >>> 13)) >>> 0) / 4294967296;
+    };
+}
 
 /**
  * Blend width of the lobe melt, as a fraction of the mass half-width.

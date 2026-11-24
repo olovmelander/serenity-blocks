@@ -122,7 +122,7 @@ export function isUsableStoredWorldBake(stored, request) {
     }
     if (request.scatter) {
         return !!zoned && Array.isArray(zoned.placements) && zoned.buckets instanceof Map && !!zoned.stats
-            && isTyped(zoned.shade?.data);
+            && isTyped(zoned.shade?.data) && isTyped(zoned.floor?.data);
     }
     return zoned === null;
 }

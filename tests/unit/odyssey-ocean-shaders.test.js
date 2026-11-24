@@ -34,7 +34,7 @@ describe("the ocean's new surfaces build clean", () => {
     ['high', 'low'].forEach((quality) => {
         it(`${quality}: reef, kelp, shafts, the breach and the sea's underside`, () => {
             const world = createOdysseyWorld({
-                quality, forest: false, cloudField: false, railSamples,
+                quality, forest: false, clouds: false, railSamples,
             });
             NAMES.forEach((name) => {
                 const mesh = world.group.getObjectByName(name);
@@ -68,7 +68,7 @@ describe("the ocean's new surfaces build clean", () => {
 
 describe("the world draws them by the sea's rules", () => {
     const world = createOdysseyWorld({
-        quality: 'low', forest: false, cloudField: false, railSamples,
+        quality: 'low', forest: false, clouds: false, railSamples,
     });
     const get = (name) => world.group.getObjectByName(name);
     const rail = { x: -8, y: 150, z: 3 };

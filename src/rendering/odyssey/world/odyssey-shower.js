@@ -56,44 +56,12 @@ export const ODYSSEY_SHOWER = Object.freeze({
     bowVolume: Object.freeze({ reach: 1.25, depth: 380 }),
 });
 
-const hash = (n) => {
-    const s = Math.sin(n * 127.1 + 311.7) * 43758.5453;
-    return s - Math.floor(s);
-};
-
 /** The point at `t` (-1..1) along the shower line. */
 export function showerLineAt(t, spec = ODYSSEY_SHOWER) {
     return {
         x: spec.centre.x + (spec.across[0] * spec.halfLength * t),
         z: spec.centre.z + (spec.across[1] * spec.halfLength * t),
     };
-}
-
-/**
- * The rain cloud: storm masses for the cloud field, evenly along the line (a little staggered),
- * their bases at the shower's base.
- * @returns {object[]} cloud-field specs (role 'shower')
- */
-export function showerCloudSpecs(spec = ODYSSEY_SHOWER) {
-    const out = [];
-    for (let i = 0; i < spec.masses; i += 1) {
-        const t = ((i + 0.5) / spec.masses) * 2 - 1;
-        const p = showerLineAt(t * 0.92, spec);
-        const k = 0.88 + (hash(i + 3.1) * 0.24);
-        out.push(Object.freeze({
-            id: `R${i + 1}-shower`,
-            role: 'shower',
-            lod: 'near',
-            x: Math.round(p.x + ((hash(i + 7.7) - 0.5) * 160)),
-            base: spec.base,
-            z: Math.round(p.z + ((hash(i + 9.3) - 0.5) * 160)),
-            w: Math.round(spec.massW * k),
-            h: Math.round(spec.massH * k),
-            yaw: Math.atan2(spec.across[1], spec.across[0]) + ((hash(i + 1.9) - 0.5) * 0.5),
-            seed: 1201.3 + (i * 17.7),
-        }));
-    }
-    return out;
 }
 
 /**

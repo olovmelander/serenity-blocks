@@ -465,7 +465,7 @@ describe('the world wears the hour and the turn', () => {
     // The high tier (the cloud shadows the turning shade rides are its), forest and boulders in:
     // every material the hour and the turn reach. No device: the node builders write both backends.
     const world = createOdysseyWorld({
-        quality: 'high', cloudField: false, weatherPhase: 0,
+        quality: 'high', clouds: false, weatherPhase: 0,
     });
     const rig = createOdysseyCameraRig();
     const [from, to] = ODYSSEY_DAY_TURN.window;
@@ -570,7 +570,7 @@ describe('the world wears the hour and the turn', () => {
 
     const names = [
         'odyssey-world-ground', 'odyssey-world-water', 'odyssey-world-sky',
-        'odyssey-world-forest-v2-hero', 'odyssey-world-forest-v2-far', 'odyssey-world-boulders-',
+        'odyssey-world-forest-hero', 'odyssey-world-forest-far', 'odyssey-world-boulders-',
         // Round two: the mist in the hollow and the turn's wake.
         'odyssey-world-hollow-mist', 'odyssey-world-turn-wake',
     ];
@@ -591,6 +591,11 @@ describe('the world wears the hour and the turn', () => {
                     // unassigned-read trap needs.
                     expect(unassignedReads(out.vertex), 'vertex').toEqual([]);
                     expect(unassignedReads(out.fragment), 'fragment').toEqual([]);
+                    // WebGPU binds sixteen samplers and sixteen textures a stage, and the ground is the
+                    // shader that comes near it.
+                    expect((out.fragment.match(/: sampler(_comparison)?\s*;/g) ?? []).length, 'samplers').toBeLessThanOrEqual(16);
+                    expect((out.fragment.match(/: texture_\w+/g) ?? []).length, 'textures').toBeLessThanOrEqual(16);
+                    if (name === 'odyssey-world-ground') expect((out.fragment.match(/: texture_\w+/g) ?? []).length).toBeGreaterThan(8);
                 }
             }, 120_000);
         });

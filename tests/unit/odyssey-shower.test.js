@@ -5,11 +5,8 @@ import { ODYSSEY_WORLD_SUN } from '../../src/rendering/odyssey/chapter-environme
 import { ODYSSEY_BOW } from '../../src/rendering/odyssey/world/odyssey-sky-optics.js';
 import { ODYSSEY_SEA_LEVEL } from '../../src/rendering/odyssey/world/odyssey-world-height.js';
 import {
-    ODYSSEY_SHOWER, rayMeetsShower, showerBowVolume, showerCloudSpecs,
+    ODYSSEY_SHOWER, rayMeetsShower, showerBowVolume,
 } from '../../src/rendering/odyssey/world/odyssey-shower.js';
-import { validateCloudFieldClearance } from '../../src/rendering/odyssey/world/odyssey-cloud-field.js';
-import { CLOUD_FIELD_CLEARANCE } from '../../src/rendering/odyssey/world/odyssey-cloud-field-specs.js';
-import { getOdysseyPathPointAt } from '../../src/rendering/odyssey/path-utils.js';
 
 const DEG = Math.PI / 180;
 
@@ -37,16 +34,6 @@ describe('the shower', () => {
         expect(v.rx).toBeGreaterThan(ODYSSEY_SHOWER.halfLength);
         expect(v.top).toBeGreaterThan(ODYSSEY_SHOWER.base);
         expect(v.bottom).toBeLessThan(ODYSSEY_SEA_LEVEL);
-        // The clouds stand over it, at its top.
-        showerCloudSpecs().forEach((m) => expect(m.base).toBeLessThan(v.top));
-    });
-
-    it('puts its rain cloud in the field, clear of the rail', () => {
-        const specs = showerCloudSpecs();
-        expect(specs.length).toBe(ODYSSEY_SHOWER.masses);
-        specs.forEach((s) => expect(s.base).toBe(ODYSSEY_SHOWER.base));
-        const rail = Array.from({ length: 400 }, (_, i) => getOdysseyPathPointAt(0.063 + ((i / 399) * 0.615)));
-        expect(validateCloudFieldClearance(specs, rail, CLOUD_FIELD_CLEARANCE)).toEqual([]);
     });
 
     it('stands most of the bow (its whole arc above the horizon) in the rain from the meadows', () => {

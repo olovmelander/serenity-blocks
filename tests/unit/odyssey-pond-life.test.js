@@ -495,7 +495,7 @@ describe('the drinkers', () => {
                     wet = Math.max(wet, W - h.ground);
                     if (h.stance > 0.95) hoof = Math.max(hoof, Math.abs(h.y - h.ground) / deer.k);
                 }
-                for (const tr of trees) clear = Math.min(clear, Math.hypot(tr.x - s.x, tr.z - s.z) - (0.6 * 4.6 * tr.scaleXZ));
+                for (const tr of trees) clear = Math.min(clear, Math.hypot(tr.x - s.x, tr.z - s.z) - (0.6 * tr.skirt));
                 for (const r of rocks) clear = Math.min(clear, Math.hypot(r.x - s.x, r.z - s.z) - Math.max(r.sx, r.sz) - 1);
             }
             const label = `${deer.member.name} #${i}`;

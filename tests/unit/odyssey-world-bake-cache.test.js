@@ -407,7 +407,7 @@ describe('the IndexedDB store', () => {
         const withForest = {
             ...copy,
             scatter: {
-                placements: [], buckets: new Map(), stats: { trees: 0 }, shade: { data: new Uint8Array(4) },
+                placements: [], buckets: new Map(), stats: { trees: 0 }, shade: { data: new Uint8Array(4) }, floor: { data: new Uint8Array(4) },
             },
         };
         expect(isUsableStoredWorldBake(withForest, { ...request, scatter: { spacing: 24 } })).toBe(true);

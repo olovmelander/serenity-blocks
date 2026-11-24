@@ -91,7 +91,7 @@ describe('odysseySprayEnvelope — the 2->3 burst', () => {
 describe('the world object honours both handshakes', () => {
     // A lean world (no forest, no cloud field): only the update loop's CPU decisions are read.
     const world = createOdysseyWorld({
-        quality: 'low', forest: false, cloudField: false, water: false,
+        quality: 'low', forest: false, clouds: false, water: false,
     });
     const rail = { x: 0, y: 150, z: 0 };
 

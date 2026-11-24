@@ -54,51 +54,20 @@ describe('the forest ships by default and can be switched off for measurement', 
     });
 
     /**
-     * The gate has to skip the BUILD, not merely the mounting. The forest's own measured
-     * header law is that its cost is VERTEX, not fill ("collapsing distant instances to
-     * degenerate triangles changed nothing; giving three real bounds to cull against halved
-     * it"), so a gate that constructed 40 InstancedMeshes and only hid them would leave the
-     * vertex and pipeline cost on both sides of the pair and price the wrong half.
+     * The gate has to skip the BUILD, not merely the mounting: meshes built and only hidden would
+     * leave the vertex and pipeline cost on both sides of the pair and price the wrong half.
      */
     it('gates the SCATTER, so no mesh and no pipeline exist on the off side', () => {
-        // `forest && !forestV2` since Wave 3: the two forests are alternatives, so the
-        // incumbent's scatter is gated on BOTH. The lever still switches the whole forest off.
-        expect(RENDERER).toMatch(/const trees = \(forest && !forestV2\)\s*\n\s*\? scatterTrees\(/);
-        // ...and nothing else may re-introduce an ungated scatter.
-        expect(RENDERER).not.toMatch(/const trees = scatterTrees\(/);
-        // The v2 forest is gated too, or `?odysseyWorldNoForest=1` would leave half a forest.
-        expect(RENDERER).toMatch(/if \(forest && forestV2\) \{/);
+        expect(RENDERER).toMatch(/if \(forest\) \{[^]*?scatterZonedForest\(relief\.sample, scatterOptions\)/);
+        expect((RENDERER.match(/scatterZonedForest\(/g) || []).length).toBe(1);
+        // ...and the photographs are not fetched for a world without it.
+        expect(RENDERER).toMatch(/createForestTextures\(\{ load: forest,/);
     });
 
-    /**
-     * ADR-0015: a measurement lever is only honest while the thing it removes is still
-     * genuinely built on the other side. Asserting the default alone would still pass if the
-     * forest were deleted outright.
-     */
-    it('keeps the forest itself intact — the lever removes it, it is not gone', () => {
-        // Loose on the parameter list: Wave 0b gave it a `blobNormals` argument. This test is
-        // about the builder still EXISTING, not about its arity.
-        expect(RENDERER).toMatch(/function buildTreeGeometry\(/);
-        expect(RENDERER).toMatch(/export function scatterTrees\(/);
-        expect(RENDERER).toMatch(/odyssey-world-forest-chunk/);
-    });
-
-    /**
-     * `treeMat` must stay a `const`-declared NodeMaterial built on BOTH sides of the pair:
-     * the fog opt-out lint in odyssey-world-lints.test.js requires the fog=false list to
-     * equal the set of const NodeMaterial declarations exactly, and the dispose list has to
-     * keep covering it. Building it unconditionally is also what keeps the gate a small diff
-     * with no dangling references — TSL nodes are plain JS until a mesh using them renders.
-     */
-    it('builds treeMat unconditionally so the fog and dispose lists still cover it', () => {
-        expect(RENDERER).toMatch(/const treeMat = new THREE\.MeshBasicNodeMaterial\(\);/);
-        // `\s*` before `.forEach`, not a bare dot: the assertion is about the LIST still
-        // covering treeMat, and wrapping the chain onto the next line to satisfy max-len is a
-        // formatting change that must not read as a missing material. (It did once — the
-        // ground plan's dispose line grew past 120 columns and this test failed on the wrap.)
-        const list = /\[groundMat, waterMat, skyMat, treeMat, [^\]]*\]\s*\.forEach/;
-        expect(RENDERER).toMatch(new RegExp(`${list.source}\\(\\(m\\) => \\{ m\\.fog = false; \\}\\)`));
-        expect(RENDERER).toMatch(new RegExp(`${list.source}\\(\\(m\\) => m\\.dispose\\(\\)\\)`));
+    it('builds the materials on both sides, so the dispose list stays whole', () => {
+        expect(RENDERER).toMatch(/const forestMats = createForestMaterials\(\{/);
+        expect(RENDERER).toMatch(/forestMats\.near\.dispose\(\);/);
+        expect(RENDERER).toMatch(/forestTextures\.dispose\(\);/);
     });
 });
 
@@ -106,7 +75,7 @@ describe('the forest ships by default and can be switched off for measurement', 
  * BEHAVIOUR, not source text. `createOdysseyWorld` builds fine headless — only RENDERING
  * needs a device — so the lever's actual effect is testable, and a source assertion alone
  * would not catch a gate that was wired to the wrong variable. Both worlds are built once at
- * `low` quality (the cheap lane: 6,028 trees / 39 chunks) and shared.
+ * `low` quality (the cheap lane) and shared.
  */
 describe('the lever actually removes the forest (measured, not asserted from source)', () => {
     let on;
@@ -137,13 +106,7 @@ describe('the lever actually removes the forest (measured, not asserted from sou
         expect(forestMeshes(off)).toHaveLength(0);
     });
 
-    /**
-     * The claim the gate's own comment makes, made falsifiable: `treeMat` is built on BOTH
-     * sides. `dispose()` unconditionally calls `treeMat.dispose()`, so if the material had
-     * been gated away with the meshes this would throw on a dangling reference — which is
-     * also exactly how the fog opt-out lint and the dispose list would have started lying.
-     */
-    it('still builds treeMat with the forest off, so dispose stays whole', () => {
+    it('disposes whole with the forest off', () => {
         expect(() => off.dispose()).not.toThrow();
         expect(() => on.dispose()).not.toThrow();
     });
@@ -165,20 +128,12 @@ describe('the forest gpu-split lever points at what it measures', () => {
         expect(SPLIT).toMatch(/odysseyWorldNoForest:\s*'1'/);
     });
 
-    /**
-     * SWAP POLARITY (2026-08-14). The roster ships, so baseline CONTAINS it and `forestMs`
-     * prices the NEW forest; the retired incumbent is the opt-in lever, priced against the
-     * forest's absence. And the migration flag must be DEAD EVERYWHERE it was read — a lever
-     * that silently does nothing reports innocence, not absence.
-     */
-    it('flips the harness polarity with the swap and kills the migration flag', () => {
-        expect(SPLIT).toMatch(/id: 'forest-v1'/);
-        expect(SPLIT).toMatch(/odysseyWorldForestV1:\s*'1'/);
-        expect(SPLIT).toMatch(/forestV1Ms:\s*delta\('forest-v1',\s*'no-forest'\)/);
-        expect(BOARD).toMatch(/forestV2:\s*!readBooleanUrlFlag\('odysseyWorldForestV1'\)/);
-        // The dead-lever law, enforced: nothing may READ the retired migration flag.
-        expect(BOARD).not.toMatch(/readBooleanUrlFlag\('odysseyWorldForestV2'\)/);
-        expect(SPLIT).not.toMatch(/odysseyWorldForestV2/);
+    it('reads no retired lever (a dead lever reports innocence, not absence)', () => {
+        ['odysseyWorldForestV1', 'odysseyWorldForestV2', 'odysseyWorldForestPaint', 'odysseyWorldProceduralTrees', 'odysseyForestGreens']
+            .forEach((name) => {
+                expect(BOARD, name).not.toContain(name);
+                expect(SPLIT, name).not.toContain(name);
+            });
     });
 
     /**
