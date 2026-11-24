@@ -327,9 +327,9 @@ function actualLandings(grid, piece) {
 }
 
 /**
- * Where a versus seat may set its piece down now: nothing above the spawn rows, and nothing higher
- * than the piece already is (kicks can climb a tower a row at a time, and a piece that keeps
- * climbing never lands). dropHere leaves only where it would fall without another key.
+ * Where a versus seat may set its piece down now: nothing above the spawn rows, and nothing more
+ * than a row above where the piece is (kicks can climb a tower a row at a time, and a piece that
+ * keeps climbing never lands). dropHere leaves only where it would fall without another key.
  */
 export function steadyLandings(landings, piece, first, dropHere) {
     const steady = landings.filter(({ form, y }) => y + form.top >= first - 2 && y >= Math.floor(piece.y) - 1);
