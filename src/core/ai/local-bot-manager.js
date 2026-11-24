@@ -7,8 +7,8 @@ import { seededRandom } from '../../utils/helpers.js';
 
 // The original 4,480-match fit sets ordinary local styles. The faster expert's
 // upper neighbours are calibrated in side-swapped native frag series.
-const LOCAL_PRACTICE_CHANCE = [0.75, 0.6, 0.45, 0.3, 0.25, 0.25, 0, 0.3, 0.65];
-const LOCAL_ACTION_RATE = [108, 126, 133, 218, 292, 290, 350, 515, 760];
+const LOCAL_PRACTICE_CHANCE = [0.75, 0.6, 0.5, 0.3, 0.25, 0.25, 0, 0.32, 0.5];
+const LOCAL_ACTION_RATE = [108, 126, 140, 218, 285, 300, 372, 515, 760];
 // Practiced seats can execute a known route quickly. Their nominal tier keeps
 // its own reading time above the 170 ms needed for expert search.
 const EXPERT_REACTION_MAX_MS = { 8: 230, 9: 200, 10: 200 };
@@ -106,7 +106,7 @@ export class LocalBotManager {
                 sharedSearch,
                 precomputeBetweenTicks: true,
                 planUnitsPerMs: gravityPlanningRate(botCount, judgmentTier, !playerState.isInfinityMode),
-                versusWeights: this.playsVersus(playerState, judgmentTier) ? VERSUS_WEIGHTS : null,
+                versusWeights: this.playsVersus(playerState) ? VERSUS_WEIGHTS : null,
                 versusOutlook: () => this.versusOutlook(index),
                 rng: seededRandom((seed ^ Math.imul(index + 1, 0x85ebca6b)) >>> 0),
                 timingRng: seededRandom((seed ^ Math.imul(index + 1, 0xc2b2ae35)) >>> 0),
@@ -114,9 +114,12 @@ export class LocalBotManager {
         }
     }
 
-    /** Versus play: attacks are on, in the standard well (Last Standing and peaceful matches keep theirs). */
-    playsVersus(playerState, judgmentTier) {
-        return this.useLocalStyles && judgmentTier >= 8 && !playerState.isInfinityMode
+    /**
+     * Versus play, at every tier: attacks are on, in the standard well (Last Standing and peaceful
+     * matches keep theirs). A lower tier sees fewer pieces ahead, searches less, errs and is slower.
+     */
+    playsVersus(playerState) {
+        return this.useLocalStyles && !playerState.isInfinityMode
             && !this.multiplayerState.matchConfig?.attackRules?.disableAttacks;
     }
 

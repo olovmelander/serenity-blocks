@@ -125,7 +125,7 @@ export function distance(s) {
     };
 }
 
-if (process.argv[1].endsWith('style-run.mjs')) {
+if (process.argv[1]?.endsWith('style-run.mjs')) {
     const [first = '1', count = '6', cfg = '{}'] = process.argv.slice(2);
     const opts = JSON.parse(cfg);
     const t0 = Date.now();
