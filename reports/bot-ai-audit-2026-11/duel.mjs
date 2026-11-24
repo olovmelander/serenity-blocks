@@ -161,6 +161,8 @@ export async function duel(low, seed, swap, seconds = 150, options = {}) {
             await clock.advance(frame);
             if (runtime) {
                 runLocalMultiplayerFixedTicks(runtime, frame, tickOptions);
+                // The local loop runs the potato on game time too.
+                if (rules === 'shipped') mp.updateHotPotato?.(frame);
                 if (options.finishFfaRound) {
                     const lost = mp.players.flatMap((s, i) => s.isAlive && s.isGameOver ? [i] : []);
                     if (lost.length) mp.handlePlayerDeaths(lost).forEach(i => { mp.players[i].currentPiece = null; });
