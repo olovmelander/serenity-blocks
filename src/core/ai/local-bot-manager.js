@@ -7,8 +7,8 @@ import { seededRandom } from '../../utils/helpers.js';
 
 // Fitted with versus play on the shipped rules: free-for-all to seven frags, both seat orders
 // (reports/bots-versus-2026-11/ladder.mjs), so that each tier beats the next by a similar margin.
-const LOCAL_PRACTICE_CHANCE = [0.75, 0.6, 0.5, 0.3, 0.25, 0.32, 0.24, 0.38, 0.74];
-const LOCAL_ACTION_RATE = [108, 138, 150, 232, 300, 405, 625, 600, 760];
+const LOCAL_PRACTICE_CHANCE = [0.75, 0.63, 0.54, 0.35, 0.33, 0.4, 0.36, 0.5, 0.76];
+const LOCAL_ACTION_RATE = [108, 142, 156, 246, 335, 445, 660, 620, 760];
 // Practiced seats can execute a known route quickly. Their nominal tier keeps
 // its own reading time above the 170 ms needed for expert search.
 const EXPERT_REACTION_MS = { 8: [170, 230], 9: [170, 200], 10: [158, 178] };
