@@ -63,7 +63,8 @@ The shadows on the land and the sea are the clouds' own. Each shape has a footpr
 the level of its own foot, summed toward the sun through its distance field, worked out the first time it is needed.
 Every 0.12 s each heap and giant stamps its footprint where it stands into one 192 px picture of the light over 9 km,
 between cells, so a shadow slides and never steps; it thins as its cloud does. Plain arithmetic on the CPU (no pass, no
-pipeline), one fetch where it is read. At this sun a cloud's shadow falls some 2 km from it, so a lane of heaps
+pipeline), one fetch where it is read. A redraw is laid a few clouds a frame (about 35,000 cells in all, some 6,000 a
+frame: 0.3 ms at most on the development machine, where a redraw in one go cost 6 to 10). At this sun a cloud's shadow falls some 2 km from it, so a lane of heaps
 (`fair-sun`) drifts over the sea toward the sun and carries its shadows across the island.
 
 ## Tiers and cost (`CLOUD_TIERS`)
