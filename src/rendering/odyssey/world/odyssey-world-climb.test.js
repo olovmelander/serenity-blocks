@@ -17,7 +17,7 @@ import { ODYSSEY_SEA_LEVEL } from './odyssey-world-height.js';
  */
 describe('setClimb — the world shrinks beneath the eye', () => {
     const world = createOdysseyWorld({
-        quality: 'low', forest: false, cloudField: false, water: false,
+        quality: 'low', forest: false, clouds: false, water: false,
     });
     const sky = world.group.getObjectByName('odyssey-world-sky');
     const eye = { x: 120, y: 1100, z: -900 };
@@ -167,7 +167,7 @@ describe('the climbed world still builds on both backends', () => {
     // the ground melt into the sky at their drawn edge behind a uniform branch: built here as
     // WebGPU and the WebGL2 fallback write them, with nothing said and nothing stringified.
     const world = createOdysseyWorld({ quality: 'low', forest: false });
-    const names = ['odyssey-world-ground', 'odyssey-world-water', 'odyssey-world-sky', 'odyssey-world-cloud-field'];
+    const names = ['odyssey-world-ground', 'odyssey-world-water', 'odyssey-world-sky', 'odyssey-world-clouds'];
     const backends = [['WGSL', THREE.WGSLNodeBuilder], ['GLSL', THREE.GLSLNodeBuilder]];
     names.forEach((name) => {
         backends.forEach(([label, Builder]) => {

@@ -96,50 +96,11 @@ const CONFIGURATIONS = [
         flags: { odysseyWorldNoWater: '1' },
         note: 'the Act II sea plate is not built at all (draws, fill, vertex and pipeline)',
     },
-    // THE CLOUD DECK (Act II cloud plan, Wave 0). One transparent clipmap sheet at y=660
-    // drawing across the whole act window whose cost has NEVER been measured -- and ADR-0016
-    // is explicit that an unmeasured cost cannot fund a package, so this differential is the
-    // prerequisite for every visual wave in that plan. Note the lever is asymmetric with
-    // `no-water`: the deck mesh is still constructed and only withheld from the group
-    // (odyssey-world-renderer.js:1166), so this prices DRAWS + FILL + VERTEX, and any
-    // pipeline-compile cost stays on both sides of the pair. Run as
-    // `--only baseline,no-clouds,baseline-repeat` so the differential AND its drift bound
-    // come from ONE cooled session.
+    // THE CLOUDS (odyssey-clouds.js, odyssey-high-clouds.js): they ship, so the lever removes them.
     {
-        id: 'cloud-sheet',
-        flags: { odysseyWorldCloudSheet: '1' },
-        note: 'the Act II cloud deck is not added to the world group (draws, fill, vertex)',
-    },
-    // THE HERO CUMULUS (cloud plan §7.1) — RETIRED BY THE OWNER 2026-08-14, so the polarity
-    // FLIPPED: heroes are opt-in (?odysseyWorldHeroes=1) and the baseline is heroless. The old
-    // `no-heroes` configuration would now measure baseline-vs-baseline and report exactly 0,
-    // which is the wrong kind of true. Historical reports gpu-split-laneb-heroes-*.json were
-    // measured under the old polarity (baseline INCLUDED heroes). The measured law survives in
-    // perf-budgets.json: opaque merged geometry rasterises only its own silhouette, emits no
-    // blend state, and cost 1-2 timer ticks — but it is purely ADDITIVE (a hero above an
-    // overhead sheet never occludes a deck fragment). Run as
-    // `--only baseline,heroes,baseline-repeat`; heroesMs is now the cost of ADDING them.
-    {
-        id: 'heroes',
-        flags: { odysseyWorldHeroes: '1' },
-        note: 'the retired Act II hero cumulus added back to the world group',
-    },
-    // THE CLOUD FIELD (cloud-field plan Wave 0a). Opt-in, like `heroes`: the baseline is the
-    // shipped sheet, so `fieldMs` is the cost of ADDING a sky's worth of opaque cloud geometry.
-    // Argument order carries the sign — never also negate (the heroes cell's double-flip).
-    // Run as `--only baseline,cloud-field,baseline-repeat`.
-    {
-        id: 'no-cloud-field',
-        flags: { odysseyWorldNoCloudField: '1' },
-        note: 'the shipped sculpted cloud field withheld from the world group',
-    },
-    // HALF the probe masses — the second point on the cost curve. Run all four as
-    // `--only baseline,cloud-field-half,cloud-field,baseline-repeat` to get both in one
-    // thermal window, which is the only way the two are comparable.
-    {
-        id: 'cloud-field-half',
-        flags: { odysseyWorldCloudFieldCount: '26' },
-        note: 'half the sculpted field, for the cost curve',
+        id: 'no-clouds',
+        flags: { odysseyWorldNoClouds: '1' },
+        note: 'the sky\'s clouds and the sea of clouds withheld',
     },
     // THE FOREST (Act II forest plan, Wave 0a). The largest content system in the world file
     // — 15,412 trees / 40 InstancedMesh chunks / ~462k triangles at high quality — and the
@@ -175,11 +136,6 @@ const CONFIGURATIONS = [
         flags: { odysseyWorldFlatGround: '1' },
         note: 'the ground keeps its geometry and loses its fragment mesostructure '
             + '(constant albedo under the baked sun)',
-    },
-    {
-        id: 'forest-v1',
-        flags: { odysseyWorldForestV1: '1' },
-        note: 'the retired incumbent cone forest restored in place of the roster',
     },
     // ── CH6 SPACE (ODYSSEY_CH6_SPACE_OVERHAUL_PLAN_2026-08.md, Wave 0) ──────────────
     // Ch6 has NEVER had a station or a budget cell; these five levers price the diorama
@@ -557,18 +513,7 @@ function buildSplit(results) {
         // as heroesMs. Leaving `no-clouds` in place would have been a lever with nothing to
         // switch off, which is exactly how a dead `odysseyWorldNoHeroes` produced a confident
         // wrong answer once already.
-        cloudsMs: delta('cloud-sheet', 'baseline'),
-        // Polarity flip 2026-08-14 with the heroes' retirement: the lever ADDS them now, so
-        // the heroes' cost is the `heroes` configuration minus baseline — which is exactly
-        // delta('heroes', 'baseline'), since delta(from, to) is byId[from] - byId[to]. ⚠️ The
-        // first cut of this flip ALSO negated the result ("delta() is baseline-minus-config" —
-        // a misreading of the helper), a double flip that would have published the heroes as a
-        // SAVING; three independent review lenses caught it before a report was written.
-        // Positive still means cost, like every other figure in this split.
-        heroesMs: delta('heroes', 'baseline'),
-        // ...and cloudFieldMs flips the OTHER way for the same reason: the field is shipped
-        // now, so its lever REMOVES it and the cost is baseline minus configuration.
-        cloudFieldMs: delta('baseline', 'no-cloud-field'),
+        cloudsMs: delta('baseline', 'no-clouds'),
         // THE LAVA LAKE (design §4 gate G1/G2): both figures are costs. lakeMs is the shipped
         // analytic lake (baseline minus no-lake); lakeBakedMs is the baked lake's cost on the
         // same frame (lake-baked minus no-lake). Measured 2026-08-21 at the entry station:
@@ -585,12 +530,6 @@ function buildSplit(results) {
             && Number.isFinite(byId['no-lake-glows']))
             ? +(byId['no-lake-glows'] - byId['no-lake']).toFixed(3)
             : null,
-        // NOT `baseline - cloud-field-half`. `cloud-field-half` truncates the spec table to
-        // its first 26 masses, so that subtraction would price the UPPER 26 (the satellites,
-        // which are far-LOD and tiny) and read as 'half the field is nearly free'. The cost
-        // curve wants the cost OF a half field, so it is measured against the field's absence.
-        // Requires `no-cloud-field` in the same run; `delta` returns null rather than guessing.
-        cloudFieldHalfMs: delta('cloud-field-half', 'no-cloud-field'),
         // The Act II forest's TOTAL cost at this station (draws + fill + vertex + its
         // pipeline). The forest SHIPS, so its lever REMOVES it and the cost is baseline minus
         // configuration — the same polarity as waterMs and cloudFieldMs, and the opposite of
@@ -599,7 +538,6 @@ function buildSplit(results) {
         // five-species forest. Its Lane B value at p=0.225 is 2.621 ms (D5-accepted).
         forestMs: delta('baseline', 'no-forest'),
         // The retired incumbent's price, for regression comparisons only.
-        forestV1Ms: delta('forest-v1', 'no-forest'),
         // The ground's FRAGMENT cost — the stack that had never been priced. The ground ships
         // (it is the world), so its lever REMOVES the disputed work and the cost is baseline
         // minus configuration, the same polarity as waterMs, cloudFieldMs and forestMs.

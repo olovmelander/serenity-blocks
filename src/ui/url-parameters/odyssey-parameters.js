@@ -466,16 +466,6 @@ export const ODYSSEY_URL_PARAMETERS = Object.freeze([
         },
     ),
     toggle(
-        'odysseyWorldCloudSheet',
-        'Restores the retired flat cloud sheet for visual comparisons.',
-        { scope: WORLD_SCOPE },
-    ),
-    toggle(
-        'odysseyWorldHeroes',
-        'Restores the retired large cloud meshes and their cloud clearings.',
-        { scope: WORLD_SCOPE },
-    ),
-    toggle(
         'odysseyWorldNoWater',
         'Removes the continuous world water surface for performance comparisons.',
         { scope: WORLD_SCOPE },
@@ -483,24 +473,6 @@ export const ODYSSEY_URL_PARAMETERS = Object.freeze([
     toggle(
         'odysseyWorldNoForest',
         'Removes the continuous world forest for performance comparisons.',
-        { scope: WORLD_SCOPE },
-    ),
-    toggle(
-        'odysseyWorldForestPaint',
-        'Uses experimental painted shading on the legacy forest.',
-        {
-            scope: WORLD_SCOPE,
-            notes: 'This shading belongs to the legacy forest selected with odysseyWorldForestV1=1.',
-        },
-    ),
-    toggle(
-        'odysseyWorldForestV1',
-        'Restores the legacy cone forest instead of the current tree species.',
-        { scope: WORLD_SCOPE },
-    ),
-    toggle(
-        'odysseyWorldProceduralTrees',
-        'Draws the broadleaves with the puff crowns built in code instead of the specimens grown in Blender.',
         { scope: WORLD_SCOPE },
     ),
     toggle(
@@ -525,53 +497,15 @@ export const ODYSSEY_URL_PARAMETERS = Object.freeze([
             scope: WORLD_SCOPE, notes: 'The hero tier can be expensive on integrated graphics.',
         },
     ),
-    parameter(
-        'odysseyWorldCloudDebug',
-        'Replaces flat cloud-sheet shading with a diagnostic view.',
-        'lattice, alpha, grid, mult or flat',
-        'Normal shading',
-        'lattice',
-        {
-            scope: WORLD_SCOPE,
-            notes: 'Requires the flat sheet: odysseyWorldCloudSheet=1.',
-            sources: [BOARD, 'src/rendering/odyssey/world/odyssey-world-renderer.js'],
-        },
-    ),
     toggle(
-        'odysseyWorldNoCloudField',
-        'Removes the sculpted cloud field for scene comparisons.',
+        'odysseyWorldNoClouds',
+        'Removes the sky\'s clouds for scene comparisons.',
         { scope: WORLD_SCOPE },
     ),
     toggle(
         'odysseyNoCloudSea',
         'Removes the sea of clouds that gathers below the climb in chapter 5.',
         { scope: WORLD_SCOPE },
-    ),
-    parameter(
-        'odysseyWorldCloudFieldCount',
-        'Limits the sculpted cloud field to its first N cloud masses.',
-        'Positive integer; 0, negative or invalid input uses all masses',
-        'All masses',
-        '4',
-        { scope: WORLD_SCOPE },
-    ),
-    parameter(
-        'odysseyCloudLook',
-        'Chooses how the Act II clouds are painted and laid out, for comparing looks.',
-        'today, light or banks; anything else uses banks',
-        'banks',
-        'today',
-        { scope: WORLD_SCOPE },
-    ),
-    parameter(
-        'odysseyForestGreens',
-        'Chooses the palette of the Act II broadleaf crowns, for comparing greens.',
-        'mosaic, today or deep; anything else uses mosaic',
-        'mosaic',
-        'deep',
-        {
-            scope: WORLD_SCOPE, sources: [BOARD, 'src/rendering/odyssey/world/odyssey-world-renderer.js'],
-        },
     ),
     parameter(
         'odysseyNoWhales',

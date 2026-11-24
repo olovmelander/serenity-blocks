@@ -15,9 +15,8 @@ import {
     odysseyWorldHeight,
     odysseyWorldMacro,
 } from './odyssey-world-height.js';
-import {
-    FOREST_PINE_GROVES, forestPineGroveValue, scatterZonedForest, siteOnNorthBeach,
-} from './odyssey-forest-scatter.js';
+import { scatterZonedForest, siteOnNorthBeach } from './odyssey-forest-scatter.js';
+import { forestGoldAt } from './odyssey-forest-composition.js';
 import { getOdysseyWorldRailPointAt } from '../path-utils.js';
 
 // The land behind the mountain (2026-11-02): the north beach and the plain's swells and groves.
@@ -162,17 +161,20 @@ describe('the plain behind the mountain', () => {
         expect(spread).toBeGreaterThan(25);
     });
 
-    it('stands dark groves of conifer among the autumn trees, on the plain and far from the rail', () => {
+    it('stands dark stands of conifer among the autumn trees', () => {
         const rail = Array.from({ length: 48 }, (_, i) => getOdysseyWorldRailPointAt(i / 47));
         const { placements } = scatterZonedForest(odysseyWorldHeight, { rail, visibilityCull: false });
-        const grove = placements.filter((p) => p.pineGrove);
-        expect(grove.length).toBeGreaterThan(200);
-        grove.forEach((p) => {
-            expect(p.speciesId).toBe(FOREST_PINE_GROVES.species);
-            expect(forestPineGroveValue(p.x, p.z)).toBeLessThan(1);
-            expect(p.z).toBeLessThan(FOREST_PINE_GROVES.plainZ[0]);
-            // Nothing near the rail is touched: the groves are all on the far tier.
-            expect(p.lod).toBe('far');
+        const plain = placements.filter((p) => p.z < -1250 && forestGoldAt(p.x, p.z) > 0.8);
+        const dark = plain.filter((p) => p.speciesId === 'spruce' || p.speciesId === 'fir');
+        const gold = plain.filter((p) => p.speciesId === 'aspen' || p.speciesId === 'maple');
+        expect(dark.length).toBeGreaterThan(200);
+        expect(gold.length).toBeGreaterThan(dark.length);
+        // In stands: a dark tree's nearest neighbours are dark.
+        const sample = dark.filter((_, k) => k % 23 === 0);
+        const kin = sample.filter((p) => {
+            const near = plain.filter((q) => q !== p && Math.hypot(q.x - p.x, q.z - p.z) < 22);
+            return near.filter((q) => dark.includes(q)).length * 2 >= near.length;
         });
+        expect(kin.length / sample.length).toBeGreaterThan(0.7);
     });
 });

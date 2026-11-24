@@ -1,287 +1,174 @@
 import * as THREE from 'three/webgpu';
 import {
-    Fn, abs, attribute, cameraPosition, clamp, dot, float, floor, max, min, mix, modelWorldMatrixInverse,
-    normalLocal, normalize, normalWorld, positionLocal, positionWorld, select, smoothstep, step, texture, time as tslTime, uniform,
-    varyingProperty, vec3, vec4,
+    cameraPosition, float, mix, positionWorld, sin, smoothstep, time as tslTime, uniform, vec3, vec4,
 } from 'three/tsl';
 
-import {
-    FOREST_VALUE_ROLES, ODYSSEY_FOREST_SPECIES,
-} from '../../rendering/odyssey/world/odyssey-forest-species.js';
-import {
-    FOREST_LEAF_CARD, buildForestTreeGeometry, forestRosterBudget, setForestBroadleafStyle, setForestTreeSource,
-} from '../../rendering/odyssey/world/odyssey-forest-geometry.js';
-import {
-    forestLeafCardFragment, forestLeafCardUv, forestLeafCardVertex,
-} from '../../rendering/odyssey/world/odyssey-forest-cards.js';
-import { bakeForestLeafAtlas } from '../../rendering/odyssey/world/odyssey-forest-leaf-atlas.js';
+import { FOREST_SPECIMENS } from '../../rendering/odyssey/world/odyssey-forest-models-decode.js';
+import { createForestMaterials } from '../../rendering/odyssey/world/odyssey-forest-material.js';
+import { buildForestMesh, createForestTextures } from '../../rendering/odyssey/world/odyssey-forest-mesh.js';
+import { forestColours } from '../../rendering/odyssey/world/odyssey-forest-species.js';
 import { ODYSSEY_WORLD_SUN } from '../../rendering/odyssey/chapter-environments/shared/chapter-profile.js';
 
 /**
- * ACT II TREE AUDITION — the board owner decision D1 is taken on (forest plan Wave 1).
+ * THE FOREST'S AUDITION BOARD (2026-11-24): every specimen side by side, drawn by the world's own forest
+ * material and meshes, under its sun. The page is not the game's grade: this board judges silhouette,
+ * mass, light and the tiers against each other; colour is judged in the game.
  *
- * The audition-board pattern (first used by the first Koi Pond theme's `koi-tree-audition`
- * effect, removed with that theme's forest): every candidate laid out side by side at the same
- * scale under the same light, because a roster is chosen by COMPARISON and a tree judged alone
- * always looks fine. Columns are species, rows are growth stages; `?lod=` swaps the whole board
- * between hero / mid / far so the far tier is judged as a silhouette rather than assumed.
- *
- * ⚠️ THIS RIG IS NOT COLOUR-TRUTHFUL, and that is deliberate. The playground page is flat
- * NoToneMapping while the game applies ACES plus master and chapter saturation on top of the
- * world's 0.82/0.72 output contract — authoring colour here is exactly how the cloud deck was
- * tuned "soft grey" and shipped as "navy shards". This board is for SILHOUETTE, MASSING and
- * PROPORTION (§1b R4/R6/R8). The palette verdict belongs on `act2-cloud-deck.effect.js`, which
- * mounts the real world through the real pipeline.
- *
- * The paint here is a deliberately reduced copy of the Wave 0b probe stack — wrap diffuse, one
- * band, the measured shade recipe, the quantised occlusion skirt — so the shapes are read under
- * the lighting model they will actually ship with, not under a stand-in.
- *
- * URL params:
- *   ?lod=hero|mid|far   which tier the board shows (default hero)
- *   ?species=S2         audition ONE species across its stages, filling the board
- *   ?broadleaf=traced   the smooth-min broadleaf crown the puffs replaced, for an A/B
- *   ?broadleaf=solid    the solid puffs the leaf cards replaced, for an A/B
- *   ?trees=procedural   the puff crowns built in code instead of the broadleaves grown in Blender
- *                       (scripts/blender/odyssey/odyssey_trees.py), for an A/B
- *   ?spin=0             stop the slow turntable (silhouette review wants motion; a still
- *                       capture wants it off, and `?t=` freezes update() dt anyway)
+ *   ?lod=hero|mid|far   the tier the board shows (default hero)
+ *   ?only=oak,birch     the specimens whose id or species starts with one of these
+ *   ?grove=1            one grove of the shown specimens instead of the board
+ *   ?az= ?el= ?dist=    the camera (degrees, degrees, metres); ?tx= ?ty= what it looks at
+ *   ?share=0.5          the share of the cards a lower tier draws
+ *   ?sunaz= ?sunel=     turn the sun
  */
 
 export const meta = {
     id: 'act2-tree-audition',
-    title: 'Act II — tree audition board',
-    description: 'Every species x growth stage side by side, for roster decision D1.',
+    title: 'Odyssey forest — audition board',
+    description: 'Every grown specimen, by tier, under the world\'s sun.',
 };
 
-const COL_SPACING = 9.0;
-// Rows need more room than columns: in perspective, depth separation collapses faster than
-// lateral separation, and the first capture had three growth stages reading as one clump.
-const ROW_SPACING = 10.0;
-
-export function create({
-    scene, camera, params,
-}) {
-    const lod = ['hero', 'mid', 'far'].includes(params?.get?.('lod')) ? params.get('lod') : 'hero';
-    const onlyId = params?.get?.('species');
-    const spin = params?.get?.('spin') !== '0';
-    // ?broadleaf=traced: the smooth-min crown the puffs replaced; ?broadleaf=solid: the solid
-    // puffs the leaf cards replaced (2026-10-26). Both for an A/B.
-    const style = params?.get?.('broadleaf');
-    setForestBroadleafStyle(['traced', 'solid'].includes(style) ? style : 'leafy');
-    setForestTreeSource(params?.get?.('trees') === 'procedural' ? 'procedural' : 'grown');
-    const atlas = bakeForestLeafAtlas();
-    const atlasTex = new THREE.DataTexture(
-        atlas.data,
-        atlas.width,
-        atlas.height,
-        THREE.RGBAFormat,
-        THREE.UnsignedByteType,
-    );
-    atlasTex.minFilter = THREE.LinearMipmapLinearFilter;
-    atlasTex.magFilter = THREE.LinearFilter;
-    atlasTex.generateMipmaps = true;
-    atlasTex.needsUpdate = true;
-
-    const species = onlyId
-        ? ODYSSEY_FOREST_SPECIES.filter((s) => s.id.startsWith(onlyId))
-        : ODYSSEY_FOREST_SPECIES;
-    const shown = species.length ? species : ODYSSEY_FOREST_SPECIES;
-
+export function create({ scene, camera, params }) {
+    const get = (k) => params?.get?.(k);
+    const lod = ['hero', 'mid', 'far'].includes(get('lod')) ? get('lod') : 'hero';
+    const only = get('only')?.split(',').filter(Boolean) ?? null;
+    const share = Number(get('share')) || 1;
+    const shown = FOREST_SPECIMENS.map((s, i) => ({ s, i }))
+        .filter(({ s }) => !only || only.some((o) => s.id.startsWith(o) || s.species.startsWith(o)));
     const group = new THREE.Group();
     group.name = 'act2-tree-audition';
     scene.add(group);
-    // A LIGHT background, because an audition board is judged on SILHOUETTE and a dark tree on
-    // a dark field has none. This is also why the rig is not colour-truthful and says so.
     const prevBackground = scene.background;
-    scene.background = new THREE.Color(0.78, 0.82, 0.86);
+    scene.background = new THREE.Color(0.62, 0.74, 0.88);
 
-    const uSunDir = uniform(new THREE.Vector3(...ODYSSEY_WORLD_SUN).normalize());
-    const uSunColour = uniform(new THREE.Color(1, 0.95, 0.86));
-    const uAmbient = uniform(new THREE.Color(0.42, 0.50, 0.62));
-
-    // ── ground plane, so the trees are seated rather than floating ──
-    const groundMat = new THREE.MeshBasicNodeMaterial();
-    groundMat.colorNode = vec3(0.32, 0.34, 0.26);
-    groundMat.fog = false;
-    const ground = new THREE.Mesh(new THREE.PlaneGeometry(400, 400), groundMat);
-    ground.rotation.x = -Math.PI / 2;
-    ground.name = 'audition-ground';
-    group.add(ground);
-
-    /**
-     * One material per VALUE ROLE, not per species: the roles are the measured classes, and
-     * building it this way makes a species' role visible on the board instead of buried in a
-     * table. The crown colour rides a vertex attribute so the roster still shares pipelines.
-     */
-    const materials = new Map();
-    const makeMaterial = (role) => {
-        if (materials.has(role)) return materials.get(role);
-        const recipe = FOREST_VALUE_ROLES[role];
-        const mat = new THREE.MeshBasicNodeMaterial();
-        const aCrown = attribute('aCrown', 'vec3');
-        const aTrunk = attribute('aTrunk', 'vec3');
-        // One packed vec4: x = AO, y = height in crown, z = crown mask, w = height above
-        // ground. See the attribute's note in odyssey-forest-geometry.js for why `y > 0` is
-        // NOT a usable trunk test and why the channels had to be packed at all.
-        const vcol = attribute('aVert', 'vec4');
-        // Leaf cards (every leafy broadleaf crown) carry the card flag plus their size in z and
-        // are drawn by the world's own card code, turned to the eye in the mesh's frame (no
-        // rotation, one uniform scale, so a card's size stays in the tree's units).
-        const isCard = step(float(1.5), vcol.z);
-        const isCrown = min(vcol.z, 1);
-        const vRight = varyingProperty('vec3', 'vAuditionCardRight');
-        const vUp = varyingProperty('vec3', 'vAuditionCardUp');
-        const vCorner = varyingProperty('vec2', 'vAuditionCardCorner');
-        const vSpin = varyingProperty('vec4', 'vAuditionCardSpin');
-        // The crown's direction in its own varying, not `normalWorld` (see the world renderer's
-        // vForestCrownN: read inside a select branch, the shared var was zero for the bark).
-        const vCrownN = varyingProperty('vec3', 'vAuditionCrownN');
-        mat.positionNode = Fn(() => {
-            const flagWhole = floor(vcol.z);
-            const card = forestLeafCardVertex({
-                centre: positionLocal,
-                size: vcol.z.sub(flagWhole).mul(FOREST_LEAF_CARD.sizeMax),
-                kind: flagWhole.sub(FOREST_LEAF_CARD.flag),
-                eye: modelWorldMatrixInverse.mul(vec4(cameraPosition, 1)).xyz,
-                time: tslTime,
-                seed: float(0),
-                flutter: float(spin ? 1 : 0),
-            });
-            vRight.assign(card.right);
-            vUp.assign(card.up);
-            vCorner.assign(card.corner);
-            vSpin.assign(card.spin);
-            vCrownN.assign(normalLocal);
-            return positionLocal.add(card.offset.mul(isCard));
-        })();
-        const cardUv = forestLeafCardUv({ corner: vCorner, spin: vSpin });
-        const card = forestLeafCardFragment({
-            corner: vCorner,
-            right: vRight,
-            up: vUp,
-            leaf: texture(atlasTex, cardUv.uv),
-            inside: cardUv.inside,
-            crownN: normalize(vCrownN),
-            depth: vcol.x,
-            sunDir: uSunDir,
-            look: {
-                crown: 1, dome: 0.45, upBias: 0.18, edgeGain: 0.02, thinning: 0.07,
-            },
-        });
-        const onCard = isCard.greaterThan(0.5);
-        const normal = select(onCard, card.normal, normalWorld);
-        mat.opacityNode = select(onCard, card.alpha, float(1));
-        mat.maskNode = onCard.not().or(card.alpha.greaterThan(0.02));
-        mat.alphaToCoverage = true;
-        const albedo = mix(aTrunk, aCrown, isCrown);
-        const wrap = clamp(dot(normal, uSunDir).add(0.70).div(1.70), 0, 1);
-        // AO shifts the band THRESHOLD rather than multiplying the colour — the cloud field's
-        // grammar. Darkening by AO is how a stylised canopy turns muddy. A card's openness is the
-        // sun's path through the crown, and its leaf's tone nudges the threshold.
-        const open = select(onCard, float(1).sub(smoothstep(float(0.25), float(1.6), card.path).mul(0.7)), vcol.x);
-        const toneShift = select(onCard, float(0.5).sub(card.tone).mul(0.16).add(card.inner.mul(0.10)), float(0));
-        const cardShift = select(onCard, float(1).sub(open).mul(0.3), float(0)).add(toneShift);
-        const band = smoothstep(
-            float(0.40).sub(open.mul(0.10)).add(cardShift),
-            float(0.58).add(cardShift),
-            wrap,
-        );
-        const luma = dot(albedo, vec3(0.2126, 0.7152, 0.0722));
-        const shade = max(
-            mix(vec3(luma, luma, luma), albedo, float(recipe.sat)),
-            vec3(0, 0, 0),
-        );
-        // The quantised sky-occlusion skirt (Wave 0b measured a step beats a ramp here).
-        const occ = mix(float(0.80), float(1), smoothstep(float(0.10), float(0.38), vcol.y));
-        const body = mix(shade, albedo, band).mul(occ);
-        const light = mix(uSunColour.mul(recipe.value).add(uAmbient.mul(0.18)), uSunColour.mul(0.88), band);
-        const view = normalize(cameraPosition.sub(positionWorld));
-        const backlit = clamp(dot(view, uSunDir).mul(-1), 0, 1).pow(2.5);
-        const rim = float(1).sub(abs(dot(normal, view)));
-        mat.colorNode = Fn(() => body.mul(light)
-            .add(uSunColour.mul(backlit.mul(rim).mul(vcol.y).mul(0.30))))();
-        mat.fog = false;
-        materials.set(role, mat);
-        return mat;
-    };
-
-    const meshes = [];
-    const built = [];
-    shown.forEach((spec, col) => {
-        spec.stages.forEach((stage, row) => {
-            const geo = buildForestTreeGeometry(spec, stage, lod, ((col + 1) * 7919) + ((row + 1) * 104729));
-            built.push(geo);
-            // Crown and trunk colours as CONSTANT attributes: the audition's whole job is to
-            // compare species, and a species is its silhouette plus its colour.
-            const n = geo.getAttribute('position').count;
-            const crown = new Float32Array(n * 3);
-            const trunk = new Float32Array(n * 3);
-            for (let i = 0; i < n; i += 1) {
-                crown[i * 3] = spec.crown[0];
-                crown[(i * 3) + 1] = spec.crown[1];
-                crown[(i * 3) + 2] = spec.crown[2];
-                trunk[i * 3] = spec.trunk[0];
-                trunk[(i * 3) + 1] = spec.trunk[1];
-                trunk[(i * 3) + 2] = spec.trunk[2];
-            }
-            geo.setAttribute('aCrown', new THREE.BufferAttribute(crown, 3));
-            geo.setAttribute('aTrunk', new THREE.BufferAttribute(trunk, 3));
-
-            const mesh = new THREE.Mesh(geo, makeMaterial(spec.role));
-            // Trees are authored at unit-ish scale; the board shows them at a common multiplier
-            // so relative proportion between species is the thing being judged.
-            mesh.scale.setScalar(1.6);
-            mesh.position.set(
-                (col - ((shown.length - 1) / 2)) * COL_SPACING,
-                0,
-                (row - 1) * ROW_SPACING,
-            );
-            mesh.name = `audition-${spec.id}-${stage.id}`;
-            group.add(mesh);
-            meshes.push(mesh);
-        });
+    const sun = new THREE.Vector3(...ODYSSEY_WORLD_SUN).normalize();
+    if (get('sunaz') || get('sunel')) {
+        const a = THREE.MathUtils.degToRad(Number(get('sunaz') ?? 155));
+        const e = THREE.MathUtils.degToRad(Number(get('sunel') ?? 15));
+        sun.set(Math.cos(e) * Math.sin(a), Math.sin(e), Math.cos(e) * Math.cos(a));
+    }
+    const uSunDir = uniform(sun);
+    const uSun = uniform(new THREE.Color(1, 0.95, 0.86));
+    const uSkyHorizon = uniform(new THREE.Color(0.72, 0.82, 0.93));
+    const uOn = uniform(0);
+    const textures = createForestTextures({ onReady: () => { uOn.value = 1; } });
+    const materials = createForestMaterials({
+        pullTex: textures.pullTex,
+        leafTex: textures.leafTex,
+        farTex: textures.farTex,
+        uOn,
+        cameraPosition,
+        positionWorld,
+        uTime: tslTime,
+        uSunDir,
+        uSkyHorizon,
+        landSunOf: () => uSun.mul(1),
+        landHourOf: () => vec4(0, 0, 0, 0),
+        dayTurnOf: () => vec4(0, 0, 0, 0),
+        gustFront: (xz) => sin(tslTime.mul(0.6).sub(xz.x.mul(0.0036).add(xz.y.mul(0.0027)))),
+        cloudLight: () => float(1),
+        reachSink: () => float(0),
+        hourGold: { gain: 1, tint: [1.2, 1.1, 0.8] },
+        silver: 0,
+        finish: (c) => c,
     });
 
-    const budget = forestRosterBudget(built);
-    // eslint-disable-next-line no-console
-    console.log('[tree-audition]', JSON.stringify({
-        lod,
-        species: shown.map((s) => s.id),
-        trees: meshes.length,
-        triangles: built.reduce((a, g) => a + g.userData.forest.triangles, 0),
-        worstPerLod: budget.worst,
-        withinBudget: budget.withinBudget,
-    }));
-    if (typeof window !== 'undefined') window.__TREE_AUDITION__ = { lod, budget };
+    const groundMat = new THREE.MeshBasicNodeMaterial();
+    groundMat.colorNode = mix(vec3(0.16, 0.25, 0.08), vec3(0.55, 0.66, 0.74), smoothstep(
+        float(60),
+        float(420),
+        positionWorld.sub(cameraPosition).length(),
+    ));
+    groundMat.fog = false;
+    const ground = new THREE.Mesh(new THREE.PlaneGeometry(2000, 2000), groundMat);
+    ground.rotation.x = -Math.PI / 2;
+    group.add(ground);
 
-    // FRAMED ON THE BOARD'S WIDTH, not on the tallest tree. An audition board is wide and
-    // short, so height-based framing pushes the camera far enough back that every candidate
-    // becomes a thumbnail — which the first two captures demonstrated in both directions
-    // (cropped, then tiny). Width drives the distance; the tallest tree only sets the height.
-    const tallest = built.reduce((a, g) => Math.max(a, g.userData.forest.totalH), 1) * 1.6;
-    const halfWidth = (((shown.length - 1) * COL_SPACING) / 2) + (tallest * 0.55);
-    // tan(half of the horizontal FOV) for the playground's 50-degree vertical at 16:9, with a
-    // little margin so nothing sits on the frame edge.
-    const radius = Math.max(24, halfWidth / 0.74);
-    camera.position.set(0, tallest * 0.80, radius);
-    camera.lookAt(0, tallest * 0.42, 0);
+    const items = [];
+    const tree = (i, x, z, scale = 1, rot = 0.6, extra = {}) => {
+        const col = forestColours(FOREST_SPECIMENS[i].species, {
+            hue: (items.length * 0.618) % 1, value: (items.length * 0.37) % 1,
+        });
+        items.push({
+            specimen: i,
+            x,
+            y: 0,
+            z,
+            scale,
+            scaleY: scale,
+            rot,
+            leanX: 0,
+            leanZ: 0,
+            phase: items.length * 1.7,
+            shadeTop: -1,
+            open: 1,
+            ...col,
+            ...extra,
+        });
+    };
+    let depth = 0;
+    let wide = 0;
+    if (get('grove')) {
+        let k = 0;
+        for (let j = 0; j < 9; j += 1) {
+            for (let q = 0; q < 13; q += 1) {
+                const h = Math.sin((j * 127.1) + (q * 311.7)) * 43758.5453;
+                const r = h - Math.floor(h);
+                const x = ((q - 6) * 7.2) + ((r - 0.5) * 5);
+                const z = (j * -7.2) + ((((r * 7) % 1) - 0.5) * 5);
+                tree(shown[k % shown.length].i, x, z, 0.8 + (0.4 * ((r * 13) % 1)), r * 6.28, {
+                    shadeTop: j > 0 ? 0.55 : 0.1, open: 0.45,
+                });
+                k += 3;
+            }
+        }
+        wide = 80;
+        depth = 60;
+    } else {
+        const cols = Math.ceil(Math.sqrt(shown.length * 2.4));
+        let x = 0;
+        let row = 0;
+        shown.forEach(({ s, i }, k) => {
+            if (k && k % cols === 0) { row += 1; x = 0; }
+            x += s.reach + 1.2;
+            tree(i, x, row * -24);
+            x += s.reach + 1.2;
+            wide = Math.max(wide, x);
+        });
+        depth = row * 24;
+        items.forEach((t) => { t.x -= wide / 2; });
+    }
+    const mesh = buildForestMesh({ lod, items }, materials, { cardShare: share });
+    if (mesh) {
+        mesh.frustumCulled = false;
+        group.add(mesh);
+        console.log(`[audition] ${lod} ${items.length} trees ${mesh.userData.forest.triangles} triangles (slots)`);
+    }
+    const az = THREE.MathUtils.degToRad(Number(get('az') ?? 0));
+    const el = THREE.MathUtils.degToRad(Number(get('el') ?? 12));
+    const dist = Number(get('dist')) || Math.max(30, wide * 0.62);
+    const aim = new THREE.Vector3(Number(get('tx') ?? 0), Number(get('ty') ?? 7), Number(get('tz') ?? (-depth * 0.4)));
+    camera.near = 0.5;
+    camera.far = 4000;
+    const seat = () => {
+        camera.position.set(
+            (Math.sin(az) * Math.cos(el) * dist) + aim.x,
+            (Math.sin(el) * dist) + aim.y,
+            (Math.cos(az) * Math.cos(el) * dist) + aim.z,
+        );
+        camera.lookAt(aim);
+    };
+    seat();
+    camera.updateProjectionMatrix();
 
     return {
-        cameraRadius: radius,
-        camera(time, cam) {
-            const a = spin ? time * 0.10 : 0;
-            cam.position.set(Math.sin(a) * radius, tallest * 0.80, Math.cos(a) * radius);
-            cam.lookAt(0, tallest * 0.42, 0);
-        },
+        update() { seat(); },
         dispose() {
-            meshes.forEach((m) => m.geometry.dispose());
-            materials.forEach((m) => m.dispose());
-            atlasTex.dispose();
-            ground.geometry.dispose();
-            groundMat.dispose();
             scene.background = prevBackground;
             scene.remove(group);
+            group.traverse((o) => { o.geometry?.dispose?.(); });
+            [materials.near, materials.far, groundMat].forEach((m) => m?.dispose());
+            textures.dispose();
         },
     };
 }

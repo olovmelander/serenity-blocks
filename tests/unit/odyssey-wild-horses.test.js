@@ -249,7 +249,7 @@ describe('the band on the ground', () => {
                     const x = state.x + (fx * f * half);
                     const z = state.z + (fz * f * half);
                     for (const tree of trees) {
-                        m.clear = Math.min(m.clear, Math.hypot(tree.x - x, tree.z - z) - (0.6 * 4.6 * tree.scaleXZ));
+                        m.clear = Math.min(m.clear, Math.hypot(tree.x - x, tree.z - z) - (0.6 * tree.skirt));
                     }
                     for (const r of rocks) m.rock = Math.min(m.rock, Math.hypot(r.x - x, r.z - z) - Math.max(r.sx, r.sz));
                 }
@@ -524,12 +524,15 @@ describe('the meadow kept open for the band', () => {
         expect(Math.max(...offs)).toBeGreaterThan(0.06);
         expect(Math.min(...offs)).toBeLessThan(-0.06);
         [15, 24].forEach((spacing) => {
-            const open = scatterZonedForest(heightAt, { rail: RAIL, spacing });
-            const shut = scatterZonedForest(heightAt, { rail: RAIL, spacing, meadowClearing: false });
+            // (Trees only: a wood left standing here would have ferns under it too.)
+            const treesOf = (z) => ({ ...z, placements: z.placements.filter((p) => p.role !== 'floor') });
+            const open = treesOf(scatterZonedForest(heightAt, { rail: RAIL, spacing }));
+            const shut = treesOf(scatterZonedForest(heightAt, { rail: RAIL, spacing, meadowClearing: false }));
             const core = open.placements.filter((p) => odysseyMeadowClearingRn(p.x, p.z) < ODYSSEY_MEADOW_CLEARING.core);
             // Only a few lone trees in its core; the clearing removed its trees and reports them.
             expect(core.length, `tier ${spacing} lone trees`).toBeLessThanOrEqual(4);
-            expect(open.meadowCleared.length, `tier ${spacing} cleared`).toBeGreaterThan(10);
+            // (The composition already keeps this grass open, so the clearing has little left to do.)
+            expect(open.meadowCleared.length, `tier ${spacing} cleared`).toBeGreaterThan(1);
             expect(open.placements.length + open.meadowCleared.length).toBe(shut.placements.length);
             // The boulders see the cleared sites as trees, so not one rock moves or appears.
             const rocksOf = (z) => buildBoulderSites(odysseyWorldHeight, { trees: [...z.placements, ...z.meadowCleared] })

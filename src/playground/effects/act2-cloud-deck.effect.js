@@ -97,17 +97,6 @@ export function create({
         outputScale: ONE_WORLD_OUTPUT_SCALE,
         outputSaturation: ONE_WORLD_OUTPUT_SATURATION,
         skyRadius: ONE_WORLD_SKY_RADIUS,
-        // Opt-IN since the 2026-08-14 retirement, matching the board's polarity — a rig that
-        // shows heroes by default previews a sky the game does not ship. `?heroes=1` restores
-        // them here exactly as `?odysseyWorldHeroes=1` does in-game.
-        heroes: params?.get?.('heroes') === '1',
-        // Forest plan Wave 0b: `?forestPaint=1` swaps the incumbent facet-normal forest for
-        // the blob-normal + banded-ramp probe. This rig is where that verdict has to be
-        // taken — the flat playground page is how the cloud deck was authored "soft grey"
-        // and shipped as "navy shards".
-        forestPaint: params?.get?.('forestPaint') === '1',
-        // The roster ships since the swap; `?forestV1=1` previews the retired cone forest.
-        forestV2: params?.get?.('forestV1') !== '1',
         // Ground plan Wave 0a: `?flatGround=1` is the pricing lever's look, reachable here so
         // an A/B against the painted ground can be taken on the SAME graded rig the verdict
         // is taken on — a lever whose visual effect nobody has ever seen is a lever nobody

@@ -1,4 +1,4 @@
-# Odyssey ground asset attribution: the meadow
+# Odyssey ground asset attribution: the meadow and the forest's floor
 
 ## The meadow (`meadow.png`)
 
@@ -18,3 +18,15 @@ Rebuild (the same scene and the same renders from the same seed):
 
 The ground shader reads it as `MEADOW` in `src/rendering/odyssey/world/odyssey-world-renderer.js`:
 the turf over the painted grass, the flowers in drifts, the wind's bands through it.
+
+## The forest's floor (`floor.png`)
+
+Generated the same way: `scripts/blender/odyssey/odyssey_floor.py` models a 16 m square of a wood's floor (46,000
+fallen leaves in drifts, sticks, moss cushions, seedlings) and photographs it from straight above. One 512 x 512
+RGB PNG of data: R the litter's light, G moss and seedlings, B leaves newly fallen. No photograph, scan or
+third-party texture is involved, so there is nothing to attribute.
+
+    blender -b --factory-startup --python scripts/blender/odyssey/odyssey_floor.py -- \
+        --out src/rendering/odyssey/assets/ground/floor.png
+
+The ground shader reads it as `FLOOR` in `src/rendering/odyssey/world/odyssey-world-renderer.js`.

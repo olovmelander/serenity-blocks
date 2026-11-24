@@ -16,7 +16,7 @@ describe('the waters build clean (2026-11-02, the tarn 2026-11-20)', () => {
     ['high', 'low'].forEach((quality) => {
         it(`${quality}: the lake, the tarn, the sea and the ground`, () => {
             const world = createOdysseyWorld({
-                quality, forest: false, cloudField: false,
+                quality, forest: false, clouds: false,
             });
             const lake = world.group.getObjectByName('odyssey-world-north-lake');
             const tarn = world.group.getObjectByName('odyssey-world-tarn');

@@ -142,9 +142,9 @@ function clearances(birdsAt, total, rail, step = 1) {
             out.ground = Math.min(out.ground, q[1] - Math.max(SEA_LEVEL, odysseyWorldHeight(q[0], q[2])));
             for (const tree of TREES) {
                 if (Math.abs(tree.x - q[0]) > 40 || Math.abs(tree.z - q[2]) > 40) continue;
-                // A generous crown: 5 u x its spread across, 28 u x its height tall.
-                if (Math.hypot(tree.x - q[0], tree.z - q[2]) < (5 * tree.scaleXZ) + 3) {
-                    out.crown = Math.min(out.crown, q[1] - (tree.y + (28 * tree.scaleY)));
+                // The tree's own crown and height, and two units over its reach.
+                if (Math.hypot(tree.x - q[0], tree.z - q[2]) < tree.crownR + 2) {
+                    out.crown = Math.min(out.crown, q[1] - (tree.y + tree.height));
                 }
             }
         }

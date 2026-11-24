@@ -196,7 +196,7 @@ describe('the ibex on the rock', () => {
                 const m = stats[i];
                 const leaping = deerLeapAt(animal, t).on;
                 for (const tree of trees) {
-                    m.clear = Math.min(m.clear, Math.hypot(tree.x - s.x, tree.z - s.z) - (0.6 * 4.6 * tree.scaleXZ));
+                    m.clear = Math.min(m.clear, Math.hypot(tree.x - s.x, tree.z - s.z) - (0.6 * tree.skirt));
                 }
                 m.slope = Math.max(m.slope, gradient(s.x, s.z));
                 m.dry = Math.min(m.dry, H(s.x, s.z) - ODYSSEY_SEA_LEVEL);

@@ -1845,32 +1845,6 @@ export const PLAYGROUND_URL_PARAMETERS = [
         ],
     },
     {
-        name: 'forestPaint',
-        category: 'Playground',
-        scope: 'playground.html — act2-cloud-deck',
-        description: 'Preview the painted forest shading experiment.',
-        values: '1 enables.',
-        defaultValue: 'Current forest shading.',
-        example: 'forestPaint=1',
-        notes: 'Use on playground.html with effect=<the matching effect ID>.',
-        sources: [
-            'src/playground/effects/act2-cloud-deck.effect.js',
-        ],
-    },
-    {
-        name: 'forestV1',
-        category: 'Playground',
-        scope: 'playground.html — act2-cloud-deck',
-        description: 'Preview the retired cone forest in Cloud Deck.',
-        values: '1 enables.',
-        defaultValue: 'Current forest roster.',
-        example: 'forestV1=1',
-        notes: 'Use on playground.html with effect=<the matching effect ID>.',
-        sources: [
-            'src/playground/effects/act2-cloud-deck.effect.js',
-        ],
-    },
-    {
         name: 'fov',
         category: 'Playground',
         scope: 'playground.html — cinder-drift, crystal-cave, summer, synthwave-sunset, verdant-hills',
@@ -1991,19 +1965,6 @@ export const PLAYGROUND_URL_PARAMETERS = [
         values: 'Number in world units.',
         defaultValue: '0.',
         example: 'height=100',
-        notes: 'Use on playground.html with effect=<the matching effect ID>.',
-        sources: [
-            'src/playground/effects/act2-cloud-deck.effect.js',
-        ],
-    },
-    {
-        name: 'heroes',
-        category: 'Playground',
-        scope: 'playground.html — act2-cloud-deck',
-        description: 'Add retired hero landmarks in the Cloud Deck comparison.',
-        values: '1 enables.',
-        defaultValue: 'Off.',
-        example: 'heroes=1',
         notes: 'Use on playground.html with effect=<the matching effect ID>.',
         sources: [
             'src/playground/effects/act2-cloud-deck.effect.js',
@@ -5140,32 +5101,6 @@ export const PLAYGROUND_URL_PARAMETERS = [
         notes: 'Use on playground.html with effect=<the matching effect ID>.',
         sources: [
             'src/playground/effects/ch6-cosmic-expanse.effect.js',
-        ],
-    },
-    {
-        name: 'species',
-        category: 'Playground',
-        scope: 'playground.html — act2-tree-audition',
-        description: 'Show only one species in the tree audition.',
-        values: 'A tree species ID prefix, such as S1; unknown prefixes show all species.',
-        defaultValue: 'All species.',
-        example: 'species=S1',
-        notes: 'Use on playground.html with effect=<the matching effect ID>.',
-        sources: [
-            'src/playground/effects/act2-tree-audition.effect.js',
-        ],
-    },
-    {
-        name: 'spin',
-        category: 'Playground',
-        scope: 'playground.html — act2-tree-audition',
-        description: 'Rotate trees in the audition preview.',
-        values: '0 disables.',
-        defaultValue: 'On.',
-        example: 'spin=0',
-        notes: 'Use on playground.html with effect=<the matching effect ID>.',
-        sources: [
-            'src/playground/effects/act2-tree-audition.effect.js',
         ],
     },
     {
