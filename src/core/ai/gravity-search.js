@@ -4,6 +4,9 @@ import { calculateLineClearScore } from '../scoring.js';
 import { settleLabelledBoard } from '../stillfall/stillfall-cascade.js';
 import { reachableLandings, visitReachableLandings } from '../stillfall/stillfall-reach.js';
 import { computeProjectedAttack } from './cascade-simulator.js';
+import {
+    versusCalm, versusReward, versusTrigger, versusValue,
+} from './versus-evaluation.js';
 
 // Joint fit on 77201–77208; both score and attack selected this vector on
 // 78401–78412. All values are for this game's cascade and reward rules.
@@ -323,6 +326,19 @@ function actualLandings(grid, piece) {
     return result;
 }
 
+/**
+ * Where a versus seat may set its piece down now: nothing above the spawn rows, and nothing more
+ * than a row above where the piece is (kicks can climb a tower a row at a time, and a piece that
+ * keeps climbing never lands). dropHere leaves only where it would fall without another key.
+ */
+export function steadyLandings(landings, piece, first, dropHere) {
+    const steady = landings.filter(({ form, y }) => y + form.top >= first - 2 && y >= Math.floor(piece.y) - 1);
+    const kept = dropHere
+        ? landings.filter(({ actions }) => !actions.some(({ type }) => type === 'move' || type === 'rotate'))
+        : steady;
+    return kept.length ? kept : landings;
+}
+
 function movementGrid(board) {
     board.movementGrid ??= Array.from({ length: board.height }, (_, y) => (
         Array.from(board.cells.subarray(y * COLS, (y + 1) * COLS), (id) => id || null)
@@ -341,8 +357,18 @@ function futurePiece(board, key) {
     };
 }
 
-function futureLandings(board, key) {
-    if (board.top > board.first + 3) return skylineLandings(board, key);
+/**
+ * Whether pieces may have to steer near the top. Versus play stands towers on an edge column,
+ * which nothing steers past, so only the columns between the edges count there.
+ */
+export function nearRoof(board, versus) {
+    if (!versus) return board.top <= board.first + 3;
+    for (let x = 1; x < COLS - 1; x++) if (board.tops[x] <= board.first + 3) return true;
+    return false;
+}
+
+function futureLandings(board, key, versus) {
+    if (!nearRoof(board, versus)) return skylineLandings(board, key);
     return actualLandings(movementGrid(board), futurePiece(board, key));
 }
 
@@ -399,9 +425,9 @@ function triggerAlignments(missing) {
     return result;
 }
 
-function* triggerSteps(board, known, weights, allowUnknown, probe, sliced, observe, node) {
+function* triggerSteps(board, known, weights, allowUnknown, probe, sliced, observe, node, play = null) {
     let best = 0;
-    const high = board.top <= board.first + 3;
+    const high = nearRoof(board, Boolean(play));
     const reachable = new Map();
     let previewShots;
     for (let y = Math.max(board.top, board.first); y < board.height; y++) {
@@ -433,7 +459,7 @@ function* triggerSteps(board, known, weights, allowUnknown, probe, sliced, obser
             const maximum = maxLines ** 2 * Math.max(0, weights.triggerWaves)
                 + maxLines * Math.max(0, weights.triggerLines);
             const nextPreview = observe && key === known[0] && maxLines > 1;
-            if (!nextPreview && discount > 0 && best >= discount * maximum) continue;
+            if (!play && !nextPreview && discount > 0 && best >= discount * maximum) continue;
             if (nextPreview) {
                 // One landing can fill several rows. Inspect it once, even when
                 // a later preview already owns the positional upper bound.
@@ -443,13 +469,14 @@ function* triggerSteps(board, known, weights, allowUnknown, probe, sliced, obser
                 previewShots.add(position);
             }
             if (maxLines === 1) {
-                best = Math.max(best, discount * (weights.triggerWaves + weights.triggerLines));
+                if (!play) best = Math.max(best, discount * (weights.triggerWaves + weights.triggerLines));
                 continue;
             }
             stamp(board, form, x, py, board.cells.length + 1, probe);
             const waves = settleLabelledBoard(probe, board.first, Math.max(0, Math.min(board.top, py + form.top)));
             const lines = waves.reduce((sum, n) => sum + n, 0);
-            best = Math.max(best, discount * (waves.length ** 2 * weights.triggerWaves + lines * weights.triggerLines));
+            best = Math.max(best, discount * (play ? versusTrigger(play, lines)
+                : waves.length ** 2 * weights.triggerWaves + lines * weights.triggerLines));
             if (observe && key === known[0] && waves.length >= 2) observe(node, key, form, x, py, waves, lines);
         }
     }
@@ -537,6 +564,10 @@ export function* searchGravity(state, config, pending, weights = GRAVITY_WEIGHTS
     const fireFloor = danger ? 1 : safeFloor;
     const sustained = state.lines >= 8;
     const scoreMode = config.supportPlanning && !config.versus;
+    // Versus play (versus-evaluation.js): the whole plan is chosen by rows sent and by what the
+    // board has put by. The rules below for digging, firing and finishing are not consulted.
+    const play = config.versusPlay || null;
+    const calm = play ? versusCalm(start, pending, play) : 0;
     const payout = (move) => (config.versus ? move.attack : move.score);
     const qualifiesRelease = (waves, lines, perfect) => waves.length >= 2
         && ((studyRelease && lines - waves[0] >= 2) || perfect);
@@ -561,7 +592,7 @@ export function* searchGravity(state, config, pending, weights = GRAVITY_WEIGHTS
         if (eligible && (!release || payout(paid) > payout(release.move))) release = shot;
     };
     const result = (best) => {
-        if (overflowPossible || finish) {
+        if (!play && (overflowPossible || finish)) {
             const choice = finish && (!overflowPossible || finish.roomAfter >= pending) ? finish : recovery;
             return {
                 route: route(choice), start, danger, pending, alternatives,
@@ -571,6 +602,11 @@ export function* searchGravity(state, config, pending, weights = GRAVITY_WEIGHTS
             return {
                 route: route(best), start, danger, pending, alternatives,
             };
+        }
+        if (play) {
+            return best?.move ? {
+                route: route(best), start, danger, pending, alternatives,
+            } : null;
         }
         const ordinaryAttack = config.minAttack ?? (pending || state.lines >= 4 ? 2 : 3);
         const minAttack = sustained ? config.sustainedAttack ?? ordinaryAttack : ordinaryAttack;
@@ -591,7 +627,10 @@ export function* searchGravity(state, config, pending, weights = GRAVITY_WEIGHTS
         const next = [];
         const key = keys[ply];
         for (const parent of beam) {
-            const landings = ply ? futureLandings(parent.board, key) : actualLandings(grid, state.currentPiece);
+            let landings;
+            if (ply) landings = futureLandings(parent.board, key, Boolean(play));
+            else landings = actualLandings(grid, state.currentPiece);
+            if (!ply && play) landings = steadyLandings(landings, state.currentPiece, start.first, play.dropHere);
             yield;
             const siblings = [];
             // All non-clearing siblings have identical reward and reset the combo.
@@ -623,8 +662,11 @@ export function* searchGravity(state, config, pending, weights = GRAVITY_WEIGHTS
                     comboCount,
                     comboMultiplier: 1 + comboCount * 0.5,
                 } : quietContext;
-                const reward = parent.reward + paid.score * weights.score + (scoreMode ? 0 : paid.attack * weights.attack)
-                    + waves.length ** 2 * weights.waves;
+                // Summed in this order: Odyssey's rivals replay to the last rounding.
+                const reward = play
+                    ? parent.reward + versusReward(play, paid.lines, waves.length > 0 && !board.stock, calm)
+                    : parent.reward + paid.score * weights.score + (scoreMode ? 0 : paid.attack * weights.attack)
+                        + waves.length ** 2 * weights.waves;
                 const move = {
                     shapeKey: key, x, y, rotation: form.rotation, actions: landing.actions, waves, ...paid,
                 };
@@ -643,7 +685,8 @@ export function* searchGravity(state, config, pending, weights = GRAVITY_WEIGHTS
                     quality = Math.min(8, room) * weights.virtualWaves - board.holes * weights.holes
                         - (board.height - board.top) * weights.danger + reward;
                 } else {
-                    quality = value(board, weights, pending, config.virtual, scratch.probe, studyRelease) + reward;
+                    quality = (play ? versusValue(board, play, pending, scratch.probe)
+                        : value(board, weights, pending, config.virtual, scratch.probe, studyRelease)) + reward;
                 }
                 const node = {
                     parent,
@@ -688,7 +731,7 @@ export function* searchGravity(state, config, pending, weights = GRAVITY_WEIGHTS
             } else if (fire || dig || attackFire) {
                 checkpoint?.(result(beam[0]));
             }
-            if (!ply && (overflowPossible || finish)) return result(siblings[0]);
+            if (!play && !ply && (overflowPossible || finish)) return result(siblings[0]);
             next.push(...siblings.slice(0, Math.max(6, Math.ceil(config.width / 2))));
         }
         if (!next.length) break;
@@ -707,8 +750,8 @@ export function* searchGravity(state, config, pending, weights = GRAVITY_WEIGHTS
             if (config.trigger) {
                 // A probe for the *next* preview is also a playable continuation.
                 // Other shapes only contribute discounted positional value.
-                const witness = config.supportPlanning && !pending && known.length ? observePreview : null;
-                const trigger = triggerSteps(node.board, known, weights, true, scratch.probe, config.sliceRoofProbes, witness, node);
+                const witness = !play && config.supportPlanning && !pending && known.length ? observePreview : null;
+                const trigger = triggerSteps(node.board, known, weights, true, scratch.probe, config.sliceRoofProbes, witness, node, play);
                 node.quality += yield* trigger;
                 yield;
             }

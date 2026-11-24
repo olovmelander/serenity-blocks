@@ -7,11 +7,10 @@ import { analyzeCascadePreparation } from '../../src/core/ai/board-evaluator.js'
 import { estimateLatentDischarge } from '../../src/core/ai/latent-chain.js';
 import { reachableLandings } from '../../src/core/stillfall/stillfall-reach.js';
 import { PuzzleBotController } from '../../src/core/ai/puzzle-bot-controller.js';
-import { applyGarbage } from '../../src/core/game.js';
-import { MultiPlayerState } from '../../src/core/multi-player-state.js';
 import { calculateGarbage } from '../../src/core/garbage.js';
 import { seededRandom } from '../../src/utils/helpers.js';
 import { deal, pose, replay, spawn } from './solo.mjs';
+import { prepareVersusBoard, takeGarbage, versusMatch, versusRules } from '../gravity-bot-rebuild/shipped-versus.mjs';
 
 function observer(state, seed, tier = 10) {
     return new PuzzleBotController({ playerIndex: 0, playerState: state, actions: {}, difficulty: tier,
@@ -100,9 +99,10 @@ function rubble(state) {
 }
 
 async function dig(seed, tier, packet) {
-    const state = deal(seed);
+    const rules = versusRules();
+    const state = deal(seed, (board) => prepareVersusBoard(board, rules));
     const bot = observer(state, seed, tier);
-    const mp = new MultiPlayerState(2);
+    const mp = versusMatch(2, { rules, matchConfig: { gameType: 'survivor' } });
     mp.players[0] = state;
     const queue = mp.getGarbageQueue(0);
     let initialCells = 0;
@@ -136,10 +136,7 @@ async function dig(seed, tier, packet) {
         if (wired) queued.wiredMoveChanged = pose(wired.candidate) !== pose(plan.candidate);
         await replay(state, plan.actions, { spawnPiece: () => {
             if (i === 12) {
-                const entries = [];
-                for (let burst = queue.dequeueLineBurst(); burst.length; burst = queue.dequeueLineBurst()) entries.push(...burst);
-                const insertion = applyGarbage(state, entries);
-                if (insertion.topOut) { state.isGameOver = true; return; }
+                if (takeGarbage(state, queue, { rules }).topOut) { state.isGameOver = true; return; }
                 initialCells = rubble(state);
             }
             spawn(state);

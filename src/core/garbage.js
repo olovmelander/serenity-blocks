@@ -690,6 +690,59 @@ function dropCellsAboveTop(lockedPieces, totalRows) {
 }
 
 /**
+ * The bodies an insertion's rows enter as when attacks hold together (versus): the rows of one
+ * attack are one solid wherever their cells touch, so a part cut off by the holes is a body of
+ * its own; rows of different attacks, and an attack's clean rows and normal rows, never join.
+ * @param {Array<{ attackId: string|null, variant: string, row: number[] }>} rows top to bottom
+ * @returns {Array<{ attackId: string|null, variant: string, first: number, part: number, x: number,
+ *   y: number, shape: number[][] }>} y counts from the first row
+ */
+function attackBodies(rows) {
+    const bodies = [];
+    for (let first = 0; first < rows.length;) {
+        const { attackId, variant } = rows[first];
+        let end = first + 1;
+        while (attackId && end < rows.length && rows[end].attackId === attackId && rows[end].variant === variant) end++;
+        const seen = new Set();
+        const solid = (y, x) => y >= first && y < end && x >= 0 && x < COLS
+            && rows[y].row[x] > 0 && !seen.has(y * COLS + x);
+        let part = 0;
+        for (let start = first * COLS; start < end * COLS; start++) {
+            if (!solid(Math.floor(start / COLS), start % COLS)) continue;
+            const cells = [];
+            const reach = (y, x) => {
+                if (!solid(y, x)) return;
+                seen.add(y * COLS + x);
+                cells.push([y, x]);
+            };
+            reach(Math.floor(start / COLS), start % COLS);
+            for (let i = 0; i < cells.length; i++) {
+                const [y, x] = cells[i];
+                reach(y - 1, x);
+                reach(y + 1, x);
+                reach(y, x - 1);
+                reach(y, x + 1);
+            }
+            const ys = cells.map(([y]) => y);
+            const xs = cells.map(([, x]) => x);
+            const top = Math.min(...ys);
+            const left = Math.min(...xs);
+            const shape = Array.from(
+                { length: Math.max(...ys) - top + 1 },
+                () => Array(Math.max(...xs) - left + 1).fill(0),
+            );
+            cells.forEach(([y, x]) => { shape[y - top][x - left] = 1; });
+            bodies.push({
+                attackId, variant, first, part, x: left, y: top, shape,
+            });
+            part++;
+        }
+        first = end;
+    }
+    return bodies;
+}
+
+/**
  * Insert garbage entries into the playfield with animation support
  *
  * CRITICAL: Hole decoding must match the wire hole-encoding used by maskArrayToBits:
@@ -702,9 +755,14 @@ function dropCellsAboveTop(lockedPieces, totalRows) {
  * goes in, cells lifted past the board's top row are lost, and only a blocked spawn ends the
  * player (Infinity keeps its own roof rule either way).
  *
+ * Bodies: by default every row is a body of its own, its parts left and right of a hole held
+ * together until the next clear. Versus play passes joinAttackRows (the standard well only):
+ * one attack's rows hold together and nothing else does (attackBodies).
+ *
  * @param {Array<Object>} lockedPieces - Array of locked pieces (modified)
  * @param {Array<Object>} entries - Garbage entries to insert
- * @param {Object} options - Optional animation settings and overflowPolicy ('refuse' | 'spill')
+ * @param {Object} options - Optional animation settings, overflowPolicy ('refuse' | 'spill') and
+ *   joinAttackRows
  * @returns {Object} Result with success, topOut flags, and animation data. linesAfterInsertion
  *   lists the full rows left on the board; settleClearedRows lists the rows the settle
  *   completed and cleared before returning, and settleWaves the same rows wave by wave with
@@ -768,6 +826,8 @@ export function insertGarbageEntries(lockedPieces, entries, options = {}) {
 
     const baseY = totalRows - lineEntries.length;
     const garbagePieces = [];
+    const joinAttackRows = options.joinAttackRows === true && !isInfinityMode;
+    const joinedRows = [];
 
     lineEntries.forEach((entry, index) => {
         const y = baseY + index;
@@ -801,6 +861,11 @@ export function insertGarbageEntries(lockedPieces, entries, options = {}) {
         log(`[insertGarbageEntries]   solid at columns: [${solidCols.join(', ')}]`);
         log(`[insertGarbageEntries]   variant: ${entry.variant || 'normal'}`);
 
+        if (joinAttackRows) {
+            joinedRows.push({ attackId: entry.attackId || null, variant: entry.variant || 'normal', row });
+            return;
+        }
+
         const garbagePiece = {
             shapeKey: entry.variant === 'clean' ? 'CLEAN_GARBAGE' : 'GARBAGE',
             shape: [row],
@@ -822,6 +887,29 @@ export function insertGarbageEntries(lockedPieces, entries, options = {}) {
             isAnimating: options.animated || false,
         };
 
+        lockedPieces.push(garbagePiece);
+        garbagePieces.push(garbagePiece);
+    });
+
+    attackBodies(joinedRows).forEach((body) => {
+        const entry = lineEntries[body.first];
+        const garbagePiece = {
+            shapeKey: body.variant === 'clean' ? 'CLEAN_GARBAGE' : 'GARBAGE',
+            shape: body.shape,
+            x: body.x,
+            y: baseY + body.y,
+            color: entry.color || '#808080',
+            pieceId: `${body.attackId || 'garbage'}-${body.first}-${body.part}`,
+            isGarbage: true,
+            garbageMeta: {
+                attackId: body.attackId,
+                variant: body.variant,
+                combo: entry.combo,
+                depth: entry.depth,
+            },
+            animationOffset: options.animated ? lineEntries.length : 0,
+            isAnimating: options.animated || false,
+        };
         lockedPieces.push(garbagePiece);
         garbagePieces.push(garbagePiece);
     });

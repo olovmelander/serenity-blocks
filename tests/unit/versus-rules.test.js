@@ -131,6 +131,59 @@ describe('rows a garbage settle completes', () => {
     });
 });
 
+describe('rows of one attack', () => {
+    const bodyOf = (gameState, x, y) => gameState.boardGrid[y][x]?.id ?? null;
+
+    it('hold together as one solid; rows of another attack do not join them', () => {
+        const gameState = board([]);
+        applyGarbage(gameState, [garbageRow('a', [0]), garbageRow('a', [0]), garbageRow('b', [0])], VERSUS_GARBAGE_OPTIONS);
+        expect(bodyOf(gameState, 5, BOTTOM - 2)).not.toBeNull();
+        expect(bodyOf(gameState, 5, BOTTOM - 1)).toBe(bodyOf(gameState, 5, BOTTOM - 2));
+        expect(bodyOf(gameState, 5, BOTTOM)).not.toBe(bodyOf(gameState, 5, BOTTOM - 1));
+    });
+
+    it('are one body only where their cells touch', () => {
+        const gameState = board([]);
+        applyGarbage(gameState, [garbageRow('a', [4]), garbageRow('a', [4])], VERSUS_GARBAGE_OPTIONS);
+        expect(bodyOf(gameState, 0, BOTTOM)).toBe(bodyOf(gameState, 3, BOTTOM - 1));
+        expect(bodyOf(gameState, 5, BOTTOM)).toBe(bodyOf(gameState, 9, BOTTOM - 1));
+        expect(bodyOf(gameState, 0, BOTTOM)).not.toBe(bodyOf(gameState, 9, BOTTOM));
+    });
+
+    it('a cell over a hole in the row below hangs on the rest of its attack', () => {
+        // The right edge of the upper row stands over the lower row's hole.
+        const held = board([]);
+        applyGarbage(held, [garbageRow('a', [0]), garbageRow('a', [9])], VERSUS_GARBAGE_OPTIONS);
+        expect(held.boardGrid[BOTTOM - 1][9]).not.toBeNull();
+        expect(held.boardGrid[BOTTOM][9]).toBeNull();
+        // The part right of the hole is a body of its own, and falls, when its attack is cut there.
+        const cut = board([]);
+        const result = applyGarbage(cut, [garbageRow('a', [8]), garbageRow('b', [9])], VERSUS_GARBAGE_OPTIONS);
+        expect(result.settleClearedRows).toEqual([BOTTOM]);
+        expect(result.settleSummary.totalLines).toBe(1);
+    });
+
+    it('a clean move\'s rows and its normal rows stay apart', () => {
+        const gameState = board([]);
+        applyGarbage(gameState, [
+            garbageRow('a', [3, 6], { variant: 'clean' }), garbageRow('a', [0]),
+        ], VERSUS_GARBAGE_OPTIONS);
+        expect(bodyOf(gameState, 5, BOTTOM - 1)).not.toBe(bodyOf(gameState, 5, BOTTOM));
+    });
+
+    it('keep every row a body of its own without the versus rule (Odyssey), and in Infinity', () => {
+        const odyssey = board([]);
+        applyGarbage(odyssey, [garbageRow('a', [0]), garbageRow('a', [0])], { overflowPolicy: 'spill' });
+        expect(bodyOf(odyssey, 5, BOTTOM)).not.toBe(bodyOf(odyssey, 5, BOTTOM - 1));
+        const infinity = new GameState({ isInfinityMode: true });
+        infinity.boardGrid = Array.from({ length: 40 }, () => Array(COLS).fill(null));
+        infinity.board = infinity.boardGrid;
+        applyGarbage(infinity, [garbageRow('a', [0]), garbageRow('a', [0])], VERSUS_GARBAGE_OPTIONS);
+        const last = infinity.boardGrid.length - 1;
+        expect(bodyOf(infinity, 5, last)).not.toBe(bodyOf(infinity, 5, last - 1));
+    });
+});
+
 describe('waiting garbage', () => {
     it('holds at most twenty rows and ends a cut burst at its last row', () => {
         const queue = createVersusGarbageQueue();

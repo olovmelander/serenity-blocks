@@ -1,0 +1,346 @@
+Bot rooms on the shipped versus rules, 24 November 2026. node tables.mjs, then node ladder.mjs, on record.mjs output.
+
+# all-e10.jsonl: 24 games of 10 v 10 (shipped), 0 decided, 24 at the time limit, mean 600 s
+## tier 10: 48 seats, 71804 pieces, 475.3 min alive, 151.1 pieces/min
+lines/piece 0.61, sent/piece 0.30, sent/min 44.9, sent/line 0.49, rows in/min 44.5, settle lines/100 pieces 3.04, clean boards/100 0.013, deaths 158 (0.33/min), frags 109
+fires 11926 (one in 6.0 pieces), mean 2.75 lines, 90% 4, waves 2.43, singles 43% of clears
+size | share | per 100 pieces | share of rows sent | waves | tallest | mean height | covered | garbage rows | pieces since last | straight
+2 | 52.1% | 8.65 | 30% | 1.85 | 9.5 | 7.8 | 8.4 | 4.8 | 5.3 | 18%
+3 | 30.6% | 5.08 | 35% | 2.63 | 8.9 | 7.2 | 7.5 | 3.8 | 6.3 | 22%
+4 | 11.2% | 1.86 | 19% | 3.37 | 10.2 | 8.2 | 8.6 | 4.7 | 6.6 | 27%
+5-7 | 5.8% | 0.96 | 15% | 4.52 | 11.3 | 9.4 | 10.2 | 5.8 | 6.8 | 37%
+8-11 | 0.3% | 0.04 | 1% | 6.78 | 13.7 | 11.7 | 12.9 | 7.8 | 6.5 | 38%
+fires of 5+: 724; main column roofed 38%, of those an edge column 39%, rows in it 2.4, straights parked 0.25
+chain fires (5+ lines, biggest wave 1 or 2 rows): 0.89 per 100 pieces; shaft fires (biggest wave 4 or more): 0.02
+any board: tallest 8.4, above 20 rows 0.2%, roofed column with 3+ rows 10%, straight parked on it 1%, two or more 0%; heights 6.4 6.8 6.7 6.8 6.9 6.9 6.8 6.8 6.8 6.4
+offer: times, took whole, took 2+, took nothing: 1: 17413 50% 0% 50% | 2: 9222 66% 66% 32% | 3: 4184 86% 87% 13% | 4: 1514 88% 89% 11% | 5: 529 88% 88% 12% | 6: 185 91% 92% 8% | 7: 60 92% 92% 5% | 8+: 35 91% 91% 9%
+after 3+ rows: next fire in 4.2 pieces, 2.8 lines (n 2007)
+at death: tallest 21.3, centre 21.2, pieces since own last fire 12.0 (n 158)
+
+# all-e9.jsonl: 24 games of 9 v 9 (shipped), 6 decided, 18 at the time limit, mean 555 s
+## tier 9: 48 seats, 58094 pieces, 439.5 min alive, 132.2 pieces/min
+lines/piece 0.60, sent/piece 0.30, sent/min 39.1, sent/line 0.49, rows in/min 38.8, settle lines/100 pieces 2.82, clean boards/100 0.009, deaths 145 (0.33/min), frags 116
+fires 9581 (one in 6.1 pieces), mean 2.75 lines, 90% 4, waves 2.43, singles 43% of clears
+size | share | per 100 pieces | share of rows sent | waves | tallest | mean height | covered | garbage rows | pieces since last | straight
+2 | 50.8% | 8.38 | 29% | 1.85 | 9.5 | 7.7 | 8.3 | 4.8 | 5.3 | 18%
+3 | 32.0% | 5.27 | 36% | 2.61 | 8.9 | 7.2 | 7.5 | 3.7 | 6.4 | 21%
+4 | 11.5% | 1.89 | 20% | 3.37 | 10.1 | 8.2 | 8.5 | 4.5 | 6.7 | 28%
+5-7 | 5.5% | 0.90 | 14% | 4.54 | 11.3 | 9.4 | 10.0 | 5.7 | 7.0 | 36%
+8-11 | 0.3% | 0.05 | 1% | 6.81 | 13.9 | 11.7 | 12.6 | 8.1 | 6.3 | 41%
+fires of 5+: 552; main column roofed 38%, of those an edge column 40%, rows in it 2.4, straights parked 0.25
+chain fires (5+ lines, biggest wave 1 or 2 rows): 0.85 per 100 pieces; shaft fires (biggest wave 4 or more): 0.01
+any board: tallest 8.3, above 20 rows 0.3%, roofed column with 3+ rows 10%, straight parked on it 0%, two or more 0%; heights 6.3 6.6 6.6 6.7 6.8 6.7 6.7 6.6 6.7 6.3
+offer: times, took whole, took 2+, took nothing: 1: 14067 49% 0% 51% | 2: 7313 65% 66% 33% | 3: 3515 86% 87% 13% | 4: 1223 89% 90% 10% | 5: 394 89% 89% 11% | 6: 137 95% 96% 4% | 7: 44 91% 91% 7% | 8+: 30 90% 90% 10%
+after 3+ rows: next fire in 4.0 pieces, 2.8 lines (n 1576)
+at death: tallest 21.6, centre 21.4, pieces since own last fire 11.3 (n 145)
+
+# all-d8.jsonl: 24 games of 8 v 8 (shipped), 17 decided, 7 at the time limit, mean 472 s
+## tier 8: 48 seats, 37836 pieces, 373.4 min alive, 101.3 pieces/min
+lines/piece 0.54, sent/piece 0.26, sent/min 26.6, sent/line 0.48, rows in/min 26.4, settle lines/100 pieces 2.41, clean boards/100 0.021, deaths 167 (0.45/min), frags 151
+fires 5552 (one in 6.8 pieces), mean 2.75 lines, 90% 4, waves 2.42, singles 44% of clears
+size | share | per 100 pieces | share of rows sent | waves | tallest | mean height | covered | garbage rows | pieces since last | straight
+2 | 48.8% | 7.17 | 28% | 1.84 | 9.5 | 7.8 | 8.5 | 4.6 | 5.8 | 17%
+3 | 34.7% | 5.09 | 40% | 2.61 | 8.7 | 7.0 | 7.5 | 2.9 | 7.1 | 19%
+4 | 11.1% | 1.64 | 19% | 3.38 | 10.0 | 8.3 | 9.1 | 4.0 | 7.5 | 28%
+5-7 | 5.2% | 0.76 | 13% | 4.36 | 11.4 | 9.5 | 10.2 | 5.3 | 7.7 | 34%
+8-11 | 0.2% | 0.02 | 1% | 6.67 | 13.9 | 12.1 | 13.1 | 8.0 | 6.8 | 78%
+fires of 5+: 295; main column roofed 34%, of those an edge column 35%, rows in it 2.2, straights parked 0.17
+any board: tallest 8.1, above 20 rows 0.4%, roofed column with 3+ rows 10%, straight parked on it 0%, two or more 0%; heights 6.2 6.6 6.5 6.6 6.7 6.7 6.6 6.5 6.6 6.2
+offer: times, took whole, took 2+, took nothing: 1: 8627 49% 0% 51% | 2: 4388 61% 61% 38% | 3: 2137 89% 90% 10% | 4: 681 90% 91% 9% | 5: 228 90% 91% 9% | 6: 66 95% 95% 5% | 7: 20 85% 85% 15% | 8+: 12 75% 75% 25%
+after 3+ rows: next fire in 4.1 pieces, 2.8 lines (n 788)
+at death: tallest 21.6, centre 21.3, pieces since own last fire 9.2 (n 167)
+
+# all-e7.jsonl: 24 games of 7 v 7 (shipped), 9 decided, 15 at the time limit, mean 569 s
+## tier 7: 48 seats, 30049 pieces, 451.1 min alive, 66.6 pieces/min
+lines/piece 0.51, sent/piece 0.23, sent/min 15.4, sent/line 0.46, rows in/min 15.3, settle lines/100 pieces 2.31, clean boards/100 0.000, deaths 144 (0.32/min), frags 122
+fires 3896 (one in 7.7 pieces), mean 2.73 lines, 90% 4, waves 2.36, singles 50% of clears
+size | share | per 100 pieces | share of rows sent | waves | tallest | mean height | covered | garbage rows | pieces since last | straight
+2 | 52.1% | 6.75 | 30% | 1.79 | 10.9 | 9.2 | 9.8 | 4.8 | 6.4 | 21%
+3 | 31.5% | 4.09 | 36% | 2.63 | 10.1 | 8.4 | 8.5 | 3.3 | 8.0 | 24%
+4 | 10.7% | 1.38 | 18% | 3.20 | 10.9 | 9.0 | 8.9 | 3.8 | 8.2 | 33%
+5-7 | 5.4% | 0.71 | 14% | 4.27 | 12.2 | 10.3 | 10.2 | 5.0 | 8.6 | 40%
+8-11 | 0.3% | 0.04 | 1% | 6.67 | 15.1 | 12.9 | 14.7 | 6.2 | 12.2 | 50%
+fires of 5+: 224; main column roofed 40%, of those an edge column 31%, rows in it 2.7, straights parked 0.22
+chain fires (5+ lines, biggest wave 1 or 2 rows): 0.60 per 100 pieces; shaft fires (biggest wave 4 or more): 0.04
+any board: tallest 9.6, above 20 rows 0.4%, roofed column with 3+ rows 15%, straight parked on it 1%, two or more 0%; heights 7.3 7.9 7.8 8.0 8.1 8.1 8.0 7.9 7.9 7.3
+offer: times, took whole, took 2+, took nothing: 1: 7448 51% 0% 49% | 2: 3410 59% 59% 40% | 3: 1491 81% 81% 18% | 4: 460 90% 91% 8% | 5: 156 92% 92% 8% | 6: 53 98% 98% 2% | 7: 13 100% 100% 0% | 8+: 13 92% 92% 8%
+after 3+ rows: next fire in 4.3 pieces, 2.7 lines (n 539)
+at death: tallest 21.8, centre 21.4, pieces since own last fire 11.0 (n 144)
+
+# all-d6.jsonl: 24 games of 6 v 6 (shipped), 4 decided, 20 at the time limit, mean 578 s
+## tier 6: 48 seats, 26303 pieces, 458.3 min alive, 57.4 pieces/min
+lines/piece 0.48, sent/piece 0.22, sent/min 12.4, sent/line 0.45, rows in/min 12.4, settle lines/100 pieces 1.83, clean boards/100 0.000, deaths 149 (0.33/min), frags 115
+fires 3301 (one in 8.0 pieces), mean 2.69 lines, 90% 4, waves 2.30, singles 49% of clears
+size | share | per 100 pieces | share of rows sent | waves | tallest | mean height | covered | garbage rows | pieces since last | straight
+2 | 53.4% | 6.70 | 32% | 1.78 | 11.3 | 9.5 | 10.3 | 4.9 | 6.9 | 21%
+3 | 31.0% | 3.89 | 37% | 2.57 | 10.1 | 8.3 | 8.3 | 3.5 | 7.6 | 23%
+4 | 10.8% | 1.35 | 19% | 3.24 | 11.3 | 9.4 | 9.3 | 3.8 | 8.7 | 37%
+5-7 | 4.8% | 0.60 | 12% | 4.12 | 12.3 | 10.3 | 10.1 | 4.8 | 8.7 | 46%
+8-11 | 0.1% | 0.01 | 0% | 6.33 | 15.3 | 13.2 | 13.3 | 7.3 | 7.7 | 0%
+fires of 5+: 161; main column roofed 34%, of those an edge column 25%, rows in it 2.7, straights parked 0.20
+any board: tallest 9.9, above 20 rows 0.6%, roofed column with 3+ rows 17%, straight parked on it 1%, two or more 0%; heights 7.5 8.2 8.2 8.3 8.4 8.4 8.3 8.2 8.2 7.4
+offer: times, took whole, took 2+, took nothing: 1: 6219 50% 0% 50% | 2: 3088 56% 56% 42% | 3: 1284 79% 80% 20% | 4: 413 85% 85% 15% | 5: 129 88% 88% 12% | 6: 33 94% 94% 6% | 7: 14 100% 100% 0% | 8+: 4 75% 75% 25%
+after 3+ rows: next fire in 4.7 pieces, 2.7 lines (n 416)
+at death: tallest 21.6, centre 21.4, pieces since own last fire 11.5 (n 149)
+
+# all-e5.jsonl: 24 games of 5 v 5 (shipped), 2 decided, 22 at the time limit, mean 598 s
+## tier 5: 48 seats, 25986 pieces, 472.9 min alive, 55.0 pieces/min
+lines/piece 0.42, sent/piece 0.18, sent/min 10.2, sent/line 0.44, rows in/min 10.1, settle lines/100 pieces 1.72, clean boards/100 0.000, deaths 188 (0.40/min), frags 118
+fires 2796 (one in 9.3 pieces), mean 2.68 lines, 90% 4, waves 2.23, singles 52% of clears
+size | share | per 100 pieces | share of rows sent | waves | tallest | mean height | covered | garbage rows | pieces since last | straight
+2 | 54.3% | 5.84 | 32% | 1.74 | 11.0 | 9.1 | 9.3 | 3.8 | 7.7 | 22%
+3 | 30.2% | 3.24 | 36% | 2.57 | 10.4 | 8.5 | 7.9 | 2.8 | 8.5 | 23%
+4 | 10.7% | 1.15 | 19% | 3.03 | 10.7 | 8.7 | 7.6 | 2.7 | 9.3 | 35%
+5-7 | 4.8% | 0.51 | 12% | 3.89 | 12.4 | 10.4 | 9.8 | 4.5 | 8.3 | 47%
+8-11 | 0.1% | 0.01 | 0% | 6.67 | 14.7 | 12.4 | 13.0 | 7.7 | 4.7 | 33%
+fires of 5+: 136; main column roofed 32%, of those an edge column 48%, rows in it 2.6, straights parked 0.34
+chain fires (5+ lines, biggest wave 1 or 2 rows): 0.37 per 100 pieces; shaft fires (biggest wave 4 or more): 0.04
+any board: tallest 10.1, above 20 rows 0.7%, roofed column with 3+ rows 19%, straight parked on it 1%, two or more 0%; heights 7.2 8.3 8.4 8.5 8.5 8.5 8.5 8.3 8.2 7.3
+offer: times, took whole, took 2+, took nothing: 1: 6101 49% 0% 51% | 2: 2900 52% 52% 48% | 3: 1216 69% 69% 31% | 4: 355 84% 85% 15% | 5: 103 87% 88% 12% | 6: 36 92% 92% 8% | 7: 10 100% 100% 0% | 8+: 4 75% 75% 25%
+after 3+ rows: next fire in 5.2 pieces, 2.6 lines (n 318)
+at death: tallest 21.5, centre 21.3, pieces since own last fire 16.0 (n 188)
+
+# all-d4.jsonl: 24 games of 4 v 4 (shipped), 3 decided, 21 at the time limit, mean 593 s
+## tier 4: 48 seats, 22056 pieces, 469.0 min alive, 47.0 pieces/min
+lines/piece 0.40, sent/piece 0.17, sent/min 8.1, sent/line 0.43, rows in/min 8.0, settle lines/100 pieces 2.24, clean boards/100 0.005, deaths 175 (0.37/min), frags 99
+fires 2341 (one in 9.4 pieces), mean 2.57 lines, 90% 4, waves 2.15, singles 50% of clears
+size | share | per 100 pieces | share of rows sent | waves | tallest | mean height | covered | garbage rows | pieces since last | straight
+2 | 62.0% | 6.58 | 39% | 1.80 | 9.9 | 8.0 | 8.4 | 2.6 | 7.8 | 24%
+3 | 24.9% | 2.64 | 32% | 2.40 | 10.1 | 8.1 | 7.5 | 2.4 | 8.1 | 31%
+4 | 9.0% | 0.95 | 17% | 2.94 | 11.1 | 9.0 | 8.5 | 2.8 | 9.1 | 39%
+5-7 | 4.1% | 0.43 | 11% | 4.12 | 13.1 | 10.9 | 10.9 | 4.1 | 9.9 | 53%
+8-11 | 0.1% | 0.01 | 1% | 6.00 | 14.0 | 10.7 | 9.0 | 1.3 | 6.0 | 33%
+fires of 5+: 98; main column roofed 36%, of those an edge column 51%, rows in it 3.0, straights parked 0.29
+any board: tallest 9.8, above 20 rows 0.7%, roofed column with 3+ rows 16%, straight parked on it 1%, two or more 0%; heights 7.0 7.9 8.0 8.2 8.3 8.3 8.3 8.0 7.9 6.9
+offer: times, took whole, took 2+, took nothing: 1: 5021 45% 0% 55% | 2: 2305 62% 62% 37% | 3: 759 76% 77% 23% | 4: 226 92% 92% 8% | 5: 71 93% 93% 6% | 6: 20 90% 90% 10% | 7: 10 100% 100% 0% | 8+: 3 100% 100% 0%
+after 3+ rows: next fire in 5.2 pieces, 2.7 lines (n 226)
+at death: tallest 21.6, centre 21.4, pieces since own last fire 16.4 (n 175)
+
+# all-e3.jsonl: 24 games of 3 v 3 (shipped), 0 decided, 24 at the time limit, mean 600 s
+## tier 3: 48 seats, 16402 pieces, 475.3 min alive, 34.5 pieces/min
+lines/piece 0.37, sent/piece 0.18, sent/min 6.2, sent/line 0.49, rows in/min 6.2, settle lines/100 pieces 1.60, clean boards/100 0.000, deaths 161 (0.34/min), frags 98
+fires 1587 (one in 10.3 pieces), mean 2.82 lines, 90% 4, waves 2.18, singles 45% of clears
+size | share | per 100 pieces | share of rows sent | waves | tallest | mean height | covered | garbage rows | pieces since last | straight
+2 | 51.0% | 4.94 | 28% | 1.69 | 12.5 | 10.4 | 10.8 | 3.9 | 8.6 | 21%
+3 | 29.5% | 2.85 | 32% | 2.35 | 11.7 | 9.5 | 8.7 | 2.9 | 9.1 | 24%
+4 | 10.8% | 1.04 | 18% | 2.78 | 11.7 | 9.2 | 8.1 | 2.6 | 9.2 | 41%
+5-7 | 8.3% | 0.80 | 20% | 3.67 | 12.8 | 10.4 | 9.5 | 3.4 | 9.5 | 42%
+8-11 | 0.4% | 0.04 | 2% | 4.17 | 15.8 | 12.2 | 11.0 | 5.3 | 10.8 | 17%
+fires of 5+: 138; main column roofed 34%, of those an edge column 68%, rows in it 3.4, straights parked 0.66
+chain fires (5+ lines, biggest wave 1 or 2 rows): 0.49 per 100 pieces; shaft fires (biggest wave 4 or more): 0.13
+any board: tallest 10.8, above 20 rows 0.8%, roofed column with 3+ rows 22%, straight parked on it 2%, two or more 0%; heights 7.9 8.6 8.9 9.1 9.1 9.1 9.1 8.8 8.7 7.9
+offer: times, took whole, took 2+, took nothing: 1: 3648 35% 0% 65% | 2: 2050 39% 39% 60% | 3: 809 57% 58% 42% | 4: 237 72% 72% 28% | 5: 97 90% 91% 9% | 6: 38 95% 97% 3% | 7: 7 100% 100% 0% | 8+: 6 100% 100% 0%
+after 3+ rows: next fire in 5.5 pieces, 2.8 lines (n 192)
+at death: tallest 21.7, centre 21.6, pieces since own last fire 12.6 (n 161)
+
+# all-d2.jsonl: 24 games of 2 v 2 (shipped), 1 decided, 23 at the time limit, mean 596 s
+## tier 2: 48 seats, 15232 pieces, 472.4 min alive, 32.2 pieces/min
+lines/piece 0.35, sent/piece 0.16, sent/min 5.0, sent/line 0.45, rows in/min 4.9, settle lines/100 pieces 1.56, clean boards/100 0.000, deaths 154 (0.33/min), frags 76
+fires 1447 (one in 10.5 pieces), mean 2.60 lines, 90% 4, waves 2.13, singles 47% of clears
+size | share | per 100 pieces | share of rows sent | waves | tallest | mean height | covered | garbage rows | pieces since last | straight
+2 | 62.4% | 5.93 | 39% | 1.81 | 10.0 | 8.0 | 8.2 | 2.3 | 8.2 | 20%
+3 | 23.6% | 2.25 | 29% | 2.32 | 10.9 | 8.8 | 8.2 | 2.7 | 8.5 | 26%
+4 | 8.2% | 0.78 | 15% | 2.83 | 11.5 | 9.3 | 8.4 | 2.3 | 9.6 | 40%
+5-7 | 5.5% | 0.52 | 15% | 3.59 | 12.5 | 10.0 | 9.5 | 2.6 | 11.0 | 47%
+8-11 | 0.3% | 0.03 | 1% | 6.25 | 16.8 | 14.3 | 15.5 | 6.5 | 12.8 | 50%
+fires of 5+: 83; main column roofed 34%, of those an edge column 64%, rows in it 3.4, straights parked 0.57
+any board: tallest 10.0, above 20 rows 0.7%, roofed column with 3+ rows 19%, straight parked on it 2%, two or more 0%; heights 7.1 8.0 8.2 8.3 8.4 8.4 8.4 8.1 7.9 7.0
+offer: times, took whole, took 2+, took nothing: 1: 3386 36% 0% 64% | 2: 1511 59% 59% 40% | 3: 489 70% 72% 28% | 4: 151 79% 79% 21% | 5: 57 96% 96% 4% | 6: 19 95% 95% 5% | 7: 6 100% 100% 0% | 8+: 4 100% 100% 0%
+after 3+ rows: next fire in 4.5 pieces, 2.7 lines (n 120)
+at death: tallest 21.7, centre 21.6, pieces since own last fire 17.0 (n 154)
+
+# all-d1.jsonl: 24 games of 1 v 1 (shipped), 1 decided, 23 at the time limit, mean 596 s
+## tier 1: 48 seats, 12806 pieces, 472.2 min alive, 27.1 pieces/min
+lines/piece 0.33, sent/piece 0.17, sent/min 4.7, sent/line 0.53, rows in/min 4.6, settle lines/100 pieces 1.15, clean boards/100 0.000, deaths 149 (0.32/min), frags 88
+fires 1192 (one in 10.7 pieces), mean 2.84 lines, 90% 4, waves 2.14, singles 35% of clears
+size | share | per 100 pieces | share of rows sent | waves | tallest | mean height | covered | garbage rows | pieces since last | straight
+2 | 48.3% | 4.50 | 26% | 1.74 | 13.1 | 10.9 | 11.7 | 3.4 | 8.9 | 17%
+3 | 31.7% | 2.95 | 35% | 2.19 | 12.6 | 10.3 | 9.9 | 3.0 | 9.1 | 20%
+4 | 12.2% | 1.13 | 20% | 2.70 | 12.2 | 9.7 | 8.2 | 3.1 | 8.7 | 39%
+5-7 | 7.6% | 0.70 | 18% | 3.48 | 13.4 | 10.9 | 9.8 | 4.2 | 7.1 | 47%
+8-11 | 0.3% | 0.02 | 1% | 5.00 | 15.3 | 12.4 | 11.0 | 4.0 | 8.7 | 33%
+fires of 5+: 93; main column roofed 38%, of those an edge column 83%, rows in it 3.7, straights parked 0.91
+any board: tallest 11.0, above 20 rows 0.5%, roofed column with 3+ rows 22%, straight parked on it 4%, two or more 1%; heights 8.1 8.7 9.1 9.3 9.1 9.1 9.2 9.1 8.7 8.2
+offer: times, took whole, took 2+, took nothing: 1: 2833 22% 0% 78% | 2: 1470 38% 38% 61% | 3: 717 52% 54% 45% | 4: 187 77% 79% 21% | 5: 63 90% 90% 10% | 6: 27 96% 96% 4% | 7: 7 100% 100% 0% | 8+: 3 100% 100% 0%
+after 3+ rows: next fire in 5.0 pieces, 2.8 lines (n 136)
+at death: tallest 21.4, centre 21.3, pieces since own last fire 13.3 (n 149)
+
+# all-e3x10.jsonl: 24 games of 10 v 10 v 10 (shipped), 24 decided, 0 at the time limit, mean 183 s
+## tier 10: 72 seats, 34385 pieces, 207.2 min alive, 165.9 pieces/min
+lines/piece 0.47, sent/piece 0.19, sent/min 30.9, sent/line 0.40, rows in/min 58.3, settle lines/100 pieces 2.02, clean boards/100 0.012, deaths 441 (2.13/min), frags 361
+fires 3908 (one in 8.8 pieces), mean 2.60 lines, 90% 4, waves 2.17, singles 57% of clears
+size | share | per 100 pieces | share of rows sent | waves | tallest | mean height | covered | garbage rows | pieces since last | straight
+2 | 60.2% | 6.84 | 38% | 1.76 | 12.0 | 10.4 | 11.7 | 6.6 | 7.2 | 21%
+3 | 26.0% | 2.96 | 33% | 2.42 | 11.2 | 9.5 | 10.2 | 5.5 | 8.0 | 28%
+4 | 9.7% | 1.10 | 18% | 3.11 | 11.9 | 10.1 | 10.6 | 6.1 | 7.9 | 42%
+5-7 | 3.9% | 0.44 | 11% | 4.27 | 13.5 | 11.7 | 12.4 | 7.7 | 7.2 | 53%
+8-11 | 0.2% | 0.02 | 1% | 7.17 | 14.5 | 12.8 | 12.5 | 8.0 | 8.5 | 50%
+fires of 5+: 159; main column roofed 36%, of those an edge column 51%, rows in it 3.1, straights parked 0.39
+chain fires (5+ lines, biggest wave 1 or 2 rows): 0.37 per 100 pieces; shaft fires (biggest wave 4 or more): 0.01
+any board: tallest 10.9, above 20 rows 1.1%, roofed column with 3+ rows 28%, straight parked on it 1%, two or more 0%; heights 8.8 9.4 9.4 9.5 9.7 9.6 9.6 9.5 9.5 8.8
+offer: times, took whole, took 2+, took nothing: 1: 9263 56% 0% 44% | 2: 3287 70% 70% 29% | 3: 1095 91% 91% 9% | 4: 387 97% 97% 3% | 5: 103 94% 95% 5% | 6: 39 97% 97% 3% | 7: 17 100% 100% 0% | 8+: 6 100% 100% 0%
+after 3+ rows: next fire in 5.1 pieces, 2.6 lines (n 880)
+at death: tallest 21.4, centre 21.2, pieces since own last fire 11.6 (n 441)
+
+# all-e4x10.jsonl: 24 games of 10 v 10 v 10 v 10 (shipped), 24 decided, 0 at the time limit, mean 91 s
+## tier 10: 96 seats, 22665 pieces, 134.0 min alive, 169.2 pieces/min
+lines/piece 0.44, sent/piece 0.17, sent/min 29.3, sent/line 0.40, rows in/min 80.4, settle lines/100 pieces 2.29, clean boards/100 0.004, deaths 448 (3.34/min), frags 375
+fires 2336 (one in 9.7 pieces), mean 2.63 lines, 90% 4, waves 2.15, singles 58% of clears
+size | share | per 100 pieces | share of rows sent | waves | tallest | mean height | covered | garbage rows | pieces since last | straight
+2 | 58.9% | 6.07 | 36% | 1.76 | 12.2 | 10.5 | 11.8 | 6.8 | 7.2 | 20%
+3 | 26.0% | 2.68 | 32% | 2.35 | 11.3 | 9.5 | 9.7 | 5.5 | 8.5 | 28%
+4 | 10.4% | 1.07 | 19% | 2.99 | 11.9 | 10.2 | 10.4 | 6.5 | 7.9 | 40%
+5-7 | 4.6% | 0.48 | 12% | 3.98 | 13.8 | 12.1 | 12.9 | 7.9 | 8.1 | 60%
+8-11 | 0.1% | 0.01 | 1% | 7.33 | 17.3 | 15.8 | 17.7 | 10.0 | 7.3 | 0%
+fires of 5+: 111; main column roofed 38%, of those an edge column 48%, rows in it 3.6, straights parked 0.24
+chain fires (5+ lines, biggest wave 1 or 2 rows): 0.32 per 100 pieces; shaft fires (biggest wave 4 or more): 0.02
+any board: tallest 10.7, above 20 rows 1.2%, roofed column with 3+ rows 28%, straight parked on it 2%, two or more 0%; heights 8.5 9.2 9.3 9.4 9.6 9.6 9.5 9.3 9.1 8.3
+offer: times, took whole, took 2+, took nothing: 1: 5760 55% 0% 45% | 2: 2183 62% 62% 38% | 3: 694 86% 86% 14% | 4: 244 99% 99% 0% | 5: 74 100% 100% 0% | 6: 30 100% 100% 0% | 7: 4 100% 100% 0% | 8+: 3 100% 100% 0%
+after 3+ rows: next fire in 4.7 pieces, 2.6 lines (n 793)
+at death: tallest 21.6, centre 21.4, pieces since own last fire 9.9 (n 448)
+
+# all-r4mix.jsonl: 24 games of 10 v 9 v 8 v 7 (shipped), 24 decided, 0 at the time limit, mean 106 s
+## tier 10: 24 seats, 6835 pieces, 40.0 min alive, 170.7 pieces/min
+lines/piece 0.41, sent/piece 0.17, sent/min 28.2, sent/line 0.40, rows in/min 47.4, settle lines/100 pieces 1.83, clean boards/100 0.000, deaths 83 (2.07/min), frags 136
+fires 701 (one in 9.8 pieces), mean 2.57 lines, 90% 4, waves 2.14, singles 56% of clears
+size | share | per 100 pieces | share of rows sent | waves | tallest | mean height | covered | garbage rows | pieces since last | straight
+2 | 60.3% | 6.19 | 38% | 1.75 | 11.9 | 10.2 | 12.0 | 5.6 | 8.2 | 21%
+3 | 27.5% | 2.82 | 35% | 2.40 | 10.2 | 8.5 | 8.9 | 3.8 | 8.5 | 34%
+4 | 9.1% | 0.94 | 17% | 3.11 | 11.6 | 9.9 | 10.7 | 5.7 | 8.0 | 42%
+5-7 | 2.9% | 0.29 | 8% | 4.35 | 13.7 | 11.7 | 12.3 | 6.2 | 11.8 | 45%
+8-11 | 0.1% | 0.01 | 1% | 9.00 | 15.0 | 12.4 | 11.0 | 7.0 | 9.0 | 100%
+fires of 5+: 21; main column roofed 33%, of those an edge column 71%, rows in it 3.1, straights parked 0.14
+any board: tallest 10.6, above 20 rows 0.7%, roofed column with 3+ rows 21%, straight parked on it 1%, two or more 0%; heights 8.3 8.9 9.0 9.2 9.5 9.4 9.2 9.0 8.9 8.3
+offer: times, took whole, took 2+, took nothing: 1: 1849 48% 0% 52% | 2: 752 55% 55% 45% | 3: 217 88% 88% 12% | 4: 63 100% 100% 0% | 5: 12 100% 100% 0% | 6: 5 80% 80% 20% | 7: 4 100% 100% 0% | 8+: 1 100% 100% 0%
+after 3+ rows: next fire in 5.0 pieces, 2.5 lines (n 142)
+at death: tallest 21.2, centre 21.1, pieces since own last fire 11.0 (n 83)
+## tier 9: 24 seats, 5797 pieces, 39.8 min alive, 145.7 pieces/min
+lines/piece 0.40, sent/piece 0.15, sent/min 22.1, sent/line 0.38, rows in/min 52.9, settle lines/100 pieces 1.91, clean boards/100 0.000, deaths 98 (2.46/min), frags 86
+fires 557 (one in 10.4 pieces), mean 2.54 lines, 90% 4, waves 2.15, singles 59% of clears
+size | share | per 100 pieces | share of rows sent | waves | tallest | mean height | covered | garbage rows | pieces since last | straight
+2 | 63.9% | 6.14 | 41% | 1.76 | 11.7 | 10.0 | 11.3 | 5.5 | 8.1 | 26%
+3 | 24.2% | 2.33 | 31% | 2.43 | 10.8 | 9.1 | 9.4 | 4.5 | 8.0 | 31%
+4 | 7.7% | 0.74 | 15% | 3.37 | 12.7 | 11.0 | 12.6 | 6.0 | 9.0 | 35%
+5-7 | 3.9% | 0.38 | 11% | 4.18 | 14.1 | 12.1 | 13.0 | 6.4 | 9.8 | 50%
+8-11 | 0.2% | 0.02 | 1% | 7.00 | 18.0 | 16.4 | 16.0 | 12.0 | 7.0 | 100%
+fires of 5+: 23; main column roofed 30%, of those an edge column 71%, rows in it 3.7, straights parked 0.00
+any board: tallest 10.6, above 20 rows 1.0%, roofed column with 3+ rows 22%, straight parked on it 1%, two or more 0%; heights 8.1 9.0 9.1 9.2 9.5 9.5 9.3 9.1 8.9 8.1
+offer: times, took whole, took 2+, took nothing: 1: 1499 52% 0% 47% | 2: 559 62% 62% 38% | 3: 142 92% 92% 8% | 4: 44 95% 95% 5% | 5: 15 100% 100% 0% | 6: 6 100% 100% 0% | 7: 1 100% 100% 0% | 8+: 1 100% 100% 0%
+after 3+ rows: next fire in 5.0 pieces, 2.5 lines (n 132)
+at death: tallest 21.4, centre 21.3, pieces since own last fire 11.9 (n 98)
+## tier 8: 24 seats, 3955 pieces, 39.8 min alive, 99.3 pieces/min
+lines/piece 0.45, sent/piece 0.17, sent/min 17.2, sent/line 0.39, rows in/min 57.5, settle lines/100 pieces 1.64, clean boards/100 0.000, deaths 94 (2.36/min), frags 74
+fires 420 (one in 9.4 pieces), mean 2.60 lines, 90% 4, waves 2.15, singles 59% of clears
+size | share | per 100 pieces | share of rows sent | waves | tallest | mean height | covered | garbage rows | pieces since last | straight
+2 | 61.9% | 6.57 | 39% | 1.74 | 12.0 | 10.3 | 11.2 | 6.9 | 7.0 | 20%
+3 | 23.8% | 2.53 | 30% | 2.39 | 11.6 | 9.9 | 10.1 | 6.5 | 8.0 | 28%
+4 | 9.0% | 0.96 | 17% | 2.95 | 11.2 | 9.5 | 10.4 | 6.0 | 7.6 | 47%
+5-7 | 5.2% | 0.56 | 15% | 4.45 | 14.2 | 12.4 | 13.0 | 8.6 | 9.8 | 64%
+fires of 5+: 22; main column roofed 50%, of those an edge column 55%, rows in it 3.6, straights parked 0.45
+any board: tallest 10.4, above 20 rows 1.2%, roofed column with 3+ rows 27%, straight parked on it 1%, two or more 0%; heights 8.0 8.8 8.9 9.1 9.3 9.4 9.2 8.9 8.8 8.2
+offer: times, took whole, took 2+, took nothing: 1: 1029 57% 0% 42% | 2: 340 74% 75% 25% | 3: 106 92% 92% 8% | 4: 38 100% 100% 0% | 5: 14 100% 100% 0% | 6: 4 100% 100% 0% | 7: 4 100% 100% 0%
+after 3+ rows: next fire in 4.0 pieces, 2.6 lines (n 138)
+at death: tallest 21.8, centre 21.5, pieces since own last fire 8.3 (n 94)
+## tier 7: 24 seats, 2802 pieces, 39.6 min alive, 70.8 pieces/min
+lines/piece 0.44, sent/piece 0.16, sent/min 11.0, sent/line 0.36, rows in/min 63.7, settle lines/100 pieces 2.68, clean boards/100 0.000, deaths 111 (2.81/min), frags 38
+fires 281 (one in 10.0 pieces), mean 2.52 lines, 90% 4, waves 2.09, singles 61% of clears
+size | share | per 100 pieces | share of rows sent | waves | tallest | mean height | covered | garbage rows | pieces since last | straight
+2 | 66.2% | 6.64 | 44% | 1.80 | 11.5 | 9.8 | 10.5 | 7.0 | 6.5 | 21%
+3 | 22.8% | 2.28 | 30% | 2.27 | 11.5 | 9.6 | 9.0 | 6.8 | 6.1 | 27%
+4 | 6.8% | 0.68 | 13% | 2.89 | 10.3 | 8.5 | 6.7 | 5.6 | 8.7 | 47%
+5-7 | 4.3% | 0.43 | 13% | 4.33 | 13.3 | 11.6 | 13.8 | 9.0 | 6.6 | 42%
+fires of 5+: 12; main column roofed 50%, of those an edge column 17%, rows in it 2.2, straights parked 0.17
+any board: tallest 10.3, above 20 rows 2.0%, roofed column with 3+ rows 28%, straight parked on it 1%, two or more 0%; heights 7.9 8.7 8.8 8.9 9.1 9.2 9.1 8.8 8.8 7.9
+offer: times, took whole, took 2+, took nothing: 1: 688 63% 0% 36% | 2: 240 76% 76% 23% | 3: 64 97% 97% 3% | 4: 19 100% 100% 0% | 5: 5 100% 100% 0% | 6: 5 100% 100% 0% | 7: 1 100% 100% 0%
+after 3+ rows: next fire in 3.4 pieces, 2.4 lines (n 119)
+at death: tallest 22.1, centre 21.7, pieces since own last fire 8.4 (n 111)
+
+# all-r4low.jsonl: 24 games of 6 v 5 v 4 v 3 (shipped), 24 decided, 0 at the time limit, mean 211 s
+## tier 6: 24 seats, 4321 pieces, 82.7 min alive, 52.3 pieces/min
+lines/piece 0.45, sent/piece 0.19, sent/min 10.0, sent/line 0.42, rows in/min 22.3, settle lines/100 pieces 2.13, clean boards/100 0.000, deaths 68 (0.82/min), frags 104
+fires 477 (one in 9.1 pieces), mean 2.69 lines, 90% 4, waves 2.22, singles 55% of clears
+size | share | per 100 pieces | share of rows sent | waves | tallest | mean height | covered | garbage rows | pieces since last | straight
+2 | 55.6% | 6.13 | 33% | 1.75 | 10.8 | 8.9 | 8.7 | 5.0 | 7.0 | 20%
+3 | 27.9% | 3.08 | 33% | 2.42 | 10.5 | 8.6 | 7.8 | 4.8 | 7.1 | 32%
+4 | 11.5% | 1.27 | 20% | 3.02 | 11.8 | 9.7 | 8.8 | 5.4 | 8.3 | 38%
+5-7 | 4.8% | 0.53 | 13% | 4.39 | 14.0 | 12.0 | 12.9 | 7.0 | 9.0 | 52%
+8-11 | 0.2% | 0.02 | 1% | 7.00 | 18.0 | 16.2 | 15.0 | 10.0 | 14.0 | 100%
+fires of 5+: 24; main column roofed 42%, of those an edge column 70%, rows in it 3.3, straights parked 0.30
+any board: tallest 9.9, above 20 rows 1.0%, roofed column with 3+ rows 22%, straight parked on it 1%, two or more 0%; heights 7.2 8.2 8.3 8.4 8.7 8.6 8.4 8.2 8.0 7.2
+offer: times, took whole, took 2+, took nothing: 1: 1074 53% 0% 46% | 2: 397 66% 66% 34% | 3: 161 83% 83% 17% | 4: 71 76% 76% 24% | 5: 14 100% 100% 0% | 6: 7 100% 100% 0% | 7: 2 100% 100% 0% | 8+: 1 100% 100% 0%
+after 3+ rows: next fire in 4.7 pieces, 2.8 lines (n 109)
+at death: tallest 21.8, centre 21.7, pieces since own last fire 11.3 (n 68)
+## tier 5: 24 seats, 4097 pieces, 82.4 min alive, 49.7 pieces/min
+lines/piece 0.44, sent/piece 0.18, sent/min 9.0, sent/line 0.41, rows in/min 23.3, settle lines/100 pieces 1.98, clean boards/100 0.000, deaths 79 (0.96/min), frags 79
+fires 430 (one in 9.5 pieces), mean 2.67 lines, 90% 4, waves 2.17, singles 57% of clears
+size | share | per 100 pieces | share of rows sent | waves | tallest | mean height | covered | garbage rows | pieces since last | straight
+2 | 54.7% | 5.74 | 33% | 1.69 | 11.2 | 9.3 | 9.4 | 6.0 | 6.7 | 19%
+3 | 29.3% | 3.08 | 35% | 2.44 | 11.0 | 9.2 | 8.8 | 5.2 | 8.3 | 34%
+4 | 12.1% | 1.27 | 22% | 2.96 | 12.4 | 10.6 | 10.5 | 7.0 | 7.1 | 42%
+5-7 | 3.5% | 0.37 | 9% | 3.93 | 13.6 | 11.6 | 11.7 | 7.5 | 8.9 | 27%
+8-11 | 0.5% | 0.05 | 2% | 7.00 | 17.0 | 15.1 | 21.5 | 9.0 | 12.5 | 50%
+fires of 5+: 17; main column roofed 29%, of those an edge column 40%, rows in it 3.4, straights parked 0.40
+any board: tallest 10.3, above 20 rows 1.3%, roofed column with 3+ rows 26%, straight parked on it 2%, two or more 0%; heights 7.5 8.6 8.7 8.7 9.0 9.1 8.9 8.7 8.6 7.5
+offer: times, took whole, took 2+, took nothing: 1: 884 62% 0% 38% | 2: 361 64% 64% 35% | 3: 154 82% 82% 18% | 4: 55 95% 95% 5% | 5: 12 100% 100% 0% | 6: 3 100% 100% 0% | 8+: 2 100% 100% 0%
+after 3+ rows: next fire in 4.9 pieces, 2.8 lines (n 122)
+at death: tallest 22.0, centre 21.8, pieces since own last fire 11.4 (n 79)
+## tier 4: 24 seats, 4510 pieces, 82.1 min alive, 54.9 pieces/min
+lines/piece 0.41, sent/piece 0.16, sent/min 8.7, sent/line 0.39, rows in/min 23.5, settle lines/100 pieces 2.24, clean boards/100 0.000, deaths 88 (1.07/min), frags 65
+fires 456 (one in 9.9 pieces), mean 2.53 lines, 90% 4, waves 2.04, singles 56% of clears
+size | share | per 100 pieces | share of rows sent | waves | tallest | mean height | covered | garbage rows | pieces since last | straight
+2 | 64.5% | 6.52 | 42% | 1.72 | 10.2 | 8.4 | 8.5 | 4.5 | 7.2 | 30%
+3 | 23.2% | 2.35 | 30% | 2.33 | 11.8 | 9.9 | 10.5 | 5.9 | 8.3 | 31%
+4 | 9.2% | 0.93 | 18% | 2.79 | 11.7 | 9.6 | 8.7 | 5.0 | 7.8 | 38%
+5-7 | 3.1% | 0.31 | 9% | 4.36 | 13.3 | 11.4 | 11.5 | 6.9 | 7.8 | 36%
+fires of 5+: 14; main column roofed 36%, of those an edge column 60%, rows in it 3.2, straights parked 0.40
+any board: tallest 10.1, above 20 rows 0.7%, roofed column with 3+ rows 24%, straight parked on it 1%, two or more 0%; heights 7.4 8.3 8.4 8.5 8.7 8.7 8.6 8.5 8.3 7.4
+offer: times, took whole, took 2+, took nothing: 1: 996 58% 0% 42% | 2: 386 76% 76% 23% | 3: 117 91% 91% 9% | 4: 45 93% 93% 7% | 5: 7 100% 100% 0% | 6: 5 100% 100% 0% | 7: 2 100% 100% 0%
+after 3+ rows: next fire in 4.7 pieces, 2.6 lines (n 100)
+at death: tallest 21.6, centre 21.4, pieces since own last fire 11.6 (n 88)
+## tier 3: 24 seats, 2644 pieces, 81.8 min alive, 32.3 pieces/min
+lines/piece 0.39, sent/piece 0.17, sent/min 5.4, sent/line 0.43, rows in/min 26.5, settle lines/100 pieces 2.42, clean boards/100 0.000, deaths 103 (1.26/min), frags 48
+fires 246 (one in 10.7 pieces), mean 2.70 lines, 90% 4, waves 2.20, singles 55% of clears
+size | share | per 100 pieces | share of rows sent | waves | tallest | mean height | covered | garbage rows | pieces since last | straight
+2 | 56.1% | 5.22 | 33% | 1.72 | 11.8 | 9.8 | 10.2 | 6.8 | 6.7 | 22%
+3 | 26.8% | 2.50 | 32% | 2.50 | 12.3 | 10.3 | 10.6 | 6.8 | 7.2 | 29%
+4 | 11.4% | 1.06 | 20% | 3.14 | 12.8 | 10.8 | 10.4 | 7.0 | 8.1 | 21%
+5-7 | 5.3% | 0.49 | 14% | 3.62 | 13.4 | 11.2 | 11.5 | 7.7 | 7.1 | 31%
+8-11 | 0.4% | 0.04 | 2% | 5.00 | 19.0 | 18.0 | 18.0 | 8.0 | 11.0 | 100%
+fires of 5+: 14; main column roofed 57%, of those an edge column 75%, rows in it 3.3, straights parked 0.38
+any board: tallest 10.4, above 20 rows 1.8%, roofed column with 3+ rows 30%, straight parked on it 3%, two or more 0%; heights 7.9 8.5 8.7 8.7 8.8 8.8 8.8 8.7 8.6 8.1
+offer: times, took whole, took 2+, took nothing: 1: 539 55% 0% 45% | 2: 225 60% 60% 40% | 3: 94 69% 69% 30% | 4: 36 78% 78% 22% | 5: 10 90% 90% 10% | 6: 3 100% 100% 0% | 7: 1 100% 100% 0% | 8+: 1 100% 100% 0%
+after 3+ rows: next fire in 4.0 pieces, 2.7 lines (n 90)
+at death: tallest 22.1, centre 21.9, pieces since own last fire 8.5 (n 103)
+
+Free-for-all to seven frags, ten-minute limit, both seat orders, same seeds
+pair | games | higher reached 7 first | lower first | time limit | frags higher:lower at the end | games led by higher | points % (95%) | frag share | mean s
+10-9 | 48 | 11 | 1 | 36 | 181:84 | 30 (8 tied) | 70.8 (57-82) | 68.3 | 544
+9-8 | 48 | 23 | 1 | 24 | 231:66 | 35 (5 tied) | 78.1 (65-87) | 77.8 | 476
+8-7 | 48 | 22 | 3 | 23 | 192:62 | 31 (6 tied) | 70.8 (57-82) | 75.6 | 503
+7-6 | 48 | 11 | 1 | 36 | 146:74 | 31 (3 tied) | 67.7 (54-79) | 66.4 | 580
+6-5 | 48 | 11 | 1 | 36 | 136:82 | 25 (5 tied) | 57.3 (43-70) | 62.4 | 574
+5-4 | 48 | 3 | 1 | 44 | 133:70 | 28 (6 tied) | 64.6 (50-77) | 65.5 | 591
+4-3 | 48 | 5 | 0 | 43 | 120:54 | 28 (6 tied) | 64.6 (50-77) | 69.0 | 583
+3-2 | 48 | 0 | 0 | 48 | 83:56 | 24 (8 tied) | 58.3 (44-71) | 59.7 | 600
+2-1 | 48 | 0 | 1 | 47 | 73:67 | 21 (8 tied) | 52.1 (38-66) | 52.1 | 598
+
+One round, five-minute limit: last one standing. Shipped rules against the rules before the versus merge, same seeds
+pair | rules | games | higher won | lower won | both out | time limit | points % (95%) | decided only % | mean s | rows sent/min higher, lower | pieces/min higher, lower
+10-9 | pre-versus | 48 | 33 | 11 | 0 | 4 | 72.9 (59-83) | 75.0 | 119 | 45.1, 41.1 | 151, 134
+10-9 | shipped | 48 | 31 | 17 | 0 | 0 | 64.6 (50-77) | 64.6 | 85 | 45.9, 42.5 | 152, 138
+9-8 | pre-versus | 48 | 30 | 15 | 0 | 3 | 65.6 (51-77) | 66.7 | 105 | 31.8, 28.0 | 113, 97
+9-8 | shipped | 48 | 36 | 11 | 0 | 1 | 76.0 (62-86) | 76.6 | 72 | 29.3, 22.7 | 108, 86
+8-7 | pre-versus | 48 | 30 | 12 | 0 | 6 | 68.8 (55-80) | 71.4 | 121 | 18.3, 15.1 | 71, 61
+8-7 | shipped | 48 | 33 | 12 | 0 | 3 | 71.9 (58-83) | 73.3 | 96 | 18.5, 14.4 | 74, 61
+7-6 | pre-versus | 48 | 23 | 22 | 0 | 3 | 51.0 (37-65) | 51.1 | 128 | 12.6, 11.3 | 57, 50
+7-6 | shipped | 48 | 30 | 16 | 0 | 2 | 64.6 (50-77) | 65.2 | 111 | 12.2, 11.2 | 55, 52
+6-5 | pre-versus | 48 | 28 | 17 | 0 | 3 | 61.5 (47-74) | 62.2 | 129 | 11.0, 10.3 | 48, 46
+6-5 | shipped | 48 | 30 | 17 | 0 | 1 | 63.5 (49-76) | 63.8 | 102 | 10.6, 9.7 | 48, 49
+5-4 | pre-versus | 48 | 25 | 21 | 0 | 2 | 54.2 (40-67) | 54.3 | 118 | 8.9, 7.7 | 46, 40
+5-4 | shipped | 48 | 25 | 23 | 0 | 0 | 52.1 (38-66) | 52.1 | 91 | 8.4, 7.3 | 47, 41
+4-3 | pre-versus | 48 | 28 | 18 | 0 | 2 | 60.4 (46-73) | 60.9 | 129 | 7.0, 5.8 | 39, 32
+4-3 | shipped | 48 | 27 | 20 | 0 | 1 | 57.3 (43-70) | 57.4 | 102 | 7.1, 5.9 | 39, 32
+3-2 | pre-versus | 48 | 26 | 22 | 0 | 0 | 54.2 (40-67) | 54.2 | 128 | 5.4, 4.6 | 31, 29
+3-2 | shipped | 48 | 32 | 15 | 0 | 1 | 67.7 (54-79) | 68.1 | 118 | 5.0, 4.2 | 28, 29
+2-1 | pre-versus | 48 | 27 | 20 | 0 | 1 | 57.3 (43-70) | 57.4 | 131 | 4.8, 4.6 | 28, 24
+2-1 | shipped | 48 | 22 | 26 | 0 | 0 | 45.8 (33-60) | 45.8 | 120 | 4.2, 4.1 | 28, 25

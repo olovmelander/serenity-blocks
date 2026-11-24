@@ -6,7 +6,16 @@
 ## Context
 
 Local and online versus had drifted into three different rule sets, and none matched the
-reference game the owner wants versus to play like (Quadra's multiplayer, judged by how it plays):
+reference game the owner wants versus to play like (Quadra's multiplayer).
+
+**Where these rules came from (corrected 2026-11-24).** An earlier version said they were judged
+by how that game plays. That was wrong. With the owner's permission the session that wrote them
+read the reference game's published source on 2026-11-22. The code here was written for this
+repo, but these numbers were taken from that reading: the frag credit weights and cap, the crowd
+stamps, the 20-row limit, and in ADR-0025 the hidden-cell times and the hot potato's targets.
+They are due to be replaced by values tuned in this project's own simulator.
+
+What differed:
 
 - Incoming garbage killed a player on arrival when it lifted any cell, in any column, above the
   visible rows. Online, the host also killed a player whose piece's bounding box touched the top
@@ -34,6 +43,11 @@ reference game the owner wants versus to play like (Quadra's multiplayer, judged
 - **Settle clears:** rows a garbage settle completes count as the player's own clear (lines,
   score, level, an attack; `creditSettleClears`). This replaces the 2026-11-18 no-credit
   decision for versus; Odyssey still awards nothing.
+- **Bodies:** the rows of one attack enter as one solid wherever their cells touch; rows of
+  different attacks, and an attack's clean and normal rows, do not join (`joinAttackRows`; owner,
+  2026-11-24; the standard well). Measured in recordings of people playing: with this rule the
+  game's own insertion reproduces all 2,138 recorded rises that fit its 24 rows, with separate
+  rows 2,129. Odyssey and Infinity keep one body per row.
 - **Waiting garbage:** at most 20 rows (`VERSUS_MAX_PENDING_LINES`); rows past that are dropped.
   Odyssey's bot duels keep their uncapped queue.
 - **Cancelling:** off by default online (`garbageCancellation: 'disabled'`); a host may still
@@ -66,9 +80,9 @@ reference game the owner wants versus to play like (Quadra's multiplayer, judged
 ## Consequences
 
 - A tall side stack is no longer fatal; players dig out of situations that used to end a round.
-- Bots still weigh pending rows and stack height as before, so they play more cautiously than
-  the rule needs, and their weights were fitted on bag-of-seven pieces with a lock delay. A bot
-  re-fit is separate work.
+- The bots of the time were not updated with these rules: they modelled the old death rule and were
+  fitted on bag-of-seven pieces with a lock delay. Local versus bots were re-fitted on these rules
+  on 2026-11-24 (`src/core/ai/versus-evaluation.js`, docs/BOT_VERSUS_HANDOVER_2026-11.md).
 - The local "No attack scaling" switch was removed: a local match has at most four players, so
   attacks never shrink there.
 - The hidden buffer stays at four rows, so cells lifted more than four rows above the top are
@@ -76,8 +90,9 @@ reference game the owner wants versus to play like (Quadra's multiplayer, judged
 
 ## Enforcement
 
-- `tests/unit/versus-rules.test.js` pins the death rule, the overflow, the settle credit, the
-  cap, the crowd stamps and the frag credit, locally and on the online host.
+- `tests/unit/versus-rules.test.js` pins the death rule, the overflow, the bodies of an attack's
+  rows, the settle credit, the cap, the crowd stamps and the frag credit, locally and on the
+  online host.
 - `tests/unit/local-attack-scaling.test.js` and `tests/unit/ffa-attack-scaling.test.js` pin the
   attack size rule.
 - `tests/unit/garbage-settle-clears.test.js` keeps the no-credit behaviour for callers that do

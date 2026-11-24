@@ -510,7 +510,8 @@ export function restoreBoardState(gameState, snapshot = {}, policy = {}) {
  * @param {Object} gameState
  * @param {Array<Object>} entries - Garbage entries (see garbage.js)
  * @param {{debug?: boolean, settleFloatingBlocks?: boolean,
- *   overflowPolicy?: 'refuse'|'spill', creditSettleClears?: boolean}} [options]
+ *   overflowPolicy?: 'refuse'|'spill', creditSettleClears?: boolean,
+ *   joinAttackRows?: boolean}} [options]
  * @returns {{success: boolean, topOut: boolean, garbagePieces: Array,
  *   settledSteps: number, linesAfterInsertion: number[], settleClearedRows: number[],
  *   settleSummary: Object|null, rowsAdded: number} | null}
@@ -554,6 +555,7 @@ export function applyGarbage(gameState, entries, options = {}) {
         debug: options.debug,
         settleFloatingBlocks: options.settleFloatingBlocks,
         overflowPolicy: options.overflowPolicy,
+        joinAttackRows: options.joinAttackRows,
     });
 
     const settleSummary = options.creditSettleClears && result.success

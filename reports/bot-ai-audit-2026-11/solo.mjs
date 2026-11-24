@@ -11,11 +11,13 @@ import { reachableLandings } from '../../src/core/stillfall/stillfall-reach.js';
 import { seededRandom } from '../../src/utils/helpers.js';
 import { demonstrateConstruction } from '../../scripts/odyssey-benchmark/capabilities.mjs';
 
-export function deal(seed) {
+// `prepare` sets a board's rules before its first pieces are dealt (solo play needs none).
+export function deal(seed, prepare) {
     const state = new GameState({ disableLevelProgression: true, hitStopEnabled: false, lockBonusPolicy: 'legacy-max' });
     state.isSeeking = true;
+    prepare?.(state);
     bindLegacySessionRng(state, seed);
-    fillBag(state.nextPieces, state.randomGenerator);
+    fillBag(state.nextPieces, state.randomGenerator, state.pieceRandomizer);
     spawn(state);
     return state;
 }

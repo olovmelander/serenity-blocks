@@ -1,15 +1,17 @@
 import { HIDDEN_ROWS } from '../constants.js';
+import { VERSUS_WEIGHTS, rowsToBlockSpawn } from './versus-evaluation.js';
 import { GravityBotController, gravityPlanningRate } from './gravity-bot-controller.js';
 import { normalizeDifficultyTier } from './bot-difficulty.js';
+import { readMinAttackLines } from '../garbage.js';
 import { seededRandom } from '../../utils/helpers.js';
 
-// The original 4,480-match fit sets ordinary local styles. The faster expert's
-// upper neighbours are calibrated in side-swapped native frag series.
-const LOCAL_PRACTICE_CHANCE = [0.75, 0.6, 0.45, 0.3, 0.25, 0.25, 0, 0.3, 0.65];
-const LOCAL_ACTION_RATE = [108, 126, 133, 218, 292, 290, 350, 515, 760];
+// Fitted with versus play on the shipped rules: free-for-all to seven frags, both seat orders
+// (reports/bots-versus-2026-11/ladder.mjs), so that each tier beats the next by a similar margin.
+const LOCAL_PRACTICE_CHANCE = [0.75, 0.63, 0.54, 0.35, 0.33, 0.4, 0.36, 0.5, 0.76];
+const LOCAL_ACTION_RATE = [108, 142, 156, 246, 335, 445, 660, 620, 760];
 // Practiced seats can execute a known route quickly. Their nominal tier keeps
 // its own reading time above the 170 ms needed for expert search.
-const EXPERT_REACTION_MAX_MS = { 8: 230, 9: 200, 10: 200 };
+const EXPERT_REACTION_MS = { 8: [170, 230], 9: [170, 200], 10: [158, 178] };
 
 function localPace(nominalTier, seed, index) {
     if (nominalTier === 10) return null;
@@ -18,11 +20,10 @@ function localPace(nominalTier, seed, index) {
     const judgmentTier = reading() < LOCAL_PRACTICE_CHANCE[nominalTier - 1]
         ? Math.min(10, nominalTier + 2) : nominalTier;
     const scale = Math.exp((2 * random() - 1) * 1.65);
-    const handTier = nominalTier === 7 && scale <= 1 ? 8 : nominalTier;
     return {
         nominalTier,
         judgmentTier,
-        apm: LOCAL_ACTION_RATE[handTier - 1],
+        apm: LOCAL_ACTION_RATE[nominalTier - 1],
         scale,
     };
 }
@@ -63,7 +64,7 @@ export class LocalBotManager {
                 ? localPace(difficulty, seriesSeed ?? seed, index) : null;
             const judgmentTier = pace?.judgmentTier ?? difficulty;
             const expertPace = judgmentTier === 10 && !playerState.isInfinityMode
-                ? { reactionMs: [170, EXPERT_REACTION_MAX_MS[difficulty]], maxApm: 3750 } : undefined;
+                ? { reactionMs: EXPERT_REACTION_MS[difficulty], maxApm: 3750 } : undefined;
 
             const input = (name, action, value) => () => (this.tickInput
                 ? this.tickInput.emit({
@@ -103,11 +104,40 @@ export class LocalBotManager {
                 },
                 sharedSearch,
                 precomputeBetweenTicks: true,
-                planUnitsPerMs: gravityPlanningRate(botCount, judgmentTier),
+                planUnitsPerMs: gravityPlanningRate(botCount, judgmentTier, !playerState.isInfinityMode),
+                versusWeights: this.playsVersus(playerState) ? VERSUS_WEIGHTS : null,
+                versusOutlook: () => this.versusOutlook(index),
                 rng: seededRandom((seed ^ Math.imul(index + 1, 0x85ebca6b)) >>> 0),
                 timingRng: seededRandom((seed ^ Math.imul(index + 1, 0xc2b2ae35)) >>> 0),
             }));
         }
+    }
+
+    /**
+     * Versus play, at every tier: attacks are on, in the standard well (Last Standing and peaceful
+     * matches keep theirs). A lower tier sees fewer pieces ahead, searches less, errs and is slower.
+     */
+    playsVersus(playerState) {
+        return this.useLocalStyles && !playerState.isInfinityMode
+            && !this.multiplayerState.matchConfig?.attackRules?.disableAttacks;
+    }
+
+    /**
+     * What a versus seat's next clear is worth: the match's smallest attacking clear, whether an
+     * attack counts at all now (hot potato), and the fewest rows that would end some opponent.
+     * @param {number} index
+     */
+    versusOutlook(index) {
+        const match = this.multiplayerState;
+        const { route, targets } = match.attackOutlook(index);
+        const rows = match.sendsRows() ? targets.map((i) => (
+            rowsToBlockSpawn(match.players[i].boardGrid, match.getGarbageQueue(i).getTotalLines()))) : [];
+        return {
+            minAttackLines: readMinAttackLines(match.matchConfig?.minAttackLines),
+            worth: route === 'none' ? 0 : 1,
+            flat: route === 'count',
+            killRows: Math.min(Infinity, ...rows),
+        };
     }
 
     advanceFixedInput(index, context) {

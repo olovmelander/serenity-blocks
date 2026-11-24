@@ -1,6 +1,4 @@
 import { appendFileSync, writeFileSync } from 'node:fs';
-import { MultiPlayerState } from '../../src/core/multi-player-state.js';
-import { applyGarbage } from '../../src/core/game.js';
 import { calculateGarbage } from '../../src/core/garbage.js';
 import { GravityBotController } from '../../src/core/ai/gravity-bot-controller.js';
 import { reachableTrigger, readGravityBoard } from '../../src/core/ai/gravity-search.js';
@@ -9,6 +7,7 @@ import { seededRandom } from '../../src/utils/helpers.js';
 import { captureGarbage } from '../bot-ai-audit-2026-11/probes.mjs';
 import { deal, replay, spawn } from '../bot-ai-audit-2026-11/solo.mjs';
 import { recordedSeat } from './recorded-seat.mjs';
+import { prepareVersusBoard, takeGarbage, versusMatch, versusRules } from './shipped-versus.mjs';
 
 const [mode, first, count, file, tierArg = '10'] = process.argv.slice(2);
 const scheduled = ['scheduledDig', 'scheduledBlind', 'scheduledControl'].includes(mode);
@@ -60,8 +59,9 @@ for (let seed = Number(first); seed < Number(first) + Number(count); seed++) {
         appendFileSync(file, JSON.stringify(scheduledDig(seed)) + '\n');
         continue;
     }
-    const state = deal(seed);
-    const mp = new MultiPlayerState(2), queue = mp.getGarbageQueue(0);
+    const rules = versusRules();
+    const state = deal(seed, (board) => prepareVersusBoard(board, rules));
+    const mp = versusMatch(2, { rules, matchConfig: { gameType: 'survivor' } }), queue = mp.getGarbageQueue(0);
     const Controller = packet ? GravityBotController : PuzzleBotController;
     const bot = new Controller({ playerState: state, difficulty: Number(tierArg), actions: {},
         pendingRows: () => mode === 'digBlind' ? 0 : queue.getTotalLines(), rng: seededRandom((seed ^ 0x85ebca6b) >>> 0) });
@@ -86,9 +86,7 @@ for (let seed = Number(first); seed < Number(first) + Number(count); seed++) {
             if (i >= 12) result.postAttack += credit;
         }, spawnPiece: () => {
             if (i === 12 && packet) {
-                const entries = [];
-                for (let burst = queue.dequeueLineBurst(); burst.length; burst = queue.dequeueLineBurst()) entries.push(...burst);
-                if (applyGarbage(state, entries).topOut) { state.isGameOver = true; return; }
+                if (takeGarbage(state, queue, { rules }).topOut) { state.isGameOver = true; return; }
                 result.initial = rubble();
             }
             spawn(state);

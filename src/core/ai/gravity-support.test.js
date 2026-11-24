@@ -77,10 +77,15 @@ describe('visible support and release choices', () => {
         expect(shot.attack).toBe(1);
         expect(shot.lost).toBe(false);
 
-        // Force the dry decision but apply the same real garbage at the same spawn.
-        const [late] = await playPosition({ ...examples.triggerUnderPressure, options: { pendingRows: () => 0 } });
+        // Force the dry decision but apply the same real garbage at the same spawn. Waiting lost
+        // the game while arriving rows could top a player out. It no longer does (ADR-0024), so
+        // the smaller shot above is an answer to the old rule.
+        const waiting = { ...examples.triggerUnderPressure, options: { pendingRows: () => 0 } };
+        const [late] = await playPosition({ ...waiting, rules: 'pre-versus' });
         expect(late.inputs).toEqual(extension.inputs);
         expect(late.lost).toBe(true);
+        const [shippedLate] = await playPosition({ ...waiting, rules: 'shipped' });
+        expect(shippedLate.lost).toBe(false);
     });
 
     it('digs on the observed board after the 18-row burst', async () => {
@@ -95,10 +100,15 @@ describe('visible support and release choices', () => {
     });
 
     it('takes the immediate one-row send when the receiving board has no headroom', async () => {
-        const [shot] = await playPosition(examples.finish);
+        const [shot] = await playPosition({ ...examples.finish, rules: 'pre-versus' });
         expect(shot.actual).toEqual([2]);
         expect(shot.attack).toBe(1);
         expect(shot.receiverTopOut).toBe(true);
+        // The receiver's column stands at the wall. Under the shipped rules it spills over the
+        // top and the next piece still appears: the same send ends nobody (ADR-0024).
+        const [shipped] = await playPosition({ ...examples.finish, rules: 'shipped' });
+        expect(shipped.attack).toBe(1);
+        expect(shipped.receiverTopOut).toBe(false);
     });
 
     it('uses only visible previews and queued row count at the first lock', async () => {
