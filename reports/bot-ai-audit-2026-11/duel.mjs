@@ -12,6 +12,7 @@ import { createLocalMultiplayerFixedTickRuntime, startLocalMultiplayerFixedTickR
 import { applyLocalMultiplayerFixedCommand } from '../../src/core/game-modes/local-multiplayer-loop.js';
 import { seededRandom } from '../../src/utils/helpers.js';
 import { createVirtualClock } from '../../scripts/odyssey-benchmark/virtual-clock.mjs';
+import { BOT_RESPAWN_MS } from '../../src/core/game-modes/local-ffa-respawn.js';
 import { controls, spawn } from './solo.mjs';
 import { dealVersus, notePlaced, takeGarbage, versusMatch, versusRules } from '../gravity-bot-rebuild/shipped-versus.mjs';
 
@@ -21,12 +22,20 @@ export async function duel(low, seed, swap, seconds = 150, options = {}) {
     const tiers = options.tiers ?? (swap ? [low + 1, low] : [low, low + 1]);
     const rules = versusRules(options.rules);
     // One round to its first top-out: the survivor game type, whichever rules are played.
-    const mp = versusMatch(tiers.length, { rules, matchConfig: { gameType: 'survivor' } });
+    // options.fragTarget plays the shipped default instead: free-for-all to that many frags,
+    // the dead back on an empty well after the local mode's own wait.
+    const { fragTarget = 0 } = options;
+    if (fragTarget && (rules !== 'shipped' || !options.fixed || !options.live)) {
+        throw Error('Free-for-all needs the shipped rules, live bots and the fixed clock');
+    }
+    const mp = versusMatch(tiers.length, { rules, matchConfig: fragTarget
+        ? { gameType: 'ffa', endCondition: 'frags', endConditionValue: fragTarget } : { gameType: 'survivor' } });
     if (options.live) mp.sharedPieceSeed = seed;
     const frame = 1000 / 60;
     // For a pressure decision, count the queue when the planner runs.
     const stats = tiers.map(() => ({ locks: 0, plans: 0, queuedPlans: 0, queueSeen: 0, dangerQueued: 0,
-        firedQueued: 0, incoming: 0, applied: 0, pendingOnLoss: 0, dugLocks: 0, dugCells: 0, sent: 0 }));
+        firedQueued: 0, incoming: 0, applied: 0, pendingOnLoss: 0, dugLocks: 0, dugCells: 0, sent: 0,
+        ...(fragTarget && { deaths: 0, downTicks: 0 }) }));
     const garbageCells = state => state.boardGrid.reduce((n, row) =>
         n + row.filter((c) => c?.type === 'GARBAGE' || c?.type === 'CLEAN_GARBAGE').length, 0);
     let manager;
@@ -118,7 +127,25 @@ export async function duel(low, seed, swap, seconds = 150, options = {}) {
                 gameState: mp.players[i], isEnabled: () => true, physicsCallbacks: callbacks[i] }),
         };
         let ticksPlayed = 0;
-        const unfinished = options.finishFfaRound
+        const downSince = new Map();
+        const playOnAfterDeaths = () => {
+            const dead = mp.players.flatMap((s, i) => s.isAlive && s.isGameOver ? [i] : []);
+            for (const i of mp.handlePlayerDeaths(dead)) {
+                mp.players[i].currentPiece = null;
+                mp.getGarbageQueue(i).clear();
+                stats[i].deaths++;
+                downSince.set(i, ticksPlayed);
+            }
+            if (Math.max(...mp.frags) >= fragTarget) return;
+            for (const [i, since] of downSince) {
+                stats[i].downTicks++;
+                if ((ticksPlayed - since) * frame < BOT_RESPAWN_MS || !mp.respawnPlayer(i)) continue;
+                downSince.delete(i);
+                manager.resetPlayer(i);
+                spawn(mp.players[i]);
+            }
+        };
+        const unfinished = fragTarget ? () => Math.max(...mp.frags) < fragTarget : options.finishFfaRound
             ? () => mp.players.filter(s => s.isAlive && !s.isGameOver).length > 1
             : () => !mp.players.some(s => s.isGameOver);
         for (; ticksPlayed < rounds && unfinished(); ticksPlayed++) {
@@ -129,6 +156,7 @@ export async function duel(low, seed, swap, seconds = 150, options = {}) {
                     const lost = mp.players.flatMap((s, i) => s.isAlive && s.isGameOver ? [i] : []);
                     if (lost.length) mp.handlePlayerDeaths(lost).forEach(i => { mp.players[i].currentPiece = null; });
                 }
+                if (fragTarget) playOnAfterDeaths();
                 options.afterFixedTick?.(manager, runtime.simFrame, stats);
                 if (options.stopAfterTick?.()) { ticksPlayed++; break; }
                 continue;
@@ -146,10 +174,14 @@ export async function duel(low, seed, swap, seconds = 150, options = {}) {
         }
         const lost = mp.players.map(s => s.isGameOver);
         const survivors = tiers.filter((_, i) => !lost[i]);
-        const winner = survivors.length === 1 ? survivors[0] : null;
+        const best = Math.max(...mp.frags);
+        const leaders = tiers.filter((_, i) => mp.frags[i] === best);
+        const decided = fragTarget ? best >= fragTarget && leaders.length === 1 && leaders : survivors.length === 1 && survivors;
+        const winner = decided ? decided[0] : null;
         mp.players.forEach((s, i) => { stats[i].pendingOnLoss = s.isGameOver ? mp.getGarbageQueue(i).getTotalLines() : 0; });
         return { low, seed, swap, tiers, winner, simultaneous: lost.every(Boolean),
-            attackers: [...mp.lastAttackerIds], lost, ticksPlayed, seconds: Math.round(clock.now / 1000), stats };
+            attackers: [...mp.lastAttackerIds], lost, ticksPlayed, seconds: Math.round(clock.now / 1000), stats,
+            ...(fragTarget && { frags: [...mp.frags], leader: leaders.length === 1 ? mp.frags.indexOf(best) : null }) };
     } finally {
         manager?.destroy();
         // Retire the players before draining any opponent animation still in progress.
