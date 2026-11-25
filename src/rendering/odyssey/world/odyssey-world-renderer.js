@@ -401,7 +401,9 @@ const ROCK_CRISP_FROM = Object.freeze([320, 380]);
 const SUMMIT_ROCK = Object.freeze({
     from: Object.freeze([600, 690]),
     rockAmbient: 0.50,
-    rockSkyChroma: 0.55,
+    // 0.55 -> 0.40 (2026-11-25, the audit's M9): at dusk the shaded stone took the sky's violet whole
+    // and read as purple paint beside the snow of its own hue.
+    rockSkyChroma: 0.40,
 });
 const SNOW_CRISP = Object.freeze({
     from: Object.freeze([560, 680]),
@@ -473,8 +475,11 @@ const MASSIF_SNOW = Object.freeze({
     sunward: 60,
     breakScale: 0.021,
     breakReach: 85,
-    cliff: Object.freeze([0.70, 0.84]),
+    cliff: Object.freeze([0.62, 0.76]),
     mantle: Object.freeze([820, 960]),
+    /** Up close, wind-packed snow: how far its value swings (share) and the footprint (u a pixel) it fades by. */
+    packed: 0.10,
+    packedNear: Object.freeze([0.2, 0.7]),
 });
 /**
  * Must match the bake's floor, or `openness` never reaches 0 in the deepest hollow.
@@ -2292,7 +2297,7 @@ export function createOdysseyWorld({
             .mul(float(1).sub(smoothstep(
                 float(0.18),
                 float(0.40),
-                crest.mul(float(GROUND_SNOW_CREST_STRIP).mul(float(1).sub(mantle.mul(0.45)))),
+                crest.mul(float(GROUND_SNOW_CREST_STRIP).mul(float(1).sub(mantle.mul(0.25)))),
             )));
         // The SLOPE half takes the same patch rule as the altitude half below: on the massif's
         // mid flanks (slope 0.2-0.35, the whole ch4 view) a 0.17..0.40 ramp made every fragment
@@ -2858,6 +2863,15 @@ export function createOdysseyWorld({
             .add(floor(jy).mul(5.0))
             // (kept positive for the hash, which reads its seed as an unsigned integer: gotcha #87)
             .add(40000.0)).sub(0.5);
+        // ...and the snow up close is wind-packed, not a flat fill: its value swings a little in
+        // patches (two reads of the detail noise), so the summit's faces are not a sheet of plastic.
+        const packedFade = smoothstep(float(MASSIF_SNOW.packedNear[0]), float(MASSIF_SNOW.packedNear[1]), footprint);
+        const packedOn = kSnow.mul(heroCrestW).mul(float(1).sub(packedFade));
+        const packed = texture(detailTex, positionWorld.xz.mul(0.031)).b
+            .mul(0.6)
+            .add(texture(detailTex, positionWorld.xz.mul(0.11).add(vec2(0.37, 0.61))).b.mul(0.4))
+            .sub(0.5);
+        albedo = albedo.mul(float(1).add(packed.mul(MASSIF_SNOW.packed * 2).mul(packedOn)));
         const blockPaint = float(1).sub(crack.mul(MASSIF_ROCK.crackDark))
             .mul(float(1).add(blockTone.mul(MASSIF_ROCK.blockTone)));
         albedo = albedo.mul(mix(float(1), blockPaint, jointOn));

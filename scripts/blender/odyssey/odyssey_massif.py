@@ -78,7 +78,9 @@ def form():
     print(f'[massif] design {time.time() - t0:.1f}s  top {N0.max():.1f}', flush=True)
 
     rock = Rock(grid, apex)
-    spawn = M * smoothstep(foot + 40, foot + 220, N0) + 1e-6
+    # more rain where the mountain is steepest and highest: by area alone the summit's faces, small, caught
+    # few droplets and stayed smooth
+    spawn = M * smoothstep(foot + 40, foot + 220, N0) * (1 + 2.5 * smoothstep(800.0, 960.0, N0)) + 1e-6
     t1 = time.time()
     E, flow, depo = rain(N0, grid, rock, spawn, drops=130000, max_cut=0.04)
     # ...then a finer rain: rills on the faces between the gullies

@@ -140,7 +140,7 @@ describe('relief + macro + detail bakes (pure halves)', () => {
         // ...and 2026-11-25 with the massif's form grown in Blender (odyssey-massif-form.js replaces the
         // procedural summit sculpt): the total height over the hero massif changes, nothing outside it;
         // and the far peak drawn as an older ridge (ridgedMassifRise), its crown where it was.
-        expect(sha(a.total)).toBe('4cc74a0886a5fa72eb3d53d036fd8c86');
+        expect(sha(a.total)).toBe('f0ec3ff907c07c15a1d185e56719919c');
         expect(a.data.length).toBe(96 * 96 * 4);
         expect(a.total.length).toBe(96 * 96);
         const sample = makeReliefSampler(a);
