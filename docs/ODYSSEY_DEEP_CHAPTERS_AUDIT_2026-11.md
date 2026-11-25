@@ -3,7 +3,8 @@
 Olov: *"Start the audit of chapters 6-8"* (space, the black hole and its fold, the city). Nobody had looked at them
 since the journey masterpiece pass (2026-11-17); their records still listed open items (below).
 
-This is an audit only. No code changed.
+This is an audit only. No code changed. **Acted on the same day** (the plan's steps 1-5): see
+docs/ODYSSEY_DEEP_CHAPTERS_2026-11.md.
 
 ![Chapters 6 to 8 through the journey, the real game at 1920 x 1080 (WebGPU, High)](images/odyssey-deep-audit-2026-11-25/journey.jpg)
 
