@@ -147,7 +147,7 @@ export class FallForest {
             .add(albedo.mul(light.ambient(normal)).mul(occlusion).mul(1.25));
         // fragmentNode, not colorNode: the shadow pass multiplies a caster's alpha by its
         // colorNode, which would sample the shadow map while it is being drawn.
-        material.fragmentNode = vec4(light.haze(lit, { world }), 1);
+        material.fragmentNode = vec4(light.haze(light.events.onBark(lit, { world, tree }), { world }), 1);
         return material;
     }
 
@@ -239,7 +239,7 @@ export class FallForest {
             // Light that has already passed through the crown warms the leaves it shades.
             .add(glowing.mul(paint.a).mul(light.uSunColor).mul(crown.x.mul(0.05).add(0.022))
                 .mul(light.uWarmth.mul(0.9).add(1)));
-        material.fragmentNode = vec4(light.haze(lit, { world }), 1);
+        material.fragmentNode = vec4(light.haze(light.events.onFoliage(lit, { world, tree, glowing: glowing.mul(paint.a) }), { world }), 1);
         return material;
     }
 

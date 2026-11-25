@@ -8,8 +8,14 @@
  * and reports the wind the simulation should feel this frame: the breeze, the gust, every gust
  * front crossing and how hard the storm of play makes the crowns shed. Under reduced motion
  * (`frame.motion` below 1) every throw and force field is gentler.
+ *
+ * It also lays the show's rings on the floor as force fields (`frame.fx.rings`: a hard drop's thump,
+ * a perfect clear's wave): the leaves that lie under a ring's crest are thrown up as it passes; and
+ * it tells the simulation when the wind dies at a run's end (`frame.fx.hush`). A lock's puff is the
+ * lightest thing the grove does: thinner as play heats, and halved when locks come in a rattle.
  */
 import * as THREE from 'three/webgpu';
+import { fallRingFade, fallRingRadius } from './fall-event-light.js';
 import { FALL_STAGE_DEPTH } from './fall-stage.js';
 
 const REFERENCE_LEAVES = 2600;
@@ -24,6 +30,9 @@ const CROWN_RADIUS = 9;
 const FRONT_SLOTS = 3;
 /** Front strengths below this blow nothing. */
 const FRONT_FLOOR = 0.001;
+/** How much of a lock's puff is left at a full level of play, and how soon after the last a lock counts as a rattle. */
+const LOCK_HOT = 0.5;
+const LOCK_RATTLE = 0.16;
 
 export class FallLeafDirector {
     constructor({
@@ -55,6 +64,10 @@ export class FallLeafDirector {
         this.serials = new Map();
         this.emitted = new Map();
         this.vortexFeed = 0;
+        /** The director's own clock (the sum of its steps), when the last lock puffed, and how hot play runs. */
+        this.clock = 0;
+        this.lastLock = -Infinity;
+        this.level = 0;
         this.point = new THREE.Vector3();
         this.foot = new THREE.Vector3();
         /** How much of each throw's speed and each field's push plays (reduced motion lowers it). */
@@ -65,7 +78,7 @@ export class FallLeafDirector {
         // The environment's view of them: the live ones, in the director's order.
         this.liveFronts = [];
         this.env = {
-            windX: 1, windZ: 0, breeze: 0, gust: 0, front: null, fronts: this.liveFronts, storm: 0, fields: this.fields,
+            windX: 1, windZ: 0, breeze: 0, gust: 0, front: null, fronts: this.liveFronts, storm: 0, still: 0, fields: this.fields,
         };
     }
 
@@ -74,6 +87,9 @@ export class FallLeafDirector {
         this.emitted.clear();
         this.fields.length = 0;
         this.vortexFeed = 0;
+        this.clock = 0;
+        this.lastLock = -Infinity;
+        this.level = 0;
     }
 
     random() {
@@ -109,7 +125,10 @@ export class FallLeafDirector {
         const { side, strength } = emitter;
         const edge = stage.edge(side, emitter.row, FALL_STAGE_DEPTH, this.point, 0.012);
         if (fresh) {
-            const count = Math.round((8 + 22 * strength) * this.scale);
+            // The lightest thing the grove does: thinner as play heats, halved in a rattle of locks.
+            const rattle = this.clock - this.lastLock < LOCK_RATTLE ? 0.5 : 1;
+            this.lastLock = this.clock;
+            const count = Math.round((8 + 22 * strength) * this.scale * (1 - (1 - LOCK_HOT) * this.level) * rattle);
             for (let i = 0; i < count; i += 1) {
                 const speed = (2.4 + 4.6 * this.random()) * (0.6 + strength);
                 const x = edge.x + side * this.random() * 0.3;
@@ -280,14 +299,47 @@ export class FallLeafDirector {
     }
 
     /**
+     * The show's rings as force fields: each runs out over the floor from the card's foot (where
+     * the light rig draws it too), throwing up what lies under its crest. A thump only stirs the
+     * leaves close by; a perfect clear's wave lifts the whole floor as it goes.
+     */
+    rings(fx) {
+        const list = Array.isArray(fx?.rings) ? fx.rings : [];
+        const { stage, fields } = this;
+        const { board } = stage;
+        for (let i = 0; i < list.length; i += 1) {
+            const ring = list[i];
+            const fade = ring ? fallRingFade(ring.age, ring.life) : 0;
+            const strength = fade * (Number.isFinite(ring?.strength) ? Math.max(0, Math.min(1, ring.strength)) : 0);
+            if (!(strength > 0.02)) continue;
+            const column = Number.isFinite(ring.column) ? Math.max(0, Math.min(1, ring.column)) : 0.5;
+            const foot = stage.point(board.x0 + (board.x1 - board.x0) * column, board.y1, FALL_STAGE_DEPTH, this.foot);
+            const radius = fallRingRadius(ring.age, ring.wave);
+            fields.push({
+                kind: 'wave',
+                x: foot.x,
+                y: this.groundHeight(foot.x, foot.z),
+                z: foot.z,
+                radius,
+                width: 0.75 + radius * 0.09,
+                power: (ring.wave ? 16 : 7) * strength,
+                up: (ring.wave ? 30 : 12) * strength,
+                grip: (ring.wave ? 1.6 : 0.75) * strength,
+            });
+        }
+    }
+
+    /**
      * Apply one director frame. `wind` is {x, z, strength} from the light rig; returns the
      * environment for FallLeafSim.step().
      */
     apply(frame = {}, dt = 0, wind = { x: 1, z: 0, strength: 0.3 }) {
         const { fields, stage } = this;
         fields.length = 0;
+        if (Number.isFinite(dt) && dt > 0) this.clock += dt;
         const motion = Number.isFinite(frame.motion) ? Math.max(0, Math.min(1, frame.motion)) : 1;
         this.pace = 0.6 + 0.4 * motion;
+        this.level = Number.isFinite(frame.surge?.level) ? Math.max(0, Math.min(1, frame.surge.level)) : 0;
         const fever = Number.isFinite(frame.surge?.fever) ? Math.max(0, Math.min(1, frame.surge.fever)) : 0;
         const emitters = frame.emitters || [];
         for (let i = 0; i < emitters.length; i += 1) {
@@ -331,12 +383,16 @@ export class FallLeafDirector {
                 this.ring(feed, vortex, false);
             }
         } else this.vortexFeed = 0;
+        this.rings(frame.fx);
         // Under reduced motion every gameplay field pushes and turns more gently.
         if (this.pace < 1) {
             for (let i = 0; i < fields.length; i += 1) {
                 const field = fields[i];
                 if (field.kind === 'vortex') field.spin *= this.pace;
-                else field.power *= this.pace;
+                else {
+                    field.power *= this.pace;
+                    if (field.kind === 'wave') field.up *= this.pace;
+                }
             }
         }
         const { env } = this;
@@ -345,6 +401,8 @@ export class FallLeafDirector {
         env.breeze = 0.5 + wind.strength * 2.2;
         env.gust = (Number.isFinite(frame.gust) ? Math.max(0, Math.min(1, frame.gust)) : 0) * 4.5 * motion;
         env.storm = Number.isFinite(frame.storm) ? Math.max(0, Math.min(1, frame.storm)) : 0;
+        // A run's end: the wind dies for a breath and the leaves in the air come straight down.
+        env.still = Number.isFinite(frame.fx?.hush) ? Math.max(0, Math.min(1, frame.fx.hush)) : 0;
         // Every front crossing, in world x (a frame from an older director may carry one `front`).
         const { liveFronts } = this;
         liveFronts.length = 0;

@@ -10,6 +10,9 @@
 import * as THREE from 'three/webgpu';
 import { FallAtmosphere } from './fall-atmosphere.js';
 import { FallBackdrop } from './fall-backdrop.js';
+import { FallEventFx } from './fall-event-fx.js';
+import { fallEventRandom } from './fall-event-light.js';
+import { FallFlush } from './fall-flush.js';
 import { FALL_FEATURE_TREES, FALL_VIEWS, fallViewFor } from './fall-composition.js';
 import { FallForest } from './fall-forest.js';
 import { FallLeafDirector } from './fall-leaf-director.js';
@@ -128,6 +131,20 @@ export class FallWorld {
         this.group.add(this.leaves.group);
         this.leaves.build();
         yield 'leaves';
+        // What the game's events throw besides leaves (maple keys, acorns, motes and sparks, the
+        // lantern ring) and the flock a perfect clear startles. They draw their chances from
+        // generators of their own, so the grove's own stay as they were.
+        this.fx = new FallEventFx({
+            light, tier, rng: fallEventRandom(0x5eed), groundHeight: fallTerrainHeight, crownPoints,
+        });
+        this.group.add(this.fx.group);
+        this.fx.build();
+        this.flush = new FallFlush({
+            light, tier, rng: fallEventRandom(0xf10c), crownPoints,
+        });
+        this.group.add(this.flush.group);
+        this.flush.build();
+        yield 'show';
         yield* this.buildSquirrelSteps();
         yield 'squirrel';
         this.prepareCamera(this.camera.aspect);
@@ -244,6 +261,9 @@ export class FallWorld {
     resetEffects() {
         this.director?.reset();
         this.leaves?.reset();
+        this.fx?.reset();
+        this.flush?.reset();
+        this.light?.events?.reset();
         // The director's serials start again from nothing.
         this.squirrelSerial = -1;
     }
@@ -279,6 +299,10 @@ export class FallWorld {
         this.moodStep = easeStep(this.moodStep, this.level - 1, follow, FALL_MOODS.length);
         light.setMood(this.moodPhase(Number.isFinite(time) ? time : light.uTime.value));
         light.update(time, { ...frame, front: env.front, fronts: env.fronts }, dt);
+        // Each event's own form: the rings, floods and pulses of light, and what is thrown.
+        light.events.update(frame, { stage: this.stage, dt });
+        this.fx.play(frame, { time, dt, stage: this.stage });
+        this.flush.play(frame, { time, stage: this.stage });
         this.leaves.update(dt, env, frame.heat);
         this.atmosphere.update(time, dt, frame);
         if (this.squirrelMind && Number.isFinite(time)) {
@@ -301,6 +325,14 @@ export class FallWorld {
             mood: fallMoodName(nearestStep(this.moodStep, this.level - 1, FALL_MOODS.length)
                 + fallMoodDrift(this.moodLived())),
             moodPhase: this.light?.moodPhase ?? 0,
+            // The show: what the events have in the air, and what their light is doing.
+            ...(this.fx ? {
+                show: {
+                    ...this.fx.counts(),
+                    birds: this.flush?.counts().flying ?? 0,
+                    ...(this.light?.events?.state || {}),
+                },
+            } : {}),
             // The squirrel, when the grove has one: what it is doing and where.
             ...(this.squirrel ? {
                 squirrel: {
@@ -320,6 +352,10 @@ export class FallWorld {
         this.squirrel?.dispose();
         this.squirrel = null;
         this.squirrelMind = null;
+        this.fx?.dispose();
+        this.flush?.dispose();
+        this.fx = null;
+        this.flush = null;
         this.leaves?.dispose();
         this.atmosphere?.dispose();
         this.backdrop?.dispose();

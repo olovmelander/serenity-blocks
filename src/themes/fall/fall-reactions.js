@@ -25,6 +25,29 @@
  *                 the vortex lets go, flinging its leaves out over the grove
  *   level up      the whole grove exhales: a front, warmer light, lanterns and wisps
  *
+ * Every event also has a form of its own, read from `frame.fx` by the grove's show
+ * (fall-event-light.js, fall-event-fx.js, fall-flush.js, fall-post.js):
+ *   hard drop     a thump: a ring runs out through the litter and the grass from the card's
+ *                 foot, and acorns are shaken loose (`rings`, the cue `thump`)
+ *   two lines     the passing front opens the canopy: a gap of brighter shafts crosses with it
+ *                 (`canopy`)
+ *   three lines   maple keys spin down out of the crowns, and the crowns turn their pale
+ *                 undersides to the front as it passes (the cue `keys`, `canopy`)
+ *   four lines    the sunburst: a fan of beams opens through the trees and a flood of light
+ *                 rolls over the floor (`fan`, `flood`)
+ *   combo         sparks caught in the vortex, and a ring of lantern light gathering round the
+ *                 card's foot as the count grows (the cue `sparks`, `lantern`)
+ *   twist         a spiral of maple keys and a ribbon of light (the cue `spiral`)
+ *   back-to-back  a pulse of amber light climbs both great trunks into their crowns (`pulses`)
+ *   perfect clear all of it: the floor's leaves rise in a wave running out from the board, gold
+ *                 dust hangs in the air, a flock bursts from the trees (`rings` with `wave`, the
+ *                 cues `dust` and `flush`)
+ *   level up      the new light arrives as a front crossing the grove (`light`)
+ *   game over     a moment, not a state: the wind dies and the light sinks for a breath (`hush`)
+ * Cues are one-shot and numbered (a reader takes each serial once); rings, pulses, the flood and
+ * the light front are functions of their own age, so nothing restarts when another arrives; a
+ * full table lets the NEW one go rather than cut one in flight.
+ *
  * It BUILDS rather than pops (src/themes/shared/gameplay-surge.js). The envelopes are Swells: a
  * new event adds to what is still lit and never restarts it. Fronts always travel downwind and
  * run their whole crossing; a sweep soon after the last joins it, a later one rolls in behind it
@@ -92,6 +115,27 @@ const WORK_SECONDS = Object.freeze({
 });
 /** What reduced motion keeps of the motion the surge adds (the breeze, the storm's pace). */
 export const FALL_REDUCED_MOTION = 0.35;
+/** One-shot cues the frame can hold at once, and how long each stays in it (readers take a serial once). */
+export const FALL_CUE_SLOTS = 16;
+const CUE_SECONDS = 1;
+export const FALL_CUE_KINDS = Object.freeze(['thump', 'keys', 'spiral', 'sparks', 'dust', 'flush']);
+/** Rings that can run through the floor at once: a hard drop's thump, a perfect clear's wave. */
+export const FALL_RING_SLOTS = 3;
+/** How long a thump's ring and a perfect clear's wave run (seconds). */
+export const FALL_RING_SECONDS = Object.freeze({ thump: 1.5, wave: 2.8 });
+/** A hard drop shorter than this share of the board's height makes no ring; nor one this soon after the last. */
+const THUMP_DROP = 0.3;
+const THUMP_REST = 0.22;
+/** How much of a thump is left at a full level of play (it happens on nearly every piece then). */
+const THUMP_HOT = 0.55;
+/** Pulses of light that can climb the two great trunks at once, and how long one takes (seconds). */
+export const FALL_PULSE_SLOTS = 2;
+export const FALL_PULSE_SECONDS = 2.6;
+/** The flood of light a sunburst rolls over the floor, and a level's light front: seconds to cross. */
+export const FALL_FLOOD_SECONDS = 2.4;
+export const FALL_DAWN_SECONDS = FRONT_SECONDS;
+/** How fast the ring of lantern light gathers, and how fast it goes out once the chain is over (per second). */
+const LANTERN_RATES = Object.freeze({ gather: 2.4, part: 0.7 });
 const BOARD_COLUMNS = 10;
 const BOARD_VISIBLE_ROWS = 20;
 const BOARD_HIDDEN_ROWS = 4;
@@ -198,6 +242,28 @@ export class FallReactions {
         });
         /** Back-to-backs in a row: each one's twin cascade from the great trees is fuller than the last. */
         this.twin = new Swell({ release: 2.5, ceiling: 2, knee: 1.4 });
+        // -- the show (frame.fx): see the header --
+        /** One-shot cues, a ring of them; `epoch` counts the director's own fresh starts. */
+        this.cues = Array.from({ length: FALL_CUE_SLOTS }, () => ({}));
+        this.epoch = 0;
+        /** Rings through the floor, pulses up the two great trunks. */
+        this.rings = Array.from({ length: FALL_RING_SLOTS }, () => ({}));
+        this.pulses = Array.from({ length: FALL_PULSE_SLOTS }, () => ({}));
+        /** The sunburst's fan of beams (frame-wide: the world applies Reduce flashing). */
+        this.fan = new Swell({
+            attack: 0.3, release: 1.5, ceiling: 1.12, knee: 0.9, headroom: 1.4,
+        });
+        /** How far the passing fronts open the canopy (a gap of shafts from two lines, pale undersides from three). */
+        this.canopy = new Swell({
+            attack: 0.12, release: 1.5, ceiling: 1, knee: 0.8, headroom: 1.3,
+        });
+        /** The floods of light over the floor (a second may roll in behind the first), and a level's light front. */
+        this.floods = [{}, {}];
+        this.dawns = [{}];
+        /** The run ended: the light sinks for a breath and comes back. */
+        this.hush = new Swell({
+            attack: 0.45, release: 1.6, ceiling: 1, knee: 0.9, headroom: 1.05,
+        });
         /**
          * How much of the motion the surge adds plays (the standing breeze, the storm's pace, the
          * wind's push on the trees): the theme lowers it under reduced motion.
@@ -234,6 +300,10 @@ export class FallReactions {
         });
         this.crown.reset();
         this.twin.reset();
+        this.resetShow();
+        this.cueSerial = 0;
+        this.cueCursor = 0;
+        this.epoch += 1;
         for (const emitter of this.emitters) {
             Object.assign(emitter, {
                 active: false,
@@ -249,6 +319,119 @@ export class FallReactions {
                 seed: 0,
             });
         }
+    }
+
+    /** Everything of the show at rest: no cue waiting, no ring running, no light standing. */
+    resetShow() {
+        for (const cue of this.cues) {
+            Object.assign(cue, {
+                serial: -1, kind: 'thump', side: -1, column: 0.5, row: 0, strength: 0, lines: 0, at: -Infinity,
+            });
+        }
+        for (const ring of this.rings) {
+            Object.assign(ring, {
+                active: false, serial: -1, age: 0, life: 1, column: 0.5, strength: 0, wave: false,
+            });
+        }
+        for (const pulse of this.pulses) {
+            Object.assign(pulse, {
+                active: false, serial: -1, age: 0, strength: 0,
+            });
+        }
+        for (const traveller of [...this.floods, ...this.dawns]) {
+            Object.assign(traveller, {
+                active: false, age: 0, strength: 0, target: 0,
+            });
+        }
+        this.fan.reset();
+        this.canopy.reset();
+        this.hush.reset();
+        this.lantern = 0;
+        this.lanternTarget = 0;
+        this.lastThump = -Infinity;
+        this.ringSerial = 0;
+    }
+
+    /**
+     * A one-shot cue for the show (see FALL_CUE_KINDS), in board terms. The ring takes the next
+     * slot: a cue is read within a frame or two, so the one it overwrites has long been taken.
+     */
+    cue(kind, {
+        side = 0, column = 0.5, row = 0.3, strength = 1, lines = 0,
+    } = {}) {
+        const slot = this.cues[this.cueCursor];
+        this.cueCursor = (this.cueCursor + 1) % FALL_CUE_SLOTS;
+        Object.assign(slot, {
+            serial: this.cueSerial,
+            kind,
+            side: side < 0 ? -1 : 1,
+            column: clamp(column, 0, 1),
+            row: clamp(row, 0, 1),
+            strength: clamp(strength, 0, 1.5),
+            lines,
+            at: this.time,
+        });
+        this.cueSerial += 1;
+        return slot;
+    }
+
+    /**
+     * Start a ring through the floor from the card's foot at `column`. A thump takes a free slot or
+     * is let go (the lightest effect is the first to give way); a perfect clear's wave always runs,
+     * taking the slot furthest through its life. Returns the ring, or null when it was let go.
+     */
+    ring(column, strength, wave = false) {
+        const value = clamp(strength, 0, 1);
+        if (!(value > 0)) return null;
+        let chosen = null;
+        let furthest = -1;
+        for (const ring of this.rings) {
+            if (!ring.active) {
+                chosen = ring;
+                break;
+            }
+            const through = ring.age / ring.life;
+            if (wave && !ring.wave && through > furthest) {
+                furthest = through;
+                chosen = ring;
+            }
+        }
+        // (A slot still running is only ever given up to a wave, and only by a thump.)
+        if (!chosen || (chosen.active && !wave)) return null;
+        Object.assign(chosen, {
+            active: true,
+            serial: this.ringSerial,
+            age: 0,
+            life: wave ? FALL_RING_SECONDS.wave : FALL_RING_SECONDS.thump,
+            column: clamp(column, 0, 1),
+            strength: value,
+            wave,
+        });
+        this.ringSerial += 1;
+        return chosen;
+    }
+
+    /**
+     * Send a traveller (a flood of light, a light front) on its way. One that set out a moment ago
+     * is joined (it eases up to the stronger of the two); otherwise a free slot starts a new one;
+     * with every slot crossing, the youngest is lifted. Nothing crossing is ever sent back.
+     */
+    static depart(slots, strength, joinWithin) {
+        const value = clamp(strength, 0, 1.25);
+        if (!(value > 0)) return;
+        let youngest = null;
+        let free = null;
+        for (const slot of slots) {
+            if (!slot.active) free = free || slot;
+            else if (!youngest || slot.age < youngest.age) youngest = slot;
+        }
+        if (youngest && (youngest.age < joinWithin || !free)) {
+            youngest.target = Math.max(youngest.target, value);
+            return;
+        }
+        Object.assign(free, {
+            active: true, age: 0, strength: value, target: value,
+        });
     }
 
     /** Consecutive clearing locks (the true combo; 0 once a lock cleared nothing). */
@@ -396,6 +579,22 @@ export class FallReactions {
         this.emit('lock', {
             side, column: place?.column ?? 0.5, row: place?.row ?? 0.12, strength, duration: 1.1,
         });
+        this.thump(place?.column ?? 0.5, side || -1, drop);
+        return true;
+    }
+
+    /**
+     * A long hard drop lands with a thump: a ring through the floor from under the piece, and
+     * acorns shaken loose. It happens on nearly every piece of fast play, so it is the first to
+     * give way: none for a short drop, none while every ring is running, less as play heats.
+     */
+    thump(column, side, drop) {
+        if (!(drop >= THUMP_DROP) || this.time - this.lastThump < THUMP_REST) return false;
+        const level = clamp(this.surge.level.valueAt(this.time), 0, 1);
+        const strength = (0.35 + 0.65 * smooth(THUMP_DROP, 0.9, drop)) * (1 - (1 - THUMP_HOT) * level);
+        if (!this.ring(column, strength)) return false;
+        this.lastThump = this.time;
+        this.cue('thump', { side, column, strength });
         return true;
     }
 
@@ -439,8 +638,35 @@ export class FallReactions {
                 row: 1, strength: 1, lines, duration: 2.6,
             });
         }
-        if (combo >= 2) this.raiseVortex(1 - Math.exp(-(combo - 1) * 0.3));
+        if (combo >= 2) {
+            this.raiseVortex(1 - Math.exp(-(combo - 1) * 0.3));
+            this.gather(combo);
+        }
+        // The show's ladder: from two lines the passing front opens the canopy; from three the
+        // crowns turn pale to it and maple keys spin down; four lines are the sunburst.
+        if (lines >= 2) this.canopy.hit([0, 0, 0.4, 0.75, 1][lines], this.time);
+        if (lines >= 3) {
+            this.cue('keys', {
+                row, strength: four ? 1 : 0.6, lines,
+            });
+        }
+        if (four) this.sunburst(1);
         return true;
+    }
+
+    /**
+     * The sunburst as a form: the fan of beams opens (it accumulates; its light is tempered as play
+     * heats, like every event's) and a flood of light sets out over the floor.
+     */
+    sunburst(strength) {
+        const temper = 1 - LIGHT_TEMPER * Math.min(1, this.surge.level.valueAt(this.time));
+        this.fan.hit(strength * temper, this.time);
+        FallReactions.depart(this.floods, strength, 0.6);
+    }
+
+    /** The ring of lantern light at the card's foot gathers with the count (and holds with the vortex). */
+    gather(count) {
+        this.lanternTarget = Math.max(this.lanternTarget, 1 - Math.exp(-(Math.max(2, count) - 1) * 0.2));
     }
 
     onCombo(countOrPayload, detail = {}) {
@@ -460,6 +686,8 @@ export class FallReactions {
         this.emit('combo', {
             row: 0.1, strength: 0.4 + growth * 0.6, lines: event.count, duration: 1.4,
         });
+        this.gather(event.count);
+        this.cue('sparks', { strength: 0.4 + growth * 0.6, lines: event.count });
         return true;
     }
 
@@ -474,9 +702,11 @@ export class FallReactions {
         this.excite({
             gust: 0.5, warmth: 0.3, shafts: 0.3, glow: 0.55,
         });
+        const side = place && place.column >= 0.5 ? 1 : -1;
         this.emit('spin', {
-            side: place && place.column >= 0.5 ? 1 : -1, row: place?.row ?? 0.3, strength: 0.8, duration: 1.7,
+            side, row: place?.row ?? 0.3, strength: 0.8, duration: 1.7,
         });
+        this.cue('spiral', { side, row: place?.row ?? 0.3, strength: 0.8 });
         return true;
     }
 
@@ -495,6 +725,19 @@ export class FallReactions {
         this.emit('twin', {
             row: 1, strength: clamp(0.45 + run * 0.3, 0, 1), lines: 0, duration: 1.6,
         });
+        // A pulse of amber light climbs both trunks into the crowns: a second one follows the
+        // first up; with both climbing, the younger takes the new one's light.
+        const strength = clamp(0.6 + run * 0.25, 0, 1);
+        const free = this.pulses.find((pulse) => !pulse.active);
+        if (free) {
+            Object.assign(free, {
+                active: true, serial: this.ringSerial, age: 0, strength,
+            });
+            this.ringSerial += 1;
+        } else {
+            const youngest = this.pulses.reduce((a, b) => (b.age < a.age ? b : a));
+            youngest.strength = Math.max(youngest.strength, strength);
+        }
         return true;
     }
 
@@ -525,6 +768,15 @@ export class FallReactions {
         // The column flares, then lets go.
         this.raiseVortex(0.85);
         this.vortexHold = Math.min(this.vortexHold, CROWN_HOLD_SECONDS);
+        // The crown of the show, several seconds long: the sunburst at its fullest, the floor's
+        // leaves rising in a wave that runs out from the board, the crowns turned pale and letting
+        // their keys go, gold dust in the air, and a flock out of the trees.
+        this.sunburst(1.2);
+        this.canopy.hit(1, this.time);
+        this.ring(0.5, 1, true);
+        this.cue('keys', { row: 1, strength: 1, lines: 4 });
+        this.cue('dust', { strength: 1 });
+        this.cue('flush', { strength: 1 });
         return true;
     }
 
@@ -535,15 +787,52 @@ export class FallReactions {
             gust: 0.6, warmth: 0.55, shafts: 0.6, glow: 0.8,
         });
         this.sweep(0.75);
+        // The new light arrives as a front crossing the grove, with the gust (and the gap of shafts
+        // the gust opens: the canopy swell at a strength that opens the shafts and no more).
+        this.canopy.hit(0.42, this.time);
+        FallReactions.depart(this.dawns, 1, 0.8);
         return true;
     }
 
-    /** The session ended: let the wind die and the leaves settle. */
-    onGameOver() {
+    /**
+     * The session ended: let the wind die and the leaves settle (the state of the run, always),
+     * and, as a moment that passes, let the light sink for a breath (`effects`: the theme's gate,
+     * so a state change never rides on an effect's).
+     * @param {{ effects?: boolean }} [options]
+     */
+    onGameOver({ effects = true } = {}) {
         this.vortexTarget = 0;
         this.vortexHold = 0;
+        this.lanternTarget = 0;
         this.combo.reset();
         for (const front of this.fronts) front.active = false;
+        if (effects && !this.disposed) this.hush.hit(1, this.time);
+    }
+
+    /**
+     * A new run: nothing of the last one's play is carried into it (its chain, its cascade, a drop
+     * still pending, the vortex's hold, the run of back-to-backs), and nothing is cut either: what
+     * is still in the air or in the light (leaves, the heat of play, the hush of the last run's
+     * end) breathes out by itself, and the clock and the serials run on, so whoever reads the frame
+     * needs no reset and no leaf pops. A light breeze goes through the grove as the run begins
+     * (`effects`: the theme's gate).
+     * @param {{ effects?: boolean }} [options]
+     */
+    onSessionStart({ effects = true } = {}) {
+        if (this.disposed) return false;
+        this.depth = 1;
+        this.pendingDrop = 0;
+        this.pendingHard = false;
+        this.vortexTarget = 0;
+        this.vortexHold = 0;
+        this.lanternTarget = 0;
+        this.combo.reset();
+        this.twin.reset();
+        if (effects) {
+            this.excite({ gust: 0.3, glow: 0.2 });
+            this.sweep(0.4);
+        }
+        return true;
     }
 
     update(dt) {
@@ -574,7 +863,82 @@ export class FallReactions {
                 emitter.strength = 0;
             }
         }
+        // The show: everything runs on its own age and retires at its end.
+        for (const ring of this.rings) {
+            if (!ring.active) continue;
+            ring.age += dt;
+            if (ring.age >= ring.life) ring.active = false;
+        }
+        for (const pulse of this.pulses) {
+            if (!pulse.active) continue;
+            pulse.age += dt;
+            if (pulse.age >= FALL_PULSE_SECONDS) pulse.active = false;
+        }
+        FallReactions.cross(this.floods, dt, FALL_FLOOD_SECONDS);
+        FallReactions.cross(this.dawns, dt, FALL_DAWN_SECONDS);
+        // The lanterns gather while the chain holds the vortex up, and go out one by one after it.
+        if (this.vortexHold <= 0) this.lanternTarget = 0;
+        const rate = this.lanternTarget > this.lantern ? LANTERN_RATES.gather : LANTERN_RATES.part;
+        this.lantern += (this.lanternTarget - this.lantern) * (1 - Math.exp(-dt * rate));
+        if (this.lantern < 0.0005 && this.lanternTarget === 0) this.lantern = 0;
         return this.getFrame();
+    }
+
+    /** Age the travellers of one kind; each eases up to what joined it and retires at its end. */
+    static cross(slots, dt, seconds) {
+        for (const slot of slots) {
+            if (!slot.active) continue;
+            slot.age += dt;
+            slot.strength += (slot.target - slot.strength) * (1 - Math.exp(-dt * FRONT_EASE));
+            if (slot.age >= seconds) slot.active = false;
+        }
+    }
+
+    /** A traveller as the world reads it: how far across it is (0..1) and how strong (it swells in and out). */
+    static crossing(slot, seconds) {
+        const travel = clamp(slot.age / seconds, 0, 1);
+        return { travel, strength: slot.strength * Math.sin(Math.PI * Math.min(1, travel * 1.08)) ** 0.6 };
+    }
+
+    /** What the show reads (`frame.fx`): see the header. */
+    getShow() {
+        const { time } = this;
+        const cues = [];
+        for (const cue of this.cues) {
+            const age = time - cue.at;
+            if (cue.serial >= 0 && age < CUE_SECONDS) cues.push({ ...cue, age: Math.max(0, age) });
+        }
+        const rings = [];
+        for (const ring of this.rings) {
+            if (!ring.active) continue;
+            rings.push({
+                serial: ring.serial, age: ring.age, life: ring.life, column: ring.column, strength: ring.strength, wave: ring.wave,
+            });
+        }
+        const pulses = [];
+        for (const pulse of this.pulses) {
+            if (pulse.active) pulses.push({ serial: pulse.serial, age: pulse.age, strength: pulse.strength });
+        }
+        const floods = [];
+        for (const flood of this.floods) {
+            if (flood.active) floods.push(FallReactions.crossing(flood, FALL_FLOOD_SECONDS));
+        }
+        const dawn = this.dawns[0].active ? FallReactions.crossing(this.dawns[0], FALL_DAWN_SECONDS) : null;
+        return {
+            epoch: this.epoch,
+            cues,
+            rings,
+            pulses,
+            // The sunburst's fan (frame-wide: the world applies Reduce flashing) and its floods of light.
+            fan: this.fan.valueAt(time),
+            floods,
+            // How far the passing fronts open the canopy.
+            canopy: this.canopy.valueAt(time),
+            // A level's light front: -1.4 .. 1.4 across the view, downwind.
+            light: dawn && { position: (dawn.travel * 2.8 - 1.4) * FRONT_DIRECTION, strength: dawn.strength },
+            lantern: this.lantern,
+            hush: this.hush.valueAt(time),
+        };
     }
 
     /** One front as the world reads it: where it stands across the view and how hard it blows. */
@@ -626,6 +990,8 @@ export class FallReactions {
             // The sun bursting through on a perfect clear (frame-wide: the world applies Reduce flashing).
             crown: this.crown.valueAt(this.time),
             motion,
+            // Each event's own form (the header's second list).
+            fx: this.getShow(),
             emitters: this.emitters.filter((emitter) => emitter.active).map((emitter) => ({
                 ...emitter,
                 progress: clamp(emitter.age / emitter.duration, 0, 1),

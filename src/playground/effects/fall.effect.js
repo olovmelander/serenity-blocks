@@ -119,12 +119,21 @@ export function create({
         reactions.update(dt);
         const frame = reactions.getFrame();
         world?.update(time, dt, frame);
-        post?.update(frame);
+        post?.update({ ...frame, board: world?.stage?.board });
         aimFollow();
     };
-    // ?event=lock|drop|clear|double|triple|quad|combo|streak|spin|perfect|b2b|level, placed
-    // with ?col=0..9 and ?row=0..19 (0 is the top visible row).
-    const fire = (event) => {
+    // What a scripted event still has to do, as [seconds on the clock, what to do], in order.
+    const script = [];
+    const plan = (at, run) => {
+        script.push({ at, run });
+        script.sort((a, b) => a.at - b.at);
+    };
+    // ?event=lock|drop|clear|double|triple|quad|combo|streak|spin|perfect|b2b|level|over|session, placed
+    // with ?col=0..9 and ?row=0..19 (0 is the top visible row). Three more are little runs of play
+    // from the event's moment on: ?event=cascade&depth=<n> (one lock clearing in n waves),
+    // ?event=mixed (a bit of everything over nine seconds) and ?event=fever (clears every 0.4 s for
+    // ?combo=<seconds>, 12 unless given): give them an ?eventAge= long enough to see what you are after.
+    const fire = (event, at = 0) => {
         const column = Number(params.get('col') ?? 1);
         const row = Number(params.get('row') ?? 15) + 4;
         const piece = {
@@ -133,6 +142,37 @@ export function create({
         const lines = {
             clear: 1, double: 2, triple: 3, quad: 4,
         }[event];
+        const clearing = (count, extra = {}) => {
+            reactions.onPieceLock({ piece });
+            reactions.onLineClear(count, { clearedRows: Array.from({ length: count }, (_, i) => row + 1 - i), ...extra });
+        };
+        if (event === 'cascade') {
+            const depth = Math.max(2, Math.min(8, Number(params.get('depth') || 3)));
+            clearing(2, { cascadeCount: 1 });
+            for (let wave = 2; wave <= depth; wave += 1) {
+                plan(at + (wave - 1) * 0.32, () => {
+                    reactions.onCombo(wave);
+                    reactions.onLineClear(1 + (wave % 2), { clearedRows: [row + 1], cascadeCount: wave });
+                });
+            }
+            return;
+        }
+        if (event === 'mixed') {
+            const drop = () => { reactions.onHardDrop({ piece, distance: 15 }); reactions.onPieceLock({ piece }); };
+            const steps = [[0, drop], [0.6, () => reactions.onPieceLock({ piece })], [1.1, () => clearing(1)], [1.8, drop],
+                [2.4, () => clearing(2)], [3.2, drop], [3.8, () => clearing(3)],
+                [4.6, () => { clearing(2); reactions.onTwist({ piece, lineCount: 2 }); }],
+                [5.4, () => clearing(4)], [5.9, () => { clearing(4); reactions.onBackToBack(); }],
+                [6.6, () => clearing(1)], [7.05, () => clearing(1)], [7.5, () => clearing(2)], [7.95, () => clearing(1)],
+                [8.6, () => { clearing(4); reactions.onPerfectClear(); }]];
+            steps.forEach(([after, run]) => plan(at + after, run));
+            return;
+        }
+        if (event === 'fever') {
+            const seconds = Math.max(1, Math.min(40, Number(params.get('combo') || 12)));
+            for (let after = 0; after < seconds; after += 0.4) plan(at + after, () => clearing(2));
+            return;
+        }
         if (event === 'lock') reactions.onPieceLock({ piece });
         else if (event === 'drop') {
             reactions.onHardDrop({ piece, distance: 16 });
@@ -149,6 +189,7 @@ export function create({
         } else if (event === 'spin') reactions.onTwist({ piece });
         else if (event === 'perfect') reactions.onPerfectClear();
         else if (event === 'b2b') reactions.onBackToBack();
+        else if (event === 'session') reactions.onSessionStart();
         else if (event === 'over') {
             reactions.onGameOver();
             world?.onGameOver();
@@ -171,6 +212,7 @@ export function create({
         // The replay begins on the level asked for; the clock turns the light from there.
         world.setLevel(level, { silent: true });
         randomIndex = 0;
+        script.length = 0;
         const age = Number(params.get('eventAge') ?? 0.35);
         // ?eventAt=<s> pins the event on the clock instead (so a run of seeks films one event).
         const at = Number(params.get('eventAt'));
@@ -182,8 +224,9 @@ export function create({
         for (let i = 1; i <= steps; i += 1) {
             if (!fired && i * dt >= eventTime) {
                 fired = true;
-                fire(params.get('event'));
+                fire(params.get('event'), i * dt);
             }
+            while (script.length && script[0].at <= i * dt) script.shift().run();
             update(i * dt, dt);
         }
         sought = time;

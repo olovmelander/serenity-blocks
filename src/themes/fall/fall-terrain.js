@@ -284,7 +284,7 @@ export class FallTerrain {
                 .add(light.uSunColor.mul(glint).mul(sun).mul(0.16))
                 .add(albedo.mul(light.ambient(normal)).mul(1.05))
                 .add(albedo.mul(light.uSunColor).mul(map.a).mul(light.uWarmth).mul(0.12));
-            return vec4(light.haze(lit, { world }), 1);
+            return vec4(light.haze(light.events.onGround(lit, { world }), { world }), 1);
         })();
         return material;
     }

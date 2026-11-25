@@ -25,6 +25,7 @@ import { gridShadowFilter } from '../shared/grid-shadow-filter.js';
 import { redrawStaticShadow } from '../shared/static-shadow-draws.js';
 import { flashScale } from '../../utils/photosensitivity.js';
 import { FALL_MOODS, createFallMood, fallMoodAt } from './fall-moods.js';
+import { FallEventLight } from './fall-event-light.js';
 
 const SUN_AZIMUTH = THREE.MathUtils.degToRad(-23.4);
 const SUN_ELEVATION = THREE.MathUtils.degToRad(11.5);
@@ -184,6 +185,8 @@ export class FallLight {
         this.shadowNode = shadow(this.sun);
         this.shadowFrames = 0;
         this.shadowDraws = 0;
+        // The light and the floor's motion that the game's events own (fall-event-light.js).
+        this.events = new FallEventLight(this);
     }
 
     /** Aim the shadow camera so its box holds everything the play camera can see. */

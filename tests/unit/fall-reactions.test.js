@@ -28,6 +28,19 @@ const REST_FRAME = Object.freeze({
     turn: 0,
     crown: 0,
     motion: 1,
+    // The events' own forms at rest (the epoch counts the director's fresh starts).
+    fx: {
+        epoch: expect.any(Number),
+        cues: [],
+        rings: [],
+        pulses: [],
+        fan: 0,
+        floods: [],
+        canopy: 0,
+        light: null,
+        lantern: 0,
+        hush: 0,
+    },
     emitters: [],
 });
 const MALFORMED_COUNTS = [NaN, Infinity, -Infinity, -5, 0, 0.8, '', ' ', 'garbage', null, false, true, [], [4], {},

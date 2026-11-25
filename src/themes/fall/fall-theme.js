@@ -406,7 +406,8 @@ export default class FallTheme extends BaseTheme {
         );
         this.registerEventListener(window, 'settingsChanged', (payload) => this.handleSettingsChanged(payload));
         this.registerEventListener(window, 'gameOver', () => {
-            this.reactions?.onGameOver();
+            // The run's state ends whatever the settings say; the hush that goes with it is an effect.
+            this.reactions?.onGameOver({ effects: this.effectsAllowed() });
             this.world?.onGameOver?.();
             // The run is over: the next begins at the first level, and so does the grove's light.
             this.setLevel(1);
@@ -437,6 +438,8 @@ export default class FallTheme extends BaseTheme {
 
     teardownEventListeners() {
         this.clearEventUnsubscribers();
+        // (The session listener went with them: the next build subscribes again.)
+        this.modeManager = null;
         this.clearTrackedResources();
     }
 
@@ -588,11 +591,28 @@ export default class FallTheme extends BaseTheme {
             // The board card can move (mode, resize, multiplayer); follow it cheaply.
             this.boardPoll = BOARD_POLL_S;
             this.world?.setBoard?.(readFallBoardRect());
+            this.ensureSessionListener();
         }
         this.updateCamera(dt);
         this.world?.update(this.time, dt, frame);
         if (typeof this.world?.moodLived === 'function') this.moodLived = this.world.moodLived(this.time);
-        this.post?.update?.({ ...frame, time: this.time });
+        this.post?.update?.({ ...frame, time: this.time, board: this.world?.stage?.board });
+    }
+
+    /**
+     * A new run is a fresh start for the grove: nothing of the last run's chain is carried into it
+     * (FallReactions.onSessionStart). The mode manager may appear after the theme's first build
+     * (boot prewarm), so it is looked for with the board and subscribed to once.
+     */
+    ensureSessionListener() {
+        const manager = typeof window !== 'undefined' ? window.serenityBlocks?.gameModeManager : null;
+        if (!manager?.on || manager === this.modeManager) return;
+        this.modeManager = manager;
+        const off = manager.on('modeStarted', () => {
+            if (!this.isActive || this.cleanupComplete) return;
+            this.reactions?.onSessionStart({ effects: this.effectsAllowed() });
+        });
+        if (typeof off === 'function') this.eventUnsubscribers.push(off);
     }
 
     updateCamera(dt) {
