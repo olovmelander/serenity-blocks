@@ -306,15 +306,19 @@ export class SquirrelMind {
         this.done = {};
         this.scripted = this.script.slice();
         // Where the day opens: 'crown' (down the maple, as it always was), 'ground', or 'any' (drawn
-        // from the seed: either crown, either side of the floor, the stump, the windfall, a bough).
+        // from the seed: either crown, either side of the floor, the stump, the windfall, a bough). A
+        // perch the grove does not have (its asset did not arrive) opens on the floor instead.
+        const stumpTop = (this.stage.pads || []).find((pad) => !pad.limb);
+        const windfall = this.stage.limbs?.['windfall.trunk'];
+        // (A great tree's bough: a living limb that lies out from its trunk.)
+        const bough = Object.values(this.stage.limbs || {}).find((limb) => !limb.dead && !limb.standing);
+        const can = { stump: Boolean(stumpTop), windfall: Boolean(windfall), bough: Boolean(bough) };
         let { start } = this;
         if (start === 'any') {
             const openings = ['crown', 'crown-oak', 'ground', 'ground-oak'];
-            if (this.stage.pads?.some((pad) => !pad.limb)) openings.push('stump');
-            if (this.stage.limbs?.['windfall.trunk']) openings.push('windfall');
-            if (this.stage.limbs?.['maple.bough']) openings.push('bough');
+            for (const name of Object.keys(can)) if (can[name]) openings.push(name);
             start = openings[Math.floor(this.random() * openings.length) % openings.length];
-        }
+        } else if (Object.prototype.hasOwnProperty.call(can, start) && !can[start]) start = 'ground';
         const floorAt = (x, z, heading) => ({
             on: 'ground', a: x, b: z, heading,
         });
@@ -324,11 +328,10 @@ export class SquirrelMind {
             this.push({ kind: 'hidden', duration: 1.8 });
             this.planFromCrown();
         } else if (start === 'stump') {
-            const pad = this.stage.pads.find((entry) => !entry.limb);
-            this.tail = { time, place: this.onPad(pad, 1.2) };
+            this.tail = { time, place: this.onPad(stumpTop, 1.2) };
             this.stay('sit', this.range(1.0, 2.0), { phase: this.range(0, 4) });
         } else if (start === 'windfall') {
-            const limb = this.stage.limbs['windfall.trunk'];
+            const limb = windfall;
             this.tail = {
                 time,
                 place: {
@@ -337,7 +340,7 @@ export class SquirrelMind {
             };
             this.stay('idle', this.range(0.8, 1.6), { phase: this.range(0, 4) });
         } else if (start === 'bough') {
-            const limb = this.stage.limbs['maple.bough'];
+            const limb = bough;
             this.tail = {
                 time,
                 place: {

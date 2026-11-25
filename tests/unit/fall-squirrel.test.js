@@ -333,6 +333,44 @@ describe('the squirrel mind', () => {
         expect(onLimbs).toBeGreaterThan(200);
     }, 30_000);
 
+    it('opens its day where the seed says: a crown, the floor, a perch or a bough, and never where there is none', () => {
+        /** Where a mind's day opens, by name. */
+        const opening = (mind) => {
+            const { act } = mind;
+            const { from } = act;
+            if (act.kind === 'hidden') return `crown ${from.on}`;
+            if (from.on === 'ground') return from.pad ? `pad ${from.pad}` : `floor ${mind.nearestTree(from)}`;
+            return `${stage.limbs[from.on] ? 'limb' : 'bark'} ${from.on}`;
+        };
+        // Drawn from the seed: many openings over the seeds, the same one for the same seed.
+        const drawn = new Set();
+        for (let seed = 1; seed <= 40; seed++) {
+            const name = opening(new SquirrelMind({ stage, seed, start: 'any' }));
+            expect(opening(new SquirrelMind({ stage, seed, start: 'any' }))).toBe(name);
+            drawn.add(name);
+        }
+        expect(drawn.size).toBeGreaterThanOrEqual(6);
+        expect([...drawn].some((name) => name.startsWith('pad'))).toBe(true);
+        expect([...drawn].some((name) => name.startsWith('limb'))).toBe(true);
+        // Each asked for by name.
+        const bough = Object.values(stage.limbs).find((limb) => !limb.dead && !limb.standing);
+        expect(bough).toBeTruthy();
+        const asked = (start, on = stage) => opening(new SquirrelMind({ stage: on, seed: 9, start }));
+        expect(asked('crown')).toBe('crown maple');
+        expect(asked('crown-oak')).toBe('crown oak');
+        expect(asked('ground')).toBe('floor maple');
+        expect(asked('ground-oak')).toBe('floor oak');
+        expect(asked('stump')).toBe('pad stump.top');
+        expect(asked('windfall')).toBe('limb windfall.trunk');
+        expect(asked('bough')).toBe(`limb ${bough.name}`);
+        // A grove whose perches did not arrive: a perch asked for opens on the floor, and none is drawn.
+        const bare = stageFrom(trees, { perches: false });
+        for (const start of ['stump', 'windfall', 'bough']) expect(asked(start, bare)).toMatch(/^floor /);
+        for (let seed = 1; seed <= 30; seed++) {
+            expect(opening(new SquirrelMind({ stage: bare, seed, start: 'any' }))).toMatch(/^(crown|floor) /);
+        }
+    });
+
     it('keeps its liked places on the floor the eye sees, beside the board', () => {
         const camera = landscapeCamera();
         const v = new THREE.Vector3();
