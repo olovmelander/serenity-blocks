@@ -51,7 +51,7 @@ function cellsOf(key, candidate) {
  * Play a list of positions with a bot and count where it agrees with the player.
  * @returns {{ n: number, same: number, sameColumns: number, clears: number, clearsSame: number }}
  */
-export function agreement(list, { tier = 10, versusWeights = VERSUS_WEIGHTS } = {}) {
+export function agreement(list, { tier = 10, versusWeights = VERSUS_WEIGHTS, each = null } = {}) {
     const state = new GameState({ disableLevelProgression: true, hitStopEnabled: false });
     applyVersusFeel(state);
     state.isSeeking = true;
@@ -73,6 +73,8 @@ export function agreement(list, { tier = 10, versusWeights = VERSUS_WEIGHTS } = 
         state.lines = 8;
         waiting = position.pending;
         bot.reset();
+        // Where in its life the position stands (the opening, versusOpening).
+        bot.life = { done: position.fired ?? true, pieces: (position.at ?? 99) - 1 };
         let plan = null;
         try { plan = bot.plan(); } catch { plan = null; }
         if (!plan?.candidate) continue;
@@ -80,6 +82,7 @@ export function agreement(list, { tier = 10, versusWeights = VERSUS_WEIGHTS } = 
         const same = mine.length === position.chose.length && mine.every((v, i) => v === position.chose[i]);
         const columns = (cs) => [...new Set(cs.map((v) => v % COLS))].sort().join();
         out.n++;
+        each?.(position, mine, plan.candidate, same);
         out.same += Number(same);
         out.sameColumns += Number(columns(mine) === columns(position.chose));
         out.fired += Number((plan.candidate.totalLines ?? 0) >= 2);

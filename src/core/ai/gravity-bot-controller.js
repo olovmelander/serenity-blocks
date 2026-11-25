@@ -2,6 +2,7 @@ import { PuzzleBotController } from './puzzle-bot-controller.js';
 import { canPlaceCandidate } from './reachability-pathfinder.js';
 import { evaluateCandidate } from './board-evaluator.js';
 import { COLS } from '../constants.js';
+import { versusOpening } from './versus-evaluation.js';
 import { isCellBlind } from '../blind.js';
 import {
     gravityBoardKey, gravityLandings, gravityReward, GRAVITY_WEIGHTS, nearRoof, readGravityBoard, searchGravity,
@@ -230,6 +231,8 @@ export class GravityBotController extends PuzzleBotController {
         this.proof = [];
         this.queueAtPlan = null;
         this.refusals = { piece: -1, count: 0 };
+        // This life's opening (versusOpening): pieces placed, and whether its first big fire is made.
+        this.life = { done: false, pieces: 0 };
     }
 
     setSpawnTiming(now) {
@@ -329,6 +332,7 @@ export class GravityBotController extends PuzzleBotController {
         this.replanInterrupted = false;
         this.retryAllowance = null;
         this.refusals = { piece: -1, count: 0 };
+        this.life = { done: false, pieces: 0 };
     }
 
     * planSteps(observed) {
@@ -342,6 +346,7 @@ export class GravityBotController extends PuzzleBotController {
             : observed || readGravityBoard(state.boardGrid || state.board, state.isInfinityMode ? 0 : undefined);
         if (this.recognizedSpawn !== state.piecesPlaced) {
             this.recognizedSpawn = state.piecesPlaced;
+            this.life.pieces++;
             if (tier <= 3) {
                 this.config.lookaheadDepth = this.rng() < [0.12, 0.67, 0.87][tier - 1] ? 1 : 0;
                 this.config.lookaheadWeight = 0.45;
@@ -363,6 +368,7 @@ export class GravityBotController extends PuzzleBotController {
             weights: this.versusWeights,
             ...this.versusOutlook?.(),
             ...(state.isInfinityMode && { roofRows: Math.max(0, (state.maxRows || 0) - (state.boardGrid || state.board).length) }),
+            opening: versusOpening(root, pending, this.life),
             // Hands that keep being refused let the piece fall where it is.
             dropHere: this.refusals.piece === state.piecesPlaced && this.refusals.count >= 3,
         } : null;
@@ -398,6 +404,7 @@ export class GravityBotController extends PuzzleBotController {
             const actions = actionsTo(state, first.move);
             if (actions) {
                 tactics.fireBeforeGarbage = Boolean(fireBeforeGarbage);
+                if (first.move.lines >= 5) this.life.done = true;
                 const plan = asPlan(proof.map((step) => step.move), actions, tactics);
                 this.proof = proof.slice(1);
                 this.machinePlan = this.proof.length ? { steps: this.proof.map((step) => step.move) } : null;
@@ -447,6 +454,7 @@ export class GravityBotController extends PuzzleBotController {
             moves = [selected];
             forecast = [];
         }
+        if (moves[0].lines >= 5) this.life.done = true;
         if (forecast.length) {
             this.proof = forecast.map((step) => ({
                 ...step, pending, pressing, finishRows,

@@ -18,7 +18,7 @@ const AGREE = Number(process.env.FIT_AGREE ?? 1.5);
 const DEATH = Number(process.env.FIT_DEATH ?? 30);
 const CAP = Number(process.env.FIT_CAP ?? 0.35);
 const TIER = Number(process.env.FIT_TIER ?? 10);
-const PARTS = { eight: 0.14, two: 0.06, edge: 0.12, parked: 0.1, shaft: 0.16, chain: 0.1, fire: 0.16, pass2: 0.03, singles: 0.02, tallest: 0.1, opener: 0.14, sentPerLine: 0.06 };
+const PARTS = { openerPiece: 0.1, eight: 0.14, two: 0.06, edge: 0.12, parked: 0.1, shaft: 0.16, chain: 0.1, fire: 0.16, pass2: 0.03, singles: 0.02, tallest: 0.1, opener: 0.14, sentPerLine: 0.06 };
 const CALM = { seeds: 8, pieces: 240, rate: 0.33 };
 const HARD = { seeds: 4, pieces: 240, rate: 0.75 };
 // The player and the games the agreement is fitted on; his other games stay unseen, to check it.

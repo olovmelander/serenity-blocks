@@ -214,7 +214,7 @@ describe('where versus play applies', () => {
         expect([...manager(match).controllers.values()].every((bot) => bot.versusWeights === VERSUS_WEIGHTS)).toBe(true);
     });
 
-    it('in Last Standing too, with the same hands and reading time', () => {
+    it('in Last Standing too, with the same hands; the expert reads a little faster there', () => {
         const well = new MultiPlayerState(2);
         well.setMatchConfig({ ...well.matchConfig, isInfinityLMS: true, infinityMaxRows: 60 });
         well.reset();
@@ -224,7 +224,8 @@ describe('where versus play applies', () => {
         const [a, b] = [manager(well), manager(standard)].map((bots) => bots.controllers.get(0));
         expect(a.playerState.isInfinityMode).toBe(true);
         expect(a.versusWeights).toBe(VERSUS_WEIGHTS);
-        expect(a.config.reactionMs).toEqual(b.config.reactionMs);
+        expect(a.config.reactionMs[0]).toBeLessThan(b.config.reactionMs[0]);
+        expect(a.config.reactionMs[0]).toBeGreaterThan(b.config.reactionMs[0] - 30);
         expect(a.config.maxApm).toBe(b.config.maxApm);
         expect(a.planUnitsPerMs).toBe(b.planUnitsPerMs);
     });

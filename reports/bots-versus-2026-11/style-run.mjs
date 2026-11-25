@@ -118,11 +118,11 @@ export function style(runs) {
 }
 
 /** How far a style is from the playbook's numbers (0 = all met). Each part is a share of its target. */
-export const TARGETS = { eight: 1.0, two: 0.6, edge: 0.75, parked: 0.65, shaft: 1.4, chain: 1.0, fire: 3.9, pass2: 0.4, singlesMax: 0.12, tallest: 11.5, opener: 6.3, sentPerLine: 0.65 };
+export const TARGETS = { openerPiece: 25, eight: 1.0, two: 0.6, edge: 0.75, parked: 0.65, shaft: 1.4, chain: 1.0, fire: 3.9, pass2: 0.4, singlesMax: 0.12, tallest: 11.5, opener: 6.3, sentPerLine: 0.65 };
 export function distance(s) {
     const under = (x, t) => Math.max(0, (t - (Number.isFinite(x) ? x : 0)) / t);
     return {
-        eight: under(s.eight, TARGETS.eight), two: under(s.two, TARGETS.two), edge: under(s.edge, TARGETS.edge), parked: under(s.parked, TARGETS.parked), shaft: under(s.shaft, TARGETS.shaft), chain: under(s.chain, TARGETS.chain), fire: under(s.fire, TARGETS.fire),
+        openerPiece: under(s.openerPiece, TARGETS.openerPiece), eight: under(s.eight, TARGETS.eight), two: under(s.two, TARGETS.two), edge: under(s.edge, TARGETS.edge), parked: under(s.parked, TARGETS.parked), shaft: under(s.shaft, TARGETS.shaft), chain: under(s.chain, TARGETS.chain), fire: under(s.fire, TARGETS.fire),
         pass2: Math.abs(s.pass2 - TARGETS.pass2) / TARGETS.pass2, singles: Math.max(0, (s.singles - TARGETS.singlesMax) / TARGETS.singlesMax), tallest: Math.abs(s.tallest - TARGETS.tallest) / TARGETS.tallest, opener: under(s.opener, TARGETS.opener), sentPerLine: under(s.sentPerLine, TARGETS.sentPerLine),
     };
 }
