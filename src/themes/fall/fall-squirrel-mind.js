@@ -323,7 +323,7 @@ export class SquirrelMind {
             this.planFromCrown();
         } else if (start === 'stump') {
             const pad = this.stage.pads.find((entry) => !entry.limb);
-            this.tail = { time, place: floorAt(pad.centre[0], pad.centre[2], 1.2) };
+            this.tail = { time, place: this.onPad(pad, 1.2) };
             this.stay('sit', this.range(1.0, 2.0), { phase: this.range(0, 4) });
         } else if (start === 'windfall') {
             const limb = this.stage.limbs['windfall.trunk'];
@@ -466,9 +466,20 @@ export class SquirrelMind {
         return this.stage.trunks[place.on] ? 'trunk' : 'limb';
     }
 
-    /** The flat perch a place on the floor is on (the stump's top, a snapped limb's end), or null. */
+    /** The flat perch a place on the floor names (the stump's top, a snapped limb's end), or null. */
     padOf(place) {
-        return place && place.on === 'ground' ? this.stage.ground.padAt?.(place.a, place.b) ?? null : null;
+        return place && place.on === 'ground' && place.pad ? this.stage.ground.padNamed?.(place.pad) ?? null : null;
+    }
+
+    /** A place on a flat perch, facing `heading`. */
+    onPad(pad, heading = 0, jitter = 0) {
+        return {
+            on: 'ground',
+            a: pad.centre[0] + (jitter ? this.range(-jitter, jitter) : 0),
+            b: pad.centre[2] + (jitter ? this.range(-jitter, jitter) : 0),
+            heading,
+            pad: pad.name,
+        };
     }
 
     crownPlace(tree, angle) {
@@ -485,7 +496,7 @@ export class SquirrelMind {
         const f = this.frameScratch;
         let forward;
         if (place.on === 'ground') {
-            this.stage.ground.frame(place.a, place.b, f);
+            this.stage.ground.frame(place.a, place.b, f, place.pad);
             const c = Math.cos(place.heading);
             const s = Math.sin(place.heading);
             const n = f.normal;
@@ -558,9 +569,18 @@ export class SquirrelMind {
         // (A flat perch belongs to its side of the grove wherever it stands.)
         const pad = this.padOf(place);
         if (pad) return pad.home;
-        let best = 'maple';
+        // The tree on its side of the board (the eye looks down the middle); the nearer of them only
+        // when both stand on that side.
+        const middle = this.stage.eye[0];
+        const names = Object.keys(this.stage.trunks);
+        const sides = names.filter((name) => {
+            const { cx } = this.stage.trunks[name].sample(this.stage.trunks[name].low, 0);
+            return (cx - middle) * (place.a - middle) > 0;
+        });
+        let best = names[0];
         let bestD = Infinity;
-        for (const [name, trunk] of Object.entries(this.stage.trunks)) {
+        for (const name of sides.length ? sides : names) {
+            const trunk = this.stage.trunks[name];
             const { cx, cz } = trunk.sample(trunk.low, 0);
             const d = Math.hypot(place.a - cx, place.b - cz);
             if (d < bestD) {
@@ -745,12 +765,17 @@ export class SquirrelMind {
             const reach = toPad.radius + JUMP_OFF;
             if (d > reach + 0.25) {
                 this.runTo({
-                    on: 'ground', a: toPad.centre[0] + (dx / d) * reach, b: toPad.centre[2] + (dz / d) * reach, heading: 0,
+                    on: 'ground',
+                    a: toPad.centre[0] + (dx / d) * reach,
+                    b: toPad.centre[2] + (dz / d) * reach,
+                    heading: 0,
                 }, rate);
             }
             this.leap({ ...to });
             return;
         }
+        // (Already on the perch it is asked to: it is there.)
+        if (toPad) return;
         this.runTo(to, rate);
     }
 
@@ -777,7 +802,10 @@ export class SquirrelMind {
             }
             const reach = pad.radius + JUMP_OFF + this.range(0, 0.25);
             landing = {
-                on: 'ground', a: pad.centre[0] + (dx / d) * reach, b: pad.centre[2] + (dz / d) * reach, heading: Math.atan2(dz, dx),
+                on: 'ground',
+                a: pad.centre[0] + (dx / d) * reach,
+                b: pad.centre[2] + (dz / d) * reach,
+                heading: Math.atan2(dz, dx),
             };
         }
         this.leap(landing);
@@ -849,7 +877,10 @@ export class SquirrelMind {
                     oz /= off;
                 }
                 this.runStraight({
-                    on: 'ground', a: post.x + ox * (post.radius + 0.3), b: post.z + oz * (post.radius + 0.3), heading: 0,
+                    on: 'ground',
+                    a: post.x + ox * (post.radius + 0.3),
+                    b: post.z + oz * (post.radius + 0.3),
+                    heading: 0,
                 }, rate);
                 this.runTo(to, rate, depth + 1);
                 return;
@@ -960,12 +991,7 @@ export class SquirrelMind {
             && !limb.standing && (this.junctionsOn(limb.name).length || this.tipOf(limb.name)));
         const log = logs.length ? logs[Math.floor(this.random() * logs.length) % logs.length] : null;
         if (pad && (!log || this.random() < 0.45)) {
-            this.goGround({
-                on: 'ground',
-                a: pad.centre[0] + this.range(-0.06, 0.06),
-                b: pad.centre[2] + this.range(-0.06, 0.06),
-                heading: this.range(0.6, 2.4),
-            });
+            this.goGround(this.onPad(pad, this.range(0.6, 2.4), 0.06));
             this.stay('sit', this.range(0.6, 1.2), { phase: this.range(0, 4) });
         } else if (log) {
             // (A leaning bough is got onto at its foot, where it is low; the windfall anywhere along it.)
@@ -1122,9 +1148,7 @@ export class SquirrelMind {
         } else if (bit === 'wash' || bit === 'itch') {
             this.onTheSpot(bit, now);
         } else if (bit === 'across') {
-            this.leap({
-                on: 'ground', a: other.centre[0], b: other.centre[2], heading: here.heading,
-            });
+            this.leap(this.onPad(other, here.heading));
             this.stay('sit', this.range(1.0, 2.0), { phase: this.range(0, 4) });
         } else if (pad.limb && this.random() < 0.6) {
             // Back down the limb whose end it is: head first down a standing one to the trunk it grows
@@ -1152,7 +1176,11 @@ export class SquirrelMind {
         });
         if (joint) {
             this.leap({
-                on: joint.parent, a: joint.at + this.range(0.5, 0.9) * (this.random() < 0.5 ? -1 : 1), b: 0, heading: 0, noTurn: true,
+                on: joint.parent,
+                a: joint.at + this.range(0.5, 0.9) * (this.random() < 0.5 ? -1 : 1),
+                b: 0,
+                heading: 0,
+                noTurn: true,
             });
             this.stay('idle', this.range(0.5, 1.2), { phase: this.range(0, 4) });
         } else {
@@ -1189,14 +1217,14 @@ export class SquirrelMind {
         this.history.push(bit);
         if (bit === 'tip') {
             this.goLimb(limb.high);
-            this.leap({
-                on: 'ground', a: tip.centre[0], b: tip.centre[2], heading: this.range(0.8, 2.2), noTurn: true,
-            });
+            this.leap({ ...this.onPad(tip, this.range(0.8, 2.2)), noTurn: true });
             this.stay('sit', this.range(0.7, 1.4), { phase: this.range(0, 4) });
         } else if (bit === 'run') {
             // To somewhere else along it, at least a body's length off.
             let at = this.range(limb.low, limb.high);
-            if (Math.abs(at - here.a) < 1) at = here.a < (limb.low + limb.high) / 2 ? limb.high - this.range(0, 0.6) : limb.low + this.range(0, 0.6);
+            if (Math.abs(at - here.a) < 1) {
+                at = here.a < (limb.low + limb.high) / 2 ? limb.high - this.range(0, 0.6) : limb.low + this.range(0, 0.6);
+            }
             this.goLimb(at);
             this.stay(this.random() < 0.5 ? 'idle' : 'look', this.range(0.8, 1.8), { phase: this.range(0, 3) });
         } else if (bit === 'rest') {
@@ -1276,9 +1304,7 @@ export class SquirrelMind {
         });
         const pad = (this.stage.pads || []).find((entry) => entry.limb === limb.name);
         if (pad) {
-            this.leap({
-                on: 'ground', a: pad.centre[0], b: pad.centre[2], heading: this.range(0.8, 2.2), noTurn: true,
-            });
+            this.leap({ ...this.onPad(pad, this.range(0.8, 2.2)), noTurn: true });
             this.stay('sit', this.range(0.7, 1.4), { phase: this.range(0, 4) });
         } else this.stay('cling', this.range(1.2, 2.4), { phase: this.range(0, 3.6) });
     }
@@ -1296,9 +1322,7 @@ export class SquirrelMind {
             this.goBark({
                 on: limb.name, a: limb.high - 0.05, b: here.b, heading: 0,
             });
-            this.leap({
-                on: 'ground', a: pad.centre[0], b: pad.centre[2], heading: this.range(0.8, 2.2), noTurn: true,
-            });
+            this.leap({ ...this.onPad(pad, this.range(0.8, 2.2)), noTurn: true });
             this.stay('sit', this.range(0.7, 1.4), { phase: this.range(0, 4) });
         } else if (bit === 'cling') {
             this.stay('cling', this.range(1.6, 3.2), { phase: this.range(0, 3.6) });
@@ -1611,8 +1635,9 @@ export class SquirrelMind {
                 if (kind === 'perfect') {
                     this.stay(calm ? 'look' : 'startle', calm ? 1.2 : SQUIRREL_CLIPS.startle.length, { twirl: !calm });
                 } else this.stay(calm ? 'look' : 'startle', calm ? 1.0 : SQUIRREL_CLIPS.startle.length);
-                if (kind === 'four' && !perched) this.toTrunk(this.nearestTree(this.tail.place), { flee: true, high: true });
-                else this.stay('chatter', 1.6, { look: 1 });
+                if (kind === 'four' && !perched) {
+                    this.toTrunk(this.nearestTree(this.tail.place), { flee: true, high: true });
+                } else this.stay('chatter', 1.6, { look: 1 });
             } else {
                 this.stay('chatter', this.range(1.8, 2.6), { look: 1 });
             }

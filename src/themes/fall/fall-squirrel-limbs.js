@@ -31,6 +31,11 @@ export const PERCH_HOMES = Object.freeze({
 export const PERCH_NAMES = Object.freeze({
     'maple-hero': 'maple', 'oak-hero': 'oak', 'old-windfall': 'windfall', 'old-stump': 'stump',
 });
+/**
+ * The part of a limb the game's frame holds, where it is not all of it (metres along it): the
+ * windfall's root end lies out of the frame to the right.
+ */
+export const LIMB_SPANS = Object.freeze({ 'windfall.trunk': Object.freeze({ low: 2.5 }) });
 /** A snapped end this far above the floor (metres) is a perch; one lying on it is not. */
 const TIP_CLEAR = 0.9;
 /** How near its ends a limb is walked (metres): clear of the junction, and of the thin or snapped end. */
@@ -68,8 +73,9 @@ export class LimbSurface {
             );
         }
         this.length = this.arc[n - 1];
-        this.low = Math.min(LIMB_MARGIN.low, this.length * 0.2);
-        this.high = this.length - Math.min(LIMB_MARGIN.high, this.length * 0.15);
+        const span = LIMB_SPANS[name] || {};
+        this.low = Math.max(span.low ?? 0, Math.min(LIMB_MARGIN.low, this.length * 0.2));
+        this.high = Math.min(span.high ?? Infinity, this.length - Math.min(LIMB_MARGIN.high, this.length * 0.15));
         // A standing limb is gone round like a trunk (its angle from the side that faces the eye); a
         // lying one is walked along its top.
         const rise = (rows[n - 1][1] - rows[0][1]) / Math.max(this.length, 1e-6);
@@ -175,7 +181,9 @@ export function createPerches({
         const y0 = groundHeight(tree.x, tree.z);
         const c = Math.cos(tree.yaw || 0);
         const s = Math.sin(tree.yaw || 0);
-        const place = (x, y, z) => [tree.x + (x * c + z * s) * scale, y0 + y * scale, tree.z + (-x * s + z * c) * scale];
+        const place = (x, y, z) => [
+            tree.x + (x * c + z * s) * scale, y0 + y * scale, tree.z + (-x * s + z * c) * scale,
+        ];
         const home = PERCH_HOMES[tree.asset];
         const dead = tree.asset.startsWith('old-');
         for (const [name, rows] of Object.entries(entry.limbs || {})) {
@@ -188,7 +196,11 @@ export function createPerches({
             const tip = dead ? limb.tip() : null;
             if (tip && tip.centre[1] - groundHeight(tip.centre[0], tip.centre[2]) > TIP_CLEAR) {
                 pads.push({
-                    name: `${limb.name}.tip`, home, centre: tip.centre, radius: Math.max(0.1, tip.radius), limb: limb.name,
+                    name: `${limb.name}.tip`,
+                    home,
+                    centre: tip.centre,
+                    radius: Math.max(0.1, tip.radius),
+                    limb: limb.name,
                 });
             }
         }

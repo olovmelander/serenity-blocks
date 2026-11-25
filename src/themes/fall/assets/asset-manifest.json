@@ -202,13 +202,13 @@
     },
     {
       "file": "old-windfall.glb",
-      "bytes": 46512,
-      "sha256": "9fe020756b03eada1acce6a6dc8ce41a33fcf6c5accded011c4cfdbdd36b500b",
+      "bytes": 40828,
+      "sha256": "14971f954d50f4e572b399c6671bb945afbf3fb9124a0b3d341032059cbc38cc",
       "kind": "tree",
       "species": "maple",
       "role": "hero",
-      "sites": 5,
-      "barkTriangles": 2200
+      "sites": 4,
+      "barkTriangles": 1920
     },
     {
       "file": "squirrel.glb",

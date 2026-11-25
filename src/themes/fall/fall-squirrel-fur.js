@@ -139,7 +139,8 @@ export function createFurShells({ body, light, quality = 'High' }) {
     const along = pow(layer, 0.75);
     const dye = mix(vec3(0.5), vec3(1.16, 1.07, 0.9), along);
     const albedo = mix(vec3(dot(paint.rgb, vec3(0.2126, 0.7152, 0.0722))), paint.rgb, 0.84).mul(0.95)
-        .mul(dye).mul(mix(tone, float(1), fine)).mul(lockTone);
+        .mul(dye).mul(mix(tone, float(1), fine))
+        .mul(lockTone);
     const wrap = saturate(dot(N, L).add(0.55).div(1.55));
     // Deep in the coat a hair stands in the shade of the hairs round it.
     const shade = mix(float(0.55), float(1), layer);

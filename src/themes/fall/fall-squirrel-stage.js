@@ -352,20 +352,20 @@ export function cross(a, b) {
 export function createSquirrelStage({
     trunks, groundHeight, eye = [0, 2.6, 15], limbs = {}, pads = [],
 }) {
-    /** The pad a place on the floor is on (the stump's top, a snapped limb's end), or null. */
-    const padAt = (x, z) => {
-        for (const pad of pads) {
-            if (Math.hypot(x - pad.centre[0], z - pad.centre[2]) <= pad.radius) return pad;
-        }
-        return null;
-    };
+    /** A flat perch (the stump's top, a snapped limb's end) by its name, or null. */
+    const padNamed = (name) => (name ? pads.find((pad) => pad.name === name) ?? null : null);
     const ground = {
-        height: (x, z) => padAt(x, z)?.centre[1] ?? groundHeight(x, z),
-        padAt,
+        height: groundHeight,
+        padNamed,
+        /**
+         * The floor's frame at (x, z); with `on` (a pad's name) the frame of that flat perch there. A
+         * perch is over the floor, so only a place that names it stands on it: a run across the floor
+         * under a snapped limb's end stays on the floor.
+         */
         frame(x, z, out = {
             point: [0, 0, 0], normal: [0, 1, 0], up: [0, 0, -1], side: [1, 0, 0],
-        }) {
-            const pad = padAt(x, z);
+        }, on = null) {
+            const pad = padNamed(on);
             if (pad) {
                 // A flat place off the floor: level, at its own height.
                 out.point[0] = x;

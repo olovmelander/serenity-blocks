@@ -86,10 +86,6 @@ def old_windfall(seed=8101, name="old-windfall"):
     origin, _, _ = trunk.sample(0.52)
     stub = _dead_limb(tree, trunk, 0.52, grow_curve(rng, origin + UP * 0.05, [-0.2, 1.0, 0.5], 1.25, 5, wander=0.05),
                       0.18, 0.11)
-    # A limb that broke and lies from the trunk down to the ground: a ramp.
-    origin, _, _ = trunk.sample(0.33)
-    ramp = _dead_limb(tree, trunk, 0.33, grow_curve(rng, origin + UP * 0.1, [-0.25, 0.1, 1.0], 2.0, 5, wander=0.05,
-                                                    sag=0.9), 0.15, 0.07)
     # A young maple come up by its root end, in the light the old tree left (out of the frame's way:
     # the windfall lies in front of the oak, and leaves here would hide the oak's trunk).
     _shoot(tree, np.array([2.5, 0.0, -0.9]), [0.05, 1.0, -0.15], 2.3, 0.045, 4, (0.8, 1.05))
@@ -98,7 +94,7 @@ def old_windfall(seed=8101, name="old-windfall"):
     tree.meta = dict(species="maple", role="hero", height=3.2, trunkRadius=radius, foliage="maple_spray", reach=0.0,
                      perch="windfall")
     tree.trunk_profile = _snapped(seed % 9, start=0.9, depth=0.55)
-    tree.perch_limbs = dict(trunk=trunk, lookout=lookout, stub=stub, ramp=ramp)
+    tree.perch_limbs = dict(trunk=trunk, lookout=lookout, stub=stub)
     return tree
 
 
