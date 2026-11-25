@@ -1,7 +1,7 @@
 // How often a bot puts a piece exactly where a recorded player put it. Each recorded placement is
 // a position: the board before it, the piece, the next three, the rows waiting, the cells chosen.
 // The positions come from recordings kept outside this repo: set VERSUS_POSITIONS to the file.
-// node agree.mjs <name pattern, e.g. stephen> [tier] [limit] ['{"versusWeights":{...}}' | old]
+// node agree.mjs <name pattern, e.g. stephen> [tier] [limit] ['{"versusWeights":{...}}' | old | -] [game pattern]
 import { readFileSync } from 'node:fs';
 import { COLS, HIDDEN_ROWS, SHAPES } from '../../src/core/constants.js';
 import { GameState, rotateShapeMatrix } from '../../src/core/game.js';
@@ -98,16 +98,16 @@ export function pick({ name = /./, game = /./, players = null, step = 1, offset 
 }
 
 if (process.argv[1]?.endsWith('agree.mjs')) {
-    const [who = 'stephen', tier = '10', limit = '1500', how = ''] = process.argv.slice(2);
+    const [who = 'stephen', tier = '10', limit = '1500', how = '', games = '.'] = process.argv.slice(2);
     const options = { tier: Number(tier) };
     if (how === 'old') options.versusWeights = null;
-    else if (how) options.versusWeights = JSON.parse(how).versusWeights;
-    const all = pick({ name: new RegExp(who, 'i') });
+    else if (how && how !== '-') options.versusWeights = JSON.parse(how).versusWeights;
+    const all = pick({ name: new RegExp(who, 'i'), game: new RegExp(games) });
     const step = Math.max(1, Math.floor(all.length / Number(limit)));
     const list = all.filter((_, i) => i % step === 0);
     const t0 = Date.now();
     const r = agreement(list, options);
     const pct = (a, b) => `${(100 * a / Math.max(1, b)).toFixed(1)}%`;
-    console.info(`${who} tier ${tier}${how === 'old' ? ' (old play)' : ''}: ${r.n} positions, same cells ${pct(r.same, r.n)}, same columns ${pct(r.sameColumns, r.n)}, on his fires ${pct(r.clearsSame, r.clears)} of ${r.clears}; bot fires on ${pct(r.fired, r.n)}; ${((Date.now() - t0) / 1000).toFixed(1)} s`);
+    console.info(`${who} in ${games}, tier ${tier}${how === 'old' ? ' (old play)' : ''}: ${r.n} positions, same cells ${pct(r.same, r.n)}, same columns ${pct(r.sameColumns, r.n)}, on his fires ${pct(r.clearsSame, r.clears)} of ${r.clears}; bot fires on ${pct(r.fired, r.n)}; ${((Date.now() - t0) / 1000).toFixed(1)} s`);
     process.exit(0);
 }

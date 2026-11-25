@@ -1,6 +1,8 @@
 // Last Standing rooms of live bots (Infinity boards, out at the roof), measured lock by lock.
 // node infinity-rooms.mjs <out.jsonl> <first seed> <count> <seconds> <well rows> <tiers> [seat overrides JSON]
-// An override {"1":{"versusWeights":null}} plays that seat with the older Infinity planner.
+// An override {"1":{"versusWeights":null}} plays that seat with the older Infinity planner;
+// {"1":{"shipped":true}} plays a tier 10 seat as it shipped before 25 November 2026: that planner at its
+// own pace.
 import { appendFileSync, writeFileSync } from 'node:fs';
 import { performance } from 'node:perf_hooks';
 import { duel } from '../bot-ai-audit-2026-11/duel.mjs';
@@ -24,6 +26,13 @@ for (let seed = Number(first); seed < Number(first) + Number(count); seed++) {
             const change = overrides[bot.playerIndex];
             if (Object.keys(overrides).length) bot.sharedSearch = null;
             if (change && 'versusWeights' in change) bot.versusWeights = change.versusWeights;
+            if (change?.shipped) {
+                if (bot.config.tier !== 10 || bot.localPace) throw Error('The shipped pace is known for tier 10 only');
+                bot.versusWeights = null;
+                bot.config.reactionMs = [170, 250];
+                bot.config.maxApm = 1050;
+                bot.config.actionIntervalMs = 60000 / 1050;
+            }
             const perform = bot.scheduler.perform.bind(bot.scheduler);
             bot.scheduler.perform = (action) => { const done = perform(action); if (!done) seats[bot.playerIndex].refused++; return done; };
         },
