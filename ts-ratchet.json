@@ -121,6 +121,7 @@
     "src/rendering/odyssey/transitions/odyssey-rail-stretch.js",
     "src/rendering/odyssey/transitions/odyssey-travel-measure.js",
     "src/rendering/odyssey/world/odyssey-forest-models-decode.js",
+    "src/rendering/odyssey/world/odyssey-massif-form-decode.js",
     "src/rendering/odyssey/world/odyssey-meadow-clearing.js",
     "src/rendering/odyssey/world/odyssey-ocean-depth.js",
     "src/rendering/odyssey/world/odyssey-tarn-surface.js",
