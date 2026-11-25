@@ -6502,10 +6502,14 @@ export function createOdysseyWorld({
             // never did. Found while trying to isolate one forest LOD tier for a wind capture.
             const authored = (mesh) => mesh.userData.filterVisible !== false;
             skyCloudField.sdf = skyClouds.volumes.state.sdf;
+            // The sky's volumes only while the eye is in the air (2026-11-25): from just under the surface
+            // (L10's close-up sits a few units down) they drew over the surface's mirror, the water
+            // drawing first and writing no depth, each cut off where its box ends. Under water the
+            // Snell window draws the sky and its clouds itself; the crossing is a pop of its own.
             skyClouds.update(
                 time,
                 viewCamera,
-                authored(skyClouds.mesh) && uSubmerged.value < 0.999 && !earthCovers,
+                authored(skyClouds.mesh) && uSubmerged.value < 0.08 && !earthCovers,
                 evening,
                 intoGroupFrame,
                 sphereToWorld,
