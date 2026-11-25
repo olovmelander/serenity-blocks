@@ -93,7 +93,7 @@ const captureThemes = [
         'Galaxy',
         'sky, giants, jetFar, disc, stars, nurseries, novae, jetNear, nucleus, meteors, sparks, seeds, beams'],
 
-    ['geode', 'geode', 'Geode', 'shell, druzy, crystals, glints, beams, air, shards, wisps, rowBeams'],
+    ['geode', 'geode', 'Geode', 'shell, druzy, crystals, glints, beams, air, glitterFall, shards, wisps, rowBeams'],
 
     ['grainfields', 'grainfields', 'Grainfields', 'grain, land, lapporten, fort, trees, herd, geese, sky, rays, beams, devils, chaff, motes, lens'],
 

@@ -28,10 +28,14 @@ import {
     fract,
     length,
     max,
+    min,
     mix,
+    mod,
     normalize,
     pow,
+    select,
     sin,
+    smoothstep,
     step,
     texture,
     uniform,
@@ -50,6 +54,8 @@ import {
     CLEAR_SHAPE,
     CLEAR_SLOTS,
     CLEAR_TRAVEL,
+    FRACTURE_HEAL,
+    FRACTURE_TRAVEL,
     GEODE_PALETTES,
     MINERALS,
     PULSE_FADE,
@@ -223,6 +229,43 @@ export function createGeodeUniforms(textures) {
         heat: uniform(new THREE.Vector4(0, 0, 0, 0)),
         /** (any ring live, any ripple live, any clear live, fracture live): the loops rest at 0. */
         live: uniform(new THREE.Vector4(0, 0, 0, 0)),
+        /**
+         * The air the geode stands in (geode-airs.js), eased by the world between airs:
+         * (light coming through the wall's thin places, the stones' own inner fire, spectral fire
+         * on the facets and the lining, the moonstone sheen that crosses the lining).
+         */
+        mood: uniform(new THREE.Vector4(0.5, 0, 0.3, 0)),
+        /**
+         * (how hard the lining sparkles, how thick the dust hangs, how far the wall's thin places
+         * have wandered, how far down the wall the heart's light carries).
+         */
+        air: uniform(new THREE.Vector4(1, 1, 0, 1)),
+        /** (gain on the cool light from the viewer's side, how far the moonstone sheen has crossed). */
+        lamp: uniform(new THREE.Vector2(1, 0)),
+        // ── A level-up recrystallises the geode: the new mineral runs down the wall behind a front ──
+        /** The mineral the geode is turning into (shown behind the front; see gdSweep). */
+        fillB: v3(p.fill),
+        rockB: v3(p.rock),
+        druzyB: v3(p.druzy),
+        bandsB: [v3(p.band0), v3(p.band1), v3(p.band2), v3(p.band3)],
+        mineralsB: [],
+        /** The front: (when it left the heart, 1 while it runs — 0 and the first palette is the only one). */
+        sweep: uniform(new THREE.Vector2(-100, 0)),
+        // ── What happens in the geode unasked (geode-airs.js: visits) ──
+        /** Sparkle running over the lining: (meridian's place in turns, its strength, a ring's place w, its strength). */
+        shimmer: uniform(new THREE.Vector4(0, 0, 0, 0)),
+        /** A cluster ringing by itself: (its root, strength) + colour. */
+        chime: uniform(new THREE.Vector4(0, 0, 0, 0)),
+        chimeC: uniform(new THREE.Vector3(1, 1, 1)),
+        /** The heart's slow ring: (its place w, strength). */
+        swell: uniform(new THREE.Vector2(0, 0)),
+        // ── Gameplay's own shapes ──
+        /** A twist's pinwheel: (birth time, strength, arms, sense ±1). */
+        whirl: uniform(new THREE.Vector4(-100, 0, 3, 1)),
+        /** A perfect clear's opal fire: the play of colour over every facet, 0..1.4. */
+        opal: uniform(0),
+        /** (pinwheel live, opal fire live, a visit's sparkle or ring live, a chime live): the terms rest at 0. */
+        live2: uniform(new THREE.Vector4(0, 0, 0, 0)),
         /** Heart rings: (birth time, strength, reach, _) + colour. */
         pulseA: [],
         pulseC: [],
@@ -234,7 +277,10 @@ export function createGeodeUniforms(textures) {
         clearC: [],
         noiseTex: textures.noise,
     };
-    for (let i = 0; i < MINERALS; i++) u.minerals.push(v3(p[`m${i}`]));
+    for (let i = 0; i < MINERALS; i++) {
+        u.minerals.push(v3(p[`m${i}`]));
+        u.mineralsB.push(v3(p[`m${i}`]));
+    }
     for (let i = 0; i < PULSE_SLOTS; i++) {
         u.pulseA.push(uniform(new THREE.Vector4(-100, 0, 1, 0)));
         u.pulseC.push(uniform(new THREE.Vector3(1, 1, 1)));
@@ -252,6 +298,73 @@ export function createGeodeUniforms(textures) {
 }
 
 // ── The geode's light ───────────────────────────────────────────────────────────
+
+/** Seconds after a front leaves the heart at which it passes wall coordinate `w` (core's clearPassTime). */
+export const gdPassTime = (w) => float(CLEAR_TRAVEL).mul(pow(clamp(w.div(CLEAR_REACH), 0.0, 1.0), 1 / CLEAR_SHAPE));
+
+/**
+ * A level-up's front at wall coordinate `w`: (how far the new mineral has taken this ring, 0..1,
+ * and the seconds since the front passed it — negative ahead of it). It runs with the pale wave
+ * the level-up sends (the same kinematics as a clear's), so the wall behind the wave is the new
+ * mineral and the wall ahead of it still the old.
+ */
+export const gdSweep = (u, w) => {
+    const since = u.time.sub(u.sweep.x).sub(gdPassTime(w));
+    return vec2(smoothstep(-0.04, 0.16, since).mul(u.sweep.y), since);
+};
+
+/**
+ * The palette a ring of the wall is showing while a level-up's front runs: every colour the
+ * materials read, mixed `k` of the way to the mineral the geode is turning into. Has the shape
+ * of `u` for gdMineral and gdBandRamp.
+ */
+export const gdPalette = (u, k) => ({
+    fill: mix(u.fill, u.fillB, k).mul(u.lamp.x),
+    rock: mix(u.rock, u.rockB, k),
+    druzy: mix(u.druzy, u.druzyB, k),
+    bands: u.bands.map((band, i) => mix(band, u.bandsB[i], k)),
+    minerals: u.minerals.map((mineral, i) => mix(mineral, u.mineralsB[i], k)),
+});
+
+/**
+ * What a visit lays over a ring of the wall (geode-airs.js): vec4(light, sparkle). A meridian of
+ * sparkle running round the axis, a ring of it running down the wall, and the heart's slow swell.
+ * `turn` is the angle round the axis in turns.
+ */
+export const gdVisit = (u, turn, w) => {
+    const meridian = gdBell(fract(turn.sub(u.shimmer.x).add(0.5)).sub(0.5).div(0.045)).mul(u.shimmer.y);
+    const ring = gdBell(w.sub(u.shimmer.z).div(0.085)).mul(u.shimmer.w);
+    const swell = gdBell(w.sub(u.swell.x).div(0.2)).mul(u.swell.y);
+    const run = meridian.add(ring);
+    return vec4(
+        mix(u.heart, vec3(1.0), 0.6).mul(run.mul(0.42)).add(u.heart.mul(swell.mul(0.5))),
+        run.mul(7.0).add(swell.mul(1.5)),
+    );
+};
+
+/** The moonstone sheen: two broad bands of cool light crossing the lining against each other (0..~1). */
+export const gdSheen = (u, turn, w) => {
+    const a = gdBell(fract(turn.add(w.mul(0.3)).sub(u.lamp.y)).sub(0.5).div(0.2));
+    const b = gdBell(fract(turn.mul(2.0).sub(w.mul(0.45)).add(u.lamp.y.mul(1.6)).add(0.3)).sub(0.5).div(0.26));
+    return a.add(b.mul(0.5)).mul(u.mood.w);
+};
+
+/**
+ * A twist's pinwheel at (turn, w): arms of iridescent light that wind out from the heart and turn
+ * about the axis. Returns the colour (HDR). Rests at zero when u.whirl's strength is.
+ */
+export const gdWhirl = (u, turn, w) => {
+    const age = u.time.sub(u.whirl.x);
+    const sense = u.whirl.w;
+    const phase = turn.mul(u.whirl.z).add(w.mul(1.15).mul(sense)).sub(age.mul(0.85).mul(sense));
+    const arm = gdBell(fract(phase).sub(0.5).div(0.24));
+    // The arms wind outward from the heart, and thin as they go.
+    const out = float(1.0).sub(smoothstep(age.mul(2.6).add(0.25), age.mul(2.6).add(0.6), w));
+    const env = float(1.0).sub(exp(age.mul(-9.0))).mul(exp(age.div(-1.25))).mul(step(0.0, age))
+        .mul(u.whirl.y);
+    const hue = gdSpectrum(fract(turn.add(age.mul(0.22)).add(w.mul(0.35))));
+    return mix(hue, vec3(1.0), 0.3).mul(arm.mul(out).mul(env));
+};
 
 /** The mineral a (fractional) index names: neighbours blend, so zones of the lining grade. */
 export const gdMineral = (u, index) => {
@@ -281,7 +394,7 @@ export const gdEnv = (u, dir) => {
     const toHeart = max(dir.z.negate(), 0.0);
     const h2 = toHeart.mul(toHeart);
     const h8 = h2.mul(h2).mul(h2).mul(h2);
-    const warm = u.heart.mul(h8.mul(h8).mul(1.5).add(h2.mul(0.1)));
+    const warm = u.heart.mul(h8.mul(h8).mul(2.4).add(h2.mul(0.1)));
     const ring = u.bands[0].mul(gdBell(toHeart.sub(0.82).mul(7.0))).mul(0.22);
     const lining = mix(u.rock.mul(1.6), u.druzy.mul(0.09), dir.y.mul(0.5).add(0.5));
     return lining.add(warm).add(ring).mul(u.breath.mul(0.6).add(0.4));
@@ -371,6 +484,84 @@ export const gdWaves = (u, wIn, pIn) => Fn(() => {
     });
     return vec4(sum, glow);
 })();
+
+/** Cells of the fracture network round the axis and per radian along the wall. */
+export const CRACK_ROUND = 22;
+export const CRACK_ALONG = 5.4;
+
+/**
+ * The plates the wall breaks into: Voronoi cells over (turn, w). Returns vec2(F2 − F1 — small
+ * along the cracks between plates — and the plate's own number in [0, 1)). `turn` is the angle
+ * round the axis in turns (any whole number of turns off: the cells wrap). Call inside an Fn.
+ */
+export const gdCracks = (turn, w) => {
+    const g = vec2(turn.mul(CRACK_ROUND), w.mul(CRACK_ALONG));
+    const id = floor(g).toVar();
+    const f = fract(g).toVar();
+    const f1 = float(8.0).toVar();
+    const f2 = float(8.0).toVar();
+    const plate = float(0.0).toVar();
+    for (let j = -1; j <= 1; j++) {
+        for (let i = -1; i <= 1; i++) {
+            const key = vec2(mod(id.x.add(i).add(CRACK_ROUND * 2), CRACK_ROUND), id.y.add(j)).toVar();
+            const own = gdHash21(key).toVar();
+            const site = vec2(own, gdHash21(key.add(vec2(31.7, 12.3)))).mul(0.8).add(0.1);
+            const dist = length(vec2(i, j).add(site).sub(f)).toVar();
+            f2.assign(min(f2, max(f1, dist)));
+            // (nearer than the nearest so far: this is the plate the point lies on)
+            plate.assign(select(dist.lessThan(f1), own, plate));
+            f1.assign(min(f1, dist));
+        }
+    }
+    return vec2(f2.sub(f1), plate);
+};
+
+/**
+ * A four-line clear's fracture at (turn, w): vec3(F2 − F1 of the plates, how open the cracks
+ * are here, how brightly this plate is flaring). Two fractures are drawn — the newest and the one
+ * still healing under it — and a fever holds the same network open from the heart out to
+ * u.veins.y, light pulsing outward along it. Rests (all zero) while u.live.w is down.
+ */
+export const gdFracture = (u, turnIn, wIn) => Fn(() => {
+    const w = float(wIn).toVar();
+    const turn = float(turnIn).toVar();
+    const out = vec3(1.0, 0.0, 0.0).toVar();
+    If(u.live.w.greaterThan(0.5), () => {
+        const cells = gdCracks(turn, w).toVar();
+        /** One fracture (birth, strength): how open its cracks are here, and its running head. */
+        const opened = (shock) => {
+            const age = u.time.sub(shock.x);
+            const reached = age.div(FRACTURE_TRAVEL).mul(CAVITY.wMax);
+            const since = max(age.sub(w.div(CAVITY.wMax).mul(FRACTURE_TRAVEL)), 0.0);
+            return vec2(
+                step(w, reached).mul(exp(since.div(-FRACTURE_HEAL * 0.4))).mul(shock.y),
+                gdBell(w.sub(reached).div(0.2)).mul(shock.y),
+            );
+        };
+        const a = opened(u.shock).toVar();
+        const b = opened(u.shockB).toVar();
+        // A fever's veins: open from the heart out to veins.y, light pulsing outward along them.
+        const vein = u.veins.x.mul(float(1.0).sub(smoothstep(u.veins.y.sub(0.12), u.veins.y.add(0.12), w)))
+            .mul(sin(u.time.mul(2.6).sub(w.mul(13.0)).add(cells.y.mul(5.0))).mul(0.35).add(0.65));
+        out.assign(vec3(
+            cells.x,
+            a.x.add(b.x).add(vein),
+            a.y.add(b.y).mul(cells.y.mul(1.4).add(0.3)),
+        ));
+    });
+    return out;
+})();
+
+/**
+ * Where the wall is thin, light from outside the stone comes through it and the lining glows from
+ * behind: the noise field is read here, at a place that wanders slowly round the axis (u.air.z),
+ * so the pools of light drift over the wall. `turn` is the angle round the axis in turns (whole
+ * multiples of it only: the field tiles).
+ */
+export const gdThinUV = (u, turn, w) => vec2(turn.mul(3.0).add(u.air.z), w.mul(0.62).sub(u.air.z.mul(0.37)));
+
+/** How thin the wall is (0..1) from the field read at gdThinUV. */
+export const gdThin = (field) => smoothstep(0.5, 0.74, field.g).mul(smoothstep(0.2, 0.55, field.a).mul(0.6).add(0.4));
 
 /** The lit dust between the eye and a point: far things take a little of the heart's warmth. */
 export const gdAir = (u, col, p) => {
