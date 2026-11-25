@@ -949,7 +949,8 @@ describe('Forest flurry: a frenzy', () => {
         }
         expect(flurry.counts()).toEqual({ particles: 0, thrown, refused });
         expect(flurry.mesh.visible).toBe(false);
-    });
+    // (A minute of frenzy, every record compared every frame: about 3 s alone, past 30 s on a loaded machine.)
+    }, 120000);
 
     it('stays sound when its random source, or the ground under it, misbehaves', () => {
         for (const rng of [() => NaN, () => Infinity, () => -5, () => 7, () => '0.5', () => undefined, () => 1]) {
