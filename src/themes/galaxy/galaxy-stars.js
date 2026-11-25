@@ -9,7 +9,9 @@
  *   old suns    orbit. Their angular speed falls with radius (a flat rotation curve), so inside
  *               corotation they overtake the pattern, and each one brightens as it crosses an
  *               arm: the density wave, made of the suns passing through it;
- *   bulge, halo the same orbit, out of the plane.
+ *   bulge, halo the same orbit, out of the plane;
+ *   clusters    open ones along the arms and globular ones in the halo: their members keep their
+ *               place in the pattern's frame, so a cluster stays a cluster.
  *
  * A sun is a point of light: its quad is sized from its angular size and never smaller than a
  * pixel (a sub-pixel sun would shimmer as the camera drifts); what the clamp adds in area it
@@ -42,7 +44,8 @@ import {
     vec4,
 } from 'three/tsl';
 import {
-    GALAXY, TAU, gxArmAngle, gxFxMaterial, gxMax3, gxPart, gxQuadGeometry, gxRippleLight, gxWaveLight,
+    GALAXY, TAU, gxArmAngle, gxArmReach, gxFxMaterial, gxMax3, gxPart, gxPulseLight, gxQuadGeometry, gxRippleLight,
+    gxWaveLight,
 } from './galaxy-tsl.js';
 
 /** Angular speed of the old suns in the pattern's frame: STREAM · (30 / r) − PATTERN, rad/s of flow. */
@@ -78,19 +81,27 @@ export function createStars(u, plan, count) {
         const mag = look.y;
         const isArm = float(1.0).sub(step(0.5, pop));
         const isDisc = step(0.5, pop).mul(float(1.0).sub(step(1.5, pop)));
+        const isCluster = step(3.5, pop);
         const ridge = gxArmAngle(radius, u.winding);
         const rate = float(STREAM_RATE * 30).div(max(radius, 6.0)).sub(PATTERN_RATE);
         // Arm suns keep their place on the ridge (a small epicycle keeps them alive).
         const epicycle = sin(u.flow.mul(0.37).add(look.w.mul(TAU))).mul(0.014);
-        const angle = mix(orbit.y.sub(rate.mul(u.flow)), ridge.add(orbit.y).add(epicycle), isArm).toVar();
+        const angle = mix(
+            mix(orbit.y.sub(rate.mul(u.flow)), ridge.add(orbit.y).add(epicycle), isArm),
+            ridge.add(orbit.y),
+            isCluster,
+        ).toVar();
         const local = vec3(cos(angle).mul(radius), orbit.z, sin(angle).mul(radius)).toVar();
 
         // An old sun brightens as it crosses an arm.
         const inArm = cos(angle.sub(ridge).mul(GALAXY.arms)).mul(0.5).add(0.5);
         const crossing = mix(float(1.0), inArm.mul(inArm).mul(inArm).mul(1.25).add(0.42), isDisc);
         const temp = look.x;
-        const warm = mix(vec3(1.0, 0.5, 0.26), u.core, smoothstep(0.0, 0.42, temp));
-        const young = mix(u.armInner, u.armOuter, smoothstep(14.0, 80.0, radius)).mul(0.55).add(vec3(0.5, 0.56, 0.7));
+        // A new level's colours reach a sun when their front does.
+        const worn = smoothstep(u.wipe.x.sub(10.0), u.wipe.x, radius).toVar();
+        const warm = mix(vec3(1.0, 0.5, 0.26), mix(u.core, u.oldCore, worn), smoothstep(0.0, 0.42, temp));
+        const young = mix(mix(u.armInner, u.oldArmInner, worn), mix(u.armOuter, u.oldArmOuter, worn), smoothstep(14.0, 80.0, radius))
+            .mul(0.55).add(vec3(0.5, 0.56, 0.7));
         const hot = mix(vec3(1.0, 0.97, 0.94), young, smoothstep(0.6, 1.0, temp));
         const tint = mix(warm, hot, smoothstep(0.36, 0.64, temp));
         const twinkle = sin(u.time.mul(look.w.mul(2.6).add(0.7)).add(orbit.w.mul(40.0))).mul(0.2).add(0.8);
@@ -99,7 +110,7 @@ export function createStars(u, plan, count) {
         // The bulge's and the halo's light is unresolved (the spheroid in the disc draws it): only
         // their few bright suns stand out of it. The old disc keeps a little more; the arms all.
         const isOld = step(1.5, pop);
-        const resolved = mix(float(1.0), mix(float(0.6), float(0.25), isOld), step(0.5, pop))
+        const resolved = mix(float(1.0), mix(float(0.6), float(0.25), isOld), step(0.5, pop).sub(isCluster))
             .add(bright.mul(0.75)).min(1.0);
         const light = tint.mul(mag.mul(1.2).add(0.16).add(bright.mul(bright).mul(3.0))).mul(crossing).mul(twinkle)
             .mul(resolved)
@@ -114,6 +125,14 @@ export function createStars(u, plan, count) {
         });
         If(u.ripplesLive.greaterThan(0.5), () => {
             light.addAssign(gxRippleLight(u, local.xz).mul(mag.mul(2.0).add(0.45)));
+        });
+        // A pulse running down an arm lights the suns that stand in it.
+        If(u.pulsesLive.greaterThan(0.5), () => {
+            const reach = gxArmReach(radius).toVar();
+            const off = angle.sub(ridge).toVar();
+            const which = cos(off).toVar();
+            const inArm2 = cos(off.mul(GALAXY.arms)).mul(0.5).add(0.5).toVar();
+            light.addAssign(gxPulseLight(u, reach, which).mul(mag.mul(1.5).add(0.22)).mul(inArm2.mul(inArm2)));
         });
 
         const world = u.frame.mul(vec4(local, 1.0)).xyz;

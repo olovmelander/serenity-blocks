@@ -14,8 +14,14 @@
  *   level=<n>                level n's step on top of the clock's palette
  *   locks=<n>                before anything else, play n locks (the galaxy holding their light)
  *   event=lock|drop|clear|quad|twist|perfect|levelUp   fire a gameplay event...
+ *   event=spin|b2b|crown|over|dawn|happen              ...a twist that clears nothing, a
+ *                            back-to-back four lines, a late perfect clear's crown, a run's end, the
+ *                            next run's start after one, or something the galaxy does by itself
+ *                            (kind=nova|ripple|shower|stir|flash)
  *   eventAge=<s>             ...and show it <s> seconds later (lines=<n>, row=<r>, u=<0..1>,
  *                            color=<hex>)
+ *   air=<0..4>               hold one air: clear, starburst, veiled, awake, tide (default: the clock's)
+ *   happen=0                 nothing happens by itself (only the fired event shows)
  *   demo=1                   live only: play a looping gameplay script
  *   parts=sky,disc,stars,... draw only these parts
  *   falseColor=1             post debug view: band the pre-tone-map max channel
@@ -121,6 +127,8 @@ export function create({
     }).build();
     world.bindCamera(camera);
     world.setReducedMotion(params.get('reduce') === '1');
+    if (params.has('air')) world.holdAir(num(params, 'air', 0));
+    if (params.get('happen') === '0') world.setHappenings(false);
     const partsParam = params.get('parts');
     if (partsParam) world.showOnlyParts(partsParam.split(',').map((p) => p.trim()));
 
@@ -201,6 +209,15 @@ export function create({
         else if (eventName === 'twist') world.onClear({ rows: bottom(2), lines: 2, twist: true });
         else if (eventName === 'perfect') world.onClear({ rows: bottom(4), lines: 4, perfect: true });
         else if (eventName === 'levelUp') world.levelUp(num(params, 'eventLevel', level + 1));
+        else if (eventName === 'spin') world.onSpin();
+        else if (eventName === 'b2b') world.onClear({ rows: bottom(4), lines: 4, b2b: true });
+        else if (eventName === 'crown') world.onClear({ crown: true });
+        else if (eventName === 'over' || eventName === 'dawn') world.onGameOver();
+        else if (eventName === 'happen') {
+            world.happen({
+                kind: params.get('kind') || 'nova', time: world.time, a: num(params, 'a', 0.3), b: 0.5, c: num(params, 'c', 0.2),
+            });
+        }
     };
 
     const seekTo = (time) => {
@@ -225,7 +242,13 @@ export function create({
         }
         const eventTime = eventName ? time - eventAge : time;
         if (eventTime > cursor) stepTo(cursor, eventTime, 0.1);
-        if (eventName) {
+        if (eventName === 'dawn') {
+            // A run ended long enough ago for the dusk to settle; the next one starts now.
+            world.onGameOver();
+            stepTo(eventTime - 4, eventTime, 1 / 30);
+            world.onSessionStart();
+            stepTo(eventTime, time, 1 / 120);
+        } else if (eventName) {
             fireEvent();
             stepTo(eventTime, time, 1 / 120);
         }

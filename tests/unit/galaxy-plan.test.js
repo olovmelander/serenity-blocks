@@ -399,7 +399,7 @@ describe('galaxy plan', () => {
         expect(stars.look).toHaveLength(SAMPLE * 4);
         expect(stars.orbit.every((v) => Number.isFinite(v))).toBe(true);
         expect(stars.look.every((v) => Number.isFinite(v))).toBe(true);
-        const tally = [0, 0, 0, 0];
+        const tally = [0, 0, 0, 0, 0];
         const unit = (v) => v >= 0 && v <= 1;
         const seed = (v) => v >= 0 && v < 1;
         const odd = [];
@@ -408,7 +408,7 @@ describe('galaxy plan', () => {
             const temp = stars.look[i * 4];
             const mag = stars.look[i * 4 + 1];
             const pop = stars.look[i * 4 + 2];
-            // A place off the axis, a colour and a brightness in the unit range, one of four
+            // A place off the axis, a colour and a brightness in the unit range, one of five
             // populations, and the two per-sun seeds its twinkle and its epicycle are hashed from.
             const sound = radius > 0 && unit(temp) && unit(mag) && tally[pop] !== undefined
                 && seed(stars.orbit[i * 4 + 3]) && seed(stars.look[i * 4 + 3]);
@@ -418,7 +418,7 @@ describe('galaxy plan', () => {
         expect(odd).toEqual([]);
         expect(stars.tally).toEqual(tally);
         expect(tally.reduce((sum, n) => sum + n, 0)).toBe(SAMPLE);
-        // All four populations are there, and most suns are faint: a few carry the picture.
+        // All five populations are there, and most suns are faint: a few carry the picture.
         for (const n of tally) expect(n).toBeGreaterThan(0);
         const magnitudes = Array.from({ length: SAMPLE }, (_, i) => stars.look[i * 4 + 1]);
         expect(median(magnitudes)).toBeLessThan(0.25);
@@ -478,7 +478,7 @@ describe('galaxy plan', () => {
         const none = buildPlan(undefined, { stars: 0 });
         expect(none.stars.count).toBe(0);
         expect(none.stars.orbit).toHaveLength(0);
-        expect(none.stars.tally).toEqual([0, 0, 0, 0]);
+        expect(none.stars.tally).toEqual([0, 0, 0, 0, 0]);
         expect(none.nurseries).toHaveLength(MAX_NURSERIES);
         expect(none.giants).toHaveLength(MAX_GIANTS);
         expect(buildPlan(undefined, { stars: -50 }).stars.count).toBe(0);
