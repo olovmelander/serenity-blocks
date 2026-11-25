@@ -2012,6 +2012,13 @@ export class OdysseyCameraController {
         }
         this.updateDirectorCamera(deltaTime);
         this.updateChapterFraming(deltaTime);
+        // A cut that lands in a close-up (an orb chosen with reduced motion, or any zero-length
+        // trip) runs no follow frame at its new place, and the camera kept the up of the place it
+        // came from: arriving in the city from the fold rolled the city ~70 degrees (deep chapters
+        // audit, 2026-11-25). The framing has just snapped to the new place; take its up too.
+        if (teleported && this.mode !== 'follow' && this.mode !== 'free') {
+            this.followCameraUp.copy(this.computeFollowFrame(this.currentPosition).normal);
+        }
 
         this.updateArrivalShot(deltaTime);
 

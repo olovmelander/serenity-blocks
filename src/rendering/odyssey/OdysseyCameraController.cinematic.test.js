@@ -220,3 +220,36 @@ describe('OdysseyCameraController cinematic language (2026-10)', () => {
         }
     });
 });
+
+describe('a close-up after a cut (deep chapters audit, 2026-11-25)', () => {
+    /** The angle (deg) between two directions. */
+    const angleDeg = (a, b) => THREE.MathUtils.radToDeg(a.clone().normalize().angleTo(b.clone().normalize()));
+    /** Park the camera on an orb the way the board does: a cut along the rail, then a close-up. */
+    const cutToOrb = (controller, progress, chapterId) => {
+        controller.travelToPosition(progress, 0);
+        const node = getOdysseyPathCurve().getPointAt(progress);
+        const up = controller.getSceneUp(chapterId);
+        const ahead = getOdysseyPathCurve().getPointAt(Math.min(1, progress + 0.004));
+        const behind = getOdysseyPathCurve().getPointAt(Math.max(0, progress - 0.004));
+        const along = new THREE.Vector3().subVectors(ahead, behind);
+        along.addScaledVector(up, -0.6 * along.dot(up)).normalize();
+        controller.focusOnNode(node, 0, { viewDir: along, up });
+        for (let i = 0; i < 3; i += 1) controller.update(1 / 60);
+    };
+
+    it('stands the city\'s close-up on the city\'s up, however the eye arrived', () => {
+        // The audit's probe: orb 58 reached from chapter 7 by a cut (reduced motion cuts every
+        // trip) kept the fold's up and rolled the city ~70 degrees; reached on the city's own
+        // rail it stood level. Both must stand on the stage's up.
+        const { controller, camera, layout } = createRealPathController(0.927);
+        controller.update(1 / 60);
+        cutToOrb(controller, 0.927, 7);
+        const city = layout.chapterPositions[7] + 0.025;
+        cutToOrb(controller, city, 8);
+        expect(angleDeg(camera.up, controller.getSceneUp(8))).toBeLessThan(5);
+        // ...and the same once arrived from within the city (the ride's result).
+        cutToOrb(controller, city + 0.007, 8);
+        cutToOrb(controller, city, 8);
+        expect(angleDeg(camera.up, controller.getSceneUp(8))).toBeLessThan(5);
+    });
+});
