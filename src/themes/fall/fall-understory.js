@@ -178,7 +178,7 @@ export class FallUnderstory {
         const through = pow(saturate(dot(view, light.uSunDir).negate()), 3).mul(translucent);
         const lit = albedo.mul(light.uSunColor).mul(facing.add(through)).mul(sun)
             .add(albedo.mul(light.ambient(normal)).mul(1.15));
-        return light.haze(lit, { world });
+        return light.haze(light.events.onFloor(lit, { world }), { world });
     }
 
     scatter(count, options, place) {
@@ -238,7 +238,7 @@ export class FallUnderstory {
                 const stir = light.uWind.add(light.uGust.mul(1.4));
                 const lift = sin(light.uTime.mul(look.z.mul(2).add(2.4)).add(look.z.mul(41)))
                     .mul(paint.r).mul(look.w).mul(stir.mul(0.06).add(0.004));
-                material.positionNode = positionLocal.add(vec3(0, lift, 0));
+                material.positionNode = positionLocal.add(vec3(0, lift, 0)).add(light.events.hop(positionLocal, look.w));
                 const tone = saturate(look.x.add(paint.r.sub(0.5).mul(0.12)));
                 const leaf = mix(
                     mix(ramp(MAPLE, tone), ramp(OAK, tone), saturate(look.y)),
@@ -287,7 +287,8 @@ export class FallUnderstory {
             const phase = fractHash(positionLocal);
             const force = light.uWind.add(light.uGust.mul(1.3));
             const sway = sin(light.uTime.mul(1.3).add(phase.mul(TAU))).mul(height.mul(height)).mul(force).mul(0.16);
-            material.positionNode = positionLocal.add(vec3(light.uWindDir.x.mul(sway), 0, light.uWindDir.z.mul(sway)));
+            material.positionNode = positionLocal.add(vec3(light.uWindDir.x.mul(sway), 0, light.uWindDir.z.mul(sway)))
+                .add(light.events.bow(positionLocal, height));
             let tipColour = color(tip);
             if (tints) {
                 // Each tuft dried at its own pace: straw, rust, or still a little green. The

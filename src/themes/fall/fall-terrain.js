@@ -317,7 +317,7 @@ export class FallTerrain {
                     .add(albedo.mul(light.ambient(vec3(0, 1, 0))).mul(0.45));
                 shown.assign(mix(shown, water, pool));
             });
-            return vec4(light.haze(shown, { world }), 1);
+            return vec4(light.haze(light.events.onGround(shown, { world }), { world }), 1);
         })();
         return material;
     }

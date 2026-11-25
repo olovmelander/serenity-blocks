@@ -530,8 +530,11 @@ describe('Fall leaf director', () => {
             const once = sim.spawn.mock.calls.length;
             director.apply(frameWith([emitter({ id: 3, serial: 7, age: 0.02 })]), STEP);
             expect(sim.spawn).toHaveBeenCalledTimes(once);
+            // (Each new lock a while after the last: two within a rattle make a thinner puff.)
+            director.apply(frameWith([]), 0.4);
             director.apply(frameWith([emitter({ id: 3, serial: 8 })]), STEP);
             expect(sim.spawn).toHaveBeenCalledTimes(once * 2);
+            director.apply(frameWith([]), 0.4);
             // Two slots playing the same kind at once are tracked separately.
             director.apply(frameWith([emitter({ id: 3, serial: 8, age: 0.02 }), emitter({ id: 4, serial: 9 })]), STEP);
             expect(sim.spawn).toHaveBeenCalledTimes(once * 3);

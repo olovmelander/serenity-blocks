@@ -11,11 +11,18 @@
  * its resting veil), each event's lift of the lens shrinks, and the iris closes a little so the
  * late gold stays saturated and the darks stay dark. A perfect clear's sunburst is the one
  * frame-wide brightening, so it goes through flashScale() (Reduce flashing, ADR-0021).
+ *
+ * Three of the game's events have their form here (FallReactions' `frame.fx`). Four lines are the
+ * sunburst: a fan of beams opens from the sun through the trees. It stands in the volumetric
+ * shafts (it is the light already in the air, gathered into rays), so the canopy cuts it as it
+ * cuts them, it is dimmed behind the board card, and it too goes through flashScale(). From two
+ * lines the gust front opens the canopy as it crosses: a gap of brighter shafts travels with it.
+ * And when a run ends the light sinks for a breath (`hush`) and comes back.
  */
 import * as THREE from 'three/webgpu';
 import {
-    Fn, acesFilmicToneMapping, clamp, dot, float, length, max, mix, pass, perspectiveDepthToViewZ, pow, renderOutput,
-    saturate, screenUV, smoothstep, uniform, vec2, vec3, vec4,
+    Fn, acesFilmicToneMapping, atan, clamp, dot, exp, float, length, max, min, mix, pass, perspectiveDepthToViewZ, pow,
+    renderOutput, saturate, screenUV, smoothstep, uniform, vec2, vec3, vec4,
 } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { fxaa } from 'three/addons/tsl/display/FXAANode.js';
@@ -31,6 +38,12 @@ const POST_IRIS = 0.075;
 const POST_SHAFT_FLOOR = 0.55;
 /** A perfect clear's sunburst at its height: a lift of the exposure and of the shafts' gain. */
 const POST_CROWN = Object.freeze({ exposure: 0.05, shafts: 0.7 });
+/** The sunburst's fan at full strength: its gain over the shafts, and how much of it shows behind the card. */
+const POST_FAN = Object.freeze({ gain: 2.3, card: 0.3 });
+/** How much brighter the shafts stand where a gust front has opened the canopy. */
+const POST_GAP = 1.1;
+/** How far the light sinks when a run ends (exposure). */
+const POST_HUSH = 0.32;
 
 export class FallPost {
     constructor({
@@ -52,6 +65,12 @@ export class FallPost {
         this.uSunScreen = uniform(new THREE.Vector2(0.27, 0.45));
         this.uNear = uniform(camera?.near ?? 0.3);
         this.uFar = uniform(camera?.far ?? 600);
+        // The show: the fan's strength and how far its beams have opened; the gap of shafts a gust
+        // front carries (screen x, strength); the board card (x0, y0, x1, y1 in screen fractions).
+        this.uFan = uniform(new THREE.Vector2(0, 0));
+        this.uGap = uniform(new THREE.Vector2(0.5, 0));
+        this.uCard = uniform(new THREE.Vector4(0.385, 0.09, 0.615, 0.93));
+        this.hush = 0;
         this.sunPoint = new THREE.Vector3();
         if (this.disabled) return;
         this.pipeline = new THREE.RenderPipeline(renderer);
@@ -81,7 +100,11 @@ export class FallPost {
             const keep = mix(float(1), toward.pow2().pow2().mul(0.45).add(0.06), skyward);
             // The gain play adds stands in the air among the trees; the sky keeps its resting veil.
             const gain = mix(this.uShafts, float(1), skyward);
-            lit = lit.add(shaftColour.mul(this.shaftsBlur.r).mul(gain).mul(keep));
+            // A gust front opens the canopy as it crosses: a gap of brighter shafts travels with it.
+            const across = screenUV.x.sub(this.uGap.x).div(0.14);
+            const gap = exp(min(across.mul(across), 30).negate()).mul(this.uGap.y).mul(POST_GAP).add(1);
+            lit = lit.add(shaftColour.mul(this.shaftsBlur.r).mul(gain).mul(keep).mul(gap));
+            lit = lit.add(this.fan(centred, skyward));
         }
         this.bloomNode = bloom(sceneColor, 0.22, 0.6, 1.05);
         // Soft knee on the brightest channel, so a saturated sun keeps its hue in the bloom.
@@ -110,6 +133,37 @@ export class FallPost {
         })();
         // A multisampled pass is already smooth; FXAA over it would only soften the edges.
         this.pipeline.outputNode = this.samples > 0 ? graded : fxaa(graded);
+    }
+
+    /**
+     * The sunburst's fan: rays about the sun's place on the screen (two layers of the shared noise
+     * read round the circle, so they are uneven as real beams are, drifting slowly), reaching out as
+     * the fan opens, standing in the shafts' own light, fainter with distance from the sun, over the
+     * sky and behind the card.
+     */
+    fan(centred, skyward) {
+        const { light } = this;
+        const turn = atan(centred.y, centred.x).div(Math.PI * 2);
+        const range = length(centred);
+        const drift = light.uTime.mul(0.013);
+        // (Read at the top mip: the angle jumps a whole turn across the line to the sun's left, and
+        // the sampler would take that jump for a slope and blur a seam along it.)
+        const rays = light.noise(vec2(turn.mul(3), drift)).level(0).g.mul(0.6)
+            .add(light.noise(vec2(turn.mul(5).add(0.37), drift.mul(-1.6).add(0.5))).level(0).b.mul(0.4));
+        const beams = smoothstep(0.46, 0.7, rays);
+        // The beams reach out from the sun as the fan opens.
+        const reach = this.uFan.y.mul(2.1).add(0.02);
+        const opened = float(1).sub(smoothstep(reach.mul(0.55), reach, range));
+        const fade = float(1).div(range.mul(1.5).add(1)).mul(smoothstep(0.015, 0.09, range));
+        const card = this.uCard;
+        // (Each edge of the card eased over a little more than a hundredth of the screen.)
+        const inside = (low, high, at) => smoothstep(low.sub(0.012), low.add(0.012), at)
+            .mul(float(1).sub(smoothstep(high.sub(0.012), high.add(0.012), at)));
+        const behind = inside(card.x, card.z, screenUV.x).mul(inside(card.y, card.w, screenUV.y));
+        const strength = this.uFan.x.mul(POST_FAN.gain).mul(mix(float(1), float(POST_FAN.card), behind))
+            .mul(mix(float(1), float(0.3), skyward));
+        return light.uShaftSun.mul(this.shaftsBlur.r.mul(0.9).add(0.1)).mul(beams).mul(opened).mul(fade)
+            .mul(strength);
     }
 
     /**
@@ -152,8 +206,25 @@ export class FallPost {
         const airShafts = (Number.isFinite(this.light?.airShafts) ? this.light.airShafts : 1)
             * (Number.isFinite(this.light?.cloudSun) ? this.light.cloudSun : 1);
         const rest = (Number.isFinite(this.light?.exposureScale) ? this.light.exposureScale : 1) * airLens;
-        this.uExposure.value = rest + warmth * 0.05 * (1 - 0.5 * level) + crown * POST_CROWN.exposure
-            - ripen * POST_IRIS;
+        // A run's end: the light sinks for a breath (a dimming, so no flash to reduce).
+        const fx = frame.fx && typeof frame.fx === 'object' ? frame.fx : {};
+        this.hush = unit(fx.hush);
+        this.uExposure.value = (rest + warmth * 0.05 * (1 - 0.5 * level) + crown * POST_CROWN.exposure
+            - ripen * POST_IRIS) * (1 - POST_HUSH * this.hush);
+        // The sunburst's fan (frame-wide: Reduce flashing keeps a trace of it); its beams are out
+        // at full reach a little before it is at full strength, and stay out as it fades.
+        const fan = (Number.isFinite(fx.fan) ? THREE.MathUtils.clamp(fx.fan, 0, 1.25) : 0) * flashScale();
+        this.uFan.value.set(fan, Math.min(1, fan * 1.7));
+        // The gap of shafts rides the strongest gust front (-1.4 .. 1.4 across the view).
+        const front = frame.front && Number.isFinite(frame.front.position) ? frame.front : null;
+        this.uGap.value.set(
+            front ? 0.5 + 0.5 * front.position : 0.5,
+            front ? unit(front.strength) * unit((unit(fx.canopy) - 0.12) / 0.3) : 0,
+        );
+        const card = frame.board;
+        if (card && [card.x0, card.y0, card.x1, card.y1].every(Number.isFinite)) {
+            this.uCard.value.set(card.x0, card.y0, card.x1, card.y1);
+        }
         // The shafts hold while the action lasts: the ripened light is a floor under the events'.
         this.uShafts.value = (1 + Math.min(1, shafts + ripen * POST_SHAFT_FLOOR) * 1.4 + crown * POST_CROWN.shafts)
             * airShafts;

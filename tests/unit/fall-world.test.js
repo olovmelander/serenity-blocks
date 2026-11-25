@@ -495,6 +495,10 @@ describe('Fall world scene contracts', () => {
             farTrees: world.backdrop.count,
             leaves: sim.counts(),
             ...OPENING_LIGHT,
+            // What the events' show has in the air and in the light (fall-event-fx.js, fall-event-light.js).
+            show: expect.objectContaining({
+                keys: 0, acorns: 0, lights: 0, birds: 0,
+            }),
         });
         expect(sum(Object.values(world.getDiagnostics().leaves))).toBe(tier.leaves);
 
@@ -705,7 +709,8 @@ describe('Fall world in play', () => {
         }
         // The session really happened: every kind of emitter and force field was played.
         expect([...seen.kinds].sort()).toEqual(['clear', 'combo', 'crown', 'lock', 'shower', 'spin', 'twin']);
-        expect([...seen.fields].sort()).toEqual(['burst', 'jet', 'vortex']);
+        // (A hard drop's thump and a perfect clear's wave run a ring through the floor: `wave`.)
+        expect([...seen.fields].sort()).toEqual(['burst', 'jet', 'vortex', 'wave']);
         expect(seen.front).toBe(true);
         expect(seen.finite).toBe(true);
         expect(seen.minIdle).toBeLessThan(opening.idle);

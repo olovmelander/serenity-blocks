@@ -473,16 +473,49 @@ describe('Fall gameplay payloads', () => {
         expect(gameOver).toBeTypeOf('function');
         gameOver({ type: 'gameOver' });
         expect(reactions.onGameOver).toHaveBeenCalledOnce();
+        expect(reactions.onGameOver).toHaveBeenLastCalledWith({ effects: true });
         expect(reactions.reset).not.toHaveBeenCalled();
         expect(world.resetEffects).not.toHaveBeenCalled();
-        // The wind is let go even while reactions are switched off.
+        // The wind is let go even while reactions are switched off (the run's state); only the
+        // hush that goes with it is an effect, and keeps its gate.
         theme.comboEffects = false;
         gameOver();
         expect(reactions.onGameOver).toHaveBeenCalledTimes(2);
+        expect(reactions.onGameOver).toHaveBeenLastCalledWith({ effects: false });
         theme.stop();
         expect(window.removeEventListener).toHaveBeenCalledWith('gameOver', gameOver, undefined);
         expect(() => gameOver()).not.toThrow();
         expect(reactions.onGameOver).toHaveBeenCalledTimes(2);
+    });
+
+    it('starts the grove fresh with every new run, subscribing to the mode manager once', async () => {
+        const handlers = [];
+        const off = vi.fn();
+        const manager = { on: vi.fn((name, handler) => { handlers.push([name, handler]); return off; }) };
+        const previous = window.serenityBlocks;
+        window.serenityBlocks = { gameModeManager: manager };
+        try {
+            const theme = createTheme();
+            theme.isActive = true;
+            stubSceneBuild(theme);
+            await theme.createScene();
+            theme.reactions.onSessionStart = vi.fn();
+            theme.boardPoll = 0;
+            theme.update(0.016);
+            theme.boardPoll = 0;
+            theme.update(0.016);
+            expect(manager.on).toHaveBeenCalledOnce();
+            expect(handlers[0][0]).toBe('modeStarted');
+            handlers[0][1]();
+            expect(theme.reactions.onSessionStart).toHaveBeenCalledWith({ effects: true });
+            theme.comboEffects = false;
+            handlers[0][1]();
+            expect(theme.reactions.onSessionStart).toHaveBeenLastCalledWith({ effects: false });
+            theme.stop();
+            expect(off).toHaveBeenCalled();
+        } finally {
+            window.serenityBlocks = previous;
+        }
     });
 
     it('turns the grove a light on at a level-up whatever the effects setting, the flourish still gated', async () => {

@@ -243,7 +243,9 @@ export class FallLeafSim {
      * env.fronts [{x, strength, width, direction}]   gust fronts crossing along world x (or
      *             env.front, one of them, or null)
      * env.storm   number 0..1   how hard the crowns shed and the gale lifts the litter
-     * env.fields [{kind:'burst'|'jet'|'vortex', ...}]   gameplay force fields
+     * env.still   number 0..1   the wind dies (a run's end): no breeze, no swing, straight down
+     * env.fields [{kind:'burst'|'jet'|'vortex'|'wave', ...}]   gameplay force fields (a wave is a
+     *             ring on the floor: x, z, radius, width, power outward, up, grip)
      */
     step(dt, env = {}) {
         if (!Number.isFinite(dt) || dt <= 0) return;
@@ -270,7 +272,9 @@ export class FallLeafSim {
         const fields = env.fields || [];
         const { bounds } = this;
         const swellTime = time * 0.85;
-        const stir = breeze + gust;
+        // (A dying wind takes the breeze, the gusts and each leaf's own swing with it.)
+        const moving = 1 - (Number.isFinite(env.still) ? clamp(env.still, 0, 1) : 0);
+        const stir = (breeze + gust) * moving;
         let airborne = 0;
         for (let i = 0; i < this.count; i += 1) {
             const state = this.state[i];
@@ -315,6 +319,17 @@ export class FallLeafSim {
                             // A leaf the column holds is in play: never the one a throw takes.
                             if (hold > 0.15 && state === LEAF_AIR) this.timer[i] = 0;
                         }
+                    } else if (field.kind === 'wave') {
+                        // A ring running over the floor: what lies under its crest is thrown up and out.
+                        const radial = Math.hypot(dx, dz) || 0.001;
+                        const off = Math.abs(radial - field.radius);
+                        if (off < field.width && y < field.y + 2.4) {
+                            const crest = 1 - off / field.width;
+                            ax += (dx / radial) * field.power * crest;
+                            az += (dz / radial) * field.power * crest;
+                            ay += field.up * crest;
+                            kicked = kicked || crest * field.grip > 0.3;
+                        }
                     } else {
                         const dy = y - field.y;
                         const distance = Math.sqrt(dx * dx + dy * dy + dz * dz) || 0.001;
@@ -342,10 +357,10 @@ export class FallLeafSim {
                     // The side-to-side swoop of a falling leaf, slowing at each turn.
                     const speed = Math.hypot(this.velocity[o], this.velocity[o + 1], this.velocity[o + 2]);
                     const calm = clamp(1.4 - speed * 0.16, 0.15, 1);
-                    ax += Math.cos(heading) * swing * 3.4 * calm;
-                    az += Math.sin(heading) * swing * 3.4 * calm;
-                    ay += Math.abs(Math.cos(this.phase[i])) * 1.5 * calm;
-                    const speedHere = (breeze + gust) * swell;
+                    ax += Math.cos(heading) * swing * 3.4 * calm * moving;
+                    az += Math.sin(heading) * swing * 3.4 * calm * moving;
+                    ay += Math.abs(Math.cos(this.phase[i])) * 1.5 * calm * moving;
+                    const speedHere = (breeze + gust) * swell * moving;
                     const localWindX = windX * speedHere + frontDrive * 7;
                     const localWindZ = windZ * speedHere;
                     ax += (localWindX - this.velocity[o]) * WIND_DRAG;
