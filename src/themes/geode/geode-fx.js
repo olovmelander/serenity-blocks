@@ -20,6 +20,7 @@ import * as THREE from 'three/webgpu';
 import {
     Fn,
     abs,
+    atan,
     attribute,
     cameraPosition,
     cameraProjectionMatrix,
@@ -55,10 +56,15 @@ import {
     gdFxMaterial,
     gdLuma,
     gdMineral,
+    gdPalette,
     gdPart,
     gdPulseLight,
     gdQuadGeometry,
+    gdSheen,
     gdSpectrum,
+    gdSweep,
+    gdVisit,
+    gdWhirl,
     mulberry32,
 } from './geode-tsl.js';
 
@@ -124,39 +130,71 @@ export function createAir(u, stars, { motes, stars: starCount, seed = 0x5a17 }) 
     const flash = t2.mul(t2).mul(t2);
     // (in an Fn of its own: the clear waves keep their sums in variables)
     const wakeAt = Fn(() => gdClearLight(u, float(pos.w).toVar()))();
+    // …and what crosses the lining of itself wakes them too: a visit's sparkle, the moonstone
+    // sheen, a twist's pinwheel, a perfect clear's opal fire.
+    const starTurn = atan(pos.y, pos.x).div(TAU);
     const wake = gdLuma(gdPulseLight(u, pos.w)).mul(5.0).add(gdLuma(wakeAt.rgb).mul(5.0)).add(wakeAt.a.mul(0.2))
+        .add(gdVisit(u, starTurn, pos.w).a.mul(0.55))
+        .add(gdSheen(u, starTurn, pos.w).mul(0.5))
+        .add(gdLuma(gdWhirl(u, starTurn, pos.w)).mul(6.0))
+        .add(u.opal.mul(flash.add(0.2)).mul(1.6))
         .mul(isStar);
     // The stars flash brighter and the dust glitters harder the hotter play runs (u.heat: level, fever).
     const charge = u.power.mul(0.9).add(u.surge.mul(1.6)).add(u.heat.x.mul(0.3)).add(u.heat.y.mul(0.6))
         .add(1.0);
-    const starLight = mix(mix(u.druzy, gdMineral(u, look.y), 0.6), vec3(1.0), 0.45)
-        .mul(flash.mul(1.5).add(0.03).add(wake)).mul(charge);
+    // (a star also keeps a slow pulse of its own, so a still view is never without a few)
+    const pulse = sin(u.time.mul(look.w.mul(0.5).add(0.22)).add(look.x.mul(31.0))).mul(0.5).add(0.5);
+    const p4 = pulse.mul(pulse).mul(pulse).mul(pulse);
+    // (a star's own colour turns with the lining's as a level-up's front passes it; in opal fire
+    // every star is a colour of the spectrum)
+    const pal = gdPalette(u, gdSweep(u, pos.w).x);
+    const starTint = mix(
+        mix(pal.druzy, gdMineral(pal, look.y), 0.6),
+        gdSpectrum(fract(look.x.mul(3.0).add(u.time.mul(0.2)))),
+        clamp(u.opal.mul(0.7), 0.0, 0.85),
+    );
+    const starLight = mix(starTint, vec3(1.0), 0.45)
+        .mul(flash.mul(1.5).add(p4.mul(p4).mul(0.9)).add(0.03).mul(u.air.x)
+            .add(wake)).mul(charge);
     // Dust is brightest in the heart's stream, and fades at both ends of its run.
     const ends = smoothstep(0.0, 14.0, carried).mul(float(1.0).sub(smoothstep(DUST_SPAN - 16, DUST_SPAN, carried)));
     const stream = exp(length(world.xy).mul(-0.07)).mul(1.1).add(0.3);
-    const dustLight = mix(gdSpectrum(look.y), u.heart, 0.35)
-        .mul(flash.mul(1.1).add(0.1)).mul(stream).mul(ends)
+    // A mote close to the eye is out of focus: a wide, faint disc of the heart's light that
+    // drifts across the frame in front of everything. A far one is a point.
+    const blur = float(1.0).sub(smoothstep(5.0, 30.0, clip.w)).mul(float(1.0).sub(isStar));
+    const dustLight = mix(gdSpectrum(look.y), u.heart, mix(float(0.35), float(0.8), blur))
+        .mul(mix(flash.mul(1.1).add(0.1), flash.mul(0.25).add(0.12), blur)).mul(stream).mul(ends)
         .mul(charge)
+        .mul(u.air.y)
         .mul(0.85);
     const light = mix(dustLight, starLight, isStar).mul(u.breath);
 
     const half = u.viewport.mul(0.5);
     const pxPerSpan = u.viewport.y.mul(1.05).div(max(clip.w, 0.3));
     const scale = u.viewport.y.div(1080.0);
-    const dustPx = clamp(pos.w.mul(pxPerSpan), scale.mul(1.1), scale.mul(7.0));
+    const dustPx = mix(
+        clamp(pos.w.mul(pxPerSpan), scale.mul(1.1), scale.mul(7.0)),
+        scale.mul(look.x.mul(16.0).add(9.0)),
+        blur,
+    );
     const starPx = clamp(gdLuma(starLight).sqrt().mul(34.0), 0.0, 46.0).add(5.0).mul(scale);
     const px = mix(dustPx, starPx, isStar);
     material.vertexNode = vec4(clip.xy.add(positionGeometry.xy.mul(px.mul(2.0)).div(half).mul(clip.w)), clip.z, clip.w);
     const vLight = varying(vec4(light, isStar), 'gdAir');
+    const vBlur = varying(blur, 'gdAirBlur');
     material.colorNode = Fn(() => {
         const q = uv().sub(0.5).mul(2.0);
         const d = length(q);
         const ax = abs(q.x);
         const ay = abs(q.y);
         const soft = exp(d.mul(d).mul(-6.0));
+        // (out of focus: a flat disc, a little brighter at its rim, as a lens draws it)
+        const disc = float(1.0).sub(smoothstep(0.78, 0.98, d)).mul(smoothstep(0.35, 0.9, d).mul(0.5).add(0.5));
         const rays = exp(ay.mul(-30.0)).mul(exp(ax.mul(-3.4))).add(exp(ax.mul(-30.0)).mul(exp(ay.mul(-3.4))));
         const star = rays.mul(0.6).add(exp(d.mul(d).mul(-30.0)));
-        const k = mix(soft, star, vLight.w).mul(float(1.0).sub(smoothstep(0.65, 1.0, d)));
+        const mote = mix(soft, disc, vBlur);
+        const rimAt = mix(float(0.65), float(0.97), vBlur);
+        const k = mix(mote, star, vLight.w).mul(float(1.0).sub(smoothstep(rimAt, 1.0, d)));
         return vec4(vLight.rgb.mul(k), 0.0);
     })();
 
@@ -475,6 +513,104 @@ export function createRowBeams(u) {
     };
     part.reset = () => {
         uniforms.frame.value.set(0.4, 0.6, -100, 0);
+    };
+    return part;
+}
+
+// ── Glitter fall ────────────────────────────────────────────────────────────────
+
+/** Showers that can be falling at once: one a visit pours (slot 0), two that gameplay pours. */
+export const FALL_SLOTS = 3;
+/** Seconds a grain of a shower falls for, at most (its start is staggered by up to FALL_STAGGER). */
+export const FALL_LIFE = 7.4;
+export const FALL_STAGGER = 1.4;
+
+/**
+ * Crystal dust shaken loose from the vault: a shower of glittering grains that comes down through
+ * the cavity, swaying, each grain a closed form of the time since its shower began (no buffer is
+ * written when one is poured: a shower is three numbers in a uniform).
+ * @param {object} u
+ * @param {number} count  grains in the pool (shared between the showers, a third each)
+ */
+export function createGlitterFall(u, count) {
+    const n = Math.max(FALL_SLOTS, count - (count % FALL_SLOTS));
+    const aSeed = new Float32Array(n * 4);
+    const aSlot = new Float32Array(n);
+    const rand = mulberry32(0x6a17f);
+    for (let i = 0; i < n; i++) {
+        aSeed.set([rand(), rand(), rand(), rand()], i * 4);
+        aSlot[i] = i % FALL_SLOTS;
+    }
+    const geometry = gdQuadGeometry(n, { aSeed: [aSeed, 4], aSlot: [aSlot, 1] });
+    const seed = attribute('aSeed', 'vec4');
+    const slot = attribute('aSlot', 'float');
+    const uniforms = {
+        /** Per shower: (when it began, strength, its own seed, _). */
+        rows: Array.from({ length: FALL_SLOTS }, () => uniform(new THREE.Vector4(-100, 0, 0, 0))),
+        colors: Array.from({ length: FALL_SLOTS }, () => uniform(new THREE.Vector3(1, 1, 1))),
+    };
+    const pick = (list) => mix(mix(list[0], list[1], step(0.5, slot)), list[2], step(1.5, slot));
+    const row = pick(uniforms.rows);
+    const tone = pick(uniforms.colors);
+
+    const material = gdFxMaterial('GeodeGlitterFall');
+    // Each shower throws its grains differently: its seed turns every grain's own numbers.
+    const r = fract(seed.add(row.z.mul(vec4(1.0, 2.3, 3.7, 5.1))));
+    const tau = u.time.sub(row.x).sub(r.w.mul(FALL_STAGGER));
+    const life = r.y.mul(2.2).add(FALL_LIFE - 2.2);
+    const alive = step(0.0, tau).mul(step(tau, life)).mul(step(0.001, row.y));
+    const t = max(tau, 0.0);
+    // It leaves the vault, gathers speed and settles to a drift (drag), swaying as it falls.
+    const speed = r.x.mul(4.0).add(6.5);
+    const fallen = speed.mul(t.sub(float(1.0).sub(exp(t.mul(-1.4))).div(1.4)));
+    const sway = t.mul(r.z.mul(1.6).add(0.9)).add(r.y.mul(40.0));
+    const world = vec3(
+        r.x.sub(0.5).mul(58.0).add(sin(sway).mul(1.3)),
+        r.w.mul(7.0).add(21.0).sub(fallen),
+        r.z.mul(-56.0).sub(16.0).add(cos(sway.mul(0.8)).mul(0.9)),
+    );
+    const clip = viewProjection(world);
+    // A grain turns as it falls and flashes when a face of it finds the light.
+    const turn = sin(t.mul(r.y.mul(9.0).add(5.0)).add(r.x.mul(50.0))).mul(0.5).add(0.5);
+    const t2 = turn.mul(turn);
+    const flash = t2.mul(t2).mul(t2).mul(4.2).add(0.3);
+    const fade = smoothstep(0.0, 0.35, t).mul(float(1.0).sub(smoothstep(life.sub(1.6), life, t)));
+    const light = mix(tone, gdSpectrum(fract(r.z.add(r.x))), 0.35).add(vec3(0.12))
+        .mul(flash).mul(fade)
+        .mul(row.y)
+        .mul(alive)
+        .mul(u.breath);
+    const half = u.viewport.mul(0.5);
+    const scale = u.viewport.y.div(1080.0);
+    const px = scale.mul(r.z.mul(5.0).add(4.6)).mul(float(60.0).div(max(clip.w, 14.0)).add(0.45)).mul(alive);
+    material.vertexNode = vec4(clip.xy.add(positionGeometry.xy.mul(px.mul(2.0)).div(half).mul(clip.w)), clip.z, clip.w);
+    const vLight = varying(light, 'gdFall');
+    material.colorNode = Fn(() => {
+        const q = uv().sub(0.5).mul(2.0);
+        const d = length(q);
+        const ax = abs(q.x);
+        const ay = abs(q.y);
+        const rays = exp(ay.mul(-22.0)).mul(exp(ax.mul(-3.6))).add(exp(ax.mul(-22.0)).mul(exp(ay.mul(-3.6))));
+        const k = rays.mul(0.5).add(exp(d.mul(d).mul(-14.0))).mul(float(1.0).sub(smoothstep(0.7, 1.0, d)));
+        return vec4(vLight.mul(k), 0.0);
+    })();
+
+    const part = gdPart('GeodeGlitterFall', geometry, material, 22);
+    part.uniforms = uniforms;
+    part.count = n;
+    /** Pour a shower in `slot` (0..FALL_SLOTS − 1) beginning at `time`. */
+    part.pour = (index, time, strength, rgb, showerSeed = 0) => {
+        const at = Math.max(0, Math.min(FALL_SLOTS - 1, index | 0));
+        uniforms.rows[at].value.set(time, strength, showerSeed, 0);
+        uniforms.colors[at].value.set(rgb[0], rgb[1], rgb[2]);
+    };
+    /** Seconds since slot `index`'s shower began (Infinity if it never did). */
+    part.ageOf = (index, now) => {
+        const { x, y } = uniforms.rows[index].value;
+        return y > 0 ? now - x : Infinity;
+    };
+    part.reset = () => {
+        uniforms.rows.forEach((slotRow) => slotRow.value.set(-100, 0, 0, 0));
     };
     return part;
 }
