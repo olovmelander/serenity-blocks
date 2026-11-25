@@ -327,6 +327,88 @@ export function createNeonSunShafts(N) {
 
 // ── The hologram ─────────────────────────────────────────────────────────────────
 
+/**
+ * THE END OF THE LINE (2026-11-25, the deep chapters audit C5: the journey's last orb was a dot in
+ * the middle of the street with nothing to mark it). Two rings of light stand upright round the end of
+ * the rail, facing down the boulevard, their dashes running round them in turn, and a faint pillar of
+ * light rises from the street through them into the sky: the station the line ends at. Pure added
+ * light like the rest of the city's air; it lights with the street (`neonIgnition`) and fades through
+ * the 7->8 carry. On every tier (the Low city keeps its rail's end too).
+ */
+export const NEON_TERMINUS = Object.freeze({
+    /** The rings' radii (u, about the end of the rail) and their band's width (u). */
+    rings: Object.freeze([5.4, 7.0]),
+    band: 0.34,
+    /** Dashes round each ring, and how fast they run (turns a second, opposite ways). */
+    dashes: Object.freeze([48, 36]),
+    speed: Object.freeze([0.05, -0.035]),
+    /** The pillar: radius (u), height over the street (u), brightness. */
+    pillar: 1.4,
+    height: 240,
+    pillarGain: 0.16,
+});
+
+/**
+ * @param {object} N neon uniforms
+ * @param {{ x: number, y: number, z: number }} seat the end of the rail, in the corridor's frame
+ * @returns {THREE.Group}
+ */
+export function createNeonTerminus(N, seat) {
+    const T = NEON_TERMINUS;
+    const group = new THREE.Group();
+    group.name = 'neon-terminus';
+    group.position.set(seat.x, seat.y, seat.z);
+    const ign = neonIgnition(N, vec3(seat.x, seat.y, seat.z));
+    const live = ign.level.mul(N.seamReveal);
+    const breath = sin(N.uTime.mul(1.1)).mul(0.1).add(0.9);
+    const colours = [vec3(1.0, 0.3, 0.72), vec3(0.15, 0.85, 1.0)];
+    T.rings.forEach((radius, i) => {
+        const ring = additive(`odyssey-neon-terminus-ring-${i}`);
+        ring.material.outputNode = Fn(() => {
+            const st = uv();
+            const across = float(1.0).sub(abs(st.y.sub(0.5)).mul(2.0));
+            const run = st.x.sub(N.uTime.mul(T.speed[i]));
+            const dash = step(0.32, fract(run.mul(T.dashes[i])));
+            const bead = exp(abs(fract(run).sub(0.5)).mul(-26.0));
+            const light = colours[i].mul(across.mul(across).mul(dash.mul(0.5).add(0.5)).mul(0.9))
+                .add(vec3(1.0, 0.92, 0.85).mul(bead.mul(across).mul(1.4)));
+            return vec4(light.mul(live).mul(breath).mul(ring.uOpacity), 0.0);
+        })();
+        const geometry = new THREE.CylinderGeometry(radius, radius, T.band, 128, 1, true);
+        const mesh = new THREE.Mesh(geometry, ring.material);
+        mesh.name = `neon-terminus-ring-${i}`;
+        // Its axis down the boulevard (the corridor's z): the rings face the eye coming along it.
+        mesh.rotation.x = Math.PI / 2;
+        mesh.renderOrder = 15;
+        group.add(mesh);
+    });
+    // The pillar, from the street up through the rings.
+    const pillar = additive('odyssey-neon-terminus-pillar');
+    const pcPillar = neonCityPos(N, 'vTerminusPillarPos');
+    const nPillar = varying(normalGeometry, 'vTerminusPillarNormal');
+    pillar.material.outputNode = Fn(() => {
+        // (Clamped: under MSAA the interpolated uv strays past 0..1 on thin geometry, and a power of
+        // the negative remainder is a NaN the bloom spreads over the frame; gotcha #105.)
+        const rise = clamp(uv().y, 0.0, 1.0);
+        const fade = float(1.0).sub(rise).pow(1.6).mul(smoothstep(0.0, 0.04, rise));
+        const lines = step(0.5, fract(rise.mul(60.0).sub(N.uTime.mul(0.5)))).mul(0.35).add(0.65);
+        // Soft across its width (a beam, not a slab): brightest on the side facing the eye.
+        const view = normalize(N.camCity.sub(pcPillar));
+        const core = clamp(dot(normalize(nPillar), view), 0.0, 1.0);
+        return vec4(vec3(0.55, 0.9, 1.0).mul(fade).mul(lines).mul(core.mul(core).mul(core))
+            .mul(T.pillarGain)
+            .mul(live)
+            .mul(pillar.uOpacity), 0.0);
+    })();
+    const drop = seat.y - STREET_Y;
+    const pillarMesh = new THREE.Mesh(new THREE.CylinderGeometry(T.pillar, T.pillar, T.height, 24, 1, true), pillar.material);
+    pillarMesh.name = 'neon-terminus-pillar';
+    pillarMesh.position.y = (T.height * 0.5) - drop;
+    pillarMesh.renderOrder = 14;
+    group.add(pillarMesh);
+    return group;
+}
+
 export const NEON_HOLOGRAM = Object.freeze({
     side: 1, bank: 0, z: -96, radius: 9.5, hover: 15, maxRoof: 6,
 });
@@ -396,9 +478,15 @@ export function createNeonHologram(N, seat) {
         const scan = exp(abs(fract(st.y.sub(N.uTime.mul(0.09))).sub(0.5)).mul(-22.0));
         const cyan = vec3(0.1, 0.85, 1.0);
         const rose = vec3(1.0, 0.25, 0.65);
-        const light = cyan.mul(land.mul(rows).mul(0.7).add(grid.mul(0.16)).add(scan.mul(0.3)))
-            .add(rose.mul(rim.mul(rim).mul(rim).mul(0.9)));
-        return vec4(light.mul(facing.mul(0.5).add(0.5)).mul(0.85).mul(live).mul(breath)
+        // (2026-11-25, the deep chapters audit C5: it read as a glass ball, a decoy in a world where
+        // glass spheres are the orbs: a bright rose rim all round its edge and a lit fill. It is a
+        // projection now: its lines and its land's dots, a faint rim, the scan lines of a picture
+        // drawn in light, and nothing between them.)
+        const interlace = step(0.5, fract(st.y.mul(140.0).add(N.uTime.mul(1.3)))).mul(0.45).add(0.55);
+        const light = cyan.mul(land.mul(rows).mul(0.75).add(grid.mul(0.42)).add(scan.mul(0.35)))
+            .mul(interlace)
+            .add(rose.mul(rim.mul(rim).mul(rim).mul(0.22)));
+        return vec4(light.mul(facing.mul(0.35).add(0.65)).mul(0.85).mul(live).mul(breath)
             .mul(globe.uOpacity), 0.0);
     })();
     globe.material.side = THREE.FrontSide;

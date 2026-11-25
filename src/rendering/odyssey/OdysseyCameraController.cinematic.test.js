@@ -220,3 +220,62 @@ describe('OdysseyCameraController cinematic language (2026-10)', () => {
         }
     });
 });
+
+describe('a close-up after a cut (deep chapters audit, 2026-11-25)', () => {
+    /** The angle (deg) between two directions. */
+    const angleDeg = (a, b) => THREE.MathUtils.radToDeg(a.clone().normalize().angleTo(b.clone().normalize()));
+    /** Park the camera on an orb the way the board does: a cut along the rail, then a close-up. */
+    const cutToOrb = (controller, progress, chapterId) => {
+        controller.travelToPosition(progress, 0);
+        const node = getOdysseyPathCurve().getPointAt(progress);
+        const up = controller.getSceneUp(chapterId);
+        const ahead = getOdysseyPathCurve().getPointAt(Math.min(1, progress + 0.004));
+        const behind = getOdysseyPathCurve().getPointAt(Math.max(0, progress - 0.004));
+        const along = new THREE.Vector3().subVectors(ahead, behind);
+        along.addScaledVector(up, -0.6 * along.dot(up)).normalize();
+        controller.focusOnNode(node, 0, { viewDir: along, up });
+        for (let i = 0; i < 3; i += 1) controller.update(1 / 60);
+    };
+
+    it('stands the city\'s close-up on the city\'s up, however the eye arrived', () => {
+        // The audit's probe: orb 58 reached from chapter 7 by a cut (reduced motion cuts every
+        // trip) kept the fold's up and rolled the city ~70 degrees; reached on the city's own
+        // rail it stood level. Both must stand on the stage's up.
+        const { controller, camera, layout } = createRealPathController(0.927);
+        controller.update(1 / 60);
+        cutToOrb(controller, 0.927, 7);
+        const city = layout.chapterPositions[7] + 0.025;
+        cutToOrb(controller, city, 8);
+        expect(angleDeg(camera.up, controller.getSceneUp(8))).toBeLessThan(5);
+        // ...and the same once arrived from within the city (the ride's result).
+        cutToOrb(controller, city + 0.007, 8);
+        cutToOrb(controller, city, 8);
+        expect(angleDeg(camera.up, controller.getSceneUp(8))).toBeLessThan(5);
+    });
+});
+
+describe('the city\'s door (deep chapters audit, 2026-11-25)', () => {
+    it('keeps the rail behind the followed point under the eye where it drops into the city', () => {
+        const { controller, layout } = createRealPathController(0.96);
+        const curve = getOdysseyPathCurve();
+        const start = layout.chapterPositions[7];
+        for (let p = start - 0.004; p <= start + 0.015; p += 0.001) {
+            controller.setCurrentPosition(p);
+            controller._framingInitialized = false;
+            controller.update(1 / 60);
+            const frame = controller.computeFollowFrame(p);
+            const eye = frame.camPos.clone();
+            const up = frame.normal.clone();
+            const point = curve.getPointAt(Math.min(1, p));
+            // The rail near the lens (within 15 u in front of it) lies under the eye, not across
+            // the top of the frame (it rose ~1.5 u over the eye before, at p 0.965-0.967).
+            const toPoint = point.clone().sub(eye).normalize();
+            for (let k = 1; k <= 40; k += 1) {
+                const q = curve.getPointAt(Math.max(0, p - (k * 0.0005)));
+                const ahead = q.clone().sub(eye).dot(toPoint);
+                if (ahead <= 0) break; // behind the lens: not in the picture
+                if (ahead < 15) expect(q.clone().sub(eye).dot(up)).toBeLessThan(-1);
+            }
+        }
+    });
+});

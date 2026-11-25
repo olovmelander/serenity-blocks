@@ -1051,6 +1051,14 @@ export function* buildCosmicExpanseEnvironmentSteps(options = {}) {
         group.userData.yStart = chapterRange.start.y;
         group.userData.yEnd = chapterRange.end.y;
     }
+    // Where the heroes hang, for the board's close-ups (odyssey-ch6-close-ups.js), from the first
+    // frame: a cut straight to an orb here can come before the chapter's first update. And where the
+    // hole stands for the eye at a given progress (it rides the rail, closing as the eye does).
+    group.userData.heroPlaces = resolveCh6HeroPlaces(getActiveOdysseyChapterPositions());
+    group.userData.omenAt = (progress, out) => {
+        const handoff = resolveOmenHandoffWindow(getActiveOdysseyChapterPositions());
+        return handoff ? resolveOmenPathPlace(progress, handoff.end, out) : null;
+    };
 
     // TSL uniform nodes (expose `.value`, so the existing update() ticks them
     // unchanged). Shared into every TSL builder + billboard material so the whole
@@ -2525,6 +2533,9 @@ export function updateCosmicExpanseEnvironment(group, delta, time, camera = null
     const { blackHole, debris } = group.userData;
     // THE HEROES' PLACES (2026-10-19): one point in the world each, for the active layout.
     const heroPlaces = resolveCh6HeroPlaces(chapterPositions);
+    // (Published for the board's close-ups, which stand each orb beside one of them:
+    // odyssey-ch6-close-ups.js.)
+    group.userData.heroPlaces = heroPlaces;
     const handoffWindow = resolveOmenHandoffWindow(chapterPositions);
     // Progress from the boundary to the 6->7 lock — by PROGRESS with a camera (global), the
     // headless caller's chapter-local value otherwise. Never the camera's height.
@@ -2584,7 +2595,11 @@ export function updateCosmicExpanseEnvironment(group, delta, time, camera = null
         if (camera?.isCamera && handoffWindow && Number.isFinite(cameraProgress)) {
             // Strictly past the window end is where ch7 (and its shadow) is on screen.
             omenShadowLive = cameraProgress <= handoffWindow.end;
-            const lock = THREE.MathUtils.smoothstep(cameraProgress, handoffWindow.start, handoffWindow.end);
+            // (In an orb's close-up the hole keeps its place, which the lock was solved to meet on the
+            // rail's view: on the close-up's own aim it stood behind the orb's glass. The board eases
+            // `closeUp` over the camera's swing, so the lock comes back without a jump.)
+            const closeUp = THREE.MathUtils.clamp(camera.userData?.heroCamera ? 0 : (camera.userData?.closeUp ?? 0), 0, 1);
+            const lock = THREE.MathUtils.smoothstep(cameraProgress, handoffWindow.start, handoffWindow.end) * (1 - closeUp);
             if (lock > 0) {
                 // The hero camera while looking around (see black-hole-transcendence.js).
                 resolveGreatHoleLockPosition(lockCamera, _omenLock).sub(group.position);

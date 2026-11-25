@@ -231,6 +231,10 @@ const CHAPTER_FRAMING_OVERRIDES = Object.freeze({
     }),
 });
 
+/** How far under the eye the rail behind the followed point is kept in a stage frame (u), and how
+ * many points of it are tested (see `_railOverEye`). */
+const RAIL_UNDER_EYE = Object.freeze({ clear: 3, samples: 4 });
+
 // Exponential blend rate (per second) for easing between per-chapter framings.
 const FRAMING_BLEND_RATE = 2.4;
 
@@ -1120,6 +1124,10 @@ export class OdysseyCameraController {
         this._frameQuat = new THREE.Quaternion();
         // 6->7 hairpin chord (see HAIRPIN_67), never reallocated.
         this._frameChord = new THREE.Vector3();
+        this._railBehindPos = new THREE.Vector3();
+        this._railBehindTan = new THREE.Vector3();
+        this._railBehindNormal = new THREE.Vector3();
+        this._railBehindRight = new THREE.Vector3();
         this._frameChordA = new THREE.Vector3();
         this._frameTravel = new THREE.Vector3();
         this._frameTravelRight = new THREE.Vector3();
@@ -2012,6 +2020,13 @@ export class OdysseyCameraController {
         }
         this.updateDirectorCamera(deltaTime);
         this.updateChapterFraming(deltaTime);
+        // A cut that lands in a close-up (an orb chosen with reduced motion, or any zero-length
+        // trip) runs no follow frame at its new place, and the camera kept the up of the place it
+        // came from: arriving in the city from the fold rolled the city ~70 degrees (deep chapters
+        // audit, 2026-11-25). The framing has just snapped to the new place; take its up too.
+        if (teleported && this.mode !== 'follow' && this.mode !== 'free') {
+            this.followCameraUp.copy(this.computeFollowFrame(this.currentPosition).normal);
+        }
 
         this.updateArrivalShot(deltaTime);
 
@@ -3138,6 +3153,33 @@ export class OdysseyCameraController {
         return this.moveFreeCamera(new THREE.Vector3(0, 0, distance));
     }
 
+    /**
+     * THE RAIL BEHIND STAYS UNDER THE EYE (2026-11-25, the deep chapters audit). In a stage frame
+     * (the city) the eye sits back along the stage's level forward, not along the rail; where the
+     * rail drops into the city out of the fold (~23 degrees over p 0.955-0.972) its reach behind the
+     * followed point climbed past the eye's height and passed over the lens, a pipe hanging from the
+     * top of the frame onto the orb. Returns how far (along `up`) to lift the eye so the rail
+     * between it and the followed point stays RAIL_UNDER_EYE.clear under it; 0 almost everywhere.
+     * @private
+     */
+    _railOverEye(position, pathPoint, up, eyeHeight, framing) {
+        const length = this.travelModel?.pathLength || 1;
+        const back = Math.max(0, this.directorCamera.followDistance - (framing.camForward ?? 0));
+        let highest = -Infinity;
+        for (let i = 1; i <= RAIL_UNDER_EYE.samples; i += 1) {
+            const t = THREE.MathUtils.clamp(position - ((back * i) / (RAIL_UNDER_EYE.samples * length)), 0, 1);
+            const behind = this.getPathDataAt(
+                t,
+                this._railBehindPos,
+                this._railBehindTan,
+                this._railBehindNormal,
+                this._railBehindRight,
+            ).position;
+            highest = Math.max(highest, behind.sub(pathPoint).dot(up));
+        }
+        return Math.max(0, highest + RAIL_UNDER_EYE.clear - eyeHeight);
+    }
+
     computeFollowFrame(position) {
         const clampedPosition = THREE.MathUtils.clamp(position, 0, 1);
         const {
@@ -3195,11 +3237,16 @@ export class OdysseyCameraController {
             eyeRight = this._frameRightBlend.copy(travelRight).lerp(stage.right, stageWeight).normalize();
             dolly = this._frameDolly.copy(travel).lerp(stage.forward, stageWeight).normalize();
         }
+        const eyeHeight = this.config.followOffset.y + vistaLift + framing.camUp;
         const camPos = this._frameCamPos.copy(pathPoint)
             .addScaledVector(dolly, -(this.directorCamera.followDistance + vistaPullback))
             .addScaledVector(eyeRight, this.config.followOffset.x + framing.camRight)
-            .addScaledVector(cameraUp, this.config.followOffset.y + vistaLift + framing.camUp)
+            .addScaledVector(cameraUp, eyeHeight)
             .addScaledVector(dolly, framing.camForward);
+        if (stage && stageWeight > 0) {
+            const lift = this._railOverEye(clampedPosition, pathPoint, cameraUp, eyeHeight, framing);
+            if (lift > 0) camPos.addScaledVector(cameraUp, lift * stageWeight);
+        }
         const fallEyeOffset = this._frameFallEyeOffset.copy(dolly)
             .multiplyScalar(this._fallCameraFraming.camForward);
         if (forwardOffset > 0) {

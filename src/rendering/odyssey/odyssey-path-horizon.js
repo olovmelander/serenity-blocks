@@ -30,6 +30,8 @@ export const ODYSSEY_PATH_HORIZON = Object.freeze({
     chapter: 6,
     // The taper before the horizon, in progress (~15 u of path): the nodes scale out over it.
     soft: 0.006,
+    // The far rail's retract ends this many of the 5->6 seam's half-widths before chapter 6 begins.
+    retractEarly: 0.25,
     // The rail itself ends within this much of the taper's start (~4.5 u, inside the last node's
     // glass), where the inflow carries it on into the hole (odyssey-path-inflow.js).
     railSoft: 0.0018,
@@ -102,8 +104,12 @@ export function resolveOdysseyPathHorizon(progress, chapterPositions, levelPosit
     const wIn = getChapterTransitionForChapter(H.chapter - 1)?.seamWidth ?? 0.0222;
     const held = end + H.soft;
     if (progress <= start - wIn) return PATH_HORIZON_OPEN;
-    if (progress < start + wIn) {
-        return HORIZON_FAR + ((held - HORIZON_FAR) * smooth01((progress - (start - wIn)) / (2 * wIn)));
+    // The far rail retracts over the seam's near three quarters (until 2026-11-25 over the whole of
+    // it, to `start + wIn`: at chapter 6's first frames the horizon still lay past the fold, whose
+    // rail drew as a red hairline with its orbs as beads across the sky; the deep chapters audit, S3).
+    const done = start - (H.retractEarly * wIn);
+    if (progress < done) {
+        return HORIZON_FAR + ((held - HORIZON_FAR) * smooth01((progress - (start - wIn)) / (done - (start - wIn))));
     }
     // The way on is laid out from the moment the eye is inside the hole to the next node.
     const reveal = resolveOdysseyPathReveal(chapterPositions, levelPositions);
