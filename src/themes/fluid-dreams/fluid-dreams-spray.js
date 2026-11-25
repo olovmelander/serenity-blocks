@@ -2,8 +2,9 @@
  * Fluid Dreams — the liquid that is too fine for the distance field: spray and motes.
  *
  *  - Spray: droplets thrown by a splash, a crown, a drip, or poured out of the card by a cleared
- *    row. Each is a closed-form ballistic point drawn as a short streak along its own motion; it
- *    is gone the moment it meets the sea. A ring of preallocated slots.
+ *    row. Each is a closed-form ballistic point drawn as a round bead with a short tail along its
+ *    own motion (a bare streak read as a dash of confetti); it is gone the moment it meets the
+ *    sea. A ring of preallocated slots.
  *  - Motes: the fine mist the sea gives up, rising slowly through the picture like rain in
  *    reverse. Static seeds, animated in the vertex stage.
  *
@@ -110,7 +111,27 @@ export const SPRAY_KINDS = Object.freeze({
         n: 5, out: [0.0, 1.6], up: [-9.0, -3.5], life: [1.6, 2.6], size: 0.05, ring: 15, gain: 2.4, disc: true,
     },
     trail: {
-        n: 3, out: [0.1, 0.9], up: [-0.4, 1.2], life: [0.45, 0.95], size: 0.09, ring: 0.1, gain: 4.6,
+        n: 2, out: [0.1, 0.9], up: [-0.4, 1.2], life: [0.4, 0.85], size: 0.075, ring: 0.1, gain: 3.2,
+    },
+    // a fountain far out on the sea: a slender plume seen from a long way off
+    fountain: {
+        n: 26, out: [0.2, 1.7], up: [7.5, 12.5], life: [1.6, 2.6], size: 0.5, ring: 0.3, gain: 2.6,
+    },
+    // a bubble bursts: a ring of fine drops where its skin was
+    pop: {
+        n: 5, out: [1.2, 3.2], up: [-0.6, 2.2], life: [0.5, 1.0], size: 0.35, ring: 1, gain: 2.4,
+    },
+    // a hard drop's coronet: a ring of beads thrown up and out, all to one height
+    coronet: {
+        n: 10, out: [1.5, 2.1], up: [4.0, 4.8], life: [0.7, 0.95], size: 0.07, ring: 0.3, gain: 3.0,
+    },
+    // what a fountain throws up with it
+    sheaf: {
+        n: 16, out: [0.3, 2.2], up: [5.5, 10.5], life: [1.0, 1.9], size: 0.07, ring: 0.2, gain: 3.2,
+    },
+    // one bead of a back-to-back's string: it is thrown exactly (`vel`), and lives its flight
+    bridge: {
+        n: 2, out: [0, 0.35], up: [0, 0.35], life: [1, 1], size: 0.2, ring: 0.12, gain: 4.4,
     },
 });
 
@@ -152,8 +173,10 @@ export function createSpray(u, count) {
     const nrm = vec2(dir.y.negate(), dir.x);
     const clip = mix(c0, c1, along);
     const pxPerMetre = u.viewport.y.mul(1.05).div(max(clip.w, 0.3));
-    const widthPx = clamp(tint.w.mul(pxPerMetre), u.viewport.y.mul(0.0016), u.viewport.y.mul(0.012)).mul(alive);
+    const widthPx = clamp(tint.w.mul(pxPerMetre), u.viewport.y.mul(0.0018), u.viewport.y.mul(0.012)).mul(alive);
     const lead = dir.mul(along.sub(0.5).mul(2.0)).mul(widthPx);
+    // how many of its own widths the quad is long: the bead at its head stays round at any speed
+    const vLong = varying(length(s1.sub(s0)).div(max(widthPx.mul(2.0), 1e-3)).add(1.0), 'fdSprayLong');
     material.vertexNode = vec4(
         clip.xy.add(nrm.mul(positionGeometry.y.mul(2.0).mul(widthPx)).add(lead).div(half).mul(clip.w)),
         clip.z,
@@ -167,9 +190,19 @@ export function createSpray(u, count) {
     const vLight = varying(hot.mul(fade).mul(turn).mul(alive), 'fdSpray');
     material.colorNode = Fn(() => {
         const st = uv();
-        const across = float(1.0).sub(st.y.sub(0.5).abs().mul(2.0));
-        const head = smoothstep(0.0, 0.85, st.x);
-        return vec4(vLight.mul(across.mul(across)).mul(head).mul(u.sprayGain), 0.0);
+        const yy = st.y.sub(0.5).mul(2.0).toVar();
+        // from the head's centre back along the quad, in half widths
+        const hx = float(1.0).sub(st.x).mul(vLong).mul(2.0)
+            .sub(1.0)
+            .toVar();
+        const r2 = hx.mul(hx).add(yy.mul(yy)).toVar();
+        const bead = exp(r2.mul(-2.6));
+        const core = exp(r2.mul(-11.0));
+        const across = float(1.0).sub(yy.abs());
+        const tail = across.mul(across).mul(smoothstep(0.0, 0.9, st.x)).mul(smoothstep(-0.2, 0.6, hx)).mul(0.3);
+        // a bead of its colour with a hot point in it, drawing a thin tail
+        const light = vLight.mul(bead.add(tail)).add(vec3(max(vLight.x, max(vLight.y, vLight.z))).mul(core.mul(0.3)));
+        return vec4(light.mul(u.sprayGain), 0.0);
     })();
 
     const spray = part('FluidDreamsSpray', geometry, material, 30);
@@ -180,15 +213,17 @@ export function createSpray(u, count) {
      * @param {object} burst
      * @param {'splash'|'drip'|'crown'|'pour'|'trail'|'rain'} burst.kind
      * @param {number[]} [burst.dir] 'pour' only: the horizontal direction (x, z) the row empties in
+     * @param {number[]} [burst.vel] thrown exactly this way (m/s), the kind's own speeds only a scatter on it
+     * @param {number} [burst.life] seconds every droplet of the burst lives (else the kind's range)
      */
     spray.emit = ({
-        kind, x, y, z, color, power = 1, time, dir: aim = null,
+        kind, x, y, z, color, power = 1, time, dir: aim = null, vel: thrown = null, life: lives = null,
     }) => {
         const spec = SPRAY_KINDS[kind] || SPRAY_KINDS.splash;
         const rand = mulberry32(0x51a7 + bursts * 7919);
         bursts += 1;
         const total = Math.min(count, Math.round(spec.n * Math.max(0.4, power)));
-        const scale = kind === 'crown' ? 1 : Math.sqrt(Math.max(0.3, power));
+        const scale = kind === 'crown' || kind === 'pop' ? 1 : Math.sqrt(Math.max(0.3, power));
         for (let k = 0; k < total; k += 1) {
             const i = cursor % count;
             cursor += 1;
@@ -197,11 +232,13 @@ export function createSpray(u, count) {
             const speed = (spec.out[0] + (spec.out[1] - spec.out[0]) * rand() ** 1.6) * scale;
             const rise = (spec.up[0] + (spec.up[1] - spec.up[0]) * rand()) * scale;
             // a ring the burst starts on, or (rain) anywhere inside it
-            const ring = spec.ring * (kind === 'crown' ? power : 1) * (spec.disc ? Math.sqrt(rand()) : 1);
+            const ring = spec.ring * (kind === 'crown' || kind === 'pop' ? power : 1) * (spec.disc ? Math.sqrt(rand()) : 1);
             const b = spec.disc ? rand() * TAU : a;
             aBirth.set([x + Math.sin(b) * ring, y, z + Math.cos(b) * ring, time + rand() * 0.06], i * 4);
-            const life = spec.life[0] + (spec.life[1] - spec.life[0]) * rand();
-            aVel.set([Math.sin(a) * speed, rise, Math.cos(a) * speed, life], i * 4);
+            const life = lives ?? spec.life[0] + (spec.life[1] - spec.life[0]) * rand();
+            const out = [Math.sin(a) * speed, rise, Math.cos(a) * speed, life];
+            if (thrown) for (let c = 0; c < 3; c += 1) out[c] += thrown[c];
+            aVel.set(out, i * 4);
             const g = (0.65 + rand() * 0.7) * spec.gain;
             aTint.set([color[0] * g, color[1] * g, color[2] * g, spec.size * (0.55 + rand() * 0.9)], i * 4);
         }
