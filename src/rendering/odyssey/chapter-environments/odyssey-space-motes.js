@@ -213,10 +213,11 @@ export function updateSpaceMotes(motes, camera, parentOrigin, dt, drive) {
         u.hole.value.copy(drive.hole).sub(parentOrigin);
         const d = Math.max(1e-3, u.hole.value.distanceTo(_eye));
         const ang = Math.asin(Math.min(1, holeRadius / d));
-        u.holeCos.value.set(
-            Math.cos(Math.min(Math.PI / 2, ang * SPACE_MOTES.shadowKeep)),
-            Math.cos(Math.min(Math.PI / 2, ang * SPACE_MOTES.shadowEdge)),
-        );
+        const inner = Math.cos(Math.min(Math.PI / 2, ang * SPACE_MOTES.shadowKeep));
+        const outer = Math.cos(Math.min(Math.PI / 2, ang * SPACE_MOTES.shadowEdge));
+        // (A hole still a point: the two edges meet, and a smoothstep between equal edges is 0/0.)
+        if (inner - outer > 1e-5) u.holeCos.value.set(inner, outer);
+        else u.holeCos.value.set(2, 1.5);
     } else {
         u.holeCos.value.set(2, 1.5);
     }

@@ -3,7 +3,7 @@
 Olov, after the audit (docs/ODYSSEY_DEEP_CHAPTERS_AUDIT_2026-11.md): *"Now start the implementation in the proposed
 order"*. The plan's first five steps are done; its sixth, the owner's calls, is left open (below).
 
-![Chapters 6 to 8 before and after, the real game at 1920 x 1080 (WebGPU, High)](images/odyssey-deep-chapters-2026-11-25/before-after.jpg)
+![Chapters 6 to 8 before (left) and after (right), the real game at 1920 x 1080 (WebGPU, High), the save applied unless noted](images/odyssey-deep-chapters-2026-11-25/before-after.jpg)
 
 ## 1. The city's close-ups no longer roll (C1, a bug)
 
@@ -55,9 +55,10 @@ scan lines, its rim faint.
   before the chapter now (`ODYSSEY_PATH_HORIZON.retractEarly`).
 - **Grain in the dark (J6).** The film grain keeps a fifth of itself in the darkest tones; in deep space it was
   louder than the black it sat on.
-- **Crossing signs (C9).** Tube signs hung on one wall no longer cross (NEON over BATHS read "NEATHS"): a blade is
-  moved past the one it would cross, or left out, with every draw still made, so the rest of the city is planned as
-  it was.
+- **Crossing signs (C9), in part.** Tube signs hung on one wall no longer cross in the street (a blade is moved past
+  the one it would cross, or left out, with every draw still made, so the rest of the city is planned as it was).
+  The audit's example, "NEATHS" at orb 58, is not that: two blades one behind the other along the wall, seen at a
+  glancing angle from the close-up, and it is still there.
 - **Left as they are:** the orbs' warm fringe far off (J3) is the locked orb's chapter-tinted rim, dimmed, a few
   pixels wide at that size, not an alpha fault; the fold portal's square stars (F2) are not traced to a resolution
   yet; **the aurora's hard end (S5) is still open**: testing the Earth aurora's march gate at more points along a
