@@ -35,7 +35,7 @@ export const PERCH_NAMES = Object.freeze({
  * The part of a limb the game's frame holds, where it is not all of it (metres along it): the
  * windfall's root end lies out of the frame to the right.
  */
-export const LIMB_SPANS = Object.freeze({ 'windfall.trunk': Object.freeze({ low: 2.5 }) });
+export const LIMB_SPANS = Object.freeze({ 'windfall.trunk': Object.freeze({ low: 3.25 }) });
 /** A snapped end this far above the floor (metres) is a perch; one lying on it is not. */
 const TIP_CLEAR = 0.9;
 /** How near its ends a limb is walked (metres): clear of the junction, and of the thin or snapped end. */

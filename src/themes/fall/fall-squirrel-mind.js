@@ -1177,9 +1177,15 @@ export class SquirrelMind {
             on: limb.name, a: limb.low + 0.15, b: this.tail.place.b, heading: Math.PI,
         });
         if (joint) {
+            // Onto the limb it grows from, a little way along it: to the side there is room on (the part
+            // of the limb it walks: the frame holds it), never into the post's own foot.
+            const parent = this.stage.limbs[joint.parent];
+            const off = this.range(0.5, 0.9) * (this.random() < 0.5 ? -1 : 1);
+            let at = joint.at + off;
+            if (at < parent.low || at > parent.high) at = joint.at - off;
             this.leap({
                 on: joint.parent,
-                a: joint.at + this.range(0.5, 0.9) * (this.random() < 0.5 ? -1 : 1),
+                a: clamp(at, parent.low, parent.high),
                 b: 0,
                 heading: 0,
                 noTurn: true,

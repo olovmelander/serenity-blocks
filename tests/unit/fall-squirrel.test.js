@@ -299,6 +299,40 @@ describe('the squirrel mind', () => {
         }
     }, 30_000); // three seeds of a long walk: about 2 s locally, over 5 s on CI runners
 
+    it('walks only the part of a limb the frame holds, and lands on a limb only there', () => {
+        const camera = landscapeCamera();
+        const v = new THREE.Vector3();
+        // Every place it may stand on a limb is on the screen (its middle, a little off the bark).
+        for (const limb of Object.values(stage.limbs)) {
+            for (let a = limb.low; a <= limb.high + 1e-9; a += 0.1) {
+                const f = limb.frame(a, 0);
+                v.set(...f.point.map((p, i) => p + f.normal[i] * 0.3)).project(camera);
+                expect(Math.abs(v.x), `${limb.name} ${a.toFixed(1)}`).toBeLessThan(0.93);
+                expect(Math.abs(v.y), `${limb.name} ${a.toFixed(1)}`).toBeLessThan(0.93);
+            }
+        }
+        // And every act it does on one starts and ends there (a leap down a dead limb onto the log it
+        // grows from lands on the log's walked part, not past its end).
+        let onLimbs = 0;
+        for (const seed of [3, 271, 99, 11]) {
+            const mind = new SquirrelMind({ stage, seed });
+            const seen = new Set();
+            live(mind, 600, 0.05, [], () => {
+                const { act } = mind;
+                if (seen.has(act)) return;
+                seen.add(act);
+                for (const place of [act.from, act.to]) {
+                    const limb = place && stage.limbs[place.on];
+                    if (!limb) continue;
+                    onLimbs += 1;
+                    expect(place.a, `seed ${seed} ${act.kind} on ${limb.name}`).toBeGreaterThanOrEqual(limb.low - 1e-9);
+                    expect(place.a, `seed ${seed} ${act.kind} on ${limb.name}`).toBeLessThanOrEqual(limb.high + 1e-9);
+                }
+            });
+        }
+        expect(onLimbs).toBeGreaterThan(200);
+    }, 30_000);
+
     it('keeps its liked places on the floor the eye sees, beside the board', () => {
         const camera = landscapeCamera();
         const v = new THREE.Vector3();
