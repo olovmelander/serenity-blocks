@@ -9,6 +9,85 @@ a hollow lined with crystal, the warm light at its centre, jewel-coloured cluste
 from the edge of the frame, glitter everywhere — and everything else is new. This document
 records the shipped design and what was verified. It is a reference, not a backlog.
 
+## The living pass (2026-11-25)
+
+A second pass over the shipped theme, on `feature/geode-living-masterpiece`. The composition, the
+event language and the six minerals stand; what the audit found weak was changed. The sections
+below this one describe the October build and are still right except where this one says otherwise.
+
+**What was weak, and what was done**
+
+| Found | Now |
+| --- | --- |
+| The lining read as a flat, evenly lit carpet of matte shards: no dark between the points, no step in size between druzy and hero crystals, the near wall as bright as the far. | The points are shaded as glass (`createDruzy`). A facet is lit by where it sends the eye: the refracted ray makes one face a lit window and its neighbour ink; the far edges of the prism show inside each face as hard-sided plates (`facetInterior`); growth lines streak the gloss; every arris catches a line of light. One point in eighteen stands twice as tall and one in seventy-five over three times (decided in the vertex stage from the point's seed, so the plan is unchanged). The heart's light falls off down the wall, so the near wall is silhouette. |
+| A saturated violet has almost no brightness to give, so a "bright" facet was only a flat mid-violet. | `gemTone`: a stone passing little light is its own deep colour, and paler the more it passes. |
+| Hero crystals read as coloured plastic: every face of a stone passed the same light. | The same glass model: per-facet refraction, plates, a core that hums. |
+| The heart was a blown-out white disc, and its light barely left it. | A window of fibres radiating from where the light stands; the light wanders a few spans behind the window (`HEART_WANDER`); the post combs the heart's light into rays that turn slowly in the dust (every tier: they need no bloom). |
+| The agate was evenly banded. | Bands of unequal width, hairlines of white chalcedony, a soft polish, and a rind of sugared quartz where it meets the lining. |
+| Sparse stars, near-invisible dust. | Stars keep a slow pulse of their own; a mote near the eye is an out-of-focus disc. |
+| Only the hue turned with time. | The airs and the visits, below. |
+
+**The airs** (`geode-airs.js`). The minerals turn the geode's colour on a 90 s clock. The airs turn
+its light on a 77 s clock of their own, so the same mineral in the same air is eleven and a half
+hours apart. Each rests pure for 40 s and melts into the next over 37 s; a function of the world
+clock alone, not slowed by reduced motion.
+
+| Air | The light |
+| --- | --- |
+| radiance | The first air: the heart, the fill, the dust and the grade at their resting values. |
+| blaze | The heart at its hottest: long rays, thick dust, the wall's thin places aglow. |
+| prism | The light split: spectral fire wandering the lining and flashing off the facets. |
+| embers | The heart sunk to a coal. The cavity goes dark; one point in six and every hero crystal burns from within; the lining is all stars. |
+| moonstone | A cool silver light from the viewer's side, and a blue sheen crossing the lining. |
+
+Where the wall is thin (`gdThin`, a patch of the noise field that drifts round the axis) light
+from outside the stone comes up through the roots in every air; the air sets how much.
+
+**Visits.** Every 23 s one thing happens of its own accord, never the same kind twice running:
+a meridian of sparkle runs round the lining, a ring of it runs down the wall, a hero cluster rings
+by itself in its mineral's colour, the heart swells and sends one slow ring, a shower of crystal
+dust comes down through the cavity, or the fire on the lining flares. Each is a function of the
+clock written into uniforms of its own (`visitAt`): none touches a slot, a pool or a crystal that
+gameplay keeps, so a seek shows the same visit. Reduced motion keeps the ones that are light (chime,
+swell, fire) and leaves out the ones that run or fall.
+
+**Events that changed**
+
+| Gameplay | Was | Now |
+| --- | --- | --- |
+| Two lines | Two fronts. | Two fronts, and dust shaken loose from the vault comes down through the cavity (`createGlitterFall`). |
+| Three lines | Three fronts. | Three fronts, the dust, and spectral fire floods the lining. |
+| Four lines | Thin cracks on the wall; hairline lances. | The wall breaks into plates (`gdFracture`): light burns in the cracks and each plate flares as the fracture's head reaches it, and the lining's points burn from their roots along the cracks (at High they hid the wall's cracks before). The lances are about three times as wide, twice as long, and swing as they stand. |
+| Twist, and a twist that clears nothing | The agate turned a notch behind the card: all but invisible. | A pinwheel of iridescent arms winds out of the heart and turns about the axis (`gdWhirl`): three arms for a twist, two fainter ones for a spin, each turning the other way from the last. |
+| Perfect clear | Every bell rang in fire opal. | That, and opal fire: every facet in the geode plays a colour of its own for some seconds. |
+| Level up | The whole frame eased to the new mineral at once; the pale wave was cosmetic. | The new mineral runs down the wall behind the pale wave (`gdSweep`): the materials hold both palettes until the front has run (`SWEEP_LIFE`), the lining's points sink into the wall as the front reaches them and grow back as the new mineral, and a line of frost marks the front. |
+
+One, two, three and four lines now each add a shape the one below does not have. A shower or a
+pinwheel still in the air takes the next event's light instead of starting again.
+
+**Tiers.** A `fall` budget (grains of the dust shower: 90, 150, 240, 420, 540, 720). Minimal and
+Low leave out the plates inside the lining's faces (`facets`, tied to `glitter`).
+
+**Assets.** Still none. Blender was offered again and not used: what was weak was shading, light
+and motion; every form is still a prism, a shell of revolution or a quad.
+
+**Verified.** 204 tests in the Geode suites and the URL catalogue (15 new in
+`geode-airs.test.js`; three existing tests rewritten for the level-up's front, the wandering heart
+and the new post keys), typecheck, both ratchets, boundaries, the lifecycle audit and the
+production build with its boot-closure guard. Playground
+captures on WebGPU and the forced WebGL2 backend with a clean console: rest, the five airs, four
+visits, every changed event, Low and Minimal, an upright 430 × 840 frame. The real game in headless
+Chrome on WebGPU at High: 24 real hard drops, a clean console.
+
+**Not verified.** GPU cost. A capped 30 fps reading put both builds at about 1–3 ms a frame at
+1080p High on the RTX, but the same code read 0.7 and 2.3 ms in two runs, so it cannot rank them;
+the lining's shader is heavier and its tall points add overdraw. An uncapped A/B and the integrated
+GPU are open. Also open: clears, a level-up and a perfect clear in the real game (the run above
+only locked pieces); physical phones; the theme icon, which still shows the October look.
+
+Reproduce: the playground parameters below, plus `air=<0..4>` (hold an air), `visits=0`,
+`visit=shimmer|chime|fall|cascade|swell|fire` with `visitAge=<s>`, and `glitterFall` among `parts=`.
+
 ## The picture
 
 The viewer floats inside a great hollow geode, an egg-shaped cavity seventy spans deep, and

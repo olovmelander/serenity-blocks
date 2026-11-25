@@ -8,7 +8,9 @@
  * motes         dust in the air
  * stars         points of the lining that flash a star
  * shards        crystal-dust pool
- * glitter       the lining's glints blend two grain sizes (false = one evaluation a pixel)
+ * fall          grains in the glitter-fall pool (dust shaken loose from the vault)
+ * glitter       the lining's glints blend two grain sizes (false = one evaluation a pixel), and its
+ *               points show the plates inside their faces
  * dispersion    the hero facets' spectral fire
  * fracture      the four-line clear's crack network on the wall
  * caustics      patches of spectral light wander over the lining (one noise fetch per point)
@@ -21,6 +23,7 @@ export const QUALITY = Object.freeze({
         motes: 0,
         stars: 120,
         shards: 96,
+        fall: 90,
         glitter: false,
         dispersion: false,
         fracture: true,
@@ -33,6 +36,7 @@ export const QUALITY = Object.freeze({
         motes: 300,
         stars: 220,
         shards: 160,
+        fall: 150,
         glitter: false,
         dispersion: false,
         fracture: true,
@@ -45,6 +49,7 @@ export const QUALITY = Object.freeze({
         motes: 700,
         stars: 340,
         shards: 320,
+        fall: 240,
         glitter: true,
         dispersion: true,
         fracture: true,
@@ -57,6 +62,7 @@ export const QUALITY = Object.freeze({
         motes: 1200,
         stars: 520,
         shards: 512,
+        fall: 420,
         glitter: true,
         dispersion: true,
         fracture: true,
@@ -69,6 +75,7 @@ export const QUALITY = Object.freeze({
         motes: 1800,
         stars: 680,
         shards: 768,
+        fall: 540,
         glitter: true,
         dispersion: true,
         fracture: true,
@@ -81,6 +88,7 @@ export const QUALITY = Object.freeze({
         motes: 2600,
         stars: 840,
         shards: 1024,
+        fall: 720,
         glitter: true,
         dispersion: true,
         fracture: true,
