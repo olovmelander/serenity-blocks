@@ -1212,10 +1212,16 @@ export function createOrbitEarth({
             const angA = angOf(first).toVar();
             const angB = angOf(last).toVar();
             const angM = angOf(first.add(last).mul(0.5)).toVar();
+            // (And the quarter points, 2026-11-25: with the ends and the middle alone a stretch that
+            // came near the oval between them was dropped whole, and the curtain ended on a straight
+            // vertical line at the start of chapter 6; the deep chapters audit, S5.)
+            const angQ1 = angOf(first.mul(0.75).add(last.mul(0.25))).toVar();
+            const angQ3 = angOf(first.mul(0.25).add(last.mul(0.75))).toVar();
             const reach = float(A.radius - OVAL_REACH_IN);
             const beyond = float(A.radius + OVAL_REACH_OUT);
-            const nearOval = max(angA, max(angB, angM)).greaterThan(reach)
-                .and(min(angA, min(angB, angM)).lessThan(beyond));
+            const angHi = max(max(angA, angB), max(angM, max(angQ1, angQ3)));
+            const angLo = min(min(angA, angB), min(angM, min(angQ1, angQ3)));
+            const nearOval = angHi.greaterThan(reach).and(angLo.lessThan(beyond));
             If(total.greaterThan(1e-6).and(nearOval), () => {
                 // The sheets are surfaces (cones round the pole, folded): sample how far each is
                 // from the ray at the ends of each step, and where the sign turns the ray crossed

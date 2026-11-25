@@ -925,8 +925,12 @@ export class OdysseyTslPipeline {
 
         // ── 6b. Film grain + dither (anti-banding) — always last ──
         const grainSeed = uv.mul(132.0).add(vec2(this.uTime.mul(0.73), this.uTime.mul(1.17)));
+        // (2026-11-25, the deep chapters audit J6: in deep space the grain was louder than the
+        // sky it sat on, a high-pass std of 5.4 levels on a black of ~5. Film grain lives in the
+        // exposure: the darkest tones keep a fifth of it.)
+        const grainInDark = mix(float(0.2), float(1.0), smoothstep(0.004, 0.08, localLuma));
         const grain = fract(sin(dot(grainSeed, vec2(12.9898, 78.233))).mul(43758.5453))
-            .sub(0.5).mul(this.uGrain);
+            .sub(0.5).mul(this.uGrain).mul(grainInDark);
         const ditherSeed = uv.mul(317.0).add(vec2(0.17, 0.31));
         const dither = fract(sin(dot(ditherSeed, vec2(127.1, 269.5))).mul(43758.5453))
             .sub(0.5).mul(0.0022);

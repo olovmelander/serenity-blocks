@@ -265,6 +265,24 @@ export function planNeonSigns(towers, opts = {}) {
         });
     };
 
+    // The tube blades already hung on each wall (2026-11-25, the deep chapters audit C9: two
+    // blades on one wall could cross, NEON over BATHS reading "NEATHS"). A blade that would cross
+    // one is moved up or down past it, or left out; every draw is still made, so the rest of the
+    // city is planned as it was.
+    const hung = { [-1]: [], 1: [] };
+    const crosses = (side, y, z, w, h) => hung[side].some((b) => Math.abs(b.z - z) < ((b.w + w) * 0.5) + 0.6
+        && Math.abs(b.y - y) < ((b.h + h) * 0.5) + 1.0);
+    const clearOf = (side, y, z, w, h, lo, hi) => {
+        if (!crosses(side, y, z, w, h)) return y;
+        for (const b of hung[side]) {
+            for (const dir of [1, -1]) {
+                const yy = b.y + (dir * (((b.h + h) * 0.5) + 1.5));
+                if (yy >= lo && yy <= hi && !crosses(side, yy, z, w, h)) return yy;
+            }
+        }
+        return null;
+    };
+
     towers.forEach((tower) => {
         if (tower.z > SIGN_Z.near || tower.z < SIGN_Z.far) return;
         const top = tower.y + tower.height * 0.5;
@@ -283,8 +301,17 @@ export function planNeonSigns(towers, opts = {}) {
                 const yHi = Math.min(top - h * 0.5 - 2, EYE_Y + 14);
                 const yLo = STREET_Y + 10 + h * 0.5;
                 if (yHi <= yLo) continue;
-                const y = range(yLo, yHi);
+                const drawnY = range(yLo, yHi);
                 const zz = tower.z + range(-0.38, 0.38) * tower.depth;
+                const y = clearOf(tower.side, drawnY, zz, w, h, yLo, yHi);
+                if (y === null) {
+                    // (The draws `add` would have made, so nothing after it moves.)
+                    rand(); rand(); rand();
+                    continue;
+                }
+                hung[tower.side].push({
+                    y, z: zz, w, h,
+                });
                 add({
                     kind: SIGN_KIND.tube,
                     vertical: true,
