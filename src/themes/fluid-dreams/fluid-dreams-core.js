@@ -26,7 +26,7 @@ export const GROUP_RIGHT = 3; // event liquid right of the board
 export const GROUP_COUNT = 4;
 
 /** Table capacity per group (balls). */
-export const GROUP_CAPACITY = Object.freeze([36, 6, 16, 16]);
+export const GROUP_CAPACITY = Object.freeze([48, 6, 26, 26]);
 export const GROUP_START = Object.freeze(GROUP_CAPACITY.map((_, g) => {
     let start = 0;
     for (let i = 0; i < g; i += 1) start += GROUP_CAPACITY[i];

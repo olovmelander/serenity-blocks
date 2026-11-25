@@ -31,6 +31,7 @@ import { bakeNoiseSteps, createNoiseTextureSteps } from './fluid-dreams-tsl.js';
 import { createLiquidMaterial, createLiquidMesh, createLiquidUniforms } from './fluid-dreams-liquid.js';
 import { createMotes, createSpray } from './fluid-dreams-spray.js';
 import { FluidChoreography } from './fluid-dreams-choreography.js';
+import { FluidSky } from './fluid-dreams-sky.js';
 import {
     BOARD_GRID, boardFor, boardPoint, cardUnion, fallbackLayout,
 } from './fluid-dreams-composition.js';
@@ -126,6 +127,8 @@ export function horizonY(aspect) {
 
 /** How far out a lock's droplet lands (metres): near enough to read, never at the viewer's feet. */
 const LANDING = Object.freeze({ near: 9, far: 19 });
+/** How far out a clear's fountains stand (metres): in the middle of where the droplets land. */
+const FOUNTAIN_DISTANCE = 15;
 
 /**
  * Where a four-line clear may carry the Great Drop: a screen point (fractions, y down) for its
@@ -210,6 +213,12 @@ export class FluidDreamsWorld {
         this.group = null;
         this.u = null;
         this.choreo = null;
+        /** The sky's life: airs, the sun's arc, far forms, bubbles, happenings (fluid-dreams-sky.js). */
+        this.sky = null;
+        /** The sun's bearing where the composition stands it (radians from straight ahead). */
+        this._sunBearing = 0.5;
+        this._eye = [0, REST_RIG.height, 0];
+        this._sunFlat = [0.33, -0.94];
     }
 
     build() {
@@ -228,13 +237,19 @@ export class FluidDreamsWorld {
             lobes: tier.lobes,
             crown: tier.crown,
             crownSpokes: tier.crownSpokes,
-            emit: (burst) => this.parts.spray?.emit({ ...burst, time: this.choreo.time }),
+            emit: (burst) => this.parts.spray?.emit({ ...burst, time: this.choreo.time + (burst.delay || 0) }),
+            notify: (what, a, b, c) => this.onChoreography(what, a, b, c),
         });
+        this.sky = new FluidSky({
+            bubbles: tier.bubbles,
+            emit: (burst) => this.parts.spray?.emit({ ...burst, time: this.choreo.time + (burst.delay || 0) }),
+        });
+        this.sky.setReducedMotion(this.reducedMotion);
         const baked = yield* bakeNoiseSteps();
         yield 'noise';
         this.noise = yield* createNoiseTextureSteps(baked);
         yield 'noise texture';
-        const u = createLiquidUniforms(this.choreo.tables, this.noise);
+        const u = createLiquidUniforms(this.choreo.tables, this.noise, this.sky.rows);
         this.u = u;
         this.group = new THREE.Group();
         this.group.name = 'FluidDreamsWorld';
@@ -249,6 +264,10 @@ export class FluidDreamsWorld {
             dispersion: tier.dispersion,
             farDrops: tier.farDrops,
             mirrorExtras: tier.mirrorExtras,
+            skyLit: tier.skyLit,
+            strata: tier.strata,
+            bubbles: tier.bubbles > 0,
+            mirrorSky: tier.mirrorSky,
         });
         const liquid = createLiquidMesh(liquidMaterial);
         this.parts.liquid = { mesh: liquid, material: liquidMaterial, geometry: liquid.geometry };
@@ -267,6 +286,33 @@ export class FluidDreamsWorld {
     setReducedMotion(reduced) {
         this.reducedMotion = reduced === true;
         this.choreo?.setReducedMotion(this.reducedMotion);
+        this.sky?.setReducedMotion(this.reducedMotion);
+    }
+
+    /** Hold one air (its index round AIRS), or null to let the wheel turn: captures and the playground. */
+    setAirHold(index) {
+        if (!this.sky) return;
+        this.sky.airHold = Number.isFinite(index) ? Math.max(0, index) : null;
+        this.sky._refreshAir();
+    }
+
+    /** Switch the things that happen by themselves on or off (captures hold the sky still). */
+    setHappenings(on) {
+        if (this.sky) this.sky.happeningsOn = on !== false;
+    }
+
+    /** One happening, now: 'star', 'bubbles', 'shoal', 'sink' or 'fountain'. */
+    happen(kind, seed = 1) {
+        return this.sky?.happen(kind, seed) ?? null;
+    }
+
+    /** What the choreography tells the rest of the picture: the sky's share of an event. */
+    onChoreography(what, a, b, c) {
+        const { sky } = this;
+        if (!sky) return;
+        if (what === 'impact') sky.impact(a, b, c);
+        else if (what === 'answer') sky.answer(a);
+        else if (what === 'perfect') sky.perfect(a);
     }
 
     showOnlyParts(names) {
@@ -316,14 +362,32 @@ export class FluidDreamsWorld {
         sc.kin[0] = kin[0] * 38;
         sc.kin[1] = Math.max(eyeY + kin[1] * 38, 4.2);
         sc.kin[2] = kin[2] * 38;
+        // the dream sun: its bearing is the composition's, its height the sky's (it rides the sea line)
         const sun = restRay(anchors.sun.x, anchors.sun.y, aspect, this._tmp);
-        const sunY = Math.max(sun[1], 0.03);
-        const inv = 1 / Math.hypot(sun[0], sunY, sun[2]);
-        this.u.sunDir.value.set(sun[0] * inv, sunY * inv, sun[2] * inv);
+        this._sunBearing = Math.atan2(sun[0], -sun[2]);
+        this.applySun();
         // the sea point under the solo board (or the cards' union): where a clear's packet leaves
         const foot = this.footOf(boardFor(this.layout, 0) || cardUnion(this.layout));
         sc.foot[0] = foot[0];
         sc.foot[1] = foot[1];
+    }
+
+    /** Stand the sun at the composition's bearing (and the sky's small wander), as high as the sky has it. */
+    applySun() {
+        const { u, sky } = this;
+        if (!u) return;
+        const tanH = Math.tan((fovForAspect(this.aspect) * DEG) / 2) * this.aspect;
+        const bearing = this._sunBearing + (sky ? sky.sun.sway : 0) * 2 * Math.atan(tanH);
+        const height = sky ? sky.sun.height : 0.04;
+        const flat = Math.sqrt(1 - height * height);
+        const sx = Math.sin(bearing);
+        const sz = -Math.cos(bearing);
+        this._sunFlat[0] = sx;
+        this._sunFlat[1] = sz;
+        u.sunDir.value.set(sx * flat, height, sz * flat);
+        u.sunFlat.value.set(sx, sz);
+        // where it lies in the ink's own plane (fluid-dreams-sky-tsl.js): the side the ink is lit from
+        u.sunDeck.value.set((sx * flat) / (height + 0.3), (sz * flat) / (height + 0.3));
     }
 
     /** Where the composition stands the Great Drop before anything has moved it. */
@@ -441,10 +505,12 @@ export class FluidDreamsWorld {
     resetSession() {
         if (!this.choreo) return;
         this.choreo.reset();
+        this.sky?.reset();
         this.parts.spray?.reset();
         this._lockCount = 0;
         // a new run drops the level's step (eased, not cut); the clock's turn stays
         this.level = 1;
+        this.sky?.setLevel(1);
     }
 
     get combo() {
@@ -458,6 +524,11 @@ export class FluidDreamsWorld {
         const calm = this.reducedMotion ? 0 : 1;
         // (read at this frame's time: a clock that holds still holds the lens still)
         const kick = this.choreo?.kickAt(t) ?? 0;
+        // the sun for this frame's clock, before anything is aimed by it (the shafts' origin below)
+        if (this.sky) {
+            this.sky.placeSun(t);
+            this.applySun();
+        }
         const fov = fovForAspect(this.aspect) - kick * 0.7 * calm;
         if (camera.fov !== fov || camera.near !== REST_RIG.near || camera.far !== REST_RIG.far) {
             camera.fov = fov;
@@ -594,6 +665,7 @@ export class FluidDreamsWorld {
         const plunged = this.choreo.clear({
             origin,
             lines,
+            fountains: board && !clear.screen ? this.fountainSites(board) : null,
             twist: clear.twist === true,
             perfect: clear.perfect === true,
             site: site ? this.sitePoint(site, this._site) : null,
@@ -635,6 +707,41 @@ export class FluidDreamsWorld {
         }
     }
 
+    /**
+     * The sea points either side of the card that holds `board`, where a clear's fountains stand:
+     * [[x, z] | null, [x, z] | null] (left, right; null where the frame has no sea beside the card).
+     */
+    fountainSites(board) {
+        const card = cardUnion(this.layout) || board;
+        const sea = horizonY(this.aspect);
+        const out = this._fountains || (this._fountains = [[0, 0], [0, 0]]);
+        const sites = [null, null];
+        if (this.layout.cards.length > 1) return sites;
+        const { hud } = this.layout;
+        for (let s = 0; s < 2; s += 1) {
+            // the open sea on this side: past the stats bar where it stands beside the card
+            let edge = s === 0 ? card.x0 : card.x1;
+            if (hud && s === 0 && hud.x1 <= card.x0 + 0.02) edge = Math.min(edge, hud.x0);
+            if (hud && s === 1 && hud.x0 >= card.x1 - 0.02) edge = Math.max(edge, hud.x1);
+            const room = s === 0 ? edge : 1 - edge;
+            if (room < 0.1) continue;
+            const sx = s === 0 ? edge - Math.min(0.09, room * 0.45) : edge + Math.min(0.09, room * 0.45);
+            // on that bearing at a set distance, as a lock's droplet lands: a point a fixed share of
+            // the screen under the sea line came close enough on a phone's wide lens to loom
+            const ray = restRay(sx, sea + 0.1, this.aspect, this._tmp);
+            const flat = Math.hypot(ray[0], ray[2]) || 1;
+            out[s][0] = (ray[0] / flat) * FOUNTAIN_DISTANCE;
+            out[s][1] = (ray[2] / flat) * FOUNTAIN_DISTANCE;
+            sites[s] = out[s];
+        }
+        return sites;
+    }
+
+    /** A run ended: the sea lets go and the dusk falls for a moment (after the session's reset). */
+    endRun() {
+        this.choreo?.exhale();
+    }
+
     /** A twist that cleared nothing: the sea under the Drop turns a little. */
     onSpin() {
         this.choreo?.spinNoLines();
@@ -648,8 +755,12 @@ export class FluidDreamsWorld {
     levelUp(level, { silent = false } = {}) {
         const n = Math.max(1, Math.round(Number(level) || 1));
         this.level = n;
+        this.sky?.setLevel(n, silent);
         if (silent) this.applyPalette(1);
-        else this.choreo?.levelUp();
+        else {
+            this.choreo?.levelUp();
+            this.sky?.levelUp();
+        }
     }
 
     /**
@@ -674,6 +785,9 @@ export class FluidDreamsWorld {
     /** Jump the clock (captures): everything in flight is dropped. */
     seek(time) {
         if (!this.choreo) return;
+        // (the sky first: the sea comes to rest as the air of that moment has it)
+        this.sky.seek(time);
+        this.choreo.airCalm = this.sky.air.calm;
         this.choreo.seek(time);
         this.parts.spray?.reset();
         this.random = mulberry32(0xd4ea);
@@ -717,8 +831,52 @@ export class FluidDreamsWorld {
             u[key].value.set(shown[0], shown[1], shown[2]);
         });
 
+        // The sky first: its air says how the sea runs. (The eye is last frame's: it drifts by
+        // millimetres, and the bubbles and the lights it aims are tens of metres off.)
+        const { sky } = this;
+        const from = this._eye;
+        if (camera) {
+            from[0] = camera.position.x;
+            from[1] = camera.position.y;
+            from[2] = camera.position.z;
+        }
+        sky.fountainTint = this.shown.glow;
+        sky.setTwist(choreo.twistEnv, choreo.vortex.x, choreo.hero.y, choreo.vortex.z);
+        sky.update(sim.time, dt, {
+            eye: from,
+            sunFlat: this._sunFlat,
+            heat: choreo.heat.level,
+            fever: choreo.heat.fever,
+            busy: choreo.plunge.active,
+        });
+        this.applySun();
+        choreo.airCalm = sky.air.calm;
+
         choreo.update(sim.time, dt, this.shown);
         const { level, punch } = choreo.heat;
+
+        const { air } = sky;
+        u.skyCounts.value.set(sky.bubbleLive, 0, 0, 0);
+        u.skyClock.value = sky.skyClock;
+        u.air.value.set(sky.cover, sky.strata, air.mist, sky.starGain);
+        u.air2.value.set(air.veins, 0, 0, 0);
+        u.sunLook.value.set(sky.halo, sky.halo2, 0, 0);
+        // A level's front lifts the sky behind it, and a four-line clear's pillar lights half the
+        // frame: both are frame-wide light, so Reduce flashing scales them here (ADR-0021).
+        const flashes = flashScale();
+        u.front.value.set(sky.front.radius, sky.front.strength * flashes, sky.front.width, 0);
+        u.pillar.value.set(sky.pillar.x, sky.pillar.z, sky.pillar.strength * flashes, sky.pillar.width);
+        u.shock.value.set(sky.shock.x, sky.shock.z, sky.shock.radius, sky.shock.strength);
+        u.swirl.value.set(sky.swirl.x, sky.swirl.z, sky.swirl.angle, sky.swirl.radius);
+        u.starHead.value.set(sky.star.head[0], sky.star.head[1], sky.star.head[2], sky.star.strength);
+        u.starTail.value.set(sky.star.along[0], sky.star.along[1], sky.star.along[2], sky.star.length);
+        u.shoal.value.set(sky.shoal.x, sky.shoal.z, sky.shoal.radius, sky.shoal.strength);
+        // the star river leans a little one way and the other over a quarter of an hour
+        const lean = 0.42 * Math.sin((sim.time * Math.PI * 2) / 860);
+        const tilt = 0.62 + 0.1 * Math.sin((sim.time * Math.PI * 2) / 1130 + 1);
+        u.river.value.set(-0.5 * Math.cos(lean) + 0.6 * Math.sin(lean), tilt, 0.6 * Math.cos(lean) + 0.5 * Math.sin(lean))
+            .normalize();
+        u.moteGain.value = air.motes * (1 + sky.moteSurge * 2.2);
 
         u.time.value = sim.time;
         u.counts.value.set(choreo.counts.rings, choreo.counts.dye, choreo.counts.waves, 0);
@@ -730,7 +888,7 @@ export class FluidDreamsWorld {
         u.stemBeads.value.set(beads[0].y, beads[0].amp, beads[1].y, beads[1].amp);
         u.stemTint.value.set(choreo.heroTint[0], choreo.heroTint[1], choreo.heroTint[2], stem.glow);
         u.vortex.value.set(vortex.x, vortex.z, vortex.depth, vortex.radius);
-        u.vortexSpin.value.set(vortex.phase, vortex.arms, 0, 0);
+        u.vortexSpin.value.set(vortex.phase, vortex.arms, vortex.helix, 0);
         u.hero.value.set(hero.x, hero.y, hero.z, hero.r);
         u.heroBlend.value.set(hero.blend, hero.blend / SMOOTH_K, hero.bias, hero.glow);
         u.swell.value = choreo.swell;
@@ -743,7 +901,7 @@ export class FluidDreamsWorld {
         u.film.value.set(1, choreo.filmShift + choreo.sheen, 0, 0);
         // A world-side flash (ADR-0021): Reduce flashing scales it with the post's own.
         u.skyFlash.value = choreo.skyFlash * flashScale();
-        this.moteClock += dt * (1 + choreo.charge * 1.6 + level * 0.6 + choreo.heat.fever * 0.8);
+        this.moteClock += dt * (1 + choreo.charge * 1.6 + level * 0.6 + choreo.heat.fever * 0.8 + sky.moteSurge * 5);
         u.moteClock.value = this.moteClock;
 
         if (camera) {
@@ -779,7 +937,7 @@ export class FluidDreamsWorld {
         // An iris: it closes a little as play heats and as the overdrive flares, so the colours
         // survive the surge and the deep stays deep.
         post.exposure = 1 - choreo.hush * 0.2 - Math.max(0, level - 0.2) * 0.1 - choreo.heat.fever * 0.06
-            - choreo.surge * 0.08 - post.flash * flashScale() * 0.1;
+            - choreo.surge * 0.08 - post.flash * flashScale() * 0.1 - choreo.dusk * 0.3;
         post.shafts = 0.35 + choreo.charge * 0.35 + choreo.surge * 0.3;
     }
 
@@ -794,6 +952,7 @@ export class FluidDreamsWorld {
             level: this.level,
             palette: paletteNear(this.palettePhase()).name,
             mood: this.paletteStep + dreamDrift(this.time),
+            ...(this.sky ? this.sky.getState() : null),
             combo: c?.combo ?? 0,
             charge: c ? Number(c.charge.toFixed(3)) : 0,
             balls: c ? Array.from(c.live) : [],
@@ -821,6 +980,7 @@ export class FluidDreamsWorld {
         this.group = null;
         this.u = null;
         this.choreo = null;
+        this.sky = null;
         this._camera = null;
     }
 }

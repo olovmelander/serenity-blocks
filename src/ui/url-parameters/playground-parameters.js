@@ -3136,6 +3136,51 @@ export const PLAYGROUND_URL_PARAMETERS = [
         ],
     },
     {
+        name: 'air',
+        category: 'Playground',
+        scope: 'playground.html — fluid-dreams',
+        description: 'Hold one of the airs the dreaming sea turns through by its own clock (how much ink the sky '
+            + 'carries, the bars of cloud on the sea line, mist, how the sea runs, the stars and bubbles, how '
+            + 'high the sun rides).',
+        values: '0 clear dusk, 1 ink tide, 2 glass calm, 3 the bloom, 4 long swell; a fraction is the melt '
+            + 'between two.',
+        defaultValue: 'Unset: the clock turns them, 113 s an air; a level is two airs on.',
+        example: 'air=2&t=20',
+        notes: 'Use on playground.html with effect=fluid-dreams. t= still sets the dusk (100 s each).',
+        sources: [
+            'src/playground/effects/fluid-dreams.effect.js',
+            'src/themes/fluid-dreams/fluid-dreams-sky.js',
+        ],
+    },
+    {
+        name: 'happen',
+        category: 'Playground',
+        scope: 'playground.html — fluid-dreams',
+        description: 'Hold off what the sky does by itself (a falling star, a train of bubbles, a shoal of light '
+            + 'under the surface, a far form sinking, a fountain far out): a still sky for an A/B.',
+        values: '0 holds them off.',
+        defaultValue: 'On: one about every 27 s from t = 12, drawn from the clock (a seek lands on the same sky).',
+        example: 'happen=0',
+        notes: 'Use on playground.html with effect=fluid-dreams. To play one, use event=happen&kind=<name>.',
+        sources: [
+            'src/playground/effects/fluid-dreams.effect.js',
+        ],
+    },
+    {
+        name: 'kind',
+        category: 'Playground',
+        scope: 'playground.html — fluid-dreams',
+        description: 'With event=happen: which of the sky\'s own happenings to play, eventAge seconds before '
+            + 'the frame.',
+        values: 'star, bubbles, shoal, sink or fountain (seed=<n> picks where).',
+        defaultValue: 'star.',
+        example: 'event=happen&kind=shoal&eventAge=6',
+        notes: 'Use on playground.html with effect=fluid-dreams.',
+        sources: [
+            'src/playground/effects/fluid-dreams.effect.js',
+        ],
+    },
+    {
         name: 'values',
         category: 'Playground',
         scope: 'playground.html — rainbow-terraces',
