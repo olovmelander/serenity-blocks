@@ -203,7 +203,8 @@ export function createPerches({
                 pads.push({
                     name: `${limb.name}.tip`,
                     home,
-                    centre: tip.centre,
+                    // A standing limb's end is the top of it; on a leaning one it sits on top of the end.
+                    centre: limb.standing ? tip.centre : limb.frame(limb.length, 0).point.slice(),
                     radius: Math.max(0.1, tip.radius),
                     limb: limb.name,
                 });
