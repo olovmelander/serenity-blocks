@@ -14,8 +14,8 @@ import { createSquirrel } from '../../src/themes/fall/fall-squirrel.js';
 import { SQUIRREL_CLIPS, SQUIRREL_SCALE } from '../../src/themes/fall/fall-squirrel-clips.js';
 import { createPerches } from '../../src/themes/fall/fall-squirrel-limbs.js';
 import {
-    FLICK_LENGTH, GROUND_BITS, LIMB_BITS, PAD_BITS, SQUIRREL_NEAR_SPOTS, SQUIRREL_SPOTS, SquirrelMind, TRUNK_BITS,
-    createSquirrelPose,
+    FLICK_LENGTH, GROUND_BITS, LIMB_BITS, PAD_BITS, POST_BITS, SQUIRREL_NEAR_SPOTS, SQUIRREL_SPOTS, SquirrelMind,
+    TRUNK_BITS, createSquirrelPose,
 } from '../../src/themes/fall/fall-squirrel-mind.js';
 import {
     SQUIRREL_TRUNK_SPAN, TrunkSurface, createSquirrelStage, measureTrunk,
@@ -313,27 +313,30 @@ describe('the squirrel mind', () => {
         }
         // And every act it does on one starts and ends there (a leap down a dead limb onto the log it
         // grows from lands on the log's walked part, not past its end).
-        let onLimbs = 0;
-        for (const seed of [3, 271, 99, 11]) {
+        const placesOnLimbs = (seed) => {
+            const { limbs } = stage;
             const mind = new SquirrelMind({ stage, seed });
             const seen = new Set();
+            let count = 0;
             live(mind, 600, 0.05, [], () => {
                 const { act } = mind;
                 if (seen.has(act)) return;
                 seen.add(act);
                 for (const place of [act.from, act.to]) {
-                    const limb = place && stage.limbs[place.on];
+                    const limb = place && limbs[place.on];
                     if (!limb) continue;
-                    onLimbs += 1;
+                    count += 1;
                     expect(place.a, `seed ${seed} ${act.kind} on ${limb.name}`).toBeGreaterThanOrEqual(limb.low - 1e-9);
                     expect(place.a, `seed ${seed} ${act.kind} on ${limb.name}`).toBeLessThanOrEqual(limb.high + 1e-9);
                 }
             });
-        }
+            return count;
+        };
+        const onLimbs = [3, 271, 99, 11].reduce((sum, seed) => sum + placesOnLimbs(seed), 0);
         expect(onLimbs).toBeGreaterThan(200);
     }, 30_000);
 
-    it('opens its day where the seed says: a crown, the floor, a perch or a bough, and never where there is none', () => {
+    it('opens its day where the seed says (a crown, the floor, a perch, a bough), never where there is none', () => {
         /** Where a mind's day opens, by name. */
         const opening = (mind) => {
             const { act } = mind;
@@ -397,16 +400,71 @@ describe('the squirrel mind', () => {
             live(mind, 900, 0.1);
             mind.history.forEach((bit) => done.add(bit));
         }
-        // Every routine of every place it can be: the floor, the great trunks, a limb, a flat perch.
+        // Every routine of the floor, the great trunks, a limb and a flat perch, and nothing but routines
+        // (a dead limb standing up is only planned from when an answer to the board stops a climb up it).
         for (const bit of new Set([...GROUND_BITS, ...TRUNK_BITS, ...LIMB_BITS, ...PAD_BITS])) {
             expect(done.has(bit), bit).toBe(true);
         }
+        const routines = new Set([...GROUND_BITS, ...TRUNK_BITS, ...LIMB_BITS, ...PAD_BITS, ...POST_BITS]);
+        done.forEach((bit) => expect(routines.has(bit), bit).toBe(true));
         const scripted = new SquirrelMind({
             stage, seed: 8, start: 'ground', script: ['snack', 'itch', 'climb', 'peek', 'down'],
         });
         live(scripted, 60, 0.1);
         expect(scripted.history.slice(0, 5)).toEqual(['snack', 'itch', 'climb', 'peek', 'down']);
     });
+
+    it('does a routine it is asked to wherever it can be done there, and passes over one that cannot', () => {
+        /** A mind standing at `place`, planning its next routine with `script` first. */
+        const planned = (place, script) => {
+            const mind = new SquirrelMind({ stage, seed: 8, start: 'ground' });
+            Object.assign(mind, {
+                act: null, prev: null, recent: [], queue: [], history: [], time: 0, scripted: script.slice(),
+            });
+            mind.tail = { time: 0, place };
+            mind.plan();
+            mind.act = mind.queue.shift();
+            return mind;
+        };
+        const places = [];
+        for (const [x, z] of [...SQUIRREL_SPOTS.maple.slice(0, 2), ...SQUIRREL_NEAR_SPOTS.oak.slice(0, 1)]) {
+            places.push([{
+                on: 'ground', a: x, b: z, heading: 0,
+            }, GROUND_BITS, 'sit']);
+        }
+        for (const tree of Object.keys(stage.trunks)) {
+            places.push([{
+                on: tree, a: 2, b: stage.facing[tree], heading: 0,
+            }, TRUNK_BITS, 'look']);
+        }
+        for (const limb of Object.values(stage.limbs)) {
+            const place = {
+                on: limb.name, a: (limb.low + limb.high) / 2, b: 0, heading: 0,
+            };
+            places.push(limb.standing ? [place, POST_BITS, 'cling'] : [place, LIMB_BITS, 'rest']);
+        }
+        for (const pad of stage.pads) {
+            places.push([{
+                on: 'ground', a: pad.centre[0], b: pad.centre[2], heading: 0, pad: pad.name,
+            }, PAD_BITS, 'watch']);
+        }
+        const honoured = new Set();
+        for (const [place, bits, fallback] of places) {
+            for (const bit of bits) {
+                const mind = planned(place, [bit, fallback]);
+                const where = `${bit} at ${place.pad || place.on}`;
+                expect([bit, fallback], where).toContain(mind.history[0]);
+                if (mind.history[0] === bit) honoured.add(bit);
+                // And what it planned plays: a few seconds of it, every pose real.
+                live(mind, 8, 0.05, [], (pose) => {
+                    expect(pose.position.every(Number.isFinite), where).toBe(true);
+                });
+            }
+        }
+        // Each routine could be asked for somewhere (a limb's leap to another limb is the pads' leap here).
+        expect([...honoured].sort()).toEqual([...new Set([...GROUND_BITS, ...TRUNK_BITS, ...LIMB_BITS, ...PAD_BITS,
+            ...POST_BITS])].sort());
+    }, 30_000);
 
     it('sits up with its acorn to nibble, and looks to the board when it is told to', () => {
         const mind = new SquirrelMind({
@@ -567,7 +625,7 @@ describe('the squirrel moves smoothly', () => {
         expect(cut).toBeGreaterThan(0);
     }, 30_000);
 
-    it('turns on the spot with its paws stepping round: on its feet on the floor and along a limb, gripping on bark', () => {
+    it('turns on the spot: on its feet on the floor and along a limb, its paws gripping on bark', () => {
         const turns = new Set();
         for (const seed of [271, 3, 99]) {
             const mind = new SquirrelMind({ stage, seed, start: 'ground' });
@@ -609,7 +667,12 @@ describe('the squirrel keeps to both trees', () => {
         const v = new THREE.Vector3();
         const seen = new Set();
         const record = {
-            climbs: { maple: 0, oak: 0 }, treetops: 0, homes: [], stops: [], time: { maple: 0, oak: 0 },
+            climbs: { maple: 0, oak: 0 },
+            bark: { maple: 0, oak: 0 },
+            treetops: 0,
+            homes: [],
+            stops: [],
+            time: { maple: 0, oak: 0 },
         };
         let home = null;
         let since = 0;
@@ -618,7 +681,7 @@ describe('the squirrel keeps to both trees', () => {
             const key = `${act.t0.toFixed(4)}${act.kind}${act.clip || ''}`;
             if (!seen.has(key)) {
                 seen.add(key);
-                if (act.kind === 'leap' && act.from.on === 'ground' && act.to.on !== 'ground') {
+                if (act.kind === 'leap' && act.from.on === 'ground' && stage.trunks[act.to.on]) {
                     record.climbs[act.to.on] += 1;
                 }
                 if (act.kind === 'hidden' && act.to && act.from.on !== 'ground' && act.to.on !== act.from.on) {
@@ -636,6 +699,7 @@ describe('the squirrel keeps to both trees', () => {
                 since = t;
             }
             if (pose.visible && home) record.time[home] += 1 / 30;
+            if (pose.visible && stage.trunks[act.from.on]) record.bark[act.from.on] += 1 / 30;
         });
         record.homes.push(seconds - since);
         return record;
@@ -648,9 +712,12 @@ describe('the squirrel keeps to both trees', () => {
             // Ten minutes: it has gone over and back several times, never kept to one tree for long.
             expect(record.homes.length, `seed ${seed}`).toBeGreaterThanOrEqual(6);
             expect(Math.max(...record.homes), `seed ${seed}`).toBeLessThan(170);
-            // (Its perches close to the eye take some of its time: each tree is climbed twice or more.)
-            expect(record.climbs.maple, `seed ${seed}`).toBeGreaterThanOrEqual(2);
-            expect(record.climbs.oak, `seed ${seed}`).toBeGreaterThanOrEqual(2);
+            // Up each from the floor at least once, and half a minute or more on each one's bark (it also
+            // comes onto a trunk through the treetops, back along a bough, or from its perches).
+            for (const tree of ['maple', 'oak']) {
+                expect(record.climbs[tree], `seed ${seed} ${tree}`).toBeGreaterThanOrEqual(1);
+                expect(record.bark[tree], `seed ${seed} ${tree}`).toBeGreaterThan(30);
+            }
             const total = record.time.maple + record.time.oak;
             expect(record.time.maple / total, `seed ${seed}`).toBeGreaterThan(0.3);
             expect(record.time.oak / total, `seed ${seed}`).toBeGreaterThan(0.3);

@@ -90,6 +90,8 @@ export const TRUNK_BITS = Object.freeze(['shift', 'look', 'peek', 'chatter', 'cr
 export const LIMB_BITS = Object.freeze(['run', 'rest', 'meal', 'wash', 'loaf', 'across', 'lookout', 'tip', 'back']);
 /** On a flat perch (the stump's top, a snapped limb's end): it sits, eats, looks out, washes, jumps off. */
 export const PAD_BITS = Object.freeze(['watch', 'meal', 'wash', 'itch', 'across', 'off']);
+/** Clinging to a dead limb that stands up (the windfall's): on up to its snapped end, a while there, or down. */
+export const POST_BITS = Object.freeze(['top', 'cling', 'down']);
 /** A routine done this recently (seconds) is unlikely to be chosen again: it does something else. */
 const FRESH = 70;
 /** How far apart two limbs may be for a leap between them (metres, drawn). */
@@ -1057,11 +1059,15 @@ export class SquirrelMind {
         this.move(to, down ? 'descend' : 'climb', { rate: down ? this.range(1.0, 1.4) : this.range(0.85, 1.15) });
     }
 
-    /** The next scripted routine if it can be done here (one that cannot is passed over). */
-    scriptedBit(allowed) {
+    /**
+     * The next scripted routine if it can be done here (one that cannot is passed over): one of this
+     * place's routines, and not one `cannot` names (a leap to a limb there is none of, a dead limb to
+     * climb that does not stand here).
+     */
+    scriptedBit(allowed, cannot = {}) {
         while (this.scripted.length) {
             const bit = this.scripted.shift();
-            if (allowed.includes(bit)) return bit;
+            if (allowed.includes(bit) && !cannot[bit]) return bit;
         }
         return null;
     }
@@ -1137,7 +1143,7 @@ export class SquirrelMind {
             entry.centre[1] - pad.centre[1],
             entry.centre[2] - pad.centre[2],
         ) <= LEAP_REACH.most);
-        const bit = this.scriptedBit(PAD_BITS) || this.choose('pad', {
+        const bit = this.scriptedBit(PAD_BITS, { across: !other }) || this.choose('pad', {
             watch: 2.2,
             meal: snacked ? 0.3 : 1.8,
             wash: 1.0,
@@ -1213,7 +1219,9 @@ export class SquirrelMind {
         const posts = this.junctionsOn(limb.name);
         const snacked = now - this.lastSnack < 25;
         const tip = this.tipOf(limb.name);
-        const bit = this.scriptedBit(LIMB_BITS) || this.choose('limb', {
+        const bit = this.scriptedBit(LIMB_BITS, {
+            across: !links.length, lookout: !posts.length, tip: !tip,
+        }) || this.choose('limb', {
             // Out to the snapped end of a leaning bough, to sit there.
             tip: tip ? 3.0 : 0,
             run: 2.2,
@@ -1325,7 +1333,7 @@ export class SquirrelMind {
         const here = this.tail.place;
         const now = this.tail.time;
         const pad = (this.stage.pads || []).find((entry) => entry.limb === limb.name);
-        const bit = this.choose('post', {
+        const bit = this.scriptedBit(POST_BITS, { top: !pad }) || this.choose('post', {
             top: pad ? 2.6 : 0, cling: 1.2, down: 1.2 + 2 * this.restless(now),
         }, now);
         this.history.push(bit);
@@ -1420,7 +1428,7 @@ export class SquirrelMind {
         // (Long enough by this tree, it goes: over the floor or through the treetops.)
         const away = this.tail.time - this.homeSince > WANDER;
         const boughs = this.boughsOf(tree);
-        const bit = this.scriptedBit(TRUNK_BITS) || this.choose('trunk', {
+        const bit = this.scriptedBit(TRUNK_BITS, { bough: !boughs.length }) || this.choose('trunk', {
             shift: away ? 0 : 2.0,
             look: away ? 0 : 1.6,
             peek: away ? 0 : 1.4,
