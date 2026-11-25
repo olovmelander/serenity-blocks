@@ -1,13 +1,17 @@
 /**
  * Fall — the grove's visitors, drawn: what fall-happenings.js says is happening.
  *
- *   geese    a skein in a V, high over the grove. It enters whole from beyond one edge of the
- *            picture and leaves whole beyond the other: its lane is fitted to the view's width at
- *            the skein's own depth, and reaches past it by the length of the V's arms.
- *   jays     one jay, then a second, out of one great tree's crown and into the other's: a
- *            flap-and-fold flight that dips between them. They start and end among the leaves.
- *   acorns   a handful dropping from a great tree: each falls, bounces once in the litter (lifting
- *            the leaves it lands among) and lies, and sinks away as the happening ends.
+ *   geese    a skein in a V, high over the grove, crossing the one window of open sky the game
+ *            leaves: the strip above the board card, between the two great crowns. It is laid out
+ *            in the eye's own frame (a share of the picture's height, at a depth behind the crowns),
+ *            so it reads as a V of beating wings whatever the screen, crosses that window for about
+ *            five seconds, and enters and leaves whole beyond the picture's edges.
+ *   jays     one jay, then a second, down out of a great crown (from above the picture) on one side
+ *            of the board, low past the windfall's lookout or over the stump, close to the eye where
+ *            the blue of the wing shows, and away out of the picture's side. Never across the card.
+ *   acorns   a handful dropping from the near crown on one side, from just above the picture into
+ *            the litter a few metres from the eye beside the card: each falls, bounces (lifting the
+ *            leaves it lands among), rolls a little and lies, and sinks away as the happening ends.
  *
  * (The fourth happening, the wandering shaft, is light: FallLight.setSpot.)
  *
@@ -17,27 +21,75 @@
  */
 import * as THREE from 'three/webgpu';
 import {
-    attribute, cameraPosition, color, cos, cross, dot, float, instancedBufferAttribute, max, min, mix, normalGeometry,
+    attribute, cameraPosition, color, cos, cross, dot, exp, float, instancedBufferAttribute, max, min, mix,
+    normalGeometry,
     normalize, positionGeometry, positionLocal, positionWorld, pow, saturate, sin, smoothstep, uniform, varying, vec3,
     cameraFar, cameraNear, viewZToPerspectiveDepth,
 } from 'three/tsl';
 import { fallWorldTier } from './fall-airs.js';
-import { FALL_FEATURE_TREES } from './fall-composition.js';
 
 const TAU = Math.PI * 2;
 /** Where a wing's second joint is, as a share of its span. */
 const WING_ELBOW = 0.46;
-/** The skein: how deep into the picture and how high it flies (m), how far apart its geese (m). */
-const SKEIN = Object.freeze({
-    depth: 150, height: 80, spacing: 8.6, scale: 4, beat: 2.3, haze: 0.5, skyDepth: 420,
+/**
+ * The skein, in the eye's frame: how far along the view it flies (m, behind the great crowns, so they
+ * hide it either side of the sky window), and in shares of the picture's height its wingspan, how far
+ * back each rank flies and how far it stands out from the line, and where its middle flies (the
+ * strip above the board card and its preview, in the game's own layout). At most `most` geese: a V
+ * that fits the window.
+ */
+export const SKEIN = Object.freeze({
+    depth: 62,
+    span: 0.042,
+    back: 0.032,
+    spread: 0.0125,
+    band: 0.053,
+    most: 7,
+    beat: 2.1,
+    haze: 0.3,
+    skyDepth: 420,
 });
-/** A jay's flight between the two crowns: how long one takes (s), how long after the first the second leaves. */
-const JAY = Object.freeze({
-    seconds: 2.7, follow: 1.05, scale: 0.85, beat: 8.5,
+/**
+ * The jays' flights, one each side of the board (world metres): a cubic loop in from beyond the
+ * picture's side edge, low and side-on across the near grove, round past the perch (the windfall's
+ * lookout on the right, the stump on the left) and back out of the same edge, a little higher. They
+ * bank into the turn, so the wings and their blue are seen from above. A flight takes `seconds`; the
+ * second jay leaves `follow` after the first, `offset` from its path.
+ */
+export const JAY = Object.freeze({
+    seconds: 3.8,
+    follow: 0.85,
+    scale: 0.48,
+    beat: 8.5,
+    bank: 0.85,
+    offset: Object.freeze([0, 0.4, -0.5]),
+    flights: Object.freeze([
+        // Right of the board: past the oak's trunk to the windfall's lookout, and back out right.
+        Object.freeze([[12.5, 2.2, 10.2], [0.6, 2.2, 8.4], [1.2, 3.6, 6.8], [12.5, 4.2, 6.4]]),
+        // Left of it: across the bright mist to the stump, and back out left.
+        Object.freeze([[-12.5, 2.4, 10.2], [-1.0, 2.6, 8.4], [-1.6, 4.2, 7.0], [-12.5, 5.0, 6.6]]),
+    ]),
 });
-/** Acorns: how hard they fall (m/s2), what a bounce keeps of the speed, how big they are drawn (m). */
-const ACORN = Object.freeze({
-    gravity: 9.8, bounce: 0.3, size: 0.075, over: 2.7,
+/**
+ * Acorns: how hard they fall (m/s2), what a bounce keeps of the speed, how big they are drawn (m and
+ * a factor), how long a roll takes to die out (s) and what it keeps of the drift; and where they land,
+ * one side of the board at a time ([x0, x1, z0, z1] patches of litter a few metres from the eye, beside
+ * the card, clear of the windfall and the stump; the first patch of a side is the nearer, and most fall
+ * there).
+ */
+export const ACORN = Object.freeze({
+    // (A little slower than a real fall and a livelier bounce: seen from a few metres a real one is
+    // over before the eye finds it.)
+    gravity: 7,
+    bounce: 0.36,
+    size: 0.075,
+    over: 2.6,
+    rollSeconds: 0.35,
+    roll: 0.7,
+    patches: Object.freeze([
+        Object.freeze([Object.freeze([-3.3, -2.4, 5.8, 7.3]), Object.freeze([-3.6, -2.8, 3.4, 4.6])]),
+        Object.freeze([Object.freeze([2.0, 2.7, 7.3, 8.2]), Object.freeze([5.0, 6.6, 4.6, 5.6])]),
+    ]),
 });
 
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
@@ -51,6 +103,20 @@ function hash01(a, b) {
     h = Math.imul(h ^ (h >>> 16), 0x7feb352d);
     h = Math.imul(h ^ (h >>> 15), 0x846ca68b);
     return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+}
+
+/**
+ * The height (m) at which the picture's top edge stands over the floor at (x, z), for an eye frame
+ * (origin, forward, up, tanV): above it a thing is out of the picture.
+ */
+function frameTopAt(frame, x, z) {
+    const {
+        origin, forward: f, up: u, tanV,
+    } = frame;
+    const dx = x - origin.x;
+    const dz = z - origin.z;
+    const rise = (tanV * (f.x * dx + f.z * dz) - (u.x * dx + u.z * dz)) / Math.max(1e-6, u.y - tanV * f.y);
+    return origin.y + rise;
 }
 
 /** Rotate a vector by a unit quaternion (TSL). */
@@ -194,10 +260,9 @@ export class FallVisitors {
      * @param {object} o.light                 the grove's light rig
      * @param {string} [o.quality]
      * @param {(x:number,z:number)=>number} o.groundHeight
-     * @param {Float32Array|null} [o.crownPoints]   [x, y, z, species] of the crowns (where acorns let go)
      */
     constructor({
-        light, quality = 'High', groundHeight, crownPoints = null,
+        light, quality = 'High', groundHeight,
     }) {
         this.light = light;
         this.tier = fallWorldTier(quality);
@@ -209,20 +274,16 @@ export class FallVisitors {
         this.laid = { acorns: null };
         this.hits = [];
         this.uAcorn = uniform(new THREE.Vector2(0, 1));
-        // Where each great tree's acorns can let go: its own crown, above the floor the eye sees.
-        this.drops = FALL_FEATURE_TREES.slice(0, 2).map((tree) => {
-            const points = [];
-            if (crownPoints) {
-                for (let i = 0; i + 3 < crownPoints.length; i += 4) {
-                    const dx = crownPoints[i] - tree.x;
-                    const dz = crownPoints[i + 2] - tree.z;
-                    if (Math.hypot(dx, dz) < 8.5 && crownPoints[i + 2] > tree.z - 3 && crownPoints[i + 1] > 5) {
-                        points.push(crownPoints[i], crownPoints[i + 1], crownPoints[i + 2]);
-                    }
-                }
-            }
-            return { tree, points };
-        });
+        // The eye's frame, as frameOf() last read it.
+        this.frame = {
+            origin: new THREE.Vector3(),
+            forward: new THREE.Vector3(),
+            up: new THREE.Vector3(),
+            right: new THREE.Vector3(),
+            tanV: 0.52,
+            tanH: 0.92,
+            top: 0.17,
+        };
         this.scratch = {
             a: new THREE.Vector3(),
             b: new THREE.Vector3(),
@@ -322,17 +383,23 @@ export class FallVisitors {
         material.name = 'FallAcorns';
         const age = this.uAcorn.x;
         const g = ACORN.gravity;
-        // Closed form: the fall, then one bounce that keeps a share of the speed, then it lies.
+        // Closed form: the fall, then one bounce that keeps a share of the speed, then a short roll
+        // that dies away, then it lies.
         const t = max(age.sub(how.x), 0);
         const down = max(at.w.sub(at.y), 0.01);
         const landing = down.mul(2 / g).sqrt();
         const falling = min(t, landing);
         const hop = landing.mul(g * ACORN.bounce);
-        const after = min(max(t.sub(landing), 0), hop.mul(2 / g));
+        const hopTime = hop.mul(2 / g);
+        const after = min(max(t.sub(landing), 0), hopTime);
+        const rolling = max(t.sub(landing).sub(hopTime), 0);
+        const rolled = float(1).sub(exp(rolling.div(ACORN.rollSeconds).negate())).mul(ACORN.rollSeconds * ACORN.roll);
+        // How far along its drift it has gone (in seconds of the drift's speed).
+        const travel = after.add(rolled);
         const height = at.w.sub(falling.mul(falling).mul(g / 2)).add(hop.mul(after)).sub(after.mul(after).mul(g / 2));
-        // It tumbles while it flies and lies still after; it is not there before it lets go, and
-        // sinks into the litter as the happening ends.
-        const turned = falling.add(after).mul(how.w);
+        // It tumbles while it flies and turns over as it rolls; it is not there before it lets go,
+        // and sinks into the litter as the happening ends.
+        const turned = falling.add(after).mul(how.w).add(rolled.mul(how.w).mul(2.4));
         const axis = normalize(vec3(sin(how.w.mul(7.1)), 0.35, cos(how.w.mul(5.3))));
         const local = positionGeometry;
         const spun = local.mul(cos(turned)).add(cross(axis, local).mul(sin(turned)))
@@ -340,9 +407,9 @@ export class FallVisitors {
         const there = smoothstep(0, 0.02, t).mul(float(1).sub(smoothstep(this.uAcorn.y.sub(1.2), this.uAcorn.y, age)));
         material.positionNode = positionLocal.sub(positionGeometry).add(spun.mul(ACORN.size * ACORN.over).mul(there))
             .add(vec3(
-                at.x.add(how.y.mul(after)),
+                at.x.add(how.y.mul(travel)),
                 height.add(ACORN.size * ACORN.over * 0.3),
-                at.z.add(how.z.mul(after)),
+                at.z.add(how.z.mul(travel)),
             ));
         const normal = normalize(varying(normalGeometry.mul(cos(turned))
             .add(cross(axis, normalGeometry).mul(sin(turned)))
@@ -371,7 +438,8 @@ export class FallVisitors {
      * Draw what is happening.
      * @param {number} time     the grove's clock (s): wing beats run on it
      * @param {{ kind: string|null, slot: number, age: number, length: number, u: number, roll: number }} happening
-     * @param {{ halfWidth: (depth: number) => number } | null} stage   the eye's framing (the skein's lane is fitted to it)
+     * @param {object | null} stage   the eye's framing at rest (FallStage: origin, forward, up, right, tanV,
+     *     tanH and the board's card): the skein, the jays' safety and the acorns' starts are fitted to it
      * @param {{ fields?: object[] } | null} [env]    the leaves' environment: an acorn's landing lifts the litter
      * @param {number} [dt]
      */
@@ -381,7 +449,7 @@ export class FallVisitors {
         this.fly(this.jays, kind === 'jays' ? this.poseJays(time, happening) : 0);
         const dropping = kind === 'acorns' && this.acorns.count > 0;
         this.acorns.mesh.visible = dropping;
-        if (dropping) this.dropAcorns(happening, env, dt);
+        if (dropping) this.dropAcorns(happening, env, dt, stage);
         else this.laid.acorns = null;
     }
 
@@ -413,94 +481,103 @@ export class FallVisitors {
     }
 
     /**
-     * The skein at its happening's age: a V flying level across the sky gap. Its lane runs from
-     * beyond one edge of the view at its own depth to beyond the other, further by the V's arm, so
-     * the last goose is in before the first is seen and out after the leader has gone. Returns how
-     * many geese fly.
+     * The eye's frame for a happening: its place, the way it looks, its up and right, and the
+     * tangents of its half-angles, from the stage (the camera at rest) or, without one, the game's
+     * landscape view.
+     */
+    frameOf(stage) {
+        const f = this.frame;
+        if (stage?.origin && stage.forward && stage.up && stage.right && Number.isFinite(stage.tanV)) {
+            f.origin.copy(stage.origin);
+            f.forward.copy(stage.forward);
+            f.up.copy(stage.up);
+            f.right.copy(stage.right);
+            f.tanV = stage.tanV;
+            f.tanH = Number.isFinite(stage.tanH) ? stage.tanH : stage.tanV * (16 / 9);
+            f.top = Number.isFinite(stage.board?.y0) ? stage.board.y0 : 0.17;
+        } else {
+            f.origin.set(0, 2.6, 15);
+            f.forward.set(0, 0.08, -1).normalize();
+            f.right.set(1, 0, 0);
+            f.up.crossVectors(f.right, f.forward);
+            f.tanV = Math.tan(THREE.MathUtils.degToRad(27.5));
+            f.tanH = f.tanV * (16 / 9);
+            f.top = 0.17;
+        }
+        return f;
+    }
+
+    /**
+     * The skein at its happening's age, laid out in the eye's frame: a V of beating wings crossing the
+     * picture at a steady pace in the strip above the board card, its middle `SKEIN.band` of the
+     * picture down (less when the card stands higher). It starts and ends with every goose beyond the
+     * picture's edge. Returns how many geese fly.
      */
     poseSkein(time, happening, stage) {
         const { geese } = this;
-        const { count } = geese;
-        if (!count) return 0;
+        const shown = Math.min(geese.count, SKEIN.most);
+        if (!shown) return 0;
         const s = this.scratch;
-        const arm = Math.ceil((count - 1) / 2) * SKEIN.spacing;
-        // (The view's width at the far arm's depth: the V's arms reach that much deeper than its
-        // leader, where the view is wider, and a lane fitted at the leader's depth left a goose in it.)
-        const far = SKEIN.depth + 15 + arm;
-        const half = stage ? stage.halfWidth(far) : far * 0.95;
-        const reach = half + arm + 14;
+        const f = this.frameOf(stage);
+        const d = SKEIN.depth;
+        // Metres of the picture's height at the skein's depth: every size of it is a share of this.
+        const tall = 2 * d * f.tanV;
+        const ranks = Math.ceil((shown - 1) / 2);
+        const back = SKEIN.back * tall;
+        const spread = SKEIN.spread * tall;
+        const scale = (SKEIN.span * tall) / 2;
+        // The lane runs from beyond one edge to beyond the other by the V's length and a wing.
+        const margin = (ranks * back + scale * 1.2) / (d * f.tanH) + 0.03;
         const way = happening.roll < 0.5 ? 1 : -1;
-        const depth = 15 - SKEIN.depth + (happening.roll - 0.5) * 30;
-        const lead = (happening.u * 2 - 1) * reach * way;
-        // (A shallow slant across the picture, so the V is seen a little from the side.)
-        s.tangent.set(way, 0, 0.16 * (happening.roll < 0.25 || happening.roll > 0.75 ? 1 : -1)).normalize();
-        // (Its own vector: poseBird() uses the scratch `right`.)
-        s.c.set(-s.tangent.z, 0, s.tangent.x);
-        // High in the picture: over the crowns' gap and over the board and its panels (the height
-        // that stands about a twentieth of the frame down from its top, at the skein's depth).
-        // (Clear of the board card's top edge, about a twelfth of the frame down, with its arms.)
-        const band = 0.025 + ((happening.roll * 7.3) % 1) * 0.025;
-        // The height on that line of the picture at a world depth z: from the eye's own frame (a
-        // fixed height for every goose put the near arm over the top of the frame, and a skein
-        // flying nearer than the depth it was measured at all of it).
-        const framed = Boolean(stage?.origin && stage.forward && stage.up && Number.isFinite(stage.tanV));
-        const slope = framed ? (1 - band * 2) * stage.tanV : 0;
-        const heightAt = (z) => {
-            if (!framed) return SKEIN.height;
-            const { origin, forward: f, up: u } = stage;
-            const ahead = z - origin.z;
-            return origin.y + (ahead * (slope * f.z - u.z)) / (u.y - slope * f.y);
-        };
-        const height = heightAt(depth);
-        for (let i = 0; i < count; i += 1) {
+        const across = way * (happening.u * 2 - 1) * (1 + margin);
+        // In the strip between the picture's top and the card and its preview, a little higher or
+        // lower each time.
+        const band = SKEIN.band + (((happening.roll * 7.3) % 1) - 0.5) * 0.008;
+        const ndcY = 1 - band * 2;
+        s.c.copy(f.origin).addScaledVector(f.forward, d).addScaledVector(f.right, across * d * f.tanH)
+            .addScaledVector(f.up, ndcY * d * f.tanV);
+        s.tangent.copy(f.right).multiplyScalar(way);
+        // (A goose's level is the world's: flatten its heading.)
+        s.tangent.y = 0;
+        s.tangent.normalize();
+        for (let i = 0; i < shown; i += 1) {
             const rank = Math.ceil(i / 2);
             const side = i % 2 === 0 ? 1 : -1;
             const phase = hash01(i, 17);
             // Each goose holds its station loosely.
-            const sway = Math.sin(time * 0.5 + phase * 9) * 0.5;
-            const back = rank * SKEIN.spacing * 0.92 + Math.sin(time * 0.37 + phase * 5) * 0.4;
-            const out = rank * SKEIN.spacing * 0.78 * side + sway;
-            s.p.set(lead, height, depth).addScaledVector(s.tangent, -back).addScaledVector(s.c, out);
-            // Each at the band's height for its own depth.
-            s.p.y = heightAt(s.p.z) + Math.sin(time * 0.6 + phase * 7) * 0.5 - rank * 0.15;
+            const slip = Math.sin(time * 0.37 + phase * 5) * 0.06 * back;
+            const lift = (Math.sin(time * 0.6 + phase * 7) * 0.05 + Math.sin(time * 0.5 + phase * 9) * 0.04) * spread;
+            s.p.copy(s.c).addScaledVector(s.tangent, -(rank * back + slip))
+                .addScaledVector(f.up, rank * spread * side + lift);
             // The V's arms beat one after another down the line.
             const beat = time * SKEIN.beat * TAU - rank * 0.7 + phase * 0.8;
-            const flap = 0.08 + Math.sin(beat) * 0.5;
-            this.poseBird(geese, i, s.p, s.tangent, SKEIN.scale, flap, Math.sin(beat - 0.9) * 0.45);
+            const flap = 0.08 + Math.sin(beat) * 0.55;
+            this.poseBird(geese, i, s.p, s.tangent, scale, flap, Math.sin(beat - 0.9) * 0.5);
         }
-        return count;
+        return shown;
     }
 
     /**
-     * The jays at their happening's age: each leaves one crown and crosses to the other, the second
-     * a little after the first on a path of its own, in bursts of wing beats with the wings folded
-     * between them. Small among the leaves at each end. Returns how many are drawn.
+     * The jays at their happening's age: each comes down out of a great crown from above the picture,
+     * low past the perch on that side of the board and away out of the picture's side, the second a
+     * little after the first on a path of its own; in bursts of wing beats (the blue shows) with the
+     * wings folded between. Returns how many are drawn.
      */
     poseJays(time, happening) {
         const { jays } = this;
         const s = this.scratch;
-        const [maple, oak] = FALL_FEATURE_TREES;
-        const toOak = happening.roll < 0.5;
-        const from = toOak ? maple : oak;
-        const to = toOak ? oak : maple;
+        const flight = JAY.flights[happening.roll < 0.5 ? 0 : 1];
         let shown = 0;
         for (let i = 0; i < jays.count; i += 1) {
             const u = (happening.age - i * JAY.follow) / JAY.seconds;
             if (u > 0 && u < 1) {
                 const own = hash01(happening.slot * 13 + i, 91);
-                // Out of the crown on the eye's side, a dip toward the board's top, into the other crown.
-                // Low over the floor, under the boughs: from behind the one trunk (out of the eye's
-                // sight), across the path with a dip, round behind the other. (The crowns fill the
-                // upper picture from so near the eye that a flight among them would never be seen.)
-                const out = from.x < 0 ? -1 : 1;
-                s.a.set(from.x + out * 0.9, 2.3 + own * 0.7 + i * 0.5, from.z - 2.9 - i * 0.6);
-                s.d.set(to.x - out * 1.9, 2.9 + (1 - own) * 0.8 + i * 0.4, to.z - 3.6 + i * 0.5);
-                s.b.copy(s.a).lerp(s.d, 0.28);
-                s.b.y -= 0.9 + own * 0.5;
-                s.b.z += 4.6;
-                s.c.copy(s.a).lerp(s.d, 0.7);
-                s.c.y -= 0.7 + own * 0.4;
-                s.c.z += 3.8;
+                const [a, b, c, d] = flight;
+                const [ox, oy, oz] = JAY.offset;
+                s.a.set(a[0] + ox * i, a[1] + oy * i, a[2] + oz * i);
+                s.b.set(b[0] + ox * i, b[1] + oy * i + own * 0.3, b[2] + oz * i);
+                s.c.set(c[0] + ox * i, c[1] + oy * i + own * 0.3, c[2] + oz * i);
+                s.d.set(d[0] + ox * i, d[1] + oy * i, d[2] + oz * i);
                 const k = 1 - u;
                 s.p.set(0, 0, 0).addScaledVector(s.a, k * k * k).addScaledVector(s.b, 3 * k * k * u)
                     .addScaledVector(s.c, 3 * k * u * u)
@@ -510,22 +587,25 @@ export class FallVisitors {
                     .addScaledVector(s.d, 3 * u * u);
                 // Flap-and-fold: beats for most of each half second, the wings shut for the rest (it sinks a little).
                 const cycle = ((happening.age - i * JAY.follow) / 0.52 + own) % 1;
-                const fold = smooth(0.62, 0.74, cycle) * (1 - smooth(0.9, 1, cycle));
-                s.p.y -= fold * 0.22;
-                s.tangent.y -= fold * 2.5;
+                const fold = smooth(0.66, 0.76, cycle) * (1 - smooth(0.9, 1, cycle));
+                s.p.y -= fold * 0.12;
+                s.tangent.normalize();
+                s.tangent.y -= fold * 0.3;
                 s.tangent.normalize();
                 const beat = time * JAY.beat * TAU;
-                const ends = smooth(0, 0.1, u) * (1 - smooth(0.9, 1, u));
+                // Banked into the turn (most at its height), so the wings are seen from above.
+                const bank = (happening.roll < 0.5 ? 1 : -1) * JAY.bank * Math.sin(Math.PI * u) ** 2
+                    + Math.sin(u * 7 + own * 5) * 0.12;
                 this.poseBird(
                     jays,
                     shown,
                     s.p,
                     s.tangent,
-                    JAY.scale * ends,
-                    0.1 + Math.sin(beat) * 0.85 * (1 - fold),
+                    JAY.scale,
+                    0.12 + Math.sin(beat) * 0.85 * (1 - fold),
                     Math.sin(beat - 0.8) * 0.6 * (1 - fold),
                     fold,
-                    Math.sin(u * 7 + own * 5) * 0.2,
+                    bank,
                 );
                 shown += 1;
             }
@@ -534,36 +614,35 @@ export class FallVisitors {
     }
 
     /**
-     * The acorns of one happening. Laid out once when it begins (which tree, where each lets go,
-     * when); after that the vertex stage does the falling. Each landing lifts the litter round it
-     * for a moment (a small burst in the leaves' environment).
+     * The acorns of one happening. Laid out once when it begins: the side of the board, where each
+     * lands among the litter (most in the nearer patch), when it lets go, from just above the
+     * picture's top over that place; after that the vertex stage does the falling, the bounce and the
+     * roll. Each landing lifts the litter round it for a moment (a small burst in the leaves'
+     * environment).
      */
-    dropAcorns(happening, env, dt) {
+    dropAcorns(happening, env, dt, stage = null) {
         const { acorns } = this;
         const key = happening.slot * 1000 + Math.round(happening.roll * 997);
         if (this.laid.acorns !== key) {
             this.laid.acorns = key;
             this.hits.length = 0;
-            const side = this.drops[happening.roll < 0.5 ? 1 : 0];
-            const other = this.drops[happening.roll < 0.5 ? 0 : 1];
-            const source = side.points.length ? side : other;
+            const f = this.frameOf(stage);
+            const patches = ACORN.patches[happening.roll < 0.5 ? 0 : 1];
             for (let i = 0; i < acorns.count; i += 1) {
                 const r = (n) => hash01(key + i * 31, n);
-                let x = source.tree.x + (r(1) - 0.5) * 9;
-                let y = 9 + r(2) * 4;
-                let z = source.tree.z + 1 + r(3) * 5;
-                if (source.points.length) {
-                    const pick = Math.floor(r(4) * (source.points.length / 3)) * 3;
-                    x = source.points[pick] + (r(1) - 0.5) * 1.2;
-                    y = Math.min(source.points[pick + 1], 12.5);
-                    z = source.points[pick + 2] + (r(3) - 0.5) * 1.2;
-                }
+                const [x0, x1, z0, z1] = patches[r(9) < 0.62 ? 0 : 1];
+                const x = x0 + (x1 - x0) * r(1);
+                const z = z0 + (z1 - z0) * r(3);
                 const floor = this.groundHeight(x, z);
-                const delay = 0.2 + r(5) ** 0.8 * 2.6;
-                acorns.drop.setXYZW(i, x, floor, z, y);
-                acorns.fall.setXYZW(i, delay, (r(6) - 0.5) * 1.6, (r(7) - 0.5) * 1.6, 4 + r(8) * 7);
+                // Just above the picture's top there: it falls into view out of the leaves.
+                const from = frameTopAt(f, x, z) + 0.5 + r(2) * 0.8;
+                const delay = 0.2 + r(5) ** 0.8 * 2.4;
+                // It drifts a little as it bounces and rolls (m/s), away from the board's middle.
+                const away = x < 0 ? -1 : 1;
+                acorns.drop.setXYZW(i, x, floor, z, from);
+                acorns.fall.setXYZW(i, delay, (0.2 + r(6) * 0.6) * away, (r(7) - 0.5) * 1.1, 4 + r(8) * 7);
                 this.hits.push({
-                    x, y: floor, z, at: delay + Math.sqrt((2 * Math.max(0.01, y - floor)) / ACORN.gravity),
+                    x, y: floor, z, at: delay + Math.sqrt((2 * Math.max(0.01, from - floor)) / ACORN.gravity),
                 });
             }
             acorns.drop.needsUpdate = true;
@@ -575,7 +654,7 @@ export class FallVisitors {
             for (const hit of this.hits) {
                 if (happening.age >= hit.at && happening.age < hit.at + window) {
                     env.fields.push({
-                        kind: 'burst', x: hit.x, y: hit.y - 0.25, z: hit.z, radius: 1.5, power: 10, up: 7,
+                        kind: 'burst', x: hit.x, y: hit.y - 0.25, z: hit.z, radius: 1.2, power: 8, up: 6,
                     });
                 }
             }

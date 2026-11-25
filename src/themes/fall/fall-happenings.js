@@ -4,11 +4,12 @@
  * Beside the lights (fall-moods.js) and the airs (fall-airs.js) the grove has visitors. About every
  * three quarters of a minute one thing happens, a different one each time:
  *
- *   geese    a skein in a V, high over the grove, crossing the gap of sky from one side of the
- *            picture to the other
- *   jays     a jay breaks from one great tree's crown and flies to the other's, a second after it
- *   acorns   one of the great trees drops a handful of acorns: they fall, bounce in the litter
- *            and lie
+ *   geese    a skein in a V, high over the grove, crossing the strip of sky above the board from
+ *            one side of the picture to the other
+ *   jays     a jay comes down out of a great crown, low past the perch on its side of the board
+ *            and away, a second after it
+ *   acorns   the near crown on one side drops a handful of acorns into the litter close to the
+ *            eye: they fall, bounce, roll a little and lie
  *   shaft    a cloud crosses the sun and a gap in it sends one shaft wandering over the floor
  *
  * A function of the clock alone (no state): `fallHappeningAt(time)` says what is happening at any
@@ -27,9 +28,12 @@ export const FALL_HAPPENING_SECONDS = 46;
 export const FALL_HAPPENING_FIRST = 14;
 /** How late in its slot a happening may start (s): the beat is not a metronome. */
 export const FALL_HAPPENING_JITTER = 9;
-/** How long each kind lasts (s); all end before the next slot can begin. */
+/**
+ * How long each kind lasts (s); all end before the next slot can begin. The skein's crossing is slow
+ * (it is in the open sky above the board about a sixth of it); a pair of jays is over in a few seconds.
+ */
 export const FALL_HAPPENING_LENGTH = Object.freeze({
-    geese: 27, jays: 7.5, acorns: 7, shaft: 24,
+    geese: 34, jays: 5.5, acorns: 7, shaft: 24,
 });
 
 /** A number in [0, 1) from two integers. */
