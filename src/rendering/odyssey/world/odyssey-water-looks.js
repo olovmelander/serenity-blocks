@@ -155,6 +155,8 @@ export const SEA_CAPS = Object.freeze({
     // over `soft` of their width, they curve and blur as a foam's do.)
     bend: 0.42,
     soft: 0.6,
+    /** Where the walls hold (a noise a cell or two across, plus a quarter of the cover). */
+    holds: Object.freeze([0.42, 0.66]),
     width: Object.freeze([0.12, 0.85]),
     alpha: Object.freeze([0.38, 0.85]),
     colour: Object.freeze([0.90, 0.95, 0.98]),

@@ -4736,8 +4736,16 @@ export function createOdysseyWorld({
                 const capW = mix(float(C.width[0]), float(C.width[1]), covS).mul(capRipB.mul(0.9).add(0.55)).toVar();
                 const wB = max(capW, capFoot.mul(15.75));
                 const wS = max(capW, capFoot.mul(36.75));
+                // (2026-11-25: every wall drawn closed every cell, a net of polygons that read as
+                // broken glass near the eye. A wall now shows where the foam holds, in patches a
+                // cell or two across: the lace is torn, a fringe of threads and gaps.)
+                const holds = smoothstep(float(C.holds[0]), float(C.holds[1]), texture(
+                    detailTex,
+                    laceUv.mul(0.26).add(vec2(0.37, 0.11)),
+                ).level(0).b.add(covS.mul(0.25)));
                 const wall = float(1).sub(smoothstep(wB.mul(-C.soft), wB.mul(1 + C.soft), L.r))
-                    .mul(clamp(capW.div(wB), 0.35, 1));
+                    .mul(clamp(capW.div(wB), 0.35, 1))
+                    .mul(holds);
                 const fine = float(1).sub(smoothstep(wS.mul(0.2), wS, L.g))
                     .mul(smoothstep(float(0.30), float(0.70), covS))
                     .mul(clamp(capW.div(wS), 0.35, 1));

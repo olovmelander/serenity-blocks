@@ -198,7 +198,7 @@ const NORTH_SHORE_TO_Z = -3400;
  *   - `bends`: coves (+, the shore laid back inland) and points (-, the land out into the sea), each a
  *     compact (1 - u^2)^2 bump of `shift` u over `w` u either side of its `x`. The shelf's z is moved by
  *     their sum, fully from the shore inland and fading out to sea across `seaward` (z), so the deep
- *     flank (the reef's) keeps its form. The rail's landing and the reef's flank (x -280..90) are left as
+ *     flank (the reef's) keeps its form. The rail's landing and the reef's flank (x -340..90) are left as
  *     they were: the glade's deer, the horses and the authored pines stand on that bank, and the reef
  *     is planted on that slope.
  *   - the beach: within `band` u of the sea's level the ground is laid back in a cove (its slope x
@@ -210,7 +210,7 @@ const NORTH_SHORE_TO_Z = -3400;
 export const ODYSSEY_SOUTH_COAST = Object.freeze({
     bends: Object.freeze([
         Object.freeze({ x: -760, w: 200, shift: 32 }),
-        Object.freeze({ x: -440, w: 160, shift: -40 }),
+        Object.freeze({ x: -490, w: 150, shift: -42 }),
         Object.freeze({ x: 290, w: 200, shift: 48 }),
         Object.freeze({ x: 560, w: 140, shift: -32 }),
     ]),
