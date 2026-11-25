@@ -4,7 +4,9 @@ Every file in this folder is a project-owned original, authored procedurally in
 Blender 4.5.9 LTS on 2026-10-05 for this repository by
 `scripts/blender/fall_grove_assets.py` (helpers in `scripts/blender/fall_grove/`), except
 `squirrel.glb`, authored in Blender 5.2 LTS on 2026-10-26 by `scripts/blender/fall_squirrel.py`
-(below). None contains third-party geometry, texture, scan, photograph, motion capture or generative-model
+(below) and remade in Blender 5.3 on 2026-11-25, and the squirrel's perches `old-windfall.glb`,
+`old-stump.glb` and `squirrel-perches.json`, grown in Blender 5.3 on 2026-11-25 by
+`scripts/blender/fall_perches.py` with the grove's own helpers (`fall_grove/perches.py`). None contains third-party geometry, texture, scan, photograph, motion capture or generative-model
 output, and neither generator fetches anything from the network. Licence: the same as the
 project (proprietary, all rights reserved).
 
@@ -17,7 +19,9 @@ checks the files against it.
 | `maple-grove-a/b/c.glb`, `birch-grove-a/b.glb` | The grove trees of the middle distance. |
 | `fall-foliage.glb` | The shared leaf geometry: maple and oak sprays, maple clumps, weeping birch strands (two variants each) and single leaves for the litter and the leaves in the air. |
 | `fall-impostors.png` | Front elevations of the five grove trees for the distant forest. |
-| `squirrel.glb` | The red squirrel: one skinned body on a 30-bone rig, eighteen clips (idle, sit, bound, hop, climb, descend, shuffle, cling, pivot, nibble, chatter, startle, look, dig, pat, scratch, groom, leap) and the acorn it nibbles, riding on its left hand. |
+| `squirrel.glb` | The red squirrel: one skinned body on a 30-bone rig, nineteen clips (idle, sit, bound, hop, climb, descend, shuffle, cling, pivot, nibble, chatter, startle, look, dig, pat, scratch, groom, loaf, leap) and the acorn it nibbles, riding on its left hand. Its `_fur` attribute is the hair's length the coat's shells draw (`fall-squirrel-fur.js`). |
+| `old-windfall.glb`, `old-stump.glb` | The squirrel's perches near the eye: a mossed windfall with two dead limbs standing up from it, and a broken stump with a dead bough leaning on its rim and a few coppice shoots; tree assets in the grove's format. |
+| `squirrel-perches.json` | The centre lines and radii of the limbs the squirrel walks (the perches' and the oak's rising bough) and its flat seats, from the same seeded recipes as the GLBs (`fall-squirrel-limbs.js` reads it). Regenerate with `blender --background --factory-startup --python scripts/blender/fall_perches.py -- --out src/themes/fall/assets`. |
 
 ## How the squirrel is made
 
