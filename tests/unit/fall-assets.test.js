@@ -18,6 +18,13 @@ import { FALL_FEATURE_TREES, layoutFallGrove } from '../../src/themes/fall/fall-
 const assetDirectory = new URL('../../src/themes/fall/assets/', import.meta.url);
 const MIB = 1024 * 1024;
 const TREE_NAMES = Object.keys(FALL_TREE_URLS);
+/**
+ * The squirrel's near perches are tree assets too (grown by the grove's own skeleton and wood, read by
+ * parseFallTree, instanced by the forest), but they are not trees: a windfall lying along the ground and
+ * a broken stump, a few metres of dead wood with a handful of sprays on a shoot or two.
+ */
+const PERCH_NAMES = ['old-windfall', 'old-stump'];
+const isPerch = (name) => PERCH_NAMES.includes(name);
 const SPECIES = ['maple', 'oak', 'birch'];
 // Every mesh the runtime asks the foliage pack for: crown sprays per species (two variants
 // each), the leaf in the air, and the litter on the floor.
@@ -284,10 +291,19 @@ describe('Fall tree assets', () => {
         expect(tree).toMatchObject({ name });
         expect(SPECIES).toContain(tree.species);
         expect(['hero', 'grove']).toContain(tree.role);
-        expect(tree.height).toBeGreaterThan(5);
-        expect(tree.height).toBeLessThan(40);
-        expect(tree.trunkRadius).toBeGreaterThan(0.05);
-        expect(tree.trunkRadius).toBeLessThan(tree.height / 5);
+        const perch = isPerch(name);
+        if (perch) {
+            // Dead wood close to the eye: a few metres of it, its trunk as thick as a great tree's limb.
+            expect(tree.height).toBeGreaterThan(1.5);
+            expect(tree.height).toBeLessThan(5);
+            expect(tree.trunkRadius).toBeGreaterThan(0.3);
+            expect(tree.trunkRadius).toBeLessThan(0.9);
+        } else {
+            expect(tree.height).toBeGreaterThan(5);
+            expect(tree.height).toBeLessThan(40);
+            expect(tree.trunkRadius).toBeGreaterThan(0.05);
+            expect(tree.trunkRadius).toBeLessThan(tree.height / 5);
+        }
         for (const key of ['crownCentre', 'crownRadii']) {
             expect(tree[key]).toHaveLength(3);
             expect(tree[key].every(Number.isFinite)).toBe(true);
@@ -317,7 +333,8 @@ describe('Fall tree assets', () => {
             const [min, max] = extent(position.array, 3, offset);
             expect(min).toBeLessThan(0);
             expect(max).toBeGreaterThan(0);
-            expect(max - min).toBeLessThan(tree.height * 2);
+            // (A windfall lies along the ground: longer than it is tall, and still a thing of a few metres.)
+            expect(max - min).toBeLessThan(perch ? 8 : tree.height * 2);
             expect(max - min).toBeGreaterThan(tree.trunkRadius * 2);
         }
         expect(bark.boundingBox.min.y).toBeCloseTo(minY, 5);

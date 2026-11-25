@@ -32,10 +32,15 @@ export const PERCH_NAMES = Object.freeze({
     'maple-hero': 'maple', 'oak-hero': 'oak', 'old-windfall': 'windfall', 'old-stump': 'stump',
 });
 /**
- * The part of a limb the game's frame holds, where it is not all of it (metres along it): the
- * windfall's root end lies out of the frame to the right.
+ * The part of a limb the squirrel walks, where it is not all of it (metres along it): the windfall's
+ * root end lies out of the frame to the right; the oak's bough is inside its trunk at first.
  */
-export const LIMB_SPANS = Object.freeze({ 'windfall.trunk': Object.freeze({ low: 2.5 }) });
+export const LIMB_SPANS = Object.freeze({
+    'windfall.trunk': Object.freeze({ low: 3.25 }),
+    // The oak's rising bough is one of its leaders: it leaves from inside the trunk, and its back is out
+    // of the bark from about 2.4 m along; past 4 m the crown's leaves hide it from the game's eye.
+    'oak.riser': Object.freeze({ low: 2.4, high: 4.0 }),
+});
 /** A snapped end this far above the floor (metres) is a perch; one lying on it is not. */
 const TIP_CLEAR = 0.9;
 /** How near its ends a limb is walked (metres): clear of the junction, and of the thin or snapped end. */
@@ -198,7 +203,8 @@ export function createPerches({
                 pads.push({
                     name: `${limb.name}.tip`,
                     home,
-                    centre: tip.centre,
+                    // A standing limb's end is the top of it; on a leaning one it sits on top of the end.
+                    centre: limb.standing ? tip.centre : limb.frame(limb.length, 0).point.slice(),
                     radius: Math.max(0.1, tip.radius),
                     limb: limb.name,
                 });
