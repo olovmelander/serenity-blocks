@@ -14,7 +14,10 @@ import { seededRandom } from '../../src/utils/helpers.js';
 import { createVirtualClock } from '../../scripts/odyssey-benchmark/virtual-clock.mjs';
 import { BOT_RESPAWN_MS } from '../../src/core/game-modes/local-ffa-respawn.js';
 import { controls, spawn } from './solo.mjs';
-import { dealVersus, notePlaced, takeGarbage, versusMatch, versusRules } from '../gravity-bot-rebuild/shipped-versus.mjs';
+import {
+    dealVersus, growWell, lastStandingMatch, notePlaced, takeGarbage, versusMatch, versusRules,
+} from '../gravity-bot-rebuild/shipped-versus.mjs';
+import { checkInfinityGameOver } from '../../src/core/infinity-grid.js';
 
 export async function duel(low, seed, swap, seconds = 150, options = {}) {
     if (!Number.isInteger(low) || low < 1 || low > 9) throw new RangeError('Expected the lower tier 1 through 9');
@@ -28,8 +31,11 @@ export async function duel(low, seed, swap, seconds = 150, options = {}) {
     if (fragTarget && (rules !== 'shipped' || !options.fixed || !options.live)) {
         throw Error('Free-for-all needs the shipped rules, live bots and the fixed clock');
     }
-    const mp = versusMatch(tiers.length, { rules, matchConfig: { ...(fragTarget
-        ? { gameType: 'ffa', endCondition: 'frags', endConditionValue: fragTarget } : { gameType: 'survivor' }), ...options.matchConfig } });
+    // options.infinity plays Last Standing in a well of that many rows (the legacy loop, as the game).
+    if (options.infinity && (fragTarget || options.fixed || rules !== 'shipped')) throw Error('Last Standing runs on the legacy loop and the shipped rules');
+    const mp = options.infinity ? lastStandingMatch(tiers.length, options.infinity, options.matchConfig)
+        : versusMatch(tiers.length, { rules, matchConfig: { ...(fragTarget
+            ? { gameType: 'ffa', endCondition: 'frags', endConditionValue: fragTarget } : { gameType: 'survivor' }), ...options.matchConfig } });
     if (options.live) mp.sharedPieceSeed = seed;
     const frame = 1000 / 60;
     // For a pressure decision, count the queue when the planner runs.
@@ -69,6 +75,7 @@ export async function duel(low, seed, swap, seconds = 150, options = {}) {
                         stats[i].dugLocks++;
                         stats[i].dugCells += beforeLock - after;
                     }
+                    growWell(state);
                     const taken = takeGarbage(state, mp.getGarbageQueue(i), { rules, onGarbageReady: own.onGarbageReady });
                     stats[i].incoming += taken.rows;
                     options.observe?.rows?.(i, taken, state, mp);
@@ -157,7 +164,8 @@ export async function duel(low, seed, swap, seconds = 150, options = {}) {
                 spawn(mp.players[i]);
             }
         };
-        const unfinished = fragTarget ? () => Math.max(...mp.frags) < fragTarget : options.finishFfaRound
+        const out = [];
+        const unfinished = fragTarget ? () => Math.max(...mp.frags) < fragTarget : options.finishFfaRound || options.infinity
             ? () => mp.players.filter(s => s.isAlive && !s.isGameOver).length > 1
             : () => !mp.players.some(s => s.isGameOver);
         for (; ticksPlayed < rounds && unfinished(); ticksPlayed++) {
@@ -183,6 +191,18 @@ export async function duel(low, seed, swap, seconds = 150, options = {}) {
                 else if (!state.isProcessingPhysics && state.currentPiece && !state.isGameOver) {
                     processAutoDrop(state, frame, null, callbacks[i]);
                 }
+                if (options.infinity && !state.isGameOver && !state.isProcessingPhysics) {
+                    growWell(state);
+                    if (checkInfinityGameOver(state)) state.isGameOver = true;
+                }
+            }
+            if (options.infinity) {
+                const dead = mp.players.flatMap((s, i) => s.isAlive && s.isGameOver ? [i] : []);
+                for (const i of mp.handlePlayerDeaths(dead)) {
+                    out.push([i, ticksPlayed]);
+                    options.observe?.death?.(i, mp.players[i], mp);
+                    mp.players[i].currentPiece = null;
+                }
             }
             await clock.flush();
         }
@@ -195,6 +215,7 @@ export async function duel(low, seed, swap, seconds = 150, options = {}) {
         mp.players.forEach((s, i) => { stats[i].pendingOnLoss = s.isGameOver ? mp.getGarbageQueue(i).getTotalLines() : 0; });
         return { low, seed, swap, tiers, winner, simultaneous: lost.every(Boolean),
             attackers: [...mp.lastAttackerIds], lost, ticksPlayed, seconds: Math.round(clock.now / 1000), stats,
+            ...(options.infinity && { out, survivor: survivors.length === 1 ? lost.indexOf(false) : null }),
             ...(fragTarget && { frags: [...mp.frags], leader: leaders.length === 1 ? mp.frags.indexOf(best) : null }) };
     } finally {
         manager?.destroy();

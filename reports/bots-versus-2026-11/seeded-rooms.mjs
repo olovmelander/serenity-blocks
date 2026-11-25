@@ -1,5 +1,6 @@
 // Seeded replays of live bot rooms on the shipped versus rules. Every lock (seat, piece, place,
-// tick) goes into a hash, so a change that moves one placement shows.
+// tick) goes into a hash, so a change that moves one placement shows. A room with `infinity` is
+// Last Standing in a well of that many rows.
 // node seeded-rooms.mjs write|check
 import { createHash } from 'node:crypto';
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -13,6 +14,7 @@ const ROOMS = [
     { tiers: [10, 10, 10, 10], seed: 91009 }, { tiers: [10, 10], seed: 91010, matchConfig: { attackRules: { forceAttackType: 'blind' } } },
     { tiers: [10, 10], seed: 91011, matchConfig: { attackRules: { forceAttackType: 'full_blind' } } },
     { tiers: [10, 10, 10], seed: 91012, matchConfig: { hotPotato: true } }, { tiers: [10, 10], seed: 91013, matchConfig: { minAttackLines: 4 } },
+    { tiers: [10, 10], seed: 91014, infinity: 60 }, { tiers: [9, 7, 5], seed: 91015, infinity: 60 }, { tiers: [4, 2], seed: 91016, infinity: 40 },
 ];
 const SECONDS = 120;
 console.debug = () => {};
@@ -24,7 +26,8 @@ async function play(room) {
     let locks = 0;
     let tick = 0;
     const result = await duel(Math.max(1, Math.min(9, room.tiers[0])), room.seed, false, SECONDS, {
-        tiers: room.tiers, rules: 'shipped', live: true, fixed: true, useLocalStyles: true, fragTarget: 7, matchConfig: room.matchConfig,
+        tiers: room.tiers, rules: 'shipped', live: true, useLocalStyles: true, matchConfig: room.matchConfig,
+        ...(room.infinity ? { infinity: room.infinity } : { fixed: true, fragTarget: 7 }),
         observe: { lock(i, piece) { locks++; hash.update(`${tick}/${i}/${piece.shapeKey}/${piece.x}/${piece.y}/${piece.rotation ?? 0};`); } },
         afterFixedTick: () => { tick++; },
     });
