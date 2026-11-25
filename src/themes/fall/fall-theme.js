@@ -317,8 +317,19 @@ export default class FallTheme extends BaseTheme {
         this.reactions = new FallReactions({ quality: this.quality, rng });
         // The scene pass's samples (4× MSAA from High up with the game's antialiasing on).
         const samples = sceneSamples(this.quality, this.getAntialiasEnabled());
+        // The squirrel's day is its own every time the grove opens: a seed of the moment and an opening
+        // drawn from it (?fallSquirrelSeed=<n> pins one for a capture).
+        const rawSquirrel = searchParams().get('fallSquirrelSeed');
+        const pinned = rawSquirrel === null || rawSquirrel === '' ? NaN : Number(rawSquirrel);
+        const squirrelSeed = Number.isFinite(pinned) ? pinned : Math.floor(Math.random() * 0x7fffffff) + 1;
         const world = new FallWorld({
-            scene: this.scene, camera: this.camera, quality: this.quality, rng, assets: this.assets,
+            scene: this.scene,
+            camera: this.camera,
+            quality: this.quality,
+            rng,
+            assets: this.assets,
+            squirrelSeed,
+            squirrelStart: 'any',
         });
         if (!current) {
             // Keep ownership even if an art module throws halfway through its build.

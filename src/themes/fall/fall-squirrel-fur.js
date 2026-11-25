@@ -21,9 +21,12 @@
 import * as THREE from 'three/webgpu';
 import {
     attribute, cameraPosition, cross, dot, float, floor, fract, fwidth, hash, instanceIndex, length, max, mix,
-    normalize, normalLocal, normalWorld, positionLocal, positionWorld, pow, saturate, smoothstep, vec2, vec3,
+    normalize, normalLocal, normalWorld, positionLocal, positionWorld, pow, saturate, smoothstep, varying, vec2, vec3,
 } from 'three/tsl';
 import { flatVarying } from '../shared/flat-varying.js';
+
+/** A vertex's own numbers as the fragment reads them, taken inside the covered part of the pixel. */
+export const coveredVarying = (node, name) => varying(node, name).setInterpolation('perspective', 'centroid');
 
 /** The longest hair (metres at life size): `_fur.x` is a share of it (scripts/blender/fall_squirrel/model.py). */
 export const FUR_LONGEST = 0.02;
@@ -56,15 +59,18 @@ export function createFurShells({ body, light, quality = 'High' }) {
         fog: false, transparent: true, depthWrite: false,
     });
     material.name = 'FallSquirrelCoat';
-    const coat = attribute('_fur', 'vec4');
-    const paint = attribute('color', 'vec4');
+    // (Read where the pixel is really covered: at the coat's outline a multisampled pixel is shaded at
+    // its centre, off the triangle, and a colour extrapolated there is a black or red speck.)
+    const coat = coveredVarying(attribute('_fur', 'vec4'), 'vFallCoatFur');
+    const paint = coveredVarying(attribute('color', 'vec4'), 'vFallCoatPaint');
+    const coatAtVertex = attribute('_fur', 'vec4');
     const restNormal = attribute('normal', 'vec3');
     const rest = attribute('position', 'vec3');
     // 0 at the skin to 1 at the hairs' ends: the instance is the layer.
     const height = float(instanceIndex).add(1).div(shells);
-    const hair = saturate(coat.x).mul(FUR_LONGEST);
+    const hair = saturate(coatAtVertex.x).mul(FUR_LONGEST);
     // The plume's hair (a half in _fur.w) stands out from its core; the body's coat lies back.
-    const plume = smoothstep(0.3, 0.42, coat.w).mul(smoothstep(0.7, 0.58, coat.w));
+    const plume = smoothstep(0.3, 0.42, coatAtVertex.w).mul(smoothstep(0.7, 0.58, coatAtVertex.w));
     const lean = plume.oneMinus().mul(LEAN);
     // The lie of the coat in the rest pose, carried to the pose by the turn that took the rest
     // normal to the skinned one (a hair leans the same way along the body however it is bent).

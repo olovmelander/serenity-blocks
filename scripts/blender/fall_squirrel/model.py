@@ -270,7 +270,8 @@ def design():
 
     # The tail: the plume's soft body, combed. Its hair, the fringe that makes its outline, is drawn
     # over it at runtime as cards on the same bones (src/themes/fall/fall-squirrel-plume.js).
-    tail = Displace(plume_envelope(PLUME_BODY), 0.0005, _plume).tag(PARTS["tail"])
+    # (Smooth: combing it in the mesh spent a quarter of the triangles on streaks the hair now draws.)
+    tail = plume_envelope(PLUME_BODY).tag(PARTS["tail"])
 
     whole = Union([
         body, (head, 0.012), (eyes, 0.002), *[(ear, 0.004) for ear in ears], *[(leg, 0.012) for leg in front],
@@ -402,10 +403,10 @@ def srgb(hex_colour):
 COAT = dict(
     back=srgb(0x8a3a15), rust=srgb(0xb04f1c), flank=srgb(0xc4672a), cream=srgb(0xf2e9d8), ring=srgb(0xe6d2ae),
     eye=srgb(0x0e0807), nose=srgb(0x3a211d), tuft=srgb(0x54200e), tail=srgb(0x93401a), tailTip=srgb(0xdc9a52),
-    paw=srgb(0xc87a46), inner=srgb(0xd9a684),
+    paw=srgb(0xb9672f), inner=srgb(0xd9a684),
 )
 # The hair's length (metres at life size) by where it grows, and the longest (the scale of `_fur.x`).
-FUR = dict(body=0.0080, haunch=0.0105, skull=0.0062, muzzle=0.0020, limb=0.0058, paw=0.0010, ear=0.0026,
+FUR = dict(body=0.0080, haunch=0.0105, skull=0.0062, muzzle=0.0020, limb=0.0058, paw=0.0024, ear=0.0026,
            tuft=0.0150, plumeRoot=0.0090, plume=0.0200)
 FUR_LONGEST = 0.02
 

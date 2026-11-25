@@ -90,9 +90,10 @@ def old_windfall(seed=8101, name="old-windfall"):
     origin, _, _ = trunk.sample(0.33)
     ramp = _dead_limb(tree, trunk, 0.33, grow_curve(rng, origin + UP * 0.1, [-0.25, 0.1, 1.0], 2.0, 5, wander=0.05,
                                                     sag=0.9), 0.15, 0.07)
-    # A young maple come up beside it, in the light the old tree left.
-    _shoot(tree, np.array([-1.1, 0.0, -0.75]), [0.05, 1.0, -0.15], 2.3, 0.045, 4, (0.8, 1.05))
-    _shoot(tree, np.array([-1.0, 0.0, -0.85]), [-0.35, 1.0, -0.3], 1.5, 0.03, 3, (0.7, 0.9))
+    # A young maple come up by its root end, in the light the old tree left (out of the frame's way:
+    # the windfall lies in front of the oak, and leaves here would hide the oak's trunk).
+    _shoot(tree, np.array([2.5, 0.0, -0.9]), [0.05, 1.0, -0.15], 2.3, 0.045, 4, (0.8, 1.05))
+    _shoot(tree, np.array([2.7, 0.0, -1.0]), [0.35, 1.0, -0.3], 1.5, 0.03, 3, (0.7, 0.9))
     tree.thin_sites(0.4)
     tree.meta = dict(species="maple", role="hero", height=3.2, trunkRadius=radius, foliage="maple_spray", reach=0.0,
                      perch="windfall")
@@ -102,6 +103,7 @@ def old_windfall(seed=8101, name="old-windfall"):
 
 
 STUMP_TOP = 1.25
+# (The leaning bough rests on the rim about here.)
 
 
 def old_stump(seed=8203, name="old-stump"):
@@ -144,8 +146,14 @@ def old_stump(seed=8203, name="old-stump"):
             swell += lobe_strength * math.exp(-(delta / lobe_width) ** 2)
         return scale * (1.0 + 0.48 * swell * math.exp(-height / 0.4))
 
+    # A dead bough that came down across it: its butt on the ground by the path, its middle on the
+    # stump's rim, its snapped end standing clear above: a way up, and somewhere to leap from.
+    lean_points = np.array([[1.75, 0.06, 1.35], [1.25, 0.5, 1.02], [0.72, 0.96, 0.66], [0.28, 1.34, 0.36],
+                            [-0.18, 1.66, 0.08], [-0.6, 1.92, -0.16], [-0.94, 2.1, -0.34]])
+    lean = _dead_limb(tree, trunk, 0.9, lean_points, 0.15, 0.1)
     tree.meta = dict(species="maple", role="hero", height=2.6, trunkRadius=radius, foliage="maple_spray", reach=0.0,
                      perch="stump")
+    tree.perch_limbs = dict(lean=lean)
     tree.trunk_profile = _snapped(seed % 7, start=0.8, depth=0.16, flute=0.06, buttress=buttress)
     tree.perch_pads = [dict(name="top", centre=[0.0, STUMP_TOP + 0.012, 0.0], radius=0.3)]
     return tree
@@ -158,9 +166,12 @@ PERCH_RECIPES = {
 
 # The boughs of the two great trees the squirrel runs on: the index of each in its tree's branches
 # (the recipes are seeded, so these are the same boughs every time) and how far along it goes.
+#
+# Measured from the game's eye against the crowns' own sprays, only one of them is seen: a squirrel
+# on any bough of the maple, or on the oak's others, is behind leaves all the way out (the crowns hang
+# lower than their boughs). So the squirrel has the oak's rising bough, to where the leaves take it.
 GREAT_BOUGHS = {
-    "maple-hero": dict(bough=(13, 7.4), upper=(15, 4.6), riser=(10, 5.2)),
-    "oak-hero": dict(bough=(15, 6.2), riser=(14, 6.4), inner=(9, 4.6)),
+    "oak-hero": dict(riser=(14, 4.4)),
 }
 
 

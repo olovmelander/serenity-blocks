@@ -40,6 +40,11 @@ const SQUIRREL_CUES = Object.freeze({
 });
 /** A lock's emitter strength is 0.24 + 0.5 x the drop: from about half the board's height it startles. */
 const DROP_CUE = 0.45;
+/**
+ * The litter the squirrel stirs: leaves a second thrown out behind its paws while it digs, how many
+ * a landing on the floor puffs up, and how fast they go (metres a second).
+ */
+const SQUIRREL_LITTER = Object.freeze({ dig: 7, landing: 4, speed: 2.1 });
 
 export class FallWorld {
     constructor({
@@ -69,6 +74,11 @@ export class FallWorld {
         this.squirrelScript = squirrelScript;
         this.squirrelSerial = -1;
         this.time = 0;
+        // The litter it stirs (squirrelLitter): what is owed of the dig's leaves, the leap whose
+        // landing has puffed, and a generator of its own (the grove's draws stay as they were).
+        this.squirrelDig = 0;
+        this.squirrelLanded = null;
+        this.squirrelDice = 20261;
     }
 
     build() {
@@ -218,6 +228,60 @@ export class FallWorld {
         this.squirrelSerial = newest;
     }
 
+    /**
+     * The squirrel in the leaves: a dig throws them out behind it, a landing on the floor puffs a few
+     * up. Leaves of the air's own reserve (never one in flight); nothing when there is none to spare.
+     */
+    squirrelLitter(dt) {
+        const mind = this.squirrelMind;
+        const pose = this.squirrelPose;
+        const sim = this.leaves?.sim;
+        const act = mind?.act;
+        if (!pose?.visible || !sim || !act || !(dt > 0)) return;
+        const dice = () => {
+            this.squirrelDice = (Math.imul(this.squirrelDice, 1103515245) + 12345) & 0x7fffffff;
+            return this.squirrelDice / 0x7fffffff;
+        };
+        const [qx, qy, qz, qw] = pose.quaternion;
+        const forward = [2 * (qx * qz + qw * qy), 2 * (qy * qz - qw * qx), 1 - 2 * (qx * qx + qy * qy)];
+        const [x, y, z] = pose.position;
+        const onFloor = act.from.on === 'ground' && !mind.padOf(act.from);
+        if (onFloor && act.kind === 'stay' && pose.clip === 'dig') {
+            this.squirrelDig += dt * SQUIRREL_LITTER.dig;
+            while (this.squirrelDig >= 1) {
+                this.squirrelDig -= 1;
+                const out = SQUIRREL_LITTER.speed * (0.6 + 0.8 * dice());
+                const side = (dice() - 0.5) * 1.6;
+                // Out behind it, between its hind legs, and up.
+                sim.spawn(
+                    x + forward[0] * 0.2,
+                    y + 0.12,
+                    z + forward[2] * 0.2,
+                    -forward[0] * out + forward[2] * side,
+                    1.6 + 1.8 * dice(),
+                    -forward[2] * out - forward[0] * side,
+                );
+            }
+        } else this.squirrelDig = 0;
+        // A landing on the floor (not on a perch): once for each leap, as it touches down.
+        if (act.kind === 'leap' && act.to.on === 'ground' && !mind.padOf(act.to) && this.squirrelLanded !== act
+            && this.time >= act.t0 + act.crouch + act.flight) {
+            this.squirrelLanded = act;
+            for (let i = 0; i < SQUIRREL_LITTER.landing; i += 1) {
+                const angle = dice() * Math.PI * 2;
+                const out = SQUIRREL_LITTER.speed * (0.5 + 0.6 * dice());
+                sim.spawn(
+                    x + Math.cos(angle) * 0.25,
+                    y + 0.1,
+                    z + Math.sin(angle) * 0.25,
+                    Math.cos(angle) * out,
+                    1.2 + 1.4 * dice(),
+                    Math.sin(angle) * out,
+                );
+            }
+        }
+    }
+
     /** The run ended: the squirrel takes cover behind its tree and peeks out. */
     onGameOver() {
         this.squirrelMind?.cue('over', this.time);
@@ -259,6 +323,9 @@ export class FallWorld {
         this.leaves?.reset();
         // The director's serials start again from nothing.
         this.squirrelSerial = -1;
+        this.squirrelDig = 0;
+        this.squirrelLanded = null;
+        this.squirrelDice = 20261;
     }
 
     prepareCamera(aspect) {
@@ -300,6 +367,7 @@ export class FallWorld {
             this.cueSquirrel(time, frame);
             this.squirrelPose = this.squirrelMind.pose(time, this.squirrelPose || undefined);
             this.squirrel.update(this.squirrelPose);
+            this.squirrelLitter(dt);
         }
     }
 

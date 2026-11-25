@@ -1,9 +1,10 @@
 /**
  * Fall — the limbs the squirrel runs on, and the flat places it sits on.
  *
- * Besides the two great trunks (fall-squirrel-stage.js) the squirrel has boughs: three of each great
- * tree's, and close to the eye a windfall with two dead limbs standing up from it and a broken stump
- * (fall-composition.js places them; scripts/blender/fall_grove/perches.py grows them). A limb is known
+ * Besides the two great trunks (fall-squirrel-stage.js) the squirrel has limbs: close to the eye a
+ * windfall with two dead limbs standing up from it, and a broken stump with a dead bough leaning
+ * over it (fall-composition.js places them; scripts/blender/fall_grove/perches.py grows them); and
+ * the one bough of the great trees the eye sees past their leaves, the oak's rising one. A limb is known
  * here as the bark is meshed round it: its centre line and radius, written from the same seeded
  * recipes the GLBs were grown from (assets/squirrel-perches.json), so a squirrel on a bough stands on
  * the bark the eye sees.
@@ -30,6 +31,8 @@ export const PERCH_HOMES = Object.freeze({
 export const PERCH_NAMES = Object.freeze({
     'maple-hero': 'maple', 'oak-hero': 'oak', 'old-windfall': 'windfall', 'old-stump': 'stump',
 });
+/** A snapped end this far above the floor (metres) is a perch; one lying on it is not. */
+const TIP_CLEAR = 0.9;
 /** How near its ends a limb is walked (metres): clear of the junction, and of the thin or snapped end. */
 const LIMB_MARGIN = Object.freeze({ low: 0.3, high: 0.22 });
 
@@ -181,9 +184,9 @@ export function createPerches({
                 name: `${short}.${name}`, rows: world, home, eye, dead,
             });
             limbs[limb.name] = limb;
-            // The snapped end of a standing dead limb is a place to sit.
-            if (dead && limb.standing) {
-                const tip = limb.tip();
+            // The snapped end of a dead limb that stands clear of the floor is a place to sit.
+            const tip = dead ? limb.tip() : null;
+            if (tip && tip.centre[1] - groundHeight(tip.centre[0], tip.centre[2]) > TIP_CLEAR) {
                 pads.push({
                     name: `${limb.name}.tip`, home, centre: tip.centre, radius: Math.max(0.1, tip.radius), limb: limb.name,
                 });

@@ -23,7 +23,7 @@ import {
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import { SQUIRREL_CLIPS, SQUIRREL_SCALE } from './fall-squirrel-clips.js';
 import { FLICK_LENGTH } from './fall-squirrel-mind.js';
-import { createFurShells } from './fall-squirrel-fur.js';
+import { coveredVarying, createFurShells } from './fall-squirrel-fur.js';
 import { createPlumeHairSteps } from './fall-squirrel-plume.js';
 import { FALL_SLICE_MS, fallSlice } from './fall-slices.js';
 import { drainSteps, stepClock } from '../shared/build-steps.js';
@@ -47,6 +47,8 @@ const TRAIL_SURGE_RANGE = [-0.32, 0.55];
  */
 const FLICK_DEGREES = [18, 12, 8, 5, 4, 4, 4];
 const FLICK_BEAT = 0.028;
+/** Where its teeth are from the head's joint (metres, life size: x left, y up, z forward). */
+const MOUTH = Object.freeze([0, -0.011, 0.054]);
 /** Each tail bone's sideways axis in its own frame: square to the tail's length and to its left. */
 const TAIL_SWING = new THREE.Vector3(0, 0.8, 0.6).normalize();
 const TAIL_LIFT = new THREE.Vector3(1, 0, 0);
@@ -71,8 +73,8 @@ const COMB_SWEEP = 0.9;
 function createFurMaterial(light) {
     const material = new THREE.MeshBasicNodeMaterial({ fog: false });
     material.name = 'FallSquirrelFur';
-    const paint = attribute('color', 'vec4');
-    const coat = attribute('_fur', 'vec4');
+    const paint = coveredVarying(attribute('color', 'vec4'), 'vFallSkinPaint');
+    const coat = coveredVarying(attribute('_fur', 'vec4'), 'vFallSkinFur');
     const tailBase = uniform(new THREE.Vector3(0, 0.072, -0.086));
     const tailAxis = uniform(new THREE.Vector3(0, 0.6, -0.8));
     const plume = smoothstep(0.3, 0.42, coat.w).mul(smoothstep(0.7, 0.58, coat.w));
@@ -120,7 +122,7 @@ function createFurMaterial(light) {
         .mul(sun);
     // The eyes: the sun's glint, and a catchlight from the sky over the viewer's shoulder.
     const glint = pow(saturate(dot(reflect(V.negate(), N), L)), 70).mul(light.uSunColor).mul(2.2).mul(sun);
-    const catchlight = pow(saturate(dot(N, normalize(V.add(vec3(0, 0.55, 0))))), 26).mul(0.55);
+    const catchlight = pow(saturate(dot(N, normalize(V.add(vec3(0, 0.55, 0))))), 64).mul(0.5);
     const wet = glint.add(vec3(catchlight)).mul(eye);
     const lit = direct.add(ambient).add(rim).add(shine).add(wet)
         // The grove's warm light on it, in a fever.
@@ -248,6 +250,18 @@ export function* createSquirrelSteps({
     }
     const neck = model.getObjectByName('neck');
     const head = model.getObjectByName('head');
+    // The nut it carries in its mouth: the acorn again, on the head bone, between its teeth.
+    let carried = null;
+    if (acorn && head) {
+        carried = new THREE.Mesh(acorn.geometry, acornMaterial);
+        carried.name = 'FallSquirrelAcornCarried';
+        carried.frustumCulled = false;
+        carried.scale.copy(acorn.scale);
+        carried.position.set(0, MOUTH[1], MOUTH[2]);
+        carried.rotation.set(Math.PI / 2, 0, 0);
+        carried.visible = false;
+        head.add(carried);
+    }
     const tail = FLICK_DEGREES.map((_, i) => model.getObjectByName(`tail${i}`));
     const trailLift = new THREE.Quaternion();
     const trailSwing = new THREE.Quaternion();
@@ -395,6 +409,7 @@ export function* createSquirrelSteps({
             pivot.updateMatrixWorld(true);
             lookAt(pose.attention, pose.look);
             if (acorn) acorn.visible = Boolean(pose.acorn);
+            if (carried) carried.visible = Boolean(pose.carry) && !pose.acorn;
             // The shade: on the surface under it, fainter the higher it is.
             const n = scratch.n.fromArray(pose.normal);
             shade.mesh.position.fromArray(pose.surface).addScaledVector(n, 0.02);

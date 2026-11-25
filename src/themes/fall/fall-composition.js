@@ -53,7 +53,7 @@ export const FALL_FEATURE_TREES = Object.freeze([
         asset: 'old-windfall', x: 5.1, z: 8.4, yaw: -0.541, scale: 1, tone: 0.22,
     },
     {
-        asset: 'old-stump', x: -4.9, z: 7.6, yaw: 0.6, scale: 1, tone: 0.62,
+        asset: 'old-stump', x: -4.4, z: 7.5, yaw: 0.6, scale: 1, tone: 0.62,
     },
 ]);
 
