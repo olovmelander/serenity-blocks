@@ -23,6 +23,8 @@
  * the far-left flank and the Ch4 hero massif silhouette. Those numbers are pinned by tests.
  */
 
+import { odysseyMassifDelta } from './odyssey-massif-form-decode.js';
+
 /** Sea level. Ch2's ceiling and Ch3's water surface are the same world plane in the shipped build. */
 export const ODYSSEY_SEA_LEVEL = 287.31;
 
@@ -119,7 +121,18 @@ export const ODYSSEY_MASSIFS = Object.freeze([
     }),
     // NOTE the different datum: the shipped far-left flank sits 50u lower than the others.
     Object.freeze({
-        id: 'far-left', x: -1892.7, z: -1639.3, radius: 675, height: 430, exponent: 1.55, footY: 247.5556,
+        id: 'far-left',
+        x: -1892.7,
+        z: -1639.3,
+        radius: 675,
+        height: 430,
+        exponent: 1.55,
+        footY: 247.5556,
+        // Drawn as an older mountain since 2026-11-25 (ridgedMassifRise): a ridge running north-east,
+        // a rounder top, a shoulder down the ridge toward the meadows' view.
+        ridge: Object.freeze({
+            bearing: 0.62, squeeze: 0.62, exponent: 1.25, shoulder: Object.freeze([0.34, 0.62]),
+        }),
     }),
 ]);
 
@@ -606,6 +619,30 @@ export function massifTerm(massif, x, z) {
 // ── the field ────────────────────────────────────────────────────────────────────
 
 /**
+ * A massif drawn as an OLDER mountain (2026-11-25, the mountain's audit M8: the far peak was the hero's
+ * own needle cone in small): a ridge, longer along `ridge.bearing` than across it, with a rounder top
+ * (`ridge.exponent`) and a lower shoulder down the ridge (`ridge.shoulder`: where along it, as a share of
+ * the radius, and how high, as a share of the crown). Its crown stays the shipped one, exactly, at its
+ * shipped place; nothing reaches past its footprint (the across-ridge squeeze only shrinks it).
+ * @param {{radius: number, height: number, ridge: {bearing: number, squeeze: number, exponent: number, shoulder: number[]}}} m
+ * @param {number} dx
+ * @param {number} dz
+ */
+function ridgedMassifRise(m, dx, dz) {
+    const R = m.ridge;
+    const c = Math.cos(R.bearing);
+    const sn = Math.sin(R.bearing);
+    const along = (dx * c) + (dz * sn);
+    const across = ((-dx * sn) + (dz * c)) / R.squeeze;
+    const body = Math.max(0, 1 - (Math.hypot(along, across) / m.radius));
+    const top = (body ** R.exponent) * m.height;
+    const sa = along - (R.shoulder[0] * m.radius);
+    const sBody = Math.max(0, 1 - (Math.hypot(sa, across) / (m.radius * 0.55)));
+    const shoulder = (sBody ** R.exponent) * m.height * R.shoulder[1];
+    return smoothMax(top, shoulder, 18);
+}
+
+/**
  * MACRO form — analytic and smooth. Ocean floor, the landmass that carries the shore, the Ch3
  * basin, and the four canonical peaks joined with a smooth max.
  */
@@ -691,7 +728,7 @@ export function odysseyWorldMacro(x, z) {
         const t = Math.max(0, Math.min(1, cone / 0.35));
         const pedestalBlend = t * t * (3 - (2 * t));
         const pedestal = pedestalBlend * (m.footY - ground);
-        const peak = pedestal + ((cone ** m.exponent) * m.height);
+        const peak = pedestal + (m.ridge ? ridgedMassifRise(m, mdx, mdz) : ((cone ** m.exponent) * m.height));
         rise = smoothMax(rise, peak, 26);
     }
 
@@ -756,131 +793,49 @@ export function odysseyWorldRelief(x, z) {
     return Math.max(-ODYSSEY_RELIEF_SCALE, Math.min(ODYSSEY_RELIEF_SCALE, relief));
 }
 
-// ── THE SUMMIT SCULPTED (2026-10-25, Act II masterpiece pass, step 2) ────────────────────────────
+// ── THE MASSIF'S FORM (2026-11-25, grown as a landform; it replaces the summit sculpt) ─────────
 
 /**
- * THE HERO SUMMIT, SCULPTED. The hero massif is a radial cone (`massifTerm`), and the relief bake
- * (8.8 u texels, ridged noise at ~450 u) cannot draw what makes a summit read as rock: from the
- * chapter-5 climb the eye is 150-550 u from the top for almost half the chapter, where a 5 u
- * ridge spans ~30 px. So the top of the hero gets its own form, at ~2 u (its own bake on the GPU,
- * `bakeSummitSculptData`), added to the drawn surface:
+ * THE HERO MASSIF'S FORM. The hero was a radial cone (`massifTerm`) under ridged noise, with a
+ * procedural top on it (a horn, four aretes, couloirs and a rock step every 22 u). Judged from the
+ * pixels (docs/ODYSSEY_MOUNTAIN_AUDIT_2026-11.md) it read as a cone with a layer cake wrapped round it.
  *
- *   - a HORN: the top ~200 u steepen into a sharper pyramid;
- *   - ARETES: four ridges stand out of the cone, one running straight down toward the climb
- *     (the camera looks up it from bearing ~90 deg the whole chapter, so the eye is led up it to
- *     the top) and two forming the left and right skylines; they meander as they descend;
- *   - FACES hollowed between them, carved by COULOIRS that converge on the top;
- *   - LEDGES: bands of rock steps across the faces.
+ * Now the mountain is grown in Blender (scripts/blender/odyssey/odyssey_massif.py): ridges drawn over
+ * the island's cone (a summit block with a main top, a notch and an eastern top; a long west arete to
+ * the left shoulder, a shorter, stepped east arete to the right one; two ribs down the climb's face;
+ * three ridges at the back), faces hollowed between them and a cirque on the south-east face; rain
+ * cutting gullies into couloirs and dropping fans at their feet, five hard beds standing as broken
+ * cliff bands, frost laying the loose ground at its angle of rest. Inside a clearance kept round the
+ * rail (46 u, opening at 65 degrees past 60 u) and faded out across the massif's foot, so the meadows,
+ * the tarn, the forest's floor and the animals' ground keep their height.
  *
- * Exactly zero beyond `reach` (the cone's middle and the meadows are untouched, and so are the
- * rail's clearances, the orbs' seats and the forest below); a delta in world units over the
- * height the rest of the field draws.
+ * It is shipped as the height it ADDS over the island's ground (macro + relief x weight) on the sculpt
+ * plate's square (`world/odyssey-massif-form.js`, decoded by `odyssey-massif-form-decode.js`), so this
+ * stays one delta over the field, the old sculpt's place: in the CPU height, the sculpt plate the
+ * ground reads, and everything that seats on either.
  */
 export const ODYSSEY_SUMMIT_SCULPT = Object.freeze({
     /** The hero apex (ODYSSEY_MASSIFS' hero). */
     x: -182.7,
     z: -1059.3,
-    /** The sculpt fades out by here (world units from the apex), and is whole inside `core`. */
-    reach: 470,
-    core: 290,
-    /** The bake's square (centred on the apex) and its texels per side (~2 u each). */
-    extent: 1000,
-    res: 512,
-    /** The horn: how much the top rises, and over what radius. */
-    hornHeight: 34,
-    hornRadius: 210,
-    /** The aretes: bearings (radians, from +x toward +z), how far they stand proud and the faces
-     * between them are hollowed (world units), and their half-width (u at the top, + per u). */
-    aretes: Object.freeze([Math.PI / 2, (Math.PI / 2) + 1.96, (Math.PI / 2) - 1.96, (Math.PI / 2) + Math.PI]),
-    areteLift: 24,
-    faceHollow: 18,
-    areteWidth: 9,
-    areteWiden: 0.075,
-    /** Couloirs down the faces: spacing across the face and depth (u). */
-    couloirSpacing: 27,
-    couloirDepth: 9,
-    /** Ledges: their spacing in height and how much of each step is kept (0 = smooth cone). */
-    ledgeSpacing: 22,
-    ledgeStrength: 0.42,
+    /** The form's own square: it is zero beyond its border (ODYSSEY_MASSIF_GRID). */
+    reach: 640,
 });
 
-const SUMMIT = ODYSSEY_SUMMIT_SCULPT;
-const HERO_CONE = Object.freeze({ radius: 603, height: 720, exponent: 1.7 });
-
-function smoothstepRange(a, b, x) {
-    const u = Math.min(Math.max((x - a) / (b - a), 0), 1);
-    return u * u * (3 - (2 * u));
-}
-
-// Angle a - b wrapped to (-pi, pi].
-function angleDelta(a, b) {
-    let d = a - b;
-    while (d > Math.PI) d -= 2 * Math.PI;
-    while (d <= -Math.PI) d += 2 * Math.PI;
-    return d;
-}
-
 /**
- * The summit's sculpted delta at (x, z), world units (0 beyond `reach`).
+ * The massif's form at (x, z): the height it adds over the island's ground, world units (0 off its
+ * square and across the massif's foot).
  * @param {number} x
  * @param {number} z
  * @returns {number}
  */
 export function odysseySummitSculpt(x, z) {
-    const rx = x - SUMMIT.x;
-    const rz = z - SUMMIT.z;
-    const d2 = (rx * rx) + (rz * rz);
-    if (d2 >= SUMMIT.reach * SUMMIT.reach) return 0;
-    const d = Math.sqrt(d2);
-    const envelope = 1 - smoothstepRange(SUMMIT.core, SUMMIT.reach, d);
-    // Features grow in from the very top (a point has no faces) and ride the envelope out.
-    const grow = smoothstepRange(6, 60, d) * envelope;
-    const theta = Math.atan2(rz, rx);
+    return odysseyMassifDelta(x, z);
+}
 
-    // The horn.
-    const hornT = Math.max(0, 1 - (d / SUMMIT.hornRadius));
-    const horn = SUMMIT.hornHeight * hornT * hornT;
-
-    // The aretes: lateral distance from each ridge line (which meanders with radius).
-    // Each carries towers and notches along its length (gendarmes), so the skyline is broken.
-    let crest = 0;
-    let crestLift = 0;
-    for (let i = 0; i < SUMMIT.aretes.length; i += 1) {
-        const wobble = (0.13 * Math.sin((d * 0.012) + (i * 1.7))) + (0.05 * Math.sin((d * 0.031) + (i * 2.9)));
-        const lateral = angleDelta(theta, SUMMIT.aretes[i] + wobble) * d;
-        const width = SUMMIT.areteWidth + (SUMMIT.areteWiden * d);
-        const r = Math.exp(-((lateral / width) ** 2));
-        if (r > crest) {
-            crest = r;
-            const towers = valueNoise((d / 34) + (i * 13.1), i * 7.3);
-            crestLift = 0.45 + (1.1 * towers * towers);
-        }
-    }
-    const ridge = (crest * SUMMIT.areteLift * crestLift) - ((1 - crest) * SUMMIT.faceHollow);
-
-    // Couloirs: a ridged noise across the face (arc length about the camera's bearing, so the
-    // atan seam sits on the hidden back face), stretched down the fall line.
-    const across = angleDelta(theta, SUMMIT.aretes[0] + Math.PI) * d;
-    const warp = (valueNoise(d * 0.011, across * 0.004 + 3.1) - 0.5) * 22;
-    const n = valueNoise((across + warp) / SUMMIT.couloirSpacing, (d / 95) + 7.7);
-    const groove = (1 - Math.abs((n * 2) - 1)) ** 3;
-    const couloir = -groove * SUMMIT.couloirDepth * (1 - crest);
-
-    // Ledges: rock steps across the faces, on the cone's own height (warped so they are not rings).
-    const coneT = Math.max(0, 1 - (d / HERO_CONE.radius));
-    const coneH = ((coneT ** HERO_CONE.exponent) * HERO_CONE.height)
-        + ((valueNoise(across * 0.016, d * 0.016) - 0.5) * 26);
-    const step = coneH / SUMMIT.ledgeSpacing;
-    const stepFloor = Math.floor(step);
-    const stepped = (stepFloor + smoothstepRange(0.58, 1, step - stepFloor)) * SUMMIT.ledgeSpacing;
-    // ...in patches: whole bands where the rock is stepped, smooth slabs between them.
-    const ledgePatch = smoothstepRange(0.42, 0.68, valueNoise((across / 80) + 19.4, (d / 60) - 3.3));
-    const ledge = (stepped - coneH) * SUMMIT.ledgeStrength * (1 - crest) * ledgePatch;
-
-    // Fine rock: a ridged texture at ~14 u.
-    const rough = ((1 - Math.abs((valueNoise(x / 14 + 41.3, z / 14 - 7.9) * 2) - 1)) - 0.5) * 5;
-
-    return horn * envelope + ((ridge + couloir + ledge + rough) * grow);
+function smoothstepRange(a, b, x) {
+    const u = Math.min(Math.max((x - a) / (b - a), 0), 1);
+    return u * u * (3 - (2 * u));
 }
 
 // ── THE TARN (2026-10-26, Act II masterpiece pass, step 6; redrawn 2026-11-20) ─────────────

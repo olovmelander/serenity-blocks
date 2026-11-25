@@ -45,7 +45,7 @@ export const ODYSSEY_WALL_GUSTS = Object.freeze({
     spread: Object.freeze([230, 105, 130]),
     /** Peak alpha of a streamer, and of the crystals' sparkle in it. */
     alpha: 0.27,
-    sparkle: 0.85,
+    sparkle: 0.5,
     /** THE GALE COMES IN GUSTS: a front crosses the box every `gust` seconds; between fronts the
      * air holds a `lull` share of the snow, so the sky behind is clear more than it is veiled. */
     gust: 7.5,
@@ -153,7 +153,11 @@ export function createOdysseyWallGusts({ sunColour = null, hazeColour = null, qu
         const torn = smoothstep(0.32, 0.80, n.add(disc.mul(0.45)));
         const cover = clamp(disc.mul(torn), 0.0, 1.0).toVar();
         const heart = smoothstep(0.35, 0.85, cover).mul(vSheet.w);
-        const lit = mix(sun.mul(0.96).add(vec3(0.03)), sky.mul(0.80), heart.mul(0.30));
+        // The snow's light (2026-11-25, the mountain's audit M16: at L27 the gusts in the sun's own gold
+        // read as a road with lane markings across the face): the sun's value, little of its hue, as the
+        // summit's banner is lit (odyssey-summit-spindrift.js).
+        const sunLuma = dot(sun, vec3(0.2126, 0.7152, 0.0722));
+        const lit = mix(mix(vec3(sunLuma), sun, 0.35).mul(0.84).add(vec3(0.03)), sky.mul(0.80), heart.mul(0.38));
         const cell = floor(q.mul(vec2(46.0, 12.0)).add(vec2(seed, 0.0)));
         const tick = floor(uTime.mul(11.0).add(seed));
         const glint = smoothstep(0.972, 0.995, hash21(cell.add(vec2(tick.mul(0.37), tick.mul(0.61)))))

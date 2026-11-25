@@ -1,7 +1,7 @@
 import * as THREE from 'three/webgpu';
 import {
     Break, Fn, If, Loop, int,
-    abs, acos, atan, attribute, clamp, cos, cross, dFdx, dFdy, fwidth, dot, exp, exp2, float, floor, fract, frontFacing,
+    abs, acos, attribute, clamp, cos, cross, dFdx, dFdy, fwidth, dot, exp, exp2, float, floor, fract, frontFacing,
     log2,
     hash, length, max, min, mix, reflect, select, sign, sqrt, uniformArray,
     normalize, normalWorld, positionGeometry, positionLocal, positionWorld as positionWorldNode, sin,
@@ -20,7 +20,6 @@ import {
     ODYSSEY_NORTH_LAKE_PLATE,
     ODYSSEY_SEA_LEVEL,
     ODYSSEY_SCULPT_PLATE,
-    ODYSSEY_SUMMIT_SCULPT,
     ODYSSEY_TARN,
     ODYSSEY_TARN_BOX,
     ODYSSEY_TARN_PLATE,
@@ -394,24 +393,13 @@ const GROUND_SNOW_CREST_STRIP = 0.75;
 /** Crisp rock ramps in over this altitude band (u): above the shore lowlands, below the scree. */
 const ROCK_CRISP_FROM = Object.freeze([320, 380]);
 /**
- * THE SUMMIT'S ROCK (2026-10-31): snow ledges on the layered rock and a sky-lit shade, above
- * `from` only (the climb's close-ups; the massif's flanks keep the measured mineral shade).
- *   step/width — a layer every `step` u, its top `width` of the layer held in snow;
- *   wobble     — how far the atlas grain bends a ledge (u); cliff — no ledges past this slope;
- *   cover      — how much snow a ledge adds; rockAmbient / rockSkyChroma — the shaded stone's
- *   sky fill and how much of the sky's hue it takes (mineral: 0.22 and GROUND_AMBIENT_CHROMA).
+ * THE SUMMIT'S ROCK (2026-10-31): above `from` (u) shaded stone takes more of the sky
+ * (`rockAmbient`) and of its hue (`rockSkyChroma`): open to the whole dome and to the bounce off the
+ * snow round it, it is slate lit by the sky, not black paint. (Its snow ledges, a line every 7.5 u,
+ * went with the mountain's rebuild, 2026-11-25: they were the audit's striped snow.)
  */
-const SUMMIT_LEDGES = Object.freeze({
+const SUMMIT_ROCK = Object.freeze({
     from: Object.freeze([600, 690]),
-    step: 7.5,
-    width: 0.16,
-    wobble: 26,
-    /** The strata's dip: height gained per world unit across the mountain (x, z). */
-    dip: Object.freeze([0.16, -0.09]),
-    /** The along-ledge break-up's scale (1 / u): runs of snow ~10-30 u long. */
-    runScale: 0.055,
-    cliff: Object.freeze([0.80, 0.95]),
-    cover: 0.95,
     rockAmbient: 0.50,
     rockSkyChroma: 0.55,
 });
@@ -454,26 +442,38 @@ export function cloudShadowSchedule(actT) {
     };
 }
 /**
- * COULOIRS THROUGH THE CAP (2026-10-03). On the hero massif the crest strip's convexity is
- * scaled by the FALL-LINE field: [in a couloir, on a rib]. The snow fingers only moved the
- * SNOWLINE; above it the strip still followed the relief's round ~450 u bumps, so from the
- * chapter-5 climb — close under the cone, looking up it — the summit wore camouflage blobs.
- * Now a couloir holds its snow over all but the sharpest bumps and a rib sheds a little more, so
- * the rock patches are cut into rib-shaped pieces by snow tongues running down from the summit.
- * (Tried and rejected, both by capture: BIASING the convexity changed nothing — the bumps
- * saturate the strip's window; REPLACING it with the fall line drew a pinstriped stone tent.)
+ * THE MASSIF'S SNOW (2026-11-25, the mountain rebuilt; see the block that reads it in the ground):
+ *   couloir     how much lower the snowline runs where the form gathers water (u, x `gully`)
+ *   rib         how much higher on a convex rib (u, x `crest`)
+ *   sunward     how much higher on a face square to the low western sun, lower in its lee (u)
+ *   breakScale  the snow edge's break-up read (1 / u): lobes tens of units across
+ *   breakReach  how far that break-up moves the snowline (u)
+ *   cliff       the slope (1 - normal.y) where snow lets go of the face, and where it is gone
+ *   mantle      the heights over which the summit's snow becomes a mantle (the ribs strip less)
  */
-const GROUND_SNOW_FALL_LINE = Object.freeze([0.25, 1.35]);
 /**
- * THE HERO'S FLUTES (audit 2026-10-18, see `heroFields`): the two harmonics' counts around the
- * cone (integers, so the pattern closes across the atan cut), how far the flute walls tilt the
- * lighting normal, and how much of the round relief's crest strip the flutes take over.
+ * THE MASSIF'S ROCK UP CLOSE (2026-11-25; see the block that reads it in the ground): joint spacing across
+ * world x, z and the bedding's in height (u), their wobble (u), a crack's half width in a cell (share), how
+ * dark a crack draws and how far a block's own tone swings; `near` the footprint (u a pixel) over which the
+ * joints fade in, so they show only where a cell is several pixels wide.
  */
-const HERO_FLUTES = Object.freeze([13, 29]);
-// 0.24 -> 0.34 (2026-10-20): from the chapter-5 climb the cone read as smooth white plastic; deeper
-// flutes put light-and-shade texture down every fall line (the ice tint is still capped, below).
-const HERO_FLUTE_DEPTH = 0.34;
-const HERO_CREST_RELIEF = 0.7;
+const MASSIF_ROCK = Object.freeze({
+    spacing: Object.freeze([11, 13, 7.5]),
+    wobble: 6,
+    crack: 0.035,
+    crackDark: 0.42,
+    blockTone: 0.18,
+    near: Object.freeze([0.35, 1.0]),
+});
+const MASSIF_SNOW = Object.freeze({
+    couloir: 130,
+    rib: 55,
+    sunward: 60,
+    breakScale: 0.021,
+    breakReach: 85,
+    cliff: Object.freeze([0.70, 0.84]),
+    mantle: Object.freeze([820, 960]),
+});
 /**
  * Must match the bake's floor, or `openness` never reaches 0 in the deepest hollow.
  *
@@ -2227,23 +2227,19 @@ export function createOdysseyWorld({
         // 620..730 now that the jitter, not the ramp width, is what softens the boundary.
         const snowJitterRaw = texture(detailTex, positionWorld.xz.mul(0.0016)).b.toVar();
         /**
-         * SNOW FINGERS — wind-scoured ribs, snow in the couloirs (seamless pass, open item from the
-         * masterpiece pass: "summit snow is uniform rather than patchy").
+         * THE MASSIF'S SNOW AND ROCK, READ OFF ITS FORM (2026-11-25; docs/ODYSSEY_MOUNTAIN_2026-11.md).
          *
-         * The jitter above made the snowline WOBBLE, and the crest strip took snow off the relief's
-         * convex bumps — but the relief is round ridged noise at ~450 u, so what that drew was
-         * camouflage: grey blotches scattered evenly over a cream cone, the same at every azimuth.
-         * A real snowy peak is organised by its FALL LINES: snow fills the couloirs that run down
-         * the flanks and reaches far below the cap in long tongues, while the ribs between them are
-         * scoured to stone well above it. On a cone the fall line is radial, so the couloirs are a
-         * function of AZIMUTH around the hero summit: ~11 fingers (two incommensurate harmonics, so
-         * no two are alike), warped by the same low-frequency noise the jitter reads and twisted
-         * gently with radius, so they meander as they descend instead of radiating like a clock
-         * face. Couloirs carry the snowline ~95 u lower, ribs lift it ~95 u higher; the baked
-         * gullies add their own (snow pools in hollows). Rock takes the opposite sign (the ribs).
-         *
-         * One atan + two sins, inside a branch on the hero's footprint — no derivative and no fetch
-         * inside, so it is legal in non-uniform flow, and the rest of the island skips it.
+         * The hero is a grown landform now (odyssey-massif-form.js): ridges, couloirs the rain cut,
+         * cliff bands at its hard beds. Its snow and rock follow that FORM, and nothing on it is
+         * drawn by height alone. (The audit's layer cake was three height bands laid on a smooth
+         * cone: a rock step every 22 u in the old sculpt, a snow line every 7.5 u, a stratum every
+         * 24 u; and the snow's tongues were two sines of azimuth, its flutes a tilt of the light.)
+         * On the massif snow lies
+         *   - lower in the couloirs (`gully`: the plate's curvature plus the rain's own flow) and
+         *     higher on the ribs (`crest`), so it runs down the gullies in tongues;
+         *   - less on the faces the low western sun works (`sunward`), more in their lee;
+         *   - not on the cliffs (the slope gate), and with its edge broken at ~40 u (`snowBreak`),
+         *     never in single pixels.
          */
         const heroMassif = ODYSSEY_MASSIFS.find((m) => m.id === 'hero');
         const heroRel = positionWorld.xz.sub(vec2(heroMassif.x, heroMassif.z));
@@ -2253,228 +2249,108 @@ export function createOdysseyWorld({
             float(heroMassif.radius * 0.95),
             heroR,
         )).toVar();
-        /**
-         * THE FLUTES (Odyssey audit 2026-10-18: "the peak reads as camouflage"). The fingers
-         * above organise the snowline, but the cone itself stayed smooth, so all the eye found on
-         * it up close was round blobs of rock and shadow from the ~450 u relief. Real alpine
-         * faces are FLUTED: narrow ribs and runnels down every fall line, catching the sun on one
-         * wall and holding shadow on the other, snow lying in the runnels and the ribs bare.
-         *
-         * Shaded, not sculpted (the height field is pinned by the rail's clearances and the
-         * bakes): `y` tilts the LIGHTING normal across the flutes, `z` is the rib (1 on a crest
-         * line, 0 in a runnel) that strips the snow to stone in streaks. Two integer harmonics
-         * keep the pattern seamless across the atan cut; the jitter and a slight twist with
-         * radius make the flutes meander as they descend. Same branch as the fingers: one atan,
-         * four trig, no derivative and no fetch.
-         */
-        const heroFields = Fn(() => {
-            const heroOut = vec3(0, 0, 0).toVar();
-            If(heroW.greaterThan(0.001), () => {
-                const heroAz = atan(heroRel.y, heroRel.x);
-                const fin = sin(heroAz.mul(11).add(snowJitterRaw.mul(2.4)).add(heroR.mul(0.0045))).mul(0.62)
-                    .add(sin(heroAz.mul(17).add(heroR.mul(0.006)).add(1.7)).mul(0.38));
-                // -1 on a rib, +1 down a couloir; drawn rather than ramped (a narrow-ish window),
-                // so tongues read as painted shapes.
-                const couloirSigned = smoothstep(float(-0.20), float(0.50), fin).mul(2).sub(1).mul(heroW);
-                const fluteAz = heroAz.add(snowJitterRaw.mul(0.30)).add(heroR.mul(0.0011));
-                const fluteArg1 = fluteAz.mul(HERO_FLUTES[0]).add(heroR.mul(0.0035));
-                const fluteArg2 = fluteAz.mul(HERO_FLUTES[1]).add(1.3);
-                const fluteWave = sin(fluteArg1).mul(0.6).add(sin(fluteArg2).mul(0.4));
-                const fluteWaveDaz = cos(fluteArg1).mul(0.6 * HERO_FLUTES[0])
-                    .add(cos(fluteArg2).mul(0.4 * HERO_FLUTES[1]));
-                // On the cone above the meadows only: no flutes on the skirt or the plateau.
-                const fluteW = heroW
-                    .mul(smoothstep(float(470), float(620), height))
-                    .mul(smoothstep(float(0.10), float(0.26), slope));
-                // Ribs come and go down the fall line: a slow wave in radius, offset per flute,
-                // breaks each rib into outcrops and lets each flute deepen and fade, so the cone
-                // reads as stone under snow rather than as pleated cloth.
-                const ribBreak = sin(heroR.mul(0.021).add(fluteArg1.mul(0.5)).add(snowJitterRaw.mul(3.1)))
-                    .mul(0.5).add(0.5);
-                heroOut.assign(vec3(
-                    couloirSigned,
-                    // d(rib)/d(azimuth), normalised to [-1, 1]
-                    sign(fluteWave).negate().mul(fluteWaveDaz)
-                        .div(0.6 * HERO_FLUTES[0] + 0.4 * HERO_FLUTES[1])
-                        .mul(fluteW)
-                        .mul(mix(float(0.35), float(1), ribBreak)),
-                    float(1).sub(abs(fluteWave)).mul(fluteW).mul(mix(float(0.6), float(1.05), ribBreak)),
-                ));
-            });
-            return heroOut;
-        })().toVar();
-        const couloir = heroFields.x;
-        // The lighting normal tilts across the flutes, along the cone's azimuthal tangent.
-        const heroTangent = vec3(heroRel.y.negate(), 0, heroRel.x).div(max(heroR, float(1)));
-        // Where the summit is sculpted (bakeSculptPlateData) its real ribs and couloirs take over
-        // from the painted flutes, which drew it as pleated cloth.
-        const painted = float(1).sub(float(1).sub(smoothstep(
-            float(ODYSSEY_SUMMIT_SCULPT.core),
-            float(ODYSSEY_SUMMIT_SCULPT.reach),
-            heroR,
-        )).mul(0.85));
-        const litNormal = normalize(normal.sub(heroTangent.mul(heroFields.y.mul(HERO_FLUTE_DEPTH).mul(painted)))).toVar();
-        const fluteRib = smoothstep(float(0.80), float(0.95), heroFields.z).mul(painted).toVar();
         // The hero's whole cone, wider than `heroW` (which ramps out from 0.55 of the radius).
         const heroCrestW = float(1).sub(smoothstep(
             float(heroMassif.radius * 0.80),
             float(heroMassif.radius * 1.05),
             heroR,
         )).toVar();
-        // The jitter halves on the hero (the fingers own its structure now), not elsewhere.
-        const snowJitter = snowJitterRaw.sub(0.5).mul(mix(float(92), float(46), heroW));
-        // THE SUMMIT MANTLE (2026-10-20 overhaul): high on the hero cone the snow is a mantle,
-        // not a stipple. The atlas break-up that edges every lowland boundary drew a sand-grain
-        // speckle along the snowline at the climb's range, and the flute ribs and the crest strip
-        // scoured so much of the upper cone that it read as a beige dune from L28 to L32. Above
-        // ~800 u the ribs strip less and the snowline's grain is a third as strong.
-        const mantle = heroCrestW.mul(smoothstep(float(780), float(930), height)).toVar();
-        const snowHeight = height.add(snowJitter).add(edgeBreak.mul(mix(float(9), float(3), heroW)))
-            .add(couloir.mul(95))
-            .add(gully.mul(70))
+        const litNormal = normal.toVar();
+        // Which way a slope faces the sun's bearing: +1 square to it, -1 in its lee; 0 on the flat.
+        const faceFlat = baseNormal.xz;
+        const sunward = dot(faceFlat.div(max(length(faceFlat), float(1e-4))), vec2(...SEA_SUN_FLAT))
+            .mul(smoothstep(float(0.06), float(0.25), slope))
             .toVar();
-        // The altitude the ROCK term reads: the ribs (couloir < 0) go to stone lower, the couloirs
-        // later — the opposite of the snow, which is what makes the stripes.
-        const alpineHeight = height.add(snowJitter).add(edgeBreak.mul(9)).sub(couloir.mul(45)).toVar();
-        /**
-         * SNOW, MINUS THE RIBS. The summit read as a sand dune in the ascent capture, and the
-         * diagnosis was not the rock palette at all — measured, the pale cone screens at
-         * norm .351/.335/.314, which is the SNOW pole. It is a smooth, bright, near-uniform
-         * cone, and a heightfield cannot give it silhouette the way a sculpted peak would.
-         *
-         * What a real snowy peak has, and what the reference massif shows on its own ridges, is
-         * ROCK BREAKING THROUGH where the form is convex: wind strips the ribs and fills the
-         * hollows. `crest` is exactly that convexity and is already computed for the cavity
-         * term, so this costs one multiply and turns a blank cone into a ribbed one.
-         */
-        // Slope gate retuned 0.42/0.70 -> 0.62/0.76 (item 6): at the old gate the summit cone
-        // (slope ~0.45-0.65) shed its snow wholesale and showed the beige rock pole — the "dune"
-        // read. Now snow holds the cone and only true cliffs go bare, while the crest strip below
-        // carves the ribs out of it.
-        // ...and both edges are DRAWN, not ramped: a wide slope window and a linear crest
-        // strip left whole flanks half-snow-half-rock, which averages to beige and reads as
-        // melted wax. Narrow windows give white snow and grey rock with a painted boundary.
+        // The snow edge's own break-up: the jitter's noise at ~40 u, so a snowfield's outline is
+        // lobes and tongues tens of units across (the audit's M14: a 1-3 px stipple at every edge).
+        const snowBreak = texture(detailTex, positionWorld.xz.mul(MASSIF_SNOW.breakScale)).b.sub(0.5).toVar();
+        // The jitter halves on the hero (its form owns the structure), not elsewhere.
+        const snowJitter = snowJitterRaw.sub(0.5).mul(mix(float(92), float(46), heroW));
+        // THE SUMMIT MANTLE: high on the hero the snow is a mantle, not a stipple; the ribs strip less.
+        const mantle = heroCrestW
+            .mul(smoothstep(float(MASSIF_SNOW.mantle[0]), float(MASSIF_SNOW.mantle[1]), height))
+            .toVar();
+        const snowHeight = height.add(snowJitter).add(edgeBreak.mul(mix(float(9), float(2), heroW)))
+            .add(gully.mul(mix(float(70), float(MASSIF_SNOW.couloir), heroW)))
+            .sub(crest.mul(float(MASSIF_SNOW.rib).mul(heroW)))
+            .sub(sunward.mul(float(MASSIF_SNOW.sunward).mul(heroW)))
+            .add(snowBreak.mul(float(MASSIF_SNOW.breakReach).mul(heroW)))
+            .toVar();
+        // The altitude the ROCK term reads.
+        const alpineHeight = height.add(snowJitter).add(edgeBreak.mul(9)).toVar();
+        // Snow holds the steep faces up to a cliff (on the hero a steeper one: alpine faces carry
+        // snow on every bench), and convex ground strips its own (wind scours the ribs).
+        const snowSlopeGate = mix(float(0.62), float(MASSIF_SNOW.cliff[0]), heroW);
         const wSnow = smoothstep(float(620), float(730), snowHeight)
-            .mul(float(1).sub(smoothstep(float(0.62), float(0.76), slope)))
+            .mul(float(1).sub(smoothstep(
+                snowSlopeGate,
+                snowSlopeGate.add(mix(float(0.14), float(MASSIF_SNOW.cliff[1] - MASSIF_SNOW.cliff[0]), heroW)),
+                slope,
+            )))
             .mul(float(1).sub(smoothstep(
                 float(0.18),
                 float(0.40),
-                // `couloir` is +1 down a couloir, -1 on a rib, and already 0 off the massif. On the
-                // hero the flutes now carve the stone, so the round relief crests strip far less.
-                crest.mul(mix(
-                    float(1),
-                    mix(float(GROUND_SNOW_FALL_LINE[1]), float(GROUND_SNOW_FALL_LINE[0]), couloir.mul(0.5).add(0.5)),
-                    heroW,
-                ))
-                    // over the whole hero cone, not only its fingered core (orbs 29-30 sit outside it)
-                    .mul(float(1).sub(heroCrestW.mul(HERO_CREST_RELIEF))),
-            ).mul(float(GROUND_SNOW_CREST_STRIP).mul(float(1).sub(mantle.mul(0.5))))))
-            // ...and the flute ribs are scoured to stone, in streaks down the fall line.
-            .mul(float(1).sub(fluteRib.mul(mix(float(0.85), float(0.5), mantle))));
+                crest.mul(float(GROUND_SNOW_CREST_STRIP).mul(float(1).sub(mantle.mul(0.45)))),
+            )));
         // The SLOPE half takes the same patch rule as the altitude half below: on the massif's
         // mid flanks (slope 0.2-0.35, the whole ch4 view) a 0.17..0.40 ramp made every fragment
         // part stone, part grass — the khaki. Off the massif the ramp is kept as it was.
         const slopeRockRamp = smoothstep(float(0.17), float(0.40), slope.add(edgeBreak.mul(0.035)));
+        // The patches' edges: the pixel grain off the massif; on it, the snow's own ~40 u break-up and
+        // the form's gullies (scree runs down them), so a patch is a shape and not a field of flecks
+        // (the audit's M10: an even leopard pattern of 6-15 px spots over every rock patch).
+        const patchBreak = mix(edgeBreak.mul(0.25), snowBreak.mul(0.55).sub(gully.mul(0.18)), heroCrestW).toVar();
         const slopeRockPatch = smoothstep(
-            snowJitterRaw.mul(0.55).add(edgeBreak.mul(0.25)).add(0.18),
-            snowJitterRaw.mul(0.55).add(edgeBreak.mul(0.25)).add(0.30),
+            snowJitterRaw.mul(0.55).add(patchBreak).add(0.18),
+            snowJitterRaw.mul(0.55).add(patchBreak).add(0.30),
             smoothstep(float(0.13), float(0.42), slope),
         );
         const wRock = clamp(max(
             mix(slopeRockRamp, slopeRockPatch, smoothstep(float(380), float(440), height)),
-            // ...reaching FULL rock above the treeline (item 6). Capped at 0.75 it left a quarter
-            // of every summit fragment to `kGrass`, whose dry pole is gold — 25 % gold over grey
-            // stone is the khaki that made the snowless parts of the cone read as a dune.
-            // PATCHES, NOT A RAMP (seamless pass — "ch4 slopes read drab"). The old altitude term
-            // was a smooth 470..720 ramp, so every fragment in the band was part meadow, part
-            // stone — and a 40/60 blend of gold grass over grey rock IS khaki: the drab sheet the
-            // whole ch4 climb looks at. The same altitude now sets a PROBABILITY, and a patch
-            // field (the jitter's low-frequency noise, edged by the atlas break-up) decides each
-            // fragment: green alpine meadow islands in grey scree, thinning with height until the
-            // stone owns the cone. Every pixel lands on a real material, not on their average.
+            // ...reaching FULL rock above the treeline, in PATCHES rather than a ramp: the altitude
+            // sets a probability and a patch field decides each fragment (green alpine meadow islands
+            // in grey scree, thinning with height), so every pixel lands on a real material.
             smoothstep(
-                snowJitterRaw.mul(0.62).add(edgeBreak.mul(0.25)).add(0.12),
-                snowJitterRaw.mul(0.62).add(edgeBreak.mul(0.25)).add(0.26),
+                snowJitterRaw.mul(0.62).add(patchBreak).add(0.12),
+                snowJitterRaw.mul(0.62).add(patchBreak).add(0.26),
                 smoothstep(float(440), float(700), alpineHeight),
             ),
         ).add(crest.mul(uRidgeRock).mul(formGate)), 0, 1);
 
         /**
-         * The four weights, made EXPLICIT. Algebraically identical to the sequential `mix`
-         * chain that shipped before — snow over rock over sand over grass — but addressable,
-         * which is what lets the paint, the mesostructure, the strata and the two shadow
-         * models all read the same numbers instead of each re-deriving its own opinion about
-         * what material a fragment is.
+         * The four weights, made EXPLICIT (snow over rock over sand over grass), addressable, so the
+         * paint, the mesostructure and the shadow models all read the same numbers.
          */
-        // CRISP SNOW (round two, 2026-10-26). `wSnow` is a product of soft ramps (altitude, slope,
-        // crest, flutes), so across the summit it sat between 0.3 and 0.7: every fragment part
-        // snow, part rock, and from the climb the peak read as smeared clay and glossy melting ice.
-        // High up, snow is now a DECISION: the cover, broken by the atlas grain so the boundary
-        // interlocks, thresholded at 0.5 over an edge about a pixel wide (fwidth, clamped), so the
-        // summit is snowfields and rock with painted, jagged boundaries. Low down (the snowline's
-        // own soft wobble across the meadows' peaks) it stays as it was.
-        const snowCover = wSnow.add(edgeBreak.mul(SNOW_CRISP.breakup).mul(detailMelt)).toVar();
+        // CRISP SNOW: high up, snow is a DECISION, thresholded at 0.5 over an edge about a pixel wide
+        // (fwidth, clamped), so the summit is snowfields and rock with drawn boundaries. On the hero
+        // the per-pixel atlas grain barely touches the cover (the edge breaks at `snowBreak`'s scale).
+        const snowCover = wSnow
+            .add(edgeBreak.mul(SNOW_CRISP.breakup).mul(detailMelt).mul(mix(float(1), float(0.3), heroW)))
+            .toVar();
         const snowEdge = clamp(fwidth(snowCover).mul(1.2), SNOW_CRISP.edge[0], SNOW_CRISP.edge[1]);
         const snowCrisp = smoothstep(float(0.5).sub(snowEdge), float(0.5).add(snowEdge), snowCover);
-        const kSnowField = mix(
+        const kSnow = mix(
             wSnow,
             snowCrisp,
             smoothstep(float(SNOW_CRISP.from[0]), float(SNOW_CRISP.from[1]), height),
         ).toVar();
-        // CRISP ROCK (round two): the same cure for the flanks. Where the slope ramp left a
-        // fragment part meadow, part stone (the grey-green smear on the massif's lower flanks),
-        // rock is now thresholded too, above the shore lowlands: a meadow or a scree patch, with
-        // the atlas grain interlocking the boundary.
-        const rockCover = wRock.add(edgeBreak.mul(SNOW_CRISP.breakup * 1.2).mul(detailMelt)).toVar();
+        // CRISP ROCK: the same cure for the flanks, above the shore lowlands: a meadow or a scree
+        // patch, the boundary broken (on the hero, by the snow's own break-up, not the pixel grain).
+        const rockBreak = mix(
+            edgeBreak.mul(SNOW_CRISP.breakup * 1.2).mul(detailMelt),
+            snowBreak.mul(0.35),
+            heroW,
+        );
+        const rockCover = wRock.add(rockBreak).toVar();
         const rockEdge = clamp(fwidth(rockCover).mul(1.2), SNOW_CRISP.edge[0], SNOW_CRISP.edge[1]);
         const rockCrisp = smoothstep(float(0.5).sub(rockEdge), float(0.5).add(rockEdge), rockCover);
-        const wRockCrisp = mix(wRock, rockCrisp, smoothstep(float(ROCK_CRISP_FROM[0]), float(ROCK_CRISP_FROM[1]), height));
-        // SNOW LEDGES (2026-10-31, the climb's close-ups). Up close the summit's rock read as flat
-        // black paint: crisp snow decided big islands of bare stone, and nothing inside them said
-        // "rock". Alpine rock is layered, and every layer's top holds a line of snow: thin bands
-        // across the rock, broken by the atlas grain and the snow jitter so no two run parallel
-        // for long, on faces that are not cliffs, above ~600 u. Each line is a pixel-filtered band
-        // in the layer coordinate and fades where the lines would crowd under ~2 px.
-        const summitGate = smoothstep(float(SUMMIT_LEDGES.from[0]), float(SUMMIT_LEDGES.from[1]), height).toVar();
-        // The strata DIP across the mountain (alpine layers are tilted, never level), the slow
-        // jitter bends them, and a warp of the layer coordinate by itself spaces them unevenly.
-        const ledgeRaw = height
-            .add(dot(positionWorld.xz, vec2(...SUMMIT_LEDGES.dip)))
-            .add(snowJitterRaw.sub(0.5).mul(SUMMIT_LEDGES.wobble))
-            .div(SUMMIT_LEDGES.step);
-        const ledgeCoord = ledgeRaw.add(sin(ledgeRaw.mul(0.71).add(1.3)).mul(0.35)).toVar();
-        const ledgeLayer = floor(ledgeCoord).toVar();
-        const ledgeF = fract(ledgeCoord);
-        // Derivatives in uniform control flow (WGSL): taken here, before the summit's branch.
-        const ledgeAA = fwidth(ledgeCoord).toVar();
-        // Each layer its own thickness (hashed from the layer's index, kept positive: TSL's hash
-        // reads its seed as an unsigned integer).
-        const ledgeW = hash(ledgeLayer.add(4096)).mul(0.9).add(0.55)
-            .mul(SUMMIT_LEDGES.width)
-            .toVar();
-        const ledgeLine = smoothstep(float(0), ledgeAA.add(0.02), ledgeF)
-            .mul(float(1).sub(smoothstep(ledgeW, ledgeAA.add(ledgeW).add(0.06), ledgeF)));
-        const ledgeBase = ledgeLine
-            .mul(float(1).sub(smoothstep(float(0.18), float(0.45), ledgeAA)))
-            .mul(float(1).sub(smoothstep(float(SUMMIT_LEDGES.cliff[0]), float(SUMMIT_LEDGES.cliff[1]), slope)))
-            .mul(summitGate)
-            .mul(float(1).sub(kSnowField))
-            .toVar();
-        // ...broken along their length: value noise (ALU only, and only where a ledge can be at
-        // all) leaves runs of snow with bare gaps between, a different run on every layer.
-        const ledges = Fn(() => {
-            const out = float(0).toVar();
-            If(ledgeBase.greaterThan(0.001), () => {
-                const runAt = positionWorld.xz.mul(SUMMIT_LEDGES.runScale)
-                    .add(vec2(ledgeLayer.mul(3.17), ledgeLayer.mul(-1.91)));
-                const run = noise2(runAt);
-                out.assign(ledgeBase.mul(smoothstep(float(0.42), float(0.58), run)));
-            });
-            return out;
-        })();
-        // (Built as a new value, not assigned: this graph is built outside any Fn, where an
-        // `.assign()` has no stack to land on and is silently dropped.)
-        const kSnow = kSnowField.add(ledges.mul(SUMMIT_LEDGES.cover)).toVar();
+        const wRockCrisp = mix(
+            wRock,
+            rockCrisp,
+            smoothstep(float(ROCK_CRISP_FROM[0]), float(ROCK_CRISP_FROM[1]), height),
+        );
+        // The summit's rock takes more of the sky (see `rockAmbient`): above ~600 u.
+        const summitGate = smoothstep(float(SUMMIT_ROCK.from[0]), float(SUMMIT_ROCK.from[1]), height).toVar();
         const kRock = wRockCrisp.mul(float(1).sub(kSnow)).toVar();
         const kSand = wSand.mul(float(1).sub(wRockCrisp)).mul(float(1).sub(kSnow)).toVar();
         const kGrass = clamp(float(1).sub(kSnow).sub(kRock).sub(kSand), 0, 1).toVar();
@@ -2926,11 +2802,13 @@ export function createOdysseyWorld({
          * feature and must survive to the far massif, where the micro bump must not.
          */
         const strataFade = float(1).sub(smoothstep(float(6), float(18), footprint));
+        // (None on the hero massif since its rebuild, 2026-11-25: a value step every 24 u of height
+        // was one of the three bands of the audit's layer cake; its own beds stand as cliffs now.)
         const strataAmt = smoothstep(
             float(ODYSSEY_GROUND_STRATA.slope[0]),
             float(ODYSSEY_GROUND_STRATA.slope[1]),
             slope,
-        ).mul(kRock).mul(strataFade);
+        ).mul(kRock).mul(strataFade).mul(float(1).sub(heroCrestW));
         const strataCell = height.add(edgeBreak.mul(float(ODYSSEY_GROUND_STRATA.warp)))
             .div(float(ODYSSEY_GROUND_STRATA.band));
         const bandStep = fract(floor(strataCell).mul(0.1731).add(zone.mul(0.37))).sub(0.5)
@@ -2940,6 +2818,41 @@ export function createOdysseyWorld({
             bandStep.add(1),
             bandStep.mul(0.7).add(1),
         ));
+
+        /**
+         * THE MASSIF'S ROCK UP CLOSE (2026-11-25, the audit's M5: from the climb, rock and snow were a
+         * flat two-tone decal on a draped surface). The form carries the couloirs and the cliff bands;
+         * at the climb's range a face also needs to be STONE: blocks, the joints between them, a tone
+         * per block. Joints stand in the rock, never along the face (gotcha #1603): two sets of upright
+         * planes, one across world x and one across world z, each wobbled by a broad noise, and a face
+         * shows the set that crosses it (the results mixed by its facing, never the coordinates); bedding
+         * from the height alone, broken into short runs so no line crosses a face. Only where a joint is
+         * a few pixels apart (`footprint`), only on the massif's rock.
+         */
+        const jointOn = kRock.mul(heroCrestW)
+            .mul(float(1).sub(smoothstep(float(MASSIF_ROCK.near[0]), float(MASSIF_ROCK.near[1]), footprint)))
+            .toVar();
+        const jWob = texture(detailTex, positionWorld.xz.mul(0.006)).b.sub(0.5).mul(MASSIF_ROCK.wobble);
+        const jx = positionWorld.x.add(jWob).div(MASSIF_ROCK.spacing[0]);
+        const jz = positionWorld.z.sub(jWob).div(MASSIF_ROCK.spacing[1]);
+        const jy = height.add(jWob.mul(0.6)).div(MASSIF_ROCK.spacing[2]);
+        const jointLine = (c) => {
+            const d = abs(fract(c.add(0.5)).sub(0.5));
+            const w = fwidth(c).mul(1.2).add(MASSIF_ROCK.crack);
+            return float(1).sub(smoothstep(float(MASSIF_ROCK.crack), w, d));
+        };
+        const nxz = baseNormal.xz.mul(baseNormal.xz);
+        const facingZ = nxz.y.div(max(nxz.x.add(nxz.y), float(1e-4)));
+        // (No bedding cracks: a line every few units of height is the striped snow and the layer cake
+        // again. The blocks' tones step with the height instead, each block its own.)
+        const crack = mix(jointLine(jz), jointLine(jx), facingZ);
+        const blockTone = hash(floor(jx).mul(73.0)
+            .add(floor(jz).mul(19.0))
+            .add(floor(jy).mul(5.0))
+            .add(4096.0)).sub(0.5);
+        const blockPaint = float(1).sub(crack.mul(MASSIF_ROCK.crackDark))
+            .mul(float(1).add(blockTone.mul(MASSIF_ROCK.blockTone)));
+        albedo = albedo.mul(mix(float(1), blockPaint, jointOn));
 
         // (Far pre-desaturation lived here. It measured NEGATIVE twice and is retired — see the
         // palette's `presat` note. Distance discipline is owned by the detail melt above and by
@@ -3055,7 +2968,14 @@ export function createOdysseyWorld({
         const mineralW = clamp(kRock.add(kSnow), 0, 1).toVar();
         const shadeChroma = mix(albedo, vec3(albLuma), mineralW.mul(float(ODYSSEY_GROUND_SHADE.mineral.desat)));
         // Less ice on the hero's shaded snow: across its flutes, full ice-blue walls read as chrome.
-        const shadeIce = mix(shadeChroma, albLuma.mul(vec3(...GROUND_SNOW_SHADE)), kSnow.mul(mix(float(0.9), float(0.55), heroW)));
+        // ...and less with distance (the audit's M15: the far peaks' shaded snow screened cyan, bluer
+        // than the sky beside it, and read as holes in the mesh): far off the air's own colour owns it.
+        const iceFar = float(1).sub(smoothstep(float(0.8), float(2.6), footprint).mul(0.7));
+        const shadeIce = mix(
+            shadeChroma,
+            albLuma.mul(vec3(...GROUND_SNOW_SHADE)),
+            kSnow.mul(mix(float(0.9), float(0.55), heroW)).mul(iceFar),
+        );
         // The warm, red-enriched deep tint is the SOIL and ROCK law; snow is exempt (item 5) —
         // warming a blue snow shadow is exactly how it turned beige.
         const shadeCol = shadeIce.mul(mix(
@@ -3084,7 +3004,7 @@ export function createOdysseyWorld({
         // the bounce off the snow round it, shaded stone is a slate lit by the sky, not black paint.
         const rockAmbient = mix(
             float(ODYSSEY_GROUND_SHADE.mineral.ambient),
-            float(SUMMIT_LEDGES.rockAmbient),
+            float(SUMMIT_ROCK.rockAmbient),
             summitGate,
         );
         const ambient = mix(
@@ -3107,7 +3027,7 @@ export function createOdysseyWorld({
         // from the sun's gold to rose (`gHour.z`, alpenglow). All three are zero at noon.
         const lightCol = mix(
             mix(vec3(1), ambientHue, mix(
-                mix(float(GROUND_AMBIENT_CHROMA), float(SUMMIT_LEDGES.rockSkyChroma), kRock.mul(summitGate))
+                mix(float(GROUND_AMBIENT_CHROMA), float(SUMMIT_ROCK.rockSkyChroma), kRock.mul(summitGate))
                     // (...and under the turning shade the land is lit by the sky alone: cool and
                     // silver, not merely darker.)
                     .add(gHour.x)
@@ -3329,10 +3249,13 @@ export function createOdysseyWorld({
     // the sea's terms as functions, read by both waters, so they are painted from one set and
     // cannot drift apart again. Call them inside a Fn (they make vars).
     /** The pigment ramp (viridian, cerulean, cobalt, Prussian) at driver `t`, in flat plates. */
-    const waterRampBody = (t, ramp = ODYSSEY_WATER_RAMP) => {
+    // `soft` 0..1 widens each plate's edge into a wash: from high above (the summit's view of the
+    // coast) the plates' 2 px steps read as a contour map (the mountain's audit, N1), so far off they melt.
+    const waterRampBody = (t, ramp = ODYSSEY_WATER_RAMP, soft = float(0)) => {
         const bands = float(ODYSSEY_WATER_RAMP.bands);
         const cell = t.mul(bands).toVar();
-        const seg = floor(cell).add(smoothstep(float(0.45), float(0.55), fract(cell)))
+        const edge = mix(float(0.05), float(0.5), soft);
+        const seg = floor(cell).add(smoothstep(float(0.5).sub(edge), float(0.5).add(edge), fract(cell)))
             .div(bands)
             .mul(3)
             .toVar();
@@ -4531,6 +4454,8 @@ export function createOdysseyWorld({
         shoreFoam.toVar('wRootShoreFoam');
         spec.toVar('wRootSpec');
         grazing.toVar('wRootGrazing');
+        // How far off the sea lies (root, before the branch): its plates melt into a wash past ~1 km.
+        const seaFar = smoothstep(float(600), float(1500), length(positionWorld.sub(cameraPosition))).toVar('wSeaFar');
         const col = vec3(0).toVar('waterRegimeCol');
         If(uSubmerged.lessThan(0.999), () => {
             // The swash-raised column + the shore foam (see `buildShoreFoam`): topside only.
@@ -4545,7 +4470,7 @@ export function createOdysseyWorld({
             ).toVar();
             // QUANTISE into flat plates with an anti-aliased edge (`waterRampBody`, ONE WATER).
             // A hard floor() posterise aliases badly at 720p on a surface this size.
-            const body = waterRampBody(wT, SEA_RAMP);
+            const body = waterRampBody(wT, SEA_RAMP, seaFar);
             // FROM ABOVE, THE FAR RIPPLE IS FINER THAN A PIXEL (2026-11-02): the detail bake has
             // no mips, so a reflected ray jittered by it flickers in and out of a cloud's outline,
             // and the clouds in the sea under the climb came out speckled (and the fresnel's share

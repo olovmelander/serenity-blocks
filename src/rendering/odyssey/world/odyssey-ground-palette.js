@@ -148,8 +148,11 @@ export const ODYSSEY_GROUND_SHADE = Object.freeze({
      *               measured law that grass shade is not blue; snow is the documented exception).
      */
     snow: Object.freeze({
-        ambient: 0.45,
-        deep: 0.30,
+        // 0.45 -> 0.34, 0.30 -> 0.24 (2026-11-25, the mountain's audit M4): snow in shade sat within
+        // ~2 L* of its lit side on screen, so the summit never turned into shadow and at dusk read as
+        // a flat cut-out against the clouds. A shaded face now stands 15-25 L* under its lit one.
+        ambient: 0.34,
+        deep: 0.24,
         skyChroma: 0.62,
     }),
     /** Ambient in a hollow the sky cannot see into. Drives the wide-AO half of the shading. */

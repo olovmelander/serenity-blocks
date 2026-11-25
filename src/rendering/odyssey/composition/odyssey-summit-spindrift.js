@@ -175,7 +175,9 @@ export function createSummitSpindrift({ summit, sunColour = null, hazeColour = n
         const torn = smoothstep(0.30, 0.78, n.add(disc.mul(0.45)));
         const cover = clamp(disc.mul(torn), 0.0, 1.0);
         const heart = smoothstep(0.35, 0.85, cover).mul(vSheet.w);
-        const lit = mix(sun.mul(0.92), sky.mul(0.75), heart.mul(0.35));
+        // (the snow's light, as the banner's below: the sun's value, little of its hue)
+        const sunLuma = dot(sun, vec3(0.2126, 0.7152, 0.0722));
+        const lit = mix(mix(vec3(sunLuma), sun, 0.35).mul(0.86).add(vec3(0.03)), sky.mul(0.75), heart.mul(0.45));
         return vec4(lit, cover.mul(vSheet.z));
     })();
 
@@ -255,9 +257,16 @@ export function createSummitSpindrift({ summit, sunColour = null, hazeColour = n
         const torn = smoothstep(fray, fray.add(0.16), n.add(disc.mul(0.55)));
         const cover = clamp(disc.mul(torn), 0.0, 1.0);
         const up = q.y.mul(vBillow.w).add(q.x.mul(float(1).sub(vBillow.w.abs())).mul(0.3));
-        const sunlit = smoothstep(-0.30, 0.38, up.add(n.sub(0.5).mul(0.5)));
-        const slate = mix(sky.mul(0.86), vec3(0.80, 0.84, 0.90), 0.45);
-        const lit = mix(slate, sun.mul(0.98).add(vec3(0.04)), sunlit);
+        // LIT AS THE SNOW IS (2026-11-25, the mountain's audit M6): the banner took the sun's own
+        // colour at full strength on every billow's top, so it was the brightest, warmest thing in
+        // the frame, gold beside lavender snow: a flame or a comet's tail. Its light is now the
+        // snow's: the sun's value, most of its hue taken out, a little under the snow's lit white;
+        // a cool sky-lit slate owns more of each billow; and downwind it thins into the sky's colour.
+        const sunlit = smoothstep(-0.05, 0.55, up.add(n.sub(0.5).mul(0.5)));
+        const slate = mix(sky.mul(0.80), vec3(0.74, 0.78, 0.86), 0.45);
+        const sunLuma = dot(sun, vec3(0.2126, 0.7152, 0.0722));
+        const snowLit = mix(vec3(sunLuma), sun, 0.35).mul(0.86).add(vec3(0.03));
+        const lit = mix(mix(slate, snowLit, sunlit), sky.mul(0.92), vBillow.x.mul(0.55));
         return vec4(lit, cover.mul(vBillow.z));
     })();
     const plume = new THREE.Mesh(plumeGeometry, plumeMaterial);
@@ -296,11 +305,14 @@ export function createSummitSpindrift({ summit, sunColour = null, hazeColour = n
     };
 }
 
-/** The summit point on the CPU height mirror: the highest sample near the hero massif's axis. */
+/**
+ * The summit point on the CPU height mirror: the highest sample near the hero massif's axis. (Within
+ * 100 u: since the mountain's rebuild, 2026-11-25, its main top stands ~40 u east of the old cone's apex.)
+ */
 export function findHeroSummit(heightAt, hero) {
     let best = { x: hero.x, y: -Infinity, z: hero.z };
-    for (let dx = -60; dx <= 60; dx += 4) {
-        for (let dz = -60; dz <= 60; dz += 4) {
+    for (let dx = -100; dx <= 100; dx += 4) {
+        for (let dz = -100; dz <= 100; dz += 4) {
             const y = heightAt(hero.x + dx, hero.z + dz);
             if (y > best.y) best = { x: hero.x + dx, y, z: hero.z + dz };
         }
