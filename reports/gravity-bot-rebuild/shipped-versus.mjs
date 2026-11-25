@@ -9,6 +9,8 @@
 import { applyGarbage, fillBag, spawnPiece } from '../../src/core/game.js';
 import { takeSpawnBlinds } from '../../src/core/blind.js';
 import { MultiPlayerState } from '../../src/core/multi-player-state.js';
+import { expandGridIfNeeded } from '../../src/core/infinity-grid.js';
+import { synchronizeInfinitySimulationCamera } from '../../src/core/infinity-spawn-policy.js';
 import { bindLegacySessionRng } from '../../src/core/session-rng.js';
 import {
     VERSUS_GARBAGE_OPTIONS, VERSUS_MAX_PENDING_LINES, applyVersusFeel,
@@ -30,6 +32,25 @@ export function versusMatch(seats, { rules, matchConfig } = {}) {
     match.players.forEach(applyVersusFeel);
     match.setMatchConfig({ ...match.matchConfig, ...matchConfig });
     return match;
+}
+
+/**
+ * A Last Standing match as LocalMultiplayerMode builds it: Infinity boards in a well of
+ * `wellRows`, without the versus feel (a bag of seven and the lock delay), out at the roof.
+ */
+export function lastStandingMatch(seats, wellRows, matchConfig = {}) {
+    const match = new MultiPlayerState(seats, { maxPendingLines: VERSUS_MAX_PENDING_LINES });
+    match.setMatchConfig({ ...match.matchConfig, ...matchConfig, isInfinityLMS: true, infinityMaxRows: wellRows });
+    match.reset();
+    return match;
+}
+
+/** A Last Standing board grows ten rows at a time as its tower nears the top of the grid. */
+export function growWell(state) {
+    const grid = state.boardGrid;
+    if (!state.isInfinityMode || state.isProcessingPhysics || grid.length >= state.maxRows) return;
+    if (grid.findIndex((row) => row.some(Boolean)) > 30) return;
+    if (expandGridIfNeeded(state, Math.min(state.maxRows, grid.length + 10))) synchronizeInfinitySimulationCamera(state);
 }
 
 /** A board's feel, before its first pieces are dealt. */

@@ -1,5 +1,5 @@
 import { HIDDEN_ROWS } from '../constants.js';
-import { VERSUS_WEIGHTS, rowsToBlockSpawn } from './versus-evaluation.js';
+import { VERSUS_WEIGHTS, rowsToBlockSpawn, rowsToRoof } from './versus-evaluation.js';
 import { GravityBotController, gravityPlanningRate } from './gravity-bot-controller.js';
 import { normalizeDifficultyTier } from './bot-difficulty.js';
 import { readMinAttackLines } from '../garbage.js';
@@ -12,6 +12,9 @@ const LOCAL_ACTION_RATE = [108, 142, 156, 246, 335, 445, 660, 620, 760];
 // Practiced seats can execute a known route quickly. Their nominal tier keeps
 // its own reading time above the 170 ms needed for expert search.
 const EXPERT_REACTION_MS = { 8: [170, 230], 9: [170, 200], 10: [158, 178] };
+// Last Standing clears more lines a piece and every clear takes its time: there the expert reads a
+// little faster, to keep its pace.
+const LAST_STANDING_EXPERT_REACTION_MS = [136, 156];
 
 function localPace(nominalTier, seed, index) {
     if (nominalTier === 10) return null;
@@ -60,11 +63,16 @@ export class LocalBotManager {
             const actions = this.actionFactory?.(index);
             if (!playerState || !actions) continue;
             const difficulty = normalizeDifficultyTier(slot.difficulty ?? slot.botDifficulty);
-            const pace = this.useLocalStyles && !playerState.isInfinityMode
-                ? localPace(difficulty, seriesSeed ?? seed, index) : null;
+            // Versus seats play with the same hands and reading time in both wells.
+            const paced = this.playsVersus() || !playerState.isInfinityMode;
+            const pace = this.useLocalStyles && paced ? localPace(difficulty, seriesSeed ?? seed, index) : null;
             const judgmentTier = pace?.judgmentTier ?? difficulty;
-            const expertPace = judgmentTier === 10 && !playerState.isInfinityMode
-                ? { reactionMs: EXPERT_REACTION_MS[difficulty], maxApm: 3750 } : undefined;
+            const expertPace = judgmentTier === 10 && paced
+                ? {
+                    reactionMs: difficulty === 10 && playerState.isInfinityMode
+                        ? LAST_STANDING_EXPERT_REACTION_MS : EXPERT_REACTION_MS[difficulty],
+                    maxApm: 3750,
+                } : undefined;
 
             const input = (name, action, value) => () => (this.tickInput
                 ? this.tickInput.emit({
@@ -104,8 +112,8 @@ export class LocalBotManager {
                 },
                 sharedSearch,
                 precomputeBetweenTicks: true,
-                planUnitsPerMs: gravityPlanningRate(botCount, judgmentTier, !playerState.isInfinityMode),
-                versusWeights: this.playsVersus(playerState) ? VERSUS_WEIGHTS : null,
+                planUnitsPerMs: gravityPlanningRate(botCount, judgmentTier, this.playsVersus()),
+                versusWeights: this.playsVersus() ? VERSUS_WEIGHTS : null,
                 versusOutlook: () => this.versusOutlook(index),
                 rng: seededRandom((seed ^ Math.imul(index + 1, 0x85ebca6b)) >>> 0),
                 timingRng: seededRandom((seed ^ Math.imul(index + 1, 0xc2b2ae35)) >>> 0),
@@ -114,12 +122,12 @@ export class LocalBotManager {
     }
 
     /**
-     * Versus play, at every tier: attacks are on, in the standard well (Last Standing and peaceful
-     * matches keep theirs). A lower tier sees fewer pieces ahead, searches less, errs and is slower.
+     * Versus play, at every tier, in the standard well and in Last Standing: attacks are on (a
+     * peaceful match keeps the older play). A lower tier sees fewer pieces ahead, searches less,
+     * errs and is slower.
      */
-    playsVersus(playerState) {
-        return this.useLocalStyles && !playerState.isInfinityMode
-            && !this.multiplayerState.matchConfig?.attackRules?.disableAttacks;
+    playsVersus() {
+        return this.useLocalStyles && !this.multiplayerState.matchConfig?.attackRules?.disableAttacks;
     }
 
     /**
@@ -130,8 +138,12 @@ export class LocalBotManager {
     versusOutlook(index) {
         const match = this.multiplayerState;
         const { route, targets } = match.attackOutlook(index);
-        const rows = match.sendsRows() ? targets.map((i) => (
-            rowsToBlockSpawn(match.players[i].boardGrid, match.getGarbageQueue(i).getTotalLines()))) : [];
+        const rows = match.sendsRows() ? targets.map((i) => {
+            const target = match.players[i];
+            const waiting = match.getGarbageQueue(i).getTotalLines();
+            return target.isInfinityMode ? rowsToRoof(target.boardGrid, target.maxRows, waiting)
+                : rowsToBlockSpawn(target.boardGrid, waiting);
+        }) : [];
         return {
             minAttackLines: readMinAttackLines(match.matchConfig?.minAttackLines),
             worth: route === 'none' ? 0 : 1,

@@ -55,6 +55,7 @@ import {
     CAVITY,
     CLEAR_LIVE,
     CLEAR_SLOTS,
+    CLEAR_TRAVEL,
     CROWN_COLORS,
     CROWN_RINGS,
     DEG,
@@ -88,10 +89,13 @@ import {
 } from './geode-tsl.js';
 import { planOptionsFor, sessionNoiseField, sessionPlan } from './geode-bakes.js';
 import { tierFor } from './geode-quality.js';
+import {
+    airAt, airDrift, airName, visitAt, visitHeld,
+} from './geode-airs.js';
 import { createShell } from './geode-shell.js';
 import { createCrystals, createDruzy } from './geode-crystals.js';
 import {
-    createAir, createRowBeams, createShards, createWisps,
+    createAir, createGlitterFall, createRowBeams, createShards, createWisps,
 } from './geode-fx.js';
 import {
     boardFor, boardPoint, cardUnion, fallbackLayout,
@@ -142,8 +146,22 @@ const CHIME_GAP = 0.045;
 const CHIME_SHARE = 0.42;
 /** One notch of the agate's fortification: a twist turns the bands this far. */
 const TWIST_NOTCH = 1 / 7;
+/** Seconds a twist's pinwheel stays in the geode (the shaders skip it after), and its fall to 1/e. */
+const WHIRL_LIVE = 7;
+const WHIRL_FADE = 1.25;
+/**
+ * Seconds a level-up's front takes to carry the new mineral down the whole wall (the pale wave's
+ * own run, and the width of the front behind it).
+ */
+export const SWEEP_LIFE = CLEAR_TRAVEL + 0.35;
+/** How far (spans) the light behind the heart's window wanders from the axis. */
+export const HEART_WANDER = 5.5;
+/** A shower gameplay pours while the last is younger than this joins it instead of starting again. */
+const FALL_JOIN = 2.6;
 
-const PARTS = ['shell', 'druzy', 'crystals', 'glints', 'beams', 'air', 'shards', 'wisps', 'rowBeams'];
+const PARTS = [
+    'shell', 'druzy', 'crystals', 'glints', 'beams', 'air', 'glitterFall', 'shards', 'wisps', 'rowBeams',
+];
 
 export class GeodeWorld {
     /**
@@ -181,6 +199,7 @@ export class GeodeWorld {
         this.shards = null;
         this.wisps = null;
         this.rowBeams = null;
+        this.glitterFall = null;
         this.disposed = false;
         this.reducedMotion = false;
         this.aspect = 16 / 9;
@@ -197,11 +216,21 @@ export class GeodeWorld {
         this._point = { x: 0.5, y: 0.5 };
         this._from = [0, 0, 0];
         this._palette = {};
+        this._paletteB = {};
         this._target = {};
         PALETTE_KEYS.forEach((key) => {
             this._palette[key] = [...GEODE_PALETTES[0][key]];
+            this._paletteB[key] = [...GEODE_PALETTES[0][key]];
             this._target[key] = [...GEODE_PALETTES[0][key]];
         });
+        /** The air the geode stands in this frame (geode-airs.js), and the visit under way. */
+        this._air = airAt(0);
+        this._visit = visitAt(-1);
+        /** Hold one air, or one moment of one visit (captures); null lets the clock turn them. */
+        this.airHold = null;
+        this.visitHold = null;
+        /** Visits can be switched off (captures of the geode at rest). */
+        this.visits = true;
         this._post = {
             heart: this.heart,
             flash: 0,
@@ -211,6 +240,14 @@ export class GeodeWorld {
             exposure: 1,
             grade: 0,
             prism: { radius: 0, strength: 0 },
+            /** The air's own iris (the event iris above is `exposure`: the post multiplies them). */
+            airExposure: 1,
+            /** The heart's rays in the dust: how far its two combs have turned, and how strongly they stand. */
+            rays: { a: 0, b: 0, gain: 0.07 },
+            /** The heart's colour, peak-normalised (the rays are drawn in it). */
+            heartColor: [1, 0.8, 0.55],
+            /** The air's grade: its lights' warmth, a saturation lift, the depth of its shadows. */
+            airGrade: { warmth: 0, saturation: 0, depth: 0 },
         };
         /**
          * Every envelope the events light: each hit ADDS to what is still lit (a weak one after a
@@ -242,6 +279,14 @@ export class GeodeWorld {
             blaze: new Swell({
                 attack: 0.3, release: 5, ceiling: 1.2, knee: 0.8,
             }),
+            /** Three lines and more flood the lining with spectral fire. */
+            fire: new Swell({
+                attack: 0.25, release: 1.7, ceiling: 1.7, knee: 1.1,
+            }),
+            /** A perfect clear's opal fire: the play of colour over every facet. */
+            opal: new Swell({
+                attack: 0.35, release: 3.4, ceiling: 1.4, knee: 1.0,
+            }),
         };
         /** How hot play runs (src/themes/shared/gameplay-surge.js), and its reading this frame. */
         this.play = new GameplaySurge();
@@ -258,6 +303,10 @@ export class GeodeWorld {
         this.power = 0;
         this.level = 1;
         this.mineralStep = 0;
+        /** A level-up's front: the step it is carrying down the wall, when it left, whether it runs. */
+        this.sweepTo = 0;
+        this.sweepAt = -100;
+        this.sweepOn = false;
         this.breath = 1;
         this.crown = 0;
         this.twistTarget = 0;
@@ -277,7 +326,7 @@ export class GeodeWorld {
         this.heat.stage = 0;
         this.refresh(time);
         this.counts = {
-            locks: 0, clears: 0, quads: 0, wisps: 0, shatters: 0, crowns: 0, spins: 0,
+            locks: 0, clears: 0, quads: 0, wisps: 0, shatters: 0, crowns: 0, spins: 0, whirls: 0, falls: 0,
         };
         // The slow clock is a function of the world clock until gameplay bends it.
         this.drift = time * (this.reducedMotion ? 0.3 : 1);
@@ -285,7 +334,12 @@ export class GeodeWorld {
         this.shards?.reset();
         this.wisps?.reset();
         this.rowBeams?.reset();
+        this.glitterFall?.reset();
         if (this.u) {
+            this.u.whirl.value.set(-100, 0, 3, 1);
+            this.u.sweep.value.set(-100, 0);
+            this.u.opal.value = 0;
+            this.u.live2.value.set(0, 0, 0, 0);
             for (let i = 0; i < PULSE_SLOTS; i++) this.u.pulseA[i].value.set(-100, 0, 1, 0);
             for (let i = 0; i < STRIKE_SLOTS; i++) this.u.strikeA[i].value.set(0, 0, 0, -100);
             for (let i = 0; i < CLEAR_SLOTS; i++) this.u.clearA[i].value.set(-100, 1, 0, 0);
@@ -314,13 +368,17 @@ export class GeodeWorld {
         const { tier, plan } = this;
 
         this.addPart('shell', createShell(u, plan, { glitter: tier.glitter, fracture: tier.fracture }));
-        this.addPart('druzy', createDruzy(u, plan.druzy, tier.druzy, { caustics: tier.caustics }));
+        this.addPart('druzy', createDruzy(u, plan.druzy, tier.druzy, {
+            caustics: tier.caustics, fracture: tier.fracture, facets: tier.glitter,
+        }));
         const stones = createCrystals(u, this.list, { dispersion: tier.dispersion });
         this.crystals = stones.crystals;
         this.addPart('crystals', stones.crystals);
         this.addPart('glints', stones.glints);
         if (stones.beams) this.addPart('beams', stones.beams);
         this.addPart('air', createAir(u, plan.stars, { motes: tier.motes, stars: tier.stars }));
+        this.glitterFall = createGlitterFall(u, tier.fall);
+        this.addPart('glitterFall', this.glitterFall);
 
         // ── Gameplay effects (pools, always drawn) ──
         this.shards = createShards(u, tier.shards);
@@ -476,7 +534,12 @@ export class GeodeWorld {
         this._camera = camera;
         // The heart on screen: where the shafts come from.
         if (this.u) {
-            this._ray.copy(this.u.heartPos.value).project(camera);
+            // The light behind the heart's window wanders (as the day outside the stone might).
+            const wander = HEART_WANDER * calm;
+            const heartPos = this.u.heartPos.value;
+            heartPos.x = (Math.sin(t * 0.023) * 0.7 + Math.sin(t * 0.0131 + 1.7) * 0.3) * wander;
+            heartPos.y = (Math.sin(t * 0.019 + 2.3) * 0.65 + Math.sin(t * 0.011 + 0.4) * 0.35) * wander * 0.8;
+            this._ray.copy(heartPos).project(camera);
             this.heart.x = Math.max(-0.5, Math.min(1.5, this._ray.x * 0.5 + 0.5));
             this.heart.y = Math.max(-0.5, Math.min(1.5, 0.5 - this._ray.y * 0.5));
         }
@@ -798,6 +861,10 @@ export class GeodeWorld {
         this.env.kick.hit(blow, birth + 0.12);
         this.env.flash.hit(blow * 0.5, birth + 0.12);
 
+        // ── Two lines shake dust loose from the vault; three set fire running over the lining ──
+        if (n >= 2 || quad) this.pourGlitter(birth, Math.min(1.5, 0.55 + 0.2 * n + 0.1 * depth), rgb);
+        if (n >= 3 || quad) this.env.fire.hit(Math.min(1.2, 0.65 + 0.2 * depth + (quad ? 0.25 : 0)), birth + 0.15);
+
         // ── The cleared rows leave the card as blades of light ──
         const board = boardFor(this.layout, player);
         const card = cardUnion(this.layout);
@@ -838,12 +905,15 @@ export class GeodeWorld {
             this.counts.quads += 1;
         }
         if (twist) {
-            // The agate itself turns a notch.
+            // The agate itself turns a notch, and a pinwheel of light winds out of the heart.
             this.twistTarget += TWIST_NOTCH;
             this.env.storm.hit(0.55, now);
+            this.whirlOut(0.85 + 0.12 * n, 3, now);
             // …and a faint prism ring crosses the frame (no fracture).
             if (!quad) this.ringOut(0.42, now);
         }
+        // A perfect clear in the same frame as its clear: the opal fire starts with it.
+        if (perfect) this.env.opal.hit(1, birth);
         // Back-to-back: the second difficult clear in a row (and every one after) winds the agate.
         this.b2bStreak = b2b ? this.b2bStreak + 1 : 0;
         if (b2b) this.backToBack(this.b2bStreak);
@@ -884,6 +954,10 @@ export class GeodeWorld {
         const now = this.time;
         this.play.crown(now);
         this.env.crown.hit(1, now);
+        // Opal fire: every facet in the geode plays a colour of its own, and dust comes down through it.
+        this.env.opal.hit(1, now);
+        this.env.fire.hit(0.35, now);
+        this.pourGlitter(now, 1.3, FIRE_OPAL);
         this.env.surge.hit(0.35, now);
         this.env.flash.hit(0.3, now);
         this.env.storm.hit(0.5, now);
@@ -924,12 +998,57 @@ export class GeodeWorld {
         this.twistTarget += TWIST_NOTCH * 0.5;
         this.env.storm.hit(0.35, now);
         this.ringOut(0.22, now);
+        this.whirlOut(0.5, 2, now);
         const c = this._palette.band3;
         const peak = Math.max(c[0], c[1], c[2], 1e-4);
         this.pulse(now, 0.7, [c[0] / peak, c[1] / peak, c[2] / peak], 0.85);
         this.play.spin(now);
         this.refresh(now);
         this.counts.spins += 1;
+    }
+
+    /**
+     * A twist's pinwheel winds out of the heart at `at`: `arms` arms of iridescent light turning
+     * about the axis (each one the other way from the last). One still turning brighter than half
+     * this one carries its light instead of starting again.
+     */
+    whirlOut(strength, arms, at) {
+        if (!this.u) return;
+        const W = this.u.whirl.value;
+        const age = at - W.x;
+        const left = age >= 0 && age < WHIRL_LIVE && W.y > 0 ? W.y * Math.exp(-age / WHIRL_FADE) : 0;
+        if (left >= strength * 0.5) {
+            const grown = age > 0 ? Math.exp(age / WHIRL_FADE) : 1;
+            W.y = Math.min(1.8 * grown, W.y + strength * 0.5 * grown);
+        } else {
+            W.set(at, Math.min(1.8, strength + left), arms, this.counts.whirls % 2 ? -1 : 1);
+            this.counts.whirls += 1;
+        }
+    }
+
+    /**
+     * Dust shaken loose from the vault comes down through the cavity from `at`, in `rgb`. Gameplay
+     * has two showers: the one that began longest ago is poured again; while the newest is still
+     * young it takes this one's dust instead (nothing in the air restarts).
+     */
+    pourGlitter(at, strength, rgb) {
+        const fall = this.glitterFall;
+        if (!fall || this.reducedMotion) return;
+        const ageA = fall.ageOf(1, at);
+        const ageB = fall.ageOf(2, at);
+        const newest = ageA <= ageB ? 1 : 2;
+        const youngest = Math.min(ageA, ageB);
+        if (youngest < FALL_JOIN) {
+            // (the dust already in the air takes half this shower's colour)
+            const row = fall.uniforms.rows[newest].value;
+            row.y = Math.min(1.6, row.y + strength * 0.4);
+            const tone = fall.uniforms.colors[newest].value;
+            tone.set((tone.x + rgb[0]) * 0.5, (tone.y + rgb[1]) * 0.5, (tone.z + rgb[2]) * 0.5);
+            return;
+        }
+        const slot = newest === 1 ? 2 : 1;
+        fall.pour(slot, at, strength, rgb, (this.counts.falls * 0.618034) % 1);
+        this.counts.falls += 1;
     }
 
     /** The true combo changed (0 = the chain broke). */
@@ -982,6 +1101,11 @@ export class GeodeWorld {
         if (silent) this.applyPalette(1);
         else {
             const now = this.time;
+            // The new mineral runs down the wall behind the pale wave (a front still running lands).
+            if (this.sweepOn) this.mineralStep = this.sweepTo;
+            this.sweepTo = this.level - 1;
+            this.sweepAt = now;
+            this.sweepOn = this.sweepTo !== this.mineralStep;
             this.env.storm.hit(0.75, now);
             this.env.flash.hit(0.14, now);
             this.play.levelUp(now);
@@ -1010,15 +1134,35 @@ export class GeodeWorld {
         return (this.level - 1) + mineralDrift(this.time);
     }
 
+    /** How far a level-up's front has run (0..1; 0 when none is running). */
+    sweepProgress() {
+        return this.sweepOn ? clamp01((this.time - this.sweepAt) / SWEEP_LIFE) : 0;
+    }
+
     /**
-     * Set the live palette. The clock's turn is exact (a function of the time alone, so a seek
-     * and a replay agree); the level's step eases in by `k` (1 snaps).
+     * Set the live palettes. The clock's turn is exact (a function of the time alone, so a seek
+     * and a replay agree). A level's step is carried down the wall by a front (levelUp): until it
+     * has run, the first palette is the mineral the geode was and the second the one it is
+     * turning into, and the materials show each on its own side of the front. `k` = 1 lands the
+     * step at once; a step with no front (never in play) eases in by `k`.
      */
     applyPalette(k) {
         const step = this.level - 1;
-        this.mineralStep += (step - this.mineralStep) * k;
-        if (Math.abs(step - this.mineralStep) < 1e-4) this.mineralStep = step;
-        paletteAt(this.mineralStep + mineralDrift(this.time), this._palette);
+        if (k >= 1) {
+            this.mineralStep = step;
+            this.sweepOn = false;
+        } else if (this.sweepOn) {
+            if (this.time - this.sweepAt >= SWEEP_LIFE || this.time < this.sweepAt) {
+                this.mineralStep = this.sweepTo;
+                this.sweepOn = false;
+            }
+        } else if (this.mineralStep !== step) {
+            this.mineralStep += (step - this.mineralStep) * k;
+            if (Math.abs(step - this.mineralStep) < 1e-4) this.mineralStep = step;
+        }
+        const drift = mineralDrift(this.time);
+        paletteAt(this.mineralStep + drift, this._palette);
+        paletteAt((this.sweepOn ? this.sweepTo : this.mineralStep) + drift, this._paletteB);
     }
 
     // ── Frame ───────────────────────────────────────────────────────────────────
@@ -1047,6 +1191,12 @@ export class GeodeWorld {
         const glow = env.glow.valueAt(t);
         const blaze = env.blaze.valueAt(t);
         const band = env.band.valueAt(t);
+        // Three lines' fire on the lining, and a perfect clear's opal fire (gentler under Reduce flashing).
+        const fireFlood = env.fire.valueAt(t);
+        const opal = env.opal.valueAt(t) * (0.4 + 0.6 * flashScale());
+        // ── The air the geode stands in, and what visits it (geode-airs.js) ──
+        const air = airAt(this.airHold ?? airDrift(t), this._air);
+        const visit = this.readVisit(t);
         // A perfect clear's white flare (gentler under Reduce flashing).
         const flare = env.crown.valueAt(t) * (0.35 + 0.65 * flashScale());
 
@@ -1100,29 +1250,98 @@ export class GeodeWorld {
         u.twist.value = this.twist;
         u.crown.value = this.crown;
         u.heat.value.set(level, fever, blaze, band);
+        // The air: light through the wall's thin places, the stones' inner fire, spectral fire
+        // (three lines and a visit flood it), the moonstone sheen; sparkle, dust, how far the thin
+        // places have wandered and how far the heart's light carries; the viewer's own lamp.
+        const visitFire = visit.kind === 'fire' ? visit.env * 1.3 : 0;
+        u.mood.value.set(air.thin, air.inner, air.fire + fireFlood * 1.5 + visitFire, air.sheen);
+        u.air.value.set(air.sparkle, air.dust, t * 0.0035, air.reach);
+        u.lamp.value.set(air.fill, t * 0.019);
+        u.opal.value = opal;
+        // A visit: sparkle running over the lining, the heart's slow ring, a cluster ringing by
+        // itself, a shower of dust. Each is a function of the clock alone.
+        const still = this.reducedMotion;
+        const shimmer = u.shimmer.value.set(0, 0, 0, 0);
+        u.swell.value.set(0, 0);
+        u.chime.value.w = 0;
+        let swellLift = 0;
+        let visitLive = 0;
+        if (visit.kind === 'shimmer' && !still) {
+            shimmer.x = visit.seed + (visit.seedB < 0.5 ? -1 : 1) * visit.k * 1.2;
+            shimmer.y = visit.env;
+            visitLive = 1;
+        } else if (visit.kind === 'cascade' && !still) {
+            shimmer.z = CAVITY.wBands - 0.25 + visit.k * 1.25;
+            shimmer.w = visit.env;
+            visitLive = 1;
+        } else if (visit.kind === 'swell') {
+            u.swell.value.set(0.25 + visit.k * 1.9, visit.env * 0.9);
+            swellLift = visit.env * (1 - visit.k);
+            visitLive = 1;
+        } else if (visit.kind === 'chime') {
+            const cluster = this.plan.clusters[Math.floor(visit.seed * this.plan.clusters.length)];
+            const tone = this._palette[`m${cluster.mineral}`];
+            const tonePeak = Math.max(tone[0], tone[1], tone[2], 1e-4);
+            u.chime.value.set(
+                cluster.root[0],
+                cluster.root[1],
+                cluster.root[2],
+                visit.env * (0.85 + 0.15 * Math.sin(visit.age * 7)),
+            );
+            u.chimeC.value.set(tone[0] / tonePeak, tone[1] / tonePeak, tone[2] / tonePeak);
+        }
+        if (this.glitterFall) {
+            // (slot 0 is the visits': poured from the clock every frame, so a seek shows it too)
+            if (visit.kind === 'fall' && !still) {
+                this.glitterFall.pour(0, t - visit.age, 0.9, this._palette.heart, visit.seed);
+            } else this.glitterFall.uniforms.rows[0].value.y = 0;
+        }
+        const whirlAge = t - u.whirl.value.x;
+        u.live2.value.set(
+            whirlAge >= 0 && whirlAge < WHIRL_LIVE && u.whirl.value.y > 0 ? 1 : 0,
+            opal > 2e-3 ? 1 : 0,
+            visitLive,
+            u.chime.value.w > 0 ? 1 : 0,
+        );
         const p = this._palette;
+        const pB = this._paletteB;
+        // A level-up's front: the materials show the first palette ahead of it and the second behind.
+        u.sweep.value.set(this.sweepAt, this.sweepOn ? 1 : 0);
+        const turned = this.sweepOn ? smooth(0, 1, (t - this.sweepAt) / CLEAR_TRAVEL) : 0;
         // The heart turns to geodefire in a four-line clear's surge, and its window flares white for
         // a perfect clear. (Its light lights everything: the heat of play is spent elsewhere, so
         // the lining keeps its dark.)
         const fire = clamp01(this.surge * 0.5);
         const white = Math.min(1, flare) * 0.4;
         // The heart breathes, slowly.
-        const lift = (1 + this.power * 0.25 + Math.min(this.storm, 0.8) * 0.12 + flare * 0.35)
-            * (1 + Math.sin(t * 0.8) * 0.045 * motion);
+        // …and the air sets how hard it burns, how white, how cool; a visit can swell it.
+        const lift = (1 + this.power * 0.25 + Math.min(this.storm, 0.8) * 0.12 + flare * 0.35 + swellLift * 0.4)
+            * (1 + Math.sin(t * 0.8) * 0.045 * motion) * air.heart;
+        const fillPeak = Math.max(p.fill[0], p.fill[1], p.fill[2], 1e-4);
         for (let c = 0; c < 3; c++) {
-            const hot = p.heart[c] + (GEODEFIRE[c] - p.heart[c]) * fire;
-            u.heart.value.setComponent(c, (hot + (1 - hot) * white) * lift);
+            const own = p.heart[c] + (pB.heart[c] - p.heart[c]) * turned;
+            const hot = own + (GEODEFIRE[c] - own) * fire;
+            const pale = hot + (1 - hot) * air.white;
+            const aired = pale + ((p.fill[c] / fillPeak) * 0.9 - pale) * air.cool;
+            u.heart.value.setComponent(c, (aired + (1 - aired) * white) * lift);
         }
         u.fill.value.set(p.fill[0], p.fill[1], p.fill[2]);
         u.rock.value.set(p.rock[0], p.rock[1], p.rock[2]);
         u.druzy.value.set(p.druzy[0], p.druzy[1], p.druzy[2]);
+        u.fillB.value.set(pB.fill[0], pB.fill[1], pB.fill[2]);
+        u.rockB.value.set(pB.rock[0], pB.rock[1], pB.rock[2]);
+        u.druzyB.value.set(pB.druzy[0], pB.druzy[1], pB.druzy[2]);
         for (let i = 0; i < 4; i++) {
             const c = p[`band${i}`];
             u.bands[i].value.set(c[0], c[1], c[2]);
+            const d = pB[`band${i}`];
+            u.bandsB[i].value.set(d[0], d[1], d[2]);
         }
         for (let i = 0; i < MINERALS; i++) {
             const c = p[`m${i}`];
             u.minerals[i].value.set(c[0], c[1], c[2]);
+            const d = pB[`m${i}`];
+            u.mineralsB[i].value.set(d[0], d[1], d[2]);
         }
 
         // ── Post ──
@@ -1138,6 +1357,22 @@ export class GeodeWorld {
             / (1 + this.surge * 1.15 + glow * 0.4 + this.power * 0.12 + Math.min(this.storm, 1.2) * 0.12);
         // …and the grade saturates the colours and deepens the dark between them.
         post.grade = clamp01(level * 0.55 + fever * 0.6);
+        // The heart's rays stand in the dust and turn slowly; a clear floods them.
+        post.rays.a = t * 0.047 * motion;
+        post.rays.b = t * 0.031 * motion;
+        const rays = (0.09 + swellLift * 0.1) * air.rays + this.power * 0.05 + glow * 0.16 + level * 0.03 + fever * 0.05
+            + flare * 0.2;
+        post.rays.gain = hush ? rays * (1 - 0.9 * this.hushDepth) : rays;
+        // The air's own iris and grade.
+        post.airExposure = air.exposure;
+        post.airGrade.warmth = air.warmth;
+        post.airGrade.saturation = air.saturation;
+        post.airGrade.depth = air.depth;
+        const heart = u.heart.value;
+        const heartPeak = Math.max(heart.x, heart.y, heart.z, 1e-4);
+        post.heartColor[0] = heart.x / heartPeak;
+        post.heartColor[1] = heart.y / heartPeak;
+        post.heartColor[2] = heart.z / heartPeak;
         // The prism ring leaves the heart with the fracture.
         const ringAge = t - this.ring.time;
         const ringOn = ringAge >= 0 && ringAge < RING_LIFE;
@@ -1145,6 +1380,16 @@ export class GeodeWorld {
         post.prism.strength = ringOn
             ? this.ring.strength * Math.exp(-ringAge / RING_FADE) * (1 - smooth(RING_LIFE - 0.45, RING_LIFE, ringAge))
             : 0;
+    }
+
+    /** The visit under way at `t` (geode-airs.js), or the moment of one a capture holds. */
+    readVisit(t) {
+        const visit = this._visit;
+        if (this.visitHold) return visitHeld(this.visitHold.kind, this.visitHold.age, visit);
+        if (this.visits) return visitAt(t, visit);
+        visit.kind = null;
+        visit.env = 0;
+        return visit;
     }
 
     /** What the post stack reads each frame (a reused object). */
@@ -1166,8 +1411,12 @@ export class GeodeWorld {
             level: this.level,
             // (the mineral it is heading for, and where in the cycle it is showing now)
             palette: GEODE_PALETTES[Math.round(this.mineralPhase()) % GEODE_PALETTES.length].name,
-            mineral: this.mineralStep + mineralDrift(this.time),
+            mineral: this.mineralStep + (this.sweepTo - this.mineralStep) * this.sweepProgress()
+                + mineralDrift(this.time),
             counts: { ...this.counts },
+            // the air it stands in (geode-airs.js) and the visit under way, if any
+            air: airName(this.airHold ?? airDrift(this.time)),
+            visit: this._visit.kind,
             // how hot play runs (src/themes/shared/gameplay-surge.js) and the act it stages
             heat: { level: this.heat.level, fever: this.heat.fever, stage: this.heat.stage },
             held: this.crystals ? this.crystals.totalHeld(this.time) : 0,
@@ -1199,6 +1448,7 @@ export class GeodeWorld {
         this.shards = null;
         this.wisps = null;
         this.rowBeams = null;
+        this.glitterFall = null;
         this.u = null;
         this._camera = null;
     }

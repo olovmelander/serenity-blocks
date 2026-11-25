@@ -75,7 +75,7 @@ export async function styleRun(seed, {
         if (own === 1) out.singles++;
         if (own >= 1) out.dug += Math.max(0, garbage - garbageRows(readBoard(state.boardGrid)));
         if (own >= 2) {
-            out.fires.push({ lines: own, waves: waves.length, first: waves[0] ?? 0, biggest: Math.max(0, ...waves), max, edge: Boolean(main?.roofed && (main.col === 0 || main.col === 9)), rows: main?.rows ?? 0, straights: main?.roofed ? main.straights : 0, since: sinceFire, key });
+            out.fires.push({ lines: own, waves: waves.length, first: waves[0] ?? 0, biggest: Math.max(0, ...waves), max, edge: Boolean(main?.roofed && (main.col === 0 || main.col === 9)), left: Boolean(main?.roofed && main.col === 0), rows: main?.rows ?? 0, straights: main?.roofed ? main.straights : 0, since: sinceFire, key });
             if (firstFire) { out.openers.push({ lines: own, piece: life, roof: roofAt }); firstFire = false; }
             if (reacting && reacting.pieces > 0) { out.reactions.push([reacting.rows, reacting.pieces, own]); reacting = null; }
             sinceFire = 0;
@@ -107,7 +107,7 @@ export function style(runs) {
     return {
         pieces: p, sent: sum('sent') / p, sentPerLine: sum('sent') / sum('lines'), lines: sum('lines') / p, deaths: 1000 * sum('deaths') / p,
         fire: mean(fires.map((f) => f.lines)), five: 100 * big.length / p, eight: 100 * fires.filter((f) => f.lines >= 8).length / p,
-        edge: big.length ? big.filter((f) => f.edge).length / big.length : 0, parked: big.length ? big.filter((f) => f.edge && f.straights >= 1).length / big.length : 0,
+        edge: big.length ? big.filter((f) => f.edge).length / big.length : 0, left: big.filter((f) => f.edge).length ? big.filter((f) => f.left).length / big.filter((f) => f.edge).length : 0, parked: big.length ? big.filter((f) => f.edge && f.straights >= 1).length / big.length : 0,
         two: (() => { const x = fires.filter((f) => f.lines >= 8); return x.length ? x.filter((f) => f.straights >= 2).length / x.length : 0; })(),
         chain: 100 * big.filter((f) => f.biggest <= 2).length / p, shaft: 100 * big.filter((f) => f.biggest >= 4).length / p, firstOne: big.length ? big.filter((f) => f.first === 1).length / big.length : 0,
         singles: sum('singles') / Math.max(1, sum('lines')), pass2: off[2] ? off[2][2] / off[2][0] : 0, pass3: off[3] ? off[3][2] / off[3][0] : 0,
@@ -118,11 +118,11 @@ export function style(runs) {
 }
 
 /** How far a style is from the playbook's numbers (0 = all met). Each part is a share of its target. */
-export const TARGETS = { eight: 1.0, two: 0.6, edge: 0.75, parked: 0.65, shaft: 1.4, chain: 1.0, fire: 3.9, pass2: 0.4, singlesMax: 0.12, tallest: 11.5, opener: 6.3, sentPerLine: 0.65 };
+export const TARGETS = { left: 0.85, openerPiece: 25, eight: 1.0, two: 0.6, edge: 0.75, parked: 0.65, shaft: 1.4, chain: 1.0, fire: 3.9, pass2: 0.4, singlesMax: 0.12, tallest: 11.5, opener: 6.3, sentPerLine: 0.65 };
 export function distance(s) {
     const under = (x, t) => Math.max(0, (t - (Number.isFinite(x) ? x : 0)) / t);
     return {
-        eight: under(s.eight, TARGETS.eight), two: under(s.two, TARGETS.two), edge: under(s.edge, TARGETS.edge), parked: under(s.parked, TARGETS.parked), shaft: under(s.shaft, TARGETS.shaft), chain: under(s.chain, TARGETS.chain), fire: under(s.fire, TARGETS.fire),
+        left: under(s.left, TARGETS.left), openerPiece: under(s.openerPiece, TARGETS.openerPiece), eight: under(s.eight, TARGETS.eight), two: under(s.two, TARGETS.two), edge: under(s.edge, TARGETS.edge), parked: under(s.parked, TARGETS.parked), shaft: under(s.shaft, TARGETS.shaft), chain: under(s.chain, TARGETS.chain), fire: under(s.fire, TARGETS.fire),
         pass2: Math.abs(s.pass2 - TARGETS.pass2) / TARGETS.pass2, singles: Math.max(0, (s.singles - TARGETS.singlesMax) / TARGETS.singlesMax), tallest: Math.abs(s.tallest - TARGETS.tallest) / TARGETS.tallest, opener: under(s.opener, TARGETS.opener), sentPerLine: under(s.sentPerLine, TARGETS.sentPerLine),
     };
 }

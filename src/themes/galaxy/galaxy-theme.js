@@ -18,7 +18,9 @@
  * arms); four lines make the galaxy hold its breath, then the nucleus erupts (both jets fire to
  * their full reach, every nursery goes nova as the wave passes, a prismatic ring crosses the
  * sky, the picture ripples out from the nucleus and shooting stars fly from it); and a twist
- * winds the arms up and lets them spring back.
+ * winds the arms up and lets them spring back. A run's end sinks the galaxy into the night
+ * (endRun), and the next run re-ignites it. By itself it turns through five airs and now and then
+ * does something no one played (galaxy-living.js).
  *
  * Content lives in GalaxyWorld (galaxy-world.js), shared with the playground effect
  * src/playground/effects/galaxy.effect.js, so what is iterated there ships. This class owns the
@@ -359,7 +361,7 @@ export default class GalaxyTheme extends BaseTheme {
             }),
         );
         this.registerEventListener(window, 'settingsChanged', (p) => this.handleSettingsChanged(p));
-        this.registerEventListener(window, 'gameOver', () => this.resetSession());
+        this.registerEventListener(window, 'gameOver', () => this.endRun());
 
         const resetPointer = () => {
             this.pointer.x = 0;
@@ -398,6 +400,19 @@ export default class GalaxyTheme extends BaseTheme {
             if (n > best) best = n;
         });
         this.world?.onCombo(best);
+    }
+
+    /**
+     * A run is over: whatever is staged still lands (the last lock belongs to this run), the chain
+     * is let go and the session goes back to rest, and THEN the galaxy sinks into the night: in
+     * that order, or the reset would wipe the dusk (gotcha #1716). The world keeps it dark through
+     * the menu until it comes back by itself or the next run re-ignites it (modeStarted →
+     * onSessionStart).
+     */
+    endRun() {
+        this.director?.flush();
+        this.resetSession();
+        this.world?.onGameOver?.();
     }
 
     /** A new run: the galaxy back at rest, no combo in flight. */
@@ -502,7 +517,11 @@ export default class GalaxyTheme extends BaseTheme {
         this.modeManager = manager;
         const relayout = () => this.scheduleLayoutReads();
         this.eventUnsubscribers.push(
-            manager.on('modeStarted', relayout),
+            manager.on('modeStarted', () => {
+                relayout();
+                // A new run re-ignites a galaxy a run's end left dark.
+                this.world?.onSessionStart?.();
+            }),
             manager.on('modeActivated', relayout),
             manager.on('modeStopped', () => this.resetSession()),
         );

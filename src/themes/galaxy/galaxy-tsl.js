@@ -27,7 +27,9 @@ import {
     log,
     max,
     min,
+    mix,
     pow,
+    smoothstep,
     step,
     texture,
     uniform,
@@ -40,6 +42,8 @@ import {
     GALAXY,
     GALAXY_PALETTES,
     LOCK_SLOTS,
+    PULSE_SLOTS,
+    PULSE_TAIL,
     RIPPLE_FADE,
     RIPPLE_REACH,
     RIPPLE_TAU,
@@ -186,12 +190,40 @@ export function createGalaxyUniforms(textures) {
         shockB: uniform(new THREE.Vector2(-100, 0)),
         /** The sky's stars answer a clear: 0..1. */
         skyPulse: uniform(0),
+        /** The deep sky's own frame (it turns slowly about the cloud band's pole): world → sky. */
+        skyRot: uniform(new THREE.Matrix3()),
+        /** The nucleus in the lit clouds' own coordinates (their faces are lit from its side). */
+        skyLight: uniform(new THREE.Vector2(0, 0)),
+        /** The galaxy's halo on the sky: (angular core radius, flattening, gain); w = the clouds' gain. */
+        halo: uniform(new THREE.Vector4(0.1, 0.75, 0.06, 1)),
+        /** The companion's own ring across the sky (a back-to-back): (birth, strength). */
+        shockC: uniform(new THREE.Vector2(-100, 0)),
+        /** A perfect clear's gold front across the sky: (birth, strength). */
+        crownWave: uniform(new THREE.Vector2(-100, 0)),
         /** The companion galaxy: where it is, (angular radius, its own turn, tilt, _). */
         companionDir: uniform(new THREE.Vector3(0.5, 0.3, -0.8).normalize()),
         companion: uniform(new THREE.Vector4(0.05, 0, 0.9, 0)),
-        /** 1 while any ripple / any clear wave is still in the disc (the loops are skipped at rest). */
+        /** The air's hand on the dust: how much the lanes hold (galaxy-living.js). */
+        dustGain: uniform(1),
+        /**
+         * A new level's colours sweep out from the nucleus: (the front's radius, the light on its
+         * edge). Beyond the front the disc still wears the colours it had (`old*`).
+         */
+        wipe: uniform(new THREE.Vector2(1e4, 0)),
+        oldCore: v3(p.core),
+        oldArmInner: v3(p.armInner),
+        oldArmOuter: v3(p.armOuter),
+        oldNursery: v3(p.nursery),
+        /** 1 while any ripple / any clear wave / any arm pulse is still in the disc (the loops are skipped at rest). */
         ripplesLive: uniform(0),
         wavesLive: uniform(0),
+        pulsesLive: uniform(0),
+        /**
+         * Arm pulse slots: (birth, seconds the run takes: negative runs inward, which arm: 0 both,
+         * ±1 one of them, strength) + (colour, the head's width as a share of the arm).
+         */
+        pulseA: [],
+        pulseC: [],
         /** Ripple slots: (x, z in the galaxy's frame, birth time, strength) + (colour, reach 0..1). */
         lockA: [],
         lockC: [],
@@ -210,6 +242,10 @@ export function createGalaxyUniforms(textures) {
     for (let i = 0; i < CLEAR_SLOTS; i++) {
         u.waveA.push(uniform(new THREE.Vector4(-100, 1, 0, 0)));
         u.waveC.push(uniform(new THREE.Vector3(1, 1, 1)));
+    }
+    for (let i = 0; i < PULSE_SLOTS; i++) {
+        u.pulseA.push(uniform(new THREE.Vector4(-100, 1, 0, 0)));
+        u.pulseC.push(uniform(new THREE.Vector4(1, 1, 1, 0.1)));
     }
     u.noise = (st) => texture(u.noiseTex, st);
     /** A fixed mip: for fetches whose coordinates jump (a polar seam) or that run in a vertex stage. */
@@ -265,6 +301,42 @@ export const gxWaveLight = (u, r) => {
     // Waves running out one behind another share one afterglow: never more than one wave's, so a
     // chain lifts the gas once instead of washing it out (the fronts keep their own light).
     return vec4(front, min(glow, 1.0));
+};
+
+/** How far down its arm a radius is (TSL twin of armReach): 0 at the bar, 1 at the rim. */
+export const gxArmReach = (radius) => clamp(
+    log(max(radius, GALAXY.armStart).div(GALAXY.armStart)).div(Math.log(GALAXY.radius / GALAXY.armStart)),
+    0.0,
+    1.2,
+);
+
+/**
+ * The arm pulses at a point of an arm: `reach` = how far down the arm it is (gxArmReach),
+ * `which` = the cosine of its angle from arm A's ridge (its sign says which arm it is on). Both
+ * must be pinned by the caller. A bright head runs the arm, a wake fades behind it. Returns the
+ * summed colour (HDR); a slot that is spent is skipped.
+ */
+export const gxPulseLight = (u, reach, which) => {
+    const sum = vec3(0.0).toVar();
+    for (let i = 0; i < PULSE_SLOTS; i++) {
+        const A = u.pulseA[i];
+        const C = u.pulseC[i];
+        If(u.time.sub(A.x).lessThan(abs(A.y).add(PULSE_TAIL)), () => {
+            const age = u.time.sub(A.x).toVar();
+            const run = age.div(abs(A.y)).toVar();
+            const inward = step(A.y, 0.0);
+            const head = mix(run, float(1.0).sub(run), inward);
+            // How far behind the head this point lies (the way the pulse runs).
+            const behind = mix(head.sub(reach), reach.sub(head), inward).toVar();
+            const wake = exp(max(behind, 0.0).mul(-5.5)).mul(step(0.0, behind)).mul(0.32);
+            const spent = exp(max(run.sub(1.0), 0.0).mul(-3.0));
+            const arm = mix(float(1.0), smoothstep(-0.2, 0.4, which.mul(A.z)), abs(A.z));
+            sum.addAssign(C.rgb.mul(gxBell(behind.div(C.w)).add(wake).mul(spent).mul(arm)
+                .mul(step(0.0, age))
+                .mul(A.w)));
+        });
+    }
+    return sum;
 };
 
 // ── Materials and geometry ──────────────────────────────────────────────────────

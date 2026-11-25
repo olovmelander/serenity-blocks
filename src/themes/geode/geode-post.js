@@ -23,6 +23,7 @@ import {
     Fn,
     If,
     abs,
+    atan,
     clamp,
     exp,
     float,
@@ -36,6 +37,7 @@ import {
     screenCoordinate,
     screenUV,
     select,
+    sin,
     smoothstep,
     step,
     uniform,
@@ -133,6 +135,8 @@ export class GeodePost {
         this.uHeart = uniform(new THREE.Vector2(0.5, 0.5));
         this.uTime = uniform(0);
         this.uExposure = uniform(EXPOSURE);
+        /** The air's own iris (geode-airs.js): multiplies the event iris above. */
+        this.uAirExposure = uniform(1);
         this.uFlash = uniform(0); // event flash (a lift), 0..1
         this.uKick = uniform(0); // impact, 0..1: widens the fringe
         this.uShafts = uniform(0.3); // heart shafts, 0..1.5
@@ -141,6 +145,15 @@ export class GeodePost {
         this.uPrism = uniform(new THREE.Vector2(0, 0));
         /** The heat of play's grade, 0..1: more saturation, deeper darks. */
         this.uGrade = uniform(0);
+        /**
+         * The heart's light in the cavity's dust: (how far its two combs of rays have turned, in
+         * radians, and how strongly the rays stand in the air on their own, with no bloom to carry
+         * them), in the heart's colour.
+         */
+        this.uRays = uniform(new THREE.Vector3(0, 0, 0));
+        this.uHeartColor = uniform(new THREE.Vector3(1, 0.8, 0.55));
+        /** The air's grade: (warmth −1..1 of the lights, saturation lift, shadow depth 0..1). */
+        this.uAirGrade = uniform(new THREE.Vector3(0, 0, 0));
 
         this.calmRects = Array.from({ length: CALM_RECTS_MAX }, () => new THREE.Vector4(0, 0, 0, 0));
         this.uCalm = this.calmRects.map((v) => uniform(v));
@@ -220,6 +233,16 @@ export class GeodePost {
             const clipped = S.mul(min(m, float(0.22).add(m.mul(0.2))).div(m));
             S.assign(mix(S, clipped, calm.mul(0.9)));
 
+            // The heart's light does not fill the air evenly: the crystals that stand before it
+            // comb it into rays, which turn slowly against each other.
+            const ang = atan(fromHeart.y, fromHeart.x).toVar();
+            const combA = sin(ang.mul(5.0).add(this.uRays.x)).mul(sin(ang.mul(13.0).sub(this.uRays.y)))
+                .mul(0.5).add(0.5);
+            const combB = sin(ang.mul(8.0).sub(this.uRays.x.mul(1.7))).mul(0.5).add(0.5);
+            const a2 = combA.mul(combA);
+            const b2 = combB.mul(combB);
+            const rays = a2.mul(a2).mul(1.1).add(b2.mul(b2).mul(b2).mul(0.7)).toVar();
+
             // ── Bloom and heart shafts ──
             const glare = vec3(0.0).toVar();
             if (this.bloomNode) {
@@ -239,20 +262,29 @@ export class GeodePost {
                         shafts.addAssign(bt.sample(st.add(toHeart.mul(f))).rgb.mul(w));
                     }
                     const near = float(1.0).sub(smoothstep(0.0, 1.15, reach));
-                    glare.addAssign(shafts.mul(1 / total).mul(this.uShafts).mul(near.mul(0.8).add(0.2)));
+                    glare.addAssign(shafts.mul(1 / total).mul(this.uShafts).mul(near.mul(0.8).add(0.2))
+                        .mul(rays.mul(0.8).add(0.5)));
                 }
-                glare.mulAssign(float(1.0).sub(calm.mul(0.86)));
             }
+            // The rays themselves, standing in the dust (every tier: they need no bloom).
+            const stand = exp(reach.mul(-1.5)).mul(float(1.0).sub(exp(reach.mul(-9.0))));
+            glare.addAssign(this.uHeartColor.mul(rays.mul(stand).mul(this.uRays.z)));
+            glare.mulAssign(float(1.0).sub(calm.mul(0.86)));
             const H = S.add(glare);
 
             // ── Tone map + grade ──
-            const X = H.mul(this.uExposure).mul(float(1.0).add(this.uFlash.mul(0.35)));
+            const X = H.mul(this.uExposure.mul(this.uAirExposure)).mul(float(1.0).add(this.uFlash.mul(0.35)));
             const T = gemFilmic(X).toVar();
             const L = gdLuma(T);
             // Deep violet, slightly lifted shadows (the dark of the lining); the lights keep their hues.
             const lo = float(1.0).sub(smoothstep(0.0, 0.3, L));
             T.assign(mix(T, T.mul(vec3(0.96, 0.9, 1.14)).add(vec3(0.002, 0.0008, 0.0046)), lo.mul(0.55)));
-            T.assign(mix(vec3(gdLuma(T)), T, this.uGrade.mul(0.26).add(1.14)));
+            T.assign(mix(vec3(gdLuma(T)), T, this.uGrade.mul(0.26).add(this.uAirGrade.y).add(1.14)));
+            // The air's own cast: its lights lean warm or cool, its shadows sink.
+            const warmth = this.uAirGrade.x;
+            const cast = vec3(warmth.mul(0.07).add(1.0), 1.0, float(1.0).sub(warmth.mul(0.09)));
+            T.mulAssign(mix(vec3(1.0), cast, smoothstep(0.1, 0.7, L)));
+            T.mulAssign(float(1.0).sub(float(1.0).sub(smoothstep(0.0, 0.4, L)).mul(this.uAirGrade.z).mul(0.4)));
             // The hotter play runs, the deeper the dark between the lights.
             T.mulAssign(float(1.0).sub(float(1.0).sub(smoothstep(0.0, 0.45, L)).mul(this.uGrade).mul(0.32)));
             // Vignette, measured from the frame, a touch heavier in the corners.
@@ -293,8 +325,12 @@ export class GeodePost {
 
     /** Per-frame values (all optional). */
     update({
-        heart, flash, kick, bloomBoost, exposure, shafts, time, prism, grade,
+        heart, flash, kick, bloomBoost, exposure, shafts, time, prism, grade, rays, heartColor, airGrade, airExposure,
     } = {}) {
+        if (airExposure !== undefined) this.uAirExposure.value = airExposure;
+        if (rays) this.uRays.value.set(rays.a, rays.b, rays.gain);
+        if (heartColor) this.uHeartColor.value.set(heartColor[0], heartColor[1], heartColor[2]);
+        if (airGrade) this.uAirGrade.value.set(airGrade.warmth, airGrade.saturation, airGrade.depth);
         if (heart) this.uHeart.value.set(heart.x, heart.y);
         if (flash !== undefined) this.uFlash.value = flash * flashScale();
         if (kick !== undefined) this.uKick.value = kick;

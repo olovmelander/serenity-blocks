@@ -32,6 +32,7 @@ import {
     cos,
     exp,
     float,
+    fract,
     length,
     max,
     min,
@@ -47,8 +48,8 @@ import {
     vec4,
 } from 'three/tsl';
 import {
-    KEEP_ADD, KEEP_GAIN, KEEP_MAX, NOVA_LIFE, PULSE_FADE, STORE_HOLD, STORE_MAX, epochFor, gxArmAngle,
-    gxFxMaterial, gxMax3, gxPart, gxQuadGeometry, gxWaveLight, heldAt, wavePassTime,
+    KEEP_ADD, KEEP_GAIN, KEEP_MAX, NOVA_LIFE, PULSE_FADE, STORE_HOLD, STORE_MAX, epochFor, gxArmAngle, gxArmReach,
+    gxFxMaterial, gxMax3, gxPart, gxPulseLight, gxQuadGeometry, gxWaveLight, heldAt, wavePassTime,
 } from './galaxy-tsl.js';
 
 /** How far a nova's shell runs, in nursery radii. */
@@ -84,7 +85,7 @@ export function createNurseries(u, sites, count) {
     const material = gxFxMaterial('GalaxyNurseries');
     /** (held light, flash age, flash amount, flash kind) and (quad half-extent in radii, wave gain). */
     const vState = varyingProperty('vec4', 'gxNurseryState');
-    const vShape = varyingProperty('vec2', 'gxNurseryShape');
+    const vShape = varyingProperty('vec3', 'gxNurseryShape');
     const vTint = varyingProperty('vec4', 'gxNurseryTint');
     material.vertexNode = Fn(() => {
         const radius = site.x;
@@ -95,6 +96,12 @@ export function createNurseries(u, sites, count) {
             const wave = gxWaveLight(u, radius).toVar();
             local.y.addAssign(gxMax3(wave.rgb).mul(2.4));
             waveGain.assign(gxMax3(wave.rgb).mul(1.2).add(wave.a.mul(0.3)));
+        });
+        // A pulse running down its arm fans it as it passes.
+        If(u.pulsesLive.greaterThan(0.5), () => {
+            const reach = gxArmReach(radius).toVar();
+            const which = cos(site.y).toVar();
+            waveGain.addAssign(gxMax3(gxPulseLight(u, reach, which)).mul(1.1));
         });
         const world = u.frame.mul(vec4(local, 1.0)).xyz;
         const clip = cameraProjectionMatrix.mul(cameraViewMatrix).mul(vec4(world, 1.0)).toVar();
@@ -107,7 +114,8 @@ export function createNurseries(u, sites, count) {
         const extent = max(max(float(2.3), held.mul(1.5).add(2.3)), shell.mul(2.0).add(2.3));
         const px = max(site.w.mul(extent).div(max(clip.w, 1.0).mul(u.pixelAngle)), MIN_PX);
         vState.assign(vec4(held, age, hold.z, hold.w));
-        vShape.assign(vec2(extent, waveGain));
+        // (and whether a new level's colours have reached it yet)
+        vShape.assign(vec3(extent, waveGain, smoothstep(u.wipe.x.sub(10.0), u.wipe.x, radius)));
         vTint.assign(tint);
         const half = u.viewport.mul(0.5);
         return vec4(clip.xy.add(positionGeometry.xy.mul(px.mul(2.0)).div(half).mul(clip.w)), clip.z, clip.w);
@@ -124,11 +132,25 @@ export function createNurseries(u, sites, count) {
         const isNova = step(0.5, vState.w);
         const seed = vTint.w;
         const white = vec3(1.0, 0.97, 0.95);
+        const own = mix(u.nursery, u.oldNursery, vShape.z).toVar();
 
-        // At rest: the nursery's own glow, breathing.
+        // At rest: a knot of glowing gas, not a ball. An uneven cloud (the noise read in the
+        // sprite's own frame, at this nursery's own place in the tile) round a few compact hearts,
+        // breathing.
         const breathe = sin(u.time.mul(seed.mul(1.3).add(0.5)).add(seed.mul(50.0))).mul(0.16).add(0.84);
-        const col = u.nursery.mul(exp(rho2.mul(-1.5)).mul(0.17).mul(breathe))
-            .add(u.nursery.mul(0.55).add(0.45).mul(exp(rho2.mul(-24.0)).mul(0.42)))
+        const grain = u.noiseLod(p.mul(0.085).add(vec2(seed.mul(7.31), seed.mul(3.17))), 1.0).toVar();
+        const torn = smoothstep(0.3, 0.74, grain.r.mul(0.62).add(grain.g.mul(0.38)));
+        const wisp = float(1.0).sub(abs(grain.b.mul(2.0).sub(1.0)));
+        let hearts = exp(rho2.mul(-30.0)).mul(0.5);
+        for (let k = 0; k < 3; k++) {
+            const turn = seed.mul(6.2832 * (k * 2.4 + 1.0)).add(k * 2.1);
+            const out = fract(seed.mul(k * 7.7 + 3.1)).mul(0.42).add(0.2);
+            const d = p.sub(vec2(cos(turn), sin(turn)).mul(out));
+            hearts = hearts.add(exp(d.dot(d).mul(-46.0)).mul(fract(seed.mul(k * 13.3 + 5.7)).mul(0.4).add(0.22)));
+        }
+        const col = own.mul(exp(rho2.mul(-2.4)).mul(torn.mul(0.25).add(wisp.mul(wisp).mul(torn).mul(0.2)))
+            .mul(breathe))
+            .add(own.mul(0.5).add(0.5).mul(hearts))
             .toVar();
 
         // The light it holds: a small cloud in the piece's colour, a hot heart, four long spikes.

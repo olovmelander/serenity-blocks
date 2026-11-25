@@ -3,6 +3,59 @@ export const PLAYGROUND_URL_PARAMETERS = [
     {
         name: 'air',
         category: 'Playground',
+        scope: 'playground.html — geode',
+        description: 'Hold one of the airs the Geode turns through by its own clock (its light, not its mineral).',
+        values: '0 radiance, 1 blaze, 2 prism, 3 embers, 4 moonstone; a fraction is the melt between two.',
+        defaultValue: 'Unset: the clock turns them, 77 s an air.',
+        example: 'air=3',
+        notes: 'Use on playground.html with effect=geode. level= picks the mineral; the two are independent.',
+        sources: [
+            'src/playground/effects/geode.effect.js',
+        ],
+    },
+    {
+        name: 'visits',
+        category: 'Playground',
+        scope: 'playground.html — geode',
+        description: 'Switch the visits the Geode has by itself off (a sparkle running round the lining, a cluster '
+            + 'ringing, a shower of dust and the rest).',
+        values: '0 disables; any other value keeps them.',
+        defaultValue: 'On.',
+        example: 'visits=0',
+        notes: 'Use on playground.html with effect=geode for a capture of the geode at rest.',
+        sources: [
+            'src/playground/effects/geode.effect.js',
+        ],
+    },
+    {
+        name: 'visit',
+        category: 'Playground',
+        scope: 'playground.html — geode',
+        description: 'Hold one of the visits the Geode has by itself, whatever its clock says.',
+        values: 'shimmer, chime, fall, cascade, swell, fire.',
+        defaultValue: 'None: the schedule the geode keeps.',
+        example: 'visit=fall&visitAge=3',
+        notes: 'Use on playground.html with effect=geode; visitAge picks the moment.',
+        sources: [
+            'src/playground/effects/geode.effect.js',
+        ],
+    },
+    {
+        name: 'visitAge',
+        category: 'Playground',
+        scope: 'playground.html — geode',
+        description: 'Show the visit named by visit this many seconds after it began.',
+        values: 'Seconds, 0 or greater (a visit lasts 5 to 9 s by its kind).',
+        defaultValue: '2.',
+        example: 'visitAge=3',
+        notes: 'Use on playground.html with effect=geode and visit=<kind>.',
+        sources: [
+            'src/playground/effects/geode.effect.js',
+        ],
+    },
+    {
+        name: 'air',
+        category: 'Playground',
         scope: 'playground.html — ch8-neon',
         description: 'Override the chapter-8 neon air uniforms (haze, street mist, glow) without a rebuild.',
         values: 'Comma-separated key:value pairs: hazeDistance, mistDensity, mistGlow, glowGain (numbers), '
@@ -7338,6 +7391,49 @@ export const PLAYGROUND_URL_PARAMETERS = [
         notes: 'Use on playground.html with effect=nimbus-veil&event=b2b; eventAge counts from the first.',
         sources: [
             'src/playground/effects/nimbus-veil.effect.js',
+        ],
+    },
+    {
+        name: 'air',
+        category: 'Playground',
+        scope: 'playground.html — galaxy',
+        description: 'Hold one of the galaxy’s airs instead of the clock’s own (the airs turn on a wheel of '
+            + '127 s beside the palettes’ 100 s, and change its form: nurseries, dust, heart, winding, lean).',
+        values: '0 clear (the rest look), 1 starburst, 2 veiled (thick dust, nearer edge-on), 3 awake (the '
+            + 'nucleus and its halo burn, faint jets stand), 4 tide (the arms open, the disc shows its face).',
+        defaultValue: 'Unset (the clock decides).',
+        example: 'air=2',
+        notes: 'Use on playground.html with effect=galaxy.',
+        sources: [
+            'src/playground/effects/galaxy.effect.js',
+        ],
+    },
+    {
+        name: 'happen',
+        category: 'Playground',
+        scope: 'playground.html — galaxy',
+        description: 'Switch off what the galaxy does by itself (a supernova in an arm, a ripple of star '
+            + 'formation down one, a shower of shooting stars, the nucleus stirring, a flash in the companion: '
+            + 'one about every 29 s), so a capture shows only the event it fired.',
+        values: '0 switches them off; anything else leaves them on.',
+        defaultValue: 'On.',
+        example: 'happen=0',
+        notes: 'Use on playground.html with effect=galaxy. To SEE one, fire it: event=happen&kind=nova.',
+        sources: [
+            'src/playground/effects/galaxy.effect.js',
+        ],
+    },
+    {
+        name: 'kind',
+        category: 'Playground',
+        scope: 'playground.html — galaxy',
+        description: 'Which of the galaxy’s own happenings event=happen fires.',
+        values: 'nova, ripple, shower, stir or flash.',
+        defaultValue: 'nova.',
+        example: 'event=happen&kind=ripple&eventAge=2',
+        notes: 'Use on playground.html with effect=galaxy and event=happen.',
+        sources: [
+            'src/playground/effects/galaxy.effect.js',
         ],
     },
 ];

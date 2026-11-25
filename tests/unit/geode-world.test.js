@@ -3,7 +3,7 @@ import {
 } from 'vitest';
 import * as THREE from 'three/webgpu';
 import {
-    GEODE_PARTS, GeodeWorld, REST_RIG, SPARK_DEPTH, SURGE_COOL, fovForAspect,
+    GEODE_PARTS, GeodeWorld, HEART_WANDER, REST_RIG, SPARK_DEPTH, SURGE_COOL, SWEEP_LIFE, fovForAspect,
 } from '../../src/themes/geode/geode-world.js';
 import {
     CAVITY, CLEAR_SLOTS, CLEAR_TRAVEL, CROWN_COLORS, CROWN_RINGS, DEG, FIRE_OPAL, GEODEFIRE, GEODE_PALETTES, HUSH_HOLD,
@@ -375,16 +375,23 @@ describe('geode world: camera', () => {
         expect(rest.fov).toBe(fovForAspect(1600 / 900));
         const gaze = rest.getWorldDirection(new THREE.Vector3());
         expect(gaze.z).toBeCloseTo(-1, 9);
-        // The heart's light comes from a point on the axis, just inside the far pole...
+        // The heart's light comes from a point just inside the far pole. It wanders a few spans
+        // round the axis (as the day outside the stone might), never out of the heart's window...
         const heart = world.u.heartPos.value;
-        expect(heart.x).toBe(0);
-        expect(heart.y).toBe(0);
+        expect(Math.hypot(heart.x, heart.y)).toBeLessThanOrEqual(HEART_WANDER);
+        expect(HEART_WANDER).toBeLessThan(CAVITY.a * Math.sin(CAVITY.wHeart) * 0.5);
         expect(heart.z).toBeGreaterThan(CAVITY.zc - CAVITY.c);
         expect(heart.z).toBeLessThan(CAVITY.zc);
-        // ...at the middle of the rest frame.
+        // ...so it stays near the middle of the rest frame.
         const centre = heart.clone().project(rest);
-        expect(centre.x).toBeCloseTo(0, 9);
-        expect(centre.y).toBeCloseTo(0, 9);
+        expect(Math.abs(centre.x)).toBeLessThan(0.08);
+        expect(Math.abs(centre.y)).toBeLessThan(0.08);
+        // Under reduced motion it stands on the axis.
+        const still = makeWorld('Low', { reduced: true });
+        run(still.world, still.camera, 30, 30);
+        expect(still.world.u.heartPos.value.x).toBe(0);
+        expect(still.world.u.heartPos.value.y).toBe(0);
+        still.world.dispose();
         // The live camera floats: it wanders, never out of the hollow, never losing the heart.
         let wandered = 0;
         for (let i = 0; i < 60; i++) {
@@ -2372,11 +2379,34 @@ describe('geode world: combos and levels', () => {
         expect(waves[0].value.w).toBe(0);
         expect(world.counts.clears).toBe(0); // it is not a clear
         expect(world.u.shock.value.y).toBe(0);
-        // The colours ease across, they do not snap.
+        // The new mineral neither snaps in nor eases in everywhere at once: a front carries it down
+        // the wall behind the pale wave. Until the front has run, the materials hold both minerals:
+        // the one the geode was (shown ahead of the front) and the one it is turning into (behind it).
+        const left = world.time;
         run(world, camera, 1 / 60, 1);
-        const moved = world.u.druzy.value.distanceTo(before);
-        expect(moved).toBeGreaterThan(0);
-        expect(moved).toBeLessThan(apart * 0.2);
+        expect(world.u.sweep.value.x).toBeCloseTo(left, 5);
+        expect(world.u.sweep.value.y).toBe(1);
+        expect(world.u.druzy.value.distanceTo(before)).toBeLessThan(1e-9);
+        expect(world.u.druzyB.value.distanceTo(target)).toBeLessThan(apart * 0.01);
+        expect(world.sweepProgress()).toBeGreaterThan(0);
+        expect(world.sweepProgress()).toBeLessThan(0.05);
+        GEODE_PALETTES[1].band2.forEach((channel, k) => {
+            expect(world.u.bandsB[2].value.getComponent(k)).toBeCloseTo(channel, 9);
+            expect(world.u.bands[2].value.getComponent(k)).toBeCloseTo(GEODE_PALETTES[0].band2[k], 9);
+        });
+        // The heart's own light turns with the front, not ahead of it.
+        const warm = world.u.heart.value.clone();
+        run(world, camera, SWEEP_LIFE * 0.5, 40);
+        expect(world.u.heart.value.distanceTo(warm)).toBeGreaterThan(1e-4);
+        expect(world.getState().mineral).toBeGreaterThan(0.3);
+        expect(world.getState().mineral).toBeLessThan(0.7);
+        // Once the front has run the whole wall the geode is the new mineral, and one palette again.
+        run(world, camera, SWEEP_LIFE * 0.5, 40);
+        expect(world.u.sweep.value.y).toBe(0);
+        expect(world.sweepProgress()).toBe(0);
+        expect(world.getState().mineral).toBe(1);
+        expect(world.u.druzy.value.distanceTo(target)).toBeLessThan(apart * 0.01);
+        expect(world.u.druzyB.value.distanceTo(target)).toBeLessThan(apart * 0.01);
         run(world, camera, 20, 400);
         expect(mineralDrift(world.time)).toBe(0); // (the clock has not begun to turn it yet)
         expect(world.u.druzy.value.distanceTo(target)).toBeLessThan(apart * 0.01);
@@ -2795,12 +2825,24 @@ describe('geode world: what the shaders and the post are told', () => {
         const post = world.getPostState();
         expect(world.getPostState()).toBe(post);
         expect(Object.keys(post).sort()).toEqual([
-            'bloomBoost', 'exposure', 'flash', 'grade', 'heart', 'kick', 'prism', 'shafts',
+            'airExposure', 'airGrade', 'bloomBoost', 'exposure', 'flash', 'grade', 'heart', 'heartColor', 'kick',
+            'prism', 'rays', 'shafts',
         ]);
-        // At rest: an open iris, the heart's own shafts, no heat in the grade, nothing else.
+        // At rest: an open iris, the heart's own shafts, no heat in the grade, nothing else — in
+        // the first air, which lays no grade of its own over the picture.
         expect(post).toMatchObject({
-            flash: 0, kick: 0, exposure: 1, grade: 0, prism: { radius: 0, strength: 0 },
+            flash: 0,
+            kick: 0,
+            exposure: 1,
+            grade: 0,
+            prism: { radius: 0, strength: 0 },
+            airExposure: 1,
+            airGrade: { warmth: 0, saturation: 0, depth: 0 },
         });
+        // The heart's rays stand in the dust in the heart's own colour, peak-normalised.
+        expect(post.rays.gain).toBeGreaterThan(0);
+        expect(Math.max(...post.heartColor)).toBeCloseTo(1, 9);
+        expectHue(post.heartColor, GEODE_PALETTES[0].heart);
         expect(post.bloomBoost).toBeLessThan(1e-12);
         expect(post.shafts).toBeGreaterThan(0);
         const { prism } = post;

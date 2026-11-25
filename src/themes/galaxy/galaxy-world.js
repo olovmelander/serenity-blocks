@@ -48,6 +48,21 @@
  *            closing so the colours stay deep. A four-line clear mid-fever only inhales.
  * When the hands rest, all of it breathes back to calm over a few seconds.
  *
+ * And it lives by itself (galaxy-living.js): five airs turn its FORM on a clock of their own
+ * beside the palettes' (how hard its nurseries burn, how thick its dust lies, how its arms wind,
+ * how far it leans back), and about twice a minute something happens that no one played: a
+ * supernova in an arm, a ripple of star formation down one, a shower of shooting stars, the
+ * nucleus stirring, a flash in the companion. The deep sky turns slowly behind it.
+ *
+ * Shapes the events draw on top of the above (the living pass):
+ *   arms     light runs along the spiral like a fuse: out along one arm for a line, both for
+ *            two and three, the whole pattern twice for four; IN along them on a twist;
+ *   drop     where a hard drop's seed lands a plume breaks out of the plane;
+ *   b2b      the companion sends a ring of its own across the sky;
+ *   perfect  a front of gold crosses the whole sky and every far light answers;
+ *   level    the new colours sweep out from the nucleus behind a bright front;
+ *   over     a run's end: the galaxy sinks into the night, and re-ignites when the next begins.
+ *
  * Everything is a function of the world clock and event timestamps (nothing is created at event
  * time), so seek(t) plus a fixed-step replay reproduces any frame.
  */
@@ -55,7 +70,8 @@
 import * as THREE from 'three/webgpu';
 import { applyCameraBreath } from '../shared/camera-breath.js';
 import { GameplaySurge, Swell } from '../shared/gameplay-surge.js';
-import { easeStep } from '../shared/mood-clock.js';
+import { easeStep, nearestStep } from '../shared/mood-clock.js';
+import { flashScale } from '../../utils/photosensitivity.js';
 import {
     CLEAR_SLOTS,
     DEG,
@@ -66,10 +82,14 @@ import {
     LOCK_SLOTS,
     MAX_RINGS,
     PALETTE_KEYS,
+    PULSE_SLOTS,
+    PULSE_TAIL,
     RIPPLE_FADE,
     SEED_FLIGHT,
     STARFIRE,
+    TAU,
     WAVE_LIVE,
+    WIPE_SPEED,
     approach,
     clamp01,
     createGalaxyUniforms,
@@ -85,12 +105,19 @@ import {
 } from './galaxy-tsl.js';
 import { nurseryPosition } from './galaxy-plan.js';
 import { tierFor } from './galaxy-quality.js';
-import { createGiants, createMeteors, createSky } from './galaxy-sky.js';
+import {
+    SKY_TURN, createGiants, createMeteors, createSky, skyCloudPoint, skyFrame,
+} from './galaxy-sky.js';
 import { createDisc } from './galaxy-disc.js';
 import { createStars } from './galaxy-stars.js';
 import { createNurseries } from './galaxy-nurseries.js';
 import { JET_BURST_TRAVEL, createJet, createNucleus } from './galaxy-nucleus.js';
-import { createRowBeams, createSeeds, createSparks } from './galaxy-fx.js';
+import {
+    createNovae, createRowBeams, createSeeds, createSparks,
+} from './galaxy-fx.js';
+import {
+    AIRS, airAt, airDrift, happeningAt, happeningBeat,
+} from './galaxy-living.js';
 import {
     boardFor, boardPoint, cardUnion, fallbackLayout,
 } from './galaxy-composition.js';
@@ -142,10 +169,20 @@ const RIPPLE_SPEED = 0.85;
 const COMBO_PULSE_GAP = 0.3;
 /** Seconds between two looks for the nurseries that stand clear of the card (the pattern turns). */
 const TARGET_REFRESH = 2;
+/** The old halo round the galaxy: its core radius (light-units), how flat it is, its light. */
+const HALO_RADIUS = 30;
+const HALO_FLAT = 0.62;
+const HALO_GAIN = 0.06;
+/** Seconds a run's end keeps the galaxy dark before it comes back by itself. */
+export const OVER_HOLD = 10;
+/** How much of its light the galaxy keeps through that dusk. */
+const OVER_FLOOR = 0.4;
+/** The disc's colours a new level's front replaces as it passes. */
+const WIPE_KEYS = [['core', 'oldCore'], ['armInner', 'oldArmInner'], ['armOuter', 'oldArmOuter'], ['nursery', 'oldNursery']];
 
 const PARTS = [
-    'sky', 'giants', 'jetFar', 'disc', 'stars', 'nurseries', 'jetNear', 'nucleus', 'meteors', 'sparks', 'seeds',
-    'beams',
+    'sky', 'giants', 'jetFar', 'disc', 'stars', 'nurseries', 'novae', 'jetNear', 'nucleus', 'meteors', 'sparks',
+    'seeds', 'beams',
 ];
 
 export class GalaxyWorld {
@@ -174,12 +211,23 @@ export class GalaxyWorld {
         this.textures = [];
         this.u = null;
         this.nurseries = null;
+        this.novae = null;
         this.sparks = null;
         this.seeds = null;
         this.beams = null;
         this.meteors = null;
         this.nucleus = null;
         this.disposed = false;
+        /** The air the galaxy wears right now (galaxy-living.js), a held one (captures, tests) or null. */
+        this._air = { ...AIRS[0] };
+        this.airHold = null;
+        /** Whether things happen by themselves (a supernova, a ripple down an arm, ...). */
+        this.happenings = true;
+        this._happening = {};
+        /** A run is over: the galaxy sinks into the night until the next one, or OVER_HOLD. */
+        this.over = false;
+        this.overAt = -Infinity;
+        this.dusk = 0;
         this.reducedMotion = false;
         this.aspect = 16 / 9;
         this.layout = fallbackLayout(1600, 900);
@@ -220,6 +268,8 @@ export class GalaxyWorld {
         this._burstA = [0, 0];
         this._burstB = [0, 0];
         this._palette = {};
+        /** The sky's and the jets' colours: they melt to a new level's, where the disc's are swept in. */
+        this._soft = {};
         /** Where a new level is heading (its shooting stars fall in its nucleus's light). */
         this._target = {};
         PALETTE_KEYS.forEach((key) => {
@@ -273,8 +323,18 @@ export class GalaxyWorld {
         this.surge = 0;
         this.storm = 0;
         this.level = 1;
-        /** The level's step round the palettes as it eases in (the clock's turn is added on top). */
+        /**
+         * The level's step round the palettes (the clock's turn is added on top): the disc takes it
+         * at once behind a front that sweeps out from the nucleus, the sky and the jets ease into it.
+         */
         this.paletteStep = 0;
+        this.paletteSoft = 0;
+        this.wipeAt = -Infinity;
+        /** A perfect clear's gold front: its strength as it was written (the reduce-flashing scale). */
+        this.crownGain = 0;
+        /** The beat of its own happenings the clock stands in, and the one still to come in it. */
+        this.happenBeat = happeningBeat(time);
+        this.pendingHappening = null;
         this.dip = 0;
         this.breath = 1;
         this.rings = 0;
@@ -306,15 +366,18 @@ export class GalaxyWorld {
             punch: 0, level: 0, fever: 0, stage: 0,
         });
         this.counts = {
-            locks: 0, clears: 0, quads: 0, seeds: 0, novas: 0,
+            locks: 0, clears: 0, quads: 0, seeds: 0, novas: 0, happenings: 0,
         };
         // The slow clocks are functions of the world clock until gameplay bends them.
         const motion = this.reducedMotion ? 0.3 : 1;
         this.spin = time * SPIN_RATE * motion;
         this.flow = time * motion;
+        /** How far the deep sky has turned about the band's pole (radians, wrapped). */
+        this.skyTurn = (time * (TAU / SKY_TURN) * motion) % TAU;
         this.meteorBeat = Math.floor(time / METEOR_BEAT);
         this.targetsAt = -Infinity;
         this.nurseries?.reset();
+        this.novae?.reset();
         this.sparks?.reset();
         this.seeds?.reset();
         this.beams?.reset();
@@ -322,8 +385,12 @@ export class GalaxyWorld {
         if (this.u) {
             for (let i = 0; i < LOCK_SLOTS; i++) this.u.lockA[i].value.set(0, 0, -100, 0);
             for (let i = 0; i < CLEAR_SLOTS; i++) this.u.waveA[i].value.set(-100, 1, 0, 0);
+            for (let i = 0; i < PULSE_SLOTS; i++) this.u.pulseA[i].value.set(-100, 1, 0, 0);
             this.u.shock.value.set(-100, 0);
             this.u.shockB.value.set(-100, 0);
+            this.u.shockC.value.set(-100, 0);
+            this.u.crownWave.value.set(-100, 0);
+            this.u.wipe.value.set(1e4, 0);
             this.u.jets.value.set(this.jetReach, this.jetGain, -100, 0);
             this.u.jetBursts.value.set(-100, 0, -100, 0);
             this.u.companion.value.w = 0;
@@ -347,6 +414,8 @@ export class GalaxyWorld {
         this.addPart('stars', createStars(u, plan.stars, tier.stars));
         this.nurseries = createNurseries(u, plan.nurseries, tier.nurseries);
         this.addPart('nurseries', this.nurseries);
+        this.novae = createNovae(u);
+        this.addPart('novae', this.novae);
         this.addPart('jetNear', createJet(u, 1));
         this.nucleus = createNucleus(u);
         this.addPart('nucleus', this.nucleus);
@@ -415,17 +484,48 @@ export class GalaxyWorld {
     /** Jump the clock (captures): drops every event in flight. */
     seek(time) {
         this.resetState(Math.max(0, time));
+        this.over = false;
+        this.overAt = -Infinity;
+        this.dusk = 0;
         this.applyPalette(1);
+        this.applyAir();
         this.pose();
+    }
+
+    /** Hold one air (its index round AIRS), or null to let the clock turn them (captures, tests). */
+    holdAir(index) {
+        this.airHold = Number.isFinite(index) ? Math.round(index) : null;
+        this.applyAir();
+        return this;
+    }
+
+    /** Whether things happen by themselves (off: only play moves the galaxy). */
+    setHappenings(on) {
+        this.happenings = on !== false;
+        this.pendingHappening = null;
+        return this;
+    }
+
+    /** Where the galaxy stands round its airs: a level moves it two on, the clock turns it. */
+    airPhase() {
+        return this.airHold ?? (this.paletteSoft * 2 + airDrift(this.time));
+    }
+
+    /** Set the air for this moment (the lean and the winding it asks for rest under reduced motion). */
+    applyAir() {
+        return airAt(this.airPhase(), this._air);
     }
 
     /** A new run: the galaxy back at rest (it keeps turning). */
     resetSession() {
         const {
-            time, spin, flow, meteorBeat,
+            time, spin, flow, meteorBeat, skyTurn, happenBeat, pendingHappening,
         } = this;
+        // (a run's end keeps its dusk through this: `over` and `dusk` are not reset here)
         this.resetState(time);
-        Object.assign(this, { spin, flow, meteorBeat });
+        Object.assign(this, {
+            spin, flow, meteorBeat, skyTurn, happenBeat, pendingHappening,
+        });
         this.applyPalette(1);
     }
 
@@ -470,6 +570,7 @@ export class GalaxyWorld {
         u.centre.value.copy(this._centre);
         u.companionDir.value.set(a.companion.x * 2 - 1, 1 - a.companion.y * 2, 0.5).unproject(cam).normalize();
         u.companion.value.x = Math.atan(a.companion.radius * 2 * tanV);
+        u.halo.value.x = Math.atan(HALO_RADIUS / this.distance);
     }
 
     /**
@@ -483,9 +584,11 @@ export class GalaxyWorld {
         const t = this.time;
         const calm = this.reducedMotion ? 0 : 1;
         const a = this.anchors;
+        const air = this._air;
         const inclination = a.inclination
-            + (Math.sin(t * 0.047) * 3.2 + Math.sin(t * 0.021 + 1.9) * 1.6 - this._pointer.y * 4.5) * DEG * calm;
-        const lean = a.lean + (Math.sin(t * 0.031 + 1.3) * 2.6 + this._pointer.x * 3.5) * DEG * calm;
+            + (Math.sin(t * 0.047) * 3.2 + Math.sin(t * 0.021 + 1.9) * 1.6 - this._pointer.y * 4.5 + air.lean)
+            * DEG * calm;
+        const lean = a.lean + (Math.sin(t * 0.031 + 1.3) * 2.6 + this._pointer.x * 3.5 + air.tilt) * DEG * calm;
         // The line of sight back to the camera, and the sky's own right and up round it.
         const f = this._f.copy(this._centre).normalize().negate();
         const right = this._right.set(0, 1, 0).cross(f).normalize();
@@ -503,6 +606,8 @@ export class GalaxyWorld {
         this._inverse.copy(this._frame).invert();
         u.frame.value.copy(this._frame);
         u.axis.value.copy(axis);
+        // The halo as the eye sees it: a spheroid that flat, seen at this lean.
+        u.halo.value.y = Math.hypot(HALO_FLAT * Math.sin(inclination), Math.cos(inclination));
         const disc = this.parts.disc?.mesh;
         if (disc) {
             disc.matrix.copy(this._frame);
@@ -830,6 +935,24 @@ export class GalaxyWorld {
                     life: [0.5, 1.1],
                     size: 0.2,
                 });
+                // A hard drop's seed breaks out of the plane: a plume up and down the galaxy's axis.
+                if (amount > 1) {
+                    this.sparks.emit({
+                        x: to[0],
+                        y: to[1],
+                        z: to[2],
+                        n: Math.round(16 * share),
+                        rgb,
+                        time: event.time,
+                        e1,
+                        e2,
+                        axis,
+                        out: [1.5, 5],
+                        lift: 7,
+                        life: [0.6, 1.3],
+                        size: 0.24,
+                    });
+                }
             } else {
                 this.sparks.emit({
                     x: to[0],
@@ -945,6 +1068,31 @@ export class GalaxyWorld {
         // ── The wave leaves the nucleus: wider for an eruption, a deeper wave, a fever ──
         this.wave(birth, perfect ? 4 : n, strength, (quad ? 1 : 0) + 0.6 * deep + 0.25 * fever, rgb);
         this.clearSwell.hit(0.3 + 0.12 * n + 0.08 * deep, birth);
+        // ── And light runs out along the arms: one arm for a line (they take turns), both for
+        // two, both and hotter for three; four ignite the whole pattern, twice ──
+        if (quad) {
+            // (in the arms' own light, toward starfire: the pattern keeps its colour as it ignites)
+            const lit = [0, 1, 2].map((c) => p.armInner[c] * 0.55 + STARFIRE[c] * 0.45);
+            this.pulse(birth, {
+                span: 1.45, strength: 0.9, rgb: lit, width: 0.2,
+            });
+            this.pulse(birth + 0.42, {
+                span: 1.3, strength: 0.6, rgb, width: 0.12,
+            });
+        } else if (n === 1) {
+            this.pulse(birth, {
+                span: 1.15, arm: this.counts.clears % 2 ? 1 : -1, strength: 0.8, rgb, width: 0.1,
+            });
+        } else {
+            this.pulse(birth, {
+                span: n === 3 ? 0.95 : 1.1, strength: n === 3 ? 1.1 : 0.9, rgb, width: n === 3 ? 0.14 : 0.11,
+            });
+        }
+        // A perfect clear: a front of gold crosses the whole sky and every far light answers.
+        if (perfect) {
+            this.crownGain = flashScale();
+            u.crownWave.value.set(birth, this.crownGain);
+        }
 
         // ── The nurseries answer as the wave passes them (see answer()) ──
         // In the middle of a chain (or a cascade) the wave only fans the lit ones: they flare and
@@ -1030,8 +1178,12 @@ export class GalaxyWorld {
             });
         }
         if (twist) {
-            // The arms wind up and spring back; a small ring leaves the nucleus across the sky.
+            // The arms wind up and spring back; light runs IN along both of them, the other way
+            // from a clear's, and a small ring leaves the nucleus across the sky.
             this.twistVelocity += 3.0;
+            this.pulse(this.time, {
+                span: -0.8, strength: 1.0, rgb: this.twistTone(), width: 0.12,
+            });
             if (!quad) {
                 this.shockRing(this.time, 0.42);
                 this.rippleSpace(this.time, this.reducedMotion ? 0.1 : 0.4);
@@ -1059,6 +1211,8 @@ export class GalaxyWorld {
     onBackToBack(at) {
         const run = Math.max(1, this.b2bRun);
         this.wakeSwell.hit(0.7 + 0.25 * Math.min(3, run - 1), at);
+        // Its own ring crosses the sky from where it stands, to meet the galaxy's.
+        this.u.shockC.value.set(at + 0.12, (this.reducedMotion ? 0.4 : 0.75) + 0.1 * Math.min(3, run - 1));
         this.burst(at + 0.18, 0.65);
         this.burst(at + 0.36, 0.5);
         this.twistVelocity += 1.2;
@@ -1076,6 +1230,8 @@ export class GalaxyWorld {
         const t = this.time;
         this.crownSwell.hit(1, t);
         this.wakeSwell.hit(1, t);
+        this.crownGain = flashScale();
+        u.crownWave.value.set(t, this.crownGain);
         this.flashSwell.hit(0.18, t);
         this.kickSwell.hit(0.35, t);
         this.shockRing(t, this.reducedMotion ? 0.4 : 0.8);
@@ -1098,6 +1254,9 @@ export class GalaxyWorld {
     onSpin() {
         if (!this.u) return;
         this.twistVelocity += 1.4;
+        this.pulse(this.time, {
+            span: -0.9, arm: this.counts.locks % 2 ? 1 : -1, strength: 0.55, rgb: this.twistTone(), width: 0.1,
+        });
         this.shockRing(this.time, this.reducedMotion ? 0.12 : 0.22);
         this.knot(0.3);
         this.storm = Math.max(this.storm, 0.4);
@@ -1121,6 +1280,9 @@ export class GalaxyWorld {
         const peak = Math.max(rgb[0], rgb[1], rgb[2], 1e-4);
         rgb = rgb.map((c) => (c / peak) * 0.9 + 0.1);
         this.wave(this.time, 2, Math.min(1.7, 0.9 + 0.07 * held), 2 + this.heat.fever, rgb);
+        this.pulse(this.time, {
+            span: 1.6, strength: 0.7 + 0.3 * Math.min(1, held / 12), rgb, width: 0.16,
+        });
         const each = Math.max(3, Math.min(
             Math.round((24 * this.sparks.count) / 640),
             Math.floor((this.sparks.count * 0.8) / lit),
@@ -1161,6 +1323,13 @@ export class GalaxyWorld {
         this.level = Math.max(1, Math.round(Number(level) || 1));
         if (silent) this.applyPalette(1);
         else {
+            // The disc keeps the colours it wears until the new ones' front reaches them: it leaves
+            // the nucleus now and sweeps out to the rim.
+            if (this.u) {
+                WIPE_KEYS.forEach(([now, old]) => this.u[old].value.copy(this.u[now].value));
+                this.wipeAt = this.time;
+                this.paletteStep = nearestStep(this.paletteStep, this.level - 1, GALAXY_PALETTES.length);
+            }
             this.storm = Math.max(this.storm, 0.75);
             this.flashSwell.hit(0.14, this.time);
             if (this.u) this.shockRing(this.time, 0.36);
@@ -1184,8 +1353,122 @@ export class GalaxyWorld {
      * a replay agree); the level's step eases in by `k` (1 snaps), the short way round the wheel.
      */
     applyPalette(k) {
-        this.paletteStep = easeStep(this.paletteStep, this.level - 1, k, GALAXY_PALETTES.length);
-        paletteAt(this.paletteStep + galaxyDrift(this.time), this._palette);
+        const count = GALAXY_PALETTES.length;
+        this.paletteSoft = easeStep(this.paletteSoft, this.level - 1, k, count);
+        // The disc's step waits for a level's front (levelUp); without one it keeps to the eased step.
+        if (k >= 1 || this.time - this.wipeAt > 6) this.paletteStep = this.paletteSoft;
+        const drift = galaxyDrift(this.time);
+        paletteAt(this.paletteStep + drift, this._palette);
+        paletteAt(this.paletteSoft + drift, this._soft);
+    }
+
+    /** The colour a twist runs in along the arms: the nurseries' own, toward starfire. */
+    twistTone() {
+        const p = this._palette.nursery;
+        const rgb = [0, 1, 2].map((c) => p[c] * 0.75 + STARFIRE[c] * 0.25);
+        const peak = Math.max(rgb[0], rgb[1], rgb[2], 1e-4);
+        return rgb.map((c) => (c / peak) * 0.9 + 0.1);
+    }
+
+    /**
+     * Send light along the arms like a fuse from `birth`. `span` = seconds the run takes (negative:
+     * in from the rim to the nucleus), `arm` = 0 both or ±1 one of them, `width` = the head's
+     * length as a share of the arm. It takes the slot with the least light left.
+     */
+    pulse(birth, {
+        span = 1.1, arm = 0, strength = 1, rgb = STARFIRE, width = 0.1,
+    } = {}) {
+        const { u } = this;
+        if (!u) return -1;
+        let slot = 0;
+        let least = Infinity;
+        for (let i = 0; i < PULSE_SLOTS; i++) {
+            const A = u.pulseA[i].value;
+            const age = birth - A.x;
+            const life = Math.abs(A.y) + PULSE_TAIL;
+            let left = 0;
+            if (age < 0) left = A.w;
+            else if (age < life) left = A.w * (1 - age / life);
+            if (left < least - 1e-9) {
+                slot = i;
+                least = left;
+            }
+        }
+        u.pulseA[slot].value.set(birth, span, arm, strength);
+        u.pulseC[slot].value.set(rgb[0] * 1.3, rgb[1] * 1.3, rgb[2] * 1.3, width);
+        return slot;
+    }
+
+    /**
+     * Something happens that no one played (galaxy-living.js). Stamped at its own moment, so
+     * whatever frame notices it the galaxy is the same.
+     */
+    happen(h) {
+        const { u } = this;
+        if (!u) return;
+        const p = this._palette;
+        if (h.kind === 'nova') {
+            // A sun goes off beside a nursery that stands clear of the card.
+            if (this.time - this.targetsAt > TARGET_REFRESH) this.findTargets();
+            const pool = this.targets.left.length >= this.targets.right.length ? this.targets.left : this.targets.right;
+            if (!pool.length || !this.novae) return;
+            const site = this.plan.nurseries[pool[Math.min(pool.length - 1, Math.floor(h.a * pool.length))].index];
+            const radius = Math.max(GALAXY.armStart * 1.4, Math.min(GALAXY.radius * 0.95, site.radius + (h.b - 0.5) * 9));
+            const offset = site.offset + 0.07 + (h.c - 0.5) * 0.08;
+            const rgb = h.c < 0.5 ? [0.72, 0.84, 1.0] : [1.0, 0.86, 0.62];
+            this.novae.fire({
+                radius, offset, y: site.y, rgb, time: h.time, strength: 0.8 + h.b * 0.4,
+            });
+            // Its light runs out through the gas round it a moment later.
+            nurseryPosition({ radius, offset, y: site.y }, u.winding.value, this._local);
+            this.ring(this._local[0], this._local[2], h.time + 0.25, 0.42, rgb, 0.85);
+        } else if (h.kind === 'ripple') {
+            // A ripple of star formation runs slowly down one arm.
+            this.pulse(h.time, {
+                span: 5.5, arm: h.a < 0.5 ? 1 : -1, strength: 0.5, rgb: p.nursery, width: 0.17,
+            });
+        } else if (h.kind === 'shower') {
+            this.meteors?.emit({
+                n: Math.min(Math.round(this.meteors.count * 0.5), 4 + Math.floor(h.a * 3)),
+                time: h.time,
+                rgb: p.nucleus,
+                stagger: 3.2,
+                size: 2.1,
+            });
+        } else if (h.kind === 'stir') {
+            // The nucleus stirs: a knot of light up both jets, its rays swell.
+            this.burst(h.time, 0.4);
+            this.clearSwell.hit(0.25, h.time);
+            this.surge = Math.max(this.surge, 0.1);
+        } else if (h.kind === 'flash') {
+            // A flash in the companion, far off.
+            this.wakeSwell.hit(0.5, h.time);
+        }
+        this.counts.happenings += 1;
+    }
+
+    /**
+     * A run is over: the galaxy sinks into the night. Its young light goes out, the nucleus dims,
+     * the pattern all but stops; the far sky stays. It comes back by itself after OVER_HOLD, or at
+     * once, from the nucleus outward, when the next run starts (onSessionStart).
+     */
+    onGameOver() {
+        this.over = true;
+        this.overAt = this.time;
+    }
+
+    /** A new run: if the galaxy was dark it re-ignites, a wave and both arms out from the nucleus. */
+    onSessionStart() {
+        if (!this.over && this.dusk < 0.05) return;
+        this.over = false;
+        if (!this.u || !this.nurseries) return;
+        const rgb = [...STARFIRE];
+        this.wave(this.time, 2, 1.0, 0.8, rgb);
+        this.pulse(this.time, {
+            span: 1.3, strength: 1.0, rgb, width: 0.16,
+        });
+        this.clearSwell.hit(0.4, this.time);
+        this.burst(this.time, 0.6);
     }
 
     // ── Frame ───────────────────────────────────────────────────────────────────
@@ -1226,9 +1509,30 @@ export class GalaxyWorld {
             this.storm = Math.max(this.storm, this.pendingSurge.storm * Math.exp(-lateness / STORM_COOL));
             this.pendingSurge.time = Infinity;
         }
+        // ── A run's end: the galaxy sinks into the night, and comes back ──
+        if (this.over && t - this.overAt >= OVER_HOLD) this.over = false;
+        const duskTarget = this.over ? 1 : 0;
+        this.dusk += (duskTarget - this.dusk) * approach(duskTarget > this.dusk ? 1.5 : 0.8, dt);
+        if (dt === 0) this.dusk = duskTarget;
+        if (this.dusk < 1e-4 && !this.over) this.dusk = 0;
+        const night = 1 - this.dusk;
+        // ── What happens by itself ──
+        if (this.happenings) {
+            const beat = happeningBeat(t);
+            if (beat !== this.happenBeat) {
+                this.happenBeat = beat;
+                this.pendingHappening = beat >= 0 ? happeningAt(beat, this._happening) : null;
+            }
+            const h = this.pendingHappening;
+            if (h && t >= h.time && dt > 0) {
+                this.pendingHappening = null;
+                if (!this.over) this.happen(h);
+            }
+        }
         const hush = t < this.hushUntil ? 1 : 0;
         // The held breath: all the way down from cold, a shallow inhale in a fever.
-        const breathTarget = hush ? 1 - 0.88 * this.hushDepth : 1 - this.dip;
+        const lit = 1 - (1 - OVER_FLOOR) * this.dusk;
+        const breathTarget = (hush ? 1 - 0.88 * this.hushDepth : 1 - this.dip) * lit;
         this.breath += (breathTarget - this.breath) * approach(hush ? 40 : 14, dt);
         if (dt === 0) this.breath = breathTarget;
 
@@ -1236,6 +1540,8 @@ export class GalaxyWorld {
         const ringTarget = Math.max(0, Math.min(MAX_RINGS, this.combo - 1));
         this.rings += (ringTarget - this.rings) * approach(ringTarget > this.rings ? 5 : 1.4, dt);
         this.applyPalette(approach(0.8, dt));
+        // The air it wears (after the palettes: a level moves both, in the same frame).
+        const air = this.applyAir();
 
         // The arms' spring (semi-implicit, in small steps so a long frame cannot blow it up).
         let left = Math.min(dt, 0.1);
@@ -1245,12 +1551,17 @@ export class GalaxyWorld {
             this.twist += this.twistVelocity * h;
             left -= h;
         }
-        u.winding.value = GALAXY.winding + this.twist * TWIST_REACH * (this.reducedMotion ? 0.25 : 1);
+        u.winding.value = GALAXY.winding + this.twist * TWIST_REACH * (this.reducedMotion ? 0.25 : 1)
+            + (this.reducedMotion ? 0 : air.wind);
 
         // The jets: every step of the chain pushes them out; an eruption fires them whole; hot
         // play stands them out along the axis and a fever holds them at their full reach.
-        const reachTarget = Math.min(1, 0.1 + 0.6 * this.power ** 1.3 + this.surge * 0.95 + 0.3 * hotK + 0.5 * fever);
-        const gainTarget = 0.07 + this.power * 0.85 + this.surge * 1.1 + 0.3 * hotK + 0.8 * fever + crown * 0.5;
+        const reachTarget = Math.min(
+            1,
+            0.1 + 0.6 * this.power ** 1.3 + this.surge * 0.95 + 0.3 * hotK + 0.5 * fever + air.jets * 1.4,
+        );
+        const gainTarget = (0.07 + this.power * 0.85 + this.surge * 1.1 + 0.3 * hotK + 0.8 * fever + crown * 0.5
+            + air.jets) * night;
         this.jetReach += (reachTarget - this.jetReach) * approach(reachTarget > this.jetReach ? 7 : 1.1, dt);
         this.jetGain += (gainTarget - this.jetGain) * approach(gainTarget > this.jetGain ? 9 : 1.4, dt);
 
@@ -1258,8 +1569,9 @@ export class GalaxyWorld {
         const hurry = this.reducedMotion ? 0 : 1;
         const spinUp = this.power * 3 + this.surge * 7 + 1.2 * hotK + 2.5 * fever + crown * 2;
         const flowUp = this.power * 4 + this.surge * 9 + this.storm * 2 + 0.8 * warmK + 1.5 * hotK + 3 * fever;
-        this.spin += dt * SPIN_RATE * motion * (1 + spinUp * hurry);
+        this.spin += dt * SPIN_RATE * motion * (1 + spinUp * hurry) * (1 - 0.7 * this.dusk);
         this.flow += dt * motion * (1 + flowUp * hurry);
+        this.skyTurn = (this.skyTurn + dt * (TAU / SKY_TURN) * motion) % TAU;
 
         // A shooting star now and then, on the sky's own clock.
         const beat = Math.floor(t / METEOR_BEAT);
@@ -1305,8 +1617,20 @@ export class GalaxyWorld {
         for (let i = 0; i < CLEAR_SLOTS; i++) {
             if (t - u.waveA[i].value.x < WAVE_LIVE) wavesLive = 1;
         }
+        let pulsesLive = 0;
+        for (let i = 0; i < PULSE_SLOTS; i++) {
+            const A = u.pulseA[i].value;
+            if (t - A.x < Math.abs(A.y) + PULSE_TAIL) pulsesLive = 1;
+        }
         u.ripplesLive.value = ripplesLive;
         u.wavesLive.value = wavesLive;
+        u.pulsesLive.value = pulsesLive;
+        u.dustGain.value = air.dust;
+        // A new level's colours sweep out from the nucleus; past the rim the front is done.
+        const wipeAge = t - this.wipeAt;
+        if (wipeAge >= 0 && wipeAge * WIPE_SPEED < GALAXY.bound * 1.5) {
+            u.wipe.value.set(wipeAge * WIPE_SPEED, smooth(0, 0.25, wipeAge) * (1 - smooth(1.8, 3.2, wipeAge)) * 0.9);
+        } else u.wipe.value.set(1e4, 0);
         u.time.value = t;
         u.power.value = this.power;
         u.surge.value = this.surge;
@@ -1316,7 +1640,7 @@ export class GalaxyWorld {
         // The sky's stars brighten with play.
         u.skyPulse.value = Math.min(
             1.2,
-            this.storm * 0.7 + this.surge * 0.5 + 0.15 * warmK + 0.2 * hotK + 0.3 * fever + crown * 0.4,
+            this.storm * 0.7 + this.surge * 0.5 + 0.15 * warmK + 0.2 * hotK + 0.3 * fever + crown * 0.4 + air.stars,
         );
         u.jets.value.x = this.jetReach;
         u.jets.value.y = this.jetGain;
@@ -1325,6 +1649,7 @@ export class GalaxyWorld {
         // The companion wakes on a back-to-back, in a fever and under a perfect clear's crown.
         u.companion.value.w = Math.min(2.5, fever * 0.9 + wake + crown * 0.6);
         const p = this._palette;
+        const soft = this._soft;
         // The core burns toward starfire in the overdrive, in a fever and under the crown.
         const fire = clamp01(this.surge * 0.5 + 0.12 * hotK + 0.22 * fever + crown * 0.45);
         const warm = (key, node, gain = 1) => {
@@ -1337,18 +1662,23 @@ export class GalaxyWorld {
         };
         const lift = 1 + this.power * 0.25 + this.storm * 0.12
             + 0.04 * warmK + 0.05 * hotK + 0.06 * fever + crown * 0.15;
-        warm('core', u.core, lift);
-        warm('nucleus', u.nucleus);
-        u.armInner.value.set(p.armInner[0] * lift, p.armInner[1] * lift, p.armInner[2] * lift);
-        u.armOuter.value.set(p.armOuter[0] * lift, p.armOuter[1] * lift, p.armOuter[2] * lift);
+        warm('core', u.core, lift * air.core);
+        warm('nucleus', u.nucleus, 1 - 0.55 * this.dusk);
+        // The arms' young light: the air's hand on it, and at a run's end it all but goes out.
+        const young = lift * air.young * (1 - 0.6 * this.dusk);
+        u.armInner.value.set(p.armInner[0] * young, p.armInner[1] * young, p.armInner[2] * young);
+        u.armOuter.value.set(p.armOuter[0] * young, p.armOuter[1] * young, p.armOuter[2] * young);
         // Star formation quickens: the nurseries and the knots of the arms glow with play.
-        const forming = 1 + 0.12 * warmK + 0.08 * hotK + 0.1 * fever + crown * 0.4;
+        const forming = (1 + 0.12 * warmK + 0.08 * hotK + 0.1 * fever + crown * 0.4) * air.knots * (1 - 0.7 * this.dusk);
         u.nursery.value.set(p.nursery[0] * forming, p.nursery[1] * forming, p.nursery[2] * forming);
-        u.dust.value.set(p.dust[0], p.dust[1], p.dust[2]);
-        u.jet.value.set(p.jet[0], p.jet[1], p.jet[2]);
-        u.nebulaA.value.set(p.nebulaA[0], p.nebulaA[1], p.nebulaA[2]);
-        u.nebulaB.value.set(p.nebulaB[0], p.nebulaB[1], p.nebulaB[2]);
-        u.voidCol.value.set(p.void[0], p.void[1], p.void[2]);
+        u.dust.value.set(soft.dust[0], soft.dust[1], soft.dust[2]);
+        u.jet.value.set(soft.jet[0], soft.jet[1], soft.jet[2]);
+        u.nebulaA.value.set(soft.nebulaA[0], soft.nebulaA[1], soft.nebulaA[2]);
+        u.nebulaB.value.set(soft.nebulaB[0], soft.nebulaB[1], soft.nebulaB[2]);
+        u.voidCol.value.set(soft.void[0], soft.void[1], soft.void[2]);
+        u.halo.value.z = HALO_GAIN * air.halo * night
+            * (1 + this.power * 0.5 + this.surge * 0.8 + 0.3 * fever + crown * 0.6);
+        u.halo.value.w = air.clouds;
         if (this.nucleus) {
             // The nucleus charges like a quasar: its flare, and (hot) the lens streak through it.
             this.nucleus.uniforms.glare.value.set(
@@ -1369,6 +1699,9 @@ export class GalaxyWorld {
             }
             u.camLocal.value.copy(camera.position).applyMatrix4(this._inverse);
             u.nucleusDir.value.copy(this._centre).sub(camera.position).normalize();
+            // The deep sky's frame for this moment, and where the galaxy stands in its clouds.
+            skyFrame(this.skyTurn, u.skyRot.value);
+            skyCloudPoint(u.nucleusDir.value, u.skyRot.value, u.skyLight.value);
             this._ray.copy(this._centre).project(camera);
             this.heart.x = Math.max(-0.5, Math.min(1.5, this._ray.x * 0.5 + 0.5));
             this.heart.y = Math.max(-0.5, Math.min(1.5, 0.5 - this._ray.y * 0.5));
@@ -1386,6 +1719,9 @@ export class GalaxyWorld {
         // The iris closes as the galaxy flares and as play heats, so its colours survive.
         post.exposure = 1 / (1 + this.surge * 1.3 + swell * 0.5 + this.power * 0.25 + this.storm * 0.15
             + 0.08 * warmK + 0.14 * hotK + 0.2 * fever + crown * 0.35);
+        // The gold front crosses the sky while the iris is still closed on the eruption: it is
+        // written against the iris, so it shows as it was meant whatever the galaxy is doing.
+        u.crownWave.value.y = this.crownGain * Math.min(3, 1 / post.exposure);
         const rippleAge = t - this.spaceRipple.birth;
         post.ripple.radius = Math.max(0, rippleAge) * RIPPLE_SPEED;
         post.ripple.strength = rippleAge >= 0
@@ -1417,6 +1753,11 @@ export class GalaxyWorld {
             stage: this.heat.stage,
             palette: paletteNear(this.palettePhase()).name,
             mood: this.paletteStep + galaxyDrift(this.time),
+            /** The air it wears (galaxy-living.js), and whether a run's end holds it dark. */
+            air: this._air.name,
+            airPhase: this.airPhase(),
+            over: this.over,
+            dusk: this.dusk,
             counts: { ...this.counts },
             held: this.nurseries ? this.nurseries.totalHeld(this.time) : 0,
             stars: this.parts.stars ? this.parts.stars.count : 0,
@@ -1444,6 +1785,7 @@ export class GalaxyWorld {
         this.textures = [];
         this.parts = {};
         this.nurseries = null;
+        this.novae = null;
         this.sparks = null;
         this.seeds = null;
         this.beams = null;
