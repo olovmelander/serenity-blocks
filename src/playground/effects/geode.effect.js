@@ -12,6 +12,11 @@
  *   statsHud=0               with board=1: board only, no HUD mock
  *   combo=<n>                hold a combo of n (the geode's charge, and the crown it has grown)
  *   level=<n>                rest on level n's mineral
+ *   air=<n>                  hold air n (0 radiance, 1 blaze, 2 prism, 3 embers, 4 moonstone; a
+ *                            fraction is the melt between two); without it the clock turns them
+ *   visits=0                 no visits (the geode at rest, whatever the clock says)
+ *   visit=shimmer|chime|fall|cascade|swell|fire   hold one visit...
+ *   visitAge=<s>             ...at <s> seconds into it
  *   locks=<n>                before anything else, play n locks (the crystals holding their light)
  *   event=lock|drop|clear|quad|twist|perfect|crown|spin|levelUp   fire a gameplay event (crown: a
  *                            quad crowned by its perfect clear, settled after it as physics sends
@@ -123,6 +128,9 @@ export function create({
     }).build();
     world.bindCamera(camera);
     world.setReducedMotion(params.get('reduce') === '1');
+    if (params.has('air')) world.airHold = Math.max(0, num(params, 'air'));
+    if (params.get('visits') === '0') world.visits = false;
+    if (params.get('visit')) world.visitHold = { kind: params.get('visit'), age: num(params, 'visitAge', 2) };
     const partsParam = params.get('parts');
     if (partsParam) world.showOnlyParts(partsParam.split(',').map((p) => p.trim()));
 

@@ -20,7 +20,8 @@
  *             and only stand while the chain has grown their ring.
  *   glints    a four-pointed star on every point that holds or fires light.
  *   beams     a four-line clear: every cluster's tallest crystal throws a prismatic lance.
- *   druzy     the lining's thousands of small points, shaded far more cheaply.
+ *   druzy     the lining's thousands of small points, shaded as glass too (createDruzy), a few of
+ *             them standing as crystals in their own right.
  *
  * The geode is an instrument and the hero crystals are its bells. A lock sends a spark into one:
  * it flashes from root to point in the piece's colour and KEEPS some of that light (it fades
@@ -45,6 +46,7 @@
 import * as THREE from 'three/webgpu';
 import {
     Fn,
+    If,
     abs,
     atan,
     attribute,
@@ -68,6 +70,7 @@ import {
     positionGeometry,
     positionWorld,
     reflect,
+    refract,
     sin,
     smoothstep,
     step,
@@ -84,6 +87,7 @@ import {
     CROWN_COLORS,
     CROWN_RINGS,
     FLASH_FADE,
+    GEODEFIRE,
     STORE_HOLD,
     STORE_MAX,
     TAU,
@@ -91,11 +95,19 @@ import {
     gdAir,
     gdBell,
     gdEnv,
+    gdFracture,
     gdFxMaterial,
     gdMineral,
+    gdPalette,
+    gdSheen,
+    gdSweep,
+    gdVisit,
+    gdWhirl,
     gdPart,
     gdQuadGeometry,
     gdSpectrum,
+    gdThin,
+    gdThinUV,
     gdWallW,
     gdWaves,
 } from './geode-tsl.js';
@@ -105,6 +117,9 @@ const SHOULDER = 0.78;
 /** Corner radii of the unit crystal's six sides: a slightly irregular hexagon. */
 const CORNERS = [1.0, 0.86, 1.04, 0.9, 1.0, 0.84];
 const NEVER = 1e9;
+/** The share of the lining's points that stand as crystals among the druzy: tall ones, and great ones. */
+const DRUZY_TALL = 0.945;
+const DRUZY_GREAT = 0.987;
 /** Seconds before its pass at which a waiting flare takes over the shader's slot. */
 const FLARE_HANDOVER = 0.03;
 /** The brightest a lance that carries the next four-line clear's (or a perfect clear's) grows. */
@@ -137,6 +152,39 @@ function unitCrystal() {
 function fractHash(seed, k) {
     return seed.mul(k).mul(0.1031).fract().mul(seed.mul(0.37).add(k * 3.1))
         .fract();
+}
+
+/**
+ * The colour of a stone passing `amount` of light: its own deep colour while there is little, and
+ * paler the more there is — a saturated violet has almost no brightness to give, so a lit window of
+ * amethyst is lavender and its dark face is ink. `light` is the colour of the light coming through.
+ */
+function gemTone(body, light, amount) {
+    const a = max(amount, 0.0);
+    return body.mul(body.add(0.2)).mul(light).mul(a)
+        .add(mix(body, vec3(1.0), 0.2).mul(light).mul(a.mul(a).mul(0.3)));
+}
+
+/**
+ * What shows inside a cut stone through one of its faces: the prism's far edges and far faces,
+ * seen through the near one as flat plates of lighter and darker stone with hard sides, which
+ * slide across the face as the eye moves; and the chevron of an earlier point (a phantom).
+ * Returns (wide plate, narrow plate, phantom line), each 0..1. `across` runs −1..1 over the face
+ * and `t` 0..1 up it; `rnd` is the stone's own seed.
+ */
+function facetInterior(across, t, V, rnd) {
+    const slide = V.x.mul(1.5).add(V.z.mul(0.9)).add(V.y.mul(1.1));
+    const g1 = across.mul(0.62).add(slide).add(rnd.mul(6.0)).add(t.mul(0.3));
+    const g2 = across.mul(1.35).sub(slide.mul(1.7)).add(rnd.mul(11.0)).sub(t.mul(0.55));
+    // (the plates' sides are as wide as a pixel: hard on a large face, soft on a point a few pixels tall)
+    const soft = fwidth(g1).mul(1.2).add(0.012);
+    const d1 = abs(fract(g1).sub(0.5));
+    const d2 = abs(fract(g2).sub(0.5));
+    const wide = smoothstep(float(0.2).sub(soft), float(0.2).add(soft), d1);
+    const narrow = smoothstep(float(0.32).sub(soft.mul(2.2)), float(0.32).add(soft.mul(2.2)), d2);
+    const ch = abs(fract(t.mul(2.3).sub(abs(across).mul(0.6)).add(rnd.mul(3.0))).sub(0.5));
+    const phantom = smoothstep(float(0.44).sub(soft), float(0.47), ch).mul(smoothstep(0.1, 0.4, t));
+    return vec3(wide, narrow, phantom);
 }
 
 /**
@@ -254,6 +302,13 @@ export function createCrystals(u, list, { dispersion = true, beams = true } = {}
     const aux = attribute('aAux', 'vec4');
     const ring = look.w;
     const isCrown = step(0.5, ring);
+    const rootW = gdWallW(base.xyz);
+    const rootTurn = atan(base.y, base.x).div(TAU);
+    // A level-up's front (gdSweep): a stone turns to the new mineral as the front passes its root.
+    const pal = gdPalette(u, gdSweep(u, rootW).x);
+    // A cluster ringing by itself (a visit): the stones round its root glow in its colour.
+    const fromChime = base.xyz.sub(u.chime.xyz);
+    const chime = u.chimeC.mul(exp(dot(fromChime, fromChime).div(-70.0)).mul(u.chime.w)).mul(float(1.0).sub(isCrown));
 
     /** How much of the crystal stands (vertex stage): heroes always, the crown ring by ring. */
     const grown = () => {
@@ -263,7 +318,7 @@ export function createCrystals(u, list, { dispersion = true, beams = true } = {}
         return mix(float(1.0), e.add(sin(g.mul(Math.PI)).mul(0.14)), isCrown);
     };
     /** The stone's own colour (vertex stage). */
-    const stone = () => mix(gdMineral(u, look.y), crownColor(ring), isCrown);
+    const stone = () => mix(gdMineral(pal, look.y), crownColor(ring), isCrown);
     /** Light held now (vertex stage): the new light only once its spark has arrived. */
     const held = () => {
         // A cut voids what landed before it: the light shown while a spark is in flight, and
@@ -301,14 +356,21 @@ export function createCrystals(u, list, { dispersion = true, beams = true } = {}
     material.side = THREE.FrontSide;
     material.positionNode = crystalVertex(base, axis, look, grown());
 
-    const rootW = gdWallW(base.xyz);
     const vTint = varying(stone(), 'gdTint');
     const vHeld = varying(held(), 'gdHeld');
     const vFlash = varying(vec4(flashA.rgb.mul(envOf(flashA)), ageOf(flashA)), 'gdFlash');
     const vRelease = varying(vec4(releaseA.rgb.mul(envOf(releaseA)), ageOf(releaseA)), 'gdRelease');
     const vLook = varying(vec3(isCrown, fractHash(look.z, 2.9), base.w), 'gdLook');
+    const vAxis = varying(axis.xyz, 'gdAxis');
     // Gameplay light travelling along the wall, decided once per crystal at its root.
-    const vWave = varying(gdWaves(u, rootW, base.xyz), 'gdWave');
+    const waves = gdWaves(u, rootW, base.xyz);
+    // …and what crosses the lining of itself: a visit's sparkle, the moonstone sheen, a twist's
+    // pinwheel, a chime.
+    const crossing = gdVisit(u, rootTurn, rootW).rgb
+        .add(mix(pal.fill, vec3(1.0), 0.35).mul(gdSheen(u, rootTurn, rootW)).mul(0.3))
+        .add(gdWhirl(u, rootTurn, rootW).mul(0.8))
+        .add(chime.mul(1.4));
+    const vWave = varying(vec4(waves.rgb.add(crossing), waves.a), 'gdWave');
     const facet = attribute('aFacet', 'vec2');
 
     material.colorNode = Fn(() => {
@@ -327,49 +389,56 @@ export function createCrystals(u, list, { dispersion = true, beams = true } = {}
         const rnd = vLook.y;
         const Lh = normalize(u.heartPos.sub(p)).toVar();
 
-        // ── Lit: pale at the root, deep toward the point ──
+        // ── The stone: pale at the root, deep toward the point ──
         const zone = smoothstep(0.0, 0.8, t.add(rnd.sub(0.5).mul(0.35)));
         const body = mix(mix(tint, vec3(1.0), 0.35).mul(0.8), tint, zone).toVar();
         // The root stands in its neighbours' shade.
-        const shade = smoothstep(0.0, 0.3, t).mul(0.7).add(0.3);
+        const shade = smoothstep(0.0, 0.3, t).mul(0.7).add(0.3).toVar();
         const key = max(dot(N, Lh), 0.0).toVar();
         // No two facets are cut alike: each takes the light a little differently.
         const cut = sin(dot(N, vec3(12.9, 78.2, 37.7)).add(rnd.mul(20.0))).mul(0.5).add(0.5).toVar();
-        // Growth lines run across every face.
-        const growth = sin(t.mul(vLook.z).mul(2.4).add(rnd.mul(30.0))).mul(0.06).add(0.95);
-        const front = body.mul(u.heart.mul(key.mul(1.1)).add(u.fill.mul(ndv.mul(0.3).add(0.06))))
-            .mul(cut.mul(0.95).add(0.3)).mul(growth).mul(shade);
+        const lightIn = mix(u.heart, vec3(1.0), 0.5).toVar();
+        const e2 = across.mul(across);
+        const edge = e2.mul(e2).toVar();
 
-        // ── Through: the heart behind the stone ──
+        // ── Within: the prism's far edges behind the facet, as plates with hard sides that slide
+        // across the face as the eye moves, and the chevron of an earlier point ──
+        const inner = facetInterior(across, t, V, rnd).toVar();
+        const planes = inner.x.mul(0.62).add(inner.y.mul(0.38)).toVar();
+        const plates = planes.mul(0.75).add(0.4).toVar();
+
+        // ── Through: the refracted ray. A facet whose far side looks at the heart is a window of
+        // the stone's own colour; the one beside it is dark. ──
+        const T = refract(V, N, float(0.66));
+        const tr = max(dot(T, Lh), 0.0);
+        const tr2 = tr.mul(tr);
         const back = dot(V, Lh).mul(0.5).add(0.5);
-        const thick = mix(float(1.0), float(0.25), t).mul(ndv.mul(0.6).add(0.4));
-        const lightIn = mix(u.heart, vec3(1.0), 0.5);
-        const glowThrough = body.mul(body.add(0.18)).mul(lightIn).mul(back.mul(back))
-            .mul(exp(thick.mul(-1.7)))
-            .mul(1.7);
+        const window = tr2.mul(tr2).mul(2.6).add(back.mul(back).mul(0.55)).add(cut.mul(cut).mul(0.3));
+        // (thick at the root, thin toward the point and along every arris)
+        const slim = max(t.mul(t), edge.mul(0.8));
+        const through = window.mul(slim.mul(0.9).add(0.5)).mul(plates);
+        // Growth lines run across every face.
+        const lines = sin(t.mul(vLook.z).mul(5.0).add(rnd.mul(40.0))).toVar();
+        const lit = key.mul(cut.mul(0.9).add(0.3)).mul(lines.mul(0.07).add(0.93));
+        // A core that glows from the root: the bell's own hum, louder as play heats and in an air
+        // that sets the stones burning from within.
+        const breathe = sin(u.time.mul(0.6).add(rnd.mul(40.0))).mul(0.16).add(0.84);
+        const core = up.mul(up).mul(1.0).add(0.2).mul(breathe)
+            .mul(planes.mul(0.5).add(0.75))
+            .mul(u.power.mul(1.4).add(u.heat.x.mul(0.2)).add(u.heat.y.mul(0.35)).add(u.mood.y.mul(1.5))
+                .add(1.0))
+            .mul(0.42);
+        const amount = through.add(lit).mul(shade).add(core).toVar();
+        const gem = gemTone(body, lightIn, amount)
+            // (the cool light from the viewer's side, on the faces turned to it)
+            .add(body.mul(u.fill).mul(u.lamp.x).mul(ndv.mul(0.26).add(0.05)).mul(shade))
+            .add(mix(body, vec3(1.0), 0.4).mul(lightIn).mul(inner.z).mul(amount.mul(0.3).add(0.04)));
 
-        // ── Mirror ──
-        const R = reflect(V, N).toVar();
+        // ── Mirror: the growth lines tilt the face a little, so what it throws back is streaked ──
+        const Ns = normalize(N.add(vAxis.mul(lines.mul(0.06))));
+        const R = reflect(V, Ns).toVar();
         const om = float(1.0).sub(ndv);
         const fres = om.mul(om).mul(om).mul(0.85).add(0.06);
-
-        // ── Within: the far edges behind the facet, phantoms, and a core that glows ──
-        // The far edges of the prism, seen through the near face: straight bands that run the
-        // length of the crystal and slide across the face as the eye moves.
-        const ghost = across.mul(1.6).add(V.x.mul(1.5)).add(V.z.mul(0.9)).add(rnd.mul(6.0));
-        const planes = gdBell(ghost.fract().sub(0.5).mul(3.4)).mul(0.62)
-            .add(gdBell(ghost.mul(2.3).add(0.37).fract().sub(0.5)
-                .mul(5.5)).mul(0.38))
-            .toVar();
-        // Phantoms: the chevrons of earlier points, one inside the other.
-        const phantom = gdBell(fract(t.mul(3.3).sub(abs(across).mul(0.4)).add(rnd.mul(3.0))).sub(0.5).mul(5.0))
-            .mul(smoothstep(0.08, 0.4, t));
-        const breathe = sin(u.time.mul(0.6).add(rnd.mul(40.0))).mul(0.16).add(0.84);
-        const core = body.mul(mix(body, vec3(1.0), 0.2)).mul(up.mul(up).mul(1.2).add(0.22))
-            .mul(breathe).mul(u.power.mul(1.4).add(u.heat.x.mul(0.2)).add(u.heat.y.mul(0.35)).add(1.0));
-        const within = body.mul(planes).mul(u.heart).mul(key.mul(0.6).add(0.4)).mul(0.2)
-            .add(core.mul(planes.mul(0.5).add(0.75)))
-            .add(body.mul(phantom).mul(u.heart).mul(0.14));
 
         // ── The light it holds, and the flash of a strike or a release ──
         // A strike runs root to point; a release bursts from the point back down.
@@ -388,11 +457,11 @@ export function createCrystals(u, list, { dispersion = true, beams = true } = {}
             float(1.0).sub(smoothstep(sw.mul(0.5), sw.mul(2.0), abs(facet.y.sub(SHOULDER)))).mul(0.7),
         );
         const edgeLight = gdEnv(u, N).mul(1.6)
-            .add(u.heart.mul(key.mul(0.5).add(0.06)))
-            .add(u.fill.mul(0.1))
+            .add(lightIn.mul(key.mul(0.5).add(amount.mul(0.3)).add(0.06)))
+            .add(u.fill.mul(u.lamp.x).mul(0.1))
             .add(vHeld.add(vFlash.rgb).add(vRelease.rgb).mul(0.9));
 
-        const col = mix(front.add(glowThrough).add(within), gdEnv(u, R), fres).toVar();
+        const col = mix(gem, gdEnv(u, R), fres).toVar();
         if (dispersion) {
             // Fire: the facet bends the heart toward the eye one colour at a time.
             const fx = dot(R, Lh).mul(3.2).add(dot(N, vec3(7.1, 3.3, 5.7))).add(rnd.mul(9.0));
@@ -400,6 +469,14 @@ export function createCrystals(u, list, { dispersion = true, beams = true } = {}
             col.addAssign(gdSpectrum(fract(fx)).mul(gate).mul(key.mul(0.7).add(0.3)).mul(0.9));
         }
         col.addAssign(edgeLight.mul(mix(body, vec3(1.0), 0.45)).mul(arris).mul(0.8));
+        // A perfect clear's opal fire: every facet plays a colour of its own, and they run.
+        If(u.live2.y.greaterThan(0.5), () => {
+            const hue = dot(N, V).mul(2.7).add(rnd.mul(7.0)).add(u.time.mul(0.35))
+                .add(across.mul(0.3));
+            const play = gdBell(fract(hue.mul(0.5).add(cut)).sub(0.5).mul(2.6));
+            col.addAssign(gdSpectrum(fract(hue)).mul(play).mul(u.opal).mul(planes.mul(0.5).add(0.7))
+                .mul(0.9));
+        });
         col.assign(gdAir(u, col, p));
         col.mulAssign(u.breath);
         col.addAssign(heldLight.mul(u.breath).add(flash));
@@ -429,7 +506,9 @@ export function createCrystals(u, list, { dispersion = true, beams = true } = {}
             .add(u.heart.mul(step(float(0.74).sub(u.heat.y.mul(0.3)), seed)).mul(stay.mul(stay)).mul(0.16)
                 .mul(u.heat.y.mul(1.4).add(1.0))
                 .mul(u.breath)
-                .mul(float(1.0).sub(isCrown)));
+                .mul(float(1.0).sub(isCrown)))
+            // a cluster ringing by itself sets its points alight
+            .add(chime.mul(stay.mul(0.5).add(0.35)));
         const power = max(lightNow.r, max(lightNow.g, lightNow.b));
         const clip = cameraProjectionMatrix.mul(cameraViewMatrix).mul(vec4(tip, 1.0));
         const half = u.viewport.mul(0.5);
@@ -461,21 +540,26 @@ export function createCrystals(u, list, { dispersion = true, beams = true } = {}
         const tip = tipOf();
         const age = u.time.sub(aux.y);
         const live = step(0.0, age).mul(step(age, BEAM_LIFE)).mul(step(0.001, aux.z));
-        const reach = base.w.mul(1.6).add(16.0);
+        // A lance crosses the cavity: long, as wide as the stone that throws it, and it swings a
+        // little as it stands (each on its own beat), so the beams scissor through the dust.
+        const reach = base.w.mul(2.1).add(32.0);
         const along = positionGeometry.y.add(0.5);
         const toCam = normalize(cameraPosition.sub(tip));
         const right = normalize(cross(axis.xyz, toCam));
+        const swing = sin(age.mul(fractHash(look.z, 8.3).mul(1.4).add(1.1)).add(fractHash(look.z, 1.3).mul(6.28)))
+            .mul(0.085);
+        const aim = normalize(axis.xyz.add(right.mul(swing)));
         const dist = length(cameraPosition.sub(tip));
-        const width = max(axis.w.mul(1.5).add(0.3), dist.mul(0.006)).mul(live);
-        const world = tip.add(axis.xyz.mul(along.mul(reach))).add(right.mul(positionGeometry.x.mul(width).mul(2.0)));
+        const width = max(axis.w.mul(2.4).add(0.8), dist.mul(0.02)).mul(live);
+        const world = tip.add(aim.mul(along.mul(reach))).add(right.mul(positionGeometry.x.mul(width).mul(2.0)));
         beamMaterial.vertexNode = cameraProjectionMatrix.mul(cameraViewMatrix).mul(vec4(world, 1.0));
         const vBeam = varying(vec4(mix(u.heart, releaseA.rgb.add(0.25), 0.3).mul(aux.z).mul(live), age), 'gdBeam');
         beamMaterial.colorNode = Fn(() => {
             const st = uv();
             const a = vBeam.w;
             const x = st.x.sub(0.5);
-            const across = exp(x.mul(x).mul(-24.0));
-            const core = exp(x.mul(x).mul(-700.0));
+            const across = exp(x.mul(x).mul(-17.0));
+            const core = exp(x.mul(x).mul(-420.0)).add(exp(x.mul(x).mul(-90.0)).mul(0.25));
             // The lance shoots out of the point, stands, then thins from its root.
             const shot = float(1.0).sub(smoothstep(a.mul(6.0).sub(0.25), a.mul(6.0), st.y))
                 .mul(smoothstep(a.mul(0.42).sub(0.3), a.mul(0.42), st.y));
@@ -483,8 +567,11 @@ export function createCrystals(u, list, { dispersion = true, beams = true } = {}
             const env = exp(a.mul(-1.5)).mul(smoothstep(0.0, 0.05, a));
             // White at the core, the spectrum spread across the sheath.
             const prism = gdSpectrum(st.x.mul(0.85).add(st.y.mul(0.25)));
-            const col = vBeam.rgb.mul(core.mul(1.6)).add(prism.mul(across).mul(0.5).mul(vBeam.rgb.r.add(0.2)));
-            return vec4(col.mul(shot).mul(reachFade).mul(env).mul(1.5), 0.0);
+            // (light runs out along it in beads)
+            const beads = sin(st.y.mul(34.0).sub(a.mul(26.0))).mul(0.18).add(0.82);
+            const col = vBeam.rgb.mul(core.mul(1.7)).add(prism.mul(across).mul(0.72).mul(vBeam.rgb.r.add(0.2)));
+            return vec4(col.mul(shot).mul(reachFade).mul(env).mul(beads)
+                .mul(1.6), 0.0);
         })();
         beamPart = gdPart('GeodeBeams', beamGeometry, beamMaterial, 26);
     }
@@ -934,14 +1021,31 @@ export function createCrystals(u, list, { dispersion = true, beams = true } = {}
 }
 
 /**
- * The lining's small points: one instanced draw, shaded as cheaply as a cut stone can be.
+ * The lining's small points: one instanced draw of cut amethyst, shaded as glass rather than as
+ * painted card. What a facet shows is decided by where it sends the eye:
+ *
+ *   mirror   the reflected ray: the facet that mirrors the heart flashes white (HDR, so it blooms
+ *            and reads as a glint), the growth lines across the face break the gloss beside it
+ *            into streaks, the rest mirror the dark of the cavity;
+ *   through  the refracted ray: a facet whose far side looks toward the heart is a lit window of
+ *            the stone's own colour, its neighbour is dark, so one point shows three or four
+ *            tones — and inside each, the far edges of the prism as hard-sided plates;
+ *   ember    where the wall is thin (gdThin) light from outside the stone comes up through the
+ *            roots: the points there are lit from behind like stained glass;
+ *   zoning   milky at the root, deepest at the point (amethyst's habit), dark where it stands in
+ *            its neighbours' shade; every arris catches a line of light.
+ *
+ * One point in fourteen stands twice as tall as its neighbours and one in sixty over three times,
+ * so the lining has the steps of size a real one has between its druzy and its great crystals.
  * @param {object} u
  * @param {{ count: number, base: Float32Array, axis: Float32Array, look: Float32Array }} druzy
  * @param {number} count  points drawn (the plan's first N)
  * @param {object} [opts]
  * @param {boolean} [opts.caustics=true]  patches of spectral light wander over the lining
+ * @param {boolean} [opts.fracture=true]  a four-line clear's fracture burns up through the points
+ * @param {boolean} [opts.facets=true]    the plates inside each face, and a pixel-wide arris
  */
-export function createDruzy(u, druzy, count, { caustics = true } = {}) {
+export function createDruzy(u, druzy, count, { caustics = true, fracture = true, facets = true } = {}) {
     const n = Math.min(count, druzy.count);
     const unit = unitCrystal();
     const geometry = new THREE.InstancedBufferGeometry();
@@ -960,29 +1064,77 @@ export function createDruzy(u, druzy, count, { caustics = true } = {}) {
     material.name = 'GeodeDruzy';
     material.fog = false;
     material.side = THREE.FrontSide;
-    material.positionNode = crystalVertex(base, axis, look, float(1.0), 0.3, 0.3);
-    const vTint = varying(mix(u.druzy, gdMineral(u, look.y), 0.28), 'gdDruzyTint');
+    // The steps of size: most points are druzy, a few are crystals in their own right (the
+    // great ones stand back from the viewer, where they are seen whole).
+    const pick = fractHash(look.z, 4.3);
+    const back = float(1.0).sub(smoothstep(1.62, 1.9, look.w));
+    const tall = step(DRUZY_TALL, pick).mul(0.9).add(step(DRUZY_GREAT, pick).mul(1.3).mul(back)).add(1.0);
+    // A level-up's front: the point sinks into the wall as the front reaches it and grows back
+    // out as the new mineral (see gdSweep).
+    const sweep = gdSweep(u, look.w);
+    const regrow = float(1.0).sub(gdBell(sweep.y.sub(0.1).div(0.26)).mul(u.sweep.y).mul(0.55));
+    const pal = gdPalette(u, sweep.x);
+    const height = base.w.mul(tall).mul(regrow);
+    material.positionNode = crystalVertex(
+        vec4(base.xyz, height),
+        vec4(axis.xyz, axis.w.mul(tall.mul(0.72).add(0.28))),
+        look,
+        float(1.0),
+        0.44,
+        0.3,
+    );
+    // A point leans to its zone's mineral, and no two are quite one hue.
+    const hueRnd = fractHash(look.z, 6.1);
+    const vTint = varying(
+        mix(pal.druzy, gdMineral(pal, look.y), hueRnd.mul(0.3).add(0.18)).mul(hueRnd.mul(0.35).add(0.82)),
+        'gdDruzyTint',
+    );
     const waves = gdWaves(u, look.w, base.xyz);
+    const turn = atan(base.y, base.x).div(TAU);
+    // What crosses the lining of itself: a visit's sparkle, the moonstone sheen, a twist's pinwheel.
+    const visit = gdVisit(u, turn, look.w);
+    const crossing = visit.rgb
+        .add(mix(pal.fill, vec3(1.0), 0.35).mul(gdSheen(u, turn, look.w)).mul(0.42))
+        .add(gdWhirl(u, turn, look.w).mul(0.9));
     // Fire on the walls: the hero crystals throw the heart's light about the cavity in patches of
     // spectral colour that wander over the lining (decided once per point, from the noise field).
     let fire = vec3(0.0);
     if (caustics) {
-        const turn = atan(base.y, base.x).div(TAU);
         const at = vec2(turn.mul(2.0).add(u.drift.mul(0.004)), look.w.mul(0.34).sub(u.drift.mul(0.006)));
         const field = u.noise(at).level(0.0);
         const patch = smoothstep(0.6, 0.82, field.r).mul(smoothstep(0.3, 0.6, field.b));
         fire = gdSpectrum(field.g.mul(2.2).add(look.w.mul(0.6))).mul(patch)
             .mul(u.power.mul(0.9).add(u.surge.mul(0.8)).add(u.heat.x.mul(0.4)).add(u.heat.y.mul(0.7))
-                .add(0.3))
+                .add(u.mood.z))
             .mul(u.breath);
     }
-    const vWave = varying(vec4(waves.rgb.add(fire), waves.a), 'gdDruzyWave');
-    // (a seed for the facets' cut, and how bright this point is among its neighbours)
-    // …scaled by how much of the heart's light reaches this far along the wall: the lining glows
-    // where it borders the agate and darkens toward the viewer.
-    const reach = exp(max(look.w.sub(CAVITY.wBands - 0.1), 0.0).mul(-2.6)).mul(0.9).add(0.1);
+    const vWave = varying(vec4(waves.rgb.add(fire).add(crossing), waves.a), 'gdDruzyWave');
+    // How much of the heart's light reaches this far along the wall: the lining glows where it
+    // borders the agate and sinks into the dark toward the viewer (u.air.w carries it further).
+    const past = max(look.w.sub(CAVITY.wBands - 0.1), 0.0);
+    const reach = exp(past.mul(float(-3.0).div(u.air.w))).mul(1.15).add(0.08);
     const gain = fractHash(look.z, 7.1).mul(0.9).add(0.55).mul(reach);
-    const vRnd = varying(vec2(fractHash(look.z, 2.9), gain), 'gdDruzyRnd');
+    // The wall's thin places: light from outside the stone, coming up through the roots.
+    // …and in an air that sets the stones burning from within, one point in five is a coal.
+    const coal = smoothstep(0.78, 0.9, fractHash(look.z, 9.1)).mul(u.mood.y).mul(0.85);
+    const thin = gdThin(u.noise(gdThinUV(u, turn, look.w)).level(0.0)).mul(u.mood.x).add(coal);
+    // (a seed for the facets' cut, how bright this point is among its neighbours, the light under
+    // its root, and its own slow twinkle)
+    const twinkle = sin(u.time.mul(fractHash(look.z, 3.7).mul(1.3).add(0.5)).add(hueRnd.mul(60.0))).mul(0.5).add(0.5);
+    const vRnd = varying(vec4(fractHash(look.z, 2.9), gain, thin, twinkle.add(visit.a)), 'gdDruzyRnd');
+    // (its axis and its height in spans: the growth lines run across the one at a pitch set by the other)
+    const vAxis = varying(vec4(axis.xyz, height), 'gdDruzyAxis');
+    // A four-line clear breaks the wall into plates (gdFracture): a point that stands on a crack
+    // burns from its root, and every point of a plate flares with it.
+    let vBroken = null;
+    if (fracture) {
+        const broken = gdFracture(u, turn, look.w);
+        vBroken = varying(
+            float(1.0).sub(smoothstep(0.0, 0.2, broken.x)).mul(broken.y).mul(1.3)
+                .add(broken.z.mul(0.8)),
+            'gdDruzyBroken',
+        );
+    }
 
     material.colorNode = Fn(() => {
         const p = positionWorld;
@@ -994,35 +1146,97 @@ export function createDruzy(u, druzy, count, { caustics = true } = {}) {
         const ndv = clamp(dot(N, toCam), 0.0, 1.0).toVar();
         const Lh = normalize(u.heartPos.sub(p)).toVar();
         const tint = vTint.toVar();
+        const rnd = vRnd.x;
+        const lightIn = mix(u.heart, vec3(1.0), 0.5).toVar();
         // No two facets are cut alike.
-        const cut = sin(dot(N, vec3(12.9, 78.2, 37.7)).add(vRnd.x.mul(20.0))).mul(0.5).add(0.5).toVar();
+        const cut = sin(dot(N, vec3(12.9, 78.2, 37.7)).add(rnd.mul(20.0))).mul(0.5).add(0.5).toVar();
+        // Zoning: milky at the root, deepest at the point.
+        const body = mix(mix(tint, vec3(1.0), 0.3).mul(0.8), tint, smoothstep(0.05, 0.75, t)).toVar();
         // Each point stands in its neighbours' shade: dark at the root.
-        const shade = smoothstep(0.0, 0.55, t).mul(0.85).add(0.15).toVar();
-        // Through: the heart's light inside the stone, strongest where the stone is thin —
-        // toward the point and along the arrises.
-        const b = dot(V, Lh).mul(0.5).add(0.5);
+        const shade = smoothstep(0.0, 0.5, t).mul(0.85).add(0.15).toVar();
         // (aFacet.x held to the facet: MSAA extrapolates it past ±1 on sliver facets, and its
         // fourth power then burns single pixels white along the points' edges)
-        const across = clamp(facet.x, -1.0, 1.0);
+        const across = clamp(facet.x, -1.0, 1.0).toVar();
         const e2 = across.mul(across);
-        const thin = max(t.mul(t), e2.mul(e2).mul(0.7));
-        const lightIn = mix(u.heart, vec3(1.0), 0.55);
-        const through = tint.mul(tint.add(0.12)).mul(lightIn).mul(b.mul(b)).mul(thin.mul(1.5).add(0.12));
-        // Lit: the facets turned to the heart and, coolly, those turned to the viewer.
-        const key = max(dot(N, Lh), 0.0);
-        const lit = tint.mul(lightIn.mul(key.mul(1.1)).add(u.fill.mul(ndv.mul(ndv).mul(0.3).add(0.03))))
-            .mul(cut.mul(0.9).add(0.25));
-        // Flashes: the facet that mirrors the heart at the eye, and the one square to the eye.
-        const s = max(dot(reflect(V, N), Lh), 0.0);
-        const s4 = s.mul(s).mul(s).mul(s);
+        const edge = e2.mul(e2).toVar();
+        // Where the stone is thin it passes the most light: toward the point and along the arrises.
+        const slim = max(t.mul(t), edge.mul(0.8));
+        // (the two lowest tiers leave the plates out: a point there is a few pixels of one tone)
+        const inner = (facets ? facetInterior(across, t, V, rnd) : vec3(0.5, 0.5, 0.0)).toVar();
+        const plates = inner.x.mul(0.5).add(inner.y.mul(0.34)).add(0.44).toVar();
+
+        // ── Through: the refracted ray. A facet whose far side looks at the heart is a window. ──
+        const T = refract(V, N, float(0.66));
+        const tr = max(dot(T, Lh), 0.0);
+        const behind = dot(V, Lh).mul(0.5).add(0.5);
+        const tr2 = tr.mul(tr);
+        const window = tr2.mul(tr2).mul(2.4).add(behind.mul(behind).mul(0.14)).add(cut.mul(cut).mul(0.22));
+        const through = window.mul(slim.mul(1.2).add(0.4)).mul(plates);
+        // ── Lit: the facets turned to the heart ──
+        const key = max(dot(N, Lh), 0.0).toVar();
+        const lit = key.mul(cut.mul(0.9).add(0.25)).mul(0.8);
+        // ── Ember: the thin wall's light, through the whole point and strongest at its root ──
+        const lamp = exp(t.mul(-2.4)).mul(0.8).add(edge.mul(0.3)).add(0.3);
+        const ember = vRnd.z.mul(lamp).mul(plates).mul(1.3);
+        // The stone's own light: a chain's charge, a fever, an air that sets the stones glowing.
+        const own = u.power.mul(0.16).add(u.surge.mul(0.12)).mul(plates.add(slim));
+
+        // How much light leaves this spot of the stone, and the colour that much light is.
+        const amount = through.add(lit).add(own).mul(vRnd.y).mul(shade)
+            .add(ember.mul(shade.mul(0.5).add(0.5)));
+        const stone = gemTone(body, lightIn, amount).toVar();
+
+        // ── Mirror: the growth lines across the face tilt it a little, so the gloss is streaked ──
+        const lines = sin(t.mul(vAxis.w).mul(7.0).add(rnd.mul(40.0)));
+        const Ns = normalize(N.add(vAxis.xyz.mul(lines.mul(0.085))));
+        const s = max(dot(reflect(V, Ns), Lh), 0.0);
+        const s2 = s.mul(s);
+        const s4 = s2.mul(s2);
+        const s8 = s4.mul(s4);
+        const om = float(1.0).sub(ndv);
+        const rim = om.mul(om).mul(om);
+        const gloss = mix(body, lightIn, 0.5).mul(s8.mul(s4).mul(0.6));
+        // (the glint twinkles on its own, so a still view still sparkles)
+        const glint = mix(u.heart, vec3(1.0), 0.55)
+            .mul(s8.mul(s8).mul(s8).mul(cut.mul(cut).add(0.1)).mul(vRnd.w.mul(0.7).add(0.5))
+                .mul(3.4));
+        // The facet square to the eye throws the viewer's own light back.
         const n4 = ndv.mul(ndv).mul(ndv).mul(ndv);
         const n16 = n4.mul(n4).mul(n4).mul(n4);
-        const spec = mix(u.heart, vec3(1.0), 0.4).mul(s4.mul(s4).mul(s4).mul(1.6))
-            .add(mix(tint, vec3(1.0), 0.6).mul(n16.mul(n16).mul(0.55)))
-            .mul(cut.mul(cut).add(0.15));
-        const glow = tint.mul(u.power.mul(0.1).add(u.surge.mul(0.08)).add(0.05));
-        const stone = through.add(lit).add(glow).mul(vRnd.y).add(spec.mul(vRnd.y.mul(0.6).add(0.4)))
-            .mul(shade);
+        const fillLit = u.fill.mul(u.lamp.x);
+        const facing = mix(tint, vec3(1.0), 0.6).mul(n16.mul(n16).mul(0.7)).mul(cut.mul(cut).add(0.1))
+            .mul(u.lamp.x.mul(0.5).add(0.5));
+        const sheen = mix(fillLit, body, 0.5).mul(rim.mul(0.07));
+        // Every arris catches a line of light.
+        const ew = facets ? fwidth(facet.x).mul(1.1).add(0.014) : float(0.06);
+        const arris = smoothstep(float(1.0).sub(ew.mul(2.2)), float(1.0).sub(ew.mul(0.5)), abs(across));
+        const edgeLight = mix(body, vec3(1.0), 0.55)
+            .mul(lightIn.mul(key.mul(0.5).add(s4.mul(0.4)).add(amount.mul(0.3)).add(0.03)).add(fillLit.mul(0.05)))
+            .mul(arris);
+        stone.addAssign(gloss.add(edgeLight).add(sheen).mul(vRnd.y).mul(shade));
+        stone.addAssign(glint.add(facing).mul(vRnd.y.mul(0.6).add(0.4)).mul(u.air.x).mul(shade));
+        stone.addAssign(mix(body, vec3(1.0), 0.4).mul(lightIn).mul(inner.z).mul(amount)
+            .mul(0.3));
+        // The cool light from the viewer's side, on the faces turned to it (an air may raise it).
+        stone.addAssign(body.mul(fillLit).mul(ndv.mul(ndv).mul(0.11)).mul(vRnd.y.mul(0.5).add(0.2)).mul(shade));
+        // A perfect clear's opal fire: every facet plays a colour of its own, and they run.
+        If(u.live2.y.greaterThan(0.5), () => {
+            const hue = dot(N, V).mul(2.7).add(rnd.mul(7.0)).add(u.time.mul(0.35))
+                .add(across.mul(0.3));
+            const gate = gdBell(fract(hue.mul(0.5).add(cut)).sub(0.5).mul(2.6));
+            stone.addAssign(gdSpectrum(fract(hue)).mul(gate).mul(u.opal).mul(shade.mul(0.6).add(0.4))
+                .mul(0.7));
+        });
+        if (vBroken) {
+            // The fracture's fire, up through the root and along the arrises.
+            stone.addAssign(vec3(GEODEFIRE[0], GEODEFIRE[1], GEODEFIRE[2])
+                .mul(mix(vec3(1.0), body, 0.3))
+                .mul(vBroken)
+                .mul(exp(t.mul(-2.2)).mul(1.1).add(edge.mul(0.45)).add(0.2))
+                .mul(plates)
+                .mul(1.9));
+        }
+
         const col = gdAir(u, stone, p).mul(u.breath).toVar();
         col.addAssign(vWave.rgb.mul(tint.add(0.3)).mul(1.1).mul(shade.add(0.3)));
         col.addAssign(tint.mul(vWave.w).mul(0.05).mul(shade));
