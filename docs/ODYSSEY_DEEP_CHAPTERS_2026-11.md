@@ -53,9 +53,6 @@ scan lines, its rim faint.
 - **The far rail (S3).** Across the 5->6 seam the far rail's retract ran to a seam past chapter 6's start, so the
   fold's rail drew as a red hairline with its orbs as beads over the chapter's opening; it ends a quarter seam
   before the chapter now (`ODYSSEY_PATH_HORIZON.retractEarly`).
-- **The aurora's edge (S5).** The Earth aurora's march kept a ray only if its stretch through the shell came near
-  the oval, tested at its ends and middle; a stretch that came near between them was dropped and the curtain ended
-  on a vertical line. The quarter points are tested too.
 - **Grain in the dark (J6).** The film grain keeps a fifth of itself in the darkest tones; in deep space it was
   louder than the black it sat on.
 - **Crossing signs (C9).** Tube signs hung on one wall no longer cross (NEON over BATHS read "NEATHS"): a blade is
@@ -63,7 +60,9 @@ scan lines, its rim faint.
   it was.
 - **Left as they are:** the orbs' warm fringe far off (J3) is the locked orb's chapter-tinted rim, dimmed, a few
   pixels wide at that size, not an alpha fault; the fold portal's square stars (F2) are not traced to a resolution
-  yet.
+  yet; **the aurora's hard end (S5) is still open**: testing the Earth aurora's march gate at more points along a
+  ray (the first suspect) left the frame identical to the pixel, so the edge comes from elsewhere in the march
+  (odyssey-orbit-earth.js) and wants its own look in the playground.
 
 ## Open: the owner's calls
 
@@ -82,4 +81,4 @@ node language across chapter 7's rooms (J2's geometry, F1); the orb's size from 
 - **Cost, not measured on a GPU** (this session had none; ADR-0016): the city's eye lift samples the rail four
   times a frame in the city only; the close-ups' aim is computed once per orb selection; the dust's veil is one dot
   and one smoothstep per mote; the terminus adds three draws in the city (two rings, a beam, 300 triangles); the
-  aurora's gate two more `acos` per ray through its shell; the grain one smoothstep.
+  grain one smoothstep.
