@@ -93,6 +93,9 @@ const FISH_RINGS = Object.freeze([
     }),
 ]);
 
+/** How far a colony's mound departs from a smooth swell (its noise, +-). */
+const MOUND_ROUGH = 0.12;
+
 /** mulberry32. */
 function makeRng(seed) {
     let a = seed >>> 0;
@@ -204,6 +207,17 @@ export function planOceanReef({
     const keep = reefKeepOut({ rail, seaLevel });
     const R = OCEAN_REEF;
     const depthAt = (x, z) => seaLevel - heightAt(x, z);
+    // The lowest of the bed under a footprint (its centre and a ring at `r`): a rock or a mound set by its
+    // centre alone hung its downhill side over open water on the flank's 45 degrees, and from above, the
+    // bed behind it lost in the haze, it read as floating (the chapter's audit, 2026-11-25).
+    const bedUnder = (x, z, r) => {
+        let low = heightAt(x, z);
+        for (let k = 0; k < 8; k += 1) {
+            const a = (k / 8) * Math.PI * 2;
+            low = Math.min(low, heightAt(x + (Math.cos(a) * r), z + (Math.sin(a) * r)));
+        }
+        return low;
+    };
     const flankPoint = () => ({
         x: R.flank.x[0] + (rnd() * (R.flank.x[1] - R.flank.x[0])),
         z: R.flank.z[0] + (rnd() * (R.flank.z[1] - R.flank.z[0])),
@@ -260,7 +274,7 @@ export function planOceanReef({
         const topDepth = depth - (r * 1.1);
         if (topDepth < 6 || !apart(x, z, r, 0.8) || keep.blocked(x, z, r, topDepth)) continue;
         plan.boulders.push({
-            x, y: heightAt(x, z) - (r * 0.35), z, r, squash: 0.55 + (rnd() * 0.45), seed: 300 + plan.boulders.length,
+            x, y: bedUnder(x, z, r * 0.85) - (r * 0.2), z, r, squash: 0.55 + (rnd() * 0.45), seed: 300 + plan.boulders.length,
         });
         rocks.push({ x, z, r: r * 0.6 });
     }
@@ -286,18 +300,27 @@ export function planOceanReef({
     const SMALL_WARM = ['dome', 'table', 'tree', 'fan', 'anemone', 'dome'];
     /** A colony: a low outcrop, its hero piece, and smaller pieces falling away round it. */
     const colonyAt = (cx, cz, hero, palette, deep, heroSize) => {
+        const moundR = 7 + (rnd() * 3.5);
         const bed = heightAt(cx, cz);
         const depth = seaLevel - bed;
-        const moundR = 7 + (rnd() * 3.5);
+        // (the mound itself stands on its footprint's lowest bed, so its downhill rim meets the slope)
+        const bedLow = bedUnder(cx, cz, moundR * 0.9);
         if (!apart(cx, cz, moundR, 0.9) || keep.blocked(cx, cz, moundR, depth - (heroSize * 1.3), bed + heroSize)) return false;
         const pair = palette[Math.floor(rnd() * palette.length)];
         const second = palette[Math.floor(rnd() * palette.length)];
         // The outcrop: a low, wide rise half sunk in the sand (a dusted swell, not a stone on it).
-        const moundH = moundR * 0.30;
+        // A rise of its own height (a golden-ratio step, not a draw: the plan's draws stay as they were),
+        // sunk to its waist and more, so it meets the sand as a swell and never shows an underside.
+        const squash = 0.30 + (0.16 * (((plan.mounds.length * 0.618034) + 0.31) % 1));
+        const moundY = Math.min(bed - (moundR * squash * 0.45), bedLow - (moundR * squash * 0.1));
         plan.mounds.push({
-            x: cx, y: bed - (moundH * 0.55), z: cz, r: moundR, squash: 0.30, seed: 500 + plan.mounds.length, dusted: true,
+            x: cx, y: moundY, z: cz, r: moundR, squash, seed: 500 + plan.mounds.length, dusted: true, rough: MOUND_ROUGH,
         });
-        const onMound = (d) => bed + (moundH * 0.42 * Math.max(0, 1 - ((d / moundR) ** 2)));
+        // Its top at `d` from its centre, at the low end of its noise (a piece sinks a little, never floats).
+        const onMound = (d, x = cx, z = cz) => Math.max(
+            heightAt(x, z) - 0.3,
+            moundY + (moundR * squash * (1 - MOUND_ROUGH) * Math.sqrt(Math.max(0, 1 - ((d / moundR) ** 2)))),
+        );
         pieceAt(cx, onMound(0), cz, heroSize, hero, pair, deep);
         const small = Math.round((deep ? 5 : 3) * share) + 1;
         const kinds = deep ? SMALL_DEEP : SMALL_WARM;
@@ -308,7 +331,7 @@ export function planOceanReef({
             const z = cz + (Math.sin(a) * d);
             // Smaller the further from the hero, so the colony has a middle.
             const size = heroSize * (0.5 - (0.26 * (d / (moundR * 1.14)))) * (0.8 + (rnd() * 0.4));
-            const y = d < moundR ? onMound(d) : heightAt(x, z);
+            const y = d < moundR ? onMound(d, x, z) : heightAt(x, z);
             pieceAt(x, y - 0.15, z, size, kinds[Math.floor(rnd() * kinds.length)], rnd() < 0.7 ? pair : second, deep);
         }
         return true;
@@ -344,8 +367,8 @@ export function planOceanReef({
         const n = 2 + (k % 2);
         for (let i = 0; i < n; i += 1) {
             const a = rnd() * Math.PI * 2;
-            const rr = pin.topR * rnd() * 0.7;
-            pieceAt(pin.x + (Math.cos(a) * rr), pin.topY - 0.3, pin.z + (Math.sin(a) * rr), 2.0 + (rnd() * 2.6), SMALL_WARM[(i + k) % 4], WARM[(i + k) % WARM.length], false);
+            const on = stackCrownAt(pin, a, rnd() * 0.7);
+            pieceAt(on.x, on.y - 0.3, on.z, 2.0 + (rnd() * 2.6), SMALL_WARM[(i + k) % 4], WARM[(i + k) % WARM.length], false);
         }
     });
     // The shelf under the shore: warm colonies in the shallows.
@@ -468,21 +491,64 @@ function emitGrid(sink, grid, normals, tints, keep) {
     }
 }
 
-/** A lathe of rock with terraces and noise: a sea stack standing from baseY to topY. */
-function addStack(sink, s, { sides, rings }) {
+/** A sea stack's crown and wall (the pinnacles'; the tower passes its own): how high the crown's dome
+ * rises over its top (x its top radius), how far a ring swells or pinches, how rough the crown is. */
+const STACK_FORM = Object.freeze({ dome: 0.55, pinch: 0.5, rough: 0.3 });
+
+/** A stack's wall radius at bearing `a` and height fraction `h` (its lathe with its lobes and noise). */
+function stackWallAt(s, a, h, pinch) {
+    const yWall = s.baseY + ((s.topY - s.baseY) * h);
+    const base = s.topR + ((s.baseR - s.topR) * ((1 - h) ** 1.7));
+    // Undercuts and bulges: the whole ring swells or pinches by the stack's own slow noise.
+    const swell = (reefNoise(s.seed * 0.37, yWall * 0.075, -s.seed * 0.21) - 0.5) * pinch;
+    const ca = Math.cos(a);
+    const sa = Math.sin(a);
+    const big = reefNoise((ca * 1.3) + s.seed, (yWall * 0.035) + s.seed, (sa * 1.3) - s.seed);
+    const fine = reefNoise((ca * 3.1) - s.seed, yWall * 0.11, (sa * 3.1) + s.seed);
+    // Buttresses: the plan is lobed, not round, and the lobes turn with height.
+    const lobes = (0.20 * Math.sin((a * 3) + (s.seed * 1.3) + (h * 1.9)))
+        + (0.11 * Math.sin((a * 5) - (s.seed * 0.7) - (h * 3.1)));
+    return {
+        r: base * (0.62 + (big * 0.66) + ((fine - 0.5) * 0.30) + lobes + swell), big, fine, y: yWall,
+    };
+}
+
+/**
+ * Where a pinnacle's crown stands at bearing `a`, `k` of the way out to its rim (0..1): the point
+ * things that grow on its top seat on (2026-11-25: the stacks were cut flat, and with coral on their
+ * tops they read as stumps; their crowns are worn domes now). The crown's knobs may lift it a little.
+ * @returns {{ x: number, y: number, z: number }}
+ */
+export function stackCrownAt(stack, a, k) {
+    const rim = stackWallAt(stack, a, 1, STACK_FORM.pinch).r;
+    const kk = Math.min(1, Math.max(0, k));
+    const lean = stack.topY - stack.baseY;
+    return {
+        x: stack.x + (Math.cos(a) * rim * kk) + ((stack.leanX || 0) * lean),
+        y: stack.topY + (stack.topR * STACK_FORM.dome * Math.sqrt(Math.max(0, 1 - (kk * kk))))
+            - (0.25 * stack.topR * STACK_FORM.rough * 0.5),
+        z: stack.z + (Math.sin(a) * rim * kk) + ((stack.leanZ || 0) * lean),
+    };
+}
+
+/**
+ * A lathe of rock with noise: a sea stack standing from baseY to topY, its crown a worn dome.
+ * (2026-11-25: no terraces and no bands of colour by height: the wall stepped in at a fixed count
+ * of ledges and carried stripes every few units, and a stack read as a turned post. Its profile
+ * now swells and pinches by its own noise, so it has undercuts and a waist.)
+ */
+function addStack(sink, s, {
+    sides, rings, crownRows = 4, dome = STACK_FORM.dome, pinch = STACK_FORM.pinch, rough = STACK_FORM.rough,
+}) {
     const height = s.topY - s.baseY;
-    const terraces = 4 + (s.seed % 3);
     const grid = [];
     const tints = [];
-    for (let j = 0; j <= rings + 1; j += 1) {
-        // The last row is the crown's centre: a low dome, so it reads as a place something can grow.
-        const crown = j === rings + 1;
+    /** @type {number[]} the wall's radius round its top ring, which the crown closes over */
+    const rimR = [];
+    for (let j = 0; j <= rings + crownRows; j += 1) {
+        const onCrown = j > rings;
+        const f = onCrown ? (j - rings) / crownRows : 0;
         const h = Math.min(1, j / rings);
-        const y = s.baseY + (height * h);
-        // Terraces: the profile holds, then steps in, so the wall has ledges.
-        const step = (Math.floor(h * terraces) + fade(Math.min(1, ((h * terraces) % 1) * 1.8))) / terraces;
-        const hh = (h * 0.68) + (step * 0.32);
-        const base = s.topR + ((s.baseR - s.topR) * ((1 - hh) ** 1.7));
         const lean = h * h * height;
         const row = [];
         const rowTint = [];
@@ -490,20 +556,26 @@ function addStack(sink, s, { sides, rings }) {
             const a = (i / sides) * Math.PI * 2;
             const ca = Math.cos(a);
             const sa = Math.sin(a);
-            const big = reefNoise((ca * 1.3) + s.seed, (y * 0.035) + s.seed, (sa * 1.3) - s.seed);
-            const fine = reefNoise((ca * 3.1) - s.seed, y * 0.11, (sa * 3.1) + s.seed);
-            // Buttresses: the plan is lobed, not round, and the lobes turn with height.
-            const lobes = (0.20 * Math.sin((a * 3) + (s.seed * 1.3) + (h * 1.9)))
-                + (0.11 * Math.sin((a * 5) - (s.seed * 0.7) - (h * 3.1)));
-            const r = crown ? 0.02 : base * (0.62 + (big * 0.66) + ((fine - 0.5) * 0.30) + lobes);
+            const wall = stackWallAt(s, a, h, pinch);
+            let { r, y } = wall;
+            if (!onCrown) {
+                if (j === rings) rimR[i] = r;
+            } else {
+                // The crown: closing over the rim's own outline, rising to its dome, broken by
+                // knobs and gutters (more at the shoulder than on the very top).
+                const knob = (reefNoise((ca * 2.2) + s.seed, (f * 2.6) - s.seed, (sa * 2.2) + (s.seed * 0.5)) - 0.5)
+                    * rough * s.topR * (1 - (0.5 * f));
+                r = Math.max(0.02, rimR[i] * Math.cos(f * (Math.PI / 2)));
+                y = s.topY + (s.topR * dome * Math.sin(f * (Math.PI / 2))) + Math.max(-0.25 * s.topR * rough, knob);
+            }
             row.push([
                 s.x + (ca * r) + ((s.leanX || 0) * lean),
-                crown ? y + (s.topR * 0.12) : y,
+                y,
                 s.z + (sa * r) + ((s.leanZ || 0) * lean),
             ]);
-            // Strata: bands of colour by height, broken by the noise.
-            const band = 0.5 + (0.5 * Math.sin((y * 0.21) + (big * 4)));
-            const t = Math.min(1, Math.max(0, (h * 0.75) + (band * 0.25) + ((fine - 0.5) * 0.3)));
+            // Paler toward the light, in patches (the noise), not in bands.
+            const t = onCrown ? 0.9 + (0.1 * f)
+                : Math.min(1, Math.max(0, (h * 0.72) + ((wall.big - 0.5) * 0.4) + ((wall.fine - 0.5) * 0.3)));
             rowTint.push([
                 ROCK_DARK[0] + ((ROCK_LIGHT[0] - ROCK_DARK[0]) * t),
                 ROCK_DARK[1] + ((ROCK_LIGHT[1] - ROCK_DARK[1]) * t),
@@ -515,7 +587,8 @@ function addStack(sink, s, { sides, rings }) {
     }
     const axis = (pt, j) => {
         const lean = (Math.min(1, j / rings) ** 2) * height;
-        const o = [pt[0] - (s.x + ((s.leanX || 0) * lean)), j > rings ? 1 : 0.15, pt[2] - (s.z + ((s.leanZ || 0) * lean))];
+        const up = j > rings ? 0.15 + (2 * ((j - rings) / crownRows)) : 0.15;
+        const o = [pt[0] - (s.x + ((s.leanX || 0) * lean)), up, pt[2] - (s.z + ((s.leanZ || 0) * lean))];
         const l = Math.hypot(o[0], o[1], o[2]) || 1;
         return [o[0] / l, o[1] / l, o[2] / l];
     };
@@ -525,7 +598,7 @@ function addStack(sink, s, { sides, rings }) {
 
 /** A boulder or an outcrop: a noisy squashed ball, smooth-shaded (worn rock, not a cut gem). */
 function addLump(sink, {
-    x, y, z, r, squash = 0.7, seed = 0, dusted = false,
+    x, y, z, r, squash = 0.7, seed = 0, dusted = false, rough = 0.26,
 }) {
     const sides = 11;
     const rows = 5;
@@ -537,11 +610,12 @@ function addLump(sink, {
         const rowTint = [];
         for (let i = 0; i < sides; i += 1) {
             const a = (i / sides) * Math.PI * 2;
-            const n = 0.74 + (reefNoise((Math.cos(a) * 1.5) + seed, (j * 0.5) + seed, (Math.sin(a) * 1.5) - seed) * 0.52);
+            const n = (1 - rough) + (reefNoise((Math.cos(a) * 1.5) + seed, (j * 0.5) + seed, (Math.sin(a) * 1.5) - seed) * 2 * rough);
             const rr = Math.max(0.01, r * Math.cos(lat) * n);
             row.push([x + (Math.cos(a) * rr), y + (Math.sin(lat) * r * squash * n), z + (Math.sin(a) * rr)]);
-            // A dusted outcrop is pale where the sand lies on it (low and at its skirt).
-            const t = dusted ? 1.05 + (0.5 * (1 - Math.abs(j / rows))) : ((j + rows) / (2 * rows)) * 0.8;
+            // A dusted outcrop is pale where the sand settles on it, over its top, and the rock's own
+            // at its sunk skirt (2026-11-25: it was palest round its waist, a rim that drew a saucer).
+            const t = dusted ? 0.55 + (0.75 * Math.max(0, j / rows)) : ((j + rows) / (2 * rows)) * 0.8;
             rowTint.push([
                 ROCK_DARK[0] + ((ROCK_LIGHT[0] - ROCK_DARK[0]) * t),
                 ROCK_DARK[1] + ((ROCK_LIGHT[1] - ROCK_DARK[1]) * t),
@@ -568,8 +642,13 @@ function addLump(sink, {
  */
 export function buildReefRockGeometry(plan) {
     const sink = makeLifeSink();
-    if (plan.tower) addStack(sink, plan.tower, { sides: 30, rings: 34 });
-    plan.pinnacles.forEach((p) => addStack(sink, p, { sides: 17, rings: 16 }));
+    // The tower's crown stays low and whole (its kelp forest and its rim's coral stand on it).
+    if (plan.tower) {
+        addStack(sink, plan.tower, {
+            sides: 30, rings: 34, crownRows: 1, dome: 0.12, pinch: 0, rough: 0,
+        });
+    }
+    plan.pinnacles.forEach((p) => addStack(sink, p, { sides: 19, rings: 20 }));
     plan.boulders.forEach((b) => addLump(sink, b));
     plan.mounds.forEach((m) => addLump(sink, m));
     const rockVerts = sink.positions.length / 3;

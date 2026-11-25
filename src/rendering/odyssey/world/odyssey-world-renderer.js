@@ -5493,9 +5493,11 @@ export function createOdysseyWorld({
         // the first cut's 16 cm beads read as snowballs.
         const spraySize = fract(mS.mul(29.3)).mul(0.04).add(0.02);
         const moteDist = length(moteCenter.sub(cameraPosition));
+        // (A bubble near the lens is capped tighter: at the old cap the nearest few were rings a
+        // twentieth of the frame wide, drawn circles rather than bubbles. 2026-11-25.)
         const moteSizeClamped = min(
             mix(moteSize, spraySize, sprayOn),
-            moteDist.mul(mix(float(0.02), float(0.05), sprayOn)).add(0.04),
+            moteDist.mul(mix(mix(float(0.02), float(0.012), uBubble), float(0.05), sprayOn)).add(mix(float(0.04), float(0.015), uBubble)),
         );
         moteMat.positionNode = billboardWorld(moteCenter, moteSizeClamped);
         // LIT WHERE A SHAFT CROSSES IT (Act I overhaul, 2026-10-20 — Ocean's "lit where a shaft
@@ -5533,9 +5535,14 @@ export function createOdysseyWorld({
         const mDot = mRadial.mul(mRadial);
         // An ember is a hot DOT; a bubble is a bright RIM round a clearer centre. uBubble walks
         // the profile from one to the other across the carry (0 = today's dot exactly).
-        const mRing = smoothstep(float(0.20), float(0.38), mR)
-            .mul(float(1).sub(smoothstep(float(0.38), float(0.5), mR)))
-            .add(mDot.mul(0.30));
+        // (2026-11-25: a thin rim, brighter on top where the surface's light falls on it, and the
+        // window's bright fleck up on one side: a sphere of air, not a drawn ring with a lit core.)
+        const mTop = smoothstep(float(-0.2), float(0.3), mUv.y.sub(0.5));
+        const mRing = smoothstep(float(0.33), float(0.42), mR)
+            .mul(float(1).sub(smoothstep(float(0.43), float(0.5), mR)))
+            .mul(mTop.mul(0.75).add(0.35))
+            .add(float(1).sub(smoothstep(float(0.02), float(0.10), length(mUv.sub(vec2(0.37, 0.66))))).mul(0.9))
+            .add(mDot.mul(0.08));
         const mProfile = mix(mDot, mRing.mul(1.3), uBubble);
         // Transmitted light: brightness rises with depth below the surface, because the
         // background darkens with depth — the same inverse the vault's ember gate uses.

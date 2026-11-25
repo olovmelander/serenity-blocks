@@ -18,9 +18,10 @@
  */
 import * as THREE from 'three/webgpu';
 import {
-    abs, attribute, cameraPosition, clamp, cos, cross, dot, exp, float, length, max, min, mix, normalGeometry, normalize,
-    positionLocal, positionWorld, sin, smoothstep, texture, uniform, uv, varying, vec2, vec3,
+    abs, attribute, cameraPosition, clamp, cos, cross, dot, exp, float, floor, length, max, min, mix, normalGeometry,
+    normalize, positionLocal, positionWorld, select, sin, smoothstep, texture, uniform, uv, varying, vec2, vec3,
 } from 'three/tsl';
+import { hash21 } from '../chapter-environments/shared/odyssey-tsl-noise.js';
 import {
     OCEAN_REEF, buildReefKelpGeometry, buildReefRockGeometry, planOceanReef,
 } from './odyssey-ocean-reef.js';
@@ -38,7 +39,13 @@ export const OCEAN_SCENERY_LOOK = Object.freeze({
     /** The caustic light on upward faces (the renderer's seabed web, at the reef's scale). */
     causticColour: Object.freeze([0.62, 0.92, 0.90]),
     causticGain: 0.75,
-    /** The living lights in the dark. */
+    /**
+     * The living lights in the dark: one spot at most per cell of the rock's face (u), on this share
+     * of the cells, round (a disc on whichever plane the face is nearest), gone past `spotFar` (u).
+     */
+    spotCell: 5,
+    spotShare: 0.36,
+    spotFar: Object.freeze([150, 240]),
     glowA: Object.freeze([0.10, 0.95, 0.85]),
     glowB: Object.freeze([0.46, 0.30, 1.0]),
     glowGain: 1.5,
@@ -168,19 +175,29 @@ export function createOdysseyOceanScenery({
         // (Tier gate, in JavaScript: the low tier does not build the spots' fetch; its dark keeps
         // the deep garden's own light.)
         const deepMask = smoothstep(float(58), float(112), depthU);
-        const breathe = sin(uTime.mul(0.55).add(grain.b.mul(31))).mul(0.4).add(0.6);
-        const spots = lowTier ? float(0) : smoothstep(
-            float(0.70),
-            float(0.80),
-            texture(noiseTex, vec2(wp.x.add(wp.y.mul(0.53)), wp.z.sub(wp.y.mul(0.41))).mul(0.19)).b,
-        ).mul(isRock);
+        // (2026-11-25: the spots were a threshold of the noise on a plane that sheared up the walls, so
+        // a stack's face carried a field of streaks, "flecks" to every eye. Now each is a disc in a
+        // cell of the face's nearest plane, a few to a stack's side, each on its own clock.)
+        const face = select(abs(nrm.x).greaterThan(abs(nrm.z)), wp.zy, wp.xy);
+        const q = select(abs(nrm.y).greaterThan(0.62), wp.xz, face).div(L.spotCell).add(4096).toVar();
+        const cell = floor(q);
+        const own = hash21(cell);
+        const at = cell.add(0.5).add(vec2(hash21(cell.add(vec2(17, 0))), hash21(cell.add(vec2(0, 23)))).sub(0.5).mul(0.36));
+        const lit01 = clamp(own.sub(1 - L.spotShare).div(L.spotShare), 0, 1);
+        const disc = float(1).sub(smoothstep(float(0.03), mix(float(0.07), float(0.14), lit01), length(q.sub(at))))
+            .mul(smoothstep(float(1 - L.spotShare), float(1.01 - L.spotShare), own))
+            .mul(smoothstep(float(L.spotFar[1]), float(L.spotFar[0]), eyeDist));
+        const breathe = sin(uTime.mul(0.55).add(lowTier ? grain.b.mul(31) : own.mul(31))).mul(0.4).add(0.6);
+        const spots = lowTier ? float(0) : disc.mul(isRock);
         // ...and the deep garden carries its own light where its forms say so: at the tips, the
         // rims and the ridges, with a faint light along every edge turned away from the eye, so a
         // form is read in the dark by its outline.
         const eyeDir = normalize(cameraPosition.sub(wp));
         const edge = float(1).sub(clamp(abs(dot(nrm, eyeDir)), 0, 1));
         const ownLight = life.x.mul(L.coralGlow).add(edge.mul(edge).mul(life.z).mul(L.coralEdge));
-        const glow = mix(vec3(...L.glowA), vec3(...L.glowB), smoothstep(float(0.35), float(0.65), grain.a))
+        const glow = mix(vec3(...L.glowA), vec3(...L.glowB), lowTier
+            ? smoothstep(float(0.35), float(0.65), grain.a)
+            : smoothstep(float(0.4), float(0.6), hash21(cell.add(vec2(31, 7)))))
             .mul(spots)
             .mul(L.glowGain)
             .add(base.mul(ownLight))
