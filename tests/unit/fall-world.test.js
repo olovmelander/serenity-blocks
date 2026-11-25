@@ -14,6 +14,9 @@ import { FallForest } from '../../src/themes/fall/fall-forest.js';
 import { LEAF_AIR, LEAF_IDLE, LEAF_REST } from '../../src/themes/fall/fall-leaf-sim.js';
 import { FALL_SUN_DIRECTION } from '../../src/themes/fall/fall-light.js';
 import { FALL_MOODS, FALL_MOOD_HOLD, FALL_MOOD_SECONDS } from '../../src/themes/fall/fall-moods.js';
+import {
+    FALL_AIRS, FALL_AIR_HOLD, FALL_AIR_SECONDS, fallWorldTier,
+} from '../../src/themes/fall/fall-airs.js';
 import { FallPost } from '../../src/themes/fall/fall-post.js';
 import { FALL_TIERS, fallTier } from '../../src/themes/fall/fall-quality.js';
 import { FALL_REACTION_LIMITS, FallReactions } from '../../src/themes/fall/fall-reactions.js';
@@ -30,7 +33,9 @@ const LANDSCAPE = 16 / 9;
 const PORTRAIT = 9 / 19.5;
 const STEP = 1 / 60;
 /** What a world's diagnostics say of its light before the clock has turned it: the first level, the quiet afternoon. */
-const OPENING_LIGHT = Object.freeze({ level: 1, mood: FALL_MOODS[0].name, moodPhase: 0 });
+const OPENING_LIGHT = Object.freeze({
+    level: 1, mood: FALL_MOODS[0].name, moodPhase: 0, air: FALL_AIRS[0].name, airPhase: 0, happening: null,
+});
 const owned = [];
 const bundles = [];
 const files = new Map();
@@ -452,8 +457,23 @@ describe('Fall world scene contracts', () => {
         expect(named(world.group, 'FallLeafCarpet')).toHaveLength(1);
         expect(named(world.group, 'FallSky')).toHaveLength(1);
         expect(named(world.group, /^FallMistBank /)).toHaveLength(tier.mist);
-        expect(named(world.group, 'FallSunMotes')[0].count).toBe(tier.motes);
-        expect(named(world.group, 'FallWisps')[0].count).toBe(tier.wisps);
+        // The living pass's own things scale by its own table (fall-airs.js): more dust than the first
+        // pass drew, fireflies where its wisps were, and what an air or a happening brings.
+        const own = fallWorldTier(quality);
+        const dust = Math.max(tier.motes, Math.round(tier.motes * own.dust));
+        expect(named(world.group, 'FallSunMotes')[0].count).toBe(dust);
+        expect(named(world.group, 'FallWisps')).toHaveLength(0);
+        expect(named(world.group, 'FallFireflies')[0].count).toBe(own.fireflies);
+        expect(named(world.group, 'FallRain')[0].count).toBe(own.rain);
+        expect(named(world.group, /^FallGroundMist /).length).toBe(Math.min(3, tier.mist));
+        expect(named(world.group, 'FallGeese')[0].instanceMatrix.count).toBe(own.geese);
+        expect(named(world.group, 'FallJays')[0].instanceMatrix.count).toBe(own.jays);
+        expect(named(world.group, 'FallAcorns')[0].instanceMatrix.count).toBe(own.acorns);
+        // Nothing an air or a happening brings is drawn in still gold with nothing happening.
+        for (const name of ['FallRain', 'FallGeese', 'FallJays', 'FallAcorns', 'FallFireflies', 'FallCapGlow']) {
+            expect(named(world.group, name)[0].visible, name).toBe(false);
+        }
+        for (const sheet of named(world.group, /^FallGroundMist /)) expect(sheet.visible, sheet.name).toBe(false);
 
         // Leaves in the air: one draw, fed by the simulation's own buffers.
         const { sim, mesh: leafMesh } = world.leaves;
@@ -1322,6 +1342,10 @@ describe('Fall lights in the world', () => {
     it('turns through every light by the clock alone, with no level-up', async () => {
         const { world } = await buildWorld('Minimal');
         const { light } = world;
+        // (The light alone: the air held still and nothing happening. An air sets the sun's strength
+        // and a passing cloud dims it; those have their own tests.)
+        world.holdAir(0);
+        world.setHappenings(false);
         expect(world.level).toBe(1);
         for (let k = 0; k <= N; k++) {
             const mood = FALL_MOODS[k % N];
@@ -1343,6 +1367,8 @@ describe('Fall lights in the world', () => {
     it('turns whichever light it is toward late amber as play heats, and gives it back after', async () => {
         const { world } = await buildWorld('Minimal');
         const { light } = world;
+        world.holdAir(0);
+        world.setHappenings(false);
         const sunHue = (sun) => sun.b / sun.r;
         FALL_MOODS.forEach((mood, k) => {
             world.update(k * PERIOD, STEP, { emitters: [] });
@@ -1357,6 +1383,8 @@ describe('Fall lights in the world', () => {
 
     it('takes a level-up as one light on top of the clock, eased, the short way round', async () => {
         const { world } = await buildWorld('Minimal');
+        world.holdAir(0);
+        world.setHappenings(false);
         world.update(1, STEP, { emitters: [] });
         world.setLevel(2);
         world.update(1, STEP, { emitters: [] });
@@ -1386,5 +1414,139 @@ describe('Fall lights in the world', () => {
         const after = (await buildWorld('Minimal')).world;
         after.moodStart = lived;
         expect(after.moodPhase(0)).toBe(world.moodPhase(time));
+    });
+});
+
+describe('Fall airs, night and happenings in the world', () => {
+    const AIRS = FALL_AIRS.length;
+    /** The middle of air `k`'s rest on the clock (seconds). */
+    const airRest = (k) => (k + FALL_AIR_HOLD * 0.5) * FALL_AIR_SECONDS;
+    const NIGHT = FALL_MOODS.findIndex((mood) => mood.night > 0);
+
+    it('turns through the airs by its own clock, a level one air on, and holds one when asked', async () => {
+        const { world } = await buildWorld('Minimal');
+        const { light } = world;
+        world.setHappenings(false);
+        for (let k = 0; k < AIRS; k++) {
+            world.update(airRest(k), STEP, { emitters: [] });
+            expect(light.airPhase, FALL_AIRS[k].name).toBeCloseTo(k, 9);
+            expect(world.getDiagnostics().air).toBe(FALL_AIRS[k].name);
+            expect(light.uMist.value).toBe(FALL_AIRS[k].mist);
+            expect(light.uRain.value).toBe(FALL_AIRS[k].rain);
+            // What an air brings is drawn only while it is out.
+            expect(world.atmosphere.rain.visible).toBe(FALL_AIRS[k].rain > 0.01);
+            // The crowns let go as the air says (the leaves' environment).
+            expect(world.leaves.sim.pour).toBeCloseTo(FALL_AIRS[k].shed, 9);
+        }
+        // A level is one air on, eased in like the light; a new run goes back.
+        world.setLevel(2, { silent: true });
+        expect(world.airPhase(airRest(0))).toBeCloseTo(1, 9);
+        world.setLevel(1, { silent: true });
+        expect(world.airPhase(airRest(0))).toBeCloseTo(0, 9);
+        // Held: the clock no longer turns it, and it lets go again.
+        world.holdAir(3);
+        world.update(airRest(1), STEP, { emitters: [] });
+        expect(light.airPhase).toBe(3);
+        expect(world.atmosphere.rain.visible).toBe(true);
+        world.holdAir(null);
+        world.update(airRest(1), STEP, { emitters: [] });
+        expect(light.airPhase).toBeCloseTo(1, 9);
+        // Junk is no air.
+        expect(world.holdAir(Number.NaN)).toBe(null);
+    });
+
+    it('goes dark under the harvest moon, where the sun stood, and calls the small lights out', async () => {
+        const { world } = await buildWorld('Minimal');
+        const { light } = world;
+        world.holdAir(0);
+        world.setHappenings(false);
+        expect(NIGHT).toBeGreaterThan(0);
+        world.update(1, STEP, { emitters: [] });
+        expect(light.uNight.value).toBe(0);
+        expect(world.atmosphere.fireflies.visible).toBe(false);
+        expect(world.understory.capGlow.visible).toBe(false);
+        const day = light.uSunColor.value.r;
+        world.setLevel(NIGHT + 1, { silent: true });
+        world.update(1, STEP, { emitters: [] });
+        expect(world.getDiagnostics().mood).toBe('harvest moon');
+        expect(light.uNight.value).toBe(1);
+        expect(light.uGlim.value).toBeGreaterThan(0.99);
+        expect(world.atmosphere.fireflies.visible).toBe(true);
+        expect(world.understory.capGlow.visible).toBe(true);
+        // The moon is a far dimmer light than the sun, from the same place: the one shadow map holds.
+        expect(light.uSunColor.value.r).toBeLessThan(day * 0.3);
+        expect(light.uSunDir.value.toArray()).toEqual(FALL_SUN_DIRECTION.toArray());
+        // In play the small lights come out by day too, and go again.
+        world.setLevel(1, { silent: true });
+        world.update(1, STEP, { emitters: [], glow: 1 });
+        expect(world.atmosphere.fireflies.visible).toBe(true);
+        world.update(1 + STEP, STEP, { emitters: [] });
+        expect(world.atmosphere.fireflies.visible).toBe(false);
+    });
+
+    it('brings nothing while the happenings are off, and each kind when it is played', async () => {
+        const { world } = await buildWorld('Minimal');
+        const { visitors, light } = world;
+        world.holdAir(0);
+        world.setHappenings(false);
+        for (let t = 0; t < 400; t += 7) {
+            world.update(t, STEP, { emitters: [] });
+            expect(world.getDiagnostics().happening, `${t}`).toBe(null);
+            const flying = visitors.geese.mesh.visible || visitors.jays.mesh.visible;
+            expect(flying || visitors.acorns.mesh.visible).toBe(false);
+        }
+        // The acorns fall while it lasts and are gone after.
+        world.playHappening('acorns', 0, 0.3);
+        world.update(2, STEP, { emitters: [] });
+        expect(visitors.acorns.mesh.visible).toBe(true);
+        world.update(30, STEP, { emitters: [] });
+        expect(visitors.acorns.mesh.visible).toBe(false);
+        // The gap in the cloud: a shaft on the floor and the sun dimmed round it, then whole again.
+        world.playHappening('shaft', 0, 0.4);
+        world.update(12, STEP, { emitters: [] });
+        expect(light.uSpot.value.w).toBeGreaterThan(0.3);
+        expect(light.cloudSun).toBeLessThan(0.8);
+        world.update(40, STEP, { emitters: [] });
+        expect(light.uSpot.value.w).toBe(0);
+        expect(light.cloudSun).toBe(1);
+        // Junk is no happening.
+        expect(world.playHappening('dragons')).toBe(null);
+    });
+
+    it('flies the skein in from beyond one edge of the picture and out beyond the other, whole', async () => {
+        const { world, camera } = await buildWorld('Minimal');
+        const { geese } = world.visitors;
+        const v = new THREE.Vector3();
+        world.holdAir(0);
+        for (const roll of [0.1, 0.4, 0.6, 0.9]) {
+            world.playHappening('geese', 0, roll);
+            const seen = (time) => {
+                world.update(time, STEP, { emitters: [] });
+                camera.updateMatrixWorld();
+                expect(geese.mesh.visible).toBe(true);
+                let inside = 0;
+                for (let i = 0; i < geese.mesh.count; i++) {
+                    v.set(geese.place.getX(i), geese.place.getY(i), geese.place.getZ(i)).project(camera);
+                    if (Math.abs(v.x) < 1 && Math.abs(v.y) < 1) inside += 1;
+                }
+                return inside;
+            };
+            const { length } = world.happeningAt(0);
+            expect(seen(0.05), `roll ${roll} begins`).toBe(0);
+            expect(seen(length - 0.05), `roll ${roll} ends`).toBe(0);
+            expect(seen(length * 0.5), `roll ${roll} crosses`).toBe(geese.mesh.count);
+        }
+    });
+
+    it('lets the jays out of the leaves and back into them: small at both ends of the flight', async () => {
+        const { world } = await buildWorld('Minimal');
+        const { jays } = world.visitors;
+        world.holdAir(0);
+        world.playHappening('jays', 0, 0.3);
+        world.update(0.02, STEP, { emitters: [] });
+        expect(jays.mesh.visible).toBe(true);
+        expect(jays.place.getW(0)).toBeLessThan(0.05);
+        world.update(1.3, STEP, { emitters: [] });
+        expect(jays.place.getW(0)).toBeGreaterThan(0.5);
     });
 });
