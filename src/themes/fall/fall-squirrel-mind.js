@@ -98,6 +98,10 @@ const FRESH = 70;
 const LEAP_REACH = Object.freeze({ least: 1.1, most: 4.4 });
 /** The floor nearer the eye than this (metres ahead of it) is under the frame: it is not stood on. */
 const FLOOR_SEEN = 7.0;
+/** Beside a dead limb standing on the log it walks: half its body clear of the post's bark (metres, drawn). */
+const POST_CLEAR = 0.45;
+/** The run of clear limb it needs to stretch out along (metres, drawn: its body and its tail laid behind). */
+const LOAF_ROOM = 1.2;
 /** How far from a limb or a perch it stands on the floor to jump onto it (metres, drawn). */
 const JUMP_OFF = 0.85;
 /**
@@ -337,7 +341,10 @@ export class SquirrelMind {
             this.tail = {
                 time,
                 place: {
-                    on: limb.name, a: limb.low + (limb.high - limb.low) * this.range(0.55, 0.8), b: 0, heading: Math.PI,
+                    on: limb.name,
+                    a: this.walkable(limb.name, limb.low + (limb.high - limb.low) * this.range(0.55, 0.8)),
+                    b: 0,
+                    heading: Math.PI,
                 },
             };
             this.stay('idle', this.range(0.8, 1.6), { phase: this.range(0, 4) });
@@ -346,7 +353,10 @@ export class SquirrelMind {
             this.tail = {
                 time,
                 place: {
-                    on: limb.name, a: limb.low + (limb.high - limb.low) * this.range(0.3, 0.6), b: 0, heading: 0,
+                    on: limb.name,
+                    a: this.walkable(limb.name, limb.low + (limb.high - limb.low) * this.range(0.3, 0.6)),
+                    b: 0,
+                    heading: 0,
                 },
             };
             this.stay('idle', this.range(0.8, 1.6), { phase: this.range(0, 4) });
@@ -846,7 +856,7 @@ export class SquirrelMind {
                 const hit = crossing(here.a, here.b, to.a, to.b, fence.ax, fence.az, fence.bx, fence.bz);
                 if (!hit) continue;
                 const { limb } = fence;
-                const at = clamp(hit.v * limb.length, limb.low, limb.high);
+                const at = this.walkable(limb.name, hit.v * limb.length);
                 const clear = limb.radius(at) + JUMP_OFF;
                 const x = here.a + dx * hit.u;
                 const z = here.b + dz * hit.u;
@@ -928,18 +938,71 @@ export class SquirrelMind {
     goLimb(at, angle = 0) {
         const here = this.tail.place;
         const limb = this.stage.limbs[here.on];
+        // (Never through a dead limb standing on this one: it stops before its foot.)
+        let target = this.walkable(here.on, at);
+        for (const zone of this.postZones(here.on)) {
+            if ((zone.at - here.a) * (zone.at - target) < 0) {
+                const edge = here.a < zone.at ? zone.at - zone.clear : zone.at + zone.clear;
+                if (Math.abs(edge - here.a) < Math.abs(target - here.a)) target = edge;
+            }
+        }
         const to = {
-            on: here.on, a: clamp(at, limb.low, limb.high), b: angle, heading: 0,
+            on: here.on, a: clamp(target, limb.low, limb.high), b: angle, heading: 0,
         };
         const d = Math.abs(to.a - here.a);
         if (d > 1.6) this.move(to, 'bound', { rate: this.range(0.85, 1.05) });
         else if (d > 0.05) this.move(to, 'hop', { rate: this.range(0.9, 1.2) });
     }
 
+    /**
+     * The feet of the dead limbs that stand on a lying one (the windfall's): how far round each the
+     * squirrel keeps (metres along the lying limb either side of the foot's middle: the post's own
+     * radius and half its body, drawn).
+     */
+    postZones(name) {
+        if (!this.zones) this.zones = {};
+        if (!this.zones[name]) {
+            this.zones[name] = this.junctionsOn(name).map(({ name: post, at }) => ({
+                at, clear: this.stage.limbs[post].radius(this.stage.limbs[post].low) + POST_CLEAR,
+            }));
+        }
+        return this.zones[name];
+    }
+
+    /**
+     * A place `at` metres along limb `name` it can stand on: within the part of it it walks, and out of
+     * the foot of any dead limb standing on it (moved to the nearer side of the foot that is walked).
+     */
+    walkable(name, at) {
+        const limb = this.stage.limbs[name];
+        let place = clamp(at, limb.low, limb.high);
+        for (const zone of this.postZones(name)) {
+            if (Math.abs(place - zone.at) >= zone.clear) continue;
+            const below = zone.at - zone.clear;
+            const above = zone.at + zone.clear;
+            const belowWalked = below >= limb.low && below <= limb.high;
+            const aboveWalked = above >= limb.low && above <= limb.high;
+            if (!belowWalked && !aboveWalked) continue;
+            place = belowWalked && (!aboveWalked || place - below <= above - place) ? below : above;
+        }
+        return place;
+    }
+
+    /** How long the stretch of limb `name` it walks round `at` is, between its ends and the feet of posts. */
+    room(name, at) {
+        const limb = this.stage.limbs[name];
+        let { low, high } = limb;
+        for (const zone of this.postZones(name)) {
+            if (zone.at <= at) low = Math.max(low, zone.at + zone.clear);
+            else high = Math.min(high, zone.at - zone.clear);
+        }
+        return Math.max(0, high - low);
+    }
+
     /** From the floor up onto a lying limb, `at` metres along it, from the side toward the eye. */
     mount(name, at) {
         const limb = this.stage.limbs[name];
-        const s = clamp(at, limb.low, limb.high);
+        const s = this.walkable(name, at);
         const top = limb.frame(s, 0).point.slice();
         const t = limb.tangent(s);
         // Square to the limb on the floor, toward the eye; but from the far side where the near one is
@@ -969,7 +1032,7 @@ export class SquirrelMind {
         const limb = this.stage.limbs[name];
         const tree = limb.home;
         const trunk = this.stage.trunks[tree];
-        const at = limb.low + 0.55;
+        const at = this.walkable(name, limb.low + 0.55);
         const top = limb.frame(at, 0).point.slice();
         this.goBark({
             on: tree,
@@ -1194,7 +1257,7 @@ export class SquirrelMind {
             if (at < parent.low || at > parent.high) at = joint.at - off;
             this.leap({
                 on: joint.parent,
-                a: clamp(at, parent.low, parent.high),
+                a: this.walkable(parent.name, at),
                 b: 0,
                 heading: 0,
                 noTurn: true,
@@ -1219,8 +1282,10 @@ export class SquirrelMind {
         const posts = this.junctionsOn(limb.name);
         const snacked = now - this.lastSnack < 25;
         const tip = this.tipOf(limb.name);
+        // (Stretched out along it, its tail laid behind, it needs a clear run of limb.)
+        const roomy = this.room(limb.name, here.a) >= LOAF_ROOM;
         const bit = this.scriptedBit(LIMB_BITS, {
-            across: !links.length, lookout: !posts.length, tip: !tip,
+            across: !links.length, lookout: !posts.length, tip: !tip, loaf: !roomy,
         }) || this.choose('limb', {
             // Out to the snapped end of a leaning bough, to sit there.
             tip: tip ? 3.0 : 0,
@@ -1228,7 +1293,7 @@ export class SquirrelMind {
             rest: 1.5,
             meal: snacked ? 0.3 : 1.5,
             wash: 0.8,
-            loaf: 1.3,
+            loaf: roomy ? 1.3 : 0,
             across: links.length ? 2.2 : 0,
             lookout: posts.length ? 4.2 : 0,
             back: 1.1 + 3 * restless,
@@ -1242,7 +1307,8 @@ export class SquirrelMind {
             // To somewhere else along it, at least a body's length off.
             let at = this.range(limb.low, limb.high);
             if (Math.abs(at - here.a) < 1) {
-                at = here.a < (limb.low + limb.high) / 2 ? limb.high - this.range(0, 0.6) : limb.low + this.range(0, 0.6);
+                at = here.a < (limb.low + limb.high) / 2
+                    ? limb.high - this.range(0, 0.6) : limb.low + this.range(0, 0.6);
             }
             this.goLimb(at);
             this.stay(this.random() < 0.5 ? 'idle' : 'look', this.range(0.8, 1.8), { phase: this.range(0, 3) });
@@ -1261,7 +1327,7 @@ export class SquirrelMind {
             this.goLimb(link.from);
             this.stay('look', this.range(0.5, 1.0), { phase: this.range(0, 3) });
             this.leap({
-                on: link.to, a: link.at, b: 0, heading: 0,
+                on: link.to, a: this.walkable(link.to, link.at), b: 0, heading: 0,
             });
             this.stay('idle', this.range(0.6, 1.2), { phase: this.range(0, 4) });
         } else if (bit === 'lookout') {
