@@ -335,3 +335,194 @@ view, which is why the icon was cut from that view instead.
 ## Captured previews
 
 ![Portrait: at rest and a four-line clear](fluid-dreams-overhaul/portrait.webp)
+
+## The living sea (2026-11-25)
+
+Olov asked for an audit of everything the theme is made of and a pass that makes it one of the
+game's most striking: varied over time, a distinct effect for every event with the biggest
+moments the most spectacular, smooth, and easy to play in front of. Where this section and the
+ones above differ, this one holds.
+
+### What the audit found
+
+From 24 captures of the theme as it stood (five dusks, every event, three tiers, both backends):
+
+| Part | What was weak |
+| --- | --- |
+| The ink overhead | One soft field added to the sky as light: no body, no lit side, no edge. It slid as one sheet and never changed shape. |
+| Stars | One layer of even white specks, the same everywhere in the sky. |
+| The dream sun | A white disc and a glow, always at the same height. |
+| The far forms | Nine flat discs on hairs, a few pixels across, four of them behind the card, the stats bar or outside a 16:9 frame. |
+| The kin | Three drops that bobbed in place. Nothing else floated in the sky. |
+| Time | Only the palette turned (five dusks, 100 s each). Cloud cover, the sea's run, the sun and the sky's furniture never changed, and nothing happened unless the player made it. |
+| One, two and three lines | The same wave packet, one crest more each: the commonest scoring events were the hardest to see and to tell apart. |
+| A twist | Rings at the Drop's foot, close to a lock's. |
+| A back-to-back | The kin brightened. |
+| A perfect clear | A pale ring round the Drop that showed as one stray band of rainbow beside the card. |
+| Four lines | Strong already (the leap, the crown, the ring), but the sky took no part and the crown stood as a ring of thimbles. |
+| A chain | The satellites were lamps: flat discs of pastel. |
+| A run's end | Nothing: the sea was simply reset. |
+| Spray | Short square streaks that read as confetti. |
+| Piece colours | Three pairs a few degrees of hue apart: S and O both cyan, T and L both pink, I and Z both gold. |
+
+What already worked was kept as it was: the one distance field, the Great Drop and its thread,
+the lens and the film, the sea's swell and veins, the lock's droplet, jet and stain, the leap to
+a new home, the five dusks.
+
+### What changed
+
+**A sky with a life of its own** (`fluid-dreams-sky.js`, three-free, and `fluid-dreams-sky-tsl.js`):
+
+- **Five airs** turn on their own clock beside the five dusks (113 s against 100 s, so a pairing
+  takes over an hour to come round), and a level is two airs on (and one dusk), eased in over
+  about six seconds:
+
+  | Air | What it is |
+  | --- | --- |
+  | Clear dusk | The sky as it was: scattered ink, the stars out. The look at the start of every run. |
+  | Ink tide | A ceiling of ink lit from the sun's side, few stars, the sun low under it. |
+  | Glass calm | The sea nearly still, mist on the sea line, the sun half sunk and wearing a ring, the star river bright. |
+  | The bloom | Bubbles out in numbers, the motes thick, the light in the sea at its brightest. |
+  | Long swell | A heavier sea, bars of cloud along the sea line, the ink racing, the sun at its highest. |
+
+- **The ink is a body.** It hides some of what is behind it, is lit on the side the sun is on
+  (the same field read a step toward the sun in the ink's own plane), keeps a deeper heart, and
+  its edges are torn by a finer field, as ink in water. Its layers move at different rates, so
+  it forms and melts instead of sliding (gotcha #1512). **Bars of cloud** lie along the sea line,
+  drawn from the side (gotcha #1513), dark against the dusk and burning near the sun.
+- **The star river**: a great circle where the stars crowd, with a milk of light in the ink's
+  colours, leaning one way and the other over a quarter of an hour. Stars are warm, pale or the
+  sea's cyan.
+- **The dream sun** rides up and down the sea line (0.7° to 5.7°, part by the air and part by a
+  289 s wave of its own) and wanders a little. It has a limb in the sea line's colour and a ring
+  it wears in mist.
+- **The far forms** are bodies of revolution now, so each is the lens it should be without a
+  march (gotcha #1438): a body, a thread flaring at both ends, some with a bead above. They bob
+  and breathe, stand where a 16:9 frame shows sea, and flare when an event's light reaches them.
+- **Bubbles** drift through the sky behind the drops (gotcha #1439): up to 14, thin skins with
+  film colours and the sun on them twice, each on a seeded life of its own.
+- **Things happen by themselves**, about every 27 s: a falling star (beside the card, under the
+  frame's top, falling away from the card, seven in ten on the side away from the sun), a train
+  of bubbles rising out of the sea (one train at a time), a shoal of light passing under the
+  surface near the viewer, a far form sinking and coming up changed, a fountain far out. Never
+  during a four-line clear.
+
+**Events, each its own:**
+
+| Event | What it adds now |
+| --- | --- |
+| Hard drop | Its landing throws a coronet: a ring of beads to one height. |
+| One line | As before (the packet, the pour, the bead up the thread). |
+| Two lines | A fountain of the sea's own liquid stands up either side of the card (15 m out on the open sea's bearing, past the stats bar): a column that thins as it climbs and parts into beads at its top. |
+| Three lines | Two fountains each side, the outer pair a breath behind. |
+| Four lines | The sky answers: a pillar of light stands on the crater, a ring runs out through the ink and pushes it, the far forms flare as it reaches their bearing, the bubbles it meets burst, the crater glows in dreamfire. The crown's points are slimmer and splay. |
+| A chain | The satellites are lenses with a little light, not lamps. The Great Drop holds a seed of light at its heart that burns as the sea charges. |
+| A twist | The thread winds into a corkscrew that climbs, and the ink over the funnel turns with it. |
+| A back-to-back | A string of beads leaps from the largest of the kin across the sky into the Great Drop, which swallows it; the far forms flare. |
+| A perfect clear | The sea turns to glass (as before), the ink draws back, the stars come out, the sun opens a double halo and the motes pour upward. The pale ring round the Drop is gone. |
+| Level up | A front of light opens from the sun and crosses the sky, lighting each far form as it passes; the ink races; the air moves two on. |
+| A run's end | The sea lets go: one long ring leaves the foot of the board and the dusk falls for a moment, then lifts. |
+
+Also: two small companions circle the largest of the kin; the spray is round beads with a thin
+tail (gotcha #1781); the pieces wear seven hues at least 36° apart (S coral `#FF6B57`, Z mint
+`#5CF2A2`, L azure `#5B8CFF`; I, O, T and J as they were), 0/7 on the palette gate.
+
+### How it is built
+
+- `fluid-dreams-sky.js` owns one table (two rows per far form, then two per bubble: one array,
+  gotcha #102) and the numbers the world copies into uniforms. Airs, the sun, the bubbles' lives
+  and the happenings are closed-form in the clock; events are stamped times. A seek reproduces.
+- `fluid-dreams-sky-tsl.js` is the sky function. The liquid inlines it at four call sites, so it
+  is read in four **modes** decided in JavaScript, each built with only what that reader can
+  show: `full` (a view ray that met no liquid), `mirror`, `lens`, and `air` (the haze's colour on
+  the sea line, which now costs no texture read). Regional terms sit under branches on what
+  they read. Gotcha #1106.
+- The choreography tells the world what the rest of the picture should know through `notify`
+  (`impact`, `answer`, `perfect`); the world routes it to the sky.
+- Frame-wide light added here (the level's front, the pillar) is scaled by `flashScale()` where
+  the world writes it (ADR-0021).
+- One trap worth knowing: the sun is placed in `updateCamera` (`sky.placeSun`) before the shafts'
+  origin is projected from it. Placed in `update`, the shafts ran a frame behind the sun, and a
+  frame held on a still clock was not still (the world test for that caught it).
+
+Tiers:
+
+| Tier | Ink lit and torn | Bars | Bubbles | The sea mirrors the bars | The sea mirrors the bubbles |
+| --- | --- | --- | ---: | --- | --- |
+| Minimal | no | no | 3 | no | no |
+| Low | no | yes | 6 | no | no |
+| Medium | yes | yes | 9 | no | no |
+| High | yes | yes | 12 | yes | no |
+| Ultra, Extreme | yes | yes | 14 | yes | yes |
+
+Ball table: the Great Drop's group holds 48 (it held 36), the event groups 26 each (16); 14 jet
+slots (8). A fountain is a flourish and a lock's jet is the lock's own answer, so a fountain
+stands only while four jet slots and nine balls of its side's table are left for the locks
+(`FOUNTAIN_SPARE`): in fast play fountains thin out, and nothing standing is cut for one.
+
+What the sky does by itself is not play's: a new run does not cut a falling star, a train of
+bubbles or a sinking form short (`FluidSky.reset` ends events only; a seek starts both over).
+
+A helper agent wrote the tests beside the work (the theme's tests went from 196 in five files to
+299 in six; `fluid-dreams-sky.test.js` is new). Its tests caught faults no capture showed: a
+calm air's sea heaving when a new run reset it to the old rest swell; a frame's gap in
+`isBusy()` between a run's end being asked for and its dusk rising; a run's end asked for and
+then replayed after a seek; the shafts aimed by the air from before a seek on the first frame
+after it; a replay that differed in the ninth decimal because a seek kept the level's step from
+before; and fast chains asking for more fountains than their side's table and the jet pool
+held, so a fountain lost its top and a standing jet lost its slot. In the sky: nonsense that
+stayed for good (a seek to no time or a frame of no length left the ink's clock NaN, a level with
+no end the air's step, an impact or a twist with no place a light's place); a form that came up
+from a sink with a bead it never had, poking through the top of the band the shader draws forms
+in; the next train of bubbles cutting the rising one off; burst bubbles all back between two
+frames on a new run; a swell's tail leaving the far forms a ghost of a flare; and stale numbers in
+the bubble rows nobody draws, which made two replays of one frame differ.
+
+### Blender
+
+Not used, on purpose. Everything in this picture that has a shape is liquid, and what makes it
+read as liquid is that it merges, necks, pinches off and bends the picture behind it. A mesh
+would do none of that and would have no place in a frame that is one traced material with no
+depth buffer. The far forms were the one candidate for a baked asset; as bodies of revolution
+their lens is exact, they follow the live palette, and they can sink, breathe and flare.
+
+### Verified
+
+- Playground, private dev server, headless Chrome on the RTX (WebGPU, `nvidia blackwell`),
+  30 fps cap, console clean in every frame: the five airs; every event (hard drop, one to four
+  lines, a chain of six, a twist, a back-to-back, a perfect clear, a level, a run's end); each
+  happening; Minimal, Low, Medium, High and Ultra; Low, Minimal and High on the forced WebGL2
+  backend; an upright 430 × 852 frame at rest and through four lines; reduced motion.
+- The real game in the same Chrome (WebGPU, High, single player): boots, takes real hard drops
+  from the keyboard, then three lines, four lines, a twist with a back-to-back and a level
+  through the world. No theme warning or error.
+- Cost, from the playground's own GPU timestamps at a 30 fps cap, old and new interleaved from
+  two dev servers (the RTX clocks down between capped frames, so these are noisy; they answer
+  "did it get dearer", not "how fast is it"):
+
+  | 1584 × 813 | Before | After |
+  | --- | ---: | ---: |
+  | High | 0.62 to 0.80 ms | 0.80 to 0.83 ms |
+  | Low | 0.43 to 0.52 ms | 0.49 to 0.55 ms |
+  | Minimal | 0.25 to 0.31 ms | 0.28 to 0.29 ms |
+
+  Before the regional gates Minimal read 0.36 ms (+43 %).
+
+Not verified: the integrated GPU (headless Chrome kept the RTX with `--force_low_power_gpu`),
+an uncapped measurement, events' frames on any GPU's timer, a physical phone, local multiplayer
+and Infinity layouts in a capture, the theme watched in motion by a person. The theme's icon and
+`docs/theme-screenshots/fluid-dreams.png` still show the older sky.
+
+### Reproduce
+
+`/playground.html?effect=fluid-dreams&t=20&quality=High&board=1&maxFps=30`, with `air=<0..4>`,
+`happen=0`, `event=clear&lines=2|3`, `event=b2b`, `event=spin`, `event=perfect&lines=2`,
+`event=crown`, `event=over`, `event=happen&kind=star|bubbles|shoal|sink|fountain&seed=<n>`.
+
+![The five airs](fluid-dreams-overhaul/living/airs.jpg)
+
+![Events](fluid-dreams-overhaul/living/events.jpg)
+
+![In the game: real hard drops, the sea holding the pieces' colours](fluid-dreams-overhaul/living/ingame.jpg)
+
+![In the game: four lines](fluid-dreams-overhaul/living/ingame-four-lines.jpg)

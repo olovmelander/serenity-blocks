@@ -13,12 +13,13 @@
  *   clear    a wave packet leaves the foot of the board, one crest per line; every stain it
  *            crosses flares and lets go, and a bead of that light climbs the thread into the
  *            Great Drop, which swells and takes the colour (each wave of a cascade runs deeper,
- *            wider and brighter than the one before);
+ *            wider and brighter than the one before). Two lines stand a fountain up out of the sea
+ *            either side of the card; three stand two, the outer pair a breath behind;
  *   combo    the Drop buds one satellite per step of the chain and the whole sea charges;
  *   twist   the sea under the Drop winds into a funnel (a second one winds it deeper; a twist
  *            that clears nothing still turns it a little);
- *   B2B      the kin answer: they flare in dreamfire and ring the sea, and the clear's packet
- *            runs twice;
+ *   B2B      the kin answer: they flare in dreamfire and ring the sea, the clear's packet runs
+ *            twice, and a string of beads leaps from the kin across the sky into the Great Drop;
  *   four lines   the sea holds its breath (less the hotter play runs), the Drop lets go of its
  *            thread and falls (or, when the world gives it a new home, leaps there in an arc and
  *            dives in): a crown of liquid stands up round the crater, a ring of split light
@@ -82,10 +83,28 @@ const GRAVITY = 9.8;
  */
 const boundMargin = (g) => SMOOTH_K * 4.4 + GROUP_BLEND[g] * 1.4;
 const FLIGHT_SLOTS = 8;
-const JET_SLOTS = 8;
+const JET_SLOTS = 14;
+/**
+ * A fountain is a flourish, a lock's jet is the lock's own answer: a fountain stands only while
+ * this many jet slots stay free for locks, and this much of its side's table stays free for their
+ * droplets and jets. In fast play fountains thin out; nothing already standing is ever cut for one.
+ */
+const FOUNTAIN_SPARE = Object.freeze({ slots: 4, balls: 9 });
+/** A clear's fountain: how hard its jet stands (a lock's is 1, a hard drop's 1.75). */
+const FOUNTAIN = Object.freeze({ two: 2.3, three: 2.7, outer: 1.9 });
+/** A back-to-back's string of beads from the kin to the Great Drop: how many, and seconds in flight. */
+const BRIDGE = Object.freeze({ beads: 22, flight: 1.9, gap: 0.035 });
 const CROWN_SPOKES = 10;
 /** Where a jet's root and shaft stand in its height, and how thick each is. */
 const JET_COLUMN = Object.freeze([[0.28, 0.3], [0.66, 0.21]]);
+/**
+ * A fountain is taller: seven in a taper, close enough to be one column that thins as it climbs
+ * and parts into beads only at its top, as a jet does (four, a metre apart, read as a string of
+ * pearls; two as a snowman).
+ */
+const FOUNTAIN_COLUMN = Object.freeze([
+    [0.05, 0.26], [0.18, 0.235], [0.31, 0.21], [0.44, 0.19], [0.57, 0.17], [0.7, 0.15], [0.83, 0.13],
+]);
 /** How much the Great Drop draws itself in before it falls. */
 const SQUEEZE = 0.05;
 /** How briskly the kin follow their anchor across the sea (rad/s of a critically damped follow). */
@@ -134,6 +153,9 @@ export class FluidChoreography {
      * @param {boolean} [options.crown] draw the crown of a four-line clear as liquid (else spray only)
      * @param {number} [options.crownSpokes] points of that crown (three balls each)
      * @param {(burst: object) => void} [options.emit] spray sink: { kind, x, y, z, color, power }
+     * @param {(what: string, a?: number, b?: number, c?: number) => void} [options.notify] what the
+     *   rest of the picture should know: 'impact' (x, z, boost) when the Great Drop meets the sea,
+     *   'answer' (delay) on a back-to-back, 'perfect' (at) when the sea turns to glass
      */
     constructor(options = {}) {
         this.maxSatellites = Math.max(0, Math.min(HERO.satellites, options.satellites ?? HERO.satellites));
@@ -141,6 +163,11 @@ export class FluidChoreography {
         this.crown = options.crown !== false;
         this.crownSpokes = Math.max(4, Math.min(CROWN_SPOKES, Math.round(options.crownSpokes ?? CROWN_SPOKES)));
         this.emit = options.emit || null;
+        this.notify = options.notify || null;
+        /** The air's own say in how the sea runs (the world sets it: 1 = as it was, 0.3 = nearly glass). */
+        this.airCalm = 1;
+        /** How far the twist's funnel is wound, 0..1.3 (the sky turns the ink over it by this). */
+        this.twistEnv = 0;
 
         this.tables = {
             balls: rows(MAX_BALLS * 2),
@@ -166,7 +193,7 @@ export class FluidChoreography {
         };
         this.beads = [{ y: -10, amp: 0 }, { y: -10, amp: 0 }];
         this.vortex = {
-            x: 0, z: 0, depth: 0, radius: 6, phase: 0, arms: 0,
+            x: 0, z: 0, depth: 0, radius: 6, phase: 0, arms: 0, helix: 0,
         };
         this.hero = {
             x: 0, y: 9, z: -24, r: HERO.radius, body: 0, blend: 1.5, bias: 0.05, glow: 0,
@@ -206,6 +233,15 @@ export class FluidChoreography {
         this._kinFlare = new Swell({
             attack: 0.08, release: 2.2, ceiling: 1.6, knee: 1,
         });
+        /** The dusk that falls for a moment when a run ends (the world closes its iris by it). */
+        this._dusk = new Swell({
+            attack: 0.5, release: 1.9, ceiling: 1, knee: 0.8,
+        });
+        this.dusk = 0;
+        /** A run ended: the sea lets everything go on the next frame (its clock is the frame's). */
+        this.exhaleDue = false;
+        /** The palette of the frame (the fountains stand up in its glow). */
+        this.palette = null;
         /** How hot play runs (src/themes/shared/gameplay-surge.js), and its last reading. */
         this.play = new GameplaySurge();
         this.heat = {
@@ -220,7 +256,8 @@ export class FluidChoreography {
         this.combo = 0;
         this.charge = 0;
         this.surge = 0;
-        this.swell = 1;
+        // (the sea at rest runs as the air has it: a new run in a calm air must not heave it)
+        this.swell = this.airCalm ?? 1;
         this.filmShift = 0;
         this.skyFlash = 0;
         this.flash = 0;
@@ -250,6 +287,10 @@ export class FluidChoreography {
         this._sky.reset();
         this._twist.reset();
         this._kinFlare.reset();
+        this._dusk.reset();
+        this.dusk = 0;
+        this.duskT0 = -Infinity;
+        this.exhaleDue = false;
         this.play.reset();
         this.heat.punch = 0;
         this.heat.level = 0;
@@ -289,6 +330,8 @@ export class FluidChoreography {
         this.vortex.depth = 0;
         this.vortex.arms = 0;
         this.vortex.phase = 0;
+        this.vortex.helix = 0;
+        this.twistEnv = 0;
     }
 
     setReducedMotion(reduced) {
@@ -371,13 +414,16 @@ export class FluidChoreography {
      * and dives in, and the scene's hero anchor moves there. Without one it falls where it hangs.
      * `cascade` is the deepest wave of the lock's cascade this clear is (1 = its first), `combo`
      * the true chain it extends, `b2b` a back-to-back difficult clear.
+     * `fountains` are the sea points either side of the card ([[x, z], [x, z]], or null where the
+     * frame has no sea beside it): two lines stand a fountain on each, three stand two.
      * @param {{ origin: number[], lines: number, twist?: boolean, perfect?: boolean, site?: number[],
-     *   cascade?: number, combo?: number, b2b?: boolean }} clear
+     *   cascade?: number, combo?: number, b2b?: boolean, fountains?: number[][] }} clear
      * @returns {boolean} true when this clear sent the Drop down (a four-line clear that arrives
      *     while it is still down feeds the crater instead)
      */
     clear({
         origin, lines, twist = false, perfect = false, site = null, cascade = 1, combo = 1, b2b = false,
+        fountains = null,
     }) {
         const n = Math.max(1, Math.min(4, Math.round(lines)));
         const { time } = this;
@@ -400,6 +446,7 @@ export class FluidChoreography {
         this._gulp(time + clearPassTime(toFoot) + hold, 0.22 + n * 0.08 + deeper * 0.03);
         this._strike(0.25 + n * 0.12 + deeper * 0.03, 0.2 + n * 0.12 + deeper * 0.04, 0);
         this.filmShift += 0.06 * n + 0.03 * deeper;
+        if (fountains && (n === 2 || n === 3)) this._fountains(fountains, n, origin);
         if (quad) {
             // From cold the sea holds its breath fully; in a fever it barely pauses for it.
             const p = this.plunge;
@@ -459,6 +506,7 @@ export class FluidChoreography {
             g.until = Math.max(g.until, at + 3.6);
         }
         if (ringDone) g.ringT0 = at;
+        this.notify?.('perfect', at);
     }
 
     /**
@@ -486,6 +534,111 @@ export class FluidChoreography {
             this._ring(x, z, 0.16 - i * 0.03, 15, DREAMFIRE, hold + 0.08 + i * 0.13);
         }
         this._strike(0, 0.15, 0.25, hold);
+        this.notify?.('answer', hold);
+        this._bridge(hold + 0.1);
+    }
+
+    /**
+     * A string of beads leaps from the largest of the kin, over the sky, into the Great Drop,
+     * which swallows it. (Not while the Drop is down: there is nothing there to leap to.)
+     */
+    _bridge(delay) {
+        if (this.plunge.active || this.reducedMotion) return;
+        const [kx, kz] = this.kinSpots[0];
+        const ky = this.kinAt ? this.kinAt[1] : this.scene.kin[1];
+        const T = BRIDGE.flight;
+        const { hero } = this;
+        const vel = [(hero.x - kx) / T, (hero.y - ky + 0.5 * GRAVITY * T * T) / T, (hero.z - kz) / T];
+        for (let i = 0; i < BRIDGE.beads; i += 1) {
+            this.emit?.({
+                kind: 'bridge', x: kx, y: ky, z: kz, color: DREAMFIRE, power: 1, vel, life: T, delay: delay + i * BRIDGE.gap,
+            });
+        }
+        // the Drop swallows what arrives
+        this._gulp(this.time + delay + T, 0.3);
+        this._strike(0, 0, 0.2, delay + T);
+    }
+
+    /**
+     * A clear's fountains: jets of the sea standing up either side of the card, in the dusk's own
+     * glow. Two lines stand one each side; three stand two, the outer pair a breath behind and a
+     * little lower. They leave no stain (it is the sea's own liquid).
+     */
+    _fountains(sides, lines, origin) {
+        const tint = this.palette ? mix3([0, 0, 0], this.palette.glow, this.palette.inkC, 0.3) : WHITE;
+        for (let s = 0; s < sides.length && s < 2; s += 1) {
+            const at = sides[s];
+            if (!at || !Number.isFinite(at[0]) || !Number.isFinite(at[1])) continue;
+            // away from the board's foot, along the line from it
+            const dx = at[0] - origin[0];
+            const dz = at[1] - origin[1];
+            const len = Math.hypot(dx, dz) || 1;
+            if (!this._fountainRoom(at[0])) continue;
+            this._jet(at[0], at[1], lines === 3 ? FOUNTAIN.three : FOUNTAIN.two, tint, 0.05, true);
+            if (lines === 3 && this._fountainRoom(at[0])) {
+                this._jet(at[0] + (dx / len) * 3.1, at[1] + (dz / len) * 1.2 - 1.6, FOUNTAIN.outer, tint, 0.2, true);
+            }
+        }
+    }
+
+    /** The group a point of the sea belongs to: left or right of the board's foot. */
+    _sideOf(x) {
+        return x < this.scene.foot[0] ? GROUP_LEFT : GROUP_RIGHT;
+    }
+
+    /**
+     * True when one more fountain may stand on the side of `x`: jet slots and room in that side's
+     * table are left over for the locks (FOUNTAIN_SPARE). Counted from what is standing or due.
+     */
+    _fountainRoom(x) {
+        const group = this._sideOf(x);
+        let free = 0;
+        let load = 0;
+        for (let i = 0; i < this.jets.length; i += 1) {
+            const j = this.jets[i];
+            if (!j.active) free += 1;
+            else if (j.group === group) load += (j.fountain ? FOUNTAIN_COLUMN.length : JET_COLUMN.length) + 1;
+        }
+        for (let i = 0; i < this.flights.length; i += 1) {
+            if (this.flights[i].active && this.flights[i].group === group) load += 1;
+        }
+        return free > FOUNTAIN_SPARE.slots
+            && load + FOUNTAIN_COLUMN.length + 1 <= GROUP_CAPACITY[group] - FOUNTAIN_SPARE.balls;
+    }
+
+    /** A jet out of the sea at (x, z), `delay` seconds from now. `fountain`: no flight fed it. */
+    _jet(x, z, power, color, delay = 0, fountain = false) {
+        // (a lock's jet takes the oldest one's slot when every slot stands; fountains leave room so it need not)
+        const jet = this.jets.find((j) => !j.active) || this.jets.reduce((a, b) => (a.t0 < b.t0 ? a : b));
+        jet.active = true;
+        jet.t0 = this.time + delay;
+        jet.x = x;
+        jet.z = z;
+        jet.color = [color[0], color[1], color[2]];
+        jet.power = power;
+        jet.group = this._sideOf(x);
+        jet.back = false;
+        jet.fountain = fountain;
+        jet.spray = false;
+        return jet;
+    }
+
+    /**
+     * A run ended: the sea lets go of everything it holds, one long ring leaves the foot of the
+     * board, and the dusk falls for a moment. (Asked for after a reset; played on the next frame,
+     * whose clock is the picture's.)
+     */
+    exhale() {
+        this.exhaleDue = true;
+    }
+
+    _exhale() {
+        this.exhaleDue = false;
+        const { time } = this;
+        this.duskT0 = time;
+        this._dusk.hit(1, time);
+        this._ring(this.scene.foot[0], this.scene.foot[1], 0.2, 44, this.heroTint, 0.1);
+        this._ring(this.stem.x, this.stem.z, 0.12, 20, this.heroTint, 0.5, true);
     }
 
     /**
@@ -701,6 +854,9 @@ export class FluidChoreography {
      */
     update(time, dt, palette) {
         this.time = time;
+        this.palette = palette;
+        if (this.exhaleDue) this._exhale();
+        this.dusk = this._dusk.valueAt(time);
         const calm = this.reducedMotion ? 0.45 : 1;
 
         // ── scalars ──
@@ -744,8 +900,8 @@ export class FluidChoreography {
         }
         const glass = g.level;
         // the sea heaves harder as play heats, and in a fever rolls in one body
-        const swellTarget = (1 + this.charge * 0.35 + this.surge * 0.3 + level * 0.15 + fever * 0.2)
-            * (1 - this.hush * 0.85) * (1 - glass * 0.94) * calm;
+        const swellTarget = (this.airCalm + this.charge * 0.35 + this.surge * 0.3 + level * 0.15 + fever * 0.2)
+            * (1 - this.hush * 0.85) * (1 - glass * 0.94) * (1 - this.dusk * 0.5) * calm;
         this.swell += (swellTarget - this.swell) * approach(5, dt);
 
         // in a fever the sea pours up the thread in a stream of beads
@@ -965,9 +1121,10 @@ export class FluidChoreography {
             const oy = Math.sin(a) * orbit * Math.sin(tilt) * 0.62;
             const oz = Math.sin(a) * orbit * Math.cos(tilt) * 0.55;
             const hue = [palette.inkA, palette.inkB, palette.sun][j % 3];
-            const c = mix3([0, 0, 0], hue, WHITE, 0.12);
+            const c = mix3([0, 0, 0], hue, WHITE, 0.3);
             const sr = (0.42 + (j % 4) * 0.08) * scale * grow;
-            this._put(GROUP_HERO, cx + ox, cy + oy, cz + oz, sr, c, 0.7 + this.charge * 0.8 + fever * 0.6);
+            // (a little light of their own: with much they were lamps, flat discs of pastel, not drops)
+            this._put(GROUP_HERO, cx + ox, cy + oy, cz + oz, sr, c, 0.2 + this.charge * 0.22 + fever * 0.25);
         }
 
         // ── the crown: a wall of liquid stands up round the crater, draws into points, and each
@@ -976,7 +1133,7 @@ export class FluidChoreography {
             const k = crownAge / PLUNGE.crown;
             const ring = R * (0.8 + 1.05 * (1 - Math.exp(-crownAge * 3.0)));
             const stand = Math.max(0, Math.sin(Math.PI * Math.min(1, crownAge / 1.3))) ** 0.8;
-            const wall = 3.0 * scale * stand;
+            const wall = 3.3 * scale * stand;
             const c = mix3([0, 0, 0], tint, DREAMFIRE, 0.45);
             const flight = crownAge - 0.2;
             for (let j = 0; j < this.crownSpokes; j += 1) {
@@ -986,19 +1143,30 @@ export class FluidChoreography {
                 const cz0 = Math.sin(a) * 0.92;
                 const x = p.at[0] + cx0 * ring * wob;
                 const z = p.at[1] + cz0 * ring * wob;
-                const lean = 0.3 * stand;
-                this._put(GROUP_HERO, x, wall * 0.3 - 0.45, z, 0.82 * scale * (1 - k * 0.45), c, 0.4 * (1 - k));
+                // a point of the crown: a foot in the wall, a waist and a tip that leans out as it stands
+                // (it splays: upright fingers of equal girth read as a ring of chessmen)
+                const lean = 1.25 * stand * scale;
+                this._put(GROUP_HERO, x, wall * 0.24 - 0.45, z, 0.72 * scale * (1 - k * 0.45), c, 0.4 * (1 - k));
                 this._put(
                     GROUP_HERO,
-                    x + cx0 * lean,
+                    x + cx0 * lean * 0.42,
                     wall * 0.7 * wob - 0.25,
-                    z + cz0 * lean,
-                    0.58 * scale * stand,
+                    z + cz0 * lean * 0.42,
+                    0.42 * scale * stand,
                     c,
                     0.6 * (1 - k),
                 );
+                this._put(
+                    GROUP_HERO,
+                    x + cx0 * lean,
+                    wall * 1.12 * wob - 0.2,
+                    z + cz0 * lean,
+                    0.25 * scale * stand,
+                    c,
+                    0.9 * (1 - k),
+                );
                 if (flight > 0) {
-                    const y = 1.9 * scale + 7.4 * wob * flight - 0.5 * GRAVITY * flight * flight;
+                    const y = 2.6 * scale + 7.8 * wob * flight - 0.5 * GRAVITY * flight * flight;
                     const out = 0.5 + flight * 1.7;
                     const br = 0.36 * scale * (1 - k * 0.3);
                     if (y > -0.4) this._put(GROUP_HERO, x + cx0 * out, y, z + cz0 * out, br, c, 1.5 * (1 - k));
@@ -1026,13 +1194,18 @@ export class FluidChoreography {
             vortex.depth = 1.15 * env * scale;
             vortex.radius = 4.6 * scale;
             vortex.arms = 0.55 * env;
+            // the thread over it winds into a corkscrew (not under reduced motion)
+            vortex.helix = this.reducedMotion ? 0 : 0.2 * env * scale;
             vortex.phase += dt * 7.5;
             this.spin += dt * 2.4 * env;
+            this.twistEnv = env;
             // let go once it has wound up and run down to nothing worth drawing
             if (raw < 0.02 && time - tw.t0 > 0.5) {
                 tw.active = false;
                 vortex.depth = 0;
                 vortex.arms = 0;
+                vortex.helix = 0;
+                this.twistEnv = 0;
             }
         }
     }
@@ -1051,6 +1224,11 @@ export class FluidChoreography {
         if (boost > 0) this._ring(x, z, 0.24, 52, fire, 0.7);
         this._wave(x, z, 4, 1.5 + boost * 0.3, 0, { major: true });
         this._burst('crown', x, 0.2, z, fire, R);
+        this.notify?.('impact', x, z, boost);
+        // the crater glows in dreamfire under the crown, and lets go as the Drop comes up
+        this._stain(x, z, 1.3, fire);
+        const glow = this.dyePool.find((s) => s.active && s.x === x && s.z === z);
+        if (glow) glow.releaseAt = this.time + 1.7;
         // everything the sea was holding goes up with it
         for (let i = 0; i < this.dyePool.length; i += 1) {
             const s = this.dyePool[i];
@@ -1094,6 +1272,20 @@ export class FluidChoreography {
             this.kinSpots[i][1] = b[2];
             const tint = flare > 0.001 ? mix3(this._kinTint, b[4], DREAMFIRE, Math.min(1, flare) * 0.55) : b[4];
             this._put(GROUP_KIN, b[0], b[1], b[2], b[3], tint, glow);
+        }
+        // two small companions circle the largest, slowly, now touching it and now free
+        for (let m = 0; m < 2; m += 1) {
+            const a = time * (0.19 + m * 0.07) * calm + m * 2.6;
+            const reach = (2.5 + m * 0.9 + 0.5 * Math.sin(time * 0.11 + m * 1.9)) * s;
+            this._put(
+                GROUP_KIN,
+                bodies[0][0] + Math.cos(a) * reach,
+                bodies[0][1] + Math.sin(a * 0.8 + m) * reach * 0.42,
+                bodies[0][2] + Math.sin(a) * reach * 0.7,
+                (0.34 - m * 0.08) * s,
+                m ? c1 : c0,
+                glow,
+            );
         }
         // one of them lets a drip go every few seconds
         const period = 5.6;
@@ -1146,9 +1338,10 @@ export class FluidChoreography {
             const y = lerp(f.from[1], -0.1, e) + lift;
             const r = 0.3 * Math.sqrt(f.power) * (0.55 + 0.45 * smooth(0, 0.25, k));
             this._put(f.group, x, y, z, r, f.color, 3.2);
-            // it sheds a string of fine drops behind it
+            // it sheds a string of fine drops behind it (the two small ones of a hard drop do not:
+            // a lock is the commonest thing in play, and three strings a piece was a field of sparks)
             const shed = Math.floor(age / 0.035);
-            if (shed !== f.shed) {
+            if (shed !== f.shed && !f.minor) {
                 f.shed = shed;
                 this._burst('trail', x, y, z, f.color, 1);
             }
@@ -1163,18 +1356,14 @@ export class FluidChoreography {
             this._burst('splash', x, 0.05, z, f.color, f.power * 0.7);
             return;
         }
-        const jet = this.jets.find((j) => !j.active) || this.jets.reduce((a, b) => (a.t0 < b.t0 ? a : b));
-        jet.active = true;
+        const jet = this._jet(x, z, f.power, f.color);
         jet.t0 = f.t0 + FLIGHT_TIME;
-        jet.x = x;
-        jet.z = z;
-        jet.color = f.color;
-        jet.power = f.power;
         jet.group = f.group;
-        jet.back = false;
         this._ring(x, z, 0.11 + 0.07 * f.power, RING_REACH * (0.7 + 0.3 * f.power), f.color);
         this._stain(x, z, 0.5 + 0.28 * f.power, f.color);
         this._burst('splash', x, 0.05, z, f.color, f.power);
+        // a hard drop's landing throws a coronet: a ring of beads, all to one height
+        if (f.power > 1.5) this._burst('coronet', x, 0.05, z, f.color, 1);
     }
 
     _updateJets(time) {
@@ -1183,30 +1372,41 @@ export class FluidChoreography {
             if (!j.active) continue;
             const age = time - j.t0;
             if (age < 0) continue;
-            const life = JET_TIME * Math.sqrt(j.power);
+            if (j.fountain && !j.spray) {
+                // a fountain breaks the surface: a ring, and a sheaf of drops thrown up with it
+                j.spray = true;
+                this._ring(j.x, j.z, 0.12, RING_REACH * 0.9, j.color);
+                this._burst('sheaf', j.x, 0.1, j.z, j.color, j.power * 0.5);
+            }
+            const root = Math.sqrt(j.power);
+            // its tip's speed as it leaves (a fountain throws higher), and so how long it is in the air
+            const v0 = (j.fountain ? 6.6 : 5.3) * root;
+            const life = j.fountain ? (2 * v0) / GRAVITY + 0.12 : JET_TIME * root;
             if (age > life) {
                 j.active = false;
                 continue;
             }
-            const root = Math.sqrt(j.power);
             // the column: a root and a shaft up out of the crater and back, close enough to be one
             // tapering body
-            const ck = Math.min(1, age / (0.72 * root));
+            const ck = Math.min(1, age / ((j.fountain ? 0.95 : 0.72) * root));
             if (ck < 1) {
-                const height = 1.3 * j.power * Math.sin(Math.PI * ck);
+                // (a fountain's height grows with the root of its power, as its girth does: one that
+                // grew with the power itself stretched into beads)
+                const height = (j.fountain ? 2.5 * root : 1.3 * j.power) * Math.sin(Math.PI * ck);
                 const fade = 1 - 0.3 * ck;
-                for (let c = 0; c < JET_COLUMN.length; c += 1) {
-                    const [at, thick] = JET_COLUMN[c];
-                    const lit = (1 + c * 0.3) * (1 - ck);
+                const column = j.fountain ? FOUNTAIN_COLUMN : JET_COLUMN;
+                for (let c = 0; c < column.length; c += 1) {
+                    const [at, thick] = column[c];
+                    // (a fountain is the sea's own liquid: a lens with a little light, not a lamp)
+                    const lit = j.fountain ? 0.16 + 0.3 * (1 - ck) : (1 + c * 0.3) * (1 - ck);
                     this._put(j.group, j.x, -0.3 + height * at, j.z, thick * root * fade, j.color, lit);
                 }
             }
             // its tip: carried up with the column, then thrown clear of it (the neck between them
             // thins and parts), a moment's hang, and back into the sea
-            const v0 = 5.3 * root;
             const y = -0.25 + v0 * age - 0.5 * GRAVITY * age * age;
             if (y > -0.3) {
-                this._put(j.group, j.x, y, j.z, 0.17 * root, j.color, 2.2);
+                this._put(j.group, j.x, y, j.z, 0.17 * root, j.color, j.fountain ? 0.9 : 2.2);
             } else if (!j.back && age > 0.3) {
                 j.back = true;
                 this._ring(j.x, j.z, 0.05 * j.power, 7, j.color, 0, true);
@@ -1326,23 +1526,14 @@ export class FluidChoreography {
             owned = 1 - smooth(2.5, 4.5, age);
             if (age > 5) pr.on = false;
         }
-        let glassRing = 0;
-        const ringAge = time - this.glass.ringT0;
-        if (ringAge >= 0 && ringAge < 5.4) {
-            glassRing = 1.1 * smooth(0, 0.6, ringAge) * (1 - smooth(3.4, 5.4, ringAge)) * (1 - owned);
+        // (A perfect clear's rings are the sun's own, a double halo: fluid-dreams-sky.js. The pale
+        // ring it used to open round the Drop showed as one stray band of rainbow beside the card.)
+        this.glassOwned = owned;
+        if (pr.on) {
+            pr.radius = 0.1 + (time - pr.t0) * 0.62;
+            pr.width = 0.035 + (time - pr.t0) * 0.022;
         }
-        if (glassRing > quad) {
-            // a perfect clear's own ring: wide, pale and slow
-            pr.radius = 0.5 + ringAge * 0.12;
-            pr.width = 0.07;
-            pr.strength = glassRing;
-        } else {
-            if (pr.on) {
-                pr.radius = 0.1 + (time - pr.t0) * 0.62;
-                pr.width = 0.035 + (time - pr.t0) * 0.022;
-            }
-            pr.strength = quad;
-        }
+        pr.strength = quad;
     }
 
     /** One bounding sphere per group, wide enough to hold everything its balls can bridge to. */
@@ -1377,8 +1568,8 @@ export class FluidChoreography {
                 z1 = Math.max(z1, b.z + b.w);
             }
             const threaded = g === GROUP_HERO && this.stem.off < 4;
-            // the thread runs from the sea to the Drop, swaying
-            const reach = this.stem.foot + 1.2;
+            // the thread runs from the sea to the Drop, swaying (and winding, over a twist)
+            const reach = this.stem.foot + 1.2 + this.vortex.helix * 1.1;
             if (threaded) {
                 x0 = Math.min(x0, this.stem.x - reach);
                 x1 = Math.max(x1, this.stem.x + reach);
@@ -1407,7 +1598,9 @@ export class FluidChoreography {
 
     /** True while anything event-driven is still in flight. */
     isBusy() {
-        return this.plunge.active || this.twist.active || this.glass.active
+        // (a run's end: from the moment it is asked for, through the dusk's rise, until it has lifted)
+        const dusk = this.exhaleDue || this.time - this.duskT0 < 1 || this.dusk > 0.01;
+        return this.plunge.active || this.twist.active || this.glass.active || dusk
             || this.flights.some((f) => f.active) || this.jets.some((j) => j.active);
     }
 }

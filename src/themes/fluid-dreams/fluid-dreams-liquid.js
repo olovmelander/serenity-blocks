@@ -19,14 +19,15 @@
  */
 import * as THREE from 'three/webgpu';
 import {
-    Break, Fn, If, Loop, abs, acos, cameraPosition, clamp, cos, dot, exp, float, floor, int, length,
+    Break, Fn, If, Loop, abs, cameraPosition, clamp, cos, dot, exp, float, int, length,
     log, log2, max, min, mix, normalize, positionWorld, pow, reflect, refract, select, sin, smoothstep,
     sqrt, texture, uniform, uniformArray, vec2, vec3, vec4,
 } from 'three/tsl';
 import {
     FLUID_PALETTES, GROUP_BLEND, GROUP_COUNT, GROUP_HERO, GROUP_START, SMOOTH_K, TAU,
 } from './fluid-dreams-core.js';
-import { NOISE_SIZE, fdHash33, fdMax3 } from './fluid-dreams-tsl.js';
+import { NOISE_SIZE, fdMax3 } from './fluid-dreams-tsl.js';
+import { createSkyColour } from './fluid-dreams-sky-tsl.js';
 
 const INV_K = 1 / SMOOTH_K;
 /** The sea term is a height, not a distance: scale it so a sloped swell stays conservative. */
@@ -67,18 +68,6 @@ const RIPPLE_TURN = (37 * Math.PI) / 180;
  */
 const VEINS = Object.freeze({ GAIN: 0.26, SCALE: 0.13 });
 /**
- * Drops far out on the sea, as (bearing °, elevation °, angular radius °): spread across the
- * view, clear of the dream sun.
- */
-export const FAR_DROPS = Object.freeze([
-    [-52, 2.4, 0.7], [-36.5, 3.0, 0.9], [-29, 1.6, 0.45], [-15.5, 2.1, 0.62], [-11.5, 1.2, 0.33],
-    [22.5, 1.5, 0.42], [26.5, 2.8, 0.8], [39, 1.9, 0.55], [56, 2.3, 0.64],
-]);
-/** Nothing of a far drop shows above this height in the sky (sine of its elevation): skip the rest. */
-const FAR_BAND = Math.max(
-    ...FAR_DROPS.map(([, elevation, size]) => Math.sin(((elevation + size * 1.2) * Math.PI) / 180)),
-);
-/**
  * The key light: behind the viewer, up and to the left. Normalised here, not with `.normalize()`:
  * a node built outside any Fn became a WGSL var assigned only in the branch that first built it
  * (a drop's lens), and every later sky read on a sea-only pixel took it as zero
@@ -96,8 +85,9 @@ const RING_CRESTS = 3.3;
  * Every uniform the liquid reads. The world owns the values; the material only reads.
  * @param {{ balls: object[], groups: object[], rings: object[], dye: object[], waves: object[] }} tables
  * @param {THREE.Texture} noise
+ * @param {object[]} skyRows the sky's table (fluid-dreams-sky.js): two rows per far form, then two per bubble
  */
-export function createLiquidUniforms(tables, noise) {
+export function createLiquidUniforms(tables, noise, skyRows) {
     const p = FLUID_PALETTES[0];
     const v3 = (a) => uniform(new THREE.Vector3(a[0], a[1], a[2]));
     return {
@@ -124,13 +114,40 @@ export function createLiquidUniforms(tables, noise) {
         dye: uniformArray(tables.dye, 'vec4'),
         /** Two rows per wave packet: (x, z, radius, amplitude), (width, crests, light, -). */
         waves: uniformArray(tables.waves, 'vec4'),
-        /** Far drops: (unit direction, angular radius in chord units). */
-        far: uniformArray(FAR_DROPS.map(([bearing, elevation, size]) => {
-            const b = (bearing * Math.PI) / 180;
-            const e = (elevation * Math.PI) / 180;
-            const flat = Math.cos(e);
-            return new THREE.Vector4(Math.sin(b) * flat, Math.sin(e), -Math.cos(b) * flat, (size * Math.PI) / 180);
-        }), 'vec4'),
+        /**
+         * The sky's table, one array (a stage binds twelve uniform buffers, gotcha #102). Far forms:
+         * (unit direction of the body, its radius as an angle), (wide, tall, bead, flare). Bubbles
+         * after them: (unit direction from the eye, radius as an angle), (film phase, hue, light, -).
+         */
+        sky: uniformArray(skyRows, 'vec4'),
+        /** (bubbles drawn, -, -, -). */
+        skyCounts: uniform(new THREE.Vector4(0, 0, 0, 0)),
+        /** The ink's own clock: the air's wind, quicker as play heats, racing on an event. */
+        skyClock: uniform(0),
+        /** The air: (how much ink, the bars on the sea line, mist, the stars). */
+        air: uniform(new THREE.Vector4(0.5, 0.35, 0.06, 1)),
+        /** (the light running in the sea, -, -, -). */
+        air2: uniform(new THREE.Vector4(1, 0, 0, 0)),
+        /** The sun's rings: (the one it wears in mist, the second a perfect clear opens). */
+        sunLook: uniform(new THREE.Vector4(0.02, 0, 0, 0)),
+        /** The sun's bearing (unit, x and z), and where it lies in the ink's own plane. */
+        sunFlat: uniform(new THREE.Vector2(0.33, -0.94)),
+        sunDeck: uniform(new THREE.Vector2(1, -2.6)),
+        /** The star river: the pole of its great circle. */
+        river: uniform(new THREE.Vector3(-0.5, 0.62, 0.6).normalize()),
+        /** A level's front of light opening from the sun: (angle, strength, width, -). */
+        front: uniform(new THREE.Vector4(0, 0, 0.1, 0)),
+        /** A four-line clear's pillar of light: (bearing x, bearing z, strength, width). */
+        pillar: uniform(new THREE.Vector4(0, -1, 0, 0.03)),
+        /** The ring it drives through the ink, in the ink's own plane: (x, z, radius, strength). */
+        shock: uniform(new THREE.Vector4(0, 0, 0, 0)),
+        /** A twist turning the ink over its funnel: (x, z, angle, radius). */
+        swirl: uniform(new THREE.Vector4(0, 0, 0, 0.55)),
+        /** A falling star: (its head, strength), (the way it travels, the length of its tail). */
+        starHead: uniform(new THREE.Vector4(0, 1, 0, 0)),
+        starTail: uniform(new THREE.Vector4(1, 0, 0, 0.2)),
+        /** A shoal of light passing under the surface: (x, z, radius, strength). */
+        shoal: uniform(new THREE.Vector4(0, 0, 5, 0)),
         /** Live rows: rings, stains, packets. */
         counts: uniform(new THREE.Vector4(0, 0, 0, 0)),
         /** The thread: foot (x, z), the height its top flare begins, the height it is cut at. */
@@ -142,7 +159,7 @@ export function createLiquidUniforms(tables, noise) {
         stemTint: uniform(new THREE.Vector4(0.6, 0.3, 1.0, 0)),
         /** A funnel in the sea: (x, z, depth, radius). */
         vortex: uniform(new THREE.Vector4(0, 0, 0, 6)),
-        /** Its spiral arms: (phase, strength, -, -). */
+        /** Its spiral arms: (phase, strength, how far the thread over it winds into a corkscrew, -). */
         vortexSpin: uniform(new THREE.Vector4(0, 0, 0, 0)),
         /** The Great Drop: centre and radius (its lens, the light it pools on the sea). */
         hero: uniform(new THREE.Vector4(-10, 9.5, -23, 3.3)),
@@ -195,10 +212,14 @@ export function createLiquidUniforms(tables, noise) {
  * @param {boolean} options.farDrops draw the drops far out on the sea
  * @param {boolean} options.mirrorExtras a mirrored ray also meets the Great Drop's satellites and crown
  *   (off: only its body and thread, a fraction of the balls)
+ * @param {boolean} options.skyLit the ink is lit from the sun's side and torn at its edges (two more fetches)
+ * @param {boolean} options.strata the bars of cloud lying along the sea line (one more fetch)
+ * @param {boolean} options.bubbles draw the bubbles adrift overhead
+ * @param {boolean} options.mirrorSky the sea also mirrors the bars of cloud (and, with mirrorExtras, the bubbles)
  */
 export function createLiquidMaterial({
     uniforms: u, steps = 56, bounceSteps = 24, bounces = 2, stars = true, warp = true, dispersion = false,
-    farDrops = true, mirrorExtras = true,
+    farDrops = true, mirrorExtras = true, skyLit = true, strata = true, bubbles = true, mirrorSky = true,
 }) {
     const material = new THREE.MeshBasicNodeMaterial({
         side: THREE.BackSide,
@@ -314,104 +335,21 @@ export function createLiquidMaterial({
 
     // ── The sky ─────────────────────────────────────────────────────────────────
 
-    /** The sky in a direction. `full` adds the folded ink, the stars and the prism ring. */
-    const skyColour = (dirIn, full) => {
-        const dir = vec3(dirIn).toVar();
-        const ay = abs(dir.y).toVar();
-        const c = mix(u.horizon, u.mid, smoothstep(0.0, 0.13, ay)).toVar();
-        c.assign(mix(c, u.zenith, smoothstep(0.08, 0.62, ay)));
-        // a band of light lying on the sea line
-        c.addAssign(u.horizon.mul(exp(ay.mul(-24.0)).mul(0.5)));
-        const up = vec3(dir.x, ay, dir.z).toVar();
-        const cs = clamp(dot(up, u.sunDir), 0.0, 1.0).toVar();
-        const cs4 = cs.mul(cs).mul(cs).mul(cs).toVar();
-        const cs16 = cs4.mul(cs4).mul(cs4).mul(cs4).toVar();
-        const cs64 = cs16.mul(cs16).mul(cs16).mul(cs16);
-        c.addAssign(u.sun.mul(cs4.mul(cs4).mul(0.2).add(cs64.mul(0.9))
-            .add(smoothstep(0.99895, 0.99978, cs).mul(6.0))));
-
-        // a soft light behind the viewer: never seen itself, it is the window in every drop
-        const key = clamp(dot(dir, KEY_DIR), 0.0, 1.0).toVar();
-        const key8 = key.mul(key).mul(key).mul(key).mul(key)
-            .mul(key)
-            .mul(key)
-            .mul(key)
-            .toVar();
-        c.addAssign(mix(u.glow, vec3(1.0), 0.6).mul(key8.mul(key8).mul(key8).mul(2.6)));
-
-        // ink adrift overhead, receding to the sea line like a ceiling of cloud
-        const P = up.xz.div(ay.add(0.3)).toVar();
-        const drift = vec2(u.time.mul(0.0042), u.time.mul(0.0027)).toVar();
-        const n1 = noiseAt(P.mul(0.105).add(drift)).w.toVar();
-        const n2 = n1.toVar();
-        if (full && warp) {
-            const fold = noiseAt(P.mul(0.19).sub(drift.mul(1.7)).add(0.37)).w.toVar();
-            n2.assign(noiseAt(P.mul(0.26).add(vec2(n1, fold).mul(0.32)).add(drift.mul(2.3))).w);
-        }
-        const band = smoothstep(0.02, 0.3, ay).mul(float(1.0).sub(smoothstep(0.7, 1.0, ay).mul(0.45)));
-        const dens = smoothstep(0.44, 0.86, n1.mul(0.62).add(n2.mul(0.5))).mul(band);
-        const hue = mix(mix(u.inkA, u.inkB, smoothstep(0.3, 0.68, n2)), u.inkC, smoothstep(0.5, 0.9, n1).mul(0.55));
-        c.addAssign(hue.mul(dens).mul(u.charge.mul(0.7).add(0.5).add(u.surge.mul(0.4))
-            .add(u.heat.x.mul(0.12))
-            .add(u.heat.y.mul(0.2))));
-
-        if (full) {
-            if (stars) {
-                const sp = dir.mul(84.0).toVar();
-                const cell = floor(sp).toVar();
-                const h = fdHash33(cell).toVar();
-                const off = sp.sub(cell).sub(0.5).sub(h.sub(0.5).mul(0.7));
-                const sigma = max(u.pixelAngle.mul(84.0), 0.02);
-                const core = exp(dot(off, off).negate().div(sigma.mul(sigma)));
-                const z2 = h.z.mul(h.z);
-                const z8 = z2.mul(z2).mul(z2).mul(z2);
-                const twinkle = sin(u.time.mul(h.x.mul(3.0).add(1.5)).add(h.y.mul(40.0))).mul(0.3).add(0.7);
-                const seen = smoothstep(0.03, 0.3, dir.y).mul(float(1.0).sub(dens.mul(0.8)));
-                c.addAssign(mix(vec3(1.0, 0.82, 0.9), vec3(0.75, 0.9, 1.0), h.x)
-                    .mul(core.mul(z8.mul(h.z).mul(7.0).add(z2.mul(0.25))).mul(twinkle).mul(seen)));
-            }
-            if (farDrops) {
-                // Far out, other drops hang on their own threads: too far to trace, so each is
-                // a disc shaded as the lens it is (the sea line bent across its middle, a lit
-                // rim) and a hair of light under it.
-                If(dir.y.greaterThan(-0.004).and(dir.y.lessThan(FAR_BAND)), () => Loop({
-                    start: int(0), end: int(FAR_DROPS.length), type: 'int', condition: '<', name: 'fd',
-                }, ({ fd }) => {
-                    const D = u.far.element(fd);
-                    const off = dir.sub(D.xyz).toVar();
-                    const r = length(off).div(D.w).toVar();
-                    If(r.lessThan(1.0), () => {
-                        const nz = sqrt(float(1.0).sub(r.mul(r)));
-                        const v = off.y.div(D.w);
-                        const body = mix(u.mid.mul(0.9), u.zenith.mul(2.0), smoothstep(-0.2, 0.7, v))
-                            .add(u.horizon.mul(exp(v.add(0.15).mul(v.add(0.15)).mul(-14.0)).mul(0.7)));
-                        const rim = float(1.0).sub(nz);
-                        const lit = body.add(mix(u.horizon, u.glow, 0.35).mul(rim.mul(rim).mul(1.5)));
-                        c.assign(mix(c, mix(lit, c, 0.45), float(1.0).sub(smoothstep(0.82, 1.0, r))));
-                    });
-                    // its thread: a hair of light from the sea line to its foot
-                    const side = length(normalize(dir.xz).sub(normalize(D.xz)));
-                    const hair = float(1.0).sub(smoothstep(0.0, D.w.mul(0.09), side))
-                        .mul(smoothstep(0.0, 0.004, dir.y))
-                        .mul(float(1.0).sub(smoothstep(D.y.sub(D.w.mul(1.1)), D.y.sub(D.w.mul(0.8)), dir.y)));
-                    c.addAssign(mix(u.horizon, u.glow, 0.4).mul(hair.mul(0.22)));
-                }));
-            }
-            If(u.prism.y.greaterThan(0.001), () => {
-                // a ring of split light opening from the Great Drop
-                const ang = acos(clamp(dot(dir, u.heroDir), -1.0, 1.0));
-                const x = ang.sub(u.prism.x).div(u.prism.z).toVar();
-                const bandP = exp(x.mul(x).negate());
-                const spec = cos(vec3(0.0, 0.33, 0.67).add(x.mul(0.3)).mul(TAU)).mul(0.5).add(0.5);
-                c.addAssign(mix(spec, vec3(1.0), 0.28).mul(bandP).mul(u.prism.y));
-            });
-        }
-        // a four-line clear's flash lifts the whole sky; at 0.45 it bleached the half the crown stood in
-        c.mulAssign(u.skyFlash.mul(0.3).add(1.0));
-        // below the sea line: what a ray that leaves the picture downward meets
-        const under = smoothstep(0.0, -0.22, dir.y);
-        return mix(c, c.mul(vec3(0.4, 0.36, 0.55)).add(u.deep), under);
-    };
+    /** The sky in a direction, read four ways: 'full', 'mirror', 'lens', 'air' (fluid-dreams-sky-tsl.js). */
+    const skyColour = createSkyColour({
+        u,
+        noiseAt,
+        keyDir: KEY_DIR,
+        stars,
+        warp,
+        lit: skyLit,
+        strata,
+        farForms: farDrops,
+        bubbles,
+        mirrorSky,
+        // (a bubble in the mirror is a loop on every pixel of sea: the tiers that mirror the extras)
+        mirrorBubbles: mirrorExtras,
+    });
 
     // ── The field ───────────────────────────────────────────────────────────────
 
@@ -492,14 +430,20 @@ export function createLiquidMaterial({
     const stemTerm = (p, flags, cb) => {
         If(flags[GROUP_HERO].greaterThan(0.5).and(u.stemShape.w.lessThan(4.0)), () => {
             const span = clamp(p.y.div(max(u.stem.z, 0.1)), 0.0, 1.0).toVar();
+            const bow = span.mul(float(1.0).sub(span)).toVar();
             const sway = vec2(
                 sin(p.y.mul(0.55).add(u.time.mul(0.8))),
                 cos(p.y.mul(0.47).add(u.time.mul(0.63))),
-            ).mul(span.mul(float(1.0).sub(span)).mul(1.1)).toVar();
+            ).mul(bow.mul(1.1)).toVar();
+            // a twist winds it into a corkscrew that climbs
+            const wind = p.y.mul(1.7).sub(u.vortexSpin.x.mul(1.25));
+            sway.addAssign(vec2(cos(wind), sin(wind)).mul(bow.mul(u.vortexSpin.z).mul(4.0)));
             const a = p.xz.sub(u.stem.xy).sub(sway).toVar();
             const la = max(length(a), 1e-4).toVar();
             const r = stemRadius(p.y).toVar();
-            const dd = max(la.sub(r), p.y.sub(u.stem.w)).mul(0.8).add(u.stemShape.w).toVar();
+            // (a corkscrew leans: the same distance stands for less of the way to it)
+            const lean = float(0.8).div(u.vortexSpin.z.mul(1.5).add(1.0));
+            const dd = max(la.sub(r), p.y.sub(u.stem.w)).mul(lean).add(u.stemShape.w).toVar();
             cb(exp(clamp(dd.mul(-INV_K), -60.0, 60.0)), a, la, r, dd);
         });
     };
@@ -731,11 +675,18 @@ export function createLiquidMaterial({
                 const thread = ridge2.mul(ridge2).mul(ridge2).mul(ridge);
                 const room = float(1.0).sub(smoothstep(1.8, 3.6, vLod));
                 const veinHue = mix(u.glow, u.inkC, smoothstep(0.3, 0.75, marble));
+                // a shoal of light passing under the surface: the threads it crosses burn, and it
+                // carries a soft glow of its own
+                const sv = xz.sub(u.shoal.xy);
+                const shoal = exp(dot(sv, sv).div(u.shoal.z.mul(u.shoal.z)).negate()).mul(u.shoal.w).toVar();
                 const veinLight = veinHue.mul(thread.mul(room).mul(shimmer))
                     .mul(u.charge.mul(1.1).add(u.surge.mul(0.6)).add(1.0)
                         .add(u.heat.x.mul(0.7))
                         .add(u.heat.y.mul(1.8))
-                        .mul(VEINS.GAIN));
+                        .mul(u.air2.x)
+                        .add(shoal.mul(5.0))
+                        .mul(VEINS.GAIN))
+                    .add(u.glow.mul(shoal.mul(shimmer).mul(0.1)));
                 seaLocal.assign(u.deep.mul(ndv.mul(0.9).add(0.35))
                     .add(veinLight)
                     .add(stain.mul(veins).mul(shimmer))
@@ -759,10 +710,10 @@ export function createLiquidMaterial({
                     // total internal reflection returns zero: keep the ray it would have bounced as
                     return select(dot(bent, bent).lessThan(0.25), reflect(r1, exitN.negate()), bent);
                 };
-                const behind = skyColour(leave(1.33), false).toVar();
+                const behind = skyColour(leave(1.33), 'lens').toVar();
                 if (dispersion) {
                     // a drop splits the light it bends: the red and the blue leave by their own roads
-                    behind.assign(vec3(skyColour(leave(1.3), false).x, behind.y, skyColour(leave(1.365), false).z));
+                    behind.assign(vec3(skyColour(leave(1.3), 'lens').x, behind.y, skyColour(leave(1.365), 'lens').z));
                 }
 
                 const back = clamp(dot(r1, u.sunDir), 0.0, 1.0).toVar();
@@ -792,7 +743,15 @@ export function createLiquidMaterial({
                 // Liquid carrying light of its own is less of a window: a lock's droplet reads
                 // as its colour against the dark sea and against the sun alike.
                 const lit = clamp(glow.mul(0.42), 0.0, 0.88);
-                blobLocal.assign(through.mul(float(1.0).sub(lit)).add(scatter).add(ink)
+                // The Great Drop holds a seed of light at its heart: seen where the view's road
+                // through it passes near its middle, it breathes, and burns as the sea charges.
+                const hd = p.add(r1.mul(chord.mul(0.5))).sub(u.hero.xyz);
+                const heart = exp(dot(hd, hd).div(u.hero.w.mul(u.hero.w).mul(0.2)).negate()).mul(big)
+                    .mul(sin(u.time.mul(0.9)).mul(0.12).add(0.88));
+                const seed = mix(u.glow, u.sun, 0.4).mul(heart.mul(u.charge.mul(0.6).add(u.surge.mul(0.5))
+                    .add(u.heat.y.mul(0.35))
+                    .add(0.26)));
+                blobLocal.assign(through.mul(float(1.0).sub(lit)).add(scatter).add(ink).add(seed)
                     .add(tint.mul(glow).mul(ndv.mul(0.55).add(0.45))));
 
                 // the film: interference colours from its thickness and the angle it is seen at
@@ -817,7 +776,8 @@ export function createLiquidMaterial({
             col.addAssign(thr.mul(local).mul(float(1.0).sub(F)));
             thr.mulAssign(mix(seaFilm, filmTint, blob).mul(F));
             If(bn.equal(int(0)), () => {
-                haze.assign(float(1.0).sub(exp(t.mul(-HAZE))));
+                // (mist thickens the air over the sea)
+                haze.assign(float(1.0).sub(exp(t.mul(u.air.z.mul(2.4).add(1.0)).mul(-HAZE))));
             });
 
             // ── on: the mirror direction ──
@@ -831,14 +791,15 @@ export function createLiquidMaterial({
         });
 
         If(primaryMiss.greaterThan(0.5), () => {
-            col.assign(skyColour(d, true));
+            col.assign(skyColour(d, 'full'));
         }).Else(() => {
-            col.addAssign(thr.mul(skyColour(d, false)));
+            col.addAssign(thr.mul(skyColour(d, 'mirror')));
             // The air between the camera and what it sees takes the sea line's light: the
             // sky's own colour right at the sea line on that bearing, so the far sea dissolves
             // into a luminous mist that IS the sky where they meet. A darker, hand-mixed air
             // used to leave a step there and the horizon read as a ruled line.
-            const air = skyColour(normalize(vec3(view.x, 0.0, view.z)), false);
+            // (the sky's ground alone: on the sea line the ink has no say, so this costs no fetch)
+            const air = skyColour(normalize(vec3(view.x, 0.0, view.z)), 'air');
             col.assign(mix(col, air, haze));
         });
         return vec4(col, 1.0);

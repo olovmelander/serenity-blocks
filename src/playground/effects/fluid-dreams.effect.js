@@ -15,9 +15,14 @@
  *   locks=<n>                before anything else, play n locks (the sea holding their colours)
  *   quads=<n>                then n four-line clears, 6 s apart: each carries the Great Drop to
  *                            a new home (the sequence is seeded, so a shot reproduces)
- *   event=lock|drop|clear|quad|twist|perfect|levelUp   fire a gameplay event...
+ *   event=lock|drop|clear|quad|twist|spin|b2b|perfect|crown|levelUp|over|happen
+ *                            fire a gameplay event (or, with happen, one of the things the sky
+ *                            does by itself: kind=star|bubbles|shoal|sink|fountain)...
  *   eventAge=<s>             ...and show it <s> seconds later (lines=<n>, row=<r>, u=<0..1>,
  *                            color=<hex>)
+ *   air=<0..4>               hold one air (clear dusk, ink tide, glass calm, the bloom, long
+ *                            swell); a fraction shows two melting
+ *   happen=0                 nothing happens by itself (a still sky for an A/B)
  *   demo=1                   live only: play a looping gameplay script
  *   parts=liquid,motes,spray draw only these parts
  *   tune=key:value,...       override fields of the tier for an A/B (fluid-dreams-quality.js),
@@ -87,7 +92,7 @@ function mountBoardOverlay(withHud) {
 }
 
 /** The game's piece colours (fluid-dreams-tetrominos.js). */
-const PIECE_COLORS = ['#00E5FF', '#FFD93D', '#FF2D95', '#6FE7E0', '#FF6FB5', '#B14CFF', '#FFA84C'];
+const PIECE_COLORS = ['#00E5FF', '#FFD93D', '#FF2D95', '#FF6B57', '#5B8CFF', '#B14CFF', '#5CF2A2'];
 
 /** A looping script of locks and clears for the live demo (seconds into the loop). */
 const DEMO_LOOP = 36;
@@ -134,6 +139,8 @@ export function create({
     }).build();
     world.bindCamera(camera);
     world.setReducedMotion(params.get('reduce') === '1');
+    if (params.has('air')) world.setAirHold(num(params, 'air', 0));
+    if (params.get('happen') === '0') world.setHappenings(false);
     const partsParam = params.get('parts');
     if (partsParam) world.showOnlyParts(partsParam.split(',').map((p) => p.trim()));
 
@@ -210,7 +217,12 @@ export function create({
         } else if (eventName === 'clear') world.onClear({ rows: bottom(lines), lines });
         else if (eventName === 'quad') world.onClear({ rows: bottom(4), lines: 4 });
         else if (eventName === 'twist') world.onClear({ rows: bottom(2), lines: 2, twist: true });
-        else if (eventName === 'perfect') world.onClear({ rows: bottom(4), lines: 4, perfect: true });
+        else if (eventName === 'spin') world.onSpin();
+        else if (eventName === 'b2b') world.onClear({ rows: bottom(lines), lines, b2b: true });
+        else if (eventName === 'perfect') world.onClear({ rows: bottom(lines), lines, perfect: true });
+        else if (eventName === 'crown') world.onClear({ crown: true });
+        else if (eventName === 'over') world.endRun?.();
+        else if (eventName === 'happen') world.happen(params.get('kind') || 'star', Math.round(num(params, 'seed', 7)));
         else if (eventName === 'levelUp') world.levelUp(num(params, 'eventLevel', level + 1));
     };
 

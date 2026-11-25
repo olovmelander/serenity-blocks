@@ -19,16 +19,21 @@ const TABLE_ROWS = Object.freeze({
     balls: MAX_BALLS, groups: GROUP_COUNT, rings: RING_SLOTS, dye: DYE_SLOTS, waves: WAVE_SLOTS,
 });
 
-/** A choreography at rest at `start`, and every burst of spray it asks for (with the time it asked). */
+/**
+ * A choreography at rest at `start`, every burst of spray it asks for (with the time it asked) and
+ * everything it tells the rest of the picture ({ what, numbers, at }).
+ */
 function make(options = {}, start = 10) {
     const bursts = [];
+    const notes = [];
     const choreo = new FluidChoreography({
         emit: (burst) => bursts.push({ ...burst, color: [...burst.color], at: choreo.time }),
+        notify: (what, ...numbers) => notes.push({ what, numbers, at: choreo.time }),
         ...options,
     });
     choreo.seek(start);
     choreo.update(start, 0, PALETTE);
-    return { choreo, bursts };
+    return { choreo, bursts, notes };
 }
 
 /** Advance by `seconds` in equal frames of about 1/60 s; `each` runs after every frame. */
@@ -116,10 +121,14 @@ function problem(choreo) {
             }
         }
         if (threaded) {
-            // The thread, from its foot on the sea to where it enters the Drop.
+            // The thread, from its foot on the sea to where it enters the Drop. Over a twist it winds
+            // into a corkscrew that stands `vortex.helix` off its axis half way up to its top flare
+            // (fluid-dreams-liquid.js stemTerm: bow · 4 · helix, bow = 1/4 there).
             const { stem } = choreo;
-            for (const y of [0, stem.cap * 0.5, stem.cap]) {
-                const reach = Math.hypot(stem.x - bound.x, y - bound.y, stem.z - bound.z) + (y === 0 ? stem.foot : 0);
+            for (const [y, off] of [
+                [0, stem.foot], [stem.flare * 0.5, choreo.vortex.helix], [stem.cap * 0.5, 0], [stem.cap, 0],
+            ]) {
+                const reach = Math.hypot(stem.x - bound.x, y - bound.y, stem.z - bound.z) + off;
                 if (reach > bound.w + 1e-6) return `the thread at y=${y} is outside the Great Drop's bound`;
             }
         }
@@ -135,6 +144,9 @@ function problem(choreo) {
         skyFlash: choreo.skyFlash,
         prism: choreo.prism.strength,
         vortex: choreo.vortex.depth,
+        helix: choreo.vortex.helix,
+        twistEnv: choreo.twistEnv,
+        dusk: choreo.dusk,
         ...Object.fromEntries(Object.entries(choreo.hero).map(([key, value]) => [`hero.${key}`, value])),
         ...Object.fromEntries(Object.entries(choreo.stem).map(([key, value]) => [`stem.${key}`, value])),
         ...Object.fromEntries(choreo.heroTint.map((value, i) => [`heroTint.${i}`, value])),
@@ -186,10 +198,12 @@ function snapshot(choreo) {
         choreo.flash,
         choreo.kick,
         choreo.hush,
+        choreo.dusk,
         choreo.combo,
         // The funnel and the ring of split light are drawn only while they have strength.
         vortex.depth,
         vortex.arms,
+        vortex.helix,
         ...(vortex.depth > 0 ? [vortex.x, vortex.z, vortex.radius, vortex.phase] : []),
         prism.strength,
         ...(prism.strength > 0 ? [prism.radius, prism.width] : []),
@@ -1087,25 +1101,42 @@ describe('fluid dreams choreography: clears', () => {
     });
 
     it('has room for the whole crown beside the Drop, whatever chain it falls with, on every tier', () => {
-        for (const [name, tier] of Object.entries(QUALITY)) {
+        // Once with every point a crown can have (the default), then with each tier's own.
+        const crowns = [['every point', {}], ...Object.entries(QUALITY).map(([name, tier]) => [name, tier])];
+        const standing = {};
+        for (const [name, tier] of crowns) {
+            const options = name === 'every point' ? {} : {
+                satellites: tier.satellites, lobes: tier.lobes, crown: tier.crown, crownSpokes: tier.crownSpokes,
+            };
             for (const chain of [0, 1, HERO.satellites]) {
                 const label = `${name}, a chain of ${chain}`;
-                const { choreo } = make({ satellites: tier.satellites, lobes: tier.lobes, crown: tier.crown });
+                const { choreo } = make(options);
                 const asked = countAsks(choreo);
                 choreo.setCombo(chain);
                 run(choreo, 4);
                 // It falls with every satellite the chain has raised.
-                expect(satellites(choreo), label).toBe(Math.min(chain, tier.satellites));
+                expect(satellites(choreo), label).toBe(Math.min(chain, choreo.maxSatellites));
                 choreo.clear({ origin: [...choreo.scene.foot], lines: 4 });
                 const { most, dropped } = watchAsks(choreo, asked, HUSH_HOLD + PLUNGE.total + 1);
                 expect(dropped, label).toBe(0);
                 expect(most, label).toBeLessThanOrEqual(GROUP_CAPACITY[GROUP_HERO]);
-                // (The crown is in the count: this is not a body alone.)
-                if (tier.crown) expect(most, label).toBeGreaterThan(1 + tier.lobes + tier.satellites);
+                // (The crown is in the count: a foot, a waist and a tip to every point, beside the body.)
+                if (choreo.crown) {
+                    expect(most, label).toBeGreaterThanOrEqual(1 + choreo.lobes + choreo.crownSpokes * 3);
+                }
+                standing[name] = most;
                 // And the chain's satellites come back once the Drop hangs again.
                 run(choreo, 4);
-                expect(satellites(choreo), label).toBe(Math.min(chain, tier.satellites));
+                expect(satellites(choreo), label).toBe(Math.min(chain, choreo.maxSatellites));
             }
+        }
+        // A tier with more points to its crown stands more liquid up, and none stands more than the default.
+        const names = Object.keys(QUALITY);
+        for (let i = 1; i < names.length; i++) {
+            if (QUALITY[names[i]].crownSpokes > QUALITY[names[i - 1]].crownSpokes && QUALITY[names[i - 1]].crown) {
+                expect(standing[names[i]], names[i]).toBeGreaterThan(standing[names[i - 1]]);
+            }
+            expect(standing[names[i]], names[i]).toBeLessThanOrEqual(standing['every point']);
         }
     });
 
@@ -1141,16 +1172,21 @@ describe('fluid dreams choreography: clears', () => {
         expect(choreo.vortex.arms).toBe(0);
     });
 
-    it('turns the sea to glass on a perfect clear and opens a ring overhead', () => {
-        const { choreo } = make();
+    it('turns the sea to glass on a perfect clear, and leaves the rings overhead to the sun', () => {
+        const { choreo, notes } = make();
         const twin = make().choreo;
         choreo.clear({ origin: [...choreo.scene.foot], lines: 1, perfect: true });
         expect(choreo.isBusy()).toBe(true);
-        run(choreo, 1.5);
+        // The rest of the picture is told at once (its double halo is the sky's to draw)...
+        expect(notes.filter((note) => note.what === 'perfect')).toHaveLength(1);
+        let ring = 0;
+        run(choreo, 1.5, () => {
+            ring = Math.max(ring, choreo.prism.strength);
+        });
         run(twin, 1.5);
         expect(choreo.swell).toBeLessThan(twin.swell * 0.5);
-        expect(choreo.prism.strength).toBeGreaterThan(0);
-        expect(choreo.prism.radius).toBeGreaterThan(0);
+        // ...and no ring of split light opens round the Drop: that is a four-line clear's alone.
+        expect(ring).toBe(0);
         expect(threadOn(choreo)).toBe(true);
         const stilled = settle(choreo);
         expect(stilled).toBeLessThan(30);
@@ -1294,14 +1330,19 @@ describe('fluid dreams choreography: budgets and time', () => {
             });
         };
         // 200 locks and 100 clears in a little over three seconds: far more than can ever land.
+        // (Every clear has sea beside the card, so the two- and three-line ones stand fountains;
+        // every fifth is a back-to-back.)
         for (let i = 0; i < 200; i++) {
             lock(i % 3 === 0);
             if (i % 2 === 0) {
+                const [fx, fz] = choreo.scene.foot;
                 choreo.clear({
-                    origin: [choreo.scene.foot[0] + random() - 0.5, choreo.scene.foot[1]],
+                    origin: [fx + random() - 0.5, fz],
                     lines: 1 + (i % 4),
                     twist: i % 7 === 0,
                     perfect: i % 31 === 0,
+                    b2b: i % 10 === 0,
+                    fountains: [[fx - 8 - random() * 3, fz - 6], [fx + 8 + random() * 3, fz - 6]],
                 });
             }
             choreo.setCombo(i % 13);
@@ -1508,31 +1549,23 @@ describe('fluid dreams choreography: budgets and time', () => {
 });
 
 describe('fluid dreams choreography: regressions', () => {
-    it('fades a perfect clear\'s ring whatever the clear\'s size, and never leaves it in the sky', () => {
+    it('opens no ring of split light for a perfect clear of one to three lines, and never leaves a four-line ring in the sky', () => {
+        // (The pale ring a perfect clear used to open round the Drop read as a stray band of
+        // rainbow beside the card: its rings are the sun's now, fluid-dreams-sky.js.)
         for (const lines of [1, 2, 3]) {
-            const { choreo } = make();
+            const { choreo, notes } = make();
             let peak = 0;
-            let step = 0;
-            let previous = 0;
             const watch = () => {
                 peak = Math.max(peak, choreo.prism.strength);
-                step = Math.max(step, Math.abs(choreo.prism.strength - previous));
-                previous = choreo.prism.strength;
             };
             choreo.clear({ origin: [...choreo.scene.foot], lines, perfect: true });
             run(choreo, 1, watch);
-            expect(choreo.prism.strength, `${lines} lines`).toBeGreaterThan(0);
-            expect(choreo.prism.radius, `${lines} lines`).toBeGreaterThan(0);
             for (let i = 0; choreo.isBusy() && i < 60 * 30; i++) run(choreo, DT, watch);
             expect(choreo.isBusy()).toBe(false);
-            // It eased in and out: no frame took more than a quarter of it.
-            expect(step, `${lines} lines`).toBeLessThan(peak * 0.25);
-            // Gone, and it stays gone.
-            let after = 0;
-            run(choreo, 20, () => {
-                after = Math.max(after, choreo.prism.strength);
-            });
-            expect(after, `${lines} lines`).toBe(0);
+            run(choreo, 20, watch);
+            expect(peak, `${lines} lines`).toBe(0);
+            // The sky was told, once, so the sun can wear them.
+            expect(notes.filter((note) => note.what === 'perfect'), `${lines} lines`).toHaveLength(1);
         }
         // A four-line clear's own ring, and a perfect four-line clear's, end the same way.
         for (const perfect of [false, true]) {
@@ -1749,34 +1782,45 @@ describe('fluid dreams choreography: continuity', () => {
         expect(choreo.counts.rings).toBeGreaterThan(0);
     });
 
-    it('hands the sky from a four-line ring to a perfect clear\'s ring without a step', () => {
+    it('lets a four-line ring open and fade untouched when a perfect clear comes with it or after it', () => {
         const watch = (arrange) => {
             const { choreo } = make();
             arrange(choreo);
             let last = choreo.prism.strength;
             let step = 0;
             let peak = 0;
+            let rise = 0;
             fine(choreo, HUSH_HOLD + PLUNGE.total + 8, () => {
                 step = Math.max(step, Math.abs(choreo.prism.strength - last));
+                rise = Math.max(rise, choreo.prism.strength - last);
                 last = choreo.prism.strength;
                 peak = Math.max(peak, last);
             });
-            return { step, peak, end: choreo.prism.strength };
+            return {
+                step, peak, rise, end: choreo.prism.strength,
+            };
         };
-        // Four lines and a perfect clear at once (what the playground's event=perfect plays).
+        const plain = watch((choreo) => choreo.clear({ origin: [...choreo.scene.foot], lines: 4 }));
+        // Four lines and a perfect clear at once: the ring is the four-line clear's own, no other.
         const together = watch((choreo) => choreo.clear({ origin: [...choreo.scene.foot], lines: 4, perfect: true }));
-        // A perfect clear a few seconds after a four-line impact.
-        const after = watch((choreo) => {
-            choreo.clear({ origin: [...choreo.scene.foot], lines: 4 });
-            fine(choreo, HUSH_HOLD + PLUNGE.fall + 3, () => {});
-            choreo.clear({ origin: [...choreo.scene.foot], lines: 2, perfect: true });
-        });
-        for (const seen of [together, after]) {
-            expect(seen.peak).toBeGreaterThan(0.5);
+        expect(plain.peak).toBeGreaterThan(0.5);
+        expect(together.peak).toBeCloseTo(plain.peak, 9);
+        for (const seen of [plain, together]) {
             // The steepest thing a ring does is open: nothing switches on or off between frames.
             expect(seen.step).toBeLessThan(0.05);
             expect(seen.end).toBe(0);
         }
+        // A perfect clear a few seconds after a four-line impact: what is left of the ring goes on
+        // fading. Nothing lifts it again, and nothing cuts it.
+        const after = watch((choreo) => {
+            choreo.clear({ origin: [...choreo.scene.foot], lines: 4 });
+            fine(choreo, HUSH_HOLD + PLUNGE.fall + 3, () => {});
+            expect(choreo.prism.strength).toBeGreaterThan(0);
+            choreo.clear({ origin: [...choreo.scene.foot], lines: 2, perfect: true });
+        });
+        expect(after.rise).toBeLessThanOrEqual(1e-12);
+        expect(after.step).toBeLessThan(0.05);
+        expect(after.end).toBe(0);
     });
 
     it('keeps the Great Drop\'s size continuous through the plunge and through a swallow', () => {
@@ -1956,7 +2000,7 @@ describe('fluid dreams choreography: play builds instead of popping', () => {
     });
 
     it('crowns a four-line clear with its late perfect clear: no second packet or hush, glass after the crown', () => {
-        const { choreo, bursts } = make();
+        const { choreo, bursts, notes } = make();
         choreo.clear({ origin: [...choreo.scene.foot], lines: 4 });
         const crownAt = choreo.plunge.t0 + choreo.plunge.fall + 1.6;
         run(choreo, 0.36);
@@ -1976,13 +2020,19 @@ describe('fluid dreams choreography: play builds instead of popping', () => {
         expect(kinds(bursts, 'crown')).toHaveLength(1);
         // The perfect clear sent no packet of its own (only the impact's came meanwhile).
         expect(choreo.counts.waves).toBeLessThanOrEqual(waves + 1);
-        // Then the sea turns to glass, and the double ring opens as the four-line ring lets go.
-        let ring = 0;
+        // Then the sea turns to glass. The double ring is the sun's to wear: the sky was told when
+        // (once the crown has gone up), and the four-line ring is left to fade as it was.
+        const told = notes.filter((note) => note.what === 'perfect');
+        expect(told).toHaveLength(1);
+        expect(told[0].numbers[0]).toBeCloseTo(crownAt, 9);
+        let last = choreo.prism.strength;
+        let lifted = 0;
         run(choreo, 2, () => {
-            ring = Math.max(ring, choreo.prism.strength);
+            lifted = Math.max(lifted, choreo.prism.strength - last);
+            last = choreo.prism.strength;
         });
         expect(choreo.glass.level).toBeGreaterThan(0.9);
-        expect(ring).toBeGreaterThan(0);
+        expect(lifted).toBeLessThanOrEqual(1e-12);
         expect(settle(choreo)).toBeLessThan(30);
         expect(choreo.glass.level).toBe(0);
         // A late perfect clear with nothing down turns the sea to glass at once.
@@ -2091,5 +2141,591 @@ describe('fluid dreams choreography: play builds instead of popping', () => {
         expect(choreo.surge).toBeGreaterThan(twin.surge + 0.2);
         expect(twin.surge).toBeLessThan(surge);
         expect(choreo.counts.rings).toBeGreaterThan(twin.counts.rings);
+    });
+});
+
+describe('fluid dreams choreography: fountains, coronets and the bridge', () => {
+    /** The sea points either side of the card, as the world hands them to a clear. */
+    const beside = (choreo, out = 9, back = -6) => {
+        const [fx, fz] = choreo.scene.foot;
+        return [[fx - out, fz + back], [fx + out, fz + back]];
+    };
+    const fountainsOf = (choreo) => choreo.jets.filter((jet) => jet.active && jet.fountain);
+    /** Clear `lines` at rest (sea either side unless `sites` says otherwise) and watch what stands up. */
+    const stand = (lines, sites) => {
+        const made = make();
+        const { choreo } = made;
+        choreo.clear({
+            origin: [...choreo.scene.foot], lines, fountains: sites === undefined ? beside(choreo) : sites,
+        });
+        const jets = fountainsOf(choreo).map((jet) => ({
+            x: jet.x, z: jet.z, t0: jet.t0, group: jet.group,
+        }));
+        const seen = {
+            left: 0, right: 0, top: 0, stains: 0,
+        };
+        run(choreo, 5, () => {
+            seen.left = Math.max(seen.left, choreo.live[GROUP_LEFT]);
+            seen.right = Math.max(seen.right, choreo.live[GROUP_RIGHT]);
+            seen.stains = Math.max(seen.stains, choreo.counts.dye);
+            for (const group of EVENT_GROUPS) {
+                for (const ball of ballsOf(choreo, group)) seen.top = Math.max(seen.top, ball.y + ball.r);
+            }
+            const wrong = problem(choreo);
+            if (wrong) throw new Error(`${lines} lines, t=${choreo.time.toFixed(3)}: ${wrong}`);
+        });
+        return { ...made, jets, seen };
+    };
+    /** Step one frame at a time for `seconds`: the most a side asked for, and the frames a side lost a ball. */
+    const watchSides = (choreo, asked, seconds, tally) => {
+        for (let f = 0; f < Math.round(seconds / DT); f++) {
+            asked.fill(0);
+            run(choreo, DT);
+            for (const group of EVENT_GROUPS) {
+                tally.most = Math.max(tally.most, asked[group]);
+                if (asked[group] !== choreo.live[group]) tally.short += 1;
+            }
+        }
+    };
+    /** Count the jets whose slot is taken for a new one while they still stand. */
+    const countStolen = (choreo, tally) => {
+        const jet = choreo._jet.bind(choreo);
+        choreo._jet = (...args) => {
+            if (choreo.jets.every((slot) => slot.active)) tally.stolen += 1;
+            return jet(...args);
+        };
+    };
+
+    it('stands a fountain either side of the card on two lines, more on three, and none on one or four', () => {
+        const one = stand(1);
+        const two = stand(2);
+        const three = stand(3);
+        const four = stand(4);
+        // Two lines: one each side, where the world said the sea is open.
+        const sites = beside(two.choreo);
+        expect(two.jets.map((jet) => [jet.x, jet.z])).toEqual(sites);
+        expect(two.jets.map((jet) => jet.group)).toEqual([GROUP_LEFT, GROUP_RIGHT]);
+        expect(two.seen.left).toBeGreaterThan(0);
+        expect(two.seen.right).toBeGreaterThan(0);
+        // Three lines: more of them on each side, more liquid, standing taller.
+        const count = (stood, group) => stood.jets.filter((jet) => jet.group === group).length;
+        for (const group of EVENT_GROUPS) expect(count(three, group)).toBeGreaterThan(count(two, group));
+        expect(three.seen.left).toBeGreaterThan(two.seen.left);
+        expect(three.seen.right).toBeGreaterThan(two.seen.right);
+        expect(three.seen.top).toBeGreaterThan(two.seen.top);
+        // The inner pair stand on the same sites; the outer ones farther from the board's foot, a breath behind.
+        const [fx, fz] = three.choreo.scene.foot;
+        const reach = (jet) => Math.hypot(jet.x - fx, jet.z - fz);
+        for (const group of EVENT_GROUPS) {
+            const [inner, ...outer] = three.jets.filter((jet) => jet.group === group).sort((a, b) => reach(a) - reach(b));
+            expect(sites.some(([x, z]) => x === inner.x && z === inner.z)).toBe(true);
+            expect(outer.length).toBeGreaterThan(0);
+            for (const jet of outer) {
+                expect(reach(jet)).toBeGreaterThan(reach(inner));
+                expect(jet.t0).toBeGreaterThan(inner.t0);
+            }
+        }
+        // One line raises none; four are the Great Drop's own (its crown is not a fountain).
+        for (const none of [one, four]) {
+            expect(none.jets).toHaveLength(0);
+            expect(none.seen.left + none.seen.right).toBe(0);
+        }
+    });
+
+    it('stands none where the world found no sea beside the card', () => {
+        expect(stand(2, null).jets).toHaveLength(0);
+        expect(stand(3, [null, null]).jets).toHaveLength(0);
+        expect(stand(2, []).jets).toHaveLength(0);
+        // Sea on one side only: that side alone.
+        const [left] = beside(make().choreo);
+        const only = stand(3, [left, null]);
+        expect(only.jets.length).toBeGreaterThan(0);
+        expect(only.jets.every((jet) => jet.group === GROUP_LEFT)).toBe(true);
+        expect(only.seen.left).toBeGreaterThan(0);
+        expect(only.seen.right).toBe(0);
+    });
+
+    it('breaks the surface with a ring and a sheaf of drops in the dusk\'s own glow, leaves no stain and falls back', () => {
+        const { choreo, bursts } = make();
+        const sites = beside(choreo);
+        choreo.clear({ origin: [...choreo.scene.foot], lines: 2, fountains: sites });
+        expect(choreo.isBusy()).toBe(true);
+        let stains = 0;
+        let rung = 0;
+        const colours = [];
+        const watch = () => {
+            stains = Math.max(stains, choreo.counts.dye);
+            rung = Math.max(rung, sites.filter((site) => rowAt(choreo, 'rings', site)).length);
+            for (const group of EVENT_GROUPS) colours.push(...ballsOf(choreo, group).map((ball) => ball.colour));
+        };
+        run(choreo, 1, watch);
+        // Each breaks the surface once: a ring on the sea and a sheaf thrown up, where it stands.
+        expect(kinds(bursts, 'sheaf').map((burst) => [burst.x, burst.z])).toEqual(sites);
+        expect(rung).toBe(2);
+        // The sea's own liquid, lit by the dusk: neither white nor a piece's colour.
+        expect(colours.length).toBeGreaterThan(0);
+        for (const colour of colours) {
+            colour.forEach((channel, k) => {
+                expect(channel).toBeGreaterThanOrEqual(Math.min(PALETTE.glow[k], PALETTE.inkC[k]) - 1e-9);
+                expect(channel).toBeLessThanOrEqual(Math.max(PALETTE.glow[k], PALETTE.inkC[k]) + 1e-9);
+            });
+        }
+        // It is not a lock: it falls back and nothing is left in the water.
+        for (let i = 0; choreo.isBusy() && i < 60 * 10; i++) run(choreo, DT, watch);
+        expect(choreo.isBusy()).toBe(false);
+        expect(stains).toBe(0);
+        for (const group of EVENT_GROUPS) expect(choreo.live[group]).toBe(0);
+        expect(kinds(bursts, 'sheaf')).toHaveLength(2); // once each, not once a frame
+        expect(kinds(bursts, 'splash')).toHaveLength(0);
+    });
+
+    it('throws a coronet where a hard drop lands, and none for a soft lock', () => {
+        const soft = make();
+        const hard = make();
+        lockBeside(soft.choreo, -1);
+        const { to } = lockBeside(hard.choreo, -1, { hardDrop: true });
+        for (const { choreo } of [soft, hard]) run(choreo, FLIGHT_TIME + 0.5);
+        expect(kinds(soft.bursts, 'splash')).toHaveLength(1);
+        expect(kinds(soft.bursts, 'coronet')).toHaveLength(0);
+        // One, for the droplet itself: the two smaller ones either side of it throw none.
+        expect(kinds(hard.bursts, 'splash')).toHaveLength(3);
+        const coronets = kinds(hard.bursts, 'coronet');
+        expect(coronets).toHaveLength(1);
+        expect([coronets[0].x, coronets[0].z]).toEqual(to);
+        expect(coronets[0].color).toEqual([...ROSE]);
+        // As it lands, with its splash.
+        const landing = kinds(hard.bursts, 'splash').find((burst) => burst.x === to[0] && burst.z === to[1]);
+        expect(coronets[0].at).toBe(landing.at);
+    });
+
+    it('leaps a string of beads from the largest of the kin into the Great Drop on a back-to-back', () => {
+        const { choreo, bursts } = make();
+        run(choreo, 0.2);
+        const [kx, kz] = choreo.kinSpots[0];
+        const hero = { ...choreo.hero };
+        choreo.clear({
+            origin: [...choreo.scene.foot], lines: 2, twist: true, b2b: true,
+        });
+        const beads = kinds(bursts, 'bridge');
+        expect(beads.length).toBeGreaterThan(3); // a string, not a drop
+        beads.forEach((bead, i) => {
+            // Each leaves the largest of the kin, a moment after the one before...
+            expect([bead.x, bead.z]).toEqual([kx, kz]);
+            expect(bead.y).toBeGreaterThan(0);
+            expect(bead.delay).toBeGreaterThanOrEqual(0);
+            if (i > 0) expect(bead.delay).toBeGreaterThan(beads[i - 1].delay);
+            // ...is thrown up over the sky...
+            expect(bead.vel[1]).toBeGreaterThan(0);
+            // ...and falls into the Great Drop exactly as its life runs out (the spray's own
+            // gravity, 9.8: fluid-dreams-spray.js sprayHeight).
+            const life = bead.life;
+            expect(life).toBeGreaterThan(0);
+            expect(bead.x + bead.vel[0] * life).toBeCloseTo(hero.x, 9);
+            expect(bead.y + bead.vel[1] * life - 0.5 * 9.8 * life * life).toBeCloseTo(hero.y, 9);
+            expect(bead.z + bead.vel[2] * life).toBeCloseTo(hero.z, 9);
+            expect([...bead.color, bead.power].every(Number.isFinite)).toBe(true);
+        });
+        // The Drop has not gone anywhere by the time the last one lands: it lands inside it.
+        const last = beads[beads.length - 1];
+        run(choreo, last.delay + last.life);
+        expect(Math.hypot(choreo.hero.x - hero.x, choreo.hero.y - hero.y, choreo.hero.z - hero.z))
+            .toBeLessThan(choreo.hero.r * 0.5);
+        expect(problem(choreo)).toBeNull();
+    });
+
+    it('throws no string of beads at a Drop that is down, and none under reduced motion', () => {
+        // A back-to-back four-line clear: the Drop is on its way into the sea.
+        const quad = make();
+        quad.choreo.clear({ origin: [...quad.choreo.scene.foot], lines: 4, b2b: true });
+        // A back-to-back while it is down.
+        const down = make();
+        down.choreo.clear({ origin: [...down.choreo.scene.foot], lines: 4 });
+        run(down.choreo, HUSH_HOLD + PLUNGE.fall + 0.4);
+        down.choreo.clear({
+            origin: [...down.choreo.scene.foot], lines: 2, twist: true, b2b: true,
+        });
+        // Reduced motion: a leap across the frame is the motion that asks to be spared.
+        const calm = make();
+        calm.choreo.setReducedMotion(true);
+        calm.choreo.clear({
+            origin: [...calm.choreo.scene.foot], lines: 2, twist: true, b2b: true,
+        });
+        for (const { choreo, bursts, notes } of [quad, down, calm]) {
+            run(choreo, 3);
+            expect(kinds(bursts, 'bridge')).toHaveLength(0);
+            // The kin answer all the same.
+            expect(notes.filter((note) => note.what === 'answer')).toHaveLength(1);
+            expect(ballsOf(choreo, GROUP_KIN)[0].glow).toBeGreaterThan(ballsOf(make().choreo, GROUP_KIN)[0].glow);
+        }
+    });
+
+    it('has room for a three-line clear\'s fountains beside a hard drop\'s droplets', () => {
+        for (const side of [-1, 1]) {
+            const { choreo } = make();
+            const asked = countAsks(choreo);
+            const tally = { most: 0, short: 0 };
+            lockBeside(choreo, side, { hardDrop: true });
+            choreo.clear({ origin: [...choreo.scene.foot], lines: 3, fountains: beside(choreo) });
+            watchSides(choreo, asked, 4, tally);
+            expect(tally.short).toBe(0);
+            expect(tally.most).toBeLessThanOrEqual(GROUP_CAPACITY[side < 0 ? GROUP_LEFT : GROUP_RIGHT]);
+            // (The fountains are in the count: more than a hard drop alone ever asks for.)
+            const alone = make().choreo;
+            const lone = { most: 0, short: 0 };
+            const askedAlone = countAsks(alone);
+            lockBeside(alone, side, { hardDrop: true });
+            watchSides(alone, askedAlone, 4, lone);
+            expect(tally.most).toBeGreaterThan(lone.most);
+            expect(choreo.isBusy()).toBe(false);
+        }
+    });
+
+    // Found 2026-11-25, fixed in the source: with fountains in play a fast
+    // chain asks for more event liquid on a side than GROUP_CAPACITY holds, and for more jets than
+    // there are slots. `_put` then drops the balls of whichever jet comes last in the pool (a
+    // fountain missing its top, which pops in when an older one ends) and `_jet` takes the oldest
+    // jet's slot while its tip is still in the air.
+    it.each([
+        ['the tray\'s Fever: a hard-dropped clear every 0.64 s, twos and threes among them', 0.64, [1, 1, 2, 1, 2, 2, 3, 2, 2, 2, 3], 1],
+        ['a storm of three-line clears a second apart, four locks a second', 1, [3], 4],
+    ])('has room for every fountain of %s', (label, gap, plan, locksPerClear) => {
+        const { choreo } = make();
+        const asked = countAsks(choreo);
+        const tally = { most: 0, short: 0, stolen: 0 };
+        countStolen(choreo, tally);
+        const random = mulberry32(31);
+        let n = 0;
+        for (let clear = 0; clear < 20; clear++) {
+            choreo.clear({
+                origin: [...choreo.scene.foot], lines: plan[clear % plan.length], combo: clear + 1, fountains: beside(choreo),
+            });
+            choreo.setCombo(clear + 1);
+            for (let k = 0; k < locksPerClear; k++) {
+                lockBeside(choreo, n % 2 ? 1 : -1, {
+                    out: 4 + random() * 6, back: -8 + random() * 10, hardDrop: locksPerClear === 1 || random() < 0.4,
+                });
+                n += 1;
+                watchSides(choreo, asked, gap / locksPerClear, tally);
+            }
+            expect(problem(choreo)).toBeNull();
+        }
+        const room = GROUP_CAPACITY[GROUP_LEFT];
+        expect(tally.most, 'the fountains are in the count').toBeGreaterThan(4);
+        expect(tally.short, `frames in which a side asked for more balls than its ${room} (the most asked: ${tally.most})`)
+            .toBe(0);
+        expect(tally.stolen, 'jets whose slot was taken for a new one while they still stood').toBe(0);
+    });
+});
+
+describe('fluid dreams choreography: what it tells the rest of the picture', () => {
+    const told = (notes, what) => notes.filter((note) => note.what === what);
+
+    it('tells of the Great Drop\'s impact once, where and when its crown goes up, harder for a second clear on its way down', () => {
+        const plain = make();
+        plain.choreo.clear({ origin: [...plain.choreo.scene.foot], lines: 4 });
+        expect(told(plain.notes, 'impact')).toHaveLength(0); // not yet: it holds its breath, then falls
+        run(plain.choreo, HUSH_HOLD + PLUNGE.total + 2);
+        const [crown] = kinds(plain.bursts, 'crown');
+        const impacts = told(plain.notes, 'impact');
+        expect(impacts).toHaveLength(1);
+        expect(impacts[0].numbers.slice(0, 2)).toEqual([crown.x, crown.z]);
+        expect(impacts[0].at).toBe(crown.at);
+        expect(impacts[0].numbers[2]).toBe(0);
+        // A second four-line clear before it lands: still one impact, a harder one.
+        const fed = make();
+        fed.choreo.clear({ origin: [...fed.choreo.scene.foot], lines: 4 });
+        run(fed.choreo, HUSH_HOLD * 0.5);
+        fed.choreo.clear({ origin: [...fed.choreo.scene.foot], lines: 4 });
+        run(fed.choreo, HUSH_HOLD + PLUNGE.total + 2);
+        expect(told(fed.notes, 'impact')).toHaveLength(1);
+        expect(told(fed.notes, 'impact')[0].numbers[2]).toBeGreaterThan(0);
+        // One after it has landed feeds the crater: the Drop does not meet the sea a second time.
+        const late = make();
+        late.choreo.clear({ origin: [...late.choreo.scene.foot], lines: 4 });
+        run(late.choreo, HUSH_HOLD + PLUNGE.fall + 0.5);
+        late.choreo.clear({ origin: [...late.choreo.scene.foot], lines: 4 });
+        run(late.choreo, HUSH_HOLD + PLUNGE.total + 2);
+        expect(told(late.notes, 'impact')).toHaveLength(1);
+        // Every number it hands on can be drawn.
+        for (const { notes } of [plain, fed, late]) {
+            for (const note of notes) expect(note.numbers.every(Number.isFinite), note.what).toBe(true);
+        }
+    });
+
+    it('tells of a back-to-back as the kin answer: at once, or after the breath a four-line clear holds', () => {
+        const small = make();
+        small.choreo.clear({
+            origin: [...small.choreo.scene.foot], lines: 2, twist: true, b2b: true,
+        });
+        expect(told(small.notes, 'answer').map((note) => note.numbers)).toEqual([[0]]);
+        const big = make();
+        big.choreo.clear({ origin: [...big.choreo.scene.foot], lines: 4, b2b: true });
+        expect(told(big.notes, 'answer').map((note) => note.numbers)).toEqual([[HUSH_HOLD]]);
+        // A clear that is no back-to-back says nothing of the kind.
+        const none = make();
+        none.choreo.clear({ origin: [...none.choreo.scene.foot], lines: 3, twist: true });
+        run(none.choreo, 3);
+        expect(none.notes).toHaveLength(0);
+    });
+
+    it('tells of a perfect clear from the moment the sea turns to glass', () => {
+        // With nothing down: now.
+        const now = make();
+        now.choreo.clear({ origin: [...now.choreo.scene.foot], lines: 2, perfect: true });
+        expect(told(now.notes, 'perfect').map((note) => note.numbers)).toEqual([[now.choreo.time]]);
+        // With the Drop going down: once its crown has gone up.
+        const quad = make();
+        quad.choreo.clear({ origin: [...quad.choreo.scene.foot], lines: 4, perfect: true });
+        const [later] = told(quad.notes, 'perfect');
+        expect(later.numbers[0]).toBeGreaterThan(quad.choreo.plunge.t0 + quad.choreo.plunge.fall);
+        expect(later.numbers[0]).toBe(quad.choreo.glass.t0);
+        // A perfect clear that settles late (the director's own frame for it) says so once.
+        const crown = make();
+        crown.choreo.perfectCrown();
+        expect(told(crown.notes, 'perfect')).toHaveLength(1);
+        expect(told(crown.notes, 'perfect')[0].numbers[0]).toBe(crown.choreo.glass.t0);
+        // A second one while the sea is glass holds it longer, and is told too (the halo adds up).
+        run(now.choreo, 2);
+        now.choreo.clear({ origin: [...now.choreo.scene.foot], lines: 1, perfect: true });
+        expect(told(now.notes, 'perfect')).toHaveLength(2);
+    });
+
+    it('plays every event with nobody listening', () => {
+        const choreo = new FluidChoreography();
+        choreo.seek(10);
+        choreo.update(10, 0, PALETTE);
+        expect(() => {
+            const [fx, fz] = choreo.scene.foot;
+            choreo.clear({
+                origin: [fx, fz], lines: 2, twist: true, b2b: true, perfect: true, fountains: [[fx - 9, fz - 6], [fx + 9, fz - 6]],
+            });
+            choreo.clear({
+                origin: [fx, fz], lines: 4, b2b: true, perfect: true,
+            });
+            choreo.perfectCrown();
+            choreo.exhale();
+            run(choreo, HUSH_HOLD + PLUNGE.total + 2);
+        }).not.toThrow();
+        expect(problem(choreo)).toBeNull();
+    });
+});
+
+describe('fluid dreams choreography: the air, the wound thread and the end of a run', () => {
+    it('runs the sea as the air has it: a calmer air, a smaller swell at rest, and a chain still raises it', () => {
+        const inAir = (calm) => {
+            const { choreo } = make();
+            choreo.airCalm = calm;
+            let last = choreo.swell;
+            let step = 0;
+            run(choreo, 4, () => {
+                step = Math.max(step, Math.abs(choreo.swell - last));
+                last = choreo.swell;
+            });
+            return { choreo, step };
+        };
+        const glass = inAir(0.3);
+        const usual = inAir(1);
+        const heavy = inAir(1.5);
+        // At rest the swell is the air's own say (1 = the sea as it was).
+        for (const [{ choreo }, calm] of [[glass, 0.3], [usual, 1], [heavy, 1.5]]) {
+            expect(choreo.swell).toBeCloseTo(calm, 3);
+        }
+        expect(glass.choreo.swell).toBeLessThan(usual.choreo.swell);
+        expect(heavy.choreo.swell).toBeGreaterThan(usual.choreo.swell);
+        // It gets there by easing: no frame takes more than a tenth of the way.
+        expect(glass.step).toBeGreaterThan(0);
+        expect(glass.step).toBeLessThan(0.7 * 0.1);
+        // A chain raises it in any air, and the calmest air still lies lowest.
+        for (const { choreo } of [glass, usual, heavy]) {
+            const rest = choreo.swell;
+            choreo.setCombo(6);
+            run(choreo, 4);
+            expect(choreo.swell).toBeGreaterThan(rest + 0.1);
+        }
+        expect(glass.choreo.swell).toBeLessThan(usual.choreo.swell);
+        expect(usual.choreo.swell).toBeLessThan(heavy.choreo.swell);
+        expect(problem(glass.choreo)).toBeNull();
+    });
+
+    it('winds the thread over a twist into a corkscrew inside the Drop\'s bound, and not under reduced motion', () => {
+        const { choreo } = make();
+        const twin = make().choreo;
+        expect(choreo.vortex.helix).toBe(0);
+        expect(choreo.twistEnv).toBe(0);
+        for (const c of [choreo, twin]) c.clear({ origin: [...c.scene.foot], lines: 2, twist: true });
+        let most = 0;
+        run(choreo, 1.2, () => {
+            most = Math.max(most, choreo.vortex.helix);
+            // (the thread, wound as it is, stays inside the sphere a ray must cross to reach it)
+            expect(problem(choreo)).toBeNull();
+        });
+        run(twin, 1.2);
+        expect(most).toBeGreaterThan(0);
+        expect(choreo.twistEnv).toBeGreaterThan(0);
+        expect(threadOn(choreo)).toBe(true);
+        // A second twist winds it further instead of starting it over.
+        choreo.clear({ origin: [...choreo.scene.foot], lines: 1, twist: true });
+        let further = 0;
+        for (let i = 0; i < 90; i++) {
+            run(choreo, DT);
+            run(twin, DT);
+            expect(choreo.vortex.helix).toBeGreaterThanOrEqual(twin.vortex.helix - 1e-9);
+            further = Math.max(further, choreo.vortex.helix - twin.vortex.helix);
+            expect(problem(choreo)).toBeNull();
+        }
+        expect(further).toBeGreaterThan(0);
+        // It unwinds with the funnel, to nothing.
+        expect(settle(choreo)).toBeLessThan(30);
+        expect(choreo.vortex.helix).toBe(0);
+        expect(choreo.twistEnv).toBe(0);
+        // Under reduced motion the funnel still turns; the thread over it stands straight.
+        const calm = make().choreo;
+        calm.setReducedMotion(true);
+        calm.clear({ origin: [...calm.scene.foot], lines: 2, twist: true });
+        let wound = 0;
+        run(calm, 1.2, () => {
+            wound = Math.max(wound, calm.vortex.helix);
+        });
+        expect(wound).toBe(0);
+        expect(calm.vortex.depth).toBeGreaterThan(0);
+        // A seek mid-twist leaves nothing wound.
+        const cut = make().choreo;
+        cut.clear({ origin: [...cut.scene.foot], lines: 2, twist: true });
+        run(cut, 0.6);
+        expect(cut.vortex.helix).toBeGreaterThan(0);
+        cut.seek(40);
+        expect(cut.vortex.helix).toBe(0);
+        expect(cut.twistEnv).toBe(0);
+    });
+
+    /** End a run the way the theme does: the session's reset, then the moment. Steps on from the same clock. */
+    const endRun = (choreo) => {
+        const { time } = choreo;
+        choreo.reset();
+        choreo.exhale();
+        return (frames, each) => {
+            for (let i = 1; i <= frames; i++) {
+                choreo.update(time + i * DT, DT, PALETTE);
+                each?.(i * DT);
+            }
+            return time + frames * DT;
+        };
+    };
+
+    it('lets the sea go when a run ends: a long ring from the board\'s foot, and a dusk that falls and lifts', () => {
+        const { choreo } = make();
+        lockBeside(choreo, -1);
+        choreo.setCombo(4);
+        run(choreo, 2);
+        const step = endRun(choreo);
+        // Asked for, not yet played: it plays on the next frame, on the picture's own clock.
+        expect(choreo.isBusy()).toBe(true);
+        expect(choreo.dusk).toBe(0);
+        let peak = 0;
+        let peakAt = 0;
+        let jump = 0;
+        let last = 0;
+        let least = Infinity;
+        let fromFoot = false;
+        let reach = 0;
+        step(15 * 60, (since) => {
+            jump = Math.max(jump, Math.abs(choreo.dusk - last));
+            last = choreo.dusk;
+            if (choreo.dusk > peak) {
+                peak = choreo.dusk;
+                peakAt = since;
+            }
+            least = Math.min(least, choreo.swell);
+            const ring = rowAt(choreo, 'rings', choreo.scene.foot);
+            if (ring) {
+                fromFoot = true;
+                reach = Math.max(reach, ring[0].z);
+            }
+            const wrong = problem(choreo);
+            if (wrong) throw new Error(`${since.toFixed(3)} s after the run ended: ${wrong}`);
+        });
+        // The dusk falls within a few seconds, eased (never switched), and no deeper than all the way.
+        expect(peak).toBeGreaterThan(0.3);
+        expect(peak).toBeLessThanOrEqual(1);
+        expect(peakAt).toBeGreaterThan(0.1);
+        expect(peakAt).toBeLessThan(3);
+        expect(jump).toBeLessThan(peak * 0.1);
+        // One long ring leaves the foot of the board (longer than a lock's), and the sea lies down under it.
+        expect(fromFoot).toBe(true);
+        expect(reach).toBeGreaterThan(RING_REACH);
+        expect(least).toBeLessThan(0.9);
+        // A moment, not a state: it is over, the iris all but open again...
+        expect(choreo.isBusy()).toBe(false);
+        expect(choreo.dusk).toBeLessThan(peak * 0.05);
+        // ...and a little later nothing of it is left at all.
+        run(choreo, 15);
+        expect(choreo.dusk).toBe(0);
+        expect(choreo.swell).toBeCloseTo(1, 3);
+        expect(rowAt(choreo, 'rings', choreo.scene.foot)).toBeUndefined();
+        expect(choreo.counts.dye).toBe(0);
+        expect(problem(choreo)).toBeNull();
+    });
+
+    it('lets a second ending add to the dusk instead of starting it over, and a new sea forget it', () => {
+        const { choreo } = make();
+        const twin = make().choreo;
+        const step = endRun(choreo);
+        const stepTwin = endRun(twin);
+        step(60);
+        stepTwin(60);
+        // (asked for again without a reset in between: the moment itself, twice)
+        choreo.exhale();
+        for (let i = 61; i <= 180; i++) {
+            choreo.update(10 + i * DT, DT, PALETTE);
+            twin.update(10 + i * DT, DT, PALETTE);
+            expect(choreo.dusk).toBeGreaterThanOrEqual(twin.dusk - 1e-12);
+            expect(choreo.dusk).toBeLessThanOrEqual(1);
+        }
+        expect(choreo.dusk).toBeGreaterThan(twin.dusk);
+        // A reset or a seek while it plays: gone at once, and it does not come back.
+        choreo.reset();
+        expect(choreo.dusk).toBe(0);
+        expect(choreo.isBusy()).toBe(false);
+        let seen = 0;
+        for (let i = 181; i <= 400; i++) {
+            choreo.update(10 + i * DT, DT, PALETTE);
+            seen = Math.max(seen, choreo.dusk);
+        }
+        expect(seen).toBe(0);
+    });
+
+    // Found 2026-11-25, fixed in the source: on the one frame the moment starts, the request has
+    // been taken up and the dusk still reads 0, so isBusy() says false between two frames that say
+    // true. (Nothing in src reads isBusy(); it is the contract "busy while that plays".)
+    it('is busy without a gap from the moment a run ends until the dusk has lifted', () => {
+        const { choreo } = make();
+        const step = endRun(choreo);
+        const busy = [choreo.isBusy()];
+        step(20 * 60, () => busy.push(choreo.isBusy()));
+        expect(busy[0]).toBe(true);
+        expect(busy[busy.length - 1]).toBe(false);
+        const ended = busy.indexOf(false);
+        expect(busy.slice(ended).every((b) => b === false), `busy again after it said it was not, at frame ${ended}`).toBe(true);
+    });
+
+    // Found 2026-11-25, fixed in the source: reset() forgets the dusk but not a moment that was
+    // asked for and not yet played (`exhaleDue`), so a seek right after exhale() still plays it.
+    it('drops a moment that was asked for and not yet played when it seeks', () => {
+        const { choreo } = make();
+        choreo.exhale();
+        choreo.seek(40);
+        expect(choreo.isBusy()).toBe(false);
+        let seen = 0;
+        choreo.update(40, 0, PALETTE);
+        run(choreo, 3, () => {
+            seen = Math.max(seen, choreo.dusk);
+        });
+        expect(seen).toBe(0);
+        // Exactly the sea a fresh one shows at that time.
+        expect(snapshot(choreo)).toEqual(snapshot((() => {
+            const fresh = make({}, 40).choreo;
+            run(fresh, 3);
+            return fresh;
+        })()));
     });
 });

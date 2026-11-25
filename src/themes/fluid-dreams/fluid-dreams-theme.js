@@ -359,7 +359,11 @@ export default class FluidDreamsTheme extends BaseTheme {
             }),
         );
         this.registerEventListener(window, 'settingsChanged', (p) => this.handleSettingsChanged(p));
-        this.registerEventListener(window, 'gameOver', () => this.resetSession());
+        this.registerEventListener(window, 'gameOver', () => {
+            this.resetSession();
+            // the run's end is a moment, not a state: the sea lets go and the dusk falls, then lifts
+            this.world?.endRun();
+        });
 
         const resetPointer = () => {
             this.pointer.x = 0;
