@@ -80,8 +80,13 @@ describe('live gravity policy', () => {
         expect(styles()).toEqual(opening);
         manager.configure(slots, match.sharedPieceSeed);
         expect(styles()[0][1]).not.toBe(opening[0][1]);
+        // Last Standing seats play with the same hands as the standard well...
         players[1].isInfinityMode = true;
         players[2].isInfinityMode = true;
+        manager.configure(slots, 0);
+        expect(styles()).toEqual(opening);
+        // ...and keep the older pace when attacks are off.
+        match.matchConfig = { attackRules: { disableAttacks: true } };
         manager.configure(slots, 0);
         expect(styles()[1]).toEqual([4, undefined]);
         expect(manager.controllers.get(2).config).toMatchObject({ maxApm: 1050, reactionMs: [170, 250] });

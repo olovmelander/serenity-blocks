@@ -1,6 +1,6 @@
 // Free-for-all rooms of live bots, measured lock by lock in the playbook's terms.
 // node record.mjs <out.jsonl> <first seed> <count> <seconds> <frag target> <tiers, e.g. 10,10> [rules] [match config JSON] [seat overrides JSON]
-import { appendFileSync, writeFileSync } from 'node:fs';
+import { appendFileSync, readFileSync, writeFileSync } from 'node:fs';
 import { HIDDEN_ROWS } from '../../src/core/constants.js';
 import { computeProjectedAttack } from '../../src/core/ai/cascade-simulator.js';
 import { duel } from '../bot-ai-audit-2026-11/duel.mjs';
@@ -11,7 +11,8 @@ import {
 const [out, first, count, seconds, target, room, rules = 'shipped', config = '{}', changes = '{}'] = process.argv.slice(2);
 const matchConfig = JSON.parse(config);
 // {"0": {"weights": {...}, "search": {...}, "units": 4}}: experiments on one seat, without touching the game.
-const overrides = JSON.parse(changes);
+// A seat override may be given as @file.
+const overrides = JSON.parse(changes.startsWith('@') ? readFileSync(changes.slice(1), 'utf8') : changes);
 const tiers = room.split(',').map(Number);
 console.debug = () => {};
 writeFileSync(out, '', { flag: 'wx' });

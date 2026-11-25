@@ -3,6 +3,59 @@ export const PLAYGROUND_URL_PARAMETERS = [
     {
         name: 'air',
         category: 'Playground',
+        scope: 'playground.html — geode',
+        description: 'Hold one of the airs the Geode turns through by its own clock (its light, not its mineral).',
+        values: '0 radiance, 1 blaze, 2 prism, 3 embers, 4 moonstone; a fraction is the melt between two.',
+        defaultValue: 'Unset: the clock turns them, 77 s an air.',
+        example: 'air=3',
+        notes: 'Use on playground.html with effect=geode. level= picks the mineral; the two are independent.',
+        sources: [
+            'src/playground/effects/geode.effect.js',
+        ],
+    },
+    {
+        name: 'visits',
+        category: 'Playground',
+        scope: 'playground.html — geode',
+        description: 'Switch the visits the Geode has by itself off (a sparkle running round the lining, a cluster '
+            + 'ringing, a shower of dust and the rest).',
+        values: '0 disables; any other value keeps them.',
+        defaultValue: 'On.',
+        example: 'visits=0',
+        notes: 'Use on playground.html with effect=geode for a capture of the geode at rest.',
+        sources: [
+            'src/playground/effects/geode.effect.js',
+        ],
+    },
+    {
+        name: 'visit',
+        category: 'Playground',
+        scope: 'playground.html — geode',
+        description: 'Hold one of the visits the Geode has by itself, whatever its clock says.',
+        values: 'shimmer, chime, fall, cascade, swell, fire.',
+        defaultValue: 'None: the schedule the geode keeps.',
+        example: 'visit=fall&visitAge=3',
+        notes: 'Use on playground.html with effect=geode; visitAge picks the moment.',
+        sources: [
+            'src/playground/effects/geode.effect.js',
+        ],
+    },
+    {
+        name: 'visitAge',
+        category: 'Playground',
+        scope: 'playground.html — geode',
+        description: 'Show the visit named by visit this many seconds after it began.',
+        values: 'Seconds, 0 or greater (a visit lasts 5 to 9 s by its kind).',
+        defaultValue: '2.',
+        example: 'visitAge=3',
+        notes: 'Use on playground.html with effect=geode and visit=<kind>.',
+        sources: [
+            'src/playground/effects/geode.effect.js',
+        ],
+    },
+    {
+        name: 'air',
+        category: 'Playground',
         scope: 'playground.html — ch8-neon',
         description: 'Override the chapter-8 neon air uniforms (haze, street mist, glow) without a rebuild.',
         values: 'Comma-separated key:value pairs: hazeDistance, mistDensity, mistGlow, glowGain (numbers), '

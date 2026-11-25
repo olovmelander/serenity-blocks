@@ -2,6 +2,7 @@ import { PuzzleBotController } from './puzzle-bot-controller.js';
 import { canPlaceCandidate } from './reachability-pathfinder.js';
 import { evaluateCandidate } from './board-evaluator.js';
 import { COLS } from '../constants.js';
+import { versusOpening } from './versus-evaluation.js';
 import { isCellBlind } from '../blind.js';
 import {
     gravityBoardKey, gravityLandings, gravityReward, GRAVITY_WEIGHTS, nearRoof, readGravityBoard, searchGravity,
@@ -63,9 +64,9 @@ function actionsTo(state, target) {
 }
 
 function sliceRate(rate, board, tier, infinity, versus = false) {
-    if (infinity) return Math.min(rate, 0.3);
     const high = nearRoof(board, versus);
     if (versus) return high ? Math.min(rate, 0.35) : rate;
+    if (infinity) return Math.min(rate, 0.3);
     if (tier === 3 && high && !board.garbage) return Math.min(rate, 1.05);
     if ((tier >= 8 && high) || (tier <= 3 && (high || board.garbage))) return Math.min(rate, 0.35);
     return rate;
@@ -230,6 +231,8 @@ export class GravityBotController extends PuzzleBotController {
         this.proof = [];
         this.queueAtPlan = null;
         this.refusals = { piece: -1, count: 0 };
+        // This life's opening (versusOpening): pieces placed, and whether its first big fire is made.
+        this.life = { done: false, pieces: 0 };
     }
 
     setSpawnTiming(now) {
@@ -329,6 +332,7 @@ export class GravityBotController extends PuzzleBotController {
         this.replanInterrupted = false;
         this.retryAllowance = null;
         this.refusals = { piece: -1, count: 0 };
+        this.life = { done: false, pieces: 0 };
     }
 
     * planSteps(observed) {
@@ -337,9 +341,12 @@ export class GravityBotController extends PuzzleBotController {
         const state = this.playerState;
         const pending = this.getPendingGarbage();
         const { tier } = this.config;
-        const root = state.isInfinityMode ? null : observed || readGravityBoard(state.boardGrid || state.board);
+        // Last Standing boards have no hidden rows; without versus play they keep the older planner.
+        const root = state.isInfinityMode && !this.versusWeights ? null
+            : observed || readGravityBoard(state.boardGrid || state.board, state.isInfinityMode ? 0 : undefined);
         if (this.recognizedSpawn !== state.piecesPlaced) {
             this.recognizedSpawn = state.piecesPlaced;
+            this.life.pieces++;
             if (tier <= 3) {
                 this.config.lookaheadDepth = this.rng() < [0.12, 0.67, 0.87][tier - 1] ? 1 : 0;
                 this.config.lookaheadWeight = 0.45;
@@ -360,10 +367,12 @@ export class GravityBotController extends PuzzleBotController {
         const versusPlay = this.versusWeights && root ? {
             weights: this.versusWeights,
             ...this.versusOutlook?.(),
+            ...(state.isInfinityMode && { roofRows: Math.max(0, (state.maxRows || 0) - (state.boardGrid || state.board).length) }),
+            opening: versusOpening(root, pending, this.life),
             // Hands that keep being refused let the piece fall where it is.
             dropHere: this.refusals.piece === state.piecesPlaced && this.refusals.count >= 3,
         } : null;
-        if (state.isInfinityMode || (!versusPlay && (tier <= 3 || useSurvival))) {
+        if (!versusPlay && (state.isInfinityMode || tier <= 3 || useSurvival)) {
             // With zero or one preview the established survival judgement protects
             // novices from cavities they cannot plan their way out of.
             const plan = yield* super.planSteps();
@@ -395,6 +404,7 @@ export class GravityBotController extends PuzzleBotController {
             const actions = actionsTo(state, first.move);
             if (actions) {
                 tactics.fireBeforeGarbage = Boolean(fireBeforeGarbage);
+                if (first.move.lines >= 5) this.life.done = true;
                 const plan = asPlan(proof.map((step) => step.move), actions, tactics);
                 this.proof = proof.slice(1);
                 this.machinePlan = this.proof.length ? { steps: this.proof.map((step) => step.move) } : null;
@@ -444,6 +454,7 @@ export class GravityBotController extends PuzzleBotController {
             moves = [selected];
             forecast = [];
         }
+        if (moves[0].lines >= 5) this.life.done = true;
         if (forecast.length) {
             this.proof = forecast.map((step) => ({
                 ...step, pending, pressing, finishRows,

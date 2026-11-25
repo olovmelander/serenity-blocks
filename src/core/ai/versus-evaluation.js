@@ -36,6 +36,8 @@ export const VERSUS_WEIGHTS = Object.freeze({
     tLines: 40.36,
     tSquare: 2.414,
     kill: 150,
+    opener: 300,
+    right: 0.45,
 });
 
 const FULL = (1 << COLS) - 1;
@@ -92,10 +94,13 @@ function shelf(board, col, w) {
 /**
  * What a versus seat plays by.
  * @typedef {{ weights: Record<string, number>, minAttackLines?: number, killRows?: number,
- *   worth?: number, flat?: boolean }} VersusPlay
+ *   worth?: number, flat?: boolean, roofRows?: number, opening?: boolean }} VersusPlay
  *   minAttackLines: the match's smallest attacking clear; killRows: the fewest rows that would
  *   keep some opponent's next piece from appearing; worth: what a row sent is worth (1; 0 while
- *   attacks deal nothing); flat: size earns no bonus (a hot potato's holder only counts rows)
+ *   attacks deal nothing); flat: size earns no bonus (a hot potato's holder only counts rows);
+ *   roofRows: Last Standing only, the rows of the well above the board's grid. There the piece
+ *   comes in above the tower, and only the well's roof ends a player; opening: the first fire of
+ *   this life is still to come (versusOpening).
  */
 
 /** Rows a clear sends: lines minus one from the smallest attacking clear up, and the clean bonus. */
@@ -120,12 +125,29 @@ export function rowsToBlockSpawn(grid, waiting) {
     return Math.max(1, ROWS + 1 - (grid.length - top) - waiting);
 }
 
+/** A rise of this many rows can come at once (the most that wait), plus room to answer it. */
+const ROOF_MARGIN = 24;
+
+/**
+ * Last Standing: the fewest rows that would lift a player's tower through the roof of the well,
+ * counting the rows already waiting for them.
+ * @param {Array<Array<unknown>>} grid
+ * @param {number} wellRows
+ * @param {number} waiting
+ */
+export function rowsToRoof(grid, wellRows, waiting) {
+    let top = 0;
+    while (top < grid.length && !grid[top].some(Boolean)) top++;
+    return Math.max(1, wellRows - (grid.length - top) - waiting);
+}
+
 /** The value of a board to a versus player. `probe` is scratch. */
 export function versusValue(board, play, pending, probe) {
     const w = play.weights;
     const { cells, rows, tops } = board;
     const left = shelf(board, 0, w);
-    const right = shelf(board, COLS - 1, w);
+    // Strong players keep the open column on the left wall far more often than on the right.
+    const right = shelf(board, COLS - 1, w) * w.right;
     const edge = left >= right ? 0 : COLS - 1;
     let best = 0;
     let tested = 0;
@@ -156,7 +178,11 @@ export function versusValue(board, play, pending, probe) {
     const { height } = board;
     const edgeHoles = height - tops[edge] - board.counts[edge];
     const centre = spawnColumnsTop(board);
-    const squeeze = Math.max(0, (height - centre) + pending - (height - board.first - w.room));
+    // The next piece must appear: the spawn columns against the top. In Last Standing it comes in
+    // above the tower, and what ends a player is a rise through the well's roof.
+    const squeeze = play.roofRows === undefined
+        ? Math.max(0, (height - centre) + pending - (height - board.first - w.room))
+        : Math.max(0, (height - board.top) + pending - (height + play.roofRows - ROOF_MARGIN));
     return best + Math.max(left, right) + board.stock * w.material + board.density * w.density
         - bump * w.bump - (board.holes - edgeHoles) * w.holes - (height - centre) * w.height - squeeze * squeeze * w.danger;
 }
@@ -174,8 +200,16 @@ function spawnColumnsTop(board) {
  */
 export function versusCalm(board, pending, play) {
     if (pending > 0) return 0;
+    // Last Standing: no hurry while the roof is far.
+    if (play.roofRows !== undefined) return Math.min(1, Math.max(0, (play.roofRows + board.top - ROOF_MARGIN) / 12));
     return Math.max(0, 1 - (board.height - spawnColumnsTop(board)) / play.weights.calm);
 }
+
+/** The first fire of a life is held for this many lines... */
+const OPENER_LINES = 6;
+/** ...for at most this many pieces, and only while the spawn columns stand this low with what waits. */
+const OPENER_PIECES = 34;
+const OPENER_HEIGHT = 13;
 
 /**
  * What a lock earns: rows sent, with a bonus for size, a cost for small change, and a cost for
@@ -193,7 +227,22 @@ export function versusReward(play, lines, perfect, calm = 0) {
     if (lines === 1) reward -= w.single;
     else if (lines <= 3) reward -= w.small;
     if (lines < 5) reward -= calm * w.patience * (5 - lines);
+    // The opening: the shelf is loaded before it is released.
+    if (play.opening && lines < OPENER_LINES) reward -= w.opener * (OPENER_LINES - lines);
     return reward;
+}
+
+/**
+ * Whether a life is still in its opening: strong players build the shelf and park on it for some
+ * twenty-five pieces, then release six lines or more. Over once a fire of five or more is made,
+ * after OPENER_PIECES pieces, or when the stack and the rows waiting leave no room for it.
+ * @param {{ tops: ArrayLike<number>, height: number }} board
+ * @param {number} pending
+ * @param {{ done: boolean, pieces: number }} life
+ */
+export function versusOpening(board, pending, life) {
+    return !life.done && life.pieces <= OPENER_PIECES
+        && (board.height - spawnColumnsTop(board)) + pending <= OPENER_HEIGHT;
 }
 
 /** What a shot another piece could make is worth now. */
