@@ -14,6 +14,7 @@ import {
 import {
     FOREST_HOUR_COLOURS, FOREST_HOUR_PERIOD, FOREST_HOUR_REST, FOREST_HOURS, forestHourAt, forestHourDrift,
 } from '../../src/themes/forest/forest-hours.js';
+import { forestAirAt } from '../../src/themes/forest/forest-airs.js';
 import { FOREST_MOON_DIRECTION, ForestLight } from '../../src/themes/forest/forest-light.js';
 import {
     FOREST_EYE, FOREST_MOON_AZIMUTH_DEGREES, FOREST_MOON_ELEVATION_DEGREES, FOREST_MOON_RADIUS_DEGREES,
@@ -807,7 +808,11 @@ describe('Forest world scene contracts', () => {
         expect(grass.count).toBe(floor.grass);
         expect(floor.grass).toBeGreaterThan(tier.grass * 0.8);
         expect(floor.grass).toBeLessThanOrEqual(tier.grass);
-        expect(named(world.group, 'ForestFoxfire')[0].count).toBe(floor.fungi);
+        // The fungi come in shapes, a draw for each (a bonnet, a broad plate, a tall bell), every cap in one of them.
+        const foxfire = named(world.group, /^ForestFoxfire /);
+        expect(foxfire.length).toBeGreaterThan(0);
+        expect(foxfire.length).toBeLessThanOrEqual(3);
+        expect(foxfire.reduce((total, mesh) => total + mesh.count, 0)).toBe(floor.fungi);
         expect(floor.fungi).toBeGreaterThan(0);
         expect(floor.fungi).toBeLessThanOrEqual(tier.fungi);
         expect(floor.flowers).toBe(tier.flowers);
@@ -888,6 +893,10 @@ describe('Forest world scene contracts', () => {
             level: 1,
             hour: 'deep night',
             hourPhase: 0,
+            // The night opens on its first air, and nothing is in the air besides fireflies.
+            air: 'still',
+            airPhase: 0,
+            flurry: { particles: 0, thrown: 0, refused: 0 },
             // The bundle here has no owl model: its limbs stand empty, its mind runs on the home perch.
             owlTriangles: 0,
             owlBones: 0,
@@ -1074,7 +1083,9 @@ describe('Forest world scene contracts', () => {
             expect(lift).toBeLessThan(0.3);
         }
         // Foxfire grows on the floor or on the fallen wood above it, never under the moss.
-        for (const cap of instances(named(world.group, 'ForestFoxfire'))) {
+        const capDraws = named(world.group, /^ForestFoxfire /);
+        expect(capDraws.length).toBeGreaterThan(0);
+        for (const cap of instances(capDraws)) {
             const lift = cap.y - forestGroundHeight(cap.x, cap.z);
             expect(lift).toBeGreaterThan(-0.1);
             expect(lift).toBeLessThan(2);
@@ -1288,6 +1299,29 @@ describe('Forest world scene contracts', () => {
 });
 
 describe('Forest world in play', () => {
+    it.each(['Extreme', 'High', 'Medium', 'Low', 'Minimal'])(
+        'turns away nothing of a perfect clear\'s falling gold when it crowns four lines at %s',
+        async (quality) => {
+            // In the game a perfect clear comes in the same second as the clear it crowns, and a
+            // four-line clear's spores and bloom are the largest burst the wood throws: the ring the
+            // particles live in must hold both, or the greatest moment's own effect is let go.
+            const { world } = await buildWorld(quality);
+            const reactions = new ForestReactions({ quality, rng: () => 0.5 });
+            reactions.onPieceLock({ piece: { x: 3, y: 22, shape: [[1, 1, 1, 1]] } });
+            reactions.onLineClear(4, { clearedRows: [20, 21, 22, 23] });
+            reactions.onPerfectClear();
+            let time = 0;
+            for (let frame = 0; frame < 6 * 60; frame++) {
+                time += STEP;
+                world.update(time, STEP, reactions.update(STEP));
+            }
+            const { thrown, refused } = world.flurry.counts();
+            expect(thrown).toBeGreaterThan(0);
+            expect(refused).toBe(0);
+        },
+        SLOW,
+    );
+
     it.each(['High', 'Low'])('answers a %s frame with every cue in it, and plays a session through', async (
         quality,
     ) => {
@@ -1435,7 +1469,9 @@ describe('Forest world in play', () => {
             expect(Number.isFinite(sim.time)).toBe(true);
             expect(Number.isFinite(fireflies.uSimTime.value)).toBe(true);
             expect(Number.isFinite(fireflies.uBeat.value)).toBe(true);
-            expect(sky.uMeteor.value.toArray().every(Number.isFinite)).toBe(true);
+            for (const row of [...sky.meteorFrom, ...sky.meteorAlong]) {
+                expect(row.toArray().every(Number.isFinite)).toBe(true);
+            }
             for (const vector of [...light.pulses.place, ...light.pulses.shape, light.uFront.value]) {
                 expect(vector.toArray().every(Number.isFinite)).toBe(true);
             }
@@ -1499,8 +1535,9 @@ describe('Forest world in play', () => {
         expect(world.light.pulses.active()).toBe(0);
         expect(world.director.fields).toEqual([]);
         expect(world.director.figureHeld).toBe(false);
-        expect(world.sky.meteor.active).toBe(false);
-        expect(world.sky.uMeteor.value.toArray()).toEqual([0, 0]);
+        expect(world.sky.meteors.every((meteor) => !meteor.active)).toBe(true);
+        // (No star is drawn: every row's progress and strength are back at nothing.)
+        for (const row of [...world.sky.meteorFrom, ...world.sky.meteorAlong]) expect(row.w).toBe(0);
         if (world.light.field) expect(world.light.field.data.every((value) => value === 0)).toBe(true);
         // The trees, the floor and the sky are not effects.
         expect(world.built).toBe(true);
@@ -1577,8 +1614,10 @@ describe('Forest world: the hours of the night', () => {
         for (const key of FOREST_HOUR_COLOURS) {
             now[key].forEach((channel, c) => expect(channel, `${key} at ${phase}`).toBeCloseTo(wanted[key][c], 5));
         }
-        expect(world.light.uHaze.value).toBeCloseTo(wanted.haze, 9);
-        expect(world.light.uStars.value).toBeCloseTo(wanted.stars, 9);
+        // The air under the hour thickens or thins its night air and its stars (forest-airs.js).
+        const air = forestAirAt(world.airPhase());
+        expect(world.light.uHaze.value).toBeCloseTo(wanted.haze * air.mist, 9);
+        expect(world.light.uStars.value).toBeCloseTo(wanted.stars * air.stars, 9);
     };
     /** Live through `seconds` from `from` at a frame rate; returns the time reached. */
     const live = (world, from, seconds, rate = 60) => {
@@ -1789,7 +1828,16 @@ describe('Forest world ownership', () => {
             world.resetEffects();
         }).not.toThrow();
         expect(world.getDiagnostics()).toEqual({
-            quality: 'Medium', farTrees: 0, fireflies: null, pulses: 0, level: 1, hour: 'deep night', hourPhase: 0,
+            quality: 'Medium',
+            farTrees: 0,
+            fireflies: null,
+            flurry: null,
+            pulses: 0,
+            level: 1,
+            hour: 'deep night',
+            hourPhase: 0,
+            air: 'still',
+            airPhase: 0,
         });
 
         // The bundle is released by whoever loaded it, once.
@@ -1819,7 +1867,16 @@ describe('Forest world ownership', () => {
         expect(unspecified.quality).toBe('High');
         expect(unspecified.tier).toBe(FOREST_TIERS.High);
         expect(unspecified.getDiagnostics()).toEqual({
-            quality: 'High', farTrees: 0, fireflies: null, pulses: 0, level: 1, hour: 'deep night', hourPhase: 0,
+            quality: 'High',
+            farTrees: 0,
+            fireflies: null,
+            flurry: null,
+            pulses: 0,
+            level: 1,
+            hour: 'deep night',
+            hourPhase: 0,
+            air: 'still',
+            airPhase: 0,
         });
         const world = new ForestWorld({ scene, camera: new THREE.PerspectiveCamera(), quality: 'Minimal' });
         owned.push(world);

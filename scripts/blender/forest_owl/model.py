@@ -100,9 +100,37 @@ TERTIAL_ANGLE = [-9.0, -18.0, -28.0]
 RECTRIX_LENGTH = [0.262, 0.262, 0.26, 0.256, 0.25, 0.24]
 TAIL_BASE = P(0.0, 0.088, -0.078)
 EYE = P(0.035, 0.481, 0.0935)
-EYE_RADIUS = 0.0172
+# (An eagle owl's eyes are the largest of any owl's: at the size it is seen from the glade they are
+# the two points its face is read by.)
+EYE_RADIUS = 0.0202
 EYE_LOOK = _unit((0.16, -0.02, 1.0))
 BILL_TIP = P(0.0, 0.437, 0.121)
+# The facial disc: a shallow dish round each eye. Where the left one lies, the way it faces, and how
+# wide and tall it is (the rim that frames it runs round its outside).
+DISC_CENTRE = P(0.043, 0.467, 0.089)
+DISC_NORMAL = _unit((0.36, -0.04, 1.0))
+DISC_RADII = (0.05, 0.045)
+
+
+def _face_depth(x):
+    """How far forward the face stands at a distance |x| from the middle: it wraps back round the head."""
+    return 0.1 - 7.2 * max(0.0, abs(x) - 0.03) ** 2
+
+
+def disc_rim(side=1.0, count=9):
+    """The ruff that frames one side of the facial disc: from over the eye, round its outside, to the chin."""
+    points = []
+    for k in range(count):
+        angle = math.radians(112.0 - 214.0 * k / (count - 1))
+        x = DISC_CENTRE[0] + DISC_RADII[0] * 1.06 * math.cos(angle)
+        y = DISC_CENTRE[1] + DISC_RADII[1] * 1.06 * math.sin(angle)
+        points.append(P(side * x, y, _face_depth(x) - 0.004))
+    return points
+
+
+def brow_line(side=1.0):
+    """The pale brow over one eye, sweeping out and up toward the ear tuft."""
+    return [P(side * 0.01, 0.497, 0.104), P(side * 0.036, 0.509, 0.097), P(side * 0.064, 0.514, 0.078)]
 
 
 def wing_points():
@@ -425,16 +453,19 @@ def tufts():
     """The ear tufts: a sheaf of long narrow feathers from each brow corner, drawn together to a point,
     leaning out and a little back: the eagle owl's horns."""
     out = []
+    # Long and broad enough to be read against the moon from across the glade: a sheaf of nine, the
+    # middle ones longest, fanned a little so the horn has a width from every side.
     base = P(0.05, 0.512, 0.054)
-    tip = base + P(0.024, 0.078, -0.016)
-    for k in range(7):
-        lean = -1.0 + k / 3.0
-        root = base + P(-0.009 * lean, -0.003 * abs(lean), 0.008 * lean)
-        reach = tip + P(0.004 * lean, -0.012 * abs(lean), 0.004 * lean)
+    tip = base + P(0.036, 0.108, -0.026)
+    count = 9
+    for k in range(count):
+        lean = -1.0 + 2.0 * k / (count - 1)
+        root = base + P(-0.012 * lean, -0.003 * abs(lean), 0.011 * lean)
+        reach = tip + P(0.009 * lean, -0.03 * abs(lean), 0.009 * lean)
         direction = _unit(reach - root)
         normal = _unit((0.42, 0.05, 1.0))
         length = float(np.linalg.norm(reach - root))
-        out.append(Feather("earL", "tuft", root, direction, normal, length, 0.0105, outer_share=0.45, camber=0.12,
+        out.append(Feather("earL", "tuft", root, direction, normal, length, 0.0145, outer_share=0.45, camber=0.12,
                            droop=-0.08, segments=7, across=1, seed=_hash(k, 17.0), index=k, tip_round=0.5,
                            base=0.04))
     return out
@@ -562,24 +593,30 @@ def design():
     # The neck ruff: thick, the head sits on the shoulders.
     neck = RoundCone(P(0.0, 0.33, 0.006), P(0.0, 0.41, 0.018), 0.088, 0.086).tag(PARTS["neck"])
 
-    # The head: broad, a flat crown, the facial disc a shallow dish framed by a ruff, brows over the eyes.
+    # The head: big and broad with a flat crown. The face is one smooth plate: a shallow dish round
+    # each eye (the facial disc), a thin ruff framing each dish round its outside, a low brow over
+    # each eye, and the bristled ridge between them that runs down to the bill. (The first head had
+    # lobes for brows and cheeks: four lumps where a face should be.)
     cranium = Union([
-        Ellipsoid(P(0.0, 0.46, 0.024), (0.098, 0.074, 0.08)),
-        Ellipsoid(P(0.0, 0.493, 0.01), (0.088, 0.04, 0.07)),
+        Ellipsoid(P(0.0, 0.462, 0.022), (0.104, 0.08, 0.085)),
+        Ellipsoid(P(0.0, 0.497, 0.006), (0.093, 0.041, 0.072)),
     ], k=0.022).tag(PARTS["head"])
+    plate = []
+    for side in (1.0, -1.0):
+        normal = DISC_NORMAL * np.array([side, 1.0, 1.0])
+        plate.append(Ellipsoid(P(side * DISC_CENTRE[0], DISC_CENTRE[1], DISC_CENTRE[2] - 0.004),
+                               (DISC_RADII[0], DISC_RADII[1], 0.016), along=normal))
+    disc = Union(plate, k=0.02).tag(PARTS["face"])
     ruff = []
     for side in (1.0, -1.0):
-        # The rim of the disc down each side of the face, and the cheek below the eye.
-        ruff.append(Ellipsoid(P(side * 0.075, 0.455, 0.074), (0.016, 0.064, 0.026), along=_unit((side * 0.5, 0.0, 0.86))))
-        ruff.append(Ellipsoid(P(side * 0.046, 0.43, 0.082), (0.03, 0.017, 0.015)))
-        # The brow over each eye, pale, sweeping out toward the tuft.
-        ruff.append(Ellipsoid(P(side * 0.038, 0.503, 0.09), (0.03, 0.0085, 0.014),
-                              along=_unit((side * 1.0, 0.36, -0.15))))
-    disc = Union(ruff, k=0.012).tag(PARTS["face"])
+        rim_points = disc_rim(side)
+        ruff.append(Tube(rim_points, [0.0066] * len(rim_points), k=0.006))
+        ruff.append(Tube(brow_line(side), [0.0062, 0.0058, 0.0042], k=0.005))
+    frame = Union(ruff, k=0.006).tag(PARTS["face"])
     # Between the eyes: the bristled ridge that runs down to the bill.
-    bristle = Ellipsoid(P(0.0, 0.468, 0.104), (0.016, 0.03, 0.017)).tag(PARTS["face"])
-    head = Union([cranium, (disc, 0.016), (bristle, 0.01)], k=0.012)
-    head = Displace(head, 0.0009, _fine)
+    bristle = Ellipsoid(P(0.0, 0.466, 0.104), (0.013, 0.032, 0.016)).tag(PARTS["face"])
+    head = Union([cranium, (disc, 0.018), (frame, 0.007), (bristle, 0.01)], k=0.012)
+    head = Displace(head, 0.0007, _fine)
 
     # The bill: a short hooked beak, mostly hidden in the bristles.
     bill = Union([
@@ -755,7 +792,8 @@ def srgb(hex_colour):
 
 PLUMAGE = dict(
     back=srgb(0x5b3e26), mantle=srgb(0x6e4b2c), breast=srgb(0xb88550), belly=srgb(0xc29a68),
-    throat=srgb(0xe6dccb), disc=srgb(0xb4874f), rim=srgb(0x2a1c13), brow=srgb(0xd8c4a0),
+    throat=srgb(0xe6dccb), disc=srgb(0xb8905a), discPale=srgb(0xd9c39a), rim=srgb(0x1c120c),
+    brow=srgb(0xdccaa8),
     crown=srgb(0x5e4128), eye=srgb(0xf06d10), bill=srgb(0x2a2a2d), claw=srgb(0x121010), foot=srgb(0xc8a677),
     flight=srgb(0x6a4a2c), flightUnder=srgb(0xcdb48c), covert=srgb(0x5a3c24), under=srgb(0xd2bc96),
     tail=srgb(0x6e4f30), tuft=srgb(0x34241a), arm=srgb(0x5a3c24),
@@ -780,13 +818,26 @@ def paint_body(shape, landmarks, positions, normals, parts):
     lay(C["mantle"], (1.0 - front) * _smoothstep(0.26, 0.36, y) * np.isin(parts, (PARTS["body"], PARTS["neck"])))
     head = np.isin(parts, (PARTS["head"], PARTS["face"], PARTS["neck"]))
     lay(C["crown"], head * _smoothstep(0.2, -0.3, nz) * _smoothstep(0.38, 0.44, y))
-    # The facial disc: tawny, its rim black down the sides, the brows pale, the white throat below.
+    # The facial disc: pale tawny, paler toward the eye, framed by a black ruff round its outside,
+    # the brows pale over it, a dark smudge at each eye's inner corner, the white throat below.
     face = (parts == PARTS["face"]) | ((parts == PARTS["head"]) & (nz > 0.45))
     lay(C["disc"], face * 1.0)
-    rim_band = (parts == PARTS["face"]) * _smoothstep(0.052, 0.072, np.abs(x)) * _smoothstep(0.3, 0.75, np.abs(normals[:, 0]))
-    lay(C["rim"], 0.85 * rim_band)
-    brow = (parts == PARTS["face"]) * _smoothstep(0.494, 0.504, y) * _smoothstep(0.08, 0.5, nz)
-    lay(C["brow"], 0.8 * brow)
+
+    def near(line, reach):
+        """1 on a polyline, 0 by `reach` from it."""
+        d = np.full(len(positions), 1e9)
+        for a, b in zip(line[:-1], line[1:]):
+            d = np.minimum(d, _segment_distance(positions, np.asarray(a), np.asarray(b)))
+        return _smoothstep(reach, reach * 0.35, d)
+
+    eye_side = np.where(x >= 0.0, 1.0, -1.0)
+    to_eye = np.linalg.norm(positions - EYE * np.stack([eye_side, np.ones_like(x), np.ones_like(x)], axis=1), axis=1)
+    lay(C["discPale"], face * _smoothstep(0.05, 0.022, to_eye) * 0.7)
+    inner = face * _smoothstep(0.03, 0.012, np.abs(x)) * _smoothstep(0.455, 0.47, y) * _smoothstep(0.5, 0.485, y)
+    lay(C["rim"], 0.55 * inner)
+    for side in (1.0, -1.0):
+        lay(C["rim"], 0.92 * head * near(disc_rim(side), 0.0165))
+        lay(C["brow"], 0.85 * head * near(brow_line(side), 0.0145))
     throat = np.isin(parts, (PARTS["neck"], PARTS["face"], PARTS["body"])) * _smoothstep(0.35, 0.75, nz) \
         * _smoothstep(0.36, 0.4, y) * _smoothstep(0.445, 0.425, y) * _smoothstep(0.05, 0.02, np.abs(x))
     lay(C["throat"], throat)

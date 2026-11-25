@@ -12,10 +12,10 @@
 import * as THREE from 'three/webgpu';
 import {
     cameraPosition, cos, cross, exp, float, fract, instancedBufferAttribute, instancedDynamicBufferAttribute,
-    length, mix, normalize, positionGeometry, pow, saturate, sin, uniform, uv, varying, vec3,
+    length, mix, normalize, positionGeometry, pow, saturate, sin, smoothstep, uniform, uv, varying, vec3,
 } from 'three/tsl';
 import {
-    FOREST_CHORUS, FOREST_FIREFLY_DEW, FOREST_SYNC_PHASE_PER_METRE, ForestFireflySim,
+    FOREST_CHORUS, FOREST_SYNC_PHASE_PER_METRE, ForestFireflySim,
 } from './forest-firefly-sim.js';
 import { FOREST_FIREFLY_COLOUR, FOREST_FIREFLY_HOT } from './forest-light.js';
 
@@ -29,8 +29,13 @@ const SPARK_TRAIL_SECONDS = 0.2;
  */
 const FOCUS = 4.2;
 const DEFOCUS_NEAR = 1.2;
-const DEFOCUS_GROWTH = 3.2;
+const DEFOCUS_GROWTH = 2.6;
 const DEFOCUS_SPREAD = 2;
+/** A firefly this near the lens is let go altogether (a disc the size of a hand across the card). */
+const LENS_CLEAR = [0.7, 1.7];
+/** Seconds of flight an ambient firefly's trail holds at rest, and how much a waking wood adds. */
+const TRAIL_REST = 1.05;
+const TRAIL_WAKE = 1.5;
 
 /** 0 in focus, 1 at the nearest a firefly comes to the lens (TSL, shared by lights and trails). */
 function defocusAt(range) {
@@ -82,7 +87,7 @@ export class ForestFireflies {
         // How much of the chorus's broad swell rolls through the wood with it (a fever's heartbeat).
         this.uPulse = uniform(0);
         // Seconds of flight an ambient firefly's trail holds; a waking forest draws longer ones.
-        this.uTrail = uniform(1.5);
+        this.uTrail = uniform(TRAIL_REST);
     }
 
     /** TSL twin of forestFireflyFlash(), `back` seconds ago. */
@@ -123,21 +128,18 @@ export class ForestFireflies {
         const velocity = instancedDynamicBufferAttribute(this.velocities); // xyz, kind
         const glow = instancedDynamicBufferAttribute(this.glows); // brightness, heat, away, trail
         const ambient = saturate(velocity.w).oneMinus();
-        const dew = saturate(velocity.w.sub(FOREST_FIREFLY_DEW - 1));
         return {
-            home, place, velocity, glow, ambient, dew,
+            home, place, velocity, glow, ambient,
         };
     }
 
-    colour(glow, dew) {
-        const lit = mix(vec3(...FOREST_FIREFLY_COLOUR), vec3(...FOREST_FIREFLY_HOT), glow.y);
-        // Dew is not a firefly: it only throws the moon back.
-        return mix(lit, vec3(0.7, 0.88, 1.2), dew);
+    colour(glow) {
+        return mix(vec3(...FOREST_FIREFLY_COLOUR), vec3(...FOREST_FIREFLY_HOT), glow.y);
     }
 
     buildLights(count) {
         const {
-            home, place, glow, ambient, dew,
+            home, place, glow, ambient,
         } = this.instance();
         const material = new THREE.MeshBasicNodeMaterial({
             transparent: true, depthWrite: false, fog: false, blending: THREE.AdditiveBlending,
@@ -152,29 +154,31 @@ export class ForestFireflies {
         const stirred = this.light.stir(centre);
         // A reserve spark that is not alight has no size; it must not answer a passing wave.
         const alight = place.w.greaterThan(0.001);
-        const bright = glow.x.add(stirred.mul(1.5).mul(dew.oneMinus())).mul(alight);
+        const bright = glow.x.add(stirred.mul(1.5)).mul(alight);
         // A far firefly is kept a few pixels wide and dimmed instead, so it never flickers
         // in and out between pixels.
-        // Out of focus near the lens (dew too: a drop falling past the eye is a disc of moonlight).
+        // Out of focus near the lens.
         const defocus = defocusAt(range);
         const growth = defocus.mul(DEFOCUS_GROWTH).add(1);
-        const size = place.w.mul(mix(float(0.66), float(0.9), dew)).add(range.mul(0.0025))
+        const size = place.w.mul(0.66).add(range.mul(0.0025))
             .mul(bright.min(1.6).mul(0.3).add(0.8)).mul(alight)
             .mul(growth);
         material.positionNode = centre
             .add(right.mul(positionGeometry.x.mul(size)))
             .add(up.mul(positionGeometry.y.mul(size)));
-        const light = varying(this.colour(glow, dew).mul(bright).mul(exp(range.mul(-0.011)).mul(0.8).add(0.2))
-            .div(pow(growth, DEFOCUS_SPREAD)));
+        const light = varying(this.colour(glow).mul(bright).mul(exp(range.mul(-0.011)).mul(0.8).add(0.2))
+            .div(pow(growth, DEFOCUS_SPREAD))
+            // (One almost on the lens is let go: it would be a pale plate over the card.)
+            .mul(saturate(range.sub(LENS_CLEAR[0]).div(LENS_CLEAR[1] - LENS_CLEAR[0]))));
         const blur = varying(defocus);
         const radius = length(uv().sub(0.5)).mul(2);
         const core = pow(saturate(float(1).sub(radius)), 3);
         const halo = exp(radius.mul(-4.4)).mul(saturate(float(1).sub(radius)));
-        // A defocused light is a disc: flat across, a slightly brighter rim, a soft edge.
-        const rimLift = saturate(radius.sub(0.55).div(0.4)).mul(0.35).add(0.65);
-        const disc = saturate(float(1).sub(radius).div(0.16)).mul(rimLift);
+        // A defocused light is a disc: soft across, a little brighter toward its rim, a soft edge.
+        const rimLift = saturate(radius.sub(0.45).div(0.5)).mul(0.3).add(0.7);
+        const disc = smoothstep(1, 0.68, radius).mul(rimLift);
         material.colorNode = light.mul(1.4);
-        material.opacityNode = mix(core.mul(1.2).add(halo.mul(0.5)), disc.mul(0.75), saturate(blur.mul(1.6)));
+        material.opacityNode = mix(core.mul(1.2).add(halo.mul(0.5)), disc.mul(0.6), saturate(blur.mul(1.6)));
         const mesh = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1), material, count);
         mesh.name = 'ForestFireflyLights';
         mesh.frustumCulled = false;
@@ -188,7 +192,7 @@ export class ForestFireflies {
 
     buildTrails(count) {
         const {
-            home, place, velocity, glow, ambient, dew,
+            home, place, velocity, glow, ambient,
         } = this.instance();
         const material = new THREE.MeshBasicNodeMaterial({
             transparent: true, depthWrite: false, fog: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
@@ -203,11 +207,10 @@ export class ForestFireflies {
         const span = mix(float(SPARK_TRAIL_SECONDS).mul(glow.w), this.uTrail.mul(curl), ambient);
         const back = along.mul(span);
         // Where the firefly was `seconds` ago: an ambient one on its closed-form path, a
-        // spark by flying its present velocity backward (dew also un-falls).
+        // spark by flying its present velocity backward.
         const earlier = (seconds) => place.xyz
             .add(home.xyz.add(wander(home.w, this.uSimTime.sub(seconds))).mul(ambient))
-            .sub(velocity.xyz.mul(seconds).mul(ambient.oneMinus()))
-            .add(vec3(0, 3.2, 0).mul(seconds.mul(seconds)).mul(dew));
+            .sub(velocity.xyz.mul(seconds).mul(ambient.oneMinus()));
         const centre = earlier(back);
         const ahead = earlier(back.sub(0.07));
         const offset = cameraPosition.sub(centre);
@@ -219,9 +222,9 @@ export class ForestFireflies {
         material.positionNode = centre.add(across.mul(positionGeometry.x.mul(width)));
         // An ambient firefly's trail is lit where it was flashing; a spark's simply fades.
         const then = this.flash(home.w, glow.z, back);
-        const lit = mix(glow.x, then, ambient).mul(pow(along.oneMinus(), 1.4));
+        const lit = mix(glow.x, then, ambient).mul(pow(along.oneMinus(), 1.9));
         // A firefly out of focus by the lens draws no sharp trail across its own blur.
-        const light = varying(this.colour(glow, dew).mul(lit).mul(exp(range.mul(-0.011)).mul(0.8).add(0.2))
+        const light = varying(this.colour(glow).mul(lit).mul(exp(range.mul(-0.011)).mul(0.8).add(0.2))
             .mul(place.w.greaterThan(0.001))
             .mul(defocusAt(range).oneMinus()));
         const edge = saturate(float(1).sub(positionGeometry.x.abs().mul(2)));
@@ -261,9 +264,11 @@ export class ForestFireflies {
         this.uSync.value = sim.sync;
         this.uChorus.value = sim.chorus;
         this.uPulse.value = sim.pulse;
-        const wake = Number.isFinite(env.sync) ? THREE.MathUtils.clamp(env.sync, 0, 1) : 0;
+        // How awake play has made the wood (`trail`, when the air's own dance has raised `sync` past it).
+        const woken = Number.isFinite(env.trail) ? env.trail : env.sync;
+        const wake = Number.isFinite(woken) ? THREE.MathUtils.clamp(woken, 0, 1) : 0;
         // A fever's brighter chorus draws longer trails still.
-        this.uTrail.value = 1.5 + wake * 1.9 + Math.max(0, sim.chorus - FOREST_CHORUS) * 1.2;
+        this.uTrail.value = TRAIL_REST + wake * TRAIL_WAKE + Math.max(0, sim.chorus - FOREST_CHORUS) * 1.2;
         sim.shed(this.light.field);
         this.markDirty();
     }

@@ -4,9 +4,7 @@ import {
 import * as THREE from 'three/webgpu';
 import { FOREST_FIGURES, forestFigure } from '../../src/themes/forest/forest-figures.js';
 import { FOREST_WAVES, ForestFireflyDirector } from '../../src/themes/forest/forest-firefly-director.js';
-import {
-    FOREST_FIREFLY_DEW, FOREST_FIREFLY_SPARK, ForestFireflySim,
-} from '../../src/themes/forest/forest-firefly-sim.js';
+import { FOREST_FIREFLY_SPARK, ForestFireflySim } from '../../src/themes/forest/forest-firefly-sim.js';
 import { ForestPulses } from '../../src/themes/forest/forest-pulses.js';
 import { FOREST_FIGURE_TIMING, ForestReactions } from '../../src/themes/forest/forest-reactions.js';
 import {
@@ -66,13 +64,12 @@ const TRUNKS = [
         asset: 'far', x: 30, y: 0, z: -70, radius: 0.7, height: 30, crownBase: 9,
     },
 ];
-const BOUGHS = new Float32Array([-6, 9, 3, 8, 7, -4, -11, 11, -12]);
 const FIGURE_ANCHOR = Object.freeze({
     x: 10, y: 0.4, z: -5, facing: { x: -0.87, z: -0.49 }, depth: { x: 0.49, z: -0.87 },
 });
 
 function setup({
-    fireflies = 1200, pulses = 6, groundHeight = () => 0, trunks = TRUNKS, boughs = BOUGHS, figureAnchor = FIGURE_ANCHOR,
+    fireflies = 1200, pulses = 6, groundHeight = () => 0, trunks = TRUNKS, figureAnchor = FIGURE_ANCHOR,
     figureStands = null, seed = 3, aspect = 16 / 9, stage = null,
 } = {}) {
     const camera = createCamera({ aspect });
@@ -89,7 +86,6 @@ function setup({
         rng: seededRandom(seed + 1),
         groundHeight,
         trunks,
-        boughs,
         figureAnchor,
         figureStands,
         eye: EYE,
@@ -827,26 +823,31 @@ describe('Forest firefly director: emitters', () => {
         expect(playEmitter(weak, emitter('rise', { row: 0, strength: 0.3, duration: 2.8 })).at(-1)).toBeLessThan(total);
     });
 
-    it('shakes dew from the boughs for a hard drop, and only where there are boughs', () => {
+    it('leaves the dew of a hard drop to the flurry: it throws no firefly for it', () => {
+        // The reactions no longer describe a 'dew' emitter (a long hard drop asks for a flurry, read by
+        // forest-flurry.js). One that reached the director all the same plays as nothing.
         const rig = setup();
         const released = playEmitter(rig, emitter('dew', { strength: 0.9, duration: 0.7 }));
-        expect(released.at(-1)).toBeGreaterThan(5);
-        for (const drop of spawnArgs(rig)) {
-            expect(drop.kind).toBe(FOREST_FIREFLY_DEW);
-            // It starts falling from just under one of the boughs.
-            expect(drop.vy).toBeLessThan(0);
-            let nearest = Infinity;
-            for (let index = 0; index < BOUGHS.length; index += 3) {
-                if (Math.hypot(drop.x - BOUGHS[index], drop.z - BOUGHS[index + 2]) < 1.2
-                    && drop.y <= BOUGHS[index + 1] && drop.y > BOUGHS[index + 1] - 1) nearest = 0;
-            }
-            expect(nearest).toBe(0);
-        }
+        expect(released.at(-1)).toBe(0);
         expect(rig.director.fields).toEqual([]);
-        for (const boughs of [null, new Float32Array(0), new Float32Array(2)]) {
-            const bare = setup({ boughs });
-            expect(playEmitter(bare, emitter('dew', { strength: 0.9, duration: 0.7 })).at(-1)).toBe(0);
-        }
+        expect(rig.sim.counts().live).toBe(0);
+        expect(rig.director.dew).toBeUndefined();
+        expect(rig.director.boughs).toBeUndefined();
+        // And what a frame asks of the flurry is not the director's to throw: the lock after a long
+        // drop lights exactly the sparks it lights when the frame carries no flurry at all.
+        const reactions = new ForestReactions({ rng: seededRandom(5) });
+        reactions.onHardDrop({ distance: 18 });
+        reactions.onPieceLock({ piece: { x: 4, y: 22, shape: [[1]] } });
+        const frame = reactions.update(STEP);
+        expect(frame.emitters.map((entry) => entry.kind)).toEqual(['lock']);
+        expect(frame.flurries.filter((entry) => entry.serial >= 0).map((entry) => entry.kind)).toEqual(['dew']);
+        const asked = setup();
+        const unasked = setup();
+        asked.director.apply(frame, STEP);
+        unasked.director.apply({ ...frame, flurries: [] }, STEP);
+        expect(spawnArgs(asked).length).toBeGreaterThan(0);
+        expect(spawnArgs(asked)).toEqual(spawnArgs(unasked));
+        for (const spark of spawnArgs(asked)) expect(spark.kind).toBeUndefined();
     });
 
     it('winds a spiral beside the board for a spin, turning the way its side says', () => {
@@ -964,7 +965,7 @@ describe('Forest firefly director: the waking forest', () => {
         const bare = setup({ trunks: [] });
         expect(bare.director.posts).toEqual([]);
         expect(() => bare.director.apply({ epoch: 1, wake: 1, heat: 1 }, STEP)).not.toThrow();
-        // Told nothing about the wood at all, the director still plays: no posts, no boughs, no figure.
+        // Told nothing about the wood at all, the director still plays: no posts, no figure.
         const plain = new ForestFireflyDirector({
             stage: bare.stage, sim: bare.sim, pulses: bare.pulses, tier: { fireflies: 600 },
         });

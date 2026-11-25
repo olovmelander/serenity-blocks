@@ -14,6 +14,7 @@ import {
     cameraPosition, dot, exp, float, length, max, mix, normalize, positionWorld, pow, saturate, shadow, sin,
     texture, uniform, uniformArray, vec2, vec3,
 } from 'three/tsl';
+import { createForestAir } from './forest-airs.js';
 import {
     FOREST_HOUR_COLOURS, FOREST_HOURS, createForestHour, forestHourAt,
 } from './forest-hours.js';
@@ -48,6 +49,22 @@ export const FOREST_FIREFLY_HOT = Object.freeze([1.0, 0.92, 0.52]);
  */
 export const FOREST_MOON_HOT = 0.45;
 export const FOREST_MOON_FEVER = 0.3;
+/** How much of its light a moon wholly behind cloud loses (the cloud glows with the rest). */
+export const FOREST_VEIL_DIM = 0.74;
+/** The cold light of the fungi: foxfire teal. */
+export const FOREST_FOXFIRE_COLOUR = Object.freeze([0.1, 1.0, 0.55]);
+/** The night air's own wind at rest, how much of an air's wind stands in it, and how much comes in swells. */
+const WIND_REST = 0.13;
+const WIND_STANDING = 0.4;
+const WIND_SWELL = 1.5;
+/** The map the fungi's pools of light are baked into: its side, and how far a cap's light reaches (metres). */
+const FUNGUS_MAP_SIZE = 256;
+const FUNGUS_REACH = 1.5;
+/** The bloom's rings: how many at once, how long one runs (seconds) and how wide its front is (metres). */
+const BLOOM_RINGS = 2;
+const BLOOM_SECONDS = 3.4;
+const BLOOM_WIDTH = 2.2;
+const unit = (value) => (Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0);
 
 /** Four channels of tileable value noise at rising frequencies. */
 function createNoiseTexture(rng, size = 128) {
@@ -191,6 +208,22 @@ export class ForestLight {
         };
         this.hour = createForestHour();
         this.hourPhase = 0;
+        // The air (forest-airs.js): the weather under the hour's colours. Its numbers are kept here
+        // and spent in update(); what a shader reads of them is one of these uniforms.
+        this.air = createForestAir();
+        // Cloud over the moon (the air's, or for a moment a run's end), 0..1.
+        this.uVeil = uniform(0);
+        // How much of the sky the cloud covers, 0..1, and how far it and the mist have drifted.
+        this.uCloud = uniform(0);
+        this.uCloudScroll = uniform(0);
+        this.uMistScroll = uniform(0);
+        // How thick the banks of mist lie, and the moths and dust in the beams, against rest.
+        this.uBanks = uniform(1);
+        this.uMotes = uniform(1);
+        // How brightly the wood's own cold light burns at rest (fungi, foxfire, moss), 0..1.
+        this.uLife = uniform(this.air.life);
+        // Three lines (or four) light the foxfire for a moment, 0..1.
+        this.uFoxfire = uniform(0);
         // Wind: night air barely moves; gusts and a travelling front come from the game.
         this.uWindDir = uniform(new THREE.Vector3(0.88, 0, 0.47));
         this.uWind = uniform(0.13);
@@ -202,10 +235,29 @@ export class ForestLight {
         this.noiseTexture = createNoiseTexture(rng);
         this.heightTexture = createHeightTexture(heights);
         this.groundNodes = new WeakMap();
+        // The fungi's pools of cold light on the moss, baked once the fungi are laid out (bakeFungi).
+        this.fungusData = new Uint8Array(FUNGUS_MAP_SIZE * FUNGUS_MAP_SIZE);
+        this.fungusTexture = new THREE.DataTexture(this.fungusData, FUNGUS_MAP_SIZE, FUNGUS_MAP_SIZE, THREE.RedFormat);
+        this.fungusTexture.magFilter = THREE.LinearFilter;
+        this.fungusTexture.minFilter = THREE.LinearFilter;
+        this.fungusTexture.wrapS = THREE.ClampToEdgeWrapping;
+        this.fungusTexture.wrapT = THREE.ClampToEdgeWrapping;
+        this.fungusTexture.colorSpace = THREE.NoColorSpace;
+        this.fungusTexture.generateMipmaps = false;
+        this.fungusTexture.name = 'ForestFungusLight';
+        this.fungusTexture.needsUpdate = true;
+        this.fungi = 0;
 
         this.pulses = new ForestPulses(Math.max(1, tier.pulses));
         this.pulsePlace = uniformArray(this.pulses.place);
         this.pulseShape = uniformArray(this.pulses.shape);
+        // The bloom: rings of white light that run out over the floor when two lines clear and
+        // light every wood star they cross (x, z, radius, strength now). Two at once at most.
+        this.bloomRings = Array.from({ length: BLOOM_RINGS }, () => new THREE.Vector4(0, 0, 0, 0));
+        this.bloomState = Array.from({ length: BLOOM_RINGS }, () => ({
+            active: false, age: 0, speed: 0, strength: 0,
+        }));
+        this.uBloom = uniformArray(this.bloomRings);
         this.field = tier.lightMap > 0 ? new ForestLightField(tier.lightMap) : null;
         this.fieldTexture = null;
         if (this.field) {
@@ -280,8 +332,111 @@ export class ForestLight {
             const colour = hour[FOREST_HOUR_COLOURS[i]];
             this.hourUniforms[FOREST_HOUR_COLOURS[i]].value.setRGB(colour[0], colour[1], colour[2]);
         }
-        this.uHaze.value = hour.haze;
-        this.uStars.value = hour.stars;
+        this.applyAir();
+    }
+
+    /**
+     * The night's air (forest-airs.js): its numbers are copied and kept. Uniform values only;
+     * nothing is rebuilt. What moves with the clock (the wind's swells, the drift) is spent in update().
+     * @param {Record<string, number>} air
+     */
+    setAir(air) {
+        if (!air) return;
+        for (const key of Object.keys(this.air)) {
+            if (Number.isFinite(air[key])) this.air[key] = air[key];
+        }
+        this.applyAir();
+    }
+
+    /** The hour's numbers under the air's: how thick the night air is, how many stars show. */
+    applyAir() {
+        const { air, hour } = this;
+        this.uHaze.value = hour.haze * Math.max(0, air.mist);
+        this.uStars.value = hour.stars * Math.max(0, air.stars);
+        this.uCloud.value = unit(air.cloud);
+        this.uBanks.value = Math.max(0, air.banks);
+        this.uMotes.value = Math.max(0, air.motes);
+        this.uLife.value = unit(air.life);
+    }
+
+    /**
+     * Bake the fungi's pools of light: every cap sheds a soft pool of its cold light on the moss
+     * round it, into a map the floor and everything on it reads (see `glow`). Static: the caps do
+     * not move, and how brightly they burn is a uniform.
+     * @param {ReadonlyArray<{ x: number, z: number, size?: number }>} caps
+     */
+    bakeFungi(caps = []) {
+        const bounds = FOREST_LIGHT_FIELD_BOUNDS;
+        const size = FUNGUS_MAP_SIZE;
+        const sum = new Float32Array(size * size);
+        const scaleX = (size - 1) / (bounds.maxX - bounds.minX);
+        const scaleZ = (size - 1) / (bounds.maxZ - bounds.minZ);
+        const reach = Math.ceil(FUNGUS_REACH * Math.max(scaleX, scaleZ));
+        let baked = 0;
+        for (const cap of caps) {
+            const column = Math.round((cap.x - bounds.minX) * scaleX);
+            const row = Math.round((cap.z - bounds.minZ) * scaleZ);
+            // (A margin, so nothing is written to the edge the sampler clamps to.)
+            if (!(column > reach && row > reach && column < size - reach - 1 && row < size - reach - 1)) continue;
+            baked += 1;
+            const power = 0.2 + 0.16 * (Number.isFinite(cap.size) ? cap.size : 1);
+            for (let r = -reach; r <= reach; r += 1) {
+                for (let c = -reach; c <= reach; c += 1) {
+                    const distance = Math.hypot(c / scaleX, r / scaleZ) / FUNGUS_REACH;
+                    if (distance < 1) sum[(row + r) * size + column + c] += power * (1 - distance * distance) ** 2;
+                }
+            }
+        }
+        for (let i = 0; i < sum.length; i += 1) {
+            this.fungusData[i] = Math.min(255, Math.round((1 - Math.exp(-sum[i] * 1.1)) * 255));
+        }
+        this.fungi = baked;
+        this.fungusTexture.needsUpdate = true;
+    }
+
+    /**
+     * Start a ring of bloom from a floor point: it runs out at `speed` metres a second and fades
+     * as it goes. Takes a free ring, or the one furthest through its life (it has all but gone).
+     */
+    bloom(x, z, strength = 1, speed = 9) {
+        if (![x, z, strength, speed].every(Number.isFinite) || !(strength > 0)) return -1;
+        let selected = 0;
+        let furthest = -1;
+        for (let i = 0; i < BLOOM_RINGS; i += 1) {
+            const state = this.bloomState[i];
+            if (!state.active) {
+                selected = i;
+                break;
+            }
+            if (state.age > furthest) {
+                furthest = state.age;
+                selected = i;
+            }
+        }
+        Object.assign(this.bloomState[selected], {
+            active: true, age: 0, speed: Math.max(0.5, speed), strength: Math.min(2, strength),
+        });
+        this.bloomRings[selected].set(x, z, 0, 0);
+        return selected;
+    }
+
+    /** How brightly the bloom's rings light a wood star at a world point, as one number. */
+    flare(world = positionWorld) {
+        let total = float(0);
+        for (let i = 0; i < BLOOM_RINGS; i += 1) {
+            const ring = this.uBloom.element(i);
+            const offset = length(world.xz.sub(ring.xy)).sub(ring.z);
+            total = total.add(exp(offset.div(BLOOM_WIDTH).pow2().negate()).mul(ring.w));
+        }
+        return total;
+    }
+
+    /**
+     * How awake the wood's own cold light is: a combo wakes it, and on a clouded night it burns
+     * by itself (the air's `life`).
+     */
+    awake() {
+        return max(this.uWake, this.uLife.mul(0.6));
     }
 
     /** 1 where the moon reaches the fragment, 0 in shadow. */
@@ -354,6 +509,19 @@ export class ForestLight {
             const pooled = texture(this.fieldTexture, st).r;
             const rise = exp(max(world.y.sub(this.groundAt(world)).sub(0.3), 0).mul(-0.42));
             total = total.add(mix(green, hot, this.uGlow.mul(0.5)).mul(pooled.mul(rise).mul(1.15)));
+        }
+        if (this.tier.fungusLight) {
+            // The fungi's own pools: foxfire teal on the moss round every cluster, brighter as the
+            // wood wakes and on a clouded night.
+            const bounds = FOREST_LIGHT_FIELD_BOUNDS;
+            const st = vec2(
+                world.x.sub(bounds.minX).div(bounds.maxX - bounds.minX),
+                world.z.sub(bounds.minZ).div(bounds.maxZ - bounds.minZ),
+            );
+            const pooled = texture(this.fungusTexture, st).r;
+            const rise = exp(max(world.y.sub(this.groundAt(world)).sub(0.1), 0).mul(-1.3));
+            const burning = this.uLife.mul(0.55).add(this.uWake.mul(0.5)).add(0.05);
+            total = total.add(vec3(...FOREST_FOXFIRE_COLOUR).mul(pooled.mul(rise).mul(burning)));
         }
         return total;
     }
@@ -465,20 +633,50 @@ export class ForestLight {
         this.uTime.value = Number.isFinite(time) ? Math.max(0, time) : this.uTime.value;
         const clamp01 = (value) => (Number.isFinite(value) ? THREE.MathUtils.clamp(value, 0, 1) : 0);
         const level = clamp01(frame.surge?.level);
+        const step = Number.isFinite(dt) ? Math.max(0, dt) : 0;
+        const { air } = this;
+        // The air's wind: a little of it stands, the rest comes in long swells of its own.
+        const now = this.uTime.value;
+        const swell = 0.62 + 0.38 * Math.sin(now * 0.23) * Math.sin(now * 0.071 + 1.3);
+        this.uWind.value = WIND_REST + air.wind * WIND_STANDING;
         // The event gusts, and the standing breeze hot play keeps bowing the ferns.
-        this.uGust.value = clamp01(clamp01(frame.gust) + clamp01(frame.breeze)) * 1.5;
+        this.uGust.value = clamp01(clamp01(frame.gust) + clamp01(frame.breeze)) * 1.5 + air.wind * WIND_SWELL * swell;
+        // The mist and the cloud drift at the air's pace: summed, so a change of pace never jumps them.
+        this.uMistScroll.value += step * air.drift;
+        this.uCloudScroll.value += step * air.drift;
+        // Cloud over the moon: the air's, and for a moment a run's end.
+        const veil = 1 - (1 - unit(air.veil)) * (1 - unit(frame.veil));
+        this.uVeil.value = veil;
+        // The wood's own cold light: the air's, or for a moment three lines' (which also light the
+        // foxfire in the moss far brighter than a night does).
+        this.uFoxfire.value = unit(frame.foxfire);
+        this.uLife.value = Math.max(unit(air.life), this.uFoxfire.value);
         this.uGlow.value = clamp01(frame.glow);
         this.uWake.value = clamp01(frame.wake);
         // The moon answers each event, a little less the hotter play runs, so a long chain never
         // washes the blue night out round it; in a fever it draws its light back and the wood
         // burns with its own.
         this.uMoonGain.value = (1 + clamp01(frame.moon) * (1 - FOREST_MOON_HOT * level) * 0.75)
-            * (1 - FOREST_MOON_FEVER * clamp01(frame.surge?.fever));
+            * (1 - FOREST_MOON_FEVER * clamp01(frame.surge?.fever)) * (1 - FOREST_VEIL_DIM * veil);
         this.uHalo.value = Number.isFinite(frame.halo) ? THREE.MathUtils.clamp(frame.halo, 0, 1.5) : 0;
         if (frame.front && Number.isFinite(frame.front.x)) {
             this.uFront.value.set(frame.front.x, clamp01(frame.front.strength) * 2.2, 20, 0);
         } else this.uFront.value.y = 0;
         this.pulses.update(Number.isFinite(dt) ? Math.max(0, dt) : 0);
+        for (let i = 0; i < BLOOM_RINGS; i += 1) {
+            const state = this.bloomState[i];
+            if (!state.active) continue;
+            state.age += step;
+            const progress = state.age / BLOOM_SECONDS;
+            if (progress >= 1) {
+                state.active = false;
+                this.bloomRings[i].w = 0;
+                continue;
+            }
+            this.bloomRings[i].z = state.speed * state.age;
+            // (It comes up over a few frames and thins as its circle grows.)
+            this.bloomRings[i].w = state.strength * (1 - progress) ** 1.3 * Math.min(1, state.age / 0.08);
+        }
         // Pipelines may still be compiling when the first shadow map is drawn; redraw it
         // over its first draws (shared/static-shadow-draws.js) so no late tree is missing from the static map.
         this.shadowFrames += 1;
@@ -496,8 +694,18 @@ export class ForestLight {
         }
     }
 
+    /** Start the drift of the mist and the cloud again (a capture's seek lives the night from its start). */
+    rewind() {
+        this.uMistScroll.value = 0;
+        this.uCloudScroll.value = 0;
+    }
+
     reset() {
         this.pulses.reset();
+        for (let i = 0; i < BLOOM_RINGS; i += 1) {
+            this.bloomState[i].active = false;
+            this.bloomRings[i].set(0, 0, 0, 0);
+        }
         if (this.field) {
             this.field.clear();
             this.field.commit();
@@ -508,6 +716,7 @@ export class ForestLight {
     dispose() {
         this.noiseTexture.dispose();
         this.heightTexture.dispose();
+        this.fungusTexture.dispose();
         this.fieldTexture?.dispose();
         this.shadowNode.dispose?.();
         this.moon.shadow.dispose();

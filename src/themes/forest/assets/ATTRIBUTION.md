@@ -162,9 +162,12 @@ model or clip.
 - **Model.** The soft body (body, head, facial disc, eyes, bill, feathered legs and toes, talons) is a
   signed-distance field round the rig's joints, polygonised with surface nets, decimated in Blender
   and mirrored (`grainfields/horse_sdf.py`, the toolkit the horse, the bear and the squirrel are made
-  with). Every flight feather (10 primaries, 14 secondaries and 3 tertials a wing, 12 tail feathers),
-  the coverts over them, the alula, the scapulars and the ear tufts are curved vanes of their own; the
-  leading edge of each wing is a lofted tube; the eyelids are caps over the eyes.
+  with). The face is one smooth plate (rebuilt 2026-11-25): a shallow dish round each eye, framed by a
+  thin dark ruff round its outside, a low pale brow over each eye and the bristled ridge between them
+  down to the bill; the eyes are an eagle owl's large ones. Every flight feather (10 primaries, 14
+  secondaries and 3 tertials a wing, 12 tail feathers), the coverts over them, the alula, the scapulars
+  and the ear tufts (nine a side) are curved vanes of their own; the leading edge of each wing is a
+  lofted tube; the eyelids are caps over the eyes.
 - **Rig.** 110 bones, every flight feather on a bone of its own. Every bone rests unturned, so a
   rotation the theme sets reads in the owl's frame (+X its left, +Y up, +Z toward the bill). The rest
   pose stands perched, its body 62 degrees above level and its wings spread in the plane of the back.
