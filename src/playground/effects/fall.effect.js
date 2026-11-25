@@ -39,7 +39,9 @@ export function create({
     // looks down from (else the game eye's own height).
     const squirrel = params.get('squirrel') !== '0';
     const squirrelSeed = Number(params.get('squirrelSeed') ?? 271);
-    const squirrelStart = params.get('squirrelStart') === 'ground' ? 'ground' : 'crown';
+    // (Also 'any': drawn from the seed, as in the game; and 'crown-oak', 'ground-oak', 'stump', 'windfall', 'bough'.)
+    const squirrelStart = ['ground', 'any', 'crown-oak', 'ground-oak', 'stump', 'windfall', 'bough']
+        .includes(params.get('squirrelStart')) ? params.get('squirrelStart') : 'crown';
     // ?squirrelPlan=snack,climb,peek: its routines, in that order, before it chooses for itself.
     const squirrelScript = (params.get('squirrelPlan') || '').split(',').map((bit) => bit.trim()).filter(Boolean);
     const followAt = Number(params.get('squirrelCam') ?? 0);

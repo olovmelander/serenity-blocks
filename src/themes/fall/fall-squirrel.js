@@ -23,6 +23,7 @@ import {
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import { SQUIRREL_CLIPS, SQUIRREL_SCALE } from './fall-squirrel-clips.js';
 import { FLICK_LENGTH } from './fall-squirrel-mind.js';
+import { createFurShells } from './fall-squirrel-fur.js';
 import { createPlumeHairSteps } from './fall-squirrel-plume.js';
 import { FALL_SLICE_MS, fallSlice } from './fall-slices.js';
 import { drainSteps, stepClock } from '../shared/build-steps.js';
@@ -87,10 +88,13 @@ function createFurMaterial(light) {
     const parting = smoothstep(0.0, 0.0035, out).mul(0.22).add(0.78);
     const combed = mix(tone, float(0.92), fine).mul(parting);
     // (A touch less saturated than painted: under the warm sun the rust ran to orange.)
-    const albedo = mix(vec3(dot(paint.rgb, vec3(0.2126, 0.7152, 0.0722))), paint.rgb, 0.8).mul(0.92)
-        .mul(mix(float(1), combed, plume));
-    const sky = saturate(paint.a);
     const fur = saturate(coat.x);
+    // This is the skin under the coat (fall-squirrel-fur.js draws the hair over it): where the hair is
+    // long it is the dark of its roots; on the muzzle, the paws and the eyes it is what is seen.
+    const roots = mix(float(1), float(0.62), smoothstep(0.08, 0.38, fur));
+    const albedo = mix(vec3(dot(paint.rgb, vec3(0.2126, 0.7152, 0.0722))), paint.rgb, 0.8).mul(0.92)
+        .mul(mix(float(1), combed, plume)).mul(roots);
+    const sky = saturate(paint.a);
     const through = saturate(coat.y);
     const eye = saturate(coat.z);
     const world = positionWorld;
@@ -187,7 +191,7 @@ export function createSquirrel({ light, gltf, scale = SQUIRREL_SCALE }) {
  * @param {{ due: () => boolean, restart: () => void }} [o.clock]
  */
 export function* createSquirrelSteps({
-    light, gltf, scale = SQUIRREL_SCALE, clock = stepClock(FALL_SLICE_MS),
+    light, gltf, scale = SQUIRREL_SCALE, clock = stepClock(FALL_SLICE_MS), quality = 'High',
 }) {
     const model = cloneSkinned(gltf.scene);
     model.name = 'FallSquirrelModel';
@@ -222,6 +226,10 @@ export function* createSquirrelSteps({
         material.userData.comb.tailBase.value.copy(first.centre);
         material.userData.comb.tailAxis.value.copy(first.axis);
     }
+    yield* fallSlice(clock, 'squirrel');
+    // The coat: the hair over the body, in shells (fall-squirrel-fur.js).
+    const coatHair = body ? createFurShells({ body, light, quality }) : null;
+    if (coatHair) triangles += coatHair.triangles;
     yield* fallSlice(clock, 'squirrel');
     const pivot = new THREE.Group();
     pivot.name = 'FallSquirrel';
@@ -317,6 +325,7 @@ export function* createSquirrelSteps({
         material,
         acornMaterial,
         plumeHair,
+        coatHair,
         triangles,
         clips: Object.keys(actions),
         /** Draw the pose the mind resolved (fall-squirrel-mind.js pose()). */
@@ -403,6 +412,7 @@ export function* createSquirrelSteps({
             material.dispose();
             acornMaterial.dispose();
             plumeHair?.dispose();
+            coatHair?.dispose();
             shade.mesh.geometry.dispose();
             shade.mesh.material.dispose();
             shade.mesh.removeFromParent();

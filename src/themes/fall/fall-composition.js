@@ -46,6 +46,15 @@ export const FALL_FEATURE_TREES = Object.freeze([
     {
         asset: 'birch-grove-b', x: 12.4, z: -23.5, yaw: 5.2, scale: 1, tone: 0.92,
     },
+    // The squirrel's near perches, close to the eye either side of the board (the great trees stand
+    // fifteen and twenty metres off): a windfall low on the right, its root end out of frame, two dead
+    // limbs standing up from it; the broken stump of another tree low on the left, still in leaf.
+    {
+        asset: 'old-windfall', x: 5.1, z: 8.4, yaw: -0.541, scale: 1, tone: 0.22,
+    },
+    {
+        asset: 'old-stump', x: -4.9, z: 7.6, yaw: 0.6, scale: 1, tone: 0.62,
+    },
 ]);
 
 const GROVE_ASSETS = ['maple-grove-a', 'maple-grove-b', 'maple-grove-c', 'maple-grove-a', 'maple-grove-b',

@@ -19,6 +19,7 @@ import { FALL_MOODS, fallMoodDrift, fallMoodName } from './fall-moods.js';
 import { fallTier } from './fall-quality.js';
 import { FallStage } from './fall-stage.js';
 import { createSquirrelSteps } from './fall-squirrel.js';
+import { createPerches } from './fall-squirrel-limbs.js';
 import { SquirrelMind } from './fall-squirrel-mind.js';
 import {
     SQUIRREL_TRUNK_SPAN, TrunkSurface, createSquirrelStage, measureTrunkSteps,
@@ -173,14 +174,26 @@ export class FallWorld {
             }, clock), name);
         }
         const eye = FALL_VIEWS.landscape.position;
+        // Its boughs, and its perches close to the eye: of the trees that arrived.
+        const perches = createPerches({
+            placements: FALL_FEATURE_TREES.filter((tree) => this.assets.trees[tree.asset]),
+            groundHeight: fallTerrainHeight,
+            eye: [eye[0], eye[1], eye[2]],
+        });
         this.squirrelStage = createSquirrelStage({
-            trunks, groundHeight: fallTerrainHeight, eye: [eye[0], eye[1], eye[2]],
+            trunks,
+            groundHeight: fallTerrainHeight,
+            eye: [eye[0], eye[1], eye[2]],
+            limbs: perches.limbs,
+            pads: perches.pads,
         });
         this.squirrelMind = new SquirrelMind({
             stage: this.squirrelStage, seed: this.squirrelSeed, start: this.squirrelStart, script: this.squirrelScript,
         });
         yield* fallSlice(clock, 'squirrel trunks');
-        this.squirrel = yield* createSquirrelSteps({ light: this.light, gltf, clock });
+        this.squirrel = yield* createSquirrelSteps({
+            light: this.light, gltf, clock, quality: this.quality,
+        });
         this.group.add(this.squirrel.group, this.squirrel.shade);
         this.squirrelPose = null;
     }

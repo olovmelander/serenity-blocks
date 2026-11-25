@@ -9,6 +9,7 @@ import math
 import numpy as np
 
 from .skeleton import UP, Envelope, Tree, grow_curve
+from .perches import PERCH_RECIPES
 from .wood import buttress_profile
 
 
@@ -216,4 +217,6 @@ RECIPES = {
     "maple-grove-c": lambda: grove_maple(3323, name="maple-grove-c", height=12.0, spread=1.12),
     "birch-grove-a": lambda: grove_birch(5101, name="birch-grove-a", height=16.5),
     "birch-grove-b": lambda: grove_birch(5207, name="birch-grove-b", height=14.0),
+    # The squirrel's near perches (perches.py): a windfall and an old stump in the foreground.
+    **PERCH_RECIPES,
 }

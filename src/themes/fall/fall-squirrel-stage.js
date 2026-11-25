@@ -340,18 +340,42 @@ export function cross(a, b) {
 }
 
 /**
- * The squirrel's stage: its two trunks and the forest floor.
+ * The squirrel's stage: its two trunks, the limbs and flat places of its perches
+ * (fall-squirrel-limbs.js), and the forest floor.
  * @param {object} o
  * @param {Record<string, TrunkSurface>} o.trunks
  * @param {(x: number, z: number) => number} o.groundHeight
  * @param {number[]} o.eye  where the game's eye stands (x, y, z): which side of a trunk faces it
+ * @param {Record<string, object>} [o.limbs]  LimbSurface by name
+ * @param {Array<{name:string,home:string,centre:number[],radius:number}>} [o.pads]
  */
-export function createSquirrelStage({ trunks, groundHeight, eye = [0, 2.6, 15] }) {
+export function createSquirrelStage({
+    trunks, groundHeight, eye = [0, 2.6, 15], limbs = {}, pads = [],
+}) {
+    /** The pad a place on the floor is on (the stump's top, a snapped limb's end), or null. */
+    const padAt = (x, z) => {
+        for (const pad of pads) {
+            if (Math.hypot(x - pad.centre[0], z - pad.centre[2]) <= pad.radius) return pad;
+        }
+        return null;
+    };
     const ground = {
-        height: groundHeight,
+        height: (x, z) => padAt(x, z)?.centre[1] ?? groundHeight(x, z),
+        padAt,
         frame(x, z, out = {
             point: [0, 0, 0], normal: [0, 1, 0], up: [0, 0, -1], side: [1, 0, 0],
         }) {
+            const pad = padAt(x, z);
+            if (pad) {
+                // A flat place off the floor: level, at its own height.
+                out.point[0] = x;
+                out.point[1] = pad.centre[1];
+                out.point[2] = z;
+                out.normal[0] = 0;
+                out.normal[1] = 1;
+                out.normal[2] = 0;
+                return out;
+            }
             const e = 0.1;
             const y = groundHeight(x, z);
             const gx = (groundHeight(x + e, z) - groundHeight(x - e, z)) / (2 * e);
@@ -368,7 +392,9 @@ export function createSquirrelStage({ trunks, groundHeight, eye = [0, 2.6, 15] }
     };
     const facing = {};
     for (const [name, trunk] of Object.entries(trunks)) facing[name] = trunk.angleToward(eye[0], eye[2]);
+    // A standing limb is gone round like a trunk: its angle 0 is the side that faces the eye.
+    for (const name of Object.keys(limbs)) facing[name] = 0;
     return {
-        trunks, ground, eye, facing,
+        trunks, ground, eye, facing, limbs, pads,
     };
 }

@@ -191,11 +191,31 @@
       "barkTriangles": 36960
     },
     {
+      "file": "old-stump.glb",
+      "bytes": 47248,
+      "sha256": "5de24ecdd53afb46104fcd43c91c5b8b6ca6a343ce48c24e4e63f1153592b828",
+      "kind": "tree",
+      "species": "maple",
+      "role": "hero",
+      "sites": 6,
+      "barkTriangles": 2180
+    },
+    {
+      "file": "old-windfall.glb",
+      "bytes": 46516,
+      "sha256": "cb529cf2265b4243b12e7347b7caee2d392fc84b1bbe96488d887309896b95d0",
+      "kind": "tree",
+      "species": "maple",
+      "role": "hero",
+      "sites": 5,
+      "barkTriangles": 2200
+    },
+    {
       "file": "squirrel.glb",
-      "bytes": 531580,
-      "sha256": "b9c9e7c5f4ea012252a9434c9718f817e4532edca281722da3780950deef3c78",
+      "bytes": 560672,
+      "sha256": "237eebd3609e78da9f98919cda3be5af0676c414697b6d7ec94d6e500a3b3d64",
       "kind": "squirrel",
-      "triangles": 9502,
+      "triangles": 9326,
       "acornTriangles": 420,
       "bones": 30,
       "clips": [
@@ -209,6 +229,7 @@
         "hop",
         "idle",
         "leap",
+        "loaf",
         "look",
         "nibble",
         "pat",

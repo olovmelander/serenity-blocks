@@ -358,9 +358,12 @@ def standing(t, length, look=(0.0, 0.0), breathe_rate=1.5):
     """On all fours, every paw planted where it stands at rest."""
     breathe = math.sin(t * TAU * hz(length, breathe_rate))
     return dict(
-        root=(0.0, 0.001 * breathe, 0.0),
-        chest=(-2.0 + breathe * 0.8, 0.0, 0.0),
-        neck=(-8.0 + look[0] * 0.4, look[1] * 0.45, 0.0),
+        # (Low on bent legs: a squirrel on all fours carries its belly a finger off the ground.)
+        root=(0.0, -0.007 + 0.001 * breathe, 0.0),
+        hips=(3.0, 0.0, 0.0),
+        spine=(4.0, 0.0, 0.0),
+        chest=(-4.0 + breathe * 0.8, 0.0, 0.0),
+        neck=(-10.0 + look[0] * 0.4, look[1] * 0.45, 0.0),
         head=(4.0 + look[0] * 0.6, look[1] * 0.55, look[1] * 0.2),
         hindL=hind("L", REST["hindL"]["heel"][2]), hindR=hind("R", REST["hindR"]["heel"][2]),
         frontL=front("L", REST["frontL"]["wrist"][2]), frontR=front("R", REST["frontR"]["wrist"][2]),
@@ -395,13 +398,15 @@ def sitting(t, length, head=(0.0, 0.0, 0.0), tail=None, lean=0.0, held=PAWS_CHES
     forepaws held to the chest."""
     breathe = math.sin(t * TAU * hz(length, 1.4))
     spec = dict(
-        root=(0.0, 0.044 + 0.0008 * breathe, 0.024),
-        body=(-60.0 - lean, 0.0, 0.0),
-        hips=(6.0, 0.0, 0.0),
-        spine=(-2.0, 0.0, 0.0),
-        chest=(-4.0 + breathe * 0.8, 0.0, 0.0),
-        neck=(24.0 + head[0] * 0.4, head[1] * 0.45, head[2] * 0.3),
-        head=(30.0 + head[0] * 0.6, head[1] * 0.55, head[2] * 0.7),
+        root=(0.0, 0.042 + 0.0008 * breathe, 0.022),
+        body=(-64.0 - lean, 0.0, 0.0),
+        # (The back is a rounded C from the haunches to the nape: each joint curls a little forward,
+        # and the head is brought level again at the neck.)
+        hips=(10.0, 0.0, 0.0),
+        spine=(13.0, 0.0, 0.0),
+        chest=(13.0 + breathe * 0.8, 0.0, 0.0),
+        neck=(13.0 + head[0] * 0.4, head[1] * 0.45, head[2] * 0.3),
+        head=(17.0 + head[0] * 0.6, head[1] * 0.55, head[2] * 0.7),
         tail=tail if tail is not None else tail_pose(TAIL_SIT, wave=2.5, sway=5.0, t=t, rate=0.45, length=length),
         hindL=hind("L", -0.040, x=0.008), hindR=hind("R", -0.040, x=0.008),
     )
@@ -695,6 +700,39 @@ def groom(t):
         toe = wrist + P(-0.004, 0.009, 0.006)
         spec["front" + sfx] = paws(sfx, wrist, toe, attach="head", pole=(0.4, -1.0, -0.4))
     spec["tail"] = tail_pose(TAIL_SIT, wave=2.0, t=t, rate=1.0 / 0.8, length=0.8)
+    return spec
+
+
+LOAF_T = 4.0
+# Flat out along a bough, the tail laid along it behind: the height off the bark of each tail bone's end.
+TAIL_LOAF = [0.040, 0.034, 0.031, 0.030, 0.031, 0.034, 0.038]
+
+
+@clip("loaf", LOAF_T)
+def loaf(t):
+    """Stretched out along a bough in the sun: belly down, the forepaws out in front, the hind legs
+    trailed out behind with their soles up, the chin all but resting; a slow breath, an ear turned now
+    and then, the end of the tail lifting."""
+    p = wrap(t / LOAF_T)
+    breathe = math.sin(t * TAU * hz(LOAF_T, 0.75))
+    turn = hold(p, [(0.12, 14.0), (0.5, -4.0), (0.74, -18.0), (0.9, 2.0)])
+    spec = dict(
+        root=(0.0, -0.0235 + 0.0012 * breathe, 0.0),
+        hips=(-3.0, 0.0, 0.0),
+        spine=(2.0 + 0.8 * breathe, 0.0, 0.0),
+        chest=(3.0 + 1.0 * breathe, 0.0, 0.0),
+        neck=(-6.0, turn * 0.45, 0.0),
+        head=(9.0 + 2.0 * wander(t, LOAF_T, 4.0), turn * 0.55, turn * 0.15),
+        earL=(0.0, 0.0, -9.0 * bump(p, 0.3, 0.04)),
+        earR=(0.0, 0.0, 9.0 * bump(p, 0.66, 0.04)),
+    )
+    for sfx in ("L", "R"):
+        spec["front" + sfx] = palm_down(sfx, 0.070, lift=0.001, x=0.006)
+        spec["hind" + sfx] = toes_down(sfx, -0.128, lift=0.004, pitch=-FOOT_PITCH + 6.0, x=0.012, reverse=True)
+    lift = bump(p, 0.58, 0.07)
+    tail = tail_pose(TAIL_FLAT, wave=1.5, sway=5.0, t=t, rate=0.5, length=LOAF_T)
+    spec["tail"] = [(x + (10.0 if i >= 5 else 0.0) * lift, y, z) for i, (x, y, z) in enumerate(tail)]
+    spec["tail_lie"] = TAIL_LOAF
     return spec
 
 
