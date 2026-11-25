@@ -94,6 +94,23 @@ const HEAT_COLD = 0.35;
 /** Emitters do their work early in their lives (the director spawns within these windows). */
 const WORK_SECONDS = Object.freeze({ rise: 1.5 });
 const WAVE_QUEUE = 8;
+/**
+ * What the wood throws into the air besides fireflies (forest-flurry.js), asked for in board terms
+ * and read by serial: dew, bloom, spores, wisps, leaves, goldfall. And the least time between two
+ * falls of dew: a hard drop comes with nearly every piece, so it is the lightest of them and never
+ * a curtain (the hotter play runs, the thinner it falls).
+ */
+const FLURRY_QUEUE = 8;
+const DEW_GAP = 0.8;
+const DEW_HOT = 0.55;
+/** A back-to-back's rings of moonlight through the mist: how many are remembered, how long one runs. */
+const RING_SLOTS = 2;
+export const FOREST_RING_SECONDS = 3.2;
+/**
+ * A run's end draws cloud over the moon: how long it takes to come, how long it stays and how long
+ * it takes to clear again (seconds). A moment, not a state: the forest goes on behind the menus.
+ */
+export const FOREST_VEIL_TIMING = Object.freeze({ rise: 1.6, hold: 3.6, fall: 6 });
 /** How many of the latest events the owl can hear in one frame. */
 const OWL_CUES = 8;
 const BOARD_COLUMNS = 10;
@@ -226,6 +243,28 @@ export class ForestReactions {
         /** When the last back-to-backs came and how bright their blink is (a small ring). */
         this.blinkAt = new Float64Array(BLINK_SLOTS).fill(-Infinity);
         this.blinkAmount = new Float64Array(BLINK_SLOTS);
+        /** The rings of moonlight a back-to-back sends out through the mist: when, and how bright. */
+        this.ringAt = new Float64Array(RING_SLOTS).fill(-Infinity);
+        this.ringAmount = new Float64Array(RING_SLOTS);
+        this.rings = Array.from({ length: RING_SLOTS }, () => ({ age: -1, strength: 0 }));
+        /**
+         * The moonburst: the great moments (four lines, a perfect clear, a new level) throw the
+         * moon's beams wide through the whole wood. It adds up like the other envelopes.
+         */
+        this.burst = new Swell({
+            attack: 0.22, release: 2.2, ceiling: 1.5, knee: 1,
+        });
+        /**
+         * The wood's own cold light, lit for a moment by three lines or four: the foxfire runs out
+         * through the moss and every fungus burns (the light rig's `life`, as a clouded night has it).
+         */
+        this.foxfire = new Swell({
+            attack: 0.3, release: 2.4, ceiling: 1, knee: 0.8,
+        });
+        /** What the wood throws into the air (a ring buffer read by serial). */
+        this.flurries = Array.from({ length: FLURRY_QUEUE }, () => ({
+            serial: -1, kind: '', side: 0, column: 0.5, row: 0, strength: 0,
+        }));
         /**
          * How much of the motion the surge adds plays (the standing breeze): the theme lowers it
          * under reduced motion. The event answers themselves are the forest's, as before.
@@ -285,6 +324,20 @@ export class ForestReactions {
         this.halo.reset();
         this.blinkAt.fill(-Infinity);
         this.blinkAmount.fill(0);
+        this.ringAt.fill(-Infinity);
+        this.ringAmount.fill(0);
+        this.burst.reset();
+        this.foxfire.reset();
+        this.flurrySerial = 0;
+        this.flurryCursor = 0;
+        this.dewAt = -Infinity;
+        this.overAt = -Infinity;
+        this.shower = 0;
+        for (const flurry of this.flurries) {
+            Object.assign(flurry, {
+                serial: -1, kind: '', side: 0, column: 0.5, row: 0, strength: 0,
+            });
+        }
         this.bag.length = 0;
         this.lastFigure = null;
         for (const wave of this.waves) {
@@ -384,6 +437,27 @@ export class ForestReactions {
         this.waveSerial += 1;
         this.waveCursor = (this.waveCursor + 1) % WAVE_QUEUE;
         return wave;
+    }
+
+    /**
+     * Ask the wood to throw something into the air (forest-flurry.js): `kind` dew, bloom, spores,
+     * wisps, leaves or goldfall, at a place on the board. The oldest asking gives up its slot.
+     */
+    flurry(kind, {
+        side = 0, column = 0.5, row = 0.1, strength = 1,
+    } = {}) {
+        const value = Number.isFinite(strength) ? clamp(strength, 0, 1.5) : 0;
+        if (!(value > 0)) return null;
+        const flurry = this.flurries[this.flurryCursor];
+        flurry.serial = this.flurrySerial;
+        flurry.kind = kind;
+        flurry.side = side;
+        flurry.column = clamp(Number.isFinite(column) ? column : 0.5, 0, 1);
+        flurry.row = clamp(Number.isFinite(row) ? row : 0.1, 0, 1);
+        flurry.strength = value;
+        this.flurrySerial += 1;
+        this.flurryCursor = (this.flurryCursor + 1) % FLURRY_QUEUE;
+        return flurry;
     }
 
     /**
@@ -534,9 +608,12 @@ export class ForestReactions {
         });
         this.wave(drop > 0.3 ? 'drop' : 'lock', column, row, 0.6 + drop * 0.9);
         this.owlCue(drop > 0.3 ? 'drop' : 'lock', { column, row, strength: drop });
-        if (drop > 0.3) {
-            this.emit('dew', {
-                side, column, row, strength: drop, duration: 0.7,
+        // A long drop shakes the boughs and dew comes down through the moonlight: with nearly every
+        // piece, so never two falls on each other's heels, and thinner the hotter play runs.
+        if (drop > 0.3 && this.time - this.dewAt >= DEW_GAP) {
+            this.dewAt = this.time;
+            this.flurry('dew', {
+                side, column, row, strength: drop * (1 - DEW_HOT * this.play.level),
             });
         }
         return true;
@@ -591,7 +668,18 @@ export class ForestReactions {
         // From two lines a front of wind crosses the forest; a cascade sends one on every wave.
         if (lines >= 2 || deep > 0) this.sweep(0.3 + lines * 0.17 + deep * 0.08);
         if (lines >= 3) this.stars += 1;
+        // Each clear has an instrument of its own besides the fireflies. Two lines: the wood stars
+        // give up their light in a widening ring. Three: every fungus breathes out its spores. Four:
+        // both, and the moon throws its beams wide through the whole wood (a later wave of a cascade
+        // plays its own, a little less).
+        const waning = 1 / (1 + deep * 0.5);
+        if (lines === 2 || four) this.flurry('bloom', { row, strength: (four ? 1.2 : 0.85) * waning });
+        if (lines >= 3) {
+            this.flurry('spores', { row, strength: (four ? 1.2 : 0.9) * waning });
+            this.foxfire.hit(waning, this.time);
+        }
         if (four) {
+            this.burst.hit(1, this.time);
             this.emit('rise', {
                 row: 0, strength: 1, lines, duration: 2.8,
             });
@@ -640,6 +728,13 @@ export class ForestReactions {
             side: place && place.column >= 0.5 ? 1 : -1, row: place?.row ?? 0.3, strength: 0.8, duration: 1.7,
         });
         this.wave('spin', place?.column ?? 0.5, place?.row ?? 0.3, 1.2, 0.3);
+        // And its own: two strands of blue will-o'-the-wisp wind up out of the ferns beside the board.
+        this.flurry('wisps', {
+            side: place && place.column >= 0.5 ? 1 : -1,
+            column: place?.column ?? 0.5,
+            row: place?.row ?? 0.3,
+            strength: 1,
+        });
         this.owlCue('spin', { column: place?.column ?? 0.5, row: place?.row ?? 0.3, strength: 0.8 });
         return true;
     }
@@ -658,6 +753,11 @@ export class ForestReactions {
         const slot = this.blinkAt[0] <= this.blinkAt[1] ? 0 : 1;
         this.blinkAt[slot] = this.time;
         this.blinkAmount[slot] = Math.min(1.5, 0.7 + this.halo.valueAt(this.time) * 0.3);
+        // Its own: a ring of moonlight runs out from the moon through the mist of the whole wood
+        // (the lens draws it), brighter for every back-to-back in a row.
+        const ring = this.ringAt[0] <= this.ringAt[1] ? 0 : 1;
+        this.ringAt[ring] = this.time;
+        this.ringAmount[ring] = Math.min(1.5, 0.75 + this.halo.valueAt(this.time) * 0.35);
         this.excite({
             moon: 0.5, glow: 0.7, shafts: 0.45,
         });
@@ -696,6 +796,11 @@ export class ForestReactions {
         this.sweep(1);
         this.raiseWake(0.85);
         this.stars += 2;
+        // Its own, and the greatest: gold comes down through the whole air, the moon throws its
+        // beams wide, and a fan of stars falls at once.
+        this.flurry('goldfall', { strength: 1.2 });
+        this.burst.hit(1.2, this.time);
+        this.shower += 1;
         this.summon(FOREST_FIGURE_TIMING.hold + 1.6, { crown: standing });
         this.owlCue('perfect', { strength: 1 });
         return true;
@@ -710,6 +815,10 @@ export class ForestReactions {
         this.wave('level', 0.5, 0.1, 1.7, 0.5);
         this.sweep(0.75);
         this.stars += 1;
+        // Its own: the wind that turns the hour carries leaves and seeds across the whole glade,
+        // and the moon's beams open for a moment.
+        this.flurry('leaves', { strength: 1 });
+        this.burst.hit(0.55, this.time);
         this.owlCue('level', { strength: 0.75 });
         return true;
     }
@@ -725,6 +834,8 @@ export class ForestReactions {
         if (this.figure.active) {
             this.figure.age = Math.max(this.figure.age, this.figure.gather + this.figure.hold);
         }
+        // Cloud comes over the moon, for a moment (told twice, it does not come twice).
+        if (!this.settled) this.overAt = this.time;
         this.settled = true;
         // The owl hears it once (being told twice changes nothing).
         const last = this.owlCues[this.owlSerial % this.owlCues.length];
@@ -796,6 +907,32 @@ export class ForestReactions {
         return Math.min(1.5, total);
     }
 
+    /**
+     * How much of the moon the cloud a run's end draws over it has taken, 0..1: it comes, stays a
+     * few seconds and clears again by itself (FOREST_VEIL_TIMING).
+     */
+    veil() {
+        const age = this.time - this.overAt;
+        if (!(age >= 0)) return 0;
+        const { rise, hold, fall } = FOREST_VEIL_TIMING;
+        const ease = (x) => {
+            const k = clamp(x, 0, 1);
+            return k * k * (3 - 2 * k);
+        };
+        return ease(age / rise) * (1 - ease((age - rise - hold) / fall));
+    }
+
+    /** A back-to-back's rings of moonlight as the lens reads them: each one's age and brightness. */
+    ringFrames() {
+        for (let i = 0; i < RING_SLOTS; i += 1) {
+            const age = this.time - this.ringAt[i];
+            const live = age >= 0 && age < FOREST_RING_SECONDS;
+            this.rings[i].age = live ? age : -1;
+            this.rings[i].strength = live ? this.ringAmount[i] : 0;
+        }
+        return this.rings;
+    }
+
     getFrame() {
         const { front, figure, play } = this;
         const travel = clamp(front.age / FRONT_SECONDS, 0, 1);
@@ -837,9 +974,19 @@ export class ForestReactions {
             breeze: (BREEZE.level * play.level + BREEZE.fever * play.fever) * motion,
             halo: this.halo.valueAt(this.time),
             blink: this.blink(),
+            // The moonburst (four lines, a perfect clear, a new level), a back-to-back's rings of
+            // moonlight through the mist, the cloud a run's end draws over the moon, and what the
+            // wood throws into the air besides fireflies (forest-flurry.js).
+            burst: this.burst.valueAt(this.time),
+            foxfire: this.foxfire.valueAt(this.time),
+            rings: this.ringFrames(),
+            veil: this.veil(),
+            flurries: this.flurries,
             streak: this.streak,
             settled: this.settled,
             stars: this.stars,
+            // Fans of falling stars asked for (a perfect clear's): the sky counts them as it does `stars`.
+            shower: this.shower,
             figure: figureFrame,
             owl: { serial: this.owlSerial, cues: this.owlCues },
             // How much movement the player wants (reduced motion: the owl stays on its limb).

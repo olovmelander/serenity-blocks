@@ -192,8 +192,9 @@ export class ForestTerrain {
             const reached = smoothstep(this.uThreads.sub(7), this.uThreads, away).oneMinus()
                 .mul(smoothstep(0.0, 0.5, this.uThreads));
             const travel = sin(away.mul(0.9).sub(light.uTime.mul(2.2))).mul(0.5).add(0.5);
+            // (A combo wakes it slowly; three lines light it at once, and far brighter, for a moment.)
             const foxfire = vec3(0.1, 1.0, 0.62).mul(thread).mul(reached).mul(travel.mul(0.7).add(0.3))
-                .mul(light.uWake.mul(0.9).add(0.1))
+                .mul(light.awake().mul(0.9).add(0.1).add(light.uFoxfire.mul(2.2)))
                 .mul(bare.oneMinus());
             lit = lit.add(foxfire.mul(0.34));
         }
@@ -202,10 +203,17 @@ export class ForestTerrain {
         return material;
     }
 
-    /** `wake` 0..1: how far the foxfire threads have spread through the moss. */
-    update(frame = {}) {
+    /**
+     * How far the foxfire threads have spread through the moss: `frame.wake` 0..1 (a combo's), or
+     * the air's `life` on a night the wood burns by itself, whichever reaches further.
+     */
+    update(frame = {}, air = null) {
         const wake = Number.isFinite(frame.wake) ? THREE.MathUtils.clamp(frame.wake, 0, 1) : 0;
-        this.uThreads.value = wake <= 0 ? 0 : 6 + wake * 46;
+        const life = Number.isFinite(air?.life) ? THREE.MathUtils.clamp((air.life - 0.35) / 0.65, 0, 1) : 0;
+        // (Three lines light it for a moment too: the foxfire runs out as far as a clouded night's.)
+        const lit = Number.isFinite(frame.foxfire) ? THREE.MathUtils.clamp(frame.foxfire, 0, 1) : 0;
+        const spread = Math.max(wake, life * 0.8, lit * 0.8);
+        this.uThreads.value = spread <= 0 ? 0 : 6 + spread * 46;
     }
 
     dispose() {

@@ -532,6 +532,8 @@ export class ForestOwlMind {
             const [yaw, pitch] = this.lookToward(this.board);
             this.turnHead(yaw + (rng() - 0.5) * spread, pitch + (rng() - 0.5) * spread * 0.5, (rng() - 0.5) * 12);
         };
+        // May a small act of the head (a tilt, a peer, a hoot) begin: on a perch, nothing bigger going on.
+        const smallActFree = perched && (!this.act || this.act.kind === 'tall') && !this.still;
         switch (cue.kind) {
         case 'drop':
             this.alert = Math.min(1, this.alert + 0.4 + cue.strength * 0.3);
@@ -548,14 +550,27 @@ export class ForestOwlMind {
             this.alert = Math.min(1, this.alert + 0.04);
             if (rng() < 0.12) lookAtBoard(16);
             break;
-        case 'clear':
         case 'spin':
+            // A twist puzzles it: it looks at the board and cocks its head right over, as an owl does
+            // at a thing it cannot place.
+            this.alert = Math.min(1, this.alert + 0.3);
+            lookAtBoard(6);
+            this.gaze.next = this.time + 2.6 + rng();
+            if (smallActFree) {
+                this.tiltAt.start = this.time + 0.3;
+                this.tiltAt.length = 2.1 + rng() * 0.5;
+                this.tiltAt.roll = (rng() < 0.5 ? -1 : 1) * (32 + rng() * 9);
+            }
+            break;
+        case 'clear':
         case 'combo':
             this.alert = Math.min(1, this.alert + 0.15 + (cue.lines || 1) * 0.06);
             if (rng() < 0.6 + (cue.lines || 1) * 0.1) {
                 lookAtBoard(10);
                 this.gaze.next = this.time + 1.5 + rng() * 2;
             }
+            // A long chain has it peering at the board, its head bobbing to place the thing.
+            if (cue.kind === 'combo' && (cue.lines || 0) >= 4 && smallActFree) this.peerAt.start = this.time + 0.35;
             break;
         case 'quad':
         case 'perfect':
@@ -566,6 +581,11 @@ export class ForestOwlMind {
             lookAtBoard(3);
             this.stareUntil = this.time + 2.2;
             this.gaze.next = this.stareUntil + rng();
+            // A back-to-back's ring of moonlight has it answer: it hoots, bowing, its white throat swelling.
+            if (cue.kind === 'b2b' && smallActFree && this.settled()) {
+                this.hootAt.start = this.time + 0.7;
+                this.hootAt.next = Math.max(this.hootAt.next, this.time + OWL_TIMING.hoot[0]);
+            }
             // Then out along the ride and back across the moon if it is home, or home if it is not.
             if (cue.kind !== 'b2b' && perched && !this.trip.length && !this.act && !this.still) {
                 const home = this.perch === this.home;

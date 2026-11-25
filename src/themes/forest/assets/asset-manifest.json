@@ -383,12 +383,12 @@
     },
     {
       "file": "owl.glb",
-      "bytes": 548840,
-      "sha256": "9c5084481f6198df97e2e2ee9f2547512d9f4a46ac9d64fcf78b888605c9defe",
+      "bytes": 555180,
+      "sha256": "b7e42686854329d529d03c31c0d1c7ea9d47f2d4fd90244d451b2507a0f0cbdd",
       "kind": "owl",
-      "triangles": 19596,
+      "triangles": 19826,
       "bones": 110,
-      "feathers": 336
+      "feathers": 340
     },
     {
       "file": "pine-elder.glb",

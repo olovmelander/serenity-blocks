@@ -229,12 +229,17 @@ function recordInManifest(bytes, sha, manifest) {
         bones: manifest.bones.length,
         feathers: manifest.feathers,
     };
-    // Drop a line written before, then add this one at the end of the list.
-    text = text.replace(/,\n {4}\{\n {6}"file": "owl\.glb"[\s\S]*?\n {4}\}(?=\n {2}\])/, '');
     const block = JSON.stringify(entry, null, 2).split('\n').map((line) => `    ${line}`).join('\n');
-    const end = text.lastIndexOf('\n  ]');
-    if (end < 0) throw new Error('asset-manifest.json: no assets list to add the owl to');
-    text = `${text.slice(0, end)},\n${block}${text.slice(end)}`;
+    // The owl's own entry is rewritten where it stands (the Blender pack keeps the list sorted by
+    // file name, so it is seldom the last): the entry alone, which holds no braces of its own. A
+    // match that ran on to the end of the list once took every entry after the owl with it.
+    const own = /\n {4}\{\n {6}"file": "owl\.glb"[^{}]*\n {4}\}/;
+    if (own.test(text)) text = text.replace(own, () => `\n${block}`);
+    else {
+        const end = text.lastIndexOf('\n  ]');
+        if (end < 0) throw new Error('asset-manifest.json: no assets list to add the owl to');
+        text = `${text.slice(0, end)},\n${block}${text.slice(end)}`;
+    }
     JSON.parse(text);
     writeFileSync(MANIFEST, text);
     console.log(`[pack-owl] recorded in ${MANIFEST}`);
