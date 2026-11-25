@@ -253,3 +253,29 @@ describe('a close-up after a cut (deep chapters audit, 2026-11-25)', () => {
         expect(angleDeg(camera.up, controller.getSceneUp(8))).toBeLessThan(5);
     });
 });
+
+describe('the city\'s door (deep chapters audit, 2026-11-25)', () => {
+    it('keeps the rail behind the followed point under the eye where it drops into the city', () => {
+        const { controller, layout } = createRealPathController(0.96);
+        const curve = getOdysseyPathCurve();
+        const start = layout.chapterPositions[7];
+        for (let p = start - 0.004; p <= start + 0.015; p += 0.001) {
+            controller.setCurrentPosition(p);
+            controller._framingInitialized = false;
+            controller.update(1 / 60);
+            const frame = controller.computeFollowFrame(p);
+            const eye = frame.camPos.clone();
+            const up = frame.normal.clone();
+            const point = curve.getPointAt(Math.min(1, p));
+            // The rail near the lens (within 15 u in front of it) lies under the eye, not across
+            // the top of the frame (it rose ~1.5 u over the eye before, at p 0.965-0.967).
+            const toPoint = point.clone().sub(eye).normalize();
+            for (let k = 1; k <= 40; k += 1) {
+                const q = curve.getPointAt(Math.max(0, p - (k * 0.0005)));
+                const ahead = q.clone().sub(eye).dot(toPoint);
+                if (ahead <= 0) break; // behind the lens: not in the picture
+                if (ahead < 15) expect(q.clone().sub(eye).dot(up)).toBeLessThan(-1);
+            }
+        }
+    });
+});
