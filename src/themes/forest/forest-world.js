@@ -7,10 +7,14 @@
  * envelopes to them each frame.
  */
 import * as THREE from 'three/webgpu';
+import {
+    createForestAir, forestAirAt, forestAirDrift, forestAirIndex, forestAirName,
+} from './forest-airs.js';
 import { ForestBackdrop } from './forest-backdrop.js';
 import { forestEye, forestViewFor } from './forest-composition.js';
 import { ForestFireflies } from './forest-fireflies.js';
 import { ForestFireflyDirector, forestFigureBox } from './forest-firefly-director.js';
+import { ForestFlurry } from './forest-flurry.js';
 import { forestHourDrift, forestHourName, forestNearestTurn } from './forest-hours.js';
 import { ForestLight, forestHeightDataSteps } from './forest-light.js';
 import { ForestOwl } from './forest-owl.js';
@@ -33,6 +37,16 @@ const FIGURE_RANGES = [21, 23.5, 26, 18.5, 28.5];
 const VIEW_MARGIN = 0.02;
 /** How quickly the night takes a level's step, per second: most of the way in four seconds. */
 const HOUR_FOLLOW = 0.6;
+/**
+ * A great clear gilds the owl's next flight: the moonburst (`frame.burst`) that starts it, how long
+ * the gilding lasts (it sets off a couple of seconds after the clear and flies for several), and
+ * how far above its feet the wake leaves it (metres).
+ */
+const OWL_GILT = Object.freeze({ from: 0.5, seconds: 16, lift: 0.45 });
+/** The flurry's own generator: what the events throw never shifts the forest's draws. */
+const FLURRY_SEED = 6151;
+/** How much of the chorus's broad swell the fireflies' own dance brings in (the air's `dance` at 1). */
+const DANCE_SWELL = 0.6;
 /** The owl's own generator, unless one is given: its life never shifts the forest's draws. */
 const OWL_SEED = 7919;
 /** How far in front of the eye the owl looks when it looks at the board (metres along the card's ray). */
@@ -81,6 +95,9 @@ export class ForestWorld {
         this.level = 1;
         this.hourStep = 0;
         this.nightStart = 0;
+        // The air of the night (forest-airs.js): the clock turns it; a capture may hold one.
+        this.air = createForestAir();
+        this.airHeld = null;
     }
 
     build() {
@@ -127,6 +144,8 @@ export class ForestWorld {
         });
         this.group.add(this.understory.group);
         yield* this.understory.buildSteps();
+        // The fungi shed their light on the moss round them: baked once, now that they are laid out.
+        if (tier.fungusLight) light.bakeFungi(this.understory.caps || []);
         yield 'understory';
         this.backdrop = new ForestBackdrop({
             light, impostors: this.assets.impostors, tier, rng,
@@ -151,6 +170,17 @@ export class ForestWorld {
         });
         this.group.add(this.fireflies.group);
         this.fireflies.build();
+        // What the events throw into the air besides fireflies (forest-flurry.js), from where the
+        // wood's own things stand. Its own generator: its bursts never shift the forest's draws.
+        this.flurry = new ForestFlurry({
+            light,
+            tier,
+            rng: seededRandom(FLURRY_SEED),
+            groundHeight: forestGroundHeight,
+            sources: { caps: this.understory.capSpots(), flowers: this.understory.flowerSpots, boughs },
+        });
+        this.group.add(this.flurry.group);
+        this.flurry.build();
         yield 'fireflies';
         // The eagle owl on its limb (forest-owl.js); without its model the limb stands empty.
         this.owl = new ForestOwl({ light, gltf: this.assets.owl || null });
@@ -170,7 +200,6 @@ export class ForestWorld {
             rng,
             groundHeight: forestGroundHeight,
             trunks,
-            boughs,
             figureStands: this.figureAnchors(),
             eye: FOREST_EYE,
             layOutNow: false,
@@ -308,6 +337,22 @@ export class ForestWorld {
         return this.hourStep + forestHourDrift(this.nightLived(time));
     }
 
+    /**
+     * Hold one air (by its name or its number, see forest-airs.js) instead of letting the clock
+     * turn them: a capture, a test. Anything that names no air lets the clock have them again.
+     * @param {string | number | null} [which]
+     */
+    setAirHold(which = null) {
+        const index = forestAirIndex(which);
+        this.airHeld = index >= 0 ? index : null;
+        return this.airHeld;
+    }
+
+    /** How many airs into the night it is at `time`: the held one, else the clock's turn. */
+    airPhase(time = this.light?.uTime.value ?? 0) {
+        return this.airHeld ?? forestAirDrift(this.nightLived(time));
+    }
+
     /** The measured board card in screen fractions (y down), or null for the default. */
     setBoard(rect) {
         this.stage?.setBoard(rect);
@@ -323,11 +368,17 @@ export class ForestWorld {
      * again on its limb (a capture's seek); otherwise it goes on as it was.
      */
     resetEffects({ owl = false } = {}) {
-        if (owl) this.owlMind?.reset();
+        if (owl) {
+            this.owlMind?.reset();
+            // (A seek lives the night again from its start: the mist and the cloud drift from there.)
+            this.light?.rewind();
+        }
         this.director?.reset();
         this.fireflies?.reset();
         this.light?.reset();
         this.sky?.resetEffects();
+        this.flurry?.reset();
+        this.owlGilt = 0;
     }
 
     prepareCamera(aspect) {
@@ -358,7 +409,17 @@ export class ForestWorld {
         const turned = forestNearestTurn(this.hourStep, this.level - 1);
         this.hourStep += (turned - this.hourStep) * (1 - Math.exp(-dt * HOUR_FOLLOW));
         light.setHour(this.hourPhase(time));
+        // The air: the weather under the hour, on a clock of its own (a function of the time alone).
+        const air = forestAirAt(this.airPhase(time), this.air);
+        light.setAir(air);
         light.update(time, dt, { ...frame, front: env.front });
+        // On a night for it the fireflies fall into step by themselves, and the night wind carries them.
+        // (Their flash then comes as a broad swell rolling out through the trees, not a spark; and
+        // their trails stay as long as play has made them, no longer for the dance.)
+        env.trail = env.sync;
+        env.sync = Math.max(env.sync, air.dance);
+        env.pulse = Math.max(env.pulse, air.dance * DANCE_SWELL);
+        env.gust = Math.min(1, env.gust + air.wind * 0.6);
         this.fireflies.update(dt, env);
         if (this.owl && this.owlMind) {
             this.owlMind.setBoard(this.stage.centre(OWL_BOARD_DEPTH, this.boardPoint));
@@ -368,7 +429,18 @@ export class ForestWorld {
             // Away from the glade it is not drawn at all (it left, and comes back, out of frame).
             this.owl.group.visible = this.owlMind.mode !== 'away';
         }
-        this.terrain.update(frame);
+        this.terrain.update(frame, air);
+        // A great clear gilds the owl's next flight: it carries the falling gold on its wings, a
+        // wake of motes behind it as it crosses the moon.
+        if (frame.burst > OWL_GILT.from) this.owlGilt = OWL_GILT.seconds;
+        this.owlGilt = Math.max(0, (this.owlGilt || 0) - dt);
+        if (this.owlGilt > 0 && this.flurry && this.owlMind?.mode === 'flight') {
+            const { place } = this.owlMind;
+            this.flurry.wake(place.x, place.y + OWL_GILT.lift, place.z, dt);
+        }
+        this.flurry?.play(frame, {
+            time, dt, stage: this.stage, wind: direction, air,
+        });
         this.sky.update(dt, frame);
         light.commitField();
     }
@@ -380,12 +452,17 @@ export class ForestWorld {
             ...(this.understory?.stats || {}),
             farTrees: this.backdrop?.count || 0,
             fireflies: this.fireflies?.sim?.counts() || null,
+            // What is in the air besides fireflies, and how much was thrown and let go.
+            flurry: this.flurry?.counts() || null,
             pulses: this.light?.pulses.active() || 0,
             level: this.level,
             // The hour the night is turning to, and how far round it is.
             hour: forestHourName(forestNearestTurn(this.hourStep, this.level - 1)
                 + forestHourDrift(this.nightLived())),
             hourPhase: this.light?.hourPhase ?? 0,
+            // The air the night is nearest (forest-airs.js), and how far round they are.
+            air: forestAirName(this.airPhase()),
+            airPhase: this.airPhase(),
             // The owl, once it is built: what is drawn of it, and what it is doing.
             ...(this.owl?.stats || {}),
             ...(this.owlMind ? { owl: this.owlMind.status() } : {}),
@@ -396,6 +473,8 @@ export class ForestWorld {
         if (this.disposed) return;
         this.disposed = true;
         this.fireflies?.dispose();
+        this.flurry?.dispose();
+        this.flurry = null;
         this.owl?.dispose();
         this.owl = null;
         this.owlMind = null;

@@ -9,6 +9,11 @@ import { ForestPost } from '../../themes/forest/forest-post.js';
 import { readForestPanelRects } from '../../themes/forest/forest-stage.js';
 import { seededRandom } from '../../utils/helpers.js';
 
+/** Short names for ?air=. */
+const AIR_NAMES = Object.freeze({
+    mist: 'rising mist', wind: 'night wind', clouded: 'clouded moon', cloud: 'clouded moon', dance: 'the dance',
+});
+
 export const meta = {
     id: 'forest',
     title: 'Forest — the firefly night',
@@ -124,6 +129,9 @@ export function create({
                 scene, camera, quality, rng, assets,
             }).build();
             world.setLevel(level, { silent: true });
+            // ?air=still|mist|wind|clouded|dance (or 0..4) holds one air of the night (forest-airs.js);
+            // without it the clock turns them, 96 s each.
+            world.setAirHold(AIR_NAMES[params.get('air')] ?? params.get('air'));
             world.director.callStand(rawStand);
             placeOwl();
             aim();
@@ -131,6 +139,14 @@ export function create({
                 renderer, scene, camera, quality, light: world.light, samples,
             });
             post.setSize(window.innerWidth, window.innerHeight);
+            // ?shafts=, ?rays=, ?bloom= scale the lens's moonbeams, their cut into rays and its bloom;
+            // ?exposure= sets its resting exposure (each 1 in play).
+            const gain = (key) => (params.has(key) && Number.isFinite(Number(params.get(key)))
+                ? Math.max(0, Number(params.get(key))) : null);
+            post.shaftGain = gain('shafts') ?? post.shaftGain;
+            post.raysGain = gain('rays') ?? post.raysGain;
+            post.bloomGain = gain('bloom') ?? post.bloomGain;
+            post.exposure = gain('exposure') ?? post.exposure;
             aim();
         });
     // ?owlCam=<metres> follows the owl with a long lens from that far off, ?owlOrbit=<degrees> round it
@@ -185,7 +201,7 @@ export function create({
         followOwl();
         post?.update(frame);
     };
-    // ?event=lock|drop|clear|double|triple|quad|combo|streak|spin|perfect|level|over, placed
+    // ?event=lock|drop|clear|double|triple|quad|combo|streak|spin|b2b|perfect|level|over, placed
     // with ?col=0..9 and ?row=0..19 (0 is the top visible row).
     const fire = (event) => {
         const column = Number(params.get('col') ?? 1);
@@ -210,6 +226,7 @@ export function create({
                 reactions.onLineClear(1, { clearedRows: [row + 1] });
             }
         } else if (event === 'spin') reactions.onTwist({ piece });
+        else if (event === 'b2b') reactions.onBackToBack();
         else if (event === 'perfect') reactions.onPerfectClear();
         else if (event === 'level') {
             world?.setLevel(world.level + 1);

@@ -176,7 +176,7 @@ export class ForestTrees {
             .add(cool.mul(light.ambient(normal)).mul(occlusion).mul(1.5))
             .add(albedo.mul(1.5).add(0.006).mul(glow).mul(occlusion))
             // Woken, the moss on the trunks holds a faint cold light of its own.
-            .add(vec3(0.08, 0.7, 0.42).mul(moss).mul(light.uWake).mul(fine.b.mul(0.5).add(0.1))
+            .add(vec3(0.08, 0.7, 0.42).mul(moss).mul(light.awake()).mul(fine.b.mul(0.5).add(0.1))
                 .mul(0.22));
         // fragmentNode, not colorNode: the shadow pass multiplies a caster's alpha by its
         // colorNode, which would sample the shadow map while it is being drawn.

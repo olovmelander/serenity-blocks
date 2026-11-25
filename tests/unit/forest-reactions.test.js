@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { FOREST_FIGURE_IDS } from '../../src/themes/forest/forest-figures.js';
 import {
-    FOREST_FIGURE_TIMING, FOREST_REACTION_LIMITS, ForestReactions,
+    FOREST_FIGURE_TIMING, FOREST_REACTION_LIMITS, FOREST_RING_SECONDS, FOREST_VEIL_TIMING, ForestReactions,
 } from '../../src/themes/forest/forest-reactions.js';
 
 // The director is pure: these tests assert what it promises its consumers (bounds, ordering,
@@ -11,11 +11,15 @@ const ENVELOPES = ['gust', 'moon', 'shafts', 'glow'];
 const STEP = 1 / 60;
 const HANDLERS = ['onHardDrop', 'onPieceLock', 'onLineClear', 'onCombo', 'onTwist', 'onBackToBack', 'onPerfectClear',
     'onLevelUp', 'onGameOver'];
-const FRAME_KEYS = ['beatRate', 'blink', 'breeze', 'emitters', 'epoch', 'figure', 'front', 'glow', 'gust', 'halo',
-    'heat', 'moon', 'motion', 'owl', 'settled', 'shafts', 'stars', 'streak', 'surge', 'sync', 'wake', 'waves'];
+const FRAME_KEYS = ['beatRate', 'blink', 'breeze', 'burst', 'emitters', 'epoch', 'figure', 'flurries', 'foxfire',
+    'front', 'glow', 'gust', 'halo', 'heat', 'moon', 'motion', 'owl', 'rings', 'settled', 'shafts', 'shower', 'stars',
+    'streak', 'surge', 'sync', 'veil', 'wake', 'waves'];
 const EMITTER_KEYS = ['active', 'age', 'column', 'duration', 'id', 'kind', 'lines', 'progress', 'row', 'seed', 'serial',
     'side', 'strength'];
 const WAVE_KEYS = ['column', 'heat', 'kind', 'row', 'serial', 'strength'];
+const FLURRY_KEYS = ['column', 'kind', 'row', 'serial', 'side', 'strength'];
+/** What the wood may be asked to throw into the air (forest-flurry.js plays these and nothing else). */
+const FLURRY_KINDS = ['dew', 'bloom', 'spores', 'wisps', 'leaves', 'goldfall'];
 
 function seededRandom(seed = 419) {
     let state = seed;
@@ -53,6 +57,19 @@ function clearingMove(reactions, lines = 1, piece = cell(4, 22)) {
 
 function queuedWaves(frame) {
     return frame.waves.filter((wave) => wave.serial >= 0).sort((a, b) => a.serial - b.serial);
+}
+
+/** What the frame asks the flurry to throw, oldest first (copies: the queue itself is reused). */
+function queuedFlurries(frame) {
+    return frame.flurries.filter((flurry) => flurry.serial >= 0).sort((a, b) => a.serial - b.serial)
+        .map((flurry) => ({ ...flurry }));
+}
+
+/** The flurries an act asks for, in the order it asks. */
+function flurriesOf(act, reactions = director()) {
+    const before = queuedFlurries(reactions.getFrame()).at(-1)?.serial ?? -1;
+    act(reactions);
+    return queuedFlurries(reactions.getFrame()).filter((flurry) => flurry.serial > before);
 }
 
 function finiteDeep(value, path = 'frame') {
@@ -96,6 +113,33 @@ function expectBoundedFrame(frame, limit) {
     if (frame.figure) {
         expect(frame.figure.presence).toBeGreaterThanOrEqual(0);
         expect(frame.figure.presence).toBeLessThanOrEqual(1);
+    }
+    // The cues of the great moments: swells with a little headroom, a veil that is a share of the moon.
+    for (const key of ['veil', 'foxfire']) {
+        expect(frame[key], key).toBeGreaterThanOrEqual(0);
+        expect(frame[key], key).toBeLessThanOrEqual(1);
+    }
+    expect(frame.burst).toBeGreaterThanOrEqual(0);
+    expect(frame.burst).toBeLessThanOrEqual(1.5);
+    expect(Number.isInteger(frame.shower) && frame.shower >= 0).toBe(true);
+    for (const ring of frame.rings) {
+        expect(ring.strength).toBeGreaterThanOrEqual(0);
+        expect(ring.strength).toBeLessThanOrEqual(1.5);
+        // A ring that is not running is at -1 with no light; one that is, is younger than a ring lasts.
+        if (ring.age < 0) expect(ring).toEqual({ age: -1, strength: 0 });
+        else expect(ring.age).toBeLessThan(FOREST_RING_SECONDS);
+    }
+    for (const flurry of frame.flurries) {
+        for (const key of ['column', 'row']) {
+            expect(flurry[key], `flurry.${key}`).toBeGreaterThanOrEqual(0);
+            expect(flurry[key], `flurry.${key}`).toBeLessThanOrEqual(1);
+        }
+        expect(flurry.strength).toBeGreaterThanOrEqual(0);
+        expect(flurry.strength).toBeLessThanOrEqual(1.5);
+        if (flurry.serial >= 0) {
+            expect(FLURRY_KINDS).toContain(flurry.kind);
+            expect(flurry.strength).toBeGreaterThan(0);
+        }
     }
 }
 
@@ -147,6 +191,19 @@ describe('Forest reactions: tiers and the resting frame', () => {
             expect(Object.keys(wave).sort()).toEqual(WAVE_KEYS);
             expect(wave.serial).toBe(-1);
             expect(wave.strength).toBe(0);
+        }
+        // Nor anything of the great moments: no moonburst, no foxfire, no ring, no cloud over the
+        // moon, no fan of stars, and nothing asked of the flurry.
+        expect(frame).toMatchObject({
+            burst: 0, foxfire: 0, veil: 0, shower: 0,
+        });
+        expect(frame.rings.length).toBeGreaterThan(0);
+        for (const ring of frame.rings) expect(ring).toEqual({ age: -1, strength: 0 });
+        expect(frame.flurries.length).toBeGreaterThan(0);
+        for (const flurry of frame.flurries) {
+            expect(Object.keys(flurry).sort()).toEqual(FLURRY_KEYS);
+            expect(flurry.serial).toBe(-1);
+            expect(flurry.strength).toBe(0);
         }
         // The property and the method are the same reading.
         expect(reactions.frame).toEqual(frame);
@@ -681,10 +738,15 @@ describe('Forest reactions: waves of light', () => {
         const whole = strengthAfter((reactions) => reactions.onHardDrop({ distance: 20 }));
         expect(beyond.wave.strength).toBeCloseTo(whole.wave.strength, 12);
         expect(beyond.lock.strength).toBeLessThanOrEqual(1);
-        // A long drop shakes the boughs and sends its own kind of wave; a gentle lock does neither.
-        expect(long.kinds).toContain('dew');
-        expect(soft.kinds).not.toContain('dew');
-        expect(short.kinds).not.toContain('dew');
+        // A long drop shakes the boughs (it asks the flurry for dew: no emitter, no firefly is dew)
+        // and sends its own kind of wave; a gentle lock does neither.
+        const dew = (run) => queuedFlurries(run.frame).filter((flurry) => flurry.kind === 'dew');
+        expect(dew(long)).toHaveLength(1);
+        expect(dew(soft)).toEqual([]);
+        expect(dew(short)).toEqual([]);
+        for (const run of [soft, short, long, beyond]) expect(run.kinds).toEqual(['lock']);
+        // It falls from over where the piece landed, on its side of the board.
+        expect(dew(long)[0]).toMatchObject({ column: long.lock.column, row: long.lock.row, side: long.lock.side });
         expect(long.wave.kind).not.toBe(soft.wave.kind);
         // The drop is spent: the next piece lands as softly as any other.
         long.reactions.onPieceLock({ piece: cell(4, 22) });
@@ -702,7 +764,8 @@ describe('Forest reactions: waves of light', () => {
         reactions.onPieceLock({ piece: cell(4, 22) });
         const frame = reactions.getFrame();
         finiteDeep(frame);
-        expect(frame.emitters.some((emitter) => emitter.kind === 'dew')).toBe(long);
+        expect(queuedFlurries(frame).some((flurry) => flurry.kind === 'dew')).toBe(long);
+        expect(frame.emitters.map((emitter) => emitter.kind)).toEqual(['lock']);
     });
 });
 
@@ -1651,5 +1714,582 @@ describe('Forest reactions: reset, epochs and disposal', () => {
         expect(reactions.update(1)).toEqual(calm);
         expect(reactions.time).toBe(0);
         expect(reactions.getFrame()).toEqual(calm);
+    });
+});
+
+// What each event plays besides the fireflies: an instrument of its own, asked of the flurry in
+// board terms (`frame.flurries`), and for the great moments a cue of light (`burst`, `foxfire`,
+// `rings`, `shower`, `veil`). These tests pin who asks for what and how the cues behave over
+// time, not how many particles a burst is or how bright a cue burns.
+const longDrop = (reactions, piece = cell(4, 22)) => {
+    reactions.onHardDrop({ distance: 18 });
+    reactions.onPieceLock({ piece });
+};
+const rowsOf = (lines) => Array.from({ length: lines }, (_, index) => 23 - index);
+const EVENTS = [
+    ['a soft lock', (r) => r.onPieceLock({ piece: cell(4, 22) })],
+    ['a short hard drop', (r) => { r.onHardDrop({ distance: 2 }); r.onPieceLock({ piece: cell(4, 22) }); }],
+    ['a long hard drop', (r) => longDrop(r)],
+    ['one line', (r) => r.onLineClear(1, { clearedRows: rowsOf(1) })],
+    ['two lines', (r) => r.onLineClear(2, { clearedRows: rowsOf(2) })],
+    ['three lines', (r) => r.onLineClear(3, { clearedRows: rowsOf(3) })],
+    ['four lines', (r) => r.onLineClear(4, { clearedRows: rowsOf(4) })],
+    ['a combo', (r) => r.onCombo(6)],
+    ['a twist', (r) => r.onTwist({ piece: tee(6, 18) })],
+    ['a back-to-back', (r) => r.onBackToBack()],
+    ['a perfect clear', (r) => r.onPerfectClear()],
+    ['a new level', (r) => r.onLevelUp()],
+    ['the end of the run', (r) => r.onGameOver()],
+];
+/** What each event asks of the flurry, and which cues of light it gives. */
+const ANSWERS = {
+    'a soft lock': {},
+    'a short hard drop': {},
+    'a long hard drop': { flurries: ['dew'] },
+    'one line': {},
+    'two lines': { flurries: ['bloom'] },
+    'three lines': { flurries: ['spores'], foxfire: true },
+    'four lines': { flurries: ['bloom', 'spores'], foxfire: true, burst: true },
+    'a combo': {},
+    'a twist': { flurries: ['wisps'] },
+    'a back-to-back': { ring: true },
+    'a perfect clear': { flurries: ['goldfall'], burst: true, shower: 1 },
+    'a new level': { flurries: ['leaves'], burst: true },
+    'the end of the run': { veil: true },
+};
+
+/** The most a cue reads over the seconds after an act (a swell rises before it falls). */
+function peakAfter(reactions, key, seconds = 3) {
+    let peak = reactions.getFrame()[key];
+    for (let frame = 0; frame < Math.round(seconds / STEP); frame++) peak = Math.max(peak, reactions.update(STEP)[key]);
+    return peak;
+}
+
+describe('Forest reactions: an instrument for every event', () => {
+    it.each(EVENTS)('asks the flurry for %s exactly what that event plays, once', (label, act) => {
+        const wanted = ANSWERS[label].flurries ?? [];
+        const asked = flurriesOf(act);
+        // Each kind once: an event's burst is one request, never a pile of them.
+        expect(asked.map((flurry) => flurry.kind).sort()).toEqual([...wanted].sort());
+        for (const flurry of asked) {
+            expect(Object.keys(flurry).sort()).toEqual(FLURRY_KEYS);
+            expect(FLURRY_KINDS).toContain(flurry.kind);
+            expect(flurry.strength).toBeGreaterThan(0);
+            expect(flurry.strength).toBeLessThanOrEqual(1.5);
+            expect([-1, 0, 1]).toContain(flurry.side);
+        }
+        // Time alone asks for nothing more: the request stays as it was until the next event.
+        const reactions = director();
+        act(reactions);
+        const before = queuedFlurries(reactions.getFrame());
+        expect(queuedFlurries(advance(reactions, 3))).toEqual(before);
+    });
+
+    it.each(EVENTS)('gives %s its cues of light and no other event\'s', (label, act) => {
+        const answer = ANSWERS[label];
+        const reactions = director();
+        act(reactions);
+        // (A swell rises before it falls: read a moment on.)
+        const frame = advance(reactions, 0.4);
+        expect(frame.burst > 0, 'the moonburst').toBe(answer.burst === true);
+        expect(frame.foxfire > 0, 'the foxfire').toBe(answer.foxfire === true);
+        expect(frame.shower, 'a fan of stars').toBe(answer.shower ?? 0);
+        expect(frame.rings.some((ring) => ring.age >= 0), 'a ring of moonlight').toBe(answer.ring === true);
+        expect(frame.veil > 0, 'cloud over the moon').toBe(answer.veil === true);
+        expectBoundedFrame(frame, FOREST_REACTION_LIMITS.High);
+    });
+
+    it('numbers every flurry once, across every kind of event', () => {
+        const reactions = director();
+        const seen = new Set();
+        let highest = -1;
+        for (const [, act] of EVENTS) {
+            const fresh = flurriesOf(act, reactions);
+            for (const flurry of fresh) {
+                expect(seen.has(flurry.serial)).toBe(false);
+                expect(flurry.serial).toBeGreaterThan(highest);
+                seen.add(flurry.serial);
+                highest = flurry.serial;
+            }
+            // (Long enough for dew to be let fall again.)
+            advance(reactions, 1);
+        }
+        expect([...seen].sort((a, b) => a - b)).toEqual(Array.from({ length: seen.size }, (_, index) => index));
+        expect(seen.size).toBeGreaterThanOrEqual(FLURRY_KINDS.length);
+    });
+
+    it('hands out the same queue every frame and reuses its slots in a ring', () => {
+        const reactions = director();
+        const pool = reactions.getFrame().flurries;
+        const size = pool.length;
+        expect(size).toBeGreaterThanOrEqual(4);
+        const total = size * 3 + 2;
+        for (let twist = 0; twist < total; twist++) reactions.onTwist({ piece: tee(twist % 8, 18) });
+        const frame = reactions.update(STEP);
+        // No allocation: it is the pool itself, at its fixed size.
+        expect(frame.flurries).toBe(pool);
+        expect(frame.flurries).toHaveLength(size);
+        // It holds the latest requests, each once, and nothing older.
+        const serials = frame.flurries.map((flurry) => flurry.serial).sort((a, b) => a - b);
+        expect(serials).toEqual(Array.from({ length: size }, (_, index) => total - size + index));
+        for (const flurry of frame.flurries) expect(flurry.kind).toBe('wisps');
+    });
+
+    it('lets dew fall for a long drop, never two falls on each other\'s heels, thinner as play heats', () => {
+        const reactions = director();
+        const falls = [];
+        const frames = 10 * 60;
+        // A frenzy: a long hard drop locks on every frame for ten seconds.
+        for (let frame = 0; frame < frames; frame++) {
+            const asked = flurriesOf((r) => longDrop(r, cell(frame % 10, 22)), reactions);
+            expect(asked.length).toBeLessThanOrEqual(1);
+            if (asked.length > 0) {
+                expect(asked[0].kind).toBe('dew');
+                const { level } = reactions.getFrame().surge;
+                falls.push({ at: reactions.time, strength: asked[0].strength, level });
+            }
+            reactions.update(STEP);
+        }
+        // The first drop shakes it loose at once, and it does fall again: but a fall per several
+        // drops, at a steady interval, never a curtain.
+        expect(falls[0].at).toBe(0);
+        expect(falls.length).toBeGreaterThan(2);
+        expect(falls.length).toBeLessThan(frames / 6);
+        const gaps = falls.slice(1).map((fall, index) => fall.at - falls[index].at);
+        expect(Math.min(...gaps)).toBeGreaterThan(6 * STEP);
+        expect(Math.max(...gaps) - Math.min(...gaps)).toBeLessThan(STEP + 1e-9);
+        // The frenzy heated play, and the hotter it ran the thinner the dew fell (never to nothing).
+        expect(falls.at(-1).level).toBeGreaterThan(falls[0].level);
+        for (let index = 1; index < falls.length; index++) {
+            if (falls[index].level > falls[index - 1].level) {
+                expect(falls[index].strength).toBeLessThan(falls[index - 1].strength);
+            }
+            expect(falls[index].strength).toBeGreaterThan(0);
+        }
+        expect(falls.at(-1).strength).toBeLessThan(falls[0].strength);
+        // Left alone long enough, the next long drop is answered again, and a longer fall shakes more loose.
+        const fallFrom = (distance) => flurriesOf((r) => {
+            r.onHardDrop({ distance });
+            r.onPieceLock({ piece: cell(4, 22) });
+        })[0].strength;
+        expect(fallFrom(20)).toBeGreaterThan(fallFrom(14));
+    });
+
+    it('asks for more with four lines than with two or three, and for less with every later wave of a cascade', () => {
+        const strengthOf = (lines, kind, cascadeCount = 1) => flurriesOf((r) => {
+            r.onLineClear(lines, { clearedRows: rowsOf(lines), cascadeCount });
+        }).find((flurry) => flurry.kind === kind).strength;
+        expect(strengthOf(4, 'bloom')).toBeGreaterThan(strengthOf(2, 'bloom'));
+        expect(strengthOf(4, 'spores')).toBeGreaterThan(strengthOf(3, 'spores'));
+        for (const [lines, kinds] of [[2, ['bloom']], [3, ['spores']], [4, ['bloom', 'spores']]]) {
+            for (const kind of kinds) {
+                const waves = [1, 2, 3, 4, 5].map((wave) => strengthOf(lines, kind, wave));
+                for (let index = 1; index < waves.length; index++) {
+                    expect(waves[index], `${lines} lines, ${kind}, wave ${index + 1}`).toBeLessThan(waves[index - 1]);
+                    expect(waves[index]).toBeGreaterThan(0);
+                }
+            }
+        }
+        // The same when the depth comes from the COMBO event that announced the wave, not the payload.
+        const announced = director();
+        announced.onPieceLock({ piece: cell(4, 22) });
+        const first = flurriesOf((r) => r.onLineClear(2, { clearedRows: rowsOf(2) }), announced)[0];
+        announced.onCombo(2);
+        const second = flurriesOf((r) => r.onLineClear(2, { clearedRows: rowsOf(2) }), announced)[0];
+        expect(second.strength).toBeLessThan(first.strength);
+        // And the foxfire a later wave lights is less than the first wave's.
+        const lit = (cascadeCount) => {
+            const reactions = director();
+            reactions.onLineClear(3, { clearedRows: rowsOf(3), cascadeCount });
+            return peakAfter(reactions, 'foxfire');
+        };
+        expect(lit(3)).toBeLessThan(lit(1));
+        expect(lit(3)).toBeGreaterThan(0);
+    });
+
+    it('throws each where its event happened on the board', () => {
+        // Bloom and spores go out from under the rows that were cleared: where the jets leave the card.
+        const cleared = (rows) => {
+            const reactions = director();
+            const asked = flurriesOf((r) => r.onLineClear(rows.length, { clearedRows: rows }), reactions);
+            return { asked, jet: reactions.getFrame().emitters.find((emitter) => emitter.kind === 'clear') };
+        };
+        const low = cleared([20, 21, 22, 23]);
+        const high = cleared([5, 6, 7, 8]);
+        for (const { asked, jet } of [low, high]) {
+            expect(asked).toHaveLength(2);
+            for (const flurry of asked) expect(flurry.row).toBe(jet.row);
+        }
+        expect(high.asked[0].row).toBeGreaterThan(low.asked[0].row + 0.5);
+        // Wisps wind up beside the half of the board the piece twisted on, where its spiral of fireflies does.
+        for (const [x, side] of [[0, -1], [7, 1]]) {
+            const reactions = director();
+            const [wisps] = flurriesOf((r) => r.onTwist({ piece: tee(x, 18) }), reactions);
+            const spin = reactions.getFrame().emitters.find((emitter) => emitter.kind === 'spin');
+            expect(wisps.side).toBe(side);
+            expect(wisps.side).toBe(spin.side);
+            expect(wisps.row).toBe(spin.row);
+            expect(Math.sign(wisps.column - 0.5)).toBe(side);
+        }
+        // Dew comes down over the column the piece fell in.
+        const left = flurriesOf((r) => longDrop(r, cell(0, 22)))[0];
+        const right = flurriesOf((r) => longDrop(r, cell(9, 22)))[0];
+        expect(left.column).toBeLessThan(0.2);
+        expect(right.column).toBeGreaterThan(0.8);
+        // An event that cannot be placed is still answered, from a place on the board.
+        for (const payload of [undefined, null, {}, 7, { piece: { x: NaN, y: 3 } }, { viewportOrigin: { x: 'a' } }]) {
+            const [wisps] = flurriesOf((r) => r.onTwist(payload));
+            expect([-1, 1]).toContain(wisps.side);
+            expect(wisps.column).toBe(0.5);
+            expect(wisps.row).toBeGreaterThanOrEqual(0);
+            expect(wisps.row).toBeLessThanOrEqual(1);
+            const [dew] = flurriesOf((r) => {
+                r.onHardDrop({ distance: 18 });
+                r.onPieceLock(payload);
+            });
+            expect(dew.column).toBe(0.5);
+            finiteDeep(dew);
+        }
+    });
+
+    it('asks for nothing when the strength is nothing, and bounds what it is asked', () => {
+        const reactions = director();
+        for (const strength of [0, -1, NaN, Infinity, -Infinity, null, '1', {}, []]) {
+            expect(reactions.flurry('bloom', { strength }), String(strength)).toBeNull();
+        }
+        expect(queuedFlurries(reactions.getFrame())).toEqual([]);
+        // Asked plainly, it is one request at full strength from the foot of the board.
+        expect(reactions.flurry('bloom')).toMatchObject({
+            serial: 0, kind: 'bloom', column: 0.5, strength: 1,
+        });
+        const wild = reactions.flurry('spores', {
+            side: 1, column: 40, row: -3, strength: 900,
+        });
+        expect(wild).toMatchObject({
+            serial: 1, kind: 'spores', side: 1, column: 1, row: 0,
+        });
+        expect(wild.strength).toBeLessThanOrEqual(1.5);
+        expect(wild.strength).toBeGreaterThanOrEqual(1);
+        const lost = reactions.flurry('wisps', { column: NaN, row: Infinity, strength: 0.5 });
+        expect(lost.strength).toBe(0.5);
+        for (const key of ['column', 'row']) {
+            expect(lost[key]).toBeGreaterThanOrEqual(0);
+            expect(lost[key]).toBeLessThanOrEqual(1);
+        }
+        expectBoundedFrame(reactions.getFrame(), FOREST_REACTION_LIMITS.High);
+    });
+
+    it('forgets what it asked on reset, and numbers the next session\'s flurries from the start', () => {
+        const reactions = director();
+        for (const [, act] of EVENTS) act(reactions);
+        expect(queuedFlurries(reactions.getFrame()).length).toBeGreaterThan(3);
+        const { epoch } = reactions.getFrame();
+        reactions.reset();
+        const fresh = reactions.getFrame();
+        expect(queuedFlurries(fresh)).toEqual([]);
+        expect(fresh).toMatchObject({
+            burst: 0, foxfire: 0, veil: 0, shower: 0,
+        });
+        expect(fresh.rings.every((ring) => ring.age === -1 && ring.strength === 0)).toBe(true);
+        // A new epoch: a consumer that reads by serial must start counting again.
+        expect(fresh.epoch).toBe(epoch + 1);
+        const next = flurriesOf((r) => r.onTwist({ piece: tee(2, 18) }), reactions);
+        expect(next.map((flurry) => flurry.serial)).toEqual([0]);
+        // A long drop is answered at once in the new session, however lately dew fell in the last.
+        const again = director();
+        longDrop(again);
+        again.reset();
+        expect(flurriesOf((r) => longDrop(r), again).map((flurry) => flurry.kind)).toEqual(['dew']);
+    });
+
+    it('asks for nothing once disposed', () => {
+        const reactions = director();
+        reactions.dispose();
+        for (const [, act] of EVENTS) act(reactions);
+        const frame = reactions.getFrame();
+        expect(queuedFlurries(frame)).toEqual([]);
+        expect(frame).toMatchObject({
+            burst: 0, foxfire: 0, veil: 0, shower: 0,
+        });
+        expect(frame.rings.every((ring) => ring.age === -1)).toBe(true);
+    });
+});
+
+describe('Forest reactions: the moonburst, the foxfire and the fan of stars', () => {
+    const quad = (r) => r.onLineClear(4, { clearedRows: rowsOf(4) });
+
+    it.each([
+        ['burst', 'four lines', quad],
+        ['burst', 'a perfect clear', (r) => r.onPerfectClear()],
+        ['burst', 'a new level', (r) => r.onLevelUp()],
+        ['foxfire', 'three lines', (r) => r.onLineClear(3, { clearedRows: rowsOf(3) })],
+        ['foxfire', 'four lines', quad],
+    ])('swells the %s for %s, and lets it fall away to nothing by itself', (key, _label, act) => {
+        const reactions = director();
+        act(reactions);
+        const start = reactions.getFrame()[key];
+        const seen = [];
+        let previous = start;
+        let falling = false;
+        let emptiedAt = null;
+        for (let frame = 1; frame <= 90 * 60 && emptiedAt === null; frame++) {
+            const next = reactions.update(STEP)[key];
+            expect(next).toBeGreaterThanOrEqual(0);
+            expect(next).toBeLessThanOrEqual(1.5);
+            // One rise and one fall: once it has begun to fall it never comes back up by itself.
+            if (next < previous) falling = true;
+            if (falling) expect(next).toBeLessThanOrEqual(previous);
+            seen.push(next);
+            if (falling && next === 0) emptiedAt = frame * STEP;
+            previous = next;
+        }
+        const peak = Math.max(start, ...seen);
+        expect(peak).toBeGreaterThan(0.2);
+        // It comes up over more than a frame: a swell, not a flash.
+        expect(start).toBeLessThan(peak * 0.5);
+        expect(seen[0]).toBeLessThan(peak);
+        // Seconds, not frames and not minutes: and exactly nothing in the end.
+        expect(emptiedAt).not.toBeNull();
+        expect(emptiedAt).toBeGreaterThan(1);
+    });
+
+    it('adds a great moment to the one still lit: it lifts the beams and never cuts them', () => {
+        const once = director();
+        quad(once);
+        const single = peakAfter(once, 'burst');
+        const reactions = director();
+        quad(reactions);
+        const lit = advance(reactions, 0.5).burst;
+        expect(lit).toBeGreaterThan(0);
+        // A small one on a great one (a new level on four lines) never dims it.
+        reactions.onLevelUp();
+        expect(reactions.getFrame().burst).toBeGreaterThanOrEqual(lit);
+        reactions.onPerfectClear();
+        expect(reactions.getFrame().burst).toBeGreaterThanOrEqual(lit);
+        const stacked = peakAfter(reactions, 'burst');
+        expect(stacked).toBeGreaterThan(single);
+        // However many pile up, it keeps to its range and still falls away.
+        for (let round = 0; round < 60; round++) {
+            quad(reactions);
+            reactions.onPerfectClear();
+            reactions.onLevelUp();
+            const frame = reactions.update(STEP);
+            expect(frame.burst).toBeLessThanOrEqual(1.5);
+            expect(frame.foxfire).toBeLessThanOrEqual(1);
+        }
+        const rested = advance(reactions, 90);
+        expect(rested.burst).toBe(0);
+        expect(rested.foxfire).toBe(0);
+        // The crown is at least what four lines are.
+        const crown = director();
+        crown.onPerfectClear();
+        expect(peakAfter(crown, 'burst')).toBeGreaterThanOrEqual(single);
+    });
+
+    it('reads every new cue by the clock, not by the frame rate', () => {
+        const play = (step, seconds) => {
+            const reactions = director();
+            quad(reactions);
+            reactions.onBackToBack();
+            reactions.onPerfectClear();
+            reactions.onGameOver();
+            if (step === null) reactions.update(seconds);
+            else advance(reactions, seconds, step);
+            const frame = reactions.getFrame();
+            return {
+                burst: frame.burst,
+                foxfire: frame.foxfire,
+                veil: frame.veil,
+                rings: frame.rings.map((ring) => ({ ...ring })),
+            };
+        };
+        for (const seconds of [0.6, 1.2, 2.4]) {
+            const smooth = play(1 / 240, seconds);
+            for (const other of [play(1 / 20, seconds), play(null, seconds)]) {
+                for (const key of ['burst', 'foxfire', 'veil']) expect(other[key], key).toBeCloseTo(smooth[key], 9);
+                other.rings.forEach((ring, index) => {
+                    expect(ring.age).toBeCloseTo(smooth.rings[index].age, 9);
+                    expect(ring.strength).toBeCloseTo(smooth.rings[index].strength, 9);
+                });
+            }
+            expect(smooth.burst).toBeGreaterThan(0);
+            expect(smooth.veil).toBeGreaterThan(0);
+        }
+    });
+
+    it('counts a fan of stars for every perfect clear, and never counts one back', () => {
+        const reactions = director();
+        let previous = reactions.getFrame().shower;
+        expect(previous).toBe(0);
+        const script = [
+            [(r) => r.onPerfectClear(), 1], [(r) => quad(r), 0], [(r) => r.onLevelUp(), 0],
+            [(r) => r.onPerfectClear(), 1], [(r) => r.onPerfectClear(), 1], [(r) => r.onGameOver(), 0],
+        ];
+        for (const [act, more] of script) {
+            act(reactions);
+            const { shower } = advance(reactions, 0.5);
+            expect(shower - previous).toBe(more);
+            previous = shower;
+        }
+        // The fan comes with the two stars a perfect clear has always asked for, not instead of them.
+        const stars = director();
+        stars.onPerfectClear();
+        expect(stars.getFrame().stars).toBeGreaterThan(0);
+        expect(advance(reactions, 30).shower).toBe(previous);
+    });
+});
+
+describe('Forest reactions: a back-to-back\'s rings of moonlight', () => {
+    const live = (frame) => frame.rings.filter((ring) => ring.age >= 0).map((ring) => ({ ...ring }));
+
+    it('runs one ring out by the clock for as long as a ring lasts, then lets it go', () => {
+        expect(FOREST_RING_SECONDS).toBeGreaterThan(0.5);
+        expect(FOREST_RING_SECONDS).toBeLessThan(20);
+        const reactions = director();
+        reactions.onBackToBack();
+        const [born] = live(reactions.getFrame());
+        // It starts at the moon, at the moment of the event, with its light already decided.
+        expect(live(reactions.getFrame())).toHaveLength(1);
+        expect(born.age).toBe(0);
+        expect(born.strength).toBeGreaterThan(0);
+        expect(born.strength).toBeLessThanOrEqual(1.5);
+        const frames = Math.ceil((FOREST_RING_SECONDS + 1) / STEP);
+        for (let frame = 1; frame <= frames; frame++) {
+            const now = live(reactions.update(STEP));
+            if (reactions.time < FOREST_RING_SECONDS - STEP) {
+                expect(now).toHaveLength(1);
+                // Its age is the time since the event; how it fades is the lens's to say.
+                expect(now[0].age).toBeCloseTo(reactions.time, 9);
+                expect(now[0].strength).toBe(born.strength);
+            } else if (reactions.time > FOREST_RING_SECONDS + STEP) {
+                expect(now).toEqual([]);
+            }
+        }
+        expect(reactions.getFrame().rings.every((ring) => ring.age === -1 && ring.strength === 0)).toBe(true);
+    });
+
+    it('keeps two rings at once, each on its own clock, the later one brighter', () => {
+        const reactions = director();
+        const pool = reactions.getFrame().rings;
+        reactions.onBackToBack();
+        advance(reactions, FOREST_RING_SECONDS / 4);
+        const apart = reactions.time;
+        const [first] = live(reactions.getFrame());
+        reactions.onBackToBack();
+        const both = live(reactions.getFrame()).sort((a, b) => b.age - a.age);
+        expect(both).toHaveLength(2);
+        // The first runs on untouched; the second starts at the moon, and builds on the ring still lit.
+        expect(both[0]).toEqual(first);
+        expect(both[1].age).toBe(0);
+        expect(both[1].strength).toBeGreaterThan(both[0].strength);
+        expect(both[1].strength).toBeLessThanOrEqual(1.5);
+        const later = live(advance(reactions, FOREST_RING_SECONDS / 4)).sort((a, b) => b.age - a.age);
+        expect(later).toHaveLength(2);
+        expect(later[0].age - later[1].age).toBeCloseTo(apart, 9);
+        // The pool is reused, never rebuilt.
+        expect(reactions.update(STEP).rings).toBe(pool);
+    });
+
+    it('never runs more rings than it has slots for, and leaves the youngest running when another comes', () => {
+        const reactions = director();
+        const slots = reactions.getFrame().rings.length;
+        expect(slots).toBeGreaterThanOrEqual(2);
+        const gap = FOREST_RING_SECONDS / 8;
+        /** Is a ring of that age and brightness running now? */
+        const running = (age, strength) => live(reactions.getFrame())
+            .some((ring) => Math.abs(ring.age - age) < 1e-9 && ring.strength === strength);
+        let youngest = null;
+        let sentAt = 0;
+        for (let round = 0; round < slots + 3; round++) {
+            // The ring sent last time is still running, exactly as it would have been: before
+            // another back-to-back comes, and after.
+            if (youngest) expect(running(reactions.time - sentAt, youngest.strength)).toBe(true);
+            reactions.onBackToBack();
+            if (youngest) expect(running(reactions.time - sentAt, youngest.strength)).toBe(true);
+            const rings = live(reactions.getFrame());
+            expect(rings.length).toBeLessThanOrEqual(slots);
+            youngest = rings.find((ring) => ring.age === 0);
+            expect(youngest).toBeDefined();
+            sentAt = reactions.time;
+            expectBoundedFrame(advance(reactions, gap), FOREST_REACTION_LIMITS.High);
+        }
+        expect(live(advance(reactions, FOREST_RING_SECONDS + 1))).toEqual([]);
+    });
+});
+
+describe('Forest reactions: the end of a run draws cloud over the moon', () => {
+    const { rise, hold, fall } = FOREST_VEIL_TIMING;
+    const whole = rise + hold + fall;
+
+    it('comes, stays and clears again by itself, on its timeline', () => {
+        expect(Object.isFrozen(FOREST_VEIL_TIMING)).toBe(true);
+        for (const seconds of [rise, hold, fall]) expect(seconds).toBeGreaterThan(0);
+        const reactions = director();
+        clearingMove(reactions, 2);
+        advance(reactions, 1);
+        reactions.onGameOver();
+        const over = reactions.time;
+        // Nothing jumps on the frame of the event.
+        expect(reactions.getFrame().veil).toBe(0);
+        let previous = 0;
+        let steepest = 0;
+        const frames = Math.ceil((whole + 2) / STEP);
+        for (let frame = 1; frame <= frames; frame++) {
+            const { veil } = reactions.update(STEP);
+            const age = reactions.time - over;
+            expect(veil).toBeGreaterThanOrEqual(0);
+            expect(veil).toBeLessThanOrEqual(1);
+            steepest = Math.max(steepest, Math.abs(veil - previous));
+            if (age < rise - STEP) {
+                expect(veil).toBeGreaterThan(previous);
+                expect(veil).toBeLessThan(1);
+            } else if (age > rise + STEP && age < rise + hold - STEP) {
+                expect(veil).toBe(1);
+            } else if (age > rise + hold + STEP && age < whole - STEP) {
+                expect(veil).toBeLessThan(previous);
+                expect(veil).toBeGreaterThan(0);
+            } else if (age > whole + STEP) {
+                expect(veil).toBe(0);
+            }
+            previous = veil;
+        }
+        // It eases all the way: no frame takes more than a small share of the moon.
+        expect(steepest).toBeLessThan(0.1);
+        // A moment, not a state: the run is still over, and the moon is clear again.
+        expect(reactions.getFrame()).toMatchObject({ settled: true, veil: 0 });
+    });
+
+    it('does not come twice for a run that is told to end twice', () => {
+        const once = director();
+        const twice = director();
+        once.onGameOver();
+        twice.onGameOver();
+        const marks = [rise * 0.5, rise + hold * 0.5, rise + hold + fall * 0.5, whole + 1];
+        let time = 0;
+        for (const mark of marks) {
+            advance(once, mark - time);
+            advance(twice, mark - time);
+            time = mark;
+            expect(twice.onGameOver()).toBe(true);
+            expect(twice.getFrame().veil).toBe(once.getFrame().veil);
+            expect(advance(twice, 0.25).veil).toBe(advance(once, 0.25).veil);
+            time += 0.25;
+        }
+        expect(twice.getFrame().veil).toBe(0);
+    });
+
+    it('clears at once on reset, and comes again for the end of the next run', () => {
+        const reactions = director();
+        reactions.onGameOver();
+        expect(advance(reactions, rise + hold * 0.5).veil).toBe(1);
+        reactions.reset();
+        expect(reactions.getFrame().veil).toBe(0);
+        expect(advance(reactions, whole).veil).toBe(0);
+        // The next run: play wakes the wood from being settled, and its end draws the cloud again.
+        reactions.onPieceLock({ piece: cell(4, 22) });
+        expect(advance(reactions, 1).veil).toBe(0);
+        reactions.onGameOver();
+        expect(advance(reactions, rise).veil).toBeGreaterThan(0.9);
+        expect(advance(reactions, whole).veil).toBe(0);
     });
 });

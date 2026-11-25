@@ -5,15 +5,15 @@
  * ForestFireflyDirector knows where the board stands in the forest (ForestStage) and what
  * the firefly simulation and the light rig can do, and translates: it sends the waves of
  * light out across the floor, throws reserve sparks out from behind the card, lays down the
- * short-lived force fields that carry them, shakes dew from the boughs, winds garlands up
- * the old trunks while a combo keeps the forest awake, and calls the fireflies together
- * into one of the wood's animals, at one of the places one may stand.
+ * short-lived force fields that carry them, winds garlands up the old trunks while a combo
+ * keeps the forest awake, and calls the fireflies together into one of the wood's animals,
+ * at one of the places one may stand. (What else the events throw into the air, dew and
+ * spores and falling gold, is forest-flurry.js's.)
  */
 import * as THREE from 'three/webgpu';
 import {
     FOREST_FIGURES, FOREST_FIGURE_ROOM, forestFigure, forestFigureLights, forestFigureLightsSteps,
 } from './forest-figures.js';
-import { FOREST_FIREFLY_DEW } from './forest-firefly-sim.js';
 import { FOREST_FIGURE_TIMING } from './forest-reactions.js';
 import { FOREST_STAGE_DEPTH } from './forest-stage.js';
 import { flashScale } from '../../utils/photosensitivity.js';
@@ -23,7 +23,6 @@ import { drainSteps, stepClock } from '../shared/build-steps.js';
 const REFERENCE_FIREFLIES = 2400;
 const CLEAR_WINDOW = 0.5;
 const RISE_WINDOW = 1.5;
-const DEW_WINDOW = 0.5;
 /** What a wave of each kind is: how fast it runs, how wide its front, how high it climbs. */
 export const FOREST_WAVES = Object.freeze({
     lock: {
@@ -122,7 +121,7 @@ export function forestFigureBox(stage, anchor, box = {
 
 export class ForestFireflyDirector {
     constructor({
-        stage, sim, pulses, tier, rng = Math.random, groundHeight = () => 0, trunks = [], boughs = null,
+        stage, sim, pulses, tier, rng = Math.random, groundHeight = () => 0, trunks = [],
         figureAnchor = null, figureStands = null, eye = { x: 0, z: 13 }, layOutNow = true,
     }) {
         this.stage = stage;
@@ -130,7 +129,6 @@ export class ForestFireflyDirector {
         this.pulses = pulses;
         this.rng = rng;
         this.groundHeight = groundHeight;
-        this.boughs = boughs;
         this.scale = Math.max(0.2, tier.fireflies / REFERENCE_FIREFLIES);
         this.fields = [];
         this.serials = new Map();
@@ -341,28 +339,6 @@ export class ForestFireflyDirector {
                 power: 11 * strength + 3,
                 up: 3.5,
             });
-        }
-    }
-
-    /** A hard drop shakes the boughs: dew comes down through the moonlight. */
-    dew(emitter) {
-        const { sim, boughs } = this;
-        if (!boughs || boughs.length < 3) return;
-        const count = this.due(emitter, (70 + 110 * emitter.strength) * this.scale, DEW_WINDOW);
-        const sites = boughs.length / 3;
-        for (let i = 0; i < count; i += 1) {
-            const pick = Math.floor(this.random() * sites) * 3;
-            sim.spawn(
-                boughs[pick] + (this.random() - 0.5) * 1.4,
-                boughs[pick + 1] - this.random() * 0.4,
-                boughs[pick + 2] + (this.random() - 0.5) * 1.4,
-                (this.random() - 0.5) * 0.5,
-                -0.2 - this.random() * 0.8,
-                (this.random() - 0.5) * 0.5,
-                {
-                    life: 2.6 + 1.6 * this.random(), size: 0.035 + 0.035 * this.random(), kind: FOREST_FIREFLY_DEW,
-                },
-            );
         }
     }
 
@@ -749,7 +725,6 @@ export class ForestFireflyDirector {
                 this.emitted.set(emitter.id, 0);
             }
             if (emitter.kind === 'lock') this.lock(emitter, fresh);
-            else if (emitter.kind === 'dew') this.dew(emitter);
             else if (emitter.kind === 'clear') this.clear(emitter);
             else if (emitter.kind === 'rise') this.rise(emitter);
             else if (emitter.kind === 'spin') this.spin(emitter, fresh);

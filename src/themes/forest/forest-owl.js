@@ -179,7 +179,8 @@ function createOwlMaterial(light, u) {
         const toEye = rest.sub(vec3(select(rest.x.greaterThan(0), float(EYE[0]), float(-EYE[0])), EYE[1], EYE[2]))
             .toVar();
         const radial = sin(atan(toEye.y, toEye.x).mul(26)).mul(0.5).add(0.5).toVar();
-        const faceCol = base.mul(0.34).mul(float(0.88).add(radial.mul(0.18))).toVar();
+        // (A shade paler than the body: the disc is what the face is read by.)
+        const faceCol = base.mul(0.42).mul(float(0.88).add(radial.mul(0.18))).toVar();
 
         // -- the eyes: a black pupil, an orange iris deepening toward it, wet.
         const eyeAxis = vec3(
@@ -233,8 +234,9 @@ function createOwlMaterial(light, u) {
         const glow = light.glow(world).toVar();
         const lit = cool.mul(light.moonColour()).mul(facing.mul(1.3).add(rimLight.mul(1.9))).mul(moon)
             .add(light.moonColour().mul(throughCol).mul(moon))
-            // The fringe of the plumage catches the moon behind it whatever its colour: a silver edge.
-            .add(light.moonColour().mul(rimLight.mul(behind).mul(0.014)).mul(moon))
+            // The fringe of the plumage catches the moon behind it whatever its colour: a silver edge
+            // (and a trace of it from the sky when the moon is elsewhere, so it never melts into a trunk).
+            .add(light.moonColour().mul(rimLight.mul(behind.mul(0.9).add(0.1)).mul(0.03)).mul(moon))
             .add(cool.mul(ambient).mul(1.55))
             .add(albedo.mul(1.5).add(0.004).mul(glow).mul(sky.mul(0.6).add(0.4)))
             .toVar();
@@ -246,9 +248,15 @@ function createOwlMaterial(light, u) {
         // A small sharp catchlight of the moon, the sky only at the cornea's grazing rim, and an iris that
         // holds a little light of its own and takes the forest's light (a wave, a firefly) as an ember.
         const irisLit = irisCol.mul(iris.mul(float(1).sub(pupil)));
+        // Eyeshine: an owl's eye throws back the light it gathers, straight along the way it came.
+        // Looked at head on its irises burn amber; turned away they go out. From across the glade
+        // that is two embers in a dark face whenever it looks at the board.
+        const square = saturate(dot(N, V)).toVar();
+        const square2 = square.mul(square).toVar();
+        const shine = square2.mul(square2).mul(square2).toVar();
         const wet = light.moonColour().mul(glint8.mul(glint8).mul(3.5).mul(moon.mul(0.7).add(0.3)))
             .add(light.sky(R).mul(edge3.mul(0.45).add(0.015)))
-            .add(irisLit.mul(u.eyeLight.add(glow.length().mul(2.2))));
+            .add(irisLit.mul(u.eyeLight.add(glow.length().mul(2.2)).add(shine.mul(u.eyeShine))));
         lit.addAssign(wet.mul(eye));
         // A little of a hard drop's or a wave's light catches the horn and the eyes the same way.
         lit.addAssign(vec3(0.6).mul(glint8).mul(horn).mul(0.15));
@@ -271,7 +279,8 @@ export class ForestOwl {
         this.scale = scale;
         this.group = new THREE.Group();
         this.group.name = 'ForestOwl';
-        this.uniforms = { pupil: uniform(1.6), eyeLight: uniform(0.075) };
+        // The pupil's width, the light an iris holds by itself, and how brightly it shines back at the eye.
+        this.uniforms = { pupil: uniform(1.6), eyeLight: uniform(0.075), eyeShine: uniform(0.9) };
         this.frame = createOwlFrame();
         this.built = false;
         this.stats = { owlTriangles: 0, owlBones: 0 };

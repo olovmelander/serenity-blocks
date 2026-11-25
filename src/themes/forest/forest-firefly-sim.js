@@ -6,8 +6,7 @@
  * clocks; the game can push them about, and they drift back. As a combo wakes the forest
  * they fall into step, until the whole wood flashes in waves that roll out from the board.
  * The reserve stays dark until the game calls for it: puffs thrown from the board, jets,
- * the garlands that wind up the old trunks, dew shaken from the boughs, and the animals
- * the fireflies gather into.
+ * the garlands that wind up the old trunks, and the animals the fireflies gather into.
  *
  * The drawing code (forest-fireflies.js) re-evaluates the same path and the same flash in
  * the vertex shader at earlier times to lay each firefly's trail behind it, so
@@ -20,7 +19,6 @@ const TAU = Math.PI * 2;
 
 export const FOREST_FIREFLY_AMBIENT = 0;
 export const FOREST_FIREFLY_SPARK = 1;
-export const FOREST_FIREFLY_DEW = 2;
 /** How fast the shared flash runs out from the hearth, as phase per metre. */
 export const FOREST_SYNC_PHASE_PER_METRE = 0.042;
 
@@ -119,7 +117,7 @@ export class ForestFireflySim {
         // Instance buffers read by the renderer:
         //   home      xyz of an ambient firefly's home, and its seed (static)
         //   place     ambient: offset from the wander path; spark: position; and the size
-        //   velocity  xyz, and the kind (0 ambient, 1 spark, 2 dew)
+        //   velocity  xyz, and the kind (0 ambient, 1 spark)
         //   glow      brightness, heat, distance from the hearth, how long a trail it draws
         this.outHome = new Float32Array(n * 4);
         this.outPlace = new Float32Array(n * 4);
@@ -195,7 +193,7 @@ export class ForestFireflySim {
 
     /** Light one reserve spark; when none is dark, the one nearest its end is taken. */
     spawn(x, y, z, vx, vy, vz, {
-        life = 2.4, heat = 0, size = 0.085, kind = FOREST_FIREFLY_SPARK,
+        life = 2.4, heat = 0, size = 0.085,
     } = {}) {
         if (![x, y, z, vx, vy, vz].every(Number.isFinite)) return -1;
         let selected = -1;
@@ -228,7 +226,7 @@ export class ForestFireflySim {
         this.lit[selected] = 0;
         this.heat[selected] = Number.isFinite(heat) ? clamp(heat, 0, 1) : 0;
         this.size[selected] = Number.isFinite(size) ? clamp(size, 0.02, 0.4) : 0.085;
-        this.kind[selected] = kind === FOREST_FIREFLY_DEW ? FOREST_FIREFLY_DEW : FOREST_FIREFLY_SPARK;
+        this.kind[selected] = FOREST_FIREFLY_SPARK;
         this.bound[selected] = 0;
         return selected;
     }
@@ -370,11 +368,6 @@ export class ForestFireflySim {
                         - this.vy[i] * 5) * step;
                     this.vz[i] += ((this.tz[i] + Math.sin(phase * 0.3 + t * 1.7) * hover - this.z[i]) * grip
                         - this.vz[i] * 5) * step;
-                } else if (this.kind[i] === FOREST_FIREFLY_DEW) {
-                    // Dew falls, and the air slows it.
-                    this.vx[i] += (windX * gust * 1.2 - this.vx[i] * 0.9) * step;
-                    this.vy[i] += (-6.5 - this.vy[i] * 0.9) * step;
-                    this.vz[i] += (windZ * gust * 1.2 - this.vz[i] * 0.9) * step;
                 } else {
                     this.force(fields, i, this.x[i], this.y[i], this.z[i], 1, pull);
                     const lift = settled ? -1.6 : 0.45;
@@ -393,12 +386,9 @@ export class ForestFireflySim {
                 if (!(this.bound[i] > 0)) this.life[i] -= step * (settled ? 1.6 : 1);
                 const floor = this.groundHeight(this.x[i], this.z[i]);
                 if (this.y[i] < floor + 0.05) {
-                    if (this.kind[i] === FOREST_FIREFLY_DEW) this.life[i] = 0;
-                    else {
-                        this.y[i] = floor + 0.05;
-                        this.vy[i] = Math.abs(this.vy[i]) * 0.3;
-                        this.life[i] *= 0.85;
-                    }
+                    this.y[i] = floor + 0.05;
+                    this.vy[i] = Math.abs(this.vy[i]) * 0.3;
+                    this.life[i] *= 0.85;
                 }
             }
         }
@@ -442,9 +432,7 @@ export class ForestFireflySim {
                 outGlow[o] = 0;
                 continue;
             }
-            const dew = this.kind[i] === FOREST_FIREFLY_DEW;
-            const flicker = dew ? 0.45 + 0.55 * Math.sin(t * 31 + this.seed[i] * 90) ** 2
-                : 0.8 + 0.2 * Math.sin(t * 17 + this.seed[i] * 50);
+            const flicker = 0.8 + 0.2 * Math.sin(t * 17 + this.seed[i] * 50);
             // A spark holding its place in a figure stays lit; a free one burns down.
             const burn = this.bound[i] > 0 ? 1 : (life / this.span[i]) ** 0.6;
             outPlace[o] = this.x[i];
@@ -458,7 +446,7 @@ export class ForestFireflySim {
             outGlow[o] = Math.min(1, this.lit[i] / 0.07) * burn * flicker * 1.2;
             outGlow[o + 1] = Math.max(this.heat[i], heat * 0.6);
             outGlow[o + 2] = 0;
-            outGlow[o + 3] = dew ? 0.5 : 1;
+            outGlow[o + 3] = 1;
         }
     }
 
@@ -482,7 +470,7 @@ export class ForestFireflySim {
         }
         for (let i = this.ambient; i < this.count; i += 1) {
             const light = outGlow[i * 4];
-            if (light > 0.12 && this.kind[i] !== FOREST_FIREFLY_DEW && this.y[i] < 8) {
+            if (light > 0.12 && this.y[i] < 8) {
                 field.add(this.x[i], this.z[i], this.y[i] - this.groundHeight(this.x[i], this.z[i]), light * 0.8);
             }
         }

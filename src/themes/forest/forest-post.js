@@ -26,7 +26,7 @@ import { forestTier } from './forest-quality.js';
 const BLOOM_STRENGTH = 0.3;
 /** The iris closes from this level of play, by so much per unit of level and of fever. */
 const IRIS = Object.freeze({ from: 0.2, level: 0.1, fever: 0.05 });
-/** The rays' contrast is never pushed past this (beyond it a blocked line of sight goes black). */
+/** How strong the rays are ever drawn (past 1, the open ones burn brighter; see the cut below). */
 const RAYS_MAX = 1.8;
 const LUMA = vec3(0.2126, 0.7152, 0.0722);
 
@@ -39,7 +39,46 @@ const LUMA = vec3(0.2126, 0.7152, 0.0722);
  * haze is left as it was).
  */
 const RAYS = Object.freeze({
-    length: 0.94, decay: 0.94, sky: [0.08, 0.32], scale: 0.25, refine: 6, shadowed: 0.3, open: 1.25, reach: 0.75,
+    length: 0.94,
+    decay: 0.94,
+    sky: [0.08, 0.32],
+    scale: 0.25,
+    refine: 6,
+    shadowed: 0.06,
+    open: 1.8,
+    reach: 1.05,
+    // How much further a full moonburst throws the cut (screen heights).
+    burst: 1.1,
+});
+/** How much a full moonburst adds to the beams themselves, and how bright a ring of moonlight is drawn. */
+const BURST_SHAFTS = 1.7;
+const RING_GAIN = 0.3;
+/**
+ * A back-to-back's ring of moonlight: where it starts and how far it runs from the moon (screen
+ * heights), how fast it eases out (per second), its width (a floor, and a share of its radius), how
+ * fast it fades, the depth of air that carries it in full (metres) and the share a near surface keeps.
+ */
+const RING = Object.freeze({
+    start: 0.07,
+    reach: 1.9,
+    rate: 0.55,
+    width: 0.012,
+    spread: 0.02,
+    // How much longer the light trails inside the front than the front is wide.
+    trail: 3.5,
+    fade: 0.75,
+    near: 5,
+    far: 55,
+    onNear: 0.16,
+});
+
+/**
+ * How the beams are laid on: the light a line of sight gathers eases toward `ceiling` (the march
+ * returns up to 0.86 for open sky), and over what is bright already (scene brightness from `from`
+ * to `to`, linear) they ease to `onBright` of themselves.
+ */
+const BEAMS = Object.freeze({
+    ceiling: 0.3, from: 0.25, to: 0.9, onBright: 0.35,
 });
 
 export class ForestPost {
@@ -68,6 +107,12 @@ export class ForestPost {
         // The crepuscular rays' strength (1 in play; events lift it with the beams).
         this.uRays = uniform(1);
         this.raysGain = 1;
+        // The moonburst (four lines, a perfect clear, a new level): the beams open wide, 0..1.5.
+        this.uBurst = uniform(0);
+        // A back-to-back's rings of moonlight through the mist: each one's radius from the moon
+        // (in screen heights) and its strength now.
+        this.uRingA = uniform(new THREE.Vector2(0, 0));
+        this.uRingB = uniform(new THREE.Vector2(0, 0));
         this.moonPoint = new THREE.Vector3();
         if (this.disabled) return;
         this.pipeline = new THREE.RenderPipeline(renderer);
@@ -75,6 +120,9 @@ export class ForestPost {
         const sceneColor = this.scenePass.getTextureNode('output');
         const sceneDepth = this.scenePass.getTextureNode('depth');
         let lit = sceneColor.rgb;
+        // How far off the pixel's surface stands (metres): the beams and the rings are light in the air.
+        const range = this.scenePass.getViewZNode().negate();
+        const centred = screenUV.sub(this.uMoonScreen).mul(vec2(this.uAspect, 1));
         if (light && this.tier.godrays > 0) {
             if (!light.moon.shadow.map) this.buildShadowRig();
             this.godraysNode = godrays(sceneDepth, camera, light.moon);
@@ -86,7 +134,6 @@ export class ForestPost {
             this.godraysNode.resolutionScale = this.tier.godraysScale;
             // The blur ping-pongs its input texture, so hand it the pass texture itself.
             this.shaftsBlur = bilateralBlur(this.godraysNode.getTextureNode(), null, 3, 0.12);
-            const centred = screenUV.sub(this.uMoonScreen).mul(vec2(this.uAspect, 1));
             const toward = float(1).sub(saturate(length(centred).mul(0.74)));
             // Brightest in a wide ring round the moon, eased off over the disc itself so it stays crisp.
             const clear = smoothstep(0.02, 0.17, length(centred)).mul(0.5).add(0.5);
@@ -98,10 +145,46 @@ export class ForestPost {
                 this.raysNode = this.createRays(sceneColor, this.tier.rays);
                 const sight = this.raysNode.sample(screenUV);
                 const open = sight.r.div(max(sight.g, 1e-4));
-                const near = exp(dot(centred, centred).div(RAYS.reach * RAYS.reach).negate()).mul(this.uRays);
-                beams = beams.mul(mix(float(1), mix(float(RAYS.shadowed), float(RAYS.open), open), near));
+                // (A moonburst throws them wide: the cut reaches out over the whole frame.) Hot play's
+                // strength over 1 brightens the open rays; the blend's weight never passes 1, or it
+                // extrapolates: past 1 a blocked line of sight's multiplier goes below nothing, and the
+                // soft ceiling below turns a negative beam into a black hole in the sky.
+                const reach = this.uBurst.mul(RAYS.burst).add(RAYS.reach);
+                const near = exp(dot(centred, centred).div(reach.mul(reach)).negate()).mul(this.uRays.min(1));
+                const lit2 = float(RAYS.open).mul(this.uRays.max(1));
+                const cut = mix(float(RAYS.shadowed), lit2, smoothstep(0.12, 0.8, open));
+                beams = beams.mul(mix(float(1), cut, near));
             }
+            beams = beams.max(0);
+            // The beams are light in the air, and read against the dark of the trees. A line of sight
+            // out to the sky gathers hundreds of metres of lit air, and laid on in full that only
+            // bleaches the sky and drowns the moon's face: the gathered light is given a soft ceiling
+            // (the short path to a near tree is far under it and keeps what it has). A ceiling on the
+            // march itself, not a cut by depth: an edge pixel of a multisampled pass has one depth
+            // but a blend of colours, and a cut by depth left every far spruce a fringe of white sparks.
+            beams = float(BEAMS.ceiling).mul(float(1).sub(exp(beams.div(BEAMS.ceiling).negate())));
+            // (And what is brightest already, the moon's face and the mist it stands in, keeps a share.)
+            const bright = smoothstep(BEAMS.from, BEAMS.to, dot(sceneColor.rgb, LUMA));
+            beams = beams.mul(mix(float(1), float(BEAMS.onBright), bright));
             lit = lit.add(beamColour.mul(beams).mul(this.uShafts));
+        }
+        if (light) {
+            // A back-to-back: rings of moonlight run out from the moon through the mist of the whole
+            // wood. Light in the air again: full where there is depth of air to carry it, a share on
+            // what stands near the eye, so the old trunk stays a silhouette the ring passes behind.
+            const away = length(centred);
+            const air = smoothstep(RING.near, RING.far, range).mul(1 - RING.onNear).add(RING.onNear);
+            const band = (ring) => {
+                const offset = away.sub(ring.x).div(ring.x.mul(RING.spread).add(RING.width));
+                // A front with light trailing behind it: sharp where it leads, a long soft fall inside.
+                const inside = offset.min(0).div(RING.trail);
+                const outside = offset.max(0);
+                const shape = exp(inside.mul(inside).add(outside.mul(outside)).negate());
+                // Silver, its inner edge warm, as a ring of ice would be.
+                const tint = mix(vec3(1.0, 0.82, 0.55), vec3(0.72, 0.88, 1.12), smoothstep(-2.5, 0.2, offset));
+                return tint.mul(shape.mul(ring.y));
+            };
+            lit = lit.add(band(this.uRingA).add(band(this.uRingB)).mul(air));
         }
         this.bloomNode = bloom(sceneColor, BLOOM_STRENGTH, 0.6, 0.86);
         // Soft knee on the brightest channel, so a firefly keeps its green in the bloom.
@@ -211,8 +294,30 @@ export class ForestPost {
         const lift = flashScale() * (1 - FOREST_MOON_HOT * level);
         this.uExposure.value = this.exposure + moon * 0.06 * lift - Math.max(0, level - IRIS.from) * IRIS.level
             - fever * IRIS.fever;
+        // The air's beams (wide in mist, thin in wind), and none through a clouded moon.
+        const air = this.light?.air;
+        const veil = unit(this.light?.uVeil?.value);
+        const airRays = (Number.isFinite(air?.rays) ? Math.max(0, air.rays) : 1) * (1 - 0.9 * veil);
         // The moonbeams thin as the moon draws back in a fever (the rays stay cut sharp).
-        this.uShafts.value = (1.5 + shafts * 0.9 * lift) * (1 - FOREST_MOON_FEVER * fever) * this.shaftGain;
+        // The moonburst: a frame-wide brightening too (flashScale), and nothing through cloud.
+        const burst = (Number.isFinite(frame.burst) ? THREE.MathUtils.clamp(frame.burst, 0, 1.5) : 0)
+            * flashScale() * (1 - 0.8 * veil);
+        this.uBurst.value = burst;
+        this.uShafts.value = (1.5 * airRays + (shafts * 0.9 * lift + burst * BURST_SHAFTS) * (1 - 0.6 * veil))
+            * (1 - FOREST_MOON_FEVER * fever) * this.shaftGain;
+        // A back-to-back's rings: each eases out from the moon and thins as it goes.
+        const rings = Array.isArray(frame.rings) ? frame.rings : [];
+        [this.uRingA, this.uRingB].forEach((ring, index) => {
+            const cue = rings[index];
+            const age = Number.isFinite(cue?.age) ? cue.age : -1;
+            if (!(age >= 0) || !(cue.strength > 0)) {
+                ring.value.set(0, 0);
+                return;
+            }
+            const radius = RING.start + RING.reach * (1 - Math.exp(-age * RING.rate));
+            const strength = Math.min(1.5, cue.strength) * Math.exp(-age * RING.fade) * Math.min(1, age / 0.1);
+            ring.value.set(radius, strength * RING_GAIN);
+        });
         this.uRays.value = Math.min(RAYS_MAX, 1 + shafts * 0.8 * lift + fever * 0.4) * this.raysGain;
         if (this.bloomNode) this.bloomNode.strength.value = (BLOOM_STRENGTH + moon * 0.08 * lift) * this.bloomGain;
         if (this.light && this.camera?.isCamera) {

@@ -3,8 +3,9 @@ import {
     FOREST_FIGURE_IDS, FOREST_FIGURE_ROOM, FOREST_FIGURES, createForestFigurePoints, forestFigure,
     forestFigureDistance, forestFigureLights,
 } from '../../src/themes/forest/forest-figures.js';
+import * as fireflySim from '../../src/themes/forest/forest-firefly-sim.js';
 import {
-    FOREST_FIREFLY_AMBIENT, FOREST_FIREFLY_DEW, FOREST_FIREFLY_SPARK, FOREST_SYNC_PHASE_PER_METRE, ForestFireflySim,
+    FOREST_FIREFLY_AMBIENT, FOREST_FIREFLY_SPARK, FOREST_SYNC_PHASE_PER_METRE, ForestFireflySim,
     forestFireflyFlash, forestFireflyPace, forestFireflyWander,
 } from '../../src/themes/forest/forest-firefly-sim.js';
 import { FOREST_LIGHT_FIELD_BOUNDS, ForestLightField } from '../../src/themes/forest/forest-light-field.js';
@@ -250,7 +251,11 @@ describe('Forest fireflies: the two populations', () => {
             expect(sim.outPlace[index * 4 + 3]).toBe(0);
             expect(sim.outGlow[index * 4]).toBe(0);
         }
-        expect([FOREST_FIREFLY_AMBIENT, FOREST_FIREFLY_SPARK, FOREST_FIREFLY_DEW]).toEqual([0, 1, 2]);
+        // Two kinds and no third: what else the wood throws into the air (dew, spores, falling gold)
+        // is not simulated here (forest-flurry.js).
+        expect([FOREST_FIREFLY_AMBIENT, FOREST_FIREFLY_SPARK]).toEqual([0, 1]);
+        expect(Object.keys(fireflySim).filter((name) => /^FOREST_FIREFLY_[A-Z]+$/.test(name)).sort())
+            .toEqual(['FOREST_FIREFLY_AMBIENT', 'FOREST_FIREFLY_SPARK']);
     });
 
     it.each([
@@ -475,9 +480,10 @@ describe('Forest fireflies: the reserve', () => {
         const odd = sim.spawn(0, 2, 0, 0, 0, 0, {
             life: NaN, heat: NaN, size: NaN, kind: 'moth',
         });
-        const dew = sim.spawn(0, 2, 0, 0, 0, 0, { kind: FOREST_FIREFLY_DEW, heat: -3, size: -3 });
+        // (A kind is no longer something to ask for: 2 was dew once.)
+        const numbered = sim.spawn(0, 2, 0, 0, 0, 0, { kind: 2, heat: -3, size: -3 });
         const plain = sim.spawn(0, 2, 0, 0, 0, 0);
-        for (const index of [tiny, odd, dew, plain]) {
+        for (const index of [tiny, odd, numbered, plain]) {
             expect(sim.life[index]).toBeGreaterThan(0.1);
             expect(sim.life[index]).toBeLessThan(60);
             expect(sim.span[index]).toBe(sim.life[index]);
@@ -486,8 +492,8 @@ describe('Forest fireflies: the reserve', () => {
             expect(sim.size[index]).toBeGreaterThan(0);
             expect(sim.size[index]).toBeLessThan(0.5);
         }
-        expect(sim.kind[odd]).toBe(FOREST_FIREFLY_SPARK);
-        expect(sim.kind[dew]).toBe(FOREST_FIREFLY_DEW);
+        // Whatever it is asked to be, what the reserve lights is a spark.
+        for (const index of [tiny, odd, numbered, plain]) expect(sim.kind[index]).toBe(FOREST_FIREFLY_SPARK);
         expect(sim.life[odd]).toBe(sim.life[plain]);
         expect(sim.size[odd]).toBe(sim.size[plain]);
     });
@@ -617,58 +623,48 @@ describe('Forest fireflies: the reserve', () => {
     });
 });
 
-describe('Forest fireflies: dew', () => {
-    it('falls through still air and goes out on the forest floor', () => {
-        const ground = () => 1;
-        const sim = createSim({ groundHeight: ground });
-        const drop = sim.spawn(0, 9, 0, 0.2, 0, 0, { kind: FOREST_FIREFLY_DEW, life: 30 });
-        let previous = sim.y[drop];
-        let landedAt = null;
-        for (let frame = 1; frame <= 600 && landedAt === null; frame++) {
-            sim.step(STEP);
-            if (sim.life[drop] <= 0) landedAt = frame * STEP;
-            else {
-                // Always falling, never faster than a drop in air would.
-                expect(sim.y[drop]).toBeLessThan(previous);
-                expect(sim.vy[drop]).toBeLessThan(0);
-                expect(sim.vy[drop]).toBeGreaterThan(-12);
-                expect(sim.outVelocity[drop * 4 + 3]).toBe(FOREST_FIREFLY_DEW);
-                expect(sim.outGlow[drop * 4]).toBeGreaterThan(0);
-                previous = sim.y[drop];
-            }
-        }
-        // It reached the floor (well before its life ran out) and stopped being drawn there.
-        expect(landedAt).not.toBeNull();
-        expect(landedAt).toBeGreaterThan(0.5);
-        expect(landedAt).toBeLessThan(6);
-        expect(previous).toBeLessThan(1.5);
-        expect(sim.outPlace[drop * 4 + 3]).toBe(0);
-        expect(sim.outGlow[drop * 4]).toBe(0);
-        expect(sim.counts().live).toBe(0);
-    });
-
-    it('is not a firefly: fields do not steer it, and it sheds no light on the moss', () => {
+// Dew was a third kind of particle here once (it fell, went out on the floor, and no field steered
+// it). It is the flurry's now (tests/unit/forest-flurry.test.js): what the reserve lights is always
+// a firefly, whatever it is asked to be.
+describe('Forest fireflies: nothing here but fireflies', () => {
+    it('flies a spark asked for as dew exactly as it flies any other spark', () => {
         const burst = {
             kind: 'burst', x: 0, y: 5, z: 0, radius: 8, power: 60, up: 20,
         };
-        const sim = createSim();
-        const still = createSim();
-        const a = sim.spawn(1, 5, 0, 0, 0, 0, { kind: FOREST_FIREFLY_DEW, life: 9 });
-        const b = still.spawn(1, 5, 0, 0, 0, 0, { kind: FOREST_FIREFLY_DEW, life: 9 });
-        run(sim, 0.3, { fields: [burst] });
-        run(still, 0.3);
-        expect(sim.x[a]).toBe(still.x[b]);
-        expect(sim.y[a]).toBe(still.y[b]);
-        // A gust does carry it sideways.
-        const windy = createSim();
-        const c = windy.spawn(1, 5, 0, 0, 0, 0, { kind: FOREST_FIREFLY_DEW, life: 9 });
-        run(windy, 0.3, { gust: 1, windX: 1, windZ: 0 });
-        expect(windy.x[c]).toBeGreaterThan(still.x[b]);
-        // Its trail is shorter than a firefly's.
-        const spark = sim.spawn(1, 5, 0, 0, 0, 0, { life: 9 });
-        sim.step(STEP);
-        expect(sim.outGlow[a * 4 + 3]).toBeGreaterThan(0);
-        expect(sim.outGlow[a * 4 + 3]).toBeLessThan(sim.outGlow[spark * 4 + 3]);
+        const asked = createSim();
+        const plain = createSim();
+        const a = asked.spawn(1, 5, 0, 0, 0, 0, { kind: 2, life: 9 });
+        const b = plain.spawn(1, 5, 0, 0, 0, 0, { life: 9 });
+        expect(a).toBe(b);
+        run(asked, 0.3, { fields: [burst] });
+        run(plain, 0.3, { fields: [burst] });
+        // The field steered it (a drop of dew it did not), and the same way as the plain spark.
+        expect(asked.x[a]).toBeGreaterThan(1.2);
+        for (const key of ['x', 'y', 'z', 'vx', 'vy', 'vz', 'life']) expect(asked[key][a], key).toBe(plain[key][b]);
+        for (const buffer of ['outPlace', 'outVelocity', 'outGlow']) {
+            expect(Array.from(asked[buffer].subarray(a * 4, a * 4 + 4)), buffer)
+                .toEqual(Array.from(plain[buffer].subarray(b * 4, b * 4 + 4)));
+        }
+        // The drawing code is told it is a spark, with a spark's whole trail.
+        expect(asked.outVelocity[a * 4 + 3]).toBe(FOREST_FIREFLY_SPARK);
+        expect(asked.outGlow[a * 4 + 3]).toBe(1);
+    });
+
+    it('turns a spark back at the forest floor instead of putting it out there', () => {
+        const ground = () => 1;
+        const sim = createSim({ groundHeight: ground });
+        const spark = sim.spawn(0, 3, 0, 0, -9, 0, { kind: 2, life: 30 });
+        let touched = false;
+        for (let frame = 1; frame <= 240; frame++) {
+            sim.step(STEP);
+            expect(sim.y[spark]).toBeGreaterThanOrEqual(ground() + 0.049);
+            touched = touched || sim.y[spark] < ground() + 0.06;
+        }
+        expect(touched).toBe(true);
+        // It met the moss and is still alight, and drawn (dew ended there).
+        expect(sim.life[spark]).toBeGreaterThan(0);
+        expect(sim.outPlace[spark * 4 + 3]).toBeGreaterThan(0);
+        expect(sim.counts().live).toBe(1);
     });
 });
 
@@ -804,8 +800,7 @@ describe('Forest fireflies: reset and bad input', () => {
             place: Array.from(sim.outPlace), glow: Array.from(sim.outGlow), velocity: Array.from(sim.outVelocity),
         };
         for (let n = 0; n < 30; n++) {
-            const kind = n % 3 ? FOREST_FIREFLY_SPARK : FOREST_FIREFLY_DEW;
-            const index = sim.spawn(n * 0.1, 3, 0, 1, 1, 1, { kind });
+            const index = sim.spawn(n * 0.1, 3, 0, 1, 1, 1, { heat: n % 3 ? 0 : 1 });
             if (n % 4 === 0) sim.bind(index, 0, 5, 0);
         }
         run(sim, 1, { gust: 1, sync: 1, beatRate: 0.8 });
@@ -864,7 +859,7 @@ describe('Forest fireflies: reset and bad input', () => {
 
     it('keeps its buffers finite whatever the environment says', () => {
         const sim = createSim();
-        for (let n = 0; n < 20; n++) sim.spawn(n * 0.3 - 3, 3, 0, 1, 1, -1, { kind: n % 2 ? 1 : FOREST_FIREFLY_DEW });
+        for (let n = 0; n < 20; n++) sim.spawn(n * 0.3 - 3, 3, 0, 1, 1, -1, { life: n % 2 ? 2.4 : 9 });
         const junk = [NaN, Infinity, -Infinity, undefined, null, 'x', {}, []];
         for (const value of junk) {
             sim.step(STEP, {
@@ -1082,12 +1077,13 @@ describe('Forest light field', () => {
         expect(Math.max(...field.gather(place, glow, 0, ground))).toBe(0);
     });
 
-    it('is filled by the simulation: lit sparks near the floor, never dew, never the high ones', () => {
+    it('is filled by the simulation: every lit spark near the floor, never the high ones', () => {
         const sim = createSim({ count: 30, reserve: 29, groundHeight: () => 0 });
         const field = new ForestLightField(48);
         const low = sim.spawn(5, 0.6, -30, 0, 0, 0, { life: 9 });
         const high = sim.spawn(-20, 12, -30, 0, 0, 0, { life: 9 });
-        const dew = sim.spawn(20, 0.6, -50, 0, 0, 0, { life: 9, kind: FOREST_FIREFLY_DEW });
+        // (Asked for as dew once, this one shed nothing; now every spark is a firefly and lights the moss.)
+        const other = sim.spawn(20, 0.6, -50, 0, 0, 0, { life: 9, kind: 2 });
         run(sim, 0.2);
         field.dirty = false;
         field.add(0, -10, 0, 1);
@@ -1096,7 +1092,7 @@ describe('Forest light field', () => {
         const { data } = field;
         expect(data[cell(field, sim.x[low], sim.z[low])]).toBeGreaterThan(0);
         expect(data[cell(field, sim.x[high], sim.z[high])]).toBe(0);
-        expect(data[cell(field, sim.x[dew], sim.z[dew])]).toBe(0);
+        expect(data[cell(field, sim.x[other], sim.z[other])]).toBeGreaterThan(0);
         // Shedding starts from darkness too.
         expect(data[cell(field, 0, -10)]).toBe(0);
         // The fireflies that live here light the moss under them when they flash.

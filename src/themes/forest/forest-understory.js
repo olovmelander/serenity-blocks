@@ -10,8 +10,8 @@
  */
 import * as THREE from 'three/webgpu';
 import {
-    attribute, cameraPosition, color, dot, float, instancedBufferAttribute, length, mix, normalWorld, normalize,
-    positionGeometry, positionLocal, positionWorld, pow, saturate, sin, smoothstep, uv, vec3, vec4,
+    atan, attribute, cameraPosition, color, dot, float, instancedBufferAttribute, length, mix, normalWorld,
+    normalize, positionGeometry, positionLocal, positionWorld, pow, saturate, sin, smoothstep, uv, vec3, vec4,
 } from 'three/tsl';
 import {
     FOREST_EYE, forestRide, forestRideHalfWidth, forestRidePoint,
@@ -125,12 +125,55 @@ function createTuftGeometry() {
     return geometry;
 }
 
-/** A foxfire cap: a short stem under a domed cap, lathed. `uv.y` runs from foot to crown. */
-function createCapGeometry() {
-    const profile = [
-        [0.0, 0.0], [0.017, 0.0], [0.012, 0.062], [0.064, 0.058], [0.06, 0.082], [0.036, 0.104], [0.0, 0.112],
-    ].map(([radius, height]) => new THREE.Vector2(radius, height));
-    return new THREE.LatheGeometry(profile, 9);
+/**
+ * The foxfire fungi's shapes, each a lathed profile of eleven points (radius, height, in metres at
+ * a size of 1) laid so that `uv.y` means the same on all of them: the stem to 0.3, the gills under
+ * the cap from 0.4 to 0.5, the cap's rim at 0.6, its skin from there to the crown at 1. `lean` is
+ * how far the crown stands off the foot (the stem curves): a bonnet on a slender bent stem, a
+ * broad flat cap on a stout one, and a tall thin one with a small bell.
+ */
+const FOXFIRE_SHAPES = Object.freeze([
+    Object.freeze({
+        name: 'bonnet',
+        lean: 0.022,
+        profile: [[0, 0], [0.012, 0], [0.01, 0.045], [0.009, 0.088], [0.03, 0.081], [0.05, 0.072], [0.053, 0.078],
+            [0.046, 0.103], [0.031, 0.128], [0.014, 0.146], [0, 0.152]],
+    }),
+    Object.freeze({
+        name: 'plate',
+        lean: 0.008,
+        profile: [[0, 0], [0.017, 0], [0.015, 0.03], [0.013, 0.06], [0.045, 0.062], [0.075, 0.058], [0.08, 0.065],
+            [0.07, 0.081], [0.046, 0.093], [0.02, 0.099], [0, 0.101]],
+    }),
+    Object.freeze({
+        name: 'bell',
+        lean: 0.034,
+        profile: [[0, 0], [0.0085, 0], [0.007, 0.07], [0.0065, 0.136], [0.02, 0.131], [0.032, 0.124], [0.034, 0.13],
+            [0.029, 0.148], [0.019, 0.162], [0.008, 0.17], [0, 0.173]],
+    }),
+]);
+
+/** One foxfire shape as geometry: lathed, then its stem curved so the cap stands off the foot. */
+function createCapGeometry(shape = FOXFIRE_SHAPES[0]) {
+    const geometry = new THREE.LatheGeometry(
+        shape.profile.map(([radius, height]) => new THREE.Vector2(radius, height)),
+        12,
+    );
+    const top = shape.profile[shape.profile.length - 1][1];
+    const position = geometry.getAttribute('position');
+    for (let i = 0; i < position.count; i += 1) {
+        const rise = position.getY(i) / top;
+        position.setX(i, position.getX(i) + shape.lean * rise * rise);
+    }
+    geometry.computeVertexNormals();
+    return geometry;
+}
+
+/** Which shape a cap takes, by its place in the layout (no draw from the forest's generator). */
+function foxfireShape(index) {
+    const pick = latticeHash(index, 7, 11);
+    if (pick < 0.5) return 0;
+    return pick < 0.8 ? 1 : 2;
 }
 
 /** A wood star: seven narrow petals laid nearly flat. */
@@ -276,7 +319,7 @@ export class ForestUnderstory {
             .add(cool.mul(light.ambient(normal)).mul(paint.b.mul(0.85).add(0.15)).mul(1.2))
             .add(albedo.mul(1.6).add(0.008).mul(glow))
             // Rotting wood is where foxfire lives: woken, its moss holds a cold light.
-            .add(vec3(0.08, 0.75, 0.45).mul(mossy).mul(light.uWake).mul(fine.b.mul(0.6).add(0.1))
+            .add(vec3(0.08, 0.75, 0.45).mul(mossy).mul(light.awake()).mul(fine.b.mul(0.6).add(0.1))
                 .mul(0.3));
         material.fragmentNode = vec4(light.haze(lit, { world, glow }), 1);
         return material;
@@ -623,52 +666,85 @@ export class ForestUnderstory {
     }
 
     buildFungi() {
-        const { light, rng } = this;
+        const { rng } = this;
         const caps = this.layoutFungi();
         if (!caps.length) return;
-        const geometry = this.own(createCapGeometry());
-        const lookData = new Float32Array(caps.length * 4);
-        const look = instancedBufferAttribute(new THREE.InstancedBufferAttribute(lookData, 4)); // wake at, phase, hue, -
-        const material = this.own(new THREE.MeshBasicNodeMaterial({ fog: false }));
-        material.name = 'ForestFoxfire';
-        const world = positionWorld;
-        const normal = normalize(normalWorld);
-        const crown = smoothstep(0.35, 0.6, uv().y);
-        const flesh = mix(color(0x4a4a3c), color(0x8a917a), crown);
-        const moon = light.moonlight();
-        const glow = light.glow(world);
-        // A faint cold light at rest; lit one by one as the forest wakes; flaring as a wave passes.
-        const breath = sin(light.uTime.mul(look.y.mul(0.9).add(0.5)).add(look.y.mul(TAU))).mul(0.5).add(0.5);
-        const awake = smoothstep(look.x, look.x.add(0.14), light.uWake);
-        const power = breath.mul(0.05).add(0.035)
-            .add(awake.mul(breath.mul(0.3).add(0.75)))
-            .add(light.stir(world).mul(0.9));
-        const foxfire = mix(vec3(0.1, 1.0, 0.55), vec3(0.3, 1.0, 0.2), look.z).mul(power)
-            .mul(crown.mul(0.55).add(0.45)).mul(2.2);
-        const lit = flesh.mul(light.moonColour()).mul(saturate(dot(normal, light.uMoonDir)).mul(1.2).add(0.1)).mul(moon)
-            .add(flesh.mul(light.ambient(normal)).mul(1.1))
-            .add(flesh.mul(1.2).mul(glow))
-            .add(foxfire);
-        material.fragmentNode = vec4(light.haze(lit, { world, glow }), 1);
-        const mesh = new THREE.InstancedMesh(geometry, material, caps.length);
-        mesh.name = 'ForestFoxfire';
+        // Every cap's matrix and look, in the order they were laid out (the generator's draws are
+        // spent as they always were), sorted into a draw for each shape.
         const dummy = new THREE.Object3D();
+        const sorted = FOXFIRE_SHAPES.map(() => ({ matrices: [], look: [] }));
         caps.forEach((cap, index) => {
             dummy.position.set(cap.x, cap.y, cap.z);
             dummy.rotation.set((rng() - 0.5) * 0.5, rng() * TAU, (rng() - 0.5) * 0.5);
             dummy.scale.set(cap.size, cap.size * (0.8 + rng() * 0.5), cap.size);
             dummy.updateMatrix();
-            mesh.setMatrixAt(index, dummy.matrix);
-            lookData.set([cap.wakeAt, rng(), rng(), 0], index * 4);
+            const bucket = sorted[foxfireShape(index)];
+            bucket.matrices.push(...dummy.matrix.elements);
+            bucket.look.push(cap.wakeAt, rng(), rng(), 0);
         });
-        mesh.instanceMatrix.needsUpdate = true;
-        mesh.castShadow = false;
-        mesh.frustumCulled = false;
-        mesh.matrixAutoUpdate = false;
-        this.group.add(mesh);
+        sorted.forEach((bucket, shape) => {
+            const count = bucket.look.length / 4;
+            if (!count) return;
+            const mesh = new THREE.InstancedMesh(
+                this.own(createCapGeometry(FOXFIRE_SHAPES[shape])),
+                this.createFoxfireMaterial(new THREE.InstancedBufferAttribute(new Float32Array(bucket.look), 4)),
+                count,
+            );
+            mesh.name = `ForestFoxfire ${FOXFIRE_SHAPES[shape].name}`;
+            mesh.instanceMatrix.array.set(bucket.matrices);
+            mesh.instanceMatrix.needsUpdate = true;
+            mesh.castShadow = false;
+            mesh.frustumCulled = false;
+            mesh.matrixAutoUpdate = false;
+            this.group.add(mesh);
+        });
         this.stats.fungi = caps.length;
-        // The fungi shed their light on the moss: remember where, for the light field's rest state.
+        // The fungi shed their light on the moss, and their spores leave from them: remember where.
         this.caps = caps;
+    }
+
+    /** The foxfire's material for one draw (the instance buffer is baked into the node graph). */
+    createFoxfireMaterial(lookAttribute) {
+        const { light } = this;
+        const look = instancedBufferAttribute(lookAttribute); // wake at, phase, hue, -
+        const material = this.own(new THREE.MeshBasicNodeMaterial({ fog: false }));
+        material.name = 'ForestFoxfire';
+        const world = positionWorld;
+        const normal = normalize(normalWorld);
+        const up = uv().y;
+        const crown = smoothstep(0.35, 0.6, up);
+        const flesh = mix(color(0x4a4a3c), color(0x8a917a), crown);
+        const moon = light.moonlight();
+        const glow = light.glow(world);
+        // A cold light of their own at rest, breathing, and a slow swell of it that wanders through
+        // the wood by itself; on a clouded night they burn (the air's `life`). Lit one by one as
+        // the forest wakes; flaring as a wave passes.
+        const breath = sin(light.uTime.mul(look.y.mul(0.9).add(0.5)).add(look.y.mul(TAU))).mul(0.5).add(0.5);
+        const swell = sin(world.x.mul(0.19).add(world.z.mul(0.15)).sub(light.uTime.mul(0.42))).mul(0.5).add(0.5);
+        const wander = swell.mul(swell).mul(swell);
+        const rest = light.uLife.mul(0.5).add(0.09).mul(breath.mul(0.45).add(0.62))
+            .add(wander.mul(light.uLife.mul(0.3).add(0.05)));
+        const awake = smoothstep(look.x, look.x.add(0.14), light.uWake);
+        const power = rest
+            .add(awake.mul(breath.mul(0.3).add(0.75)))
+            .add(light.stir(world).mul(0.9));
+        // Where a cap glows: most under its skirt, where the gills are; through the thin flesh of
+        // the cap, less at its thick middle; a little down the stem.
+        const gills = smoothstep(0.28, 0.4, up).mul(smoothstep(0.62, 0.5, up));
+        // (The cap's light comes through its flesh: brightest round the thin rim, dim at the thick
+        // crown, and ribbed faintly where the gills lie under it.)
+        const ribs = sin(atan(positionGeometry.z, positionGeometry.x).mul(16)).mul(0.5).add(0.5);
+        const skin = smoothstep(0.52, 0.66, up).mul(smoothstep(1.02, 0.66, up).mul(0.72).add(0.28))
+            .mul(ribs.mul(smoothstep(0.95, 0.6, up)).mul(0.3).add(0.82));
+        const stem = smoothstep(0.34, 0.12, up).mul(0.3);
+        const foxfire = mix(vec3(0.1, 1.0, 0.55), vec3(0.3, 1.0, 0.2), look.z).mul(power)
+            .mul(gills.mul(1.5).add(skin.mul(0.85)).add(stem)).mul(2.4);
+        const lit = flesh.mul(light.moonColour()).mul(saturate(dot(normal, light.uMoonDir)).mul(1.2).add(0.1)).mul(moon)
+            .add(flesh.mul(light.ambient(normal)).mul(1.1))
+            .add(flesh.mul(1.2).mul(glow))
+            .add(foxfire);
+        material.fragmentNode = vec4(light.haze(lit, { world, glow }), 1);
+        return material;
     }
 
     // -- wood stars ---------------------------------------------------------------------
@@ -687,15 +763,19 @@ export class ForestUnderstory {
         const albedo = mix(vec3(0.75, 0.72, 0.4), vec3(0.78, 0.8, 0.84), smoothstep(0.1, 0.45, petal));
         const moon = light.moonlight();
         const glow = light.glow(world);
-        // White petals hold the moonlight, and woken they give a little of it back.
+        // White petals hold the moonlight, and woken they give a little of it back; when two lines
+        // clear, a ring of it runs out over the floor and every flower it crosses flares white.
         const lit = albedo.mul(light.moonColour()).mul(0.5).mul(moon)
             .add(albedo.mul(light.ambient(vec3(0, 1, 0))).mul(1.5))
             .add(albedo.mul(1.1).mul(glow))
-            .add(vec3(0.5, 0.7, 0.9).mul(light.uWake).mul(0.12));
+            .add(vec3(0.5, 0.7, 0.9).mul(light.uWake).mul(0.12))
+            .add(vec3(0.8, 0.92, 1.0).mul(light.flare(world)).mul(3.2));
         material.fragmentNode = vec4(light.haze(lit, { world, glow }), 1);
         const mesh = new THREE.InstancedMesh(geometry, material, count);
         mesh.name = 'ForestWoodStars';
         const dummy = new THREE.Object3D();
+        // Where every flower stands (xyz): the bloom lifts its motes of light off them.
+        this.flowerSpots = new Float32Array(count * 3);
         let made = 0;
         // They grow in drifts.
         while (made < count) {
@@ -712,6 +792,7 @@ export class ForestUnderstory {
                 dummy.scale.setScalar(0.035 + rng() * 0.03);
                 dummy.updateMatrix();
                 mesh.setMatrixAt(made, dummy.matrix);
+                this.flowerSpots.set([x, dummy.position.y, z], made * 3);
                 lookData.set([rng(), 0, 0, 0], made * 4);
                 made += 1;
             }
@@ -722,6 +803,14 @@ export class ForestUnderstory {
         mesh.matrixAutoUpdate = false;
         this.group.add(mesh);
         this.stats.flowers = made;
+    }
+
+    /** Where every foxfire cap stands, as a flat xyz list (the spores leave from them). */
+    capSpots() {
+        const caps = this.caps || [];
+        const spots = new Float32Array(caps.length * 3);
+        caps.forEach((cap, index) => spots.set([cap.x, cap.y + 0.1 * cap.size, cap.z], index * 3));
+        return spots;
     }
 
     /** Places a little above the floor where fireflies like to keep house. */

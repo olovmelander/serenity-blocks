@@ -812,6 +812,40 @@ describe('Forest owl: its mind', () => {
         expect(mind.pose.blink[0]).toBeGreaterThan(0.25);
     });
 
+    it('cocks its head right over at a twist, peers at a long chain and hoots at a back-to-back', () => {
+        // Each from its perch, once it has sat a while: the cue starts the act a moment later, and a
+        // twist's tilt is deeper than any the owl gives by itself (14 to 28 degrees).
+        const twisted = live(6.5, { events: [[6, 'spin']] });
+        expect(twisted.tiltAt.start).toBeGreaterThan(6);
+        expect(Math.abs(twisted.tiltAt.roll)).toBeGreaterThanOrEqual(32);
+        const chained = live(6.5, { events: [[6, 'combo']] });
+        expect(chained.peerAt.start).toBeGreaterThan(6);
+        const answered = live(6.5, { events: [[6, 'b2b']] });
+        expect(answered.hootAt.start).toBeGreaterThan(6);
+        // Its hoot is drawn: the throat swells while it calls.
+        const calling = live(7.6, { events: [[6, 'b2b']] });
+        expect(calling.time).toBeGreaterThan(calling.hootAt.start);
+        expect(calling.time).toBeLessThan(calling.hootAt.start + 2.1);
+    });
+
+    it('keeps to a bigger act when a twist, a chain or a back-to-back comes', () => {
+        // Off its perch, or held still, the small acts of the head wait: nothing cuts into a flight.
+        const flying = live(8, { events: [[1, 'quad'], [5, 'spin'], [5.2, 'b2b'], [5.4, 'combo']] });
+        if (flying.mode !== 'perched') {
+            expect(flying.tiltAt.start).toBeLessThan(5);
+            expect(flying.hootAt.start).toBeLessThan(5);
+        }
+        const held = new ForestOwlMind({ rng: seededRandom(5), groundHeight });
+        held.setSight(gameSight());
+        held.setTrunks(ELDER_TRUNKS);
+        held.setBoard({ x: -0.3, y: 2.3, z: 7 });
+        held.hold(true);
+        const tape = cueTape([[6, 'spin'], [6.2, 'b2b']]);
+        for (let i = 1; i <= Math.round(7 / STEP); i += 1) held.update(STEP, tape.at(i * STEP), { motion: 1 });
+        expect(held.tiltAt.start).toBeLessThan(6);
+        expect(held.hootAt.start).toBeLessThan(6);
+    });
+
     it('lives a night without a jump, a NaN or a dive through the floor or a trunk', () => {
         let last = null;
         const worst = {
