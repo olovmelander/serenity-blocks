@@ -50,6 +50,18 @@ export const CH6_CLOSE_UPS = Object.freeze([
     }),
 ]);
 
+/**
+ * THE EARTH LEFT BEHIND (2026-11-25). The chapter's first three orbs park at one place (they lie
+ * inside the 5->6 seam, where the eye cannot stand), and the first two shared the rail's view as
+ * well: two close-ups, one picture. The second orb looks back down at the Earth it has just left
+ * instead: the limb, with the sunrise drawn along it. A direction in the world (the Earth lies
+ * under the chapter's start): `az` 0 looks north, 90 east; `down` is degrees under the level.
+ * `from`..`to` is the chapter-local t it holds over (the second orb stands at 0.08).
+ */
+export const CH6_EARTH_CLOSE_UP = Object.freeze({
+    from: 0.04, to: 0.12, az: 270, down: 35,
+});
+
 const _subject = new THREE.Vector3();
 const _right = new THREE.Vector3();
 const _view = new THREE.Vector3();
@@ -85,6 +97,12 @@ export function resolveCh6CloseUpKey(t) {
  * @returns {THREE.Vector3 | null}
  */
 export function resolveCh6CloseUp(t, orb, along, up, places, out = new THREE.Vector3()) {
+    const earth = CH6_EARTH_CLOSE_UP;
+    if (Number.isFinite(t) && t >= earth.from && t < earth.to) {
+        const az = THREE.MathUtils.degToRad(earth.az);
+        const pitch = -THREE.MathUtils.degToRad(earth.down);
+        return out.set(Math.sin(az) * Math.cos(pitch), Math.sin(pitch), -Math.cos(az) * Math.cos(pitch));
+    }
     const key = resolveCh6CloseUpKey(t);
     if (!key || !places) return null;
     if (key.hero === 'galaxy') {

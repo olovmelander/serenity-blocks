@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
 import {
-    OCEAN_CLOCK, OCEAN_ZONES, applyOceanClock, createOceanClock, createOceanLook, oceanClockAt, oceanDepthLook,
-    oceanHazeColour,
+    OCEAN_BED_LIGHT, OCEAN_CLOCK, OCEAN_WELL, OCEAN_ZONES, applyOceanClock, createOceanClock, createOceanLook,
+    oceanBedLight, oceanClockAt, oceanDepthLook, oceanHazeColour,
 } from './odyssey-ocean-depth.js';
-import { SNELL_WINDOW, snellWindowPresence, snellWindowRimCos } from './odyssey-ocean-window.js';
+import {
+    OCEAN_SUN_RAYS, SNELL_WINDOW, snellWindowPresence, snellWindowRimCos, sunRaysPresence,
+} from './odyssey-ocean-window.js';
 
 const luma = ([r, g, b]) => (0.2126 * r) + (0.7152 * g) + (0.0722 * b);
 const COLOURS = ['shallow', 'mid', 'deep', 'luminous'];
@@ -110,6 +112,68 @@ describe('the depth arc: four waters, one climb', () => {
         hazes.slice(1).forEach((c, n) => {
             c.forEach((v, i) => expect(Math.abs(v - hazes[n][i]), `haze at ${(n + 1) * 0.5}`).toBeLessThan(0.012));
         });
+    });
+});
+
+describe('the light that reaches the bed (2026-11-25)', () => {
+    it('is whole at the surface, falls all the way down and never to nothing', () => {
+        expect(oceanBedLight(0)).toEqual([1, 1, 1]);
+        expect(oceanBedLight(-20)).toEqual([1, 1, 1]);
+        expect(oceanBedLight(NaN)).toEqual([1, 1, 1]);
+        let prev = [1, 1, 1];
+        for (let d = 5; d <= 220; d += 5) {
+            const now = oceanBedLight(d).slice();
+            for (let c = 0; c < 3; c += 1) {
+                expect(now[c], `at ${d}`).toBeLessThan(prev[c]);
+                expect(now[c]).toBeGreaterThan(OCEAN_BED_LIGHT.floor);
+            }
+            // Red goes first.
+            expect(now[0]).toBeLessThan(now[1]);
+            expect(now[1]).toBeLessThan(now[2]);
+            prev = now;
+        }
+        // The plain under the column keeps about half of what the shelf has: deep, not black.
+        expect(oceanBedLight(190)[1]).toBeLessThan(oceanBedLight(20)[1] * 0.68);
+        expect(oceanBedLight(190)[1]).toBeGreaterThan(0.4);
+    });
+
+    it('shapes the well as a core with a wider halo, and deepens it on the way down', () => {
+        expect(OCEAN_WELL.core).toBeGreaterThan(0);
+        expect(OCEAN_WELL.halo).toBeGreaterThan(0);
+        expect(oceanDepthLook(180).well).toBeGreaterThan(oceanDepthLook(115).well);
+        expect(oceanDepthLook(115).well).toBeGreaterThan(oceanDepthLook(58).well);
+        expect(oceanDepthLook(4).well).toBe(0);
+    });
+});
+
+describe("the sun's light in the water near the surface (2026-11-25)", () => {
+    it('is whole in the top of the column and gone in the deep, without a step', () => {
+        expect(sunRaysPresence(0)).toBe(1);
+        expect(sunRaysPresence(OCEAN_SUN_RAYS.depth[0])).toBe(1);
+        expect(sunRaysPresence(OCEAN_SUN_RAYS.depth[1])).toBe(0);
+        expect(sunRaysPresence(200)).toBe(0);
+        expect(sunRaysPresence(NaN)).toBe(0);
+        let prev = 1;
+        for (let d = 0; d <= 140; d += 0.5) {
+            const now = sunRaysPresence(d);
+            expect(now).toBeLessThanOrEqual(prev + 1e-12);
+            expect(prev - now, `at ${d}`).toBeLessThan(0.02);
+            prev = now;
+        }
+        // Orb 9's and orb 10's water has it; the deep orbs' close-ups do not run it at all.
+        expect(sunRaysPresence(6)).toBe(1);
+        expect(sunRaysPresence(60)).toBeGreaterThan(0.1);
+        expect(sunRaysPresence(96)).toBe(0);
+    });
+
+    it('keeps the streaks soft and slow', () => {
+        // A cell of the tile takes over ten seconds to drift by; the streaks only where the view
+        // turns toward the sun.
+        expect(OCEAN_SUN_RAYS.drift).toBeLessThan(0.008);
+        expect(OCEAN_SUN_RAYS.from[0]).toBeGreaterThan(0.1);
+        expect(OCEAN_SUN_RAYS.from[1]).toBeGreaterThan(OCEAN_SUN_RAYS.from[0]);
+        expect(OCEAN_SUN_RAYS.counts.every((n) => Number.isInteger(n))).toBe(true);
+        expect(OCEAN_SUN_RAYS.counts[0]).not.toBe(OCEAN_SUN_RAYS.counts[1]);
     });
 });
 

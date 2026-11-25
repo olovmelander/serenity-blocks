@@ -43,7 +43,7 @@ import {
     vec3,
     vec4,
 } from 'three/tsl';
-import { NEON_GLOW, STREET_Y } from './odyssey-neon-city-plan.js';
+import { NEON_GLOW, NEON_WALL_GLOW, STREET_Y } from './odyssey-neon-city-plan.js';
 import { createNeonSkyUniforms } from './odyssey-neon-sky.tsl.js';
 
 /** Where the spire stands (corridor x, z) — the centre of the ignition ring. */
@@ -56,6 +56,10 @@ export const NEON_AIR = Object.freeze({
     // dark smog, so the air can be thicker and read as depth.
     hazeDistance: 700,
     hazeThinHigh: 0.32,
+    // ...and a thin veil that grows with the distance itself (2026-11-25): the squared term alone
+    // left the first 200 u, where the rows of towers stand, in clear air (4 % at 150 u), so one
+    // row never parted from the next. 1 - exp(-d / hazeReach): 16 % at 100 u, 41 % at 300 u.
+    hazeReach: 560,
     // Street mist: density mistDensity at the street, falling by e every mistHeight up.
     mistDensity: 0.0085,
     mistHeight: 17,
@@ -81,14 +85,33 @@ export function createNeonGlowTexture(data) {
     return tex;
 }
 
+/** The wall glow map as a texture: NEON_WALL_GLOW.texels x (2 * rows) half floats. */
+export function createNeonWallGlowTexture(data) {
+    const half = new Uint16Array(data.length);
+    for (let i = 0; i < data.length; i += 1) half[i] = THREE.DataUtils.toHalfFloat(Math.min(data[i], 60000));
+    const tex = new THREE.DataTexture(half, NEON_WALL_GLOW.texels, NEON_WALL_GLOW.rows * 2, THREE.RGBAFormat, THREE.HalfFloatType);
+    tex.wrapS = THREE.ClampToEdgeWrapping;
+    tex.wrapT = THREE.ClampToEdgeWrapping;
+    tex.magFilter = THREE.LinearFilter;
+    tex.minFilter = THREE.LinearFilter;
+    tex.generateMipmaps = false;
+    tex.colorSpace = THREE.NoColorSpace;
+    tex.name = 'odyssey-neon-wall-glow';
+    tex.needsUpdate = true;
+    return tex;
+}
+
 /**
  * The uniforms the neon city's materials share (the chapter owns the values, materials read).
  * Pass the chapter's existing clock/ignition uniforms in so nothing ticks twice.
  * @param {object} base { uTime, uEnergy, uIgniteRadius, uCityLight, uDim, uRainDensity }
  * @param {THREE.Texture} glowTex
  */
-export function createNeonCityUniforms(base, glowTex) {
+export function createNeonCityUniforms(base, glowTex, wallGlowTex = null) {
     return {
+        /** The signs' spill on the boulevard's walls (bakeNeonWallGlow), and its gain. */
+        wallGlowTex: wallGlowTex ?? createNeonWallGlowTexture(new Float32Array(NEON_WALL_GLOW.texels * NEON_WALL_GLOW.rows * 2 * 4)),
+        wallGlowGain: uniform(1),
         ...base,
         /** World -> corridor (the stage frame); set by the chapter once its transform is known. */
         cityFromWorld: uniform(new THREE.Matrix4()),
@@ -109,6 +132,7 @@ export function createNeonCityUniforms(base, glowTex) {
         smogHigh: uniform(new THREE.Vector3(0.018, 0.012, 0.038)),
         /** The air's tunables (NEON_AIR), as uniforms so a bench can A/B them without a rebuild. */
         hazeDistance: uniform(NEON_AIR.hazeDistance),
+        hazeReach: uniform(NEON_AIR.hazeReach),
         mistDensity: uniform(NEON_AIR.mistDensity),
         mistGlow: uniform(NEON_AIR.mistGlow),
         glowGain: uniform(1),
@@ -160,6 +184,20 @@ export function neonGlow(N, pc, layer = 0) {
 }
 
 /**
+ * What the signs of the boulevard throw on the wall at corridor point `pc` (scene-linear): a pool of
+ * each sign's colour round it. Read on the boulevard's own walls; it dies away behind them.
+ */
+export function neonWallGlow(N, pc) {
+    const W = NEON_WALL_GLOW;
+    const s = pc.z.sub(W.z0).div(W.z1 - W.z0);
+    const row = clamp(pc.y.sub(STREET_Y).div(W.height), 0.0, 1.0).mul(W.rows - 1).add(0.5);
+    // Two halves, one a wall: never filtered across the seam between them.
+    const v = row.add(smoothstep(-1.0, 1.0, pc.x).mul(W.rows)).div(W.rows * 2);
+    const lateral = exp(max(pc.x.abs().sub(27.0), 0.0).mul(-1 / 11));
+    return texture(N.wallGlowTex, vec2(s, v)).level(0).rgb.mul(lateral).mul(N.wallGlowGain);
+}
+
+/**
  * The air between the eye and corridor point `pc`: returns { amount, colour } with amount the
  * fraction of the surface's light lost and colour the light the air adds in its place.
  * @param {object} N neon uniforms
@@ -172,7 +210,7 @@ export function neonAir(N, pc, glowLow = null) {
     // Haze: exp2 in distance, thinner high above the street.
     const thin = mix(float(1.0), float(NEON_AIR.hazeThinHigh), smoothstep(-30.0, 140.0, pc.y));
     const k = dist.div(N.hazeDistance);
-    const hazeTau = k.mul(k).mul(thin);
+    const hazeTau = k.mul(k).add(dist.div(N.hazeReach)).mul(thin);
     // Street mist: density rho0 * exp(-(y - street) / H), integrated along the ray.
     const H = NEON_AIR.mistHeight;
     const a = max(N.camCity.y.sub(STREET_Y), 0.0).div(H);
@@ -197,7 +235,11 @@ export function neonAir(N, pc, glowLow = null) {
     // the ranks of towers down the boulevard fade into light, layer behind layer.
     const cs = clamp(dot(rel.div(dist.max(1e-3)), N.sky.sunDir), 0.0, 1.0);
     const cs2 = cs.mul(cs);
+    // ...and low over the roofs it holds the city's own glow (2026-11-25), so a far row of towers
+    // stands in light and the row in front of it is a darker shape against it.
+    const lowAir = exp(max(pc.y.sub(STREET_Y), 0.0).mul(-1 / 110));
     const farAir = N.sky.haze.add(N.sky.hazeSun.mul(cs2.mul(cs2).mul(0.8).add(cs2.mul(0.2))))
+        .add(N.sky.cityGlow.mul(lowAir).mul(0.34))
         .add(N.sky.burst.mul(0.07));
     const colour = mix(farAir, mistCol, share);
     return { amount, colour, dist };

@@ -54,14 +54,45 @@
 export const OCEAN_EXTINCTION = Object.freeze([0.0160, 0.0082, 0.0046]);
 export const OCEAN_SHAFT_EXTINCTION = 0.6;
 
+/**
+ * THE LIGHT FALLS OFF WITH DEPTH (2026-11-25). The haze above is the water between the eye and a
+ * thing; this is the water OVER the thing. The bed was lit as the beach is all the way down to
+ * the plain 190 u under the surface, so an orb in the abyss looked at a bright teal floor and the
+ * deep never read as deep. The bed (and the reef's rock, by the same law: OCEAN_SCENERY_LOOK
+ * `lightDepth`) now keeps exp(-depth / `depth`) of the surface's light, per channel (red first),
+ * over a `floor` of what the water itself scatters down there. Only for an eye under the water:
+ * the sea seen from above is unchanged.
+ */
+export const OCEAN_BED_LIGHT = Object.freeze({ depth: Object.freeze([80, 105, 120]), floor: 0.46 });
+
+/**
+ * The share of the surface's light the bed keeps `depthU` under it (the CPU twin of the ground's
+ * term): rgb, 1 at the surface.
+ * @param {number} depthU
+ * @param {number[]} [out]
+ * @returns {number[]}
+ */
+export function oceanBedLight(depthU, out = [1, 1, 1], spec = OCEAN_BED_LIGHT) {
+    const d = Number.isFinite(depthU) ? Math.max(0, depthU) : 0;
+    for (let c = 0; c < 3; c += 1) out[c] = spec.floor + ((1 - spec.floor) * Math.exp(-d / spec.depth[c]));
+    return out;
+}
+
+/**
+ * THE WELL OF LIGHT's shape (the look straight up from the deep, scaled by each zone's `well`):
+ * a tight `core` at the zenith (the eighth power of the ray's rise) and a wider `halo` round it
+ * (the fourth), so the frame runs from a lit middle to dark edges instead of one even blue.
+ */
+export const OCEAN_WELL = Object.freeze({ core: 0.70, halo: 0.50 });
+
 /** @type {readonly OceanZone[]} shallowest first */
 export const OCEAN_ZONES = Object.freeze([
     Object.freeze({
         name: 'shallows',
         depth: 8,
         shallow: Object.freeze([0.16, 0.66, 0.66]),
-        mid: Object.freeze([0.045, 0.40, 0.52]),
-        deep: Object.freeze([0.012, 0.15, 0.32]),
+        mid: Object.freeze([0.030, 0.37, 0.50]),
+        deep: Object.freeze([0.008, 0.11, 0.30]),
         luminous: Object.freeze([0.07, 0.52, 0.54]),
         dim: 1,
         well: 0,
@@ -74,17 +105,17 @@ export const OCEAN_ZONES = Object.freeze([
     Object.freeze({
         name: 'sunlit',
         depth: 58,
-        shallow: Object.freeze([0.10, 0.50, 0.56]),
-        mid: Object.freeze([0.022, 0.22, 0.38]),
+        shallow: Object.freeze([0.10, 0.52, 0.55]),
+        mid: Object.freeze([0.020, 0.245, 0.375]),
         deep: Object.freeze([0.008, 0.07, 0.20]),
         luminous: Object.freeze([0.05, 0.42, 0.48]),
         dim: 0.86,
-        well: 0.30,
+        well: 0.60,
         shafts: 1.0,
         glow: 0.12,
         caustics: 0.45,
         beams: 1,
-        overhead: 0.0012,
+        overhead: 0.0030,
     }),
     Object.freeze({
         name: 'twilight',
@@ -94,12 +125,12 @@ export const OCEAN_ZONES = Object.freeze([
         deep: Object.freeze([0.003, 0.016, 0.085]),
         luminous: Object.freeze([0.025, 0.20, 0.44]),
         dim: 0.50,
-        well: 0.55,
-        shafts: 0.42,
+        well: 1.1,
+        shafts: 0.60,
         glow: 0.6,
         caustics: 0,
         beams: 0.3,
-        overhead: 0.0042,
+        overhead: 0.0090,
     }),
     Object.freeze({
         name: 'abyss',
@@ -109,12 +140,12 @@ export const OCEAN_ZONES = Object.freeze([
         deep: Object.freeze([0.001, 0.0035, 0.024]),
         luminous: Object.freeze([0.012, 0.09, 0.30]),
         dim: 0.24,
-        well: 0.80,
+        well: 1.3,
         shafts: 0.14,
         glow: 1,
         caustics: 0,
         beams: 0,
-        overhead: 0.0085,
+        overhead: 0.0120,
     }),
 ]);
 

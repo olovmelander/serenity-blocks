@@ -58,6 +58,18 @@ Now:
 
 ![The view with the cursor left, in the middle, right and top right: in the ocean (top) and at orb 15 (bottom)](images/odyssey-look-around-2026-11-01/look-turn-left-middle-right-upright.jpg)
 
+## Measured from the free frame, and at rest over the panels (2026-11-25)
+
+The picture's centre is now the middle of the part of the screen the UI leaves open
+(`FRAME_SHIFT`, see `ODYSSEY_VISUAL_ROUND_2026-11.md`), and the look is measured from there, as far
+to either side: the full turn at the screen's left edge and at the orb card's edge. With the card
+over the right of the screen the cursor used to reach all of the look to the left and 40 % of it to
+the right.
+
+Over the map's panels the view no longer stays where it was: it comes back to rest, as it does when
+the cursor leaves the window. The card's edge is a full turn now, and the view would otherwise sit
+turned off the orb for as long as the cursor was on the card.
+
 ## Tests
 
 `tests/unit/odyssey-look-around.test.js` covers:

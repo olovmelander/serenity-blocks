@@ -66,6 +66,7 @@ import { TRANSITION_LAYERS } from '../../rendering/transitions/transition-layer-
 import { OdysseyHUD } from '../../ui/odyssey/OdysseyHUD.js';
 import { csIcon } from '../../ui/components/cosmic-icons.js';
 import { renderOdysseyLevelPanel, resetOdysseyPanelPlay } from '../../ui/odyssey/odyssey-level-panel.js';
+import { measureOdysseyFreeFrame } from '../../ui/odyssey/odyssey-free-frame.js';
 import {
     clearOdysseyThemePrefetch, prefetchOdysseyLevelThemes, warmOdysseyHoveredLevelTheme,
 } from '../../ui/odyssey/odyssey-theme-prefetch.js';
@@ -3053,6 +3054,7 @@ export class OdysseyMode extends BaseGameMode {
             isMusicContextActive: () => this._odysseyAudioActive && this.isActive
                 && this.isInBoardView && this.boardController === controller,
             getReducedMotion: () => this.deps.settingsManager?.get?.()?.reducedMotion === true,
+            getFrameFree: () => measureOdysseyFreeFrame(),
             // Cold-start: eagerly load only the reveal chapter and its neighbours; the rest load
             // in the background.
             startupChapters: this._computeEagerStartupChapters(revealLevelId),

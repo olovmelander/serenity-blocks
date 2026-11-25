@@ -9,12 +9,14 @@ import * as THREE from 'three/webgpu';
 import { getOdysseyPathPointAt } from '../../src/rendering/odyssey/path-utils.js';
 import { ODYSSEY_SEA_LEVEL, odysseyWorldHeight } from '../../src/rendering/odyssey/world/odyssey-world-height.js';
 import {
-    OCEAN_REEF, REEF_KELP, buildReefKelpGeometry, buildReefRockGeometry, kelpAxisAt, planOceanReef, reefKeepOut,
-    towerRadiusAt,
+    OCEAN_REEF, REEF_KELP, REEF_POOLS, buildReefKelpGeometry, buildReefPoolGeometry, buildReefRockGeometry, kelpAxisAt,
+    planOceanReef, reefKeepOut, stackCrownAt, towerRadiusAt,
 } from '../../src/rendering/odyssey/world/odyssey-ocean-reef.js';
 import { OCEAN_ROAM, roamAt, roamLane } from '../../src/rendering/odyssey/composition/odyssey-ocean-roam.js';
 import { WHALE_PASS_PAIR } from '../../src/rendering/odyssey/composition/odyssey-whale-pass.js';
-import { OCEAN_SHAFTS, oceanShaftDirection } from '../../src/rendering/odyssey/world/odyssey-ocean-scenery.js';
+import {
+    OCEAN_SHAFTS, oceanShaftDirection, sunUnderWater,
+} from '../../src/rendering/odyssey/world/odyssey-ocean-scenery.js';
 import { ODYSSEY_WORLD_SUN } from '../../src/rendering/odyssey/chapter-environments/shared/chapter-profile.js';
 import { createOdysseyCameraRig } from './helpers/odyssey-camera-rig.js';
 
@@ -32,6 +34,8 @@ const plan = planOceanReef({ heightAt: odysseyWorldHeight, rail, seaLevel: SEA }
  * open at each orb: position, forward, up; a 58 degree lens at 16:10).
  */
 const CLOSE_UPS = {
+    // (orb 6: measured 2026-11-25, when the arch was placed for it)
+    6: { pos: [-2.84, 129.98, 18.27], fwd: [-0.05, -0.23, -0.97], up: [-0.44, 0.88, -0.19] },
     7: { pos: [-3.11, 161.99, 19.36], fwd: [0.01, -0.19, -0.98], up: [-0.44, 0.88, -0.18] },
     8: { pos: [-2.96, 195.47, 19.84], fwd: [0, -0.21, -0.98], up: [-0.44, 0.88, -0.19] },
     9: { pos: [-3.23, 227.61, 20.54], fwd: [0, -0.19, -0.98], up: [-0.44, 0.88, -0.17] },
@@ -208,7 +212,8 @@ describe("the island's underwater flank", () => {
         const finite = (attr) => Array.from(attr.array).every(Number.isFinite);
         expect(rock.attributes.position.count % 3).toBe(0);
         expect(rock.attributes.position.count / 3).toBeGreaterThan(20000);
-        expect(rock.attributes.position.count / 3).toBeLessThan(70000);
+        // (70k -> 80k, 2026-11-25: the needle, the arch and the two gardens on them, +12k.)
+        expect(rock.attributes.position.count / 3).toBeLessThan(80000);
         expect(rock.attributes.color.count).toBe(rock.attributes.position.count);
         expect(rock.attributes.normal.count).toBe(rock.attributes.position.count);
         expect(finite(rock.attributes.position) && finite(rock.attributes.normal)).toBe(true);
@@ -254,7 +259,164 @@ describe("the island's underwater flank", () => {
     });
 });
 
+describe('the needle and the arch: the places beside the first close-ups (2026-11-25)', () => {
+    const N = plan.needle;
+    const A = plan.arch;
+    const inFrame = (n) => n.ahead && Math.abs(n.x) < 1 && Math.abs(n.y) < 1;
+    const railGap = (x, y, z) => Math.min(...rail.map((p) => Math.hypot(p.x - x, p.y - y, p.z - z)));
+
+    it('stands the needle on the bed, its crown and its garden under the cruising school', () => {
+        expect(N).toBeTruthy();
+        // Sunk past its downhill side: the bed under its whole foot is over its base.
+        for (let k = 0; k < 8; k += 1) {
+            const a = (k / 8) * Math.PI * 2;
+            const bed = odysseyWorldHeight(N.x + (Math.cos(a) * N.baseR), N.z + (Math.sin(a) * N.baseR));
+            expect(N.baseY).toBeLessThan(bed);
+        }
+        expect(SEA - N.topY).toBeCloseTo(OCEAN_REEF.needle.topDepth, 6);
+        expect(N.topY - N.baseY).toBeGreaterThan(45);
+        // In space it is in nothing's way: the rail, the roaming animals, the fish rings. With what
+        // grows on its crown (up to ~6 u) it still stops under the school that cruises that water.
+        const keep = reefKeepOut({ rail, seaLevel: SEA });
+        expect(keep.blockedBy(N.x, N.z, N.baseR, SEA - N.topY - 6, N.topY + 6)).toBeNull();
+        // ...and a stack as tall as the tower would not be let stand there (the school's ring).
+        expect(keep.blockedBy(N.x, N.z, N.topR, 60, SEA - 60)).toBe('fish');
+        let near = Infinity;
+        for (let y = N.baseY; y <= N.topY + 6; y += 2) near = Math.min(near, railGap(N.x, y, N.z));
+        expect(near - N.baseR).toBeGreaterThan(OCEAN_REEF.corridor);
+        // No close-up's lens looks through it at its orb.
+        Object.values(CLOSE_UPS).forEach((c) => {
+            expect(Math.hypot(N.x - c.pos[0], N.z - c.pos[2]) - N.baseR).toBeGreaterThan(18);
+        });
+    });
+
+    it('keeps the arch low on the bed at the slope\'s foot, clear of the rail in space', () => {
+        expect(A).toBeTruthy();
+        [A.a, A.b].forEach((foot) => {
+            expect(foot.y, 'a foot sunk in the bed').toBeLessThan(odysseyWorldHeight(foot.x, foot.z));
+            expect(odysseyWorldHeight(foot.x, foot.z) - foot.y).toBeLessThan(8);
+        });
+        const top = Math.max(A.a.y, A.b.y) + A.rise;
+        expect(SEA - top, 'in the deep').toBeGreaterThan(130);
+        for (let k = 0; k <= 10; k += 1) {
+            const u = k / 10;
+            const x = A.a.x + ((A.b.x - A.a.x) * u);
+            const z = A.a.z + ((A.b.z - A.a.z) * u);
+            expect(railGap(x, top, z) - (A.thick * 3)).toBeGreaterThan(OCEAN_REEF.corridor);
+        }
+        // No close-up's lens is near it (in space: orb 10's stands 160 u over it).
+        Object.values(CLOSE_UPS).forEach((c) => {
+            [A.a, A.b].forEach((foot) => {
+                const gap = Math.hypot(foot.x - c.pos[0], top - c.pos[1], foot.z - c.pos[2]);
+                expect(gap).toBeGreaterThan(18 + (A.thick * 3));
+            });
+        });
+    });
+
+    it('puts them on the free side of each frame: beside the orb, away from its card', () => {
+        // Orb 6 sees the arch whole (both feet and its crown), left of the orb.
+        const top = Math.max(A.a.y, A.b.y) + A.rise;
+        const arch6 = [
+            ndcOf(closeUp(6), A.a.x, A.a.y + 3, A.a.z), ndcOf(closeUp(6), A.b.x, A.b.y + 3, A.b.z),
+            ndcOf(closeUp(6), (A.a.x + A.b.x) / 2, top, (A.a.z + A.b.z) / 2),
+        ];
+        arch6.forEach((n) => {
+            expect(inFrame(n)).toBe(true);
+            expect(n.x).toBeLessThan(0);
+        });
+        // Orb 7 sees the needle's wall, orb 8 its crown, orb 9 looks down on the crown: all left
+        // of the orb, and none nearer the frame's edge than a tenth of it.
+        const crown = stackCrownAt(N, 0, 0);
+        const wall7 = ndcOf(closeUp(7), N.x, N.baseY + ((N.topY - N.baseY) * 0.45), N.z);
+        const crown8 = ndcOf(closeUp(8), crown.x, crown.y, crown.z);
+        const crown9 = ndcOf(closeUp(9), crown.x, crown.y, crown.z);
+        [wall7, crown8, crown9].forEach((n) => {
+            expect(inFrame(n)).toBe(true);
+            expect(n.x).toBeLessThan(-0.05);
+            expect(n.x).toBeGreaterThan(-0.9);
+        });
+        // Near enough for its colour: within 85 u of each of those eyes (the tower stands 90-120).
+        [7, 8, 9].forEach((id) => {
+            const c = CLOSE_UPS[id];
+            const range = Math.hypot(crown.x - c.pos[0], crown.y - c.pos[1], crown.z - c.pos[2]);
+            expect(range, `orb ${id}`).toBeLessThan(86);
+        });
+    });
+
+    it('grows a garden on each, with warm lights among the cold', () => {
+        const nearNeedle = plan.corals
+            .filter((c) => Math.hypot(c.x - N.x, c.z - N.z) < N.baseR + 2 && c.y > N.baseY + 10);
+        expect(nearNeedle.length).toBeGreaterThanOrEqual(10);
+        const midX = (A.a.x + A.b.x) / 2;
+        const midZ = (A.a.z + A.b.z) / 2;
+        const underArch = plan.corals.filter((c) => Math.hypot(c.x - midX, c.z - midZ) < 12);
+        expect(underArch.length).toBeGreaterThanOrEqual(6);
+        const warm = (c) => c.colour[0] > c.colour[2] * 1.5;
+        expect(nearNeedle.some(warm) && nearNeedle.some((c) => !warm(c))).toBe(true);
+        expect(underArch.some(warm) && underArch.some((c) => !warm(c))).toBe(true);
+        // Nothing of either garden in the rail's corridor (in space), or over the surface's light.
+        [...nearNeedle, ...underArch].forEach((c) => {
+            expect(railGap(c.x, c.y + c.size, c.z), c.kind).toBeGreaterThan(OCEAN_REEF.corridor - 1);
+            expect(c.deep).toBe(true);
+        });
+        // The low tier keeps both places, with less growth.
+        const low = planOceanReef({
+            heightAt: odysseyWorldHeight, rail, seaLevel: SEA, quality: 'low',
+        });
+        expect(low.needle).toEqual(N);
+        expect(low.arch).toEqual(A);
+    });
+
+    it('lights the rock and the sand round the gardens of the deep', () => {
+        expect(plan.lights.length).toBeGreaterThanOrEqual(5);
+        plan.lights.forEach((L) => {
+            expect(SEA - L.y, 'a light of the deep').toBeGreaterThan(90);
+            expect(L.r).toBeGreaterThan(8);
+            expect(L.colour.every((v) => Number.isFinite(v) && v >= 0)).toBe(true);
+        });
+        // Baked into the reef's mesh: a share of its vertices take some of it, most take none.
+        const rock = buildReefRockGeometry(plan);
+        const light = rock.attributes.aLight;
+        expect(light.count).toBe(rock.attributes.position.count);
+        expect(light.itemSize).toBe(4);
+        expect(light.normalized).toBe(true);
+        let lit = 0;
+        for (let i = 0; i < light.count; i += 1) if (light.getX(i) + light.getY(i) + light.getZ(i) > 0.05) lit += 1;
+        expect(lit).toBeGreaterThan(3000);
+        expect(lit).toBeLessThan(light.count * 0.5);
+        rock.dispose();
+        // The pools: one disc per garden on the bed, every vertex seated on it.
+        const pools = buildReefPoolGeometry(plan, odysseyWorldHeight);
+        const count = plan.lights.filter((L) => L.pool).length;
+        expect(count).toBeGreaterThanOrEqual(4);
+        const pos = pools.attributes.position;
+        expect(pos.count).toBe(count * (1 + (REEF_POOLS.rings * REEF_POOLS.spokes)));
+        for (let i = 0; i < pos.count; i += 1) {
+            expect(pos.getY(i) - odysseyWorldHeight(pos.getX(i), pos.getZ(i))).toBeCloseTo(REEF_POOLS.lift, 4);
+            const rim = pools.attributes.aPool.getX(i);
+            expect(rim >= 0 && rim <= 1).toBe(true);
+        }
+        expect(pools.index.count % 3).toBe(0);
+        pools.dispose();
+        // With no lights there is nothing to draw.
+        const none = buildReefPoolGeometry({ lights: [] }, odysseyWorldHeight);
+        expect(none.attributes.position.count).toBe(0);
+        none.dispose();
+    });
+});
+
 describe('the sun\'s shafts in the upper water sweep on the clock', () => {
+    it('lets the sun in at Snell\'s angle: nearer the vertical, on the bearing it stands', () => {
+        const sun = ODYSSEY_WORLD_SUN;
+        const under = sunUnderWater(sun);
+        expect(Math.hypot(...under)).toBeCloseTo(1, 6);
+        expect(under[1]).toBeGreaterThan(sun[1]);
+        expect(Math.atan2(under[2], under[0])).toBeCloseTo(Math.atan2(sun[2], sun[0]), 6);
+        // Never flatter than the critical angle, however low the sun.
+        expect(Math.hypot(under[0], under[2])).toBeLessThanOrEqual((1 / 1.333) + 1e-9);
+        expect(sunUnderWater([0, 1, 0])).toEqual([0, 1, 0]);
+    });
+
     it('lean away from the sun, downward, and never stand still', () => {
         const sun = ODYSSEY_WORLD_SUN;
         const d0 = oceanShaftDirection(sun, 0).slice();

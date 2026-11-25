@@ -23,15 +23,44 @@ import {
 } from 'three/tsl';
 import { hash21 } from '../chapter-environments/shared/odyssey-tsl-noise.js';
 import {
-    OCEAN_REEF, buildReefKelpGeometry, buildReefRockGeometry, planOceanReef,
+    OCEAN_REEF, buildReefKelpGeometry, buildReefPoolGeometry, buildReefRockGeometry, planOceanReef,
 } from './odyssey-ocean-reef.js';
 import { OCEAN_EXTINCTION, OCEAN_SHAFT_EXTINCTION } from './odyssey-ocean-depth.js';
 
 export const OCEAN_SCENERY_LOOK = Object.freeze({
-    /** The lamp: how dark a downward face is against an upward one, and how the deep dims both. */
-    under: 0.30,
-    over: 1.10,
-    deepDim: 0.55,
+    /**
+     * THE LIGHT COMES DOWN, AND FROM ONE SIDE (2026-11-25). The reef was lit by height alone (an
+     * upward face 1.1, a downward one 0.3, the deep dimming both by half): every stack the same
+     * grey on every side, at the water's own value, so a frame of them was dim and had no subject.
+     * Now two lights, both falling off with the depth of the rock itself (`lightDepth`, the same
+     * law the bed takes: OCEAN_BED_LIGHT):
+     *   key   the sun, refracted (it stands ~46 degrees off the vertical under water): faces
+     *         turned to it are lit (turquoise in the deep, warm white under the surface), faces
+     *         turned away fall to the fill. One side of every stack, the same side: form.
+     *   fill  the sea's own blue from above (`over`) and almost nothing from below (`under`).
+     * `fillFloor` is what is left of the fill in the abyss, so a form is never a black hole.
+     */
+    under: 0.20,
+    over: 0.72,
+    fillColour: Object.freeze([0.56, 0.78, 1.0]),
+    fillFloor: 0.24,
+    keyGain: 2.7,
+    keyWrap: 0.36,
+    keyDeep: Object.freeze([0.50, 0.98, 0.94]),
+    keyShallow: Object.freeze([1.0, 0.95, 0.80]),
+    lightDepth: 100,
+    /**
+     * In the dark a living thing is read by its own light (its tips, rims and ridges), not by the
+     * surface's: its body takes this share of the fill and the key there. At full share a brain
+     * coral's dome in the deep garden was a lump of bright blue clay on a dark bed.
+     */
+    deepBody: 0.42,
+    /** What a shaft that finds a place lays on it (aLight.w): the light's colour and its strength. */
+    spotColour: Object.freeze([0.62, 1.0, 0.92]),
+    spotGain: 1.9,
+    /** The gardens' baked light on what stands round them (aLight), and on the sand (the pools). */
+    gardenLight: 0.8,
+    poolGain: 0.16,
     /** The crust on upward rock in the light (linear). */
     coralline: Object.freeze([0.46, 0.20, 0.36]),
     algae: Object.freeze([0.14, 0.34, 0.15]),
@@ -48,6 +77,8 @@ export const OCEAN_SCENERY_LOOK = Object.freeze({
     /** ...and the rock's own outline in the dark: a cold light along its edges turned from the eye. */
     rockRim: Object.freeze([0.05, 0.20, 0.26]),
     spotFar: Object.freeze([150, 240]),
+    spotNear: Object.freeze([55, 125]),
+    spotNearKeep: 0.22,
     glowA: Object.freeze([0.10, 0.95, 0.85]),
     glowB: Object.freeze([0.46, 0.30, 1.0]),
     glowGain: 1.5,
@@ -89,6 +120,9 @@ export const OCEAN_SHAFTS = Object.freeze({
     gain: 0.48,
 });
 
+/** The shafts that find a place (`plan.spots`, odyssey-ocean-reef.js): their strength. */
+export const OCEAN_HERO_SHAFT = Object.freeze({ gain: 0.46 });
+
 /**
  * The direction the shafts run (down, away from the sun) at time `t`: the CPU twin of the vertex
  * stage, for tests. Unit vector.
@@ -101,6 +135,22 @@ export function oceanShaftDirection(sun, t, spec = OCEAN_SHAFTS, out = [0, 0, 0]
     out[0] = Math.cos(az) * Math.sin(lean);
     out[1] = -Math.cos(lean);
     out[2] = Math.sin(az) * Math.sin(lean);
+    return out;
+}
+
+/**
+ * The direction to the sun as the water lets it in: its horizontal part shortened by Snell's law
+ * (n = 1.333), so a sun on the horizon still stands ~49 degrees off the vertical under water.
+ * @param {number[]} sun the world's sun direction (toward the sun, unit)
+ * @returns {number[]} unit vector, toward the light
+ */
+export function sunUnderWater(sun, out = [0, 1, 0]) {
+    const flat = Math.hypot(sun[0], sun[2]);
+    if (!(flat > 1e-6)) { out[0] = 0; out[1] = 1; out[2] = 0; return out; }
+    const sinW = Math.min(flat, 1) / 1.333;
+    out[0] = (sun[0] / flat) * sinW;
+    out[1] = Math.sqrt(1 - (sinW * sinW));
+    out[2] = (sun[2] / flat) * sinW;
     return out;
 }
 
@@ -129,10 +179,14 @@ export function createOdysseyOceanScenery({
     });
     const L = OCEAN_SCENERY_LOOK;
     const lowTier = quality === 'low';
+    const sunUnder = sunUnderWater(sun);
     const group = new THREE.Group();
     group.name = 'odyssey-ocean-scenery';
     const uCaustics = uniform(0);
     const uGlow = uniform(0);
+    // The found places' shafts: the depth arc's `shafts` (the great rays' strength at the eye).
+    const uSpot = uniform(0);
+    const shaftUp = oceanShaftDirection(sun, 0).map((v) => -v);
 
     const wp = positionWorld;
     const depthU = float(seaLevel).sub(wp.y);
@@ -168,11 +222,28 @@ export function createOdysseyOceanScenery({
         const crustAmt = smoothstep(float(0.36), float(0.66), grain.b).mul(up).mul(sunny).mul(isRock)
             .mul(L.crust);
         const crustCol = mix(vec3(...L.coralline), vec3(...L.algae), smoothstep(float(0.42), float(0.60), grain.a));
-        const albedo = mix(base, crustCol, crustAmt).mul(grain.b.mul(0.36).add(0.82));
-        const lamp = mix(float(L.under), float(L.over), up.pow(1.3))
-            .mul(float(1).sub(clamp(depthU.div(200), 0, 1).mul(L.deepDim)));
+        // (+ a broad mottle, 2026-11-25: with one fine grain a wall 70 u off was one flat tone.)
+        const mottle = texture(noiseTex, vec2(wp.x.add(wp.y.mul(0.53)), wp.z.sub(wp.y.mul(0.31))).mul(0.0113)).b;
+        const albedo = mix(base, crustCol, crustAmt).mul(grain.b.mul(0.36).add(0.82))
+            .mul(mix(float(1), mottle.mul(0.9).add(0.52), isRock));
+        // The surface's light left at this rock's own depth, the fill from above and the key from the
+        // refracted sun (see OCEAN_SCENERY_LOOK).
+        const lightLeft = exp(max(depthU, float(0)).div(-L.lightDepth)).toVar();
+        const fill = vec3(...L.fillColour)
+            .mul(mix(float(L.under), float(L.over), up.pow(1.3)))
+            .mul(lightLeft.mul(1 - L.fillFloor).add(L.fillFloor));
+        const keyTurn = clamp(dot(nrm, vec3(...sunUnder)).mul(1 - L.keyWrap).add(L.keyWrap), 0, 1);
+        const key = mix(vec3(...L.keyDeep), vec3(...L.keyShallow), smoothstep(float(70), float(8), depthU))
+            .mul(keyTurn.mul(keyTurn))
+            .mul(lightLeft)
+            .mul(L.keyGain);
         const caustic = causticAt(0.047).mul(smoothstep(float(0.45), float(0.85), up)).mul(sunny).mul(uCaustics);
-        const lit = albedo.mul(lamp).add(vec3(...L.causticColour).mul(caustic).mul(L.causticGain).mul(albedo.add(0.25)));
+        // ...and where a shaft finds a place (the needle's crown), its own patch of light.
+        const baked = attribute('aLight', 'vec4');
+        const spot = vec3(...L.spotColour).mul(baked.a).mul(uSpot).mul(L.spotGain);
+        const bodyShare = mix(float(1), float(L.deepBody), life.z.mul(smoothstep(float(58), float(112), depthU)));
+        const lit = albedo.mul(fill.add(key).mul(bodyShare).add(spot))
+            .add(vec3(...L.causticColour).mul(caustic).mul(L.causticGain).mul(albedo.add(0.25)));
         // The living lights: small cold spots on the rock, each breathing on its own clock.
         // (Tier gate, in JavaScript: the low tier does not build the spots' fetch; its dark keeps
         // the deep garden's own light.)
@@ -188,7 +259,11 @@ export function createOdysseyOceanScenery({
         const lit01 = clamp(own.sub(1 - L.spotShare).div(L.spotShare), 0, 1);
         const disc = float(1).sub(smoothstep(float(0.03), mix(float(0.07), float(0.14), lit01), length(q.sub(at))))
             .mul(smoothstep(float(1 - L.spotShare), float(1.01 - L.spotShare), own))
-            .mul(smoothstep(float(L.spotFar[1]), float(L.spotFar[0]), eyeDist));
+            .mul(smoothstep(float(L.spotFar[1]), float(L.spotFar[0]), eyeDist))
+            // (...and thinned on rock near the eye: on the needle, 70 u off, the tower's share of
+            // spots was a pattern of dots.)
+            .mul(smoothstep(float(L.spotNear[0]), float(L.spotNear[1]), eyeDist)
+                .mul(1 - L.spotNearKeep).add(L.spotNearKeep));
         const breathe = sin(uTime.mul(0.55).add(lowTier ? grain.b.mul(31) : own.mul(31))).mul(0.4).add(0.6);
         const spots = lowTier ? float(0) : disc.mul(isRock);
         // ...and the deep garden carries its own light where its forms say so: at the tips, the
@@ -214,15 +289,65 @@ export function createOdysseyOceanScenery({
             .mul(isRock)
             .mul(deepMask)
             .mul(uGlow);
-        rockMat.colorNode = grade(haze(lit.add(rim), wp).add(glow));
+        // What the gardens of the deep throw on the rock and the growth round them (baked per
+        // vertex, `aLight`), breathing with them.
+        // (Added after the water's filter, as the glow is: it is light of its own colour from a
+        // few units off, and under the filter an amber garden lit its arch grey-green.)
+        const garden = baked.rgb
+            .mul(albedo.add(0.10))
+            .mul(deepMask)
+            .mul(uGlow)
+            .mul(breathe.mul(0.5).add(0.5))
+            .mul(exp(eyeDist.mul(-0.009)))
+            .mul(L.gardenLight);
+        rockMat.colorNode = grade(haze(lit.add(rim), wp).add(glow).add(garden));
         if (depthNode) rockMat.depthNode = depthNode(wp);
         rockMat.side = THREE.DoubleSide;
         rockMat.fog = false;
     }
-    const rockMesh = new THREE.Mesh(buildReefRockGeometry(plan), rockMat);
+    const rockMesh = new THREE.Mesh(buildReefRockGeometry(plan, shaftUp), rockMat);
     rockMesh.name = 'odyssey-ocean-reef';
     rockMesh.matrixAutoUpdate = false;
     group.add(rockMesh);
+
+    // ── the gardens' light on the sand ──
+    // One additive disc per garden, laid on the bed: its colour where it is strongest under the
+    // garden, nothing at its rim. Taken by the water like everything at its range, and only in the
+    // dark (the depth arc's `glow`).
+    const poolGeo = buildReefPoolGeometry(plan, heightAt);
+    let poolMesh = null;
+    let poolMat = null;
+    if (poolGeo.attributes.position.count > 0) {
+        poolMat = new THREE.MeshBasicNodeMaterial();
+        const pool = attribute('aPool', 'vec3');
+        const out = clamp(pool.x, 0, 1);
+        const body = float(1).sub(out.mul(out));
+        const poolDist = length(wp.sub(cameraPosition));
+        const seen = exp(poolDist.mul(vec3(...OCEAN_EXTINCTION).negate()));
+        poolMat.colorNode = gradeLight(attribute('color', 'vec3').mul(seen));
+        poolMat.opacityNode = body.mul(body).mul(body)
+            .mul(pool.y)
+            .mul(sin(uTime.mul(0.41).add(pool.z)).mul(0.14).add(0.86))
+            .mul(smoothstep(float(58), float(112), depthU))
+            .mul(uGlow)
+            .mul(uLife)
+            .mul(L.poolGain);
+        if (depthNode) poolMat.depthNode = depthNode(wp);
+        poolMat.transparent = true;
+        poolMat.blending = THREE.AdditiveBlending;
+        poolMat.depthWrite = false;
+        poolMat.polygonOffset = true;
+        poolMat.polygonOffsetFactor = -2;
+        poolMat.polygonOffsetUnits = -4;
+        poolMat.fog = false;
+        poolMesh = new THREE.Mesh(poolGeo, poolMat);
+        poolMesh.name = 'odyssey-ocean-garden-pools';
+        poolMesh.renderOrder = 2;
+        poolMesh.matrixAutoUpdate = false;
+        group.add(poolMesh);
+    } else {
+        poolGeo.dispose();
+    }
 
     // ── kelp ──
     const kelpMat = new THREE.MeshBasicNodeMaterial();
@@ -364,6 +489,80 @@ export function createOdysseyOceanScenery({
         shaftMat.side = THREE.DoubleSide;
         shaftMat.fog = false;
     }
+    // ── the shafts that find a place ──
+    // One soft, still shaft per `plan.spots`, from the surface down the shafts' own lean to the
+    // place it lights (its patch on the rock is baked: aLight.w). A blade turned about its axis
+    // to face the eye, like the sweeping ones, but it stays: a place keeps its light.
+    let heroMesh = null;
+    let heroMat = null;
+    if (plan.spots.length > 0) {
+        const heroGeo = new THREE.InstancedBufferGeometry();
+        const quadGeo = new THREE.PlaneGeometry(1, 1, 1, 6);
+        heroGeo.setIndex(quadGeo.index);
+        heroGeo.setAttribute('position', quadGeo.attributes.position);
+        heroGeo.setAttribute('uv', quadGeo.attributes.uv);
+        const foot = new Float32Array(plan.spots.length * 4);
+        plan.spots.forEach((S, i) => {
+            foot[i * 4] = S.x;
+            foot[(i * 4) + 1] = S.y;
+            foot[(i * 4) + 2] = S.z;
+            foot[(i * 4) + 3] = S.width;
+        });
+        heroGeo.setAttribute('aSpot', new THREE.InstancedBufferAttribute(foot, 4));
+        heroGeo.instanceCount = plan.spots.length;
+        quadGeo.dispose();
+        heroMat = new THREE.MeshBasicNodeMaterial();
+        const sp = attribute('aSpot', 'vec4');
+        const up = vec3(...shaftUp);
+        // From a little under its place up to the surface along the lean.
+        const reach = float(seaLevel + 1).sub(sp.y).div(shaftUp[1]);
+        const under = sp.w.mul(0.9);
+        const t = float(0.5).sub(positionLocal.y);
+        const axisAt = sp.xyz.add(up.mul(mix(reach, under.negate(), t)));
+        const toEye = cameraPosition.sub(axisAt);
+        const side = cross(up, toEye);
+        const sideLen = length(side);
+        heroMat.positionNode = axisAt.add(side.div(max(sideLen, float(1e-3))).mul(positionLocal.x.mul(sp.w)));
+        const vAxisOn = varying(sideLen.div(max(length(toEye), float(1e-3))), 'vHeroAxisOn');
+        const hUv = uv();
+        const across = sin(clamp(hUv.x, 0, 1).mul(Math.PI));
+        const down = clamp(float(1).sub(hUv.y), 0, 1);
+        // Melting in under the surface, holding down to its place, gone a little under it.
+        const body = across.mul(across)
+            .mul(smoothstep(float(0.0), float(0.22), down))
+            .mul(float(1).sub(smoothstep(float(0.80), float(1.0), down)))
+            .mul(down.mul(0.35).add(0.65));
+        // (Striated along its length: the light a rippled surface lets down is streaks, not a beam.)
+        const shimmer = texture(noiseTex, vec2(hUv.x.mul(0.46).add(0.31), down.mul(0.20).sub(uTime.mul(0.008)))).b;
+        const heroDist = length(positionWorld.sub(cameraPosition)).toVar();
+        const xK = OCEAN_SHAFT_EXTINCTION;
+        const xB = OCEAN_EXTINCTION[2];
+        heroMat.colorNode = gradeLight(mix(sunColour, vec3(0.62, 0.96, 1.0), 0.6)
+            .mul(exp(heroDist.mul(vec3(OCEAN_EXTINCTION[0] - xB, OCEAN_EXTINCTION[1] - xB, 0).mul(-xK)))));
+        heroMat.opacityNode = body
+            .mul(shimmer.mul(1.1).add(0.28))
+            .mul(sin(uTime.mul(0.13)).mul(0.10).add(0.90))
+            .mul(smoothstep(float(0.10), float(0.42), vAxisOn))
+            .mul(smoothstep(float(6), float(40), heroDist))
+            .mul(exp(heroDist.mul(-xK * xB)))
+            .mul(smoothstep(float(seaLevel + 0.4), float(seaLevel - 2.5), positionWorld.y))
+            .mul(uSpot)
+            .mul(uLife)
+            .mul(OCEAN_HERO_SHAFT.gain);
+        heroMat.alphaTest = 0.004;
+        heroMat.transparent = true;
+        heroMat.blending = THREE.AdditiveBlending;
+        heroMat.depthWrite = false;
+        heroMat.side = THREE.DoubleSide;
+        heroMat.fog = false;
+        heroMesh = new THREE.Mesh(heroGeo, heroMat);
+        heroMesh.name = 'odyssey-ocean-found-shafts';
+        heroMesh.frustumCulled = false;
+        heroMesh.renderOrder = 3;
+        heroMesh.matrixAutoUpdate = false;
+        group.add(heroMesh);
+    }
+
     const shaftMesh = new THREE.Mesh(shaftGeo, shaftMat);
     shaftMesh.name = 'odyssey-ocean-shafts';
     shaftMesh.frustumCulled = false;
@@ -374,7 +573,7 @@ export function createOdysseyOceanScenery({
     return {
         group,
         plan,
-        meshes: [rockMesh, kelpMesh, shaftMesh],
+        meshes: [rockMesh, kelpMesh, shaftMesh, ...(poolMesh ? [poolMesh] : []), ...(heroMesh ? [heroMesh] : [])],
         /**
          * @param {{ caustics: number, glow: number, beams: number }} look the depth arc at the eye
          * @param {boolean} inWater whether the eye is in the water (and the sea's life is here)
@@ -383,12 +582,20 @@ export function createOdysseyOceanScenery({
             uCaustics.value = look.caustics;
             uGlow.value = look.glow;
             uShafts.value = look.beams;
+            uSpot.value = look.shafts;
+            if (heroMesh) {
+                heroMesh.visible = inWater && look.shafts > 0.004 && heroMesh.userData.filterVisible !== false;
+            }
             shaftMesh.visible = inWater && look.beams > 0.004 && shaftMesh.userData.filterVisible !== false;
             rockMesh.visible = inWater && rockMesh.userData.filterVisible !== false;
+            // (The pools are the dark's: not submitted where the depth arc gives them nothing.)
+            if (poolMesh) poolMesh.visible = inWater && look.glow > 0.004 && poolMesh.userData.filterVisible !== false;
             kelpMesh.visible = inWater && kelpMesh.userData.filterVisible !== false;
         },
         dispose() {
             rockMat.dispose();
+            if (poolMat) poolMat.dispose();
+            if (heroMat) heroMat.dispose();
             kelpMat.dispose();
             shaftMat.dispose();
         },

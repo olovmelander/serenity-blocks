@@ -37,10 +37,15 @@ import { flashScale } from '../../../utils/photosensitivity.js';
 import {
     RETROSUN_CITY_POS,
     bakeNeonGlow,
+    bakeNeonWallGlow,
     dealCityTowers,
     planNeonSigns,
 } from './shared/odyssey-neon-city-plan.js';
-import { createNeonCityUniforms, createNeonGlowTexture } from './shared/odyssey-neon-light.tsl.js';
+import {
+    createNeonCityUniforms,
+    createNeonGlowTexture,
+    createNeonWallGlowTexture,
+} from './shared/odyssey-neon-light.tsl.js';
 import { createNeonRain } from './shared/odyssey-neon-rain.tsl.js';
 import { applyNeonSkyState, createNeonSkyDome, createNeonStars } from './shared/odyssey-neon-sky.tsl.js';
 import { NEON_SUN_SINK, resolveNeonSunSink, resolveNeonWeather } from './shared/odyssey-neon-clock.js';
@@ -67,7 +72,9 @@ import {
 } from './shared/odyssey-neon-signs.tsl.js';
 import { createNeonTraffic } from './shared/odyssey-neon-traffic.tsl.js';
 import { createNeonLanterns } from './shared/odyssey-neon-lanterns.tsl.js';
-import { createNeonSkybridges } from './shared/odyssey-neon-skybridges.tsl.js';
+import { createNeonSkybridges, seatNeonSkybridges } from './shared/odyssey-neon-skybridges.tsl.js';
+import { planNeonWallKit } from './shared/odyssey-neon-wall-kit.js';
+import { createNeonWheel } from './shared/odyssey-neon-wheel.tsl.js';
 import {
     getActiveOdysseyChapterPositions,
     getChapterPathRange,
@@ -406,7 +413,12 @@ export function* buildUrbanDreamsEnvironmentSteps(options = {}) {
     // are identical on every tier (only the outermost banks drop).
     const cityPlanTowers = dealCityTowers(tier.towerBanks);
     const neonPlan = planNeonSigns(cityPlanTowers);
-    const neon = createNeonCityUniforms(uniforms, createNeonGlowTexture(bakeNeonGlow(neonPlan.signs)));
+    const neon = createNeonCityUniforms(
+        uniforms,
+        createNeonGlowTexture(bakeNeonGlow(neonPlan.signs)),
+        // ...and what each sign throws on the wall round it (2026-11-25).
+        createNeonWallGlowTexture(bakeNeonWallGlow(neonPlan.signs)),
+    );
     // How much of the Retrosun the street's mirror shows (its crossfade weight, from update()).
     neon.sunVisible = uniform(0);
     // Sheet lightning in the smog (resolveUrbanStorm).
@@ -526,6 +538,11 @@ export function* buildUrbanDreamsEnvironmentSteps(options = {}) {
         return card.mesh;
     });
     group.userData.skyline = [skylineNear.mesh, skylineFar.mesh, ...skylineBack];
+    // THE WHEEL (2026-11-25, shared/odyssey-neon-wheel.tsl.js): the last orb's own picture, the sun
+    // setting behind a lit ferris wheel, past the last rank of towers and before the Retrosun.
+    const wheel = createNeonWheel(neon);
+    corridor.add(wheel);
+    group.userData.wheel = wheel;
     // (The magenta horizon haze band card is retired from the live chapter, 2026-11-17: the sky
     // itself now carries the hot horizon, all the way round and from any height.)
     yield;
@@ -549,6 +566,7 @@ export function* buildUrbanDreamsEnvironmentSteps(options = {}) {
     group.userData.cityBlocks = cityBlocks;
     group.userData.cityTowers = cityBlocks.getObjectByName('city-tower-instances-tsl') ?? null;
     const cityTiers = cityBlocks.getObjectByName('city-tower-tiers-tsl') ?? null;
+    const cityRounds = cityBlocks.getObjectByName('city-tower-rounds-tsl') ?? null;
     yield;
 
     // THE CITY BEYOND THE CITY (2026-11-17, shared/odyssey-neon-far-*.js): a carpet of street
@@ -567,11 +585,18 @@ export function* buildUrbanDreamsEnvironmentSteps(options = {}) {
     // handlers, beacons. Low keeps the buildings' shapes and leaves the roofs bare.
     const rooftops = tier.rooftops === false
         ? null
-        : createNeonRooftops(neon, cityBlocks.userData.architecture.gear);
+        : createNeonRooftops(
+            neon,
+            cityBlocks.userData.architecture.gear,
+            // THE WALLS' KIT (2026-11-25, shared/odyssey-neon-wall-kit.js): balconies, air units,
+            // pipes, fire escapes, awnings and street lamps, in the roof boxes' own draw.
+            planNeonWallKit(cityBlocks.userData.architecture.bases, neonPlan.signs, seatNeonSkybridges(cityPlanTowers)),
+        );
     if (rooftops) corridor.add(rooftops);
     group.userData.rooftops = rooftops;
     group.userData.occluders = [
         [cityTiers, -149],
+        [cityRounds, -149],
         ...(rooftops?.userData.solids ?? []).map((mesh) => [mesh, -148]),
         [farTowers, -145],
         [carpet, -140],
@@ -617,7 +642,8 @@ export function* buildUrbanDreamsEnvironmentSteps(options = {}) {
     // The glow map and the glyph atlas are bound only inside TSL node graphs, where teardown's
     // traverse cannot see them: register them (OD-11), or an evicted or disposed chapter 8 held
     // their GPU copies until a garbage collection (audit 2026-10-23).
-    group.userData.ownedTextures = [neon.glowTex, signs.userData.glyphTexture].filter((tex) => tex?.isTexture);
+    group.userData.ownedTextures = [neon.glowTex, neon.wallGlowTex, signs.userData.glyphTexture]
+        .filter((tex) => tex?.isTexture);
     yield;
 
     const reflectionPlane = createWetReflectionPlane(uniforms, neon, neon.sunVisible);
