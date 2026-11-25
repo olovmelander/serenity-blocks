@@ -12,7 +12,11 @@
  *   1  disc     old and warm, spread evenly round the disc. They ORBIT: inside corotation they
  *               overtake the pattern and brighten as they pass through an arm.
  *   2  bulge    the old spheroid round the nucleus.
- *   3  halo     a thin sphere of old suns and globular clusters far out of the plane.
+ *   3  halo     a thin sphere of old suns far out of the plane.
+ *   4  cluster  a member of a star cluster: an open one, blue-white, strung along an arm a little
+ *               way from the nursery it was born in, or a globular one, old and warm, in the halo.
+ *               Members keep their place in the pattern's frame (no orbit of their own, no
+ *               epicycle), so a cluster stays a cluster however long the galaxy turns.
  */
 
 import {
@@ -22,6 +26,12 @@ import {
 export const MAX_STARS = 190000;
 export const MAX_NURSERIES = 144;
 export const MAX_GIANTS = 140;
+/** Star clusters: open ones along the arms, globular ones in the halo. */
+export const OPEN_CLUSTERS = 64;
+export const GLOBULARS = 26;
+/** The share of all suns that belong to a cluster, and of those the share in globular ones. */
+export const CLUSTER_SHARE = 0.045;
+export const GLOBULAR_SHARE = 0.28;
 
 /** How far behind an arm's ridge (radians) the nurseries sit: on its trailing, outer edge. */
 export const NURSERY_OFFSET = -0.25;
@@ -59,19 +69,61 @@ function planNurseries(rand) {
 }
 
 /**
+ * Cluster sites. Each is (radius, offset from the arm's ridge at that radius, height, spread,
+ * temperature): the same coordinates a nursery has, so a cluster turns and winds with the pattern.
+ * Their own generator: where the clusters stand must not change with how many suns a tier draws.
+ */
+function planClusters(seed, nurseries) {
+    const rand = mulberry32((seed ^ 0x2c1b3c6d) >>> 0);
+    const open = [];
+    for (let i = 0; i < OPEN_CLUSTERS; i++) {
+        const site = nurseries[(i * 2 + 1) % nurseries.length];
+        // It has drifted out of the cloud it was born in: a little way along the arm from it.
+        const drift = (2.6 + rand() * 4.2) * (rand() < 0.5 ? -1 : 1);
+        const radius = Math.min(GALAXY.radius * 0.97, Math.max(GALAXY.armStart * 1.3, site.radius + drift));
+        open.push({
+            kind: 'open',
+            radius,
+            offset: site.offset + 0.06 + gaussian(rand) * 0.05,
+            y: gaussian(rand) * 0.3,
+            spread: 0.5 + rand() * 0.8,
+            temp: 0.8 + rand() * 0.2,
+        });
+    }
+    const globular = [];
+    for (let i = 0; i < GLOBULARS; i++) {
+        const rho = 18 + 78 * rand() ** 1.5;
+        const cz = rand() * 2 - 1;
+        const sz = Math.sqrt(1 - cz * cz);
+        const radius = Math.max(7, rho * sz);
+        globular.push({
+            kind: 'globular',
+            radius,
+            // The shader adds the ridge's angle at the member's radius: take the rest ridge out.
+            offset: rand() * TAU - armAngle(radius),
+            y: rho * cz * 0.85,
+            spread: 0.3 + rand() * 0.36,
+            temp: 0.08 + rand() * 0.26,
+        });
+    }
+    return { open, globular };
+}
+
+/**
  * @param {number} [seed]
  * @param {{ stars?: number }} [limits]  build fewer suns than MAX_STARS (tests)
  */
 export function buildPlan(seed = 0x9a1a2026, limits = {}) {
     const rand = mulberry32(seed);
     const nurseries = planNurseries(rand);
+    const clusters = planClusters(seed, nurseries);
 
     const count = Math.max(0, Math.min(MAX_STARS, Math.round(limits.stars ?? MAX_STARS)));
     /** (radius, angle or offset from the ridge, height, seed) */
     const orbit = new Float32Array(count * 4);
     /** (temperature 0 warm..1 blue, magnitude 0..1, population, phase) */
     const look = new Float32Array(count * 4);
-    const tally = [0, 0, 0, 0];
+    const tally = [0, 0, 0, 0, 0];
     const youngLength = GALAXY.scaleLength * 2.3;
     for (let i = 0; i < count; i++) {
         const pick = rand();
@@ -82,7 +134,20 @@ export function buildPlan(seed = 0x9a1a2026, limits = {}) {
         let temp;
         // Most suns are faint dust (magnitude under 0.6); one in thirty carries the picture.
         let mag = rand() < 0.02 ? 0.6 + 0.4 * rand() ** 2 : 0.6 * rand() ** 1.8;
-        if (pick < 0.44) {
+        if (pick >= 1 - CLUSTER_SHARE) {
+            pop = 4;
+            const list = rand() < GLOBULAR_SHARE ? clusters.globular : clusters.open;
+            const c = list[Math.floor(rand() * list.length)];
+            // A tight heart in a looser body.
+            const s = c.spread * (rand() < 0.45 ? 0.42 : 1);
+            radius = Math.max(GALAXY.armStart * 0.6, c.radius + gaussian(rand) * s);
+            y = c.y + gaussian(rand) * s;
+            // Its own angle from the cluster's ridge, not its own radius's: no shear along the arm.
+            angle = c.offset + (gaussian(rand) * s) / radius + armAngle(c.radius) - armAngle(radius);
+            temp = Math.min(1, Math.max(0, c.temp + gaussian(rand) * 0.05));
+            // A few bright members carry it; the rest are its dust.
+            mag = rand() < (c.kind === 'open' ? 0.16 : 0.09) ? 0.62 + 0.36 * rand() ** 1.5 : 0.16 + 0.38 * rand();
+        } else if (pick < 0.42) {
             pop = 0;
             if (rand() < 0.2) {
                 // A member of an association round a nursery.
@@ -103,7 +168,7 @@ export function buildPlan(seed = 0x9a1a2026, limits = {}) {
             }
             y = gaussian(rand) * 0.85;
             temp = 0.62 + rand() * 0.38;
-        } else if (pick < 0.82) {
+        } else if (pick < 0.79) {
             pop = 1;
             do {
                 radius = -GALAXY.scaleLength * Math.log(Math.max(1e-9, rand() * rand()));
@@ -111,7 +176,7 @@ export function buildPlan(seed = 0x9a1a2026, limits = {}) {
             angle = rand() * TAU;
             y = gaussian(rand) * (1.5 + 1.4 * Math.exp(-radius / 30));
             temp = 0.16 + rand() * 0.5;
-        } else if (pick < 0.955) {
+        } else if (pick < 0.92) {
             pop = 2;
             // A Plummer sphere, flattened along the axis.
             let rho;
@@ -134,7 +199,7 @@ export function buildPlan(seed = 0x9a1a2026, limits = {}) {
             y = rho * cz * 0.8;
             angle = rand() * TAU;
             temp = 0.08 + rand() * 0.3;
-            // One in thirty is a globular cluster.
+            // One in thirty stands out of the halo's dust.
             mag = rand() < 0.035 ? 0.75 + rand() * 0.25 : mag * 0.6;
         }
         tally[pop] += 1;
@@ -156,6 +221,9 @@ export function buildPlan(seed = 0x9a1a2026, limits = {}) {
             temp: skyRand(),
             phase: skyRand(),
         });
+        // How near it hangs (0 = on the far shell): a few are near enough to slide against the
+        // galaxy as the eye drifts. From the phase: no draw of its own, so no star moves.
+        giants[i].near = giants[i].phase ** 5;
     }
     // The brightest first, so every tier keeps the ones that carry the sky.
     giants.sort((a, b) => b.size - a.size);
@@ -166,6 +234,7 @@ export function buildPlan(seed = 0x9a1a2026, limits = {}) {
             count, orbit, look, tally,
         },
         nurseries,
+        clusters,
         giants,
     };
 }

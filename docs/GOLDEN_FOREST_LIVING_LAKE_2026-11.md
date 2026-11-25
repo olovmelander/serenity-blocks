@@ -237,5 +237,5 @@ wisps: 2 / 2 / 2 / 1 / 0 / 0), `flurry` (particle records) and `puffs` (pollen c
 - `board=1` draws a stand-in for the board card.
 
 Lessons that cost a round are rows in the skill: #1526 (a burning sky that is flecks, then cream),
-#1324 (light on a road that is already white), #1775 (sparks as confetti), #1776 (clouds born
+#1324 (light on a road that is already white), #1778 (sparks as confetti), #1779 (clouds born
 inside a crown), #806 (shafts that wash the frame).

@@ -91,7 +91,7 @@ const captureThemes = [
     ['galaxy',
         'galaxy',
         'Galaxy',
-        'sky, giants, jetFar, disc, stars, nurseries, jetNear, nucleus, meteors, sparks, seeds, beams'],
+        'sky, giants, jetFar, disc, stars, nurseries, novae, jetNear, nucleus, meteors, sparks, seeds, beams'],
 
     ['geode', 'geode', 'Geode', 'shell, druzy, crystals, glints, beams, air, glitterFall, shards, wisps, rowBeams'],
 

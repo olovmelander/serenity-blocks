@@ -55,7 +55,9 @@ import {
     vec4,
 } from 'three/tsl';
 import {
-    GALAXY, MAX_RINGS, NOISE_SIZE, TAU, gxArmAngle, gxBell, gxFxMaterial, gxHash21, gxHash33, gxLuma, gxPart,
+    GALAXY, MAX_RINGS, NOISE_SIZE, TAU, gxArmAngle, gxArmReach, gxBell, gxFxMaterial, gxHash21, gxHash33, gxLuma,
+    gxPart,
+    gxPulseLight,
     gxRippleLight,
     gxWaveLight,
 } from './galaxy-tsl.js';
@@ -68,11 +70,27 @@ const H_DUST = 1.25;
 const FEATHER_REPEAT = 5;
 /** The fine grain: tiles per light-unit. */
 const FINE_SCALE = 1 / 17;
+/**
+ * The strands: the same noise read in the spiral's coordinates, squeezed about eight to one along
+ * the arm, so its level lines run on as long filaments beside the ridge (gotcha #131: threads of an
+ * isotropic field close on themselves). Tiles round the disc (integers: the seam must close) and
+ * tiles per e-fold of radius.
+ */
+const STRAND_REPEAT = 14;
+const STRAND_ALONG = 2.0;
+/** The spurs: sheared out of the arm's own pitch, so they jut from the lane across the arm. */
+const SPUR_REPEAT = 9;
+const SPUR_SHEAR = 2.3;
+const SPUR_ALONG = 1.3;
 /** Emission per light-unit of path. */
 const OLD_GAIN = 0.05;
 const YOUNG_GAIN = 0.15;
 const KNOT_GAIN = 0.42;
 const BAR_GAIN = 0.06;
+/** The ring of star formation where the arms leave the bar: its radius, half-width and light. */
+const NUCLEAR_RING = 9.4;
+const NUCLEAR_RING_WIDTH = 1.5;
+const NUCLEAR_RING_GAIN = 0.2;
 /** Extinction per light-unit at the heart of a lane; blue goes first. */
 const DUST_GAIN = 1.0;
 const DUST_RGB = [0.72, 1.0, 1.34];
@@ -107,12 +125,29 @@ export function createDisc(u, { march = 10, detail = 2 } = {}) {
         const theta = atan(pm.z, pm.x);
         const footprint = length(pm.sub(u.camLocal)).mul(u.pixelAngle).toVar();
         // The spiral's own coordinates: across the arms, and along them (so clumps follow them).
-        const lodS = clamp(log2(footprint.mul(FEATHER_REPEAT * NOISE_SIZE).div(max(r, 5.0).mul(TAU))), 0.0, 7.0);
+        const across = theta.sub(gxArmAngle(r, u.winding)).toVar();
+        const along = log(max(r, 1.0)).toVar();
+        const turnPx = footprint.mul(NOISE_SIZE).div(max(r, 5.0).mul(TAU)).toVar();
+        const lodS = clamp(log2(turnPx.mul(FEATHER_REPEAT)), 0.0, 7.0);
         const uvS = vec2(
-            theta.sub(gxArmAngle(r, u.winding)).mul(FEATHER_REPEAT / TAU).sub(u.time.mul(0.0014)),
-            log(max(r, 1.0)).mul(0.86).sub(u.time.mul(0.0009)),
+            across.mul(FEATHER_REPEAT / TAU).sub(u.time.mul(0.0014)),
+            along.mul(0.86).sub(u.time.mul(0.0009)),
         );
         const coarse = u.noiseLod(uvS, lodS).toVar();
+        // Strands and spurs: two more reads of the same noise, never finer than its third mip
+        // (a thread is drawn from a SMOOTH field; its sharpness is the shader's).
+        const strand = u.noiseLod(vec2(
+            across.mul(STRAND_REPEAT / TAU).add(u.time.mul(0.0011)).add(0.21),
+            along.mul(STRAND_ALONG).sub(u.time.mul(0.0017)).add(0.63),
+        ), clamp(log2(turnPx.mul(STRAND_REPEAT)).add(0.6), 1.6, 7.0)).toVar();
+        const spur = u.noiseLod(vec2(
+            across.mul(SPUR_REPEAT / TAU).add(along.mul(SPUR_SHEAR)).add(0.77),
+            along.mul(SPUR_ALONG).add(u.time.mul(0.0013)).add(0.19),
+        ), clamp(log2(turnPx.mul(SPUR_REPEAT)).add(0.6), 1.6, 7.0)).toVar();
+        const threadOf = (n, sharp) => {
+            const k = max(float(1.0).sub(abs(n.mul(2.0).sub(1.0)).mul(sharp)), 0.0);
+            return k.mul(k);
+        };
         // Fine grain, the same everywhere: what breaks the arms into clouds, knots and filaments.
         let fine = coarse.gbar;
         if (detail >= 2) {
@@ -164,6 +199,15 @@ export function createDisc(u, { march = 10, detail = 2 } = {}) {
             threads: thread.mul(thread).mul(thread).toVar(),
             /** Where the dust gathers, on the scale of an arm. */
             patches: smoothstep(0.28, 0.74, coarse.a).toVar(),
+            /** Long filaments of dust beside the ridge, switched on and off along their length. */
+            filaments: threadOf(strand.r, 2.6).mul(smoothstep(0.34, 0.6, strand.b))
+                .add(threadOf(strand.g, 3.4).mul(smoothstep(0.4, 0.66, strand.a)).mul(0.8))
+                .toVar(),
+            /** Spurs: feathers of dust that leave the lane and cross the arm. */
+            spurs: threadOf(spur.r, 2.2).mul(smoothstep(0.42, 0.7, spur.b)).toVar(),
+            /** Wisps of young light strung along the arm, and its slow swell. */
+            wisps: threadOf(strand.a, 1.8).mul(smoothstep(0.3, 0.75, spur.g)).toVar(),
+            streak: smoothstep(0.25, 0.8, strand.b.mul(0.6).add(spur.a.mul(0.4))).toVar(),
         };
     };
 
@@ -171,7 +215,7 @@ export function createDisc(u, { march = 10, detail = 2 } = {}) {
      * Light and dust at a point of the galaxy's frame. `layered` applies the layers' vertical
      * profiles (the march); without it the values are the midplane's (the thin disc).
      */
-    const sampleAt = (p, layered, grain) => {
+    const sampleAt = (p, layered, grain, tone) => {
         const r = length(p.xz).toVar();
         const phase = atan(p.z, p.x).sub(gxArmAngle(r, u.winding)).mul(GALAXY.arms).add(grain.warp)
             .toVar();
@@ -191,12 +235,16 @@ export function createDisc(u, { march = 10, detail = 2 } = {}) {
         const vDust = layered ? exp(y2.div(-H_DUST * H_DUST)) : float(1.0);
 
         // The old disc takes a little of the arms' colour away from the bulge.
-        const oldTone = mix(u.core, mix(u.core, u.armInner, 0.6), smoothstep(R * 0.1, R * 0.55, r));
+        const oldTone = mix(tone.core, mix(tone.core, tone.armInner, 0.6), smoothstep(R * 0.1, R * 0.55, r));
         const old = oldTone.mul(exp(r.div(-RD)).mul(a2.mul(0.5).add(0.42)).mul(grain.clump.mul(0.5).add(0.75)).mul(vOld)
             .mul(OLD_GAIN));
-        // The young light keeps to the ridge: narrower than the old stars' swell.
-        const young = mix(u.armInner, u.armOuter, smoothstep(R * 0.14, R * 0.8, r))
-            .mul(a2.mul(a2).mul(armOn).mul(grain.clump.mul(1.6).add(0.2)).mul(exp(r.div(-RD * 2.4)))
+        // The young light keeps to the ridge: narrower than the old stars' swell, and strung out
+        // along it in wisps (the strands' bright side).
+        const young = mix(tone.armInner, tone.armOuter, smoothstep(R * 0.14, R * 0.8, r))
+            .mul(a2.mul(a2).mul(armOn)
+                .mul(grain.clump.mul(1.25).add(0.16).add(grain.wisps.mul(grain.clump.add(0.35)).mul(0.9)))
+                .mul(grain.streak.mul(0.7).add(0.62))
+                .mul(exp(r.div(-RD * 2.4)))
                 .mul(vGas)
                 .mul(YOUNG_GAIN));
         const edge = knot.mul(knot).mul(knot).mul(a).mul(armOn)
@@ -204,19 +252,31 @@ export function createDisc(u, { march = 10, detail = 2 } = {}) {
             .mul(vGas)
             .toVar();
         // A knot's halo glows in the nursery's colour; its heart burns nearly white.
-        const knots = u.nursery.mul(grain.knots.mul(edge).mul(KNOT_GAIN))
-            .add(mix(u.nursery, vec3(1.0, 0.92, 0.96), 0.6).mul(grain.hearts.mul(edge).mul(KNOT_GAIN * 1.6)));
-        const bar = u.core.mul(exp(p.z.mul(p.z).div(-9.0)).mul(exp(r.mul(r).div(-150.0))).mul(vOld).mul(BAR_GAIN));
-        const emission = old.add(young).add(knots).add(bar).mul(rim);
+        const knots = tone.nursery.mul(grain.knots.mul(edge).mul(KNOT_GAIN))
+            .add(mix(tone.nursery, vec3(1.0, 0.92, 0.96), 0.6).mul(grain.hearts.mul(edge).mul(KNOT_GAIN * 1.6)));
+        const bar = tone.core.mul(exp(p.z.mul(p.z).div(-9.0)).mul(exp(r.mul(r).div(-150.0))).mul(vOld).mul(BAR_GAIN));
+        // Where the arms leave the bar the gas piles up and burns: a ring of young light, beaded.
+        const ringQ = r.sub(NUCLEAR_RING).div(NUCLEAR_RING_WIDTH);
+        const ring = mix(tone.nursery, tone.armInner, 0.45).add(vec3(0.16))
+            .mul(exp(ringQ.mul(ringQ).negate()).mul(grain.clump.mul(1.3).add(grain.wisps.mul(0.8)).add(0.22))
+                .mul(vGas)
+                .mul(NUCLEAR_RING_GAIN));
+        const emission = old.add(young).add(knots).add(bar).add(ring)
+            .mul(rim);
 
         const window = smoothstep(4.0, 13.0, r).mul(float(1.0).sub(smoothstep(R * 0.7, R, r)));
-        // Lanes on the inner edge of each arm, threaded; and spurs of the same thread across the arm.
+        // Lanes on the inner edge of each arm, threaded; long filaments beside them, thinning into
+        // the gap between the arms; spurs that leave the lane and cross the arm.
         const lane2 = lane.mul(lane);
+        // (the strands thin out before the rim: out there they would only smear the sky behind)
+        const inner = float(1.0).sub(smoothstep(R * 0.5, R * 0.84, r));
         const sigma = lane2.mul(lane2).mul(1.35).mul(grain.threads.mul(grain.patches.add(0.35)).mul(1.9).add(0.3))
             .add(grain.threads.mul(grain.patches).mul(a).mul(0.55))
+            .add(grain.filaments.mul(lane2.mul(1.8).add(0.05)).mul(grain.patches.mul(grain.patches).mul(1.3).add(0.1)).mul(inner))
+            .add(grain.spurs.mul(a).mul(lane.mul(0.6).add(0.4)).mul(inner.mul(0.9)))
             .mul(window)
             .mul(vDust)
-            .mul(DUST_GAIN);
+            .mul(u.dustGain.mul(DUST_GAIN));
         return { emission, sigma };
     };
 
@@ -250,11 +310,20 @@ export function createDisc(u, { march = 10, detail = 2 } = {}) {
         const slope = max(abs(rd.y), 0.1).toVar();
 
         const grain = grainAt(pm);
+        // A new level's colours sweep out from the nucleus: beyond the front the disc still wears
+        // the ones it had. Read once per pixel, where the ray meets the midplane.
+        const worn = smoothstep(u.wipe.x.sub(10.0), u.wipe.x, rm).toVar();
+        const tone = {
+            core: mix(u.core, u.oldCore, worn).toVar(),
+            armInner: mix(u.armInner, u.oldArmInner, worn).toVar(),
+            armOuter: mix(u.armOuter, u.oldArmOuter, worn).toVar(),
+            nursery: mix(u.nursery, u.oldNursery, worn).toVar(),
+        };
         const acc = vec3(0.0).toVar();
         const T = vec3(1.0).toVar();
         const dustRgb = vec3(DUST_RGB[0], DUST_RGB[1], DUST_RGB[2]);
         if (steps === 1) {
-            const s = sampleAt(pm, false, grain);
+            const s = sampleAt(pm, false, grain, tone);
             const tau = s.sigma.mul((H_DUST * SQRT_PI)).div(slope).toVar();
             // Light born evenly through the dust escapes as (1 − e^−τ)/τ: under thick dust it
             // fades as 1/τ, not exponentially, so a lane is a shadow and not a black crack.
@@ -273,7 +342,7 @@ export function createDisc(u, { march = 10, detail = 2 } = {}) {
                 const t = y.sub(ro.y).div(rs.y).toVar();
                 const inside = step(0.0, t).mul(step(t, tExit));
                 const dt = float((H * 2) / steps).mul(xi.mul(xi).mul(2.25).add(0.25)).div(slope).mul(inside);
-                const s = sampleAt(ro.add(rd.mul(t)), true, grain);
+                const s = sampleAt(ro.add(rd.mul(t)), true, grain, tone);
                 acc.addAssign(T.mul(s.emission).mul(dt));
                 T.mulAssign(exp(s.sigma.mul(dt).negate().mul(dustRgb)));
             });
@@ -283,8 +352,8 @@ export function createDisc(u, { march = 10, detail = 2 } = {}) {
         const bulge = spheroid(ro, rd, tMid, GALAXY.bulge, GALAXY.bulgeFlat).toVar();
         const cluster = spheroid(ro, rd, tMid, CLUSTER_RADIUS, 1.0).toVar();
         const heat = u.power.mul(0.5).add(u.surge.mul(0.6)).add(1.0);
-        const near = u.core.mul(bulge.x.mul(BULGE_PEAK)).add(u.nucleus.mul(cluster.x.mul(CLUSTER_PEAK)).mul(heat));
-        const far = u.core.mul(bulge.y.mul(BULGE_PEAK)).add(u.nucleus.mul(cluster.y.mul(CLUSTER_PEAK)).mul(heat));
+        const near = tone.core.mul(bulge.x.mul(BULGE_PEAK)).add(u.nucleus.mul(cluster.x.mul(CLUSTER_PEAK)).mul(heat));
+        const far = tone.core.mul(bulge.y.mul(BULGE_PEAK)).add(u.nucleus.mul(cluster.y.mul(CLUSTER_PEAK)).mul(heat));
         const col = near.add(acc).add(far.mul(T)).toVar();
         const gas = gxLuma(acc).toVar();
         const veil = T.x.add(T.y).add(T.z).div(3.0).toVar();
@@ -300,8 +369,8 @@ export function createDisc(u, { march = 10, detail = 2 } = {}) {
                 const lobes = k % 3 === 0 ? 2.0 : 3.0;
                 const arcs = sin(round.mul(lobes).add(u.time.mul(turn)).add(k * 1.7)).mul(0.4).add(0.6);
                 const line = gxBell(rm.sub(at).div(0.42)).add(gxBell(rm.sub(at).div(2.1)).mul(0.16));
-                const tone = k % 2 === 0 ? u.jet.add(u.nucleus.mul(0.5)) : u.nursery.add(u.nucleus.mul(0.35));
-                halo.addAssign(tone.mul(line).mul(arcs).mul(lit).mul(1.0 - k * 0.08));
+                const ringTone = k % 2 === 0 ? u.jet.add(u.nucleus.mul(0.5)) : u.nursery.add(u.nucleus.mul(0.35));
+                halo.addAssign(ringTone.mul(line).mul(arcs).mul(lit).mul(1.0 - k * 0.08));
             }
             col.addAssign(halo.mul(veil.mul(0.6).add(0.4)).mul(1.5));
         });
@@ -315,6 +384,23 @@ export function createDisc(u, { march = 10, detail = 2 } = {}) {
             const reach = float(1.0).sub(smoothstep(R * 0.86, R * 1.12, rm));
             col.addAssign(wave.rgb.mul(gas.mul(3.4).add(0.02)).mul(reach));
             col.addAssign(acc.mul(wave.a.mul(0.3)));
+        });
+        // Light running along the arms like a fuse: out from the bar on a clear, in on a twist.
+        If(u.pulsesLive.greaterThan(0.5), () => {
+            const reach = gxArmReach(rm).toVar();
+            const off = atan(pm.z, pm.x).sub(gxArmAngle(rm, u.winding)).toVar();
+            const which = cos(off).toVar();
+            const ridge = cos(off.mul(GALAXY.arms).add(grain.warp)).mul(0.5).add(0.5).toVar();
+            const inArm = ridge.mul(ridge).toVar();
+            const outer = float(1.0).sub(smoothstep(R * 0.9, R * 1.1, rm));
+            col.addAssign(gxPulseLight(u, reach, which)
+                .mul(gas.mul(4.5).add(inArm.mul(0.04)))
+                .mul(inArm.mul(0.88).add(0.12))
+                .mul(outer));
+        });
+        // The edge of the new colours, as they pass.
+        If(u.wipe.y.greaterThan(0.001), () => {
+            col.addAssign(u.nucleus.mul(gxBell(rm.sub(u.wipe.x).div(4.5)).mul(u.wipe.y)).mul(gas.mul(5.0).add(0.03)));
         });
 
         return vec4(col.mul(u.breath), float(1.0).sub(veil));

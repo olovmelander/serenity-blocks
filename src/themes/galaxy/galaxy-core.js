@@ -75,6 +75,25 @@ export const STORE_MAX = 2.6;
 export const PULSE_FADE = 0.5;
 export const NOVA_LIFE = 1.5;
 
+/**
+ * Arm pulses: light that runs along a spiral arm like a fuse (out from the bar on a clear, in to
+ * the nucleus on a twist, slowly and faintly when a ripple of star formation passes by itself).
+ * A pulse takes the slot with the least light left, as the rings and the waves do.
+ */
+export const PULSE_SLOTS = 4;
+/** Seconds a pulse's wake outlives its run down the arm. */
+export const PULSE_TAIL = 1.3;
+/** Supernovae that can stand in the arms at once, and how long one is worth drawing (seconds). */
+export const NOVA_SLOTS = 3;
+export const NOVA_SPAN = 9;
+/** A new level's colours sweep out through the disc at this many light-units a second. */
+export const WIPE_SPEED = 46;
+
+/** How far down its arm a radius is: 0 where the arms leave the bar, 1 at the rim. */
+export function armReach(radius) {
+    return Math.log(Math.max(radius, GALAXY.armStart) / GALAXY.armStart) / Math.log(GALAXY.radius / GALAXY.armStart);
+}
+
 /** Seconds a four-line clear holds the galaxy's breath before the nucleus erupts. */
 export const HUSH_HOLD = 0.22;
 /**

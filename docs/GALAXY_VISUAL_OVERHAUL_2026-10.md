@@ -278,3 +278,135 @@ the GPU queue at 1600 × 900, High, WebGPU (NVIDIA Blackwell), 1.4–1.7 ms a fr
 ![Minimal, Low on WebGL2, Medium and Extreme](galaxy-captures/tiers.jpg)
 
 ![Two more of the five palettes: whirlpool and sombrero](galaxy-captures/palettes.jpg)
+
+## The living pass (2026-11-25)
+
+A third pass on `feature/galaxy-living-masterpiece`: the owner asked for an audit of everything
+the theme is made of and for the galaxy to become one of the game's most striking themes, varied
+over time, with an effect of its own for every event and the biggest moments the most spectacular.
+Nothing here is a model, so Blender was not used: the galaxy is gas, dust and points of light.
+
+Before (left) and after (right), High on WebGPU at the same moment:
+
+![Before and after](galaxy-captures/living-before-after.jpg)
+
+### What the audit found
+
+- The arms were two smooth ribbons strung with evenly spaced round pink balls. The grain was
+  cloud noise, so nothing in the disc was a filament, and the dust lanes barely showed at High.
+- No star clusters: the suns were an even sprinkle.
+- The sky was one blurred band of cloud in a corner, the rest of the frame empty; nothing in it
+  moved but the stars' twinkle. Nothing but the galaxy's own tilt gave depth.
+- Only the colours changed with time (the palette wheel). The galaxy's form, its lean and its
+  place never did, and nothing happened that the player had not played except a shooting star
+  every 17 s.
+- One, two and three lines differed only in colour and in how many fronts ran out. A twist's ring
+  was a four-line clear's, smaller. A level-up was a slow global fade nobody saw. A back-to-back
+  brightened a 60-pixel companion. A hard drop was a lock, three times. A run's end did nothing.
+- A seed's tail read as a dotted line of beads on a long flight.
+
+### What changed
+
+**The disc** (`galaxy-disc.js`). Two more reads of the same noise, once per pixel where the ray
+meets the midplane: one squeezed eight to one along the arm, whose level lines run on as long
+filaments of dust beside each lane and as wisps of young light along the ridge, and one sheared out
+of the arm's pitch, whose lines are spurs that leave the lane and cross the arm. A ring of star
+formation stands where the arms leave the bar. The nurseries at rest are torn knots round a few
+compact hearts, not balls.
+
+**Star clusters** (`galaxy-plan.js`, `galaxy-stars.js`). A fifth population: 64 open clusters,
+blue-white, a few units along the arm from a nursery, and 26 globular ones, old and warm, on a
+sphere out of the plane. Members keep their place in the pattern's frame (gotcha #1436).
+
+**The sky** (`galaxy-sky.js`). Everything far is read in a frame of its own that turns once in 90
+minutes about the cloud band's pole (`SKY_TURN`, `u.skyRot`): the band's line never moves in the
+frame, its clouds, stars and far galaxies slide along it. The clouds are wisps with faces lit from
+the galaxy's side (one extra read, one step toward the nucleus in the clouds' own coordinates) and
+a second read that drifts against the first, so they form and melt. A few nearer far galaxies to a
+frame (spirals at every tilt, edge-on ones with a lane of dust); the companion has lanes and knots.
+The galaxy's own old halo is drawn here, behind the disc (gotcha #1437). A few foreground stars hang
+nearer than the rest and slide against the galaxy as the eye drifts (`near` in the plan).
+
+**The airs** (`galaxy-living.js`). Five states of the galaxy's form on a clock of their own, 127 s
+each against the palettes' 100 s, so a palette meets a different air every round; a level moves
+the air two on:
+
+| Air | What it does |
+| --- | --- |
+| clear | The rest look (every factor one). |
+| starburst | The nurseries and knots burn hot, the arms open a little, the disc shows more of its face. |
+| veiled | The dust lies thick, the bulge glows through it, the disc leans nearer edge-on. |
+| awake | The nucleus and its halo burn, faint jets stand along the axis, the clouds brighten. |
+| tide | The arms open wide and the disc shows its face. |
+
+![Starburst, veiled, awake and tide](galaxy-captures/living-airs.jpg)
+
+**The happenings** (`galaxy-living.js`, `happen()` in the world). About every 29 s, on a schedule
+that is a pure function of the clock: a supernova in an arm (a point behind six spikes, a ring
+through the gas round it: `createNovae`), a slow ripple of star formation down one arm, a shower of
+shooting stars, the nucleus stirring, a flash in the companion. None while a run's end holds the
+galaxy dark; `setHappenings(false)` switches them off.
+
+**The events.** Every event now has a shape of its own on top of what it had:
+
+| Event | Its own shape |
+| --- | --- |
+| Lock | The seed is a comet with an unbroken tail (gotcha #1775). |
+| Hard drop | Where its seed lands, a plume breaks out of the plane, up and down the galaxy's axis. |
+| One line | Light runs out along ONE arm like a fuse (the arms take turns). |
+| Two, three lines | Along both arms; three hotter and quicker. |
+| Four lines | The whole pattern ignites along both arms, twice, in the arms' own colour toward starfire; the ring leaves the clouds lit behind it. |
+| Twist | Light runs IN along both arms, the other way from a clear. A twist that clears nothing: in along one. |
+| Chain's end | The exhale runs out along both arms. |
+| Back-to-back | The companion sends a ring of its own across the sky to meet the galaxy's. |
+| Perfect clear | A front of gold crosses the whole sky; every far star and galaxy it passes answers (written against the iris: gotcha #1776). |
+| Level up | The new colours sweep out from the nucleus behind a bright front (gotcha #1777); the sky's colours melt as before. |
+| Game over | The galaxy sinks into the night: its young light goes out, the nucleus dims, the pattern all but stops, the far sky stays. It comes back by itself after 10 s, or re-ignites from the nucleus when the next run starts. |
+
+The light along the arms is one mechanism (`gxPulseLight`, four slots, least light left wins)
+read by the disc, the suns and the nurseries; at rest it costs one uniform branch.
+
+![Four lines, a twist, a new level, a supernova, a crown, a run's end](galaxy-captures/living-events.jpg)
+
+![In the real game: hard drops, four lines, a new level, game over](galaxy-captures/living-ingame.jpg)
+
+### What a later change should know
+
+- `tests/unit/galaxy-world.test.js` pins what PLAY does from the rest look: its worlds call
+  `holdAir(0).setHappenings(false)`. `tests/unit/galaxy-living.test.js` holds the airs, the
+  happenings, the pulses, the front, the dusk, the sky's frame and the clusters.
+  `tests/unit/galaxy-shaders.test.js` is new: every part built to WGSL and GLSL at High and Minimal.
+- The theme ends a run in the #1716 order (`endRun`: flush, reset, then `onGameOver`); the world
+  keeps `over` and `dusk` through `resetSession()` and lets go on `onSessionStart()` or a seek.
+- An air's lean and winding rest under reduced motion; its light does not (the mood-clock rule).
+- A happening is stamped at its own moment and a pulse, a ring and a front hold timestamps, so
+  30 and 240 frames a second agree. The air is applied AFTER the palette step in `update()`
+  (gotcha #500).
+- Playground: `air=<0..4>` holds an air, `happen=0` switches the happenings off,
+  `event=spin|b2b|crown|over|dawn|happen` (with `kind=nova|ripple|shower|stir|flash`) fires the
+  new events.
+
+### Verified
+
+- 250 Galaxy tests in 7 files, with the cross-theme tests a theme change can touch (registry
+  lifecycle acceptance, dual-state tripwire, URL catalogue, camera-breath coverage, reduce
+  flashing): 407 pass. Typecheck, the TS and lint ratchets (at baseline), architecture fitness,
+  dependency boundaries and the theme lifecycle audit pass.
+- Playground captures with clean consoles on WebGPU (RTX laptop GPU, 1600 x 900): rest at three
+  moments, every air, every event at its telling age, the sky alone, a 16-frame strip of the
+  demo loop; Minimal and Medium; High and Low on the forced WebGL2 backend; an upright 390 x 844
+  frame; a 21:9 frame.
+- The real game in a private headless Chrome on WebGPU at High: Galaxy picked, a single-player run
+  started, seven hard drops from the keyboard, two and four lines, a new level and a perfect clear
+  on the bus, a happening by itself, then the game's own game over: the world read `over: true`,
+  `dusk 0.985`, counts back to zero. Console: the sound autoplay refusal of a headless page and the
+  two Steam Cloud notices, nothing else.
+- Cost, capped at 30 fps on the RTX at 1920 x 1080 (three interleaved rounds against the untouched
+  main checkout, about ten GPU-timestamp samples a case, so a rough reading): High at rest 0.94 to
+  1.26 ms, Low at rest 0.37 to 0.42 ms; the sky alone 0.30 to 0.31 ms and the disc alone 0.59 to
+  0.61 ms. Capped readings on this machine swing by a fifth from run to run.
+
+Not verified: an uncapped frame-rate reading; the integrated GPU; physical phones; local
+multiplayer, Infinity and Odyssey layouts in a capture; how the sky's turn and the airs feel
+watched in motion over many minutes (every judgement here is from stills and strips). The theme
+icon and `docs/theme-screenshots/galaxy.png` still show the earlier passes.
