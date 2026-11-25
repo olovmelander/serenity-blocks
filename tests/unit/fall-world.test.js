@@ -25,6 +25,7 @@ import {
     FALL_GROUND_BOUNDS, fallPathDistance, fallPathX, fallTerrainHeight,
 } from '../../src/themes/fall/fall-terrain.js';
 import { FallWorld } from '../../src/themes/fall/fall-world.js';
+import { JAY } from '../../src/themes/fall/fall-visitors.js';
 
 const assetDirectory = new URL('../../src/themes/fall/assets/', import.meta.url);
 const TREE_NAMES = Object.keys(FALL_TREE_URLS);
@@ -1518,8 +1519,10 @@ describe('Fall airs, night and happenings in the world', () => {
         expect(world.playHappening('dragons')).toBe(null);
     });
 
-    it('flies the skein in from beyond one edge of the picture and out beyond the other, whole', async () => {
-        const { world, camera } = await buildWorld('Minimal');
+    it.each([
+        ['landscape', LANDSCAPE], ['portrait', PORTRAIT],
+    ])('flies the skein in from beyond one edge of the picture and out beyond the other (%s)', async (_, aspect) => {
+        const { world, camera } = await buildWorld('Minimal', { aspect });
         const { geese } = world.visitors;
         const v = new THREE.Vector3();
         world.holdAir(0);
@@ -1543,15 +1546,135 @@ describe('Fall airs, night and happenings in the world', () => {
         }
     });
 
-    it('lets the jays out of the leaves and back into them: small at both ends of the flight', async () => {
-        const { world } = await buildWorld('Minimal');
+    /** The game's own card (the board and its preview) at 1920 x 1080, in screen fractions. */
+    const GAME_CARD = Object.freeze({
+        x0: 0.399, x1: 0.601, y0: 0.108, y1: 0.892,
+    });
+    /** A world point on the screen: fractions across and down, and whether it is in the picture. */
+    const onScreen = (camera, x, y, z, v = new THREE.Vector3()) => {
+        v.set(x, y, z).project(camera);
+        return {
+            sx: v.x * 0.5 + 0.5, sy: 0.5 - v.y * 0.5, in: Math.abs(v.x) < 1 && Math.abs(v.y) < 1 && v.z < 1,
+        };
+    };
+    const inCard = (at) => at.in && at.sx > GAME_CARD.x0 && at.sx < GAME_CARD.x1 && at.sy > GAME_CARD.y0
+        && at.sy < GAME_CARD.y1;
+
+    it('crosses the open sky above the board with the whole V for several seconds, large enough', async () => {
+        const { world, camera } = await buildWorld('High');
+        world.setBoard(GAME_CARD);
+        const { geese } = world.visitors;
+        world.holdAir(0);
+        for (const roll of [0.2, 0.8]) {
+            world.playHappening('geese', 0, roll);
+            const { length } = world.happeningAt(0);
+            let above = 0;
+            for (let t = 0.05; t < length; t += 0.1) {
+                world.update(t, STEP, { emitters: [] });
+                camera.updateMatrixWorld();
+                // The V fits the window; never behind the card or its preview.
+                let all = geese.mesh.count > 1;
+                for (let i = 0; i < geese.mesh.count; i++) {
+                    const at = onScreen(camera, geese.place.getX(i), geese.place.getY(i), geese.place.getZ(i));
+                    expect(inCard(at), `roll ${roll} at ${t.toFixed(1)}`).toBe(false);
+                    if (!(at.in && at.sx > GAME_CARD.x0 && at.sx < GAME_CARD.x1 && at.sy < GAME_CARD.y0)) all = false;
+                }
+                if (all) above += 0.1;
+            }
+            // Whole above the board (between the two crowns) for several seconds of its crossing.
+            expect(above, `roll ${roll}`).toBeGreaterThan(4);
+            expect(above, `roll ${roll}`).toBeLessThan(length * 0.4);
+        }
+        // Large enough to read: a wingspan of about a twentieth of the picture's height.
+        world.update(length0(world) * 0.5, STEP, { emitters: [] });
+        camera.updateMatrixWorld();
+        const a = onScreen(camera, geese.place.getX(0), geese.place.getY(0), geese.place.getZ(0));
+        const [gx, gy, gz, gw] = [geese.place.getX(0), geese.place.getY(0), geese.place.getZ(0), geese.place.getW(0)];
+        const span = onScreen(camera, gx + gw, gy, gz);
+        expect(Math.abs(span.sx - a.sx) * 2 * (16 / 9)).toBeGreaterThan(0.035);
+    });
+
+    it('brings the jays in from beyond one side and back out, near and never over the card', async () => {
+        const { world, camera } = await buildWorld('High');
+        world.setBoard(GAME_CARD);
         const { jays } = world.visitors;
         world.holdAir(0);
-        world.playHappening('jays', 0, 0.3);
-        world.update(0.02, STEP, { emitters: [] });
-        expect(jays.mesh.visible).toBe(true);
-        expect(jays.place.getW(0)).toBeLessThan(0.05);
-        world.update(1.3, STEP, { emitters: [] });
-        expect(jays.place.getW(0)).toBeGreaterThan(0.5);
+        for (const roll of [0.2, 0.7]) {
+            world.playHappening('jays', 0, roll);
+            const { length } = world.happeningAt(0);
+            const side = roll < 0.5 ? 1 : -1;
+            let seen = 0;
+            let biggest = 0;
+            for (let t = 0.02; t < length; t += 0.05) {
+                world.update(t, STEP, { emitters: [] });
+                camera.updateMatrixWorld();
+                for (let i = 0; i < (jays.mesh.visible ? jays.mesh.count : 0); i++) {
+                    const x = jays.place.getX(i);
+                    const at = onScreen(camera, x, jays.place.getY(i), jays.place.getZ(i));
+                    expect(inCard(at), `roll ${roll} at ${t.toFixed(2)}`).toBe(false);
+                    // Always its own side of the board.
+                    expect(Math.sign(at.sx - 0.5), `roll ${roll}`).toBe(side);
+                    if (at.in && i === 0) {
+                        seen += 0.05;
+                        const tip = onScreen(camera, x + jays.place.getW(i), jays.place.getY(i), jays.place.getZ(i));
+                        biggest = Math.max(biggest, Math.abs(tip.sx - at.sx) * 2);
+                    }
+                }
+            }
+            // Seen for a few seconds, and near enough to show its wings (a tenth of the picture's width).
+            expect(seen, `roll ${roll}`).toBeGreaterThan(2);
+            expect(biggest, `roll ${roll}`).toBeGreaterThan(0.06);
+            // Out of the picture at both ends of each flight (each jay is drawn in turn: the ones
+            // still flying before it come first).
+            for (let jay = 0; jay < jays.count; jay++) {
+                for (const u of [0.003, 0.997]) {
+                    const t = jay * JAY.follow + u * JAY.seconds;
+                    world.update(t, STEP, { emitters: [] });
+                    camera.updateMatrixWorld();
+                    let index = 0;
+                    for (let before = 0; before < jay; before++) {
+                        const theirs = (t - before * JAY.follow) / JAY.seconds;
+                        if (theirs > 0 && theirs < 1) index += 1;
+                    }
+                    const at = onScreen(camera, jays.place.getX(index), jays.place.getY(index), jays.place.getZ(index));
+                    expect(at.in, `roll ${roll} jay ${jay} at ${u}`).toBe(false);
+                }
+            }
+        }
+    });
+
+    it('drops the acorns from above the picture into the litter close to the eye, beside the card', async () => {
+        const { world, camera } = await buildWorld('High');
+        world.setBoard(GAME_CARD);
+        const { acorns } = world.visitors;
+        world.holdAir(0);
+        for (const roll of [0.2, 0.7]) {
+            world.playHappening('acorns', 0, roll);
+            world.update(0.02, STEP, { emitters: [] });
+            camera.updateMatrixWorld();
+            expect(acorns.mesh.visible).toBe(true);
+            for (let i = 0; i < acorns.count; i++) {
+                const { drop } = acorns;
+                const [x, floor, z, from] = [drop.getX(i), drop.getY(i), drop.getZ(i), drop.getW(i)];
+                // It lets go above the picture's top, and lands in the picture, beside the card.
+                const start = onScreen(camera, x, from, z);
+                expect(start.sy, `roll ${roll} acorn ${i}`).toBeLessThan(0);
+                const land = onScreen(camera, x, floor, z);
+                expect(land.in, `roll ${roll} acorn ${i}`).toBe(true);
+                expect(inCard(land), `roll ${roll} acorn ${i}`).toBe(false);
+                expect(Math.sign(x), `roll ${roll}`).toBe(roll < 0.5 ? -1 : 1);
+                // A few metres from the eye.
+                expect(Math.hypot(x - camera.position.x, z - camera.position.z)).toBeLessThan(12.5);
+            }
+            // The same layout however often it is asked for (one happening, one layout).
+            const first = Array.from(acorns.drop.array);
+            world.update(0.5, STEP, { emitters: [] });
+            expect(Array.from(acorns.drop.array)).toEqual(first);
+        }
     });
 });
+
+/** How long a world's held happening lasts. */
+function length0(world) {
+    return world.happeningAt(0).length;
+}
