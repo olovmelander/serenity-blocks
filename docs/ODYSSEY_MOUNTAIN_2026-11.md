@@ -90,11 +90,31 @@ flight), then:
   buried its slabs.
 - Regenerated from the new height field: the forest's rock keep-outs (`FOREST_ROCKS`), its rail visibility stamp
   (`scripts/bake-forest-visibility.mjs`), the bakes' goldens.
-- The treeline: 619 trees stand above 470 u (455 before): the forest climbs the new mountain as it did the old.
+- The treeline: 613 trees stand above 470 u (455 before).
 
 ## Checks and cost
 
-To be completed with the final captures.
+- **The real game**, captured as the audit was (a headless browser on a software GPU, headed under a virtual
+  display, 1920 x 1080, the board clock pinned at 40; gotchas #1208, #1209) at its stations from the shore to the
+  summit: WebGPU at High, the WebGL2 backend (`forceWebGL=1`) and the Low tier at p 0.28 and L29, a 390 x 844
+  portrait at p 0.28. No WebGPU validation error and no TSL warning in any console (the WebGL2 run logged the
+  software driver's queue notice and an unrelated menu theme's prefetch timing out, nothing of the world).
+- **Tests**: the full unit suite, 28,166 passing and 3 skipped (five timing guards in other themes failed while the
+  captures held every core and pass alone); every Odyssey suite (835) against the new world, among them the rail's
+  clearance (20 u under it, 75 u at its closest), the continuity the lattice can carry, the bakes' goldens, the forest
+  (its rock keep-outs, its treeline, its visibility stamp), the boulders, the summit's birds and their staging, the
+  valley mist, the day's turn and the shaders built to WGSL and GLSL.
+- **Gates**: no new lint error (the renderer's warnings 55 -> 52), the IP-string gate, the architecture fitness check
+  and the skill's audit (three new gotcha rows, #1618, #1619 and #1210, in both copies).
+- **Cost, not measured on a GPU** (this session had none; ADR-0016), so what changed rather than timings:
+  - the ground's fragment stack lost the hero's fields (an atan and seven trigs), the snow ledges (a fract, a
+    floor, a hash, a noise and an fwidth) and the strata on the massif, and gained four reads of the detail
+    texture it already binds (the snow's break-up, the joints' wobble, the packed snow's two scales) and the
+    joints' two fwidths and hash, inside the massif and near the eye. No new binding: the ground still reads 16.
+  - the summit plate's bake: 1.6-1.8 s in the bake worker against 1.5 s (with the tarn's and the lake's plates),
+    kept in the bake cache; the form's decode 27 ms, once.
+  - download: +200 KB of JS in the world's chunk (`odyssey-massif-form.js`).
+- **The treeline**: 613 trees stand above 470 u (455 before); the forest climbs the new mountain as it did the old.
 
 ## Changing it
 
