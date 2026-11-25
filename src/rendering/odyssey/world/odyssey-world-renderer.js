@@ -463,7 +463,9 @@ const MASSIF_ROCK = Object.freeze({
     crack: 0.035,
     crackDark: 0.42,
     blockTone: 0.18,
-    near: Object.freeze([0.35, 1.0]),
+    near: Object.freeze([0.14, 0.42]),
+    /** The slope (1 - normal.y) over which a face becomes jointed rock. */
+    steep: Object.freeze([0.42, 0.6]),
 });
 const MASSIF_SNOW = Object.freeze({
     couloir: 130,
@@ -2829,27 +2831,33 @@ export function createOdysseyWorld({
          * from the height alone, broken into short runs so no line crosses a face. Only where a joint is
          * a few pixels apart (`footprint`), only on the massif's rock.
          */
+        // (Steep faces only: scree and slabs on the gentler ground are not jointed blocks, and a joint
+        // set over a whole slope read as pinstripes from mid range.)
         const jointOn = kRock.mul(heroCrestW)
             .mul(float(1).sub(smoothstep(float(MASSIF_ROCK.near[0]), float(MASSIF_ROCK.near[1]), footprint)))
+            .mul(smoothstep(float(MASSIF_ROCK.steep[0]), float(MASSIF_ROCK.steep[1]), slope))
             .toVar();
         const jWob = texture(detailTex, positionWorld.xz.mul(0.006)).b.sub(0.5).mul(MASSIF_ROCK.wobble);
         const jx = positionWorld.x.add(jWob).div(MASSIF_ROCK.spacing[0]);
         const jz = positionWorld.z.sub(jWob).div(MASSIF_ROCK.spacing[1]);
         const jy = height.add(jWob.mul(0.6)).div(MASSIF_ROCK.spacing[2]);
-        const jointLine = (c) => {
+        // A joint is kept or not by its own hash (about half are), so the set is irregular, never a grid.
+        const jointLine = (c, salt) => {
             const d = abs(fract(c.add(0.5)).sub(0.5));
             const w = fwidth(c).mul(1.2).add(MASSIF_ROCK.crack);
-            return float(1).sub(smoothstep(float(MASSIF_ROCK.crack), w, d));
+            const kept = smoothstep(float(0.48), float(0.52), hash(floor(c.add(0.5)).add(salt)));
+            return float(1).sub(smoothstep(float(MASSIF_ROCK.crack), w, d)).mul(kept);
         };
         const nxz = baseNormal.xz.mul(baseNormal.xz);
         const facingZ = nxz.y.div(max(nxz.x.add(nxz.y), float(1e-4)));
         // (No bedding cracks: a line every few units of height is the striped snow and the layer cake
         // again. The blocks' tones step with the height instead, each block its own.)
-        const crack = mix(jointLine(jz), jointLine(jx), facingZ);
+        const crack = mix(jointLine(jz, 9001.0), jointLine(jx, 7001.0), facingZ);
         const blockTone = hash(floor(jx).mul(73.0)
             .add(floor(jz).mul(19.0))
             .add(floor(jy).mul(5.0))
-            .add(4096.0)).sub(0.5);
+            // (kept positive for the hash, which reads its seed as an unsigned integer: gotcha #87)
+            .add(40000.0)).sub(0.5);
         const blockPaint = float(1).sub(crack.mul(MASSIF_ROCK.crackDark))
             .mul(float(1).add(blockTone.mul(MASSIF_ROCK.blockTone)));
         albedo = albedo.mul(mix(float(1), blockPaint, jointOn));
