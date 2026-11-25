@@ -20,6 +20,9 @@
 //   complete=1     every orb done (the journey's chart): the ending may run at cityT=1
 //   ending=<s>     pin the ending's clock (odyssey-journey-ending.js), e.g. 0, 8, 20, 52
 //   arrival=<s>    pre-age the camera's arrival shot (the orbit and the rise over the roofs)
+//   eye=x/y/z      park the eye at a place in the city's own frame (corridor space), with
+//   aim=x/y/z      the direction it looks (default 0/0/-1) and fov=<degrees>: an orb's close-up,
+//                  which the bench's follow camera never takes
 import * as THREE from 'three/webgpu';
 import { CHAPTER_CONFIGS } from '../../core/odyssey/data/chapters.js';
 import {
@@ -131,6 +134,13 @@ export function create({
     }
 
     const arrival = num(params, 'arrival', 0);
+    const vec = (key) => {
+        const parts = (params.get(key) || '').split('/').map(Number);
+        return parts.length === 3 && parts.every(Number.isFinite) ? new THREE.Vector3(...parts) : null;
+    };
+    const parkedEye = vec('eye');
+    const parkedAim = (vec('aim') ?? new THREE.Vector3(0, 0, -1)).normalize();
+    const parkedLook = new THREE.Vector3();
     const driveCamera = () => {
         if (arrival > 0) {
             cameraRig._arrivalTime = arrival;
@@ -145,6 +155,14 @@ export function create({
         camera.lookAt(cameraRig.lookAtTarget);
         cameraRig.applyFramingRoll();
         camera.fov = cameraRig._resolveBaseFov();
+        if (parkedEye) {
+            const { corridor } = env.userData;
+            corridor.updateWorldMatrix(true, false);
+            camera.position.copy(parkedEye).applyMatrix4(corridor.matrixWorld);
+            camera.up.set(0, 1, 0).transformDirection(corridor.matrixWorld);
+            camera.lookAt(parkedLook.copy(parkedEye).add(parkedAim).applyMatrix4(corridor.matrixWorld));
+            if (params.has('fov')) camera.fov = num(params, 'fov', camera.fov);
+        }
         camera.updateProjectionMatrix();
         camera.updateMatrixWorld(true);
     };

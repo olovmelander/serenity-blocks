@@ -263,6 +263,17 @@ function sdRoundBox(p, b, r) {
 }
 
 /**
+ * A locked orb seen close (see the window's "Locked" block): how much of the world's own colour
+ * and light comes through the frost, how much frost is left, and the padlock as a seal (its scale
+ * against the far padlock's 1.12, and where its middle sits under the window's, in disc radii).
+ * State is still told by brightness, stillness and shape: an open orb is half again as bright,
+ * drifts and glints, and has a halo.
+ */
+export const ORB_LOCKED_NEAR = Object.freeze({
+    colour: 0.7, light: 0.56, frost: 0.4, seal: 0.52, sealY: -0.5,
+});
+
+/**
  * The padlock etched into a locked window, as one SDF in window units (the disc's radius is
  * 1): a rounded body, a shackle arch over it, the keyhole cut through.
  */
@@ -367,13 +378,23 @@ export function createOrbWindowTSL(arrayTexture, uTime = uniform(0)) {
         const awake = world.mul(mix(float(0.86), breathe(uTime).mul(0.14).add(1.0), current));
         const lit = mix(awake, awake.mul(vec3(1.08, 1.0, 0.86)).add(vec3(0.05, 0.035, 0.0)), completed);
 
-        // Locked: asleep behind frost (a soft cool cloud and the finest grain), the world a
-        // faint silhouette through it, and a padlock etched into the frost in the chapter light.
+        // Locked: asleep behind frost (a soft cool cloud and the finest grain), with a padlock
+        // etched into the frost in the chapter light. Far along the path the frost is thick, the
+        // world a faint silhouette and the padlock fills the window, so a small orb reads as
+        // locked. Close to (`fine`: the orb is tens of pixels wide) the frost thins to a breath on
+        // the glass, the world shows through in its own colours, dim and still, and the padlock
+        // draws down to a seal at the window's foot: a new player sees fifty-nine locked orbs,
+        // and every close-up used to be the same grey ball under one big padlock (2026-11-25).
         const cloud = snoise3(vec3(p.mul(2.6), seed)).mul(0.5).add(0.5);
         const grain = hash21(floor(p.mul(140.0)).add(seed)).mul(0.025).mul(fine);
-        const frost = vec3(mix(float(0.05), float(0.16), cloud).add(grain)).mul(vec3(0.82, 0.9, 1.0));
-        const asleep = mix(vec3(luma), world, 0.15).mul(0.3).add(frost).toVar();
-        const lockP = p.div(1.12);
+        const frost = vec3(mix(float(0.05), float(0.16), cloud).add(grain)).mul(vec3(0.82, 0.9, 1.0))
+            .mul(mix(float(1.0), float(ORB_LOCKED_NEAR.frost), fine));
+        const asleep = mix(vec3(luma), world, mix(float(0.15), float(ORB_LOCKED_NEAR.colour), fine))
+            .mul(mix(float(0.3), float(ORB_LOCKED_NEAR.light), fine))
+            .add(frost)
+            .toVar();
+        const lockP = p.sub(vec2(0.0, ORB_LOCKED_NEAR.sealY).mul(fine))
+            .div(mix(float(1.12), float(ORB_LOCKED_NEAR.seal), fine));
         const lockD = sdPadlock(lockP);
         const aa = clamp(fwidth(lockD), 0.004, 0.08);
         // The etch's shadow first (offset down-right), then the glyph.

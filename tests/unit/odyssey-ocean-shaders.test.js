@@ -24,7 +24,7 @@ const railSamples = Array.from({ length: 48 }, (_, i) => {
     return { x: pt.x, y: pt.y, z: pt.z };
 });
 const NAMES = [
-    'odyssey-ocean-reef', 'odyssey-ocean-kelp-forest', 'odyssey-ocean-shafts',
+    'odyssey-ocean-reef', 'odyssey-ocean-kelp-forest', 'odyssey-ocean-shafts', 'odyssey-ocean-garden-pools',
     'odyssey-breach-drops', 'odyssey-breach-sheet', 'odyssey-world-water',
     'odyssey-dolphins', 'odyssey-dolphin-splashes', 'odyssey-dolphin-bubbles',
 ];
@@ -92,10 +92,19 @@ describe("the world draws them by the sea's rules", () => {
         expect(get('odyssey-ocean-shafts').visible).toBe(false);
         world.update(1.02, rail, 0.09, SEA - 40, camera(SEA - 40));
         expect(get('odyssey-ocean-shafts').visible).toBe(true);
+        // The gardens' pools of light are the dark's: drawn in the deep, not submitted where the
+        // depth arc gives them nothing (the shallows), nor out of the water.
+        const pools = get('odyssey-ocean-garden-pools');
+        expect(pools.material.depthNode).toBeTruthy();
+        world.update(1.03, rail, 0.05, SEA - 175, camera(SEA - 175));
+        expect(pools.visible).toBe(true);
+        world.update(1.035, rail, 0.12, SEA - 5, camera(SEA - 5));
+        expect(pools.visible).toBe(false);
         // Out of the water (the sea is opaque from above): nothing of the reef is submitted.
         world.update(1.04, rail, 0.11, SEA + 20, camera(SEA + 20));
         expect(reef.visible).toBe(false);
         expect(kelp.visible).toBe(false);
+        expect(pools.visible).toBe(false);
         expect(get('odyssey-ocean-shafts').visible).toBe(false);
     });
 

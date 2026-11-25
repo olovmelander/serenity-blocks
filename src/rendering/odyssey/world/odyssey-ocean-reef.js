@@ -54,6 +54,40 @@ export const OCEAN_REEF = Object.freeze({
         Object.freeze([64, -18, 'tubes']), Object.freeze([-34, -36, 'pen']), Object.freeze([-14, -60, 'tree']),
         Object.freeze([-64, -82, 'anemone']), Object.freeze([44, -98, 'tree']),
     ]),
+    /**
+     * THE NEEDLE (2026-11-25): a slim stack on the slope between the column and the tower, its
+     * crown 104 u down. The close-ups of orbs 7 to 9 look along -z, and everything of the reef
+     * stood 90-180 u from them, where the water has taken its colour: a frame of far, dim shapes
+     * and no subject. The needle stands 70-80 u off, on the free side of each frame (screen left
+     * of the orb): its foot and wall behind orb 7, its crown garden beside orb 8, its crown from
+     * above under orb 9, with the tower a plate behind it and the stacks a plate behind that.
+     * Its crown stays under the cruising school's ring (which swims the water above y 190 there).
+     */
+    needle: Object.freeze({
+        x: -42,
+        z: -48,
+        topDepth: 104,
+        topRadius: 5.2,
+        baseRadius: 13.5,
+        leanX: 0.07,
+        leanZ: 0.09,
+        seed: 77,
+        /** The radius (u) of the patch of light the shaft over it lays on its crown. */
+        spot: 9.5,
+    }),
+    /**
+     * THE ARCH: a low rock arch at the slope's foot, beside orb 6's close-up (which sees only the
+     * bed, 40-65 u off), with a lit garden under it. Its feet (world xz), its rise over the
+     * higher foot and its thickness (u).
+     */
+    arch: Object.freeze({
+        feet: Object.freeze([Object.freeze([-30, -27]), Object.freeze([-16, -33])]), rise: 10.5, thick: 2.2, seed: 41,
+    }),
+    /** Small growth on the sand between the arch and orb 6's eye: world xz, size (u), form. */
+    archTrail: Object.freeze([
+        Object.freeze([-31, -17, 2.4, 'pen']), Object.freeze([-23, -15, 1.9, 'anemone']),
+        Object.freeze([-19, -9, 1.8, 'pen']), Object.freeze([-12, -13, 1.6, 'anemone']),
+    ]),
     /** Pieces on the tower's wall facing the close-ups, and warm colonies in the light. */
     towerGarden: 9,
     shelfColonies: 7,
@@ -95,6 +129,10 @@ const FISH_RINGS = Object.freeze([
 
 /** How far a colony's mound departs from a smooth swell (its noise, +-). */
 const MOUND_ROUGH = 0.12;
+
+/** A sea stack's crown and wall (the pinnacles'; the tower passes its own): how high the crown's dome
+ * rises over its top (x its top radius), how far a ring swells or pinches, how rough the crown is. */
+const STACK_FORM = Object.freeze({ dome: 0.55, pinch: 0.5, rough: 0.3 });
 
 /** mulberry32. */
 function makeRng(seed) {
@@ -199,7 +237,16 @@ export function planOceanReef({
     heightAt, rail, seaLevel, quality = 'high', seed = 1117,
 }) {
     const plan = {
-        tower: null, pinnacles: [], boulders: [], mounds: [], corals: [], stipes: [],
+        tower: null,
+        needle: null,
+        arch: null,
+        pinnacles: [],
+        boulders: [],
+        mounds: [],
+        corals: [],
+        stipes: [],
+        lights: [],
+        spots: [],
     };
     if (!rail?.length || typeof heightAt !== 'function') return plan;
     const rnd = makeRng(seed);
@@ -291,6 +338,15 @@ export function planOceanReef({
         [[0.10, 0.92, 0.58], [0.66, 1.0, 0.80]], [[0.16, 0.48, 1.0], [0.60, 0.86, 1.0]],
         [[0.92, 0.24, 0.78], [1.0, 0.66, 0.92]],
     ];
+    // ...and its warm ones (2026-11-25): amber and rose among the cold lights, so a garden in the dark is
+    // not blue on blue. A colony still takes one pair.
+    const EMBER = [
+        [[1.5, 0.62, 0.17], [1.5, 1.12, 0.55]], [[1.45, 0.30, 0.52], [1.45, 0.92, 0.98]],
+    ];
+    const DEEP = [...COLD, ...EMBER];
+    // A garden's light: its own colour, a little toward its accent (the water takes the red on
+    // the way to the eye, so a pale warm light arrives green).
+    const lightOf = (pair) => pair[0].map((v, c) => v + ((pair[1][c] - v) * 0.3));
     const pieceAt = (x, y, z, size, kind, pair, deep, yaw = rnd() * Math.PI * 2) => {
         plan.corals.push({
             x, y, z, size, kind, colour: pair[0], accent: pair[1], yaw, deep, depth: seaLevel - y, seed: plan.corals.length,
@@ -322,6 +378,18 @@ export function planOceanReef({
             moundY + (moundR * squash * (1 - MOUND_ROUGH) * Math.sqrt(Math.max(0, 1 - ((d / moundR) ** 2)))),
         );
         pieceAt(cx, onMound(0), cz, heroSize, hero, pair, deep);
+        // What a garden in the dark gives off lights the rock and the sand round it (`plan.lights`).
+        if (deep) {
+            plan.lights.push({
+                x: cx,
+                y: onMound(0) + (heroSize * 0.5),
+                z: cz,
+                r: moundR * 2.7,
+                colour: lightOf(pair),
+                gain: 0.26,
+                pool: true,
+            });
+        }
         const small = Math.round((deep ? 5 : 3) * share) + 1;
         const kinds = deep ? SMALL_DEEP : SMALL_WARM;
         for (let i = 0; i < small; i += 1) {
@@ -337,7 +405,7 @@ export function planOceanReef({
         return true;
     };
     R.deepColonies.forEach(([cx, cz, hero]) => {
-        if (seaLevel - heightAt(cx, cz) > 92) colonyAt(cx, cz, hero, COLD, true, 9 + (rnd() * 4));
+        if (seaLevel - heightAt(cx, cz) > 92) colonyAt(cx, cz, hero, DEEP, true, 9 + (rnd() * 4));
     });
     // The tower's wall, on the side the close-ups see: fans and trees standing out from its ledges.
     for (let i = 0; i < R.towerGarden; i += 1) {
@@ -352,7 +420,7 @@ export function planOceanReef({
             T.z + (Math.sin(a) * rr),
             3.6 + (rnd() * 3.4),
             ['fan', 'tree', 'tubes'][i % 3],
-            (deep ? COLD : WARM)[Math.floor(rnd() * (deep ? COLD : WARM).length)],
+            (deep ? DEEP : WARM)[Math.floor(rnd() * (deep ? DEEP : WARM).length)],
             deep,
             a + (Math.PI / 2),
         );
@@ -423,6 +491,132 @@ export function planOceanReef({
             stipeAt(sx, heightAt(sx, sz) - 0.5, sz, currentYaw);
         }
     }
+
+    // ── THE NEEDLE AND THE ARCH (2026-11-25): the places beside the first orbs' close-ups ──
+    // Planted last and from draws of their own, so everything above stands where it stood.
+    const own = makeRng(seed + 4099);
+    const lifeAt = (x, y, z, size, kind, pair, yaw) => {
+        plan.corals.push({
+            x,
+            y,
+            z,
+            size,
+            kind,
+            colour: pair[0],
+            accent: pair[1],
+            yaw,
+            deep: true,
+            depth: seaLevel - y,
+            seed: plan.corals.length,
+        });
+    };
+    const N = R.needle;
+    const needle = {
+        x: N.x,
+        z: N.z,
+        baseY: bedUnder(N.x, N.z, N.baseRadius) - 4,
+        topY: seaLevel - N.topDepth,
+        baseR: N.baseRadius,
+        topR: N.topRadius,
+        seed: N.seed,
+        leanX: N.leanX,
+        leanZ: N.leanZ,
+    };
+    plan.needle = needle;
+    // Its crown garden: a hero in the middle, smaller growth out to the rim, warm lights and cold.
+    const crownKinds = ['tree', 'anemone', 'dome', 'fan', 'tubes', 'pen', 'anemone'];
+    const crownPairs = [EMBER[0], COLD[0], EMBER[1], COLD[2], EMBER[0], COLD[1], EMBER[1]];
+    const crownCount = quality === 'low' ? 4 : crownKinds.length;
+    for (let i = 0; i < crownCount; i += 1) {
+        const a = ((i / crownCount) * Math.PI * 2) + (own() * 0.7);
+        const k = i === 0 ? 0 : 0.42 + (own() * 0.4);
+        const on = stackCrownAt(needle, a, k);
+        const size = i === 0 ? 5.2 : 2.3 + (own() * 1.6);
+        lifeAt(on.x, on.y - 0.25, on.z, size, crownKinds[i], crownPairs[i], a + (Math.PI / 2));
+    }
+    const crownTop = stackCrownAt(needle, 0, 0);
+    // THE SHAFT THAT FINDS THE NEEDLE: one soft shaft of the surface's light let down on its crown,
+    // so the garden there is a lit thing in the frames of orbs 8 and 9 and not one more dim shape.
+    plan.spots.push({
+        x: crownTop.x, y: crownTop.y + 1.2, z: crownTop.z, r: R.needle.spot, width: R.needle.spot * 1.5,
+    });
+    plan.lights.push({
+        x: crownTop.x, y: crownTop.y + 3.2, z: crownTop.z, r: 15, colour: lightOf(EMBER[0]), gain: 0.9, pool: false,
+    });
+    // Its wall, on the side the close-ups see (they stand toward +x +z of it): fans and trees out
+    // from its ledges, big enough to read from the orbs.
+    const wallKinds = ['fan', 'tree', 'fan', 'tubes', 'fan', 'tree'];
+    const wallPairs = [COLD[0], EMBER[1], COLD[4], COLD[2], EMBER[0], COLD[3]];
+    const wallCount = quality === 'low' ? 3 : wallKinds.length;
+    const needleHeight = needle.topY - needle.baseY;
+    for (let i = 0; i < wallCount; i += 1) {
+        const a = (0.10 + (0.52 * ((i + (own() * 0.5)) / wallCount))) * Math.PI;
+        const h = 0.36 + (0.52 * (((i * 5) % wallCount) / wallCount)) + (own() * 0.05);
+        const wall = stackWallAt(needle, a, h, STACK_FORM.pinch);
+        const lean = h * h * needleHeight;
+        lifeAt(
+            needle.x + (Math.cos(a) * wall.r * 0.9) + (needle.leanX * lean),
+            wall.y,
+            needle.z + (Math.sin(a) * wall.r * 0.9) + (needle.leanZ * lean),
+            5.6 + (own() * 3.0),
+            wallKinds[i],
+            wallPairs[i],
+            a + (Math.PI / 2),
+        );
+    }
+    // The arch: two feet on the bed, sunk; a garden under its span and a little growth on its back.
+    const A = R.arch;
+    const footOf = ([x, z]) => ({ x, y: bedUnder(x, z, A.thick * 1.6) - 2.2, z });
+    const footA = footOf(A.feet[0]);
+    const footB = footOf(A.feet[1]);
+    plan.arch = {
+        a: footA, b: footB, rise: A.rise, thick: A.thick, seed: A.seed,
+    };
+    const midX = (footA.x + footB.x) / 2;
+    const midZ = (footA.z + footB.z) / 2;
+    const spanX = footB.x - footA.x;
+    const spanZ = footB.z - footA.z;
+    const span = Math.hypot(spanX, spanZ);
+    // (its normal in plan, toward the slope: the garden stands a little behind the span, so the
+    // arch is drawn against its light)
+    const backX = spanZ / span;
+    const backZ = -spanX / span;
+    const bedPiece = (x, z, size, kind, pair) => {
+        lifeAt(x, heightAt(x, z) - 0.3, z, size, kind, pair, own() * Math.PI * 2);
+    };
+    // (A sea pen for its hero: a feather of light reads from 50 u where a branching coral is twigs.)
+    bedPiece(midX + (backX * 0.8), midZ + (backZ * 0.8), 8.4, 'anemone', EMBER[0]);
+    bedPiece(midX + (backX * 4.4) - (spanX * 0.16), midZ + (backZ * 4.4) - (spanZ * 0.16), 9.6, 'pen', EMBER[1]);
+    const underKinds = ['anemone', 'tubes', 'pen', 'tree', 'anemone'];
+    const underPairs = [COLD[0], EMBER[0], COLD[2], EMBER[1], COLD[1]];
+    const underSizes = [4.2, 3.4, 4.6, 4.0, 3.2];
+    const underCount = quality === 'low' ? 3 : underKinds.length;
+    for (let i = 0; i < underCount; i += 1) {
+        const along = ((i + 0.5) / underCount) - 0.5;
+        const off = (i % 2 === 0 ? -1 : 1) * (1.8 + (own() * 2.6));
+        bedPiece(
+            midX + (spanX * along * 0.74) + (backX * off),
+            midZ + (spanZ * along * 0.74) + (backZ * off),
+            underSizes[i] * (0.9 + (own() * 0.2)),
+            underKinds[i],
+            underPairs[i],
+        );
+    }
+    // ...and a few small lights straggling down the sand toward the eye, so the garden has a way in.
+    R.archTrail.slice(0, quality === 'low' ? 2 : R.archTrail.length).forEach(([x, z, size, kind], i) => {
+        bedPiece(x, z, size, kind, i % 2 === 0 ? COLD[0] : EMBER[1]);
+    });
+    const archTop = Math.max(footA.y, footB.y) + 2.2 + A.rise;
+    lifeAt(midX - (spanX * 0.12), archTop + (A.thick * 0.7), midZ - (spanZ * 0.12), 1.9, 'anemone', COLD[0], 0);
+    plan.lights.push({
+        x: midX + (backX * 1.4),
+        y: heightAt(midX, midZ) + 3.4,
+        z: midZ + (backZ * 1.4),
+        r: 19,
+        colour: lightOf(EMBER[0]),
+        gain: 1.6,
+        pool: true,
+    });
     return plan;
 }
 
@@ -490,10 +684,6 @@ function emitGrid(sink, grid, normals, tints, keep) {
         }
     }
 }
-
-/** A sea stack's crown and wall (the pinnacles'; the tower passes its own): how high the crown's dome
- * rises over its top (x its top radius), how far a ring swells or pinches, how rough the crown is. */
-const STACK_FORM = Object.freeze({ dome: 0.55, pinch: 0.5, rough: 0.3 });
 
 /** A stack's wall radius at bearing `a` and height fraction `h` (its lathe with its lobes and noise). */
 function stackWallAt(s, a, h, pinch) {
@@ -615,7 +805,9 @@ function addLump(sink, {
             row.push([x + (Math.cos(a) * rr), y + (Math.sin(lat) * r * squash * n), z + (Math.sin(a) * rr)]);
             // A dusted outcrop is pale where the sand settles on it, over its top, and the rock's own
             // at its sunk skirt (2026-11-25: it was palest round its waist, a rim that drew a saucer).
-            const t = dusted ? 0.55 + (0.75 * Math.max(0, j / rows)) : ((j + rows) / (2 * rows)) * 0.8;
+            // (0.55 + 0.75 -> 0.25 + 0.42, 2026-11-25: the bed keeps less light with depth now, and
+            // a mound paler than the sand it is dusted with stood out as a lump of blue clay.)
+            const t = dusted ? 0.25 + (0.42 * Math.max(0, j / rows)) : ((j + rows) / (2 * rows)) * 0.8;
             rowTint.push([
                 ROCK_DARK[0] + ((ROCK_LIGHT[0] - ROCK_DARK[0]) * t),
                 ROCK_DARK[1] + ((ROCK_LIGHT[1] - ROCK_DARK[1]) * t),
@@ -634,13 +826,165 @@ function addLump(sink, {
 }
 
 /**
+ * A rock arch from foot `a` to foot `b` (both sunk in the bed): a bent, tapering limb, thick at
+ * its legs and worn thin over its span, wandering a little out of its own plane.
+ */
+function addArch(sink, {
+    a, b, rise, thick, seed,
+}) {
+    const sides = 14;
+    const rows = 38;
+    const dx = b.x - a.x;
+    const dz = b.z - a.z;
+    const span = Math.hypot(dx, dz) || 1;
+    // The arch's plane: along the feet, and up. `out` is the plane's normal (horizontal).
+    const out = [dz / span, 0, -dx / span];
+    const top = Math.max(a.y, b.y) + rise;
+    const centre = (t) => {
+        // An ellipse's half: theta runs a little past both feet, down into the bed.
+        const th = -0.22 + (t * (Math.PI + 0.44));
+        // (Its crown stands off centre, toward one foot: worn rock, not a drawn curve.)
+        const u = ((1 - Math.cos(th)) / 2) + (0.07 * Math.sin(th) * Math.sin(th));
+        const lift = Math.sin(th) * (1 + (0.16 * Math.sin((th * 2) + 0.6)));
+        const footY = a.y + ((b.y - a.y) * u);
+        const wander = (reefNoise((t * 3.1) + seed, seed * 0.7, 1.3) - 0.5) * 3.4 * Math.max(0, lift);
+        return [
+            a.x + (dx * u) + (out[0] * wander),
+            footY + ((top - footY) * Math.max(lift, -0.6)),
+            a.z + (dz * u) + (out[2] * wander),
+        ];
+    };
+    const grid = [];
+    const tints = [];
+    const axis = [];
+    for (let j = 0; j <= rows; j += 1) {
+        const t = j / rows;
+        const c = centre(t);
+        const c0 = centre(Math.max(0, t - 0.01));
+        const c1 = centre(Math.min(1, t + 0.01));
+        const tan = [c1[0] - c0[0], c1[1] - c0[1], c1[2] - c0[2]];
+        const tl = Math.hypot(tan[0], tan[1], tan[2]) || 1;
+        tan[0] /= tl; tan[1] /= tl; tan[2] /= tl;
+        // The ring's frame: the plane's normal, and the in-plane normal of the limb.
+        const m = [
+            (tan[1] * out[2]) - (tan[2] * out[1]),
+            (tan[2] * out[0]) - (tan[0] * out[2]),
+            (tan[0] * out[1]) - (tan[1] * out[0]),
+        ];
+        const lift = Math.sin(-0.22 + (t * (Math.PI + 0.44)));
+        // Thick legs, a thin worn span: and the span a slab, broader across than it is deep.
+        const up01 = Math.min(1, Math.max(0, lift));
+        const girth = thick * (2.5 - (1.55 * (up01 ** 0.8)));
+        const broad = 1.15 + (0.75 * up01);
+        const deepN = 1 - (0.2 * up01);
+        const row = [];
+        const rowTint = [];
+        for (let i = 0; i < sides; i += 1) {
+            const ang = (i / sides) * Math.PI * 2;
+            const ca = Math.cos(ang);
+            const sa = Math.sin(ang);
+            const big = reefNoise((ca * 1.4) + seed, (t * 5.5) + seed, (sa * 1.4) - seed);
+            const fine = reefNoise((ca * 3.3) - seed, t * 13, (sa * 3.3) + seed);
+            const knob = reefNoise((ca * 5.6) + (seed * 2), t * 24, (sa * 5.6) - (seed * 3));
+            const r = girth * (0.50 + (big * 0.92) + ((fine - 0.5) * 0.46) + ((knob - 0.5) * 0.30));
+            row.push([
+                c[0] + (((out[0] * ca * broad) + (m[0] * sa * deepN)) * r),
+                c[1] + (((out[1] * ca * broad) + (m[1] * sa * deepN)) * r),
+                c[2] + (((out[2] * ca * broad) + (m[2] * sa * deepN)) * r),
+            ]);
+            const shade = Math.min(1, Math.max(0, 0.35 + ((big - 0.5) * 0.7) + (0.25 * Math.max(0, lift))));
+            rowTint.push([
+                ROCK_DARK[0] + ((ROCK_LIGHT[0] - ROCK_DARK[0]) * shade),
+                ROCK_DARK[1] + ((ROCK_LIGHT[1] - ROCK_DARK[1]) * shade),
+                ROCK_DARK[2] + ((ROCK_LIGHT[2] - ROCK_DARK[2]) * shade),
+            ]);
+        }
+        grid.push(row);
+        tints.push(rowTint);
+        axis.push(c);
+    }
+    const outward = (pt, j) => {
+        const c = axis[j];
+        const o = [pt[0] - c[0], pt[1] - c[1], pt[2] - c[2]];
+        const l = Math.hypot(o[0], o[1], o[2]) || 1;
+        return [o[0] / l, o[1] / l, o[2] / l];
+    };
+    emitGrid(sink, grid, gridNormals(grid, true, outward), tints, 0.92);
+}
+
+/** How a garden's light is baked into what stands round it (`aLight`): how far round a form it wraps, its ceiling. */
+const LIGHT_BAKE = Object.freeze({ wrap: 0.4, max: 1 });
+
+/**
+ * The light the gardens of the deep throw on what stands near them, baked per vertex
+ * (`plan.lights`: place, reach, colour): a smooth falloff to nothing at its reach, more on faces
+ * turned toward it. rgb in 0..255 (a normalised attribute).
+ * @returns {Uint8Array} 4 per vertex
+ */
+function bakeGardenLight(positions, normals, lights, spots = [], toLight = [0, 1, 0]) {
+    const count = positions.length / 3;
+    const out = new Uint8Array(count * 4);
+    if (!lights.length && !spots.length) return out;
+    for (let i = 0; i < count; i += 1) {
+        const px = positions[i * 3];
+        const py = positions[(i * 3) + 1];
+        const pz = positions[(i * 3) + 2];
+        let r = 0;
+        let g = 0;
+        let b = 0;
+        for (let k = 0; k < lights.length; k += 1) {
+            const L = lights[k];
+            const lx = L.x - px;
+            const ly = L.y - py;
+            const lz = L.z - pz;
+            const d2 = (lx * lx) + (ly * ly) + (lz * lz);
+            if (d2 >= L.r * L.r) continue;
+            const d = Math.sqrt(d2) || 1e-6;
+            const fall = (1 - (d2 / (L.r * L.r))) ** 2;
+            const facing = ((normals[i * 3] * lx) + (normals[(i * 3) + 1] * ly) + (normals[(i * 3) + 2] * lz)) / d;
+            const w = fall * Math.min(1, Math.max(0, (facing + LIGHT_BAKE.wrap) / (1 + LIGHT_BAKE.wrap))) * L.gain;
+            r += L.colour[0] * w;
+            g += L.colour[1] * w;
+            b += L.colour[2] * w;
+        }
+        out[i * 4] = Math.round(Math.min(LIGHT_BAKE.max, r) * 255);
+        out[(i * 4) + 1] = Math.round(Math.min(LIGHT_BAKE.max, g) * 255);
+        out[(i * 4) + 2] = Math.round(Math.min(LIGHT_BAKE.max, b) * 255);
+        // w: the shafts' light (`plan.spots`): how near the vertex lies to a shaft's axis (a line
+        // through the spot toward the light), on faces turned to it, a little way up and down it.
+        let spot = 0;
+        for (let k = 0; k < spots.length; k += 1) {
+            const S = spots[k];
+            const sx = px - S.x;
+            const sy = py - S.y;
+            const sz = pz - S.z;
+            const along = (sx * toLight[0]) + (sy * toLight[1]) + (sz * toLight[2]);
+            if (along < -S.r * 2.4 || along > S.r * 1.6) continue;
+            const ox = sx - (toLight[0] * along);
+            const oy = sy - (toLight[1] * along);
+            const oz = sz - (toLight[2] * along);
+            const d2 = ((ox * ox) + (oy * oy) + (oz * oz)) / (S.r * S.r);
+            if (d2 >= 1) continue;
+            const facing = (normals[i * 3] * toLight[0]) + (normals[(i * 3) + 1] * toLight[1])
+                + (normals[(i * 3) + 2] * toLight[2]);
+            const down = along < 0 ? 1 - ((-along / (S.r * 2.4)) ** 2) : 1;
+            spot = Math.max(spot, ((1 - d2) ** 2) * Math.min(1, Math.max(0, (facing * 0.75) + 0.25)) * down);
+        }
+        out[(i * 4) + 3] = Math.round(Math.min(1, spot) * 255);
+    }
+    return out;
+}
+
+/**
  * The reef's rock and its life as ONE static mesh in world space: smooth-shaded, coloured per
  * vertex, with `aLife` = (how much of its own light a vertex carries, how far it may sway, 1 on
- * living things and 0 on rock).
+ * living things and 0 on rock) and `aLight` = the gardens' light that falls on it (rgb) and the
+ * shafts' (w).
  * @param {ReturnType<typeof planOceanReef>} plan
- * @returns {THREE.BufferGeometry} position, normal, color, aLife
+ * @param {number[]} [toLight] unit vector up the shafts, toward the light (default: straight up)
+ * @returns {THREE.BufferGeometry} position, normal, color, aLife, aLight
  */
-export function buildReefRockGeometry(plan) {
+export function buildReefRockGeometry(plan, toLight = [0, 1, 0]) {
     const sink = makeLifeSink();
     // The tower's crown stays low and whole (its kelp forest and its rim's coral stand on it).
     if (plan.tower) {
@@ -649,6 +993,8 @@ export function buildReefRockGeometry(plan) {
         });
     }
     plan.pinnacles.forEach((p) => addStack(sink, p, { sides: 19, rings: 20 }));
+    if (plan.needle) addStack(sink, plan.needle, { sides: 22, rings: 28 });
+    if (plan.arch) addArch(sink, plan.arch);
     plan.boulders.forEach((b) => addLump(sink, b));
     plan.mounds.forEach((m) => addLump(sink, m));
     const rockVerts = sink.positions.length / 3;
@@ -665,8 +1011,66 @@ export function buildReefRockGeometry(plan) {
     geometry.setAttribute('normal', new THREE.Float32BufferAttribute(sink.normals, 3));
     geometry.setAttribute('color', new THREE.Float32BufferAttribute(sink.colours, 3));
     geometry.setAttribute('aLife', new THREE.BufferAttribute(life, 3));
+    const baked = bakeGardenLight(sink.positions, sink.normals, plan.lights || [], plan.spots || [], toLight);
+    geometry.setAttribute('aLight', new THREE.BufferAttribute(baked, 4, true));
     geometry.computeBoundingSphere();
     if (geometry.boundingSphere) geometry.boundingSphere.radius += 4;
+    return geometry;
+}
+
+/** The pools of light on the bed: each disc's rings and spokes, its lift off the bed (u), its reach (x the light's). */
+export const REEF_POOLS = Object.freeze({
+    rings: 6, spokes: 20, lift: 0.45, reach: 1.15,
+});
+
+/**
+ * THE GARDENS' LIGHT ON THE SAND: one disc per light that asks for a pool, laid on the drawn bed
+ * (each vertex seated by the bed's CPU mirror, so it follows the slope), brightest under its
+ * garden and gone at its rim. One static mesh; `color` = the light's colour, `aPool` = (0 at the
+ * centre .. 1 at the rim, the light's gain, its phase).
+ * @param {ReturnType<typeof planOceanReef>} plan
+ * @param {(x: number, z: number) => number} heightAt
+ * @returns {THREE.BufferGeometry} position, color, aPool (indexed)
+ */
+export function buildReefPoolGeometry(plan, heightAt) {
+    const P = REEF_POOLS;
+    const positions = [];
+    const colours = [];
+    const pool = [];
+    const index = [];
+    (plan.lights || []).filter((L) => L.pool).forEach((L, n) => {
+        const base = positions.length / 3;
+        const reach = L.r * P.reach;
+        const put = (x, z, rr) => {
+            positions.push(x, heightAt(x, z) + P.lift, z);
+            colours.push(L.colour[0], L.colour[1], L.colour[2]);
+            pool.push(rr, L.gain, (n * 2.399) % (Math.PI * 2));
+        };
+        put(L.x, L.z, 0);
+        for (let j = 1; j <= P.rings; j += 1) {
+            const rr = j / P.rings;
+            for (let i = 0; i < P.spokes; i += 1) {
+                const a = (i / P.spokes) * Math.PI * 2;
+                put(L.x + (Math.cos(a) * reach * rr), L.z + (Math.sin(a) * reach * rr), rr);
+            }
+        }
+        for (let i = 0; i < P.spokes; i += 1) index.push(base, base + 1 + ((i + 1) % P.spokes), base + 1 + i);
+        for (let j = 1; j < P.rings; j += 1) {
+            const r0 = base + 1 + ((j - 1) * P.spokes);
+            const r1 = r0 + P.spokes;
+            for (let i = 0; i < P.spokes; i += 1) {
+                const i1 = (i + 1) % P.spokes;
+                index.push(r0 + i, r0 + i1, r1 + i, r0 + i1, r1 + i1, r1 + i);
+            }
+        }
+    });
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    geometry.setAttribute('color', new THREE.Float32BufferAttribute(colours, 3));
+    geometry.setAttribute('aPool', new THREE.Float32BufferAttribute(pool, 3));
+    geometry.setIndex(index);
+    geometry.computeBoundingSphere();
+    if (geometry.boundingSphere) geometry.boundingSphere.radius += 2;
     return geometry;
 }
 
