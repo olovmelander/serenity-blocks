@@ -12,8 +12,10 @@ import { FALL_FEATURE_TREES, FALL_VIEWS } from '../../src/themes/fall/fall-compo
 import { FallReactions } from '../../src/themes/fall/fall-reactions.js';
 import { createSquirrel } from '../../src/themes/fall/fall-squirrel.js';
 import { SQUIRREL_CLIPS, SQUIRREL_SCALE } from '../../src/themes/fall/fall-squirrel-clips.js';
+import { createPerches } from '../../src/themes/fall/fall-squirrel-limbs.js';
 import {
-    FLICK_LENGTH, GROUND_BITS, SQUIRREL_SPOTS, SquirrelMind, TRUNK_BITS, createSquirrelPose,
+    FLICK_LENGTH, GROUND_BITS, LIMB_BITS, PAD_BITS, SQUIRREL_NEAR_SPOTS, SQUIRREL_SPOTS, SquirrelMind, TRUNK_BITS,
+    createSquirrelPose,
 } from '../../src/themes/fall/fall-squirrel-mind.js';
 import {
     SQUIRREL_TRUNK_SPAN, TrunkSurface, createSquirrelStage, measureTrunk,
@@ -44,8 +46,8 @@ async function parseGlb(file) {
     return new GLTFLoader().parseAsync(files.get(file).slice(0), '');
 }
 
-/** The stage from the real hero trees, as FallWorld measures it. */
-function stageFrom(trees) {
+/** The stage from the real hero trees and the perches, as FallWorld measures and places them. */
+function stageFrom(trees, { perches = true } = {}) {
     const trunks = {};
     for (const [name, tree] of [['maple', FALL_FEATURE_TREES[0]], ['oak', FALL_FEATURE_TREES[1]]]) {
         const { bark } = trees[tree.asset];
@@ -60,7 +62,13 @@ function stageFrom(trees) {
             span: SQUIRREL_TRUNK_SPAN[name],
         }), name);
     }
-    return createSquirrelStage({ trunks, groundHeight: fallTerrainHeight, eye: [...FALL_VIEWS.landscape.position] });
+    const eye = [...FALL_VIEWS.landscape.position];
+    const { limbs, pads } = perches
+        ? createPerches({ placements: FALL_FEATURE_TREES, groundHeight: fallTerrainHeight, eye })
+        : { limbs: {}, pads: [] };
+    return createSquirrelStage({
+        trunks, groundHeight: fallTerrainHeight, eye, limbs, pads,
+    });
 }
 
 /** The game's landscape eye, to say where on the screen a point is. */
@@ -258,6 +266,7 @@ describe('the squirrel mind', () => {
             let onScreen = 0;
             let clear = 0;
             let last = null;
+            let stride = 0;
             let jump = 0;
             live(mind, 600, STEP, [], (pose) => {
                 total += 1;
@@ -272,14 +281,21 @@ describe('the squirrel mind', () => {
                 if (Math.abs(v.x) < 1 && Math.abs(v.y) < 1) onScreen += 1;
                 // The card covers about the middle quarter of a landscape screen.
                 if (Math.abs(v.x) > 0.27) clear += 1;
-                if (last) jump = Math.max(jump, Math.hypot(...pose.position.map((p, i) => p - last[i])));
+                if (last) {
+                    const step = Math.hypot(...pose.position.map((p, i) => p - last[i]));
+                    if (mind.act.kind === 'leap') jump = Math.max(jump, step);
+                    else stride = Math.max(stride, step);
+                }
                 last = [...pose.position];
             });
             expect(visible / total, `seed ${seed}`).toBeGreaterThan(0.85);
             expect(onScreen / visible, `seed ${seed}`).toBeGreaterThan(0.97);
             expect(clear / visible, `seed ${seed}`).toBeGreaterThan(0.97);
-            // A dash at full tilt, a frame at a time: never a jump across the grove.
-            expect(jump, `seed ${seed}`).toBeLessThan(0.16);
+            // A dash at full tilt, a frame at a time (a bound at 1.1 m/s life size, drawn 4x, hurried by a
+            // quarter: 0.09 m), and a leap's flight (down two metres from the windfall's dead limb it lands
+            // at about 12 m/s: 0.2 m): never a jump across the grove.
+            expect(stride, `seed ${seed}`).toBeLessThan(0.12);
+            expect(jump, `seed ${seed}`).toBeLessThan(0.25);
         }
     }, 30_000); // three seeds of a long walk: about 2 s locally, over 5 s on CI runners
 
@@ -309,7 +325,10 @@ describe('the squirrel mind', () => {
             live(mind, 900, 0.1);
             mind.history.forEach((bit) => done.add(bit));
         }
-        expect([...done].sort()).toEqual([...GROUND_BITS, ...TRUNK_BITS].sort());
+        // Every routine of every place it can be: the floor, the great trunks, a limb, a flat perch.
+        for (const bit of new Set([...GROUND_BITS, ...TRUNK_BITS, ...LIMB_BITS, ...PAD_BITS])) {
+            expect(done.has(bit), bit).toBe(true);
+        }
         const scripted = new SquirrelMind({
             stage, seed: 8, start: 'ground', script: ['snack', 'itch', 'climb', 'peek', 'down'],
         });
@@ -476,16 +495,20 @@ describe('the squirrel moves smoothly', () => {
         expect(cut).toBeGreaterThan(0);
     }, 30_000);
 
-    it('turns on the spot with its paws stepping round, on the floor and on the bark', () => {
+    it('turns on the spot with its paws stepping round: on its feet on the floor and along a limb, gripping on bark', () => {
         const turns = new Set();
         for (const seed of [271, 3, 99]) {
             const mind = new SquirrelMind({ stage, seed, start: 'ground' });
             live(mind, 240, 0.05, [], () => {
                 if (mind.act.kind !== 'turn') return;
-                turns.add(`${mind.act.clip} ${mind.act.from.on === 'ground' ? 'floor' : 'bark'}`);
+                const { from } = mind.act;
+                const where = mind.upright(from) ? 'upright' : mind.kindOf(from);
+                turns.add(`${mind.act.clip} ${where}`);
             });
         }
-        expect([...turns].sort()).toEqual(['pivot bark', 'shuffle floor']);
+        // Shuffling round on its feet on the floor (a flat perch is floor) and on top of a lying limb;
+        // pivoting with its paws gripping on a trunk or a standing limb; never the other way round.
+        expect([...turns].sort()).toEqual(['pivot upright', 'shuffle ground', 'shuffle limb']);
     });
 
     it('crouches and lands on its paws: a leap leaves from where it stood and stops where it lands', () => {
@@ -553,8 +576,9 @@ describe('the squirrel keeps to both trees', () => {
             // Ten minutes: it has gone over and back several times, never kept to one tree for long.
             expect(record.homes.length, `seed ${seed}`).toBeGreaterThanOrEqual(6);
             expect(Math.max(...record.homes), `seed ${seed}`).toBeLessThan(170);
-            expect(record.climbs.maple, `seed ${seed}`).toBeGreaterThanOrEqual(3);
-            expect(record.climbs.oak, `seed ${seed}`).toBeGreaterThanOrEqual(3);
+            // (Its perches close to the eye take some of its time: each tree is climbed twice or more.)
+            expect(record.climbs.maple, `seed ${seed}`).toBeGreaterThanOrEqual(2);
+            expect(record.climbs.oak, `seed ${seed}`).toBeGreaterThanOrEqual(2);
             const total = record.time.maple + record.time.oak;
             expect(record.time.maple / total, `seed ${seed}`).toBeGreaterThan(0.3);
             expect(record.time.oak / total, `seed ${seed}`).toBeGreaterThan(0.3);
