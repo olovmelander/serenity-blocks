@@ -37,10 +37,22 @@ describe('Odyssey path horizon (the rail vanishes into the black hole)', () => {
         expect(resolveBlackHoleFall(inside, chapterPositions).inside).toBeCloseTo(1, 9);
     });
 
-    it('hides nothing before chapter 6 and once the eye has reached the node inside the hole', () => {
-        [0, 0.1, 0.4, ch6Start - wIn - 1e-4, nextNode, nextNode + 0.01, 0.95, 1].forEach((p) => {
+    it('hides nothing once the eye has reached the node inside the hole', () => {
+        [nextNode, nextNode + 0.01, 0.95, 1].forEach((p) => {
             expect(horizon(p), `p=${p}`).toBe(PATH_HORIZON_OPEN);
             expect(drawn(1, p)).toBe(1);
+        });
+    });
+
+    it('draws nothing past the hole from the first orb on: no wire of the fold over the island', () => {
+        // (Until 2026-11-25 the whole rail was drawn through chapters 1 to 5: from the mountain the
+        // fold's spiral, far out in space, was a loop of wire beside the summit's orb.)
+        const levelsBeyond = levelPositions.filter((x) => x > ch7Start + ODYSSEY_PATH_HORIZON.soft);
+        [0, 0.1, 0.39, 0.5, ch6Start - wIn - 1e-4, ch6Start - (wIn / 2), ch6Start].forEach((p) => {
+            expect(horizon(p), `p=${p}`).toBeCloseTo(ch7Start + ODYSSEY_PATH_HORIZON.soft, 9);
+            levelsBeyond.forEach((x) => expect(drawn(x, p), `node ${x.toFixed(4)} @p=${p}`).toBe(0));
+            // ...and everything up to the mouth is: the way on, through space, to the hole.
+            levelPositions.filter((x) => x <= ch7Start).forEach((x) => expect(drawn(x, p)).toBe(1));
         });
     });
 

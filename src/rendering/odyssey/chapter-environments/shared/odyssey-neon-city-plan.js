@@ -474,3 +474,67 @@ export function bakeNeonGlow(signs) {
     for (let i = 0; i < texels * rows; i += 1) out[i * 4 + 3] = 1;
     return out;
 }
+
+/**
+ * The wall glow map: what each sign of the boulevard throws on the wall round it, over corridor z
+ * and the height above the street. Two halves, one a wall (left, then right), each `rows` high.
+ */
+export const NEON_WALL_GLOW = Object.freeze({
+    z0: -800,
+    z1: 440,
+    texels: 512,
+    /** The height the map spans above the street, and its rows a wall. */
+    height: 132,
+    rows: 48,
+});
+
+/**
+ * Bake the wall glow map (2026-11-25): a pool of every wall sign's colour on the wall it hangs on,
+ * long down the wall under a blade, wide over a fascia. RGBA float texels, A unused (1).
+ * @param {object[]} signs planNeonSigns().signs
+ * @returns {Float32Array} texels * (2 * rows) * 4
+ */
+export function bakeNeonWallGlow(signs) {
+    const {
+        z0, z1, texels, height, rows,
+    } = NEON_WALL_GLOW;
+    const out = new Float32Array(texels * rows * 2 * 4);
+    const dz = (z1 - z0) / texels;
+    const dy = height / rows;
+    const add = (right, z, y, rgb, amount, sz, sy) => {
+        const i0 = Math.max(0, Math.floor((z - (3 * sz) - z0) / dz));
+        const i1 = Math.min(texels - 1, Math.ceil((z + (3 * sz) - z0) / dz));
+        const j0 = Math.max(0, Math.floor((y - (3 * sy)) / dy));
+        const j1 = Math.min(rows - 1, Math.ceil((y + (3 * sy)) / dy));
+        for (let j = j0; j <= j1; j += 1) {
+            const yc = (j + 0.5) * dy;
+            const gy = Math.exp(-((yc - y) ** 2) / (2 * sy * sy));
+            for (let i = i0; i <= i1; i += 1) {
+                const zc = z0 + ((i + 0.5) * dz);
+                const g = Math.exp(-((zc - z) ** 2) / (2 * sz * sz)) * gy * amount;
+                const o = ((((right * rows) + j) * texels) + i) * 4;
+                out[o] += rgb[0] * g;
+                out[o + 1] += rgb[1] * g;
+                out[o + 2] += rgb[2] * g;
+            }
+        }
+    };
+    signs.forEach((sign) => {
+        if (sign.roof || sign.kind === SIGN_KIND.screen) return;
+        const right = sign.x > 0 ? 1 : 0;
+        const y = sign.y - STREET_Y;
+        if (sign.kind === SIGN_KIND.fascia) {
+            // A fascia lights the wall over it and the pavement under it.
+            add(right, sign.z, y + 1.5, sign.rgb, 0.5, (sign.w * 0.42) + 1.5, 4.2);
+        } else if (sign.vertical) {
+            // A blade: a tight pool by the tubes and a wide, dim one round it.
+            add(right, sign.z, y, sign.rgb, 0.6, 2.6 + (sign.w * 0.5), (sign.h * 0.42) + 1.5);
+            add(right, sign.z, y, sign.rgb, 0.08, 9 + sign.w, (sign.h * 0.6) + 7);
+        } else {
+            add(right, sign.z, y, sign.rgb, 0.55, (sign.w * 0.4) + 2, sign.h + 2.5);
+            add(right, sign.z, y, sign.rgb, 0.07, (sign.w * 0.6) + 8, sign.h + 9);
+        }
+    });
+    for (let i = 0; i < texels * rows * 2; i += 1) out[(i * 4) + 3] = 1;
+    return out;
+}

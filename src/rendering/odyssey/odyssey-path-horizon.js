@@ -8,8 +8,13 @@
  * going PAST the hole, and the hole cannot sit on it (chapter 7 keeps the hole camera-locked).
  *
  * So through chapter 6 the rail ends at the boundary, tapering out just past chapter 7's first
- * node (which sits on it), in the middle of the hole, and the nodes beyond it are not drawn. The
- * far rail retracts across the 5->6 seam (behind the cloud bank, so nothing is seen to move).
+ * node (which sits on it), in the middle of the hole, and the nodes beyond it are not drawn.
+ *
+ * FROM THE FIRST ORB (2026-11-25). Until then the rail past the hole was drawn through chapters 1
+ * to 5 and drawn in across the 5->6 seam. But the fold and the city hang far out in space, and
+ * from the island and the mountain their rail showed as a wire scribbled on the sky: a loop beside
+ * the summit's orb (the fold's spiral), beads on a hairline over the cloud tops. Nothing past the
+ * hole's mouth is drawn now until the eye is inside it, from wherever it is on the journey.
  *
  * NOTHING BEHIND THE HOLE BEFORE WE ARE IN IT (2026-10-22, third pass). Olov: "I dont want to see
  * any of the path behind it before we really get into the black hole." Chapter 7's plunge now
@@ -30,8 +35,6 @@ export const ODYSSEY_PATH_HORIZON = Object.freeze({
     chapter: 6,
     // The taper before the horizon, in progress (~15 u of path): the nodes scale out over it.
     soft: 0.006,
-    // The far rail's retract ends this many of the 5->6 seam's half-widths before chapter 6 begins.
-    retractEarly: 0.25,
     // The rail itself ends within this much of the taper's start (~4.5 u, inside the last node's
     // glass), where the inflow carries it on into the hole (odyssey-path-inflow.js).
     railSoft: 0.0018,
@@ -100,17 +103,8 @@ export function resolveOdysseyPathHorizon(progress, chapterPositions, levelPosit
     if (!Number.isFinite(progress) || !Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
         return PATH_HORIZON_OPEN;
     }
-    // Seam k sits between chapters k and k+1 and takes chapter k's transition.
-    const wIn = getChapterTransitionForChapter(H.chapter - 1)?.seamWidth ?? 0.0222;
+    // From the first orb to the dive the rail ends at the hole's mouth (see the note at the top).
     const held = end + H.soft;
-    if (progress <= start - wIn) return PATH_HORIZON_OPEN;
-    // The far rail retracts over the seam's near three quarters (until 2026-11-25 over the whole of
-    // it, to `start + wIn`: at chapter 6's first frames the horizon still lay past the fold, whose
-    // rail drew as a red hairline with its orbs as beads across the sky; the deep chapters audit, S3).
-    const done = start - (H.retractEarly * wIn);
-    if (progress < done) {
-        return HORIZON_FAR + ((held - HORIZON_FAR) * smooth01((progress - (start - wIn)) / (done - (start - wIn))));
-    }
     // The way on is laid out from the moment the eye is inside the hole to the next node.
     const reveal = resolveOdysseyPathReveal(chapterPositions, levelPositions);
     if (progress <= reveal.start) return held;

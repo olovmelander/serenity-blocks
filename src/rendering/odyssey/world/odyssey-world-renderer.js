@@ -82,13 +82,14 @@ import {
     ODYSSEY_WATER_RAMP,
 } from '../odyssey-colour-script.js';
 import {
-    OCEAN_EXTINCTION, OCEAN_SHAFT_EXTINCTION, applyOceanClock, createOceanClock, createOceanLook, oceanClockAt,
-    oceanDepthLook, oceanHazeColour,
+    OCEAN_BED_LIGHT, OCEAN_EXTINCTION, OCEAN_SHAFT_EXTINCTION, OCEAN_WELL, applyOceanClock, createOceanClock,
+    createOceanLook, oceanClockAt, oceanDepthLook, oceanHazeColour,
 } from './odyssey-ocean-depth.js';
 import {
-    SNELL_WINDOW, snellDepthLight, snellMirror, snellWindowLift, snellWindowPresence, snellWindowWorld,
+    OCEAN_SUN_RAYS, SNELL_WINDOW, snellDepthLight, snellMirror, snellWindowLift, snellWindowPresence,
+    snellWindowWorld, sunRayScatter, sunRaysPresence,
 } from './odyssey-ocean-window.js';
-import { createOdysseyOceanScenery } from './odyssey-ocean-scenery.js';
+import { createOdysseyOceanScenery, sunUnderWater } from './odyssey-ocean-scenery.js';
 import { createOdysseyBreachBurst } from '../composition/odyssey-breach-burst.js';
 import { createOdysseyDolphins } from './odyssey-dolphins.js';
 // Read-only: the 1->2 carry fades ocean life by the SAME density curve the quench veils with,
@@ -404,6 +405,15 @@ const SUMMIT_ROCK = Object.freeze({
     // 0.55 -> 0.40 (2026-11-25, the audit's M9): at dusk the shaded stone took the sky's violet whole
     // and read as purple paint beside the snow of its own hue.
     rockSkyChroma: 0.40,
+    // THE EVENING ON THE STONE (2026-11-25, later the same day). The hour adds the sky's hue to all
+    // the land's shade (ODYSSEY_HOUR_LOOK.shadeChroma), and on the climb's close-ups that put the
+    // summit's shaded stone at ~0.8 of the dusk's violet and almost as bright as the lit faces
+    // beside it: stripes of purple, orange and lilac down the mountain, paint more than stone. A
+    // shadow reads by its value first. So the summit's stone takes `hourChroma` of the hour's
+    // added hue, and loses `hourDeep` of its sky fill by the day's end: slate-blue shade that
+    // stands darker than the alpenglow on the faces, not beside it.
+    hourChroma: 0.35,
+    hourDeep: 0.30,
 });
 const SNOW_CRISP = Object.freeze({
     from: Object.freeze([560, 680]),
@@ -1284,6 +1294,10 @@ export function createOdysseyWorld({
     const uShaftGain = uniform(1);
     const uCeilAbsorb = uniform(0);
     const uSnellWorld = uniform(0);
+    // THE SUN'S LIGHT IN THE WATER near the surface (odyssey-ocean-window.js `sunRayScatter`): its
+    // presence for the eye's depth, under the sea's own weather. 0 in the deep: not run there.
+    const uSunRays = uniform(0);
+    const SUN_UNDER = sunUnderWater(ODYSSEY_WORLD_SUN);
     // The window's lift (snellWindowLift, 2026-11-21): written each frame from the level water's light.
     const uWindowLift = uniform(1);
     // The window's sun is the AIR's (the colour script's first air keyframe), not the water's
@@ -1745,8 +1759,10 @@ export function createOdysseyWorld({
             // zenith the climb stares up — the frame is a gradient toward the light, not a flat navy.
             const zen2 = clamp(dirY, 0, 1).mul(clamp(dirY, 0, 1));
             const zen8 = zen2.mul(zen2).mul(zen2.mul(zen2));
+            // (2026-11-25, OCEAN_WELL: a core and a wider halo round it. The core alone left the
+            // look up the column one even blue from the middle of the frame to its edges.)
             const waterTarget = mix(bandedDir, glowTarget, surfaceGlow).mul(uDeepDim)
-                .add(uWaterLum.mul(zen8.mul(uWaterWell).mul(0.42)));
+                .add(uWaterLum.mul(zen8.mul(OCEAN_WELL.core).add(zen2.mul(zen2).mul(OCEAN_WELL.halo)).mul(uWaterWell)));
             // Component-wise mix against the same target: the hue WALKS with distance (red gone
             // first, blue last) instead of every channel arriving together. This is what puts
             // value structure back into the frame the steam veil used to supply.
@@ -1787,7 +1803,23 @@ export function createOdysseyWorld({
             if (gmStrength > 0) {
                 If(uGroundMist.greaterThan(0.5), () => { out.assign(groundMistOf(out)); });
             }
-            If(uSubmerged.greaterThan(0.001), () => { out.assign(submergedOf(out)); });
+            If(uSubmerged.greaterThan(0.001), () => {
+                out.assign(submergedOf(out));
+                // + the sun's light scattered toward the eye in the top of the column (a glow on its
+                // side, shafts fanning out of its place): gated by the CPU, so the deep never runs it.
+                If(uSunRays.greaterThan(0.001), () => {
+                    const scatter = sunRayScatter({
+                        dir: toDir,
+                        sun: SUN_UNDER,
+                        time: uTime,
+                        noiseTex: quality === 'low' ? null : detailTex,
+                    });
+                    out.addAssign(mix(uWaterLum, vec3(...WINDOW_SUN), float(OCEAN_SUN_RAYS.warm))
+                        .mul(scatter)
+                        .mul(float(1).sub(exp(d.mul(-OCEAN_SUN_RAYS.path))))
+                        .mul(uSunRays.mul(uSubmerged)));
+                });
+            });
             return out;
         })();
     };
@@ -2629,6 +2661,13 @@ export function createOdysseyWorld({
                     fan.mul(0.6),
                 ).mul(mix(float(0.82), float(1.14), broad));
                 a.assign(mix(a, bedColor.mul(bedRipple), seabed.mul(0.75)));
+                // THE LIGHT FALLS OFF WITH DEPTH (OCEAN_BED_LIGHT, 2026-11-25). The bed 190 u down
+                // was lit as the beach is, so the deep never read as deep. Seen from under the water
+                // it now takes what the surface's light has left at its own depth (red first).
+                const bedDepth = max(float(ODYSSEY_SEA_LEVEL).sub(height), 0);
+                const bedLight = exp(bedDepth.div(vec3(...OCEAN_BED_LIGHT.depth)).negate())
+                    .mul(1 - OCEAN_BED_LIGHT.floor).add(OCEAN_BED_LIGHT.floor);
+                a.mulAssign(mix(vec3(1), bedLight, uSubmerged));
             });
             return a;
         })();
@@ -3024,9 +3063,11 @@ export function createOdysseyWorld({
         // `mineralW` (item 5), because snow in shade is lit by the sky it faces and stays bright.
         // High rock takes more of the sky (2026-10-31): at the summit, open to the whole dome and to
         // the bounce off the snow round it, shaded stone is a slate lit by the sky, not black paint.
+        // (`gHour.w` over the look's `shadeDeep` is the hour itself, 0 at noon to 1 at the day's end.)
         const rockAmbient = mix(
             float(ODYSSEY_GROUND_SHADE.mineral.ambient),
-            float(SUMMIT_ROCK.rockAmbient),
+            float(SUMMIT_ROCK.rockAmbient)
+                .mul(float(1).sub(gHour.w.div(ODYSSEY_HOUR_LOOK.shadeDeep).mul(SUMMIT_ROCK.hourDeep))),
             summitGate,
         );
         const ambient = mix(
@@ -3052,7 +3093,7 @@ export function createOdysseyWorld({
                 mix(float(GROUND_AMBIENT_CHROMA), float(SUMMIT_ROCK.rockSkyChroma), kRock.mul(summitGate))
                     // (...and under the turning shade the land is lit by the sky alone: cool and
                     // silver, not merely darker.)
-                    .add(gHour.x)
+                    .add(gHour.x.mul(mix(float(1), float(SUMMIT_ROCK.hourChroma), kRock.mul(summitGate))))
                     .add(gTurn.x.mul(ODYSSEY_DAY_TURN.silver)),
                 float(ODYSSEY_GROUND_SHADE.snow.skyChroma).add(gHour.y),
                 kSnow,
@@ -6432,6 +6473,7 @@ export function createOdysseyWorld({
             uShaftGain.value = oceanLook.shafts;
             uCeilAbsorb.value = oceanLook.overhead;
             uSnellWorld.value = uSubmerged.value > 0.001 ? snellWindowPresence(oceanLook.depth) : 0;
+            uSunRays.value = uSubmerged.value > 0.001 ? sunRaysPresence(oceanLook.depth) * seaClock.light : 0;
             if (uSubmerged.value > 0.001) {
                 const hz = oceanHazeColour(oceanLook.depth, windowHazeScratch);
                 const zen = cs.skyZenith;

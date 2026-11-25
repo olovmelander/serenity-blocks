@@ -73,8 +73,10 @@ const MAX_MOVE_STEP_MS = 50;
  * lagging its rail point — and eases onto the rail frame over this long (at most TRAVEL_BLEND_SHARE
  * of the trip). It snapped onto the rail on its first frame: every cross-chapter orb click, the
  * navigator, arrow keys and the D-pad cut the picture from the close-up (audit 2026-10-23).
+ * (450 ms until 2026-11-25: leaving a close-up for a rail that runs another way turned the view
+ * ~70 degrees in that time, 200 degrees a second at its fastest.)
  */
-export const TRAVEL_BLEND_IN_MS = 450;
+export const TRAVEL_BLEND_IN_MS = 900;
 const TRAVEL_BLEND_SHARE = 0.45;
 const PATH_FRAME_GRAVITY_UP = new THREE.Vector3(0, 1, 0);
 const ACT_TRAVEL_SPEEDS = Object.freeze({
@@ -751,6 +753,40 @@ export const LOOK_AROUND = Object.freeze({
 });
 
 /**
+ * THE FREE FRAME (2026-11-25). The map's UI covers part of the picture: the orb's card stands over
+ * the right 344 px (19 % of a 1920 px window, 28 % of a 1280 px one, or a sheet across the bottom
+ * of a narrow one) and the header over the top 76 px. The camera aimed at the middle of the whole
+ * screen, so the orb sat off the middle of what the player could see, and what stood beside it
+ * (the black hole at orb 47, the ringed planet through early space, the sun down the city's avenue)
+ * was under the card.
+ *
+ * The lens is shifted instead: the picture's centre moves to the middle of the free part of the
+ * frame (`setFrameCentre`, measured by the UI). It is a shift of the lens, not a turn of the
+ * camera: the eye, the aim and every pose the camera works out stay as they were, and the whole
+ * picture slides over, as a view camera's rising front does. Nothing that seats itself on the
+ * camera's basis has to know.
+ *
+ * - `share`: how far toward the free area's middle the centre goes (1 = all the way).
+ * - `max`: the furthest it goes, as a share of the screen's width or height (a wider shift
+ *   stretches the far edge of the frame).
+ * - `dampRate`: how fast it eases when the UI comes and goes (1/s); reduced motion sets it at once.
+ */
+export const FRAME_SHIFT = Object.freeze({ share: 1, max: 0.16, dampRate: 3 });
+
+/**
+ * How far the picture's centre goes for a free area whose middle is at (`x`, `y`): both in
+ * half-screens from the screen's middle (x to the right, y up), out as shares of the screen's
+ * width and height.
+ * @param {number} x
+ * @param {number} y
+ * @returns {{ x: number, y: number }}
+ */
+export function resolveFrameShift(x, y) {
+    const limit = (v) => THREE.MathUtils.clamp((Number(v) || 0) * 0.5 * FRAME_SHIFT.share, -FRAME_SHIFT.max, FRAME_SHIFT.max);
+    return { x: limit(x), y: limit(y) };
+}
+
+/**
  * 0..1: how far the journey's-end look up has come at `progress` (0 unless `complete`).
  * @param {number} progress
  * @param {number[]} chapterPositions [s1, ..., sN, 1]
@@ -1245,6 +1281,12 @@ export class OdysseyCameraController {
         // eased value, and the offset applied this frame (taken out again at the next update).
         this._lookTarget = { x: 0, y: 0 };
         this._look = { x: 0, y: 0 };
+        // The free frame (FRAME_SHIFT): the middle of what the UI leaves open, asked for and eased,
+        // and the shift the lens carries now (shares of the screen).
+        this._frameTarget = { x: 0, y: 0 };
+        this._frame = { x: 0, y: 0 };
+        this._frameApplied = { x: 0, y: 0 };
+        this._frameSeen = false;
         this._lookOffset = new THREE.Vector3();
         this._lookTurnAxis = new THREE.Vector3();
         this._frameRailEnd = new THREE.Vector3();
@@ -2011,6 +2053,7 @@ export class OdysseyCameraController {
         // rebuild the quaternion and discard any camera.rotation.z written before it). Set by
         // applyBreathingMotion() and updatePortalApproach(); 0 = no roll. (masterplan §2 #6)
         this._pendingViewRoll = 0;
+        this.applyFrameShift(deltaTime);
         const teleported = this._teleportPending === true;
         this._teleportPending = false;
         if (teleported) {
@@ -2183,8 +2226,74 @@ export class OdysseyCameraController {
      * @param {number} y
      */
     setLookPointer(x, y) {
-        this._lookTarget.x = THREE.MathUtils.clamp(Number(x) || 0, -1, 1);
-        this._lookTarget.y = THREE.MathUtils.clamp(Number(y) || 0, -1, 1);
+        // Measured from the middle of the free frame (FRAME_SHIFT), out to its edge (the free part is
+        // as wide to either side of its own middle): with the orb's card over the right of the
+        // screen the cursor reached less than half of the look to the right, and all of it to the left.
+        const from = (v, middle) => {
+            const reach = Math.max(0.2, 1 - Math.abs(middle));
+            return THREE.MathUtils.clamp(((Number(v) || 0) - middle) / reach, -1, 1);
+        };
+        this._lookTarget.x = from(x, this._frameTarget.x * 2);
+        this._lookTarget.y = from(y, this._frameTarget.y * 2);
+    }
+
+    /** The cursor has left the map: the look eases back to rest (the orb in the frame's middle). */
+    restLook() {
+        this._lookTarget.x = 0;
+        this._lookTarget.y = 0;
+    }
+
+    /**
+     * Where the middle of the free part of the frame is (FRAME_SHIFT): in half-screens from the
+     * screen's middle, x to the right, y up. (0, 0) is the whole screen.
+     * @param {number} x
+     * @param {number} y
+     */
+    setFrameCentre(x, y) {
+        const shift = resolveFrameShift(x, y);
+        this._frameTarget.x = shift.x;
+        this._frameTarget.y = shift.y;
+    }
+
+    /** The lens's shift this frame, as shares of the screen's width and height (x right, y up). */
+    getFrameShift() {
+        return this._frameApplied;
+    }
+
+    /**
+     * Ease the lens toward the free frame's middle and write it to the camera (FRAME_SHIFT). The
+     * first one asked for is taken at once, as is every one with reduced motion.
+     * @param {number} deltaTime seconds
+     */
+    applyFrameShift(deltaTime = 0) {
+        const target = this._frameTarget;
+        const eased = this._frame;
+        const asked = target.x !== 0 || target.y !== 0;
+        if (!this._frameSeen || this.prefersReducedMotion()) {
+            eased.x = target.x;
+            eased.y = target.y;
+            if (asked) this._frameSeen = true;
+        } else {
+            const damp = 1 - Math.exp(-FRAME_SHIFT.dampRate * Math.max(0, deltaTime));
+            eased.x += (target.x - eased.x) * damp;
+            eased.y += (target.y - eased.y) * damp;
+            if (Math.abs(target.x - eased.x) < 1e-4) eased.x = target.x;
+            if (Math.abs(target.y - eased.y) < 1e-4) eased.y = target.y;
+        }
+        const applied = this._frameApplied;
+        if (Math.abs(eased.x - applied.x) < 2e-5 && Math.abs(eased.y - applied.y) < 2e-5) return;
+        applied.x = eased.x;
+        applied.y = eased.y;
+        if (!this.camera?.isPerspectiveCamera) return;
+        if (applied.x === 0 && applied.y === 0) {
+            this.camera.clearViewOffset();
+            return;
+        }
+        // A view offset in shares of the frame: the window slides the other way, so the picture's
+        // centre moves by (x, y) on the screen. (setViewOffset takes the camera's aspect from the
+        // full frame it is given, so the frame is given as aspect x 1.)
+        const { aspect } = this.camera;
+        this.camera.setViewOffset(aspect, 1, -applied.x * aspect, applied.y, aspect, 1);
     }
 
     /**
@@ -3465,10 +3574,16 @@ export class OdysseyCameraController {
         const elapsed = now - this.animationStartTime;
         let t = Math.min(elapsed / this.animationDuration, 1);
 
-        // Ease in-out
-        t = t < 0.5
-            ? 4 * t * t * t
-            : 1 - (-2 * t + 2) ** 3 / 2;
+        // Ease in-out. A glide into an orb's close-up takes a smootherstep (2026-11-25): the cubic
+        // runs at three times its mean speed through the middle, which is what made a move from
+        // one orb to the next read as a snap; this one peaks under twice its mean.
+        if (this.animationKind === 'focus') {
+            t = t * t * t * (t * ((t * 6) - 15) + 10);
+        } else {
+            t = t < 0.5
+                ? 4 * t * t * t
+                : 1 - (-2 * t + 2) ** 3 / 2;
+        }
 
         // Interpolate position
         this.camera.position.lerpVectors(
