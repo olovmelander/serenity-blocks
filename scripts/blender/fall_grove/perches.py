@@ -146,6 +146,10 @@ def old_stump(seed=8203, name="old-stump"):
     # stump's rim, its snapped end standing clear above: a way up, and somewhere to leap from.
     lean_points = np.array([[1.75, 0.06, 1.35], [1.25, 0.5, 1.02], [0.72, 0.96, 0.66], [0.28, 1.34, 0.36],
                             [-0.18, 1.66, 0.08], [-0.6, 1.92, -0.16], [-0.94, 2.1, -0.34]])
+    # It rests on the far side of the rim (its line passes 0.55 m behind the stump's middle, away from
+    # the eye), so the seat on the top is clear: a squirrel sitting there is in front of it, not in it.
+    lean_points[:, 0] += 0.405
+    lean_points[:, 2] -= 0.645
     lean = _dead_limb(tree, trunk, 0.9, lean_points, 0.15, 0.1)
     tree.meta = dict(species="maple", role="hero", height=2.6, trunkRadius=radius, foliage="maple_spray", reach=0.0,
                      perch="stump")
