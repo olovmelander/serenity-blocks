@@ -35,6 +35,12 @@ export const ODYSSEY_VALLEY_MIST = Object.freeze({
      * every pool's edge feathers out over a hundred units or so.
      */
     slope: Object.freeze([0.30, 0.65]),
+    /**
+     * The valleys' air, not the mountain's: a pool fades out as its floor climbs between these
+     * heights (u). (2026-11-25: the rebuilt mountain has hollows of its own high up, a cirque and
+     * the notch between its tops, and the feather carried their mist onto the summit.)
+     */
+    ceiling: Object.freeze([560, 680]),
     feather: 1,
 });
 
@@ -95,7 +101,8 @@ export function bakeValleyMist(heightAt, seaLevel, spec = ODYSSEY_VALLEY_MIST) {
             const gx = (a[(j * n) + Math.min(n - 1, i + 1)] - a[(j * n) + Math.max(0, i - 1)]) / (2 * texel);
             const gz = (a[(Math.min(n - 1, j + 1) * n) + i] - a[(Math.max(0, j - 1) * n) + i]) / (2 * texel);
             const flat = 1 - smooth(spec.slope[0], spec.slope[1], Math.hypot(gx, gz));
-            pool[t] = Math.min(spec.maxDepth, Math.max(0, a[t] - ground[t] - spec.margin)) * flat;
+            const low = 1 - smooth(spec.ceiling[0], spec.ceiling[1], ground[t]);
+            pool[t] = Math.min(spec.maxDepth, Math.max(0, a[t] - ground[t] - spec.margin)) * flat * low;
         }
     }
     const feathered = new Float32Array(n * n);
@@ -107,7 +114,8 @@ export function bakeValleyMist(heightAt, seaLevel, spec = ODYSSEY_VALLEY_MIST) {
     for (let t = 0; t < n * n; t += 1) {
         const g = ground[t];
         // (The low shore's mist is the renderer's layer, which thins with height over the sea.)
-        const depth = pool[t];
+        // (...and the ceiling once more after the feather, which would carry a trace back up.)
+        const depth = pool[t] * (1 - smooth(spec.ceiling[0], spec.ceiling[1], g));
         data[t * 4] = g + depth;
         data[(t * 4) + 1] = depth;
         data[(t * 4) + 2] = 0;

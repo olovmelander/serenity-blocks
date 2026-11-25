@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { ODYSSEY_MASSIFS, ODYSSEY_SEA_LEVEL, odysseyWorldHeight } from './odyssey-world-height.js';
 import { ODYSSEY_VALLEY_MIST, bakeValleyMist, sampleValleyMist } from './odyssey-valley-mist.js';
 import { getOdysseyPathPointAt } from '../path-utils.js';
+import { findHeroSummit } from '../composition/odyssey-summit-spindrift.js';
 
 describe('mist in the hollows', () => {
     const t0 = Date.now();
@@ -19,7 +20,8 @@ describe('mist in the hollows', () => {
 
     it('holds no mist on the summit, and pools in the hollows the chapter 3-4 eye looks over', () => {
         const hero = ODYSSEY_MASSIFS.find((m) => m.id === 'hero');
-        expect(sampleValleyMist(plate, hero.x, hero.z).depth).toBe(0);
+        const top = findHeroSummit(odysseyWorldHeight, hero);
+        expect(sampleValleyMist(plate, top.x, top.z).depth).toBe(0);
         // Round the meadows' stretch of the rail, out to the hero's foot and the far forest.
         let pooled = 0;
         for (let p = 0.18; p <= 0.34; p += 0.02) {

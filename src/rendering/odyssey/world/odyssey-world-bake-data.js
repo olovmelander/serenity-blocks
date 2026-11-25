@@ -29,6 +29,7 @@ import {
     odysseyWorldRelief,
 } from './odyssey-world-height.js';
 import { createTilingValueNoise } from './odyssey-tiling-noise.js';
+import { odysseyMassifGully } from './odyssey-massif-form-decode.js';
 import { bakeGroundAtlasData, bakeGroundSunFieldsData } from './odyssey-ground-bakes.js';
 
 // Re-exported so the worker and the loader import every bake from one module.
@@ -534,16 +535,22 @@ export function bakeDetailNormalData(res = 256) {
 // ── vegetation ───────────────────────────────────────────────────────────────────
 
 /**
- * THE SCULPT PLATE (2026-10-25, the summit): `odysseySummitSculpt` at ~1.8 u over
- * ODYSSEY_SCULPT_PLATE, in the relief bake's layout: R the height delta, G/B its slope (central
- * differences), A its curvature. The curvature is taken over a ~6 u stencil and divided by the
- * relief plate's own step, so the shading that reads the two can add them (a couloir 27 u across
- * is what it shows). The square's border is outside the sculpt's reach, so a clamped sampler
- * reads 0 beyond it. It carries the drawn waters' own plates along (`tarn`, bakeTarnPlateData;
+ * THE SCULPT PLATE (2026-10-25 the summit; 2026-11-25 the massif's whole form): `odysseySummitSculpt`
+ * (the massif grown in Blender, odyssey-massif-form-decode.js) at ~1.8 u over ODYSSEY_SCULPT_PLATE, in
+ * the relief bake's layout: R the height delta, G/B its slope (central differences), A its curvature
+ * plus where water gathers. The curvature is taken over the relief plate's own stencil (~9 u, five
+ * texels) and divided by its step, so the shading that adds the two reads the curvature of the drawn
+ * surface: inside the massif the delta carries minus the relief it replaces, and the two cancel. The
+ * gully term (`MASSIF_GULLY_GAIN` x the rain's flow) marks the couloirs and rills the rain cut, finer
+ * than any curvature stencil the relief can share. The square's border is outside the form's reach,
+ * so a clamped sampler reads 0 beyond it. It carries the drawn waters' own plates along (`tarn`, bakeTarnPlateData;
  * `lake`, bakeNorthLakePlateData): one stage of the bake, one record in the kept copy.
  * @param {number} [res]
  * @returns {{data: Uint16Array, res: number, extent: number, x: number, z: number, tarn: object, lake: object}}
  */
+/** How much of a couloir's cavity the rain's flow adds to the plate's curvature (the shading reads x 9). */
+const MASSIF_GULLY_GAIN = 0.07;
+
 export function bakeSculptPlateData(res = ODYSSEY_SCULPT_PLATE.res) {
     const S = ODYSSEY_SCULPT_PLATE;
     const step = S.extent / (res - 1);
@@ -557,7 +564,7 @@ export function bakeSculptPlateData(res = ODYSSEY_SCULPT_PLATE.res) {
     }
     const at = (i, j) => h[(Math.max(0, Math.min(res - 1, j)) * res) + Math.max(0, Math.min(res - 1, i))];
     const reliefStep = RELIEF_EXTENT / 1023;
-    const k = 3;
+    const k = Math.max(1, Math.round(reliefStep / step));
     const data = new Uint16Array(res * res * 4);
     for (let j = 0; j < res; j += 1) {
         for (let i = 0; i < res; i += 1) {
@@ -567,7 +574,8 @@ export function bakeSculptPlateData(res = ODYSSEY_SCULPT_PLATE.res) {
             data[idx + 1] = DataUtils.toHalfFloat((at(i + 1, j) - at(i - 1, j)) / (2 * step));
             data[idx + 2] = DataUtils.toHalfFloat((at(i, j + 1) - at(i, j - 1)) / (2 * step));
             const mean = (at(i + k, j) + at(i - k, j) + at(i, j + k) + at(i, j - k)) / 4;
-            data[idx + 3] = DataUtils.toHalfFloat((mean - c) / reliefStep);
+            const gully = odysseyMassifGully(x0 + (i * step), z0 + (j * step));
+            data[idx + 3] = DataUtils.toHalfFloat(((mean - c) / reliefStep) + (MASSIF_GULLY_GAIN * gully));
         }
     }
     return {

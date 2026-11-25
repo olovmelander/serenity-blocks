@@ -137,7 +137,10 @@ describe('relief + macro + detail bakes (pure halves)', () => {
         // odysseyTarnProfile): the total height under and round the tarn changes, nothing else.
         // ...and 2026-11-21 with the north lake redrawn the same way (odysseyNorthLakeProfile): the
         // total height in the lake's box changes, nothing else.
-        expect(sha(a.total)).toBe('9d6f23563eeeec195b97a589996e1df6');
+        // ...and 2026-11-25 with the massif's form grown in Blender (odyssey-massif-form.js replaces the
+        // procedural summit sculpt): the total height over the hero massif changes, nothing outside it;
+        // and the far peak drawn as an older ridge (ridgedMassifRise), its crown where it was.
+        expect(sha(a.total)).toBe('f0ec3ff907c07c15a1d185e56719919c');
         expect(a.data.length).toBe(96 * 96 * 4);
         expect(a.total.length).toBe(96 * 96);
         const sample = makeReliefSampler(a);
@@ -151,8 +154,9 @@ describe('relief + macro + detail bakes (pure halves)', () => {
         expect(m.data.length).toBe(64 * 64 * 4);
         // Moved 2026-10-18 with the outer isles (see the relief pin above), and 2026-11-02 with
         // the north beach and the plain's swells (the same note), and 2026-11-21 when the north
-        // lake's bowl left the macro (it is a drawn water now, laid over the whole field).
-        expect(sha(m.data)).toBe('317fe862184e872510686f2bd994a674');
+        // lake's bowl left the macro (it is a drawn water now, laid over the whole field), and
+        // 2026-11-25 when the far peak became an older ridge (ridgedMassifRise), its crown unmoved.
+        expect(sha(m.data)).toBe('0d11cc1d64723217097eac2033fd1085');
     });
 
     it('bakeWorldTextureData returns every plate with transferable buffers and per-stage timings', () => {

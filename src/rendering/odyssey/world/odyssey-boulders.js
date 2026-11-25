@@ -41,7 +41,7 @@ export const ODYSSEY_BOULDERS = Object.freeze({
             x: -296, z: -636, kind: 'outcrop', seed: 2,
         }),
         Object.freeze({
-            x: -56, z: -700, kind: 'outcrop', seed: 3,
+            x: -56, z: -730, kind: 'outcrop', seed: 3,
         }),
         Object.freeze({
             x: -216, z: -732, kind: 'outcrop', seed: 4,
