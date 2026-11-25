@@ -4736,7 +4736,16 @@ export function createOdysseyWorld({
                 const capW = mix(float(C.width[0]), float(C.width[1]), covS).mul(capRipB.mul(0.9).add(0.55)).toVar();
                 const wB = max(capW, capFoot.mul(15.75));
                 const wS = max(capW, capFoot.mul(36.75));
-                const wall = float(1).sub(smoothstep(float(0), wB, L.r)).mul(clamp(capW.div(wB), 0.35, 1));
+                // (2026-11-25: every wall drawn closed every cell, a net of polygons that read as
+                // broken glass near the eye. A wall now shows where the foam holds, in patches a
+                // cell or two across: the lace is torn, a fringe of threads and gaps.)
+                const holds = smoothstep(float(C.holds[0]), float(C.holds[1]), texture(
+                    detailTex,
+                    laceUv.mul(0.26).add(vec2(0.37, 0.11)),
+                ).level(0).b.add(covS.mul(0.25)));
+                const wall = float(1).sub(smoothstep(wB.mul(-C.soft), wB.mul(1 + C.soft), L.r))
+                    .mul(clamp(capW.div(wB), 0.35, 1))
+                    .mul(holds);
                 const fine = float(1).sub(smoothstep(wS.mul(0.2), wS, L.g))
                     .mul(smoothstep(float(0.30), float(0.70), covS))
                     .mul(clamp(capW.div(wS), 0.35, 1));
@@ -5493,9 +5502,13 @@ export function createOdysseyWorld({
         // the first cut's 16 cm beads read as snowballs.
         const spraySize = fract(mS.mul(29.3)).mul(0.04).add(0.02);
         const moteDist = length(moteCenter.sub(cameraPosition));
+        // (2026-11-25: a bubble is a third of a speck's size, and capped tighter near the lens: as
+        // bubbles the specks kept their 0.5-1.1 u, and the column was full of rings a twentieth of
+        // the frame wide, drawn circles rather than bubbles.)
         const moteSizeClamped = min(
-            mix(moteSize, spraySize, sprayOn),
-            moteDist.mul(mix(float(0.02), float(0.05), sprayOn)).add(0.04),
+            mix(moteSize.mul(mix(float(1), float(0.34), uBubble)), spraySize, sprayOn),
+            moteDist.mul(mix(mix(float(0.02), float(0.009), uBubble), float(0.05), sprayOn))
+                .add(mix(float(0.04), float(0.012), uBubble)),
         );
         moteMat.positionNode = billboardWorld(moteCenter, moteSizeClamped);
         // LIT WHERE A SHAFT CROSSES IT (Act I overhaul, 2026-10-20 — Ocean's "lit where a shaft
@@ -5533,9 +5546,14 @@ export function createOdysseyWorld({
         const mDot = mRadial.mul(mRadial);
         // An ember is a hot DOT; a bubble is a bright RIM round a clearer centre. uBubble walks
         // the profile from one to the other across the carry (0 = today's dot exactly).
-        const mRing = smoothstep(float(0.20), float(0.38), mR)
-            .mul(float(1).sub(smoothstep(float(0.38), float(0.5), mR)))
-            .add(mDot.mul(0.30));
+        // (2026-11-25: a thin rim, brighter on top where the surface's light falls on it, and the
+        // window's bright fleck up on one side: a sphere of air, not a drawn ring with a lit core.)
+        const mTop = smoothstep(float(-0.2), float(0.3), mUv.y.sub(0.5));
+        const mRing = smoothstep(float(0.33), float(0.42), mR)
+            .mul(float(1).sub(smoothstep(float(0.43), float(0.5), mR)))
+            .mul(mTop.mul(0.75).add(0.35))
+            .add(float(1).sub(smoothstep(float(0.02), float(0.10), length(mUv.sub(vec2(0.37, 0.66))))).mul(0.9))
+            .add(mDot.mul(0.08));
         const mProfile = mix(mDot, mRing.mul(1.3), uBubble);
         // Transmitted light: brightness rises with depth below the surface, because the
         // background darkens with depth — the same inverse the vault's ember gate uses.
@@ -6502,10 +6520,14 @@ export function createOdysseyWorld({
             // never did. Found while trying to isolate one forest LOD tier for a wind capture.
             const authored = (mesh) => mesh.userData.filterVisible !== false;
             skyCloudField.sdf = skyClouds.volumes.state.sdf;
+            // The sky's volumes only while the eye is in the air (2026-11-25): from just under the surface
+            // (L10's close-up sits a few units down) they drew over the surface's mirror, the water
+            // drawing first and writing no depth, each cut off where its box ends. Under water the
+            // Snell window draws the sky and its clouds itself; the crossing is a pop of its own.
             skyClouds.update(
                 time,
                 viewCamera,
-                authored(skyClouds.mesh) && uSubmerged.value < 0.999 && !earthCovers,
+                authored(skyClouds.mesh) && uSubmerged.value < 0.08 && !earthCovers,
                 evening,
                 intoGroupFrame,
                 sphereToWorld,

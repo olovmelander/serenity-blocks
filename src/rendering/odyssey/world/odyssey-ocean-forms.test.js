@@ -58,14 +58,20 @@ describe("chapter 2's open water", () => {
             .toEqual({ spires: [], kelp: [] });
     });
 
-    it('builds a closed faceted spire and a tapering frond in unit space', () => {
+    it('builds a closed faceted spire and a bladed frond in unit space', () => {
         const spire = buildSpireGeometry();
         spire.computeBoundingBox();
         expect(spire.boundingBox.min.y).toBeCloseTo(0, 5);
         expect(spire.boundingBox.max.y).toBeCloseTo(1.08, 5);
         const frond = buildKelpGeometry();
         frond.computeBoundingBox();
-        expect(frond.boundingBox.max.y).toBe(1);
-        expect(frond.boundingBox.max.x).toBeCloseTo(0.5, 5);
+        // A stalk to y 1 with blades reaching out to each side, within the instance's width.
+        expect(frond.boundingBox.min.y).toBeCloseTo(0, 5);
+        expect(frond.boundingBox.max.y).toBeCloseTo(1, 5);
+        expect(frond.boundingBox.max.x).toBeGreaterThan(0.4);
+        expect(frond.boundingBox.min.x).toBeLessThan(-0.4);
+        expect(Math.max(frond.boundingBox.max.x, -frond.boundingBox.min.x)).toBeLessThanOrEqual(0.62);
+        // ...and out of the stalk's plane (z, world units), so it has a body from every side.
+        expect(frond.boundingBox.max.z - frond.boundingBox.min.z).toBeGreaterThan(2);
     });
 });

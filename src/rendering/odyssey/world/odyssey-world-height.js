@@ -191,6 +191,67 @@ const LAND_HALF_WIDTH = 2400;
 const NORTH_SHORE_FROM_Z = -2600;
 const NORTH_SHORE_TO_Z = -3400;
 
+/**
+ * THE SOUTH COAST'S LINE (2026-11-25). The shore every orb from the sea looks at was the contour of
+ * one smoothstep in z: a ruler-straight beach of one width from one side of the frame to the other,
+ * "a kerb" (the coast's audit). It bends now, along x:
+ *   - `bends`: coves (+, the shore laid back inland) and points (-, the land out into the sea), each a
+ *     compact (1 - u^2)^2 bump of `shift` u over `w` u either side of its `x`. The shelf's z is moved by
+ *     their sum, fully from the shore inland and fading out to sea across `seaward` (z), so the deep
+ *     flank (the reef's) keeps its form. The rail's landing and the reef's flank (x -340..90) are left as
+ *     they were: the glade's deer, the horses and the authored pines stand on that bank, and the reef
+ *     is planted on that slope.
+ *   - the beach: within `band` u of the sea's level the ground is laid back in a cove (its slope x
+ *     `cove` at the waterline, a wide flat beach and wide shallows) and stood up on a point (x `point`:
+ *     a narrow strand, the grass and the rock nearer the water), and a cove's beach carries little
+ *     of the relief (`reliefKeep`).
+ * Compact: nothing moves outside the bends' reach in x or seaward of `seaward[0]`.
+ */
+export const ODYSSEY_SOUTH_COAST = Object.freeze({
+    bends: Object.freeze([
+        Object.freeze({ x: -760, w: 200, shift: 32 }),
+        Object.freeze({ x: -490, w: 150, shift: -42 }),
+        Object.freeze({ x: 290, w: 200, shift: 48 }),
+        Object.freeze({ x: 560, w: 140, shift: -32 }),
+    ]),
+    seaward: Object.freeze([-70, -200]),
+    band: 28,
+    cove: 0.25,
+    point: 1.5,
+    /** The shift (u) at which a bend's beach is wholly a cove's or a point's. */
+    full: 36,
+    reliefKeep: 0.3,
+});
+const SC = ODYSSEY_SOUTH_COAST;
+
+/** How far the south shore is laid back (+) or brought out (-) at `x`, u. */
+export function odysseySouthCoastShift(x) {
+    let shift = 0;
+    for (let i = 0; i < SC.bends.length; i += 1) {
+        const b = SC.bends[i];
+        const u = (x - b.x) / b.w;
+        if (u > -1 && u < 1) shift += b.shift * ((1 - (u * u)) ** 2);
+    }
+    return shift;
+}
+
+/** The shore's lay at `x`: the beach band's slope factor at the waterline (< 1 a cove, > 1 a point). */
+function southCoastLay(shift) {
+    const t = Math.min(1, Math.abs(shift) / SC.full);
+    return shift >= 0 ? 1 - ((1 - SC.cove) * t) : 1 + ((SC.point - 1) * t);
+}
+
+/** The beach band laid back or stood up: monotonic, and the ground itself beyond `band`. */
+function southCoastBeach(shift, ground) {
+    if (shift === 0) return ground;
+    const d = ground - ODYSSEY_SEA_LEVEL;
+    const a = Math.abs(d);
+    if (a >= SC.band) return ground;
+    const k = southCoastLay(shift);
+    const t = a / SC.band;
+    return ODYSSEY_SEA_LEVEL + (d * (k + ((1 - k) * t * t * (3 - (2 * t)))));
+}
+
 /** The Ch3 basin — an inland lake bowl, sited past the shoreline rather than in the surf. */
 const BASIN_X = -150;
 const BASIN_Z = -520;
@@ -643,13 +704,15 @@ function ridgedMassifRise(m, dx, dz) {
 }
 
 /**
- * MACRO form — analytic and smooth. Ocean floor, the landmass that carries the shore, the Ch3
- * basin, and the four canonical peaks joined with a smooth max.
+ * The landmass and the Ch3 basin at (x, z), before the hills, the isles and the peaks: the shelf from
+ * the abyss to the shore plateau (its z moved by the south coast's bends, `coast`), the inland rise,
+ * both tapered in x and closed by the north coast.
  */
-export function odysseyWorldMacro(x, z) {
+function shelfGround(x, z, coast) {
     // Continental shelf climbing from the abyss to the shore plateau, then a gentler inland
     // rise toward the peaks. Both taper laterally so the world returns to open ocean in x.
-    const shelfT = smoothstep01(SHELF_FROM_Z, SHELF_TO_Z, z);
+    const zc = coast === 0 ? z : z + (coast * smoothstep01(SC.seaward[0], SC.seaward[1], z));
+    const shelfT = smoothstep01(SHELF_FROM_Z, SHELF_TO_Z, zc);
     const inlandT = smoothstep01(INLAND_FROM_Z, INLAND_TO_Z, z);
     const lateralN = (x - LAND_X) / LAND_HALF_WIDTH;
     const lateral = Math.max(0, 1 - (lateralN * lateralN));
@@ -658,11 +721,33 @@ export function odysseyWorldMacro(x, z) {
     // `lateral` already returns it to ocean in x. See the constant block above.
     const northT = smoothstep01(NORTH_SHORE_TO_Z, NORTH_SHORE_FROM_Z, z);
     const land = ABYSS_Y + (((SHELF_RISE * shelfT) + (INLAND_RISE * inlandT)) * lateral * northT);
-
     // The Ch3 basin, scooped out so the chapter-3 lake has somewhere to sit.
     const bx = (x - BASIN_X) / BASIN_RX;
     const bz = (z - BASIN_Z) / BASIN_RZ;
     const basin = Math.exp(-((bx * bx) + (bz * bz))) * -BASIN_DEPTH;
+    return { land, basin };
+}
+
+/**
+ * How much of a south cove's beach is beach at (x, z), 0..1: the cove's own weight inside the band
+ * round the sea's level. The relief stands back there (a laid-back beach is smooth sand).
+ */
+export function odysseySouthCoastBeachWeight(x, z) {
+    const coast = odysseySouthCoastShift(x);
+    if (coast <= 0 || z > SC.seaward[0]) return 0;
+    const g = shelfGround(x, z, coast);
+    const d = Math.abs(g.land + g.basin - ODYSSEY_SEA_LEVEL);
+    return Math.min(1, coast / SC.full) * (1 - smoothstep01(SC.band * 0.6, SC.band * 1.4, d));
+}
+
+/**
+ * MACRO form — analytic and smooth. Ocean floor, the landmass that carries the shore, the Ch3
+ * basin, and the four canonical peaks joined with a smooth max.
+ */
+export function odysseyWorldMacro(x, z) {
+    // The landmass and the Ch3 basin, the shelf's z moved by the south coast's bends.
+    const coast = odysseySouthCoastShift(x);
+    const shoreline = shelfGround(x, z, coast);
 
     // (The north lake's bowl lived here until 2026-11-21: it is a drawn water now, applied over
     // the whole field with the tarn's, odysseyNorthLakeProfile.)
@@ -697,11 +782,11 @@ export function odysseyWorldMacro(x, z) {
         const ix = x - isle.x;
         const iz = z - isle.z;
         if ((ix * ix) + (iz * iz) >= reach * reach) continue;
-        isles = Math.max(isles, isleRise(isle, isleRadius(isle, x, z), land));
+        isles = Math.max(isles, isleRise(isle, isleRadius(isle, x, z), shoreline.land));
     }
 
     // The north beach is drawn over everything else there (it replaces the steep coast).
-    const ground = northBeachBlend(x, z, land + basin + hills + isles);
+    const ground = northBeachBlend(x, z, southCoastBeach(coast, shoreline.land + shoreline.basin + hills + isles));
 
     // THE PEAKS RISE FROM THE GROUND, they do not replace it.
     //
@@ -765,7 +850,10 @@ export function odysseyWorldDetailWeight(x, z) {
     const weight = 0.16 + (0.84 * strongest);
     // ...and almost none on the north beach: +-10 u of relief would break a 2-degree beach.
     const beachW = odysseyNorthBeachWeight(x, z);
-    return beachW > 0 ? weight * (1 - ((1 - ODYSSEY_NORTH_BEACH.reliefKeep) * beachW)) : weight;
+    // ...and less on a south cove's beach (its sand is laid back).
+    const coveW = odysseySouthCoastBeachWeight(x, z);
+    const kept = coveW > 0 ? 1 - ((1 - ODYSSEY_SOUTH_COAST.reliefKeep) * coveW) : 1;
+    return (beachW > 0 ? weight * (1 - ((1 - ODYSSEY_NORTH_BEACH.reliefKeep) * beachW)) : weight) * kept;
 }
 
 /** LOCAL RELIEF, baked to half-float. Frequency band is set by the bake resolution, not taste. */

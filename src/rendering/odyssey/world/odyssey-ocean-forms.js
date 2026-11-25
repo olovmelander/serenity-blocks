@@ -180,26 +180,57 @@ export function buildSpireGeometry(seed = 7) {
 }
 
 /**
- * A unit kelp frond: a vertical ribbon x -0.5..0.5, y 0..1, tapering to a point, with enough
- * rows for the sway to bend it smoothly.
+ * A unit kelp frond (2026-11-25; it was one tapering ribbon, and a stand of them read as planks
+ * leaning in the water): a thin stalk that leans and wanders as it rises, and blades off it, one
+ * each side by turns, each reaching out and up and turned out of the stalk's plane, so the frond
+ * has a body from every side and its outline is a fringe, not an edge.
+ *
+ * Unit space as before: x across (-0.5..0.5, the instance's width), y up (0..1, its height). z is
+ * left at the instance's scale of 1, so the lean and the blades' turn are in world units.
  * @returns {THREE.BufferGeometry}
  */
 export function buildKelpGeometry() {
     const ROWS = 16;
     const positions = [];
-    const index = [];
-    for (let j = 0; j <= ROWS; j += 1) {
-        const y = j / ROWS;
-        const half = 0.5 * (1 - (0.75 * (y ** 1.4)));
-        positions.push(-half, y, 0, half, y, 0);
-        if (j < ROWS) {
-            const k = j * 2;
-            index.push(k, k + 2, k + 1, k + 1, k + 2, k + 3);
-        }
+    const tri = (a, b, c) => positions.push(...a, ...b, ...c);
+    // The stalk's axis: a slow wander across, a lean (world units) that grows toward the top.
+    const axis = (y) => [0.07 * Math.sin(y * Math.PI * 1.15), y, 2.6 * (y ** 1.6)];
+    // The stalk: two crossed ribbons, so it is never seen edge-on.
+    for (let j = 0; j < ROWS; j += 1) {
+        const y0 = j / ROWS;
+        const y1 = (j + 1) / ROWS;
+        const a = axis(y0);
+        const b = axis(y1);
+        const w0 = 0.05 * (1 - (0.6 * y0));
+        const w1 = 0.05 * (1 - (0.6 * y1));
+        const d0 = 0.16 * (1 - (0.6 * y0));
+        const d1 = 0.16 * (1 - (0.6 * y1));
+        tri([a[0] - w0, y0, a[2]], [b[0] - w1, y1, b[2]], [a[0] + w0, y0, a[2]]);
+        tri([a[0] + w0, y0, a[2]], [b[0] - w1, y1, b[2]], [b[0] + w1, y1, b[2]]);
+        tri([a[0], y0, a[2] - d0], [b[0], y1, b[2] - d1], [a[0], y0, a[2] + d0]);
+        tri([a[0], y0, a[2] + d0], [b[0], y1, b[2] - d1], [b[0], y1, b[2] + d1]);
+    }
+    // The blades: from low on the stalk to its tip, shorter toward the top, a leaf each (root, two
+    // shoulders, tip), its tip lifted and turned out of the plane by its own amount.
+    const BLADES = 17;
+    for (let k = 0; k < BLADES; k += 1) {
+        const y = 0.1 + ((k / (BLADES - 1)) * 0.84);
+        const side = k % 2 === 0 ? 1 : -1;
+        const root = axis(y);
+        const reach = 0.5 * (1 - (0.32 * y)) * (0.86 + (0.14 * Math.sin(k * 2.3)));
+        const turn = side * (0.9 + (0.7 * Math.sin((k * 1.7) + 0.4)));
+        const lift = 0.035 + (0.02 * Math.cos(k * 1.3));
+        const tip = [root[0] + (side * reach), y + lift, root[2] + turn];
+        const mid = [root[0] + (side * reach * 0.48), y + (lift * 0.55), root[2] + (turn * 0.45)];
+        const half = 0.011 * (1 - (0.4 * y));
+        const m0 = [mid[0], mid[1] - half, mid[2] - 0.22];
+        const m1 = [mid[0], mid[1] + half, mid[2] + 0.22];
+        const r = [root[0], y, root[2]];
+        tri(r, m0, m1);
+        tri(m0, tip, m1);
     }
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-    geometry.setIndex(index);
     geometry.computeVertexNormals();
     return geometry;
 }
