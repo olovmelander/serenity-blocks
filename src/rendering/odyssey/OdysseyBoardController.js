@@ -104,6 +104,7 @@ import { resolveOdysseyPathInflowWeight } from './odyssey-path-inflow.js';
 import { foldRideBetween, plungeTravelExtraMs, resolveBlackHoleFall } from './transitions/odyssey-black-hole-fall.js';
 import { breachTravelExtraMs, cityRideBetween, cityTravelExtraMs } from './transitions/odyssey-travel-measure.js';
 import { createFoldHypercubes } from './chapter-environments/odyssey-fold-hypercubes.js';
+import { resolveCh1CloseUp } from './odyssey-ch1-close-ups.js';
 import { resolveCh6CloseUp } from './odyssey-ch6-close-ups.js';
 import { prefersReducedMotion } from '../../themes/shared/reduced-motion.js';
 import { foldHypercubeCages } from './transitions/odyssey-fold-rooms.js';
@@ -148,6 +149,31 @@ import {
 // Chapter 6's own fog tone — the void the world recedes into. Not the live fog: see the note
 // at the call site for why fading toward the CURRENT sky brightened the world instead.
 const ONE_WORLD_DEPARTURE_TARGET = new THREE.Color(ONE_WORLD_DEPARTURE_VOID);
+/**
+ * FROM ONE ORB TO THE NEXT (2026-11-25; the owner: "now when clicking an orb it snaps very fast").
+ * Measured in the running game, a click or an arrow key to an orb of the same chapter flew the eye
+ * 33 u from close-up to close-up in a fixed 0.8 s, at 100 u/s through the middle; to an orb of
+ * another chapter it rode 254 u of rail in 1.2 s, the view turning 120 degrees on the way. Both
+ * timings were older than the world they cross.
+ *
+ * - Inside a chapter the move is still one glide from close-up to close-up, but its time follows
+ *   the way: `least` ms, plus `perUnit` ms for every world unit the eye has to go, up to `most`
+ *   (the camera eases it with a smootherstep: OdysseyCameraController.updateAnimation).
+ * - A trip a player asks for across chapters rides the rail for at least `tripBase` ms plus
+ *   `tripPerJourney` ms for the whole journey's length (in proportion), up to `tripMost`, and then
+ *   settles into the close-up over `settle` ms. The rides that have their own measure (the fold,
+ *   the city, the journey's flow from an orb to the next, the opening sweep) keep it.
+ */
+export const ODYSSEY_ORB_GLIDE = Object.freeze({
+    least: 900,
+    perUnit: 26,
+    most: 2400,
+    tripBase: 1800,
+    tripPerJourney: 8000,
+    tripMost: 6000,
+    settle: 900,
+});
+
 // Chapters whose orb close-ups look along the rail (see _focusFramingFor), and how far off it.
 // `level`: how much of the rail's climb the close-up flattens out. Chapter 6 turns RIGHT of the
 // rail, further, and climbs with it (2026-10-19): its black hole hangs on the rail's own line
@@ -550,6 +576,10 @@ export class OdysseyBoardController {
         this.container = container;
         this.getReducedMotion = options.getReducedMotion
             || (() => typeof window !== 'undefined' && window.settings?.reducedMotion === true);
+        // The free frame (FRAME_SHIFT in the camera): the UI's own reader of where it leaves the
+        // picture open, asked a few times a second.
+        this.getFrameFree = typeof options.getFrameFree === 'function' ? options.getFrameFree : null;
+        this._frameFreeAt = -Infinity;
         this.editorMode = !!options.editorMode;
         this.layoutOverride = options.layoutOverride || null;
         this.cinematicJourneyActive = options.cinematicJourneyActive !== false;
@@ -933,10 +963,13 @@ export class OdysseyBoardController {
         };
         this.boundHandlers = {
             mousemove: this.onMouseMove.bind(this),
-            // The look around comes back to the middle when the mouse leaves the window (over the
-            // map's panels it stays where it was: relatedTarget is then the panel).
-            mouseleave: (event) => {
-                if (!event?.relatedTarget) this.cameraController?.setLookPointer?.(0, 0);
+            // The look around comes back to rest when the mouse leaves the map: out of the window,
+            // and onto the map's own panels too. (It used to stay where it was over a panel. But the
+            // look is measured from the free frame's middle now, so the card's edge is a full turn
+            // to the right: reaching for Play would leave the view turned 16 degrees off the orb
+            // for as long as the cursor sat on the card.)
+            mouseleave: () => {
+                this.cameraController?.restLook?.();
             },
             click: this.onClick.bind(this),
             wheel: this.onWheel.bind(this),
@@ -3102,6 +3135,13 @@ export class OdysseyBoardController {
      * @private
      */
     _focusFramingFor(chapterId, progress) {
+        // Chapter 1: down across the shaft onto the lava lake, from a different side at each orb
+        // (odyssey-ch1-close-ups.js); the shared view met the shaft's wall.
+        if (chapterId === 1 && Number.isFinite(progress)) {
+            const end = this.presentationLayout?.chapterPositions?.[1];
+            const view = end > 0 ? resolveCh1CloseUp(progress / end) : null;
+            return { viewDir: view };
+        }
         if (!ODYSSEY_FOCUS_ALONG_RAIL.has(chapterId) || !Number.isFinite(progress)) return { viewDir: null };
         // The SCENE's up, not world up: ch8's city stands on a near-vertical rail, so a world-up
         // framing looked at its orbs almost along the camera's own up and rolled the city to a
@@ -4827,9 +4867,19 @@ export class OdysseyBoardController {
             // Reduced motion cuts instead of gliding 0.9-3.5 s (audit 2026-10-18). A caller's
             // `minTravelDuration` is a floor under the computed trip, never a cap: the black
             // hole's plunge needs its extra time (audit 2026-10-23).
+            // A trip the player asked for with a click or a key across chapters takes its time
+            // (ODYSSEY_ORB_GLIDE); the rides with a measure of their own keep it.
+            const asked = traveled && !foldRide && options.pathTravel !== true && options.chapterArrival !== true
+                && options.minTravelDuration === undefined;
+            const calm = asked ? Math.min(
+                ODYSSEY_ORB_GLIDE.tripMost,
+                ODYSSEY_ORB_GLIDE.tripBase
+                    + (Math.abs(targetProgress - currentProgress) * ODYSSEY_ORB_GLIDE.tripPerJourney),
+            ) : 0;
             const duration = options.travelDuration
                 ?? (reducedMotion ? 0 : Math.max(
                     options.minTravelDuration ?? 0,
+                    calm,
                     this.computeTravelDuration(currentProgress, targetProgress),
                 ));
             const travelOptions = options.pathTravel === true || options.isPaused || options.isCurrent
@@ -4847,7 +4897,19 @@ export class OdysseyBoardController {
         // Chapter arrivals retain the authored follow-camera panorama; ordinary
         // orb selection still brings its node forward for inspection.
         if (options.focus !== false) {
-            let focusDuration = (traveled || foldRide) ? 520 : 800;
+            // After a ride the eye settles into the close-up; inside a chapter the move is one glide
+            // from close-up to close-up, timed by how far the eye has to go (ODYSSEY_ORB_GLIDE).
+            let focusDuration = ODYSSEY_ORB_GLIDE.settle;
+            if (!(traveled || foldRide)) {
+                const eye = this.camera?.position;
+                const far = eye?.distanceTo && nodePosition?.isVector3
+                    ? Math.max(0, eye.distanceTo(nodePosition) - (this.cameraController.config?.focusDistance ?? 0))
+                    : 0;
+                focusDuration = Math.round(Math.min(
+                    ODYSSEY_ORB_GLIDE.most,
+                    ODYSSEY_ORB_GLIDE.least + ((Number.isFinite(far) ? far : 0) * ODYSSEY_ORB_GLIDE.perUnit),
+                ));
+            }
             if (reducedMotion) focusDuration = 0;
             const focused = await this.cameraController.focusOnNode(
                 nodePosition,
@@ -5154,6 +5216,13 @@ export class OdysseyBoardController {
         // Publish the travel frontier BEFORE the camera integrates this frame, so a chapter that
         // is not ready is never entered even for one frame.
         this._updateTravelFrontier();
+
+        // The picture's centre follows the part of the frame the UI leaves open (FRAME_SHIFT).
+        if (this.getFrameFree && !this.editorMode && this.time - this._frameFreeAt >= 0.12) {
+            this._frameFreeAt = this.time;
+            const free = this.getFrameFree();
+            if (free) this.cameraController?.setFrameCentre?.(free.x, free.y);
+        }
 
         // Feed director state to the path so it flows toward the head and reacts to beats.
         this.cameraController?.update(delta);

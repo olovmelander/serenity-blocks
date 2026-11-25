@@ -65,8 +65,8 @@ export const NEON_SKY_PALETTES = Object.freeze({
         cloudBody: [0.026, 0.01, 0.058],
         cloudLit: [0.9, 0.17, 0.26],
         cityGlow: [0.11, 0.024, 0.19],
-        haze: [0.013, 0.013, 0.058],
-        hazeSun: [0.22, 0.04, 0.1],
+        haze: [0.02, 0.017, 0.072],
+        hazeSun: [0.3, 0.065, 0.12],
         stars: 1,
     }),
     dawn: Object.freeze({

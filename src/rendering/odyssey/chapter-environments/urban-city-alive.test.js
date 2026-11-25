@@ -21,7 +21,7 @@ import {
     JOURNEY_ENDING, advanceJourneyEnding, resolveJourneyEnding,
 } from './shared/odyssey-journey-ending.js';
 import {
-    NEON_ARCHITECTURE, NEON_PART, arrivalLife, planNeonArchitecture,
+    NEON_ARCHITECTURE, NEON_PART, arrivalLife, neonPartKind, planNeonArchitecture,
 } from './shared/odyssey-neon-architecture.js';
 import { NEON_FAR_CITY, dealFarCity } from './shared/odyssey-neon-far-plan.js';
 import {
@@ -196,14 +196,20 @@ describe("chapter 8: the city's architecture", () => {
         expect(stepped.length).toBeGreaterThan(60);
     });
 
-    it('lights more rooms in the towers the arrival stands between, and only there', () => {
+    it('lights more rooms in the towers the rail runs between, and only there', () => {
         const boosted = towers.filter((tower) => arrivalLife(tower) > 0);
-        expect(boosted.length).toBeGreaterThan(20);
+        expect(boosted.length).toBeGreaterThan(40);
         boosted.forEach((tower) => {
             expect(tower.bank).toBeLessThanOrEqual(1);
-            expect(tower.z).toBeGreaterThan(-130);
+            // To a block past the end of the line (the rail ends at z -123 since the city grew
+            // longer, 2026-11-18): the last close-ups used to stand between unlit walls.
+            expect(tower.z).toBeGreaterThan(-270);
             expect(tower.z).toBeLessThan(150);
         });
+        // The walls round the last orb carry as much as the arrival's.
+        const last = towers.filter((tower) => tower.bank === 0 && tower.z > -200 && tower.z < -110);
+        expect(last.length).toBeGreaterThanOrEqual(4);
+        last.forEach((tower) => expect(arrivalLife(tower)).toBeCloseTo(0.3, 6));
         // The walls either side of the eye's first stations (rail z 62 -> 28) carry the most.
         const beside = towers.filter((tower) => tower.bank === 0 && tower.z > 0 && tower.z < 80);
         expect(beside.length).toBeGreaterThanOrEqual(4);
@@ -218,8 +224,8 @@ describe("chapter 8: the city's architecture", () => {
     });
 
     it('stacks tiers inside their tower, ledges just proud of the wall below', () => {
-        const bodies = plan.tiers.filter((tier) => tier.part === NEON_PART.body);
-        const ledges = plan.tiers.filter((tier) => tier.part === NEON_PART.ledge);
+        const bodies = plan.tiers.filter((tier) => neonPartKind(tier.part) === NEON_PART.body);
+        const ledges = plan.tiers.filter((tier) => neonPartKind(tier.part) === NEON_PART.ledge);
         expect(bodies.length).toBeGreaterThan(150);
         expect(ledges.length).toBeGreaterThan(80);
         const hostOf = (tier) => plan.bases.find((base) => base.seed === tier.seed
@@ -227,7 +233,7 @@ describe("chapter 8: the city's architecture", () => {
         plan.tiers.forEach((tier) => {
             const host = hostOf(tier);
             expect(host).toBeTruthy();
-            const slack = tier.part === NEON_PART.ledge ? NEON_ARCHITECTURE.ledgeOut + 1e-6 : 1e-6;
+            const slack = neonPartKind(tier.part) === NEON_PART.ledge ? NEON_ARCHITECTURE.ledgeOut + 1e-6 : 1e-6;
             expect(Math.abs(tier.x - host.x) + (tier.width * 0.5)).toBeLessThanOrEqual((host.width * 0.5) + slack);
             expect(Math.abs(tier.z - host.z) + (tier.depth * 0.5)).toBeLessThanOrEqual((host.depth * 0.5) + slack);
             // Nothing hangs in the air: a tier's foot is at or above its tower's base top.

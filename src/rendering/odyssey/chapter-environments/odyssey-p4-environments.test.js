@@ -66,8 +66,10 @@ describe('Odyssey P4 chapter environment anchors', () => {
         expect(group.userData.traffic?.name).toBe('sky-traffic-light-trails');
         expect(Number.isFinite(group.userData.yStart)).toBe(true);
         expect(Number.isFinite(group.userData.yEnd)).toBe(true);
-        // The node-bound glow map and glyph atlas are registered for teardown (audit 2026-10-23).
-        expect(group.userData.ownedTextures).toHaveLength(2);
+        // The node-bound glow maps (the boulevard's and the walls') and the glyph atlas are registered
+        // for teardown (audit 2026-10-23).
+        expect(group.userData.ownedTextures).toHaveLength(3);
+        expect(group.userData.ownedTextures).toContain(group.userData.neon.wallGlowTex);
         expect(group.userData.ownedTextures).toContain(group.userData.neon.glowTex);
         expect(group.userData.ownedTextures).toContain(group.userData.signs.userData.glyphTexture);
     });

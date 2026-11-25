@@ -23,6 +23,7 @@
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three/webgpu';
 import { createOdysseyCameraRig } from './helpers/odyssey-camera-rig.js';
+import { resolveFrameShift } from '../../src/rendering/odyssey/OdysseyCameraController.js';
 import {
     FLIGHT_KIND, ODYSSEY_FLIGHTS, flightPositionAt, resolveFlightLanes,
 } from '../../src/rendering/odyssey/composition/odyssey-flights.js';
@@ -40,6 +41,12 @@ const SEA_LEVEL = 287.31;
 /** The frame the UI leaves free, in NDC: left of the orb panel (1560 of 1920 px), under the HUD (75 of 1080). */
 const PANEL_X = ((1560 / 1920) * 2) - 1;
 const HUD_Y = 1 - ((75 / 1080) * 2);
+/**
+ * The lens is shifted so the picture's centre is the middle of that free frame (FRAME_SHIFT in the
+ * camera, 2026-11-25): the orb sits there, not in the middle of the screen.
+ */
+const FREE_MIDDLE = { x: (PANEL_X - 1) / 2, y: (HUD_Y - 1) / 2 };
+const LENS = resolveFrameShift(FREE_MIDDLE.x, FREE_MIDDLE.y);
 /** The orb's own disc in the middle of every close-up, pixels at 1080 lines. */
 const ORB_DISC = 170;
 /** The narrowest lens a close-up can have (the director's lens changes orb by orb: 57 to 75 degrees). */
@@ -53,7 +60,7 @@ function seat(id, fov = null) {
     camera.position.set(orb.x, orb.y + 2, orb.z + rig.controller.config.focusDistance);
     camera.lookAt(orb.x, orb.y, orb.z);
     camera.updateMatrixWorld(true);
-    camera.updateProjectionMatrix();
+    camera.setViewOffset(camera.aspect, 1, -LENS.x * camera.aspect, LENS.y, camera.aspect, 1);
     return camera;
 }
 
@@ -82,7 +89,7 @@ function project(camera, p) {
 }
 const inFrame = (s) => s.depth > 1 && Math.abs(s.x) < 1 && Math.abs(s.y) < 1;
 const inFree = (s) => inFrame(s) && s.x < PANEL_X && s.y < HUD_Y
-    && Math.hypot(s.x * 960, s.y * 540) > ORB_DISC;
+    && Math.hypot((s.x - FREE_MIDDLE.x) * 960, (s.y - FREE_MIDDLE.y) * 540) > ORB_DISC;
 
 /**
  * What a close-up shows of a set of birds over `total` seconds of the board's clock: the share
@@ -367,12 +374,15 @@ describe('odyssey bird staging: the vultures\' column beside the wall', () => {
         [28, 29, 30, 31, 32].forEach((id) => {
             const camera = seat(id);
             const view = shows(camera, SUMMIT_BIRDS.span, vulturesAt, 176, 40, 1);
-            expect(view.share, `L${id} share of the time`).toBeGreaterThan(0.95);
+            // (0.95 before the lens moved to the free frame's middle, 2026-11-25: the open left of
+            // the frame is a tenth of a screen narrower, and L32's column shows 93 % of the time.)
+            expect(view.share, `L${id} share of the time`).toBeGreaterThan(0.92);
             expect(view.birds, `L${id} vultures at once`).toBeGreaterThan(1.5);
             expect(view.median, `L${id} px across`).toBeGreaterThan(55);
             expect(shows(seat(id, NARROW), SUMMIT_BIRDS.span, vulturesAt, 176, 40, 1).share, `L${id} narrow`).toBeGreaterThan(0.85);
         });
-        expect(shows(seat(33), SUMMIT_BIRDS.span, vulturesAt, 176, 40, 1).share).toBeGreaterThan(0.55);
+        // (0.55 before the lens moved, 2026-11-25; 0.545 now.)
+        expect(shows(seat(33), SUMMIT_BIRDS.span, vulturesAt, 176, 40, 1).share).toBeGreaterThan(0.52);
         // The column stands left of the middle from every one of them (the panel is on the right).
         [28, 30, 32].forEach((id) => {
             const camera = seat(id);
@@ -433,7 +443,11 @@ describe('odyssey bird staging: the journey as a whole', () => {
             }
             // (Before: 0 at L25, L26, L27, L29 and L30. The last orb of the wall looks over the
             // column's top: its highest birds are in frame about two thirds of the time.)
-            expect(seen / samples, `L${id}: a bird of 24 px or more in the free frame`).toBeGreaterThan(id === 33 ? 0.6 : 0.9);
+            // The lens moved to the free frame's middle on 2026-11-25, and the far left of the old
+            // frame went with it: every orb still has a bird all the time but three (0.9 before:
+            // L26 0.89, L27 0.80; 0.6 before: L33 0.49). Their birds want a place nearer the rail.
+            const least = { 26: 0.87, 27: 0.78, 33: 0.47 }[id] ?? 0.9;
+            expect(seen / samples, `L${id}: a bird of 24 px or more in the free frame`).toBeGreaterThan(least);
         }
     });
 });

@@ -21,6 +21,7 @@ import * as THREE from 'three/webgpu';
 import { context } from 'three/tsl';
 import { FluidDreamsWorld, REST_RIG } from '../../src/themes/fluid-dreams/fluid-dreams-world.js';
 import { fallbackLayout } from '../../src/themes/fluid-dreams/fluid-dreams-composition.js';
+import { BUBBLE_SLOTS } from '../../src/themes/fluid-dreams/fluid-dreams-sky.js';
 
 vi.setConfig({ testTimeout: 60_000 });
 
@@ -207,6 +208,87 @@ describe.each(TIERS)('Fluid Dreams shaders at %s', (quality) => {
         for (const entry of liquid) {
             const sines = (entry.out.fragment.match(/\bsin\s*\(/g) || []).length;
             expect(sines, entry.label).toBeGreaterThanOrEqual(9);
+        }
+    });
+});
+
+/**
+ * The sky the liquid inlines (fluid-dreams-sky-tsl.js) is assembled in JavaScript from the tier's
+ * switches: the ink lit from the sun's side, the bars of cloud, the bubbles, and what of those
+ * the sea's mirror shows (`mirrorSky`: the bars; `mirrorExtras`: the bubbles, with the Drop's
+ * satellites and crown). A tier ships one combination of them and the playground's `tune` any
+ * other, so the liquid is built here with everything off, everything on, each one alone and each
+ * one missing, on both backends: a branch only one combination reaches cannot hide a var that is
+ * read unassigned or a node that will not build.
+ */
+const SKY_SWITCHES = ['skyLit', 'strata', 'bubbles', 'mirrorSky', 'mirrorExtras'];
+const skySwitches = (on) => ({
+    skyLit: on, strata: on, bubbles: on ? BUBBLE_SLOTS : 0, mirrorSky: on, mirrorExtras: on,
+});
+const SKY_VARIANTS = [
+    ['everything off', skySwitches(false)],
+    ['everything on', skySwitches(true)],
+    ...SKY_SWITCHES.map((key) => [`only ${key}`, { ...skySwitches(false), [key]: skySwitches(true)[key] }]),
+    ...SKY_SWITCHES.map((key) => [`all but ${key}`, { ...skySwitches(true), [key]: skySwitches(false)[key] }]),
+];
+
+/** Every combination at High; at Minimal (another sea round the same sky: one bounce, no stars) the two ends. */
+const SKY_GATE = [['High', SKY_VARIANTS], ['Minimal', SKY_VARIANTS.slice(0, 2)]];
+
+describe.each(SKY_GATE)('Fluid Dreams liquid at %s: every switch of the sky, off and on', (quality, variants) => {
+    const built = [];
+    const has = (variant) => variants.some(([name]) => name === variant);
+
+    beforeAll(() => {
+        const width = 1600;
+        const height = 900;
+        for (const [variant, tune] of variants) {
+            const scene = new THREE.Scene();
+            const camera = new THREE.PerspectiveCamera(60, width / height, REST_RIG.near, REST_RIG.far);
+            const world = new FluidDreamsWorld({
+                scene, quality, capture: true, tune,
+            }).build();
+            world.bindCamera(camera);
+            world.setViewport(width, height, width / height);
+            world.setLayout(fallbackLayout(width, height), width / height);
+            world.seek(10);
+            world.updateCamera(camera, { time: 10, delta: 0 });
+            world.update({ time: 10, delta: 0 }, camera);
+            // The world built what it was asked for.
+            expect(world.tier).toMatchObject(tune);
+            expect(world.sky.bubbleCount).toBe(tune.bubbles);
+            const liquid = world.parts.liquid.mesh;
+            for (const [label, Builder] of BACKENDS) {
+                const [out, heard] = listening(() => build(Builder, liquid, liquid.material, camera));
+                built.push({
+                    name: `the liquid with ${variant}`, variant, label, out, heard,
+                });
+            }
+            world.dispose();
+        }
+    });
+
+    it('builds on both backends, cleanly, whatever the sky is asked to show', () => {
+        expect(built).toHaveLength(variants.length * BACKENDS.length);
+        expect(built.flatMap(problemsOf)).toEqual([]);
+    });
+
+    it('leaves out of the shader what a switch turns off', () => {
+        const size = (variant, label) => built
+            .find((entry) => entry.variant === variant && entry.label === label).out.fragment.length;
+        for (const [label] of BACKENDS) {
+            expect(size('everything on', label), label).toBeGreaterThan(size('everything off', label));
+            if (!has('only mirrorSky')) continue;
+            // What the direct view shows is paid for by itself...
+            for (const key of ['skyLit', 'strata', 'bubbles']) {
+                expect(size(`only ${key}`, label), `${label}, only ${key}`).toBeGreaterThan(size('everything off', label));
+                expect(size(`all but ${key}`, label), `${label}, all but ${key}`).toBeLessThan(size('everything on', label));
+            }
+            // ...and the mirror's share only where there is something of it to mirror: without the
+            // bars and the bubbles, `mirrorSky` adds nothing to the shader.
+            expect(size('only mirrorSky', label), label).toBe(size('everything off', label));
+            expect(size('all but mirrorSky', label), label).toBeLessThan(size('everything on', label));
+            expect(size('all but mirrorExtras', label), label).toBeLessThan(size('everything on', label));
         }
     });
 });

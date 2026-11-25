@@ -26,8 +26,8 @@
  * window is the flat glow it always was, at no cost.
  */
 import {
-    If, clamp, dot, exp, float, length, max, min, mix, normalize, reflect, refract, select, smoothstep, sqrt, texture,
-    vec2, vec3,
+    If, atan, clamp, dot, exp, float, length, max, min, mix, normalize, reflect, refract, select, smoothstep, sqrt,
+    texture, vec2, vec3,
 } from 'three/tsl';
 
 export const SNELL_WINDOW = Object.freeze({
@@ -227,6 +227,97 @@ export function snellMirror(ctx) {
         ctx.deep,
         smoothstep(float(0.42), float(0.95), down).mul(0.6),
     );
+}
+
+/**
+ * THE SUN'S LIGHT IN THE WATER, SEEN FROM NEAR THE SURFACE (2026-11-25).
+ *
+ * Arriving at the top of the chapter the eye lies a few units under the surface and looks up at
+ * its underside: a frame of lid and nothing else, one even turquoise. What such a frame holds in
+ * a real sea is the sun's own light in the water between: a glow on the side the sun stands, and
+ * shafts that fan out of it. Every shaft runs along the refracted sun, so seen from anywhere they
+ * converge on one point of the sky of directions (the sun's place under water), and the picture
+ * is a function of the view's direction alone: a broad `lobe` toward that point and `rays`
+ * streaking out of it (two turns of the detail tile round the sun's axis, at counts that share
+ * no period). It builds along the view path (`path` per u) and belongs to the top of the column:
+ * whole to `depth[0]` u down, gone by `depth[1]` (the CPU's gate: deeper, no fragment runs it), and
+ * a view turned from the sun (every orb's close-up) branches past the two fetches.
+ *
+ * Soft and slow on purpose (the owner's rule for water: nothing that sparkles or strobes): the
+ * streaks are wide, their brightness drifts by a cell in ~20 s, and nothing here is a point.
+ */
+export const OCEAN_SUN_RAYS = Object.freeze({
+    depth: Object.freeze([12, 96]),
+    lobe: 0.24,
+    rays: 0.40,
+    /** The streaks are only read where the view turns this far toward the sun (the cosine): from there in. */
+    from: Object.freeze([0.24, 0.46]),
+    counts: Object.freeze([3, 5]),
+    drift: 0.0045,
+    path: 0.028,
+    /** How much of the sun's own colour the light keeps (the rest is the water's luminous plate). */
+    warm: 0.35,
+});
+
+/**
+ * How much of the sun's light in the water an eye `depthU` down sees: 1 near the surface, 0 from
+ * `depth[1]` (the CPU's gate; smooth, so it never pops).
+ * @param {number} depthU
+ * @returns {number} 0..1
+ */
+export function sunRaysPresence(depthU, spec = OCEAN_SUN_RAYS) {
+    if (!Number.isFinite(depthU)) return 0;
+    const t = Math.max(0, Math.min(1, (spec.depth[1] - depthU) / (spec.depth[1] - spec.depth[0])));
+    return t * t * (3 - (2 * t));
+}
+
+/**
+ * The light scattered toward the eye along a view direction: a float, 0 away from the sun and
+ * about `lobe + rays` at its strongest.
+ * @param {object} ctx
+ * @param {*} ctx.dir unit vec3, from the eye
+ * @param {number[]} ctx.sun unit vector toward the refracted sun (`sunUnderWater`)
+ * @param {*} ctx.time float uniform
+ * @param {*|null} ctx.noiseTex the world's tiling detail texture (b = value noise); null: the
+ *   lobe alone (the low tier builds no fetch)
+ * @returns {*} float node
+ */
+export function sunRayScatter(ctx, spec = OCEAN_SUN_RAYS) {
+    const { sun: S } = ctx;
+    // A frame round the sun's axis (constants: the sun does not move under water).
+    const ref = Math.abs(S[1]) > 0.9 ? [1, 0, 0] : [0, 1, 0];
+    const e1 = [
+        (S[1] * ref[2]) - (S[2] * ref[1]), (S[2] * ref[0]) - (S[0] * ref[2]), (S[0] * ref[1]) - (S[1] * ref[0]),
+    ];
+    const l1 = Math.hypot(e1[0], e1[1], e1[2]) || 1;
+    e1[0] /= l1; e1[1] /= l1; e1[2] /= l1;
+    const e2 = [(S[1] * e1[2]) - (S[2] * e1[1]), (S[2] * e1[0]) - (S[0] * e1[2]), (S[0] * e1[1]) - (S[1] * e1[0])];
+    const toSun = clamp(dot(ctx.dir, vec3(S[0], S[1], S[2])), 0, 1).toVar();
+    const s2 = toSun.mul(toSun).toVar();
+    const light = s2.mul(toSun).mul(spec.lobe).toVar();
+    if (!ctx.noiseTex) return light;
+    If(toSun.greaterThan(spec.from[0]), () => {
+        // The angle round the axis, in turns (the tile repeats a whole number of times round it,
+        // so the atan's seam lands on a repeat; `level(0)`: its derivative there would pick the
+        // last mip, and a fetch inside a branch may not take one).
+        const px = dot(ctx.dir, vec3(e1[0], e1[1], e1[2]));
+        const py = dot(ctx.dir, vec3(e2[0], e2[1], e2[2]));
+        const turn = atan(py, px.add(1e-5)).div(Math.PI * 2).toVar();
+        const out = float(1).sub(toSun);
+        const wide = texture(ctx.noiseTex, vec2(turn.mul(spec.counts[0]), out.mul(0.22).add(ctx.time.mul(spec.drift))))
+            .level(0).b;
+        const fine = texture(
+            ctx.noiseTex,
+            vec2(turn.mul(spec.counts[1]).add(0.37), out.mul(0.13).sub(ctx.time.mul(spec.drift * 0.7))),
+        ).level(0).b;
+        const streak = smoothstep(float(0.36), float(0.70), wide.mul(0.58).add(fine.mul(0.42)));
+        // Out of the sun's place and fading away from it; at the very point the streaks crowd
+        // into less than a pixel, so the lobe alone carries it there.
+        const s8 = s2.mul(s2).mul(s2.mul(s2));
+        const reach = s2.mul(float(1).sub(s8.mul(s8))).mul(smoothstep(float(spec.from[0]), float(spec.from[1]), toSun));
+        light.addAssign(streak.mul(reach).mul(spec.rays));
+    });
+    return light;
 }
 
 /**

@@ -28,6 +28,8 @@ function closeUp(id) {
     camera.lookAt(orb);
     camera.updateMatrixWorld(true);
     const key = resolveCh6CloseUpKey(t);
+    // (No key: the Earth left behind, a view of its own with no hero to stand beside the orb.)
+    if (!key) return { t, view, hero: 'earth' };
     const target = key.hero === 'galaxy'
         ? camera.position.clone().addScaledVector(places.galaxyDir, 5000)
         : (key.hero === 'planet' ? places.planet : omen).clone();
@@ -37,9 +39,14 @@ function closeUp(id) {
 }
 
 describe('chapter 6\'s close-ups (the deep chapters audit, S1)', () => {
-    it('keeps the rail\'s own view for the planetrise orbs', () => {
+    it('keeps the rail\'s own view for the planetrise orb, and looks back at the Earth from the next', () => {
         expect(closeUp(35).view).toBeNull();
-        expect(closeUp(36).view).toBeNull();
+        // Orbs 35 to 37 park at one place, and 35 and 36 shared the rail's view: one picture twice.
+        // Orb 36 looks down at the Earth it has just left (2026-11-25).
+        const back = closeUp(36);
+        expect(back.hero).toBe('earth');
+        expect(back.view.length()).toBeCloseTo(1, 6);
+        expect(THREE.MathUtils.radToDeg(Math.asin(-back.view.y))).toBeCloseTo(35, 4);
     });
 
     it('stands each orb\'s hero beside it, inside the frame and clear of the orb', () => {

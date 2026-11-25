@@ -16,6 +16,7 @@ import {
     OdysseyBoardController,
     normalizeOdysseyWheelDelta,
     shouldRouteOdysseyWheel,
+    ODYSSEY_ORB_GLIDE,
 } from '../../src/rendering/odyssey/OdysseyBoardController.js';
 
 function createTarget(options = {}) {
@@ -224,7 +225,9 @@ describe('OdysseyBoardController chapter framing', () => {
     it('continues to focus the orb on ordinary map selection', async () => {
         const { controller, nodePosition } = createNavigationController();
         await expect(controller.travelToLevel(6)).resolves.toBe(true);
-        expect(controller.cameraController.focusOnNode).toHaveBeenCalledWith(nodePosition, 520, { viewDir: null });
+        // (520 ms until 2026-11-25: the settle into the close-up after a ride.)
+        expect(controller.cameraController.focusOnNode)
+            .toHaveBeenCalledWith(nodePosition, ODYSSEY_ORB_GLIDE.settle, { viewDir: null });
     });
 
     it('does not publish a panoramic arrival superseded during travel', async () => {
@@ -272,7 +275,50 @@ describe('OdysseyBoardController chapter framing', () => {
         controller.environmentManager.getBlendState.mockReturnValue({ activeChapter: 2 });
         await expect(controller.travelToLevel(6)).resolves.toBe(true);
         expect(controller.cameraController.travelToPosition).not.toHaveBeenCalled();
-        expect(controller.cameraController.focusOnNode).toHaveBeenCalledWith(nodePosition, 800, { viewDir: null });
+        // One glide from close-up to close-up, timed by the way (a fixed 800 ms until 2026-11-25).
+        const [, glide] = controller.cameraController.focusOnNode.mock.calls.at(-1);
+        expect(controller.cameraController.focusOnNode).toHaveBeenCalledWith(nodePosition, glide, { viewDir: null });
+        expect(glide).toBeGreaterThanOrEqual(ODYSSEY_ORB_GLIDE.least);
+        expect(glide).toBeLessThanOrEqual(ODYSSEY_ORB_GLIDE.most);
+    });
+
+    it('gives a trip the player asks for across chapters its time, and leaves measured rides alone', async () => {
+        // Measured 2026-11-25: an arrow key to the next chapter rode 254 u of rail in 1.2 s.
+        const { controller } = createNavigationController();
+        controller.cameraController.prefersReducedMotion = () => false;
+        controller.computeTravelDuration = vi.fn(() => 1160);
+        await controller.travelToLevel(6);
+        const asked = ODYSSEY_ORB_GLIDE.tripBase + ((0.2 - 0.1) * ODYSSEY_ORB_GLIDE.tripPerJourney);
+        expect(controller.cameraController.travelToPosition.mock.calls.at(-1)[1]).toBeCloseTo(asked, 6);
+        expect(asked).toBeGreaterThan(2200);
+        // The journey's own flow from an orb to the next keeps its measure...
+        await controller.travelToLevel(6, { pathTravel: true, focus: false, minTravelDuration: 1500 });
+        expect(controller.cameraController.travelToPosition.mock.calls.at(-1)[1]).toBe(1500);
+        // ...a longer computed trip (the dive, the breach) is never shortened...
+        controller.computeTravelDuration = vi.fn(() => 5200);
+        await controller.travelToLevel(6);
+        expect(controller.cameraController.travelToPosition.mock.calls.at(-1)[1]).toBe(5200);
+        // ...and reduced motion still cuts.
+        controller.cameraController.prefersReducedMotion = () => true;
+        await controller.travelToLevel(6);
+        expect(controller.cameraController.travelToPosition.mock.calls.at(-1)[1]).toBe(0);
+        expect(controller.cameraController.focusOnNode.mock.calls.at(-1)[1]).toBe(0);
+    });
+
+    it('times a glide inside a chapter by how far the eye has to go', async () => {
+        const { controller, nodePosition } = createNavigationController();
+        controller.environmentManager.getBlendState.mockReturnValue({ activeChapter: 2 });
+        controller.cameraController.config = { focusDistance: 10 };
+        const glideFrom = async (distance) => {
+            controller.camera = { position: nodePosition.clone().add(new THREE.Vector3(0, 0, distance)) };
+            await controller.travelToLevel(6);
+            return controller.cameraController.focusOnNode.mock.calls.at(-1)[1];
+        };
+        // A neighbour 33 u off: a fixed 800 ms until 2026-11-25, 100 u/s through the middle.
+        expect(await glideFrom(43)).toBe(ODYSSEY_ORB_GLIDE.least + (33 * ODYSSEY_ORB_GLIDE.perUnit));
+        expect(await glideFrom(10)).toBe(ODYSSEY_ORB_GLIDE.least);
+        expect(await glideFrom(400)).toBe(ODYSSEY_ORB_GLIDE.most);
+        expect(await glideFrom(43)).toBeGreaterThan(1600);
     });
 
     it('passes a zero-duration authored seek for reduced-motion source framing', async () => {
