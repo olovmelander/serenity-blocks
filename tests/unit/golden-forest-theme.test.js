@@ -1771,7 +1771,7 @@ describe('Golden Forest with its real artwork', () => {
         expect(post.light).toBe(world.light);
         expect(post.renderer).toBe(renderer);
         expect(post.getDiagnostics()).toEqual({
-            quality: 'High', disabled: false, useMRT: false, godrays: true,
+            quality: 'High', disabled: false, useMRT: false, godrays: true, rays: true, beams: 0,
         });
         expect(renderer.shadowMap.enabled).toBe(true);
         expect(renderer.render).toHaveBeenCalledExactlyOnceWith(scene, camera);
@@ -1895,7 +1895,7 @@ describe('Golden Forest with its real artwork', () => {
         expect(theme.reactions.maxEmitters).toBe(GOLDEN_FOREST_REACTION_LIMITS.Minimal);
         expect(post.disabled).toBe(!theme.qualityPreset.enablePost);
         expect(post.getDiagnostics()).toEqual({
-            quality: 'Minimal', disabled: true, useMRT: false, godrays: false,
+            quality: 'Minimal', disabled: true, useMRT: false, godrays: false, rays: false, beams: 0,
         });
         // No pipeline: nothing is rendered until the first frame, and that frame goes straight out.
         expect(renderer.render).not.toHaveBeenCalled();

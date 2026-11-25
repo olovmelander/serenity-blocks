@@ -12,6 +12,7 @@ import {
     GOLDEN_FOREST_FEATURE_TREES, GOLDEN_FOREST_GROVE_CEILING, GOLDEN_FOREST_SUN_AZIMUTH_DEGREES, GOLDEN_FOREST_VIEWS,
     createGoldenForestVisibilityTest, goldenForestEye, goldenForestViewFor, layoutGoldenForestGrove,
 } from '../../src/themes/golden-forest/golden-forest-composition.js';
+import { GOLDEN_FOREST_AIRS } from '../../src/themes/golden-forest/golden-forest-airs.js';
 import { GoldenForestForest } from '../../src/themes/golden-forest/golden-forest-forest.js';
 import { GOLDEN_FOREST_MIRROR_LAYER } from '../../src/themes/golden-forest/golden-forest-lake.js';
 import { GOLDEN_FOREST_SUN_DIRECTION } from '../../src/themes/golden-forest/golden-forest-light.js';
@@ -32,8 +33,20 @@ import {
 } from '../../src/themes/golden-forest/golden-forest-terrain.js';
 import { GoldenForestWorld } from '../../src/themes/golden-forest/golden-forest-world.js';
 
-/** What a world's diagnostics say of its hour before the clock has turned it: the first level, the golden hour. */
-const OPENING_HOUR = Object.freeze({ level: 1, mood: GOLDEN_FOREST_MOODS[0].name, moodPhase: 0 });
+/**
+ * What a world's diagnostics say of its hour and its air before the clock has turned them: the first
+ * level, the golden hour, the still air a session starts in.
+ */
+const OPENING_HOUR = Object.freeze({
+    level: 1, mood: GOLDEN_FOREST_MOODS[0].name, moodPhase: 0, air: GOLDEN_FOREST_AIRS[0].name, airPhase: 0,
+});
+/**
+ * What a built world's flurry says before any event has thrown anything: nothing in flight
+ * (`particles`, `clouds`), and nothing thrown, let go or breathed out since it was built.
+ */
+const FLURRY_AT_REST = Object.freeze({
+    particles: 0, clouds: 0, thrown: 0, refused: 0, breathed: 0,
+});
 const assetDirectory = new URL('../../src/themes/golden-forest/assets/', import.meta.url);
 const TREE_NAMES = Object.keys(GOLDEN_FOREST_TREE_URLS);
 const TIER_NAMES = Object.keys(GOLDEN_FOREST_TIERS);
@@ -49,7 +62,7 @@ const SHADOW_CASTERS = /^GoldenForest(Ground|Bark .+|Needles .+|FarShore|Boulder
 // Meshes drawn straight from the geometry of the shared asset pack.
 const FROM_THE_PACK = /^GoldenForest(Bark|Needles|Boulders) |^GoldenForest (jetty|snag|rowboat)$/;
 // The parts of the world the lake mirrors, in the order the world builds them.
-const SCENERY = ['terrain', 'forest', 'backdrop', 'atmosphere', 'shore', 'birds', 'ribbons', 'sparks'];
+const SCENERY = ['terrain', 'forest', 'backdrop', 'atmosphere', 'shore', 'birds', 'ribbons', 'sparks', 'flurry'];
 const owned = [];
 const bundles = [];
 const files = new Map();
@@ -803,12 +816,26 @@ describe('Golden Forest world scene contracts', () => {
         expect(world.director.stage).toBe(world.stage);
         expect(world.director.scale).toBeCloseTo(Math.max(0.2, tier.sparks / 2200), 12);
 
+        // What the events throw: one additive draw of particles on every tier, and the pollen clouds
+        // where the tier has them; nothing is in the air before the first event.
+        const [flurry] = named(world.group, 'GoldenForestFlurry');
+        expect(world.flurry.mesh).toBe(flurry);
+        expect(flurry.material.blending).toBe(THREE.AdditiveBlending);
+        expect(flurry.geometry.instanceCount).toBe(tier.flurry);
+        expect(world.flurry.ring.capacity).toBe(tier.flurry);
+        expect(named(world.group, 'GoldenForestPollenClouds')).toHaveLength(tier.puffs > 0 ? 1 : 0);
+        if (tier.puffs > 0) expect(world.flurry.puffs.capacity).toBe(tier.puffs);
+        else expect(world.flurry.puffs).toBeUndefined();
+        expect(named(world.group, /^GoldenForestWaterSmoke /)).toHaveLength(tier.smoke);
+        expect(named(world.group, 'GoldenForestRanges')).toEqual([world.backdrop.ranges]);
+
         expect(world.getDiagnostics()).toEqual({
             quality,
             ...stats,
             farTrees: world.backdrop.count,
             birds: tier.birds,
             sparks: { ambient: sim.ambient, reserve: sim.reserve, live: 0 },
+            flurry: FLURRY_AT_REST,
             rings: 0,
             ...OPENING_HOUR,
         });
@@ -824,8 +851,14 @@ describe('Golden Forest world scene contracts', () => {
         const reflected = [];
         SCENERY.forEach((part) => world[part].group.traverse((object) => reflected.push([part, object])));
         expect(reflected.length).toBeGreaterThan(40);
+        // The sheets of smoke lie on the water itself: the mirror would only show their undersides,
+        // so they alone of the scenery are kept out of it (GoldenForestAtmosphere.keepOutOfMirror).
+        const onTheWater = new Set(world.atmosphere.smoke);
+        expect(onTheWater.size).toBe(GOLDEN_FOREST_TIERS[quality].smoke);
+        expect([...onTheWater].every((sheet) => /^GoldenForestWaterSmoke \d$/.test(sheet.name))).toBe(true);
         for (const [part, object] of reflected) {
-            expect(object.layers.isEnabled(GOLDEN_FOREST_MIRROR_LAYER), `${part}: ${object.name}`).toBe(true);
+            expect(object.layers.isEnabled(GOLDEN_FOREST_MIRROR_LAYER), `${part}: ${object.name}`)
+                .toBe(!onTheWater.has(object));
             // Still drawn by the main camera as well.
             expect(object.layers.isEnabled(0), `${part}: ${object.name}`).toBe(true);
         }
@@ -837,9 +870,10 @@ describe('Golden Forest world scene contracts', () => {
         });
         expect(unreflected).toBeGreaterThanOrEqual(2);
         expect(world.lake.mesh.layers.mask).toBe(1);
-        // Every drawable outside the lake is on the mirror layer; nothing was forgotten.
+        // Every drawable outside the lake and off its surface is on the mirror layer; nothing was forgotten.
         for (const mesh of drawables(world.group)) {
-            expect(mesh.layers.isEnabled(GOLDEN_FOREST_MIRROR_LAYER), mesh.name).toBe(mesh !== world.lake.mesh);
+            expect(mesh.layers.isEnabled(GOLDEN_FOREST_MIRROR_LAYER), mesh.name)
+                .toBe(mesh !== world.lake.mesh && !onTheWater.has(mesh));
         }
         // The mirror is a real planar reflection on every tier, and its camera sees only that layer.
         expect(world.lake.reflection).not.toBeNull();
@@ -1300,10 +1334,13 @@ describe('Golden Forest world in play', () => {
         reactions.onLineClear(4, { clearedRows: [20, 21, 22, 23] });
         reactions.onCombo(12);
         const frame = reactions.update(STEP);
-        // A full frame: every envelope, a front, rings, emitters, a river.
-        expect(Object.keys(frame).sort()).toEqual(['crown', 'emitters', 'epoch', 'fever', 'flock', 'front', 'fronts',
-            'glow', 'gold', 'gust', 'heat', 'level', 'punch', 'ribbons', 'rings', 'settled', 'shafts', 'shimmer',
-            'stage', 'streak', 'vortex', 'warmth']);
+        // A full frame: every envelope, a front, rings, emitters, a river; and the events' own cues
+        // (the fan's shafts and the sunburst, the gilding, the rush, the dusk, the skeins called,
+        // the lake's tracks and the bursts to throw).
+        expect(Object.keys(frame).sort()).toEqual(['beams', 'burst', 'crown', 'dusk', 'emitters', 'epoch', 'fever',
+            'flights', 'flock', 'flurries', 'front', 'fronts', 'gild', 'gildReach', 'glow', 'gold', 'gust', 'heat',
+            'level', 'punch', 'ribbons', 'rings', 'roads', 'rush', 'settled', 'shafts', 'shimmer', 'stage', 'streak',
+            'swirls', 'vortex', 'warmth', 'waves']);
         expect(() => world.update(reactions.time, STEP, frame)).not.toThrow();
         // The four rings the frame asked for are on the water, at age zero plus this frame.
         expect(ripples.active()).toBe(4);
@@ -1802,7 +1839,7 @@ describe('Golden Forest world ownership', () => {
             world.resetEffects();
         }).not.toThrow();
         expect(world.getDiagnostics()).toEqual({
-            quality: 'Minimal', farTrees: 0, birds: 0, sparks: null, rings: 0, ...OPENING_HOUR,
+            quality: 'Minimal', farTrees: 0, birds: 0, sparks: null, flurry: null, rings: 0, ...OPENING_HOUR,
         });
 
         // The bundle is released by whoever loaded it, once.
@@ -1833,7 +1870,7 @@ describe('Golden Forest world ownership', () => {
         expect(unspecified.quality).toBe('High');
         expect(unspecified.tier).toBe(GOLDEN_FOREST_TIERS.High);
         expect(unspecified.getDiagnostics()).toEqual({
-            quality: 'High', farTrees: 0, birds: 0, sparks: null, rings: 0, ...OPENING_HOUR,
+            quality: 'High', farTrees: 0, birds: 0, sparks: null, flurry: null, rings: 0, ...OPENING_HOUR,
         });
         const world = new GoldenForestWorld({ scene, camera: new THREE.PerspectiveCamera(), quality: 'Minimal' });
         owned.push(world);
@@ -1848,7 +1885,7 @@ describe('Golden Forest world ownership', () => {
             world.resetEffects();
         }).not.toThrow();
         expect(world.getDiagnostics()).toEqual({
-            quality: 'Minimal', farTrees: 0, birds: 0, sparks: null, rings: 0, ...OPENING_HOUR,
+            quality: 'Minimal', farTrees: 0, birds: 0, sparks: null, flurry: null, rings: 0, ...OPENING_HOUR,
         });
         // Once the assets are there the same world builds.
         world.assets = await loadBundle();
@@ -2044,7 +2081,7 @@ describe('Golden Forest post tier ownership', () => {
         expect(post.bloomNode).toBeFalsy();
         expect(post.godraysNode).toBeFalsy();
         expect(post.getDiagnostics()).toEqual({
-            quality, disabled: true, useMRT: false, godrays: false,
+            quality, disabled: true, useMRT: false, godrays: false, rays: false, beams: 0,
         });
         // No pipeline, so nothing needs the shadow rig primed at construction.
         expect(renderer.render).not.toHaveBeenCalled();
@@ -2085,9 +2122,12 @@ describe('Golden Forest post tier ownership', () => {
         expect(post.pipeline.outputColorTransform).toBe(false);
         expect(post.pipeline.outputNode.isNode).toBe(true);
         expect(post.useMRT).toBe(false);
+        // (The fan of rays is cut from the same pass as the shafts: where one is built, so is the other.)
         expect(post.getDiagnostics()).toEqual({
-            quality: 'High', disabled: false, useMRT: false, godrays: true,
+            quality: 'High', disabled: false, useMRT: false, godrays: true, rays: true, beams: 0,
         });
+        expect(post.raysNode.isNode).toBe(true);
+        expect(post.raysFirst.isNode).toBe(true);
         // GodraysNode reads the sun's shadow map while its graph is built: one direct render
         // of the lake makes the shadow rig exist first.
         expect(renderer.render).toHaveBeenCalledExactlyOnceWith(scene, camera);
@@ -2095,13 +2135,13 @@ describe('Golden Forest post tier ownership', () => {
         expect(post.godraysNode.resolutionScale).toBe(GOLDEN_FOREST_TIERS.High.godraysScale);
         expect(post.shaftsBlur.isNode).toBe(true);
         expect(post.bloomNode.isNode).toBe(true);
-        const disposals = [post.pipeline, post.scenePass, post.bloomNode, post.godraysNode, post.shaftsBlur]
-            .map((resource) => vi.spyOn(resource, 'dispose'));
+        const disposals = [post.pipeline, post.scenePass, post.bloomNode, post.godraysNode, post.shaftsBlur,
+            post.raysNode, post.raysFirst].map((resource) => vi.spyOn(resource, 'dispose'));
         post.dispose();
         post.dispose();
         disposals.forEach((disposal) => expect(disposal).toHaveBeenCalledOnce());
-        for (const key of ['pipeline', 'scenePass', 'bloomNode', 'godraysNode', 'shaftsBlur', 'renderer', 'scene',
-            'camera', 'light']) {
+        for (const key of ['pipeline', 'scenePass', 'bloomNode', 'godraysNode', 'shaftsBlur', 'raysNode', 'raysFirst',
+            'renderer', 'scene', 'camera', 'light']) {
             expect(post[key], key).toBeNull();
         }
         // Nothing is drawn through a disposed lens.
@@ -2117,7 +2157,7 @@ describe('Golden Forest post tier ownership', () => {
         const tier = GOLDEN_FOREST_TIERS[quality];
         expect(tier.post).toBe(true);
         expect(post.getDiagnostics()).toEqual({
-            quality, disabled: false, useMRT: false, godrays: tier.godrays > 0,
+            quality, disabled: false, useMRT: false, godrays: tier.godrays > 0, rays: tier.godrays > 0, beams: 0,
         });
         expect(post.godraysNode.raymarchSteps.value).toBe(tier.godrays);
         expect(post.godraysNode.resolutionScale).toBe(tier.godraysScale);
@@ -2203,10 +2243,11 @@ describe('Golden Forest post tier ownership', () => {
     it('grades without shafts when it is given no light', () => {
         const { renderer, post } = createPost('High');
         expect(post.getDiagnostics()).toEqual({
-            quality: 'High', disabled: false, useMRT: false, godrays: false,
+            quality: 'High', disabled: false, useMRT: false, godrays: false, rays: false, beams: 0,
         });
         expect(post.godraysNode).toBeUndefined();
         expect(post.shaftsBlur).toBeUndefined();
+        expect(post.raysNode).toBeUndefined();
         expect(post.pipeline.isRenderPipeline).toBe(true);
         expect(post.bloomNode.isNode).toBe(true);
         expect(renderer.render).not.toHaveBeenCalled();

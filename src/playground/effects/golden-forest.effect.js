@@ -64,9 +64,27 @@ export function create({
     }
     // ?icon=1 is the theme icon's lens: a long look at the sun on the treetops, the islet
     // and the sun's path on the water (the centre square of a 16:9 capture is the icon).
+    // ?look=x,y,z[,fov] turns the rest lens to a point (a zoom on the dock, the islet, a ridge);
+    // ?eye=x,y,z moves it. The stage (where events land) keeps the theme's own framing.
+    const triple = (key) => {
+        const parts = (params.get(key) || '').split(',').map(Number);
+        return parts.length >= 3 && parts.slice(0, 3).every(Number.isFinite) ? parts : null;
+    };
+    const zoom = () => {
+        const look = triple('look');
+        const eye = triple('eye');
+        if (!look && !eye) return;
+        if (eye) camera.position.set(eye[0], eye[1], eye[2]);
+        if (look) {
+            camera.lookAt(look[0], look[1], look[2]);
+            if (Number.isFinite(look[3])) camera.fov = look[3];
+        }
+        camera.updateProjectionMatrix();
+    };
     const aim = () => {
         if (!world) return;
         world.prepareCamera(camera.aspect);
+        zoom();
         if (params.get('icon') === '1') {
             camera.fov = 27;
             camera.lookAt(-23.4, 5.6, -46);
@@ -92,6 +110,8 @@ export function create({
             scene, camera, quality, rng, assets, samples,
         }).build();
         world.setLevel(level, { silent: true });
+        // ?air=still|burning-sky|breeze|clear|mist (or 0..4) holds one air; without it the clock turns them.
+        if (params.has('air')) world.setAirHold(params.get('air'));
         aim();
         post = new GoldenForestPost({
             renderer, scene, camera, quality, light: world.light, samples,
@@ -171,7 +191,8 @@ export function create({
                 reactions.onPieceLock({ piece });
                 reactions.onLineClear(1, { clearedRows: [row + 1] });
             }
-        } else if (event === 'spin') reactions.onTwist({ piece });
+        } else if (event === 'spin' || event === 'twist') reactions.onTwist({ piece });
+        else if (event === 'b2b') reactions.onBackToBack();
         else if (event === 'perfect') reactions.onPerfectClear();
         else if (event === 'level') {
             // As the theme does: the flourish, and the lake one hour on.
