@@ -224,7 +224,7 @@ describe('Fluid Dreams theme: one node renderer on both backends', () => {
         const sources = names.map((name) => readFileSync(path.join(themeDir, name), 'utf8'));
         for (const part of [
             'theme', 'world', 'choreography', 'core', 'composition', 'director', 'quality', 'tsl', 'liquid', 'spray',
-            'post', 'tetrominos',
+            'post', 'tetrominos', 'sky', 'sky-tsl',
         ]) {
             expect(names).toContain(`fluid-dreams-${part}.js`);
         }
@@ -652,10 +652,19 @@ describe('Fluid Dreams theme: one node renderer on both backends', () => {
         expect(inFlight(theme)).toBeGreaterThan(0);
         expect(theme.world.getState()).toMatchObject({ level: 4, palette: FLUID_PALETTES[3].name });
         const anchor = [...theme.world.choreo.scene.hero];
+        const { choreo } = theme.world;
+        const moment = vi.spyOn(theme.world, 'endRun');
         listeners.get('gameOver')();
         expect(theme.world.combo).toBe(0);
         expect(theme.combos.size).toBe(0);
-        expect(theme.world.choreo.isBusy()).toBe(false);
+        // Nothing of the run is left in flight. What is due is the world's own moment for a run's
+        // end, asked for once, after the reset: it plays from the next frame, on the picture's clock.
+        expect(moment).toHaveBeenCalledTimes(1);
+        expect(choreo.flights.some((flight) => flight.active)).toBe(false);
+        expect(choreo.jets.some((jet) => jet.active)).toBe(false);
+        expect(choreo.plunge.active).toBe(false);
+        expect(choreo.dusk).toBe(0);
+        expect(choreo.isBusy()).toBe(true);
         theme.stepFrame(64);
         expect(theme.world.getState()).toMatchObject({
             combo: 0, charge: 0, stains: 0, waves: 0,
@@ -664,10 +673,38 @@ describe('Fluid Dreams theme: one node renderer on both backends', () => {
         expect(theme.world.getState()).toMatchObject({ level: 1, palette: FLUID_PALETTES[0].name });
         expect(inFlight(theme)).toBe(0);
         expect(theme.world.choreo.scene.hero).toEqual(anchor); // the picture stays where it stood
+        // The moment: the sea lets go in a ring, and the dusk falls for a few seconds (the iris
+        // closes a little with it, never to black)...
+        const post = theme.world.getPostState();
+        const seen = { deepest: 0, darkest: 1, rings: 0 };
+        const watch = (frames) => {
+            for (let i = 0; i < frames; i++) {
+                stepFrames(theme, 1);
+                seen.deepest = Math.max(seen.deepest, choreo.dusk);
+                seen.darkest = Math.min(seen.darkest, post.exposure);
+                seen.rings = Math.max(seen.rings, theme.world.getState().rings);
+            }
+        };
+        watch(5 * 60);
+        expect(seen.deepest).toBeGreaterThan(0);
+        expect(seen.darkest).toBeLessThan(1);
+        expect(seen.darkest).toBeGreaterThan(0.5);
+        expect(seen.rings).toBeGreaterThan(0);
+        expect(inFlight(theme)).toBe(0);
+        // ...and lifts. It is a moment, not a state: some twelve seconds on the sea is at rest.
+        watch(7 * 60);
+        expect(choreo.isBusy()).toBe(false);
+        expect(choreo.dusk).toBeLessThan(seen.deepest * 0.05);
+        expect(post.exposure).toBeGreaterThan(seen.darkest);
+        expect(post.exposure).toBeCloseTo(1, 2);
+        expect(theme.world.getState()).toMatchObject({
+            combo: 0, charge: 0, stains: 0, waves: 0, level: 1,
+        });
+        expect(theme.world.choreo.scene.hero).toEqual(anchor);
         // The next run's first clear is a chain of one again.
         eventBus.emit(EVENTS.PIECE_LOCK, { piece: T });
         eventBus.emit(EVENTS.LINE_CLEAR, { lineCount: 1, clearedRows: [23], cascadeCount: 1 });
-        theme.stepFrame(80);
+        stepFrames(theme, 1);
         expect(theme.world.combo).toBe(1);
     });
 
@@ -841,8 +878,12 @@ describe('Fluid Dreams theme: one node renderer on both backends', () => {
         page.canvas = null;
         page.hud = null;
         const reset = vi.spyOn(theme.world, 'resetSession');
+        const moment = vi.spyOn(theme.world, 'endRun');
         manager.handlers.get('modeStopped')();
         expect(reset).toHaveBeenCalledOnce();
+        // (a mode put away is not a run lost: the dusk does not fall for it)
+        expect(moment).not.toHaveBeenCalled();
+        expect(theme.world.choreo.isBusy()).toBe(false);
         stepFrames(theme, 1);
         expect(theme.world.getState().layoutLive).toBe(false);
         expect(theme.layout.live).toBe(false);

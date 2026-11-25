@@ -13,6 +13,10 @@
  * crown        a four-line clear's crown stands up as liquid (else as spray only)
  * crownSpokes  points of that crown (three balls each)
  * mirrorExtras the sea also mirrors the Great Drop's satellites and crown, not only its body
+ * skyLit       the ink overhead is lit from the sun's side and torn at its edges (two more fetches)
+ * strata       the bars of cloud lying along the sea line (one more fetch)
+ * bubbles      the most bubbles adrift overhead (ambient ones and a train's together)
+ * mirrorSky    the sea also mirrors the bars (the bubbles too where mirrorExtras is on)
  * motes        mist rising off the sea
  * spray        droplet pool
  */
@@ -30,6 +34,10 @@ export const QUALITY = Object.freeze({
         crown: false,
         crownSpokes: 6,
         mirrorExtras: false,
+        skyLit: false,
+        strata: false,
+        bubbles: 3,
+        mirrorSky: false,
         motes: 0,
         spray: 640,
     }),
@@ -46,6 +54,10 @@ export const QUALITY = Object.freeze({
         crown: true,
         crownSpokes: 6,
         mirrorExtras: false,
+        skyLit: false,
+        strata: true,
+        bubbles: 6,
+        mirrorSky: false,
         motes: 220,
         spray: 640,
     }),
@@ -62,6 +74,10 @@ export const QUALITY = Object.freeze({
         crown: true,
         crownSpokes: 7,
         mirrorExtras: false,
+        skyLit: true,
+        strata: true,
+        bubbles: 9,
+        mirrorSky: false,
         motes: 520,
         spray: 768,
     }),
@@ -78,6 +94,10 @@ export const QUALITY = Object.freeze({
         crown: true,
         crownSpokes: 8,
         mirrorExtras: false,
+        skyLit: true,
+        strata: true,
+        bubbles: 12,
+        mirrorSky: true,
         motes: 900,
         spray: 1024,
     }),
@@ -94,6 +114,10 @@ export const QUALITY = Object.freeze({
         crown: true,
         crownSpokes: 10,
         mirrorExtras: true,
+        skyLit: true,
+        strata: true,
+        bubbles: 14,
+        mirrorSky: true,
         motes: 1400,
         spray: 1280,
     }),
@@ -110,6 +134,10 @@ export const QUALITY = Object.freeze({
         crown: true,
         crownSpokes: 10,
         mirrorExtras: true,
+        skyLit: true,
+        strata: true,
+        bubbles: 14,
+        mirrorSky: true,
         motes: 2000,
         spray: 1536,
     }),

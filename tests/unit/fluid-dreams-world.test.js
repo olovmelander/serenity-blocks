@@ -19,6 +19,10 @@ import {
     MOTE_BOX, SPRAY_KINDS, createSpray, sprayHeight,
 } from '../../src/themes/fluid-dreams/fluid-dreams-spray.js';
 import { NOISE_SIZE, bakeNoise, createNoiseTexture } from '../../src/themes/fluid-dreams/fluid-dreams-tsl.js';
+import {
+    AIRS, AIR_LEVEL_STEP, AIR_SECONDS, BUBBLE_SLOTS, FAR_COUNT, SKY_ROWS, SUN, airDrift, airNear, happeningOf,
+} from '../../src/themes/fluid-dreams/fluid-dreams-sky.js';
+import { REDUCED_FLASH_SCALE, holdFlashing } from '../../src/utils/photosensitivity.js';
 
 const PARTS = ['liquid', 'motes', 'spray'];
 
@@ -118,6 +122,7 @@ const layoutOf = (cards, boards, hud = null) => ({
 
 afterEach(() => {
     vi.restoreAllMocks();
+    holdFlashing(false);
 });
 
 describe('fluid dreams tiers', () => {
@@ -138,7 +143,9 @@ describe('fluid dreams tiers', () => {
             const b = QUALITY[QUALITY_NAMES[i]];
             // Every tier answers the same questions.
             expect(Object.keys(b).sort()).toEqual(Object.keys(a).sort());
-            for (const key of ['steps', 'bounceSteps', 'bounces', 'lobes', 'satellites', 'motes', 'spray']) {
+            for (const key of [
+                'steps', 'bounceSteps', 'bounces', 'lobes', 'satellites', 'crownSpokes', 'bubbles', 'motes', 'spray',
+            ]) {
                 expect(b[key], `${QUALITY_NAMES[i]}.${key}`).toBeGreaterThanOrEqual(a[key]);
             }
             for (const key of Object.keys(b).filter((name) => typeof b[name] === 'boolean')) {
@@ -170,6 +177,23 @@ describe('fluid dreams tiers', () => {
         }
         expect(QUALITY.High.lobes).toBe(HERO.lobes);
         expect(QUALITY.High.satellites).toBe(HERO.satellites);
+    });
+
+    it('says on every tier what the sky pays for: its light, its bars, its bubbles, its mirror', () => {
+        for (const name of QUALITY_NAMES) {
+            const tier = QUALITY[name];
+            for (const key of ['skyLit', 'strata', 'mirrorSky', 'mirrorExtras']) {
+                expect(typeof tier[key], `${name}.${key}`).toBe('boolean');
+            }
+            // A whole number of bubbles, never more than the sky's table has rows for.
+            expect(Number.isInteger(tier.bubbles), `${name}.bubbles`).toBe(true);
+            expect(tier.bubbles, `${name}.bubbles`).toBeGreaterThanOrEqual(0);
+            expect(tier.bubbles, `${name}.bubbles`).toBeLessThanOrEqual(BUBBLE_SLOTS);
+        }
+        // From Minimal to Extreme the sky only gains (the monotone gate above holds the rest).
+        const bubbles = QUALITY_NAMES.map((name) => QUALITY[name].bubbles);
+        for (let i = 1; i < bubbles.length; i++) expect(bubbles[i]).toBeGreaterThanOrEqual(bubbles[i - 1]);
+        expect(bubbles[bubbles.length - 1]).toBeGreaterThan(bubbles[0]);
     });
 });
 
@@ -367,6 +391,7 @@ describe('fluid dreams world: build', () => {
         expect(world.group).toBeNull();
         expect(world.u).toBeNull();
         expect(world.choreo).toBeNull();
+        expect(world.sky).toBeNull();
         expect(world.noise).toBeNull();
         expect(() => world.dispose()).not.toThrow();
         for (const disposal of disposals) expect(disposal).toHaveBeenCalledOnce();
@@ -385,10 +410,17 @@ describe('fluid dreams world: build', () => {
             world.setReducedMotion(true);
             world.showOnlyParts(['liquid']);
             world.resetSession();
+            world.endRun();
+            world.onSpin();
+            world.setAirHold(2);
+            world.setHappenings(false);
+            world.onChoreography('impact', 1, -20, 0);
             world.seek(3);
         }).not.toThrow();
+        expect(world.happen('star', 3)).toBeNull();
         expect(world.combo).toBe(0);
         expect(world.getState()).toMatchObject({ combo: 0, charge: 0, balls: [] });
+        expect(world.getState().air).toBeUndefined();
         expect(world.getPostState()).toBeTruthy();
     });
 
@@ -400,7 +432,11 @@ describe('fluid dreams world: build', () => {
             world.onCombo(2);
             world.levelUp(3);
             world.setReducedMotion(true);
+            world.setAirHold(1);
+            world.setHappenings(false);
+            world.endRun();
         }).not.toThrow();
+        expect(world.happen('shoal')).toBeNull();
         expect(world.getState()).toMatchObject({ combo: 0, charge: 0, balls: [] });
         // Built afterwards, it is a world like any other.
         world.build();
@@ -526,12 +562,30 @@ describe('fluid dreams world: camera and composition', () => {
             expect(kin.x, frame).toBeCloseTo(anchors.kin.x, 3);
             expect(kin.y, frame).toBeLessThanOrEqual(anchors.kin.y + 1e-3);
             expect(scene.kin[1], frame).toBeGreaterThan(0);
-            // The dream sun stands on the sea line or above it; the post's shafts stream from it.
+            // The dream sun: its bearing is the composition's (give or take the sky's small wander,
+            // a share of the frame's width), its height the sky's: it rides the sea line.
             const sun = world.u.sunDir.value;
             expect(sun.length(), frame).toBeCloseTo(1, 9);
-            expect(sun.y, frame).toBeGreaterThan(0);
-            expect(world.heart.x, frame).toBeCloseTo(anchors.sun.x, 2);
-            expect(world.heart.y, frame).toBeLessThanOrEqual(anchors.sun.y + 1e-3);
+            expect(sun.y, frame).toBe(world.sky.sun.height);
+            expect(sun.y, frame).toBeGreaterThanOrEqual(SUN.low);
+            expect(sun.y, frame).toBeLessThanOrEqual(SUN.high);
+            const stood = restRay(anchors.sun.x, anchors.sun.y, aspect);
+            const across = 2 * Math.atan(Math.tan((fovForAspect(aspect) * DEG) / 2) * aspect);
+            const wander = Math.atan2(sun.x, -sun.z) - Math.atan2(stood[0], -stood[2]);
+            expect(wander, frame).toBeCloseTo(world.sky.sun.sway * across, 9);
+            expect(Math.abs(world.sky.sun.sway), frame).toBeLessThanOrEqual(SUN.sway);
+            // The post's shafts stream from where it shows on screen: over the sea line, no higher
+            // than a sun at its highest on that bearing, on the anchor's side of the picture.
+            const far = (direction) => direction.clone().multiplyScalar(1000).add(camera.position).toArray();
+            const shown = onScreen(camera, ...far(sun));
+            expect(world.heart.x, frame).toBeCloseTo(shown.x, 9);
+            expect(world.heart.y, frame).toBeCloseTo(shown.y, 9);
+            const level = Math.hypot(sun.x, sun.z);
+            const lift = Math.sqrt(1 - SUN.high * SUN.high) / level;
+            const highest = onScreen(camera, ...far(new THREE.Vector3(sun.x * lift, SUN.high, sun.z * lift)));
+            expect(world.heart.y, frame).toBeLessThan(horizonY(aspect));
+            expect(world.heart.y, frame).toBeGreaterThanOrEqual(highest.y - 1e-9);
+            expect(Math.abs(world.heart.x - anchors.sun.x), frame).toBeLessThan(0.05);
             expect(world.getPostState().heart).toBe(world.heart);
             // The board's foot: the sea just under the board, in front of the camera.
             const board = world.layout.boards[0];
@@ -1719,7 +1773,10 @@ describe('fluid dreams spray', () => {
     });
 
     it('describes every kind of burst the world throws', () => {
-        for (const kind of ['splash', 'drip', 'crown', 'pour', 'trail', 'rain']) {
+        const named = [
+            'splash', 'drip', 'crown', 'pour', 'trail', 'rain', 'fountain', 'pop', 'coronet', 'sheaf', 'bridge',
+        ];
+        for (const kind of new Set([...named, ...Object.keys(SPRAY_KINDS)])) {
             const spec = SPRAY_KINDS[kind];
             expect(spec, kind).toBeTruthy();
             expect(spec.n, kind).toBeGreaterThan(0);
@@ -1924,6 +1981,699 @@ describe('fluid dreams world: play builds', () => {
         // a seek stands it at the clock, as a fresh sea would
         world.seek(30);
         expect(world.moteClock).toBe(30);
+        world.dispose();
+    });
+});
+
+describe('fluid dreams world: the sky', () => {
+    const SKY_VECTORS = [
+        'skyCounts', 'air', 'air2', 'sunLook', 'front', 'pillar', 'shock', 'swirl', 'starHead', 'starTail', 'shoal',
+        'sunDir', 'sunFlat', 'sunDeck', 'river',
+    ];
+    /** The first thing the sky hands the liquid that is not a number, or null. */
+    const brokenSky = (world) => {
+        for (const key of SKY_VECTORS) {
+            if (!world.u[key].value.toArray().every(Number.isFinite)) return key;
+        }
+        for (const key of ['skyClock', 'moteGain']) if (!Number.isFinite(world.u[key].value)) return key;
+        const bad = world.sky.rows.findIndex((row) => ![row.x, row.y, row.z, row.w].every(Number.isFinite));
+        return bad >= 0 ? `sky row ${bad}` : null;
+    };
+    /** The bubbles' part of the sky's table, as [place, look] pairs. */
+    const bubbleRows = (world) => {
+        const out = [];
+        for (let i = FAR_COUNT * 2; i < world.sky.rows.length; i += 2) out.push([world.sky.rows[i], world.sky.rows[i + 1]]);
+        return out;
+    };
+    const hold = (world, camera) => {
+        const sim = { time: world.u.time.value, delta: 0 };
+        world.updateCamera(camera, sim);
+        world.update(sim, camera);
+    };
+    const at = (world, camera, time) => {
+        world.seek(time);
+        world.updateCamera(camera, { time, delta: 0 });
+        world.update({ time, delta: 0 }, camera);
+    };
+    /** The airs in which the sea runs calmest and heaviest. */
+    const byCalm = AIRS.map((air, index) => index).sort((a, b) => AIRS[a].calm - AIRS[b].calm);
+    const calmest = byCalm[0];
+    const heaviest = byCalm[byCalm.length - 1];
+    const QUAD = { rows: [19, 18, 17, 16], lines: 4 };
+
+    it('builds the sky its tier pays for, and hands the liquid the sky\'s own table', () => {
+        for (const quality of QUALITY_NAMES) {
+            const { world } = makeWorld(quality);
+            expect(world.sky.bubbleCount, quality).toBe(QUALITY[quality].bubbles);
+            expect(world.u.sky.array, quality).toBe(world.sky.rows);
+            expect(world.sky.rows, quality).toHaveLength(SKY_ROWS);
+            // A world just stood up is in the first air, and says so.
+            expect(world.getState().air, quality).toBe(AIRS[0].name);
+            expect(world.getState().bubbles, quality).toBeLessThanOrEqual(QUALITY[quality].bubbles);
+            expect(brokenSky(world), quality).toBeNull();
+            world.dispose();
+        }
+    });
+
+    it('hands the sky\'s numbers to the liquid every frame: the air, the sun, the bubbles to draw', () => {
+        const { camera, world } = makeWorld('High');
+        const { u, sky } = world;
+        // At rest on the first level, early in the first air: that air's own look, exactly.
+        const first = AIRS[0];
+        expect(u.air.value.toArray()).toEqual([first.cover, first.strata, first.mist, first.stars]);
+        expect(u.air2.value.x).toBe(first.veins);
+        expect(u.moteGain.value).toBe(first.motes);
+        expect(world.choreo.airCalm).toBe(first.calm);
+        let most = 0;
+        for (let i = 0; i < 300; i++) {
+            if (i === 20) world.levelUp(2);
+            if (i === 50) world.onClear({ ...QUAD, perfect: true, b2b: true });
+            if (i === 60) world.happen('bubbles', 5);
+            if (i === 70) world.happen('star', 5);
+            if (i === 80) world.happen('shoal', 5);
+            if (i === 200) world.onClear({ rows: [19, 18], lines: 2, twist: true });
+            run(world, camera, 1 / 60, 1);
+            const label = `frame ${i}`;
+            expect(brokenSky(world), label).toBeNull();
+            // The sun: a unit direction over the sea line, as high as the sky has it, and its bearing.
+            const sun = u.sunDir.value;
+            expect(sun.length(), label).toBeCloseTo(1, 9);
+            expect(sun.y, label).toBe(sky.sun.height);
+            expect(sun.y, label).toBeGreaterThanOrEqual(SUN.low);
+            expect(sun.y, label).toBeLessThanOrEqual(SUN.high);
+            expect(u.sunFlat.value.length(), label).toBeCloseTo(1, 9);
+            const level = Math.hypot(sun.x, sun.z);
+            expect(u.sunFlat.value.x, label).toBeCloseTo(sun.x / level, 9);
+            expect(u.sunFlat.value.y, label).toBeCloseTo(sun.z / level, 9);
+            expect(u.river.value.length(), label).toBeCloseTo(1, 9);
+            // The air as the sky has it this frame (a perfect clear draws the ink back, the stars out).
+            expect(u.air.value.toArray(), label).toEqual([sky.cover, sky.strata, sky.air.mist, sky.starGain]);
+            expect(u.air2.value.x, label).toBe(sky.air.veins);
+            expect(u.skyClock.value, label).toBe(sky.skyClock);
+            expect([u.sunLook.value.x, u.sunLook.value.y], label).toEqual([sky.halo, sky.halo2]);
+            expect(world.choreo.airCalm, label).toBe(sky.air.calm);
+            // The bubbles: the shader's loop runs over every row that is lit and never past the
+            // tier's; rows it does not reach are not drawn.
+            const count = u.skyCounts.value.x;
+            const rows = bubbleRows(world);
+            const lit = rows.filter(([, look]) => look.z > 0).length;
+            expect(Number.isInteger(count), label).toBe(true);
+            expect(count, label).toBeGreaterThanOrEqual(lit);
+            expect(count, label).toBeLessThanOrEqual(QUALITY.High.bubbles);
+            rows.slice(count).forEach(([, look]) => expect(look.z, label).toBe(0));
+            // (what it reports is what it loops over: a bubble the ring has burst is still counted,
+            // at no light, until its time is up)
+            expect(world.getState().bubbles, label).toBeGreaterThanOrEqual(lit);
+            expect(world.getState().bubbles, label).toBeLessThanOrEqual(count);
+            most = Math.max(most, lit);
+        }
+        expect(most).toBeGreaterThan(0);
+        world.dispose();
+    });
+
+    it('holds an air when asked, names it, and lets the wheel turn again', () => {
+        const { camera, world } = makeWorld('Low');
+        AIRS.forEach((air, index) => {
+            world.setAirHold(index);
+            hold(world, camera);
+            expect(world.getState().air, air.name).toBe(air.name);
+            expect(world.u.air.value.toArray(), air.name).toEqual([air.cover, air.strata, air.mist, air.stars]);
+            expect(world.choreo.airCalm, air.name).toBe(air.calm);
+        });
+        // A fraction shows two of them melting.
+        world.setAirHold(0.5);
+        hold(world, camera);
+        const cover = world.u.air.value.x;
+        expect(cover).toBeGreaterThan(Math.min(AIRS[0].cover, AIRS[1].cover));
+        expect(cover).toBeLessThan(Math.max(AIRS[0].cover, AIRS[1].cover));
+        // Held through time and through a level.
+        world.setAirHold(1);
+        world.levelUp(3);
+        run(world, camera, 20, 200);
+        expect(world.getState().air).toBe(AIRS[1].name);
+        // Let go: the clock's turn and the level's step again.
+        world.setAirHold(null);
+        run(world, camera, 20, 200);
+        expect(world.sky.airHold).toBeNull();
+        expect(world.getState().air).toBe(airNear((3 - 1) * AIR_LEVEL_STEP + airDrift(world.time)).name);
+        // Nonsense holds nothing; an air before the first is the first.
+        for (const junk of ['2', NaN, undefined, Infinity]) {
+            world.setAirHold(junk);
+            expect(world.sky.airHold, String(junk)).toBeNull();
+        }
+        world.setAirHold(-3);
+        hold(world, camera);
+        expect(world.getState().air).toBe(AIRS[0].name);
+        world.dispose();
+    });
+
+    it('stops the things that happen by themselves when asked, and plays one when told to', () => {
+        const { camera, world } = makeWorld('Low');
+        const fired = vi.spyOn(world.sky, 'happen');
+        /** Play the second in which slot `index` falls due. */
+        const through = (index) => {
+            at(world, camera, happeningOf(index).at - 0.5);
+            run(world, camera, 1);
+        };
+        world.setHappenings(false);
+        through(0);
+        through(1);
+        expect(fired).not.toHaveBeenCalled();
+        world.setHappenings(true);
+        through(2);
+        expect(fired).toHaveBeenCalledTimes(1);
+        expect(fired.mock.calls[0][0]).toBe(happeningOf(2).kind);
+        // Only `false` switches them off.
+        world.setHappenings(undefined);
+        expect(world.sky.happeningsOn).toBe(true);
+        world.setHappenings(false);
+        expect(world.sky.happeningsOn).toBe(false);
+        // One, now (captures and the playground): a falling star crosses the sky and is gone.
+        expect(world.happen('star', 3)).toBe('star');
+        run(world, camera, 0.2);
+        const head = world.u.starHead.value;
+        expect(head.w).toBeGreaterThan(0);
+        expect(Math.hypot(head.x, head.y, head.z)).toBeCloseTo(1, 9);
+        run(world, camera, 5);
+        expect(head.w).toBe(0);
+        // A fountain far out goes to the spray pool, in the dusk's own glow, a pulse at a time.
+        const spray = recordSpray(world);
+        const now = world.u.time.value;
+        world.happen('fountain', 3);
+        const pulses = spray.filter((burst) => burst.kind === 'fountain');
+        expect(pulses.length).toBeGreaterThan(0);
+        pulses.forEach((burst, i) => {
+            expect(burst.time).toBeGreaterThanOrEqual(now);
+            if (i > 0) expect(burst.time).toBeGreaterThan(pulses[i - 1].time);
+            expect(burst.color).toEqual(world.shown.glow);
+            expect(Math.hypot(burst.x, burst.z)).toBeGreaterThan(SITE.far);
+        });
+        expect(thrown(world.parts.spray)).toBeGreaterThan(0);
+        world.dispose();
+    });
+
+    it('gives the sky its share of what the choreography plays', () => {
+        const { camera, world } = makeWorld('High');
+        const impact = vi.spyOn(world.sky, 'impact');
+        const answer = vi.spyOn(world.sky, 'answer');
+        const perfect = vi.spyOn(world.sky, 'perfect');
+        const front = vi.spyOn(world.sky, 'levelUp');
+        const spray = recordSpray(world);
+        const { u } = world;
+        // A back-to-back: the far forms answer the kin's fire.
+        world.onClear({
+            rows: [19, 18], lines: 2, twist: true, b2b: true,
+        });
+        expect(answer).toHaveBeenCalledTimes(1);
+        // A perfect four-line clear: the sky is told of the glass at once, of the impact when it comes.
+        world.onClear({ ...QUAD, perfect: true });
+        expect(perfect).toHaveBeenCalledTimes(1);
+        expect(perfect.mock.calls[0][0]).toBe(world.choreo.glass.t0);
+        expect(impact).not.toHaveBeenCalled();
+        run(world, camera, HUSH_HOLD + world.choreo.plunge.fall + 0.1);
+        expect(impact).toHaveBeenCalledTimes(1);
+        const [crown] = spray.filter((burst) => burst.kind === 'crown');
+        expect(impact.mock.calls[0].slice(0, 2)).toEqual([crown.x, crown.z]);
+        // The pillar of light stands on the crater, as the eye sees it, and a ring runs out through the ink.
+        const bearing = new THREE.Vector2(crown.x - camera.position.x, crown.z - camera.position.z).normalize();
+        expect(u.pillar.value.z).toBeGreaterThan(0);
+        expect(u.pillar.value.x).toBeCloseTo(bearing.x, 3);
+        expect(u.pillar.value.y).toBeCloseTo(bearing.y, 3);
+        expect(u.pillar.value.w).toBeGreaterThan(0);
+        expect(u.shock.value.w).toBeGreaterThan(0);
+        // The sun wears its second ring once the sea has turned to glass.
+        let ring = 0;
+        for (let i = 0; i < 300; i++) {
+            run(world, camera, 1 / 60, 1);
+            ring = Math.max(ring, u.sunLook.value.y);
+        }
+        expect(ring).toBeGreaterThan(0);
+        expect(impact).toHaveBeenCalledTimes(1);
+        // A level: a front of light opens from the sun (not for a capture's silent one).
+        world.levelUp(2);
+        expect(front).toHaveBeenCalledTimes(1);
+        expect(world.sky.level).toBe(2);
+        run(world, camera, 0.3);
+        expect(u.front.value.y).toBeGreaterThan(0);
+        world.levelUp(3, { silent: true });
+        expect(front).toHaveBeenCalledTimes(1);
+        expect(world.sky.level).toBe(3);
+        // And all of it passes.
+        run(world, camera, 60, 600);
+        expect(u.front.value.y).toBe(0);
+        expect(u.pillar.value.z).toBe(0);
+        expect(u.shock.value.w).toBe(0);
+        expect(u.sunLook.value.y).toBe(0);
+        expect(brokenSky(world)).toBeNull();
+        world.dispose();
+    });
+
+    it('holds the front of light and the pillar back when flashing is reduced, and leaves the sky its own numbers', () => {
+        const play = () => {
+            const { camera, world } = makeWorld('Low');
+            world.levelUp(2);
+            run(world, camera, 0.4);
+            const front = {
+                shown: world.u.front.value.y, own: world.sky.front.strength, radius: world.u.front.value.x,
+            };
+            world.onClear(QUAD);
+            run(world, camera, HUSH_HOLD + world.choreo.plunge.fall + 0.3);
+            const pillar = {
+                shown: world.u.pillar.value.z, own: world.sky.pillar.strength, width: world.u.pillar.value.w,
+            };
+            world.dispose();
+            return { front, pillar };
+        };
+        const loud = play();
+        holdFlashing(true);
+        const soft = play();
+        holdFlashing(false);
+        for (const key of ['front', 'pillar']) {
+            // Unreduced, the liquid is handed the sky's own strength.
+            expect(loud[key].own, key).toBeGreaterThan(0);
+            expect(loud[key].shown, key).toBe(loud[key].own);
+            // Reduced: the sky plays the same event; only what is written for the frame is held back.
+            expect(soft[key].own, key).toBeCloseTo(loud[key].own, 12);
+            expect(soft[key].shown, key).toBeCloseTo(soft[key].own * REDUCED_FLASH_SCALE, 12);
+            expect(soft[key].shown, key).toBeLessThan(loud[key].shown);
+        }
+        // Where the light stands is not a flash: it is not scaled.
+        expect(soft.front.radius).toBeCloseTo(loud.front.radius, 12);
+        expect(soft.pillar.width).toBeCloseTo(loud.pillar.width, 12);
+    });
+
+    it('turns the ink over a twist and winds the thread; under reduced motion the thread stands straight', () => {
+        const twist = (reduced) => {
+            const { camera, world } = makeWorld('Low');
+            world.setReducedMotion(reduced);
+            world.onClear({ rows: [19, 18], lines: 2, twist: true });
+            const most = { swirl: 0, helix: 0, funnel: 0 };
+            for (let i = 0; i < 90; i++) {
+                run(world, camera, 1 / 60, 1);
+                most.swirl = Math.max(most.swirl, world.u.swirl.value.z);
+                most.helix = Math.max(most.helix, world.u.vortexSpin.value.z);
+                most.funnel = Math.max(most.funnel, world.u.vortex.value.z);
+                expect(brokenSky(world)).toBeNull();
+            }
+            expect(world.u.swirl.value.w).toBeGreaterThan(0);
+            // It lets go: the ink lies still again and the thread hangs straight.
+            run(world, camera, 20, 400);
+            expect(world.u.swirl.value.z).toBe(0);
+            expect(world.u.vortexSpin.value.z).toBe(0);
+            world.dispose();
+            return most;
+        };
+        const lively = twist(false);
+        const calm = twist(true);
+        expect(lively.swirl).toBeGreaterThan(0);
+        expect(lively.helix).toBeGreaterThan(0);
+        // Reduced motion keeps the funnel (the feedback), turns the ink less and winds nothing.
+        expect(calm.funnel).toBeGreaterThan(0);
+        expect(calm.helix).toBe(0);
+        expect(calm.swirl).toBeLessThan(lively.swirl);
+    });
+
+    it('runs the sea as the air has it, and lets a chain raise it in any air', () => {
+        const inAir = (index) => {
+            const made = makeWorld('Low');
+            made.world.setAirHold(index);
+            run(made.world, made.camera, 5);
+            return made;
+        };
+        const glass = inAir(calmest);
+        const heavy = inAir(heaviest);
+        expect(AIRS[calmest].calm).toBeLessThan(AIRS[heaviest].calm);
+        expect(glass.world.u.swell.value).toBeCloseTo(AIRS[calmest].calm, 3);
+        expect(heavy.world.u.swell.value).toBeCloseTo(AIRS[heaviest].calm, 3);
+        for (const { camera, world } of [glass, heavy]) {
+            const rest = world.u.swell.value;
+            world.onCombo(6);
+            run(world, camera, 5);
+            expect(world.u.swell.value).toBeGreaterThan(rest + 0.1);
+        }
+        expect(glass.world.u.swell.value).toBeLessThan(heavy.world.u.swell.value);
+        glass.world.dispose();
+        heavy.world.dispose();
+    });
+
+    // Found 2026-11-25, fixed in the source: choreo.reset() stands the swell at 1, whatever the
+    // air (`airCalm`). A run that ends or begins in a calm air heaves the whole sea up in one frame
+    // and takes half a second to lie down again (in a heavy air it drops, the other way).
+    it('does not heave the sea when a new run starts in a calm air', () => {
+        const { camera, world } = makeWorld('Low');
+        world.setAirHold(calmest);
+        run(world, camera, 6);
+        const rest = world.u.swell.value;
+        expect(rest).toBeCloseTo(AIRS[calmest].calm, 3);
+        world.resetSession();
+        let most = rest;
+        for (let i = 0; i < 120; i++) {
+            run(world, camera, 1 / 60, 1);
+            most = Math.max(most, world.u.swell.value);
+        }
+        // The air has not changed: neither has the sea.
+        expect(most).toBeLessThan(rest * 1.1);
+        world.dispose();
+    });
+
+    it('asks the sea for its moment when a run ends: the iris closes a little, and opens again', () => {
+        const { camera, world } = makeWorld('Low');
+        world.onLock({ u: 0.2, rows: [12], color: '#FF2D95' });
+        world.onCombo(3);
+        run(world, camera, 1);
+        const exhale = vi.spyOn(world.choreo, 'exhale');
+        // (as the theme does it: the session's reset, then the moment)
+        world.resetSession();
+        world.endRun();
+        expect(exhale).toHaveBeenCalledTimes(1);
+        expect(world.choreo.isBusy()).toBe(true);
+        const post = world.getPostState();
+        let darkest = { exposure: 1, dusk: 0 };
+        let deepest = { exposure: 1, dusk: 0 };
+        let rings = 0;
+        for (let i = 0; i < 15 * 60; i++) {
+            run(world, camera, 1 / 60, 1);
+            const { dusk } = world.choreo;
+            if (post.exposure < darkest.exposure) darkest = { exposure: post.exposure, dusk };
+            if (dusk > deepest.dusk) deepest = { exposure: post.exposure, dusk };
+            rings = Math.max(rings, world.getState().rings);
+        }
+        // The iris closes with the dusk and by nothing else: darkest when the dusk is deepest.
+        expect(deepest.dusk).toBeGreaterThan(0);
+        expect(darkest.exposure).toBeLessThan(1);
+        expect(darkest.exposure).toBe(deepest.exposure);
+        expect(darkest.exposure).toBeGreaterThan(0.5); // a dusk, not a blackout
+        expect(rings).toBeGreaterThan(0);
+        // A moment, not a state.
+        expect(world.choreo.isBusy()).toBe(false);
+        run(world, camera, 15, 300);
+        expect(post.exposure).toBeCloseTo(1, 9);
+        expect(world.u.swell.value).toBeCloseTo(world.sky.air.calm, 3);
+        expect(world.getState()).toMatchObject({
+            combo: 0, charge: 0, stains: 0, waves: 0,
+        });
+        world.dispose();
+    });
+
+    // Found 2026-11-25, fixed in the source: sky.seek() keeps the air it stood in, and
+    // updateCamera places the sun (and projects the shafts' origin) by that stale air before the
+    // frame's update turns the air to the new time. The first frame after a seek aims the post's
+    // shafts at a sun that is not there; a second frame at the same time corrects it.
+    it('aims the shafts at this frame\'s sun on the first frame after a seek, whatever air stood before', () => {
+        const a = makeWorld('Low');
+        const b = makeWorld('Low');
+        // One of them comes from the second air, where the sun rides at another height.
+        at(a.world, a.camera, AIR_SECONDS * 1.2);
+        const elsewhere = a.world.sky.sun.height;
+        at(a.world, a.camera, 10);
+        at(b.world, b.camera, 10);
+        expect(Math.abs(elsewhere - b.world.sky.sun.height)).toBeGreaterThan(1e-3);
+        expect(a.world.u.sunDir.value.toArray()).toEqual(b.world.u.sunDir.value.toArray());
+        expect(a.world.heart.x).toBeCloseTo(b.world.heart.x, 9);
+        expect(a.world.heart.y).toBeCloseTo(b.world.heart.y, 9);
+        a.world.dispose();
+        b.world.dispose();
+    });
+
+    it('keeps its bubbles far out behind every drop, trains included', () => {
+        const { camera, world } = makeWorld('Ultra');
+        const { sky } = world;
+        const place = {};
+        let nearest = Infinity;
+        let seen = 0;
+        for (let i = 0; i < 2400; i++) {
+            if (i % 160 === 20) world.happen('bubbles', 1 + i);
+            run(world, camera, 0.25, 1);
+            for (let slot = 0; slot < sky.bubbleCount; slot++) {
+                sky.bubbleAt(slot, world.time, sky.air, place);
+                if (!(place.shown > 0)) continue;
+                seen += 1;
+                const away = Math.hypot(
+                    place.x - camera.position.x,
+                    place.y - camera.position.y,
+                    place.z - camera.position.z,
+                );
+                nearest = Math.min(nearest, away - place.r);
+                expect(place.y).toBeGreaterThan(0); // over the sea
+                expect(place.z).toBeLessThan(0); // in front of the eye
+            }
+        }
+        expect(seen).toBeGreaterThan(1000);
+        // The Great Drop is never carried farther out than SITE.far: a bubble is behind it wherever it hangs.
+        expect(nearest).toBeGreaterThan(SITE.far);
+        world.dispose();
+    });
+});
+
+describe('fluid dreams world: fountains, the coronet and the bridge', () => {
+    const fountainsOf = (world) => world.choreo.jets.filter((jet) => jet.active && jet.fountain);
+    const inside = (x, y, rect) => x > rect.x0 && x < rect.x1 && y > rect.y0 && y < rect.y1;
+    /** Where a sea point shows for the rest camera, held to the open sea beside `card` and `hud` on side `s`. */
+    const expectOpenSea = (point, s, { card, hud }, aspect, label) => {
+        const [sx, sy, depth] = restProject(point[0], 0, point[1], aspect);
+        // On the sea, in the frame, out on the water.
+        expect(depth, label).toBeGreaterThan(REST_RIG.height * 2);
+        expect(sx, label).toBeGreaterThan(0);
+        expect(sx, label).toBeLessThan(1);
+        expect(sy, label).toBeGreaterThan(horizonY(aspect));
+        expect(sy, label).toBeLessThan(1);
+        // Beside the card on its own side, past the stats bar where that stands on this side.
+        if (s === 0) {
+            expect(sx, label).toBeLessThan(card.x0);
+            if (hud && hud.x1 <= card.x0) expect(sx, label).toBeLessThan(hud.x0);
+        } else {
+            expect(sx, label).toBeGreaterThan(card.x1);
+            if (hud && hud.x0 >= card.x1) expect(sx, label).toBeGreaterThan(hud.x1);
+        }
+        // Never under the card or the bar.
+        for (const rect of hud ? [card, hud] : [card]) expect(inside(sx, sy, rect), label).toBe(false);
+    };
+    const wideCard = {
+        x0: 0.04, y0: 0.08, x1: 0.96, y1: 0.8,
+    };
+    const PHONE = layoutOf([wideCard], [{
+        x0: 0.2, y0: 0.2, x1: 0.8, y1: 0.78,
+    }]);
+    const ROW = layoutOf([
+        {
+            x0: 0.03, y0: 0.2, x1: 0.33, y1: 0.82,
+        },
+        {
+            x0: 0.35, y0: 0.2, x1: 0.65, y1: 0.82,
+        },
+        {
+            x0: 0.67, y0: 0.2, x1: 0.97, y1: 0.82,
+        },
+    ], [null, {
+        x0: 0.06, y0: 0.3, x1: 0.3, y1: 0.8,
+    }, {
+        x0: 0.38, y0: 0.3, x1: 0.62, y1: 0.8,
+    }, {
+        x0: 0.7, y0: 0.3, x1: 0.94, y1: 0.8,
+    }]);
+
+    it('finds the sea either side of the card for a clear\'s fountains, past the stats bar', () => {
+        const barOnTheLeft = layoutOf([{
+            x0: 0.4, y0: 0.1, x1: 0.6, y1: 0.86,
+        }], [{
+            x0: 0.42, y0: 0.2, x1: 0.58, y1: 0.84,
+        }], {
+            x0: 0.28, y0: 0.3, x1: 0.36, y1: 0.7,
+        });
+        for (const [width, height, layout] of [
+            [1600, 900], [1920, 1080], [2560, 1080], [1280, 1024], [1024, 768], [1600, 900, barOnTheLeft],
+        ]) {
+            const aspect = width / height;
+            const frame = `${width}x${height}${layout ? ', the bar on the left' : ''}`;
+            const { world } = makeWorld('Low', { width, height, layout });
+            const rects = { card: cardUnion(world.layout), hud: world.layout.hud };
+            const sites = world.fountainSites(world.layout.boards[0]).map((site) => site && [...site]);
+            expect(sites, frame).toHaveLength(2);
+            sites.forEach((site, s) => {
+                expect(site, `${frame}, side ${s}`).not.toBeNull();
+                expectOpenSea(site, s, rects, aspect, `${frame}, side ${s}`);
+            });
+            // Left of the board's foot, and right of it.
+            expect(sites[0][0], frame).toBeLessThan(world.choreo.scene.foot[0]);
+            expect(sites[1][0], frame).toBeGreaterThan(world.choreo.scene.foot[0]);
+            world.dispose();
+        }
+    });
+
+    it('raises fountains on both sides for two lines, more for three, and none for one or four', () => {
+        const clear = (lines) => {
+            const { camera, world } = makeWorld('Low');
+            const clears = recordClears(world);
+            world.onClear({ rows: [19, 18, 17, 16].slice(0, lines), lines });
+            const jets = fountainsOf(world).map((jet) => [jet.x, jet.z]);
+            const foot = world.choreo.scene.foot[0];
+            run(world, camera, 0.6);
+            const { balls } = world.getState();
+            return {
+                camera, world, clears, jets, balls, left: jets.filter(([x]) => x < foot), right: jets.filter(([x]) => x > foot),
+            };
+        };
+        const one = clear(1);
+        const two = clear(2);
+        const three = clear(3);
+        const four = clear(4);
+        // Two lines: the sea stands up either side of the card.
+        expect(two.left.length).toBeGreaterThan(0);
+        expect(two.right.length).toBeGreaterThan(0);
+        expect(two.balls[GROUP_LEFT]).toBeGreaterThan(0);
+        expect(two.balls[GROUP_RIGHT]).toBeGreaterThan(0);
+        // Three: more on each side.
+        expect(three.left.length).toBeGreaterThan(two.left.length);
+        expect(three.right.length).toBeGreaterThan(two.right.length);
+        expect(three.balls[GROUP_LEFT]).toBeGreaterThan(two.balls[GROUP_LEFT]);
+        expect(three.balls[GROUP_RIGHT]).toBeGreaterThan(two.balls[GROUP_RIGHT]);
+        // One raises none, and four are the Great Drop's own.
+        for (const none of [one, four]) {
+            expect(none.jets).toHaveLength(0);
+            expect(none.balls[GROUP_LEFT] + none.balls[GROUP_RIGHT]).toBe(0);
+        }
+        // Every one of them (the outer pair of three included) stands in open sea, in the frame.
+        const rects = { card: cardUnion(three.world.layout), hud: three.world.layout.hud };
+        const foot = three.world.choreo.scene.foot[0];
+        three.jets.forEach((jet, i) => expectOpenSea(jet, jet[0] < foot ? 0 : 1, rects, 1600 / 900, `jet ${i}`));
+        // The clear was handed the world's own sites.
+        expect(two.clears[0].fountains.map((site) => [...site])).toEqual(two.jets);
+        // A fountain is the sea's own liquid: it falls back and leaves nothing in the water.
+        run(two.world, two.camera, 5);
+        expect(two.world.choreo.isBusy()).toBe(false);
+        expect(two.world.getState()).toMatchObject({ stains: 0 });
+        expect(two.world.getState().balls[GROUP_LEFT] + two.world.getState().balls[GROUP_RIGHT]).toBe(0);
+        for (const { world } of [one, two, three, four]) world.dispose();
+    });
+
+    it('raises none where there is no sea beside the card: a phone\'s card, a row of boards, a click', () => {
+        for (const [label, layout, width, height, player] of [
+            ['phone', PHONE, 430, 932, 0], ['row of boards', ROW, 1920, 1080, 2],
+        ]) {
+            const { camera, world } = makeWorld('Low', { width, height, layout });
+            expect(world.fountainSites(layout.boards[player]), label).toEqual([null, null]);
+            for (const lines of [2, 3]) {
+                world.onClear({ rows: [19, 18, 17].slice(0, lines), lines, player });
+                expect(fountainsOf(world), `${label}, ${lines} lines`).toHaveLength(0);
+                run(world, camera, 0.5);
+                // (the packet still runs)
+                expect(world.getState().waves, label).toBeGreaterThan(0);
+            }
+            world.dispose();
+        }
+        // A click in the meditation mode clears no row of a board: no fountain either.
+        const { world } = makeWorld('Low');
+        world.onClear({ lines: 2, rows: [], screen: { x: 0.3, y: 0.8 } });
+        expect(fountainsOf(world)).toHaveLength(0);
+        // The same clear on the board raises them.
+        world.onClear({ lines: 2, rows: [19, 18] });
+        expect(fountainsOf(world).length).toBeGreaterThan(0);
+        world.dispose();
+    });
+
+    it('throws a hard drop\'s coronet and a back-to-back\'s string of beads through the spray pool', () => {
+        const { camera, world } = makeWorld('Low');
+        const spray = recordSpray(world);
+        world.onLock({ u: 0.2, rows: [12], color: '#00E5FF' });
+        run(world, camera, FLIGHT_TIME + 0.2);
+        expect(spray.filter((burst) => burst.kind === 'coronet')).toHaveLength(0);
+        world.onLock({
+            u: 0.8, rows: [12], hardDrop: true, color: '#FFD93D',
+        });
+        run(world, camera, FLIGHT_TIME + 0.2);
+        const coronets = spray.filter((burst) => burst.kind === 'coronet');
+        expect(coronets).toHaveLength(1);
+        expect(coronets[0].color).toEqual(pieceColor('#FFD93D'));
+        // A back-to-back: beads leap from the kin, one after another, and the pool's own closed
+        // form lands each in the Great Drop as its life runs out.
+        spray.length = 0;
+        const hero = world.u.hero.value.clone();
+        const now = world.u.time.value;
+        world.onClear({
+            rows: [19, 18], lines: 2, twist: true, b2b: true,
+        });
+        const beads = spray.filter((burst) => burst.kind === 'bridge');
+        expect(beads.length).toBeGreaterThan(3);
+        beads.forEach((bead, i) => {
+            expect(bead.time).toBeGreaterThan(now);
+            if (i > 0) expect(bead.time).toBeGreaterThan(beads[i - 1].time);
+            expect(bead.x + bead.vel[0] * bead.life).toBeCloseTo(hero.x, 6);
+            expect(sprayHeight(bead.y, bead.vel[1], bead.life)).toBeCloseTo(hero.y, 6);
+            expect(bead.z + bead.vel[2] * bead.life).toBeCloseTo(hero.z, 6);
+        });
+        // They leave the side the kin float on, for the side the Drop hangs on.
+        expect(Math.sign(beads[0].x)).toBe(Math.sign(world.choreo.scene.kin[0]));
+        expect(Math.sign(beads[0].vel[0])).toBe(Math.sign(hero.x - beads[0].x));
+        for (const burst of spray) expect(SPRAY_KINDS[burst.kind], burst.kind).toBeTruthy();
+        const pool = world.parts.spray.geometry;
+        for (const name of ['aBirth', 'aVel', 'aTint']) {
+            expect(Array.from(pool.getAttribute(name).array).every(Number.isFinite), name).toBe(true);
+        }
+        // Under reduced motion nothing leaps across the frame.
+        world.setReducedMotion(true);
+        spray.length = 0;
+        world.onClear({
+            rows: [19, 18], lines: 2, twist: true, b2b: true,
+        });
+        expect(spray.filter((burst) => burst.kind === 'bridge')).toHaveLength(0);
+        world.dispose();
+    });
+
+    it('throws a burst exactly as it is told to: a velocity, a life, a ring sized by its power', () => {
+        const { world } = makeWorld('Minimal');
+        const spray = createSpray(world.u, 64);
+        const births = spray.geometry.getAttribute('aBirth');
+        const velocities = spray.geometry.getAttribute('aVel');
+        // A bead of the bridge: thrown the way it is told, give or take the kind's own scatter, for the life it is given.
+        const vel = [-13, 10, 4];
+        spray.emit({
+            kind: 'bridge', x: 16, y: 6, z: -30, color: [...DREAMFIRE], power: 1, time: 20, vel, life: 1.9,
+        });
+        const beads = thrown(spray);
+        expect(beads).toBeGreaterThan(0);
+        const spec = SPRAY_KINDS.bridge;
+        for (let i = 0; i < beads; i++) {
+            expect(velocities.getW(i)).toBeCloseTo(1.9, 5);
+            expect(Math.hypot(velocities.getX(i) - vel[0], velocities.getZ(i) - vel[2])).toBeLessThanOrEqual(spec.out[1] + 1e-5);
+            expect(velocities.getY(i) - vel[1]).toBeGreaterThanOrEqual(spec.up[0] - 1e-5);
+            expect(velocities.getY(i) - vel[1]).toBeLessThanOrEqual(spec.up[1] + 1e-5);
+            expect(births.getW(i)).toBeGreaterThanOrEqual(20);
+            expect(births.getW(i)).toBeLessThan(20.1);
+        }
+        // Told nothing, a burst lives within its kind's own range.
+        spray.reset();
+        spray.emit({
+            kind: 'coronet', x: 0, y: 0.05, z: -9, color: [1, 1, 1], power: 1, time: 5,
+        });
+        const coronet = SPRAY_KINDS.coronet;
+        for (let i = 0; i < thrown(spray); i++) {
+            expect(velocities.getW(i)).toBeGreaterThanOrEqual(coronet.life[0] - 1e-5);
+            expect(velocities.getW(i)).toBeLessThanOrEqual(coronet.life[1] + 1e-5);
+            // (a ring of beads thrown up and out)
+            expect(velocities.getY(i)).toBeGreaterThan(0);
+            expect(Math.hypot(velocities.getX(i), velocities.getZ(i))).toBeGreaterThan(0);
+        }
+        // A bubble's burst: its power is the bubble's size (the ring its drops start on), not their speed.
+        const ringOf = (power) => {
+            spray.reset();
+            spray.emit({
+                kind: 'pop', x: 3, y: 20, z: -60, color: [0.9, 0.95, 1], power, time: 7,
+            });
+            let ring = 0;
+            let speed = 0;
+            for (let i = 0; i < thrown(spray); i++) {
+                ring = Math.max(ring, Math.hypot(births.getX(i) - 3, births.getZ(i) + 60));
+                speed = Math.max(speed, Math.hypot(velocities.getX(i), velocities.getZ(i)));
+            }
+            return { ring, speed };
+        };
+        const small = ringOf(1.5);
+        const large = ringOf(3);
+        expect(large.ring).toBeCloseTo(small.ring * 2, 4);
+        expect(small.speed).toBeLessThanOrEqual(SPRAY_KINDS.pop.out[1] + 1e-5);
+        expect(large.speed).toBeLessThanOrEqual(SPRAY_KINDS.pop.out[1] + 1e-5);
+        spray.geometry.dispose();
+        spray.material.dispose();
         world.dispose();
     });
 });
