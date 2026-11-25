@@ -18,7 +18,7 @@ const AGREE = Number(process.env.FIT_AGREE ?? 1.5);
 const DEATH = Number(process.env.FIT_DEATH ?? 30);
 const CAP = Number(process.env.FIT_CAP ?? 0.35);
 const TIER = Number(process.env.FIT_TIER ?? 10);
-const PARTS = { openerPiece: 0.1, eight: 0.14, two: 0.06, edge: 0.12, parked: 0.1, shaft: 0.16, chain: 0.1, fire: 0.16, pass2: 0.03, singles: 0.02, tallest: 0.1, opener: 0.14, sentPerLine: 0.06 };
+const PARTS = { left: 0.1, openerPiece: 0.1, eight: 0.14, two: 0.06, edge: 0.12, parked: 0.1, shaft: 0.16, chain: 0.1, fire: 0.16, pass2: 0.03, singles: 0.02, tallest: 0.1, opener: 0.14, sentPerLine: 0.06 };
 const CALM = { seeds: 8, pieces: 240, rate: 0.33 };
 const HARD = { seeds: 4, pieces: 240, rate: 0.75 };
 // The player and the games the agreement is fitted on; his other games stay unseen, to check it.
@@ -118,7 +118,7 @@ if (process.send) {
         const r3 = (o) => Object.fromEntries(Object.entries(o).map(([k, x]) => [k, Math.round(x * 1000) / 1000]));
         appendFileSync(out, `${JSON.stringify({ g, mean: r3({ ...toWeights(mean), ...FIXED }), centre: { j: centre.j, strength: centre.strength, penalty: centre.penalty, agree: centre.agree, calm: r3(centre.calm), hard: r3({ sent: centre.hard.sent, deaths: centre.hard.deaths }) }, best: { j: scored[0].j, strength: scored[0].strength, penalty: scored[0].penalty, agree: scored[0].agree, weights: r3({ ...toWeights(scored[0].v), ...FIXED }) } })}\n`);
         const c = centre.calm;
-        console.log(`gen ${g} J ${centre.j.toFixed(3)} (best ${scored[0].j.toFixed(3)}) strength ${centre.strength.toFixed(3)} style ${centre.penalty.toFixed(3)} agree ${(100 * centre.agree).toFixed(1)}% (best ${(100 * Math.max(...scored.map((s) => s.agree))).toFixed(1)}%) | sent ${c.sent.toFixed(3)} deaths ${c.deaths.toFixed(1)} hard ${centre.hard.sent.toFixed(2)}/${centre.hard.deaths.toFixed(0)} | fire ${c.fire.toFixed(2)} edge ${c.edge.toFixed(2)} parked ${c.parked.toFixed(2)} shaft ${c.shaft.toFixed(2)} chain ${c.chain.toFixed(2)} singles ${c.singles.toFixed(2)} pass2 ${c.pass2.toFixed(2)} tallest ${c.tallest.toFixed(1)} opener ${c.opener.toFixed(1)}`);
+        console.log(`gen ${g} J ${centre.j.toFixed(3)} (best ${scored[0].j.toFixed(3)}) strength ${centre.strength.toFixed(3)} style ${centre.penalty.toFixed(3)} agree ${(100 * centre.agree).toFixed(1)}% (best ${(100 * Math.max(...scored.map((s) => s.agree))).toFixed(1)}%) | sent ${c.sent.toFixed(3)} deaths ${c.deaths.toFixed(1)} hard ${centre.hard.sent.toFixed(2)}/${centre.hard.deaths.toFixed(0)} | fire ${c.fire.toFixed(2)} edge ${c.edge.toFixed(2)} parked ${c.parked.toFixed(2)} shaft ${c.shaft.toFixed(2)} chain ${c.chain.toFixed(2)} singles ${c.singles.toFixed(2)} pass2 ${c.pass2.toFixed(2)} tallest ${c.tallest.toFixed(1)} opener ${c.opener.toFixed(1)}@${c.openerPiece} left ${c.left.toFixed(2)}`);
     }
     kids.forEach((child) => child.kill());
 }

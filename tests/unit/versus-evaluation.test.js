@@ -103,9 +103,12 @@ describe('what a board has put by', () => {
         expect(worth(shelf(true))).toBeGreaterThan(worth(lying));
     });
 
-    it('is the same on either side', () => {
+    it('counts on either wall, the left one for more', () => {
         const mirror = (lines) => lines.map((line) => [...line].reverse().join(''));
-        expect(worth(mirror(shelf(true)))).toBeCloseTo(worth(shelf(true)));
+        const lying = shelf(false).slice();
+        lying[0] = 'AA....IIII';
+        expect(worth(mirror(shelf(true)))).toBeGreaterThan(worth(mirror(lying)));
+        expect(worth(mirror(shelf(true)))).toBeLessThan(worth(shelf(true)));
     });
 
     it('prefers the empty cells in the edge column to the same cells buried in the middle', () => {
@@ -145,24 +148,24 @@ describe('Last Standing', () => {
         const cells = lines.map((line, y) => [...line].map((ch) => (ch === '.' ? null : { id: `r${y}`, type: 'O' })));
         return readGravityBoard(cells, 0);
     };
-    const worth = (rows, well, pending = 0) => {
+    const wellWorth = (rows, well, pending = 0) => {
         const board = tower(rows);
         return versusValue(board, { weights: VERSUS_WEIGHTS, roofRows: well - 44 }, pending, new Int32Array(board.cells.length));
     };
 
     it('counts the rows to the roof of the well, not to the spawn', () => {
-        const grid = Array.from({ length: 44 }, (_, y) => Array.from({ length: COLS }, (__, x) => (y >= 14 && x === 0 ? { id: 'a' } : null)));
-        expect(rowsToRoof(grid, 100, 0)).toBe(70);
-        expect(rowsToRoof(grid, 100, 12)).toBe(58);
-        expect(rowsToRoof(grid, 44, 20)).toBe(1);
+        const cells = Array.from({ length: 44 }, (_, y) => Array.from({ length: COLS }, (__, x) => (y >= 14 && x === 0 ? { id: 'a' } : null)));
+        expect(rowsToRoof(cells, 100, 0)).toBe(70);
+        expect(rowsToRoof(cells, 100, 12)).toBe(58);
+        expect(rowsToRoof(cells, 44, 20)).toBe(1);
     });
 
     it('fears only the roof: a tall tower costs the same far below it, and more near it', () => {
-        const far = worth(30, 100) - worth(20, 100);
-        const near = worth(30, 44) - worth(20, 44);
+        const far = wellWorth(30, 100) - wellWorth(20, 100);
+        const near = wellWorth(30, 44) - wellWorth(20, 44);
         expect(near).toBeLessThan(far);
-        expect(worth(30, 44, 8)).toBeLessThan(worth(30, 44));
-        expect(worth(20, 100, 8)).toBeCloseTo(worth(20, 100));
+        expect(wellWorth(30, 44, 8)).toBeLessThan(wellWorth(30, 44));
+        expect(wellWorth(20, 100, 8)).toBeCloseTo(wellWorth(20, 100));
     });
 
     it('is in no hurry while the roof is far', () => {
@@ -177,9 +180,9 @@ describe('Last Standing', () => {
         match.setMatchConfig({ ...match.matchConfig, isInfinityLMS: true, infinityMaxRows: 60 });
         match.reset();
         const bots = new LocalBotManager({ multiplayerState: match, actionFactory: () => ({}) });
-        const grid = match.players[1].boardGrid;
-        for (let y = grid.length - 50; y < grid.length; y++) if (y >= 0) grid[y][0] = { id: 'a' };
-        expect(bots.versusOutlook(0).killRows).toBe(60 - Math.min(50, grid.length));
+        const theirs = match.players[1].boardGrid;
+        for (let y = theirs.length - 50; y < theirs.length; y++) if (y >= 0) theirs[y][0] = { id: 'a' };
+        expect(bots.versusOutlook(0).killRows).toBe(60 - Math.min(50, theirs.length));
     });
 
     it('plans with the versus search on an Infinity board', () => {
@@ -298,7 +301,9 @@ describe('a tower at the side', () => {
         for (let i = 0; i < 2; i++) shape = rotateShapeMatrix(shape, 'right');
         const rows = grid([...board(), ...Array.from({ length: 10 }, () => 'AAAAAAAAA.')]);
         state.boardGrid.forEach((row, y) => row.forEach((_, x) => { row[x] = rows[y][x]; }));
-        state.currentPiece = { shapeKey: 'J', shape, rotation: 2, x: 6, y: 1 };
+        state.currentPiece = {
+            shapeKey: 'J', shape, rotation: 2, x: 6, y: 1,
+        };
         state.nextPieces = ['T', 'O', 'I'];
         return new GravityBotController({
             playerState: state, playerIndex: 0, difficulty: 10, actions: {}, rng: () => 0.5, versus: true, versusWeights: VERSUS_WEIGHTS,

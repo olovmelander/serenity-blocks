@@ -37,6 +37,7 @@ export const VERSUS_WEIGHTS = Object.freeze({
     tSquare: 2.414,
     kill: 150,
     opener: 8,
+    right: 0.6,
 });
 
 const FULL = (1 << COLS) - 1;
@@ -145,7 +146,8 @@ export function versusValue(board, play, pending, probe) {
     const w = play.weights;
     const { cells, rows, tops } = board;
     const left = shelf(board, 0, w);
-    const right = shelf(board, COLS - 1, w);
+    // Strong players keep the open column on the left wall far more often than on the right.
+    const right = shelf(board, COLS - 1, w) * w.right;
     const edge = left >= right ? 0 : COLS - 1;
     let best = 0;
     let tested = 0;
@@ -203,6 +205,12 @@ export function versusCalm(board, pending, play) {
     return Math.max(0, 1 - (board.height - spawnColumnsTop(board)) / play.weights.calm);
 }
 
+/** The first fire of a life is held for this many lines... */
+const OPENER_LINES = 6;
+/** ...for at most this many pieces, and only while the spawn columns stand this low with what waits. */
+const OPENER_PIECES = 34;
+const OPENER_HEIGHT = 13;
+
 /**
  * What a lock earns: rows sent, with a bonus for size, a cost for small change, and a cost for
  * cashing in under five lines while there is no hurry.
@@ -223,12 +231,6 @@ export function versusReward(play, lines, perfect, calm = 0) {
     if (play.opening && lines < OPENER_LINES) reward -= w.opener * (OPENER_LINES - lines);
     return reward;
 }
-
-/** The first fire of a life is held for this many lines... */
-const OPENER_LINES = 6;
-/** ...for at most this many pieces, and only while the spawn columns stand this low with what waits. */
-const OPENER_PIECES = 34;
-const OPENER_HEIGHT = 13;
 
 /**
  * Whether a life is still in its opening: strong players build the shelf and park on it for some
