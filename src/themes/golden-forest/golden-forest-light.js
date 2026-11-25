@@ -14,11 +14,12 @@
 import * as THREE from 'three/webgpu';
 import {
     cameraPosition, dot, exp, float, length, max, mix, normalize, positionWorld, pow, saturate, shadow, sin,
-    texture, uniform, vec2, vec3,
+    smoothstep, texture, uniform, vec2, vec3,
 } from 'three/tsl';
 import { gridShadowFilter } from '../shared/grid-shadow-filter.js';
 import { redrawStaticShadow } from '../shared/static-shadow-draws.js';
 import { flashScale } from '../../utils/photosensitivity.js';
+import { createGoldenForestAir, goldenForestAirAt } from './golden-forest-airs.js';
 import { GOLDEN_FOREST_MOODS, createGoldenForestMood, goldenForestMoodAt } from './golden-forest-moods.js';
 
 /** The resting breeze; play raises it (update()). */
@@ -121,6 +122,29 @@ export class GoldenForestLight {
         this.uFlare = uniform(0);
         // The rising wind clears the air: the haze thins and the mist lifts off the water (0..1).
         this.uClearAir = uniform(0);
+        // The air (golden-forest-airs.js, setAir): the ceiling of high cloud and the bars of
+        // evening cloud, the mist's banks and the wisps smoking off the water, how sharp the far
+        // ridges stand, the cat's-paws and the sun's road on the lake. The cloud has a clock of
+        // its own: it streams in a breeze and races when a level turns the hour on.
+        this.uDeck = uniform(0);
+        this.uBars = uniform(1);
+        this.uMist = uniform(1);
+        this.uSmoke = uniform(0.3);
+        this.uClarity = uniform(0.4);
+        this.uRuffle = uniform(0);
+        this.uGlitter = uniform(1);
+        this.uCloudClock = uniform(0);
+        this.air = createGoldenForestAir();
+        this.airPhase = 0;
+        this.cloudTime = 0;
+        this.lastTime = 0;
+        // A combo gilds the shores: the sun's light spreads round from its own bearing, crown by
+        // crown (x: how far round it has come, 0..1; y: how bright).
+        this.uGild = uniform(new THREE.Vector2(0, 0));
+        // The landscape eye's place on the ground, for the gilding's bearing (GoldenForestWorld.prepareCamera).
+        this.uEyeGround = uniform(new THREE.Vector2(0, 14.5));
+        // The evening after a game: the light sinks toward the blue hour (0..1).
+        this.uDusk = uniform(0);
         // The colours the hour rests at (setMood); hot play deepens them toward sunset (update()).
         // `haze` is the resting density of the air.
         this.resting = {
@@ -237,6 +261,21 @@ export class GoldenForestLight {
     }
 
     /**
+     * How much of a combo's gilding has reached a point (TSL, 0..1 times its strength): the light
+     * spreads round the lake from the sun's own bearing, so the headland's crowns take it first,
+     * then the islet, the island, the promontory and the right shore.
+     */
+    gild(world = positionWorld) {
+        const away = world.xz.sub(this.uEyeGround);
+        const bearing = away.div(max(length(away), 0.001));
+        const sunFlat = normalize(vec2(this.uSunDir.x, this.uSunDir.z));
+        // 0 on the sun's bearing, 1 square to it and beyond.
+        const round = saturate(float(1).sub(dot(bearing, sunFlat)));
+        const reach = this.uGild.x.mul(1.25);
+        return smoothstep(reach, reach.sub(0.22), round).mul(this.uGild.y);
+    }
+
+    /**
      * World-space wind offset for a point on a tree. `sway` is how far the wind may carry
      * the point (0 at the trunk, 1 at bough tips); `phase` keeps each limb out of step.
      */
@@ -295,6 +334,23 @@ export class GoldenForestLight {
     }
 
     /**
+     * Turn the lake's weather to `phase` airs in (golden-forest-airs.js). Uniform values only;
+     * the haze and the wind it sets are laid in update(). Call it before update().
+     * @param {number} phase
+     */
+    setAir(phase) {
+        this.airPhase = Number.isFinite(phase) ? phase : 0;
+        const air = goldenForestAirAt(this.airPhase, this.air);
+        this.uDeck.value = air.deck;
+        this.uBars.value = air.bars;
+        this.uMist.value = air.mist;
+        this.uSmoke.value = air.smoke;
+        this.uClarity.value = air.clarity;
+        this.uRuffle.value = air.ruffle;
+        this.uGlitter.value = air.glitter;
+    }
+
+    /**
      * One frame of light and wind. `worn` is the world's reading of the envelopes (eased gust and
      * warmth, how hot play runs, Reduce motion's share: GoldenForestWorld.wear); `fronts` the
      * fronts crossing, in world x ({ x, strength }).
@@ -305,12 +361,24 @@ export class GoldenForestLight {
         const motion = worn && Number.isFinite(worn.motion) ? clamp01(worn.motion) : 1;
         const level = clamp01(worn?.level);
         const fever = clamp01(worn?.fever);
+        const { air } = this;
+        // The cloud's own clock: it streams with the air's drift and races for a moment when a
+        // level turns the hour on (`rush`), and never jumps when either changes. A clock sought
+        // backward starts again from the time itself.
+        const now = this.uTime.value;
+        const passed = now - this.lastTime;
+        if (passed < 0 || passed > 1) this.cloudTime = now * air.drift;
+        else this.cloudTime += passed * (air.drift + clamp01(worn?.rush) * 26 * motion);
+        this.lastTime = now;
+        this.uCloudClock.value = this.cloudTime;
+        this.uGild.value.set(clamp01(worn?.gildReach), clamp01(worn?.gild));
+        this.uDusk.value = clamp01(worn?.dusk);
         this.uGust.value = clamp01(worn ? worn.gust : frame.gust) * 1.6 * motion;
         this.uWarmth.value = clamp01(worn ? worn.warmth : frame.warmth);
         // The fireflies, the motes and the rings' gold glow brighter the hotter play runs.
         this.uGlow.value = clamp01(clamp01(frame.glow) + level * 0.18 + fever * 0.12);
         // The evening wind rises with play: a steady hand stirs the forest, a fever bends it.
-        this.uWind.value = GOLDEN_FOREST_BREEZE + (level * 0.2 + fever * 0.24) * motion;
+        this.uWind.value = GOLDEN_FOREST_BREEZE + (air.wind + level * 0.2 + fever * 0.24) * motion;
         const crown = Number.isFinite(worn?.crown) ? Math.max(0, worn.crown) : 0;
         const gold = Number.isFinite(worn?.gold) ? Math.max(0, worn.gold) : 0;
         // A brightening of the sun's disc and glare: a flash, so Reduce flashing holds it back.
@@ -334,8 +402,25 @@ export class GoldenForestLight {
         lay(this.uSkyMid.value, resting.mid.r + by * 0.04, resting.mid.g - by * 0.03, resting.mid.b - by * 0.01);
         lay(this.uZenith.value, resting.zenith.r - by * 0.015, resting.zenith.g - by * 0.025, resting.zenith.b);
         lay(this.uHazeWarm.value, resting.hazeWarm.r, resting.hazeWarm.g - by * 0.12, resting.hazeWarm.b - by * 0.05);
+        // The evening after a game: the sun dims and reddens, the sky cools toward the blue hour.
+        const dusk = this.uDusk.value;
+        if (dusk > 0) {
+            const toward = (color, r, g, b, share) => color.setRGB(
+                color.r + (r - color.r) * share,
+                color.g + (g - color.g) * share,
+                color.b + (b - color.b) * share,
+            );
+            const sun = this.uSunColor.value;
+            toward(sun, sun.r * 0.5, sun.g * 0.3, sun.b * 0.34, dusk);
+            toward(this.uSkyToward.value, 0.62, 0.26, 0.24, dusk * 0.75);
+            toward(this.uSkyMid.value, 0.15, 0.12, 0.27, dusk * 0.75);
+            toward(this.uZenith.value, 0.02, 0.035, 0.12, dusk * 0.75);
+            toward(this.uHazeWarm.value, 0.42, 0.2, 0.2, dusk * 0.7);
+        }
         this.uClearAir.value = deepen;
-        this.uHaze.value = resting.haze * (1 - deepen * 0.3);
+        // The air thickens or thins the hour's haze (a lens that pins the haze pins it whole).
+        const airHaze = Number.isFinite(this.hazePin) ? 1 : air.haze;
+        this.uHaze.value = resting.haze * airHaze * (1 - deepen * 0.3);
         const at = (index) => {
             let front = index === 0 ? frame.front : null;
             if (Array.isArray(fronts)) front = fronts[index];

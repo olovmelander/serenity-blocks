@@ -135,6 +135,27 @@ export class GoldenForestStage {
         return target.set(this.origin.x + (ray.x / flat) * reach, 0, this.origin.z + (ray.z / flat) * reach);
     }
 
+    /**
+     * Where a world point stands on screen through the rest lens: x, y in screen fractions
+     * (y down) and z its depth in front of the eye (not positive: behind it).
+     */
+    project(x, y, z, target = new THREE.Vector3()) {
+        const ox = x - this.origin.x;
+        const oy = y - this.origin.y;
+        const oz = z - this.origin.z;
+        const depth = ox * this.forward.x + oy * this.forward.y + oz * this.forward.z;
+        const reach = Math.max(depth, 1e-4);
+        const across = (ox * this.right.x + oy * this.right.y + oz * this.right.z) / (reach * this.tanH);
+        const upward = (ox * this.up.x + oy * this.up.y + oz * this.up.z) / (reach * this.tanV);
+        return target.set(across * 0.5 + 0.5, 0.5 - upward * 0.5, depth);
+    }
+
+    /** Whether the board card covers a screen point (fractions, y down), with a margin round it. */
+    covered(sx, sy, margin = 0) {
+        const { board } = this;
+        return sx > board.x0 - margin && sx < board.x1 + margin && sy > board.y0 - margin && sy < board.y1 + margin;
+    }
+
     /** Half the width of the view at a depth, in metres. */
     halfWidth(depth = GOLDEN_FOREST_STAGE_DEPTH) {
         return depth * this.tanH;

@@ -420,6 +420,9 @@ export default class GoldenForestTheme extends BaseTheme {
     }
 
     onPieceLock(payload) {
+        // Play has begun again: the evening after a game lifts, whatever the effects settings say
+        // (the ring a lock sends out is an effect; the light coming back is not).
+        if (this.isActive && !this.cleanupComplete) this.reactions?.wake?.();
         if (!this.effectsAllowed() || !this.lockRipple) return;
         this.reactions?.onPieceLock(eventDetail(payload));
     }

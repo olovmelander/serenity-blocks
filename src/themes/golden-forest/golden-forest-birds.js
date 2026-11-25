@@ -5,7 +5,8 @@
  * turn, now and then a bird beating a few slow strokes; and a skein crosses the sky in a V on a
  * lane through the low sun (golden-forest-crane-flight.js choreographs them). A big clear
  * startles the kettle: the circles burst wide, the column lifts and every bird beats hard until
- * it settles.
+ * it settles. A level turning the hour on, or a perfect clear, calls a skein of its own across
+ * the sun (`callSkein`).
  *
  * The bird is the theme's own, modelled in Blender (scripts/blender/golden_forest/crane.py): a
  * common crane at real size, its plumage in its vertex colours, in a near and a far level of
@@ -38,7 +39,9 @@ import {
     varyingProperty,
     vec3,
 } from 'three/tsl';
-import { CRANE_RIG, CRANE_STRIDE, CraneSky } from './golden-forest-crane-flight.js';
+import {
+    CALLED_SKEIN, CRANE_RIG, CRANE_STRIDE, CraneSky,
+} from './golden-forest-crane-flight.js';
 
 /** The model's attributes, as the vertex stage reads them. */
 export const CRANE_LAYOUT = Object.freeze([['position', 3], ['normal', 3], ['color', 4], ['_wing', 4]]);
@@ -216,9 +219,11 @@ export class GoldenForestBirds {
         this.count = this.sky.count;
         const material = createCraneMaterial(this.light);
         this.material = material;
+        // Room in each draw for every crane of the clock's sky and for a called skein's.
+        const room = budget + this.sky.sizes.skein;
         this.draws = [
-            createDraw(near, budget, material, 'GoldenForestBirds'),
-            createDraw(far, budget, material, 'GoldenForestBirdsFar'),
+            createDraw(near, room, material, 'GoldenForestBirds'),
+            createDraw(far, room, material, 'GoldenForestBirdsFar'),
         ];
         this.draws.forEach((draw) => {
             this.group.add(draw.mesh);
@@ -266,6 +271,38 @@ export class GoldenForestBirds {
         // A startled bird beats up to half again as fast: its phase gains that much more per second.
         this.sky.advance(dt, startle);
         this.write(Number.isFinite(time) ? time : 0);
+    }
+
+    /**
+     * Call a skein across the sun (a level-up, a perfect clear). It comes in whole from the
+     * frame's edge a few seconds later; a call made while one is crossing is that skein's.
+     * @param {number} [time]
+     */
+    callSkein(time = this.light?.uTime?.value ?? 0) {
+        return this.sky?.call(Number.isFinite(time) ? time : 0, this.frameEdges()) ?? null;
+    }
+
+    /**
+     * Where the frame's left and right edges lie at the depths a called skein's lane begins and
+     * ends at (world x), so its leader starts just out of sight whatever the frame's shape; null
+     * when there is no camera to ask (the lane for the widest frame is flown then).
+     */
+    frameEdges() {
+        const { camera } = this;
+        if (!camera?.isPerspectiveCamera) return null;
+        camera.updateMatrixWorld?.();
+        const e = camera.matrixWorld.elements;
+        const half = Math.tan(THREE.MathUtils.degToRad(camera.fov * 0.5)) * (camera.aspect || 16 / 9);
+        // The edge's ray along the ground: forward (the camera's -z) leaned by the half angle to a side.
+        const edge = (side, z) => {
+            const dx = -e[8] + side * half * e[0];
+            const dz = -e[10] + side * half * e[2];
+            if (!(dz < -1e-3)) return null;
+            return e[12] + dx * ((z - e[14]) / dz);
+        };
+        const left = edge(-1, CALLED_SKEIN.from[1]);
+        const right = edge(1, CALLED_SKEIN.to[1]);
+        return left === null || right === null ? null : { left, right };
     }
 
     /** Back to the opening sky (a seek replays from here). */

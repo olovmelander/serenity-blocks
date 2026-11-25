@@ -1,7 +1,9 @@
 /**
  * Golden Forest Theme - Tetromino Visual Configuration
  *
- * Boreal palette inspired by moonlit pines, firefly amber, and nordic skies.
+ * Boreal palette inspired by moonlit pines, firefly amber, and nordic skies. Seven hues that
+ * stay apart on the board: J is the green of this year's spruce shoots (it used to be a pale
+ * gold a few degrees from I's amber, and the two read as one piece in the stack).
  */
 
 export const GOLDEN_FOREST_TETROMINOS = {
@@ -13,7 +15,7 @@ export const GOLDEN_FOREST_TETROMINOS = {
         T: '#7ff4c9', // Mossy mint
         S: '#ff9fc0', // Aurora rose
         Z: '#6479d8', // Pine indigo
-        J: '#ffe8a6', // Dawn glow
+        J: '#a4dd6c', // Spruce-shoot green
         L: '#9be8ff', // Misty cyan
         GARBAGE: '#121b27', // Forest shadow
     },

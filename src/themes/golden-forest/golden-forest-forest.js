@@ -10,7 +10,7 @@
 import * as THREE from 'three/webgpu';
 import {
     attribute, cameraPosition, color, cross, dFdx, dFdy, dot, fract, instancedBufferAttribute, mix, normalize,
-    normalWorld, positionLocal, positionWorld, pow, saturate, sin, smoothstep, uv, vec2, vec3, vec4,
+    normalWorld, positionLocal, positionWorld, pow, saturate, sin, smoothstep, uv, varying, vec2, vec3, vec4,
 } from 'three/tsl';
 import {
     GOLDEN_FOREST_FEATURE_TREES, GOLDEN_FOREST_GROVE_CEILING, createGoldenForestVisibilityTest,
@@ -255,7 +255,13 @@ export class GoldenForestForest {
             .add(albedo.mul(light.ambient(normal)).mul(occlusion).mul(1.05))
             // Light that has already passed through the crown warms the needles it shades.
             .add(glowing.mul(paint.a).mul(light.uSunColor).mul(crown.x.mul(0.03).add(0.008))
-                .mul(light.uWarmth.mul(1.4).add(1)));
+                .mul(light.uWarmth.mul(1.4).add(1)))
+            // A combo gilds the shores: where its light has reached, this year's growth on the
+            // open side of every crown burns gold, sun or shade (golden-forest-light.js: gild).
+            .add(glowing.mul(paint.a).mul(light.uSunColor).mul(varying(light.gild(positionWorld), 'vGoldenForestGild'))
+                .mul(paint.r.mul(0.55).add(0.2))
+                .mul(crown.x.mul(0.6).add(0.4))
+                .mul(0.58));
         material.fragmentNode = vec4(light.haze(lit, { world }), 1);
         return material;
     }
