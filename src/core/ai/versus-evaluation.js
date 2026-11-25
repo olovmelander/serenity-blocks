@@ -36,8 +36,8 @@ export const VERSUS_WEIGHTS = Object.freeze({
     tLines: 40.36,
     tSquare: 2.414,
     kill: 150,
-    opener: 8,
-    right: 0.6,
+    opener: 300,
+    right: 0.45,
 });
 
 const FULL = (1 << COLS) - 1;
