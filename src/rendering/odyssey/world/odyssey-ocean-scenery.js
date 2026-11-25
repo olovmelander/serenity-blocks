@@ -209,7 +209,11 @@ export function createOdysseyOceanScenery({
             .mul(exp(eyeDist.mul(-0.009)));
         // (The flecks were the deep rock's only surface; without them a stack in the dark read as a
         // cut-out. Its edges carry the water's cold light now, so the form turns.)
-        const rim = vec3(...L.rockRim).mul(edge.mul(edge).mul(edge)).mul(isRock).mul(deepMask).mul(uGlow);
+        const rim = vec3(...L.rockRim)
+            .mul(edge.mul(edge).mul(edge))
+            .mul(isRock)
+            .mul(deepMask)
+            .mul(uGlow);
         rockMat.colorNode = grade(haze(lit.add(rim), wp).add(glow));
         if (depthNode) rockMat.depthNode = depthNode(wp);
         rockMat.side = THREE.DoubleSide;

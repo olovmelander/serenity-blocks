@@ -5502,11 +5502,13 @@ export function createOdysseyWorld({
         // the first cut's 16 cm beads read as snowballs.
         const spraySize = fract(mS.mul(29.3)).mul(0.04).add(0.02);
         const moteDist = length(moteCenter.sub(cameraPosition));
-        // (A bubble near the lens is capped tighter: at the old cap the nearest few were rings a
-        // twentieth of the frame wide, drawn circles rather than bubbles. 2026-11-25.)
+        // (2026-11-25: a bubble is a third of a speck's size, and capped tighter near the lens: as
+        // bubbles the specks kept their 0.5-1.1 u, and the column was full of rings a twentieth of
+        // the frame wide, drawn circles rather than bubbles.)
         const moteSizeClamped = min(
-            mix(moteSize, spraySize, sprayOn),
-            moteDist.mul(mix(mix(float(0.02), float(0.012), uBubble), float(0.05), sprayOn)).add(mix(float(0.04), float(0.015), uBubble)),
+            mix(moteSize.mul(mix(float(1), float(0.34), uBubble)), spraySize, sprayOn),
+            moteDist.mul(mix(mix(float(0.02), float(0.009), uBubble), float(0.05), sprayOn))
+                .add(mix(float(0.04), float(0.012), uBubble)),
         );
         moteMat.positionNode = billboardWorld(moteCenter, moteSizeClamped);
         // LIT WHERE A SHAFT CROSSES IT (Act I overhaul, 2026-10-20 — Ocean's "lit where a shaft
