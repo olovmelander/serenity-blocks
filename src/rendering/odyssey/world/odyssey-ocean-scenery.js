@@ -43,8 +43,10 @@ export const OCEAN_SCENERY_LOOK = Object.freeze({
      * The living lights in the dark: one spot at most per cell of the rock's face (u), on this share
      * of the cells, round (a disc on whichever plane the face is nearest), gone past `spotFar` (u).
      */
-    spotCell: 5,
-    spotShare: 0.36,
+    spotCell: 3.6,
+    spotShare: 0.46,
+    /** ...and the rock's own outline in the dark: a cold light along its edges turned from the eye. */
+    rockRim: Object.freeze([0.05, 0.20, 0.26]),
     spotFar: Object.freeze([150, 240]),
     glowA: Object.freeze([0.10, 0.95, 0.85]),
     glowB: Object.freeze([0.46, 0.30, 1.0]),
@@ -205,7 +207,10 @@ export function createOdysseyOceanScenery({
             .mul(breathe)
             .mul(uGlow)
             .mul(exp(eyeDist.mul(-0.009)));
-        rockMat.colorNode = grade(haze(lit, wp).add(glow));
+        // (The flecks were the deep rock's only surface; without them a stack in the dark read as a
+        // cut-out. Its edges carry the water's cold light now, so the form turns.)
+        const rim = vec3(...L.rockRim).mul(edge.mul(edge).mul(edge)).mul(isRock).mul(deepMask).mul(uGlow);
+        rockMat.colorNode = grade(haze(lit.add(rim), wp).add(glow));
         if (depthNode) rockMat.depthNode = depthNode(wp);
         rockMat.side = THREE.DoubleSide;
         rockMat.fog = false;

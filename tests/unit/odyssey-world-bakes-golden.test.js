@@ -140,7 +140,7 @@ describe('relief + macro + detail bakes (pure halves)', () => {
         // ...and 2026-11-25 with the massif's form grown in Blender (odyssey-massif-form.js replaces the
         // procedural summit sculpt): the total height over the hero massif changes, nothing outside it;
         // and the far peak drawn as an older ridge (ridgedMassifRise), its crown where it was.
-        expect(sha(a.total)).toBe('f0ec3ff907c07c15a1d185e56719919c');
+        expect(sha(a.total)).toBe('359bbf8a6a4401a4c26af89113394fb4');
         expect(a.data.length).toBe(96 * 96 * 4);
         expect(a.total.length).toBe(96 * 96);
         const sample = makeReliefSampler(a);
@@ -156,7 +156,7 @@ describe('relief + macro + detail bakes (pure halves)', () => {
         // the north beach and the plain's swells (the same note), and 2026-11-21 when the north
         // lake's bowl left the macro (it is a drawn water now, laid over the whole field), and
         // 2026-11-25 when the far peak became an older ridge (ridgedMassifRise), its crown unmoved.
-        expect(sha(m.data)).toBe('0d11cc1d64723217097eac2033fd1085');
+        expect(sha(m.data)).toBe('fc36575d08352a3d845fc65e5599905c');
     });
 
     it('bakeWorldTextureData returns every plate with transferable buffers and per-stage timings', () => {

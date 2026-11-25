@@ -150,7 +150,11 @@ export const SEA_CAPS = Object.freeze({
     tile: 9,
     streak: 1.8,
     drift: 0.3,
-    bend: 0.18,
+    // (0.18 until 2026-11-25: the cells kept their straight walls and sharp corners, and the lace
+    // near the eye read as broken glass on the water. Bent further, and the walls fall off softly
+    // over `soft` of their width, they curve and blur as a foam's do.)
+    bend: 0.42,
+    soft: 0.6,
     width: Object.freeze([0.12, 0.85]),
     alpha: Object.freeze([0.38, 0.85]),
     colour: Object.freeze([0.90, 0.95, 0.98]),

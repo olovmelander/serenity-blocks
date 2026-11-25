@@ -4736,7 +4736,8 @@ export function createOdysseyWorld({
                 const capW = mix(float(C.width[0]), float(C.width[1]), covS).mul(capRipB.mul(0.9).add(0.55)).toVar();
                 const wB = max(capW, capFoot.mul(15.75));
                 const wS = max(capW, capFoot.mul(36.75));
-                const wall = float(1).sub(smoothstep(float(0), wB, L.r)).mul(clamp(capW.div(wB), 0.35, 1));
+                const wall = float(1).sub(smoothstep(wB.mul(-C.soft), wB.mul(1 + C.soft), L.r))
+                    .mul(clamp(capW.div(wB), 0.35, 1));
                 const fine = float(1).sub(smoothstep(wS.mul(0.2), wS, L.g))
                     .mul(smoothstep(float(0.30), float(0.70), covS))
                     .mul(clamp(capW.div(wS), 0.35, 1));
