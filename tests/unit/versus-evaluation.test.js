@@ -1,6 +1,7 @@
 /**
  * Versus play (versus-evaluation.js): what a board and a clear are worth to a versus bot, what its
- * match tells it, and where it applies. Odyssey rivals and Last Standing keep their own play.
+ * match tells it, and where it applies: local versus in the standard well and in Last Standing.
+ * Odyssey rivals keep their own play.
  */
 import {
     describe, expect, it, vi,
@@ -8,13 +9,15 @@ import {
 import {
     COLS, HIDDEN_ROWS, ROWS, SHAPES,
 } from '../../src/core/constants.js';
-import { GameState, rotateShapeMatrix } from '../../src/core/game.js';
+import {
+    fillBag, GameState, rotateShapeMatrix, spawnPiece,
+} from '../../src/core/game.js';
 import { MultiPlayerState } from '../../src/core/multi-player-state.js';
 import { GravityBotController, gravityPlanningRate } from '../../src/core/ai/gravity-bot-controller.js';
 import { readGravityBoard, steadyLandings } from '../../src/core/ai/gravity-search.js';
 import { LocalBotManager } from '../../src/core/ai/local-bot-manager.js';
 import {
-    VERSUS_WEIGHTS, rowsToBlockSpawn, versusAttack, versusCalm, versusReward, versusTrigger, versusValue,
+    VERSUS_WEIGHTS, rowsToBlockSpawn, rowsToRoof, versusAttack, versusCalm, versusReward, versusTrigger, versusValue,
 } from '../../src/core/ai/versus-evaluation.js';
 
 const HEIGHT = ROWS + HIDDEN_ROWS;
@@ -135,6 +138,69 @@ describe('rows that keep a next piece from appearing', () => {
     });
 });
 
+describe('Last Standing', () => {
+    // A tower of `rows` in a grid of 44, in a well of `well` rows.
+    const tower = (rows) => {
+        const lines = Array.from({ length: 44 }, (_, y) => (y >= 44 - rows ? 'AAAA.AAAAA' : '..........'));
+        const cells = lines.map((line, y) => [...line].map((ch) => (ch === '.' ? null : { id: `r${y}`, type: 'O' })));
+        return readGravityBoard(cells, 0);
+    };
+    const worth = (rows, well, pending = 0) => {
+        const board = tower(rows);
+        return versusValue(board, { weights: VERSUS_WEIGHTS, roofRows: well - 44 }, pending, new Int32Array(board.cells.length));
+    };
+
+    it('counts the rows to the roof of the well, not to the spawn', () => {
+        const grid = Array.from({ length: 44 }, (_, y) => Array.from({ length: COLS }, (__, x) => (y >= 14 && x === 0 ? { id: 'a' } : null)));
+        expect(rowsToRoof(grid, 100, 0)).toBe(70);
+        expect(rowsToRoof(grid, 100, 12)).toBe(58);
+        expect(rowsToRoof(grid, 44, 20)).toBe(1);
+    });
+
+    it('fears only the roof: a tall tower costs the same far below it, and more near it', () => {
+        const far = worth(30, 100) - worth(20, 100);
+        const near = worth(30, 44) - worth(20, 44);
+        expect(near).toBeLessThan(far);
+        expect(worth(30, 44, 8)).toBeLessThan(worth(30, 44));
+        expect(worth(20, 100, 8)).toBeCloseTo(worth(20, 100));
+    });
+
+    it('is in no hurry while the roof is far', () => {
+        const play = (well) => ({ weights: VERSUS_WEIGHTS, roofRows: well - 44 });
+        expect(versusCalm(tower(30), 0, play(100))).toBe(1);
+        expect(versusCalm(tower(30), 0, play(50))).toBe(0);
+        expect(versusCalm(tower(30), 3, play(100))).toBe(0);
+    });
+
+    it('a seat aims its kill at the roof', () => {
+        const match = new MultiPlayerState(2);
+        match.setMatchConfig({ ...match.matchConfig, isInfinityLMS: true, infinityMaxRows: 60 });
+        match.reset();
+        const bots = new LocalBotManager({ multiplayerState: match, actionFactory: () => ({}) });
+        const grid = match.players[1].boardGrid;
+        for (let y = grid.length - 50; y < grid.length; y++) if (y >= 0) grid[y][0] = { id: 'a' };
+        expect(bots.versusOutlook(0).killRows).toBe(60 - Math.min(50, grid.length));
+    });
+
+    it('plans with the versus search on an Infinity board', () => {
+        const match = new MultiPlayerState(2);
+        match.setMatchConfig({ ...match.matchConfig, isInfinityLMS: true, infinityMaxRows: 60 });
+        match.reset();
+        match.sharedPieceSeed = 9;
+        const state = match.players[0];
+        fillBag(state.nextPieces, state.randomGenerator, state.pieceRandomizer);
+        spawnPiece(state, null, () => {});
+        const bots = new LocalBotManager({ multiplayerState: match, actionFactory: () => ({}) });
+        bots.configure([{ kind: 'bot', difficulty: 10 }, { kind: 'bot', difficulty: 4 }], 1);
+        for (const bot of bots.controllers.values()) {
+            if (bot.playerState !== state) continue;
+            const plan = bot.plan();
+            expect(plan.candidate.y).toBeGreaterThan(state.boardGrid.length - 5);
+            expect(plan.tactics.protectSpawn).toBe(false);
+        }
+    });
+});
+
 describe('where versus play applies', () => {
     const manager = (match) => {
         const bots = new LocalBotManager({ multiplayerState: match, actionFactory: () => ({}) });
@@ -148,10 +214,22 @@ describe('where versus play applies', () => {
         expect([...manager(match).controllers.values()].every((bot) => bot.versusWeights === VERSUS_WEIGHTS)).toBe(true);
     });
 
-    it('not in Last Standing, not in a peaceful match, not for a controller Odyssey builds', () => {
-        const infinity = new MultiPlayerState(2);
-        infinity.players.forEach((state) => { state.isInfinityMode = true; });
-        expect([...manager(infinity).controllers.values()].some((bot) => bot.versusWeights)).toBe(false);
+    it('in Last Standing too, with the same hands and reading time', () => {
+        const well = new MultiPlayerState(2);
+        well.setMatchConfig({ ...well.matchConfig, isInfinityLMS: true, infinityMaxRows: 60 });
+        well.reset();
+        well.sharedPieceSeed = 5;
+        const standard = new MultiPlayerState(2);
+        standard.sharedPieceSeed = 5;
+        const [a, b] = [manager(well), manager(standard)].map((bots) => bots.controllers.get(0));
+        expect(a.playerState.isInfinityMode).toBe(true);
+        expect(a.versusWeights).toBe(VERSUS_WEIGHTS);
+        expect(a.config.reactionMs).toEqual(b.config.reactionMs);
+        expect(a.config.maxApm).toBe(b.config.maxApm);
+        expect(a.planUnitsPerMs).toBe(b.planUnitsPerMs);
+    });
+
+    it('not in a peaceful match, not for a controller Odyssey builds', () => {
         const peaceful = new MultiPlayerState(2);
         peaceful.setMatchConfig({ ...peaceful.matchConfig, attackRules: { disableAttacks: true } });
         expect([...manager(peaceful).controllers.values()].some((bot) => bot.versusWeights)).toBe(false);
@@ -161,7 +239,7 @@ describe('where versus play applies', () => {
         expect(rival.versusWeights).toBeNull();
     });
 
-    it('a room of three or four shares what two bots get; Infinity keeps its share', () => {
+    it('a room of three or four shares what two bots get; a peaceful one keeps the older share', () => {
         expect(gravityPlanningRate(2, 10, true) * 2).toBeCloseTo(2.5);
         expect(gravityPlanningRate(3, 10, true) * 3).toBeCloseTo(2.5);
         expect(gravityPlanningRate(4, 10, true) * 4).toBeCloseTo(2.5);

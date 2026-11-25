@@ -63,9 +63,9 @@ function actionsTo(state, target) {
 }
 
 function sliceRate(rate, board, tier, infinity, versus = false) {
-    if (infinity) return Math.min(rate, 0.3);
     const high = nearRoof(board, versus);
     if (versus) return high ? Math.min(rate, 0.35) : rate;
+    if (infinity) return Math.min(rate, 0.3);
     if (tier === 3 && high && !board.garbage) return Math.min(rate, 1.05);
     if ((tier >= 8 && high) || (tier <= 3 && (high || board.garbage))) return Math.min(rate, 0.35);
     return rate;
@@ -337,7 +337,9 @@ export class GravityBotController extends PuzzleBotController {
         const state = this.playerState;
         const pending = this.getPendingGarbage();
         const { tier } = this.config;
-        const root = state.isInfinityMode ? null : observed || readGravityBoard(state.boardGrid || state.board);
+        // Last Standing boards have no hidden rows; without versus play they keep the older planner.
+        const root = state.isInfinityMode && !this.versusWeights ? null
+            : observed || readGravityBoard(state.boardGrid || state.board, state.isInfinityMode ? 0 : undefined);
         if (this.recognizedSpawn !== state.piecesPlaced) {
             this.recognizedSpawn = state.piecesPlaced;
             if (tier <= 3) {
@@ -360,10 +362,11 @@ export class GravityBotController extends PuzzleBotController {
         const versusPlay = this.versusWeights && root ? {
             weights: this.versusWeights,
             ...this.versusOutlook?.(),
+            ...(state.isInfinityMode && { roofRows: Math.max(0, (state.maxRows || 0) - (state.boardGrid || state.board).length) }),
             // Hands that keep being refused let the piece fall where it is.
             dropHere: this.refusals.piece === state.piecesPlaced && this.refusals.count >= 3,
         } : null;
-        if (state.isInfinityMode || (!versusPlay && (tier <= 3 || useSurvival))) {
+        if (!versusPlay && (state.isInfinityMode || tier <= 3 || useSurvival)) {
             // With zero or one preview the established survival judgement protects
             // novices from cavities they cannot plan their way out of.
             const plan = yield* super.planSteps();

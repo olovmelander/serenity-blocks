@@ -92,10 +92,12 @@ function shelf(board, col, w) {
 /**
  * What a versus seat plays by.
  * @typedef {{ weights: Record<string, number>, minAttackLines?: number, killRows?: number,
- *   worth?: number, flat?: boolean }} VersusPlay
+ *   worth?: number, flat?: boolean, roofRows?: number }} VersusPlay
  *   minAttackLines: the match's smallest attacking clear; killRows: the fewest rows that would
  *   keep some opponent's next piece from appearing; worth: what a row sent is worth (1; 0 while
- *   attacks deal nothing); flat: size earns no bonus (a hot potato's holder only counts rows)
+ *   attacks deal nothing); flat: size earns no bonus (a hot potato's holder only counts rows);
+ *   roofRows: Last Standing only, the rows of the well above the board's grid. There the piece
+ *   comes in above the tower, and only the well's roof ends a player.
  */
 
 /** Rows a clear sends: lines minus one from the smallest attacking clear up, and the clean bonus. */
@@ -118,6 +120,22 @@ export function rowsToBlockSpawn(grid, waiting) {
         top = y;
     }
     return Math.max(1, ROWS + 1 - (grid.length - top) - waiting);
+}
+
+/** A rise of this many rows can come at once (the most that wait), plus room to answer it. */
+const ROOF_MARGIN = 24;
+
+/**
+ * Last Standing: the fewest rows that would lift a player's tower through the roof of the well,
+ * counting the rows already waiting for them.
+ * @param {Array<Array<unknown>>} grid
+ * @param {number} wellRows
+ * @param {number} waiting
+ */
+export function rowsToRoof(grid, wellRows, waiting) {
+    let top = 0;
+    while (top < grid.length && !grid[top].some(Boolean)) top++;
+    return Math.max(1, wellRows - (grid.length - top) - waiting);
 }
 
 /** The value of a board to a versus player. `probe` is scratch. */
@@ -156,7 +174,11 @@ export function versusValue(board, play, pending, probe) {
     const { height } = board;
     const edgeHoles = height - tops[edge] - board.counts[edge];
     const centre = spawnColumnsTop(board);
-    const squeeze = Math.max(0, (height - centre) + pending - (height - board.first - w.room));
+    // The next piece must appear: the spawn columns against the top. In Last Standing it comes in
+    // above the tower, and what ends a player is a rise through the well's roof.
+    const squeeze = play.roofRows === undefined
+        ? Math.max(0, (height - centre) + pending - (height - board.first - w.room))
+        : Math.max(0, (height - board.top) + pending - (height + play.roofRows - ROOF_MARGIN));
     return best + Math.max(left, right) + board.stock * w.material + board.density * w.density
         - bump * w.bump - (board.holes - edgeHoles) * w.holes - (height - centre) * w.height - squeeze * squeeze * w.danger;
 }
@@ -174,6 +196,8 @@ function spawnColumnsTop(board) {
  */
 export function versusCalm(board, pending, play) {
     if (pending > 0) return 0;
+    // Last Standing: no hurry while the roof is far.
+    if (play.roofRows !== undefined) return Math.min(1, Math.max(0, (play.roofRows + board.top - ROOF_MARGIN) / 12));
     return Math.max(0, 1 - (board.height - spawnColumnsTop(board)) / play.weights.calm);
 }
 
