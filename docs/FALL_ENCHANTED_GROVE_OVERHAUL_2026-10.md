@@ -1,6 +1,6 @@
 # Fall — the enchanted grove (visual overhaul, 2026-10-05)
 
-**Status: implemented (branch `feature/fall-enchanted-forest`; the red squirrel 2026-10-26, its motion pass and its trees-and-tail pass the same day). A record of what was built
+**Status: implemented (branch `feature/fall-enchanted-forest`; the red squirrel 2026-10-26, its motion pass and its trees-and-tail pass the same day; the masterpiece pass 2026-11-25, branch `feature/fall-masterpiece`, see [the last section](#the-masterpiece-pass-2026-11-25)). A record of what was built
 and how it was checked — not a backlog.** Supersedes the "amber glade" rebuild of the same
 week (`reports/fall-overhaul/README.md`), whose flat-shaded procedural grove this replaces.
 
@@ -432,7 +432,227 @@ when it is on edge and never in a dig. The asset is 531 KiB (9,502 triangles).
 
 - The plume has hair cards; the body has none (its coat is a lit surface, the rim light carries it at
   game size). Fur shells or cards over the back and haunches would give its outline the same fuzz.
+  (Done 2026-11-25: the coat is shells now, see "The squirrel, remade".)
 - It casts no sun shadow (the grove's map is static); a contact shade grounds it instead.
 - It does not drop its acorn when startled. Through the treetops it goes out of sight (the crowns do
   not meet on screen), rather than leaping from branch to branch.
 - Portrait: the same squirrel in the margins; not tuned there.
+
+## The masterpiece pass (2026-11-25)
+
+Asked for: audit everything that makes up the theme and raise it to "one of the most visually
+stunning themes in my game", varied over time so it never looks the same for long, a distinct effect
+for every event with the biggest moments the most spectacular, smooth and easy to read; and above all
+a new squirrel: "detailed, lifelike ... soft fur and a full bushy tail, rigged and animated with real
+squirrel behavior ... It should do something different every time it appears, in different places in
+the scene." Blender MCP wherever it gives a better result.
+
+| Before (left) and after (right, still gold, the first air), the same moment at High |
+| --- |
+| ![before and after at the same frame](fall-enchanted-grove/masterpiece-before-after.jpg) |
+
+### The audit
+
+Captured at High on native WebGPU (every light, every event at two ages, the real game, Low,
+WebGL2, portrait), then read part by part. What was strong and kept: the composition (the maple and
+oak framing the board, the path into the light), the backlit crowns, the shafts, the leaf simulation,
+the five lights. What was weak:
+
+- **Variety** was colour only: five lights through the same weather; nothing ever happened in the
+  grove that play did not cause.
+- **The old trees' bark**, the largest surface in the frame, was vertical dashes with lime streaks.
+- **The caps** were pale blue discs; the **gossamer** long white scratches across the lower left; the
+  **motes and wisps** white dots; two far **birches** left of the board read as lamp posts.
+- **Events** were all "leaves thrown": one, two, three and four lines differed only in how many;
+  back-to-back, the level-up and even the perfect clear were near invisible; hot combo leaves blew
+  out to cream blobs.
+- **The squirrel** was about 50 px on a trunk two metres across, its coat a lit surface (a
+  figurine), its eyes large black discs; the great trees were the only places it had besides the
+  floor, and every day began the same way.
+
+The work went to three parallel branches (the grove, the events, the squirrel), merged here.
+
+### The grove: airs, a night, bark, caps and visitors
+
+| The five airs and the night, at the same moment of the clock |
+| --- |
+| ![still gold, ground mist, a windy day, a sun shower, the great fall, the harvest moon](fall-enchanted-grove/masterpiece-airs.jpg) |
+
+| | |
+| --- | --- |
+| **Airs** (`fall-airs.js`, new) | A weather wheel on its own clock beside the lights: five airs of 83 s each (the lights' 110 s never divides it, so a light and an air meet again only after hours), resting before they melt into the next, a level-up one air on; not held back by reduced motion or the effects setting (a change of weather is the theme, not an effect). **Still gold**: the grove as it was. **Ground mist**: fog thick between the trunks, longer shafts, the far wood gone. **Windy day**: boughs and grass working in gusts, leaves streaming, low cloud racing. **Sun shower**: fine rain falling through the light, the floor and bark darker and wet, puddles with drop rings. **The great fall**: no wind at all, every crown letting go. Each changes form and motion, not only colour. `world.holdAir(i)`, playground `air=0..4`. |
+| **Night** (`fall-moods.js`) | A sixth light, the harvest moon, between rose dusk and blue mist: the moon stands where the sun stood (the static shadow map stays true), large and amber-white behind the trees, stars in the gaps, moonbeams in the mist, deep blue shade, the caps and fireflies lit. Its "sun" and the air toward it are kept near the moon's own dimness (at a third of the day's, backlit leaves still lit orange and the haze went white: dusk, not night). |
+| **Bark** (`fall-bark-sheet.js`, new; `fall-forest.js`) | A tileable sheet of plates, furrows and grain drawn once a session: the old trees have deep furrowed plates the raking sun picks out, moss low and in the furrows on the shaded side, pale lichen higher; birch stays chalk white with dark lenticels. Holds two metres off (the squirrel's close-ups) and does not shimmer at game size. Moss goes by height over the asset's own base, so the windfall and the stump are mossed all over. |
+| **Caps** (`fall-mushrooms.js`, new) | Clusters: fly agarics, pale bonnets, honey-coloured tufts at the roots, brackets on the trunks; rims the low sun shines through; pools of glow under the caps at dusk, at night and in combos. Kept clear of the squirrel's near ground. |
+| **Air** (`fall-atmosphere.js`) | Gold dust that lives in the shafts; fireflies at dusk and at night instead of white dots; gossamer short, fine and hung with dew that glints now and then. The lamp-post birch stands with the other two. |
+| **Happenings** (`fall-happenings.js`, `fall-visitors.js`, new) | About every 46 s, in a shuffled order seeded per session (never the same twice running), each coming and going wholly out of the frame, each laid out from the real camera and the real card. **Geese**: a V of up to seven, 62 m out behind the crowns, crossing the open sky above the board and its next-piece preview (about 44 px a wing, dark against the sky, in the open about 5 s of a 34 s crossing; about 13 s in portrait). **Jays**: a side-on loop in from one side edge and out again, banked into the turn so the blue of the wing shows: past the windfall's lookout against the oak, or over the stump against the bright mist; 100 to 200 px, never over the card. **Acorns**: dropping from above the frame into open litter 6 to 12 m from the eye beside the card, a bounce and a short roll. **A shaft**: a gap in the cloud sends one shaft wandering over the floor. `world.setHappenings(bool)`, `playHappening(kind, at, roll)`, playground `happen=geese|jays|acorns|shaft&happenAge=`. |
+
+| Geese above the board, a jay on each side, acorns in the litter (the real game and the playground) |
+| --- |
+| ![the visitors at game size](fall-enchanted-grove/masterpiece-visitors.jpg) |
+
+GPU ms a frame at High, 1080p, capped at 30 fps on the RTX (median): main 0.88 / 0.89; still gold
+0.88 / 0.87; mist 0.96; rain 0.97; night 0.90; the great fall 1.04; geese 0.99.
+
+### The events: a form of its own for each, a ladder to the perfect clear
+
+| Lock, hard drop, three lines · four lines, combo, twist · back-to-back, perfect clear, level up |
+| --- |
+| ![nine events at their height](fall-enchanted-grove/masterpiece-events.jpg) |
+
+| Event | Now (`fall-reactions.js` times them; `fall-event-light.js` lights them; `fall-event-fx.js` throws them) |
+| --- | --- |
+| Lock | The leaf puff as before (it happens on nearly every piece): thinner as play heats, halved when locks come quickly. |
+| Hard drop (from about 30 % of the board) | A ring runs out across the floor from the board's foot: leaves hop, grass bows outward, a line of light crosses the carpet, a few acorns drop and bounce. Rate-limited. |
+| One line | The twin jets of leaves. |
+| Two lines | The gust front opens the canopy and a gap of brighter shafts travels with it. |
+| Three lines | Maple keys spin down out of the crowns, which pale as the front passes. |
+| Four lines | A fan of sunbeams opens through the trees and a flood of light rolls over the floor; the canopy shower. |
+| Combo | Sparks wind up inside the leaf vortex; a ring of small lantern lights gathers at the board's foot, growing with the count. |
+| Twist | A spiral of maple keys and a ribbon of light curling up beside the piece. |
+| Back-to-back | A pulse of amber light climbs both great trunks and their crowns glow from inside; twin cascades. |
+| Perfect clear | The crown of them all, several seconds: the fullest fan of beams, a wave lifting the floor's leaves outward from the board, keys and gold dust hanging in the air, a flock of small birds bursting from the trees (`fall-flush.js`). |
+| Level up | The new light arrives as a band crossing the grove while the mood eases on. |
+| Game over | A moment, not a state: the wind dies, the air's leaves fall straight down, the light sinks for a breath and comes back. |
+| A new run | Starts clean without cutting what is still in the air. |
+
+Hot leaves no longer wash out to cream: their brightness is capped without losing hue, the ember at
+the leaf's edge over a darkened leaf. Everything accumulates (Swells, stable identities); a pop probe
+over two minutes of frenzied simulated play found the canopy's pale flicking in one frame (a uniform
+driven through a narrow threshold), now eased over 0.15 s (worst one-frame jump 0.53 to 0.10). The
+emitter kinds keep their meanings (the squirrel reads them); the new forms travel in `frame.fx`.
+`backgroundComboEffects`, `pieceLockRipple`, reduced motion and Reduce flashing hold as before.
+GPU at rest, High, capped: about 1.0 ms a frame before, 1.1 to 1.15 after.
+
+### The squirrel, remade
+
+Asked for: "Right now it is small and looks stuck to the trunk. Use Blender MCP to create a detailed,
+lifelike squirrel with soft fur and a full bushy tail, rigged and animated with real squirrel
+behavior: scampering up and down the trunks, leaping between branches, sitting up to look around,
+nibbling an acorn, flicking its tail, and digging in the leaves to bury nuts. It should do something
+different every time it appears, in different places in the scene."
+
+| Its coat: nibbling, from behind, stretched out on the windfall, on the stump's seat |
+| --- |
+| ![the squirrel close up in four views](fall-enchanted-grove/masterpiece-squirrel.jpg) |
+
+| Its places at game size: on the windfall, up its lookout, leaping; on the stump and its leaning bough |
+| --- |
+| ![six crops of the squirrel on its perches](fall-enchanted-grove/masterpiece-squirrel-places.jpg) |
+
+**The body** (`scripts/blender/fall_squirrel/model.py`, built and checked in the open Blender through
+the MCP with `fall_squirrel/live.py`, then packed headless by `node scripts/fall/pack-squirrel.mjs`,
+now on Blender 5.3): the field is the animal under its coat. A compact arch (the back humped over
+the loins, bigger haunches, a low belly, a deep chest with a bib), a thick short neck, a wedge of a
+head with the brow running down the nose and whisker pads, smaller dark almond eyes set on the sides,
+upright ears with one short point each for the tuft, furrier upper arms, a slim smooth plume core
+(60 % of the plume's width: the hair is most of a squirrel's tail). The coat is darker along the
+spine, the cream bib cleaner, the paws rust, not peach. `_fur.x` is now the hair's real length in
+fifths of 2 cm: deep on the haunches and the bib, shorter over the skull, close on the muzzle and
+round the eyes, short on the limbs and paws, longest on the ear tufts and the plume. A new clip,
+`loaf` (stretched out along a limb, belly down, hind legs trailed sole-up), and a lower stance on
+all fours and a rounded back when it sits up. 9,914 triangles, 19 clips, 574 KiB.
+
+**The coat** (`fall-squirrel-fur.js`, new): the hair is drawn as shells: the skinned body again for
+every layer (24 / 20 / 16 / 12 / 8 / 6 from Extreme to Minimal, one instanced draw, the layer is the
+instance), each pushed out by the hair's length and laid back along the body the way a coat lies
+(the rest pose's lie turned by the skinned normal's turn, so it lies right however the body bends);
+the plume's hair stands out from its core instead. A strand is a cell of the rest position with its
+own place, length and tone, thinning to its tip; strands grow in locks a few millimetres across (two
+turns of the grove's value noise squeezed along the lie), each lock its own length (the tufted
+outline) and tone. Strands finer than a pixel become the share of the layer they cover, and the
+layers are blended with no depth written, so at game size the coat is a soft fringe that neither
+sparkles nor steps. Lit as the grove: wrapped sun, the sky, roots in the coat's own shade, tips that
+glow when the low sun is behind the animal. The body under it is darkened where the hair is long
+(the skin you see between hairs is their roots). The plume's hair cards are longer (a whole plume's
+width past the core, 6 to 30 mm). `coveredVarying` (centroid sampling) feeds the coat's colour and
+fur attributes, after black and red specks showed along the outline under MSAA.
+
+**Its places** (`fall_grove/perches.py`, `scripts/blender/fall_perches.py`, `fall-squirrel-limbs.js`,
+new): a mossed windfall low on the right of the board, its root end out of frame, two dead limbs
+standing up from it (a lookout and a stub a leap apart); on the left the broken stump of another
+tree, its top a flat seat, a dead bough leaning on the far side of its rim (behind the seat, so a
+squirrel sitting there is in front of it) up to a snapped end above it, a few coppice shoots in leaf. Both are grown with the grove's own skeleton and wood and take its
+bark and moss. Their limbs (and the oak's rising bough) are written as centre lines and radii
+(`assets/squirrel-perches.json`) from the same seeded recipes as their GLBs, so a squirrel on a limb
+stands on the bark the eye sees. A limb is a surface like a trunk: (metres along, angle round), a
+standing one gone round from the side that faces the eye, a lying one walked along its top. A flat
+perch (the stump's top, a snapped end standing clear of the floor) is a place on the floor that names
+it, so a run on the floor under a snapped end stays on the floor. The great trees' other boughs were
+measured against their own sprays from the game's eye and dropped: a squirrel on any of them is
+behind leaves all the way out.
+
+**Its day** (`fall-squirrel-mind.js`): the drawn scale is 4 (3.3): about 70 px on average and over
+90 px a third of the time. New routines: `near` (out to the floor by the board's foot, then a meal,
+a burial, a sit, a scratch or a wash there), `perch` (up onto the stump or the windfall), on a limb
+`run`, `rest`, `meal`, `wash`, `loaf`, `across` (a leap to another limb), `lookout` (up a dead limb to
+its snapped end), `tip` (out along the leaning bough to its end), `back`; on a flat perch `watch`,
+`meal`, `wash`, `itch`, `across` (a leap to the other perch) and `off`. A routine done lately is
+unlikely to be done again (`choose`: its weight eased back in over 70 s), so it moves on to something
+else. Runs over the floor go over a lying limb (up onto it and off the far side) and round the stump.
+A nut found in one place is carried in its mouth to another and buried there; a fright cuts the
+errand and the nut is gone. A dig throws leaves out behind its paws and a landing on the floor puffs
+a few up (`FallWorld.squirrelLitter`, leaves of the air's reserve, never one in flight). On a perch a
+fright is answered where it stands (it has nowhere to bolt). Each time the grove opens the day is a
+new one: a seed of the moment (`?fallSquirrelSeed=` pins one) and an opening drawn from it (either
+crown, either side of the floor, the stump, the windfall).
+
+**Measured** (a probe of the real mind on the real stage, ten minutes a seed, six seeds): visible 94
+to 97 % of the time (the rest in a crown); on screen 100 %, clear of the card and the score panel
+99 % (the rest is dashes across the floor behind the card, as before); close to the eye 27 to 41 %;
+67 to 76 px on average, over 90 px a quarter to a third of the time; the worst frame-to-frame step
+0.20 m (a dash); 28 to 30 different routines a seed in ten minutes. Cost at High, 1080p, capped at
+30 fps on the RTX: about 0.1 ms of GPU and 0.2 ms of CPU a frame, the squirrel with its coat against
+none.
+
+**Faults a test hunt found and fixed** (`tests/unit/fall-squirrel.test.js` holds each): it sat inside
+wood (the oak's bough starts on the trunk's axis, so its walked span begins where its top leaves the
+bark; on the windfall it keeps 0.45 m clear of the dead limbs' feet); a run passed through the
+leaning bough (every leg of a run is now checked, the stump gone round on the side clear of a log,
+under the bough where it stands 0.6 m off the floor); its head snapped when the board cut a look
+short (the look now eases out over 0.3 s from where it was); it ate off the right edge on the
+windfall; openings and scripted routines threw where their perch was missing; it sat 7 cm into the
+leaning bough's end. New tests hold the perches against their own bark, a clear half metre above
+every seat, runs never through wood, every leap from where it stood to where it lands, every board
+event on every kind of place, the coat's draw and tier, the litter, and a grove without the perch
+assets.
+
+### How it was checked
+
+- **Playground** (`?effect=fall&orbit=0&hud=0&board=1&maxFps=30`, new params `air=`, `happen=`,
+  `happenAge=`, `level=` for the six lights, `squirrelStart=any|stump|windfall|crown-oak|ground-oak`,
+  `squirrelPlan=` with the new routines, `eye=`/`at=`/`fov=` for a free camera): every air, the
+  night, each happening, every event at two or three ages, the squirrel close up from four sides and
+  at game size; High, Low, Minimal, the WebGL2 backend, a 540 x 960 portrait frame. Consoles clean.
+- **The real game** (private headless Chrome on WebGPU, Single Player with real key presses, the
+  Serenity tray's Rush, Fever and a four-line clear): Fall active, the squirrel on its perches, the
+  console clean but for the `Mode single is not running` warning that main shows too.
+- **Probes**: the squirrel's day over 10 to 15 minutes for six seeds (above); a pop probe of the
+  events; a visibility probe of every limb against the crowns' sprays.
+- **Tests**: `npx vitest run tests/unit/fall-`: 408 tests in ten suites pass (among them the new
+  `fall-airs.test.js` for the airs and happenings and `fall-event-show.test.js` for the events).
+  ESLint 0 errors; typecheck clean; the CI gates (ratchets, fitness, lifecycle audit, boundaries,
+  budgets, release gates) pass.
+
+### Known limits and open calls
+
+- Nobody has watched it in motion: the airs changing, the night arriving, the squirrel's day, a
+  real run's events overlapping. Stills, strips and probes only.
+- Cost readings are capped at 30 fps on the RTX; no uncapped, integrated-GPU or phone reading.
+- Portrait: the perches and most of the squirrel's places are off the edges; it is seen on the
+  trunks and the floor between them.
+- The great trees' boughs are hidden by their own leaves from the game's eye, so only the oak's
+  rising bough and the perches carry the squirrel off the trunks; it does not run out along the
+  maple's limbs.
+- On the windfall the squirrel keeps clear of the two dead limbs' feet, which leaves two short
+  stretches of log (0.53 and 0.40 m): it stands, sits and eats there but never stretches out (it
+  loafs on the oak's bough and the leaning bough instead). Moving the dead limbs in `perches.py`
+  would free a longer stretch.
+- A leap down from the tall dead limb lands at about 12 m/s (a real squirrel's drop at the drawn
+  scale); a longer flight for big drops might read better. The dead limbs' own routines (`POST_BITS`)
+  are mostly reached when a board event interrupts a climb.
+- The four-line fan at night reads as moonbeams of the same strength as the day's sunbeams.
+- The bracket fungi are a little plastic close up; Low and Minimal mist is pale.
+- The theme icon (`fall-theme-icon.png`) and `docs/theme-screenshots/fall.png` still show the grove
+  before this pass.
+- No roe deer or fox in the mist (asked of the grove branch, not built).

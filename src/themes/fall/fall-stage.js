@@ -109,4 +109,26 @@ export class FallStage {
     halfWidth(depth = FALL_STAGE_DEPTH) {
         return depth * this.tanH;
     }
+
+    /**
+     * Where a world point stands on the screen: `target.x` and `target.y` in screen fractions (y
+     * down), `target.z` its depth along the view (behind the eye: zero or less, and the fractions
+     * mean nothing).
+     */
+    project(x, y, z, target = new THREE.Vector3()) {
+        const dx = x - this.origin.x;
+        const dy = y - this.origin.y;
+        const dz = z - this.origin.z;
+        const depth = dx * this.forward.x + dy * this.forward.y + dz * this.forward.z;
+        const reach = Math.max(depth, 1e-4);
+        const nx = (dx * this.right.x + dy * this.right.y + dz * this.right.z) / (reach * this.tanH);
+        const ny = (dx * this.up.x + dy * this.up.y + dz * this.up.z) / (reach * this.tanV);
+        return target.set(nx * 0.5 + 0.5, 0.5 - ny * 0.5, depth);
+    }
+
+    /** Whether a screen position (fractions, y down) lies behind the card, `margin` beyond its edges too. */
+    covered(sx, sy, margin = 0) {
+        const { board } = this;
+        return sx > board.x0 - margin && sx < board.x1 + margin && sy > board.y0 - margin && sy < board.y1 + margin;
+    }
 }

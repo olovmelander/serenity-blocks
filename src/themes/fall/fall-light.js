@@ -25,6 +25,8 @@ import { gridShadowFilter } from '../shared/grid-shadow-filter.js';
 import { redrawStaticShadow } from '../shared/static-shadow-draws.js';
 import { flashScale } from '../../utils/photosensitivity.js';
 import { FALL_MOODS, createFallMood, fallMoodAt } from './fall-moods.js';
+import { FALL_AIRS, createFallAir, fallAirAt } from './fall-airs.js';
+import { FallEventLight } from './fall-event-light.js';
 
 const SUN_AZIMUTH = THREE.MathUtils.degToRad(-23.4);
 const SUN_ELEVATION = THREE.MathUtils.degToRad(11.5);
@@ -47,9 +49,11 @@ const HAZE = FIRST_MOOD.haze;
 const HAZE_CLEAR = 0.22;
 /** Spring rates (rad/s): the gust the boughs feel, the standing breeze, the wisps' wander. */
 const SPRING = Object.freeze({ gust: 9, wind: 2.6, stir: 4 });
-/** The steady breeze at rest, and how much a full standing breeze of hot play adds to it. */
-const WIND_REST = 0.3;
+/** The steady breeze at rest (the first air's: fall-airs.js), and how much a full standing breeze of hot play adds to it. */
+const WIND_REST = FALL_AIRS[0].wind;
 const WIND_PLAY = 0.75;
+/** How much thicker than the resting haze a full ground mist lies about the eye. */
+const FALL_MIST_DENSITY = 3.6;
 /** Gust fronts the wind carries at once, and how wide each blows (m). */
 export const FALL_LIGHT_FRONTS = 3;
 const FRONT_WIDTH = 14;
@@ -165,6 +169,9 @@ export class FallLight {
             gust: { x: 0, v: 0 }, wind: { x: WIND_REST, v: 0 }, stir: { x: 0, v: 0 },
         };
         this.noiseTexture = createNoiseTexture(rng);
+        // (Where no lens grades the picture and carves the shafts, the same mist would wash it out.)
+        this.mistDensity = FALL_MIST_DENSITY * (tier.godrays > 0 ? 1 : 0.32);
+        this.initAir();
 
         this.sun = new THREE.DirectionalLight(0xffffff, 1);
         this.sun.name = 'FallLowSun';
@@ -184,6 +191,8 @@ export class FallLight {
         this.shadowNode = shadow(this.sun);
         this.shadowFrames = 0;
         this.shadowDraws = 0;
+        // The light and the floor's motion that the game's events own (fall-event-light.js).
+        this.events = new FallEventLight(this);
     }
 
     /** Aim the shadow camera so its box holds everything the play camera can see. */
@@ -212,9 +221,47 @@ export class FallLight {
         group.add(this.sun, this.sun.target);
     }
 
-    /** 1 where the sun reaches the fragment, 0 in shadow. */
+    /**
+     * The grove's air (fall-airs.js) and night (fall-moods.js) as the materials read them, and the
+     * one shaft a gap in the cloud sends wandering over the floor (fall-happenings.js).
+     */
+    initAir() {
+        this.air = createFallAir();
+        this.airPhase = 0;
+        // Ground fog between the trunks, the wet of a shower on floor and bark, rain falling.
+        this.uMist = uniform(0);
+        this.uWet = uniform(0);
+        this.uRain = uniform(0);
+        // How far the cloud deck has closed, and the scud racing under it.
+        this.uCover = uniform(0);
+        this.uScud = uniform(0);
+        // The sun motes against rest.
+        this.uDust = uniform(1);
+        // Night (the moon for the sun, the stars out) and the small lights at rest (fireflies, caps).
+        this.uNight = uniform(0);
+        this.uGlim = uniform(0);
+        // The wandering shaft: where its axis meets the floor (x, z), its radius, its strength.
+        this.uSpot = uniform(new THREE.Vector4(0, 0, 5, 0));
+        // What the air asks of the sun, the shafts and the lens against rest, and of the leaves.
+        this.airSun = 1;
+        this.airShafts = 1;
+        this.airExposure = 1;
+        this.airShed = 0;
+        this.airWind = WIND_REST;
+        this.airGusts = 0;
+        // A cloud over the sun (a happening): the sun against rest while it passes.
+        this.cloudSun = 1;
+    }
+
+    /**
+     * 1 where the sun reaches the fragment, 0 in shadow; more inside the wandering shaft (a beam
+     * along the sun's own direction, so its pool on the floor is the long streak a low sun lays).
+     */
     sunlight() {
-        return float(this.shadowNode);
+        const from = positionWorld.sub(vec3(this.uSpot.x, 0, this.uSpot.y));
+        const off = from.sub(this.uSunDir.mul(dot(from, this.uSunDir)));
+        const beam = exp(dot(off, off).div(this.uSpot.z.mul(this.uSpot.z)).negate()).mul(this.uSpot.w);
+        return float(this.shadowNode).mul(beam.add(1));
     }
 
     noise(coordinate) {
@@ -241,8 +288,13 @@ export class FallLight {
         const offset = world.sub(cameraPosition);
         const range = length(offset);
         const direction = offset.div(max(range, 0.001));
-        const low = exp(max(world.y.sub(this.uGroundLevel), 0).mul(-0.07));
-        const amount = exp(range.mul(this.uHaze).mul(low.mul(0.85).add(0.5)).negate()).oneMinus();
+        const height = max(world.y.sub(this.uGroundLevel), 0);
+        const low = exp(height.mul(-0.07));
+        // Ground mist (an air): a layer a few metres deep the eye stands in, thinning upward. The
+        // mean of its density at the fragment and at the eye stands for the path between them.
+        const fog = exp(height.mul(-0.3)).mul(0.76).add(0.2).mul(this.uMist)
+            .mul(this.mistDensity);
+        const amount = exp(range.mul(this.uHaze).mul(low.mul(0.85).add(0.5).add(fog)).negate()).oneMinus();
         const sunward = saturate(dot(direction, this.uSunDir));
         const air = this.uHazeCool.add(this.uHazeWarm.mul(pow(sunward, 3).mul(this.uHazeSun)
             .add(this.uWarmth.mul(0.12))));
@@ -312,6 +364,46 @@ export class FallLight {
         }
         this.restHaze = mood.haze;
         this.exposureScale = mood.exposure;
+        this.uNight.value = mood.night;
+        this.moodGlim = mood.glim;
+    }
+
+    /**
+     * Turn the grove to `phase` airs in (see fall-airs.js): the mist, the wet, the rain, the cloud
+     * and the dust take the air's numbers, and update() takes its wind, its sun and its haze from
+     * here. Uniform values only. Call it before update().
+     * @param {number} phase
+     */
+    setAir(phase) {
+        this.airPhase = Number.isFinite(phase) ? phase : 0;
+        const air = fallAirAt(this.airPhase, this.air);
+        this.uMist.value = air.mist;
+        this.uWet.value = air.wet;
+        this.uRain.value = air.rain;
+        this.uCover.value = air.cover;
+        this.uScud.value = air.scud;
+        this.uDust.value = air.dust;
+        this.airSun = air.sun;
+        this.airShafts = air.shafts;
+        this.airExposure = air.exposure;
+        this.airShed = air.shed;
+        this.airWind = air.wind;
+        this.airGusts = air.gusts;
+    }
+
+    /**
+     * The wandering shaft of a gap in the cloud: where its axis meets the floor, how wide it is and
+     * how strong (0 puts it out), and how far the cloud dims the sun everywhere else meanwhile.
+     */
+    setSpot(x = 0, z = 0, radius = 5, strength = 0, cloud = 0) {
+        const finite = [x, z, radius, strength, cloud].every(Number.isFinite);
+        this.uSpot.value.set(
+            finite ? x : 0,
+            finite ? z : 0,
+            finite ? Math.max(0.5, radius) : 5,
+            finite ? Math.max(0, strength) : 0,
+        );
+        this.cloudSun = finite ? 1 - Math.max(0, Math.min(0.6, cloud)) : 1;
     }
 
     /**
@@ -329,11 +421,17 @@ export class FallLight {
         this.uWarmth.value = clamp01(clamp01(frame.warmth) + ripen);
         // Lanterns and wisps are called out of hiding in a fever.
         this.uGlow.value = clamp01(clamp01(frame.glow) + 0.3 * fever);
+        // The small lights at rest (dusk, night) and whatever play calls out on top.
+        this.uGlim.value = clamp01((this.moodGlim || 0) + this.uGlow.value * 0.8);
         this.uTurn.value = turn;
         const { springs } = this;
         if (step > 0) {
-            springTo(springs.gust, clamp01(frame.gust) * 1.6 * motion, SPRING.gust, step);
-            springTo(springs.wind, WIND_REST + WIND_PLAY * clamp01(frame.breeze), SPRING.wind, step);
+            // A windy air comes in waves of its own (a function of the clock) under play's gusts.
+            const t = this.uTime.value;
+            const waves = this.airGusts * Math.max(0, 0.34 + 0.3 * Math.sin(t * 0.43) + 0.2 * Math.sin(t * 0.97 + 1.3))
+                * (0.5 + 0.5 * motion);
+            springTo(springs.gust, clamp01(frame.gust) * 1.6 * motion + waves, SPRING.gust, step);
+            springTo(springs.wind, this.airWind + WIND_PLAY * clamp01(frame.breeze), SPRING.wind, step);
             springTo(springs.stir, this.uGlow.value * motion, SPRING.stir, step);
         }
         this.uGust.value = Math.max(0, springs.gust.x);
@@ -359,7 +457,9 @@ export class FallLight {
         // The low sun deepens to late amber as play heats, and a perfect clear's sunburst
         // brightens it a moment (frame-wide: Reduce flashing keeps a trace of it).
         const late = turn * SUN_TURN;
-        const burst = 1 + SUN_CROWN * Math.max(0, Math.min(1.2, Number(frame.crown) || 0)) * flashScale();
+        // (The air and a passing cloud set the sun's strength against rest: 1 in still gold.)
+        const burst = (1 + SUN_CROWN * Math.max(0, Math.min(1.2, Number(frame.crown) || 0)) * flashScale())
+            * this.airSun * this.cloudSun;
         const { restSun, lateSun } = this;
         this.uSunColor.value.setRGB(
             (restSun[0] + (lateSun[0] - restSun[0]) * late) * burst,

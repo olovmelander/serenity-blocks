@@ -23,6 +23,9 @@ export const FALL_TREE_URLS = Object.freeze({
     'maple-grove-c': new URL('./assets/maple-grove-c.glb', import.meta.url).href,
     'birch-grove-a': new URL('./assets/birch-grove-a.glb', import.meta.url).href,
     'birch-grove-b': new URL('./assets/birch-grove-b.glb', import.meta.url).href,
+    // The squirrel's near perches: a windfall and an old stump (scripts/blender/fall_perches.py).
+    'old-windfall': new URL('./assets/old-windfall.glb', import.meta.url).href,
+    'old-stump': new URL('./assets/old-stump.glb', import.meta.url).href,
 });
 export const FALL_FOLIAGE_URL = new URL('./assets/fall-foliage.glb', import.meta.url).href;
 /** The red squirrel: modelled, rigged and animated in Blender (fall-squirrel.js draws it). */

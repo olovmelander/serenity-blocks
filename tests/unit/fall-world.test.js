@@ -14,6 +14,9 @@ import { FallForest } from '../../src/themes/fall/fall-forest.js';
 import { LEAF_AIR, LEAF_IDLE, LEAF_REST } from '../../src/themes/fall/fall-leaf-sim.js';
 import { FALL_SUN_DIRECTION } from '../../src/themes/fall/fall-light.js';
 import { FALL_MOODS, FALL_MOOD_HOLD, FALL_MOOD_SECONDS } from '../../src/themes/fall/fall-moods.js';
+import {
+    FALL_AIRS, FALL_AIR_HOLD, FALL_AIR_SECONDS, fallWorldTier,
+} from '../../src/themes/fall/fall-airs.js';
 import { FallPost } from '../../src/themes/fall/fall-post.js';
 import { FALL_TIERS, fallTier } from '../../src/themes/fall/fall-quality.js';
 import { FALL_REACTION_LIMITS, FallReactions } from '../../src/themes/fall/fall-reactions.js';
@@ -22,6 +25,7 @@ import {
     FALL_GROUND_BOUNDS, fallPathDistance, fallPathX, fallTerrainHeight,
 } from '../../src/themes/fall/fall-terrain.js';
 import { FallWorld } from '../../src/themes/fall/fall-world.js';
+import { JAY } from '../../src/themes/fall/fall-visitors.js';
 
 const assetDirectory = new URL('../../src/themes/fall/assets/', import.meta.url);
 const TREE_NAMES = Object.keys(FALL_TREE_URLS);
@@ -30,7 +34,9 @@ const LANDSCAPE = 16 / 9;
 const PORTRAIT = 9 / 19.5;
 const STEP = 1 / 60;
 /** What a world's diagnostics say of its light before the clock has turned it: the first level, the quiet afternoon. */
-const OPENING_LIGHT = Object.freeze({ level: 1, mood: FALL_MOODS[0].name, moodPhase: 0 });
+const OPENING_LIGHT = Object.freeze({
+    level: 1, mood: FALL_MOODS[0].name, moodPhase: 0, air: FALL_AIRS[0].name, airPhase: 0, happening: null,
+});
 const owned = [];
 const bundles = [];
 const files = new Map();
@@ -452,8 +458,23 @@ describe('Fall world scene contracts', () => {
         expect(named(world.group, 'FallLeafCarpet')).toHaveLength(1);
         expect(named(world.group, 'FallSky')).toHaveLength(1);
         expect(named(world.group, /^FallMistBank /)).toHaveLength(tier.mist);
-        expect(named(world.group, 'FallSunMotes')[0].count).toBe(tier.motes);
-        expect(named(world.group, 'FallWisps')[0].count).toBe(tier.wisps);
+        // The living pass's own things scale by its own table (fall-airs.js): more dust than the first
+        // pass drew, fireflies where its wisps were, and what an air or a happening brings.
+        const own = fallWorldTier(quality);
+        const dust = Math.max(tier.motes, Math.round(tier.motes * own.dust));
+        expect(named(world.group, 'FallSunMotes')[0].count).toBe(dust);
+        expect(named(world.group, 'FallWisps')).toHaveLength(0);
+        expect(named(world.group, 'FallFireflies')[0].count).toBe(own.fireflies);
+        expect(named(world.group, 'FallRain')[0].count).toBe(own.rain);
+        expect(named(world.group, /^FallGroundMist /).length).toBe(Math.min(3, tier.mist));
+        expect(named(world.group, 'FallGeese')[0].instanceMatrix.count).toBe(own.geese);
+        expect(named(world.group, 'FallJays')[0].instanceMatrix.count).toBe(own.jays);
+        expect(named(world.group, 'FallAcorns')[0].instanceMatrix.count).toBe(own.acorns);
+        // Nothing an air or a happening brings is drawn in still gold with nothing happening.
+        for (const name of ['FallRain', 'FallGeese', 'FallJays', 'FallAcorns', 'FallFireflies', 'FallCapGlow']) {
+            expect(named(world.group, name)[0].visible, name).toBe(false);
+        }
+        for (const sheet of named(world.group, /^FallGroundMist /)) expect(sheet.visible, sheet.name).toBe(false);
 
         // Leaves in the air: one draw, fed by the simulation's own buffers.
         const { sim, mesh: leafMesh } = world.leaves;
@@ -475,6 +496,10 @@ describe('Fall world scene contracts', () => {
             farTrees: world.backdrop.count,
             leaves: sim.counts(),
             ...OPENING_LIGHT,
+            // What the events' show has in the air and in the light (fall-event-fx.js, fall-event-light.js).
+            show: expect.objectContaining({
+                keys: 0, acorns: 0, lights: 0, birds: 0,
+            }),
         });
         expect(sum(Object.values(world.getDiagnostics().leaves))).toBe(tier.leaves);
 
@@ -685,7 +710,8 @@ describe('Fall world in play', () => {
         }
         // The session really happened: every kind of emitter and force field was played.
         expect([...seen.kinds].sort()).toEqual(['clear', 'combo', 'crown', 'lock', 'shower', 'spin', 'twin']);
-        expect([...seen.fields].sort()).toEqual(['burst', 'jet', 'vortex']);
+        // (A hard drop's thump and a perfect clear's wave run a ring through the floor: `wave`.)
+        expect([...seen.fields].sort()).toEqual(['burst', 'jet', 'vortex', 'wave']);
         expect(seen.front).toBe(true);
         expect(seen.finite).toBe(true);
         expect(seen.minIdle).toBeLessThan(opening.idle);
@@ -1322,6 +1348,10 @@ describe('Fall lights in the world', () => {
     it('turns through every light by the clock alone, with no level-up', async () => {
         const { world } = await buildWorld('Minimal');
         const { light } = world;
+        // (The light alone: the air held still and nothing happening. An air sets the sun's strength
+        // and a passing cloud dims it; those have their own tests.)
+        world.holdAir(0);
+        world.setHappenings(false);
         expect(world.level).toBe(1);
         for (let k = 0; k <= N; k++) {
             const mood = FALL_MOODS[k % N];
@@ -1343,6 +1373,8 @@ describe('Fall lights in the world', () => {
     it('turns whichever light it is toward late amber as play heats, and gives it back after', async () => {
         const { world } = await buildWorld('Minimal');
         const { light } = world;
+        world.holdAir(0);
+        world.setHappenings(false);
         const sunHue = (sun) => sun.b / sun.r;
         FALL_MOODS.forEach((mood, k) => {
             world.update(k * PERIOD, STEP, { emitters: [] });
@@ -1357,6 +1389,8 @@ describe('Fall lights in the world', () => {
 
     it('takes a level-up as one light on top of the clock, eased, the short way round', async () => {
         const { world } = await buildWorld('Minimal');
+        world.holdAir(0);
+        world.setHappenings(false);
         world.update(1, STEP, { emitters: [] });
         world.setLevel(2);
         world.update(1, STEP, { emitters: [] });
@@ -1388,3 +1422,259 @@ describe('Fall lights in the world', () => {
         expect(after.moodPhase(0)).toBe(world.moodPhase(time));
     });
 });
+
+describe('Fall airs, night and happenings in the world', () => {
+    const AIRS = FALL_AIRS.length;
+    /** The middle of air `k`'s rest on the clock (seconds). */
+    const airRest = (k) => (k + FALL_AIR_HOLD * 0.5) * FALL_AIR_SECONDS;
+    const NIGHT = FALL_MOODS.findIndex((mood) => mood.night > 0);
+
+    it('turns through the airs by its own clock, a level one air on, and holds one when asked', async () => {
+        const { world } = await buildWorld('Minimal');
+        const { light } = world;
+        world.setHappenings(false);
+        for (let k = 0; k < AIRS; k++) {
+            world.update(airRest(k), STEP, { emitters: [] });
+            expect(light.airPhase, FALL_AIRS[k].name).toBeCloseTo(k, 9);
+            expect(world.getDiagnostics().air).toBe(FALL_AIRS[k].name);
+            expect(light.uMist.value).toBe(FALL_AIRS[k].mist);
+            expect(light.uRain.value).toBe(FALL_AIRS[k].rain);
+            // What an air brings is drawn only while it is out.
+            expect(world.atmosphere.rain.visible).toBe(FALL_AIRS[k].rain > 0.01);
+            // The crowns let go as the air says (the leaves' environment).
+            expect(world.leaves.sim.pour).toBeCloseTo(FALL_AIRS[k].shed, 9);
+        }
+        // A level is one air on, eased in like the light; a new run goes back.
+        world.setLevel(2, { silent: true });
+        expect(world.airPhase(airRest(0))).toBeCloseTo(1, 9);
+        world.setLevel(1, { silent: true });
+        expect(world.airPhase(airRest(0))).toBeCloseTo(0, 9);
+        // Held: the clock no longer turns it, and it lets go again.
+        world.holdAir(3);
+        world.update(airRest(1), STEP, { emitters: [] });
+        expect(light.airPhase).toBe(3);
+        expect(world.atmosphere.rain.visible).toBe(true);
+        world.holdAir(null);
+        world.update(airRest(1), STEP, { emitters: [] });
+        expect(light.airPhase).toBeCloseTo(1, 9);
+        // Junk is no air.
+        expect(world.holdAir(Number.NaN)).toBe(null);
+    });
+
+    it('goes dark under the harvest moon, where the sun stood, and calls the small lights out', async () => {
+        const { world } = await buildWorld('Minimal');
+        const { light } = world;
+        world.holdAir(0);
+        world.setHappenings(false);
+        expect(NIGHT).toBeGreaterThan(0);
+        world.update(1, STEP, { emitters: [] });
+        expect(light.uNight.value).toBe(0);
+        expect(world.atmosphere.fireflies.visible).toBe(false);
+        expect(world.understory.capGlow.visible).toBe(false);
+        const day = light.uSunColor.value.r;
+        world.setLevel(NIGHT + 1, { silent: true });
+        world.update(1, STEP, { emitters: [] });
+        expect(world.getDiagnostics().mood).toBe('harvest moon');
+        expect(light.uNight.value).toBe(1);
+        expect(light.uGlim.value).toBeGreaterThan(0.99);
+        expect(world.atmosphere.fireflies.visible).toBe(true);
+        expect(world.understory.capGlow.visible).toBe(true);
+        // The moon is a far dimmer light than the sun, from the same place: the one shadow map holds.
+        expect(light.uSunColor.value.r).toBeLessThan(day * 0.3);
+        expect(light.uSunDir.value.toArray()).toEqual(FALL_SUN_DIRECTION.toArray());
+        // In play the small lights come out by day too, and go again.
+        world.setLevel(1, { silent: true });
+        world.update(1, STEP, { emitters: [], glow: 1 });
+        expect(world.atmosphere.fireflies.visible).toBe(true);
+        world.update(1 + STEP, STEP, { emitters: [] });
+        expect(world.atmosphere.fireflies.visible).toBe(false);
+    });
+
+    it('brings nothing while the happenings are off, and each kind when it is played', async () => {
+        const { world } = await buildWorld('Minimal');
+        const { visitors, light } = world;
+        world.holdAir(0);
+        world.setHappenings(false);
+        for (let t = 0; t < 400; t += 7) {
+            world.update(t, STEP, { emitters: [] });
+            expect(world.getDiagnostics().happening, `${t}`).toBe(null);
+            const flying = visitors.geese.mesh.visible || visitors.jays.mesh.visible;
+            expect(flying || visitors.acorns.mesh.visible).toBe(false);
+        }
+        // The acorns fall while it lasts and are gone after.
+        world.playHappening('acorns', 0, 0.3);
+        world.update(2, STEP, { emitters: [] });
+        expect(visitors.acorns.mesh.visible).toBe(true);
+        world.update(30, STEP, { emitters: [] });
+        expect(visitors.acorns.mesh.visible).toBe(false);
+        // The gap in the cloud: a shaft on the floor and the sun dimmed round it, then whole again.
+        world.playHappening('shaft', 0, 0.4);
+        world.update(12, STEP, { emitters: [] });
+        expect(light.uSpot.value.w).toBeGreaterThan(0.3);
+        expect(light.cloudSun).toBeLessThan(0.8);
+        world.update(40, STEP, { emitters: [] });
+        expect(light.uSpot.value.w).toBe(0);
+        expect(light.cloudSun).toBe(1);
+        // Junk is no happening.
+        expect(world.playHappening('dragons')).toBe(null);
+    });
+
+    it.each([
+        ['landscape', LANDSCAPE], ['portrait', PORTRAIT],
+    ])('flies the skein in from beyond one edge of the picture and out beyond the other (%s)', async (_, aspect) => {
+        const { world, camera } = await buildWorld('Minimal', { aspect });
+        const { geese } = world.visitors;
+        const v = new THREE.Vector3();
+        world.holdAir(0);
+        for (const roll of [0.1, 0.4, 0.6, 0.9]) {
+            world.playHappening('geese', 0, roll);
+            const seen = (time) => {
+                world.update(time, STEP, { emitters: [] });
+                camera.updateMatrixWorld();
+                expect(geese.mesh.visible).toBe(true);
+                let inside = 0;
+                for (let i = 0; i < geese.mesh.count; i++) {
+                    v.set(geese.place.getX(i), geese.place.getY(i), geese.place.getZ(i)).project(camera);
+                    if (Math.abs(v.x) < 1 && Math.abs(v.y) < 1) inside += 1;
+                }
+                return inside;
+            };
+            const { length } = world.happeningAt(0);
+            expect(seen(0.05), `roll ${roll} begins`).toBe(0);
+            expect(seen(length - 0.05), `roll ${roll} ends`).toBe(0);
+            expect(seen(length * 0.5), `roll ${roll} crosses`).toBe(geese.mesh.count);
+        }
+    });
+
+    /** The game's own card (the board and its preview) at 1920 x 1080, in screen fractions. */
+    const GAME_CARD = Object.freeze({
+        x0: 0.399, x1: 0.601, y0: 0.108, y1: 0.892,
+    });
+    /** A world point on the screen: fractions across and down, and whether it is in the picture. */
+    const onScreen = (camera, x, y, z, v = new THREE.Vector3()) => {
+        v.set(x, y, z).project(camera);
+        return {
+            sx: v.x * 0.5 + 0.5, sy: 0.5 - v.y * 0.5, in: Math.abs(v.x) < 1 && Math.abs(v.y) < 1 && v.z < 1,
+        };
+    };
+    const inCard = (at) => at.in && at.sx > GAME_CARD.x0 && at.sx < GAME_CARD.x1 && at.sy > GAME_CARD.y0
+        && at.sy < GAME_CARD.y1;
+
+    it('crosses the open sky above the board with the whole V for several seconds, large enough', async () => {
+        const { world, camera } = await buildWorld('High');
+        world.setBoard(GAME_CARD);
+        const { geese } = world.visitors;
+        world.holdAir(0);
+        for (const roll of [0.2, 0.8]) {
+            world.playHappening('geese', 0, roll);
+            const { length } = world.happeningAt(0);
+            let above = 0;
+            for (let t = 0.05; t < length; t += 0.1) {
+                world.update(t, STEP, { emitters: [] });
+                camera.updateMatrixWorld();
+                // The V fits the window; never behind the card or its preview.
+                let all = geese.mesh.count > 1;
+                for (let i = 0; i < geese.mesh.count; i++) {
+                    const at = onScreen(camera, geese.place.getX(i), geese.place.getY(i), geese.place.getZ(i));
+                    expect(inCard(at), `roll ${roll} at ${t.toFixed(1)}`).toBe(false);
+                    if (!(at.in && at.sx > GAME_CARD.x0 && at.sx < GAME_CARD.x1 && at.sy < GAME_CARD.y0)) all = false;
+                }
+                if (all) above += 0.1;
+            }
+            // Whole above the board (between the two crowns) for several seconds of its crossing.
+            expect(above, `roll ${roll}`).toBeGreaterThan(4);
+            expect(above, `roll ${roll}`).toBeLessThan(length * 0.4);
+        }
+        // Large enough to read: a wingspan of about a twentieth of the picture's height.
+        world.update(length0(world) * 0.5, STEP, { emitters: [] });
+        camera.updateMatrixWorld();
+        const a = onScreen(camera, geese.place.getX(0), geese.place.getY(0), geese.place.getZ(0));
+        const [gx, gy, gz, gw] = [geese.place.getX(0), geese.place.getY(0), geese.place.getZ(0), geese.place.getW(0)];
+        const span = onScreen(camera, gx + gw, gy, gz);
+        expect(Math.abs(span.sx - a.sx) * 2 * (16 / 9)).toBeGreaterThan(0.035);
+    });
+
+    it('brings the jays in from beyond one side and back out, near and never over the card', async () => {
+        const { world, camera } = await buildWorld('High');
+        world.setBoard(GAME_CARD);
+        const { jays } = world.visitors;
+        world.holdAir(0);
+        for (const roll of [0.2, 0.7]) {
+            world.playHappening('jays', 0, roll);
+            const { length } = world.happeningAt(0);
+            const side = roll < 0.5 ? 1 : -1;
+            let seen = 0;
+            let biggest = 0;
+            for (let t = 0.02; t < length; t += 0.05) {
+                world.update(t, STEP, { emitters: [] });
+                camera.updateMatrixWorld();
+                for (let i = 0; i < (jays.mesh.visible ? jays.mesh.count : 0); i++) {
+                    const x = jays.place.getX(i);
+                    const at = onScreen(camera, x, jays.place.getY(i), jays.place.getZ(i));
+                    expect(inCard(at), `roll ${roll} at ${t.toFixed(2)}`).toBe(false);
+                    // Always its own side of the board.
+                    expect(Math.sign(at.sx - 0.5), `roll ${roll}`).toBe(side);
+                    if (at.in && i === 0) {
+                        seen += 0.05;
+                        const tip = onScreen(camera, x + jays.place.getW(i), jays.place.getY(i), jays.place.getZ(i));
+                        biggest = Math.max(biggest, Math.abs(tip.sx - at.sx) * 2);
+                    }
+                }
+            }
+            // Seen for a few seconds, and near enough to show its wings (a tenth of the picture's width).
+            expect(seen, `roll ${roll}`).toBeGreaterThan(2);
+            expect(biggest, `roll ${roll}`).toBeGreaterThan(0.06);
+            // Out of the picture at both ends of each flight (each jay is drawn in turn: the ones
+            // still flying before it come first).
+            for (let jay = 0; jay < jays.count; jay++) {
+                for (const u of [0.003, 0.997]) {
+                    const t = jay * JAY.follow + u * JAY.seconds;
+                    world.update(t, STEP, { emitters: [] });
+                    camera.updateMatrixWorld();
+                    let index = 0;
+                    for (let before = 0; before < jay; before++) {
+                        const theirs = (t - before * JAY.follow) / JAY.seconds;
+                        if (theirs > 0 && theirs < 1) index += 1;
+                    }
+                    const at = onScreen(camera, jays.place.getX(index), jays.place.getY(index), jays.place.getZ(index));
+                    expect(at.in, `roll ${roll} jay ${jay} at ${u}`).toBe(false);
+                }
+            }
+        }
+    });
+
+    it('drops the acorns from above the picture into the litter close to the eye, beside the card', async () => {
+        const { world, camera } = await buildWorld('High');
+        world.setBoard(GAME_CARD);
+        const { acorns } = world.visitors;
+        world.holdAir(0);
+        for (const roll of [0.2, 0.7]) {
+            world.playHappening('acorns', 0, roll);
+            world.update(0.02, STEP, { emitters: [] });
+            camera.updateMatrixWorld();
+            expect(acorns.mesh.visible).toBe(true);
+            for (let i = 0; i < acorns.count; i++) {
+                const { drop } = acorns;
+                const [x, floor, z, from] = [drop.getX(i), drop.getY(i), drop.getZ(i), drop.getW(i)];
+                // It lets go above the picture's top, and lands in the picture, beside the card.
+                const start = onScreen(camera, x, from, z);
+                expect(start.sy, `roll ${roll} acorn ${i}`).toBeLessThan(0);
+                const land = onScreen(camera, x, floor, z);
+                expect(land.in, `roll ${roll} acorn ${i}`).toBe(true);
+                expect(inCard(land), `roll ${roll} acorn ${i}`).toBe(false);
+                expect(Math.sign(x), `roll ${roll}`).toBe(roll < 0.5 ? -1 : 1);
+                // A few metres from the eye.
+                expect(Math.hypot(x - camera.position.x, z - camera.position.z)).toBeLessThan(12.5);
+            }
+            // The same layout however often it is asked for (one happening, one layout).
+            const first = Array.from(acorns.drop.array);
+            world.update(0.5, STEP, { emitters: [] });
+            expect(Array.from(acorns.drop.array)).toEqual(first);
+        }
+    });
+});
+
+/** How long a world's held happening lasts. */
+function length0(world) {
+    return world.happeningAt(0).length;
+}

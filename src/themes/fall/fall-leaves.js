@@ -6,10 +6,15 @@
  * light rig, so a falling leaf flares gold as it crosses a sun shaft. Leaves spawned by
  * gameplay can also glow like embers while a long combo holds, and in hot play every leaf in
  * the air turns from gold toward crimson.
+ *
+ * A leaf's light is held under a ceiling that keeps its hue (the brightest channel is brought
+ * down to the ceiling and the others with it): a hundred thrown leaves crossing the sun's glare
+ * at once stay gold and orange instead of blooming into one cream mass. An ember is heat at the
+ * leaf's edge, in a deep saturated orange, over a blade that has darkened: never a white wash.
  */
 import * as THREE from 'three/webgpu';
 import {
-    attribute, cameraPosition, color, cross, dot, faceDirection, float, instancedBufferAttribute, mix, normalGeometry,
+    attribute, cameraPosition, color, cross, dot, faceDirection, float, instancedBufferAttribute, max, mix, normalGeometry,
     normalize, positionGeometry, positionLocal, positionWorld, pow, saturate, sin, smoothstep, uniform, uv, varying,
     vec3, vec4,
 } from 'three/tsl';
@@ -26,7 +31,12 @@ const TURN_SHIFT = 0.32;
 const TURN_GLOW = Object.freeze([1.0, 0.58, 0.34]);
 /** How much less light a fully turned leaf lets through, and the colour its embers burn. */
 const TURN_DIM = 0.45;
-const TURN_EMBER = Object.freeze([2.9, 0.62, 0.08]);
+const TURN_EMBER = Object.freeze([2.3, 0.36, 0.03]);
+/** The colour an ember burns before the leaves have turned, and how far the blade under it darkens. */
+const EMBER = Object.freeze([2.4, 0.62, 0.07]);
+const EMBER_CHAR = 0.5;
+/** The most light a leaf gives back (its brightest channel): a thrown leaf, and one the grove let fall. */
+const LEAF_CEILING = Object.freeze({ thrown: 2.3, fallen: 3.4 });
 
 function ramp(stops, t) {
     const scaled = t.mul(stops.length - 1);
@@ -113,15 +123,21 @@ export class FallLeaves {
         // A turned leaf lets less light through: it glows deep instead of washing out to cream.
         const back = glowing.mul(saturate(facing.negate()).mul(0.6).add(through.mul(1.3)))
             .mul(float(1).sub(light.uTurn.mul(TURN_DIM)));
-        // Embers: leaves thrown by a long combo burn at their edges, redder as the leaves turn.
+        // Embers: leaves thrown by a long combo burn at their edges, redder as the leaves turn. The
+        // heat is the rim's alone (the outer part of the blade, by its tip weight), the blade under
+        // it darkens, and the colour is a deep orange with almost no blue: it reads as fire, not light.
         const flicker = sin(light.uTime.mul(9).add(look.w.mul(40))).mul(0.25).add(0.75);
-        const ember = mix(vec3(3.2, 1.05, 0.2), vec3(...TURN_EMBER), light.uTurn).mul(this.uHeat).mul(look.z)
-            .mul(flicker)
-            .mul(paint.r.mul(0.7).add(0.3));
-        const lit = front.add(back).mul(light.uSunColor).mul(sun)
+        const burning = this.uHeat.mul(look.z);
+        const rim = smoothstep(0.4, 0.95, paint.r);
+        const ember = mix(vec3(...EMBER), vec3(...TURN_EMBER), light.uTurn).mul(burning).mul(flicker).mul(rim);
+        const sunlit = front.add(back).mul(light.uSunColor).mul(sun)
             .add(albedo.mul(light.ambient(blade)).mul(1.5))
             .add(glowing.mul(light.uSunColor).mul(0.03))
-            .add(ember);
+            .mul(float(1).sub(burning.mul(EMBER_CHAR)));
+        // The ceiling that keeps the hue: the brightest channel comes down to it, the others with it.
+        const ceiling = mix(float(LEAF_CEILING.fallen), float(LEAF_CEILING.thrown), look.z);
+        const peak = max(max(sunlit.r, sunlit.g), max(sunlit.b, 0.0001));
+        const lit = sunlit.mul(ceiling.div(max(peak, ceiling))).add(ember);
         material.colorNode = vec4(light.haze(lit, { world }), 1);
         const mesh = new THREE.InstancedMesh(geometry, material, count);
         mesh.name = 'FallLeavesInTheAir';

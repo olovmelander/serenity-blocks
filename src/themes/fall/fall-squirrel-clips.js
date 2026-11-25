@@ -27,6 +27,7 @@ export const SQUIRREL_CLIPS = Object.freeze({
     pat: Object.freeze({ length: 0.7, loop: true, speed: 0 }),
     scratch: Object.freeze({ length: 0.6, loop: true, speed: 0 }),
     groom: Object.freeze({ length: 0.8, loop: true, speed: 0 }),
+    loaf: Object.freeze({ length: 4, loop: true, speed: 0 }),
     leap: Object.freeze({
         length: 16 / 30,
         loop: false,
@@ -37,7 +38,8 @@ export const SQUIRREL_CLIPS = Object.freeze({
 
 /**
  * How much larger than life the squirrel is drawn. Life size it is a few pixels on the maple fifteen
- * metres off; at this it reads (its tail and its jumps above all) and still sits small on a trunk two
- * metres across, among leaves the size of its head.
+ * metres off; at this it reads there (its tail and its jumps above all), is a hundred pixels and more on
+ * its perches close to the eye, and still sits small on a trunk two metres across, among leaves the
+ * size of its head.
  */
-export const SQUIRREL_SCALE = 3.3;
+export const SQUIRREL_SCALE = 4;

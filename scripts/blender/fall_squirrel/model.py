@@ -59,8 +59,9 @@ PLUME = [0.015, 0.026, 0.033, 0.0385, 0.041, 0.041, 0.038, 0.031]
 CORE = [0.0085, 0.0115, 0.0135, 0.014, 0.0135, 0.0125, 0.011, 0.008]
 PLUME_DEPTH = [0.9, 0.74, 0.66, 0.62, 0.6, 0.6, 0.62, 0.7]
 BRUSH = 0.024
-# The share of the plume's width that is its body (the rest is the hair drawn over it).
-PLUME_BODY = 0.74
+# The share of the plume's width that is its body (the rest is the hair drawn over it: a squirrel's
+# tail is a slim core in a great brush of hair).
+PLUME_BODY = 0.6
 
 
 def _tail_joint(i):
@@ -175,92 +176,102 @@ def _tufts(x, y, z):
 
 
 # -- the squirrel -------------------------------------------------------------------------
-EYE = P(0.0168, 0.1055, 0.0935)
-EYE_RADII = (0.0066, 0.0079, 0.0079)
-EYE_LOOK = _unit((0.78, 0.06, 0.62))
-NOSE = P(0.0, 0.0955, 0.1225)
+EYE = P(0.0176, 0.1068, 0.0925)
+EYE_RADII = (0.0047, 0.0063, 0.0066)
+EYE_LOOK = _unit((0.80, 0.08, 0.59))
+NOSE = P(0.0, 0.0962, 0.1232)
 
 
 def design():
-    """The squirrel as a distance field round its joints, and its landmarks."""
+    """The squirrel as a distance field round its joints, and its landmarks.
+
+    This is the body under its coat: the dense underfur. The hair itself, the soft edge that makes a
+    squirrel look like one, is drawn over it at runtime in shells (src/themes/fall/fall-squirrel-fur.js),
+    as long as `_fur.x` says at each vertex; so the field is kept a little inside the animal's outline
+    and smooth (no lumps standing in for tufts)."""
     J = joints()
     T = tips()
-    # Trunk: haunches (big: a squirrel is all spring), a round belly, a deep chest, a short neck.
+    # Trunk: a red squirrel on all fours is a compact arch: the back humped over the loins and the big
+    # haunches, the rump round, a low round belly close to the ground, a deep chest between the
+    # forelegs with a bib of fur, and so short and thick a neck that the head sits on the shoulders.
     body = Union([
-        Ellipsoid(P(0.0, 0.063, -0.052), (0.031, 0.034, 0.037)),
-        Ellipsoid(P(0.0, 0.067, -0.014), (0.029, 0.030, 0.035)),
-        Ellipsoid(P(0.0, 0.071, 0.024), (0.025, 0.027, 0.029)),
-        RoundCone(P(0.0, 0.077, 0.040), P(0.0, 0.092, 0.066), 0.020, 0.0175),
+        Ellipsoid(P(0.0, 0.066, -0.051), (0.0325, 0.0365, 0.0375)),
+        Ellipsoid(P(0.0, 0.074, -0.020), (0.0300, 0.0345, 0.0370)),
+        Ellipsoid(P(0.0, 0.070, 0.018), (0.0270, 0.0300, 0.0320)),
+        Ellipsoid(P(0.0, 0.051, -0.016), (0.0255, 0.0235, 0.0400)),
+        RoundCone(P(0.0, 0.075, 0.036), P(0.0, 0.094, 0.066), 0.0245, 0.0215),
+        Ellipsoid(P(0.0, 0.061, 0.047), (0.0185, 0.0205, 0.0155)),
         # The haunch swells over each thigh.
-        Ellipsoid(P(0.020, 0.056, -0.048), (0.017, 0.026, 0.031), along=(0.25, -0.55, 0.8)),
-        Ellipsoid(P(-0.020, 0.056, -0.048), (0.017, 0.026, 0.031), along=(-0.25, -0.55, 0.8)),
+        Ellipsoid(P(0.021, 0.055, -0.046), (0.0185, 0.0285, 0.0330), along=(0.25, -0.55, 0.8)),
+        Ellipsoid(P(-0.021, 0.055, -0.046), (0.0185, 0.0285, 0.0330), along=(-0.25, -0.55, 0.8)),
         # A tuck of fur where the tail springs from the rump.
-        Ellipsoid(P(0.0, 0.072, -0.083), (0.015, 0.016, 0.015)),
-    ], k=0.016).tag(PARTS["body"])
-    body = Displace(body, 0.0011, _coat)
+        Ellipsoid(P(0.0, 0.073, -0.083), (0.0165, 0.0175, 0.0160)),
+    ], k=0.018).tag(PARTS["body"])
+    body = Displace(body, 0.0003, _coat)
 
-    # Head: big and round (a squirrel's head is a third of its charm), full cheeks, a short blunt
-    # muzzle and a button nose; the chin is the jaw's.
-    cranium = Ellipsoid(P(0.0, 0.1035, 0.081), (0.0235, 0.0225, 0.0265)).tag(PARTS["head"])
+    # Head: a rounded wedge. A domed skull, the brow running straight down the nose (no stop), a short
+    # deep muzzle, full whisker pads, a small nose; the chin is the jaw's.
+    cranium = Ellipsoid(P(0.0, 0.1040, 0.0795), (0.0225, 0.0215, 0.0250)).tag(PARTS["head"])
     cheeks = Union([
-        Ellipsoid(P(0.0135, 0.0905, 0.090), (0.0125, 0.0125, 0.0165)),
-        Ellipsoid(P(-0.0135, 0.0905, 0.090), (0.0125, 0.0125, 0.0165)),
+        Ellipsoid(P(0.0140, 0.0925, 0.0880), (0.0125, 0.0120, 0.0170)),
+        Ellipsoid(P(-0.0140, 0.0925, 0.0880), (0.0125, 0.0120, 0.0170)),
     ], k=0.006).tag(PARTS["head"])
-    muzzle = RoundCone(P(0.0, 0.0975, 0.094), P(0.0, 0.0945, 0.117), 0.0145, 0.0080).tag(PARTS["head"])
-    brow = Ellipsoid(P(0.0, 0.1115, 0.095), (0.014, 0.0085, 0.0145)).tag(PARTS["head"])
-    chin = Ellipsoid(P(0.0, 0.0855, 0.101), (0.009, 0.0065, 0.0135)).tag(PARTS["jaw"])
-    nose = Ellipsoid(NOSE, (0.0055, 0.0044, 0.0044)).tag(PARTS["nose"])
-    head = Union([cranium, (cheeks, 0.012), (muzzle, 0.011), (brow, 0.01), (chin, 0.006), (nose, 0.004)], k=0.01)
-    head = Displace(head, 0.0005, _coat)
+    muzzle = RoundCone(P(0.0, 0.0990, 0.0930), P(0.0, 0.0958, 0.1175), 0.0150, 0.0080).tag(PARTS["head"])
+    bridge = RoundCone(P(0.0, 0.1100, 0.0900), P(0.0, 0.1010, 0.1150), 0.0105, 0.0060).tag(PARTS["head"])
+    pads = Union([
+        Ellipsoid(P(0.0062, 0.0925, 0.1130), (0.0062, 0.0052, 0.0075)),
+        Ellipsoid(P(-0.0062, 0.0925, 0.1130), (0.0062, 0.0052, 0.0075)),
+    ], k=0.003).tag(PARTS["head"])
+    chin = Ellipsoid(P(0.0, 0.0868, 0.1010), (0.0088, 0.0062, 0.0135)).tag(PARTS["jaw"])
+    nose = Ellipsoid(NOSE, (0.0043, 0.0036, 0.0036)).tag(PARTS["nose"])
+    head = Union([cranium, (cheeks, 0.012), (muzzle, 0.011), (bridge, 0.009), (pads, 0.005), (chin, 0.006),
+                  (nose, 0.003)], k=0.01)
+    head = Displace(head, 0.0002, _coat)
 
-    # Eyes: large, round, set to the sides and a little forward; they stand slightly proud.
+    # Eyes: large dark almonds on the sides of the head, a little forward and high, standing slightly
+    # proud of the skull (a prey animal's, seeing nearly all round).
     eyes = Union([
         Ellipsoid(EYE, EYE_RADII, along=EYE_LOOK),
         Ellipsoid(_mirror_x(EYE), EYE_RADII, along=EYE_LOOK * np.array([-1.0, 1.0, 1.0])),
     ]).tag(PARTS["eye"])
 
-    # Ears: rounded leaves, cupped, each crowned with a long dark tuft (the autumn coat's).
+    # Ears: upright rounded leaves, cupped forward; the tuft that crowns each in the autumn coat is one
+    # short point here, and the long hair on it (shells, `_fur.x` at its fullest) makes the brush.
     ears = []
     for side, part in ((1.0, PARTS["earL"]), (-1.0, PARTS["earR"])):
-        base = P(side * 0.0135, 0.115, 0.072)
-        top = P(side * 0.0182, 0.1315, 0.0695)
-        leaf = RoundCone(base, top, 0.0078, 0.0056, squash=((0.0, 0.0, 1.0), 0.5))
-        root = top + P(0.0, -0.002, 0.0)
-        tuft = Union([
-            Tube([root, P(side * 0.0200, 0.1445, 0.0665), P(side * 0.0222, 0.1585, 0.0625)],
-                 [0.0050, 0.0040, 0.0013], squash_axis=(0.0, 0.0, 1.0), squash=0.75, k=0.003),
-            Tube([root, P(side * 0.0158, 0.1435, 0.0675), P(side * 0.0142, 0.1535, 0.0655)],
-                 [0.0040, 0.0030, 0.0011], squash_axis=(0.0, 0.0, 1.0), squash=0.75, k=0.003),
-            Tube([root, P(side * 0.0245, 0.1415, 0.0675), P(side * 0.0285, 0.1500, 0.0645)],
-                 [0.0038, 0.0028, 0.0011], squash_axis=(0.0, 0.0, 1.0), squash=0.75, k=0.003),
-        ], k=0.003)
-        ears.append(Union([leaf, (Displace(tuft, 0.0005, _tufts), 0.003)], k=0.003).tag(part))
+        base = P(side * 0.0140, 0.1150, 0.0715)
+        top = P(side * 0.0190, 0.1335, 0.0690)
+        leaf = RoundCone(base, top, 0.0086, 0.0058, squash=((0.0, 0.0, 1.0), 0.46))
+        tuft = Tube([top + P(0.0, -0.002, 0.0), P(side * 0.0208, 0.1440, 0.0670), P(side * 0.0226, 0.1545, 0.0640)],
+                    [0.0048, 0.0036, 0.0012], squash_axis=(0.0, 0.0, 1.0), squash=0.7, k=0.003)
+        ears.append(Union([leaf, (tuft, 0.003)], k=0.003).tag(part))
 
-    # Forelegs: straight under the chest, small paws turned a little in.
+    # Forelegs: a furry upper arm that is half the chest's, a slim forearm, a long-fingered hand.
     front = []
     for side, sfx, part in ((1.0, "L", PARTS["frontL"]), (-1.0, "R", PARTS["frontR"])):
         shoulder, elbow, wrist, toes = J["arm" + sfx], J["fore" + sfx], J["hand" + sfx], T["hand" + sfx]
-        upper = Ellipsoid(0.5 * (J["shoulder" + sfx] + shoulder) + P(side * 0.002, -0.005, 0.0),
-                          (0.011, 0.017, 0.014), along=(0.2 * side, -1.0, 0.1))
-        leg = Tube([shoulder, elbow, wrist], [0.0095, 0.0068, 0.0052], k=0.005)
-        paw = Ellipsoid(0.55 * wrist + 0.45 * toes + P(0.0, -0.002, 0.0), (0.0062, 0.0040, 0.0105),
+        upper = Ellipsoid(0.5 * (J["shoulder" + sfx] + shoulder) + P(side * 0.002, -0.006, 0.0),
+                          (0.0125, 0.0195, 0.0155), along=(0.2 * side, -1.0, 0.1))
+        leg = Tube([shoulder, elbow, wrist], [0.0108, 0.0079, 0.0056], k=0.005)
+        paw = Ellipsoid(0.5 * wrist + 0.5 * toes + P(0.0, -0.0018, 0.0), (0.0068, 0.0038, 0.0112),
                         along=_unit(toes - wrist + P(0.0, 0.004, 0.0)))
-        front.append(Union([upper, (leg, 0.007), (paw, 0.004)], k=0.006).tag(part))
+        front.append(Union([upper, (leg, 0.008), (paw, 0.004)], k=0.006).tag(part))
 
-    # Hind legs: a big thigh in the haunch; a slim shin to the heel, then the long flat foot.
+    # Hind legs: the great thigh in the haunch; a shin to the heel, then the long flat foot.
     hind = []
     for side, sfx, part in ((1.0, "L", PARTS["hindL"]), (-1.0, "R", PARTS["hindR"])):
         knee, heel, toes = J["shin" + sfx], J["foot" + sfx], T["foot" + sfx]
-        thigh = Ellipsoid(0.5 * (J["thigh" + sfx] + knee) + P(side * 0.003, 0.0, -0.004), (0.0145, 0.024, 0.0185),
+        thigh = Ellipsoid(0.5 * (J["thigh" + sfx] + knee) + P(side * 0.003, 0.0, -0.004), (0.0165, 0.0265, 0.0210),
                           along=_unit(knee - J["thigh" + sfx]))
-        shin = Tube([knee, heel], [0.0085, 0.0056], k=0.004)
-        foot = Ellipsoid(0.5 * (heel + toes) + P(0.0, -0.0028, 0.0), (0.0072, 0.0048, 0.0265),
+        shin = Tube([knee, heel], [0.0098, 0.0063], k=0.004)
+        foot = Ellipsoid(0.5 * (heel + toes) + P(0.0, -0.0026, 0.0), (0.0078, 0.0050, 0.0272),
                          along=_unit(toes - heel))
-        hind.append(Union([thigh, (shin, 0.008), (foot, 0.006)], k=0.006).tag(part))
+        hind.append(Union([thigh, (shin, 0.009), (foot, 0.006)], k=0.006).tag(part))
 
     # The tail: the plume's soft body, combed. Its hair, the fringe that makes its outline, is drawn
     # over it at runtime as cards on the same bones (src/themes/fall/fall-squirrel-plume.js).
-    tail = Displace(plume_envelope(PLUME_BODY), 0.0005, _plume).tag(PARTS["tail"])
+    # (Smooth: combing it in the mesh spent a quarter of the triangles on streaks the hair now draws.)
+    tail = plume_envelope(PLUME_BODY).tag(PARTS["tail"])
 
     whole = Union([
         body, (head, 0.012), (eyes, 0.002), *[(ear, 0.004) for ear in ears], *[(leg, 0.012) for leg in front],
@@ -390,10 +401,14 @@ def srgb(hex_colour):
 
 
 COAT = dict(
-    back=srgb(0x9c4419), rust=srgb(0xb8561f), flank=srgb(0xc56a2a), cream=srgb(0xf0e6d0), ring=srgb(0xeadcc0),
-    eye=srgb(0x120b09), nose=srgb(0x3d2420), tuft=srgb(0x5e2410), tail=srgb(0xa9461a), tailTip=srgb(0xdb8a40),
-    paw=srgb(0xc87a46), inner=srgb(0xd9a684),
+    back=srgb(0x8a3a15), rust=srgb(0xb04f1c), flank=srgb(0xc4672a), cream=srgb(0xf2e9d8), ring=srgb(0xe6d2ae),
+    eye=srgb(0x0e0807), nose=srgb(0x3a211d), tuft=srgb(0x54200e), tail=srgb(0x93401a), tailTip=srgb(0xdc9a52),
+    paw=srgb(0xb9672f), inner=srgb(0xd9a684),
 )
+# The hair's length (metres at life size) by where it grows, and the longest (the scale of `_fur.x`).
+FUR = dict(body=0.0080, haunch=0.0105, skull=0.0062, muzzle=0.0020, limb=0.0058, paw=0.0024, ear=0.0026,
+           tuft=0.0150, plumeRoot=0.0090, plume=0.0200)
+FUR_LONGEST = 0.02
 
 
 def paint(shape, landmarks, positions, normals, parts):
@@ -428,7 +443,7 @@ def paint(shape, landmarks, positions, normals, parts):
     # The pale ring round each eye, then the eye itself and the nose.
     eye_d = np.min([np.linalg.norm(positions - e, axis=1) for e in landmarks["eyes"]], axis=0)
     radius = landmarks["eyeRadius"]
-    lay(C["ring"], (parts == PARTS["head"]) * _smoothstep(radius + 0.0045, radius + 0.0012, eye_d))
+    lay(C["ring"], 0.85 * (parts == PARTS["head"]) * _smoothstep(radius + 0.0036, radius + 0.0006, eye_d))
     eye = (parts == PARTS["eye"]).astype(np.float64)
     lay(C["eye"], eye)
     nose = (parts == PARTS["nose"]).astype(np.float64)
@@ -459,12 +474,24 @@ def paint(shape, landmarks, positions, normals, parts):
     # In the plume the hair between the clumps is not shut away from the sky as a crevice in a solid
     # would be (light gets in through it): its occlusion is kept soft, so it never prints as blotches.
     sky = np.where(tail > 0.5, 0.55 + 0.45 * sky, sky)
-    # Fur: none on the eyes and nose, short on the face and paws, long on the tail and tufts.
-    face = (parts == PARTS["head"]) * _smoothstep(0.088, 0.112, z)
-    fur = 0.55 * np.ones(len(positions))
-    fur = fur * (1.0 - 0.5 * face) * (1.0 - 0.6 * paws)
-    fur = np.where(tail > 0.5, 0.75 + 0.25 * lock, fur)
-    fur = np.where(tuft > 0.5, 1.0, fur)
+    # Fur: how long the hair stands at each vertex (metres at life size, written as a share of
+    # FUR_LONGEST). The coat is deepest on the haunches, the flanks and the bib, shorter over the skull,
+    # close on the muzzle and round the eyes, shorter down the limbs to nothing on the pads; the ear
+    # tufts and the plume carry the longest hair of all.
+    face = (parts == PARTS["head"]) * _smoothstep(0.086, 0.112, z)
+    head_part = np.isin(parts, (PARTS["head"], PARTS["jaw"]))
+    hair = np.full(len(positions), FUR["body"])
+    haunch = (parts == PARTS["body"]) * _smoothstep(0.0, -0.045, z) * _smoothstep(0.035, 0.06, y)
+    bib = (parts == PARTS["body"]) * _smoothstep(0.03, 0.05, z) * _smoothstep(0.085, 0.06, y)
+    hair = hair + (FUR["haunch"] - FUR["body"]) * np.maximum(haunch, bib)
+    hair = np.where(head_part, FUR["skull"] + (FUR["muzzle"] - FUR["skull"]) * face, hair)
+    hair = np.where(head_part, hair * (0.25 + 0.75 * _smoothstep(radius + 0.0005, radius + 0.006, eye_d)), hair)
+    limb = _smoothstep(0.050, 0.014, y)
+    hair = np.where(legs > 0.5, FUR["limb"] + (FUR["paw"] - FUR["limb"]) * limb, hair)
+    hair = np.where(ear, FUR["ear"], hair)
+    hair = np.where(tuft > 0.5, FUR["ear"] + (FUR["tuft"] - FUR["ear"]) * _smoothstep(0.133, 0.150, y), hair)
+    hair = np.where(tail > 0.5, FUR["plumeRoot"] + (FUR["plume"] - FUR["plumeRoot"]) * _smoothstep(0.0, 0.05, s), hair)
+    fur = hair / FUR_LONGEST
     fur = fur * (1.0 - eye) * (1.0 - nose)
     # How much light gets through: thin ears and tufts most, the plume's locks, the rest a little.
     through = np.where(ear, 0.9, 0.25)

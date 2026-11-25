@@ -2,13 +2,17 @@
  * Fall — the days of the grove.
  *
  * The sun does not move: it stands low behind the old wood and the grove's shadows are drawn
- * once for it. But the light does. Five autumn lights follow one another and come round, each
+ * once for it. But the light does. Six autumn lights follow one another and come round, each
  * through the same trees:
  *
  *   quiet afternoon  a low gold sun, a clean blue sky, a rose haze opposite (the grove as it was
  *                    built, and where a session starts)
  *   amber hour       the sun goes deep amber, the low sky burns orange, the litter glows
  *   rose dusk        the sun a dim rose behind the trunks, a lilac sky, lavender air
+ *   harvest moon     night: where the sun stood the harvest moon stands, large and amber-white
+ *                    behind the trees (so the grove's one shadow map stays true); its light is warm
+ *                    and the shade deep blue, stars stand in the gaps of the crowns, moonbeams in
+ *                    the air, and the fireflies and the lantern caps come into their own
  *   blue mist        a cool morning: a pale silver sun, grey-blue air thick between the trunks
  *   bright October   a crisp clear day: a white-gold sun, a deep blue sky, thin air, the colours
  *                    at their brightest
@@ -23,7 +27,7 @@
  */
 import { meltPalettes, moodDrift, wheelAt } from '../shared/mood-clock.js';
 
-/** Seconds from one light to the next: about nine minutes for the day to come round. */
+/** Seconds from one light to the next: eleven minutes for the day and its night to come round. */
 export const FALL_MOOD_SECONDS = 110;
 /** The share of its period a light rests, pure, before it melts into the next. */
 export const FALL_MOOD_HOLD = 0.35;
@@ -38,11 +42,17 @@ export const FALL_MOOD_COLOURS = Object.freeze([
     'sun', 'skyLight', 'bounce', 'zenith', 'skyCool', 'skyWarm', 'skyRose', 'hazeCool', 'hazeWarm',
     'cloudShade', 'cloudLit', 'cloudBody', 'cloudBodyWarm', 'shaftShade', 'shaftSun',
 ]);
-/** And the numbers: the haze density per metre, the exposure against rest. */
-export const FALL_MOOD_SCALARS = Object.freeze(['haze', 'exposure']);
+/**
+ * And the numbers: the haze density per metre, the exposure against rest, how far it is night
+ * (the moon for the sun, the stars out) and how far the small lights are out at rest (the
+ * fireflies, the glow under the lantern caps: a little at dusk and at first light, all at night).
+ */
+export const FALL_MOOD_SCALARS = Object.freeze(['haze', 'exposure', 'night', 'glim']);
 
 const mood = (name, values) => Object.freeze({
     name,
+    night: 0,
+    glim: 0,
     ...Object.fromEntries(Object.entries(values).map(([key, value]) => [
         key, Array.isArray(value) ? Object.freeze(value.slice()) : value,
     ])),
@@ -105,6 +115,30 @@ export const FALL_MOODS = Object.freeze([
         shaftSun: [1.05, 0.52, 0.38],
         haze: 0.0095,
         exposure: 1.12,
+        glim: 0.5,
+    }),
+    mood('harvest moon', {
+        // (The "sun" of a night is its moon: a pale amber, a fifth as strong, with the shade deep
+        // blue. The air toward it stays dim: a bright one turned the far wood to a white dusk.)
+        sun: [0.66, 0.6, 0.5],
+        skyLight: [0.045, 0.08, 0.19],
+        bounce: [0.02, 0.026, 0.05],
+        zenith: [0.003, 0.009, 0.036],
+        skyCool: [0.009, 0.022, 0.068],
+        skyWarm: [0.1, 0.098, 0.11],
+        skyRose: [0.02, 0.026, 0.072],
+        hazeCool: [0.02, 0.042, 0.1],
+        hazeWarm: [0.15, 0.15, 0.16],
+        cloudShade: [0.03, 0.04, 0.088],
+        cloudLit: [0.16, 0.158, 0.165],
+        cloudBody: [0.01, 0.015, 0.036],
+        cloudBodyWarm: [0.04, 0.044, 0.062],
+        shaftShade: [0.012, 0.022, 0.052],
+        shaftSun: [0.21, 0.205, 0.2],
+        haze: 0.0098,
+        exposure: 1.2,
+        night: 1,
+        glim: 1,
     }),
     mood('blue mist', {
         sun: [2.7, 2.35, 1.85],
@@ -124,6 +158,7 @@ export const FALL_MOODS = Object.freeze([
         shaftSun: [0.92, 0.82, 0.64],
         haze: 0.0105,
         exposure: 1.02,
+        glim: 0.22,
     }),
     mood('bright October', {
         sun: [3.8, 2.85, 1.7],

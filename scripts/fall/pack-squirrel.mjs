@@ -16,7 +16,7 @@
  *   node scripts/fall/pack-squirrel.mjs                       Blender, pack, write the asset
  *   node scripts/fall/pack-squirrel.mjs --from=<raw.glb>      pack a file Blender already wrote
  *   node scripts/fall/pack-squirrel.mjs --raw=<file>          keep Blender's file there
- *   node scripts/fall/pack-squirrel.mjs --blender=<exe>       (default: Blender 5.2 where it installs)
+ *   node scripts/fall/pack-squirrel.mjs --blender=<exe>       (default: Blender 5.3 where it installs)
  *   node scripts/fall/pack-squirrel.mjs --out=<file>          write elsewhere (default: the asset)
  *   node scripts/fall/pack-squirrel.mjs --dry                 everything but write
  *
@@ -38,7 +38,7 @@ const ROOT = resolve(HERE, '..', '..');
 const ASSET = join(ROOT, 'src', 'themes', 'fall', 'assets', 'squirrel.glb');
 const MANIFEST = join(ROOT, 'src', 'themes', 'fall', 'assets', 'asset-manifest.json');
 const MODEL_SCRIPT = join(ROOT, 'scripts', 'blender', 'fall_squirrel.py');
-const BLENDER = 'C:\\Program Files\\Blender Foundation\\Blender 5.2\\blender.exe';
+const BLENDER = 'C:\\Program Files\\Blender Foundation\\Blender 5.3\\blender.exe';
 const GENERATOR = 'Serenity Blocks - Fall red squirrel '
     + '(scripts/blender/fall_squirrel.py + scripts/fall/pack-squirrel.mjs)';
 /** A channel whose every key is within this of its first is one key. */
@@ -47,7 +47,7 @@ const STILL = 2e-5;
  * The clips keyed at 60 fps that move slowly enough to keep every other key (30 fps): the long
  * standing, sitting and clinging loops are most of the keys and move only in slow turns and breaths.
  */
-const HALF_RATE = new Set(['idle', 'sit', 'cling', 'look']);
+const HALF_RATE = new Set(['idle', 'sit', 'cling', 'look', 'loaf']);
 
 /** Every other key (and the last, so a loop still closes). */
 function halve(values, size) {

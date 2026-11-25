@@ -26,6 +26,8 @@ const AMBIENT_REST_SECONDS = 18;
 const EVENT_REST_SECONDS = 5;
 /** At a full storm an ambient leaf rests only this share of its usual time. */
 const STORM_REST = 0.15;
+/** How far a full shedding air (env.shed) shortens that rest, as a share of a full storm's. */
+const AIR_SHED = 1;
 /** At a full storm the gale lifts the litter wherever a gust's crest rolls (env.gust units). */
 const STORM_LIFT = 2.4;
 /** At a full storm this share of the leaves that let go do so from the crowns in view. */
@@ -66,6 +68,8 @@ export class FallLeafSim {
         }
         /** How hard the storm of play blows, as of the last step (0..1). */
         this.storm = 0;
+        /** How hard the crowns in view pour their leaves: the storm, or a shedding air (0..1). */
+        this.pour = 0;
         this.bounds = bounds;
         const n = this.count;
         this.position = new Float32Array(n * 3);
@@ -128,14 +132,17 @@ export class FallLeafSim {
         let y;
         let z;
         if (this.crownPoints) {
-            const near = this.storm > 0 && this.nearCrowns.length > 0 && this.random() < this.storm * STORM_NEAR;
+            // (A shedding air pours from the crowns in view as a storm does, from their whole height.)
+            const near = this.pour > 0 && this.nearCrowns.length > 0 && this.random() < this.pour * STORM_NEAR;
             const pick = near ? this.nearCrowns[Math.floor(this.random() * this.nearCrowns.length)]
                 : Math.floor(this.random() * (this.crownPoints.length / 4)) * 4;
             x = this.crownPoints[pick] + (this.random() - 0.5) * 1.6;
             y = this.crownPoints[pick + 1] - this.random() * 0.8;
             z = this.crownPoints[pick + 2] + (this.random() - 0.5) * 1.6;
             // A storm tears them from the lower boughs, where they cross the view at once.
-            if (near) y = Math.min(y, this.groundHeight(x, z) + STORM_BOUGHS[0] + this.random() * STORM_BOUGHS[1]);
+            if (near && this.storm > 0) {
+                y = Math.min(y, this.groundHeight(x, z) + STORM_BOUGHS[0] + this.random() * STORM_BOUGHS[1]);
+            }
         } else {
             const { bounds } = this;
             x = bounds.minX + (bounds.maxX - bounds.minX) * this.random();
@@ -236,7 +243,9 @@ export class FallLeafSim {
      * env.fronts [{x, strength, width, direction}]   gust fronts crossing along world x (or
      *             env.front, one of them, or null)
      * env.storm   number 0..1   how hard the crowns shed and the gale lifts the litter
-     * env.fields [{kind:'burst'|'jet'|'vortex', ...}]   gameplay force fields
+     * env.still   number 0..1   the wind dies (a run's end): no breeze, no swing, straight down
+     * env.fields [{kind:'burst'|'jet'|'vortex'|'wave', ...}]   gameplay force fields (a wave is a
+     *             ring on the floor: x, z, radius, width, power outward, up, grip)
      */
     step(dt, env = {}) {
         if (!Number.isFinite(dt) || dt <= 0) return;
@@ -255,12 +264,17 @@ export class FallLeafSim {
         const frontCount = fronts ? fronts.length : 0;
         const storm = Number.isFinite(env.storm) ? clamp(env.storm, 0, 1) : 0;
         this.storm = storm;
-        const ambientRest = AMBIENT_REST_SECONDS * (1 - (1 - STORM_REST) * storm);
+        // An air can make the crowns let go too (env.shed, 0..1: the great fall, a windy day).
+        const shed = Number.isFinite(env.shed) ? clamp(env.shed, 0, 1) : 0;
+        this.pour = Math.max(storm, shed * AIR_SHED);
+        const ambientRest = AMBIENT_REST_SECONDS * (1 - (1 - STORM_REST) * this.pour);
         const lift = gust + storm * STORM_LIFT;
         const fields = env.fields || [];
         const { bounds } = this;
         const swellTime = time * 0.85;
-        const stir = breeze + gust;
+        // (A dying wind takes the breeze, the gusts and each leaf's own swing with it.)
+        const moving = 1 - (Number.isFinite(env.still) ? clamp(env.still, 0, 1) : 0);
+        const stir = (breeze + gust) * moving;
         let airborne = 0;
         for (let i = 0; i < this.count; i += 1) {
             const state = this.state[i];
@@ -305,6 +319,17 @@ export class FallLeafSim {
                             // A leaf the column holds is in play: never the one a throw takes.
                             if (hold > 0.15 && state === LEAF_AIR) this.timer[i] = 0;
                         }
+                    } else if (field.kind === 'wave') {
+                        // A ring running over the floor: what lies under its crest is thrown up and out.
+                        const radial = Math.hypot(dx, dz) || 0.001;
+                        const off = Math.abs(radial - field.radius);
+                        if (off < field.width && y < field.y + 2.4) {
+                            const crest = 1 - off / field.width;
+                            ax += (dx / radial) * field.power * crest;
+                            az += (dz / radial) * field.power * crest;
+                            ay += field.up * crest;
+                            kicked = kicked || crest * field.grip > 0.3;
+                        }
                     } else {
                         const dy = y - field.y;
                         const distance = Math.sqrt(dx * dx + dy * dy + dz * dz) || 0.001;
@@ -332,10 +357,10 @@ export class FallLeafSim {
                     // The side-to-side swoop of a falling leaf, slowing at each turn.
                     const speed = Math.hypot(this.velocity[o], this.velocity[o + 1], this.velocity[o + 2]);
                     const calm = clamp(1.4 - speed * 0.16, 0.15, 1);
-                    ax += Math.cos(heading) * swing * 3.4 * calm;
-                    az += Math.sin(heading) * swing * 3.4 * calm;
-                    ay += Math.abs(Math.cos(this.phase[i])) * 1.5 * calm;
-                    const speedHere = (breeze + gust) * swell;
+                    ax += Math.cos(heading) * swing * 3.4 * calm * moving;
+                    az += Math.sin(heading) * swing * 3.4 * calm * moving;
+                    ay += Math.abs(Math.cos(this.phase[i])) * 1.5 * calm * moving;
+                    const speedHere = (breeze + gust) * swell * moving;
                     const localWindX = windX * speedHere + frontDrive * 7;
                     const localWindZ = windZ * speedHere;
                     ax += (localWindX - this.velocity[o]) * WIND_DRAG;

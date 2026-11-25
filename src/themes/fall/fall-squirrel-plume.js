@@ -30,10 +30,10 @@ export const PLUME_BONES = Object.freeze(['tail0', 'tail1', 'tail2', 'tail3', 't
 const STEP = 0.005;
 /** How far past the last joint the plume's brush may reach (metres, life size). */
 const OVERRUN = 0.08;
-const FRINGE = 0.62;
+const FRINGE = 1.0;
 /** The hair's length is held within these (metres, life size). */
-const FRINGE_MIN = 0.0045;
-const FRINGE_MAX = 0.024;
+const FRINGE_MIN = 0.006;
+const FRINGE_MAX = 0.03;
 /** How far the hair at the edge sweeps back toward the brush, for its length. */
 const SWEEP = 0.85;
 /** How far the brush runs on past the plume's end, for the hair's length there. */

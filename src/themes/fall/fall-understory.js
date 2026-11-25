@@ -11,7 +11,9 @@ import {
     attribute, cameraPosition, color, dot, float, instancedBufferAttribute, mix, normalize, normalWorld,
     positionGeometry, positionLocal, positionWorld, pow, saturate, sin, smoothstep, vec2, vec3,
 } from 'three/tsl';
-import { FALL_FEATURE_TREES } from './fall-composition.js';
+import { FALL_FEATURE_TREES, FALL_VIEWS } from './fall-composition.js';
+import { createFallCapGlow, createFallMushrooms, layoutFallMushrooms } from './fall-mushrooms.js';
+import { fallWorldTier } from './fall-airs.js';
 import { FALL_SLICE_MS, fallSlice } from './fall-slices.js';
 import { fallLeafLayer, fallPathDistance, fallTerrainHeight } from './fall-terrain.js';
 import { drainSteps, stepClock } from '../shared/build-steps.js';
@@ -125,22 +127,17 @@ function rockGeometry() {
     return geometry;
 }
 
-function mushroomGeometry() {
-    const profile = [[0.0, 0.0], [0.05, 0.0], [0.04, 0.22], [0.06, 0.25], [0.22, 0.23], [0.2, 0.3], [0.12, 0.37],
-        [0.0, 0.4]].map(([radius, height]) => new THREE.Vector2(radius, height));
-    const geometry = new THREE.LatheGeometry(profile, 10);
-    geometry.computeVertexNormals();
-    return geometry;
-}
-
 export class FallUnderstory {
     constructor({
-        light, foliage, tier, rng = Math.random,
+        light, foliage, tier, rng = Math.random, quality = 'High', trees = null,
     }) {
         this.light = light;
         this.foliage = foliage;
         this.tier = tier;
         this.rng = rng;
+        // What this pass's own things scale by (fall-airs.js), and the great trees' bark for the brackets.
+        this.worldTier = fallWorldTier(quality);
+        this.trees = trees;
         this.group = new THREE.Group();
         this.group.name = 'FallUnderstory';
         this.owned = [];
@@ -170,8 +167,10 @@ export class FallUnderstory {
     }
 
     /** Ground shading shared by everything that lies or grows on the floor. */
-    shade(albedo, normal, { translucent = 0 } = {}) {
+    shade(surface, normal, { translucent = 0 } = {}) {
         const { light } = this;
+        // (Rain darkens whatever lies or grows on the floor: FallLight.uWet.)
+        const albedo = surface.mul(float(1).sub(light.uWet.mul(0.24)));
         const world = positionWorld;
         const view = normalize(cameraPosition.sub(world));
         const sun = light.sunlight();
@@ -179,7 +178,7 @@ export class FallUnderstory {
         const through = pow(saturate(dot(view, light.uSunDir).negate()), 3).mul(translucent);
         const lit = albedo.mul(light.uSunColor).mul(facing.add(through)).mul(sun)
             .add(albedo.mul(light.ambient(normal)).mul(1.15));
-        return light.haze(lit, { world });
+        return light.haze(light.events.onFloor(lit, { world }), { world });
     }
 
     scatter(count, options, place) {
@@ -239,7 +238,7 @@ export class FallUnderstory {
                 const stir = light.uWind.add(light.uGust.mul(1.4));
                 const lift = sin(light.uTime.mul(look.z.mul(2).add(2.4)).add(look.z.mul(41)))
                     .mul(paint.r).mul(look.w).mul(stir.mul(0.06).add(0.004));
-                material.positionNode = positionLocal.add(vec3(0, lift, 0));
+                material.positionNode = positionLocal.add(vec3(0, lift, 0)).add(light.events.hop(positionLocal, look.w));
                 const tone = saturate(look.x.add(paint.r.sub(0.5).mul(0.12)));
                 const leaf = mix(
                     mix(ramp(MAPLE, tone), ramp(OAK, tone), saturate(look.y)),
@@ -288,7 +287,8 @@ export class FallUnderstory {
             const phase = fractHash(positionLocal);
             const force = light.uWind.add(light.uGust.mul(1.3));
             const sway = sin(light.uTime.mul(1.3).add(phase.mul(TAU))).mul(height.mul(height)).mul(force).mul(0.16);
-            material.positionNode = positionLocal.add(vec3(light.uWindDir.x.mul(sway), 0, light.uWindDir.z.mul(sway)));
+            material.positionNode = positionLocal.add(vec3(light.uWindDir.x.mul(sway), 0, light.uWindDir.z.mul(sway)))
+                .add(light.events.bow(positionLocal, height));
             let tipColour = color(tip);
             if (tints) {
                 // Each tuft dried at its own pace: straw, rust, or still a little green. The
@@ -387,40 +387,43 @@ export class FallUnderstory {
         this.group.add(mesh);
     }
 
-    /** Small lantern caps at the feet of the old trees; they answer combos with light. */
+    /**
+     * The mushrooms (fall-mushrooms.js): fly agarics, troops of lantern bonnets, honey tufts at the
+     * root flares and brackets on the two great trunks, all one draw; and the pools of light the
+     * lantern caps lay on the floor at dusk and at night. (The pale discs they replace drew seven
+     * numbers a cap from the grove's generator: the same are drawn and let go, so everything built
+     * after them stands where it stood.)
+     */
     buildMushrooms() {
         const { light, rng } = this;
-        const count = Math.max(4, Math.round(this.tier.wisps * 0.8));
-        const material = this.own(new THREE.MeshBasicNodeMaterial({ fog: false }));
-        material.name = 'FallLanternCaps';
-        const data = new Float32Array(count);
-        const phase = instancedBufferAttribute(new THREE.InstancedBufferAttribute(data, 1));
-        const cap = smoothstep(0.2, 0.3, positionGeometry.y);
-        const pulse = sin(light.uTime.mul(0.9).add(phase.mul(TAU))).mul(0.18).add(0.82);
-        const glow = color(0x3fc8b0).mul(cap).mul(pulse).mul(light.uGlow.mul(2.8).add(0.42));
-        const stem = mix(color(0x5a4a3a), color(0xd8cbb0), cap);
-        material.colorNode = this.shade(stem, normalize(normalWorld)).add(glow.mul(float(1.5)));
-        const mesh = new THREE.InstancedMesh(this.own(mushroomGeometry()), material, count);
-        mesh.name = 'FallLanternCaps';
-        const dummy = new THREE.Object3D();
+        const before = Math.max(4, Math.round(this.tier.wisps * 0.8));
+        for (let i = 0; i < before * 7; i += 1) rng();
         const hosts = FALL_FEATURE_TREES.slice(0, 2);
-        for (let i = 0; i < count; i += 1) {
-            const host = hosts[i % hosts.length];
-            const angle = rng() * TAU;
-            const radius = 1.5 + rng() * 2.6;
-            const x = host.x + Math.cos(angle) * radius;
-            const z = host.z + Math.sin(angle) * radius * 0.8 + 1.2;
-            dummy.position.set(x, fallTerrainHeight(x, z) + 0.02, z);
-            dummy.rotation.set((rng() - 0.5) * 0.3, rng() * TAU, (rng() - 0.5) * 0.3);
-            dummy.scale.setScalar(0.24 + rng() * 0.34);
-            dummy.updateMatrix();
-            mesh.setMatrixAt(i, dummy.matrix);
-            data[i] = rng();
-        }
-        mesh.instanceMatrix.needsUpdate = true;
-        mesh.frustumCulled = false;
-        mesh.matrixAutoUpdate = false;
-        this.group.add(mesh);
+        const layout = layoutFallMushrooms({
+            count: this.worldTier.caps,
+            hosts,
+            trees: this.trees,
+            groundHeight: fallTerrainHeight,
+            pathDistance: fallPathDistance,
+            eye: FALL_VIEWS.landscape.position,
+        });
+        this.capLayout = layout;
+        const caps = createFallMushrooms({
+            light, layout, shade: (albedo, normal, options) => this.shade(albedo, normal, options),
+        });
+        this.own(caps.geometry);
+        this.own(caps.material);
+        this.group.add(caps.mesh);
+        const glow = createFallCapGlow({ light, pools: layout.pools, groundHeight: fallTerrainHeight });
+        this.own(glow.geometry);
+        this.own(glow.material);
+        this.capGlow = glow.mesh;
+        this.group.add(glow.mesh);
+    }
+
+    /** The pools of lantern light are drawn only while the small lights are out. */
+    update() {
+        if (this.capGlow) this.capGlow.visible = this.light.uGlim.value > 0.02;
     }
 
     dispose() {
