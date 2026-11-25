@@ -10,7 +10,9 @@ import {
 } from '../../src/themes/fall/fall-assets.js';
 import { FALL_FEATURE_TREES, FALL_VIEWS } from '../../src/themes/fall/fall-composition.js';
 import { FallReactions } from '../../src/themes/fall/fall-reactions.js';
-import { createSquirrel } from '../../src/themes/fall/fall-squirrel.js';
+import perchData from '../../src/themes/fall/assets/squirrel-perches.json';
+import { createSquirrel, createSquirrelSteps } from '../../src/themes/fall/fall-squirrel.js';
+import { FUR_SHELLS, createFurShells } from '../../src/themes/fall/fall-squirrel-fur.js';
 import { SQUIRREL_CLIPS, SQUIRREL_SCALE } from '../../src/themes/fall/fall-squirrel-clips.js';
 import { createPerches } from '../../src/themes/fall/fall-squirrel-limbs.js';
 import {
@@ -24,6 +26,7 @@ import { FallLight } from '../../src/themes/fall/fall-light.js';
 import { fallTier } from '../../src/themes/fall/fall-quality.js';
 import { fallTerrainHeight } from '../../src/themes/fall/fall-terrain.js';
 import { FallWorld } from '../../src/themes/fall/fall-world.js';
+import { drainSteps } from '../../src/themes/shared/build-steps.js';
 
 const assetDirectory = new URL('../../src/themes/fall/assets/', import.meta.url);
 const STEP = 1 / 60;
@@ -82,6 +85,8 @@ function landscapeCamera() {
     return camera;
 }
 
+const clamp01 = (value) => Math.max(0, Math.min(1, value));
+
 /** Run a mind over `seconds` at `dt`, firing `cues` ([kind, time, strength]) as their times come. */
 function live(mind, seconds, dt = STEP, cues = [], each = () => {}) {
     const queue = cues.slice().sort((a, b) => a[1] - b[1]);
@@ -102,6 +107,21 @@ function live(mind, seconds, dt = STEP, cues = [], each = () => {}) {
 let gltf;
 let trees;
 let stage;
+
+/**
+ * A mind standing at `place` (on the floor, a trunk, a limb or a flat perch), its next routine planned
+ * there with `script` first: how a test puts it where no opening of the day does.
+ */
+function mindAt(place, { seed = 8, script = [] } = {}) {
+    const mind = new SquirrelMind({ stage, seed, start: 'ground' });
+    Object.assign(mind, {
+        act: null, prev: null, recent: [], queue: [], history: [], time: 0, scripted: script.slice(),
+    });
+    mind.tail = { time: 0, place };
+    mind.plan();
+    mind.act = mind.queue.shift();
+    return mind;
+}
 
 beforeAll(async () => {
     gltf = await parseGlb('squirrel.glb');
@@ -554,7 +574,15 @@ describe('the squirrel moves smoothly', () => {
         const limits = {
             hips: 15, chest: 15, head: 15, tail2: 25, body: 15,
         };
-        for (const seed of [271, 11]) {
+        // Two days as they come, and three on its perches: up the windfall's dead limb and from seat to
+        // seat, the stump and its leaning bough, stretched out along the oak's bough.
+        const days = [
+            { seed: 271 }, { seed: 11 },
+            { seed: 5, start: 'windfall', script: ['lookout', 'top', 'watch', 'across', 'meal', 'off'] },
+            { seed: 6, start: 'stump', script: ['watch', 'across', 'wash', 'off', 'perch', 'tip'] },
+            { seed: 7, start: 'bough', script: ['loaf', 'run', 'meal', 'back'] },
+        ];
+        for (const { seed, start, script } of days) {
             const squirrel = createSquirrel({ light, gltf });
             owned.push(squirrel);
             const bones = Object.fromEntries(watch.map((name) => [name, squirrel.group.getObjectByName(name)]));
@@ -564,7 +592,11 @@ describe('the squirrel moves smoothly', () => {
             const q = new THREE.Quaternion();
             const cues = [['drop', 12, 1], ['clear', 30, 1], ['four', 50, 1], ['combo', 70, 1], ['perfect', 90, 1],
                 ['over', 110, 1]];
-            live(new SquirrelMind({ stage, seed }), 120, STEP, cues, (pose) => {
+            const played = new Set();
+            live(new SquirrelMind({
+                stage, seed, start, script,
+            }), 120, STEP, cues, (pose) => {
+                played.add(pose.clip);
                 if (!pose.visible) {
                     Object.keys(last).forEach((key) => { last[key] = null; });
                     return;
@@ -584,10 +616,13 @@ describe('the squirrel moves smoothly', () => {
             });
             // Degrees per frame per frame at 60 fps: a snap, a pop or a flip is far beyond these.
             for (const [name, limit] of Object.entries(limits)) {
-                expect(worst[name], `seed ${seed} ${name}`).toBeLessThan(limit);
+                expect(worst[name], `seed ${seed} ${start || ''} ${name}`).toBeLessThan(limit);
             }
+            // (The days on its perches play what they were asked: stretched out, up a dead limb.)
+            if (script?.includes('loaf')) expect(played.has('loaf'), `seed ${seed}`).toBe(true);
+            if (script?.includes('lookout')) expect(played.has('climb'), `seed ${seed}`).toBe(true);
         }
-    });
+    }, 30_000); // five two-minute days, every bone each frame: about a second locally
 
     it('lets go of a look to the board over a moment when an answer to the board cuts it', () => {
         // Cues come thick and fast (a clear and four lines in one frame among them): whatever act a cue
@@ -938,6 +973,479 @@ describe('the squirrel drawn', () => {
     });
 });
 
+describe('the squirrel on its perches: the windfall, the stump, the oak\'s bough', () => {
+    it('stands on its own bark wherever it walks a limb, out in the open, and sits on wood', async () => {
+        // The perches' bark as the forest places it (fall-composition.js), in the world.
+        const bark = [];
+        const placed = FALL_FEATURE_TREES.filter((tree) => perchData.assets[tree.asset]);
+        const glbs = await Promise.all(placed.map((tree) => parseGlb(`${tree.asset}.glb`)));
+        for (const [k, tree] of placed.entries()) {
+            const parsed = parseFallTree(glbs[k], tree.asset);
+            const source = parsed.bark.attributes.position.array;
+            const c = Math.cos(tree.yaw);
+            const sn = Math.sin(tree.yaw);
+            const y0 = fallTerrainHeight(tree.x, tree.z);
+            const world = new Float64Array(source.length);
+            for (let v = 0; v < source.length; v += 3) {
+                const [x, y, z] = [source[v] * tree.scale, source[v + 1] * tree.scale, source[v + 2] * tree.scale];
+                world[v] = tree.x + x * c + z * sn;
+                world[v + 1] = y0 + y;
+                world[v + 2] = tree.z - x * sn + z * c;
+            }
+            bark.push(world);
+            parsed.bark.dispose();
+        }
+        const each = (visit) => bark.forEach((world) => {
+            for (let v = 0; v < world.length; v += 3) visit(world[v], world[v + 1], world[v + 2]);
+        });
+        const walker = new SquirrelMind({ stage, seed: 1 });
+        let stations = 0;
+        for (const limb of Object.values(stage.limbs)) {
+            for (let a = limb.low; a <= limb.high + 1e-9; a += 0.2) {
+                // (Only where it may stand: not in the foot of a dead limb standing on this one.)
+                if (!limb.standing && Math.abs(walker.walkable(limb.name, a) - a) > 1e-9) continue;
+                stations += 1;
+                const where = `${limb.name} ${a.toFixed(1)}`;
+                const { p, r } = limb.sample(a);
+                const t = limb.tangent(a);
+                // Its own bark: the bark in a slab across the limb stands its radius out from the line.
+                const outs = [];
+                each((x, y, z) => {
+                    const d = [x - p[0], y - p[1], z - p[2]];
+                    const along = d[0] * t[0] + d[1] * t[1] + d[2] * t[2];
+                    if (Math.abs(along) > 0.3) return;
+                    const out = Math.sqrt(Math.max(0, d[0] * d[0] + d[1] * d[1] + d[2] * d[2] - along * along));
+                    if (out < r * 1.8 + 0.08) outs.push(out);
+                });
+                outs.sort((x, y) => x - y);
+                expect(outs.length, where).toBeGreaterThanOrEqual(6);
+                expect(Math.abs(outs[Math.floor(outs.length / 2)] - r), where).toBeLessThan(0.02 + 0.15 * r);
+                // Out in the open: no wood over its back where it stands on a lying limb (not inside a
+                // trunk the limb leaves, not in the foot of a dead limb standing on it).
+                if (!limb.standing) {
+                    const f = limb.frame(a, 0);
+                    let over = 0;
+                    each((x, y, z) => {
+                        const rise = y - f.point[1];
+                        if (rise > 0.05 && rise < 0.6 && Math.hypot(x - f.point[0], z - f.point[2]) < 0.12) over += 1;
+                    });
+                    expect(over, where).toBe(0);
+                }
+            }
+        }
+        expect(stations).toBeGreaterThan(20);
+        // A flat place sits on wood: the highest bark under its middle, near its height, is its height.
+        for (const pad of stage.pads) {
+            let top = -Infinity;
+            each((x, y, z) => {
+                if (Math.hypot(x - pad.centre[0], z - pad.centre[2]) < pad.radius * 0.6
+                    && Math.abs(y - pad.centre[1]) < 0.2) top = Math.max(top, y);
+            });
+            expect(Math.abs(top - pad.centre[1]), pad.name).toBeLessThan(0.05);
+        }
+        // And a dead limb's snapped end is a flat place, where it stands clear of the floor.
+        const tips = stage.pads.filter((pad) => pad.limb);
+        expect(tips.length).toBeGreaterThanOrEqual(2);
+        for (const tip of tips) {
+            const limb = stage.limbs[tip.limb];
+            const end = limb.rows[limb.rows.length - 1];
+            // At the end of it (on top, where it leans).
+            expect(Math.hypot(...tip.centre.map((v, i) => v - end[i])), tip.name).toBeLessThan(0.3);
+            expect(tip.centre[1] - fallTerrainHeight(tip.centre[0], tip.centre[2])).toBeGreaterThan(0.9);
+        }
+    }, 60_000);
+
+    it('has room to sit up on every flat place: no limb passes through the space above a seat', () => {
+        // A squirrel sitting up is about half a metre tall, drawn: the space over a seat, that high and a
+        // quarter metre round its middle, holds no limb (its own, a snapped end's, is below it).
+        for (const pad of stage.pads) {
+            for (const limb of Object.values(stage.limbs)) {
+                for (let a = 0; a <= limb.length; a += 0.05) {
+                    if (pad.limb === limb.name && a > limb.length - 0.5) continue;
+                    const { p, r } = limb.sample(a);
+                    const rise = p[1] - pad.centre[1];
+                    const aside = Math.hypot(p[0] - pad.centre[0], p[2] - pad.centre[2]);
+                    const where = `${limb.name} ${a.toFixed(2)} over ${pad.name}`;
+                    // (The limb's surface, not its line: its radius counts.)
+                    if (rise + r > 0 && rise - r < 0.5) expect(aside, where).toBeGreaterThan(r + 0.25);
+                }
+            }
+        }
+    });
+
+    it('gives every limb a smooth, right-handed frame: out from the bark, along it, round it', () => {
+        const dot = (u, v) => u[0] * v[0] + u[1] * v[1] + u[2] * v[2];
+        const cross = (u, v) => [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
+        for (const limb of Object.values(stage.limbs)) {
+            let last = null;
+            for (let a = limb.low; a <= limb.high + 1e-9; a += 0.05) {
+                for (const angle of [-1.2, -0.4, 0, 0.4, 1.2]) {
+                    const f = limb.frame(a, angle);
+                    const where = `${limb.name} ${a.toFixed(2)} ${angle}`;
+                    for (const axis of [f.normal, f.up, f.side]) expect(Math.hypot(...axis), where).toBeCloseTo(1, 6);
+                    expect(Math.abs(dot(f.normal, f.up)), where).toBeLessThan(1e-6);
+                    expect(Math.abs(dot(f.normal, f.side)), where).toBeLessThan(1e-6);
+                    // As a trunk's: the way along it crossed with the way round it is out of the bark.
+                    cross(f.up, f.side).forEach((v, i) => expect(v, where).toBeCloseTo(f.normal[i], 6));
+                    // The point is its radius out from the line.
+                    const { p, r } = limb.sample(a);
+                    expect(Math.hypot(...f.point.map((v, i) => v - p[i])), where).toBeCloseTo(r, 6);
+                }
+                // Step by step along the top, the bark under its paws turns only a little.
+                const top = limb.frame(a, 0);
+                if (last) {
+                    expect(Math.acos(Math.min(1, dot(top.normal, last.normal))), `${limb.name} ${a.toFixed(2)}`)
+                        .toBeLessThan(0.12);
+                    const before = last.point;
+                    expect(Math.hypot(...top.point.map((v, i) => v - before[i]))).toBeLessThan(0.12);
+                }
+                last = { normal: [...top.normal], point: [...top.point] };
+            }
+            // A lying limb's 0 is its top, a standing one's the side toward the eye.
+            const mid = limb.frame((limb.low + limb.high) / 2, 0);
+            if (limb.standing) {
+                const eye = FALL_VIEWS.landscape.position;
+                const toEye = mid.normal[0] * (eye[0] - mid.point[0]) + mid.normal[2] * (eye[2] - mid.point[2]);
+                expect(toEye).toBeGreaterThan(0);
+            } else expect(mid.normal[1]).toBeGreaterThan(0.6);
+        }
+    });
+
+    it('stands on a flat perch only where a place names it: a run under a snapped end stays on the floor', () => {
+        for (const pad of stage.pads) {
+            const [x, y, z] = pad.centre;
+            const floor = stage.ground.frame(x, z);
+            expect(floor.point[1]).toBeCloseTo(fallTerrainHeight(x, z), 9);
+            expect(stage.ground.frame(x, z, undefined, pad.name).point[1]).toBeCloseTo(y, 9);
+        }
+        // Over a day, whatever it does on the floor (not in the air), it is on the floor or on the perch
+        // its place names.
+        const { pads } = stage;
+        for (const seed of [271, 3, 99]) {
+            const mind = new SquirrelMind({ stage, seed });
+            const seen = new Set();
+            let perched = 0;
+            live(mind, 600, 0.05, [], () => {
+                const { act } = mind;
+                if (seen.has(act) || act.kind === 'leap' || act.from.on !== 'ground') return;
+                seen.add(act);
+                const f = mind.frame(act.from);
+                const pad = act.from.pad ? pads.find((entry) => entry.name === act.from.pad) : null;
+                if (pad) perched += 1;
+                const under = pad ? pad.centre[1] : fallTerrainHeight(act.from.a, act.from.b);
+                expect(Math.abs(f.point[1] - under), `seed ${seed} ${act.kind} ${act.clip}`).toBeLessThan(0.02);
+            });
+            expect(perched, `seed ${seed}`).toBeGreaterThan(5);
+        }
+    }, 30_000);
+
+    it('runs over the windfall and round the stump, never through them', () => {
+        const lying = Object.values(stage.limbs).filter((limb) => limb.dead && !limb.standing);
+        const stump = stage.pads.find((pad) => !pad.limb);
+        expect(lying.length).toBeGreaterThanOrEqual(2);
+        const crosses = (a, b, c, d) => {
+            const rx = b[0] - a[0];
+            const rz = b[1] - a[1];
+            const sx = d[0] - c[0];
+            const sz = d[1] - c[1];
+            const det = rx * sz - rz * sx;
+            if (Math.abs(det) < 1e-9) return null;
+            const u = ((c[0] - a[0]) * sz - (c[1] - a[1]) * sx) / det;
+            const w = ((c[0] - a[0]) * rz - (c[1] - a[1]) * rx) / det;
+            return u > 0 && u < 1 && w > 0 && w < 1 ? w : null;
+        };
+        // (A limb is in the way where its underside is lower than a running squirrel, drawn: high up, a
+        // leaning bough is run under.)
+        const LOW = 0.6;
+        const day = (seed) => {
+            const mind = new SquirrelMind({ stage, seed });
+            const seen = new Set();
+            let runs = 0;
+            let over = 0;
+            live(mind, 600, 0.05, [], () => {
+                const { act } = mind;
+                if (seen.has(act)) return;
+                seen.add(act);
+                const ontoLog = lying.some((limb) => limb.name === act.to.on);
+                if (act.kind === 'leap' && act.from.on === 'ground' && ontoLog) over += 1;
+                if (act.kind !== 'move' || act.from.on !== 'ground') return;
+                runs += 1;
+                const a = [act.from.a, act.from.b];
+                const b = [act.to.a, act.to.b];
+                for (const limb of lying) {
+                    for (let k = 0; k + 1 < limb.rows.length; k++) {
+                        const [p0, p1] = [limb.rows[k], limb.rows[k + 1]];
+                        const w = crosses(a, b, [p0[0], p0[2]], [p1[0], p1[2]]);
+                        if (w === null) continue;
+                        const at = p0.map((value, i) => value + (p1[i] - value) * w);
+                        const under = at[1] - at[3] - fallTerrainHeight(at[0], at[2]);
+                        expect(under, `seed ${seed}: a run through ${limb.name}`).toBeGreaterThan(LOW);
+                    }
+                }
+                // Clear of the stump's flared foot all the way.
+                const dx = b[0] - a[0];
+                const dz = b[1] - a[1];
+                const toward = (stump.centre[0] - a[0]) * dx + (stump.centre[2] - a[1]) * dz;
+                const u = clamp01(toward / (dx * dx + dz * dz || 1));
+                expect(Math.hypot(a[0] + dx * u - stump.centre[0], a[1] + dz * u - stump.centre[2]), `seed ${seed}`)
+                    .toBeGreaterThan(0.7);
+            });
+            return { runs, over };
+        };
+        const days = [271, 3, 99, 11].map(day);
+        const runs = days.reduce((sum, entry) => sum + entry.runs, 0);
+        const over = days.reduce((sum, entry) => sum + entry.over, 0);
+        expect(runs).toBeGreaterThan(100);
+        // (And it does get up onto them.)
+        expect(over).toBeGreaterThan(5);
+    }, 30_000);
+
+    it('keeps to the frame when it stops: never off its edges, behind the board card or behind the HUD', () => {
+        const camera = landscapeCamera();
+        const v = new THREE.Vector3();
+        // The card's default and the score panel right of it, in screen fractions (y down).
+        const inside = (sx, sy, box) => sx > box[0] && sx < box[1] && sy > box[2] && sy < box[3];
+        const card = [0.385, 0.615, 0.09, 0.93];
+        const hud = [0.622, 0.747, 0.174, 0.428];
+        const stopsOf = (seed) => {
+            const mind = new SquirrelMind({ stage, seed });
+            const seen = new Set();
+            let stays = 0;
+            live(mind, 600, 0.05, [], () => {
+                const { act } = mind;
+                if (seen.has(act) || act.kind !== 'stay' || act.duration < 0.3) return;
+                seen.add(act);
+                stays += 1;
+                const f = mind.frame(act.from);
+                v.set(...f.point.map((p, i) => p + f.normal[i] * 0.3)).project(camera);
+                const where = `seed ${seed} ${act.clip} on ${act.from.pad || act.from.on}`;
+                // (The maple's trunk stands at the left edge: its middle at 3 % from it at most.)
+                expect(Math.abs(v.x), where).toBeLessThan(0.95);
+                expect(Math.abs(v.y), where).toBeLessThan(0.93);
+                const sx = v.x * 0.5 + 0.5;
+                const sy = 0.5 - v.y * 0.5;
+                expect(inside(sx, sy, card), where).toBe(false);
+                expect(inside(sx, sy, hud), where).toBe(false);
+            });
+            return stays;
+        };
+        expect([271, 3, 99, 11, 7].reduce((sum, seed) => sum + stopsOf(seed), 0)).toBeGreaterThan(800);
+    }, 30_000);
+
+    it('does something else next: a routine just done is seldom chosen again at once', () => {
+        for (const seed of [271, 3, 99, 11]) {
+            const mind = new SquirrelMind({ stage, seed });
+            live(mind, 600, 0.1);
+            const { history } = mind;
+            const repeats = history.filter((bit, i) => i > 0 && bit === history[i - 1]).length;
+            expect(history.length, `seed ${seed}`).toBeGreaterThan(60);
+            expect(repeats, `seed ${seed}`).toBeLessThanOrEqual(4);
+            // And no routine is most of its day.
+            const counts = {};
+            history.forEach((bit) => { counts[bit] = (counts[bit] || 0) + 1; });
+            expect(Math.max(...Object.values(counts)) / history.length, `seed ${seed}`).toBeLessThan(0.15);
+        }
+    }, 30_000);
+
+    it('leaps from where it stood to where it then stands, onto and off limbs and flat perches', () => {
+        let checked = 0;
+        const { limbs } = stage;
+        for (const seed of [271, 3, 99]) {
+            const mind = new SquirrelMind({ stage, seed });
+            const seen = new Set();
+            const leaps = [];
+            live(mind, 600, 0.05, [], () => {
+                const { act } = mind;
+                if (seen.has(act)) return;
+                seen.add(act);
+                if (act.kind === 'leap') leaps.push(act);
+            });
+            for (const leap of leaps) {
+                const touches = [leap.from, leap.to].some((place) => place.pad || limbs[place.on]);
+                if (!touches) continue;
+                checked += 1;
+                const where = `seed ${seed} ${leap.from.pad || leap.from.on} -> ${leap.to.pad || leap.to.on}`;
+                const from = mind.frame(leap.from).point;
+                const to = mind.frame(leap.to).point;
+                const at = (t) => mind.bodyAt(leap, t, createSquirrelPose()).position;
+                at(leap.t0 + leap.crouch * 0.5).forEach((v, i) => expect(v, where).toBeCloseTo(from[i], 6));
+                at(leap.t1).forEach((v, i) => expect(v, where).toBeCloseTo(to[i], 6));
+                // Over the arc, never down through the floor.
+                for (let k = 1; k < 10; k++) {
+                    const point = at(leap.t0 + leap.crouch + (leap.flight * k) / 10);
+                    expect(point[1] - fallTerrainHeight(point[0], point[2]), where).toBeGreaterThan(-0.02);
+                }
+            }
+        }
+        expect(checked).toBeGreaterThan(30);
+    }, 30_000);
+
+    it('answers the board wherever it is; on a perch or along a limb it answers where it stands', () => {
+        const stumpTop = stage.pads.find((pad) => !pad.limb);
+        const tip = stage.pads.find((pad) => pad.limb);
+        const windfall = stage.limbs['windfall.trunk'];
+        const post = Object.values(stage.limbs).find((limb) => limb.standing);
+        const places = {
+            floor: {
+                on: 'ground', a: SQUIRREL_SPOTS.maple[0][0], b: SQUIRREL_SPOTS.maple[0][1], heading: 0,
+            },
+            trunk: {
+                on: 'oak', a: 1.8, b: stage.facing.oak, heading: 0,
+            },
+            stump: {
+                on: 'ground', a: stumpTop.centre[0], b: stumpTop.centre[2], heading: 1, pad: stumpTop.name,
+            },
+            tip: {
+                on: 'ground', a: tip.centre[0], b: tip.centre[2], heading: 1, pad: tip.name,
+            },
+            windfall: {
+                on: windfall.name, a: (windfall.low + windfall.high) / 2, b: 0, heading: 0,
+            },
+            post: {
+                on: post.name, a: (post.low + post.high) / 2, b: 0, heading: 0,
+            },
+        };
+        const camera = landscapeCamera();
+        const v = new THREE.Vector3();
+        for (const [name, place] of Object.entries(places)) {
+            for (const kind of ['drop', 'clear', 'four', 'combo', 'spin', 'perfect', 'over']) {
+                const where = `${kind} on the ${name}`;
+                const script = { floor: ['sit'], trunk: ['look'], post: ['cling'] }[name] || ['watch', 'rest'];
+                const mind = mindAt(place, { seed: 11, script });
+                let leapt = false;
+                live(mind, 7, 0.05, [[kind, 1, 1]], (pose, t) => {
+                    expect(pose.position.every(Number.isFinite), where).toBe(true);
+                    if (!pose.visible) return;
+                    v.set(...pose.position).project(camera);
+                    expect(Math.abs(v.x) < 1 && Math.abs(v.y) < 1, where).toBe(true);
+                    // On a flat perch or along a lying limb it has nowhere to run to: it answers there.
+                    if ((name === 'stump' || name === 'tip' || name === 'windfall') && t > 1 && t < 2.5) {
+                        leapt ||= mind.act.kind === 'leap';
+                        expect(mind.act.from.on, where).toBe(place.on);
+                        expect(mind.act.from.pad, where).toBe(place.pad);
+                    }
+                });
+                expect(leapt, where).toBe(false);
+            }
+        }
+    }, 30_000);
+
+    it('lives a day with its perches that is a function of the clock and the events alone', () => {
+        const cues = [['drop', 3, 1], ['clear', 9, 1], ['four', 17, 1], ['combo', 26, 1], ['perfect', 40, 1],
+            ['over', 55, 1]];
+        for (const start of ['windfall', 'stump', 'bough']) {
+            const a = live(new SquirrelMind({ stage, seed: 12, start }), 70, 1 / 30, cues);
+            const b = live(new SquirrelMind({ stage, seed: 12, start }), 70, 1 / 144, cues);
+            expect(a.act, start).toBe(b.act);
+            expect(a.clip, start).toBe(b.clip);
+            a.position.forEach((value, i) => expect(value, start).toBeCloseTo(b.position[i], 6));
+            a.quaternion.forEach((value, i) => expect(value, start).toBeCloseTo(b.quaternion[i], 6));
+        }
+    });
+
+    it('carries a nut it found in its mouth to where it buries it, and drops it when it takes fright', () => {
+        const mind = new SquirrelMind({
+            stage, seed: 8, start: 'ground', script: ['bury'],
+        });
+        const acts = [];
+        live(mind, 16, 0.05, [], (pose) => {
+            if (acts[acts.length - 1]?.act !== mind.act) acts.push({ act: mind.act, carry: pose.carry });
+            expect(pose.carry && pose.acorn).toBe(false);
+        });
+        const digs = acts.filter(({ act }) => act.clip === 'dig');
+        expect(digs.length).toBeGreaterThanOrEqual(2);
+        // Found at the first dig (not carried there yet), carried from it to the second, then buried.
+        expect(digs[0].carry).toBe(false);
+        expect(digs[1].carry).toBe(true);
+        const first = acts.indexOf(digs[0]);
+        const second = acts.indexOf(digs[1]);
+        acts.slice(first + 1, second + 1).forEach(({ act, carry }) => expect(carry, act.clip).toBe(true));
+        acts.slice(second + 1).forEach(({ act, carry }) => expect(carry, act.clip).toBe(false));
+        expect(acts.slice(second + 1).some(({ act }) => act.clip === 'pat')).toBe(true);
+        // It is buried somewhere else than where it was found.
+        const found = digs[0].act.from;
+        const buried = digs[1].act.from;
+        expect(Math.hypot(found.a - buried.a, found.b - buried.b)).toBeGreaterThan(0.5);
+        // A fright on the way drops it.
+        const carrying = acts.find(({ carry }) => carry).act;
+        const startled = new SquirrelMind({
+            stage, seed: 8, start: 'ground', script: ['bury'],
+        });
+        let after = null;
+        const cut = carrying.t0 + 0.1;
+        live(startled, cut + 4, 0.05, [['four', cut, 1]], (pose, t) => {
+            if (t > cut + 0.05) after = after === null ? pose.carry : after || pose.carry;
+        });
+        expect(after).toBe(false);
+    });
+});
+
+describe('the squirrel\'s coat', () => {
+    it('wears hair over its body: the body once more for every layer, in one draw, as many as the tier asks', () => {
+        const light = new FallLight({ tier: fallTier('Minimal'), rng: () => 0.5 });
+        owned.push(light);
+        for (const quality of ['High', 'Minimal']) {
+            const squirrel = drainSteps(createSquirrelSteps({ light, gltf, quality }));
+            owned.push(squirrel);
+            const coat = squirrel.coatHair;
+            expect(coat, quality).toBeTruthy();
+            let body = null;
+            squirrel.group.traverse((object) => {
+                if (object.isSkinnedMesh && object.material?.name === 'FallSquirrelFur') body = object;
+            });
+            expect(coat.mesh.isSkinnedMesh).toBe(true);
+            expect(coat.shells).toBe(FUR_SHELLS[quality]);
+            expect(coat.mesh.count).toBe(FUR_SHELLS[quality]);
+            expect(coat.mesh.geometry).toBe(body.geometry);
+            expect(coat.mesh.skeleton).toBe(body.skeleton);
+            expect(coat.mesh.parent).toBe(body.parent);
+            expect(coat.mesh.material.transparent).toBe(true);
+            expect(coat.mesh.material.depthWrite).toBe(false);
+            expect(coat.triangles).toBe((body.geometry.index.count / 3) * FUR_SHELLS[quality]);
+        }
+        expect(FUR_SHELLS.High).toBeGreaterThan(FUR_SHELLS.Minimal);
+        // Gone with the squirrel.
+        const squirrel = createSquirrel({ light, gltf });
+        const { mesh } = squirrel.coatHair;
+        let released = false;
+        const dispose = mesh.material.dispose.bind(mesh.material);
+        mesh.material.dispose = () => {
+            released = true;
+            dispose();
+        };
+        squirrel.dispose();
+        expect(released).toBe(true);
+        expect(mesh.parent).toBeNull();
+        // No coat for a body that carries no hair lengths.
+        let body = null;
+        gltf.scene.traverse((object) => { if (object.isSkinnedMesh) body = object; });
+        const bare = body.geometry.clone();
+        bare.deleteAttribute('_fur');
+        expect(createFurShells({ body: { geometry: bare }, light })).toBeNull();
+        bare.dispose();
+    });
+
+    it('shows the nut in its mouth only while it carries one, and not with the acorn in its paws', () => {
+        const light = new FallLight({ tier: fallTier('Minimal'), rng: () => 0.5 });
+        owned.push(light);
+        const squirrel = createSquirrel({ light, gltf });
+        owned.push(squirrel);
+        const carried = squirrel.group.getObjectByName('FallSquirrelAcornCarried');
+        expect(carried?.isMesh).toBe(true);
+        expect(carried.parent.name).toBe('head');
+        const mind = new SquirrelMind({
+            stage, seed: 8, start: 'ground', script: ['sit'],
+        });
+        const pose = mind.pose(1);
+        squirrel.update({ ...pose, carry: true, acorn: false });
+        expect(carried.visible).toBe(true);
+        squirrel.update({ ...pose, carry: true, acorn: true });
+        expect(carried.visible).toBe(false);
+        squirrel.update({ ...pose, carry: false, acorn: false });
+        expect(carried.visible).toBe(false);
+    });
+});
+
 describe('the squirrel in the grove', () => {
     async function bundle(withSquirrel) {
         const [foliage, ...gltfs] = await Promise.all([parseGlb('fall-foliage.glb'),
@@ -1062,4 +1570,99 @@ describe('the squirrel in the grove', () => {
         owned.push(off);
         expect(off.group.getObjectByName('FallSquirrel')).toBeUndefined();
     });
+    it('stirs the litter only on the floor: a dig throws leaves out behind it, a landing puffs a few up', async () => {
+        const make = async () => new FallWorld({
+            scene: new THREE.Scene(),
+            camera: new THREE.PerspectiveCamera(55, 16 / 9, 0.1, 300),
+            quality: 'Minimal',
+            rng: () => 0.5,
+            assets: await bundle(true),
+            squirrelSeed: 8,
+            squirrelStart: 'ground',
+            squirrelScript: ['bury', 'climb', 'down', 'perch'],
+        }).build();
+        const record = (world) => {
+            const { sim } = world.leaves;
+            const calls = [];
+            const spawn = sim.spawn.bind(sim);
+            sim.spawn = (...args) => {
+                const index = spawn(...args);
+                const { act } = world.squirrelMind;
+                calls.push({
+                    index, args: args.map((v) => Math.round(v * 1e6) / 1e6), act, clip: world.squirrelPose.clip,
+                });
+                return index;
+            };
+            const reactions = new FallReactions({ quality: 'Minimal', rng: () => 0.5 });
+            for (let i = 1; i <= 40 / STEP; i++) {
+                reactions.update(STEP);
+                world.update(i * STEP, STEP, reactions.getFrame());
+            }
+            return calls;
+        };
+        const a = await make();
+        const b = await make();
+        owned.push(a, b);
+        const calls = record(a);
+        expect(calls.length).toBeGreaterThan(8);
+        const { sim } = a.leaves;
+        let digs = 0;
+        let landings = 0;
+        for (const call of calls) {
+            // Leaves of the air's own reserve, never one in flight taken (no steal).
+            expect(call.args.length).toBe(6);
+            expect(call.index === -1 || call.index >= sim.ambient).toBe(true);
+            if (call.act.kind === 'leap') {
+                landings += 1;
+                expect(call.act.to.on).toBe('ground');
+                expect(call.act.to.pad).toBeUndefined();
+            } else {
+                digs += 1;
+                expect(call.clip).toBe('dig');
+                expect(call.act.from.on).toBe('ground');
+                expect(call.act.from.pad).toBeUndefined();
+            }
+        }
+        expect(digs).toBeGreaterThan(3);
+        expect(landings).toBeGreaterThan(0);
+        // The same grove and the same day throw the same leaves.
+        const throws = (list) => list.map((call) => [call.index, ...call.args]);
+        expect(throws(record(b))).toEqual(throws(calls));
+        // A new session starts its throws afresh.
+        a.resetEffects();
+        expect(a.squirrelDig).toBe(0);
+        expect(a.squirrelLanded).toBeNull();
+    }, 60_000);
+
+    it('lives on the trunks and the floor in a grove whose perches did not arrive', async () => {
+        const assets = await bundle(true);
+        for (const name of ['old-windfall', 'old-stump']) {
+            assets.trees[name].bark.dispose();
+            delete assets.trees[name];
+        }
+        const world = new FallWorld({
+            scene: new THREE.Scene(),
+            camera: new THREE.PerspectiveCamera(55, 16 / 9, 0.1, 300),
+            quality: 'Minimal',
+            rng: () => 0.5,
+            assets,
+            squirrelStart: 'any',
+            squirrelSeed: 3,
+        }).build();
+        owned.push(world);
+        expect(Object.keys(world.squirrelStage.limbs)).toEqual(['oak.riser']);
+        expect(world.squirrelStage.pads).toEqual([]);
+        const reactions = new FallReactions({ quality: 'Minimal', rng: () => 0.5 });
+        const places = new Set();
+        for (let i = 1; i <= 120 / (STEP * 4); i++) {
+            reactions.update(STEP * 4);
+            world.update(i * STEP * 4, STEP * 4, reactions.getFrame());
+            const { from } = world.squirrelMind.act;
+            places.add(from.on);
+            expect(from.pad).toBeUndefined();
+            expect(world.squirrelPose.position.every(Number.isFinite)).toBe(true);
+        }
+        [...places].forEach((on) => expect(['ground', 'maple', 'oak', 'oak.riser']).toContain(on));
+        expect(places.has('ground')).toBe(true);
+    }, 60_000);
 });
