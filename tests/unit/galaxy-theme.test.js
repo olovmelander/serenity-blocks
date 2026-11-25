@@ -570,10 +570,19 @@ describe('Galaxy theme: one node renderer on both backends', () => {
         expect(theme.world.combo).toBe(3);
         expect(theme.world.nurseries.pendingCount()).toBeGreaterThan(0); // seeds and waves still on their way
         const { spin } = theme.world;
+        const reset = vi.spyOn(theme.world, 'resetSession');
+        const over = vi.spyOn(theme.world, 'onGameOver');
         listeners.get('gameOver')();
         expect(theme.world.getState()).toMatchObject({
             combo: 0, power: 0, held: 0, counts: { locks: 0, clears: 0, quads: 0 },
         });
+        // And THEN it sinks into the night: the reset first, or it would wipe the dusk (gotcha
+        // #1716). The world is told with no arguments.
+        expect(reset).toHaveBeenCalledOnce();
+        expect(over).toHaveBeenCalledOnce();
+        expect(over.mock.calls[0]).toEqual([]);
+        expect(reset.mock.invocationCallOrder[0]).toBeLessThan(over.mock.invocationCallOrder[0]);
+        expect(theme.world.over).toBe(true);
         expect(theme.world.nurseries.pendingCount()).toBe(0);
         expect(theme.combos.size).toBe(0);
         expect(theme.world.spin).toBe(spin); // the galaxy keeps turning
@@ -743,6 +752,13 @@ describe('Galaxy theme: one node renderer on both backends', () => {
         const from = theme.world.seeds.geometry.getAttribute('aFrom').array;
         const start = new THREE.Vector3(from[0], from[1], from[2]).project(theme.camera);
         expect(start.x * 0.5 + 0.5).toBeCloseTo(440 / 1280, 2);
+
+        // A new run re-ignites a galaxy the last run's end left dark.
+        const dawn = vi.spyOn(theme.world, 'onSessionStart');
+        theme.world.onGameOver();
+        manager.handlers.get('modeStarted')();
+        expect(dawn).toHaveBeenCalledOnce();
+        expect(theme.world.over).toBe(false);
 
         // The mode ends: the run is forgotten, the board is gone, the calm zones fade on the last rects.
         page.cards = [];

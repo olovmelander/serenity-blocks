@@ -2,8 +2,9 @@
  * Galaxy — gameplay effects that are their own geometry.
  *
  *  - Seeds: a lock's light leaves the board as a comet in the piece's colour and falls into the
- *    galaxy, to the nursery it will light — a bright head and a tail of motes strung along the
- *    same arc, each a closed-form point on a quadratic curve.
+ *    galaxy, to the nursery it will light — a bright head and an unbroken tail, each length of it
+ *    a closed form on the same quadratic curve.
+ *  - Supernovae: a sun of an arm that goes off by itself, a point behind six spikes.
  *  - Sparks: what a nova throws. Streaks that leave a nursery fast, drag to a halt in the thin
  *    gas and go out. A ring of preallocated slots.
  *  - Row beams: the cleared rows leave the card as blades of light at their own heights, drawn
@@ -40,7 +41,7 @@ import {
     vec4,
 } from 'three/tsl';
 import {
-    SEED_SLOTS, SEED_TAIL, TAU, gxArmAngle, gxFxMaterial, gxPart, gxQuadGeometry, mulberry32,
+    NOVA_SLOTS, NOVA_SPAN, SEED_SLOTS, SEED_TAIL, TAU, gxArmAngle, gxFxMaterial, gxPart, gxQuadGeometry, mulberry32,
 } from './galaxy-tsl.js';
 
 const viewProjection = (world) => cameraProjectionMatrix.mul(cameraViewMatrix).mul(vec4(world, 1.0));
@@ -86,31 +87,52 @@ export function createSeeds(u) {
     const span = to.w;
     const age = u.time.sub(from.w);
     const raw = age.div(span).sub(lag.mul(SEED_LAG));
-    const s = clamp(raw, 0.0, 1.0);
-    // It leaves the board gently and falls into the galaxy faster and faster.
-    const k = mix(s, s.mul(s), 0.55);
-    const a = float(1.0).sub(k).mul(float(1.0).sub(k));
-    const b = k.mul(float(1.0).sub(k)).mul(2.0);
-    const c = k.mul(k);
-    const flutter = sin(u.time.mul(19.0).add(lag.mul(23.0))).mul(lag).mul(0.22);
     // The nursery it falls into, where it is NOW: the pattern turns and the arms wind under it.
     const angle = gxArmAngle(to.x, u.winding).add(to.y);
     const target = u.frame.mul(vec4(cos(angle).mul(to.x), to.z, sin(angle).mul(to.x), 1.0)).xyz;
     const middle = from.xyz.add(target).mul(0.5).add(mid.xyz);
-    const world = from.xyz.mul(a).add(middle.mul(b)).add(target.mul(c)).add(vec3(0.0, flutter, 0.0));
+    /** The comet's place at `at` of its flight: it leaves the board gently and falls in faster and faster. */
+    const placeAt = (at) => {
+        const s = clamp(at, 0.0, 1.0);
+        const k = mix(s, s.mul(s), 0.55);
+        const a = float(1.0).sub(k).mul(float(1.0).sub(k));
+        const b = k.mul(float(1.0).sub(k)).mul(2.0);
+        return from.xyz.mul(a).add(middle.mul(b)).add(target.mul(k.mul(k)));
+    };
     const alive = step(0.0, raw).mul(step(raw, 0.999));
-    const clip = viewProjection(world);
     const half = u.viewport.mul(0.5);
-    // The head is a lantern; the tail thins to dust.
-    const px = u.viewport.y.mul(mix(float(0.0135), float(0.0034), lag.mul(lag))).mul(tint.w).mul(alive);
-    material.vertexNode = vec4(clip.xy.add(positionGeometry.xy.mul(px.mul(2.0)).div(half).mul(clip.w)), clip.z, clip.w);
-    const gain = mix(float(3.4), float(0.55), lag).mul(alive).mul(smoothstep(0.0, 0.06, raw));
+    // Mote 0 is the head, a lantern. Every other mote is a length of the tail: it reaches back two
+    // steps of the lag, and its light is a bell along that length, so the bells of neighbouring
+    // motes add up to one unbroken ribbon (round motes strung along the arc read as beads).
+    const isHead = float(1.0).sub(step(0.5 / (SEED_TAIL - 1), lag));
+    const c1 = viewProjection(placeAt(raw));
+    const c0 = viewProjection(placeAt(raw.sub((SEED_LAG * 2) / (SEED_TAIL - 1))));
+    const s0 = c0.xy.div(c0.w).mul(half);
+    const s1 = c1.xy.div(c1.w).mul(half);
+    const run = normalize(s1.sub(s0).add(vec2(1e-4, 0.0)));
+    const across = vec2(run.y.negate(), run.x);
+    const stretch = positionGeometry.x.add(0.5);
+    const tailClip = mix(c0, c1, stretch);
+    const tailPx = u.viewport.y.mul(mix(float(0.0062), float(0.0018), lag)).mul(tint.w).mul(alive);
+    const headPx = u.viewport.y.mul(0.0135).mul(tint.w).mul(alive);
+    const tailXY = tailClip.xy.add(across.mul(positionGeometry.y.mul(2.0).mul(tailPx)).div(half).mul(tailClip.w));
+    const headXY = c1.xy.add(positionGeometry.xy.mul(headPx.mul(2.0)).div(half).mul(c1.w));
+    material.vertexNode = vec4(
+        mix(tailXY, headXY, isHead),
+        mix(tailClip.z, c1.z, isHead),
+        mix(tailClip.w, c1.w, isHead),
+    );
+    const gain = mix(mix(float(1.5), float(0.16), lag), float(3.4), isHead).mul(alive).mul(smoothstep(0.0, 0.06, raw));
     const vLight = varying(mix(tint.rgb, vec3(1.0), float(0.4).mul(float(1.0).sub(lag))).mul(gain), 'gxSeed');
+    const vHead = varying(isHead, 'gxSeedHead');
     material.colorNode = Fn(() => {
-        const q = uv().sub(0.5).mul(2.0);
+        const st = uv();
+        const q = st.sub(0.5).mul(2.0);
         const d = length(q);
-        const core = exp(d.mul(d).mul(-9.0)).add(exp(d.mul(-5.0)).mul(0.25));
-        return vec4(vLight.mul(core).mul(float(1.0).sub(smoothstep(0.75, 1.0, d))), 0.0);
+        const lantern = exp(d.mul(d).mul(-9.0)).add(exp(d.mul(-5.0)).mul(0.25)).mul(float(1.0).sub(smoothstep(0.75, 1.0, d)));
+        const bell = sin(st.x.mul(Math.PI));
+        const ribbon = exp(q.y.mul(q.y).mul(-4.5)).mul(bell.mul(bell)).mul(float(1.0).sub(smoothstep(0.8, 1.0, abs(q.y))));
+        return vec4(vLight.mul(mix(ribbon, lantern, vHead)), 0.0);
     })();
 
     const part = gxPart('GalaxySeeds', geometry, material, 40);
@@ -144,6 +166,90 @@ export function createSeeds(u) {
         for (let i = 0; i < count; i++) aFrom[i * 4 + 3] = -100;
         geometry.getAttribute('aFrom').needsUpdate = true;
         lands.fill(-Infinity);
+    };
+    part.count = count;
+    return part;
+}
+
+// ── Supernovae ──────────────────────────────────────────────────────────────────
+
+/** How far apart a supernova's six spikes stand (three lines through the point). */
+const NOVA_SPIKES = [0.26, 0.26 + Math.PI / 3, 0.26 + (2 * Math.PI) / 3];
+
+/**
+ * A sun of an arm that goes off by itself (galaxy-living.js). A point that outshines its arm for a
+ * second behind six long spikes, then an ember that lingers. The ring it sends through the gas is
+ * the disc's own (a ripple slot). Screen-space quads at a place of the pattern's frame, so one
+ * turns with its arm.
+ * @param {object} u shared galaxy uniforms
+ */
+export function createNovae(u) {
+    const count = NOVA_SLOTS;
+    const aSite = new Float32Array(count * 4);
+    const aTint = new Float32Array(count * 4);
+    for (let i = 0; i < count; i++) aSite.set([40, 0, 0, -100], i * 4);
+    const geometry = gxQuadGeometry(count, { aSite: [aSite, 4], aTint: [aTint, 4] });
+    ['aSite', 'aTint'].forEach((name) => geometry.getAttribute(name).setUsage(THREE.DynamicDrawUsage));
+    const site = attribute('aSite', 'vec4');
+    const tint = attribute('aTint', 'vec4');
+    const material = gxFxMaterial('GalaxyNovae');
+    const age = u.time.sub(site.w);
+    const alive = step(0.0, age).mul(step(age, NOVA_SPAN));
+    const angle = gxArmAngle(site.x, u.winding).add(site.y);
+    const clip = viewProjection(u.frame.mul(vec4(cos(angle).mul(site.x), site.z, sin(angle).mul(site.x), 1.0)).xyz);
+    const px = u.viewport.y.mul(0.14).mul(tint.w).mul(alive);
+    material.vertexNode = vec4(
+        clip.xy.add(positionGeometry.xy.mul(px.mul(2.0)).div(u.viewport.mul(0.5)).mul(clip.w)),
+        clip.z,
+        clip.w,
+    );
+    // It rises in a fifth of a second, blazes for one and leaves an ember.
+    const t = max(age, 0.0);
+    const blaze = smoothstep(0.0, 0.2, t).mul(exp(t.div(-1.5)));
+    const ember = smoothstep(0.0, 0.6, t).mul(exp(t.div(-3.2))).mul(0.16);
+    const vLight = varying(vec4(tint.rgb, blaze.add(ember).mul(alive)), 'gxNova');
+    const vBlaze = varying(blaze, 'gxNovaBlaze');
+    material.colorNode = Fn(() => {
+        const q = uv().sub(0.5).mul(2.0).toVar();
+        const d2 = q.dot(q).toVar();
+        const fade = float(1.0).sub(smoothstep(0.78, 1.0, abs(q.x))).mul(float(1.0).sub(smoothstep(0.78, 1.0, abs(q.y))));
+        let spikes = float(0.0);
+        NOVA_SPIKES.forEach((turn) => {
+            const along = q.x.mul(Math.cos(turn)).add(q.y.mul(Math.sin(turn)));
+            const off = q.y.mul(Math.cos(turn)).sub(q.x.mul(Math.sin(turn)));
+            spikes = spikes.add(exp(abs(off).mul(-90.0)).mul(exp(abs(along).mul(-3.8))));
+        });
+        const point = exp(d2.mul(-420.0)).mul(10.0).add(exp(d2.mul(-60.0)).mul(1.0)).add(exp(d2.mul(-9.0)).mul(0.1));
+        const tone = mix(vLight.rgb, vec3(1.0, 0.98, 0.96), vBlaze.mul(0.6));
+        return vec4(tone.mul(point.add(spikes.mul(vBlaze.mul(1.6).add(0.1)))).mul(vLight.a).mul(fade).mul(u.breath), 0.0);
+    })();
+
+    const part = gxPart('GalaxyNovae', geometry, material, 12);
+    /** When each slot's supernova is spent: a new one takes the one spent first. */
+    const ends = new Float64Array(count).fill(-Infinity);
+    /** A sun goes off at (radius, offset from its arm's ridge, height) of the pattern's frame. */
+    part.fire = ({
+        radius, offset, y = 0, rgb, time, strength = 1,
+    }) => {
+        let slot = 0;
+        for (let i = 1; i < count; i++) if (ends[i] < ends[slot]) slot = i;
+        ends[slot] = time + NOVA_SPAN;
+        aSite.set([radius, offset, y, time], slot * 4);
+        aTint.set([rgb[0], rgb[1], rgb[2], strength], slot * 4);
+        geometry.getAttribute('aSite').needsUpdate = true;
+        geometry.getAttribute('aTint').needsUpdate = true;
+        return slot;
+    };
+    part.reset = () => {
+        for (let i = 0; i < count; i++) aSite[i * 4 + 3] = -100;
+        geometry.getAttribute('aSite').needsUpdate = true;
+        ends.fill(-Infinity);
+    };
+    /** Supernovae still burning at `time`. */
+    part.liveAt = (time) => {
+        let live = 0;
+        for (let i = 0; i < count; i++) if (ends[i] > time) live += 1;
+        return live;
     };
     part.count = count;
     return part;

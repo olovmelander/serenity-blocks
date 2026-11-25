@@ -7393,4 +7393,47 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/nimbus-veil.effect.js',
         ],
     },
+    {
+        name: 'air',
+        category: 'Playground',
+        scope: 'playground.html — galaxy',
+        description: 'Hold one of the galaxy’s airs instead of the clock’s own (the airs turn on a wheel of '
+            + '127 s beside the palettes’ 100 s, and change its form: nurseries, dust, heart, winding, lean).',
+        values: '0 clear (the rest look), 1 starburst, 2 veiled (thick dust, nearer edge-on), 3 awake (the '
+            + 'nucleus and its halo burn, faint jets stand), 4 tide (the arms open, the disc shows its face).',
+        defaultValue: 'Unset (the clock decides).',
+        example: 'air=2',
+        notes: 'Use on playground.html with effect=galaxy.',
+        sources: [
+            'src/playground/effects/galaxy.effect.js',
+        ],
+    },
+    {
+        name: 'happen',
+        category: 'Playground',
+        scope: 'playground.html — galaxy',
+        description: 'Switch off what the galaxy does by itself (a supernova in an arm, a ripple of star '
+            + 'formation down one, a shower of shooting stars, the nucleus stirring, a flash in the companion: '
+            + 'one about every 29 s), so a capture shows only the event it fired.',
+        values: '0 switches them off; anything else leaves them on.',
+        defaultValue: 'On.',
+        example: 'happen=0',
+        notes: 'Use on playground.html with effect=galaxy. To SEE one, fire it: event=happen&kind=nova.',
+        sources: [
+            'src/playground/effects/galaxy.effect.js',
+        ],
+    },
+    {
+        name: 'kind',
+        category: 'Playground',
+        scope: 'playground.html — galaxy',
+        description: 'Which of the galaxy’s own happenings event=happen fires.',
+        values: 'nova, ripple, shower, stir or flash.',
+        defaultValue: 'nova.',
+        example: 'event=happen&kind=ripple&eventAge=2',
+        notes: 'Use on playground.html with effect=galaxy and event=happen.',
+        sources: [
+            'src/playground/effects/galaxy.effect.js',
+        ],
+    },
 ];

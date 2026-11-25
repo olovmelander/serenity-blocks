@@ -24,6 +24,9 @@ function makeWorld(quality = 'Minimal', {
     const aspect = width / height;
     const camera = new THREE.PerspectiveCamera(fovForAspect(aspect), aspect, REST_RIG.near, REST_RIG.far);
     const world = new GalaxyWorld({ scene, quality, capture }).build();
+    // These tests pin what PLAY does to the galaxy, from its rest look: the air is held at rest
+    // and nothing happens by itself (tests/unit/galaxy-living.test.js holds what does).
+    world.holdAir(0).setHappenings(false);
     world.bindCamera(camera);
     world.setViewport(width, height, width / height);
     // As the theme does on its first frame: the live rects, or null when no board is on screen.
@@ -1909,13 +1912,28 @@ describe('galaxy world: clears, combos and the four-line clear', () => {
         expect(world.u.shock.value.x).toBe(world.time);
         expect(world.u.shock.value.y).toBeGreaterThan(0);
         expect(used(world.meteors, 'aStart').length).toBeGreaterThan(0);
-        // The colours ease across, they do not snap.
+        // The disc's new colours are swept in from the nucleus behind a front, they do not fade:
+        // the disc wears the old ones (kept as they were) beyond it, the new ones behind it.
+        const jetBefore = world.u.jet.value.clone();
         run(world, camera, 1 / 60, 1);
-        const moved = world.u.nursery.value.distanceTo(before);
-        expect(moved).toBeGreaterThan(0);
-        expect(moved).toBeLessThan(target.distanceTo(before) * 0.5);
-        run(world, camera, 10);
+        expect(world.u.oldNursery.value.distanceTo(before)).toBeLessThan(1e-9);
+        expect(world.u.nursery.value.distanceTo(target)).toBeLessThan(target.distanceTo(before) * 0.2);
+        expect(world.u.wipe.value.x).toBeGreaterThan(0);
+        expect(world.u.wipe.value.x).toBeLessThan(GALAXY.armStart);
+        // The sky's and the jets' colours ease across meanwhile, they do not snap.
+        const jetTarget = new THREE.Vector3(...GALAXY_PALETTES[1].jet);
+        const jetMoved = world.u.jet.value.distanceTo(jetBefore);
+        expect(jetMoved).toBeGreaterThan(0);
+        expect(jetMoved).toBeLessThan(jetTarget.distanceTo(jetBefore) * 0.5);
+        // The front runs out to the rim and is done: the whole disc wears the new colours.
+        const reached = world.u.wipe.value.x;
+        run(world, camera, 0.5);
+        expect(world.u.wipe.value.x).toBeGreaterThan(reached);
+        run(world, camera, 9.5);
+        expect(world.u.wipe.value.x).toBeGreaterThan(GALAXY.bound * 2);
+        expect(world.u.wipe.value.y).toBe(0);
         expect(world.u.nursery.value.distanceTo(target)).toBeLessThan(0.01);
+        expect(world.u.jet.value.distanceTo(jetTarget)).toBeLessThan(0.01);
         // Past the last palette it starts again.
         for (let level = 1; level <= GALAXY_PALETTES.length * 2 + 1; level++) {
             world.levelUp(level);
@@ -1978,9 +1996,12 @@ describe('galaxy world: clears, combos and the four-line clear', () => {
         expect(used(world.meteors, 'aStart').length).toBeGreaterThan(0);
         expect(world.getState().palette).toBe(GALAXY_PALETTES[2].name);
         run(world, camera, 1 / 60, 1);
-        expect(world.paletteStep).toBeGreaterThan(0);
-        expect(world.paletteStep).toBeLessThan(0.1);
+        // (the disc takes the step at once behind its front; the sky's share of it eases)
+        expect(world.paletteStep).toBe(1);
+        expect(world.paletteSoft).toBeGreaterThan(0);
+        expect(world.paletteSoft).toBeLessThan(0.1);
         run(world, camera, 14);
+        expect(world.paletteSoft).toBe(1);
         expect(world.time).toBeLessThan(GALAXY_SECONDS * (1 + GALAXY_HOLD));
         expectPalette(2, 'level 2 on palette 1');
         // A new run drops the level's share and keeps the clock's.
