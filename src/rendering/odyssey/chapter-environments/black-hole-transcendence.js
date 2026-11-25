@@ -593,6 +593,34 @@ export function resolveFallLockCamera(camera, toLive) {
     return _blendCamera;
 }
 
+const _closeUpCamera = new THREE.PerspectiveCamera();
+/**
+ * The camera the hero locks to in an orb's close-up (2026-11-25, the deep chapters audit, S2):
+ * the rail's view (the board's `userData.railCamera`), eased in by `userData.closeUp`, so the hole
+ * stands where the rail's view has it, beside the orb the close-up aims at, not behind its glass.
+ * `release` (the fall's portal) hands the lock back to the live gaze as the tunnel opens.
+ * @param {THREE.Camera} camera the render camera
+ * @param {number} release 0..1
+ * @returns {THREE.Camera}
+ */
+export function resolveCloseUpLockCamera(camera, release = 0) {
+    const rail = camera?.userData?.railCamera;
+    const w = Math.min(1, Math.max(0, camera?.userData?.closeUp ?? 0)) * (1 - Math.min(1, Math.max(0, release)));
+    if (!rail || !(w > 0) || camera?.userData?.heroCamera) return camera;
+    if (_closeUpCamera.fov !== camera.fov || _closeUpCamera.aspect !== camera.aspect
+        || _closeUpCamera.near !== camera.near || _closeUpCamera.far !== camera.far) {
+        _closeUpCamera.fov = camera.fov;
+        _closeUpCamera.aspect = camera.aspect;
+        _closeUpCamera.near = camera.near;
+        _closeUpCamera.far = camera.far;
+        _closeUpCamera.updateProjectionMatrix();
+    }
+    _closeUpCamera.position.lerpVectors(camera.position, rail.position, w);
+    _closeUpCamera.quaternion.copy(camera.quaternion).slerp(rail.quaternion, w);
+    _closeUpCamera.updateMatrixWorld(true);
+    return _closeUpCamera;
+}
+
 function resolveShadowTakeover(chapterPositions) {
     const ch7Start = chapterPositions?.[6];
     if (!Number.isFinite(ch7Start)) return null;
@@ -770,7 +798,7 @@ export function updateBlackHoleTranscendenceEnvironment(group, delta, time, came
     // following the gaze — while the hole is an object in the sky. As its window opens the
     // hold eases onto the gaze: inside, the tunnel is wherever the eye looks (and the dome and
     // far stars stop drawing on exactly that promise). Identical to the render camera otherwise.
-    const lockCamera = resolveFallLockCamera(camera, fall.portal);
+    const lockCamera = resolveFallLockCamera(resolveCloseUpLockCamera(camera, fall.portal), fall.portal);
     if (!poseGreatHole(group, lockCamera, time, carry?.glide ?? 0, fall) && group.userData.distantHole) {
         // No-camera fallback (smoke tests): a slow precession in place.
         group.userData.distantHole.rotation.z -= delta * 0.025;

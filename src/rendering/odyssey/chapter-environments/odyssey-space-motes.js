@@ -47,6 +47,13 @@ export const SPACE_MOTES = Object.freeze({
     /** Light: a dim mote, a glint. */
     gain: 2.4,
     glintGain: 4.5,
+    /**
+     * Off the hole's shadow (2026-11-25, the deep chapters audit S2): a mote seen against the
+     * shadow is dust between the eye and the hole, but it read as a star inside the hole, a hole
+     * cut in a backdrop. Gone inside `shadowKeep` of the shadow's angular radius, back by `shadowEdge`.
+     */
+    shadowKeep: 0.92,
+    shadowEdge: 1.25,
 });
 
 /** Starlight colours (sRGB): cool blue-white, faint violet, pale gold. */
@@ -99,6 +106,9 @@ export function createSpaceMotes(uniforms, { count = SPACE_MOTES.count, seed = 6
         warm: uniform(0),
         /** 0..1 the field's presence. */
         reveal: uniform(0),
+        /** The hole's centre (same frame), and the cosines of its shadow's veil (inner, outer). */
+        hole: uniform(new THREE.Vector3()),
+        holeCos: uniform(new THREE.Vector2(2, 1.5)),
     };
     const time = uniforms.uTime;
 
@@ -112,8 +122,12 @@ export function createSpaceMotes(uniforms, { count = SPACE_MOTES.count, seed = 6
     const dist = length(offset);
     // Faded at the box's faces (a wrap is never seen) and near the eye.
     const edge = max(max(abs(offset.x), abs(offset.y)), abs(offset.z)).div(box.mul(0.5));
+    // ...and off the hole's shadow, seen from the eye (both cosines above 1 when no hole: nothing veiled).
+    const toHoleDir = normalize(u.hole.sub(u.eye));
+    const overShadow = smoothstep(u.holeCos.y, u.holeCos.x, dot(offset.div(max(dist, 1e-4)), toHoleDir));
     const presence = oneMinus(smoothstep(0.72, 0.98, edge))
-        .mul(smoothstep(S.near, S.near + S.nearFade, dist));
+        .mul(smoothstep(S.near, S.near + S.nearFade, dist))
+        .mul(oneMinus(overShadow));
 
     // The billboard, stretched along the eye's motion as seen from the eye (the motes stream
     // past the other way: the quad is symmetric, so the sign does not matter).
@@ -193,6 +207,19 @@ export function updateSpaceMotes(motes, camera, parentOrigin, dt, drive) {
     state.last = (state.last ?? new THREE.Vector3()).copy(_eye);
     u.eye.value.copy(_eye);
     u.velocity.value.copy(state.velocity);
+    // The hole's shadow as the eye sees it: its angular radius from its world radius and distance.
+    const holeRadius = drive.hole?.lensRadius ?? 0;
+    if (drive.hole && holeRadius > 0) {
+        u.hole.value.copy(drive.hole).sub(parentOrigin);
+        const d = Math.max(1e-3, u.hole.value.distanceTo(_eye));
+        const ang = Math.asin(Math.min(1, holeRadius / d));
+        u.holeCos.value.set(
+            Math.cos(Math.min(Math.PI / 2, ang * SPACE_MOTES.shadowKeep)),
+            Math.cos(Math.min(Math.PI / 2, ang * SPACE_MOTES.shadowEdge)),
+        );
+    } else {
+        u.holeCos.value.set(2, 1.5);
+    }
     // The pull: drift toward the hole, warming as it grows.
     const pull = Math.max(0, Math.min(1, drive.pull || 0));
     u.warm.value = pull;

@@ -104,6 +104,7 @@ import { resolveOdysseyPathInflowWeight } from './odyssey-path-inflow.js';
 import { foldRideBetween, plungeTravelExtraMs, resolveBlackHoleFall } from './transitions/odyssey-black-hole-fall.js';
 import { breachTravelExtraMs, cityRideBetween, cityTravelExtraMs } from './transitions/odyssey-travel-measure.js';
 import { createFoldHypercubes } from './chapter-environments/odyssey-fold-hypercubes.js';
+import { resolveCh6CloseUp } from './odyssey-ch6-close-ups.js';
 import { prefersReducedMotion } from '../../themes/shared/reduced-motion.js';
 import { foldHypercubeCages } from './transitions/odyssey-fold-rooms.js';
 import { resolveChapterArrivalProgress, resolveOrbParkProgress } from './odyssey-chapter-arrival.js';
@@ -3115,6 +3116,22 @@ export class OdysseyBoardController {
         along.addScaledVector(up, -level * along.dot(up));
         if (along.lengthSq() < 1e-8) return { viewDir: null };
         along.normalize();
+        // Chapter 6: each orb beside the hero of its stretch of the chapter (odyssey-ch6-close-ups.js),
+        // once the chapter has published where its heroes hang; the rail's view until then.
+        if (chapterId === 6) {
+            const positions = this.presentationLayout?.chapterPositions;
+            const env6 = this.environmentManager?.environments?.get(6)?.group?.userData;
+            if (env6?.heroPlaces && positions?.[6] > positions?.[5]) {
+                const t = (p - positions[5]) / (positions[6] - positions[5]);
+                // The hole where it will stand for the eye parked here (it rides the rail).
+                const heroes = this._ch6CloseUpHeroes ?? (this._ch6CloseUpHeroes = { omen: new THREE.Vector3() });
+                heroes.planet = env6.heroPlaces.planet;
+                heroes.galaxyDir = env6.heroPlaces.galaxyDir;
+                if (!env6.omenAt?.(p, heroes.omen)) heroes.omen.copy(env6.heroPlaces.omen);
+                const view = resolveCh6CloseUp(t, getOdysseyPathPointAt(p), along, up, heroes);
+                if (view) return { viewDir: view, up };
+            }
+        }
         return { viewDir: along.applyAxisAngle(up, yaw).normalize(), up };
     }
 
@@ -3169,6 +3186,17 @@ export class OdysseyBoardController {
         const controller = this.cameraController;
         const followProgress = controller?.getFollowProgress?.();
         cam.userData.followProgress = Number.isFinite(followProgress) ? followProgress : null;
+        // How much the eye is in an orb's close-up, eased (0..1): chapter 6 holds its black hole at
+        // its own place while it is (cosmic-expanse.js, the lock), not on the close-up's aim, where
+        // it stood behind the orb's glass (the deep chapters audit, S2). Eased both ways over the
+        // camera's swing in and out, so the hole comes back onto the aim without a jump.
+        const now = performance.now();
+        const step = Math.min(0.1, Math.max(0, (now - (this._closeUpAt ?? now)) / 1000));
+        this._closeUpAt = now;
+        const closeUpTarget = controller?.mode === 'focus' ? 1 : 0;
+        const eased = this._closeUp ?? closeUpTarget;
+        this._closeUp = eased + ((closeUpTarget - eased) * (1 - Math.exp(-step * 3.5)));
+        cam.userData.closeUp = this._closeUp;
         if (!controller?.computeFollowFrame || !Number.isFinite(progress)) {
             cam.userData.railCamera = null;
             return;
