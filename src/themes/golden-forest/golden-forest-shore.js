@@ -73,6 +73,9 @@ export class GoldenForestShore {
         this.owned = [];
         this.boat = null;
         this.boatRing = 5;
+        /** How hard the boat has been rocked (a great wave reaching it, a hard drop beside it): 0..1, dying away. */
+        this.rocked = 0;
+        this.rockPhase = 0;
     }
 
     own(resource) {
@@ -159,7 +162,9 @@ export class GoldenForestShore {
         const lit = blade.mul(saturate(dot(normal, light.uSunDir).abs().mul(1.4).add(0.3)))
             .add(glowing.mul(through.mul(0.7).add(0.08)).mul(st.y.mul(0.7).add(0.3)))
             .mul(light.uSunColor).mul(sun)
-            .add(blade.mul(light.ambient(vec3(0, 1, 0))).mul(st.y.mul(0.6).add(0.5)).mul(1.2));
+            .add(blade.mul(light.ambient(vec3(0, 1, 0))).mul(st.y.mul(0.6).add(0.5)).mul(1.2))
+            // A combo's gilding reaches the reeds as it comes round the lake: their tips burn.
+            .add(glowing.mul(light.uSunColor).mul(light.gild(world)).mul(st.y.mul(st.y)).mul(0.5));
         material.colorNode = light.haze(lit, { world });
         const mesh = new THREE.InstancedMesh(geometry, material, places.length);
         mesh.name = 'GoldenForestReedsAndGrass';
@@ -323,18 +328,38 @@ export class GoldenForestShore {
         this.boat = add('rowboat', this.createTimberMaterial(true), BOAT.x, 0, BOAT.z, BOAT.yaw);
     }
 
+    /** Where the boat lies (x, z), for whatever crosses the water to find it. */
+    get boatPlace() {
+        return BOAT;
+    }
+
+    /**
+     * Rock the boat (0..1): a great wave has reached it, or the lake was struck beside it. A
+     * harder rocking takes over a gentler one; none restarts one under way.
+     */
+    rock(strength) {
+        if (Number.isFinite(strength)) this.rocked = Math.max(this.rocked, Math.min(1, Math.max(0, strength)));
+    }
+
     /** The boat rides the water; returns a point for a faint ring when it rocks, else null. */
     update(time, dt) {
         const { boat } = this;
         if (!boat) return null;
-        boat.position.y = Math.sin(time * 0.9) * 0.018;
+        const step = Math.max(0, Number.isFinite(dt) ? dt : 0);
+        // Rocked, it rolls on its own quicker beat, wider and deeper, and settles over a few seconds.
+        this.rocked *= Math.exp(-step * 0.55);
+        if (this.rocked < 0.002) this.rocked = 0;
+        this.rockPhase += step * (2.3 + this.rocked * 1.2);
+        const roll = Math.sin(this.rockPhase) * this.rocked;
+        boat.position.y = Math.sin(time * 0.9) * 0.018 + Math.sin(this.rockPhase * 0.5 + 0.6) * this.rocked * 0.05;
         boat.rotation.set(
-            Math.sin(time * 0.53 + 1) * 0.014,
+            Math.sin(time * 0.53 + 1) * 0.014 + Math.cos(this.rockPhase * 0.5) * this.rocked * 0.03,
             BOAT.yaw + Math.sin(time * 0.21) * 0.02,
-            Math.sin(time * 0.7) * 0.03,
+            Math.sin(time * 0.7) * 0.03 + roll * 0.11,
         );
         boat.updateMatrix();
-        this.boatRing -= Math.max(0, dt);
+        // A rocking boat sends its rings out more often.
+        this.boatRing -= step * (1 + this.rocked * 5);
         if (this.boatRing > 0) return null;
         this.boatRing = 6.5;
         return boat.position;

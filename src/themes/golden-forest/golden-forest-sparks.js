@@ -10,7 +10,7 @@ import * as THREE from 'three/webgpu';
 import {
     cameraPosition, cross, dot, exp, float, instancedDynamicBufferAttribute, length, mix, normalize, positionGeometry,
     pow, saturate, uv, vec3,
-    max,
+    max, min,
 } from 'three/tsl';
 import { GoldenForestSparkSim } from './golden-forest-spark-sim.js';
 
@@ -57,11 +57,16 @@ export class GoldenForestSparks {
         // along x toEye, in that order, so the quad's front face is the one turned to the eye.
         const across = normalize(cross(along, toEye));
         // A fast firefly draws out into a fine streak: longer, and narrower with it.
-        const stretch = glow.z.mul(2.1).add(1);
-        const girth = glow.z.mul(-0.25).add(1);
+        const stretch = glow.z.mul(1.5).add(1);
+        const girth = glow.z.mul(-0.3).add(1);
+        // A spark thrown from the board flies a few metres from the eye, where its real size is
+        // a fingertip-wide blot: it is never drawn wider than a fixed angle (about nine pixels
+        // across at 1080 lines), so the jets are sparks and not confetti. Far fireflies keep theirs.
+        const range = length(cameraPosition.sub(place.xyz));
+        const size = min(place.w, range.mul(0.0085));
         material.positionNode = place.xyz
-            .add(along.mul(positionGeometry.y.mul(place.w).mul(stretch)))
-            .add(across.mul(positionGeometry.x.mul(place.w).mul(girth)));
+            .add(along.mul(positionGeometry.y.mul(size).mul(stretch)))
+            .add(across.mul(positionGeometry.x.mul(size).mul(girth)));
         const st = uv();
         const radius = length(st.sub(0.5)).mul(2);
         const core = pow(saturate(float(1).sub(radius)), 3);

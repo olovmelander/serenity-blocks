@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
-    GOLDEN_FOREST_REACTION_LIMITS, GoldenForestReactions,
+    GOLDEN_FOREST_BEAM_SLOTS, GOLDEN_FOREST_FLURRIES, GOLDEN_FOREST_REACTION_LIMITS, GOLDEN_FOREST_TRACK_SECONDS,
+    GOLDEN_FOREST_TRACK_SLOTS, GoldenForestReactions,
 } from '../../src/themes/golden-forest/golden-forest-reactions.js';
 
 const ENVELOPES = ['gust', 'warmth', 'shafts', 'glow', 'shimmer', 'flock'];
@@ -14,6 +15,17 @@ const RING_QUEUE = 8;
 const REST_RING = Object.freeze({
     serial: -1, column: 0.5, row: 0, strength: 0,
 });
+// The bursts the world is asked to throw wait in a queue of the director's own length (not a
+// number the frame's shape depends on: every slot at rest is this one).
+const FLURRY_QUEUE = new GoldenForestReactions().flurries.length;
+const REST_FLURRY = Object.freeze({
+    serial: -1, kind: 'droplets', column: 0.5, row: 0, side: 0, strength: 0,
+});
+// The lake's tracks: a few slots of each kind (GOLDEN_FOREST_TRACK_SLOTS), every one this shape.
+const TRACK_KINDS = Object.keys(GOLDEN_FOREST_TRACK_SECONDS);
+const TRACK_KEYS = ['active', 'age', 'column', 'row', 'serial', 'strength', 'turn'];
+const BEAM_KEYS = ['angle', 'serial', 'sharp', 'strength'];
+const FLURRY_KEYS = Object.keys(REST_FLURRY).sort();
 // A director that has never been reset is in its first epoch.
 const REST_FRAME = Object.freeze({
     epoch: 1,
@@ -37,6 +49,21 @@ const REST_FRAME = Object.freeze({
     stage: 0,
     crown: 0,
     gold: 0,
+    // The sunburst and the shafts of the fan cleared lines hold open.
+    burst: 0,
+    beams: [],
+    // A combo's gilding of the shores, the cloud's rush as a level turns the hour on, the evening
+    // after a game and the skeins of cranes called so far.
+    gild: 0,
+    gildReach: 0,
+    rush: 0,
+    dusk: 0,
+    flights: 0,
+    // The lake's tracks still running, and the bursts asked for.
+    waves: [],
+    swirls: [],
+    roads: [],
+    flurries: Array.from({ length: FLURRY_QUEUE }, () => ({ ...REST_FLURRY })),
     rings: Array.from({ length: RING_QUEUE }, () => ({ ...REST_RING })),
     emitters: [],
 });
@@ -90,8 +117,54 @@ function frameProblems(frame, capacity = Infinity) {
     const problems = [];
     const check = (condition, message) => { if (!condition) problems.push(message); };
     const unit = (value) => Number.isFinite(value) && value >= 0 && value <= 1;
-    for (const key of [...ENVELOPES, 'vortex', 'heat', 'ribbons']) {
+    for (const key of [...ENVELOPES, 'vortex', 'heat', 'ribbons', 'burst', 'gild', 'gildReach', 'rush', 'dusk']) {
         check(unit(frame[key]), `${key} = ${String(frame[key])}`);
+    }
+    check(Number.isInteger(frame.flights) && frame.flights >= 0, `flights = ${String(frame.flights)}`);
+    // The shafts of the fan: only those standing, each with a place in the fan and some light.
+    check(frame.beams.length <= GOLDEN_FOREST_BEAM_SLOTS, `${frame.beams.length} beams`);
+    check(new Set(frame.beams.map((beam) => beam.serial)).size === frame.beams.length, 'duplicate beam serials');
+    for (const beam of frame.beams) {
+        const label = `beam ${beam.serial}`;
+        check(Object.keys(beam).sort().join() === BEAM_KEYS.join(), `${label} keys ${Object.keys(beam)}`);
+        check(Number.isInteger(beam.serial) && beam.serial >= 0, `${label} serial`);
+        check(Number.isFinite(beam.angle), `${label} angle ${beam.angle}`);
+        check(Number.isFinite(beam.sharp) && beam.sharp > 0, `${label} sharp ${beam.sharp}`);
+        check(unit(beam.strength), `${label} strength ${beam.strength}`);
+    }
+    // The lake's tracks: only those running, each inside its own life.
+    const trackSerials = [];
+    for (const kind of TRACK_KINDS) {
+        const list = frame[kind];
+        check(Array.isArray(list) && list.length <= GOLDEN_FOREST_TRACK_SLOTS[kind], `${list?.length} ${kind}`);
+        for (const track of list || []) {
+            const label = `${kind} ${track.serial}`;
+            trackSerials.push(track.serial);
+            check(Object.keys(track).sort().join() === TRACK_KEYS.join(), `${label} keys ${Object.keys(track)}`);
+            check(track.active === true, `${label} inactive`);
+            check(Number.isInteger(track.serial) && track.serial >= 0, `${label} serial`);
+            check(track.age >= 0 && track.age < GOLDEN_FOREST_TRACK_SECONDS[kind], `${label} age ${track.age}`);
+            check(track.strength > 0 && track.strength <= 1.5, `${label} strength ${track.strength}`);
+            check(unit(track.column), `${label} column ${track.column}`);
+            check(unit(track.row), `${label} row ${track.row}`);
+            check(track.turn === 1 || track.turn === -1, `${label} turn ${track.turn}`);
+        }
+    }
+    check(new Set(trackSerials).size === trackSerials.length, 'duplicate track serials');
+    // The bursts asked for: a queue read by serial, like the rings.
+    check(frame.flurries.length === FLURRY_QUEUE, `${frame.flurries.length} flurries`);
+    const flurrySerials = frame.flurries.filter((flurry) => flurry.serial >= 0).map((flurry) => flurry.serial);
+    check(new Set(flurrySerials).size === flurrySerials.length, 'duplicate flurry serials');
+    for (const flurry of frame.flurries) {
+        const label = `flurry ${flurry.serial}`;
+        check(Object.keys(flurry).sort().join() === FLURRY_KEYS.join(), `${label} keys ${Object.keys(flurry)}`);
+        check(Number.isInteger(flurry.serial) && flurry.serial >= -1, `${label} serial`);
+        check(GOLDEN_FOREST_FLURRIES.includes(flurry.kind), `${label} kind ${flurry.kind}`);
+        check(unit(flurry.column), `${label} column ${flurry.column}`);
+        check(unit(flurry.row), `${label} row ${flurry.row}`);
+        check([-1, 0, 1].includes(flurry.side), `${label} side ${flurry.side}`);
+        check(Number.isFinite(flurry.strength) && flurry.strength >= 0 && flurry.strength <= 1.5, `${label} strength`);
+        if (flurry.serial >= 0) check(flurry.strength > 0, `${label} has no strength`);
     }
     check(Number.isInteger(frame.streak) && frame.streak >= 0, `streak = ${String(frame.streak)}`);
     check(typeof frame.settled === 'boolean', `settled = ${String(frame.settled)}`);
@@ -942,6 +1015,42 @@ describe('Golden Forest reaction director', () => {
             }
             reactions.onGameOver({ detail: NaN });
             expectBounded(advance(reactions, 2), reactions.maxEmitters);
+        });
+
+        // The events' own cues (the fan's shafts, the lake's tracks, the bursts to throw) are built from
+        // the same payloads: a drop's distance, a piece's place, a clear's lines and cascade depth.
+        it('keeps the shafts, the tracks and the bursts whole whatever the payloads that start them say', () => {
+            const numbers = [NaN, Infinity, -Infinity, -7, 0, 1e308, '18', '', null, undefined, true, [], {}, () => {}];
+            const pieces = [undefined, null, 'T', 7, [], {}, { x: NaN, y: 3 }, { x: 4, y: Infinity, shape: [[1]] },
+                { x: 1e12, y: -1e12, shape: [[1]] }, { x: 3, y: 9, shape: [[], null, 'row', [0, '1', NaN, {}]] }];
+            for (const number of numbers) {
+                for (const piece of pieces) {
+                    const reactions = create('Minimal');
+                    expect(() => {
+                        reactions.onHardDrop({ distance: number, startY: number, endY: number });
+                        reactions.onHardDrop({ startY: 2, endY: number });
+                        reactions.onPieceLock({ piece, viewportOrigin: { x: number, y: number } });
+                        reactions.onLineClear({ lineCount: 3, clearedRows: [number, 22], cascadeCount: number });
+                        reactions.onLineClear(4, { clearedRows: number, cascadeCount: number });
+                        reactions.onTwist({ piece, lineCount: number, viewportOrigin: number });
+                        reactions.onBackToBack(number);
+                        reactions.onPerfectClear(piece);
+                        reactions.onLevelUp({ level: number });
+                    }).not.toThrow();
+                    // The clears were real ones, so their cues are there, and every one of them in range.
+                    const frame = reactions.update(1 / 60);
+                    expectBounded(frame, reactions.maxEmitters);
+                    expect(frame.beams.length).toBeGreaterThanOrEqual(3);
+                    expect(frame.waves.length).toBeGreaterThanOrEqual(1);
+                    expect(frame.swirls).toHaveLength(1);
+                    expect(frame.roads).toHaveLength(1);
+                    expect(frame.flights).toBe(2);
+                    const asked = frame.flurries.filter((flurry) => flurry.serial >= 0).map((flurry) => flurry.kind);
+                    for (const kind of ['pollen', 'helix', 'goldfall']) expect(asked).toContain(kind);
+                    reactions.onGameOver(number);
+                    expectBounded(advance(reactions, 1), reactions.maxEmitters);
+                }
+            }
         });
     });
 

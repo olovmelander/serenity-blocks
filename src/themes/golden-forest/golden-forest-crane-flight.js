@@ -11,6 +11,11 @@
  *  - THE SKEIN: a V of cranes crossing the sky on a long lane through the low sun, beating
  *    slowly and steadily (a wave of strokes running down each arm), each bird a little loose in
  *    its slot; each pass is a different skein (its V, its height, its distance, its line).
+ *  - A CALLED SKEIN: a level turning the hour on, or a perfect clear, calls a skein of its own
+ *    across the sun (`call()`): other birds than the clock's, on a shorter lane that begins just
+ *    out of sight, so the whole V comes in from the frame's edge at one pace a few seconds after
+ *    it is called and leaves by the other edge. One at a time: a call made while one is in the
+ *    sky is that skein's.
  *
  * Where a bird is is a function of the clock (and the startle as the world eases it); only the
  * wingbeat's phase is integrated, so a startle quickens the beat without a jump. Each frame
@@ -106,6 +111,24 @@ export const SKEIN = Object.freeze({
     vary: Object.freeze([14, 0.06]),
     sway: Object.freeze([3, 420]),
     birds: 21,
+});
+/**
+ * A called skein's lane (metres, seconds): from just out of sight on the left to out of sight on
+ * the right, quicker than the clock's passes, a little nearer. Where "out of sight" lies
+ * depends on the frame: call() is told the frame's two edges at the lane's depths (the birds
+ * know the camera) and starts the leader "pad" metres outside the left one and ends the lane
+ * "pad" outside the right one; "from" and "to" are those places for the widest frame the lake
+ * is composed for (2.45:1), which a call that is told nothing uses. Both edges are taken at the
+ * depth the call's own lane lies at, and the skein stays in the sky until the last bird of its
+ * longest arm is clear of the frame (the call's own "trail").
+ */
+export const CALLED_SKEIN = Object.freeze({
+    from: Object.freeze([-153, -112]),
+    to: Object.freeze([183, -138]),
+    over: Object.freeze([-0.6, 2.2]),
+    speed: 17.5,
+    lead: 0,
+    pad: 8,
 });
 /**
  * The landscape eye (golden-forest-composition.js: goldenForestEye) and the sun's bearing and
@@ -285,6 +308,23 @@ export class CraneSky {
             glide: [0.03 + random() * 0.03, random() * TAU],
             size: 0.94 + random() * 0.12,
         }));
+        // A called skein's own birds: drawn from a generator of their own, so the clock's cranes
+        // are the same birds with or without them.
+        const calledRandom = seeded((seed ^ 0x51ed270b) >>> 0);
+        this.called = Array.from({ length: sizes.skein }, () => ({
+            rate: CRANE_BEAT.cruise * (1 + (calledRandom() * 2 - 1) * CRANE_BEAT.spread * 0.6),
+            beat: calledRandom() * 0.2,
+            wander: [
+                0.12, 0.04 + calledRandom() * 0.05, calledRandom() * TAU,
+                0.08, 0.03 + calledRandom() * 0.04, calledRandom() * TAU,
+                0.22, 0.02 + calledRandom() * 0.03, calledRandom() * TAU,
+            ],
+            glide: [0.03 + calledRandom() * 0.03, calledRandom() * TAU],
+            size: 0.94 + calledRandom() * 0.12,
+        }));
+        /** The called skein in the sky (null: none), and how many have been called. */
+        this.calling = null;
+        this.calls = 0;
         this.passes = new Map();
         this.boost = 0;
         this.scratch = {
@@ -301,6 +341,112 @@ export class CraneSky {
 
     reset() {
         this.boost = 0;
+        this.calling = null;
+        // (So a clock sought back to its start calls the same skeins again.)
+        this.calls = 0;
+    }
+
+    /**
+     * Call a skein across the sun at time `t`. Returns the skein in the sky: the new one, or the
+     * one already crossing (a call made meanwhile is that skein's). Null when this sky has no
+     * birds for one.
+     * "frame" says where the frame's edges lie at the lane's two depths ({ left, right }: world
+     * x at the z of CALLED_SKEIN.from and of .to); without it the lane is the one for the
+     * widest frame the lake is composed for.
+     * @param {number} t
+     * @param {{ left?: number, right?: number } | null} [frame]
+     */
+    call(t, frame = null) {
+        if (!this.called.length || !Number.isFinite(t)) return null;
+        if (this.calling && this.calledAt(0, t, [0, 0, 0])) return this.calling;
+        const random = seeded((this.seed * 131 + this.calls * 6151 + 17) >>> 0);
+        const [fromX, fromZ] = CALLED_SKEIN.from;
+        const [toX, toZ] = CALLED_SKEIN.to;
+        const [eyeX, , eyeZ] = CRANE_EYE;
+        // The frame's two edges as rays from the eye along the ground: metres to a side for every
+        // metre of depth. Told nothing, the widest frame's (the lane CALLED_SKEIN names).
+        const leftSlope = Number.isFinite(frame?.left)
+            ? Math.max(0.05, (eyeX - frame.left) / (eyeZ - fromZ)) : (eyeX - fromX - CALLED_SKEIN.pad) / (eyeZ - fromZ);
+        const rightSlope = Number.isFinite(frame?.right)
+            ? Math.max(0.05, (frame.right - eyeX) / (eyeZ - toZ)) : (toX - CALLED_SKEIN.pad - eyeX) / (eyeZ - toZ);
+        const dz = (random() * 2 - 1) * 9;
+        const tilt = (random() * 2 - 1) * 0.05;
+        const over = CALLED_SKEIN.over[0] + (CALLED_SKEIN.over[1] - CALLED_SKEIN.over[0]) * random();
+        const slots = vSlots(this.called.length, random);
+        const sway = random() * TAU;
+        // Each bird of the V flies some way behind its leader and, on one arm, deeper into the
+        // picture, where the frame's edge lies further out.
+        const span = CRANE_SPAN;
+        const behind = slots.map(([sx, , sz]) => ({ back: -sz * span, deeper: Math.max(0, -sx * span) }));
+        // The lane begins a pad outside the left edge AT ITS OWN DEPTH (each call lies a little
+        // nearer or further), and further out still if a bird of the far arm would otherwise show.
+        const startZ = fromZ + dz;
+        const early = Math.max(0, ...behind.map((bird) => bird.deeper * leftSlope - bird.back));
+        const fx = eyeX - leftSlope * (eyeZ - startZ) - CALLED_SKEIN.pad - early;
+        // It ends a pad outside the right edge at the depth it ends at (the lane tilts, so that
+        // depth depends on its length: a few rounds settle it).
+        let tx = eyeX + rightSlope * (eyeZ - (toZ + dz)) + CALLED_SKEIN.pad;
+        let lz = toZ - fromZ;
+        for (let round = 0; round < 4; round += 1) {
+            lz = toZ - fromZ + tilt * (tx - fx);
+            tx = eyeX + rightSlope * (eyeZ - (startZ + lz)) + CALLED_SKEIN.pad;
+        }
+        const lx = tx - fx;
+        const length = Math.hypot(lx, lz);
+        const lane = {
+            fx, fz: startZ, ux: lx / length, uz: lz / length, length,
+        };
+        // Past the lane's end the leader flies on until the last bird of the longest arm has left
+        // the frame too. Flying on it goes deeper, where the edge is further out: the frame's
+        // edge is gained at the pace of its flight less the edge's own retreat.
+        const gain = Math.max(0.3, lane.ux + lane.uz * rightSlope);
+        const arm = Math.max(0, ...behind.map((bird) => bird.back + bird.deeper * rightSlope));
+        const trail = (arm + CALLED_SKEIN.pad) / gain;
+        // Where the lane crosses the sun's bearing, and so how high it must fly to cross the sun.
+        const az = CRANE_SUN.azimuth * (Math.PI / 180);
+        const sx = Math.sin(az);
+        const sz = -Math.cos(az);
+        const bx = eyeX - lane.fx;
+        const bz = eyeZ - lane.fz;
+        const det = sx * lane.uz - lane.ux * sz;
+        const reach = Math.abs(det) > 1e-6 ? (lane.ux * bz - lane.uz * bx) / det : 130;
+        this.calls += 1;
+        this.calling = {
+            start: t,
+            lane,
+            slots,
+            trail,
+            y: CRANE_EYE[1] + Math.max(60, reach) * Math.tan((CRANE_SUN.elevation + over) * (Math.PI / 180)),
+            sway,
+        };
+        return this.calling;
+    }
+
+    /** Where called bird `i` is at time t (null when no called skein is in the sky). */
+    calledAt(i, t, out = [0, 0, 0]) {
+        const call = this.calling;
+        if (!call) return null;
+        const {
+            fx, fz, ux, uz, length,
+        } = call.lane;
+        const run = (t - call.start) * CALLED_SKEIN.speed;
+        // The leader starts where the lane begins, out of sight, its V trailing further out still;
+        // the skein is in the sky until its last bird has left by the far edge.
+        if (run < 0 || run > length + call.trail) return null;
+        const [sx, sy, sz] = call.slots[i];
+        const w = this.called[i].wander;
+        const span = CRANE_SPAN;
+        const across = (sx + w[0] * Math.sin(t * w[1] * TAU + w[2])) * span;
+        const up = (sy + w[3] * Math.sin(t * w[4] * TAU + w[5])) * span;
+        const along = (sz + w[6] * Math.sin(t * w[7] * TAU + w[8])) * span;
+        const d = run + along - CALLED_SKEIN.lead;
+        const sway = 2 * Math.sin((d / 380) * TAU + call.sway);
+        const nx = -uz;
+        const nz = ux;
+        out[0] = fx + ux * d + nx * (across + sway);
+        out[1] = call.y + up + 1 * Math.sin(t * 0.23 + call.sway);
+        out[2] = fz + uz * d + nz * (across + sway);
+        return out;
     }
 
     /**
@@ -405,8 +551,12 @@ export class CraneSky {
         return out;
     }
 
-    /** Where bird `i` of the kettle (`kettle` true) or the skein is at time t (null: not in the sky). */
+    /**
+     * Where bird `i` of the kettle (`kettle` true), the skein, or the called skein
+     * (`kettle` 'called') is at time t (null: not in the sky).
+     */
     at(kettle, i, time, startle, out) {
+        if (kettle === 'called') return this.calledAt(i, time, out);
         return kettle ? this.kettleAt(i, time, startle, out) : this.skeinAt(i, time, out);
     }
 
@@ -506,6 +656,21 @@ export class CraneSky {
                 const glide = smooth(0.82, 0.97, 0.5 + 0.5 * Math.sin(t * bird.glide[0] * TAU + bird.glide[1]));
                 wingPose(theta, s * 0.6, Math.max(1 - glide * 0.85, s), GLIDE_POSE, pose);
                 put(this.place(slot, 0, false, i, t, s, pose, bird.size, eye));
+            }
+        }
+        if (this.calling) {
+            if (!this.calledAt(0, t, this.scratch.c)) {
+                // It has left by the far edge: the sky is free for another.
+                if (t - this.calling.start > 1) this.calling = null;
+            } else {
+                for (let i = 0; i < this.called.length; i += 1) {
+                    const bird = this.called[i];
+                    const rank = Math.abs(this.calling.slots[i][2]) / V_SHAPE.back;
+                    const theta = (beatTime * bird.rate + bird.beat - rank * 0.16) * TAU;
+                    const glide = smooth(0.84, 0.97, 0.5 + 0.5 * Math.sin(t * bird.glide[0] * TAU + bird.glide[1]));
+                    wingPose(theta, 0.25 + s * 0.4, Math.max(1 - glide * 0.85, s), GLIDE_POSE, pose);
+                    put(this.place(slot, 0, 'called', i, t, s, pose, bird.size, eye));
+                }
             }
         }
         return { near: n, far: f };

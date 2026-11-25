@@ -6692,8 +6692,31 @@ export const PLAYGROUND_URL_PARAMETERS = [
         notes: 'Use on playground.html with effect=grainfields; t=10 with hour=<place> gives a deterministic capture.',
         sources: ['src/playground/effects/grainfields.effect.js'],
     })),
-    // Golden Forest's cranes: a long lens on one bird, or a camera flying beside it.
+    // Golden Forest's air and lens, then its cranes: a long lens on one bird, or a camera flying beside it.
     ...[
+        [
+            'air',
+            'Hold one of the lake’s airs (its weather) instead of letting the clock turn them: still (the lake '
+                + 'as built), burning-sky (a ceiling of high cloud lit from beneath), breeze, clear, mist.',
+            'still, burning-sky, breeze, clear, mist, or 0 to 4.',
+            'Off: the clock turns the airs, one every 96 s.',
+            'burning-sky',
+        ],
+        [
+            'look',
+            'Turn the rest lens to a point in the world (a zoom on the dock, the islet, a ridge); a fourth number '
+                + 'is the field of view. The stage, where events land, keeps the theme’s own framing.',
+            'x,y,z in metres, then optional fov degrees.',
+            'Off: the theme’s own framing.',
+            '150,60,-800,14',
+        ],
+        [
+            'eye',
+            'Move the lens to a point in the world (with look=, a study from above the trees).',
+            'x,y,z in metres.',
+            'Off: the theme’s own eye.',
+            '0,40,14.5',
+        ],
         [
             'crane',
             'From the theme’s own eye, keep one crane in the middle of a long lens: bird i of the kettle (k) or of '
