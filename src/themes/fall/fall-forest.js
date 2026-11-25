@@ -9,10 +9,11 @@
  */
 import * as THREE from 'three/webgpu';
 import {
-    attribute, cameraPosition, color, cross, dFdx, dFdy, dot, fract, instancedBufferAttribute, mix, normalize,
-    normalWorld,
-    positionLocal, positionWorld, pow, saturate, sin, smoothstep, uv, vec2, vec3, vec4,
+    attribute, cameraPosition, color, cross, dFdx, dFdy, dot, float, fract, instancedBufferAttribute, mix, normalize,
+    normalWorld, positionGeometry,
+    positionLocal, positionWorld, pow, saturate, sin, smoothstep, texture, uv, vec2, vec3, vec4,
 } from 'three/tsl';
+import { FALL_BARK_SHEET_SIZE, fallBarkSheetOnce } from './fall-bark-sheet.js';
 import {
     FALL_FEATURE_TREES, FALL_GROVE_CEILING, createFallVisibilityTest, layoutFallGrove,
 } from './fall-composition.js';
@@ -41,6 +42,32 @@ function ramp(stops, t) {
         result = mix(result, color(stops[i]), smoothstep(i - 1, i, scaled));
     }
     return result;
+}
+
+/** The bark sheet as a texture: it repeats round and along every limb, mip-mapped for the far trees. */
+function barkSheetTexture({ data, width, height }) {
+    // (A copy: the kept sheet outlives this start, and a texture's dispose() may release its array.)
+    const sheet = new THREE.DataTexture(new Uint8Array(data), width, height, THREE.RGBAFormat);
+    sheet.wrapS = THREE.RepeatWrapping;
+    sheet.wrapT = THREE.RepeatWrapping;
+    sheet.magFilter = THREE.LinearFilter;
+    sheet.minFilter = THREE.LinearMipmapLinearFilter;
+    sheet.generateMipmaps = true;
+    sheet.anisotropy = 4;
+    sheet.colorSpace = THREE.NoColorSpace;
+    sheet.name = 'FallBarkSheet';
+    sheet.needsUpdate = true;
+    return sheet;
+}
+
+const LEAN = new THREE.Quaternion();
+const LEAN_EULER = new THREE.Euler();
+
+/** How a tree stands: turned about the plumb by its yaw, then tipped by its lean (if it has one). */
+function treeTurn(tree, out) {
+    out.setFromAxisAngle(UP, tree.yaw);
+    if (tree.lean) out.premultiply(LEAN.setFromEuler(LEAN_EULER.set(tree.lean[0], 0, tree.lean[1])));
+    return out;
 }
 
 /** Deterministic 0..1 hash for choosing which sprays a tier keeps. */
@@ -88,6 +115,9 @@ export class FallForest {
             .filter((tree) => this.assets.trees[tree.asset])
             .map((tree) => ({ ...tree, y: fallTerrainHeight(tree.x, tree.z) }));
         this.stats.trees = this.placements.length;
+        // The bark sheet every trunk and limb wears (fall-bark-sheet.js; drawn once a session).
+        const sheet = yield* fallBarkSheetOnce(clock, fallSlice);
+        this.barkSheet = this.own(barkSheetTexture(sheet));
         this.buildBark();
         yield* fallSlice(clock, 'bark');
         yield* this.foliageSteps(clock);
@@ -106,43 +136,88 @@ export class FallForest {
         }));
 
         const st = uv();
-        const grain = light.noise(st.mul(vec2(1, 0.55)));
-        const fine = light.noise(st.mul(vec2(3.1, 1.4)).add(grain.rg.mul(0.25)));
-        let albedo;
-        let relief;
-        if (species === 'birch') {
-            // Chalk-white bark, dark lenticel dashes, and sooty scars where limbs leave.
-            const dash = smoothstep(0.62, 0.8, light.noise(st.mul(vec2(2.2, 9))).r)
-                .mul(smoothstep(0.35, 0.6, fine.g));
-            const soot = smoothstep(0.55, 0.9, grain.a.mul(0.6).add(paint.b.oneMinus().mul(0.9)));
-            albedo = mix(mix(color(0xcfc6b4), color(0xe8e0d0), fine.r), color(0x1d1915), saturate(dash.add(soot)));
-            relief = fine.r.mul(0.35).sub(dash.mul(0.5));
-        } else {
-            const furrow = light.noise(st.mul(vec2(5.5, 0.9)).add(grain.rg.mul(0.35)));
-            const ridge = smoothstep(0.34, 0.7, furrow.g.mul(0.6).add(fine.b.mul(0.4)));
-            albedo = mix(color(0x0d0806), color(0x4a3122), ridge).mul(grain.r.mul(0.6).add(0.7));
-            relief = ridge.mul(0.8).add(fine.r.mul(0.35));
-        }
-        const moss = mix(color(0x1e2b0a), color(0x4c5a16), fine.a);
-        albedo = mix(albedo, moss, smoothstep(0.15, 0.7, paint.a.mul(fine.g.mul(0.8).add(0.6))));
-
         const world = positionWorld;
-        // Furrowed relief from the bark pattern itself: the low sun rakes across the ridges.
+        const sheet = this.barkSheet;
+        const E = 1 / FALL_BARK_SHEET_SIZE;
+        // How far up its own trunk a fragment is, and a slow tone that never repeats with the sheet
+        // (read at the tree's rest shape, so it rides the wind with the wood).
+        const above = world.y.sub(tree.y);
+        const broad = light.noise(positionGeometry.xy.mul(0.09).add(positionGeometry.z.mul(0.05)));
+        let albedo;
+        let dHdu;
+        let dHdv;
+        let depth;
+        let cavity;
+        if (species === 'birch') {
+            // Chalk-white paper bark. The sheet laid on its side gives the lenticels: thin dark
+            // dashes round the stem, broken along their length; the foot of an old birch is black
+            // and rugged, and a sooty scar sits where a limb leaves.
+            const around = vec2(st.y.mul(4.5), st.x);
+            const band = texture(sheet, around);
+            const upright = texture(sheet, st);
+            const dash = smoothstep(0.5, 0.86, band.b).mul(smoothstep(0.38, 0.62, upright.a));
+            // (Fissures only, and low: a blotched foot read as a dark figure against the white.)
+            const foot = float(1).sub(smoothstep(0.1, 1.3, above)).mul(smoothstep(0.55, 0.95, upright.b)).mul(0.7);
+            const soot = smoothstep(0.55, 0.9, broad.a.mul(0.6).add(paint.b.oneMinus().mul(0.9)));
+            const dark = saturate(dash.add(soot).add(foot));
+            const paper = mix(color(0xcfc6b4), color(0xece4d4), upright.g).mul(band.g.mul(0.14).add(0.9));
+            albedo = mix(paper, color(0x1d1915), dark);
+            // The dashes are grooves: the sheet's cavity, turned over, is the height along the stem.
+            dHdu = float(0);
+            dHdv = band.b.sub(texture(sheet, around.add(vec2(E, 0))).b).div(E).mul(4.5);
+            depth = float(0.003);
+            cavity = dark.mul(0.35);
+        } else {
+            // Old bark in plates: tall plates split by deep furrows that run up the trunk and fork,
+            // fissures across them, a fibrous grain; its relief is read off the sheet's own height.
+            const here = texture(sheet, st);
+            dHdu = texture(sheet, st.add(vec2(E, 0))).r.sub(here.r).div(E);
+            dHdv = texture(sheet, st.add(vec2(0, E * 0.5))).r.sub(here.r).div(E * 0.5);
+            const oak = species === 'oak';
+            const plate = mix(color(oak ? 0x2b2119 : 0x35291f), color(oak ? 0x5b4a3a : 0x6b5847), here.g)
+                .mul(broad.r.mul(0.5).add(0.76));
+            const raised = smoothstep(0.06, 0.5, here.r);
+            const wood = mix(color(0x0b0705), plate, raised);
+            // Moss in soft cushions at the root flare and on the damp side (the tree's own painted
+            // cover, opened by the sheet's slow blotches); pale lichen crusts higher up, on the plates.
+            // (Low and in patches: a trunk green to head height read as a mossy pillar, not as bark.
+            // The furrows hold it first. A lying log or a stump is all low, so mossy all over.)
+            const damp = float(1).sub(smoothstep(0.15, 1.5, above));
+            const cover = smoothstep(0.52, 0.82, paint.a.mul(1.1).mul(damp.mul(0.6).add(0.4)).add(damp.mul(0.22))
+                .add(here.b.mul(0.12))
+                .mul(here.a.mul(0.9).add(0.45)));
+            const cushion = mix(color(0x18240c), color(0x4a5c1e), here.g.mul(0.55).add(here.r.mul(0.45)));
+            const crust = texture(sheet, st.mul(vec2(1, 0.37)).add(vec2(0.37, 0.11))).a;
+            const lichen = smoothstep(0.66, 0.76, crust).mul(raised).mul(cover.oneMinus())
+                .mul(smoothstep(0.8, 2.4, above))
+                .mul(0.6);
+            albedo = mix(mix(wood, color(0x8b947c), lichen), cushion, cover);
+            // Moss pads the furrows it grows over.
+            depth = cover.oneMinus().mul(0.6).add(0.4).mul(oak ? 0.026 : 0.021);
+            cavity = here.b.mul(cover.oneMinus().mul(0.7).add(0.3));
+        }
+        // Rain darkens the wood (FallLight.uWet).
+        albedo = albedo.mul(float(1).sub(light.uWet.mul(0.28)));
+
+        // Relief: the low sun rakes across the plates. The slope comes from the sheet (three taps),
+        // carried to the screen through the UVs' own derivatives.
         const smooth = normalize(normalWorld);
         const across = dFdx(world);
         const along = dFdy(world);
         const r1 = cross(along, smooth);
         const r2 = cross(smooth, across);
         const area = dot(across, r1);
-        const slope = r1.mul(dFdx(relief)).add(r2.mul(dFdy(relief))).mul(area.sign());
-        const normal = normalize(smooth.mul(area.abs()).sub(slope.mul(species === 'birch' ? 0.02 : 0.055)));
+        const reliefX = dHdu.mul(dFdx(st.x)).add(dHdv.mul(dFdx(st.y)));
+        const reliefY = dHdu.mul(dFdy(st.x)).add(dHdv.mul(dFdy(st.y)));
+        const slope = r1.mul(reliefX).add(r2.mul(reliefY)).mul(area.sign());
+        const normal = normalize(smooth.mul(area.abs()).sub(slope.mul(depth)));
         const view = normalize(cameraPosition.sub(world));
         const sun = light.sunlight();
         const facing = saturate(dot(normal, light.uSunDir));
         // Low sun behind the trunk wraps a thin rim of light around its silhouette.
         const rim = pow(saturate(dot(normal, view)).oneMinus(), 3)
             .mul(saturate(dot(view, light.uSunDir).negate().mul(0.6).add(0.55)));
-        const occlusion = paint.b.mul(0.85).add(0.15);
+        const occlusion = paint.b.mul(0.85).add(0.15).mul(float(1).sub(cavity.mul(0.6)));
         const lit = albedo.mul(light.uSunColor).mul(facing.mul(1.5).add(rim.mul(0.9))).mul(sun)
             .add(albedo.mul(light.ambient(normal)).mul(occlusion).mul(1.25));
         // fragmentNode, not colorNode: the shadow pass multiplies a caster's alpha by its
@@ -167,6 +242,7 @@ export class FallForest {
             trees.forEach((tree, index) => {
                 dummy.position.set(tree.x, tree.y, tree.z);
                 dummy.rotation.set(0, tree.yaw, 0);
+                if (tree.lean) treeTurn(tree, dummy.quaternion);
                 dummy.scale.setScalar(tree.scale);
                 dummy.updateMatrix();
                 mesh.setMatrixAt(index, dummy.matrix);
@@ -264,7 +340,7 @@ export class FallForest {
             const { sites } = asset;
             const keep = this.tier.foliage * (tree.far ? 0.5 : 1);
             const grow = (1 / keep) ** 0.36;
-            yaw.setFromAxisAngle(UP, tree.yaw);
+            treeTurn(tree, yaw);
             for (let i = 0; i < sites.count; i += 1) {
                 if ((i & 255) === 0) yield* fallSlice(clock, 'foliage');
                 if (keepHash(i, treeIndex + 1) <= keep) {
@@ -331,7 +407,7 @@ export class FallForest {
             const tree = near[Math.floor(rng() * near.length) % near.length];
             const asset = this.assets.trees[tree.asset];
             const site = Math.floor(rng() * asset.sites.count) % asset.sites.count;
-            yaw.setFromAxisAngle(UP, tree.yaw);
+            treeTurn(tree, yaw);
             position.fromArray(asset.sites.position, site * 3).multiplyScalar(tree.scale).applyQuaternion(yaw);
             points.set([position.x + tree.x, position.y + tree.y, position.z + tree.z,
                 speciesIndex[asset.species] ?? 0], i * 4);

@@ -18,7 +18,12 @@ export function fallViewFor(aspect) {
     return aspect < 0.85 ? FALL_VIEWS.portrait : FALL_VIEWS.landscape;
 }
 
-/** Trees placed by hand. `tone` picks the crown colour along the species' autumn ramp. */
+/**
+ * Trees placed by hand. `tone` picks the crown colour along the species' autumn ramp; `lean` tips a
+ * slender tree off the plumb (radians about the world's x and z: no birch grows ruled). `laid` is
+ * where the procedural grove's layout counts a tree that was moved since, so moving one never
+ * re-deals the grove behind it.
+ */
 export const FALL_FEATURE_TREES = Object.freeze([
     {
         asset: 'maple-hero', x: -8.8, z: 2.2, yaw: 0.05, scale: 1, tone: 0.2,
@@ -28,23 +33,32 @@ export const FALL_FEATURE_TREES = Object.freeze([
     },
     // Birches catching the sun beside the path.
     {
-        asset: 'birch-grove-a', x: -24.5, z: -34, yaw: 0.4, scale: 1.08, tone: 0.8,
+        asset: 'birch-grove-a', x: -24.5, z: -34, yaw: 0.4, scale: 1.08, tone: 0.8, lean: [0.05, -0.04],
     },
     {
-        asset: 'birch-grove-b', x: -28.5, z: -38.5, yaw: 2.1, scale: 1.16, tone: 0.9,
+        asset: 'birch-grove-b', x: -28.5, z: -38.5, yaw: 2.1, scale: 1.16, tone: 0.9, lean: [-0.07, 0.03],
     },
+    // (It stood alone in the sun's glare at -21.2, -42.5, its crown above the frame: a white pole
+    // with one hanging spray, which read as a lamp post. It stands with the other two now.)
     {
-        asset: 'birch-grove-a', x: -21.2, z: -42.5, yaw: 4.0, scale: 0.98, tone: 0.72,
+        asset: 'birch-grove-a',
+        x: -32,
+        z: -42.3,
+        yaw: 4.0,
+        scale: 0.98,
+        tone: 0.72,
+        lean: [0.04, 0.08],
+        laid: [-21.2, -42.5],
     },
     // The stand to the right of the board.
     {
-        asset: 'birch-grove-b', x: 14.2, z: -17.5, yaw: 1.2, scale: 1.12, tone: 0.86,
+        asset: 'birch-grove-b', x: 14.2, z: -17.5, yaw: 1.2, scale: 1.12, tone: 0.86, lean: [-0.05, -0.05],
     },
     {
-        asset: 'birch-grove-a', x: 17.6, z: -21, yaw: 3.3, scale: 1.2, tone: 0.78,
+        asset: 'birch-grove-a', x: 17.6, z: -21, yaw: 3.3, scale: 1.2, tone: 0.78, lean: [0.08, 0.02],
     },
     {
-        asset: 'birch-grove-b', x: 12.4, z: -23.5, yaw: 5.2, scale: 1, tone: 0.92,
+        asset: 'birch-grove-b', x: 12.4, z: -23.5, yaw: 5.2, scale: 1, tone: 0.92, lean: [-0.03, 0.07],
     },
     // The squirrel's near perches, close to the eye either side of the board (the great trees stand
     // fifteen and twenty metres off): a windfall low on the right, its root end out of frame, two dead
@@ -78,7 +92,9 @@ export const FALL_GROVE_CEILING = 34;
 
 /** The whole procedural grove in priority order; tiers take a prefix. */
 export function layoutFallGrove(rng, count = FALL_GROVE_CEILING) {
-    const placed = FALL_FEATURE_TREES.map((tree) => ({ ...tree }));
+    const placed = FALL_FEATURE_TREES.map((tree) => ({
+        ...tree, x: tree.laid?.[0] ?? tree.x, z: tree.laid?.[1] ?? tree.z,
+    }));
     const grove = [];
     const bandOrder = [];
     // Interleave bands so every prefix of the list covers near, middle and far.

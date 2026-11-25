@@ -8,7 +8,7 @@
  */
 import * as THREE from 'three/webgpu';
 import {
-    Fn, abs, cameraPosition, color, cos, dot, float, floor, fract, fwidth, hash, length, mix, normalize,
+    Fn, If, abs, cameraPosition, color, cos, dot, exp, float, floor, fract, fwidth, hash, length, mix, normalize,
     positionWorld, pow, reflect, saturate, sin, smoothstep, texture, vec2, vec3, vec4,
 } from 'three/tsl';
 import { FALL_SLICE_MS, fallSlice, fallVertexNormalsSteps } from './fall-slices.js';
@@ -237,9 +237,9 @@ export class FallTerrain {
         material.name = 'FallLeafCarpetMaterial';
         material.colorNode = Fn(() => {
             const world = positionWorld;
-            const map = texture(this.groundMap, this.mapCoordinate(world));
-            const coarse = light.noise(world.xz.mul(0.035));
-            const fine = light.noise(world.xz.mul(0.31));
+            const map = texture(this.groundMap, this.mapCoordinate(world)).toVar();
+            const coarse = light.noise(world.xz.mul(0.035)).toVar();
+            const fine = light.noise(world.xz.mul(0.31)).toVar();
             const fleck = light.noise(world.xz.mul(1.9).add(fine.rg.mul(0.6)));
             // A carpet of fallen leaves: russet ground, drifts of gold and crimson.
             const russet = mix(color(0x3a1c0f), color(0x6a3414), coarse.g.mul(0.6).add(fine.b.mul(0.4)));
@@ -268,23 +268,56 @@ export class FallTerrain {
 
             const earth = mix(color(0x2a1a10), color(0x4a3120), fine.a);
             const moss = mix(color(0x1c2a0c), color(0x3a4a14), fine.g);
-            const albedo = mix(mix(leafy, moss, map.g.mul(0.55)), earth, map.r.mul(0.78));
+            const dry = mix(mix(leafy, moss, map.g.mul(0.55)), earth, map.r.mul(0.78));
+            // Rain darkens the floor and deepens its colour (FallLight.uWet): the darks most.
+            const wet = light.uWet.toVar();
+            const albedo = mix(dry, dry.mul(dry.add(0.25)).mul(1.15), wet).toVar();
 
             // Each leaf lies at its own small tilt: some face the low sun and flare, others turn
             // into their own shade.
             const slopeX = fine.r.sub(0.5).mul(0.55).add(tilt.mul(0.9));
             const slopeZ = fine.g.sub(0.5).mul(0.55).sub(tilt.mul(0.6));
             const normal = normalize(vec3(slopeX, 1, slopeZ));
-            const view = normalize(cameraPosition.sub(world));
+            const view = normalize(cameraPosition.sub(world)).toVar();
             const sun = light.sunlight();
             const facing = saturate(dot(normal, light.uSunDir)).mul(2.6).add(0.05);
+            // (Wet leaves shine: the glint is several times as strong after rain.)
             const glint = pow(saturate(dot(reflect(view.negate(), normal), light.uSunDir)), 22)
-                .mul(fleck.a.mul(0.6).add(0.25)).mul(float(1).sub(map.r.mul(0.6)));
+                .mul(fleck.a.mul(0.6).add(0.25)).mul(float(1).sub(map.r.mul(0.6))).mul(wet.mul(3.2).add(1));
             const lit = albedo.mul(light.uSunColor).mul(facing).mul(sun)
                 .add(light.uSunColor.mul(glint).mul(sun).mul(0.16))
                 .add(albedo.mul(light.ambient(normal)).mul(1.05))
                 .add(albedo.mul(light.uSunColor).mul(map.a).mul(light.uWarmth).mul(0.12));
-            return vec4(light.haze(lit, { world }), 1);
+            // After rain the hollow of the path holds puddles: still water that shows the sky and, where
+            // the eye, the puddle and the sun line up, the sun itself; each drop that falls sends a
+            // ring across it. (Skipped whole while the floor is dry.)
+            const shown = lit.toVar();
+            If(wet.greaterThan(0.01), () => {
+                // (A few, in the middle of the path where it is trodden lowest.)
+                // (Soft-edged and never quite opaque: hard-edged pools of glare read as spilt paint.)
+                const pool = smoothstep(0.55, 0.8, map.r)
+                    .mul(smoothstep(0.64, 0.8, fine.b.mul(0.62).add(fine.g.mul(0.38))))
+                    .mul(smoothstep(0.2, 0.8, wet))
+                    .mul(0.82);
+                const cells = world.xz.mul(1.7).add(512).toVar();
+                const cell = floor(cells);
+                const id = cell.x.mul(57).add(cell.y.mul(113)).toVar();
+                const from = fract(cells).sub(0.5).sub(vec2(hash(id), hash(id.add(3))).sub(0.5).mul(0.5)).toVar();
+                const age = fract(light.uTime.mul(0.62).add(hash(id.add(7)))).toVar();
+                const off = length(from).sub(age.mul(0.42)).toVar();
+                const ring = sin(off.mul(64)).mul(exp(abs(off).mul(-20))).mul(age.oneMinus()).mul(light.uRain);
+                const lean = from.div(length(from).add(0.02)).mul(ring.mul(0.1));
+                const level = normalize(vec3(lean.x, 1, lean.y));
+                const mirror = reflect(view.negate(), level).toVar();
+                const grazing = pow(saturate(dot(view, level)).oneMinus(), 4).mul(0.5).add(0.05);
+                const orb = pow(saturate(dot(mirror, light.uSunDir)), 900).mul(4)
+                    .add(pow(saturate(dot(mirror, light.uSunDir)), 60).mul(0.07));
+                // (The dark wet floor shows through it; the sky it holds is dim, the sun a point.)
+                const water = light.sky(mirror).mul(0.17).add(light.uSunColor.mul(orb)).mul(grazing)
+                    .add(albedo.mul(light.ambient(vec3(0, 1, 0))).mul(0.45));
+                shown.assign(mix(shown, water, pool));
+            });
+            return vec4(light.haze(shown, { world }), 1);
         })();
         return material;
     }

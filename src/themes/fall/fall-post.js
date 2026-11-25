@@ -146,11 +146,17 @@ export class FallPost {
         const crown = (Number.isFinite(frame.crown) ? THREE.MathUtils.clamp(frame.crown, 0, 1.2) : 0) * flashScale();
         // Each event lifts the lens less the hotter play runs; the iris closes as the light ripens.
         // The light asks a little more or less of the iris (fall-moods.js), play adds to it.
-        const rest = Number.isFinite(this.light?.exposureScale) ? this.light.exposureScale : 1;
+        // (The air asks its own share of the lens and of the shafts: 1 in still gold.)
+        const airLens = Number.isFinite(this.light?.airExposure) ? this.light.airExposure : 1;
+        // (A cloud over the sun takes the shafts with it: FallLight.cloudSun.)
+        const airShafts = (Number.isFinite(this.light?.airShafts) ? this.light.airShafts : 1)
+            * (Number.isFinite(this.light?.cloudSun) ? this.light.cloudSun : 1);
+        const rest = (Number.isFinite(this.light?.exposureScale) ? this.light.exposureScale : 1) * airLens;
         this.uExposure.value = rest + warmth * 0.05 * (1 - 0.5 * level) + crown * POST_CROWN.exposure
             - ripen * POST_IRIS;
         // The shafts hold while the action lasts: the ripened light is a floor under the events'.
-        this.uShafts.value = 1 + Math.min(1, shafts + ripen * POST_SHAFT_FLOOR) * 1.4 + crown * POST_CROWN.shafts;
+        this.uShafts.value = (1 + Math.min(1, shafts + ripen * POST_SHAFT_FLOOR) * 1.4 + crown * POST_CROWN.shafts)
+            * airShafts;
         if (this.bloomNode) {
             this.bloomNode.strength.value = 0.22 + warmth * 0.1 * (1 - 0.4 * level) + fever * 0.03;
         }

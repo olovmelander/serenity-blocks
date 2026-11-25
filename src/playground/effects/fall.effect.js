@@ -94,11 +94,41 @@ export function create({
             squirrelScript,
         }).build();
         world.setLevel(level, { silent: true });
+        // ?air=<0..4> holds one air (still gold, ground mist, windy day, sun shower, the great fall;
+        // a fraction stands between two); without it the airs turn by their own clock (fall-airs.js).
+        if (params.has('air')) world.holdAir(Number(params.get('air')));
+        // ?happen=geese|jays|acorns|shaft plays that happening (it begins ?happenAge=<s> before the
+        // pinned time, or at ?happenAt=<s> on the clock; ?happenRoll=0..1 picks its variant);
+        // ?happen=0 keeps the grove to itself. Without it they come by their own clock.
+        if (params.get('happen') === '0') world.setHappenings(false);
+        else if (params.has('happen')) {
+            const pinned = Number(params.get('t'));
+            const age = Number(params.get('happenAge') ?? 6);
+            const at = params.has('happenAt') ? Number(params.get('happenAt'))
+                : Math.max(0, (Number.isFinite(pinned) ? pinned : 0) - (Number.isFinite(age) ? age : 6));
+            world.playHappening(params.get('happen'), at, Number(params.get('happenRoll') ?? 0.37));
+        }
         post = new FallPost({
             renderer, scene, camera, quality, light: world.light, samples,
         });
         post.setSize(window.innerWidth, window.innerHeight);
     });
+    // ?eye=x,y,z&at=x,y,z[&fov=<degrees>] stands the camera somewhere else in the grove (a close look
+    // at the bark, the caps, a happening); without it the game's own framing.
+    const triple = (key) => {
+        const parts = (params.get(key) || '').split(',').map(Number);
+        return parts.length === 3 && parts.every(Number.isFinite) ? parts : null;
+    };
+    const freeEye = triple('eye');
+    const freeAt = triple('at');
+    const freeFov = Number(params.get('fov'));
+    const aimFree = () => {
+        if (!freeEye || !freeAt || !world) return;
+        camera.position.set(freeEye[0], freeEye[1], freeEye[2]);
+        camera.lookAt(freeAt[0], freeAt[1], freeAt[2]);
+        if (Number.isFinite(freeFov) && freeFov > 1) camera.fov = freeFov;
+        camera.updateProjectionMatrix();
+    };
     const followEye = new THREE.Vector3();
     const followTarget = new THREE.Vector3();
     /** The close-up: the camera `follow` metres from the squirrel on the game eye's side of it. */
@@ -123,6 +153,7 @@ export function create({
         world?.update(time, dt, frame);
         post?.update(frame);
         aimFollow();
+        aimFree();
     };
     // ?event=lock|drop|clear|double|triple|quad|combo|streak|spin|perfect|b2b|level, placed
     // with ?col=0..9 and ?row=0..19 (0 is the top visible row).
@@ -212,6 +243,7 @@ export function create({
             world?.prepareCamera(camera.aspect);
             post?.setSize(width, height);
             aimFollow();
+            aimFree();
         },
         getDiagnostics() {
             return {

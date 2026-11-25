@@ -16,6 +16,11 @@ import { FallLeafDirector } from './fall-leaf-director.js';
 import { FallLeaves } from './fall-leaves.js';
 import { FallLight } from './fall-light.js';
 import { FALL_MOODS, fallMoodDrift, fallMoodName } from './fall-moods.js';
+import { FALL_AIRS, fallAirDrift, fallAirName } from './fall-airs.js';
+import {
+    FALL_HAPPENINGS, createFallHappening, fallHappeningAt, fallHappeningHeld, fallShaftAt,
+} from './fall-happenings.js';
+import { FallVisitors } from './fall-visitors.js';
 import { fallTier } from './fall-quality.js';
 import { FallStage } from './fall-stage.js';
 import { createSquirrelSteps } from './fall-squirrel.js';
@@ -49,7 +54,7 @@ const SQUIRREL_LITTER = Object.freeze({ dig: 7, landing: 4, speed: 2.1 });
 export class FallWorld {
     constructor({
         scene, camera, quality = 'High', rng = Math.random, assets, squirrel = true, squirrelSeed = 271,
-        squirrelStart = 'crown', squirrelScript = [],
+        squirrelStart = 'crown', squirrelScript = [], happenSeed = null,
     }) {
         this.scene = scene;
         this.camera = camera;
@@ -67,6 +72,19 @@ export class FallWorld {
         this.level = 1;
         this.moodStep = 0;
         this.moodStart = 0;
+        // The grove's air (fall-airs.js): its own clock beside the light's, a level one air on too.
+        // `airHold` pins one air (a capture, the playground's ?air=).
+        this.airStep = 0;
+        this.airHold = null;
+        // The grove's happenings (fall-happenings.js): what comes by, on the same lived clock. Their
+        // order is dealt from a seed (the squirrel's, unless one is given: a new day for both).
+        this.happenSeed = Number.isFinite(happenSeed) ? happenSeed >>> 0 : (Number(squirrelSeed) >>> 0) || 0;
+        this.happenings = true;
+        this.happenHold = null;
+        this.happening = createFallHappening();
+        this.shaft = {
+            x: 0, z: 0, radius: 5, strength: 0, cloud: 0,
+        };
         // The red squirrel (fall-squirrel*.js): off with ?squirrel=0 or when its asset did not arrive.
         this.squirrelWanted = squirrel;
         this.squirrelSeed = squirrelSeed;
@@ -118,7 +136,7 @@ export class FallWorld {
         yield* this.forest.buildSteps();
         yield 'forest';
         this.understory = new FallUnderstory({
-            light, foliage, tier, rng,
+            light, foliage, tier, rng, quality: this.quality, trees: this.assets.trees,
         });
         this.group.add(this.understory.group);
         yield* this.understory.buildSteps();
@@ -128,7 +146,9 @@ export class FallWorld {
         });
         this.group.add(this.backdrop.group);
         this.backdrop.build();
-        this.atmosphere = new FallAtmosphere({ light, tier, rng });
+        this.atmosphere = new FallAtmosphere({
+            light, tier, rng, quality: this.quality,
+        });
         this.group.add(this.atmosphere.group);
         this.atmosphere.build();
         yield 'backdrop and air';
@@ -139,6 +159,11 @@ export class FallWorld {
         this.group.add(this.leaves.group);
         this.leaves.build();
         yield 'leaves';
+        // The visitors a happening brings (fall-visitors.js): geese, jays, acorns.
+        this.visitors = new FallVisitors({
+            light, quality: this.quality, groundHeight: fallTerrainHeight, crownPoints,
+        }).build();
+        this.group.add(this.visitors.group);
         yield* this.buildSquirrelSteps();
         yield 'squirrel';
         this.prepareCamera(this.camera.aspect);
@@ -302,8 +327,54 @@ export class FallWorld {
     setLevel(level, { silent = false } = {}) {
         const wanted = Number(level);
         this.level = Number.isFinite(wanted) ? Math.max(1, Math.min(9999, Math.round(wanted))) : this.level;
-        if (silent) this.moodStep = nearestStep(this.moodStep, this.level - 1, FALL_MOODS.length);
+        if (silent) {
+            this.moodStep = nearestStep(this.moodStep, this.level - 1, FALL_MOODS.length);
+            this.airStep = nearestStep(this.airStep, this.level - 1, FALL_AIRS.length);
+        }
         return this.level;
+    }
+
+    /** How many airs into the wheel it is at `time`: the level's step and the clock's turn (or the held air). */
+    airPhase(time = this.light?.uTime.value ?? 0) {
+        if (this.airHold !== null) return this.airHold;
+        return this.airStep + fallAirDrift(this.moodLived(time));
+    }
+
+    /**
+     * Hold the grove in one air (its index on the wheel; a fraction stands between two), or let the
+     * clock turn it again (null). For captures and the playground's ?air=.
+     * @param {number | null} [index]
+     */
+    holdAir(index = null) {
+        this.airHold = Number.isFinite(index) ? Number(index) : null;
+        return this.airHold;
+    }
+
+    /** Let the happenings come (the default), or keep the grove to itself. */
+    setHappenings(on = true) {
+        this.happenings = on !== false;
+        return this.happenings;
+    }
+
+    /**
+     * Hold one happening for a capture or the playground: `kind` as if it began at `at` seconds on
+     * this world's clock (null lets the clock deal them again). `roll` picks its variant (0..1).
+     * @param {string | null} kind
+     * @param {number} [at]
+     * @param {number} [roll]
+     */
+    playHappening(kind = null, at = this.time, roll = 0.37) {
+        this.happenHold = FALL_HAPPENINGS.includes(kind)
+            ? { kind, at: Number.isFinite(at) ? at : 0, roll: Number.isFinite(roll) ? roll : 0.37 } : null;
+        return this.happenHold;
+    }
+
+    /** What is happening at `time` on this world's clock (kind null: nothing). */
+    happeningAt(time = this.light?.uTime.value ?? 0) {
+        const hold = this.happenHold;
+        if (hold) return fallHappeningHeld(hold.kind, hold.at, time, hold.roll, this.happening);
+        if (!this.happenings) return fallHappeningHeld(null, 0, time, 0, this.happening);
+        return fallHappeningAt(this.moodLived(time), this.happenSeed, this.happening);
     }
 
     /** Seconds of day lived at `time` on this world's clock, with what came before it. */
@@ -357,10 +428,24 @@ export class FallWorld {
         const step = Number.isFinite(dt) && dt > 0 ? dt : 0;
         const follow = 1 - Math.exp(-step * MOOD_FOLLOW);
         this.moodStep = easeStep(this.moodStep, this.level - 1, follow, FALL_MOODS.length);
-        light.setMood(this.moodPhase(Number.isFinite(time) ? time : light.uTime.value));
+        this.airStep = easeStep(this.airStep, this.level - 1, follow, FALL_AIRS.length);
+        const clock = Number.isFinite(time) ? time : light.uTime.value;
+        light.setMood(this.moodPhase(clock));
+        // The air turns the same way: its mist, wind, rain and cloud are the light rig's to hand on.
+        light.setAir(this.airPhase(clock));
+        // How fast the crowns let go is the air's to say (the great fall; a windy day).
+        env.shed = light.airShed;
+        // What comes by: a wandering shaft is the light's, the rest the visitors'.
+        const happening = this.happeningAt(clock);
+        if (happening.kind === 'shaft') {
+            const shaft = fallShaftAt(happening.u, happening.roll, this.shaft);
+            light.setSpot(shaft.x, shaft.z, shaft.radius, shaft.strength, shaft.cloud);
+        } else light.setSpot();
+        this.visitors?.update(clock, happening, this.stage, env, dt);
         light.update(time, { ...frame, front: env.front, fronts: env.fronts }, dt);
         this.leaves.update(dt, env, frame.heat);
         this.atmosphere.update(time, dt, frame);
+        this.understory.update();
         if (this.squirrelMind && Number.isFinite(time)) {
             this.time = time;
             this.squirrelMind.motion = Number.isFinite(frame.motion) ? frame.motion : 1;
@@ -382,6 +467,11 @@ export class FallWorld {
             mood: fallMoodName(nearestStep(this.moodStep, this.level - 1, FALL_MOODS.length)
                 + fallMoodDrift(this.moodLived())),
             moodPhase: this.light?.moodPhase ?? 0,
+            // The air it stands in, and how far round the wheel it is.
+            air: fallAirName(this.light?.airPhase ?? 0),
+            airPhase: this.light?.airPhase ?? 0,
+            // What is happening in it just now (null: nothing).
+            happening: this.happening.kind,
             // The squirrel, when the grove has one: what it is doing and where.
             ...(this.squirrel ? {
                 squirrel: {
@@ -402,6 +492,8 @@ export class FallWorld {
         this.squirrel = null;
         this.squirrelMind = null;
         this.leaves?.dispose();
+        this.visitors?.dispose();
+        this.visitors = null;
         this.atmosphere?.dispose();
         this.backdrop?.dispose();
         this.understory?.dispose();

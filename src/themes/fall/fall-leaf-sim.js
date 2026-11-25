@@ -26,6 +26,8 @@ const AMBIENT_REST_SECONDS = 18;
 const EVENT_REST_SECONDS = 5;
 /** At a full storm an ambient leaf rests only this share of its usual time. */
 const STORM_REST = 0.15;
+/** How far a full shedding air (env.shed) shortens that rest, as a share of a full storm's. */
+const AIR_SHED = 1;
 /** At a full storm the gale lifts the litter wherever a gust's crest rolls (env.gust units). */
 const STORM_LIFT = 2.4;
 /** At a full storm this share of the leaves that let go do so from the crowns in view. */
@@ -66,6 +68,8 @@ export class FallLeafSim {
         }
         /** How hard the storm of play blows, as of the last step (0..1). */
         this.storm = 0;
+        /** How hard the crowns in view pour their leaves: the storm, or a shedding air (0..1). */
+        this.pour = 0;
         this.bounds = bounds;
         const n = this.count;
         this.position = new Float32Array(n * 3);
@@ -128,14 +132,17 @@ export class FallLeafSim {
         let y;
         let z;
         if (this.crownPoints) {
-            const near = this.storm > 0 && this.nearCrowns.length > 0 && this.random() < this.storm * STORM_NEAR;
+            // (A shedding air pours from the crowns in view as a storm does, from their whole height.)
+            const near = this.pour > 0 && this.nearCrowns.length > 0 && this.random() < this.pour * STORM_NEAR;
             const pick = near ? this.nearCrowns[Math.floor(this.random() * this.nearCrowns.length)]
                 : Math.floor(this.random() * (this.crownPoints.length / 4)) * 4;
             x = this.crownPoints[pick] + (this.random() - 0.5) * 1.6;
             y = this.crownPoints[pick + 1] - this.random() * 0.8;
             z = this.crownPoints[pick + 2] + (this.random() - 0.5) * 1.6;
             // A storm tears them from the lower boughs, where they cross the view at once.
-            if (near) y = Math.min(y, this.groundHeight(x, z) + STORM_BOUGHS[0] + this.random() * STORM_BOUGHS[1]);
+            if (near && this.storm > 0) {
+                y = Math.min(y, this.groundHeight(x, z) + STORM_BOUGHS[0] + this.random() * STORM_BOUGHS[1]);
+            }
         } else {
             const { bounds } = this;
             x = bounds.minX + (bounds.maxX - bounds.minX) * this.random();
@@ -255,7 +262,10 @@ export class FallLeafSim {
         const frontCount = fronts ? fronts.length : 0;
         const storm = Number.isFinite(env.storm) ? clamp(env.storm, 0, 1) : 0;
         this.storm = storm;
-        const ambientRest = AMBIENT_REST_SECONDS * (1 - (1 - STORM_REST) * storm);
+        // An air can make the crowns let go too (env.shed, 0..1: the great fall, a windy day).
+        const shed = Number.isFinite(env.shed) ? clamp(env.shed, 0, 1) : 0;
+        this.pour = Math.max(storm, shed * AIR_SHED);
+        const ambientRest = AMBIENT_REST_SECONDS * (1 - (1 - STORM_REST) * this.pour);
         const lift = gust + storm * STORM_LIFT;
         const fields = env.fields || [];
         const { bounds } = this;
