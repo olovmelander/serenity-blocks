@@ -98,6 +98,8 @@ const FRESH = 70;
 const LEAP_REACH = Object.freeze({ least: 1.1, most: 4.4 });
 /** The floor nearer the eye than this (metres ahead of it) is under the frame: it is not stood on. */
 const FLOOR_SEEN = 7.0;
+/** A lying limb whose underside is this high off the floor (metres) is run under, not over. */
+const RUN_UNDER = 0.6;
 /** Beside a dead limb standing on the log it walks: half its body clear of the post's bark (metres, drawn). */
 const POST_CLEAR = 0.45;
 /** The run of clear limb it needs to stretch out along (metres, drawn: its body and its tail laid behind). */
@@ -842,9 +844,22 @@ export class SquirrelMind {
         return best;
     }
 
+    /** Where the run (ax, az) -> (bx, bz) meets a lying limb low enough to be in its way, or null. */
+    fenceOn(ax, az, bx, bz) {
+        for (const fence of this.fences) {
+            const hit = crossing(ax, az, bx, bz, fence.ax, fence.az, fence.bx, fence.bz);
+            if (!hit) continue;
+            // (High up, as a leaning bough's top end is, it is run under.)
+            const { p, r } = fence.limb.sample(hit.v * fence.limb.length);
+            if (p[1] - r - this.stage.ground.height(p[0], p[2]) < RUN_UNDER) return { fence, hit };
+        }
+        return null;
+    }
+
     /**
      * A run over the floor that minds what is on it: a lying limb in the way is crossed as squirrels
-     * cross a log, up onto it and off the other side; a standing thing (the stump) is gone round.
+     * cross a log, up onto it and off the other side; a standing thing (the stump) is gone round, on
+     * the side clear of a log where there is one. Every leg of it minds them the same way.
      */
     runTo(to, rate = 0, depth = 0) {
         const here = this.tail.place;
@@ -852,9 +867,9 @@ export class SquirrelMind {
         const dz = to.b - here.b;
         const length = Math.hypot(dx, dz);
         if (depth < 3 && length > 0.4) {
-            for (const fence of this.fences) {
-                const hit = crossing(here.a, here.b, to.a, to.b, fence.ax, fence.az, fence.bx, fence.bz);
-                if (!hit) continue;
+            const fenced = this.fenceOn(here.a, here.b, to.a, to.b);
+            if (fenced) {
+                const { fence, hit } = fenced;
                 const { limb } = fence;
                 const at = this.walkable(limb.name, hit.v * limb.length);
                 const clear = limb.radius(at) + JUMP_OFF;
@@ -863,9 +878,9 @@ export class SquirrelMind {
                 const ux = dx / length;
                 const uz = dz / length;
                 if (hit.u * length > clear + 0.3) {
-                    this.runStraight({
+                    this.runTo({
                         on: 'ground', a: x - ux * clear, b: z - uz * clear, heading: 0,
-                    }, rate);
+                    }, rate, depth + 1);
                 }
                 this.leap({
                     on: limb.name, a: at, b: 0, heading: 0,
@@ -893,12 +908,19 @@ export class SquirrelMind {
                     ox /= off;
                     oz /= off;
                 }
-                this.runStraight({
+                // Round the nearer side, or the other where the nearer one runs into a log.
+                const round = (sign) => ({
                     on: 'ground',
-                    a: post.x + ox * (post.radius + 0.3),
-                    b: post.z + oz * (post.radius + 0.3),
+                    a: post.x + sign * ox * (post.radius + 0.3),
+                    b: post.z + sign * oz * (post.radius + 0.3),
                     heading: 0,
-                }, rate);
+                });
+                const clean = (way) => !this.fenceOn(here.a, here.b, way.a, way.b)
+                    && !this.fenceOn(way.a, way.b, to.a, to.b);
+                const near = round(1);
+                const far = round(-1);
+                const way = clean(near) || !clean(far) ? near : far;
+                this.runTo(way, rate, depth + 1);
                 this.runTo(to, rate, depth + 1);
                 return;
             }
