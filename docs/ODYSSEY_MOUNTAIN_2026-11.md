@@ -46,18 +46,22 @@ flight), then:
 
 ## The paint (`odyssey-world-renderer.js`, the massif's block)
 
-- **Snow from the form** (`MASSIF_SNOW`). Lower in the couloirs (the plate's curvature plus the rain's flow, baked
+- **Snow from the form** (`MASSIF_SNOW`). It lets go of a face at ~66 degrees (between a summit blanketed in
+  snow and one stripped bare: both were tried in the game). Lower in the couloirs (the plate's curvature plus the rain's flow, baked
   into the plate's A as `MASSIF_GULLY_GAIN` x the flow), higher on convex ribs, higher on faces square to the low
   western sun and lower in their lee, held up to a steeper cliff on the massif than elsewhere; a mantle over the
   summit; its edge broken at ~40 u by one detail read (`snowBreak`), the per-pixel grain kept to a trace.
 - **Rock patches** on the lower massif break at the same ~40 u and run down the gullies (`patchBreak`), not in a
   field of 6-15 px flecks.
-- **Stone up close** (`MASSIF_ROCK`): joints standing in the rock (two sets of upright planes, gotcha #1603), a
-  tone per block, only where a cell is several pixels wide. No bedding lines: a line every few units of height is
-  the striped snow again.
+- **Stone up close** (`MASSIF_ROCK`): joints standing in the rock (two sets of upright planes, gotcha #1603), each
+  kept or dropped by its own hash, on steep faces only, a tone per block, only where a cell is several pixels
+  wide. (First drawn over every slope out to mid range, the set read as pinstripes; no bedding lines either: a
+  line every few units of height is the striped snow again.) Snow up close is wind-packed: its value swings a
+  little in patches.
 - **No strata on the massif**, no height bands of any kind there.
 - **Snow in shade** stands lower (`ODYSSEY_GROUND_SHADE.snow`: ambient 0.45 -> 0.34, deep 0.30 -> 0.24), and its
-  ice-blue thins with distance (the far peaks' cyan, `iceFar`).
+  ice-blue thins with distance (the far peaks' cyan, `iceFar`). Shaded summit stone takes less of the dusk sky
+  (`SUMMIT_ROCK.rockSkyChroma` 0.55 -> 0.40); the dusk is still violet, by the colour script's design.
 
 ## The light and the small findings
 
@@ -73,13 +77,17 @@ flight), then:
 - **The rainbow** is unchanged (M18): it is drawn round the true antisolar point (the rays the critic read as the
   sun's converge there: they are anticrepuscular), and it stands the whole act at the owner's word (2026-10-31).
 - **The climb's views** (M7) are unchanged: each orb holds its own view since 2026-11-02 (the owner's), and the
-  repetition the critics saw was the rail BETWEEN orbs, sampled at 0.46, 0.52 and 0.56.
+  repetition the critics saw was the rail BETWEEN orbs, sampled at 0.46, 0.52 and 0.56. The arrival (L33) now
+  holds what the audit asked of it with no change to the camera: the main top moved ~40 u east, toward the
+  view's line, so the summit stands whole in the frame with sky above it, the sea of clouds behind and the
+  island below, where before its flank was cropped at the frame's edge.
 
 ## What moved with it
 
 - The summit's vultures stay where they were staged; the mountain keeps under them (the export's `air`).
 - The plume finds the new top (`findHeroSummit` searches 100 u round the apex, not 60).
-- Outcrop anchor 3 moved 30 u up its slope (-56, -700 -> -730): the new ground there buried its slabs.
+- The outcrop anchored at (-56, -700) (seed 3) moved 30 u up its slope, to (-56, -730): the new ground there
+  buried its slabs.
 - Regenerated from the new height field: the forest's rock keep-outs (`FOREST_ROCKS`), its rail visibility stamp
   (`scripts/bake-forest-visibility.mjs`), the bakes' goldens.
 - The treeline: 619 trees stand above 470 u (455 before): the forest climbs the new mountain as it did the old.

@@ -4,7 +4,8 @@ Olov: *"start with a fresh look at the mountain from real screenshots"*. This ca
 rebuilt from a clean slate (2026-11-24), which left the hero massif as the weakest thing in nearly every frame of
 chapters 3 to 5.
 
-This is an audit only. No code changed. The land pass (2026-11-22) listed the massif as open in F6-F8 and F13; this
+This is an audit only. No code changed. **Acted on the same day:** the mountain rebuilt, see
+docs/ODYSSEY_MOUNTAIN_2026-11.md. The land pass (2026-11-22) listed the massif as open in F6-F8 and F13; this
 judges it again, on its own, from the whole journey.
 
 ![The mountain through the journey, the real game at 1920 x 1080 (WebGPU, High)](images/odyssey-mountain-2026-11-25/journey.jpg)
