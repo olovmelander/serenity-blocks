@@ -28,6 +28,8 @@ import { cross, normalize } from './fall-squirrel-stage.js';
 const TAU = Math.PI * 2;
 /** Seconds over which one clip hands over to the next. */
 const BLEND = 0.26;
+/** Seconds over which a look to the board comes and goes (and lets go when it is cut short). */
+const LOOK_EASE = 0.3;
 /** Seconds over which the body settles into an act's own heading (small changes; big ones are turned). */
 const TURN = 0.24;
 /** Seconds a move takes to get up to speed, and to stop (its speed eases in and out, S-shaped). */
@@ -1776,12 +1778,34 @@ export class SquirrelMind {
         }
         out.acorn = Boolean(act.acorn) && act.kind === 'stay';
         out.carry = Boolean(act.carry);
-        const lookIn = act.look ? smooth(0, 0.3, into) * smooth(0, 0.3, act.t1 - time) : 0;
-        out.look = lookIn * (act.look || 0);
+        out.look = this.lookAt(time);
         out.attention = SQUIRREL_ATTENTION;
         out.act = act.kind;
         out.clip = current.name;
         return out;
+    }
+
+    /** How much an act looks to the board at `time` on its own timing: eased in and out over its run. */
+    lookOf(act, time) {
+        if (!act?.look) return 0;
+        const end = act.t0 + (act.run ?? act.duration);
+        return act.look * smooth(0, LOOK_EASE, time - act.t0) * smooth(0, LOOK_EASE, end - time);
+    }
+
+    /**
+     * The look at `time`: the act's own, and what the acts cut short just before it still let go of. An
+     * answer to the board cuts a look where it stands; the head lets go of it over LOOK_EASE, not in the
+     * frame of the cut (two cuts in one frame hand over the same way: every recent act is counted).
+     */
+    lookAt(time) {
+        let look = this.lookOf(this.act, time);
+        for (const act of this.recent) {
+            const since = time - act.t1;
+            // (Newest first: those before ended earlier still.)
+            if (since >= LOOK_EASE) break;
+            look += this.lookOf(act, act.t1) * (1 - smooth(0, LOOK_EASE, since));
+        }
+        return clamp(look, 0, 1);
     }
 
     /**

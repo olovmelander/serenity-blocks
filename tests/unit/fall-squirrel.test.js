@@ -440,6 +440,42 @@ describe('the squirrel moves smoothly', () => {
         }
     });
 
+    it('lets go of a look to the board over a moment when an answer to the board cuts it', () => {
+        // Cues come thick and fast (a clear and four lines in one frame among them): whatever act a cue
+        // cuts, the head's turn to the board never comes or goes in a frame.
+        const cues = [];
+        for (let t = 2; t < 118; t += 1.7) {
+            cues.push(['clear', t, 1]);
+            if (Math.round(t * 10) % 3 === 0) cues.push(['four', t, 1]);
+            if (Math.round(t * 10) % 4 === 0) cues.push(['combo', t + 0.4, 1]);
+        }
+        let cut = 0;
+        for (const seed of [271, 3, 8]) {
+            const mind = new SquirrelMind({ stage, seed });
+            let last = null;
+            let worst = 0;
+            let looked = 0;
+            let cuts = 0;
+            live(mind, 120, STEP, cues, (pose) => {
+                if (!pose.visible) {
+                    last = null;
+                    return;
+                }
+                if (last !== null) worst = Math.max(worst, Math.abs(pose.look - last));
+                if (pose.look > 0.9) looked += 1;
+                last = pose.look;
+                const before = mind.recent[0];
+                if (before?.look && before.t1 < before.t0 + before.run - 1e-6 && mind.act.t0 === before.t1) cuts += 1;
+            });
+            cut += cuts;
+            // (Eased over 0.3 s at most 0.083 a frame each way.)
+            expect(worst, `seed ${seed}`).toBeLessThan(0.12);
+            expect(looked, `seed ${seed}`).toBeGreaterThan(30);
+        }
+        // Looks were cut short (the case this holds).
+        expect(cut).toBeGreaterThan(0);
+    }, 30_000);
+
     it('turns on the spot with its paws stepping round, on the floor and on the bark', () => {
         const turns = new Set();
         for (const seed of [271, 3, 99]) {
