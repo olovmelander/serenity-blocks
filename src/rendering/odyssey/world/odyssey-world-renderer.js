@@ -475,8 +475,8 @@ const MASSIF_SNOW = Object.freeze({
     sunward: 60,
     breakScale: 0.021,
     breakReach: 85,
-    cliff: Object.freeze([0.62, 0.76]),
-    mantle: Object.freeze([820, 960]),
+    cliff: Object.freeze([0.66, 0.80]),
+    mantle: Object.freeze([800, 940]),
     /** Up close, wind-packed snow: how far its value swings (share) and the footprint (u a pixel) it fades by. */
     packed: 0.10,
     packedNear: Object.freeze([0.2, 0.7]),
@@ -2297,7 +2297,7 @@ export function createOdysseyWorld({
             .mul(float(1).sub(smoothstep(
                 float(0.18),
                 float(0.40),
-                crest.mul(float(GROUND_SNOW_CREST_STRIP).mul(float(1).sub(mantle.mul(0.25)))),
+                crest.mul(float(GROUND_SNOW_CREST_STRIP).mul(float(1).sub(mantle.mul(0.35)))),
             )));
         // The SLOPE half takes the same patch rule as the altitude half below: on the massif's
         // mid flanks (slope 0.2-0.35, the whole ch4 view) a 0.17..0.40 ramp made every fragment
