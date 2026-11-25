@@ -44,8 +44,8 @@ export const ODYSSEY_WALL_GUSTS = Object.freeze({
     centre: Object.freeze([70, 440, -395]),
     spread: Object.freeze([230, 105, 130]),
     /** Peak alpha of a streamer, and of the crystals' sparkle in it. */
-    alpha: 0.27,
-    sparkle: 0.5,
+    alpha: 0.19,
+    sparkle: 0.3,
     /** THE GALE COMES IN GUSTS: a front crosses the box every `gust` seconds; between fronts the
      * air holds a `lull` share of the snow, so the sky behind is clear more than it is veiled. */
     gust: 7.5,
