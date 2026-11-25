@@ -52,6 +52,7 @@ import { createNeonTrain } from './shared/odyssey-neon-train.tsl.js';
 import { createJourneyFireworks, createSkyLanterns, journeyColours } from './shared/odyssey-neon-celebration.tsl.js';
 import {
     createNeonHologram,
+    createNeonTerminus,
     createNeonSearchlights,
     createNeonSteam,
     createNeonSunShafts,
@@ -667,6 +668,14 @@ export function* buildUrbanDreamsEnvironmentSteps(options = {}) {
     } else {
         group.position.y = chapterCenterY;
     }
+
+    // THE END OF THE LINE (2026-11-25): the rings and the pillar at the end of the rail, seated in
+    // the corridor's frame now that the group sits on the path's centre.
+    const railEnd = getOdysseyPathCurve().getPointAt(1).sub(group.position)
+        .applyQuaternion(corridor.quaternion.clone().invert());
+    const terminus = createNeonTerminus(neon, railEnd);
+    corridor.add(terminus);
+    group.userData.terminus = terminus;
 
     // FogExp2 WASHOUT fix (backlog #3): this is a neon CITY-AT-NIGHT set-piece, not a foggy
     // scene — the profile runs a violet FogExp2 at density 0.012, which at the spire/sun
