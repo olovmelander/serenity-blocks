@@ -24,6 +24,7 @@ import { ComboTracker } from '../../core/combo-tracker.js';
 import { normalizeQuality } from '../../utils/quality.js';
 import { CHROMADELIC_HIGHWAY_TETROMINOS } from './chromadelic-highway-tetrominos.js';
 import { ChromadelicHighwayPost, POST_LOOK, createPassThroughPipeline } from './chromadelic-highway-post.js';
+import { warmHighwayBakes } from './chromadelic-highway-bake.js';
 import { CAMERA_RIG, ChromadelicWorld, WORLD_TIERS } from './chromadelic-highway-world.js';
 import {
     BOARD_SELECTOR, HUD_SELECTOR, layoutsDiffer, readLayoutRects, restVerticalFov,
@@ -1612,8 +1613,11 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
             throw new Error('[ChromadelicHighway] Container #chromadelic-highway-theme not found');
         }
 
+        const baking = warmHighwayBakes(WORLD_TIERS[this.activeQualityLevel] || WORLD_TIERS.High);
         const rendererReady = await this.initRenderer(container, ownerGeneration);
         if (!rendererReady) return;
+        await baking;
+        if (ownerGeneration !== this.lifecycleGeneration || !this.isActive || this.cleanupComplete) return;
         if (!this.renderer || !this.scene || !this.camera) {
             throw new Error('[ChromadelicHighway] Renderer initialization produced no scene.');
         }
@@ -1783,6 +1787,7 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
         const ls = this.layoutState;
         const target = res.veil.board ? 1 : 0;
         ls.veil += (target - ls.veil) * approach(3, deltaSeconds);
+        this.world.setBoardActive?.(ls.veil);
         this.postProcessing?.setLayout(res.veil.board, res.veil.hud, ls.veil);
     }
 
@@ -1946,9 +1951,9 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
             const chain = this.comboTracker.combo;
             this.comboTracker.notePieceLocked();
             if (reactive()) {
-                // The most frequent event is the quietest: a rail tick and a faint chevron.
+                // The most frequent event is the quietest: a rail tick and a sleek single-lane ripple.
                 this.pushReactiveEnvelope({ particle: 0.15, ambient: 0.1 });
-                this.world?.onPieceLock();
+                this.world?.onPieceLock(data);
                 if (chain >= 2 && this.comboTracker.combo === 0) this.world?.onChain(0);
             }
         });
@@ -2039,6 +2044,24 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
         window.addEventListener('pointermove', onPointerMove);
         const pointerUnsub = () => window.removeEventListener('pointermove', onPointerMove);
 
+        const onGameOver = () => {
+            if (!reactive()) return;
+            this.comboTracker?.reset();
+            this.world?.onGameOver?.();
+        };
+        window.addEventListener('gameOver', onGameOver);
+        const gameOverUnsub = () => window.removeEventListener('gameOver', onGameOver);
+
+        const modeManager = window.serenityBlocks?.gameModeManager;
+        const modeStartUnsub = typeof modeManager?.on === 'function'
+            ? modeManager.on('modeStarted', () => {
+                if (!this.isActive) return;
+                this.comboTracker?.reset();
+                this.world?.onSessionStart?.();
+                this.layoutWatch?.schedule?.();
+            })
+            : null;
+
         this.eventUnsubscribers.push(
             lockUnsub,
             hardDropUnsub,
@@ -2049,6 +2072,8 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
             perfectUnsub,
             levelUpUnsub,
             pointerUnsub,
+            gameOverUnsub,
+            ...(modeStartUnsub ? [modeStartUnsub] : []),
         );
     }
 
@@ -2171,10 +2196,13 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
         this.world.update(sim, this.camera);
 
         if (this.postProcessing) {
-            const pp = this._postParams || (this._postParams = { time: 0, dip: 0, bloomBoost: 0 });
+            const pp = this._postParams || (this._postParams = {
+                time: 0, dip: 0, bloomBoost: 0, warpRush: 0,
+            });
             pp.time = this.time;
             pp.dip = this.world.fx.dip;
             pp.bloomBoost = Math.min(1, this.bloomBoost);
+            pp.warpRush = this.world.fx.warpRush ?? 0;
             this.postProcessing.update(pp);
         }
 

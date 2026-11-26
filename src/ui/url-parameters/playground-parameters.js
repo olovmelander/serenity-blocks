@@ -5122,6 +5122,21 @@ export const PLAYGROUND_URL_PARAMETERS = [
         ],
     },
     {
+        name: 'sector',
+        category: 'Playground',
+        scope: 'playground.html — chromadelic-highway',
+        description: 'Hold one of the five Chromadelic Highway cosmic voyage sectors instead of letting its 73 s '
+            + 'voyage clock turn them.',
+        values: 'velvet-rift, aurora-slipstream, starlight-crossing, ion-corridor, nebula-heart; or a number '
+            + '0–5 (fractional values blend smoothly between adjacent sectors).',
+        defaultValue: 'Unset (advances one sector every 73 s, independent of the spectrum clock).',
+        example: 'sector=aurora-slipstream',
+        notes: 'Use on playground.html with effect=chromadelic-highway.',
+        sources: [
+            'src/playground/effects/chromadelic-highway.effect.js',
+        ],
+    },
+    {
         name: 'session',
         category: 'Playground',
         scope: 'playground.html — breathing',

@@ -15,7 +15,7 @@ export const ODYSSEY_THEME_PASSAGE_PALETTES = Object.freeze({
     'black-hole': ['#f7e5d4', '#c47735', '#355682', '#110b09', 0.39],
     'blood-moon': ['#c65133', '#751c1f', '#993428', '#2c0813', 0.15],
     'chiral-gold': ['#ffd362', '#986724', '#c69840', '#1d0800', 0.26],
-    'chromadelic-highway': ['#cf9ba8', '#7e2487', '#9f3e71', '#100a28', 0.19],
+    'chromadelic-highway': ['#c3cacd', '#7a3e89', '#4e4277', '#2f1f3c', 0.28],
     'chromatic-impasto': ['#cbdaad', '#c24944', '#5a6ebd', '#5e2d31', 0.42],
     'cinder-drift': ['#f78934', '#a44e22', '#c9692a', '#3c1a17', 0.25],
     'cosmic-noir': ['#a3a3a3', '#292929', '#606060', '#070707', 0.16],

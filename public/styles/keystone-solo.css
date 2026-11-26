@@ -106,6 +106,16 @@
     --sp-wall-glow: rgb(74 174 156 / 25%);
 }
 
+/* Violet glass at the edge of the highway, with cool instrument lights in the ledger. */
+:where(body:has(#chromadelic-highway-theme.active)) .single-player-stage[data-board='well']:not(:where(
+    .infinity-mode-active, [data-odyssey-board], [data-stillfall], [data-still-air], [data-danger]
+)) {
+    --sp-hue: #ddd7f6;
+    --sp-hue-rgb: 221, 215, 246;
+    --sp-wall: #9381c3;
+    --sp-wall-glow: rgb(127 155 243 / 23%);
+}
+
 /* The brass finial against dusk-blue slate on the Himalayan pass. */
 :where(body:has(#himalayan-peak-theme.active)) .single-player-stage[data-board='well']:not(:where(
     .infinity-mode-active, [data-odyssey-board], [data-stillfall], [data-still-air], [data-danger]
