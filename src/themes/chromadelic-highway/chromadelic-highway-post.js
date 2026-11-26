@@ -1,23 +1,21 @@
 /**
  * Chromadelic Highway — post stack (TSL RenderPipeline, both WebGPURenderer backends).
  *
- * One scene pass (no MRT, no compute; MSAA only on High and up), one bloom chain (Medium and
- * up) and ONE full-screen output pass:
- *   scene tap → board veil (the board card and HUD are translucent, so what shows through them is
- *   soft-clipped, hue-preserving) → bloom (max-channel soft-knee prefilter over 4 taps, so every
- *   hue blooms alike and thin lines do not flicker) → luminance contrast (the tone curve below is
- *   linear under 0.72, so mid-tone contrast is added first; the floor is left alone) →
- *   "neon-neutral" tone map (hue-faithful: emitter cores roll to white while their halos stay
- *   saturated) → vibrance, violet floor, event contrast dip → value-aware top/bottom vignette →
- *   sRGB encode → grain on the dark floor (High and up) → triangular dither.
- *
- * Values are authored scene-linear, so the authored value ladder is what reaches the screen.
- * Only thin emitters exceed the 1.0 bloom threshold.
+ * One scene pass (4× MSAA from High up via shared sceneSamples so our Blender-sculpted 3D
+ * pylons, beveled edges, rings and lanes stay razor-sharp), one bloom chain (Medium and up
+ * with a max-channel soft-knee prefilter so every hue blooms alike), and ONE output pass:
+ *   scene tap (+ subtle radial warp-focus during Quad / Fever / Level-Up / Perfect Clear,
+ *   strictly outside the board calm zone and disabled under reduced motion) ->
+ *   value-aware board & HUD veil -> bloom composite with violet faint-halo unifier ->
+ *   luminance contrast (deep velvet floor untouched) -> neon-neutral tone map -> vibrance,
+ *   deep velvet floor, event contrast dip -> gentle top/bottom vignette -> sRGB encode ->
+ *   dark-floor grain (High+) -> triangular dither.
  */
 
 import * as THREE from 'three/webgpu';
 import {
     Fn,
+    If,
     clamp,
     dot,
     float,
@@ -43,48 +41,46 @@ import {
 } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { disposeBloomNodeDeep } from '../shared/bloom-dispose.js';
+import { sceneSamples } from '../shared/scene-antialias.js';
 import {
     chdHash21, chdMax3, chdRoundBoxSdf, chdSoftClip,
 } from './chromadelic-highway-tsl.js';
 
 /**
- * Per-tier look. `bloom: false` builds no BloomNode (Low/Minimal, as the old theme did); the
- * emitters carry their own authored halos. `msaa` is the scene pass sample count.
+ * Per-tier look. High+ now uses 4× MSAA (matching sceneSamples) so the sculpted 3D highway
+ * cantilever pylons and speed chevrons show crisp anti-aliased bevels on every frame.
  */
 export const POST_LOOK = {
     Extreme: {
-        bloom: true, bloomStrength: 0.8, bloomResolution: 0.4, grain: true, msaa: 4,
+        bloom: true, bloomStrength: 0.82, bloomResolution: 0.4, grain: true, msaa: 4, warpBlur: true,
     },
     Ultra: {
-        bloom: true, bloomStrength: 0.75, bloomResolution: 0.375, grain: true, msaa: 4,
+        bloom: true, bloomStrength: 0.78, bloomResolution: 0.375, grain: true, msaa: 4, warpBlur: true,
     },
-    // Every thin element is anti-aliased analytically (lines, ring strips, discs, stars), so
-    // scene MSAA is indistinguishable at High (measured) and kept only on the showcase tiers.
     High: {
-        bloom: true, bloomStrength: 0.7, bloomResolution: 0.325, grain: true, msaa: 0,
+        bloom: true, bloomStrength: 0.74, bloomResolution: 0.325, grain: true, msaa: sceneSamples('High', true), warpBlur: true,
     },
     Medium: {
-        bloom: true, bloomStrength: 0.62, bloomResolution: 0.25, grain: false, msaa: 0,
+        bloom: true, bloomStrength: 0.64, bloomResolution: 0.25, grain: false, msaa: 0, warpBlur: false,
     },
     Low: {
-        bloom: false, bloomStrength: 0, bloomResolution: 0.25, grain: false, msaa: 0,
+        bloom: false, bloomStrength: 0, bloomResolution: 0.25, grain: false, msaa: 0, warpBlur: false,
     },
     Minimal: {
-        bloom: false, bloomStrength: 0, bloomResolution: 0.25, grain: false, msaa: 0,
+        bloom: false, bloomStrength: 0, bloomResolution: 0.25, grain: false, msaa: 0, warpBlur: false,
     },
 };
 
 export const BLOOM_THRESHOLD = 1.0;
-export const BLOOM_KNEE = 0.4;
-export const BLOOM_RADIUS = 0.3;
+export const BLOOM_KNEE = 0.42;
+export const BLOOM_RADIUS = 0.32;
 
 const LUMA = vec3(0.2126, 0.7152, 0.0722);
 const min3 = (c) => min(c.x, min(c.y, c.z));
 
 /**
- * "Neon-neutral": the Khronos PBR Neutral curve with a later shoulder (startComp 0.72), a
- * stronger path to white for saturated emitters (desat 0.32) and a quarter-strength toe (the
- * full toe squares neutral darks below 0.08, which crushes the violet floor). Branchless.
+ * "Neon-neutral": Khronos PBR Neutral curve with later shoulder (0.72), rich path to white
+ * for saturated emitters (desat 0.32), and quarter toe so deep violet obsidian never crushes.
  */
 export const chdNeonNeutral = /* @__PURE__ */ Fn(([cIn, startComp, desat, toe]) => {
     const c = vec3(cIn);
@@ -112,7 +108,7 @@ export const chdNeonNeutral = /* @__PURE__ */ Fn(([cIn, startComp, desat, toe]) 
 export function createPassThroughPipeline(renderer, scene, camera) {
     const pipeline = new THREE.RenderPipeline(renderer);
     const scenePass = pass(scene, camera, { samples: 0 });
-    pipeline.outputNode = scenePass; // outputColorTransform: renderer tone mapping + sRGB
+    pipeline.outputNode = scenePass;
     return {
         render: () => pipeline.render(),
         update() {},
@@ -127,17 +123,6 @@ export function createPassThroughPipeline(renderer, scene, camera) {
 }
 
 export class ChromadelicHighwayPost {
-    /**
-     * @param {THREE.WebGPURenderer} renderer
-     * @param {THREE.Scene} scene
-     * @param {THREE.Camera} camera
-     * @param {object} [params]
-     * @param {object} [params.look]          POST_LOOK entry
-     * @param {number} [params.samples]       scene-pass MSAA samples (default look.msaa)
-     * @param {number} [params.aspect]
-     * @param {boolean} [params.grain=true]   false in deterministic capture modes
-     * @param {boolean} [params.falseColor]   debug: band the pre-tone-map max channel
-     */
     constructor(renderer, scene, camera, params = {}) {
         const look = params.look || POST_LOOK.High;
         this.look = look;
@@ -148,20 +133,20 @@ export class ChromadelicHighwayPost {
 
         this.uAspect = uniform(params.aspect ?? 1.78);
         this.uSrcTexel = uniform(new THREE.Vector2(1 / 1920, 1 / 1080));
-        this.uDip = uniform(0); // event contrast dip of everything that is not blooming
-        this.uBloomBoost = uniform(0); // 0..1 → ≤ +10 % bloom
-        this.uContrast = uniform(1.12);
-        this.uBoardRect = uniform(new THREE.Vector4(0.4, 0.067, 0.6, 0.951)); // screen fractions
+        this.uDip = uniform(0);
+        this.uBloomBoost = uniform(0);
+        this.uWarpRush = uniform(0); // 0..1 subtle outer radial velocity focus during Quad / Fever / LevelUp
+        this.uContrast = uniform(1.15);
+        this.uBoardRect = uniform(new THREE.Vector4(0.4, 0.067, 0.6, 0.951));
         this.uHudRect = uniform(new THREE.Vector4(0.626, 0.25, 0.714, 0.75));
-        this.uVeil = uniform(0); // eased 0 → 1 once the DOM rects are known and stable
+        this.uVeil = uniform(0);
         this.uHudVeil = uniform(0);
-        this.boardSeen = false; // a board rect has been set (the veil may fade over it)
-        this.hudLive = false; // the HUD was on screen with the last board
+        this.boardSeen = false;
+        this.hudLive = false;
         this.grainEnabled = params.grain !== false && look.grain === true;
         this.uGrain = uniform(this.grainEnabled ? 3 / 255 : 0);
         this.uGrainPhase = uniform(0);
 
-        // ── Bloom: max-channel soft knee over a 4-tap box (Medium and up) ──
         this.bloomNode = null;
         if (look.bloom) {
             this.bloomNode = bloom(sceneColor, look.bloomStrength, BLOOM_RADIUS, BLOOM_THRESHOLD);
@@ -169,8 +154,6 @@ export class ChromadelicHighwayPost {
             this.bloomNode.smoothWidth.value = BLOOM_KNEE;
             this.bloomNode.setResolutionScale(look.bloomResolution);
             const { uSrcTexel } = this;
-            // BloomNode's documented hook, read once at setup: set before anything compiles.
-            // Inline (no setLayout): `input` must stay the raw scene TextureNode for .sample().
             this.bloomNode.highPassFn = Fn(({ input, threshold, smoothWidth }) => {
                 const st = uv();
                 const o = uSrcTexel.mul(1.25);
@@ -185,18 +168,43 @@ export class ChromadelicHighwayPost {
         }
 
         const falseColor = params.falseColor === true;
+        const useWarpBlur = look.warpBlur === true;
         const outputFn = Fn(() => {
             const centered = screenUV.sub(0.5).toVar();
             const p = screenUV.mul(screenSize).toVar();
             const S = vec3(sceneColor.sample(screenUV).rgb).toVar();
 
-            // ── Board veil: what shows through the card / HUD is soft-clipped ──
+            // ── Board & HUD veil (soft-clips anything showing through the translucent UI) ──
             const hScale = screenSize.y.div(1080.0);
-            const sdfC = chdRoundBoxSdf(p, this.uBoardRect.mul(vec4(screenSize, screenSize)), hScale.mul(20.0));
+            const sdfC = chdRoundBoxSdf(p, this.uBoardRect.mul(vec4(screenSize, screenSize)), hScale.mul(20.0)).toVar();
             const sdfH = chdRoundBoxSdf(p, this.uHudRect.mul(vec4(screenSize, screenSize)), hScale.mul(12.0));
-            const inC = float(1.0).sub(smoothstep(-24.0, 0.0, sdfC)).mul(this.uVeil);
+            const inC = float(1.0).sub(smoothstep(-24.0, 0.0, sdfC)).mul(this.uVeil).toVar();
             const bandC = smoothstep(hScale.mul(110.0), 0.0, sdfC).mul(step(0.0, sdfC)).mul(this.uVeil);
-            const inH = float(1.0).sub(smoothstep(-8.0, 0.0, sdfH)).mul(this.uHudVeil);
+            const inH = float(1.0).sub(smoothstep(-8.0, 0.0, sdfH)).mul(this.uHudVeil).toVar();
+
+            // ── Peripheral hyper-warp velocity focus (Quad / Level-Up / Perfect / Fever, High+) ──
+            // Strictly outside the board card and capped per-tap (gotcha #904) so highlights never ring.
+            if (useWarpBlur) {
+                If(this.uWarpRush.greaterThan(0.0001), () => {
+                    const vpDelta = screenUV.sub(vec2(0.5, 0.458)).toVar();
+                    const rushMask = smoothstep(0.24, 0.65, length(vpDelta))
+                        .mul(float(1.0).sub(inC)).mul(float(1.0).sub(inH)).mul(this.uWarpRush)
+                        .toVar();
+                    If(rushMask.greaterThan(0), () => {
+                        const stepUV = vpDelta.mul(rushMask.mul(0.018));
+                        const tap = (offset) => {
+                            // The scene pass has one resolved mip. Explicit LOD also permits
+                            // sampling inside the per-pixel board and periphery mask on WebGPU.
+                            const st = clamp(screenUV.sub(stepUV.mul(offset)), 0.001, 0.999);
+                            const c = sceneColor.sample(st).level(0).rgb.toVar();
+                            return c.mul(min(float(1.0), float(3.2).div(max(chdMax3(c), 0.001))));
+                        };
+                        const blurred = S.mul(0.55).add(tap(1).mul(0.3)).add(tap(2).mul(0.15));
+                        S.assign(mix(S, blurred, clamp(rushMask.mul(0.85), 0.0, 0.85)));
+                    });
+                });
+            }
+
             S.assign(mix(S, chdSoftClip(S, float(0.1)).mul(0.85), inC));
             S.assign(mix(S, chdSoftClip(S, float(0.12)), inH));
             S.mulAssign(float(1.0).sub(bandC.mul(0.12)));
@@ -205,53 +213,48 @@ export class ChromadelicHighwayPost {
             let B = vec3(0.0);
             if (this.bloomNode) {
                 let bl = vec3(this.bloomNode.getTextureNode().sample(screenUV).rgb);
-                // Faint-halo unifier: dim halos lean violet so seven hues read as one light.
-                const faint = float(1.0).sub(smoothstep(0.02, 0.35, chdMax3(bl))).mul(0.35);
-                bl = mix(bl, bl.mul(vec3(0.86, 0.74, 1.22)), faint);
-                bl = bl.mul(float(1.0).add(this.uBloomBoost.mul(0.1)));
-                bl = bl.mul(max(float(1.0).sub(inC.mul(0.8)).sub(inH.mul(0.6)).sub(bandC.mul(0.3)), 0.0));
+                const faint = float(1.0).sub(smoothstep(0.02, 0.35, chdMax3(bl))).mul(0.32);
+                bl = mix(bl, bl.mul(vec3(0.86, 0.74, 1.24)), faint);
+                bl = bl.mul(float(1.0).add(this.uBloomBoost.mul(0.14)));
+                bl = bl.mul(max(float(1.0).sub(inC.mul(0.82)).sub(inH.mul(0.62)).sub(bandC.mul(0.3)), 0.0));
                 B = bl;
             }
             const H = S.add(B).toVar();
 
-            // ── Luminance contrast before the tone map (the floor is left alone) ──
+            // ── Luminance contrast before tone map (deep velvet floor stays untouched) ──
             const Lh = max(dot(H, LUMA), 1e-4);
-            H.mulAssign(pow(Lh.div(0.18), this.uContrast.sub(1.0).mul(smoothstep(0.012, 0.06, Lh))));
+            H.mulAssign(pow(Lh.div(0.18), this.uContrast.sub(1.0).mul(smoothstep(0.015, 0.065, Lh))));
 
             // ── Tone map + grade (scene-linear) ──
             const T = chdNeonNeutral(H, float(0.72), float(0.32), float(0.25)).toVar();
             const tl = dot(T, LUMA);
             const tMax = chdMax3(T);
             const sat = tMax.sub(min3(T)).div(max(tMax, 1e-4));
-            T.assign(mix(vec3(tl), T, float(1.0).add(float(0.12).mul(float(1.0).sub(sat)).mul(smoothstep(0.02, 0.2, tl)))));
-            // Violet floor: pure black never reaches the screen.
-            T.addAssign(vec3(0.001, 0.0004, 0.0036).mul(float(1.0).sub(smoothstep(0.0, 0.05, tl))));
-            // Event contrast dip: everything that is not blooming steps back.
+            T.assign(mix(vec3(tl), T, float(1.0).add(float(0.15).mul(float(1.0).sub(sat)).mul(smoothstep(0.02, 0.2, tl)))));
+            // Subtle velvet indigo floor (gotcha #227: keep near-zero so space stays rich OLED obsidian).
+            T.addAssign(vec3(0.0006, 0.00025, 0.0022).mul(float(1.0).sub(smoothstep(0.0, 0.04, tl))));
+            // Event contrast dip: non-blooming darks step back slightly so neon emitters blaze.
             T.mulAssign(float(1.0).sub(this.uDip.mul(float(1.0).sub(smoothstep(0.03, 0.25, chdMax3(B))))));
-            // Value-aware top/bottom bands (the bottom corners hold the road wedges) + weak radial.
+            // Value-aware top/bottom bands + subtle radial vignette.
             const edge = max(
-                float(1.0).sub(smoothstep(0.0, 0.13, screenUV.y)),
-                float(1.0).sub(smoothstep(0.0, 0.1, float(1.0).sub(screenUV.y))),
+                float(1.0).sub(smoothstep(0.0, 0.12, screenUV.y)),
+                float(1.0).sub(smoothstep(0.0, 0.09, float(1.0).sub(screenUV.y))),
             );
-            T.mulAssign(float(1.0).sub(edge.mul(float(0.22).add(tl.mul(0.187)))));
+            T.mulAssign(float(1.0).sub(edge.mul(float(0.2).add(tl.mul(0.16)))));
             const rad = length(centered.mul(vec2(this.uAspect.div(1.778), 1.0)).mul(2.0));
-            T.mulAssign(float(1.0).sub(smoothstep(0.6, 1.2, rad).mul(0.1)));
+            T.mulAssign(float(1.0).sub(smoothstep(0.62, 1.24, rad).mul(0.12)));
 
-            // ── Encode, then finish in display space ──
+            // ── Encode + finish in display space ──
             const D = vec3(renderOutput(vec4(clamp(T, 0.0, 1.0), 1.0), THREE.NoToneMapping).rgb).toVar();
             const px = floor(screenCoordinate);
-            // Grain on the dark floor only (±1.5/255, 24 Hz phase from the sim clock).
             const gp = this.uGrainPhase;
             const gn = chdHash21(px.add(vec2(gp.mul(113.1), gp.mul(71.7)))).sub(0.5);
             D.addAssign(gn.mul(this.uGrain).mul(float(1.0).sub(smoothstep(0.02, 0.06, chdMax3(D)))));
-            // Triangular ±1/255 dither (static: captures stay deterministic).
             const dth = chdHash21(px).add(chdHash21(px.add(vec2(17.17, 17.17)))).sub(1.0);
             D.addAssign(dth.div(255.0));
 
             let output = vec4(clamp(D, 0.0, 1.0), 1.0);
             if (falseColor) {
-                // Debug: band the pre-tone-map max channel after the veil (blue < .1 < green <
-                // .6 < yellow < 1 < orange < 2.5 < red). Only thin emitters should show orange/red.
                 const m = chdMax3(S.add(B));
                 const fc = select(
                     m.lessThan(0.1),
@@ -277,24 +280,15 @@ export class ChromadelicHighwayPost {
         this.size = { width: 0, height: 0 };
     }
 
-    /**
-     * Per-frame uniforms. All optional.
-     * @param {{time?: number, dip?: number, bloomBoost?: number}} params
-     */
     update(params) {
         if (params.time !== undefined) {
-            // Deterministic under seek, and small enough to keep the hash precise.
             this.uGrainPhase.value = Math.floor(params.time * 24) % 256;
         }
         if (params.dip !== undefined) this.uDip.value = params.dip;
         if (params.bloomBoost !== undefined) this.uBloomBoost.value = params.bloomBoost;
+        if (params.warpRush !== undefined) this.uWarpRush.value = params.warpRush;
     }
 
-    /**
-     * Board/HUD rects in screen fractions (x0, y0, x1, y1; y down), or null to fade that veil
-     * out. `strength` 0..1 is applied as-is (the caller eases it): once the board is gone the
-     * last rects stay, so the eased strength fades the veil where the board was.
-     */
     setLayout(board, hud, strength = 1) {
         if (board) {
             this.uBoardRect.value.set(board.x0, board.y0, board.x1, board.y1);
@@ -314,10 +308,6 @@ export class ChromadelicHighwayPost {
         this.postProcessing.render();
     }
 
-    /**
-     * The scene pass and bloom chain size themselves from the drawing buffer every frame
-     * (PassNode/BloomNode.updateBefore); only the aspect and the prefilter texel need this.
-     */
     setSize(width, height, bufferWidth = width, bufferHeight = height) {
         this.size.width = width;
         this.size.height = height;

@@ -76,6 +76,22 @@ describe('chromadelic highway composition', () => {
         expect(at1080.v1).toBeCloseTo(0.351, 2);
     });
 
+    it('fits the gas giant and its moon above the queue on a narrow solo board', () => {
+        const comp = new ChromadelicComposition();
+        const aspect = 390 / 844;
+        const card = {
+            u0: -0.155, u1: 0.155, v0: -0.31, v1: 0.40,
+        };
+        const res = comp.solve({
+            aspect, viewport: { width: 390, height: 844 }, layout: { cardCount: 1, card, hud: null },
+        });
+        const orbit = (res.moon.orbitRadius + res.moon.radius) / (2 * comp.tanHalf * 3600);
+        expect(Math.abs(res.hero.anchor.u) + orbit).toBeLessThan(aspect / 2);
+        expect(res.hero.anchor.v + orbit).toBeLessThan(0.5);
+        expect(res.hero.anchor.v - orbit).toBeGreaterThan(card.v1);
+        expect(res.rects.card.x0).toBeCloseTo(0.5 + card.u0 / aspect);
+    });
+
     it('launches events from where the road slides under the card', () => {
         const comp = new ChromadelicComposition();
         // solve() reuses one result object: read each value before the next solve.
