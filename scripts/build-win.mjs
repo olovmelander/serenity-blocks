@@ -17,10 +17,15 @@ const iconSourcePath = process.env.SERENITY_WINDOWS_ICON_SOURCE
 const allowNonWindowsBuild = process.platform === 'win32' || process.env.SERENITY_ALLOW_WSL_WIN_BUILD === '1';
 const isUnsupportedWslFallback = process.platform !== 'win32' && process.env.SERENITY_ALLOW_WSL_WIN_BUILD === '1';
 
-// Code signing: To enable Windows code signing, set these environment variables:
+// Code signing: electron-builder signs the executable and the native addons (build.win.signExts
+// in package.json) while it packages, when it is given a certificate:
 //   CSC_LINK=path/to/certificate.pfx
 //   CSC_KEY_PASSWORD=your_certificate_password
-// electron-builder will automatically pick them up during the packaging step.
+// After packaging, scripts/verify-signatures.mjs reads what Windows makes of the result. A store
+// build (SERENITY_RELEASE=1) stops when the executable or an addon is not validly signed, because
+// Smart App Control blocks an unsigned program it cannot vouch for; SERENITY_ALLOW_UNSIGNED=1
+// packages unsigned on purpose. Any other build only prints the statuses.
+const unpackedDir = path.join('release', 'win-unpacked');
 
 function runCommand(command, args) {
     const result = spawnSync(command, args, {
@@ -112,6 +117,11 @@ async function build() {
     }
 
     runCommand('electron-builder', electronBuilderArgs);
+
+    // release/win-unpacked is what Steam's Windows depot is staged from (the installer is made
+    // from the same files). runCommand exits on a failed check, so an unsigned store build stops
+    // before its SBOM is written.
+    runCommand('node', ['scripts/verify-signatures.mjs', unpackedDir]);
 
     // Supply-chain: attach a CycloneDX SBOM of the shipped (prod) dependency
     // surface to release builds (Phase 0.5). Dev builds skip it.

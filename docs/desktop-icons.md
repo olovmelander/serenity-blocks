@@ -16,6 +16,7 @@ All three files are generated from one module,
 | [`public/favicon.svg`](../public/favicon.svg) | The 16 px cut on a 16-unit grid (crisp in a tab at 1x and 2x) | `index.html` |
 | [`public/assets/branding/serenity-blocks.ico`](../public/assets/branding/serenity-blocks.ico) | 16, 20, 24, 32, 40, 48, 64, 128 and 256 px | `scripts/build-win.mjs` → `build/icon.ico` |
 | [`public/assets/branding/serenity-blocks-app-icon.svg`](../public/assets/branding/serenity-blocks-app-icon.svg) | The 256 px master | Store, promo and social art |
+| [`public/assets/branding/linux/`](../public/assets/branding/linux) | 16, 24, 32, 48, 64, 128 and 256 px PNGs, the `.ico`'s own images | `package.json` `build.linux.icon`; `electron/main.js` (the window icon on Linux) |
 
 `package.json` (`build.win.icon`, `installerIcon`, `uninstallerIcon`, `installerHeaderIcon`)
 points electron-builder at `build/icon.ico`. `build/` is gitignored: `build-win.mjs` copies the
@@ -43,7 +44,9 @@ It writes the three files, drawing each `.ico` size in Electron's Chromium (no i
 needed). `tests/unit/app-icon.test.js` fails if the committed files drift from the module, if the
 `.ico` loses a size, or if a cut leaves the pixel grid or closes a gap.
 
-macOS `.icns` and a Linux PNG set are not configured yet; draw them from the master.
+After regenerating, run `node scripts/generate-linux-icons.mjs` to copy the Linux sizes out of the
+new `.ico`; `tests/unit/linux-app-icon.test.js` fails until the two agree. A macOS `.icns` is not
+configured yet. The Linux window icon has not been seen on a Linux desktop.
 
 ## Brand-safety guardrails
 
