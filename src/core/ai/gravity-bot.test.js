@@ -103,7 +103,8 @@ describe('live gravity policy', () => {
         const expert = { kind: 'bot', difficulty: 10 };
         manager.configure([{ kind: 'human' }, expert, expert, expert]);
         expect([...manager.controllers.keys()]).toEqual([1]);
-        expect(manager.controllers.get(1).planUnitsPerMs).toBe(gravityPlanningRate(1));
+        // A versus match: the one bot plans with the versus share for one bot.
+        expect(manager.controllers.get(1).planUnitsPerMs).toBe(gravityPlanningRate(1, 10, true));
         manager.destroy();
         player.reset();
     });

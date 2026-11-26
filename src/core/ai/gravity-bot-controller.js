@@ -18,12 +18,22 @@ const SURVIVAL_MARGIN = [0, 0, 0, 11, 8, 0, 8, 0, 0, 0];
 // Blind attacks: nobody remembers a hidden stack for long. With every column's top hidden, this
 // share of a tier's pieces lands a column or a turn off, like its ordinary mistakes.
 const BLIND_SLIP = [0.55, 0.5, 0.45, 0.4, 0.36, 0.32, 0.28, 0.24, 0.2, 0.16];
+// A paced seat (minDropIntervalMs) may run this many pieces ahead of its average.
+const PACE_BURST = 3;
+
+// Versus seats (fairShare) plan with this many times the share below. Their search costs about a
+// third of what it did a unit since November 2026 (the exact settle skip in versusValue), so a
+// room's frames carry less planning time than before, and the search finishes far more often.
+export const VERSUS_PLANNING = 2;
+// Near the roof a versus seat plans with at most this many units a millisecond (sliceRate).
+export const VERSUS_ROOF_PLANNING = 0.7;
 
 export function gravityPlanningRate(count = 1, tier = 0, fairShare = false) {
-    if (count === 2 && tier >= 9) return 1.25;
+    const share = fairShare ? VERSUS_PLANNING : 1;
+    if (count === 2 && tier >= 9) return 1.25 * share;
     // A versus room of three or four shares what two bots get (the standard well).
-    if (fairShare && count >= 3) return (tier >= 9 ? 2.5 : 1.4) / count;
-    return (count >= 3 ? 0.65 : 1.4) / Math.max(1, count);
+    if (fairShare && count >= 3) return ((tier >= 9 ? 2.5 : 1.4) / count) * share;
+    return ((count >= 3 ? 0.65 : 1.4) / Math.max(1, count)) * share;
 }
 
 /** How much of the stack's surface a blind attack hides, 0 to 1. */
@@ -63,9 +73,9 @@ function actionsTo(state, target) {
         .find((p) => p.x === target.x && p.y === target.y && p.rotation === target.rotation)?.actions;
 }
 
-function sliceRate(rate, board, tier, infinity, versus = false) {
+function sliceRate(rate, board, tier, infinity, versus = false, roofRate = 0.35) {
     const high = nearRoof(board, versus);
-    if (versus) return high ? Math.min(rate, 0.35) : rate;
+    if (versus) return high ? Math.min(rate, roofRate) : rate;
     if (infinity) return Math.min(rate, 0.3);
     if (tier === 3 && high && !board.garbage) return Math.min(rate, 1.05);
     if ((tier >= 8 && high) || (tier <= 3 && (high || board.garbage))) return Math.min(rate, 0.35);
@@ -197,6 +207,8 @@ export class GravityBotController extends PuzzleBotController {
             triggerWaves: weights.triggerWaves * (1 - 0.55 * risk),
         };
         this.planUnitsPerMs = options.planUnitsPerMs ?? gravityPlanningRate();
+        // Versus planning near the roof (sliceRate): at most this many units a millisecond.
+        this.roofPlanningRate = options.roofPlanningRate ?? 0.35;
         if (!options.configOverrides?.reactionMs) this.config.reactionMs = [...REACTION[i]];
         if (!options.configOverrides?.maxApm) {
             this.config.maxApm = ACTION_RATE[i];
@@ -233,6 +245,10 @@ export class GravityBotController extends PuzzleBotController {
         this.refusals = { piece: -1, count: 0 };
         // This life's opening (versusOpening): pieces placed, and whether its first big fire is made.
         this.life = { done: false, pieces: 0 };
+        // The fastest a seat may set pieces down on average: one hard drop per this many ms. A short
+        // run of quick pieces is allowed (PACE_BURST of them); a faster pace is not kept up.
+        this.minDropIntervalMs = options.minDropIntervalMs > 0 ? options.minDropIntervalMs : 0;
+        this.paceDue = -Infinity;
     }
 
     setSpawnTiming(now) {
@@ -417,7 +433,7 @@ export class GravityBotController extends PuzzleBotController {
         // rate. Keep the last completed ply if the next one cannot fit. A pressure
         // change forces a new observation and can invalidate a previously ready move.
         const workRate = this.planUnitsPerMs || gravityPlanningRate();
-        const rate = sliceRate(workRate, root, tier, false, Boolean(versusPlay));
+        const rate = sliceRate(workRate, root, tier, false, Boolean(versusPlay), this.roofPlanningRate);
         const ideal = this.config.reactionMs[0] * rate;
         const allowance = Math.max(1, Math.floor(Math.min(ideal, this.retryAllowance ?? Infinity)));
         // Shorter previews need two extra rows to clear the centre before a spawn is blocked.
@@ -496,7 +512,7 @@ export class GravityBotController extends PuzzleBotController {
             this.planBoardKey = gravityBoardKey(board.cells);
             this.planGrid = state.boardGrid || state.board;
             this.planBoardVersion = state.boardVersion;
-            this.sliceRate = sliceRate(this.planUnitsPerMs, board, this.config.tier, state.isInfinityMode, Boolean(this.versusWeights));
+            this.sliceRate = sliceRate(this.planUnitsPerMs, board, this.config.tier, state.isInfinityMode, Boolean(this.versusWeights), this.roofPlanningRate);
             this.planStartPose = [state.currentPiece.x, state.currentPiece.y, state.currentPiece.rotation];
             this.planUnitCredit = 0;
             this.retryAllowance = this.replanInterrupted && this.planUnitsPerMs <= gravityPlanningRate(3)
@@ -573,6 +589,16 @@ export class GravityBotController extends PuzzleBotController {
                 + moves * Math.max(0, this.localPace.interval - this.config.actionIntervalMs));
             this.checkedDrop = true;
         }
+        const { queue } = this.scheduler;
+        const dropNext = queue.length === 1 && queue[0].type === 'hardDrop';
+        if (this.minDropIntervalMs && dropNext) {
+            // This update's time is taken off the wait before the drop is tried.
+            const wait = this.paceDue - PACE_BURST * this.minDropIntervalMs - now;
+            if (wait > 0) this.scheduler.cooldownMs = Math.max(this.scheduler.cooldownMs, wait + Math.max(0, delta));
+        }
         super.advanceInput(delta, now);
+        if (this.minDropIntervalMs && dropNext && !queue.length && !this.scheduler.queue.length && !this.scheduler.rejected) {
+            this.paceDue = Math.max(this.paceDue, now) + this.minDropIntervalMs;
+        }
     }
 }

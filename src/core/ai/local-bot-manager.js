@@ -1,6 +1,8 @@
 import { HIDDEN_ROWS } from '../constants.js';
 import { VERSUS_WEIGHTS, rowsToBlockSpawn, rowsToRoof } from './versus-evaluation.js';
-import { GravityBotController, gravityPlanningRate } from './gravity-bot-controller.js';
+import {
+    GravityBotController, gravityPlanningRate, VERSUS_PLANNING, VERSUS_ROOF_PLANNING,
+} from './gravity-bot-controller.js';
 import { normalizeDifficultyTier } from './bot-difficulty.js';
 import { readMinAttackLines } from '../garbage.js';
 import { seededRandom } from '../../utils/helpers.js';
@@ -15,6 +17,9 @@ const EXPERT_REACTION_MS = { 8: [170, 230], 9: [170, 200], 10: [158, 178] };
 // Last Standing clears more lines a piece and every clear takes its time: there the expert reads a
 // little faster, to keep its pace.
 const LAST_STANDING_EXPERT_REACTION_MS = [136, 156];
+// Tier 10 sets a piece down at most 171 times a minute, in every room and in both wells (owner,
+// 24 November 2026: "keep the 151-171 pieces speed").
+const TOP_TIER_MIN_DROP_MS = 60000 / 171;
 
 function localPace(nominalTier, seed, index) {
     if (nominalTier === 10) return null;
@@ -73,6 +78,11 @@ export class LocalBotManager {
                         ? LAST_STANDING_EXPERT_REACTION_MS : EXPERT_REACTION_MS[difficulty],
                     maxApm: 3750,
                 } : undefined;
+            // Last Standing towers are tall and every cascade settle on them costs more: a room of
+            // three or four bots there keeps the older share, and the older rate near the roof.
+            const versus = this.playsVersus();
+            const tallRoom = versus && playerState.isInfinityMode && botCount >= 3;
+            const planUnitsPerMs = gravityPlanningRate(botCount, judgmentTier, versus) / (tallRoom ? VERSUS_PLANNING : 1);
 
             const input = (name, action, value) => () => (this.tickInput
                 ? this.tickInput.emit({
@@ -92,6 +102,7 @@ export class LocalBotManager {
                 difficulty: judgmentTier,
                 configOverrides: expertPace,
                 localPace: expertPace ? null : pace,
+                minDropIntervalMs: difficulty === 10 && expertPace ? TOP_TIER_MIN_DROP_MS : 0,
                 playerIndex: index,
                 playerState,
                 pendingRows: () => this.multiplayerState.getGarbageQueue?.(index)?.getTotalLines() || 0,
@@ -112,8 +123,9 @@ export class LocalBotManager {
                 },
                 sharedSearch,
                 precomputeBetweenTicks: true,
-                planUnitsPerMs: gravityPlanningRate(botCount, judgmentTier, this.playsVersus()),
-                versusWeights: this.playsVersus() ? VERSUS_WEIGHTS : null,
+                planUnitsPerMs,
+                ...(versus && !tallRoom && { roofPlanningRate: VERSUS_ROOF_PLANNING }),
+                versusWeights: versus ? VERSUS_WEIGHTS : null,
                 versusOutlook: () => this.versusOutlook(index),
                 rng: seededRandom((seed ^ Math.imul(index + 1, 0x85ebca6b)) >>> 0),
                 timingRng: seededRandom((seed ^ Math.imul(index + 1, 0xc2b2ae35)) >>> 0),

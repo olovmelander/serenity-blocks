@@ -13,7 +13,9 @@ import {
     fillBag, GameState, rotateShapeMatrix, spawnPiece,
 } from '../../src/core/game.js';
 import { MultiPlayerState } from '../../src/core/multi-player-state.js';
-import { GravityBotController, gravityPlanningRate } from '../../src/core/ai/gravity-bot-controller.js';
+import {
+    GravityBotController, gravityPlanningRate, VERSUS_PLANNING, VERSUS_ROOF_PLANNING,
+} from '../../src/core/ai/gravity-bot-controller.js';
 import { readGravityBoard, steadyLandings } from '../../src/core/ai/gravity-search.js';
 import { LocalBotManager } from '../../src/core/ai/local-bot-manager.js';
 import {
@@ -244,11 +246,38 @@ describe('where versus play applies', () => {
     });
 
     it('a room of three or four shares what two bots get; a peaceful one keeps the older share', () => {
-        expect(gravityPlanningRate(2, 10, true) * 2).toBeCloseTo(2.5);
-        expect(gravityPlanningRate(3, 10, true) * 3).toBeCloseTo(2.5);
-        expect(gravityPlanningRate(4, 10, true) * 4).toBeCloseTo(2.5);
+        expect(gravityPlanningRate(2, 10, true) * 2).toBeCloseTo(2.5 * VERSUS_PLANNING);
+        expect(gravityPlanningRate(3, 10, true) * 3).toBeCloseTo(2.5 * VERSUS_PLANNING);
+        expect(gravityPlanningRate(4, 10, true) * 4).toBeCloseTo(2.5 * VERSUS_PLANNING);
         expect(gravityPlanningRate(4, 10, false)).toBeCloseTo(0.65 / 4);
-        expect(gravityPlanningRate(1, 10, true)).toBe(gravityPlanningRate(1, 10));
+        expect(gravityPlanningRate(2, 10, false)).toBe(1.25);
+        expect(gravityPlanningRate(1, 10, true)).toBeCloseTo(gravityPlanningRate(1, 10) * VERSUS_PLANNING);
+    });
+
+    it('versus seats plan near the roof at the versus rate; Odyssey rivals keep theirs', () => {
+        const players = [new GameState(), new GameState()];
+        const match = { numPlayers: 2, sharedPieceSeed: 7, players };
+        const bots = new LocalBotManager({ multiplayerState: match, actionFactory: () => ({}) });
+        bots.configure([{ kind: 'bot', difficulty: 10 }, { kind: 'bot', difficulty: 4 }]);
+        expect([...bots.controllers.values()].map((bot) => bot.roofPlanningRate)).toEqual([VERSUS_ROOF_PLANNING, VERSUS_ROOF_PLANNING]);
+        bots.destroy();
+        const rival = new GravityBotController({ playerState: players[0], difficulty: 10, actions: {} });
+        expect(rival.roofPlanningRate).toBe(0.35);
+    });
+
+    it('a Last Standing room of three or four bots keeps the older share: its tall towers cost more a unit', () => {
+        const players = Array.from({ length: 4 }, () => Object.assign(new GameState(), { isInfinityMode: true }));
+        const bots = new LocalBotManager({ multiplayerState: { numPlayers: 4, sharedPieceSeed: 7, players }, actionFactory: () => ({}) });
+        bots.configure(players.map(() => ({ kind: 'bot', difficulty: 10 })));
+        for (const bot of bots.controllers.values()) {
+            expect(bot.planUnitsPerMs).toBeCloseTo(2.5 / 4);
+            expect(bot.roofPlanningRate).toBe(0.35);
+        }
+        bots.destroy();
+        const duel = new LocalBotManager({ multiplayerState: { numPlayers: 2, sharedPieceSeed: 7, players: players.slice(0, 2) }, actionFactory: () => ({}) });
+        duel.configure([{ kind: 'bot', difficulty: 10 }, { kind: 'bot', difficulty: 10 }]);
+        expect(duel.controllers.get(0).planUnitsPerMs).toBeCloseTo(1.25 * VERSUS_PLANNING);
+        duel.destroy();
     });
 });
 

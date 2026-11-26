@@ -38,13 +38,69 @@ export const VERSUS_WEIGHTS = Object.freeze({
     kill: 150,
     opener: 300,
     right: 0.45,
+    // The surface and the clears, as recorded strong players weigh them (round three). colTrans,
+    // rowTrans: changes between filled and empty down each column and along each row; wellRight:
+    // how far the right wall's column stands below its neighbours; wellsMid: inner columns three or
+    // more below both neighbours; peak: the tallest column; readyMid: rows short of one inner cell;
+    // clearHigh, clearGarbage: each line of a clear of one to four lines, by rows of stack over six
+    // and by garbage rows on the board before it; big: each line of a fire past four. The surface
+    // four are a quarter of what Stephen's own placements price them at (the full price lost to
+    // these weights in live duels); the others stay at zero, where they leave the play as it was.
+    colTrans: 34.545,
+    rowTrans: 6.88,
+    wellRight: 19.313,
+    wellsMid: 20.448,
+    peak: 0,
+    readyMid: 0,
+    clearHigh: 0,
+    clearGarbage: 0,
+    big: 0,
 });
 
 const FULL = (1 << COLS) - 1;
 const SPAWN_LEFT = Math.floor(COLS / 2) - 2;
-const bits = new Uint8Array(FULL + 1);
-for (let i = 1; i <= FULL; i++) bits[i] = bits[i >> 1] + (i & 1);
+// Wide enough for a row with a wall on each side.
+const bits = new Uint8Array(1 << (COLS + 2));
+for (let i = 1; i < bits.length; i++) bits[i] = bits[i >> 1] + (i & 1);
 const others = COLS - 1;
+const EDGES = 1 | (1 << (COLS - 1));
+const PAIRS = (1 << (COLS + 1)) - 1;
+
+/**
+ * The surface measures of round three (see VERSUS_WEIGHTS), weighted. The shelf's column counts
+ * like any other: left out, its roof would hide whatever is dumped under it.
+ */
+function surface(board, w) {
+    const { rows, tops, height, first } = board;
+    let rowTrans = 0;
+    let colTrans = 0;
+    let readyMid = 0;
+    let above = 0;
+    for (let y = first; y < height; y++) {
+        const mask = rows[y];
+        const walled = 1 | (mask << 1) | (1 << (COLS + 1));
+        rowTrans += bits[(walled ^ (walled >> 1)) & PAIRS];
+        colTrans += bits[mask ^ above];
+        above = mask;
+        const missing = FULL ^ mask;
+        if (bits[missing] === 1 && !(missing & EDGES)) readyMid++;
+    }
+    colTrans += bits[FULL ^ above];
+    let peak = 0;
+    let wellsMid = 0;
+    for (let x = 0; x < COLS; x++) {
+        peak = Math.max(peak, height - tops[x]);
+        if (x > 0 && x < COLS - 1 && tops[x] - Math.max(tops[x - 1], tops[x + 1]) >= 3) wellsMid++;
+    }
+    const wellRight = Math.min(12, Math.max(0, tops[COLS - 1] - Math.max(tops[COLS - 2], tops[COLS - 3])));
+    return peak * w.peak + readyMid * w.readyMid - colTrans * w.colTrans - rowTrans * w.rowTrans
+        - wellRight * w.wellRight - wellsMid * w.wellsMid;
+}
+
+/** Whether any of the round-three surface weights is in use. */
+function usesSurface(w) {
+    return Boolean(w.colTrans || w.rowTrans || w.wellRight || w.wellsMid || w.peak || w.readyMid);
+}
 
 /** What an edge column has put by: rows filled beside it, the roof, straights standing on the roof. */
 function shelf(board, col, w) {
@@ -144,7 +200,9 @@ export function rowsToRoof(grid, wellRows, waiting) {
 /** The value of a board to a versus player. `probe` is scratch. */
 export function versusValue(board, play, pending, probe) {
     const w = play.weights;
-    const { cells, rows, tops } = board;
+    const {
+        cells, rows, tops, counts, height,
+    } = board;
     const left = shelf(board, 0, w);
     // Strong players keep the open column on the left wall far more often than on the right.
     const right = shelf(board, COLS - 1, w) * w.right;
@@ -159,6 +217,14 @@ export function versusValue(board, play, pending, probe) {
         for (let x = 0; x < COLS && open; x++) if ((missing & (1 << x)) && tops[x] < y) open = false;
         if (!open) continue;
         tested++;
+        // Blocks keep their columns as they fall, so a clear takes at most as many lines as the
+        // emptiest column then has cells. A test that cannot beat the best so far needs no settle.
+        if (w.vLines >= 0 && w.vSquare >= 0) {
+            let most = height;
+            for (let x = 0; x < COLS; x++) most = Math.min(most, counts[x] + ((missing >> x) & 1));
+            const reach = versusAttack(most, false, play.minAttackLines);
+            if (reach * w.vLines + (play.flat ? 0 : reach * reach * w.vSquare) - gaps * w.vGap <= best) continue;
+        }
         probe.set(cells);
         for (let x = 0; x < COLS; x++) if (missing & (1 << x)) probe[y * COLS + x] = probe.length + x + 8;
         const waves = settleLabelledBoard(probe, board.first, board.top);
@@ -175,7 +241,6 @@ export function versusValue(board, play, pending, probe) {
         previous = x;
     }
     // Cells kept empty in the edge column are the shelf's, not holes.
-    const { height } = board;
     const edgeHoles = height - tops[edge] - board.counts[edge];
     const centre = spawnColumnsTop(board);
     // The next piece must appear: the spawn columns against the top. In Last Standing it comes in
@@ -183,8 +248,24 @@ export function versusValue(board, play, pending, probe) {
     const squeeze = play.roofRows === undefined
         ? Math.max(0, (height - centre) + pending - (height - board.first - w.room))
         : Math.max(0, (height - board.top) + pending - (height + play.roofRows - ROOF_MARGIN));
-    return best + Math.max(left, right) + board.stock * w.material + board.density * w.density
+    const value = best + Math.max(left, right) + board.stock * w.material + board.density * w.density
         - bump * w.bump - (board.holes - edgeHoles) * w.holes - (height - centre) * w.height - squeeze * squeeze * w.danger;
+    return usesSurface(w) ? value + surface(board, w) : value;
+}
+
+/**
+ * What a search reads once from the board it starts on: rows of stack over six in the spawn
+ * columns, and the rows that hold garbage (at most ten).
+ * @param {{ cells: Int32Array, top: number, height: number, tops: ArrayLike<number> }} board
+ */
+export function versusContext(board) {
+    let garbage = 0;
+    for (let y = board.top; y < board.height && garbage < 10; y++) {
+        for (let x = 0; x < COLS; x++) {
+            if (board.cells[y * COLS + x] < 0) { garbage++; break; }
+        }
+    }
+    return { high: Math.max(0, board.height - spawnColumnsTop(board) - 6), garbage };
 }
 
 function spawnColumnsTop(board) {
@@ -215,7 +296,7 @@ const OPENER_HEIGHT = 13;
  * What a lock earns: rows sent, with a bonus for size, a cost for small change, and a cost for
  * cashing in under five lines while there is no hurry.
  */
-export function versusReward(play, lines, perfect, calm = 0) {
+export function versusReward(play, lines, perfect, calm = 0, context = null) {
     // Nothing sent counts now: a clear is neither earned nor held back.
     if (!lines || play.worth === 0) return 0;
     const w = play.weights;
@@ -229,6 +310,11 @@ export function versusReward(play, lines, perfect, calm = 0) {
     if (lines < 5) reward -= calm * w.patience * (5 - lines);
     // The opening: the shelf is loaded before it is released.
     if (play.opening && lines < OPENER_LINES) reward -= w.opener * (OPENER_LINES - lines);
+    // Round three: small clears on a high or garbage-filled board, and the lines of a big fire.
+    if (context && lines <= 4 && (w.clearHigh || w.clearGarbage)) {
+        reward += lines * (context.high * w.clearHigh + context.garbage * w.clearGarbage);
+    }
+    if (lines > 4 && w.big) reward += (lines - 4) * w.big;
     return reward;
 }
 
