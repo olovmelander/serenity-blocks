@@ -35,6 +35,7 @@ an agent will happily re-add a forbidden pattern unless the constraint is loadab
 | [0023](0023-online-play-is-relay-only.md) | Online play goes through Steam's relays, or not at all | accepted |
 | [0024](0024-versus-rules.md) | Versus play has one rule set, local and online | accepted |
 | [0025](0025-versus-attack-styles.md) | Versus attack styles: hidden cells, the hot potato's turns, the smallest attacking clear | accepted |
+| [0026](0026-match-compatibility-number.md) | One number says whether two builds can play a match together | accepted |
 
 Format per record: **Status / Date / Context / Decision / Consequences / Enforcement.**
 New records: next number, kebab-case slug, add a row here.

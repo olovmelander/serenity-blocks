@@ -1,5 +1,6 @@
 import {
     ACHIEVEMENTS, BOARDS, STEAM_LEADERBOARDS as N, STAT_NAMES, isScoreInt, betterScore, isEligibleScore,
+    odysseyTimeBoardName,
 } from '../steam/steam-catalogue.js';
 import { packScoreDetails } from '../steam/leaderboard-score-details.js';
 
@@ -20,9 +21,11 @@ export function validRun(id, run) {
         && (!run.flags || (isScoreInt(run.flags) && !(run.flags & ~15)))
         && (!run.checksum || Number.isInteger(run.checksum));
 }
-// Older completions keep their stars and history. Only the recorded board can claim a time.
+// Older completions keep their stars and history. Only a time recorded on the orb's current board
+// races: one set on a retired campaign version, or on an earlier generation of the orb's board
+// (steam-catalogue.js ODYSSEY_TIME_BOARD_GENERATIONS), does not.
 function isCurrentOrbTime(run) {
-    return run.assisted === false && run.timeBoard === N.ODYSSEY_LEVEL_TIME_PREFIX + run.level
+    return run.assisted === false && run.timeBoard === odysseyTimeBoardName(run.level)
         && Boolean(BOARDS[run.timeBoard]);
 }
 

@@ -90,6 +90,18 @@ const DEFAULT_EFFECTS = {
 };
 
 /**
+ * What the other players read on the tile of someone waiting to come in. In a free-for-all
+ * that player is one key press from playing (a drop-in, or back after a blip); in Survivor they
+ * play from the next round. The tile used to say "Next round" in both.
+ * @param {boolean} freeForAll
+ */
+export function waitingTileWords(freeForAll) {
+    return freeForAll
+        ? { title: 'Waiting', note: 'Plays at a key press' }
+        : { title: 'Next round', note: 'Joined mid-match' };
+}
+
+/**
  * OpponentWatchManager - the opponents' field in online versus: every opponent as a small
  * station (a plate with the name and frags, the next piece, the well with its garbage
  * meter outside the left wall), sized by the stage's layout (online-versus-layout.js,
@@ -1927,15 +1939,19 @@ export class OpponentWatchManager {
         this._createOpponentDeathOverlay(container, this._knockedOut?.get(board.playerKey) ?? null);
     }
 
-    // Late joiner waiting to spawn next round — NOT eliminated: an aqua "Next round" card,
-    // never the Out card.
+    /** The match's game type: it decides what a waiting player's tile says (waitingTileWords). */
+    setFreeForAll(freeForAll) {
+        this.freeForAll = freeForAll === true;
+    }
+
+    // A player waiting to come in (a late joiner, or one back after a blip) — NOT eliminated:
+    // an aqua card, never the Out card.
     _showOpponentWaitingOverlay(board) {
         if (!board) return;
         const container = board.frame || board.element;
         if (!container || container.querySelector('.waiting-overlay')) return;
         showStatusCard(container, createStatusCard(document, {
-            title: 'Next round',
-            note: 'Joined mid-match',
+            ...waitingTileWords(this.freeForAll),
             compact: true,
             tone: 'aqua',
             marker: 'waiting-overlay',

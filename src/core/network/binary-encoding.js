@@ -16,6 +16,8 @@ import { BLIND_TICK_MS, sameBlindCells } from '../blind.js';
 const BINARY_MAGIC = 0x5342_4E45; // "SBNE" - Serenity Blocks Network Encoding
 const DELTA_MAGIC = 0x5342_4E44; // "SBND" - Serenity Blocks Network Delta
 const FORMAT_VERSION = 8; // v8: hidden cells (blind attacks) replace the blind timers, and a blind entry's byte carries blind ticks; v7: per-garbage-ROW attacker color appended after the grid (placed garbage shows attacker color, not grey); v6: per-player awaitingSpawn byte (late-joiner ≠ eliminated); v5: per-garbage-entry attacker color (3-byte RGB); v4: sim/snapshot ids + ordered garbage provenance metadata
+/** The packed body's format, for the match compatibility pin (match-compatibility.js). */
+export const BINARY_BODY_FORMAT_VERSION = FORMAT_VERSION;
 
 // Delta Change Flags (Bitmask)
 const DELTA_FLAGS = {

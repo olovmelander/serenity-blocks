@@ -61,9 +61,9 @@ connection to Steam's servers itself; it sends nothing over it.
 - **Your status**: your Steam friends can see that you are playing, and what: the mode, a level
   or chapter where there is one, and how many players are in your online lobby or match. In a
   match open to anyone or to friends, they can also join you from there.
-- **Online play** uses Steam lobbies. A lobby holds the match name you type, its rules and how
-  many players are in it; when the match is open to anyone, everyone browsing the match list sees
-  them. Players in your lobby see your Steam ID and your name, as your game reports it.
+- **Online play** uses Steam lobbies. A lobby holds the match name you type, its rules, which
+  version of the game it needs and how many players are in it; when the match is open to anyone,
+  everyone browsing the match list sees them. Players in your lobby see your Steam ID and your name, as your game reports it.
 - **Connections**: from the moment you join a lobby, also when you only watch, your computer is
   connected to the match's host; the host is connected to every player and everyone watching. If
   the host drops out during a match, one of the players takes over and the others connect to that
@@ -120,4 +120,4 @@ The game is not directed at children. Online play and chat work only with a Stea
 
 A new version of this page comes with a game update. The date below shows when it last changed.
 
-*Last updated: 12 November 2026.*
+*Last updated: 26 November 2026.*

@@ -1,0 +1,100 @@
+name: Package Desktop App
+
+# The desktop package, built off the dev machine: pages.yml builds only the web version, so
+# until this lane nothing in CI had ever packaged the Electron app, and the Linux package had
+# never been made or loaded on Linux at all (docs/STEAM_ONLINE_RELEASE_DRIFT_2026-11.md, S8).
+#
+# What it proves, on Linux and on Windows:
+#  • electron-builder packages the app from a clean install, and scripts/afterPack.cjs passes on
+#    the result (documents and licences in place, no steam_appid.txt, the IP-string gate).
+#  • The package's own Steam addon, Steam library and koffi binary load and resolve every SDK
+#    function the game calls (`steam:qa -- verify-native`). No Steam client is needed for that.
+#
+# What it does not prove: a launch from Steam, a real Steam session, or anything on a Steam Deck.
+# It builds a test package (no release AppID, Steam off), uploads nothing and holds no secrets.
+#
+# `--dir` on purpose: Steam's depots are staged from the unpacked directories, and compressing
+# ~900 MB into an installer or an AppImage would only add minutes.
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    # What decides the package: the main process, the build configuration, the packaging and QA
+    # scripts, and the Steam layer. Not scripts/** as a whole: theme and asset scripts change daily.
+    paths:
+      - '.github/workflows/desktop-package.yml'
+      - 'electron/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'scripts/afterPack.cjs'
+      - 'scripts/build-win.mjs'
+      - 'scripts/package-signature-policy.mjs'
+      - 'scripts/packaged-app-check.mjs'
+      - 'scripts/release-gate-*.mjs'
+      - 'scripts/steam-*.mjs'
+      - 'scripts/verify-signatures.mjs'
+      - 'src/core/steam/**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-package-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  package:
+    strategy:
+      # One platform failing says nothing about the other: let both finish.
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: linux
+            unpacked: release/linux-unpacked
+            executable: serenity-blocks
+          - os: windows-latest
+            target: win
+            unpacked: release/win-unpacked
+            executable: Serenity Blocks.exe
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    defaults:
+      run:
+        # One shell on both systems (Git Bash on Windows), so the steps below are written once.
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      # Supply-chain (Phase 0.5): never run install scripts in CI. The Steam module and koffi
+      # ship prebuilt binaries (koffi's as an optional package per platform), and
+      # electron-builder downloads the Electron it packages itself.
+      - run: npm ci --ignore-scripts
+      - run: npm run build
+      # build/icon.ico is not in the repository: scripts/build-win.mjs copies it from the committed
+      # .ico before it packages. Without it electron-builder quietly uses Electron's own icon.
+      - name: The Windows icon is in place
+        if: matrix.target == 'win'
+        run: mkdir -p build && cp public/assets/branding/serenity-blocks.ico build/icon.ico
+      - name: Package the unpacked app
+        run: npx --no-install electron-builder --${{ matrix.target }} --x64 --dir --publish never
+      # The launch executable the App ID-day checklist names for this depot. Linux must keep
+      # its executable bit, or Steam cannot start the game.
+      - name: The launch executable is there
+        run: test -x "${{ matrix.unpacked }}/${{ matrix.executable }}"
+      # Checked from a copy outside the checkout: koffi first looks for its binary in any
+      # node_modules above it, which here would be the checkout's own install and not the
+      # package's. An installed game has no such directory, and neither does the runner's temp.
+      - name: The package's Steam addons load and resolve the SDK
+        run: |
+          cp -R "${{ matrix.unpacked }}/resources/native_modules" "$RUNNER_TEMP/native_modules"
+          npm run steam:qa -- verify-native "$RUNNER_TEMP/native_modules"
+      # Report only: a store build is signed and checked on the owner's machine
+      # (scripts/build-win.mjs). This shows what an unsigned CI package looks like to Windows.
+      - name: Signatures as Windows reads them
+        if: matrix.target == 'win'
+        run: npm run check:signatures -- "${{ matrix.unpacked }}"

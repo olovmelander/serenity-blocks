@@ -1956,14 +1956,19 @@
 #lobby-waiting-room .wr-scroll {
     display: grid;
     flex: 1 1 auto;
+    /* One column that never grows past the panel: a long value wraps, it does not widen it. */
+    grid-template-columns: minmax(0, 1fr);
     align-content: start;
     gap: 16px;
     min-height: 0;
     margin: 0;
     padding: 18px 22px;
+    overflow-x: hidden;
     overflow-y: auto;
     border: 0;
     background: none;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(var(--sb-cream-rgb), 0.2) transparent;
 }
 
 #lobby-waiting-room .lobby-objective:empty {
@@ -2011,6 +2016,20 @@
     text-overflow: ellipsis;
 }
 
+/* A value of several lines (the attack rules a guest reads, one rule to a line): an ellipsis
+   would cut off the settings the row is there to show. Its label keeps its width. */
+#lobby-waiting-room .info-item--wrap .info-label {
+    flex: none;
+}
+
+#lobby-waiting-room .info-item--wrap .info-value {
+    min-width: 0;
+    overflow: visible;
+    line-height: 1.45;
+    white-space: pre-line;
+    text-overflow: clip;
+}
+
 #lobby-waiting-room .wr-invite {
     display: grid;
     gap: 10px;
@@ -2030,6 +2049,12 @@
     border: 1px solid var(--sb-line-strong) !important;
     background: rgba(9, 8, 24, 0.5) !important;
     text-align: left !important;
+}
+
+/* An invite-only room shows no ID to pass on (lobby-waiting-room.js setLobbyType). */
+#lobby-waiting-room .room-code-display[hidden],
+#lobby-waiting-room .room-code-hint[hidden] {
+    display: none;
 }
 
 #lobby-waiting-room .room-code-hint {

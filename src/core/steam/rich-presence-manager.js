@@ -11,6 +11,7 @@
 
 import steamService from './steam-service.js';
 import { GAME_MODES } from '../constants.js';
+import { MULTIPLAYER_EVENTS, onMultiplayerEvent } from '../../events/multiplayer-events.js';
 
 /**
  * What friends see, mode by mode, with the main menu's names. Each entry is the line as a
@@ -208,6 +209,13 @@ class RichPresenceManager {
             }
         };
         window.addEventListener('game:localPlayers', this._localPlayersHandler);
+
+        // A drop-in or a leave during an online match changes the count its line shows.
+        // Only the match start used to set it, so friends saw the starting roster all match.
+        this.unsubscribers.push(onMultiplayerEvent(
+            MULTIPLAYER_EVENTS.PLAYER_LIST_CHANGED,
+            (detail) => this.setMatchRoster(detail?.players?.size),
+        ));
     }
 
     /**
@@ -255,6 +263,16 @@ class RichPresenceManager {
 
     setLocalPlayers(playerCount) {
         this.updateData({ playerCount });
+    }
+
+    /**
+     * The roster of the online match in progress changed. Outside a match the lobby's own
+     * status events carry the count.
+     * @param {unknown} playerCount
+     */
+    setMatchRoster(playerCount) {
+        if (!this.currentData?.inMatch || !Number.isInteger(playerCount) || Number(playerCount) < 1) return;
+        if (playerCount !== this.currentData.playerCount) this.updateData({ playerCount });
     }
 
     /**

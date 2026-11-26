@@ -641,6 +641,12 @@ ipcMain.handle('desktop:import-local-records', async (event) => {
     if (!playerPartition || event.sender !== mainWindow?.webContents) return null;
     return readLegacyRecords(BrowserWindow, mainWindow.webContents.getURL());
 });
+/**
+ * The window's icon on Linux, where an executable carries none: the app mark at 256 px from the
+ * web build when packaged, from public/ in a dev run (scripts/app-icon/linux-icons.mjs).
+ */
+const LINUX_WINDOW_ICON = join(__dirname, '..', isPackaged ? 'dist' : 'public', 'assets', 'branding', 'linux', '256x256.png');
+
 function createWindow() {
     const { width, height } = screen.getPrimaryDisplay().workArea;
 
@@ -650,6 +656,7 @@ function createWindow() {
         title: 'Serenity Blocks',
         backgroundColor: '#000000',
         show: true,
+        ...(process.platform === 'linux' ? { icon: LINUX_WINDOW_ICON } : {}),
         webPreferences: {
             partition: playerPartition,
             preload: join(__dirname, 'preload.cjs'),

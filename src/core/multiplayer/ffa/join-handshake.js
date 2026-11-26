@@ -7,6 +7,7 @@ import {
     getProtocolRejectionMessage,
     PROTOCOL_REJECTION_REASONS,
 } from '../../network/protocol-version.js';
+import { compareMatchCompatibility, MATCH_COMPATIBILITY } from '../../network/match-compatibility.js';
 import {
     isJoinHandshakeComplete,
     JOIN_LIFECYCLE_EVENTS,
@@ -39,8 +40,27 @@ export function buildJoinProtocolOffer(game) {
         envelopeVersion: game.network.envelopeVersion,
         minEnvelopeVersion: game.network.envelopeVersion,
         maxEnvelopeVersion: game.network.envelopeVersion,
+        // Snapshot body, resync sidecar and versus rules in one number (network/match-compatibility.js).
+        matchCompatibility: MATCH_COMPATIBILITY,
         handshakeNonce: game._joinHandshakeNonce ?? null,
     };
+}
+
+/**
+ * Why a build with the other compatibility number cannot join, in the words the joiner reads,
+ * or null when both builds can play together.
+ * @param {unknown} remote the other side's number
+ * @param {'host' | 'joiner'} self which side is asking
+ * @returns {string | null} a PROTOCOL_REJECTION_REASONS value
+ */
+function compatibilityRejection(remote, self) {
+    const other = compareMatchCompatibility(remote);
+    if (other === 'same') return null;
+    // The reasons are worded for the joiner: whoever is behind has to update.
+    const joinerIsBehind = self === 'host' ? other === 'older' : other === 'newer';
+    return joinerIsBehind
+        ? PROTOCOL_REJECTION_REASONS.UPDATE_REQUIRED
+        : PROTOCOL_REJECTION_REASONS.HOST_UPDATE_REQUIRED;
 }
 
 /** @param {any} game */
@@ -103,6 +123,7 @@ function buildWelcomePayload(game, result, reason, handshakeNonce = null) {
         minVersion: result.minVersion,
         maxVersion: result.maxVersion,
         envelopeVersion: game.network.envelopeVersion,
+        matchCompatibility: MATCH_COMPATIBILITY,
         featureFlags: [],
         matchId: game.network.matchId,
         matchNonce: game.network.matchNonce,
@@ -200,6 +221,16 @@ export function registerJoinHandshakeHandlers(game, registry) {
             result.message = getProtocolRejectionMessage(result.reason);
         }
 
+        // Two builds can agree on a protocol version and still be unable to play: the body,
+        // the sidecar or the rules moved. Say "update" here instead of failing a resync later.
+        const compatibility = compatibilityRejection(msg.data?.matchCompatibility, 'host');
+        if (compatibility) {
+            result.accepted = false;
+            result.protocolVersion = null;
+            result.reason = compatibility;
+            result.message = getProtocolRejectionMessage(compatibility);
+        }
+
         const existingPlayer = game.players.get(msg.from);
         const existingSpectator = game.spectators.has(msg.from);
         const isNewPlayer = !existingPlayer && !existingSpectator && !msg.data?.asSpectator;
@@ -270,6 +301,14 @@ export function registerJoinHandshakeHandlers(game, registry) {
             return;
         }
 
+        // The host checks the joiner's number; a host that predates the number checks nothing,
+        // so the joiner checks the host's too.
+        const compatibility = compatibilityRejection(msg.data.matchCompatibility, 'joiner');
+        if (compatibility) {
+            applyTerminalJoinRejection(game, { reason: compatibility });
+            return;
+        }
+
         const selectedVersion = msg.data.selectedVersion ?? msg.data.protocolVersion;
         const offer = game._lastJoinProtocolOffer ?? game.network.getProtocolOffer();
         const senderMatchesHost = !msg.from
@@ -324,6 +363,7 @@ export function broadcastSessionWelcome(game, session, reason = 'match_start') {
             minVersion: offer.minVersion,
             maxVersion: offer.maxVersion,
             envelopeVersion: game.network.envelopeVersion,
+            matchCompatibility: MATCH_COMPATIBILITY,
             featureFlags: [],
             matchId: session.matchId,
             matchNonce: session.matchNonce,

@@ -29,12 +29,16 @@ recorded run of this checklist (see the Run Log at the bottom).*
 ## Scenarios
 
 ### A — 10-minute 2-peer soak (DAS + cascade storms)
-Host on machine 1, join from machine 2. Play a real 10-minute match with sustained
-DAS-held movement (hold left/right through spawns) and deliberate cascade storms
-(stack for multi-wave clears) on both boards.
+Host on machine 1 a **Free-for-all with the win condition Endless**, join from machine 2. (The
+default match, first to 10 frags, is over in minutes.) Play 10 minutes with sustained DAS-held
+movement (hold left/right through spawns) and deliberate cascade storms (stack for multi-wave
+clears) on both boards. Each player is knocked out at least twice and comes back at a key
+press. Then the host ends the match. Repeat once as **Survivor** with a 10-minute time goal.
 **Pass:** `desyncsDetected == 0` and `resyncRequestsSent == 0` (desync-triggered) on both
 machines; `deltaDecodeFailures == 0`; final board digests match on both ends for both
-players; no console errors; no visible opponent-board stutter > 1 s.
+players; no console errors; no visible opponent-board stutter > 1 s; a knocked-out player
+returns on an empty well with score, lines and frags kept, and the other machine never
+shows them out again.
 
 ### B — Forced divergence → exactly one clean resync *(pairs with Phase 1.2)*
 Mid-match, on the peer machine force a divergence from DevTools:
@@ -44,19 +48,28 @@ keep playing ≥ 10 s.
 more); the board visibly self-corrects within ~1 s; play continues clean for 2 min after
 (`desyncsDetected` does not climb — no oscillation).
 
-### C — Host migration mid-match
-Kill the host process (Task Manager, not graceful quit) during active play with garbage
-in flight.
-**Pass:** election completes ≤ 10 s; new host announced on the survivor; match continues;
+### C — Host migration mid-match *(three participants)*
+With **three** players in the match, kill the host process (Task Manager, not graceful
+quit) during active play with garbage in flight. With two machines only, killing the host
+leaves one player, so the match is over and that player wins it: that proves a departure,
+not a migration.
+**Pass:** election completes ≤ 10 s; both survivors read "<name> is now hosting this
+match."; match continues; a player who was knocked out when the host died still comes
+back at a key press;
 `migrationEpoch` adopted when the flag is on (no stale-epoch packets applied); **no
 duplicate garbage** lands after migration (compare pending-garbage counts before/after);
 no double-application of buffered inputs.
 
-### D — Disconnect → rejoin inside the causal window
-Peer alt-F4s and rejoins the same lobby within ~30 s while the match is running
-(requires `downloadJoin` in the matrix).
+### D — Disconnect → rejoin inside the held seat *(three participants)*
+With three players, one peer's game is killed and started again, rejoining the same lobby
+while its seat is held: the host calls a player gone after 5 s of silence and holds the
+seat 10 s more (requires `downloadJoin` in the matrix). With two machines the kill ends
+the match instead.
 **Pass:** rejoin lands as the same player (attribution/frags preserved), board adopted
-from the idle-window snapshot, no stuck `awaitingSpawn`, `deltaDecodeFailures == 0`.
+from the idle-window snapshot, `deltaDecodeFailures == 0`. In a free-for-all the returner
+is out and plays at a key press: `awaitingSpawn` until that key is the correct state, not
+a stuck one. In Survivor they wait for the next round. A rejoin after the hold has
+expired is a new drop-in with zero frags.
 
 ### E — Impairment matrix (dev-gated harness)
 On ONE machine set `?netImpair=lossy` (5 % loss) then a second pass with jitter ~100 ms
@@ -69,8 +82,9 @@ harness reports **inert** on the unimpaired machine (Phase 1.4 gate).
 Third participant (or the rejoining machine) joins as watch-only spectator during a
 cascade storm; then a drop-in join (flag on) also during a cascade.
 **Pass:** join is deferred to the next idle window (no mid-cascade snapshot adoption);
-spectator sees frozen-piece-free boards (RAF fix holds); drop-in spawns cleanly on the
-next round/idle point; host `pendingResyncs` drains to 0.
+spectator sees frozen-piece-free boards (RAF fix holds); the drop-in plays at a key
+press in a free-for-all and from the next round in Survivor; host `pendingResyncs`
+drains to 0.
 
 ## Flag matrix
 

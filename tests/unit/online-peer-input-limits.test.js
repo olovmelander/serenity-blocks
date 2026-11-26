@@ -118,14 +118,25 @@ describe('chat relay', () => {
 });
 
 describe('lifetime Steam stats from an online match', () => {
+    // Survivor: one knock-out per opponent per round. Free-for-all's bounds are in
+    // online-steam-stats.test.js.
     it('bounds what the host reports', () => {
+        const survivor = { gameType: 'survivor', endCondition: 'frags', endConditionValue: 10 };
         expect(matchStatsForSteam(
             { frags: 999, lines: -40, score: 'lots', level: 3, placement: 1 },
-            { players: 4, rounds: 2, localLines: 30, durationMs: -5 },
-        )).toEqual({ kills: 6, lines: 0, score: 0, level: 3, minutes: 1, isWinner: true });
+            {
+                players: 4, rounds: 2, localLines: 30, durationMs: -5, matchConfig: survivor,
+            },
+        )).toEqual({
+            kills: 6, lines: 0, minutes: 1, isWinner: true,
+        });
         expect(matchStatsForSteam(
             { frags: 2, lines: 400, score: 9000, level: 5, placement: 2 },
-            { players: 4, rounds: 3, localLines: 120, durationMs: 7 * 60_000 },
-        )).toEqual({ kills: 2, lines: 120, score: 9000, level: 5, minutes: 7, isWinner: false });
+            {
+                players: 4, rounds: 3, localLines: 120, durationMs: 7 * 60_000, matchConfig: survivor,
+            },
+        )).toEqual({
+            kills: 2, lines: 120, minutes: 7, isWinner: false,
+        });
     });
 });

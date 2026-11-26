@@ -24,6 +24,7 @@ import {
     STEAM_STATS,
     STEAM_IPC,
 } from './steam-config.js';
+import { isOdysseyTimeBoardName } from './steam-catalogue.js';
 import { RecordPublisher } from './record-publisher.js';
 import { normalizeScoreDetails, SCORE_DETAIL_FLAGS } from './leaderboard-score-details.js';
 
@@ -816,11 +817,9 @@ class SteamService {
     }
 
     _getLeaderboardSort(leaderboardName) {
-        // Old offline scores still belong to their original campaign's boards.
-        if (typeof leaderboardName === 'string' && /^OdysseyLevelTime_v[1-9]\d*_[1-9]\d*$/.test(leaderboardName)) {
-            return 'asc';
-        }
-        return 'desc';
+        // Old offline scores still belong to their original campaign's boards, and to the
+        // generation of the orb's board they were set on.
+        return isOdysseyTimeBoardName(leaderboardName) ? 'asc' : 'desc';
     }
 
     _getQueueBackoffMs(attempts) {

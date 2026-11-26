@@ -41,7 +41,9 @@ function makeMode() {
 /** What a lobby entry gives the cached mode, a fresh game state each session. */
 function enterLobby(mode) {
     mode.ffaGameState = { cleanup: vi.fn(), players: new Map() };
-    mode.lobbyWaitingRoom = { show: vi.fn(), hide: vi.fn(), gameState: null };
+    mode.lobbyWaitingRoom = {
+        show: vi.fn(), hide: vi.fn(), setLobbyType: vi.fn(), gameState: null,
+    };
     mode.showWaitingRoom();
 }
 
@@ -185,5 +187,21 @@ describe('the online match stage across sessions', () => {
 
         expect(mode.isInMatch).toBe(false);
         expect(mode._uiSetupComplete).toBe(false);
+    });
+});
+
+describe('a session this player hosts', () => {
+    it('starts with a clean exit latch, whatever an earlier session left', async () => {
+        // The mode is cached for the app run. A refused join leaves its reason on the latch, and
+        // only a later join used to clear it: a host's own exit was then swallowed, leaving a
+        // finished board with no results and no way out (online-departure-win.js).
+        const mode = makeMode();
+        mode._handledSessionExit = 'lobby_full';
+        mode.steamNetworking = { createLobby: vi.fn(async () => { throw new Error('Steam is not running'); }) };
+
+        await expect(mode.handleCreateLobby({ gameName: 'Mine' })).rejects.toThrow('Steam is not running');
+
+        expect(mode.steamNetworking.createLobby).toHaveBeenCalledOnce();
+        expect(mode._handledSessionExit).toBe(null);
     });
 });

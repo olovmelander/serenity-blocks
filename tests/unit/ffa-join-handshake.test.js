@@ -8,6 +8,7 @@ import {
 } from 'vitest';
 import { FFAGameStateP2P } from '../../src/core/multiplayer/ffa-p2p-game-state.js';
 import {
+    buildJoinProtocolOffer,
     registerJoinHandshakeHandlers,
 } from '../../src/core/multiplayer/ffa/join-handshake.js';
 import {
@@ -16,6 +17,7 @@ import {
     JOIN_LIFECYCLE_STATES,
 } from '../../src/core/multiplayer/ffa/join-lifecycle.js';
 import { MessageTypes } from '../../src/core/network/message-types.js';
+import { MATCH_COMPATIBILITY } from '../../src/core/network/match-compatibility.js';
 import {
     acceptsProtocolSelection,
     negotiateProtocolVersion,
@@ -141,6 +143,7 @@ function hello(data = {}) {
         data: {
             protocolVersion: PROTOCOL_VERSION,
             envelopeVersion: ENVELOPE_VERSION,
+            matchCompatibility: MATCH_COMPATIBILITY,
             handshakeNonce: HANDSHAKE_NONCE,
             ...data,
         },
@@ -157,6 +160,7 @@ function welcome(data = {}) {
             protocolVersion: PROTOCOL_VERSION,
             selectedVersion: PROTOCOL_VERSION,
             envelopeVersion: ENVELOPE_VERSION,
+            matchCompatibility: MATCH_COMPATIBILITY,
             matchId: MATCH_ID,
             matchNonce: MATCH_NONCE,
             hostSteamId: HOST_ID,
@@ -202,6 +206,7 @@ describe('FFA join handshake', () => {
                 accepted: true,
                 reason: 'ok',
                 selectedVersion: PROTOCOL_VERSION,
+                matchCompatibility: MATCH_COMPATIBILITY,
                 matchId: MATCH_ID,
                 matchNonce: MATCH_NONCE,
                 hostSteamId: HOST_ID,
@@ -209,6 +214,83 @@ describe('FFA join handshake', () => {
             }),
         );
         expect(acceptedPeers.has(PEER_ID)).toBe(true);
+    });
+
+    // Two builds can agree on a protocol version and still be unable to play together
+    // (network/match-compatibility.js): the handshake says who has to update.
+    it('announces with the match compatibility number of this build', () => {
+        const { game } = makePeerGame();
+        expect(buildJoinProtocolOffer(game)).toMatchObject({ matchCompatibility: MATCH_COMPATIBILITY });
+    });
+
+    it.each([
+        ['an older build', MATCH_COMPATIBILITY - 1, PROTOCOL_REJECTION_REASONS.UPDATE_REQUIRED],
+        ['a build that sends no number', undefined, PROTOCOL_REJECTION_REASONS.UPDATE_REQUIRED],
+        ['a newer build', MATCH_COMPATIBILITY + 1, PROTOCOL_REJECTION_REASONS.HOST_UPDATE_REQUIRED],
+    ])('refuses a joiner on %s with the update message, the roster untouched', (_label, number, reason) => {
+        const { game, network, acceptedPeers } = makeHostGame();
+        const handlers = registerFor(game);
+
+        handlers.get(MessageTypes.NET_HELLO)(hello({ name: 'Peer', matchCompatibility: number }));
+
+        expect(game.addPlayer).not.toHaveBeenCalled();
+        expect(game.queueResync).not.toHaveBeenCalled();
+        expect(acceptedPeers.has(PEER_ID)).toBe(false);
+        expect(network.sendP2PMessage.mock.calls.map(([, type]) => type)).toEqual([
+            MessageTypes.NET_WELCOME,
+            MessageTypes.JOIN_REJECTED,
+        ]);
+        expect(network.sendP2PMessage).toHaveBeenNthCalledWith(
+            2,
+            PEER_ID,
+            MessageTypes.JOIN_REJECTED,
+            expect.objectContaining({ reason, message: expect.stringMatching(/update/i) }),
+            expect.any(Object),
+        );
+    });
+
+    it('refuses a held seat to a returning player whose build no longer matches', () => {
+        const disconnected = { steamId: PEER_ID, name: 'Peer', isDisconnected: true };
+        const { game } = makeHostGame({
+            players: new Map([
+                [HOST_ID, { steamId: HOST_ID, name: 'Host' }],
+                [PEER_ID, disconnected],
+            ]),
+        });
+        const handlers = registerFor(game);
+
+        handlers.get(MessageTypes.NET_HELLO)(hello({ matchCompatibility: MATCH_COMPATIBILITY + 1 }));
+
+        expect(disconnected.isDisconnected).toBe(true);
+        expect(game.queueResync).not.toHaveBeenCalled();
+    });
+
+    it.each([
+        ['an older build', MATCH_COMPATIBILITY - 1, PROTOCOL_REJECTION_REASONS.HOST_UPDATE_REQUIRED],
+        ['a build that sends no number', undefined, PROTOCOL_REJECTION_REASONS.HOST_UPDATE_REQUIRED],
+        ['a newer build', MATCH_COMPATIBILITY + 1, PROTOCOL_REJECTION_REASONS.UPDATE_REQUIRED],
+    ])('leaves a host on %s instead of adopting its session', (_label, number, reason) => {
+        const { game, network, acceptedPeers } = makePeerGame();
+        const handlers = registerFor(game);
+        const rejections = [];
+        const unsubscribe = onMultiplayerEvent(
+            MULTIPLAYER_EVENTS.JOIN_REJECTED,
+            (payload) => rejections.push(payload),
+        );
+
+        try {
+            handlers.get(MessageTypes.NET_WELCOME)(welcome({ matchCompatibility: number }));
+
+            expect(rejections).toEqual([expect.objectContaining({
+                reason, message: expect.stringMatching(/update/i),
+            })]);
+            expect(acceptedPeers.has(HOST_ID)).toBe(false);
+            expect(network.matchId).toBe(null);
+            expect(game.handshakeComplete).toBe(false);
+            expect(game.joinState).toBe(JOIN_LIFECYCLE_STATES.REJECTED);
+        } finally {
+            unsubscribe();
+        }
     });
 
     it.each([

@@ -38,6 +38,7 @@ import {
     PROTOCOL_V2,
     SUPPORTED_PROTOCOL_VERSIONS,
 } from '../network/protocol-version.js';
+import { LOBBY_COMPATIBILITY_KEY, MATCH_COMPATIBILITY } from '../network/match-compatibility.js';
 
 const electronApi = typeof window !== 'undefined' ? window.electronAPI : null;
 const ipcRenderer = electronApi
@@ -55,6 +56,46 @@ const UNDECODABLE_DELTA_RESYNC_RUN = 60;
 export const MAX_P2P_PACKET_BYTES = 64 * 1024;
 /** Steam lobby member changes that mean the member is gone. */
 const LOBBY_DEPARTURES = new Set(['left', 'disconnected', 'kicked', 'banned']);
+/** Lobby data keys that tell a browsing player what kind of room it is (ui/lobby-browser.js). */
+export const LOBBY_GAME_TYPE_KEY = 'game_type';
+export const LOBBY_ATTACK_STYLE_KEY = 'attack_style';
+/**
+ * A rule's name as lobby data: a short lowercase word, or nothing.
+ * @param {unknown} value
+ */
+const lobbyWord = (value) => (typeof value === 'string' && /^[a-z_]{1,24}$/.test(value) ? value : '');
+
+/**
+ * The lobby data a host publishes, in the order it is written. The match list shows a lobby as
+ * soon as `game_mode` is set (electron/steam-integration.js filters on it), so that key goes
+ * last and the compatibility number first: a lobby another player can already see says which
+ * builds can play in it (network/match-compatibility.js; the join handshake checks it again)
+ * and what kind of room it is. Written the other way round, a refresh that fell between two
+ * writes listed a new room as an older build.
+ * @param {{
+ *   gameName: string, lobbyType: string, endCondition: string, endConditionValue: unknown,
+ *   gameType?: string, attackStyle?: string, protocolVersion: string,
+ * }} lobby
+ * @returns {Array<[string, string]>}
+ */
+export function initialLobbyData({
+    gameName, lobbyType, endCondition, endConditionValue, gameType, attackStyle, protocolVersion,
+}) {
+    /** @type {Array<[string, string]>} */
+    const data = [
+        [LOBBY_COMPATIBILITY_KEY, String(MATCH_COMPATIBILITY)],
+        ['version', protocolVersion],
+        ['game_name', gameName],
+        // Who can join, for the players who do: their chat and "Join game" follow it.
+        [LOBBY_TYPE_KEY, lobbyType],
+        ['end_condition', endCondition],
+        ['end_condition_value', String(endConditionValue)],
+    ];
+    if (gameType) data.push([LOBBY_GAME_TYPE_KEY, gameType]);
+    if (attackStyle) data.push([LOBBY_ATTACK_STYLE_KEY, attackStyle]);
+    data.push(['game_mode', 'ffa']);
+    return data;
+}
 /** The logical channels this protocol uses; a sender-chosen one grew the sequence map without bound. */
 const LOGICAL_CHANNELS = new Set([0, 1, 2]);
 /** Rejected-packet counts keep at most this many types, each name cut to this length. */
@@ -336,6 +377,10 @@ export class SteamNetworking {
                 ? PROTOCOL_V2
                 : this.protocolVersion,
         } = options;
+        // What kind of room this is, for a player choosing from the match list. The caller
+        // names them (multiplayer/versus-rules.js); only a plain word is published.
+        const gameType = lobbyWord(options.gameType);
+        const attackStyle = lobbyWord(options.attackStyle);
         if (!this.lockProtocolSession(requiredProtocolVersion)) {
             throw new Error(`Unsupported required protocol version: ${requiredProtocolVersion}`);
         }
@@ -361,6 +406,9 @@ export class SteamNetworking {
                 lobbyType,
                 endCondition,
                 endConditionValue,
+                gameType,
+                attackStyle,
+                compatibility: MATCH_COMPATIBILITY,
                 version: this.getNegotiatedProtocolVersion(),
                 // Match lifecycle as advertised to the lobby browser:
                 //   'open' (waiting room, normal Join) | 'playing' (in progress → drop-in / watch) | 'finished'
@@ -392,24 +440,29 @@ export class SteamNetworking {
             this.matchId = lobbyId;
             this.matchNonce = this._generateMatchNonce();
 
-            // Set lobby metadata
-            await ipcRenderer.invoke('steam:setLobbyData', lobbyId, 'game_mode', 'ffa');
-            await ipcRenderer.invoke('steam:setLobbyData', lobbyId, 'game_name', gameName);
-            // Who can join, for the players who do: their chat and "Join game" follow it.
-            await ipcRenderer.invoke(
-                'steam:setLobbyData',
-                lobbyId,
-                LOBBY_TYPE_KEY,
+            // Set lobby metadata, in the order initialLobbyData gives.
+            const lobbyData = initialLobbyData({
+                gameName,
                 lobbyType,
-            );
-            await ipcRenderer.invoke('steam:setLobbyData', lobbyId, 'end_condition', endCondition);
-            await ipcRenderer.invoke('steam:setLobbyData', lobbyId, 'end_condition_value', endConditionValue.toString());
-            await ipcRenderer.invoke(
-                'steam:setLobbyData',
-                lobbyId,
-                'version',
-                this.getNegotiatedProtocolVersion(),
-            );
+                endCondition,
+                endConditionValue,
+                gameType,
+                attackStyle,
+                protocolVersion: this.getNegotiatedProtocolVersion(),
+            });
+            // One key after another, never at once: the order is what keeps a half-written
+            // lobby out of other players' lists.
+            /* eslint-disable no-await-in-loop */
+            for (const [key, value] of lobbyData) {
+                const written = await ipcRenderer.invoke('steam:setLobbyData', lobbyId, key, value);
+                // Without its compatibility number the list shows this room to everyone as an
+                // older build, with no way in, for as long as it stands. Better no room.
+                if (written === false && key === LOBBY_COMPATIBILITY_KEY) {
+                    await Promise.resolve().then(() => this.leaveLobby()).catch(() => {});
+                    throw new Error('Steam did not accept the match settings. Try creating the match again.');
+                }
+            }
+            /* eslint-enable no-await-in-loop */
 
             return lobbyId;
         } catch (err) {
@@ -1435,6 +1488,9 @@ export class SteamNetworking {
                 hostName: lobby.hostName,
                 endCondition: lobby.endCondition,
                 endConditionValue: lobby.endConditionValue,
+                gameType: lobby.gameType,
+                attackStyle: lobby.attackStyle,
+                compatibility: lobby.compatibility,
                 // Surface the advertised lifecycle so the browser can show Join vs
                 // "Join (next round)" / Watch for an in-progress match. Falls back to
                 // capacity-derived status in the browser when absent (older entries).

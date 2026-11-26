@@ -15,8 +15,35 @@ import {
     closeLayer, conditionLabel, describeGoal, focusSoon, mpIcon, openLayer,
 } from './components/mp-sheet.js';
 import { escapeHtml } from '../utils/dom-safety.js';
+import { compareMatchCompatibility } from '../core/network/match-compatibility.js';
+import { describeVersusGameType, VERSUS_GAME_TYPES } from '../core/multiplayer/versus-rules.js';
+import { describeVersusAttackStyle, VERSUS_ATTACK_STYLES } from '../core/multiplayer/versus-attack-style.js';
 
 const MAX_METER_CELLS = 8;
+
+/**
+ * What kind of room a listed match is, from what its host published: "Free-for-all",
+ * "Survivor · Blind". Standard attacks go unsaid. A room that published neither says nothing.
+ * @param {{ gameType?: unknown, attackStyle?: unknown }} lobby
+ */
+export function describeLobbyKind(lobby) {
+    const words = [];
+    if (VERSUS_GAME_TYPES.includes(/** @type {any} */ (lobby.gameType))) words.push(describeVersusGameType(lobby));
+    if (VERSUS_ATTACK_STYLES.includes(/** @type {any} */ (lobby.attackStyle)) && lobby.attackStyle !== 'standard') {
+        words.push(describeVersusAttackStyle(lobby));
+    }
+    return words.join(' · ');
+}
+
+/**
+ * When a player who drops into a match under way gets to play, by its game type.
+ * @param {{ gameType?: unknown }} lobby
+ */
+function dropInPromise(lobby) {
+    if (lobby.gameType === 'ffa') return ' — you play at a key press';
+    if (lobby.gameType === 'survivor') return ' — you play from the next round';
+    return '';
+}
 
 export class LobbyBrowser {
     constructor(steamNetworking, onJoinLobby, onCreateLobby, onCancel = null) {
@@ -89,7 +116,7 @@ export class LobbyBrowser {
                 aria-describedby="join-by-id-hint join-by-id-error" />
               <button type="submit" class="sb-btn lobby-join-by-id__btn" id="join-by-id-btn">${mpIcon('join', 16)}<span>Join</span></button>
             </div>
-            <p class="join-by-id-hint sb-mp-help" id="join-by-id-hint">The host sees the ID in their waiting room. Steam invites and Join game work too.</p>
+            <p class="join-by-id-hint sb-mp-help" id="join-by-id-hint">The host of a public or friends match sees the ID in their waiting room. Steam invites and Join game work too.</p>
             <p class="join-by-id-error sb-mp-alert" id="join-by-id-error" role="alert" hidden></p>
           </form>
 
@@ -305,7 +332,8 @@ export class LobbyBrowser {
         const signature = JSON.stringify(this.lobbies.map((lobby) => [
             lobby.id, lobby.name, lobby.hostName, this.getMaxPlayers(lobby),
             this.getPlayerCount(lobby), this.getLobbyStatus(lobby), lobby.endCondition || 'frags',
-            lobby.endConditionValue ?? null,
+            lobby.endConditionValue ?? null, lobby.gameType ?? null, lobby.attackStyle ?? null,
+            lobby.compatibility ?? null,
         ]));
         if (signature === this.lastLobbyRenderSignature) return;
         this.lastLobbyRenderSignature = signature;
@@ -341,11 +369,19 @@ export class LobbyBrowser {
         const canDropIn = status === 'playing' && current < max;
         const id = this.escapeHtml(lobby.id);
         const name = this.escapeHtml(lobby.name || 'Unnamed match');
+        // A room on another version of the game cannot be played or watched from this one:
+        // say which side has to update instead of offering a join that would be refused.
+        const build = this.getLobbyBuild(lobby);
         let actionBtn;
-        if (joinable) {
+        if (build !== 'same') {
+            const [label, reason] = build === 'newer'
+                ? ['Update to join', `${name} runs a newer version of Serenity Blocks. Update the game to join.`]
+                : ['Older version', `${name} is hosted on an older version of Serenity Blocks. Ask the host to update.`];
+            actionBtn = `<button type="button" class="sb-btn lobby-action btn-disabled btn-other-version" disabled aria-label="${reason}" title="${reason}">${label}</button>`;
+        } else if (joinable) {
             actionBtn = `<button type="button" class="sb-btn lobby-action btn-join" data-lobby-id="${id}" aria-label="Join ${name}">${mpIcon('join', 16)}<span>Join</span></button>`;
         } else if (canDropIn) {
-            actionBtn = `<button type="button" class="sb-btn lobby-action btn-join btn-dropin" data-lobby-id="${id}" aria-label="Drop in to ${name} — you play from the next round">${mpIcon('dropin', 16)}<span>Drop in</span></button>`;
+            actionBtn = `<button type="button" class="sb-btn lobby-action btn-join btn-dropin" data-lobby-id="${id}" aria-label="Drop in to ${name}${dropInPromise(lobby)}">${mpIcon('dropin', 16)}<span>Drop in</span></button>`;
         } else {
             const disabledLabel = status === 'finished' ? 'Finished' : 'Full';
             actionBtn = `<button type="button" class="sb-btn lobby-action btn-disabled" disabled>${disabledLabel}</button>`;
@@ -355,12 +391,20 @@ export class LobbyBrowser {
         const filled = Math.round((Math.min(current, max) / max) * cells);
         const meter = Array.from({ length: cells }, (_, i) => (i < filled ? '<i class="is-filled"></i>' : '<i></i>')).join('');
         const goal = lobby.endConditionValue ? describeGoal(condition, lobby.endConditionValue) : conditionLabel(condition);
+        // Under the name: what kind of room it is, then who hosts it.
+        const about = [
+            describeLobbyKind(lobby),
+            lobby.hostName ? `Hosted by ${lobby.hostName}` : '',
+        ].filter(Boolean).join(' · ');
+        const watchBtn = build === 'same'
+            ? `<button type="button" class="sb-btn sb-btn--quiet lobby-action btn-watch" data-lobby-id="${id}" aria-label="Watch ${name}">${mpIcon('watch', 16)}<span>Watch</span></button>`
+            : '';
 
         return `
       <div class="lobby-item status-${this.escapeHtml(status)}" data-lobby-id="${id}" role="listitem">
         <span class="col-name">
           <strong>${name}</strong>
-          ${lobby.hostName ? `<span class="lobby-host">Hosted by ${this.escapeHtml(lobby.hostName)}</span>` : ''}
+          ${about ? `<span class="lobby-host">${this.escapeHtml(about)}</span>` : ''}
         </span>
         <span class="col-players">
           <span class="sb-meter lobby-capacity" role="img" aria-label="${current} of ${max} players">${meter}</span>
@@ -372,7 +416,7 @@ export class LobbyBrowser {
         </span>
         <span class="col-action">
           ${actionBtn}
-          <button type="button" class="sb-btn sb-btn--quiet lobby-action btn-watch" data-lobby-id="${id}" aria-label="Watch ${name}">${mpIcon('watch', 16)}<span>Watch</span></button>
+          ${watchBtn}
         </span>
       </div>
     `;
@@ -393,6 +437,14 @@ export class LobbyBrowser {
     }
 
     /**
+     * How the room's build stands against this one, from the number its host published
+     * (core/network/match-compatibility.js): 'same', 'older' or 'newer'.
+     */
+    getLobbyBuild(lobby) {
+        return compareMatchCompatibility(lobby.compatibility);
+    }
+
+    /**
    * Resolve a lobby's status, deriving it from capacity when not supplied.
    */
     getLobbyStatus(lobby) {
@@ -405,6 +457,7 @@ export class LobbyBrowser {
    * Check if player can join lobby
    */
     canJoinLobby(lobby) {
+        if (this.getLobbyBuild(lobby) !== 'same') return false;
         const status = this.getLobbyStatus(lobby);
         if (status === 'playing' || status === 'finished') return false;
         if (this.getPlayerCount(lobby) >= this.getMaxPlayers(lobby)) return false;

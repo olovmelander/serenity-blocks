@@ -19,6 +19,8 @@ import {
 } from './components/mp-sheet.js';
 import { describeMatchLevelRule } from '../core/multiplayer/match-level-rule.js';
 import { describeVersusGameType } from '../core/multiplayer/versus-rules.js';
+import { listVersusAttackRules } from '../core/multiplayer/versus-attack-style.js';
+import { lobbySharesItsId } from '../core/multiplayer/lobby-type.js';
 import { warnHostIfRelayUnreachable } from '../core/steam/relay-network.js';
 import {
     appendChatMessage, chatIcon, chatModerationNote, createSteamProfileButton, isChatOn, isMuted,
@@ -96,6 +98,10 @@ export class LobbyWaitingRoom {
                 <dt class="info-label">Level</dt>
                 <dd class="info-value" id="level-rule-value">–</dd>
               </div>
+              <div class="info-item info-item--wrap">
+                <dt class="info-label">Attacks</dt>
+                <dd class="info-value" id="attack-rules-value">–</dd>
+              </div>
               <div class="info-item">
                 <dt class="info-label">Host</dt>
                 <dd class="info-value" id="host-name-value">–</dd>
@@ -112,6 +118,7 @@ export class LobbyWaitingRoom {
                 </div>
                 <p class="room-code-hint">Share it so friends can join.</p>
              </div>
+             <p class="room-code-hint" id="invite-only-note" hidden>Invite only. Players join from a Steam invite.</p>
              <button type="button" class="sb-btn wr-invite__btn" id="invite-friends-btn">${mpIcon('invite', 16)}<span>Invite friends</span></button>
         </div>
       </div>
@@ -430,6 +437,18 @@ export class LobbyWaitingRoom {
         }
     }
 
+    /**
+     * Who can join this room (core/multiplayer/lobby-type.js). A public or friends room shows
+     * its lobby ID to pass on; an invite-only room shows the Invite button and no ID.
+     * @param {unknown} type
+     */
+    setLobbyType(type) {
+        const code = this.container?.querySelector('.room-code-display');
+        if (code) code.hidden = !lobbySharesItsId(type);
+        const note = this.$('invite-only-note');
+        if (note) note.hidden = type !== 'private';
+    }
+
     /** Write text only when it changed (the room refreshes every second). */
     setText(id, text) {
         const el = this.$(id);
@@ -473,6 +492,11 @@ export class LobbyWaitingRoom {
 
         // The level rule: a fixed level unless the host turned levelling up on.
         this.setText('level-rule-value', describeMatchLevelRule(config));
+
+        // The attack rules, which only the host chose: a guest reads them here, not in play.
+        // One rule to a line (the value's style keeps the line breaks).
+        this.setText('attack-rules-value', listVersusAttackRules(config)
+            .map((rule) => rule[0].toUpperCase() + rule.slice(1)).join('\n'));
 
         // Objective summary callout
         this.setText('lobby-objective', config.endCondition === 'never'

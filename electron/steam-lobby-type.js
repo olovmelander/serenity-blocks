@@ -4,7 +4,7 @@
  * - `public`  -> Public (2): in the match list, and visible to friends.
  * - `friends` -> FriendsOnly (1): not in the list; friends and invited players join.
  * - `private` -> Private (0): not in the list and not shown to friends; players join by
- *   invite or by the lobby ID the host shares.
+ *   invite. The game shows no lobby ID for one (src/core/multiplayer/lobby-type.js).
  *
  * Anything else is treated as private, the narrowest. The game's own words for each are
  * src/ui/match-config-modal.js (LOBBY_TYPE_HELP).

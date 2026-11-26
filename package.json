@@ -29,6 +29,8 @@
     "check:palette": "node scripts/palette-guideline-check.mjs",
     "check:pages-artifact": "node scripts/pages-artifact-check.mjs",
     "check:release-gates": "node scripts/release-gate-check.mjs",
+    "check:signatures": "node scripts/verify-signatures.mjs",
+    "odyssey:board-freeze": "node scripts/odyssey-time-board-freeze.mjs",
     "steam:qa": "node scripts/steam-release-qa.mjs",
     "steam:qa-renderer": "node scripts/run-electron.mjs scripts/steam-records-renderer-smoke.cjs",
     "validate:windows:devtools": "node scripts/run-electron.mjs scripts/windows-devtools-smoke.mjs",
@@ -150,6 +152,7 @@
     "linux": {
       "target": "AppImage",
       "category": "Game",
+      "icon": "public/assets/branding/linux",
       "extraResources": [
         {
           "from": "node_modules/steamworks.js",
