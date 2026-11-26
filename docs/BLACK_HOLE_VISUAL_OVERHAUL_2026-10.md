@@ -327,3 +327,64 @@ Hole suites: 102 tests passed.
   no GPU timestamps). Dynamic resolution still steers on whatever it costs. The record-groove
   pattern next to the shadow is eased, not removed: it is the lensed sky, and it is strongest
   where the Milky Way lies behind the hole. Neither pass was played through a full game.
+
+## Tidal streams and magnetic eruptions, 2026-11-26
+
+The first capture made the case for keeping the ray-traced shadow, the lensed arch and the
+off-centre camera. It also showed where the theme lost depth. At the same time and camera
+angle, the revised disk breaks into curls with bright leading edges, and a wall of blue
+reflection nebula fills the sky beyond the falling gas. [Matched before and after](black-hole-overhaul/tidal-streams/before-after.jpg)
+
+| Area | Audit observation | Shipped change |
+| --- | --- | --- |
+| Shadow and photon ring | The dark centre read clearly. The narrow rim lost definition as the camera receded. | The ring widens with the pixel footprint and conserves its light. Foreground gas still masks the rim. |
+| Accretion and lighting | Broad gold bands merged on the approaching side. During quiet play the gas changed colour more readily than shape. | A tile of rolled-up shear eddies supplies fibres and hot knots. Two eccentric wakes precess through the gas and change pitch on a slower clock. Cooler troughs separate the copper rim, gold sheet and white-hot approaching edge. |
+| Matter and scale | Most idle motes stayed inside the disk. A few dashes gave little sense of where the material came from. | Three tidal streams stretch from the dark sky into the rim. Overlapping regions of gas brighten, break up and accelerate. From Medium up, chipped fragments tumble through the streams with an amber face toward the disk and a cold sky rim. The original Blender mesh has 60 triangles and draws 12 instances at High. |
+| Stars and blue haze | Much of the sky was soft navy with evenly scattered pinpoints. An early revision left a large empty patch beside the board. | Oblique reflection clouds, broken illuminated walls, dust lanes and buried star clusters give the orbit landmarks. Star sizes and colours vary. Cloud contrast falls close to the shadow where lensing stretches it hardest. |
+| Gameplay events | Ordinary clears shared one pressure wave. Twists, back-to-backs, streaks and perfect clears were difficult to distinguish edge-on. | Each event now has a direction, silhouette and duration that can be recognised while the camera moves. The core and disk remain visible during the largest cues. |
+| Board and controls | The former dark L piece and garbage blocks were hard to pick out in the well. | Copper L blocks, blue-grey garbage, narrower glows and quieter pulses separate adjacent pieces. A gold queue and score accent and a cool blue rim belong to the ordinary solo well. The picker icon uses a capture of the new artwork. |
+
+### Following a game
+
+An 11-second capture follows a lock into the disk, a double clear through its expanding
+fronts, and a perfect clear through jet ignition and cooldown. [Watch the reaction sequence](black-hole-overhaul/tidal-streams/reactions.webm)
+
+Locks peel away in the piece's own colour. A hard drop pulls the cells into a tighter,
+faster stream. A single clear lifts one amber bow above the gas. A double splits into icy
+opposing fronts, and a triple sends staggered copper crests toward one another. Four lines
+launch two blue-white jets with bright compression knots along their length. Cascades wind
+successive knots into the disk. Consecutive clearing locks sustain the jets, while a broken
+streak releases an outward wake.
+
+A twist braids two violet strands above the gas. A back-to-back opens opposing blue
+magnetic bows. A perfect clear lifts clusters of hot plasma loops above and below the disk
+alongside the jets and ejecta. Levelling up draws a teal front inward as the sky changes
+mood. Game over sends a final red crescent toward the shadow. A Serenity touch refracts
+the sky at the point touched and lights an ice-blue knot in the disk. [Sixteen event frames at the same camera angle](black-hole-overhaul/tidal-streams/events.jpg)
+
+Between events the camera crosses the disk plane, stars bend around the horizon, and the
+wakes tighten and open independently of the five existing moods. Levels advance that mood
+cycle. Reduced motion holds the camera and suppresses shake and refraction. The bow fronts
+travel a shorter distance and the magnetic arches illuminate in place. [Orbit and mood frames](black-hole-overhaul/tidal-streams/moods.jpg)
+
+### Runtime checks
+
+- High WebGPU playground captures cover all sixteen event variants and five moods. Minimal
+  WebGPU drew the twist without a post chain. High WebGL2 drew the perfect-clear eruption.
+  Low WebGL2 also drew a triple in a 390 × 844 viewport with reduced motion. The playground
+  captures logged no shader, WebGPU validation or console errors.
+- In the game, seven move/rotate/hard-drop sequences populated the solo board. The built-in
+  effects tray then dispatched its delayed perfect-clear cue on that same board. In a
+  1280 × 720 High run at a 60 FPS cap on the NVIDIA Blackwell adapter, the 15-second window
+  spanning the cue and decay had a median draw interval of 16.7 ms and a 95th percentile
+  of 17.2 ms. Render scale stayed at 1. Physical phones and integrated GPUs were outside
+  this pass. [Played board](black-hole-overhaul/tidal-streams/game-board.jpg) · [Perfect-clear cue](black-hole-overhaul/tidal-streams/game-perfect.jpg)
+- The march budgets and existing dust and ejecta counts remain in place. The gas and sky
+  textures bake in slices. Idle frames skip pressure-wave, hotspot and ripple rows. Both
+  event-strip meshes leave the draw list at rest. Low and Minimal keep the streams and
+  all event signatures while omitting the solid fragments.
+- All 119 Black Hole tests passed. The shared renderer, lifecycle, camera and accessibility
+  acceptance checks brought the test run to 277 passes. The production build, boot-closure
+  check, typecheck, theme ESLint, lifecycle audit and dependency boundaries passed. The
+  single-theme Electron validator reported zero lifecycle failures, console errors or
+  process failures.

@@ -326,12 +326,17 @@ def skin(positions, parts, triangles, smoothing=4):
     rel = positions - POLL
     s_h = rel @ HEAD_FORWARD
     t_h = rel @ HEAD_UP
-    w_jaw = _smoothstep(-0.05, -0.068, t_h) * _smoothstep(0.06, 0.12, s_h)
+    # At game resolution the lower lip is only 0.05 m below the face axis.
+    # Blend the lip into the cheeks while the bridge of the nose stays on the skull.
+    w_jaw = _smoothstep(-0.025, -0.052, t_h) * _smoothstep(0.07, 0.15, s_h)
     put(head_part, "head", 1.0 - w_jaw)
     put(head_part, "jaw", w_jaw)
     put(parts == PARTS["earLeft"], "earL", 1.0)
     put(parts == PARTS["earRight"], "earR", 1.0)
-    put(np.isin(parts, [PARTS["hornLeft"], PARTS["hornRight"], PARTS["beard"]]), "head", 1.0)
+    horns = np.isin(parts, [PARTS["hornLeft"], PARTS["hornRight"]])
+    beard = parts == PARTS["beard"]
+    put(horns, "head", 1.0)
+    put(beard, "jaw", 1.0)
 
     tail = parts == PARTS["tail"]
     w_tail = _smoothstep(-0.45, -0.49, z)
@@ -364,14 +369,14 @@ def skin(positions, parts, triangles, smoothing=4):
 
     weights /= np.maximum(weights.sum(axis=1, keepdims=True), 1e-9)
     neighbours = _neighbours(count, triangles)
-    horn = np.isin(parts, [PARTS["hornLeft"], PARTS["hornRight"], PARTS["beard"]])
     for _ in range(smoothing):
         mean = np.stack([weights[around].mean(axis=0) if len(around) else weights[v]
                          for v, around in enumerate(neighbours)])
         weights = 0.5 * weights + 0.5 * mean
-        # (A horn is rigid on the head: no smoothing pulls it toward the neck.)
-        weights[horn] = 0.0
-        weights[horn, BONE_INDEX["head"]] = 1.0
+        # These parts scale about their attachments for each herd member.
+        weights[horns | beard] = 0.0
+        weights[horns, BONE_INDEX["head"]] = 1.0
+        weights[beard, BONE_INDEX["jaw"]] = 1.0
     order = np.argsort(-weights, axis=1)[:, :4]
     top = np.take_along_axis(weights, order, axis=1)
     top /= np.maximum(top.sum(axis=1, keepdims=True), 1e-9)

@@ -309,7 +309,7 @@ export default class BlackHoleTheme extends BaseTheme {
      * look); the pressure front and the ring's flare that come with it are a reaction.
      */
     onLevelUp(payload) {
-        if (!this.isActive || !this.world) return;
+        if (!this.isActive || this.isPaused || !this.world) return;
         const level = Math.round(Number(payload?.level));
         this.level = Number.isFinite(level) ? Math.max(1, level) : this.level + 1;
         this.world.setLevel?.(this.level);
@@ -324,7 +324,12 @@ export default class BlackHoleTheme extends BaseTheme {
         this.eventUnsubscribers.push(
             eventBus.on(EVENTS.HARD_DROP, whenAllowed((payload) => this.world.director.onHardDrop(payload))),
             eventBus.on(EVENTS.PIECE_LOCK, (payload) => this.onPieceLock(eventDetail(payload))),
-            eventBus.on(EVENTS.LINE_CLEAR, whenAllowed((payload) => this.world.director.onLineClear(payload))),
+            eventBus.on(EVENTS.LINE_CLEAR, whenAllowed((payload) => {
+                if (payload?.source === 'serenity-interaction') {
+                    const { x, y } = payload.position ?? {};
+                    this.world.director.onTouch(x / window.innerWidth, y / window.innerHeight);
+                } else this.world.director.onLineClear(payload);
+            })),
             eventBus.on(EVENTS.COMBO, whenAllowed((payload) => this.world.director.onCascade(payload))),
             eventBus.on(EVENTS.TWIST, whenAllowed((payload) => this.world.director.onTwist(payload))),
             eventBus.on(EVENTS.B2B, whenAllowed((payload) => this.world.director.onBackToBack(payload))),
@@ -334,7 +339,10 @@ export default class BlackHoleTheme extends BaseTheme {
             eventBus.on(EVENTS.SETTINGS_CHANGED, (payload) => this.handleSettingsChanged(payload)),
         );
         this.registerEventListener(window, 'settingsChanged', (payload) => this.handleSettingsChanged(payload));
-        this.registerEventListener(window, 'gameOver', () => this.world?.director.calm());
+        this.registerEventListener(window, 'gameOver', () => {
+            if (this.effectsAllowed()) this.world.director.endRun();
+            else this.world?.director.calm();
+        });
         this.registerEventListener(window, 'pointermove', (event) => {
             if (!this.isActive || this.isPaused || event.pointerType === 'touch') return;
             this.pointer.x = THREE.MathUtils.clamp((event.clientX / window.innerWidth) * 2 - 1, -1, 1);
@@ -394,7 +402,7 @@ export default class BlackHoleTheme extends BaseTheme {
             return;
         }
         if (typeof window !== 'undefined' && window.settings?.backgroundComboEffects === false) {
-            this.world?.director.calm();
+            this.world?.director.calm({ immediate: true });
         }
         this.applyMotionPreference();
         this.resolution.setTargetFps(targetFrameRate());

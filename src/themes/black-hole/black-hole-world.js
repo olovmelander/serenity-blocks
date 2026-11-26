@@ -17,6 +17,8 @@ import {
     HOLE, createLensMaterial, createLensMesh, createLensUniforms,
 } from './black-hole-lens.js';
 import { BlackHoleMatter } from './black-hole-matter.js';
+import { BlackHoleEchoes } from './black-hole-echoes.js';
+import { BlackHoleMagneticArcs } from './black-hole-magnetic-arcs.js';
 import {
     LATTICE_SIZE, bakeDiskTexture, bakeDiskTextureSteps, bakeLattice, bakeSkyRows, bakeSkyTexture, createRandom,
 } from './black-hole-noise.js';
@@ -28,7 +30,7 @@ import {
 
 /** The artwork is authored for this seed: the galaxy, the gas and the camera's phases. */
 export const BLACK_HOLE_SEED = 20261005;
-const DISK_TEXTURE_SIZE = [512, 128];
+const DISK_TEXTURE_SIZE = [512, 256];
 
 /** The camera circles the hole at this distance and elevation before the slow wander. */
 const ORBIT_RADIUS = Math.hypot(105, 1040);
@@ -164,6 +166,7 @@ export class BlackHoleWorld {
         this.disposed = false;
         this.time = 0;
         this.reducedMotion = false;
+        this.stillTime = 0;
         this.group = new THREE.Group();
         this.group.name = 'Black Hole — world';
         scene.add(this.group);
@@ -194,10 +197,12 @@ export class BlackHoleWorld {
         this.lens = createLensMesh(this.lensMaterial);
         this.group.add(this.lens);
 
-        this.director = new BlackHoleDirector({ seed: seed ^ 0x2b7e15 });
+        this.director = new BlackHoleDirector({ seed: seed ^ 0x2b7e15, infallSlots: this.preset.infallSlots });
         this.matter = new BlackHoleMatter({
             parent: this.group, preset: this.preset, lens: this.uniforms, gasTexture: this.diskTexture,
         });
+        this.echoes = new BlackHoleEchoes(this.matter.group, this.matter.uniforms);
+        this.arcs = new BlackHoleMagneticArcs(this.matter, this.preset.diskDetail ? 60 : 32);
         /** Refraction rings for the post chain: centre (uv, y down), radius in screen heights. */
         this.ripples = Array.from({ length: DIRECTOR_LIMITS.ripples }, () => ({
             x: 0.5, y: 0.5, radius: 0, strength: 0,
@@ -243,6 +248,7 @@ export class BlackHoleWorld {
         this.pull = 0;
         /** Turns the inner edge has made; the gas pattern is a function of this alone. */
         this.diskTurns = 0;
+        this.wakeTime = 0;
         this.diskRate = 1;
         /**
          * The game's level (a level is one mood forward), the level's eased step on the wheel of
@@ -303,6 +309,10 @@ export class BlackHoleWorld {
     }
 
     setReducedMotion(reduced) {
+        if (reduced === true && !this.reducedMotion) {
+            this.stillTime = this.time;
+            this.rig.reset();
+        }
         this.reducedMotion = reduced === true;
         this.director.setReducedMotion(this.reducedMotion);
     }
@@ -345,7 +355,7 @@ export class BlackHoleWorld {
         if (!camera) return;
         const still = this.reducedMotion ? 0 : 1;
         const { energy } = this;
-        this.orbitTarget(this.reducedMotion ? 0 : time, this.cameraTarget);
+        this.orbitTarget(this.reducedMotion ? this.stillTime : time, this.cameraTarget);
         if (!pose) {
             const sway = (0.5 + energy * 0.32) * still;
             const swayX = Math.sin(time * 0.22 + phase.swayX) * 8.5 + Math.cos(time * 0.09 + phase.swayY) * 5.2;
@@ -364,7 +374,7 @@ export class BlackHoleWorld {
         this.forward.divideScalar(distance);
         this.right.crossVectors(this.forward, this.worldUp).normalize();
         this.up.crossVectors(this.right, this.forward).normalize();
-        const frameTime = this.reducedMotion ? 0 : time;
+        const frameTime = this.reducedMotion ? this.stillTime : time;
         // Looking to the right of the hole puts the hole left of centre, hence the sign.
         const halfWidth = distance * Math.tan(THREE.MathUtils.degToRad(camera.fov * 0.5)) * camera.aspect;
         let screenRight = -(pose?.frame ?? this.frameTarget(frameTime)) * halfWidth + this.pointer.x * 30.7;
@@ -431,6 +441,15 @@ export class BlackHoleWorld {
         u.flowB.value = (b - 0.5) * FLOW_PERIOD;
         // Each phase is faded out while its shear is at its extreme and about to reset.
         u.flowMix.value = Math.abs(2 * a - 1);
+        // The wakes precess more slowly than the gas flowing through them. Their pitch
+        // opens and closes as fresh material arrives, even during a long quiet game.
+        this.wakeTime += dt * (this.reducedMotion ? 0.45 : 1);
+        const t = this.wakeTime;
+        u.wake.value.set(
+            ((this.diskTurns * 0.23) % 1) * Math.PI * 2,
+            4.1 + 1.55 * Math.sin(t * 0.046 + 0.6) + 0.65 * Math.sin(t * 0.077),
+            0.79 + 0.29 * Math.sin(t * 0.055 - 0.4) + this.energy * 0.26,
+        );
     }
 
     /** World-space launch frame of a fed piece: where its centroid is and one cell each way. */
@@ -505,16 +524,24 @@ export class BlackHoleWorld {
         u.nebulaGain.value = director.nebulaGain * mood.nebula;
         u.starGain.value = mood.stars;
         u.coronaGain.value = mood.corona;
-        for (let slot = 0; slot < director.hotspots.length; slot += 1) {
-            const hotspot = director.hotspots[slot];
-            const strength = hotspot.active ? hotspot.strength : 0;
-            u.hotspot.array[slot].set(hotspot.azimuth, hotspot.radius, hotspot.width, strength);
-            u.hotspotTint.array[slot].set(hotspot.color[0], hotspot.color[1], hotspot.color[2], 0);
+        // Compact the live events. At rest a disk crossing reads no event rows at all.
+        let spots = 0;
+        for (const spot of director.hotspots) {
+            if (!spot.active || spot.strength <= 0.002) continue;
+            u.hotspot.array[spots].set(spot.azimuth, spot.radius, spot.width, spot.strength);
+            u.hotspotTint.array[spots].set(spot.color[0], spot.color[1], spot.color[2], 0);
+            spots += 1;
         }
-        for (let slot = 0; slot < director.waves.length; slot += 1) {
-            const wave = director.waves[slot];
-            u.wave.array[slot].set(wave.radius, wave.active ? wave.strength : 0, wave.width, 0);
+        for (let i = spots; i < u.hotspotCount.value; i += 1) u.hotspot.array[i].w = 0;
+        u.hotspotCount.value = spots;
+        let waves = 0;
+        for (const wave of director.waves) {
+            if (!wave.active || wave.strength <= 0.002) continue;
+            u.wave.array[waves].set(wave.radius, wave.strength, wave.width, 0);
+            waves += 1;
         }
+        for (let i = waves; i < u.waveCount.value; i += 1) u.wave.array[i].y = 0;
+        u.waveCount.value = waves;
         for (let slot = 0; slot < director.infalls.length; slot += 1) {
             const infall = director.infalls[slot];
             if (infall.active && infall.fresh) {
@@ -536,6 +563,8 @@ export class BlackHoleWorld {
         this.matter.update({
             time: this.time, turns: this.diskTurns, director, heat: u.diskHeat.value,
         });
+        this.arcs.update(director.bursts, this.reducedMotion);
+        this.echoes.update(director);
     }
 
     update(time, dt = 0, pointer = null) {
@@ -551,7 +580,7 @@ export class BlackHoleWorld {
         this.energy = this.director.energy;
         this.diskRate = this.director.diskRate;
         this.pull = this.director.level * 40 + this.director.fever * 55;
-        this.holeDrift(this.reducedMotion ? 0 : time, this.hole);
+        this.holeDrift(this.reducedMotion ? this.stillTime : time, this.hole);
         this.uniforms.holePosition.value.copy(this.hole);
         this.updateDisk(dt);
         this.updateCamera(time, dt);
@@ -563,9 +592,11 @@ export class BlackHoleWorld {
     reset() {
         if (this.disposed) return;
         this.time = 0;
+        this.stillTime = 0;
         this.energy = 0;
         this.pull = 0;
         this.diskTurns = 0;
+        this.wakeTime = 0;
         this.diskRate = 1;
         this.roll = 0;
         this.pointer.x = 0;
@@ -595,6 +626,8 @@ export class BlackHoleWorld {
     dispose() {
         if (this.disposed) return;
         this.disposed = true;
+        this.arcs.dispose();
+        this.echoes.dispose();
         this.matter.dispose();
         this.lens.geometry.dispose();
         this.lensMaterial.dispose();

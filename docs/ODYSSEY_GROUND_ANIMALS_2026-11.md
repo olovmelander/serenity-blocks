@@ -1582,3 +1582,38 @@ head down.
   That is proposed, not done.
 - **The ibex at L19-L21 stay specks or shapes.** The shelf is 130-170 m from those parks; reading
   there would need twice the size or another place. That is an owner decision.
+
+## Grazing, drinking and nursing (2026-11-26)
+
+All 18 land animals now take bites on individual rhythms. Previously, two hinds with their heads
+down opened their jaws on the same frame, and an animal's ears almost always flicked together.
+The muzzle now works across a patch for two to four bites, pauses, and starts again. Each ear reacts
+independently. The tarn hind and calf still travel together and switch to smaller jaw movements
+when their muzzles reach water.
+
+The Blender MCP audit found that the ibex jaw had no skin weight. Its grazing animation rotated
+a bone without moving a single vertex. The rebuilt mesh binds the lower lip and beard to the jaw.
+At the peak grazing angle of 0.1 radians, the lip moves up to 11 mm and the beard up to 17 mm at
+life size. The horns stay fixed to the skull. The mesh has 2,184 triangles.
+
+On the massif, the ibex also lower their weight and bend through the chest and neck to reach
+the surface beneath the muzzle. Across a full loop on the drawn terrain at 60 samples per
+second, the four animals' median grazing clearance fell from 11–17 cm to 1–3.2 cm at life
+size. The 99th percentile stayed within 5 cm for each animal. The deepest measured contact
+was 2.8 cm below the surface.
+The ibex playground samples the shelf between the close-up camera and the animal so an
+uphill camera stays above the rocks.
+
+Neither foal previously reached its nursing pose during the band's five-minute schedule. Each
+now approaches while its mother is standing, turns beside her and suckles before either needs to
+move on. Across the settled portion of both visits, the muzzle stays within 8 cm of the lower
+flank landmark on the posed mare at life size. The dun pair can be inspected in the horse
+playground at `horse=5&t=101.55`, the bay pair at `horse=6&t=219.48`.
+
+The Blender comparison uses the shipping meshes and the game's bone transforms at the same
+board times, with a fixed camera for each animal. The rail images come from the actual Odyssey
+board at 1440 × 810. The lower panels enlarge the marked areas threefold.
+
+![Original and revised grazing over four seconds, including a glade hind, ibex buck and lead mare](images/odyssey-animals-2026-11-26/grazing-before-after.webp)
+
+![Actual Odyssey board views at levels 15, 16 and 22 with enlarged views of two hinds in the glade, a nursing foal and mare, and the ibex on their shelf](images/odyssey-animals-2026-11-26/rail-views.webp)

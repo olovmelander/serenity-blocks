@@ -105,7 +105,7 @@ describe('Black Hole surge: pools that never erase what is still burning', () =>
 
     it('stacks a cascade\'s fronts, each deeper wave faster, wider and stronger than the last', () => {
         const director = create();
-        clear(director, 2);
+        clear(director, 1);
         for (let wave = 2; wave <= 4; wave += 1) {
             run(director, 0.36 - STEP);
             director.onCascade({ comboCount: wave });

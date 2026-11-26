@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-    BlackHoleDirector, DIRECTOR_LIMITS, luminous, parseColor, resolveClearHeight, resolveLock, vivid,
+    BlackHoleDirector, DIRECTOR_LIMITS, EJECTA, luminous, parseColor, resolveClearHeight, resolveLock, vivid,
 } from '../../src/themes/black-hole/black-hole-director.js';
 import { SHAKE } from '../../src/themes/shared/camera-rig.js';
 
@@ -180,10 +180,22 @@ describe('Black Hole director: feeding the hole', () => {
         expect(hard.infalls[0].strength).toBeGreaterThan(soft.infalls[0].strength);
         expect(hard.infalls[0].duration).toBeLessThan(soft.infalls[0].duration);
         expect(hard.shakeAmount).toBeGreaterThan(soft.shakeAmount);
-        run(hard, 1);
+        expect(hard.infalls[0].swirl).toBeLessThan(soft.infalls[0].swirl);
+        run(hard, 0.08);
         hard.onPieceLock({ piece: piece() });
         hard.update(STEP);
         expect(active(hard.infalls).at(-1).strength).toBeCloseTo(soft.infalls[0].strength, 6);
+    });
+
+    it('allocates only feeds that the selected tier can display', () => {
+        const director = new BlackHoleDirector({ seed: 7, infallSlots: 4 });
+        for (let lock = 0; lock < 7; lock += 1) {
+            director.onPieceLock({ piece: piece() });
+            director.update(STEP);
+        }
+        expect(director.infalls).toHaveLength(4);
+        expect(active(director.infalls)).toHaveLength(4);
+        expect(director.counts.locks).toBe(7);
     });
 
     it('keeps the bookkeeping but feeds nothing when the lock effect is switched off', () => {
@@ -268,6 +280,50 @@ describe('Black Hole director: clears, streaks and the jets', () => {
         expect(three.shakeAmount).toBeGreaterThan(one.shakeAmount);
         expect(one.jets).toBe(0);
         expect(active(one.bursts)).toHaveLength(0);
+    });
+
+    it('splits a double into two outward fronts and brings the outer rim inward on a triple', () => {
+        const double = create();
+        clear(double, 2);
+        expect(double.waves[0].speed).toBeGreaterThan(double.waves[1].speed);
+        expect(double.waves[1].speed).toBeGreaterThan(0);
+        const triple = create();
+        clear(triple, 3);
+        const rim = triple.waves[1];
+        const start = rim.radius;
+        expect(rim.speed).toBeLessThan(0);
+        run(triple, 0.5);
+        expect(rim.radius).toBeLessThan(start);
+        expect(rim.strength).toBeGreaterThan(0);
+    });
+
+    it('keeps the silhouettes of major events distinct inside the same bounded burst pool', () => {
+        const director = create();
+        clear(director, 4);
+        director.onTwist({});
+        director.onBackToBack({ active: true });
+        director.onPerfectClear({});
+        director.update(STEP);
+        expect(active(director.bursts).map((burst) => burst.family)).toEqual([
+            EJECTA.QUAD, EJECTA.TWIST, EJECTA.B2B, EJECTA.CROWN,
+        ]);
+    });
+
+    it('answers a Serenity touch where it lands and clears active motion immediately on a setting change', () => {
+        const director = create();
+        director.onTouch(0.13, 0.73);
+        director.update(STEP);
+        expect(active(director.ripples)[0]).toMatchObject({ x: 0.13, y: 0.73 });
+        expect(director.counts.clears).toBe(0);
+        expect(director.shakeAmount).toBe(0);
+        director.setReducedMotion(true);
+        expect(active(director.ripples)).toHaveLength(0);
+        clear(director, 4);
+        director.endRun();
+        expect(active(director.waves).some((wave) => wave.speed < 0)).toBe(true);
+        director.calm({ immediate: true });
+        expect(active(director.bursts)).toHaveLength(0);
+        expect(director.jets).toBe(0);
     });
 
     it('fires the jets on four lines and lets them die down', () => {
