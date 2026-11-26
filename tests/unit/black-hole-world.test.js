@@ -251,25 +251,34 @@ describe('Black Hole bakes', () => {
 });
 
 describe('Black Hole world', () => {
-    it('builds the same fixed set of layers on every tier', () => {
+    it('keeps the event layers on every tier and budgets the modeled debris separately', () => {
         for (const tier of TIERS) {
             const { world, scene } = create(tier);
             const preset = QUALITY_PRESETS[tier];
             const meshes = [];
             scene.traverse((object) => { if (object.isMesh) meshes.push(object); });
-            expect(meshes.map((mesh) => mesh.name)).toEqual([
+            expect(meshes.map((mesh) => mesh.name).sort()).toEqual([
                 'Black Hole — lens shell',
                 'Black Hole — dust',
                 'Black Hole — infall',
                 'Black Hole — ejecta',
                 'Black Hole — jets',
-            ]);
+                'Black Hole — caustic echoes',
+                'Black Hole — magnetic arcs',
+                ...(preset.fragmentCount > 0 ? ['Black Hole — fractured debris'] : []),
+            ].sort());
             const { matter } = world;
             expect(matter.dust.count).toBe(preset.dustCount);
             expect(matter.infall.count).toBe(preset.infallSlots * preset.infallMotes);
             const perBurst = Math.floor(preset.sparkCount / DIRECTOR_LIMITS.bursts);
             expect(matter.sparks.count).toBe(perBurst * DIRECTOR_LIMITS.bursts);
             expect(matter.jets.count).toBe(2);
+            expect(matter.fragments?.count ?? 0).toBe(preset.fragmentCount);
+            if (matter.fragments) {
+                expect(matter.fragments.geometry.attributes.position.count).toBe(60 * 3);
+                expect(matter.fragments.material.blendDstAlpha).toBe(THREE.OneFactor);
+                expect(matter.fragments.material.blendSrcAlpha).toBe(THREE.ZeroFactor);
+            }
             // Event layers stay off the render list until an event needs them.
             expect([matter.infall.visible, matter.sparks.visible, matter.jets.visible]).toEqual([false, false, false]);
             expect(meshes.every((mesh) => mesh.frustumCulled === false)).toBe(true);
@@ -297,20 +306,19 @@ describe('Black Hole world', () => {
     });
 
     it('releases everything it built, once', () => {
-        const { world, scene } = create('Low');
+        const { world, scene } = create('High');
+        const resources = new Set([world.diskTexture, world.skyTexture, world.latticeTexture]);
+        scene.traverse((object) => {
+            if (!object.isMesh) return;
+            resources.add(object.geometry);
+            resources.add(object.material);
+            if (object.isInstancedMesh) resources.add(object);
+        });
         const disposed = [];
-        const watch = (target, label) => target.addEventListener('dispose', () => disposed.push(label));
-        watch(world.diskTexture, 'gas');
-        watch(world.skyTexture, 'sky');
-        watch(world.latticeTexture, 'lattice');
-        watch(world.lensMaterial, 'lens');
-        watch(world.lens.geometry, 'shell');
-        world.matter.materials.forEach((material, index) => watch(material, `matter${index}`));
+        resources.forEach((resource) => resource.addEventListener('dispose', () => disposed.push(resource.uuid)));
         world.dispose();
         world.dispose();
-        expect(disposed.sort()).toEqual([
-            'gas', 'lattice', 'lens', 'matter0', 'matter1', 'matter2', 'matter3', 'shell', 'sky',
-        ]);
+        expect(disposed.sort()).toEqual([...resources].map((resource) => resource.uuid).sort());
         expect(scene.children).toHaveLength(0);
         expect(() => world.update(1, STEP)).not.toThrow();
     });
@@ -513,6 +521,26 @@ describe('Black Hole gas clock', () => {
 });
 
 describe('Black Hole event wiring', () => {
+    it('layers the crown over a twist, then parks both transient draws and clears the disk event rows', () => {
+        const { world } = create('Minimal');
+        world.director.onLineClear({ lineCount: 2 });
+        world.director.onTwist({ lineCount: 2 });
+        run(world, 0, 0.35);
+        const twistCount = world.arcs.mesh.count;
+        expect(world.arcs.mesh.visible).toBe(true);
+        expect(world.echoes.mesh.visible).toBe(true);
+        expect(world.uniforms.waveCount.value).toBeGreaterThan(0);
+        world.director.onPerfectClear({ depth: 1 });
+        run(world, 0.35, 0.85);
+        expect(world.arcs.mesh.count).toBeGreaterThan(twistCount);
+        expect(world.uniforms.hotspotCount.value).toBeGreaterThan(0);
+        run(world, 0.85, 15);
+        expect(world.arcs.mesh.visible).toBe(false);
+        expect(world.echoes.mesh.visible).toBe(false);
+        expect(world.uniforms.hotspotCount.value).toBe(0);
+        expect(world.uniforms.waveCount.value).toBe(0);
+    });
+
     it('launches a fed piece from where it landed on screen, one cell each way', () => {
         const { world, camera } = create('Low');
         world.setBoardRect(0, {

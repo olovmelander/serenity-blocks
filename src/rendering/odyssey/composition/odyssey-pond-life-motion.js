@@ -29,7 +29,7 @@
  * lands (`at - k * q * rest`, with `k` the drawn size): the table odyssey-pond-life.js uploads. The
  * deer's table, the same layout.
  */
-import { ODYSSEY_TARN } from '../world/odyssey-world-height.js';
+import { ODYSSEY_TARN, odysseyTarnDistance } from '../world/odyssey-world-height.js';
 import { ODYSSEY_DEER } from './odyssey-deer-herd.js';
 import { HERON_FLIGHT } from './odyssey-heron-flight-keys.js';
 
@@ -120,6 +120,7 @@ export const ODYSSEY_POND = Object.freeze({
  */
 export const ODYSSEY_TARN_DEER = Object.freeze({
     ...ODYSSEY_DEER,
+    waterDistance: odysseyTarnDistance,
     /**
      * Drawn at 3.6 times life, 1.2 times the glade's herd: at three times the hind was a speck at
      * L15-L17 and the calf a shape (VISIBILITY, 2026-11-03).

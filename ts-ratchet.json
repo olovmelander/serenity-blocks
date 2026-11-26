@@ -107,6 +107,7 @@
     "src/rendering/odyssey/composition/odyssey-deer-herd.js",
     "src/rendering/odyssey/composition/odyssey-dolphin-pod.js",
     "src/rendering/odyssey/composition/odyssey-earth-weather-bake.js",
+    "src/rendering/odyssey/composition/odyssey-grazing.js",
     "src/rendering/odyssey/composition/odyssey-horse-band.js",
     "src/rendering/odyssey/composition/odyssey-ibex-herd.js",
     "src/rendering/odyssey/composition/odyssey-jellyfish-drift.js",

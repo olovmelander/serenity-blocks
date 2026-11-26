@@ -48,7 +48,6 @@ export const WAVE_SLOTS = 5;
 
 /** The disk's pattern speed, as a fraction of the inner edge's orbital rate. */
 const RIGID_RATE = 0.42;
-const TEX_ROWS = 128;
 
 /**
  * The corona: thin, hot gas puffed up round the disk, a Gaussian sheet whose scale height
@@ -90,9 +89,9 @@ const bendToward = (dir, away, angle) => normalize(dir.mul(cos(angle)).sub(away.
 
 /** Blackbody-like ramp over a normalised temperature: ember, flame, gold, white, blue-white. */
 const blackbody = (heat) => {
-    const ember = vec3(0.42, 0.03, 0.006);
-    const flame = vec3(1.0, 0.27, 0.035);
-    const gold = vec3(1.0, 0.6, 0.2);
+    const ember = vec3(0.55, 0.026, 0.005);
+    const flame = vec3(1.0, 0.205, 0.025);
+    const gold = vec3(1.0, 0.57, 0.16);
     const white = vec3(1.0, 0.9, 0.74);
     const blue = vec3(0.68, 0.82, 1.0);
     const a = mix(ember, flame, smoothstep(0.2, 0.5, heat));
@@ -128,6 +127,8 @@ export function createLensUniforms() {
         flowA: uniform(0),
         flowB: uniform(0),
         flowMix: uniform(0),
+        // Slow orientation, winding and strength of the eccentric accretion wakes.
+        wake: uniform(new THREE.Vector3(0, 5, 1)),
         diskGain: uniform(1),
         diskHeat: uniform(1),
         doppler: uniform(0.8),
@@ -145,6 +146,8 @@ export function createLensUniforms() {
         nebulaGain: uniform(1),
         /** x: radius, y: strength, z: width — pressure waves a line clear sends out through the disk. */
         wave: uniformArray(Array.from({ length: WAVE_SLOTS }, () => new THREE.Vector4(0, 0, 1, 0)), 'vec4'),
+        waveCount: uniform(0, 'int'),
+        hotspotCount: uniform(0, 'int'),
         /** xyz: tint of fed matter, w: unused. One per hot-spot slot. */
         hotspotTint: uniformArray(
             Array.from({ length: HOTSPOT_SLOTS }, () => new THREE.Vector4(1, 1, 1, 0)),
@@ -184,30 +187,39 @@ export function createLensMaterial({
 
     /** One layer of resolved stars: a jittered star per lattice cell on the unit sphere. */
     const starLayer = (direction, scale, density, seedOffset) => {
-        const p = direction.mul(scale);
-        const cell = floor(p);
-        const local = p.sub(cell).sub(0.5);
+        const p = direction.mul(scale).toVar();
+        const cell = floor(p).toVar();
         // Lattice coordinates stay within ±62, so the id — eight hash seeds to a cell — is an
         // exact float below 2^24.
         const id = cell.x.add(64).add(cell.y.add(64).mul(128)).add(cell.z.add(64).mul(16384))
             .mul(8)
-            .add(seedOffset);
-        const jitter = vec3(hash(id), hash(id.add(1)), hash(id.add(2))).sub(0.5).mul(0.7);
-        const roll = hash(id.add(3));
-        const offset = local.sub(jitter);
-        // Never thinner than a pixel, or a slow orbit makes the field shimmer.
-        const sigma = max(u.pixelAngle.mul(scale).mul(0.95), 0.012);
-        const core = exp(dot(offset, offset).negate().div(sigma.mul(sigma)));
-        // A steep magnitude curve: a few bright stars, a great many faint ones.
-        const magnitude = pow(roll, 7).mul(5.5).add(pow(roll, 2).mul(0.42)).add(0.05);
-        const present = smoothstep(0.0, 0.25, density.sub(hash(id.add(4)).mul(0.55)));
+            .add(seedOffset)
+            .toVar();
+        const sample = cell.add(vec3(hash(id), hash(id.add(1)), hash(id.add(2))).mul(0.68).add(0.16)).toVar();
+        // Project the candidate onto the sphere. A star's brightness now describes the source,
+        // independent of whether the spherical sky happened to graze the middle of its cell.
+        const centre = normalize(sample).mul(scale).toVar();
+        const within = centre.sub(cell).toVar();
+        const border = min(within, float(1).sub(within)).toVar();
+        const inCell = smoothstep(0.015, 0.105, min(border.x, min(border.y, border.z)));
+        const offset = p.sub(centre);
+        const roll = hash(id.add(3)).toVar();
+        const bright = smoothstep(0.89, 1, roll).toVar();
+        const sigma = max(u.pixelAngle.mul(0.88), float(0.00076)).mul(scale).mul(bright.mul(0.42).add(0.89));
+        const radius2 = dot(offset, offset).div(sigma.mul(sigma)).toVar();
+        const core = exp(radius2.negate());
+        // Only the few bright sources carry coloured halation. The blue-white cores and tiny
+        // amber foreground stars stay distinct against the reflection clouds on bloom-less tiers.
+        const skirt = float(1).div(radius2.mul(0.135).add(1)).toVar();
+        const magnitude = pow(roll, 7).mul(3.3).add(roll.mul(roll).mul(0.53)).add(0.10);
+        const present = smoothstep(0, 0.18, density.mul(0.86).add(0.26).sub(hash(id.add(4)))).mul(inCell);
         const temperature = hash(id.add(5));
         const tint = mix(
-            mix(vec3(1.0, 0.72, 0.5), vec3(1.0, 0.92, 0.8), smoothstep(0.0, 0.55, temperature)),
-            vec3(0.7, 0.82, 1.0),
-            smoothstep(0.62, 1.0, temperature),
+            mix(vec3(1.0, 0.58, 0.27), vec3(1.0, 0.95, 0.84), smoothstep(0.0, 0.34, temperature)),
+            vec3(0.53, 0.76, 1.0),
+            smoothstep(0.39, 0.94, temperature),
         );
-        return tint.mul(core.mul(magnitude).mul(present));
+        return tint.mul(core.mul(magnitude).add(skirt.mul(skirt).mul(bright).mul(0.29))).mul(present);
     };
 
     /** 3D value noise, two independent fields in [0, 1], in one fetch; one unit of `at` is one lattice cell. */
@@ -228,59 +240,47 @@ export function createLensMaterial({
         const polar = acos(clamp(d.y, -1, 1));
         const panorama = vec2(longitude.div(TAU).add(0.5), polar.div(Math.PI)).toVar();
         const galaxy = texture(skyTexture, panorama).level(0).toVar();
-        // Grain and clouds are read in 3D along the ray's own direction: no poles, no seam, and
-        // nothing that fans out into rings where the lens wraps the sky round the shadow (the
-        // gas tile used to be read here, and its long lanes drew concentric ribs).
-        const broad = noise3(d.mul(2.3).add(vec3(3.1, -1.7, 5.3))).toVar();
-        const middle = noise3(d.mul(5.1).add(vec3(-4.2, 2.9, 0.7))).toVar();
-        const fine = noise3(d.mul(11.3).add(vec3(1.3, 7.7, -2.1))).toVar();
-        const grain = noise3(d.mul(27).add(vec3(-6.1, 0.4, 3.3))).toVar();
-        // Three octaves: mean 0.48, sd 0.11 (sampleLattice over the whole sphere).
-        const cloudA = broad.x.mul(0.55).add(middle.x.mul(0.3)).add(fine.x.mul(0.15)).toVar();
-        const cloudB = broad.y.mul(0.55).add(middle.y.mul(0.3)).add(fine.y.mul(0.15)).toVar();
-        // Dust: dark threads where a mid-scale field crosses its middle, cubed so they stay thin,
-        // and only where there is cloud for them to cut.
-        const thread = float(1).sub(abs(fine.y.mul(0.65).add(grain.y.mul(0.35)).mul(2).sub(1)));
-        const dust = pow(thread, 3).mul(smoothstep(0.4, 0.62, cloudA)).toVar();
-        // The panorama is coarse and the lens magnifies it: mottle its glow so the star clouds
-        // keep their grain right up to the Einstein ring.
-        const speck = fine.x.mul(0.6).add(grain.x.mul(0.4));
-        const mottle = mix(
-            float(0.85),
-            speck.mul(speck).mul(2.6).add(0.3).mul(dust.mul(-0.55).add(1)),
-            calm.mul(0.75).add(0.25),
-        );
-        // Emission nebulae — hydrogen rose and oxygen teal, a bright heart on a wide ramp —
-        // gathering toward the band but strewn over the whole sky, so no side of the frame is
-        // an empty black.
-        const rose = pow(smoothstep(0.5, 0.72, cloudA), 2);
-        const teal = pow(smoothstep(0.53, 0.74, cloudB), 2);
-        const gather = mix(float(0.4), float(1), smoothstep(0.3, 0.9, galaxy.a));
-        const nebula = vec3(1.0, 0.16, 0.3).mul(rose).add(vec3(0.1, 0.5, 0.62).mul(teal))
-            .mul(gather)
-            .mul(dust.mul(-0.8).add(1))
-            .mul(calm.mul(0.6).add(0.4))
-            .mul(0.035);
-        // Deep space is not one flat black: a faint indigo that swells and fades with the clouds.
-        const depth = vec3(0.0025, 0.003, 0.008).mul(cloudA.mul(1.2).add(0.4));
+        // The large walls and their dark interiors live in the panorama. Three octaves in the
+        // sky's direction add grain wherever the lens magnifies a bright cloud, without poles.
+        const fine = noise3(d.mul(18.6).add(vec3(1.3, 7.7, -2.1))).toVar();
+        const grain = noise3(d.mul(69).add(vec3(-6.1, 0.4, 3.3))).toVar();
+        const fibres = noise3(d.mul(vec3(168, 107, 193)).add(fine.xyy.mul(3.8))).toVar();
+        const reflected = smoothstep(0.004, 0.075, galaxy.b.sub(galaxy.r.mul(2.35))).toVar();
+        const dust = smoothstep(0.46, 0.76, fine.y.mul(0.60).add(grain.y.mul(0.29)).add(fibres.y.mul(0.11)))
+            .mul(reflected).mul(calm).toVar();
+        const speck = fine.x.mul(0.40).add(grain.x.mul(0.39)).add(fibres.x.mul(0.21));
+        const mottle = mix(float(0.9), speck.mul(1.68).add(0.22), calm).mul(dust.mul(-0.65).add(1));
+        const clouds = mix(float(1), u.nebulaGain, reflected.mul(0.88));
+        const depth = vec3(0.0015, 0.0024, 0.0055);
         const stars = starLayer(d, 57, galaxy.a, 0).toVar();
-        if (starLayers > 1) stars.addAssign(starLayer(d.zxy, 23, galaxy.a.mul(0.8).add(0.2), 6).mul(1.6));
-        const glow = galaxy.rgb.mul(mottle).mul(SKY_LIFT).add(depth).add(nebula.mul(u.nebulaGain));
-        return glow.mul(u.skyGain).add(stars.mul(dust.mul(-0.6).add(1)).mul(u.starGain));
+        if (starLayers > 1) stars.addAssign(starLayer(d.zxy, 23, galaxy.a.mul(0.64).add(0.18), 6).mul(1.75));
+        // A sharp wall winds into repeated blue hoops on rays just outside capture. Let only a
+        // dim image of its colour through there; the resolved stars still trace the bent light.
+        const galaxyLight = mix(galaxy.rgb.mul(0.23).add(depth), galaxy.rgb, calm).mul(mottle);
+        const glow = galaxyLight.mul(clouds).mul(SKY_LIFT).add(depth);
+        return glow.mul(u.skyGain).add(stars.mul(dust.mul(-0.6).add(1)).mul(calm.mul(0.42).add(0.58)).mul(u.starGain));
     };
 
     /** Emission and opacity of the disk where a ray crosses its plane. */
     const shadeDisk = (p, radius, towardCamera, order, travelled) => {
-        const turn = atan(p.z, p.x).div(TAU);
+        const turn = atan(p.z, p.x).div(TAU).toVar();
         const orbit = pow(float(HOLE.DISK_INNER).div(radius), 1.5);
         const shear = orbit.sub(RIGID_RATE);
-        const v = radius.sub(HOLE.DISK_INNER).div(HOLE.DISK_OUTER - HOLE.DISK_INNER);
+        const v = radius.sub(HOLE.DISK_INNER).div(HOLE.DISK_OUTER - HOLE.DISK_INNER).toVar();
         const base = turn.sub(u.diskRigid);
-        const uvA = vec2(base.sub(shear.mul(u.flowA)), v);
-        const uvB = vec2(base.sub(shear.mul(u.flowB)).add(0.37), v.add(0.21));
+        // Eccentric streams compress the gas as they wrap: a broad sweep of radius,
+        // then a tighter curl where material overtakes the leading edge of each wake.
+        // Keep the azimuth periodic across atan's seam and through a wrapped rigid turn.
+        const azimuth = turn.mul(TAU).sub(u.wake.x);
+        const path = azimuth.add(v.mul(u.wake.y)).toVar();
+        const drift = sin(path).mul(0.068).add(sin(path.mul(2).add(v.mul(3.1))).mul(0.028));
+        const streamV = v.add(drift.mul(u.wake.z)).toVar();
+        const uvA = vec2(base.sub(shear.mul(u.flowA)), streamV);
+        const uvB = vec2(base.sub(shear.mul(u.flowB)).add(0.37), streamV.add(0.21));
         // Texels a pixel covers along the disk's radius; grazing rays cover many.
         const grazing = max(abs(towardCamera.y), 0.045);
-        const texels = u.pixelAngle.mul(travelled).mul(TEX_ROWS / (HOLE.DISK_OUTER - HOLE.DISK_INNER)).div(grazing);
+        const texels = u.pixelAngle.mul(travelled)
+            .mul(diskTexture.image.height / (HOLE.DISK_OUTER - HOLE.DISK_INNER)).div(grazing);
         const lod = max(log2(max(texels, 1)).sub(0.6).add(order.mul(1.2)), 0).toVar();
         const gas = mix(texture(diskTexture, uvA).level(lod), texture(diskTexture, uvB).level(lod), u.flowMix).toVar();
         const fine = gas.toVar();
@@ -294,55 +294,61 @@ export function createLensMaterial({
         }
 
         const lanes = gas.r;
-        const streaks = mix(gas.g, fine.g, 0.35);
+        // The front breaks into a chain of knots. Its dark trailing trough gives the
+        // hot lip depth, particularly at low resolution where fine fibres disappear.
+        const phase = path.mul(2).add(gas.r.sub(0.5).mul(2.4)).add(sin(azimuth).mul(0.78));
+        const fold = cos(phase).toVar();
+        const lip = smoothstep(0.56, 0.99, fold).mul(smoothstep(0.24, 0.74, gas.b)).mul(u.wake.z).toVar();
+        const lee = smoothstep(-0.18, 0.66, fold).oneMinus();
+        const streaks = mix(gas.g, fine.g, 0.41);
+        // Fine fibres glow selectively along a billow. Soft ridges at several scales
+        // survive the texture's mip fade on a receding or grazing part of the sheet.
+        const filament = smoothstep(0.54, 0.80, fine.a).mul(smoothstep(0.36, 0.67, gas.g)).toVar();
         const gaps = smoothstep(0.2, 0.62, gas.a.mul(0.7).add(fine.a.mul(0.3)));
         const clumps = pow(gas.b, 4).mul(0.55).add(pow(fine.b, 5).mul(0.3));
         // Filaments: the octaves pushed through a knee so bright threads stand on darker gaps.
         // The broad lanes carry most of it and the ramp is wide: with the fine streaks in charge
         // and a narrow knee the gas read as brushed hair rather than glowing plasma.
-        const weave = lanes.mul(0.74).add(streaks.mul(0.26));
+        const weave = lanes.mul(0.66).add(streaks.mul(0.34)).add(lip.mul(0.13));
         const density = pow(smoothstep(0.2, 0.84, weave), 1.35)
-            .mul(gaps.mul(0.72).add(0.28))
+            .mul(gaps.mul(0.66).add(0.34)).mul(lee.mul(-0.24).add(1))
             .add(clumps)
+            .add(filament.mul(0.14))
             .add(0.04)
             .toVar();
 
         const innerEdge = smoothstep(HOLE.DISK_INNER * 0.975, HOLE.DISK_INNER * 1.12, radius);
         const plunge = smoothstep(HOLE.PLUNGE, HOLE.DISK_INNER, radius).mul(innerEdge.oneMinus()).mul(0.3);
         // The rim frays: lanes reach further out than the gaps between them.
-        const rim = radius.div(HOLE.DISK_OUTER).add(lanes.sub(0.5).mul(0.3)).add(streaks.sub(0.5).mul(0.08));
+        const rim = radius.div(HOLE.DISK_OUTER).add(lanes.sub(0.5).mul(0.22)).sub(lip.mul(0.10))
+            .add(streaks.sub(0.5).mul(0.08));
         const envelope = innerEdge.add(plunge).mul(pow(smoothstep(0.52, 1.0, rim).oneMinus(), 1.4)).toVar();
 
         // Matter the player fed in: arcs of hot gas riding their orbit and shearing out.
         const fed = vec3(0).toVar();
         const fedGain = float(0).toVar();
-        Loop(HOTSPOT_SLOTS, ({ i }) => {
+        Loop(u.hotspotCount, ({ i }) => {
             const spot = u.hotspot.element(i);
-            If(spot.w.greaterThan(0.002), () => {
-                // Wrapped angular distance, leaning with the shear so the arc trails: one floor
-                // instead of an atan of a sine and a cosine, the same angle in [-π, π).
-                const lean = radius.sub(spot.y).mul(0.55);
-                const away = turn.mul(TAU).sub(spot.x).add(lean);
-                const arc = away.sub(floor(away.div(TAU).add(0.5)).mul(TAU));
-                const along = exp(arc.mul(arc).negate().div(spot.z.mul(spot.z)));
-                // The arc lengthens along its orbit but stays a thin thread across it.
-                const across = radius.sub(spot.y).div(spot.z.mul(0.16).add(0.42));
-                const glow = along.mul(exp(across.mul(across).negate())).mul(spot.w);
-                fed.addAssign(u.hotspotTint.element(i).xyz.mul(glow));
-                fedGain.addAssign(glow);
-            });
+            const lean = radius.sub(spot.y).mul(0.55);
+            const away = turn.mul(TAU).sub(spot.x).add(lean);
+            const arc = away.sub(floor(away.div(TAU).add(0.5)).mul(TAU));
+            const along = exp(arc.mul(arc).negate().div(spot.z.mul(spot.z)));
+            const across = radius.sub(spot.y).div(spot.z.mul(0.16).add(0.42));
+            const glow = along.mul(exp(across.mul(across).negate())).mul(spot.w);
+            fed.addAssign(u.hotspotTint.element(i).xyz.mul(glow));
+            fedGain.addAssign(glow);
         });
 
         // Pressure waves from a line clear: bright fronts running out through the gas.
         const shock = float(0).toVar();
-        for (let slot = 0; slot < WAVE_SLOTS; slot += 1) {
-            const wave = u.wave.element(slot);
+        Loop(u.waveCount, ({ i }) => {
+            const wave = u.wave.element(i);
             const front = radius.sub(wave.x).div(wave.z.add(0.001));
             shock.addAssign(exp(front.mul(front).negate()).mul(wave.y));
-        }
+        });
 
         // Relativistic beaming: gas on a circular orbit, seen along the ray's local direction.
-        const speed = sqrt(float(0.5).div(max(radius.sub(1), 0.4)));
+        const speed = sqrt(float(0.5).div(max(radius.sub(1), 0.62)));
         const tangent = vec3(p.z.negate(), 0, p.x).div(max(radius, 0.001));
         const shift = sqrt(speed.mul(speed).oneMinus())
             .div(speed.mul(dot(tangent, towardCamera)).oneMinus())
@@ -351,10 +357,11 @@ export function createLensMaterial({
 
         const warmth = pow(float(HOLE.DISK_INNER).div(radius), 0.9);
         const heat = warmth.mul(pow(beaming, 0.9)).mul(u.diskHeat)
-            .mul(density.mul(0.42).add(0.74))
+            .mul(density.mul(0.50).add(0.60)).add(lip.mul(0.105))
             .add(shock.mul(0.22))
             .add(fedGain.mul(0.2));
-        const power = pow(warmth, 2.4).mul(pow(beaming, 1.7)).mul(density.mul(density.add(0.35)))
+        const fibreLight = mix(float(0.73), float(1.18), smoothstep(0.29, 0.70, streaks));
+        const power = pow(warmth, 2.15).mul(pow(beaming, 1.7)).mul(density.mul(density.add(0.39))).mul(fibreLight)
             .mul(shock.mul(0.95).add(1));
         const raw = blackbody(heat).mul(u.diskTint).mul(power).mul(u.diskGain)
             .mul(2.7);
@@ -534,7 +541,10 @@ export function createLensMaterial({
 
         // Light that circled the hole piles up just outside the shadow: the photon ring.
         const beyond = max(impact.sub(HOLE.CRITICAL), 0);
-        const ring = exp(beyond.div(0.035).negate()).mul(0.9).add(exp(beyond.div(0.22).negate()).mul(0.12))
+        // A subpixel photon ring still conserves its light as the camera recedes.
+        const ringWidth = max(float(0.035), pixel.mul(0.78));
+        const ring = exp(beyond.div(ringWidth).negate()).mul(float(0.035).div(ringWidth)).mul(1.23)
+            .add(exp(beyond.div(0.18).negate()).mul(0.105))
             .mul(inbound.select(outside, 0))
             .mul(front);
         // Brighter where the disk's approaching side feeds it.
