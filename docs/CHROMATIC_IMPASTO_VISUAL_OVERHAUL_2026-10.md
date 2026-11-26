@@ -418,3 +418,16 @@ Run `npm run dev:playground` and open
 sequence. A fixed `t=12` with `event=perfect&eventAge=1.55` shows the opened rosette.
 The playground uses the shipping painter, materials, camera and post chain together with the
 solo well's stylesheet. The live-game screenshot above comes from an actual round in the game.
+
+## A darker canvas (2026-11-26)
+
+The owner asked for the canvas the paint lies on to be a little darker, with the paint's colours
+left alone. The surface shader now tones the bare cloth by `CANVAS_TONE` (0.6), weighted by how
+bare it is (the square of its cloth cover, as the weave's own thread colour is), so the mid-brown
+linen reads as a deep umber and a stroke thick enough to hide the weave is untouched. Bare cloth
+carries no gloss, so the change is a straight darkening of the cloth and nothing else.
+
+Compared at a fixed `t=12`, and at `t=40` with the solo well, on WebGPU High, the WebGL2 backend
+and the Minimal tier: the linen and the thin lay-in washes are darker, the thick strokes keep
+their colour, and the consoles stayed clean. The theme icon was not re-baked; it still shows the
+lighter linen.
