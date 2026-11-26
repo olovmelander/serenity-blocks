@@ -42,10 +42,14 @@
  * plus the hooves (for tests) and the ground plane under the deer (for its shadow).
  */
 
+import { createGrazingPose, sampleGrazing } from './odyssey-grazing.js';
+
 /** The herd and its clock. Spots are world (x, z); `size` is a share of a grown hind. */
 export const ODYSSEY_DEER = Object.freeze({
     /** Drawn larger than life, like the act's other life. */
     scale: 3.0,
+    /** Signed distance to drinking water for animals that visit a shore (world units). */
+    waterDistance: /** @type {((x: number, z: number) => number) | null} */ (null),
     /**
      * [first, last] journey progress the herd is drawn at. Both ends are where the glade is out of
      * the frame (the first deep in chapter 2's water, the last after L16 has turned the eye away):
@@ -77,7 +81,12 @@ export const ODYSSEY_DEER = Object.freeze({
     dropMost: 0.24,
     /** Local rotations of a grazing head (the neck swung down its three bones, the face to the grass). */
     graze: Object.freeze({
-        neck0: 1.85, neck1: 0.5, neck2: 0.4, head: -2.3, dip: 0.08,
+        neck0: 1.85,
+        neck1: 0.5,
+        neck2: 0.4,
+        head: -2.3,
+        dip: 0.08,
+        muzzle: /** @type {readonly number[] | null} */ (null),
     }),
     members: Object.freeze([
         Object.freeze({
@@ -1041,7 +1050,10 @@ export function createDeerRig(skeleton) {
         count,
         index,
         legs,
+        legBones: new Set(legs.flatMap((leg) => leg.chain)),
         footOffset,
+        grazing: createGrazingPose(),
+        browseReach: { pose: null, y: 0, z: 0 },
         local: Array.from({ length: count }, () => [0, 0, 0]),
         R: Array.from({ length: count }, () => new Float64Array(9)),
         J: Array.from({ length: count }, () => new Float64Array(3)),
@@ -1071,6 +1083,27 @@ function softMin(a, b, r) {
 }
 function softMax(a, b, r) {
     return -softMin(-a, -b, r);
+}
+
+/** The muzzle relative to the chest in a neutral feeding pose, in model metres. */
+function grazingReach(rig, pose) {
+    const target = rig.browseReach;
+    if (target.pose === pose) return target;
+    target.pose = pose;
+    target.y = 0;
+    target.z = 0;
+    let angle = 0;
+    let previous = rig.skeleton[rig.index.chest].head;
+    for (const name of ['neck0', 'neck1', 'neck2', 'head', 'muzzle']) {
+        const point = name === 'muzzle' ? pose.muzzle : rig.skeleton[rig.index[name]].head;
+        const dy = point[1] - previous[1];
+        const dz = point[2] - previous[2];
+        target.y += (Math.cos(angle) * dy) - (Math.sin(angle) * dz);
+        target.z += (Math.sin(angle) * dy) + (Math.cos(angle) * dz);
+        if (name !== 'muzzle') angle += pose[name];
+        previous = point;
+    }
+    return target;
 }
 
 /**
@@ -1157,27 +1190,40 @@ export function poseDeer(rig, deer, time, heightAt, table = null, offset = 0, cf
     // nodding with the fore feet in a walk, cropping and swaying while grazing.
     const G = cfg.graze;
     const lookAt = (lag) => deerChannel(deer, 'look', time - lag, 1.1);
-    const crop = g * (1 - walk);
+    const feeding = g * (1 - walk) * (1 - hold);
+    // Once the lowered muzzle reaches the shoreline, the animal holds it there to sip.
+    const shore = cfg.waterDistance
+        ? 1 - s5(cfg.waterDistance(state.x + (sh * k), state.z + (ch * k)) / k) : 0;
+    const crop = feeding * (1 - shore);
+    const drink = feeding * shore;
+    const size = k / cfg.scale;
+    const browse = sampleGrazing(time, seed, size, 1.4 / (cfg.cycle * Math.sqrt(size)), rig.grazing);
+    const pluck = crop * browse.pluck;
+    const sweep = crop * browse.sweep;
     const nod = 0.06 * (swingOf(1) + swingOf(3)) * walk;
-    const graze = (time * 0.43) + seed;
-    set('neck0', (G.neck0 * g) + (0.18 * walk * (1 - g)) - (0.05 * (1 - g)) + nod, lookAt(0.42) * 0.22);
-    set('neck1', G.neck1 * g, lookAt(0.32) * 0.28);
+    set(
+        'neck0',
+        (G.neck0 * g) + (0.18 * walk * (1 - g)) - (0.05 * (1 - g)) + nod - (0.08 * pluck),
+        (lookAt(0.42) * 0.22) + (0.09 * sweep),
+    );
+    set('neck1', G.neck1 * g, (lookAt(0.32) * 0.28) + (0.05 * sweep));
     set('neck2', (G.neck2 * g) - (0.06 * (1 - g) * state.alert), lookAt(0.22) * 0.28);
     set(
         'head',
-        (G.head * g) + (0.06 * crop * Math.sin(time * TAU * 1.3)) + (0.05 * (1 - g) * noise(time * 0.6, seed + 3)),
-        (lookAt(0.12) * 0.2) + (0.14 * crop * noise(graze, seed + 5)),
+        (G.head * g) + (0.035 * pluck) + (0.02 * drink * browse.swallow)
+            + (0.05 * (1 - g) * noise(time * 0.6, seed + 3)),
+        (lookAt(0.12) * 0.2) + (0.12 * sweep),
     );
     // The jaw: cropping while it grazes, chewing the cud now and then with the head up.
-    const cud = (1 - g) * (1 - walk) * Math.max(0, noise(time * 0.15, seed + 9));
-    set('jaw', 0.1 * (Math.max(0, Math.sin(time * TAU * 1.5)) ** 2) * Math.min(1, crop + cud));
+    const cud = (1 - g) * (1 - state.alert) * (1 - walk) * (1 - hold) * Math.max(0, noise(time * 0.15, seed + 9));
+    set('jaw', (0.1 * browse.chew * (crop + cud)) + (drink * ((0.017 * browse.chew) + (0.035 * browse.swallow))));
     // Ears: toward the look, forward when alert, back and turning about on their own while it
     // grazes; a flick now and then.
     const look0 = lookAt(0);
     const listen = (s) => noise((time * 0.35) + s, s) * 0.6 * (1 - state.alert);
-    const flick = (s) => Math.max(0, Math.sin((time * 1.9) + (s * 3.1))) ** 14;
-    set('earL', 0.15 * g, (look0 * 0.7) + listen(seed + 11), (-0.25 * (1 - state.alert)) + (0.4 * flick(seed)));
-    set('earR', 0.15 * g, (look0 * 0.7) + listen(seed + 13), (0.25 * (1 - state.alert)) - (0.4 * flick(seed + 2)));
+    const flick = 0.4 * (1 - (0.8 * state.alert)) * (1 - hold);
+    set('earL', 0.15 * g, (look0 * 0.7) + listen(seed + 11), (-0.25 * (1 - state.alert)) + (flick * browse.earL));
+    set('earR', 0.15 * g, (look0 * 0.7) + listen(seed + 13), (0.25 * (1 - state.alert)) - (flick * browse.earR));
     // The tail: down, lifted and swished now and then.
     const tailEvent = Math.max(0, noise(time * 0.3, seed + 17) - 0.55) / 0.45;
     set('tail', 0.12 - (0.45 * tailEvent), 0.35 * Math.sin(time * 9) * tailEvent);
@@ -1209,7 +1255,7 @@ export function poseDeer(rig, deer, time, heightAt, table = null, offset = 0, cf
         mul3(pr, rotation(l[0], l[1], l[2], L), R[b]);
     };
     // (The shoulders and hips are placed with the body; below them the legs are solved after.)
-    const legBones = new Set(rig.legs.flatMap((leg) => leg.chain));
+    const { legBones } = rig;
     const bodyFk = () => {
         for (let b = 0; b < skeleton.length; b += 1) {
             if (b !== rootIndex && !legBones.has(b)) fkBone(b);
@@ -1251,6 +1297,28 @@ export function poseDeer(rig, deer, time, heightAt, table = null, offset = 0, cf
         // rather lift. `dropMost`.)
         const most = (cfg.dropMost ?? 0.24) * k;
         J[rootIndex][1] -= most * (1 - Math.exp(-drop / most));
+        bodyFk();
+    }
+    // The ibex lowers its weight and bows toward lichen, or raises its neck on uphill rock.
+    // Sample below its full, neutral reach: the pluck and sweep stay free to lift off that patch.
+    if (G.muzzle && g > 0.2 && walk < 1 && hold < 1) {
+        // A turn carries the muzzle away from this patch; release its reach as the animal pivots.
+        const grazingDepth = (g - 0.2) / 0.8;
+        const reachWeight = (grazingDepth ** 2 * (1 - s5(walk)) * (1 - hold)) / (1 + ((state.turning / 0.3) ** 2));
+        const target = grazingReach(rig, G);
+        const chest = J[index.chest];
+        const r = R[index.chest];
+        const y = target.y * k;
+        const z = target.z * k;
+        const mx = chest[0] + (r[1] * y) + (r[2] * z);
+        const my = chest[1] + (r[4] * y) + (r[5] * z);
+        const mz = chest[2] + (r[7] * y) + (r[8] * z);
+        const above = ((my - heightAt(mx, mz)) / k) - 0.012;
+        const crouch = softMin(softRamp(above, 0.025) * 0.5, 0.12, 0.018);
+        J[rootIndex][1] -= crouch * k * reachWeight;
+        const bow = 0.74 * Math.tanh((above - crouch) / 0.21) * reachWeight;
+        local[index.chest][0] += 0.45 * bow;
+        local[index.neck0][0] += 0.55 * bow;
         bodyFk();
     }
     // THE LEGS: each reaches its hoof (two segments in the leg's plane, a little out to the side),

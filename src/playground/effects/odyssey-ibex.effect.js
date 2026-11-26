@@ -15,6 +15,7 @@ import { createOdysseyWorld } from '../../rendering/odyssey/world/odyssey-world-
 import { ODYSSEY_EYE_RAIL_OFFSET_Y } from '../../rendering/odyssey/world/odyssey-world-height.js';
 import { getOdysseyPathPointAt } from '../../rendering/odyssey/path-utils.js';
 import { createOdysseyIbex } from '../../rendering/odyssey/composition/odyssey-ibex.js';
+import { createIbexGround } from '../../rendering/odyssey/composition/odyssey-ibex-herd.js';
 import { deerStateAt } from '../../rendering/odyssey/composition/odyssey-deer-herd.js';
 import { ODYSSEY_WORLD_SUN } from '../../rendering/odyssey/chapter-environments/shared/chapter-profile.js';
 
@@ -40,6 +41,7 @@ export function create({ scene, camera, params }) {
     const progress = Number.parseFloat(params.get('p') || '') || 0.26;
     const which = Math.max(0, Math.min(3, Number(params.get('ibex') ?? 0)));
     const view = params.get('view') ?? 'three';
+    const groundAt = view === 'rail' ? world.heightAt : createIbexGround(world.heightAt);
     const dist = Number(params.get('dist') ?? 0);
     let ready = false;
     ibex.load().then(() => {
@@ -58,7 +60,6 @@ export function create({ scene, camera, params }) {
             const animal = ibex.herd[which];
             const { k } = animal;
             deerStateAt(animal, time, at);
-            const y = world.heightAt(at.x, at.z);
             if (view === 'rail') {
                 // From the ground track's eye toward the herd's middle.
                 const mid = ibex.herd.reduce((m, a) => {
@@ -67,7 +68,7 @@ export function create({ scene, camera, params }) {
                     m.z += s.z / ibex.herd.length;
                     return m;
                 }, { x: 0, z: 0 });
-                const midY = world.heightAt(mid.x, mid.z) + 2;
+                const midY = groundAt(mid.x, mid.z) + 2;
                 const eye = [rail.x, rail.y + ODYSSEY_EYE_RAIL_OFFSET_Y, rail.z];
                 // (`dist` brings the eye in along that line, the rail's angle at a nearer distance.)
                 const span = Math.hypot(eye[0] - mid.x, eye[1] - midY, eye[2] - mid.z);
@@ -82,6 +83,7 @@ export function create({ scene, camera, params }) {
                 cam.updateProjectionMatrix();
                 return;
             }
+            const y = groundAt(at.x, at.z);
             const h = at.heading;
             const fx = Math.sin(h);
             const fz = Math.cos(h);
@@ -95,6 +97,13 @@ export function create({ scene, camera, params }) {
             else if (view === 'rear') e = [at.x - (fx * d), y + (k * 1.2), at.z - (fz * d)];
             else if (view === 'side') e = [at.x + (lx * d), y + (k * 0.8), at.z + (lz * d)];
             else e = [at.x + (((fx * 0.7) + (lx * 0.7)) * d), y + (k * 1.4), at.z + (((fz * 0.7) + (lz * 0.7)) * d)];
+            // Keep the line to the feet clear when the close camera is uphill or behind a rock lip.
+            for (const fraction of [0.25, 0.5, 0.75, 1]) {
+                const x = at.x + (e[0] - at.x) * fraction;
+                const z = at.z + (e[2] - at.z) * fraction;
+                const eyeY = y + (groundAt(x, z) - y) / fraction + k + cam.near;
+                e[1] = Math.max(e[1], eyeY);
+            }
             cam.position.set(...e);
             cam.lookAt(at.x, y + (k * 0.6), at.z);
             cam.fov = 35;
