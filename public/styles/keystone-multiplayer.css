@@ -2032,6 +2032,12 @@
     text-align: left !important;
 }
 
+/* An invite-only room shows no ID to pass on (lobby-waiting-room.js setLobbyType). */
+#lobby-waiting-room .room-code-display[hidden],
+#lobby-waiting-room .room-code-hint[hidden] {
+    display: none;
+}
+
 #lobby-waiting-room .room-code-hint {
     margin: 0;
     color: var(--sb-text-faint);

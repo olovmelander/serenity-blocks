@@ -1169,6 +1169,12 @@ export function registerSteamIPC() {
                     maxPlayers: Number(l.getMemberLimit() ?? 0),
                     endCondition: l.getData('end_condition') || 'frags',
                     endConditionValue: l.getData('end_condition_value') || '10',
+                    // What kind of room it is, and whether this build can play in it
+                    // (src/core/steam/steam-networking.js, src/core/network/match-compatibility.js).
+                    // A lobby from a build that predates a key reports nothing for it.
+                    gameType: l.getData('game_type') || undefined,
+                    attackStyle: l.getData('attack_style') || undefined,
+                    compatibility: l.getData('compat') || undefined,
                     // Match lifecycle the host advertises via setLobbyData('status', ...)
                     // so the browser can offer Join / "Join (next round)" / Watch. Empty
                     // (older/un-stamped lobbies) → browser derives status from capacity.

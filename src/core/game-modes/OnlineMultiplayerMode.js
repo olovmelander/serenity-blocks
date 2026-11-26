@@ -9,6 +9,7 @@ import steamService from '../steam/steam-service.js';
 import { FFAGameStateP2P } from '../multiplayer/ffa-p2p-game-state.js';
 import { readMatchLevelRule } from '../multiplayer/match-level-rule.js';
 import { readVersusGameType } from '../multiplayer/versus-rules.js';
+import { readVersusAttackStyle } from '../multiplayer/versus-attack-style.js';
 import {
     clearDeathState, enterDeadSpectate, exitDeadSpectate, hideDropInWaitingBanner, reconcileDeathOverlay,
     showDeathAnimation, showDropInWaitingBanner,
@@ -36,9 +37,10 @@ import { menuCoversGame } from '../../ui/sheet-input.js';
 import { MultiplayerScoreboardOverlay } from '../../ui/multiplayer-scoreboard-overlay.js';
 import { updateNextQueue } from '../../ui/next-queue-ui.js';
 import { OnlineVersusHud, VICTORY_BEAT_MS } from '../../ui/online-versus-hud.js';
-import { handleOnlineSessionExit } from '../../ui/online-session-exit.js';
+import { announceNewHost, handleOnlineSessionExit, KNOWN_EXIT_REASONS } from '../../ui/online-session-exit.js';
+import { settleMatchResult } from './online-departure-win.js';
 import { createOnlineInputHooks } from './online-input-hooks.js';
-import { syncFfaSteamStats } from './online-steam-stats.js';
+import { recordOnlineMatchStats } from './online-steam-stats.js';
 import { MessageTypes } from '../network/message-types.js';
 import { SnapshotInterpolator } from '../network/snapshot-interpolation.js';
 // Central registry reader (src/core/flags.js, Phase 0.6) — replaces the former
@@ -301,6 +303,8 @@ export class OnlineMultiplayerMode extends BaseGameMode {
                 (detail) => this._handleMatchResults(detail),
             );
             this.cleanupHandlers.push(this.matchResultsUnsub);
+            // A host change mid-match was silent: every player is told who hosts now.
+            this.cleanupHandlers.push(onMultiplayerEvent(MULTIPLAYER_EVENTS.HOST_MIGRATED, (d) => announceNewHost(this, d)));
         }
     }
 
@@ -456,8 +460,9 @@ export class OnlineMultiplayerMode extends BaseGameMode {
      */
     async handleCreateLobby(config) {
         try {
-            // Create lobby via Steam
-            const lobbyId = await this.steamNetworking.createLobby(config);
+            // Create lobby via Steam. The match list shows the game type and attack style.
+            const kind = { gameType: readVersusGameType(config), attackStyle: readVersusAttackStyle(config) };
+            const lobbyId = await this.steamNetworking.createLobby({ ...config, ...kind });
 
             // Create FFA game state as host
             this.ffaGameState = new FFAGameStateP2P(
@@ -529,6 +534,8 @@ export class OnlineMultiplayerMode extends BaseGameMode {
             // Update game state reference
             this.lobbyWaitingRoom.gameState = this.ffaGameState;
         }
+        // An invite-only room shows no lobby ID to pass on.
+        this.lobbyWaitingRoom.setLobbyType(this.lobbyType);
 
         // Show waiting room
         this.lobbyWaitingRoom.show();
@@ -735,15 +742,14 @@ export class OnlineMultiplayerMode extends BaseGameMode {
             return;
         }
 
-        syncFfaSteamStats(detail, {
-            records: this.deps?.highScoreManager,
-            localSteamId: this.steamNetworking?.steamId,
-            rounds: this.roundNumber,
-            localLines: this.ffaGameState?.getLocalPlayer?.()?.gameState?.lines,
-        }).catch((err) => {
-            console.warn('[OnlineMultiplayer] Steam stats sync failed:', err.message);
-        });
+        // A win because everyone else left is first checked against this computer's own
+        // connection (online-departure-win.js); every other result is recorded and shown at once.
+        settleMatchResult(this, detail);
+    }
 
+    /** A finished match: its stats to the record book, then the victory beat and the results. */
+    _recordAndShowResults(detail) {
+        recordOnlineMatchStats(this, detail);
         if ((this.matchResultsModal && this.matchResultsModal.isVisible) || this._victoryBeatTimer) {
             return;
         }
@@ -894,7 +900,7 @@ export class OnlineMultiplayerMode extends BaseGameMode {
     }
 
     _handleKicked(detail = {}) {
-        const reason = ['connection_lost', 'host_left'].includes(detail.reason) ? detail.reason : 'kicked';
+        const reason = KNOWN_EXIT_REASONS.includes(detail.reason) ? detail.reason : 'kicked';
         return handleOnlineSessionExit(this, { ...detail, reason });
     }
 
@@ -1034,6 +1040,7 @@ export class OnlineMultiplayerMode extends BaseGameMode {
 
         this.opponentWatchManager = new OpponentWatchManager(watchGrid);
         this.opponentWatchManager.setLocalPlayer(this.steamNetworking.steamId);
+        this.opponentWatchManager.setFreeForAll(this._isFreeForAll()); // a waiting player's tile says when they play
         // A spectator has no board of its own, so show the WHOLE roster (not just 4
         // opponents-besides-me). Its localPlayerId isn't in the roster, so setPlayers'
         // local-filter is a no-op. setMaxVisible also widens the CSS grid (full-roster
@@ -2688,6 +2695,7 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         this.playerListRichPresenceUnsub = null;
         this._kickedUnsub = null;
         this._joinRejectedUnsub = null;
+        this._ownConnectionCheck = null;
         this.networkHandlersRegistered = false;
         this.lastPlayerSignature = '';
 
@@ -2700,8 +2708,8 @@ export class OnlineMultiplayerMode extends BaseGameMode {
     /**
      * Update Steam Rich Presence for lobby joins (enables "Join Game"). Only a public or
      * friends match is offered to friends: a private one, or one whose type is not known, sets
-     * no `connect` key and no group (the group is the lobby ID), so it is joined by invite or
-     * by the ID its host shares (multiplayer/lobby-type.js).
+     * no `connect` key and no group (the group is the lobby ID), so a private one is joined by
+     * invite (multiplayer/lobby-type.js).
      */
     async _setLobbyRichPresence() {
         if (!this.currentLobbyId) {

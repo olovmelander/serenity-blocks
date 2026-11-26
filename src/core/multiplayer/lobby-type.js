@@ -4,12 +4,15 @@
  *
  * - `public`: in the match list; anyone can join.
  * - `friends`: not in the list; the host's Steam friends join from their friends list.
- * - `private`: not in the list and not offered to friends; players join by invite or by the
- *   lobby ID the host shares.
+ * - `private`: not in the list and not offered to friends; players join by invite only. The
+ *   game shows no lobby ID for one (lobbySharesItsId). Whether Steam itself refuses a join by
+ *   a bare ID to its Private lobby type is for the two-account test to show: the game has no
+ *   admission check of its own.
  *
  * The host picks the type (ui/match-config-modal.js) and publishes it as lobby data
- * (`LOBBY_TYPE_KEY`), which every player who joins reads. Two things follow it:
+ * (`LOBBY_TYPE_KEY`), which every player who joins reads. Three things follow it:
  *
+ * - The waiting room shows the lobby ID, to pass on, for public and friends matches only.
  * - "Join game" on a player's Steam profile and friends list (the `connect` rich-presence key)
  *   is offered for public and friends matches only. A private match, or one whose type is not
  *   known, never offers it.
@@ -69,4 +72,14 @@ export function lobbyOffersJoinToFriends(type) {
  */
 export function chatLobbyType(type) {
     return type === 'friends' || type === 'private' ? type : 'public';
+}
+
+/**
+ * Whether a match of this type shows its lobby ID for players to pass on. A private match is
+ * invite only, so its waiting room offers the Invite button and no ID. A match whose type is
+ * not known shows none either.
+ * @param {unknown} type
+ */
+export function lobbySharesItsId(type) {
+    return type === 'public' || type === 'friends';
 }

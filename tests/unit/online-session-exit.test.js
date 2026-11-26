@@ -6,7 +6,7 @@ import {
     it,
     vi,
 } from 'vitest';
-import { handleOnlineSessionExit } from '../../src/ui/online-session-exit.js';
+import { handleOnlineSessionExit, KNOWN_EXIT_REASONS } from '../../src/ui/online-session-exit.js';
 
 class TestCustomEvent {
     constructor(type, options = {}) {
@@ -57,6 +57,20 @@ describe('online terminal session exit', () => {
                 type: 'warning',
             },
         });
+    });
+
+    it.each([
+        ['own_connection_lost', 'Your connection to Steam was lost, so the match ended.'],
+        ['resync_retry_exhausted', 'The match could not be kept in sync with the host, so you left it.'],
+        ['connection_lost', 'The host lost contact with you, so you left the match.'],
+    ])('says why for %s instead of blaming a removal on the host', async (reason, message) => {
+        const mode = makeMode();
+        expect(KNOWN_EXIT_REASONS).toContain(reason);
+
+        await handleOnlineSessionExit(mode, { reason });
+
+        expect(mode._handleExitToMenu).toHaveBeenCalledOnce();
+        expect(dispatchEvent.mock.calls[0][0].detail).toEqual({ message, type: 'warning' });
     });
 
     it('falls back to local generic copy for an unknown host reason', async () => {

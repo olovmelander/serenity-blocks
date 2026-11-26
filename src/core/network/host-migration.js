@@ -217,6 +217,11 @@ export class HostMigration {
             game.isHost = false;
             this.network.isHost = false;
             this.startMonitoring();
+            // A follower hears of the change too, so every player can be told who hosts now
+            // (the new host announces its own in becomeHost). The first host is no change.
+            if (previousHostId) {
+                emitMultiplayerEvent(MULTIPLAYER_EVENTS.HOST_MIGRATED, { newHostId, previousHostId });
+            }
         }
     }
 

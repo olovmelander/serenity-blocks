@@ -41,7 +41,9 @@ function makeMode() {
 /** What a lobby entry gives the cached mode, a fresh game state each session. */
 function enterLobby(mode) {
     mode.ffaGameState = { cleanup: vi.fn(), players: new Map() };
-    mode.lobbyWaitingRoom = { show: vi.fn(), hide: vi.fn(), gameState: null };
+    mode.lobbyWaitingRoom = {
+        show: vi.fn(), hide: vi.fn(), setLobbyType: vi.fn(), gameState: null,
+    };
     mode.showWaitingRoom();
 }
 

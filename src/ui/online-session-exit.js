@@ -15,7 +15,49 @@ const EXIT_MESSAGES = Object.freeze({
     kicked: 'You were removed from the match by the host.',
     connection_lost: 'The host lost contact with you, so you left the match.',
     host_left: 'The host left, so the lobby closed.',
+    // The match seemed won because everyone else fell silent, but it was this computer that
+    // dropped (core/game-modes/online-departure-win.js).
+    own_connection_lost: 'Your connection to Steam was lost, so the match ended.',
+    // The host gave up resending the match state. It used to read "removed by the host".
+    resync_retry_exhausted: 'The match could not be kept in sync with the host, so you left it.',
 });
+
+/**
+ * A host change mid-match (core/network/host-migration.js) in words for the player.
+ * @param {{ newHostId?: unknown, localSteamId?: unknown, name?: string | null }} change
+ * @returns {string} empty when there is no new host to name
+ */
+export function describeNewHost({ newHostId, localSteamId, name } = {}) {
+    if (!newHostId) return '';
+    if (localSteamId && String(newHostId) === String(localSteamId)) return 'You are now hosting this match.';
+    return name ? `${name} is now hosting this match.` : 'This match has a new host.';
+}
+
+/**
+ * Tell the player who hosts now. The match carries on, so this is a note, not a warning.
+ * @param {any} mode the online mode: nothing is said once its match is gone
+ * @param {{ newHostId?: unknown }} [change]
+ */
+export function announceNewHost(mode, change = {}) {
+    if (!mode?.ffaGameState) return;
+    const message = describeNewHost({
+        newHostId: change.newHostId,
+        localSteamId: mode.steamNetworking?.steamId,
+        name: mode._getPlayerName?.(change.newHostId),
+    });
+    if (!message) return;
+    try {
+        window.dispatchEvent(new CustomEvent('serenity:toast', { detail: { message, type: 'info' } }));
+    } catch (error) { /* no-op outside the browser */ }
+}
+
+/**
+ * Ways out of a match that arrive as a "kicked" event and have words of their own. Any other
+ * reason a host sends reads as a plain removal: the host's text is never shown.
+ */
+export const KNOWN_EXIT_REASONS = Object.freeze([
+    'connection_lost', 'host_left', 'own_connection_lost', 'resync_retry_exhausted',
+]);
 
 /** Why a host can be gone that this computer's relay network would explain (core/network/host-migration.js). */
 const RELAY_EXPLAINS_HOST_GONE = new Set(['p2p_failed', 'timeout']);

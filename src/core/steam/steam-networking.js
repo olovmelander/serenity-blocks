@@ -38,6 +38,7 @@ import {
     PROTOCOL_V2,
     SUPPORTED_PROTOCOL_VERSIONS,
 } from '../network/protocol-version.js';
+import { LOBBY_COMPATIBILITY_KEY, MATCH_COMPATIBILITY } from '../network/match-compatibility.js';
 
 const electronApi = typeof window !== 'undefined' ? window.electronAPI : null;
 const ipcRenderer = electronApi
@@ -55,6 +56,14 @@ const UNDECODABLE_DELTA_RESYNC_RUN = 60;
 export const MAX_P2P_PACKET_BYTES = 64 * 1024;
 /** Steam lobby member changes that mean the member is gone. */
 const LOBBY_DEPARTURES = new Set(['left', 'disconnected', 'kicked', 'banned']);
+/** Lobby data keys that tell a browsing player what kind of room it is (ui/lobby-browser.js). */
+export const LOBBY_GAME_TYPE_KEY = 'game_type';
+export const LOBBY_ATTACK_STYLE_KEY = 'attack_style';
+/**
+ * A rule's name as lobby data: a short lowercase word, or nothing.
+ * @param {unknown} value
+ */
+const lobbyWord = (value) => (typeof value === 'string' && /^[a-z_]{1,24}$/.test(value) ? value : '');
 /** The logical channels this protocol uses; a sender-chosen one grew the sequence map without bound. */
 const LOGICAL_CHANNELS = new Set([0, 1, 2]);
 /** Rejected-packet counts keep at most this many types, each name cut to this length. */
@@ -336,6 +345,10 @@ export class SteamNetworking {
                 ? PROTOCOL_V2
                 : this.protocolVersion,
         } = options;
+        // What kind of room this is, for a player choosing from the match list. The caller
+        // names them (multiplayer/versus-rules.js); only a plain word is published.
+        const gameType = lobbyWord(options.gameType);
+        const attackStyle = lobbyWord(options.attackStyle);
         if (!this.lockProtocolSession(requiredProtocolVersion)) {
             throw new Error(`Unsupported required protocol version: ${requiredProtocolVersion}`);
         }
@@ -361,6 +374,9 @@ export class SteamNetworking {
                 lobbyType,
                 endCondition,
                 endConditionValue,
+                gameType,
+                attackStyle,
+                compatibility: MATCH_COMPATIBILITY,
                 version: this.getNegotiatedProtocolVersion(),
                 // Match lifecycle as advertised to the lobby browser:
                 //   'open' (waiting room, normal Join) | 'playing' (in progress → drop-in / watch) | 'finished'
@@ -404,6 +420,16 @@ export class SteamNetworking {
             );
             await ipcRenderer.invoke('steam:setLobbyData', lobbyId, 'end_condition', endCondition);
             await ipcRenderer.invoke('steam:setLobbyData', lobbyId, 'end_condition_value', endConditionValue.toString());
+            if (gameType) await ipcRenderer.invoke('steam:setLobbyData', lobbyId, LOBBY_GAME_TYPE_KEY, gameType);
+            if (attackStyle) await ipcRenderer.invoke('steam:setLobbyData', lobbyId, LOBBY_ATTACK_STYLE_KEY, attackStyle);
+            // The list marks a room whose number differs instead of offering Join
+            // (network/match-compatibility.js); the join handshake checks it again.
+            await ipcRenderer.invoke(
+                'steam:setLobbyData',
+                lobbyId,
+                LOBBY_COMPATIBILITY_KEY,
+                String(MATCH_COMPATIBILITY),
+            );
             await ipcRenderer.invoke(
                 'steam:setLobbyData',
                 lobbyId,
@@ -1435,6 +1461,9 @@ export class SteamNetworking {
                 hostName: lobby.hostName,
                 endCondition: lobby.endCondition,
                 endConditionValue: lobby.endConditionValue,
+                gameType: lobby.gameType,
+                attackStyle: lobby.attackStyle,
+                compatibility: lobby.compatibility,
                 // Surface the advertised lifecycle so the browser can show Join vs
                 // "Join (next round)" / Watch for an in-progress match. Falls back to
                 // capacity-derived status in the browser when absent (older entries).

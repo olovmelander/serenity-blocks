@@ -45,6 +45,8 @@ const GAME_STATE_SNAPSHOT_FIELDS = [
 // in play); it is checked when present, never required, and dropped before apply. An older
 // receiver requires it, so it rejects a newer host's sidecar through the normal failure path.
 const LEGACY_GAME_STATE_SNAPSHOT_FIELDS = ['handicapCrowd'];
+/** The game-state fields a sidecar carries, for the match compatibility pin (network/match-compatibility.js). */
+export const FFA_RESYNC_SIDECAR_GAME_STATE_FIELDS = Object.freeze([...GAME_STATE_SNAPSHOT_FIELDS]);
 export const FFA_RESYNC_SIDECAR_MAX_JSON_CHARS = 1024 * 1024;
 
 /** @param {unknown} value */

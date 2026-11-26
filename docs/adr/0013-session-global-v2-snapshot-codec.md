@@ -82,3 +82,28 @@ flag is re-dated past it, to 2026-12-31, instead of letting `npm test` fail on 1
 else changes: protocol 1 stays the default, protocol 2 stays opt-in, and the plan is still one
 recorded two-machine session, then protocol 2 as the host default. If that session has not happened
 by 2026-12-31, re-date again here with the reason, or drop the flag.
+
+## Amendment — 2026-11-26: `wireV2` re-dated to 2027-03-31, and what "binary-v7" means now
+
+The two-peer soak still has not run. It needs real Steam on two machines, and the development
+machine has no Steam client; the run log in
+[TWO_MACHINE_STEAM_VALIDATION.md](../TWO_MACHINE_STEAM_VALIDATION.md) is empty. The owner chose
+(decision D12 in [STEAM_ONLINE_RELEASE_DRIFT_2026-11.md](../STEAM_ONLINE_RELEASE_DRIFT_2026-11.md))
+to keep the flag off, launch on protocol 1 and re-date the flag to 2027-03-31, past the two-account
+release test. The bar is unchanged: one recorded two-machine session, which is test T4 of the
+[release plan](../STEAM_ONLINE_RELEASE_PLAN_2026-11.md). Removing protocol 2 was rejected: a blind
+match's deltas are about thirty times larger than a plain one's, so the frame that drops the base64
+wrapper matters more than it did. If the session has not happened by 2027-03-31, re-date again here
+with the reason, or drop the flag.
+
+Two statements above are out of date and stay as written for the record:
+
+- "binary-v7" was the packed body's format when this was decided. The body is at format 8 since
+  [ADR-0025](0025-versus-attack-styles.md) (hidden cells). Protocol 1 and protocol 2 both carry that
+  same body; `snapshot-frame-v2.js` accepts exactly the body format `binary-encoding.js` writes.
+- "A future incompatible header or packed-body format requires another explicit protocol
+  codec/version." The move to format 8 added none, so two builds could agree on a protocol version
+  and then fail to decode each other. That requirement is now met by the match compatibility number
+  ([ADR-0026](0026-match-compatibility-number.md)), which the join handshake and the match list
+  check. A change to the body, the resync sidecar or the versus rules raises that number; the
+  protocol versions keep meaning the envelope and the snapshot frame.

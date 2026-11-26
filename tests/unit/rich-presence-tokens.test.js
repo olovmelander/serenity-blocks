@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('../../src/core/steam/steam-service.js', () => ({ default: {} }));
 
-const { buildRichPresence } = await import('../../src/core/steam/rich-presence-manager.js');
+const { buildRichPresence, RichPresenceManager } = await import('../../src/core/steam/rich-presence-manager.js');
 const { GAME_MODES } = await import('../../src/core/constants.js');
 
 /** The tokens uploaded to Steamworks (steam/rich-presence/english.vdf). */
@@ -50,5 +50,39 @@ describe('Steam Rich Presence', () => {
         expect(buildRichPresence(GAME_MODES.ONLINE_MULTIPLAYER, { inMatch: true, playerCount: 4, position: 1 }).text)
             .toBe('Online Versus · 4-player match');
         expect(buildRichPresence('no-such-mode').text).toBe('In the menu');
+    });
+});
+
+describe('the player count of an online match in progress', () => {
+    /** A manager with its timers out of the way: only the data it would publish matters here. */
+    function manager(data) {
+        const presence = new RichPresenceManager();
+        presence._scheduleUpdate = vi.fn();
+        presence.currentMode = GAME_MODES.ONLINE_MULTIPLAYER;
+        presence.currentData = data;
+        return presence;
+    }
+
+    it('follows a drop-in and a leave', () => {
+        const presence = manager({ inMatch: true, playerCount: 2, position: 1 });
+        presence.setMatchRoster(3);
+        expect(presence.currentData.playerCount).toBe(3);
+        expect(buildRichPresence(presence.currentMode, presence.currentData).text).toBe('Online Versus · 3-player match');
+        presence.setMatchRoster(2);
+        expect(presence.currentData.playerCount).toBe(2);
+        expect(presence._scheduleUpdate).toHaveBeenCalledTimes(2);
+
+        // The same count, or no count, publishes nothing.
+        presence.setMatchRoster(2);
+        presence.setMatchRoster(undefined);
+        presence.setMatchRoster(0);
+        expect(presence._scheduleUpdate).toHaveBeenCalledTimes(2);
+    });
+
+    it('is left to the lobby status events outside a match', () => {
+        const presence = manager({ inLobby: true, playerCount: 2, maxPlayers: 8 });
+        presence.setMatchRoster(5);
+        expect(presence.currentData.playerCount).toBe(2);
+        expect(presence._scheduleUpdate).not.toHaveBeenCalled();
     });
 });

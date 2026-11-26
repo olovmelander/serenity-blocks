@@ -3,6 +3,7 @@ import {
 } from 'vitest';
 import { LobbyBrowser } from '../../src/ui/lobby-browser.js';
 import { LobbyWaitingRoom } from '../../src/ui/lobby-waiting-room.js';
+import { MATCH_COMPATIBILITY } from '../../src/core/network/match-compatibility.js';
 import { MultiplayerScoreboardOverlay } from '../../src/ui/multiplayer-scoreboard-overlay.js';
 
 const subscriptions = vi.hoisted(() => new Set());
@@ -115,7 +116,9 @@ describe('lobby browser async ownership', () => {
         browser.escapeHtml = (text) => String(text ?? '');
         const setter = vi.fn();
         Object.defineProperty(browser.container.list, 'innerHTML', { set: setter });
-        const lobby = { id: '123', name: 'Room', hostName: 'Host', players: 1, maxPlayers: 4 };
+        const lobby = {
+            id: '123', name: 'Room', hostName: 'Host', players: 1, maxPlayers: 4, compatibility: MATCH_COMPATIBILITY,
+        };
         browser.lobbies = [lobby];
         browser.renderLobbies();
         browser.lobbies = [{ ...lobby, unrelatedHeartbeat: 300 }];

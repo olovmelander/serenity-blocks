@@ -32,12 +32,21 @@ describe('lobby browser rows', () => {
     it('escape a lobby owner\'s name, host and id in attributes and text', async () => {
         const { LobbyBrowser } = await import('../../src/ui/lobby-browser.js');
         const browser = Object.create(LobbyBrowser.prototype);
-        const html = browser.lobbyRowHtml({
+        const { MATCH_COMPATIBILITY } = await import('../../src/core/network/match-compatibility.js');
+        const lobby = {
             id: PAYLOAD, name: PAYLOAD, hostName: PAYLOAD, status: PAYLOAD, players: 1, maxPlayers: 4,
-        });
+            // What kind of room it is comes from the host too: only known words are shown.
+            gameType: PAYLOAD, attackStyle: PAYLOAD,
+        };
+        const html = browser.lobbyRowHtml({ ...lobby, compatibility: MATCH_COMPATIBILITY });
         expect(html).not.toContain('<img');
         expect(html).toContain('data-lobby-id="&quot;&gt;&lt;img src=x onerror=alert(1)&gt;"');
         expect(html).toContain('aria-label="Watch &quot;&gt;&lt;img src=x onerror=alert(1)&gt;"');
+
+        // A room on another version names itself in the reason it cannot be joined.
+        const otherVersion = browser.lobbyRowHtml({ ...lobby, compatibility: PAYLOAD });
+        expect(otherVersion).not.toContain('<img');
+        expect(otherVersion).toContain('aria-label="&quot;&gt;&lt;img src=x onerror=alert(1)&gt; is hosted on an older version');
     });
 });
 
