@@ -1270,7 +1270,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
         defaultValue: 'Unset (ambient scene).',
         example: 'effect=cinder-drift&t=20&event=b2b&lines=2&eventAge=0.75',
         notes: 'b2b defaults to a quad. Set lines=2 for a back-to-back twist double. '
-            + 'perfect combines a quad and a perfect clear. crown replays the delayed perfect-clear callback.',
+            + 'perfect plays a quad that empties the board. crown adds the crown effect 360 ms after a clear.',
         sources: [
             'src/playground/effects/cinder-drift.effect.js',
         ],
