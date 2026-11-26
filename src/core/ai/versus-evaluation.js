@@ -27,31 +27,51 @@ export const VERSUS_WEIGHTS = Object.freeze({
     height: 4.952,
     room: 3.775,
     danger: 2.254,
-    attack: 40.25,
-    attackSquare: 28.42,
-    single: 4.996,
-    small: 2.541,
-    patience: 7.848,
+    // Round three: the clears moved a quarter of the way to Stephen's own prices (negative single,
+    // small and patience pay for a small clear instead of charging it).
+    attack: 77.958,
+    attackSquare: 24.62,
+    single: -41.804,
+    small: -18.936,
+    patience: -36.519,
     calm: 5.113,
     tLines: 40.36,
     tSquare: 2.414,
     kill: 150,
-    opener: 300,
+    opener: 245.33,
     right: 0.45,
     // The surface and the clears, as recorded strong players weigh them (round three). colTrans,
     // rowTrans: changes between filled and empty down each column and along each row; wellRight:
     // how far the right wall's column stands below its neighbours; wellsMid: inner columns three or
     // more below both neighbours; peak: the tallest column; readyMid: rows short of one inner cell;
     // clearHigh, clearGarbage: each line of a clear of one to four lines, by rows of stack over six
-    // and by garbage rows on the board before it; big: each line of a fire past four. The surface
-    // four are a quarter of what Stephen's own placements price them at (the full price lost to
-    // these weights in live duels); the others stay at zero, where they leave the play as it was.
+    // and by garbage rows on the board before it; big: each line of a fire past four. Each is a
+    // quarter of what Stephen's own placements price it at (the full price lost in live duels);
+    // peak and readyMid stay at zero: a search builds towers and loose rows for them.
     colTrans: 34.545,
     rowTrans: 6.88,
     wellRight: 19.313,
     wellsMid: 20.448,
     peak: 0,
     readyMid: 0,
+    clearHigh: -3.275,
+    clearGarbage: 6.305,
+    big: 8.928,
+});
+
+/**
+ * Last Standing keeps round two's prices for clears. There "calm" means the roof is far, which it
+ * nearly always is, and the standard well's payment for small clears on a calm board would buy
+ * singles all game long (two tier 10s sent 0.09 rows a piece). The surface terms apply in both.
+ */
+export const LAST_STANDING_VERSUS_WEIGHTS = Object.freeze({
+    ...VERSUS_WEIGHTS,
+    attack: 40.25,
+    attackSquare: 28.42,
+    single: 4.996,
+    small: 2.541,
+    patience: 7.848,
+    opener: 300,
     clearHigh: 0,
     clearGarbage: 0,
     big: 0,
@@ -71,7 +91,9 @@ const PAIRS = (1 << (COLS + 1)) - 1;
  * like any other: left out, its roof would hide whatever is dumped under it.
  */
 function surface(board, w) {
-    const { rows, tops, height, first } = board;
+    const {
+        rows, tops, height, first,
+    } = board;
     let rowTrans = 0;
     let colTrans = 0;
     let readyMid = 0;

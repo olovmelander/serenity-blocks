@@ -2,11 +2,12 @@
 // a position: the board before it, the piece, the next three, the rows waiting, the cells chosen.
 // The positions come from recordings kept outside this repo: set VERSUS_POSITIONS to the file.
 // node agree.mjs <name pattern, e.g. stephen> [tier] [limit] ['{"versusWeights":{...}}' | old | -] [game pattern]
+// AGREE_DUEL=1 plans as a seat of a local versus duel does (duelPlanning).
 import { readFileSync } from 'node:fs';
 import { COLS, HIDDEN_ROWS, SHAPES } from '../../src/core/constants.js';
 import { GameState, rotateShapeMatrix } from '../../src/core/game.js';
 import { rebuildBoardGridFromPieces } from '../../src/core/board.js';
-import { GravityBotController } from '../../src/core/ai/gravity-bot-controller.js';
+import { GravityBotController, gravityPlanningRate, VERSUS_ROOF_PLANNING } from '../../src/core/ai/gravity-bot-controller.js';
 import { VERSUS_WEIGHTS } from '../../src/core/ai/versus-evaluation.js';
 import { applyVersusFeel } from '../../src/core/multiplayer/versus-rules.js';
 
@@ -51,13 +52,17 @@ function cellsOf(key, candidate) {
  * Play a list of positions with a bot and count where it agrees with the player.
  * @returns {{ n: number, same: number, sameColumns: number, clears: number, clearsSame: number }}
  */
-export function agreement(list, { tier = 10, versusWeights = VERSUS_WEIGHTS, each = null } = {}) {
+export function agreement(list, {
+    tier = 10, versusWeights = VERSUS_WEIGHTS, each = null, planning = {},
+} = {}) {
     const state = new GameState({ disableLevelProgression: true, hitStopEnabled: false });
     applyVersusFeel(state);
     state.isSeeking = true;
     let waiting = 0;
+    // planning: { planUnitsPerMs, roofPlanningRate } as a seat of a local duel gets them (duelPlanning);
+    // left out, the bot plans as it did in rounds one and two of this measure.
     const bot = new GravityBotController({
-        playerState: state, playerIndex: 0, difficulty: tier, actions: {}, rng: () => 0.99, versus: true, versusWeights, pendingRows: () => waiting,
+        playerState: state, playerIndex: 0, difficulty: tier, actions: {}, rng: () => 0.99, versus: true, versusWeights, pendingRows: () => waiting, ...planning,
     });
     bot.config.mistakeChance = 0;
     const out = { n: 0, same: 0, sameColumns: 0, clears: 0, clearsSame: 0, fired: 0 };
@@ -91,6 +96,11 @@ export function agreement(list, { tier = 10, versusWeights = VERSUS_WEIGHTS, eac
     return out;
 }
 
+/** The planning a seat of a local versus duel gets, for agreement(..., { planning }). */
+export function duelPlanning(tier = 10) {
+    return { planUnitsPerMs: gravityPlanningRate(2, tier, true), roofPlanningRate: VERSUS_ROOF_PLANNING };
+}
+
 /** Every `step`th position of the players whose name matches, from games that match. */
 export function pick({ name = /./, game = /./, players = null, step = 1, offset = 0 } = {}) {
     return positions().filter((p) => name.test(p.name) && game.test(p.game) && (players === null || players(p.players)))
@@ -99,7 +109,7 @@ export function pick({ name = /./, game = /./, players = null, step = 1, offset 
 
 if (process.argv[1]?.endsWith('agree.mjs')) {
     const [who = 'stephen', tier = '10', limit = '1500', how = '', games = '.'] = process.argv.slice(2);
-    const options = { tier: Number(tier) };
+    const options = { tier: Number(tier), ...(process.env.AGREE_DUEL && { planning: duelPlanning(Number(tier)) }) };
     if (how === 'old') options.versusWeights = null;
     else if (how && how !== '-') options.versusWeights = JSON.parse(how).versusWeights;
     const all = pick({ name: new RegExp(who, 'i'), game: new RegExp(games) });

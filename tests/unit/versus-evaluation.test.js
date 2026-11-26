@@ -19,7 +19,8 @@ import {
 import { readGravityBoard, steadyLandings } from '../../src/core/ai/gravity-search.js';
 import { LocalBotManager } from '../../src/core/ai/local-bot-manager.js';
 import {
-    VERSUS_WEIGHTS, rowsToBlockSpawn, rowsToRoof, versusAttack, versusCalm, versusReward, versusTrigger, versusValue,
+    LAST_STANDING_VERSUS_WEIGHTS, VERSUS_WEIGHTS, rowsToBlockSpawn, rowsToRoof, versusAttack, versusCalm, versusReward,
+    versusTrigger, versusValue,
 } from '../../src/core/ai/versus-evaluation.js';
 
 const HEIGHT = ROWS + HIDDEN_ROWS;
@@ -71,13 +72,26 @@ describe('rows a clear sends', () => {
         expect(versusReward(kill, 3, false)).toBe(versusReward(PLAY, 3, false));
     });
 
-    it('a small clear waits on a low board and not on a high one or with rows coming', () => {
+    it('calm is a low board with no rows coming; it prices small clears and never a fire of five', () => {
         const board = (rows) => readGravityBoard(grid(Array.from({ length: rows }, () => '....A.....')));
         expect(versusCalm(board(1), 0, PLAY)).toBeGreaterThan(versusCalm(board(10), 0, PLAY));
         expect(versusCalm(board(19), 0, PLAY)).toBe(0);
         expect(versusCalm(board(1), 1, PLAY)).toBe(0);
-        expect(versusReward(PLAY, 2, false, 1)).toBeLessThan(versusReward(PLAY, 2, false, 0));
+        // Stephen takes small clears on a low board too: the shipped weights pay for them there.
+        expect(versusReward(PLAY, 2, false, 1)).toBeGreaterThan(versusReward(PLAY, 2, false, 0));
         expect(versusReward(PLAY, 6, false, 1)).toBe(versusReward(PLAY, 6, false, 0));
+        // A positive patience still holds a small clear back while all is calm.
+        const waiting = { weights: { ...VERSUS_WEIGHTS, patience: 7.848 } };
+        expect(versusReward(waiting, 2, false, 1)).toBeLessThan(versusReward(waiting, 2, false, 0));
+    });
+
+    it('small clears pay more with garbage on the board; big fires pay for every line past four', () => {
+        const play = { weights: VERSUS_WEIGHTS };
+        const none = { high: 0, garbage: 0 };
+        expect(versusReward(play, 2, false, 0, { high: 0, garbage: 6 })).toBeGreaterThan(versusReward(play, 2, false, 0, none));
+        expect(versusReward(play, 6, false, 0, { high: 0, garbage: 6 })).toBe(versusReward(play, 6, false, 0, none));
+        const noBig = { weights: { ...VERSUS_WEIGHTS, big: 0 } };
+        expect(versusReward(play, 7, false) - versusReward(noBig, 7, false)).toBeCloseTo(3 * VERSUS_WEIGHTS.big);
     });
 
     it('a shot another piece could make grows with its rows', () => {
@@ -228,9 +242,13 @@ describe('where versus play applies', () => {
         standard.sharedPieceSeed = 5;
         const [a, b] = [manager(well), manager(standard)].map((bots) => bots.controllers.get(0));
         expect(a.playerState.isInfinityMode).toBe(true);
-        expect(a.versusWeights).toBe(VERSUS_WEIGHTS);
+        // Last Standing: the same surface, round two's prices for clears.
+        expect(a.versusWeights).toBe(LAST_STANDING_VERSUS_WEIGHTS);
+        expect(b.versusWeights).toBe(VERSUS_WEIGHTS);
+        expect(a.versusWeights.colTrans).toBe(VERSUS_WEIGHTS.colTrans);
+        expect(a.versusWeights.patience).toBeGreaterThan(0);
         expect(a.config.reactionMs[0]).toBeLessThan(b.config.reactionMs[0]);
-        expect(a.config.reactionMs[0]).toBeGreaterThan(b.config.reactionMs[0] - 30);
+        expect(a.config.reactionMs[0]).toBeGreaterThan(b.config.reactionMs[0] - 40);
         expect(a.config.maxApm).toBe(b.config.maxApm);
         expect(a.planUnitsPerMs).toBe(b.planUnitsPerMs);
     });

@@ -26,6 +26,8 @@ for (let seed = Number(first); seed < Number(first) + Number(count); seed++) {
             const change = overrides[bot.playerIndex];
             if (Object.keys(overrides).length) bot.sharedSearch = null;
             if (change && 'versusWeights' in change) bot.versusWeights = change.versusWeights;
+            if (change?.units) bot.planUnitsPerMs *= change.units;
+            if (change?.roofRate) bot.roofPlanningRate = change.roofRate;
             if (change?.shipped) {
                 if (bot.config.tier !== 10 || bot.localPace) throw Error('The shipped pace is known for tier 10 only');
                 bot.versusWeights = null;

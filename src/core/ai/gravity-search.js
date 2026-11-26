@@ -568,7 +568,7 @@ export function* searchGravity(state, config, pending, weights = GRAVITY_WEIGHTS
     // board has put by. The rules below for digging, firing and finishing are not consulted.
     const play = config.versusPlay || null;
     const calm = play ? versusCalm(start, pending, play) : 0;
-    const context = play ? versusContext(start) : null;
+    const startContext = play ? versusContext(start) : null;
     const payout = (move) => (config.versus ? move.attack : move.score);
     const qualifiesRelease = (waves, lines, perfect) => waves.length >= 2
         && ((studyRelease && lines - waves[0] >= 2) || perfect);
@@ -665,7 +665,7 @@ export function* searchGravity(state, config, pending, weights = GRAVITY_WEIGHTS
                 } : quietContext;
                 // Summed in this order: Odyssey's rivals replay to the last rounding.
                 const reward = play
-                    ? parent.reward + versusReward(play, paid.lines, waves.length > 0 && !board.stock, calm, context)
+                    ? parent.reward + versusReward(play, paid.lines, waves.length > 0 && !board.stock, calm, startContext)
                     : parent.reward + paid.score * weights.score + (scoreMode ? 0 : paid.attack * weights.attack)
                         + waves.length ** 2 * weights.waves;
                 const move = {
