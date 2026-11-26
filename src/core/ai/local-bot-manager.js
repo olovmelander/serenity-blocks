@@ -85,6 +85,8 @@ export class LocalBotManager {
             const versus = this.playsVersus();
             const tallRoom = versus && playerState.isInfinityMode && botCount >= 3;
             const planUnitsPerMs = gravityPlanningRate(botCount, judgmentTier, versus) / (tallRoom ? VERSUS_PLANNING : 1);
+            // Last Standing keeps round two's prices for clears (LAST_STANDING_VERSUS_WEIGHTS).
+            const wellWeights = playerState.isInfinityMode ? LAST_STANDING_VERSUS_WEIGHTS : VERSUS_WEIGHTS;
 
             const input = (name, action, value) => () => (this.tickInput
                 ? this.tickInput.emit({
@@ -127,7 +129,7 @@ export class LocalBotManager {
                 precomputeBetweenTicks: true,
                 planUnitsPerMs,
                 ...(versus && !tallRoom && { roofPlanningRate: VERSUS_ROOF_PLANNING }),
-                versusWeights: versus ? (playerState.isInfinityMode ? LAST_STANDING_VERSUS_WEIGHTS : VERSUS_WEIGHTS) : null,
+                versusWeights: versus ? wellWeights : null,
                 versusOutlook: () => this.versusOutlook(index),
                 rng: seededRandom((seed ^ Math.imul(index + 1, 0x85ebca6b)) >>> 0),
                 timingRng: seededRandom((seed ^ Math.imul(index + 1, 0xc2b2ae35)) >>> 0),

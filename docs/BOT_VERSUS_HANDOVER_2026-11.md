@@ -1,6 +1,6 @@
 # Handover: local versus bots that play like strong players
 
-24 November 2026, branch `feature/bots-versus`. For whoever works on the bots next. Background: [playbook](VERSUS_PLAYBOOK_2026-11.md) (how strong people play, from decoded recordings), [audit](BOT_VERSUS_AUDIT_2026-11.md) (the bots before this work), [plan and decisions](BOT_VERSUS_PLAN_2026-11.md), [a chain and a full match, drawn](BOT_VERSUS_REPLAY_2026-11.md). A second round on 25 November (Last Standing, the opening, the left wall) is at the end: [round two](#round-two-25-november-2026-last-standing-the-opening-the-left-wall).
+24 November 2026, branch `feature/bots-versus`. For whoever works on the bots next. Background: [playbook](VERSUS_PLAYBOOK_2026-11.md) (how strong people play, from decoded recordings), [audit](BOT_VERSUS_AUDIT_2026-11.md) (the bots before this work), [plan and decisions](BOT_VERSUS_PLAN_2026-11.md), [a chain and a full match, drawn](BOT_VERSUS_REPLAY_2026-11.md). A second round on 25 November (Last Standing, the opening, the left wall) is at the end: [round two](#round-two-25-november-2026-last-standing-the-opening-the-left-wall). A third on 26 November (what Stephen's placements price, a search that finishes, the pace held): [round three](#round-three-26-november-2026-stephens-prices-a-search-that-finishes-the-pace-held).
 
 ## What changed in the game
 
@@ -226,3 +226,141 @@ The recorded positions are kept outside the repo: set `VERSUS_POSITIONS` to the 
 4. **Four tier 10s in Last Standing** finish a 100-row well in about 36 s. Worth a person's eye: is the top tier too much in a full room?
 5. **Tier 10's speed in Last Standing** is 155 to 158 a minute among equals and 195 against a seat that sends little.
 6. Lower tiers show the left wall less (tier 4: 38% left, 41% right).
+
+Items 1, 3, 4, 5 and 6 moved in round three, below.
+
+## Round three, 26 November 2026: Stephen's prices, a search that finishes, the pace held
+
+Branch `feature/bots-stephen-3`. The owner asked for the bots to keep being audited and improved toward the best possible play, Stephen's way, in the standard well and in Last Standing.
+
+### What his placements price
+
+Every legal placement of the piece in each of his 8,454 recorded positions was scored two ways by the bot itself: the value of the board right after it (versusValue plus versusReward), and the best its four-piece search finds from it. A conditional logit then asked what picks his placement, held out by game (nine games, each left out in turn).
+
+| What picks the placement | Same cells as Stephen, unseen games |
+| --- | ---: |
+| The bot as it played (round two) | 42.2% |
+| The bot's value of the board after the piece | 44.8% |
+| The bot's four-piece search | 31.1% |
+| Both | 45.6% |
+| Both, with each part of the value priced afresh and the new measures below | 48.4% |
+| The same and the search | 49.6% |
+| The other players, the last two lines' model without the search | 55.0% (48.7% the value alone) |
+
+His prices, in the bot's own points (the value's weight on each part, against round two's):
+
+| Part | Round two | Stephen |
+| --- | ---: | ---: |
+| A row sent / its square | 40 / 28 | 191 / 13 |
+| A single, a clear of two or three | charged 5, 2.5 | paid 182, 83 |
+| A small clear on a calm board | charged 7.8 a line short of five | paid 170 |
+| The opening (each line short of six) | charged 300 | charged 81 |
+| Bumpiness / height of the spawn columns | 12.5 / 5 | 44 / 23 |
+| A cell on the board | +0.28 | -18 |
+| A change between filled and empty, down a column / along a row | - | -138 / -28 |
+| Each row the right wall's column stands below its neighbours | - | -77 |
+| An inner column three or more below both neighbours | - | -82 |
+| A clear of one to four, each line per garbage row on the board | - | +25 |
+
+He keeps a lower, smoother, cleaner board than the bot, takes small clears freely, above all with garbage in the well, and keeps the right wall full. The search finds what a price pays for four pieces deep: the board and ready-row parts at a quarter of his price lowered agreement (39.5%, 40.1%), and the surface at his full price cost fire size and lost (below). Every term went in at a quarter of his price.
+
+### What changed
+
+| Change | Where |
+| --- | --- |
+| The surface: column and row transitions, deep inner wells, a well on the right wall, a quarter of his price | `colTrans`, `rowTrans`, `wellsMid`, `wellRight` in `VERSUS_WEIGHTS`, `surface()` |
+| The clears in the standard well, a quarter of his price: more for a row sent, a little less for a very big fire, singles and small clears paid (more with garbage on the board), the opening shorter | `attack`, `attackSquare`, `single`, `small`, `patience`, `opener`, `big`, `clearGarbage`, `clearHigh`; `versusContext` |
+| Last Standing keeps round two's prices for clears: "calm" there is the roof's distance, nearly always far, and paying for small clears on a calm board bought singles all game (two tier 10s sent 0.09 rows a piece) | `LAST_STANDING_VERSUS_WEIGHTS`, `LocalBotManager` |
+| The ready-clear test skips a settle that cannot beat the best found: blocks keep their columns as they fall, so a clear takes at most as many lines as the emptiest column then has cells. The same choices (every agreement count identical on 2,114 positions), about a third of the time a planning unit on standard boards | `versusValue` |
+| Versus seats plan with twice the share they had, and at 0.7 units a ms near the roof (0.35). Last Standing rooms of three or four bots keep the older share: their tall towers make every settle dear | `VERSUS_PLANNING`, `VERSUS_ROOF_PLANNING`, `gravityPlanningRate`, `roofPlanningRate` |
+| Tier 10 sets pieces down at most 171 times a minute on average (three quicker pieces in a row allowed), in every room and both wells. It reads a piece in 150 to 170 ms in the standard well (158 to 178) and 126 to 146 ms in Last Standing (136 to 156) | `minDropIntervalMs`, `PACE_BURST`, `TOP_TIER_MIN_DROP_MS`, `EXPERT_REACTION_MS`, `LAST_STANDING_EXPERT_REACTION_MS` |
+
+Odyssey rivals and peaceful matches keep their play: they do not read the versus weights, and their planning rates are unchanged.
+
+### Results
+
+Against round two's bot (its weights, its planning share and near-roof rate; both seats on the same hands and pace limit), fresh seeds, seats swapped:
+
+| | New | Round two | Undecided or tied |
+| --- | ---: | ---: | ---: |
+| Standard well, 192 five-minute duels: games led | 181 | 7 | 4 tied (95.3% of the points; frags 677 : 129) |
+| Last Standing, 48 duels, 60-row well, ten minutes: last standing | 24 | 0 | 24 |
+
+How it got there (96 duels each unless noted; each line against the line it builds on):
+
+| Step | Points |
+| --- | ---: |
+| Surface at 0.15 / 0.25 / 0.35 / 0.5 / 1 of his price, against round two | 47.9 / 67.2 / 60.9 / 50.0 / 43.2% |
+| Surface at 0.25, 192 fresh duels | 56.5% (frags 794 : 672) |
+| Twice the planning, round two's weights | 72.9% |
+| Surface 0.25, twice the planning, near-roof 0.7 / no near-roof cut / three times and 1.05 | 89.6 / 89.6 / 94.3% |
+| Clears at 0.25 against that bot, 192 fresh duels / at 0.5 | 72.4% (frags 323 : 176) / 58.9% |
+
+Same cells as the recorded player, all positions:
+
+| | Round two | Now | Planning as a duel seat does |
+| --- | ---: | ---: | ---: |
+| Stephen, 8,454 | 42.2% | 43.9% | 43.7% |
+| Stephen's clears of two or more (857) | 58.0% | 66.6% | 63.7% |
+| The other players, 11,442 | 42.8% | - | 43.7% |
+
+The left wall, open column of a 5+ fire (left of the two walls): duels of tier 10s 66% left, 11% right (85%; Stephen's live duels 67%, 11%; round two 52%, 29%); rooms of four 42%, 28%; tier 4 56%, 14% (round two 38%, 41%).
+
+Ladder, standard well, 48 games a pair (seeds 590001 and on, both seat orders), ten-minute limit:
+
+| Pair | Higher to 7 | Lower to 7 | Time limit | Frags | Points (95%) |
+| --- | ---: | ---: | ---: | --- | --- |
+| 10-9 | 2 | 0 | 46 | 85:16 | 69% (55-80) |
+| 9-8 | 7 | 1 | 40 | 114:41 | 71% (57-82) |
+| 8-7 | 8 | 0 | 40 | 129:32 | 70% (56-81) |
+| 7-6 | 0 | 0 | 48 | 86:51 | 62% (47-74) |
+| 6-5 | 3 | 0 | 45 | 126:70 | 56% (42-69) |
+| 5-4 | 6 | 2 | 40 | 154:80 | 66% (51-77) |
+| 4-3 | 11 | 0 | 37 | 152:75 | 59% (45-72) |
+| 3-2 | 3 | 0 | 45 | 112:76 | 56% (42-69) |
+| 2-1 | 3 | 0 | 45 | 122:63 | 62% (47-74) |
+
+Ladder, Last Standing, 60-row well, 16 games a pair (higher last standing / lower / undecided): 10-9 2/0/14, 9-8 9/2/5, 8-7 12/1/3, 7-6 8/5/3, 6-5 7/4/5, 5-4 8/2/6, 4-3 8/2/6, 3-2 7/5/4, 2-1 7/5/4.
+
+Rooms of equal tier 10s:
+
+| Room | Pieces a minute (seats) | Length | Round two |
+| --- | --- | --- | --- |
+| Standard, two (12 games) | 158 (153-162) | none to seven in 300 s | 161, 351 s to seven |
+| Standard, three | 156 (144-167) | 96 s | 168, 82 s |
+| Standard, four | 163 (142-173) | 54 s | 176, 54 s |
+| Last Standing, two, 100 rows (6) | 153-155 | none decided in ten minutes | 155-158, 4 of 6 decided |
+| Last Standing, four, 100 rows (6) | 146-157 | 33 to 600 s | 36 s |
+
+Duels of the new bots are calmer: between tier 10s a player dies about every 3.8 minutes (Stephen's recorded duels: every 2.2), and most ladder games reach the ten-minute limit.
+
+### Cost and safety
+
+- A planning unit on recorded duel boards: 37.5 µs before, 13.7 µs after the settle skip; its slowest 21.7 ms before, 1.45 ms after (busy machine; same units).
+- The real game in headless Chrome, 30 fps, 40 s a room, planning per animation frame mean / 99% / longest: standard duel 0.12 / 2.2 / 17.5 ms; standard four 0.23 / 4.2 / 13.2; Last Standing duel 0.28 / 2.1 / 6.7; Last Standing four 0.38 / 3.1 / 7.6 (round two: 0.15 / 2.1, 0.15 / 2.2, 0.23 / 1.2, 0.45 / 3.6 / 34). Console: only headless Chrome refusing to autoplay music and Last Standing's note that it runs on the legacy clock.
+- The simulator, per game tick, mean / 99%: standard duel 0.24 / 1.28 ms before, 0.26 / 1.86 after; four 0.30 / 1.23, 0.48 / 2.13; the Last Standing four at its kept share 0.98 / 5.95 against 0.83 / 5.58. Doubled, that room went to 1.50 / 11.4 (37 ms longest), which is why it keeps the older share.
+- Sixteen seeded rooms rewritten (`seeded-rooms.mjs write`) and replayed the same in two other processes.
+- Odyssey: 280 of 280 rival games end as stored, on the final code; 4,500 of 4,500 campaign attempts identical to round two's run, field by field (run on the first commit of the round; the second changes nothing Odyssey reads).
+- The unit suite: 28,808 passed. Four files failed in the full run and pass alone: `display-settings-apply`, `capture-process-cleanup` and `protocol-wire-source-contract` timed out while the Odyssey campaign ran beside the suite; `local-versus-cameras` fails the same way on clean main in full runs (round one). Types, the TS ratchet, the lint ratchet (at its baseline), architecture fitness, theme lifecycle, boundaries, performance budgets, release gates, IP strings and the build pass.
+
+### What did not work
+
+- His prices at full strength through the search: the board and ready-row parts lowered agreement (39.5%, 40.1% at a quarter); the surface at full price lost the duels (43.2%) with smaller fires.
+- The shelf's own column left out of the transitions: 3.1% and 13.0% of the points. Its roof then hides whatever is dumped under it.
+- The clears in Last Standing (above).
+- Eight quicker pieces allowed instead of three: Last Standing did not speed up (its pace is clear time), and single seats in rooms of four reached 185 a minute.
+- A trap: the board context first shared its name with the reward context inside the search loop, so every run with the garbage and height clear terms read the wrong object; those runs were thrown away and measured again. The lint ratchet caught it.
+
+### How to repeat
+
+The study and the run scripts are kept outside the repo with the recordings (round3 in the private folder); they read `VERSUS_POSITIONS`. In the repo: `AGREE_DUEL=1 node reports/bots-versus-2026-11/agree.mjs stephen` plans as a duel seat does; record.mjs and infinity-rooms.mjs take a seat's `units` (times its planning share) and `roofRate`; infinity-rooms.mjs takes `@file`.
+
+### Open after round three
+
+1. **Last Standing 10-9** is flat in a 60-row well: tier 10 finished tier 9 in 2 of 16 games within ten minutes, 14 undecided (round two: 22 of 24). Tier 9 got the same doubled planning.
+2. **Calmer duels.** Fewer deaths than Stephen's games and most ladder games run to the limit. Worth a person's eye: does a duel of tier 10s feel too long?
+3. **Three times the planning** gained about five more points over twice; the real game's standard four would then plan about 6 ms at 99%.
+4. **Agreement** is 43.9%; a one-piece model reaches 48 to 50% on unseen games. The gap is the search applying one-piece prices four pieces deep: the next step is a fit through the search, not more weight sweeps.
+5. **Last Standing rooms of three or four bots** plan at the older share; an exact skip that works on tall towers would let them have more.
+6. **Pace.** Room means 156 to 163 (standard) and 146 to 157 (Last Standing four, whose short games are mostly clearing); single seats in crowded rooms 142 to 173.
+7. The opening was not measured again (`opener` 300 to 245 in the standard well). Nothing here has been played by a person.
