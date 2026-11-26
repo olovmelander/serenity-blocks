@@ -88,9 +88,15 @@ export class TideLight {
         this.primed = false;
 
         const blank = new THREE.DataTexture(new Uint8Array([255, 255, 255, 255]), 1, 1);
+        // WGSL bakes nearest/nearest into textureLoad when a pending pipeline first sees this
+        // texel. The later light buffer needs bilinear sampling across its low-resolution grid.
+        blank.minFilter = THREE.LinearFilter;
+        blank.magFilter = THREE.LinearFilter;
         blank.needsUpdate = true;
         this.blank = blank;
         const dark = new THREE.DataTexture(new Uint8Array([0, 0, 0, 0]), 1, 1);
+        dark.minFilter = THREE.LinearFilter;
+        dark.magFilter = THREE.LinearFilter;
         dark.needsUpdate = true;
         this.dark = dark;
         this.tShade = texture(blank);

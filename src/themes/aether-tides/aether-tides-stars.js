@@ -118,7 +118,7 @@ export function createStars({
         const greatPos = select(first, P.starA, P.starB);
         const greatColor = select(first, P.starColorA, P.starColorB);
         const greatFlux = select(first, P.starFlux.x, P.starFlux.y);
-        const greatSize = float(0.34).mul(greatFlux.mul(0.3).add(0.7));
+        const greatSize = select(first, float(0.42), float(0.32)).mul(greatFlux.mul(0.24).add(0.76));
         const pulse = float(0.94).add(sin(now.mul(0.7).add(float(index).mul(1.9))).mul(0.06));
 
         const centre = select(great, greatPos, path);
@@ -131,7 +131,7 @@ export function createStars({
         const dim = exp(veil.a.mul(P.murk).mul(0.45).negate()).mul(0.85).add(0.15)
             .mul(float(1.0).sub(P.hush.mul(0.6)))
             .mul(swallowed);
-        const colour = select(great, greatColor.mul(greatFlux).mul(pulse).mul(3.2), litColor.mul(litGain)).mul(dim);
+        const colour = select(great, greatColor.mul(greatFlux).mul(pulse).mul(4.6), litColor.mul(litGain)).mul(dim);
         return {
             centre, half, colour, great, seed, nova, open,
         };
@@ -143,8 +143,8 @@ export function createStars({
     // spikes: (length factor, six-pointed?, turn, nova)
     const vShape = varying(vec4(
         select(s.great, float(1.0), mix(0.0, 0.8, s.open)),
-        select(s.great, float(1.0), float(0.0)),
-        select(s.great, float(0.26), s.seed.mul(1.2)),
+        select(index.equal(0), float(1.0), float(0.0)),
+        select(s.great, select(index.equal(0), float(0.15), float(-0.52)), s.seed.mul(1.2)),
         s.nova,
     ));
     const q = s.centre.add(corner.mul(s.half));
@@ -157,9 +157,9 @@ export function createStars({
         const r = r2c.sqrt();
         const fadeOut = float(1.0).sub(smoothstep(0.72, 1.0, r));
         // A hot point, the lens's soft glow, and a faint wide halo.
-        const core = exp(r2c.mul(-220.0)).mul(2.6);
-        const glow = exp(r.mul(-13.0)).mul(0.55);
-        const halo = exp(r2c.mul(-7.0)).mul(0.035);
+        const core = exp(r2c.mul(-1100.0)).mul(3.8);
+        const glow = exp(r.mul(-19.0)).mul(0.9);
+        const halo = exp(r2c.mul(-9.0)).mul(0.047);
         let spikes = float(0.0);
         if (tier.spikes) {
             const turn = vShape.z;
@@ -167,14 +167,14 @@ export function createStars({
             const sn = sin(turn);
             const p = vec2(c.x.mul(cs).sub(c.y.mul(sn)), c.x.mul(sn).add(c.y.mul(cs))).toVar();
             // One spike along an axis: needle-thin across, a long fall along.
-            const spike = (along, across, reach) => exp(abs(across).mul(-150.0))
-                .mul(exp(abs(along).mul(float(5.2).div(reach))).reciprocal());
+            const spike = (along, across, reach) => exp(abs(across).mul(-360.0)
+                .sub(abs(along).mul(float(3.65).div(reach))));
             const four = spike(p.x, p.y, 1.0).add(spike(p.y, p.x, 0.82));
             // The six-pointed star of a segmented mirror: two more pairs at 60°.
             const p60 = vec2(p.x.mul(0.5).sub(p.y.mul(0.866)), p.x.mul(0.866).add(p.y.mul(0.5)));
             const p120 = vec2(p.x.mul(-0.5).sub(p.y.mul(0.866)), p.x.mul(0.866).add(p.y.mul(-0.5)));
             const six = spike(p60.x, p60.y, 0.62).add(spike(p120.x, p120.y, 0.62));
-            spikes = four.add(six.mul(vShape.y)).mul(vShape.x).mul(0.5);
+            spikes = mix(four, spike(p.x, p.y, 1.25).add(six), vShape.y).mul(vShape.x).mul(0.86);
         }
         // The core burns white; the glow and the spikes keep the star's colour.
         const tinted = vColour.mul(glow.add(halo).add(spikes));

@@ -60,6 +60,7 @@ import {
     atLuma,
     atMax3,
 } from './aether-tides-tsl.js';
+import { cloudEmission, cloudUv } from './aether-tides-clouds.js';
 
 /** Uniforms of the picture. */
 export function createPictureUniforms() {
@@ -82,6 +83,8 @@ export function createPictureUniforms() {
         starColorA: uniform(new THREE.Color(0.72, 0.86, 1.0)),
         starColorB: uniform(new THREE.Color(1.0, 0.62, 0.3)),
         starFlux: uniform(new THREE.Vector2(1, 0.62)),
+        // The two stellar winds sweep different banks of gas, on independent clocks.
+        wind: uniform(new THREE.Vector4(0, 0, 0, 0)),
         /** How bright the gas glows by itself, and how much the heat adds. */
         glow: uniform(1.0),
         hot: uniform(1.0),
@@ -142,7 +145,7 @@ export const NEBULA_VIEWS = Object.freeze(['dust', 'gas', 'shade', 'rim', 'shaft
  * @param {string|null} [options.view] one of NEBULA_VIEWS: draw that channel instead (debug)
  */
 export function createNebula({
-    tide: U, picture: P, fluid, light, tier, field, view = null,
+    tide: U, picture: P, fluid, light, tier, field, clouds: tCloud, fieldUniforms: F, view = null,
 }) {
     const {
         tVel, tDye, tWeave, tNoise,
@@ -168,13 +171,13 @@ export function createNebula({
         ));
         // A brighter star is a slightly wider disc, as a lens draws it.
         const core = exp(dPx.mul(dPx).mul(-0.9).div(mag.mul(0.5).add(1.0)));
-        const halo = exp(dPx.mul(-0.5)).mul(0.1).mul(smoothstep(0.4, 1.0, rnd.x));
-        // Mostly blue-white; a quarter warm, a few deep orange giants.
-        const giant = vec3(1.0, 0.5, 0.26);
-        const warm = vec3(1.0, 0.76, 0.52);
-        const cold = vec3(0.66, 0.8, 1.0);
-        const tint = mix(mix(giant, warm, smoothstep(0.02, 0.07, rnd.z)), cold, smoothstep(0.1, 0.36, rnd.z));
-        return tint.mul(core.add(halo)).mul(mag).mul(twinkle);
+        const halo = exp(dPx.mul(-0.72)).mul(0.15).mul(smoothstep(0.64, 1.0, rnd.x));
+        const warm = mix(vec3(1.0, 0.19, 0.07), vec3(1.0, 0.73, 0.38), smoothstep(0.02, 0.25, rnd.z));
+        const cold = mix(vec3(0.49, 0.91, 1.0), vec3(0.34, 0.39, 1.0), smoothstep(0.62, 0.98, rnd.z));
+        const tint = mix(warm, cold, smoothstep(0.32, 0.62, rnd.z));
+        // The brightest photospheres turn white at the centre; the halo retains the spectrum.
+        return mix(tint, vec3(1), core.mul(0.34)).mul(core).add(tint.mul(halo)).mul(mag)
+            .mul(twinkle);
     };
 
     const fragment = Fn(() => {
@@ -241,6 +244,14 @@ export function createNebula({
             return vec4(broad.x, fine.y, fine.z, broad.w);
         };
         const grain = mix(grainAt(weave.zw), grainAt(weave.xy), U.weaveMix).toVar();
+        // The front is a material carried by the two advected coordinate fields. Their resets
+        // happen at zero weight; a bounded displacement keeps even a long chain finely resolved.
+        const travel = clamp(mix(weave.zw, weave.xy, U.weaveMix).mul(U.half).mul(0.68), -0.18, 0.18);
+        const corrugation = grain.xw.sub(0.5).mul(0.044);
+        const plateUv = cloudUv(ql.add(travel).add(corrugation).add(P.view.mul(0.055)), F);
+        const plate = tCloud.sample(plateUv).rgb.toVar();
+        const filaments = cloudEmission(plate, F).mul(F.plateMix).toVar();
+        const ridgeLight = atMax3(filaments).toVar();
         // Filaments: the ridges of the fine grain, drawn over the broad billows.
         const ridge = float(1.0).sub(abs(grain.y.sub(0.5)).mul(2.0)).toVar();
         const billow = smoothstep(0.2, 0.85, grain.x).toVar();
@@ -304,21 +315,20 @@ export function createNebula({
         stars.addAssign(starLayer(ql.add(pan.mul(0.16)), 14.0, 23.0, 3.0, 16.0));
         if (tier.starLayers > 2) stars.addAssign(starLayer(ql.add(pan.mul(0.3)), 6.0, 37.0, 11.0, 26.0));
         const veil = exp(tauDust.add(tauGas).negate());
-        const out = sky.add(stars).mul(veil).toVar();
+        const out = sky.add(stars.mul(exp(ridgeLight.mul(-2.8)))).mul(veil).toVar();
 
         // ── The gas ──
         const hotness = heat.mul(0.35).min(2.4).toVar();
         const glow = gas.mul(P.glow).mul(float(1.0).add(hotness.mul(P.hot).mul(0.9))).toVar();
         // Hot gas burns toward the blast's own colour.
         glow.addAssign(P.shock.mul(density.mul(hotness).mul(0.22)).mul(P.hot));
-        if (tier.underglow) {
+        if (tier.underglow && fluid.live) {
             // A soft second reading of the gas round about: the glow of what lies deeper in the
             // cloud, sliding a little against the sharp filaments in front of it.
             const reachUv = U.texel.mul(4.5);
             const deeper = fuv.add(pan.mul(0.006).div(U.half));
             const softAt = (dx, dy) => tDye.sample(deeper.add(vec2(reachUv.x.mul(dx), reachUv.y.mul(dy)))).rgb;
-            const soft = softAt(1, 0.6).add(softAt(-0.6, 1)).add(softAt(-1, -0.6)).add(softAt(0.6, -1))
-                .mul(0.25);
+            const soft = softAt(1, 0.6).add(softAt(-1, -0.6)).mul(0.5);
             glow.addAssign(soft.mul(P.glow).mul(0.5));
         }
         // The dust in front of the gas swallows part of its glow.
@@ -392,7 +402,34 @@ export function createNebula({
             .add(kindled.mul(0.03))
             .toVar();
 
-        out.addAssign(glow.add(lit).add(rims).add(shafts));
+        // Shadowed bays retain the deep layers of stars while light grazing the dust lights up
+        // its lace. The fluid stays prominent in hot wakes and jets, where its pigments change.
+        const gasShare = mix(1, clamp(ridgeLight.mul(0.57).add(0.25).add(hotness.mul(0.38)), 0.25, 1), F.plateMix);
+        const through = exp(tauDust.mul(-0.22)).mul(0.7).add(0.3).toVar();
+        if (tier.underglow) {
+            // The nearest dust cliff has a different sight line into the emission shell.
+            // The difference in column density models its overhang; the stars, gas and
+            // sharp rims behind it all disappear into the same moving shadow.
+            const offset = P.view.mul(0.029).add(F.weather.xy.mul(0.31)).add(vec2(0.016, -0.023));
+            const near = tCloud.sample(plateUv.add(offset)).rgb;
+            const cliff = smoothstep(0.04, 0.49, atMax3(plate).sub(atMax3(near))).mul(F.plateMix);
+            const transmission = float(1).sub(cliff.mul(0.55));
+            through.mulAssign(transmission);
+            out.mulAssign(transmission);
+            glow.mulAssign(transmission);
+            rims.mulAssign(transmission);
+        }
+        // Banks come in and out of the stars' light. Broken by the cloud depths, each broad
+        // travelling front picks out existing ridges rather than drawing a ring over open sky.
+        const depth = grain.x.sub(0.5).mul(0.28).add(ridgeLight.mul(0.2));
+        const windAt = (star, radius, strength) => {
+            const d = length(ql.sub(star)).add(depth).sub(radius);
+            return exp(d.mul(d).mul(-6.0)).mul(strength);
+        };
+        const wind = windAt(P.starA, P.wind.x, P.wind.y).add(windAt(P.starB, P.wind.z, P.wind.w));
+        const excitation = power.mul(0.32).add(atLuma(kindled).mul(0.35)).add(wind).add(0.84);
+        out.addAssign(filaments.mul(excitation).mul(through).mul(P.glow));
+        out.addAssign(glow.mul(gasShare).add(lit).add(rims.mul(mix(1, 0.23, F.plateMix))).add(shafts));
 
         // ── Blast fronts, burning in what they pass through (in open sky, only a trace) ──
         const body = density.mul(1.6).add(dust.mul(0.9)).add(0.045);
@@ -402,7 +439,7 @@ export function createNebula({
         // Its shadow first: what lies behind it is gone.
         const hole = smoothstep(0.86, 1.0, wellDist.div(P.well.z));
         out.mulAssign(mix(1.0, hole, clamp(P.well.w.mul(1.4), 0.0, 1.0)));
-        If(P.well.w.greaterThan(0.002), () => {
+        If(P.well.w.greaterThan(0.002).and(wellDist.lessThan(P.well.z.mul(3.65))), () => {
             // In hole radii, turned so the disc's plane runs a little off level.
             const p = toWell.div(P.well.z).toVar();
             const u = p.x.mul(DISC_COS).add(p.y.mul(DISC_SIN)).toVar();
