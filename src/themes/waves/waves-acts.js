@@ -298,7 +298,7 @@ export function makeLeap({
 function leapPose(arc, t, open, out) {
     const { flight } = arc;
     let roll0 = 0;
-    out.spread = 0;
+    out.spread = 1;
     if (t < 0) {
         // The run-up: under the surface, on the curve its flight goes on with (a straight run that
         // met a curving flight was a kink in its turn at the breach), coming up steeper from deep.
@@ -322,9 +322,14 @@ function leapPose(arc, t, open, out) {
         dolphinPose(arc, t, out);
         const s = t / flight;
         out.depth = 0;
-        out.beat = 0.25 + 0.5 * (1 - smooth(0, 0.25, s));
+        const crest = Math.sin(Math.PI * s);
+        // The final driving stroke dies into a glide. The pectorals open over the apex, then
+        // tuck against the body for entry. A spinner keeps them close through its fast turn.
+        out.beat = 0.09 + 0.94 * (1 - smooth(0, 0.26, s));
+        out.spread = arc.style === 'spin' ? 1 - 0.82 * crest : 1 - 0.74 * smooth(0.51, 0.94, s);
         // Arched over the top of the leap, straight as it goes in.
-        out.arch = 0.14 + 0.2 * Math.sin(Math.PI * s);
+        out.arch = 0.06 + 0.38 * crest;
+        if (arc.hero) roll0 = (0.24 + arc.variant * 0.09) * crest * crest;
         if (arc.style === 'spin') {
             roll0 = TAU * arc.turns * smooth(0.04, 0.92, s);
             out.arch = 0.05;
@@ -367,6 +372,7 @@ function leapPose(arc, t, open, out) {
         out.depth = Math.max(0, -out.y);
         out.beat = 0.9;
         out.arch = 0.04;
+        if (arc.style !== 'spin') out.spread = 0.26 + 0.74 * smooth(0, 1.1, tau);
         if (arc.style === 'side') roll0 = 1.45;
         if (arc.style === 'spin') roll0 = TAU * arc.turns;
     }
@@ -620,7 +626,8 @@ export function makeWhale({
     const life = WHALE_SECONDS[mode] || WHALE_SECONDS.blow;
     const events = [];
     if (mode === 'breach') {
-        events.push({ t: life * 0.05, type: 'whale-rise' });
+        // The snout reaches the surface here on the steep rise in whalePose.
+        events.push({ t: life * 0.11, type: 'whale-rise' });
         events.push({ t: life * 0.6, type: 'whale-fall' });
     } else if (mode === 'fluke') {
         events.push({ t: life * 0.12, type: 'whale-blow' });

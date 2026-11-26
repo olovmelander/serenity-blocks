@@ -12,6 +12,7 @@
  *   sink.spin({ player })      a twist that cleared nothing
  *   sink.combo(n, player)      the true combo, whenever it changes (0 = the chain broke)
  *   sink.levelUp(level)
+ *   sink.seaCue(kind, amount)   a local versus action or a run milestone
  *
  * `rows` are VISIBLE board rows (0 = the top row, 19 = the floor); `u` is the lock's column as a
  * fraction of the board width; `color` is the piece's colour (a CSS hex string) or null. `screen`
@@ -202,7 +203,7 @@ export class WavesDirector {
     /**
      * @param {{
      *   sink?: {
-     *     lock?: Function, clear?: Function, spin?: Function, combo?: Function, levelUp?: Function,
+     *     lock?: Function, clear?: Function, spin?: Function, combo?: Function, levelUp?: Function, seaCue?: Function,
      *   },
      *   enabled?: boolean, lockRipple?: boolean,
      * }} [options]
@@ -216,6 +217,7 @@ export class WavesDirector {
         this.droppedEvents = 0;
         this.level = 0;
         this.levelPending = false;
+        this.seaCues = new Map();
         this.slots = Array.from({ length: PLAYER_SLOTS }, createSlot);
         this._lock = {
             player: 0, rows: [], u: 0.5, hardDrop: false, color: null, screen: null,
@@ -400,6 +402,12 @@ export class WavesDirector {
         return true;
     }
 
+    /** Several packets of one kind can arrive on a tick. Let their water break together. */
+    onSeaCue(kind, amount = 1) {
+        if (!this.enabled || !Number.isFinite(amount) || amount <= 0) return;
+        this.seaCues.set(kind, Math.min(8, (this.seaCues.get(kind) || 0) + amount));
+    }
+
     // ── resolve ─────────────────────────────────────────────────────────────────
 
     /** Resolve everything staged since the last frame into sink calls. */
@@ -412,6 +420,10 @@ export class WavesDirector {
         for (let i = 0; i < this.slots.length; i += 1) {
             const slot = this.slots[i];
             if (slot.assigned) this.resolve(slot, sink);
+        }
+        if (this.seaCues.size) {
+            this.seaCues.forEach((amount, kind) => sink?.seaCue?.(kind, amount));
+            this.seaCues.clear();
         }
     }
 
@@ -468,6 +480,7 @@ export class WavesDirector {
 
     /** A new run, or reactions switched off: drop everything staged and every combo. */
     reset() {
+        this.seaCues.clear();
         for (let i = 0; i < this.slots.length; i += 1) {
             const slot = this.slots[i];
             clearPending(slot);

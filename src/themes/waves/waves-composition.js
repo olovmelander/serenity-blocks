@@ -72,8 +72,32 @@ export const SOLO_CANVAS_SELECTORS = Object.freeze([
     '#phaser-game-container canvas',
     '#main-game-canvas',
     '#single-player-game-canvas',
+    '#online-main-board canvas:not(.spectator-spotlight-canvas)',
 ]);
 export const playerCanvasSelector = (player) => `#p${player}-phaser-container canvas`;
+
+/**
+ * Local play stays on its setup form until the players are ready, and online play can wait
+ * in a lobby. Their persistent hosts resize when revealed and receive Phaser canvases later.
+ * Observe those two changes without measuring the DOM inside either callback.
+ */
+export function watchBoardLayout(changed, doc = globalThis.document) {
+    const size = typeof ResizeObserver === 'function' ? new ResizeObserver(changed) : null;
+    const children = typeof MutationObserver === 'function' ? new MutationObserver(changed) : null;
+    if (size || children) {
+        for (const host of doc.querySelectorAll('.phaser-board-container, #phaser-game-container')) {
+            size?.observe(host);
+            children?.observe(host, { childList: true });
+        }
+        doc.querySelectorAll(BOARD_SELECTOR).forEach((card) => size?.observe(card));
+        const hud = doc.querySelector(HUD_SELECTOR);
+        if (hud) size?.observe(hud);
+    }
+    return () => {
+        size?.disconnect();
+        children?.disconnect();
+    };
+}
 
 /** A CSS-px rect → screen fractions (x0, y0, x1, y1; y down). */
 function toFractions(r, W, H) {
@@ -129,6 +153,7 @@ export function readLayoutRects(doc = globalThis.document, win = globalThis.wind
         if (r.right <= 0 || r.bottom <= 0 || r.left >= W || r.top >= H) return null;
         const cs = typeof win.getComputedStyle === 'function' ? win.getComputedStyle(el) : null;
         if (cs && (cs.display === 'none' || cs.visibility === 'hidden' || Number(cs.opacity) < 0.05)) return null;
+        if (el.checkVisibility?.({ opacityProperty: true, visibilityProperty: true }) === false) return null;
         return r;
     };
     const cards = [];
@@ -136,7 +161,6 @@ export function readLayoutRects(doc = globalThis.document, win = globalThis.wind
         const r = visibleRect(el);
         if (r) cards.push(toFractions(r, W, H));
     });
-    if (!cards.length) return null;
     const boards = new Array(PLAYER_SLOTS).fill(null);
     for (let i = 0; i < SOLO_CANVAS_SELECTORS.length && !boards[0]; i++) {
         const r = visibleRect(doc.querySelector(SOLO_CANVAS_SELECTORS[i]));
@@ -146,6 +170,14 @@ export function readLayoutRects(doc = globalThis.document, win = globalThis.wind
         const r = visibleRect(doc.querySelector(playerCanvasSelector(player)));
         if (r) boards[player] = toFractions(r, W, H);
     }
+    // A visible Phaser canvas can arrive before its surrounding station is measurable.
+    for (const board of boards) {
+        if (!board) continue;
+        const x = (board.x0 + board.x1) * 0.5;
+        const y = (board.y0 + board.y1) * 0.5;
+        if (!cards.some((c) => x >= c.x0 && x <= c.x1 && y >= c.y0 && y <= c.y1)) cards.push(board);
+    }
+    if (!cards.length) return null;
     const hudRect = visibleRect(doc.querySelector(HUD_SELECTOR));
     return {
         cardCount: cards.length,

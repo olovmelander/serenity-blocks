@@ -16,8 +16,8 @@
  */
 import * as THREE from 'three/webgpu';
 import {
-    Fn, attribute, cameraPosition, cameraViewMatrix, clamp, cos, dot, exp, float, fract, length, max, mix, normalize,
-    positionGeometry, sin, smoothstep, texture, uv, varying, vec2, vec3, vec4,
+    Fn, If, abs, attribute, cameraPosition, cameraViewMatrix, clamp, cos, dot, exp, float, fract, length, max, mix,
+    normalize, positionGeometry, sin, smoothstep, texture, uv, varying, vec2, vec3, vec4,
 } from 'three/tsl';
 import {
     FLOW, TAU, WAVE, mulberry32, wavePoint,
@@ -35,6 +35,7 @@ export const additive = (name) => {
         depthWrite: false,
         blending: THREE.AdditiveBlending,
         premultipliedAlpha: true,
+        forceSinglePass: true,
         // A streak's axes turn with the drop's flight, so its winding does too.
         side: THREE.DoubleSide,
     });
@@ -72,9 +73,16 @@ export const dropLight = (position, sun, warm, light) => {
 };
 
 export const bead = () => {
-    const p = uv().sub(0.5).mul(2.0);
-    const d = length(p);
-    return exp(d.mul(d).mul(-5.0)).mul(float(1.0).sub(smoothstep(0.78, 1.0, d)));
+    // Sky caught in the lower meniscus, with a smaller sun image on the
+    // opposite side. Keep a soft central lobe when a bead is subpixel.
+    const p = uv().sub(0.5).mul(2.0).toVar();
+    const radius2 = dot(p, p);
+    const glint = p.sub(vec2(-0.22, 0.28));
+    const rim = float(1).sub(smoothstep(0.08, 0.44, abs(radius2.sub(0.47))))
+        .mul(smoothstep(-0.04, 0.65, p.y.negate()));
+    return exp(radius2.mul(-3.6)).mul(0.58)
+        .add(exp(dot(glint, glint).mul(-16)).mul(1.05)).add(rim.mul(0.54))
+        .mul(float(1).sub(smoothstep(0.65, 1.0, radius2)));
 };
 
 export const quads = (count) => {
@@ -130,7 +138,7 @@ export function createLipRain({
         .mul(float(1.0).sub(smoothstep(life.mul(0.7), life, age)))
         .mul(smoothstep(0.0, 0.2, centre.y));
     // Bigger where the lip is really falling.
-    const size = s.y.mul(0.026).add(0.014).mul(torn.mul(0.75).add(0.4));
+    const size = s.y.mul(s.y).mul(0.037).add(0.012).mul(torn.mul(0.75).add(0.4));
     const twinkle = sin(U.time.mul(s.w.mul(5.0).add(2.0)).add(s.x.mul(40.0))).mul(0.35).add(0.75);
     material.positionNode = streak(centre, velocity, size, 0.35);
     const vLook = varying(dropLight(centre, U.sun, U.warm, U.light).mul(fade).mul(twinkle), 'vWaveRain');
@@ -172,6 +180,46 @@ function spectrum(hue, amount, rgb, out) {
     return out;
 }
 
+// The simulation keeps its slots and reuse order. The draw stops at the last slot that can
+// contribute now. Future births past it schedule a rescan, as does the last visible slot's
+// expiry. Zero instances skips the draw on both backends while the mesh can still precompile.
+export function createParticleDrawRange(geometry, buffer, lifeOffset) {
+    let limit = 0;
+    let changeAt = Infinity;
+    return {
+        reset() {
+            limit = 0;
+            changeAt = Infinity;
+            geometry.instanceCount = 0;
+        },
+        include(slot) {
+            limit = Math.max(limit, slot + 1);
+            geometry.instanceCount = limit;
+            changeAt = -Infinity;
+        },
+        update(time) {
+            if (time < changeAt) return;
+            changeAt = Infinity;
+            geometry.instanceCount = 0;
+            const { array, stride } = buffer;
+            for (let i = limit - 1; i >= 0; i--) {
+                const at = i * stride;
+                const birth = array[at + 3];
+                const end = birth + Math.max(0.05, array[at + lifeOffset]);
+                if (time >= end) {
+                    if (i === limit - 1) limit = i;
+                } else if (time < birth) {
+                    changeAt = Math.min(changeAt, birth);
+                } else {
+                    geometry.instanceCount = i + 1;
+                    changeAt = Math.min(changeAt, end);
+                    break;
+                }
+            }
+        },
+    };
+}
+
 /**
  * A ring buffer of drops thrown by events. Each is written once, when it leaves:
  * (x, y, z, birth), (vx, vy, vz, size), (r, g, b, life); the vertex stage flies it from there.
@@ -192,6 +240,7 @@ export class SprayPool {
         const { base, geometry } = quads(this.count);
         this.buffer = new THREE.InstancedInterleavedBuffer(this.data, POOL_STRIDE);
         this.buffer.setUsage(THREE.DynamicDrawUsage);
+        this.drawRange = createParticleDrawRange(geometry, this.buffer, 11);
         geometry.setAttribute('aStart', new THREE.InterleavedBufferAttribute(this.buffer, 4, 0));
         geometry.setAttribute('aFlight', new THREE.InterleavedBufferAttribute(this.buffer, 4, 4));
         geometry.setAttribute('aTint', new THREE.InterleavedBufferAttribute(this.buffer, 4, 8));
@@ -210,10 +259,24 @@ export class SprayPool {
         const centre = aStart.xyz.add(aFlight.xyz.mul(t)).add(vec3(0.0, t.mul(t).mul(-0.5 * GRAVITY), 0.0));
         const fade = alive.mul(smoothstep(-0.05, 0.12, centre.y));
         const light = dropLight(centre, U.sun, U.warm, U.light);
-        material.positionNode = streak(centre, velocity, aFlight.w.mul(fade.mul(0.4).add(0.6)), 0.35);
+        // Respawn air pockets are stored with a signed diameter in the same pool.
+        const stretch = aFlight.w.lessThan(0).select(0.04, 0.35);
+        material.positionNode = streak(centre, velocity, abs(aFlight.w).mul(fade.mul(0.4).add(0.6)), stretch);
         // A drop carries the colour of what threw it, and still sparks in the sun.
-        const vLook = varying(aTint.rgb.mul(light.g.mul(0.55).add(0.5)).add(light.mul(0.35)).mul(fade), 'vWaveSpray');
-        material.outputNode = Fn(() => vec4(vLook.mul(bead()), 0.0))();
+        const lit = aTint.rgb.mul(light.g.mul(0.55).add(0.5)).add(light.mul(0.35)).mul(fade);
+        const vLook = varying(vec4(lit, aFlight.w), 'vWaveSpray');
+        material.outputNode = Fn(() => {
+            const shine = bead().toVar();
+            If(vLook.w.lessThan(0), () => {
+                const p = uv().sub(0.5).mul(2).toVar();
+                const r = dot(p, p);
+                const rim = float(1).sub(smoothstep(0.025, 0.21, abs(r.sub(0.64))));
+                const highlight = p.sub(vec2(-0.36, 0.43));
+                shine.assign(rim.mul(p.y.mul(0.36).add(0.62))
+                    .add(exp(dot(highlight, highlight).mul(-22)).mul(1.35)));
+            });
+            return vec4(vLook.rgb.mul(shine), 0);
+        })();
         this.material = material;
         this.mesh = new THREE.Mesh(geometry, material);
         this.mesh.name = 'waves-spray';
@@ -226,6 +289,7 @@ export class SprayPool {
         this.rand = mulberry32(this.seed * 104729 + 3);
         this.cursor = 0;
         this.now = 0;
+        this.drawRange.reset();
         // Born long ago: nothing is in the air.
         for (let i = 0; i < this.count; i += 1) {
             const at = i * POOL_STRIDE;
@@ -280,7 +344,8 @@ export class SprayPool {
 
     /** One drop, leaving (x, y, z) at `time` with a velocity. */
     put(time, x, y, z, vx, vy, vz, size, rgb, life) {
-        const at = this.slotFor(this.now) * POOL_STRIDE;
+        const slot = this.slotFor(this.now);
+        const at = slot * POOL_STRIDE;
         const d = this.data;
         d[at] = x;
         d[at + 1] = y;
@@ -294,6 +359,7 @@ export class SprayPool {
         d[at + 9] = rgb[1];
         d[at + 10] = rgb[2];
         d[at + 11] = life;
+        this.drawRange.include(slot);
         this.buffer.needsUpdate = true;
     }
 
@@ -415,8 +481,10 @@ export class SprayPool {
         const at = { x: 0, y: 0, z: 0 };
         const next = { x: 0, y: 0, z: 0 };
         for (let k = 0; k < n; k += 1) {
-            const row = 0.04 + (k / n) * 0.9;
-            const where = d + (rand() - 0.5) * 0.5;
+            const phase = k / n;
+            const row = 0.04 + phase * 0.9;
+            const strand = Math.sin(phase * TAU * 3.5);
+            const where = d + strand * 0.56 + (rand() - 0.5) * 0.38;
             wavePoint(row, where, open, at);
             wavePoint(row + 0.02, where, open, next);
             let tx = next.x - at.x;
@@ -424,18 +492,20 @@ export class SprayPool {
             const len = Math.hypot(tx, ty) || 1;
             tx /= len;
             ty /= len;
-            // Off the wall a little (toward the tube's middle), round with the flow, and ahead.
+            // In a concave barrel a tangent by itself takes a bead back through
+            // the glass. The crest peels inward in three twisting ropes of spray.
             const inX = -at.x / (WAVE.a * 1.2);
             const inY = (WAVE.b - at.y) / (WAVE.b * 1.2);
+            const peel = 1.45 + strand * 0.46;
             this.put(
-                time + (k / n) * 0.45,
-                at.x + inX * 0.15,
-                at.y + inY * 0.15,
+                time + phase * 0.60,
+                at.x + inX * 0.28,
+                at.y + inY * 0.28,
                 at.z,
-                tx * turn + inX * 0.4,
-                ty * turn + inY * 0.4,
+                tx * turn + inX * peel,
+                ty * turn + inY * peel,
                 -ahead * (0.7 + rand() * 0.6),
-                size * (0.5 + rand()),
+                size * (0.56 + rand() + 0.5 * strand * strand),
                 rgb,
                 life[0] + (life[1] - life[0]) * rand(),
             );

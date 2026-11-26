@@ -2,8 +2,8 @@
 /**
  * Waves — the sea life drawn: every animal of the pack (waves-cast.js), swum and lit.
  *
- * One instanced draw per kind and two materials for them all, so the whole cast costs two
- * pipelines:
+ * The cast shares two skin materials. On tiers with reflections the open sea also carries the
+ * broken silhouettes of the cetaceans above it.
  *
  *   air     what is out of the water: wet skin under the hour's sun and sky, the sea's green
  *           thrown up under it, the sun sliding along its back, its fins lit through when the sun
@@ -35,12 +35,13 @@
  */
 import * as THREE from 'three/webgpu';
 import {
-    Fn, If, abs, atan, attribute, cameraPosition, clamp, cos, cross, dot, exp, float, floor, int, length, max, min, mix,
-    normalize, positionGeometry, positionWorld, pow, reflect, round, select, sin, smoothstep, texture, uniformArray,
-    varying, vec2, vec3, vec4,
+    Fn, If, abs, atan, attribute, cameraPosition, clamp, cos, cross, dot, exp, float, floor, fwidth, int, length,
+    max, min, mix, normalize, positionGeometry, positionWorld, pow, reflect, round, select, sin, smoothstep, texture,
+    uniformArray, varying, vec2, vec3, vec4,
 } from 'three/tsl';
 import { KINDS, SPECIES } from './waves-acts.js';
-import { wavesSky } from './waves-tsl.js';
+import { WAVE } from './waves-core.js';
+import { troughHeight } from './waves-tsl.js';
 
 const ROWS = 4;
 export const FAUNA_STRIDE = ROWS * 4;
@@ -172,7 +173,9 @@ export function createFaunaMaterials(U, { lace = null, noise = null } = {}) {
 
         If(kindF.lessThan(KIND.humpback + 0.5), () => {
             // ── Dolphins and the whale: up and down ──
-            const trim = A.z.mul(beat).mul(sin(phase.mul(0.5).add(0.8))).mul(sgn).mul(onFlipper)
+            const trim = A.z.mul(beat).mul(sin(phase.mul(0.5).add(0.8)))
+                .sub(float(1).sub(spread).mul(0.64)).mul(sgn)
+                .mul(onFlipper)
                 .mul(root);
             local.assign(pivot.add(rotZ(local.sub(pivot), trim)));
             nrm.assign(rotZ(nrm, trim));
@@ -334,17 +337,27 @@ export function createFaunaMaterials(U, { lace = null, noise = null } = {}) {
         const g2 = gleam.mul(gleam);
         const g8 = g2.mul(g2).mul(g2).mul(g2);
         const rim = float(1.0).sub(clamp(dot(N, V), 0.0, 1.0));
-        const behind = max(dot(sun, V.negate()), 0.0);
-        const shine = vec3(3.2, 2.2, 1.2).mul(g8.mul(g8).mul(g2)).mul(gloss)
-            .add(vec3(1.5, 0.9, 0.45).mul(rim.mul(rim).mul(rim)).mul(behind.mul(1.2).add(0.1)))
-            .mul(light.fireTint);
+        const behind = max(dot(sun, V.negate()), 0.0).toVar();
+        // The lower flank mirrors the trough and the shoulder mirrors the cooler open sky.
+        // Only the wet edge turned toward the sun picks up a silver-gold sliver.
+        const reflected = mix(
+            light.scatter.mul(0.52),
+            light.zenithFar.add(vec3(0.035, 0.045, 0.055)),
+            smoothstep(-0.3, 0.35, R.y),
+        );
+        const grazing = rim.mul(rim).mul(rim);
+        const edge = smoothstep(-0.12, 0.55, dot(N, sun).add(max(N.y, 0.0).mul(0.42)));
+        const shine = vec3(3.6, 2.35, 1.2).mul(g8.mul(g8).mul(g8)).mul(gloss)
+            .add(vec3(1.6, 0.96, 0.5).mul(grazing).mul(behind).mul(edge))
+            .mul(light.fireTint)
+            .add(reflected.mul(grazing.mul(0.65).add(0.09)).mul(gloss));
         // A fin is thin: with the sun behind it, it glows through.
         const thin = smoothstep(0.25, 0.8, vLook.z);
         const through = sunLight.mul(albedo.add(0.08)).mul(thin).mul(behind.mul(behind).mul(0.9).add(0.12));
         const colour = lit.add(shine).add(through).mul(mix(vec3(1.0), vec3(1.12, 1.0, 0.84), warm)).toVar();
         // What is far out stands in the haze of the hour.
-        const haze = wavesSky(normalize(vec3(V.x.negate(), 0.012, V.z.negate())), sun, float(0.0), warm, light);
-        colour.assign(mix(colour, haze, float(1.0).sub(exp(dist.mul(-1 / 520)))));
+        const haze = mix(light.horizonFar, light.horizonSun, behind.mul(behind));
+        colour.assign(mix(colour, haze, float(1.0).sub(exp(dist.mul(-1 / 740)))));
         return vec4(colour, LIFE_MASK);
     })();
 
@@ -427,6 +440,61 @@ export function createFaunaMaterials(U, { lace = null, noise = null } = {}) {
     return { air, under };
 }
 
+/**
+ * Project the animal's own silhouette onto the open water along the eye's mirror ray. A swell
+ * in front of it can hide it, and the moving facets split it into strokes. This draws only the
+ * animal's triangles and needs no reflection camera or render target.
+ */
+function createSeaReflection(U) {
+    const mat = new THREE.MeshBasicNodeMaterial({
+        fog: false,
+        side: THREE.BackSide,
+        transparent: true,
+        depthWrite: false,
+        blending: THREE.CustomBlending,
+        blendSrc: THREE.SrcAlphaFactor,
+        blendDst: THREE.OneMinusSrcAlphaFactor,
+        blendSrcAlpha: THREE.ZeroFactor,
+        blendDstAlpha: THREE.OneFactor,
+    });
+    mat.name = 'waves-life-reflection';
+    const strength = varying(float(0), 'vWaveMirrorWeight');
+    mat.positionNode = Fn(() => {
+        const place = attribute('aRow0', 'vec4');
+        const heading = attribute('aRow1', 'vec4').xyz;
+        const back = attribute('aRow2', 'vec4');
+        const arch = attribute('aRow3', 'vec4').y;
+        const p = positionGeometry;
+        const side = cross(back.xyz, heading);
+        const body = place.xyz.add(side.mul(p.x).add(back.xyz.mul(p.y.sub(arch.mul(p.z).mul(p.z))))
+            .add(heading.mul(p.z)).mul(place.w)).toVar();
+        const eye = cameraPosition;
+        const height = max(body.y, 0);
+        const fraction = clamp(eye.y.div(max(eye.y.add(height), 0.08)), 0.0, 1.0);
+        const sea = mix(eye.xz, body.xz, fraction).toVar();
+        // A ripple tips the reflected ray sideways. A high back breaks up more than a nose
+        // touching the water. Keep this offset small enough to leave the fins legible.
+        const chop = sin(sea.y.mul(5.1).add(sea.x.mul(1.3)).sub(U.time.mul(1.7)))
+            .add(sin(sea.y.mul(9.3).add(U.time.mul(2.1))).mul(0.34));
+        const x = sea.x.add(chop.mul(min(height, 4)).mul(0.044)).toVar();
+        const ahead = max(sea.y.negate().sub(6), 0);
+        const across = x.add(min(ahead.mul(ahead).mul(WAVE.bowl), WAVE.bowlMax)).toVar();
+        const y = troughHeight(across, sea.y, U.time);
+        const whale = attribute('aShape', 'vec4').w.mul(255).greaterThan(1.5);
+        const surfaced = select(whale, float(1), float(1).sub(smoothstep(0.01, 0.14, back.w)));
+        strength.assign(surfaced.mul(smoothstep(-0.04, 0.12, body.y)).mul(smoothstep(-0.14, 0.35, across.negate())));
+        return vec3(x, y.add(0.035), sea.y);
+    })();
+    mat.fragmentNode = Fn(() => {
+        const P = positionWorld;
+        const along = P.z.mul(14).add(sin(P.x.mul(3.2).add(P.z.mul(2.4))).mul(1.7)).sub(U.time.mul(2.1));
+        const ripple = mix(sin(along), float(0), smoothstep(0.45, 2.9, fwidth(along)));
+        const weight = strength.mul(ripple.mul(0.19).add(0.34));
+        return vec4(U.light.scatter.mul(0.23).add(U.light.zenithFar.mul(0.12)), weight);
+    })();
+    return mat;
+}
+
 /** An animal's rows set to "not there" (metres 0 collapses it to a point under the sea). */
 function park(data, at) {
     data.fill(0, at, at + FAUNA_STRIDE);
@@ -456,6 +524,7 @@ export function createFauna({
     U, pack, tier, lace = null, noise = null,
 }) {
     const materials = createFaunaMaterials(U, { lace, noise });
+    const mirror = tier.trace ? createSeaReflection(U) : null;
     const group = new THREE.Group();
     group.name = 'waves-life';
     const kinds = {};
@@ -491,9 +560,26 @@ export function createFauna({
             behind.renderOrder = 11;
             group.add(behind);
         }
+        let reflection = null;
+        if (mirror && KIND[kind] <= KIND.humpback) {
+            reflection = new THREE.Mesh(geometry, mirror);
+            reflection.name = `waves-life-reflection:${kind}`;
+            reflection.frustumCulled = false;
+            reflection.renderOrder = 10;
+            group.add(reflection);
+        }
         group.add(inAir);
         kinds[kind] = {
-            geometry, data, buffer, slots, triangles: body.triangles, inAir, behind, shown: 0,
+            geometry,
+            data,
+            buffer,
+            slots,
+            triangles: body.triangles,
+            inAir,
+            behind,
+            reflection,
+            reflecting: false,
+            shown: 0,
         };
     });
     return {
@@ -529,6 +615,9 @@ export function createFauna({
             data[at + 13] = pose.arch;
             data[at + 14] = pose.spread;
             data[at + 15] = pose.variant;
+            if (entry.reflection && pose.y > -pose.metres * 0.55 && (kind === 'humpback' || pose.depth < 0.14)) {
+                entry.reflecting = true;
+            }
         },
         /** Send this frame's rows, and draw only as many of each kind as are there. */
         commit(counts) {
@@ -543,6 +632,8 @@ export function createFauna({
                 const shown = n > 0;
                 entry.inAir.visible = shown;
                 if (entry.behind) entry.behind.visible = shown;
+                if (entry.reflection) entry.reflection.visible = shown && entry.reflecting;
+                entry.reflecting = false;
                 entry.buffer.needsUpdate = true;
             });
         },
@@ -552,6 +643,7 @@ export function createFauna({
             Object.values(kinds).forEach((entry) => entry.geometry.dispose());
             materials.air.dispose();
             materials.under.dispose();
+            mirror?.dispose();
         },
     };
 }

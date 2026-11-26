@@ -27,8 +27,8 @@
  */
 import * as THREE from 'three/webgpu';
 import {
-    Fn, attribute, cameraPosition, clamp, dot, exp, float, fract, length, max, mix, normalize, positionGeometry, sin,
-    smoothstep, step, texture, uv, varying, vec2, vec3, vec4,
+    Fn, abs, attribute, cameraPosition, clamp, dot, exp, float, fract, length, max, mix, normalize, positionGeometry,
+    sin, smoothstep, step, texture, uv, varying, vec2, vec3, vec4,
 } from 'three/tsl';
 import { FLOW, mulberry32 } from './waves-core.js';
 import {
@@ -38,7 +38,7 @@ import {
 /** Which kind each puff is, in turn: half are the roll, three in ten the burst, the rest mist. */
 export const WHITE_WATER_KINDS = Object.freeze([0, 1, 0, 2, 0, 1, 0, 1, 0, 2]);
 /** How far back from the touchdown the roll runs along the foot of the curtain (metres). */
-export const ROLL_REACH = 3.4;
+export const ROLL_REACH = 4.9;
 /** How high a burst's head is thrown at rest, and with the lip throwing its hardest (metres). */
 export const BURST_RISE = Object.freeze({ rest: [0.55, 1.2], heave: 1.7 });
 /** Drops the landing throws, for every puff of white water a tier pays for. */
@@ -140,12 +140,15 @@ export function createWhiteWater({
         // "Over", premultiplied: (One, OneMinusSrcAlpha).
         blending: THREE.NormalBlending,
         premultipliedAlpha: true,
+        forceSinglePass: true,
         side: THREE.DoubleSide,
     });
     material.name = 'waves-whitewater';
+    const jet = burstly.sub(misty);
+    const crosswind = positionGeometry.y.mul(jet).mul(s.z.mul(0.28).add(0.18));
     material.positionNode = centre
-        .add(cameraRight().mul(positionGeometry.x.mul(size).mul(mix(float(1.0), float(1.5), misty))))
-        .add(cameraUp().mul(positionGeometry.y.mul(size)));
+        .add(cameraRight().mul(positionGeometry.x.sub(crosswind).mul(size).mul(pick(1.25, 0.82, 1.65))))
+        .add(cameraUp().mul(positionGeometry.y.mul(size).mul(pick(0.84, 1.35, 1.0))));
 
     // White under the whole sky, warmed by the low sun; and the sun THROUGH it, when it stands
     // behind: the white water at the touchdown lies almost under the evening sun.
@@ -167,9 +170,11 @@ export function createWhiteWater({
         .mul(mix(float(0.55), float(1.0), misty));
     const vWhite = varying(vec4(white, cover), 'vWaveWhite');
     const vThrough = varying(through.mul(cover), 'vWaveWhiteThrough');
-    const vSeed = varying(vec4(s.x, s.y, phase, misty), 'vWaveWhiteSeed');
+    const vSeed = varying(vec4(s.x, s.y, phase, kind), 'vWaveWhiteSeed');
     material.outputNode = Fn(() => {
         const p = uv().sub(0.5).mul(2.0);
+        const veil = step(1.5, vSeed.w);
+        const thrownJet = step(0.5, vSeed.w).sub(veil);
         const d = length(p);
         // A heap of white water, not a disc: the noise churns through it and tears its edge into
         // lobes, further as it thins (a veil of mist keeps a softer edge).
@@ -180,12 +185,16 @@ export function createWhiteWater({
         const heads = texture(noise, at.mul(3.1)).toVar();
         const froth = texture(noise, at.mul(8.3).add(0.17)).b;
         const lump = texture(noise, at).b.mul(0.48).add(heads.a.mul(0.32)).add(froth.mul(0.2)).toVar();
-        const eaten = mix(mix(float(0.58), float(0.88), vSeed.z), float(0.5), vSeed.w);
+        const eaten = mix(mix(float(0.58), float(0.88), vSeed.z), float(0.5), veil);
+        // A burst fans into translucent fingers. Its heavy foot stays continuous
+        // with the roller and the moving, aerated heads separate as they rise.
+        const fingers = smoothstep(0.24, 0.76, heads.a.add(froth.sub(0.5).mul(0.5)));
+        const holes = thrownJet.mul(smoothstep(-0.45, 0.75, p.y)).mul(float(1).sub(fingers));
         // (A crisp edge: soft all the way out, a heap of white water is a puff of smoke.)
         const torn = smoothstep(
-            mix(float(0.14), float(-0.1), vSeed.w),
-            mix(float(0.36), float(0.5), vSeed.w),
-            lump.sub(d.mul(d).mul(eaten)),
+            mix(float(0.14), float(-0.1), veil),
+            mix(float(0.36), float(0.5), veil),
+            lump.sub(d.mul(d).mul(eaten)).sub(holes.mul(0.43)),
         );
         const soft = float(1.0).sub(smoothstep(0.55, 1.0, d));
         const dense = torn.mul(soft).toVar();
@@ -198,9 +207,11 @@ export function createWhiteWater({
         // and where it thins at its edge the light comes through it (a heap of cotton is white
         // and dry all through).
         const hollow = float(1.0).sub(smoothstep(0.62, 0.95, shade));
-        const tint = mix(vec3(1.0), vec3(0.62, 0.86, 0.88), hollow.mul(0.7));
+        const tint = mix(vec3(1.0), vec3(0.45, 0.74, 0.84), hollow.mul(0.83));
         const rim = dense.mul(float(1.0).sub(dense)).mul(4.0);
-        return vec4(vWhite.rgb.mul(shade).mul(tint).mul(a).add(vThrough.mul(dense.add(rim.mul(1.6)))), a);
+        const glint = smoothstep(0.53, 0.9, froth).mul(fingers).mul(smoothstep(0.08, 0.6, abs(p.x).add(p.y)));
+        return vec4(vWhite.rgb.mul(shade.add(glint.mul(0.28))).mul(tint).mul(a)
+            .add(vThrough.mul(dense.mul(0.73).add(rim.mul(1.36)))), a);
     })();
 
     const mesh = new THREE.Mesh(geometry, material);
@@ -269,7 +280,8 @@ export function createLandingSpray({
     const size = s.w.mul(s.w).mul(0.016).add(0.006).mul(heave.mul(0.25).add(1.0));
     const twinkle = sin(U.time.mul(s.w.mul(6.0).add(3.0)).add(s.x.mul(53.0))).mul(0.3).add(0.8);
     material.positionNode = streak(centre, velocity, size, 1.1);
-    const vLook = varying(dropLight(centre, U.sun, U.warm, U.light).mul(fade).mul(twinkle).mul(0.7), 'vWaveLandingSpray');
+    const lit = dropLight(centre, U.sun, U.warm, U.light).mul(fade).mul(twinkle).mul(0.7);
+    const vLook = varying(lit, 'vWaveLandingSpray');
     material.outputNode = Fn(() => vec4(vLook.mul(bead()), 0.0))();
 
     const mesh = new THREE.Mesh(geometry, material);

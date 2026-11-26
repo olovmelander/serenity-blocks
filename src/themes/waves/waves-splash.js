@@ -27,7 +27,7 @@ import {
 import { FLOW, TAU, wavePoint } from './waves-core.js';
 import { FLUKE_REACH, NOSE_REACH, dolphinPose } from './waves-acts.js';
 import {
-    additive, cameraRight, cameraUp, quads,
+    additive, cameraRight, cameraUp, createParticleDrawRange, quads,
 } from './waves-spray.js';
 
 /** The white of the sea's own water in the air (the world's crowns use it too). */
@@ -70,6 +70,7 @@ export class FoamPool {
         const { base, geometry } = quads(this.count);
         this.buffer = new THREE.InstancedInterleavedBuffer(this.data, FOAM_STRIDE);
         this.buffer.setUsage(THREE.DynamicDrawUsage);
+        this.drawRange = createParticleDrawRange(geometry, this.buffer, 9);
         geometry.setAttribute('aStart', new THREE.InterleavedBufferAttribute(this.buffer, 4, 0));
         geometry.setAttribute('aMove', new THREE.InterleavedBufferAttribute(this.buffer, 4, 4));
         geometry.setAttribute('aLook', new THREE.InterleavedBufferAttribute(this.buffer, 4, 8));
@@ -134,6 +135,7 @@ export class FoamPool {
 
     reset() {
         this.cursor = 0;
+        this.drawRange.reset();
         for (let i = 0; i < this.count; i += 1) {
             const at = i * FOAM_STRIDE;
             this.data.fill(0, at, at + FOAM_STRIDE);
@@ -182,7 +184,8 @@ export class FoamPool {
     puff(now, birth, x, y, z, {
         v = [0, 0, 0], size = 0.3, spread = 0.4, life = 2, strength = 0.3, flat = 0,
     } = {}) {
-        const at = this.slotFor(now) * FOAM_STRIDE;
+        const slot = this.slotFor(now);
+        const at = slot * FOAM_STRIDE;
         const d = this.data;
         d[at] = x;
         d[at + 1] = y;
@@ -196,6 +199,7 @@ export class FoamPool {
         d[at + 9] = life;
         d[at + 10] = strength;
         d[at + 11] = flat;
+        this.drawRange.include(slot);
         this.buffer.needsUpdate = true;
     }
 
@@ -717,24 +721,27 @@ export function whaleSplash({
         return;
     }
     const falling = stage === 'fall';
-    // The white water it tears up: round the hole as it bursts out, along its whole length as it
-    // comes down.
+    // The breach lifts a collar around the whale. On landing the side meets the water along its
+    // length, throwing two sheets outwards, then the wind takes their tops.
     const puffs = falling ? 18 : 9;
     for (let k = 0; k < puffs; k += 1) {
-        const a = rand() * TAU;
-        const along = falling ? range(-0.45, 0.45) * L : 0;
-        const r = range(1, falling ? 3.5 : 2.6);
-        puff(x + hx * along + Math.cos(a) * r, range(0.3, 1.4), z + hz * along + Math.sin(a) * r, {
+        const along = falling ? range(-0.45, 0.45) * L : 0.45 * L * flat;
+        const a = falling ? (k % 2 ? -1 : 1) * range(1.22, 1.93) : ((k + rand() * 0.5) / puffs) * TAU;
+        const dx = hx * Math.cos(a) - hz * Math.sin(a);
+        const dz = hz * Math.cos(a) + hx * Math.sin(a);
+        const r = range(0.08, 0.17) * L;
+        const speed = range(1.4, falling ? 7 : 3.4);
+        puff(x + hx * along + dx * r, range(0.15, 0.8), z + hz * along + dz * r, {
             v: [
-                Math.cos(a) * range(1.5, falling ? 5 : 3),
+                dx * speed,
                 range(3, falling ? 9 : 6),
-                Math.sin(a) * range(1.5, falling ? 5 : 3),
+                dz * speed,
             ],
             size: range(1.6, falling ? 3.4 : 2.6),
             spread: range(1.2, 2.2),
             life: range(3.2, 5),
             strength: range(0.3, 0.42),
-            wait: range(0, falling ? 0.35 : 0.2),
+            wait: falling ? 0.12 + (along / L) * 0.21 + rand() * 0.14 : range(0, 0.2),
         });
     }
     for (let k = 0; k < (falling ? 5 : 2); k += 1) {
@@ -744,19 +751,21 @@ export function whaleSplash({
     }
     // And the heavy water thrown clear of it, in gouts too big to span with a hand.
     for (let k = count(falling ? 110 : 50, density); k > 0; k -= 1) {
-        const a = rand() * TAU;
-        const along = falling ? range(-0.45, 0.45) * L : 0;
+        const a = falling ? (k % 2 ? -1 : 1) * range(1.02, 2.12) : rand() * TAU;
+        const dx = hx * Math.cos(a) - hz * Math.sin(a);
+        const dz = hz * Math.cos(a) + hx * Math.sin(a);
+        const along = falling ? range(-0.45, 0.45) * L : 0.45 * L * flat;
         const out = range(0.4, falling ? 3.2 : 2);
         spray.drop(
             now,
             now + range(0, 0.3),
-            x + hx * along + Math.cos(a) * range(0.5, 2.5),
+            x + hx * along + dx * range(0.5, 2.5),
             0.3,
-            z + hz * along + Math.sin(a) * range(0.5, 2.5),
-            Math.cos(a) * out,
+            z + hz * along + dz * range(0.5, 2.5),
+            dx * out,
             range(1.2, falling ? 3.2 : 2.6),
-            Math.sin(a) * out,
-            range(0.35, 0.8) + 0.5 * rand() ** 4,
+            dz * out,
+            range(0.11, 0.29) + 0.34 * rand() ** 5,
             rgb,
             range(3.5, 5.5),
         );
