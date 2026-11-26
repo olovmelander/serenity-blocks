@@ -24,6 +24,7 @@ import {
     dot,
     exp,
     float,
+    fwidth,
     length,
     max,
     mix,
@@ -119,9 +120,16 @@ export function createLake(u, { fine = true, glint = true } = {}) {
         // ── How much of the lake stands open ──
         // The seam's half-width in the texture's edge units: a hairline cold, a river hot.
         const hot = max(heat.sub(0.75), 0.0);
-        const width = float(0.014).add(heat.mul(0.082)).add(hot.mul(hot).mul(0.5)).add(front.mul(0.03))
+        const fracture = fine ? u.noise(qp.mul(1 / 8.4)).toVar() : null;
+        const grit = fine ? u.noise(qp.mul(vec2(1.48, 1.86)).add(fracture.rg.mul(0.17))).rg.toVar() : null;
+        const grain = u.noise(qp.mul(1 / 2.9)).rg.sub(0.5).toVar();
+        const pinch = fine ? fracture.g.mul(fracture.g).mul(2.6).add(0.47) : float(1.0);
+        const width = float(0.014).add(heat.mul(0.082)).mul(pinch).add(hot.mul(hot).mul(0.5))
+            .add(front.mul(0.03))
             .toVar();
-        const ragged = fine ? u.noise(qp.mul(1 / 5.3)).a.sub(0.5).mul(0.075) : float(0.0);
+        const chips = fine ? smoothstep(0.30, 0.69, grit.r.add(grain.y.mul(0.51)))
+            .mul(smoothstep(0.29, 0.69, fracture.b)) : float(0.0);
+        const ragged = fine ? fracture.a.sub(0.5).mul(0.11).add(grain.x.mul(0.13)).add(chips.mul(0.042)) : float(0.0);
         const edge = plate.r.add(ragged).toVar();
         const open = float(1.0).sub(smoothstep(width.mul(0.5), width, edge));
         const closed = float(1.0).sub(clamp(width.div(0.84), 0.0, 1.0));
@@ -136,7 +144,8 @@ export function createLake(u, { fine = true, glint = true } = {}) {
         const inSeam = float(1.0).sub(clamp(edge.div(max(width, 1e-3)), 0.0, 1.0));
         // Open lava is never a flat sheet: it skins over in small dark plates as fast as it is
         // exposed, and the skin tears along a finer net of bright cracks.
-        const net = fine ? texture(u.plateTex, qp.div(PLATE_TILE / 3.3).add(vec2(0.37, 0.11))).r.toVar() : float(0.0);
+        const net = fine ? texture(u.plateTex, qp.add(fracture.rg.sub(0.5).mul(0.95))
+            .div(PLATE_TILE / 3.3).add(vec2(0.37, 0.11))).r.toVar() : float(0.0);
         const skinned = fine
             ? smoothstep(0.07, 0.3, net).mul(smoothstep(0.35, 0.62, skin.add(heat.mul(-0.12)).add(0.22))).mul(float(1.0).sub(farAway))
             : float(0.0);
@@ -151,49 +160,83 @@ export function createLake(u, { fine = true, glint = true } = {}) {
 
         // ── The crust ──
         const tilt = vec2(plate.g.sub(0.5), plate.a.sub(0.5));
-        const grain = u.noise(qp.mul(1 / 2.9)).rg.sub(0.5);
         // Each plate is a raft: domed over its heart, its rim rolled down into the seam.
         const slope = vec2(0.0).toVar();
+        const fold = float(0.0).toVar();
+        const foldLight = float(0.0).toVar();
         if (fine) {
             const eps = 0.22;
             const bulge = (r) => smoothstep(0.0, 0.42, r);
             const h0 = bulge(plate.r);
             const hx = bulge(texture(u.plateTex, qp.add(vec2(eps, 0.0)).div(PLATE_TILE)).r);
             const hz = bulge(texture(u.plateTex, qp.add(vec2(0.0, eps)).div(PLATE_TILE)).r);
-            slope.assign(vec2(hx.sub(h0), hz.sub(h0)).mul(0.3 / eps).mul(float(1.0).sub(farAway)));
+            const lifted = plate.g.mul(0.39).add(0.17);
+            slope.assign(vec2(hx.sub(h0), hz.sub(h0)).mul(lifted.div(eps)).mul(float(1.0).sub(farAway)));
+            // Pāhoehoe folds are squeezes in the skin, drawn into curved ribs as a raft drifts.
+            // Preserve the wide smooth centres; folds cluster on one flank and disappear at distance.
+            const phase = qp.y.mul(10.5).add(qp.x.mul(3.2)).add(plate.b.mul(14.0))
+                .add(fracture.r.mul(9.0))
+                .add(grain.g.mul(2.7))
+                .add(plate.a.mul(5.0));
+            const intact = smoothstep(0.29, 0.65, fracture.b.mul(0.68).add(grit.g.mul(0.32)));
+            const folded = smoothstep(0.27, 0.78, fracture.g.mul(0.38).add(plate.g.mul(0.62))).mul(0.82).add(0.18)
+                .mul(intact.mul(0.9).add(0.10))
+                .mul(float(1.0).sub(smoothstep(0.35, 1.9, fwidth(phase))))
+                .mul(float(1.0).sub(farAway));
+            fold.assign(sin(phase).mul(folded));
+            foldLight.assign(smoothstep(0.60, 1.0, cos(phase)).mul(folded));
         }
         // Ropy wrinkles where the skin was pushed as it cooled.
         const rope = u.noise(qp.mul(vec2(1 / 1.3, 1 / 0.55))).g.sub(0.5);
         const n = normalize(vec3(
-            tilt.x.mul(0.16).add(grain.x.mul(0.08)).sub(slope.x),
+            tilt.x.mul(0.26).add(grain.x.mul(0.16)).sub(slope.x).add(fold.mul(0.12)),
             1.0,
-            tilt.y.mul(0.16).add(grain.y.mul(0.08)).sub(slope.y).add(rope.mul(0.12)),
+            tilt.y.mul(0.26).add(grain.y.mul(0.16)).sub(slope.y).add(rope.mul(0.23))
+                .add(fold.mul(0.36)),
         )).toVar();
         // Heat soaks into a plate from its seams.
         const soak = exp(max(edge.sub(width), 0.0).mul(hot.mul(70.0).add(19.0)).negate());
         const glow = cdHeatColor(u, float(0.2).add(heat.min(1.0).mul(0.34)).add(front.mul(0.5))).mul(soak).mul(front.mul(1.5).add(0.95)).toVar();
         if (fine) {
             // A finer net of cracks inside every plate, alight where the lake is warm.
-            const hair = float(1.0).sub(smoothstep(0.035, heat.mul(0.05).add(0.095), net))
-                .mul(plate.g.mul(0.75).add(0.25))
-                .mul(smoothstep(0.1, 0.34, edge));
-            glow.addAssign(cdHeatColor(u, float(0.26).add(heat.mul(0.42))).mul(hair).mul(0.5));
+            const stress = smoothstep(0.25, 0.64, fracture.b.mul(0.74).add(plate.a.mul(0.28)).sub(edge.mul(0.22)));
+            const hair = float(1.0).sub(smoothstep(0.018, heat.mul(0.03).add(0.080), net))
+                .mul(stress)
+                .mul(smoothstep(0.07, 0.22, edge));
+            glow.addAssign(cdHeatColor(u, float(0.29).add(heat.mul(0.53))).mul(hair).mul(0.82));
         }
         // Basalt: glassy where it skinned over fast, dusted with ash toward the plate's heart.
         // Ash settles on a raft's crown; its rim, quenched fast, stays black glass.
         const ash = smoothstep(0.25, 0.7, plate.r).mul(plate.g.mul(0.5).add(0.5));
-        const albedo = u.rock.mul(plate.g.mul(0.5).add(0.6)).mul(grain.x.mul(0.3).add(1.0)).mul(ash.mul(0.7).add(0.55));
+        const albedo = u.rock.mul(mix(vec3(0.63, 0.73, 0.89), vec3(1.23, 1.32, 1.45), ash))
+            .mul(plate.g.mul(0.65).add(0.64)).mul(grain.x.mul(0.84).add(1.0)).mul(foldLight.mul(0.50).add(0.85));
         const toKey = u.fallPos.sub(p);
         const keyDist2 = dot(toKey, toKey);
         const key = u.mid.mul(0.78).add(u.hot.mul(0.22)).mul(u.fallGain).mul(float(1500.0).div(keyDist2.add(500.0)));
         const lit = key.mul(max(dot(n, toKey.div(keyDist2.sqrt())), 0.0))
             .add(cdHaze(u, vec3(V.x.negate(), 0.2, V.z.negate()), 2.0).mul(0.8))
-            .add(u.cool.mul(0.05))
+            .add(u.cool.mul(clamp(n.z.mul(-0.60).add(n.x.mul(0.20)).add(0.47), 0.04, 1.0)))
             .add(cdCurtain(u, p, n))
             .add(ringFlash.mul(3.0));
         // The crust itself lights along a ring's front: the rock is being broken there.
         const crust = albedo.mul(lit).add(glow).add(u.mid.mul(ringHeat).mul(0.5)).add(ringTint.mul(0.5))
             .toVar();
+        if (fine) {
+            // A glancing light resolves the ridge and its lee separately, even far from the
+            // falls. Patches of porous clinker break up the smooth, glassy skin between ribs.
+            const close = float(1.0).sub(smoothstep(20.0, 90.0, dist));
+            const clinker = smoothstep(0.34, 0.76, fracture.a.mul(0.67).add(plate.a.mul(0.33)));
+            const scoria = smoothstep(0.35, 0.74, grit.r.mul(0.58).add(grit.g.mul(0.42)))
+                .mul(clinker).mul(close);
+            const rib = foldLight.mul(smoothstep(0.10, 0.42, edge)).mul(close);
+            const sunken = fold.max(0.0).mul(smoothstep(0.10, 0.44, edge)).mul(close);
+            const rubble = chips.mul(float(1.0).sub(smoothstep(0.01, 0.16, edge.sub(width)))).mul(close);
+            crust.mulAssign(float(1.0).sub(sunken.mul(0.44)).mul(float(1.0).sub(rubble.mul(0.74))));
+            crust.addAssign(vec3(0.087, 0.059, 0.047).mul(rib)
+                .add(vec3(0.19, 0.073, 0.026).mul(rubble).mul(smoothstep(0.48, 0.69, grit.g)))
+                .add(vec3(0.057, 0.051, 0.053).mul(scoria))
+                .add(vec3(0.030, 0.037, 0.052).mul(ash).mul(close)));
+        }
 
         // The chamber mirrored in the glassy skin: its glow at a grazing angle, and the fall as a
         // long streak of light across the plates.
@@ -207,6 +250,10 @@ export function createLake(u, { fine = true, glint = true } = {}) {
         const sheen = u.haze.mul(cdGlowGain(u)).mul(fresnel).mul(glassy).mul(0.3)
             .toVar();
         if (glint) {
+            // A dark glass edge can catch a sliver of blue sky between the reflected rock faces.
+            const skyRay = normalize(u.skyTop.sub(p));
+            const blueMirror = smoothstep(0.985, 0.9996, dot(R, skyRay)).mul(glassy).mul(fresnel);
+            sheen.addAssign(u.cool.mul(blueMirror.mul(0.74)));
             const toFoot = u.fallFoot.xz.sub(xz);
             const footDist = length(toFoot);
             const flat = max(length(R.xz), 1e-3);

@@ -13,9 +13,10 @@
  *   combo=<n>                hold a combo of n (the chamber's pressure)
  *   level=<n>                level n's step on top of the clock's palette
  *   locks=<n>                before anything else, play n locks (pools already melted in the lake)
- *   event=lock|drop|clear|quad|twist|perfect|levelUp   fire a gameplay event...
+ *   event=lock|drop|clear|quad|twist|mini|cascade|b2b|perfect|crown|levelUp|gameOver
  *   eventAge=<s>             ...and show it <s> seconds later (lines=<n>, row=<r>, u=<0..1>,
- *                            color=<hex>)
+ *                            color=<hex>, distance=<drop rows>, depth=<cascade wave>).
+ *                            crown replays the perfect-clear callback 360 ms after its clear.
  *   demo=1                   live only: play a looping gameplay script
  *   parts=lake,columns,...   draw only these parts
  *   falseColor=1             post debug view: band the pre-tone-map max channel
@@ -34,6 +35,9 @@ import * as THREE from 'three/webgpu';
 import { CinderDriftWorld } from '../../themes/cinder-drift/cinder-drift-world.js';
 import { CinderDriftPost, POST_LOOK } from '../../themes/cinder-drift/cinder-drift-post.js';
 import { readLayoutRects } from '../../themes/cinder-drift/cinder-drift-composition.js';
+import { CINDER_DRIFT_TETROMINOS } from '../../themes/cinder-drift/cinder-drift-tetrominos.js';
+import { SHAPES } from '../../core/constants.js';
+import { drawLandingShadowCanvas, drawPieceSolid, trimShape } from '../../rendering/canvas/canvas-drawing-utils.js';
 
 export const meta = {
     id: 'cinder-drift',
@@ -46,50 +50,70 @@ function num(params, key, fallback = 0) {
     return Number.isFinite(v) ? v : fallback;
 }
 
-const BOARD_PX = 'min(clamp(220px, 22vw, 300px), (100vh - 250px) / 2)';
+/** The live solo markup and styles, populated with a static playfield. Only board previews load them. */
+async function mountBoardOverlay(root, withHud) {
+    const [page, tokens, solo] = await Promise.all([
+        import('../../../index.html?raw'),
+        import('../../../public/styles/keystone.css?raw'),
+        import('../../../public/styles/keystone-solo.css?raw'),
+    ]);
+    if (!root.isConnected) return;
+    const source = document.createElement('template');
+    source.innerHTML = page.default;
+    const stage = source.content.querySelector('.single-player-stage');
+    stage.dataset.board = 'well';
+    stage.style.display = 'flex';
+    const styles = document.createElement('style');
+    // Base layout declarations normally supplied by the full game's main.css and overlays.
+    styles.textContent = `${tokens.default}
+        #cinder-drift-theme .single-player-stage { --sb-board-fill:.85;--sb-board-floor:520px }
+        @media (max-aspect-ratio:1/1) { #cinder-drift-theme .single-player-stage { --sb-board-fill:1 } }
+        #cinder-drift-theme .player-next-pieces, #cinder-drift-theme .single-player-piece-previews,
+        #cinder-drift-theme .single-player-stats-bar { display:flex }
+        #cinder-drift-theme .single-player-piece-previews { justify-content:center }
+        #cinder-drift-theme #phaser-game-container canvas { display:block;width:100%;height:100% }
+        ${solo.default}`;
+    if (!withHud) stage.querySelector('.single-player-stats-bar').remove();
+    const board = document.createElement('canvas');
+    board.width = 300;
+    board.height = 600;
+    stage.querySelector('#phaser-game-container').append(board);
+    root.append(styles, stage);
+    const paint = (context, key, x, y, size) => drawPieceSolid(context, trimShape(SHAPES[key]), x, y, size, {
+        ...CINDER_DRIFT_TETROMINOS,
+        color: CINDER_DRIFT_TETROMINOS.colors[key],
+    });
+    const ctx = board.getContext('2d');
+    const pieces = [['I', 0, 19], ['O', 4, 18], ['L', 0, 17], ['J', 7, 18], ['T', 3, 4]];
+    pieces.forEach(([key, x, y]) => paint(ctx, key, x * 30, y * 30, 30));
+    drawLandingShadowCanvas(ctx, trimShape(SHAPES.T), 90, 16 * 30, 30, CINDER_DRIFT_TETROMINOS.colors.T);
+    const queue = stage.querySelector('#next-queue-container');
+    ['Z', 'S', 'O'].forEach((key, i) => {
+        const preview = document.createElement('canvas');
+        preview.className = i === 0 ? 'player-next-piece highlight' : 'player-next-piece';
+        preview.width = 100;
+        preview.height = 64;
+        const shape = trimShape(SHAPES[key]);
+        paint(preview.getContext('2d'), key, (100 - shape[0].length * 18) / 2, (64 - shape.length * 18) / 2, 18);
+        queue.append(preview);
+    });
+}
 
-/** A stand-in for the real solo layout (public/styles/main.css) with the real class names. */
-function mountBoardOverlay(withHud) {
+function createOverlayRoot() {
     const root = document.createElement('div');
+    root.id = 'cinder-drift-theme';
+    root.className = 'active';
+    root.setAttribute('aria-hidden', 'true');
     root.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:5';
-    const card = document.createElement('div');
-    card.className = 'player-card';
-    card.dataset.player = 'solo';
-    card.style.cssText = [
-        'position:absolute', 'left:50%', 'top:50%',
-        `width:calc(${BOARD_PX} * 1.19)`,
-        `height:calc(2 * ${BOARD_PX} + 158px)`,
-        'transform:translate(-50%, -50%)', 'background:rgba(21,26,35,0.866)',
-        'border:1px solid rgba(139,92,246,0.45)', 'border-radius:20px',
-    ].join(';');
-    const board = document.createElement('div');
-    board.id = 'single-player-game-canvas';
-    board.style.cssText = [
-        'position:absolute', 'left:50%', 'bottom:24px', `width:calc(${BOARD_PX})`, `height:calc(2 * ${BOARD_PX})`,
-        'transform:translateX(-50%)', 'border:1px solid rgba(255,255,255,0.08)',
-    ].join(';');
-    card.append(board);
-    root.append(card);
-    if (withHud) {
-        const hud = document.createElement('div');
-        hud.className = 'single-player-stats-bar';
-        hud.style.cssText = [
-            'position:absolute', 'top:25%', 'height:50%',
-            'left:calc(50% + min(max(300px, min(35vw, 400px)), (100vh - 200px) / 2) / 2 + 60px)',
-            'width:140px',
-            'background:rgba(14,11,26,0.8)', 'border:1px solid rgba(150,110,255,0.25)', 'border-radius:10px',
-        ].join(';');
-        root.append(hud);
-    }
     document.body.appendChild(root);
     return root;
 }
 
 /** The game's piece colours (cinder-drift-tetrominos.js). */
-const PIECE_COLORS = ['#fff5e6', '#ffcc00', '#800020', '#cccc00', '#cc3300', '#9a2a18', '#ff8800'];
+const PIECE_COLORS = ['I', 'O', 'T', 'S', 'Z', 'J', 'L'].map((key) => CINDER_DRIFT_TETROMINOS.colors[key]);
 
 /** A looping script of locks and clears for the live demo (seconds into the loop). */
-const DEMO_LOOP = 34;
+const DEMO_LOOP = 40;
 const DEMO_SCRIPT = [
     [1.0, 'lock', { rows: [19], u: 0.2 }], [2.1, 'lock', { rows: [19, 18], u: 0.75 }],
     [3.2, 'lock', { rows: [18, 17], u: 0.4, hardDrop: true }], [4.3, 'lock', { rows: [17], u: 0.85 }],
@@ -107,9 +131,15 @@ const DEMO_SCRIPT = [
     [26.0, 'lock', { rows: [19], u: 0.45 }], [27.0, 'lock', { rows: [19, 18], u: 0.7 }],
     [28.0, 'lock', { rows: [18], u: 0.25, hardDrop: true }],
     [28.0, 'clear', {
-        rows: [19, 18], lines: 2, twist: true, combo: 1,
+        rows: [19, 18], lines: 2, twist: true, b2b: true, combo: 1,
     }],
     [30.0, 'lock', { rows: [19], u: 0.5 }],
+    [32.4, 'lock', {
+        rows: [19, 18, 17, 16], u: 0.77, hardDrop: true, distance: 17,
+    }],
+    [32.4, 'clear', {
+        rows: [19, 18, 17, 16], lines: 4, combo: 1, perfect: true,
+    }],
 ];
 
 export function create({
@@ -137,7 +167,7 @@ export function create({
         falseColor: params.get('falseColor') === '1',
     });
     if (noPost) renderer.toneMapping = THREE.AgXToneMapping;
-    const overlay = params.get('board') === '1' ? mountBoardOverlay(params.get('statsHud') !== '0') : null;
+    const overlay = params.get('board') === '1' ? createOverlayRoot() : null;
 
     const pointer = { x: num(params, 'px'), y: num(params, 'py') };
     const iconPose = params.get('icon') === '1';
@@ -202,7 +232,7 @@ export function create({
     const warmLocks = Math.max(0, Math.round(num(params, 'locks', 0)));
     const colorParam = params.get('color');
     const eventColor = colorParam ? `#${colorParam.replace('#', '')}` : PIECE_COLORS[2];
-    const fireEvent = () => {
+    const fireEvent = (eventTime) => {
         const row = Math.round(num(params, 'row', 12));
         const u = num(params, 'u', 0.3);
         const lines = Math.max(1, Math.min(4, Math.round(num(params, 'lines', 2))));
@@ -210,16 +240,37 @@ export function create({
         if (eventName === 'lock') world.onLock({ rows: [row, row - 1], u, color: eventColor });
         else if (eventName === 'drop') {
             world.onLock({
-                rows: [row, row - 1], u, hardDrop: true, color: eventColor,
+                rows: [row, row - 1], u, hardDrop: true, distance: num(params, 'distance', 16), color: eventColor,
             });
         } else if (eventName === 'clear') world.onClear({ rows: bottom(lines), lines });
         else if (eventName === 'quad') world.onClear({ rows: bottom(4), lines: 4 });
         else if (eventName === 'twist') world.onClear({ rows: bottom(2), lines: 2, twist: true });
-        else if (eventName === 'perfect') world.onClear({ rows: bottom(4), lines: 4, perfect: true });
-        else if (eventName === 'levelUp') world.levelUp(num(params, 'eventLevel', level + 1));
+        else if (eventName === 'mini') world.onTwistMini();
+        else if (eventName === 'cascade') {
+            const cascade = num(params, 'depth', 3);
+            world.onClear({ rows: bottom(lines), lines, cascade });
+        } else if (eventName === 'b2b') {
+            const count = params.has('lines') ? lines : 4;
+            world.onClear({
+                rows: bottom(count), lines: count, twist: count < 4, b2b: true,
+            });
+        } else if (eventName === 'perfect') {
+            world.onClear({ rows: bottom(4), lines: 4, perfect: true });
+        } else if (eventName === 'crown') {
+            world.onClear({ rows: bottom(lines), lines });
+            if (eventAge >= 0.36) {
+                stepTo(eventTime, eventTime + 0.36, 1 / 120);
+                world.onPerfectCrown();
+                return eventTime + 0.36;
+            }
+        } else if (eventName === 'levelUp') world.levelUp(num(params, 'eventLevel', level + 1));
+        else if (eventName === 'gameOver') world.resetSession({ cooling: true });
+        return eventTime;
     };
 
+    let captureTime = null;
     const seekTo = (time) => {
+        captureTime = time;
         const lead = (eventName ? eventAge : 0) + 9 + warmLocks * 0.5;
         const start = Math.max(0, time - lead);
         world.seek(start);
@@ -242,12 +293,18 @@ export function create({
         const eventTime = eventName ? time - eventAge : time;
         if (eventTime > cursor) stepTo(cursor, eventTime, 0.1);
         if (eventName) {
-            fireEvent();
-            stepTo(eventTime, time, 1 / 120);
+            const lastEventTime = fireEvent(eventTime);
+            stepTo(lastEventTime, time, 1 / 120);
         }
         frame(time, 0);
         pushPost(time);
     };
+    const boardReady = overlay && mountBoardOverlay(overlay, params.get('statsHud') !== '0').then(() => {
+        if (!overlay.isConnected) return;
+        syncViewport();
+        if (captureTime !== null) seekTo(captureTime);
+        overlay.dataset.ready = 'true';
+    });
 
     const demo = params.get('demo') === '1';
     let demoCursor = 0;
@@ -275,35 +332,45 @@ export function create({
         // A chain that is not continued breaks on the next lock that clears nothing.
         if (local > 11.6 && local < 18.6 && world.combo > 0) world.onCombo(0);
         if (local > 20 && local < 28 && world.combo > 0) world.onCombo(0);
-        if (local > 30 && world.combo > 0) world.onCombo(0);
+        if (((local > 30 && local < 32.4) || local > 35) && world.combo > 0) world.onCombo(0);
     };
 
+    const counters = { drawCalls: 0, triangles: 0 };
+    const render = () => {
+        if (post) post.render();
+        else renderer.render(scene, camera);
+        // three resets these on every RAF, including ticks skipped by the playground cap.
+        counters.drawCalls = renderer.info.render.drawCalls;
+        counters.triangles = renderer.info.render.triangles;
+    };
     return {
         cameraRadius: 1,
-        camera(time, cam) {
-            world.updateCamera(cam, sim(time, 0));
-            inspectLens(cam);
-        },
+        camera() { /* frame() positions the camera before every simulation step. */ },
         update(time, dt) {
+            captureTime = null;
             if (demo) runDemo(time);
             frame(time, dt);
             pushPost(time);
         },
         seek(time) {
-            seekTo(time);
+            // Keep the pinned image without replaying nine seconds of simulation on every redraw.
+            if (time !== captureTime) seekTo(time);
         },
-        render() {
-            if (post) post.render();
-            else renderer.render(scene, camera);
+        render,
+        async renderAsync() {
+            await boardReady;
+            render();
         },
         resize() {
             syncViewport();
+            captureTime = null;
         },
+        getRendererCounters: () => ({ ...counters }),
         getDiagnostics() {
             return {
                 backend: renderer.backend?.isWebGPUBackend ? 'WebGPU' : 'WebGL2',
-                calls: renderer.info?.render?.calls ?? null,
-                triangles: renderer.info?.render?.triangles ?? null,
+                calls: counters.drawCalls,
+                triangles: counters.triangles,
                 ...world.getState(),
             };
         },

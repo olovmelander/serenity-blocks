@@ -39,6 +39,7 @@ import * as THREE from 'three/webgpu';
 
 import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
+import { MULTIPLAYER_EVENTS } from '../../events/multiplayer-events.js';
 import { registerGpuSurface } from '../../utils/gpu-loss-coordinator.js';
 import { normalizeQuality } from '../../utils/quality.js';
 import { getViewport } from '../../utils/viewport.js';
@@ -252,7 +253,7 @@ export default class CinderDriftTheme extends BaseTheme {
                 crown: (player) => this.world?.onPerfectCrown({ player }),
                 twist: (player) => this.world?.onTwistMini({ player }),
                 combo: (n, player) => this.reportCombo(n, player),
-                levelUp: (level) => this.world?.levelUp(level),
+                levelUp: (level, options) => this.world?.levelUp(level, options),
             },
         });
         this.appliedSize = null;
@@ -349,15 +350,24 @@ export default class CinderDriftTheme extends BaseTheme {
         this.clearTrackedResources();
         this.eventUnsubscribers = [];
         const playing = () => this.isActive && !this.isPaused;
+        const finishRun = () => {
+            if (!Number.isFinite(this.world?.resultAt)) this.resetSession(playing() && this.director?.enabled);
+        };
 
         Object.keys(CINDER_DRIFT_EVENT_HANDLERS).forEach((key) => {
             const handler = CINDER_DRIFT_EVENT_HANDLERS[key];
             if (!EVENTS[key]) return;
             this.eventUnsubscribers.push(eventBus.on(EVENTS[key], (payload) => {
-                if (playing()) this.director?.[handler](payload);
+                if (playing()) {
+                    this.world?.cancelResultsLight();
+                    this.director?.[handler](payload);
+                }
             }));
         });
         this.eventUnsubscribers.push(
+            eventBus.on(MULTIPLAYER_EVENTS.GAME_OVER, (result) => {
+                if (result?.isGameOver === true) finishRun();
+            }),
             eventBus.on(EVENTS.SETTINGS_CHANGED, (p) => this.handleSettingsChanged(p)),
             eventBus.on(EVENTS.VIEWPORT_RESIZED, (v) => {
                 const view = v?.width > 0 && v?.height > 0 ? v : getViewport();
@@ -365,7 +375,7 @@ export default class CinderDriftTheme extends BaseTheme {
             }),
         );
         this.registerEventListener(window, 'settingsChanged', (p) => this.handleSettingsChanged(p));
-        this.registerEventListener(window, 'gameOver', () => this.resetSession());
+        this.registerEventListener(window, 'gameOver', finishRun);
 
         const resetPointer = () => {
             this.pointer.x = 0;
@@ -407,10 +417,10 @@ export default class CinderDriftTheme extends BaseTheme {
     }
 
     /** A new run: the chamber back at rest, no combo in flight. */
-    resetSession() {
+    resetSession(cooling = false) {
         this.director?.reset();
         this.combos.clear();
-        this.world?.resetSession();
+        this.world?.resetSession({ cooling });
         this.scheduleLayoutReads();
     }
 
@@ -424,6 +434,7 @@ export default class CinderDriftTheme extends BaseTheme {
             lockRipple: boolSetting(readSetting(payload, 'pieceLockRipple'), true),
         });
         this.world?.setReducedMotion(this.reducedMotion);
+        if (!this.director?.enabled) this.world?.cancelResultsLight();
     }
 
     handleSettingsChanged(payload) {
@@ -508,7 +519,10 @@ export default class CinderDriftTheme extends BaseTheme {
         this.modeManager = manager;
         const relayout = () => this.scheduleLayoutReads();
         this.eventUnsubscribers.push(
-            manager.on('modeStarted', relayout),
+            manager.on('modeStarted', () => {
+                this.world?.cancelResultsLight();
+                relayout();
+            }),
             manager.on('modeActivated', relayout),
             manager.on('modeStopped', () => this.resetSession()),
         );

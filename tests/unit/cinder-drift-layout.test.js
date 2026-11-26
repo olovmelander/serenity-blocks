@@ -20,6 +20,7 @@ import {
 import { QUALITY, QUALITY_NAMES, tierFor } from '../../src/themes/cinder-drift/cinder-drift-quality.js';
 import { POST_LOOK } from '../../src/themes/cinder-drift/cinder-drift-post.js';
 import { REST_RIG, fovForAspect } from '../../src/themes/cinder-drift/cinder-drift-world.js';
+import { createShell } from '../../src/themes/cinder-drift/cinder-drift-rock.js';
 import { CINDER_DRIFT_TETROMINOS } from '../../src/themes/cinder-drift/cinder-drift-tetrominos.js';
 
 const plan = buildPlan();
@@ -198,8 +199,8 @@ describe('cinder drift core maths', () => {
     it('gives a lock the piece\'s colour drawn toward the fire: never over full, never cold', () => {
         const cold = [0x0000ff, 0x00ffff, 0x00ff00, 0x8090e0, 0x40a0ff];
         const neutral = [0xffffff, 0x808080, 0x333333, 0x000000];
-        const warm = Object.values(CINDER_DRIFT_TETROMINOS.colors);
-        for (const value of [...cold, ...neutral, ...warm, '#a8ffe8', 'ffd4a8']) {
+        const { colors } = CINDER_DRIFT_TETROMINOS;
+        for (const value of [...cold, ...neutral, ...Object.values(colors), '#a8ffe8', 'ffd4a8']) {
             const rgb = pieceColor(value);
             expect(rgb, String(value)).toHaveLength(3);
             for (const channel of rgb) {
@@ -208,13 +209,16 @@ describe('cinder drift core maths', () => {
                 expect(channel, String(value)).toBeLessThanOrEqual(1 + 1e-9);
             }
         }
-        // The theme's own pieces are the colours of fire: red leads, blue trails it.
-        for (const [shape, hex] of Object.entries(CINDER_DRIFT_TETROMINOS.colors)) {
-            const rgb = pieceColor(hex);
+        // The incandescent pieces keep a full red core. Olivine and tempered steel
+        // carry their distinctive cast into their corona, even after warming.
+        for (const shape of ['I', 'O', 'T', 'Z', 'L']) {
+            const rgb = pieceColor(colors[shape]);
             expect(rgb[0], shape).toBeCloseTo(Math.max(...rgb), 9);
             expect(rgb[0], shape).toBeCloseTo(1, 6);
             expect(rgb[2], shape).toBeLessThan(rgb[0]);
         }
+        expect(pieceColor(colors.S)[1]).toBeGreaterThan(pieceColor(colors.S)[2]);
+        expect(pieceColor(colors.J)[2]).toBeGreaterThan(pieceColor(colors.J)[1]);
         // A piece keeps its hue...
         const blue = pieceColor(0x0000ff);
         expect(blue[2]).toBeGreaterThan(blue[0]);
@@ -844,6 +848,25 @@ describe('cinder drift chamber plan', () => {
         expect(lit).toHaveLength(1);
     });
 
+    it('opens the roof to the outside beside the desktop board and above the portrait card', () => {
+        const shell = createShell({}, plan);
+        const desktop = [SKYLIGHT.top[0], SKYLIGHT.top[2]];
+        for (const [aspect, x, z] of [[1200 / 720, ...desktop], [16 / 9, ...desktop], [0.46, ...SKYLIGHT.slitXZ]]) {
+            const y = plan.ceilingAt(x, z) + 1.6;
+            const camera = restCamera(aspect);
+            const screen = onScreen(camera, x, y, z);
+            expect(screen.x).toBeGreaterThan(aspect > 1 ? 0.70 : 0.0);
+            expect(screen.x).toBeLessThan(aspect > 1 ? 0.78 : 1.0);
+            expect(screen.y).toBeGreaterThan(aspect > 1 ? 0.075 : 0);
+            expect(screen.y).toBeLessThan(0.15);
+            const direction = new THREE.Vector3(x, y, z).sub(camera.position).normalize();
+            const hits = new THREE.Raycaster(camera.position, direction).intersectObject(shell.mesh);
+            expect(hits[0]?.point.y).toBeGreaterThan(y + 25);
+        }
+        shell.geometry.dispose();
+        shell.material.dispose();
+    });
+
     it('pours the great fall out of the left cliff onto open lava', () => {
         const { lip, foot, width } = plan.fall;
         expect(width).toBe(FALL.width);
@@ -1170,7 +1193,7 @@ describe('cinder drift tiers', () => {
             // A finer plan the higher the tier (a smaller spacing scale).
             expect(b.detail, `${name}.detail`).toBeLessThanOrEqual(a.detail);
             // What a tier draws, every tier above it draws.
-            for (const key of ['lakeFine', 'lakeGlint', 'shaft']) {
+            for (const key of ['columnBevel', 'lakeFine', 'lakeGlint', 'shaft']) {
                 expect(Number(b[key]), `${name}.${key}`).toBeGreaterThanOrEqual(Number(a[key]));
             }
             const lookA = POST_LOOK[QUALITY_NAMES[i - 1]];

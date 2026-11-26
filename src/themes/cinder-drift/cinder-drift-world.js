@@ -12,10 +12,10 @@
  *            it strikes, a ring runs out through the crust and the plates part as it passes,
  *            sparks in the piece's colour spray from the card at the piece's own height, and
  *            the pool it melted stays, drifting away with the plates as it skins over. A hard
- *            drop strikes harder and shakes the chamber.
+ *            drop draws a falling trace whose length follows the drop distance.
  *   clear    the cleared rows leave the card as tongues of fire, a wave runs out through the
  *            lake and up the cliffs, one front per line, and a fissure opens across the lake:
- *            two fountains for one line, four for two, six for three.
+ *            two low vents for one line, crossing pairs for two, a stepped ascent for three.
  *   combo    the chamber's pressure rises: the crust thins, lava climbs in the seams between
  *            the columns, the fall swells, the cinders storm upward, and every step of the
  *            chain cracks another fissure in the cliffs that pours a stream into the lake.
@@ -57,6 +57,7 @@ import {
     NOISE_SIZE,
     PALETTE_KEYS,
     PLATE_SIZE,
+    PLATE_TILE,
     RING_FADE,
     RING_SLOTS,
     STREAM_SLOTS,
@@ -82,6 +83,7 @@ import {
     uploadHeat,
 } from './cinder-drift-tsl.js';
 import { HeatField } from './cinder-drift-heat.js';
+import { emitCascadeCrosswaves } from './cinder-drift-crosswaves.js';
 import { easeStep } from '../shared/mood-clock.js';
 import { applyCameraBreath } from '../shared/camera-breath.js';
 import {
@@ -94,12 +96,13 @@ import {
 import { tierFor } from './cinder-drift-quality.js';
 import { createLake } from './cinder-drift-lake.js';
 import { createColumns, createShell } from './cinder-drift-rock.js';
+import { createOutcrops } from './cinder-drift-outcrops.js';
 import { createFalls, createFissure } from './cinder-drift-falls.js';
 import {
     createEmbers, createPlume, createShaft, createSmoke,
 } from './cinder-drift-air.js';
 import {
-    createBombs, createFlashes, createRowJets, createSpatter,
+    createAshLightning, createBombs, createFlashes, createRowJets, createSpatter,
 } from './cinder-drift-fx.js';
 import {
     boardFor, boardPoint, cardUnion, fallbackLayout,
@@ -136,13 +139,32 @@ export const FOUNTAINS_FOR_LINES = Object.freeze([0, 2, 4, 6, FOUNTAIN_SLOTS]);
 const SPRAY_BEAT = 0.25;
 const STREAM_BEAT = 0.5;
 const BUBBLE_BEAT = 1.9;
+// Compression and release of a gas pocket. The phase stays monotone as the intervals vary.
+const bubbleBeatAt = (t) => Math.floor(t / BUBBLE_BEAT + 0.48 * Math.sin(t * 0.6) + 0.33 * Math.sin(t * 0.31));
 const DRIP_BEAT = 0.2;
 /** The spatter pool size the emission counts below are written for. */
 const SPATTER_REFERENCE = 4096;
 
+// Sample the same half-float texels the GPU sees. Both chamber fields repeat at power-of-two sizes.
+function sampleField(field, size, s, v, channel) {
+    const x = s * size - 0.5;
+    const y = v * size - 0.5;
+    const ix = Math.floor(x);
+    const iy = Math.floor(y);
+    const mask = size - 1;
+    const left = (ix & mask) * 4 + channel;
+    const right = ((ix + 1) & mask) * 4 + channel;
+    const row = (iy & mask) * size * 4;
+    const next = ((iy + 1) & mask) * size * 4;
+    const { fromHalfFloat } = THREE.DataUtils;
+    const top = lerp(fromHalfFloat(field[row + left]), fromHalfFloat(field[row + right]), x - ix);
+    const bottom = lerp(fromHalfFloat(field[next + left]), fromHalfFloat(field[next + right]), x - ix);
+    return lerp(top, bottom, y - iy);
+}
+
 const PARTS = [
     'columns', 'lake', 'shell', 'fissure', 'falls', 'smoke', 'plume', 'shaft', 'embers', 'spatter', 'bombs', 'flashes',
-    'jets',
+    'jets', 'outcrops', 'lightning',
 ];
 
 export class CinderDriftWorld {
@@ -185,6 +207,7 @@ export class CinderDriftWorld {
         this.bombs = null;
         this.flashes = null;
         this.jets = null;
+        this.lightning = null;
         this.disposed = false;
         this.reducedMotion = false;
         this.aspect = 16 / 9;
@@ -277,6 +300,7 @@ export class CinderDriftWorld {
     /** Everything the choreography remembers. */
     resetState(time) {
         this.time = time;
+        this.resultAt = -Infinity;
         this.combo = 0;
         this.power = 0;
         this.storm = 0;
@@ -313,9 +337,10 @@ export class CinderDriftWorld {
         this.drift = time * DRIFT_SPEED * motion;
         this.flow = time;
         this.lift = time * motion;
+        this.airTime = time * motion;
         this.sprayBeat = Math.floor(time / SPRAY_BEAT);
         this.streamBeat = Math.floor(time / STREAM_BEAT);
-        this.bubbleBeat = Math.floor(time / BUBBLE_BEAT);
+        this.bubbleBeat = bubbleBeatAt(this.airTime);
         this.dripBeat = Math.floor(time / DRIP_BEAT);
         this.heat.reset(time);
         this.falls?.reset();
@@ -324,6 +349,7 @@ export class CinderDriftWorld {
         this.bombs?.reset();
         this.flashes?.reset();
         this.jets?.reset();
+        this.lightning?.reset();
         if (this.u) {
             for (let i = 0; i < RING_SLOTS; i++) this.u.ringA[i].value.set(0, 0, -100, 0);
             for (let i = 0; i < CLEAR_SLOTS; i++) {
@@ -331,6 +357,7 @@ export class CinderDriftWorld {
                 this.u.clearC[i].value.set(1, 1, 1);
             }
             this.u.shock.value.set(-100, 0);
+            this.u.bankPulse.value.set(-100, 0, 1);
             this.u.whirl.value.set(0, 0, -100, 0);
             this.u.rise.value = 0;
             this.u.clearCarry.value = 0;
@@ -366,8 +393,10 @@ export class CinderDriftWorld {
         }
 
         // Solids, nearest first; then the air, back to front by kind.
-        this.addPart('columns', createColumns(u, plan));
+        this.addPart('columns', createColumns(u, plan, tier.columnBevel));
         yield 'columns';
+        this.addPart('outcrops', createOutcrops(u));
+        yield 'outcrops';
         this.addPart('lake', createLake(u, { fine: tier.lakeFine, glint: tier.lakeGlint }));
         yield 'lake';
         this.addPart('shell', createShell(u, plan));
@@ -407,6 +436,9 @@ export class CinderDriftWorld {
         this.jets = createRowJets(u);
         this.addPart('jets', this.jets);
         yield 'jets';
+        this.lightning = createAshLightning(u, this.quality);
+        this.addPart('lightning', this.lightning);
+        yield 'lightning';
 
         this.applyPalette(1);
         this.scene.add(this.root);
@@ -453,15 +485,21 @@ export class CinderDriftWorld {
     }
 
     /** A new run: the chamber back at rest (the crust keeps drifting). */
-    resetSession() {
+    resetSession({ cooling = false } = {}) {
         const {
-            time, drift, flow, lift, sprayBeat, streamBeat, bubbleBeat, dripBeat,
+            time, drift, flow, lift, airTime, sprayBeat, streamBeat, bubbleBeat, dripBeat,
         } = this;
         this.resetState(time);
+        if (cooling) this.resultAt = time;
         Object.assign(this, {
-            drift, flow, lift, sprayBeat, streamBeat, bubbleBeat, dripBeat,
+            drift, flow, lift, airTime, sprayBeat, streamBeat, bubbleBeat, dripBeat,
         });
         this.applyPalette(1);
+    }
+
+    /** A new run or its first event can arrive while the results' cooling light still lingers. */
+    cancelResultsLight() {
+        this.resultAt = -Infinity;
     }
 
     /** Called once the camera that will render the world is known. */
@@ -663,7 +701,7 @@ export class CinderDriftWorld {
      * rows it covers, `color` = the piece's colour; `screen` (fractions) replaces the board point.
      */
     onLock({
-        u = 0.5, rows = null, hardDrop = false, color = null, player = 0, screen = null,
+        u = 0.5, rows = null, hardDrop = false, distance = 10, color = null, player = 0, screen = null,
     } = {}) {
         const { u: uniforms } = this;
         if (!uniforms || !this.spatter) return;
@@ -681,6 +719,7 @@ export class CinderDriftWorld {
         const strike = this.screenToLake(fx, fy);
         const { x, z } = strike;
         const hard = hardDrop ? 1 : 0;
+        const travel = clamp01((Number(distance) || 0) / 18);
         // A strike close under the viewer (an upright screen has nowhere else to put it) is
         // drawn smaller: it must not fill the frame.
         const eye = this._camera?.position;
@@ -690,12 +729,33 @@ export class CinderDriftWorld {
 
         // ── The lake takes the piece's heat ──
         const glowRgb = rgb.map((c, i) => c * 0.2 + [1, 0.4, 0.09][i] * 0.8);
-        const ringStrength = (hard ? 1.3 : 0.85) * (0.5 + 0.5 * near) * Math.sqrt(pace);
+        const ringStrength = (hard ? 1.1 + travel * 0.33 : 0.85) * (0.5 + 0.5 * near) * Math.sqrt(pace);
         this.ring(x, z, this.time, ringStrength, glowRgb, hard ? 1 : 0.72);
         this.melt(x, z, (hard ? 2.3 : 1.7) * (0.55 + 0.45 * near), hard ? 1.6 : 1.25);
         // The strike: a burst of light, a jet of lava thrown straight up, and a crown of drops
         // with a breath of the piece's colour in it.
         const tint = rgb.map((c) => 0.82 + c * 0.18);
+        if (hard) {
+            // A seam of falling fire breaks into the upward splash. A short placement
+            // leaves a stub, a long plunge burns a trail the eye can follow down.
+            this.spatter.emit({
+                x,
+                y: 0.28 * near,
+                z,
+                n: this.drops(26 + travel * 34),
+                rgb: tint,
+                time: this.time,
+                stagger: 0.055,
+                heightSpread: (0.85 + 3.4 * travel) * near,
+                spread: 0.18 * near,
+                out: [0.03, 0.28],
+                up: [-14 * near, -8 * near],
+                life: [0.18, 0.36],
+                size: 0.032 * near,
+                heat: 1.9,
+                drag: 0.18,
+            });
+        }
         this.flashes.fire({
             x,
             y: 0.7,
@@ -710,14 +770,14 @@ export class CinderDriftWorld {
             z,
             time: this.time,
             life: hard ? 0.5 : 0.36,
-            height: (hard ? 2.9 : 1.7) * near * pace,
+            height: (hard ? 2.3 + 0.95 * travel : 1.7) * near * pace,
             width: (hard ? 0.6 : 0.42) * near,
         });
         this.spatter.emit({
             x,
             y: 0.15,
             z,
-            n: this.drops((hard ? 150 : 64) * pace),
+            n: this.drops((hard ? 98 + 16 * travel : 64) * pace),
             rgb: tint,
             time: this.time,
             out: [0.6 * near, (hard ? 5.8 : 3.4) * near],
@@ -816,12 +876,54 @@ export class CinderDriftWorld {
         else s.set(birth, Math.min(1.8, amount + left * 0.5));
     }
 
-    /** Turn the crust round (x, z): a fresh turn may go either way; one still turning keeps its way. */
-    twist(x, z, amount) {
+    /** Available horizontal room at the outside of the board and its ledger, in screen fractions. */
+    bankRoom(side) {
+        const cards = cardUnion(this.layout);
+        const hud = this.layout?.hud;
+        let edge = side < 0 ? (cards?.x0 ?? 0.39) : (cards?.x1 ?? 0.61);
+        if (hud && side < 0 && hud.x1 > 0 && hud.x1 <= edge) edge = hud.x0;
+        if (hud && side > 0 && hud.x0 < 1 && hud.x0 >= edge) edge = hud.x1;
+        return clamp01(side < 0 ? edge : 1 - edge);
+    }
+
+    /** A fresh whirl breaks open beside the board. A second twist feeds the same eddy. */
+    twist(x, z, amount, keepOrigin = false) {
         const { whirl } = this.swells;
-        if (whirl.valueAt(this.time) < 0.05) this.whirlSign = -this.whirlSign;
-        this.u.whirl.value.set(x, z, this.time, this.u.whirl.value.w);
+        const pivot = this.u.whirl.value;
+        const left = this.bankRoom(-1);
+        const right = this.bankRoom(1);
+        if (whirl.valueAt(this.time) < 0.05) {
+            this.whirlSign = -this.whirlSign;
+            if (!keepOrigin) {
+                const leftBank = left >= right;
+                const sx = leftBank ? left * 0.62 : 1 - right * 0.62;
+                const site = this.screenToLake(sx, Math.max(0.79, this.horizon + 0.1));
+                pivot.set(site.x, site.z, this.time, pivot.w);
+            } else pivot.set(x, z, this.time, pivot.w);
+        } else pivot.z = this.time;
         whirl.hit(amount, this.time);
+        const eye = this._camera?.position;
+        const range = eye ? Math.hypot(pivot.x - eye.x, pivot.y - eye.z) : 12;
+        const radius = range * Math.min(0.15, Math.max(left, right) * this.aspect * 0.43)
+            * (amount > 1 ? 1 : 0.75) * (this.reducedMotion ? 0.72 : 1);
+        this.spatter.emit({
+            x: pivot.x,
+            y: 0.075,
+            z: pivot.y,
+            time: this.time,
+            n: Math.max(16, this.drops(amount > 1 ? 176 : 102)),
+            rgb: [1, 0.77, 0.4],
+            stagger: 0.53,
+            spiral: { radius, sign: this.whirlSign },
+            spread: radius * 0.045,
+            out: [radius * 0.18, radius * 0.5],
+            up: [0.2, 1.05],
+            gravity: 2.5,
+            drag: 0.9,
+            life: [0.46, 0.98],
+            size: Math.max(0.012, radius * 0.024),
+            heat: 1.7,
+        });
     }
 
     /**
@@ -865,6 +967,7 @@ export class CinderDriftWorld {
         this.gameplay.clear({
             lines: n, cascade, combo: chain, twist, perfect, b2b,
         }, birth);
+        if (depth > 0) emitCascadeCrosswaves(this, cascade, birth);
 
         // ── The wave leaves the foot of the board ──
         const board = boardFor(this.layout, player);
@@ -925,14 +1028,21 @@ export class CinderDriftWorld {
         const taller = (1 + 0.1 * depth) * (1 + 0.2 * level);
         for (let k = 0; k < stand; k++) {
             const f = this.plan.fountains[(walk + k) % FOUNTAIN_SLOTS];
-            const at = birth + clearPassTime(Math.hypot(f.x - hx, f.z - hz)) + rand() * 0.12;
+            // A single spits low and broad at both lips. A double crosses two throws
+            // above each bank. A triple climbs the fissure in three measured steps.
+            const pair = Math.floor(k / 2);
+            const tripleStep = !quad && n === 3 ? pair % 3 : 0;
+            const crossed = !quad && n === 2;
+            const at = birth + clearPassTime(Math.hypot(f.x - hx, f.z - hz))
+                + rand() * 0.06 + tripleStep * 0.19 + (crossed && pair % 2 ? 0.12 : 0);
             const life = quad ? CURTAIN_LIFE * (0.7 + rand() * 0.5) : FOUNTAIN_LIFE * (0.75 + 0.14 * n + rand() * 0.3);
             // (A curtain is never a row of equals: a few stand far taller than their neighbours.)
-            const height = (quad ? 9 + rand() ** 1.6 * 19 : 4.5 + 2.2 * n + rand() * 2.5) * taller;
+            const height = (quad ? 9 + rand() ** 1.6 * 19 : 3 + 2.5 * n + 2.8 * tripleStep + rand() * 1.6) * taller;
             this.falls.fountain({
-                x: f.x, z: f.z, time: at, life, height: height * 0.72, width: quad ? 2.0 + rand() * 1.0 : 0.9 + 0.16 * n,
+                x: f.x, z: f.z, time: at, life, height: height * 0.72, width: quad ? 2.0 + rand() : 1.4 - 0.12 * n,
             });
             const top = Math.sqrt(2 * GRAVITY * height);
+            const direction = (k % 2 ? 1 : -1) * (pair % 2 ? -1 : 1);
             this.spatter.emit({
                 x: f.x,
                 y: 0.3,
@@ -940,7 +1050,8 @@ export class CinderDriftWorld {
                 n: Math.round(this.tier.fountain * (quad ? 0.62 : 0.3 + 0.1 * n) * (1 + 0.12 * depth)),
                 time: at,
                 stagger: life * 0.86,
-                out: [0.5, 2.2 + height * 0.16],
+                out: crossed ? [3.6, 7.5] : [0.5, 2.2 + height * 0.16],
+                aim: crossed ? [this._right.x * direction, this._right.z * direction] : null,
                 up: [top * 0.5, top * 1.06],
                 life: [1.3, 2.9],
                 size: quad ? 0.075 : 0.055,
@@ -1005,8 +1116,8 @@ export class CinderDriftWorld {
             if (perfect) this.crown(birth, player, { wave: false });
         }
         if (twist) {
-            // The crust turns round the foot of the board (a second spin adds to the turn).
-            this.twist(hx, hz - 9, 1.8 * (1 + 0.15 * depth));
+            // The visible bank turns with the piece; a second spin feeds the same eddy.
+            this.twist(hx, hz - 9, 1.8 * (1 + 0.15 * depth), Boolean(screen));
             this.storm = Math.max(this.storm, 0.85);
         }
         if (b2b) {
@@ -1014,6 +1125,12 @@ export class CinderDriftWorld {
             // a shock rings out through them, higher and harder with every step of the streak.
             this.b2bStreak += 1;
             const step = Math.min(this.b2bStreak, 4);
+            const fault = uniforms.bankPulse.value;
+            const pressure = (0.8 + 0.12 * step) * (this.reducedMotion ? 0.55 : 1) * flashScale();
+            // Closely spaced clears feed the advancing front. Once it reaches the upper
+            // bank the next back-to-back opens the opposite cliff.
+            if (birth - fault.x < 1.6 && fault.y > 0) fault.y = Math.max(fault.y, pressure);
+            else fault.set(birth, pressure, this.b2bStreak % 2 === 1 ? 1 : -1);
             S.b2b.hit(0.35 + 0.15 * step, birth);
             this.shockAt(birth, (this.reducedMotion ? 0.5 : 1) * (0.5 + 0.12 * step));
             this.counts.b2b += 1;
@@ -1030,6 +1147,7 @@ export class CinderDriftWorld {
         const { u: uniforms } = this;
         const S = this.swells;
         S.crown.hit(1, at);
+        this.lightning?.strike(this, at);
         S.swell.hit(0.6, at);
         S.flash.hit(0.22, at);
         S.kick.hit(0.35, at);
@@ -1042,6 +1160,36 @@ export class CinderDriftWorld {
             const sy = [0.8, 0.7, 0.64][i % 3];
             const spot = this.screenToLake(sx, Math.max(sy, this.horizon + 0.04), this._strike, 60);
             this.meltAt(at + 0.05 * i, spot.x, spot.z, 5 + (i % 3) * 2.5, 0.45);
+        }
+        // The two open banks throw golden fans. Find room around the board and ledger,
+        // and fit their arc to that room in projection, including a phone's narrow rim.
+        for (const side of [-1, 1]) {
+            const room = this.bankRoom(side);
+            if (room < 0.04) continue;
+            const sx = side < 0 ? room * 0.57 : 1 - room * 0.57;
+            const spot = this.screenToLake(sx, Math.max(0.72, this.horizon + 0.09), this._strike, 35);
+            const eye = this._camera?.position;
+            const range = eye ? Math.hypot(spot.x - eye.x, spot.z - eye.z) : 20;
+            const frameHeight = 2 * range * Math.tan((this._camera?.fov ?? 50) * DEG * 0.5);
+            const height = frameHeight * (this.reducedMotion ? 0.16 : 0.24);
+            const speed = Math.sqrt(2 * GRAVITY * height);
+            const flight = (2 * speed) / GRAVITY;
+            this.spatter.emit({
+                x: spot.x,
+                y: 0.18,
+                z: spot.z,
+                time: at + (side < 0 ? 0.1 : 0.23),
+                n: Math.max(14, this.drops(145)),
+                stagger: 0.32,
+                rgb: [1, 0.9, 0.68],
+                out: [1, 2],
+                up: [speed * 0.88, speed * 1.12],
+                life: [flight * 0.67, flight * 0.98],
+                size: frameHeight * 0.0022,
+                heat: 1.85,
+                drag: 0.16,
+                fan: { right: this._right, angle: Math.min(0.94, (room * this.aspect * frameHeight * 0.2) / height) },
+            });
         }
         // A white wave from the heart (a perfect clear's own, four fronts), unless its quad's is it.
         if (!wave) {
@@ -1070,13 +1218,13 @@ export class CinderDriftWorld {
         this.crown(this.time, player);
     }
 
-    /** A twist that cleared nothing: the crust turns a little round the foot of the board. */
+    /** A twist that cleared nothing leaves a smaller spiral beside the board. */
     onTwistMini({ player = 0 } = {}) {
         if (!this.u || !this.spatter) return;
         const board = boardFor(this.layout, player);
         const heart = this.screenToLake(board ? (board.x0 + board.x1) * 0.5 : 0.5, 0.93);
         this.twist(heart.x, heart.z - 9, 0.9);
-        this.ring(heart.x, heart.z - 9, this.time, 0.75, this._palette.spark, 0.6);
+        this.ring(this.u.whirl.value.x, this.u.whirl.value.y, this.time, 0.75, this._palette.spark, 0.6);
         this.storm = Math.max(this.storm, 0.45);
         const W = SURGE_WEIGHTS;
         this.gameplay.punch.hit(W.punch.twist * 0.5, this.time);
@@ -1123,6 +1271,61 @@ export class CinderDriftWorld {
 
     // ── Frame ───────────────────────────────────────────────────────────────────
 
+    /** A gas pocket escapes through the closest exposed plate edge in a small patch of the lake. */
+    ventAtSeam(beat, t) {
+        const rand = mulberry32(0xb0b + beat * 7919);
+        const z0 = -9 - rand() * 34;
+        const x0 = (rand() - 0.5) * Math.min(48, -z0 * 1.2);
+        const noise = this.u.noiseTex.image.data;
+        const plates = this.u.plateTex.image.data;
+        const whirl = this.u.whirl.value;
+        const turn = this.whirlSign * this.swells.whirl.valueAt(t);
+        let edge = Infinity;
+        let x;
+        let z;
+        for (let i = 0; i < 28 && edge > 0.018; i++) {
+            const px = x0 + (rand() - 0.5) * 6;
+            const pz = z0 + (rand() - 0.5) * 6;
+            if (this.plan.depthAt(px, pz) >= -2) continue;
+            let qx = px - DRIFT_DIR[0] * this.drift;
+            let qz = pz - DRIFT_DIR[1] * this.drift;
+            if (Math.abs(turn) > 0.001) {
+                const dx = px - whirl.x;
+                const dz = pz - whirl.y;
+                const angle = turn * Math.exp(-(dx * dx + dz * dz) / 380);
+                const sin = Math.sin(angle);
+                const cos = Math.cos(angle);
+                qx += dx * (cos - 1) - dz * sin;
+                qz += dx * sin + dz * (cos - 1);
+            }
+            qx += (sampleField(noise, NOISE_SIZE, px / 97, pz / 97, 0) - 0.5) * 7;
+            qz += (sampleField(noise, NOISE_SIZE, px / 97, pz / 97, 1) - 0.5) * 7;
+            const distance = sampleField(plates, PLATE_SIZE, qx / PLATE_TILE, qz / PLATE_TILE, 0);
+            if (distance < edge) {
+                edge = distance;
+                x = px;
+                z = pz;
+            }
+        }
+        if (edge > 0.055) return;
+        const vent = this.u.draft.value.y;
+        this.melt(x, z, 0.7 + rand() * 0.65, 0.35 + vent * 0.24);
+        this.spatter.emit({
+            x,
+            y: 0.08,
+            z,
+            n: this.drops(10 + vent * 16),
+            time: t,
+            out: [0.3, 2.1],
+            up: [1.8, 4.0 + vent * 1.8],
+            life: [0.6, 1.4],
+            size: 0.028,
+            stagger: 0.12,
+            heat: 1.35,
+            aim: [this.u.draft.value.x * 0.55, 0.12],
+        });
+    }
+
     /** The chamber's own life: the fall's spray, the feet of the open streams, a bubble now and then. */
     beats(t, live) {
         const spray = Math.floor(t / SPRAY_BEAT);
@@ -1134,7 +1337,7 @@ export class CinderDriftWorld {
                     x: foot[0],
                     y: 0.4,
                     z: foot[2],
-                    n: this.drops(14 * this.fallGain),
+                    n: this.drops((10 + 8 * this.u.draft.value.y) * this.fallGain),
                     time: t,
                     out: [0.8, 4.6],
                     up: [2.5, 8.5],
@@ -1169,20 +1372,10 @@ export class CinderDriftWorld {
                 }
             }
         }
-        const bubble = Math.floor(t / BUBBLE_BEAT);
+        const bubble = bubbleBeatAt(this.airTime);
         if (bubble !== this.bubbleBeat) {
             this.bubbleBeat = bubble;
-            if (live) {
-                const rand = mulberry32(0xb0b + bubble * 7919);
-                const x = (rand() - 0.5) * 44;
-                const z = -7 - rand() * 34;
-                if (this.plan.depthAt(x, z) < -2) {
-                    this.melt(x, z, 1.2 + rand() * 0.8, 0.6);
-                    this.spatter.emit({
-                        x, y: 0.1, z, n: this.drops(16), time: t, out: [0.3, 1.8], up: [1.2, 3.8], life: [0.7, 1.5], size: 0.024,
-                    });
-                }
-            }
+            if (live) this.ventAtSeam(bubble, t);
         }
         const drip = Math.floor(t / DRIP_BEAT);
         if (drip !== this.dripBeat) {
@@ -1218,6 +1411,7 @@ export class CinderDriftWorld {
         const dt = Math.max(0, sim.delta || 0);
         this.time = sim.time;
         const t = this.time;
+        this.lightning?.update(t);
         const motion = this.reducedMotion ? 0.35 : 1;
         if (camera) this._camera = camera;
         if (this.spatter) this.spatter.clock = t;
@@ -1302,6 +1496,13 @@ export class CinderDriftWorld {
         this.drift += dt * DRIFT_SPEED * motion * (1 + this.power * 1.5 + surge * 2.2 + this.storm * 0.8 + stir);
         this.flow += dt * (1 + this.power * 1.4 + surge * 2 + this.storm + stir);
         this.lift += dt * motion * (1 + this.power * 3.4 + surge * 5 + this.storm * 2.2 + stir * 2.5);
+        this.airTime += dt * motion;
+        // The draft changes direction while slower surges of lava feed the fall independently.
+        const air = this.airTime;
+        const wind = 0.67 * Math.sin(air * 0.131 + 0.9) + 0.33 * Math.sin(air * 0.247 - 1.4);
+        const feed = 0.5 + 0.32 * Math.sin(air * 0.161 - 0.7) + 0.18 * Math.sin(air * 0.083 + 1.7);
+        const effusion = smooth(0.11, 0.87, feed);
+        u.draft.value.set(wind, effusion, air);
         // Fire drips from the pipes in the roof: a drop now and then at rest, a rain of it under
         // pressure, in a fever and on a perfect clear.
         this.rain = 0.1 + this.power * this.power * 7 + surge * 9 + hot * 2.5 + fever * 9 + crown * 10;
@@ -1361,6 +1562,18 @@ export class CinderDriftWorld {
         u.rock.value.set(p.rock[0], p.rock[1], p.rock[2]);
         u.cool.value.set(p.cool[0], p.cool[1], p.cool[2]);
         u.spark.value.set(p.spark[0], p.spark[1], p.spark[2]);
+        // After top-out the crust skins over, leaving a little more of the blue opening.
+        // Only the light changes, with a slow rise and release behind the results.
+        const sinceResult = t - this.resultAt;
+        if (sinceResult >= 0 && sinceResult < 5) {
+            const cooling = smooth(0, 0.8, sinceResult) * (1 - smooth(1.4, 5, sinceResult))
+                * (this.reducedMotion ? 0.45 : 1) * flashScale();
+            u.mid.value.multiplyScalar(1 - cooling * 0.36);
+            u.deep.value.multiplyScalar(1 - cooling * 0.31);
+            u.hot.value.multiplyScalar(1 - cooling * 0.2);
+            u.cool.value.multiplyScalar(1 + cooling * 0.22);
+            u.fallGain.value *= 1 - cooling * 0.13;
+        }
 
         // ── Post ──
         const swell = S.swell.valueAt(t);
@@ -1424,6 +1637,7 @@ export class CinderDriftWorld {
         this.disposed = true;
         this.scene?.remove(this.root);
         this.disposables.forEach((part) => {
+            part.mesh?.dispose?.(); // InstancedMesh owns its instance matrix.
             part.geometry?.dispose?.();
             part.material?.dispose?.();
         });
@@ -1437,6 +1651,7 @@ export class CinderDriftWorld {
         this.bombs = null;
         this.flashes = null;
         this.jets = null;
+        this.lightning = null;
         this.u = null;
         this._camera = null;
         this.pending = [];

@@ -9,6 +9,8 @@ verified. It is a reference, not a backlog.
 
 ## The picture
 
+The November 2026 pass revisits this composition and the event choreography. The [current audit and captures](#november-2026-chamber-and-gameplay-audit) appear below.
+
 A magma chamber deep underground. The viewer stands on a ledge a little above a lake of lava.
 Cliffs of columnar basalt close the chamber on both sides and meet in a throat at its far end;
 broken columns step down from their feet into the lake, islands of columns stand in the lava,
@@ -281,7 +283,7 @@ Run `npm run dev:playground`, then:
 
 `/playground.html?effect=cinder-drift&t=20&quality=High&board=1`
 
-Add `event=lock|drop|clear|quad|twist|perfect|levelUp` with `eventAge=<s>`, and `combo=<n>`,
+Add `event=lock|drop|clear|quad|twist|mini|cascade|b2b|perfect|crown|levelUp|gameOver` with `eventAge=<s>`, and `combo=<n>`,
 `level=<n>`, `lines=<n>`, `u=<0..1>`, `row=<r>`, `color=<hex>`; `eye=x,y,z&aim=x,y,z&fov=<deg>`
 looks from anywhere (the cliff close up: `eye=6,3.5,-6&aim=22,5,-22&fov=55`). `locks=<n>` plays n locks first,
 so their pools are drifting in the lake when the event fires. `demo=1` (without `t`) plays a
@@ -290,7 +292,7 @@ peak; `noPost=1` shows the raw scene; `forceWebGL=1` uses the WebGL2 backend; `r
 reduced motion. In the game: `?cinderDriftTime=`, `?cinderDriftFixedDt=`, `?cinderDriftParts=`,
 `?cinderDriftFalseColor=1`.
 
-The theme icon is a frame of the scene through the playground's icon lens, at rest with two
+The October theme icon was a frame of the scene through the playground's icon lens, at rest with two
 pools cooling in the lake (the fall over the cracked crust, which is also what the previous icon
 showed):
 
@@ -298,8 +300,7 @@ showed):
 
 captured in an 840 × 840 window, cropped to 77% of the frame around a point 3% below its
 centre, given a colour lift (brightness 1.1, contrast 1.18, saturation 1.2) and baked as a
-512 px circle on a transparent ground. The same file is kept at
-`public/assets/themes/cinder-drift-theme-icon.png`. The capture was taken before the last small
+512 px circle on a transparent ground. The capture was taken before the last small
 changes to how open lava is coloured, so a new capture of that URL differs a little in the
 pools: the icon is reproducible to the eye, not to the byte.
 
@@ -308,3 +309,45 @@ pools: the icon is reproducible to the eye, not to the byte.
 ![Portrait: at rest and a four-line clear](cinder-drift-captures/portrait.webp)
 
 ![Tiers and the WebGL2 backend](cinder-drift-captures/tiers.webp)
+
+## November 2026 chamber and gameplay audit
+
+The baseline and revised frame below use the same seed, High quality, 1200 × 720 and a clock fixed at 20 seconds.
+
+![Cinder Drift before and after the November changes](cinder-drift-captures/november-comparison.webp)
+
+| Surface | Finding in the baseline | Change in the game |
+| --- | --- | --- |
+| Lake and seams | Evenly lit interior lines made the foreground read like outlined tiles. The plates lost most of their relief away from the fall. | Broken folds run across the cooled skin. Ragged rims, small dark slag pockets, exposed lava and glints from the cold opening distinguish the edges. Lock pools and waves still travel with the crust. |
+| Fall, smoke and embers | The fall read as a single bright strip. Its plume disappeared at board scale and most airborne particles shared a round silhouette. | The stream separates into a rope and thin strands. Smoke boils gold at the impact, rolls upward to the lip and leans into the draft as it cools. Sparks stretch in flight and larger cinders turn edge-on. Gas spurts follow the same moving fracture field the lake draws. |
+| Cliffs and overhang | Identical terminal faces and little reflected light flattened near and distant rock into one brown mass. | Chipped joints and rust patches catch light from the lake and sky. Two Blender-authored shore fans break the vertical rhythm with tilted columns and fallen drums. Both copies share one mesh and draw. |
+| Sky, illumination and haze | A blue shaft suggested daylight behind a solid roof. Shimmer extended across the nearest crust and stray glare softened the stone. | Two openings cut through the mesh. The desktop opening frames cloud, ridges and a moon above the score panel. The smaller opening is visible in portrait. Heat distortion concentrates over the distant shore and fall, with glare limited to the fall's vicinity. |
+| Variation and play space | The five fires already made useful long-term palette changes. Airflow, the width of the fall and recurring spark bursts varied much less between those changes. The darkest pieces and two pairs of similar hues were difficult to distinguish. | A changing draft moves embers, roof smoke and the plume at different speeds. Lava delivery swells and eases independently of the level and combo. Olivine, rose iron and tempered steel separate the pieces. A brass rim and charcoal score panel carry the scene's palette into the solo HUD. |
+
+These four frames hold the same camera and level. The cracks travel across the foreground while the plume, shafts and fire colours change over seven minutes.
+
+![The ember, crimson, gold and rose phases at the same level](cinder-drift-captures/november-fires.webp)
+
+The solo capture uses the running game and real hard drops. The event gallery uses the game's solo well markup and styles with a fixed stack for comparison.
+
+![Cinder Drift during solo play](cinder-drift-captures/november-solo.webp)
+
+A lock leaves a small splash tinted by the piece. Hard drops draw a descending trail whose length follows the actual drop distance. A single clear spits lava low along both banks, a double crosses the throws, and a triple climbs in three steps. Four lines bring the chamber briefly to a hush before a curtain of fountains breaks across the lake. A no-line twist coils beside the well. A twist clear feeds a larger eddy and sends fire out of the cleared rows.
+
+Long combos open additional cliff streams. Later cascade waves make two curved fronts meet on the exposed lake. A back-to-back sends a bright line up the basalt joints and leaves a vermilion afterglow. Perfect clears throw golden fans and forked lightning over the banks. When the game announces a perfect clear after the last cascade, the lightning arrives over the eruption already in progress. Level changes shift the chamber toward the next of its five fire palettes. The lake and fall briefly cool at the end of a Solo or Infinity run and at final online standings. Local versus plays its own victory ceremony.
+
+![Cinder Drift gameplay reactions](cinder-drift-captures/november-events.webp)
+
+The [36-second effects demo](cinder-drift-captures/november-demo.webm) shows the timing of locks, escalating clears, a back-to-back and a perfect clear in the playground.
+
+In the running game, two keyboard hard drops registered as two locks. A four-line clear replayed through the game's event bus, followed 330 ms later by a perfect clear, produced one four-line eruption and one crown. [See the replay with the live solo board](cinder-drift-captures/november-perfect.webp).
+
+The selection icon uses the Extreme playground at `t=18&icon=1&iconFov=50&iconYaw=0.4&iconPitch=-0.14&locks=2`, captured at 840 × 840. The 714 px square crop starts at (80, 57) and is masked to the 512 px circle. The source for the shore mesh is [the Blender model script](../scripts/blender/cinder_drift_basalt.py).
+
+### Rendering and frame timing
+
+The isolated captures covered WebGPU, WebGL2, Minimal quality, reduced motion, reduced flashing and a 390 × 844 portrait well. They produced no console warnings or validation errors. The live game reported Chromium's Windows adapter-preference warning. The 331 Cinder Drift and shared regression tests passed, including High and Minimal shader generation for both backends.
+
+On NVIDIA Blackwell at 1200 × 720, a production playground run played about 49 seconds of locks, clears, combo buildup, back-to-back and a perfect clear with a 60 fps cap. Across its three sampling windows the median frame interval was 16.7 ms, the 95th percentile was 17.6–17.8 ms, and sampled GPU time at the 95th percentile was 0.59–0.66 ms. This measures the animated background on one desktop GPU. Physical mobile hardware was not profiled.
+
+Four separate fixed-frame samples at a 30 fps cap had median GPU times of 0.33–0.46 ms at rest and during a perfect clear over a seven-clear combo. One idle sample had a 40 ms GPU spike and a 62.6 ms 95th-percentile frame interval. The other three had a 37.5 ms 95th-percentile interval. High submitted 28 draws in both scenes. Minimal submitted 12 for the reduced-motion perfect clear.

@@ -104,7 +104,9 @@ export function createFalls(u, plan) {
     const side = normalize(cross(vec3(0.0, 1.0, 0.0), cameraPosition.sub(centre)));
     // A fall spreads as it drops; a fountain narrows into its crown.
     const flare = mix(s.mul(0.35).add(0.82), float(1.35).sub(s.mul(0.95)), kind);
-    const widthNow = A.w.mul(flare).mul(mix(run.mul(0.5).add(0.5), fountainOn.mul(0.4).add(0.6), isFountain)).mul(step(1e-3, run));
+    const flood = float(1.0).add(isFall.mul(u.draft.y.sub(0.5)).mul(0.34));
+    const swell = mix(run.mul(0.5).add(0.5), fountainOn.mul(0.4).add(0.6), isFountain);
+    const widthNow = A.w.mul(flare).mul(flood).mul(swell).mul(step(1e-3, run));
     const world = centre.add(side.mul(positionGeometry.x.mul(widthNow).mul(HALO)));
     material.vertexNode = cameraProjectionMatrix.mul(cameraViewMatrix).mul(vec4(world, 1.0));
 
@@ -112,10 +114,10 @@ export function createFalls(u, plan) {
     // Each segment of a tapering ribbon is a trapezoid, and uv.x interpolated over its two
     // triangles kinks along the diagonal (a sawtooth on the edge, once per segment). The offset
     // across and the width are both linear over a triangle: their ratio is exact.
-    const vAcross = varying(vec2(positionGeometry.x.mul(widthNow), widthNow), 'cdFallAcross');
+    const vAcross = varying(vec3(positionGeometry.x.mul(widthNow), widthNow, isFall), 'cdFallAcross');
     material.colorNode = Fn(() => {
         const st = uv();
-        const across = vAcross.x.div(max(vAcross.y, 1e-6)).mul(HALO); // ±0.5 = the edges of the lava
+        const across = vAcross.x.div(max(vAcross.y, 1e-6)).mul(HALO).toVar(); // ±0.5 = the edges of the lava
         // Clamped: MSAA can extrapolate a varying past the strip's ends, and sqrt below 0 is NaN.
         const along = clamp(st.y, 0.0, 1.0);
         const gain = vRun.x;
@@ -124,11 +126,11 @@ export function createFalls(u, plan) {
         // Time since the lava left its source, so the texture stretches as the lava speeds up.
         // (A fountain's clock is capped short of its crown, where it would run to infinity and
         // squeeze the texture into a sawtooth.)
-        const tFall = mix(sqrt(along), float(1.0).sub(sqrt(float(1.0).sub(along.mul(0.8)))), k);
+        const tFall = mix(along, float(1.0).sub(sqrt(float(1.0).sub(along.mul(0.8)))), k);
         const rate = mix(float(0.62), float(1.3), k);
         // Skins of cooler lava drawn out into long streaks by its own speed.
-        const flow = u.time.mul(rate);
-        const n1 = u.noise(vec2(across.mul(0.62).add(seed), tFall.mul(0.36).sub(flow.mul(0.42)))).r;
+        const flow = mix(u.draft.z.mul(0.65).add(u.flow.mul(0.35)), u.time, k).mul(rate);
+        const n1 = u.noise(vec2(across.mul(0.62).add(seed), tFall.mul(0.36).sub(flow.mul(0.42)))).r.toVar();
         // (Up a fountain the edge noise runs slower: it is short, and a fast edge saws.)
         const n2 = u.noise(vec2(across.mul(1.7).add(n1.mul(0.3)).add(seed.mul(3.0)), tFall.mul(mix(float(0.9), float(0.3), k)).sub(flow.mul(1.05)))).level(2.0).g;
         // A stream grows from its lip; a fountain's crown dissolves into the drops it throws.
@@ -139,15 +141,32 @@ export function createFalls(u, plan) {
         const ragged = mix(float(0.5), along.mul(0.45).add(0.3), k);
         const clotN = u.noise(vec2(across.mul(1.6).add(seed.mul(5.0)), tFall.mul(0.8).sub(flow.mul(0.9)))).level(1.0).r;
         const clots = mix(float(1.0), smoothstep(0.3, 0.52, clotN), k.mul(smoothstep(0.4, 0.9, along)));
-        const body = smoothstep(0.0, 0.26, core.add(n2.sub(0.5).mul(ragged)).sub(thin)).mul(reach).mul(clots);
+        // The lip peels into a broad folded sheet and a side rope. The gap is deepest halfway
+        // down, and closes where the ropes spread into the same pool at the foot.
+        const broad = smoothstep(0.0, 0.26, core.add(n2.sub(0.5).mul(ragged)).sub(thin));
+        const foldX = across.add(n1.sub(0.5).mul(0.18)).add(n2.sub(0.5).mul(0.075)).toVar();
+        const valleyX = foldX.add(0.23).add(along.mul(0.11)).toVar();
+        const folded = float(1.0).sub(smoothstep(0.014, 0.09, abs(valleyX)));
+        const split = smoothstep(0.08, 0.48, along).mul(float(1.0).sub(smoothstep(0.77, 1.0, along)))
+            .mul(folded).mul(vAcross.z);
+        const ropeWidth = mix(float(0.038), float(0.075), u.draft.y);
+        const rim = float(1.0).sub(smoothstep(0.016, ropeWidth, abs(valleyX.add(0.135))))
+            .mul(smoothstep(0.04, 0.24, along)).mul(vAcross.z);
+        const body = max(broad.mul(float(1.0).sub(split.mul(0.78))), rim.mul(0.94)).mul(reach).mul(clots);
         // Rafts of crust that skinned over on the way to the lip ride down in it, dark against the
         // white body, torn longer as the lava speeds up (a fall and its streams; not a fountain).
         const raftN = u.noise(vec2(across.mul(2.4).add(seed.mul(7.0)).add(n1.mul(0.4)), tFall.mul(1.5).sub(flow.mul(1.5)))).b;
         const raft = smoothstep(0.56, 0.74, raftN).mul(float(1.0).sub(k)).mul(smoothstep(0.04, 0.25, along))
             .mul(float(1.0).sub(max(core, 0.0).mul(0.5)));
+        const ropes = min(abs(foldX.sub(along.mul(0.13)).sub(0.07)), abs(foldX.add(along.mul(0.06)).sub(0.29)));
+        const threads = float(1.0).sub(smoothstep(0.006, 0.04, ropes)).mul(vAcross.z)
+            .mul(float(1.0).sub(raft.mul(0.75)));
         const temp = mix(float(0.74), float(1.08), k).add(max(core, 0.0).mul(0.46)).add(n1.sub(0.5).mul(0.95)).add(n2.sub(0.5).mul(0.42))
             .sub(mix(along.mul(0.16), along.mul(along).mul(0.75), k))
-            .sub(raft.mul(0.62))
+            .sub(raft.mul(0.76))
+            .sub(folded.mul(vAcross.z).mul(0.32))
+            .add(rim.mul(0.26))
+            .add(threads.mul(0.26))
             .mul(gain.mul(0.25).add(0.75));
         const lava = cdHeatColor(u, temp).mul(u.breath.mul(0.7).add(0.3));
         // Its own light in the air round it.
