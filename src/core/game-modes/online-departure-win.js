@@ -13,6 +13,7 @@
  */
 
 import { relayNetworkUnreachableNow } from '../steam/relay-network.js';
+import { onlineMatchStatsRecorder } from './online-steam-stats.js';
 
 /** The exit reason of a player whose own connection broke (ui/online-session-exit.js words it). */
 export const OWN_CONNECTION_LOST = 'own_connection_lost';
@@ -74,12 +75,18 @@ export function settleMatchResult(mode, detail) {
         mode._recordAndShowResults(detail);
         return;
     }
+    // Read now what the record needs: the player may close the session while the check runs,
+    // and a real win must still reach the record book then.
+    const recordStats = onlineMatchStatsRecorder(mode, detail);
     const check = ownConnectionLost(mode.steamNetworking).catch(() => false).then((lost) => {
-        if (mode._ownConnectionCheck !== check) return undefined; // the session was torn down meanwhile
-        mode._ownConnectionCheck = null;
-        // The mode leaves the match with the reason (its exit path owns teardown and the notice).
-        if (lost) return mode._handleKicked({ reason: OWN_CONNECTION_LOST });
-        return mode._recordAndShowResults(detail);
+        const sessionClosed = mode._ownConnectionCheck !== check;
+        if (!sessionClosed) mode._ownConnectionCheck = null;
+        if (lost) {
+            // The mode leaves the match with the reason (its exit path owns teardown and the
+            // notice). A session already closed has nothing left to leave.
+            return sessionClosed ? undefined : mode._handleKicked({ reason: OWN_CONNECTION_LOST });
+        }
+        return sessionClosed ? recordStats() : mode._recordAndShowResults(detail);
     });
     mode._ownConnectionCheck = check;
 }

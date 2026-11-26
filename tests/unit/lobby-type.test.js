@@ -37,6 +37,7 @@ vi.mock('../../src/ui/online-play-notice.js', async (importOriginal) => ({
 
 const { OnlineMultiplayerMode } = await import('../../src/core/game-modes/OnlineMultiplayerMode.js');
 const { default: steamService } = await import('../../src/core/steam/steam-service.js');
+const { initialLobbyData } = await import('../../src/core/steam/steam-networking.js');
 const { LOBBY_TYPE_HELP } = await import('../../src/ui/match-config-modal.js');
 
 const source = (file) => readFileSync(new URL(`../../src/${file}`, import.meta.url), 'utf8');
@@ -111,7 +112,12 @@ describe('the host publishes the type; the transport defaults to friends', () =>
 
     it('creates a friends lobby unless told otherwise, and writes the type as lobby data', () => {
         expect(transport).toContain('const lobbyType = createdLobbyType(chosenLobbyType);');
-        expect(transport).toMatch(/'steam:setLobbyData',\s*lobbyId,\s*LOBBY_TYPE_KEY,\s*lobbyType,/);
+        // The type is one of the keys a new lobby is given (initialLobbyData), each written in turn.
+        expect(transport).toContain('[LOBBY_TYPE_KEY, lobbyType],');
+        expect(transport).toContain("ipcRenderer.invoke('steam:setLobbyData', lobbyId, key, value)");
+        expect(Object.fromEntries(initialLobbyData({
+            gameName: 'Mine', lobbyType: 'friends', endCondition: 'frags', endConditionValue: 10, protocolVersion: '1.0.0',
+        }))).toMatchObject({ [LOBBY_TYPE_KEY]: 'friends' });
         expect(transport).toContain("ipcRenderer.invoke('steam:createLobby', { maxPlayers, lobbyType })");
         expect(transport).toContain('if (key === LOBBY_TYPE_KEY) return lobby.lobbyType;');
     });

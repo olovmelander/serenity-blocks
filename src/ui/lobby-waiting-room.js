@@ -19,7 +19,7 @@ import {
 } from './components/mp-sheet.js';
 import { describeMatchLevelRule } from '../core/multiplayer/match-level-rule.js';
 import { describeVersusGameType } from '../core/multiplayer/versus-rules.js';
-import { describeVersusAttackRules } from '../core/multiplayer/versus-attack-style.js';
+import { listVersusAttackRules } from '../core/multiplayer/versus-attack-style.js';
 import { lobbySharesItsId } from '../core/multiplayer/lobby-type.js';
 import { warnHostIfRelayUnreachable } from '../core/steam/relay-network.js';
 import {
@@ -98,7 +98,7 @@ export class LobbyWaitingRoom {
                 <dt class="info-label">Level</dt>
                 <dd class="info-value" id="level-rule-value">–</dd>
               </div>
-              <div class="info-item">
+              <div class="info-item info-item--wrap">
                 <dt class="info-label">Attacks</dt>
                 <dd class="info-value" id="attack-rules-value">–</dd>
               </div>
@@ -494,7 +494,9 @@ export class LobbyWaitingRoom {
         this.setText('level-rule-value', describeMatchLevelRule(config));
 
         // The attack rules, which only the host chose: a guest reads them here, not in play.
-        this.setText('attack-rules-value', describeVersusAttackRules(config));
+        // One rule to a line (the value's style keeps the line breaks).
+        this.setText('attack-rules-value', listVersusAttackRules(config)
+            .map((rule) => rule[0].toUpperCase() + rule.slice(1)).join('\n'));
 
         // Objective summary callout
         this.setText('lobby-objective', config.endCondition === 'never'

@@ -64,6 +64,38 @@ export const LOBBY_ATTACK_STYLE_KEY = 'attack_style';
  * @param {unknown} value
  */
 const lobbyWord = (value) => (typeof value === 'string' && /^[a-z_]{1,24}$/.test(value) ? value : '');
+
+/**
+ * The lobby data a host publishes, in the order it is written. The match list shows a lobby as
+ * soon as `game_mode` is set (electron/steam-integration.js filters on it), so that key goes
+ * last and the compatibility number first: a lobby another player can already see says which
+ * builds can play in it (network/match-compatibility.js; the join handshake checks it again)
+ * and what kind of room it is. Written the other way round, a refresh that fell between two
+ * writes listed a new room as an older build.
+ * @param {{
+ *   gameName: string, lobbyType: string, endCondition: string, endConditionValue: unknown,
+ *   gameType?: string, attackStyle?: string, protocolVersion: string,
+ * }} lobby
+ * @returns {Array<[string, string]>}
+ */
+export function initialLobbyData({
+    gameName, lobbyType, endCondition, endConditionValue, gameType, attackStyle, protocolVersion,
+}) {
+    /** @type {Array<[string, string]>} */
+    const data = [
+        [LOBBY_COMPATIBILITY_KEY, String(MATCH_COMPATIBILITY)],
+        ['version', protocolVersion],
+        ['game_name', gameName],
+        // Who can join, for the players who do: their chat and "Join game" follow it.
+        [LOBBY_TYPE_KEY, lobbyType],
+        ['end_condition', endCondition],
+        ['end_condition_value', String(endConditionValue)],
+    ];
+    if (gameType) data.push([LOBBY_GAME_TYPE_KEY, gameType]);
+    if (attackStyle) data.push([LOBBY_ATTACK_STYLE_KEY, attackStyle]);
+    data.push(['game_mode', 'ffa']);
+    return data;
+}
 /** The logical channels this protocol uses; a sender-chosen one grew the sequence map without bound. */
 const LOGICAL_CHANNELS = new Set([0, 1, 2]);
 /** Rejected-packet counts keep at most this many types, each name cut to this length. */
@@ -408,34 +440,29 @@ export class SteamNetworking {
             this.matchId = lobbyId;
             this.matchNonce = this._generateMatchNonce();
 
-            // Set lobby metadata
-            await ipcRenderer.invoke('steam:setLobbyData', lobbyId, 'game_mode', 'ffa');
-            await ipcRenderer.invoke('steam:setLobbyData', lobbyId, 'game_name', gameName);
-            // Who can join, for the players who do: their chat and "Join game" follow it.
-            await ipcRenderer.invoke(
-                'steam:setLobbyData',
-                lobbyId,
-                LOBBY_TYPE_KEY,
+            // Set lobby metadata, in the order initialLobbyData gives.
+            const lobbyData = initialLobbyData({
+                gameName,
                 lobbyType,
-            );
-            await ipcRenderer.invoke('steam:setLobbyData', lobbyId, 'end_condition', endCondition);
-            await ipcRenderer.invoke('steam:setLobbyData', lobbyId, 'end_condition_value', endConditionValue.toString());
-            if (gameType) await ipcRenderer.invoke('steam:setLobbyData', lobbyId, LOBBY_GAME_TYPE_KEY, gameType);
-            if (attackStyle) await ipcRenderer.invoke('steam:setLobbyData', lobbyId, LOBBY_ATTACK_STYLE_KEY, attackStyle);
-            // The list marks a room whose number differs instead of offering Join
-            // (network/match-compatibility.js); the join handshake checks it again.
-            await ipcRenderer.invoke(
-                'steam:setLobbyData',
-                lobbyId,
-                LOBBY_COMPATIBILITY_KEY,
-                String(MATCH_COMPATIBILITY),
-            );
-            await ipcRenderer.invoke(
-                'steam:setLobbyData',
-                lobbyId,
-                'version',
-                this.getNegotiatedProtocolVersion(),
-            );
+                endCondition,
+                endConditionValue,
+                gameType,
+                attackStyle,
+                protocolVersion: this.getNegotiatedProtocolVersion(),
+            });
+            // One key after another, never at once: the order is what keeps a half-written
+            // lobby out of other players' lists.
+            /* eslint-disable no-await-in-loop */
+            for (const [key, value] of lobbyData) {
+                const written = await ipcRenderer.invoke('steam:setLobbyData', lobbyId, key, value);
+                // Without its compatibility number the list shows this room to everyone as an
+                // older build, with no way in, for as long as it stands. Better no room.
+                if (written === false && key === LOBBY_COMPATIBILITY_KEY) {
+                    await Promise.resolve().then(() => this.leaveLobby()).catch(() => {});
+                    throw new Error('Steam did not accept the match settings. Try creating the match again.');
+                }
+            }
+            /* eslint-enable no-await-in-loop */
 
             return lobbyId;
         } catch (err) {

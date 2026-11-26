@@ -460,6 +460,7 @@ export class OnlineMultiplayerMode extends BaseGameMode {
      */
     async handleCreateLobby(config) {
         try {
+            this._handledSessionExit = null; // an earlier session's exit must not swallow this one's
             // Create lobby via Steam. The match list shows the game type and attack style.
             const kind = { gameType: readVersusGameType(config), attackStyle: readVersusAttackStyle(config) };
             const lobbyId = await this.steamNetworking.createLobby({ ...config, ...kind });
@@ -702,6 +703,7 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         // Reset UI setup flag for next match
         this._uiSetupComplete = false;
 
+        this._matchActiveSince = Date.now(); // this computer's own clock for the match (online-steam-stats.js)
         // Dispatch Rich Presence update for match start
         const playerCount = this.ffaGameState?.players?.size || 1;
         window.dispatchEvent(new CustomEvent('game:matchPosition', {

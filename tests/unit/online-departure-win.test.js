@@ -83,7 +83,13 @@ describe('settling a finished match', () => {
     function mode({ relay = 'current', roster = { [ME]: {} } } = {}) {
         return {
             steamNetworking: { steamId: ME, ...network(relay) },
-            ffaGameState: { players: players(roster) },
+            ffaGameState: {
+                players: players(roster),
+                matchConfig: { gameType: 'ffa', endCondition: 'frags', endConditionValue: 10 },
+                getLocalPlayer: () => ({ gameState: { lines: 30 } }),
+            },
+            deps: { highScoreManager: { saveCompletion: vi.fn(async () => {}) } },
+            roundNumber: 1,
             _recordAndShowResults: vi.fn(),
             _handleKicked: vi.fn(),
             _ownConnectionCheck: null,
@@ -129,12 +135,36 @@ describe('settling a finished match', () => {
         expect(game.steamNetworking.relayNetworkStatus).toHaveBeenCalledTimes(1);
     });
 
-    it('does nothing when the session was torn down during the check', async () => {
+    it('does nothing when the session closed during the check and the connection was lost', async () => {
         const game = mode({ relay: 'failed' });
         settleMatchResult(game, won);
         game._ownConnectionCheck = null; // the mode's cleanup
         await settled();
         expect(game._recordAndShowResults).not.toHaveBeenCalled();
         expect(game._handleKicked).not.toHaveBeenCalled();
+        expect(game.deps.highScoreManager.saveCompletion).not.toHaveBeenCalled();
+    });
+
+    it('still records a real win when the player closes the session during the check', async () => {
+        const game = mode();
+        const result = {
+            ...won,
+            recordId: 'lobby-1:nonce-1',
+            duration: 90_000,
+            finalStats: [{ steamId: ME, frags: 4, lines: 30, placement: 1 }],
+        };
+        settleMatchResult(game, result);
+        // The last opponent quit and the winner leaves at once: the mode lets everything go.
+        game._ownConnectionCheck = null;
+        game.ffaGameState = null;
+        await settled();
+        await settled();
+
+        expect(game._recordAndShowResults).not.toHaveBeenCalled(); // no results sheet over a closed session
+        expect(game.deps.highScoreManager.saveCompletion).toHaveBeenCalledTimes(1);
+        expect(game.deps.highScoreManager.saveCompletion).toHaveBeenCalledWith(
+            `ffa:lobby-1:nonce-1:${ME}`,
+            expect.objectContaining({ mode: 'ffa', win: true, kills: 4 }),
+        );
     });
 });

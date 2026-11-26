@@ -7,13 +7,14 @@ import {
     afterEach, beforeEach, describe, expect, it, vi,
 } from 'vitest';
 import { describeLobbyKind, LobbyBrowser } from '../../src/ui/lobby-browser.js';
-import { MATCH_COMPATIBILITY } from '../../src/core/network/match-compatibility.js';
+import { LOBBY_COMPATIBILITY_KEY, MATCH_COMPATIBILITY } from '../../src/core/network/match-compatibility.js';
 import {
-    describeVersusAttackRules, describeVersusAttackStyle, readVersusAttackStyle, VERSUS_ATTACK_STYLES,
+    describeVersusAttackRules, describeVersusAttackStyle, listVersusAttackRules, readVersusAttackStyle,
+    VERSUS_ATTACK_STYLES,
 } from '../../src/core/multiplayer/versus-attack-style.js';
 import { lobbySharesItsId } from '../../src/core/multiplayer/lobby-type.js';
 import {
-    LOBBY_ATTACK_STYLE_KEY, LOBBY_GAME_TYPE_KEY, SteamNetworking,
+    initialLobbyData, LOBBY_ATTACK_STYLE_KEY, LOBBY_GAME_TYPE_KEY, SteamNetworking,
 } from '../../src/core/steam/steam-networking.js';
 import { LobbyWaitingRoom } from '../../src/ui/lobby-waiting-room.js';
 import { waitingTileWords } from '../../src/ui/opponent-watch-manager.js';
@@ -147,6 +148,41 @@ describe('what a host publishes for the list', () => {
         expect(saved[0]).toMatchObject({ gameType: '', attackStyle: '' });
     });
 
+    it('writes the compatibility number first and the key the list filters on last', () => {
+        // The list shows a lobby once game_mode is set. Written first, a refresh between two
+        // writes listed a new room as an older build with no way in.
+        const data = initialLobbyData({
+            gameName: 'Friday',
+            lobbyType: 'public',
+            endCondition: 'frags',
+            endConditionValue: 10,
+            gameType: 'ffa',
+            attackStyle: 'blind',
+            protocolVersion: '1.0.0',
+        });
+        const keys = data.map(([key]) => key);
+        expect(keys[0]).toBe(LOBBY_COMPATIBILITY_KEY);
+        expect(keys.at(-1)).toBe('game_mode');
+        expect(Object.fromEntries(data)).toEqual({
+            [LOBBY_COMPATIBILITY_KEY]: String(MATCH_COMPATIBILITY),
+            version: '1.0.0',
+            game_name: 'Friday',
+            lobby_type: 'public',
+            end_condition: 'frags',
+            end_condition_value: '10',
+            [LOBBY_GAME_TYPE_KEY]: 'ffa',
+            [LOBBY_ATTACK_STYLE_KEY]: 'blind',
+            game_mode: 'ffa',
+        });
+        // A room that names no kind publishes none.
+        const plain = initialLobbyData({
+            gameName: 'Plain', lobbyType: 'friends', endCondition: 'never', endConditionValue: 0, protocolVersion: '1.0.0',
+        }).map(([key]) => key);
+        expect(plain).not.toContain(LOBBY_GAME_TYPE_KEY);
+        expect(plain).not.toContain(LOBBY_ATTACK_STYLE_KEY);
+        expect(plain.at(-1)).toBe('game_mode');
+    });
+
     it('uses lobby data keys the main process reads back', async () => {
         const { readFileSync } = await import('node:fs');
         const { fileURLToPath } = await import('node:url');
@@ -173,9 +209,13 @@ describe('the attack rules in words', () => {
     it('tells a guest every setting that is off its default', () => {
         expect(describeVersusAttackRules({ attackStyle: 'standard', minAttackLines: 2, garbageCancellation: 'disabled' }))
             .toBe('Standard');
-        expect(describeVersusAttackRules({
+        const everything = {
             attackStyle: 'blind', minAttackLines: 3, garbageCancellation: 'full', boringRules: true,
-        })).toBe('Blind · smallest attacking clear 3 · cancelling on · no attack scaling');
+        };
+        expect(listVersusAttackRules(everything))
+            .toEqual(['Blind', 'attacks from 3 lines', 'cancelling on', 'no attack scaling']);
+        expect(describeVersusAttackRules(everything))
+            .toBe('Blind · attacks from 3 lines · cancelling on · no attack scaling');
         // Nothing is sent in a peaceful match, so the rest goes unsaid.
         expect(describeVersusAttackRules({ attackStyle: 'peaceful', minAttackLines: 4, boringRules: true }))
             .toBe('Peaceful');
@@ -189,6 +229,23 @@ describe('a room\'s lobby ID', () => {
         // A private room is invite only; a room whose type is not known shows none either.
         expect(lobbySharesItsId('private')).toBe(false);
         expect(lobbySharesItsId(null)).toBe(false);
+    });
+
+    it('shows a guest the attack rules one to a line', () => {
+        const written = {};
+        const room = Object.create(LobbyWaitingRoom.prototype);
+        room.gameState = {
+            matchConfig: {
+                maxPlayers: 4, gameType: 'survivor', endCondition: 'frags', endConditionValue: 10,
+                attackStyle: 'blind', minAttackLines: 3, garbageCancellation: 'full',
+            },
+            players: new Map(),
+            network: {},
+        };
+        room.setText = (id, text) => { written[id] = String(text); };
+        room.updateMatchInfo();
+        expect(written['game-type-value']).toBe('Survivor');
+        expect(written['attack-rules-value']).toBe('Blind\nAttacks from 3 lines\nCancelling on');
     });
 
     it('is hidden in an invite-only waiting room, with a note in its place', () => {

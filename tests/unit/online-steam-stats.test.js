@@ -10,8 +10,8 @@ import {
 import { FragTracker } from '../../src/core/multiplayer/frag-tracker.js';
 import { MessageTypes } from '../../src/core/network/message-types.js';
 import {
-    FFA_KNOCKOUT_PACE_MS, MAX_FRAGS_GOAL, MAX_MATCH_MINUTES, matchStatsForSteam, maxMatchKills,
-    syncFfaSteamStats,
+    FFA_KNOCKOUT_PACE_MS, LOCAL_CLOCK_SLACK_MS, MAX_FRAGS_GOAL, MAX_MATCH_MINUTES, matchStatsForSteam,
+    maxMatchKills, onlineMatchStatsRecorder, playedMs, syncFfaSteamStats,
 } from '../../src/core/game-modes/online-steam-stats.js';
 import { assessRecords } from '../../src/core/progression/record-book.js';
 
@@ -176,5 +176,66 @@ describe('match rules this client could not read', () => {
         const records = recordBook();
         await syncFfaSteamStats(result, { records, localSteamId: winner, rounds: 1, localLines: 60 });
         expect(Object.values(records.runs)[0]).toMatchObject({ kills: 10 });
+    });
+});
+
+describe('the duration a host reports', () => {
+    const endless = { gameType: 'ffa', endCondition: 'never' };
+    const oneMinute = 60_000;
+
+    it('is never taken past what this computer measured itself', () => {
+        expect(playedMs(10 * oneMinute, oneMinute)).toBe(oneMinute + LOCAL_CLOCK_SLACK_MS);
+        // A host that reports less than was played is taken at its word.
+        expect(playedMs(oneMinute, 10 * oneMinute)).toBe(oneMinute);
+        // Without a clock of its own this client has only the host's figure.
+        expect(playedMs(10 * oneMinute)).toBe(10 * oneMinute);
+        expect(playedMs(10 * oneMinute, NaN)).toBe(10 * oneMinute);
+        expect(playedMs(-5, oneMinute)).toBe(0);
+    });
+
+    it('cannot buy knock-outs or minutes: a one-minute match with ten hours claimed', () => {
+        // The host ends an endless match after a minute and reports 3600 frags over ten hours.
+        const claimed = { frags: 3600, placement: 1 };
+        const tenHours = 10 * 60 * oneMinute;
+        const counted = matchStatsForSteam(claimed, {
+            players: 8, durationMs: tenHours, localDurationMs: oneMinute, matchConfig: endless,
+        });
+        expect(counted.kills).toBe((oneMinute + LOCAL_CLOCK_SLACK_MS) / FFA_KNOCKOUT_PACE_MS);
+        expect(counted.minutes).toBe(1);
+        // The same claim with no clock of this client's own is bounded only by the minutes cap.
+        expect(matchStatsForSteam(claimed, { players: 8, durationMs: tenHours, matchConfig: endless }).kills)
+            .toBe(3600);
+    });
+
+    it('counts a late drop-in for their own time in the match', () => {
+        const counted = matchStatsForSteam({ frags: 2, placement: 3 }, {
+            players: 4, durationMs: 30 * oneMinute, localDurationMs: 5 * oneMinute, matchConfig: endless,
+        });
+        expect(counted).toMatchObject({ kills: 2, minutes: 5 });
+    });
+
+    it('is measured by the online mode from the moment its match went live', async () => {
+        vi.useFakeTimers();
+        try {
+            vi.setSystemTime(new Date('2026-11-26T12:00:00Z'));
+            const { result, winner, matchConfig } = playToTheGoal({ gameType: 'ffa', players: 2, goal: 10 });
+            const records = recordBook();
+            const mode = {
+                deps: { highScoreManager: records },
+                steamNetworking: { steamId: winner },
+                roundNumber: 1,
+                _matchActiveSince: Date.now() - 2 * oneMinute,
+                ffaGameState: { matchConfig: { ...matchConfig, endCondition: 'never' }, getLocalPlayer: () => ({ gameState: { lines: 60 } }) },
+            };
+            const record = onlineMatchStatsRecorder(mode, { ...result, duration: 600 * oneMinute });
+            // The mode lets its match go before the record is written: what it knew was read already.
+            mode.ffaGameState = null;
+            mode._matchActiveSince = 0;
+            await record();
+            const [receipt] = Object.values(records.runs);
+            expect(receipt).toMatchObject({ kills: 10, duration: 2 * 60, win: true });
+        } finally {
+            vi.useRealTimers();
+        }
     });
 });

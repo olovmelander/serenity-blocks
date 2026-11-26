@@ -20,7 +20,7 @@ asks about one of them.
 | B1 · Missing App ID and contact | yours | Open. |
 | B2 · Nothing is signed | D9: sign | A store build now stops when the `.exe` or an addon is unsigned. The certificate is yours to get. |
 | B3 · Live test and its script | | Script rewritten (T1 to T15, three accounts, two-machine scenarios). Not run. |
-| B4 · Kills stat | D10 | Fixed, with a test that plays a free-for-all through the real frag tracker. |
+| B4 · Kills stat | D10 | Fixed, with a test that plays a free-for-all through the real frag tracker. The time-based bound uses the player's own clock, not the host's figure. |
 | S1 · Mixed builds | D11 | Fixed: the match compatibility number (ADR-0026), in the list and the handshake. |
 | S2 · `wireV2` expiry | D12 | Re-dated to 2027-03-31; ADR-0013 amended. |
 | S3 · List hides the room's kind | | Fixed: game type and attack style in the list, attack rules in the waiting room, the Drop in label. |

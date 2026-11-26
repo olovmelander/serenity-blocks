@@ -55,19 +55,29 @@ export function describeVersusAttackStyle(config) {
 }
 
 /**
- * A match's attack rules in a line, for a guest who did not set them: the style, then every
- * setting that is off its default. "Standard", "Blind · smallest attacking clear 3 ·
- * cancelling on". A peaceful match sends nothing, so its other settings go unsaid.
+ * A match's attack rules for a guest who did not set them: the style, then every setting that
+ * is off its default, one short phrase each. ["Standard"], ["Blind", "attacks from 3 lines",
+ * "cancelling on"]. A peaceful match sends nothing, so its other settings go unsaid.
+ * @param {AttackConfig} config
+ * @returns {string[]}
+ */
+export function listVersusAttackRules(config) {
+    const style = readVersusAttackStyle(config);
+    /** @type {string[]} */
+    const rules = [ATTACK_STYLE_NAMES[style]];
+    if (style === 'peaceful') return rules;
+    const smallest = readMinAttackLines(config?.minAttackLines);
+    // The create sheet's "Smallest attacking clear": a clear of fewer lines sends nothing.
+    if (smallest !== MIN_ATTACK_LINES_DEFAULT) rules.push(`attacks from ${smallest} lines`);
+    if (config?.garbageCancellation && config.garbageCancellation !== 'disabled') rules.push('cancelling on');
+    if (config?.boringRules) rules.push('no attack scaling');
+    return rules;
+}
+
+/**
+ * The same rules in one line: "Blind · attacks from 3 lines · cancelling on".
  * @param {AttackConfig} config
  */
 export function describeVersusAttackRules(config) {
-    const style = readVersusAttackStyle(config);
-    /** @type {string[]} */
-    const words = [ATTACK_STYLE_NAMES[style]];
-    if (style === 'peaceful') return words[0];
-    const smallest = readMinAttackLines(config?.minAttackLines);
-    if (smallest !== MIN_ATTACK_LINES_DEFAULT) words.push(`smallest attacking clear ${smallest}`);
-    if (config?.garbageCancellation && config.garbageCancellation !== 'disabled') words.push('cancelling on');
-    if (config?.boringRules) words.push('no attack scaling');
-    return words.join(' · ');
+    return listVersusAttackRules(config).join(' · ');
 }

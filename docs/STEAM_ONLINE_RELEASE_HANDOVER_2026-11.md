@@ -112,9 +112,9 @@ Nothing here has run on real Steam.
 
 | Area | What to expect |
 |---|---|
-| Kills stat | `ffa_kills` counts every knock-out of a free-for-all. It used to record a ten-frag win as one kill. The bound is the frags goal, or one knock-out per ten seconds played when the goal is not frags; Survivor keeps one per opponent per round. |
+| Kills stat | `ffa_kills` counts every knock-out of a free-for-all. It used to record a ten-frag win as one kill. The bound is the frags goal, or one knock-out per ten seconds played when the goal is not frags; Survivor keeps one per opponent per round. Time played is never taken past what the player's own computer measured, so a host cannot report hours for a minute's match. |
 | Builds that cannot play together | One match compatibility number (ADR-0026). The match list shows a room from another version with "Update to join" or "Older version" in place of Join and Watch. A join by invite or lobby ID is refused with the update message before anyone is added. |
-| The match list and the waiting room | A row says what kind of room it is ("Survivor · Blind"). The waiting room has an Attacks line with every setting off its default. The Drop in label and the tile of a waiting player say "a key press" in a free-for-all and "next round" in Survivor. |
+| The match list and the waiting room | A row says what kind of room it is ("Survivor · Blind"). The waiting room has an Attacks entry with every setting off its default, one to a line. The Drop in label and the tile of a waiting player say "a key press" in a free-for-all and "next round" in Survivor. |
 | Private rooms | The waiting room of a private room shows "Invite only" and no lobby ID. What Steam does with a bare ID is for test T2 to show. |
 | A broken link | A player who "wins" because everyone else fell silent while their own Steam connection is down reads "Your connection to Steam was lost, so the match ended." and records no win. When both sides are still connected, both keep their result. |
 | Host change | Every player reads "<name> is now hosting this match." |
@@ -173,3 +173,15 @@ benchmarks running on the same machine.
 | Boards | `npm run odyssey:board-freeze -- --check` prints "All 58 orb time boards match their pins", and the manifest prints the same 64 board names as before. |
 | Main checkout | `npm run steam:qa -- verify-native` there now prints "44 client and 11 relay symbols resolved, addon loaded". |
 | Not verified | Anything on real Steam, on a Linux machine or on a Deck. The CI packaging job has never run, and the freeze test has never run on Ubuntu. |
+
+### Checks before the merge, 26 November
+
+Done after the build above, without Steam. Each one found or confirmed something.
+
+| Check | What it showed |
+|---|---|
+| An independent review of the whole branch | Five findings, all fixed with tests. A host's own "connection lost" exit could be swallowed by a latch left from an earlier session, leaving a finished board with no results (the latch is now cleared when a lobby is created). The time-based kills bound trusted the host's reported duration (it is now bounded by the player's own clock). A new room could be listed for a moment as an older build (the compatibility number is now written first and the key the list filters on last). A real win was lost if the player closed the session during the 600 ms connection check (it is now recorded). The CI job packaged Windows without the game's icon. |
+| The join handshake against the real earlier build | The source at `0da5b6bdd` and the branch, each running its own handshake code. Old joiner to new host: refused with "update required", never added to the roster. New joiner to old host: the joiner declines the session with "the host is using an older version". Each build still joins itself. |
+| The changed screens in the running game | The real game in a headless browser on the mock transport: the match list with five rooms (kind shown, drop-in label, "Update to join", "Older version"), the waiting room of a public room and of a private Blind room, and the new-host notice. Two layout faults that no unit test could see were found and fixed: a long attack-rules line pushed the waiting room's left panel into a sideways scroll, and that panel's scrollbar was unstyled. The rules now read one to a line. |
+| The Steam records smoke on the final tree | `npm run steam:qa-renderer` passes all four scenarios; the Cloud sizing figure and the 64 board names are unchanged. |
+| Linux | Not possible here: this machine has no WSL and no Docker. CI on a pull request runs the unit suite on Ubuntu, which is the first place the board freeze's played digests will run off Windows. |
