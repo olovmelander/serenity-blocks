@@ -8,7 +8,7 @@
  */
 import * as THREE from 'three/webgpu';
 import {
-    Fn, acesFilmicToneMapping, agxToneMapping, clamp, dot, exp, float, floor, fract, length, max, mix,
+    Fn, If, Loop, acesFilmicToneMapping, agxToneMapping, clamp, dot, exp, float, floor, fract, length, max, mix,
     neutralToneMapping, pass, renderOutput, screenCoordinate, screenUV, sin, smoothstep, uniform, uniformArray,
     vec2, vec3, vec4,
 } from 'three/tsl';
@@ -52,6 +52,7 @@ export class BlackHolePost {
         /** xy: centre (uv, y down), z: front radius, w: strength. Radii are in screen heights. */
         this.rippleData = Array.from({ length: RIPPLE_SLOTS }, () => new THREE.Vector4(0.5, 0.5, 0, 0));
         this.uRipples = uniformArray(this.rippleData, 'vec4');
+        this.rippleCount = uniform(0, 'int');
 
         // The cheapest tier draws the same scene straight to the canvas: no scene target,
         // no bloom chain, no fullscreen pass.
@@ -75,8 +76,8 @@ export class BlackHolePost {
         this.pipeline.outputNode = Fn(() => {
             // Sum the refraction of every ripple in flight, then read the scene once.
             const bend = vec2(0).toVar();
-            for (let slot = 0; slot < RIPPLE_SLOTS; slot += 1) {
-                const ripple = this.uRipples.element(slot);
+            Loop(this.rippleCount, ({ i }) => {
+                const ripple = this.uRipples.element(i);
                 const offset = screenUV.sub(ripple.xy).mul(vec2(this.uAspect, 1));
                 const distance = max(length(offset), 1e-4);
                 // Width grows with the ring, so a wide front stays a soft swell.
@@ -84,17 +85,19 @@ export class BlackHolePost {
                 const front = distance.sub(ripple.z).div(width);
                 const swell = front.mul(exp(front.mul(front).negate())).mul(ripple.w);
                 bend.addAssign(offset.div(distance).mul(swell).div(vec2(this.uAspect, 1)));
-            }
+            });
             const at = screenUV.sub(bend).toVar();
             const sampled = sceneColor.sample(at).toVar();
             const picture = sampled.rgb.toVar();
             if (preset.dispersion) {
                 // The front splits the light a little: red leads, blue trails.
-                picture.assign(vec3(
-                    sceneColor.sample(screenUV.sub(bend.mul(1.09))).r,
-                    picture.g,
-                    sceneColor.sample(screenUV.sub(bend.mul(0.91))).b,
-                ));
+                If(this.rippleCount.greaterThan(0), () => {
+                    picture.assign(vec3(
+                        sceneColor.sample(screenUV.sub(bend.mul(1.09))).r,
+                        picture.g,
+                        sceneColor.sample(screenUV.sub(bend.mul(0.91))).b,
+                    ));
+                });
             }
             // The lens writes the bare shadow into alpha: glare is held out of it.
             const combined = picture.add(this.bloomNode.rgb.mul(clamp(sampled.a, 0, 1))).max(0);
@@ -136,13 +139,14 @@ export class BlackHolePost {
         // themselves, and a haze over everything would wash their colours out.
         if (this.bloomNode) this.bloomNode.strength.value = BLOOM_STRENGTH + energy * 0.035 + flash * 0.05;
         const ripples = frame.ripples || [];
-        for (let slot = 0; slot < RIPPLE_SLOTS; slot += 1) {
-            const ripple = ripples[slot];
-            const target = this.rippleData[slot];
-            if (ripple && ripple.strength > 0) {
-                target.set(ripple.x, ripple.y, Math.max(0, ripple.radius), bounded(ripple.strength, 0.08));
-            } else if (target.w !== 0) target.set(0.5, 0.5, 0, 0);
+        let count = 0;
+        for (const ripple of ripples) {
+            if (!ripple || !(ripple.strength > 0)) continue;
+            this.rippleData[count].set(ripple.x, ripple.y, Math.max(0, ripple.radius), bounded(ripple.strength, 0.08));
+            count += 1;
+            if (count === RIPPLE_SLOTS) break;
         }
+        this.rippleCount.value = count;
     }
 
     render() {
@@ -177,7 +181,7 @@ export class BlackHolePost {
             bloomScale: this.disabled ? 0 : this.preset.bloomScale,
             bloomStrength: this.bloomNode?.strength.value ?? 0,
             exposure: this.uExposure.value,
-            ripples: this.rippleData.filter((ripple) => ripple.w > 0).length,
+            ripples: this.rippleCount.value,
         };
     }
 
