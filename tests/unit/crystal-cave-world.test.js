@@ -5,6 +5,7 @@ import {
 import * as THREE from 'three/webgpu';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { parseCrystalCaveCavern } from '../../src/themes/crystal-cave/crystal-cave-assets.js';
+import { SPARK_KIND } from '../../src/themes/crystal-cave/crystal-cave-effects.js';
 import {
     GEM_STRIDE, PULSE_CEILING, PULSE_DECAY, createGemGeometry, packCrystal, ringCrystal,
 } from '../../src/themes/crystal-cave/crystal-cave-gems.js';
@@ -193,7 +194,7 @@ describe('Crystal Cave stage', () => {
         }
     });
 
-    it('measures the union of visible board cards and ignores hidden ones', () => {
+    it('measures the visible playfields below the queues, falling back to cards during setup', () => {
         const card = (left, top, width, height, style = {}) => ({
             getBoundingClientRect: () => ({
                 left, top, right: left + width, bottom: top + height, width, height,
@@ -202,10 +203,11 @@ describe('Crystal Cave stage', () => {
         });
         const cards = [card(400, 100, 200, 600), card(700, 150, 200, 500), card(0, 0, 4, 4),
             card(100, 100, 200, 200, { display: 'none' })];
+        cards[0].querySelector = (selector) => (selector === '.player-board-section' ? card(410, 170, 180, 480) : null);
         const doc = { querySelectorAll: () => cards };
         const win = { innerWidth: 1000, innerHeight: 800, getComputedStyle: (element) => ({ opacity: '1', ...element.style }) };
         expect(readCrystalCaveBoardRect(doc, win)).toEqual({
-            x0: 0.4, x1: 0.9, y0: 0.125, y1: 0.875,
+            x0: 0.41, x1: 0.9, y0: 0.1875, y1: 0.8125,
         });
         expect(readCrystalCaveBoardRect({ querySelectorAll: () => [] }, win)).toBeNull();
         expect(readCrystalCaveBoardRect(null, win)).toBeNull();
@@ -310,6 +312,21 @@ describe('Crystal Cave world', () => {
         const amethystOnLeft = world.targets[1 * 2 + 0].length > 0;
         if (amethystOnLeft) pulses.forEach((index) => expect(world.crystals[index].family).toBe(1));
         expect(world.light.uniforms.familyLevel.array[1]).toBeGreaterThan(1);
+    });
+
+    it('delivers every crystal charge when the spark pool is full of motes', () => {
+        const { world } = build('Minimal');
+        const { effects } = world;
+        const arrive = vi.fn();
+        effects.setHandlers({ arrive });
+        const p = new THREE.Vector3(0, 2, 0);
+        const tint = world.light.familyColors[0];
+        for (let id = 0; id < effects.counts.sparks; id += 1) {
+            expect(effects.mote(p, p, 0.2, tint, 0.2, id, p)).toBe(true);
+        }
+        expect(effects.spark(SPARK_KIND.flare, p, p, tint)).toBe(false);
+        for (let i = 0; i < 5; i += 1) effects.update(0.05);
+        expect(arrive.mock.calls.map(([id]) => id)).toEqual(Array.from({ length: effects.counts.sparks }, (_, i) => i));
     });
 
     it('grows one cluster per cleared line at the water\'s edge and withdraws them on game over', () => {

@@ -9,19 +9,16 @@
  */
 import * as THREE from 'three/webgpu';
 import {
-    abs, attribute, cameraPosition, cameraProjectionMatrix, cameraViewMatrix, cameraWorldMatrix, clamp, cos, cross, exp,
-    float, fract, int, length, max, mix, normalize, positionGeometry, pow, sin, smoothstep, step, uniformArray, uv,
+    abs, attribute, cameraPosition, cameraProjectionMatrix, cameraViewMatrix, cross, exp,
+    int, length, max, mix, normalize, positionGeometry, pow, sin, smoothstep, step, uniformArray, uv,
     varying, vec2, vec3, vec4,
 } from 'three/tsl';
+import { createCaveCaustics } from './crystal-cave-caustics.js';
 
 const TAU = Math.PI * 2;
 export const SPARK_KIND = Object.freeze({
-    homing: 0, burst: 1, fall: 2, flare: 3,
+    homing: 0, burst: 1, fall: 2, flare: 3, spiral: 4,
 });
-const RAYS_PER_FAN = 13;
-const FAN_SECONDS = 1.7;
-/** A fan fades as exp(-FAN_DECAY · seconds). */
-const FAN_DECAY = 2.6;
 
 function additive(name) {
     const material = new THREE.MeshBasicNodeMaterial({
@@ -52,9 +49,6 @@ function quadGeometry(count, attributes) {
     return { geometry, attributes: made };
 }
 
-/** A rainbow that stays bright: used wherever light is split. */
-const spectrum = (phase) => cos(vec3(0, 0.33, 0.67).add(phase).mul(TAU)).mul(0.5).add(0.5);
-
 function makeSpark(index) {
     return {
         index,
@@ -70,6 +64,8 @@ function makeSpark(index) {
         phase: 0,
         payload: -1,
         shed: 0,
+        radius: 0,
+        spin: 0,
         position: new THREE.Vector3(),
         velocity: new THREE.Vector3(),
         from: new THREE.Vector3(),
@@ -91,10 +87,6 @@ export function createCaveEffects({ light, poolLevel, quality }) {
     group.name = 'Crystal Cave — event light';
     group.renderOrder = 6;
     const owned = [];
-    const right = cameraWorldMatrix.mul(vec4(1, 0, 0, 0)).xyz;
-    const up = cameraWorldMatrix.mul(vec4(0, 1, 0, 0)).xyz;
-    const forward = cameraWorldMatrix.mul(vec4(0, 0, -1, 0)).xyz;
-
     // ---- sparks ---------------------------------------------------------------------
     const sparkCount = Math.max(0, Math.floor(quality.sparks ?? 0));
     const sparks = Array.from({ length: sparkCount }, (_, index) => makeSpark(index));
@@ -146,60 +138,12 @@ export function createCaveEffects({ light, poolLevel, quality }) {
 
     // ---- fans -------------------------------------------------------------------------
     const fanCount = Math.max(0, Math.floor(quality.fans ?? 0));
-    const fanPlace = Array.from({ length: Math.max(1, fanCount) }, () => new THREE.Vector4(0, 0, 0, -1000));
-    const fanShape = Array.from({ length: Math.max(1, fanCount) }, () => new THREE.Vector4(1, 0, 1, 0));
-    if (fanCount > 0) {
-        const rays = new Float32Array(fanCount * RAYS_PER_FAN * 4);
-        let state = 7717;
-        const random = () => {
-            state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
-            return state / 4294967296;
-        };
-        for (let fan = 0; fan < fanCount; fan += 1) {
-            for (let ray = 0; ray < RAYS_PER_FAN; ray += 1) {
-                const spreadAt = (ray / (RAYS_PER_FAN - 1)) * 2 - 1;
-                rays.set([fan, spreadAt + (random() - 0.5) * 0.1, random(), random()], (fan * RAYS_PER_FAN + ray) * 4);
-            }
-        }
-        const made = quadGeometry(fanCount * RAYS_PER_FAN, { iRay: { array: rays, size: 4 } });
-        const ray = attribute('iRay', 'vec4'); // fan, place in the fan (-1..1), two seeds
-        const placeNode = uniformArray(fanPlace, 'vec4');
-        const shapeNode = uniformArray(fanShape, 'vec4');
-        const place = placeNode.element(int(ray.x.add(0.5)));
-        const shape = shapeNode.element(int(ray.x.add(0.5))); // side, strength, lines, seed
-        const elapsed = u.time.sub(place.w);
-        const alive = step(0, elapsed).mul(step(elapsed, FAN_SECONDS));
-        // A fan that is not burning collapses to nothing rather than being drawn clear.
-        const age = clamp(elapsed, 0, FAN_SECONDS);
-        const shoot = float(1).sub(exp(age.mul(-7.5))).mul(alive);
-        const fade = exp(age.mul(-FAN_DECAY)).mul(alive);
-        const angle = ray.y.mul(shape.z.mul(0.07).add(0.42)).add(sin(age.mul(2.2).add(ray.z.mul(TAU))).mul(0.03));
-        const heading = normalize(right.mul(shape.x.mul(cos(angle))).add(up.mul(sin(angle))).add(forward.mul(0.42)));
-        const reach = shape.z.mul(4).add(17).mul(ray.w.mul(0.7).add(0.3)).mul(shoot);
-        const root = place.xyz;
-        const along = positionGeometry.x.add(0.5);
-        const centre = root.add(heading.mul(along.mul(reach)));
-        const sideways = normalize(cross(heading, cameraPosition.sub(centre)));
-        const width = ray.z.pow2().mul(0.34).add(0.07).mul(shape.z.mul(0.1).add(1))
-            .mul(along.mul(2.2).add(0.25));
-        const world = centre.add(sideways.mul(positionGeometry.y.mul(width)));
-        const material = additive('Crystal Cave — prismatic fan');
-        material.side = THREE.DoubleSide;
-        material.vertexNode = cameraProjectionMatrix.mul(cameraViewMatrix.mul(vec4(world, 1)));
-        const vFade = varying(fade.mul(shape.y));
-        const vHue = varying(ray.y.mul(0.42).add(0.5).add(shape.w));
-        const vGlint = varying(fract(age.mul(0.9).add(ray.w)));
-        const local = uv();
-        const body = exp(local.y.sub(0.5).mul(2).pow2().mul(-7));
-        const taper = pow(float(1).sub(local.x), 1.3).mul(smoothstep(0, 0.04, local.x));
-        const glint = exp(abs(local.x.sub(vGlint)).mul(-26)).mul(0.9);
-        material.colorNode = mix(spectrum(vHue), vec3(1), 0.3).mul(1.7);
-        material.opacityNode = body.mul(taper.add(glint.mul(taper.add(0.15)))).mul(vFade);
-        const mesh = new THREE.Mesh(made.geometry, material);
-        mesh.name = 'Crystal Cave — prismatic fans';
-        mesh.frustumCulled = false;
-        owned.push(mesh);
-        group.add(mesh);
+    const caustics = fanCount ? createCaveCaustics({
+        time: u.time, count: fanCount, quadGeometry, additive,
+    }) : null;
+    if (caustics) {
+        owned.push(caustics.mesh);
+        group.add(caustics.mesh);
     }
 
     // ---- beams ------------------------------------------------------------------------
@@ -246,17 +190,19 @@ export function createCaveEffects({ light, poolLevel, quality }) {
     }
 
     let sparkCursor = 0;
-    let fanCursor = 0;
     let onArrive = null;
     let onSplash = null;
     let disposed = false;
 
     /** Claim a free spark, or the one furthest through its life. */
-    function claim() {
+    function claim(trail = false) {
         if (sparkCount === 0) return null;
-        let selected = sparkCursor % sparkCount;
+        let selected = -1;
         let furthest = -1;
-        for (let offset = 0; offset < sparkCount; offset += 1) {
+        // A comet's cosmetic dust may skip a grain when the banks are busy. Reserving that
+        // grain must never evict a flare or scan the entire pool for every mote in flight.
+        const limit = trail ? Math.min(8, sparkCount) : sparkCount;
+        for (let offset = 0; offset < limit; offset += 1) {
             const index = (sparkCursor + offset) % sparkCount;
             const spark = sparks[index];
             if (!spark.active) {
@@ -265,11 +211,12 @@ export function createCaveEffects({ light, poolLevel, quality }) {
             }
             // Motes in flight carry a pulse to deliver; never steal them.
             const progress = spark.kind === SPARK_KIND.homing ? -1 : spark.age / spark.life;
-            if (progress > furthest) {
+            if (!trail && progress > furthest) {
                 furthest = progress;
                 selected = index;
             }
         }
+        if (selected < 0) return null;
         sparkCursor = (selected + 1) % sparkCount;
         const spark = sparks[selected];
         spark.active = true;
@@ -302,6 +249,9 @@ export function createCaveEffects({ light, poolLevel, quality }) {
                 alpha *= swell * (1 - progress) ** 1.6;
                 size *= 0.4 + swell * 0.6;
                 tailScale = 0;
+            } else if (spark.kind === SPARK_KIND.spiral) {
+                alpha *= Math.min(1, progress * 9) * (1 - progress) ** 0.85;
+                tailScale = 0.08;
             } else {
                 alpha *= Math.min(1, progress * 10) * (1 - progress) ** 1.5
                     * (0.72 + 0.28 * (1 - flicker + flicker * Math.sin(spark.age * 17 + spark.phase)));
@@ -332,6 +282,7 @@ export function createCaveEffects({ light, poolLevel, quality }) {
     }
 
     const scratch = new THREE.Vector3();
+    const ice = new THREE.Color(0xbbe9ff);
     return {
         group,
         counts: { sparks: sparkCount, fans: fanCount, beams: beamCount },
@@ -358,6 +309,34 @@ export function createCaveEffects({ light, poolLevel, quality }) {
             spark.phase = payload * 1.7;
             return true;
         },
+        /** A twist rotates two or three arms round a pocket of air on the piece's bank. */
+        spiral(centre, radius, side, tint, mini) {
+            const arms = mini ? 2 : 3;
+            const grains = mini ? 6 : 9;
+            for (let arm = 0; arm < arms; arm += 1) {
+                for (let i = 0; i < grains; i += 1) {
+                    const spark = claim();
+                    if (!spark) return;
+                    const thread = i / (grains - 1);
+                    spark.kind = SPARK_KIND.spiral;
+                    spark.radius = radius * (0.21 + thread * 0.79);
+                    spark.spin = side;
+                    spark.phase = (arm / arms) * TAU - side * (1 - thread) * 2.4;
+                    spark.life = mini ? 1 : 1.5;
+                    spark.strength = 0.85 + 0.42 * thread;
+                    spark.size = 0.13 + 0.17 * thread;
+                    spark.star = i === grains - 1 ? 0.75 : 0;
+                    spark.from.copy(centre);
+                    spark.position.set(
+                        centre.x + Math.cos(spark.phase) * spark.radius * 0.55,
+                        centre.y + Math.sin(spark.phase) * spark.radius * 0.55,
+                        centre.z,
+                    );
+                    spark.velocity.set(0, 0, 0);
+                    spark.tint.copy(tint).lerp(ice, 0.14 + thread * 0.45);
+                }
+            }
+        },
         /** A free spark: `gravity` > 0 falls, `drag` slows it. */
         spark(kind, origin, velocity, tint, {
             life = 1.2, size = 0.16, strength = 1, gravity = 2.4, drag = 1.1, star = 0, phase = 0,
@@ -377,27 +356,8 @@ export function createCaveEffects({ light, poolLevel, quality }) {
             spark.tint.copy(tint);
             return true;
         },
-        /**
-         * Fire a prismatic fan from a point beside the board. When every fan is burning the
-         * faintest gives way, never one that only just opened.
-         */
-        fan(origin, side, strength, lines, time, seed = 0) {
-            if (fanCount === 0) return false;
-            let index = fanCursor;
-            let faintest = Infinity;
-            for (let offset = 0; offset < fanCount; offset += 1) {
-                const slot = (fanCursor + offset) % fanCount;
-                const age = time - fanPlace[slot].w;
-                const left = age >= 0 && age < FAN_SECONDS ? fanShape[slot].y * Math.exp(-age * FAN_DECAY) : 0;
-                if (left < faintest) {
-                    faintest = left;
-                    index = slot;
-                }
-            }
-            fanCursor = (index + 1) % fanCount;
-            fanPlace[index].set(origin.x, origin.y, origin.z, time);
-            fanShape[index].set(side < 0 ? -1 : 1, strength, lines, seed);
-            return true;
+        caustic(origin, side, pattern, span, height, strength, time, hue) {
+            return caustics?.fire(origin, side, pattern, span, height, strength, time, hue) ?? false;
         },
         /** Aim a lattice beam; its brightness then follows `setBeamTarget`. */
         aimBeam(index, from, to, tintA, tintB, seed = 0) {
@@ -436,7 +396,7 @@ export function createCaveEffects({ light, poolLevel, quality }) {
                     spark.shed += dt;
                     if (spark.shed >= 0.028 && t < 0.97) {
                         spark.shed = 0;
-                        const dust = claim();
+                        const dust = claim(true);
                         if (dust && dust !== spark) {
                             dust.kind = SPARK_KIND.burst;
                             dust.life = 0.42 + ((spark.age * 37) % 1) * 0.3;
@@ -462,6 +422,19 @@ export function createCaveEffects({ light, poolLevel, quality }) {
                     continue;
                 }
                 if (spark.kind === SPARK_KIND.flare) continue;
+                if (spark.kind === SPARK_KIND.spiral) {
+                    const p = spark.age / spark.life;
+                    const angle = spark.phase + spark.spin * (4.8 * p - 1.6 * p * p);
+                    const radius = spark.radius * (0.55 + 0.8 * Math.sin(p * 2.4));
+                    scratch.copy(spark.position);
+                    spark.position.set(
+                        spark.from.x + Math.cos(angle) * radius,
+                        spark.from.y + Math.sin(angle) * radius,
+                        spark.from.z - p * 0.5,
+                    );
+                    spark.velocity.copy(spark.position).sub(scratch).divideScalar(dt);
+                    continue;
+                }
                 const slow = Math.exp(-spark.drag * dt);
                 spark.velocity.multiplyScalar(slow);
                 spark.velocity.y -= spark.gravity * dt;
@@ -488,11 +461,21 @@ export function createCaveEffects({ light, poolLevel, quality }) {
             for (const spark of sparks) if (spark.active) live += 1;
             return live;
         },
+        settle() {
+            for (const spark of sparks) {
+                if (!spark.active || spark.kind !== SPARK_KIND.homing) continue;
+                spark.kind = SPARK_KIND.fall;
+                spark.age = 0.18;
+                spark.life = 1.5;
+                spark.velocity.multiplyScalar(0.12);
+                spark.gravity = 3.5;
+                spark.drag = 1.4;
+            }
+        },
         reset() {
             sparkCursor = 0;
-            fanCursor = 0;
+            caustics?.reset();
             for (const spark of sparks) spark.active = false;
-            fanPlace.forEach((place) => place.set(0, 0, 0, -1000));
             beamLevel.fill(0);
             beamTarget.fill(0);
             beamFrom.forEach((from) => { from.w = 0; });

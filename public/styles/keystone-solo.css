@@ -183,6 +183,16 @@
     --sp-wall-glow: rgb(107 183 211 / 24%);
 }
 
+/* The pool's teal edge runs up the well; pale lilac quartz picks out the queue and score. */
+:where(body:has(#crystal-cave-theme.active)) .single-player-stage[data-board='well']:not(:where(
+    .infinity-mode-active, [data-odyssey-board], [data-stillfall], [data-still-air], [data-danger]
+)) {
+    --sp-hue: #d9c6ea;
+    --sp-hue-rgb: 217, 198, 234;
+    --sp-wall: #508e97;
+    --sp-wall-glow: rgb(90 187 185 / 24%);
+}
+
 /* ---- The column: the queue over the well ------------------------------------------- */
 .single-player-stage[data-board='well'] #single-player-container {
     --board-width: inherit;

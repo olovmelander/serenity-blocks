@@ -9,6 +9,44 @@ and whose record is in this file's history.
 | --- | --- |
 | ![before](crystal-cave-overhaul/before.webp) | ![after](crystal-cave-overhaul/idle.webp) |
 
+## Crystal habits and light on water · 26 November 2026
+
+The cyan bank on the left, the amethyst bank on the right and the amber island at the far end
+already gave the hall scale. The revision keeps those landmarks and the Blender lighting bake.
+Geode inspired two choices here: let the mineral determine the shape of a specimen, and let a
+gameplay event travel through the surrounding rock and water.
+
+| Surface | What the audit found | What changed |
+| --- | --- | --- |
+| Floor clusters and chandeliers | The five minerals shared nearly the same long shaft and point. Some axial glows read as straight tubes. | Aqua grows in broad blades, rose in plates, sapphire in slim spars, amber in lances and amethyst in deep crowns. Hanging specimens have longer points. The traced glass carries growth zoning, fine fluid inclusions and healed fractures. Every root and tip keeps its authored position. |
+| Suspended shards and sparkles | The scene had billboards for dust and glitter. The open air between the banks had little solid geometry to catch the skylight. | A double-ended, diagonally cleaved quartz model made in Blender turns in pockets of air. Light refracts through its fourteen facets. Motes drift in eddies and fade as they complete a rise. |
+| Rock and skylight | The stone's fine noise was clearer up close than at play distance. The beam's old angular lookup illuminated each side almost evenly. | Pale calcite beds and iron-stained contacts follow the folds of the rock. Unequal slits in the chimney cast fingers of light with shadow between them. The vault, suspended shards and reflective water share the direction of the light. |
+| Pool | The full mirror carried the island beautifully. Minimal water behind the near banks looked flat. Strong event rings could look stamped onto the surface. | Cross-ripples break the reflection. A tile baked by refracting 2.36 million rays through a periodic water surface casts moving folds of light on the bed and wet stone. Low and Minimal recolour a baked image of the actual crystals and banks with the live palette, using two texture reads in the water material. |
+| Time, colour and glow | The existing daylight and mineral clocks gave longer sessions distinct palettes. The opening still held much the same pattern of light during the first few placements. | Refracted mineral light now sweeps one patch of the pool over 23 seconds, visiting five banks in turn. It takes its colour from the current vein and its strength from the hour. Shard rotation and the changing openings in the light run independently. |
+| Board and events | Several clear counts drew the same fan. The distant heart hid behind the well on large hits. A twist payload could omit the locked piece's location. Some piece styling applied only to the small previews. | Locks send light to nearby specimens. A hard drop cuts down the bank. Singles, doubles and triples split into distinct patterns, four-line clears open faceted fans, and a perfect clear raises two translucent crowns. Twists curl around the last lock, cascades link crystals and back-to-backs open the skylight. Five minerals light in succession on level-up. Game over withdraws the growth. The seven mineral piece colours remain distinct in the queue and on the board. |
+
+[Full-size cave](crystal-cave-overhaul/mineral-hall.jpg) ·
+[Before and after at High and Minimal](crystal-cave-overhaul/mineral-comparison.jpg) ·
+[Daylight and mineral changes](crystal-cave-overhaul/mineral-hours.jpg) ·
+[Gameplay event gallery](crystal-cave-overhaul/mineral-events.jpg) ·
+[Live solo board](crystal-cave-overhaul/mineral-solo.jpg) ·
+[390 × 844 portrait board](crystal-cave-overhaul/mineral-portrait.jpg)
+
+The floating solids share one instanced draw per scene pass. Event light uses fixed pools and
+the pool shader skips inactive rings. The High tier keeps its planar mirror. Low and Minimal
+use the baked reflection without rendering the scene a second time. The asset gate reconstructs
+both water textures and compares their decoded pixels with the shipped files.
+
+Visual checks covered the individual events, the moving camera, High on native WebGPU and
+WebGL2, Minimal on WebGL2, and a populated solo game on both backends. The final playground
+captures showed no shader warnings or validation errors.
+
+At 1280 × 720 on the NVIDIA Blackwell adapter, the production-compiled High scene drew
+38 calls both at rest and at a six-lock combo with 294 active sparks. With the playground
+capped at 30 fps, two 7.4-second samples of each pinned frame had median frame intervals
+of 33.3–33.4 ms. The combo's 95th-percentile intervals were 34.1 and 33.8 ms. These figures
+cover the scene renderer at that resolution and cap.
+
 ## Second pass (2026-10-20): the light in the air, and glass
 
 Branch `feature/crystal-cave-overhaul`. The first pass left the air empty and the crystals

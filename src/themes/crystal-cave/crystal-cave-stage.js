@@ -17,8 +17,8 @@ const BOARD_SELECTOR = '.player-card[data-player]';
 const clamp01 = (value) => Math.max(0, Math.min(1, value));
 
 /**
- * The union of the visible board cards in screen fractions (y down), or null when no
- * board is on screen (menus, boot) so the stage keeps its default.
+ * The union of the visible playfields in screen fractions (y down). A card can also
+ * contain the queue and score, so its full height is only a fallback during setup.
  */
 export function readCrystalCaveBoardRect(doc = globalThis.document, win = globalThis.window) {
     if (!doc || !win || typeof doc.querySelectorAll !== 'function') return null;
@@ -26,8 +26,9 @@ export function readCrystalCaveBoardRect(doc = globalThis.document, win = global
     const height = Math.max(1, win.innerHeight || 1);
     let rect = null;
     doc.querySelectorAll(BOARD_SELECTOR).forEach((element) => {
-        if (typeof element?.getBoundingClientRect !== 'function') return;
-        const box = element.getBoundingClientRect();
+        const field = element?.querySelector?.('.player-board-section') ?? element;
+        if (typeof field?.getBoundingClientRect !== 'function') return;
+        const box = field.getBoundingClientRect();
         if (!(box.width > 8 && box.height > 8)) return;
         if (box.right <= 0 || box.bottom <= 0 || box.left >= width || box.top >= height) return;
         const style = typeof win.getComputedStyle === 'function' ? win.getComputedStyle(element) : null;

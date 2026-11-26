@@ -428,6 +428,15 @@ describe('Crystal Cave reactions — chains', () => {
 });
 
 describe('Crystal Cave reactions — flourishes and the end of a game', () => {
+    it('turns a line-count-only twist beside the last locked piece in its mineral family', () => {
+        const director = new CrystalCaveReactions();
+        director.onPieceLock({ piece: piece('O', 8, 15), viewportOrigin: { x: 0.85, y: 0.76 } });
+        director.clearCues();
+        director.onTwist({ lineCount: 0 });
+        expect(cuesOf(director)[0]).toMatchObject({
+            type: 'spin', side: 1, row: 0.24, family: CRYSTAL_CAVE_PIECE_FAMILY.O, strength: 0.42,
+        });
+    });
     it('spins a pinwheel beside the piece on a twist', () => {
         const director = new CrystalCaveReactions({ rng: seeded() });
         director.onTwist({ piece: piece('T', 8, 10) });

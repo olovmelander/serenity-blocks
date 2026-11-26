@@ -5,10 +5,11 @@
  */
 import * as THREE from 'three/webgpu';
 import {
-    abs, attribute, cameraFar, cameraNear, cameraPosition, cameraProjectionMatrix, cameraViewMatrix, cos, dot, exp,
+    abs, attribute, cameraFar, cameraNear, cameraPosition, cameraProjectionMatrix, cameraViewMatrix, cos, cross, dot, exp,
     fract, length, linearDepth, max, mix, normalWorld, normalize, positionGeometry, positionWorld, pow, sin,
-    smoothstep, step, texture, uniform, uv, varying, vec2, vec3, vec4, viewportLinearDepth,
+    smoothstep, step, uniform, uv, varying, vec3, vec4, viewportLinearDepth,
 } from 'three/tsl';
+import { chimneyLight } from './crystal-cave-atmosphere.js';
 
 function additive(name) {
     const material = new THREE.MeshBasicNodeMaterial({
@@ -108,12 +109,12 @@ export function createCaveAir({
         const view = normalize(cameraPosition.sub(positionWorld));
         const across = normalize(view.sub(vec3(beamAxis).mul(dot(view, vec3(beamAxis)))));
         const core = pow(abs(dot(normalize(normalWorld), across)), 2.4);
-        const streak = texture(light.noise, vec2(uv().x.mul(3), uv().y.mul(0.35).sub(u.time.mul(0.012)))).r
-            .mul(0.65).add(0.5);
-        const ends = smoothstep(0, 0.12, uv().y).mul(smoothstep(1, 0.72, uv().y));
+        const section = dot(normalWorld, cross(vec3(beamAxis), across).negate());
+        const streak = chimneyLight(section, u.time);
+        const ends = smoothstep(0, 0.10, uv().y).mul(smoothstep(1, 0.85, uv().y));
         const soft = smoothstep(0, 4, viewportLinearDepth.sub(linearDepth()).mul(cameraFar.sub(cameraNear)));
         material.colorNode = vec3(0.56, 0.78, 1.0).mul(u.skyTint);
-        material.opacityNode = core.mul(streak).mul(ends).mul(soft).mul(0.1)
+        material.opacityNode = core.mul(streak).mul(ends).mul(soft).mul(0.19)
             .mul(controls.shaft)
             .mul(u.energy.mul(0.3).add(1));
         const mesh = new THREE.Mesh(geometry, material);
@@ -159,10 +160,12 @@ export function createCaveAir({
         const origin = attribute('iCentre', 'vec3');
         const seed = attribute('iParams', 'vec4');
         const phase = seed.y.mul(6.283);
+        const rise = fract(u.time.mul(seed.z.mul(0.012).add(0.006)).add(seed.w));
+        const eddy = u.time.mul(0.17).add(phase).add(origin.y.mul(0.28));
         const drift = vec3(
-            sin(u.time.mul(0.11).add(phase)).mul(1.1),
-            fract(u.time.mul(seed.z.mul(0.012).add(0.006)).add(seed.w)).mul(3).sub(1.5),
-            cos(u.time.mul(0.08).add(phase.mul(1.7))).mul(0.8),
+            sin(eddy).mul(0.85).add(sin(eddy.mul(0.37)).mul(0.66)),
+            rise.mul(3).sub(1.5),
+            cos(eddy).mul(0.95),
         );
         const centre = origin.add(drift);
         const distance = eyeDistance(centre);
@@ -175,12 +178,18 @@ export function createCaveAir({
             .mul(smoothstep(0, 4, along)).mul(controls.shaft);
         const glimmer = sin(u.time.mul(seed.z.mul(2).add(0.7)).add(phase.mul(3))).mul(0.35).add(0.65);
         // Dust right in front of the lens would read as blobs: it fades out as it nears.
-        const lift = varying(inBeam.mul(2.6).add(0.2).add(u.energy.mul(0.5)).mul(glimmer)
+        const lift = varying(inBeam.mul(3.4).add(0.27).add(u.energy.mul(0.5)).mul(glimmer)
+            .mul(smoothstep(0, 0.08, rise))
+            .mul(smoothstep(1, 0.92, rise))
             .mul(veil(distance))
             .mul(smoothstep(5, 13, distance)));
         const side = varying(smoothstep(-14, 14, centre.x));
         const spot = length(uv().sub(0.5).mul(2));
-        material.colorNode = mix(vec3(0.5, 0.95, 0.95), vec3(0.8, 0.66, 1.0), side).mul(1.4);
+        material.colorNode = mix(
+            mix(vec3(0.46, 0.88, 0.98), vec3(0.86, 0.65, 1.0), side),
+            u.skyTint,
+            varying(inBeam.clamp(0, 1)),
+        ).mul(1.6);
         material.opacityNode = exp(spot.mul(spot).mul(-6)).mul(lift).mul(0.55);
         const mesh = new THREE.Mesh(geometry, material);
         mesh.name = 'Crystal Cave — dust';

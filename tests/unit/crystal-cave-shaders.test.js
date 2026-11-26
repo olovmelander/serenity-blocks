@@ -146,8 +146,11 @@ describe.each(TIERS)('crystal cave shaders at %s', (quality) => {
     beforeAll(() => {
         scene = new THREE.Scene();
         camera = new THREE.PerspectiveCamera(55, 16 / 9, 0.2, 320);
+        const assets = parseCrystalCaveCavern(gltf);
+        assets.caustics = new THREE.Texture();
+        if (quality === 'Minimal') assets.poolReflection = new THREE.Texture();
         world = new CrystalCaveWorld({
-            scene, camera, assets: parseCrystalCaveCavern(gltf), quality,
+            scene, camera, assets, quality,
         });
         const seen = new Set();
         const targets = [];
@@ -166,7 +169,11 @@ describe.each(TIERS)('crystal cave shaders at %s', (quality) => {
         }
     });
 
-    afterAll(() => world?.dispose());
+    afterAll(() => {
+        world?.assets.caustics?.dispose();
+        world?.assets.poolReflection?.dispose();
+        world?.dispose();
+    });
 
     it('builds every material in the cave on both backends without a word', () => {
         expect(built.length).toBeGreaterThan(8);
@@ -177,6 +184,66 @@ describe.each(TIERS)('crystal cave shaders at %s', (quality) => {
         const crystal = built.find((entry) => entry.label === 'WGSL' && /crystals/.test(entry.name));
         expect(crystal.out.fragment).toMatch(/fn gemExitEdgeGap\b/);
         expect(/textureLoad|textureSample/.test(crystal.out.fragment)).toBe(true);
+    });
+
+    it('keeps the baked roots, tip positions and cross-sections through every change of crystal habit', () => {
+        const { geometry } = world.gems.mesh;
+        const place = geometry.getAttribute('iPlace');
+        const dims = geometry.getAttribute('iDims');
+        const look = geometry.getAttribute('iLook');
+        const epsilon = 1e-4;
+        const allAnchored = world.crystals.every((crystal, i) => {
+            const radius = place.getW(i);
+            const height = dims.getX(i);
+            const depth = dims.getY(i);
+            return Math.abs(place.getX(i) - crystal.x) < epsilon
+                && Math.abs(place.getY(i) - crystal.y) < epsilon
+                && Math.abs(place.getZ(i) - crystal.z) < epsilon
+                && Math.abs(radius * depth - crystal.radius * crystal.depth) < epsilon
+                && Math.abs(height * (1 + dims.getZ(i)) - crystal.height - crystal.tip) < epsilon
+                && Math.abs(look.getX(i) * radius - crystal.apexX * crystal.radius) < epsilon
+                && Math.abs(look.getY(i) * depth - crystal.apexZ * crystal.depth) < epsilon;
+        });
+        expect(allAnchored).toBe(true);
+        const rose = world.crystals.findIndex((c) => c.family === 3 && c.height > 5);
+        const violet = world.crystals.findIndex((c) => c.family === 1 && c.height > 5);
+        expect(place.getW(rose) / world.crystals[rose].radius).toBeGreaterThan(1.4);
+        expect(dims.getX(violet) * dims.getZ(violet)).toBeGreaterThan(world.crystals[violet].tip * 1.3);
+    });
+
+    it('lights the outward planes of the suspended shard and omits their triangulation diagonals', () => {
+        const { geometry } = scene.getObjectByName('Crystal Cave — floating shards');
+        const position = geometry.getAttribute('position');
+        const normals = geometry.getAttribute('aCleavage');
+        const arris = geometry.getAttribute('aArris');
+        const triangle = new THREE.Triangle();
+        const normal = new THREE.Vector3();
+        const centre = new THREE.Vector3();
+        let markedSides = 0;
+        const edges = new Map();
+        for (let i = 0; i < position.count; i += 3) {
+            const corners = [triangle.a, triangle.b, triangle.c];
+            corners.forEach((v, j) => v.fromBufferAttribute(position, i + j));
+            triangle.getNormal(normal);
+            expect(normal.dot(triangle.getMidpoint(centre))).toBeGreaterThan(0);
+            const plane = new THREE.Vector3().fromBufferAttribute(normals, i);
+            expect(normal.dot(plane)).toBeGreaterThan(0.99);
+            for (let j = 0; j < 3; j += 1) {
+                const edge = [corners[(j + 1) % 3], corners[(j + 2) % 3]]
+                    .map((v) => v.toArray().join(',')).sort().join('/');
+                const marked = arris.getComponent(i + ((j + 1) % 3), j) === 0;
+                if (marked) markedSides += 1;
+                const neighbour = edges.get(edge);
+                if (neighbour) {
+                    // A diagonal has the same assigned normal on both triangles. An arris joins two planes.
+                    expect(marked).toBe(!neighbour.equals(plane));
+                    edges.delete(edge);
+                } else edges.set(edge, plane);
+            }
+        }
+        expect(edges.size).toBe(0);
+        expect(markedSides).toBeGreaterThan(0);
+        expect(markedSides).toBeLessThan(position.count);
     });
 
     it.runIf(quality === 'High')('builds the lit composite (scene + the light in the air) and the output on both backends', () => {

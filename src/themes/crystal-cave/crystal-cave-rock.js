@@ -14,8 +14,8 @@
  */
 import * as THREE from 'three/webgpu';
 import {
-    Fn, abs, attribute, cameraPosition, clamp, cross, dFdx, dFdy, dot, exp, float, fwidth, length, max, min, mix,
-    normalWorld, normalize, positionWorld, pow, sign, smoothstep, texture, uniform, vec2, vec3, vec4,
+    Fn, abs, attribute, cameraPosition, clamp, cross, dFdx, dFdy, dot, exp, float, fract, fwidth, length, max,
+    min, mix, normalWorld, normalize, positionWorld, pow, sign, sin, smoothstep, texture, uniform, vec2, vec3, vec4,
 } from 'three/tsl';
 import { FAMILY_COUNT } from './crystal-cave-light.js';
 
@@ -32,7 +32,7 @@ const WAVE_COMPONENTS = ['x', 'y', 'z', 'w'];
  * @param {boolean} [options.relief] light the fine relief (off on the lowest tiers)
  */
 export function createCaveRock({
-    light, geometry, lightScale, poolLevel, relief = true,
+    light, geometry, lightScale, poolLevel, relief = true, caustics = null,
 }) {
     const u = light.uniforms;
     const controls = {
@@ -93,7 +93,7 @@ export function createCaveRock({
         const albedo = warm.mul(bedding.mul(0.5).add(0.62)).mul(fine.g.mul(0.35).add(0.8))
             .mul(mix(float(1), float(0.5), damp)).toVar();
         // Calcite veins: thin pale lines where a broad field crosses its middle, only in places.
-        const veinField = planar(0.035).toVar();
+        const veinField = coarse;
         const veinWidth = max(fwidth(veinField.r).mul(1.2), 0.012);
         const vein = float(1).sub(smoothstep(veinWidth.mul(0.5), veinWidth.mul(1.5), abs(veinField.r.sub(0.5))))
             .mul(smoothstep(0.6, 0.78, coarse.a)).mul(steep.mul(0.7).add(0.3))
@@ -101,13 +101,32 @@ export function createCaveRock({
             .toVar();
         albedo.assign(mix(albedo, vec3(0.6, 0.64, 0.68), vein.mul(0.55)));
 
+        // Folded limestone exposes pale spar and a warm iron contact in the same bed.
+        // Broad folds remain legible behind the small crystals. Let the seams disappear
+        // in recesses and damp deposits, with a pixel footprint at the far end of the hall.
+        const layer = point.y.mul(0.39).add(point.x.mul(0.065)).sub(point.z.mul(0.026))
+            .add(sin(point.z.mul(0.12).add(coarse.a.mul(3.4))).mul(0.55))
+            .add(coarse.r.mul(2.35))
+            .add(fine.r.mul(0.12))
+            .toVar();
+        const phase = fract(layer);
+        const aa = fwidth(layer).clamp(0.008, 0.23);
+        const band = abs(phase.sub(0.46));
+        const seam = float(1).sub(smoothstep(0.022, aa.add(0.06), band));
+        const apron = float(1).sub(smoothstep(0.055, aa.add(0.22), abs(phase.sub(0.57))));
+        const deposit = smoothstep(0.34, 0.64, coarse.a).mul(steep).mul(float(1).sub(damp.mul(0.72)))
+            .mul(smoothstep(0.1, 0.65, occlusion))
+            .toVar();
+        albedo.assign(mix(albedo, albedo.mul(vec3(1.35, 0.85, 0.74)), apron.mul(deposit).mul(0.8)));
+        albedo.assign(mix(albedo, vec3(0.68, 0.69, 0.73), seam.mul(deposit).mul(0.72)));
+
         // ---- relief lit from the baked direction ---------------------------------
         // Flowstone flutes: grooves running down every steep face (stalactites, walls), read
         // along the face's horizontal run and stretched far downward.
         const fluteX = texture(light.noise, vec2(point.z.mul(0.32), point.y.mul(0.028))).g;
         const fluteZ = texture(light.noise, vec2(point.x.mul(0.32), point.y.mul(0.028))).g;
         const flute = fluteX.mul(weight.x).add(fluteZ.mul(weight.z)).div(max(weight.x.add(weight.z), 1e-3));
-        const height = coarse.g.mul(0.6).add(fine.r.mul(0.4))
+        const height = coarse.g.mul(0.6).add(fine.r.mul(0.4)).add(apron.mul(deposit).mul(0.15))
             .add(flute.mul(steep).mul(smoothstep(0.3, 0.7, coarse.r).mul(0.5).add(0.1)))
             .toVar();
         const shaped = surface.toVar();
@@ -131,14 +150,11 @@ export function createCaveRock({
                 .mul(stored[family].mul(lightScale[family]).mul(u.familyLevel.element(family))));
         }
         // Light that left the pool carries its moving caustic net onto the stone.
-        const drift = u.time.mul(0.045);
-        const net = point.xz.add(vec2(point.y.mul(0.31), point.y.mul(-0.23))).mul(0.07);
-        const caustic = pow(min(
-            texture(light.noise, net.add(vec2(drift, drift.mul(0.6)))).g,
-            texture(light.noise, net.mul(1.31).sub(vec2(drift.mul(0.8), drift)).add(0.37)).g,
-        ).mul(1.5), 3.2);
-        const poolLight = vec3(0.1, 0.72, 0.78).mul(lit1.y.mul(lightScale[5]))
-            .mul(caustic.mul(1.9).add(0.25)).mul(controls.poolGain);
+        const net = point.xz.add(vec2(point.y.mul(0.31), point.y.mul(-0.23)));
+        const caustic = (caustics ? light.waterLight(caustics, net) : coarse.g).toVar();
+        const lapHeight = exp(max(point.y.sub(poolLevel + 1.2), 0).mul(-0.26));
+        const poolLight = vec3(0.12, 0.68, 0.76).mul(lit1.y.mul(lightScale[5]))
+            .mul(mix(float(0.56), caustic.mul(1.35).add(0.26), lapHeight)).mul(controls.poolGain);
         // (The hour above the cave tints the light that came down the chimney.)
         const skyLight = vec3(0.66, 0.82, 1.0).mul(u.skyTint).mul(lit1.z.mul(lightScale[6])).mul(controls.skyGain);
         // Waves of light crossing the cave.
@@ -165,8 +181,10 @@ export function createCaveRock({
         // ---- under the pool: water takes the red and the caustics dance -----------
         const sunk = smoothstep(0, 0.35, depthBelow);
         const absorbed = colour.mul(exp(vec3(0.95, 0.3, 0.24).mul(depthBelow).negate()));
-        const bedLight = vec3(0.05, 0.42, 0.46).mul(caustic.mul(caustic).mul(1.8).add(0.045))
-            .mul(exp(depthBelow.mul(-0.2))).mul(albedo)
+        const bedLight = vec3(0.045, 0.35, 0.38).add(light.focusedLight(point.xz).mul(1.6))
+            .mul(caustic.pow2().mul(0.65).add(0.055))
+            .mul(exp(depthBelow.mul(-0.2)))
+            .mul(albedo)
             .mul(u.energy.mul(1.2).add(1));
         colour.assign(mix(colour, absorbed.add(bedLight), sunk));
 

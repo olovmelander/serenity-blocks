@@ -1,12 +1,15 @@
+import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import {
     beforeAll, describe, expect, it, vi,
 } from 'vitest';
+import { NoColorSpace, RepeatWrapping, Texture } from 'three/webgpu';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import {
-    CRYSTAL_CAVE_ASSET_SCHEMA, CRYSTAL_CAVE_CAVERN_URL, disposeCrystalCaveAssets, loadCrystalCaveAssets,
-    parseCrystalCaveCavern,
+    CRYSTAL_CAVE_ASSET_SCHEMA, CRYSTAL_CAVE_CAUSTICS_URL, CRYSTAL_CAVE_CAVERN_URL, CRYSTAL_CAVE_REFLECTION_URL,
+    disposeCrystalCaveAssets, loadCrystalCaveAssets, parseCrystalCaveCavern,
 } from '../../src/themes/crystal-cave/crystal-cave-assets.js';
 
 const assetDirectory = new URL('../../src/themes/crystal-cave/assets/', import.meta.url);
@@ -59,7 +62,9 @@ beforeAll(async () => {
 describe('Crystal Cave asset pack on disk', () => {
     it('ships exactly the files the runtime and the manifest name', () => {
         const shipped = readdirSync(assetDirectory).sort();
-        expect(shipped).toEqual(['ATTRIBUTION.md', 'asset-manifest.json', 'cavern.glb']);
+        expect(shipped).toEqual([
+            'ATTRIBUTION.md', 'asset-manifest.json', 'cavern.glb', 'pool-caustics.png', 'pool-reflection.png',
+        ]);
         expect(decodeURIComponent(new URL(CRYSTAL_CAVE_CAVERN_URL).pathname.split('/').pop())).toBe('cavern.glb');
         const total = shipped.reduce((sum, file) => sum + statSync(new URL(file, assetDirectory)).size, 0);
         expect(total).toBeLessThan(BUDGET.directoryBytes);
@@ -69,11 +74,19 @@ describe('Crystal Cave asset pack on disk', () => {
         expect(manifest.schemaVersion).toBe(CRYSTAL_CAVE_ASSET_SCHEMA);
         expect(manifest.license).toBe('Project-owned');
         expect(JSON.stringify(manifest)).not.toMatch(/[A-Z]:\\|\/Users\/|\/home\//i);
-        expect(manifest.assets.map((asset) => asset.file)).toEqual(['cavern.glb']);
-        const [entry] = manifest.assets;
-        const bytes = readAsset(entry.file);
-        expect(entry.bytes).toBe(bytes.length);
-        expect(entry.sha256).toBe(createHash('sha256').update(bytes).digest('hex'));
+        expect(manifest.assets.map((asset) => asset.file)).toEqual([
+            'cavern.glb', 'pool-reflection.png', 'pool-caustics.png',
+        ]);
+        for (const entry of manifest.assets) {
+            const bytes = readAsset(entry.file);
+            expect(entry.bytes).toBe(bytes.length);
+            expect(entry.sha256).toBe(createHash('sha256').update(bytes).digest('hex'));
+        }
+    });
+
+    it('ships the current mineral silhouettes in the reflected shore and the baked water light', () => {
+        const script = fileURLToPath(new URL('../../scripts/crystal-cave/bake-water.mjs', import.meta.url));
+        execFileSync(process.execPath, [script, '--check']);
     });
 
     it('is a self-contained quantised GLB with no textures, images or animations', () => {
@@ -273,10 +286,15 @@ describe('Crystal Cave crystals, glow-worms and drips', () => {
 describe('Crystal Cave asset loading', () => {
     const diskLoader = () => ({ loadAsync: vi.fn(async () => parseGlb()) });
 
-    it('loads the one file once and returns the parsed cavern', async () => {
+    it('loads the cavern and repeating linear caustics before returning', async () => {
         const loader = diskLoader();
-        const assets = await loadCrystalCaveAssets({ loader });
+        const textureLoader = { loadAsync: vi.fn(async () => new Texture()) };
+        const assets = await loadCrystalCaveAssets({ loader, textureLoader });
         expect(loader.loadAsync).toHaveBeenCalledExactlyOnceWith(CRYSTAL_CAVE_CAVERN_URL);
+        expect(textureLoader.loadAsync).toHaveBeenCalledExactlyOnceWith(CRYSTAL_CAVE_CAUSTICS_URL);
+        expect(assets.caustics.colorSpace).toBe(NoColorSpace);
+        expect(assets.caustics.wrapS).toBe(RepeatWrapping);
+        expect(assets.caustics.wrapT).toBe(RepeatWrapping);
         expect(assets.crystals).toHaveLength(cavern.crystals.length);
         expect(assets.geometry.index.count).toBe(cavern.geometry.index.count);
         disposeCrystalCaveAssets(assets);
@@ -291,6 +309,24 @@ describe('Crystal Cave asset loading', () => {
         expect(disposed.sort()).toEqual(['cavern', 'crystals', 'drips', 'glowworms']);
     });
 
+    it('loads the baked mirror for the lean tiers and releases it on a late theme switch', async () => {
+        const texture = { dispose: vi.fn() };
+        const textureLoader = {
+            loadAsync: vi.fn(async (url) => (url === CRYSTAL_CAVE_REFLECTION_URL ? texture : new Texture())),
+        };
+        const isCurrent = vi.fn().mockReturnValueOnce(true).mockReturnValue(false);
+        const stale = await loadCrystalCaveAssets({
+            loader: diskLoader(), bakedReflection: true, textureLoader, isCurrent,
+        });
+        expect(stale).toBeNull();
+        expect(textureLoader.loadAsync).toHaveBeenCalledWith(CRYSTAL_CAVE_REFLECTION_URL);
+        expect(texture.dispose).toHaveBeenCalledOnce();
+        const assets = await loadCrystalCaveAssets({ loader: diskLoader(), bakedReflection: true, textureLoader });
+        expect(assets.poolReflection).toBe(texture);
+        disposeCrystalCaveAssets(assets);
+        expect(texture.dispose).toHaveBeenCalledTimes(2);
+    });
+
     it('rejects a failed download and a pack of the wrong schema', async () => {
         await expect(loadCrystalCaveAssets({ loader: { loadAsync: async () => { throw new Error('offline'); } } }))
             .rejects.toThrow('offline');
@@ -303,7 +339,9 @@ describe('Crystal Cave asset loading', () => {
     });
 
     it('disposes the cavern geometry once and tolerates nothing to dispose', async () => {
-        const assets = await loadCrystalCaveAssets({ loader: diskLoader() });
+        const assets = await loadCrystalCaveAssets({
+            loader: diskLoader(), textureLoader: { loadAsync: async () => new Texture() },
+        });
         const dispose = vi.spyOn(assets.geometry, 'dispose');
         disposeCrystalCaveAssets(assets);
         expect(dispose).toHaveBeenCalledOnce();

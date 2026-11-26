@@ -14,6 +14,18 @@
       "crystals": 2087,
       "glowworms": 3200,
       "drips": 28
+    },
+    {
+      "file": "pool-reflection.png",
+      "kind": "reflection",
+      "bytes": 101374,
+      "sha256": "ae81e0094e358616a886ad8cfc014a0b6f7a5c3acc276a82bfe65f79cea9053f"
+    },
+    {
+      "file": "pool-caustics.png",
+      "kind": "caustics",
+      "bytes": 38012,
+      "sha256": "36d261f3f654cf080bf4ea1a73042b575e7b62becd57f56daa9b54980532adc4"
     }
   ]
 }
