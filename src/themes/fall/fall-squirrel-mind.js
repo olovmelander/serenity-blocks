@@ -100,6 +100,8 @@ const LEAP_REACH = Object.freeze({ least: 1.1, most: 4.4 });
 const FLOOR_SEEN = 7.0;
 /** A lying limb whose underside is this high off the floor (metres) is run under, not over. */
 const RUN_UNDER = 0.6;
+/** How many detours (over a log, round the stump) one run may take before it runs straight. */
+const RUN_DETOURS = 6;
 /** Beside a dead limb standing on the log it walks: half its body clear of the post's bark (metres, drawn). */
 const POST_CLEAR = 0.45;
 /** The run of clear limb it needs to stretch out along (metres, drawn: its body and its tail laid behind). */
@@ -249,7 +251,8 @@ function crossing(ax, az, bx, bz, cx, cz, dx, dz) {
     if (Math.abs(det) < 1e-9) return null;
     const u = ((cx - ax) * sz - (cz - az) * sx) / det;
     const v = ((cx - ax) * rz - (cz - az) * rx) / det;
-    return u > 0.02 && u < 0.98 && v > 0 && v < 1 ? { u, v } : null;
+    // (Only a touch at the very ends is no crossing: a run that stops on a log has crossed into it.)
+    return u > 1e-3 && u < 1 - 1e-3 && v > 0 && v < 1 ? { u, v } : null;
 }
 
 /**
@@ -795,7 +798,53 @@ export class SquirrelMind {
         }
         // (Already on the perch it is asked to: it is there.)
         if (toPad) return;
-        this.runTo(to, rate);
+        this.runTo(this.offFence(to), rate);
+    }
+
+    /**
+     * A place on the floor moved off any low log it lies on or beside (to the side the squirrel comes
+     * from): a liked place can lie under a bough that came down there.
+     */
+    offFence(to, margin = 0.5) {
+        const here = this.tail.place;
+        let place = to;
+        for (let round = 0; round < 3; round++) {
+            let moved = false;
+            for (const fence of this.fences) {
+                const sx = fence.bx - fence.ax;
+                const sz = fence.bz - fence.az;
+                const span = sx * sx + sz * sz;
+                if (!(span > 1e-9)) continue;
+                const v = clamp(((place.a - fence.ax) * sx + (place.b - fence.az) * sz) / span, 0, 1);
+                const cx = fence.ax + sx * v;
+                const cz = fence.az + sz * v;
+                const { p, r } = fence.limb.sample(v * fence.limb.length);
+                if (p[1] - r - this.stage.ground.height(p[0], p[2]) >= RUN_UNDER) continue;
+                const near = Math.hypot(place.a - cx, place.b - cz);
+                if (near >= r + margin) continue;
+                // Square to the log, on the side of it the squirrel is on (the other where that side is
+                // the stump's foot).
+                const len = Math.sqrt(span);
+                let nx = -sz / len;
+                let nz = sx / len;
+                if ((here.a - cx) * nx + (here.b - cz) * nz < 0) {
+                    nx = -nx;
+                    nz = -nz;
+                }
+                const step = r + margin + 0.05;
+                const onPost = (x, z) => this.posts.some((post) => Math.hypot(x - post.x, z - post.z) < post.radius);
+                if (onPost(cx + nx * step, cz + nz * step)) {
+                    nx = -nx;
+                    nz = -nz;
+                }
+                place = {
+                    ...place, a: cx + nx * step, b: cz + nz * step,
+                };
+                moved = true;
+            }
+            if (!moved) break;
+        }
+        return place;
     }
 
     /** Down off the flat perch it is on, toward `toward` (a place on the floor). */
@@ -844,6 +893,20 @@ export class SquirrelMind {
         return best;
     }
 
+    /** Whether a place on the floor is on or right beside a lying limb low enough to be in the way. */
+    besideFence(x, z, margin = 0.45) {
+        for (const fence of this.fences) {
+            const sx = fence.bx - fence.ax;
+            const sz = fence.bz - fence.az;
+            const span = sx * sx + sz * sz;
+            const v = span > 1e-9 ? clamp(((x - fence.ax) * sx + (z - fence.az) * sz) / span, 0, 1) : 0;
+            const near = Math.hypot(x - (fence.ax + sx * v), z - (fence.az + sz * v));
+            const { p, r } = fence.limb.sample(v * fence.limb.length);
+            if (near < r + margin && p[1] - r - this.stage.ground.height(p[0], p[2]) < RUN_UNDER) return true;
+        }
+        return false;
+    }
+
     /** Where the run (ax, az) -> (bx, bz) meets a lying limb low enough to be in its way, or null. */
     fenceOn(ax, az, bx, bz) {
         for (const fence of this.fences) {
@@ -866,7 +929,8 @@ export class SquirrelMind {
         const dx = to.a - here.a;
         const dz = to.b - here.b;
         const length = Math.hypot(dx, dz);
-        if (depth < 3 && length > 0.4) {
+        // (A run round the stump can meet its bough and then the windfall: room for each detour.)
+        if (depth < RUN_DETOURS && length > 0.4) {
             const fenced = this.fenceOn(here.a, here.b, to.a, to.b);
             if (fenced) {
                 const { fence, hit } = fenced;
@@ -908,18 +972,20 @@ export class SquirrelMind {
                     ox /= off;
                     oz /= off;
                 }
-                // Round the nearer side, or the other where the nearer one runs into a log.
-                const round = (sign) => ({
+                // Round the nearer side, or the other where the nearer one runs into a log, or wider.
+                // (A way round is clean when neither leg crosses a log and its turning point is not on
+                // one: a bough lying against the stump runs out under the circle round it, and legs that
+                // only touch it at their ends are not seen to cross it.)
+                const round = (sign, wide = 0) => ({
                     on: 'ground',
-                    a: post.x + sign * ox * (post.radius + 0.3),
-                    b: post.z + sign * oz * (post.radius + 0.3),
+                    a: post.x + sign * ox * (post.radius + 0.3 + wide),
+                    b: post.z + sign * oz * (post.radius + 0.3 + wide),
                     heading: 0,
                 });
                 const clean = (way) => !this.fenceOn(here.a, here.b, way.a, way.b)
-                    && !this.fenceOn(way.a, way.b, to.a, to.b);
-                const near = round(1);
-                const far = round(-1);
-                const way = clean(near) || !clean(far) ? near : far;
+                    && !this.fenceOn(way.a, way.b, to.a, to.b) && !this.besideFence(way.a, way.b);
+                const ways = [round(1), round(-1), round(1, 0.7), round(-1, 0.7)];
+                const way = ways.find(clean) || ways[0];
                 this.runTo(way, rate, depth + 1);
                 this.runTo(to, rate, depth + 1);
                 return;
@@ -1167,18 +1233,20 @@ export class SquirrelMind {
         const now = this.tail.time;
         const snacked = now - this.lastSnack < 25;
         const perches = Boolean(this.stage.pads?.length || Object.keys(this.stage.limbs || {}).length);
+        // (Long enough by this tree, its own side's perches and spots lose their pull: it goes across.)
+        const stay = now - this.homeSince > WANDER ? 0.15 : 1;
         const bit = this.scriptedBit(GROUND_BITS) || this.choose('ground', {
-            forage: 2.2,
-            snack: snacked ? 0.3 : 1.8,
-            bury: 1.2,
-            sit: 1.0,
-            itch: 0.7,
-            dash: 1.0,
+            forage: 2.2 * stay,
+            snack: (snacked ? 0.3 : 1.8) * stay,
+            bury: 1.2 * stay,
+            sit: 1.0 * stay,
+            itch: 0.7 * stay,
+            dash: 1.0 * stay,
             climb: 2.0,
             cross: 0.1 + 4 * this.restless(now),
             // Close to the eye, where it is seen large: the floor by the board's foot, and its perch.
-            near: perches ? 4.2 : 0,
-            perch: perches ? 4.6 : 0,
+            near: perches ? 4.2 * stay : 0,
+            perch: perches ? 4.6 * stay : 0,
         }, now);
         this.history.push(bit);
         if (bit === 'forage') {
@@ -1373,26 +1441,37 @@ export class SquirrelMind {
         }
     }
 
-    /** From a lying limb down to the floor on the side toward the eye. */
+    /**
+     * From a lying limb down to the floor: on the side toward the eye, or the other where that side's
+     * floor is under the frame or is the stump's foot (a bough leaning on the stump has the stump on
+     * one side); where both are, it first goes down the limb toward its foot.
+     */
     hopDown(limb) {
-        const here = this.tail.place;
-        const top = limb.frame(here.a, 0).point.slice();
-        const t = limb.tangent(here.a);
-        let nx = -t[2];
-        let nz = t[0];
-        if (nx * (this.stage.eye[0] - top[0]) + nz * (this.stage.eye[2] - top[2]) < 0) {
-            nx = -nx;
-            nz = -nz;
+        const clear = JUMP_OFF + this.range(0, 0.3);
+        const landing = (at, strict = true) => {
+            const top = limb.frame(at, 0).point.slice();
+            const t = limb.tangent(at);
+            const n = Math.hypot(t[2], t[0]) || 1;
+            let nx = -t[2] / n;
+            let nz = t[0] / n;
+            if (nx * (this.stage.eye[0] - top[0]) + nz * (this.stage.eye[2] - top[2]) < 0) {
+                nx = -nx;
+                nz = -nz;
+            }
+            const reach = limb.radius(at) + clear;
+            const sides = [[nx, nz], [-nx, -nz]].map(([x, z]) => ({
+                on: 'ground', a: top[0] + x * reach, b: top[2] + z * reach, heading: Math.atan2(z, x),
+            }));
+            const fine = (place) => this.stage.eye[2] - place.b >= FLOOR_SEEN
+                && !this.posts.some((post) => Math.hypot(place.a - post.x, place.b - post.z) < post.radius);
+            return sides.find(fine) || (strict ? null : sides[0]);
+        };
+        let place = landing(this.tail.place.a);
+        if (!place) {
+            this.goLimb(limb.low + 0.2);
+            place = landing(this.tail.place.a) || landing(this.tail.place.a, false);
         }
-        const n = Math.hypot(nx, nz) || 1;
-        const clear = limb.radius(here.a) + JUMP_OFF + this.range(0, 0.3);
-        if (this.stage.eye[2] - (top[2] + (nz / n) * clear) < FLOOR_SEEN) {
-            nx = -nx;
-            nz = -nz;
-        }
-        this.leap({
-            on: 'ground', a: top[0] + (nx / n) * clear, b: top[2] + (nz / n) * clear, heading: Math.atan2(nz, nx),
-        });
+        this.leap(place);
         this.stay(this.random() < 0.5 ? 'idle' : 'sit', this.range(0.6, 1.4), { phase: this.range(0, 4) });
     }
 

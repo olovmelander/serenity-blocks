@@ -2,9 +2,11 @@
 
 The two great trees stand fifteen and twenty metres from the eye, where a squirrel is fifty pixels
 however it is drawn. So the grove has two things close to the eye for it to live on: on the right an
-old tree the wind brought down long ago, mossed over, two of its dead limbs still standing up from it
-(a lookout, and a shorter one to leap to); on the left the broken stump of another, hollowed at the
-top, with a few coppice shoots still in leaf. They are grown with the grove's own skeleton and wood
+old tree the wind brought down long ago, lying along the floor as the floor lies, mossed over, two of
+its dead side limbs still standing up from it at a slant (a lookout, and a shorter stub to leap to);
+on the left the broken stump of another, wider than it is tall, a ragged break with a tall splinter on
+its far side and a mossed seat in the middle, a dead bough leaning on the splinter, coppice shoots
+still in leaf. Both stand on the floor as fall-terrain.js has it where they are placed. They are grown with the grove's own skeleton and wood
 (skeleton.py, wood.py), so they take its bark, its moss and its baked occlusion.
 
 `perch_limbs()` gives every limb the squirrel runs on (these, and the boughs of the two great trees it
@@ -63,99 +65,256 @@ def _shoot(tree, origin, direction, length, radius, sprays, scale):
     return shoot
 
 
-# The windfall, in its own frame: it lies along x, its root end toward +x, half sunk in the litter.
-WINDFALL_SUNK = 0.1
+# The floor under each perch, relative to the floor at its origin (where it stands), as
+# src/themes/fall/fall-terrain.js has it where fall-composition.js places them: over a few metres it
+# is nearly a plane. Measured 2026-11-26 (to about 2 cm); tests/unit/fall-squirrel.test.js holds the
+# perches to the real floor, so a move of either perch shows there.
+def _windfall_ground(x, z):
+    return 0.0665 * x - 0.075 * z
+
+
+def _stump_ground(x, z):
+    return -0.06 * x + 0.01 * x * x - 0.008 * z
+
+
+# The windfall, in its own frame: it lies along x, its root end toward +x (out of the frame on the
+# right), its snapped end toward -x; the game's eye is toward +z.
+WINDFALL_SINK = 0.28
 
 
 def old_windfall(seed=8101, name="old-windfall"):
+    """An old trunk the wind brought down: lying along the floor as the floor lies, sunk a quarter of
+    its girth into the litter, tapering from the root end to a splintered break; two of its dead side
+    limbs still stand up from it at a slant (a lookout and a shorter stub a leap away), two more broke
+    off short."""
     tree = Tree(name, seed)
     rng = tree.rng
-    radius = 0.5
-    # Root end at +x (thick), snapped end at -x: it settled into the ground and bows a little.
-    xs = np.linspace(3.3, -3.1, 11)
-    points = np.stack([xs,
-                       radius - WINDFALL_SUNK - 0.05 * np.cos(xs * 0.7) + 0.02 * np.sin(xs * 2.3),
-                       0.16 * np.sin(xs * 0.55 + 0.4)], axis=1)
-    trunk = tree.add_branch(points, radius, 0.33, 0, phase=float(rng.random()), flex=0.0, sides=18, power=0.85)
-    tree.envelope = Envelope([-1.6, 1.7, -0.6], [2.2, 1.6, 1.6], rng, lumpiness=0.1)
-    # The lookout: a dead limb standing up from near the snapped end, leaning back over the trunk.
-    origin, _, _ = trunk.sample(0.8)
-    lookout = _dead_limb(tree, trunk, 0.8, grow_curve(rng, origin + UP * 0.05, [0.12, 1.0, -0.1], 2.05, 6, wander=0.05,
-                                                      lift=0.0), 0.2, 0.115)
-    # The second limb: shorter, standing out to the side a jump away.
-    origin, _, _ = trunk.sample(0.52)
-    stub = _dead_limb(tree, trunk, 0.52, grow_curve(rng, origin + UP * 0.05, [-0.2, 1.0, 0.5], 1.25, 5, wander=0.05),
-                      0.18, 0.11)
+    root_radius, end_radius = 0.42, 0.32
+    xs = np.linspace(3.3, -3.1, 13)
+    zs = 0.12 * np.sin(xs * 0.55 + 0.4)
+    taper = end_radius + (root_radius - end_radius) * (xs - xs[-1]) / (xs[0] - xs[-1])
+    ys = np.array([_windfall_ground(x, z) for x, z in zip(xs, zs)]) + taper * (1.0 - WINDFALL_SINK) \
+        + 0.015 * np.sin(xs * 2.3)
+    line = np.stack([xs, ys, zs], axis=1)
+    # Both ends closed: the root end sawn blunt (out of the frame), the break drawn in to a splintered
+    # cone (the snapped profile tears its rings into tongues), so neither is an open tube.
+    ahead = normalize(line[0] - line[1])
+    behind = normalize(line[-1] - line[-2])
+    points = np.concatenate([[line[0] + ahead * 0.08, line[0] + ahead * 0.05], line,
+                             [line[-1] + behind * 0.12, line[-1] + behind * 0.26, line[-1] + behind * 0.38,
+                              line[-1] + behind * 0.43]])
+    radii = np.concatenate([[0.03, root_radius * 0.8], taper,
+                            [end_radius * 0.85, end_radius * 0.6, end_radius * 0.25, 0.03]])
+    trunk = tree.add_branch(points, root_radius, end_radius, 0, phase=float(rng.random()), flex=0.0, sides=18,
+                            power=1.0)
+    trunk.radii = radii
+    tree.envelope = Envelope([0.5, 1.6, -0.4], [3.6, 1.8, 2.0], rng, lumpiness=0.1)
+
+    def limb_from(t, azimuth_up, direction, length, base, tip, steps=6, kink=0.0, wander=0.035, lift=0.0):
+        """A dead side limb leaving the log's bark at `t` (from the root end), `azimuth_up` radians round
+        from the top toward the eye."""
+        origin, tangent, radius = trunk.sample(t)
+        side = normalize(np.cross(tangent, UP))
+        if side[2] < 0:
+            side = -side
+        out = normalize(UP * math.cos(azimuth_up) + side * math.sin(azimuth_up))
+        start = origin + out * (radius * 0.6)
+        points = grow_curve(rng, start, direction, length, steps, wander=wander, kink=kink, lift=lift)
+        return _dead_limb(tree, trunk, t, points, base, tip)
+
+    # (t runs from the root end, out of the frame on the right, to the break; the frame holds about the
+    # last half.) The lookout, near the break: leaning back away from the eye and a little toward the
+    # root end (its top clear of the score panel), curving up toward the light it once grew to. (Bends
+    # stay gentle: a limb that zigzags rises less than it runs and the squirrel takes it for a log.)
+    lookout = limb_from(0.8, -0.2, [0.18, 1.0, -0.5], 2.0, 0.16, 0.065, steps=7, lift=0.35)
+    # The stub, a leap from it toward the root end: shorter, slanting back away from the eye, square to
+    # the log (leaning along it, it hung over the walk on its top).
+    stub = limb_from(0.56, 0.15, [0.12, 1.0, -0.52], 1.15, 0.15, 0.07, steps=5, lift=0.25)
+    # Two that broke off short: one low on the far side, driven into the litter as the tree came down,
+    # and the stump of a branch on the near flank.
+    limb_from(0.44, -1.5, [0.2, -0.55, -1.0], 0.75, 0.11, 0.06, steps=4, kink=0.0, wander=0.04)
+    limb_from(0.68, 1.15, [-0.25, 0.35, 1.0], 0.32, 0.09, 0.06, steps=3, kink=0.0, wander=0.03)
     # A young maple come up by its root end, in the light the old tree left (out of the frame's way:
     # the windfall lies in front of the oak, and leaves here would hide the oak's trunk).
-    _shoot(tree, np.array([2.5, 0.0, -0.9]), [0.05, 1.0, -0.15], 2.3, 0.045, 4, (0.8, 1.05))
-    _shoot(tree, np.array([2.7, 0.0, -1.0]), [0.35, 1.0, -0.3], 1.5, 0.03, 3, (0.7, 0.9))
+    _shoot(tree, np.array([2.5, _windfall_ground(2.5, -0.9), -0.9]), [0.05, 1.0, -0.15], 2.3, 0.045, 4, (0.8, 1.05))
+    _shoot(tree, np.array([2.7, _windfall_ground(2.7, -1.0), -1.0]), [0.35, 1.0, -0.3], 1.5, 0.03, 3, (0.7, 0.9))
     tree.thin_sites(0.4)
-    tree.meta = dict(species="maple", role="hero", height=3.2, trunkRadius=radius, foliage="maple_spray", reach=0.0,
-                     perch="windfall")
-    tree.trunk_profile = _snapped(seed % 9, start=0.9, depth=0.55)
+    tree.meta = dict(species="maple", role="hero", height=3.2, trunkRadius=root_radius, foliage="maple_spray",
+                     reach=0.0, perch="windfall")
+    # (Only the break is torn: its last rings into long tongues of wood.)
+    tree.trunk_profile = _snapped(seed % 9, start=0.94, depth=0.85)
     tree.perch_limbs = dict(trunk=trunk, lookout=lookout, stub=stub)
     return tree
 
 
-STUMP_TOP = 1.25
-# (The leaning bough rests on the rim about here.)
+# The stump, in its own frame: its base at the origin, the eye toward +z. Its lathe angle runs from +x
+# toward -z (so a grid's faces look outward): far from the eye is a quarter turn round, at -z.
+STUMP_RADIUS = 0.58
+STUMP_RIM = 0.72
+STUMP_SEAT = 0.69
+# The splinters the break left standing (angle, height over the rim, half-width in radians): the tall
+# one on the far side, which the dead bough rests on; lower ones round it.
+STUMP_TEETH = ((math.radians(80.0), 0.36, 0.44), (math.radians(140.0), 0.15, 0.22),
+               (math.radians(28.0), 0.12, 0.2), (math.radians(205.0), 0.06, 0.26),
+               (math.radians(300.0), 0.05, 0.22))
+
+
+def _stump_rim(theta, seed):
+    """The height of the broken rim at lathe angle `theta`: a splinter is a broad wedge of wood with a
+    ragged top, not a spike."""
+    height = STUMP_RIM + 0.018 * math.sin(11.0 * theta + seed) + 0.012 * math.sin(23.0 * theta + 2.0 * seed)
+    for centre, rise, width in STUMP_TEETH:
+        delta = abs(math.atan2(math.sin(theta - centre), math.cos(theta - centre)))
+        if delta < width:
+            u = delta / width
+            height += rise * (1.0 - u * u) ** 0.75 * (1.0 + 0.08 * math.sin(delta * 31.0 + seed))
+    return height
+
+
+def _stump_radius(theta, y, lobes, seed):
+    """How far the stump's bark stands from its axis at angle `theta` and height `y`."""
+    up = max(0.0, y)
+    radius = STUMP_RADIUS * (1.0 - 0.06 * min(up, 1.2)) * (1.0 + 0.3 * math.exp(-up / 0.3))
+    swell = 0.0
+    for lobe_azimuth, lobe_width, lobe_strength in lobes:
+        delta = math.atan2(math.sin(theta - lobe_azimuth), math.cos(theta - lobe_azimuth))
+        swell += lobe_strength * math.exp(-(delta / lobe_width) ** 2)
+    radius *= 1.0 + 0.6 * swell * math.exp(-up / 0.26)
+    radius *= 1.0 + 0.04 * math.sin(3.0 * theta + seed) + 0.025 * math.sin(7.0 * theta + 1.3 * seed + y * 5.0)
+    return radius
+
+
+def _stump_body(lobes, seed, sides=48):
+    """The stump's body as one lathe grid (rows bottom to rim, then over the break to the middle):
+    positions, normals, uvs, colours and triangles, as wood.tube() gives them."""
+    from .wood import BARK_SHEET_ASPECT, BARK_TILE_METRES, grid_normals, moss_mask
+    columns = sides + 1
+    wall = [(-0.35, 0.0), (0.0, 0.0), (0.06, 0.0), (0.14, 0.0), (0.25, 0.0), (0.38, 0.0), (0.52, 0.0), (0.64, 0.0),
+            (None, 0.0)]  # (height, share across the top); None: the rim
+    top = [(None, 0.06), (None, 0.16), (None, 0.3), (None, 0.45), (None, 0.62), (None, 0.8), (None, 1.0)]
+    rows = wall + top
+    positions = np.zeros((len(rows), columns, 3))
+    for column in range(columns):
+        theta = math.tau * (column % sides) / sides
+        rim = _stump_rim(theta, seed)
+        c, s = math.cos(theta), -math.sin(theta)
+        rim_radius = _stump_radius(theta, rim, lobes, seed)
+        for row, (height, share) in enumerate(rows):
+            if share == 0.0:
+                y = rim if height is None else min(height, rim - 0.02)
+                radius = _stump_radius(theta, y, lobes, seed)
+            else:
+                # Over the break: a lip, then down the inside of a splinter to a dished, rotted seat.
+                radius = rim_radius * (1.0 - share) * (1.0 - 0.06 * share)
+                fall = smooth_step(0.04, 0.5, share)
+                y = rim + (STUMP_SEAT - rim) * fall
+                if share >= 0.6:
+                    y = STUMP_SEAT - 0.012 * (1.0 - (share - 0.6) / 0.4)
+            # (The foot follows the floor; the floor's slope fades out up the wall.)
+            ground = 0.0
+            if share == 0.0 and height is not None:
+                ground = _stump_ground(radius * c, radius * s) * (1.0 - smooth_step(0.0, 0.3, height))
+            positions[row, column] = (radius * c, y + ground, radius * s)
+    flat = positions.reshape(-1, 3)
+    normals = grid_normals(flat, len(rows), columns)
+    # (The middle of the seat is the lathe's pole, where every face is a sliver: it faces up.)
+    normals[-columns:] = (0.0, 1.0, 0.0)
+    # UVs: round the bark in whole sheets, up it (and on over the break) at the sheet's aspect.
+    repeats = max(1, int(round(math.tau * STUMP_RADIUS / BARK_TILE_METRES)))
+    uvs = np.zeros((len(rows), columns, 2))
+    for column in range(columns):
+        travelled = 0.0
+        for row in range(len(rows)):
+            if row:
+                travelled += float(np.linalg.norm(positions[row, column] - positions[row - 1, column]))
+            uvs[row, column] = (column / sides * repeats, travelled / (BARK_SHEET_ASPECT * BARK_TILE_METRES))
+    colors = np.zeros((len(rows) * columns, 4))
+    colors[:, 2] = 1.0
+    moss = moss_mask(seed, height=1.2, limb_tops=0.8)(flat, normals)
+    # Moss thick over the rotted seat and the lip, where the rain stands.
+    seat = np.zeros(len(rows) * columns)
+    seat[len(wall) * columns:] = 0.85
+    colors[:, 3] = np.clip(np.maximum(moss, seat * np.clip(normals[:, 1], 0.0, 1.0)), 0.0, 1.0)
+    index = []
+    for row in range(len(rows) - 1):
+        for column in range(sides):
+            a = row * columns + column
+            b = a + 1
+            c2 = a + columns
+            d = c2 + 1
+            index.extend((a, b, c2, b, d, c2))
+    return flat, normals, uvs.reshape(-1, 2), colors, np.array(index)
+
+
+def smooth_step(e0, e1, x):
+    t = min(1.0, max(0.0, (x - e0) / (e1 - e0)))
+    return t * t * (3.0 - 2.0 * t)
 
 
 def old_stump(seed=8203, name="old-stump"):
+    """The broken stump of an old tree: wider than it is tall, flared into its roots, its top a ragged
+    break with one tall splinter on the far side and a dished, mossed seat in the middle; a dead bough
+    lies against it, its butt in the litter and its middle on the tall splinter; coppice shoots in leaf."""
     tree = Tree(name, seed)
     rng = tree.rng
-    radius = 0.56
-    heights = [-0.45, 0.0, 0.35, 0.7, 1.0, STUMP_TOP - 0.05, STUMP_TOP, STUMP_TOP + 0.012]
-    points = np.array([[0.02 * math.sin(h * 2.0), h, 0.015 * math.cos(h * 3.0)] for h in heights])
-    trunk = tree.add_branch(points, radius, 0.44, 0, phase=float(rng.random()), flex=0.0, sides=20, power=0.6)
-    radii = np.array(trunk.radii, dtype=float)
-    # The top closes over a hollow: the rim, then in to a low dome a squirrel can sit on.
-    radii[-3:] = [0.45, 0.4, 0.03]
-    trunk.radii = radii
+    # A frame for what grows from it (the body is meshed by _stump_body, not as a tube).
+    trunk = tree.add_branch(np.array([[0.0, 0.0, 0.0], [0.0, STUMP_RIM * 0.5, 0.0], [0.0, STUMP_RIM, 0.0]]),
+                            STUMP_RADIUS, STUMP_RADIUS, 0, phase=float(rng.random()), flex=0.0, sides=8,
+                            kind="frame")
     lobes = []
     start = float(rng.uniform(0, math.tau))
     for index in range(5):
         azimuth = start + math.tau * (index + rng.uniform(-0.25, 0.25)) / 5
         strength = float(rng.uniform(0.6, 1.0))
-        lobes.append((azimuth, float(rng.uniform(0.22, 0.34)), strength))
-        outward = np.array([math.cos(azimuth), 0.0, math.sin(azimuth)])
-        length = rng.uniform(1.4, 2.4) * (0.6 + 0.5 * strength)
-        root = grow_curve(rng, outward * radius * 0.6 + UP * 0.4, outward + UP * -0.1, length, 7, wander=0.12)
+        lobes.append((azimuth, float(rng.uniform(0.22, 0.32)), strength))
+        # (The lathe angle runs toward -z: a root leaves along (cos, -sin).)
+        outward = np.array([math.cos(azimuth), 0.0, -math.sin(azimuth)])
+        length = rng.uniform(1.3, 2.1) * (0.6 + 0.5 * strength)
+        root = grow_curve(rng, outward * STUMP_RADIUS * 0.85 + UP * 0.3, outward + UP * -0.12, length, 7, wander=0.12)
         t = np.linspace(0.0, 1.0, len(root))
-        root[:, 1] = 0.36 * (1.0 - t) ** 1.7 - 0.4 * t + 0.04 * np.sin(t * 9.0 + index)
-        tree.add_branch(root, radius * 0.4 * strength, 0.03, 1, parent=trunk, attach_t=0.0, phase=0.0, flex=0.0,
-                        sides=7, power=0.85, kind="root")
-    tree.envelope = Envelope([0.0, 1.5, 0.0], [1.6, 1.4, 1.6], rng, lumpiness=0.1)
-    # Coppice shoots from its foot, still in leaf.
-    for azimuth, lean, length, sprays in ((2.5, 0.35, 1.9, 4), (3.6, 0.5, 1.5, 3), (1.6, 0.45, 1.2, 2)):
-        outward = np.array([math.cos(azimuth), 0.0, math.sin(azimuth)])
-        _shoot(tree, outward * (radius * 1.05) + UP * 0.1, outward * lean + UP, length, 0.035, sprays, (0.7, 1.0))
+        ground = np.array([_stump_ground(p[0], p[2]) for p in root])
+        root[:, 1] = ground + 0.28 * (1.0 - t) ** 1.7 - 0.12 * t + 0.03 * np.sin(t * 9.0 + index)
+        tree.add_branch(root, STUMP_RADIUS * 0.42 * strength, 0.03, 1, parent=trunk, attach_t=0.0, phase=0.0,
+                        flex=0.0, sides=8, power=0.85, kind="root")
+    tree.extra_wood = [_stump_body(lobes, seed % 7)]
+    tree.envelope = Envelope([0.0, 1.3, 0.0], [1.6, 1.3, 1.6], rng, lumpiness=0.1)
+    # Coppice shoots from its foot, still in leaf: on its left, where they frame it (on the near side
+    # they hid the seat from the eye; on the right the bough lies).
+    for azimuth, lean, length, sprays in ((2.88, 0.35, 1.6, 4), (3.5, 0.5, 1.3, 3), (2.36, 0.45, 1.1, 2)):
+        outward = np.array([math.cos(azimuth), 0.0, -math.sin(azimuth)])
+        foot = outward * (STUMP_RADIUS * 1.15)
+        foot[1] = _stump_ground(foot[0], foot[2]) + 0.05
+        _shoot(tree, foot, outward * lean + UP, length, 0.035, sprays, (0.7, 1.0))
     tree.thin_sites(0.4)
-
-    def buttress(azimuth, point, _t):
-        height = max(0.0, point[1])
-        scale = 1.0 + 0.26 * math.exp(-height / 0.45)
-        swell = 0.0
-        for lobe_azimuth, lobe_width, lobe_strength in lobes:
-            delta = math.atan2(math.sin(azimuth - lobe_azimuth), math.cos(azimuth - lobe_azimuth))
-            swell += lobe_strength * math.exp(-(delta / lobe_width) ** 2)
-        return scale * (1.0 + 0.48 * swell * math.exp(-height / 0.4))
-
-    # A dead bough that came down across it: its butt on the ground by the path, its middle on the
-    # stump's rim, its snapped end standing clear above: a way up, and somewhere to leap from.
-    lean_points = np.array([[1.75, 0.06, 1.35], [1.25, 0.5, 1.02], [0.72, 0.96, 0.66], [0.28, 1.34, 0.36],
-                            [-0.18, 1.66, 0.08], [-0.6, 1.92, -0.16], [-0.94, 2.1, -0.34]])
-    # It rests on the far side of the rim (its line passes 0.55 m behind the stump's middle, away from
-    # the eye), so the seat on the top is clear: a squirrel sitting there is in front of it, not in it.
-    lean_points[:, 0] += 0.405
-    lean_points[:, 2] -= 0.645
-    lean = _dead_limb(tree, trunk, 0.9, lean_points, 0.15, 0.1)
-    tree.meta = dict(species="maple", role="hero", height=2.6, trunkRadius=radius, foliage="maple_spray", reach=0.0,
-                     perch="stump")
+    # The dead bough: on the far side, square to the stump's radius there, its underside on the tip of
+    # the tall splinter, its butt sunk in the litter to the right, its snapped end standing out clear
+    # to the left. (So nothing of it is over the seat, and it touches the stump where it rests.)
+    tooth, rise, _width = STUMP_TEETH[0]
+    radial = np.array([math.cos(tooth), 0.0, -math.sin(tooth)])
+    along = np.array([radial[2], 0.0, -radial[0]])
+    if along[0] < 0:
+        along = -along
+    # Where it rests: on the splinter's ridge (its outer edge, at its top), sunk a couple of
+    # centimetres into it so the two meet; its butt 2 m off along the floor, sunk into the litter.
+    ridge_height = _stump_rim(tooth, seed % 7)
+    ridge_radius = _stump_radius(tooth, ridge_height, lobes, seed % 7)
+    rest = radial * (ridge_radius - 0.02) + UP * ridge_height
+    butt_xz = rest + along * 2.0
+    bough_radius, bough_tip = 0.14, 0.075
+    butt = np.array([butt_xz[0], _stump_ground(butt_xz[0], butt_xz[2]) + bough_radius * 0.45, butt_xz[2]])
+    slope = normalize(rest - butt)
+    # (The bough's own radius where it rests, about four fifths of the way along it.)
+    resting = bough_tip + (bough_radius - bough_tip) * 0.2 ** 0.8
+    lifted = rest + normalize(np.cross(np.cross(slope, UP), slope)) * (resting * 0.85)
+    points = [butt + (lifted - butt) * f for f in (0.0, 0.25, 0.5, 0.75, 1.0)]
+    points[1] = points[1] + UP * 0.02
+    points[2] = points[2] + UP * 0.025
+    points += [lifted + (lifted - butt) * f * 0.25 + UP * (-0.025 * f * f) for f in (0.5, 1.0)]
+    lean = _dead_limb(tree, trunk, 0.9, np.array(points), bough_radius, bough_tip)
+    tree.meta = dict(species="maple", role="hero", height=2.2, trunkRadius=STUMP_RADIUS, foliage="maple_spray",
+                     reach=0.0, perch="stump")
     tree.perch_limbs = dict(lean=lean)
-    tree.trunk_profile = _snapped(seed % 7, start=0.8, depth=0.16, flute=0.06, buttress=buttress)
-    tree.perch_pads = [dict(name="top", centre=[0.0, STUMP_TOP + 0.012, 0.0], radius=0.3)]
+    tree.perch_pads = [dict(name="top", centre=[0.0, STUMP_SEAT + 0.002, 0.0], radius=0.26)]
     return tree
 
 
