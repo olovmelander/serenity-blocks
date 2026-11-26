@@ -3,6 +3,7 @@ import * as THREE from 'three/webgpu';
 import { BaseTheme } from '../base-theme.js';
 import { ComboTracker } from '../../core/combo-tracker.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
+import { MULTIPLAYER_EVENTS } from '../../events/multiplayer-events.js';
 import { getViewport } from '../../utils/viewport.js';
 import { normalizeQuality } from '../../utils/quality.js';
 import { registerGpuSurface } from '../../utils/gpu-loss-coordinator.js';
@@ -243,6 +244,11 @@ export default class BloodMoonTheme extends BaseTheme {
             if (Number.isFinite(explicit) && explicit > combo) combo = Math.floor(explicit);
             this.runtime?.setCombo?.(combo);
         };
+        const finishRun = () => {
+            this.resetCombos();
+            this.runtime?.seek(this.time);
+            cue('gameOver');
+        };
         this.eventUnsubscribers.push(
             eventBus.on(EVENTS.HARD_DROP, (data) => cue('hardDrop', data)),
             eventBus.on(EVENTS.PIECE_LOCK, (data) => {
@@ -255,17 +261,17 @@ export default class BloodMoonTheme extends BaseTheme {
             }),
             eventBus.on(EVENTS.COMBO, (data) => cue('combo', data)),
             eventBus.on(EVENTS.TWIST, (data) => cue('twist', data)),
-            eventBus.on(EVENTS.B2B, (data) => cue('b2b', data)),
+            eventBus.on(EVENTS.B2B, (data) => { if (data?.active !== false) cue('b2b', data); }),
             eventBus.on(EVENTS.PERFECT_CLEAR, (data) => cue('perfectClear', data)),
             eventBus.on(EVENTS.LEVEL_UP, (data) => cue('levelUp', data)),
+            eventBus.on(MULTIPLAYER_EVENTS.GARBAGE_INSERTED, (data) => { if (data?.isLocal) cue('garbage', data); }),
+            eventBus.on(MULTIPLAYER_EVENTS.GARBAGE_COUNTERED, (data) => { if (data?.isLocal) cue('counter', data); }),
+            eventBus.on(MULTIPLAYER_EVENTS.GAME_OVER, (data) => { if (data?.isGameOver) finishRun(); }),
             eventBus.on(EVENTS.SETTINGS_CHANGED, (data) => this.handleSettings(data)),
             eventBus.on(EVENTS.VIEWPORT_RESIZED, (view) => this.resize(view?.width, view?.height)),
         );
         this.registerEventListener(window, 'settingsChanged', (event) => this.handleSettings(event));
-        this.registerEventListener(window, 'gameOver', () => {
-            this.resetCombos();
-            this.runtime?.seek(this.time);
-        });
+        this.registerEventListener(window, 'gameOver', finishRun);
         if (this.reducedMotionQuery?.addEventListener) {
             this.registerEventListener(this.reducedMotionQuery, 'change', () => this.applyEffectSettings());
         }

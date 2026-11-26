@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { Vector4 } from 'three/webgpu';
+import { sampleNightAir } from '../../src/playground/effects/blood-moon-sky.js';
 import {
     ECLIPSE, EXPOSURE_FLOOR, eclipseOffset, lunarLight, sampleEclipse,
 } from '../../src/playground/effects/blood-moon-eclipse.js';
@@ -10,6 +12,23 @@ import { BloodMoonMeteors, METEOR } from '../../src/playground/effects/blood-moo
 const luminance = ([r, g, b]) => r * 0.2126 + g * 0.7152 + b * 0.0722;
 
 describe('Blood Moon eclipse', () => {
+    it('changes the air between lunar cycles and crosses each weather transition smoothly', () => {
+        const air = (t) => {
+            const result = new Vector4();
+            sampleNightAir(t, result);
+            return result.toArray();
+        };
+        expect(air(ECLIPSE.period)).not.toEqual(air(0));
+        expect(air(NaN)).toEqual(air(0));
+        for (const time of [-47, 0, 47, 94, 141, 188]) {
+            const before = air(time - 0.01);
+            air(time + 0.01).forEach((value, index) => {
+                expect(value).toBeGreaterThan(0);
+                expect(value).toBeCloseTo(before[index], 5);
+            });
+        }
+    });
+
     it('opens in totality, holds it about two thirds of the cycle, and returns to it', () => {
         const start = sampleEclipse(0);
         expect(start.totality).toBe(1);
