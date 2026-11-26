@@ -3,10 +3,10 @@ export const CINDER_DRIFT_TETROMINOS = {
     version: 2,
     colors: {
         I: '#ffedc9', // Incandescent ivory
-        O: '#f4c647', // Sulfur gold
+        O: '#f15840', // Vermilion
         T: '#d980a0', // Rose iron
         S: '#b7cd72', // Olivine
-        Z: '#f15840', // Vermilion
+        Z: '#f4c647', // Sulfur gold
         J: '#84a6c8', // Tempered steel under the skylight
         L: '#ff9347', // Copper orange
         GARBAGE: '#4f505a',
