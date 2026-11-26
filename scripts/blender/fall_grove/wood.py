@@ -224,10 +224,17 @@ def build_wood(tree, hero=False, trunk_profile=None, moss_seed=3, twig_level=3, 
     mesh = MeshData()
     mesh.core_indices = 0
     moss = moss_mask(moss_seed, height=3.0 if hero else 1.8, limb_tops=0.55 if hero else 0.25)
+    # Wood a recipe meshed itself (a stump's body: tree.extra_wood, arrays as tube() returns them) is core.
+    for extra in getattr(tree, "extra_wood", ()):
+        mesh.append(*extra)
+        mesh.core_indices = mesh.triangles * 3
     # Twigs go last in the index buffer so a low quality tier can draw the tree without them.
     ordered = sorted(tree.branches, key=lambda branch: branch.level >= twig_level)
     for branch in ordered:
         if branch.level >= twig_level and not include_twigs:
+            continue
+        # (A "frame" branch is skeleton only: other wood hangs from it, the recipe meshed its body.)
+        if branch.kind == "frame":
             continue
         if branch.level < twig_level:
             mesh.core_indices = None

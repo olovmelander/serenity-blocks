@@ -571,9 +571,9 @@ fur attributes, after black and red specks showed along the outline under MSAA.
 **Its places** (`fall_grove/perches.py`, `scripts/blender/fall_perches.py`, `fall-squirrel-limbs.js`,
 new): a mossed windfall low on the right of the board, its root end out of frame, two dead limbs
 standing up from it (a lookout and a stub a leap apart); on the left the broken stump of another
-tree, its top a flat seat, a dead bough leaning on the far side of its rim (behind the seat, so a
-squirrel sitting there is in front of it) up to a snapped end above it, a few coppice shoots in leaf. Both are grown with the grove's own skeleton and wood and take its
-bark and moss. Their limbs (and the oak's rising bough) are written as centre lines and radii
+tree, its top a seat, a dead bough resting on it, a few coppice shoots in leaf (their shapes as
+reworked the next day: see "The perches reshaped" below). Both are grown with the grove's own
+skeleton and wood and take its bark and moss. Their limbs (and the oak's rising bough) are written as centre lines and radii
 (`assets/squirrel-perches.json`) from the same seeded recipes as their GLBs, so a squirrel on a limb
 stands on the bark the eye sees. A limb is a surface like a trunk: (metres along, angle round), a
 standing one gone round from the side that faces the eye, a lying one walked along its top. A flat
@@ -616,6 +616,41 @@ leaning bough's end. New tests hold the perches against their own bark, a clear 
 every seat, runs never through wood, every leap from where it stood to where it lands, every board
 event on every kind of place, the coat's draw and tier, the litter, and a grove without the perch
 assets.
+
+**The perches reshaped (2026-11-26).** Asked for: "improve the proportions of the stub and the fallen
+tree, and the branch leaning against the stub is like floating in the air!" The stump was a straight
+drum as tall as it was wide; the bough leaned behind it touching nothing; the windfall was a level
+cylinder on floor that falls 0.4 m along it (one end in the air, the other sunk), its dead limbs
+upright posts of one thickness. Remade in `fall_grove/perches.py`, checked in Blender through the MCP
+(Workbench renders from the game's eye, the side and behind, over a mesh of the real floor) and then in
+the game:
+
+| Before (top) and after (bottom): the stump from the eye's side and from behind, the windfall |
+| --- |
+| ![the perches before and after](fall-enchanted-grove/masterpiece-perches-before-after.jpg) |
+
+- **Both stand on the real floor.** The floor under each, as `fall-terrain.js` has it where they are
+  placed, is nearly a plane over a few metres (`_windfall_ground`, `_stump_ground`, measured to about
+  2 cm); the log's line, the stump's foot, its roots and the bough's butt follow it.
+- **The stump** is its own lathe mesh (`_stump_body`, hung on a skeleton-only `frame` branch and
+  meshed through `tree.extra_wood`, two small additions to `wood.build_wood` that leave every other
+  tree as it was): 1.2 m across and 0.72 m tall at its low side, flared into five roots, its top a
+  ragged break with broad splinters (the tall one on the far side 0.36 m over the rim) round a dished,
+  mossed seat.
+- **The bough** rests on that splinter's ridge, sunk two centimetres into it, square to the stump's
+  radius there, its butt two metres off in the litter, its snapped end standing clear on the left:
+  nothing of it is over the seat, and it touches what holds it up.
+- **The windfall** tapers from 0.42 m to 0.32 m, lies along the floor sunk a quarter of its girth,
+  its root end sawn blunt and its break drawn into a splintered cone (both ends closed). Its two dead
+  limbs slant 25 to 30 degrees and curve up toward the tip, tapering by more than half; two more broke
+  off short (one driven into the litter on the far side, a stub of a branch on the near flank).
+- **What the squirrel needed.** A limb that zigzags rises less than it runs, and the squirrel took
+  the first slanted limbs for logs (it walks a lying limb, climbs a standing one): their bends are
+  gentle now. Its walk on the log stops short of the break; a floor spot that now lay under the bough
+  is moved off any low log; a jump down off a lying limb lands on whichever side is clear of the
+  stump (or goes down the limb first); a turning point round the stump keeps clear of logs; past the
+  wander mark its own side's spots and perches lose their pull so it crosses. Its day measured as
+  before (visible 91 to 99 %, always on screen, 99 % clear of the card and the panel).
 
 ### How it was checked
 

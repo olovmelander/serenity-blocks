@@ -36,7 +36,8 @@ export const PERCH_NAMES = Object.freeze({
  * root end lies out of the frame to the right; the oak's bough is inside its trunk at first.
  */
 export const LIMB_SPANS = Object.freeze({
-    'windfall.trunk': Object.freeze({ low: 3.25 }),
+    // (And it stops short of the break, where the log tears into a splintered cone.)
+    'windfall.trunk': Object.freeze({ low: 3.25, high: 6.3 }),
     // The oak's rising bough is one of its leaders: it leaves from inside the trunk, and its back is out
     // of the bark from about 2.4 m along; past 4 m the crown's leaves hide it from the game's eye.
     'oak.riser': Object.freeze({ low: 2.4, high: 4.0 }),

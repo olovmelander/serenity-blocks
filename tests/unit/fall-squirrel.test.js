@@ -1025,9 +1025,18 @@ describe('the squirrel on its perches: the windfall, the stump, the oak\'s bough
                 if (!limb.standing) {
                     const f = limb.frame(a, 0);
                     let over = 0;
+                    // (Not the limb's own bark: a steep limb rises ahead of the squirrel within the window.)
+                    const own = (x, y, z) => {
+                        for (let s = Math.max(0, a - 0.5); s <= Math.min(limb.length, a + 0.5); s += 0.05) {
+                            const q = limb.sample(s);
+                            if (Math.hypot(x - q.p[0], y - q.p[1], z - q.p[2]) < q.r + 0.03) return true;
+                        }
+                        return false;
+                    };
                     each((x, y, z) => {
                         const rise = y - f.point[1];
-                        if (rise > 0.05 && rise < 0.6 && Math.hypot(x - f.point[0], z - f.point[2]) < 0.12) over += 1;
+                        if (rise > 0.05 && rise < 0.6 && Math.hypot(x - f.point[0], z - f.point[2]) < 0.12
+                            && !own(x, y, z)) over += 1;
                     });
                     expect(over, where).toBe(0);
                 }

@@ -192,23 +192,23 @@
     },
     {
       "file": "old-stump.glb",
-      "bytes": 53652,
-      "sha256": "1741f617eb3059f877404bf4b0dac3f82a1eb5b9361474628ae8749c80eced8c",
+      "bytes": 67640,
+      "sha256": "072bb669d71310d71ca5678229f0066e484a3f3304b2c1a6bd340890244c4ec7",
       "kind": "tree",
       "species": "maple",
       "role": "hero",
       "sites": 6,
-      "barkTriangles": 2500
+      "barkTriangles": 3240
     },
     {
       "file": "old-windfall.glb",
-      "bytes": 40828,
-      "sha256": "14971f954d50f4e572b399c6671bb945afbf3fb9124a0b3d341032059cbc38cc",
+      "bytes": 66752,
+      "sha256": "733545c73a203cadd67119f91c01d21b0d954b14cfcd54b46588af927ef8a517",
       "kind": "tree",
       "species": "maple",
       "role": "hero",
       "sites": 4,
-      "barkTriangles": 1920
+      "barkTriangles": 3264
     },
     {
       "file": "squirrel.glb",
