@@ -246,7 +246,7 @@ export default class ChromaticImpastoTheme extends BaseTheme {
                 clear: (c) => this.world?.onClear(c),
                 spin: (c) => this.world?.onSpin(c),
                 combo: (n, player) => this.reportCombo(n, player),
-                levelUp: (level) => this.world?.levelUp(level),
+                levelUp: (level) => this.world?.levelUp(level, { flourish: this.director.enabled }),
             },
         });
         this.appliedSize = null;
@@ -362,7 +362,14 @@ export default class ChromaticImpastoTheme extends BaseTheme {
             }),
         );
         this.registerEventListener(window, 'settingsChanged', (p) => this.handleSettingsChanged(p));
-        this.registerEventListener(window, 'gameOver', () => this.resetSession());
+        this.registerEventListener(window, 'gameOver', () => {
+            if (playing() && this.director?.enabled) {
+                // Top-out can arrive in the tick that placed the last piece, ahead of the next frame.
+                this.director.flush();
+                this.world?.signPainting();
+            }
+            this.resetSession();
+        });
 
         const resetPointer = () => {
             this.pointer.x = 0;

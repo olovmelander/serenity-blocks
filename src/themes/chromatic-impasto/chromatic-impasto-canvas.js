@@ -5,7 +5,7 @@
  *
  *   pigment  rgb = the colour of the paint on top, a = how wet it is (1 = just laid)
  *   relief   r = how thick the paint stands, g = what it is made of (> 0 gold leaf, < 0
- *            fluorescent), a = scratch (the blend's own alpha)
+ *            fluorescent), b = oil-rich thickness, a = scratch (the blend's own alpha)
  *
  * A stroke is not simulated; it is DRAWN into both, once: the painter hands over the piece of
  * ribbon its brush covered this frame (chromatic-impasto-strokes.js) and the stamp shader lays
@@ -86,7 +86,10 @@ function stampNodes() {
     // one way and the other as it travels.
     const laid = u.mul(w).div(bw).add(seed.mul(0.37));
     const uneven = ciTrack(laid.mul(0.31), seed.add(41.0)).sub(0.5).mul(1.7);
-    const splay = ciTrack(s.div(w.mul(1.7)).add(seed.mul(0.53)), seed.add(9.0)).sub(0.5).mul(1.2);
+    const pressure = ciTrack(s.div(w.mul(2.8)).add(seed.mul(0.53)), seed.add(9.0)).toVar();
+    // Pressure spreads the outer tufts more than the centre. A filament bows with its
+    // neighbours, then converges as the brush lifts.
+    const splay = pressure.sub(0.5).mul(u.mul(3.8).add(1.35));
     const bc = laid.add(uneven.add(splay).mul(bristle)).toVar();
     const bi = floor(bc);
     const bf = fract(bc);
@@ -115,7 +118,8 @@ function stampNodes() {
     const lead = clamp(s.sub(w.mul(0.12).mul(h1).mul(bristle)).div(w.mul(0.75)), 0.0, 1.0);
     const capIn = sqrt(max(float(1.0).sub(float(1.0).sub(lead).pow2()), 0.0));
     const startMask = float(1.0).sub(smoothstep(capIn.sub(0.1), capIn.add(0.02), au)).mul(step(0.0005, lead));
-    const liftAt = L.sub(w.mul(mix(0.05, h1.mul(1.2).add(0.12), bristle)));
+    const liftSpread = clump.mul(1.35).add(h1.mul(0.64)).add(au.mul(0.42));
+    const liftAt = L.sub(w.mul(mix(au.mul(0.36).add(0.04), liftSpread, bristle)));
     const endMask = float(1.0).sub(smoothstep(liftAt.sub(w.mul(0.1)), liftAt, s));
     const tail = clamp(L.sub(s).div(w.mul(0.55)), 0.0, 1.0);
     const capOut = sqrt(max(float(1.0).sub(float(1.0).sub(tail).pow2()), 0.0));
@@ -134,7 +138,10 @@ function stampNodes() {
     const ridge = mix(1.0, mix(groove.mul(0.16).add(0.84), groove.mul(0.5).add(0.5), deep), bristle);
     const body = mix(0.95, clump.mul(0.34).add(0.76), bristle);
     const rail = smoothstep(0.42, 0.9, au);
-    const cross = mix(rail.mul(rail).add(0.5), rail.mul(0.55).add(0.72), bristle);
+    // Only the loaded shoulder rolling off the hand consistently keeps a raised rail.
+    const shoulder = clamp(pressure.mul(1.15).add(u.mul(wobble.mul(1.4).add(0.42))), 0.0, 1.0);
+    const railLoad = shoulder.mul(0.75).add(0.36);
+    const cross = mix(rail.mul(rail).mul(railLoad).add(0.52), rail.mul(railLoad).mul(0.48).add(0.68), bristle);
     const brim = float(1.0).sub(smoothstep(0.9, 1.0, au).mul(0.6));
     const pool = exp(s.div(w.mul(0.9)).negate()).mul(0.3);
     const lip = exp(L.sub(s).div(w.mul(0.5)).negate()).mul(mix(0.9, 0.3, bristle));
@@ -148,7 +155,9 @@ function stampNodes() {
         .add(chatter);
 
     // Pigment: the second colour rides on some clumps, in bands that break and rejoin.
-    const carried = clump.mul(0.7).add(h3.mul(0.3)).add(nc.sub(0.5).mul(0.5));
+    const carried = clump.mul(0.63).add(h3.mul(0.19)).add(nc.sub(0.5).mul(0.52))
+        .add(u.mul(pressure.sub(0.5)).mul(0.38))
+        .add(0.13);
     const mR = smoothstep(float(0.9).sub(mixB), float(1.1).sub(mixB), carried).mul(hasB);
     const tube = mix(colA.rgb, colB.rgb, mR).toVar();
     // Broken colour: paint loaded from the palette is never mixed through. Groups of bristles
@@ -171,6 +180,12 @@ function stampNodes() {
         .mul(lighter.mul(0.55).mul(float(1.0).sub(smoothstep(0.04, 0.3, tone))).add(1.0));
     const colR = tint.mul(float(1.0).sub(deeper)).mul(float(1.0).sub(rail.mul(0.12).mul(bristle)))
         .mul(clump.mul(0.1).add(h2.mul(0.05)).add(0.93));
+    // The blade burnishes some passages; stiff bristles leave a more absorbent tooth.
+    // Store this with the relief so that overlapping strokes carry their own finish.
+    const binder = clamp(nc.mul(0.32).add(clump.mul(0.2)).add(supply.mul(0.27))
+        .add(rail.mul(railLoad).mul(0.16))
+        .add(float(1.0).sub(bristle).mul(0.19))
+        .sub(dry.mul(tRel).mul(0.26)), 0.0, 1.0);
 
     // ── A blob: q = local point in radii ──
     const q = uv4.xy;
@@ -204,6 +219,7 @@ function stampNodes() {
     return {
         cov: clamp(select(isBlob, covB, covR), 0.0, 1.0),
         height: max(select(isBlob, hB, hR), 0.0).mul(par2.x),
+        binder: select(isBlob, grain.mul(0.2).add(0.74), binder),
         color: select(isBlob, colBl, colR),
         special: par2.y,
         keep: par2.z,
@@ -330,7 +346,8 @@ export class PaintCanvas {
             // The alpha is what the old relief loses: all of it but the share that is kept. (What
             // the paint is made of rides in the same blend, so paint dragged over gold leaf picks
             // a share of it up, as it would.)
-            return vec4(st.height.mul(st.cov), st.special.mul(st.cov), 0.0, st.cov.mul(float(1.0).sub(st.keep)));
+            const laid = st.height.mul(st.cov).toVar();
+            return vec4(laid, st.special.mul(st.cov), laid.mul(st.binder), st.cov.mul(float(1.0).sub(st.keep)));
         })();
         overBlend(this.reliefMaterial);
 

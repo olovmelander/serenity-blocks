@@ -63,7 +63,11 @@ describe('chromatic impasto director: intake', () => {
         director.flush();
         expect(calls.lock).toHaveLength(1);
         expect(calls.lock[0].hardDrop).toBe(true);
+        expect(calls.lock[0].distance).toBe(14);
         expect(calls.lock[0].rows).toEqual([19]);
+        director.onPieceLock({ piece: T });
+        director.flush();
+        expect(calls.lock[1].distance).toBe(0);
     });
 
     it('prefers the piece\'s own hex colour and falls back to the theme\'s colour for its shape', () => {

@@ -1,51 +1,28 @@
-/**
- * Chromatic Impasto Tetrominos - bold tube colours: blood red, cadmium yellow, turquoise, ultramarine
- * Bold, deeply saturated colours, an expressionist palette
- */
+/** Tube pigments on the solo well's dark ground. */
 
 export const CHROMATIC_IMPASTO_TETROMINOS = {
-    version: 1,
+    version: 2,
 
     colors: {
-        I: '#FFD000', // Rich golden yellow
-        J: '#FF7F00', // Pure saturated orange
-        L: '#1A7F4D', // Deep forest green
-        O: '#00D9CC', // Bright turquoise/cyan
-        S: '#0033CC', // Deep saturated blue
-        T: '#B30000', // Deep blood red
-        Z: '#FFF8DC', // Warm cream white
-        GARBAGE: '#2A2A2A', // Dark charcoal (neutral canvas)
+        I: '#FECE24', // Cadmium yellow
+        J: '#F98433', // Cadmium orange
+        L: '#44AE6D', // Viridian with a little white
+        O: '#2CE0D3', // Turquoise
+        S: '#657DF2', // Ultramarine raised with white
+        T: '#ED4A4A', // Vermilion
+        Z: '#FFF1C3', // Naples yellow light
+        GARBAGE: '#514747', // Burnt umber and charcoal
     },
 
-    renderMode: 'glow', // Using glow to simulate the "wet paint" look
-
+    renderMode: 'solid',
     effects: {
-        glowRadius: 12, // Slightly tighter glow for "thick paint" feel
-        glowIntensity: 0.8,
-        glowColor: 'auto',
-
-        outline: true,
-        outlineWidth: 3, // Thicker outline for "impasto" strokes
-        outlineColor: '#000000', // Black outline to separate colors like in the painting
-
-        pulse: false, // Paint doesn't usually pulse
-        shimmer: true, // Slight shimmer for "wetness"
-        shimmerSpeed: 0.02,
-        shimmerIntensity: 0.1,
-
-        trails: true,
-        trailLength: 0.2,
-        trailOpacity: 0.4,
-    },
-
-    rendererOverrides: {
-        canvas: {
-            glowRadius: 10,
-            outlineWidth: 2.5,
-        },
+        outline: false,
         phaser: {
-            glowRadius: 14,
-            outlineWidth: 3.5,
+            highlight: 0.23,
+            shadow: 0.26,
+            rimAlpha: 0.35,
+            rimWidthFactor: 0.045,
+            glossAlpha: 0.27,
         },
     },
 };

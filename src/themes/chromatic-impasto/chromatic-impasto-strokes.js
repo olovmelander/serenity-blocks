@@ -10,7 +10,7 @@
  */
 
 import {
-    KIND, RELIEF, clamp, clamp01,
+    KIND, RELIEF, clamp, clamp01, smooth,
 } from './chromatic-impasto-core.js';
 
 /** Floats per vertex: position(3) uv(4) colA+seed(4) colB+mix(4) par(4) par2(4). */
@@ -91,6 +91,7 @@ export function resamplePath(points, step) {
  * @param {ArrayLike<number>} spec.points   the path, xy pairs in canvas units
  * @param {number} spec.width               half-width at the start (canvas units)
  * @param {number} [spec.widthEnd]          half-width at the end (default: the same)
+ * @param {number} [spec.pressure]          0..1, the hand rolls onto the brush, then lifts it
  * @param {number} spec.t0                  when the brush touches down (world seconds)
  * @param {number} [spec.dur=0.4]           seconds the stroke takes
  * @param {string} [spec.ease='out']
@@ -121,6 +122,10 @@ export function createStroke(spec) {
     const left = new Float32Array(n * 2);
     const right = new Float32Array(n * 2);
     const half = new Float32Array(n);
+    const pressure = clamp01(spec.pressure ?? 0);
+    const phase = (spec.seed ?? 0) * 1.73;
+    const touch = 0.09 + 0.07 * Math.sin(phase);
+    const lift = 0.67 + 0.15 * Math.cos(phase);
     for (let i = 0; i < n; i++) {
         const a = Math.max(0, i - 1);
         const b = Math.min(n - 1, i + 1);
@@ -129,7 +134,13 @@ export function createStroke(spec) {
         const tl = Math.hypot(tx, ty) || 1;
         tx /= tl;
         ty /= tl;
-        const w = width + (widthEnd - width) * (total > 0 ? len[i] / total : 0);
+        const t = total > 0 ? len[i] / total : 0;
+        let w = width + (widthEnd - width) * t;
+        if (pressure > 0) {
+            const press = (0.26 + 0.74 * smooth(0, touch, t)) * (1 - 0.94 * smooth(lift, 1, t));
+            const roll = 0.88 + 0.12 * Math.sin(phase + t * 7.4);
+            w *= 1 - pressure + pressure * press * roll;
+        }
         half[i] = w;
         left[i * 2] = pts[i * 2] - ty * w;
         left[i * 2 + 1] = pts[i * 2 + 1] + tx * w;

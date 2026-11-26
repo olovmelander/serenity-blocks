@@ -70,6 +70,7 @@ function createSlot() {
         // lock intake
         lock: false,
         hardDrop: false,
+        dropDistance: 0,
         lockRows: new Int16Array(MAX_ROWS),
         lockRowCount: 0,
         lockU: 0.5,
@@ -98,6 +99,7 @@ function clearPending(slot) {
     slot.pending = false;
     slot.lock = false;
     slot.hardDrop = false;
+    slot.dropDistance = 0;
     slot.lockRowCount = 0;
     slot.lockColor = null;
     slot.lines = 0;
@@ -209,7 +211,7 @@ export class ChromaticImpastoDirector {
         this.levelPending = false;
         this.slots = Array.from({ length: PLAYER_SLOTS }, createSlot);
         this._lock = {
-            player: 0, rows: [], u: 0.5, hardDrop: false, color: null, screen: null,
+            player: 0, rows: [], u: 0.5, hardDrop: false, distance: 0, color: null, screen: null,
         };
         this._clear = {
             player: 0,
@@ -295,6 +297,7 @@ export class ChromaticImpastoDirector {
         if (!slot) return false;
         slot.pending = true;
         slot.hardDrop = this.lockRipple;
+        slot.dropDistance = Math.max(0, Math.min(BOARD_GRID.rows, finite(payload.distance, 0)));
         captureLock(slot, payload);
         return true;
     }
@@ -426,6 +429,7 @@ export class ChromaticImpastoDirector {
                 for (let r = 0; r < slot.lockRowCount; r += 1) c.rows.push(slot.lockRows[r]);
                 c.u = slot.lockU;
                 c.hardDrop = slot.hardDrop;
+                c.distance = slot.dropDistance;
                 c.color = slot.lockColor;
                 c.screen = null;
                 sink.lock(c);

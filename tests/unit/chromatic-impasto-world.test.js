@@ -13,6 +13,7 @@ import { QUALITY, QUALITY_NAMES } from '../../src/themes/chromatic-impasto/chrom
 import { fallbackLayout } from '../../src/themes/chromatic-impasto/chromatic-impasto-composition.js';
 import { canvasExtent } from '../../src/themes/chromatic-impasto/chromatic-impasto-gestures.js';
 import { flightTime } from '../../src/themes/chromatic-impasto/chromatic-impasto-fx.js';
+import { holdFlashing } from '../../src/utils/photosensitivity.js';
 
 /**
  * A renderer double that records what the world draws into its paint: enough of the surface for
@@ -176,6 +177,23 @@ describe('chromatic impasto world: the painting', () => {
         expect(ambient.length).toBeGreaterThanOrEqual(3);
         expect(ambient.length).toBeLessThanOrEqual(4);
         ambient.forEach((s) => expect(s.dur).toBeGreaterThan(1));
+        world.dispose();
+    });
+
+    it('keeps the signed painting through a clock turn, then resumes painting the next game', () => {
+        const { world, camera } = makeWorld('Minimal', { time: PERIOD_SECONDS - 1 });
+        world.signPainting();
+        const count = world.painter.log.length;
+        const period = world.periodIndex;
+        run(world, camera, AMBIENT_BEAT * 2);
+        expect(world.periodIndex).toBe(period);
+        expect(world.painter.log).toHaveLength(count);
+        world.freshCanvas();
+        expect(world.signed).toBe(false);
+        expect(world.periodIndex).toBe(periodIndex(1, world.time));
+        const ambient = tagged(world, 'ambient').length;
+        run(world, camera, AMBIENT_BEAT * 2);
+        expect(tagged(world, 'ambient').length).toBeGreaterThan(ambient);
         world.dispose();
     });
 
@@ -414,6 +432,44 @@ describe('chromatic impasto world: the board paints', () => {
         perfect.dispose();
     });
 
+    it('keeps the studio light steady through a quad under Reduce flashing, and still lays its paint', () => {
+        const { world, camera } = makeWorld('Minimal');
+        try {
+            holdFlashing(true);
+            world.onClear({ lines: 4 });
+            run(world, camera, HUSH_HOLD * 0.5, 4);
+            expect(world.getPostState().hush).toBeLessThan(0.09);
+            expect(world.breath).toBeGreaterThan(0.93);
+            expect(tagged(world, 'gold').length).toBeGreaterThan(0);
+        } finally {
+            holdFlashing(false);
+            world.dispose();
+        }
+    });
+
+    it.each([[1600, 900], [390, 844]])('fits the finishing marks on exposed cloth at %s by %s', (width, height) => {
+        const { world } = makeWorld('Minimal', { width, height });
+        world.crown();
+        world.signPainting();
+        world.signPainting();
+        expect(tagged(world, 'rosette').length).toBeGreaterThan(2);
+        expect(tagged(world, 'signature')).toHaveLength(2);
+        const { card } = world;
+        for (const s of [...tagged(world, 'signature'), ...tagged(world, 'rosette')]) {
+            if (s.kind === KIND.BLOB) continue;
+            for (let i = 0; i < s.baseLeft.length; i += 2) {
+                const x = s.baseLeft[i];
+                const y = s.baseLeft[i + 1];
+                expect(Math.abs(x)).toBeLessThan(world.aspect);
+                expect(Math.abs(y)).toBeLessThan(1);
+                expect(x < card.x0 || x > card.x1 || y < card.y0 || y > card.y1).toBe(true);
+            }
+        }
+        world.freshCanvas();
+        expect(world.signed).toBe(false);
+        world.dispose();
+    });
+
     it('draws an arc for every link of a chain and turns the canvas while it holds', () => {
         const { world, camera } = makeWorld('Low');
         world.onCombo(1);
@@ -619,6 +675,43 @@ describe('chromatic impasto world: the board paints', () => {
         const still = camera.position.clone();
         run(world, camera, 2);
         expect(camera.position.distanceTo(still)).toBeLessThan(1e-9);
+        world.dispose();
+    });
+
+    it.each([2, 3])('fits %i rows, their paint and the finishing marks around a stacked portrait ledger', (lines) => {
+        const { world } = makeWorld('Low', { width: 390, height: 844 });
+        const rect = (left, top, right, bottom) => ({
+            x0: left / 390, y0: top / 844, x1: right / 390, y1: bottom / 844,
+        });
+        const layout = {
+            cards: [rect(62, 94, 328, 682)],
+            boards: [rect(63, 157, 327, 681)],
+            hud: rect(65, 693, 325, 752),
+            cardCount: 1,
+        };
+        world.setLayout(layout, 390 / 844);
+        const above = 1 - 2 * layout.cards[0].y0;
+        const below = 1 - 2 * layout.hud.y1;
+        world.onLock({ rows: [18], u: 0.15, hardDrop: true, distance: 18 });
+        world.onLock({ rows: [1], u: 0.86 });
+        world.onClear({ lines, cascade: 4, b2b: true });
+        world.signPainting();
+        const sweeps = tagged(world, 'sweep');
+        expect(sweeps.filter((s) => startOf(s)[1] > above)).toHaveLength(lines);
+        expect(sweeps.filter((s) => startOf(s)[1] < below)).toHaveLength(lines);
+        const marks = ['lock', 'sweep', 'splat', 'drop', 'gilt-cut', 'signature'];
+        for (const s of world.painter.log.filter((entry) => marks.includes(entry.tag))) {
+            if (s.kind === KIND.BLOB) {
+                expect(s.y - s.radius > above || s.y + s.radius < below).toBe(true);
+            } else {
+                for (const ribbon of [s.left, s.right]) {
+                    for (let i = 1; i < ribbon.length; i += 2) {
+                        expect(ribbon[i] > above || ribbon[i] < below).toBe(true);
+                        expect(Math.abs(ribbon[i])).toBeLessThan(1);
+                    }
+                }
+            }
+        }
         world.dispose();
     });
 
@@ -1016,6 +1109,7 @@ describe('chromatic impasto world: it builds with play', () => {
         const gilt = tagged(world, 'sweep').filter((st) => !before.includes(st) && st.special === 1);
         expect(gilt.length).toBeGreaterThan(0);
         expect(gilt[0].colorA).toEqual([...GOLD]);
+        expect(tagged(world, 'gilt-cut')).toHaveLength(4);
         world.dispose();
     });
 });

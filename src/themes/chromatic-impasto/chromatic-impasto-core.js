@@ -120,6 +120,7 @@ export function pigmentFromHex(hex) {
  *   contour  the black line drawn round every form
  *   light    highlights laid last
  *   key      the studio lamp's colour (a multiplier)
+ *   curl     the brush's turn in radians and its minor-axis scale
  */
 const period = (name, spec) => Object.freeze({
     name,
@@ -130,18 +131,20 @@ const period = (name, spec) => Object.freeze({
     contour: hexToLinear(spec.contour),
     light: hexToLinear(spec.light),
     key: spec.key,
+    curl: spec.curl,
 });
 
 export const IMPASTO_PERIODS = Object.freeze([
     // Nordic: blood red, cadmium yellow, turquoise and ultramarine straight from the tube.
     period('nordic', {
-        ground: '#100d0b',
-        darks: ['#06301c', '#07183c', '#2a0a10', '#1c120c'],
-        masses: ['#b80f14', '#0a2fc8', '#00b8ae', '#ffbe00', '#ff7300', '#1a7f4d'],
-        accents: ['#f4e61c', '#e8281e', '#2f66ff', '#00d9cc'],
+        ground: '#26190f',
+        darks: ['#123d36', '#172847', '#49212a', '#33261d'],
+        masses: ['#bd2f31', '#284eaa', '#169897', '#e4ae35', '#cf6038', '#38805a'],
+        accents: ['#efc462', '#d75847', '#4a78c0', '#51b9a3'],
         contour: '#08080a',
         light: '#fff4d2',
         key: [1.0, 0.95, 0.86],
+        curl: [5.8, 0.81],
     }),
     // The Fauves: rose madder against emerald, cobalt violet against orange.
     period('fauve', {
@@ -152,6 +155,7 @@ export const IMPASTO_PERIODS = Object.freeze([
         contour: '#0a0610',
         light: '#fff0e4',
         key: [1.0, 0.93, 0.9],
+        curl: [4.7, 1.04],
     }),
     // A night sky: ultramarine and Prussian blue turned with chrome yellow and white.
     period('nocturne', {
@@ -162,6 +166,7 @@ export const IMPASTO_PERIODS = Object.freeze([
         contour: '#05060c',
         light: '#f6f6ee',
         key: [0.92, 0.95, 1.0],
+        curl: [7.6, 0.90],
     }),
     // Earth and fire: vermilion, cadmium, burnt sienna, viridian.
     period('ember', {
@@ -172,6 +177,7 @@ export const IMPASTO_PERIODS = Object.freeze([
         contour: '#0c0705',
         light: '#fff3d6',
         key: [1.0, 0.92, 0.8],
+        curl: [4.1, 0.53],
     }),
     // Spring: turquoise, rose, lilac and leaf green under a cool lamp.
     period('spring', {
@@ -182,6 +188,7 @@ export const IMPASTO_PERIODS = Object.freeze([
         contour: '#070a0a',
         light: '#fbfff4',
         key: [0.95, 1.0, 0.97],
+        curl: [6.25, 1.05],
     }),
 ]);
 

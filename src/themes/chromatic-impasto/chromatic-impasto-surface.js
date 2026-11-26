@@ -33,6 +33,7 @@ import {
     dot,
     exp,
     float,
+    fwidth,
     length,
     max,
     min,
@@ -41,7 +42,6 @@ import {
     positionWorld,
     reflect,
     smoothstep,
-    step,
     vec2,
     vec3,
     vec4,
@@ -114,6 +114,7 @@ export function createSurface(u, canvas, tier) {
 
         const R0 = relief.sample(toUv(q));
         const h = max(R0.r, 0.0).toVar();
+        const binder = clamp(R0.b.div(max(h, 0.03)), 0.0, 1.0).toVar();
         const special = R0.g;
         const P0 = pigment.sample(toUv(q));
         const pig = max(P0.rgb, vec3(0.0)).toVar();
@@ -130,18 +131,24 @@ export function createSurface(u, canvas, tier) {
 
         // Bare and thinly covered cloth shows its weave.
         const paint = smoothstep(0.015, 0.14, h).toVar();
-        const cloth = float(1.0).sub(smoothstep(0.03, 0.3, h));
-        const weave = ciWeave(pDisplay).toVar();
-        if (tier.weave) {
-            const we = 1 / (WEAVE_PITCH * 7);
-            const wx = ciWeave(pDisplay.add(vec2(we, 0.0))).sub(weave);
-            const wy = ciWeave(pDisplay.add(vec2(0.0, we))).sub(weave);
-            slope.addAssign(vec2(wx, wy).mul(cloth.mul(0.0011 / we)));
-        }
+        const cloth = float(1.0).sub(smoothstep(0.03, 0.38, h)).toVar();
+        const weave = float(0.5).toVar();
+        const footprint = fwidth(pDisplay.xy).toVar();
+        const woven = float(1.0).sub(smoothstep(0.36, 0.9, max(footprint.x, footprint.y).mul(WEAVE_PITCH))).toVar();
+        If(cloth.greaterThan(0.001), () => {
+            const centre = ciWeave(pDisplay).toVar();
+            weave.assign(mix(0.5, centre, woven));
+            if (tier.weave) {
+                const we = 1 / (WEAVE_PITCH * 7);
+                const wx = ciWeave(pDisplay.add(vec2(we, 0.0))).sub(centre);
+                const wy = ciWeave(pDisplay.add(vec2(0.0, we))).sub(centre);
+                slope.addAssign(vec2(wx, wy).mul(cloth.mul(woven).mul(0.00095 / we)));
+            }
+        });
         // The skin of oil is never optically flat.
-        const tooth = ciNoise2(pDisplay.mul(310.0)).sub(0.5);
-        const tooth2 = ciNoise2(pDisplay.mul(310.0).add(vec2(17.3, 5.1))).sub(0.5);
-        slope.addAssign(vec2(tooth, tooth2).mul(paint.mul(0.05)));
+        const tooth = ciNoise2(q.mul(270.0)).sub(0.5);
+        const tooth2 = ciNoise2(q.mul(270.0).add(vec2(17.3, 5.1))).sub(0.5);
+        slope.addAssign(vec2(tooth, tooth2).mul(paint.mul(binder.mul(-0.065).add(0.095))));
 
         // ── Gold leaf: laid in squares (in courses, each offset half a leaf), every leaf pressed
         // down at its own small tilt and crinkled, its edges overlapping the next; where the leaf
@@ -192,20 +199,18 @@ export function createSurface(u, canvas, tier) {
                 shade.assign(max(shade, clamp(over.div(0.05 + f * 0.4), 0.0, 1.0)));
             }
         }
-        const lit = float(1.0).sub(shade.mul(u.shadowDepth));
+        const lit = float(1.0).sub(shade.mul(u.shadowDepth)).toVar();
         const ndl = max(dot(N, Ld), 0.0);
 
         // ── The clear's sheen: a ring of wet light crossing the canvas ──
         const sheen = float(0.0).toVar();
         Loop(SHEEN_SLOTS, ({ i }) => {
             const slot = u.sheen.element(i);
-            const age = u.time.sub(slot.z);
-            const k = age.div(SHEEN_TRAVEL);
-            const radius = k.mul(u.sheenReach);
-            const d = length(P.xy.sub(slot.xy)).sub(radius);
-            const band = exp(d.mul(d).mul(-90.0)).mul(slot.w).mul(float(1.0).sub(smoothstep(0.6, 1.25, k)))
-                .mul(step(0.0, age));
-            sheen.addAssign(band);
+            const k = u.time.sub(slot.z).div(SHEEN_TRAVEL).toVar();
+            If(k.greaterThanEqual(0.0).and(k.lessThan(1.25)), () => {
+                const d = length(P.xy.sub(slot.xy)).sub(k.mul(u.sheenReach));
+                sheen.addAssign(exp(d.mul(d).mul(-90.0)).mul(slot.w).mul(float(1.0).sub(smoothstep(0.6, 1.25, k))));
+            });
         });
 
         // ── Material ──
@@ -216,18 +221,20 @@ export function createSurface(u, canvas, tier) {
         const wetness = clamp(wet.add(sheen).add(u.wetLift), 0.0, 1.0).toVar();
         // Thick paint is deeper in colour, wet paint deeper still; thin paint lets the ground in.
         const body = smoothstep(0.0, 1.2, h);
-        const albedo = pig.mul(mix(1.06, 0.9, body)).mul(mix(1.0, 0.9, wet)).mul(fresh.mul(0.22).add(1.0)).toVar();
-        albedo.assign(mix(vec3(ciLuma(albedo)), albedo, wet.mul(0.1).add(1.02)));
+        const albedo = pig.mul(mix(1.06, 0.91, body)).mul(mix(1.0, 0.94, wet)).mul(fresh.mul(0.13).add(1.0)).toVar();
+        albedo.assign(mix(vec3(ciLuma(albedo)), albedo, wet.mul(0.035).add(0.975)));
         // The threads of bare cloth take the light differently.
-        albedo.mulAssign(mix(1.0, weave.mul(0.7).add(0.65), cloth.mul(tier.weave ? 1 : 0.6)));
+        albedo.addAssign(vec3(0.053, 0.035, 0.023).mul(cloth.mul(cloth)).mul(weave.mul(0.57).add(0.42)));
+        albedo.mulAssign(mix(1.0, weave.mul(0.58).add(0.71), cloth.mul(tier.weave ? 1 : 0.6)));
 
-        const rough = mix(mix(0.46, 0.19, wetness), 0.24, metal);
-        const gloss = paint.mul(mix(mix(0.42, 1.0, wetness), 1.0, metal)).mul(fresh.mul(0.6).add(1.0));
+        const oil = mix(0.42, 1.0, binder).toVar();
+        const rough = mix(mix(0.52, 0.24, wetness.mul(oil)).sub(binder.mul(0.055)), 0.24, metal);
+        const gloss = paint.mul(mix(mix(0.42, 1.04, wetness).mul(oil), 1.0, metal)).mul(fresh.mul(0.34).add(1.0));
         const F0 = mix(vec3(0.045), pig, metal).toVar();
         const ndv = clamp(dot(N, V), 0.0, 1.0);
         const fres = float(1.0).sub(ndv).toVar();
         const fres5 = fres.mul(fres).mul(fres).mul(fres).mul(fres);
-        const F = F0.add(vec3(1.0).sub(F0).mul(fres5));
+        const F = F0.add(vec3(1.0).sub(F0).mul(fres5)).toVar();
 
         // Diffuse: the lamp, and the room's soft fill from the front.
         const key = u.keyColor.mul(ndl.mul(lit).mul(pool));
@@ -255,25 +262,25 @@ export function createSurface(u, canvas, tier) {
         // (the window as seen from the canvas's centre: a per-point direction would put its
         // reflection on the flat paint next to the lamp, one grey veil over that corner)
         const window = ciSoftBox(Rv, u.lightDir, vec2(0.62, 0.44), soft, true).mul(facet);
-        const cool = ciSoftBox(Rv, u.rimDir, vec2(0.7, 0.5), soft.mul(1.6), false);
+        const cool = ciSoftBox(Rv, u.rimDir, vec2(0.7, 0.5), soft.mul(1.6), false).toVar();
         const room = mix(vec3(0.05, 0.045, 0.04), vec3(0.34, 0.33, 0.32), smoothstep(-0.3, 0.9, Rv.y));
         const mirror = u.keyColor.mul(window.mul(u.windowGain).mul(mix(1.0, 0.3, metal)).mul(lit.mul(0.6).add(0.4)))
             .add(u.rimColor.mul(cool))
             .add(room.mul(ao).mul(mix(0.35, 1.0, metal)));
-        // Gold mirrors a warm studio: the lamp spread wide by the crinkled leaf (each leaf at its
-        // own tilt catches it or not, a mosaic that glitters as the lamp wanders), the umber dark
-        // of the room behind the eye, a warm bounce from the lit floor.
-        const toLampR = clamp(dot(Rv, Ld), -1.0, 1.0);
-        const lampLobe = exp(toLampR.sub(1.0).div(GILD.lobe)).mul(GILD.lamp)
-            .add(exp(toLampR.sub(1.0).div(GILD.lobe * 6)).mul(GILD.halo));
-        // (a flat leaf under the eye mirrors the ceiling over the canvas, which the lamp lights
-        // from its side: leaves tipped toward the lamp see its lit part, leaves tipped away the dark)
-        const studio = mix(vec3(GILD.dark), vec3(GILD.bounce), smoothstep(0.22, 0.62, toLampR));
-        const goldEnv = u.keyColor.mul(lampLobe.mul(lit).mul(pool)).add(studio.mul(ao))
-            .add(u.rimColor.mul(cool.mul(0.4)));
-        const goldSpec = goldEnv.mul(F).mul(float(1.0).sub(seam.mul(0.55)));
         const specular = specKey.add(mirror).mul(F).mul(gloss).mul(float(1.0).sub(metal))
-            .add(goldSpec.mul(metal).mul(float(1.0).sub(bole)));
+            .toVar();
+        // Gold mirrors a warm studio. A leaf tipped toward the lamp sees the lit ceiling;
+        // a leaf tipped away sees dark umber. This reflection only runs on gilded paint.
+        If(metal.greaterThan(0.001), () => {
+            const toLampR = clamp(dot(Rv, Ld), -1.0, 1.0);
+            const lampLobe = exp(toLampR.sub(1.0).div(GILD.lobe)).mul(GILD.lamp)
+                .add(exp(toLampR.sub(1.0).div(GILD.lobe * 6)).mul(GILD.halo));
+            const studio = mix(vec3(GILD.dark), vec3(GILD.bounce), smoothstep(0.22, 0.62, toLampR));
+            const goldEnv = u.keyColor.mul(lampLobe.mul(lit).mul(pool)).add(studio.mul(ao))
+                .add(u.rimColor.mul(cool.mul(0.4)));
+            const goldSpec = goldEnv.mul(F).mul(float(1.0).sub(seam.mul(0.55)));
+            specular.addAssign(goldSpec.mul(metal).mul(float(1.0).sub(bole)));
+        });
         // where the leaf has cracked: the red bole it was laid on, lit like paint
         const boleColor = vec3(GILD.boleColor[0], GILD.boleColor[1], GILD.boleColor[2]);
         const boleLit = boleColor.mul(key.add(fill)).mul(bole);
