@@ -630,7 +630,7 @@ describe('OdysseyMode gameplay objectives', () => {
         expect(mode.odysseyState.recordAttempt).toHaveBeenCalledTimes(1);
     });
 
-    it('restarts an individual unassisted duel top-out without ending the orb', async () => {
+    it('gives the rival the knockout for an unattacked top-out and restarts without ending the orb', async () => {
         const harness = createMode(getLevelById(5));
         const { mode, session } = harness;
         await mode._handleGameOver(session);
@@ -638,7 +638,8 @@ describe('OdysseyMode gameplay objectives', () => {
         await session.duel.transition;
         mode._checkVictoryConditions(session);
 
-        expect(session.duel.multiplayer.frags).toEqual([0, 0]);
+        // A duel has two players: a well that ends is the other's knockout, attacked or not.
+        expect(session.duel.multiplayer.frags).toEqual([0, 1]);
         expect(session.duel.multiplayer.deaths).toEqual([1, 0]);
         expect(mode.completeLevel).not.toHaveBeenCalled();
         expect(mode.failLevel).not.toHaveBeenCalled();

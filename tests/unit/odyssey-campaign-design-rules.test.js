@@ -298,15 +298,15 @@ describe('Odyssey campaign design rules (level design audit 2026-11)', () => {
         }
     });
 
-    it('R8: makes each rival at least as smart as the last and faster, but never faster than a strong person', () => {
+    it('R8: makes each rival one tier above the last and faster, but never faster than a strong person', () => {
         let previousApm = 0;
         let previousTier = 0;
         let previousReaction = [Infinity, Infinity];
         for (const level of duels) {
             const { botDifficulty, botOverrides } = level.mechanics.versus;
             expect(level.role).toBe('rival');
-            // D8 measures the rival's hands independently of its remapped board-reading tier.
-            expect(botDifficulty, `orb ${level.id} tier`).toBeGreaterThanOrEqual(previousTier);
+            // Level design pass 4: each rival plays the versus play one tier above the rival before it.
+            expect(botDifficulty, `orb ${level.id} tier`).toBe(previousTier + 1);
             previousTier = botDifficulty;
             expect(botOverrides.maxApm).toBeGreaterThan(previousApm);
             expect(botOverrides.maxApm).toBeLessThanOrEqual(360);

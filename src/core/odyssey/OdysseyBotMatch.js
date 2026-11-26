@@ -4,8 +4,11 @@ import {
 import { MultiPlayerState } from '../multi-player-state.js';
 import { advanceFixedCascade, retireFixedCascade } from '../physics.js';
 import { HIDDEN_ROWS } from '../constants.js';
+import { readMinAttackLines } from '../garbage.js';
+import { applyVersusFeel } from '../multiplayer/versus-rules.js';
 import { PuzzleBotController } from '../ai/puzzle-bot-controller.js';
-import { GravityBotController, gravityPlanningRate } from '../ai/gravity-bot-controller.js';
+import { GravityBotController, gravityPlanningRate, VERSUS_ROOF_PLANNING } from '../ai/gravity-bot-controller.js';
+import { VERSUS_WEIGHTS, rowsToBlockSpawn } from '../ai/versus-evaluation.js';
 import { bindLegacySessionRng } from '../session-rng.js';
 import { seededRandom } from '../../utils/helpers.js';
 import { fenceOdysseyPhysicsCallbacks } from './odyssey-level-session.js';
@@ -17,7 +20,15 @@ function rivalJudgment(config, seed) {
     return draw < variation.chance ? { ...ordinary, ...variation.judgment } : ordinary;
 }
 
-/** A two-board match driven by Odyssey's existing FrameRateController. No DOM or timer ownership. */
+/**
+ * A two-board match driven by Odyssey's existing FrameRateController. No DOM or timer ownership.
+ *
+ * A live duel plays by three of the versus rules (level design pass 4, ADR-0024): each piece is drawn
+ * on its own, a resting piece locks at the next gravity step, and arriving rows always go in, so only
+ * a piece that cannot appear ends a well. The rival plays the versus play local versus bots play, at
+ * its authored tier and hands. Rounds and the race to three knockouts are Odyssey's own. The frozen
+ * rival of the old campaign instrument keeps the earlier rules and play.
+ */
 export class OdysseyBotMatch {
     constructor(session, {
         seed, isActive, onRoundStart = () => {}, onPieceSpawn = () => {}, onAttack = () => {},
@@ -74,8 +85,14 @@ export class OdysseyBotMatch {
             // The rival's pace caps (level design audit 2026-11, R8): smarter each chapter, never faster
             // than a strong person.
             configOverrides: session.levelConfig.mechanics.versus.botOverrides || null,
-            // Both players share the duel clock. Budget the live rival in deterministic search units.
-            planUnitsPerMs: frozenRival ? 2.5 : gravityPlanningRate(2),
+            // Both players share the duel clock. Budget the live rival in deterministic search units,
+            // with the share a versus seat plans by.
+            planUnitsPerMs: frozenRival ? 2.5 : gravityPlanningRate(2, rivalTier, true),
+            ...(!frozenRival && {
+                versusWeights: VERSUS_WEIGHTS,
+                versusOutlook: () => this._versusOutlook(),
+                roofPlanningRate: VERSUS_ROOF_PLANNING,
+            }),
             pendingRows: () => this.multiplayer.getGarbageQueue(1).getTotalLines(),
             opponentRoom: () => {
                 const grid = this.players[0].boardGrid;
@@ -100,8 +117,26 @@ export class OdysseyBotMatch {
         });
     }
 
+    /** What the rival's next clear is worth, read as a local versus seat reads it. */
+    _versusOutlook() {
+        const waiting = this.multiplayer.getGarbageQueue(0).getTotalLines();
+        return {
+            minAttackLines: readMinAttackLines(this.multiplayer.matchConfig?.minAttackLines),
+            worth: 1,
+            flat: false,
+            killRows: rowsToBlockSpawn(this.players[0].boardGrid, waiting),
+        };
+    }
+
+    /** Who takes the knockout when a well ends: in a live duel the other player, attacked or not. */
+    _knockoutCredit(index) {
+        const attacker = this.multiplayer.lastAttackerIds[index];
+        return this.frozenRival ? attacker : attacker ?? 1 - index;
+    }
+
     _configurePlayer(state, index, seed) {
         const { speed } = this.session.levelConfig.mechanics;
+        if (!this.frozenRival) applyVersusFeel(state);
         state.disableGarbage = false;
         state.useFixedCascade = !this.frozenRival;
         state.disableLevelProgression = true;
@@ -114,7 +149,7 @@ export class OdysseyBotMatch {
 
     prepareBot() {
         const bot = this.players[1];
-        fillBag(bot.nextPieces, bot.randomGenerator);
+        fillBag(bot.nextPieces, bot.randomGenerator, bot.pieceRandomizer);
         spawnPiece(bot, null, () => this.markTopOut(1));
     }
 
@@ -178,7 +213,8 @@ export class OdysseyBotMatch {
             burst = queue.dequeueLineBurst();
         }
         if (entries.length) {
-            const result = applyGarbage(state, entries);
+            // A live duel never ends a well on arriving rows; the frozen one refuses a burst that overflows.
+            const result = applyGarbage(state, entries, this.frozenRival ? {} : { overflowPolicy: 'spill' });
             if (result?.topOut) {
                 this.markTopOut(index);
                 return;
@@ -192,7 +228,7 @@ export class OdysseyBotMatch {
         if (!this._ownsRound(this.roundGeneration) || !this.players[index]?.isAlive) return;
         if (index === 0 && !this.pendingDeaths.has(0) && this.topOutGuard?.()) return;
         if (!this.pendingDeaths.has(index)) {
-            this.deathAttackers.set(index, this.multiplayer.lastAttackerIds[index]);
+            this.deathAttackers.set(index, this._knockoutCredit(index));
             this._callVisual(index, 'onTopOut');
         }
         this.players[index].isGameOver = true;
@@ -254,7 +290,7 @@ export class OdysseyBotMatch {
             this.players.forEach((state, index) => {
                 if (state.isGameOver && !this.pendingDeaths.has(index)) {
                     this.pendingDeaths.add(index);
-                    this.deathAttackers.set(index, this.multiplayer.lastAttackerIds[index]);
+                    this.deathAttackers.set(index, this._knockoutCredit(index));
                 }
             });
             this.pendingDeaths.forEach((index) => {
@@ -295,7 +331,7 @@ export class OdysseyBotMatch {
             state.lastTime = time;
             this.multiplayer.garbageQueues[index].clear();
             this.multiplayer.lastAttackerIds[index] = null;
-            fillBag(state.nextPieces, state.randomGenerator);
+            fillBag(state.nextPieces, state.randomGenerator, state.pieceRandomizer);
             spawnPiece(state, null, () => this.markTopOut(index));
         });
         this.session.physicsCallbacks = null;

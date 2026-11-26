@@ -2190,8 +2190,8 @@ export class OdysseyMode extends BaseGameMode {
             getJuice: () => this.boardJuice,
         });
 
-        // Initialize piece bag
-        fillBag(this.gameState.nextPieces, this.gameState.randomGenerator);
+        // Initialize the piece queue (a duel draws each piece on its own; solo orbs deal bags of seven)
+        fillBag(this.gameState.nextPieces, this.gameState.randomGenerator, this.gameState.pieceRandomizer);
 
         // Spawn first piece
         this.gameState.lastTime = performance.now();

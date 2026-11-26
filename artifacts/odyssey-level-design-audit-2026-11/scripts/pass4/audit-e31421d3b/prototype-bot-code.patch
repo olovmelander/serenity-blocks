@@ -1,0 +1,51 @@
+diff --git a/src/core/ai/gravity-bot-controller.js b/src/core/ai/gravity-bot-controller.js
+index abc8ad1e3..7f8d1deb9 100644
+--- a/src/core/ai/gravity-bot-controller.js
++++ b/src/core/ai/gravity-bot-controller.js
+@@ -367,7 +367,11 @@ export class GravityBotController extends PuzzleBotController {
+                 this.config.lookaheadDepth = this.rng() < [0.12, 0.67, 0.87][tier - 1] ? 1 : 0;
+                 this.config.lookaheadWeight = 0.45;
+             }
+-            if (tier === 5 && this.judgment?.previewChance !== undefined) {
++            // Under versus play any tier that reads one preview can be given a chance to read it (an
++            // Odyssey rival's authored judgment). Without its preview a piece is placed on what the board
++            // is worth now.
++            if (this.judgment?.previewChance !== undefined
++                && (tier === 5 || (this.versusWeights && PREVIEWS[tier - 1] === 1))) {
+                 const inGarbage = pending > 0 || root?.garbage > 0;
+                 const chance = inGarbage ? this.judgment.digPreviewChance ?? this.judgment.previewChance
+                     : this.judgment.previewChance;
+diff --git a/src/core/ai/gravity-search.js b/src/core/ai/gravity-search.js
+index 9c2369757..2f92d975a 100644
+--- a/src/core/ai/gravity-search.js
++++ b/src/core/ai/gravity-search.js
+@@ -688,6 +688,9 @@ export function* searchGravity(state, config, pending, weights = GRAVITY_WEIGHTS
+                 } else {
+                     quality = (play ? versusValue(board, play, pending, scratch.probe)
+                         : value(board, weights, pending, config.virtual, scratch.probe, studyRelease)) + reward;
++                    // An Odyssey duel: the rows waiting arrive after this piece, and a well that cannot
++                    // take them ends. No value on the board is worth that.
++                    if (play?.refuseRows && !ply && pending > board.top - board.first) quality -= 1e7;
+                 }
+                 const node = {
+                     parent,
+diff --git a/src/core/ai/versus-evaluation.js b/src/core/ai/versus-evaluation.js
+index bac5a40c5..3592299f6 100644
+--- a/src/core/ai/versus-evaluation.js
++++ b/src/core/ai/versus-evaluation.js
+@@ -267,9 +267,14 @@ export function versusValue(board, play, pending, probe) {
+     const centre = spawnColumnsTop(board);
+     // The next piece must appear: the spawn columns against the top. In Last Standing it comes in
+     // above the tower, and what ends a player is a rise through the well's roof.
+-    const squeeze = play.roofRows === undefined
++    let squeeze = play.roofRows === undefined
+         ? Math.max(0, (height - centre) + pending - (height - board.first - w.room))
+         : Math.max(0, (height - board.top) + pending - (height + play.roofRows - ROOF_MARGIN));
++    // An Odyssey duel refuses rows that would lift any cell above the visible rows, and that ends the
++    // well: there the tallest column counts, with room kept for a burst (refuseRoom rows).
++    if (play.refuseRows) {
++        squeeze = Math.max(squeeze, (height - board.top) + pending - (height - board.first - (play.refuseRoom ?? 6)));
++    }
+     const value = best + Math.max(left, right) + board.stock * w.material + board.density * w.density
+         - bump * w.bump - (board.holes - edgeHoles) * w.holes - (height - centre) * w.height - squeeze * squeeze * w.danger;
+     return usesSurface(w) ? value + surface(board, w) : value;

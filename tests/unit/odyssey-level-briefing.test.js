@@ -35,9 +35,11 @@ describe('Odyssey next-orb briefing from effective campaign rules', () => {
         const result = briefing(5, 4);
         expect(result.goal).toBe('Defeat Cinder · First to 3 knockouts');
         const attack = 'Clear two or more lines with one piece to send attack rows. '
-            + 'Topping out the rival with an attack scores a knockout.';
-        expect(result.changes).toEqual([attack, 'Both wells reset after every top-out.']);
-        expect(result.rules).toEqual([attack]);
+            + 'Every time the rival tops out, you score a knockout.';
+        // A duel plays by the versus rules for pieces and locking: the briefing says so before the first one.
+        const pieces = 'Duel pieces come in any order, and a landed piece locks on its next step down.';
+        expect(result.changes).toEqual([attack, pieces, 'Both wells reset after every top-out.']);
+        expect(result.rules).toEqual([attack, pieces]);
         expect(result.deadline).toBeNull();
         expect(JSON.stringify(result)).not.toMatch(/points|seconds|speed boost/i);
     });
