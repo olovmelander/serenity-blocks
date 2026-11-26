@@ -496,8 +496,17 @@ describe('waves composition', () => {
         const mounted = { observe: vi.fn(), disconnect: vi.fn() };
         let resize;
         let mount;
-        vi.stubGlobal('ResizeObserver', class { constructor(fn) { resize = fn; return resized; } });
-        vi.stubGlobal('MutationObserver', class { constructor(fn) { mount = fn; return mounted; } });
+        // Constructed with `new`; returning an object hands the spy back in place of `this`.
+        function FakeResizeObserver(fn) {
+            resize = fn;
+            return resized;
+        }
+        function FakeMutationObserver(fn) {
+            mount = fn;
+            return mounted;
+        }
+        vi.stubGlobal('ResizeObserver', FakeResizeObserver);
+        vi.stubGlobal('MutationObserver', FakeMutationObserver);
         try {
             const read = vi.fn();
             const disconnect = watchBoardLayout(read, {

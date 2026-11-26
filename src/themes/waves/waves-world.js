@@ -892,8 +892,11 @@ export class WavesWorld {
         });
         if (c.twist) {
             this.spray.swirl(this.clock, open, {
-                d: landingDistance(open) + 2.5, n: Math.round(this.spray.count / 5),
-                turn: 2.25, size: 0.062, rgb: [0.76, 1.15, 1.38],
+                d: landingDistance(open) + 2.5,
+                n: Math.round(this.spray.count / 5),
+                turn: 2.25,
+                size: 0.062,
+                rgb: [0.76, 1.15, 1.38],
             });
             s.tear = 1;
             // And a spinner answers the twist with its own: thrown clear, turning on its length.
@@ -991,8 +994,12 @@ export class WavesWorld {
         const open = this.U.open.value;
         this.addBand(0.5, 0.7, 0, 2.4);
         this.spray.swirl(this.clock, open, {
-            d: landingDistance(open) + 1.2, n: Math.round(this.spray.count / 14),
-            turn: 1.45, size: 0.052, rgb: [1.12, 0.91, 0.65], life: [2, 3],
+            d: landingDistance(open) + 1.2,
+            n: Math.round(this.spray.count / 14),
+            turn: 1.45,
+            size: 0.052,
+            rgb: [1.12, 0.91, 0.65],
+            life: [2, 3],
         });
         s.tear = Math.max(s.tear, 0.45);
         this.surge.spin(this.time);
