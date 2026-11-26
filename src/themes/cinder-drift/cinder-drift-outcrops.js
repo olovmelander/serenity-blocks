@@ -31,7 +31,7 @@ export function createOutcrops(u) {
         const fall = max(dot(n, normalize(u.fallPos.sub(p))), 0).mul(u.fallGain);
         const lava = clamp(dot(n, vec3(-0.74, -0.42, 0.52)).mul(0.78).add(0.52), 0, 1)
             .mul(exp(max(p.y, 0).mul(-0.40))).mul(cdGlowGain(u));
-        const light = u.cool.mul(sky.mul(1.6).add(0.25)).add(u.mid.mul(lava.mul(1.24).add(fall.mul(0.49))))
+        const light = u.cool.mul(sky.mul(1.12).add(0.17)).add(u.mid.mul(lava.mul(1.24).add(fall.mul(0.49))))
             .add(u.hot.mul(fall.mul(0.15)))
             .add(cdCurtain(u, p, n))
             .add(0.08);

@@ -316,6 +316,8 @@ The baseline and revised frame below use the same seed, High quality, 1200 × 72
 
 ![Cinder Drift before and after the November changes](cinder-drift-captures/november-comparison.webp)
 
+The final lighting pass darkened the ash on the cooled plates and reduced the light reflected onto the basalt. The fall and molten seams stand out against the darker stone. [Compare the two lighting passes at the same instant](cinder-drift-captures/november-darker-basalt.webp).
+
 | Surface | Finding in the baseline | Change in the game |
 | --- | --- | --- |
 | Lake and seams | Evenly lit interior lines made the foreground read like outlined tiles. The plates lost most of their relief away from the fall. | Broken folds run across the cooled skin. Ragged rims, small dark slag pockets, exposed lava and glints from the cold opening distinguish the edges. Lock pools and waves still travel with the crust. |

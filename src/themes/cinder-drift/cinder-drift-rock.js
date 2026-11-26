@@ -200,7 +200,7 @@ export function createColumns(u, plan, bevel = true) {
         const pits = smoothstep(0.74, 0.86, u.noise(vec2(faceU.mul(7.0), p.y.mul(7.0)).add(seed.mul(0.029))).g).mul(nearby);
         // Rust weathering groups neighbouring faces. The rest is fresh, blue-grey fracture.
         const iron = smoothstep(0.34, 0.74, weather.r.mul(0.65).add(piece.mul(0.35)));
-        const stone = u.rock.mul(mix(vec3(0.77, 0.98, 1.31), vec3(1.31, 0.91, 0.76), iron));
+        const stone = u.rock.mul(mix(vec3(0.67, 0.80, 1.04), vec3(1.12, 0.75, 0.63), iron));
         const albedo = stone.mul(piece.mul(0.58).add(0.78)).mul(weather.r.mul(0.92).add(0.53)).mul(streaks.mul(0.8).add(0.63))
             .mul(grainFine.mul(1.22).add(1.0))
             .mul(float(1.0).sub(pits.mul(0.4)))
@@ -285,9 +285,9 @@ export function createColumns(u, plan, bevel = true) {
         const skyDist = max(length(skyDir), 0.01);
         // The opening also rakes the broken sides facing it, outside the air shaft's footprint.
         const blueBounce = max(dot(N, skyDir.div(skyDist)), 0.0)
-            .mul(float(1.0).div(skyDist.mul(0.016).add(1.0))).mul(1.25);
+            .mul(float(1.0).div(skyDist.mul(0.016).add(1.0))).mul(0.82);
         const night = u.cool.mul(spot.mul(max(dot(N, axis.negate()), 0.0)).mul(3.0)
-            .add(blueBounce).add(up.mul(up).mul(0.27)));
+            .add(blueBounce).add(up.mul(up).mul(0.18)));
 
         // ── A four-line clear's shock, running out through the rock ──
         const shockAge = max(u.time.sub(u.shock.x), 0.0);
@@ -298,10 +298,10 @@ export function createColumns(u, plan, bevel = true) {
         const ao = vLit.z;
         const openFace = max(dot(N, vec3(-0.63, -0.55, 0.55)), 0.0);
         const bounced = mix(u.mid, u.hot, 0.29).mul(openFace.mul(openFace))
-            .mul(exp(h.div(-22.0)).mul(1.5).add(0.36)).mul(seen.mul(0.67).add(0.33));
+            .mul(exp(h.div(-22.0)).mul(1.25).add(0.21)).mul(seen.mul(0.67).add(0.33));
         const rake = max(dot(N, vec3(0.64, 0.51, 0.57)), 0.0);
         const exfoliated = smoothstep(0.42, 0.70, weather.g.add(grainFine.mul(0.63)));
-        const slate = vec3(0.45, 0.54, 0.70).mul(rake.mul(0.84).add(0.20))
+        const slate = vec3(0.25, 0.29, 0.36).mul(rake.mul(0.84).add(0.20))
             .mul(exfoliated.mul(1.05).add(0.42)).mul(ao);
         const light = lake.add(key).add(bounced).add(slate).add(night.mul(ao))
             .add(cdCurtain(u, p, N))
