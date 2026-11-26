@@ -2,28 +2,28 @@
 import { GameplaySurge, Swell, softCeiling } from '../../themes/shared/gameplay-surge.js';
 
 /**
- * starLayers: lattice star layers (1–2). milky: the Milky Way's two cloud reads. cellReach: the
- * salt cells' second Voronoi pass (1 = 3×3, cheaper and a little less exact; 2 = 5×5).
+ * starLayers counts the star layers. waterWaves adds a capillary train on
+ * the higher tiers. The larger lunar and galactic atlases follow surfaceSize.
  * ripples: rings on the water at once. sparks: particles per combo shower.
  */
 export const BLOOD_MOON_TIERS = Object.freeze({
     Minimal: Object.freeze({
-        starLayers: 1, milky: false, cellReach: 1, ripples: 4, sparks: 180, surfaceSize: 512,
+        starLayers: 1, waterWaves: 1, ripples: 4, sparks: 180, surfaceSize: 512,
     }),
     Low: Object.freeze({
-        starLayers: 1, milky: true, cellReach: 1, ripples: 4, sparks: 300, surfaceSize: 512,
+        starLayers: 1, waterWaves: 1, ripples: 4, sparks: 300, surfaceSize: 512,
     }),
     Medium: Object.freeze({
-        starLayers: 2, milky: true, cellReach: 2, ripples: 6, sparks: 600, surfaceSize: 1024,
+        starLayers: 2, waterWaves: 2, ripples: 6, sparks: 600, surfaceSize: 1024,
     }),
     High: Object.freeze({
-        starLayers: 2, milky: true, cellReach: 2, ripples: 8, sparks: 1000, surfaceSize: 1024,
+        starLayers: 2, waterWaves: 2, ripples: 8, sparks: 1000, surfaceSize: 1024,
     }),
     Ultra: Object.freeze({
-        starLayers: 2, milky: true, cellReach: 2, ripples: 8, sparks: 1400, surfaceSize: 2048,
+        starLayers: 2, waterWaves: 2, ripples: 8, sparks: 1400, surfaceSize: 2048,
     }),
     Extreme: Object.freeze({
-        starLayers: 2, milky: true, cellReach: 2, ripples: 8, sparks: 1800, surfaceSize: 2048,
+        starLayers: 2, waterWaves: 2, ripples: 8, sparks: 1800, surfaceSize: 2048,
     }),
 });
 
@@ -48,9 +48,9 @@ export function resolveBloodMoonLayout(width, height, rects = []) {
     const aspect = w / h;
     const portrait = aspect < 0.9;
     const edge = Math.min(0.02, aspect * 0.04);
-    const horizon = portrait ? 0.45 : 0.34;
+    const horizon = portrait ? 0.47 : 0.439;
     const lowest = horizon + HORIZON_GAP;
-    const desiredRadius = Math.min(portrait ? 0.11 : 0.15, (Math.min(aspect, 1) - edge * 2) * 0.5);
+    const desiredRadius = Math.min(portrait ? 0.11 : 0.172, (Math.min(aspect, 1) - edge * 2) * 0.5);
     const desiredX = clamp(
         (portrait ? 0.72 : 0.22) * aspect,
         desiredRadius + edge,
@@ -475,14 +475,14 @@ export class BloodMoonReactions {
         case 'clear':
             f.lines = Math.max(f.lines, lines);
             f.cascade = Math.max(f.cascade, clamp(Math.floor(finite(payload?.cascadeCount, 1)), 1, 12));
-            pulse = 0.22 + lines * 0.11 + chain * 0.012;
-            corona = 0.32 + lines * 0.14 + chain * 0.02;
+            pulse = 0.16 + lines * 0.065 + chain * 0.012;
+            corona = 0.08 + lines * 0.075 + chain * 0.016;
             stars = 0.3 + lines * 0.12;
             impact = 0.25 + lines * 0.14;
-            wave = 0.2 + lines * 0.135 + chain * 0.025;
-            // From the third clear of a chain even a single throws embers.
-            burst = lines >= 2 || chain >= 3 ? 0.45 + lines * 0.12 + chain * 0.02 : 0;
-            lunarStrength = 0.85 + lines * 0.1;
+            wave = 0.08 + lines * 0.08 + chain * 0.018;
+            // The salt carries ordinary clears; only a quad throws a full lunar shower.
+            burst = lines >= 4 ? 0.9 : 0;
+            lunarStrength = lines >= 4 ? 1.25 : 0.16 + lines * 0.05;
             lunarCombo = Math.max(lines / 8, Math.min(1, chain / 10));
             lunarDuration = 1.25 + lines * 0.075;
             break;
@@ -490,15 +490,14 @@ export class BloodMoonReactions {
             // COMBO is the cascade depth of one lock: each wave races out faster and wider.
             f.cascade = Math.max(f.cascade, depth);
             this._comboGain = Math.max(this._comboGain, 0.15 + depth * 0.055);
-            pulse = 0.24 + depth * 0.07;
-            corona = 0.45 + depth * 0.08;
+            pulse = 0.12 + depth * 0.04;
+            corona = 0.14 + depth * 0.035;
             stars = 0.3 + depth * 0.06;
             impact = 0.25 + depth * 0.07;
-            wave = 0.4 + depth * 0.04;
-            burst = depth >= 2 ? 0.65 + depth * 0.055 : 0;
+            wave = 0.16 + depth * 0.035;
             speed = 1 + (depth - 1) * 0.12;
             width = 1 + (depth - 1) * 0.3;
-            lunarStrength = Math.min(1.35, 1 + depth * 0.04);
+            lunarStrength = Math.min(0.65, 0.22 + depth * 0.04);
             lunarCombo = Math.min(1, depth / 8);
             lunarDuration = Math.min(1.9, 1.35 + depth * 0.05);
             break;
@@ -524,9 +523,9 @@ export class BloodMoonReactions {
                 pulse = 0.2; corona = 0.3; stars = 0.2; impact = 0.2;
                 lunarStrength = 0.9; lunarCombo = 0.2; lunarDuration = 1.3;
             } else {
-                pulse = 0.4 + spun * 0.06; corona = 0.6 + spun * 0.08; stars = 0.3 + spun * 0.06;
-                wave = 0.65 + spun * 0.1; burst = 0.6 + spun * 0.08; impact = 0.55 + spun * 0.1;
-                lunarStrength = 1.2; lunarCombo = 0.5; lunarDuration = 1.55;
+                pulse = 0.22 + spun * 0.035; corona = 0.22 + spun * 0.04; stars = 0.13 + spun * 0.025;
+                wave = 0.1 + spun * 0.025; impact = 0.55 + spun * 0.1;
+                lunarStrength = 0.25; lunarCombo = 0.5; lunarDuration = 1.55;
             }
             break;
         }
@@ -534,8 +533,8 @@ export class BloodMoonReactions {
             // Back-to-back: a twin front and the volcano wakes (see below).
             f.b2b = true;
             this._flareHit = 1;
-            pulse = 0.3; corona = 0.55; stars = 0.3; wave = 0.7; impact = 0.4;
-            lunarStrength = 1.1; lunarCombo = 0.6; lunarDuration = 1.6;
+            pulse = 0.15; corona = 0.19; stars = 0.14; wave = 0.33; impact = 0.4;
+            lunarStrength = 0.42; lunarCombo = 0.6; lunarDuration = 1.6;
             break;
         case 'perfectClear':
             // Lands ~360 ms after its quad, in a frame of its own: a crown on the clear still

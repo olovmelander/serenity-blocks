@@ -7,7 +7,7 @@
  * moon on a four-minute cycle (blood-moon-eclipse.js): long totality, then a white sliver on one
  * limb that stops the whole night down, then totality again. Gameplay answers on top: rings on
  * the water for every lock and clear, the lunar wave fronts and corona round the moon, and the
- * combo showers (blood-moon-bursts.js).
+ * quad and perfect-clear ember showers (blood-moon-bursts.js).
  *
  * Fast play builds instead of popping (blood-moon-state.js): every answer adds to what is still
  * lit, a cascade's waves race out as concentric fronts, and the heat of play (the shared
@@ -20,6 +20,11 @@
  * totality as the hands rest.
  *
  * ?quality=High&board=1&event=quad&eventAge=.45&t=8
+ * ?event=single|double|triple|combo|twist|b2b|levelUp|perfectClear|garbage|counter|gameOver
+ * ?event=twist&lines=0 for a zero-line spin; ?reduce=1 for the reduced-motion still.
+ * Idle studies: t=8 (totality), 60 (returning sunlight), 101 (open stars), 141 (ice halo).
+ * Event studies: lock, hardDrop, single, double, triple, quad, combo, twist, b2b,
+ * levelUp, perfectClear, garbage, counter, gameOver.
  * ?icon=1&t=0 (square window): the hub icon's framing, moon centred over its reflection.
  */
 import * as THREE from 'three/webgpu';
@@ -32,9 +37,12 @@ import {
     BLOOD_MOON_TIERS, BloodMoonReactions, WAVE_FRONTS, WAVE_SPEED, resolveBloodMoonLayout,
 } from './blood-moon-state.js';
 import { createBloodMoonBursts } from './blood-moon-bursts.js';
+import { createEventTraces } from './blood-moon-event-traces.js';
+import { placeGalacticRift, sampleNightAir } from './blood-moon-sky.js';
 import { sampleEclipse } from './blood-moon-eclipse.js';
 import { BloodMoonRipples, rippleCue } from './blood-moon-ripples.js';
 import { BloodMoonMeteors } from './blood-moon-meteors.js';
+import { loadBloodMoonLandscape } from './blood-moon-landscape.js';
 import { WORLD, createWorldMaterial } from './blood-moon-world.js';
 import { flashScale } from '../../utils/photosensitivity.js';
 import { applyCameraBreath } from '../../themes/shared/camera-breath.js';
@@ -183,6 +191,7 @@ export function create({
     const tier = BLOOD_MOON_TIERS[quality] || BLOOD_MOON_TIERS.High;
     const seed = Number(params.get('seed') || 724461);
     const random = seededRandom(seed);
+    let eventRandom = seededRandom(seed ^ 0x5a17);
     const saved = {
         tone: renderer.toneMapping,
         exposure: renderer.toneMappingExposure,
@@ -202,6 +211,7 @@ export function create({
         center: uniform(new THREE.Vector2(0.22, 0.7)),
         radius: uniform(0.15),
         pulse: uniform(0),
+        eventFlash: uniform(1),
         lunarEnergy: uniform(0),
         lunarActive: uniform(0),
         lunarPulseValues: Array.from({ length: 4 }, () => new THREE.Vector4()),
@@ -228,6 +238,10 @@ export function create({
         moonGain: uniform(WORLD.moonK),
         moonLight: uniform(new THREE.Vector3()),
         starGain: uniform(1),
+        nightAir: uniform(new THREE.Vector4()),
+        galaxyFoot: uniform(new THREE.Vector3()),
+        galaxyPole: uniform(new THREE.Vector3()),
+        galaxyAlong: uniform(new THREE.Vector3()),
         skySpin: uniform(new THREE.Vector2(1, 0)),
         rippleValues: Array.from({ length: tier.ripples }, () => new THREE.Vector4(0, 0, 99, 0)),
         rippleCount: uniform(0),
@@ -250,6 +264,7 @@ export function create({
     shared.lunarPulses = uniformArray(shared.lunarPulseValues, 'vec4');
     shared.waveFronts = uniformArray(shared.waveFrontValues, 'vec4');
     shared.ripples = uniformArray(shared.rippleValues, 'vec4');
+    const landscape = loadBloodMoonLandscape();
     const surface = createAuthoredLunarSurface(THREE, tier.surfaceSize);
     let loaded = false;
     let resolveNebula;
@@ -265,24 +280,43 @@ export function create({
     nebula.wrapS = THREE.RepeatWrapping;
     nebula.wrapT = THREE.RepeatWrapping;
 
+    let galaxyMap;
+    const galaxyReady = new Promise((resolve) => {
+        const atlas = tier.surfaceSize <= 512 ? 'galactic-rift-small.webp' : 'galactic-rift.webp';
+        galaxyMap = new THREE.TextureLoader().load(`./textures/blood-moon/${atlas}`, resolve, undefined, () => {
+            const blank = document.createElement('canvas');
+            blank.width = 1; blank.height = 1;
+            galaxyMap.image = blank;
+            galaxyMap.needsUpdate = true;
+            resolve();
+        });
+        galaxyMap.colorSpace = THREE.SRGBColorSpace;
+    });
     const world = mesh(scene, new THREE.PlaneGeometry(2, 2), createWorldMaterial(shared, {
-        moon: surface.texture, relief: surface.normalTexture, clouds: nebula,
+        moon: surface.texture,
+        relief: surface.normalTexture,
+        clouds: nebula,
+        galaxy: galaxyMap,
+        range: landscape.range,
+        salt: landscape.salt,
     }, tier), 'blood-moon-world', -10);
     const corona = createCorona(scene, shared, nebula);
     const wave = createWave(scene, shared);
     const bursts = createBloodMoonBursts({
         scene, shared, count: tier.sparks, random,
     });
-    const objects = [world, corona, wave];
+    const traces = createEventTraces(shared, tier);
+    scene.add(traces.object);
+    const objects = [world, corona, wave, traces.object];
     let disposed = false;
     let preparing = null;
     const prepare = () => {
         if (!preparing) {
             preparing = (async () => {
-                await Promise.all([nebulaReady, surface.ready]);
+                await Promise.all([galaxyReady, nebulaReady, surface.ready, landscape.ready]);
                 if (disposed) return;
                 // Compile dormant event materials before gameplay can fire them.
-                const eventObjects = [corona, wave, ...bursts.objects];
+                const eventObjects = [corona, wave, traces.object, ...bursts.objects];
                 const visibility = eventObjects.map((object) => object.visible);
                 eventObjects.forEach((object) => { object.visible = true; });
                 try { await renderer.compileAsync(scene, camera); } finally {
@@ -295,13 +329,8 @@ export function create({
     const reactions = new BloodMoonReactions();
     const ripples = new BloodMoonRipples(tier.ripples);
     const meteors = new BloodMoonMeteors();
-    /** Big clears that send a fireball across the sky, and how bright (a twist's by its lines). */
+    /** Big clears that send a fireball across the sky. */
     const FIREBALLS = { quad: 1.2, perfectClear: 1.6 };
-    const fireballFor = (kind, data) => {
-        if (kind !== 'twist') return FIREBALLS[kind] || 0;
-        const lines = Number(data?.lineCount ?? data?.lines ?? 1);
-        return lines > 0 ? 0.85 + Math.min(4, lines) * 0.1 : 0;
-    };
     /** How far a perfect clear's diamond ring steps the shadow aside at its height. */
     const DIAMOND_NUDGE = 2.2;
     const eclipse = {};
@@ -313,7 +342,8 @@ export function create({
     let rects = [];
     let layout = resolveBloodMoonLayout(width, height);
     let restPitch = 0;
-    let reducedMotion = false;
+    let reducedMotion = params.get('reduce') === '1';
+    reactions.reducedMotion = reducedMotion;
     let enabled = true;
     let now = 0;
     let rippleSide = 0;
@@ -327,6 +357,9 @@ export function create({
     const pointerTarget = new THREE.Vector2();
     const basis = { right: new THREE.Vector3(), up: new THREE.Vector3(), fwd: new THREE.Vector3() };
     const scratch = new THREE.Vector3();
+    const waterSite = new THREE.Vector2();
+    const dropSite = new THREE.Vector2();
+    let waterBoards = [];
     const onPointer = (event) => {
         pointerTarget.set(
             Math.max(-1, Math.min(1, (event.clientX / width) * 2 - 1)),
@@ -355,7 +388,7 @@ export function create({
         // The volcano stands four fifths of the way across any frame, sized to the view.
         shared.volcanoAz.value = Math.atan(0.62 * tanX);
         shared.volcanoWidth.value = Math.min(0.2, Math.max(0.07, tanX * 0.3));
-        shared.volcanoHeight.value = 0.082 * Math.min(1, Math.max(0.55, shared.volcanoWidth.value / 0.2));
+        shared.volcanoHeight.value = 0.102 * Math.min(1, Math.max(0.55, shared.volcanoWidth.value / 0.2));
         meteors.spread = Math.atan(tanX);
         const m = shared.moonDir.value;
         meteors.avoid = {
@@ -403,15 +436,20 @@ export function create({
     };
 
     const resize = (w = width, h = height) => {
+        // In-flight strokes are in this viewport's composition. A rotation
+        // can move the entire moon to the opposite side of the board.
+        if (w !== width || h !== height) traces.reset();
         width = Math.max(1, w); height = Math.max(1, h);
         const preview = overlay?.getBoundingClientRect();
         const obstacles = preview ? [preview] : rects;
+        waterBoards = obstacles;
         layout = params.get('icon') === '1'
             ? {
                 x: 0.5, y: 0.67, radius: 0.17, horizon: 0.42,
             }
             : resolveBloodMoonLayout(width, height, obstacles);
         shared.aspect.value = width / height;
+        placeGalacticRift(shared.aspect.value, shared);
         // NDC sprite sizes are expressed in CSS pixels; DPI changes affect sharpness only.
         shared.viewport.value.set(width, height);
         camera.aspect = width / height;
@@ -424,29 +462,37 @@ export function create({
      * A place on the visible water beside the board for a ring, as a world point. `road`: on the
      * moon's reflection instead, so a hot chain's rings break it into a trembling road.
      */
-    const dropRipple = (strength, road = false) => {
-        const preview = overlay?.getBoundingClientRect();
-        const boards = preview ? [preview] : rects;
+    const chooseWaterSite = (road, data, out) => {
         let left = 0.04;
         let right = 0.96;
-        if (boards.length) {
-            const minX = Math.min(...boards.map((b) => b.left)) / width;
-            const maxX = Math.max(...boards.map((b) => b.right)) / width;
+        // Mostly near the lens, where an impact is large enough to read.
+        const sy = road ? 0.082 + eventRandom() * 0.12 : 0.09 + (layout.horizon - 0.23) * eventRandom() ** 1.65;
+        let minX = 1;
+        let maxX = 0;
+        const row = (1 - sy) * height;
+        for (const board of waterBoards) {
+            if (row < board.top - 12 || row > board.bottom + 12) continue;
+            minX = Math.min(minX, board.left / width);
+            maxX = Math.max(maxX, board.right / width);
+        }
+        if (minX < maxX) {
             const leftLane = Math.max(0, minX - 0.03 - left);
             const rightLane = Math.max(0, right - (maxX + 0.03));
-            const useLeft = leftLane > 0.05 && (rightLane <= 0.05 || rippleSide % 2 === 0);
+            const preferLeft = road ? shared.center.value.x < (minX + maxX) * 0.5 : rippleSide % 2 === 0;
+            const useLeft = leftLane > 0.05 && (rightLane <= 0.05 || preferLeft);
             if (useLeft) right = minX - 0.03;
             else if (rightLane > 0.05) left = maxX + 0.03;
         }
         rippleSide += 1;
-        let sx = left + (right - left) * random();
-        // Mostly near the lens, where a ring is large enough to read.
-        let sy = 0.03 + (layout.horizon - 0.15) * random() ** 2.2;
-        if (road) {
-            sx = Math.max(0.02, Math.min(0.98, shared.center.value.x + (random() - 0.5) * 0.2));
-            sy = 0.02 + random() * 0.12;
-        }
-        scratch.set(sx * 2 - 1, sy * 2 - 1, 0.5).unproject(camera).sub(camera.position).normalize();
+        const column = data?.piece?.x;
+        const bearing = Number.isFinite(column) ? Math.max(0.12, Math.min(0.88, (column + 1) / 10))
+            : 0.15 + eventRandom() * 0.7;
+        const sx = road ? Math.max(left, Math.min(right, shared.center.value.x + (eventRandom() - 0.5) * 0.14))
+            : left + (right - left) * bearing;
+        return out.set(sx, sy);
+    };
+    const dropRipple = (strength, site) => {
+        scratch.set(site.x * 2 - 1, site.y * 2 - 1, 0.5).unproject(camera).sub(camera.position).normalize();
         if (scratch.y > -0.01) return;
         const reach = camera.position.y / -scratch.y;
         if (reach > 60) return;
@@ -463,10 +509,12 @@ export function create({
         const t = reducedMotion ? 0 : time;
         const C = reactions.crescendo;
         shared.time.value = t;
+        sampleNightAir(t, shared.nightAir.value);
         moveCamera(t);
         // Settings > Reduce flashing effects (ADR-0021): every flare of event light round the
         // moon keeps only flashScale() of its strength; the rings and showers keep moving.
         const flash = flashScale();
+        shared.eventFlash.value = flash;
         // The eclipse runs on the theme's own clock; reduced motion holds it in totality. A
         // perfect clear's diamond ring steps the shadow aside for a beat: a white sliver burns
         // on the limb and the night stops down round it, while the flat keeps the red moon's
@@ -482,14 +530,15 @@ export function create({
             * (1 + (reactions.pulse * 0.18 + reactions.lunarEnergy * 0.32 + C.punch * 0.08) * flash);
         shared.moonLight.value.set(eclipse.light[0], eclipse.light[1], eclipse.light[2]).multiplyScalar(exposure);
         // The eye adapts over a long run: the stars and the Milky Way open a little.
-        shared.starGain.value = exposure * (1 + reactions.starBoost * 0.9 * flash + C.stars);
-        // The heat of play in the world: slow, sustained light (not flashes).
-        shared.blood.value = enabled ? C.blood : 0;
-        shared.bloodSky.value = enabled ? C.sky : 0;
+        shared.starGain.value = exposure * (1 + (reactions.starBoost * 0.9 + C.stars) * flash);
+        // A perfect clear feeds the heat envelopes as well as its immediate
+        // impact. Reduce flashing scales their combined light at every age.
+        shared.blood.value = enabled ? C.blood * flash : 0;
+        shared.bloodSky.value = enabled ? C.sky * flash : 0;
         shared.agitation.value = enabled ? C.water : 0;
-        shared.volcanoHeat.value = enabled ? C.volcano : 0;
+        shared.volcanoHeat.value = enabled ? C.volcano * flash : 0;
         // The iris closes a little as heat adds light, so the reds stay deep.
-        renderer.toneMappingExposure = 1.12 * C.iris;
+        renderer.toneMappingExposure = 1.12 * (1 + (C.iris - 1) * flash);
         const spin = (t * Math.PI * 2) / 86164;
         shared.skySpin.value.set(Math.cos(spin), Math.sin(spin));
         shared.moonRot.value = Math.sin(t * 0.01) * 0.01;
@@ -503,8 +552,7 @@ export function create({
                 shared.lunarActive.value = 1;
             } else shared.lunarPulseValues[i].set(0, 0, 0, 0);
         }
-        // The corona: each flare keeps flashScale() of itself; the floor heat holds under it.
-        shared.corona.value = 1 - (1 - reactions.corona * flash) * (1 - (enabled ? C.corona : 0));
+        shared.corona.value = (1 - (1 - reactions.corona) * (1 - (enabled ? C.corona : 0))) * flash;
         shared.coronaReach.value = enabled ? C.reach : 1;
         coronaTurn += reducedMotion ? 0 : delta * (1.6 * (0.6 * C.warm + 0.9 * C.fever) + 10 * C.spin);
         shared.coronaPhase.value.set(t * 1.6 + coronaTurn, t * 0.9 + coronaTurn * 0.5);
@@ -524,11 +572,12 @@ export function create({
         wave.visible = enabled && !reducedMotion && waveLive;
         corona.visible = enabled && (shared.corona.value > 0.002 || shared.lunarActive.value > 0);
         bursts.update(delta);
+        traces.update(delta, flash);
         // The storm: meteors from one radiant, as many a second as the heat asks for.
         meteors.advanceStorm(now, delta, enabled && !reducedMotion ? C.storm : 0);
         // Meteors keep their own clock; reduced motion (t held at 0) and disabled effects show none.
         const meteor = meteors.sample(t);
-        shared.meteorGlow.value = enabled && !reducedMotion ? meteor.glow : 0;
+        shared.meteorGlow.value = enabled && !reducedMotion ? meteor.glow * flash : 0;
         if (shared.meteorGlow.value > 0) {
             shared.meteorA.value.fromArray(meteor.a);
             shared.meteorS.value.fromArray(meteor.s);
@@ -540,28 +589,41 @@ export function create({
     };
 
     const cue = (kind, data) => {
-        if (!enabled) return;
+        if (!enabled || (kind === 'b2b' && data?.active === false)) return;
         const burstStrength = reactions.cue(kind, data);
         if (kind === 'hardDrop') hardDropCued = true;
         if (!reducedMotion) {
             const C = reactions.crescendo;
-            if (burstStrength > 0) {
-                // A deeper cascade wave and a hotter game throw the embers further and hotter.
-                const depth = kind === 'combo' ? Math.max(1, Number(data?.comboCount ?? data?.combo) || 1) : 1;
-                bursts.trigger(burstStrength, Math.min(1, C.shower + (depth - 1) * 0.12));
-            }
-            const fireball = fireballFor(kind, data);
-            if (fireball) meteors.cue(now, fireball, random);
+            if (burstStrength > 0) bursts.trigger(burstStrength, C.shower);
+            const fireball = FIREBALLS[kind];
+            if (fireball) meteors.cue(now, fireball, eventRandom);
             const rings = rippleCue(kind, data, { hardDrop: hardDropCued, chain: C.chain });
+            // The drop's splash and the ring of its following lock land at the same spot.
+            const waterEvent = rings || kind === 'hardDrop' || kind === 'garbage' || kind === 'counter';
+            if (waterEvent) {
+                if (kind === 'lock' && hardDropCued) waterSite.copy(dropSite);
+                else chooseWaterSite(eventRandom() < C.towardMoon, data, waterSite);
+                if (kind === 'hardDrop') dropSite.copy(waterSite);
+            }
+            if (kind !== 'lock' || !hardDropCued) traces.cue(kind, data, layout, waterSite);
             if (rings) {
                 const lift = 1 + C.hot * 0.3;
                 for (let i = 0; i < rings.count; i++) {
-                    dropRipple(rings.strength * lift * (1 - i * 0.12), random() < C.towardMoon);
+                    if (i > 0) chooseWaterSite(eventRandom() < C.towardMoon, data, waterSite);
+                    dropRipple(rings.strength * lift * (1 - i * 0.12), waterSite);
                 }
             }
         }
     };
 
+    const counters = { drawCalls: 0, triangles: 0 };
+    const render = () => {
+        renderer.render(scene, camera);
+        // The renderer resets its info at the start of a loop tick, including skipped ticks at
+        // the playground frame cap. Read the counters while they still describe the drawn frame.
+        counters.drawCalls = renderer.info.render.drawCalls;
+        counters.triangles = renderer.info.render.triangles;
+    };
     resize(); update(0);
     return {
         cameraRadius: 12,
@@ -573,11 +635,11 @@ export function create({
         setReducedMotion(value) {
             reducedMotion = !!value;
             reactions.reducedMotion = reducedMotion;
-            if (reducedMotion) { bursts.reset(); ripples.reset(); meteors.reset(); }
+            if (reducedMotion) { bursts.reset(); ripples.reset(); meteors.reset(); traces.reset(); }
         },
         setEffectsEnabled(value) {
             enabled = !!value;
-            if (!enabled) { reactions.reset(); bursts.reset(); ripples.reset(); meteors.reset(); }
+            if (!enabled) { reactions.reset(); bursts.reset(); ripples.reset(); meteors.reset(); traces.reset(); }
         },
         cue,
         /** The true combo after a clear (the theme's ComboTracker); 0 once a chain broke. */
@@ -591,22 +653,23 @@ export function create({
             bursts.reset();
             ripples.reset();
             meteors.reset();
+            traces.reset();
+            coronaTurn = 0;
+            rippleSide = 0;
+            eventRandom = seededRandom(seed ^ 0x5a17);
             if (enabled && params.has('event')) {
                 const age = Math.max(0, Math.min(8, Number(params.get('eventAge') || 0.45)));
                 update(Math.max(0, time - age), 0);
-                const kind = params.get('event');
+                const eventName = params.get('event');
+                const previewLines = { single: 1, double: 2, triple: 3 };
+                const kind = Object.hasOwn(previewLines, eventName) ? 'clear' : eventName;
                 const payload = {
-                    lineCount: Number(params.get('lines') || 4),
+                    lineCount: previewLines[eventName] || Number(params.get('lines') || (kind === 'clear' ? 1 : 4)),
                     comboCount: Number(params.get('combo') || 4),
                 };
-                const burst = reactions.cue(kind, payload);
-                if (!reducedMotion) {
-                    if (burst > 0) bursts.seek(age, reactions.burst);
-                    const fireball = fireballFor(kind, payload);
-                    if (fireball) meteors.cue(Math.max(0, time - age), fireball, random);
-                    const rings = rippleCue(kind, payload);
-                    if (rings) for (let i = 0; i < rings.count; i++) dropRipple(rings.strength * (1 - i * 0.12));
-                }
+                cue(kind, payload);
+                bursts.update(age);
+                traces.update(age, flashScale());
                 for (let t = 0; t < age; t += 1 / 60) {
                     const step = Math.min(1 / 60, age - t);
                     reactions.update(step);
@@ -615,17 +678,15 @@ export function create({
             }
             update(time, 0);
         },
-        render() { renderer.render(scene, camera); },
-        getRendererCounters() {
-            return { drawCalls: renderer.info.render.drawCalls, triangles: renderer.info.render.triangles };
-        },
+        render,
+        getRendererCounters() { return { ...counters }; },
         getCaptureMeta() { return { quality, seed }; },
         getActiveParticleCount() {
             return bursts.objects.reduce((total, object) => total + (object.visible ? tier.sparks : 0), 0);
         },
         async renderAsync() {
             await prepare();
-            if (!disposed) renderer.render(scene, camera);
+            if (!disposed) render();
         },
         getDiagnostics() {
             return {
@@ -647,6 +708,7 @@ export function create({
                     luminance: eclipse.luminance,
                 },
                 camera: camera.position.toArray(),
+                nightAir: shared.nightAir.value.toArray(),
                 surge: { ...reactions.heat },
                 crescendo: { ...reactions.crescendo },
                 combo: reactions.combo,
@@ -670,6 +732,7 @@ export function create({
                 activeWave: wave.visible,
                 activeCorona: corona.visible,
                 activeEjecta: bursts.objects.some((object) => object.visible),
+                filaments: traces.count,
                 bursts: bursts.getDiagnostics(),
             };
         },
@@ -684,7 +747,8 @@ export function create({
             const release = () => {
                 for (const object of objects) { object.geometry.dispose(); object.material.dispose(); }
                 bursts.dispose();
-                surface.dispose(); nebula.dispose();
+                landscape.range.dispose(); landscape.salt.dispose();
+                surface.dispose(); nebula.dispose(); galaxyMap?.dispose();
             };
             if (preparing) preparing.then(release, release);
             else release();
