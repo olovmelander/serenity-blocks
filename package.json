@@ -196,7 +196,7 @@
   "author": "Olov Melander",
   "license": "UNLICENSED",
   "dependencies": {
-    "koffi": "3.3.5",
+    "koffi": "3.3.8",
     "phaser": "4.2.1",
     "steamworks.js": "npm:@pipelab/steamworks.js@0.12.2",
     "three": "0.187.0"
