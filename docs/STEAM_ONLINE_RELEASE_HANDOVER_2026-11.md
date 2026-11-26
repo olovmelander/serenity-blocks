@@ -9,7 +9,7 @@ The implementation is on `feature/steam-online-release`, branched from `8dc68d82
 | Records | Single Player and Infinity keep their own top 100, lifetime figures, prior PB and result delta. The Records sheet shows local and Steam lists together on wider screens. Odyssey times have millisecond precision. The orb card shows the fastest unassisted clear across journeys and a comparison with friends. The clock ends when the clear is banked. Charms count toward campaign stars. Survival orbs 39 and 58 have no time race. |
 | Steam boards | Six aggregate/solo boards and 58 per-orb boards. The game reads the global top ten, friends, and two neighbors on either side of the player, and separately requests the player's actual entry even below the first page. It distinguishes an absent rank, a queued improvement and the last successfully downloaded page. |
 | Score sharing | The first eligible finish can be shared from the results or Records. Consent defaults off. It belongs to the game and Steam account on this device. Enabling shares existing eligible personal bests. Stopping sharing cancels future submissions. Existing public entries need the support route in the privacy policy. Casual client scores use catalogue and run checks. The compact checksum is diagnostic. |
-| Online | Public, friends-only and invite-only rooms, warm/cold invitations and Join Game use the same lobby admission path. A restricted room clears its join presence. Match traffic uses the relay in the store build. In a duel a disconnect forfeits the round. A continuing match holds the seat for ten seconds. The waiting-room host leaving closes the room. Chat has local mute, Valve text filtering and a profile report route. |
+| Online | Public, friends-only and invite-only rooms, warm/cold invitations and Join Game use the same lobby admission path. A restricted room clears its join presence. Match traffic uses the relay in the store build. In a two-player match a disconnect ends the match and the other player wins it (the default free-for-all has no rounds). A continuing match holds the seat for ten seconds. The waiting-room host leaving closes the room. Chat has local mute, Valve text filtering and a profile report route. |
 | Profiles and recovery | A licensed desktop launch selects a Chromium partition by App ID and Steam ID before opening the game. Launching offline reopens the last recognized account for that App ID. “Import local records” reads the original guest profile explicitly, preserves its source and excludes guest evidence from public score publication. Qualifying old scores and completed orbs recovered from the account's Steam Cloud can backfill personal milestones. |
 | Steam Input | Controller activation of a text field asks Steam for its floating keyboard. The left stick button opens match chat when available and unbound to gameplay. Keyboard dismissal returns control to the match. Run the remaining on-device checks at 1280 × 800 in gaming mode. |
 
@@ -60,13 +60,15 @@ The rendering smoke uses real Electron, Chromium IndexedDB, the packaged game's 
 
 1. Enter the awarded App ID in `electron/steam-app-id.js` and replace the contact placeholder at the top of `PRIVACY_POLICY.md` with a monitored address. With `$env:SERENITY_RELEASE='1'`, run `npm run check:release-gates` and build both packages again. The test App ID stays in the dev checkout. The store package must contain zero copies of `steam_appid.txt`.
 2. Run `npm run steam:qa -- manifest` and use the emitted names, units and directions for all 64 boards. Enter its nine integer stats and four achievements with their display names and artwork from the plan. Publish the definitions and English rich-presence localization. Configure the app's Remote Storage quota and file count. Keep settings scoped to the app. [Valve partner checklist in the release plan](STEAM_ONLINE_RELEASE_PLAN_2026-11.md#5-app-id-day-checklist)
-3. Sign and timestamp the Windows candidate through the project's normal signing pipeline. The Windows build includes `.node` in electron-builder's signing extensions. On this workstation Application Control rejected the unsigned staged Steam addon and executable with error 4551. The Valve DLL has a valid signature and the staged addon matched the working dependency byte for byte. Check that the production certificate is trusted by the candidate machine, then run the following on the exact staged build, followed by a launch from Steam. A managed machine may also require its administrator's signer approval.
+3. Sign and timestamp the Windows candidate. electron-builder signs `Serenity Blocks.exe` and both native addons while it packages once it has a certificate (`CSC_LINK` and `CSC_KEY_PASSWORD`, or another route under `build.win`). No certificate existed on 26 November, and a store build now stops unless all three read `Valid` (see Round two below). The Windows build includes `.node` in electron-builder's signing extensions. On this workstation Application Control rejected the unsigned staged Steam addon and executable with error 4551. The Valve DLL has a valid signature and the staged addon matched the working dependency byte for byte. Check that the production certificate is trusted by the candidate machine, then run the following on the exact staged build, followed by a launch from Steam. A managed machine may also require its administrator's signer approval.
 
    ```powershell
    Get-AuthenticodeSignature 'release/win-unpacked/Serenity Blocks.exe'
    Get-AuthenticodeSignature 'release/win-unpacked/resources/native_modules/steamworks.js/dist/win64/steamworksjs.win32-x64-msvc.node'
    npm run steam:qa -- verify-native release/win-unpacked/resources/native_modules
    ```
+
+   Run that last command on a copy of the folder outside any checkout. Inside one, Node finds the checkout's own install before the package's.
 4. On Linux x64 run `npm run steam:qa -- verify-native release/linux-unpacked/resources/native_modules` and then launch the licensed candidate. The Linux SDK's ELF exports and addon architecture were checked from Windows. The staged Linux executable references glibc through 2.25, the Steam addon through 2.30, and Valve's SDK library through 2.14. A source rebuild can be checked on these native builders with the wrapper commit above, its committed `Cargo.lock`, Rust 1.96.0, and `cargo +1.96.0 build --release --locked`. Use the platform toolchain, including MSVC for Windows. Load the rebuilt module beside the same SDK library and rerun ABI and licensed smoke before substituting a distribution binary.
 5. Generate local SteamPipe **preview** scripts with `npm run steam:qa -- depots APP_ID WINDOWS_DEPOT_ID LINUX_DEPOT_ID NEW_OUTPUT_DIRECTORY`. Substitute the numbers Valve assigns. Select each OS's launch executable, a default Steam Input Gamepad layout and a restricted QA branch in Steamworks. Grant separate licenses to A and B, and to C for continuing host migration. Each machine needs its own account for concurrent play. Promotion and publication are separate partner actions.
 6. Run the complete [T1–T12 two-account script](STEAM_ONLINE_RELEASE_PLAN_2026-11.md#6-live-test-script-for-two-accounts). Start with `npm run steam:qa -- inspect APP_ID EXPECTED_17_DIGIT_QA_STEAMID` on each native machine with Steam running. It checks all boards, returns real stat values and achievement names, and reports quota and a file inventory with generation numbers and hashes for recovery slots. Preserve a private run sheet with branch/build ID, OS, Steam Input layout, account aliases, before/after ranks and totals, and relay diagnostic deltas. Use the [two-machine transport acceptance thresholds](TWO_MACHINE_STEAM_VALIDATION.md).
@@ -97,3 +99,77 @@ The rendering smoke uses real Electron, Chromium IndexedDB, the packaged game's 
 Two machines can verify invites, a relayed duel, disconnect outcomes, records, Cloud, chat, presence and stats. A continuing host migration needs a third licensed participant. Actual Steam Input, overlay keyboard, suspend/resume, legibility, performance and offline return must pass on physical Deck hardware before requesting Valve's compatibility review. [Valve Deck compatibility review](https://partner.steamgames.com/doc/steamdeck/compat)
 
 For rollback, preserve the account's Cloud contents, recovery generations and local profile. Switch the QA branch to the previous build through Steamworks and test re-upgrading on the disposable accounts. Older builds do not understand the new receipts. Already published boards and Steam achievements remain associated with the App ID. Keep QA evidence private and use the advertised support route for removal requests.
+
+## Round two · 26 November 2026
+
+The versus rules changed on 22 November, after everything above was written. The
+[drift check](STEAM_ONLINE_RELEASE_DRIFT_2026-11.md) records what that broke and the owner's
+decisions D9 to D15. This section is what was built for them, on branch `audit/steam-online-drift`
+from `e31421d3b`. The plan's checklist and its test script (now T1 to T15) are revised to match.
+Nothing here has run on real Steam.
+
+### What changed for players
+
+| Area | What to expect |
+|---|---|
+| Kills stat | `ffa_kills` counts every knock-out of a free-for-all. It used to record a ten-frag win as one kill. The bound is the frags goal, or one knock-out per ten seconds played when the goal is not frags; Survivor keeps one per opponent per round. |
+| Builds that cannot play together | One match compatibility number (ADR-0026). The match list shows a room from another version with "Update to join" or "Older version" in place of Join and Watch. A join by invite or lobby ID is refused with the update message before anyone is added. |
+| The match list and the waiting room | A row says what kind of room it is ("Survivor · Blind"). The waiting room has an Attacks line with every setting off its default. The Drop in label and the tile of a waiting player say "a key press" in a free-for-all and "next round" in Survivor. |
+| Private rooms | The waiting room of a private room shows "Invite only" and no lobby ID. What Steam does with a bare ID is for test T2 to show. |
+| A broken link | A player who "wins" because everyone else fell silent while their own Steam connection is down reads "Your connection to Steam was lost, so the match ended." and records no win. When both sides are still connected, both keep their result. |
+| Host change | Every player reads "<name> is now hosting this match." |
+| Leaving a match | A failed resync reads "The match could not be kept in sync with the host, so you left it." It used to read "removed by the host". |
+| Steam status | The player count in "Online Versus · N-player match" follows a drop-in or a leave. |
+| Linux | The window has the game's icon. |
+
+### What changed underneath
+
+- **`wireV2`** is re-dated to 2027-03-31 and stays off. The game launches on protocol 1 (ADR-0013,
+  third amendment).
+- **Orb time boards have a rules freeze.** `tests/unit/odyssey-time-board-freeze.test.js` fingerprints
+  each of the 58 timed orbs: its definition, its rule fields, and for the eight rival orbs the bot's
+  data and a played digest of the real duel. One orb can carry its own board generation
+  (`ODYSSEY_TIME_BOARD_GENERATIONS`), so a retune costs one new board. Until the App ID is set a
+  change is re-pinned with `npm run odyssey:board-freeze`; after that, a change that can alter a
+  clear time needs a new board for that orb. Bot work on another branch moves the eight rival pins,
+  so re-pin after a sync with main.
+- **A store build checks its own signatures.** `npm run build:win` with `SERENITY_RELEASE=1` stops
+  unless `Serenity Blocks.exe` and both native addons read `Valid`. `npm run check:signatures --
+  release/win-unpacked` prints the statuses at any time. `SERENITY_ALLOW_UNSIGNED=1` lets a deliberate
+  unsigned build through with a warning.
+- **CI can package the desktop app.** `.github/workflows/desktop-package.yml` packages on Ubuntu and
+  Windows and loads each package's Steam addon from a copy outside the checkout. It has never run.
+- **The main checkout's Steam packages match the lockfile** (`steamworks.js` 0.12.2, `koffi` 3.3.5).
+  They were copied in from a worktree that had them; no `npm ci` was run there.
+
+### Still open
+
+1. **Owner inputs:** the App ID, the monitored contact address, and a signing identity (D9).
+2. **The live test:** T1 to T15 and the three-account script. Two results decide follow-up work:
+   what Steam does with a bare ID to a private lobby (T2), and whether a player whose network is cut
+   reads "connection lost" in time (T4).
+3. **Frag credit across a host change.** Who attacked whom last lives in the host's memory, so a
+   knock-out in the first seconds after a host change can go uncredited. Seeding it from each
+   player's waiting garbage when a new host takes over is the likely fix; it was left out because
+   it touches the takeover path and cannot be proven without three machines.
+4. **Two stat edges, the owner's call:** a drawn Survivor ending records a win for whoever sorts
+   first, and a player who leaves records no match while the one who stayed records a win.
+5. **The CI job and the Linux package** have never run. The freeze test's played digests repeat on
+   Windows; whether Ubuntu agrees is unknown until CI runs.
+6. **No tool seeds an eight-day-old pending score** (T7).
+
+### Verification on 26 November
+
+Run in the worktree `serenity-blocks-steam-drift` on Windows, Node 24.20.0, with other sessions'
+benchmarks running on the same machine.
+
+| Check | Result |
+|---|---|
+| Full unit suite | 1,563 files, 29,049 tests: 29,006 passed, 35 skipped, 8 failed in 4 files. Six of the eight were one test stub of this branch (`online-match-stage-sessions`), fixed afterwards. The other three files (`local-versus-cameras`, `display-settings-apply`, `theme-registry-lifecycle-acceptance`) are untouched by this branch, timed out or raced under load, and pass on their own. |
+| Online, Steam, records and packaging tests, after the fix | 160 files, 1,881 tests: all pass except the known wall-clock test in `local-versus-cameras`, which passes alone. |
+| Gates | Typecheck, lint ratchet, type ratchet, architecture fitness (the online mode file is inside its line budget), dependency boundaries, the release gate, the pages artifact check and the IP-string gate all pass. With `SERENITY_RELEASE=1` the release gate still exits 1 for the App ID and the contact, as it should. |
+| Build and packages | `npm run build` passes on the final tree. The unpacked Windows and Linux packages were staged earlier the same day with the packaging changes in; the after-pack checks passed on 1,148 files each, with no `steam_appid.txt`. |
+| Signatures | `npm run check:signatures -- release/win-unpacked` reports the `.exe` and both addons `NotSigned` and Valve's library `Valid`; as a store build it exits 1, and 0 with `SERENITY_ALLOW_UNSIGNED=1`. |
+| Boards | `npm run odyssey:board-freeze -- --check` prints "All 58 orb time boards match their pins", and the manifest prints the same 64 board names as before. |
+| Main checkout | `npm run steam:qa -- verify-native` there now prints "44 client and 11 relay symbols resolved, addon loaded". |
+| Not verified | Anything on real Steam, on a Linux machine or on a Deck. The CI packaging job has never run, and the freeze test has never run on Ubuntu. |
