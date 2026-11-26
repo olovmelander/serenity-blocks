@@ -75,6 +75,11 @@ jobs:
       # electron-builder downloads the Electron it packages itself.
       - run: npm ci --ignore-scripts
       - run: npm run build
+      # build/icon.ico is not in the repository: scripts/build-win.mjs copies it from the committed
+      # .ico before it packages. Without it electron-builder quietly uses Electron's own icon.
+      - name: The Windows icon is in place
+        if: matrix.target == 'win'
+        run: mkdir -p build && cp public/assets/branding/serenity-blocks.ico build/icon.ico
       - name: Package the unpacked app
         run: npx --no-install electron-builder --${{ matrix.target }} --x64 --dir --publish never
       # The launch executable the App ID-day checklist names for this depot. Linux must keep
