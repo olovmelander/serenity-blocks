@@ -3,6 +3,50 @@
 Branch `feature/blood-moon-eclipse`, worktree `../serenity-blocks-bloodmoon`. Evidence:
 [reports/blood-moon-overhaul/eclipse-salt-flat/](../reports/blood-moon-overhaul/eclipse-salt-flat/).
 
+## November 2026 visual audit and revision
+
+The authored lunar surface, the moving umbra and the mirror were the strongest parts of the October scene. A matched capture at eight seconds showed the lower half of the reflected moon outside the frame. The volcano read as a single smooth cone. Several large stars had soft or clipped edges, the galactic band had little internal structure, and the sky and its reflection had almost the same texture. [Original and revised frames](../reports/blood-moon-overhaul/november/comparison.webp)
+
+| Surface | Change |
+| --- | --- |
+| Moon | A larger disc exposes more of the existing atlas. Oblique lighting picks out crater relief, darker basalt seas separate from the highlands, and a thin copper limb catches the light above the shadow. Only rays through the disc and its reflection fetch the two lunar textures. |
+| Stars and Milky Way | The two star populations have sharper cores, varied temperatures and gentle scintillation. Mipmapped galactic dust and star clouds follow a great circle. The band rises on the open side of a portrait view. Minimal and Low load a smaller atlas. |
+| Atmosphere | Red airglow, wind-streaked cirrus, a clear violet night and a 22-degree ice halo blend over 188 seconds. Their timing drifts against the four-minute eclipse. Both the water and the mountains take the changing light. [Four moments from the cycle](../reports/blood-moon-overhaul/november/night-cycle.webp) |
+| Range | A Blender-built caldera has a breached flank, a secondary summit and exposed beds. Four ridgelines overlap in haze. The runtime reads a baked plate with lighting, snow, distance and coverage along the sky or mirror ray. The bake checks that the shoreline covers every bearing. |
+| Salt and water | A seamless plate replaces the per-pixel search for polygon borders. Its distance, slope and mineral channels shade copper seams and salt shoulders. Intersecting wave trains break up the reflection in patches. Bright horizontal facets stretch a path from the moon toward the observer. |
+| Board and UI | Seven mineral colours distinguish the shapes that previously shared similar reds. The Solo well has darker glass behind the spawn rows, the queue has a clearer NEXT label, and the score panel picks up the plum and copper of the scene. The picker icon comes from the revised world. |
+
+The original locks, clears and twists drew much of their energy from the same ring around the moon. In the revision, the location and motion tell the player what happened. [Gameplay effects side by side](../reports/blood-moon-overhaul/november/events.webp)
+
+| Gameplay event | Visible response |
+| --- | --- |
+| Lock and hard drop | A lock flicks salt spray from a spot beside the board. A hard drop draws a descending hot streak and sends up a larger splash. Its following lock ripples at the same point. |
+| One, two and three lines | A single draws a glint across the salt. A double forks in two directions. A triple lifts three successive wave fronts. The wet edges break into horizontal fragments. |
+| Four lines | Four magnetic loops open around the limb, an annular shower flies outward and a fireball crosses the sky and water. |
+| Twist | Two arms shear away from opposing points on the moon. A scoring twist braids several strands. A zero-line twist leaves a narrower pair. |
+| Cascades and consecutive clearing pieces | The cascade depth sets the length of a train of splitting meteors. Chains of consecutive clearing pieces feed sustained changes in the corona, colour, wind and crater heat. |
+| Back-to-back and level up | A back-to-back throws a staggered spray of hot stones from the volcano. A level up raises pillars of light from the reflection. |
+| Perfect clear | The umbra steps aside to reveal a white diamond on the limb. Pearl rays, a sparkling crown and the bright road across the water recede as the eclipse returns. |
+| Multiplayer garbage and counters | Incoming rows fracture the salt. A counter draws the light back inward. The theme reacts to the local player's garbage. |
+| Game over | The chain resets and cooled embers fall through the sky. |
+
+The filaments share one draw while active. Their pool has 36 strokes on Minimal and Low and 72 on higher tiers. A perfect clear can claim space from routine impacts during heavy play. Reduce motion holds the eclipse and weather still and suppresses the new trajectories. Reduce flashing attenuates the crown, reflected crests and event light while preserving the movement of the water.
+
+**Verification.** The production Solo board was played with normal movement and drop inputs. A separate sequence sent a quad, back-to-back, cascade and perfect clear through the game's event bus to inspect the busiest frame. The upcoming pieces, ghost, and score remained visible. Disabling background effects retired the active reactions and re-enabling them restored the response. [Solo board](../reports/blood-moon-overhaul/november/solo.webp) · [Stacked events](../reports/blood-moon-overhaul/november/solo-busy.webp) · [Recorded gameplay effects](../reports/blood-moon-overhaul/november/blood-moon-in-motion.webm)
+
+At High, the 1440 × 810 production Solo run on NVIDIA Blackwell had a median frame interval of 33.3 ms and a 95th percentile of 37.5 ms over 146 intervals at the 30 fps test cap. Matched 1280 × 720 playground captures retained two submitted draws at idle and went from five to six on a quad. Median CPU time moved from 0.6 to 0.7 ms at idle and from 0.7 to 0.8 ms on a quad. Each visit yielded eight quantized GPU timestamps. Measurements cover this adapter and cap. A separate three-minute overlap simulation saturated the stroke, ripple and particle pools on Minimal, High and Extreme. All three pools emptied after play stopped. [Measurements](../reports/blood-moon-overhaul/november/verification.json)
+
+The shipping Solo adapter was exercised on WebGPU and WebGL2. The playground checks covered the eclipse phases, all event families, reduced motion, reduced flashing and a [390 × 844 Minimal WebGL2 view](../reports/blood-moon-overhaul/november/portrait-webgl2.webp). The 94 Blood Moon tests, both shader builders, typecheck, scoped lint, lifecycle and dependency checks, and production build passed. Blood Moon's piece palette passes the colour check, and its Odyssey passage colours match the revised icon.
+
+The rocky relief and salt plate can be regenerated with [the Blender bake](../scripts/blender/blood_moon_range.py). The galactic dust band uses a built-in ImageGen texture in [full](../public/textures/blood-moon/galactic-rift.webp) and [small](../public/textures/blood-moon/galactic-rift-small.webp) sizes.
+
+<details>
+<summary>Galactic dust texture generation prompt</summary>
+
+A deep-sky astrophotography texture for a game's real-time sky. Wide landscape format. Direct view across the Milky Way from earth, the long axis of the galactic band runs HORIZONTALLY from left to right exactly through the middle. Numerous powder-fine champagne and smoky rose star clouds, dramatically branching near-black interstellar dust lanes, patches of dusty mauve and a handful of subtle little carmine emission knots, sparse ice blue pin stars. Detailed galactic core slightly right of center, dissolving into irregular finer star streams towards the left. The band occupies the central half of the image height, with the upper and lower quarters fading naturally into very dark clean space. Atmospheric high resolution long-exposure observatory photo, star clouds actually resolve into thousands of incredibly tiny fine stars, local contrast, delicate graded falloff, exceptionally crisp detail. Restrained natural color. Sky only. No moon, no planet, no spiral galaxy seen from above, no earth, no mountains, no landscape or terrestrial clouds, no sun, no horizon, no lens flare, no text, no frame. The finished material will be wrapped on a great circle and turned diagonally in the real scene.
+
+</details>
+
 ## Why
 
 A fleet review on 2026-10-20 found Blood Moon the thinnest theme by far: a red-tinted moon, red

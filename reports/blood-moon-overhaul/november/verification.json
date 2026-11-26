@@ -1,0 +1,421 @@
+{
+  "fixedTimeProfile": {
+    "quality": "High",
+    "viewport": [
+      1280,
+      720
+    ],
+    "fixedTimeSeconds": 8,
+    "capFps": 30,
+    "quadAgeSeconds": 0.95,
+    "scene": "isolated playground",
+    "visits": {
+      "originalIdle": {
+        "backend": "WebGPU \u00b7 nvidia blackwell",
+        "submitted": {
+          "drawCalls": 2,
+          "triangles": 3
+        },
+        "cpuMs": {
+          "samples": 253,
+          "p50": 0.6000000014901161,
+          "p95": 1,
+          "p99": 1.200000001117587,
+          "max": 1.5
+        },
+        "frameMs": {
+          "samples": 252,
+          "p50": 33.30000000074506,
+          "p95": 33.90000000037253,
+          "p99": 34.5,
+          "max": 36.69999999925494
+        },
+        "gpuMs": {
+          "samples": 8,
+          "p50": 0.131072,
+          "p95": 0.262144,
+          "p99": 0.262144,
+          "max": 0.262144
+        }
+      },
+      "originalQuad": {
+        "backend": "WebGPU \u00b7 nvidia blackwell",
+        "submitted": {
+          "drawCalls": 5,
+          "triangles": 2007
+        },
+        "cpuMs": {
+          "samples": 253,
+          "p50": 0.7000000011175871,
+          "p95": 1.199999999254942,
+          "p99": 1.6000000014901161,
+          "max": 5.900000000372529
+        },
+        "frameMs": {
+          "samples": 252,
+          "p50": 33.30000000074506,
+          "p95": 33.70000000111759,
+          "p99": 35,
+          "max": 51.59999999962747
+        },
+        "gpuMs": {
+          "samples": 8,
+          "p50": 0.131072,
+          "p95": 0.262144,
+          "p99": 0.262144,
+          "max": 0.262144
+        }
+      },
+      "revisedIdle": {
+        "backend": "WebGPU \u00b7 nvidia blackwell",
+        "submitted": {
+          "drawCalls": 2,
+          "triangles": 3
+        },
+        "cpuMs": {
+          "samples": 251,
+          "p50": 0.7000000011175871,
+          "p95": 1.099999999627471,
+          "p99": 1.299999998882413,
+          "max": 1.300000000745058
+        },
+        "frameMs": {
+          "samples": 250,
+          "p50": 33.30000000074506,
+          "p95": 36.40000000037253,
+          "p99": 37.69999999925494,
+          "max": 37.70000000111759
+        },
+        "gpuMs": {
+          "samples": 8,
+          "p50": 0.065536,
+          "p95": 0.131072,
+          "p99": 0.131072,
+          "max": 0.131072
+        }
+      },
+      "revisedQuad": {
+        "backend": "WebGPU \u00b7 nvidia blackwell",
+        "submitted": {
+          "drawCalls": 6,
+          "triangles": 2535
+        },
+        "cpuMs": {
+          "samples": 251,
+          "p50": 0.8000000007450581,
+          "p95": 1.200000001117587,
+          "p99": 1.5,
+          "max": 1.6000000014901161
+        },
+        "frameMs": {
+          "samples": 250,
+          "p50": 33.30000000074506,
+          "p95": 36.399999998509884,
+          "p99": 37.70000000111759,
+          "max": 57.5
+        },
+        "gpuMs": {
+          "samples": 8,
+          "p50": 0.131072,
+          "p95": 0.196608,
+          "p99": 0.196608,
+          "max": 0.196608
+        }
+      }
+    }
+  },
+  "poolStress": [
+    {
+      "quality": "Minimal",
+      "seconds": 180,
+      "peaks": {
+        "filaments": 36,
+        "particles": 540,
+        "ripples": 4
+      },
+      "after30sIdle": {
+        "filaments": 0,
+        "particles": 0,
+        "ripples": 0
+      }
+    },
+    {
+      "quality": "High",
+      "seconds": 180,
+      "peaks": {
+        "filaments": 72,
+        "particles": 3000,
+        "ripples": 8
+      },
+      "after30sIdle": {
+        "filaments": 0,
+        "particles": 0,
+        "ripples": 0
+      }
+    },
+    {
+      "quality": "Extreme",
+      "seconds": 180,
+      "peaks": {
+        "filaments": 72,
+        "particles": 5400,
+        "ripples": 8
+      },
+      "after30sIdle": {
+        "filaments": 0,
+        "particles": 0,
+        "ripples": 0
+      }
+    }
+  ],
+  "productionSolo": {
+    "backend": "WebGPU",
+    "capFps": 30,
+    "timing": {
+      "samples": 146,
+      "p50Ms": 33.29999999999927,
+      "p95Ms": 37.5,
+      "target": 30
+    }
+  },
+  "video": {
+    "duration": 17.78,
+    "frames": 520,
+    "uniqueFrames": 520,
+    "size": 7273522,
+    "events": [
+      [
+        "lock",
+        1156,
+        2.6757666666666653
+      ],
+      [
+        "double",
+        2984,
+        4.475866666666661
+      ],
+      [
+        "triple",
+        4951,
+        6.443366666666665
+      ],
+      [
+        "twist",
+        7051,
+        8.56016666666667
+      ],
+      [
+        "quad",
+        9250,
+        10.768766666666668
+      ],
+      [
+        "b2b",
+        11102,
+        12.619766666666669
+      ],
+      [
+        "perfectClear",
+        13003,
+        14.478666666666667
+      ]
+    ]
+  },
+  "productionWebGL2": {
+    "backend": "WebGL2",
+    "mode": "single",
+    "lunarSurface": "authored"
+  },
+  "screens": {
+    "final": {
+      "query": "effect=blood-moon&hud=0&maxFps=30&t=8",
+      "backend": "WebGPU \u00c2\u00b7 nvidia blackwell",
+      "quality": "High",
+      "eventStrokes": 0,
+      "sparks": 0
+    },
+    "indigo": {
+      "query": "effect=blood-moon&hud=0&maxFps=30&t=101",
+      "backend": "WebGPU \u00c2\u00b7 nvidia blackwell",
+      "quality": "High",
+      "eventStrokes": 0,
+      "sparks": 0
+    },
+    "sliver-final": {
+      "query": "effect=blood-moon&hud=0&maxFps=30&t=60",
+      "backend": "WebGPU \u00c2\u00b7 nvidia blackwell",
+      "quality": "High",
+      "eventStrokes": 0,
+      "sparks": 0
+    },
+    "icehalo": {
+      "query": "effect=blood-moon&hud=0&maxFps=30&t=141",
+      "backend": "WebGPU \u00c2\u00b7 nvidia blackwell",
+      "quality": "High",
+      "eventStrokes": 0,
+      "sparks": 0
+    },
+    "lock": {
+      "query": "effect=blood-moon&hud=0&maxFps=30&t=8&event=lock&eventAge=0.37",
+      "backend": "WebGPU \u00c2\u00b7 nvidia blackwell",
+      "quality": "High",
+      "eventStrokes": 3,
+      "sparks": 0
+    },
+    "hardDrop": {
+      "query": "effect=blood-moon&hud=0&maxFps=30&t=8&event=hardDrop&eventAge=0.27",
+      "backend": "WebGPU \u00c2\u00b7 nvidia blackwell",
+      "quality": "High",
+      "eventStrokes": 6,
+      "sparks": 0
+    },
+    "single": {
+      "query": "effect=blood-moon&hud=0&maxFps=30&t=8&event=single&eventAge=0.53",
+      "backend": "WebGPU \u00c2\u00b7 nvidia blackwell",
+      "quality": "High",
+      "eventStrokes": 2,
+      "sparks": 0
+    },
+    "double": {
+      "query": "effect=blood-moon&hud=0&maxFps=30&t=8&event=double&eventAge=0.62",
+      "backend": "WebGPU \u00c2\u00b7 nvidia blackwell",
+      "quality": "High",
+      "eventStrokes": 6,
+      "sparks": 0
+    },
+    "triple": {
+      "query": "effect=blood-moon&hud=0&maxFps=30&t=8&event=triple&eventAge=0.68",
+      "backend": "WebGPU \u00c2\u00b7 nvidia blackwell",
+      "quality": "High",
+      "eventStrokes": 12,
+      "sparks": 0
+    },
+    "quad": {
+      "query": "effect=blood-moon&hud=0&maxFps=30&t=8&event=quad&eventAge=0.6",
+      "backend": "WebGPU \u00c2\u00b7 nvidia blackwell",
+      "quality": "High",
+      "eventStrokes": 12,
+      "sparks": 1000
+    },
+    "mini": {
+      "query": "effect=blood-moon&hud=0&maxFps=30&t=8&lines=0&event=twist&eventAge=0.6",
+      "backend": "WebGPU \u00c2\u00b7 nvidia blackwell",
+      "quality": "High",
+      "eventStrokes": 4,
+      "sparks": 0
+    },
+    "twist": {
+      "query": "effect=blood-moon&hud=0&maxFps=30&t=8&event=twist&eventAge=0.52",
+      "backend": "WebGPU \u00c2\u00b7 nvidia blackwell",
+      "quality": "High",
+      "eventStrokes": 12,
+      "sparks": 0
+    },
+    "b2b": {
+      "query": "effect=blood-moon&hud=0&maxFps=30&t=8&event=b2b&eventAge=0.53",
+      "backend": "WebGPU \u00c2\u00b7 nvidia blackwell",
+      "quality": "High",
+      "eventStrokes": 33,
+      "sparks": 0
+    },
+    "combo": {
+      "query": "effect=blood-moon&hud=0&maxFps=30&t=8&event=combo&eventAge=0.62",
+      "backend": "WebGPU \u00c2\u00b7 nvidia blackwell",
+      "quality": "High",
+      "eventStrokes": 12,
+      "sparks": 0
+    },
+    "levelUp": {
+      "query": "effect=blood-moon&hud=0&maxFps=30&t=8&event=levelUp&eventAge=0.82",
+      "backend": "WebGPU \u00c2\u00b7 nvidia blackwell",
+      "quality": "High",
+      "eventStrokes": 16,
+      "sparks": 0
+    },
+    "perfectClear": {
+      "query": "effect=blood-moon&hud=0&maxFps=30&t=8&event=perfectClear&eventAge=0.66",
+      "backend": "WebGPU \u00c2\u00b7 nvidia blackwell",
+      "quality": "High",
+      "eventStrokes": 19,
+      "sparks": 1000
+    },
+    "garbage": {
+      "query": "effect=blood-moon&hud=0&maxFps=30&t=8&event=garbage&eventAge=0.56",
+      "backend": "WebGPU \u00c2\u00b7 nvidia blackwell",
+      "quality": "High",
+      "eventStrokes": 6,
+      "sparks": 0
+    },
+    "counter": {
+      "query": "effect=blood-moon&hud=0&maxFps=30&t=8&event=counter&eventAge=0.64",
+      "backend": "WebGPU \u00c2\u00b7 nvidia blackwell",
+      "quality": "High",
+      "eventStrokes": 4,
+      "sparks": 0
+    },
+    "gameOver": {
+      "query": "effect=blood-moon&hud=0&maxFps=30&t=8&event=gameOver&eventAge=0.8",
+      "backend": "WebGPU \u00c2\u00b7 nvidia blackwell",
+      "quality": "High",
+      "eventStrokes": 17,
+      "sparks": 0
+    },
+    "quiet": {
+      "query": "effect=blood-moon&hud=0&maxFps=30&t=8&reduce=1&event=perfectClear&eventAge=0.6",
+      "backend": "WebGPU \u00c2\u00b7 nvidia blackwell",
+      "quality": "High",
+      "eventStrokes": 0,
+      "sparks": 0
+    },
+    "gentle": {
+      "query": "effect=blood-moon&hud=0&maxFps=30&t=8&event=perfectClear&eventAge=0.6",
+      "backend": "WebGPU \u00c2\u00b7 nvidia blackwell",
+      "quality": "High",
+      "eventStrokes": 19,
+      "sparks": 1000
+    },
+    "mobile": {
+      "query": "effect=blood-moon&hud=0&maxFps=30&t=8&forceWebGL=1&quality=Minimal",
+      "backend": "WebGL2",
+      "quality": "Minimal",
+      "eventStrokes": 0,
+      "sparks": 0
+    },
+    "mobile-board": {
+      "query": "effect=blood-moon&hud=0&maxFps=30&t=8&forceWebGL=1&quality=Low&board=1",
+      "backend": "WebGL2",
+      "quality": "Low",
+      "eventStrokes": 0,
+      "sparks": 0
+    },
+    "fallback": {
+      "query": "effect=blood-moon&hud=0&maxFps=30&t=8&forceWebGL=1",
+      "backend": "WebGL2",
+      "quality": "High",
+      "eventStrokes": 0,
+      "sparks": 0
+    },
+    "perfect-gl": {
+      "query": "effect=blood-moon&hud=0&maxFps=30&t=8&forceWebGL=1&quality=Low&event=perfectClear&eventAge=0.6",
+      "backend": "WebGL2",
+      "quality": "Low",
+      "eventStrokes": 19,
+      "sparks": 300
+    },
+    "low": {
+      "query": "effect=blood-moon&hud=0&maxFps=30&t=8&quality=Low",
+      "backend": "WebGPU \u00c2\u00b7 nvidia blackwell",
+      "quality": "Low",
+      "eventStrokes": 0,
+      "sparks": 0
+    },
+    "icon": {
+      "query": "effect=blood-moon&hud=0&maxFps=30&t=8&icon=1&quality=Extreme",
+      "backend": "WebGPU \u00c2\u00b7 nvidia blackwell",
+      "quality": "Extreme",
+      "eventStrokes": 0,
+      "sparks": 0
+    }
+  },
+  "screensInfo": "All listed captures waited for playground readiness. Browser console warnings and errors were empty."
+}
