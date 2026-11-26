@@ -16,7 +16,9 @@
  *   lead=<s>                 seconds played before the shot (default 1.5): a lead across a whole
  *                            period's turn shows the painter going over the picture
  *   locks=<n>                before anything else, play n locks (the canvas holding their paint)
- *   event=lock|drop|clear|quad|twist|perfect|levelUp|fresh   fire a gameplay event...
+ *   event=lock|drop|single|double|triple|quad|spin|twist|b2b|cascade|combo|chainBreak|
+ *         perfect|crown|levelUp|gameOver|fresh
+ *                            fire a gameplay event (clear takes lines, drop takes distance, cascade takes depth)...
  *   eventAge=<s>             ...and show it <s> seconds later (lines=<n>, row=<r>, u=<0..1>,
  *                            color=<hex>)
  *   demo=1                   live only: play a looping gameplay script
@@ -31,6 +33,7 @@
  *                            (iconX, iconY, iconZoom; capture a square frame)
  */
 import * as THREE from 'three/webgpu';
+import { mountSoloWellPreview } from '../solo-well-preview.js';
 import { ChromaticImpastoWorld } from '../../themes/chromatic-impasto/chromatic-impasto-world.js';
 import { ChromaticImpastoPost, POST_LOOK } from '../../themes/chromatic-impasto/chromatic-impasto-post.js';
 import { readLayoutRects } from '../../themes/chromatic-impasto/chromatic-impasto-composition.js';
@@ -47,50 +50,11 @@ function num(params, key, fallback = 0) {
     return Number.isFinite(v) ? v : fallback;
 }
 
-const BOARD_PX = 'min(clamp(220px, 22vw, 300px), (100vh - 250px) / 2)';
-
-/** A stand-in for the real solo layout (public/styles/main.css) with the real class names. */
-function mountBoardOverlay(withHud) {
-    const root = document.createElement('div');
-    root.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:5';
-    const card = document.createElement('div');
-    card.className = 'player-card';
-    card.dataset.player = 'solo';
-    card.style.cssText = [
-        'position:absolute', 'left:50%', 'top:50%',
-        `width:calc(${BOARD_PX} * 1.19)`,
-        `height:calc(2 * ${BOARD_PX} + 158px)`,
-        'transform:translate(-50%, -50%)', 'background:rgba(21,26,35,0.866)',
-        'border:1px solid rgba(139,92,246,0.45)', 'border-radius:20px',
-    ].join(';');
-    const board = document.createElement('div');
-    board.id = 'single-player-game-canvas';
-    board.style.cssText = [
-        'position:absolute', 'left:50%', 'bottom:24px', `width:calc(${BOARD_PX})`, `height:calc(2 * ${BOARD_PX})`,
-        'transform:translateX(-50%)', 'border:1px solid rgba(255,255,255,0.08)',
-    ].join(';');
-    card.append(board);
-    root.append(card);
-    if (withHud) {
-        const hud = document.createElement('div');
-        hud.className = 'single-player-stats-bar';
-        hud.style.cssText = [
-            'position:absolute', 'top:25%', 'height:50%',
-            'left:calc(50% + min(max(300px, min(35vw, 400px)), (100vh - 200px) / 2) / 2 + 60px)',
-            'width:140px',
-            'background:rgba(14,11,26,0.8)', 'border:1px solid rgba(150,110,255,0.25)', 'border-radius:10px',
-        ].join(';');
-        root.append(hud);
-    }
-    document.body.appendChild(root);
-    return root;
-}
-
 /** The game's piece colours (chromatic-impasto-tetrominos.js). */
 const PIECE_COLORS = ['I', 'J', 'L', 'O', 'S', 'T', 'Z'].map((k) => CHROMATIC_IMPASTO_TETROMINOS.colors[k]);
 
 /** A looping script of locks and clears for the live demo (seconds into the loop). */
-const DEMO_LOOP = 36;
+const DEMO_LOOP = 48;
 const DEMO_SCRIPT = [
     [5.0, 'lock', { rows: [19], u: 0.2 }], [6.0, 'lock', { rows: [19, 18], u: 0.75 }],
     [7.0, 'lock', { rows: [18, 17], u: 0.4, hardDrop: true }], [8.0, 'lock', { rows: [17], u: 0.85 }],
@@ -111,6 +75,11 @@ const DEMO_SCRIPT = [
         rows: [19, 18], lines: 2, twist: true, combo: 1,
     }],
     [32.0, 'lock', { rows: [19], u: 0.5 }],
+    [33.2, 'clear', { rows: [19, 18], lines: 2, cascade: 3 }],
+    [35.2, 'clear', { rows: [19, 18, 17, 16], lines: 4, b2b: true }],
+    [38.5, 'clear', { rows: [19, 18, 17, 16], lines: 4, perfect: true }],
+    [41.4, 'levelUp'],
+    [44.1, 'gameOver'],
 ];
 
 export function create({
@@ -136,7 +105,10 @@ export function create({
         falseColor: params.get('falseColor') === '1',
     });
     if (noPost) renderer.toneMapping = THREE.AgXToneMapping;
-    const overlay = params.get('board') === '1' ? mountBoardOverlay(params.get('statsHud') !== '0') : null;
+    const overlay = params.get('board') === '1'
+        ? mountSoloWellPreview(meta.id, CHROMATIC_IMPASTO_TETROMINOS, params.get('statsHud') !== '0') : null;
+    const styleLink = overlay?.querySelector('link');
+    let waitingForBoardStyle = Boolean(styleLink && !styleLink.sheet);
 
     const pointer = { x: num(params, 'px'), y: num(params, 'py') };
     const iconPose = params.get('icon') === '1';
@@ -181,29 +153,45 @@ export function create({
     };
 
     const eventName = params.get('event');
-    const eventAge = num(params, 'eventAge', 0.4);
-    const holdCombo = Math.max(0, Math.round(num(params, 'combo', 0)));
+    const eventAge = Math.max(0, num(params, 'eventAge', 0.4));
+    const chainEvent = eventName === 'combo' || eventName === 'chainBreak';
+    const links = Math.max(chainEvent ? 2 : 0, Math.round(num(params, 'combo', chainEvent ? 5 : 0)));
+    const holdCombo = eventName === 'combo' ? links - 1 : links;
     const comboHold = Math.max(0, num(params, 'comboHold', 3));
     const level = Math.max(1, Math.round(num(params, 'level', 1)));
-    const warmLocks = Math.max(0, Math.round(num(params, 'locks', 0)));
+    const warmLocks = Math.max(0, Math.round(num(params, 'locks', eventName === 'fresh' ? 2 : 0)));
     const colorParam = params.get('color');
     const eventColor = colorParam ? `#${colorParam.replace('#', '')}` : PIECE_COLORS[5];
     const fireEvent = () => {
         const row = Math.round(num(params, 'row', 12));
         const u = num(params, 'u', 0.3);
         const lines = Math.max(1, Math.min(4, Math.round(num(params, 'lines', 2))));
+        const namedRows = ['single', 'double', 'triple', 'quad'].indexOf(eventName) + 1;
         const bottom = (n) => Array.from({ length: n }, (_, i) => 19 - i);
         if (eventName === 'lock') world.onLock({ rows: [row, row - 1], u, color: eventColor });
         else if (eventName === 'drop') {
             world.onLock({
-                rows: [row, row - 1], u, hardDrop: true, color: eventColor,
+                rows: [row, row - 1], u, hardDrop: true, distance: num(params, 'distance', 16), color: eventColor,
             });
         } else if (eventName === 'clear') world.onClear({ rows: bottom(lines), lines });
-        else if (eventName === 'quad') world.onClear({ rows: bottom(4), lines: 4 });
+        else if (namedRows) world.onClear({ rows: bottom(namedRows), lines: namedRows });
+        else if (eventName === 'spin') world.onSpin();
         else if (eventName === 'twist') world.onClear({ rows: bottom(2), lines: 2, twist: true });
-        else if (eventName === 'perfect') world.onClear({ rows: bottom(4), lines: 4, perfect: true });
+        else if (eventName === 'b2b') {
+            world.onClear({
+                rows: bottom(lines), lines, twist: true, b2b: true,
+            });
+        } else if (eventName === 'cascade') {
+            world.onClear({ rows: bottom(lines), lines, cascade: num(params, 'depth', 3) });
+        } else if (eventName === 'perfect') world.onClear({ rows: bottom(4), lines: 4, perfect: true });
+        else if (eventName === 'combo') world.onCombo(links);
+        else if (eventName === 'chainBreak') world.onCombo(0);
+        else if (eventName === 'crown') world.crown();
         else if (eventName === 'levelUp') world.levelUp(num(params, 'eventLevel', level + 1));
-        else if (eventName === 'fresh') world.freshCanvas();
+        else if (eventName === 'gameOver') {
+            world.signPainting();
+            world.resetSession();
+        } else if (eventName === 'fresh') world.freshCanvas();
     };
 
     let sought = null;
@@ -211,6 +199,7 @@ export function create({
         // The host seeks every frame while ?t= is set: the painting only needs laying once.
         if (sought === time) return;
         sought = time;
+        if (waitingForBoardStyle) return;
         const lead = (eventName ? eventAge : 0) + num(params, 'lead', 1.5) + warmLocks * 0.5
             + (holdCombo > 0 ? comboHold : 0);
         const start = Math.max(0, time - lead);
@@ -255,6 +244,21 @@ export function create({
         pushPost(time);
     };
 
+    // Paint the scripted strokes once, after the live well and ledger have their final sizes.
+    const layoutReady = waitingForBoardStyle && new Promise((resolve) => {
+        styleLink.addEventListener('load', resolve, { once: true });
+        styleLink.addEventListener('error', resolve, { once: true });
+    }).then(() => {
+        if (!overlay.isConnected) return;
+        waitingForBoardStyle = false;
+        syncViewport();
+        if (sought !== null) {
+            const time = sought;
+            sought = null;
+            seekTo(time);
+        }
+    });
+
     const demo = params.get('demo') === '1';
     let demoCursor = 0;
     let demoLoop = -1;
@@ -272,9 +276,14 @@ export function create({
             if (verb === 'lock') {
                 demoPiece += 1;
                 world.onLock({ ...detail, color: PIECE_COLORS[demoPiece % PIECE_COLORS.length] });
-            } else {
+            } else if (verb === 'clear') {
                 world.onClear(detail);
-                world.onCombo(detail.combo);
+                world.onCombo(detail.combo || 0);
+            } else if (verb === 'levelUp') {
+                world.levelUp(world.level + 1);
+            } else if (verb === 'gameOver') {
+                world.signPainting();
+                world.resetSession();
             }
             demoCursor += 1;
         }
@@ -300,6 +309,10 @@ export function create({
         render() {
             if (post) post.render();
             else renderer.render(scene, camera);
+        },
+        async renderAsync() {
+            if (layoutReady) await layoutReady;
+            this.render();
         },
         resize() {
             sought = null;

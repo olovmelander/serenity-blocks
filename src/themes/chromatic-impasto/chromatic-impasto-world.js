@@ -44,14 +44,15 @@ import { PaintCanvas } from './chromatic-impasto-canvas.js';
 import { createSurface } from './chromatic-impasto-surface.js';
 import { createDroplets, createMotes } from './chromatic-impasto-fx.js';
 import {
-    ambientGesture, burstGesture, canvasExtent, composeUnderpainting, haloGesture, lockGesture, scrapeGesture,
-    spiralGesture, splatGesture, sweepGesture,
+    ambientGesture, burstGesture, canvasExtent, cascadeGesture, composeUnderpainting, doubleCutGesture, haloGesture,
+    lockGesture, rosetteGesture, scrapeGesture, signatureGesture, spiralGesture, splatGesture, stripRowY, sweepGesture,
 } from './chromatic-impasto-gestures.js';
 import {
     BOARD_GRID, boardFor, boardPoint, cardUnion, fallbackLayout,
 } from './chromatic-impasto-composition.js';
 import { applyCameraBreath } from '../shared/camera-breath.js';
 import { GameplaySurge, Swell } from '../shared/gameplay-surge.js';
+import { flashScale } from '../../utils/photosensitivity.js';
 
 /** The rest camera (the frame is always two canvas units tall, so the field of view is fixed). */
 export const REST_RIG = Object.freeze({
@@ -224,6 +225,7 @@ export class ChromaticImpastoWorld {
         this.twistReach = TWIST_REACH[0];
         this.dryClock = 0;
         this.session = 0;
+        this.signed = false;
         this.ambientIndex = Math.max(0, Math.floor((time - INTRO_SPAN - 1) / AMBIENT_BEAT));
         this.recent = [];
         this.counts = {
@@ -272,7 +274,8 @@ export class ChromaticImpastoWorld {
             span,
             density: this.tier.density * 0.42,
             card: this.card,
-        }).filter((s) => s.height > 0.5);
+            layGround: false,
+        });
         strokes.forEach((s) => {
             s.tag = tag;
         });
@@ -411,6 +414,25 @@ export class ChromaticImpastoWorld {
             };
         }
         const heartX = (this.card.x0 + this.card.x1) * 0.5;
+        const { card } = this;
+        const { hud } = this.layout;
+        const overlaps = hud && (hud.x0 * 2 - 1) * this.aspect < card.x1
+            && (hud.x1 * 2 - 1) * this.aspect > card.x0;
+        this.stackedLedger = Boolean(overlaps && 1 - 2 * hud.y0 < card.y0 + 0.04);
+        this.gildingFrame = card;
+        this.paintStrips = null;
+        if (Math.min(card.x0 + this.aspect, this.aspect - card.x1) < 0.3) {
+            const top = Math.min(1, Math.max(card.y1, overlaps ? 1 - 2 * hud.y0 : -1) + 0.018);
+            const bottom = Math.max(-1, Math.min(card.y0, overlaps ? 1 - 2 * hud.y1 : 1) - 0.018);
+            const above = {
+                sign: 1, edge: top, depth: Math.max(0, 0.982 - top), halfWidth: this.aspect,
+            };
+            const below = {
+                sign: -1, edge: bottom, depth: Math.max(0, 0.982 + bottom), halfWidth: this.aspect,
+            };
+            this.paintStrips = [above.depth < 0.07 ? below : above, below.depth < 0.07 ? above : below];
+            if (this.stackedLedger) this.gildingFrame = { ...card, y0: Math.min(card.y0, 1 - 2 * hud.y1) };
+        }
         const heartY = (this.card.y0 + this.card.y1) * 0.5;
         // The paint is stirred about the board: before the board moves, the turn is baked in.
         if (Math.hypot(heartX - this.heart.x, heartY - this.heart.y) > 1e-3) this.bakeTwist();
@@ -481,6 +503,23 @@ export class ChromaticImpastoWorld {
         this.hushUntil = -1;
     }
 
+    /** The last hand to touch this painting signs it once, down in an open corner. */
+    signPainting() {
+        if (!this.u || this.signed) return;
+        this.signed = true;
+        const site = this.openCloth(0.72, -0.76, 0.26, 0.6);
+        if (site.size < 0.04) return;
+        this.painter.addAll(signatureGesture({
+            x: site.x,
+            y: site.y - site.size * 0.37,
+            size: site.size,
+            light: this.period.light,
+            color: this.recent[0] || this.period.accents[0],
+            t0: this.time + 0.08,
+            seed: this.session + 97,
+        }));
+    }
+
     /**
      * A new game: the canvas is scraped down and blocked in again, at level one: in the period
      * the clock has reached (it keeps turning between games).
@@ -488,9 +527,11 @@ export class ChromaticImpastoWorld {
     freshCanvas() {
         this.level = 1;
         const period = this.periodFor(this.time);
-        const untouched = this.counts.locks === 0 && this.counts.clears === 0 && this.periodIndex === period;
+        const untouched = !this.signed && this.counts.locks === 0
+            && this.counts.clears === 0 && this.periodIndex === period;
         if (untouched) return;
         this.resetSession();
+        this.signed = false;
         this.landPeriod(period);
         this.session += 1;
         this.recent.length = 0;
@@ -537,6 +578,7 @@ export class ChromaticImpastoWorld {
             level: this.level,
             periodIndex: this.periodIndex,
             session: this.session,
+            signed: this.signed,
             recent: this.recent.map((c) => [...c]),
             counts: { ...this.counts },
             ambientIndex: this.ambientIndex,
@@ -559,6 +601,7 @@ export class ChromaticImpastoWorld {
         this.level = painting.level;
         this.landPeriod(painting.periodIndex);
         this.session = painting.session;
+        this.signed = painting.signed === true;
         this.recent = painting.recent.map((c) => [...c]);
         this.counts = { ...painting.counts };
         this.ambientIndex = painting.ambientIndex;
@@ -651,22 +694,67 @@ export class ChromaticImpastoWorld {
         return edge;
     }
 
+    /** Fit a rare finishing mark completely on visible cloth, including in portrait or with several boards. */
+    openCloth(aimX, aimY, maxSize, heightRatio = 1) {
+        if (this.paintStrips && this.stackedLedger) {
+            const strip = this.paintStrips[aimY < 0 ? 1 : 0];
+            const size = Math.min(maxSize, this.aspect * 0.6, (strip.depth * 0.46) / heightRatio);
+            return {
+                x: clamp(aimX * this.aspect, -this.aspect + size + 0.01, this.aspect - size - 0.01),
+                y: strip.edge + strip.sign * strip.depth * 0.5,
+                size,
+            };
+        }
+        const blocks = [this.card];
+        const { hud } = this.layout;
+        if (hud) {
+            blocks.push({
+                x0: (hud.x0 * 2 - 1) * this.aspect,
+                x1: (hud.x1 * 2 - 1) * this.aspect,
+                y0: 1 - 2 * hud.y1,
+                y1: 1 - 2 * hud.y0,
+            });
+        }
+        let best = { x: 0, y: 0, size: 0 };
+        let bestScore = 0;
+        for (let iy = -5; iy <= 5; iy++) {
+            for (let ix = -5; ix <= 5; ix++) {
+                const x = (ix / 6) * this.aspect;
+                const y = iy / 6;
+                let room = Math.min(this.aspect - Math.abs(x), (1 - Math.abs(y)) / heightRatio);
+                for (const rect of blocks) {
+                    const dx = Math.max(rect.x0 - x, x - rect.x1);
+                    const dy = Math.max(rect.y0 - y, y - rect.y1) / heightRatio;
+                    room = Math.min(room, Math.max(dx, dy));
+                }
+                const size = Math.min(maxSize, room - 0.028);
+                const score = size / (1 + 0.4 * Math.hypot(ix / 6 - aimX, y - aimY));
+                if (score > bestScore) {
+                    best = { x, y, size };
+                    bestScore = score;
+                }
+            }
+        }
+        return best;
+    }
+
     /** The colours of the last pieces laid, newest first, padded from the period's tubes. */
     recentColors(count) {
         const out = [];
         for (let i = 0; i < count; i++) {
-            out.push(this.recent[i] || this.period.masses[(i * 2 + this.counts.clears) % this.period.masses.length]);
+            out.push(this.recent[i] || this.period.masses[(i + this.counts.clears) % this.period.masses.length]);
         }
         return out;
     }
 
     /** Thrown paint: drops leave (x, y) and land where the pool says, leaving a dot each. */
     throwPaint({
-        x, y, dx, dy, n, color, time, speed = 1, spread = 0.9, size = 1, special = 0,
+        x, y, dx, dy, n, color, time, speed = 1, spread = 0.9, size = 1, special = 0, strip = null,
     }) {
         if (!this.droplets || n <= 0) return;
+        const count = Math.round(n * (this.droplets.count / 384));
         const landings = this.droplets.emit({
-            x, y, dx, dy, n: Math.round(n * (this.droplets.count / 384)), color, time, speed, spread, size, special,
+            x, y, dx, dy, n: count, color, time, speed, spread, size, special, strip,
         });
         for (let i = 0; i < landings.length; i++) {
             const l = landings[i];
@@ -693,18 +781,18 @@ export class ChromaticImpastoWorld {
      * ({ x, y } window fractions) replaces the board position for the meditation mode's clicks.
      */
     onLock({
-        rows = null, u = 0.5, hardDrop = false, color = null, player = 0, screen = null,
+        rows = null, u = 0.5, hardDrop = false, distance = 12, color = null, player = 0, screen = null,
     } = {}) {
         if (!this.u) return;
         const t = this.time;
         const rgb = color ? pigmentFromHex(color) : this.period.masses[this.counts.locks % this.period.masses.length];
         const index = this.counts.locks;
         const rand = mulberry32(index * 6007 + 131);
-        const { card } = this;
         const frameX = this.aspect;
         let x;
         let y;
         let out;
+        let strip = null;
         let reach = radicalInverse(index + 1);
         if (screen) {
             [x, y] = this.screenToCanvas(screen.x, screen.y);
@@ -724,7 +812,7 @@ export class ChromaticImpastoWorld {
             const side = u < 0.5 ? -1 : 1;
             const edgeX = this.sideEdge(side, at[1]);
             const room = side < 0 ? edgeX + frameX : frameX - edgeX;
-            if (room > 0.16) {
+            if (room > 0.16 && !(this.stackedLedger && this.paintStrips)) {
                 // Out of the card's side, at the piece's height: nearer or farther from lock to lock.
                 x = edgeX + side * 0.012;
                 y = at[1] + (rand() - 0.5) * 0.03;
@@ -733,17 +821,18 @@ export class ChromaticImpastoWorld {
             } else {
                 // No room beside it (a tall, narrow frame): out of the card's top or foot, over
                 // the piece's column.
-                const up = at[1] > this.heart.y ? 1 : -1;
-                const edge = up > 0 ? card.y1 : card.y0;
-                x = at[0] + (rand() - 0.5) * 0.03;
-                y = edge + up * 0.012;
-                out = [(rand() - 0.5) * 0.6, up];
-                reach *= clamp((1 - Math.abs(edge)) / 0.9, 0.05, 0.5);
+                const up = at[1] > this.heart.y;
+                strip = this.paintStrips?.[up ? 0 : 1];
+                x = clamp(at[0], -0.7 * frameX, 0.7 * frameX);
+                const cardEdge = up ? this.card.y1 + 0.02 : this.card.y0 - 0.02;
+                y = strip ? strip.edge + strip.sign * strip.depth * 0.35 : cardEdge;
+                out = [x > 0 ? -1 : 1, 0];
             }
         }
         const under = this.recent[0] || null;
         // A quick hand loads the brush: the stroke reaches further, stands thicker and runs wetter.
         const { energy } = this.drive;
+        const impact = 0.64 + 0.58 * clamp01(distance / BOARD_GRID.rows);
         const gesture = lockGesture({
             field: this.field,
             x,
@@ -752,9 +841,10 @@ export class ChromaticImpastoWorld {
             color: rgb,
             under,
             hard: hardDrop,
-            reach: reach * (1 + 0.45 * energy),
+            reach: reach * (1 + 0.45 * energy) * (hardDrop ? impact : 1),
             t0: t,
             seed: index + 1,
+            strip,
         });
         if (energy > 0) {
             gesture.strokes.forEach((s) => {
@@ -769,7 +859,7 @@ export class ChromaticImpastoWorld {
             this.painter.addAll(splatGesture({
                 x: x + out[0] * 0.05,
                 y: y + out[1] * 0.05,
-                radius: 0.045 + rand() * 0.015,
+                radius: Math.min((0.045 + rand() * 0.015) * impact, strip ? strip.depth * 0.082 : Infinity),
                 color: rgb,
                 colorB: under,
                 t0: t,
@@ -781,12 +871,13 @@ export class ChromaticImpastoWorld {
                 y,
                 dx: out[0],
                 dy: out[1],
-                n: 22 * (1 + 0.8 * energy),
+                n: (12 + 10 * impact) * (1 + 0.8 * energy),
                 color: rgb,
                 time: t,
-                speed: 1.25 * (1 + 0.25 * energy),
+                speed: 1.25 * impact * (1 + 0.25 * energy),
                 spread: 1.4,
                 size: 1.1,
+                strip,
             });
         } else {
             // A few drops leave the brush as it lifts.
@@ -803,11 +894,12 @@ export class ChromaticImpastoWorld {
                 speed: 0.6 * (1 + 0.25 * energy),
                 spread: 0.7,
                 size: 0.8,
+                strip,
             });
         }
         this.recent.unshift(rgb);
         if (this.recent.length > 8) this.recent.length = 8;
-        this.strike(hardDrop ? 0.5 : 0.1, hardDrop ? 0.08 : 0.015, t);
+        this.strike(hardDrop ? 0.5 * impact : 0.1, hardDrop ? 0.08 : 0.015, t);
         this.play.lock({ hardDrop }, t);
         this.counts.locks += 1;
     }
@@ -867,7 +959,6 @@ export class ChromaticImpastoWorld {
         const depth = Math.max(0, Math.min(8, Math.round(Number(cascade) || 1) - 1));
         const { energy } = this.drive;
         const index = this.counts.clears;
-        const rand = mulberry32(index * 4421 + 59);
         const { card } = this;
         const { halfX } = canvasExtent(this.aspect);
         const board = boardFor(this.layout, player);
@@ -881,19 +972,30 @@ export class ChromaticImpastoWorld {
         const rowHeight = board ? ((board.y1 - board.y0) * 2) / BOARD_GRID.rows : 0.074;
         // A tall frame has no cloth beside the board: there the rows leave from under its foot
         // and over its top, both ways from the middle.
-        const narrow = !screen && Math.min(card.x0 + this.aspect, this.aspect - card.x1) < 0.3;
+        const narrow = !screen && this.paintStrips;
         let centre = this.heart.y;
         for (let i = 0; i < list.length && i < 4; i++) {
             let y;
+            let strips = null;
             let { x0, x1 } = card;
-            if (screen) y = this.screenToCanvas(screen.x, screen.y)[1] + (i - (list.length - 1) / 2) * rowHeight;
-            else if (board) y = this.screenToCanvas(0.5, boardPoint(board, 0.5, list[i], this._point).y)[1];
+            if (screen) {
+                const hit = this.screenToCanvas(screen.x, screen.y);
+                y = hit[1] + (i - (list.length - 1) / 2) * rowHeight;
+                [x0] = hit;
+                x1 = x0;
+            } else if (board) y = this.screenToCanvas(0.5, boardPoint(board, 0.5, list[i], this._point).y)[1];
             else y = card.y0 + rowHeight * (i + 0.5);
             if (narrow) {
-                const out = 0.07 + Math.floor(i / 2) * rowHeight * 1.9;
-                y = i % 2 === 0 ? card.y0 - out : card.y1 + out;
-                x0 = this.heart.x;
-                x1 = this.heart.x;
+                // Each row crosses both strips of the solo portrait layout. Together they
+                // braid or fan above the queue and under the ledger, at the depth of each strip.
+                const band = narrow[i % 2 === 0 ? 1 : 0];
+                strips = this.stackedLedger ? narrow : [band, band];
+                y = stripRowY(strips[0], n, i, 0);
+                x0 = this.stackedLedger ? this.aspect * 0.68 : this.heart.x;
+                x1 = this.stackedLedger ? -this.aspect * 0.68 : this.heart.x;
+            } else if (!screen) {
+                x0 = this.sideEdge(-1, y);
+                x1 = this.sideEdge(1, y);
             }
             centre = y;
             // A back-to-back's first row leaves in gold leaf: the second difficult clear is gilded.
@@ -910,34 +1012,41 @@ export class ChromaticImpastoWorld {
                 seed: index * 5 + i + 1,
                 special: gilt ? 1 : 0,
                 dur: 0.42 / (1 + 0.12 * depth),
+                rows: n,
+                lane: i,
+                strips,
             });
             this.painter.addAll(strokes);
             // Paint flies off the brush as it leaves the card.
             for (let side = -1; side <= 1; side += 2) {
+                const strip = strips?.[side < 0 ? 0 : 1];
+                if (strip) y = stripRowY(strip, n, i, 0);
                 this.throwPaint({
                     x: side < 0 ? x0 - 0.05 : x1 + 0.05,
                     y,
                     dx: side,
-                    dy: 0.15,
+                    dy: strip ? strip.sign * 0.07 : 0.15,
                     n: (7 + n * 2 + 4 * depth) * (1 + 0.6 * energy),
                     color: gilt ? GOLD : colors[i % colors.length],
                     time: birth + i * 0.045 + 0.04,
                     speed: 1.1 + n * 0.12 + 0.16 * depth,
                     spread: 0.8,
                     special: gilt ? 1 : 0,
+                    strip,
                 });
-                if (depth > 0 && i === 0) {
-                    // A deeper wave strikes the cloth where its brush leaves the card: a splat a
-                    // wave, bigger and further out each time.
-                    this.painter.addAll(splatGesture({
-                        x: side < 0 ? x0 - 0.1 - 0.035 * depth : x1 + 0.1 + 0.035 * depth,
-                        y: y + (rand() - 0.5) * 0.08,
-                        radius: 0.028 + 0.008 * depth,
-                        color: colors[(depth + (side < 0 ? 0 : 1)) % colors.length],
-                        colorB: colors[(depth + 2) % colors.length],
-                        t0: birth + 0.06,
-                        seed: index * 13 + depth * 3 + side + 5,
-                        spatter: 4 + 2 * depth,
+                if (i !== 0) continue;
+                const x = side < 0 ? x0 : x1;
+                const room = Math.min(1.2, this.aspect - side * x);
+                if (room < 0.12) continue;
+                const seed = index * 13 + depth * 3 + side + 5;
+                if (depth > 0) {
+                    this.painter.addAll(cascadeGesture({
+                        x, y, side, room, depth, colors, t0: birth + 0.06, seed, strip,
+                    }));
+                }
+                if (b2b) {
+                    this.painter.addAll(doubleCutGesture({
+                        x, y, side, room, t0: birth + 0.13, seed, color: colors[1], strip,
                     }));
                 }
             }
@@ -960,7 +1069,7 @@ export class ChromaticImpastoWorld {
             this.hushDepth = 1 - HUSH_EASE * this.heat.level;
             this.glow.hit(1 + (b2b ? 0.3 : 0), birth);
             const burst = burstGesture({
-                card,
+                card: this.gildingFrame || card,
                 colors: this.recentColors(5),
                 t0: birth,
                 seed: index + 11,
@@ -977,7 +1086,11 @@ export class ChromaticImpastoWorld {
             // Every four-line clear of a game lays its ring outside the last: the board's frame (a
             // back-to-back lays it thicker).
             this.painter.addAll(haloGesture({
-                card, t0: birth + 0.28, seed: index + 3, ring: this.counts.quads % 4, width: b2b ? 0.05 : 0.034,
+                card: this.gildingFrame || card,
+                t0: birth + 0.28,
+                seed: index + 3,
+                ring: this.counts.quads % 4,
+                width: b2b ? 0.05 : 0.034,
             }));
             // Flakes of gold in the air over the board.
             this.throwPaint({
@@ -1006,15 +1119,15 @@ export class ChromaticImpastoWorld {
             this.painter.addAll(spiralGesture({
                 cx: this.heart.x,
                 cy: this.heart.y,
-                radius: round.radius,
+                radius: round.radius * 1.38,
                 squash: round.squash,
                 colors: [colors[0], this.period.light, colors[1]],
                 t0: birth,
-                seed: index + 17 + Math.floor(rand() * 9),
+                seed: index + 17,
                 arms: 3,
-                sweep: 3.2,
+                sweep: -3.9,
                 width: 0.03,
-                grow: 0.25,
+                grow: -0.43,
             }));
         }
         this.counts.clears += 1;
@@ -1043,8 +1156,20 @@ export class ChromaticImpastoWorld {
             tag: 'gold',
         }));
         this.painter.addAll(haloGesture({
-            card: this.card, t0: at, seed: index + 41, ring: this.counts.quads % 4,
+            card: this.gildingFrame || this.card, t0: at, seed: index + 41, ring: this.counts.quads % 4,
         }));
+        const site = this.openCloth(index % 2 === 0 ? -0.62 : 0.62, 0.18, 0.38);
+        if (site.size >= 0.06) {
+            this.painter.addAll(rosetteGesture({
+                x: site.x,
+                y: site.y,
+                radius: site.size * 0.9,
+                colors: this.recentColors(4),
+                light: this.period.light,
+                t0: at + 0.16,
+                seed: index + 73,
+            }));
+        }
         this.counts.quads += 1;
         this.throwPaint({
             x: this.heart.x,
@@ -1078,28 +1203,27 @@ export class ChromaticImpastoWorld {
         this.play.crown(t);
     }
 
-    /** A twist that cleared nothing: the canvas turns a little, and a short turn is drawn. */
+    /** A twist without a clear turns a loaded brush on its tip in one open patch. */
     onSpin() {
         if (!this.u) return;
         const t = this.time;
         if (!this.reducedMotion) this.twistTarget += 0.16;
-        const round = this.ringRound(0.08);
+        const site = this.openCloth(this.counts.locks % 2 === 0 ? -0.56 : 0.56, 0.04, 0.245);
         const colors = this.recentColors(2);
         this.painter.addAll(spiralGesture({
-            cx: this.heart.x,
-            cy: this.heart.y,
-            radius: round.radius,
-            squash: round.squash,
+            cx: site.x,
+            cy: site.y,
+            radius: site.size * 0.82,
             colors: [colors[0], this.period.light, colors[1]],
             t0: t,
             seed: this.counts.locks * 7 + 3,
             arms: 3,
-            sweep: 1.7,
-            width: 0.016,
-            grow: 0.15,
+            sweep: -3.5,
+            width: Math.max(0.005, site.size * 0.11),
+            grow: -0.84,
             dur: 0.4,
         }));
-        this.sendSheen(this.heart.x, this.heart.y, t, 0.35);
+        this.sendSheen(site.x, site.y, t, 0.35);
         this.strike(0.15, 0.03, t);
         this.swing = Math.max(this.swing, 0.3);
         this.play.spin(t);
@@ -1181,7 +1305,7 @@ export class ChromaticImpastoWorld {
      * A new level: the next period on top of the clock's. The painter goes over the picture in
      * the new tubes, quickly, with a sheen, a lift and a swing of the lamp.
      */
-    levelUp(level, { silent = false } = {}) {
+    levelUp(level, { silent = false, flourish = true } = {}) {
         this.level = Math.max(1, Math.round(Number(level) || 1));
         const next = this.periodFor(this.time);
         if (next === this.periodIndex) return;
@@ -1197,7 +1321,8 @@ export class ChromaticImpastoWorld {
             return;
         }
         const seed = this.seed + (this.level + periodTurns(this.time)) * 101;
-        this.turnPeriod(next, this.time, LEVEL_OVERPAINT, seed, 'level');
+        this.turnPeriod(next, this.time, flourish ? LEVEL_OVERPAINT : CLOCK_OVERPAINT, seed, 'level');
+        if (!flourish) return;
         this.sendSheen(this.heart.x, this.heart.y, this.time, 0.8);
         this.flashSwell.hit(0.12, this.time);
         this.swing = Math.max(this.swing, 0.6);
@@ -1239,7 +1364,7 @@ export class ChromaticImpastoWorld {
         // tubes, unhurried and without a word: in every mode, levelling or not. Dated from the
         // turn, so a run at any frame rate lays the same strokes at the same moments.
         const due = this.periodFor(t);
-        if (due !== this.periodIndex) {
+        if (!this.signed && due !== this.periodIndex) {
             const turns = periodTurns(t);
             const seed = this.seed + (this.level + turns) * 101 + 53;
             this.turnPeriod(due, Math.min(t, turns * PERIOD_SECONDS), CLOCK_OVERPAINT, seed, 'period');
@@ -1248,13 +1373,14 @@ export class ChromaticImpastoWorld {
         // ── The charge ──
         const target = powerForCombo(this.combo);
         this.power += (target - this.power) * approach(target > this.power ? 2.4 : 0.9, dt);
-        this.surge = this.glow.valueAt(t);
+        const flashGain = flashScale();
+        this.surge = this.glow.valueAt(t) * flashGain;
         this.flash = this.flashSwell.valueAt(t);
         this.kick = this.kickSwell.valueAt(t);
         this.swing *= Math.exp(-dt / 1.1);
         // The hush before four lines: as deep as play is cold, eased in and out.
         const hushing = t < this.hushUntil;
-        const hushTarget = hushing ? this.hushDepth : 0;
+        const hushTarget = hushing ? this.hushDepth * flashGain : 0;
         this.hushLevel += (hushTarget - this.hushLevel) * approach(hushing ? 30 : 12, dt);
         if (dt === 0) this.hushLevel = hushTarget;
         this.breath = 1 - 0.7 * this.hushLevel;
@@ -1281,7 +1407,7 @@ export class ChromaticImpastoWorld {
 
         // ── The painter's own strokes, on the studio's clock ──
         const beat = Math.floor((t - INTRO_SPAN - 1) / AMBIENT_BEAT);
-        if (beat > this.ambientIndex) {
+        if (!this.signed && beat > this.ambientIndex) {
             this.ambientIndex = beat;
             if (dt > 0) {
                 painter.addAll(ambientGesture({
@@ -1357,7 +1483,7 @@ export class ChromaticImpastoWorld {
         }
 
         this.droplets?.update(t);
-        this.motes?.update(t, this.aspect, VIEW_DISTANCE, this.layoutLive ? this.card : null);
+        this.motes?.update(t, this.aspect, VIEW_DISTANCE, this.layoutLive ? this.card : null, this.reducedMotion);
 
         // ── Uniforms ──
         u.time.value = t;

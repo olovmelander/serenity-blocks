@@ -688,6 +688,7 @@ describe('Chromatic Impasto theme: one node renderer on both backends', () => {
         const reset = vi.spyOn(world, 'resetSession');
         const fresh = vi.spyOn(world, 'freshCanvas');
         const forget = vi.spyOn(theme.director, 'reset');
+        eventBus.emit(EVENTS.PIECE_LOCK, { piece: T });
         listeners.get('gameOver')();
         expect(forget).toHaveBeenCalledOnce();
         expect(reset).toHaveBeenCalledOnce();
@@ -695,7 +696,8 @@ describe('Chromatic Impasto theme: one node renderer on both backends', () => {
         // The chain is over; the canvas is not scraped and the world is not rebuilt.
         expect(fresh).not.toHaveBeenCalled();
         expect(theme.world).toBe(world);
-        expect(world.getState()).toMatchObject({ combo: 0, counts: { locks: 3, clears: 3 } });
+        expect(world.getState()).toMatchObject({ combo: 0, counts: { locks: 4, clears: 3 } });
+        expect(world.signed).toBe(true);
         // The next run's first clear is a chain of one again.
         eventBus.emit(EVENTS.PIECE_LOCK, { piece: T });
         eventBus.emit(EVENTS.LINE_CLEAR, { lineCount: 1, clearedRows: [23], cascadeCount: 1 });

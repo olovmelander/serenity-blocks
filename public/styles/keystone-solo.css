@@ -183,6 +183,16 @@
     --sp-wall-glow: rgb(107 183 211 / 24%);
 }
 
+/* Linen highlights on the queue and ledger, with a viridian edge around the dark well. */
+:where(body:has(#chromatic-impasto-theme.active)) .single-player-stage[data-board='well']:not(:where(
+    .infinity-mode-active, [data-odyssey-board], [data-stillfall], [data-still-air], [data-danger]
+)) {
+    --sp-hue: #f3d8a4;
+    --sp-hue-rgb: 243, 216, 164;
+    --sp-wall: #659b89;
+    --sp-wall-glow: rgb(63 130 114 / 22%);
+}
+
 /* The pool's teal edge runs up the well; pale lilac quartz picks out the queue and score. */
 :where(body:has(#crystal-cave-theme.active)) .single-player-stage[data-board='well']:not(:where(
     .infinity-mode-active, [data-odyssey-board], [data-stillfall], [data-still-air], [data-danger]
@@ -262,6 +272,16 @@
     font: 600 max(8px, calc(var(--sp-next-h) * 0.15)) / 1 var(--sb-font-display);
     letter-spacing: 0.22em;
     text-transform: uppercase;
+}
+
+/* The caption sits directly over moving paint, including ivory and cadmium highlights. */
+:where(body:has(#chromatic-impasto-theme.active)) .single-player-stage[data-board='well']:not(:where(
+    .infinity-mode-active, [data-odyssey-board], [data-stillfall], [data-still-air], [data-danger]
+)) #single-player-container .single-player-piece-previews::before {
+    padding: 0.44em 0.55em;
+    border-radius: 3px;
+    color: #fff0d4;
+    background: rgb(28 30 31 / 91%);
 }
 
 .single-player-stage[data-board='well'] #single-player-container .player-next-pieces {
@@ -473,6 +493,14 @@
     --sb-text-faint: #d3beb0;
     border-color: rgb(190 139 103 / 34%);
     background: linear-gradient(155deg, rgb(53 43 44 / 97%), rgb(22 24 31 / 96%) 76%);
+}
+
+:where(body:has(#chromatic-impasto-theme.active)) .single-player-stage[data-board='well']:not(:where(
+    .infinity-mode-active, [data-odyssey-board], [data-stillfall], [data-still-air], [data-danger]
+)) .single-player-stats-bar {
+    --sb-text-faint: #cec4ae;
+    border-color: rgb(207 172 115 / 38%);
+    background: linear-gradient(149deg, rgb(45 48 44 / 97%), rgb(23 28 32 / 97%) 66%, rgb(35 29 33 / 97%));
 }
 
 /* The mode's hue as the ledger's left edge, like a seat's plate in local versus. */

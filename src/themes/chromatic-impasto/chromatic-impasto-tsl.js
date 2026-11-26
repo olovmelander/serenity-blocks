@@ -109,23 +109,29 @@ export const ciCanvasUv = (q, half) => vec2(
 // ── The cloth ───────────────────────────────────────────────────────────────────
 
 /** Threads per canvas unit (the frame is two units tall). */
-export const WEAVE_PITCH = 92;
+export const WEAVE_PITCH = 123;
 
 /**
  * Plain-weave linen: the height of the cloth at a canvas point, in [0, 1]. Warp and weft pass
  * over each other on a checker; every thread has its own thickness.
  */
 export const ciWeave = /* @__PURE__ */ Fn(([p]) => {
-    const q = p.mul(WEAVE_PITCH);
+    // Cross-laid flax yarns are pulled a little out of square by the tension on the stretcher.
+    const skew = p.add(vec2(p.y.mul(0.027), p.x.mul(-0.021)));
+    const q = skew.mul(vec2(WEAVE_PITCH, WEAVE_PITCH * 0.89)).add(
+        sin(p.yx.mul(vec2(9.7, 7.1)).add(p.xy.mul(2.1))).mul(vec2(0.24, 0.21)),
+    );
     const cell = floor(q);
     const f = fract(q);
     const over = fract(cell.x.add(cell.y).mul(0.5)).mul(2.0); // 0 or 1: which thread is on top
-    const across = mix(f.x, f.y, over);
-    const along = mix(f.y, f.x, over);
-    const thread = mix(cell.x, cell.y.add(511.0), over);
-    const slub = ciHash21(vec2(thread, over.mul(7.0).add(3.0)));
-    const bump = sin(across.mul(Math.PI)).mul(sin(along.mul(Math.PI)).mul(0.45).add(0.55));
-    return bump.mul(slub.mul(0.5).add(0.6));
+    const section = sin(f.mul(Math.PI));
+    const warpSlub = ciHash21(vec2(cell.x, 3.0)).mul(0.28).add(0.78);
+    const weftSlub = ciHash21(vec2(cell.y, 10.0)).mul(0.3).add(0.76);
+    // Both yarns continue across the crossing. At its edge each reaches its
+    // neutral height before the warp and weft change places in the next cell.
+    const warp = section.x.mul(section.y.mul(mix(-0.32, 0.4, over)).add(0.58)).mul(warpSlub);
+    const weft = section.y.mul(section.x.mul(mix(0.4, -0.32, over)).add(0.58)).mul(weftSlub);
+    return max(warp, weft);
 }).setLayout({ name: 'ci_weave', type: 'float', inputs: [{ name: 'p', type: 'vec2' }] });
 
 // ── Gilding ─────────────────────────────────────────────────────────────────────

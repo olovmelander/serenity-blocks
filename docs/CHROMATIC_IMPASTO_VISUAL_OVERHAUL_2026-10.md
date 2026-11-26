@@ -320,3 +320,101 @@ the post's output through the WGSL and GLSL node builders at High, Minimal and E
 on a warning, a throw, a stage over 64 KB, MaterialX noise, equal smoothstep edges, a NaN literal,
 a var read before it is assigned, or a laid-out `ci_*` helper that closes over a uniform or a
 texture. All five Chromatic Impasto test files pass.
+
+## Brushwork, composition and gameplay, November 2026
+
+The baseline had a strong idea worth keeping. A lock borrows pigment from the previous piece,
+and the marks the player makes survive on the canvas. The warm raking lamp, cool fill and relief
+shadows already gave those marks weight. At playing distance, repeated square ends, parallel
+rails and isolated bright dabs made the brushes look mechanically cut. Cream occurred mainly
+in short dashes. Pale motes looked flat. Counting nearly identical row sweeps was the main way
+to tell a single, double and triple apart. The older playground mock also hid how the theme
+actually read behind the solo well.
+
+![Old and revised brushwork at the same time, framing and magnification](chromatic-impasto-overhaul/november-comparison.webp)
+
+### Oil, light and linen
+
+The brush rolls onto its shoulder, widens under pressure and lifts to a fine end. Its bristles
+splay in tufts. More oil collects on one edge, which catches a stronger reflection. The relief
+target carries the local oil content in its blue channel, so a wet, smooth knife cut can cross a
+coarser brush pass under the same lamp. The dark lay-in includes dry strokes of coloured
+underpaint. In the spaces between them, individual flax threads cross continuously and soften
+as their spacing approaches a screen pixel. Cream beads reflect the window above a shaded
+underside. Thrown drops stretch at launch, gather at the top of their flight and leave a spot
+where they land.
+
+### How a painting develops
+
+Two large curls anchor the exposed cloth. Each starts with a deep colour, picks up a second
+tube on its shoulder, then receives a light edge. Between locks, the painter revisits one bend
+three times to build it up, makes a free mark and moves on. The five periods have different
+brush movements as well as different pigments. Nocturne coils tightly in ultramarine and yellow.
+Ember opens into lower sweeps of vermilion and ochre. New layers go down in sequence while the
+previous painting remains visible. A finished round receives an ivory signature and holds its
+composition until play starts again.
+
+![Fauve, Nocturne, Ember and Spring at playing distance](chromatic-impasto-overhaul/november-periods.webp)
+
+### What the player paints
+
+| Moment | Mark |
+| --- | --- |
+| Lock and hard drop | A lock pulls a brushstroke of the piece's pigment. A hard drop presses a knife into the cloth, with the impact and thrown paint scaled to the fall distance. |
+| Single, double and triple | One rising wrist flick, two crossing ribbons, or a three-blade fan. Each leaves from the cleared rows. |
+| Four lines | A brief hush, four loaded rows, radial throws and a wreath of overlapping gold leaves. |
+| Twist | A turn without a clear leaves a small three-colour thumbprint in open cloth. A clearing twist winds long strokes back toward the board. |
+| Cascade and back-to-back | A cascade leaves a skipping succession of shrinking paint impacts. Consecutive difficult clears leave a pair of hooked gold cuts. |
+| Combo and release | Each link draws the canvas further around the well. Fluorescent pigment enters at five and gold at eight. A long chain releases a spreading wet sheen. |
+| Perfect clear | A gilded, eight-petal rosette opens beside the well. A delayed perfect-clear notification adds the crown to the clear already in progress. |
+| Level, game over and restart | The painter changes tubes and overpaints at a level change, signs the completed round, then scrapes the cloth for a fresh game. |
+
+![Eighteen gameplay moments with the solo well and queue visible](chromatic-impasto-overhaul/november-events.webp)
+
+The solo well has viridian walls and a dark ledger with linen-coloured lettering. The darker
+piece pigments were lifted while retaining the theme's shape-to-colour assignments. The centre
+of the board stays dark through the strongest events. Reduce Motion holds the airborne ambient
+details in place, and Reduce Flashing attenuates the quad's dark-to-light transition.
+
+![Live solo play after four hard drops](chromatic-impasto-overhaul/november-solo.webp)
+
+At 390 × 844 the queue and ledger leave two strips of visible cloth. The row gestures fit their
+braids and fans into those strips. Droplet launch velocities are solved for the available space
+so each airborne bead and its painted landing agree. Gold leaf frames the ledger together with
+the well. [Portrait four-line clear](chromatic-impasto-overhaul/november-portrait.webp)
+
+The live solo test also started with a prepared four-row stack and one open column. A hard drop
+through the game input cleared all four rows, emptied the well and produced the eight petals
+and gold centre through the game's event director. [In-game perfect clear](chromatic-impasto-overhaul/november-perfect.webp)
+
+### Frame timing and checks
+
+Two isolated production playground builds ran the same 26-second portion of the demo on the
+NVIDIA Blackwell adapter, at High, 1280 × 720 and a 30 FPS cap. Each reached 20 locks, seven
+clears and one four-line clear. The painter used the same 1643 × 924 targets in both runs.
+
+| 95th percentile | Before | Revised |
+| --- | ---: | ---: |
+| Frame interval | 34.2 ms | 33.9 ms |
+| CPU update and render submission | 1.3 ms | 1.4 ms |
+| GPU render timestamp | 0.85 ms | 0.79 ms |
+
+The runs recorded 778 and 779 frame intervals respectively, with 25 resolved GPU timestamps
+each. These are desktop measurements. Portrait was exercised through browser emulation.
+The revised renderer uses the existing paint targets and droplet pools. Linen shading runs
+on exposed cloth, gold reflections on gilded pixels, and period changes skip building the
+dark ground strokes that would be thrown away.
+
+The visual checks covered WebGPU, forced WebGL2, Minimal through Extreme endpoints, the five
+periods, the event gallery, reduced motion and reduced flashing. The playground consoles were
+clear of shader warnings and validation errors. The live game reported Chrome's Windows
+adapter-preference notice. The production application built successfully and passed its boot
+dependency check. The theme and shared regression suites passed 331 tests.
+
+### Reproducing the review
+
+Run `npm run dev:playground` and open
+`/playground.html?effect=chromatic-impasto&board=1&demo=1&maxFps=30` for the animated
+sequence. A fixed `t=12` with `event=perfect&eventAge=1.55` shows the opened rosette.
+The playground uses the shipping painter, materials, camera and post chain together with the
+solo well's stylesheet. The live-game screenshot above comes from an actual round in the game.

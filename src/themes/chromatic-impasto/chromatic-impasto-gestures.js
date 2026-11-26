@@ -142,6 +142,64 @@ const insideCard = (card, x, y, grow = 0) => Boolean(card)
 /** A tube colour worked darker or lighter on the palette (k < 1 darker, toward `light` above 1). */
 const worked = (color, k, light) => (k <= 1 ? scaleRgb(color, k) : mixRgb(color, light, (k - 1) * 0.45));
 
+/** A loaded brush swept from the outside of a curl into the eye. Consecutive passes
+ * share the bend, with their shoulders offset like the colours picked up on one palette knife. */
+function curlPath(eye, radius, turn, squash, tilt, offset, start, end) {
+    const points = [];
+    const ax = Math.cos(tilt);
+    const ay = Math.sin(tilt);
+    for (let i = 0; i <= 72; i++) {
+        const t = lerp(start, end, i / 72);
+        const r = radius * (0.049 + t * (0.28 + 0.67 * t)) + offset * (0.15 + 0.85 * t);
+        const a = eye.spin * (turn * t + 0.14 * Math.sin(t * 8));
+        const x = Math.cos(a) * r + radius * 0.24 * t * t;
+        const y = Math.sin(a) * r * squash;
+        points.push(eye.x + ax * x - ay * y, eye.y + ay * x + ax * y);
+    }
+    return points;
+}
+
+function layCurls(out, field, aspect, period, seed, t0, span) {
+    const rand = mulberry32(seed * 739 + 381);
+    const [turn, squash] = period.curl;
+    const eyes = [field.whorls[1], field.whorls[field.whorls.length - 1]];
+    eyes.forEach((eye, index) => {
+        const radius = (index ? 0.88 : 1.05) * Math.min(1, aspect * 0.88);
+        const tilt = (index ? 3.65 : 0.82) + rand() * 0.9;
+        const width = radius * (index ? 0.104 : 0.13);
+        const deep = period.masses[index ? 0 : 1];
+        const middle = period.masses[index ? 4 : 2];
+        const rim = index ? period.masses[3] : mixRgb(middle, period.light, 0.53);
+        // Deep bed, loaded body, two fingers of light and a hair of the unmixed tube.
+        const passes = [
+            [deep, middle, 0, 1.21, 1.0, 0.025],
+            [middle, deep, 0.036, 0.86, 0.96, 0.08],
+            [rim, middle, 0.09, 0.47, 0.91, 0.15],
+            [period.light, rim, 0.12, 0.20, 0.83, 0.36],
+            [deep, rim, 0.052, 0.10, 0.69, 0.23],
+        ];
+        passes.forEach(([a, b, offset, size, start, end], k) => {
+            out.push(createStroke({
+                points: curlPath(eye, radius, turn, squash, tilt, offset * radius, start, end),
+                width: width * size,
+                widthEnd: width * size * 0.18,
+                pressure: 0.98,
+                colorA: a,
+                colorB: b,
+                mixB: k === 3 ? 0.25 : 0.44,
+                t0: t0 + span * (0.56 + 0.055 * k + index * 0.025),
+                dur: 0.42 + k * 0.025,
+                kind: k === 2 ? KIND.KNIFE : KIND.BRUSH,
+                height: 0.95 + 0.11 * k,
+                dry: 0.24 + 0.09 * k,
+                load: 1.16,
+                seed: rand() * 4096,
+                tag: 'under',
+            }));
+        });
+    });
+}
+
 /**
  * Block the canvas in. The darks first, in broad flat passes that cover the cloth; then the
  * colour masses, bold and few, so most of the picture stays deep and what is bright counts; the
@@ -151,7 +209,7 @@ const worked = (color, k, light) => (k <= 1 ? scaleRgb(color, k) : mixRgb(color,
  * @returns {object[]} strokes (tagged 'under')
  */
 export function composeUnderpainting({
-    field, aspect, period, seed = 1, t0 = 0, span = INTRO_SPAN, density = 1, card = null,
+    field, aspect, period, seed = 1, t0 = 0, span = INTRO_SPAN, density = 1, card = null, layGround = true,
 }) {
     const rand = mulberry32(seed * 9973 + 17);
     const { halfX, halfY } = canvasExtent(aspect);
@@ -163,7 +221,7 @@ export function composeUnderpainting({
     // 1 — the lay-in: dark, thin, wide.
     const cell = 0.34;
     const nx = Math.max(2, Math.ceil((2 * halfX) / cell));
-    const ny = Math.max(2, Math.ceil((2 * halfY) / cell));
+    const ny = layGround ? Math.max(2, Math.ceil((2 * halfY) / cell)) : 0;
     for (let iy = 0; iy < ny; iy++) {
         for (let ix = 0; ix < nx; ix++) {
             const x = -halfX + ((ix + 0.2 + rand() * 0.6) / nx) * 2 * halfX;
@@ -171,20 +229,23 @@ export function composeUnderpainting({
             const tone = valueNoise(x * 0.7 + 9.1, y * 0.7 + 2.3, seed + 3);
             const a = pick(period.darks, (tone - 0.2) / 0.6);
             const b = pick(period.darks, rand());
+            const wash = pick(period.masses, valueNoise(x * 1.3, y * 1.3, seed + 57));
+            const scumble = (ix + 3 * iy) % 4 !== 0;
             const points = flowPath(field, x, y, 0.6 + rand() * 0.8, { turn: across(0.2, 0.6) });
             out.push(createStroke({
-                kind: KIND.KNIFE,
+                kind: scumble ? KIND.BRUSH : KIND.KNIFE,
                 points,
                 width: fitWidth(field, points, 0.1 + rand() * 0.07),
+                pressure: 0.46,
                 t0: at(0, 0.3),
                 dur: 0.3 + rand() * 0.25,
-                colorA: scaleRgb(a, 0.75 + rand() * 0.5),
+                colorA: mixRgb(scaleRgb(a, 0.75 + rand() * 0.5), wash, scumble ? 0.082 : 0.024),
                 colorB: b,
                 mixB: 0.3,
                 load: 0.9,
-                dry: 0.3,
-                bristle: 0.3,
-                height: 0.32,
+                dry: scumble ? 0.66 : 0.32,
+                bristle: scumble ? 0.88 : 0.23,
+                height: scumble ? 0.41 : 0.29,
                 seed: rand() * 4096,
                 tag: 'under',
             }));
@@ -192,7 +253,7 @@ export function composeUnderpainting({
     }
 
     // 2 — the masses: each region of the picture takes one tube colour. Bold, and not many.
-    const masses = Math.round(64 * density * area);
+    const masses = Math.round(56 * density * area);
     for (let i = 0; i < masses; i++) {
         const x = -halfX + radicalInverse(i + 1) * 2 * halfX;
         const y = -halfY + ((i * 0.6180339887 + rand() * 0.02) % 1) * 2 * halfY;
@@ -218,6 +279,7 @@ export function composeUnderpainting({
             kind: knife ? KIND.KNIFE : KIND.BRUSH,
             points,
             width: fitWidth(field, points, wide ? 0.085 + rand() * 0.045 : 0.042 + rand() * 0.04),
+            pressure: knife ? 0.67 : 0.94,
             t0: at(0.2, 0.72),
             dur: 0.25 + rand() * 0.3,
             colorA: a,
@@ -243,6 +305,7 @@ export function composeUnderpainting({
             points: flowPath(field, x, y, 0.5 + rand() * 0.8),
             width: 0.014 + rand() * 0.014,
             widthEnd: 0.008 + rand() * 0.008,
+            pressure: 0.93,
             t0: at(0.5, 0.86),
             dur: 0.3 + rand() * 0.3,
             colorA: period.contour,
@@ -255,7 +318,8 @@ export function composeUnderpainting({
     }
 
     // 4 — the lights: short, loaded, laid last, as often across the current as along it.
-    const lights = Math.round(40 * density * area);
+    layCurls(out, field, aspect, period, seed, t0, span);
+    const lights = Math.round(29 * density * area);
     for (let i = 0; i < lights; i++) {
         const x = (rand() * 2 - 1) * halfX;
         const y = (rand() * 2 - 1) * halfY;
@@ -263,11 +327,12 @@ export function composeUnderpainting({
         const bright = rand() < 0.3;
         const a = bright ? period.light : pick(period.accents, rand());
         const knife = rand() < 0.45;
-        const points = flowPath(field, x, y, 0.1 + rand() * 0.26, { turn: across(0.5, 1.2) });
+        const points = flowPath(field, x, y, 0.16 + rand() * 0.42, { turn: across(0.38, 0.9) });
         out.push(createStroke({
             kind: knife ? KIND.KNIFE : KIND.BRUSH,
             points,
             width: fitWidth(field, points, 0.02 + rand() * 0.03),
+            pressure: 0.98,
             t0: at(0.68, 0.98),
             dur: 0.16 + rand() * 0.18,
             colorA: a,
@@ -305,19 +370,30 @@ export function composeUnderpainting({
  * @returns {{ strokes: object[], tip: number[], heading: number[] }}
  */
 export function lockGesture({
-    field, x, y, out, color, under = null, hard = false, reach = 0.5, t0, seed = 1,
+    field, x, y, out, color, under = null, hard = false, reach = 0.5, t0, seed = 1, strip = null,
 }) {
     const rand = mulberry32(seed * 7717 + 3);
     const length = (hard ? 0.4 : 0.26) + clamp01(reach) * (hard ? 0.5 : 0.5) + rand() * 0.06;
-    const points = flowPath(field, x, y, length, {
-        centred: false, pull: out, pullWeight: 0.55, step: 0.015,
-    });
+    let points;
+    if (strip) {
+        const run = Math.min(length, (strip.halfWidth - out[0] * x) * 0.9);
+        points = [];
+        for (let k = 0; k <= 24; k++) {
+            const f = k / 24;
+            points.push(x + out[0] * run * f, y + strip.sign * strip.depth * (0.29 * Math.sin(f * 2.6) + 0.13 * f));
+        }
+    } else {
+        points = flowPath(field, x, y, length, {
+            centred: false, pull: out, pullWeight: 0.55, step: 0.015,
+        });
+    }
+    const maxWidth = strip ? strip.depth * 0.15 : Infinity;
     const n = points.length;
     const stroke = createStroke({
         kind: hard ? KIND.KNIFE : KIND.BRUSH,
         points,
-        width: hard ? 0.032 + rand() * 0.006 : 0.018 + rand() * 0.005,
-        widthEnd: hard ? 0.052 + rand() * 0.014 : 0.046 + rand() * 0.012,
+        width: Math.min(maxWidth, hard ? 0.032 + rand() * 0.006 : 0.018 + rand() * 0.005),
+        widthEnd: Math.min(maxWidth, hard ? 0.052 + rand() * 0.014 : 0.046 + rand() * 0.012),
         t0,
         dur: hard ? 0.24 : 0.32,
         ease: 'out',
@@ -385,38 +461,52 @@ export function splatGesture({
     return out;
 }
 
-/**
- * A cleared row leaves the board: one loaded brush each way, from the card's side to the edge of
- * the cloth at the row's height, running dry as it goes.
- *
- * @param {object} p
- * @param {number} p.y             the row's height (canvas units)
- * @param {number} p.x0            the card's left side
- * @param {number} p.x1            the card's right side
- * @param {number} p.halfX         the cloth's half-width
- * @param {number} p.width         half-width of the stroke
- * @param {number[]} p.color
- * @param {number[]} [p.colorB]
- * @param {number} p.t0
- * @param {number} [p.seed]
- * @param {number} [p.special]
- * @returns {object[]} strokes
- */
+/** Height of a portrait row at fraction f along the brush's travel across its strip. */
+export function stripRowY(strip, rows, lane, f) {
+    const across = rows > 1 ? lane / (rows - 1) - 0.5 : 0;
+    let offset = 0.32 + 0.37 * Math.sin(Math.PI * f) + 0.12 * f;
+    if (rows === 2) offset = 0.5 + across * 0.52 * Math.cos(f * TAU);
+    if (rows === 3) offset = 0.47 + across * (0.19 + 0.47 * Math.sin(f * 2.22)) + 0.06 * f;
+    if (rows === 4) offset = 0.49 + across * 0.64 + 0.035 * Math.sin(f * Math.PI);
+    return strip.edge + strip.sign * strip.depth * offset;
+}
+
+/** One loaded brush each way, from the board to the edges of the cloth, running dry as it goes. */
 export function sweepGesture({
-    y, x0, x1, halfX, width, color, colorB = null, t0, seed = 1, special = 0, dur = 0.42,
+    y, x0, x1, halfX, width, color, colorB = null, t0, seed = 1, special = 0, dur = 0.42, rows = 1, lane = 0,
+    strips = null,
 }) {
     const rand = mulberry32(seed * 3301 + 29);
     const out = [];
     for (let side = -1; side <= 1; side += 2) {
+        const strip = strips?.[side < 0 ? 0 : 1];
+        const brushWidth = strip ? Math.min(width, strip.depth * (rows < 3 ? 0.115 : 0.073)) : width;
         const from = side < 0 ? x0 - width * 0.4 : x1 + width * 0.4;
         const to = side * (halfX + 0.05);
         if (Math.abs(to - from) < width * 2) continue;
-        const rise = (rand() - 0.5) * 0.16;
+        const rise = (rand() - 0.5) * 0.12;
+        const points = sweepPath(from, y, to, y + rise, (rand() - 0.5) * 0.1, 0.01, seed + side * 3 + rand() * 9);
+        // A single lifts at the wrist, a double folds over itself, and a triple
+        // opens like a fan. All three read from the rows the player actually cleared.
+        const room = Math.min(1, Math.abs(to - from));
+        const inward = y < 0 ? 1 : -1;
+        for (let k = 0; k < points.length; k += 2) {
+            const f = k / (points.length - 2);
+            if (strip) {
+                points[k + 1] = stripRowY(strip, rows, lane, f);
+                continue;
+            }
+            let bend = 0;
+            if (rows === 1) bend = 0.15 * Math.sin(Math.PI * f) + 0.1 * f * f;
+            if (rows === 2) bend = 0.16 * Math.sin(TAU * f) * (lane === 0 ? 1 : -1) + 0.09 * f;
+            if (rows === 3) bend = (0.14 + lane * 0.19) * Math.sin(f * 2.15) + f * lane * 0.045;
+            points[k + 1] += inward * room * bend;
+        }
         out.push(createStroke({
             kind: KIND.BRUSH,
-            points: sweepPath(from, y, to, y + rise, (rand() - 0.5) * 0.12, 0.012, seed + side * 3 + rand() * 9),
-            width,
-            widthEnd: width * 0.82,
+            points,
+            width: brushWidth,
+            widthEnd: brushWidth * (rows === 4 ? 0.82 : 0.35),
             t0: t0 + rand() * 0.03,
             dur,
             ease: 'out',
@@ -432,6 +522,162 @@ export function sweepGesture({
         }));
     }
     return out;
+}
+
+/** A wave leaves a descending sequence of paint beads, each strike driving the next. */
+export function cascadeGesture({
+    x, y, side, room, depth, colors, t0, seed, strip = null,
+}) {
+    const rand = mulberry32(seed * 9173 + 7);
+    const strikes = Math.min(5, depth + 2);
+    const inward = y < 0 ? 1 : -1;
+    const strokes = [];
+    for (let i = 0; i < strikes; i++) {
+        const f = i / (strikes - 1);
+        const at = t0 + i * 0.1;
+        const px = x + side * room * (0.13 + 0.76 * f);
+        const py = strip ? strip.edge + strip.sign * strip.depth * (0.35 + 0.32 * Math.sin(f * 2.8))
+            : y + inward * (0.04 + 0.18 * Math.sin(f * 2.8)) + (rand() - 0.5) * 0.035;
+        const radius = Math.min(strip ? strip.depth * 0.074 : Infinity, 0.032 + 0.009 * Math.min(depth, 4))
+            * (1 - 0.45 * f);
+        strokes.push(...splatGesture({
+            x: px,
+            y: py,
+            radius,
+            t0: at,
+            seed: seed + 7 * i,
+            spatter: i === 0 ? 3 : 1,
+            color: colors[i % colors.length],
+            colorB: colors[(i + 1) % colors.length],
+        }));
+    }
+    return strokes;
+}
+
+/** Two hooked gilding-knife cuts for consecutive difficult clears, laid over the coloured row. */
+export function doubleCutGesture({
+    x, y, side, room, t0, seed, color, strip = null,
+}) {
+    const strokes = [];
+    const inward = y < 0 ? 1 : -1;
+    const span = Math.min(0.38, room * 0.32);
+    for (let i = 0; i < 2; i++) {
+        const points = [];
+        for (let k = 0; k <= 24; k++) {
+            const f = k / 24;
+            const px = 0.08 + i * span * 0.72 + span * (0.25 * f + Math.sin(f * 2.35));
+            const py = strip ? strip.edge + strip.sign * strip.depth * (0.22 + 0.54 * f)
+                : y + inward * (0.024 + span * (1.4 * f - f * f * 0.32));
+            points.push(x + side * px, py);
+        }
+        strokes.push(createStroke({
+            kind: KIND.KNIFE,
+            points,
+            t0: t0 + i * 0.16,
+            dur: 0.32,
+            width: Math.min(span * 0.15, strip ? strip.depth * 0.11 : Infinity),
+            widthEnd: 0.008,
+            colorA: GOLD,
+            colorB: color,
+            mixB: 0.26,
+            height: 1.65,
+            load: 1.25,
+            bristle: 0.28,
+            special: 1,
+            seed: seed + 31 * i,
+            tag: 'gilt-cut',
+        }));
+    }
+    return strokes;
+}
+
+/** A single filbert builds an open rosette, a glint of gold picked up by alternate folds. */
+export function rosetteGesture({
+    x, y, radius, colors, light, t0, seed,
+}) {
+    const rand = mulberry32(seed * 719 + 1);
+    const strokes = [];
+    const rotation = rand() * TAU;
+    for (let i = 0; i < 8; i++) {
+        const points = [];
+        const heading = rotation + (i / 8) * TAU;
+        const far = radius * (0.82 + rand() * 0.18);
+        for (let k = 0; k <= 30; k++) {
+            const f = k / 30;
+            const r = far * (0.12 + 0.88 * Math.sin(Math.PI * f) + 0.12 * f);
+            const a = heading + 0.87 * f + 0.34 * Math.sin(Math.PI * f);
+            points.push(x + Math.cos(a) * r, y + Math.sin(a) * r);
+        }
+        strokes.push(createStroke({
+            points,
+            t0: t0 + i * 0.072,
+            dur: 0.37,
+            width: radius * 0.15,
+            widthEnd: radius * 0.036,
+            pressure: 0.88,
+            colorA: colors[i % colors.length],
+            colorB: i % 2 ? light : GOLD,
+            mixB: 0.43,
+            special: i % 4 === 0 ? 1 : 0,
+            load: 1.35,
+            bristle: 0.86,
+            height: 1.65,
+            dry: 0.28,
+            seed: rand() * 4096,
+            tag: 'rosette',
+        }));
+    }
+    strokes.push(createBlob({
+        x, y, t0: t0 + 0.82, radius: 0.085 * radius, colorA: GOLD, height: 1.5, special: 1, seed, tag: 'rosette',
+    }));
+    return strokes;
+}
+
+/** A rigger brush signs the picture in a continuous looping hand, then lifts in an underline. */
+export function signatureGesture({
+    x, y, size, light, color, t0, seed,
+}) {
+    const points = [];
+    for (let k = 0; k <= 96; k++) {
+        const f = k / 96;
+        const a = f * Math.PI * 5.8;
+        const strokeHeight = Math.exp(-3 * f) + 0.12;
+        points.push(
+            x + size * (1.75 * f + 0.32 * Math.sin(a) * strokeHeight - 0.92),
+            y + size * ((1 - Math.cos(a)) * 0.48 * strokeHeight + 0.13 * f),
+        );
+    }
+    return [
+        createStroke({
+            points,
+            t0,
+            dur: 0.95,
+            ease: 'linear',
+            width: size * 0.042,
+            widthEnd: size * 0.026,
+            colorA: light,
+            colorB: color,
+            mixB: 0.2,
+            height: 1.45,
+            dry: 0.2,
+            seed,
+            tag: 'signature',
+        }),
+        createStroke({
+            points: sweepPath(x - size, y - size * 0.14, x + size, y + size * 0.07, -0.12 * size),
+            t0: t0 + 1.04,
+            dur: 0.4,
+            width: size * 0.048,
+            widthEnd: size * 0.008,
+            colorA: light,
+            colorB: color,
+            mixB: 0.3,
+            height: 1.3,
+            dry: 0.55,
+            seed: seed + 9,
+            tag: 'signature',
+        }),
+    ];
 }
 
 /**
@@ -562,15 +808,23 @@ export function haloGesture({
     const out = [];
     const total = segments * turns;
     for (let i = 0; i < total; i++) {
-        const a0 = (i / segments) * TAU + rand() * 0.08;
-        const sweep = (TAU / segments) * (0.8 + rand() * 0.32);
+        const a0 = (i / segments) * TAU + rand() * 0.04;
+        const sweep = (TAU / segments) * (1.06 + rand() * 0.23);
         const grow = (ring + Math.floor(i / segments)) * (width * 2.5) + rand() * 0.012;
         const pts = [];
-        for (let k = 0; k <= 18; k++) pts.push(...around(a0 + (sweep * k) / 18, grow));
+        // Each leaf curls away from the well and lifts into the foot of the next.
+        // A little red ground remains between the gilded bellies.
+        for (let k = 0; k <= 24; k++) {
+            const f = k / 24;
+            const fold = width * (1.65 * Math.sin(f * Math.PI) + 0.55 * f);
+            pts.push(...around(a0 + sweep * f, grow + fold));
+        }
         out.push(createStroke({
             kind: KIND.KNIFE,
             points: pts,
-            width: width * (0.85 + rand() * 0.4),
+            width: width * (1.12 + rand() * 0.5),
+            widthEnd: width * 0.26,
+            pressure: 0.89,
             t0: t0 + (i / total) * 0.55,
             dur: 0.16,
             ease: 'out',
@@ -610,6 +864,7 @@ export function spiralGesture({
             points: spiralPath(cx, cy, r0, r1, a0, a0 + sweep * (0.8 + rand() * 0.4), squash, 56),
             width: width * (0.8 + rand() * 0.5),
             widthEnd: width * 0.45,
+            pressure: 0.72,
             t0: t0 + i * 0.05,
             dur: dur * (0.85 + rand() * 0.3),
             ease: 'out',
@@ -680,6 +935,48 @@ export function ambientGesture({
     field, aspect, period, card, t0, index,
 }) {
     const rand = mulberry32(index * 2909 + 97);
+    // The painter attends one bend for three visits: load a broad stroke, cut a second
+    // pigment through its shoulder, then skim the crest. The fourth visit is a free mark.
+    const pass = index % 4;
+    if (pass < 3) {
+        const phrase = Math.floor(index / 4);
+        const choose = mulberry32(phrase * 5147 + field.seed * 17 + 61);
+        const eye = field.whorls[1 + (phrase % (field.whorls.length - 1))];
+        const radius = (0.54 + 0.46 * choose()) * Math.min(1, aspect);
+        const tilt = choose() * TAU;
+        const [turn, squash] = period.curl;
+        const a = pick(period.masses, choose());
+        const b = pick(period.accents, choose());
+        const width = [0.075, 0.043, 0.014][pass] * Math.min(1, aspect + 0.28);
+        const pigments = [a, b, mixRgb(b, period.light, 0.64)];
+        return [createStroke({
+            points: curlPath(
+                eye,
+                radius,
+                turn,
+                squash,
+                tilt,
+                pass * radius * 0.042,
+                0.99 - pass * 0.046,
+                0.34 + pass * 0.052,
+            ),
+            width,
+            widthEnd: width * 0.45,
+            pressure: 0.91,
+            kind: pass === 1 ? KIND.KNIFE : KIND.BRUSH,
+            colorA: pigments[pass],
+            colorB: pass === 1 ? a : b,
+            mixB: 0.34,
+            height: 1 + pass * 0.16,
+            load: 1.12,
+            dry: 0.35 + pass * 0.12,
+            t0,
+            dur: 2.15 + rand() * 0.65,
+            ease: 'inout',
+            seed: rand() * 4096,
+            tag: 'ambient',
+        })];
+    }
     const { halfX, halfY } = canvasExtent(aspect);
     let x = 0;
     let y = 0;
@@ -698,6 +995,7 @@ export function ambientGesture({
         kind: light && rand() < 0.5 ? KIND.KNIFE : KIND.BRUSH,
         points: flowPath(field, x, y, contour ? 0.7 + rand() * 0.5 : 0.22 + rand() * 0.5),
         width: contour ? 0.012 + rand() * 0.008 : 0.022 + rand() * 0.035,
+        pressure: 0.94,
         t0,
         dur: 1.1 + rand() * 0.9,
         ease: 'inout',

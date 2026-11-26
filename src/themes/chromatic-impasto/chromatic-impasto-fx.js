@@ -12,6 +12,7 @@
 import * as THREE from 'three/webgpu';
 import {
     Fn,
+    If,
     abs,
     attribute,
     clamp,
@@ -121,8 +122,11 @@ export function createDroplets(u, count) {
     const pace = length(vel.xy);
     const heading = vel.xy.div(max(pace, 1e-4));
     const across = vec2(heading.y.negate(), heading.x);
-    // A drop in flight is drawn out along its path.
-    const stretch = float(1.0).add(min(pace.mul(0.75), 1.9));
+    // The brush pulls a strand off its tip. Surface tension draws it into a bead at
+    // the top of its arc; on the way down a shorter neck trails it again.
+    const phase = t.div(max(span, 0.001));
+    const pull = mix(1.0, 0.16, smoothstep(0.04, 0.48, phase)).add(smoothstep(0.64, 1.0, phase).mul(0.38));
+    const stretch = float(1.0).add(min(pace.mul(0.92), 1.9).mul(pull));
     const corner = positionGeometry.xy.mul(2.0);
     const extent = vel.w.mul(alive);
 
@@ -135,7 +139,9 @@ export function createDroplets(u, count) {
     const vStretch = varying(stretch, 'ciDropStretch');
     const vTint = varying(tint, 'ciDropTint');
     material.colorNode = Fn(() => {
-        const st = uv().mul(2.0).sub(1.0);
+        const cornerUv = uv().mul(2.0).sub(1.0);
+        const neck = float(1.0).add(smoothstep(0.0, 0.95, cornerUv.x.negate()).mul(vStretch.sub(1.0)).mul(0.75));
+        const st = vec2(cornerUv.x, cornerUv.y.mul(neck)).toVar();
         const r2 = dot(st, st);
         const mask = float(1.0).sub(smoothstep(0.78, 1.0, r2));
         const nz = sqrt(max(float(1.0).sub(r2), 0.0));
@@ -211,7 +217,7 @@ export function createDroplets(u, count) {
      *          where and when each drop lands
      */
     drops.emit = ({
-        x, y, dx = 0, dy = 1, n, color, time, speed = 1, spread = 0.9, size = 1, special = 0,
+        x, y, dx = 0, dy = 1, n, color, time, speed = 1, spread = 0.9, size = 1, special = 0, strip = null,
     }) => {
         const rand = mulberry32(0x7a31 + bursts * 7919);
         bursts += 1;
@@ -222,17 +228,31 @@ export function createDroplets(u, count) {
             const i = take(time);
             const a = base + (rand() - 0.5) * spread;
             const out = speed * (0.25 + rand() ** 1.5 * 1.0);
-            const vz = Math.sqrt(speed) * (0.45 + rand() * 1.5);
+            const lift = Math.sqrt(speed) * (0.45 + rand() * 1.5);
+            const vz = strip ? Math.min(lift, Math.sqrt(strip.depth * 1.65)) : lift;
             const t0 = time + rand() * 0.07;
             const z0 = 0.008;
-            const radius = (0.0055 + rand() ** 2 * 0.012) * size;
-            const vx = Math.cos(a) * out;
-            const vy = Math.sin(a) * out;
+            const radius = Math.min((0.0055 + rand() ** 2 * 0.012) * size, strip ? strip.depth * 0.05 : Infinity);
+            const flight = flightTime(vz, z0);
+            let vx = Math.cos(a) * out;
+            let vy = Math.sin(a) * out;
+            if (strip) {
+                // Constrain the landing, then solve the velocity. The airborne bead
+                // and the dot it leaves still meet in the same place at the same time.
+                const edge = strip.edge + strip.sign * strip.depth;
+                const pad = radius * 2.1;
+                const lx = Math.max(-strip.halfWidth + pad, Math.min(strip.halfWidth - pad, x + vx * flight));
+                const ly = Math.max(
+                    Math.min(edge, strip.edge) + pad,
+                    Math.min(Math.max(edge, strip.edge) - pad, y + vy * flight),
+                );
+                vx = (lx - x) / flight;
+                vy = (ly - y) / flight;
+            }
             aStart.set([x, y, z0, t0], i * 4);
             aVel.set([vx, vy, vz, radius], i * 4);
             const shade = 0.82 + rand() * 0.3;
             aTint.set([color[0] * shade, color[1] * shade, color[2] * shade, special], i * 4);
-            const flight = flightTime(vz, z0);
             landAt[i] = t0 + flight;
             landings.push({
                 x: x + vx * flight,
@@ -314,7 +334,8 @@ export function createMotes(u, count) {
     const card = uniform(new THREE.Vector4(-0.4, -0.85, 0.4, 0.85));
 
     const material = fxMaterial('Chromatic Impasto — dust');
-    const tt = u.time;
+    const tt = uniform(0);
+    let lastTime = null;
     // Each mote wanders on its own slow loop and drifts with the room's air.
     const drift = vec3(
         sin(tt.mul(seed.w.mul(0.05).add(0.03)).add(seed.x.mul(TAU))).mul(0.12),
@@ -331,12 +352,20 @@ export function createMotes(u, count) {
         seed.y.mul(2.0).sub(1.0).mul(frame.y).mul(narrow),
         z,
     );
-    const centre = home.add(drift).toVar();
+    const pearl = step(0.10, seed.z).mul(step(seed.z, 0.4));
+    // Cream paint suspended a little above the canvas catches the same window as the
+    // wet strokes. Only the smaller dust scatters light out of focus near the lens.
+    const pearlZ = seed.w.mul(0.7).add(0.48);
+    const pearlHome = vec3(seed.xy.mul(2.0).sub(1.0).mul(frame).mul(float(1.0).sub(pearlZ.div(focus))), pearlZ);
+    const centre = mix(home, pearlHome, pearl).add(drift).toVar();
     // The blur disc (world radius), never smaller than a fine point, and never wider on screen
     // than DUST.widest (a narrow phone frame would otherwise hold a few discs as big as coins).
     const depth = focus.sub(centre.z).div(focus);
-    const coc = clamp(centre.z.mul(DUST.aperture).div(focus), 0.0016, depth.mul(DUST.widest));
-    material.positionNode = vec3(centre.xy.add(positionGeometry.xy.mul(coc.mul(2.0))), centre.z);
+    const blur = clamp(centre.z.mul(DUST.aperture).div(focus), 0.0016, depth.mul(DUST.widest));
+    const coc = mix(blur, depth.mul(seed.x.mul(seed.x).mul(0.014).add(0.008)), pearl);
+    const squeeze = vec2(seed.y.mul(0.22).add(0.81), 1.0);
+    const extent = positionGeometry.xy.mul(coc.mul(2.0)).mul(mix(vec2(1.0), squeeze, pearl));
+    material.positionNode = vec3(centre.xy.add(extent), centre.z);
     // The lamp's light at the mote: its beam (a soft cone toward the canvas's middle) and its
     // falloff, spread over the disc as the eye sees it (the disc's screen area grows as coc² over
     // the distance², and the light a mote scatters does not).
@@ -359,19 +388,44 @@ export function createMotes(u, count) {
         'ciMote',
     );
     const vRim = varying(smoothstep(0.004, 0.02, coc), 'ciMoteRim');
-    material.colorNode = Fn(() => {
-        const st = uv().mul(2.0).sub(1.0);
-        const r2 = dot(st, st);
-        // a soft point, or (out of focus) a disc of even light with a brighter rim
+    const vPearl = varying(vec3(pearl, clear, seed.y), 'ciPearl');
+    const vToLamp = varying(fromLamp.div(lampDist).negate(), 'ciPearlLight');
+    material.fragmentNode = Fn(() => {
+        const st = uv().mul(2.0).sub(1.0).toVar();
+        const r2 = dot(st, st).toVar();
+        // Most flecks remain soft points of dust in the beam.
         const point = float(1.0).sub(smoothstep(0.0, 1.0, r2)).pow(2.0);
         const disc = float(1.0).sub(smoothstep(0.82, 1.0, r2)).mul(smoothstep(0.55, 0.95, r2).mul(0.6).add(0.7));
         const shape = mix(point, disc, vRim);
-        // dust glows warmer than the lamp's own white: it scatters the lamp's long, low light
-        return vec4(u.keyColor.mul(vec3(1.0, 0.8, 0.58)).mul(shape.mul(vGlow)).mul(u.exposure), 0.0);
+        const dustLight = u.keyColor.mul(vec3(1.0, 0.8, 0.58)).mul(shape.mul(vGlow).mul(0.58)).mul(u.exposure);
+        const result = vec4(dustLight, 0.0).toVar();
+        If(vPearl.x.greaterThan(0.5), () => {
+            // The floating skin has a soft lower edge, a cool shaded belly, and one warm
+            // window reflection curved across the crown. A slight lean breaks its contour.
+            const q = vec2(st.x.add(st.y.mul(st.y).mul(vPearl.z.sub(0.5)).mul(0.32)), st.y).toVar();
+            const d2 = dot(q, q).toVar();
+            const crown = sqrt(max(float(1.0).sub(d2), 0.0)).toVar();
+            const normal = vec3(q, crown);
+            const lit = clamp(dot(normal, vToLamp).mul(0.66).add(0.32), 0.0, 1.0);
+            const body = mix(vec3(0.075, 0.088, 0.084), vec3(0.67, 0.52, 0.33), lit);
+            const glintOffset = q.sub(vToLamp.xy.mul(0.56));
+            const glint = float(1.0).sub(smoothstep(0.07, 0.29, length(glintOffset.mul(vec2(0.78, 1.24)))));
+            const rim = float(1.0).sub(crown).mul(max(dot(q, vToLamp.xy.negate()), 0.0));
+            const light = body.mul(u.keyColor).mul(0.61).add(u.keyColor.mul(glint.mul(0.92)))
+                .add(vec3(0.27, 0.44, 0.49).mul(rim));
+            const alpha = float(1.0).sub(smoothstep(0.64, 1.0, d2)).mul(vPearl.y).mul(0.88);
+            result.assign(vec4(light.mul(alpha).mul(u.exposure), alpha));
+        });
+        return result;
     })();
     const motes = part('Chromatic Impasto — dust', geometry, material, 6);
     motes.count = count;
-    motes.update = (time, aspect, cameraDistance, cardRect = null) => {
+    motes.update = (time, aspect, cameraDistance, cardRect = null, reducedMotion = false) => {
+        // Pause the drift in place. Resuming from its last phase avoids a jump past all
+        // the seconds spent still. A backwards seek starts a new studio clock.
+        if (lastTime === null || time < lastTime) tt.value = reducedMotion ? 0 : time;
+        else if (!reducedMotion) tt.value += time - lastTime;
+        lastTime = time;
         frame.value.set(Math.max(0.3, aspect) * 1.02, 1.02);
         if (Number.isFinite(cameraDistance) && cameraDistance > 0.5) focus.value = cameraDistance;
         if (cardRect) card.value.set(cardRect.x0, cardRect.y0, cardRect.x1, cardRect.y1);
