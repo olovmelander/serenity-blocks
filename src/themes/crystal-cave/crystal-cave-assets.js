@@ -9,6 +9,8 @@ import * as THREE from 'three/webgpu';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
 export const CRYSTAL_CAVE_CAVERN_URL = new URL('./assets/cavern.glb', import.meta.url).href;
+export const CRYSTAL_CAVE_CAUSTICS_URL = new URL('./assets/pool-caustics.png', import.meta.url).href;
+export const CRYSTAL_CAVE_REFLECTION_URL = new URL('./assets/pool-reflection.png', import.meta.url).href;
 export const CRYSTAL_CAVE_ASSET_SCHEMA = 1;
 
 const GETTERS = ['getX', 'getY', 'getZ', 'getW'];
@@ -115,16 +117,41 @@ function disposeGltf(gltf) {
 /**
  * @param {object} [options]
  * @param {{loadAsync: Function}} [options.loader]
+ * @param {boolean} [options.bakedReflection] load the reflection weights on tiers without the planar mirror
+ * @param {{loadAsync: Function}} [options.textureLoader]
  * @param {() => boolean} [options.isCurrent] false once the caller no longer wants the result
  * @returns {Promise<object|null>} the cavern, or null when the request went stale
  */
-export async function loadCrystalCaveAssets({ loader = new GLTFLoader(), isCurrent = () => true } = {}) {
+export async function loadCrystalCaveAssets({
+    loader = new GLTFLoader(), bakedReflection = false, textureLoader = new THREE.TextureLoader(),
+    isCurrent = () => true,
+} = {}) {
     const gltf = await loader.loadAsync(CRYSTAL_CAVE_CAVERN_URL);
     if (!isCurrent()) {
         disposeGltf(gltf);
         return null;
     }
     const cavern = parseCrystalCaveCavern(gltf);
+    const urls = [CRYSTAL_CAVE_CAUSTICS_URL];
+    if (bakedReflection) urls.push(CRYSTAL_CAVE_REFLECTION_URL);
+    const textures = await Promise.allSettled(urls.map((url) => textureLoader.loadAsync(url)));
+    const failure = textures.find((item) => item.status === 'rejected');
+    if (failure || !isCurrent()) {
+        for (const item of textures) if (item.status === 'fulfilled') item.value.dispose();
+        disposeCrystalCaveAssets(cavern);
+        if (failure) throw failure.reason;
+        return null;
+    }
+    cavern.caustics = textures[0].value;
+    cavern.caustics.name = 'Crystal Cave — refracted light';
+    cavern.caustics.colorSpace = THREE.NoColorSpace;
+    cavern.caustics.wrapS = THREE.RepeatWrapping;
+    cavern.caustics.wrapT = THREE.RepeatWrapping;
+    if (bakedReflection) {
+        cavern.poolReflection = textures[1].value;
+        cavern.poolReflection.name = 'Crystal Cave — reflected mineral weights';
+        cavern.poolReflection.colorSpace = THREE.NoColorSpace;
+    }
     // The source primitives are no longer needed; the cavern geometry shares its
     // compact attribute arrays with them, and those arrays survive a geometry dispose.
     return cavern;
@@ -132,4 +159,6 @@ export async function loadCrystalCaveAssets({ loader = new GLTFLoader(), isCurre
 
 export function disposeCrystalCaveAssets(assets) {
     assets?.geometry?.dispose();
+    assets?.caustics?.dispose();
+    assets?.poolReflection?.dispose();
 }

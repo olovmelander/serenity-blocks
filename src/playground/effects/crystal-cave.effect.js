@@ -1,8 +1,12 @@
 import * as THREE from 'three/webgpu';
 import { disposeCrystalCaveAssets, loadCrystalCaveAssets } from '../../themes/crystal-cave/crystal-cave-assets.js';
 import { CrystalCavePost } from '../../themes/crystal-cave/crystal-cave-post.js';
+import { resolveCrystalCaveQuality } from '../../themes/crystal-cave/crystal-cave-quality.js';
 import { CrystalCaveReactions } from '../../themes/crystal-cave/crystal-cave-reactions.js';
+import { readCrystalCaveBoardRect } from '../../themes/crystal-cave/crystal-cave-stage.js';
+import { CRYSTAL_CAVE_TETROMINOS } from '../../themes/crystal-cave/crystal-cave-tetrominos.js';
 import { CrystalCaveWorld } from '../../themes/crystal-cave/crystal-cave-world.js';
+import { mountSoloWellPreview } from '../solo-well-preview.js';
 
 export const meta = {
     id: 'crystal-cave',
@@ -20,7 +24,7 @@ const VIEWS = {
 };
 
 /**
- * Reproducible stills: `&t=12&event=lock|drop|clear|double|triple|quad|combo|spin|perfect|level|over`
+ * Reproducible stills: `&t=12&event=lock|drop|clear|double|triple|quad|combo|spin|minispin|b2b|perfect|level|over`
  * with `&eventAge=<s>`, `&col=0..9&row=0..19`, `&piece=T`, `&combo=<n>`, `&board=1`, `&view=left|right|hall|deep`.
  */
 export function create({
@@ -40,7 +44,12 @@ export function create({
     let assets = null;
     let world = null;
     let post = null;
-    let overlay = null;
+    const overlay = params.get('board') === '1'
+        ? mountSoloWellPreview('crystal-cave', CRYSTAL_CAVE_TETROMINOS, params.get('statsHud') !== '0') : null;
+    const measureBoard = () => {
+        if (world && overlay) world.setBoard(readCrystalCaveBoardRect());
+    };
+    overlay?.querySelector('link')?.addEventListener('load', measureBoard, { once: true });
     let pendingSeek = null;
     let sought = null;
     let randomState = 1;
@@ -60,13 +69,6 @@ export function create({
             return randomState / 4294967296;
         },
     });
-    if (params.get('board') === '1') {
-        overlay = document.createElement('div');
-        overlay.style.cssText = 'position:fixed;left:50%;top:51%;transform:translate(-50%,-50%);'
-            + 'width:23vw;height:84vh;border:1px solid #9be7ee40;'
-            + 'border-radius:14px;background:#081220e0;pointer-events:none;z-index:3';
-        document.body.appendChild(overlay);
-    }
     // `&eye=x,y,z&aim=x,y,z&fov=n` frames a one-off lens without touching the table above.
     const triple = (name) => (params.get(name) || '').split(',').map(Number);
     const custom = params.has('eye') && params.has('aim') && [...triple('eye'), ...triple('aim')].every(Number.isFinite)
@@ -80,7 +82,8 @@ export function create({
         camera.updateProjectionMatrix();
     };
 
-    const ready = loadCrystalCaveAssets().then((loaded) => {
+    const { preset } = resolveCrystalCaveQuality(quality);
+    const ready = loadCrystalCaveAssets({ bakedReflection: preset.reflectionScale === 0 }).then((loaded) => {
         if (disposed) {
             disposeCrystalCaveAssets(loaded);
             return;
@@ -89,6 +92,7 @@ export function create({
         world = new CrystalCaveWorld({
             scene, camera, assets, quality,
         });
+        measureBoard();
         standLevel();
         post = new CrystalCavePost({
             renderer,
@@ -107,7 +111,7 @@ export function create({
         const type = (params.get('piece') || 'T').toUpperCase();
         return {
             piece: {
-                type, x: column, y: row + 4, shape: [[1, 1, 1], [0, 1, 0]],
+                type, color: CRYSTAL_CAVE_TETROMINOS.colors[type], x: column, y: row + 4, shape: [[1, 1, 1], [0, 1, 0]],
             },
         };
     };
@@ -127,15 +131,11 @@ export function create({
         if (event === 'double') reactions.onLineClear(rows(2));
         if (event === 'triple') reactions.onLineClear(rows(3));
         if (event === 'quad') reactions.onLineClear(rows(4));
-        if (event === 'combo') {
-            const count = Math.max(2, Number(params.get('combo') || 6));
-            for (let step = 2; step <= count; step += 1) {
-                reactions.onPieceLock({ piece: { ...detail.piece, type: PIECES[step % PIECES.length], x: (step * 3) % 9 } });
-                reactions.onLineClear(rows(1 + (step % 2)));
-                reactions.onCombo(step);
-            }
+        if (event === 'spin' || event === 'minispin') {
+            reactions.onPieceLock(detail);
+            reactions.onTwist({ lineCount: event === 'spin' ? 2 : 0 });
         }
-        if (event === 'spin') reactions.onTwist(detail);
+        if (event === 'b2b') reactions.onBackToBack();
         if (event === 'perfect') reactions.onPerfectClear();
         if (event === 'level') {
             reactions.onLevelUp();
@@ -163,14 +163,31 @@ export function create({
         standLevel();
         const ageValue = Number(params.get('eventAge') ?? 0.4);
         const eventTime = Math.max(0, target - (Number.isFinite(ageValue) ? Math.max(0, ageValue) : 0.4));
+        const event = params.get('event');
+        const chain = event === 'combo' ? Math.min(24, Math.max(2, Math.floor(Number(params.get('combo')) || 6))) : 0;
+        let clearingLock = 0;
         // Play a short game before the event so the shore has something growing on it.
-        const prelude = Number(params.get('grown') ?? 0);
+        const prelude = Number(params.get('grown') ?? (event === 'over' ? 4 : 0));
         const steps = Math.max(1, Math.ceil(target * 60));
         const dt = target / steps;
         let fired = false;
         let grown = 0;
         for (let index = 1; index <= steps; index += 1) {
             const now = index * dt;
+            if (clearingLock < chain && now >= eventTime - (chain - 1 - clearingLock) * 0.58) {
+                const type = PIECES[clearingLock % PIECES.length];
+                const piece = {
+                    ...place().piece, type, color: CRYSTAL_CAVE_TETROMINOS.colors[type], x: (clearingLock * 3) % 9,
+                };
+                reactions.onPieceLock({ piece });
+                reactions.onLineClear({ lineCount: 1 + (clearingLock % 2) });
+                // The COMBO bus key reports a second wave of a cascade within a lock.
+                if (clearingLock === chain - 1) {
+                    reactions.onCombo(2);
+                    reactions.onLineClear({ lineCount: 1, cascadeCount: 2 });
+                }
+                clearingLock += 1;
+            }
             if (grown < prelude && now >= 0.5 + grown * 0.4 && now < eventTime - 2.5) {
                 grown += 1;
                 reactions.onLineClear({ lineCount: 1 });
@@ -179,7 +196,7 @@ export function create({
             }
             if (!fired && now >= eventTime) {
                 fired = true;
-                fire(params.get('event'));
+                fire(event);
             }
             step(now, dt);
         }
@@ -205,6 +222,7 @@ export function create({
         },
         resize(width, height) {
             world?.prepareCamera(width / height);
+            measureBoard();
             applyView();
             post?.setSize(width, height);
         },

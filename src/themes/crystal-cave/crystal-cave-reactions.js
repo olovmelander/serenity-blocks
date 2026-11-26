@@ -178,6 +178,7 @@ export class CrystalCaveReactions {
             strength: 0,
             lines: 0,
             count: 0,
+            hard: false,
             drop: 0,
             slot: 0,
             tinted: false,
@@ -233,6 +234,9 @@ export class CrystalCaveReactions {
         this.depth = 1;
         this.pendingDrop = 0;
         this.pendingHard = false;
+        this.lockColumn = 0.25;
+        this.lockRow = 0.3;
+        this.lockFamily = 0;
         this.energy = 0;
         this.flash = 0;
         this.flashColor[0] = 1;
@@ -289,6 +293,7 @@ export class CrystalCaveReactions {
         cue.strength = values.strength ?? 0.5;
         cue.lines = values.lines ?? 0;
         cue.count = values.count ?? 0;
+        cue.hard = values.hard === true;
         cue.drop = values.drop ?? 0;
         cue.slot = values.slot ?? 0;
         cue.tinted = Boolean(values.tint);
@@ -407,6 +412,7 @@ export class CrystalCaveReactions {
         this.depth = 1;
         const place = boardPlace(payload);
         const drop = this.pendingDrop;
+        const hard = this.pendingHard;
         this.pendingDrop = 0;
         this.surge.lock({ hardDrop: this.pendingHard }, this.time);
         this.pendingHard = false;
@@ -414,12 +420,22 @@ export class CrystalCaveReactions {
         const tint = pieceTint(payload.piece, [1, 1, 1]);
         let side = this.serial % 2 === 0 ? -1 : 1;
         if (place) side = place.column < 0.5 ? -1 : 1;
+        this.lockColumn = place?.column ?? (side < 0 ? 0.25 : 0.75);
+        this.lockRow = place?.row ?? 0.1;
+        this.lockFamily = family;
         this.excite(0.1 + drop * 0.24);
         this.lift(family, 0.42 + drop * 0.5);
         this.light(0.2 + drop * 0.4, tint);
         if (drop > 0.3) this.worms = Math.max(this.worms, drop * 0.5);
         this.cue('lock', {
-            side, column: place?.column ?? 0.5, row: place?.row ?? 0.1, family, strength: 0.45 + drop * 0.55, drop, tint,
+            side,
+            column: place?.column ?? 0.5,
+            row: this.lockRow,
+            family,
+            strength: 0.45 + drop * 0.55,
+            drop,
+            hard,
+            tint,
         });
         this.serial += 1;
         return true;
@@ -522,9 +538,10 @@ export class CrystalCaveReactions {
             this.surge.level.hit(W.heat.twist * 0.3, this.time);
         }
         this.cue('spin', {
-            side: place && place.column >= 0.5 ? 1 : -1,
-            row: place?.row ?? 0.3,
-            family: this.familyOf(payload),
+            // Solo, Infinity and Odyssey send only lineCount on TWIST, after the piece lock.
+            side: (place?.column ?? this.lockColumn) >= 0.5 ? 1 : -1,
+            row: place?.row ?? this.lockRow,
+            family: payload.piece?.type || payload.type ? this.familyOf(payload) : this.lockFamily,
             strength: cleared ? 0.8 : 0.42,
         });
         return true;
@@ -579,6 +596,7 @@ export class CrystalCaveReactions {
         this.shaft = Math.max(this.shaft, 0.7);
         this.sweep(0.75, true);
         this.cue('heart', { strength: 0.6 });
+        this.cue('levelChimes');
         this.surge.levelUp(this.time);
         return true;
     }
@@ -590,6 +608,8 @@ export class CrystalCaveReactions {
         this.tracker.reset();
         this.b2bRun = 0;
         this.maybePlain = false;
+        this.surge.reset();
+        this.chorus = 0;
         this.cueCount = 0;
         this.dim = 1;
         this.boost.fill(0);

@@ -13,10 +13,11 @@
  */
 import * as THREE from 'three/webgpu';
 import {
-    Fn, cameraFar, cameraNear, cameraPosition, clamp, cos, dot, exp, float, length, linearDepth, max, mix, normalize,
+    Fn, If, Loop, cameraFar, cameraNear, cameraPosition, clamp, cos, dot, exp, float, fwidth, int, length, linearDepth, max, mix, normalize,
     positionWorld, pow, reflect, reflector, screenUV, sin, smoothstep, texture, uniformArray, vec2, vec3, vec4,
     viewportLinearDepth, viewportSharedTexture,
 } from 'three/tsl';
+import { reflectedShore } from './crystal-cave-reflection.js';
 
 /** Ring speed across the water, world units per second. */
 export const RING_SPEED = 5.2;
@@ -29,12 +30,15 @@ const RING_DECAY = 0.62;
  * @param {THREE.Scene} options.scene receives the reflector's target
  * @param {number} options.poolLevel
  * @param {number} [options.reflectionScale] 0 disables the planar reflection
+ * @param {THREE.Texture} [options.reflectionAtlas] baked mineral weights for the lean tiers
+ * @param {number[]} [options.eye] authored camera position used for that bake
  * @param {boolean} [options.refraction] bend the bed through the surface (needs a backdrop copy)
  * @param {number} [options.rings] ring slots
  * @param {object} [options.air] the light in the air (`createCaveAirLight`), mirrored in the water
  */
 export function createCavePool({
-    light, scene, poolLevel, reflectionScale = 0.4, refraction = true, rings = 10, air = null,
+    light, scene, poolLevel, reflectionScale = 0.4, reflectionAtlas = null, eye, refraction = true, rings = 10,
+    air = null, caustics = null,
 }) {
     const u = light.uniforms;
     const slots = Math.max(1, Math.floor(rings));
@@ -67,22 +71,38 @@ export function createCavePool({
         const near = float(1).sub(smoothstep(18, 60, distance)).toVar();
         const fineA = texture(light.noise, point.xz.mul(0.31).add(vec2(drift.mul(5.0), drift.mul(-3.1))));
         const fineB = texture(light.noise, point.xz.mul(0.53).sub(vec2(drift.mul(-2.4), drift.mul(4.6))).add(0.41));
-        const ripple = vec2(fineA.r.sub(fineB.r), fineA.a.sub(fineB.a)).mul(0.012).mul(near);
+        // Low, oblique capillary fronts move through the mirror. Fade each front as
+        // it falls below a pixel, so distant reflections retain the shape of the stones.
+        const current = sin(u.time.mul(0.078)).mul(0.26);
+        const phase = point.z.mul(3.7).add(point.x.mul(current.add(0.62)))
+            .add(swellA.a.mul(6.2)).sub(u.time.mul(1.32))
+            .toVar();
+        const readable = float(1).sub(smoothstep(0.3, 2.2, fwidth(phase)));
+        const train = sin(phase).mul(readable).mul(fineA.a.mul(0.67).add(0.25)).toVar();
+        const ripple = vec2(fineA.r.sub(fineB.r), fineA.a.sub(fineB.a)).mul(0.015).mul(near)
+            .add(vec2(train.mul(0.0035), train.mul(0.012)))
+            .toVar();
         slope.addAssign(ripple);
         const crest = vec3(0).toVar();
-        for (let index = 0; index < slots; index += 1) {
-            const ring = ringNode.element(index);
-            const offset = point.xz.sub(ring.xy);
-            const reach = max(length(offset), 0.001);
-            const age = max(u.time.sub(ring.z), 0);
-            const front = reach.sub(age.mul(RING_SPEED));
-            const width = age.mul(0.42).add(1.1);
-            const envelope = ring.w.mul(exp(age.mul(-RING_DECAY))).mul(smoothstep(0, 0.12, age))
-                .mul(exp(front.div(width).pow2().negate()));
-            const phase = front.mul(2.4);
-            slope.addAssign(offset.div(reach).mul(sin(phase).mul(envelope).mul(0.34)));
-            crest.addAssign(vec3(tintNode.element(index)).mul(pow(max(cos(phase), 0), 3).mul(envelope)));
-        }
+        Loop({
+            start: int(0), end: int(slots), type: 'int', condition: '<',
+        }, ({ i }) => {
+            const ring = ringNode.element(i).toVar();
+            const age = u.time.sub(ring.z).toVar();
+            If(ring.w.greaterThan(0).and(age.greaterThanEqual(0)).and(age.lessThan(12)), () => {
+                const offset = point.xz.sub(ring.xy);
+                const reach = max(length(offset), 0.001).toVar();
+                const front = reach.sub(age.mul(RING_SPEED)).add(swellA.a.sub(0.5).mul(0.42)).toVar();
+                const width = age.mul(0.48).add(0.97);
+                const envelope = ring.w.mul(exp(age.mul(-RING_DECAY))).mul(smoothstep(0, 0.12, age))
+                    .mul(exp(front.div(width).pow2().negate())).toVar();
+                const ringPhase = front.mul(3.8);
+                slope.addAssign(offset.div(reach).mul(sin(ringPhase).mul(envelope).mul(0.19)));
+                const arc = dot(offset.div(reach), vec2(0.72, -0.69)).mul(0.5).add(0.5);
+                crest.addAssign(vec3(tintNode.element(i)).mul(pow(max(cos(ringPhase), 0), 5))
+                    .mul(arc.mul(0.49).add(0.23)).mul(envelope));
+            });
+        });
         const normal = normalize(vec3(slope.x.negate(), 1, slope.y.negate())).toVar();
 
         // ---- what lies under the surface --------------------------------------------
@@ -96,13 +116,19 @@ export function createCavePool({
             const span = cameraFar.sub(cameraNear);
             const thickness = max(viewportLinearDepth.sub(linearDepth()).mul(span), 0).toVar();
             const bend = slope.mul(float(1.4).div(distance.mul(0.08).add(1))).mul(smoothstep(0, 1.6, thickness));
-            below.assign(viewportSharedTexture(screenUV.add(bend)).rgb);
+            below.assign(viewportSharedTexture(screenUV.add(bend).clamp(0.001, 0.999)).rgb);
             // Water scatters a little of the cave's light back on a long path.
             const murk = float(1).sub(exp(thickness.mul(-0.085)));
             below.assign(mix(below, vec3(0.005, 0.042, 0.05).mul(u.energy.mul(1.5).add(1)), murk));
             shoreline.assign(exp(thickness.mul(-2.6)).mul(smoothstep(0.0, 0.05, thickness)));
         } else {
             below.assign(vec3(0.006, 0.04, 0.047));
+            if (caustics) {
+                const focus = light.focusedLight(point.xz);
+                const net = light.waterLight(caustics, point.xz.add(slope.mul(11)));
+                below.addAssign(vec3(0.005, 0.019, 0.022).add(focus.mul(0.073)).mul(net.pow2())
+                    .mul(float(1).sub(smoothstep(18, 64, distance))));
+            }
         }
 
         // ---- what the surface mirrors -------------------------------------------------
@@ -110,15 +136,15 @@ export function createCavePool({
         if (reflection) {
             // A slope moves the mirrored image less the further away the water is.
             const sway = slope.mul(vec2(0.5, 1.6)).div(distance.mul(0.035).add(1));
-            mirrored.assign(reflection.sample(screenUV.flipX().add(sway)).rgb);
+            mirrored.assign(reflection.sample(screenUV.flipX().add(sway).clamp(0.001, 0.999)).rgb);
         } else {
-            // No mirror on this tier: dark water, the vault's faint glow, and a path of light
-            // laid toward the warm heart at the end of the hall.
-            const sheen = light.environment(reflect(view.negate(), normal), float(6), light.eventLight, light.skyLight)
-                .mul(0.2);
-            const offPath = point.x.sub(3).add(slope.x.mul(60)).div(6.5);
-            const path = exp(offPath.mul(offPath).negate()).mul(smoothstep(-12, -70, point.z));
-            mirrored.assign(vec3(0.006, 0.026, 0.036).add(sheen).add(vec3(1.0, 0.7, 0.38).mul(path).mul(0.3)));
+            const ray = reflect(view.negate(), normal).toVar();
+            const sheen = light.environment(ray, float(6), light.eventLight, light.skyLight).mul(0.12);
+            mirrored.assign(vec3(0.006, 0.02, 0.027).add(sheen));
+            if (reflectionAtlas) {
+                const reflectedEye = vec3(eye[0], 2 * poolLevel - eye[1], eye[2]);
+                mirrored.addAssign(reflectedShore(reflectionAtlas, u, point, ray, reflectedEye));
+            }
         }
 
         // The light in the air seen in the water: the halos and the shaft along the mirrored ray.
@@ -126,8 +152,8 @@ export function createCavePool({
             const mirrorRay = reflect(view.negate(), normal).toVar();
             const airSeen = air.gather(point, vec3(mirrorRay.x, mirrorRay.y.max(0.02), mirrorRay.z), float(70)).toVar();
             // Where a fine ripple tilts toward it, the shaft's reflection breaks into glints.
-            const glint = smoothstep(0.55, 0.95, length(ripple).mul(60)).mul(near);
-            mirrored.addAssign(airSeen.mul(glint.mul(1.6).add(0.9)));
+            const glint = smoothstep(0.25, 0.92, train).mul(swellB.r);
+            mirrored.addAssign(airSeen.mul(glint.mul(1.25).add(0.75)));
         }
 
         // A living line where water meets stone, lapping slowly.

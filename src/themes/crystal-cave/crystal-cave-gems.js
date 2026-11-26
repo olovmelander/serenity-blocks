@@ -16,8 +16,8 @@
 import * as THREE from 'three/webgpu';
 import {
     Fn, If, abs, attribute, cameraPosition, cameraProjectionMatrix, cameraViewMatrix, clamp, cos, cross, dot, exp,
-    float, fract, int, length, max, min, mix, normalize, positionGeometry, pow, reflect, smoothstep, sqrt, step,
-    uv, varying, vec2, vec3, vec4, viewportTexture,
+    float, fract, fwidth, int, length, max, min, mix, normalize, positionGeometry, pow, reflect, smoothstep, sqrt, step,
+    texture, uv, varying, vec2, vec3, vec4, viewportTexture,
 } from 'three/tsl';
 
 const TAU = Math.PI * 2;
@@ -138,6 +138,33 @@ export function packCrystal(target, index, crystal) {
     target[o + 13] = crystal.apexZ ?? 0;
     target[o + 14] = crystal.family ?? 0;
     target[o + 15] = crystal.glow ?? 1;
+}
+
+// Breadth and termination length by mineral. Aqua forms broad short-capped blades, amethyst
+// has deep pyramidal crowns, sapphire grows narrow spars, rose forms plates, amber long lances.
+const HABITS = [[1.27, 0.76], [1.03, 1.58], [0.83, 1.08], [1.54, 0.92], [0.90, 1.78]];
+
+/** Pack the facets used by the gem field and the pool reflection bake. The apex stays at its authored anchor. */
+export function packMineralCrystal(target, index, crystal) {
+    packCrystal(target, index, crystal);
+    const o = index * GEM_STRIDE;
+    const [breadth, crown] = HABITS[crystal.family] ?? HABITS[0];
+    const reach = crystal.height + crystal.tip;
+    // Subpixel druzy and new shoots retain their compact cuts.
+    const strength = THREE.MathUtils.smoothstep(reach, 0.8, 3.8);
+    const variation = (crystal.seed ?? 0.5) - 0.5;
+    const width = 1 + strength * (breadth - 1 + variation * 0.11);
+    // Descending lances have a longer termination. A horizontal spar retains its family's cut.
+    const down = Math.max(0, 2 * (crystal.qx ** 2 + crystal.qz ** 2) - 1);
+    const tip = Math.min(reach * 0.56, crystal.tip * (crown + down * 0.26 + variation * 0.24));
+    const height = reach - THREE.MathUtils.lerp(crystal.tip, tip, strength);
+    // Equal cross-sectional area and the same physical apex, including its sideways offset.
+    target[o + 3] *= width;
+    target[o + 8] = height;
+    target[o + 9] /= width;
+    target[o + 10] = (reach - height) / height;
+    target[o + 12] /= width;
+    target[o + 13] *= width;
 }
 
 /**
@@ -330,7 +357,7 @@ export function createGemField({
         const shaftNormal = vec3(vFace.x, 0, vFace.y);
         const tipNormal = vec3(shape.x.mul(vFace.x), float(1).sub(lean), shape.x.mul(vFace.y));
         const facet = normalize(mix(shaftNormal, tipNormal, vFace.z).div(size)).toVar();
-        const grain = light.noise3(vec3(rigid.y.mul(0.9), seed.mul(7.3), rigid.x.add(rigid.z).mul(0.07)));
+        const grain = light.noise3(vec3(rigid.y.mul(0.9), seed.mul(7.3), rigid.x.add(rigid.z).mul(0.07))).toVar();
         const striae = grain.sub(0.5).mul(0.11).mul(float(1).sub(vFace.z));
         const normal = normalize(facet.add(vec3(0, striae, 0))).toVar();
 
@@ -357,7 +384,10 @@ export function createGemField({
             .toVar();
 
         // Body colour: how much of each wavelength survives one girth of travel.
-        const body = mix(vec3(1), tint, 0.82).toVar();
+        // Iron and other trace minerals collect in late growth. The outer point is richly
+        // coloured while the earliest quartz at the foot transmits a cooler, milkier light.
+        const height = clamp(origin.y.div(shape.x.add(1)), 0, 1).toVar();
+        const body = mix(vec3(1), tint, smoothstep(0.10, 0.83, height).mul(0.22).add(0.73)).toVar();
         const fire = mix(tint, vec3(1), 0.12).toVar();
         // The carpet of small points glows less than the stones of size: in the rock they read
         // as glinting mineral, not as lamps (a third of the light at the smallest).
@@ -396,7 +426,7 @@ export function createGemField({
             const filament = exp(miss.mul(-FILAMENT)).mul(chord);
             const middle = start.add(run.mul(reach.mul(0.5)));
             const halo = exp(dot(middle.xz, middle.xz).mul(-2.2)).mul(reach.div(girth)).mul(0.022);
-            return filament.mul(root.add(idle).mul(breath).mul(glow).mul(2.6)
+            return filament.mul(root.add(idle).mul(breath).mul(glow).mul(2.12)
                 .add(band.mul(ring).mul(9))
                 .add(pulse.mul(2.6))
                 .add(hum.mul(glow).mul(2.2)))
@@ -423,33 +453,55 @@ export function createGemField({
             }
 
             if (bounce === 0 && inclusions) {
-                // Growth phantoms: earlier terminations, seen as nested veils.
-                const veil = (fraction) => {
-                    const sample = point.add(step3.mul(hit.w.mul(fraction)));
-                    const depth = terminationDepth(sample, shape);
-                    const layer = abs(fract(depth.mul(3.1).add(seed)).sub(0.5));
-                    const sheet = smoothstep(0.42, 0.5, layer);
-                    const patch = light.noise3(sample.mul(size).mul(0.55).add(seed.mul(11)));
-                    return sheet.mul(smoothstep(0.42, 0.72, patch));
-                };
-                const veils = veil(0.3).add(veil(0.68)).mul(0.5);
-                radiance.addAssign(through.mul(tint.mul(0.5).add(0.5)).mul(veils)
-                    .mul(glow.mul(0.55).add(pulse).add(0.1)).mul(0.5));
+                // Earlier tips enclosed in the present one. Quartz records alternating clear
+                // and cloudy growth along those planes. Amethyst has broader chevrons, beryl
+                // finer bands. One footprint-softened sample follows the actual refracted ray.
+                const sample = point.add(step3.mul(hit.w.mul(0.48))).toVar();
+                const amethyst = max(float(1).sub(abs(vLook.x.sub(1))), 0);
+                const cycles = float(3.1).sub(amethyst.mul(1.05)).add(seed.mul(0.65));
+                const patch = light.noise3(sample.mul(vec3(0.30, 0.53, 0.36)).add(seed.mul(11))).toVar();
+                const layers = terminationDepth(sample, shape).negate().div(shape.x.add(1)).mul(cycles)
+                    .add(seed.mul(1.7))
+                    .add(patch.sub(0.5).mul(0.22))
+                    .toVar();
+                const phase = abs(fract(layers).sub(0.5)).toVar();
+                const width = amethyst.mul(0.023).add(0.024).add(clamp(fwidth(layers), 0.005, 0.10));
+                const border = float(1).sub(smoothstep(0, width, phase));
+                const cloudy = float(1).sub(smoothstep(0, 0.22, phase));
+                const veil = border.mul(amethyst.mul(0.17).add(0.16)).add(cloudy.mul(0.12))
+                    .mul(smoothstep(0.40, 0.65, patch))
+                    .mul(float(1).sub(small.mul(0.9)));
+                radiance.addAssign(through.mul(mix(tint, vec3(0.82, 0.9, 1), 0.32)).mul(veil)
+                    .mul(glow.mul(0.63).add(pulse.mul(0.85)).add(0.17)));
 
                 // A healed fracture: a plane inside the stone that flashes thin-film colour.
                 const tilt = seed.mul(37.7);
                 const crack = normalize(vec3(cos(tilt), cos(seed.mul(91.3)).mul(0.9), cos(tilt.add(1.9))));
                 const offset = fract(seed.mul(5.7)).mul(0.5).add(0.25);
-                const rate = dot(crack, step3);
-                const reach = dot(crack, vec3(0, offset, 0).sub(point)).div(rate);
-                const crossing = point.add(step3.mul(reach)).mul(size);
-                const film = light.noise3(crossing.mul(0.11).add(seed.mul(3.1)));
-                const present = smoothstep(0.5, 0.78, film)
-                    .mul(step(0, reach)).mul(step(reach, hit.w));
-                const phase = dot(heading, normalize(crack.div(size))).mul(1.6).add(film.mul(1.3));
-                const spectrum = cos(vec3(0, 0.33, 0.67).add(phase).mul(TAU)).mul(0.5).add(0.5);
+                const rate = dot(crack, step3).toVar();
+                const safeRate = max(abs(rate), 1e-6).mul(mix(float(-1), float(1), step(0, rate)));
+                const reach = dot(crack, vec3(0, offset, 0).sub(point)).div(safeRate).toVar();
+                const crossing = point.add(step3.mul(clamp(reach, 0, hit.w))).mul(size);
+                const film = light.noise3(crossing.mul(0.11).add(seed.mul(3.1))).toVar();
+                const inStone = step(0, reach).mul(step(reach, hit.w)).mul(float(1).sub(small)).toVar();
+                const present = smoothstep(0.5, 0.72, film).mul(inStone);
+                const filmPhase = dot(heading, normalize(crack.div(size))).mul(1.6).add(film.mul(1.3));
+                const spectrum = cos(vec3(0, 0.33, 0.67).add(filmPhase).mul(TAU)).mul(0.5).add(0.5);
                 radiance.addAssign(through.mul(spectrum).mul(present)
                     .mul(glow.mul(0.16).add(pulse.mul(0.5)).add(0.07)));
+
+                // Fluid trapped along a healed plane leaves feather-like traces. Sample at
+                // the ray/plane crossing: inclusions seen through neighbouring faces shift
+                // against one another as the eye moves, while a polished face stays clear.
+                const fluidUV = vec2(crossing.x.add(crossing.z.mul(0.63)), crossing.y.mul(0.46)
+                    .sub(crossing.z.mul(0.37))).mul(0.19).add(seed.mul(9.7));
+                const fluid = texture(light.noise, fluidUV).ra.toVar();
+                const feather = abs(fluid.x.sub(0.51));
+                const threads = float(1).sub(smoothstep(0.005, fwidth(fluid.x).add(0.026), feather));
+                const pocket = smoothstep(0.42, 0.58, film).mul(smoothstep(0.39, 0.62, fluid.y)).mul(inStone);
+                const pearl = mix(fire, vec3(0.76, 0.89, 1.0), 0.53);
+                radiance.addAssign(pearl.mul(through).mul(pocket).mul(threads.mul(0.48).add(0.046))
+                    .mul(glow.mul(0.61).add(0.22)));
             }
 
             through.mulAssign(pow(body, vec3(min(span, 1.7))));
@@ -510,10 +562,12 @@ export function createGemField({
         radiance.addAssign(through.mul(body).mul(far(heading, 3)));
 
         // The foot of a crystal is milky where it leaves the rock.
-        const milk = smoothstep(0.2, 0.0, origin.y).mul(0.7);
+        const milk = float(1).sub(smoothstep(0.02, grain.mul(0.19).add(0.15), height)).mul(0.74);
         const frosted = body.mul(far(normal, 6).mul(2.2)
             .add(fire.mul(glow.mul(0.42).add(pulse.mul(0.5)))));
-        const stone = mix(radiance, frosted, milk);
+        const worldNormal = rotate(facet, vQuat);
+        const skyFace = max(dot(worldNormal, vec3(-0.42, 0.78, -0.46)), 0).toVar();
+        const stone = mix(radiance.mul(skyFace.mul(0.35).add(0.77)), frosted, milk);
 
         // Crisp glints: a facet that mirrors the skylight (or the far heart) flashes whole,
         // so facets flicker on and off as the view drifts.
@@ -522,7 +576,11 @@ export function createGemField({
         const toHeart = clamp(dot(bounceWorld, vec3(0.0, 0.14, -0.99)), 0, 1);
         const glintLight = vec3(0.82, 0.92, 1.0).mul(pow(toSky, 900).mul(26))
             .add(vec3(1.0, 0.78, 0.5).mul(pow(toHeart, 600).mul(10)));
-        const surface = mirrored.mul(fresnelIn.mul(2.4).add(edge.mul(0.3)))
+        // As the crystal turns away from the opening the dark prism face meets a pale sky
+        // reflection along its ridge. The termination retains the sharper mirror flash.
+        const polish = mix(tint, u.skyTint, 0.62).mul(skyFace).mul(u.skyLevel)
+            .mul(edge.mul(0.24).add(pow(toSky, 18).mul(0.43)));
+        const surface = mirrored.mul(fresnelIn.mul(2.4).add(edge.mul(0.3))).add(polish)
             .add(glintLight.mul(fresnelIn.mul(3).add(0.15)))
             .add(fire.mul(edge).mul(glow.mul(0.07).add(pulse.mul(0.9))));
         const colour = stone.mul(float(1).sub(fresnelIn)).mul(mix(float(1), float(0.6), small)).add(surface);
@@ -551,7 +609,7 @@ export function createGemField({
         setCrystals(crystals) {
             used = Math.min(count, crystals.length);
             for (let index = 0; index < used; index += 1) {
-                packCrystal(record, index, crystals[index]);
+                packMineralCrystal(record, index, crystals[index]);
                 state.set([-1000, 0, crystals[index].growth ?? 1, 0], index * 4);
             }
             buffer.needsUpdate = true;

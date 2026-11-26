@@ -151,6 +151,9 @@ export function* createCaveLightSteps() {
         skyTint: uniform(new THREE.Color(1, 1, 1)),
         skyLevel: uniform(1),
         stoneGlow: uniform(1),
+        // Sunlight refracted by the shore crystals sweeps a patch of the pool bed.
+        poolFocus: uniform(new THREE.Vector3()),
+        focusTint: uniform(new THREE.Color()),
     };
 
     const lobeDir = ENV_LOBES.map((lobe) => new THREE.Vector3(...lobe.dir).normalize());
@@ -213,6 +216,22 @@ export function* createCaveLightSteps() {
         .add(texture(noise, point.zy.mul(1.31).add(point.x.mul(vec2(0.53, 0.29)))).a)
         .mul(0.5);
 
+    // Two views of the same tile of optically focused light pass through one another.
+    // The second is turned across the first so there is no sliding tiled edge.
+    const waterLight = (tile, point) => {
+        const t = uniforms.time;
+        const coord = point.mul(0.069);
+        const drift = vec2(t.mul(0.0062), t.mul(-0.0035));
+        const first = texture(tile, coord.add(drift));
+        const other = vec2(coord.x.mul(0.83).sub(coord.y.mul(0.58)), coord.x.mul(0.58).add(coord.y.mul(0.83)));
+        const second = texture(tile, other.mul(1.27).sub(drift.mul(0.78)));
+        return max(first.r, second.r.mul(0.84)).mul(3.3);
+    };
+    const focusedLight = (point) => {
+        const delta = point.sub(uniforms.poolFocus.xy).mul(vec2(0.196, 0.115));
+        return vec3(uniforms.focusTint).mul(uniforms.poolFocus.z).mul(exp(dot(delta, delta).negate()));
+    };
+
     let disposed = false;
     return {
         uniforms,
@@ -222,6 +241,8 @@ export function* createCaveLightSteps() {
         skyLight,
         haze,
         noise3,
+        waterLight,
+        focusedLight,
         familyColors,
         dispose() {
             if (disposed) return;

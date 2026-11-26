@@ -215,7 +215,7 @@ export default class CrystalCaveTheme extends BaseTheme {
 
     /** The cavern authored in Blender; see crystal-cave-assets.js. */
     loadAssets(isCurrent = () => true) {
-        return loadCrystalCaveAssets({ isCurrent });
+        return loadCrystalCaveAssets({ isCurrent, bakedReflection: this.qualityPreset.reflectionScale === 0 });
     }
 
     /** Resolves false when the start stopped before the world was whole (nothing kept). */

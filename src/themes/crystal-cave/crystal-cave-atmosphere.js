@@ -19,13 +19,31 @@
  */
 import * as THREE from 'three/webgpu';
 import {
-    Fn, Loop, atan, clamp, cross, dot, exp, float, getViewPosition, int, length, max, min, normalize, screenUV,
+    Fn, Loop, atan, clamp, cross, dot, exp, float, getViewPosition, int, length, max, min, screenUV,
     smoothstep,
     sqrt, texture, uniform, uniformArray, vec2, vec3, vec4,
 } from 'three/tsl';
 
 /** At most this many lamps (cluster centres). */
 export const ATMOSPHERE_LAMPS = 16;
+
+// A lip of broken stone splits the opening into unequal slits. Measure across the
+// light rather than around it: a view ray's nearest point has nearly the same
+// azimuth on an entire half of the shaft. The old polar lookup lit each half evenly.
+export const chimneyLight = Fn(([across, clock]) => {
+    const drift = clock.mul(0.095);
+    const x = across.add(drift.sin().mul(0.065));
+    const slit = (offset, sharpness) => exp(x.sub(offset).pow2().mul(-sharpness));
+    return slit(-0.49, 95).mul(drift.mul(0.7).sin().mul(0.21).add(0.61))
+        .add(slit(-0.12, 46).mul(1.02))
+        .add(slit(0.28, 150).mul(drift.mul(1.4).cos().mul(0.28).add(0.8)))
+        .add(slit(0.56, 70).mul(0.32))
+        .add(0.17);
+}).setLayout({
+    name: 'caveChimneyLight',
+    type: 'float',
+    inputs: [{ name: 'across', type: 'float' }, { name: 'clock', type: 'float' }],
+});
 
 /** The air (tuned against playground captures). */
 export const CRYSTAL_CAVE_AIR = Object.freeze({
@@ -150,18 +168,15 @@ export function createCaveAirLight({
         const profile = exp(h.mul(h).div(sigma.mul(sigma).mul(-2.0)));
         const width = sigma.div(sinT);
         const visible = smoothstep(-1.4, 1.4, T.sub(tc).div(width)).mul(smoothstep(-1.4, 1.4, tc.div(width)));
-        // Streaks: the light the chimney's ragged throat lets through, by angle round the axis.
-        const side = normalize(cross(S, vec3(0.31, 0.0, 0.95)));
-        const turn = atan(dot(nearest, cross(S, side)), dot(nearest, side));
-        const streak = texture(light.noise, vec2(turn.mul(0.48), sc.mul(0.004).sub(u.time.mul(0.004)))).level(1).r
-            .mul(1.9).sub(0.25).max(0.05);
-        // Brightest near the mouth, fading where it reaches the floor.
-        const along = smoothstep(0.0, 0.08, sc.div(span)).mul(smoothstep(1.0, 0.55, sc.div(span)))
-            .mul(exp(sc.div(span).mul(-1.1)).mul(0.7).add(0.3));
+        const side = cross(S, D).div(sinT);
+        const across = dot(nearest, side).div(sigma.mul(2.17));
+        const streak = chimneyLight(across, u.time);
+        const along = smoothstep(0.0, 0.065, sc.div(span)).mul(smoothstep(1.02, 0.61, sc.div(span)))
+            .mul(exp(sc.div(span).mul(-2.6)).mul(0.88).add(0.12));
         const amount = profile.mul(width).mul(2.5066).mul(visible).mul(streak)
             .mul(along);
         // (The hour above the cave tints it; its strength is the shaft's gain.)
-        return vec3(0.6, 0.8, 1.0).mul(u.skyTint).mul(amount).mul(CRYSTAL_CAVE_AIR.haze * 40 * CRYSTAL_CAVE_AIR.shaft)
+        return vec3(0.69, 0.86, 1.0).mul(u.skyTint).mul(amount).mul(CRYSTAL_CAVE_AIR.haze * 36 * CRYSTAL_CAVE_AIR.shaft)
             .mul(shaftGain);
     };
 

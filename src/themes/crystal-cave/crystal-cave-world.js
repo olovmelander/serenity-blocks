@@ -18,8 +18,10 @@
  */
 import * as THREE from 'three/webgpu';
 import { uniform } from 'three/tsl';
+import { CLEAR_CAUSTIC } from './crystal-cave-caustics.js';
 import { createCaveLightSteps } from './crystal-cave-light.js';
 import { createGemField } from './crystal-cave-gems.js';
+import { createCaveShards } from './crystal-cave-shards.js';
 import { createCaveRock } from './crystal-cave-rock.js';
 import { createCavePool } from './crystal-cave-water.js';
 import { createCaveAir } from './crystal-cave-air.js';
@@ -56,6 +58,9 @@ const LATTICE_LET_GO = 1.3;
 const GLITTER_RATE = 28;
 /** The most light the waves in flight carry together (one strong wave is about 1). */
 const WAVE_LIGHT = 1.15;
+// Patches of open water below the turquoise fan, amber spars, rose island,
+// sapphire chandelier and amethyst shore in the authored hall (x, z, family).
+const POOL_LIGHT_SITES = [[-9, 3, 0], [8, -4, 4], [10, -46, 3], [-12, -25, 2], [9, 7, 1]];
 const clamp = (value, low, high) => Math.max(low, Math.min(high, value));
 const smooth01 = (value) => {
     const t = clamp(value, 0, 1);
@@ -130,6 +135,7 @@ export class CrystalCaveWorld {
             lightScale: assets.meta.lightScale,
             poolLevel: this.poolLevel,
             relief: preset.relief,
+            caustics: assets.caustics,
         });
         this.group.add(this.rock.mesh);
 
@@ -151,6 +157,8 @@ export class CrystalCaveWorld {
         });
         this.gems.setCrystals(this.crystals.map((crystal) => ({ ...crystal, growth: crystal.group === 0 ? 1 : 0 })));
         this.group.add(this.gems.mesh);
+        this.shards = createCaveShards({ light: this.light, quality: this.quality.name });
+        this.group.add(this.shards.mesh);
         yield 'rock and gems';
 
         // The light in the air: the post gathers it along the view, the pool along its mirror.
@@ -178,6 +186,9 @@ export class CrystalCaveWorld {
             scene: this.scene,
             poolLevel: this.poolLevel,
             reflectionScale: preset.reflectionScale,
+            caustics: assets.caustics,
+            reflectionAtlas: assets.poolReflection,
+            eye: assets.meta.camera.eye,
             refraction: preset.refraction,
             rings: preset.rings,
             air: this.airLight,
@@ -489,9 +500,27 @@ export class CrystalCaveWorld {
         }
     }
 
+    /** Fit a shaft or splay to the visible strip beside this card, including portrait. */
+    bankCaustic(side, row, pattern, strength, hue, reach = 1) {
+        const { stage } = this;
+        const outside = side < 0 ? stage.board.x0 : 1 - stage.board.x1;
+        if (outside < 0.045) return;
+        const depth = CRYSTAL_CAVE_STAGE_DEPTH;
+        const span = Math.min(11, outside * depth * 2 * stage.tanH * 0.92) * reach;
+        const height = pattern === 'drop' ? 2.6 + strength * 4 : Math.min(span, depth * stage.tanV * 0.9);
+        const root = stage.edge(side, row, depth, this.pointB);
+        this.effects.caustic(root, side, pattern, span, height, strength, this.time, hue);
+    }
+
     /** Turn one cue from the director into light. */
     perform(cue, frame) {
         const { effects, stage } = this;
+        // A resting stage can be several dozen screen pixels off the card after the camera
+        // drifts. Use the pose that drew the board's last frame when the first cue arrives.
+        if (this.stageAt !== this.time) {
+            stage.refresh();
+            this.stageAt = this.time;
+        }
         if (cue.type === 'lock') {
             const tint = cue.tinted ? this.tintScratch.setRGB(cue.tint[0], cue.tint[1], cue.tint[2], THREE.SRGBColorSpace)
                 : this.familyTint(cue.family);
@@ -526,8 +555,11 @@ export class CrystalCaveWorld {
                 life: 0.42, size: 1.5 + cue.strength * 1.6, star: 1,
             });
             const foot = stage.cell(cue.column, 0, CRYSTAL_CAVE_STAGE_DEPTH, this.pointB);
-            this.pool.ring(foot.x, foot.z - 1.5, this.time, 0.45 + cue.strength * 0.75, lockTint);
-            if (cue.drop > 0.3) this.shower(Math.round(8 + cue.drop * 26));
+            this.pool.ring(foot.x, foot.z - 1.5, this.time, 0.22 + cue.strength * 0.45, lockTint);
+            if (cue.hard) {
+                this.bankCaustic(cue.side, cue.row, 'drop', 0.38 + cue.drop * 0.65, cue.family / FAMILIES);
+                if (cue.drop > 0.3) this.shower(Math.round(5 + cue.drop * 11));
+            }
         } else if (cue.type === 'wave') {
             // Each wave has its own shell (slot): waves cross side by side and none re-centres another.
             const far = cue.count > 0;
@@ -536,10 +568,10 @@ export class CrystalCaveWorld {
             waves[Math.abs(Math.trunc(cue.slot)) % waves.length].value.set(origin.x, origin.y, origin.z, 0);
             this.gems.pulseWave(this.time, far ? this.fromHeart : this.fromBoard, 0.5 + cue.strength * 0.7);
             const white = this.tintScratch.setRGB(0.6, 1, 0.95);
-            this.pool.ring(origin.x, far ? origin.z + 6 : origin.z - 2, this.time, cue.strength, white);
+            this.pool.ring(origin.x, far ? origin.z + 6 : origin.z - 2, this.time, cue.strength * 0.76, white);
             [[-6.5, 5, 0.12], [6.5, 3, 0.16], [-8, -10, 0.42], [8.5, -13, 0.46], [0, -30, 0.86], [-4, -52, 1.3]]
                 .slice(0, Math.max(2, this.pool.slots - 3))
-                .forEach(([x, z, delay]) => this.schedule(far ? 1.9 - delay : delay, 'ring', x, z, cue.strength * 0.8));
+                .forEach(([x, z, delay]) => this.schedule(far ? 1.9 - delay : delay, 'ring', x, z, cue.strength * 0.48));
         } else if (cue.type === 'clear') {
             // Each wave of a cascade fans wider, throws more light and burns in the next colour.
             const deep = Math.max(0, (cue.count || 1) - 1);
@@ -547,16 +579,17 @@ export class CrystalCaveWorld {
             for (const side of [-1, 1]) {
                 const edge = stage.edge(side, cue.row, CRYSTAL_CAVE_STAGE_DEPTH, this.pointA);
                 const hue = this.fanHue + deep * 0.17 + side * 0.04;
-                effects.fan(edge, side, cue.strength, cue.lines + deep * 0.8, this.time, hue);
+                const reach = Math.min(1.04, 0.57 + cue.lines * 0.1 + deep * 0.06);
+                this.bankCaustic(side, cue.row, CLEAR_CAUSTIC[cue.lines], cue.strength, hue, reach);
                 this.burst(
                     edge,
-                    6 + cue.lines * 5 + deep * 4,
+                    3 + cue.lines * 2 + deep * 2,
                     4 + cue.lines + deep * 0.8,
                     this.familyTint(Math.floor(this.random() * FAMILIES)),
                     { push: side * (4.5 + deep), strength: 1 },
                 );
                 if (cue.lines >= 4) {
-                    this.schedule(0.16, 'fan', side, clamp(cue.row + 0.12, 0, 1), cue.strength * 0.8);
+                    this.schedule(0.36, 'fan', side, clamp(cue.row + 0.085, 0, 1), cue.strength * 0.52);
                 }
             }
         } else if (cue.type === 'grow') {
@@ -597,29 +630,21 @@ export class CrystalCaveWorld {
                 cue.count % 2 === 0 ? -7 : 7,
                 2 - (cue.count % 5) * 4,
                 this.time,
-                0.5 + cue.strength * 0.5,
+                0.25 + cue.strength * 0.3,
                 this.familyTint(cue.count % FAMILIES),
             );
         } else if (cue.type === 'spin') {
             // A full wheel for a twist that cleared, a small turn of light for one that did not.
             const scale = clamp(cue.strength / 0.8, 0.35, 1.5);
-            const spokes = Math.max(8, Math.round(20 * scale));
-            const edge = stage.edge(cue.side, cue.row, CRYSTAL_CAVE_STAGE_DEPTH, this.pointA);
-            edge.x += cue.side * 3.2;
+            const outside = cue.side < 0 ? stage.board.x0 : 1 - stage.board.x1;
+            const inset = -outside * 0.29;
+            const edge = stage.edge(cue.side, clamp(cue.row, 0.20, 0.78), CRYSTAL_CAVE_STAGE_DEPTH, this.pointA, inset);
+            const radius = Math.min(2.2, outside * stage.tanH * CRYSTAL_CAVE_STAGE_DEPTH * 0.40) * scale;
             const tint = this.tintHold.copy(this.familyTint(cue.family));
+            effects.spiral(edge, radius, cue.side, tint, cue.strength < 0.6);
             effects.spark(SPARK_KIND.flare, edge, this.pointC.set(0, 0, 0), tint, {
-                life: 0.9, size: 4.2 * scale, star: 1,
+                life: 0.9, size: 2.1 * scale, star: 1,
             });
-            for (let index = 0; index < spokes; index += 1) {
-                const angle = (index / spokes) * Math.PI * 2;
-                const speed = (5 + (index % 4) * 1.4) * (0.6 + 0.4 * scale);
-                // Tangential launch: the sparks leave as a turning wheel.
-                this.pointC.set(Math.cos(angle + 1.1) * speed, Math.sin(angle + 1.1) * speed, -1.5);
-                this.pointB.set(edge.x + Math.cos(angle) * 0.9, edge.y + Math.sin(angle) * 0.9, edge.z);
-                effects.spark(SPARK_KIND.burst, this.pointB, this.pointC, index % 2 ? tint : this.tintScratch.setRGB(1, 1, 1), {
-                    life: 1.1 + (index % 3) * 0.2, size: 0.14, gravity: 1.2, drag: 1.7, phase: index,
-                });
-            }
             this.pool.ring(edge.x, edge.z - 2, this.time, 0.8 * scale, tint);
         } else if (cue.type === 'release') {
             // The chain broke: its lattice lets go link by link (holdLattice).
@@ -653,6 +678,7 @@ export class CrystalCaveWorld {
                 this.gems.pulse(link.to, this.time + 0.2 + index * 0.03, 0.8 + run * 0.1, this.time);
             });
         } else if (cue.type === 'crown') {
+            for (const side of [-1, 1]) this.bankCaustic(side, 0.15, 'crown', 1.3, 0.07 + side * 0.04);
             // A perfect clear: every grown crystal rings in turn, nearest the board first, and
             // every stone the lattice links rings with them.
             let order = 0;
@@ -672,7 +698,14 @@ export class CrystalCaveWorld {
             });
             this.pointA.copy(this.heartTip);
             this.burst(this.pointA, Math.round(16 + cue.strength * 22), 7, tint, { gravity: 2.5, rise: 1.4 });
+        } else if (cue.type === 'levelChimes') {
+            for (let family = 0; family < FAMILIES; family += 1) {
+                this.schedule(0.14 + family * 0.21, 'chord', (this.level + family) % FAMILIES, (this.level + family) % 2);
+            }
         } else if (cue.type === 'wither') {
+            // A pending shower or a comet arrival would relight the banks after the game ended.
+            this.actions.forEach((action) => { action.active = false; });
+            this.effects.settle();
             this.sites.forEach((site) => { site.target = 0; });
             this.linksHeld = 0;
             this.latticePeak = 0;
@@ -689,8 +722,7 @@ export class CrystalCaveWorld {
         } else if (action.kind === 'ring') {
             this.pool.ring(action.a, action.b, this.time, action.c, this.tintScratch.setRGB(0.55, 1, 0.94));
         } else if (action.kind === 'fan') {
-            const edge = this.stage.edge(action.a, action.b, CRYSTAL_CAVE_STAGE_DEPTH, this.pointA);
-            this.effects.fan(edge, action.a, action.c, 4, this.time, this.random());
+            this.bankCaustic(action.a, action.b, 'triple', action.c, this.fanHue + 0.14, 0.82);
         } else if (action.kind === 'shower') {
             this.shower(action.a);
         } else if (action.kind === 'sprout') {
@@ -701,6 +733,28 @@ export class CrystalCaveWorld {
             this.burst(this.pointA, 9, 3.4, tint, { gravity: 3, rise: 1.5 });
             this.pool.ring(site.x * 0.86, site.z, this.time, 0.42, tint);
             site.members.forEach((index, order) => this.gems.pulse(index, this.time + order * 0.07, 1.2, this.time));
+        } else if (action.kind === 'chord') {
+            // A new level sounds five minerals in succession. Light rises out of each crystal's
+            // reflection, meets its tip and rings the stone. Prefer specimens visible beside the card.
+            const candidates = this.targets[action.a * 2 + action.b];
+            if (!candidates.length) return;
+            let best = null;
+            let nearest = Infinity;
+            const bank = action.b ? (1 + this.stage.board.x1) * 0.5 : this.stage.board.x0 * 0.5;
+            for (const candidate of candidates) {
+                const tip = this.tipOf[candidate.index];
+                this.pointA.copy(tip).project(this.camera);
+                const score = Math.abs(this.pointA.x * 0.5 + 0.5 - bank)
+                    + Math.max(0, Math.abs(this.pointA.y) - 0.65);
+                if (score < nearest) { best = candidate; nearest = score; }
+            }
+            if (!best) return;
+            const tip = this.tipOf[best.index];
+            this.pointA.set(tip.x * 0.8, this.poolLevel + 0.18, tip.z + 0.9);
+            this.pointC.set(action.b ? 0.9 : -0.9, 2.1, 1.2);
+            const tint = this.familyTint(action.a);
+            this.pool.ring(this.pointA.x, this.pointA.z, this.time, 0.66, tint);
+            this.effects.mote(this.pointA, tip, 0.86, tint, 0.48, best.index, this.pointC);
         } else if (action.kind === 'chime') {
             const site = this.sites[action.a];
             if (!site) return;
@@ -800,11 +854,24 @@ export class CrystalCaveWorld {
         // sparks stop shimmering.
         this.motionState ??= {};
         const motion = easedMotion(this.motionState, dt);
+        this.shards.motion.value = motion;
         this.effects?.setFlicker?.(motion);
         const u = this.light.uniforms;
         u.time.value = time;
         const hour = this.applyHour(time, dt);
         this.applyVein(time, dt);
+        // This sweep has its own clock, so the same day and vein can illuminate
+        // different banks. It moves slowly through the patch, fading before changing bank.
+        const passage = (Math.max(time, 0) + 5) / 23;
+        const phase = passage % 1;
+        const [poolX, poolZ, poolFamily] = POOL_LIGHT_SITES[Math.floor(passage) % POOL_LIGHT_SITES.length];
+        const focus = Math.sin(phase * Math.PI) ** 2;
+        u.poolFocus.value.set(
+            poolX + (phase - 0.5) * 7,
+            poolZ + Math.sin(phase * Math.PI * 2) * 2.5,
+            focus * (0.48 + hour.skyGain * 0.62),
+        );
+        u.focusTint.value.copy(this.light.familyColors[poolFamily]);
         const frame = director?.getFrame?.() ?? null;
         const { heat } = this;
         if (!frame) {
@@ -942,6 +1009,9 @@ export class CrystalCaveWorld {
 
     /** Back to the idle cave: no pulses, no sprouts, no light in flight. */
     reset() {
+        this.camera.position.copy(this.eye);
+        this.camera.lookAt(this.aim);
+        this.stageAt = -Infinity;
         this.seed = 90210;
         this.time = 0;
         this.nextDrip = 1.5;
@@ -986,6 +1056,7 @@ export class CrystalCaveWorld {
         return {
             quality: this.quality.name,
             crystals: this.gems.count,
+            floatingShards: this.shards.count,
             cavernTriangles: this.assets.meta.counts?.triangles ?? 0,
             sprouts: this.sites.length,
             grown: this.sites.filter((site) => site.growth > 0.5).length,
@@ -1012,6 +1083,7 @@ export class CrystalCaveWorld {
         this.air?.dispose();
         this.pool?.dispose();
         this.gems?.dispose();
+        this.shards?.dispose();
         this.rock?.dispose();
         this.light?.dispose();
         this.group.removeFromParent();
