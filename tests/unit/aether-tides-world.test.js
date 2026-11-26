@@ -13,6 +13,7 @@ import {
 } from '../../src/themes/aether-tides/aether-tides-composition.js';
 import { QUALITY, QUALITY_NAMES, tierFor } from '../../src/themes/aether-tides/aether-tides-quality.js';
 import { POST_LOOK } from '../../src/themes/aether-tides/aether-tides-post.js';
+import { REDUCED_FLASH_SCALE, holdFlashing } from '../../src/utils/photosensitivity.js';
 import { gridFor } from '../../src/themes/aether-tides/aether-tides-fluid.js';
 import {
     BEAM_ROWS, BEAM_SLOTS, BURST_ROWS, BURST_SLOTS, ECHO_CELLS, ECHO_CORNER_FILL, ECHO_ROWS, ECHO_SLOTS, FX_ROWS,
@@ -206,6 +207,48 @@ afterEach(() => {
 });
 
 describe('aether tides world: build', () => {
+    it('draws a lineless twist beside the card without fluid and parks its geometry when spent', () => {
+        const world = new AetherTidesWorld({
+            scene: new THREE.Scene(), renderer: fakeRenderer(), quality: 'Minimal', live: false,
+        }).build();
+        world.seek(23);
+        expect(world.tide.time.value).toBe(23);
+        const { geometry } = world.parts.filaments;
+        const parked = geometry.drawRange.count;
+        world.onClear({ lines: 0, twist: true });
+        expect(geometry.drawRange.count).toBeGreaterThan(parked);
+        const { card } = stageOf(world);
+        const path = geometry.getAttribute('tidePath');
+        const used = geometry.index.getX(geometry.drawRange.count - 1) + 1;
+        for (let i = 0; i < used; i += 2) {
+            expect(gapTo(card, path.getX(i), path.getY(i))).toBeGreaterThan(0);
+        }
+        const { version } = path;
+        run(world, 2);
+        expect(path.version).toBe(version);
+        expect(geometry.drawRange.count).toBe(parked);
+        world.dispose();
+    });
+
+    it('keeps the perfect clear shells in flight under simultaneous hard drops, then clears them on seek', () => {
+        const { world } = makeWorld('Low');
+        const { geometry } = world.parts.filaments;
+        const parked = geometry.drawRange.count;
+        world.onClear({ lines: 0, crown: true, perfect: true });
+        const used = geometry.index.getX(geometry.drawRange.count - 1) + 1;
+        const path = geometry.getAttribute('tidePath');
+        const shells = path.array.slice(0, used * path.itemSize);
+        expect(geometry.drawRange.count).toBeGreaterThan(parked);
+        expect(allFinite(shells)).toBe(true);
+        for (let i = 0; i < 32; i++) world.onLock({ ...I_FLOOR, hardDrop: true });
+        expect(path.array.slice(0, shells.length)).toEqual(shells);
+        expect(geometry.drawRange.count).toBeLessThanOrEqual(geometry.index.count);
+        expect(path.updateRanges.length).toBe(1);
+        world.seek(0);
+        expect(geometry.drawRange.count).toBe(parked);
+        world.dispose();
+    });
+
     it('builds every tier from node materials only, with the whole picture and the solver its tier pays for', () => {
         for (const quality of QUALITY_NAMES) {
             const { scene, world } = makeWorld(quality);
@@ -226,7 +269,7 @@ describe('aether tides world: build', () => {
                 // The echoes are solid: premultiplied "over", their bodies covering what lies behind
                 // (where their alpha is 0, the glow round them, they add light like the rest).
                 if (material.transparent && material.side === THREE.DoubleSide) {
-                    const solid = material.name === 'Aether Tides — echoes';
+                    const solid = ['Aether Tides — echoes', 'Aether Tides — plasma filaments'].includes(material.name);
                     const blending = solid ? THREE.NormalBlending : THREE.AdditiveBlending;
                     expect(material.blending, material.name).toBe(blending);
                     expect(material.premultipliedAlpha, material.name).toBe(true);
@@ -2160,6 +2203,32 @@ describe('aether tides world: build-up', () => {
         run(world, HUSH_HOLD + 0.3);
         expect(world.picture.starFlux.value.y).toBeGreaterThan(rest + 0.8);
         world.dispose();
+    });
+
+    it('holds back the hush, both stellar flashes, the iris and the bloom under reduced flashing', () => {
+        const { world } = makeWorld('Low');
+        world.onClear({ rows: [19, 18, 17, 16], lines: 4, b2b: true });
+        try {
+            run(world, 0.12);
+            const hush = world.picture.hush.value;
+            holdFlashing(true);
+            world.update({ delta: 0 });
+            expect(world.picture.hush.value).toBeCloseTo(hush * REDUCED_FLASH_SCALE, 6);
+            holdFlashing(false);
+            run(world, HUSH_HOLD + 0.15);
+            const { x, y } = world.picture.starFlux.value;
+            const { exposure, bloomBoost } = world.getPostState();
+            holdFlashing(true);
+            world.update({ delta: 0 });
+            const reduced = world.getPostState();
+            expect(reduced.exposure).toBeGreaterThan(exposure + 0.12);
+            expect(reduced.bloomBoost).toBeLessThan(bloomBoost * 0.5);
+            expect(world.picture.starFlux.value.x).toBeLessThan(x - 0.3);
+            expect(world.picture.starFlux.value.y).toBeLessThan(y - 0.3);
+        } finally {
+            holdFlashing(false);
+            world.dispose();
+        }
     });
 
     it('keeps the stars a chain lights, brighter, until the chain lets go', () => {

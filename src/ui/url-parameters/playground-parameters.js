@@ -1291,7 +1291,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
     {
         name: 'event',
         category: 'Playground',
-        scope: 'playground.html — astral-weave, aurora, black-hole, blood-moon, chiral-gold, '
+        scope: 'playground.html — aether-tides, astral-weave, aurora, black-hole, blood-moon, chiral-gold, '
             + 'chromadelic-highway, cosmic-noir, crystal-cave, fall, fluid-dreams, forest, galaxy, geode, '
             + 'golden-forest, halcyon-apex, himalayan-peak, ice-temple, kaleidosonic, koi-pond, luminous-tides, '
             + 'lunara, moonlit-greenhouse, murmuration, nebula-flow, neon-district, '
@@ -1321,12 +1321,14 @@ export const PLAYGROUND_URL_PARAMETERS = [
             + '(a twist with no lines), b2b, perfect, levelUp, over (the run ends), dawn (it ends and the '
             + 'next begins) or fever. Lunara accepts lock, drop, clear, cascade, quad, combo, break, '
             + 'twist, turn (lineless twist), b2b, perfect, crown (a delayed Clean canvas), levelUp or over. '
-            + 'Himalayan Peak accepts lock, drop, clear, quad, cascade, spin, twist, b2b, perfect, crown, chain, break, levelUp and over.',
+            + 'Himalayan Peak accepts lock, drop, clear, quad, cascade, spin, twist, b2b, perfect, crown, chain, break, levelUp and over. '
+            + 'Aether Tides accepts lock, drop, clear, cascade, quad, twist, spin, b2b, perfect, crown, combo, break, levelUp and gameOver.',
         defaultValue: 'Idle in most previews; Lunar Sigil uses lock.',
         example: 'event=lock',
         notes: 'Use on playground.html with effect=<the matching effect ID>. For deterministic replay, '
             + 'pair with t=<capture seconds> where supported.',
         sources: [
+            'src/playground/effects/aether-tides.effect.js',
             'src/playground/effects/astral-weave.effect.js',
             'src/playground/effects/aurora.effect.js',
             'src/playground/effects/black-hole.effect.js',

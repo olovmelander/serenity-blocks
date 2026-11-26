@@ -223,6 +223,16 @@
     --sp-wall-glow: rgb(192 90 95 / 23%);
 }
 
+/* Warm companion light on the ledger and a blue reflecting edge around the well. */
+:where(body:has(#aether-tides-theme.active)) .single-player-stage[data-board='well']:not(:where(
+    .infinity-mode-active, [data-odyssey-board], [data-stillfall], [data-still-air], [data-danger]
+)) {
+    --sp-hue: #f2d2a0;
+    --sp-hue-rgb: 242, 210, 160;
+    --sp-wall: #467f99;
+    --sp-wall-glow: rgb(80 157 203 / 24%);
+}
+
 /* ---- The column: the queue over the well ------------------------------------------- */
 .single-player-stage[data-board='well'] #single-player-container {
     --board-width: inherit;
@@ -343,6 +353,15 @@
     text-shadow: 0 1px 3px #130c15, 0 0 5px #130c15;
 }
 
+:where(body:has(#aether-tides-theme.active)) .single-player-stage[data-board='well']:not(:where(
+    .infinity-mode-active, [data-odyssey-board], [data-stillfall]
+)) #single-player-container .single-player-piece-previews::before {
+    color: #f4dfbe;
+    padding: 0.38em 0.5em;
+    border-radius: 3px;
+    background: rgb(13 19 35 / 86%);
+}
+
 /* ---- The well: plain glass between walls that fade toward the open top -------------- */
 .single-player-stage[data-board='well'] #single-player-container .player-board-section {
     position: relative;
@@ -371,6 +390,12 @@
     .infinity-mode-active, [data-odyssey-board], [data-stillfall]
 )) #single-player-card #phaser-game-container {
     background: linear-gradient(180deg, rgb(18 12 24 / 76%), rgb(16 12 24 / 92%) 21%, rgb(14 12 22 / 94%));
+}
+
+:where(body:has(#aether-tides-theme.active)) .single-player-stage[data-board='well']:not(:where(
+    .infinity-mode-active, [data-odyssey-board], [data-stillfall]
+)) #single-player-card #phaser-game-container {
+    background: linear-gradient(180deg, rgb(9 16 34 / 86%), rgb(12 16 34 / 90%) 22%, rgb(12 14 31 / 94%));
 }
 
 /* The walls: left, right and floor, fading out toward the top; the pieces meet them. */
@@ -533,6 +558,14 @@
     --sb-text-faint: #ccb8be;
     border-color: rgb(200 151 151 / 34%);
     background: linear-gradient(155deg, rgb(49 28 39 / 97%), rgb(22 19 32 / 96%) 72%);
+}
+
+:where(body:has(#aether-tides-theme.active)) .single-player-stage[data-board='well']:not(:where(
+    .infinity-mode-active, [data-odyssey-board], [data-stillfall]
+)) .single-player-stats-bar {
+    --sb-text-faint: #b7c8dc;
+    border-color: rgb(127 170 198 / 36%);
+    background: linear-gradient(145deg, rgb(26 44 65 / 97%), rgb(22 19 42 / 96%) 74%);
 }
 
 /* The mode's hue as the ledger's left edge, like a seat's plate in local versus. */

@@ -28,6 +28,8 @@
  */
 
 import { texture } from 'three/tsl';
+import { flashScale } from '../../utils/photosensitivity.js';
+import { loadBitmapTexture, uploadTextureNow } from '../shared/decoded-texture.js';
 
 import { cameraBreath } from '../shared/camera-breath.js';
 import { drainSteps } from '../shared/build-steps.js';
@@ -73,6 +75,7 @@ import { createNebula, createPictureUniforms } from './aether-tides-nebula.js';
 import { TideLight } from './aether-tides-light.js';
 import { createStars } from './aether-tides-stars.js';
 import { createFx } from './aether-tides-fx.js';
+import { createTideRibbons } from './aether-tides-ribbons.js';
 import { tierFor } from './aether-tides-quality.js';
 import {
     BOARD_GRID,
@@ -97,6 +100,7 @@ const WELL_STAR_A = 2;
 const WELL_STAR_B = 3;
 
 const NEVER = -1e6;
+const JET_GOLD = [1, 0.37, 0.055];
 
 /** How much faster the gas heals at the height of the clock's melt from one palette to the next. */
 const CLOCK_HEAL = 0.04;
@@ -141,7 +145,9 @@ export class AetherTidesWorld {
         this.nebula = null;
         this.stars = null;
         this.fx = null;
+        this.ribbons = null;
         this.noise = null;
+        this.cloudTexture = null;
         this.parts = {};
         this.pointer = { x: 0, y: 0 };
 
@@ -159,6 +165,7 @@ export class AetherTidesWorld {
         this.wellOpen = 0;
         this.wellAim = 0;
         this.releaseAt = NEVER;
+        this.gameOverAt = NEVER;
         /**
          * The spring behind the board a clear opens (it follows the latest clear and its push
          * accumulates: a cascade's waves feed one welling spring), and the turn a twist gives.
@@ -251,7 +258,10 @@ export class AetherTidesWorld {
         this.fieldUniforms = createFieldUniforms();
         this.picture = createPictureUniforms();
         const tNoise = texture(this.noise);
-        const field = createField(this.fieldUniforms, tNoise);
+        // This valid sampler also keeps a fully procedural picture during decode or on failure.
+        this.cloudSampler = texture(this.noise);
+        this.cloudSampler.mergeable = false;
+        const field = createField(this.fieldUniforms, tNoise, this.cloudSampler);
         this.fluid = new TideFluid({
             uniforms: this.tide,
             tNoise,
@@ -266,7 +276,15 @@ export class AetherTidesWorld {
         });
         yield 'fluid and light';
         this.nebula = createNebula({
-            tide: this.tide, picture: this.picture, fluid: this.fluid, light: this.light, tier, field, view: this.view,
+            tide: this.tide,
+            picture: this.picture,
+            fluid: this.fluid,
+            light: this.light,
+            tier,
+            field,
+            view: this.view,
+            clouds: this.cloudSampler,
+            fieldUniforms: this.fieldUniforms,
         });
         this.stars = createStars({
             tide: this.tide, picture: this.picture, fluid: this.fluid, tier,
@@ -274,12 +292,21 @@ export class AetherTidesWorld {
         this.fx = createFx({
             tide: this.tide, picture: this.picture, fluid: this.fluid, tier,
         });
+        this.ribbons = createTideRibbons({
+            tide: this.tide,
+            picture: this.picture,
+            tier,
+            noise: tNoise,
+            clouds: this.cloudSampler,
+            plateMix: this.fieldUniforms.plateMix,
+        });
         this.parts.nebula = this.nebula.mesh;
         this.parts.stars = this.stars.mesh;
         this.parts.beams = this.fx.beamMesh;
         this.parts.stardust = this.fx.dustMesh;
         this.parts.echoes = this.fx.echoMesh;
-        this.scene.add(this.nebula.mesh, this.stars.mesh, this.fx.beamMesh, this.fx.dustMesh, this.fx.echoMesh);
+        this.parts.filaments = this.ribbons.mesh;
+        this.scene.add(...Object.values(this.parts));
         this.applyPalette(this.fluid.clock);
         this.setViewport(1920, 1080, 16 / 9);
         // The event table must hold real numbers before the first pass reads it.
@@ -291,8 +318,20 @@ export class AetherTidesWorld {
         return this;
     }
 
-    loadTextures() {
-        return Promise.resolve(true);
+    async loadTextures() {
+        const small = this.quality === 'Minimal' || this.quality === 'Low';
+        const url = `./textures/aether-tides/ionisation-front${small ? '-small' : ''}.webp`;
+        const image = await loadBitmapTexture(url, { flipY: false }).catch(() => null);
+        if (!image) return false;
+        if (!this.fluid || this.cloudTexture) {
+            image.dispose();
+            return false;
+        }
+        this.cloudTexture = image;
+        this.cloudSampler.value = image;
+        this.fieldUniforms.plateMix.value = 1;
+        uploadTextureNow(this.renderer, image);
+        return true;
     }
 
     // ── palette ─────────────────────────────────────────────────────────────────
@@ -313,12 +352,16 @@ export class AetherTidesWorld {
 
     /** Write the palette at `clock` (a function of the clock and the level's step alone). */
     applyPalette(clock) {
-        const pal = meltPalettes(AETHER_PALETTES, PALETTE_KEYS, this.palettePhase(clock), this.palette);
+        const phase = this.palettePhase(clock);
+        const pal = meltPalettes(AETHER_PALETTES, PALETTE_KEYS, phase, this.palette);
         const F = this.fieldUniforms;
         const P = this.picture;
         F.gasA.value.setRGB(...pal.gasA);
         F.gasB.value.setRGB(...pal.gasB);
         F.gasC.value.setRGB(...pal.gasC);
+        F.gold.value.setRGB(...pal.companion);
+        const cycle = phase / AETHER_PALETTES.length;
+        F.plateTurn.value = smooth(0, 0.95, Math.abs(cycle - Math.round(cycle)) * AETHER_PALETTES.length);
         P.deep.value.setRGB(...pal.deep);
         P.dustTint.value.setRGB(...pal.dust);
         P.starColorA.value.setRGB(...pal.star);
@@ -390,6 +433,7 @@ export class AetherTidesWorld {
         if (!this.fluid) return;
         this.events.reset();
         this.fx.table.reset();
+        this.ribbons.reset();
         this.clearChoreography();
         this.fluid.clock = time;
         this.fluid.debt = 0;
@@ -407,6 +451,7 @@ export class AetherTidesWorld {
         this.wellOpen = 0;
         this.wellAim = 0;
         this.releaseAt = NEVER;
+        this.gameOverAt = NEVER;
         this.burst.swell.reset();
         this.twist.at = NEVER;
         this.hushAt = NEVER;
@@ -448,6 +493,15 @@ export class AetherTidesWorld {
         U.gust.value = 0.16 * calm * (1 + power * 0.6 + level * 0.5 + fever * 0.4);
         U.gustScroll.value.set(clock * 0.004, clock * -0.0027);
         this.fieldUniforms.drift.value.set(clock * 0.0009, clock * 0.0006);
+        // A tide opens one bank as the other draws in. Its period is independent of both
+        // the palette wheel and the binary orbit, so their alignments keep changing.
+        const swell = Math.sin(clock * 0.032);
+        this.fieldUniforms.weather.value.set(
+            (swell * 0.053 + Math.sin(clock * 0.057) * 0.014) * calm,
+            Math.sin(clock * 0.023 + 0.7) * 0.045 * calm,
+            Math.sin(clock * 0.039) * 0.85 * calm,
+            0.875 + Math.cos(clock * 0.025) * 0.097 * calm,
+        );
 
         // ── the maelstrom ──
         const rate = this.wellAim > this.wellOpen ? 1 / WELL_OPEN : 1 / WELL_RELEASE;
@@ -562,8 +616,9 @@ export class AetherTidesWorld {
         );
 
         const { power } = this;
-        const flare = this.flareStrength(now);
-        const answer = this.companion.valueAt(now);
+        const flashGain = flashScale();
+        const flare = this.flareStrength(now) * flashGain;
+        const answer = this.companion.valueAt(now) * flashGain;
         const heat = this.surge.sample(now);
         this.heat = heat;
         const { level, fever } = heat;
@@ -571,11 +626,26 @@ export class AetherTidesWorld {
         P.starA.value.set(a.x, a.y);
         const b = tideStarPosition(1, now, aspect, this._p);
         P.starB.value.set(b.x, b.y);
+        const windA = (now / 32) % 1;
+        const windB = (now / 47 + 0.41) % 1;
+        const windGain = this.reducedMotion ? 0.28 : 0.84;
+        P.wind.value.set(
+            windA * 3.6,
+            4 * windA * (1 - windA) * windGain,
+            windB * 3.15,
+            4 * windB * (1 - windB) * windGain,
+        );
         // The stars pour more light through the gas the hotter play runs.
         P.starFlux.value.set(
             1 + power * 0.35 + flare * 1.7 + level * 0.45 + fever * 0.55,
             0.62 + power * 0.2 + flare * 0.3 + level * 0.25 + fever * 0.35 + answer * 1.3,
         );
+        // After a run the companion cools first, then the Tide Star; their light returns
+        // gradually to the gas, even if the results stay open for minutes.
+        const endingAge = now - this.gameOverAt;
+        const settling = smooth(0, 1.55, endingAge) * (1 - smooth(2.8, 7.7, endingAge));
+        P.starFlux.value.x *= 1 - settling * 0.71;
+        P.starFlux.value.y *= 1 - settling * 0.81;
 
         const w = maelstromPosition(now, aspect, this._p);
         const open = this.wellOpen;
@@ -586,9 +656,8 @@ export class AetherTidesWorld {
 
         // The hush: everything sinks, then lets go as the starfire fires.
         const hushAge = now - this.hushAt;
-        P.hush.value = hushAge >= 0 && hushAge < HUSH_HOLD + 0.4
-            ? smooth(0, 0.07, hushAge) * (1 - smooth(HUSH_HOLD - 0.02, HUSH_HOLD + 0.1, hushAge)) * this.hushDepth
-            : 0;
+        const inhale = smooth(0, 0.07, hushAge) * (1 - smooth(HUSH_HOLD - 0.02, HUSH_HOLD + 0.1, hushAge));
+        P.hush.value = inhale * this.hushDepth * flashGain;
         // A four-line clear burns in starfire for a few seconds, then the palette's own colour;
         // a fever keeps the fronts half in starfire for as long as it lasts.
         const fire = now - this.starfireAt;
@@ -600,9 +669,10 @@ export class AetherTidesWorld {
             lerp(shock[2], STARFIRE[2], burning),
         );
         P.hot.value = 1 + burning * 0.2 + level * 0.08;
-        P.glow.value = 1 + power * 0.25 + level * 0.25 + fever * 0.2;
+        P.glow.value = (1 + power * 0.25 + level * 0.25 + fever * 0.2) * (1 - 0.2 * settling);
 
         this.fx.sync();
+        this.ribbons.update(now);
         this.tuning?.();
         this.light.render(this.renderer);
         // What the solver and the light cost the main thread this frame (a diagnostic).
@@ -852,6 +922,7 @@ export class AetherTidesWorld {
         }
         // A hard drop comes down from above: a streak of the piece's colour slammed into the echo.
         if (hard) {
+            this.ribbons.drop(ex, ey, at, color, calm);
             this.streak({
                 ax: ex,
                 ay: ey - 0.62,
@@ -995,11 +1066,12 @@ export class AetherTidesWorld {
                 const fan = (i - (rows.length - 1) * 0.5) * 0.09;
                 const lag = i * 0.035;
                 // Each row's plasma in one of the nebula's own colours, burnt toward the front's;
-                // a four-line clear fires them all in starfire.
+                // a four-line clear interleaves the piece's pigment with gold jets.
                 const own = (this.lockCount + i) % 2 === 0 ? gasB : gasC;
-                const plume = grand ? STARFIRE : [
-                    lerp(own[0], shock[0], 0.2), lerp(own[1], shock[1], 0.2), lerp(own[2], shock[2], 0.2),
-                ];
+                const pigment = grand && i % 2 === 1 ? this.lastColor : own;
+                const hotEdge = grand ? JET_GOLD : shock;
+                const goldMix = i % 2 === 1 ? 0.24 : 0.86;
+                const plume = pigment.map((channel, k) => lerp(channel, hotEdge[k], grand ? goldMix : 0.2));
                 for (let side = -1; side <= 1; side += 2) {
                     const from = side < 0 ? card.x0 : card.x1;
                     const to = side * (aspect + 0.25);
@@ -1010,19 +1082,23 @@ export class AetherTidesWorld {
                         by: y + fan * Math.abs(to - from),
                         at: at + lag,
                         duration: 0.42 + 0.05 * i,
-                        radius: ch * 0.62,
+                        radius: ch * (grand ? 0.45 : 0.62),
                         color: plume,
-                        deposit: grand ? 0.75 : 0.55,
+                        deposit: grand ? 0.34 : 0.55,
                         push: (grand ? 1.5 : 1.1) * calm * deep,
-                        heat: (grand ? 4.5 : 3) * hotter,
+                        heat: (grand ? 1.6 : 3) * hotter,
                     });
                     this.fx.table.beam({
-                        x0: from, y, x1: to, at: at + lag, color: fire, thickness: ch * 0.2,
+                        x0: from, y, x1: to, at: at + lag, color: grand ? plume : fire, thickness: ch * 0.2,
                     });
                 }
             }
             // Stardust sprays out of both sides, at the middle of what was cleared.
             for (let side = -1; side <= 1; side += 2) {
+                if (depth > 0) {
+                    const edge = side < 0 ? card.x0 : card.x1;
+                    this.ribbons.cascade(edge, heartY, at + 0.13, side < 0 ? gasB : gasC, side, depth, calm);
+                }
                 this.fx.table.burst({
                     x: side < 0 ? card.x0 : card.x1,
                     y: heartY,
@@ -1075,6 +1151,8 @@ export class AetherTidesWorld {
         // ── a four-line clear: the Tide Star answers ──
         if (grand) {
             const star = tideStarPosition(0, at, aspect, this._p);
+            if (c.perfect) this.ribbons.shells(at, aspect, calm);
+            else this.ribbons.jets(star.x, star.y, at, calm);
             this.fx.table.burst({
                 x: star.x, y: star.y, at: at + 0.05, color: STARFIRE, speed: 2.1 * calm, life: 1.9, size: 1.5,
             });
@@ -1095,6 +1173,7 @@ export class AetherTidesWorld {
             this.twist.x = heartX;
             this.twist.y = heartY;
             this.twist.strength = (this.lockCount % 2 === 0 ? 1 : -1) * 4;
+            this.drawTwist(c, heartX, heartY, at);
         }
         this.strike(0.2 + 0.12 * lines + (grand ? 0.35 : 0), 0.3 + 0.15 * lines + (grand ? 0.4 : 0), at);
     }
@@ -1135,6 +1214,7 @@ export class AetherTidesWorld {
         const calm = this.reducedMotion ? 0.45 : 1;
         this.companion.hit(1, at);
         const star = tideStarPosition(1, at, this.aspect, this._p);
+        this.ribbons.bridge(at, this.aspect, calm);
         const amber = [1, 0.66, 0.32];
         this.fx.table.burst({
             x: star.x, y: star.y, at: at + 0.04, color: amber, speed: 1.8 * calm, life: 1.6, size: 1.35,
@@ -1163,6 +1243,7 @@ export class AetherTidesWorld {
         const span = Math.hypot(this.aspect, 1);
         const star = tideStarPosition(0, at, this.aspect, this._p);
         this.flare.hit(0.55, at);
+        this.ribbons.shells(at, this.aspect, calm);
         this.starfireAt = at;
         this.fx.table.burst({
             x: star.x, y: star.y, at, color: STARFIRE, speed: 2.6 * calm, life: 2.2, size: 1.7,
@@ -1187,7 +1268,31 @@ export class AetherTidesWorld {
         this.twist.x = (board.x0 + board.x1) * 0.5;
         this.twist.y = (board.y0 + board.y1) * 0.5;
         this.twist.strength = (this.lockCount % 2 === 0 ? 1 : -1) * 2.4;
+        this.drawTwist(c, this.twist.x, this.twist.y, at);
         this.strike(0.08, 0.25, at);
+    }
+
+    /** Put the pinwheel in the gap beside the player's card; on a crowded portrait use the open sky. */
+    drawTwist(c, x, rowY, at) {
+        const radius = Math.min(0.26, this.aspect * 0.33) * (this.reducedMotion ? 0.65 : 1);
+        const y = Math.min(1 - radius, Math.max(-1 + radius, rowY));
+        const sign = Math.sign(this.twist.strength);
+        if (c.screen) {
+            this.ribbons.twist(x, y, at, this.lastColor, radius, sign);
+            return;
+        }
+        const { card, obstacles } = this.stage(c.player || 0);
+        const box = {
+            x0: x - radius, x1: x + radius, y0: y - radius, y1: y + radius,
+        };
+        const echo = placeEcho({
+            box, card, obstacles, aspect: this.aspect, prefer: sign,
+        }, this._echo);
+        if (echo.placed) this.ribbons.twist(x + echo.dx, y + echo.dy, at, this.lastColor, radius, sign);
+        else {
+            const star = tideStarPosition(0, at, this.aspect, this._p);
+            this.ribbons.twist(star.x, star.y, at, this.lastColor, radius, sign);
+        }
     }
 
     /** The true combo (0 = the chain broke). */
@@ -1212,6 +1317,7 @@ export class AetherTidesWorld {
         const wy = w.y;
         const { gasA, gasB, gasC } = this.palette;
         const arms = [this.lastColor, step % 2 === 0 ? gasB : gasC, gasA];
+        this.ribbons.accrete(wx, wy, at, arms[1], step, calm);
         const count = step >= 5 ? 3 : 2;
         for (let k = 0; k < count; k += 1) {
             const angle = step * 2.4 + k * (TAU / count) + 0.5;
@@ -1311,6 +1417,9 @@ export class AetherTidesWorld {
         this.stepFrom = shown;
         this.stepTo = nearestStep(shown, next - 1, count);
         this.paletteAt = at;
+        const heading = Math.round(this.stepTo + paletteDrift(at));
+        const nextPalette = AETHER_PALETTES[((heading % count) + count) % count];
+        this.ribbons.level(at, this.aspect, nextPalette, this.reducedMotion ? 0.55 : 1);
         const { board } = this.stage(0);
         this.events.addRing({
             x: (board.x0 + board.x1) * 0.5,
@@ -1338,6 +1447,14 @@ export class AetherTidesWorld {
         this.combo = 0;
         this.wellAim = 0;
         this.hushAt = NEVER;
+        this.gameOverAt = NEVER;
+        this.ribbons?.reset();
+    }
+
+    onGameOver() {
+        if (!this.ribbons) return;
+        this.gameOverAt = this.eventClock;
+        this.ribbons.settle(this.gameOverAt, this.aspect, this.reducedMotion ? 0.55 : 1);
     }
 
     getPostState() {
@@ -1345,16 +1462,17 @@ export class AetherTidesWorld {
         if (!this.fluid) return out;
         const { now } = this;
         const flare = this.flareStrength(now);
+        const flashGain = flashScale();
         const { level, fever } = this.heat;
         // The flare's share of the flash is capped: stacked flares keep their colour.
         out.flash = this.flash.valueAt(now) + Math.min(1, flare) * 0.45;
         out.kick = this.kick.valueAt(now);
         // The bloom swells a little with the heat of play and holds through a fever (the gas's
         // own glow carries most of it: a haze over everything would wash the colours out).
-        out.bloomBoost = flare * 0.8 + this.wellOpen * 0.25 + level * 0.12 + fever * 0.22;
+        out.bloomBoost = flare * 0.8 * flashGain + this.wellOpen * 0.25 + level * 0.12 + fever * 0.22;
         // An iris: it closes a little as the nebula flares and as play heats, so the colours
         // survive the surge and the deep sky stays deep.
-        out.exposure = 1 - Math.min(0.42, out.flash * 0.42) - this.picture.hush.value * 0.12
+        out.exposure = 1 - Math.min(0.42, out.flash * 0.42) * flashGain - this.picture.hush.value * 0.12
             - Math.max(0, level - 0.2) * 0.06;
         return out;
     }
@@ -1396,12 +1514,19 @@ export class AetherTidesWorld {
             this.scene.remove(this.fx.beamMesh, this.fx.dustMesh, this.fx.echoMesh);
             this.fx.dispose();
         }
+        if (this.ribbons) {
+            this.scene.remove(this.ribbons.mesh);
+            this.ribbons.dispose();
+        }
         this.light?.dispose();
         this.fluid?.dispose();
         this.noise?.dispose();
+        this.cloudTexture?.dispose();
+        this.cloudTexture = null;
         this.nebula = null;
         this.stars = null;
         this.fx = null;
+        this.ribbons = null;
         this.light = null;
         this.fluid = null;
         this.noise = null;

@@ -613,6 +613,7 @@ export class TideFluid {
             this.steps = 0;
             this.debt = 0;
             this.clock = time;
+            this.u.time.value = time;
             this.setAhead(0);
             return;
         }

@@ -14,7 +14,7 @@
  *   level=<n>                rest on level n's palette (a step on top of the clock's: t=<s>
  *                            shows the palette the clock has turned to by then)
  *   locks=<n>                before anything else, play n locks (the sky holding their stars)
- *   event=lock|drop|clear|quad|twist|perfect|levelUp|break   fire a gameplay event...
+ *   event=lock|drop|clear|cascade|quad|twist|spin|b2b|perfect|crown|combo|break|levelUp|gameOver
  *   eventAge=<s>             ...and show it <s> seconds later (lines=<n>, row=<r>, col=<c>,
  *                            color=<hex>, piece=I|O|T|S|Z|J|L)
  *   lead=<s>                 seconds of fluid replayed before the frame (default 10)
@@ -37,6 +37,8 @@ import * as THREE from 'three/webgpu';
 import { AetherTidesWorld } from '../../themes/aether-tides/aether-tides-world.js';
 import { AetherTidesPost, POST_LOOK } from '../../themes/aether-tides/aether-tides-post.js';
 import { readLayoutRects } from '../../themes/aether-tides/aether-tides-composition.js';
+import { AETHER_TIDES_TETROMINOS } from '../../themes/aether-tides/aether-tides-tetrominos.js';
+import { mountSoloWellPreview } from '../solo-well-preview.js';
 
 export const meta = {
     id: 'aether-tides',
@@ -49,51 +51,6 @@ function num(params, key, fallback = 0) {
     return Number.isFinite(v) ? v : fallback;
 }
 
-const BOARD_PX = 'min(clamp(220px, 22vw, 300px), (100vh - 250px) / 2)';
-
-/** A stand-in for the real solo layout (public/styles/main.css) with the real class names. */
-function mountBoardOverlay(withHud) {
-    const root = document.createElement('div');
-    root.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:5';
-    const card = document.createElement('div');
-    card.className = 'player-card';
-    card.dataset.player = 'solo';
-    card.style.cssText = [
-        'position:absolute', 'left:50%', 'top:50%',
-        `width:calc(${BOARD_PX} * 1.19)`,
-        `height:calc(2 * ${BOARD_PX} + 158px)`,
-        'transform:translate(-50%, -50%)', 'background:rgba(21,26,35,0.866)',
-        'border:1px solid rgba(139,92,246,0.45)', 'border-radius:20px',
-    ].join(';');
-    const board = document.createElement('div');
-    board.id = 'single-player-game-canvas';
-    board.style.cssText = [
-        'position:absolute', 'left:50%', 'bottom:24px', `width:calc(${BOARD_PX})`, `height:calc(2 * ${BOARD_PX})`,
-        'transform:translateX(-50%)', 'border:1px solid rgba(255,255,255,0.08)',
-    ].join(';');
-    card.append(board);
-    root.append(card);
-    if (withHud) {
-        const hud = document.createElement('div');
-        hud.className = 'single-player-stats-bar';
-        hud.style.cssText = [
-            'position:absolute', 'top:25%', 'height:50%',
-            'left:calc(50% + min(max(300px, min(35vw, 400px)), (100vh - 200px) / 2) / 2 + 60px)',
-            'width:140px',
-            'background:rgba(14,11,26,0.8)', 'border:1px solid rgba(150,110,255,0.25)', 'border-radius:10px',
-        ].join(';');
-        root.append(hud);
-    }
-    document.body.appendChild(root);
-    return root;
-}
-
-/** The game's piece colours (aether-tides-tetrominos.js), by shape. */
-const PIECE_COLORS = {
-    I: '#F5C542', J: '#FF7A3C', L: '#2CE0FF', O: '#8A5CFF', S: '#FF4D6D', T: '#3CE68C', Z: '#3A7BFF',
-};
-const PIECE_KEYS = Object.keys(PIECE_COLORS);
-
 /** Occupied cells of each piece at rest, as [column, row] offsets (row grows downward). */
 const PIECE_CELLS = {
     I: [[0, 0], [1, 0], [2, 0], [3, 0]],
@@ -104,6 +61,7 @@ const PIECE_CELLS = {
     J: [[0, 0], [0, 1], [1, 1], [2, 1]],
     L: [[2, 0], [0, 1], [1, 1], [2, 1]],
 };
+const PIECE_KEYS = Object.keys(AETHER_TIDES_TETROMINOS.colors).filter((key) => Object.hasOwn(PIECE_CELLS, key));
 
 /** A lock spec as the director would resolve it: the piece's cells on the visible board. */
 function lockSpec(piece, column, row, hardDrop = false) {
@@ -114,7 +72,7 @@ function lockSpec(piece, column, row, hardDrop = false) {
     const rows = [...new Set(cells.map((c) => c[1]))];
     const u = cells.reduce((sum, c) => sum + c[0] + 0.5, 0) / cells.length / 10;
     return {
-        player: 0, cells, rows, u, hardDrop, color: PIECE_COLORS[key],
+        player: 0, cells, rows, u, hardDrop, color: AETHER_TIDES_TETROMINOS.colors[key],
     };
 }
 
@@ -168,7 +126,10 @@ export function create({
     });
     if (noPost) renderer.toneMapping = THREE.AgXToneMapping;
     else renderer.toneMapping = THREE.NoToneMapping;
-    const overlay = params.get('board') === '1' ? mountBoardOverlay(params.get('statsHud') !== '0') : null;
+    // The live queue paints solid fused silhouettes in the selected theme's colours.
+    const overlay = params.get('board') === '1' ? mountSoloWellPreview(meta.id, {
+        colors: AETHER_TIDES_TETROMINOS.colors, renderMode: 'solid', effects: { outline: false },
+    }, params.get('statsHud') !== '0') : null;
 
     const held = [];
     params.forEach((value, key) => {
@@ -191,7 +152,9 @@ export function create({
     }
     const pointer = { x: num(params, 'px'), y: num(params, 'py') };
     const size = new THREE.Vector2(1, 1);
+    let lastSeek = null;
     const syncViewport = () => {
+        lastSeek = null;
         const aspect = window.innerWidth / Math.max(1, window.innerHeight);
         camera.aspect = aspect;
         camera.updateProjectionMatrix();
@@ -203,6 +166,15 @@ export function create({
         post?.setCalmRects(rects ? [...rects.cards, rects.hud].filter(Boolean) : [], rects ? 1 : 0);
     };
     syncViewport();
+    const styleLink = overlay?.querySelector('link');
+    const layoutReady = styleLink && !styleLink.sheet ? new Promise((resolve) => {
+        const settle = () => {
+            if (overlay.isConnected) syncViewport();
+            resolve();
+        };
+        styleLink.addEventListener('load', settle, { once: true });
+        styleLink.addEventListener('error', settle, { once: true });
+    }) : null;
 
     const sim = (time, delta) => ({
         time, delta, pointerX: pointer.x, pointerY: pointer.y,
@@ -222,7 +194,7 @@ export function create({
 
     const eventName = params.get('event');
     const eventAge = num(params, 'eventAge', 0.4);
-    const holdCombo = Math.max(0, Math.round(num(params, 'combo', 0)));
+    const holdCombo = Math.max(0, Math.round(num(params, 'combo', eventName === 'break' ? 4 : 0)));
     const level = Math.max(1, Math.round(num(params, 'level', 1)));
     const warmLocks = Math.max(0, Math.round(num(params, 'locks', 0)));
     const pieceParam = (params.get('piece') || 'T').toUpperCase();
@@ -236,11 +208,20 @@ export function create({
         if (colorParam) spec.color = `#${colorParam.replace('#', '')}`;
         if (eventName === 'lock' || eventName === 'drop') world.onLock(spec);
         else if (eventName === 'clear') world.onClear({ rows: bottom(lines), lines });
+        else if (eventName === 'cascade') world.onClear({ rows: bottom(lines), lines, cascade: 3 });
         else if (eventName === 'quad') world.onClear({ rows: bottom(4), lines: 4 });
         else if (eventName === 'twist') world.onClear({ rows: bottom(2), lines: 2, twist: true });
+        else if (eventName === 'spin') world.onClear({ lines: 0, twist: true });
+        else if (eventName === 'b2b') world.onClear({ rows: bottom(4), lines: 4, b2b: true });
         else if (eventName === 'perfect') world.onClear({ rows: bottom(4), lines: 4, perfect: true });
+        else if (eventName === 'crown') world.onClear({ lines: 0, perfect: true, crown: true });
+        else if (eventName === 'combo') world.onCombo(Math.max(2, holdCombo + 1));
         else if (eventName === 'levelUp') world.levelUp(num(params, 'eventLevel', level + 1));
         else if (eventName === 'break') world.onCombo(0);
+        else if (eventName === 'gameOver') {
+            world.resetSession();
+            world.onGameOver();
+        }
     };
 
     const seekTo = (time) => {
@@ -295,21 +276,41 @@ export function create({
         if (local > 31 && world.combo > 0) world.onCombo(0);
     };
 
+    let texturesReady = false;
+    let pendingSeek = null;
+    const ready = Promise.all([world.loadTextures(), layoutReady]).then(() => {
+        if (!world.fluid) return;
+        texturesReady = true;
+        if (pendingSeek !== null) {
+            seekTo(pendingSeek);
+            lastSeek = pendingSeek;
+        }
+    });
+    const render = () => {
+        if (post) post.render();
+        else renderer.render(scene, camera);
+    };
     return {
         cameraRadius: 1,
         camera() {},
         update(time, dt) {
+            lastSeek = null;
             if (demo) runDemo(time);
             frame(time, dt);
             pushPost(time);
         },
         seek(time) {
-            seekTo(time);
+            pendingSeek = time;
+            if (texturesReady && (time !== lastSeek || world.fluid.restPending)) {
+                seekTo(time);
+                lastSeek = time;
+            }
         },
-        render() {
-            if (post) post.render();
-            else renderer.render(scene, camera);
+        async renderAsync() {
+            await ready;
+            if (world.fluid) render();
         },
+        render,
         resize() {
             syncViewport();
         },

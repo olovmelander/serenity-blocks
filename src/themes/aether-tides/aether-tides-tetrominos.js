@@ -23,37 +23,27 @@ export const AETHER_TIDES_TETROMINOS = {
     renderMode: 'glow',
 
     effects: {
-        glowRadius: 9,
-        glowIntensity: 0.65,
+        glowRadius: 3,
+        glowIntensity: 0.95,
         glowColor: 'auto',
 
         outline: true,
-        outlineWidth: 1.6,
+        outlineWidth: 1,
         outlineColor: 'lighten',
-
-        pulse: true,
-        pulseSpeed: 0.03,
-        pulseAmplitude: 0.18,
-
-        shimmer: true,
-        shimmerSpeed: 0.05,
-        shimmerIntensity: 0.15,
-
-        trails: true,
-        trailLength: 0.12,
-        trailOpacity: 0.25,
     },
 
     rendererOverrides: {
         canvas: {
-            glowRadius: 7,
-            glowIntensity: 0.6,
-            outlineWidth: 1.4,
+            glowRadius: 2,
         },
         phaser: {
-            glowRadius: 11,
-            glowIntensity: 0.7,
-            outlineWidth: 1.8,
+            // The board lights one continuous silhouette. A narrow silver rim separates
+            // neighbours in the stack while the shaded faces retain their piece colours.
+            highlight: 0.22,
+            shadow: 0.27,
+            rimAlpha: 0.48,
+            rimWidthFactor: 0.045,
+            glossAlpha: 0.16,
         },
     },
 };

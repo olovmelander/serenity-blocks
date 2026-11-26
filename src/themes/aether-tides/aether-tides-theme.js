@@ -43,6 +43,7 @@ import * as THREE from 'three/webgpu';
 
 import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
+import { MULTIPLAYER_EVENTS } from '../../events/multiplayer-events.js';
 import { registerGpuSurface } from '../../utils/gpu-loss-coordinator.js';
 import { normalizeQuality } from '../../utils/quality.js';
 import { getViewport } from '../../utils/viewport.js';
@@ -236,6 +237,8 @@ export default class AetherTidesTheme extends BaseTheme {
             // meanwhile, leaves it disposed.
             if (!(await buildWorldBreathing(world, isCurrent))) return;
             this.world = world;
+            await world.loadTextures();
+            if (!isCurrent()) return;
             this.world.bindCamera(this.camera);
             if (this.flags.parts) this.world.showOnlyParts(this.flags.parts);
             this.setupPost();
@@ -264,8 +267,7 @@ export default class AetherTidesTheme extends BaseTheme {
 
         this.time = this.flags.time ?? this.takeRestartTime(0);
         this.scheduleLayoutReads();
-        // Still gas, laid out as the resting nebula at this instant; nothing to load, nothing to
-        // wait for: the noise the nebula is cut from is baked on the CPU.
+        // Seed the gas in its current palette after the emission map has resolved.
         this.world.seek(this.time);
         this.world.updateCamera(this.camera, this.buildSim(0));
         this.world.update(this.buildSim(0), this.camera);
@@ -350,6 +352,11 @@ export default class AetherTidesTheme extends BaseTheme {
         this.clearTrackedResources();
         this.eventUnsubscribers = [];
         const playing = () => this.isActive && !this.isPaused;
+        const finishRun = () => {
+            this.resetSession();
+            if (playing() && this.director?.enabled) this.world?.onGameOver();
+        };
+        let lastMatchResult = null;
 
         Object.keys(AETHER_TIDES_EVENT_HANDLERS).forEach((key) => {
             const handler = AETHER_TIDES_EVENT_HANDLERS[key];
@@ -359,6 +366,13 @@ export default class AetherTidesTheme extends BaseTheme {
             }));
         });
         this.eventUnsubscribers.push(
+            eventBus.on(MULTIPLAYER_EVENTS.GAME_OVER, (result) => {
+                if (!result?.isGameOver || (result.recordId && result.recordId === lastMatchResult)) return;
+                lastMatchResult = result.recordId;
+                finishRun();
+            }),
+            eventBus.on(MULTIPLAYER_EVENTS.ROUND_RESTART, () => this.resetSession()),
+            eventBus.on(MULTIPLAYER_EVENTS.MATCH_STARTED, () => this.resetSession()),
             eventBus.on(EVENTS.SETTINGS_CHANGED, (p) => this.handleSettingsChanged(p)),
             eventBus.on(EVENTS.VIEWPORT_RESIZED, (v) => {
                 const view = v?.width > 0 && v?.height > 0 ? v : getViewport();
@@ -366,7 +380,7 @@ export default class AetherTidesTheme extends BaseTheme {
             }),
         );
         this.registerEventListener(window, 'settingsChanged', (p) => this.handleSettingsChanged(p));
-        this.registerEventListener(window, 'gameOver', () => this.resetSession());
+        this.registerEventListener(window, 'gameOver', finishRun);
 
         const resetPointer = () => {
             this.pointer.x = 0;
@@ -409,9 +423,11 @@ export default class AetherTidesTheme extends BaseTheme {
 
     /** A new run: no chain in flight, the maelstrom closing; the nebula keeps flowing. */
     resetSession() {
+        // Close the well before the director reports each player's zero combo, so ending a run
+        // does not trigger the burst for a chain broken by a piece in play.
+        this.world?.resetSession();
         this.director?.reset();
         this.combos.clear();
-        this.world?.resetSession();
         this.scheduleLayoutReads();
     }
 
@@ -509,7 +525,7 @@ export default class AetherTidesTheme extends BaseTheme {
         this.modeManager = manager;
         const relayout = () => this.scheduleLayoutReads();
         this.eventUnsubscribers.push(
-            manager.on('modeStarted', relayout),
+            manager.on('modeStarted', () => this.resetSession()),
             manager.on('modeActivated', relayout),
             manager.on('modeStopped', () => this.resetSession()),
         );
