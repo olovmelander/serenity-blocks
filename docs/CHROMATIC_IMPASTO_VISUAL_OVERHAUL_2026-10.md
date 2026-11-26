@@ -429,5 +429,9 @@ carries no gloss, so the change is a straight darkening of the cloth and nothing
 
 Compared at a fixed `t=12`, and at `t=40` with the solo well, on WebGPU High, the WebGL2 backend
 and the Minimal tier: the linen and the thin lay-in washes are darker, the thick strokes keep
-their colour, and the consoles stayed clean. The theme icon was not re-baked; it still shows the
-lighter linen.
+their colour, and the consoles stayed clean.
+
+The theme icon was re-baked to match, from the same frame as before so its composition is
+unchanged: `playground.html?effect=chromatic-impasto&maxFps=30&hud=0&t=12` at 1280 × 720, the
+square from (2, 0) to (526, 524), resized to 512 px and given the previous icon's disc alpha.
+The Odyssey passage palette was re-baked from it (`node scripts/bake-odyssey-passage-palettes.mjs`).
