@@ -100,8 +100,8 @@
 :where(body:has(#chromadelic-highway-theme.active)) .single-player-stage[data-board='well']:not(:where(
     .infinity-mode-active, [data-odyssey-board], [data-stillfall], [data-still-air], [data-danger]
 )) {
-    --sp-hue: #c7eafb;
-    --sp-hue-rgb: 199, 234, 251;
+    --sp-hue: #ddd7f6;
+    --sp-hue-rgb: 221, 215, 246;
     --sp-wall: #9381c3;
     --sp-wall-glow: rgb(127 155 243 / 23%);
 }
