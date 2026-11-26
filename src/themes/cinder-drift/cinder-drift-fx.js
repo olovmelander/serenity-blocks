@@ -39,11 +39,153 @@ import {
     vec3,
     vec4,
 } from 'three/tsl';
+import { flashScale } from '../../utils/photosensitivity.js';
 import {
     BOMB_SLOTS, BOMB_TAIL, GRAVITY, TAU, cdFxMaterial, cdHeatColor, cdPart, cdQuadGeometry, mulberry32,
 } from './cinder-drift-tsl.js';
 
 const viewProjection = (world) => cameraProjectionMatrix.mul(cameraViewMatrix).mul(vec4(world, 1.0));
+
+/**
+ * Forked volcanic lightning above the lava banks. The leader grows once through the ash,
+ * holds incandescent, then the branches cool together. Each segment is one small quad.
+ */
+export function createAshLightning(u, quality) {
+    const lean = quality === 'Minimal' || quality === 'Low';
+    const steps = lean ? 16 : 32;
+    const perBolt = steps * 2;
+    const slots = 4; // a second perfect clear can overlap both banks of the first
+    const capacity = perBolt * slots;
+    const starts = new Float32Array(capacity * 4);
+    const ends = new Float32Array(capacity * 4);
+    const strokes = new Float32Array(capacity * 4);
+    const geometry = cdQuadGeometry(capacity, { aLeader: [starts, 4], aTip: [ends, 4], aStroke: [strokes, 4] });
+    const attrs = ['aLeader', 'aTip', 'aStroke'].map((key) => geometry.getAttribute(key).setUsage(THREE.DynamicDrawUsage));
+    const a = attribute('aLeader', 'vec4');
+    const b = attribute('aTip', 'vec4');
+    const stroke = attribute('aStroke', 'vec4');
+    const material = cdFxMaterial('CinderAshLightning');
+    const age = u.time.sub(a.w);
+    const fade = smoothstep(0.0, 0.11, age).mul(float(1).sub(smoothstep(-0.72, 0.0, u.time.sub(b.w))));
+    const along = positionGeometry.x.add(0.5);
+    const edge = mix(stroke.xy, stroke.zw, along);
+    const show = step(0.001, fade.mul(edge.y));
+    const p0 = viewProjection(a.xyz);
+    const p1 = viewProjection(b.xyz);
+    const half = u.viewport.mul(0.5);
+    const delta = p1.xy.div(max(0.1, p1.w)).sub(p0.xy.div(max(0.1, p0.w))).mul(half);
+    const dir = delta.div(max(length(delta), 0.001));
+    const clip = mix(p0, p1, along.mul(smoothstep(0.0, 0.08, age)));
+    const screenWidth = u.viewport.y.mul(edge.x).mul(show);
+    const offset = vec2(dir.y.negate(), dir.x).mul(positionGeometry.y.mul(2))
+        .add(dir.mul(positionGeometry.x).mul(0.12)).mul(screenWidth);
+    material.vertexNode = vec4(clip.xy.add(offset.div(half).mul(clip.w)), clip.z, clip.w);
+    const intensity = varying(edge.y.mul(fade), 'cdLeaderIntensity');
+    material.colorNode = Fn(() => {
+        const d = abs(uv().y.mul(2).sub(1)).toVar();
+        const d2 = d.mul(d).toVar();
+        const core = exp(d2.mul(-37)).mul(vec3(3.85, 3.05, 2.06));
+        const sheath = exp(d2.mul(-7.2)).mul(vec3(0.68, 0.40, 0.95));
+        return vec4(core.add(sheath).mul(intensity).mul(float(1).sub(smoothstep(0.66, 1.0, d))), 0);
+    })();
+    const part = cdPart('CinderAshLightning', geometry, material, 35);
+    const spent = new Float64Array(slots).fill(-Infinity);
+    const xs = new Float64Array(steps + 1);
+    const ys = new Float64Array(steps + 1);
+    const previous = [0, 0, 0];
+    let strikes = 0;
+    let lastGlow = -Infinity;
+
+    part.strike = (world, time) => {
+        const rng = mulberry32(0x5c4a3b + 9187 * strikes++);
+        const { aspect } = world;
+        const motion = world.reducedMotion ? 0.66 : 1;
+        const gain = flashScale() * motion;
+        for (const side of [-1, 1]) {
+            const room = world.bankRoom(side);
+            if (room < 0.035) continue;
+            const inset = room * 0.09;
+            const xMin = side < 0 ? inset : 1 - room + inset;
+            const xMax = side < 0 ? room - inset : 1 - inset;
+            const sx = (fraction) => xMin + (xMax - xMin) * (side < 0 ? fraction : 1 - fraction);
+            const height = Math.min(1, 0.45 + room * aspect) * motion;
+            const sy = (fraction) => 0.33 + (fraction - 0.33) * height;
+            const start = time + (side < 0 ? 0.1 : 0.29);
+            const finish = start + 1.81 + rng() * 0.25;
+            const depth = side < 0 ? 24 : 14;
+            let slot = 0;
+            for (let i = 1; i < slots; i++) if (spent[i] < spent[slot]) slot = i;
+            spent[slot] = finish;
+            lastGlow = Math.max(lastGlow, finish);
+            const first = slot * perBolt;
+            let index = first;
+            strokes.fill(0, first * 4, (first + perBolt) * 4);
+            // Subdivided paths keep their larger kinks. Smaller forks come directly off
+            // an actual parent vertex so the conducting channel stays connected.
+            const channel = (x0, y0, x1, y1, n, width, light, born, travel) => {
+                xs[0] = x0;
+                ys[0] = y0;
+                xs[n] = x1;
+                ys[n] = y1;
+                for (let stride = n; stride >= 2; stride /= 2) {
+                    for (let i = 0; i < n; i += stride) {
+                        const j = i + stride;
+                        const m = i + stride / 2;
+                        const r = (rng() - 0.5) * 0.83;
+                        const x = (xs[i] + xs[j]) * 0.5 - ((ys[j] - ys[i]) * r) / aspect;
+                        xs[m] = Math.max(xMin, Math.min(xMax, x));
+                        ys[m] = (ys[i] + ys[j]) * 0.5 + (xs[j] - xs[i]) * r * aspect;
+                    }
+                }
+                world.screenToWorld(xs[0], ys[0], depth, previous);
+                const feather = (f) => {
+                    const taper = Math.min(1, (1 - f) * 3.8, n === steps ? f * 12 : 1);
+                    return taper * taper * (3 - 2 * taper);
+                };
+                for (let i = 1; i <= n; i++, index++) {
+                    const tip = world.screenToWorld(xs[i], ys[i], depth);
+                    const f = (i - 1) / n;
+                    starts.set([previous[0], previous[1], previous[2], born + f * travel], index * 4);
+                    ends.set([tip[0], tip[1], tip[2], finish], index * 4);
+                    const fEnd = i / n;
+                    const w0 = feather(f);
+                    const w1 = feather(fEnd);
+                    strokes.set([
+                        width * (1 - 0.4 * f) * w0, light * gain * w0,
+                        width * (1 - 0.4 * fEnd) * w1, light * gain * w1,
+                    ], index * 4);
+                    previous[0] = tip[0];
+                    previous[1] = tip[1];
+                    previous[2] = tip[2];
+                }
+            };
+            const jitter = rng() * 0.04;
+            channel(sx(0.19), sy(0.29 + jitter), sx(0.88), sy(0.17 + jitter), steps, 0.0095, 1.23, start, 0.4);
+            // Save the later fork before the first branch takes the scratch path.
+            const forkX = xs[(steps * 3) / 4];
+            const forkY = ys[(steps * 3) / 4];
+            channel(xs[steps / 4], ys[steps / 4], sx(0.58), sy(0.49), steps / 2, 0.0063, 0.82, start + 0.13, 0.37);
+            channel(forkX, forkY, sx(0.97), sy(0.33), steps / 4, 0.0042, 0.71, start + 0.30, 0.26);
+            attrs.forEach((attr) => markSpatterSlots(attr, first, perBolt, capacity));
+            geometry.instanceCount = Math.max(geometry.instanceCount, index);
+        }
+    };
+    part.update = (time) => {
+        if (time > lastGlow) geometry.instanceCount = 1;
+    };
+    part.reset = () => {
+        geometry.instanceCount = 1; // warm one collapsed quad even before the first crown
+        strokes.fill(0);
+        attrs[2].clearUpdateRanges();
+        attrs[2].addUpdateRange(0, strokes.length);
+        attrs[2].needsUpdate = true;
+        spent.fill(-Infinity);
+        strikes = 0;
+        lastGlow = -Infinity;
+    };
+    part.reset();
+    return part;
+}
 
 // ── Spatter ─────────────────────────────────────────────────────────────────────
 
@@ -166,7 +308,8 @@ export function createSpatter(u, count) {
      */
     part.emit = ({
         x, y, z, n, rgb = null, time, out = [1, 5], up = [2, 7], life = [0.9, 2.0], size = 0.05, stagger = 0,
-        heat = 1.45, gravity = GRAVITY, drag = 0.35, aim = null, spread = 0,
+        heat = 1.45, gravity = GRAVITY, drag = 0.35, aim = null, spread = 0, heightSpread = 0,
+        fan = null, spiral = null,
     }) => {
         const rand = mulberry32(0x51a7 + bursts * 7919);
         bursts += 1;
@@ -186,10 +329,34 @@ export function createSpatter(u, count) {
                 vx = vx * 0.45 + aim[0] * speed;
                 vz = vz * 0.45 + aim[1] * speed;
             }
-            const sx = spread ? (rand() - 0.5) * spread : 0;
-            const sz = spread ? (rand() - 0.5) * spread : 0;
-            aBirth.set([x + sx, y, z + sz, time + rand() * stagger], i * 4);
-            aVel.set([vx, up[0] + (up[1] - up[0]) * rand(), vz, life[0] + (life[1] - life[0]) * rand()], i * 4);
+            let sx = spread ? (rand() - 0.5) * spread : 0;
+            let sz = spread ? (rand() - 0.5) * spread : 0;
+            const sy = heightSpread ? rand() * heightSpread : 0;
+            let phase = rand();
+            if (spiral) {
+                // The turning crust sheds a continuous winding scar, each grain leaving
+                // tangent to the turn at that particular place and instant.
+                phase = (k + phase) / total;
+                const angle = phase * TAU * 1.33 * spiral.sign;
+                const radius = spiral.radius * (0.32 + 0.68 * phase);
+                sx += Math.cos(angle) * radius;
+                sz += Math.sin(angle) * radius;
+                vx = -Math.sin(angle) * spiral.sign * speed;
+                vz = Math.cos(angle) * spiral.sign * speed;
+            }
+            aBirth.set([x + sx, y + sy, z + sz, time + phase * stagger], i * 4);
+            let vy = up[0] + (up[1] - up[0]) * rand();
+            if (fan) {
+                // The crown throws bright ribs of different reach from one lip. Sharing a
+                // bearing keeps each rib together as gravity draws its tip back to the lake.
+                const rib = (k % 7) / 3 - 1;
+                const angle = rib * fan.angle + (rand() - 0.5) * 0.05;
+                const lateral = Math.sin(angle) * vy;
+                vx = vx * 0.12 + fan.right.x * lateral;
+                vz = vz * 0.12 + fan.right.z * lateral;
+                vy *= Math.cos(angle);
+            }
+            aVel.set([vx, vy, vz, life[0] + (life[1] - life[0]) * rand()], i * 4);
             const g = 0.75 + rand() * 0.5;
             const c = rgb || [1, 1, 1];
             aTint.set([c[0] * g, c[1] * g, c[2] * g, size * (0.5 + rand() * 1.0)], i * 4);
@@ -420,7 +587,9 @@ export function createRowJets(u) {
     const frame4 = mix(sets[0].frame, sets[1].frame, second);
     const material = cdFxMaterial('CinderRowJets', { depthTest: false });
     const rowY = mix(mix(rows4.x, rows4.y, step(0.5, row.x)), mix(rows4.z, rows4.w, step(2.5, row.x)), step(1.5, row.x));
-    const used = step(0.0, rowY).mul(step(0.001, frame4.w));
+    // Once the tongue burns away, collapse the strip so the noise samples stop with it.
+    const elapsed = u.time.sub(frame4.z);
+    const used = step(0.0, rowY).mul(step(0.001, frame4.w)).mul(step(0.0, elapsed)).mul(step(elapsed, JET_SPENT));
     const along = positionGeometry.x.add(0.5);
     // From the card's edge outward.
     const edge = mix(frame4.x, frame4.y, step(0.0, row.y));

@@ -2,6 +2,7 @@
  * Cinder Drift — content tiers. Every tier keeps the whole picture and every event.
  *
  * detail     column spacing scale: the plan is cut coarser on a lower tier (fewer, wider columns)
+ * columnBevel  a separate shoulder beneath each broken end; the lean prism keeps the tilted cap
  * embers     cinders rising off the lake
  * smoke      banks of smoke under the roof
  * plume      puffs of the steam and smoke the great fall raises where it strikes the lake
@@ -15,6 +16,7 @@
 export const QUALITY = Object.freeze({
     Minimal: Object.freeze({
         detail: 1.7,
+        columnBevel: false,
         embers: 0,
         smoke: 0,
         plume: 0,
@@ -27,6 +29,7 @@ export const QUALITY = Object.freeze({
     }),
     Low: Object.freeze({
         detail: 1.4,
+        columnBevel: false,
         embers: 420,
         smoke: 10,
         plume: 8,
@@ -39,6 +42,7 @@ export const QUALITY = Object.freeze({
     }),
     Medium: Object.freeze({
         detail: 1.18,
+        columnBevel: true,
         embers: 900,
         smoke: 18,
         plume: 12,
@@ -51,6 +55,7 @@ export const QUALITY = Object.freeze({
     }),
     High: Object.freeze({
         detail: 1.0,
+        columnBevel: true,
         embers: 1600,
         smoke: 26,
         plume: 16,
@@ -63,6 +68,7 @@ export const QUALITY = Object.freeze({
     }),
     Ultra: Object.freeze({
         detail: 0.9,
+        columnBevel: true,
         embers: 2400,
         smoke: 32,
         plume: 18,
@@ -75,6 +81,7 @@ export const QUALITY = Object.freeze({
     }),
     Extreme: Object.freeze({
         detail: 0.8,
+        columnBevel: true,
         embers: 3400,
         smoke: 40,
         plume: 22,

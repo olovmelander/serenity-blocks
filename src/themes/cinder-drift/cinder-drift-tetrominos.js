@@ -1,67 +1,26 @@
-/**
- * Cinder Drift Theme - Tetromino Visual Configuration
- *
- * Warm ember and charred tones with glowing effects for a smoldering atmosphere.
- */
-
+/** Tempered metal pieces. The active board uses the Phaser bevel and the Canvas queue uses the same alloys. */
 export const CINDER_DRIFT_TETROMINOS = {
-    version: 1,
-
-    // "Molten" Palette - Rich, deep, hot colors
-    // "Molten" Palette - Strict Heat Spectrum (No Neons)
+    version: 2,
     colors: {
-        I: '#fff5e6', // White Hot (hottest)
-        O: '#ffcc00', // Gold
-        T: '#800020', // Burgundy (cooling)
-        S: '#cccc00', // Dull Sulfur
-        Z: '#cc3300', // Red Clay
-        J: '#9a2a18', // Smoldering Slag (brighter for contrast)
-        L: '#ff8800', // Bright Ember
-        GARBAGE: '#333333', // Basalt
+        I: '#ffedc9', // Incandescent ivory
+        O: '#f4c647', // Sulfur gold
+        T: '#d980a0', // Rose iron
+        S: '#b7cd72', // Olivine
+        Z: '#f15840', // Vermilion
+        J: '#84a6c8', // Tempered steel under the skylight
+        L: '#ff9347', // Copper orange
+        GARBAGE: '#4f505a',
+        CLEAN_GARBAGE: '#797783',
     },
-
-    renderMode: 'gradient',
-
+    renderMode: 'solid',
     effects: {
-        // Molten Core look
-        gradientType: 'radial',
-        gradientStops: [
-            { offset: 0, color: 'lighten', opacity: 1 }, // Hot center
-            { offset: 1, color: 'base', opacity: 1 }, // Base color edge
-        ],
-
-        // Heat Haze Glow
-        glowRadius: 15, // Tighter glow
-        glowIntensity: 1.2,
-        glowColor: 'auto',
-
-        outline: true,
-        outlineWidth: 1.0, // Thin crisp edge
-        outlineColor: 'lighten', // Glowing edge
-
-        pulse: true,
-        pulseSpeed: 0.5,
-        pulseAmplitude: 0.15, // Subtle breathing
-
-        shimmer: true, // Heat shimmer
-        shimmerSpeed: 0.2,
-        shimmerIntensity: 0.3,
-
-        trails: true,
-        trailLength: 0.3,
-        trailOpacity: 0.4,
-
-        emberGlow: true,
-    },
-
-    rendererOverrides: {
-        canvas: {
-            glowRadius: 12,
-            outlineWidth: 1.5,
-        },
+        outline: false,
         phaser: {
-            glowRadius: 20,
-            outlineWidth: 2.0,
+            highlight: 0.22,
+            shadow: 0.27,
+            rimAlpha: 0.48,
+            rimWidthFactor: 0.05,
+            glossAlpha: 0.12,
         },
     },
 };

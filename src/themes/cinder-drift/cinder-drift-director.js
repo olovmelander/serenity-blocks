@@ -7,14 +7,14 @@
  * one of five preallocated player slots. flush() — called first in the theme's frame — resolves
  * each pending slot into at most one `lock` and one `clear` for the sink:
  *
- *   sink.lock({ player, rows, u, hardDrop, color, screen })
+ *   sink.lock({ player, rows, u, hardDrop, distance, color, screen })
  *   sink.clear({ player, rows, lines, combo, cascade, twist, perfect, b2b, screen })
  *   sink.crown(player)         a PERFECT_CLEAR that came after its clear's frame (physics sends it
  *                              ~360 ms after the last wave): the crown on the clear still playing,
  *                              never a new clear (a sink without `crown` gets the old 1-line clear)
  *   sink.twist(player)         a twist that cleared nothing (no clear follows it)
  *   sink.combo(n, player)      the true combo, whenever it changes (0 = the chain broke)
- *   sink.levelUp(level)
+ *   sink.levelUp(level, options?)  with { silent: true } when reactions are off
  *
  * `rows` are VISIBLE board rows (0 = the top row, 19 = the floor); `u` is the lock's column as a
  * fraction of the board width; `color` is the piece's colour (a CSS hex string) or null. `screen`
@@ -69,6 +69,7 @@ function createSlot() {
         // lock intake
         lock: false,
         hardDrop: false,
+        distance: 0,
         lockRows: new Int16Array(MAX_ROWS),
         lockRowCount: 0,
         lockU: 0.5,
@@ -95,6 +96,7 @@ function clearPending(slot) {
     slot.pending = false;
     slot.lock = false;
     slot.hardDrop = false;
+    slot.distance = 0;
     slot.lockRowCount = 0;
     slot.lockColor = null;
     slot.lines = 0;
@@ -205,7 +207,7 @@ export class CinderDriftDirector {
         this.levelPending = false;
         this.slots = Array.from({ length: PLAYER_SLOTS }, createSlot);
         this._lock = {
-            player: 0, rows: [], u: 0.5, hardDrop: false, color: null, screen: null,
+            player: 0, rows: [], u: 0.5, hardDrop: false, distance: 0, color: null, screen: null,
         };
         this._clear = {
             player: 0, rows: [], lines: 1, combo: 1, cascade: 1, twist: false, perfect: false, b2b: false, screen: null,
@@ -281,6 +283,7 @@ export class CinderDriftDirector {
         if (!slot) return false;
         slot.pending = true;
         slot.hardDrop = this.lockRipple;
+        slot.distance = Math.max(0, Math.min(BOARD_GRID.rows, finite(payload.distance, 0)));
         captureLock(slot, payload);
         return true;
     }
@@ -377,7 +380,8 @@ export class CinderDriftDirector {
         const { sink } = this;
         if (this.levelPending) {
             this.levelPending = false;
-            sink?.levelUp?.(this.level);
+            if (this.enabled) sink?.levelUp?.(this.level);
+            else sink?.levelUp?.(this.level, { silent: true });
         }
         for (let i = 0; i < this.slots.length; i += 1) {
             const slot = this.slots[i];
@@ -405,6 +409,7 @@ export class CinderDriftDirector {
                 for (let r = 0; r < slot.lockRowCount; r += 1) c.rows.push(slot.lockRows[r]);
                 c.u = slot.lockU;
                 c.hardDrop = slot.hardDrop;
+                c.distance = slot.hardDrop ? slot.distance : 0;
                 c.color = slot.lockColor;
                 c.screen = null;
                 sink.lock(c);

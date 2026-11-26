@@ -206,6 +206,8 @@ export function createChamberUniforms(textures) {
         flow: uniform(0),
         /** How far the embers have been carried up (pressure lifts them faster). */
         lift: uniform(0),
+        /** Crossdraft, vent effusion and the reduced-motion clock driving the chamber's air. */
+        draft: uniform(new THREE.Vector3(0, 0, 0)),
         /** The moment the heat texture is true for. */
         heatRef: uniform(0),
         /**
@@ -240,6 +242,8 @@ export function createChamberUniforms(textures) {
         curtain: uniform(0),
         /** A four-line clear's shock through the rock: (birth time, strength). */
         shock: uniform(new THREE.Vector2(-100, 0)),
+        /** Back-to-back pressure along a bank's joints: birth time, strength, bank (−1 left, +1 right). */
+        bankPulse: uniform(new THREE.Vector3(-100, 0, 1)),
         /** 1 while any ring / any clear wave is still in the chamber (the loops are skipped at rest). */
         ringsLive: uniform(0),
         clearLive: uniform(0),

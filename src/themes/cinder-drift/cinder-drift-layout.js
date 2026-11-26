@@ -108,6 +108,20 @@ export function farWallZ(x) {
 /** The seed the theme's plan is built with. */
 export const PLAN_SEED = 0x51cd;
 
+/** Signed distance in opening radii. The main breach follows a joint toward the far wall.
+ * A smaller break in the same roof admits a sliver of sky on the approach to the falls. */
+export function roofOpening(x, z) {
+    const dx = x - SKYLIGHT.top[0];
+    const dz = z - SKYLIGHT.top[2];
+    const main = Math.hypot((dx + dz * 0.22) / 9.4, dz / 16.5);
+    const slitZ = z - SKYLIGHT.slitXZ[1];
+    const slit = Math.hypot((x - SKYLIGHT.slitXZ[0] - slitZ * 0.48) / 4.5, slitZ / 10.5);
+    const nearest = Math.min(main, slit);
+    if (nearest > 2) return nearest - 1;
+    return nearest - 1 + Math.sin(x * 0.71 + z * 0.19) * 0.08
+        + Math.sin(x * 0.26 - z * 0.39) * 0.13;
+}
+
 /**
  * The plan's readers for a seed: where the rock stands and how high, the roof, the cliffs and the
  * islands. Pure functions of the seed (each call makes its own shared records: `wall`, `isle`),
@@ -325,7 +339,7 @@ export function buildPlan({ seed = PLAN_SEED, detail = 1 } = {}) {
                     // Organ pipes under the roof, in clusters; none round the skylight.
                     const cluster = fbm(x * 0.045, z * 0.045, s0 + 23);
                     const hole = Math.hypot(x - SKYLIGHT.top[0], z - SKYLIGHT.top[2]);
-                    if (cluster > 0.535 && hole > SKYLIGHT.radius + 2.5) {
+                    if (cluster > 0.535 && hole > SKYLIGHT.radius + 2.5 && roofOpening(x, z) > 0.13) {
                         // (Now and then one pipe hangs far below its neighbours.)
                         const length = Math.min(22, (cluster - 0.535) * 70 * (0.45 + 0.9 * jh) + 0.8 + (jr > 0.9 ? 2 + jh * 6 : jr * 1.4));
                         columns.push({

@@ -205,6 +205,8 @@ describe('cinder drift world: build', () => {
             expect(scene.children).toContain(world.root);
             expect(world.plan.detail).toBe(tier.detail);
             expect(world.parts.columns.geometry.instanceCount).toBe(world.plan.columns.length);
+            const triangles = world.parts.columns.geometry.index.count / 3;
+            expect(triangles, quality).toBe(['Minimal', 'Low'].includes(quality) ? 18 : 30);
             expect(world.spatter.count).toBe(tier.spatter);
             expect(world.spatter.geometry.instanceCount).toBe(tier.spatter);
             expect(world.bombs.geometry.instanceCount).toBe(BOMB_SLOTS * BOMB_TAIL);
@@ -824,6 +826,27 @@ describe('cinder drift world: locks', () => {
         hard.world.dispose();
     });
 
+    it('leaves a taller falling trace for a longer hard drop, and no falling trace on a lock', () => {
+        const { world, camera } = makeWorld('Low');
+        const traceHeight = (hardDrop, distance) => {
+            world.seek(10);
+            freeze(world, camera);
+            world.onLock({
+                rows: [19], u: 0.3, hardDrop, distance,
+            });
+            const births = instanced(world.spatter, 'aBirth');
+            const velocities = instanced(world.spatter, 'aVel');
+            return used(world.spatter, 'aBirth').reduce((height, i) => (
+                velocities[i * 4 + 1] < -2 ? Math.max(height, births[i * 4 + 1]) : height
+            ), 0);
+        };
+        expect(traceHeight(false, 0)).toBe(0);
+        const short = traceHeight(true, 2);
+        expect(short).toBeGreaterThan(0.2);
+        expect(traceHeight(true, 18)).toBeGreaterThan(short * 2);
+        world.dispose();
+    });
+
     it('strikes below the card in an upright frame, under the piece\'s own column', () => {
         const { camera, world } = makeWorld('Low', { width: 430, height: 932 });
         const card = cardUnion(world.layout);
@@ -1354,13 +1377,17 @@ describe('cinder drift world: clears', () => {
         });
         expect(standing(perfect.world)).toHaveLength(FOUNTAIN_SLOTS);
         expect(perfect.world.getState().surge).toBeGreaterThan(quad.world.getState().surge);
+        expect(quad.world.lightning.geometry.instanceCount).toBe(1);
+        expect(perfect.world.lightning.geometry.instanceCount).toBeGreaterThan(1);
+        const starts = instanced(perfect.world.lightning, 'aLeader');
+        expect(starts[3]).toBeGreaterThan(perfect.world.time + HUSH_HOLD);
         run(perfect.world, perfect.camera, HUSH_HOLD * 0.9);
         expect(perfect.world.getState().breath).toBeLessThan(0.5);
         quad.world.dispose();
         perfect.world.dispose();
     });
 
-    it('turns the crust round the foot of the board on a twist, and a second spin adds to the turn', () => {
+    it('turns visible crust beside the board on a twist, and a second spin feeds the same eddy', () => {
         const plain = makeWorld('Low');
         const once = makeWorld('Low');
         const { camera, world } = makeWorld('Low');
@@ -1369,16 +1396,17 @@ describe('cinder drift world: clears', () => {
         once.world.onClear({ lines: 2, twist: true });
         world.onClear({ lines: 2, twist: true });
         const whirl = world.u.whirl.value;
-        const heart = world.u.heart.value;
+        const pivot = [whirl.x, whirl.y];
         expect(whirl.z).toBe(world.time);
         // It winds up over a moment (the world turns it frame by frame).
         run(world, camera, 0.4);
         run(once.world, once.camera, 0.4);
         run(plain.world, plain.camera, 0.4);
         expect(whirl.w).not.toBe(0);
-        // Round a point on the lake by the wave's heart, further up the chamber.
-        expect(whirl.x).toBe(heart.x);
-        expect(whirl.y).toBeLessThan(heart.y);
+        // The eddy and its glowing spiral belong to visible lava outside the card.
+        const card = cardUnion(world.layout);
+        const projected = onScreen(camera, whirl.x, 0, whirl.y);
+        expect(projected.x < card.x0 || projected.x > card.x1).toBe(true);
         expect(world.plan.depthAt(whirl.x, whirl.y)).toBeLessThan(0);
         // It stirs the chamber more than the same clear without the spin, and is no four-line clear.
         expect(world.storm).toBeGreaterThan(plain.world.storm);
@@ -1388,6 +1416,7 @@ describe('cinder drift world: clears', () => {
         // A second spin while the crust still turns adds to the turn, the same way: the plates
         // never snap back straight or jerk round the other way.
         world.onClear({ lines: 1, twist: true });
+        expect([whirl.x, whirl.y]).toEqual(pivot);
         let last = Math.abs(whirl.w);
         for (let i = 0; i < 30; i++) {
             run(world, camera, 1 / 60, 1);
@@ -2340,6 +2369,8 @@ describe('cinder drift world: it builds with play', () => {
         plain.world.onClear({ lines: 4 });
         world.onClear({ lines: 4, b2b: true });
         expect(world.counts.b2b).toBe(1);
+        expect(world.u.bankPulse.value.y).toBeGreaterThan(0);
+        expect(plain.world.u.bankPulse.value.y).toBe(0);
         run(plain.world, plain.camera, 0.8);
         run(world, camera, 0.8);
         expect(world.rise).toBeGreaterThan(plain.world.rise + 1);
@@ -2361,12 +2392,19 @@ describe('cinder drift world: it builds with play', () => {
         run(world, camera, 0.6);
         const thrown = { ...world.counts };
         const pending = world.pending.length;
+        const emit = vi.spyOn(world.spatter, 'emit');
         world.onPerfectCrown({});
         expect(world.counts).toMatchObject({
             quads: thrown.quads, bombs: thrown.bombs, fountains: thrown.fountains, crowns: 1,
         });
         expect(world.hushUntil).toBeLessThan(world.time);
         expect(world.pending.length).toBeGreaterThan(pending); // the crust is about to lift
+        expect(world.lightning.geometry.instanceCount).toBeGreaterThan(1);
+        const fans = emit.mock.calls.map(([spec]) => spec).filter((spec) => spec.fan);
+        expect(fans).toHaveLength(2);
+        const card = cardUnion(world.layout);
+        expect(onScreen(camera, fans[0].x, 0, fans[0].z).x).toBeLessThan(card.x0);
+        expect(onScreen(camera, fans[1].x, 0, fans[1].z).x).toBeGreaterThan(world.layout.hud.x1);
         let darkest = 1;
         for (let i = 0; i < 60; i++) {
             run(world, camera, 1 / 60, 1);
@@ -2377,6 +2415,8 @@ describe('cinder drift world: it builds with play', () => {
         expect(world.rain).toBeGreaterThan(5);
         run(world, camera, 0.6);
         expect(world.fissures).toBeGreaterThan(STREAM_SLOTS - 1);
+        run(world, camera, 2);
+        expect(world.lightning.geometry.instanceCount).toBe(1); // dormant after the glow
         world.dispose();
     });
 });

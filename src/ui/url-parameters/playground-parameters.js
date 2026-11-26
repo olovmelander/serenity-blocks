@@ -1113,6 +1113,34 @@ export const PLAYGROUND_URL_PARAMETERS = [
         ],
     },
     {
+        name: 'depth',
+        category: 'Playground',
+        scope: 'playground.html — cinder-drift',
+        description: 'Choose which wave of a cascade to replay.',
+        values: 'Whole number starting at 1. The effect reaches full strength on wave 7.',
+        defaultValue: '3.',
+        example: 'effect=cinder-drift&t=20&event=cascade&depth=3&eventAge=0.85',
+        notes: 'Wave 2 introduces two crossing fronts on the exposed lake bank.',
+        sources: [
+            'src/playground/effects/cinder-drift.effect.js',
+            'src/themes/cinder-drift/cinder-drift-crosswaves.js',
+        ],
+    },
+    {
+        name: 'distance',
+        category: 'Playground',
+        scope: 'playground.html — cinder-drift',
+        description: 'Set how far the piece travels before a hard-drop impact.',
+        values: 'Board rows, from 0 to 18 for the full range of impact strengths.',
+        defaultValue: '16.',
+        example: 'effect=cinder-drift&t=20&event=drop&distance=18',
+        notes: 'Longer drops use the same maximum impact strength as an 18-row drop.',
+        sources: [
+            'src/playground/effects/cinder-drift.effect.js',
+            'src/themes/cinder-drift/cinder-drift-world.js',
+        ],
+    },
+    {
         name: 'distance',
         category: 'Playground',
         scope: 'playground.html — ch8-spire',
@@ -1231,6 +1259,33 @@ export const PLAYGROUND_URL_PARAMETERS = [
         notes: 'Use on playground.html with effect=<the matching effect ID>.',
         sources: [
             'src/playground/effects/black-hole.effect.js',
+        ],
+    },
+    {
+        name: 'event',
+        category: 'Playground',
+        scope: 'playground.html — cinder-drift',
+        description: 'Replay a gameplay event in the volcanic chamber for a timed capture.',
+        values: 'lock, drop, clear, quad, twist, mini, cascade, b2b, perfect, crown, levelUp, gameOver.',
+        defaultValue: 'Unset (ambient scene).',
+        example: 'effect=cinder-drift&t=20&event=b2b&lines=2&eventAge=0.75',
+        notes: 'b2b defaults to a quad. Set lines=2 for a back-to-back twist double. '
+            + 'perfect combines a quad and a perfect clear. crown replays the delayed perfect-clear callback.',
+        sources: [
+            'src/playground/effects/cinder-drift.effect.js',
+        ],
+    },
+    {
+        name: 'eventAge',
+        category: 'Playground',
+        scope: 'playground.html — cinder-drift',
+        description: 'Choose how many seconds after the staged event to capture the chamber.',
+        values: 'Nonnegative number in seconds.',
+        defaultValue: '0.4.',
+        example: 'effect=cinder-drift&t=20&event=crown&eventAge=1.1',
+        notes: 'For crown, the clock starts with the line clear. The perfect-clear crown begins 0.36 seconds later.',
+        sources: [
+            'src/playground/effects/cinder-drift.effect.js',
         ],
     },
     {

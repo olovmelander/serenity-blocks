@@ -14,6 +14,7 @@ import { QUALITY, QUALITY_NAMES } from '../../src/themes/cinder-drift/cinder-dri
 import { POST_LOOK } from '../../src/themes/cinder-drift/cinder-drift-post.js';
 import { THEME_REGISTRY } from '../../src/themes/theme-registry.js';
 import { eventBus, EVENTS } from '../../src/events/event-bus.js';
+import { MULTIPLAYER_EVENTS } from '../../src/events/multiplayer-events.js';
 
 // Every start builds a whole world (its plan and its textures are baked on the CPU): leave a
 // loaded machine room.
@@ -542,7 +543,11 @@ describe('Cinder Drift theme: one node renderer on both backends', () => {
         const { theme } = await startTheme({ quality: 'High' });
         theme.handleSettingsChanged({ detail: { backgroundComboEffects: false } });
         eventBus.emit(EVENTS.PIECE_LOCK, { piece: T });
+        eventBus.emit(EVENTS.LEVEL_UP, { level: 2 });
         theme.stepFrame(16);
+        expect(theme.world.level).toBe(2);
+        expect(theme.world.flash).toBe(0);
+        expect(theme.world.storm).toBe(0);
         expect(theme.world.counts.locks).toBe(0);
         theme.handleSettingsChanged({ detail: { backgroundComboEffects: true, pieceLockRipple: false } });
         eventBus.emit(EVENTS.PIECE_LOCK, { piece: T });
@@ -600,12 +605,33 @@ describe('Cinder Drift theme: one node renderer on both backends', () => {
         });
         expect(theme.combos.size).toBe(0);
         expect(theme.world.drift).toBe(drift); // the crust keeps drifting from where it was
+        expect(theme.world.resultAt).toBe(theme.world.time);
+        stepFrames(theme, 60);
+        expect(theme.world.u.mid.value.x).toBeLessThan(theme.world._palette.mid[0] * 0.8);
         // The next run's first clear is a chain of one again.
         eventBus.emit(EVENTS.PIECE_LOCK, { piece: T });
         eventBus.emit(EVENTS.LINE_CLEAR, { lineCount: 1, clearedRows: [23], cascadeCount: 1 });
-        theme.stepFrame(64);
+        stepFrames(theme, 1);
+        expect(theme.world.resultAt).toBe(-Infinity);
         expect(theme.world.combo).toBe(1);
         expect(theme.world.drift).toBeGreaterThan(drift);
+    });
+
+    it('cools once on online final standings and releases the subscription on stop', async () => {
+        const { theme, listeners } = await startTheme({ quality: 'Minimal' });
+        const reset = vi.spyOn(theme, 'resetSession');
+        eventBus.emit(MULTIPLAYER_EVENTS.PLAYER_TOPPED_OUT, { steamId: 'p1' });
+        eventBus.emit(MULTIPLAYER_EVENTS.ROUND_OVER, {});
+        eventBus.emit(MULTIPLAYER_EVENTS.GAME_OVER, { isGameOver: false });
+        expect(reset).not.toHaveBeenCalled();
+        eventBus.emit(MULTIPLAYER_EVENTS.GAME_OVER, { isGameOver: true });
+        expect(theme.world.resultAt).toBe(theme.world.time);
+        listeners.get('gameOver')();
+        expect(reset).toHaveBeenCalledTimes(1);
+        expect(reset).toHaveBeenCalledWith(true);
+        theme.stop();
+        eventBus.emit(MULTIPLAYER_EVENTS.GAME_OVER, { isGameOver: true });
+        expect(reset).toHaveBeenCalledTimes(1);
     });
 
     it('rebuilds on a quality change and not on an unrelated setting', async () => {

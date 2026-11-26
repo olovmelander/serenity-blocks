@@ -193,6 +193,16 @@
     --sp-wall-glow: rgb(90 187 185 / 24%);
 }
 
+/* Firelight along the basalt well, pale brass on the queue and ledger. */
+:where(body:has(#cinder-drift-theme.active)) .single-player-stage[data-board='well']:not(:where(
+    .infinity-mode-active, [data-odyssey-board], [data-stillfall], [data-still-air], [data-danger]
+)) {
+    --sp-hue: #f3cfaa;
+    --sp-hue-rgb: 243, 207, 170;
+    --sp-wall: #bc7554;
+    --sp-wall-glow: rgb(214 112 65 / 20%);
+}
+
 /* ---- The column: the queue over the well ------------------------------------------- */
 .single-player-stage[data-board='well'] #single-player-container {
     --board-width: inherit;
@@ -455,6 +465,14 @@
     --sb-text-faint: #b4caca;
     border-color: rgb(136 197 183 / 31%);
     background: linear-gradient(150deg, #1a363bfa, #101c2aef 72%);
+}
+
+:where(body:has(#cinder-drift-theme.active)) .single-player-stage[data-board='well']:not(:where(
+    .infinity-mode-active, [data-odyssey-board], [data-stillfall], [data-still-air], [data-danger]
+)) .single-player-stats-bar {
+    --sb-text-faint: #d3beb0;
+    border-color: rgb(190 139 103 / 34%);
+    background: linear-gradient(155deg, rgb(53 43 44 / 97%), rgb(22 24 31 / 96%) 76%);
 }
 
 /* The mode's hue as the ledger's left edge, like a seat's plate in local versus. */

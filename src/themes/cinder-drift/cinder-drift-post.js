@@ -107,7 +107,9 @@ const forgeFilmic = /* @__PURE__ */ Fn(([cIn]) => {
     const shoulder = k.add(float(1.0).sub(k).mul(float(1.0).sub(exp(peak.sub(k).div(float(1.0).sub(k)).negate()))));
     const mapped = select(peak.greaterThan(k), shoulder, peak);
     const toned = c.mul(mapped.div(peak));
-    return mix(toned, vec3(mapped, mapped, mapped), smoothstep(2.2, 11.0, peak).mul(0.7));
+    // Film burns out red, then green, then blue. The edge of a white core stays amber.
+    const hot = float(1).sub(exp(c.mul(-0.55)));
+    return mix(toned, max(toned, hot), smoothstep(2.2, 11.0, peak).mul(0.88));
 }).setLayout({ name: 'cd_forgeFilmic', type: 'vec3', inputs: [{ name: 'cIn', type: 'vec3' }] });
 
 export class CinderDriftPost {
@@ -196,14 +198,19 @@ export class CinderDriftPost {
             // ── Heat haze: the air over the lake bends what is seen through it ──
             const st = vec2(screenUV).toVar();
             if (noiseTex) {
-                // Strongest just over the lava, thinning up the frame; none on the card.
-                const rise = smoothstep(this.uHorizon.sub(0.42), this.uHorizon.add(0.04), screenUV.y);
+                // Air bends the far shoreline and the column of hot air climbing the fall.
+                // The sharp crust under the viewer looks through very little hot air.
+                const height = screenUV.y.sub(this.uHorizon);
+                const lakeAir = float(1).sub(smoothstep(0.02, 0.29, abs(height.sub(0.035))));
+                const nearFall = screenUV.sub(this.uHeart).mul(vec2(this.uAspect.mul(4.7), 1.9));
+                const updraft = float(1).sub(smoothstep(0.12, 0.87, length(nearFall)));
                 // (A blurred level of the noise: the air shimmers, it does not saw.)
                 const wobble = texture(noiseTex, vec2(
                     screenUV.x.mul(this.uAspect).mul(0.9),
                     screenUV.y.mul(1.3).add(this.uTime.mul(0.12)),
                 )).level(2.0).rg.sub(0.5);
-                st.addAssign(wobble.mul(vec2(0.0026, 0.0038)).mul(rise.mul(rise)).mul(min(this.uHaze, 2.0)).mul(float(1.0).sub(calm)));
+                st.addAssign(wobble.mul(vec2(0.0044, 0.0029)).mul(max(lakeAir, updraft.mul(1.35)))
+                    .mul(min(this.uHaze, 2.0)).mul(float(1.0).sub(calm)));
             }
 
             // ── Lens fringe: wider toward the corners, and on an impact ──
@@ -235,17 +242,19 @@ export class CinderDriftPost {
                 if (shaftTaps > 0) {
                     // The bloom dragged out of the great fall: its light, streaming.
                     const toHeart = this.uHeart.sub(st);
-                    const jitter = cdHash21(floor(screenCoordinate).add(vec2(3.0, 71.0)));
-                    const shafts = vec3(0.0).toVar();
-                    let total = 0;
-                    for (let i = 0; i < shaftTaps; i++) {
-                        const w = 1 - (i / shaftTaps) * 0.8;
-                        total += w;
-                        const f = jitter.add(i).div(shaftTaps).mul(0.7);
-                        shafts.addAssign(bt.sample(st.add(toHeart.mul(f))).rgb.mul(w));
-                    }
-                    const reach = float(1.0).sub(smoothstep(0.0, 1.1, length(toHeart.mul(vec2(this.uAspect, 1.0)))));
-                    glare.addAssign(shafts.mul(1 / total).mul(this.uShafts).mul(reach.mul(0.8).add(0.2)));
+                    const reach = float(1).sub(smoothstep(0.09, 0.70, length(toHeart.mul(vec2(this.uAspect, 1.0)))));
+                    If(reach.greaterThan(0.002).and(calm.lessThan(0.98)), () => {
+                        const jitter = cdHash21(floor(screenCoordinate).add(vec2(3.0, 71.0))).toVar();
+                        const shafts = vec3(0.0).toVar();
+                        let total = 0;
+                        for (let i = 0; i < shaftTaps; i++) {
+                            const w = 1 - (i / shaftTaps) * 0.8;
+                            total += w;
+                            const f = jitter.add(i).div(shaftTaps).mul(0.7);
+                            shafts.addAssign(bt.sample(st.add(toHeart.mul(f))).level(0).rgb.mul(w));
+                        }
+                        glare.addAssign(shafts.mul(1 / total).mul(this.uShafts).mul(reach));
+                    });
                 }
                 glare.mulAssign(float(1.0).sub(calm.mul(0.86)));
             }
@@ -257,7 +266,7 @@ export class CinderDriftPost {
             const L = cdLuma(T);
             // Cool, slightly lifted shadows (smoke in the lens); the fires keep their hues.
             const lo = float(1.0).sub(smoothstep(0.0, 0.26, L));
-            T.assign(mix(T, T.mul(vec3(0.94, 0.98, 1.12)).add(vec3(0.0012, 0.0011, 0.0024)), lo.mul(0.5)));
+            T.assign(mix(T, T.mul(vec3(0.86, 0.98, 1.18)), lo.mul(0.65)));
             T.assign(mix(vec3(cdLuma(T)), T, 1.1));
             // Vignette, measured from the frame, a touch heavier in the corners.
             const cv = fromCentre.mul(vec2(this.uAspect.div(1.778), 1.0));
@@ -269,7 +278,7 @@ export class CinderDriftPost {
             const pxi = floor(screenCoordinate);
             const frame = floor(this.uTime.mul(24.0));
             const grain = cdHash21(pxi.add(vec2(frame.mul(1.7), frame.mul(-2.3)))).sub(0.5);
-            D.addAssign(grain.mul(0.016).mul(float(1.0).sub(calm.mul(0.7))));
+            D.addAssign(grain.mul(0.009).mul(float(1.0).sub(calm.mul(0.7))));
             const dth = cdHash21(pxi).add(cdHash21(pxi.add(vec2(17.17, 17.17)))).sub(1.0);
             D.addAssign(dth.div(255.0));
 

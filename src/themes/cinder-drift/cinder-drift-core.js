@@ -87,8 +87,9 @@ export const FALL = Object.freeze({
 
 /** The hole in the roof the night looks in through, and where its shaft meets the rock. */
 export const SKYLIGHT = Object.freeze({
-    top: [64, 54, -122],
+    top: [36.5, 42, -91],
     foot: [46, 5, -92],
+    slitXZ: [-15, -46],
     radius: 7,
 });
 
