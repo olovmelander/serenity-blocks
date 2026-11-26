@@ -1665,14 +1665,15 @@ export class FFAGameStateP2P {
 
         if (canceledLines > 0) {
             const removed = cancelIncomingLines(attacker.garbageQueue, canceledLines);
+            const remainingGarbage = attacker.garbageQueue.getTotalLines();
 
-            this._logGarbage(`🛡️ ${attacker.name} countered ${removed} garbage lines (${incomingLines} → ${attacker.garbageQueue.getTotalLines()})`);
+            this._logGarbage(`🛡️ ${attacker.name} countered ${removed} garbage lines (${incomingLines} → ${remainingGarbage})`);
 
             this._recordNetEvent?.('garbage_countered', {
                 steamId: attackerSteamId,
                 linesCanceled: removed,
                 incomingLines,
-                remainingGarbage: attacker.garbageQueue.getTotalLines(),
+                remainingGarbage,
             });
 
             // Dispatch counter event for visual/audio feedback
@@ -1680,9 +1681,19 @@ export class FFAGameStateP2P {
                 steamId: attackerSteamId,
                 playerName: attacker.name,
                 linesCanceled: removed,
-                remainingGarbage: attacker.garbageQueue.getTotalLines(),
+                remainingGarbage,
                 isLocal: attackerSteamId === this.localPlayerId,
             });
+            // A counter can spend the entire attack. Deliver its presentation directly to
+            // the clearing peer, even when there is no outgoing-attack broadcast. An older
+            // receiver already ignores its own playerSteamId on this reliable clear lane.
+            if (removed > 0 && attackerSteamId !== this.localPlayerId) {
+                this.network.sendP2PMessage(attackerSteamId, MessageTypes.GAME_LINES_CLEAR, {
+                    playerSteamId: attackerSteamId,
+                    roundGeneration: this.roundGeneration,
+                    counter: { linesCanceled: removed, remainingGarbage },
+                });
+            }
 
             return removed;
         }
@@ -3391,14 +3402,29 @@ export class FFAGameStateP2P {
     }
 
     /**
-     * PEER: an OPPONENT cleared lines — drive a transient staged FLASH on that
-     * opponent's mini-board (Phase 1+2). PURELY ADDITIVE: this NEVER writes the grid
-     * (boardGrid/grid) and never calls renderAllPlayers, so it cannot refight the
-     * snapshotInterpolator the way the grid-snapping lock-events did — the flash is an
-     * overlay; the next 30Hz snapshot renders the collapse. Idempotent + round-fenced.
+     * Present an opponent's clear on its mini-board, or the addressed local player's
+     * counter on its HUD and theme. Snapshots supply the board and pending rows.
      */
     _applyPlayerClear(data) {
-        if (this.isHost || !this._opponentClearEvents || !data) return;
+        if (this.isHost || !data) return;
+        if (data.counter) {
+            // The reliable envelope checks the sending host and sequence. This cue updates
+            // the local HUD and theme, while the queued rows still come from the simulation.
+            if (this.isSpectator || data.playerSteamId !== this.localPlayerId
+                || data.roundGeneration !== this.roundGeneration || this.gamePhase !== 'playing') return;
+            const { linesCanceled, remainingGarbage } = data.counter;
+            if (!Number.isInteger(linesCanceled) || linesCanceled < 1
+                || !Number.isInteger(remainingGarbage) || remainingGarbage < 0) return;
+            emitMultiplayerEvent(MULTIPLAYER_EVENTS.GARBAGE_COUNTERED, {
+                steamId: this.localPlayerId,
+                playerName: this.players.get(this.localPlayerId)?.name,
+                linesCanceled,
+                remainingGarbage,
+                isLocal: true,
+            });
+            return;
+        }
+        if (!this._opponentClearEvents) return;
         // Round fence: ignore a clear from a round we've already left.
         if (typeof data.roundGeneration === 'number' && data.roundGeneration < this.roundGeneration) return;
         // The local board owns its own clear (Phase 0 prediction) — never opponent-flash it.

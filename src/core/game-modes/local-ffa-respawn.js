@@ -10,6 +10,7 @@
 
 import { isBotSlot } from '../ai/local-bot-manager.js';
 import { ownsLocalMultiplayerRound } from './local-multiplayer-loop.js';
+import { emitMultiplayerEvent, MULTIPLAYER_EVENTS } from '../../events/multiplayer-events.js';
 
 /**
  * How long after a death a person's keys start to bring them back. A key still held, or mashed,
@@ -28,7 +29,7 @@ function downPlayers(mode) {
 }
 
 /** A seat played by a bot (it comes back on its own; keys never bring it back). */
-function isBotSeat(mode, playerIndex) {
+export function isBotSeat(mode, playerIndex) {
     return mode._isBotPlayer(playerIndex) || isBotSlot(mode.matchConfig?.playerSlots?.[playerIndex]);
 }
 
@@ -137,6 +138,9 @@ export function respawnPlayer(mode, playerIndex) {
     mode.deps?.soundManager?.sfxPlayer?.playDrop?.();
     mode._spawnFirstPiece(playerIndex);
     mode._syncBoardScenes();
+    if (!isBotSeat(mode, playerIndex)) {
+        emitMultiplayerEvent(MULTIPLAYER_EVENTS.PLAYER_RESPAWNED, { player: playerIndex + 1, isLocal: true });
+    }
     console.log(`[LocalMultiplayer] Player ${playerIndex + 1} plays again`);
     return 'respawned';
 }

@@ -9,20 +9,20 @@ export const ASTRAL_WEAVE_TETROMINOS = {
     version: 1,
 
     colors: {
-        I: '#ffd86e',
-        O: '#ee79ff',
-        T: '#6cf9d5',
-        S: '#ff7ccf',
-        Z: '#6ca8ff',
-        J: '#ffab63',
-        L: '#7deeff',
+        I: '#ffe08a',
+        O: '#c792ff',
+        T: '#66e5b0',
+        S: '#fa82b1',
+        Z: '#80a3ff',
+        J: '#ffa272',
+        L: '#7be2f5',
         GARBAGE: '#3f3f72',
     },
 
     renderMode: 'glow',
 
     effects: {
-        glowRadius: 16,
+        glowRadius: 10,
         glowIntensity: 0.82,
         glowColor: 'auto',
 
@@ -32,27 +32,27 @@ export const ASTRAL_WEAVE_TETROMINOS = {
 
         pulse: true,
         pulseSpeed: 0.034,
-        pulseAmplitude: 0.18,
+        pulseAmplitude: 0.08,
 
         shimmer: true,
         shimmerSpeed: 0.055,
-        shimmerIntensity: 0.22,
+        shimmerIntensity: 0.13,
 
         trails: true,
         trailLength: 0.24,
-        trailOpacity: 0.34,
+        trailOpacity: 0.21,
     },
 
     rendererOverrides: {
         canvas: {
-            glowRadius: 13,
-            glowIntensity: 0.76,
+            glowRadius: 8,
+            glowIntensity: 0.90,
             outlineWidth: 1.8,
         },
         phaser: {
-            glowRadius: 18,
-            glowIntensity: 0.88,
-            outlineWidth: 2.2,
+            glowRadius: 11,
+            glowIntensity: 0.84,
+            outlineWidth: 1.6,
         },
     },
 };

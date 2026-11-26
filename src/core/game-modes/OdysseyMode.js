@@ -78,7 +78,7 @@ import {
     returnToOdysseyWorld, isOdysseyScenicJourney, isOdysseyWorldInterlude, noticeOdysseyEntryAbort,
 } from '../../ui/odyssey/odyssey-journey-flow.js';
 import {
-    completeOdysseyLevel, deferFinishPastCascade, drainAndBankOdysseyLap, settleOdysseyLevelEnd,
+    announceOdysseyGoal, completeOdysseyLevel, deferFinishPastCascade, drainAndBankOdysseyLap, settleOdysseyLevelEnd,
 } from './odyssey-completion.js';
 import {
     applyOdysseyBoardAudioPolicy, captureOdysseyBoardTrack, releaseOdysseyLevelMusic, releaseOdysseyBoardMusic,
@@ -1908,6 +1908,7 @@ export class OdysseyMode extends BaseGameMode {
         console.log(`[Odyssey] Level ${session.levelId} failed: ${reason}`);
         await this._drainLevelSession(session);
         if (!this._isLevelSessionCurrent(session, retirementGeneration)) return;
+        eventBus.emit(EVENTS.ODYSSEY_LEVEL_FAILED, { levelId: session.levelId, reason });
 
         // Victory Lap System: Clean up (in case of time failure during victory lap)
         this._hideGoalCompleteOverlay();
@@ -2414,7 +2415,7 @@ export class OdysseyMode extends BaseGameMode {
      * @private
      */
     _enterVictoryLap(session = this._activeLevelSession) {
-        if (!this._isLevelSessionActive(session)) return;
+        if (!this._isLevelSessionActive(session) || session.gameState.goalComplete) return;
         session.gameState.goalComplete = true;
         session.gameState.victoryLapActive = true;
         session.gameState.victoryLapStartTime = performance.now();
@@ -2438,11 +2439,7 @@ export class OdysseyMode extends BaseGameMode {
         // Play celebration sound
         this.deps?.soundManager?.sfxPlayer?.playLevelUp?.();
 
-        // Emit event for other systems
-        eventBus.emit(EVENTS.ODYSSEY_GOAL_COMPLETE, {
-            levelId: this.currentLevelId,
-            metrics: this.levelMetrics,
-        });
+        announceOdysseyGoal(session);
 
         // Set up victory lap input handler
         this._setupVictoryLapInputs();

@@ -246,9 +246,10 @@ export const EVENTS = {
     SETTINGS_CHANGED: 'settingsChanged',
     ODYSSEY_SAVED: 'odysseySaved',
     HIGH_SCORE_SAVED: 'highScoreSaved',
-    // Odyssey Mode Victory Lap
+    // Odyssey attempt outcomes and optional victory lap
     ODYSSEY_GOAL_COMPLETE: 'odysseyGoalComplete',
     ODYSSEY_VICTORY_LAP_END: 'odysseyVictoryLapEnd',
+    ODYSSEY_LEVEL_FAILED: 'odysseyLevelFailed',
     // Odyssey pause sheet: Retry orb / Back to map, emitted once the sheet has closed
     ODYSSEY_PAUSE_ACTION: 'odysseyPauseAction',
     // Stillfall: the mode publishes its puzzle state; the HUD sends commands back

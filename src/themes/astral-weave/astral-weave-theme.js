@@ -20,18 +20,18 @@
  * recovery and deterministic capture flags:
  *   ?astralWeaveTime=<s>      seek to t and freeze the simulation (captures)
  *   ?astralWeaveFixedDt=<ms>  fixed frame step
- *   ?astralWeaveParts=sky,rosette,wefts,warp,hoop,flares,sparks,dust,motes   draw only these parts
+ *   ?astralWeaveParts=sky,rosette,wefts,warp,hoop,flares,embroidery,sparks,dust,motes
  *   ?astralWeaveFalseColor=1  post debug view
  *
- * Warm: none (every pool is always drawn with zero-size dormant slots, so the first frame
- * compiles every render pipeline). The dust simulation's two compute pipelines compile off the
- * frame (compileComputeAsync) and the dust appears when they are ready.
+ * The loom keeps its drawables in the scene. Embroidery submits only active strokes.
+ * The dust simulation's two compute pipelines compile asynchronously.
  */
 
 import * as THREE from 'three/webgpu';
 
 import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
+import { MULTIPLAYER_EVENTS } from '../../events/multiplayer-events.js';
 import { registerGpuSurface } from '../../utils/gpu-loss-coordinator.js';
 import { normalizeQuality } from '../../utils/quality.js';
 import { getViewport } from '../../utils/viewport.js';
@@ -234,8 +234,9 @@ export default class AstralWeaveTheme extends BaseTheme {
                 clear: (c) => this.world?.onClear(c),
                 perfect: (c) => this.world?.onPerfect(c),
                 spin: (c) => this.world?.onSpin(c),
+                b2b: (c) => this.world?.onB2B(c),
                 combo: (n, player) => this.world?.onCombo(n, player),
-                levelUp: (level) => this.world?.levelUp(level),
+                levelUp: (level, react) => this.world?.levelUp(level, react),
             },
         });
         this.appliedSize = null;
@@ -343,6 +344,16 @@ export default class AstralWeaveTheme extends BaseTheme {
         this.clearTrackedResources();
         this.eventUnsubscribers = [];
         const playing = () => this.isActive && !this.isPaused;
+        const onGarbage = (kind, amountKey) => (data) => {
+            if (data?.isLocal && playing() && this.director?.enabled) this.world?.garbage(kind, data[amountKey]);
+        };
+        const onMilestone = (kind, localOnly = false) => (data) => {
+            if (playing() && this.director?.enabled && (!localOnly || data?.isLocal)) this.world?.milestone(kind);
+        };
+        const endRun = () => {
+            this.resetSession();
+            if (playing() && this.director?.enabled) this.world?.endRun();
+        };
 
         Object.keys(ASTRAL_WEAVE_EVENT_HANDLERS).forEach((key) => {
             const handler = ASTRAL_WEAVE_EVENT_HANDLERS[key];
@@ -352,6 +363,17 @@ export default class AstralWeaveTheme extends BaseTheme {
             }));
         });
         this.eventUnsubscribers.push(
+            eventBus.on(MULTIPLAYER_EVENTS.GARBAGE_INSERTED, onGarbage('incoming', 'linesInserted')),
+            eventBus.on(MULTIPLAYER_EVENTS.GARBAGE_COUNTERED, onGarbage('counter', 'linesCanceled')),
+            eventBus.on(MULTIPLAYER_EVENTS.GARBAGE_SENT, onGarbage('outgoing', 'totalLines')),
+            eventBus.on(EVENTS.ODYSSEY_GOAL_COMPLETE, onMilestone('goal')),
+            eventBus.on(EVENTS.ODYSSEY_VICTORY_LAP_END, onMilestone('victory')),
+            eventBus.on(EVENTS.ODYSSEY_LEVEL_FAILED, endRun),
+            eventBus.on(MULTIPLAYER_EVENTS.ROUND_OVER, onMilestone('round')),
+            eventBus.on(MULTIPLAYER_EVENTS.PLAYER_TOPPED_OUT, onMilestone('topout', true)),
+            eventBus.on(MULTIPLAYER_EVENTS.PLAYER_RESPAWNED, onMilestone('respawn', true)),
+            eventBus.on(MULTIPLAYER_EVENTS.GAME_OVER, (data) => { if (data?.isGameOver) endRun(); }),
+            eventBus.on(MULTIPLAYER_EVENTS.ROUND_RESTART, () => this.resetSession()),
             eventBus.on(EVENTS.SETTINGS_CHANGED, (p) => this.handleSettingsChanged(p)),
             eventBus.on(EVENTS.VIEWPORT_RESIZED, (v) => {
                 const view = v?.width > 0 && v?.height > 0 ? v : getViewport();
@@ -359,7 +381,7 @@ export default class AstralWeaveTheme extends BaseTheme {
             }),
         );
         this.registerEventListener(window, 'settingsChanged', (p) => this.handleSettingsChanged(p));
-        this.registerEventListener(window, 'gameOver', () => this.resetSession());
+        this.registerEventListener(window, 'gameOver', endRun);
 
         const resetPointer = () => {
             this.pointer.x = 0;

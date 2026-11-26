@@ -2,10 +2,10 @@
  * Astral Weave — the sky behind the loom. Two draws:
  *
  *  - The deep field: one full-screen triangle pair. A river of nebula crosses the frame on a
- *    diagonal (teal heart, indigo body, rose edges, dark dust lanes cut through it), built from
- *    four fetches of the baked fBm texture with one domain warp; two hashed star layers sit behind
- *    it (denser inside the river, hidden where the dust is thick). Outside the river space is
- *    left dark.
+ *    diagonal. A foreground lane of molecular dust divides its two gas banks. Oblique filaments
+ *    trace the illuminated walls and a slower, distant star field shows through the breaks.
+ *    All three layers share a baked noise tile. High spends one additional read inside the gas
+ *    to resolve the ridges around its dark knots.
  *    The gas is LIT: by the hoop's heart (its colour follows the weave's heat, so the iris turns
  *    the nebula gold) and by two hot stars embedded in the free zones. One more read of the broad
  *    octave, a little toward the light, tells which way each cloud faces: faces turned to the
@@ -59,22 +59,22 @@ import {
 /** Per-tier sky budgets. `relief` spends one more fetch on the clouds' lit faces and shadows. */
 export const SKY_TIERS = Object.freeze({
     Minimal: {
-        fine: false, relief: false, starLayers: 1, jewels: 10,
+        fine: false, relief: false, knots: false, starLayers: 1, jewels: 10,
     },
     Low: {
-        fine: false, relief: false, starLayers: 1, jewels: 16,
+        fine: false, relief: false, knots: false, starLayers: 1, jewels: 16,
     },
     Medium: {
-        fine: true, relief: true, starLayers: 2, jewels: 24,
+        fine: true, relief: true, knots: false, starLayers: 2, jewels: 24,
     },
     High: {
-        fine: true, relief: true, starLayers: 2, jewels: 32,
+        fine: true, relief: true, knots: true, starLayers: 2, jewels: 32,
     },
     Ultra: {
-        fine: true, relief: true, starLayers: 2, jewels: 40,
+        fine: true, relief: true, knots: true, starLayers: 2, jewels: 40,
     },
     Extreme: {
-        fine: true, relief: true, starLayers: 2, jewels: 48,
+        fine: true, relief: true, knots: true, starLayers: 2, jewels: 48,
     },
 });
 
@@ -122,23 +122,23 @@ export function lampFlare(lampX, lampY, loom, shockRadius, shockGain) {
 
 /** One hashed star layer: `scale` cells per view height, stars a pixel or two across. */
 function starLayer(p, scale, uPxView, uTime, density) {
-    const g = p.mul(scale);
-    const cell = floor(g);
-    const h = awHash22(cell);
+    const g = p.mul(scale).add(256.0);
+    const cell = floor(g).toVar();
+    const h = awHash22(cell).toVar();
     const d = fract(g).sub(0.5).sub(h.sub(0.5).mul(0.56));
-    const pick = awHash21(cell.add(vec2(17.3, 91.7)));
-    const mag = pow(smoothstep(0.5, 1.0, pick), float(3.0)).mul(density);
-    const r = uPxView.mul(scale).mul(mix(float(0.7), float(1.25), mag));
+    const pick = awHash21(cell.add(vec2(17.0, 91.0)));
+    const mag = pow(smoothstep(0.44, 1.0, pick), float(3.0)).toVar();
+    const r = uPxView.mul(scale).mul(mix(float(0.52), float(1.05), mag));
     const core = exp(dot(d, d).div(r.mul(r)).negate());
-    const twinkle = sin(uTime.mul(h.x.mul(2.4).add(0.7)).add(h.y.mul(TAU))).mul(0.3).add(0.7);
+    const twinkle = sin(uTime.mul(h.x.mul(0.9).add(0.3)).add(h.y.mul(TAU))).mul(0.17).add(0.83);
     const tint = mix(vec3(0.72, 0.84, 1.0), vec3(1.0, 0.86, 0.72), smoothstep(0.55, 1.0, h.y));
-    return tint.mul(core.mul(mag).mul(twinkle));
+    return tint.mul(core.mul(mag).mul(twinkle).mul(density));
 }
 
 export function createSky(shared, quality = 'High') {
     const tier = SKY_TIERS[quality] || SKY_TIERS.High;
     const {
-        uTime, uAspect, uViewport, uSkyShift, uParallax, uLoom, uLamps, uLampFlare, uHeat, uEnergy, uShockR, uShockG,
+        uTime, uAspect, uViewport, uParallax, uLoom, uLamps, uLampFlare, uHeat, uEnergy, uShockR, uShockG,
         uCore, noiseTex, uMood,
     } = shared;
 
@@ -146,8 +146,7 @@ export function createSky(shared, quality = 'High') {
     const material = new THREE.MeshBasicNodeMaterial({ depthTest: false, depthWrite: false });
     material.name = 'astral-weave-deep-field';
     material.fog = false;
-    // Opaque but not "normal": three then keeps the alpha this pass writes (the gas density the
-    // post scatters the weave's light by) instead of forcing it to 1.
+    // Write density directly to alpha. The output pass uses it as the gas scattering the loom's bloom.
     material.blending = THREE.NoBlending;
     material.vertexNode = vec4(positionGeometry.xy, 0.9995, 1.0);
 
@@ -155,46 +154,83 @@ export function createSky(shared, quality = 'High') {
     const lampTint1 = uMood.lampA;
     const lampTint2 = uMood.lampB;
 
-    material.colorNode = Fn(() => {
+    material.fragmentNode = Fn(() => {
         // View units: origin at the screen centre, y up, one unit = the view height.
         const view = vec2(screenUV.x.sub(0.5).mul(uAspect), float(0.5).sub(screenUV.y)).toVar();
-        const p = view.add(uSkyShift).toVar();
+        const p = view.add(uParallax.mul(0.65)).toVar();
         const uPxView = float(1.0).div(uViewport.y);
         const pxScale = uViewport.y.div(1080.0);
 
         // ── The river of nebula ──
-        const along = vec2(Math.cos(RIVER_ANGLE), Math.sin(RIVER_ANGLE));
-        const across = vec2(-Math.sin(RIVER_ANGLE), Math.cos(RIVER_ANGLE));
-        const a = dot(p, along);
-        const drift = vec2(uTime.mul(0.0031), uTime.mul(-0.0017));
-        const warpN = texture(noiseTex, p.mul(0.31).add(drift.mul(0.6)).add(vec2(0.13, 0.71))).level(0);
-        const q = p.add(warpN.xy.sub(0.5).mul(0.34)).toVar();
+        // The same river runs between the two lamps on a tall screen.
+        const landscape = smoothstep(0.63, 1.2, uAspect);
+        const wideAxis = vec2(Math.cos(RIVER_ANGLE), Math.sin(RIVER_ANGLE));
+        const along = normalize(mix(vec2(0.35, 0.937), wideAxis, landscape)).toVar();
+        const across = vec2(along.y.negate(), along.x);
+        const a = dot(p, along).toVar();
+        const drift = vec2(uTime.mul(0.0013), uTime.mul(-0.00085));
+        const tide = sin(uTime.mul(0.043)).toVar();
+        const warpN = texture(noiseTex, p.mul(0.29).add(drift.mul(0.6)).add(vec2(0.13, 0.71))).level(0).toVar();
+        const q = p.add(warpN.xy.sub(0.5).mul(0.29)).toVar();
         const broadAt = (at) => at.mul(0.52).add(drift).add(vec2(0.37, 0.19));
         const broad = texture(noiseTex, broadAt(q)).level(0).toVar();
-        const detail = texture(noiseTex, q.mul(1.46).sub(drift.mul(1.7)).add(vec2(0.61, 0.05))).level(0).toVar();
-        const c = dot(q, across).sub(sin(a.mul(2.3).add(0.5)).mul(0.11)).add(0.04);
-        const width = broad.w.mul(0.2).add(0.27);
-        const band = exp(c.mul(c).div(width.mul(width)).negate()).toVar();
-        const density = broad.x.mul(0.58).add(detail.y.mul(0.42)).toVar();
+        // The large arc stays in the frame for a long run. Its banks breathe about their axis
+        // while the small features flow through them. Stretch the texture along the gas stream.
+        const bend = sin(a.mul(4.1).add(0.68).add(tide.mul(0.5))).mul(0.092)
+            .add(sin(a.mul(7.2).sub(tide.mul(0.34))).mul(0.025));
+        const acrossGas = dot(q, across).sub(bend).toVar();
+        const detailUv = vec2(a.mul(0.97), acrossGas.mul(2.8)).add(broad.xy.sub(0.5).mul(0.18));
+        const detail = texture(noiseTex, detailUv.sub(drift.mul(1.7)).add(vec2(0.61, 0.05))).level(0).toVar();
+        const width = broad.w.mul(0.09).add(0.168);
+        const band = exp(acrossGas.mul(acrossGas).div(width.mul(width)).negate()).toVar();
+        const grain = detail.y.mul(0.58).add(broad.x.mul(0.42)).toVar();
+        let fineRidge = float(0.0);
+        let fineBody = float(0.5);
         if (tier.fine) {
-            const fine = texture(noiseTex, q.mul(3.9).add(drift.mul(2.3)).add(vec2(0.83, 0.47))).level(0);
-            density.assign(density.mul(0.84).add(fine.z.mul(0.16)));
+            const fineUv = vec2(a.mul(3.3), acrossGas.mul(6.4)).add(detail.xw.sub(0.5).mul(0.29));
+            const fine = texture(noiseTex, fineUv.add(drift.mul(2.3)).add(vec2(0.83, 0.47))).level(0).toVar();
+            fineRidge = pow(float(1.0).sub(abs(fine.x.mul(2.0).sub(1.0))), 8.0);
+            fineBody = fine.y;
+            grain.assign(grain.mul(0.82).add(fine.z.mul(0.18)));
         }
-        // The river holds the gas; outside it only thin wisps remain, so space reads as space.
-        const cloud = smoothstep(0.42, 0.84, density.add(band.mul(0.34)).sub(0.1)).mul(band.mul(0.9).add(0.1)).toVar();
-        // Filaments: the ridges of the detail octave, only where the river runs.
-        const ridge = float(1.0).sub(abs(detail.x.mul(2.0).sub(1.0)));
-        const filament = pow(ridge, float(5.0)).mul(band).mul(smoothstep(0.35, 0.7, broad.x));
-        // Dust lanes cut the gas and hide the stars behind them.
-        const lane = smoothstep(0.5, 0.7, detail.w.mul(0.62).add(broad.z.mul(0.38))).mul(band).toVar();
-        cloud.mulAssign(float(1.0).sub(lane.mul(0.85)));
-
-        const hueT = broad.z.mul(0.62).add(a.mul(0.2)).add(detail.z.mul(0.2)).add(0.08);
+        // A sinuous foreground dust lane with a scalloped silhouette and asymmetrically lit
+        // walls. Bright rims survive only on the dense flanks; light leaks into the breaks.
+        const laneOffset = sin(a.mul(5.5).add(1.4).sub(tide.mul(0.52))).mul(0.052);
+        const signedWall = acrossGas.sub(laneOffset).add(detail.w.sub(0.5).mul(0.059)).toVar();
+        const laneWidth = broad.z.mul(0.06).add(0.009);
+        const wall = abs(signedWall).sub(laneWidth).toVar();
+        const lane = float(1.0).sub(smoothstep(-0.014, 0.019, wall))
+            .mul(smoothstep(0.24, 0.61, broad.y.add(detail.z.mul(0.12)))).toVar();
+        const edge = exp(abs(wall.sub(0.012)).mul(-58.0)).mul(smoothstep(0.32, 0.68, grain)).toVar();
+        const cloud = smoothstep(0.33, 0.72, grain).mul(band)
+            .mul(float(1.0).sub(lane.mul(0.94))).toVar();
+        // Only the banks pay for their little globules. Stretch the high-frequency field much
+        // less than the material flowing around it so dense knots interrupt the long ribbons.
+        const knotLight = float(0.0).toVar();
+        if (tier.knots) {
+            If(cloud.greaterThan(0.055), () => {
+                const knotUv = vec2(a.mul(7.3), acrossGas.mul(10.0)).add(detail.zw.sub(0.5).mul(0.55));
+                const grainlet = texture(noiseTex, knotUv.sub(drift).add(vec2(0.23, 0.79))).level(0).toVar();
+                const body = fineBody.mul(0.54).add(grainlet.y.mul(0.46)).toVar();
+                const exposure = smoothstep(0.055, 0.32, cloud).toVar();
+                const crest = exp(abs(body.sub(0.51)).mul(-28.0)).mul(smoothstep(0.33, 0.72, grainlet.w));
+                knotLight.assign(crest.mul(exposure).mul(cloud));
+                cloud.mulAssign(float(1.0).sub(smoothstep(0.48, 0.63, body).mul(exposure).mul(0.78)));
+            });
+        }
+        const fibre = pow(float(1.0).sub(abs(detail.x.mul(2.0).sub(1.0))), 9.0);
+        const filament = fibre.mul(0.48).add(fineRidge.mul(0.19)).mul(cloud)
+            .add(edge.mul(0.67).mul(band))
+            .toVar();
+        const hueT = broad.z.mul(0.3).add(a.mul(0.41)).add(detail.z.mul(0.13)).add(fineBody.sub(0.5).mul(0.28))
+            .add(signedWall.mul(0.47))
+            .add(0.32)
+            .toVar();
         // The mood's gas: heart, body and edges (teal, indigo and rose in the first mood).
         const { gasA, gasB, gasC } = uMood;
         const gas = mix(mix(gasA, gasB, smoothstep(0.34, 0.56, hueT)), gasC, smoothstep(0.56, 0.82, hueT)).toVar();
         // The combo temperature warms the gas a little; it never turns the sky to fire.
-        gas.assign(mix(gas, vec3(0.42, 0.17, 0.06), uHeat.mul(0.3).mul(smoothstep(0.3, 0.9, density))));
+        gas.assign(mix(gas, vec3(0.42, 0.17, 0.06), uHeat.mul(0.3).mul(smoothstep(0.3, 0.9, grain))));
 
         // ── The lights in the gas: the hoop's heart and the two embedded stars ──
         const glowTint = mix(uMood.glow, vec3(1.0, 0.56, 0.2), uHeat).toVar();
@@ -234,7 +270,7 @@ export function createSky(shared, quality = 'High') {
             shade = smoothstep(0.0, 0.08, relief.negate());
         }
 
-        const sky = uMood.space.add(uMood.band.mul(band)).toVar();
+        const sky = uMood.space.add(uMood.band.mul(band.mul(0.8).add(broad.w.mul(0.12)))).toVar();
         // The gas's own glow, darker on the faces turned from the light.
         sky.addAssign(gas.mul(cloud).mul(0.4).mul(float(1.0).sub(shade.mul(0.45))));
         // Lit gas: its own hue, raised and drawn a little toward the light's colour, brightest on
@@ -257,19 +293,30 @@ export function createSky(shared, quality = 'High') {
                 smoothstep(0.62, 0.95, warmth),
             ));
         });
-        const litGas = mix(warmed, towardLight, float(0.25).mul(float(1.0).sub(uHeat.mul(0.6))));
-        sky.addAssign(litGas.mul(lightSum).mul(cloud).mul(rim.mul(2.0).add(0.2))
+        const litGas = mix(warmed, towardLight, float(0.16).mul(float(1.0).sub(uHeat.mul(0.6))));
+        sky.addAssign(litGas.mul(lightSum).mul(cloud).mul(rim.mul(1.65).add(0.25))
             .mul(float(1.0).sub(shade.mul(0.65))));
         sky.addAssign(mix(uMood.filamentA, uMood.filamentB, smoothstep(0.4, 0.8, hueT))
-            .mul(filament).mul(lightSum.mul(0.5).add(0.12)));
+            .mul(filament).mul(lightSum.mul(0.46).add(0.09)));
+        if (tier.knots) {
+            const rimTint = mix(uMood.highlight, uMood.lampB, 0.24);
+            sky.addAssign(rimTint.mul(knotLight).mul(lightSum.mul(0.36).add(0.15)));
+        }
         sky.addAssign(uMood.highlight.mul(pow(cloud, float(3.0))).mul(0.08));
 
         // ── Stars ──
-        const veil = float(1.0).sub(cloud.mul(0.5)).sub(lane.mul(0.45));
-        const sp = view.add(uSkyShift.mul(0.6));
-        const stars = starLayer(sp, float(44.0), uPxView, uTime, band.mul(1.1).add(0.5)).mul(0.9).toVar();
+        const veil = float(1.0).sub(cloud.mul(0.47)).sub(lane.mul(0.88));
+        const sp = view.add(uParallax.mul(0.22));
+        const nursery = smoothstep(0.36, 0.7, broad.y).mul(band).toVar();
+        const stars = starLayer(sp, float(58.0), uPxView, uTime, nursery.mul(1.48).add(0.27)).toVar();
         if (tier.starLayers > 1) {
-            stars.addAssign(starLayer(sp.add(vec2(3.7, 1.9)), float(15.0), uPxView, uTime, float(1.0)).mul(1.6));
+            stars.addAssign(starLayer(
+                view.add(uParallax.mul(0.57)).add(vec2(3.7, 1.9)),
+                float(19.0),
+                uPxView,
+                uTime,
+                float(1.12),
+            ));
         }
         sky.addAssign(stars.mul(max(veil, 0.0)).mul(uEnergy.mul(0.25).add(1.0)).mul(uMood.stars));
 
@@ -292,14 +339,15 @@ export function createSky(shared, quality = 'High') {
 
         // ── The loom's light in the gas ──
         // The hoop is a lens of darker glass: the weave reads against it.
-        sky.mulAssign(mix(float(0.52), float(1.0), smoothstep(0.86, 1.04, lr)));
+        sky.mulAssign(mix(float(0.28), float(1.0), smoothstep(0.32, 1.1, lr)));
         const wash = exp(lr.mul(-2.3)).mul(0.04).add(exp(lr.mul(lr).mul(-9.0)).mul(0.04));
         sky.addAssign(glowTint.mul(wash).mul(uCore).mul(cloud.mul(1.4).add(0.45)));
         // The clears' shock rings: thin fronts of excited gas travelling out from the hoop's heart,
         // up to four at once (a chain sends them out nested, a cascade's deeper waves faster).
         const front = vec4(lr).sub(uShockR);
         const ring = dot(exp(front.mul(front).mul(-150.0)), uShockG);
-        sky.addAssign(mix(gas.mul(2.4), glowTint, 0.4).mul(ring).mul(cloud.mul(1.5).add(0.08)).mul(0.75));
+        const ringTint = mix(gas.mul(2.4), glowTint, 0.4);
+        sky.addAssign(ringTint.mul(ring.mul(shared.uShockLight)).mul(cloud.mul(1.5).add(0.08)).mul(0.75));
 
         // Alpha carries the gas (and a breath of interstellar haze) for the post's scattering.
         return vec4(sky, clamp(cloud.mul(0.9).add(band.mul(0.1)), 0.0, 1.0));
@@ -314,6 +362,12 @@ export function createSky(shared, quality = 'High') {
     const count = tier.jewels;
     const rand = mulberry32(2718);
     const place = new Float32Array(count * 4);
+    // Two sparse open clusters anchor the dark diagonals across from the embedded lamps.
+    // Their close doubles give the eye a scale between the isolated giants and the dust.
+    const clusters = [
+        [-0.67, 0.41], [-0.71, 0.46], [-0.645, 0.425], [-0.59, 0.5], [-0.76, 0.39],
+        [0.64, -0.43], [0.68, -0.4], [0.72, -0.52], [0.62, -0.5],
+    ];
     for (let i = 0; i < count; i++) {
         // Authored for the free zones: reject the card column, lean toward the corners.
         let x = 0;
@@ -323,9 +377,9 @@ export function createSky(shared, quality = 'High') {
             y = rand() * 2 - 1;
             if (Math.abs(x) > 0.2 || Math.abs(y) > 0.88) break;
         }
-        place[i * 4] = x;
-        place[i * 4 + 1] = y;
-        place[i * 4 + 2] = i < 6 ? 0.75 + rand() * 0.25 : rand() ** 2.2 * 0.6 + 0.08;
+        place[i * 4] = clusters[i]?.[0] ?? x;
+        place[i * 4 + 1] = clusters[i]?.[1] ?? y;
+        place[i * 4 + 2] = i === 0 || i === 5 ? 0.92 : rand() ** 2.2 * 0.72 + 0.12;
         place[i * 4 + 3] = rand();
     }
     const jewelGeometry = awQuadGeometry(count, 1618, {
@@ -334,7 +388,7 @@ export function createSky(shared, quality = 'High') {
     const jewelMaterial = awFxMaterial('astral-weave-jewels');
     const seed = attribute('aSeed', 'vec4');
     const spot = attribute('aPlace', 'vec4');
-    const sizePx = mix(float(9.0), float(46.0), spot.z).mul(uViewport.y.div(1080.0));
+    const sizePx = mix(float(8.0), float(52.0), spot.z).mul(uViewport.y.div(1080.0));
     // Clip-space placement (x spans the frame at any aspect), nudged by the camera's parallax only:
     // the sky's slow time drift would carry these authored stars off the frame in a long session.
     const centre = spot.xy.sub(uParallax.mul(vec2(float(2.0).div(uAspect), 2.0)).mul(0.9));
@@ -345,12 +399,12 @@ export function createSky(shared, quality = 'High') {
         const vSeed = vertexStage(seed);
         const vSpot = vertexStage(spot);
         const r = length(st);
-        const core = exp(r.mul(r).mul(-60.0)).mul(5.0).add(exp(r.mul(-7.0)).mul(0.3));
+        const core = exp(r.mul(r).mul(-88.0)).mul(5.0).add(exp(r.mul(-8.5)).mul(0.23));
         // Four-point diffraction: long thin arms, plus a short diagonal pair on the bright ones.
         const arm = (v) => exp(abs(v.y).mul(-70.0)).mul(exp(abs(v.x).mul(-4.6)));
         const d = vec2(st.x.add(st.y), st.x.sub(st.y)).mul(0.7071);
         const spikes = arm(st).add(arm(st.yx)).mul(0.9).add(arm(d).add(arm(d.yx)).mul(0.2).mul(vSpot.z));
-        const tw = sin(uTime.mul(vSeed.x.mul(1.7).add(0.5)).add(vSeed.y.mul(TAU))).mul(0.22).add(0.78);
+        const tw = sin(uTime.mul(vSeed.x.mul(1.5).add(0.3)).add(vSeed.y.mul(TAU))).mul(0.15).add(0.85);
         const tint = mix(
             mix(vec3(0.62, 0.8, 1.0), vec3(1.0, 0.95, 0.9), smoothstep(0.3, 0.7, vSeed.z)),
             vec3(1.0, 0.72, 0.5),
@@ -379,5 +433,5 @@ export function createSky(shared, quality = 'High') {
     };
 }
 
-/** The river's unit axis in view units (for tests and for placing things along it). */
+/** The river's landscape axis in view units. Portrait bends the river up toward its lamps. */
 export const RIVER_AXIS = Object.freeze({ x: Math.cos(RIVER_ANGLE), y: Math.sin(RIVER_ANGLE) });

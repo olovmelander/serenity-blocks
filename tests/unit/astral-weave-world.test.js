@@ -836,12 +836,11 @@ describe('astral weave world: the lit sky and the near motes', () => {
         const camera = new THREE.PerspectiveCamera();
         for (const time of [10, 1800, 3600, 7200]) {
             world.updateCamera(camera, { time, pointerX: 1, pointerY: -1 });
-            // The gas drifts with time; the jewels, lamps and near motes take the camera's parallax
-            // alone, which stays a few thousandths of the view.
+            // The sky holds its river in frame. The jewels, lamps and near motes share only
+            // the camera's bounded parallax.
             expect(Math.abs(world.shared.uParallax.value.x)).toBeLessThan(0.004);
             expect(Math.abs(world.shared.uParallax.value.y)).toBeLessThan(0.004);
         }
-        expect(world.shared.uSkyShift.value.x).toBeGreaterThan(2);
         world.dispose();
     });
 

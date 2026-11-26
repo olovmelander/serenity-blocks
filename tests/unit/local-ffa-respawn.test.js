@@ -20,6 +20,8 @@ import { columnsToMask } from '../../src/core/garbage.js';
 import { applyVersusFeel, VERSUS_MAX_PENDING_LINES } from '../../src/core/multiplayer/versus-rules.js';
 import { InputController, setupKeyboardControls } from '../../src/ui/controls.js';
 import { GamepadController } from '../../src/ui/gamepad-controller.js';
+import { eventBus } from '../../src/events/event-bus.js';
+import { MULTIPLAYER_EVENTS } from '../../src/events/multiplayer-events.js';
 
 const moduleMocks = vi.hoisted(() => ({ showLocalMatchEnd: vi.fn() }));
 
@@ -122,6 +124,78 @@ async function topOut(mode, index) {
 
 const isEmptyWell = (player) => player.lockedPieces.length === 0
     && player.boardGrid.every((row) => row.every((cell) => cell === null));
+
+describe('shared couch presentation', () => {
+    it('shows each human knockout and successful return once, while the bot still respawns', async () => {
+        vi.useFakeTimers();
+        const mode = versusMode(2, { playerSlots: [{ kind: 'bot' }, { kind: 'human' }] });
+        mode._showPlayerDeathAnimation = LocalMultiplayerMode.prototype._showPlayerDeathAnimation;
+        const delivered = vi.spyOn(eventBus, 'emit');
+
+        await topOut(mode, 0);
+        await topOut(mode, 1);
+        await mode._handleGameOver(1);
+        expect(mode._onSeatPress(1)).toBe(false);
+        vi.advanceTimersByTime(RESPAWN_KEY_HOLD_MS);
+        expect(mode._onSeatPress(1)).toBe(true);
+        expect(mode._onSeatPress(1)).toBe(false);
+        vi.advanceTimersByTime(BOT_RESPAWN_MS - RESPAWN_KEY_HOLD_MS);
+        expect(mode.multiplayerState.players.every((player) => player.isAlive)).toBe(true);
+        await topOut(mode, 1);
+
+        const { PLAYER_TOPPED_OUT, PLAYER_RESPAWNED } = MULTIPLAYER_EVENTS;
+        expect(delivered.mock.calls.filter(([event]) => [PLAYER_TOPPED_OUT, PLAYER_RESPAWNED].includes(event)))
+            .toEqual([
+                [PLAYER_TOPPED_OUT, { player: 2, isLocal: true }],
+                [PLAYER_RESPAWNED, { player: 2, isLocal: true }],
+                [PLAYER_TOPPED_OUT, { player: 2, isLocal: true }],
+            ]);
+    });
+
+    it.each(['human', 'bot'])('reports shared outcomes according to the first seat (%s)', async (kind) => {
+        vi.useFakeTimers();
+        const mode = versusMode(3, {
+            gameType: 'survivor',
+            isTeamMode: true,
+            playerTeams: [0, 1, 1],
+            playerSlots: [{ kind }, { kind: 'bot' }, { kind: 'bot' }],
+        });
+        mode._startNewRound = LocalMultiplayerMode.prototype._startNewRound;
+        mode._showMatchEnd = LocalMultiplayerMode.prototype._showMatchEnd;
+        mode._startGameLoop = vi.fn();
+        mode._setupLocalBots = vi.fn();
+        mode._updateMultiplayerStats = vi.fn();
+        mode.onStop = vi.fn();
+        mode.playerNextCanvases = new Map();
+        mode.deps = { soundManager: { sfxPlayer: {} } };
+        mode.teamRoundWins = {};
+        mode.roundWins = {};
+        mode.versusRound = 1;
+        const delivered = vi.spyOn(eventBus, 'emit');
+        const target = new EventTarget();
+        const ended = vi.fn();
+        target.addEventListener('gameOver', ended);
+        vi.stubGlobal('window', target);
+
+        await mode._handleTeamRoundEnd(1);
+        expect(mode.versusRound).toBe(2);
+        const roundBeats = delivered.mock.calls.filter(([event]) => event === MULTIPLAYER_EVENTS.ROUND_OVER);
+        expect(roundBeats).toHaveLength(kind === 'human' ? 1 : 0);
+        if (roundBeats.length) expect(roundBeats[0][1]).toEqual({ round: 1, outcome: { teamId: 1 }, isLocal: true });
+        expect(ended).not.toHaveBeenCalled();
+
+        const winner = { type: 'team', teamId: 1 };
+        const finalBeat = mode._showMatchEnd(winner);
+        expect(ended).toHaveBeenCalledTimes(kind === 'human' ? 1 : 0);
+        if (kind === 'human') expect(ended.mock.calls[0][0].detail).toEqual({ mode: 'local-multiplayer', winner });
+        expect(delivered.mock.calls.some(([event]) => event === MULTIPLAYER_EVENTS.GAME_OVER)).toBe(false);
+        await vi.advanceTimersByTimeAsync(2399);
+        expect(moduleMocks.showLocalMatchEnd).not.toHaveBeenCalled();
+        await vi.advanceTimersByTimeAsync(1);
+        await finalBeat;
+        expect(moduleMocks.showLocalMatchEnd).toHaveBeenCalledOnce();
+    });
+});
 
 describe('free-for-all is the default game type', () => {
     it('respawns unless the match asks for survivor rounds or is Infinity\'s Last Standing', () => {

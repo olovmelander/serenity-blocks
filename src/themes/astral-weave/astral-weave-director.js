@@ -13,8 +13,9 @@
  *                              ~360 ms after the last wave, in a tick of its own): the crown on
  *                              the clear still playing, never a clear of its own
  *   sink.spin({ player })      a twist that cleared nothing
+ *   sink.b2b({ player })       a back-to-back confirmed after its clear
  *   sink.combo(n, player)      the true combo, whenever it changes (0 = the chain broke)
- *   sink.levelUp(level)
+ *   sink.levelUp(level, react) a silent level still advances the sky's mood
  *
  * `rows` are VISIBLE board rows (0 = the top row, 19 = the floor); `u` is the lock's column as a
  * fraction of the board width. `screen` ({ x, y } in window fractions, y down) is set instead for
@@ -175,7 +176,7 @@ function capturePosition(slot, payload) {
 export class AstralWeaveDirector {
     /**
      * @param {{
-     *   sink?: { lock?: Function, clear?: Function, perfect?: Function, spin?: Function,
+     *   sink?: { lock?: Function, clear?: Function, perfect?: Function, spin?: Function, b2b?: Function,
      *     combo?: Function, levelUp?: Function },
      *   enabled?: boolean, lockRipple?: boolean,
      * }} [options]
@@ -189,6 +190,7 @@ export class AstralWeaveDirector {
         this.droppedEvents = 0;
         this.level = 0;
         this.levelPending = false;
+        this.levelAccent = false;
         this.slots = Array.from({ length: PLAYER_SLOTS }, createSlot);
         this._lock = {
             player: 0, rows: [], u: 0.5, hardDrop: false, screen: null,
@@ -217,7 +219,12 @@ export class AstralWeaveDirector {
         }
         if (options.enabled !== undefined) {
             const enabled = options.enabled !== false;
-            if (this.enabled && !enabled) this.reset();
+            if (this.enabled && !enabled) {
+                const pendingLevel = this.levelPending;
+                this.reset();
+                this.levelPending = pendingLevel;
+                this.levelAccent = false;
+            }
             this.enabled = enabled;
         }
     }
@@ -336,6 +343,7 @@ export class AstralWeaveDirector {
         if (payload.active === false) return false;
         const slot = this.slotFor(payload);
         if (!slot) return false;
+        slot.pending = true;
         slot.b2b = true;
         return true;
     }
@@ -358,6 +366,7 @@ export class AstralWeaveDirector {
         const level = finite((event || EMPTY).level, this.level + 1);
         this.level = Math.max(1, Math.round(level));
         this.levelPending = true;
+        this.levelAccent = this.enabled;
         return true;
     }
 
@@ -368,7 +377,7 @@ export class AstralWeaveDirector {
         const { sink } = this;
         if (this.levelPending) {
             this.levelPending = false;
-            sink?.levelUp?.(this.level);
+            sink?.levelUp?.(this.level, this.enabled && this.levelAccent);
         }
         for (let i = 0; i < this.slots.length; i += 1) {
             const slot = this.slots[i];
@@ -412,11 +421,12 @@ export class AstralWeaveDirector {
                 c.b2b = slot.b2b;
                 c.screen = screen;
                 sink.clear(c);
-            } else if (slot.perfect || slot.twist) {
+            } else if (slot.perfect || slot.twist || slot.b2b) {
                 const m = this._moment;
                 m.player = slot.player;
                 if (slot.perfect) sink?.perfect?.(m);
                 if (slot.twist) sink?.spin?.(m);
+                if (slot.b2b) sink?.b2b?.(m);
             }
             clearPending(slot);
         }

@@ -136,6 +136,80 @@ const sweepArrival = (dA) => float(1.0).sub(sqrt(float(1.0).sub(clamp(dA.div(PI)
 
 const ROSETTE_HALF_PX = 5.0;
 
+// Opposite reels feed rose and cyan silk. The crossing between their dyes goes through
+// violet, and heat gradually reveals a copper ground with pale-gold highlights.
+const silkDye = /* @__PURE__ */ Fn(([angle, heat]) => {
+    const side = cos(angle).mul(0.5).add(0.5);
+    const rose = vec3(1.0, 0.12, 0.43);
+    const violet = vec3(0.44, 0.22, 0.94);
+    const cyan = vec3(0.058, 0.91, 0.99);
+    const cool = mix(mix(rose, violet, smoothstep(0.1, 0.55, side)), cyan, smoothstep(0.46, 0.87, side));
+    const fire = mix(vec3(1.0, 0.27, 0.115), vec3(1.0, 0.79, 0.30), side);
+    return mix(cool, fire, smoothstep(0.1, 0.9, heat));
+}).setLayout({
+    name: 'aw_silk_dye',
+    type: 'vec3',
+    inputs: [{ name: 'angle', type: 'float' }, { name: 'heat', type: 'float' }],
+});
+
+/** Cross threads follow fixed fractions along successive chords. At their common tangent the
+ *  two families fold into the same cusp. The narrow, three-ply bands give the fabric a stitched edge. */
+function createSelvedges(shared, count, segments) {
+    const rows = count >= 132 ? 15 : 9;
+    const geometry = awThreadGeometry(rows, Math.max(96, segments * 6), 55197);
+    const material = awFxMaterial('astral-weave-selvedges');
+    const {
+        uViewport, uPxScale, uK, uPhase, uSpin, uHeat, uFlow, uMood, uFade,
+    } = shared;
+    const along = positionGeometry.x;
+    const th = attribute('aThread', 'vec4');
+    const row = floor(th.x.mul(rows).add(0.5));
+    const bundle = floor(row.div(3.0));
+    const ply = row.sub(bundle.mul(3.0)).sub(1.0);
+    const offset = bundle.div(rows / 3 - 1).sub(0.5);
+    const tangent = float(1.0).div(max(uK.add(1.0), 1.0));
+    const curveAt = (s) => {
+        const a = s.mul(TAU);
+        const b = a.mul(uK).add(uSpin).add(uPhase);
+        const first = vec2(cos(a.add(uSpin)), sin(a.add(uSpin)));
+        const last = vec2(cos(b), sin(b));
+        const ripple = sin(a.mul(4.0).add(uFlow.mul(0.075)).add(offset.mul(5.0)));
+        const t = tangent.add(offset.mul(0.31)).add(ply.mul(0.006)).add(ripple.mul(0.018)).clamp(0.02, 0.98);
+        const bow = sin(t.mul(PI)).mul(length(last.sub(first))).mul(-0.07);
+        return vec3(mix(first, last, t), bow);
+    };
+    material.vertexNode = awRibbonClip(
+        curveAt(along),
+        curveAt(along.add(0.001)),
+        positionGeometry.y,
+        uPxScale.mul(3.2),
+        uViewport,
+    );
+    material.colorNode = Fn(() => {
+        const st = uv().clamp(0.0, 1.0);
+        const ang = st.x.mul(TAU);
+        const cross = st.y.mul(2.0).sub(1.0);
+        const section = exp(cross.mul(cross).mul(-12.0));
+        const centre = float(1.0).sub(abs(vertexStage(ply)));
+        // Long shifting silk highlights break up the numerical symmetry of the curve.
+        const sheen = sin(ang.mul(5.0).add(vertexStage(bundle)).sub(uFlow.mul(0.16))).mul(0.5).add(0.5);
+        const nap = sin(ang.mul(count * 0.5)).mul(0.16).add(0.84);
+        const open = smoothstep(0.0, 0.015, st.x).mul(smoothstep(0.0, 0.015, float(1.0).sub(st.x)));
+        const gain = section.mul(sheen.mul(sheen).mul(0.85).add(0.20)).mul(centre.mul(0.6).add(0.4))
+            .mul(nap).mul(open)
+            .mul(smoothstep(0.1, 1.75, uK))
+            .mul(uMood.weave)
+            .mul(uFade);
+        const tint = mix(silkDye(ang, uHeat), vec3(1.0, 0.88, 0.84), centre.mul(sheen).mul(0.23));
+        return vec4(tint.mul(gain), 0.0);
+    })();
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.name = material.name;
+    mesh.frustumCulled = false;
+    mesh.renderOrder = 21;
+    return mesh;
+}
+
 export function createRosette(shared, count, segments) {
     const geometry = awThreadGeometry(count, segments, 4242);
     const material = awFxMaterial('astral-weave-rosette');
@@ -176,8 +250,11 @@ export function createRosette(shared, count, segments) {
                 .add(sin(tt.mul(TAU)).mul(cos(tau.mul(46.0).add(1.0))).mul(0.45));
             ring = ring.add(wave.mul(weight).mul(exp(tau.mul(-2.6))));
         }
-        const flat = A.add(chord.mul(tt)).add(nrmC.mul(ring.mul(0.026)));
-        const bow = arch.mul(len).mul(th.y.mul(0.1).add(0.02)).negate();
+        // A slow common billow lets each hank lift as one piece of cloth.
+        const billow = sin(base.mul(4.0).sub(uFlow.mul(0.067)).add(tt.mul(3.5)));
+        const lift = arch.mul(len).mul(billow);
+        const flat = A.add(chord.mul(tt)).add(nrmC.mul(ring.mul(0.026).add(lift.mul(0.011))));
+        const bow = arch.mul(len).mul(th.y.mul(0.075).add(0.028)).negate().add(lift.mul(0.047));
         return vec3(flat, bow.add(ring.mul(0.02)));
     };
     material.vertexNode = awRibbonClip(
@@ -191,15 +268,20 @@ export function createRosette(shared, count, segments) {
     const glow = sweepGlow(shared, a);
 
     material.colorNode = Fn(() => {
-        const st = uv();
+        const st = uv().clamp(0.0, 1.0);
         const tt = st.x;
         const yPx = st.y.mul(2.0).sub(1.0).mul(ROSETTE_HALF_PX);
         const vTh = vertexStage(th);
         const vLen = vertexStage(len);
         const vGlow = vertexStage(glow);
-        const core = exp(yPx.mul(yPx).div(-0.7));
-        const halo = exp(yPx.mul(yPx).div(-8.5)).mul(0.24);
-        const body = core.add(halo);
+        // Each sixth is a heavier two-ply thread. The fine threads remain visible through
+        // the two lit edges so a crossing still reads through a bright loop.
+        const slot = floor(vTh.x.mul(count).add(0.5));
+        const rib = float(1.0).sub(step(0.5, slot.sub(floor(slot.div(6.0)).mul(6.0))));
+        const edge = abs(yPx).sub(rib.mul(0.95));
+        const core = exp(edge.mul(edge).div(-0.69));
+        const halo = exp(yPx.mul(yPx).div(-8.5)).mul(0.17);
+        const body = core.add(halo).mul(rib.mul(1.20).add(0.93));
         const shimmer = sin(tt.mul(19.0).add(vTh.z.mul(40.0)).add(uTime.mul(0.5))).mul(0.18).add(0.82);
         const ends = smoothstep(0.0, 0.02, tt).mul(smoothstep(0.0, 0.02, float(1.0).sub(tt)));
         // Each chord touches the envelope at t = 1 / (1 + k): the thread is brightest there, so the
@@ -228,7 +310,8 @@ export function createRosette(shared, count, segments) {
             k.addAssign(body.mul(exp(d.mul(d).mul(-190.0))).mul(vW).mul(exp(vTau.mul(-1.9))).mul(1.5));
         }
 
-        const tint = awSpectrum(vTh.x.add(tt.mul(0.12)).add(uTime.mul(0.006)), uHeat);
+        const dyeAngle = vTh.x.mul(TAU).add(sin(uFlow.mul(0.033)).mul(0.35)).add(tt.sub(0.25).mul(0.65));
+        const tint = silkDye(dyeAngle, uHeat);
         // The hottest pile-ups (the caustics, the fan) burn toward white.
         const col = mix(tint, vec3(1.0, 0.97, 0.92), clamp(vGlow.mul(0.5), 0.0, 0.7));
         // The mood balances the weave's glow against its sky (astral-weave-moods.js).
@@ -239,9 +322,13 @@ export function createRosette(shared, count, segments) {
     mesh.name = 'astral-weave-rosette';
     mesh.frustumCulled = false;
     mesh.renderOrder = 20;
+    const selvedges = createSelvedges(shared, count, segments);
+    mesh.add(selvedges);
     return {
         mesh,
         dispose() {
+            selvedges.geometry.dispose();
+            selvedges.material.dispose();
             geometry.dispose();
             material.dispose();
         },
@@ -372,7 +459,7 @@ export function createWarp(shared, pairs, segments) {
     const geometry = awThreadGeometry(count, Math.max(6, Math.round(segments * 0.5)), 3301);
     const material = awFxMaterial('astral-weave-warp');
     const {
-        uTime, uViewport, uPxScale, uSpin, uHeat, uEnergy, uSweep, uWarpTwist, uFade,
+        uTime, uViewport, uPxScale, uSpin, uHeat, uEnergy, uSweep, uWarpTwist, uFade, uFlow,
     } = shared;
     const th = attribute('aThread', 'vec4');
     const t = positionGeometry.x;
@@ -385,7 +472,12 @@ export function createWarp(shared, pairs, segments) {
     const bAng = a.add(sgn.mul(uWarpTwist));
     const A = vec3(cos(a), sin(a), 0.0);
     const B = vec3(cos(bAng).mul(WARP_OUT.radius), sin(bAng).mul(WARP_OUT.radius), WARP_OUT.z);
-    const curveAt = (tt) => mix(A, B, tt);
+    const curveAt = (tt) => {
+        // Nearby anchor cables sag to opposite sides and rise out of the loom plane.
+        const bow = sin(tt.mul(PI)).mul(sgn);
+        const sway = sin(a.mul(3.0).add(uFlow.mul(0.046))).mul(0.052).add(0.13);
+        return mix(A, B, tt).add(vec3(sin(a).negate().mul(sway), cos(a).mul(sway), 0.14).mul(bow));
+    };
     // Nearer the camera the thread is out of focus: wider and softer.
     const blur = t.mul(t);
     material.vertexNode = awRibbonClip(
@@ -408,7 +500,7 @@ export function createWarp(shared, pairs, segments) {
     for (let i = 0; i < SWEEP_SLOTS; i += 4) packedAges.push(vec4(ages[i], ages[i + 1], ages[i + 2], ages[i + 3]));
 
     material.colorNode = Fn(() => {
-        const st = uv();
+        const st = uv().clamp(0.0, 1.0);
         const tt = st.x;
         const vTh = vertexStage(th);
         const vPair = vertexStage(pair);
@@ -417,7 +509,10 @@ export function createWarp(shared, pairs, segments) {
         const sigma = mix(float(0.8), float(4.2), tt.mul(tt));
         const body = exp(yPx.mul(yPx).div(sigma.mul(sigma).mul(-1.0))).div(sigma.mul(1.1).add(0.1));
         const reach = pow(float(1.0).sub(tt), float(1.2)).mul(smoothstep(0.0, 0.03, tt));
-        const k = body.mul(reach).mul(0.075).mul(uEnergy.mul(0.5).add(1.0)).toVar();
+        const key = float(1.0).sub(step(0.5, vPair.sub(floor(vPair.div(4.0)).mul(4.0))));
+        const braid = exp(abs(abs(yPx).sub(1.7)).mul(-2.9)).mul(key);
+        const k = body.mul(0.066).add(braid.mul(0.13)).mul(reach).mul(uEnergy.mul(0.5).add(1.0))
+            .toVar();
         // A slow bead drifting in toward the hoop.
         const ph = fract(tt.mul(1.0).add(uTime.mul(mix(float(0.018), float(0.04), vTh.y))).add(vTh.z)).sub(0.5);
         k.addAssign(body.mul(exp(ph.mul(ph).mul(-5200.0))).mul(reach).mul(0.6));
@@ -430,7 +525,7 @@ export function createWarp(shared, pairs, segments) {
                 .mul(vGain)
                 .mul(2.6));
         }
-        const tint = mix(awSpectrum(vPair.div(pairs).add(0.15), uHeat), vec3(0.4, 0.55, 0.95), tt.mul(0.5));
+        const tint = mix(silkDye(vPair.div(pairs).mul(TAU), uHeat), vec3(0.7, 0.65, 1.0), tt.mul(0.45));
         return vec4(tint.mul(k).mul(uFade), 0.0);
     })();
 
@@ -454,13 +549,13 @@ export function createWarp(shared, pairs, segments) {
 const HOOP_EXTENT = 1.14;
 
 /**
- * A ring drawn on a quad in its own plane. `main` builds the hoop proper (graduated ticks, the
- * clears' fronts, the crown); the gimbals are plain hairlines with two travelling beads.
+ * The hoop and its two gimbals are narrow annular strips. The open centre keeps even the
+ * largest close-up from shading the board three times.
  */
 export function createHoop(shared, {
     main = true, radius = 1, gain = 1, speed = 0.21, name = 'astral-weave-hoop',
 } = {}) {
-    const geometry = new THREE.PlaneGeometry(2, 2);
+    const geometry = new THREE.RingGeometry(0.84 / HOOP_EXTENT, 1, 192);
     const material = awFxMaterial(name);
     const {
         uPxScale, uLoomPx, uSpin, uHeat, uEnergy, uCrown, uFade, uRun, uLace,
@@ -484,8 +579,11 @@ export function createHoop(shared, {
         // Highlights travelling round the ring (uRun: the world's clock, run faster as play heats).
         const comets = pow(max(cos(ang.sub(uRun.mul(speed))), 0.0), float(90.0))
             .add(pow(max(cos(ang.add(uRun.mul(speed * 0.61)).add(2.1)), 0.0), float(140.0)));
-        const k = line(1.0, 1.25).mul(comets.mul(3.0).add(0.8)).add(bloom).toVar();
-        const tint = mix(vec3(0.6, 0.8, 1.0), vec3(1.0, 0.76, 0.4), uHeat).toVar();
+        const k = line(1.0, 1.10).mul(comets.mul(3.0).add(0.7)).add(bloom).toVar();
+        const light = cos(ang.add(uRun.mul(0.037)).sub(0.7)).mul(0.5).add(0.5).toVar();
+        const metal = mix(vec3(0.40, 0.54, 0.86), vec3(1.0, 0.78, 0.55), light);
+        const tint = mix(metal, vec3(1.0, 0.72, 0.33), uHeat).toVar();
+        const enamel = vec3(0.0).toVar();
         if (main) {
             // Everything the fronts and the crown light lies in the ring's band: the disc inside
             // and the corners outside skip it (a coherent branch).
@@ -499,6 +597,27 @@ export function createHoop(shared, {
                 const minorBand = smoothstep(1.008, 1.013, r).mul(float(1.0).sub(smoothstep(1.027, 1.032, r)));
                 const majorBand = smoothstep(1.008, 1.013, r).mul(float(1.0).sub(smoothstep(1.043, 1.048, r)));
                 const ticks = arc(180).mul(minorBand).mul(0.22).add(arc(36).mul(majorBand).mul(0.5));
+                // Twelve lozenge-shaped setting plates. Their inner and outer tips pass through
+                // the two engraved rails, as on the face of an old astronomical instrument.
+                const sector = ang.sub(uSpin).div(TAU).mul(12.0);
+                const lateral = abs(fract(sector.add(0.5)).sub(0.5)).mul(TAU / 12);
+                const cut = lateral.div(0.018).add(abs(r.sub(0.956)).div(0.037));
+                const outline = exp(abs(cut.sub(1.0)).mul(-7.0));
+                const inset = float(1.0).sub(smoothstep(0.22, 0.68, cut));
+                const rail = line(0.955, 0.75).mul(smoothstep(0.026, 0.042, lateral));
+                const gold = vec3(1.0, 0.60, 0.29);
+                // The width of the twelve-hour rail is fixed in loom space. Tiny diagonal
+                // file cuts catch the slim bevel, with two rivets to either side of the inlay.
+                const shoulder = smoothstep(0.027, 0.038, lateral)
+                    .mul(float(1.0).sub(smoothstep(0.095, 0.113, lateral)));
+                const groove = exp(abs(fract(sector.mul(44.0).add(r.sub(0.951).mul(21.0))).sub(0.5)).mul(-6.0));
+                const tooling = line(0.95, 2.2).mul(groove).mul(shoulder).mul(0.32);
+                const rivet = vec2(lateral.sub(0.025), r.sub(0.956)).div(px.mul(1.2));
+                const setting = exp(dot(rivet, rivet).negate()).mul(0.82);
+                const frieze = outline.mul(0.8).add(rail.mul(0.25)).add(tooling).add(setting);
+                const glass = mix(vec3(0.17, 0.53, 0.58), silkDye(ang.sub(uSpin), uHeat), step(r, 0.957));
+                enamel.assign(gold.mul(frieze).mul(light.mul(0.5).add(0.5))
+                    .add(glass.mul(inset).mul(0.76)).mul(sweep.mul(1.8).add(1.0)));
                 const crown = exp(angDist(ang, uSpin.add(PI * 0.5)).mul(-5.0)).mul(uCrown);
                 k.mulAssign(sweep.mul(6.0).add(crown.mul(5.0)).add(1.0));
                 k.addAssign(line(1.05, 0.8).mul(0.4).add(line(0.966, 0.7).mul(0.2)).add(ticks)
@@ -508,11 +627,16 @@ export function createHoop(shared, {
             });
             k.mulAssign(uEnergy.mul(0.4).add(1.0));
         } else {
+            // Inlaid bands catch light in segments and drift past the fixed enamel scale.
+            const interval = cos(ang.mul(8.0).add(uRun.mul(speed)));
+            const segment = smoothstep(-0.35, -0.16, interval);
+            k.addAssign(line(0.992, 1.10).mul(segment).mul(0.61));
+            k.addAssign(line(1.008, 1.7).mul(smoothstep(0.80, 0.87, interval)).mul(0.83));
             // A back-to-back laces the gimbals with gold: they burn brighter while it lasts.
             k.mulAssign(uLace.mul(2.2).add(1.0));
             tint.assign(mix(tint, vec3(1.0, 0.8, 0.42), clamp(uLace, 0.0, 1.0)));
         }
-        return vec4(tint.mul(k).mul(gain).mul(uFade), 0.0);
+        return vec4(tint.mul(k).add(enamel).mul(gain).mul(uFade), 0.0);
     })();
 
     const mesh = new THREE.Mesh(geometry, material);
@@ -579,45 +703,114 @@ export function createPegs(shared, count) {
 // The heart star and the crown flare
 // ─────────────────────────────────────────────────────────────────────────────
 
+// Distance to a tilted elliptical gold wire, measured along its local normal. The second
+// component follows a lamp around it, leaving the unlit arc as a fine thread.
+const heartWire = /* @__PURE__ */ Fn(([p, turn, radius, slim, time, px]) => {
+    const c = cos(turn);
+    const s = sin(turn);
+    const q = vec2(p.x.mul(c).add(p.y.mul(s)), p.y.mul(c).sub(p.x.mul(s)).div(slim));
+    const d = abs(dot(q, q).sub(radius.mul(radius))).div(max(length(vec2(q.x, q.y.div(slim))).mul(2.0), 0.001));
+    const width = max(px.mul(0.95), 0.0012);
+    const facing = smoothstep(-0.65, 0.9, q.y.div(radius));
+    const profile = exp(d.div(width).mul(d.div(width)).negate()).mul(facing.mul(0.85).add(0.15));
+    const lamp = q.sub(vec2(cos(time), sin(time)).mul(radius));
+    return vec2(profile, exp(dot(lamp, lamp).mul(-19000.0)));
+}).setLayout({
+    name: 'aw_heart_wire',
+    type: 'vec2',
+    inputs: [
+        { name: 'p', type: 'vec2' }, { name: 'turn', type: 'float' }, { name: 'radius', type: 'float' },
+        { name: 'slim', type: 'float' }, { name: 'time', type: 'float' }, { name: 'px', type: 'float' },
+    ],
+});
+
 export function createFlares(shared) {
     const geometry = awQuadGeometry(2, 1123);
     const kinds = new Float32Array([0, 1]);
     geometry.setAttribute('aKind', new THREE.InstancedBufferAttribute(kinds, 1));
     const material = awFxMaterial('astral-weave-flares');
     const {
-        uTime, uViewport, uLoomPx, uSpin, uHeat, uCore, uCrown, uFade, noiseTex,
+        uTime, uViewport, uLoomPx, uPxScale, uSpin, uHeat, uCore, uCrown, uFade, uRun, uMood, noiseTex,
     } = shared;
     const kind = attribute('aKind', 'float');
     const crownAng = uSpin.add(PI * 0.5);
     // The heart sits a little behind the weave; the crown is the peg at the top of the hoop.
     const centre = mix(vec3(0.0, 0.0, -0.22), vec3(cos(crownAng), sin(crownAng), 0.0), kind);
     const span = mix(float(2.3), float(1.7), kind); // quad edge, in hoop radii
-    material.vertexNode = awSpriteClip(centre, positionGeometry.xy.mul(span).mul(uLoomPx), uViewport);
+    const emitting = mix(float(1.0), step(0.0001, uCrown), kind);
+    material.vertexNode = awSpriteClip(centre, positionGeometry.xy.mul(span).mul(uLoomPx).mul(emitting), uViewport);
     material.colorNode = Fn(() => {
         const st = uv().sub(0.5).mul(2.0);
         const vKind = vertexStage(kind);
-        const r = length(st);
-        const ang = atan(st.y, st.x);
+        const r = length(st).toVar();
+        const ang = atan(st.y, st.x.add(0.000001)).toVar();
         const n = texture(noiseTex, vec2(ang.div(TAU).mul(2.0).add(vKind.mul(0.37)), uTime.mul(0.021))).level(0);
-        const rays = pow(n.x, float(3.2)).mul(1.7).add(pow(n.y, float(6.0)).mul(1.2));
+        const rays = pow(n.x, float(3.2)).mul(1.7).add(pow(n.y, float(6.0)).mul(1.2)).toVar();
         const edge = float(1.0).sub(smoothstep(0.6, 1.0, r));
-        // Heart: a broad cool wash and soft rays; its hot centre is behind the card.
-        const heart = exp(r.mul(-6.5)).mul(0.5).add(exp(r.mul(r).mul(-55.0)).mul(1.2))
-            .add(rays.mul(exp(r.mul(-3.4))).mul(0.16))
-            .mul(uCore);
-        // Crown: a hard star that only burns when the weave gathers there.
-        const arm = (v) => exp(abs(v.y).mul(-150.0)).mul(exp(abs(v.x).mul(-3.2)));
-        const crown = exp(r.mul(-11.0)).mul(2.6).add(exp(r.mul(r).mul(-900.0)).mul(9.0))
-            .add(arm(st).mul(1.6))
-            .add(arm(st.yx).mul(0.9))
-            .add(rays.mul(exp(r.mul(-4.6))).mul(1.1))
-            .mul(uCrown);
-        const tint = mix(
-            mix(vec3(0.42, 0.62, 1.0), vec3(1.0, 0.6, 0.24), uHeat),
-            mix(vec3(0.9, 0.95, 1.0), vec3(1.0, 0.85, 0.55), uHeat),
-            vKind,
-        );
-        return vec4(tint.mul(mix(heart, crown, vKind)).mul(edge).mul(uFade), 0.0);
+        const color = vec3(0.0).toVar();
+        If(vKind.lessThan(0.5), () => {
+            const tint = mix(uMood.glow, vec3(1.0, 0.47, 0.17), uHeat);
+            const halo = exp(r.mul(-7.0)).mul(0.28).add(exp(r.mul(r).mul(-102.0)).mul(0.67));
+            color.assign(tint.mul(halo.add(rays.mul(exp(r.mul(-4.8))).mul(0.22))));
+            If(r.lessThan(0.30), () => {
+                const px = uPxScale.div(max(uLoomPx, 1.0));
+                const lean = sin(uRun.mul(0.063)).mul(0.24);
+                const a = heartWire(st, lean.add(0.52), float(0.195), float(0.31), uRun.mul(0.31), px).toVar();
+                const b = heartWire(st, lean.negate().sub(0.67), float(0.148), float(0.49), uRun.mul(-0.22), px)
+                    .toVar();
+                const gold = vec3(1.0, 0.68, 0.39);
+                color.addAssign(gold.mul(a.x.mul(0.64).add(a.y.mul(2.6)))
+                    .add(vec3(0.58, 0.88, 1.0).mul(b.x.mul(0.65).add(b.y.mul(2.1)))));
+                If(r.lessThan(0.13), () => {
+                    // A ten-sided bicone. The pavilion ends in a long point. Its facets are
+                    // indexed from the angle around the solid, so their reflected colours
+                    // move across the stone as it rolls. The girdle sits above its middle.
+                    const q = vec2(st.x.mul(1.37).sub(st.y.mul(0.09)), st.y).div(0.078).toVar();
+                    const h = q.y.sub(q.x.mul(0.15)).sub(0.13).toVar();
+                    const upper = step(0.0, h).toVar();
+                    const width = float(1.0).sub(abs(h).div(mix(float(1.24), float(0.84), upper)));
+                    const cut = width.sub(abs(q.x)).toVar();
+                    const face = smoothstep(-0.025, 0.025, cut);
+                    const arc = clamp(q.x.div(max(width, 0.001)), -0.999, 0.999).asin();
+                    const turn = sin(uRun.mul(0.16)).mul(0.53).add(upper.mul(0.23)).add(0.24);
+                    const azimuth = arc.add(turn).mul(10.0 / TAU);
+                    const plane = floor(azimuth).add(0.5).mul(TAU / 10).sub(turn)
+                        .toVar();
+                    const normal = sin(plane).toVar();
+                    const dye = mix(
+                        vec3(0.68, 0.045, 0.25),
+                        vec3(0.01, 0.65, 0.83),
+                        smoothstep(-0.48, 0.35, normal),
+                    );
+                    const faceLight = cos(plane.add(mix(float(-0.76), float(1.0), upper))).mul(0.55).add(0.47).clamp();
+                    const reflection = smoothstep(0.28, 0.56, abs(normal.sub(0.26)));
+                    const fire = exp(abs(h.add(q.x.mul(normal.mul(0.45).add(0.31))).add(0.04)).mul(-13.0));
+                    const ridges = exp(float(0.5).sub(abs(fract(azimuth).sub(0.5))).mul(-25.0)).mul(0.21);
+                    const facet = mix(dye, gold, uHeat.mul(0.75)).mul(faceLight.mul(1.6).add(0.05))
+                        .mul(reflection.mul(0.84).add(0.16));
+                    const seam = exp(abs(h).mul(-43.0)).mul(0.55).add(fire.mul(faceLight).mul(0.72));
+                    const rim = exp(abs(cut).mul(-27.0)).mul(0.42);
+                    color.assign(mix(color, facet.add(vec3(0.85, 0.74, 1.0).mul(seam.add(ridges))), face)
+                        .add(vec3(1.0, 0.82, 0.63).mul(rim).mul(face)));
+                    // A pin of white light on the top corner, with a short diffraction cross.
+                    const tip = q.sub(vec2(0.0, 0.955));
+                    const pin = exp(dot(tip, tip).mul(-185.0)).mul(4.8);
+                    const cross = exp(abs(tip.x).mul(-52.0)).mul(exp(abs(tip.y).mul(-7.0)))
+                        .add(exp(abs(tip.y).mul(-60.0)).mul(exp(abs(tip.x).mul(-6.0))));
+                    color.addAssign(vec3(1.0, 0.95, 0.80).mul(pin.add(cross.mul(0.9))));
+                });
+            });
+            color.mulAssign(uCore);
+        }).Else(() => {
+            const arm = (v) => exp(abs(v.y).mul(-150.0)).mul(exp(abs(v.x).mul(-3.2)));
+            const crown = exp(r.mul(-11.0)).mul(2.6).add(exp(r.mul(r).mul(-900.0)).mul(9.0))
+                .add(arm(st).mul(1.6))
+                .add(arm(st.yx).mul(0.9))
+                .add(rays.mul(exp(r.mul(-4.6))).mul(1.1))
+                .mul(uCrown);
+            color.assign(mix(vec3(0.9, 0.95, 1.0), vec3(1.0, 0.85, 0.55), uHeat).mul(crown));
+        });
+        return vec4(color.mul(edge).mul(uFade), 0.0);
     })();
     const mesh = new THREE.Mesh(geometry, material);
     mesh.name = 'astral-weave-flares';

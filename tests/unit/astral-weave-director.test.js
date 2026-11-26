@@ -17,6 +17,7 @@ function recorder() {
             clear: (c) => calls.push(['clear', copy(c)]),
             perfect: (c) => calls.push(['perfect', { ...c }]),
             spin: (c) => calls.push(['spin', { ...c }]),
+            b2b: (c) => calls.push(['b2b', { ...c }]),
             combo: (n, player) => calls.push(['combo', n, player]),
             levelUp: (level) => calls.push(['levelUp', level]),
         },
@@ -203,6 +204,21 @@ describe('astral weave director: clears and the true combo', () => {
         expect(r.of('spin')).toEqual([{ player: 0 }]);
     });
 
+    it('plays a separate back-to-back once without promoting the next clear', () => {
+        const r = recorder();
+        const director = new AstralWeaveDirector({ sink: r.sink });
+        clearingLock(director, [HIDDEN + 19]);
+        director.flush();
+        director.onB2B({ active: true });
+        director.flush();
+        director.flush();
+        clearingLock(director, [HIDDEN + 19]);
+        director.onB2B({ active: false });
+        director.flush();
+        expect(r.of('b2b')).toEqual([{ player: 0 }]);
+        expect(r.of('clear').map((cue) => cue.b2b)).toEqual([false, false]);
+    });
+
     it('keeps the widest wave when several clears are staged in one frame', () => {
         const r = recorder();
         const director = new AstralWeaveDirector({ sink: r.sink });
@@ -288,6 +304,20 @@ describe('astral weave director: settings and sessions', () => {
         director.onLevelUp({});
         director.flush();
         expect(r.of('levelUp')).toEqual([4, 5]);
+    });
+
+    it('advances the level silently across a reaction-setting change', () => {
+        const received = [];
+        const director = new AstralWeaveDirector({ sink: { levelUp: (...args) => received.push(args) } });
+        director.onLevelUp({ level: 2 });
+        director.configure({ enabled: false });
+        director.flush();
+        director.onLevelUp({ level: 3 });
+        director.configure({ enabled: true });
+        director.flush();
+        director.onLevelUp({ level: 4 });
+        director.flush();
+        expect(received).toEqual([[2, false], [3, false], [4, true]]);
     });
 
     it('reuses its cue objects: nothing is allocated per event', () => {

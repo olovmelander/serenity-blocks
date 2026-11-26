@@ -53,6 +53,7 @@ import { applyPhaserFrameRate, phaserFrameRateConfig, installPhaserPresentationC
 import { createBackgroundScene } from './rendering/phaser/background-scene.js';
 import { createMultiplayerBoardScene } from './rendering/phaser/multiplayer/board-panel.js';
 import { eventBus, EVENTS } from './events/event-bus.js';
+import { MULTIPLAYER_EVENTS } from './events/multiplayer-events.js';
 import {
     emitLineClear, emitCombo, emitPieceLock, emitHardDrop,
 } from './events/gameplay-events.js';
@@ -4330,6 +4331,7 @@ class SerenityBlocks {
             return this.getPhysicsCallbacks(); // Fallback to single player callbacks
         }
 
+        const isHumanSeat = (player) => !currentMode?._isBotPlayer?.(player - 1);
         // Support both old structure (player1/player2) and new structure (players array)
         const playerState = multiplayerState.players
             ? multiplayerState.players[playerNum - 1] // New array-based structure
@@ -4394,6 +4396,9 @@ class SerenityBlocks {
                             : targetsOrAmount;
                         if (garbageAmount > 0) {
                             const displayPlayer = multiplayerState.players ? player + 1 : player;
+                            eventBus.emit(MULTIPLAYER_EVENTS.GARBAGE_SENT, {
+                                player: displayPlayer, isLocal: isHumanSeat(displayPlayer), totalLines: garbageAmount,
+                            });
                             this.soundManager.sfxPlayer.playGarbageSend();
                             console.log(
                                 `[Garbage] Player ${displayPlayer} CASCADE attack ready: ${garbageAmount} line(s) to ${targetCount} target(s), depth=${summary.totalLines}, combo=${summary.comboStages}, clean=${summary.cleanField}`,
@@ -4518,6 +4523,9 @@ class SerenityBlocks {
                     // Versus garbage never tops out; rows its settle closes are this player's clear.
                     const result = applyGarbage(playerState, queuedEntries, VERSUS_GARBAGE_OPTIONS);
                     if (result?.rowsAdded > 0) {
+                        eventBus.emit(MULTIPLAYER_EVENTS.GARBAGE_INSERTED, {
+                            player: playerNum, isLocal: isHumanSeat(playerNum), linesInserted: result.rowsAdded,
+                        });
                         currentMode?._compensatePlayerGridExpansion?.(playerState, sceneRef(), result.rowsAdded);
                     }
                     if (result?.settleSummary) callbacks.onGarbageReady?.(result.settleSummary);

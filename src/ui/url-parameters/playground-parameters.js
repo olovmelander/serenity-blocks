@@ -1307,6 +1307,8 @@ export const PLAYGROUND_URL_PARAMETERS = [
             + 'perfect, crown, break, levelUp, over; Vesper Chrysalis: lock, drop, clear, quad, '
             + 'twist, perfect, levelUp, break; Stillwater and Moonlit Greenhouse: lock, drop, clear, '
             + 'quad, twist, perfect, levelUp, break); cue names are case-sensitive in most effects. '
+            + 'Astral Weave accepts lock, drop, clear, quad, twist, spin, b2b, perfect, combo, break, cascade, '
+            + 'levelUp, incoming, counter, outgoing, end, goal, victory, round, topout and respawn. '
             + 'Summer: lock, drop, clear, double, triple, quad, combo, streak, spin, perfect, level, '
             + 'over or bouquet. Verdant Hills: lock, drop, clear, double, triple, quad, combo, streak, '
             + 'spin, perfect, level, over or festival. Rainbow Terraces: lock, drop, clear, quad, twist, '
@@ -4752,13 +4754,14 @@ export const PLAYGROUND_URL_PARAMETERS = [
     {
         name: 'reducedMotion',
         category: 'Playground',
-        scope: 'playground.html — odyssey-path-beacons',
+        scope: 'playground.html — astral-weave, odyssey-path-beacons',
         description: 'Preview reduced-motion behavior.',
         values: '1 enables; reaction micro-previews also accept true/on/yes.',
         defaultValue: 'Off.',
         example: 'reducedMotion=1',
         notes: 'Use on playground.html with effect=<the matching effect ID>.',
         sources: [
+            'src/playground/effects/astral-weave.effect.js',
             'src/playground/effects/odyssey-path-beacons.effect.js',
         ],
     },
