@@ -15,7 +15,8 @@
  *                            on from there (t=20 is still that palette, t=67.5 half-way to the
  *                            next, t=100 the next: see PALETTE_PERIOD and PALETTE_HOLD)
  *   locks=<n>                before anything else, play n locks (the caps holding their colours)
- *   event=lock|drop|clear|quad|twist|perfect|levelUp   fire a gameplay event...
+ *   event=lock|drop|clear|quad|twist|spin|cascade|b2b|echo|perfect|crown|combo|release|levelUp|gameOver
+ *                            fire gameplay events, including the later waves/crown at 0.36 s
  *   eventAge=<s>             ...and show it <s> seconds later (lines=<n>, row=<r>, u=<0..1>,
  *                            color=<hex>)
  *   demo=1                   live only: play a looping gameplay script
@@ -34,6 +35,7 @@ import { BioluminescenceWorld } from '../../themes/bioluminescence/bioluminescen
 import { BioluminescencePost, POST_LOOK } from '../../themes/bioluminescence/bioluminescence-post.js';
 import { readLayoutRects } from '../../themes/bioluminescence/bioluminescence-composition.js';
 import { BIOLUMINESCENCE_TETROMINOS } from '../../themes/bioluminescence/bioluminescence-tetrominos.js';
+import { BioluminescenceDirector } from '../../themes/bioluminescence/bioluminescence-director.js';
 
 export const meta = {
     id: 'bioluminescence',
@@ -104,6 +106,7 @@ const DEMO_SCRIPT = [
     [16.6, 'lock', { rows: [15, 14], u: 0.9 }], [17.6, 'lock', { rows: [14, 13], u: 0.05 }],
     [18.6, 'lock', { rows: [19, 18, 17, 16], u: 0.95, hardDrop: true }],
     [18.6, 'clear', { rows: [19, 18, 17, 16], lines: 4, combo: 1 }],
+    [18.96, 'crown'],
     [26.0, 'lock', { rows: [19], u: 0.45 }], [27.0, 'lock', { rows: [19, 18], u: 0.7 }],
     [28.0, 'lock', { rows: [18], u: 0.25, hardDrop: true }],
     [28.0, 'clear', {
@@ -180,35 +183,79 @@ export function create({
     };
 
     const eventName = params.get('event');
-    const eventAge = num(params, 'eventAge', 0.4);
+    const eventAge = Math.max(0, num(params, 'eventAge', 0.4));
     const holdCombo = Math.max(0, Math.round(num(params, 'combo', 0)));
     const level = Math.max(1, Math.round(num(params, 'level', 1)));
     const warmLocks = Math.max(0, Math.round(num(params, 'locks', 0)));
     const colorParam = params.get('color');
     const eventColor = colorParam ? `#${colorParam.replace('#', '')}` : PIECE_COLORS[2];
-    const fireEvent = () => {
+    const director = new BioluminescenceDirector({
+        sink: {
+            lock: (c) => world.onLock(c),
+            clear: (c) => world.onClear(c),
+            combo: (n) => world.onCombo(Math.max(holdCombo, n)),
+            crown: () => world.onCrown(),
+            echo: (player) => world.onEcho(player),
+            spin: (player, lines) => world.onSpin(lines),
+            levelUp: (n) => world.levelUp(n),
+        },
+    });
+    const playEvent = (start, end) => {
+        let cursor = start;
+        const at = (offset, action) => {
+            const t = start + offset;
+            if (t > end) return;
+            if (t > cursor) stepTo(cursor, t, 1 / 120);
+            action();
+            director.flush(t - cursor);
+            cursor = t;
+        };
         const row = Math.round(num(params, 'row', 12));
         const u = num(params, 'u', 0.3);
-        const lines = Math.max(1, Math.min(4, Math.round(num(params, 'lines', 2))));
-        const bottom = (n) => Array.from({ length: n }, (_, i) => 19 - i);
-        if (eventName === 'lock') world.onLock({ rows: [row, row - 1], u, color: eventColor });
-        else if (eventName === 'drop') {
-            world.onLock({
-                rows: [row, row - 1], u, hardDrop: true, color: eventColor,
+        const count = Math.max(1, Math.min(4, Math.round(num(params, 'lines', 2))));
+        const lock = { piece: { color: eventColor }, viewportOrigin: { x: u, y: (row + 0.5) / 20 } };
+        const clear = (lines, depth = 1) => {
+            director.onLineClear({
+                lineCount: lines, clearedRows: Array.from({ length: lines }, (_, i) => 23 - i), cascadeCount: depth,
             });
-        } else if (eventName === 'clear') world.onClear({ rows: bottom(lines), lines });
-        else if (eventName === 'quad') world.onClear({ rows: bottom(4), lines: 4 });
-        else if (eventName === 'twist') world.onClear({ rows: bottom(2), lines: 2, twist: true });
-        else if (eventName === 'perfect') world.onClear({ rows: bottom(4), lines: 4, perfect: true });
-        else if (eventName === 'levelUp') world.levelUp(num(params, 'eventLevel', level + 1));
+            if (depth > 1) director.onCombo({ comboCount: depth });
+        };
+        at(0, () => {
+            if (eventName === 'lock' || eventName === 'drop') {
+                if (eventName === 'drop') director.onHardDrop({ ...lock, distance: num(params, 'distance', 16) });
+                director.onPieceLock(lock);
+            } else if (eventName === 'spin') director.onTwist({ lineCount: 0 });
+            else if (eventName === 'levelUp') director.onLevelUp({ level: num(params, 'eventLevel', level + 1) });
+            else if (eventName === 'gameOver' || eventName === 'over') {
+                world.resetSession();
+                world.onGameOver();
+            } else if (eventName === 'combo') world.onCombo(Math.max(2, num(params, 'eventCombo', 5)));
+            else if (eventName === 'release') world.onCombo(0);
+            else if (eventName === 'crown') director.onPerfectClear({ depth: 1 });
+            else if (eventName === 'echo') director.onB2B({ active: true });
+            else if (['clear', 'quad', 'b2b', 'perfect', 'twist', 'cascade'].includes(eventName)) {
+                const lines = ['quad', 'b2b', 'perfect'].includes(eventName) ? 4 : count;
+                clear(lines);
+                if (eventName === 'twist') director.onTwist({ lineCount: lines });
+                if (eventName === 'b2b') director.onB2B({ active: true });
+            }
+        });
+        if (eventName === 'perfect') at(0.36, () => director.onPerfectClear({ depth: 1 }));
+        if (eventName === 'cascade') {
+            at(0.36, () => clear(2, 2));
+            at(0.72, () => clear(1, 3));
+        }
+        if (end > cursor) stepTo(cursor, end, 1 / 120);
     };
 
     const seekTo = (time) => {
         const lead = (eventName ? eventAge : 0) + 9 + warmLocks * 0.5;
         const start = Math.max(0, time - lead);
+        director.reset();
         world.seek(start);
         if (level > 1) world.levelUp(level, { silent: true });
         if (holdCombo > 0) world.onCombo(holdCombo);
+        if (eventName === 'release') world.onCombo(Math.max(2, num(params, 'peak', 6)));
         frame(start, 0);
         // Locks played before the event: the caps holding their colours.
         let cursor = start;
@@ -223,12 +270,9 @@ export function create({
                 hardDrop: i % 4 === 3,
             });
         }
-        const eventTime = eventName ? time - eventAge : time;
+        const eventTime = eventName ? Math.max(start, time - eventAge) : time;
         if (eventTime > cursor) stepTo(cursor, eventTime, 0.1);
-        if (eventName) {
-            fireEvent();
-            stepTo(eventTime, time, 1 / 120);
-        }
+        if (eventName) playEvent(eventTime, time);
         frame(time, 0);
         pushPost(time);
     };
@@ -250,6 +294,8 @@ export function create({
             if (verb === 'lock') {
                 demoPiece += 1;
                 world.onLock({ ...detail, color: PIECE_COLORS[demoPiece % PIECE_COLORS.length] });
+            } else if (verb === 'crown') {
+                world.onCrown();
             } else {
                 world.onClear(detail);
                 world.onCombo(detail.combo);

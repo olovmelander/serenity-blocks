@@ -12,7 +12,8 @@
  *   sink.combo(n, player)      the true combo, whenever it changes (0 = the chain broke)
  *   sink.levelUp(level)
  *   sink.crown(player)         a perfect clear that came on a frame of its own, after its clear
- *   sink.spin(player)          a twist that cleared nothing
+ *   sink.echo(player)          a back-to-back that came on a frame of its own, after its clear
+ *   sink.spin(player, lines?)  a no-line twist, or a late twist on the clear already playing
  *
  * A perfect clear is settled by physics ~360 ms AFTER the last wave of the clear that made it, so
  * it nearly always arrives alone. It is a crown on the clear still playing, never a clear of its
@@ -48,6 +49,8 @@ import { BOARD_GRID, PLAYER_SLOTS } from './bioluminescence-composition.js';
 import { BIOLUMINESCENCE_TETROMINOS } from './bioluminescence-tetrominos.js';
 
 const MAX_ROWS = 4;
+// Serenity can deliver a clear and its twist in separate timer callbacks across a render frame.
+const TWIST_RECEIPT_SECONDS = 0.15;
 const MAX_SHAPE_SIZE = 8;
 const EMPTY = Object.freeze({});
 const HEX = /^#[0-9a-f]{6}$/i;
@@ -90,6 +93,7 @@ function createSlot() {
         // lock intake
         lock: false,
         hardDrop: false,
+        dropDistance: 0,
         lockRows: new Int16Array(MAX_ROWS),
         lockRowCount: 0,
         lockU: 0.5,
@@ -98,11 +102,12 @@ function createSlot() {
         locked: false,
         // clear intake
         lines: 0,
+        receivedLineClear: false,
         cascade: 1,
         clearRows: new Int16Array(MAX_ROWS),
         clearRowCount: 0,
         explicitCombo: -1,
-        twist: false,
+        twistLines: -1,
         perfect: false,
         b2b: false,
         hasPosition: false,
@@ -110,6 +115,8 @@ function createSlot() {
         posY: 0,
         // persistent per-player state
         tracker: new ComboTracker(),
+        recentClearLines: 0,
+        recentClearRemaining: 0,
         reported: 0,
         /** The explicit combo being held (0 = none), and for how many seconds. */
         held: 0,
@@ -121,14 +128,16 @@ function clearPending(slot) {
     slot.pending = false;
     slot.lock = false;
     slot.hardDrop = false;
+    slot.dropDistance = 0;
     slot.locked = false;
     slot.lockRowCount = 0;
     slot.lockColor = null;
     slot.lines = 0;
+    slot.receivedLineClear = false;
     slot.cascade = 1;
     slot.clearRowCount = 0;
     slot.explicitCombo = -1;
-    slot.twist = false;
+    slot.twistLines = -1;
     slot.perfect = false;
     slot.b2b = false;
     slot.hasPosition = false;
@@ -232,7 +241,7 @@ export class BioluminescenceDirector {
         this.levelPending = false;
         this.slots = Array.from({ length: PLAYER_SLOTS }, createSlot);
         this._lock = {
-            player: 0, rows: [], u: 0.5, hardDrop: false, color: null, screen: null,
+            player: 0, rows: [], u: 0.5, hardDrop: false, distance: 0, color: null, screen: null,
         };
         this._clear = {
             player: 0, rows: [], lines: 1, combo: 1, cascade: 1, twist: false, perfect: false, b2b: false, screen: null,
@@ -296,6 +305,7 @@ export class BioluminescenceDirector {
         slot.pending = true;
         slot.lock = this.lockRipple;
         slot.locked = true;
+        slot.recentClearLines = 0;
         slot.tracker.notePieceLocked();
         captureLock(slot, payload);
         return true;
@@ -309,6 +319,8 @@ export class BioluminescenceDirector {
         if (!slot) return false;
         slot.pending = true;
         slot.hardDrop = this.lockRipple;
+        slot.recentClearLines = 0;
+        slot.dropDistance = Math.max(0, finite(payload.distance, 8));
         captureLock(slot, payload);
         return true;
     }
@@ -320,6 +332,7 @@ export class BioluminescenceDirector {
         if (!slot) return false;
         slot.pending = true;
         const cascade = Math.max(1, Math.min(255, Math.trunc(finite(payload.cascadeCount, 1))));
+        slot.receivedLineClear = true;
         const rows = payload.clearedRows;
         const fallbackLines = Array.isArray(rows) && rows.length > 0 ? rows.length : 1;
         const lines = Math.max(1, Math.min(MAX_ROWS, Math.trunc(finite(payload.lineCount, fallbackLines))));
@@ -356,7 +369,7 @@ export class BioluminescenceDirector {
             slot.explicitCombo = Math.max(slot.explicitCombo, count);
             capturePosition(slot, payload);
             if (slot.lines === 0) slot.lines = 1;
-        } else if (slot.lines > 0) {
+        } else if (slot.lines > 0 || slot.twistLines > 0) {
             slot.cascade = Math.max(slot.cascade, count);
         }
         return true;
@@ -368,9 +381,8 @@ export class BioluminescenceDirector {
         const slot = this.slotFor(payload);
         if (!slot) return false;
         slot.pending = true;
-        slot.twist = true;
         const lines = Math.max(0, Math.min(MAX_ROWS, Math.trunc(finite(payload.lineCount, 0))));
-        if (lines > slot.lines) slot.lines = lines;
+        slot.twistLines = Math.max(slot.twistLines, lines);
         return true;
     }
 
@@ -380,6 +392,7 @@ export class BioluminescenceDirector {
         if (payload.active === false) return false;
         const slot = this.slotFor(payload);
         if (!slot) return false;
+        slot.pending = true;
         slot.b2b = true;
         return true;
     }
@@ -412,7 +425,7 @@ export class BioluminescenceDirector {
         const elapsed = Number.isFinite(dt) && dt > 0 ? Number(dt) : 0;
         if (this.levelPending) {
             this.levelPending = false;
-            sink?.levelUp?.(this.level);
+            sink?.levelUp?.(this.level, this.enabled);
         }
         for (let i = 0; i < this.slots.length; i += 1) {
             const slot = this.slots[i];
@@ -421,6 +434,17 @@ export class BioluminescenceDirector {
     }
 
     resolve(slot, sink, elapsed = 0) {
+        slot.recentClearRemaining = Math.max(0, slot.recentClearRemaining - elapsed);
+        const twist = slot.twistLines >= 0;
+        const lateSpin = slot.twistLines > 0 && slot.lines === 0
+            && slot.twistLines === slot.recentClearLines && slot.recentClearRemaining > 0;
+        if (twist) {
+            slot.recentClearLines = 0;
+            if (!lateSpin) slot.lines = Math.max(slot.lines, slot.twistLines);
+        } else if (slot.receivedLineClear) {
+            slot.recentClearLines = slot.lines;
+            slot.recentClearRemaining = TWIST_RECEIPT_SECONDS;
+        }
         if (slot.lines > 0 && slot.explicitCombo >= 0) {
             // A clear named its own combo: hold it from now.
             slot.held = Math.max(1, slot.explicitCombo);
@@ -450,6 +474,7 @@ export class BioluminescenceDirector {
                 for (let r = 0; r < slot.lockRowCount; r += 1) c.rows.push(slot.lockRows[r]);
                 c.u = slot.lockU;
                 c.hardDrop = slot.hardDrop;
+                c.distance = slot.dropDistance;
                 c.color = slot.lockColor;
                 c.screen = null;
                 sink.lock(c);
@@ -459,8 +484,9 @@ export class BioluminescenceDirector {
                 if (sink?.crown) sink.crown(slot.player);
                 else slot.lines = 1;
             }
-            // A twist that cleared nothing still shows.
-            if (slot.lines === 0 && slot.twist && sink?.spin) sink.spin(slot.player);
+            if (lateSpin) sink?.spin?.(slot.player, slot.twistLines);
+            else if (slot.lines === 0 && twist) sink?.spin?.(slot.player);
+            if (slot.lines === 0 && slot.b2b) sink?.echo?.(slot.player);
             if (slot.lines > 0 && sink?.clear) {
                 const c = this._clear;
                 c.player = slot.player;
@@ -469,7 +495,7 @@ export class BioluminescenceDirector {
                 c.lines = slot.lines;
                 c.combo = Math.max(1, combo);
                 c.cascade = slot.cascade;
-                c.twist = slot.twist;
+                c.twist = twist;
                 c.perfect = slot.perfect;
                 c.b2b = slot.b2b;
                 c.screen = screen;
@@ -489,6 +515,8 @@ export class BioluminescenceDirector {
             const slot = this.slots[i];
             clearPending(slot);
             slot.tracker.reset();
+            slot.recentClearLines = 0;
+            slot.recentClearRemaining = 0;
             slot.held = 0;
             slot.heldFor = 0;
             if (slot.reported !== 0) {

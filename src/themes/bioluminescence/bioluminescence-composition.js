@@ -32,6 +32,7 @@ export const SOLO_CANVAS_SELECTORS = Object.freeze([
     '#phaser-game-container canvas',
     '#main-game-canvas',
     '#single-player-game-canvas',
+    '#online-main-board canvas',
 ]);
 export const playerCanvasSelector = (player) => `#p${player}-phaser-container canvas`;
 

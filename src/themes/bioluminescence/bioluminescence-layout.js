@@ -270,8 +270,8 @@ export function buildPlan(noise, size, seed = PLAN_SEED) {
     };
     tuft(ISLETS[0][0], ISLETS[0][1], 9, 1.2, BELL, 0, 0.5, 1.9);
     tuft(ISLETS[1][0], ISLETS[1][1], 8, 1.3, BELL, 1, 0.5, 2.2);
-    tuft(ISLETS[0][0] + 0.4, ISLETS[0][1] + 0.5, 5, 1.1, GLOBE, 2, 0.16, 0.42);
-    tuft(ISLETS[1][0] - 0.5, ISLETS[1][1] + 0.6, 6, 1.2, GLOBE, 2, 0.16, 0.46);
+    tuft(ISLETS[0][0] + 0.4, ISLETS[0][1] + 0.5, 5, 1.1, GLOBE, 2, 0.20, 0.57);
+    tuft(ISLETS[1][0] - 0.5, ISLETS[1][1] + 0.6, 6, 1.2, GLOBE, 2, 0.18, 0.64);
     for (let i = 2; i < ISLETS.length; i++) {
         tuft(ISLETS[i][0], ISLETS[i][1], 8, ISLETS[i][2] * 0.7, BELL, i % 2, 0.6, 2.6);
         tuft(ISLETS[i][0], ISLETS[i][1], 4, ISLETS[i][2] * 0.6, GLOBE, 2, 0.2, 0.5);
@@ -296,10 +296,23 @@ export function buildPlan(noise, size, seed = PLAN_SEED) {
             addMushroom(x, z, h, h * (0.36 + rand() * 0.2), PARASOL, rand() < 0.65 ? 0 : 1, 'fill');
         }
     }
-    // Heroes first, then the fill by how much of the picture it is (large and near).
+    // Keep a trio of foreground puffballs on each bank even on Minimal. The rest of the
+    // understory takes its usual size/distance order, so an expensive tier adds depth.
     const fill = mushrooms.splice(heroCount);
     fill.sort((a, b) => (b.height * b.height) / (30 + Math.hypot(b.x, b.z)) - (a.height * a.height) / (30 + Math.hypot(a.x, a.z)));
-    mushrooms.push(...fill);
+    const foreground = new Set();
+    for (const [cx, cz] of ISLETS.slice(0, 2)) {
+        const globes = fill.filter((m) => m.species === GLOBE && Math.hypot(m.x - cx, m.z - cz) < 2);
+        globes.slice(0, 3).forEach((m, age) => {
+            // A ripe sporocarp, its half-size sibling and a new bud.
+            const scale = [1.03, 0.73, 0.55][age];
+            m.height = Math.max(m.height * scale, 0.18);
+            m.capR *= scale;
+            m.stemR *= scale;
+            foreground.add(m);
+        });
+    }
+    mushrooms.push(...foreground, ...fill.filter((m) => !foreground.has(m)));
 
     // Fairy rings a chain raises: round the feet of the near heroes and on the foreground islets.
     const sprouts = [];

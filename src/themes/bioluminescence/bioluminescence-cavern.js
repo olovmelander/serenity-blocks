@@ -14,6 +14,7 @@ import * as THREE from 'three/webgpu';
 import {
     Fn,
     If,
+    Loop,
     attribute,
     cameraPosition,
     clamp,
@@ -29,6 +30,7 @@ import {
     reflect,
     sin,
     smoothstep,
+    sqrt,
     varying,
     vec2,
     vec3,
@@ -40,10 +42,10 @@ import {
     blBell,
     blClearLight,
     blFogColor,
-    blLamps,
     blLockLight,
     blPart,
     blPulseAt,
+    blScatter,
 } from './bioluminescence-tsl.js';
 import { ISLETS, VAULT, capCentre } from './bioluminescence-layout.js';
 import { drainSteps, stepClock } from '../shared/build-steps.js';
@@ -86,20 +88,39 @@ function rockColor(u, {
             .add(fine.r.mul(0.2)), 0.0, 1.0);
 
         const ao = bake.x;
-        const lamps = blLamps(u, p, N).toVar();
+        // A wet facet returns a small image of a cap. A broad diffuse lobe for this reflection
+        // used to stain the whole bank with the same colour. Share each lamp visit with the
+        // diffuse shading; its angular size sets the width of the little wet highlight.
+        const R = reflect(toCam.negate(), N).toVar();
+        const lamps = vec3(0.0).toVar();
+        const wetLight = vec3(0.0).toVar();
+        Loop({
+            start: 0, end: u.lampCount, type: 'int', condition: '<', name: 'stoneLamp',
+        }, ({ stoneLamp }) => {
+            const a = u.lamps.element(stoneLamp.mul(2)).toVar();
+            const light = u.lamps.element(stoneLamp.mul(2).add(1)).rgb;
+            const delta = a.xyz.sub(p).toVar();
+            const d2 = max(dot(delta, delta), 0.0001).toVar();
+            const ray = delta.div(sqrt(d2)).toVar();
+            const r2 = d2.add(a.w.mul(a.w)).toVar();
+            const radiance = light.div(r2).toVar();
+            const wrap = clamp(dot(N, ray).mul(0.72).add(0.28), 0.0, 1.0).toVar();
+            lamps.addAssign(radiance.mul(wrap.mul(wrap)));
+            const width = a.w.mul(a.w).div(r2).mul(0.45).add(0.035);
+            const lobe = width.div(width.add(float(1.0).sub(clamp(dot(R, ray), 0.0, 1.0)))).toVar();
+            wetLight.addAssign(radiance.mul(lobe.mul(lobe)));
+        });
         const lesser = u.primary.mul(bake.y).add(u.secondary.mul(bake.z)).add(u.accent.mul(bake.w));
         const beat = blPulseAt(u, p).mul(u.power).mul(0.5).add(1.0);
         const sky = u.ambient.mul(N.y.mul(0.4).add(0.8)).mul(u.breath.mul(0.8).add(0.2));
         const col = albedo.mul(sky.add(lamps.mul(1.25)).add(lesser.mul(beat).mul(u.breath))).mul(ao).toVar();
 
         // Wet stone mirrors the far glow at a grazing angle, and takes a glint from the lamps.
-        const R = reflect(toCam.negate(), N);
         const graze = float(1.0).sub(clamp(dot(N, toCam), 0.0, 1.0));
         const fres = graze.mul(graze).mul(graze).mul(0.85).add(0.03);
         col.addAssign(blFogColor(u, R).mul(fres).mul(wet).mul(ao)
             .mul(2.6));
-        col.addAssign(blLamps(u, p, R).mul(fres).mul(wet).mul(ao)
-            .mul(0.6));
+        col.addAssign(wetLight.mul(fres).mul(wet).mul(ao).mul(0.65));
 
         if (veins) {
             // ── Mycelium: threads of light in the floor and the low walls ──
@@ -472,7 +493,7 @@ export function createSpikes(u, plan, count) {
     return part;
 }
 
-/** A sheet of the cave's own mist behind everything: the far gallery never shows the void. */
+/** Two openings beyond the elder. The near arch frames a smaller, off-centre blue-lit gallery. */
 export function createBackdrop(u) {
     const geometry = new THREE.PlaneGeometry(520, 260, 1, 1);
     geometry.translate(0, 60, TERRAIN.z0 - 4);
@@ -480,6 +501,42 @@ export function createBackdrop(u) {
     material.name = 'BioluminescenceBackdrop';
     material.fog = false;
     material.side = THREE.DoubleSide;
-    material.colorNode = blAtmosphere(u, vec3(0.0), positionWorld);
+    material.depthWrite = false;
+    material.colorNode = Fn(() => {
+        const ray = normalize(positionWorld.sub(cameraPosition)).toVar();
+        const horizon = blFogColor(u, ray).toVar();
+        const arch = (z, offset, height, width, seed) => {
+            const reach = float(z).sub(cameraPosition.z).div(ray.z.min(-0.01));
+            const xy = cameraPosition.xy.add(ray.xy.mul(reach)).toVar();
+            const grain = u.noise(vec2(xy.x.mul(0.016), float(seed))).rg.toVar();
+            const neck = xy.x.sub(offset).div(width).toVar();
+            const ledge = float(height).sub(neck.mul(neck).mul(height * 0.8))
+                .add(grain.x.sub(0.5).mul(7.2)).sub(blBell(neck.add(0.44).mul(4.2)).mul(4.5));
+            const foot = float(2.2).add(grain.y.mul(3.8)).add(neck.mul(neck).mul(1.5));
+            const clearance = ledge.sub(xy.y).min(xy.y.sub(foot)).toVar();
+            const open = smoothstep(-1.2, 1.8, clearance);
+            const rim = exp(clearance.abs().mul(-0.30));
+            // Deposited limestone flows down the face in broad folds. Reflected chamber light
+            // catches their ridges and gradually falls away from the mouth of the opening.
+            const wall = u.noise(xy.mul(vec2(0.072, 0.018)).add(vec2(grain.r.mul(0.3), seed))).toVar();
+            const flute = blBell(wall.r.add(wall.g.mul(0.23)).sub(0.61).mul(4.0));
+            const face = wall.b.mul(0.44).add(flute.mul(0.22)).add(0.34);
+            return { open, face, rim };
+        };
+        const nearArch = arch(-94, -5.0, 24.0, 32.0, 0.4);
+        const farArch = arch(-122, -7.0, 22.0, 37.0, 0.72);
+        const ridge = u.noise(vec2(ray.x.mul(1.47).add(0.32), 0.67)).rg;
+        const skyline = ridge.x.mul(0.068).add(ridge.y.mul(0.03)).add(0.047);
+        const beyond = smoothstep(-0.011, 0.014, ray.y.sub(skyline));
+        const lantern = blBell(ray.x.add(0.095).mul(3.1)).mul(blBell(ray.y.sub(0.115).mul(5.2)));
+        const airLight = mix(u.worm, u.plankton, 0.55).mul(lantern);
+        const vista = horizon.mul(0.92).add(airLight.mul(beyond.mul(0.018).add(0.009)));
+        const innerWall = horizon.mul(farArch.face.mul(0.51).add(0.43)).add(airLight.mul(farArch.rim).mul(0.007));
+        const outerWall = horizon.mul(nearArch.face.mul(0.48).add(0.28)).add(airLight.mul(nearArch.rim).mul(0.006));
+        const galleries = mix(innerWall, vista, farArch.open);
+        const retreat = float(1.0).sub(smoothstep(0.025, 0.18, ray.y)).mul(0.22);
+        const colour = mix(mix(outerWall, galleries, nearArch.open), horizon, retreat);
+        return u.scatterCount > 0 ? colour.add(blScatter(u, ray, float(180.0))) : colour;
+    })();
     return blPart('BioluminescenceBackdrop', geometry, material, -24);
 }

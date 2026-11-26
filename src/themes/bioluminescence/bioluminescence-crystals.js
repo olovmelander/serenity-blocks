@@ -65,19 +65,25 @@ const CHIME_PENDING = 3;
 function unitCrystal() {
     const positions = [];
     const facets = [];
-    const corner = (k, y, taper) => {
-        const a = (k % 6) * (Math.PI / 3);
+    const corner = (k, y, taper, turn = 0) => {
+        const a = (k % 6) * (Math.PI / 3) + turn;
         const r = CORNERS[k % 6] * taper;
         return [Math.cos(a) * r, y, Math.sin(a) * r];
     };
     for (let k = 0; k < 6; k++) {
-        const a0 = corner(k, 0, 1);
-        const a1 = corner(k + 1, 0, 1);
+        const a0 = corner(k, 0, 0.86);
+        const a1 = corner(k + 1, 0, 0.86);
+        const joint0 = 0.31 + 0.09 * Math.cos((k % 6) * (Math.PI / 3));
+        const joint1 = 0.31 + 0.09 * Math.cos(((k + 1) % 6) * (Math.PI / 3));
+        const m0 = corner(k, joint0, 1.06, 0.21);
+        const m1 = corner(k + 1, joint1, 1.06, 0.21);
         const b0 = corner(k, SHOULDER, 0.84);
         const b1 = corner(k + 1, SHOULDER, 0.84);
         // The side: two triangles; aFacet.x runs −1..1 across it, aFacet.y is the height.
-        positions.push(...a0, ...b0, ...a1, ...a1, ...b0, ...b1);
-        facets.push(-1, 0, -1, SHOULDER, 1, 0, 1, 0, -1, SHOULDER, 1, SHOULDER);
+        positions.push(...a0, ...m0, ...a1, ...a1, ...m0, ...m1);
+        facets.push(-1, 0, -1, joint0, 1, 0, 1, 0, -1, joint0, 1, joint1);
+        positions.push(...m0, ...b0, ...m1, ...m1, ...b0, ...b1);
+        facets.push(-1, joint0, -1, SHOULDER, 1, joint1, 1, joint1, -1, SHOULDER, 1, SHOULDER);
         // The point.
         positions.push(...b0, 0, 1, 0, ...b1);
         facets.push(-1, SHOULDER, 0, 1, 1, SHOULDER);
@@ -135,7 +141,9 @@ export function createCrystals(u, plan, { count }) {
     const g = positionGeometry;
     const s1 = fractHash(look.z, 1.7);
     const s2 = fractHash(look.z, 5.3);
-    const shoulder = s1.mul(0.26).add(0.6);
+    // Individual faces terminate at different heights, as in a cluster of intergrown quartz.
+    const shoulder = s1.mul(0.23).add(0.61).add(g.x.mul(s2.sub(0.5)).mul(0.25))
+        .add(g.z.mul(s1.sub(0.5)).mul(0.17));
     const y = mix(
         g.y.mul(shoulder.div(SHOULDER)),
         shoulder.add(g.y.sub(SHOULDER).div(1 - SHOULDER).mul(float(1.0).sub(shoulder))),
@@ -158,6 +166,7 @@ export function createCrystals(u, plan, { count }) {
     material.positionNode = root.add(up.mul(y.mul(base.w))).add(side.mul(lx).add(fwd.mul(lz)).mul(axis.w));
 
     const vLook = varying(vec3(look.y, fractHash(look.z, 2.9), base.w), 'blCrystalLook');
+    const interior = varying(g, 'blCrystalInterior');
     const vRing = varying(blLockLight(u, root), 'blCrystalRing');
     const vClear = varying(blClearLight(u, root), 'blCrystalClear');
 
@@ -179,19 +188,27 @@ export function createCrystals(u, plan, { count }) {
         const oneMinus = float(1.0).sub(ndv);
         const fres = oneMinus.mul(oneMinus).mul(oneMinus).mul(0.9).add(0.06);
         const lampsR = blLamps(u, p, R).toVar();
-        const mirror = blFogColor(u, R).mul(3.0).add(lampsR.mul(0.9));
+        const mirror = blFogColor(u, R).mul(2.55).add(lampsR.mul(0.74));
 
         // ── The stone: lit facets, each cut a little differently ──
         const cut = sin(dot(N, vec3(12.9, 78.2, 37.7)).add(rnd.mul(20.0))).mul(0.5).add(0.5);
         const growth = sin(t.mul(vLook.z).mul(9.0).add(rnd.mul(30.0))).mul(0.09).add(0.95);
         const lit = blLamps(u, p, N).toVar();
-        const front = tint.mul(lit.mul(0.5).add(u.ambient.mul(1.5))).mul(cut.mul(0.7).add(0.45)).mul(growth);
+        const front = tint.mul(lit.mul(0.40).add(u.ambient.mul(1.35))).mul(cut.mul(0.90).add(0.20)).mul(growth);
 
         // ── Within: the far edges seen through the near face, inclusions, a root that glows ──
         const ghost = facet.x.mul(1.6).add(V.x.mul(1.5)).add(V.z.mul(0.9)).add(rnd.mul(6.0));
-        const planes = blBell(ghost.fract().sub(0.5).mul(3.4)).mul(0.62)
-            .add(blBell(ghost.mul(2.3).add(0.37).fract().sub(0.5)
-                .mul(5.5)).mul(0.38));
+        const planes = blBell(ghost.fract().sub(0.5).mul(3.4)).mul(0.55);
+        // Two buried chevron-shaped growth fronts. Their apparent position changes by facet
+        // as the camera moves; the inclusion behind one face continues inside the next.
+        const insetX = interior.x.add(V.x.mul(0.2)).sub(N.x.mul(0.1));
+        const insetZ = interior.z.add(V.z.mul(0.16));
+        const fold = abs(insetX.mul(0.70).add(insetZ.mul(0.44)).add(rnd.sub(0.5).mul(0.35)));
+        const lower = t.sub(rnd.mul(0.20).add(0.23)).add(fold.mul(0.19)).sub(insetZ.mul(0.09));
+        const upper = t.sub(rnd.mul(0.12).add(0.56)).add(fold.mul(0.23)).add(insetX.mul(0.14));
+        const seam = blBell(lower.mul(78)).add(blBell(upper.mul(95))).toVar();
+        const window = smoothstep(-0.02, 0.02, lower).mul(smoothstep(-0.025, 0.02, upper).oneMinus());
+        const mineral = mix(tint, u.accent, smoothstep(0.22, 0.88, rnd).mul(0.44).add(0.47));
         const inside = p.mul(0.9).add(V.mul(0.55));
         const grit = u.noise(vec2(inside.x.mul(2.3).add(inside.z), inside.y.mul(2.1)).add(V.xy.mul(0.7))).a;
         const specks = smoothstep(0.72, 0.9, grit).mul(sin(u.time.mul(1.9).add(grit.mul(60.0))).mul(0.5).add(0.5));
@@ -199,8 +216,10 @@ export function createCrystals(u, plan, { count }) {
         const low = float(1.0).sub(t);
         const core = tint.mul(mix(tint, vec3(1.0), 0.3)).mul(low.mul(low).mul(low).mul(1.5).add(0.08))
             .mul(breathe).mul(u.power.mul(1.5).add(1.0));
-        const within = tint.mul(planes).mul(lit.mul(0.25).add(u.fogFar.mul(2.0)))
-            .add(core.mul(planes.mul(0.7).add(0.6)))
+        const within = tint.mul(planes).mul(lit.mul(0.14).add(u.fogFar.mul(1.45)))
+            .add(core.mul(planes.mul(0.42).add(0.46)))
+            .add(mineral.mul(window).mul(cut.mul(0.6).add(0.23)).mul(breathe))
+            .add(mix(mineral, vec3(0.82, 0.90, 1.0), 0.24).mul(seam).mul(cut.mul(0.62).add(0.20)))
             .add(mix(tint, vec3(1.0), 0.55).mul(specks).mul(0.3));
 
         // ── The chime: a front of light root to point, split into colours ──
@@ -226,8 +245,11 @@ export function createCrystals(u, plan, { count }) {
         const edge = blFogColor(u, N).mul(5.0).add(lit.mul(0.3)).add(tint.mul(0.1))
             .add(ring.mul(0.5));
 
-        const col = mix(front.add(within), mirror, fres).mul(u.breath).toVar();
-        col.addAssign(edge.mul(arris).mul(u.breath.mul(0.8).add(0.2)));
+        // An inclusion interrupts a reflected highlight and the bright arris along a shard.
+        const polish = window.mul(-0.69).add(1.0);
+        const body = front.mul(window.mul(-0.63).add(1.0)).add(within);
+        const col = mix(body, mirror.mul(polish), fres.mul(polish)).mul(u.breath).toVar();
+        col.addAssign(edge.mul(arris).mul(polish).mul(u.breath.mul(0.8).add(0.2)));
         col.addAssign(ring);
         // Gameplay light that travels over the pool lights the stone from below.
         col.addAssign(vRing.mul(mix(tint, vec3(1.0), 0.4)).mul(low.mul(low).mul(1.5).add(0.25)));

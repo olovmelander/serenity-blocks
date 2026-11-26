@@ -96,6 +96,16 @@
     --sp-wall: #ab6adc;
 }
 
+/* Foxfire glazes the well's rim; the ledger stays deep enough for the score to read. */
+:where(body:has(#bioluminescence-theme.active)) .single-player-stage[data-board='well']:not(:where(
+    .infinity-mode-active, [data-odyssey-board], [data-stillfall], [data-still-air], [data-danger]
+)) {
+    --sp-hue: #a4ebd9;
+    --sp-hue-rgb: 164, 235, 217;
+    --sp-wall: #549d99;
+    --sp-wall-glow: rgb(74 174 156 / 25%);
+}
+
 /* The brass finial against dusk-blue slate on the Himalayan pass. */
 :where(body:has(#himalayan-peak-theme.active)) .single-player-stage[data-board='well']:not(:where(
     .infinity-mode-active, [data-odyssey-board], [data-stillfall], [data-still-air], [data-danger]
@@ -455,6 +465,14 @@
     background: linear-gradient(180deg, rgba(25, 21, 56, 0.92) 0%, rgba(12, 10, 30, 0.94) 100%);
     box-shadow: 0 14px 34px rgba(0, 0, 0, 0.34), inset 0 1px 0 rgba(var(--sb-cream-rgb), 0.05);
     transform: none;
+}
+
+:where(body:has(#bioluminescence-theme.active)) .single-player-stage[data-board='well']:not(:where(
+    .infinity-mode-active, [data-odyssey-board], [data-stillfall], [data-still-air], [data-danger]
+)) .single-player-stats-bar {
+    --sb-text-faint: #bad3d0;
+    border-color: rgb(146 191 185 / 36%);
+    background: linear-gradient(145deg, #19383afa, #101e2df7 62%, #281e36f7);
 }
 
 :where(body:has(#himalayan-peak-theme.active)) .single-player-stage[data-board='well']:not(:where(

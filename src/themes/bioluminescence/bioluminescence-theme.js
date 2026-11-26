@@ -246,9 +246,10 @@ export default class BioluminescenceTheme extends BaseTheme {
                 lock: (c) => this.world?.onLock(c),
                 clear: (c) => this.world?.onClear(c),
                 combo: (n, player) => this.reportCombo(n, player),
-                levelUp: (level) => this.world?.levelUp(level),
+                levelUp: (level, react) => this.world?.levelUp(level, { react }),
                 crown: () => this.world?.onCrown?.(),
-                spin: () => this.world?.onSpin?.(),
+                echo: (player) => this.world?.onEcho(player),
+                spin: (_player, lines = 0) => this.world?.onSpin?.(lines),
             },
         });
         this.appliedSize = null;
@@ -360,7 +361,10 @@ export default class BioluminescenceTheme extends BaseTheme {
             }),
         );
         this.registerEventListener(window, 'settingsChanged', (p) => this.handleSettingsChanged(p));
-        this.registerEventListener(window, 'gameOver', () => this.resetSession());
+        this.registerEventListener(window, 'gameOver', () => {
+            this.resetSession();
+            if (playing() && this.director?.enabled) this.world?.onGameOver?.();
+        });
 
         const resetPointer = () => {
             this.pointer.x = 0;

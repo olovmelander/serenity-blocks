@@ -1016,4 +1016,14 @@ describe('bioluminescence tiers', () => {
             expect(tier.crystals, `${name}.crystals`).toBeLessThanOrEqual(plan.crystals.length);
         }
     });
+
+    it('keeps the lantern puffballs on both foreground islets before any fairy rings rise', () => {
+        for (const quality of QUALITY_NAMES) {
+            const resting = plan.mushrooms.slice(0, QUALITY[quality].mushrooms);
+            for (const [cx, cz, radius] of ISLETS.slice(0, 2)) {
+                const onIslet = resting.filter((m) => Math.hypot(m.x - cx, m.z - cz) <= radius);
+                expect(onIslet.some((m) => m.species === GLOBE), `${quality} islet at ${cx},${cz}`).toBe(true);
+            }
+        }
+    });
 });

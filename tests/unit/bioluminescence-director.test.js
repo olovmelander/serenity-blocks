@@ -63,6 +63,7 @@ describe('bioluminescence director: intake', () => {
         director.flush();
         expect(calls.lock).toHaveLength(1);
         expect(calls.lock[0].hardDrop).toBe(true);
+        expect(calls.lock[0].distance).toBe(14);
         expect(calls.lock[0].rows).toEqual([19]);
     });
 
@@ -149,6 +150,21 @@ describe('bioluminescence director: intake', () => {
         expect(director.onB2B({ active: false })).toBe(false);
     });
 
+    it('delivers a separately timed back-to-back once and never attaches it to a later clear', () => {
+        const { director, calls, sink } = makeDirector();
+        sink.echo = vi.fn();
+        director.onLineClear({ lineCount: 4, player: 2 });
+        director.flush();
+        director.onB2B({ active: true, player: 2 });
+        director.flush();
+        director.flush();
+        expect(sink.echo).toHaveBeenCalledExactlyOnceWith(2);
+        expect(calls.clear).toHaveLength(1);
+        director.onLineClear({ lineCount: 1, player: 2 });
+        director.flush();
+        expect(calls.clear[1].b2b).toBe(false);
+    });
+
     it('crowns a perfect clear that comes on a frame of its own instead of making it a clear', () => {
         const { director, calls } = makeDirector();
         const crown = vi.fn();
@@ -189,6 +205,52 @@ describe('bioluminescence director: intake', () => {
         director.flush();
         expect(spin).toHaveBeenCalledOnce();
         expect(calls.clear[0]).toMatchObject({ lines: 1, twist: true });
+    });
+
+    it('layers a separately delivered twist on the matching player’s recent clear', () => {
+        const { director, calls, sink } = makeDirector();
+        sink.spin = vi.fn();
+        director.onLineClear({ player: 2, lineCount: 2 });
+        director.flush(1 / 60);
+        director.flush(1 / 60);
+        director.onTwist({ player: 2, lineCount: 2 });
+        director.flush(1 / 60);
+        director.flush(1 / 60);
+        expect(sink.spin).toHaveBeenCalledExactlyOnceWith(2, 2);
+        expect(calls.clear).toHaveLength(1);
+        expect(calls.clear[0]).toMatchObject({ player: 2, lines: 2, twist: false });
+    });
+
+    it.each([
+        ['no preceding clear', () => {}],
+        ['a clear for another player', (d) => d.onLineClear({ player: 1, lineCount: 2 })],
+        ['a different line count', (d) => d.onLineClear({ player: 2, lineCount: 3 })],
+        ['an expired clear', (d) => {
+            d.onLineClear({ player: 2, lineCount: 2 });
+            d.flush();
+            d.flush(1);
+        }],
+        ['an intervening lock', (d) => {
+            d.onLineClear({ player: 2, lineCount: 2 });
+            d.flush();
+            d.onPieceLock({ player: 2, piece: T });
+        }],
+        ['a new session', (d) => {
+            d.onLineClear({ player: 2, lineCount: 2 });
+            d.flush();
+            d.reset();
+        }],
+    ])('preserves a clearing twist with %s', (_name, prepare) => {
+        const { director, calls, sink } = makeDirector();
+        sink.spin = vi.fn();
+        prepare(director);
+        director.flush(1 / 60);
+        const previousClears = calls.clear.length;
+        director.onTwist({ player: 2, lineCount: 2 });
+        director.flush(1 / 60);
+        expect(calls.clear).toHaveLength(previousClears + 1);
+        expect(calls.clear.at(-1)).toMatchObject({ player: 2, lines: 2, twist: true });
+        expect(sink.spin).not.toHaveBeenCalled();
     });
 
     it('turns a meditation click into a clear at a screen position', () => {
@@ -471,6 +533,13 @@ describe('bioluminescence director: settings and resets', () => {
         director.flush();
         director.flush();
         expect(calls.levelUp).toEqual([4]);
+    });
+
+    it('advances the palette quietly when background reactions are off', () => {
+        const { director, sink } = makeDirector({ enabled: false });
+        director.onLevelUp({ level: 3 });
+        director.flush();
+        expect(sink.levelUp).toHaveBeenCalledWith(3, false);
     });
 
     it('starts a new run with every slot free', () => {
