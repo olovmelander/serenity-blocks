@@ -1,7 +1,7 @@
 /**
  * Black Hole shader gate — no GPU needed.
  *
- * Every material the world builds (the ray-traced lens and the four matter layers, found by
+ * Every material the world builds (the ray-traced lens and its tier's matter layers, found by
  * walking the scene) is built through three's own node builders against a stub renderer: the WGSL
  * one of the WebGPU backend and the GLSL one of the WebGL2 fallback, at High and at Minimal. A
  * graph one builder cannot turn into a shader throws or warns here instead of leaving the hole
@@ -190,7 +190,14 @@ describe.each(TIERS)('Black Hole shaders at %s', (quality) => {
     afterAll(() => world?.dispose());
 
     it('builds the lens and every matter layer on both backends, cleanly', () => {
-        expect(built.length).toBe(10);
+        const required = [
+            'Black Hole — lens', 'Black Hole — dust', 'Black Hole — infall', 'Black Hole — ejecta',
+            'Black Hole — jets', 'Black Hole — caustic echoes', 'Black Hole — magnetic arcs',
+            ...(quality === 'High' ? ['Black Hole — fractured debris'] : []),
+        ].sort();
+        for (const [label] of BACKENDS) {
+            expect(built.filter((entry) => entry.label === label).map((entry) => entry.name).sort()).toEqual(required);
+        }
         expect(built.flatMap(problemsOf)).toEqual([]);
     });
 

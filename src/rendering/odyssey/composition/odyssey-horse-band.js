@@ -42,6 +42,7 @@
  */
 
 import { odysseyMeadowClearingRn } from '../world/odyssey-meadow-clearing.js';
+import { createGrazingPose, sampleGrazing } from './odyssey-grazing.js';
 
 /**
  * The foals' drawn size beside the model as built, as a share of their mothers' (visibility
@@ -749,27 +750,31 @@ export function buildHorseSchedule(member, cfg = ODYSSEY_HORSES, mother = null) 
                         i += 1;
                     }
                 }
+                // Both must be free: the mare can still be grazing when her foal needs to stage for a run.
+                standsTill = Math.min(standsTill, until);
                 const standsFor = standsTill - t;
-                if (seg.segment.kind === 'graze' && standsFor > F.nurse[0] + 6 && t - lastNurse > F.nurseEvery
-                    && rand() < 0.6 && left > F.nurse[1] + 10) {
+                if (seg.segment.kind === 'graze' && standsFor > F.nurse[0] + 6
+                    && t - lastNurse > F.nurseEvery && rand() < 0.6) {
                     horsePathAt(mother, t, mumAt);
                     const c = Math.cos(mumAt.heading);
                     const sn = Math.sin(mumAt.heading);
-                    const lx = 0.62 * side * mother.k;
-                    const lz = 0.12 * mother.k;
+                    // The foal will face the other way. Stage its body ahead of the flank so
+                    // the length of its neck brings the muzzle back to the mare's underside.
+                    const lx = 0.71 * side * mother.k;
+                    const lz = 0.75 * mother.k;
                     const flank = [mumAt.x + (c * lx) + (sn * lz), mumAt.z + (-sn * lx) + (c * lz)];
                     // (Only if there is time to get there, turn head to tail and suckle a while.)
                     const face0 = wrapAngle((mumAt.heading + Math.PI) - Math.atan2(flank[0] - x, flank[1] - z));
-                    const cost = walkCost(flank, walkSpeed * 0.7) + turnDur(face0, 1.6) + 0.5;
+                    const cost = walkCost(flank, walkSpeed * 0.7) + turnDur(face0, 1.6);
                     const window = (standsTill - 0.8) - (t + cost);
-                    if (window > 3.5) {
+                    if (window > 3) {
                         walkTo(flank, 'walk', walkSpeed * 0.7, 0.3);
                         const face = wrapAngle((mumAt.heading + Math.PI) - h);
                         if (Math.abs(face) > 0.05) turn(face, pivot * 0.5, 0.3, 1.6);
                         const dur = Math.min(standsTill - 0.8 - t, F.nurse[0] + (rand() * (F.nurse[1] - F.nurse[0])));
                         if (dur > 3) {
                             push({
-                                kind: 'nurse', dur, head: 0.25, look: -0.75 * side, alert: 0, x1: x, z1: z, h1: h,
+                                kind: 'nurse', dur, head: 0.25, look: 1.15 * side, alert: 0, x1: x, z1: z, h1: h,
                             });
                         }
                         lastNurse = t;
@@ -1454,6 +1459,7 @@ export function createHorseRig(skeleton) {
         index,
         legs,
         footOffset,
+        grazing: createGrazingPose(),
         local: Array.from({ length: count }, () => [0, 0, 0]),
         R: Array.from({ length: count }, () => new Float64Array(9)),
         J: Array.from({ length: count }, () => new Float64Array(3)),
@@ -1547,33 +1553,39 @@ export function poseHorse(rig, horse, time, heightAt, table = null, offset = 0, 
     // trot's steady head; the canter's pump (the neck swings down as the forehand lands); a run
     // stretches the neck forward; a look turns through the chain (ears first).
     const lookAt = (lag) => horseChannel(horse, 'look', time - lag, 1.1);
-    const crop = g * (1 - walk);
+    const awake = (1 - dozing) * (1 - nursing);
+    const crop = g * (1 - walk) * awake;
+    const browse = sampleGrazing(time, seed, horse.member.size, foal ? 1.12 : 0.94, rig.grazing);
+    const pluck = crop * browse.pluck;
+    const sweep = crop * browse.sweep;
     const nod = 0.05 * (swingOf(1) + swingOf(3)) * walk * (1 - trot) * (1 - canter);
     const pump = canter * 0.13 * Math.sin(ph - 0.4);
     const stretch = canter * 0.22;
-    const grazeT = (time * 0.43) + seed;
     // (A trot carries the head up and steady; a walk lets it down a little and nod.)
     // A head toss now and then while the head is up (a fly, a stretch): a quick lift and drop.
     const tossPulse = Math.max(0, Math.sin((time * 0.21) + (seed * 1.3))) ** 60;
-    const toss = tossPulse * (1 - g) * (1 - walk) * (1 - nursing) * Math.sin(Math.min(1, tossPulse * 1.6) * Math.PI);
+    const toss = tossPulse * (1 - g) * (1 - walk) * awake * Math.sin(Math.min(1, tossPulse * 1.6) * Math.PI);
     set('neck0', (G.neck0 * g) + (0.12 * walk * (1 - g) * (1 - trot)) - (0.12 * trot * (1 - g)) + stretch + nod + pump
-        - (0.05 * (1 - g) * (1 - canter)) - (0.22 * toss) + (0.12 * nursing)
-        + (0.35 * buck), lookAt(0.42) * 0.2);
-    set('neck1', (G.neck1 * g) - (0.5 * pump), lookAt(0.32) * 0.26);
+        - (0.05 * (1 - g) * (1 - canter)) - (0.22 * toss) + (0.45 * nursing)
+        + (0.35 * buck) - (0.085 * pluck), (lookAt(0.42) * 0.2) + (0.095 * sweep));
+    set('neck1', (G.neck1 * g) - (0.5 * pump), (lookAt(0.32) * 0.26) + (0.065 * sweep));
     set('neck2', (G.neck2 * g) - (0.06 * (1 - g) * state.alert) - (0.1 * stretch), lookAt(0.22) * 0.26);
     set(
         'head',
-        (G.head * g) + (0.05 * crop * Math.sin(time * TAU * 1.2)) + (0.04 * (1 - g) * noise(time * 0.6, seed + 3))
+        (G.head * g) + (0.04 * pluck) + (0.04 * (1 - g) * noise(time * 0.6, seed + 3))
             - (0.35 * stretch) - (0.4 * pump) + (0.3 * toss) - (0.45 * nursing) + (0.12 * dozing),
-        (lookAt(0.12) * 0.18) + (0.12 * crop * noise(grazeT, seed + 5)),
+        (lookAt(0.12) * 0.18) + (0.1 * sweep),
     );
-    const cud = (1 - g) * (1 - walk) * Math.max(0, noise(time * 0.15, seed + 9)) * 0.5;
-    set('jaw', 0.09 * Math.max(0, Math.sin(time * TAU * 1.6)) * Math.min(1, crop + cud));
+    const chew = (1 - g) * (1 - walk) * awake * (1 - state.alert) * Math.max(0, noise(time * 0.15, seed + 9)) * 0.5;
+    // A suckling foal draws rhythmically from latch to release, even between its grazing bouts.
+    const suckle = nursing ? nursing * Math.sin(Math.PI * 1.6 * segU * segment.dur) ** 2 : 0;
+    set('jaw', (0.09 * browse.chew * (crop + chew)) + (0.025 * suckle));
     const look0 = lookAt(0);
-    const listen = (s) => noise((time * 0.35) + s, s) * 0.55 * (1 - state.alert);
-    const flick = (s) => Math.max(0, Math.sin((time * 1.7) + (s * 3.1))) ** 14;
-    set('earL', 0.1 * g, (look0 * 0.6) + listen(seed + 11), (-0.2 * (1 - state.alert)) + (0.35 * flick(seed)));
-    set('earR', 0.1 * g, (look0 * 0.6) + listen(seed + 13), (0.2 * (1 - state.alert)) - (0.35 * flick(seed + 2)));
+    const earActivity = 1 - (0.8 * dozing) - (0.5 * nursing);
+    const listen = (s) => noise((time * 0.35) + s, s) * 0.55 * (1 - state.alert) * earActivity;
+    const flick = 0.35 * (1 - (0.8 * state.alert)) * earActivity;
+    set('earL', 0.1 * g, (look0 * 0.6) + listen(seed + 11), (-0.2 * (1 - state.alert)) + (flick * browse.earL));
+    set('earR', 0.1 * g, (look0 * 0.6) + listen(seed + 13), (0.2 * (1 - state.alert)) - (flick * browse.earR));
     // THE TAIL: hanging, swished at flies now and then while it grazes (a wave down its three
     // bones), lifted and streaming in a run, flagged up in a foal's buck.
     const swish = Math.max(0, noise(time * 0.27, seed + 17) - 0.35) / 0.65;
