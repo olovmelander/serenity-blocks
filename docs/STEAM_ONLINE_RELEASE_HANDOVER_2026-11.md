@@ -105,7 +105,7 @@ For rollback, preserve the account's Cloud contents, recovery generations and lo
 The versus rules changed on 22 November, after everything above was written. The
 [drift check](STEAM_ONLINE_RELEASE_DRIFT_2026-11.md) records what that broke and the owner's
 decisions D9 to D15. This section is what was built for them, on branch `audit/steam-online-drift`
-from `e31421d3b`. The plan's checklist and its test script (now T1 to T15) are revised to match.
+from `e31421d3b`, merged to main as `b05392134`. The plan's checklist and its test script (now T1 to T15) are revised to match.
 Nothing here has run on real Steam.
 
 ### What changed for players
@@ -138,7 +138,8 @@ Nothing here has run on real Steam.
   release/win-unpacked` prints the statuses at any time. `SERENITY_ALLOW_UNSIGNED=1` lets a deliberate
   unsigned build through with a warning.
 - **CI can package the desktop app.** `.github/workflows/desktop-package.yml` packages on Ubuntu and
-  Windows and loads each package's Steam addon from a copy outside the checkout. It has never run.
+  Windows and loads each package's Steam addon from a copy outside the checkout. Its first run, on
+  the merge commit, passed on both.
 - **The main checkout's Steam packages match the lockfile** (`steamworks.js` 0.12.2, `koffi` 3.3.5).
   They were copied in from a worktree that had them; no `npm ci` was run there.
 
@@ -154,8 +155,8 @@ Nothing here has run on real Steam.
    it touches the takeover path and cannot be proven without three machines.
 4. **Two stat edges, the owner's call:** a drawn Survivor ending records a win for whoever sorts
    first, and a player who leaves records no match while the one who stayed records a win.
-5. **The CI job and the Linux package** have never run. The freeze test's played digests repeat on
-   Windows; whether Ubuntu agrees is unknown until CI runs.
+5. **The Linux package has never been launched.** CI now shows that it packages and that its Steam
+   addon loads on Ubuntu. Starting the game from Steam on Linux or on a Deck is still test T12's.
 6. **No tool seeds an eight-day-old pending score** (T7).
 
 ### Verification on 26 November
@@ -172,7 +173,7 @@ benchmarks running on the same machine.
 | Signatures | `npm run check:signatures -- release/win-unpacked` reports the `.exe` and both addons `NotSigned` and Valve's library `Valid`; as a store build it exits 1, and 0 with `SERENITY_ALLOW_UNSIGNED=1`. |
 | Boards | `npm run odyssey:board-freeze -- --check` prints "All 58 orb time boards match their pins", and the manifest prints the same 64 board names as before. |
 | Main checkout | `npm run steam:qa -- verify-native` there now prints "44 client and 11 relay symbols resolved, addon loaded". |
-| Not verified | Anything on real Steam, on a Linux machine or on a Deck. The CI packaging job has never run, and the freeze test has never run on Ubuntu. |
+| Not verified | Anything on real Steam or on a Deck, and a launch of the Linux package. (The CI job and the freeze test on Ubuntu were unverified here; both ran after the merge, see below.) |
 
 ### Checks before the merge, 26 November
 
@@ -185,3 +186,11 @@ Done after the build above, without Steam. Each one found or confirmed something
 | The changed screens in the running game | The real game in a headless browser on the mock transport: the match list with five rooms (kind shown, drop-in label, "Update to join", "Older version"), the waiting room of a public room and of a private Blind room, and the new-host notice. Two layout faults that no unit test could see were found and fixed: a long attack-rules line pushed the waiting room's left panel into a sideways scroll, and that panel's scrollbar was unstyled. The rules now read one to a line. |
 | The Steam records smoke on the final tree | `npm run steam:qa-renderer` passes all four scenarios; the Cloud sizing figure and the 64 board names are unchanged. |
 | Linux | Not possible here: this machine has no WSL and no Docker. CI on a pull request runs the unit suite on Ubuntu, which is the first place the board freeze's played digests will run off Windows. |
+
+### After the merge
+
+| What | Result |
+|---|---|
+| The merge | `b05392134` on main, 26 November. Main had not moved since the branch started, so nothing needed resolving, and no pipeline was running when it was pushed. |
+| Build and Deploy Pages | Test, build and deploy passed on the merge commit. The full unit suite ran on Ubuntu there, so the board freeze's played digests are the same off Windows. |
+| Package Desktop App | Its first run passed on Ubuntu and on Windows. Ubuntu printed "linux x64 44 client and 11 relay symbols resolved, addon loaded": the Linux package's Steam addon loads on Linux without a Steam client. Windows packaged with the game's icon and reported the `.exe` and both addons unsigned, as a test build should. |

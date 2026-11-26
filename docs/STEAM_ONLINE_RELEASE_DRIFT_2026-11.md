@@ -15,7 +15,7 @@ asks about one of them.
 
 ## Outcome
 
-| Finding | Decision | State on branch `audit/steam-online-drift` |
+| Finding | Decision | State (merged to main as `b05392134`) |
 |---|---|---|
 | B1 · Missing App ID and contact | yours | Open. |
 | B2 · Nothing is signed | D9: sign | A store build now stops when the `.exe` or an addon is unsigned. The certificate is yours to get. |
@@ -28,7 +28,7 @@ asks about one of them.
 | S5 · Both win on a broken link | D14 | Fixed for the side whose own connection is down. Needs T4 to prove the timing on real Steam. |
 | S6 · Silent host change | | The notice is built. The frag credit after a host change is not: see the handover's open list. |
 | S7 · Orb boards, no freeze | D15 | Built: a per-orb fingerprint test and per-orb board generations. |
-| S8 · Linux never run, no CI packaging | | The CI job is written and has never run. The Linux package still needs a Linux machine. |
+| S8 · Linux never run, no CI packaging | | The CI job passed on the merge commit and loads the Linux package's Steam addon on Ubuntu. Launching that package still needs a Linux machine or a Deck. |
 | S9 · Main checkout's packages | | Done: copied in, the addon loads there. |
 | S10 · Larger updates with hidden cells | | A Full blind case is in T4. No code change. |
 | S11 · Privacy date | | Done, with one clause for the version a lobby publishes. |
