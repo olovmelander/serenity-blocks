@@ -59,7 +59,7 @@ function createTheme() {
         theme.camera = new THREE.PerspectiveCamera(60, 1, 1, 20000);
         const director = { energy: 0.4, flash: 0.1, iris: 0.05 };
         for (const handler of ['onHardDrop', 'onPieceLock', 'onLineClear', 'onCascade', 'onTwist',
-            'onBackToBack', 'onPerfectClear', 'onLevelUp', 'calm']) director[handler] = vi.fn();
+            'onBackToBack', 'onPerfectClear', 'onLevelUp', 'onTouch', 'endRun', 'calm']) director[handler] = vi.fn();
         const group = new THREE.Group();
         const parked = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshBasicNodeMaterial());
         parked.visible = false;
@@ -250,7 +250,10 @@ describe('Black Hole theme lifecycle', () => {
         eventBus.emit(EVENTS.B2B, { active: true });
         eventBus.emit(EVENTS.PERFECT_CLEAR, { depth: 1 });
         eventBus.emit(EVENTS.LEVEL_UP, { level: 2 });
+        eventBus.emit(EVENTS.LINE_CLEAR, { source: 'serenity-interaction', position: { x: 360, y: 450 } });
         expect(director.onHardDrop).toHaveBeenCalledWith({ distance: 9 });
+        expect(director.onTouch).toHaveBeenCalledWith(0.25, 0.5);
+        expect(director.onLineClear).toHaveBeenCalledTimes(1);
         expect(director.onPieceLock).toHaveBeenCalledWith(lock, true);
         expect(director.onLineClear).toHaveBeenCalledWith({ lineCount: 2, clearedRows: [23, 22] });
         expect(director.onCascade).toHaveBeenCalledWith({ comboCount: 3 });
