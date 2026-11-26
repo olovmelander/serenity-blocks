@@ -66,8 +66,8 @@ const captureThemes = [
     ['bioluminescence',
         'biolum',
         'Bioluminescence',
-        'backdrop, vault, floor, islets, spikes, water, pads, elder, parasols, bells, globes, crystals, '
-        + 'worms, threads, vines, motes, jellies, spores, runners, jets'],
+        'backdrop, vault, floor, islets, spikes, water, pads, elder, parasols, elderVeil, courtVeils, bells, globes, '
+        + 'crystals, worms, threads, vines, motes, jellies, spores, runners, jets, bloom'],
 
     ['chiral-gold',
         'chiralGold',

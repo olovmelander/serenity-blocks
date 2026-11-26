@@ -46,6 +46,7 @@
 import * as THREE from 'three/webgpu';
 import { applyCameraBreath } from '../shared/camera-breath.js';
 import { GameplaySurge } from '../shared/gameplay-surge.js';
+import { flashScale } from '../../utils/photosensitivity.js';
 import { Envelope } from './bioluminescence-envelope.js';
 import {
     BIOLUM_PALETTES,
@@ -95,6 +96,7 @@ import {
     createJellies, createMotes, createVines, createWorms,
 } from './bioluminescence-air.js';
 import { createRowJets, createRunners, createSpores } from './bioluminescence-fx.js';
+import { createGrottoBloom } from './bioluminescence-bloom.js';
 import {
     boardFor, boardPoint, cardUnion, fallbackLayout,
 } from './bioluminescence-composition.js';
@@ -137,19 +139,20 @@ export const MIN_TARGET_HEIGHT = 3;
  * Spores an event throws at High (a tier scales them by its pool). The worst frame — a hard drop
  * that clears four lines with every court holding colour — must fit the pool, or the ring that
  * recycles it overwrites the first of them before they are born:
- *   hard drop 16 + 3 caps (28 + 2 × 18) · clear 8 jets × 8 + holders 100 · bloom 240 + 8 caps × 14
- *   = 596 of 640.
+ * The elder's central shower leaves space for the two coils a twist may raise and the
+ * settling beads of a perfect clear, even when both accompany the same hard drop.
  */
 const SPORE_BUDGET = Object.freeze({
-    splash: 10, splashHard: 16, jet: 8, holders: 150, holdersGreat: 100, elder: 240, court: 14,
+    splash: 10, splashHard: 16, jet: 6, holders: 125, holdersGreat: 64, elder: 184, court: 10,
 });
 /** Growth of the fairy rings per second while a chain holds, and their retreat when it breaks. */
 const SPROUT_RISE = 0.9;
 const SPROUT_FALL = 0.45;
 
 const PARTS = [
-    'backdrop', 'vault', 'floor', 'islets', 'spikes', 'water', 'pads', 'elder', 'parasols', 'bells', 'globes', 'crystals',
-    'worms', 'threads', 'vines', 'motes', 'jellies', 'spores', 'runners', 'jets',
+    'backdrop', 'vault', 'floor', 'islets', 'spikes', 'water', 'pads', 'elder', 'parasols',
+    'elderVeil', 'courtVeils', 'bells', 'globes', 'crystals',
+    'worms', 'threads', 'vines', 'motes', 'jellies', 'spores', 'runners', 'jets', 'bloom',
 ];
 
 export class BioluminescenceWorld {
@@ -284,6 +287,7 @@ export class BioluminescenceWorld {
         this.lockCursor = 0;
         this.clearCursor = 0;
         this.bloomAt = -100;
+        this.bloomPlayer = null;
         /** When the last perfect clear crowned the grotto. */
         this.crownAt = -100;
         /** How many jellies the grotto last asked for (it asks again only when that changes). */
@@ -296,6 +300,7 @@ export class BioluminescenceWorld {
         };
         // The slow clocks are functions of the world clock until gameplay bends them.
         const motion = this.reducedMotion ? 0.3 : 1;
+        this.driftTime = time * motion;
         this.pulse = time * 0.16;
         this.moteLift = time * motion;
         this.mushrooms?.reset();
@@ -304,6 +309,7 @@ export class BioluminescenceWorld {
         this.spores?.reset();
         this.runners?.reset();
         this.jets?.reset();
+        this.bloom?.reset();
         if (this.u) {
             for (let i = 0; i < LOCK_SLOTS; i++) this.u.lockA[i].value.set(0, 0, -100, 0);
             for (let i = 0; i < CLEAR_SLOTS; i++) this.u.clearA[i].value.set(-100, 1, 0, 0);
@@ -363,7 +369,7 @@ export class BioluminescenceWorld {
         this.addPart('worms', worms.worms);
         if (worms.threads) this.addPart('threads', worms.threads);
         if (tier.vines > 0) this.addPart('vines', createVines(u, plan, tier.vines));
-        if (tier.motes > 0) this.addPart('motes', createMotes(u, tier.motes));
+        if (tier.motes > 0) this.addPart('motes', createMotes(u, tier.motes, plan));
         this.jellies = createJellies(u, plan, tier.jellies);
         this.addPart('jellies', this.jellies);
         yield 'air';
@@ -375,6 +381,8 @@ export class BioluminescenceWorld {
         this.addPart('runners', this.runners, { reflected: false });
         this.jets = createRowJets(u);
         this.addPart('jets', this.jets, { reflected: false });
+        this.bloom = createGrottoBloom(u, tier.spores >= 420);
+        this.addPart('bloom', this.bloom);
 
         this.applyPalette(1);
         this.compose();
@@ -425,6 +433,7 @@ export class BioluminescenceWorld {
 
     setReducedMotion(reduced) {
         this.reducedMotion = reduced === true;
+        this.bloom?.setReducedMotion(this.reducedMotion);
     }
 
     /** Jump the clock (captures): drops every event in flight. */
@@ -435,9 +444,11 @@ export class BioluminescenceWorld {
 
     /** A new run: the grotto back at rest (its slow clocks keep turning). */
     resetSession() {
-        const { time, pulse, moteLift } = this;
+        const {
+            time, pulse, moteLift, driftTime,
+        } = this;
         this.resetState(time);
-        Object.assign(this, { pulse, moteLift });
+        Object.assign(this, { pulse, moteLift, driftTime });
         // (The palette is not snapped: the frame eases back to the first level's colours.)
     }
 
@@ -715,7 +726,7 @@ export class BioluminescenceWorld {
      * rows it covers, `color` = the piece's colour; `screen` (fractions) replaces the board point.
      */
     onLock({
-        u = 0.5, rows = null, hardDrop = false, color = null, player = 0, screen = null,
+        u = 0.5, rows = null, hardDrop = false, distance = 8, color = null, player = 0, screen = null,
     } = {}) {
         const { u: uniforms } = this;
         if (!uniforms || !this.mushrooms) return;
@@ -745,6 +756,7 @@ export class BioluminescenceWorld {
         const strike = this.screenToWater(fx, fy);
         const sx = strike.x;
         const sz = strike.z;
+        const fall = clamp01((Number.isFinite(distance) ? distance : 8) / 16);
         this.ring(sx, sz, this.time, hardDrop ? 1.25 : 0.8, rgb, hardDrop ? 1 : 0.8);
         // A splash of sparks where it goes in.
         if (this.spores) {
@@ -756,11 +768,11 @@ export class BioluminescenceWorld {
                 n: Math.round((hardDrop ? SPORE_BUDGET.splashHard : SPORE_BUDGET.splash) * share),
                 rgb,
                 time: this.time,
-                spread: 0.25,
-                out: [0.4, hardDrop ? 3.2 : 1.8],
-                up: [0.8, hardDrop ? 4.2 : 2.4],
+                spread: hardDrop ? 0.16 : 0.25,
+                out: hardDrop ? [0.1, 0.7 + 0.7 * fall] : [0.4, 1.8],
+                up: hardDrop ? [1.8, 3.5 + 4 * fall] : [0.8, 2.4],
                 life: [0.5, 1.3],
-                size: 0.028,
+                size: hardDrop ? 0.047 : 0.028,
                 gravity: 4.5,
             });
         }
@@ -813,6 +825,80 @@ export class BioluminescenceWorld {
         }
         this.clearCursor += 1;
         return slot;
+    }
+
+    /**
+     * A beaded filament in the shallows. Its world-space path writes into the same spore
+     * pool as a cap shower. Reserve the width of the live well and any side ledger first.
+     */
+    bankRoom(side) {
+        const card = this.layoutLive ? cardUnion(this.layout) : null;
+        const hud = this.layoutLive ? this.layout?.hud : null;
+        let edge = side < 0 ? (card?.x0 ?? 0.43) : (card?.x1 ?? 0.57);
+        if (hud && hud.y0 < 0.8 && hud.y1 > 0.45) {
+            if (side < 0 && hud.x1 <= edge + 0.01) edge = hud.x0;
+            if (side > 0 && hud.x0 >= edge - 0.01) edge = hud.x1;
+        }
+        return Math.max(0, side < 0 ? edge : 1 - edge);
+    }
+
+    bankFilament(side, shape, rgb, at, amount, strand = 0) {
+        if (!this.spores || !this._camera) return;
+        const room = this.bankRoom(side);
+        if (room < 0.075) return;
+        const center = side < 0 ? room * 0.53 : 1 - room * 0.53;
+        const depth = 3.9;
+        const anchor = this.screenToWorld(center, shape === 'crown' ? 0.52 : 0.80, depth);
+        const [x, y, z] = anchor;
+        const nearHeight = 2 * depth * Math.tan(this._camera.fov * DEG * 0.5);
+        const width = Math.min(0.95, room * nearHeight * this.aspect * 0.32);
+        const height = nearHeight * (this.reducedMotion ? 0.09 : 0.18);
+        const turn = Math.PI * 2;
+        this.spores.emit({
+            x,
+            y,
+            z,
+            rgb,
+            time: at,
+            n: Math.round(amount * (this.spores.count / 640)),
+            spread: 0,
+            out: [0.005, 0.05],
+            up: [0.035, 0.1],
+            gravity: -0.035,
+            life: [1.65, 2.30],
+            size: nearHeight * (shape === 'ripple' ? 0.008 : 0.012),
+            filament: shape !== 'crown',
+            stagger: this.reducedMotion ? 0.35 : 0.62,
+            path: (s, p) => {
+                const arc = Math.sin(Math.PI * s);
+                if (shape === 'coil') {
+                    const a = s * turn * 1.45 + strand * Math.PI;
+                    p[0] = width * (1 - 0.68 * s) * Math.cos(a) * 0.69;
+                    p[1] = height * s * 1.55;
+                    p[2] = width * Math.sin(a) * 0.4;
+                } else if (shape === 'crown') {
+                    const a = Math.PI * (s - 0.5) * 1.9;
+                    p[0] = width * Math.sin(a);
+                    p[1] = height * (0.45 + Math.cos(a) * 0.26 + 0.35 * Math.cos(a * 4) ** 2);
+                    p[2] = width * Math.cos(a) * 0.48;
+                } else if (shape === 'ripple') {
+                    p[0] = side * width * (s * 2 - 1);
+                    p[1] = height * arc * 0.10;
+                    p[2] = -width * arc * 0.76;
+                } else if (shape === 'settle') {
+                    p[0] = side * width * (s - 0.5);
+                    p[1] = height * (1 - s) ** 2;
+                    p[2] = -width * (1 - s) * 0.45;
+                } else {
+                    // Paired leaping fish-like wakes for a double; three upright, splayed
+                    // gill filaments, each with a slightly different crest, for a triple.
+                    const fork = shape === 'fan';
+                    p[0] = width * (fork ? s * strand * 0.73 : side * (s * 2 - 1));
+                    p[1] = height * (fork ? s * (1.05 - Math.abs(strand) * 0.28) : arc * 0.8);
+                    p[2] = -width * (fork ? s : arc) * 0.56;
+                }
+            },
+        });
     }
 
     /**
@@ -931,16 +1017,28 @@ export class BioluminescenceWorld {
             }
         }
 
-        if (great) this.greatBloom(birth);
-        else if (n === 3) this.crystals?.chime?.(birth + 0.1, 0.7);
-        // A cascade rings the crystals, a little louder with every wave.
-        if (deeper > 0) this.crystals?.chime?.(birth + 0.08, Math.min(1.1, 0.3 + 0.12 * deeper));
-        if (twist) {
-            // The air itself turns, and the crystals ring.
-            this.swirl = 1;
-            this.swells.storm.hit(0.55, this.time);
-            this.crystals?.chime?.(this.time, 1);
+        if (great) this.greatBloom(birth, player);
+        else if (n === 3) {
+            this.crystals?.chime?.(birth + 0.1, 0.7);
+            const side = player % 2 || this.counts.clears % 2 ? 1 : -1;
+            for (let stem = -1; stem <= 1; stem++) {
+                const at = birth + Math.abs(stem) * 0.13;
+                this.bankFilament(side, 'fan', stem === 0 ? p.accent : p.crystal, at, 20, stem);
+            }
+        } else if (n === 2 && !twist) {
+            this.bankFilament(-1, 'arch', p.primary, birth, 25);
+            this.bankFilament(1, 'arch', p.primary, birth + 0.14, 25);
+        } else if (n === 1 && !twist) {
+            const side = this.counts.clears % 2 ? 1 : -1;
+            this.bankFilament(side, 'ripple', p.plankton, birth, 23);
         }
+        // A cascade rings the crystals, a little louder with every wave.
+        if (deeper > 0) {
+            this.crystals?.chime?.(birth + 0.08, Math.min(1.1, 0.3 + 0.12 * deeper));
+            const i = this.pickTarget(deeper % 2 ? -1 : 1, deeper);
+            if (i >= 0) this.mushrooms.fire(i, p.secondary, birth + 0.17, 0.7);
+        }
+        if (twist) this.turnAir(birth, true);
         // A second hard clear in a row: the elder rings again (after the bloom's own ring for a four).
         if (b2b === true) this.echo(great ? birth + ECHO_DELAY : birth, great);
         // A perfect clear: the crown on the bloom.
@@ -976,7 +1074,21 @@ export class BioluminescenceWorld {
     }
 
     /** Four lines (or a perfect clear): the elder erupts. */
-    greatBloom(birth) {
+    greatBloom(birth, player = 0) {
+        if (this.bloom) {
+            for (const [site, index] of [[2, 1], [3, 2], [4, 0]]) {
+                const m = this.mushrooms.list[index];
+                this.bloom.capColors[site - 2].value.fromArray(familyColor(this._palette, m.family));
+                capCentre(m, this._cap);
+                this.bloom.sites[site].value.set(
+                    this._cap[0] + this.shift(m),
+                    this._cap[1] + this.drop(m) - m.capR * 0.05,
+                    this._cap[2],
+                    m.capR,
+                );
+            }
+            this.bloom.erupt(birth);
+        }
         this.hushUntil = this.time + HUSH_HOLD;
         // From cold the grotto holds its breath; the hotter play already runs the less of it (a
         // four in a fever only inhales).
@@ -984,6 +1096,7 @@ export class BioluminescenceWorld {
         // The overdrive starts when the elder blooms, not while the grotto holds its breath.
         this.swells.overdrive.hit(1, birth);
         this.bloomAt = birth;
+        this.bloomPlayer = player;
         this.shockRing(birth, this.reducedMotion ? 0.5 : 1);
         this.mushrooms.fire(0, [STARSPORE[0] * 1.3, STARSPORE[1] * 1.3, STARSPORE[2] * 1.3], birth, 1);
         this.jellies?.flash(birth, 1.6);
@@ -997,6 +1110,7 @@ export class BioluminescenceWorld {
             const p = this._palette;
             const colours = [STARSPORE, p.primary, p.accent, p.secondary, p.plankton, STARSPORE];
             for (let k = 0; k < colours.length; k++) {
+                const angle = (k / colours.length) * Math.PI * 2;
                 this.spores.emit({
                     x: this._cap[0],
                     y: this._cap[1] - 0.5,
@@ -1004,13 +1118,20 @@ export class BioluminescenceWorld {
                     n: Math.round((SPORE_BUDGET.elder / colours.length) * share),
                     rgb: colours[k],
                     time: birth + k * 0.07,
-                    spread: elder.capR * 0.96,
+                    spread: elder.capR * 0.035,
+                    path: (s, point) => {
+                        const bearing = angle + s * 0.84;
+                        const radius = elder.capR * (0.2 + 0.74 * s);
+                        point[0] = Math.cos(bearing) * radius;
+                        point[1] = -elder.capR * 0.045 * s;
+                        point[2] = Math.sin(bearing) * radius;
+                    },
                     push: [0, 0, 2.5],
                     out: [0.2, 2.4],
                     up: [-5.5, -0.8],
                     life: [2.6, BLOOM_LIFE + 2.4],
                     size: 0.42,
-                    stagger: 1.4,
+                    stagger: 0.95,
                     gravity: 0.5,
                 });
             }
@@ -1037,6 +1158,19 @@ export class BioluminescenceWorld {
         this.swells.kick.hit(0.22, at);
         this.crystals?.chime?.(at + 0.05, 0.6);
         this.jellies?.flash(at + 0.1, 0.6);
+        // The returning light makes the two courts answer one another.
+        for (const side of [-1, 1]) {
+            const target = this.pickTarget(side, 3);
+            if (target >= 0) this.mushrooms.fire(target, flare, at + (side < 0 ? 0.12 : 0.42), 0.8);
+        }
+    }
+
+    /** The effects tray's separate timers can deliver the modifier one frame after its quad. */
+    onEcho(player = 0) {
+        if (!this.u || !this.mushrooms) return;
+        const afterQuad = this.bloomAt + ECHO_DELAY;
+        const followsQuad = this.bloomPlayer === player && this.time < afterQuad;
+        this.echo(followsQuad ? afterQuad : this.time, followsQuad);
     }
 
     /**
@@ -1048,6 +1182,19 @@ export class BioluminescenceWorld {
     crown(at) {
         const { mushrooms } = this;
         this.crownAt = at;
+        if (this.bloom && this._camera) {
+            for (const side of [-1, 1]) {
+                const room = this.bankRoom(side);
+                const x = side < 0 ? room * 0.55 : 1 - room * 0.55;
+                const site = this.screenToWater(x, 0.86);
+                const height = 2 * Math.abs(site.z) * Math.tan(this._camera.fov * DEG * 0.5);
+                const radius = height * Math.min(0.24, room * this.aspect * 0.39);
+                this.bloom.sites[side < 0 ? 0 : 1].value.set(site.x, 0.035, site.z, radius);
+            }
+            this.bloom.crown(at);
+        }
+        this.bankFilament(-1, 'crown', STARSPORE, at + 0.22, 33);
+        this.bankFilament(1, 'crown', this._palette.accent, at + 0.35, 33);
         this.swells.overdrive.hit(0.3, at);
         this.jellies?.flash(at + 0.12, 1.1);
         this.crystals?.chime?.(at + 0.15, 0.9);
@@ -1081,12 +1228,18 @@ export class BioluminescenceWorld {
         this.play.crown(this.time);
     }
 
-    /** A twist that cleared nothing: the air turns a little and the crystals answer softly. */
-    onSpin() {
+    turnAir(birth, clearing) {
+        this.swirl = Math.max(this.swirl, clearing ? 1 : 0.55);
+        this.swells.storm.hit(clearing ? 0.55 : 0.25, this.time);
+        this.crystals?.chime?.(this.time, clearing ? 1 : 0.45);
+        this.bankFilament(-1, 'coil', this._palette.secondary, birth, clearing ? 28 : 25);
+        if (clearing) this.bankFilament(-1, 'coil', this._palette.accent, birth + 0.08, 23, 1);
+    }
+
+    /** A twist on its own frame. Its clear may have reached the previous frame. */
+    onSpin(lines = 0) {
         if (!this.u) return;
-        this.swirl = Math.max(this.swirl, 0.55);
-        this.swells.storm.hit(0.25, this.time);
-        this.crystals?.chime?.(this.time, 0.45);
+        this.turnAir(this.time, lines > 0);
         this.play.spin(this.time);
     }
 
@@ -1097,10 +1250,15 @@ export class BioluminescenceWorld {
     jellyTarget() {
         const count = this.jellies?.count ?? 0;
         const byChain = jelliesForCombo(this.combo, count);
+        // A pair sometimes drifts through the resident school between plays. Two currents
+        // coincide fully on the first passage and spread the following visits further apart.
+        const phase = this.driftTime - 54;
+        const tide = 0.72 * Math.cos((phase / 103) * Math.PI * 2) + 0.28 * Math.cos((phase / 67) * Math.PI * 2);
+        const visitors = Number(tide > 0.42) + Number(tide > 0.81);
         const byHeat = Math.round(3 + Math.max(0, count - 3) * smooth(0.35, 0.95, this.heat.level));
         const age = this.time - this.crownAt;
         const crowned = age >= 0 && age < CROWN_HOLD ? count : 0;
-        return Math.min(count, Math.max(byChain, byHeat, crowned));
+        return Math.min(count, Math.max(3 + visitors, byChain, byHeat, crowned));
     }
 
     /** The true combo changed (0 = the chain broke). */
@@ -1108,6 +1266,12 @@ export class BioluminescenceWorld {
         const n = Math.max(0, Math.round(Number(combo) || 0));
         // The chain broke: the grotto lets its breath go, slowly.
         if (n === 0 && this.combo >= 2) this.dip = Math.max(this.dip, 0.14);
+        if (this.mushrooms && n >= 2 && n > this.combo) {
+            const target = this.pickTarget(n % 2 ? -1 : 1, n);
+            if (target >= 0) {
+                this.mushrooms.fire(target, this._palette.accent, this.time + 0.22, Math.min(1.15, 0.4 + n * 0.07));
+            }
+        }
         this.combo = n;
         if (this.jellies) {
             this.jellyWant = this.jellyTarget();
@@ -1116,17 +1280,29 @@ export class BioluminescenceWorld {
     }
 
     /** A new level: the grotto turns one step on round its wheel of palettes. */
-    levelUp(level, { silent = false } = {}) {
+    levelUp(level, { silent = false, react = true } = {}) {
         const asked = Number(level);
         this.level = Number.isFinite(asked) ? Math.max(1, Math.round(asked)) : 1;
         if (silent) this.applyPalette(1);
-        else {
+        else if (react) {
+            // The coming palette arrives along the two banks before the cavern changes hue.
+            const next = paletteAt(this.palettePhase());
+            for (let i = 0; i < Math.min(8, this.plan.heroCount); i++) {
+                const m = this.mushrooms?.list[i];
+                if (m) this.mushrooms.fire(i, familyColor(next, m.family ?? 0), this.time + 0.16 * i, 0.9);
+            }
             this.swells.storm.hit(0.75, this.time);
             this.swells.flash.hit(0.14, this.time);
             this.jellies?.flash(this.time, 1);
             this.crystals?.chime?.(this.time + 0.1, 0.8);
             this.play.levelUp(this.time);
         }
+    }
+
+    /** The last two trails sink into the pool as the score sheet arrives. */
+    onGameOver() {
+        this.bankFilament(-1, 'settle', this._palette.plankton, this.time, 32);
+        this.bankFilament(1, 'settle', this._palette.secondary, this.time + 0.18, 32);
     }
 
     /**
@@ -1251,7 +1427,7 @@ export class BioluminescenceWorld {
         this.awake = Math.max(this.power, level * 0.7 + fever * 0.3);
         this.dip *= Math.exp(-dt / 0.9);
         this.swirl *= Math.exp(-dt / 0.9);
-        const hush = t < this.hushUntil ? this.hushDepth : 0;
+        const hush = t < this.hushUntil ? this.hushDepth * flashScale() : 0;
         const breathTarget = hush > 0 ? 1 - 0.88 * hush : 1 - this.dip;
         // It sinks fast into a hush and comes back briskly; a broken chain's breath goes out slowly.
         let breathRate = 14;
@@ -1287,6 +1463,7 @@ export class BioluminescenceWorld {
         this.applyPalette(approach(0.8, dt));
 
         // ── The slow clocks: the elder's heartbeat quickens with the chain, the bloom and the heat ──
+        this.driftTime += dt * motion;
         this.pulse += dt * motion * (0.16 + this.awake * 0.5 + surge * 0.5 + level * 0.15 + fever * 0.45);
         this.moteLift += dt * motion * (1 + this.awake * 3.5 + surge * 5 + storm * 2 + fever * 2.5);
 
@@ -1310,6 +1487,7 @@ export class BioluminescenceWorld {
         // A hot chain lets the caps keep the colours played when a wave takes them.
         u.keep.value = smooth(0.3, 0.85, level) * 0.55 + fever * 0.25;
         u.time.value = t;
+        u.driftTime.value = this.driftTime;
         u.power.value = this.awake;
         u.surge.value = surge;
         u.breath.value = this.breath;
@@ -1326,6 +1504,7 @@ export class BioluminescenceWorld {
         this.updateLamps(t);
         this.jellies?.update(t);
         this.crystals?.update?.(t);
+        this.bloom?.update(t);
 
         // ── Post ──
         const swell = this.swells.swell.valueAt(t);
@@ -1403,6 +1582,7 @@ export class BioluminescenceWorld {
         this.runners = null;
         this.jets = null;
         this.u = null;
+        this.bloom = null;
         this._post.lamps = null;
         this._camera = null;
     }

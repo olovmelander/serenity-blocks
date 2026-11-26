@@ -20,7 +20,7 @@ export const BIOLUMINESCENCE_TETROMINOS = {
         Z: '#3dffa8', // Mint fungus
         J: '#b8ff5a', // Foxfire lime
         L: '#4d9bff', // Abyss blue
-        GARBAGE: '#1c3a38', // Wet stone
+        GARBAGE: '#587475', // Slate under shallow water
     },
 
     // Glowing render mode (signature bioluminescence effect)
@@ -39,25 +39,23 @@ export const BIOLUMINESCENCE_TETROMINOS = {
 
         // Slow pulse, like something breathing
         pulse: true,
-        pulseSpeed: 0.03,
-        pulseAmplitude: 0.16,
-
-        shimmer: true,
-        shimmerSpeed: 0.05,
-        shimmerIntensity: 0.14,
+        pulseSpeed: 0.64,
+        pulseAmplitude: 0.065,
     },
 
     // Renderer-specific tweaks
     rendererOverrides: {
         canvas: {
-            glowRadius: 7,
-            glowIntensity: 0.6,
+            glowRadius: 4,
+            glowIntensity: 0.94,
             outlineWidth: 1.5,
         },
         phaser: {
-            glowRadius: 11,
-            glowIntensity: 0.7,
-            outlineWidth: 1.8,
+            highlight: 0.18,
+            shadow: 0.27,
+            rimAlpha: 0.52,
+            rimWidthFactor: 0.044,
+            glossAlpha: 0.14,
         },
     },
 };

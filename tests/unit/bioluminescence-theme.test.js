@@ -165,6 +165,10 @@ vi.mock('../../src/themes/bioluminescence/bioluminescence-world.js', () => {
             this.sessions += 1;
         }
 
+        onGameOver() {
+            this.log.push('onGameOver');
+        }
+
         updateCamera(camera, sim) {
             this.log.push('updateCamera');
             this.cameraSim = { camera, ...sim };
@@ -788,6 +792,17 @@ describe('Bioluminescence theme: one node renderer on both backends', () => {
         });
     });
 
+    it('adds the clearing spin to the world when the bus delivers it after the clear frame', async () => {
+        const { theme } = await startTheme({ quality: 'High' });
+        theme.world.onSpin = vi.fn();
+        eventBus.emit(EVENTS.LINE_CLEAR, { player: 1, lineCount: 2 });
+        stepFrames(theme, 1);
+        eventBus.emit(EVENTS.TWIST, { player: 1, lineCount: 2 });
+        stepFrames(theme, 1);
+        expect(theme.world.clears).toHaveLength(1);
+        expect(theme.world.onSpin).toHaveBeenCalledExactlyOnceWith(2);
+    });
+
     it('wakes the grotto to the longest chain on any board', async () => {
         const { theme } = await startTheme({ quality: 'High' });
         theme.reportCombo(2, 1);
@@ -930,7 +945,7 @@ describe('Bioluminescence theme: one node renderer on both backends', () => {
         }
         expect(world.combo).toBe(3);
         // The chain is let go of first, then the world is told the run is over.
-        expect(told(world, () => listeners.get('gameOver')())).toEqual(['onCombo', 'resetSession']);
+        expect(told(world, () => listeners.get('gameOver')())).toEqual(['onCombo', 'resetSession', 'onGameOver']);
         expect(world.sessions).toBe(1);
         expect(world.combo).toBe(0);
         expect(theme.combos.size).toBe(0);

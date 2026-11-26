@@ -18,6 +18,7 @@
 import * as THREE from 'three/webgpu';
 import {
     Fn,
+    If,
     abs,
     attribute,
     cameraProjectionMatrix,
@@ -196,41 +197,72 @@ export function createSpores(u, count) {
     const tau = u.time.sub(birth.w);
     const span = vel.w;
     const alive = step(0.0, tau).mul(step(tau, span));
-    const t = max(tau, 0.0);
+    const t = clamp(tau, 0.0, max(span, 0.0));
     const h = float(1.0).sub(exp(t.mul(-SPORE_DRAG))).div(SPORE_DRAG);
     const seed = phys.y;
+    // A negative encoded radius identifies a filament. Its velocity field holds the
+    // displacement to the next knot instead of a launch velocity.
+    const stroke = step(tint.w, -0.00001);
+    const ageK = clamp(t.div(max(span, 0.01)), 0.0, 1.0);
+    const loose = smoothstep(0.46, 0.96, ageK);
     // They do not fall straight: each one wanders as it goes.
     const flutter = vec2(
         sin(t.mul(seed.mul(1.7).add(1.1)).add(seed.mul(40.0))),
         sin(t.mul(seed.mul(1.3).add(0.9)).add(seed.mul(71.0))),
     ).mul(t.min(2.0)).mul(0.11);
-    const world = vec3(
+    const sporeWorld = vec3(
         birth.x.add(vel.x.mul(h)).add(flutter.x),
         max(birth.y.add(vel.y.mul(h)).sub(t.mul(t).mul(phys.x).mul(0.5)), 0.03),
         birth.z.add(vel.z.mul(h)).add(flutter.y),
     );
+    const drift = vec3(flutter.x, sin(seed.mul(16)).mul(h).mul(0.14), flutter.y);
+    const world = mix(sporeWorld, birth.xyz.add(drift.mul(loose)), stroke);
     const clip = viewProjection(world);
     const half = u.viewport.mul(0.5);
     const pxPerMetre = u.viewport.y.mul(1.05).div(max(clip.w, 0.3));
-    const px = clamp(tint.w.mul(pxPerMetre), u.viewport.y.mul(0.0016), u.viewport.y.mul(0.03)).mul(alive);
-    material.vertexNode = vec4(clip.xy.add(positionGeometry.xy.mul(px.mul(2.0)).div(half).mul(clip.w)), clip.z, clip.w);
-    const ageK = clamp(t.div(max(span, 0.01)), 0.0, 1.0);
+    const px = clamp(abs(tint.w).mul(pxPerMetre), u.viewport.y.mul(0.0016), u.viewport.y.mul(0.03)).mul(alive);
+    material.vertexNode = Fn(() => {
+        const offset = positionGeometry.xy.mul(px.mul(2)).toVar();
+        If(stroke.greaterThan(0.5).and(alive.greaterThan(0.5)), () => {
+            const next = viewProjection(world.add(vel.xyz)).toVar();
+            const delta = next.xy.div(max(next.w, 0.1)).sub(clip.xy.div(max(clip.w, 0.1))).mul(half).toVar();
+            const axis = delta.div(max(length(delta), 0.001)).toVar();
+            const cross = vec2(axis.y.negate(), axis.x);
+            // The footprint overlaps at each joint by half a bead. As the fibre decays,
+            // each segment contracts to one floating spore at its knot.
+            const along = delta.mul(uv().x).mul(float(1).sub(loose)).add(axis.mul(positionGeometry.x).mul(px));
+            offset.assign(along.add(cross.mul(positionGeometry.y).mul(px.mul(2))));
+        });
+        return vec4(clip.xy.add(offset.div(half).mul(clip.w)), clip.z, clip.w);
+    })();
     const fade = float(1.0).sub(ageK).mul(float(1.0).sub(ageK)).mul(smoothstep(0.0, 0.06, ageK));
     const wink = sin(t.mul(seed.mul(7.0).add(4.0)).add(seed.mul(30.0))).mul(0.3).add(0.7);
     // Born white-hot, cooling to their own colour.
     const hot = mix(vec3(1.0), tint.rgb, smoothstep(0.0, 0.22, ageK));
     const fog = float(1.0).sub(blFogAmount(clip.w, world.y).mul(0.8));
-    const vLight = varying(hot.mul(fade).mul(wink).mul(alive).mul(fog)
-        .mul(2.4), 'blSpore');
+    const fibre = float(1).sub(smoothstep(0.32, 1, ageK)).mul(smoothstep(0, 0.055, ageK));
+    const filamentLight = mix(tint.rgb, vec3(1), 0.11).mul(fibre).mul(2.6);
+    const vLight = varying(mix(hot.mul(fade).mul(wink).mul(2.4), filamentLight, stroke).mul(alive).mul(fog), 'blSpore');
+    const vStroke = varying(vec2(stroke, loose), 'blStroke');
     material.colorNode = Fn(() => {
         const q = uv().sub(0.5).mul(2.0);
-        const d = length(q);
-        return vec4(vLight.mul(exp(d.mul(d).mul(-6.0)).add(exp(d.mul(-4.0)).mul(0.1))).mul(smoothstep(1.0, 0.7, d)), 0.0);
+        const d = length(q).toVar();
+        const bead = exp(d.mul(d).mul(-6)).add(exp(d.mul(-4)).mul(0.1)).mul(smoothstep(1, 0.7, d)).toVar();
+        const ink = bead.toVar();
+        If(vStroke.x.greaterThan(0.5), () => {
+            const y2 = q.y.mul(q.y).toVar();
+            const spine = exp(y2.mul(-19)).mul(0.8).add(exp(y2.mul(-3.4)).mul(0.31));
+            const edge = float(1).sub(smoothstep(0.79, 1, abs(q.x)));
+            ink.assign(mix(spine.mul(edge).add(bead.mul(0.55)), bead, vStroke.y));
+        });
+        return vec4(vLight.mul(ink), 0);
     })();
 
     const part = blPart('BioluminescenceSpores', geometry, material, 30);
     let cursor = 0;
     let bursts = 0;
+    const offset = [0, 0, 0];
+    const next = [0, 0, 0];
     /**
      * Throw `n` spores from round a world point at `time` (which may be a moment ahead).
      * `spread` = how far from the point they start; `push` = a velocity they all share;
@@ -238,7 +270,7 @@ export function createSpores(u, count) {
      */
     part.emit = ({
         x, y, z, n, rgb, time, spread = 0, push = null, out = [0.3, 1.5], up = [0.2, 1.4], life = [1.2, 2.8],
-        size = 0.03, stagger = 0, gravity = -0.22,
+        size = 0.03, stagger = 0, gravity = -0.22, path = null, filament = false,
     }) => {
         const rand = mulberry32(0x3c0d + bursts * 7919);
         bursts += 1;
@@ -249,15 +281,27 @@ export function createSpores(u, count) {
             const a = rand() * TAU;
             const r = spread * Math.sqrt(rand());
             const speed = out[0] + (out[1] - out[0]) * rand() ** 1.6;
-            aBirth.set([x + Math.cos(a) * r, y, z + Math.sin(a) * r, time + rand() * stagger], i * 4);
-            aVel.set([
-                Math.cos(a) * speed + (push ? push[0] : 0),
-                up[0] + (up[1] - up[0]) * rand() + (push ? push[1] : 0),
-                Math.sin(a) * speed + (push ? push[2] : 0),
-                life[0] + (life[1] - life[0]) * rand(),
+            const along = (k + 0.5) / total;
+            if (path) path(filament ? k / total : along, offset);
+            const birthTime = time + (path ? along : rand()) * stagger;
+            aBirth.set([
+                x + Math.cos(a) * r + (path ? offset[0] : 0),
+                y + (path ? offset[1] : 0),
+                z + Math.sin(a) * r + (path ? offset[2] : 0),
+                birthTime,
             ], i * 4);
+            if (filament && path) {
+                path((k + 1) / total, next);
+                for (let c = 0; c < 3; c++) aVel[i * 4 + c] = next[c] - offset[c];
+            } else {
+                aVel[i * 4] = Math.cos(a) * speed + (push ? push[0] : 0);
+                aVel[i * 4 + 1] = up[0] + (up[1] - up[0]) * rand() + (push ? push[1] : 0);
+                aVel[i * 4 + 2] = Math.sin(a) * speed + (push ? push[2] : 0);
+            }
+            aVel[i * 4 + 3] = life[0] + (life[1] - life[0]) * rand();
             const g = 0.7 + rand() * 0.6;
-            aTint.set([rgb[0] * g, rgb[1] * g, rgb[2] * g, size * (0.55 + rand() * 0.9)], i * 4);
+            const radius = filament ? -size * (0.35 + 0.65 * Math.sin(along * Math.PI)) : size * (0.55 + rand() * 0.9);
+            aTint.set([rgb[0] * g, rgb[1] * g, rgb[2] * g, radius], i * 4);
             aPhys.set([gravity * (0.7 + rand() * 0.6), rand()], i * 2);
         }
         if (total > 0) {
@@ -303,7 +347,9 @@ export function createRowJets(u) {
     };
     const material = blFxMaterial('BioluminescenceRowJets', { depthTest: false });
     const rowY = mix(mix(uniforms.rows.x, uniforms.rows.y, step(0.5, row.x)), mix(uniforms.rows.z, uniforms.rows.w, step(2.5, row.x)), step(1.5, row.x));
-    const used = step(0.0, rowY).mul(step(0.001, uniforms.frame.w));
+    const since = u.time.sub(uniforms.frame.z);
+    const used = step(0.0, rowY).mul(step(0.001, uniforms.frame.w))
+        .mul(step(0.0, since)).mul(step(since, JET_TRAVEL + JET_FADE * 6));
     const along = positionGeometry.x.add(0.5);
     // From the card's edge out to the edge of the frame.
     const edge = mix(uniforms.frame.x, uniforms.frame.y, step(0.0, row.y));
