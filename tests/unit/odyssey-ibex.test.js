@@ -116,15 +116,28 @@ describe('the ibex model', () => {
         expect(model.triangles).toBeLessThanOrEqual(2600);
         const { attributes } = model.geometry;
         const head = model.skeleton.findIndex((b) => b.name === 'head');
+        const jaw = model.skeleton.findIndex((b) => b.name === 'jaw');
         let hornVerts = 0;
+        let beardVerts = 0;
+        let lipVerts = 0;
         for (let i = 0; i < attributes._horn.count; i += 1) {
-            if (attributes._horn.getW(i) < 0.5) continue;
-            hornVerts += 1;
-            // A horn rides the head alone.
-            expect(Math.round(attributes._bones.getX(i) * 255)).toBe(head);
-            expect(attributes._weights.getX(i)).toBeGreaterThan(0.99);
+            const part = attributes._horn.getW(i);
+            if (part > 0.5) {
+                const isBeard = part > 1.5;
+                if (isBeard) beardVerts += 1;
+                else hornVerts += 1;
+                expect(Math.round(attributes._bones.getX(i) * 255)).toBe(isBeard ? jaw : head);
+                expect(attributes._weights.getX(i)).toBeGreaterThan(0.99);
+            } else {
+                for (let j = 0; j < 4; j += 1) {
+                    if (Math.round(attributes._bones.getComponent(i, j) * 255) === jaw
+                        && attributes._weights.getComponent(i, j) > 0.25) lipVerts += 1;
+                }
+            }
         }
         expect(hornVerts).toBeGreaterThan(60);
+        expect(beardVerts).toBeGreaterThan(0);
+        expect(lipVerts).toBeGreaterThan(6);
         // A nanny at life size: about 0.8 m at the withers, the hooves on y = 0, the buck's horns
         // sweeping up to ~1.3 m.
         const box = new THREE.Box3().setFromBufferAttribute(attributes.position);
