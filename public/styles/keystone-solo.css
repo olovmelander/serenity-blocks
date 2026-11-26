@@ -243,6 +243,16 @@
     --sp-wall-glow: rgb(192 90 95 / 23%);
 }
 
+/* A tide-polished rim around the field and pale sun on the score. */
+:where(body:has(#waves-theme.active)) .single-player-stage[data-board='well']:not(:where(
+    .infinity-mode-active, [data-odyssey-board], [data-stillfall], [data-still-air], [data-danger]
+)) {
+    --sp-hue: #efd6ab;
+    --sp-hue-rgb: 239, 214, 171;
+    --sp-wall: #70a99d;
+    --sp-wall-glow: rgb(88 186 166 / 22%);
+}
+
 /* ---- The column: the queue over the well ------------------------------------------- */
 .single-player-stage[data-board='well'] #single-player-container {
     --board-width: inherit;
@@ -312,6 +322,16 @@
     border-radius: 3px;
     color: #fff0d4;
     background: rgb(28 30 31 / 91%);
+}
+
+/* The caption crosses the sunlit lip while the queue stays on the well. */
+:where(body:has(#waves-theme.active)) .single-player-stage[data-board='well']:not(:where(
+    .infinity-mode-active, [data-odyssey-board], [data-stillfall], [data-still-air], [data-danger]
+)) #single-player-container .single-player-piece-previews::before {
+    padding: 0.44em 0.55em;
+    border-radius: 3px;
+    color: #f5e3c3;
+    background: rgb(14 38 44 / 92%);
 }
 
 .single-player-stage[data-board='well'] #single-player-container .player-next-pieces {
@@ -507,6 +527,14 @@
     --sb-text-faint: #bad3d0;
     border-color: rgb(146 191 185 / 36%);
     background: linear-gradient(145deg, #19383afa, #101e2df7 62%, #281e36f7);
+}
+
+:where(body:has(#waves-theme.active)) .single-player-stage[data-board='well']:not(:where(
+    .infinity-mode-active, [data-odyssey-board], [data-stillfall], [data-still-air], [data-danger]
+)) .single-player-stats-bar {
+    --sb-text-faint: #a8c7c7;
+    border-color: rgb(132 192 182 / 40%);
+    background: linear-gradient(150deg, rgb(19 47 52 / 95%), rgb(8 26 36 / 96%) 74%);
 }
 
 :where(body:has(#himalayan-peak-theme.active)) .single-player-stage[data-board='well']:not(:where(

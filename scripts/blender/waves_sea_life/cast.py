@@ -77,9 +77,9 @@ def bottlenose():
     prims += both(fin('pectoral', root, V(1.0, -0.55, -0.62), V(0, 0, -1), us, lead, trail,
                       0.0105 - 0.0075 * us / 0.155, k=0.016, tmin=0.0026, side=1, along=0.25))
     # The dorsal fin: tall, swept, hooked at the tip.
-    us, lead, trail = planform(0.135, 0.135, 0.02, sweep=0.125, tip_round=0.2, trail_bulge=-0.04)
-    prims.append(fin('dorsal', V(0.0, 0.088, 0.07), V(0.0, 1.0, -0.66), V(0, 0, -1), us, lead, trail,
-                     0.012 - 0.0085 * us / 0.135, k=0.018, tmin=0.0026))
+    us, lead, trail = planform(0.144, 0.14, 0.014, sweep=0.09, tip_round=0.18, trail_bulge=-0.027)
+    prims.append(fin('dorsal', V(0.0, 0.085, 0.065), V(0.0, 1.0, -0.18), V(0, 0, -1), us, lead, trail,
+                     0.013 - 0.0085 * us / 0.144, k=0.016, tmin=0.003))
     us, lead, trail = planform(0.145, 0.078, 0.013, sweep=0.072, tip_round=0.12, trail_wave=notch_wave(0.012, 0.07))
     prims += both(fin('tail', V(0.0, 0.0, -0.378), V(1.0, 0.0, -0.2), V(0, 0, -1), us, lead, trail,
                       0.012 * (1 - 0.75 * us / 0.145), k=0.012, tmin=0.0026, side=1))

@@ -16,6 +16,7 @@ import { QUALITY_NAMES } from '../../src/themes/waves/waves-quality.js';
 import { THEME_REGISTRY } from '../../src/themes/theme-registry.js';
 import { THEME_URL_PARAMETERS } from '../../src/ui/url-parameters/theme-parameters.js';
 import { eventBus, EVENTS } from '../../src/events/event-bus.js';
+import { MULTIPLAYER_EVENTS } from '../../src/events/multiplayer-events.js';
 import { parseSeaLife, useSeaLife } from '../../src/themes/waves/waves-cast.js';
 
 vi.setConfig({ testTimeout: 30_000 }); // every start builds a whole wave, on a machine that may be busy
@@ -384,7 +385,10 @@ describe('Waves theme: one node renderer on both backends', () => {
         expect(theme.director).toBeTruthy();
         expect(await theme.whenCriticalReady()).toBe(true);
         expect(theme.usesMrtScenePass()).toBe(false);
-        expect(theme.getWarmupRoots()).toEqual([]);
+        const warmRoots = theme.getWarmupRoots();
+        expect(warmRoots).toContain(theme.world.wakeLace.mesh.parent);
+        expect(warmRoots).toContain(theme.world.pod.mesh);
+        expect(theme.world.pod.mesh.getObjectByName('waves-life-reflection:bottlenose')).toBeTruthy();
         expect(theme.getTetrominoConfig()).toBe(WAVES_TETROMINOS);
         expect(theme.getDiagnostics()).toMatchObject({
             backend: 'WebGPU',
@@ -672,6 +676,25 @@ describe('Waves theme: one node renderer on both backends', () => {
         expect(position.x).toBeCloseTo(REST_RIG.eye.x, 12);
         expect(position.y).toBeCloseTo(REST_RIG.eye.y, 12);
         expect(position.z).toBeCloseTo(REST_RIG.eye.z, 12);
+    });
+
+    it('routes local versus and Odyssey cues once on the next frame', async () => {
+        const { theme } = await startTheme({ quality: 'Minimal' });
+        const cue = vi.spyOn(theme.world, 'onSeaCue');
+        eventBus.emit(MULTIPLAYER_EVENTS.GARBAGE_SENT, { totalLines: 3, isLocal: false });
+        eventBus.emit(MULTIPLAYER_EVENTS.GARBAGE_INSERTED, { linesInserted: 2, isLocal: true });
+        eventBus.emit(MULTIPLAYER_EVENTS.GARBAGE_INSERTED, { linesInserted: 1, isLocal: true });
+        eventBus.emit(MULTIPLAYER_EVENTS.GARBAGE_COUNTERED, { linesCanceled: 4, isLocal: true });
+        eventBus.emit(MULTIPLAYER_EVENTS.GARBAGE_SENT, { totalLines: 1, isLocal: true });
+        eventBus.emit(EVENTS.ODYSSEY_GOAL_COMPLETE, {});
+        expect(cue).not.toHaveBeenCalled();
+        theme.stepFrame(16);
+        theme.stepFrame(32);
+        expect(cue.mock.calls).toEqual([['incoming', 3], ['counter', 4], ['outgoing', 1], ['goal', 1]]);
+        theme.handleSettingsChanged({ detail: { backgroundComboEffects: false } });
+        eventBus.emit(MULTIPLAYER_EVENTS.GARBAGE_SENT, { totalLines: 8, isLocal: true });
+        theme.stepFrame(48);
+        expect(cue).toHaveBeenCalledTimes(4);
     });
 
     it('ends the chain and empties the water when a run ends', async () => {

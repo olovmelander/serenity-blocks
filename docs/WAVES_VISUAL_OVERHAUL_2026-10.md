@@ -1,14 +1,15 @@
 # Waves — the green room (visual overhaul, 2026-10-09)
 
-**Status: implemented on branch `feature/waves-masterpiece` (worktree `serenity-blocks-waves`).
-A record of what was built and how it was checked — not a backlog.** The newest pass
-(2026-11-17: where the lip lands on the sea, and the animals beside the rider) is "Fourth pass"
-near the end, followed by "Fifth pass" (no pops, smooth turns, a livelier landing); the tables of what the board does and of the modules in "Third pass"
-(2026-11-16: light in the roof, the sea life, an effect for every event) are kept current. Replaces the "sculpted
+The November 26 pass revisits the barrel, sea, animals, gameplay reactions and UI on Three.js r187.
+Its audit, captures and verification are recorded under [November 26 visual audit](#november-26-visual-audit).
+
+The original overhaul was implemented on branch `feature/waves-masterpiece` (worktree `serenity-blocks-waves`).
+The November 16 and 17 passes cover light in the roof, sea life, smoother turns and the foam where
+the lip lands. The original overhaul replaces the "sculpted
 surf barrel" (a noise-textured cylinder with a painted sunset behind its far end) with the
 inside of a breaking wave that is shaped and shaded as one: a lip that is thrown and falls, water
-that is glass, and a board whose every move goes into it. Everything is on three 0.186.1 and
-shared by the game and the playground.
+that is glass, and a board whose every move goes into it. That version used Three.js 0.186.1.
+The game and the playground share the same wave world and post-processing.
 
 | Before | After (High, native WebGPU) |
 | --- | --- |
@@ -983,3 +984,32 @@ entry.
   the one ring each break of the surface has always laid.
 - The lint and fitness ratchets report counts below their baselines; the baselines were not
   updated here.
+
+## November 26 visual audit
+
+The first capture put the sunset and its reflection in the same sightline through the barrel.
+That framing survived the revision. Comparing the same instant exposed where the illusion broke.
+
+| Surface | What showed in play | Change |
+| --- | --- | --- |
+| Curl and water wall | The roof formed a regular arch. Repeated cell outlines covered much of the wall. | The upper sheet pitches outward with passing swells. Moving folds change its optical thickness, bend light through the roof and focus it onto the deep face. At moonrise, agitated pockets of water also catch blue plankton light. |
+| Lip and whitewater | The lower lip could leave a straight seam above the trough. The landing often looked like a row of white puffs. | The lip plunges into the trough. Both surfaces sample the same rolling foam at contact. Bursts lean and break into fingers. Airborne beads carry a small bright reflection and a second highlight at their lower edge. |
+| Sky and open sea | Straight cloud bands flattened the view through the opening. The glitter path had little structure across its width. | Low cumulus catches the sun along its edges while high cirrus drifts across it. Cross swells continually break up the reflection. The sun has an amber limb, the moon has surface detail, and a perfect clear briefly puts a colored corona in the spray. |
+| Leaping animals | Against the sun the bottlenose lost its dorsal outline. The wet body and its landing were difficult to relate to the sea. | The Blender model has a taller, swept dorsal fin. The bank separates the fin and flukes in silhouette. Medium and higher tiers mirror the surfaced animals in the swell. A breaching humpback displaces water at both takeoff and re-entry. The six-species pack remains 435,620 bytes. |
+| Events | Additional lines mostly added more light and spray to already bright whitewater. The theme missed versus attacks and several run outcomes. | Doubles split a bow wake, triples peel in three stages, and cascades skip down the wave. Attacks travel in opposite directions along the glass and cross when countered. A twist peels spray into the tube. Four lines suspend the breaking crest. A perfect clear adds the solar corona, pod and breaching whale. |
+| Board and HUD | The violet well and pale caption competed with the sunset. A portrait board could cover the sun. | The solo well and ledger use deep teal with pale sea-glass edges. The next queue has its own dark backing. Pieces keep seven distinct hues. The phone camera uses the measured top of the card to frame the sun above it as its elevation changes. |
+
+[Before and after at the same instant](waves-overhaul/november-barrel.jpg) · [Gameplay event frames](waves-overhaul/november-events.jpg) · [The live solo well](waves-overhaul/november-solo.jpg)
+
+The six hours and four sea states still run on independent clocks. They now change the direction
+of the light, cloud cover, pitch of the roof, texture of the glitter trail and color of the
+whitewater. Camera movement continues to respect reduced motion. The scene uses the existing
+spray and foam pools. On High their 2,472 event quads are idle until needed. The full-screen water
+shader also skips expired clear bands, and the animal reflection shares the existing geometry.
+
+The run outcomes each have their own shape on the exposed water beside the card. A top-out lets a
+foam shelf slump from its middle, a respawn sends a column of rimmed air bubbles up the glass, and
+the end of a run leaves a fading wake of blue plankton. Local and online versus boards that mount
+after their lobby are measured again when they appear, so their events aim past the right card.
+These three outcomes were checked in the playground on WebGPU and WebGL2. The board-tracking path
+is unit-tested; it has not been captured in a live couch or online match.

@@ -177,7 +177,7 @@ describe('waves world: build', () => {
             const { mesh } = world.parts[name];
             expect(mesh.parent, name).toBe(world.group);
             expect(mesh.visible, name).toBe(true);
-            // (The sea life is a group: one instanced mesh per kind, two materials for them all.)
+            // The sea life is grouped by kind and shares the skin and reflection materials.
             const drawn = [];
             mesh.traverse((object) => { if (object.isMesh) drawn.push(object); });
             expect(drawn.length, name).toBeGreaterThan(0);
@@ -187,7 +187,8 @@ describe('waves world: build', () => {
                 materials.add(object.material);
             }
         }
-        expect(materials.size).toBe(PARTS.length + 1);
+        // Transient crests on the glass have one pooled material beneath the water mesh.
+        expect(materials.size).toBe(PARTS.length + 2 + tier.trace);
         expect(Object.keys(world.pod.fauna.kinds).sort()).toEqual([...KINDS].sort());
         // What the tier pays for.
         expect(world.pod.count).toBe(tier.dolphins);
@@ -281,8 +282,9 @@ describe('waves world: build', () => {
         });
         made.set(world.noise, 'the noise texture');
         made.set(world.lace, 'the foam-cell texture');
-        // Each part a geometry and a material; the sea life one geometry a kind and two materials.
-        expect(made.size).toBe((PARTS.length - 1) * 2 + KINDS.length + 2 + 2);
+        // Each part owns a geometry and a material. The cast shares air, underwater and mirror
+        // materials, using the same geometry for each species in all three draws.
+        expect(made.size).toBe((PARTS.length - 1) * 2 + KINDS.length + 3 + 2 + 2);
         // The pack's own bodies are every world's: none of them is let go.
         const shared = KINDS.map((kind) => vi.spyOn(PACK.kinds[kind].geometry, 'dispose'));
         const spies = [...made.entries()].map(([resource, label]) => [vi.spyOn(resource, 'dispose'), label]);
@@ -768,6 +770,7 @@ describe('waves world: clears', () => {
         expect(thrown(world)).toBeGreaterThan(0);
         // On the next frame the barrel has opened a little, the water is lit and the lip tears.
         frame(world, camera, DT);
+        expect(world.U.counts.value.z).toBe(lines);
         expect(world.U.open.value).toBeGreaterThan(0);
         expect(world.getState().landing).toBeLessThan(landingDistance(0));
         expect(world.U.glow.value).toBeGreaterThan(0);
@@ -780,6 +783,7 @@ describe('waves world: clears', () => {
         // clock has not yet sent its own set wave down it: that comes half-way through the hour).
         run(world, camera, 30);
         expect(liveBands(world)).toHaveLength(0);
+        expect(world.U.counts.value.z).toBe(0);
         expect(world.U.open.value).toBeLessThan(1e-3);
         expect(world.U.glow.value).toBeLessThan(1e-3);
         expect(world.U.tear.value).toBeLessThan(1e-3);
@@ -1965,6 +1969,17 @@ describe('waves world: the lens and what the post is told', () => {
         const rest = makeWorld('Low');
         expect(world.getPostState().shafts).toBeGreaterThan(rest.world.getPostState().shafts);
         expect(rest.world.getPostState().shafts).toBeGreaterThan(0);
+    });
+
+    it('keeps the changing sun in the strip above a portrait well', () => {
+        const { camera, world } = makeWorld('Minimal', { width: 390, height: 844 });
+        for (const level of [1, 2, 4, 6]) {
+            world.levelUp(level, { silent: true });
+            run(world, camera, 4);
+            const { sun } = world.getState();
+            expect(sun.y).toBeGreaterThan(0);
+            expect(sun.y).toBeLessThan(world.layout.cards[0].y0);
+        }
     });
 
     it('tells the post where the sun stands: left of the card on a wide screen, no shafts from behind the lens', () => {

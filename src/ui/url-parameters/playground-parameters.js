@@ -1115,6 +1115,16 @@ export const PLAYGROUND_URL_PARAMETERS = [
     {
         name: 'depth',
         category: 'Playground',
+        scope: 'playground.html — waves',
+        description: 'Choose the cascade step to show as spray skipping along the trough.',
+        values: 'Whole number from 1 to 9.',
+        defaultValue: '3.',
+        example: 'effect=waves&t=18&event=cascade&depth=4&eventAge=1.1',
+        sources: ['src/playground/effects/waves.effect.js'],
+    },
+    {
+        name: 'depth',
+        category: 'Playground',
         scope: 'playground.html — black-hole',
         description: 'Choose how many waves feed the accretion disk during a cascade replay.',
         values: 'Whole number from 2 to 8, including the initial clear.',
@@ -1320,6 +1330,9 @@ export const PLAYGROUND_URL_PARAMETERS = [
             + 'perfect, crown, break, levelUp, over; Vesper Chrysalis: lock, drop, clear, quad, '
             + 'twist, perfect, levelUp, break; Stillwater and Moonlit Greenhouse: lock, drop, clear, '
             + 'quad, twist, perfect, levelUp, break); cue names are case-sensitive in most effects. '
+            + 'Waves accepts lock, drop, clear, quad, twist, spin, b2b, cascade, perfect, levelUp, incoming, '
+            + 'outgoing, counter, topout, respawn, round, goal, victory and end. Set lines to choose a clear size. '
+            + 'Set combo to hold a chain. '
             + 'Black Hole accepts lock, drop, clear, double, triple, quad, twist, twist0 (a twist without '
             + 'a clear), b2b, perfect, cascade, combo, break, level, over and touch. '
             + 'Summer: lock, drop, clear, double, triple, quad, combo, streak, spin, perfect, level, '

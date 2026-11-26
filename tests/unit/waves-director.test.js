@@ -6,7 +6,7 @@ import {
 } from '../../src/themes/waves/waves-director.js';
 import {
     BOARD_GRID, BOARD_SELECTOR, HUD_SELECTOR, PLAYER_SLOTS, SOLO_CANVAS_SELECTORS, boardFor, boardPoint, cardFor,
-    fallbackLayout, playerCanvasSelector, readLayoutRects,
+    fallbackLayout, playerCanvasSelector, readLayoutRects, watchBoardLayout,
 } from '../../src/themes/waves/waves-composition.js';
 import { WAVES_TETROMINOS } from '../../src/themes/waves/waves-tetrominos.js';
 import { EVENTS } from '../../src/events/event-bus.js';
@@ -33,6 +33,25 @@ function makeDirector(options = {}) {
 }
 
 describe('waves director: intake', () => {
+    it('coalesces sea cues within each frame and discards them when reactions are disabled', () => {
+        const seaCue = vi.fn();
+        const director = new WavesDirector({ sink: { seaCue } });
+        director.onSeaCue('incoming', 3);
+        director.onSeaCue('incoming', 9);
+        director.onSeaCue('counter', 2);
+        director.onSeaCue('outgoing', 0);
+        expect(seaCue).not.toHaveBeenCalled();
+        director.flush();
+        director.flush();
+        expect(seaCue.mock.calls).toEqual([['incoming', 8], ['counter', 2]]);
+        director.onSeaCue('outgoing', 4);
+        director.configure({ enabled: false });
+        director.onSeaCue('respawn');
+        director.configure({ enabled: true });
+        director.flush();
+        expect(seaCue).toHaveBeenCalledTimes(2);
+    });
+
     it('names a handler for every canonical gameplay event it listens to', () => {
         const director = new WavesDirector();
         for (const [event, handler] of Object.entries(WAVES_EVENT_HANDLERS)) {
@@ -429,7 +448,8 @@ describe('waves composition', () => {
             getComputedStyle: () => ({ display: 'block', visibility: 'visible', opacity: '1' }),
         };
         const layout = readLayoutRects(doc, win);
-        expect(layout.cardCount).toBe(1);
+        expect(layout.cardCount).toBe(2);
+        expect(layout.cards[1]).toBe(layout.boards[2]);
         expect(layout.cards[0]).toEqual({
             x0: 0.375, y0: 50 / 900, x1: 0.625, y1: 850 / 900,
         });
@@ -449,8 +469,15 @@ describe('waves composition', () => {
             const dark = { ...win, getComputedStyle: () => ({ ...shown, ...style }) };
             expect(readLayoutRects(doc, dark), JSON.stringify(style)).toBeNull();
         }
-        const offscreen = { ...doc, querySelectorAll: () => [el(rect(2000, 50, 400, 800))] };
+        const offscreen = { querySelector: () => null, querySelectorAll: () => [el(rect(2000, 50, 400, 800))] };
         expect(readLayoutRects(offscreen, win)).toBeNull();
+        // Online uses a separate Phaser host and mount, and delivers play on the primary slot.
+        const online = readLayoutRects({
+            querySelectorAll: () => [],
+            querySelector: (q) => (q === '#online-main-board canvas:not(.spectator-spotlight-canvas)' ? canvas : null),
+        }, win);
+        expect(online.boards[0]).toEqual(layout.boards[0]);
+        expect(online.cards).toEqual([online.boards[0]]);
         const empty = { querySelectorAll: () => [], querySelector: () => null };
         expect(readLayoutRects(empty, win)).toBeNull();
         expect(readLayoutRects(null, win)).toBeNull();
@@ -459,5 +486,35 @@ describe('waves composition', () => {
         const bare = readLayoutRects({ querySelectorAll: () => [card], querySelector: () => null }, win);
         expect(bare).toMatchObject({ cardCount: 1, hud: null });
         expect(bare.boards.every((b) => b === null)).toBe(true);
+    });
+
+    it('schedules fresh reads when playfields mount after a lobby, and disconnects on theme exit', () => {
+        const host = {};
+        const card = {};
+        const hud = {};
+        const resized = { observe: vi.fn(), disconnect: vi.fn() };
+        const mounted = { observe: vi.fn(), disconnect: vi.fn() };
+        let resize;
+        let mount;
+        vi.stubGlobal('ResizeObserver', class { constructor(fn) { resize = fn; return resized; } });
+        vi.stubGlobal('MutationObserver', class { constructor(fn) { mount = fn; return mounted; } });
+        try {
+            const read = vi.fn();
+            const disconnect = watchBoardLayout(read, {
+                querySelectorAll: (selector) => (selector === BOARD_SELECTOR ? [card] : [host]),
+                querySelector: () => hud,
+            });
+            expect(mounted.observe).toHaveBeenCalledWith(host, { childList: true });
+            expect(resized.observe.mock.calls).toEqual([[host], [card], [hud]]);
+            expect(read).not.toHaveBeenCalled();
+            mount();
+            resize();
+            expect(read).toHaveBeenCalledTimes(2);
+            disconnect();
+            expect(resized.disconnect).toHaveBeenCalledOnce();
+            expect(mounted.disconnect).toHaveBeenCalledOnce();
+        } finally {
+            vi.unstubAllGlobals();
+        }
     });
 });

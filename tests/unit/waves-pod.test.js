@@ -199,6 +199,7 @@ describe('waves life: the animals', () => {
         const materials = new Set();
         for (const kind of KINDS) {
             const { inAir, behind, geometry } = kinds[kind];
+            expect(kinds[kind].reflection).toBeNull();
             expect(inAir.geometry).toBe(geometry);
             expect(inAir.frustumCulled).toBe(false);
             materials.add(inAir.material);
@@ -226,6 +227,21 @@ describe('waves life: the animals', () => {
         for (const kind of KINDS) {
             expect(kinds[kind].inAir.visible).toBe(false);
             expect(instance(life, kind).metres).toBe(0);
+        }
+    });
+
+    it('mirrors a leaper on the open sea while it is above water and releases the draw when it dives', () => {
+        const life = makeLife('High');
+        const arc = life.leap(4, 0, { hero: true });
+        const { reflection, geometry } = life.fauna.kinds.bottlenose;
+        expect(reflection.geometry).toBe(geometry);
+        expect(reflection.material.depthWrite).toBe(false);
+        expect(reflection.material.blendDstAlpha).toBe(THREE.OneFactor);
+        expect(life.fauna.kinds.humpback.reflection.material).toBe(reflection.material);
+        expect(life.fauna.kinds.turtle.reflection).toBeNull();
+        for (const [time, visible] of [[0, false], [4 + arc.flight / 2, true], [4 + arc.flight + 1, false]]) {
+            life.update(time, 0, null);
+            expect(reflection.visible).toBe(visible);
         }
     });
 
@@ -528,7 +544,8 @@ describe('waves pod: thrown spray', () => {
         for (const quality of QUALITY_NAMES) {
             const pool = makePool(quality);
             expect(pool.count).toBe(QUALITY[quality].spray);
-            expect(pool.geometry.instanceCount).toBe(pool.count);
+            expect(pool.geometry.instanceCount).toBe(0);
+            expect(pool.buffer.count).toBe(pool.count);
             expect(pool.cursor).toBe(0);
             expect(thrown(pool)).toHaveLength(0);
             const all = drops(pool);
@@ -538,6 +555,21 @@ describe('waves pod: thrown spray', () => {
             expect(pool.data.every(Number.isFinite)).toBe(true);
         }
         expect(GRAVITY).toBeGreaterThan(0);
+    });
+
+    it('draws through the last active drop and wakes a later splash after an empty interval', () => {
+        const pool = makePool();
+        const drop = (birth, life) => pool.drop(0, birth, 0, 2, -4, 0, 1, 0, 0.03, [1, 1, 1], life);
+        drop(1, 2);
+        drop(7, 2);
+        drop(2, 0.5);
+        expect(pool.mesh.visible).toBe(true); // Still available to the first pipeline compile.
+        for (const [time, count] of [[0, 0], [1.25, 1], [2.2, 3], [2.55, 1], [4, 0], [7.2, 2], [10, 0]]) {
+            pool.drawRange.update(time);
+            expect(pool.geometry.instanceCount, String(time)).toBe(count);
+        }
+        pool.reset();
+        expect(pool.geometry.instanceCount).toBe(0);
     });
 
     it('throws a crown: as many drops as asked for, up and out from the point it is given', () => {

@@ -18,6 +18,6 @@ attribute. Regenerate (about a minute and a half) with
     blender --background --factory-startup --python scripts/blender/waves_sea_life_assets.py -- \
         [--out src/themes/waves/assets/sea-life.glb] [--only bottlenose,spinner] [--review <dir>]
 
-_Built with Blender 5.2 on 2026-11-17 (the flying fish of the 2026-11-16 pack was taken out; the
-manta and the turtle, seen closest, were given more triangles). It replaced a dolphin grown in
-code at run time (a lofted body and five flat fins)._
+The cast was built with Blender 5.2 on 2026-11-17. The bottlenose was revised in Blender 5.2.2
+on 2026-11-26. Its swept dorsal fin stands clear of its back during the sunlit crossing. Its
+mesh uses 5,200 triangles.

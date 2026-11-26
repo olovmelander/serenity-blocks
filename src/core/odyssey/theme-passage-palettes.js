@@ -68,7 +68,7 @@ export const ODYSSEY_THEME_PASSAGE_PALETTES = Object.freeze({
     'vesper-chrysalis': ['#fbd3c4', '#e4737f', '#fca36f', '#803f58', 0.55],
     'void-ember': ['#f4a734', '#c24f08', '#d8761c', '#400303', 0.28],
     'voltage-storm': ['#cedcff', '#3b5893', '#7d94c4', '#0c1c4b', 0.31],
-    waves: ['#fde08c', '#e7a649', '#2c768c', '#325b5e', 0.59],
+    waves: ['#e8dbde', '#e59c80', '#679797', '#676466', 0.62],
     winter: ['#c2fefb', '#2decb0', '#5597b8', '#2f618c', 0.68],
     wolfhour: ['#cfced2', '#606f8b', '#929aab', '#131723', 0.35],
 });
