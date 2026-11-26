@@ -21,13 +21,13 @@ function expectClearDisk(layout, width, height, rects = []) {
 describe('Blood Moon composition', () => {
     it('places the wide hero at the upper left and the portrait hero at the upper right', () => {
         expect(resolveBloodMoonLayout(1920, 1080)).toEqual({
-            x: 0.22, y: 0.7, radius: 0.15, horizon: 0.34,
+            x: 0.22, y: 0.7, radius: 0.172, horizon: 0.439,
         });
         const portrait = resolveBloodMoonLayout(600, 900);
         expect(portrait.x).toBeCloseTo(0.72);
         expect(portrait.y).toBeCloseTo(0.83);
         expect(portrait.radius).toBeCloseTo(0.11);
-        expect(portrait.horizon).toBeCloseTo(0.45);
+        expect(portrait.horizon).toBeCloseTo(0.47);
         expectClearDisk(portrait, 600, 900);
     });
 
@@ -63,7 +63,7 @@ describe('Blood Moon composition', () => {
         }];
         const layout = resolveBloodMoonLayout(1920, 1080, rects);
         expect(layout.x).toBeCloseTo(0.22);
-        expect(layout.radius).toBeCloseTo(0.15);
+        expect(layout.radius).toBeCloseTo(0.172);
         expectClearDisk(layout, 1920, 1080, rects);
     });
 
@@ -112,7 +112,7 @@ describe('Blood Moon composition', () => {
         expect(BLOOD_MOON_TIERS.Minimal.surfaceSize).toBe(512);
         expect(BLOOD_MOON_TIERS.Extreme.surfaceSize).toBe(2048);
         for (let i = 1; i < tiers.length; i++) {
-            for (const key of ['starLayers', 'cellReach', 'ripples', 'sparks', 'surfaceSize']) {
+            for (const key of ['starLayers', 'waterWaves', 'ripples', 'sparks', 'surfaceSize']) {
                 expect(tiers[i][key]).toBeGreaterThanOrEqual(tiers[i - 1][key]);
             }
         }
@@ -250,13 +250,18 @@ describe('Blood Moon reactions', () => {
         expect(forward.burstAge).toBe(0.25);
     });
 
-    it('signals bursts for doubles and combos without replaying one on an age-zero lock', () => {
+    it('reserves the annular ember shower for four lines and the perfect clear', () => {
         const state = new BloodMoonReactions();
         expect(state.cue('clear', { lines: 1 })).toBe(0);
-        expect(state.cue('clear', { lines: 2 })).toBeGreaterThan(0);
+        expect(state.cue('clear', { lines: 2 })).toBe(0);
+        expect(state.cue('clear', { lines: 3 })).toBe(0);
+        expect(state.cue('twist', { lines: 3 })).toBe(0);
+        expect(state.cue('combo', { combo: 5 })).toBe(0);
+        expect(state.cue('quad')).toBeGreaterThan(0);
         state.update(0);
         expect(state.cue('lock')).toBe(0);
-        expect(state.cue('combo', { combo: 2 })).toBeGreaterThan(0);
+        expect(state.cue('combo', { combo: 2 })).toBe(0);
+        expect(state.cue('perfectClear')).toBeGreaterThan(0);
         state.reducedMotion = true;
         expect(state.cue('quad')).toBe(0);
     });

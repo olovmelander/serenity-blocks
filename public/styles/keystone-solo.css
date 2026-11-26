@@ -213,6 +213,16 @@
     --sp-wall-glow: rgb(214 112 65 / 20%);
 }
 
+/* Rose copper on the glass and pale silver on the score and next piece. */
+:where(body:has(#blood-moon-theme.active)) .single-player-stage[data-board='well']:not(:where(
+    .infinity-mode-active, [data-odyssey-board], [data-stillfall], [data-still-air], [data-danger]
+)) {
+    --sp-hue: #edc7bc;
+    --sp-hue-rgb: 237, 199, 188;
+    --sp-wall: #a96671;
+    --sp-wall-glow: rgb(192 90 95 / 23%);
+}
+
 /* ---- The column: the queue over the well ------------------------------------------- */
 .single-player-stage[data-board='well'] #single-player-container {
     --board-width: inherit;
@@ -326,6 +336,13 @@
     opacity: 0.6;
 }
 
+:where(body:has(#blood-moon-theme.active)) .single-player-stage[data-board='well']:not(:where(
+    .infinity-mode-active, [data-odyssey-board], [data-stillfall]
+)) #single-player-container .single-player-piece-previews::before {
+    color: #e0c7c7;
+    text-shadow: 0 1px 3px #130c15, 0 0 5px #130c15;
+}
+
 /* ---- The well: plain glass between walls that fade toward the open top -------------- */
 .single-player-stage[data-board='well'] #single-player-container .player-board-section {
     position: relative;
@@ -347,6 +364,13 @@
     border-radius: 0 0 var(--sp-floor-r) var(--sp-floor-r);
     background: linear-gradient(180deg, rgba(9, 8, 24, 0.3) 0%, rgba(9, 8, 24, 0.84) 16%, rgba(9, 8, 24, 0.9) 100%);
     box-shadow: none;
+}
+
+/* A denser glass at the spawn rows keeps bright stars behind the falling silhouette. */
+:where(body:has(#blood-moon-theme.active)) .single-player-stage[data-board='well']:not(:where(
+    .infinity-mode-active, [data-odyssey-board], [data-stillfall]
+)) #single-player-card #phaser-game-container {
+    background: linear-gradient(180deg, rgb(18 12 24 / 76%), rgb(16 12 24 / 92%) 21%, rgb(14 12 22 / 94%));
 }
 
 /* The walls: left, right and floor, fading out toward the top; the pieces meet them. */
@@ -501,6 +525,14 @@
     --sb-text-faint: #cec4ae;
     border-color: rgb(207 172 115 / 38%);
     background: linear-gradient(149deg, rgb(45 48 44 / 97%), rgb(23 28 32 / 97%) 66%, rgb(35 29 33 / 97%));
+}
+
+:where(body:has(#blood-moon-theme.active)) .single-player-stage[data-board='well']:not(:where(
+    .infinity-mode-active, [data-odyssey-board], [data-stillfall]
+)) .single-player-stats-bar {
+    --sb-text-faint: #ccb8be;
+    border-color: rgb(200 151 151 / 34%);
+    background: linear-gradient(155deg, rgb(49 28 39 / 97%), rgb(22 19 32 / 96%) 72%);
 }
 
 /* The mode's hue as the ledger's left edge, like a seat's plate in local versus. */

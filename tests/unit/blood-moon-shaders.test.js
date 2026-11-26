@@ -252,7 +252,7 @@ describe.each(TIERS)('blood moon shaders at %s', (quality) => {
         const found = helpers(world.out.fragment);
         const names = found.map((h) => h.name);
         expect(names).toEqual(expect.arrayContaining(['bmLunarLight']));
-        expect(names.some((name) => name.startsWith('bmSaltCells'))).toBe(true);
+        expect(names).toContain('bmMineralRim');
         expect(new Set(names).size).toBe(names.length);
         found.forEach((h) => expect(captures(h.body), h.name).toBeNull());
     });
@@ -265,7 +265,7 @@ describe('blood moon under Reduce flashing effects', () => {
         vi.unstubAllGlobals();
     });
 
-    async function lightAfterQuad(reduceFlashing) {
+    async function lightAfter(reduceFlashing, kind, age) {
         restore.push(vi.spyOn(THREE.TextureLoader.prototype, 'load').mockImplementation(() => new THREE.Texture()));
         restore.push(vi.spyOn(THREE.ImageLoader.prototype, 'load').mockImplementation(() => {}));
         vi.stubGlobal('window', {
@@ -284,16 +284,17 @@ describe('blood moon under Reduce flashing effects', () => {
             sizes: { width: 1600, height: 900 },
         });
         runtime.update(2, 1 / 60);
-        runtime.cue('quad', { lineCount: 4 });
-        runtime.update(2.2, 0.2);
+        runtime.cue(kind, { lineCount: 4 });
+        for (let i = 1; i <= Math.round(age * 60); i++) runtime.update(2 + i / 60, 1 / 60);
         const { eventLight, ripples } = runtime.getDiagnostics();
         runtime.dispose();
         return { ...eventLight, ripples };
     }
 
-    it('keeps under a tenth of every flare round the moon, and still drops its rings', async () => {
-        const full = await lightAfterQuad(false);
-        const held = await lightAfterQuad(true);
+    const flareCases = [['quad', 0.05], ['perfectClear', 0.6]];
+    it.each(flareCases)('holds the %s flare under a tenth at %ss, with its ripples', async (kind, age) => {
+        const full = await lightAfter(false, kind, age);
+        const held = await lightAfter(true, kind, age);
         expect(full.corona).toBeGreaterThan(0.2);
         expect(full.wave).toBeGreaterThan(0.2);
         expect(held.corona).toBeLessThan(full.corona * 0.1);
