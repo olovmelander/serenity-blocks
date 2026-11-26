@@ -68,6 +68,10 @@ function createSlot(scene, geometry, shared, index) {
     const fast = step(0.5, scatter.w).mul(float(1).sub(glitter));
     const delay = mix(scatter.z.mul(0.04), scatter.z.mul(0.36).add(0.065), glitter);
     const localAge = max(state.ageNode.sub(delay), 0);
+    // Keep a comparable illuminated area when the tier puts more sparks on
+    // the same shell. In a narrow frame their projected density also rises.
+    const grainScale = Math.min(1.22, Math.max(0.57, Math.sqrt(510 / Math.max(1, geometry.instanceCount))));
+    const crowding = shared.aspect ? shared.aspect.mul(0.34).add(0.4).clamp(0.5, 1) : float(1);
     const material = new THREE.MeshBasicNodeMaterial({
         transparent: true,
         depthWrite: false,
@@ -114,7 +118,7 @@ function createSlot(scene, geometry, shared, index) {
         // Round incandescent embers retain broad red halos. Only fast ejecta
         // stretch, and no sprite exceeds a 12 CSS-pixel radius.
         const shortRadius = mix(flight.z.mul(5.5).add(3.5), flight.z.mul(4).add(2.5), glitter)
-            .mul(float(1).sub(settled.mul(0.16)));
+            .mul(float(1).sub(settled.mul(0.16))).mul(grainScale);
         const longRadius = shortRadius.add(fast.mul(flight.z.mul(2).add(1)));
         const offset = axis.mul(positionGeometry.x.mul(longRadius))
             .add(normal.mul(positionGeometry.y.mul(shortRadius)));
@@ -131,13 +135,15 @@ function createSlot(scene, geometry, shared, index) {
         const fade = appear.mul(exp(localAge.mul(mix(float(-0.42), float(-0.27), glitter))))
             .mul(float(1).sub(smoothstep(4.7, LIFETIME, state.ageNode)));
         const twinkle = sin(localAge.mul(8).add(flight.w)).mul(0.15).add(0.85);
-        const crimson = mix(vec3(3.2, 0.003, 0.018), vec3(5, 0.025, 0.055), flight.z);
-        const roseGlint = vec3(5.5, 2.3, 2.7).mul(core)
-            .mul(mix(float(0.24), float(1.3), smoothstep(0.65, 0.95, flight.z)))
+        const crimson = mix(vec3(1.9, 0.024, 0.06), vec3(2.9, 0.23, 0.09), flight.z);
+        const roseGlint = vec3(3.7, 1.7, 1.02).mul(core)
+            .mul(mix(float(0.22), float(1.1), smoothstep(0.65, 0.95, flight.z)))
             .mul(state.heat.mul(0.45).add(1));
-        return crimson.mul(ember.mul(0.68).add(halo.mul(0.34)))
+        return crimson.mul(ember.mul(0.61).add(halo.mul(0.19)))
             .add(roseGlint).mul(fade).mul(twinkle)
-            .mul(state.strength);
+            .mul(state.strength)
+            .mul(crowding)
+            .mul(shared.eventFlash || 1);
     })();
     material.opacityNode = float(1);
     const object = new THREE.Mesh(geometry, material);

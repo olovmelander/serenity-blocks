@@ -4,6 +4,7 @@ import {
 
 import BloodMoonTheme from '../../src/themes/blood-moon/blood-moon-theme.js';
 import { eventBus, EVENTS } from '../../src/events/event-bus.js';
+import { MULTIPLAYER_EVENTS } from '../../src/events/multiplayer-events.js';
 
 const mocks = vi.hoisted(() => ({ renderers: [], options: [], create: vi.fn() }));
 vi.mock('three/webgpu', async (original) => ({
@@ -330,6 +331,22 @@ describe('Blood Moon production lifecycle', () => {
         expect(scene.setCombo).toHaveBeenLastCalledWith(2);
         win.dispatch('gameOver');
         expect(scene.setCombo).toHaveBeenLastCalledWith(0);
+        expect(scene.cue.mock.lastCall[0]).toBe('gameOver');
+    });
+
+    it('registers only local garbage and counters, and settles on the final versus result', async () => {
+        const value = theme();
+        const { scene } = allocation();
+        await value.createScene();
+        eventBus.emit(MULTIPLAYER_EVENTS.GARBAGE_INSERTED, { isLocal: false, linesInserted: 3 });
+        eventBus.emit(MULTIPLAYER_EVENTS.GARBAGE_COUNTERED, { isLocal: false, linesCanceled: 2 });
+        eventBus.emit(MULTIPLAYER_EVENTS.GAME_OVER, { isGameOver: false });
+        eventBus.emit(EVENTS.B2B, { active: false });
+        expect(scene.cue).not.toHaveBeenCalled();
+        eventBus.emit(MULTIPLAYER_EVENTS.GARBAGE_INSERTED, { isLocal: true, linesInserted: 3 });
+        eventBus.emit(MULTIPLAYER_EVENTS.GARBAGE_COUNTERED, { isLocal: true, linesCanceled: 2 });
+        eventBus.emit(MULTIPLAYER_EVENTS.GAME_OVER, { isGameOver: true });
+        expect(scene.cue.mock.calls.map(([kind]) => kind)).toEqual(['garbage', 'counter', 'gameOver']);
     });
 
     it('rebuilds content on quality updates with payload precedence and coalesces the rebuild', async () => {
