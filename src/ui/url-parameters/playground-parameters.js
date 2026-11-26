@@ -713,7 +713,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             + 'vesper-chrysalis, void-ember, voltage-storm, waves, winter',
         description: 'Set the piece/reaction color.',
         values: 'CSS color; encode # as %23; hex works across these previews.',
-        defaultValue: 'Effect palette (Aurora #6cf5ff; Black Hole #f8b24f).',
+        defaultValue: 'Effect palette. Aurora uses #6cf5ff. Black Hole uses the locked piece’s colour.',
         example: 'color=%236cf5ff',
         notes: 'Use on playground.html with effect=<the matching effect ID>.',
         sources: [
@@ -789,7 +789,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             + 'clears held: the fireflies fall into step and the moss climbs the columns. In Rainbark '
             + 'it is the chain the canopy holds open (one pool of sunlight per link). In Kaleidosonic '
             + 'it is the chain that holds the trance: the temple grows finer and the lens folds into a '
-            + 'kaleidoscope as it grows.',
+            + 'kaleidoscope as it grows. Black Hole replays 2–16 clears for a combo and 4–16 for a break, with 5 by default.',
         defaultValue: 'Effect-dependent: held state 0; common cue previews 4–7.',
         example: 'combo=5',
         notes: 'Use on playground.html with effect=<the matching effect ID>.',
@@ -1115,6 +1115,29 @@ export const PLAYGROUND_URL_PARAMETERS = [
     {
         name: 'depth',
         category: 'Playground',
+        scope: 'playground.html — waves',
+        description: 'Choose the cascade step to show as spray skipping along the trough.',
+        values: 'Whole number from 1 to 9.',
+        defaultValue: '3.',
+        example: 'effect=waves&t=18&event=cascade&depth=4&eventAge=1.1',
+        sources: ['src/playground/effects/waves.effect.js'],
+    },
+    {
+        name: 'depth',
+        category: 'Playground',
+        scope: 'playground.html — black-hole',
+        description: 'Choose how many waves feed the accretion disk during a cascade replay.',
+        values: 'Whole number from 2 to 8, including the initial clear.',
+        defaultValue: '3.',
+        example: 'effect=black-hole&t=12&event=cascade&depth=4&eventAge=0.3',
+        notes: 'Waves arrive 0.45 seconds apart. eventAge measures time after the final wave.',
+        sources: [
+            'src/playground/effects/black-hole.effect.js',
+        ],
+    },
+    {
+        name: 'depth',
+        category: 'Playground',
         scope: 'playground.html — cinder-drift',
         description: 'Choose which wave of a cascade to replay.',
         values: 'Whole number starting at 1. The effect reaches full strength on wave 7.',
@@ -1172,7 +1195,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
         scope: 'playground.html — aurora, black-hole',
         description: 'Set launch/drop strength in Aurora and Black Hole reactions.',
         values: 'Number.',
-        defaultValue: '0.',
+        defaultValue: 'Black Hole uses 16 rows for event=drop. Otherwise 0.',
         example: 'drop=1',
         notes: 'Use on playground.html with effect=<the matching effect ID>.',
         sources: [
@@ -1291,7 +1314,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
     {
         name: 'event',
         category: 'Playground',
-        scope: 'playground.html — astral-weave, aurora, black-hole, blood-moon, chiral-gold, '
+        scope: 'playground.html — aether-tides, astral-weave, aurora, black-hole, blood-moon, chiral-gold, '
             + 'chromadelic-highway, cosmic-noir, crystal-cave, fall, fluid-dreams, forest, galaxy, geode, '
             + 'golden-forest, halcyon-apex, himalayan-peak, ice-temple, kaleidosonic, koi-pond, luminous-tides, '
             + 'lunara, moonlit-greenhouse, murmuration, nebula-flow, neon-district, '
@@ -1307,6 +1330,13 @@ export const PLAYGROUND_URL_PARAMETERS = [
             + 'perfect, crown, break, levelUp, over; Vesper Chrysalis: lock, drop, clear, quad, '
             + 'twist, perfect, levelUp, break; Stillwater and Moonlit Greenhouse: lock, drop, clear, '
             + 'quad, twist, perfect, levelUp, break); cue names are case-sensitive in most effects. '
+            + 'Waves accepts lock, drop, clear, quad, twist, spin, b2b, cascade, perfect, levelUp, incoming, '
+            + 'outgoing, counter, topout, respawn, round, goal, victory and end. Set lines to choose a clear size. '
+            + 'Set combo to hold a chain. '
+            + 'Black Hole accepts lock, drop, clear, double, triple, quad, twist, twist0 (a twist without '
+            + 'a clear), b2b, perfect, cascade, combo, break, level, over and touch. '
+            + 'Astral Weave accepts lock, drop, clear, quad, twist, spin, b2b, perfect, combo, break, cascade, '
+            + 'levelUp, incoming, counter, outgoing, end, goal, victory, round, topout and respawn. '
             + 'Summer: lock, drop, clear, double, triple, quad, combo, streak, spin, perfect, level, '
             + 'over or bouquet. Verdant Hills: lock, drop, clear, double, triple, quad, combo, streak, '
             + 'spin, perfect, level, over or festival. Rainbow Terraces: lock, drop, clear, quad, twist, '
@@ -1321,12 +1351,14 @@ export const PLAYGROUND_URL_PARAMETERS = [
             + '(a twist with no lines), b2b, perfect, levelUp, over (the run ends), dawn (it ends and the '
             + 'next begins) or fever. Lunara accepts lock, drop, clear, cascade, quad, combo, break, '
             + 'twist, turn (lineless twist), b2b, perfect, crown (a delayed Clean canvas), levelUp or over. '
-            + 'Himalayan Peak accepts lock, drop, clear, quad, cascade, spin, twist, b2b, perfect, crown, chain, break, levelUp and over.',
+            + 'Himalayan Peak accepts lock, drop, clear, quad, cascade, spin, twist, b2b, perfect, crown, chain, break, levelUp and over. '
+            + 'Aether Tides accepts lock, drop, clear, cascade, quad, twist, spin, b2b, perfect, crown, combo, break, levelUp and gameOver.',
         defaultValue: 'Idle in most previews; Lunar Sigil uses lock.',
         example: 'event=lock',
         notes: 'Use on playground.html with effect=<the matching effect ID>. For deterministic replay, '
             + 'pair with t=<capture seconds> where supported.',
         sources: [
+            'src/playground/effects/aether-tides.effect.js',
             'src/playground/effects/astral-weave.effect.js',
             'src/playground/effects/aurora.effect.js',
             'src/playground/effects/black-hole.effect.js',
@@ -4752,13 +4784,14 @@ export const PLAYGROUND_URL_PARAMETERS = [
     {
         name: 'reducedMotion',
         category: 'Playground',
-        scope: 'playground.html — odyssey-path-beacons',
+        scope: 'playground.html — astral-weave, odyssey-path-beacons',
         description: 'Preview reduced-motion behavior.',
         values: '1 enables; reaction micro-previews also accept true/on/yes.',
         defaultValue: 'Off.',
         example: 'reducedMotion=1',
         notes: 'Use on playground.html with effect=<the matching effect ID>.',
         sources: [
+            'src/playground/effects/astral-weave.effect.js',
             'src/playground/effects/odyssey-path-beacons.effect.js',
         ],
     },
@@ -5104,6 +5137,21 @@ export const PLAYGROUND_URL_PARAMETERS = [
         notes: 'Use on playground.html with effect=<the matching effect ID>.',
         sources: [
             'src/playground/effects/odyssey-path-beacons.effect.js',
+        ],
+    },
+    {
+        name: 'sector',
+        category: 'Playground',
+        scope: 'playground.html — chromadelic-highway',
+        description: 'Hold one of the five Chromadelic Highway cosmic voyage sectors instead of letting its 73 s '
+            + 'voyage clock turn them.',
+        values: 'velvet-rift, aurora-slipstream, starlight-crossing, ion-corridor, nebula-heart; or a number '
+            + '0–5 (fractional values blend smoothly between adjacent sectors).',
+        defaultValue: 'Unset (advances one sector every 73 s, independent of the spectrum clock).',
+        example: 'sector=aurora-slipstream',
+        notes: 'Use on playground.html with effect=chromadelic-highway.',
+        sources: [
+            'src/playground/effects/chromadelic-highway.effect.js',
         ],
     },
     {

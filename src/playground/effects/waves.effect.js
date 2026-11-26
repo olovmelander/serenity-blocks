@@ -16,7 +16,8 @@
  *                            and the clock say: 0 golden hour, 1 sunset, 2 afterglow, 3 moonrise,
  *                            4 first light, 5 the day; 2.5 is half-way from afterglow to moonrise
  *   locks=<n>                before anything else, play n locks
- *   event=lock|drop|clear|quad|twist|spin|perfect|levelUp   fire a gameplay event...
+ *   event=lock|drop|clear|quad|twist|spin|cascade|b2b|perfect|levelUp   fire a gameplay event...
+ *         incoming|outgoing|counter|topout|respawn|round|goal|victory|end
  *   eventAge=<s>             ...and show it <s> seconds later (lines=<n>, row=<r>, u=<0..1>,
  *                            color=<hex>)
  *   leap=<n>&leapAge=<s>     send n dolphins over the water and show them <s> seconds later
@@ -44,6 +45,7 @@
  */
 import * as THREE from 'three/webgpu';
 import { WavesWorld } from '../../themes/waves/waves-world.js';
+import { WAVES_TETROMINOS } from '../../themes/waves/waves-tetrominos.js';
 import { WavesPost, POST_LOOK } from '../../themes/waves/waves-post.js';
 import { readLayoutRects } from '../../themes/waves/waves-composition.js';
 import { sceneSamples } from '../../themes/shared/scene-antialias.js';
@@ -59,39 +61,74 @@ function num(params, key, fallback = 0) {
     return Number.isFinite(v) ? v : fallback;
 }
 
-const BOARD_PX = 'min(clamp(220px, 22vw, 300px), (100vh - 250px) / 2)';
-
-/** A stand-in for the real solo layout (public/styles/main.css) with the real class names. */
+// The solo well, queue and ledger stand in for the real Keystone layout during captures.
 function mountBoardOverlay(withHud) {
     const root = document.createElement('div');
-    root.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:5';
+    root.id = 'waves-board-preview';
+    const css = document.createElement('style');
+    css.textContent = `
+        #waves-board-preview { --well:min(30vw, 35vh); --queue:clamp(22px, 6vh, 52px);
+            --gap:clamp(16px, 2.4vw, 40px); position:fixed; inset:0; z-index:5; pointer-events:none;
+            font:600 12px/1.2 system-ui,sans-serif; color:#f0e9db; }
+        #waves-board-preview .player-card { position:absolute; top:50%; left:50%; width:var(--well);
+            height:calc(2 * var(--well) + var(--queue) + 8px); transform:translate(-50%,-50%); }
+        #waves-board-preview .preview-queue { display:flex; align-items:center; justify-content:flex-end;
+            height:var(--queue); gap:5px; }
+        #waves-board-preview small { font-size:clamp(8px,0.9vh,11px); letter-spacing:0.15em; color:#c3dad4; }
+        #waves-board-preview .preview-queue small { background:#0e262ceb; color:#f5e3c3;
+            padding:0.44em 0.55em; border-radius:3px; }
+        #waves-board-preview .preview-piece { display:grid; grid-template-columns:repeat(3, 1em);
+            grid-template-rows:repeat(2, 1em); background:#102b32; padding:0.4em 0.7em; border-radius:4px;
+            font-size:calc(var(--queue) * 0.32); border:1px solid #47746e; }
+        #waves-board-preview #single-player-game-canvas { position:absolute; bottom:0; left:0; right:0;
+            height:calc(2 * var(--well)); box-sizing:border-box; overflow:hidden; border:2px solid #70a99d;
+            border-top:0; border-radius:0 0 9px 9px; background:linear-gradient(#081c2cbb,#081924e8);
+            box-shadow:0 8px 25px #08252e38; }
+        #waves-board-preview .cell { position:absolute; width:10%; height:5%; }
+        #waves-board-preview .single-player-stats-bar { position:absolute; box-sizing:border-box;
+            left:calc(50% + var(--well) / 2 + var(--gap)); top:calc(50% - var(--well) + var(--queue) / 2 + 4px);
+            width:clamp(115px, 15vw, 235px); background:linear-gradient(150deg,#132f34f2,#081a24f5 74%);
+            border:1px solid #84c0b665; border-radius:12px; }
+        #waves-board-preview .stat { display:grid; gap:5px; padding:clamp(10px,1.2vw,20px);
+            border-bottom:1px solid #b2d1c91c; }
+        #waves-board-preview .stat:last-child { border-bottom:0; }
+        #waves-board-preview .stat strong { color:#efd6ab; font-size:clamp(18px,2.1vw,33px); }
+        @media(max-aspect-ratio:1/1) {
+            #waves-board-preview { --well:min(82vw, (100dvh - 158px) / 2); --queue:32px; }
+            #waves-board-preview .player-card { top:calc(50% - 21px); }
+            #waves-board-preview .single-player-stats-bar { display:flex; left:50%; width:var(--well);
+                top:calc(50% + var(--well) + var(--queue) / 2 - 12px); transform:translateX(-50%); }
+            #waves-board-preview .stat { flex:1; padding:6px 9px; border:0; }
+            #waves-board-preview .stat strong { font-size:16px; }
+        }`;
     const card = document.createElement('div');
     card.className = 'player-card';
     card.dataset.player = 'solo';
-    card.style.cssText = [
-        'position:absolute', 'left:50%', 'top:50%',
-        `width:calc(${BOARD_PX} * 1.19)`,
-        `height:calc(2 * ${BOARD_PX} + 158px)`,
-        'transform:translate(-50%, -50%)', 'background:rgba(21,26,35,0.866)',
-        'border:1px solid rgba(139,92,246,0.45)', 'border-radius:20px',
-    ].join(';');
+    const queue = document.createElement('div');
+    queue.className = 'preview-queue';
+    const { colors } = WAVES_TETROMINOS;
+    const previews = [['T', '111010'], ['S', '011110'], ['L', '001111']]
+        .map(([key, pattern]) => `<span class="preview-piece">${[...pattern].map((cell) => (
+            cell === '1' ? `<i style="background:${colors[key]}"></i>` : '<i></i>'
+        )).join('')}</span>`).join('');
+    queue.innerHTML = `<small>NEXT</small>${previews}`;
     const board = document.createElement('div');
     board.id = 'single-player-game-canvas';
-    board.style.cssText = [
-        'position:absolute', 'left:50%', 'bottom:24px', `width:calc(${BOARD_PX})`, `height:calc(2 * ${BOARD_PX})`,
-        'transform:translateX(-50%)', 'border:1px solid rgba(255,255,255,0.08)',
-    ].join(';');
-    card.append(board);
-    root.append(card);
+    const rows = [
+        ...Array(4).fill(''), '....TTT...', '.....T....', ...Array(10).fill(''),
+        '...SSZZ...', 'J.SS..ZZ..', 'JJJ.OOL...', 'IIIIOOLLL.',
+    ];
+    board.innerHTML = rows.map((row, y) => [...row].map((key, x) => (
+        colors[key] ? `<i class="cell" style="background:${colors[key]};left:${x * 10}%;top:${y * 5}%"></i>` : ''
+    )).join('')).join('');
+    card.append(queue, board);
+    root.append(css, card);
     if (withHud) {
         const hud = document.createElement('div');
         hud.className = 'single-player-stats-bar';
-        hud.style.cssText = [
-            'position:absolute', 'top:25%', 'height:50%',
-            'left:calc(50% + min(max(300px, min(35vw, 400px)), (100vh - 200px) / 2) / 2 + 60px)',
-            'width:140px',
-            'background:rgba(14,11,26,0.8)', 'border:1px solid rgba(150,110,255,0.25)', 'border-radius:10px',
-        ].join(';');
+        hud.innerHTML = [['SCORE', '2840'], ['LEVEL', '3'], ['LINES', '28']].map(([label, value]) => (
+            `<div class="stat"><small>${label}</small><strong>${value}</strong></div>`
+        )).join('');
         root.append(hud);
     }
     document.body.appendChild(root);
@@ -99,7 +136,7 @@ function mountBoardOverlay(withHud) {
 }
 
 /** The game's piece colours (waves-tetrominos.js). */
-const PIECE_COLORS = ['#a8f6ff', '#f4ffb5', '#bdb9ff', '#87ffd6', '#ffa6e3', '#6b8dff', '#ffe08f'];
+const PIECE_COLORS = ['O', 'I', 'T', 'L', 'Z', 'S', 'J'].map((piece) => WAVES_TETROMINOS.colors[piece]);
 
 /** A looping script of locks and clears for the live demo (seconds into the loop). */
 const DEMO_LOOP = 36;
@@ -242,9 +279,13 @@ export function create({
         } else if (eventName === 'clear') world.onClear({ rows: bottom(lines), lines });
         else if (eventName === 'quad') world.onClear({ rows: bottom(4), lines: 4 });
         else if (eventName === 'twist') world.onClear({ rows: bottom(2), lines: 2, twist: true });
+        else if (eventName === 'cascade') {
+            world.onClear({ rows: bottom(lines), lines, cascade: num(params, 'depth', 3) });
+        } else if (eventName === 'b2b') world.onClear({ rows: bottom(4), lines: 4, b2b: true });
         else if (eventName === 'spin') world.onSpin();
         else if (eventName === 'perfect') world.onClear({ rows: bottom(4), lines: 4, perfect: true });
         else if (eventName === 'levelUp') world.levelUp(num(params, 'eventLevel', level + 1));
+        else if (eventName) world.onSeaCue(eventName, lines);
     };
 
     /** How long the world is played before a capture: the eased state settles. */
@@ -327,6 +368,19 @@ export function create({
         if (local > 32 && world.combo > 0) world.onCombo(0);
     };
 
+    const counters = { drawCalls: null, triangles: null };
+    const render = () => {
+        const info = renderer.info?.render;
+        const callsBefore = info?.drawCalls ?? 0;
+        const trianglesBefore = info?.triangles ?? 0;
+        if (post) post.render();
+        else renderer.render(scene, camera);
+        // Sample this complete picture before the next (possibly skipped) animation tick resets it.
+        if (info) {
+            counters.drawCalls = info.drawCalls - callsBefore;
+            counters.triangles = info.triangles - trianglesBefore;
+        }
+    };
     return {
         cameraRadius: 1,
         camera(time) {
@@ -341,10 +395,7 @@ export function create({
         seek(time) {
             seekTo(time);
         },
-        render() {
-            if (post) post.render();
-            else renderer.render(scene, camera);
-        },
+        render,
         async renderAsync() {
             // A capture shows the sea life: wait for the animals' bodies (but not for long), then
             // play the frame again with them in the water.
@@ -354,19 +405,19 @@ export function create({
                 sought = null;
                 seekTo(time);
             }
-            for (let i = 0; i < 3; i += 1) {
-                if (post) post.render();
-                else renderer.render(scene, camera);
-            }
+            for (let i = 0; i < 3; i += 1) render();
         },
         resize() {
             syncViewport();
         },
+        getRendererCounters() {
+            return { ...counters };
+        },
         getDiagnostics() {
             return {
                 backend: renderer.backend?.isWebGPUBackend ? 'WebGPU' : 'WebGL2',
-                calls: renderer.info?.render?.calls ?? null,
-                triangles: renderer.info?.render?.triangles ?? null,
+                calls: counters.drawCalls,
+                triangles: counters.triangles,
                 ...world.getState(),
             };
         },

@@ -1,5 +1,47 @@
 # Aether Tides — the living nebula
 
+## November 2026 visual audit and revision
+
+The strongest part of the theme was the connection between the board and the fluid. A lock already gave the sky a star in the piece's colour, a clear launched fronts from the actual cleared rows, and a chain gathered gas into a maelstrom. Those mechanics still drive the picture. The audit and captures below cover the November revision on Three.js r187. The October design record follows them.
+
+| Surface | Observed in the original | November revision |
+| --- | --- | --- |
+| Gas and dark dust | At normal viewing size the two banks read as soft smoke, with a few broad white contours around the stars. Gold occupied very little of the resting scene. | A starless emission map supplies eroded pillars, overlapping dust cliffs and fine cyan, blue, violet, magenta and gold ridges. The map feeds the dye solver and the screen resolves its detail through the advected coordinates. Moving foreground dust absorbs light from the deeper gas and stars. |
+| Binary and distant sky | Both stars used the same white core and diffraction pattern. Colour fringing split small stars at the edge of the screen. | The blue-white primary has a tight six-point flare and the amber companion a smaller, rotated four-point flare. Background stars range from copper to ice blue, with coloured halos. The lens keeps its strongest chromatic split for impacts. |
+| Motion and depth | The moving gas and palette wheel changed over time, but the silhouette kept returning to the same diagonal. | The cloud banks lean, open and approach at different rates. Dust moves against the deeper ridges. Two broad fronts of illumination travel through the gas on independent 32- and 47-second cycles, across the existing binary orbit and five-palette cycle. |
+| Gameplay effects | Some effects differed mostly in brightness. A zero-line spin stirred gas under the board and needed a working solver to show. | Locks seed stars, hard drops draw falling trails, clears fire row jets, and cascade waves fork. Spins form a pinwheel outside the well. Consecutive clears wind filaments into the maelstrom and its release vents them. A four-line clear launches polar jets, back-to-back clears connect the stars with a plasma bridge, and a perfect clear opens two illuminated bipolar shells. New levels unfurl coloured fans. At game over both stars cool gradually before recovering. |
+| Board and HUD | The well and score panel inherited the generic violet theme. The former playground mock omitted the stack and queue. Online events could use fallback solo coordinates. | A petrol-blue well, narrow piece edges and an amber next-piece accent give the active piece and ghost a dark ground. The playground uses the solo well and ledger styles. Online effects read the actual player canvas and account for the visible scoreboard or opponent grid. |
+
+Every tier keeps the solver fallback and the event silhouettes. Minimal and Low load an 85 KB version of the cloud map. The other tiers load 416 KB. The starry sky, fluid solver and light buffers continue to run procedurally. The emission map decodes off the main thread. A slow or unsuccessful decode is covered by lifecycle tests. See the [artwork source and prompt](../src/themes/aether-tides/ATTRIBUTION.md).
+
+The event geometry uses a pool of 20 preallocated strips. The new cloud lighting runs in the existing picture pass. The neighbourhood glow uses two dye reads, and the expensive accretion-disc shading is confined to the area the disc occupies.
+
+### Capture notes
+
+The real solo capture uses a staged stack and a real Space input. Its hard drop completed four lines and the live scoreboard advanced from 0 to 2,200 points. The playground gallery includes the delayed perfect clear, a zero-line spin, cascade waves, a chain release, the upright well and the no-fluid fallback.
+
+Solo and Infinity publish a game-over event, and online play publishes a match result. Local versus delivers per-board locks and clears but keeps final standings inside the mode, so its standings panel has no separate binary-star fade. Multiplayer placement and event delivery were exercised in unit tests.
+
+[Live solo board](aether-tides-captures/november-solo.webp) · [Four-line clear in game](aether-tides-captures/november-four-lines.webp) · [Before and after](aether-tides-captures/november-comparison.webp) · [Event gallery](aether-tides-captures/november-events.webp) · [Palettes and portrait](aether-tides-captures/november-variation.webp)
+
+To reproduce a frame, run `npm run dev:playground` and open `/playground.html?effect=aether-tides&t=20&lead=0.5&quality=High&hud=0&maxFps=30`. Add `board=1` for the well, `event=perfect&eventAge=2.1` for the expanding shells, or `forceWebGL=1&quality=Low` for the WebGL2 picture. Set `t=82`, `t=300` or `t=407` to compare other stages of the tide. Holding a fixed frame reuses its solved state.
+
+### Performance check
+
+The original and revised scenes were measured at 960 × 540, High quality, on a GeForce RTX 5080 Laptop GPU. The playground ran live with a 30 fps cap. Each measurement window lasted 15 seconds. The comparison uses frame intervals, which include the frame cap.
+
+| Live measurement | Original | Revised |
+| --- | --- | --- |
+| Median frame interval, both windows | 33.3 ms | 33.3 ms |
+| 95th percentile frame intervals | 34.4 and 34.9 ms | 34.9 and 34.0 ms |
+| Simulation steps in the second window | 900 | 901 |
+
+During one 38-second gameplay demo, the revised theme presented 1,139 frames, advanced 2,281 fixed simulation steps and reached a five-link chain. The median frame interval was 33.3 ms, the 95th percentile was 34.1 ms and the slowest frame took 48.9 ms. The demo included a four-line clear. Its graphical console was clean.
+
+Other applications shared the GPU. These measurements cover this machine and frame cap. Integrated hardware, physical phones, and sustained multiplayer frame rates remain unmeasured.
+
+## October design record
+
 Implemented 2026-10-08 on `feature/aether-tides-masterpiece`, with Three.js 0.186.1. A
 from-scratch rebuild: it replaces the earlier theme in full (a raw-WebGL fluid simulator with
 its own GLSL, a CSS star field behind it, and effects fired at the middle of the screen from

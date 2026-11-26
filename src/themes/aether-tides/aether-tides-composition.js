@@ -13,7 +13,7 @@
 /** The playfield every board canvas shows. */
 export const BOARD_GRID = Object.freeze({ columns: 10, rows: 20, hiddenRows: 4 });
 
-/** Director / layout player slots: 0 = the solo board, 1..4 = local-multiplayer boards. */
+/** Online emits local gameplay events in slot 0 as solo does. Slots 1..4 are local versus. */
 export const PLAYER_SLOTS = 5;
 
 /**
@@ -27,6 +27,7 @@ export const SOLO_CANVAS_SELECTORS = Object.freeze([
     '#phaser-game-container canvas',
     '#main-game-canvas',
     '#single-player-game-canvas',
+    '#online-main-board canvas',
 ]);
 export const playerCanvasSelector = (player) => `#p${player}-phaser-container canvas`;
 
@@ -101,7 +102,11 @@ export function readLayoutRects(doc = globalThis.document, win = globalThis.wind
         const r = visibleRect(doc.querySelector(playerCanvasSelector(player)));
         if (r) boards[player] = toFractions(r, W, H);
     }
-    const hudRect = visibleRect(doc.querySelector(HUD_SELECTOR));
+    // In narrow online play the rail is hidden and the opponent grid sits above the board.
+    const hudRect = visibleRect(doc.querySelector(HUD_SELECTOR))
+        || visibleRect(doc.querySelector('#infinity-hud'))
+        || visibleRect(doc.querySelector('#online-multiplayer-container > .right-panel'))
+        || visibleRect(doc.querySelector('#watch-grid'));
     return {
         cardCount: cards.length,
         cards,

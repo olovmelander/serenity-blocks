@@ -42,6 +42,11 @@ export const DIRECTOR_LIMITS = Object.freeze({
     boards: 5,
 });
 
+/** The shape of ejecta, packed beside the lift in the matter renderer's burst table. */
+export const EJECTA = Object.freeze({
+    STREAK: 0, QUAD: 1, TWIST: 2, B2B: 3, CROWN: 4,
+});
+
 const BOARD_COLUMNS = 10;
 const HIDDEN_ROWS = 4;
 const VISIBLE_ROWS = 20;
@@ -247,13 +252,13 @@ const idleHotspot = () => ({
     color: [1, 1, 1],
 });
 const idleWave = () => ({
-    active: false, radius: 0, speed: 5, spread: 0, width: 0.9, strength: 0, peak: 0,
+    active: false, radius: 0, age: 0, cue: null, speed: 5, spread: 0, width: 0.9, strength: 0, peak: 0,
 });
 const idleRipple = () => ({
     active: false, fromHole: false, x: 0.5, y: 0.5, radius: 0, speed: 0.5, reach: 0.5, strength: 0, peak: 0,
 });
 const idleBurst = () => ({
-    active: false, age: 0, duration: 3, strength: 0, seed: 0, lift: 0,
+    active: false, age: 0, duration: 3, strength: 0, seed: 0, lift: 0, family: EJECTA.STREAK,
 });
 
 function makeBoard() {
@@ -277,6 +282,8 @@ function makeBoard() {
         b2b: false,
         perfect: false,
         levelUp: false,
+        touchX: null,
+        touchY: null,
         exhale: 0,
     };
 }
@@ -293,15 +300,17 @@ function clearPending(board) {
     board.b2b = false;
     board.perfect = false;
     board.levelUp = false;
+    board.touchX = null;
+    board.touchY = null;
     board.exhale = 0;
 }
 
 export class BlackHoleDirector {
-    constructor({ seed = 1 } = {}) {
+    constructor({ seed = 1, infallSlots = DIRECTOR_LIMITS.infalls } = {}) {
         this.seed = seed >>> 0;
         this.boards = Array.from({ length: DIRECTOR_LIMITS.boards }, makeBoard);
         this.infalls = Array.from(
-            { length: DIRECTOR_LIMITS.infalls },
+            { length: clamp(Math.floor(finite(infallSlots, DIRECTOR_LIMITS.infalls)), 1, DIRECTOR_LIMITS.infalls) },
             () => ({ ...idleInfall(), cells: new Float32Array(8) }),
         );
         this.hotspots = Array.from({ length: DIRECTOR_LIMITS.hotspots }, idleHotspot);
@@ -395,6 +404,11 @@ export class BlackHoleDirector {
 
     setReducedMotion(reduced) {
         this.reducedMotion = reduced === true;
+        if (this.reducedMotion) {
+            this.shakeAmount = 0;
+            this.shakeDuration = 0;
+            for (const ripple of this.ripples) ripple.active = false;
+        }
     }
 
     /** Where a board sits on screen, as fractions of the viewport (top-left origin). */
@@ -456,6 +470,14 @@ export class BlackHoleDirector {
         this.streakBoard = board;
     }
 
+    /** Serenity mode has a screen-space touch and no board to clear. */
+    onTouch(x, y) {
+        const board = this.boards[0];
+        board.pending = true;
+        board.touchX = clamp01(finite(x, 0.5));
+        board.touchY = clamp01(finite(y, 0.5));
+    }
+
     /** The bus `COMBO` event: cascade depth inside one lock, not a streak. */
     onCascade(payload) {
         const board = this.boardFor(payload);
@@ -496,9 +518,14 @@ export class BlackHoleDirector {
     }
 
     /** Game over, mode stop, effects switched off: let the hole settle. */
-    calm() {
+    calm({ immediate = false } = {}) {
+        if (immediate) {
+            this.reset();
+            return;
+        }
         for (const board of this.boards) {
             board.tracker.reset();
+            board.hardDrop = 0;
             clearPending(board);
         }
         this.streak = 0;
@@ -506,6 +533,16 @@ export class BlackHoleDirector {
         this.b2bChain = 0;
         // The jets fall away over a second (see update), rather than blinking out.
         this.jetPulse = 0;
+    }
+
+    /** The last light retreats into the horizon as the run ends. */
+    endRun() {
+        const strength = 0.36 + this.energy * 0.35;
+        this.calm();
+        this.gameplay.reset();
+        this.blaze.reset();
+        for (const wave of this.waves) wave.cue = null;
+        this.pressure(strength * (this.reducedMotion ? REDUCED_MOTION_SCALE : 1), -2.8, -0.24, 'over');
     }
 
     // ── Pools ────────────────────────────────────────────────────────────────
@@ -556,7 +593,8 @@ export class BlackHoleDirector {
         infall.landRadius = DISK_INNER + 1.1 + this.random() * 3.6;
         // Radians swept round the hole on the way in, with the gas. The owner turns this
         // into `landAzimuth` once it knows where on the disk's clock the piece left from.
-        infall.swirl = (0.62 + this.random() * 0.6) * Math.PI;
+        // A hard drop comes in on a tight, direct chord; a gentle lock takes the long arc.
+        infall.swirl = (0.62 + this.random() * 0.6) * Math.PI * (1 - drop * 0.58);
         infall.landAzimuth = infall.swirl;
         this.counts.locks += 1;
         return infall;
@@ -581,10 +619,12 @@ export class BlackHoleDirector {
     }
 
     /** A front out through the disk; `spread` widens it (a deeper cascade wave rings wider). */
-    pressure(strength, speed = 5.4, spread = 0) {
+    pressure(strength, speed = 5.4, spread = 0, cue = null) {
         const wave = this.claim(this.waves, strengthLeft);
         wave.active = true;
-        wave.radius = DISK_INNER * 0.9;
+        wave.age = 0;
+        wave.cue = cue;
+        wave.radius = speed < 0 ? DISK_OUTER : DISK_INNER * 0.9;
         wave.speed = speed;
         wave.spread = spread;
         wave.width = 0.75 + spread;
@@ -606,7 +646,7 @@ export class BlackHoleDirector {
         ripple.strength = strength;
     }
 
-    eject(strength, lift = 0) {
+    eject(strength, lift = 0, family = EJECTA.STREAK) {
         const burst = this.claim(this.bursts, burstLeft);
         burst.active = true;
         burst.age = 0;
@@ -614,6 +654,7 @@ export class BlackHoleDirector {
         burst.strength = strength;
         burst.seed = this.random() * 1000;
         burst.lift = lift;
+        burst.family = family;
         this.counts.bursts += 1;
     }
 
@@ -643,7 +684,15 @@ export class BlackHoleDirector {
         // Space-time ringing from the hole itself: one per cue, the strongest asked for.
         let holeRipple = 0;
 
-        if (lock) this.gameplay.lock({ hardDrop: drop > 0 }, now);
+        if (board.touchX !== null) {
+            this.ripple(board.touchX, board.touchY, 0.013, { speed: 0.35, reach: 0.3 });
+            this.ignite(board.touchX * TAU, 4.3 + board.touchY * 3.5, ICE, 0.5 * scale, 2.6, 0.32);
+        }
+
+        if (lock) {
+            this.gameplay.lock({ hardDrop: drop > 0 }, now);
+            board.hardDrop = 0;
+        }
         if (lock && board.lockVisible) {
             const infall = this.feed(board, lock, drop);
             this.flash = Math.min(1, this.flash + 0.05 + drop * 0.05);
@@ -668,7 +717,17 @@ export class BlackHoleDirector {
                 if (lines < 4 && !twist && !b2b) this.b2bChain = 0;
             } else this.gameplay.wave(now);
             // Each wave of a cascade runs out faster and wider than the one before it.
-            this.pressure(clamp(0.55 + lines * 0.24 + depth * 0.14, 0, 1.8) * scale, 5.4 + depth * 0.7, depth * 0.14);
+            const cue = depth ? 'cascade' : [null, 'single', 'double', 'triple', null][lines];
+            this.pressure(
+                clamp(0.55 + lines * 0.24 + depth * 0.14, 0, 1.8) * scale,
+                5.4 + depth * 0.7,
+                depth * 0.14,
+                cue,
+            );
+            // The double splits into a leading and a trailing crest. For three lines the far
+            // rim answers as well: the two fronts meet in the middle of the glowing disk.
+            if (depth === 0 && lines === 2) this.pressure(0.57 * scale, 3.3, -0.45);
+            if (depth === 0 && lines === 3) this.pressure(0.86 * scale, -4.4, -0.26);
             this.rateBoost = Math.min(RATE_CAP, this.rateBoost + 0.55 + lines * 0.3 + depth * 0.15);
             this.heatBoost = Math.min(HEAT_CAP, this.heatBoost + lines * 0.04 + Math.min(streak, 8) * 0.015);
             this.gainBoost = Math.min(GAIN_CAP, this.gainBoost + lines * 0.05 + depth * 0.03);
@@ -685,7 +744,7 @@ export class BlackHoleDirector {
             }
             if (lines >= 4) {
                 this.jetPulse = Math.max(this.jetPulse, 2.6);
-                this.eject(0.85 * scale, 0.35);
+                this.eject(0.85 * scale, 0.35, EJECTA.QUAD);
                 holeRipple = Math.max(holeRipple, 0.04);
                 this.shake(...SHAKE.QUAD);
             }
@@ -696,9 +755,15 @@ export class BlackHoleDirector {
         // A cascade wave heard on its own: an echo of the pressure front, deeper each time.
         if (cascade >= 2 && lines === 0) {
             this.gameplay.wave(now);
-            this.pressure(clamp(0.5 + cascade * 0.14, 0, 1.4) * scale, 6.2 + depth * 0.5, depth * 0.1);
+            this.pressure(clamp(0.5 + cascade * 0.14, 0, 1.4) * scale, 6.2 + depth * 0.5, depth * 0.1, 'cascade');
             this.gainBoost = Math.min(GAIN_CAP, this.gainBoost + 0.06);
             this.ringPulse = Math.min(RING_CAP, this.ringPulse + 0.3);
+        }
+
+        if (cascade >= 2) {
+            // Successive waves light progressively tighter turns of the same descending arm.
+            const arm = (cascade - 2) * 1.24 + centreX * TAU;
+            this.ignite(arm, Math.max(3.7, 8.8 - cascade * 0.68), GOLD, 0.73 * scale, 2.4, 0.19);
         }
 
         if (twist) {
@@ -709,6 +774,7 @@ export class BlackHoleDirector {
             this.rateBoost = Math.min(RATE_CAP, this.rateBoost + 1.4);
             const tear = this.random() * TAU;
             this.ignite(tear, DISK_INNER + 1.4 + this.random() * 2, VIOLET, 1.1 * scale, 5);
+            this.eject((lines ? 0.68 : 0.46) * scale, 0.24, EJECTA.TWIST);
             this.ringPulse = Math.min(RING_CAP, this.ringPulse + 0.5);
             this.shake(...SHAKE.TWIST);
         }
@@ -727,6 +793,7 @@ export class BlackHoleDirector {
                 this.ignite(azimuth + twin * Math.PI, radius, ICE, strength, 5.5, 0.08);
             }
             this.blaze.hit(0.45 + chain * 0.15, now);
+            this.eject((0.56 + chain * 0.09) * scale, 0.24, EJECTA.B2B);
             this.jetPulse = Math.max(this.jetPulse, 1.1 + chain * 0.3);
             this.ringPulse = Math.min(RING_CAP, this.ringPulse + 0.5);
             this.shake(...SHAKE.TWIST);
@@ -748,14 +815,16 @@ export class BlackHoleDirector {
                 const azimuth = (knot / 3) * TAU + this.random();
                 this.ignite(azimuth, DISK_INNER + 1 + this.random() * 3, GOLD, 1.2 * scale, 5.5);
             }
-            this.eject(1 * scale, 0.6);
+            this.eject(1 * scale, 0.6, EJECTA.CROWN);
             holeRipple = Math.max(holeRipple, 0.05);
             this.shake(...SHAKE.APEX);
         }
 
         if (levelUp) {
             this.gameplay.levelUp(now);
-            this.pressure(0.7 * scale, 3.6);
+            // A level sweeps inward from the rim as the sky crosses into its new mood.
+            this.pressure(0.95 * scale, -4, 0.12, 'level');
+            this.ignite(centreX * TAU, DISK_OUTER - 1.8, ICE, 0.78 * scale, 3.8, 0.5);
             this.ringPulse = Math.min(RING_CAP, this.ringPulse + 0.8);
             this.rateBoost = Math.min(RATE_CAP, this.rateBoost + 0.6);
         }
@@ -763,7 +832,7 @@ export class BlackHoleDirector {
         if (exhale > 0) {
             // The chain is over: one slow, wide front rolls out through the disk as the hole
             // lets its breath go, and the ring breathes with it.
-            this.pressure(clamp(0.35 + exhale * 0.04, 0, 0.8) * scale, 2.6, 0.9);
+            this.pressure(clamp(0.35 + exhale * 0.04, 0, 0.8) * scale, 2.6, 0.9, 'release');
             this.ringPulse = Math.min(RING_CAP, this.ringPulse + 0.35);
         }
 
@@ -902,9 +971,11 @@ export class BlackHoleDirector {
 
         for (const wave of this.waves) {
             if (!wave.active) continue;
+            wave.age += step;
             wave.radius += wave.speed * step;
-            wave.width = 0.75 + wave.spread + (wave.radius - DISK_INNER) * 0.12;
-            const travelled = clamp01((wave.radius - DISK_INNER) / (DISK_OUTER - DISK_INNER));
+            const distance = wave.speed < 0 ? DISK_OUTER - wave.radius : wave.radius - DISK_INNER;
+            wave.width = 0.75 + wave.spread + Math.max(0, distance) * 0.12;
+            const travelled = clamp01(distance / (DISK_OUTER - DISK_INNER));
             wave.strength = wave.peak * (1 - travelled) ** 1.3;
             if (travelled >= 1) {
                 wave.active = false;

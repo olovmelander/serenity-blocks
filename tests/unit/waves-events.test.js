@@ -95,6 +95,65 @@ function puffsFrom(world, from) {
 const actsOf = (world, type, kind = null) => world.pod.acts.filter((act) => act.type === type && (!kind || act.kind === kind));
 
 describe('waves events: each its own form', () => {
+    it('parks the wall crests at rest and keeps a complete wake together when the pool fills', () => {
+        const { world, camera } = makeWorld('Minimal');
+        const wake = world.wakeLace;
+        expect(wake.mesh.visible).toBe(false);
+        for (let i = 0; i < 4; i += 1) wake.show('triple');
+        expect(wake.mesh.visible).toBe(true);
+        expect(wake.ends.every(Number.isFinite)).toBe(true);
+        expect(wake.position.array.every(Number.isFinite)).toBe(true);
+        const full = wake.ink.array.slice();
+        wake.show('counter');
+        expect(wake.ink.array).toEqual(full);
+        run(world, camera, 3.5);
+        expect(wake.mesh.visible).toBe(false);
+        wake.show('outgoing');
+        expect(wake.mesh.visible).toBe(true);
+        world.resetSession();
+        expect(wake.mesh.visible).toBe(false);
+    });
+
+    it('changes the direction of the water for incoming, outgoing and countered attacks', () => {
+        const { world } = makeWorld('Minimal');
+        const thrown = (kind) => {
+            world.resetSession();
+            world.onSeaCue(kind, 4);
+            const flight = world.spray.geometry.getAttribute('aFlight');
+            return dropsFrom(world, world.clock).map((drop, i) => ({
+                ...drop, vx: flight.getX(i), vz: flight.getZ(i),
+            }));
+        };
+        const incoming = thrown('incoming');
+        const outgoing = thrown('outgoing');
+        const counter = thrown('counter');
+        expect(incoming.length).toBeGreaterThan(8);
+        expect(incoming.every((drop) => drop.vz > 0.8)).toBe(true);
+        expect(outgoing.length).toBeGreaterThan(8);
+        expect(outgoing.every((drop) => drop.vz < -0.7)).toBe(true);
+        expect(counter.some((drop) => drop.vx > 0.3)).toBe(true);
+        expect(counter.some((drop) => drop.vx < -0.3)).toBe(true);
+    });
+
+    it('splits a double and peels a triple in three delayed fronts', () => {
+        const { world } = makeWorld();
+        const spray = vi.spyOn(world.spray, 'drop');
+        world.onClear({ lines: 1 });
+        expect(spray).not.toHaveBeenCalled();
+        world.onClear({ lines: 2 });
+        const double = [...spray.mock.calls];
+        expect(double.some((drop) => drop[5] < -0.14)).toBe(true);
+        expect(double.some((drop) => drop[5] > 0.14)).toBe(true);
+        spray.mockClear();
+        world.onClear({ lines: 3 });
+        const triple = spray.mock.calls;
+        expect(triple.length).toBe(double.length * 1.5);
+        const step = triple.length / 3;
+        const fronts = [0, 1, 2].map((i) => triple.slice(i * step, (i + 1) * step));
+        expect(fronts[2][0][1]).toBeGreaterThan(fronts[0][0][1] + 0.27);
+        expect(Math.max(...fronts[2].map((drop) => drop[6]))).toBeGreaterThan(0.65);
+    });
+
     it('stands the water up for a hard drop: a full spout after a breath, a small one straight after another', () => {
         const { world, camera } = makeWorld();
         const column = vi.spyOn(world.spray, 'column');

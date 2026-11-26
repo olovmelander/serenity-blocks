@@ -145,15 +145,44 @@ export function* bakeDiskTextureSteps(width = 512, height = 128, seed = 7919) {
     ];
     const data = new Uint8Array(width * height * 4);
     const plane = new Float32Array(width * height);
+    // Roll patches of the shear layer into eddies before laying down its fibres.
+    // Each vortex dies out inside its cell, so both tile seams stay continuous.
+    const coord = new Float32Array(width * height * 2);
+    for (let y = 0; y < height; y += 1) {
+        const v = y / height;
+        for (let x = 0; x < width; x += 1) {
+            const u = x / width;
+            const meander = valueNoise2(u * 6, v * 3, seed + 127, 6, 3) - 0.5;
+            const stream = v + 0.065 * meander;
+            const ax = u * 5;
+            const ay = stream * 4;
+            const ix = Math.floor(ax);
+            const iy = Math.floor(ay);
+            const dx = ax - ix - 0.5;
+            const dy = ay - iy - 0.5;
+            const falloff = clamp01(1 - (dx * dx + dy * dy) * 4.1);
+            const spin = (hash3(ix, wrap(iy, 4), 1, seed) - 0.40) * 9 * falloff * falloff;
+            const c = Math.cos(spin) - 1;
+            const s = Math.sin(spin);
+            const i = (y * width + x) * 2;
+            coord[i] = u + (c * dx - s * dy) / 5;
+            coord[i + 1] = stream + (s * dx + c * dy) / 4;
+        }
+        if (clock.due()) {
+            yield 'gas';
+            clock.restart();
+        }
+    }
     for (let index = 0; index < channels.length; index += 1) {
         const channel = channels[index];
         let low = Infinity;
         let high = -Infinity;
         for (let y = 0; y < height; y += 1) {
             for (let x = 0; x < width; x += 1) {
+                const i = (y * width + x) * 2;
                 let value = fbm2(
-                    (x / width) * channel.periodX,
-                    (y / height) * channel.periodY,
+                    coord[i] * channel.periodX,
+                    coord[i + 1] * channel.periodY,
                     channel.seed,
                     channel.octaves,
                     channel.periodX,
@@ -237,10 +266,6 @@ export function sampleLattice(data, x, y, z, size = LATTICE_SIZE) {
     return [field(0), field(2)];
 }
 
-/** Galactic frame, as unit vectors in the sky texture's own axes. */
-const GALACTIC_POLE = [0.0, 1.0, 0.0];
-const GALACTIC_CENTRE = [1.0, 0.0, 0.0];
-
 const srgb = (linear) => {
     const c = clamp01(linear);
     return c <= 0.0031308 ? c * 12.92 : 1.055 * (c ** (1 / 2.4)) - 0.055;
@@ -267,13 +292,12 @@ export function bakeSkyRows(data, width, height, seed, from, to) {
         const polar = ((y + 0.5) / height) * Math.PI;
         const sinPolar = Math.sin(polar);
         const dy = Math.cos(polar);
+        const latitude = Math.PI * 0.5 - polar;
         for (let x = 0; x < width; x += 1) {
             const longitude = ((x + 0.5) / width) * Math.PI * 2 - Math.PI;
             const dx = sinPolar * Math.cos(longitude);
             const dz = sinPolar * Math.sin(longitude);
-            const latitude = Math.asin(dx * GALACTIC_POLE[0] + dy * GALACTIC_POLE[1] + dz * GALACTIC_POLE[2]);
-            const towardCentre = dx * GALACTIC_CENTRE[0] + dy * GALACTIC_CENTRE[1] + dz * GALACTIC_CENTRE[2];
-            const centreAngle = Math.acos(Math.max(-1, Math.min(1, towardCentre)));
+            const centreAngle = Math.acos(Math.max(-1, Math.min(1, dx)));
 
             // The band wanders and swells a little along its length.
             const warp = fbm3(dx * 1.4 + 3.1, dy * 1.4, dz * 1.4 - 1.7, seed + 5, 2) - 0.5;
@@ -282,13 +306,13 @@ export function bakeSkyRows(data, width, height, seed, from, to) {
             const bulge = Math.exp(-((centreAngle / 0.3) ** 2) * (1 + 9 * lat * lat));
             const halo = Math.exp(-((lat / 0.62) ** 2));
 
-            let r = 0.004;
-            let g = 0.0045;
-            let b = 0.0085;
-            let density = 0.2 + halo * 0.3;
+            let r = 0.0016;
+            let g = 0.0025;
+            let b = 0.005;
+            let density = 0.14 + halo * 0.26;
+            const clouds = fbm3(dx * 3.2, dy * 3.2, dz * 3.2, seed + 17, 4);
+            const fine = fbm3(dx * 9.5 + 7, dy * 9.5, dz * 9.5 + 2, seed + 41, 3);
             if (halo > 0.012) {
-                const clouds = fbm3(dx * 3.2, dy * 3.2, dz * 3.2, seed + 17, 5);
-                const fine = fbm3(dx * 9.5 + 7, dy * 9.5, dz * 9.5 + 2, seed + 41, 3);
                 const glow = band * (0.07 + 1.5 * clouds * clouds * clouds) * (0.6 + 0.8 * fine) + bulge * 0.5;
                 // Dust hugs the mid-plane and cuts the glow into lanes.
                 const lanes = 1 - Math.abs(fbm3(dx * 3.4 - 5, dy * 13, dz * 3.4 + 9, seed + 73, 4) * 2 - 1);
@@ -300,20 +324,40 @@ export function bakeSkyRows(data, width, height, seed, from, to) {
                 r += lit * (0.13 + 0.38 * warm);
                 g += lit * (0.165 + 0.145 * warm);
                 b += lit * (0.29 - 0.15 * warm);
-                // Emission clouds: hydrogen rose and oxygen teal, a few knots each.
-                const rose = smooth(0.66, 0.86, fbm3(dx * 2.3 + 11, dy * 2.3 - 4, dz * 2.3, seed + 97, 3));
-                const teal = smooth(0.68, 0.88, fbm3(dx * 2.1 - 8, dy * 2.1, dz * 2.1 + 6, seed + 113, 3));
-                const knots = Math.exp(-((lat / 0.24) ** 2)) * (0.45 + 0.55 * fine) * (1 - clamp01(dust) * 0.7);
-                r += knots * (rose * 0.26 + teal * 0.008);
-                g += knots * (rose * 0.03 + teal * 0.11);
-                b += knots * (rose * 0.1 + teal * 0.15);
-                // A violet wash off the plane keeps the dark sky from reading as flat black.
-                const veil = halo * (0.35 + 0.65 * clouds);
-                r += veil * 0.0035;
-                g += veil * 0.002;
-                b += veil * 0.009;
-                density = 0.2 + halo * 0.3 + band * 0.75 * (1 - clamp01(dust) * 0.8) + bulge * 0.6;
+                density += band * 0.64 * (1 - clamp01(dust) * 0.85) + bulge * 0.45;
             }
+
+            // Three stellar nurseries at different longitudes and latitudes. The light catches
+            // the broken outside of each cavity. Inside, the same dust occludes the old stars.
+            const wall = Math.max(
+                -0.57 * dx + 0.46 * dy - 0.68 * dz - 0.85,
+                0.82 * dx - 0.39 * dy + 0.42 * dz - 0.74,
+                -0.46 * dx - 0.54 * dy + 0.70 * dz - 0.80,
+            ) + (clouds - 0.5) * 0.68 + (fine - 0.5) * 0.20;
+            const cavity = smooth(-0.016, 0.19, wall) * (0.53 + 0.23 * fine);
+            const edge = (wall + 0.019) / 0.035;
+            const shoulder = (wall + 0.055) / 0.116;
+            const exposed = smooth(0.27, 0.67, clouds * 0.67 + fine * 0.33 + dz * 0.115 - dy * 0.07);
+            const rim = Math.exp(-edge * edge) * exposed * (0.3 + 0.9 * fine);
+            const reflection = Math.exp(-shoulder * shoulder) * exposed;
+            // An oblique sheet threads the bubbles. Its dust splits lengthwise into ragged
+            // backlit pillars. Their branch tips, cold sides and shaded bases survive at Low.
+            const dustPlane = 0.19 * dx + 0.80 * dy + 0.57 * dz + 0.38 * dx * dz
+                + (clouds - 0.5) * 0.7 + (fine - 0.5) * 0.19;
+            const bank = Math.exp(-(((dustPlane + 0.036) / 0.27) ** 2));
+            const stratum = fbm3(dx * 9.2 - dy * 3.7, dy * 7.8 + dx * 3.1, dz * 5.2, seed + 113, 3);
+            const spine = dustPlane + 0.065 + (stratum - 0.5) * 0.84;
+            const pillar = smooth(-0.14, 0.04, spine) * bank;
+            const litEdge = Math.exp(-(((spine - 0.013) / 0.040) ** 2)) * bank;
+            const cluster = smooth(0.22, 0.71, fine * 0.42 + clouds * 0.58 - dx * 0.09);
+            const scatter = bank * (0.24 + 1.2 * cluster) * (0.38 + stratum) * (1 - 0.78 * pillar);
+            const silver = litEdge * (0.18 + 0.82 * cluster);
+            const distant = (1 - cavity) * (1 - pillar * 0.73);
+            r = r * distant + reflection * 0.015 + rim * 0.024 + scatter * 0.018 + silver * 0.050;
+            g = g * distant + reflection * 0.043 + rim * 0.084 + scatter * 0.039 + silver * 0.096;
+            b = b * distant + reflection * 0.092 + rim * 0.16 + scatter * 0.095 + silver * 0.14;
+            density = 0.095 + density * (1 - cavity * 0.46) * (1 - pillar * 0.54)
+                + reflection * 0.21 + rim * 0.27 + scatter * 0.31 + silver * 0.14;
             const offset = (y * width + x) * 4;
             data[offset] = Math.round(srgb(r) * 255);
             data[offset + 1] = Math.round(srgb(g) * 255);

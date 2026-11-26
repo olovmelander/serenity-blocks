@@ -215,7 +215,7 @@ export function createLake(u, { fine = true, glint = true } = {}) {
         const key = u.mid.mul(0.78).add(u.hot.mul(0.22)).mul(u.fallGain).mul(float(1500.0).div(keyDist2.add(500.0)));
         const lit = key.mul(max(dot(n, toKey.div(keyDist2.sqrt())), 0.0))
             .add(cdHaze(u, vec3(V.x.negate(), 0.2, V.z.negate()), 2.0).mul(0.8))
-            .add(u.cool.mul(clamp(n.z.mul(-0.60).add(n.x.mul(0.20)).add(0.47), 0.04, 1.0)))
+            .add(u.cool.mul(clamp(n.z.mul(-0.39).add(n.x.mul(0.13)).add(0.30), 0.025, 0.65)))
             .add(cdCurtain(u, p, n))
             .add(ringFlash.mul(3.0));
         // The crust itself lights along a ring's front: the rock is being broken there.
@@ -232,10 +232,10 @@ export function createLake(u, { fine = true, glint = true } = {}) {
             const sunken = fold.max(0.0).mul(smoothstep(0.10, 0.44, edge)).mul(close);
             const rubble = chips.mul(float(1.0).sub(smoothstep(0.01, 0.16, edge.sub(width)))).mul(close);
             crust.mulAssign(float(1.0).sub(sunken.mul(0.44)).mul(float(1.0).sub(rubble.mul(0.74))));
-            crust.addAssign(vec3(0.087, 0.059, 0.047).mul(rib)
+            crust.addAssign(vec3(0.061, 0.036, 0.027).mul(rib)
                 .add(vec3(0.19, 0.073, 0.026).mul(rubble).mul(smoothstep(0.48, 0.69, grit.g)))
-                .add(vec3(0.057, 0.051, 0.053).mul(scoria))
-                .add(vec3(0.030, 0.037, 0.052).mul(ash).mul(close)));
+                .add(vec3(0.035, 0.029, 0.028).mul(scoria))
+                .add(vec3(0.014, 0.014, 0.019).mul(ash).mul(close)));
         }
 
         // The chamber mirrored in the glassy skin: its glow at a grazing angle, and the fall as a

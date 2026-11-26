@@ -151,6 +151,33 @@ describe('aether tides composition: the layout', () => {
         expect(readLayoutRects({}, win)).toBeNull();
     });
 
+    it('aims online events at the playing canvas and protects the visible rail or stacked opponent grid', () => {
+        const el = (left, top, width, height) => ({
+            getBoundingClientRect: () => ({
+                left, top, right: left + width, bottom: top + height, width, height,
+            }),
+        });
+        const card = el(490, 80, 280, 600);
+        const elements = {
+            '#phaser-game-container canvas': el(0, 0, 0, 0), // The solo stage is mounted but hidden.
+            '#online-main-board canvas': el(510, 147, 240, 480),
+            '#online-multiplayer-container > .right-panel': el(930, 70, 300, 600),
+            '#watch-grid': el(40, 100, 380, 350),
+        };
+        const doc = {
+            querySelectorAll: () => [card], querySelector: (selector) => elements[selector] ?? null,
+        };
+        const win = { innerWidth: 1280, innerHeight: 720 };
+        const layout = readLayoutRects(doc, win);
+        expect(boardFor(layout)).toEqual({
+            x0: 510 / 1280, x1: 750 / 1280, y0: 147 / 720, y1: 627 / 720,
+        });
+        expect(cardFor(layout, boardFor(layout))).toBe(layout.cards[0]);
+        expect(layout.hud.x0).toBe(930 / 1280);
+        elements['#online-multiplayer-container > .right-panel'] = null;
+        expect(readLayoutRects(doc, win).hud.x0).toBe(40 / 1280);
+    });
+
     it('reads every local-multiplayer board into its own player slot', () => {
         const rect = (left, top, width, height) => ({
             left, top, right: left + width, bottom: top + height, width, height,

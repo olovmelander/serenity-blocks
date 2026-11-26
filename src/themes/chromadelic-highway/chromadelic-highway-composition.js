@@ -241,7 +241,7 @@ export class ChromadelicComposition {
     solve({
         aspect = this.aspect, level = this.level, layout = this.layout, viewport = null,
     } = {}) {
-        this.aspect = Math.max(0.5, aspect || 16 / 9);
+        this.aspect = Math.max(0.1, aspect || 16 / 9);
         this.level = Math.max(1, Math.floor(level || 1));
         this.layout = layout || null;
         if (viewport && viewport.width > 0 && viewport.height > 0) {
@@ -285,11 +285,24 @@ export class ChromadelicComposition {
             this.mode = 'reduced';
             heroScale = 0.6;
         }
+        // A phone's side gutters can be narrower than the moon's orbit. The sky above
+        // the queue remains visible even when the board fills almost the entire width.
+        const aboveQueue = a < 0.85 && this.mode === 'reduced';
+        if (aboveQueue && layout) {
+            const headroom = 0.5 - Math.max(card.v1, hud?.v1 ?? -0.5);
+            heroScale = THREE.MathUtils.clamp((headroom - 0.025) / (2 * heroExtent), 0.18, heroScale);
+        }
         const e = heroExtent * heroScale;
         let heroU = -Math.min(0.5 + 0.3 * wide, 0.72);
         heroU = THREE.MathUtils.clamp(heroU, heroZone.lo + e, Math.max(heroZone.lo + e, heroZone.hi - e));
-        if (this.mode === 'reduced') heroU = (heroZone.lo + heroZone.hi) / 2;
-        const heroV = this.mode === 'reduced' ? 0.3 : 0.19;
+        let heroV = 0.19;
+        if (aboveQueue) {
+            heroU = -a / 2 + e + Math.min(0.06, a * 0.1);
+            heroV = 0.5 - e - 0.018;
+        } else if (this.mode === 'reduced') {
+            heroU = (heroZone.lo + heroZone.hi) / 2;
+            heroV = 0.3;
+        }
         const hu = mirrored ? -heroU : heroU;
         this.anchorToWorld(hu, heroV, HERO_DEPTH, res.hero.position);
         res.hero.radius = this.radiusAt(heroDiameter * heroScale, HERO_DEPTH);

@@ -8,6 +8,8 @@ mushrooms round a still black pool, crystals standing in the water, vines hangin
 dark, spores adrift — and everything else is new. This document records the shipped design and
 what was verified. It is a reference, not a backlog.
 
+The November pass revisited the grotto from the player's seat. [Visual audit and new captures](#the-living-canopy-in-november-2026)
+
 | Before | After (High, WebGPU) |
 | --- | --- |
 | ![before](bioluminescence-overhaul/before.webp) | ![after](bioluminescence-overhaul/desktop-rest.webp) |
@@ -331,3 +333,40 @@ the GPU queue, WebGPU, NVIDIA Blackwell).
 ## Captured previews
 
 ![Portrait: caps holding their colours, and a three-line clear](bioluminescence-overhaul/portrait.webp)
+
+## The living canopy in November 2026
+
+The baseline was captured at High, at 20 seconds, looking down the pool. The most successful interaction was already there. A lock sends the piece's colour through the water, up a stem and into a cap, where it stays until the grove releases it. The new flora, reflections and lighting still carry that colour.
+
+![The original and revised grotto at the same time and camera position](../reports/bioluminescence-depths/november/comparison.jpg)
+
+| What the audit found | What changed in play |
+| --- | --- |
+| Straight trunks, uniformly spaced gills and smooth rims made the three largest mushrooms look manufactured. The hanging vines were rooted in the ceiling. | Buttressed stems bend into pleated necks. Branching gills vary in spacing and pigment beneath scalloped rims. An open veil of Blender-authored strands hangs from each great cap and follows its sway and bloom. |
+| The purple bells were hard to distinguish from small parasols. The puffballs looked like shaded spheres and dropped out of the resting scene on three tiers. | The bells have folded hoods. Ripe, pearly puffballs stand beside smaller, darker fruit on both foreground islands, including at Minimal. |
+| Every medusa showed the same flat dome and five trails, even in the reflection. Crystals carried bright, parallel stripes from base to tip. | Each jelly is an instance of a Blender mesh with a scalloped membrane, four folded oral arms, a gastric rosette and twelve fine tentacles. The bell compresses on the stroke while the tentacles trail behind. The crystals twist through a growth joint and show coloured inclusions across their facets. |
+| Soft reflections hid the shape of things standing in the pool. Low tiers showed light without the cap silhouettes. The space behind the elder read as a flat wall. | The planar mirror filters highlights according to ripple slope. The cheaper water draws cap images analytically. Moving plankton shoals pick out the shallows. Layered limestone openings and low mist give the far gallery depth, and wet stone picks up the cap lights. |
+| The five palettes changed the colour of the room while idle play kept the same inhabitants and the same spread of airborne points. | The banks shed spore falls on separate cycles. Currents carry loose spores across the pool. Visiting jellies join the three residents, then sink again. These changes run independently of the palette wheel and continue between moves. |
+| Magnitude and tint did most of the work distinguishing row counts. A perfect clear shared the quad's silhouette. The solo ledger and picker depicted different stages of the theme's design. | Each row count writes a distinct path. Four rows bring down gill curtains, and a perfect clear opens two layers of veined petals around a golden heart on each bank. The solo well and ledger use sea-glass colours, pieces retain seven distinct hues, and the picker shows the new canopy. |
+
+### Reading the events
+
+| Trigger | Visible response |
+| --- | --- |
+| Lock and hard drop | A lock sends a swimmer to its cap. A hard drop adds a fountain whose height follows the fall distance, plus wakes to neighbouring caps. |
+| One, two and three lines | A low crescent, paired leaping wakes, and a three-branched mineral fan accompany the wave and released cap colours. |
+| Twist | One spiral for a turn without lines. A clearing twist braids two strands over the bank and rings the crystals. |
+| Combo, break and cascade | A growing chain calls jellies and fairy rings up and passes light between caps. Breaking it lets the grove exhale and the school sink. Successive cascade waves ring the stones and alternate between courts. |
+| Four lines and back-to-back | After a brief hush, light streams down from the great gills. A returning shock wave and an answering cap on either bank mark a back-to-back clear. |
+| Perfect clear | Two water flowers open in succession. A delayed perfect clear can crown the wave already passing through the cave. |
+| Level up and game over | The next palette runs down the two rows of caps before filling the room. At game over, two final trails settle into the pool. |
+
+The central playfield keeps its dark surface during the largest events. The flower placement uses the available width beside the active cards and score ledger. Reduced Motion slows the currents and brings the event forms in gently. Reduce Flashing also attenuates the rapid change in scene-wide light during the quad hush.
+
+![The perfect-clear bloom around the live solo well](../reports/bioluminescence-depths/november/in-play.jpg)
+
+The visual checks cover WebGPU High, forced WebGL2, Minimal, a 390 × 844 portrait viewport and the event sequence in the running solo game. The medusae use one instanced draw and retire from the draw after sinking. The flowers and gill curtains share a second instanced draw, which carries one collapsed strip between events. [Gameplay recording](../reports/bioluminescence-depths/november/grotto.webm) · [Event captures](../reports/bioluminescence-depths/november/events.jpg) · [The changing light](../reports/bioluminescence-depths/november/moods.jpg)
+
+During the 16-second solo capture, a 1440 × 810 High session on desktop WebGPU recorded a median theme frame interval of 33.3 ms and a 95th percentile of 33.7 ms at the game's 30 FPS setting. A keyboard hard drop exercised the live input path. The recording then replayed lock, clear and twist events through the gameplay event bus so that the quad and delayed perfect clear could be compared at a known interval. The screenshot above includes the HUD. The recording shows the theme canvas alone.
+
+All 388 tests in the 12-file verification suite passed, including shader compilation for both graphics backends. Type checking, the production build, and its boot dependency check also passed.

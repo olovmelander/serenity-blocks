@@ -8,38 +8,38 @@
  *
  * URL params:
  *   quality=High|Ultra|...   content tier (default High)
- *   board=1                  overlay a mock gameplay board + HUD (the solo layout at 1080p rules);
+ *   board=1                  overlay the solo well, themed pieces, queue and score ledger;
  *                            the composition solver and the post's board veil read its rects
- *   hud=0                    with board=1: board only, no HUD mock
+ *   hud=0                    with board=1: board only, no score ledger
  *   pulse / ring / particle / ambient = 0..1   hold a reactive state
- *   event=lock|combo|clear|quad|levelUp|twist|b2b|perfect  fire a gameplay event...
+ *   event=lock|hardDrop|combo|chain|clear|quad|levelUp|twist|b2b|perfect|gameOver  fire an event...
  *   eventAge=<s>             ...and show it <s> seconds later (combo=<n>, lines=<n>, level=<n>)
- *   parts=sky,stars,...      draw only these parts (sky stars planets road rails rings streaks
- *                            motes meteors) for isolated iteration
+ *   parts=sky,stars,...      draw only these parts (sky stars planets road rails pylons rings air
+ *                            events streaks motes meteors) for isolated iteration
  *   falseColor=1             post debug view: band the pre-tone-map max channel
  *   msaa=0|4                 override the scene-pass MSAA sample count
  *   noPost=1                 raw scene (no bloom/grade)
- *   place=<p>                pin the spectrum's level place (movement = floor; the road's drift,
- *                            t · 180 / 16200, still adds): 0 prism, 1 orchid, 2 ember, 3 triad,
- *                            4 chord, 5 tide
+ *   place=<p>                pin the spectrum's level place (0 prism, 1 orchid, 2 ember, 3 triad,
+ *                            4 chord, 5 tide)
+ *   sector=<name|0..4>       pin a cosmic voyage sector (velvet-rift, aurora-slipstream,
+ *                            starlight-crossing, ion-corridor, nebula-heart)
  *   ringForm=<name>          force every ring's form (tube double dashes beads hex hexDouble oct
  *                            octDashes octBeads prism hexPrism)
- *   airGain=<x>              the ring-air band gain (default 0.05)
- *   icon=1                   the theme-icon framing: the lens looks straight down the road at the
- *                            arches' vanishing point, closed to iconFov (default 40; iconYaw and
- *                            iconPitch in radians turn it). Compose for a small circle: capture a
- *                            square frame. window.__chromadelic.iconLens = { fov, yaw, pitch }
- *                            overrides them live for a contact sheet.
+ *   airGain=<x>              the ring-air band gain (default 0.068)
+ *   icon=1                   the theme-icon framing: looks straight down the road at the arches
  */
 import * as THREE from 'three/webgpu';
 import { CAMERA_RIG, ChromadelicWorld } from '../../themes/chromadelic-highway/chromadelic-highway-world.js';
 import { ChromadelicHighwayPost, POST_LOOK } from '../../themes/chromadelic-highway/chromadelic-highway-post.js';
 import { readLayoutRects, restVerticalFov } from '../../themes/chromadelic-highway/chromadelic-highway-composition.js';
+import { seededRandom } from '../../themes/chromadelic-highway/chromadelic-highway-planet-events.js';
+import { CHROMADELIC_HIGHWAY_TETROMINOS } from '../../themes/chromadelic-highway/chromadelic-highway-tetrominos.js';
+import { mountSoloWellPreview } from '../solo-well-preview.js';
 
 export const meta = {
     id: 'chromadelic-highway',
     title: 'Chromadelic Highway (full world)',
-    description: 'The shipping world + post: rainbow road, neon arches, impostor planets, nebula sky.',
+    description: 'The shipping world + post: prism highway, 3D cantilever pylons, neon arches, planets, cosmic sectors.',
 };
 
 function num(params, key, fallback = 0) {
@@ -47,42 +47,8 @@ function num(params, key, fallback = 0) {
     return Number.isFinite(v) ? v : fallback;
 }
 
-/**
- * A stand-in for the real solo layout (public/styles/main.css): the board is
- * min(clamp(220px, 22vw, 300px), (100vh − 250px)/2) wide and twice as tall, the HUD sits right
- * of it. The elements carry the real class names so readLayoutRects() finds them.
- */
-function mountBoardOverlay(withHud) {
-    const root = document.createElement('div');
-    root.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:5';
-    const board = document.createElement('div');
-    board.className = 'player-card';
-    board.dataset.player = 'solo';
-    board.style.cssText = [
-        'position:absolute', 'left:50%', 'top:50%',
-        'width:calc(min(clamp(220px, 22vw, 300px), (100vh - 250px) / 2) + 24px)',
-        'height:calc(2 * min(clamp(220px, 22vw, 300px), (100vh - 250px) / 2) + 24px)',
-        'transform:translate(-50%, -50%)', 'background:rgba(21,26,35,0.866)',
-        'border:1px solid rgba(139,92,246,0.45)', 'border-radius:20px',
-    ].join(';');
-    root.append(board);
-    if (withHud) {
-        const hud = document.createElement('div');
-        hud.className = 'single-player-stats-bar';
-        hud.style.cssText = [
-            'position:absolute', 'top:25%', 'height:50%',
-            'left:calc(50% + min(clamp(220px, 22vw, 300px), (100vh - 250px) / 2) / 2 + 60px)',
-            'width:min(clamp(120px, 12vw, 160px), 18vh)',
-            'background:rgba(14,11,26,0.8)', 'border:1px solid rgba(150,110,255,0.25)', 'border-radius:10px',
-        ].join(';');
-        root.append(hud);
-    }
-    document.body.appendChild(root);
-    return root;
-}
-
 export function create({
-    scene, camera, renderer, params, rng,
+    scene, camera, renderer, params, rng, seed,
 }) {
     const quality = params.get('quality') || 'High';
     const saved = {
@@ -99,16 +65,18 @@ export function create({
     if (placeParam !== null || formParam) {
         world.pinSpectrum(placeParam !== null ? num(params, 'place', 0) : null, { form: formParam || null });
     }
-    // The world writes uAirGain every frame (the heat of play lifts it): set its rest value.
-    if (params.get('airGain') !== null) world.airGain = num(params, 'airGain', 0.05);
-    // Agent probes: the live world (uniforms, events) without a reload.
+    const sectorParam = params.get('sector');
+    if (sectorParam !== null) {
+        const asNum = Number(sectorParam);
+        world.pinSector(Number.isFinite(asNum) && sectorParam.trim() !== '' ? asNum : sectorParam);
+    }
+    if (params.get('airGain') !== null) world.airGain = num(params, 'airGain', 0.068);
     window.__chromadelic = { world };
 
     camera.near = 1;
     camera.far = 12000;
 
     const usePost = params.get('noPost') !== '1';
-    // Same per-tier look as the shipping theme (POST_LOOK), so what is judged here is what ships.
     const look = POST_LOOK[quality] || POST_LOOK.High;
     const msaaParam = params.get('msaa');
     const post = usePost ? new ChromadelicHighwayPost(renderer, scene, camera, {
@@ -118,7 +86,9 @@ export function create({
         grain: false,
         falseColor: params.get('falseColor') === '1',
     }) : null;
-    const overlay = params.get('board') === '1' ? mountBoardOverlay(params.get('hud') !== '0') : null;
+    const overlay = params.get('board') === '1'
+        ? mountSoloWellPreview(meta.id, CHROMADELIC_HIGHWAY_TETROMINOS, params.get('hud') !== '0') : null;
+    world.setBoardActive(overlay ? 1 : 0);
 
     const held = {
         pulse: num(params, 'pulse'),
@@ -135,14 +105,19 @@ export function create({
     };
     let ev = urlEvent;
     const fireEvent = () => {
-        if (ev.name === 'lock') world.onPieceLock();
-        else if (ev.name === 'combo') world.onCombo(ev.combo);
+        if (ev.name === 'lock') world.onPieceLock({ pieceType: 'Z' });
+        else if (ev.name === 'hardDrop') {
+            world.onHardDrop();
+            world.onPieceLock({ pieceType: 'I' });
+        } else if (ev.name === 'combo') world.onCombo(ev.combo);
+        else if (ev.name === 'chain') world.onChain(ev.combo);
         else if (ev.name === 'clear') world.onLineClear(ev.lines);
         else if (ev.name === 'quad') world.onLineClear(4);
         else if (ev.name === 'levelUp') world.onLevelUp(ev.level);
         else if (ev.name === 'twist') world.onTwist(ev.lines);
         else if (ev.name === 'b2b') world.onB2B();
         else if (ev.name === 'perfect') world.onPerfectClear();
+        else if (ev.name === 'gameOver') world.onGameOver();
     };
 
     const size = new THREE.Vector2();
@@ -154,18 +129,19 @@ export function create({
         renderer.getDrawingBufferSize(size);
         world.setViewport(size.y, camera, size.x, window.innerHeight);
         const res = world.setLayout(aspect, readLayoutRects(), { width: window.innerWidth, height: window.innerHeight });
+        world.setBoardActive(res.veil.board ? 1 : 0);
         post?.setSize(window.innerWidth, window.innerHeight, size.x, size.y);
-        post?.setLayout(res.veil.board, res.veil.hud, 1);
+        post?.setLayout(res.veil.board, res.veil.hud, res.veil.board ? 1 : 0);
     };
+    overlay?.querySelector('link')?.addEventListener('load', syncViewport, { once: true });
     syncViewport();
 
     const sim = (time, delta) => ({
         time, delta, pace: 1, ...held,
     });
-    const pushPost = (time) => post?.update({ time, dip: world.fx.dip, bloomBoost: 0 });
-    // The icon lens (icon=1), applied after the rig has placed the camera: straight down the road
-    // at the rest focus (the arches' vanishing point), closed to iconFov, the breath and the bank
-    // undone. The world sizes its pixel-scale uniforms from the lens, so they follow it.
+    const pushPost = (time) => post?.update({
+        time, dip: world.fx.dip, bloomBoost: 0, warpRush: world.fx.warpRush ?? 0,
+    });
     const iconLens = params.get('icon') === '1';
     const aimIcon = () => {
         if (!iconLens) return;
@@ -179,16 +155,16 @@ export function create({
         camera.updateMatrixWorld();
         world.setViewport(size.y, camera, size.x, window.innerHeight);
     };
-    // Seek: rebuild the event state at (t - age) so every capture of `t` is identical.
+
     const seekTo = (time) => {
         const eventName = ev.name;
         const eventAge = ev.age;
-        // A replayed level-up must not carry its step into the next seek.
         world.resetProgress();
         world.seek(Math.max(0, time - (eventName ? eventAge : 0)));
         if (eventName) {
+            // Replaying a fixed frame must choose the same comet paths on every draw.
+            world.random = seededRandom(seed);
             fireEvent();
-            // Step the closed-form clocks forward through the event (no randomness involved).
             const steps = Math.max(1, Math.round(eventAge * 60));
             const t0 = world.time;
             const dt = eventAge / steps;
@@ -204,8 +180,7 @@ export function create({
         world.update(sim(time, 0), camera);
         pushPost(time);
     };
-    // Agent probes: replay any event at any age for a contact sheet, rendered in the same task
-    // (`spec` = { name, age, combo, lines, level }; null = the URL's event). Returns the canvas.
+
     window.__chromadelic.seekEvent = (time, spec = null) => {
         ev = spec ? { ...urlEvent, ...spec } : urlEvent;
         seekTo(time);
@@ -240,6 +215,7 @@ export function create({
         },
         dispose() {
             if (window.__chromadelic?.world === world) delete window.__chromadelic;
+            overlay?.querySelector('link')?.removeEventListener('load', syncViewport);
             overlay?.remove();
             post?.dispose();
             world.dispose();

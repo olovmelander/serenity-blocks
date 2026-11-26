@@ -554,9 +554,17 @@ describe('waves playground effect: captures', () => {
             quality: 'Low', time: 10, locks: 1, ribbons: 1,
         });
         // On the GPU backend, with the renderer's own counts.
-        const gpu = mount('', {
-            renderer: { backend: { isWebGPUBackend: true }, info: { render: { calls: 7, triangles: 1234 } } },
+        const counts = { calls: 1394, drawCalls: 0, triangles: 0 };
+        const gpu = mount('noPost=1', {
+            renderer: {
+                backend: { isWebGPUBackend: true },
+                info: { render: counts },
+                render: () => { counts.drawCalls += 7; counts.triangles += 1234; },
+            },
         });
+        gpu.effect.render();
+        counts.drawCalls = 0;
+        counts.triangles = 0;
         expect(gpu.effect.getDiagnostics()).toMatchObject({ backend: 'WebGPU', calls: 7, triangles: 1234 });
         // It can be serialised: the playground prints it.
         expect(() => JSON.stringify(diagnostics)).not.toThrow();

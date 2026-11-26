@@ -46,7 +46,7 @@
  * where the lens points), so a capture time is played up to in a few fixed steps and the same
  * seek reproduces the same frame.
  *
- * Warm: none (nothing is parked for the manager to compile; the scene pass has one output).
+ * Warm: event foam, the animals' skin and their reflections, through the shipped post stack.
  * Loaded: the sea life's bodies only (assets/sea-life.glb, built in Blender from numbers:
  * waves-cast.js); the wave, its sky and everything in the air are generated, and the wave runs
  * without the animals until they arrive, or for good if they never do.
@@ -56,14 +56,16 @@ import * as THREE from 'three/webgpu';
 
 import { BaseTheme } from '../base-theme.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
+import { MULTIPLAYER_EVENTS } from '../../events/multiplayer-events.js';
 import { registerGpuSurface } from '../../utils/gpu-loss-coordinator.js';
 import { normalizeQuality } from '../../utils/quality.js';
 import { getViewport } from '../../utils/viewport.js';
 import { sceneSamples } from '../shared/scene-antialias.js';
+import { warmParkedSoon } from '../shared/warm-hidden-drawables.js';
 import { WAVES_TETROMINOS } from './waves-tetrominos.js';
 import { WavesWorld, REST_RIG, fovForAspect } from './waves-world.js';
 import { POST_LOOK, WavesPost, createPassThroughPipeline } from './waves-post.js';
-import { PLAYER_SLOTS, readLayoutRects } from './waves-composition.js';
+import { PLAYER_SLOTS, readLayoutRects, watchBoardLayout } from './waves-composition.js';
 import { WAVES_EVENT_HANDLERS, WavesDirector } from './waves-director.js';
 import { approach } from './waves-core.js';
 import { wavesBakes } from './waves-bakes.js';
@@ -272,6 +274,7 @@ export default class WavesTheme extends BaseTheme {
                 spin: (c) => this.world?.onSpin(c),
                 combo: (n, player) => this.reportCombo(n, player),
                 levelUp: (level) => this.world?.levelUp(level),
+                seaCue: (kind, lines) => this.world?.onSeaCue(kind, lines),
             },
         });
         this.appliedSize = null;
@@ -283,6 +286,16 @@ export default class WavesTheme extends BaseTheme {
 
         this.scheduleLayoutReads();
         this.playTo(this.flags.time ?? this.takeRestartTime(0));
+        const { world } = this;
+        const warm = (roots) => warmParkedSoon(this, () => roots, () => this.renderPicture());
+        warm(this.getWarmupRoots());
+        // On a first visit the pack can still be in flight. Warm its newly attached meshes
+        // without delaying the opening picture or drawing into a replacement world.
+        if (!world.pod.fauna) {
+            world.lifeReady.then(() => {
+                if (isCurrent() && world.pod?.fauna) warm([world.pod.mesh]);
+            });
+        }
 
         if (!this.isPaused) this.animate();
         const backend = this.isWebGPU ? 'WebGPU' : 'WebGL2';
@@ -390,6 +403,13 @@ export default class WavesTheme extends BaseTheme {
         this.clearTrackedResources();
         this.eventUnsubscribers = [];
         const playing = () => this.isActive && !this.isPaused;
+        const cue = (kind, { local = false, lines = null } = {}) => (detail) => {
+            if (playing() && (!local || detail?.isLocal)) this.director?.onSeaCue(kind, lines ? detail?.[lines] : 1);
+        };
+        const endRun = () => {
+            this.resetSession();
+            if (playing()) this.director?.onSeaCue('end');
+        };
 
         Object.keys(WAVES_EVENT_HANDLERS).forEach((key) => {
             const handler = WAVES_EVENT_HANDLERS[key];
@@ -399,6 +419,18 @@ export default class WavesTheme extends BaseTheme {
             }));
         });
         this.eventUnsubscribers.push(
+            watchBoardLayout(() => this.scheduleLayoutReads()),
+            eventBus.on(MULTIPLAYER_EVENTS.GARBAGE_INSERTED, cue('incoming', { local: true, lines: 'linesInserted' })),
+            eventBus.on(MULTIPLAYER_EVENTS.GARBAGE_SENT, cue('outgoing', { local: true, lines: 'totalLines' })),
+            eventBus.on(MULTIPLAYER_EVENTS.GARBAGE_COUNTERED, cue('counter', { local: true, lines: 'linesCanceled' })),
+            eventBus.on(MULTIPLAYER_EVENTS.PLAYER_TOPPED_OUT, cue('topout', { local: true })),
+            eventBus.on(MULTIPLAYER_EVENTS.PLAYER_RESPAWNED, cue('respawn', { local: true })),
+            eventBus.on(MULTIPLAYER_EVENTS.ROUND_OVER, cue('round')),
+            eventBus.on(MULTIPLAYER_EVENTS.ROUND_RESTART, () => this.resetSession()),
+            eventBus.on(MULTIPLAYER_EVENTS.GAME_OVER, (data) => { if (data?.isGameOver) endRun(); }),
+            eventBus.on(EVENTS.ODYSSEY_GOAL_COMPLETE, cue('goal')),
+            eventBus.on(EVENTS.ODYSSEY_VICTORY_LAP_END, cue('victory')),
+            eventBus.on(EVENTS.ODYSSEY_LEVEL_FAILED, endRun),
             eventBus.on(EVENTS.SETTINGS_CHANGED, (p) => this.handleSettingsChanged(p)),
             eventBus.on(EVENTS.VIEWPORT_RESIZED, (v) => {
                 const view = v?.width > 0 && v?.height > 0 ? v : getViewport();
@@ -406,7 +438,7 @@ export default class WavesTheme extends BaseTheme {
             }),
         );
         this.registerEventListener(window, 'settingsChanged', (p) => this.handleSettingsChanged(p));
-        this.registerEventListener(window, 'gameOver', () => this.resetSession());
+        this.registerEventListener(window, 'gameOver', endRun);
 
         const resetPointer = () => {
             this.pointer.x = 0;
@@ -512,10 +544,8 @@ export default class WavesTheme extends BaseTheme {
     // ── layout: events aim at the live board, the calm zones follow the card/HUD ──
 
     /**
-     * No polling and no observers: the board/HUD rects are re-read inside the frame loop, on frame
-     * time, at 0 s, +0.5 s and +1.5 s after a trigger — scene build, resize, resume, the mode
-     * manager's modeStarted/modeActivated/modeStopped, game over. Never from a handler
-     * (getBoundingClientRect forces layout).
+     * Measure the board and HUD in the next frame and again while the UI settles. Mode changes,
+     * a resize and the actual mount of a delayed multiplayer board all use the same schedule.
      */
     scheduleLayoutReads() {
         for (let i = 0; i < LAYOUT_REREAD_OFFSETS.length; i += 1) {
@@ -647,14 +677,18 @@ export default class WavesTheme extends BaseTheme {
         world.update(sim, camera);
         this.easeCalmZones(wall);
 
+        this.renderPicture();
+    }
+
+    renderPicture() {
         if (this.post) {
-            this.post.update(world.getPostState());
+            this.post.update(this.world.getPostState());
             this.post.update({ time: this.time });
             this.post.render();
         } else if (this.passThrough) {
             this.passThrough.render();
         } else {
-            renderer.render(this.scene, camera);
+            this.renderer.render(this.scene, this.camera);
         }
     }
 
@@ -664,9 +698,12 @@ export default class WavesTheme extends BaseTheme {
         return !!(this.world && this.renderer && this.scene && this.camera);
     }
 
-    /** No parked drawables: every part of the wave is in the scene from the first frame. */
+    /** The water is itself drawable and must stay visible for the event mesh it parents. */
     getWarmupRoots() {
-        return [];
+        const { world } = this;
+        if (!world) return [];
+        return [world.parts.water?.mesh, world.spray?.mesh, world.foam?.mesh, world.pod?.fauna && world.pod.mesh]
+            .filter(Boolean);
     }
 
     /** Single-output scene pass: the manager's bare prewarm compileAsync has nothing to poison. */

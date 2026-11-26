@@ -6,7 +6,8 @@
  * two far corners. The fluid tears it, folds it and carries it; this is only the shape it remembers.
  *
  * A function of tide-space position (x right, y down, one unit = half the screen's height) built
- * from the one baked noise texture. Evaluated in the dye pass, never per screen pixel.
+ * from the baked noise and the cloud emission map. Evaluated in the dye pass, or directly
+ * in the picture when the solver cannot run.
  */
 
 import * as THREE from 'three/webgpu';
@@ -25,6 +26,7 @@ import {
     vec2,
     vec4,
 } from 'three/tsl';
+import { cloudUv } from './aether-tides-clouds.js';
 
 /** Uniforms of the resting nebula. */
 export function createFieldUniforms() {
@@ -32,6 +34,11 @@ export function createFieldUniforms() {
         gasA: uniform(new THREE.Color(0.42, 0.1, 1.0)),
         gasB: uniform(new THREE.Color(0.04, 0.78, 1.0)),
         gasC: uniform(new THREE.Color(1.0, 0.1, 0.52)),
+        gold: uniform(new THREE.Color(1, 0.59, 0.18)),
+        plateAxes: uniform(new THREE.Vector4()),
+        weather: uniform(new THREE.Vector4(0, 0, 0, 1)),
+        plateMix: uniform(0),
+        plateTurn: uniform(0),
         /** The river's direction: (cos, sin) of its angle on screen (y down). */
         river: uniform(new THREE.Vector2(Math.cos(0.5), Math.sin(0.5))),
         /** The river's half-width and how far its two ends lie, tide units. */
@@ -52,12 +59,12 @@ export function createFieldUniforms() {
  * @param {object} tNoise           texture node of the baked noise
  * @returns {Function} (q) → vec4(rgb = glowing gas, a = dust)
  */
-export function createField(F, tNoise) {
+export function createField(F, tNoise, tCloud) {
     return Fn(([q]) => {
         // River coordinates: `along` runs down the river, `across` over its banks.
         const along = dot(q, F.river).toVar();
         const across = dot(q, vec2(F.river.y.negate(), F.river.x)).toVar();
-        const bend = sin(along.mul(1.25).add(0.6)).mul(0.2);
+        const bend = sin(along.mul(1.25).add(0.6).add(F.weather.z)).mul(0.24);
         const off = across.sub(bend).div(F.riverWidth).toVar();
 
         const p = q.mul(0.17).add(F.drift).toVar();
@@ -94,7 +101,13 @@ export function createField(F, tNoise) {
         const outside = max(max(c.x, c.y), 0.0);
         const calm = float(1.0).sub(F.cardVoid.mul(float(1.0).sub(smoothstep(0.0, 0.3, outside))));
 
-        return vec4(colour.mul(gas).mul(F.gain).mul(calm), dust.mul(F.dust).mul(calm));
+        // Emissive crests feed the fluid. In the dark bays the tide leaves a few thin wisps.
+        const plate = tCloud.sample(cloudUv(q, F)).rgb.toVar();
+        const relief = max(max(plate.r, plate.g), plate.b).toVar();
+        const crests = smoothstep(0.16, 0.83, relief);
+        const feed = mix(1.0, crests.mul(0.92).add(0.16), F.plateMix);
+        const brokenDust = mix(1.0, crests.mul(-0.74).add(0.88), F.plateMix);
+        return vec4(colour.mul(gas).mul(F.gain).mul(calm).mul(feed), dust.mul(F.dust).mul(calm).mul(brokenDust));
     });
 }
 
@@ -107,4 +120,12 @@ export function aimRiver(F, aspect) {
     F.river.value.set(Math.cos(angle), Math.sin(angle));
     F.riverSpan.value = Math.hypot(a, 1) * 0.86;
     F.riverWidth.value = 0.5 + 0.14 * wide;
+    // Turn the sides above and below a portrait board. Retain the aspect of the plate,
+    // leaving enough bleed for the camera and the fluid to move through its edges.
+    const tilt = (1 - wide) * 1.16;
+    const c = Math.cos(tilt);
+    const s = Math.sin(tilt);
+    const scale = 0.45 / Math.max((a * c + s) / 1.5, a * s + c);
+    const horizontal = scale / 1.5;
+    F.plateAxes.value.set(c * horizontal, s * horizontal, -s * scale, c * scale);
 }

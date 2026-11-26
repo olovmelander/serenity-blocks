@@ -53,6 +53,7 @@ import {
     EMBER_SLOTS, LOOM_TIERS, PLUCK_SLOTS, SHUTTLE_SECONDS, SWEEP_SLOTS, WEFT_ROWS, WEFT_SLOTS,
     createFlares, createHoop, createPegs, createRosette, createSparks, createWarp, createWefts,
 } from './astral-weave-loom.js';
+import { createEventThreads } from './astral-weave-event-threads.js';
 import { applyCameraBreath } from '../shared/camera-breath.js';
 import { drainSteps } from '../shared/build-steps.js';
 import { GameplaySurge, Swell } from '../shared/gameplay-surge.js';
@@ -250,7 +251,6 @@ export class AstralWeaveWorld {
             uPxScale: uniform(1),
             uLoomPx: uniform(670),
             uLoom: uniform(new THREE.Vector3(0, 0, 0.58)),
-            uSkyShift: uniform(new THREE.Vector2(0, 0)),
             uParallax: uniform(new THREE.Vector2(0, 0)),
             uLamps: uniform(new THREE.Vector4(-0.68, -0.31, 0.71, 0.3)),
             uLampFlare: uniform(new THREE.Vector2(1, 1)),
@@ -262,6 +262,7 @@ export class AstralWeaveWorld {
             uEnergy: uniform(0),
             uCore: uniform(0.6),
             uCrown: uniform(0),
+            uShockLight: uniform(1),
             uFade: uniform(this.fade),
             // The clears' rings through the gas: radius (hoop radii) and gain, one per component.
             uShockR: uniform(new THREE.Vector4(0, 0, 0, 0)),
@@ -304,6 +305,7 @@ export class AstralWeaveWorld {
         }
         this.pegs = createPegs(s, tier.pegs);
         this.flares = createFlares(s);
+        this.eventThreads = createEventThreads(s, this.quality);
         this.sparks = createSparks(s, tier.sparks);
         yield 'loom';
         const dustTier = DUST_TIERS[this.quality];
@@ -322,6 +324,7 @@ export class AstralWeaveWorld {
         if (this.motes) this.group.add(this.motes.mesh);
         this.loomGroup.add(
             this.flares.mesh,
+            this.eventThreads.mesh,
             this.warp.mesh,
             ...this.gimbals.map((g) => g.mesh),
             this.rosette.mesh,
@@ -338,6 +341,7 @@ export class AstralWeaveWorld {
             warp: [this.warp.mesh],
             hoop: [this.hoop.mesh, this.pegs.mesh, ...this.gimbals.map((g) => g.mesh)],
             flares: [this.flares.mesh],
+            embroidery: [this.eventThreads.mesh],
             sparks: [this.sparks.mesh],
             dust: this.dust ? [this.dust.mesh] : [],
             motes: this.motes ? [this.motes.mesh] : [],
@@ -409,6 +413,7 @@ export class AstralWeaveWorld {
         if (Number.isFinite(aspect) && aspect > 0) this.aspect = aspect;
         const live = layout || fallbackLayout(this.aspect * 1080, 1080);
         solveLoom(this.aspect, live, this.loom);
+        this.eventThreads.setLayout(live, this.aspect, this.loom);
         this.hasBoard = false;
         for (let i = 0; i < PLAYER_SLOTS; i++) {
             const rect = live.boards?.[i] ?? null;
@@ -493,8 +498,30 @@ export class AstralWeaveWorld {
         }
     }
 
+    onB2B(c) {
+        if (this.isPrimary(c?.player)) {
+            this.eventThreads.b2b(this.time);
+            this.laceSwell.hit(0.85, this.time);
+            this.heatFlash = Math.max(this.heatFlash, 0.5);
+        } else {
+            this.echo(c.player, null, 0.5, 0.5);
+        }
+    }
+
     onCombo(combo, player) {
         if (this.isPrimary(player)) this.setCombo(combo);
+    }
+
+    garbage(kind, amount) {
+        this.eventThreads.garbage(this.time, kind, amount);
+    }
+
+    milestone(kind) {
+        this.eventThreads.milestone(this.time, kind);
+    }
+
+    endRun() {
+        this.eventThreads.end(this.time);
     }
 
     /** A perfect clear that settled after its clear (the director's sink.perfect): the crown. */
@@ -598,6 +625,7 @@ export class AstralWeaveWorld {
                 });
             }
         }
+        this.eventThreads.lock(this.time, clamp01((lockX - this.board.left) / this.board.width), meanY, hardDrop);
         this.pluck(lockX, meanY, (hardDrop ? 1.35 : 0.9) * strength);
         this.energySwell.hit((hardDrop ? 0.2 : 0.11) * strength, this.time);
         if (hardDrop && !this.reducedMotion) this.kickSwell.hit(0.12 * strength, this.time);
@@ -707,6 +735,7 @@ export class AstralWeaveWorld {
         cue.perfect = perfect === true;
         cue.b2b = b2b === true;
         this.surge.clear(cue, this.time);
+        this.eventThreads.clear(this.time, cue, meanY);
         if (quad) this.startQuad(perfect);
     }
 
@@ -716,6 +745,7 @@ export class AstralWeaveWorld {
      */
     setCombo(combo) {
         const c = Math.max(0, Math.round(Number.isFinite(combo) ? combo : 0));
+        if (c >= 2 && c > this.combo) this.eventThreads.combo(this.time, c);
         this.combo = c;
         // Pearl to gold over the same links that weave the petals (gold with the last petal).
         this.heatTarget = clamp01((c - 1) / K_COMBO_MAX);
@@ -787,6 +817,7 @@ export class AstralWeaveWorld {
      * burns, nothing restarts. The whole hoop answers, from the crown and the base.
      */
     crownClear() {
+        this.eventThreads.perfect(this.time);
         this.startQuad(true);
         this.front(PI * 0.5, 1.1);
         this.front(-PI * 0.5, 1.1);
@@ -797,6 +828,7 @@ export class AstralWeaveWorld {
 
     /** A twist that cleared nothing: a small wring of the hoop. */
     spinOnly() {
+        this.eventThreads.spin(this.time);
         this.spinVelocity += (this.shuttleDir > 0 ? 1 : -1) * (this.reducedMotion ? 0.2 : 0.6);
         this.heatFlash = Math.max(this.heatFlash, 0.12);
         this.energySwell.hit(0.15, this.time);
@@ -808,10 +840,12 @@ export class AstralWeaveWorld {
      * level-up never takes petals away), and the light moves one mood on (eased over a few
      * seconds, on top of the clock).
      */
-    levelUp(level) {
+    levelUp(level, effects = true) {
         const n = Number.isFinite(level) ? Math.max(1, Math.round(level)) : 2;
         this.kRest = K_REST + Math.min(3, n - 1);
         this.moods.levelUp();
+        if (!effects) return;
+        this.eventThreads.levelUp(this.time);
         this.ripple(-PI / 2, 0.9);
         this.energySwell.hit(0.5, this.time);
         this.surge.levelUp(this.time);
@@ -878,6 +912,7 @@ export class AstralWeaveWorld {
 
     /** A new run: an empty tapestry on the resting weave. */
     resetSession() {
+        this.eventThreads.reset();
         const { uWeftA, uWeftB } = this.shared;
         for (let i = 0; i < WEFT_SLOTS; i++) {
             uWeftA.array[i].set(-1000, 0, 1, 0);
@@ -1033,10 +1068,8 @@ export class AstralWeaveWorld {
         // toward the loom at the origin: fully off under reduced motion (the drift keeps 25%).
         applyCameraBreath(camera, t, { distance: camera.position.length(), scale: this.reducedMotion ? 0 : 1 });
         camera.updateMatrixWorld();
-        // The gas also drifts with time; what is authored in the frame (jewels, lamps, near motes)
-        // takes the camera's parallax alone.
+        // Lamps and foreground motes share this camera offset. The sky adds its own bounded tide.
         this.shared.uParallax.value.set(x * -0.011, y * -0.011);
-        this.shared.uSkyShift.value.set(x * -0.011 + t * 0.00035, y * -0.011);
     }
 
     update(sim) {
@@ -1062,6 +1095,7 @@ export class AstralWeaveWorld {
         if (this.pendingShift && t >= this.pendingShift.at) this.applyPendingShift();
         this.retireEmbers();
         this.sparks.flush();
+        this.eventThreads.update(t, this.reducedMotion);
 
         // ── a broken chain unweaves one petal at a time ──
         while (this.petals > this.petalTarget && t >= this.unweaveAt) {
@@ -1150,10 +1184,12 @@ export class AstralWeaveWorld {
         s.uTime.value = t;
         s.uHeat.value = heat;
         s.uEnergy.value = energy;
-        s.uCrown.value = crown;
-        s.uCore.value = 0.62 + this.energy * 0.5 + heat * 0.45 + crown * 1.2;
+        const flashGain = flashScale();
+        s.uShockLight.value = flashGain;
+        s.uCrown.value = crown * flashGain;
+        s.uCore.value = 0.62 + heat * 0.45 + (this.energy * 0.5 + crown * 1.2) * flashGain;
         s.uFade.value = this.fade * this.fade * (3 - 2 * this.fade);
-        s.uSpin.value = this.spin + Math.sin(t * 0.043) * 0.09 * calm;
+        s.uSpin.value = this.spin + (Math.sin(t * 0.043) * 0.13 + Math.sin(t * 0.079) * 0.065) * calm;
         // The warp winds tighter as play heats.
         s.uWarpTwist.value = 0.52 + Math.sin(t * 0.061) * 0.14 * calm + this.energy * 0.05 + warm * 0.08 + fever * 0.12;
         s.uFlow.value = this.flowPhase;
@@ -1190,7 +1226,10 @@ export class AstralWeaveWorld {
             s.uShockR.value.setComponent(i, radius);
             s.uShockG.value.setComponent(i, gain);
         }
-        s.uLampFlare.value.set(flare1, flare2);
+        s.uLampFlare.value.set(
+            lampFloor + (flare1 - lampFloor) * flashGain,
+            lampFloor + (flare2 - lampFloor) * flashGain,
+        );
 
         // ── the loom's own slow life ──
         this.loomGroup.rotation.set(
@@ -1199,10 +1238,11 @@ export class AstralWeaveWorld {
             0,
         );
         if (this.gimbals[0]) {
-            this.gimbals[0].mesh.rotation.set(0.24 + Math.sin(t * 0.07) * 0.05, 0.1, this.gimbalTurn[0]);
+            this.gimbals[0].mesh.rotation.set(0.42 + Math.sin(t * 0.07) * 0.18 * calm, 0.18, this.gimbalTurn[0]);
         }
         if (this.gimbals[1]) {
-            this.gimbals[1].mesh.rotation.set(0.08, 0.3 + Math.sin(t * 0.05 + 2) * 0.06, this.gimbalTurn[1] + 0.8);
+            const tilt = 0.49 + Math.sin(t * 0.05 + 2) * 0.19 * calm;
+            this.gimbals[1].mesh.rotation.set(-0.16, tilt, this.gimbalTurn[1] + 0.8);
         }
         this.dust?.step(this.renderer, dt);
     }
@@ -1251,7 +1291,7 @@ export class AstralWeaveWorld {
         [
             this.sky, this.rosette, this.wefts, this.warp, this.hoop, this.pegs, this.flares, this.sparks, this.dust,
             // A build stopped between its steps (shared/build-steps.js) may not have made them yet.
-            this.motes, ...(this.gimbals ?? []),
+            this.motes, this.eventThreads, ...(this.gimbals ?? []),
         ].forEach((part) => part?.dispose());
         this.noiseTex?.dispose();
         this.timers.length = 0;

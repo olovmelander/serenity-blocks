@@ -112,10 +112,10 @@ export function createWater(u, plan, opts = {}) {
         const depth = mix(float(1.2), max(u.height(st).negate(), 0.0), inside).toVar();
 
         // ── The water's slope: it barely moves, until something touches it ──
-        const w1 = u.noise(st.mul(0.031).add(vec2(u.time.mul(0.0031), u.time.mul(0.0019)))).toVar();
-        const w2 = u.noise(st.mul(0.13).sub(vec2(u.time.mul(0.0082), u.time.mul(-0.0051)))).toVar();
+        const w1 = u.noise(st.mul(0.031).add(vec2(u.driftTime.mul(0.0019), u.driftTime.mul(0.0012)))).toVar();
+        const w2 = u.noise(st.mul(0.13).sub(vec2(u.driftTime.mul(0.0032), u.driftTime.mul(-0.0021)))).toVar();
         const slope = w1.rg.sub(0.5).mul(0.6).add(w2.ba.sub(0.5).mul(0.22)).mul(u.power.mul(0.6).add(1.0))
-            .mul(0.034)
+            .mul(0.023)
             .toVar();
         /** How disturbed the water is here: what wakes the plankton. */
         const stir = float(0.0).toVar();
@@ -124,14 +124,18 @@ export function createWater(u, plan, opts = {}) {
         // ── Drips from the vault: each lights its own small circle ──
         for (let i = 0; i < plan.drips.length; i++) {
             const drip = plan.drips[i];
-            const age = fract(u.time.div(drip.period).add(drip.phase)).mul(drip.period);
-            const o = st.sub(vec2(drip.x, drip.z));
-            const d = length(o);
-            const x = d.sub(age.mul(DRIP_SPEED));
-            const env = exp(age.mul(-1.3)).mul(step(age, DRIP_LIFE));
-            const wave = sin(x.mul(9.0)).mul(exp(x.mul(x).mul(-3.0))).mul(env);
-            slope.addAssign(o.div(max(d, 1e-3)).mul(wave).mul(0.085));
-            stir.addAssign(blBell(x.div(0.5)).mul(env).mul(0.7).add(exp(d.mul(d).mul(-9.0)).mul(exp(age.mul(-5.0))).mul(1.5)));
+            const age = fract(u.time.div(drip.period).add(drip.phase)).mul(drip.period).toVar();
+            const o = st.sub(vec2(drip.x, drip.z)).toVar();
+            const d2 = o.dot(o).toVar();
+            If(age.lessThan(DRIP_LIFE).and(d2.lessThan(36.0)), () => {
+                const d = d2.sqrt();
+                const x = d.sub(age.mul(DRIP_SPEED));
+                const env = exp(age.mul(-1.3));
+                const wave = sin(x.mul(9.0)).mul(exp(x.mul(x).mul(-3.0))).mul(env);
+                slope.addAssign(o.div(max(d, 1e-3)).mul(wave).mul(0.085));
+                const splash = exp(d2.mul(-9.0)).mul(exp(age.mul(-5.0))).mul(1.5);
+                stir.addAssign(blBell(x.div(0.5)).mul(env).mul(0.7).add(splash));
+            });
         }
 
         // ── Lock rings: a crisp front with a soft wake, and the slope they give the surface ──
@@ -183,8 +187,17 @@ export function createWater(u, plan, opts = {}) {
         if (reflection) {
             // Far water is seen edge-on: its slopes shift the mirror less on screen.
             const reach = float(1.0).div(dist.mul(0.05).add(1.0));
-            const ruv = screenUV.flipX().add(vec2(slope.x, slope.y.mul(1.7)).mul(reach).mul(0.55));
-            mirror.assign(reflection.sample(ruv).level(reach.mul(1.3)).rgb);
+            const shift = vec2(slope.x, slope.y.mul(1.55)).mul(reach).mul(0.48);
+            const ruv = clamp(screenUV.flipX().add(clamp(shift, -0.035, 0.035)), 0.001, 0.999);
+            // A still reflection keeps its silhouette. Resolve the thin, bright gills over a
+            // pair of mirror texels and widen this footprint as ripple slopes cross the pixel.
+            const mirrorSize = u.viewport.mul(reflectionScale);
+            const footprint = fwidth(shift).mul(mirrorSize);
+            const rough = clamp(max(footprint.x, footprint.y).mul(0.5).add(stir.mul(0.20)), 0.0, 1.0);
+            const blur = vec2(0.34, 0.58).add(vec2(0.18, 0.72).mul(rough)).div(mirrorSize);
+            const lod = rough.mul(0.72).add(0.38);
+            mirror.assign(reflection.sample(ruv.sub(blur)).level(lod).rgb
+                .add(reflection.sample(ruv.add(blur)).level(lod).rgb).mul(0.5));
         } else {
             // No second render: the water returns the cave's glow along its mirror ray and the
             // lamps' halos, drawn out down the water as lights are on a pool at night.
@@ -215,19 +228,36 @@ export function createWater(u, plan, opts = {}) {
         // ── Plankton: sparks that light where the water is disturbed ──
         const lap = blBell(depth.sub(0.05).div(0.16)).mul(inside);
         const shimmer = sin(u.time.mul(1.2).add(w2.r.mul(15.0))).mul(0.3).add(0.7);
-        const awake = stir.add(lap.mul(shimmer).mul(u.power.mul(0.9).add(0.55))).add(u.power.mul(0.07)).toVar();
+        // Two plankton shoals follow the margins of the pool on different tides. The grazing
+        // view compresses their wakes into short, broken filaments between the reflections.
+        const bank = step(0.0, st.x).toVar();
+        const tide = u.driftTime.mul(0.061).add(bank.mul(2.7)).toVar();
+        const head = sin(tide.mul(bank.mul(0.23).add(1.0))).mul(10.5).sub(18.0);
+        const along = st.y.sub(head).mul(0.17).toVar();
+        const meander = sin(st.y.mul(0.32).add(tide)).mul(1.25).add(w1.b.sub(0.5).mul(2.1));
+        const across = abs(st.x).sub(float(5.6).add(meander)).add(along.mul(0.29)).toVar();
+        const shoal = blBell(along.mul(0.55)).mul(blBell(across.mul(0.68)))
+            .mul(smoothstep(0.02, 0.45, depth)).toVar();
+        const ribbon = blBell(across.add(w2.a.sub(0.5).mul(1.1)).mul(3.1));
+        col.addAssign(mix(u.plankton, u.accent, bank.mul(0.32)).mul(shoal)
+            .mul(w2.g.mul(0.08).add(ribbon.mul(0.15))).mul(u.breath));
+        const awake = stir.add(lap.mul(shimmer).mul(u.power.mul(0.9).add(0.55)))
+            .add(shoal.mul(1.35)).add(u.power.mul(0.07)).toVar();
         if (sparkle) {
             // Each spark is one creature: a point somewhere in its own cell of the water, winking
             // on its own clock. Three sizes of cell, so there are sparks at every distance; a
             // layer goes out where its cells are finer than a pixel.
             const layer = (scale, salt) => {
                 const gq = st.mul(scale).add(vec2(u.time.mul(0.004 * scale), u.time.mul(-0.0026 * scale)));
-                const r = blHash22(floor(gq).add(vec2(salt, salt * 1.7)));
+                const r = blHash22(floor(gq).add(vec2(1024 + salt, 1024 + salt * 7)));
                 const d = length(fract(gq).sub(0.5).sub(r.sub(0.5).mul(0.6)));
                 const size = r.y.mul(0.1).add(0.07);
-                const point = float(1.0).sub(smoothstep(size.mul(0.3), size, d));
+                const footprint = fwidth(gq).length();
+                const edge = max(size.mul(0.23), footprint.mul(0.52));
+                const point = float(1.0).sub(smoothstep(size.sub(edge), size.add(edge), d))
+                    .mul(size.div(max(size, edge)));
                 const wink = sin(u.time.mul(r.x.mul(3.0).add(1.5)).add(r.y.mul(40.0))).mul(0.5).add(0.5);
-                const fine = clamp(float(1.0).sub(fwidth(gq.x).add(fwidth(gq.y)).mul(1.2)), 0.0, 1.0);
+                const fine = float(1.0).sub(smoothstep(0.22, 0.76, footprint));
                 return point.mul(wink.mul(wink)).mul(step(0.4, r.x)).mul(fine);
             };
             // They gather in clouds.
@@ -291,10 +321,14 @@ export function createPads(u, plan, count) {
     const ca = look.y.cos();
     const sa = look.y.sin();
     const q = positionGeometry.xy.mul(2.0);
-    const world = centre.add(vec3(q.x.mul(ca).sub(q.y.mul(sa)), 0.0, q.x.mul(sa).add(q.y.mul(ca))).mul(pad.z));
-    material.positionNode = world;
     const ring = blLockLight(u, centre);
     const clear = blClearLight(u, centre);
+    const pulse = max(ring.r, max(ring.g, ring.b)).add(clear.w).clamp(0, 1.0);
+    const heel = sin(u.driftTime.mul(0.24).add(look.y)).mul(0.014)
+        .add(sin(u.time.mul(3.8).add(look.y)).mul(pulse).mul(0.095));
+    const lift = q.y.mul(heel).add(abs(heel));
+    const world = centre.add(vec3(q.x.mul(ca).sub(q.y.mul(sa)), lift, q.x.mul(sa).add(q.y.mul(ca))).mul(pad.z));
+    material.positionNode = world;
     const breathe = sin(u.time.mul(0.8).add(pad.w.mul(40.0))).mul(0.25).add(0.75);
     const vLight = varying(
         u.family(look.x).mul(breathe).mul(u.power.mul(1.2).add(0.8)).mul(u.breath)
@@ -309,9 +343,10 @@ export function createPads(u, plan, count) {
         const ang = atan(st.y, st.x);
         const notch = smoothstep(0.0, 0.16, abs(ang).sub(0.1)).add(step(d, 0.18));
         const leaf = float(1.0).sub(smoothstep(0.86, 0.96, d)).mul(clamp(notch, 0.0, 1.0));
-        const rim = blBell(d.sub(0.86).div(0.1));
-        const veins = blBell(fract(ang.mul(7 / 6.283).add(0.5)).sub(0.5).mul(7.0)).mul(smoothstep(0.1, 0.5, d));
-        const glow = rim.mul(1.3).add(veins.mul(0.5)).add(exp(d.mul(d).mul(-5.0)).mul(0.22));
+        const rim = blBell(d.sub(0.86).div(0.065));
+        const ribs = fract(ang.mul(9 / 6.283).add(d.mul(d).mul(0.38)).add(0.5)).sub(0.5);
+        const veins = blBell(ribs.mul(6.0)).mul(smoothstep(0.1, 0.5, d));
+        const glow = rim.mul(0.9).add(veins.mul(0.5)).add(exp(d.mul(d).mul(-5.0)).mul(0.2));
         const body = vec3(0.004, 0.016, 0.012);
         const atm = blAtmosphere(u, body.add(vLight.mul(glow)), positionWorld);
         return vec4(atm.mul(leaf), leaf);

@@ -21,6 +21,7 @@ import { capCentre } from '../../src/themes/bioluminescence/bioluminescence-layo
 import { cardUnion, fallbackLayout } from '../../src/themes/bioluminescence/bioluminescence-composition.js';
 import { runnerPoint, sporeHeight } from '../../src/themes/bioluminescence/bioluminescence-fx.js';
 import { BIOLUMINESCENCE_TETROMINOS } from '../../src/themes/bioluminescence/bioluminescence-tetrominos.js';
+import { holdFlashing } from '../../src/utils/photosensitivity.js';
 
 // A world is a plan, a noise field and two dozen node materials: building one takes a moment,
 // and longer on a machine that is busy with something else.
@@ -323,6 +324,52 @@ describe('bioluminescence world: build', () => {
         const lean = makeWorld('Minimal').world;
         expect(Object.keys(lean.parts).length).toBeLessThan(BIOLUMINESCENCE_PARTS.length);
         for (const name of Object.keys(lean.parts)) expect(BIOLUMINESCENCE_PARTS).toContain(name);
+    });
+
+    it('attaches each veil to its living cap and releases both veil meshes on teardown', () => {
+        const { world } = buildWorld('Minimal');
+        const { parts, mushrooms } = world;
+        const disposed = [];
+        try {
+            for (const [veil, cap, count, source] of [
+                [parts.elderVeil, parts.elder, 1, 0],
+                [parts.courtVeils, parts.parasols, world.plan.heroCount - 1, 1],
+            ]) {
+                const { position, aPart, aPulse } = veil.geometry.attributes;
+                expect(veil.geometry.instanceCount).toBe(count);
+                expect(position.array.every(Number.isFinite)).toBe(true);
+                expect(aPart.array.every(Number.isFinite)).toBe(true);
+                expect(veil.geometry.index.array.every((i) => i < position.count)).toBe(true);
+                let roots = 0;
+                let lowest = 0;
+                for (let i = 0; i < position.count; i++) {
+                    const drop = aPart.getY(i);
+                    lowest = Math.max(lowest, drop);
+                    if (drop === 0) {
+                        roots++;
+                        expect(Math.hypot(position.getX(i), position.getZ(i))).toBeCloseTo(1, 1);
+                    }
+                }
+                expect(roots).toBeGreaterThan(0);
+                expect(lowest).toBeGreaterThan(0);
+                // Each strand reads its cap's own position, tilt, shape and bloom buffers.
+                for (const key of ['aRoot', 'aShape', 'aLean', 'aPulse', 'aStore', 'aPrev', 'aCut']) {
+                    expect(veil.geometry.getAttribute(key)).toBe(cap.geometry.getAttribute(key));
+                }
+                const before = aPulse.getW(0);
+                mushrooms.fire(source, [1, 0.5, 0.25], START + 0.5);
+                mushrooms.update(START + 0.6);
+                expect(aPulse.getW(0)).toBeGreaterThan(before);
+                expect(aPulse.getX(0)).toBeGreaterThan(0);
+                for (const resource of [veil.geometry, veil.material]) {
+                    resource.addEventListener('dispose', () => disposed.push(resource));
+                }
+            }
+        } finally {
+            world.dispose();
+        }
+        expect(disposed).toHaveLength(4);
+        expect(new Set(disposed).size).toBe(disposed.length);
     });
 
     it('draws only the named parts when asked', () => {
@@ -922,6 +969,26 @@ describe('bioluminescence world: the Great Bloom', () => {
 });
 
 describe('bioluminescence world: a chain', () => {
+    it('brings visitors into the resting school and retires their meshes after they sink', () => {
+        const { world, camera } = makeWorld();
+        const initial = world.jellies.up;
+        expect(world.jellies.geometry.instanceCount).toBe(initial);
+        world.seek(54);
+        world.updateCamera(camera, { time: 54, delta: 0 });
+        world.update({ time: 54, delta: 0 });
+        expect(world.jellies.up).toBeGreaterThan(initial);
+        expect(world.jellies.geometry.instanceCount).toBe(world.jellies.up);
+        expect(world.combo).toBe(0);
+
+        const { jellies } = world;
+        jellies.update(59);
+        jellies.setTarget(initial, 59);
+        jellies.update(59.5);
+        expect(jellies.geometry.instanceCount).toBeGreaterThan(initial);
+        jellies.update(64);
+        expect(jellies.geometry.instanceCount).toBe(initial);
+    });
+
     it('wakes the grotto: power, the glow-worms, the fairy rings and the jellies', () => {
         const made = makeWorld('High');
         const { world } = made;
@@ -1266,6 +1333,10 @@ describe('bioluminescence world: clocks, replay and resets', () => {
     it('drops every event on a seek and sets its slow clocks from the time alone', () => {
         const made = makeWorld('High');
         const { world } = made;
+        world.seek(40);
+        world.update({ time: 40, delta: 0 });
+        const idleSchool = world.getState().jellies;
+        rest(made);
         playScript(made);
         world.seek(40);
         world.update({ time: 40, delta: 0 });
@@ -1283,7 +1354,7 @@ describe('bioluminescence world: clocks, replay and resets', () => {
                 locks: 0, clears: 0, blooms: 0, swimmers: 0,
             },
         });
-        expect(world.getState().jellies).toBe(jelliesForCombo(0, world.jellies.count));
+        expect(world.getState().jellies).toBe(idleSchool);
         expect(world.u.lockA.every((slot) => slot.value.w === 0 && slot.value.z < 0)).toBe(true);
         expect(world.u.clearA.every((slot) => slot.value.z === 0 && slot.value.x < 0)).toBe(true);
         expect(world.u.shock.value.y).toBe(0);
@@ -1549,6 +1620,72 @@ describe('bioluminescence world: an upright screen', () => {
 });
 
 describe('bioluminescence world: faults that stay fixed', () => {
+    it('joins adjacent filament knots in the existing spore pool', () => {
+        const { spores } = makeWorld('Minimal').world;
+        const { aBirth, aVel, aTint } = spores.state;
+        const emission = {
+            x: 1, y: 2, z: 3, rgb: [0.1, 0.9, 0.8], time: START,
+        };
+        spores.emit({
+            ...emission,
+            n: 8,
+            filament: true,
+            path: (s, p) => { p[0] = s; p[1] = Math.sin(s * Math.PI); p[2] = 0; },
+        });
+        for (let i = 0; i < 7; i++) {
+            const o = i * 4;
+            expect(aTint[o + 3]).toBeLessThan(0);
+            for (let k = 0; k < 3; k++) expect(aBirth[o + k] + aVel[o + k]).toBeCloseTo(aBirth[o + 4 + k], 5);
+        }
+        spores.reset();
+        spores.emit({ ...emission, n: 1 });
+        expect(aTint[3]).toBeGreaterThan(0);
+    });
+
+    it('schedules a separately delivered back-to-back after its existing quad ring', () => {
+        const made = makeWorld('High');
+        const { world } = made;
+        world.onClear({ lines: 4, player: 2 });
+        const first = world.bloomAt;
+        run(made, 1 / 60);
+        world.onEcho(2);
+        const rings = world.u.shock.value;
+        expect(Math.max(rings.x, rings.z)).toBeGreaterThan(first);
+        expect(world.counts.blooms).toBe(1);
+        expect(world.counts.clears).toBe(1);
+        world.resetSession();
+        world.onEcho(0);
+        expect(Math.max(world.u.shock.value.x, world.u.shock.value.z)).toBe(world.time);
+        expect(world.counts.clears).toBe(0);
+    });
+
+    it('opens both bank flowers for a late perfect clear and retires their shared geometry', () => {
+        const made = makeWorld('High');
+        const { world } = made;
+        expect(world.bloom.geometry.instanceCount).toBe(1);
+        world.onCrown();
+        run(made, 0.5);
+        expect(world.bloom.geometry.instanceCount).toBeGreaterThan(2);
+        const [left, right] = world.bloom.sites.map((site) => site.value);
+        expect(left.x).toBeLessThan(right.x);
+        expect(Math.min(left.w, right.w)).toBeGreaterThan(0);
+        expect(world.counts.clears).toBe(0);
+        run(made, 6);
+        expect(world.bloom.geometry.instanceCount).toBe(1);
+    });
+
+    it('keeps the light steady during the quad intake with reduced flashing', () => {
+        const made = makeWorld('Minimal');
+        holdFlashing(true);
+        try {
+            made.world.onClear({ lines: 4 });
+            run(made, HUSH_HOLD * 0.8);
+            expect(made.world.breath).toBeGreaterThan(0.9);
+        } finally {
+            holdFlashing(false);
+        }
+    });
+
     it('fits its worst frame into the spore pool on every tier', () => {
         // The ring that recycles the pool overwrites the oldest spores first: a frame that asks
         // for more than the pool loses the first of them before they are born.

@@ -1,5 +1,7 @@
 import * as THREE from 'three/webgpu';
+import { SHAPES } from '../../core/constants.js';
 import { BlackHolePost } from '../../themes/black-hole/black-hole-post.js';
+import { BLACK_HOLE_TETROMINOS } from '../../themes/black-hole/black-hole-tetrominos.js';
 import { BlackHoleWorld } from '../../themes/black-hole/black-hole-world.js';
 
 export const meta = {
@@ -28,9 +30,11 @@ const STREAK_SPACING = 0.9;
  *   quality=High            tier
  *   az=0.6 el=0.2 dist=1045 hold the camera at this azimuth / elevation (radians) / distance
  *   frame=-0.6 up=0         the hole's place across the frame (NDC) and its lift in world units
- *   event=lock|clear|quad|twist|perfect|level|combo   gameplay cue to replay under ?t=
- *   eventAge=0.45           seconds between the cue and the captured frame
- *   lines=1  combo=5  column=4.5  row=20  drop=0  color=%23f8b24f
+ *   event=lock|drop|clear|double|triple|quad|twist|twist0|b2b|perfect|cascade|combo|break|level|over|touch
+ *   eventAge=0.45           seconds after the featured cue (the final wave for a cascade)
+ *   depth=3                 number of cascade waves, including the first clear (2–8)
+ *   lines=1  combo=5  column=4.5  row=20  drop=16  color=%23ac87f4
+ *                           drop defaults to 16 rows for event=drop and 0 otherwise
  *   board=1                 draw a stand-in board and launch fed pieces from it
  *   reduce=1                reduced-motion behaviour
  *   level=2                 the game's level: each is one mood forward on top of the clock's
@@ -97,28 +101,92 @@ export function create({
     };
     syncViewport();
 
-    const piece = () => ({
-        x: number('column', 4.5) - 1,
-        y: number('row', 20),
-        shape: [[0, 1, 0], [1, 1, 1]],
-        color: params.get('color') || '#f8b24f',
-    });
-    const fire = (kind, lines = number('lines', 1)) => {
+    const order = ['T', 'L', 'Z', 'I', 'O', 'S', 'J'];
+    let locks = 0;
+    const dispatch = ({ kind, lines, depth }) => {
         const { director } = world;
-        if (kind === 'level') {
-            director.onLevelUp({ level: 2 });
+        if (kind === 'touch') {
+            director.onTouch(0.25, 0.55);
             return;
         }
-        const drop = number('drop', 0);
-        if (drop > 0) director.onHardDrop({ distance: drop });
-        director.onPieceLock({ piece: piece() });
-        if (kind === 'lock') return;
-        const count = kind === 'quad' ? 4 : Math.max(1, Math.min(4, kind === 'twist' ? 2 : lines));
-        director.onLineClear({ lineCount: count, clearedRows: Array.from({ length: count }, (_, i) => 23 - i) });
+        if (kind === 'level') {
+            const level = world.gameLevel + 1;
+            world.setLevel(level);
+            director.onLevelUp({ level });
+            return;
+        }
+        if (kind === 'over') {
+            director.endRun();
+            return;
+        }
+        if (kind === 'crown') {
+            director.onPerfectClear({ depth: 1 });
+            return;
+        }
+        if (kind !== 'wave') {
+            const drop = number('drop', kind === 'drop' ? 16 : 0);
+            if (drop > 0) director.onHardDrop({ distance: drop });
+            const type = kind.startsWith('twist') ? 'T' : order[locks % order.length];
+            locks += 1;
+            director.onPieceLock({
+                piece: {
+                    x: number('column', 4.5) - 1,
+                    y: number('row', 20),
+                    shape: SHAPES[type],
+                    color: params.get('color') || BLACK_HOLE_TETROMINOS.colors[type],
+                },
+            });
+        }
+        if (kind === 'drop' || kind === 'lock') return;
+        if (kind === 'twist0') {
+            director.onTwist({ lineCount: 0 });
+            return;
+        }
+        const count = {
+            quad: 4, b2b: 4, triple: 3, double: 2, twist: 2,
+        }[kind] ?? lines;
+        director.onLineClear({
+            lineCount: count, clearedRows: Array.from({ length: count }, (_, i) => 23 - i), cascadeCount: depth,
+        });
         if (kind === 'twist') director.onTwist({ lineCount: count });
-        if (kind === 'perfect') director.onPerfectClear({ depth: 1 });
+        if (kind === 'b2b') director.onBackToBack({ active: true });
+        if (kind === 'wave') director.onCascade({ comboCount: depth });
     };
 
+    // Offsets are relative to the featured beat: eventAge starts at the actual crown, B2B,
+    // final cascade wave, or the lock that reveals a broken streak.
+    const sequence = (kind, lineCount) => {
+        const lines = Math.min(4, Math.max(1, Math.round(lineCount)));
+        const cue = (type, offset = 0, depth = 1) => ({
+            kind: type, offset, lines, depth,
+        });
+        if (kind === 'combo' || kind === 'break') {
+            const count = Math.min(16, Math.max(kind === 'break' ? 4 : 2, Math.floor(number('combo', 5))));
+            const lead = kind === 'break' ? 1.2 : 0;
+            const list = Array.from({ length: count }, (_, i) => cue('clear', (i + 1 - count) * STREAK_SPACING - lead));
+            if (kind === 'break') list.push(cue('lock', -0.6), cue('lock'));
+            return list;
+        }
+        if (kind === 'cascade') {
+            const count = Math.min(8, Math.max(2, Math.floor(number('depth', 3))));
+            return Array.from({ length: count }, (_, i) => cue(i ? 'wave' : 'clear', (i + 1 - count) * 0.45, i + 1));
+        }
+        if (kind === 'b2b') return [cue('quad', -1.6), cue('b2b')];
+        if (kind === 'perfect') return [cue('clear', -0.38), cue('crown')];
+        if (kind === 'over') return [cue('quad', -1.2), cue('over')];
+        return ['lock', 'drop', 'clear', 'double', 'triple', 'quad', 'twist', 'twist0', 'level', 'touch'].includes(kind)
+            ? [cue(kind)] : [];
+    };
+    let scheduled = [];
+    const fire = (kind, lines = number('lines', 1)) => {
+        const cues = sequence(kind, lines);
+        if (!cues.length) return;
+        dispatch(cues[0]);
+        for (const cue of cues.slice(1)) {
+            scheduled.push({ ...cue, at: world.time + cue.offset - cues[0].offset });
+        }
+        scheduled.sort((a, b) => a.at - b.at);
+    };
     const lift = params.get('icon') === '1' ? ICON_LIFT : {};
     const overridden = (key) => params.has(key) || lift[key] !== undefined;
     const gain = (key, fallback) => number(key, lift[key] ?? fallback);
@@ -128,6 +196,7 @@ export function create({
         ['corona', world.uniforms.coronaGain], ['nebula', world.uniforms.nebulaGain],
     ].filter(([key]) => overridden(key));
     const frame = (time, dt) => {
+        while (scheduled.length && scheduled[0].at <= time) dispatch(scheduled.shift());
         world.update(time, dt);
         const { director } = world;
         post.update({
@@ -143,30 +212,36 @@ export function create({
     };
 
     let sought = null;
-    const seek = (time) => {
-        if (!Number.isFinite(time) || time === sought) return;
+    const replay = (time, kind, age) => {
         sought = Math.max(0, time);
         world.reset();
-        const kind = params.get('event');
-        const last = Math.max(0, sought - Math.max(0, number('eventAge', 0.45)));
-        // A streak is replayed as real consecutive clears, so the combo is earned.
-        const streak = kind === 'combo' ? Math.max(2, Math.floor(number('combo', 5))) : 1;
-        const cues = Array.from({ length: streak }, (_, i) => last - (streak - 1 - i) * STREAK_SPACING)
-            .filter((at) => at >= 0);
+        world.setLevel(number('level', 1), { silent: true });
+        locks = 0;
+        const last = Math.max(0, sought - Math.max(0, age));
+        scheduled = sequence(kind, number('lines', 1))
+            .map((cue) => ({ ...cue, at: last + cue.offset })).filter((cue) => cue.at >= 0);
         const steps = Math.max(1, Math.ceil(sought / STEP));
         const dt = sought / steps;
-        let next = 0;
         for (let i = 1; i <= steps; i += 1) {
             const t = dt * i;
-            while (kind && next < cues.length && t >= cues[next]) {
-                fire(kind === 'combo' ? 'clear' : kind);
-                next += 1;
-            }
             frame(t, dt);
         }
     };
+    const seek = (time) => {
+        if (!Number.isFinite(time) || time === sought) return;
+        replay(time, params.get('event'), number('eventAge', 0.45));
+    };
 
-    window.__BLACK_HOLE_ART__ = { world, post, fire };
+    if (params.has('event') && !params.has('t')) fire(params.get('event'));
+    window.__BLACK_HOLE_ART__ = {
+        world,
+        post,
+        fire,
+        preview(kind, age = 0.55, time = number('t', 12)) {
+            replay(time, kind, age);
+            post.render();
+        },
+    };
     return {
         cameraRadius: 1,
         camera() {},

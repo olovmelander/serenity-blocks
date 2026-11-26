@@ -163,6 +163,19 @@ export const lipAngleAt = /* @__PURE__ */ Fn(([d, crest]) => {
     inputs: [{ name: 'd', type: 'float' }, { name: 'crest', type: 'float' }],
 });
 
+/** The long swell under the glitter path, level at the foot of the curling face. */
+export const troughHeight = /* @__PURE__ */ Fn(([across, z, t]) => {
+    const reach = across.mul(0.08);
+    const far = float(1.0).sub(exp(reach.mul(reach).negate()));
+    const roll = sin(across.mul(0.21).add(z.mul(0.035)).add(t.mul(0.35))).mul(0.22)
+        .add(sin(across.mul(0.083).sub(z.mul(0.021)).add(t.mul(0.21)).add(2.0)).mul(0.3));
+    return roll.mul(far);
+}).setLayout({
+    name: 'wavesTroughHeight',
+    type: 'float',
+    inputs: ['across', 'z', 't'].map((name) => ({ name, type: 'float' })),
+});
+
 /**
  * The wave on the GPU, mirroring waves-core.js. `u` holds the uniforms that move it:
  *   open    0..1, how far the lip's touchdown has come back toward the eye
@@ -211,8 +224,19 @@ export function createWaveShape(u) {
         const xc = min(ahead.mul(ahead).mul(WAVE.bowl), WAVE.bowlMax).negate();
         // The tube: an arc of an ellipse, breathing with the wobble.
         const grow = w.add(1.0);
-        const xt = sin(phi).mul(grow).mul(WAVE.a);
-        const yt = float(WAVE.b).sub(cos(phi).mul(grow).mul(WAVE.b));
+        // The rider travels through wave sets. The upper sheet pitches out over the
+        // trough, then draws back as the next shoulder arrives. The foot stays fixed.
+        const crown = float(1).sub(cos(phi));
+        const pitch = sin(z.mul(0.17).add(u.time.mul(0.24))).mul(0.17)
+            .add(u.sea.z.mul(0.15)).add(0.12);
+        const footSurge = sin(z.mul(2.1).sub(u.time.mul(0.92))).mul(0.095)
+            .add(sin(z.mul(3.8).add(u.time.mul(0.63))).mul(0.045));
+        const xt = sin(phi).mul(grow).mul(WAVE.a).sub(crown.mul(pitch))
+            .add(footSurge.mul(smoothstep(4.85, WAVE.lipClosed, phi)));
+        // Let the leading edge plunge into the boil at touchdown. Leaving it on
+        // the ideal ellipse exposes a narrow slit of sunset under the whitewater.
+        const plunge = smoothstep(WAVE.lipClosed - 0.56, WAVE.lipClosed, phi).mul(0.32);
+        const yt = float(WAVE.b).sub(cos(phi).mul(grow).mul(WAVE.b)).sub(plunge);
         // The unbroken shoulder: the plain hump of a swell.
         const xs = rr.mul(WAVE.swellWidth);
         const ys = float(1.0).sub(cos(rr.mul(Math.PI))).mul(WAVE.swellHeight * 0.5).mul(grow);
@@ -220,12 +244,7 @@ export function createWaveShape(u) {
         const ay = mix(yt, ys, swell).mul(scale);
         // The trough: flat, joined to the foot of the face, with a long low swell far out.
         const fx = floorX(r);
-        const reach = fx.mul(0.08);
-        // Flat, and level, where it meets the face; the swell grows in with distance from it.
-        const far = float(1.0).sub(exp(reach.mul(reach).negate()));
-        const roll = sin(fx.mul(0.21).add(z.mul(0.035)).add(u.time.mul(0.35))).mul(0.22)
-            .add(sin(fx.mul(0.083).sub(z.mul(0.021)).add(u.time.mul(0.21)).add(2.0)).mul(0.3));
-        const fy = roll.mul(far);
+        const fy = troughHeight(fx, z, u.time);
         const onFloor = r.lessThan(0.0);
         const position = vec3(xc.add(select(onFloor, fx, ax)), select(onFloor, fy, ay), z);
         return { position, u: select(onFloor, fx, phi.mul(WAVE.rho)), lip };

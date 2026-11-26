@@ -61,13 +61,14 @@ const numeric = (
 );
 
 const captureThemes = [
-    ['aether-tides', 'aether', 'Aether Tides', 'nebula, stars, beams, stardust, cells'],
-    ['astral-weave', 'astralWeave', 'Astral Weave', 'sky, rosette, wefts, warp, hoop, flares, sparks, dust'],
+    ['aether-tides', 'aether', 'Aether Tides', 'nebula, stars, beams, stardust, echoes, filaments'],
+    ['astral-weave', 'astralWeave', 'Astral Weave',
+        'sky, rosette, wefts, warp, hoop, flares, embroidery, sparks, dust, motes'],
     ['bioluminescence',
         'biolum',
         'Bioluminescence',
-        'backdrop, vault, floor, islets, spikes, water, pads, elder, parasols, bells, globes, crystals, '
-        + 'worms, threads, vines, motes, jellies, spores, runners, jets'],
+        'backdrop, vault, floor, islets, spikes, water, pads, elder, parasols, elderVeil, courtVeils, bells, globes, '
+        + 'crystals, worms, threads, vines, motes, jellies, spores, runners, jets, bloom'],
 
     ['chiral-gold',
         'chiralGold',

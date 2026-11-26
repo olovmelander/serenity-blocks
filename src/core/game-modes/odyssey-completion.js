@@ -2,6 +2,15 @@ import { DEMO_LEGACY_SIMULATION_CLOCK } from '../demo/DemoRecorder.js';
 import { canWriteLegacySimulationResults } from './single-player-result-compatibility.js';
 import { getOdysseyCampaignSummary } from '../odyssey/odyssey-campaign-summary.js';
 import { odysseyCharmsUsed } from '../odyssey/odyssey-charm-use.js';
+import { eventBus, EVENTS } from '../../events/event-bus.js';
+
+/** The goal belongs to this attempt, even while another orb's assets are loading. */
+export function announceOdysseyGoal(session) {
+    eventBus.emit(EVENTS.ODYSSEY_GOAL_COMPLETE, {
+        levelId: session.levelId,
+        metrics: session.hybridEngine?.getMetrics() || {},
+    });
+}
 
 /**
  * An orb's end that throws (the save, the campaign summary, the results sheet) must not leave
@@ -174,6 +183,8 @@ export async function completeOdysseyLevel(mode, results) {
     await mode._drainLevelSession(session);
     if (!mode._isLevelSessionCurrent(session, retirementGeneration)) return;
 
+    // A showcase announced the goal on lap entry. No-lap and duel wins first reach it here.
+    if (!session.gameState.goalComplete) announceOdysseyGoal(session);
     const finalResults = await saveOdysseyClear(mode, session, results);
     // The world answers this clear when its gate opens back onto it (odyssey-world-return.js).
     mode._orbJustCleared = Number(session.levelId);

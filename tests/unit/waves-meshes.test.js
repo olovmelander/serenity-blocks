@@ -226,7 +226,7 @@ describe('waves: the sea life pack', () => {
 
     /** Which part of the animal a vertex belongs to (the pack's own code: waves-fauna.js reads it so). */
     const partOf = (shape, v) => Math.floor(Math.round(shape.getY(v) * 255) / 3 + 0.01);
-    const [BODY, FLIPPER, TAIL, , , REAR] = [0, 1, 2, 3, 4, 5];
+    const [BODY, FLIPPER, TAIL, DORSAL, , REAR] = [0, 1, 2, 3, 4, 5];
     /** The parts each body plan is swum by: without them the animal is a statue. */
     const SWUM_BY = {
         bottlenose: [FLIPPER, TAIL],
@@ -267,6 +267,20 @@ describe('waves: the sea life pack', () => {
             for (let v = 0; v < count; v++) numbers.add(Math.round(shape.getW(v) * 255));
             expect([...numbers], name).toEqual([number]);
         });
+    });
+
+    it('gives the sun-crossing bottlenose a dorsal that stands clear of its back in silhouette', () => {
+        const geometry = body('bottlenose');
+        const position = geometry.getAttribute('position');
+        const shape = geometry.getAttribute('aShape');
+        let tip = 0;
+        let back = 0;
+        for (let v = 0; v < position.count; v++) {
+            const part = partOf(shape, v);
+            if (part === DORSAL) tip = Math.max(tip, position.getY(v));
+            if (part === BODY) back = Math.max(back, position.getY(v));
+        }
+        expect(tip - back).toBeGreaterThan(0.085);
     });
 
     it.each(KINDS)('%s: one unit long from tail to nose, nose along +z, the same on both sides', (name) => {

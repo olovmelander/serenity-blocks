@@ -21,7 +21,6 @@ import {
     If,
     Loop,
     abs,
-    atan,
     clamp,
     dot,
     exp,
@@ -203,6 +202,9 @@ export class BioluminescencePost {
             const ray = this.uCamWorld.mul(vec4(view, 1.0)).xyz.sub(this.uEye);
             const dist = length(ray).toVar();
             const dir = ray.div(max(dist, 1e-4)).toVar();
+            const dxz = dir.xz.toVar();
+            const dd = max(dot(dxz, dxz), 1e-4).toVar();
+            const xzLength = sqrt(dd).toVar();
             const sum = vec3(0.0).toVar();
             Loop({
                 start: int(0), end: this.uCapCount, type: 'int', condition: '<', name: 'cap',
@@ -212,8 +214,6 @@ export class BioluminescencePost {
                 If(c.w.greaterThan(0.0), () => {
                     const top = a.y.toVar();
                     const off = this.uEye.xz.sub(vec2(a.x, a.z)).toVar();
-                    const dxz = dir.xz.toVar();
-                    const dd = max(dot(dxz, dxz), 1e-4).toVar();
                     // Where the ray passes closest to the column's axis.
                     const tRaw = dot(off, dxz).negate().div(dd).toVar();
                     const tc = max(tRaw, 0.0).toVar();
@@ -221,20 +221,26 @@ export class BioluminescencePost {
                     const below = max(top.sub(yc), 0.0).toVar();
                     const w = c.w.mul(below.div(max(top, 1.0)).mul(0.45).add(1.0)).toVar();
                     const at = off.add(dxz.mul(tc)).toVar();
-                    const across = exp(dot(at, at).div(w.mul(w)).negate());
-                    const inY = smoothstep(0.0, 1.0, top.sub(yc)).mul(smoothstep(-0.1, 1.2, yc))
-                        .mul(exp(below.div(max(top, 1.0)).mul(-0.9)));
-                    const path = min(w.mul(1.77).div(sqrt(dd)), w.mul(6.0));
-                    // Only the air in front of what the pixel shows: a stem inside the light is not lit by it.
-                    const span = w.div(sqrt(dd)).mul(1.2);
-                    const front = clamp(dist.sub(tRaw.sub(span)).div(span.mul(2.0)), 0.0, 1.0);
-                    // The gills' lines fall as striations, and the light sinks in slow pulses of spores.
-                    const around = atan(at.y, at.x);
-                    const lines = sin(around.mul(14.0).add(float(cap).mul(1.7))).mul(0.5).add(0.5);
-                    const striae = lines.mul(lines).mul(lines);
-                    const sink = sin(yc.mul(0.9).add(this.uTime.mul(1.1)).add(around.mul(1.3))).mul(0.5).add(0.5);
-                    const grain = striae.mul(0.6).add(sink.mul(0.4)).mul(0.75).add(0.25);
-                    sum.addAssign(c.rgb.mul(across.mul(inY).mul(path).mul(front).mul(grain)));
+                    const radial2 = dot(at, at).div(w.mul(w)).toVar();
+                    const span = w.div(xzLength).mul(1.2).toVar();
+                    const near = tRaw.sub(span).toVar();
+                    const inColumn = radial2.lessThan(7.0).and(dist.greaterThan(near));
+                    If(inColumn.and(yc.greaterThan(-0.1)).and(yc.lessThan(top)), () => {
+                        const across = exp(radial2.negate());
+                        const inY = smoothstep(0.0, 1.0, below).mul(smoothstep(-0.1, 1.2, yc))
+                            .mul(exp(below.div(max(top, 1.0)).mul(-0.9)));
+                        const path = min(w.mul(1.77).div(xzLength), w.mul(6.0));
+                        const front = clamp(dist.sub(near).div(span.mul(2.0)), 0.0, 1.0);
+                        // Signed distance across this cone remains continuous across its axis.
+                        // The falling light fans out with its width; a slow curtain moves through it.
+                        const cross = at.x.mul(dxz.y).sub(at.y.mul(dxz.x)).div(w.mul(xzLength)).toVar();
+                        const bend = sin(below.mul(0.38).add(float(cap))).mul(0.50);
+                        const lines = sin(cross.mul(17.0).add(bend).add(float(cap).mul(1.7))).mul(0.5).add(0.5);
+                        const striae = lines.mul(lines).mul(lines);
+                        const sink = sin(yc.mul(1.1).add(this.uTime.mul(0.57)).add(cross.mul(1.8))).mul(0.5).add(0.5);
+                        const grain = striae.mul(0.56).add(sink.mul(0.23)).add(0.26);
+                        sum.addAssign(c.rgb.mul(across.mul(inY).mul(path).mul(front).mul(grain)));
+                    });
                 });
             });
             return sum.mul(CAP_LIGHT_GAIN);
@@ -306,9 +312,9 @@ export class BioluminescencePost {
             const X = H.mul(this.uExposure).mul(float(1.0).add(this.uFlash.mul(0.35)));
             const T = grottoFilmic(X).toVar();
             const L = blLuma(T);
-            // Deep teal, slightly lifted shadows (damp air in the lens); the lights keep their hues.
+            // Cool the shadows without lifting black; the damp air already has the palette's colour.
             const lo = float(1.0).sub(smoothstep(0.0, 0.3, L));
-            T.assign(mix(T, T.mul(vec3(0.84, 1.0, 1.08)).add(vec3(0.0002, 0.0011, 0.0015)), lo.mul(0.6)));
+            T.assign(mix(T, T.mul(vec3(0.87, 0.98, 1.10)), lo.mul(0.6)));
             T.mulAssign(float(1.0).sub(this.uDeepen.mul(lo)));
             T.assign(mix(vec3(blLuma(T)), T, this.uSaturation.add(1.12)));
             // Vignette, measured from the frame, a touch heavier in the corners.

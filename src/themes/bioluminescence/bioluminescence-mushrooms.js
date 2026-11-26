@@ -79,6 +79,7 @@ import {
     clearPassTime,
 } from './bioluminescence-tsl.js';
 import { BELL, GLOBE, PARASOL } from './bioluminescence-layout.js';
+import { buildVeil } from './bioluminescence-veil.js';
 
 const NEVER = 1e9;
 /** The brightest a cap's flash gets (its brightest channel), however many flashes join it. */
@@ -137,7 +138,8 @@ function lathe(points, sides) {
 }
 
 const STEM_PROFILE = [
-    [1, 0.85], [0.86, 0.88], [0.7, 0.95], [0.5, 1.0], [0.3, 1.08], [0.14, 1.25], [0.04, 1.55], [0, 1.78],
+    [1.015, 0.68], [0.98, 0.72], [0.9, 0.75], [0.79, 0.65], [0.64, 0.7], [0.47, 0.87],
+    [0.29, 1.02], [0.16, 1.18], [0.07, 1.52], [0.025, 1.94], [0, 2.42],
 ];
 const stemPoints = () => STEM_PROFILE.map(([t, r]) => ({
     r, y: t, kind: STEM, v: t,
@@ -148,16 +150,19 @@ function parasolProfile(topRings, gillRings) {
     for (let k = 0; k <= topRings; k++) {
         const v = k / topRings;
         pts.push({
-            r: v ** 0.9, y: 0.34 * (1 - v ** 2.2) + 0.045 * Math.exp(-((v / 0.2) ** 2)) - 0.05 * v ** 8, kind: TOP, v,
+            r: v ** 0.9, y: 0.32 * (1 - v ** 2.2) + 0.083 * Math.exp(-((v / 0.23) ** 2)) - 0.02 * v ** 8, kind: TOP, v,
         });
     }
     pts.push({
-        r: 1.0, y: -0.088, kind: TOP, v: 1,
+        r: 1.0, y: -0.049, kind: TOP, v: 1,
     });
     for (let k = 0; k <= gillRings; k++) {
         const w = k / gillRings;
         pts.push({
-            r: 1.0 - w * 0.93, y: -0.088 + 0.1 * w ** 0.8, kind: GILLS, v: w,
+            r: 1.0 - w * 0.94,
+            y: -0.049 + 0.066 * w + 0.13 * Math.sin(Math.PI * w) - 0.18 * w ** 9,
+            kind: GILLS,
+            v: w,
         });
     }
     return pts.concat(stemPoints());
@@ -189,7 +194,10 @@ function globeProfile(rings) {
         const v = k / rings;
         const phi = v * 0.88 * Math.PI;
         pts.push({
-            r: Math.sin(phi), y: 1 + Math.cos(phi), kind: TOP, v,
+            r: Math.sin(phi) * (0.80 - 0.16 * Math.cos(phi)),
+            y: 1.08 + 1.08 * Math.cos(phi) - 0.075 * Math.exp(-((v / 0.1) ** 2)),
+            kind: TOP,
+            v,
         });
     }
     return pts.concat(stemPoints());
@@ -198,16 +206,46 @@ function globeProfile(rings) {
 /** What makes one species' draw differ from another's. */
 const SPECIES = {
     elder: {
-        profile: () => parasolProfile(14, 7), sides: 96, gills: 132, spots: [38, 9], gillGain: 2.0, sway: 0.004, lantern: false, spotCut: 0.3,
+        profile: () => parasolProfile(14, 12),
+        sides: 112,
+        gills: 78,
+        spots: [38, 9],
+        gillGain: 2.25,
+        sway: 0.004,
+        lantern: false,
+        spotCut: 0.3,
+        veils: 17,
     },
     [PARASOL]: {
-        profile: () => parasolProfile(8, 4), sides: 40, gills: 52, spots: [15, 5], gillGain: 3.3, sway: 0.012, lantern: false, spotCut: 0.4,
+        profile: () => parasolProfile(8, 6),
+        sides: 44,
+        gills: 34,
+        spots: [15, 5],
+        gillGain: 3.1,
+        sway: 0.012,
+        lantern: false,
+        spotCut: 0.4,
+        veils: 9,
     },
     [BELL]: {
-        profile: () => bellProfile(6, 3), sides: 12, gills: 16, spots: [9, 4], gillGain: 3.0, sway: 0.03, lantern: false, spotCut: 0.72,
+        profile: () => bellProfile(6, 3),
+        sides: 16,
+        gills: 12,
+        spots: [9, 4],
+        gillGain: 2.8,
+        sway: 0.03,
+        lantern: false,
+        spotCut: 0.72,
     },
     [GLOBE]: {
-        profile: () => globeProfile(7), sides: 12, gills: 1, spots: [8, 4], gillGain: 2.0, sway: 0.02, lantern: true, spotCut: 2,
+        profile: () => globeProfile(9),
+        sides: 16,
+        gills: 1,
+        spots: [11, 5],
+        gillGain: 2.0,
+        sway: 0.02,
+        lantern: true,
+        spotCut: 0.14,
     },
 };
 
@@ -310,15 +348,33 @@ function createDraw(u, name, spec, items, renderOrder) {
     const side = normalize(cross(axis, vec3(0.0, 0.0, 1.0)));
     const fwd = cross(side, axis);
     const isGill = step(1.5, part.x);
-    const rimness = mix(part.y, float(1.0).sub(part.y), isGill);
+    const isVeil = step(2.5, part.x);
+    const rimness = mix(mix(part.y, float(1.0).sub(part.y), isGill), float(1.0), isVeil);
     const rim3 = rimness.mul(rimness).mul(rimness);
-    // No two rims are alike: a slow wave round the edge.
-    const wave = sin(part.z.mul(TAU * 5).add(seed)).mul(0.04).mul(smoothstep(0.45, 1.0, rimness)).add(1.0);
-    const droop = rim3.mul(sin(part.z.mul(TAU * 3).add(seed.mul(0.7)))).mul(-0.035);
+    // The cap's margin buckles over and under. The same angles shape every attached veil root.
+    const rimAngle = part.z.mul(TAU);
+    const flute = sin(rimAngle.mul(4).add(seed)).mul(0.066)
+        .add(cos(rimAngle.mul(7).sub(seed.mul(0.27))).mul(0.028));
+    const wave = flute.mul(smoothstep(0.26, 0.99, rimness)).add(1.0);
+    const droop = rim3.mul(sin(rimAngle.mul(3).add(seed.mul(0.7))).mul(0.13)
+        .add(sin(rimAngle.mul(5).sub(seed)).mul(0.057)));
+    const veilHang = part.y.mul(isVeil);
+    const veilDrift = sin(u.time.mul(0.73).add(rimAngle.mul(2)).add(seed).sub(veilHang.mul(5)))
+        .mul(veilHang).mul(veilHang).mul(0.12);
+    const bulbLean = spec.lantern ? lp.y.mul(lp.y).mul(sin(seed).mul(0.084)) : float(0);
     const capPoint = centre
-        .add(side.mul(lp.x).add(fwd.mul(lp.z)).mul(capR).mul(wave))
+        .add(side.mul(lp.x.add(bulbLean)).add(fwd.mul(lp.z)).mul(capR).mul(wave))
         .add(axis.mul(lp.y.add(droop).mul(capR)));
-    const stemPoint = centre.add(vec3(lp.x, 0.0, lp.z).mul(stemR));
+    // Basal ribs flare into the ground; the narrow stipe spirals and bends back to the gills.
+    const fluteAx = rimAngle.mul(6).add(sin(part.y.mul(3.9).add(seed)).mul(0.8)).add(seed);
+    const ridge = cos(fluteAx).mul(0.5).add(0.5);
+    const baseFold = float(1).sub(smoothstep(0.02, 0.37, part.y));
+    const ribWidth = ridge.mul(ridge).mul(baseFold.mul(0.8).add(0.14)).add(0.86);
+    const bendPhase = seed.mul(0.71);
+    const arch = sin(t.clamp(0, 1).mul(Math.PI)).mul(tall).mul(0.078);
+    const stemBend = vec3(cos(bendPhase), 0, sin(bendPhase)).mul(arch)
+        .add(vec3(sin(bendPhase), 0, cos(bendPhase).negate()).mul(arch).mul(t.mul(6).sin()).mul(0.56));
+    const stemPoint = centre.add(stemBend).add(vec3(lp.x, 0.0, lp.z).mul(stemR).mul(ribWidth));
 
     const material = new THREE.MeshBasicNodeMaterial();
     material.name = name;
@@ -355,7 +411,7 @@ function createDraw(u, name, spec, items, renderOrder) {
         const N = face.mul(step(0.0, facing).mul(2.0).sub(1.0)).toVar();
         const ndv = abs(facing).toVar();
         const kind = vPart.x;
-        const v = vPart.y.toVar();
+        const v = vPart.y.clamp(0, 1).toVar();
         const th = vPart.z;
         const gill = step(1.5, kind).toVar();
         const stem = float(1.0).sub(step(0.5, kind)).toVar();
@@ -371,24 +427,35 @@ function createDraw(u, name, spec, items, renderOrder) {
         const flash = vFlash.toVar();
 
         // ── Gills: lines of light, with shorter ones between them toward the rim ──
-        const gc = th.mul(spec.gills);
-        const g1 = blBell(fract(gc).sub(0.5).mul(2.9));
-        const g2 = blBell(fract(gc.mul(2.0).add(0.5)).sub(0.5).mul(3.2)).mul(float(1.0).sub(smoothstep(0.3, 0.6, v)));
+        const theta = th.mul(TAU);
+        // Lamellae curve toward the stipe. Shorter lamellulae join the main ribs near the rim.
+        const bend = sin(theta.mul(3).add(v.mul(5.2)).add(rnd.mul(17))).mul(0.48)
+            .add(sin(theta.mul(7).sub(v.mul(4.8)).add(rnd.mul(8))).mul(0.22));
+        const gc = th.mul(spec.gills).add(bend).toVar();
+        const ribsPerSector = sin(theta.mul(5).sub(v.mul(2.6)).add(rnd.mul(11))).mul(0.5).add(0.5);
+        const grouped = sin(floor(gc).mul(2.36).add(rnd.mul(25))).mul(0.5).add(0.5);
+        const g1 = blBell(fract(gc).sub(0.5).mul(grouped.mul(1.35).add(ribsPerSector.mul(0.7)).add(2.72)));
+        const fork = smoothstep(0.22, 0.81, v).mul(0.43);
+        const shortRib = blBell(fract(gc.add(0.5).sub(fork)).sub(0.5).mul(3.1))
+            .mul(smoothstep(0.24, 0.74, v).oneMinus());
         // Far away the lines are finer than a pixel: they settle to their own average.
         const blur = clamp(fwidth(gc).mul(1.4), 0.0, 1.0);
-        const lines = mix(max(g1, g2.mul(0.75)), float(0.4), blur).toVar();
+        const lines = mix(max(g1, shortRib.mul(grouped.mul(0.47).add(0.30))), float(0.31), blur).toVar();
         // The light is at the heart: the gills burn where they meet the stem and dim to the rim,
         // in faint bands, as a cap grows.
         const vc = clamp(v, 0.0, 1.0);
-        const inward = mix(float(0.1), float(1.0), vc.mul(vc).mul(sqrt(vc)));
-        const bands = sin(v.mul(26.0).add(rnd.mul(20.0))).mul(0.12).add(0.88);
+        const inward = mix(float(0.22), float(0.96), vc.mul(sqrt(vc)));
+        const bands = sin(v.mul(22.0).add(bend.mul(3.6)).add(rnd.mul(20.0))).mul(0.17).add(0.83);
         // Between the gills the cap is in shadow: the light is the lines, not a plate behind them.
         // The heart, where the gills crowd onto the stem, burns pale; the thin margin glows.
         const heartRing = exp(float(1.0).sub(vc).div(0.1).negate()).mul(0.55);
         const margin = float(1.0).sub(smoothstep(0.0, 0.045, vc)).mul(0.3)
             .mul(sin(th.mul(TAU * 7).add(rnd.mul(20.0))).mul(0.35).add(0.65));
-        const gillCol = mix(hue, vec3(1.0), lines.mul(v).mul(v).mul(0.6))
-            .mul(lines.mul(0.94).add(0.05)).mul(inward).mul(bands)
+        const pearl = mix(hue, u.accent, float(1.0).sub(vc).mul(ribsPerSector.mul(0.44).add(0.08)))
+            .add(mix(pale, u.crystal, 0.30).mul(lines).mul(0.16));
+        const gillCol = mix(pearl, vec3(1.0), lines.mul(v).mul(v).mul(0.52))
+            .mul(lines.mul(1.18).add(0.018)).mul(inward).mul(bands)
+            .mul(ribsPerSector.mul(0.39).add(0.68))
             .add(pale.mul(heartRing.mul(lines.mul(0.6).add(0.4))))
             .add(pale.mul(margin))
             .mul(G)
@@ -404,7 +471,7 @@ function createDraw(u, name, spec, items, renderOrder) {
             : mix(float(1.0), mix(g1, float(0.4), blur).mul(0.6).add(0.55), smoothstep(0.35, 0.9, v));
         // A globe is a lantern: a hot heart seen through a dim skin.
         const heart = spec.lantern ? exp(float(1.0).sub(ndv).mul(-5.0)).mul(0.85) : float(0.0);
-        const through = hue.mul(thin.mul(0.4).add(0.018)).mul(striate).add(mix(hue, vec3(1.0), 0.45).mul(heart));
+        const through = hue.mul(thin.mul(0.4).add(0.018)).mul(striate).add(mix(hue, vec3(1.0), 0.27).mul(heart));
         const sc = vec2(th.mul(spec.spots[0]), v.mul(spec.spots[1]));
         const cell = floor(sc);
         const jit = blHash22(cell.add(vec2(floor(rnd.mul(61.0)), 3.0))).toVar();
@@ -416,8 +483,8 @@ function createDraw(u, name, spec, items, renderOrder) {
         const velvet = float(1.0).sub(ndv).mul(float(1.0).sub(ndv));
         const lit = blLamps(u, p, N).toVar();
         // The very edge of the cap is thin enough to burn.
-        const edgeGlow = spec.lantern ? float(0.0) : smoothstep(0.9, 1.0, v).mul(0.45);
-        const topCol = hue.mul(hue).mul(0.008)
+        const edgeGlow = spec.lantern ? float(0.0) : smoothstep(0.955, 1.0, v).mul(0.42);
+        let topCol = hue.mul(hue).mul(0.008)
             .add(through.mul(G))
             .add(pale.mul(edgeGlow).mul(G))
             .add(hue.mul(velvet).mul(0.16).mul(G))
@@ -425,6 +492,26 @@ function createDraw(u, name, spec, items, renderOrder) {
             .add(flash.mul(thin.mul(0.9).add(spot.mul(1.2)).add(0.1)))
             .add(vClear.rgb.mul(thin.add(0.15)).mul(0.7))
             .add(lit.mul(mix(vec3(0.03), hue.mul(0.1), 0.5)));
+        if (spec.lantern) {
+            // The mature sac glows through mother-of-pearl skin; the younger fruit beside it
+            // still has a deep, frosted coat. Isolated pinholes catch the hot interior.
+            const mature = smoothstep(0.25, 0.54, vLook.z);
+            const pinhole = blBell(sd.mul(6.5)).mul(step(0.47, jit.x));
+            const filaments = blBell(fract(th.mul(7).add(sin(v.mul(9).add(rnd.mul(14))).mul(0.16)))
+                .sub(0.5).mul(6));
+            const pearlHue = mix(hue, u.crystal, velvet.mul(0.65));
+            const amber = mix(pale, vec3(1.0, 0.58, 0.33), 0.38);
+            const warmHeart = heart.mul(smoothstep(0.06, 0.48, v).mul(0.73).add(0.27));
+            topCol = topCol.mul(mature.mul(0.51).add(0.20))
+                .add(pearlHue.mul(velvet.mul(0.19).add(filaments.mul(0.095))).mul(G))
+                .add(amber.mul(warmHeart.mul(mature).mul(1.48).add(pinhole.mul(0.39))).mul(G));
+        } else {
+            // Fine folded cuticle around the upper edge, and occasional milk-white scales.
+            const ribs = mix(g1, float(0.35), blur);
+            topCol = topCol.add(mix(hue, u.accent, 0.33).mul(ribs).mul(smoothstep(0.25, 0.78, v))
+                .mul(spec === SPECIES[BELL] ? 0.47 : 0.19)
+                .mul(G));
+        }
 
         // ── The stem: fibres, the gills' light on its top, the mycelium's at its foot ──
         const grain = u.noise(vec2(th.mul(3.0).add(rnd), v.mul(vLook.z).mul(0.12))).r;
@@ -434,7 +521,8 @@ function createDraw(u, name, spec, items, renderOrder) {
         const climb = vPulse.w.div(STEM_CLIMB);
         const front = blBell(v.sub(climb).div(0.24)).mul(step(0.0, vPulse.w)).mul(step(climb, 1.35));
         // A ring (the annulus) under the cap glows, and threads of light climb the stem in slow beads.
-        const annulus = spec.lantern ? float(0.0) : blBell(v.sub(0.84).div(0.022)).mul(0.5);
+        const ringHeight = sin(theta.mul(4).add(rnd.mul(20))).mul(0.023).add(0.86);
+        const annulus = spec.lantern ? float(0.0) : blBell(v.sub(ringHeight).div(0.017)).mul(0.32);
         const vein = blBell(u.noise(vec2(th.mul(2.0).add(rnd.mul(3.0)), v.mul(0.05).add(rnd))).g.sub(0.5).mul(20.0));
         const bead = smoothstep(0.7, 1.0, sin(v.mul(vLook.z).mul(0.9).sub(u.time.mul(1.1)).add(th.mul(TAU).add(rnd.mul(40.0)))));
         const veinLight = vein.mul(bead.mul(0.8).add(0.12)).mul(smoothstep(0.02, 0.2, v)).mul(0.55);
@@ -444,7 +532,15 @@ function createDraw(u, name, spec, items, renderOrder) {
         const cn1 = u.noise(cq.mul(vec2(1.0, 1.3)).add(vec2(u.time.mul(0.019), u.time.mul(-0.031)))).r;
         const cn2 = u.noise(cq.mul(vec2(1.3, 1.0)).sub(vec2(u.time.mul(0.023), u.time.mul(0.017)))).g;
         const causticNet = blBell(cn1.add(cn2).sub(1.0).mul(8.0)).mul(wetFoot);
-        const stemCol = mix(pale, hue, 0.45).mul(under.mul(0.6).add(foot.mul(0.14)).add(0.012)).mul(fibre).mul(G)
+        const rib = sin(theta.mul(6).add(sin(v.mul(4).add(rnd.mul(11)))).add(rnd.mul(17))).mul(0.5).add(0.5);
+        const neckLine = blBell(fract(th.mul(spec.gills * 0.5).add(sin(v.mul(13).add(theta)).mul(0.24)))
+            .sub(0.5).mul(3.4));
+        const neckLight = spec.veils ? mix(pale, vec3(1.0, 0.58, 0.32), 0.23)
+            .mul(smoothstep(0.74, 0.98, v)).mul(neckLine.mul(0.88).add(0.15)).mul(G) : vec3(0);
+        const stemCol = mix(pale, hue, 0.45).mul(under.mul(0.62).add(foot.mul(0.2)).add(0.047))
+            .mul(fibre).mul(rib.mul(0.94).add(0.32))
+            .mul(G)
+            .add(neckLight)
             .add(pale.mul(annulus).mul(G))
             .add(hue.mul(veinLight).mul(G))
             .add(u.plankton.mul(0.5).add(lit.mul(0.6)).mul(causticNet).mul(u.power.mul(0.6).add(0.45))
@@ -466,6 +562,37 @@ function createDraw(u, name, spec, items, renderOrder) {
         aStore, aPrev, aPulse, aCut,
     };
     draw.touch = touch;
+    if (spec.veils) {
+        // Only the elder and court silhouettes carry a veil. The court heroes are the first
+        // instances in the parasol bucket; share their live buffers so every attachment follows
+        // the cap's tilt, rim warp, stored light and bloom exactly, including in the reflection.
+        const veilShape = buildVeil(spec.veils);
+        const veilGeometry = new THREE.InstancedBufferGeometry();
+        veilGeometry.setAttribute('position', new THREE.Float32BufferAttribute(veilShape.positions, 3));
+        veilGeometry.setAttribute('aNrm', new THREE.Float32BufferAttribute(veilShape.normals, 3));
+        veilGeometry.setAttribute('aPart', new THREE.Float32BufferAttribute(veilShape.parts, 3));
+        veilGeometry.setIndex(veilShape.indices);
+        for (const key of ['aRoot', 'aShape', 'aLean', 'aStore', 'aPrev', 'aPulse', 'aCut']) {
+            veilGeometry.setAttribute(key, geometry.getAttribute(key));
+        }
+        veilGeometry.instanceCount = items.filter((m) => m.kind === 'elder' || m.kind === 'hero').length;
+        const veilMaterial = new THREE.MeshBasicNodeMaterial();
+        veilMaterial.name = `${name}Veil`;
+        veilMaterial.side = THREE.DoubleSide;
+        veilMaterial.fog = false;
+        veilMaterial.positionNode = capPoint.add(side.mul(veilDrift).mul(capR));
+        veilMaterial.colorNode = Fn(() => {
+            const p = positionWorld;
+            const life = vPart.y.clamp(0, 1);
+            const tint = mix(u.family(vLook.x), u.accent, smoothstep(0.08, 0.58, life).mul(0.53));
+            const face = abs(dot(normalize(vNormal), normalize(cameraPosition.sub(p))));
+            const bead = blBell(fract(life.mul(4.6).sub(u.time.mul(0.19)).add(vPart.z.mul(3))).sub(0.5).mul(5.5));
+            const silk = tint.mul(bead.mul(0.60).add(face.mul(0.28)).add(0.20))
+                .add(mix(tint, vec3(1), 0.47).mul(smoothstep(0.38, 0.65, life)).mul(0.38));
+            return blAtmosphere(u, silk.mul(vLook.y).add(vHeld.mul(0.42)).add(vFlash.mul(bead.add(0.3))), p);
+        })();
+        draw.veil = blPart(veilMaterial.name, veilGeometry, veilMaterial, renderOrder);
+    }
     return draw;
 }
 
@@ -625,6 +752,7 @@ export function createMushrooms(u, plan, { count, sprouts = 0 }) {
         /** The parts to add to the scene, in draw order. */
         parts: [
             ['elder', draws.elder], ['parasols', draws[PARASOL]], ['bells', draws[BELL]], ['globes', draws[GLOBE]],
+            ['elderVeil', draws.elder.veil], ['courtVeils', draws[PARASOL].veil],
         ],
         heldAt,
         /** Everything the grotto holds at `time`. */

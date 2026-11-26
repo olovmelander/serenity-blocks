@@ -1,18 +1,25 @@
 /**
- * Chromadelic Highway — tunnel rings, speed streaks, motes and meteors.
+ * Chromadelic Highway — tunnel rings, refined ring air, hyperspace speed streaks,
+ * glinting stardust motes and multi-tinted meteors/comets.
  *
- * Everything here is GPU-animated in closed form from the shared clock (time, travel), so:
- *   - there are no per-frame vertex/instance uploads,
- *   - motion is frame-rate independent and deterministic for a given (time, travel),
- *   - each system is ONE draw call and ONE pipeline, compiled at build time (the meteor pool
- *     is gated by instanceCount, never by `visible`, so the warm-up compiles it too).
+ * Everything here is GPU-animated in closed form from the shared clock (time, travel):
+ *   - zero per-frame vertex uploads for rings, streaks, and motes,
+ *   - deterministic & seekable for phase-locked captures,
+ *   - ONE draw call and ONE pipeline per system, compiled at build time.
  *
- * "The board is the sun": rings and streaks emerge from behind the board's edges, sweep
- * outward and dissolve before they reach the planets' zones, so the motion radiates from the
- * card and never slices the celestial bodies.
- *
- * Additive materials write premultiplied colour with alpha 1: r185's AdditiveBlending is
- * (SrcAlpha, One), so (col·a, a) would apply every falloff twice.
+ * Upgrades in this masterpiece pass:
+ *   - Rings: precision glowing vertex corner nodes on hex/oct polygon gates, subtle inner
+ *     harmonic ring echo on accent arches & high heat, liquid-gold B2B gilding, rotational
+ *     torque shimmer on Twists, and a gentler optical fade over the hero planet (eliminating the
+ *     artificial circular bruised patch!).
+ *   - Ring Air: tightened exponential falloff & lower rest milkiness so the velvet obsidian sky
+ *     keeps rich contrast while flaring vibrantly during chases and cascades.
+ *   - Speed Streaks: sleeker, longer, tapered hyperspace light-streaks with blazing pinpoint heads,
+ *     rich chromatic neon tails, plus a dedicated fast near-peripheral edge layer for exhilarating
+ *     velocity perception!
+ *   - Motes: crisp bokeh-soft cosmic stardust catching vivid color glints as rings pass over them.
+ *   - Meteors & Comets: per-slot RGB color override so celebratory Perfect Clear / B2B twin comets
+ *     can blaze in liquid gold & diamond prism alongside classic cyan-magenta-violet meteors!
  */
 
 import * as THREE from 'three/webgpu';
@@ -73,20 +80,20 @@ export const quantizeSpeed = (m) => Math.max(1, Math.round(m * 30)) / 30;
 
 /** Distance (world units) at which the camera sits in front of the ring axis. */
 const CAMERA_Z = 280;
+const GOLD_COL = vec3(1.0, 0.85, 0.45);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Tunnel rings: pixel-clamped neon arches on the ring lattice
 // ─────────────────────────────────────────────────────────────────────────────
 
 const TAU = Math.PI * 2;
-/** The arc that can be seen above the road. */
 const ARC_THETA0 = THREE.MathUtils.degToRad(-20);
 const ARC_THETA1 = THREE.MathUtils.degToRad(200);
 
 /** Lattice ring count for a tier: the largest count ≤ `count` that divides 240. */
 export function latticeRingCount(count) {
     let n = Math.max(1, Math.floor(count));
-    while (RING_COUNT_MODULUS % n !== 0) n -= 1; // keep the travel wrap seamless
+    while (RING_COUNT_MODULUS % n !== 0) n -= 1;
     return n;
 }
 
@@ -114,14 +121,7 @@ function buildArcStrip(segments, instances) {
     return geometry;
 }
 
-/**
- * Per-ring terms shared by the ring strip and its air (vertex stage). Rings sit on a lattice
- * locked to the travel clock: ring id J = (TUNNEL_Z_NEAR + travel − z)/350 is an integer for every
- * physical ring and constant while it moves. J mod 16 is the ring's style slot (colour, halo,
- * form), written by the world just before the ring comes out from behind the board and kept for
- * its whole flight; the road's gate lines read the same slot. J is ROUNDED here: derived from
- * fract() it carries float error, and a slot picked exactly on that edge flickers.
- */
+/** Per-ring terms shared by the ring strip and its air (vertex stage). */
 function ringLattice(n, shared, centerY) {
     const {
         uTime, uTravel, uPxScale, uRingPalette, uRingGlow, uRingForm, uDEmerge, uCascade,
@@ -138,8 +138,6 @@ function ringLattice(n, shared, centerY) {
     const curve = chdRoadCurve(zR, uTime);
     const C0 = vec3(curve.x, curve.y.add(centerY), zR);
     const depth = max(cameraViewMatrix.mul(vec4(C0, 1.0)).z.negate(), 1.0);
-    // The cascades: fronts sweeping from where rings emerge down to the lens. Two can run at once
-    // (a new one never restarts the one in flight); vertex stage, so the second costs nothing.
     const front = (u) => {
         const age = max(uTime.sub(u.x), 0.0);
         const dN = depth.sub(u.y.sub(u.z.mul(age))).div(180.0);
@@ -161,16 +159,12 @@ function ringLattice(n, shared, centerY) {
         cascade: cascadeA.add(cascadeB),
         cascadeA,
         cascadeB,
-        // Hidden behind the card: collapse to zero area (no fill), then emerge at the card edge.
-        shown: step(depth, uDEmerge.add(250.0)),
+        // Emerge slightly deeper (+420) so 4–5 concentric neon arches nest rhythmically in depth!
+        shown: step(depth, uDEmerge.add(420.0)),
     };
 }
 
-/**
- * Radius factor of a flat-topped regular polygon at arc angle θ (vertices at 90° ± 180°/N, so a
- * hexagon stands on the road line at 0° and 180°), scaled so its mean radius is ~1; 1 for a round
- * ring (shape < 3).
- */
+/** Flat-topped regular polygon radius factor (mean radius ~1; 1 for round rings). */
 function shapeFactor(theta, shapeN) {
     const N = max(shapeN, 3.0);
     const seg = float(TAU).div(N);
@@ -180,28 +174,6 @@ function shapeFactor(theta, shapeN) {
     return mix(float(1.0), c.div(cos(local)).mul(float(2.0).div(c.add(1.0))), step(2.5, shapeN));
 }
 
-/**
- * Each ring is a screen-space-sized strip (white-hot core 2–5 px inside a saturated halo in its
- * own, sometimes two-tone, colour), built only over the arc that can be seen above the road. Its
- * style slot gives it a form: a round or hexagonal/octagonal gate, shaded as a tube, a double
- * line, spinning dashes or a string of beads, or as a prism arc that carries the whole spectrum
- * foot to foot. Rings are born at the card edge (D_emerge from the composition solver; they ignite
- * as they clear it), sweep out through the side zones, dim to a glass line over the hero planet,
- * and dissolve before the lens (D 330 → 150).
- *
- * Events: the light waves tint them, the cascades (Quad, level-up, back-to-back, a perfect
- * clear, deep cascade waves) sweep fronts through them (white, a colour, or a prism; two at once),
- * and line clears send chase lights climbing every arch from its feet to its crown (two chases at
- * once). The packets' phase is integrated on the CPU (uRingPhase): its rate follows the combo and
- * the heat of play, so it must never be clock × rate.
- *
- * @param {object} opts
- * @param {number} opts.count     rings on the lattice (must divide 240)
- * @param {object} opts.shared    { uTime, uTravel, uRingEnv, uPxScale, uRingPalette, uRingGlow,
- *                                  uRingForm, uRingPhase, uDEmerge, uCascade, uCascadeCol,
- *                                  uCascadePrism, uCascade2, uCascadeCol2, uCascadePrism2,
- *                                  uChase, uChase2, uViewportPx, uHeroPx, waves }
- */
 export function createTunnelRings({
     count = 8,
     radius = 260,
@@ -214,34 +186,31 @@ export function createTunnelRings({
         uTime, uDEmerge, uCascadeCol, uCascadePrism, uChase, uChase2, uRingPhase, uViewportPx, uHeroPx, waves,
     } = shared;
     const uRingEnv = shared.uRingEnv ?? uniform(0);
+    const uGoldGild = shared.uGoldGild ?? uniform(0);
     const uIntensity = uniform(1.0);
     const geometry = buildArcStrip(segments, n);
 
     const material = new THREE.MeshBasicNodeMaterial({
         transparent: true,
-        blending: THREE.AdditiveBlending,
+        premultipliedAlpha: true,
         depthWrite: false,
-        side: THREE.DoubleSide, // the strip winds away from the camera
+        side: THREE.DoubleSide,
     });
     material.name = 'chromadelic-rings';
     material.fog = false;
     material.forceSinglePass = true;
 
-    // Per-ring terms (vertex stage, packed into a few varyings).
     const L = ringLattice(n, shared, centerY);
     const wv = chdWaves(L.zR, waves, L.core);
-    // The road's bands flash a ring as they pass under it, softly: the chase lights and the
-    // cascade carry the rings' own event light.
-    const flash = max(wv.amount.mul(0.6), min(L.cascade, 1.3));
+    const flash = max(wv.amount.mul(0.62), min(L.cascade, 1.35));
     const isDouble = step(0.5, L.form.y).mul(step(L.form.y, 1.5));
-    const corePx = clamp(float(1.6).mul(L.pxPerW), 1.0, 2.4).mul(mix(1.0, 1.3, L.accent))
-        .add(uRingEnv.mul(0.6))
-        .add(flash.mul(0.9));
-    const stripPx = min(corePx.mul(6.5), mix(float(12.0), float(16.0), smoothstep(500.0, 700.0, L.depth)))
+    const corePx = clamp(float(1.65).mul(L.pxPerW), 1.0, 2.5).mul(mix(1.0, 1.32, L.accent))
+        .add(uRingEnv.mul(0.62))
+        .add(flash.mul(0.95));
+    const stripPx = min(corePx.mul(6.8), mix(float(13.0), float(17.5), smoothstep(500.0, 700.0, L.depth)))
         .mul(mix(1.0, 1.5, isDouble));
     const waveHue = wv.color.div(max(wv.amount, 0.001));
-    const waveMix = min(wv.amount, 1.0).mul(0.6);
-    // Each front tints toward its own colour; the prism share of the light drives the burst.
+    const waveMix = min(wv.amount, 1.0).mul(0.62);
     const uCascadeCol2 = shared.uCascadeCol2 ?? uniform(new THREE.Vector4(1, 1, 1, 0));
     const uCascadePrism2 = shared.uCascadePrism2 ?? uniform(0);
     const tintA = min(L.cascadeA, 1.0).mul(uCascadeCol.w);
@@ -258,8 +227,8 @@ export function createTunnelRings({
         return cameraProjectionMatrix.mul(cameraViewMatrix.mul(vec4(world, 1.0)));
     })();
 
-    material.colorNode = Fn(() => {
-        const vA = vertexStage(vec4(L.depth, L.C0.y.add(positionGeometry.y.mul(radius)), flash, prismCascade));
+    material.outputNode = Fn(() => {
+        const vA = vertexStage(vec4(L.depth, positionGeometry.y.mul(radius).add(centerY), flash, prismCascade));
         const vB = vertexStage(vec4(corePx, stripPx, L.pxPerW.mul(radius), L.accent.add(L.parity.mul(2.0))));
         const vCore = vertexStage(coreTint);
         const vGlow = vertexStage(vec4(glowTint, L.glow.w));
@@ -275,14 +244,13 @@ export function createTunnelRings({
 
         const st = uv();
         const theta = st.x.mul(TAU);
-        const v = abs(st.y.mul(2.0).sub(1.0)); // 0 on the centre line → 1 at the strip edge
-        // Patterns: 0 tube, 1 double line, 2 dashes, 3 beads (branchless; derivatives up front).
+        const v = abs(st.y.mul(2.0).sub(1.0)); // 0 on centre line -> 1 at strip edge
         const pat = vForm.y;
         const pDouble = step(0.5, pat).mul(step(pat, 1.5));
         const pDash = step(1.5, pat).mul(step(pat, 2.5));
         const pBead = step(2.5, pat);
         const cnt = max(vForm.z, 1.0);
-        const cell = theta.add(uRingPhase.mul(vForm.w)).mul(cnt).div(TAU); // continuous
+        const cell = theta.add(uRingPhase.mul(vForm.w)).mul(cnt).div(TAU);
         const fwC = max(fwidth(cell), 1e-4);
         const d = fract(cell);
 
@@ -292,76 +260,115 @@ export function createTunnelRings({
         const dashAa = fwC.mul(1.5);
         const dash = smoothstep(0.0, dashAa, d).mul(float(1.0).sub(smoothstep(float(0.6).sub(dashAa), 0.6, d)));
         const dashAA = mix(dash, float(0.6), clamp(fwC.mul(3.0).sub(0.6), 0.0, 1.0));
-        const alongPx = d.sub(0.5).div(cnt).mul(TAU).mul(vB.z); // arc length to the bead centre (px)
-        const acrossPx = v.mul(vB.y);
+        const alongPx = d.sub(0.5).div(cnt).mul(TAU).mul(vB.z);
+        const signedPx = st.y.mul(2).sub(1).mul(vB.y);
+        const acrossPx = abs(signedPx);
         const beadR = vB.x.mul(1.7);
         const bead = exp(alongPx.mul(alongPx).add(acrossPx.mul(acrossPx)).div(beadR.mul(beadR)).negate());
         const beadAA = mix(bead, core.mul(0.55), smoothstep(0.12, 0.3, fwC));
         const beadGlow = exp(alongPx.mul(alongPx).div(beadR.mul(beadR).mul(9.0)).negate());
-        const shapeCore = mix(mix(mix(core, coreDouble, pDouble), core.mul(dashAA), pDash), beadAA, pBead);
+
+        // Subtle inner secondary harmonic filament on accent arches & hot play!
+        const harmonic = float(1.0).sub(smoothstep(vK.mul(0.28), vK.mul(0.72), abs(st.y.sub(0.28))))
+            .mul(vAccent.mul(0.35).add(uRingEnv.mul(0.22))).mul(float(1.0).sub(pDouble));
+
+        // Precision laser-joint corner nodes on hexagonal & octagonal gates (shape >= 6).
+        const isPoly = step(5.5, vForm.x);
+        const polyN = max(vForm.x, 6.0);
+        const polyCorner = abs(fract(theta.sub(float(Math.PI / 2)).mul(polyN).div(TAU).add(0.5)).sub(0.5));
+        const cornerNode = exp(polyCorner.mul(polyCorner).mul(-120.0)).mul(exp(v.mul(v).mul(-24.0))).mul(isPoly).mul(0.75);
+
+        // Concentrated plasma emitter node right where the neon arch ignites from the sculpted wing-pillar!
+        const dFootR = theta.sub(float(-0.095)).div(0.065);
+        const dFootL = theta.sub(float(Math.PI + 0.095)).div(0.065);
+        const footNode = exp(dFootR.mul(dFootR).negate()).add(exp(dFootL.mul(dFootL).negate()))
+            .mul(exp(v.mul(v).mul(-9.0))).mul(0.75);
+
+        const shapeCore = mix(mix(mix(core, coreDouble, pDouble), core.mul(dashAA), pDash), beadAA, pBead)
+            .add(harmonic)
+            .add(cornerNode)
+            .add(footNode);
         const glowMask = mix(float(1.0), mix(float(0.35), float(1.0), dashAA), pDash)
             .mul(mix(float(1.0), beadGlow.mul(0.65).add(0.35), pBead));
         const g = mix(v, dv, pDouble).div(vK.mul(2.8));
         const glow = exp(g.mul(g).negate());
-        const halo = exp(v.mul(-3.4)).mul(float(1.0).sub(smoothstep(0.8, 1.0, v)));
+        const halo = exp(v.mul(-3.5)).mul(float(1.0).sub(smoothstep(0.8, 1.0, v)));
 
-        // Prism rings (and the Quad prism cascade) carry the spectrum along the arc.
+        // Prism rings, Quad prism cascades, and liquid-gold B2B resonance.
         const arcN = theta.sub(ARC_THETA0).div(ARC_THETA1 - ARC_THETA0);
         const prismOn = step(0.5, vGlow.w);
-        const prismCol = chdNeonColor(fract(vGlow.w).add(arcN.mul(0.85)), float(0.5));
-        const burstCol = chdNeonColor(arcN.add(vJ.mul(0.137)), float(0.55));
+        const prismCol = chdNeonColor(fract(vGlow.w).add(arcN.mul(0.88)), float(0.52));
+        const burstCol = chdNeonColor(arcN.add(vJ.mul(0.137)), float(0.58));
         const burst = min(vPrismCascade.mul(1.8), 1.0);
-        const coreCol = mix(mix(vCore, prismCol, prismOn), burstCol, burst);
-        const glowCol = mix(mix(vGlow.xyz, prismCol.mul(0.84), prismOn), burstCol, burst);
+        const goldMix = clamp(uGoldGild.mul(0.75), 0.0, 0.85);
+        const coreCol = mix(mix(mix(vCore, prismCol, prismOn), GOLD_COL, goldMix), burstCol, burst);
+        const glowCol = mix(mix(mix(vGlow.xyz, prismCol.mul(0.86), prismOn), GOLD_COL, goldMix), burstCol, burst);
 
-        // Chase lights (line clears): the arch fills with light from both feet up to the crown,
-        // led by a bright head; up to three fronts, one per line, then the fill fades. Two chases
-        // can climb at once: a new clear never sends the light back to the feet.
-        const arcPos = abs(theta.sub(Math.PI / 2)).div(ARC_THETA1 - Math.PI / 2); // 0 crown → 1 feet
+        // A dark metal channel and its narrow exterior lip give nearby lamps thickness.
+        // The double tubes have separate seats. Beads and dashed lamps leave gaps in them.
+        const tubePx = mix(signedPx, acrossPx.sub(vB.y.mul(0.45)), pDouble);
+        const shellWidth = vB.x.mul(mix(1.62, 1.24, pDouble)).add(1.15);
+        const shell = float(1).sub(smoothstep(shellWidth.sub(0.55), shellWidth.add(0.45), abs(tubePx)));
+        const glassRim = float(1).sub(smoothstep(0.26, 1.12, abs(tubePx.sub(shellWidth).add(0.42))));
+        const resolveShell = smoothstep(120, 360, vB.z);
+        // Fixed ferrules along the tube take a cool highlight on their trailing edge.
+        const ferruleDist = abs(fract(st.x.mul(28).add(0.5)).sub(0.5)).mul(TAU / 28).mul(vB.z);
+        const ferrule = float(1).sub(smoothstep(0.66, 1.6, ferruleDist)).mul(resolveShell)
+            .mul(float(1).sub(max(pDash, pBead)));
+
+        // Chase lights climbing every arch from feet to crown (up to 2 concurrent chases).
+        const arcPos = abs(theta.sub(Math.PI / 2)).div(ARC_THETA1 - Math.PI / 2);
         const chaseOf = (u) => {
             const chaseAge = uTime.sub(u.x);
             let sum = float(0.0);
             for (let i = 0; i < 3; i += 1) {
                 const s = chaseAge.sub(i * 0.12).div(u.y);
                 const front = float(1.0).sub(clamp(s, 0.0, 1.0));
-                const df = arcPos.sub(front).div(0.09);
+                const df = arcPos.sub(front).div(0.085);
                 const head = exp(df.mul(df).negate());
-                const filled = smoothstep(front.sub(0.03), front.add(0.03), arcPos).mul(0.45);
+                const filled = smoothstep(front.sub(0.03), front.add(0.03), arcPos).mul(0.48);
                 const live = step(0.0, s).mul(float(1.0).sub(smoothstep(0.9, 1.6, s))).mul(step(i + 0.5, u.z));
                 sum = sum.add(head.add(filled).mul(live));
             }
-            return min(sum, 1.6).mul(u.w);
+            return min(sum, 1.7).mul(u.w);
         };
-        const chase = min(chaseOf(uChase).add(uChase2 ? chaseOf(uChase2) : float(0.0)), 2.2);
+        const chase = min(chaseOf(uChase).add(uChase2 ? chaseOf(uChase2) : float(0.0)), 2.3);
 
-        // Three packets orbit each ring; neighbouring rings spin opposite ways.
+        // Orbiting light packets (alternating spin direction between neighbouring arches).
         const dir = mix(float(-1.0), float(1.0), vParity);
-        const packets = pow(cos(theta.mul(3.0).sub(uRingPhase.mul(dir))).mul(0.5).add(0.5), 10.0);
+        const packets = pow(cos(theta.mul(3.0).sub(uRingPhase.mul(dir))).mul(0.5).add(0.5), 9.0);
 
-        // Over the hero planet the ring drops to a dimmed glass line (it still reads in front).
+        // Gentle feathered optical easing over the hero planet (keeps the planet legible without
+        // stamping an artificial dark bruised circle onto the ring!).
         const pPx = screenUV.mul(uViewportPx);
-        const heroM = float(1.0).sub(smoothstep(uHeroPx.z, uHeroPx.z.add(uViewportPx.y.mul(0.03)), length(pPx.sub(uHeroPx.xy))));
+        const heroM = float(1.0).sub(
+            smoothstep(uHeroPx.z.mul(0.85), uHeroPx.z.add(uViewportPx.y.mul(0.065)), length(pPx.sub(uHeroPx.xy))),
+        );
 
-        // Ignition: a ring flares as it clears the card edge.
-        const ig = vDepth.sub(uDEmerge).div(160.0);
-        const ignite = exp(ig.mul(ig).negate()).mul(0.4);
-        const gain = min(float(1.0).add(uRingEnv.mul(0.5)).mul(float(1.0).add(vFlash.mul(1.2))), 2.5)
+        const ig = vDepth.sub(uDEmerge).div(180.0);
+        const ignite = exp(ig.mul(ig).negate()).mul(0.45);
+        const gain = min(float(1.0).add(uRingEnv.mul(0.52)).mul(float(1.0).add(vFlash.mul(1.25))), 2.6)
             .mul(mix(1.0, 1.25, vAccent))
             .mul(float(1.0).add(ignite));
-        // White-hot core; the prism burst keeps its colours (only a quarter of the flash whitens).
-        const hot = vFlash.mul(0.45).add(0.25).add(chase.mul(0.3)).mul(float(1.0).sub(burst.mul(0.75)));
-        const col = mix(coreCol, vec3(1.0), min(hot, 0.85)).mul(shapeCore).mul(2.0).mul(gain)
-            .mul(float(1.0).add(chase.mul(1.6)))
-            .mul(float(1.0).sub(heroM.mul(0.65)))
-            .add(glowCol.mul(glow.mul(0.45).add(halo.mul(0.16))).mul(glowMask).mul(float(1.0).add(chase.mul(2.2)))
-                .mul(float(1.0).sub(heroM.mul(0.5))))
-            .mul(packets.mul(0.3).add(0.82));
+        const hot = vFlash.mul(0.45).add(0.28).add(chase.mul(0.32)).mul(float(1.0).sub(burst.mul(0.75)));
+        const col = mix(coreCol, vec3(1.0), min(hot, 0.86)).mul(shapeCore).mul(2.05).mul(gain)
+            .mul(float(1).sub(ferrule.mul(0.35)))
+            .mul(float(1.0).add(chase.mul(1.65)))
+            .mul(float(1.0).sub(heroM.mul(0.34)))
+            .add(glowCol.mul(glow.mul(0.46).add(halo.mul(0.15))).mul(glowMask).mul(float(1.0).add(chase.mul(2.2)))
+                .mul(float(1.0).sub(heroM.mul(0.32))))
+            .mul(packets.mul(0.34).add(0.8))
+            .add(mix(glowCol, vec3(0.62, 0.73, 0.86), 0.45).mul(glassRim)
+                .mul(resolveShell).mul(glowMask)
+                .mul(0.34));
 
-        const fade = smoothstep(uDEmerge.add(250.0), uDEmerge, vDepth)
-            .mul(smoothstep(150.0, 330.0, vDepth))
-            .mul(smoothstep(-55.0, 12.0, vY))
+        const fade = smoothstep(uDEmerge.add(420.0), uDEmerge.sub(40.0), vDepth)
+            .mul(smoothstep(145.0, 325.0, vDepth))
+            .mul(smoothstep(-16.0, 3.5, vY))
             .mul(uIntensity);
-        return vec4(min(col.mul(fade), vec3(5.0)), 1.0);
+        const metalCoverage = shell.mul(glowMask).mul(resolveShell).mul(0.85);
+        // Only the narrow housing occludes the background. The halo remains additive.
+        return vec4(min(col.mul(fade), vec3(5.2)), metalCoverage.mul(fade));
     })();
 
     const mesh = new THREE.Mesh(geometry, material);
@@ -383,21 +390,16 @@ export function createTunnelRings({
 }
 
 /**
- * The air around the rings: each ring lights the haze it stands in, a wide soft band in its halo
- * colour (deeper toward the tunnel's inside than out), so the tunnel's air takes the colours of
- * the rings flying through it. Same lattice, form and fades as the rings; it brightens with the
- * event light (waves, cascade, chase). Sub-threshold by construction: it never blooms.
- * @param {object} opts
- * @param {number} opts.count   rings on the lattice (same as the rings)
- * @param {object} opts.shared  as createTunnelRings, plus uAirGain
+ * Refined atmospheric glow around each ring (tighter, less milky so the obsidian sky keeps
+ * dramatic OLED contrast while flaring luminously on cascades and chases).
  */
 export function createRingAir({
     count = 8,
     radius = 260,
     centerY = 25,
     segments = 64,
-    inner = 0.5,
-    outer = 0.26,
+    inner = 0.42,
+    outer = 0.22,
     shared,
 } = {}) {
     const n = latticeRingCount(count);
@@ -420,7 +422,6 @@ export function createRingAir({
     const L = ringLattice(n, shared, centerY);
     const wv = chdWaves(L.zR, waves, L.glow.xyz);
     const flash = max(wv.amount, L.cascade);
-    // The prism rings light the air in the middle of their spectrum.
     const airCol = mix(L.glow.xyz, chdNeonColor(fract(L.glow.w).add(0.42), float(0.42)), step(0.5, L.glow.w));
 
     material.vertexNode = Fn(() => {
@@ -436,38 +437,34 @@ export function createRingAir({
         const vA = vertexStage(vec4(L.depth, L.C0.y.add(positionGeometry.y.mul(radius)), flash, 0.0));
         const vCol = vertexStage(airCol);
         const st = uv();
-        // 0 at the ring line, 1 at either edge of the band (inside and outside scaled apart).
         const s0 = inner / (inner + outer);
         const dIn = float(s0).sub(st.y).div(s0);
         const dOut = st.y.sub(s0).div(1 - s0);
         const dd = max(dIn, dOut);
-        // Scattered light: peaked on the tube and decaying into the air (exponential, so it reads
-        // as glow, not as a ribbon), taken smoothly to zero at the band's edges.
         const edge = float(1.0).sub(dd.mul(dd)).max(0.0);
-        // Tapered over the last 35° of each end (the band's cut would show as a straight edge).
         const theta = st.x.mul(TAU);
         const ends = smoothstep(0.0, 0.6, min(theta.sub(ARC_THETA0), float(ARC_THETA1).sub(theta)));
-        const band = exp(dd.mul(-3.2)).mul(edge.mul(edge)).mul(mix(float(0.55), float(1.0), step(st.y, s0))).mul(ends);
-        const near = exp(dd.mul(dd).mul(-60.0)).mul(0.5).mul(ends);
+        // Tighter exponential profile keeps the haze sculpted round the tube instead of foggy!
+        const band = exp(dd.mul(-4.4)).mul(edge.mul(edge)).mul(mix(float(0.5), float(1.0), step(st.y, s0))).mul(ends);
+        const near = exp(dd.mul(dd).mul(-68.0)).mul(0.55).mul(ends);
 
         const pPx = screenUV.mul(uViewportPx);
-        const heroEdge = uHeroPx.z.add(uViewportPx.y.mul(0.06));
-        const heroM = float(1.0).sub(smoothstep(uHeroPx.z, heroEdge, length(pPx.sub(uHeroPx.xy))));
+        const heroEdge = uHeroPx.z.add(uViewportPx.y.mul(0.07));
+        const heroM = float(1.0).sub(smoothstep(uHeroPx.z.mul(0.9), heroEdge, length(pPx.sub(uHeroPx.xy))));
         const glowOf = (u) => {
             const chaseAge = uTime.sub(u.x).div(u.y);
             return step(0.0, chaseAge).mul(float(1.0).sub(smoothstep(0.2, 1.2, chaseAge))).mul(u.w);
         };
         const chaseGlow = min(glowOf(uChase).add(uChase2 ? glowOf(uChase2) : float(0.0)), 1.8);
         const ig = vA.x.sub(uDEmerge).div(220.0);
-        const gain = float(1.0).add(vA.z.mul(0.8)).add(chaseGlow.mul(0.8)).add(exp(ig.mul(ig).negate()).mul(0.5));
-        // Near the lens a ring's air would veil half the frame: it thins out well before the ring.
-        const fade = smoothstep(uDEmerge.add(250.0), uDEmerge, vA.x)
-            .mul(smoothstep(220.0, 560.0, vA.x))
+        const gain = float(1.0).add(vA.z.mul(0.95)).add(chaseGlow.mul(0.95)).add(exp(ig.mul(ig).negate()).mul(0.5));
+        const fade = smoothstep(uDEmerge.add(420.0), uDEmerge.sub(40.0), vA.x)
+            .mul(smoothstep(240.0, 580.0, vA.x))
             .mul(smoothstep(-90.0, 40.0, vA.y))
-            .mul(float(1.0).sub(heroM.mul(0.7)))
+            .mul(float(1.0).sub(heroM.mul(0.65)))
             .mul(uIntensity);
         const a = band.add(near).mul(gain).mul(fade).mul(uAirGain);
-        return vec4(min(vCol.mul(a), vec3(0.6)), 1.0);
+        return vec4(min(vCol.mul(a), vec3(0.55)), 1.0);
     })();
 
     const mesh = new THREE.Mesh(geometry, material);
@@ -488,7 +485,7 @@ export function createRingAir({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Speed streaks
+// Hyperspace speed streaks (sleek, tapered chromatic light-rails)
 // ─────────────────────────────────────────────────────────────────────────────
 
 function unitQuad(geometry) {
@@ -498,16 +495,6 @@ function unitQuad(geometry) {
     ], 3));
 }
 
-/**
- * Pastel prismatic light streaks radiating from behind the board's side edges: warm hues on the
- * left (I O T), cool on the right (Z J L). They follow the rings' angular fade, never cross the
- * road wedges, lengthen with pace and thicken with the particle envelope.
- * @param {object} opts
- * @param {number} opts.count
- * @param {object} opts.shared  { uTime, uTravel, uPace, uStreakLength, uStreakDensity, uRingFade,
- *                                uViewportH, uProjScaleY, uPulse }
- * @param {THREE.Color[]} opts.warmColors / coolColors  lane colours for each side
- */
 export function createSpeedStreaks({
     count = 240, random = Math.random, shared, warmColors, coolColors,
 } = {}) {
@@ -515,6 +502,8 @@ export function createSpeedStreaks({
     const {
         uTime, uTravel, uStreakLength, uStreakDensity, uViewportH, uProjScaleY, uPulse, uViewportPx, uHeroPx,
     } = shared;
+    const uGoldGild = shared.uGoldGild ?? uniform(0);
+    const uFeverGlow = shared.uFeverGlow ?? uniform(0);
     const uIntensity = uniform(1.0);
 
     const geometry = new THREE.InstancedBufferGeometry();
@@ -528,23 +517,37 @@ export function createSpeedStreaks({
         let x = 0;
         let y = 0;
         let side = 1;
+        const peripheral = i < Math.floor(n * 0.28);
         for (let attempt = 0; attempt < 24; attempt++) {
             side = random() > 0.5 ? 1 : -1;
-            const theta = THREE.MathUtils.degToRad(-25 + random() * 90);
-            const r = random() < 0.6 ? 290 + random() * 230 : 520 + random() * 380;
-            x = side * Math.cos(theta) * r;
-            y = 25 + Math.sin(theta) * r;
-            // Thin the hero's window (screen angle ≈ 142°–186° from the vanishing point).
-            const screenAngle = side < 0 ? 180 - THREE.MathUtils.radToDeg(theta) : THREE.MathUtils.radToDeg(theta);
+            if (peripheral) {
+                // Dedicated lower-flank high-velocity peripheral speed streams right beside the road!
+                const theta = THREE.MathUtils.degToRad(-18 + random() * 38);
+                const r = 155 + random() * 210;
+                x = side * Math.cos(theta) * r;
+                y = 14 + Math.sin(theta) * r;
+            } else {
+                const theta = THREE.MathUtils.degToRad(-22 + random() * 88);
+                const r = random() < 0.58 ? 275 + random() * 240 : 515 + random() * 410;
+                x = side * Math.cos(theta) * r;
+                y = 25 + Math.sin(theta) * r;
+            }
+            const screenAngle = side < 0 ? 180 - Math.atan2(y - 25, Math.abs(x)) * (180 / Math.PI)
+                : Math.atan2(y - 25, Math.abs(x)) * (180 / Math.PI);
             const inHeroWindow = side < 0 && screenAngle > 142 && screenAngle < 186;
-            if (inHeroWindow && random() > 0.35) continue;
-            if (!(Math.abs(x) < 130 && y < 15)) break;
+            if (inHeroWindow && random() > 0.3) continue;
+            if (!(Math.abs(x) < 128 && y < 18)) break;
         }
+        const spd = peripheral ? quantizeSpeed(1.35 + random() * 0.55) : quantizeSpeed(1.0 + random() * 0.45);
         aPos.set([x, y, TUNNEL_Z_NEAR - random() * TUNNEL_SPAN, random()], i * 4);
-        aData.set([quantizeSpeed(1.0 + random() * 0.3), 0.7 + random() * 0.6, 1.2 + random() * 1.6,
-            1.2 + random() * 0.3], i * 4);
+        aData.set([
+            spd,
+            (peripheral ? 1.1 : 0.8) + random() * 0.85,
+            1.4 + random() * 1.9,
+            (peripheral ? 1.02 : 0.47) + random() * 0.48,
+        ], i * 4);
         const palette = side < 0 ? warmColors : coolColors;
-        tmp.copy(palette[Math.floor(random() * palette.length) % palette.length]).lerp(white, 0.45);
+        tmp.copy(palette[Math.floor(random() * palette.length) % palette.length]).lerp(white, 0.12);
         aCol.set([tmp.r, tmp.g, tmp.b], i * 3);
     }
     geometry.setAttribute('aPos', new THREE.InstancedBufferAttribute(aPos, 4));
@@ -577,37 +580,48 @@ export function createSpeedStreaks({
         const toCam = cameraPosition.sub(center);
         const dist = max(length(toCam), 1.0);
         const side = normalize(cross(vec3(0.0, 0.0, 1.0), toCam));
-        // Density gate: hidden instances collapse to zero area.
         const shown = step(p0.w, uStreakDensity);
         const worldPerPx = dist.div(float(0.5).mul(uViewportH).mul(uProjScaleY));
-        const width = max(d.z, worldPerPx.mul(1.4)).mul(shown);
-        const len = min(uStreakLength.mul(d.y), 220.0).mul(shown);
         const q = positionGeometry;
+        const along = q.y.add(0.5); // 0 tail -> 1 head
+        // Smooth flared lance profile: narrow trailing tail widening to a crisp glowing comet head
+        // (never zero width at the nose vertex of a 4-vertex quad!).
+        const taper = mix(float(0.28), float(1.05), along);
+        const width = max(d.z.mul(1.05), worldPerPx.mul(2.25)).mul(taper).mul(shown);
+        const len = min(uStreakLength.mul(d.y), 380.0).mul(shown);
         return center.add(side.mul(q.x.mul(width))).add(vec3(0.0, 0.0, q.y.mul(len)));
     })();
 
     material.colorNode = Fn(() => {
+        const p0 = attribute('aPos', 'vec4');
         const d = attribute('aData', 'vec4');
         const c = attribute('aCol', 'vec3');
         const q = positionGeometry;
         const z = streakZ();
-        const across = q.x.mul(2.0).div(0.33);
+        const across = q.x.mul(2.0).div(0.42);
         const beam = exp(across.mul(across).negate());
-        const along = q.y.add(0.5); // 0 tail → 1 head (toward the camera)
-        // Bases clamped: with MSAA a pixel whose centre lies outside the quad extrapolates past
-        // it, and pow(negative) is NaN, which min(…, 4) turns into a hot pixel on D3D.
-        const tail = pow(max(along, 0.0), 1.6).mul(0.9).add(0.1);
+        const along = clamp(q.y.add(0.5), 0.0, 1.0); // 0 tail -> 1 head
+        // Silky luminous tail + blazing white-hot rounded comet head (soft tip cutoff prevents boxiness).
+        const noseCap = smoothstep(1.0, 0.90, along);
+        const tail = pow(along, 1.75).mul(0.88).add(0.04);
+        const headD = along.sub(0.88).div(0.09);
+        const head = exp(headD.mul(headD).negate()).mul(1.12);
         const D = float(CAMERA_Z).sub(z);
-        // Thinned where it crosses the hero planet.
         const pPx = screenUV.mul(uViewportPx);
-        const heroM = float(1.0).sub(smoothstep(uHeroPx.z, uHeroPx.z.add(uViewportPx.y.mul(0.03)), length(pPx.sub(uHeroPx.xy))));
-        const fade = smoothstep(float(TUNNEL_Z_FAR), float(TUNNEL_Z_FAR + 340), z)
-            .mul(smoothstep(110.0, 260.0, D))
-            .mul(float(1.0).sub(heroM.mul(0.75)))
+        const heroM = float(1.0).sub(smoothstep(uHeroPx.z, uHeroPx.z.add(uViewportPx.y.mul(0.04)), length(pPx.sub(uHeroPx.xy))));
+        const fade = smoothstep(float(TUNNEL_Z_FAR + 140), float(TUNNEL_Z_FAR + 860), z)
+            .mul(smoothstep(105.0, 260.0, D))
+            .mul(float(1.0).sub(heroM.mul(0.97)))
             .mul(uIntensity);
-        const value = d.w.mul(float(1.0).add(uPulse.mul(0.2)));
-        const a = beam.mul(tail).mul(fade);
-        return vec4(min(c.mul(value).mul(a), vec3(4.0)), 1.0);
+        const feverHue = chdNeonColor(fract(p0.w.add(along.mul(0.25)).sub(uTime.mul(0.3))), float(0.6));
+        const baseCol = mix(mix(c, feverHue, uFeverGlow.mul(0.55)), GOLD_COL, clamp(uGoldGild.mul(0.7), 0.0, 0.75));
+        const litCol = mix(baseCol, vec3(1.0), clamp(head.mul(0.44), 0.0, 0.70));
+        // Lower flanks pass the eye fastest. Distant lanes recede to fine coloured traces,
+        // leaving the bright heads and a longer exposure for the rush after a clear.
+        const depthLight = mix(float(0.45), float(1.0), smoothstep(1600.0, 400.0, D));
+        const value = d.w.mul(depthLight).mul(float(1.0).add(uPulse.mul(0.38)).add(uFeverGlow.mul(0.70)));
+        const a = beam.mul(tail.add(head)).mul(noseCap).mul(fade);
+        return vec4(min(litCol.mul(value).mul(a), vec3(4.2)), 1.0);
     })();
 
     const mesh = new THREE.Mesh(geometry, material);
@@ -630,14 +644,9 @@ export function createSpeedStreaks({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Motes (floating chromatic dust, High and up)
+// Motes (floating luminous bokeh stardust catching passing ring light)
 // ─────────────────────────────────────────────────────────────────────────────
 
-/**
- * Camera-facing quad in clip space with a size in PIXELS (floor 1 px), after the deep starfield
- * the Starlight theme had before its 2026-10 rebuild. positionGeometry.xy is the unit quad corner.
- * Call inside a Fn() body (it declares a var).
- */
 export function billboardClip(worldPos, sizePx, uViewportH, uProjScaleY) {
     const vp = cameraViewMatrix.mul(vec4(worldPos, 1.0)).toVar();
     const dist = vp.z.negate().max(float(0.01));
@@ -648,11 +657,6 @@ export function billboardClip(worldPos, sizePx, uViewportH, uProjScaleY) {
     return cameraProjectionMatrix.mul(vp);
 }
 
-/**
- * Floating chromatic dust (High and up): lavender motes drifting down the tunnel on their own
- * clock, LIT by the rings — a mote catches the halo colour of the ring it is passing through, so
- * the dust glints in the tunnel's colours as each ring sweeps over it.
- */
 export function createMotes({ count = 120, random = Math.random, shared } = {}) {
     const n = Math.max(1, Math.floor(count));
     const {
@@ -666,13 +670,13 @@ export function createMotes({ count = 120, random = Math.random, shared } = {}) 
     const aData = new Float32Array(n * 4); // phase, size px, hue, drift
     for (let i = 0; i < n; i++) {
         const side = random() > 0.5 ? 1 : -1;
-        aPos[i * 3] = side * (160 + random() * 620);
-        aPos[i * 3 + 1] = -30 + random() * 380;
+        aPos[i * 3] = side * (145 + random() * 640);
+        aPos[i * 3 + 1] = -25 + random() * 390;
         aPos[i * 3 + 2] = TUNNEL_Z_NEAR - random() * TUNNEL_SPAN;
         aData[i * 4] = random() * Math.PI * 2;
-        aData[i * 4 + 1] = 1.4 + random() * 2.4;
+        aData[i * 4 + 1] = 2.0 + random() * 3.8;
         aData[i * 4 + 2] = random();
-        aData[i * 4 + 3] = quantizeSpeed(0.25 + random() * 0.45);
+        aData[i * 4 + 3] = quantizeSpeed(0.25 + random() * 0.5);
     }
     geometry.setAttribute('aPos', new THREE.InstancedBufferAttribute(aPos, 3));
     geometry.setAttribute('aData', new THREE.InstancedBufferAttribute(aData, 4));
@@ -691,11 +695,10 @@ export function createMotes({ count = 120, random = Math.random, shared } = {}) 
     const moteWorld = Fn(() => {
         const p0 = attribute('aPos', 'vec3');
         const d = attribute('aData', 'vec4');
-        // Their own clock: the ambient envelope scales mote SPEED (CPU-integrated), never phase.
         const z = wrapZ(p0.z.add(uMoteTravel.mul(d.w)));
         const curve = chdRoadCurve(z, uTime);
-        const bob = sin(uTime.mul(0.4).add(d.x)).mul(14.0);
-        const sway = cos(uTime.mul(0.27).add(d.x.mul(1.7))).mul(10.0);
+        const bob = sin(uTime.mul(0.45).add(d.x)).mul(16.0);
+        const sway = cos(uTime.mul(0.29).add(d.x.mul(1.7))).mul(12.0);
         return vec3(p0.x.add(curve.x).add(sway), p0.y.add(curve.y).add(bob), z);
     });
 
@@ -708,19 +711,19 @@ export function createMotes({ count = 120, random = Math.random, shared } = {}) 
         const d = attribute('aData', 'vec4');
         const q = positionGeometry;
         const r = length(q.xy).mul(2.0);
-        const core = exp(r.mul(r).mul(-5.0));
-        const tw = sin(uTime.mul(1.3).add(d.x.mul(3.0))).mul(0.3).add(0.7);
+        const core = exp(r.mul(r).mul(-5.8));
+        const bokeh = exp(r.mul(r).mul(-1.8)).mul(0.24).mul(smoothstep(1.0, 0.55, r));
+        const tw = sin(uTime.mul(1.5).add(d.x.mul(3.0))).mul(0.32).add(0.68);
         const w = moteWorld();
         const { z } = w;
-        const fade = smoothstep(float(TUNNEL_Z_FAR), float(TUNNEL_Z_FAR + 800), z)
-            .mul(smoothstep(float(TUNNEL_Z_NEAR), float(TUNNEL_Z_NEAR - 300), z));
-        // Lavender with a 20 % side tint (pink left, cyan right).
+        const fade = smoothstep(float(TUNNEL_Z_FAR), float(TUNNEL_Z_FAR + 720), z)
+            .mul(smoothstep(float(TUNNEL_Z_NEAR), float(TUNNEL_Z_NEAR - 260), z));
         const side = step(0.0, attribute('aPos', 'vec3').x);
-        const tintCol = mix(vec3(1.0, 0.195, 0.693), vec3(0.195, 0.887, 1.0), side);
-        const moteCol = mix(vec3(0.694, 0.631, 0.887), tintCol, 0.2);
-        const a = core.mul(tw).mul(fade).mul(uIntensity).mul(uMoteGain);
+        const tintCol = mix(vec3(1.0, 0.22, 0.72), vec3(0.18, 0.9, 1.0), side);
+        const moteCol = mix(vec3(0.74, 0.68, 0.96), tintCol, 0.3);
+        const a = core.add(bokeh).mul(tw).mul(fade).mul(uIntensity)
+            .mul(uMoteGain);
 
-        // Ring light: the nearest ring on the lattice (same id and slot as the ring shader).
         const J = floor(float(TUNNEL_Z_NEAR).add(uTravel).sub(z).div(RING_SPACING)
             .add(0.5));
         const zRing = float(TUNNEL_Z_NEAR).add(uTravel).sub(J.mul(RING_SPACING));
@@ -728,16 +731,16 @@ export function createMotes({ count = 120, random = Math.random, shared } = {}) 
         const ringGlow = uRingGlow.element(slot);
         const ringC = chdRoadCurve(zRing, uTime);
         const rr = length(w.xy.sub(vec2(ringC.x, ringC.y.add(25.0))));
-        const dr = rr.sub(260.0).div(110.0);
-        const dz = z.sub(zRing).div(75.0);
+        const dr = rr.sub(260.0).div(125.0);
+        const dz = z.sub(zRing).div(85.0);
         const ringDepth = float(CAMERA_Z).sub(zRing);
-        const ringShown = smoothstep(uDEmerge.add(250.0), uDEmerge, ringDepth).mul(smoothstep(150.0, 330.0, ringDepth));
-        const lit = exp(dz.mul(dz).negate()).mul(exp(dr.mul(dr).negate()).mul(0.7).add(0.3)).mul(ringShown);
-        const litCol = mix(ringGlow.xyz, chdNeonColor(fract(ringGlow.w).add(0.42), float(0.42)), step(0.5, ringGlow.w));
-        // Unlit motes stay sub-threshold (≤ 0.35); a lit one glints just past the knee.
-        const glint = litCol.mul(lit).mul(core).mul(fade).mul(uIntensity)
-            .mul(1.1);
-        return vec4(moteCol.mul(a).mul(0.3).add(glint), 1.0);
+        const ringShown = smoothstep(uDEmerge.add(360.0), uDEmerge, ringDepth).mul(smoothstep(145.0, 325.0, ringDepth));
+        const lit = exp(dz.mul(dz).negate()).mul(exp(dr.mul(dr).negate()).mul(0.75).add(0.25)).mul(ringShown);
+        const litCol = mix(ringGlow.xyz, chdNeonColor(fract(ringGlow.w).add(0.42), float(0.45)), step(0.5, ringGlow.w));
+        const glint = mix(litCol, vec3(1.0), 0.22).mul(lit).mul(core.add(bokeh.mul(1.4))).mul(fade)
+            .mul(uIntensity)
+            .mul(1.55);
+        return vec4(moteCol.mul(a).mul(0.48).add(glint), 1.0);
     })();
 
     const mesh = new THREE.Mesh(geometry, material);
@@ -760,17 +763,11 @@ export function createMotes({ count = 120, random = Math.random, shared } = {}) 
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Meteors (fixed pool, one draw)
+// Meteors & celebratory comets (fixed pool, per-slot custom tint, one draw)
 // ─────────────────────────────────────────────────────────────────────────────
 
-const METEOR_RAMP = ['#eaf6ff', '#7df3ff', '#ff5ad9', '#5a2cff'].map((h) => new THREE.Color(h));
+const METEOR_RAMP = ['#f2fbff', '#78f5ff', '#ff56db', '#642cff'].map((h) => new THREE.Color(h));
 
-/**
- * A fixed pool of meteor billboards. spawn() writes ONE slot's attributes; the vertex shader
- * flies it in closed form. The draw is gated by instanceCount (0 while every slot is dead), not
- * by `visible`, so the pipeline is compiled with the rest of the scene and nothing is created
- * during play.
- */
 export function createMeteors({ pool = 8, shared } = {}) {
     const n = Math.max(1, Math.floor(pool));
     const { uTime, uViewportH, uProjScaleY } = shared;
@@ -781,18 +778,21 @@ export function createMeteors({ pool = 8, shared } = {}) {
     const aStart = new Float32Array(n * 3);
     const aVel = new Float32Array(n * 3);
     const aTiming = new Float32Array(n * 4); // birth, life, width px, peak value
+    const aTint = new Float32Array(n * 4); // r, g, b, tintAmount (0 = classic ramp, 1 = custom color)
     for (let i = 0; i < n; i++) {
-        aTiming[i * 4] = -1e4; // long dead
+        aTiming[i * 4] = -1e4;
         aTiming[i * 4 + 1] = 1;
+        aTint.set([1, 1, 1, 0], i * 4);
     }
     const startAttr = new THREE.InstancedBufferAttribute(aStart, 3);
     const velAttr = new THREE.InstancedBufferAttribute(aVel, 3);
     const timingAttr = new THREE.InstancedBufferAttribute(aTiming, 4);
-    [startAttr, velAttr, timingAttr].forEach((a) => a.setUsage(THREE.DynamicDrawUsage));
+    const tintAttr = new THREE.InstancedBufferAttribute(aTint, 4);
+    [startAttr, velAttr, timingAttr, tintAttr].forEach((a) => a.setUsage(THREE.DynamicDrawUsage));
     geometry.setAttribute('aStart', startAttr);
     geometry.setAttribute('aVel', velAttr);
     geometry.setAttribute('aTiming', timingAttr);
-    // Drawn with every slot at build time (compiled with the scene); update() gates it.
+    geometry.setAttribute('aTint', tintAttr);
     geometry.instanceCount = n;
 
     const material = new THREE.MeshBasicNodeMaterial({
@@ -818,37 +818,41 @@ export function createMeteors({ pool = 8, shared } = {}) {
         const toCam = cameraPosition.sub(head);
         const dist = max(length(toCam), 1.0);
         const side = normalize(cross(axis, toCam.div(dist)));
-        // Trail grows over the first ~0.3 s of flight, then holds.
-        const trail = speed.mul(clamp(t, 0.0, 0.3)).max(1.0);
+        const trail = speed.mul(clamp(t, 0.0, 0.34)).max(1.0);
         const worldPerPx = dist.div(float(0.5).mul(uViewportH).mul(uProjScaleY));
         const q = positionGeometry;
-        const along = q.y.add(0.5); // 0 tail → 1 head
+        const along = q.y.add(0.5);
         const a0 = age();
-        const live = step(0.0, a0).mul(step(a0, tm.y.add(0.05))); // dead slots: zero area
-        const width = max(tm.z.mul(worldPerPx), worldPerPx.mul(1.5)).mul(along.mul(0.7).add(0.3)).mul(live);
+        const live = step(0.0, a0).mul(step(a0, tm.y.add(0.05)));
+        // Smooth flared comet-lance profile (never pinch head vertex of 4-vertex quad to 0!).
+        const width = max(tm.z.mul(worldPerPx), worldPerPx.mul(2.4)).mul(along.mul(0.85).add(0.28)).mul(live);
         return head.sub(axis.mul(float(1.0).sub(along).mul(trail).mul(live))).add(side.mul(q.x.mul(width)));
     })();
 
     material.colorNode = Fn(() => {
         const tm = attribute('aTiming', 'vec4');
+        const tint = attribute('aTint', 'vec4');
         const q = positionGeometry;
-        const along = q.y.add(0.5); // 1 = head
+        const along = clamp(q.y.add(0.5), 0.0, 1.0);
         const a0 = age();
         const life = clamp(a0.div(max(tm.y, 0.01)), 0.0, 1.0);
-        const alive = smoothstep(0.0, 0.18, life).mul(float(1.0).sub(smoothstep(0.55, 1.0, life)))
+        const alive = smoothstep(0.0, 0.14, life).mul(float(1.0).sub(smoothstep(0.55, 1.0, life)))
             .mul(step(0.0, a0)).mul(step(a0, tm.y));
-        const across = pow(clamp(float(1.0).sub(abs(q.x).mul(2.0)), 0.0, 1.0), 1.5); // clamped: see streaks
-        const back = float(1.0).sub(along); // 0 at the head
+        const across = pow(clamp(float(1.0).sub(abs(q.x).mul(2.0)), 0.0, 1.0), 1.35);
+        const back = float(1.0).sub(along);
+        const noseCap = smoothstep(1.0, 0.90, along);
         const [c0, c1, c2, c3] = METEOR_RAMP;
-        const ramp = mix(
+        const classicRamp = mix(
             mix(vec3(c0.r, c0.g, c0.b), vec3(c1.r, c1.g, c1.b), smoothstep(0.0, 0.15, back)),
             mix(vec3(c2.r, c2.g, c2.b), vec3(c3.r, c3.g, c3.b), smoothstep(0.5, 0.85, back)),
             smoothstep(0.15, 0.5, back),
         );
-        const falloff = pow(max(along, 0.0), 1.8).mul(float(1.0).sub(smoothstep(0.85, 1.0, back)));
-        const headGlow = exp(back.mul(back).mul(-120.0));
-        const value = tm.w.mul(falloff.mul(0.45).add(headGlow));
-        return vec4(min(ramp.mul(value).mul(across).mul(alive).mul(uIntensity), vec3(4.0)), 1.0);
+        const customRamp = mix(vec3(1.0, 0.98, 0.92), tint.xyz, smoothstep(0.04, 0.4, back));
+        const ramp = mix(classicRamp, customRamp, tint.w);
+        const falloff = pow(along, 1.65).mul(float(1.0).sub(smoothstep(0.84, 1.0, back)));
+        const headGlow = exp(along.sub(0.89).div(0.085).pow2().negate()).mul(1.85);
+        const value = tm.w.mul(falloff.mul(0.65).add(headGlow)).mul(noseCap);
+        return vec4(min(ramp.mul(value).mul(across).mul(alive).mul(uIntensity), vec3(5.5)), 1.0);
     })();
 
     const mesh = new THREE.Mesh(geometry, material);
@@ -861,16 +865,7 @@ export function createMeteors({ pool = 8, shared } = {}) {
         mesh,
         material,
         uniforms: { uIntensity },
-        /** Pool size (a one-slot pool cannot hold a comet's two tails). */
         capacity: n,
-        /**
-         * A free slot first (the lowest, so a seek replays the same slots); a full pool gives up
-         * the trail nearest its end only when it is almost gone, or when `evict` (a comet) asks.
-         * A meteor never cuts a comet in mid-flight: it is skipped instead.
-         * @param {{start: THREE.Vector3, velocity: THREE.Vector3, life: number, widthPx: number,
-         *   value: number, time: number, evict?: boolean}} s
-         * @returns {boolean} whether it was spawned
-         */
         spawn(s) {
             let i = -1;
             let nearest = 0;
@@ -888,34 +883,33 @@ export function createMeteors({ pool = 8, shared } = {}) {
             aStart.set([s.start.x, s.start.y, s.start.z], i * 3);
             aVel.set([s.velocity.x, s.velocity.y, s.velocity.z], i * 3);
             aTiming.set([s.time, s.life, s.widthPx, s.value], i * 4);
+            if (s.color) aTint.set([s.color.r, s.color.g, s.color.b, 1], i * 4);
+            else aTint.set([1, 1, 1, 0], i * 4);
             deathTimes[i] = s.time + s.life;
             startAttr.addUpdateRange(i * 3, 3);
             velAttr.addUpdateRange(i * 3, 3);
             timingAttr.addUpdateRange(i * 4, 4);
+            tintAttr.addUpdateRange(i * 4, 4);
             startAttr.needsUpdate = true;
             velAttr.needsUpdate = true;
             timingAttr.needsUpdate = true;
+            tintAttr.needsUpdate = true;
             return true;
         },
-        /** Number of live slots at `time` (0 → the draw is skipped). */
         update(time) {
             let alive = 0;
             for (let i = 0; i < n; i++) if (deathTimes[i] > time) alive += 1;
             geometry.instanceCount = alive > 0 ? n : 0;
             return alive;
         },
-        /** Kill every meteor (used when seeking the simulation). */
         clear() {
             for (let i = 0; i < n; i++) aTiming[i * 4] = -1e4;
             deathTimes.fill(-1e4);
-            // Whole buffer: a spawn() before the next upload adds its own range, and r185 then
-            // uploads only the listed ranges.
             timingAttr.clearUpdateRanges();
             timingAttr.addUpdateRange(0, aTiming.length);
             timingAttr.needsUpdate = true;
-            geometry.instanceCount = 0; // every slot free: the same slot assignment after every seek
+            geometry.instanceCount = 0;
         },
-        /** Make every slot drawable once so a warm-up compiles the pipeline. */
         armForWarmup() {
             geometry.instanceCount = n;
         },

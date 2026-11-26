@@ -8,14 +8,14 @@
  * when an icon and its row disagree.
  */
 export const ODYSSEY_THEME_PASSAGE_PALETTES = Object.freeze({
-    'aether-tides': ['#ebc5fe', '#4d8ad8', '#a160d0', '#732885', 0.48],
-    'astral-weave': ['#a7c2fc', '#5773ab', '#7f71c2', '#273457', 0.41],
+    'aether-tides': ['#9ec4ee', '#688acb', '#b4517a', '#442d5a', 0.41],
+    'astral-weave': ['#a2bce9', '#415776', '#746199', '#23283e', 0.33],
     aurora: ['#7cac9b', '#2a565d', '#843f5e', '#0d1d27', 0.3],
-    bioluminescence: ['#55f8e8', '#119a8d', '#30c5b6', '#054c49', 0.45],
-    'black-hole': ['#f1e2d6', '#ac7d49', '#cbaa88', '#010003', 0.37],
+    bioluminescence: ['#82c7cb', '#2e7e78', '#549f9d', '#164346', 0.4],
+    'black-hole': ['#f7e5d4', '#c47735', '#355682', '#110b09', 0.39],
     'blood-moon': ['#c65133', '#751c1f', '#993428', '#2c0813', 0.15],
     'chiral-gold': ['#ffd362', '#986724', '#c69840', '#1d0800', 0.26],
-    'chromadelic-highway': ['#cf9ba8', '#7e2487', '#9f3e71', '#100a28', 0.19],
+    'chromadelic-highway': ['#c3cacd', '#7a3e89', '#4e4277', '#2f1f3c', 0.28],
     'chromatic-impasto': ['#cbdaad', '#c24944', '#5a6ebd', '#5e2d31', 0.42],
     'cinder-drift': ['#f78934', '#a44e22', '#c9692a', '#3c1a17', 0.25],
     'cosmic-noir': ['#a3a3a3', '#292929', '#606060', '#070707', 0.16],
@@ -68,7 +68,7 @@ export const ODYSSEY_THEME_PASSAGE_PALETTES = Object.freeze({
     'vesper-chrysalis': ['#fbd3c4', '#e4737f', '#fca36f', '#803f58', 0.55],
     'void-ember': ['#f4a734', '#c24f08', '#d8761c', '#400303', 0.28],
     'voltage-storm': ['#cedcff', '#3b5893', '#7d94c4', '#0c1c4b', 0.31],
-    waves: ['#fde08c', '#e7a649', '#2c768c', '#325b5e', 0.59],
+    waves: ['#e8dbde', '#e59c80', '#679797', '#676466', 0.62],
     winter: ['#c2fefb', '#2decb0', '#5597b8', '#2f618c', 0.68],
     wolfhour: ['#cfced2', '#606f8b', '#929aab', '#131723', 0.35],
 });

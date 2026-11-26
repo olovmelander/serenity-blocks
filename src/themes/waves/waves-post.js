@@ -209,7 +209,7 @@ export class WavesPost {
                 glare.addAssign(rays.mul(this.uShafts).mul(this.uShaftTint).mul(0.85));
             }
             glare.mulAssign(float(1.0).sub(calm.mul(0.86)));
-            glare.mulAssign(lifeless.mul(0.75).add(0.25));
+            glare.mulAssign(lifeless.mul(0.965).add(0.035));
             const H = S.add(glare);
 
             // ── Tone map + grade ──

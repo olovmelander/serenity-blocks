@@ -23,7 +23,7 @@
  *               the falling lip, and drips from the lip's edge as rain of that colour.
  *   hard drop   the same, struck harder.
  *   clear       the lip throws a sheet of spray and a band of light runs down the tube for
- *               every line; the barrel opens a little and the water lights from inside.
+ *               every line. Doubles part into a bow wake and triples feather into three gilded crests.
  *   twist      the bands of light come down the tube as a screw, and a wheel of spray turns
  *               off the walls and is flung ahead.
  *   four lines  the wave holds: the clock slows to a tenth, the biggest throw of all hangs in
@@ -37,13 +37,16 @@
  *               flukes over the leap; going back in, it throws a crown and kicks a plume with
  *               its flukes, and leaves foam on the water (waves-splash.js).
  *   cascade     each wave of it comes deeper than the last: a wider, brighter band of light, a
- *               bigger throw.
+ *               bigger throw, with foam skipping towards the eye and hooking up the face.
  *   back-to-back  a set wave rolls through the tube behind the clear, and the lip throws again.
  *   twist, no lines   a small screw of light and a little wheel of spray.
  *   perfect     the whole pod, and the sky goes to gold. Settled after its clear (the crown),
  *               it draws the hold out and pours gold through the lip; it never throws again.
  *   level up    a set wave runs through the tube and the hour turns with it: golden hour,
  *               sunset, afterglow, moonrise, first light, the trade-wind day, and round again.
+ *   versus      outgoing water runs out through the barrel, received water breaks towards the
+ *               rider and counters cross two wakes. A loss drains the trough and a respawn lifts
+ *               a spout. Round and Odyssey milestones bring visitors to the open sea.
  *
  * And how hot play runs (shared/gameplay-surge.js). Nothing is restarted by the next event: the
  * light, the tearing and the pod add to what is still playing, and the wave remembers the pace.
@@ -61,6 +64,7 @@
 import * as THREE from 'three/webgpu';
 import { uniform, uniformArray } from 'three/tsl';
 import { applyCameraBreath } from '../shared/camera-breath.js';
+import { flashScale } from '../../utils/photosensitivity.js';
 import { GameplaySurge, Swell } from '../shared/gameplay-surge.js';
 import {
     DEG, FLOW, WAVE, approach, castRay, clamp01, crestDistance, landingDistance, lerp, lipAngle, mulberry32, pieceLight,
@@ -86,6 +90,8 @@ import { createLandingSpray, createWhiteWater } from './waves-whitewater.js';
 import { WavesLife, leapersFor } from './waves-life.js';
 import { stageVisit } from './waves-ambient.js';
 import { makeRide, makeWhale } from './waves-acts.js';
+import { clearBreak, versusBreak } from './waves-breakers.js';
+import { WakeLace } from './waves-wake-lace.js';
 import { loadSeaLife, seaLifeLoaded } from './waves-cast.js';
 import {
     FoamPool, dolphinBreach, dolphinEntry, rollSplash, splashDensity, whaleSplash,
@@ -291,10 +297,11 @@ export class WavesWorld {
             open: uniform(0),
             /** (z, height, width, breath): a set wave in the tube; how far the tube has swelled. */
             bulge: uniform(new THREE.Vector4(-60, 0, 5, 0)),
-            /** x: live rings, y: live ribbons. */
+            /** Number of live rings, ribbons and bands in their packed tables. */
             counts: uniform(new THREE.Vector4(0, 0, 0, 0)),
             /** 0..1: the lip is throwing (its edge tears further, its rain leaves harder). */
             tear: uniform(0),
+            crown: uniform(0),
             /** 0..1: the same throw, eased: how hard the white water heaves where the lip lands. */
             heave: uniform(0),
             /** Ripple strength (1 at rest). */
@@ -384,6 +391,8 @@ export class WavesWorld {
         this.parts.water = createWater({
             tier, noise: this.noise, lace: this.lace, U, shape: this.shape, rows: this.rows,
         });
+        this.wakeLace = new WakeLace(this);
+        this.parts.water.mesh.add(this.wakeLace.mesh);
         this.pod = new WavesLife({
             tier,
             U,
@@ -503,6 +512,7 @@ export class WavesWorld {
         s.radiance = 0;
         s.tear = 0;
         this.U.heave.value = 0;
+        this.U.crown.value = 0;
         s.flash = 0;
         s.holdAge = -1;
         s.holdLength = HOLD_SECONDS;
@@ -536,8 +546,10 @@ export class WavesWorld {
         this.ribbonCount = 0;
         this.dripCount = 0;
         this.bandRows.forEach((row) => row.set(-100, 0, 4, 0));
+        this.U.counts.value.set(0, 0, 0, 0);
         this.spray?.reset();
         this.foam?.reset();
+        this.wakeLace?.reset();
         this.pod?.reset();
     }
 
@@ -546,6 +558,16 @@ export class WavesWorld {
     updateCamera(camera, sim) {
         const s = this.state;
         const target = viewFor(this.aspect, this.hasBoard, this.view);
+        // On phones the board can cover almost all the opening. Frame the
+        // moving sun in the actual strip of sky above the top card.
+        if (this.aspect < 0.9 && this.layout?.cards?.length) {
+            let top = 1;
+            for (const card of this.layout.cards) top = Math.min(top, card.y0);
+            const sunY = Math.max(0.055, Math.min(0.20, top * 0.54));
+            const angle = Math.atan((1 - 2 * sunY) * Math.tan(camera.fov * DEG * 0.5)) / DEG;
+            const elevation = this.sunPin?.elevation ?? this.light.elevation;
+            target.pitch = lerp(target.pitch, elevation - angle, smooth(0.9, 0.62, this.aspect));
+        }
         if (s.yaw === null) {
             s.yaw = target.yaw;
             s.pitch = target.pitch;
@@ -842,6 +864,12 @@ export class WavesWorld {
         // Each wave of a cascade comes deeper than the last: wider and brighter bands of light, a
         // bigger, harder throw, more light in the water.
         const depth = Math.max(0, Math.min(8, Math.round(Number(c.cascade) || 1) - 1));
+        if (!big && !c.twist) {
+            clearBreak(this, lines, depth + 1);
+            if (depth) this.wakeLace.show('cascade');
+            else if (lines === 2) this.wakeLace.show('double');
+            else if (lines === 3) this.wakeLace.show('triple');
+        }
         const open = this.U.open.value;
         const twist = c.twist ? 2.4 : 0;
         const strength = 0.75 + lines * 0.12 + depth * 0.08;
@@ -863,7 +891,13 @@ export class WavesWorld {
             size: 0.028 + lines * 0.003,
         });
         if (c.twist) {
-            this.spray.swirl(this.clock, open, { d: landingDistance(open) + 2.5, n: Math.round(this.spray.count / 5) });
+            this.spray.swirl(this.clock, open, {
+                d: landingDistance(open) + 2.5,
+                n: Math.round(this.spray.count / 5),
+                turn: 2.25,
+                size: 0.062,
+                rgb: [0.76, 1.15, 1.38],
+            });
             s.tear = 1;
             // And a spinner answers the twist with its own: thrown clear, turning on its length.
             this.pod.leap(this.clock + LEAP_LEAD, open, {
@@ -960,10 +994,37 @@ export class WavesWorld {
         const open = this.U.open.value;
         this.addBand(0.5, 0.7, 0, 2.4);
         this.spray.swirl(this.clock, open, {
-            d: landingDistance(open) + 2.5, n: Math.round(this.spray.count / 14), turn: 1.5, life: [2, 3],
+            d: landingDistance(open) + 1.2,
+            n: Math.round(this.spray.count / 14),
+            turn: 1.45,
+            size: 0.052,
+            rgb: [1.12, 0.91, 0.65],
+            life: [2, 3],
         });
         s.tear = Math.max(s.tear, 0.45);
         this.surge.spin(this.time);
+    }
+
+    /** Local versus play and run outcomes, resolved once per frame by the director. */
+    onSeaCue(kind, lines = 1) {
+        if (!this.pod) return;
+        const seed = this.seed + Math.floor(this.clock * 9);
+        switch (kind) {
+        case 'goal':
+            this.sendVisit('farPod', seed);
+            break;
+        case 'victory':
+            this.sendVisit('whaleFluke', seed);
+            this.sendPod(2, false);
+            break;
+        case 'round':
+            this.sendVisit('whaleBlow', seed);
+            break;
+        default:
+            versusBreak(this, kind, lines);
+            this.wakeLace.show(kind);
+            break;
+        }
     }
 
     /**
@@ -1230,6 +1291,7 @@ export class WavesWorld {
         const {
             punch, fever, warmth, crown,
         } = this.sampleHeat();
+        U.crown.value = crown * flashScale();
         const still = this.reducedMotion ? 0 : 1;
 
         // The world's own clock: four lines hold it for a breath.
@@ -1256,11 +1318,19 @@ export class WavesWorld {
         }
         if (this.ringCount >= this.ringRows.length) this.ringRows[0].w *= Math.exp(-5 * dt);
         if (this.ribbonCount * 2 >= this.ribbonRows.length) this.ribbonRows[0].w *= Math.exp(-5 * dt);
-        for (let i = 0; i < BAND_SLOTS; i += 1) {
-            const row = this.bandRows[i];
-            if (row.y > 0 && this.clock - row.x > BAND_LIFE) row.set(-100, 0, 4, 0);
+        // Pack the live bands, including the delayed fronts of a clear. The full-screen
+        // water shader can skip the band loop altogether while the sea is at rest.
+        let bandCount = 0;
+        for (const row of this.bandRows) {
+            if (row.y <= 0) continue;
+            if (this.clock - row.x <= BAND_LIFE) {
+                const target = this.bandRows[bandCount++];
+                if (target === row) continue;
+                target.copy(row);
+            }
+            row.set(-100, 0, 4, 0);
         }
-        U.counts.value.set(this.ringCount, this.ribbonCount, 0, 0);
+        U.counts.value.set(this.ringCount, this.ribbonCount, bandCount, 0);
         // Ribbons that have reached the lip fall from it.
         for (let i = 0; i < this.dripCount; i += 1) {
             const drip = this.drips[i];
@@ -1352,9 +1422,12 @@ export class WavesWorld {
         const thrown = U.tear.value;
         U.heave.value += (thrown - U.heave.value) * approach(thrown > U.heave.value ? HEAVE_RISE : HEAVE_FALL, dt);
 
+        this.wakeLace.mesh.visible = this.clock < this.wakeLace.until;
         this.pod.update(this.clock, U.open.value, this.lifeEvent);
         this.launchOwed();
         this.keepThrowing(dt * scale, warmth, fever);
+        this.spray.drawRange.update(this.clock);
+        this.foam.drawRange.update(this.clock);
 
         if (camera) {
             this.parts.sky.follow(camera);
@@ -1471,6 +1544,8 @@ export class WavesWorld {
 
     dispose() {
         this.disposed = true;
+        this.wakeLace?.dispose();
+        this.wakeLace = null;
         Object.values(this.parts).forEach((part) => part.dispose());
         this.parts = {};
         this.pod = null;

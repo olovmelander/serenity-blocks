@@ -34,6 +34,7 @@ import {
     pow,
     sqrt,
     step,
+    smoothstep,
     texture,
     uniform,
     uniformArray,
@@ -205,6 +206,8 @@ export function createGrottoUniforms(textures, opts = {}) {
         ambient: v3(p.ambient),
         /** How far the motes have been carried up (a chain lifts them faster). */
         moteLift: uniform(0),
+        /** Slow water currents and animal migration share this reduced-motion-aware clock. */
+        driftTime: uniform(0),
         /** 0..1: how much of the vault's glow-worms are lit. */
         wake: uniform(0.35),
         /** 0..1: the fairy rings' growth (a sprout of rank r stands once this passes r). */
@@ -294,10 +297,13 @@ const FAR_DIR = (() => {
 export const blFogColor = (u, dir) => {
     const toFar = max(dot(dir, vec3(FAR_DIR[0], FAR_DIR[1], FAR_DIR[2])), 0.0);
     const far2 = toFar.mul(toFar);
-    const far = far2.mul(far2).mul(0.85).add(far2.mul(0.25));
+    const far = far2.mul(far2).mul(0.62).add(far2.mul(0.23));
     const low = exp(abs(dir.y).mul(-5.5));
+    // Light entering the gallery from the left reaches the lower chamber and the pool.
+    const opening = blBell(dir.x.add(0.21).mul(2.8)).mul(blBell(dir.y.sub(0.10).mul(4.0))).mul(far2);
     const lift = u.power.mul(0.25).add(u.surge.mul(0.3)).add(1.0);
-    return u.fogFar.mul(far.add(0.07)).add(u.fogLow.mul(low).mul(0.45)).mul(lift)
+    return u.fogFar.mul(far.add(0.07)).add(u.fogLow.mul(low).mul(0.38))
+        .add(u.plankton.mul(opening).mul(0.012)).mul(lift)
         .mul(u.breath.mul(0.75).add(0.25));
 };
 
@@ -352,11 +358,12 @@ export const blScatter = (u, dir, dist, origin = cameraPosition) => Fn(() => {
 })();
 
 /**
- * What a mirror at `p` shows of the lamps along its reflected ray `R`: each lamp as a soft disc
- * where the ray passes it. The low tiers' pool has no second render; this is its picture.
+ * The low tiers reflect the great caps analytically. Intersecting their undersides gives the
+ * pool recognisable ellipses even without a mirror pass. Other emitters keep their small halo.
  */
 export const blLampImage = (u, p, R) => Fn(() => {
     const sum = vec3(0.0).toVar();
+    const up = max(R.y, 0.005).toVar();
     Loop({
         start: 0, end: u.lampCount, type: 'int', condition: '<', name: 'image',
     }, ({ image }) => {
@@ -365,8 +372,21 @@ export const blLampImage = (u, p, R) => Fn(() => {
         const toLamp = a.xyz.sub(p).toVar();
         const along = max(dot(toLamp, R), 0.0).toVar();
         const off2 = max(dot(toLamp, toLamp).sub(along.mul(along)), 0.0);
-        const r2 = a.w.mul(a.w);
-        sum.addAssign(c.rgb.mul(r2.div(off2.add(r2)).mul(r2.div(off2.add(r2)))).div(r2.mul(3.0).add(1.0)).mul(step(0.01, along)));
+        const r2 = a.w.mul(a.w).toVar();
+        const halo = r2.div(off2.add(r2)).toVar();
+        const imageLight = c.rgb.div(r2.mul(3.0).add(1.0)).toVar();
+        sum.addAssign(imageLight.mul(halo.mul(halo)).mul(step(0.01, along)).mul(0.52));
+        If(c.w.greaterThan(0.0).or(image.equal(0)), () => {
+            const capHit = p.xz.add(R.xz.mul(a.y.sub(p.y).div(up))).sub(a.xz).div(a.w.mul(1.58)).toVar();
+            const disk2 = dot(capHit, capHit).toVar();
+            If(disk2.lessThan(1.12), () => {
+                const edge = float(1.0).sub(smoothstep(0.82, 1.12, disk2));
+                const blades = atan(capHit.y, capHit.x.add(0.0001)).mul(24.0).cos().mul(0.5)
+                    .add(0.5);
+                const core = smoothstep(0.018, 0.12, disk2);
+                sum.addAssign(imageLight.mul(core).mul(edge).mul(blades.mul(0.35).add(0.35)));
+            });
+        });
     });
     return sum;
 })();

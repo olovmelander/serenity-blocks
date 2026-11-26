@@ -14,6 +14,7 @@ import { BOARD_GRID, rectToTide } from '../../src/themes/aether-tides/aether-tid
 import { QUALITY_NAMES } from '../../src/themes/aether-tides/aether-tides-quality.js';
 import { THEME_REGISTRY, getThemeMeta } from '../../src/themes/theme-registry.js';
 import { eventBus, EVENTS } from '../../src/events/event-bus.js';
+import { MULTIPLAYER_EVENTS } from '../../src/events/multiplayer-events.js';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const themeDir = path.join(repoRoot, 'src', 'themes', 'aether-tides');
@@ -409,15 +410,17 @@ describe('Aether Tides theme: one node renderer on both backends', () => {
         }
     });
 
-    it('starts without loading anything', async () => {
+    it('starts with its procedural clouds when bitmap decoding is unavailable', async () => {
         const load = vi.spyOn(THREE.TextureLoader.prototype, 'load');
         const loadTextures = vi.spyOn(AetherTidesWorld.prototype, 'loadTextures');
         const fetching = vi.fn();
         vi.stubGlobal('fetch', fetching);
+        vi.stubGlobal('createImageBitmap', undefined);
         const { theme } = await startTheme({ quality: 'Low' });
         expect(() => stepFrames(theme, 3)).not.toThrow();
         expect(load).not.toHaveBeenCalled();
-        expect(loadTextures).not.toHaveBeenCalled();
+        expect(loadTextures).toHaveBeenCalledOnce();
+        expect(theme.world.fieldUniforms.plateMix.value).toBe(0);
         expect(fetching).not.toHaveBeenCalled();
         expect(console.warn).not.toHaveBeenCalled();
     });
@@ -605,8 +608,12 @@ describe('Aether Tides theme: one node renderer on both backends', () => {
         const { clock } = theme.world.fluid;
         const { steps } = theme.world.getState().fluid;
         const reset = vi.spyOn(theme.world, 'resetSession');
+        const settle = vi.spyOn(theme.world, 'onGameOver');
+        const release = vi.spyOn(theme.world, 'releaseMaelstrom');
         listeners.get('gameOver')();
         expect(reset).toHaveBeenCalledOnce();
+        expect(settle).toHaveBeenCalledOnce();
+        expect(release).not.toHaveBeenCalled();
         expect(theme.world.getState()).toMatchObject({ combo: 0 });
         expect(theme.world.wellAim).toBe(0);
         expect(theme.combos.size).toBe(0);
@@ -619,6 +626,27 @@ describe('Aether Tides theme: one node renderer on both backends', () => {
         eventBus.emit(EVENTS.LINE_CLEAR, { lineCount: 1, clearedRows: [23], cascadeCount: 1 });
         theme.stepFrame(64);
         expect(theme.world.combo).toBe(1);
+    });
+
+    it('settles once per online result, clears trails on restart and stays quiet while paused', async () => {
+        const { theme } = await startTheme({ quality: 'Low' });
+        const settle = vi.spyOn(theme.world, 'onGameOver');
+        const { geometry } = theme.world.parts.filaments;
+        const parked = geometry.drawRange.count;
+        const result = { isGameOver: true, recordId: 'match-one' };
+        eventBus.emit(MULTIPLAYER_EVENTS.GAME_OVER, result);
+        eventBus.emit(MULTIPLAYER_EVENTS.GAME_OVER, result);
+        expect(settle).toHaveBeenCalledOnce();
+        expect(geometry.drawRange.count).toBeGreaterThan(parked);
+        eventBus.emit(MULTIPLAYER_EVENTS.ROUND_RESTART, {});
+        expect(geometry.drawRange.count).toBe(parked);
+        theme.isPaused = true;
+        eventBus.emit(MULTIPLAYER_EVENTS.GAME_OVER, { ...result, recordId: 'match-two' });
+        theme.isPaused = false;
+        theme.director.configure({ enabled: false });
+        eventBus.emit(MULTIPLAYER_EVENTS.GAME_OVER, { ...result, recordId: 'match-three' });
+        expect(settle).toHaveBeenCalledOnce();
+        expect(geometry.drawRange.count).toBe(parked);
     });
 
     it('rebuilds on a quality change and not on an unrelated setting', async () => {

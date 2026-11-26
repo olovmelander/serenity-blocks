@@ -337,7 +337,8 @@ describe('waves splash: the white water pool', () => {
         for (const quality of QUALITY_NAMES) {
             const { foam, tier } = makeKit(quality);
             expect(foam.count).toBe(tier.foam);
-            expect(foam.geometry.instanceCount).toBe(tier.foam);
+            expect(foam.geometry.instanceCount).toBe(0);
+            expect(foam.buffer.count).toBe(tier.foam);
             expect(foam.mesh.material.isNodeMaterial).toBe(true);
             expect(foam.mesh.frustumCulled).toBe(false);
             expect(puffs(foam)).toHaveLength(0);
@@ -347,6 +348,24 @@ describe('waves splash: the white water pool', () => {
         for (let i = 0; i < foam.count * 3; i++) foam.puff(10 + i * 0.01, 10 + i * 0.01, 0, 0, -5, { life: 2 });
         expect(foam.data.length).toBe(size);
         expect(puffs(foam)).toHaveLength(foam.count);
+    });
+
+    it('schedules a delayed puff without changing a capture part’s visibility', () => {
+        const { foam } = makeKit('Minimal');
+        foam.mesh.visible = false;
+        foam.puff(0, 4, 0, 0, -5, { life: 1 });
+        foam.drawRange.update(0);
+        expect(foam.geometry.instanceCount).toBe(0);
+        foam.drawRange.update(4.2);
+        expect(foam.geometry.instanceCount).toBe(1);
+        expect(foam.mesh.visible).toBe(false);
+        foam.drawRange.update(5);
+        expect(foam.geometry.instanceCount).toBe(0);
+        foam.puff(6, 6, 0, 0, -5, { life: 1 });
+        foam.drawRange.update(6.2);
+        expect(foam.geometry.instanceCount).toBe(2);
+        foam.reset();
+        expect(foam.geometry.instanceCount).toBe(0);
     });
 
     it('takes a spent slot first, else the puff nearest its end; never one still to come', () => {

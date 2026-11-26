@@ -27,7 +27,7 @@
  */
 import * as THREE from 'three/webgpu';
 import {
-    Fn, Loop, abs, cameraPosition, clamp, cos, cross, dot, exp, float, int, length, max, min, mix,
+    Fn, If, Loop, abs, cameraPosition, clamp, cos, cross, dot, exp, float, int, length, max, min, mix,
     normalize,
     positionGeometry, positionWorld, reflect, sin, smoothstep, texture, varying, vec2, vec3, vec4,
 } from 'three/tsl';
@@ -219,6 +219,19 @@ export function createWater({
         }
         slope.mulAssign(U.ripple);
 
+        // Past the end of the tube, crossing swells lift broad patches of capillary water into
+        // and out of the reflection. Their directions and periods are independent of the ribs.
+        const openSea = smoothstep(3.5, 12, sU.negate()).mul(smoothstep(8, 28, dist)).toVar();
+        const swellFace = float(0).toVar();
+        If(openSea.greaterThan(0.001), () => {
+            const rise = sin(dot(surface, vec2(0.17, 0.69)).add(time.mul(0.54)).add(broad.b.mul(1.4)));
+            const crossSea = sin(dot(surface, vec2(-0.54, 0.21)).sub(time.mul(0.37)).add(broad.a));
+            const resolved = float(1).sub(smoothstep(56, 200, dist));
+            swellFace.assign(rise.mul(0.7).add(crossSea.mul(0.3)).mul(resolved));
+            const amplitude = U.sea.z.mul(0.058).add(U.sea.w.mul(0.023)).add(0.034);
+            slope.addAssign(vec2(crossSea.mul(0.62), rise).mul(openSea).mul(amplitude).mul(resolved));
+        });
+
         // ── Rings: a locked piece's refracting rings ──
         const ringGleam = float(0.0).toVar();
         Loop({
@@ -278,33 +291,38 @@ export function createWater({
         // ── Light on the water: the bars of light the moving roof lets through, and a sweep of
         //    light when lines clear ──
         const net = float(0.0).toVar();
-        /** The bright threads of that light: a net that crawls up the face (0 without caustics). */
+        /** The refracted sun projected through two moving folds overhead. */
         const veins = float(0.0).toVar();
         if (tier.caustics) {
-            // Light that came through the moving roof lands in long soft bars, drawn out along
-            // the flow like everything else on the wall; where two of its folds cross it is drawn
-            // into the bright threads of a caustic net.
-            const c1 = texture(noise, vec2(fc.x.mul(0.21).add(0.13), fc.y.mul(0.03).add(time.mul(0.012)))).b;
-            const c2 = texture(noise, vec2(fc.x.mul(0.55), fc.y.mul(0.07).sub(time.mul(0.02)))).a;
-            net.assign(smoothstep(0.42, 0.8, c1).mul(smoothstep(0.3, 0.75, c2)).mul(2.2));
-            // (Two nets of cell walls sliding through each other: light gathers where they meet.)
-            // (Bent by the water's own heights, and drawn soft: the straight walls of the cells,
-            // drawn as hairlines, read as wire loops laid on the glass. By its heights, not its
-            // slopes: a slope is mostly its finest octave, and bends a thread into a staircase.)
-            const wander = g3.mul(0.16).add(vec2(rib.b, rib.a).sub(0.5).mul(0.13));
-            const k1 = texture(cells, vec2(fc.x.mul(0.2).add(time.mul(0.017)), fc.y.mul(0.085).add(0.4)).add(wander)).r;
-            const k2 = texture(cells, vec2(fc.x.mul(0.26).sub(time.mul(0.013)).add(0.6), fc.y.mul(0.11)).sub(wander)).r;
-            const fold = float(1.0).sub(smoothstep(0.0, 0.18, min(k1, k2.mul(1.3))));
-            veins.assign(fold.mul(fold).mul(U.sea.w.mul(0.9).add(0.6)));
+            // Project the receiving point back toward the light. A shaft stays coherent
+            // across the roof and wall while the skin of the wave slides through it.
+            const depth = float(2 * WAVE.b).sub(P.y);
+            const roof = P.xz.add(sun.xz.mul(depth).mul(0.95));
+            const aperture = vec2(
+                roof.y.mul(0.062).add(roof.x.mul(0.11)),
+                roof.x.mul(0.074).sub(roof.y.mul(0.018)),
+            ).add(vec2(time.mul(-0.022), time.mul(0.008)));
+            const shutter = texture(noise, aperture).ba.toVar();
+            const warp = shutter.sub(0.5).mul(0.32);
+            const lens = texture(noise, vec2(fc.x.mul(0.15), fc.y.mul(0.049)).add(warp)).ba.toVar();
+            const shaft = smoothstep(0.34, 0.76, shutter.x.add(shutter.y.sub(0.5).mul(0.42))).toVar();
+            net.assign(shaft.mul(shaft).mul(lens.y.mul(0.8).add(1.65)));
+            // Two curved, converging wavefronts. Their meeting lights up briefly as a
+            // cusp, while the lee side falls back into the body colour of the water.
+            const folds = abs(lens.sub(vec2(0.51, 0.59)).add(warp.mul(0.4)));
+            const threads = float(1.0).sub(smoothstep(0.018, 0.17, min(folds.x, folds.y)));
+            veins.assign(threads.mul(threads).mul(shaft.mul(1.6).add(0.13)));
         }
         const sweep = float(0.0).toVar();
-        for (let i = 0; i < BAND_SLOTS; i += 1) {
-            const row = rows.bands.element(i);
+        Loop({
+            start: int(0), end: int(U.counts.z), type: 'int', condition: '<', name: 'bandIndex',
+        }, ({ bandIndex }) => {
+            const row = rows.bands.element(bandIndex);
             const age = time.sub(row.x);
             // A band is a ring round the tube; twisted (a twist), it is a screw of light.
             const x = sZ.add(BAND_START).sub(age.mul(BAND_SPEED)).add(phi.mul(row.w)).div(max(row.z, 0.3));
             sweep.addAssign(exp(x.mul(x).negate()).mul(row.y).mul(smoothstep(0.0, 0.08, age)));
-        }
+        });
         // Hot play lets the bands that overlap add up further (1 at rest: as they always were).
         sweep.assign(min(sweep, U.heat.mul(0.15).add(1.0)));
         const sunFacing = clamp(dot(N0, sun).mul(0.55).add(0.45), 0.0, 1.0);
@@ -320,7 +338,10 @@ export function createWater({
         // curving away from the eye are greener and darker than where they face it (seen square,
         // a thin lip passed almost the whole sky and read as pale milk).
         const slant = max(facing, 0.28);
-        const tau = mix(float(DEEP), sheetThickness(cut).mul(1.5).div(slant), thin);
+        // Streaming sheets overlap, leaving clear jade windows between thicker folds.
+        // The same thickness filters the sky and controls the scattered light inside it.
+        const opticalDepth = broad.b.mul(0.85).add(rib.a.mul(0.35)).add(0.56);
+        const tau = mix(float(DEEP), sheetThickness(cut).mul(1.65).mul(opticalDepth).div(slant), thin);
         const through = transmit(tau, light.absorb).toVar();
         const bend = normalize(V.negate().add(N.sub(N0).mul(0.8)));
         const behind = wavesSky(bend, sun, float(0.6), warm, light);
@@ -334,11 +355,11 @@ export function createWater({
         const ambient = vec3(0.3, 0.4, 0.5).mul(light.skyTint).mul(lift);
         // The water is not one thickness of one stuff: it is drawn out in bands along the flow
         // (gently: strong bands striped the face like a brushed sheet).
-        const bands = rib.b.mul(0.42).add(broad.b.mul(0.46)).add(0.56);
+        const bands = rib.b.mul(0.36).add(broad.b.mul(0.64)).add(0.49);
         // The wall is thick at its foot and thin toward the roof: deep and blue low down, a
         // luminous jade higher up, where the light has less water to cross.
         const height = smoothstep(0.15, 2.5, phi);
-        const depthTone = mix(vec3(0.7, 0.86, 1.06), vec3(1.5, 1.22, 0.92), height);
+        const depthTone = mix(vec3(0.56, 0.72, 1.13), vec3(1.68, 1.46, 0.9), height);
         const own = light.scatter.mul(ambient.add(lightIn.mul(f6.mul(2.4).add(0.95))))
             .mul(bands)
             .mul(depthTone)
@@ -346,9 +367,9 @@ export function createWater({
             .toVar();
         // The caustic net: threads of light inside the glass, brightest on the wall under the
         // roof, fainter in the trough at its foot.
-        const netZone = smoothstep(0.35, 1.3, phi).mul(float(1.0).sub(thin))
+        const netZone = smoothstep(0.2, 1.05, phi).mul(float(1.0).sub(thin.mul(0.78)))
             .add(smoothstep(-7.0, -0.5, sU).mul(float(1.0).sub(smoothstep(0.0, 0.05, phi))).mul(0.3));
-        own.addAssign(light.scatter.mul(light.sunTint).mul(vec3(1.7, 1.4, 1.0))
+        own.addAssign(light.scatter.mul(light.sunTint).mul(vec3(2.3, 1.8, 0.96))
             .mul(veins.mul(netZone))
             .mul(sunFacing.mul(0.7).add(0.5))
             .mul(U.glow.mul(0.5).add(1.0)));
@@ -361,6 +382,19 @@ export function createWater({
             .mul(f2.mul(2.6).add(sunFacing.mul(0.75)).add(0.28))
             .mul(bands)
             .mul(U.glow.mul(0.4).add(1.0)));
+        // Looking up through the arch, folds of denser water eclipse the light.
+        // One side of each fold catches the refracted sun. They curl with the
+        // sheet and fade into the whitewater before the lip hits the trough.
+        const arch = smoothstep(1.4, 2.75, phi).mul(float(1).sub(smoothstep(4.85, 5.78, phi)));
+        const flutes = sin(sU.mul(1.18).sub(sZ.mul(0.65)).sub(time.mul(0.48))
+            .add(broad.a.mul(2.2))
+            .add(rib.b.mul(0.68))).toVar();
+        const glassShadow = smoothstep(-0.45, 0.80, flutes).mul(arch).mul(0.40);
+        body.mulAssign(vec3(1).sub(vec3(0.96, 0.67, 0.48).mul(glassShadow)));
+        const litFold = float(1).sub(smoothstep(0.07, 0.44, abs(flutes.sub(0.18))));
+        body.addAssign(mix(light.scatter.mul(vec3(2.0, 2.5, 1.35)), light.aureole.mul(0.58), f6.mul(0.73))
+            .mul(arch).mul(litFold).mul(broad.b.mul(0.7).add(0.28))
+            .mul(light.sunTint));
         // The falling lip is full of air: milky, and lit from behind.
         const milk = float(1.0).sub(smoothstep(0.0, 5.0, cut)).mul(torn).mul(lace.mul(0.5).add(0.45));
         const falling = texture(noise, vec2(fc.x.mul(1.1).add(0.4), fc.y.mul(0.045))).a.mul(0.9).add(0.4);
@@ -407,8 +441,10 @@ export function createWater({
         const wall = float(1.0).sub(smoothstep(0.015, 0.065, cell.r)).mul(whole);
         const fineWall = float(1.0).sub(smoothstep(0.03, 0.1, cell.g));
         const patches = smoothstep(0.5, 0.74, broad.a);
-        const lines = wall.mul(0.7).add(fineWall.mul(patches).mul(0.35)).add(cell.a.mul(patches).mul(0.22))
-            .mul(patches.mul(0.85).add(0.15));
+        const tornFilm = smoothstep(0.26, 0.67, rib.a.add(fine.b.sub(0.5).mul(0.53)));
+        const lines = wall.mul(0.56).add(fineWall.mul(patches).mul(0.34)).add(cell.a.mul(patches).mul(0.28))
+            .mul(patches.mul(0.9).add(0.10))
+            .mul(tornFilm);
         // On the lower face, and on the trough near its foot: not out on the open sea.
         const low = float(1.0).sub(smoothstep(0.3, 1.9, phi)).mul(smoothstep(-11.0, -1.5, sU));
         // ── White water: where the lip comes down on the trough ──
@@ -486,8 +522,10 @@ export function createWater({
             .add(light.sunTint.mul(vec3(0.5, 0.42, 0.32)).mul(f2.mul(0.9).add(0.35)).mul(openSky))
             .add(behind.mul(thin).mul(0.3));
         // (Heaped foam is not one flat white: it has hollows.)
-        const hollows = fine.b.mul(0.34).add(froth.r.mul(0.2)).add(0.62);
-        const foamColour = vec3(0.8, 0.93, 0.91).mul(foamLight.add(whiteLight.mul(churned).mul(hollows)));
+        const hollows = fine.b.mul(0.44).add(froth.r.mul(0.26)).add(0.48);
+        const foamDepth = smoothstep(0.25, 0.86, heap.add(fine.a.sub(0.5).mul(0.6)));
+        const foamColour = mix(vec3(0.55, 0.8, 0.83), vec3(0.94, 0.98, 0.95), foamDepth)
+            .mul(foamLight.add(whiteLight.mul(churned).mul(hollows)));
 
         // ── Compose ──
         const colour = body.mul(float(1.0).sub(fresnel)).add(mirror.mul(fresnel)).toVar();
@@ -497,11 +535,45 @@ export function createWater({
         colour.addAssign(vec3(1.0, 0.66, 0.34).mul(light.fireTint).mul(max(relief, 0.0)).mul(0.085)
             .mul(lift.mul(0.6).add(0.4)));
         colour.assign(mix(colour, foamColour, foam));
+        // In the impact zone air and water churn together. Sample that volume in
+        // world space on both pieces of the sheet so the falling curtain and the
+        // trough meet in a rolling boil with continuous lighting at their seam.
+        const contact = landed.mul(float(1).sub(smoothstep(0.10, 0.81, P.y)))
+            .mul(max(smoothstep(4.86, 5.65, phi), float(1).sub(smoothstep(0.12, 0.84, abs(fromLine)))));
+        If(contact.greaterThan(0.002), () => {
+            const at = vec2(P.x.add(P.y.mul(0.58)), P.z).mul(0.79)
+                .add(vec2(time.mul(-0.115), time.mul(-0.095)));
+            const boil = texture(noise, at).level(1).toVar();
+            const frothy = smoothstep(0.21, 0.78, boil.b.mul(0.66).add(boil.a.mul(0.34)));
+            const shade = vec3(0.26, 0.48, 0.52).mul(light.skyTint);
+            const head = vec3(1.12, 1.17, 1.15).mul(light.skyTint)
+                .add(vec3(0.43, 0.34, 0.22).mul(light.sunTint));
+            colour.assign(mix(colour, mix(shade, head, frothy), contact));
+        });
+        // Entrained air gleams in pockets behind the glass curtain. The tiny
+        // bubbles use the existing foam mip chain so they fade cleanly in the distance.
+        const aeration = smoothstep(0.43, 0.8, broad.a).mul(smoothstep(0.35, 0.68, rib.a));
+        const pearls = smoothstep(0.32, 0.85, fizz.a).mul(aeration).mul(thin)
+            .mul(float(1).sub(fresnel))
+            .mul(float(1).sub(smoothstep(4, 22, dist)));
+        colour.addAssign(mix(light.scatter, light.sunTint, 0.38).mul(pearls).mul(0.42));
         // The sea's own light, when the hour is dark: what is stirred burns cold for a moment. The
         // lace on the face, the boil under the lip, every ring a piece lays.
         const stirred = lines.mul(low).mul(0.5).add(carpet.mul(0.8)).add(ringGleam.mul(0.35))
             .add(cell.a.mul(low).mul(0.25));
         colour.addAssign(vec3(0.05, 0.5, 0.95).mul(U.glowing).mul(stirred).mul(0.55));
+        // At moonrise, individual plankton light in the shear behind a breaking
+        // crest. A passing clear wakes another patch and the current carries it on.
+        if (tier.caustics) {
+            If(U.glowing.greaterThan(0.02), () => {
+                const colony = smoothstep(0.52, 0.76, broad.b.add(rib.a.sub(0.5).mul(0.35)));
+                const wake = low.mul(0.22).add(smoothstep(0.12, 0.9, heap).mul(0.51))
+                    .add(sweep.mul(0.78)).add(net.mul(0.16));
+                const sparks = smoothstep(0.36, 0.82, fizz.a).add(smoothstep(0.63, 0.93, froth.a).mul(0.6));
+                colour.addAssign(vec3(0.018, 1.8, 2.6).mul(sparks).mul(colony).mul(wake)
+                    .mul(U.glowing));
+            });
+        }
         // The low sun through the lip's thin torn edge: a fringe of its own light along every lobe,
         // strongest looking toward it, a little of it all along the lip (the water scatters it).
         // (Not where the lip stands on the sea: its foot is white water, not a burning edge.)
@@ -522,6 +594,14 @@ export function createWater({
             .mul(net.mul(0.5).add(rib.b.mul(0.3)).add(0.1))
             .mul(thin.mul(0.7).add(0.55))
             .mul(U.heat.mul(0.15).add(0.5)));
+        If(openSea.greaterThan(0.001), () => {
+            // The lee of a swell holds a cool reflection while the high facets catch the disc.
+            colour.mulAssign(float(1).sub(max(swellFace.negate(), 0).mul(openSea).mul(0.17)));
+            const glint = smoothstep(0.993, 0.9997, dot(R, sun));
+            const fleck = smoothstep(0.4, 0.78, fine.b.mul(0.6).add(rib.a.mul(0.4)));
+            colour.addAssign(light.disc.mul(glint).mul(fleck).mul(openSea)
+                .mul(U.sea.w.mul(0.8).add(0.7)));
+        });
         // The far water goes into the haze of the hour.
         const haze = wavesSky(normalize(vec3(V.x.negate(), 0.012, V.z.negate())), sun, float(0.0), warm, light);
         colour.assign(mix(colour, haze, float(1.0).sub(exp(dist.mul(-1 / 420)))));

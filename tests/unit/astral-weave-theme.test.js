@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import AstralWeaveTheme from '../../src/themes/astral-weave/astral-weave-theme.js';
 import { ASTRAL_WEAVE_TETROMINOS } from '../../src/themes/astral-weave/astral-weave-tetrominos.js';
 import { eventBus, EVENTS } from '../../src/events/event-bus.js';
+import { MULTIPLAYER_EVENTS } from '../../src/events/multiplayer-events.js';
 
 const themeDir = path.resolve(
     path.dirname(fileURLToPath(import.meta.url)),
@@ -241,6 +242,44 @@ describe('Astral Weave theme: one node renderer on both backends', () => {
         expect(theme.world.reducedMotion).toBe(true);
     });
 
+    it('only embroiders local multiplayer attacks while reactions are enabled', async () => {
+        stubBrowser({ quality: 'Low' });
+        const theme = createTheme();
+        await theme.createScene(theme.lifecycleGeneration);
+        const stitch = vi.spyOn(theme.world, 'garbage');
+        eventBus.emit(MULTIPLAYER_EVENTS.GARBAGE_SENT, { isLocal: false, totalLines: 5 });
+        eventBus.emit(MULTIPLAYER_EVENTS.GARBAGE_INSERTED, { isLocal: true, linesInserted: 3 });
+        eventBus.emit(MULTIPLAYER_EVENTS.GARBAGE_COUNTERED, { isLocal: true, linesCanceled: 2 });
+        eventBus.emit(MULTIPLAYER_EVENTS.GARBAGE_SENT, { isLocal: true, totalLines: 4 });
+        theme.handleSettingsChanged({ detail: { backgroundComboEffects: false } });
+        eventBus.emit(MULTIPLAYER_EVENTS.GARBAGE_SENT, { isLocal: true, totalLines: 7 });
+        expect(stitch.mock.calls).toEqual([['incoming', 3], ['counter', 2], ['outgoing', 4]]);
+    });
+
+    it('stitches active Odyssey and versus milestones and scopes player cues to the local board', async () => {
+        stubBrowser({ quality: 'Low' });
+        const theme = createTheme();
+        await theme.createScene(theme.lifecycleGeneration);
+        const milestone = vi.spyOn(theme.world, 'milestone');
+        eventBus.emit(EVENTS.ODYSSEY_GOAL_COMPLETE, {});
+        eventBus.emit(EVENTS.ODYSSEY_VICTORY_LAP_END, {});
+        eventBus.emit(MULTIPLAYER_EVENTS.ROUND_OVER, {});
+        for (const isLocal of [false, true]) {
+            eventBus.emit(MULTIPLAYER_EVENTS.PLAYER_TOPPED_OUT, { isLocal });
+            eventBus.emit(MULTIPLAYER_EVENTS.PLAYER_RESPAWNED, { isLocal });
+        }
+        theme.isPaused = true;
+        eventBus.emit(MULTIPLAYER_EVENTS.ROUND_OVER, {});
+        theme.isPaused = false;
+        theme.handleSettingsChanged({ detail: { backgroundComboEffects: false } });
+        eventBus.emit(EVENTS.ODYSSEY_GOAL_COMPLETE, {});
+        expect(milestone.mock.calls.flat()).toEqual(['goal', 'victory', 'round', 'topout', 'respawn']);
+        theme.handleSettingsChanged({ detail: { backgroundComboEffects: true } });
+        const end = vi.spyOn(theme.world, 'endRun');
+        eventBus.emit(EVENTS.ODYSSEY_LEVEL_FAILED, { levelId: 41, reason: 'top-out' });
+        expect(end).toHaveBeenCalledOnce();
+    });
+
     it('clears the tapestry and every combo when a run ends', async () => {
         const { listeners } = stubBrowser({ quality: 'High' });
         const theme = createTheme();
@@ -251,6 +290,33 @@ describe('Astral Weave theme: one node renderer on both backends', () => {
         expect(theme.world.getState().wefts).toBe(2);
         listeners.get('gameOver')();
         expect(theme.world.getState()).toMatchObject({ wefts: 0, combo: 0 });
+        theme.stepFrame(32);
+        expect(theme.world.eventThreads.mesh.geometry.instanceCount).toBeGreaterThan(0);
+        eventBus.emit(MULTIPLAYER_EVENTS.ROUND_RESTART, {});
+        expect(theme.world.eventThreads.mesh.geometry.instanceCount).toBe(0);
+    });
+
+    it('shows the same final flourish whichever of the knockout and match-end cues arrives first', async () => {
+        stubBrowser();
+        const theme = createTheme();
+        await theme.createScene(theme.lifecycleGeneration);
+        const finish = () => eventBus.emit(MULTIPLAYER_EVENTS.GAME_OVER, { isGameOver: true });
+        const knockout = () => eventBus.emit(MULTIPLAYER_EVENTS.PLAYER_TOPPED_OUT, { isLocal: true });
+        const { eventThreads } = theme.world;
+        const strokeCount = () => {
+            eventThreads.update(theme.world.time, false);
+            return eventThreads.mesh.geometry.instanceCount;
+        };
+        const finalCounts = [[finish, knockout], [knockout, finish], [finish]].map((cues) => {
+            eventBus.emit(MULTIPLAYER_EVENTS.ROUND_RESTART, {});
+            cues.forEach((cue) => cue());
+            return strokeCount();
+        });
+        expect(finalCounts[0]).toBeGreaterThan(0);
+        expect(new Set(finalCounts).size).toBe(1);
+        eventBus.emit(MULTIPLAYER_EVENTS.ROUND_RESTART, {});
+        knockout();
+        expect(strokeCount()).toBeGreaterThan(0);
     });
 
     it('moves the light a mood on each level, whatever the effects, and keeps it through a rebuild', async () => {

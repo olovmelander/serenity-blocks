@@ -1,0 +1,9 @@
+# Aether Tides cloud emission map
+
+The built-in OpenAI image generator created this original, starless artwork for Serenity Blocks on 2026-11-26. The two WebP files encode the same artwork at 1536 × 1024 and 768 × 512. The renderer interprets their RGB channels as emission strengths. It adds the stars, illumination, moving shadows and event effects at runtime.
+
+[Full-resolution texture](../../../public/textures/aether-tides/ionisation-front.webp) · [Low-tier texture](../../../public/textures/aether-tides/ionisation-front-small.webp)
+
+## Generation prompt
+
+Create an original starless astronomical narrowband emission-nebula texture plate, landscape 3:2. An extremely intricate, natural, close-in deep space telescope view of a vast interstellar cloud cut by stellar winds. Three-dimensionally billowing, branching ionization fronts with fine illuminated edges, braided veils of transparent gas, deep indigo hollowed chambers with several small eroded dusty finger pillars and strongly sculpted dark overlapping lobes. Asymmetric continuous diagonal structure pouring from upper left to lower right; left third dominated by rich cobalt-blue and cyan oxygen, sea-glass rim against cool-shadowed massive billows. Right third has hot magenta hydrogen behind burnt gold and amber filigree on dense dust edges. A narrower, more diffuse passage of violet haze in the middle connects them; dark open lower left and upper right corners. More dark space between bright ridges than filled luminous gas. Stunning authentic photographic finesse, sweeping silhouette, varying scale from gigantic swells into sheets of breathtakingly fine knotwork. Deep warm-cool contrast, jewel-tone color with dark blue-black sky. It is the GAS ONLY layer for a real-time game. The renderer will add stars later. No stars, no points of light, no lens effects, no diffraction spikes, no text, no objects, no planets, no borders. Full bleed.

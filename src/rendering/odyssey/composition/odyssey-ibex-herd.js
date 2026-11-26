@@ -60,7 +60,12 @@ export const ODYSSEY_IBEX = Object.freeze({
     roam: 0.5,
     /** A grazing head: a goat's shorter neck swung down to the lichen. */
     graze: Object.freeze({
-        neck0: 1.5, neck1: 0.45, neck2: 0.35, head: -1.9, dip: 0.1,
+        neck0: 1.5,
+        neck1: 0.45,
+        neck2: 0.35,
+        head: -1.9,
+        dip: 0.1,
+        muzzle: Object.freeze([0, 0.7175, 0.5319]), // The model's rest-frame muzzle landmark.
     }),
     /**
      * The leap: crouch and give (s), flight time from a short hop to a long leap (s) over `reach`

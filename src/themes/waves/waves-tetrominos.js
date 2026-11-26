@@ -10,21 +10,21 @@ export const WAVES_TETROMINOS = {
     version: 1,
 
     colors: {
-        I: '#f4ffb5', // Pale sunlight
-        O: '#a8f6ff', // Cyan crest
-        T: '#bdb9ff', // Lavender foam
-        S: '#6b8dff', // Indigo depth
-        Z: '#ffa6e3', // Coral bloom
-        J: '#ffe08f', // Golden shore
-        L: '#87ffd6', // Mint tide
-        GARBAGE: '#0c1b27', // Deep ocean shadow
+        I: '#f1ef96', // Straw sunlight
+        O: '#78dff7', // Cyan crest
+        T: '#c7abf5', // Lavender foam
+        S: '#7194e8', // Indigo depth
+        Z: '#f792b3', // Pink coral
+        J: '#ffb579', // Apricot sunset
+        L: '#74dfb3', // Mint tide
+        GARBAGE: '#638391', // Weathered slate against the dark well
     },
 
     renderMode: 'glow',
 
     effects: {
-        glowRadius: 9,
-        glowIntensity: 0.65,
+        glowRadius: 6,
+        glowIntensity: 0.42,
         glowColor: 'auto',
 
         outline: true,
@@ -33,11 +33,11 @@ export const WAVES_TETROMINOS = {
 
         pulse: true,
         pulseSpeed: 0.035,
-        pulseAmplitude: 0.2,
+        pulseAmplitude: 0.07,
 
         shimmer: true,
         shimmerSpeed: 0.05,
-        shimmerIntensity: 0.15,
+        shimmerIntensity: 0.09,
 
         trails: true,
         trailLength: 0.14,
@@ -46,13 +46,13 @@ export const WAVES_TETROMINOS = {
 
     rendererOverrides: {
         canvas: {
-            glowRadius: 7,
-            glowIntensity: 0.6,
+            glowRadius: 5,
+            glowIntensity: 0.4,
             outlineWidth: 1.4,
         },
         phaser: {
-            glowRadius: 11,
-            glowIntensity: 0.7,
+            glowRadius: 7,
+            glowIntensity: 0.46,
             outlineWidth: 1.8,
         },
     },

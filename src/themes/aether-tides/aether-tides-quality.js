@@ -10,7 +10,7 @@
  * farSky      the far galaxy band's own stars and the faraway galaxies (the band's glow is always
  *             drawn)
  * starLayers  depths of background stars
- * underglow   a soft second reading of the gas under the sharp one (four more dye reads)
+ * underglow   two soft dye reads beneath the gas and a foreground dust sample
  * sparkles    motes of stardust the events throw
  * spikes      diffraction spikes on the stars the board lights
  */

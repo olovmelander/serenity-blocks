@@ -25,7 +25,7 @@ export const QUALITY = Object.freeze({
         worms: 600,
         threads: 0,
         vines: 12,
-        motes: 0,
+        motes: 72,
         jellies: 6,
         spores: 160,
         pads: 0,

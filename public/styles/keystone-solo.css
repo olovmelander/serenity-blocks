@@ -96,6 +96,26 @@
     --sp-wall: #ab6adc;
 }
 
+/* Foxfire glazes the well's rim; the ledger stays deep enough for the score to read. */
+:where(body:has(#bioluminescence-theme.active)) .single-player-stage[data-board='well']:not(:where(
+    .infinity-mode-active, [data-odyssey-board], [data-stillfall], [data-still-air], [data-danger]
+)) {
+    --sp-hue: #a4ebd9;
+    --sp-hue-rgb: 164, 235, 217;
+    --sp-wall: #549d89;
+    --sp-wall-glow: rgb(74 174 156 / 25%);
+}
+
+/* Violet glass at the edge of the highway, with cool instrument lights in the ledger. */
+:where(body:has(#chromadelic-highway-theme.active)) .single-player-stage[data-board='well']:not(:where(
+    .infinity-mode-active, [data-odyssey-board], [data-stillfall], [data-still-air], [data-danger]
+)) {
+    --sp-hue: #ddd7f6;
+    --sp-hue-rgb: 221, 215, 246;
+    --sp-wall: #9381c3;
+    --sp-wall-glow: rgb(127 155 243 / 23%);
+}
+
 /* The brass finial against dusk-blue slate on the Himalayan pass. */
 :where(body:has(#himalayan-peak-theme.active)) .single-player-stage[data-board='well']:not(:where(
     .infinity-mode-active, [data-odyssey-board], [data-stillfall], [data-still-air], [data-danger]
@@ -142,6 +162,16 @@
    below, winning. */
 .single-player-stage[data-board='well'].infinity-mode-active:not(:where([data-odyssey-board])) {
     --sp-wall: #249597;
+}
+
+/* Disk gold on the queue and ledger, blue nebula light on the edge of the well. */
+:where(body:has(#black-hole-theme.active)) .single-player-stage[data-board='well']:not(:where(
+    .infinity-mode-active, [data-odyssey-board], [data-stillfall], [data-still-air], [data-danger]
+)) {
+    --sp-hue: #efd1a0;
+    --sp-hue-rgb: 239, 209, 160;
+    --sp-wall: #7186a5;
+    --sp-wall-glow: rgb(112 149 200 / 23%);
 }
 
 /* Sea glass around the ordinary solo well. The mode and danger cues own their own walls. */
@@ -223,6 +253,36 @@
     --sp-wall-glow: rgb(192 90 95 / 23%);
 }
 
+/* Warm companion light on the ledger and a blue reflecting edge around the well. */
+:where(body:has(#aether-tides-theme.active)) .single-player-stage[data-board='well']:not(:where(
+    .infinity-mode-active, [data-odyssey-board], [data-stillfall], [data-still-air], [data-danger]
+)) {
+    --sp-hue: #f2d2a0;
+    --sp-hue-rgb: 242, 210, 160;
+    --sp-wall: #467f99;
+    --sp-wall-glow: rgb(80 157 203 / 24%);
+}
+
+/* The loom's pearl on the queue, cool silver on the well and a rose selvedge on the ledger. */
+:where(body:has(#astral-weave-theme.active)) .single-player-stage[data-board='well']:not(:where(
+    .infinity-mode-active, [data-odyssey-board], [data-stillfall], [data-still-air], [data-danger]
+)) {
+    --sp-hue: #e5d3f5;
+    --sp-hue-rgb: 229, 211, 245;
+    --sp-wall: #57879a;
+    --sp-wall-glow: rgb(107 199 218 / 19%);
+}
+
+/* A tide-polished rim around the field and pale sun on the score. */
+:where(body:has(#waves-theme.active)) .single-player-stage[data-board='well']:not(:where(
+    .infinity-mode-active, [data-odyssey-board], [data-stillfall], [data-still-air], [data-danger]
+)) {
+    --sp-hue: #efd6ab;
+    --sp-hue-rgb: 239, 214, 171;
+    --sp-wall: #70a99d;
+    --sp-wall-glow: rgb(88 186 166 / 22%);
+}
+
 /* ---- The column: the queue over the well ------------------------------------------- */
 .single-player-stage[data-board='well'] #single-player-container {
     --board-width: inherit;
@@ -294,6 +354,16 @@
     background: rgb(28 30 31 / 91%);
 }
 
+/* The caption crosses the sunlit lip while the queue stays on the well. */
+:where(body:has(#waves-theme.active)) .single-player-stage[data-board='well']:not(:where(
+    .infinity-mode-active, [data-odyssey-board], [data-stillfall], [data-still-air], [data-danger]
+)) #single-player-container .single-player-piece-previews::before {
+    padding: 0.44em 0.55em;
+    border-radius: 3px;
+    color: #f5e3c3;
+    background: rgb(14 38 44 / 92%);
+}
+
 .single-player-stage[data-board='well'] #single-player-container .player-next-pieces {
     flex: none;
     flex-direction: row;
@@ -343,6 +413,15 @@
     text-shadow: 0 1px 3px #130c15, 0 0 5px #130c15;
 }
 
+:where(body:has(#aether-tides-theme.active)) .single-player-stage[data-board='well']:not(:where(
+    .infinity-mode-active, [data-odyssey-board], [data-stillfall]
+)) #single-player-container .single-player-piece-previews::before {
+    color: #f4dfbe;
+    padding: 0.38em 0.5em;
+    border-radius: 3px;
+    background: rgb(13 19 35 / 86%);
+}
+
 /* ---- The well: plain glass between walls that fade toward the open top -------------- */
 .single-player-stage[data-board='well'] #single-player-container .player-board-section {
     position: relative;
@@ -371,6 +450,12 @@
     .infinity-mode-active, [data-odyssey-board], [data-stillfall]
 )) #single-player-card #phaser-game-container {
     background: linear-gradient(180deg, rgb(18 12 24 / 76%), rgb(16 12 24 / 92%) 21%, rgb(14 12 22 / 94%));
+}
+
+:where(body:has(#aether-tides-theme.active)) .single-player-stage[data-board='well']:not(:where(
+    .infinity-mode-active, [data-odyssey-board], [data-stillfall]
+)) #single-player-card #phaser-game-container {
+    background: linear-gradient(180deg, rgb(9 16 34 / 86%), rgb(12 16 34 / 90%) 22%, rgb(12 14 31 / 94%));
 }
 
 /* The walls: left, right and floor, fading out toward the top; the pieces meet them. */
@@ -481,6 +566,32 @@
     transform: none;
 }
 
+:where(body:has(#bioluminescence-theme.active)) .single-player-stage[data-board='well']:not(:where(
+    .infinity-mode-active, [data-odyssey-board], [data-stillfall], [data-still-air], [data-danger]
+)) .single-player-stats-bar {
+    --sb-text-faint: #bad3d0;
+    border-color: rgb(146 191 185 / 36%);
+    background: linear-gradient(145deg, #19383afa, #101e2df7 62%, #281e36f7);
+}
+
+:where(body:has(#astral-weave-theme.active)) .single-player-stage[data-board='well']:not(:where(
+    .infinity-mode-active, [data-odyssey-board], [data-stillfall], [data-still-air], [data-danger]
+)) .single-player-stats-bar {
+    --sb-text-faint: #cbc3da;
+    border-color: rgb(193 150 199 / 41%);
+    background:
+        linear-gradient(90deg, #d693c5, #a1d4de) top center / calc(100% - 32px) 1px no-repeat,
+        linear-gradient(151deg, #302239f5, #151628fa 57%, #16292ff7);
+}
+
+:where(body:has(#waves-theme.active)) .single-player-stage[data-board='well']:not(:where(
+    .infinity-mode-active, [data-odyssey-board], [data-stillfall], [data-still-air], [data-danger]
+)) .single-player-stats-bar {
+    --sb-text-faint: #a8c7c7;
+    border-color: rgb(132 192 182 / 40%);
+    background: linear-gradient(150deg, rgb(19 47 52 / 95%), rgb(8 26 36 / 96%) 74%);
+}
+
 :where(body:has(#himalayan-peak-theme.active)) .single-player-stage[data-board='well']:not(:where(
     .infinity-mode-active, [data-odyssey-board], [data-stillfall], [data-still-air], [data-danger]
 )) .single-player-stats-bar {
@@ -533,6 +644,14 @@
     --sb-text-faint: #ccb8be;
     border-color: rgb(200 151 151 / 34%);
     background: linear-gradient(155deg, rgb(49 28 39 / 97%), rgb(22 19 32 / 96%) 72%);
+}
+
+:where(body:has(#aether-tides-theme.active)) .single-player-stage[data-board='well']:not(:where(
+    .infinity-mode-active, [data-odyssey-board], [data-stillfall]
+)) .single-player-stats-bar {
+    --sb-text-faint: #b7c8dc;
+    border-color: rgb(127 170 198 / 36%);
+    background: linear-gradient(145deg, rgb(26 44 65 / 97%), rgb(22 19 42 / 96%) 74%);
 }
 
 /* The mode's hue as the ledger's left edge, like a seat's plate in local versus. */
