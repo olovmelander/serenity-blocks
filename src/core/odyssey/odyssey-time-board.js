@@ -1,6 +1,7 @@
 // @ts-check
 /**
- * Which Odyssey runs race on an orb's time board (Steam `OdysseyLevelTime_v7_<id>`, fastest finish first).
+ * Which Odyssey runs race on an orb's time board (fastest finish first). The board's Steam name, and the
+ * generation an orb is on, come from `odysseyTimeBoardName` in core/steam/steam-catalogue.js and nowhere else.
  */
 
 /**

@@ -15,6 +15,7 @@ import { localOrbBest } from '../../core/progression/record-book.js';
  */
 
 import { STEAM_LEADERBOARDS } from '../../core/steam/steam-config.js';
+import { odysseyTimeBoardName } from '../../core/steam/steam-catalogue.js';
 import {
     SteamLeaderboardPanel,
     formatMilliseconds,
@@ -174,7 +175,7 @@ export function createResultsModal({
         leaderboardHost.className = 'steam-leaderboard-panel';
         side.appendChild(leaderboardHost);
 
-        const levelBoard = `${STEAM_LEADERBOARDS.ODYSSEY_LEVEL_TIME_PREFIX}${levelId}`;
+        const levelBoard = odysseyTimeBoardName(levelId);
         const levelTimeMs = timeMs > 0 ? timeMs : null;
         // A charmed run is not uploaded to the orb's time board (OdysseyMode._syncSteamStats), so
         // it is not placed among its times either; a survival orb has no fastest-first board at all.

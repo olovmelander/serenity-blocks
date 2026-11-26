@@ -112,7 +112,7 @@ import {
     configureOdysseyBoardPresentation, prepareOdysseyOpponentPresentation, resetOdysseyRoundPresentation,
 } from '../../rendering/phaser/odyssey-board-presentation.js';
 import steamService from '../steam/steam-service.js';
-import { STEAM_LEADERBOARDS } from '../steam/steam-catalogue.js';
+import { odysseyTimeBoardName } from '../steam/steam-catalogue.js';
 import { recordOwner, runIdFor } from '../progression/record-book.js';
 import {
     showCinematicLoadingOverlay,
@@ -3662,7 +3662,7 @@ export class OdysseyMode extends BaseGameMode {
             duration: Math.max(0, Math.round(time || 0)),
             stars: this.odysseyState.getTotalStars(),
             timeMs: Math.max(0, Math.round((time || 0) * 1000)),
-            timeBoard: ranksTime ? STEAM_LEADERBOARDS.ODYSSEY_LEVEL_TIME_PREFIX + session.levelId : null,
+            timeBoard: ranksTime ? odysseyTimeBoardName(session.levelId) : null,
             assisted: !ranksTime,
         });
     }

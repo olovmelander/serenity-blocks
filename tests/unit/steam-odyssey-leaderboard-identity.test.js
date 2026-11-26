@@ -46,7 +46,9 @@ describe.each(['linux', 'win32'])('native score and rank ABI on %s', (platform) 
         expect(await f.boards.self(name)).toBeNull();
         f.setSelf(); expect((await f.boards.self(name)).rank).toBe(147);
     });
-    it.each(['OdysseyLevelTime_v2_7', 'OdysseyLevelTime_v6_7', 'OdysseyLevelTime_v7_39', 'OdysseyLevelTime_v0_1', 'Random', '__proto__'])(
+    // The last is a generation of orb 7's board that the catalogue does not name (steam-catalogue.js).
+    it.each(['OdysseyLevelTime_v2_7', 'OdysseyLevelTime_v6_7', 'OdysseyLevelTime_v7_39', 'OdysseyLevelTime_v0_1', 'Random', '__proto__',
+        'OdysseyLevelTime_v7_7_g99'])(
         'preserves retired and malformed names locally and never creates %s on Steam', async (key) => {
             const f = fixture(platform);
             await expect(f.boards.page(key, 'global', 0, 10)).rejects.toThrow();
