@@ -413,6 +413,17 @@
     box-shadow: 0 0 12px rgba(var(--sb-gold-rgb), 0.45);
 }
 
+/* The goal is met and the attempt is over (OdysseyHUD.markGoalReached): the label says
+   "Goal reached" with a tick, and the count stands at its goal in the full bar's gold. */
+#odyssey-hud.is-goal-reached .objective-section > .hud-label,
+#odyssey-hud.is-goal-reached .progress-value {
+    color: var(--sb-gold);
+}
+
+#odyssey-hud.is-goal-reached .objective-section > .hud-label::before {
+    content: '\2713\00a0';
+}
+
 #odyssey-hud .finish-hint {
     display: none;
     align-items: center;

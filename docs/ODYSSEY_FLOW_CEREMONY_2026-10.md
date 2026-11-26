@@ -153,7 +153,8 @@ ceremony mounts, several more seconds before the portal needs it.
 - `src/ui/odyssey/odyssey-journey-flow.js` — passes whether the unlocked song is audibly
   playing (exact track, unmuted, non-zero volume), the finished chapter (for the farewell)
   and its summary (for the arrival).
-- `src/ui/odyssey/odyssey-goal-flourish.js` — the flourish; `completeOdysseyLevel` starts it
+- `src/ui/odyssey/odyssey-goal-flourish.js` — the flourish; `completeOdysseyLevel` starts it,
+  after the goal's last reading has gone to the HUD (see "The goal moment says it")
   through `mode._celebrateGoalReached`, saves beneath it and only awaits it before showing the
   ceremony. A throwing or missing hook can never block the save; with no rendered well
   nothing waits.
@@ -258,6 +259,48 @@ machine's integrated GPU), whether the song and bells are audible and balanced, 
 controller, and human judgements of clarity, length and calm. The `CLAUDE.md` playground
 loop is for WebGPU/TSL effects; the tunnel is a 2D canvas layer, so the portal fixture was
 used instead (the chrome-devtools MCP server was not available in this environment).
+
+## The goal moment says it (2026-11-27)
+
+The owner played orb 8 (Koi Sanctuary, dig out 6 rubble rows), won it, and never saw during
+play that the goal was reached. The orb was then dug out in the real game with real key presses
+(a private headless Chrome) and read frame by frame. Between the last clear and the results
+sheet, about 4.5 seconds:
+
+| What the player saw | Cause |
+|---|---|
+| The HUD on "4 / 6" (once "5 / 6"), bar part full, no star lit. | The loop writes the HUD at most every 100 ms, and the victory check retires the attempt in the frame the last clear settles, before the next write. A dig count is read off the settled board only, so its last step never reached the HUD. Only the dig orb was measured before the fix; by the code, a counter that moves when the clear starts (lines, cascades) could get its last write in while the clear plays, and a duel's last knockout is written from the same loop. |
+| The next piece falling, then locking under the results sheet. | `gameLoop` scheduled its next frame after the attempt was retired from inside that frame's own callback: the cancel found no pending frame. The finished attempt's loop kept running under the sheet, where its piece locked 11 seconds later. |
+| No words. | The flare, the chimes and the theme's showpiece were the whole signal. |
+
+What changed:
+
+- **The last reading goes out first.** `completeOdysseyLevel` calls `showOdysseyGoalReached`
+  (`odyssey-goal-flourish.js`) before it retires the attempt. The HUD gets the rules' own
+  metrics, clock and duel scoreboard, then `OdysseyHUD.markGoalReached({ stars })`: the label
+  reads "✓ Goal reached", the count stands at its goal with a full bar, and the stars lit are
+  the ones the rules award. The next piece, spawned before the victory check, leaves the well.
+- **The well says it.** The flourish puts "Goal reached" over the goal's own line in the well
+  (`.odyssey-goal-word`, a status a screen reader hears) for as long as the flare.
+- **A finished attempt stops.** `gameLoop` ends when the game state is stopped.
+
+Orb 8 one second after its last clear, before and after:
+
+![Orb 8 before: the HUD on 4 / 6 with the next piece falling](images/odyssey-goal-moment/orb-8-before.jpg)
+![Orb 8 after: 6 / 6, Goal reached in the HUD and in the well](images/odyssey-goal-moment/orb-8-after.jpg)
+
+A duel's last knockout (orb 5): [orb-5-duel-after.jpg](images/odyssey-goal-moment/orb-5-duel-after.jpg).
+
+A showcase lap is unchanged: its banner and "Complete" already say the goal is met, and its
+sheet follows Finish at once. The pacing table's 0.72 s flourish is from October; with the
+theme's showpiece reel the flourish now runs about 4.5 seconds.
+
+Checked on all 60 orbs in the real game with `node scripts/odyssey-goal-check.mjs <dev server
+url> <out dir>`: it enters each orb, moves the goal's own counter through the rules (half way,
+then to the target; a duel by real knockouts), and reads the HUD on the way and at the goal,
+the words in the well, the stopped well, the sheet's stars and the save. It does not play the
+orbs: the step from the board to the counter is covered by the unit tests and the campaign
+benchmark, and by the real-key dig of orb 8. Unit tests: `tests/unit/odyssey-goal-reached.test.js`.
 
 ## Open questions for a player session
 

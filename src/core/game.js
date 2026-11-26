@@ -1658,7 +1658,10 @@ export function gameLoop(
             physicsCallbacks,
         });
 
-        if (gameState.isGameOver) {
+        // A stop made inside this frame's own callbacks (an Odyssey orb retires its attempt from
+        // the victory check) found no pending frame to cancel: without this the loop scheduled
+        // itself again and the finished attempt's piece kept falling under the results.
+        if (gameState.isGameOver || gameState.isStopped) {
             return;
         }
 

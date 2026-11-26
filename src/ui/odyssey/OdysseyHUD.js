@@ -122,6 +122,9 @@ export class OdysseyHUD {
         this.timeLimit = null;
         this.isPaused = false;
         this.isVictoryLap = false;
+        this.isGoalReached = false;
+        this.awardedStars = null;
+        this.goalLabel = null;
 
         this.metrics = {
             lines: 0,
@@ -192,10 +195,10 @@ export class OdysseyHUD {
         const section = document.createElement('div');
         section.className = 'hud-section objective-section';
 
-        const label = document.createElement('div');
-        label.className = 'hud-label';
-        label.textContent = 'Goal';
-        section.appendChild(label);
+        this.goalLabel = document.createElement('div');
+        this.goalLabel.className = 'hud-label';
+        this.goalLabel.textContent = 'Goal';
+        section.appendChild(this.goalLabel);
 
         this.objectiveDisplay = document.createElement('div');
         this.objectiveDisplay.className = 'objective-text';
@@ -947,6 +950,8 @@ export class OdysseyHUD {
         default:
             break;
         }
+        // Once the rules have called the goal, the counter never reads short of it.
+        if (this.isGoalReached) current = Math.max(Number(current) || 0, target);
 
         setText(this.progressValue, type === 'score'
             ? `${current.toLocaleString()} / ${target.toLocaleString()}`
@@ -961,6 +966,11 @@ export class OdysseyHUD {
 
     _checkStars() {
         if (!this.levelConfig) return;
+        // The attempt is over: the stars are the ones the rules awarded.
+        if (this.awardedStars !== null && this.awardedStars !== undefined) {
+            this._updateStars(this.awardedStars);
+            return;
+        }
 
         const { stars } = this.levelConfig;
         let earnedStars = 0;
@@ -1081,6 +1091,24 @@ export class OdysseyHUD {
     }
 
     /**
+     * The goal is met and the attempt is over: the counter stands at its goal with a full bar,
+     * the label says so, and the stars are the ones the rules awarded. The mode writes the last
+     * metrics first (odyssey-goal-flourish.js, showOdysseyGoalReached): the loop that fed this
+     * HUD stops with the attempt, and without that last reading the counter stayed short of its
+     * goal under the whole celebration.
+     * @param {{stars?: number}} [reached] the stars the rules awarded
+     */
+    markGoalReached({ stars } = {}) {
+        this.isGoalReached = true;
+        this.container?.classList.add('is-goal-reached');
+        if (this.goalLabel) setText(this.goalLabel, 'Goal reached');
+        if (Number.isFinite(stars)) this.awardedStars = Math.max(0, Math.min(3, Math.floor(stars)));
+        this._updateProgress();
+        this._checkStars();
+        this.fit?.schedule();
+    }
+
+    /**
      * Enter victory lap mode.
      */
     enterVictoryLap() {
@@ -1149,8 +1177,11 @@ export class OdysseyHUD {
         this.completedBonuses.clear();
         this.elapsedTime = 0;
         this.isVictoryLap = false;
+        this.isGoalReached = false;
+        this.awardedStars = null;
+        if (this.goalLabel) setText(this.goalLabel, 'Goal');
         this.timeLabel.textContent = this.timeLimit ? 'Time left' : 'Elapsed';
-        this.container.classList.remove('is-victory-lap');
+        this.container.classList.remove('is-victory-lap', 'is-goal-reached');
         this.progressBar.classList.remove('is-complete');
         this.progressBar.style.width = '0%';
         this._updateProgress();
