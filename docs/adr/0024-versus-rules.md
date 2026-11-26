@@ -38,8 +38,8 @@ What differed:
 
 - **Death:** garbage never kills on arrival (`applyGarbage` with `overflowPolicy: 'spill'`).
   The stack lifts; cells lifted past the board's top row are lost; only a blocked spawn ends a
-  player. Infinity keeps its own roof rule, and Odyssey keeps the refusing rule its rising tide
-  relies on.
+  player. Infinity keeps its own roof rule. Odyssey's rising tide keeps the refusing rule it relies
+  on; an Odyssey rival duel spills like any versus board (amended 2026-11-26, below).
 - **Settle clears:** rows a garbage settle completes count as the player's own clear (lines,
   score, level, an attack; `creditSettleClears`). This replaces the 2026-11-18 no-credit
   decision for versus; Odyssey still awards nothing.
@@ -56,7 +56,8 @@ What differed:
   each placed piece earns a crowd stamp (up to three per extra living player) and every three
   stamps take one row off a normal attack. A move that empties the board is never cut; boring
   rules turn the cut off.
-- **Feel** (`applyVersusFeel`; the standard well, local and online, not Last Standing): every
+- **Feel** (`applyVersusFeel`; the standard well, local and online, and Odyssey's rival duels; not
+  Last Standing): every
   piece is drawn on its own from the shared seed, not from a bag of seven, and a resting piece
   locks at the next gravity step it cannot take (a soft drop takes it at once) instead of after
   a lock delay that sliding and turning could reset.
@@ -76,6 +77,25 @@ What differed:
   (`GAME_RESPAWN_REQUEST`), and the host's event (`GAME_PLAYER_RESPAWN`) is round-fenced,
   numbered per player, carries the board's piece stream, and fences off the snapshots sent
   before it, so a late frame cannot put the player back out.
+
+## Amended 2026-11-26: Odyssey's rival duels
+
+Odyssey's eight rival duels now play by three of these rules (owner, level design pass 4): the
+death rule (arriving rows spill; only a blocked spawn ends a well), and the feel (pieces drawn one
+by one, a resting piece locked at the next gravity step). The rival plays the versus play local
+bots play (`versusWeights`), at its authored tier and hands.
+
+Why: with a bag of seven and a lock delay, a rival strong enough to ask for a level 6 to 7 player
+could defend almost without end, and half the matches against such a player were undecided after
+thirty simulated minutes. With the versus pieces and lock the same matches finish
+(docs/ODYSSEY_LEVEL_DESIGN_PASS4_2026-11.md, section 5).
+
+What a duel keeps of its own: rounds and the race to three knockouts with both wells reset after
+every one, one body per garbage row, an uncapped queue, no credit for settle clears, and its
+fixed gravity. In a duel the other player takes the knockout whenever a well ends, attacked or
+not. The frozen rival of the old campaign instrument (`frozenRival`) keeps the earlier rules.
+`tests/unit/odyssey-bot-match.test.js` and `tests/unit/odyssey-bot-round-attribution.test.js`
+pin both.
 
 ## Consequences
 

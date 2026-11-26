@@ -28,6 +28,7 @@ to orb 60. It builds on [ODYSSEY_GAMEPLAY_AUDIT_2026-10.md](ODYSSEY_GAMEPLAY_AUD
 7. [Reproduce](#7-reproduce)
 8. [Pass 2: variety and level (2026-11-03)](#8-pass-2-variety-and-level-2026-11-03)
 9. [Pass 3 on the 60-orb campaign (2026-11-18)](#9-pass-3-on-the-60-orb-campaign-2026-11-18)
+10. [Pass 4: the rivals on the versus play (2026-11-26)](#10-pass-4-the-rivals-on-the-versus-play-2026-11-26)
 
 ---
 
@@ -2066,3 +2067,12 @@ For the rest proposals, compare short consecutive stretches on **21–23**, **31
 ### 9.8 Implementation and remeasurement
 
 The implementation handover records the feature-branch results for D14–D18 and D20, the live HUD checks, and the two decisions that depend on owner playtesting. Fresh runs on the shorter score rest led to D22, which awards orb 41’s gold for four Quads within 85 seconds. The tables above preserve the baseline used to choose the changes. [Pass 3 handover and D22 evidence](ODYSSEY_LEVEL_DESIGN_PASS3_2026-11.md)
+
+## 10. Pass 4: the rivals on the versus play (2026-11-26)
+
+Pass 4 has its own document: [audit, plan and handover](ODYSSEY_LEVEL_DESIGN_PASS4_2026-11.md). What it changes in the sections above:
+
+- **The rival rows of passes 1 to 3 describe an opponent the game no longer ships.** The benchmark played a frozen rival; it now plays the shipped one by default (`--frozen-rival` keeps the old run).
+- **R8 is restated.** Each rival plays the versus play local bots play, one tier above the rival before it (1 to 8), with its own authored hands. Hands still get faster from rival to rival, and none acts faster than 360 actions a minute or reacts under 140 ms. D8 is reversed: Prism plays tier 7.
+- **A duel plays by the versus rules for pieces, locking and arriving rows** (ADR-0024, amended). Rounds and three knockouts stay.
+- **Gates 8 and 9 are restated in the game's own levels** (D31): the last rival is even with a player between local levels 6 and 7.5, and from chapter 4 on no rival is easier than the one before it. The seven solo gates are unchanged, and so are all 52 solo orbs.
