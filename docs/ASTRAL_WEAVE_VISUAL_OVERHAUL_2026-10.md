@@ -8,6 +8,9 @@ the shipped design and what was verified. It is a reference, not a backlog.
 A second pass (2026-10-21, `feature/astral-weave-atmosphere`) lit the sky: see
 [Second pass: the lit sky](#second-pass-the-lit-sky).
 
+The November audit includes matched frames, the event sheet and two captures from a live
+solo game. [November 26, 2026](#november-26-2026)
+
 ## The picture
 
 A monumental hoop hangs in a river of nebula with the gameplay card at its heart. The hoop is
@@ -198,3 +201,104 @@ draw of at most 40 quads.
 ![The iris in game: the gas round the loom goes amber under the gold weave](astral-weave-captures/desktop-iris.webp)
 
 ![Portrait: the lamps above and below the card, and the iris](astral-weave-captures/portrait-events.webp)
+
+## November 26, 2026
+
+The two converging fans and the four-line transformation already gave Astral Weave its
+silhouette. In the resting frame the threads had nearly uniform weight, the heart dissolved
+into a blue glow, and the flat silver ticks gave little sense that the rings turned in
+different planes. The broad nebula filled the space between crossings. Several events brightened
+the same parts of the loom, making them hard to tell apart behind a board.
+
+![Resting loom before and after the November pass, captured at the same 1100 × 690 viewport](astral-weave-captures/november-comparison.jpg)
+
+Rose and cyan bundles now have stitched edges that follow the funnels as their shape changes.
+The heart has reflective facets and orbiting lights. Bowed cables carry the weave out to brass
+settings on the dial. Its nested rings tilt independently. In the sky, a dark dust lane separates
+the two banks of gas. Small knots catch light on their rims, and open star clusters occupy the
+opposite corners. The gas flows through a bounded curve that stays in frame over long sessions.
+The five existing moods still turn with time and advance on a level change. These five frames
+follow the clock alone. The tilted rings, cloud banks and points where the threads converge move
+between captures as the sky passes through rose, sapphire, jade and amethyst.
+
+![Five resting frames of the changing loom and nebula at 12, 112, 212, 312 and 412 seconds](astral-weave-captures/november-moods.jpg)
+
+Each clear from one to three lines sends its own number of pink and cyan strokes to the margins.
+Four lines open gold fans. A perfect clear adds swept compass points around the iris. Cascade
+waves descend in sequence, a back-to-back braids two strands, and a level builds a feather up
+each side of the dial. A chain adds petals to the whole loom. In a five-chain rehearsal, its
+warm six-petal figure unwove over four seconds into the cool two-funnel silhouette.
+The strokes fit the free space beside the card and HUD or move above and
+below them on a narrow screen.
+
+![Eighteen labeled frames covering the resting loom, ordinary clears, spins, chains, versus events and the end of a run](astral-weave-captures/november-events.jpg)
+
+An Odyssey goal opens a five-petal blossom at the dial. Astral Weave's own Orb 41 plays it when
+its 24,000-point goal completes. The orb's closing celebration leads straight to the results.
+The playground also shows the wing shape bound to a victory-lap finish. A round end hangs a balance pan from
+either rim. A wire snaps on top-out and a fresh cyan-and-gold bud opens on respawn. These
+details were captured on WebGPU.
+
+![Five close-ups of the embroidery for an Odyssey goal, victory lap, round end, top-out and respawn](astral-weave-captures/november-milestones.jpg)
+
+### Live solo verification
+
+At 1440 × 900 on WebGPU High with a 30 fps cap, six normal hard drops built the stack below.
+The measured well was 314 × 627 pixels, with a muted blue edge (`#57879a` in the running
+game). The gold I piece and its ghost read against the dark field, and the score panel
+showed 226 points beneath its rose-to-teal trim.
+
+![Six placed pieces, the active piece, its ghost, the queue and score panel in the live game](astral-weave-captures/november-solo-stack.jpg)
+
+For the perfect-clear capture, the harness placed four rows with a gap in the fifth column
+and positioned a vertical I piece above it. A normal hard drop drove the game resolver and
+emitted the four-line and perfect-clear events. The frame below shows the iris 1.32 seconds
+into the quad. The HUD recorded four lines and 7,926 points. Enabling Reduce flashing applied
+the accessibility class and reduced a unit post flash to 0.08. The live run logged no rendering
+errors. Chrome reported that Windows ignores the requested GPU power preference.
+
+![Gold iris and compass-point embroidery around the cleared board, with four lines on the HUD](astral-weave-captures/november-solo-perfect.jpg)
+
+### Two-player couch match
+
+A local free-for-all ran at 1440 × 900 on WebGPU High with a 30 fps cap. In match setup the
+second seat was switched from bot to human. Six normal hard drops per seat built the two
+different stacks below. Each live board measured 290 × 580 pixels. Both active pieces, ghosts,
+queues and player headers stayed visible, with the faceted heart in the gap between the wells.
+Local match tests also covered human knockouts and respawns, survivor round results and the
+final celebration. The final flourish starts during the existing 2.4-second hold. Automated
+seats do not trigger personal knockout or respawn flourishes.
+
+![Two human seats in a live local free-for-all with six pieces placed on each board](astral-weave-captures/november-couch.jpg)
+
+### Playground and network checks
+
+Playground captures also covered High and Minimal on WebGL2, a tall portrait layout, and the
+reduced-motion and reduced-flashing settings. The sky-only check compared two High frames
+80 ms apart at 640 × 360 against a 1280 × 720 reference. The illuminated cloud edges stayed
+coherent at the smaller size.
+
+In the multiplayer loopback test, a host resolved a peer's attack and sent the counter cue
+over the serialized reliable channel. A fully absorbed attack still reached the countering
+peer exactly once. Partial cancellation also sent the remaining attack. Replaying the packet,
+delivering a prior-round cue and delivering the cue to a spectator produced no extra counter.
+This check used in-process host, peer and spectator sessions. A separate online match test
+delivered both players' death messages to the guest after registering the network handlers
+twice. The guest emitted exactly one local top-out for its own death and recorded both deaths
+in the kill feed.
+
+### Capped frame timing
+
+The moving playground demo ran for 16.2 seconds per sample at 1280 × 800, with WebGPU on an
+NVIDIA Blackwell adapter and a 30 fps cap. Frame intervals include the wait for the cap.
+
+| Tier and run | Frame intervals sampled | Median interval | 95th percentile interval | 95th percentile CPU work |
+| --- | ---: | ---: | ---: | ---: |
+| High, first run | 451 | 33.4 ms | 51.2 ms | 2.2 ms |
+| High, second run | 482 | 33.3 ms | 36.8 ms | 1.8 ms |
+| Low | 476 | 33.3 ms | 34.7 ms | 1.4 ms |
+
+All three medians tracked the cap. The longest intervals were 99.8 ms and 37.9 ms on High
+and 233.3 ms on Low. GPU timestamps sampled only 15 and 16 frames in the High runs. The
+interval measurements establish typical pacing on this setup and leave the causes of the long
+frames unresolved.

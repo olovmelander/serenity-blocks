@@ -273,7 +273,10 @@ export class FFAAttackRouter {
         // …and emit a LOCAL echo so the HOST (which never receives its own broadcast)
         // also logs the attack in the Battle Log. Only the host runs routeAttack, so
         // this fires once on the host and never on peers — no double entry.
-        emitMultiplayerEvent(MULTIPLAYER_EVENTS.GARBAGE_SENT, garbagePayload);
+        emitMultiplayerEvent(MULTIPLAYER_EVENTS.GARBAGE_SENT, {
+            ...garbagePayload,
+            isLocal: attackerSteamId === this.gameState.localPlayerId,
+        });
     }
 
     /**

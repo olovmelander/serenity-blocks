@@ -22,7 +22,7 @@ import { LobbyBrowser } from '../../ui/lobby-browser.js';
 import { LobbyWaitingRoom } from '../../ui/lobby-waiting-room.js';
 import { MatchConfigModal } from '../../ui/match-config-modal.js';
 import { MatchResultsModal } from '../../ui/match-results-modal.js';
-import { onMultiplayerEvent, MULTIPLAYER_EVENTS } from '../../events/multiplayer-events.js';
+import { emitMultiplayerEvent, onMultiplayerEvent, MULTIPLAYER_EVENTS } from '../../events/multiplayer-events.js';
 import {
     emitLineClear, emitCombo, emitPieceLock, emitPerfectClear, emitHardDrop,
 } from '../../events/gameplay-events.js';
@@ -1140,20 +1140,26 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         };
 
         const deathHandler = (msg) => {
-            this._handlePlayerDeath(msg.data);
+            const { player, killer } = msg.data;
+            if (player && player === this.steamNetworking?.steamId) {
+                // The host already publishes its own top-out. A guest learns of theirs from
+                // this reliable death notice; the common listener presents the feed and well.
+                emitMultiplayerEvent(MULTIPLAYER_EVENTS.PLAYER_TOPPED_OUT, {
+                    ...msg.data,
+                    steamId: player,
+                    killerId: killer || null,
+                    isSelfKill: !killer || killer === player,
+                    isLocal: true,
+                });
+            } else {
+                this._handlePlayerDeath(msg.data);
+            }
         };
 
         const garbageHandler = (msg) => {
-            if (!this.killFeed) return;
-            const targetLabel = msg.data.targetCount === 1
-                ? '1 player'
-                : `${msg.data.targetCount || 0} players`;
-            const senderColor = this._getPlayerColor(msg.data.from);
-            this.killFeed.addGarbageSent({
-                sender: msg.data.fromName,
-                target: targetLabel,
-                lines: msg.data.totalLines || 0,
-                senderColor,
+            emitMultiplayerEvent(MULTIPLAYER_EVENTS.GARBAGE_SENT, {
+                ...msg.data,
+                isLocal: Boolean(msg.data.from && msg.data.from === this.steamNetworking?.steamId),
             });
             if (msg.data.from && msg.data.from === this.steamNetworking?.steamId) {
                 this._flashGarbageIndicator('outgoing', 400);
@@ -1435,11 +1441,7 @@ export class OnlineMultiplayerMode extends BaseGameMode {
                 // Record completion in kill feed
                 this._handlePlayerDeath(detail);
 
-                // Show death animation for local player
-                if (detail.isLocal || detail.steamId === localSteamId) {
-                    console.log('[OnlineMultiplayer] Local player topped out - showing death animation');
-                    this._showDeathAnimation(detail.killerName || null);
-                } else if (detail.steamId) {
+                if (detail.steamId && detail.steamId !== localSteamId && !detail.isLocal) {
                     this.opponentWatchManager?.setOpponentDeadState?.(detail.steamId, true);
                 }
             },
@@ -1497,10 +1499,7 @@ export class OnlineMultiplayerMode extends BaseGameMode {
         );
         this.cleanupHandlers.push(this.garbageCounteredUnsub);
 
-        // Local echo of the host's OWN outgoing attacks → Battle Log. The host never
-        // receives its own network broadcast, so without this its attacks are
-        // invisible in the log. Only the host runs routeAttack (which emits this),
-        // and peers log from the network message instead — so it fires once per node.
+        // The host publishes an attack directly; each peer publishes its received copy.
         this.garbageSentLocalUnsub = onMultiplayerEvent(
             MULTIPLAYER_EVENTS.GARBAGE_SENT,
             (detail) => {

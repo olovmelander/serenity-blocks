@@ -10,11 +10,13 @@
  *   board=1                  overlay a mock gameplay board + HUD (the solo layout rules); the loom
  *                            seats itself on its rects and the post's calm zones read them
  *   statsHud=0               with board=1: board only, no HUD mock
+ *   reducedMotion=1            use steady embroidery and suppress the iris re-weave
  *   stack=<n>                lay n rows of weft before the event (a stack n rows high)
  *   combo=<n>                hold a combo of n (the rosette's petals and its temperature)
  *   level=<n>                rest on level n's figure, the light n - 1 moods on from where the clock
  *                            (?t=) has turned it (astral-weave-moods.js)
- *   event=lock|drop|clear|quad|twist|perfect|levelUp   fire a gameplay event...
+ *   event=lock|drop|clear|quad|spin|twist|b2b|combo|break|cascade|perfect|levelUp|incoming|counter|outgoing|end
+ *         goal|victory|round|topout|respawn   Odyssey and versus milestones
  *   eventAge=<s>             ...and show it <s> seconds later (lines=<n>, row=<r>, u=<0..1>)
  *   demo=1                   live only: play a looping gameplay script
  *   parts=sky,rosette,...    draw only these parts
@@ -108,7 +110,9 @@ export function create({
     const world = new AstralWeaveWorld({
         scene, quality, capture: true, renderer,
     }).build();
-    world.prepareCompute();
+    let lastSeek = null;
+    world.prepareCompute().then(() => { lastSeek = null; });
+    world.setReducedMotion(params.get('reducedMotion') === '1');
     const partsParam = params.get('parts');
     if (partsParam) world.showOnlyParts(partsParam.split(',').map((p) => p.trim()));
 
@@ -127,6 +131,7 @@ export function create({
     const pointer = { x: num(params, 'px'), y: num(params, 'py') };
     const size = new THREE.Vector2(1, 1);
     const syncViewport = () => {
+        lastSeek = null;
         const aspect = window.innerWidth / Math.max(1, window.innerHeight);
         camera.aspect = aspect;
         camera.fov = REST_RIG.fov;
@@ -164,6 +169,16 @@ export function create({
         const bottom = (n) => Array.from({ length: n }, (_, i) => 19 - i);
         if (eventName === 'lock') world.lock({ rows: [row, row - 1], u });
         else if (eventName === 'drop') world.lock({ rows: [row, row - 1], u, hardDrop: true });
+        else if (eventName === 'spin') world.spinOnly();
+        else if (['incoming', 'outgoing', 'counter'].includes(eventName)) world.garbage(eventName, lines);
+        else if (['goal', 'victory', 'round', 'topout', 'respawn'].includes(eventName)) world.milestone(eventName);
+        else if (eventName === 'end') {
+            world.resetSession();
+            world.endRun();
+        } else if (eventName === 'combo') world.setCombo(Math.max(2, holdCombo || 3));
+        else if (eventName === 'break') world.setCombo(0);
+        else if (eventName === 'b2b') world.clear({ rows: bottom(4), lines: 4, b2b: true });
+        else if (eventName === 'cascade') world.clear({ rows: bottom(lines), lines, cascade: 3 });
         else if (eventName === 'clear') world.clear({ rows: bottom(lines), lines, combo: Math.max(1, holdCombo) });
         else if (eventName === 'quad') world.clear({ rows: bottom(4), lines: 4, combo: Math.max(1, holdCombo) });
         else if (eventName === 'twist') {
@@ -178,14 +193,17 @@ export function create({
     };
 
     const seekTo = (time) => {
+        if (lastSeek === time) return;
+        lastSeek = time;
         const lead = (eventName ? eventAge : 0) + 14;
         const start = Math.max(0, time - lead);
         world.seek(start);
-        if (level > 1) world.levelUp(level);
+        if (level > 1) world.levelUp(level, false);
         // The level's moods stand where a run at this level has them (seek keeps the last ones).
         world.setMoodSteps(level - 1);
         for (let i = 0; i < stack; i++) world.lock({ rows: [19 - i], u: 0.15 + ((i * 0.37) % 0.7) });
-        if (holdCombo > 0) world.setCombo(holdCombo);
+        if (eventName === 'break') world.setCombo(Math.max(2, holdCombo || 5));
+        else if (holdCombo > 0 && eventName !== 'combo') world.setCombo(holdCombo);
         world.update(sim(start, 0));
         const eventTime = eventName ? time - eventAge : time;
         if (eventTime > start) stepTo(start, eventTime, 0.1);
@@ -226,6 +244,7 @@ export function create({
             world.updateCamera(cam, sim(time, 0));
         },
         update(time, dt) {
+            lastSeek = null;
             if (demo) runDemo(time);
             world.updateCamera(camera, sim(time, dt));
             world.update(sim(time, dt));

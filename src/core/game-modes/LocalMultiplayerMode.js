@@ -20,6 +20,7 @@ import { LocalVersusHud, versusGoal } from '../../ui/local-versus-hud.js';
 import { applyVersusLayout, readVersusViewport, versusLayout } from '../../ui/local-versus-layout.js';
 import { applyPlayerColor } from '../../ui/board-walls.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
+import { emitMultiplayerEvent, MULTIPLAYER_EVENTS } from '../../events/multiplayer-events.js';
 import {
     showCinematicLoadingOverlay, waitForCinematicLoadingOverlayPresented, dismissCinematicLoadingOverlay,
     setCinematicLoadingProgress, transitionCinematicLoadingOverlayToCountdown,
@@ -37,7 +38,9 @@ import {
     stopLocalMultiplayerModeLoop,
 } from './local-multiplayer-loop.js';
 import { localMatchRespawns, resolveLocalMatchEnd, resumeClock } from './local-match-rules.js';
-import { forgetDownPlayers, handleFreeForAllDeaths, onSeatPress } from './local-ffa-respawn.js';
+import {
+    forgetDownPlayers, handleFreeForAllDeaths, isBotSeat, onSeatPress,
+} from './local-ffa-respawn.js';
 
 const MATCH_START_LOADING_MIN_VISIBLE_MS = 2000;
 /** How long a knock-out and a round won hold the boards before the round ends. */
@@ -1950,6 +1953,11 @@ export class LocalMultiplayerMode extends BaseGameMode {
         forgetDownPlayers(this);
         this._clearDeathAnimations();
         this.versusHud?.announceRound(this.versusRound || 1, this._roundOutcome || null);
+        if (this.multiplayerState.players.some((_, i) => !isBotSeat(this, i))) {
+            emitMultiplayerEvent(MULTIPLAYER_EVENTS.ROUND_OVER, {
+                round: this.versusRound || 1, outcome: this._roundOutcome || null, isLocal: true,
+            });
+        }
         this._roundOutcome = null;
         this.versusRound = (this.versusRound || 1) + 1;
 
@@ -2100,6 +2108,11 @@ export class LocalMultiplayerMode extends BaseGameMode {
         const winners = teamWin
             ? this.multiplayerState.players.map((_, i) => i).filter((i) => this._getResolvedTeamId(i) === winner.teamId)
             : [winnerIndex].filter((i) => i >= 0);
+        if (this.multiplayerState.players.some((_, i) => !isBotSeat(this, i))) {
+            globalThis.window?.dispatchEvent?.(new CustomEvent('gameOver', {
+                detail: { mode: GAME_MODES.LOCAL_MULTIPLAYER, winner },
+            }));
+        }
         if (winners.length && !(await this._playVictoryBeat(winners))) return;
         await this.onStop();
         const resultGeneration = this._startGeneration;
@@ -2214,7 +2227,13 @@ export class LocalMultiplayerMode extends BaseGameMode {
         else boardScene?.cameras?.main?.setAlpha(0.3);
         this.versusHud?.showKnockout(playerIndex, by);
         if (!this.knockedOut) this.knockedOut = new Set();
+        const firstKnockout = !this.knockedOut.has(playerIndex);
         this.knockedOut.add(playerIndex);
+        if (firstKnockout && !isBotSeat(this, playerIndex)) {
+            emitMultiplayerEvent(MULTIPLAYER_EVENTS.PLAYER_TOPPED_OUT, {
+                player: playerIndex + 1, isLocal: true,
+            });
+        }
     }
 
     /**

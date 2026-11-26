@@ -22,6 +22,7 @@ import { activateOdysseyCharm, beginOdysseyStillAir } from '../../src/core/odyss
 import { addOdysseyCharm } from '../../src/core/odyssey/odyssey-charm-bag.js';
 import { countRubbleRows, topRubbleRow } from '../../src/core/odyssey/odyssey-rubble.js';
 import { hardDrop, move } from '../../src/core/game.js';
+import { eventBus, EVENTS } from '../../src/events/event-bus.js';
 import { markBoardDirty, rebuildBoardGridFromPieces } from '../../src/core/board.js';
 import {
     DEMO_FIXED_SIMULATION_CLOCK, DEMO_LEGACY_SIMULATION_CLOCK,
@@ -152,6 +153,12 @@ async function finishFailureView({ mode }) {
     return view;
 }
 
+function observeOutcomes() {
+    const emit = vi.spyOn(eventBus, 'emit');
+    const outcomes = [EVENTS.ODYSSEY_GOAL_COMPLETE, EVENTS.ODYSSEY_VICTORY_LAP_END, EVENTS.ODYSSEY_LEVEL_FAILED];
+    return () => emit.mock.calls.filter(([name]) => outcomes.includes(name));
+}
+
 describe('OdysseyMode gameplay objectives', () => {
     it('uses the same chain-wave wording on the map panel before entering an orb', () => {
         expect(formatOdysseyMapObjective({ type: 'combo', target: 18 }))
@@ -219,6 +226,38 @@ describe('OdysseyMode gameplay objectives', () => {
     afterEach(() => {
         vi.restoreAllMocks();
         vi.unstubAllGlobals();
+    });
+
+    it('announces the Astral Weave orb goal once when its score settles without a victory lap', async () => {
+        const harness = createMode(getLevelById(41));
+        const { mode, session } = harness;
+        const outcomes = observeOutcomes();
+        expect(session.levelConfig).toMatchObject({ victoryLapPolicy: 'none', theme: { primary: 'astral-weave' } });
+        session.gameState.score = session.levelConfig.victory.primary.target;
+        session.gameState.isProcessingPhysics = true;
+        mode._checkVictoryConditions(session);
+        expect(outcomes()).toEqual([]);
+        session.gameState.isProcessingPhysics = false;
+        mode._checkVictoryConditions(session);
+        mode._checkVictoryConditions(session);
+        await finishUi(harness, true);
+        expect(outcomes()).toEqual([[EVENTS.ODYSSEY_GOAL_COMPLETE, {
+            levelId: 41, metrics: expect.objectContaining({ score: session.gameState.score }),
+        }]]);
+    });
+
+    it.each(['goal', 'failure'])('drops a pending %s notification when its attempt is superseded', async (kind) => {
+        const { mode, session } = createMode(getLevelById(41));
+        const outcomes = observeOutcomes();
+        const physics = deferred();
+        session.gameState.latestPhysicsPromise = physics.promise;
+        const ending = kind === 'goal' ? mode.completeLevel({}) : mode.failLevel('top-out');
+        expect(session.retired).toBe(true);
+        expect(outcomes()).toEqual([]);
+        mode._retireLevelSession(session);
+        physics.resolve();
+        await ending;
+        expect(outcomes()).toEqual([]);
     });
 
     it('completes no-lap solo goals after physics settles and persists a single completion', async () => {
@@ -428,6 +467,7 @@ describe('OdysseyMode gameplay objectives', () => {
     it('builds the retry debrief from the drained attempt and freezes its clock at failure', async () => {
         const harness = createMode(getLevelById(50), { renderFailure: true });
         const { mode, session } = harness;
+        const outcomes = observeOutcomes();
         const physics = deferred();
         session.hybridEngine.victoryEvaluator.onLineClear(12);
         session.hybridEngine.updateScore(100);
@@ -444,6 +484,7 @@ describe('OdysseyMode gameplay objectives', () => {
 
         mode.failLevel('top-out');
         expect(session.retired).toBe(true);
+        expect(outcomes()).toEqual([]);
         expect(createFailureModal).not.toHaveBeenCalled();
         expect(session.hybridEngine.getMetrics().time).toBe(28);
 
@@ -455,6 +496,7 @@ describe('OdysseyMode gameplay objectives', () => {
         now.mockReturnValue(1070000);
         physics.resolve();
         const view = await finishFailureView(harness);
+        expect(outcomes()).toEqual([[EVENTS.ODYSSEY_LEVEL_FAILED, { levelId: 50, reason: 'top-out' }]]);
 
         expect(view.levelConfig).toBe(session.levelConfig);
         expect(view).toMatchObject({
@@ -516,6 +558,7 @@ describe('OdysseyMode gameplay objectives', () => {
     it.each([55, 59])('preserves orb %i showcase rewards when a later real spawn tops out', async (levelId) => {
         const harness = createMode(getLevelById(levelId));
         const { mode, session, frameRateController } = harness;
+        const outcomes = observeOutcomes();
         const { gameState, hybridEngine, levelConfig } = session;
         gameState.score = levelConfig.victory.primary.target;
         hybridEngine.updateTime(levelConfig.victory.failure.value - 1);
@@ -552,6 +595,9 @@ describe('OdysseyMode gameplay objectives', () => {
 
         expect(mode.completeLevel).toHaveBeenCalledTimes(1);
         await finishUi(harness, true);
+        expect(outcomes().map(([name]) => name)).toEqual([
+            EVENTS.ODYSSEY_GOAL_COMPLETE, EVENTS.ODYSSEY_VICTORY_LAP_END,
+        ]);
         expect(mode.odysseyState.completeLevel).toHaveBeenCalledExactlyOnceWith(levelId, expect.objectContaining({
             score: tier.score + 50,
             time: levelConfig.victory.failure.value + 1,
@@ -608,6 +654,7 @@ describe('OdysseyMode gameplay objectives', () => {
     it('completes the duel only at three credited human knockouts and retains the match result', async () => {
         const harness = createMode(getLevelById(5));
         const { mode, session } = harness;
+        const outcomes = observeOutcomes();
         for (let frag = 1; frag <= 3; frag++) {
             session.gameState.score = frag * 100;
             // Each completed round must settle before the next round can start.
@@ -615,6 +662,7 @@ describe('OdysseyMode gameplay objectives', () => {
             await resolveDeath(session, 1, 0);
             mode._checkVictoryConditions(session);
             if (frag < 3) {
+                expect(outcomes()).toEqual([]);
                 expect(mode.completeLevel).not.toHaveBeenCalled();
                 expect(mode.failLevel).not.toHaveBeenCalled();
                 nextRound(session);
@@ -623,6 +671,7 @@ describe('OdysseyMode gameplay objectives', () => {
         mode._checkVictoryConditions(session);
         expect(mode.completeLevel).toHaveBeenCalledTimes(1);
         await finishUi(harness, true);
+        expect(outcomes()).toEqual([[EVENTS.ODYSSEY_GOAL_COMPLETE, expect.objectContaining({ levelId: 5 })]]);
 
         const result = mode._showLevelResults.mock.calls[0][0];
         expect(result).toMatchObject({
@@ -641,6 +690,7 @@ describe('OdysseyMode gameplay objectives', () => {
     it.each([false, true])('fails a duel at the rival target, with simultaneous third knockouts draw=%s', async (draw) => {
         const harness = createMode(getLevelById(5));
         const { mode, session } = harness;
+        const outcomes = observeOutcomes();
         session.duel.multiplayer.frags = draw ? [2, 2] : [0, 2];
         session.duel.multiplayer.lastAttackerIds = [1, draw ? 0 : null];
         await mode._handleGameOver(session);
@@ -654,6 +704,7 @@ describe('OdysseyMode gameplay objectives', () => {
         expect(mode.failLevel).toHaveBeenCalledTimes(1);
         expect(mode.failLevel).toHaveBeenCalledWith(draw ? 'draw' : 'bot');
         await finishUi(harness, false);
+        expect(outcomes()).toEqual([[EVENTS.ODYSSEY_LEVEL_FAILED, { levelId: 5, reason: draw ? 'draw' : 'bot' }]]);
         expect(mode.odysseyState.recordAttempt).toHaveBeenCalledTimes(1);
         expect(mode._showLevelFailure).toHaveBeenCalledWith(draw ? 'draw' : 'bot', session);
         expect(session.duel.getResult().botFrags).toBe(3);

@@ -263,6 +263,16 @@
     --sp-wall-glow: rgb(80 157 203 / 24%);
 }
 
+/* The loom's pearl on the queue, cool silver on the well and a rose selvedge on the ledger. */
+:where(body:has(#astral-weave-theme.active)) .single-player-stage[data-board='well']:not(:where(
+    .infinity-mode-active, [data-odyssey-board], [data-stillfall], [data-still-air], [data-danger]
+)) {
+    --sp-hue: #e5d3f5;
+    --sp-hue-rgb: 229, 211, 245;
+    --sp-wall: #57879a;
+    --sp-wall-glow: rgb(107 199 218 / 19%);
+}
+
 /* ---- The column: the queue over the well ------------------------------------------- */
 .single-player-stage[data-board='well'] #single-player-container {
     --board-width: inherit;
@@ -542,6 +552,16 @@
     --sb-text-faint: #bad3d0;
     border-color: rgb(146 191 185 / 36%);
     background: linear-gradient(145deg, #19383afa, #101e2df7 62%, #281e36f7);
+}
+
+:where(body:has(#astral-weave-theme.active)) .single-player-stage[data-board='well']:not(:where(
+    .infinity-mode-active, [data-odyssey-board], [data-stillfall], [data-still-air], [data-danger]
+)) .single-player-stats-bar {
+    --sb-text-faint: #cbc3da;
+    border-color: rgb(193 150 199 / 41%);
+    background:
+        linear-gradient(90deg, #d693c5, #a1d4de) top center / calc(100% - 32px) 1px no-repeat,
+        linear-gradient(151deg, #302239f5, #151628fa 57%, #16292ff7);
 }
 
 :where(body:has(#himalayan-peak-theme.active)) .single-player-stage[data-board='well']:not(:where(

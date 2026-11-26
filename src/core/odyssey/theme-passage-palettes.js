@@ -9,7 +9,7 @@
  */
 export const ODYSSEY_THEME_PASSAGE_PALETTES = Object.freeze({
     'aether-tides': ['#9ec4ee', '#688acb', '#b4517a', '#442d5a', 0.41],
-    'astral-weave': ['#a7c2fc', '#5773ab', '#7f71c2', '#273457', 0.41],
+    'astral-weave': ['#a2bce9', '#415776', '#746199', '#23283e', 0.33],
     aurora: ['#7cac9b', '#2a565d', '#843f5e', '#0d1d27', 0.3],
     bioluminescence: ['#82c7cb', '#2e7e78', '#549f9d', '#164346', 0.4],
     'black-hole': ['#f7e5d4', '#c47735', '#355682', '#110b09', 0.39],

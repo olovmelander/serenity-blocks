@@ -152,7 +152,10 @@ describe.each(TIERS)('astral weave shaders at %s', (quality) => {
 
     it('builds every part on both backends without a warning', () => {
         const names = new Set(built.map((entry) => entry.name));
-        const parts = ['deep-field', 'jewels', 'rosette', 'wefts', 'warp', 'hoop', 'pegs', 'flares', 'sparks'];
+        const parts = [
+            'deep-field', 'jewels', 'rosette', 'selvedges', 'wefts', 'warp', 'hoop', 'pegs', 'flares',
+            'sparks', 'event-threads',
+        ];
         if (quality !== 'Minimal') parts.push('dust', 'motes');
         for (const part of parts) {
             expect([...names].some((name) => name.includes(part)), part).toBe(true);

@@ -16,6 +16,9 @@ vi.mock('../../src/rendering/phaser/board-juice.js', () => ({
 
 import { OpponentWatchManager } from '../../src/ui/opponent-watch-manager.js';
 import { OnlineMultiplayerMode } from '../../src/core/game-modes/OnlineMultiplayerMode.js';
+import { SteamNetworking } from '../../src/core/steam/steam-networking.js';
+import { MessageTypes } from '../../src/core/network/message-types.js';
+import { MULTIPLAYER_EVENTS, onMultiplayerEvent } from '../../src/events/multiplayer-events.js';
 
 function makeBoard(id) {
     const classes = new Set();
@@ -165,6 +168,38 @@ afterEach(() => {
 });
 
 describe('online versus: the round', () => {
+    it('publishes the guest’s own top-out once and presents each death once', () => {
+        const mode = makeMode();
+        const network = Object.assign(new SteamNetworking(), { steamId: 'LOCAL', hostSteamId: 'P2' });
+        mode.steamNetworking = network;
+        mode.cleanupHandlers = [];
+        mode.killFeed = { addKill: vi.fn() };
+        mode.hud.updateHotPotato = vi.fn();
+        const topout = vi.fn();
+        const stop = onMultiplayerEvent(MULTIPLAYER_EVENTS.PLAYER_TOPPED_OUT, topout);
+        try {
+            mode._registerNetworkHandlers();
+            mode._registerNetworkHandlers();
+            const envelope = { msgType: MessageTypes.GAME_PLAYER_DIED };
+            network._dispatchEnvelope(envelope, 'P2', {
+                player: 'LOCAL', playerName: 'Me', killer: 'P2', killerName: 'Mika',
+            });
+            network._dispatchEnvelope(envelope, 'P2', {
+                player: 'P2', playerName: 'Mika', killer: 'LOCAL', killerName: 'Me',
+            });
+            expect(topout).toHaveBeenCalledTimes(1);
+            expect(topout).toHaveBeenCalledWith(expect.objectContaining({
+                steamId: 'LOCAL', isLocal: true, killerId: 'P2', isSelfKill: false,
+            }));
+            expect(mode._showDeathAnimation.mock.calls).toEqual([['Mika']]);
+            expect(mode.opponentWatchManager.knockOutOpponent.mock.calls).toEqual([['P2', 'Me']]);
+            expect(mode.killFeed.addKill.mock.calls.map(([row]) => row.victim)).toEqual(['Me', 'Mika']);
+        } finally {
+            stop();
+            mode.cleanupHandlers.forEach((off) => off());
+        }
+    });
+
     it('knocks an opponent out from the death message, and you from yours', () => {
         const mode = makeMode();
         mode._handlePlayerDeath({ player: 'P2', killer: 'LOCAL', killerName: 'Me' });
