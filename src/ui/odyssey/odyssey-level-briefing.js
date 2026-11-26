@@ -3,9 +3,12 @@ import { formatOdysseyMapObjective } from './objective-copy.js';
 const CASCADE_RULE = 'A cascade counts when falling blocks clear again.';
 const CHAIN_RULE = 'One locked piece must trigger the whole chain; the first clear is wave one.';
 // A clear sends one row fewer than the lines one piece cleared, cascade waves included
-// (src/core/garbage.js), so a single sends nothing; any top-out ends the round.
+// (src/core/garbage.js), so a single sends nothing; any top-out ends the round and gives the other
+// player the knockout.
 const ATTACK_RULE = 'Clear two or more lines with one piece to send attack rows. '
-    + 'Topping out the rival with an attack scores a knockout.';
+    + 'Every time the rival tops out, you score a knockout.';
+// A duel plays by the versus rules for pieces and locking (OdysseyBotMatch, level design pass 4).
+const DUEL_PIECES_RULE = 'Duel pieces come in any order, and a landed piece locks on its next step down.';
 const RESET_RULE = 'Both wells reset after every top-out.';
 const MULTIPLIER_RULE = 'Clears on consecutive pieces raise your score multiplier.';
 const MIRROR_RULE = 'Left and right controls are reversed.';
@@ -113,6 +116,7 @@ export function getOdysseyLevelBriefing(nextLevel, previousLevel = null) {
         deadline,
         mirror && MIRROR_RULE,
         duel && ATTACK_RULE,
+        duel && DUEL_PIECES_RULE,
         goalRule,
         !duel && board && (board.rows !== 20 || board.startingRows > 0) && board.text,
         multiplier && MULTIPLIER_RULE,
@@ -137,8 +141,10 @@ export function getOdysseyLevelBriefing(nextLevel, previousLevel = null) {
     if (deadline !== previousDeadline) {
         changes.push(deadline || 'No time limit on this orb.');
     }
-    if (duel && !previousDuel) changes.push(ATTACK_RULE, RESET_RULE);
-    if (!duel && previousDuel) changes.push('Solo play resumes; topping out ends the attempt.');
+    if (duel && !previousDuel) changes.push(ATTACK_RULE, DUEL_PIECES_RULE, RESET_RULE);
+    if (!duel && previousDuel) {
+        changes.push('Solo play resumes: pieces come in sets of seven again, and topping out ends the attempt.');
+    }
     if (goalRule && goalRule !== getGoalRule(previousLevel)) changes.push(goalRule);
     if (ramp && ramp !== getSpeedRamp(previousLevel)) changes.push(ramp);
     if (hasModifier(nextLevel, 'speed-up') !== hasModifier(previousLevel, 'speed-up')) {
@@ -162,8 +168,8 @@ export function getOdysseyLevelBriefing(nextLevel, previousLevel = null) {
         && progression !== null && previousProgression !== null && progression !== previousProgression) {
         changes.push(progression ? 'Drop speed increases as you clear lines.' : 'Drop speed stays steady.');
     }
-    // Keep routine handoffs brief; a changed deadline or controls may need a third cue.
-    const limit = mirrorChanged || deadline !== previousDeadline ? 3 : 2;
+    // Keep routine handoffs brief; a changed deadline or controls, or a duel's own rules, may need a third cue.
+    const limit = mirrorChanged || deadline !== previousDeadline || (duel && !previousDuel) ? 3 : 2;
     return {
         goal, changes: [...new Set(changes)].slice(0, limit), rules, deadline,
     };

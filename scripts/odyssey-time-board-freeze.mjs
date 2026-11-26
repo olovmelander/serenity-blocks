@@ -293,7 +293,7 @@ function playRival(level, seed) {
         const session = createSession(level);
         const match = new OdysseyBotMatch(session, { seed, isActive: () => true });
         const human = /** @type {Record<string, any>} */ (session.gameState);
-        fillBag(human.nextPieces, human.randomGenerator);
+        fillBag(human.nextPieces, human.randomGenerator, human.pieceRandomizer);
         spawnPiece(human);
         match.prepareBot();
         // The idle player's pieces still fall, lock and come again, as they would in the game.

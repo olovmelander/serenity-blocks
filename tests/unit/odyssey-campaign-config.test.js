@@ -9,23 +9,15 @@ import { ODYSSEY_DUEL_GRAVITY_BY_CHAPTER, ODYSSEY_DUEL_KNOCKOUTS } from '../../s
 
 const DUEL_IDS = [5, 10, 18, 26, 34, 48, 56, 60];
 const DUEL_NAMES = ['Cinder', 'Coral', 'Willow', 'Frost', 'Zephyr', 'Nova', 'Prism', 'Neon'];
-// The gravity-bot remap preserves the D8 windows and the regular and strong human-pace panels.
-const RIVAL_TIERS = [1, 2, 2, 4, 4, 5, 5, 6];
-const RIVAL_JUDGMENT = {
-    48: {
-        previewChance: 0.60,
-        digPreviewChance: 0.79,
-        pressAtRows: 8,
-        variation: { chance: 0.2, judgment: { previewChance: 0.70, digPreviewChance: 0.84, pressAtRows: 14 } },
-    },
-    56: { previewChance: 0.76, digPreviewChance: 1, variation: { chance: 0.35, judgment: { pressAtRows: 2 } } },
-    60: { twoPreviewChance: 0.52 },
-};
+// Level design pass 4: each rival plays the versus play one tier above the rival before it, with its own
+// hands; no rival carries a judgment of its own. Neon takes the fastest hands R8 allows.
+const RIVAL_TIERS = [1, 2, 3, 4, 5, 6, 7, 8];
+const RIVAL_JUDGMENT = {};
 const RIVAL_CAPS = [
     { maxApm: 90, reactionMs: [500, 900] }, { maxApm: 120, reactionMs: [420, 760] },
     { maxApm: 165, reactionMs: [320, 620] }, { maxApm: 230, reactionMs: [240, 480] },
     { maxApm: 270, reactionMs: [200, 380] }, { maxApm: 300, reactionMs: [180, 340] },
-    { maxApm: 330, reactionMs: [160, 320] }, { maxApm: 340, reactionMs: [150, 300] }];
+    { maxApm: 330, reactionMs: [160, 320] }, { maxApm: 360, reactionMs: [140, 280] }];
 
 function cloneLevel(id) {
     return structuredClone(getLevelById(id));

@@ -12,14 +12,15 @@ function deferred() {
     return { promise, resolve };
 }
 
-function createMatch() {
+// frozenRival: the rival and duel rules of the old campaign instrument (scripts/odyssey-benchmark).
+function createMatch({ frozenRival = false } = {}) {
     const levelConfig = LEVEL_CONFIGS.find((level) => level.mechanics.versus);
     const hybridEngine = new GameplayHybridEngine();
     hybridEngine.configure(levelConfig);
     const session = { levelConfig, hybridEngine, gameState: hybridEngine.createGameState() };
-    const match = new OdysseyBotMatch(session, { seed: 1234, isActive: () => !session.retired });
+    const match = new OdysseyBotMatch(session, { seed: 1234, isActive: () => !session.retired, frozenRival });
     session.duel = match;
-    fillBag(session.gameState.nextPieces, session.gameState.randomGenerator);
+    fillBag(session.gameState.nextPieces, session.gameState.randomGenerator, session.gameState.pieceRandomizer);
     spawnPiece(session.gameState);
     match.prepareBot();
     return match;
@@ -39,8 +40,29 @@ describe('Odyssey round death attribution', () => {
     });
     afterEach(() => { vi.restoreAllMocks(); });
 
-    it.each([0, 1])('keeps player %i self top-out uncredited when an opponent cascade finishes later', async (victim) => {
+    it.each([0, 1])('gives the other player the knockout when player %i tops out unattacked', async (victim) => {
         const match = createMatch();
+        const opponent = 1 - victim;
+        const cascade = deferred();
+        match.players[opponent].latestPhysicsPromise = cascade.promise;
+        const callbacks = opponent === 0 ? match.wrapHumanCallbacks({}) : match.botCallbacks;
+        match.multiplayer.frags[opponent] = match.targetFrags - 1;
+        match.markTopOut(victim);
+        match.update(100, 16, {});
+
+        // A duel has two players: a well that ends is the other's knockout, attacked or not.
+        // A cascade the survivor had already started changes nothing when it finishes at the barrier.
+        callbacks.onGarbageReady(attackSummary);
+        cascade.resolve();
+        await match.transition;
+
+        expect(match.multiplayer.deaths[victim]).toBe(1);
+        expect(match.multiplayer.frags[opponent]).toBe(match.targetFrags);
+        expect(match.multiplayer.winner).toBe(opponent);
+    });
+
+    it.each([0, 1])('keeps player %i self top-out uncredited in the frozen instrument', async (victim) => {
+        const match = createMatch({ frozenRival: true });
         const opponent = 1 - victim;
         const cascade = deferred();
         match.players[opponent].latestPhysicsPromise = cascade.promise;
@@ -60,8 +82,24 @@ describe('Odyssey round death attribution', () => {
         expect(match.multiplayer.isGameOver).toBe(false);
     });
 
-    it('credits a real garbage insertion top-out and retires the round before spawning', async () => {
+    it('never ends a well on arriving rows: the stack lifts and the next piece appears', async () => {
         const match = createMatch();
+        const bot = match.players[1];
+        bot.lockedPieces = [{ x: 0, y: 4, shape: [[1]], pieceId: 100 }];
+        match.wrapHumanCallbacks({}).onGarbageReady(attackSummary);
+        match.botCallbacks.spawnPiece();
+        match.update(100, 16, {});
+        await match.transition;
+
+        expect(bot.isGameOver).toBe(false);
+        expect(match.multiplayer.garbageQueues[1].getTotalLines()).toBe(0);
+        expect(bot.boardGrid.at(-1).some((cell) => cell?.type === 'GARBAGE')).toBe(true);
+        expect(match.multiplayer.frags).toEqual([0, 0]);
+        expect(match.roundActive).toBe(true);
+    });
+
+    it('credits a garbage insertion top-out in the frozen instrument and retires the round before spawning', async () => {
+        const match = createMatch({ frozenRival: true });
         const bot = match.players[1];
         bot.lockedPieces = [{ x: 0, y: 4, shape: [[1]], pieceId: 100 }];
         match.wrapHumanCallbacks({}).onGarbageReady(attackSummary);

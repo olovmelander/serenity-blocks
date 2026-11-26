@@ -39,7 +39,7 @@ function createMatch(authoredLevel = null, seed = 1234) {
     const onRoundStart = vi.fn();
     const match = new OdysseyBotMatch(session, { seed, isActive: () => !session.retired, onRoundStart });
     session.duel = match;
-    fillBag(session.gameState.nextPieces, session.gameState.randomGenerator);
+    fillBag(session.gameState.nextPieces, session.gameState.randomGenerator, session.gameState.pieceRandomizer);
     spawnPiece(session.gameState);
     match.prepareBot();
     return { match, session, onRoundStart };
@@ -71,9 +71,14 @@ describe('Odyssey beat-the-bot match', () => {
     afterEach(() => { vi.restoreAllMocks(); });
 
     it.each([[15001, 2], [1001, undefined]])(
-        'keeps Prism’s seeded pressure judgment across rounds on %i',
+        'keeps an authored, seeded judgment across rounds on %i',
         async (seed, threshold) => {
-            const { match } = createMatch(getLevelById(56), seed);
+            // No shipped rival carries a judgment since level design pass 4; the setting stays supported.
+            const level = structuredClone(getLevelById(56));
+            level.mechanics.versus.botJudgment = {
+                previewChance: 0.76, digPreviewChance: 1, variation: { chance: 0.35, judgment: { pressAtRows: 2 } },
+            };
+            const { match } = createMatch(level, seed);
             const style = match.bot.judgment;
             expect(style.pressAtRows).toBe(threshold);
             expect(style.digPreviewChance).toBe(1);
@@ -186,9 +191,12 @@ describe('Odyssey beat-the-bot match', () => {
         expect(second.onMove).toHaveBeenCalledOnce();
     });
 
-    it('gives both boards identical seeded bags, gravity, and attack rules', () => {
+    it('gives both boards identical seeded pieces, gravity, and attack rules', () => {
         const { match } = createMatch();
         const [human, bot] = match.players;
+        // A live duel plays by the versus rules for pieces and locking, in both wells.
+        expect([human.pieceRandomizer, bot.pieceRandomizer]).toEqual(['random', 'random']);
+        expect([human.lockStyle, bot.lockStyle]).toEqual(['gravity', 'gravity']);
         expect(match.getSnapshot().botName).toBe('Challenger');
         expect(match.getResult().botName).toBe('Challenger');
         expect(human.currentPiece.shapeKey).toBe(bot.currentPiece.shapeKey);
@@ -260,12 +268,12 @@ describe('Odyssey beat-the-bot match', () => {
         } finally { vi.useRealTimers(); }
     });
 
-    it('does not credit self top-outs and restarts with scores and deaths preserved', async () => {
+    it('gives the other player a self top-out and restarts with scores and deaths preserved', async () => {
         const { match, session, onRoundStart } = createMatch();
         const oldCallbacks = match.wrapHumanCallbacks({});
         match.players[0].score = 1200;
         await resolveDeath(match, 1, null);
-        expect(match.multiplayer.frags).toEqual([0, 0]);
+        expect(match.multiplayer.frags).toEqual([1, 0]);
         expect(match.multiplayer.deaths).toEqual([0, 1]);
         expect(match.score).toBe(1200);
         nextRound(match);

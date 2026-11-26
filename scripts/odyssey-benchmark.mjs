@@ -36,7 +36,7 @@ function selectLevels(value) {
 
 export function parseOptions(args) {
     const values = {};
-    const flags = new Set(['help', 'resume', 'trace', 'capabilities-only']);
+    const flags = new Set(['help', 'resume', 'trace', 'capabilities-only', 'frozen-rival']);
     const allowed = new Set([
         ...flags, 'levels', 'profiles', 'samples', 'seed-start', 'workers',
         'max-seconds', 'max-pieces', 'wall-ms', 'output', 'scenarios', 'cadences', 'lap-seconds',
@@ -104,6 +104,8 @@ export function parseOptions(args) {
         outputDir: resolve(values.output ?? 'artifacts/odyssey-benchmark'),
         resume: Boolean(values.resume),
         trace: Boolean(values.trace),
+        // The rival and duel rules of the old campaign instrument, in place of the ones the game ships.
+        frozenRival: Boolean(values['frozen-rival']),
         capabilitiesOnly: Boolean(values['capabilities-only']),
         help: Boolean(values.help),
     };
@@ -129,6 +131,7 @@ export function buildTasks(options) {
                             maxPieces: options.maxPieces,
                             wallBudgetMs: options.wallBudgetMs,
                             trace: options.trace,
+                            liveRival: !options.frozenRival,
                         });
                     }
                 }
@@ -174,7 +177,7 @@ function revisionInfo() {
 export function validateResumeConfiguration(previous, current) {
     const keys = [
         'levelIds', 'profileIds', 'seedStart', 'samples', 'maxSimSeconds',
-        'maxPieces', 'wallBudgetMs', 'trace', 'revision', 'capabilitiesOnly',
+        'maxPieces', 'wallBudgetMs', 'trace', 'frozenRival', 'revision', 'capabilitiesOnly',
         'scenarioIds', 'cadenceIds', 'lapWindowSeconds', 'effectiveLevels', 'visiblePreviews',
         'humanPlanningPreviewLimit', 'opponentKnowledgePolicy',
         'opponentVisiblePreviewCount', 'opponentPlanningPreviewLimit',
@@ -309,7 +312,7 @@ export async function main(args = process.argv.slice(2)) {
         console.log('--scenarios baseline|all|orb59-deadline210 --cadences native|steady|deliberate|all');
         console.log('--samples 20 --seed-start 1001 --workers 4 --max-seconds 1800 --max-pieces 3000');
         console.log('--lap-seconds full|60 --wall-ms 120000 --output artifacts/odyssey-benchmark');
-        console.log('--resume --trace --capabilities-only');
+        console.log('--resume --trace --capabilities-only --frozen-rival');
         console.log(`--construction-levels ${MASTERY_LEVEL_IDS.join(',')}`
             + ' --construction-seeds 1001,1002,1003 --construction-pieces 128');
         console.log(`Current campaign: 1-${MAX_ODYSSEY_LEVEL_ID}; historical orb59 scenarios target Neon District.`);

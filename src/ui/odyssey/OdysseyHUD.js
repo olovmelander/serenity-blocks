@@ -579,7 +579,8 @@ export class OdysseyHUD {
         this.container.classList.add('is-duel');
         this.objectiveDisplay.textContent = formatOdysseyDuelGoal(botName, this.duel.targetFrags);
         this.guideText.textContent = 'Clear two or more lines with one piece to send attack rows. '
-            + `Topping out ${botName} with an attack scores a knockout. `
+            + `Every time ${botName} tops out, you score a knockout. `
+            + 'Duel pieces come in any order, and a landed piece locks on its next step down. '
             + `Both wells reset after every top-out; the first to ${this.duel.targetFrags} knockouts wins.`;
         this.guide.hidden = false;
 

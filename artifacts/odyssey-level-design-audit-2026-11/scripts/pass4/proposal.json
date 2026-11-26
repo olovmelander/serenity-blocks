@@ -1,0 +1,2101 @@
+{
+  "1": {
+    "reason": "Remove the 2.25× speed cliff from the first orb of the game: it now eases 720 → 461 ms. Star times ask a real pace (85 s, then 65 s without singles).",
+    "override": {
+      "mechanics": {
+        "speed": {
+          "startLevel": 2,
+          "fixedDropInterval": 720,
+          "levelProgression": true
+        }
+      },
+      "stars": {
+        "one": {
+          "lines": 20
+        },
+        "two": {
+          "lines": 20,
+          "time": 85
+        },
+        "three": {
+          "lines": 20,
+          "time": 65,
+          "bonuses": 1
+        }
+      }
+    }
+  },
+  "2": {
+    "reason": "The second star was met by any cascade. Now two stars for a 3-wave chain or finishing within 40 pieces, three for both. Phase 2 adds a prepared opening.",
+    "override": {
+      "victory": {
+        "bonuses": [
+          {
+            "type": "max-cascade-depth",
+            "target": 3
+          },
+          {
+            "type": "pieces",
+            "target": 40
+          }
+        ]
+      },
+      "stars": {
+        "one": {
+          "cascades": 3
+        },
+        "two": {
+          "cascades": 3,
+          "bonuses": 1
+        },
+        "three": {
+          "cascades": 3,
+          "bonuses": 2
+        }
+      },
+      "mechanics": {
+        "board": {
+          "opening": [
+            "........X.",
+            "XXXXXXXX..",
+            "XXXXXXXXX."
+          ]
+        }
+      }
+    }
+  },
+  "3": {
+    "reason": "Same fix as orb 2, with a 45-piece budget.",
+    "override": {
+      "victory": {
+        "bonuses": [
+          {
+            "type": "max-cascade-depth",
+            "target": 3
+          },
+          {
+            "type": "pieces",
+            "target": 45
+          }
+        ]
+      },
+      "stars": {
+        "one": {
+          "cascades": 4
+        },
+        "two": {
+          "cascades": 4,
+          "bonuses": 1
+        },
+        "three": {
+          "cascades": 4,
+          "bonuses": 2
+        }
+      }
+    }
+  },
+  "4": {
+    "reason": "Pace the first boss to what chapter 1 taught (420 → 246 ms instead of 205 → 120), 30 lines instead of 40. Pass 2: its three stars came on their own in a cascade well, even at casual pace, so two stars ask for 4 cascades and three for 7 cascades and a 4-wave chain. A long run of cascades counts as much as the deep chain: three stars ask for 7 cascades, a 3-wave chain, and either 11 cascades or a 4-wave chain.",
+    "override": {
+      "mechanics": {
+        "speed": {
+          "startLevel": 3,
+          "fixedDropInterval": 420,
+          "levelProgression": true
+        }
+      },
+      "victory": {
+        "primary": {
+          "type": "lines",
+          "target": 30
+        },
+        "bonuses": [
+          {
+            "type": "cascade",
+            "target": 11
+          },
+          {
+            "type": "max-cascade-depth",
+            "target": 4
+          }
+        ]
+      },
+      "modifiers": {
+        "active": [
+          "gravity-cascade"
+        ]
+      },
+      "stars": {
+        "one": {
+          "lines": 30
+        },
+        "two": {
+          "lines": 30,
+          "cascades": 4
+        },
+        "three": {
+          "lines": 30,
+          "cascades": 7,
+          "maxCascadeDepth": 3,
+          "bonuses": 1
+        }
+      }
+    }
+  },
+  "5": {
+    "reason": "Cinder plays tier 1 of the versus play at its 90 APM opening pace.",
+    "override": {
+      "mechanics": {
+        "versus": {
+          "botDifficulty": 1,
+          "botOverrides": {
+            "maxApm": 90,
+            "reactionMs": [
+              500,
+              900
+            ]
+          }
+        }
+      },
+      "role": "rival"
+    }
+  },
+  "6": {
+    "reason": "Offer a silver route through efficient digging before the prepared Quad lesson on orb 12. Two Quads within 55 seconds reward a return visit.",
+    "override": {
+      "stars": {
+        "one": {
+          "lines": 20
+        },
+        "two": {
+          "lines": 20,
+          "bonuses": 1
+        },
+        "three": {
+          "lines": 20,
+          "quads": 2,
+          "time": 55
+        }
+      },
+      "role": "teach",
+      "victory": {
+        "bonuses": [
+          {
+            "type": "quad-count",
+            "target": 1
+          },
+          {
+            "type": "pieces",
+            "target": 45
+          }
+        ]
+      }
+    }
+  },
+  "7": {
+    "reason": "Keep; retag it as practice.",
+    "override": {
+      "role": "reinforce"
+    }
+  },
+  "8": {
+    "reason": "The chapter's digging twist now digs: dig out the 6 rubble rows (phase 3's new goal) at chapter 2's pace (450 → 331 ms instead of 320 → 151). Two and three stars for digging fast.",
+    "override": {
+      "mechanics": {
+        "board": {
+          "startingRows": 6
+        },
+        "speed": {
+          "startLevel": 3,
+          "fixedDropInterval": 450,
+          "levelProgression": true
+        }
+      },
+      "victory": {
+        "primary": {
+          "type": "rubble",
+          "target": 6
+        },
+        "bonuses": []
+      },
+      "stars": {
+        "one": {
+          "rubbleCleared": 6
+        },
+        "two": {
+          "rubbleCleared": 6,
+          "time": 50
+        },
+        "three": {
+          "rubbleCleared": 6,
+          "time": 25
+        }
+      },
+      "role": "twist"
+    }
+  },
+  "9": {
+    "reason": "The boss joins the chapter's two ideas: cascades out of a deep seabed (8 rubble rows, 8 cascades instead of 10). Drop the inert multiplier and the uncounted 6-wave bonus.",
+    "override": {
+      "mechanics": {
+        "board": {
+          "startingRows": 8
+        }
+      },
+      "victory": {
+        "primary": {
+          "type": "cascade",
+          "target": 8
+        },
+        "bonuses": []
+      },
+      "modifiers": {
+        "active": [
+          "gravity-cascade"
+        ]
+      },
+      "stars": {
+        "one": {
+          "cascades": 8
+        },
+        "two": {
+          "cascades": 8,
+          "maxCascadeDepth": 3
+        },
+        "three": {
+          "cascades": 8,
+          "maxCascadeDepth": 4
+        }
+      }
+    }
+  },
+  "10": {
+    "reason": "Coral plays tier 2 at 120 APM.",
+    "override": {
+      "mechanics": {
+        "versus": {
+          "botDifficulty": 2,
+          "botOverrides": {
+            "maxApm": 120,
+            "reactionMs": [
+              420,
+              760
+            ]
+          }
+        }
+      },
+      "role": "rival"
+    }
+  },
+  "11": {
+    "reason": "Arrival at 450 → 331 ms instead of 205 → 120, with 26 lines. Star times ask a real pace.",
+    "override": {
+      "mechanics": {
+        "speed": {
+          "startLevel": 3,
+          "fixedDropInterval": 450,
+          "levelProgression": true
+        }
+      },
+      "victory": {
+        "primary": {
+          "type": "lines",
+          "target": 26
+        }
+      },
+      "stars": {
+        "one": {
+          "lines": 26
+        },
+        "two": {
+          "lines": 26,
+          "time": 100
+        },
+        "three": {
+          "lines": 26,
+          "time": 75,
+          "bonuses": 1
+        }
+      }
+    }
+  },
+  "12": {
+    "reason": "Replace the copy of orb 1 with the campaign's missing lesson, the Quad: clear 3 Quads at a calm 600 ms. Two stars for no singles or within 60 pieces, three for both. Phase 2 adds a prepared open-column well.",
+    "override": {
+      "mechanics": {
+        "speed": {
+          "startLevel": 2,
+          "fixedDropInterval": 600,
+          "levelProgression": false
+        },
+        "board": {
+          "opening": [
+            "XXXXXXXXX.",
+            "XXXXXXXXX.",
+            "XXXXXXXXX.",
+            "XXXXXXXXX."
+          ]
+        }
+      },
+      "victory": {
+        "primary": {
+          "type": "quads",
+          "target": 3
+        },
+        "failure": {
+          "type": "top-out",
+          "value": null
+        },
+        "bonuses": [
+          {
+            "type": "no-singles"
+          },
+          {
+            "type": "pieces",
+            "target": 60
+          }
+        ]
+      },
+      "stars": {
+        "one": {
+          "quads": 3
+        },
+        "two": {
+          "quads": 3,
+          "bonuses": 1
+        },
+        "three": {
+          "quads": 3,
+          "bonuses": 2
+        }
+      },
+      "mechanicFocus": "quads"
+    }
+  },
+  "13": {
+    "reason": "The first score orb, taught as one: 450 → 263 ms instead of 320 → 151 (start level 3, so the target rises 10% to 16,500). Stars: 2 Quads, then 4, which a Quad builder reaches before the goal; no chain.",
+    "override": {
+      "mechanics": {
+        "speed": {
+          "startLevel": 3,
+          "fixedDropInterval": 450,
+          "levelProgression": true
+        }
+      },
+      "victory": {
+        "primary": {
+          "type": "score",
+          "target": 16500
+        },
+        "bonuses": [
+          {
+            "type": "quad-count",
+            "target": 4
+          }
+        ]
+      },
+      "stars": {
+        "one": {
+          "score": 16500
+        },
+        "two": {
+          "score": 16500,
+          "quads": 2
+        },
+        "three": {
+          "score": 16500,
+          "quads": 4
+        }
+      },
+      "role": "teach"
+    }
+  },
+  "14": {
+    "reason": "The first chain goal (\"Trigger a 3-wave chain\") instead of a third cascade lesson. Stars for building it on purpose: within 100 pieces, then within 30. A prepared opening was tried and rejected (§5.9).",
+    "override": {
+      "mechanics": {
+        "board": {
+          "startingRows": 2
+        }
+      },
+      "victory": {
+        "primary": {
+          "type": "combo",
+          "target": 3
+        },
+        "bonuses": [
+          {
+            "type": "pieces",
+            "target": 100
+          },
+          {
+            "type": "pieces",
+            "target": 30
+          }
+        ]
+      },
+      "stars": {
+        "one": {
+          "combo": 3
+        },
+        "two": {
+          "combo": 3,
+          "bonuses": 1
+        },
+        "three": {
+          "combo": 3,
+          "bonuses": 2
+        }
+      },
+      "mechanicFocus": "chain"
+    }
+  },
+  "15": {
+    "reason": "Keep the generous clock; pace 330 → 216 ms instead of 151 → 99. Star times ask 0.7 and 1.1 pieces/s; the separate time bonus folds into them.",
+    "override": {
+      "mechanics": {
+        "speed": {
+          "startLevel": 4,
+          "fixedDropInterval": 330,
+          "levelProgression": true
+        }
+      },
+      "victory": {
+        "bonuses": []
+      },
+      "stars": {
+        "one": {
+          "lines": 42
+        },
+        "two": {
+          "lines": 42,
+          "time": 160
+        },
+        "three": {
+          "lines": 42,
+          "time": 100
+        }
+      }
+    }
+  },
+  "16": {
+    "reason": "A real rest: 30 lines instead of 45, without the cliff (700 → 330 ms). Stars: 3 Quads, then also a fourth Quad or no singles, the player's choice.",
+    "override": {
+      "mechanics": {
+        "speed": {
+          "startLevel": 2,
+          "fixedDropInterval": 700,
+          "levelProgression": true
+        }
+      },
+      "victory": {
+        "primary": {
+          "type": "lines",
+          "target": 30
+        },
+        "bonuses": [
+          {
+            "type": "quad-count",
+            "target": 4
+          },
+          {
+            "type": "no-singles"
+          }
+        ]
+      },
+      "stars": {
+        "one": {
+          "lines": 30
+        },
+        "two": {
+          "lines": 30,
+          "quads": 3
+        },
+        "three": {
+          "lines": 30,
+          "quads": 3,
+          "bonuses": 1
+        }
+      }
+    }
+  },
+  "17": {
+    "reason": "The boss tests what the chapter taught: score with the multiplier against the chapter's tightest clock (30,000 in 300 s) over a cascade floor. Pass 2: a hybrid well paced like the chapter's test (350 ms, speeding up with lines) instead of a calm 670 ms, so the boss is its chapter's peak, not its easiest orb.",
+    "override": {
+      "victory": {
+        "primary": {
+          "type": "score",
+          "target": 30000
+        },
+        "failure": {
+          "type": "time",
+          "value": 300
+        },
+        "bonuses": [
+          {
+            "type": "max-cascade-depth",
+            "target": 4
+          }
+        ]
+      },
+      "modifiers": {
+        "active": [
+          "gravity-cascade",
+          "combo-multiplier",
+          "time-attack"
+        ]
+      },
+      "stars": {
+        "one": {
+          "score": 30000
+        },
+        "two": {
+          "score": 30000,
+          "time": 180
+        },
+        "three": {
+          "score": 30000,
+          "time": 140,
+          "maxCascadeDepth": 4
+        }
+      },
+      "mechanics": {
+        "baseMode": "hybrid",
+        "speed": {
+          "startLevel": 4,
+          "fixedDropInterval": 350,
+          "levelProgression": true
+        }
+      },
+      "mechanicFocus": "score"
+    }
+  },
+  "18": {
+    "reason": "Willow plays tier 3 at 165 APM.",
+    "override": {
+      "mechanics": {
+        "versus": {
+          "botDifficulty": 3,
+          "botOverrides": {
+            "maxApm": 165,
+            "reactionMs": [
+              320,
+              620
+            ]
+          }
+        }
+      },
+      "role": "rival"
+    }
+  },
+  "19": {
+    "reason": "Arrival at 330 ms instead of 120. Three stars ask for 8 cascades instead of cascades and Quads in one run.",
+    "override": {
+      "mechanics": {
+        "speed": {
+          "startLevel": 5,
+          "fixedDropInterval": 330,
+          "levelProgression": true
+        }
+      },
+      "victory": {
+        "bonuses": [
+          {
+            "type": "cascade",
+            "target": 8
+          }
+        ]
+      },
+      "stars": {
+        "one": {
+          "score": 22000
+        },
+        "two": {
+          "score": 22000,
+          "cascades": 3
+        },
+        "three": {
+          "score": 22000,
+          "cascades": 8
+        }
+      }
+    }
+  },
+  "21": {
+    "reason": "Pass 2: digging comes back as practice (taught on orb 8): dig 8 of 10 rubble rows out of the ice at a steady 300 ms, instead of a third score orb in a chapter that alternated score and cascades.",
+    "override": {
+      "mechanics": {
+        "speed": {
+          "startLevel": 4,
+          "fixedDropInterval": 300,
+          "levelProgression": false
+        },
+        "baseMode": "standard",
+        "board": {
+          "columns": 10,
+          "rows": 20,
+          "startingRows": 10
+        }
+      },
+      "victory": {
+        "bonuses": [],
+        "primary": {
+          "type": "rubble",
+          "target": 8
+        },
+        "failure": {
+          "type": "top-out",
+          "value": null
+        }
+      },
+      "stars": {
+        "one": {
+          "rubbleCleared": 8
+        },
+        "two": {
+          "rubbleCleared": 8,
+          "time": 50
+        },
+        "three": {
+          "rubbleCleared": 8,
+          "time": 35
+        }
+      },
+      "modifiers": {
+        "active": []
+      },
+      "mechanicFocus": "dig"
+    }
+  },
+  "22": {
+    "reason": "Seven cascades give the player a rest after the mountain dig. A three-wave chain earns silver. A fourth wave or finishing within 55 pieces earns gold.",
+    "override": {
+      "mechanics": {
+        "board": {
+          "startingRows": 5
+        },
+        "speed": {
+          "fixedDropInterval": 680
+        }
+      },
+      "victory": {
+        "primary": {
+          "type": "cascade",
+          "target": 7
+        },
+        "bonuses": [
+          {
+            "type": "max-cascade-depth",
+            "target": 4
+          },
+          {
+            "type": "pieces",
+            "target": 55
+          }
+        ]
+      },
+      "stars": {
+        "one": {
+          "cascades": 7
+        },
+        "two": {
+          "cascades": 7,
+          "maxCascadeDepth": 3
+        },
+        "three": {
+          "cascades": 7,
+          "maxCascadeDepth": 3,
+          "bonuses": 1
+        }
+      },
+      "role": "release"
+    }
+  },
+  "23": {
+    "reason": "Slower gravity (250 → 184 ms instead of 99 → 84) with a real clock: 34 lines in 200 s. Star times ask 0.8 and 1.17 pieces/s.",
+    "override": {
+      "mechanics": {
+        "speed": {
+          "startLevel": 6,
+          "fixedDropInterval": 250,
+          "levelProgression": true
+        }
+      },
+      "victory": {
+        "primary": {
+          "type": "lines",
+          "target": 34
+        },
+        "failure": {
+          "type": "time",
+          "value": 200
+        },
+        "bonuses": []
+      },
+      "stars": {
+        "one": {
+          "lines": 34
+        },
+        "two": {
+          "lines": 34,
+          "time": 110
+        },
+        "three": {
+          "lines": 34,
+          "time": 75
+        }
+      }
+    }
+  },
+  "24": {
+    "reason": "Pass 2: the rising tide arrives gently, as chapter 4's twist on the coast where the land rises: clear 24 lines while rubble rows rise (the first at 15 s, every 12 s tightening to every 6 s over 4 minutes) at a steady 500 ms.",
+    "override": {
+      "mechanics": {
+        "speed": {
+          "startLevel": 2,
+          "fixedDropInterval": 500,
+          "levelProgression": false
+        },
+        "baseMode": "standard",
+        "board": {
+          "columns": 10,
+          "rows": 20,
+          "startingRows": 0
+        },
+        "tide": {
+          "startSeconds": 15,
+          "firstEverySeconds": 12,
+          "lastEverySeconds": 6,
+          "rampSeconds": 240
+        }
+      },
+      "victory": {
+        "primary": {
+          "type": "lines",
+          "target": 24
+        },
+        "bonuses": [],
+        "failure": {
+          "type": "top-out",
+          "value": null
+        }
+      },
+      "stars": {
+        "one": {
+          "lines": 24
+        },
+        "two": {
+          "lines": 24,
+          "time": 80
+        },
+        "three": {
+          "lines": 24,
+          "time": 50
+        }
+      },
+      "modifiers": {
+        "active": []
+      },
+      "role": "twist"
+    }
+  },
+  "25": {
+    "reason": "Keep the tall-well cascade boss. Drop the inert multiplier and the uncounted 6-wave bonus.",
+    "override": {
+      "victory": {
+        "bonuses": []
+      },
+      "modifiers": {
+        "active": [
+          "gravity-cascade"
+        ]
+      }
+    }
+  },
+  "26": {
+    "reason": "Frost plays tier 4 at 230 APM.",
+    "override": {
+      "mechanics": {
+        "versus": {
+          "botDifficulty": 4,
+          "botOverrides": {
+            "maxApm": 230,
+            "reactionMs": [
+              240,
+              480
+            ]
+          }
+        }
+      },
+      "role": "rival"
+    }
+  },
+  "27": {
+    "reason": "Arrival at 260 ms instead of 84. Stars become reachable: 5 cascades, then 12, with no Quads in the same tier.",
+    "override": {
+      "mechanics": {
+        "speed": {
+          "startLevel": 7,
+          "fixedDropInterval": 260,
+          "levelProgression": true
+        }
+      },
+      "victory": {
+        "bonuses": [
+          {
+            "type": "cascade",
+            "target": 12
+          }
+        ]
+      },
+      "stars": {
+        "one": {
+          "score": 34000
+        },
+        "two": {
+          "score": 34000,
+          "cascades": 5
+        },
+        "three": {
+          "score": 34000,
+          "cascades": 12
+        }
+      }
+    }
+  },
+  "28": {
+    "reason": "Remove the cliff (600 → 283 ms); 32 lines instead of 42.",
+    "override": {
+      "mechanics": {
+        "speed": {
+          "startLevel": 2,
+          "fixedDropInterval": 600,
+          "levelProgression": true
+        }
+      },
+      "victory": {
+        "primary": {
+          "type": "lines",
+          "target": 32
+        }
+      },
+      "stars": {
+        "one": {
+          "lines": 32
+        },
+        "two": {
+          "lines": 32,
+          "time": 95
+        },
+        "three": {
+          "lines": 32,
+          "time": 75,
+          "bonuses": 1
+        }
+      }
+    }
+  },
+  "29": {
+    "reason": "Chapter 5's precision lesson: 5 Quads at a steady 280 ms, no multiplier. Two stars within 105 pieces; three stars also within 95 s.",
+    "override": {
+      "mechanics": {
+        "speed": {
+          "startLevel": 4,
+          "fixedDropInterval": 280,
+          "levelProgression": false
+        }
+      },
+      "victory": {
+        "primary": {
+          "type": "quads",
+          "target": 5
+        },
+        "bonuses": [
+          {
+            "type": "pieces",
+            "target": 105
+          }
+        ]
+      },
+      "modifiers": {
+        "active": []
+      },
+      "stars": {
+        "one": {
+          "quads": 5
+        },
+        "two": {
+          "quads": 5,
+          "bonuses": 1
+        },
+        "three": {
+          "quads": 5,
+          "bonuses": 1,
+          "time": 95
+        }
+      },
+      "role": "teach",
+      "mechanicFocus": "quads"
+    }
+  },
+  "30": {
+    "reason": "Drop the inert multiplier. The chain asks fit the chapter: 3 and 4 waves instead of 4 and 5. Three stars take a 3-wave chain and either a 4-wave chain or the ten cascades within 70 pieces.",
+    "override": {
+      "modifiers": {
+        "active": [
+          "gravity-cascade"
+        ]
+      },
+      "victory": {
+        "bonuses": [
+          {
+            "type": "max-cascade-depth",
+            "target": 4
+          },
+          {
+            "type": "pieces",
+            "target": 70
+          }
+        ]
+      },
+      "stars": {
+        "one": {
+          "cascades": 10
+        },
+        "two": {
+          "cascades": 10,
+          "maxCascadeDepth": 3
+        },
+        "three": {
+          "cascades": 10,
+          "maxCascadeDepth": 3,
+          "bonuses": 1
+        }
+      }
+    }
+  },
+  "31": {
+    "reason": "Pass 2: chapter 5 tests the Quads it teaches on orb 29: 4 Quads within 150 s at a steady 240 ms, instead of the third lines-against-the-clock test.",
+    "override": {
+      "mechanics": {
+        "speed": {
+          "startLevel": 6,
+          "fixedDropInterval": 240,
+          "levelProgression": false
+        },
+        "baseMode": "standard",
+        "board": {
+          "columns": 10,
+          "rows": 20,
+          "startingRows": 0
+        }
+      },
+      "victory": {
+        "bonuses": [],
+        "primary": {
+          "type": "quads",
+          "target": 4
+        },
+        "failure": {
+          "type": "time",
+          "value": 150
+        }
+      },
+      "stars": {
+        "one": {
+          "quads": 4
+        },
+        "two": {
+          "quads": 4,
+          "time": 70
+        },
+        "three": {
+          "quads": 4,
+          "time": 50
+        }
+      },
+      "modifiers": {
+        "active": [
+          "time-attack"
+        ]
+      },
+      "mechanicFocus": "quads"
+    }
+  },
+  "32": {
+    "reason": "Bank eight cascades after the Quad race. Players can stay on the showcase lap for 18 cascades, then 22 with a four-wave chain.",
+    "override": {
+      "mechanics": {
+        "board": {
+          "startingRows": 6
+        },
+        "speed": {
+          "fixedDropInterval": 580
+        }
+      },
+      "victory": {
+        "primary": {
+          "type": "cascade",
+          "target": 8
+        },
+        "bonuses": []
+      },
+      "modifiers": {
+        "active": [
+          "gravity-cascade"
+        ]
+      },
+      "stars": {
+        "one": {
+          "cascades": 8
+        },
+        "two": {
+          "cascades": 18
+        },
+        "three": {
+          "cascades": 22,
+          "maxCascadeDepth": 4
+        }
+      },
+      "role": "release"
+    }
+  },
+  "33": {
+    "reason": "Take the wall down to a peak: 55,000 in 250 s at 150 → 122 ms needs 0.64 pieces/s instead of 1.11. Three stars: within 145 s and 12 cascades.",
+    "override": {
+      "mechanics": {
+        "speed": {
+          "startLevel": 11,
+          "fixedDropInterval": 150,
+          "levelProgression": true
+        }
+      },
+      "victory": {
+        "primary": {
+          "type": "score",
+          "target": 55000
+        },
+        "failure": {
+          "type": "time",
+          "value": 250
+        },
+        "bonuses": [
+          {
+            "type": "cascade",
+            "target": 12
+          }
+        ]
+      },
+      "stars": {
+        "one": {
+          "score": 55000
+        },
+        "two": {
+          "score": 55000,
+          "time": 180
+        },
+        "three": {
+          "score": 55000,
+          "time": 145,
+          "bonuses": 1
+        }
+      }
+    }
+  },
+  "34": {
+    "reason": "Zephyr plays tier 5 at 270 APM.",
+    "override": {
+      "mechanics": {
+        "versus": {
+          "botDifficulty": 5,
+          "botOverrides": {
+            "maxApm": 270,
+            "reactionMs": [
+              200,
+              380
+            ]
+          }
+        }
+      },
+      "role": "rival"
+    }
+  },
+  "35": {
+    "reason": "Pace 240 → 134 ms instead of 151 → 84. Stars become reachable: 3 Quads, then 5, with no chain in the same tier.",
+    "override": {
+      "mechanics": {
+        "speed": {
+          "startLevel": 4,
+          "fixedDropInterval": 240,
+          "levelProgression": true
+        }
+      },
+      "victory": {
+        "bonuses": [
+          {
+            "type": "quad-count",
+            "target": 5
+          }
+        ]
+      },
+      "stars": {
+        "one": {
+          "score": 28000
+        },
+        "two": {
+          "score": 28000,
+          "quads": 3
+        },
+        "three": {
+          "score": 28000,
+          "quads": 5
+        }
+      }
+    }
+  },
+  "36": {
+    "reason": "Keep; retag it, and drop the inert multiplier and the uncounted bonus.",
+    "override": {
+      "victory": {
+        "bonuses": []
+      },
+      "modifiers": {
+        "active": [
+          "gravity-cascade"
+        ]
+      },
+      "role": "reinforce"
+    }
+  },
+  "37": {
+    "reason": "Pace 220 → 162 ms instead of 99 → 73. Star times are real: 1.0 and 1.4 pieces/s instead of 0.35 and 0.46.",
+    "override": {
+      "mechanics": {
+        "speed": {
+          "startLevel": 6,
+          "fixedDropInterval": 220,
+          "levelProgression": true
+        }
+      },
+      "victory": {
+        "bonuses": []
+      },
+      "stars": {
+        "one": {
+          "lines": 36
+        },
+        "two": {
+          "lines": 36,
+          "time": 85
+        },
+        "three": {
+          "lines": 36,
+          "time": 60
+        }
+      }
+    }
+  },
+  "38": {
+    "reason": "Pass 2: the blood moon pulls the tide: clear 36 lines while rubble rows rise (the first at 6 s, every 6 s tightening to every 3 s over 150 s) at a steady 190 ms, instead of the third score race in a cascade well.",
+    "override": {
+      "mechanics": {
+        "speed": {
+          "startLevel": 8,
+          "fixedDropInterval": 190,
+          "levelProgression": false
+        },
+        "baseMode": "standard",
+        "board": {
+          "columns": 10,
+          "rows": 20,
+          "startingRows": 0
+        },
+        "tide": {
+          "startSeconds": 6,
+          "firstEverySeconds": 6,
+          "lastEverySeconds": 3,
+          "rampSeconds": 150
+        }
+      },
+      "victory": {
+        "primary": {
+          "type": "lines",
+          "target": 36
+        },
+        "failure": {
+          "type": "top-out",
+          "value": null
+        },
+        "bonuses": []
+      },
+      "stars": {
+        "one": {
+          "lines": 36
+        },
+        "two": {
+          "lines": 36,
+          "time": 80
+        },
+        "three": {
+          "lines": 36,
+          "time": 60
+        }
+      },
+      "modifiers": {
+        "active": []
+      }
+    }
+  },
+  "39": {
+    "reason": "Phase 3's survival goal (\"keep the ember alive\"): last 90 seconds from 170 ms while the pieces fall twice as fast every 2:30, then play on; two stars at 3 minutes, three at 5. A twist between the arc's two tests instead of a 70,000-point grind at 65 → 44 ms.",
+    "override": {
+      "victoryLapPolicy": "showcase",
+      "mechanics": {
+        "speed": {
+          "startLevel": 9,
+          "fixedDropInterval": 170,
+          "levelProgression": false,
+          "doublingSeconds": 150
+        }
+      },
+      "modifiers": {
+        "active": []
+      },
+      "victory": {
+        "primary": {
+          "type": "time",
+          "target": 90
+        },
+        "failure": {
+          "type": "top-out",
+          "value": null
+        },
+        "bonuses": []
+      },
+      "stars": {
+        "one": {
+          "survived": 90
+        },
+        "two": {
+          "survived": 180
+        },
+        "three": {
+          "survived": 300
+        }
+      },
+      "role": "twist"
+    }
+  },
+  "40": {
+    "reason": "Pass 2: lines against the clock in a cascade well (40 lines in 180 s, 30 rows over 6 rubble rows, 190 ms), so cascades pay under time pressure, instead of the fourth plain lines-against-the-clock test.",
+    "override": {
+      "mechanics": {
+        "speed": {
+          "startLevel": 8,
+          "fixedDropInterval": 190,
+          "levelProgression": false
+        },
+        "baseMode": "hybrid",
+        "board": {
+          "columns": 10,
+          "rows": 30,
+          "startingRows": 6
+        }
+      },
+      "victory": {
+        "primary": {
+          "type": "lines",
+          "target": 40
+        },
+        "failure": {
+          "type": "time",
+          "value": 180
+        },
+        "bonuses": []
+      },
+      "stars": {
+        "one": {
+          "lines": 40
+        },
+        "two": {
+          "lines": 40,
+          "time": 90
+        },
+        "three": {
+          "lines": 40,
+          "time": 65
+        }
+      },
+      "modifiers": {
+        "active": [
+          "gravity-cascade",
+          "time-attack"
+        ]
+      }
+    }
+  },
+  "41": {
+    "reason": "Bank the space rest at 24,000 points between the cascade race and the dig. Silver rewards a 100-second finish. Gold rewards four Quads within 85 seconds. The shorter score goal can finish a deliberate build before the fifth Quad.",
+    "override": {
+      "mechanics": {
+        "speed": {
+          "startLevel": 8,
+          "fixedDropInterval": 200,
+          "levelProgression": true
+        }
+      },
+      "victory": {
+        "primary": {
+          "type": "score",
+          "target": 24000
+        },
+        "bonuses": [
+          {
+            "type": "quad-count",
+            "target": 4
+          }
+        ]
+      },
+      "stars": {
+        "one": {
+          "score": 24000
+        },
+        "two": {
+          "score": 24000,
+          "time": 100
+        },
+        "three": {
+          "score": 24000,
+          "time": 85,
+          "bonuses": 1
+        }
+      },
+      "role": "release"
+    }
+  },
+  "42": {
+    "reason": "Pass 2: the digging test: dig 11 of 12 rubble rows out of the dunes at a steady 180 ms in a 24-row well, instead of the chapter's third lines orb.",
+    "override": {
+      "mechanics": {
+        "speed": {
+          "startLevel": 8,
+          "fixedDropInterval": 180,
+          "levelProgression": false
+        },
+        "baseMode": "hybrid",
+        "board": {
+          "columns": 10,
+          "rows": 24,
+          "startingRows": 12
+        }
+      },
+      "victory": {
+        "primary": {
+          "type": "rubble",
+          "target": 11
+        },
+        "bonuses": [],
+        "failure": {
+          "type": "top-out",
+          "value": null
+        }
+      },
+      "stars": {
+        "one": {
+          "rubbleCleared": 11
+        },
+        "two": {
+          "rubbleCleared": 11,
+          "time": 90
+        },
+        "three": {
+          "rubbleCleared": 11,
+          "time": 65
+        }
+      },
+      "modifiers": {
+        "active": []
+      },
+      "mechanicFocus": "dig"
+    }
+  },
+  "43": {
+    "reason": "Pass 2 (D9): the chain comes back as practice: trigger a 4-wave chain within 150 s in a deep rubble well (32 rows, 10 rubble rows, 600 ms), instead of a second score rest.",
+    "override": {
+      "mechanics": {
+        "speed": {
+          "startLevel": 4,
+          "fixedDropInterval": 600,
+          "levelProgression": false
+        },
+        "baseMode": "infinity",
+        "board": {
+          "columns": 10,
+          "rows": 32,
+          "startingRows": 10
+        }
+      },
+      "modifiers": {
+        "active": [
+          "gravity-cascade",
+          "time-attack"
+        ]
+      },
+      "victory": {
+        "primary": {
+          "type": "combo",
+          "target": 4
+        },
+        "bonuses": [
+          {
+            "type": "pieces",
+            "target": 60
+          },
+          {
+            "type": "pieces",
+            "target": 40
+          }
+        ],
+        "failure": {
+          "type": "time",
+          "value": 150
+        }
+      },
+      "stars": {
+        "one": {
+          "combo": 4
+        },
+        "two": {
+          "combo": 4,
+          "bonuses": 1
+        },
+        "three": {
+          "combo": 4,
+          "bonuses": 2
+        }
+      },
+      "role": "reinforce",
+      "mechanicFocus": "chain"
+    }
+  },
+  "44": {
+    "reason": "No longer a duplicate of orb 43: a Quad practice, 6 Quads at a steady 260 ms. Two stars within 120 pieces; three also within 100 s.",
+    "override": {
+      "mechanics": {
+        "speed": {
+          "startLevel": 5,
+          "fixedDropInterval": 260,
+          "levelProgression": false
+        }
+      },
+      "victory": {
+        "primary": {
+          "type": "quads",
+          "target": 6
+        },
+        "bonuses": [
+          {
+            "type": "pieces",
+            "target": 120
+          }
+        ]
+      },
+      "modifiers": {
+        "active": []
+      },
+      "stars": {
+        "one": {
+          "quads": 6
+        },
+        "two": {
+          "quads": 6,
+          "bonuses": 1
+        },
+        "three": {
+          "quads": 6,
+          "bonuses": 1,
+          "time": 100
+        }
+      },
+      "role": "reinforce",
+      "mechanicFocus": "quads"
+    }
+  },
+  "45": {
+    "reason": "The wall becomes the second arc's test: 68,000 in 240 s at 145 → 115 ms (0.75 pieces/s instead of 1.25). Three stars: within 150 s and 15 cascades.",
+    "override": {
+      "mechanics": {
+        "speed": {
+          "startLevel": 13,
+          "fixedDropInterval": 145,
+          "levelProgression": true
+        }
+      },
+      "victory": {
+        "primary": {
+          "type": "score",
+          "target": 68000
+        },
+        "failure": {
+          "type": "time",
+          "value": 240
+        },
+        "bonuses": [
+          {
+            "type": "cascade",
+            "target": 15
+          }
+        ]
+      },
+      "stars": {
+        "one": {
+          "score": 68000
+        },
+        "two": {
+          "score": 68000,
+          "time": 180
+        },
+        "three": {
+          "score": 68000,
+          "time": 150,
+          "bonuses": 1
+        }
+      },
+      "role": "test"
+    }
+  },
+  "46": {
+    "reason": "A real rest: 32 lines at 260 → 207 ms instead of 42 at 73 → 58.",
+    "override": {
+      "mechanics": {
+        "speed": {
+          "startLevel": 8,
+          "fixedDropInterval": 260,
+          "levelProgression": true
+        }
+      },
+      "victory": {
+        "primary": {
+          "type": "lines",
+          "target": 32
+        }
+      },
+      "stars": {
+        "one": {
+          "lines": 32
+        },
+        "two": {
+          "lines": 32,
+          "time": 85
+        },
+        "three": {
+          "lines": 32,
+          "time": 70,
+          "bonuses": 1
+        }
+      }
+    }
+  },
+  "47": {
+    "reason": "The black hole stays the chapter's signature: 20 cascades instead of 25. Pass 2: a steady 340 ms instead of 520 brings it within 0.3 of its chapter's test on the index; stars after the goal at 26 cascades with a 4-wave chain, then 32 with a 5-wave chain.",
+    "override": {
+      "mechanics": {
+        "speed": {
+          "fixedDropInterval": 340
+        }
+      },
+      "victory": {
+        "primary": {
+          "type": "cascade",
+          "target": 20
+        },
+        "bonuses": []
+      },
+      "modifiers": {
+        "active": [
+          "gravity-cascade"
+        ]
+      },
+      "stars": {
+        "one": {
+          "cascades": 20
+        },
+        "two": {
+          "cascades": 26,
+          "maxCascadeDepth": 4
+        },
+        "three": {
+          "cascades": 32,
+          "maxCascadeDepth": 5
+        }
+      }
+    }
+  },
+  "48": {
+    "reason": "Nova plays tier 6 at 300 APM.",
+    "override": {
+      "mechanics": {
+        "versus": {
+          "botDifficulty": 6,
+          "botOverrides": {
+            "maxApm": 300,
+            "reactionMs": [
+              180,
+              340
+            ]
+          }
+        }
+      },
+      "role": "rival"
+    }
+  },
+  "49": {
+    "reason": "Arrival at 200 ms instead of 84. Stars become reachable: 4 Quads, then 6 (no policy reached the shipped 8).",
+    "override": {
+      "mechanics": {
+        "speed": {
+          "startLevel": 7,
+          "fixedDropInterval": 200,
+          "levelProgression": true
+        }
+      },
+      "victory": {
+        "bonuses": [
+          {
+            "type": "quad-count",
+            "target": 6
+          }
+        ]
+      },
+      "stars": {
+        "one": {
+          "score": 36000
+        },
+        "two": {
+          "score": 36000,
+          "quads": 4
+        },
+        "three": {
+          "score": 36000,
+          "quads": 6
+        }
+      }
+    }
+  },
+  "50": {
+    "reason": "Pass 2: the sprint moves here from orb 51 (50 lines in 180 s, 120 → 105 ms, still the campaign's fastest), so chapter 7 opens on its hardest test and the mirrored twist follows; replaces the fifth score race in a cascade well.",
+    "override": {
+      "mechanics": {
+        "speed": {
+          "startLevel": 13,
+          "fixedDropInterval": 120,
+          "levelProgression": true
+        },
+        "baseMode": "standard",
+        "board": {
+          "columns": 10,
+          "rows": 20,
+          "startingRows": 0
+        }
+      },
+      "victory": {
+        "primary": {
+          "type": "lines",
+          "target": 50
+        },
+        "failure": {
+          "type": "time",
+          "value": 180
+        },
+        "bonuses": []
+      },
+      "stars": {
+        "one": {
+          "lines": 50
+        },
+        "two": {
+          "lines": 50,
+          "time": 125
+        },
+        "three": {
+          "lines": 50,
+          "time": 90
+        }
+      },
+      "modifiers": {
+        "active": [
+          "time-attack"
+        ]
+      },
+      "role": "test"
+    }
+  },
+  "51": {
+    "reason": "Pass 2 (D10): a twist that changes the rules: 30 lines with mirrored controls at a steady 240 ms, so mirroring is chapter 7's \"other dimension\" with orb 53. The sprint moved to orb 50.",
+    "override": {
+      "mechanics": {
+        "speed": {
+          "startLevel": 6,
+          "fixedDropInterval": 240,
+          "levelProgression": false
+        },
+        "baseMode": "standard",
+        "board": {
+          "columns": 10,
+          "rows": 20,
+          "startingRows": 0
+        }
+      },
+      "victory": {
+        "primary": {
+          "type": "lines",
+          "target": 30
+        },
+        "failure": {
+          "type": "top-out",
+          "value": null
+        },
+        "bonuses": []
+      },
+      "stars": {
+        "one": {
+          "lines": 30
+        },
+        "two": {
+          "lines": 30,
+          "time": 80
+        },
+        "three": {
+          "lines": 30,
+          "time": 55
+        }
+      },
+      "modifiers": {
+        "active": [
+          "mirror"
+        ]
+      },
+      "role": "twist"
+    }
+  },
+  "52": {
+    "reason": "Pass 2 (D9): the chain test: trigger a 4-wave chain within 240 s from a one-row floor (27 rows, 550 ms), instead of a cascade count whose chains were only star asks. An empty floor made the chain a matter of luck (24 or 300 pieces).",
+    "override": {
+      "victory": {
+        "primary": {
+          "type": "combo",
+          "target": 4
+        },
+        "bonuses": [
+          {
+            "type": "pieces",
+            "target": 140
+          },
+          {
+            "type": "pieces",
+            "target": 100
+          }
+        ],
+        "failure": {
+          "type": "time",
+          "value": 240
+        }
+      },
+      "modifiers": {
+        "active": [
+          "gravity-cascade",
+          "time-attack"
+        ]
+      },
+      "stars": {
+        "one": {
+          "combo": 4
+        },
+        "two": {
+          "combo": 4,
+          "bonuses": 1
+        },
+        "three": {
+          "combo": 4,
+          "bonuses": 2
+        }
+      },
+      "mechanics": {
+        "baseMode": "infinity",
+        "board": {
+          "columns": 10,
+          "rows": 27,
+          "startingRows": 1
+        },
+        "speed": {
+          "startLevel": 4,
+          "fixedDropInterval": 550,
+          "levelProgression": false
+        }
+      },
+      "role": "test",
+      "mechanicFocus": "chain"
+    }
+  },
+  "53": {
+    "reason": "Chapter 7 is \"another dimension\": mirrored controls on a slow, short orb (24 lines, 500 ms, 3 rubble rows instead of 36 lines and 6).",
+    "override": {
+      "mechanics": {
+        "board": {
+          "startingRows": 3
+        }
+      },
+      "modifiers": {
+        "active": [
+          "gravity-cascade",
+          "mirror"
+        ]
+      },
+      "victory": {
+        "primary": {
+          "type": "lines",
+          "target": 24
+        },
+        "bonuses": []
+      },
+      "stars": {
+        "one": {
+          "lines": 24
+        },
+        "two": {
+          "lines": 24,
+          "time": 55
+        },
+        "three": {
+          "lines": 24,
+          "time": 40
+        }
+      }
+    }
+  },
+  "54": {
+    "reason": "Keep the rehearsal for orb 55; retag it.",
+    "override": {
+      "role": "reinforce"
+    }
+  },
+  "55": {
+    "reason": "The capstone stays the longest orb but becomes possible: 160,000 in 600 s (0.70 pieces/s instead of 0.98). Pass 2: a steady 340 ms instead of 500, so the ten-minute final exam asks more of a casual player.",
+    "override": {
+      "victory": {
+        "primary": {
+          "type": "score",
+          "target": 160000
+        },
+        "failure": {
+          "type": "time",
+          "value": 600
+        },
+        "bonuses": [
+          {
+            "type": "max-cascade-depth",
+            "target": 5
+          },
+          {
+            "type": "cascade",
+            "target": 26
+          }
+        ]
+      },
+      "stars": {
+        "one": {
+          "score": 160000
+        },
+        "two": {
+          "score": 210000,
+          "cascades": 20
+        },
+        "three": {
+          "score": 270000,
+          "cascades": 26,
+          "maxCascadeDepth": 5
+        }
+      },
+      "mechanics": {
+        "speed": {
+          "fixedDropInterval": 340
+        }
+      }
+    }
+  },
+  "56": {
+    "reason": "Prism plays tier 7 at 330 APM.",
+    "override": {
+      "mechanics": {
+        "versus": {
+          "botDifficulty": 7,
+          "botOverrides": {
+            "maxApm": 330,
+            "reactionMs": [
+              160,
+              320
+            ]
+          }
+        }
+      },
+      "role": "rival"
+    }
+  },
+  "57": {
+    "reason": "Pace 180 → 126 ms instead of 120 → 84. Real star times; three stars add 4 Quads.",
+    "override": {
+      "mechanics": {
+        "speed": {
+          "startLevel": 5,
+          "fixedDropInterval": 180,
+          "levelProgression": true
+        }
+      },
+      "victory": {
+        "bonuses": [
+          {
+            "type": "quad-count",
+            "target": 4
+          }
+        ]
+      },
+      "stars": {
+        "one": {
+          "lines": 30
+        },
+        "two": {
+          "lines": 30,
+          "time": 75
+        },
+        "three": {
+          "lines": 30,
+          "time": 65,
+          "bonuses": 1
+        }
+      },
+      "role": "arrival"
+    }
+  },
+  "58": {
+    "reason": "The encore's twist: survive the rising tide (rubble rows rise from below, faster over time) for a minute at a steady 160 ms, then play on; two stars at 2 minutes, three at 3. Replaces a score orb with the multiplier.",
+    "override": {
+      "victoryLapPolicy": "showcase",
+      "mechanics": {
+        "speed": {
+          "startLevel": 6,
+          "fixedDropInterval": 160,
+          "levelProgression": false
+        },
+        "tide": {
+          "startSeconds": 8,
+          "firstEverySeconds": 6,
+          "lastEverySeconds": 2,
+          "rampSeconds": 180
+        }
+      },
+      "modifiers": {
+        "active": []
+      },
+      "victory": {
+        "primary": {
+          "type": "time",
+          "target": 60
+        },
+        "failure": {
+          "type": "top-out",
+          "value": null
+        },
+        "bonuses": []
+      },
+      "stars": {
+        "one": {
+          "survived": 60
+        },
+        "two": {
+          "survived": 120
+        },
+        "three": {
+          "survived": 180
+        }
+      },
+      "role": "twist"
+    }
+  },
+  "59": {
+    "reason": "Pass 2 (D11): the encore boss scores under the rising tide its chapter just taught (the first row at 12 s, every 9 s tightening to every 3 s over 4 minutes) instead of racing a clock; the showcase lap ends when the tide wins. Stars after the goal: 115,000 with 14 cascades, then 140,000 with 18 and a 5-wave chain.",
+    "override": {
+      "mechanics": {
+        "speed": {
+          "startLevel": 11,
+          "fixedDropInterval": 150,
+          "levelProgression": true
+        },
+        "tide": {
+          "startSeconds": 12,
+          "firstEverySeconds": 9,
+          "lastEverySeconds": 3,
+          "rampSeconds": 240
+        }
+      },
+      "victory": {
+        "primary": {
+          "type": "score",
+          "target": 70000
+        },
+        "failure": {
+          "type": "top-out",
+          "value": null
+        },
+        "bonuses": [
+          {
+            "type": "cascade",
+            "target": 18
+          },
+          {
+            "type": "max-cascade-depth",
+            "target": 5
+          }
+        ]
+      },
+      "stars": {
+        "one": {
+          "score": 70000
+        },
+        "two": {
+          "score": 115000,
+          "cascades": 14
+        },
+        "three": {
+          "score": 140000,
+          "cascades": 18,
+          "maxCascadeDepth": 5
+        }
+      },
+      "modifiers": {
+        "active": [
+          "gravity-cascade",
+          "combo-multiplier"
+        ]
+      },
+      "role": "boss"
+    }
+  },
+  "60": {
+    "reason": "Neon plays tier 8 at 360 APM, the fastest hands R8 allows: a level 6 to 7 player is even with it.",
+    "override": {
+      "mechanics": {
+        "versus": {
+          "botDifficulty": 8,
+          "botOverrides": {
+            "maxApm": 360,
+            "reactionMs": [
+              140,
+              280
+            ]
+          }
+        }
+      },
+      "role": "rival"
+    }
+  }
+}

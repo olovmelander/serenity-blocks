@@ -8,6 +8,7 @@ import { startOdysseyGameplayLoop } from '../../src/core/game-modes/odyssey-game
 import { createOdysseyPhysicsCallbacks } from '../../src/core/game-modes/odyssey-physics-callbacks.js';
 import { GameplayHybridEngine } from '../../src/core/odyssey/GameplayHybridEngine.js';
 import { OdysseyBotMatch } from '../../src/core/odyssey/OdysseyBotMatch.js';
+import { LocalBotManager } from '../../src/core/ai/local-bot-manager.js';
 import { getLevelById } from '../../src/core/odyssey/data/levels.js';
 import {
     createOdysseyLevelSession, drainOdysseyLevelSession, fenceOdysseyPhysicsCallbacks,
@@ -18,7 +19,7 @@ import { resolveScenario } from './scenarios.mjs';
 import { createVirtualClock } from './virtual-clock.mjs';
 
 const FRAME_MS = 1000 / 60;
-// Human proxy scores use the rival tiers against which the original gates were measured.
+// The frozen rival (liveRival: false) plays the tiers the gates of passes 1-3 were measured against.
 const FROZEN_RIVAL_TIERS = { 5: 1, 10: 2, 18: 3, 26: 4, 34: 5, 48: 6, 56: 6, 60: 8 };
 const ATTACK_COUNTERS = [
     'attacksSent', 'attackLinesSent', 'cleanLinesSent',
@@ -96,11 +97,38 @@ export function summarizeFeel(samples) {
     };
 }
 
-/** Run real legacy Odyssey rules without presentation or campaign persistence. */
+/**
+ * The player's well played by a local versus bot of one level, built as the game builds it for a local
+ * match (its hands, its chance to read two levels up for a match, the versus play). It measures a rival
+ * in the game's own levels (level design pass 4).
+ */
+function seatLocalLevel(duel, actions, level, seed) {
+    const match = duel.multiplayer;
+    const manager = new LocalBotManager({
+        multiplayerState: match, actionFactory: (index) => (index === 0 ? actions : null), useLocalStyles: true,
+    });
+    // The manager reads its seed here only; a duel deals its pieces from each well's own stream.
+    const kept = match.sharedPieceSeed;
+    match.sharedPieceSeed = seed;
+    manager.configure([{ kind: 'bot', difficulty: level }, { kind: 'human' }], seed);
+    match.sharedPieceSeed = kept;
+    const controller = manager.controllers.get(0);
+    return {
+        update: (deltaMs, nowMs) => controller.update(deltaMs, nowMs),
+        reset: () => controller.reset(),
+        judgmentTier: controller.config.tier,
+    };
+}
+
+/**
+ * Run real Odyssey rules without presentation or campaign persistence. A rival orb plays the rival the
+ * game ships; liveRival: false plays the frozen rival and rules of the old campaign instrument instead.
+ * localLevel (2-10) seats a local versus bot of that level in the player's well of a rival orb.
+ */
 export async function runAttempt({
     levelId, seed, profile = 'stacker', maxSimSeconds = 900, maxPieces = 1200,
     wallBudgetMs = 20000, trace = false, scenarioId = 'baseline', cadenceId = 'native',
-    lapWindowSeconds = null, liveRival = false, rivalTier, judgment, configureRival,
+    lapWindowSeconds = null, liveRival = true, rivalTier, judgment, configureRival, localLevel = null,
 }) {
     const startedAt = wallNow();
     const profileId = typeof profile === 'string' ? profile : profile?.id || profile?.profileId;
@@ -483,7 +511,11 @@ export async function runAttempt({
             getMetrics: () => hybridEngine.getMetrics(),
             getPendingGarbage: () => session.duel?.multiplayer.garbageQueues[0].getTotalLines() || 0,
         });
-        fillBag(gameState.nextPieces, gameState.randomGenerator);
+        if (localLevel !== null) {
+            if (!session.duel || !liveRival) throw new RangeError('A local-level player needs a live rival orb');
+            humanBot = seatLocalLevel(session.duel, actions, localLevel, seed);
+        }
+        fillBag(gameState.nextPieces, gameState.randomGenerator, gameState.pieceRandomizer);
         spawnPiece(gameState, null, topOut);
         session.duel?.prepareBot();
         const frameRateController = {
@@ -584,6 +616,7 @@ export async function runAttempt({
             profileId,
             scenarioId,
             cadenceId,
+            ...(localLevel !== null && { localLevel, localJudgmentTier: humanBot.judgmentTier }),
             ...terminal,
             pieces: humanPieces,
             stars: terminal.outcome === 'win' ? hybridEngine.calculateStars() : 0,

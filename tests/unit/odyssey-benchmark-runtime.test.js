@@ -321,6 +321,8 @@ describe('Odyssey benchmark real gameplay runtime', () => {
         } finally { piecePool.release(unrelatedPiece); }
     });
 
+    // The three duel cases below pin the frozen campaign instrument (liveRival: false): its rival, its
+    // rules and its uncredited self top-out. The live duel is pinned further down and in odyssey-bot-match.
     it('uses the actual duel death barrier, 900ms break and seeded round reset', async () => {
         let prepared = false;
         fixture.factory = ({ gameState, actions }) => ({
@@ -343,7 +345,7 @@ describe('Odyssey benchmark real gameplay runtime', () => {
                 actions.hardDrop();
             },
         });
-        const result = await runAttempt({ levelId: 5, seed: 42, maxSimSeconds: 2 });
+        const result = await runAttempt({ levelId: 5, seed: 42, maxSimSeconds: 2, liveRival: false });
         expect(result).toMatchObject({
             outcome: 'censored',
             reason: 'simulation-budget',
@@ -419,7 +421,7 @@ describe('Odyssey benchmark real gameplay runtime', () => {
             return result;
         });
         const result = await runAttempt({
-            levelId, seed: 42, profile: 'stacker', maxSimSeconds: 3,
+            levelId, seed: 42, profile: 'stacker', maxSimSeconds: 3, liveRival: false,
         });
         expect(result).toMatchObject({
             outcome: 'censored',
@@ -474,7 +476,7 @@ describe('Odyssey benchmark real gameplay runtime', () => {
             };
         };
         const result = await runAttempt({
-            levelId: 5, seed: 42, cadenceId: 'steady', scenarioId: 'duel-fall850', maxSimSeconds: 3,
+            levelId: 5, seed: 42, cadenceId: 'steady', scenarioId: 'duel-fall850', maxSimSeconds: 3, liveRival: false,
         });
         expect(result).toMatchObject({
             scenarioId: 'duel-fall850',
@@ -495,6 +497,45 @@ describe('Odyssey benchmark real gameplay runtime', () => {
         expect(rounds[0].players[0].frags).toBe(1);
         expect(rounds[0].players[1]).toMatchObject({ creditedDeaths: 1, uncreditedDeaths: 0 });
         expect(rounds[0].deathEvents).toEqual([{ victimIndex: 1, attackerIndex: 0, credited: true }]);
+    });
+
+    it('plays the shipped rival by the versus duel rules unless the frozen instrument is asked for', async () => {
+        const seen = {};
+        fixture.factory = ({ gameState }) => ({
+            reset() {},
+            update() { seen.player = [gameState.pieceRandomizer, gameState.lockStyle]; },
+        });
+        const live = await runAttempt({
+            levelId: 60, seed: 42, maxSimSeconds: 1, configureRival: (duel) => { seen.live = duel; },
+        });
+        expect(live).toMatchObject({ outcome: 'censored', reason: 'simulation-budget' });
+        expect(seen.live.frozenRival).toBe(false);
+        expect(seen.live.difficulty).toBe(getLevelById(60).mechanics.versus.botDifficulty);
+        expect(seen.live.bot.versusWeights).toBeTruthy();
+        expect(seen.player).toEqual(['random', 'gravity']);
+
+        await runAttempt({
+            levelId: 60, seed: 42, maxSimSeconds: 1, liveRival: false, configureRival: (duel) => { seen.frozen = duel; },
+        });
+        expect(seen.frozen.frozenRival).toBe(true);
+        expect(seen.frozen.difficulty).toBe(8);
+        expect(seen.frozen.bot.versusWeights).toBeUndefined();
+        expect(seen.player).toEqual(['bag', 'delay']);
+    });
+
+    it('seats a local versus bot of a chosen level in the player well of a rival orb', async () => {
+        fixture.factory = () => ({ reset() {}, update() { throw new Error('the stand-in must not play'); } });
+        const result = await runAttempt({
+            levelId: 5, seed: 42, localLevel: 6, maxSimSeconds: 20,
+        });
+        expect(result).toMatchObject({ outcome: 'censored', localLevel: 6 });
+        // A local seat reads at its own level, or two levels up for the whole match.
+        expect([6, 8]).toContain(result.localJudgmentTier);
+        expect(result.pieces).toBeGreaterThan(5);
+        expect(await runAttempt({ levelId: 1, seed: 42, localLevel: 6 })).toMatchObject({ outcome: 'error' });
+        expect(await runAttempt({
+            levelId: 5, seed: 42, localLevel: 6, liveRival: false,
+        })).toMatchObject({ outcome: 'error' });
     });
 
     it('returns implementation errors separately and restores globals before the next attempt', async () => {

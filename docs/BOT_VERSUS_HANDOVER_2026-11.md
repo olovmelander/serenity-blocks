@@ -17,7 +17,7 @@
 | Rows of one attack enter as one solid (a versus rule, for people too) | `joinAttackRows`, ADR-0024 |
 | The hot potato's order is drawn from the match seed | `MultiPlayerState.updateHotPotato`, ADR-0025 |
 
-Odyssey rivals, Last Standing and peaceful matches keep the old play: `versusWeights` is null there and no path they take changed. (Round two brought Last Standing over.)
+Odyssey rivals, Last Standing and peaceful matches keep the old play: `versusWeights` is null there and no path they take changed. (Round two brought Last Standing over. Level design pass 4 brought the Odyssey rivals over on 26 November, with the versus pieces and lock in the duel: [pass 4](ODYSSEY_LEVEL_DESIGN_PASS4_2026-11.md). The later notes below that say Odyssey rivals keep the older play describe the rounds as they were measured.)
 
 ## Results
 
