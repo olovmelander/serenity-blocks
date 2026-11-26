@@ -60,6 +60,12 @@ import {
 /** How much of the lamp a ridge's shadow keeps, scattered inside the paint (in its colour, squared). */
 const SCATTER = 0.55;
 
+/**
+ * The canvas under the paint is toned down by this much where it shows bare. It fades out as the
+ * paint thickens, so a stroke thick enough to hide the weave keeps its colour exactly.
+ */
+const CANVAS_TONE = 0.6;
+
 const GILD = Object.freeze({
     leaf: 0.062,
     lobe: 0.16,
@@ -226,6 +232,8 @@ export function createSurface(u, canvas, tier) {
         // The threads of bare cloth take the light differently.
         albedo.addAssign(vec3(0.053, 0.035, 0.023).mul(cloth.mul(cloth)).mul(weave.mul(0.57).add(0.42)));
         albedo.mulAssign(mix(1.0, weave.mul(0.58).add(0.71), cloth.mul(tier.weave ? 1 : 0.6)));
+        // A darker canvas to paint on; the paint itself keeps its colour.
+        albedo.mulAssign(mix(1.0, CANVAS_TONE, cloth.mul(cloth)));
 
         const oil = mix(0.42, 1.0, binder).toVar();
         const rough = mix(mix(0.52, 0.24, wetness.mul(oil)).sub(binder.mul(0.055)), 0.24, metal);
