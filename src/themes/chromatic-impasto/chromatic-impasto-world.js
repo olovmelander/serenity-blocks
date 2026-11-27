@@ -80,8 +80,19 @@ export const DRY_STEP = 0.25;
 export const DRY_TAU = 13;
 /** Seconds after the last stroke the drying pass keeps running. */
 const DRY_SPAN = 70;
-/** Quads a live frame lays at most: a long log replayed after a reshape takes a few frames. */
+/** Quads a live frame lays at most: a long log laid again after a resize takes a few frames. */
 const FRAME_BUDGET = 9000;
+/**
+ * Seconds the window must hold its size before the paint follows it: a window dragged across the
+ * screen is one change, and until then the paint is shown as it is, at its place on the cloth.
+ */
+export const CANVAS_SETTLE = 0.35;
+/** The paint keeps its texture while the frame asks for at most this much more resolution… */
+const RES_SLACK = 1.06;
+/** …and while its cloth is at most this much wider than the frame needs. */
+const CLOTH_SLACK = 1.5;
+/** Seconds the painter takes to block in cloth a wider frame has uncovered, when it does so live. */
+const EXTEND_SPAN = 1.6;
 /** The link of a chain from which its arcs are fluorescent, and from which they are gold. */
 export const COMBO_GLOW = 5;
 export const COMBO_GOLD = 8;
@@ -164,8 +175,12 @@ export class ChromaticImpastoWorld {
         /** When the underpainting begins (world seconds), and whether it is in the log yet. */
         this.introStart = 0;
         this.composed = false;
-        /** The frame shape the canvas was blocked in for. */
-        this.composedAspect = this.aspect;
+        /** How far from the centre line (canvas units) the underpainting reaches across the cloth. */
+        this.paintedHalfX = 0;
+        /** Seconds until the paint follows the window (< 0: nothing waiting). */
+        this.settleIn = -1;
+        /** A twist bake asked for while the painting was being laid again (done once it is shown). */
+        this.bakeDeferred = false;
         this.resetState(0);
     }
 
@@ -350,20 +365,102 @@ export class ChromaticImpastoWorld {
 
     // ── Size and layout ─────────────────────────────────────────────────────────
 
-    /** The paint texture follows the frame: `canvasScale` texels per pixel, a little past it. */
+    /**
+     * The surface covers the frame at once. The paint follows once the window has held its size
+     * for CANVAS_SETTLE seconds (at once for a capture, or while nothing is painted yet): until
+     * then its texture is shown as it is, at its place on the cloth (past its edge, the cloth's
+     * mirror), so a window dragged across the screen does nothing to the painting.
+     */
     sizeCanvas() {
         if (!this.canvas) return;
         const { halfX, halfY } = canvasExtent(this.aspect);
-        const { tier } = this;
-        const height = clamp(Math.round(this.buffer.height * VIEW.overscan * tier.canvasScale), 384, tier.canvasMax);
-        const width = Math.min(4096, Math.round(height * (halfX / halfY)));
-        if (this.canvas.setSize(width, height, halfX, halfY) === 'bare') this.needsPaint = true;
         const surface = this.parts.canvas?.mesh;
         if (surface) {
             surface.scale.set(halfX, halfY, 1);
             surface.updateMatrix();
             surface.updateMatrixWorld(true);
         }
+        if (this.capture || (!this.canvas.painted && !this.canvas.relaying)) this.fitCanvas();
+        else this.settleIn = CANVAS_SETTLE;
+    }
+
+    /**
+     * Fit the paint to the frame: `canvasScale` texels per pixel over a cloth a little past it.
+     *
+     * The picture is never thrown away. A texture that covers the frame, at near the resolution it
+     * asks for or finer, is kept as it is: a window made smaller shows the same paint, and one made
+     * larger again finds it waiting. Otherwise, while the log still holds the whole painting it is
+     * laid again at the new size out of sight and shown once laid (the old one stays on screen
+     * till then); a long game's log has let go of its oldest strokes, and its paint is resampled
+     * into the new size instead. Cloth a wider frame uncovers is blocked in (`extendCloth`).
+     */
+    fitCanvas() {
+        const { canvas, painter, tier } = this;
+        if (!canvas) return;
+        this.settleIn = -1;
+        if (canvas.relaying) {
+            // The painting is still being laid for the last size: this one follows once it is shown.
+            this.settleIn = CANVAS_SETTLE;
+            return;
+        }
+        const need = canvasExtent(this.aspect);
+        const wanted = clamp(Math.round(this.buffer.height * VIEW.overscan * tier.canvasScale), 384, tier.canvasMax);
+        const fresh = !canvas.painted;
+        const covers = !fresh && canvas.halfX >= need.halfX - 1e-4 && canvas.halfX <= need.halfX * CLOTH_SLACK
+            && Math.abs(canvas.halfY - need.halfY) < 1e-4;
+        const halfX = covers ? canvas.halfX : need.halfX;
+        const height = fresh || wanted > canvas.height * RES_SLACK ? wanted : canvas.height;
+        const width = Math.min(4096, Math.round(height * (halfX / need.halfY)));
+        if (!fresh && covers && height === canvas.height) {
+            this.extendCloth(false);
+            return;
+        }
+        if (fresh) {
+            if (canvas.setSize(width, height, halfX, need.halfY) === 'bare') this.needsPaint = true;
+            this.extendCloth(false);
+        } else if (painter.dropped === 0) {
+            canvas.beginRelay(width, height, halfX, need.halfY);
+            // Rewound first, so cloth blocked in now takes its place in the log among the rest of
+            // the underpainting.
+            painter.rewind();
+            this.extendCloth(true);
+            this.needsPaint = true;
+        } else {
+            const was = canvas.halfX;
+            canvas.setSize(width, height, halfX, need.halfY);
+            // What a narrower cloth let go of is gone from the paint, and the log no longer has it.
+            this.paintedHalfX = Math.min(this.paintedHalfX, was, halfX);
+            this.extendCloth(false);
+        }
+    }
+
+    /**
+     * A frame wider than the underpainting reaches: the painter blocks in the cloth it uncovered,
+     * at the sides, in the same layers and tubes, the strokes running into the paint already there.
+     * `inPlace`: laid at their moment in the log among the rest of the underpainting (the log is
+     * about to be laid again from the start), so they lie under the game's paint and have dried
+     * with the rest; otherwise the painter lays them now, quickly.
+     */
+    extendCloth(inPlace) {
+        if (!this.composed) return;
+        const { halfX } = canvasExtent(this.aspect);
+        if (halfX <= this.paintedHalfX + 0.01) return;
+        const strokes = composeUnderpainting({
+            field: createField({ aspect: this.aspect, seed: this.seed + this.session, heart: this.heart }),
+            aspect: this.aspect,
+            period: this.period,
+            seed: this.seed + this.session * 31 + this.periodIndex * 7 + Math.round(this.paintedHalfX * 977),
+            t0: inPlace ? this.introStart : this.time + 0.05,
+            span: inPlace ? INTRO_SPAN : EXTEND_SPAN,
+            density: this.tier.density,
+            card: this.card,
+            beyond: this.paintedHalfX,
+        });
+        // (Laid in place, they come before every stirring the paint has had since, and go through
+        // the bakes in the log; their own path is not carried through any twist.)
+        if (inPlace) strokes.forEach((s) => { s.twist = false; });
+        this.painter.addAll(strokes);
+        this.paintedHalfX = halfX;
     }
 
     setViewport(bufferWidth, bufferHeight, aspect) {
@@ -378,18 +475,8 @@ export class ChromaticImpastoWorld {
             this.aspect = aspect;
             changed = true;
             if (!this.layoutLive) this.applyLayout(null);
-            // A differently shaped frame is a different canvas: block it in again (whatever of
-            // the underpainting is already due is simply there). Measured against the shape it
-            // was blocked in for, so a window dragged wider in small steps is caught too; a
-            // smaller change stays inside the cloth's margin.
-            if (this.composed && this.reshaped()) this.compose({ keepGame: true });
         }
         if (changed) this.sizeCanvas();
-    }
-
-    /** Has the frame's shape left the one the canvas was blocked in for? */
-    reshaped() {
-        return Math.abs(this.aspect / this.composedAspect - 1) > 0.04;
     }
 
     /**
@@ -482,7 +569,7 @@ export class ChromaticImpastoWorld {
         this.twistTarget = 0;
         this.needsPaint = true;
         this.composed = true;
-        this.composedAspect = this.aspect;
+        this.paintedHalfX = canvasExtent(this.aspect).halfX;
     }
 
     /** Jump the clock (captures): the canvas as it stands `time` seconds after the theme started. */
@@ -557,6 +644,8 @@ export class ChromaticImpastoWorld {
             density: this.tier.density,
             card: this.card,
         }));
+        // (A wider frame later blocks in the cloth past this game's canvas, over what is there.)
+        this.paintedHalfX = canvasExtent(this.aspect).halfX;
     }
 
     bindCamera(camera) {
@@ -573,6 +662,7 @@ export class ChromaticImpastoWorld {
         return {
             time: this.time,
             aspect: this.aspect,
+            paintedHalfX: this.paintedHalfX,
             log: this.painter.log.slice(),
             introStart: this.introStart,
             level: this.level,
@@ -622,11 +712,14 @@ export class ChromaticImpastoWorld {
         this.composed = true;
         this.needsPaint = true;
         this.field = createField({ aspect: this.aspect, seed: this.seed + this.session, heart: this.heart });
-        this.composedAspect = Number.isFinite(painting.aspect) ? painting.aspect : this.aspect;
-        // A long game's log has let go of its oldest strokes, the underpainting first; or the
-        // frame changed shape while the world was being rebuilt: the canvas is blocked in again
-        // under what the game painted.
-        if (this.reshaped() || !this.painter.log.some((s) => s.tag === 'under')) this.compose({ keepGame: true });
+        this.paintedHalfX = Number.isFinite(painting.paintedHalfX)
+            ? painting.paintedHalfX
+            : canvasExtent(Number.isFinite(painting.aspect) ? painting.aspect : this.aspect).halfX;
+        // A long game's log has let go of its oldest strokes, the underpainting first: the canvas
+        // is blocked in again under what the game painted. Otherwise the painting is laid as it
+        // was, and a frame grown wider while the world was rebuilt is blocked in at the sides.
+        if (!this.painter.log.some((s) => s.tag === 'under')) this.compose({ keepGame: true });
+        else this.extendCloth(true);
         return true;
     }
 
@@ -1331,6 +1424,13 @@ export class ChromaticImpastoWorld {
 
     /** Freeze the twist into the paint. */
     bakeTwist() {
+        // While the painting is laid again out of sight the turn stays on the display (baked
+        // now, the paint on screen would spring back until the new painting is shown); it is
+        // baked once that painting is shown.
+        if (this.canvas?.relaying) {
+            if (Math.abs(this.twistAngle) >= 1e-3) this.bakeDeferred = true;
+            return;
+        }
         const angle = this.twistAngle;
         this.twistAngle = 0;
         this.twistTarget -= angle;
@@ -1356,6 +1456,11 @@ export class ChromaticImpastoWorld {
         const dt = Math.max(0, sim.delta || 0);
         this.time = sim.time;
         if (!this.composed) this.compose();
+        // The window has held its size: the paint follows it (see sizeCanvas).
+        if (this.settleIn >= 0) {
+            this.settleIn -= this.capture ? CANVAS_SETTLE : dt;
+            if (this.settleIn <= 0) this.fitCanvas();
+        }
         const t = this.time;
         const motion = this.reducedMotion ? 0 : 1;
 
@@ -1468,6 +1573,16 @@ export class ChromaticImpastoWorld {
                 if (t - painter.lastPaintTime < DRY_SPAN) canvas.dry(k);
             }
             if (this.dryClock >= DRY_STEP) this.dryClock = 0;
+            // The painting laid again out of sight has caught up: it is shown, and the turn held
+            // on the display meanwhile is baked into it.
+            if (canvas.relaying && !painter.behind) {
+                canvas.endRelay();
+                if (this.bakeDeferred) {
+                    this.bakeDeferred = false;
+                    this.bakeTwist();
+                    tw.angle = this.twistAngle;
+                }
+            }
         } else {
             // No paint surface (a CPU-only host): the log still advances.
             this.counts.strokes += painter.advance(t, canvas.batch, tw, null);
@@ -1558,6 +1673,8 @@ export class ChromaticImpastoWorld {
             cursor: this.painter.cursor,
             dropped: this.painter.dropped,
             canvas: this.canvas ? [this.canvas.width, this.canvas.height] : null,
+            relaying: this.canvas ? this.canvas.relaying : false,
+            paintedHalfX: this.paintedHalfX,
             draws: this.canvas ? this.canvas.draws : 0,
             droplets: this.droplets ? this.droplets.count : 0,
             motes: this.motes ? this.motes.count : 0,

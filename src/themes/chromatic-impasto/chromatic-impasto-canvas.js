@@ -17,6 +17,11 @@
  * Two more passes touch the paint: `dry` (wetness falls, by blending alone) and `bake` (the
  * twist a chain of clears has given the display is resampled into the paint, into the spare
  * pair, and the pairs swap).
+ *
+ * The display reads the paint in canvas units, so a texture shows correctly whatever the window
+ * is: a resize never has to touch it at once. When the paint does follow the window it either
+ * resamples what is on the cloth into the new size (`setSize`), or is laid again from the log out
+ * of sight while the old painting stays on screen (`beginRelay` … `endRelay`).
  */
 
 import * as THREE from 'three/webgpu';
@@ -274,6 +279,7 @@ export class PaintCanvas {
      */
     constructor({ renderer = null, maxQuads = 2048 } = {}) {
         this.renderer = renderer;
+        /** The paint being laid: its size (texels) and its cloth's half-extent (canvas units). */
         this.width = 0;
         this.height = 0;
         this.halfX = 1;
@@ -281,6 +287,11 @@ export class PaintCanvas {
         this.front = 0;
         this.pigment = [null, null];
         this.relief = [null, null];
+        /**
+         * While a relay runs: the painting the display still shows ({ pigment, relief }), whose
+         * size and cloth the display uniforms still describe. Null otherwise.
+         */
+        this.held = null;
         this.draws = 0;
         this.bakes = 0;
         this.disposed = false;
@@ -289,7 +300,7 @@ export class PaintCanvas {
 
         this.batch = new StrokeBatch(maxQuads, () => this.flush());
 
-        /** Canvas half-extent (canvas units), and one texel in canvas units. */
+        /** What the display reads: its texture's cloth half-extent, and one of its texels (canvas units). */
         this.uHalf = uniform(new THREE.Vector2(1, 1));
         this.uTexel = uniform(new THREE.Vector2(0.002, 0.002));
         this.uFill = uniform(new THREE.Vector4(0, 0, 0, 0));
@@ -297,6 +308,12 @@ export class PaintCanvas {
         this.uBakeTwist = uniform(new THREE.Vector4(0, 0, 0, 1));
         /** The size (texels) of the texture a bake reads. */
         this.uBakeSize = uniform(new THREE.Vector2(1, 1));
+        /**
+         * The cloths (half-extents) a bake reads from and writes to: one cloth, unless a resize
+         * resamples. Past the edge of the cloth it reads lies the paint mirrored in it.
+         */
+        this.uBakeFrom = uniform(new THREE.Vector2(1, 1));
+        this.uBakeTo = uniform(new THREE.Vector2(1, 1));
 
         const blank = new THREE.DataTexture(new Uint8Array([0, 0, 0, 0]), 1, 1);
         blank.needsUpdate = true;
@@ -385,12 +402,13 @@ export class PaintCanvas {
         // game bakes dozens of times: bilinear would melt the bristle tracks a little more each
         // time, this keeps them. Where nothing is twisted every weight but one is zero and the
         // texel is copied exactly.
+        // A resize resamples with the same pass, from one cloth into another (no twist).
         const bakeNode = (source, relief) => Fn(() => {
             // (The quad's v runs down from the top, as the targets' does.)
             const st = uv();
-            const p = vec2(st.x.mul(2.0).sub(1.0), float(1.0).sub(st.y.mul(2.0))).mul(this.uHalf);
+            const p = vec2(st.x.mul(2.0).sub(1.0), float(1.0).sub(st.y.mul(2.0))).mul(this.uBakeTo);
             const tw = ciTwist(p, this.uBakeTwist);
-            const at = ciCanvasUv(tw.point, this.uHalf).mul(this.uBakeSize);
+            const at = ciCanvasUv(tw.point, this.uBakeFrom).mul(this.uBakeSize);
             const base = floor(at.sub(0.5)).add(0.5).toVar();
             const f = at.sub(base).toVar();
             const w0 = f.mul(f.mul(vec2(1.0).sub(f.mul(0.5))).sub(0.5));
@@ -427,68 +445,124 @@ export class PaintCanvas {
     }
 
     /**
-     * Size the painting.
+     * Size the painting: `width` × `height` texels over the cloth ±halfX × ±halfY.
      *
-     * A new resolution over the same cloth (the frame kept its shape: a render-scale step, a
-     * DPR change) keeps the paint: it is resampled into the new targets. A cloth of another
-     * shape, or a first size, starts bare, and the caller replays its log.
+     * What is on the cloth is kept: it is resampled into the new targets at the same place on the
+     * cloth (canvas units), whatever the change of resolution or of shape. A cloth grown wider
+     * holds, past the old edge, the paint mirrored in it, as the display showed it while the
+     * window moved, until the painter blocks that cloth in. A first size, or a cloth with nothing
+     * on it yet, starts bare and the caller lays its log. (Not during a relay: `beginRelay` again.)
      *
      * @returns {'same'|'resampled'|'bare'}
      */
     setSize(width, height, halfX, halfY) {
         const w = Math.max(8, Math.round(width));
         const h = Math.max(8, Math.round(height));
-        const sameCloth = Math.abs(halfX - this.halfX) < 1e-4 && Math.abs(halfY - this.halfY) < 1e-4;
-        this.halfX = halfX;
-        this.halfY = halfY;
-        this.uHalf.value.set(halfX, halfY);
-        this.camera.left = -halfX;
-        this.camera.right = halfX;
-        this.camera.top = halfY;
-        this.camera.bottom = -halfY;
-        this.camera.updateProjectionMatrix();
-        if (w === this.width && h === this.height && this.pigment[0]) {
-            this.uTexel.value.set((2 * halfX) / w, (2 * halfY) / h);
-            return sameCloth ? 'same' : 'bare';
-        }
-        const old = { pigment: this.pigment[this.front], relief: this.relief[this.front] };
-        const oldSize = [this.width, this.height];
+        if (this.pigment[0] && w === this.width && h === this.height
+            && Math.abs(halfX - this.halfX) < 1e-4 && Math.abs(halfY - this.halfY) < 1e-4) return 'same';
+        const keep = this.painted && this.ready && !this.held;
+        // (Paint still waiting in the batch goes onto the old cloth first, and comes along.)
+        if (keep) this.flush();
+        const from = {
+            pigment: this.pigment[this.front],
+            relief: this.relief[this.front],
+            width: this.width,
+            height: this.height,
+            halfX: this.halfX,
+            halfY: this.halfY,
+        };
         const spare = { pigment: this.pigment[1 - this.front], relief: this.relief[1 - this.front] };
-        const keep = sameCloth && this.painted && this.ready;
-        this.width = w;
-        this.height = h;
-        this.uTexel.value.set((2 * halfX) / w, (2 * halfY) / h);
-        for (let i = 0; i < 2; i++) {
-            this.pigment[i] = makeTarget(w, h, `Chromatic Impasto — pigment ${i}`);
-            this.relief[i] = makeTarget(w, h, `Chromatic Impasto — relief ${i}`);
-        }
-        this.front = 0;
+        this.makeCloth(w, h, halfX, halfY);
         if (keep) {
             this.batch.reset();
             this.uBakeTwist.value.set(0, 0, 0, 1);
-            this.uBakeSize.value.set(oldSize[0], oldSize[1]);
-            this.bakeSource[0].value = old.pigment.texture;
-            this.bakeSource[1].value = old.relief.texture;
+            this.uBakeSize.value.set(from.width, from.height);
+            this.uBakeFrom.value.set(from.halfX, from.halfY);
+            this.uBakeTo.value.set(halfX, halfY);
+            this.bakeSource[0].value = from.pigment.texture;
+            this.bakeSource[1].value = from.relief.texture;
             this.into(this.pigment[0], (r) => this.bakeQuads[0].render(r));
             this.into(this.relief[0], (r) => this.bakeQuads[1].render(r));
+            this.bakeSource[0].value = this.blank;
+            this.bakeSource[1].value = this.blank;
         } else {
             this.painted = false;
         }
-        this.bakeSource[0].value = this.blank;
-        this.bakeSource[1].value = this.blank;
-        old.pigment?.dispose();
-        old.relief?.dispose();
+        from.pigment?.dispose();
+        from.relief?.dispose();
         spare.pigment?.dispose();
         spare.relief?.dispose();
         this.point();
         return keep ? 'resampled' : 'bare';
     }
 
-    /** Aim the display's texture nodes at the front pair. */
+    /**
+     * Lay the painting again at another size, out of sight: the display keeps showing the
+     * painting as it is, while the caller clears the new targets and replays its log into them;
+     * `endRelay` then shows them. Asked again before that, the half-laid targets go and the relay
+     * starts over (the old painting stays on screen throughout).
+     *
+     * @returns {'bare'}
+     */
+    beginRelay(width, height, halfX, halfY) {
+        if (!this.ready || (!this.painted && !this.held)) return this.setSize(width, height, halfX, halfY);
+        const w = Math.max(8, Math.round(width));
+        const h = Math.max(8, Math.round(height));
+        this.batch.reset();
+        if (this.held) {
+            this.disposeWorking();
+        } else {
+            this.held = { pigment: this.pigment[this.front], relief: this.relief[this.front] };
+            this.pigment[1 - this.front]?.dispose();
+            this.relief[1 - this.front]?.dispose();
+        }
+        this.makeCloth(w, h, halfX, halfY);
+        this.painted = false;
+        return 'bare';
+    }
+
+    /** Is a painting being laid again out of sight? */
+    get relaying() {
+        return this.held !== null;
+    }
+
+    /** The relay has caught up: the new painting is shown, and the old one let go. */
+    endRelay() {
+        if (!this.held) return;
+        this.held.pigment?.dispose();
+        this.held.relief?.dispose();
+        this.held = null;
+        this.point();
+    }
+
+    /** New working targets and the stamp's camera over the cloth ±halfX × ±halfY. */
+    makeCloth(w, h, halfX, halfY) {
+        this.width = w;
+        this.height = h;
+        this.halfX = halfX;
+        this.halfY = halfY;
+        this.camera.left = -halfX;
+        this.camera.right = halfX;
+        this.camera.top = halfY;
+        this.camera.bottom = -halfY;
+        this.camera.updateProjectionMatrix();
+        for (let i = 0; i < 2; i++) {
+            this.pigment[i] = makeTarget(w, h, `Chromatic Impasto — pigment ${i}`);
+            this.relief[i] = makeTarget(w, h, `Chromatic Impasto — relief ${i}`);
+        }
+        this.front = 0;
+    }
+
+    /**
+     * Aim the display at the front pair, with its cloth and texel; during a relay it stays on the
+     * held painting.
+     */
     point() {
-        if (!this.pigment[this.front]) return;
+        if (this.held || !this.pigment[this.front]) return;
         this.pigmentNode.value = this.pigment[this.front].texture;
         this.reliefNode.value = this.relief[this.front].texture;
+        this.uHalf.value.set(this.halfX, this.halfY);
+        this.uTexel.value.set((2 * this.halfX) / this.width, (2 * this.halfY) / this.height);
     }
 
     /** Run `fn` with the renderer aimed at `target`, nothing cleared, and put everything back. */
@@ -530,7 +604,7 @@ export class PaintCanvas {
         if (!this.ready) return;
         const back = 1 - this.front;
         this.uBakeTwist.value.set(0, 0, 0, 1);
-        this.uBakeSize.value.set(this.width, this.height);
+        this.bakeInPlace();
         this.bakeSource[0].value = this.pigment[this.front].texture;
         this.bakeSource[1].value = this.relief[this.front].texture;
         this.into(this.pigment[back], (r) => this.bakeQuads[0].render(r));
@@ -574,7 +648,7 @@ export class PaintCanvas {
         if (!this.ready) return;
         const back = 1 - this.front;
         this.uBakeTwist.value.set(cx, cy, angle, reach);
-        this.uBakeSize.value.set(this.width, this.height);
+        this.bakeInPlace();
         this.bakeSource[0].value = this.pigment[this.front].texture;
         this.bakeSource[1].value = this.relief[this.front].texture;
         this.into(this.pigment[back], (r) => this.bakeQuads[0].render(r));
@@ -583,13 +657,28 @@ export class PaintCanvas {
         this.point();
     }
 
-    disposeTargets() {
+    /** A bake that reads and writes the working cloth. */
+    bakeInPlace() {
+        this.uBakeSize.value.set(this.width, this.height);
+        this.uBakeFrom.value.set(this.halfX, this.halfY);
+        this.uBakeTo.value.set(this.halfX, this.halfY);
+    }
+
+    /** Let go of the working targets (the held painting, if any, stays). */
+    disposeWorking() {
         for (let i = 0; i < 2; i++) {
             this.pigment[i]?.dispose();
             this.relief[i]?.dispose();
             this.pigment[i] = null;
             this.relief[i] = null;
         }
+    }
+
+    disposeTargets() {
+        this.disposeWorking();
+        this.held?.pigment?.dispose();
+        this.held?.relief?.dispose();
+        this.held = null;
         this.pigmentNode.value = this.blank;
         this.reliefNode.value = this.blank;
         this.bakeSource[0].value = this.blank;

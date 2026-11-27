@@ -127,7 +127,11 @@ export function createSurface(u, canvas, tier) {
         const wet = clamp(P0.a, 0.0, 1.0).toVar();
 
         // ── Normal from the relief ──
-        const e = max(canvas.uTexel.x, canvas.uTexel.y).mul(1.25);
+        // Read a texel and a quarter apart, and never much finer than a screen pixel: a window
+        // made smaller keeps its paint's resolution, and relief finer than the eye can see would
+        // only sparkle as the camera drifts. (At the tiers' own resolutions the texel decides.)
+        const pixel = fwidth(P.xy);
+        const e = max(max(canvas.uTexel.x, canvas.uTexel.y).mul(1.25), max(pixel.x, pixel.y).mul(0.8)).toVar();
         const hxp = tap(vec2(e, 0.0)).toVar();
         const hxm = tap(vec2(e.negate(), 0.0)).toVar();
         const hyp = tap(vec2(0.0, e)).toVar();
