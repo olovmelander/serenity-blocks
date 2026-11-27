@@ -20,15 +20,38 @@ const CARD = {
     x0: -0.42, y0: -0.86, x1: 0.42, y1: 0.86,
 };
 
-/** Every quad a batch holds, as { s0, s1, corners: [[x, y] × 4] }. */
+/**
+ * Every quad a batch holds, as { s0, s1, corners: [[x, y] × 4], values }: s0 and s1 the arc
+ * length at the middle of its first and last cut, `values` per corner [across, arc length,
+ * half-width].
+ */
 function quadsOf(batch) {
     const out = [];
     for (let q = 0; q < batch.quads; q++) {
         const o = q * QUAD_FLOATS;
-        const corners = [0, 1, 2, 3].map((k) => [batch.data[o + k * VERTEX_STRIDE], batch.data[o + k * VERTEX_STRIDE + 1]]);
-        out.push({ s0: batch.data[o + 4], s1: batch.data[o + 2 * VERTEX_STRIDE + 4], corners });
+        const at = (k, f) => batch.data[o + k * VERTEX_STRIDE + f];
+        const corners = [0, 1, 2, 3].map((k) => [at(k, 0), at(k, 1)]);
+        const values = [0, 1, 2, 3].map((k) => [at(k, 3), at(k, 4), at(k, 6)]);
+        out.push({
+            s0: (at(0, 4) + at(1, 4)) / 2, s1: (at(2, 4) + at(3, 4)) / 2, corners, values,
+        });
     }
     return out;
+}
+
+/**
+ * How far a quad's fourth corner's value lies from the plane through its other three (in value
+ * units): zero when the value is affine over the quad, so both of its triangles interpolate the
+ * same function and nothing kinks at their diagonal.
+ */
+function offPlane({ corners: [p0, p1, p2, p3], values }, index) {
+    const [a, b, c, d] = values.map((v) => v[index]);
+    // f = a + α (x − x0) + β (y − y0) through p0, p1, p2; evaluated at p3.
+    const m = [[p1[0] - p0[0], p1[1] - p0[1]], [p2[0] - p0[0], p2[1] - p0[1]]];
+    const det = m[0][0] * m[1][1] - m[0][1] * m[1][0];
+    const alpha = ((b - a) * m[1][1] - (c - a) * m[0][1]) / det;
+    const beta = ((c - a) * m[0][0] - (b - a) * m[1][0]) / det;
+    return Math.abs(a + alpha * (p3[0] - p0[0]) + beta * (p3[1] - p0[1]) - d);
 }
 
 /** The area of a quad whose corners are (a-left, a-right, b-left, b-right). */
@@ -265,7 +288,7 @@ describe('chromatic impasto strokes', () => {
             expect(s.done).toBe(true);
             const quads = quadsOf(batch);
             // The pieces follow one another along the path with no gap and no overlap ...
-            expect(quads[0].s0).toBe(0);
+            expect(quads[0].s0).toBeCloseTo(0, 9);
             for (let i = 1; i < quads.length; i++) expect(quads[i].s0).toBeCloseTo(quads[i - 1].s1, 6);
             expect(quads[quads.length - 1].s1).toBeCloseTo(s.length, 6);
             // ... each begins on the very edge the last ended on ...
@@ -276,6 +299,36 @@ describe('chromatic impasto strokes', () => {
             // ... and together they are the whole ribbon.
             expect(quads.reduce((sum, q) => sum + quadArea(q), 0)).toBeCloseTo(fullArea, 5);
         });
+    });
+
+    it('hands the stamp coordinates that are exact over every piece, so the bristle tracks never kink', () => {
+        // A tight bend that swells and lifts as it goes: no piece of it is a parallelogram.
+        const s = createStroke({
+            points: arc(60, 0.3), width: 0.07, widthEnd: 0.02, pressure: 0.95, t0: 0, dur: 0.5, colorA: [0, 0, 1],
+        });
+        const batch = new StrokeBatch(4096);
+        for (let f = 0; f <= 60; f++) emitStroke(s, strokeReach(s, f / 60), batch);
+        const all = quadsOf(batch);
+        const quads = all.filter((q) => quadArea(q) > 1e-7);
+        expect(quads.length).toBeGreaterThan(20);
+        // Corners marked only "left edge" / "right edge" would not be affine over these pieces:
+        // each triangle would interpolate its own map, kinked at the diagonal.
+        const plain = quads.map((q) => offPlane({ corners: q.corners, values: [[1], [-1], [1], [-1]] }, 0));
+        expect(Math.max(...plain)).toBeGreaterThan(0.02);
+        // The distance across, the arc length and the half-width are affine over every piece.
+        quads.forEach((q) => [0, 1, 2].forEach((k) => expect(offPlane(q, k)).toBeLessThan(2e-5)));
+        // Where one piece ends and the next begins, both put a corner equally far across, so the
+        // tracks (laid by that distance) run on across the cut. The half-width they read there
+        // can differ a little where the brush swells fast: a corner off the chord projects to a
+        // slightly different place along each segment's chord (it only moves the soft edge, by a
+        // fraction of a texel).
+        for (let i = 1; i < all.length; i++) {
+            [[0, 2], [1, 3]].forEach(([next, prev]) => {
+                expect(all[i].values[next][0]).toBeCloseTo(all[i - 1].values[prev][0], 6);
+                const [w1, w0] = [all[i].values[next][2], all[i - 1].values[prev][2]];
+                expect(Math.abs(w1 / w0 - 1)).toBeLessThan(0.04);
+            });
+        }
     });
 
     it('writes a stroke\'s paint into every vertex', () => {
@@ -301,7 +354,7 @@ describe('chromatic impasto strokes', () => {
         for (let v = 0; v < batch.quads * 4; v++) {
             const o = v * VERTEX_STRIDE;
             const d = batch.data;
-            expect(Math.abs(d[o + 3])).toBe(1); // u
+            expect(Math.abs(d[o + 3] / d[o + 6])).toBeCloseTo(1, 6); // across, in half-widths
             expect(d[o + 5]).toBeCloseTo(s.length, 6);
             expect(d[o + 6]).toBeCloseTo(0.05, 6);
             expect([d[o + 7], d[o + 8], d[o + 9]].map((x) => +x.toFixed(4))).toEqual([0.9, 0.1, 0.2]);

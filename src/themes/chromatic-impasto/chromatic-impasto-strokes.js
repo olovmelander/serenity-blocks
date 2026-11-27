@@ -13,7 +13,10 @@ import {
     KIND, RELIEF, clamp, clamp01, smooth,
 } from './chromatic-impasto-core.js';
 
-/** Floats per vertex: position(3) uv(4) colA+seed(4) colB+mix(4) par(4) par2(4). */
+/**
+ * Floats per vertex: position(3) uv(4) colA+seed(4) colB+mix(4) par(4) par2(4). A ribbon's uv is
+ * (distance across its segment's chord, arc length, stroke length, half-width): see emitStroke.
+ */
 export const VERTEX_STRIDE = 23;
 export const QUAD_FLOATS = VERTEX_STRIDE * 4;
 
@@ -285,7 +288,57 @@ function emitBlob(stroke, batch) {
 }
 
 /**
+ * A segment's frame: the chord between the middles of its two rungs (the cuts across the ribbon
+ * at its nodes). `out` = [cx, cy, tx, ty, length], t the chord's unit direction; length 0 when
+ * the segment has none.
+ */
+function chordOf(left, right, seg, out) {
+    const ax = (left[seg * 2] + right[seg * 2]) * 0.5;
+    const ay = (left[seg * 2 + 1] + right[seg * 2 + 1]) * 0.5;
+    const dx = (left[seg * 2 + 2] + right[seg * 2 + 2]) * 0.5 - ax;
+    const dy = (left[seg * 2 + 3] + right[seg * 2 + 3]) * 0.5 - ay;
+    const length = Math.hypot(dx, dy);
+    out[0] = ax;
+    out[1] = ay;
+    out[2] = length > 1e-9 ? dx / length : 0;
+    out[3] = length > 1e-9 ? dy / length : 0;
+    out[4] = length > 1e-9 ? length : 0;
+    return out;
+}
+
+/**
+ * Write a corner of a ribbon's quad at (x, y), in its segment's frame `chord`: how far it lies
+ * across the chord (canvas units, + to the left), and the arc length and half-width at its place
+ * along it, each found from the segment's own nodes (s0..s1, w0..w1).
+ */
+function writeCorner(data, o, x, y, chord, s0, s1, w0, w1, side, sFallback, wFallback, stroke) {
+    const [cx, cy, tx, ty, length] = chord;
+    if (length > 0) {
+        const rx = x - cx;
+        const ry = y - cy;
+        const along = (rx * tx + ry * ty) / length;
+        writeVertex(data, o, x, y, tx * ry - ty * rx, s0 + (s1 - s0) * along, stroke);
+        data[o + 6] = w0 + (w1 - w0) * along;
+    } else {
+        writeVertex(data, o, x, y, side * wFallback, sFallback, stroke);
+        data[o + 6] = wFallback;
+    }
+}
+
+/**
  * Emit the piece of a stroke between where it has been drawn to and arc length `to`.
+ *
+ * Each piece is a quad whose two long sides run along the stroke, drawn as two triangles. It is
+ * seldom a parallelogram: on a bend the outer side is the longer, and where the brush swells or
+ * lifts the sides converge. Corners that carried only "this is the left edge, at arc length a",
+ * interpolated plainly, would follow one affine map per triangle and kink at the diagonal, and
+ * the bristle tracks with them, into a sawtooth a piece long. So every corner carries what is
+ * affine in the segment's own frame (its chord): the distance across the chord, and the arc
+ * length and half-width at its place along it. Interpolation then reproduces them exactly
+ * everywhere in the quad, whichever triangle; every piece of one segment shares its frame; and
+ * where two segments meet, the cut runs along the bisector of their chords, so the distance
+ * across is the same seen from either. The stamp divides it by the half-width.
+ *
  * @returns {number} quads written
  */
 export function emitStroke(stroke, to, batch) {
@@ -315,20 +368,22 @@ export function emitStroke(stroke, to, batch) {
     };
     const ca = [0, 0, 0, 0, 0];
     const cb = [0, 0, 0, 0, 0];
+    const chord = [0, 0, 0, 0, 0];
     cut(a, i, ca);
     while (a < end - 1e-7) {
         const b = Math.min(end, len[i + 1]);
         cut(b, i, cb);
         const o = batch.alloc();
         const { data } = batch;
-        writeVertex(data, o, ca[0], ca[1], 1, a, stroke);
-        data[o + 6] = ca[4];
-        writeVertex(data, o + VERTEX_STRIDE, ca[2], ca[3], -1, a, stroke);
-        data[o + VERTEX_STRIDE + 6] = ca[4];
-        writeVertex(data, o + VERTEX_STRIDE * 2, cb[0], cb[1], 1, b, stroke);
-        data[o + VERTEX_STRIDE * 2 + 6] = cb[4];
-        writeVertex(data, o + VERTEX_STRIDE * 3, cb[2], cb[3], -1, b, stroke);
-        data[o + VERTEX_STRIDE * 3 + 6] = cb[4];
+        chordOf(left, right, i, chord);
+        const s0 = len[i];
+        const s1 = len[i + 1];
+        const w0 = half[i];
+        const w1 = half[i + 1];
+        writeCorner(data, o, ca[0], ca[1], chord, s0, s1, w0, w1, 1, a, ca[4], stroke);
+        writeCorner(data, o + VERTEX_STRIDE, ca[2], ca[3], chord, s0, s1, w0, w1, -1, a, ca[4], stroke);
+        writeCorner(data, o + VERTEX_STRIDE * 2, cb[0], cb[1], chord, s0, s1, w0, w1, 1, b, cb[4], stroke);
+        writeCorner(data, o + VERTEX_STRIDE * 3, cb[2], cb[3], chord, s0, s1, w0, w1, -1, b, cb[4], stroke);
         quads += 1;
         a = b;
         ca[0] = cb[0];
