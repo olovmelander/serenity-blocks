@@ -81,10 +81,12 @@ function stampNodes() {
     const point = positionLocal.xy;
 
     // ── A ribbon: u across (−1..1), s along (canvas units), L its length, w its half-width ──
-    const u = uv4.x;
+    // (The distance across, arc length and half-width arrive exact at every point of a piece:
+    // see emitStroke. u is the distance across in half-widths.)
     const s = uv4.y;
     const L = max(uv4.z, 1e-4);
-    const w = max(uv4.w, 1e-4);
+    const w = max(uv4.w, 1e-4).toVar();
+    const u = uv4.x.div(w).toVar();
     const au = abs(u);
     const bw = float(RELIEF.bristle).mul(mix(2.4, 1.0, bristle));
     // Bristles are not a ruler: they sit unevenly in the ferrule, and the head splays a little

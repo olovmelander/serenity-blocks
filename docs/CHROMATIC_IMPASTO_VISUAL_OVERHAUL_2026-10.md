@@ -94,7 +94,14 @@ Techniques worth knowing before changing it:
   lip at the lift-off, a second colour carried on some clumps in bands that break and rejoin,
   bristles that run dry one by one toward the end, a frayed lift-off, and thin paint that catches
   only the high places of the cloth. A knife is the same shader with flat tracks, clean edges and
-  tall rails; a splat is a crater with a thrown rim; a drop is a bead.
+  tall rails; a splat is a crater with a thrown rim; a drop is a bead. Each piece of ribbon is a
+  quad drawn as two triangles, and seldom a parallelogram (a bend's outer side is longer, a
+  swelling or lifting brush makes the sides converge), so its corners carry what is affine in the
+  segment's own frame: the distance across the segment's chord, and the arc length and half-width
+  at the corner's place along it. Interpolation then gives the stamp exact coordinates in both
+  triangles. Before 2026-11-27 the corners carried only "left edge, right edge, arc length here",
+  each triangle interpolated its own map, and every bristle track kinked at the diagonal into a
+  sawtooth a piece long, read as "stair-steps" on thick strokes' edges.
 - **Two targets, no read-back.** `pigment` holds the colour on top and how wet it is; `relief`
   holds how thick the paint stands and what it is made of (gold leaf above zero, fluorescent
   below). Pigment is composited "over". Relief keeps a share of what is underneath (the blend's
