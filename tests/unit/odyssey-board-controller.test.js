@@ -165,6 +165,30 @@ describe('OdysseyBoardController chapter framing', () => {
         expect(controller.cameraController.focusOnNode).toHaveBeenCalledWith(nodePosition, expect.any(Number), expect.any(Object));
     });
 
+    it('parks an ordinary click on chapter 1\'s closing orb before its seam, focusing the orb', async () => {
+        // 2026-11-27: parked at its own progress, L5 (an Earth Core orb) stood in chapter 2's
+        // water. The scenery parks before the sea is drawn; the camera still comes to the orb,
+        // looking back down the throat.
+        const { controller, nodePosition } = createNavigationController();
+        const level = registry.resolveLevelPresentation(5);
+        controller.presentationLayout = layout;
+        controller.nodeManager.nodes = new Map([[5, { config: level, pathPosition: level.pathPosition }]]);
+        controller.environmentManager.getBlendState.mockReturnValue({ activeChapter: 1 });
+        await controller.travelToLevel(5);
+        const [destination] = controller.cameraController.setCurrentPosition.mock.calls[0];
+        expect(destination).toBe(resolveChapterArrivalProgress(1, level.pathPosition, layout.chapterPositions));
+        expect(destination).toBeLessThan(level.pathPosition);
+        const parked = resolveChapterBlendState(destination, CHAPTER_CONFIGS, layout.chapterPositions);
+        expect(parked.inSeam).toBe(false);
+        expect(parked.weights[1]).toBe(1);
+        expect(controller.cameraController.travelToPosition).not.toHaveBeenCalled();
+        expect(controller.cameraController.focusOnNode).toHaveBeenCalledWith(
+            nodePosition,
+            expect.any(Number),
+            expect.objectContaining({ viewDir: expect.objectContaining({ isVector3: true }) }),
+        );
+    });
+
     it('keeps a mid-chapter orb at its authored position', async () => {
         const { controller } = createNavigationController();
         controller.presentationLayout = layout;
