@@ -172,6 +172,13 @@ export async function completeOdysseyLevel(mode, results) {
     if (session.simulationClock === DEMO_LEGACY_SIMULATION_CLOCK && mode.levelStartTime) {
         session.hybridEngine.updateTime(mode._elapsedLevelMs() / 1000);
     }
+    // The loop that fed the HUD stops with the attempt: the goal's last reading goes out first,
+    // so the counter the player watched reaches its goal. Cosmetic: it can never block the save.
+    try {
+        mode._showGoalReached?.(session);
+    } catch (error) {
+        console.warn('[Odyssey] The goal reading could not be shown:', error);
+    }
     const { retirementGeneration } = mode._retireLevelSession(session);
     const writesLegacyResults = canWriteLegacySimulationResults(session.simulationClock);
 

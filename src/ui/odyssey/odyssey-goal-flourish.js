@@ -8,7 +8,11 @@
  * rather than a wait, and the ceremony arrives through an afterglow instead of a cut. A
  * showcase that already celebrated its goal at the start of its lap, a hidden page and
  * reduced motion all keep it short and still.
- * Styles: `.odyssey-goal-flare` in public/styles/odyssey-flow.css.
+ *
+ * The well also says it in words ("Goal reached", over the goal itself), and the HUD's counter
+ * gets its last reading before the attempt retires (showOdysseyGoalReached): the flare, the
+ * chimes and the theme alone did not tell a player the orb was won.
+ * Styles: `.odyssey-goal-flare` and `.odyssey-goal-word` in public/styles/odyssey-flow.css.
  */
 import { emitEffectStep } from '../serenity-mode/serenity-effects.js';
 import { buildOdysseyShowpiece, odysseyShowpieceDuration } from './odyssey-showpiece.js';
@@ -34,6 +38,58 @@ const CHAPTER_COLORS = [
     '#f3ac77', '#8cd3ed', '#b5d4a2', '#c8d3f0',
     '#c8b2ed', '#b5a0ee', '#e6a9dd', '#f3b29d',
 ];
+
+// The well's words for a reached goal, while they stand.
+let goalWord = null;
+
+/** "Goal reached" over the goal's own line, in the well: a status a screen reader hears too. */
+function showGoalWord(well, goal) {
+    removeGoalWord();
+    if (typeof document.createElement !== 'function' || typeof well.appendChild !== 'function') return;
+    const word = document.createElement('div');
+    word.className = 'odyssey-goal-word';
+    word.role = 'status';
+    [['odyssey-goal-word__title', 'Goal reached'], ['odyssey-goal-word__goal', goal]].forEach(([className, text]) => {
+        if (!text) return;
+        const line = document.createElement('span');
+        line.className = className;
+        line.textContent = text;
+        word.appendChild(line);
+    });
+    well.appendChild(word);
+    goalWord = word;
+}
+
+function removeGoalWord() {
+    goalWord?.remove?.();
+    goalWord = null;
+}
+
+/**
+ * The goal's last reading, before the attempt retires. The loop that fed the HUD stops with the
+ * attempt, and a final clear or knockout scored after the HUD's last (throttled) update left the
+ * counter short of its goal for the whole flourish: orb 8 stood on "4 / 6" with its next piece
+ * in the well, then the results (owner's playtest, 2026-11-26). The counter gets the rules' own
+ * figures, time and stars, and the next piece, spawned before the victory check, leaves with
+ * the attempt. A showcase lap's HUD already says "Complete"; it gets the label and the stars.
+ * @param {object} mode the Odyssey mode
+ * @param {object} session the attempt that met its goal, not yet retired
+ */
+export function showOdysseyGoalReached(mode, session) {
+    if (!session) return;
+    const hud = mode?.odysseyHUD;
+    const engine = session.hybridEngine;
+    if (hud) {
+        engine?.updateScore?.(session.duel?.score ?? (session.gameState?.score || 0));
+        mode._updateOdysseyHUD?.();
+        if (session.duel) hud.updateDuel?.(session.duel.getSnapshot());
+        // The stars are judged on the engine's clock: the HUD shows that same instant.
+        const seconds = Number(engine?.getMetrics?.().time);
+        if (Number.isFinite(seconds)) hud.updateTime(seconds * 1000);
+        hud.markGoalReached({ stars: engine?.calculateStars?.() });
+    }
+    if (!session.duel && session.gameState) session.gameState.currentPiece = null;
+}
 
 function pulseWell(well) {
     if (!well?.classList) return;
@@ -79,6 +135,7 @@ export function playOdysseyGoalFlourish(mode, session, { reducedMotion = false }
     well.getBoundingClientRect?.();
     well.classList.add('odyssey-goal-sweep');
     border.classList.add('odyssey-goal-flare');
+    showGoalWord(well, mode.odysseyHUD?.objectiveDisplay?.textContent || '');
     steps.forEach((step) => {
         const play = () => {
             emitEffectStep(step);
@@ -103,6 +160,7 @@ function removeFlareClasses() {
     const border = document.getElementById?.('single-player-border');
     border?.classList.remove('odyssey-goal-flare');
     border?.parentElement?.classList.remove('odyssey-goal-sweep');
+    removeGoalWord();
 }
 
 /** A new attempt or the map must not inherit a flaring well, nor its pending showpiece. */

@@ -136,7 +136,9 @@ import { clearRetryVeil } from '../../ui/odyssey/retry-veil.js';
 import {
     clearOdysseyStartCue, getOdysseyStartCueTimings, showOdysseyStartCue,
 } from '../../ui/odyssey/odyssey-start-cue.js';
-import { clearOdysseyGoalFlourish, playOdysseyGoalFlourish } from '../../ui/odyssey/odyssey-goal-flourish.js';
+import {
+    clearOdysseyGoalFlourish, playOdysseyGoalFlourish, showOdysseyGoalReached,
+} from '../../ui/odyssey/odyssey-goal-flourish.js';
 import { noticeOdysseyUnreadableSave } from '../../ui/odyssey/odyssey-save-notice.js';
 import { openParallelShaderWindow } from '../../rendering/phaser/phaser-parallel-shaders.js';
 import {
@@ -1871,6 +1873,10 @@ export class OdysseyMode extends BaseGameMode {
      */
     completeLevel(results) {
         return settleOdysseyLevelEnd(this, completeOdysseyLevel(this, results));
+    }
+
+    _showGoalReached(session) {
+        showOdysseyGoalReached(this, session);
     }
 
     _celebrateGoalReached(session) {
