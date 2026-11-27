@@ -180,8 +180,10 @@ describe('the sea vent — its handoff', () => {
                 expect(rig.inFrame(cam, world, 1), `mouth ${i} at p ${p.toFixed(4)}`).toBe(false);
             });
         });
-        // ...and from orb 5's station, inside the steam, most of them ring the sea's eye.
-        const cam5 = rig.poseAt(rig.parkOf(5));
+        // ...and from orb 5's station on the rail, inside the steam, most of them ring the sea's
+        // eye. (The eye passes it on the glide to orb 6: the orb's own close-up parks before the
+        // steam, odyssey-chapter-arrival.js.)
+        const cam5 = rig.poseAt(rig.layout.levelPositionsById[5]);
         const seen = mouths.filter((m) => rig.inFrame(cam5, world.copy(m.top).add(group.position), 1)).length;
         expect(seen).toBeGreaterThanOrEqual(4);
     });

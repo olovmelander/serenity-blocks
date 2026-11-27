@@ -80,7 +80,8 @@ summit still shows a bird all the time but three: 89 % of the time at orb 26 (90
 - **Chapter 1** looks down across the shaft onto the lava lake, from a different side at each of its
   first four orbs (`odyssey-ch1-close-ups.js`): the lake's crust, the falls of lava, the glowing depth.
   The shared view (from the south, a little down) met the shaft's wall. The fifth orb, at the sea's
-  floor, keeps the shared view.
+  floor, kept the shared view until 2026-11-27; it looks back down the throat now (see "The sea
+  begins with its own chapter" at the end).
 - **Chapter 6's second orb looks back at the Earth** (`CH6_EARTH_CLOSE_UP` in
   `odyssey-ch6-close-ups.js`): the limb with the sunrise along it. Orbs 35 to 37 park at one place (they
   lie inside the 5->6 seam, where the eye cannot stand), and 35 and 36 shared the rail's view. The four
@@ -186,3 +187,80 @@ Built by a helper in its own worktree, then judged and merged by the lead (the s
 - **The ocean's depth**: how dark the floor goes (`OCEAN_BED_LIGHT` and `OCEAN_WELL` in `odyssey-ocean-depth.js`).
 - Not verified: the integrated GPU, a real-game run on the WebGL2 backend, a physical gamepad, a touch
   screen.
+
+## The sea begins with its own chapter (2026-11-27)
+
+The owner: "In odyssey mode are the chapter starts aligned with the orbs for the chapters?" and, on
+the answer, "We need to fix this!"
+
+### What was found
+
+- **A chapter starts exactly on its first orb.** The boundaries are read from the first orb of each
+  chapter (`deriveOdysseyChapterPositions`), so the offset is 0 for all eight.
+- **The fade between two worlds is centred on that boundary.** An opening orb sits at its middle, and
+  since the audit of 2026-10-18 its scenery parks just past the fade (`resolveOrbParkProgress`).
+- **A closing orb parked on itself.** Eight of them stand inside the next chapter's fade.
+
+Frames of the running game at every chapter's last and first orbs (23 orbs; WebGPU, High, 30 fps, the
+map's UI on and off) showed what that looks like:
+
+| Closing orb | Chapter | The next world's fade weight there | What the frame showed |
+|---|---|---|---|
+| 5 (rival) | 1 Earth Core | 22 % | **The orb in chapter 2's water**, over the sea's floor |
+| 18 (rival) | 3 Surface | 10 % | Its own meadow |
+| 24, 25, 26 (rival) | 4 Mountains | 1, 10, 28 % | Their own forested slope |
+| 47, 48 (rival) | 6 Space | 2, 21 % | Space, the hole ahead |
+| 56 (rival) | 7 Black hole | 4 % | Its own room of the fold |
+
+Orbs 10 and 34 stand outside their fades. So one orb of sixty stood in another chapter's world: the
+sea began one orb before its chapter.
+
+| Before | After |
+|---|---|
+| ![Orb 5 in the sea](images/odyssey-chapter-starts/orb-5-before.jpg) | ![Orb 5 over the lava lake](images/odyssey-chapter-starts/orb-5-after.jpg) |
+
+### What changed
+
+- **Chapter 1's closing orb parks before its fade** (`CLOSING_ORBS_PARK_BEFORE_SEAM` in
+  `odyssey-chapter-arrival.js`): the scenery stands at progress 0.0417, and the sea draws from 0.0427.
+  The orb is where it was, at the vent's lip.
+- **Its close-up looks back down the throat** (a fifth key in `odyssey-ch1-close-ups.js`: north, 70
+  degrees down), onto the whole lake ringed by the throat. The shared view met the lip's flat rock
+  once the water was gone. Chosen from eleven frames of the running game.
+- **The sea arrives on the glide to orb 6**, its first orb: the eye drops into the throat, rides up
+  through the vent (the smokers, the bubbles, the sea's eye) and the "Deep Ocean" title comes up as the
+  lava gives way to water. Going back, "Earth Core" comes up as the lava returns.
+
+### Tried and not kept
+
+Parking every closing orb before its fade. On screen the other seven looked the same as before, and
+six tests failed, five of them for a picture composed on where those orbs park today: the day's turn
+between orb 18 and orb 19, the ibex at orb 24, the bow at orb 26, the plunge's pace from orb 48, the
+fold's way out just past orb 56. The rule is for chapter 1 alone, and the reason is written beside it.
+
+### How the moves measure (real game, 30 fps, the eye read every frame)
+
+| Move | Before | Now |
+|---|---|---|
+| Orb 4 to orb 5 | 1.6 s; the sea drawn from the first frame | 1.6 s; the sea never drawn |
+| Orb 5 to orb 6 | 3.0 s; the eye dips 11 u; the sea drawn throughout | 3.1 s; the eye drops 45 u into the throat, then climbs; the sea drawn from 0.4 s in |
+| Orb 6 to orb 5 | 3.0 s; the eye comes down to 22 u under the orb, then rises | 3.1 s; to 56 u under the orb, then rises |
+
+### Checks
+
+- New: `tests/unit/odyssey-chapter-starts.test.js` (every chapter starts on its first orb; orb 5 parks
+  before the sea; the other closing orbs park on themselves; the parks keep the orbs' order). Updated:
+  `odyssey-ch1-close-ups.test.js`, a case in `odyssey-board-controller.test.js`, and
+  `earth-core-sea-vent.test.js` (it reads orb 5's station on the rail, no longer its park).
+- Frames of the real game before and after, the console clean in every run.
+
+### For the owner to judge
+
+- **The drop at the start of the glide from orb 5 to orb 6** (45 u in 0.7 s, then the climb). It is
+  the cost of the orb standing above where its scenery parks.
+- **Orb 5's view** (`CH1_CLOSE_UPS`, the last key).
+- **Not changed: where the island's chapters turn.** Chapter 4's first orb (19) stands on the meadow at
+  the mountain's foot, in the same view as chapter 3's last orbs, and chapter 5's first orb (27) stands
+  on the forested slope where chapter 4's last orbs stand. The island is one continuous world, so
+  nothing is drawn wrong there, but the names (Mountains, Sky) run ahead of the ground. Changing it
+  means re-spacing the orbs along the island.

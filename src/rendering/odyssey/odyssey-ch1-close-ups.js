@@ -9,9 +9,14 @@
  * over it (the vault's fire).
  *
  * A close-up here looks down across the shaft instead, onto the lake, from a different side at
- * each orb so the four are four pictures: the lake's crust under the first orbs, the falls and the
- * glowing depth under the higher ones. The last orb of the chapter (at the sea's floor) keeps the
- * shared view: it already looks into the water it is about to enter.
+ * each orb so the five are five pictures: the lake's crust under the first orbs, the falls and the
+ * glowing depth under the higher ones, and from the last orb, at the vent's lip, the whole lake
+ * far below, ringed by the throat the rail has climbed.
+ *
+ * THE LAST ORB LOOKS BACK DOWN (2026-11-27). It kept the shared view while it parked in the sea
+ * (it looked into the water it was about to enter). It parks in the lava's light now, before the
+ * sea is drawn (odyssey-chapter-arrival.js: an Earth Core orb standing in chapter 2's water was
+ * the sea beginning one orb before its chapter), and there the shared view met the lip's flat rock.
  *
  * Each key is a chapter-local t (the orb's progress through the chapter) with the view's bearing
  * (`az`: 0 looks north, 90 east) and how far it looks down (`down`, degrees). An orb takes the key
@@ -27,19 +32,17 @@ export const CH1_CLOSE_UPS = Object.freeze([
     Object.freeze({ t: 0.20, az: 270, down: 36 }),
     Object.freeze({ t: 0.40, az: 180, down: 40 }),
     Object.freeze({ t: 0.61, az: 270, down: 40 }),
+    Object.freeze({ t: 0.86, az: 0, down: 70 }),
 ]);
-
-/** Past this share of the chapter the shared view stays (the orb at the sea's floor). */
-export const CH1_CLOSE_UP_UNTIL = 0.74;
 
 /**
  * Which way chapter 1's close-up looks for an orb at chapter-local `t`.
  * @param {number} t the orb's progress through the chapter, 0..1
  * @param {THREE.Vector3} [out]
- * @returns {THREE.Vector3|null} a unit direction (from the eye toward the orb), or null for the shared view
+ * @returns {THREE.Vector3|null} a unit direction (from the eye toward the orb), or null outside the chapter
  */
 export function resolveCh1CloseUp(t, out = new THREE.Vector3()) {
-    if (!Number.isFinite(t) || t < 0 || t > CH1_CLOSE_UP_UNTIL) return null;
+    if (!Number.isFinite(t) || t < 0 || t > 1) return null;
     let key = CH1_CLOSE_UPS[0];
     for (const k of CH1_CLOSE_UPS) {
         if (Math.abs(k.t - t) < Math.abs(key.t - t)) key = k;
