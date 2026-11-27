@@ -1192,7 +1192,13 @@ export class SoundManager {
 
         const requestedUrl = this.normalizeAudioUrl(filename);
         const currentUrl = this.normalizeAudioUrl(this.audioElement.currentSrc || this.audioElement.src);
-        const isSameSource = Boolean(requestedUrl) && requestedUrl === currentUrl;
+        // A source that failed to load leaves the element in error with its address still set.
+        // That address is then one to load again, not "the same source": the fallback switch in
+        // playAudioFile used to call play() on the failed element, which rejected at once, and
+        // the orb played in silence (live site, 2026-11-27: one entry in four of one orb ended
+        // "MEDIA_ELEMENT_ERROR: Format error" on a file the server serves).
+        const failedToLoad = Boolean(this.audioElement.error);
+        const isSameSource = Boolean(requestedUrl) && requestedUrl === currentUrl && !failedToLoad;
         const isPlaying = !this.audioElement.paused && !this.audioElement.ended;
 
         if (!forceSwitch && isSameSource && isPlaying) {
@@ -1212,7 +1218,8 @@ export class SoundManager {
         // The browser caches the fetched data so the subsequent src swap is instant.
         let preloadElement = null;
         try {
-            if (isSourceSwitch) {
+            // The load after a failed one is a single plain load: nothing is playing to bridge.
+            if (isSourceSwitch && !failedToLoad) {
                 preloadElement = new Audio();
                 preloadElement.preload = 'auto';
                 preloadElement.src = filename;

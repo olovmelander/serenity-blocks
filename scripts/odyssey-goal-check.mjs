@@ -75,9 +75,10 @@ async function key(code, vk) {
     await sleep(50);
     await send('Input.dispatchKeyEvent', { type: 'keyUp', code, key: code, windowsVirtualKeyCode: vk });
 }
-// Browser noise that is not the game's: no audio device or gesture in a headless tab. Several of
-// these browsers on ONE dev server can fail a music load ("Music switch failed", 4 orbs of 60 with
-// three browsers on 2026-11-27, none with one): give each its own server, or run one at a time.
+// Browser noise that is not the game's: no audio device or gesture in a headless tab. A music
+// track that will not load is the game's and counts ("Music switch failed"): before the sound
+// manager loaded a failed track again (2026-11-27) it showed on 4 orbs of 60 with three browsers
+// on one dev server, and on the live site in one entry in four of orb 39.
 const noise = (line) => /NotAllowedError|play\(\) failed|AudioContext|favicon/i.test(line);
 
 // In-page helpers: the attempt, what the player is shown, and the goal's own counter.
