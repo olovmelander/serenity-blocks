@@ -85,8 +85,9 @@ Techniques worth knowing before changing it:
   The pieces partition the ribbon exactly (they share their cut edges, and a cut inside a segment
   lies on the segment's own sides), so every texel of a stroke is composited once whatever the
   frame rate: a test proves the same paint at 30 and 240 frames a second. Replaying the log lays
-  the same painting again — for a capture (`seek`), on a cloth of another shape after a resize,
-  and on a new world after a quality change or a lost GPU (the theme hands the log over).
+  the same painting again — for a capture (`seek`), at a new size after a resize (out of sight,
+  see below), and on a new world after a quality change or a lost GPU (the theme hands the log
+  over).
 - **A stroke is drawn, not simulated.** There is no fluid solver. The stamp shader lays, inside
   each piece of ribbon: bristles in clumps (a slow value across the stroke), a shallow track on
   every bristle with a deep one here and there, rails at the sides, a pool at the touch-down and a
@@ -155,11 +156,29 @@ Techniques worth knowing before changing it:
 | Ultra | 1.35 (1,664) | 110% | 2 | 10 | yes | yes | 512 | 60 | on |
 | Extreme | 1.5 (1,920) | 120% | 3 | 12 | yes | yes | 640 | 76 | on |
 
-The lens fringe is High and up. A change of resolution over the same cloth (a render-scale step)
-resamples the paint; only a frame of another shape lays it again from the log, nine thousand
-quads a frame at most. The log holds five thousand entries; a longer game lets go of its oldest
-strokes (they stay in the paint, but a later replay cannot lay them again: the underpainting is
-then blocked in afresh under what is left).
+The lens fringe is High and up.
+
+**A resize keeps the painting (2026-11-27).** The display reads the paint in canvas units, so the
+texture shows correctly at any window size, and nothing touches it while the window moves: the
+surface covers the new frame at once, with the paint mirrored in the cloth's edge where a wider
+frame reaches past it. Once the window has held its size for 0.35 s the paint follows. A texture
+that covers the frame at near the resolution it asks for, or finer, is kept as it is (the paint
+never loses resolution: a window made smaller shows the same paint, and one made larger again
+finds it waiting). Otherwise, while the log holds the whole painting it is laid again at the new
+size out of sight, nine thousand quads a frame at most, and shown once laid; the old painting
+stays on screen until then, and a twist bake asked for meanwhile waits for it. The log holds
+five thousand entries, and a longer game lets go of its oldest strokes (the underpainting first):
+its paint is resampled into the new size instead, since a replay could no longer lay it. The
+picture is never composed afresh for a new shape: a frame wider than the underpainting reached is
+blocked in at the sides only, in the same layers and tubes, each stroke cut where it reaches the
+paint already there (`composeUnderpainting({ beyond })`), in its place in the log when the
+painting is about to be laid again, else live over 1.6 s. Before this, every change of shape threw
+the underpainting away and blocked in another picture, any change at all wiped the canvas and
+laid it again over several frames in view, and in a long game that replay of a trimmed log left
+the cloth all but bare. (Since paint can now be finer than the screen, the surface reads the
+relief's slope no finer than 0.8 of a pixel; at every tier's own resolution the texel still
+decides, and the frame is unchanged: playground captures on WebGPU, WebGL2, Minimal and a phone
+frame match main pixel for pixel.)
 
 ## Assets
 

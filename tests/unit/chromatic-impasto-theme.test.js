@@ -935,7 +935,7 @@ describe('Chromatic Impasto theme: one node renderer on both backends', () => {
         expect(renderer.setSize).toHaveBeenLastCalledWith(1024, 768, false);
         expect(() => theme.resize(NaN, -5)).not.toThrow();
         expect(renderer.setSize).toHaveBeenLastCalledWith(1, 1, false);
-        // The canvas is repainted at its new shape on the next frame.
+        // The paint follows once the window has held its size; the frames meanwhile run as usual.
         expect(() => stepFrames(theme, 2)).not.toThrow();
     });
 

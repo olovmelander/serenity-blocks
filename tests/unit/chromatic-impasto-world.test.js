@@ -3,7 +3,7 @@ import {
 } from 'vitest';
 import * as THREE from 'three/webgpu';
 import {
-    AMBIENT_BEAT, CHROMATIC_IMPASTO_PARTS, ChromaticImpastoWorld, DRY_STEP, LAMP, REST_RIG, fovForAspect,
+    AMBIENT_BEAT, CANVAS_SETTLE, CHROMATIC_IMPASTO_PARTS, ChromaticImpastoWorld, DRY_STEP, LAMP, REST_RIG, fovForAspect,
 } from '../../src/themes/chromatic-impasto/chromatic-impasto-world.js';
 import {
     CLOCK_OVERPAINT, GOLD, HUSH_HOLD, IMPASTO_PERIODS, INTRO_SPAN, KIND, LEVEL_OVERPAINT, PERIOD_SECONDS, RELIEF,
@@ -73,6 +73,11 @@ function run(world, camera, seconds, steps = Math.max(1, Math.round(seconds * 60
 
 const tagged = (world, tag) => world.painter.log.filter((s) => s.tag === tag);
 const startOf = (s) => [(s.baseLeft[0] + s.baseRight[0]) / 2, (s.baseLeft[1] + s.baseRight[1]) / 2];
+/** A stroke's path: the middle of its ribbon at every node. */
+const centres = (s) => Array.from({ length: s.nodes }, (_, i) => [
+    (s.baseLeft[i * 2] + s.baseRight[i * 2]) / 2,
+    (s.baseLeft[i * 2 + 1] + s.baseRight[i * 2 + 1]) / 2,
+]);
 const endOf = (s) => {
     const n = s.nodes * 2;
     return [(s.baseLeft[n - 2] + s.baseRight[n - 2]) / 2, (s.baseLeft[n - 1] + s.baseRight[n - 1]) / 2];
@@ -113,7 +118,7 @@ describe('chromatic impasto world: build', () => {
         world.dispose();
     });
 
-    it('sizes its paint to the frame and the tier, and repaints when the size changes', () => {
+    it('sizes its paint to the frame and the tier, and lays a cloth with nothing on it yet at its new size', () => {
         const low = makeWorld('Low', { width: 1600, height: 900 }).world;
         const high = makeWorld('High', { width: 1600, height: 900 }).world;
         expect(high.canvas.height).toBeGreaterThan(low.canvas.height);
@@ -244,38 +249,156 @@ describe('chromatic impasto world: the painting', () => {
         world.dispose();
     });
 
-    it('keeps the paint through a change of resolution, and lays it again on a cloth of another shape', () => {
+    it('keeps its painting through a resize: a finer one is laid again out of sight, then shown', () => {
         const renderer = makeRenderer();
         const { world, camera } = makeWorld('Low', { renderer, time: INTRO_SPAN + 2 });
         world.ambientIndex = Infinity;
         world.onLock({ rows: [10], u: 0.8, color: '#00d9cc' });
         run(world, camera, 1.5);
-        // The same cloth at another resolution (a render-scale step): the paint is resampled.
+        const { canvas } = world;
+        const under = tagged(world, 'under');
+        const before = { height: canvas.height, pigment: canvas.pigmentNode.value };
+        // A smaller window: the paint keeps its texture, finer than asked for. Nothing is drawn.
         renderer.passes.length = 0;
-        const before = world.canvas.height;
         world.setViewport(1280, 720, 1600 / 900);
-        expect(world.canvas.height).not.toBe(before);
+        run(world, camera, 0.05, 2);
+        expect(canvas.height).toBe(before.height);
+        expect(canvas.pigmentNode.value).toBe(before.pigment);
+        expect(renderer.passes.filter((p) => /fill|bake|stamp/.test(p.material))).toHaveLength(0);
+
+        // A larger one: the same strokes are laid again at the new size while the old painting
+        // stays on screen, and the new one is shown once laid.
+        world.setViewport(2400, 1350, 1600 / 900);
+        expect(canvas.relaying).toBe(true);
+        expect(canvas.pigmentNode.value).toBe(before.pigment);
+        renderer.passes.length = 0;
+        run(world, camera, 0.05, 2);
+        expect(canvas.relaying).toBe(false);
+        expect(canvas.height).toBeGreaterThan(before.height);
+        expect(canvas.pigmentNode.value).toBe(canvas.pigment[canvas.front].texture);
+        expect(canvas.uTexel.value.y).toBeCloseTo((2 * canvas.halfY) / canvas.height, 9);
+        expect(renderer.passes.filter((p) => /fill/.test(p.material))).toHaveLength(2);
+        renderer.passes.filter((p) => /fill|stamp/.test(p.material))
+            .forEach((p) => expect(p.target).toMatch(/pigment|relief/));
+        expect(tagged(world, 'under')).toEqual(under);
+        expect(world.painter.log.filter((s) => s.tag === 'lock' && s.done)).toHaveLength(1);
+
+        // Another shape: the same picture, on a cloth cut to the new frame.
+        world.setViewport(1350, 1350, 1);
+        world.setLayout(fallbackLayout(1350, 1350), 1);
+        run(world, camera, 0.05, 2);
+        expect(tagged(world, 'under')).toEqual(under);
+        expect(canvas.halfX).toBeCloseTo(canvasExtent(1).halfX, 6);
+        expect(canvas.uHalf.value.x).toBeCloseTo(canvasExtent(1).halfX, 6);
+        world.dispose();
+    });
+
+    it('waits for the window to hold its size, and shows the old painting until the new one is laid', () => {
+        const renderer = makeRenderer();
+        const { world, camera } = makeWorld('Low', { renderer, time: INTRO_SPAN + 2 });
+        world.ambientIndex = Infinity;
+        world.capture = false;
+        world.frameBudget = 400;
+        const { canvas } = world;
+        const shown = canvas.pigmentNode.value;
+        const half = canvas.uHalf.value.clone();
+        const reach = world.paintedHalfX;
+        const under = tagged(world, 'under');
+        // A window dragged wider over a few frames: nothing happens to the paint on the way, and
+        // the surface already covers the wider frame (past the old cloth, its mirror).
+        renderer.passes.length = 0;
+        for (let i = 1; i <= 6; i++) {
+            world.setViewport(1600 + i * 60, 900, (1600 + i * 60) / 900);
+            run(world, camera, 1 / 30, 1);
+        }
+        const aspect = 1960 / 900;
+        expect(renderer.passes.filter((p) => /fill|bake|stamp/.test(p.material))).toHaveLength(0);
+        expect(world.parts.canvas.mesh.scale.x).toBeCloseTo(canvasExtent(aspect).halfX, 6);
+        expect(canvas.pigmentNode.value).toBe(shown);
+        // Held still: the painting is laid again on the wider cloth, out of sight, a few frames at
+        // a time, with the cloth it uncovered blocked in among the rest of the underpainting.
+        run(world, camera, CANVAS_SETTLE, 12);
+        expect(canvas.relaying).toBe(true);
+        expect(canvas.pigmentNode.value).toBe(shown);
+        expect(canvas.uHalf.value.equals(half)).toBe(true);
+        expect(world.paintedHalfX).toBeCloseTo(canvasExtent(aspect).halfX, 9);
+        const added = tagged(world, 'under').filter((s) => !under.includes(s));
+        expect(added.length).toBeGreaterThan(10);
+        // (In the log among the underpainting: before the lock and everything laid since.)
+        added.forEach((s) => expect(s.t0).toBeLessThan(INTRO_SPAN + 0.01));
+        added.forEach((s) => centres(s).forEach(([x]) => expect(Math.abs(x)).toBeGreaterThan(reach - 0.061)));
+        // Then it is shown.
+        run(world, camera, 1, 30);
+        expect(canvas.relaying).toBe(false);
+        expect(canvas.pigmentNode.value).toBe(canvas.pigment[canvas.front].texture);
+        expect(canvas.uHalf.value.x).toBeCloseTo(canvasExtent(aspect).halfX, 6);
+        expect(added.every((s) => s.done)).toBe(true);
+        world.dispose();
+    });
+
+    it('resamples a long game\'s paint, whose log has let go of its oldest strokes, instead of laying it again', () => {
+        const renderer = makeRenderer();
+        const { world, camera } = makeWorld('Low', { renderer, time: INTRO_SPAN + 2 });
+        world.ambientIndex = Infinity;
+        world.painter.maxLog = 40;
+        world.onLock({ rows: [10], u: 0.8, color: '#00d9cc' });
+        run(world, camera, 1.5);
+        expect(world.painter.dropped).toBeGreaterThan(0);
+        const kept = world.painter.log.slice();
+        // Larger: what is on the cloth is resampled into the new size, and nothing is laid again.
+        renderer.passes.length = 0;
+        world.setViewport(2400, 1350, 1600 / 900);
+        expect(world.canvas.relaying).toBe(false);
         expect(world.needsPaint).toBe(false);
         expect(renderer.passes.map((p) => p.material)).toEqual([
             'Chromatic Impasto — bake pigment', 'Chromatic Impasto — bake relief',
         ]);
         run(world, camera, 0.05, 2);
-        expect(renderer.passes.filter((p) => /fill|stamp/.test(p.material))).toHaveLength(0);
-
-        // A frame of another shape is another canvas: blocked in again, with the game's paint on it.
+        expect(renderer.passes.filter((p) => /fill/.test(p.material))).toHaveLength(0);
+        kept.forEach((s) => expect(world.painter.log).toContain(s));
+        // Wider: resampled again, and the cloth it uncovered blocked in at the sides, live.
+        const reach = world.paintedHalfX;
+        const oldCloth = world.canvas.halfX;
         renderer.passes.length = 0;
-        world.setViewport(900, 900, 1);
-        world.setLayout(fallbackLayout(900, 900), 1);
-        expect(world.needsPaint).toBe(true);
-        // Live, the replay is spread over a few frames.
+        world.setViewport(3000, 1350, 3000 / 1350);
+        expect(renderer.passes.slice(0, 2).map((p) => p.material)).toEqual([
+            'Chromatic Impasto — bake pigment', 'Chromatic Impasto — bake relief',
+        ]);
+        // (Read from the old cloth, written over the new: the paint stays where it was.)
+        expect(world.canvas.uBakeFrom.value.x).toBeCloseTo(oldCloth, 9);
+        expect(world.canvas.uBakeTo.value.x).toBeCloseTo(canvasExtent(3000 / 1350).halfX, 9);
+        const added = tagged(world, 'under').filter((s) => s.t0 > world.time);
+        expect(added.length).toBeGreaterThan(10);
+        added.forEach((s) => centres(s).forEach(([x]) => expect(Math.abs(x)).toBeGreaterThan(reach - 0.061)));
+        run(world, camera, 2.5, 60);
+        expect(added.every((s) => s.done)).toBe(true);
+        world.dispose();
+    });
+
+    it('holds a turn on the display while the painting is laid again, and bakes it once that is shown', () => {
+        const renderer = makeRenderer();
+        const { world, camera } = makeWorld('Low', { renderer, time: INTRO_SPAN + 2 });
+        world.ambientIndex = Infinity;
         world.capture = false;
-        run(world, camera, 0.5, 30);
-        expect(renderer.passes.filter((p) => /fill/.test(p.material))).toHaveLength(2);
-        expect(renderer.passes.filter((p) => /stamp/.test(p.material)).length).toBeGreaterThanOrEqual(2);
-        expect(tagged(world, 'under').every((s) => s.done)).toBe(true);
-        expect(world.painter.log.filter((s) => s.tag === 'lock' && s.done)).toHaveLength(1);
-        const { halfX } = canvasExtent(1);
-        expect(world.canvas.halfX).toBeCloseTo(halfX, 6);
+        world.frameBudget = 400;
+        world.onCombo(3);
+        run(world, camera, 1);
+        world.setViewport(2400, 1350, 1600 / 900);
+        run(world, camera, CANVAS_SETTLE + 0.02, 12);
+        expect(world.canvas.relaying).toBe(true);
+        // The game ends: its turn is to be baked, but the display is still on the old painting.
+        world.resetSession();
+        const angle = world.twistAngle;
+        expect(Math.abs(angle)).toBeGreaterThan(0.1);
+        expect(world.bakeDeferred).toBe(true);
+        expect(world.painter.log.some((s) => s.bake)).toBe(false);
+        expect(world.counts.bakes).toBe(0);
+        run(world, camera, 1, 30);
+        expect(world.canvas.relaying).toBe(false);
+        expect(world.twistAngle).toBe(0);
+        expect(world.counts.bakes).toBe(1);
+        expect(world.canvas.bakes).toBe(1);
+        expect(world.painter.log.filter((s) => s.bake)).toHaveLength(1);
         world.dispose();
     });
 
@@ -621,30 +744,45 @@ describe('chromatic impasto world: the board paints', () => {
         next.world.dispose();
     });
 
-    it('blocks the canvas in again when the frame has drifted from the shape it was painted for', () => {
+    it('keeps its picture when the frame changes shape, and blocks in only the cloth a wider frame uncovers', () => {
         const { world, camera } = makeWorld('Low');
-        expect(world.composedAspect).toBeCloseTo(1600 / 900, 9);
-        // A window dragged wider in steps of three per cent: no one step is a reshape, the sum is.
+        const under = tagged(world, 'under');
+        const reach = world.paintedHalfX;
+        expect(reach).toBeCloseTo(canvasExtent(1600 / 900).halfX, 9);
+        // Narrower: nothing is laid and nothing taken away.
+        world.setViewport(1200, 900, 1200 / 900);
+        run(world, camera, 0.05, 2);
+        expect(tagged(world, 'under')).toEqual(under);
+        expect(world.paintedHalfX).toBe(reach);
+        // A window dragged wider in steps of three per cent: the picture stays, and underpainting
+        // is laid only out past where it reached, on both sides, knitting a little back over it.
         let aspect = 1600 / 900;
-        const shapes = new Set([world.composedAspect]);
         for (let i = 0; i < 6; i++) {
             aspect *= 1.03;
             world.setViewport(Math.round(900 * aspect), 900, aspect);
             run(world, camera, 0.05, 2);
-            shapes.add(world.composedAspect);
         }
-        expect(shapes.size).toBeGreaterThan(2);
-        expect(Math.abs(world.aspect / world.composedAspect - 1)).toBeLessThanOrEqual(0.04);
-        expect(tagged(world, 'under').length).toBeGreaterThan(100);
-        // A painting handed to a world of another shape is blocked in again there too.
-        const painting = world.exportPainting();
+        const now = tagged(world, 'under');
+        under.forEach((s) => expect(now).toContain(s));
+        const added = now.filter((s) => !under.includes(s));
+        expect(added.length).toBeGreaterThan(20);
+        added.forEach((s) => centres(s).forEach(([x]) => expect(Math.abs(x)).toBeGreaterThan(reach - 0.061)));
+        expect(added.some((s) => startOf(s)[0] < 0) && added.some((s) => startOf(s)[0] > 0)).toBe(true);
+        expect(new Set(added.map((s) => s.kind)).size).toBeGreaterThan(1);
+        expect(world.paintedHalfX).toBeCloseTo(canvasExtent(aspect).halfX, 9);
+        // Handed to a world of another shape, the painting is laid as it is…
         const tall = makeWorld('Low', { width: 430, height: 932, time: 0 });
-        tall.world.importPainting(painting);
-        expect(tall.world.composedAspect).toBeCloseTo(430 / 932, 6);
-        const { halfX } = canvasExtent(430 / 932);
-        tagged(tall.world, 'under').forEach((s) => expect(Math.abs(startOf(s)[0])).toBeLessThan(halfX + 1.2));
+        tall.world.importPainting(world.exportPainting());
+        expect(tagged(tall.world, 'under')).toHaveLength(now.length);
+        expect(tall.world.paintedHalfX).toBeCloseTo(world.paintedHalfX, 9);
+        // …and in a wider one it is blocked in at the sides.
+        const wide = makeWorld('Low', { width: 2560, height: 900, time: 0 });
+        wide.world.importPainting(world.exportPainting());
+        expect(tagged(wide.world, 'under').length).toBeGreaterThan(now.length);
+        expect(wide.world.paintedHalfX).toBeCloseTo(canvasExtent(2560 / 900).halfX, 9);
         world.dispose();
         tall.world.dispose();
+        wide.world.dispose();
     });
 
     it('sends cleared rows out from under the board\'s foot and over its top when the frame is too narrow for its sides', () => {

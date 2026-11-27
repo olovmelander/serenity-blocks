@@ -137,6 +137,33 @@ const fitWidth = (field, points, width) => Math.min(width, Math.max(0.01, eyeDis
 const insideCard = (card, x, y, grow = 0) => Boolean(card)
     && x > card.x0 - grow && x < card.x1 + grow && y > card.y0 - grow && y < card.y1 + grow;
 
+/** How far an extension of the underpainting reaches back over the paint already there. */
+const KNIT = 0.06;
+
+/**
+ * The longest run of a path's nodes that lies out past |x| = `edge`, or null when no run of at
+ * least four nodes and 0.06 canvas units does: a stroke that runs in toward the middle is cut
+ * where it reaches the edge, as a brush lifts at the paint already there.
+ */
+export function clipBeyond(points, edge) {
+    let best = null;
+    let start = -1;
+    for (let i = 0; i <= points.length; i += 2) {
+        const out = i < points.length && Math.abs(points[i]) >= edge;
+        if (out && start < 0) start = i;
+        if (!out && start >= 0) {
+            if (!best || i - start > best[1] - best[0]) best = [start, i];
+            start = -1;
+        }
+    }
+    if (!best || best[1] - best[0] < 8) return null;
+    let length = 0;
+    for (let i = best[0] + 2; i < best[1]; i += 2) {
+        length += Math.hypot(points[i] - points[i - 2], points[i + 1] - points[i - 1]);
+    }
+    return length >= 0.06 ? points.slice(best[0], best[1]) : null;
+}
+
 // ── The underpainting ───────────────────────────────────────────────────────────
 
 /** A tube colour worked darker or lighter on the palette (k < 1 darker, toward `light` above 1). */
@@ -159,7 +186,7 @@ function curlPath(eye, radius, turn, squash, tilt, offset, start, end) {
     return points;
 }
 
-function layCurls(out, field, aspect, period, seed, t0, span) {
+function layCurls(out, field, aspect, period, seed, t0, span, outside) {
     const rand = mulberry32(seed * 739 + 381);
     const [turn, squash] = period.curl;
     const eyes = [field.whorls[1], field.whorls[field.whorls.length - 1]];
@@ -179,8 +206,10 @@ function layCurls(out, field, aspect, period, seed, t0, span) {
             [deep, rim, 0.052, 0.10, 0.69, 0.23],
         ];
         passes.forEach(([a, b, offset, size, start, end], k) => {
+            const points = outside(curlPath(eye, radius, turn, squash, tilt, offset * radius, start, end));
+            if (!points) return;
             out.push(createStroke({
-                points: curlPath(eye, radius, turn, squash, tilt, offset * radius, start, end),
+                points,
                 width: width * size,
                 widthEnd: width * size * 0.18,
                 pressure: 0.98,
@@ -206,10 +235,15 @@ function layCurls(out, field, aspect, period, seed, t0, span) {
  * black contour; and the lights on top. The strokes are spread over `span` seconds from `t0`.
  * Most follow the current; some are laid across it, as a hand does.
  *
+ * `beyond` > 0 blocks in only the cloth out past |x| = beyond (a frame grown wider than the
+ * painting reached), in the same layers: every path keeps its run out there, reaching a little
+ * back over the edge so the new paint knits with the old.
+ *
  * @returns {object[]} strokes (tagged 'under')
  */
 export function composeUnderpainting({
     field, aspect, period, seed = 1, t0 = 0, span = INTRO_SPAN, density = 1, card = null, layGround = true,
+    beyond = 0,
 }) {
     const rand = mulberry32(seed * 9973 + 17);
     const { halfX, halfY } = canvasExtent(aspect);
@@ -217,6 +251,7 @@ export function composeUnderpainting({
     const out = [];
     const at = (lo, hi) => t0 + span * (lo + (hi - lo) * rand());
     const across = (chance, most) => (rand() < chance ? (rand() - 0.5) * 2 * most : (rand() - 0.5) * 0.3);
+    const outside = (points) => (beyond > 0 ? clipBeyond(points, beyond - KNIT) : points);
 
     // 1 — the lay-in: dark, thin, wide.
     const cell = 0.34;
@@ -231,7 +266,8 @@ export function composeUnderpainting({
             const b = pick(period.darks, rand());
             const wash = pick(period.masses, valueNoise(x * 1.3, y * 1.3, seed + 57));
             const scumble = (ix + 3 * iy) % 4 !== 0;
-            const points = flowPath(field, x, y, 0.6 + rand() * 0.8, { turn: across(0.2, 0.6) });
+            const points = outside(flowPath(field, x, y, 0.6 + rand() * 0.8, { turn: across(0.2, 0.6) }));
+            if (!points) continue;
             out.push(createStroke({
                 kind: scumble ? KIND.BRUSH : KIND.KNIFE,
                 points,
@@ -274,7 +310,8 @@ export function composeUnderpainting({
         else if (second > 0.66) b = period.masses[(index + 1 + Math.floor(rand() * 2)) % period.masses.length];
         const knife = rand() < 0.3;
         const wide = rand() < 0.3;
-        const points = flowPath(field, x, y, 0.4 + rand() * 0.75, { turn: across(0.22, 0.7) });
+        const points = outside(flowPath(field, x, y, 0.4 + rand() * 0.75, { turn: across(0.22, 0.7) }));
+        if (!points) continue;
         out.push(createStroke({
             kind: knife ? KIND.KNIFE : KIND.BRUSH,
             points,
@@ -300,9 +337,11 @@ export function composeUnderpainting({
         const x = (rand() * 2 - 1) * halfX;
         const y = (rand() * 2 - 1) * halfY;
         if (insideCard(card, x, y, 0) && rand() < 0.5) continue;
+        const points = outside(flowPath(field, x, y, 0.5 + rand() * 0.8));
+        if (!points) continue;
         out.push(createStroke({
             kind: KIND.BRUSH,
-            points: flowPath(field, x, y, 0.5 + rand() * 0.8),
+            points,
             width: 0.014 + rand() * 0.014,
             widthEnd: 0.008 + rand() * 0.008,
             pressure: 0.93,
@@ -318,7 +357,7 @@ export function composeUnderpainting({
     }
 
     // 4 — the lights: short, loaded, laid last, as often across the current as along it.
-    layCurls(out, field, aspect, period, seed, t0, span);
+    layCurls(out, field, aspect, period, seed, t0, span, outside);
     const lights = Math.round(29 * density * area);
     for (let i = 0; i < lights; i++) {
         const x = (rand() * 2 - 1) * halfX;
@@ -327,7 +366,8 @@ export function composeUnderpainting({
         const bright = rand() < 0.3;
         const a = bright ? period.light : pick(period.accents, rand());
         const knife = rand() < 0.45;
-        const points = flowPath(field, x, y, 0.16 + rand() * 0.42, { turn: across(0.38, 0.9) });
+        const points = outside(flowPath(field, x, y, 0.16 + rand() * 0.42, { turn: across(0.38, 0.9) }));
+        if (!points) continue;
         out.push(createStroke({
             kind: knife ? KIND.KNIFE : KIND.BRUSH,
             points,
